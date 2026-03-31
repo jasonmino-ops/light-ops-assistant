@@ -121,3 +121,4 @@ DEV_ROLE=OWNER   # 首页 → /dashboard
 | 退款页多行商品支持 | 当前一个原单号对应一个商品行，schema 已预留扩展 |
 | Telegram 推送 | /api/report/send 未实现 |
 | AI 数字员工模块 | 后续增值，不在 v1 范围 |
+
