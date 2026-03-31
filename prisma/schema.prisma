@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum StoreStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ProductStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum SaleType {
+  SALE
+  REFUND
+}
+
+enum RecordStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum LogStatus {
+  SUCCESS
+  FAILED
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stores   Store[]
+  users    User[]
+  products Product[]
+  sales    SaleRecord[]
+  logs     OperationLog[]
+}
+
+model Store {
+  id        String      @id @default(cuid())
+  tenantId  String
+  code      String      @unique
+  name      String
+  status    StoreStatus @default(ACTIVE)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  userRoles UserStoreRole[]
+  sales     SaleRecord[]
+  logs      OperationLog[]
+
+  @@index([tenantId])
+}
+
+model User {
+  id          String     @id @default(cuid())
+  tenantId    String
+  username    String
+  displayName String
+  role        UserRole
+  status      UserStatus @default(ACTIVE)
+  telegramId  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id])
+  storeRoles UserStoreRole[]
+  sales      SaleRecord[]
+  logs       OperationLog[]
+
+  @@unique([tenantId, username])
+  @@index([tenantId])
+}
+
+model UserStoreRole {
+  id        String     @id @default(cuid())
+  tenantId  String
+  userId    String
+  storeId   String
+  role      UserRole
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id])
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([userId, storeId])
+  @@index([tenantId])
+  @@index([storeId])
+}
+
+model Product {
+  id        String        @id @default(cuid())
+  tenantId  String
+  barcode   String
+  sku       String?
+  name      String
+  spec      String?
+  sellPrice Decimal       @db.Decimal(12, 2)
+  status    ProductStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id])
+  sales  SaleRecord[]
+
+  @@unique([tenantId, barcode])
+  @@index([tenantId])
+  @@index([name])
+}
+
+model SaleRecord {
+  id             String @id @default(cuid())
+  tenantId       String
+  storeId        String
+  operatorUserId String
+
+  recordNo String       @unique
+  saleType SaleType
+  status   RecordStatus @default(COMPLETED)
+
+  productId           String?
+  barcode             String
+  productNameSnapshot String
+  specSnapshot        String?
+  unitPrice           Decimal @db.Decimal(12, 2)
+  quantity            Decimal @db.Decimal(12, 2)
+  lineAmount          Decimal @db.Decimal(12, 2)
+
+  originalSaleRecordId String?
+  refundedQty          Decimal? @db.Decimal(12, 2)
+  refundReason         String?
+  remark               String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  store        Store    @relation(fields: [storeId], references: [id])
+  operatorUser User     @relation(fields: [operatorUserId], references: [id])
+  product      Product? @relation(fields: [productId], references: [id])
+
+  originalSaleRecord SaleRecord?  @relation("RefundRelation", fields: [originalSaleRecordId], references: [id])
+  refundChildren     SaleRecord[] @relation("RefundRelation")
+
+  logs OperationLog[]
+
+  @@index([tenantId, createdAt])
+  @@index([storeId, createdAt])
+  @@index([operatorUserId, createdAt])
+  @@index([saleType, createdAt])
+  @@index([originalSaleRecordId])
+  @@index([barcode])
+}
+
+model OperationLog {
+  id       String  @id @default(cuid())
+  tenantId String
+  storeId  String?
+  userId   String?
+
+  actionType      String
+  targetType      String
+  targetId        String?
+  requestId       String?
+  status          LogStatus
+  message         String?
+  payloadSnapshot Json?
+  createdAt       DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  store  Store? @relation(fields: [storeId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  saleRecordId String?
+  saleRecord   SaleRecord? @relation(fields: [saleRecordId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([storeId, createdAt])
+  @@index([userId, createdAt])
+  @@index([requestId])
+}
