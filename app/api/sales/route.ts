@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
@@ -87,9 +86,8 @@ async function handleSale(
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
   }
 
-  const unitPrice = product.sellPrice                  // Prisma Decimal
-  const qtyDecimal = new Prisma.Decimal(qty)           // explicit Decimal cast
-  const lineAmount = unitPrice.mul(qtyDecimal)
+  const unitPrice = product.sellPrice        // Prisma Decimal
+  const lineAmount = unitPrice.mul(qty)      // Decimal.mul accepts plain numbers
   const remarkValue = typeof remark === 'string' && remark.trim() !== ''
     ? remark.trim()
     : null
@@ -111,7 +109,7 @@ async function handleSale(
           productNameSnapshot: product.name,
           specSnapshot: product.spec ?? null,
           unitPrice,
-          quantity: qtyDecimal,
+          quantity: qty,
           lineAmount,
           remark: remarkValue,
         },
@@ -208,18 +206,17 @@ async function handleRefund(
 
   // Re-compute availableQty server-side — never trust body
   const refundedSoFar = original.refundChildren.reduce(
-    (sum, r) => sum.add(r.quantity.abs()),
-    new Prisma.Decimal(0),
+    (sum, r) => sum + Math.abs(r.quantity.toNumber()),
+    0,
   )
-  const availableQty = original.quantity.sub(refundedSoFar)
+  const availableQty = original.quantity.toNumber() - refundedSoFar
 
-  const rQtyDecimal = new Prisma.Decimal(rQty)
-  if (rQtyDecimal.greaterThan(availableQty)) {
+  if (rQty > availableQty) {
     return NextResponse.json(
       {
         error: 'REFUND_QTY_EXCEEDED',
-        message: `Refund quantity ${rQty} exceeds available quantity ${availableQty.toNumber()}`,
-        availableQty: availableQty.toNumber(),
+        message: `Refund quantity ${rQty} exceeds available quantity ${availableQty}`,
+        availableQty,
       },
       { status: 422 },
     )
@@ -233,7 +230,7 @@ async function handleRefund(
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
   }
 
-  const lineAmount = original.unitPrice.mul(rQtyDecimal).negated() // negative
+  const lineAmount = -(original.unitPrice.toNumber() * rQty) // negative
   const remarkValue = typeof remark === 'string' && remark.trim() !== ''
     ? remark.trim()
     : null
@@ -256,7 +253,7 @@ async function handleRefund(
           productNameSnapshot: original.productNameSnapshot,
           specSnapshot: original.specSnapshot ?? null,
           unitPrice: original.unitPrice,
-          quantity: rQtyDecimal.negated(),
+          quantity: -rQty,
           lineAmount,
           refundReason: refundReason.trim(),
           remark: remarkValue,

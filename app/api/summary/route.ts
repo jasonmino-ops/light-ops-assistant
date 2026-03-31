@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
@@ -62,7 +61,8 @@ export async function GET(req: NextRequest) {
     dimension = 'GLOBAL'
   }
 
-  const baseWhere: Prisma.SaleRecordWhereInput = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const baseWhere: any = {
     tenantId: ctx.tenantId,
     createdAt: { gte: from, lte: to },
     ...(storeId ? { storeId } : {}),

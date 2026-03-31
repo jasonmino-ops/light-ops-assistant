@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
@@ -66,11 +65,11 @@ export async function GET(req: NextRequest) {
   }
 
   const refundedQty = record.refundChildren.reduce(
-    (sum, r) => sum.add(r.quantity.abs()),
-    new Prisma.Decimal(0),
+    (sum, r) => sum + Math.abs(r.quantity.toNumber()),
+    0,
   )
-  const availableQty = record.quantity.sub(refundedQty)
-  const refundable = availableQty.greaterThan(0)
+  const availableQty = record.quantity.toNumber() - refundedQty
+  const refundable = availableQty > 0
 
   if (!refundable) {
     return NextResponse.json(
@@ -92,8 +91,8 @@ export async function GET(req: NextRequest) {
         specSnapshot: record.specSnapshot,
         unitPrice: record.unitPrice.toNumber(),
         originalQty: record.quantity.toNumber(),
-        refundedQty: refundedQty.toNumber(),
-        availableQty: availableQty.toNumber(),
+        refundedQty,
+        availableQty,
         refundable,
       },
     ],

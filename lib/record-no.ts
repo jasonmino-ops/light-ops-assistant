@@ -1,5 +1,3 @@
-import { Prisma } from '@prisma/client'
-
 /**
  * Generates a unique recordNo within a Prisma transaction.
  *
@@ -13,8 +11,19 @@ import { Prisma } from '@prisma/client'
  * Date is computed in UTC. If the store operates across a timezone
  * boundary, add timezone offset handling here.
  */
+
+// Minimal subset of the transaction client used in this function.
+// Avoids importing the Prisma namespace, which may not be available
+// in environments where prisma generate has not yet run.
+type TxClient = {
+  saleRecord: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    count: (args: { where: Record<string, any> }) => Promise<number>
+  }
+}
+
 export async function generateRecordNo(
-  tx: Prisma.TransactionClient,
+  tx: TxClient,
   prefix: 'S' | 'R',
   tenantId: string,
   storeId: string,

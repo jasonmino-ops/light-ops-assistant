@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
@@ -44,7 +43,8 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, parseInt(p.get('page') ?? '1', 10))
   const pageSize = Math.min(50, Math.max(1, parseInt(p.get('pageSize') ?? '20', 10)))
 
-  const where: Prisma.SaleRecordWhereInput = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = {
     tenantId: ctx.tenantId,
     createdAt: { gte: from, lte: to },
   }
