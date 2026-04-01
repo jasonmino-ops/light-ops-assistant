@@ -83,10 +83,9 @@ export default function SalePage() {
   const qty = Math.max(1, form.quantity)
   const subtotal = product ? (product.sellPrice * qty).toFixed(2) : '0.00'
 
-  // ── Query product by barcode (unchanged logic) ─────────────────────────────
+  // ── Query product by barcode ───────────────────────────────────────────────
 
-  async function queryProduct() {
-    const barcode = form.barcode.trim()
+  async function queryProductByBarcode(barcode: string) {
     if (!barcode) return
     setQueryError(null)
     setProduct(null)
@@ -108,9 +107,39 @@ export default function SalePage() {
     }
   }
 
+  function queryProduct() {
+    queryProductByBarcode(form.barcode.trim())
+  }
+
   function handleBarcodeKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') queryProduct()
   }
+
+  // ── Telegram native QR / barcode scan ─────────────────────────────────────
+
+  function scanBarcode() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    if (!tg?.showScanQrPopup) {
+      setQueryError('请在 Telegram 内使用扫码功能')
+      return
+    }
+    tg.showScanQrPopup({ text: '对准商品条码扫描' }, (scanned: string) => {
+      tg.closeScanQrPopup()
+      const barcode = scanned.trim()
+      if (barcode) {
+        setForm((prev) => ({ ...prev, barcode }))
+        queryProductByBarcode(barcode)
+      }
+      return true
+    })
+  }
+
+  const [isTma, setIsTma] = useState(false)
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setIsTma(!!(window as any).Telegram?.WebApp)
+  }, [])
 
   // ── Submit sale (unchanged logic) ──────────────────────────────────────────
 
@@ -241,7 +270,14 @@ export default function SalePage() {
                 {allProducts.length > 0 ? '或手动输入商品码' : '商品码 / 条码'}
               </div>
               <div style={s.searchRow}>
-                <span style={s.scanIcon}>⊡</span>
+                <button
+                  type="button"
+                  style={{ ...s.scanBtn, ...(isTma ? {} : s.scanBtnDisabled) }}
+                  onClick={scanBarcode}
+                  title={isTma ? '扫码' : '请在 Telegram 内使用'}
+                >
+                  ⊡
+                </button>
                 <input
                   style={s.searchInput}
                   type="text"
@@ -415,10 +451,22 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 8,
   },
-  scanIcon: {
-    fontSize: 22,
-    color: 'var(--muted)',
+  scanBtn: {
+    width: 42,
+    height: 42,
     flexShrink: 0,
+    background: 'var(--blue)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 20,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanBtnDisabled: {
+    background: '#e0e0e0',
+    color: '#aaa',
   },
   searchInput: {
     flex: 1,
