@@ -50,6 +50,8 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+const ORDER_COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#722ed1']
+
 function buildItemSummary(items: RecordItem[]): string {
   return items.map((i) => `${i.productNameSnapshot}×${i.quantity}`).join('、')
 }
@@ -164,7 +166,7 @@ export default function HomePage() {
 
       {entries.map((entry, i) =>
         entry.kind === 'order' ? (
-          <OrderCard key={entry.orderNo} group={entry} />
+          <OrderCard key={entry.orderNo} group={entry} index={i} />
         ) : (
           <RefundCard key={entry.item.id + '-' + i} item={entry.item} />
         )
@@ -195,10 +197,11 @@ function ActionBtn({ href, icon, label, color }: {
   )
 }
 
-function OrderCard({ group }: { group: OrderGroup }) {
+function OrderCard({ group, index }: { group: OrderGroup; index: number }) {
+  const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   return (
-    <div style={s.recentCard}>
+    <div style={{ ...s.recentCard, borderLeft: `3px solid ${accent}` }}>
       <div style={s.recentLeft}>
         <span style={s.tagSale}>销售单</span>
         <div style={s.recentProduct}>

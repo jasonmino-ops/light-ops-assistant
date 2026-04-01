@@ -79,6 +79,7 @@ const FILTERS: Array<[QuickFilter, string]> = [
 ]
 
 const REFUND_REASONS = ['商品拿错', '顾客不要了', '商品有问题', '重复录入', '其他']
+const ORDER_COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#722ed1']
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ export default function RefundPage() {
   const [lookupState, setLookupState] = useState<LookupState>('idle')
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [lookup, setLookup] = useState<LookupResult | null>(null)
-  const [refundQty, setRefundQty] = useState(1)
+  const [refundQtyStr, setRefundQtyStr] = useState('1')
   const [refundReason, setRefundReason] = useState('商品拿错')
   const [refundReasonOther, setRefundReasonOther] = useState('')
   const [remark, setRemark] = useState('')
@@ -153,7 +154,7 @@ export default function RefundPage() {
   const [result, setResult] = useState<RefundResult | null>(null)
 
   const item = lookup?.items[0] ?? null
-  const rQty = Math.max(1, refundQty)
+  const rQty = Math.max(1, parseInt(refundQtyStr, 10) || 1)
   const refundPreview = item ? (item.unitPrice * rQty).toFixed(2) : '0.00'
 
   // ── Fetch sale list ────────────────────────────────────────────────────────
@@ -225,7 +226,7 @@ export default function RefundPage() {
     setLookupState('loading')
     setLookupError(null)
     setLookup(null)
-    setRefundQty(1)
+    setRefundQtyStr('1')
     setRefundReason('商品拿错')
     setRefundReasonOther('')
     setRemark('')
@@ -239,7 +240,7 @@ export default function RefundPage() {
       const body = await res.json()
       if (res.ok) {
         setLookup(body)
-        setRefundQty(body.items[0]?.availableQty ?? 1)
+        setRefundQtyStr(String(body.items[0]?.availableQty ?? 1))
         setLookupState('found')
       } else {
         const msg = LOOKUP_ERROR_MSG[body.reason ?? body.error] ?? '该订单无法退款'
@@ -278,6 +279,7 @@ export default function RefundPage() {
     setLookup(null)
     setResult(null)
     setSubmitError(null)
+    setRefundQtyStr('1')
     if (refresh) fetchList(quickFilter)
   }
 
@@ -400,10 +402,11 @@ export default function RefundPage() {
               </div>
             )}
 
-            {orderGroups.map((order) => (
+            {orderGroups.map((order, i) => (
               <OrderCard
                 key={order.orderNo}
                 order={order}
+                index={i}
                 onSelect={() => selectOrder(order)}
               />
             ))}
@@ -510,13 +513,28 @@ export default function RefundPage() {
                     <button
                       type="button"
                       style={s.stepperBtn}
-                      onClick={() => setRefundQty(Math.max(1, rQty - 1))}
+                      onClick={() => setRefundQtyStr(String(Math.max(1, rQty - 1)))}
                     >−</button>
-                    <span style={s.stepperValue}>{rQty}</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      style={s.stepperInput}
+                      value={refundQtyStr}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '')
+                        setRefundQtyStr(raw)
+                      }}
+                      onBlur={() => {
+                        const v = parseInt(refundQtyStr, 10)
+                        if (!v || v < 1) setRefundQtyStr('1')
+                        else if (v > item.availableQty) setRefundQtyStr(String(item.availableQty))
+                      }}
+                    />
                     <button
                       type="button"
                       style={s.stepperBtn}
-                      onClick={() => setRefundQty(Math.min(item.availableQty, rQty + 1))}
+                      onClick={() => setRefundQtyStr(String(Math.min(item.availableQty, rQty + 1)))}
                     >+</button>
                   </div>
                 </div>
@@ -587,12 +605,13 @@ export default function RefundPage() {
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ order, onSelect }: { order: OrderGroup; onSelect: () => void }) {
+function OrderCard({ order, index, onSelect }: { order: OrderGroup; index: number; onSelect: () => void }) {
+  const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = order.items.length === 1
   const item = order.items[0]
 
   return (
-    <div style={oc.card}>
+    <div style={{ ...oc.card, borderLeft: `3px solid ${accent}` }}>
       <div style={oc.top}>
         <div style={oc.summary}>
           {isSingle
@@ -1041,7 +1060,7 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 300,
     lineHeight: 1,
   },
-  stepperValue: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: 700, color: 'var(--text)' },
+  stepperInput: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: 700, color: 'var(--text)', background: 'transparent', border: 'none', outline: 'none', width: '100%' },
   previewCard: {
     background: 'var(--red)',
     borderRadius: 'var(--radius)',

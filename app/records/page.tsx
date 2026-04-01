@@ -69,6 +69,8 @@ function fmtAmount(n: number) {
   return n < 0 ? `-$${abs}` : `$${abs}`
 }
 
+const ORDER_COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#722ed1']
+
 function buildItemSummary(items: RecordItem[]): string {
   return items.map((i) => `${i.productNameSnapshot}×${i.quantity}`).join('、')
 }
@@ -243,7 +245,7 @@ export default function RecordsPage() {
 
         {entries.map((entry, i) =>
           entry.kind === 'order' ? (
-            <OrderCard key={entry.orderNo} group={entry} />
+            <OrderCard key={entry.orderNo} group={entry} index={i} />
           ) : (
             <RefundCard key={entry.item.id + '-' + i} item={entry.item} />
           )
@@ -265,12 +267,13 @@ export default function RecordsPage() {
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ group }: { group: OrderGroup }) {
+function OrderCard({ group, index }: { group: OrderGroup; index: number }) {
+  const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   const item = group.items[0]
 
   return (
-    <div style={s.recordCard}>
+    <div style={{ ...s.recordCard, borderLeft: `3px solid ${accent}` }}>
       <div style={s.cardHeader}>
         <span style={s.tagSale}>销售单</span>
         <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>
