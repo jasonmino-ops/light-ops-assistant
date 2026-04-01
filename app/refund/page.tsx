@@ -68,10 +68,18 @@ const FILTERS: Array<[QuickFilter, string]> = [
   ['mine', '我的操作'],
 ]
 
+const REFUND_REASONS = ['商品拿错', '顾客不要了', '商品有问题', '重复录入', '其他']
+
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
+}
+
+function pastDateStr(daysAgo: number) {
+  const d = new Date()
+  d.setDate(d.getDate() - daysAgo)
+  return d.toISOString().slice(0, 10)
 }
 
 function fmtDateTime(iso: string) {
@@ -99,7 +107,8 @@ export default function RefundPage() {
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [lookup, setLookup] = useState<LookupResult | null>(null)
   const [refundQty, setRefundQty] = useState(1)
-  const [refundReason, setRefundReason] = useState('')
+  const [refundReason, setRefundReason] = useState('商品拿错')
+  const [refundReasonOther, setRefundReasonOther] = useState('')
   const [remark, setRemark] = useState('')
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -110,24 +119,30 @@ export default function RefundPage() {
   const refundPreview = item ? (item.unitPrice * rQty).toFixed(2) : '0.00'
 
   // ── Fetch sale list ────────────────────────────────────────────────────────
+  // FIX: /api/records always requires dateFrom + dateTo.
+  // 'recent' and 'mine' use last 90 days; 'today' uses today only.
 
   const fetchList = useCallback(async (filter: QuickFilter) => {
     setListLoading(true)
     setListError(null)
+    const today = todayStr()
     const params = new URLSearchParams({ saleType: 'SALE', pageSize: '10' })
     if (filter === 'today') {
-      const today = todayStr()
       params.set('dateFrom', today)
       params.set('dateTo', today)
+    } else {
+      // 'recent' and 'mine': past 90 days
+      params.set('dateFrom', pastDateStr(90))
+      params.set('dateTo', today)
     }
-    // 'mine' is automatically scoped by STAFF context in the API
     try {
       const res = await apiFetch(`/api/records?${params}`)
       if (res.ok) {
         const data = await res.json()
         setListItems(data.items ?? [])
       } else {
-        setListError('加载失败，请重试')
+        const body = await res.json().catch(() => ({}))
+        setListError(body.message ?? '加载失败，请重试')
       }
     } catch {
       setListError('网络错误，请重试')
@@ -161,7 +176,8 @@ export default function RefundPage() {
     setLookupError(null)
     setLookup(null)
     setRefundQty(1)
-    setRefundReason('')
+    setRefundReason('商品拿错')
+    setRefundReasonOther('')
     setRemark('')
     setResult(null)
     setSubmitError(null)
@@ -208,7 +224,16 @@ export default function RefundPage() {
       setSubmitError(`退款数量不能超过可退数量 ${item.availableQty}`)
       return
     }
-    if (!refundReason.trim()) { setSubmitError('退款原因不能为空'); return }
+    if (!refundReason) { setSubmitError('请选择退款原因'); return }
+    if (refundReason === '其他' && !refundReasonOther.trim()) {
+      setSubmitError('请补充"其他"的具体原因')
+      return
+    }
+
+    const finalReason =
+      refundReason === '其他'
+        ? `其他：${refundReasonOther.trim()}`
+        : refundReason
 
     setSubmitError(null)
     setResult(null)
@@ -221,7 +246,7 @@ export default function RefundPage() {
           saleType: 'REFUND',
           originalSaleRecordId: item.saleRecordId,
           refundQty: rQty,
-          refundReason: refundReason.trim(),
+          refundReason: finalReason,
           remark: remark.trim() || null,
         }),
       })
@@ -300,7 +325,12 @@ export default function RefundPage() {
 
             {/* States */}
             {listLoading && <div style={s.hint}>加载中…</div>}
-            {listError && <div style={s.hintError}>{listError}</div>}
+            {listError && (
+              <div style={s.hintError}>
+                {listError}
+                <button style={s.retryBtn} onClick={() => fetchList(quickFilter)}>重试</button>
+              </div>
+            )}
 
             {!listLoading && !listError && filteredItems.length === 0 && (
               <div style={s.emptyState}>
@@ -423,16 +453,27 @@ export default function RefundPage() {
                   <span style={s.previewAmount}>-${refundPreview}</span>
                 </div>
 
-                {/* Reason (required) */}
+                {/* Reason (required) — dropdown */}
                 <div style={s.card}>
                   <div style={s.cardLabel}>退款原因 *</div>
-                  <input
-                    style={s.remarkInput}
-                    type="text"
-                    placeholder="必填"
+                  <select
+                    style={s.reasonSelect}
                     value={refundReason}
                     onChange={(e) => setRefundReason(e.target.value)}
-                  />
+                  >
+                    {REFUND_REASONS.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                  {refundReason === '其他' && (
+                    <input
+                      style={{ ...s.remarkInput, marginTop: 8 }}
+                      type="text"
+                      placeholder="请补充说明…"
+                      value={refundReasonOther}
+                      onChange={(e) => setRefundReasonOther(e.target.value)}
+                    />
+                  )}
                 </div>
 
                 {/* Remark (optional) */}
@@ -765,6 +806,20 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--red)',
     padding: '16px 0',
     fontSize: 14,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+  },
+  retryBtn: {
+    height: 34,
+    padding: '0 18px',
+    background: 'var(--red)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 20,
+    fontSize: 13,
+    fontWeight: 600,
   },
   emptyState: {
     display: 'flex',
@@ -914,6 +969,20 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     color: '#fff',
     letterSpacing: '-0.02em',
+  },
+
+  // Reason select
+  reasonSelect: {
+    display: 'block',
+    width: '100%',
+    height: 44,
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '0 12px',
+    fontSize: 15,
+    outline: 'none',
+    background: '#f7f8fa',
+    appearance: 'auto',
   },
 
   // Inputs

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, FormEvent, KeyboardEvent } from 'react'
+import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import { apiFetch } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -13,25 +13,29 @@ type Product = {
   sellPrice: number
 }
 
+type CartItem = {
+  key: string
+  product: Product
+  qty: number
+}
+
 type SaleResult = {
-  id: string
-  recordNo: string
-  saleType: string
-  lineAmount: number
-  createdAt: string
+  count: number
+  totalAmount: number
+  recordNos: string[]
 }
 
 type Status = 'idle' | 'querying' | 'submitting'
 
-const EMPTY = { barcode: '', quantity: 1, remark: '' }
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SalePage() {
-  const [form, setForm] = useState(EMPTY)
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const [qty, setQty] = useState(1)
   const [product, setProduct] = useState<Product | null>(null)
   const [queryError, setQueryError] = useState<string | null>(null)
   const [status, setStatus] = useState<Status>('idle')
+  const [cart, setCart] = useState<CartItem[]>([])
   const [result, setResult] = useState<SaleResult | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -53,7 +57,7 @@ export default function SalePage() {
 
   // Compute inline autocomplete suggestions when input changes
   useEffect(() => {
-    const q = form.barcode.trim()
+    const q = barcodeInput.trim()
     if (!q || allProducts.length === 0) {
       setSuggestions([])
       setShowSuggestions(false)
@@ -68,12 +72,10 @@ export default function SalePage() {
     )
     matches.sort((a, b) => {
       if (isNumeric) {
-        // numeric: barcode prefix match first
         const aFirst = a.barcode.toLowerCase().startsWith(ql) ? 0 : 1
         const bFirst = b.barcode.toLowerCase().startsWith(ql) ? 0 : 1
         return aFirst - bFirst
       } else {
-        // text: name match first
         const aFirst = a.name.toLowerCase().includes(ql) ? 0 : 1
         const bFirst = b.name.toLowerCase().includes(ql) ? 0 : 1
         return aFirst - bFirst
@@ -82,7 +84,7 @@ export default function SalePage() {
     const top = matches.slice(0, 5)
     setSuggestions(top)
     setShowSuggestions(top.length > 0)
-  }, [form.barcode, allProducts])
+  }, [barcodeInput, allProducts])
 
   // Close suggestions when clicking outside
   useEffect(() => {
@@ -109,20 +111,11 @@ export default function SalePage() {
       })
     : allProducts
 
-  // Select from autocomplete suggestion (no extra API call)
-  function selectSuggestion(p: Product) {
+  function selectProduct(p: Product) {
     setProduct(p)
-    setForm((prev) => ({ ...prev, barcode: p.barcode }))
+    setBarcodeInput(p.barcode)
+    setQty(1)
     setShowSuggestions(false)
-    setQueryError(null)
-    setResult(null)
-    setSubmitError(null)
-  }
-
-  // Select from dropdown list
-  function selectFromDropdown(p: Product) {
-    setProduct(p)
-    setForm({ ...EMPTY, barcode: p.barcode })
     setDropSearch('')
     setDropOpen(false)
     setQueryError(null)
@@ -130,8 +123,8 @@ export default function SalePage() {
     setSubmitError(null)
   }
 
-  const qty = Math.max(1, form.quantity)
-  const subtotal = product ? (product.sellPrice * qty).toFixed(2) : '0.00'
+  const cartTotal = cart.reduce((sum, i) => sum + i.product.sellPrice * i.qty, 0)
+  const safeQty = Math.max(1, qty)
 
   // ── Query by barcode ───────────────────────────────────────────────────────
 
@@ -145,7 +138,9 @@ export default function SalePage() {
     try {
       const res = await apiFetch(`/api/products?barcode=${encodeURIComponent(barcode)}`)
       if (res.ok) {
-        setProduct(await res.json())
+        const p = await res.json()
+        setProduct(p)
+        setQty(1)
       } else {
         const body = await res.json().catch(() => ({}))
         setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? '未找到该商品' : '查询失败，请重试')
@@ -159,7 +154,7 @@ export default function SalePage() {
 
   function queryProduct() {
     setShowSuggestions(false)
-    queryProductByBarcode(form.barcode.trim())
+    queryProductByBarcode(barcodeInput.trim())
   }
 
   function handleBarcodeKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -180,7 +175,7 @@ export default function SalePage() {
       tg.closeScanQrPopup()
       const barcode = scanned.trim()
       if (barcode) {
-        setForm((prev) => ({ ...prev, barcode }))
+        setBarcodeInput(barcode)
         queryProductByBarcode(barcode)
       }
       return true
@@ -193,46 +188,73 @@ export default function SalePage() {
     setIsTma(!!(window as any).Telegram?.WebApp)
   }, [])
 
+  // ── Cart operations ────────────────────────────────────────────────────────
+
+  function addToCart() {
+    if (!product) return
+    setCart((prev) => [
+      ...prev,
+      { key: `${product.id}-${Date.now()}`, product, qty: safeQty },
+    ])
+    setProduct(null)
+    setBarcodeInput('')
+    setQty(1)
+    setQueryError(null)
+  }
+
+  function removeFromCart(key: string) {
+    setCart((prev) => prev.filter((i) => i.key !== key))
+  }
+
   // ── Submit sale ────────────────────────────────────────────────────────────
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!product) return
-    if (qty <= 0) { setSubmitError('数量必须大于 0'); return }
+  async function handleSubmit() {
+    if (cart.length === 0) return
     setSubmitError(null)
-    setResult(null)
     setStatus('submitting')
-    try {
-      const res = await apiFetch('/api/sales', {
-        method: 'POST',
-        body: JSON.stringify({
-          saleType: 'SALE',
-          barcode: product.barcode,
-          productId: product.id,
-          productNameSnapshot: product.name,
-          specSnapshot: product.spec,
-          unitPrice: product.sellPrice,
-          quantity: qty,
-          remark: form.remark.trim() || null,
-        }),
-      })
-      const body = await res.json()
-      if (res.ok) {
-        setResult(body)
-        setForm(EMPTY)
-        setProduct(null)
-      } else {
-        setSubmitError(body.message ?? body.error ?? '提交失败')
+
+    const recordNos: string[] = []
+    let totalAmount = 0
+
+    for (const ci of cart) {
+      try {
+        const res = await apiFetch('/api/sales', {
+          method: 'POST',
+          body: JSON.stringify({
+            saleType: 'SALE',
+            barcode: ci.product.barcode,
+            productId: ci.product.id,
+            productNameSnapshot: ci.product.name,
+            specSnapshot: ci.product.spec,
+            unitPrice: ci.product.sellPrice,
+            quantity: ci.qty,
+          }),
+        })
+        const body = await res.json()
+        if (!res.ok) {
+          setSubmitError(
+            `${ci.product.name}：${body.message ?? body.error ?? '提交失败'}`
+          )
+          setStatus('idle')
+          return
+        }
+        recordNos.push(body.recordNo)
+        totalAmount += ci.product.sellPrice * ci.qty
+      } catch {
+        setSubmitError(`${ci.product.name}：网络错误，请重试`)
+        setStatus('idle')
+        return
       }
-    } catch {
-      setSubmitError('网络错误，请重试')
-    } finally {
-      setStatus('idle')
     }
+
+    setResult({ count: cart.length, totalAmount, recordNos })
+    setCart([])
+    setStatus('idle')
   }
 
   function handleClear() {
-    setForm(EMPTY)
+    setBarcodeInput('')
+    setQty(1)
     setProduct(null)
     setQueryError(null)
     setResult(null)
@@ -241,6 +263,7 @@ export default function SalePage() {
     setDropSearch('')
     setDropOpen(false)
     setShowSuggestions(false)
+    setCart([])
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -260,9 +283,11 @@ export default function SalePage() {
             <div style={s.successIconWrap}>✓</div>
             <div style={s.successTitle}>销售成功</div>
             <div style={s.successGrid}>
-              <InfoRow label="单号" value={result.recordNo} mono />
-              <InfoRow label="金额" value={`$${result.lineAmount.toFixed(2)}`} bold />
-              <InfoRow label="时间" value={new Date(result.createdAt).toLocaleTimeString('zh-CN')} />
+              <InfoRow label="商品种数" value={`${result.count} 种`} />
+              <InfoRow label="合计金额" value={`$${result.totalAmount.toFixed(2)}`} bold />
+              {result.recordNos.map((no, i) => (
+                <InfoRow key={no} label={`单号 ${i + 1}`} value={no} mono />
+              ))}
             </div>
             <button style={s.nextBtn} onClick={handleClear}>继续下一单</button>
           </div>
@@ -299,9 +324,9 @@ export default function SalePage() {
                     style={s.textInput}
                     type="text"
                     placeholder="商品条码 / 名称"
-                    value={form.barcode}
+                    value={barcodeInput}
                     onChange={(e) => {
-                      setForm({ ...form, barcode: e.target.value })
+                      setBarcodeInput(e.target.value)
                       if (product) setProduct(null)
                     }}
                     onKeyDown={handleBarcodeKeyDown}
@@ -313,7 +338,7 @@ export default function SalePage() {
                     style={s.queryBtn}
                     type="button"
                     onClick={queryProduct}
-                    disabled={status === 'querying' || !form.barcode.trim()}
+                    disabled={status === 'querying' || !barcodeInput.trim()}
                   >
                     {status === 'querying' ? '…' : '查询'}
                   </button>
@@ -326,7 +351,7 @@ export default function SalePage() {
                       <div
                         key={p.id}
                         style={s.suggestItem}
-                        onMouseDown={(e) => { e.preventDefault(); selectSuggestion(p) }}
+                        onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}
                       >
                         <span style={s.suggestCode}>{p.barcode}</span>
                         <span style={s.suggestName}>{p.name}</span>
@@ -378,7 +403,7 @@ export default function SalePage() {
                             <div
                               key={p.id}
                               style={s.dropItem}
-                              onMouseDown={(e) => { e.preventDefault(); selectFromDropdown(p) }}
+                              onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}
                             >
                               <span style={s.dropCode}>{p.barcode}</span>
                               <span style={s.dropName}>{p.name}</span>
@@ -394,8 +419,8 @@ export default function SalePage() {
               )}
             </div>
 
-            {/* ── Empty prompt ── */}
-            {!product && (
+            {/* ── Empty prompt (no product, no cart) ── */}
+            {!product && cart.length === 0 && (
               <div style={s.emptyState}>
                 <div style={s.emptyIcon}>⊡</div>
                 <div style={s.emptyTitle}>请先查找商品</div>
@@ -403,80 +428,170 @@ export default function SalePage() {
               </div>
             )}
 
-            {/* ── Product found: info + form ── */}
+            {/* ── Product found: info + qty + add-to-cart ── */}
             {product && (
-              <form onSubmit={handleSubmit}>
-                {/* 1. Product info */}
-                <div style={s.card}>
-                  <div style={s.productName}>{product.name}</div>
-                  {product.spec && <div style={s.productSpec}>{product.spec}</div>}
-                  <div style={s.priceRow}>
-                    <span style={s.priceLabel}>单价</span>
-                    <span style={s.priceValue}>${product.sellPrice.toFixed(2)}</span>
-                  </div>
+              <div style={s.card}>
+                <div style={s.productName}>{product.name}</div>
+                {product.spec && <div style={s.productSpec}>{product.spec}</div>}
+                <div style={s.priceRow}>
+                  <span style={s.priceLabel}>单价</span>
+                  <span style={s.priceValue}>${product.sellPrice.toFixed(2)}</span>
                 </div>
 
-                {/* 2. Quantity */}
-                <div style={s.card}>
-                  <div style={s.cardLabel}>数量</div>
-                  <div style={s.stepperRow}>
-                    <button
-                      type="button"
-                      style={s.stepperBtn}
-                      onClick={() => setForm({ ...form, quantity: Math.max(1, qty - 1) })}
-                    >−</button>
-                    <span style={s.stepperValue}>{qty}</span>
-                    <button
-                      type="button"
-                      style={s.stepperBtn}
-                      onClick={() => setForm({ ...form, quantity: qty + 1 })}
-                    >+</button>
-                  </div>
+                <div style={{ ...s.cardLabel, marginTop: 12 }}>数量</div>
+                <div style={s.stepperRow}>
+                  <button
+                    type="button"
+                    style={s.stepperBtn}
+                    onClick={() => setQty(Math.max(1, safeQty - 1))}
+                  >−</button>
+                  <span style={s.stepperValue}>{safeQty}</span>
+                  <button
+                    type="button"
+                    style={s.stepperBtn}
+                    onClick={() => setQty(safeQty + 1)}
+                  >+</button>
                 </div>
 
-                {/* 3. Total */}
-                <div style={s.totalCard}>
-                  <span style={s.totalLabel}>总额</span>
-                  <span style={s.totalAmount}>${subtotal}</span>
+                <div style={s.subtotalRow}>
+                  <span style={s.subtotalLabel}>小计</span>
+                  <span style={s.subtotalValue}>
+                    ${(product.sellPrice * safeQty).toFixed(2)}
+                  </span>
                 </div>
 
-                {/* 4. Remark */}
-                <div style={s.card}>
-                  <div style={s.cardLabel}>备注（可选）</div>
-                  <input
-                    style={s.remarkInput}
-                    type="text"
-                    placeholder="输入备注…"
-                    value={form.remark}
-                    onChange={(e) => setForm({ ...form, remark: e.target.value })}
+                <button style={s.addBtn} onClick={addToCart}>
+                  + 加入本单
+                </button>
+              </div>
+            )}
+
+            {/* ── Cart ── */}
+            {cart.length > 0 && (
+              <>
+                <div style={s.cartHeader}>
+                  <span style={s.cartHeaderText}>本单商品（{cart.length} 种）</span>
+                  <button style={s.clearCartBtn} onClick={() => setCart([])}>清空本单</button>
+                </div>
+
+                {cart.map((ci) => (
+                  <CartItemRow
+                    key={ci.key}
+                    item={ci}
+                    onDelete={() => removeFromCart(ci.key)}
                   />
+                ))}
+
+                {/* Total */}
+                <div style={s.totalCard}>
+                  <span style={s.totalLabel}>合计</span>
+                  <span style={s.totalAmount}>${cartTotal.toFixed(2)}</span>
                 </div>
 
                 {submitError && <div style={s.errorMsg}>{submitError}</div>}
 
-                {/* 5. Actions */}
-                <div style={s.actions}>
-                  <button type="button" style={s.clearBtn} onClick={handleClear}>
-                    清空
-                  </button>
-                  <button
-                    type="submit"
-                    style={{
-                      ...s.submitBtn,
-                      ...(status === 'submitting' ? s.submitBtnLoading : {}),
-                    }}
-                    disabled={status === 'submitting'}
-                  >
-                    {status === 'submitting' ? '提交中…' : '确认销售'}
-                  </button>
-                </div>
-              </form>
+                <button
+                  style={{
+                    ...s.submitBtn,
+                    ...(status === 'submitting' ? s.submitBtnLoading : {}),
+                  }}
+                  disabled={status === 'submitting'}
+                  onClick={handleSubmit}
+                >
+                  {status === 'submitting' ? '提交中…' : '确认销售'}
+                </button>
+              </>
             )}
           </>
         )}
       </div>
     </div>
   )
+}
+
+// ─── CartItemRow ──────────────────────────────────────────────────────────────
+
+function CartItemRow({
+  item,
+  onDelete,
+}: {
+  item: CartItem
+  onDelete: () => void
+}) {
+  return (
+    <div style={ci.card}>
+      <div style={ci.top}>
+        <div style={ci.nameWrap}>
+          <span style={ci.name}>{item.product.name}</span>
+          {item.product.spec && <span style={ci.spec}> · {item.product.spec}</span>}
+        </div>
+        <button style={ci.del} onClick={onDelete}>✕</button>
+      </div>
+      <div style={ci.bottom}>
+        <span style={ci.meta}>
+          {item.qty} 件 × ${item.product.sellPrice.toFixed(2)}
+        </span>
+        <span style={ci.subtotal}>
+          ${(item.qty * item.product.sellPrice).toFixed(2)}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+const ci: Record<string, React.CSSProperties> = {
+  card: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '11px 14px',
+    marginBottom: 8,
+  },
+  top: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
+  nameWrap: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  name: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: 'var(--text)',
+  },
+  spec: {
+    fontSize: 13,
+    color: 'var(--muted)',
+  },
+  del: {
+    flexShrink: 0,
+    background: 'none',
+    border: 'none',
+    color: '#bbb',
+    fontSize: 16,
+    padding: '0 0 0 8px',
+    lineHeight: 1,
+  },
+  bottom: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  meta: {
+    fontSize: 13,
+    color: 'var(--muted)',
+  },
+  subtotal: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: 'var(--text)',
+  },
 }
 
 // ─── InfoRow ──────────────────────────────────────────────────────────────────
@@ -511,7 +626,7 @@ const s: Record<string, React.CSSProperties> = {
     background: 'var(--bg)',
     display: 'flex',
     flexDirection: 'column',
-    overflowX: 'hidden',         // prevent horizontal overflow
+    overflowX: 'hidden',
   },
   headerBar: {
     background: 'var(--blue)',
@@ -531,7 +646,7 @@ const s: Record<string, React.CSSProperties> = {
     width: '100%',
     maxWidth: 480,
     margin: '0 auto',
-    padding: '12px 12px 20px',   // bottom pad so content clears the fixed nav
+    padding: '12px 12px 20px',
   },
 
   // ── Cards ──
@@ -570,13 +685,8 @@ const s: Record<string, React.CSSProperties> = {
     background: '#d0d0d0',
     color: '#888',
   },
-  scanIcon: {
-    fontSize: 22,
-  },
-  scanLabel: {
-    fontSize: 15,
-    fontWeight: 600,
-  },
+  scanIcon: { fontSize: 22 },
+  scanLabel: { fontSize: 15, fontWeight: 600 },
 
   // ── Divider ──
   orDivider: {
@@ -585,31 +695,16 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     marginBottom: 12,
   },
-  orLine: {
-    flex: 1,
-    height: 1,
-    background: 'var(--border)',
-  },
-  orText: {
-    fontSize: 12,
-    color: 'var(--muted)',
-    whiteSpace: 'nowrap',
-  },
+  orLine: { flex: 1, height: 1, background: 'var(--border)' },
+  orText: { fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' },
 
   // ── Row 2: Input + autocomplete ──
-  suggestWrap: {
-    position: 'relative',
-    marginBottom: 0,
-  },
-  inputRow: {
-    display: 'flex',
-    gap: 8,
-    marginBottom: 0,
-  },
+  suggestWrap: { position: 'relative', marginBottom: 0 },
+  inputRow: { display: 'flex', gap: 8, marginBottom: 0 },
   textInput: {
     flex: 1,
     height: 44,
-    minWidth: 0,           // allow flex shrink
+    minWidth: 0,
     border: '1.5px solid var(--border)',
     borderRadius: 'var(--radius-sm)',
     padding: '0 12px',
@@ -667,11 +762,7 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  suggestSpec: {
-    fontSize: 12,
-    color: 'var(--muted)',
-    flexShrink: 0,
-  },
+  suggestSpec: { fontSize: 12, color: 'var(--muted)', flexShrink: 0 },
   suggestPrice: {
     fontSize: 13,
     fontWeight: 700,
@@ -681,9 +772,7 @@ const s: Record<string, React.CSSProperties> = {
   },
 
   // ── Row 3: Dropdown fallback ──
-  dropWrap: {
-    position: 'relative',
-  },
+  dropWrap: { position: 'relative' },
   dropTrigger: {
     display: 'flex',
     alignItems: 'center',
@@ -704,11 +793,7 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  dropArrow: {
-    fontSize: 10,
-    color: 'var(--muted)',
-    flexShrink: 0,
-  },
+  dropArrow: { fontSize: 10, color: 'var(--muted)', flexShrink: 0 },
   dropPanel: {
     position: 'absolute',
     top: 'calc(100% + 4px)',
@@ -732,10 +817,7 @@ const s: Record<string, React.CSSProperties> = {
     outline: 'none',
     background: '#fafafa',
   },
-  dropList: {
-    maxHeight: 200,
-    overflowY: 'auto',
-  },
+  dropList: { maxHeight: 200, overflowY: 'auto' },
   dropItem: {
     display: 'flex',
     alignItems: 'center',
@@ -760,11 +842,7 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  dropSpec: {
-    fontSize: 12,
-    color: 'var(--muted)',
-    flexShrink: 0,
-  },
+  dropSpec: { fontSize: 12, color: 'var(--muted)', flexShrink: 0 },
   dropPrice: {
     fontSize: 13,
     fontWeight: 700,
@@ -772,19 +850,10 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     marginLeft: 'auto',
   },
-  dropEmpty: {
-    padding: '14px 12px',
-    fontSize: 13,
-    color: 'var(--muted)',
-    textAlign: 'center',
-  },
+  dropEmpty: { padding: '14px 12px', fontSize: 13, color: 'var(--muted)', textAlign: 'center' },
 
   // ── Error ──
-  errorMsg: {
-    fontSize: 13,
-    color: 'var(--red)',
-    padding: '6px 2px 0',
-  },
+  errorMsg: { fontSize: 13, color: 'var(--red)', padding: '6px 2px 0' },
 
   // ── Empty state ──
   emptyState: {
@@ -794,34 +863,13 @@ const s: Record<string, React.CSSProperties> = {
     padding: '36px 20px',
     gap: 8,
   },
-  emptyIcon: {
-    fontSize: 44,
-    color: '#d0d0d0',
-    lineHeight: 1,
-    marginBottom: 4,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: '#bbb',
-  },
-  emptyDesc: {
-    fontSize: 13,
-    color: '#ccc',
-  },
+  emptyIcon: { fontSize: 44, color: '#d0d0d0', lineHeight: 1, marginBottom: 4 },
+  emptyTitle: { fontSize: 15, fontWeight: 600, color: '#bbb' },
+  emptyDesc: { fontSize: 13, color: '#ccc' },
 
-  // ── Product info card ──
-  productName: {
-    fontSize: 18,
-    fontWeight: 700,
-    color: 'var(--text)',
-    marginBottom: 4,
-  },
-  productSpec: {
-    fontSize: 13,
-    color: 'var(--muted)',
-    marginBottom: 10,
-  },
+  // ── Product found card ──
+  productName: { fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 4 },
+  productSpec: { fontSize: 13, color: 'var(--muted)', marginBottom: 10 },
   priceRow: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -829,15 +877,8 @@ const s: Record<string, React.CSSProperties> = {
     paddingTop: 10,
     borderTop: '1px solid var(--border)',
   },
-  priceLabel: {
-    fontSize: 13,
-    color: 'var(--muted)',
-  },
-  priceValue: {
-    fontSize: 20,
-    fontWeight: 700,
-    color: 'var(--text)',
-  },
+  priceLabel: { fontSize: 13, color: 'var(--muted)' },
+  priceValue: { fontSize: 20, fontWeight: 700, color: 'var(--text)' },
 
   // ── Quantity stepper ──
   stepperRow: {
@@ -847,8 +888,8 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 'var(--radius-sm)',
     border: '1px solid var(--border)',
     overflow: 'hidden',
-    alignSelf: 'flex-start',
-    width: '100%',               // fill card width on mobile
+    width: '100%',
+    marginBottom: 12,
   },
   stepperBtn: {
     width: 52,
@@ -869,6 +910,54 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--text)',
   },
 
+  // Subtotal row (inside product card)
+  subtotalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 14,
+    marginBottom: 12,
+    borderBottom: '1px solid var(--border)',
+  },
+  subtotalLabel: { fontSize: 13, color: 'var(--muted)' },
+  subtotalValue: { fontSize: 18, fontWeight: 700, color: 'var(--text)' },
+
+  // Add to cart button
+  addBtn: {
+    display: 'block',
+    width: '100%',
+    height: 48,
+    background: 'var(--blue)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 16,
+    fontWeight: 700,
+  },
+
+  // ── Cart section ──
+  cartHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    padding: '0 2px',
+  },
+  cartHeaderText: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: 'var(--muted)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
+  clearCartBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#bbb',
+    fontSize: 12,
+    padding: 0,
+  },
+
   // ── Total card ──
   totalCard: {
     background: 'var(--blue)',
@@ -879,11 +968,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  totalLabel: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: 500,
-  },
+  totalLabel: { fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: 500 },
   totalAmount: {
     fontSize: 28,
     fontWeight: 800,
@@ -891,39 +976,10 @@ const s: Record<string, React.CSSProperties> = {
     letterSpacing: '-0.02em',
   },
 
-  // ── Remark ──
-  remarkInput: {
+  // ── Submit ──
+  submitBtn: {
     display: 'block',
     width: '100%',
-    height: 42,
-    border: '1.5px solid var(--border)',
-    borderRadius: 'var(--radius-sm)',
-    padding: '0 12px',
-    fontSize: 15,
-    outline: 'none',
-    background: '#f7f8fa',
-  },
-
-  // ── Actions ──
-  actions: {
-    display: 'flex',
-    gap: 10,
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  clearBtn: {
-    flexShrink: 0,
-    width: 80,
-    height: 50,
-    background: '#fff',
-    color: '#666',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)',
-    fontSize: 15,
-    fontWeight: 500,
-  },
-  submitBtn: {
-    flex: 1,
     height: 50,
     background: 'var(--blue)',
     color: '#fff',
@@ -931,11 +987,9 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 'var(--radius-sm)',
     fontSize: 16,
     fontWeight: 700,
-    transition: 'opacity 0.15s',
+    marginBottom: 8,
   },
-  submitBtnLoading: {
-    opacity: 0.7,
-  },
+  submitBtnLoading: { opacity: 0.7 },
 
   // ── Success card ──
   successCard: {
@@ -960,12 +1014,7 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fff',
     marginBottom: 6,
   },
-  successTitle: {
-    fontSize: 18,
-    fontWeight: 700,
-    color: '#fff',
-    marginBottom: 14,
-  },
+  successTitle: { fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 14 },
   successGrid: {
     width: '100%',
     borderTop: '1px solid rgba(255,255,255,0.2)',
