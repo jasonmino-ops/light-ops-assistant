@@ -118,7 +118,7 @@ export default function DashboardPage() {
           <div style={s.brandName}>轻店助手</div>
           <div style={s.brandSub}>老板概览</div>
         </div>
-        <button style={s.langBtn}>中 / EN</button>
+        <button style={s.langBtn}>中文 / 柬语</button>
       </div>
 
       <div style={s.body}>

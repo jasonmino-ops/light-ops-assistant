@@ -69,7 +69,7 @@ export default function HomePage() {
         </div>
         <div style={s.brandRight}>
           <div style={s.identity}>BKK1 · Amy</div>
-          <button style={s.langBtn}>中 / EN</button>
+          <button style={s.langBtn}>中文 / 柬语</button>
         </div>
       </div>
 
