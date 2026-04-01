@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -147,6 +148,8 @@ model SaleRecord {
   unitPrice           Decimal @db.Decimal(12, 2)
   quantity            Decimal @db.Decimal(12, 2)
   lineAmount          Decimal @db.Decimal(12, 2)
+
+  orderNo              String?  // 一次结账所有明细行共享此单号；null = 历史单行记录
 
   originalSaleRecordId String?
   refundedQty          Decimal? @db.Decimal(12, 2)
