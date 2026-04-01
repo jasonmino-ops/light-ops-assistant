@@ -6,14 +6,12 @@ import { generateRecordNo } from '@/lib/record-no'
 /**
  * POST /api/sales
  *
- * Handles both SALE and REFUND via the saleType field.
+ * SALE:   body = { saleType:'SALE', items:[{barcode, quantity}] }
+ *         一次结账生成一个 orderNo，多个商品行各自有 recordNo 但共享同一 orderNo。
+ *         价格从数据库权威获取，前端传入的 unitPrice 被忽略。
  *
- * Identity is taken from headers (x-tenant-id, x-user-id, x-store-id, x-role).
- * storeId and operatorUserId from the request body are always ignored.
- *
- * SALE:   unitPrice re-fetched from DB; lineAmount = quantity × unitPrice (positive)
- * REFUND: lineAmount = -refundQty × originalUnitPrice (negative); availableQty
- *         re-computed server-side; body value is never trusted.
+ * REFUND: body = { saleType:'REFUND', originalSaleRecordId, refundQty, refundReason, remark? }
+ *         退款针对单条 SaleRecord 行，逻辑不变。
  */
 export async function POST(req: NextRequest) {
   const ctx = getContext(req)
@@ -31,12 +29,8 @@ export async function POST(req: NextRequest) {
 
   const { saleType } = body
 
-  if (saleType === 'SALE') {
-    return handleSale(ctx, body)
-  }
-  if (saleType === 'REFUND') {
-    return handleRefund(ctx, body)
-  }
+  if (saleType === 'SALE') return handleSale(ctx, body)
+  if (saleType === 'REFUND') return handleRefund(ctx, body)
 
   return NextResponse.json(
     { error: 'VALIDATION_ERROR', message: 'saleType must be SALE or REFUND' },
@@ -44,40 +38,42 @@ export async function POST(req: NextRequest) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// SALE branch
-// ---------------------------------------------------------------------------
+// ─── SALE ─────────────────────────────────────────────────────────────────────
+
+type CartItem = { barcode: string; quantity: number }
 
 async function handleSale(
   ctx: { tenantId: string; userId: string; storeId: string },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any,
 ) {
-  const { barcode, quantity, remark } = body
+  const { items } = body as { items: CartItem[] }
 
-  if (!barcode || typeof barcode !== 'string') {
+  if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json(
-      { error: 'VALIDATION_ERROR', message: 'barcode is required' },
+      { error: 'VALIDATION_ERROR', message: 'items must be a non-empty array' },
       { status: 400 },
     )
   }
 
-  const qty = Number(quantity)
-  if (!Number.isFinite(qty) || qty <= 0) {
-    return NextResponse.json(
-      { error: 'VALIDATION_ERROR', message: 'quantity must be a positive number' },
-      { status: 400 },
-    )
+  // 校验每条明细
+  for (const it of items) {
+    if (!it.barcode || typeof it.barcode !== 'string') {
+      return NextResponse.json(
+        { error: 'VALIDATION_ERROR', message: 'each item must have a barcode string' },
+        { status: 400 },
+      )
+    }
+    const qty = Number(it.quantity)
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return NextResponse.json(
+        { error: 'VALIDATION_ERROR', message: `quantity for barcode ${it.barcode} must be positive` },
+        { status: 400 },
+      )
+    }
   }
 
-  // Authoritative price from DB — never trust body.unitPrice
-  const product = await prisma.product.findFirst({
-    where: { tenantId: ctx.tenantId, barcode, status: 'ACTIVE' },
-  })
-  if (!product) {
-    return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
-  }
-
+  // 获取门店信息
   const store = await prisma.store.findFirst({
     where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
     select: { code: true },
@@ -86,71 +82,95 @@ async function handleSale(
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
   }
 
-  const unitPrice = product.sellPrice        // Prisma Decimal
-  const lineAmount = unitPrice.mul(qty)      // Decimal.mul accepts plain numbers
-  const remarkValue = typeof remark === 'string' && remark.trim() !== ''
-    ? remark.trim()
-    : null
+  // 批量获取商品（价格以数据库为权威）
+  const barcodes = [...new Set(items.map((i) => i.barcode))]
+  const products = await prisma.product.findMany({
+    where: { tenantId: ctx.tenantId, barcode: { in: barcodes }, status: 'ACTIVE' },
+  })
+  const productMap = new Map(products.map((p) => [p.barcode, p]))
+
+  for (const it of items) {
+    if (!productMap.has(it.barcode)) {
+      return NextResponse.json(
+        { error: 'PRODUCT_NOT_FOUND', barcode: it.barcode },
+        { status: 404 },
+      )
+    }
+  }
 
   try {
-    const record = await prisma.$transaction(async (tx) => {
-      const recordNo = await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
+    const result = await prisma.$transaction(async (tx) => {
+      // 生成第一条记录号，同时用作整单的 orderNo
+      const orderNo = await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
 
-      const sale = await tx.saleRecord.create({
-        data: {
-          tenantId: ctx.tenantId,
-          storeId: ctx.storeId,
-          operatorUserId: ctx.userId,
-          recordNo,
-          saleType: 'SALE',
-          status: 'COMPLETED',
-          productId: product.id,
-          barcode: product.barcode,
-          productNameSnapshot: product.name,
-          specSnapshot: product.spec ?? null,
-          unitPrice,
-          quantity: qty,
-          lineAmount,
-          remark: remarkValue,
-        },
-      })
+      let totalAmount = 0
+      let firstCreatedAt: Date | null = null
+      let isFirst = true
 
-      await tx.operationLog.create({
-        data: {
-          tenantId: ctx.tenantId,
-          storeId: ctx.storeId,
-          userId: ctx.userId,
-          actionType: 'CREATE_SALE',
-          targetType: 'SaleRecord',
-          targetId: sale.id,
-          status: 'SUCCESS',
-          message: `Sale created: ${recordNo}`,
-          saleRecordId: sale.id,
-        },
-      })
+      for (const it of items) {
+        const product = productMap.get(it.barcode)!
+        const qty = Number(it.quantity)
+        const lineAmount = product.sellPrice.mul(qty)
+        totalAmount += lineAmount.toNumber()
 
-      return sale
+        // 第一件商品复用 orderNo 作为 recordNo；后续各自生成新 recordNo
+        const recordNo = isFirst
+          ? orderNo
+          : await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
+        isFirst = false
+
+        const record = await tx.saleRecord.create({
+          data: {
+            tenantId: ctx.tenantId,
+            storeId: ctx.storeId,
+            operatorUserId: ctx.userId,
+            recordNo,
+            orderNo,
+            saleType: 'SALE',
+            status: 'COMPLETED',
+            productId: product.id,
+            barcode: product.barcode,
+            productNameSnapshot: product.name,
+            specSnapshot: product.spec ?? null,
+            unitPrice: product.sellPrice,
+            quantity: qty,
+            lineAmount,
+          },
+        })
+
+        if (!firstCreatedAt) firstCreatedAt = record.createdAt
+
+        await tx.operationLog.create({
+          data: {
+            tenantId: ctx.tenantId,
+            storeId: ctx.storeId,
+            userId: ctx.userId,
+            actionType: 'CREATE_SALE',
+            targetType: 'SaleRecord',
+            targetId: record.id,
+            status: 'SUCCESS',
+            message: `Sale line created: ${recordNo} (order ${orderNo})`,
+            saleRecordId: record.id,
+          },
+        })
+      }
+
+      return {
+        orderNo,
+        totalAmount,
+        itemCount: items.length,
+        createdAt: firstCreatedAt!.toISOString(),
+      }
     })
 
-    return NextResponse.json(
-      {
-        id: record.id,
-        recordNo: record.recordNo,
-        saleType: record.saleType,
-        lineAmount: record.lineAmount.toNumber(),
-        createdAt: record.createdAt.toISOString(),
-      },
-      { status: 201 },
-    )
+    return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('[POST /api/sales SALE]', err)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }
 
-// ---------------------------------------------------------------------------
-// REFUND branch
-// ---------------------------------------------------------------------------
+// ─── REFUND ───────────────────────────────────────────────────────────────────
 
 async function handleRefund(
   ctx: { tenantId: string; userId: string; storeId: string },
@@ -181,7 +201,6 @@ async function handleRefund(
     )
   }
 
-  // Fetch original sale record — must belong to same tenant, must be SALE type
   const original = await prisma.saleRecord.findFirst({
     where: {
       id: originalSaleRecordId,
@@ -204,7 +223,6 @@ async function handleRefund(
     )
   }
 
-  // Re-compute availableQty server-side — never trust body
   const refundedSoFar = original.refundChildren.reduce(
     (sum, r) => sum + Math.abs(r.quantity.toNumber()),
     0,
@@ -213,11 +231,7 @@ async function handleRefund(
 
   if (rQty > availableQty) {
     return NextResponse.json(
-      {
-        error: 'REFUND_QTY_EXCEEDED',
-        message: `Refund quantity ${rQty} exceeds available quantity ${availableQty}`,
-        availableQty,
-      },
+      { error: 'REFUND_QTY_EXCEEDED', availableQty },
       { status: 422 },
     )
   }
@@ -230,10 +244,9 @@ async function handleRefund(
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
   }
 
-  const lineAmount = -(original.unitPrice.toNumber() * rQty) // negative
-  const remarkValue = typeof remark === 'string' && remark.trim() !== ''
-    ? remark.trim()
-    : null
+  const lineAmount = -(original.unitPrice.toNumber() * rQty)
+  const remarkValue =
+    typeof remark === 'string' && remark.trim() !== '' ? remark.trim() : null
 
   try {
     const record = await prisma.$transaction(async (tx) => {
@@ -245,6 +258,7 @@ async function handleRefund(
           storeId: ctx.storeId,
           operatorUserId: ctx.userId,
           recordNo,
+          orderNo: recordNo, // 退款单也有自己的 orderNo
           saleType: 'REFUND',
           status: 'COMPLETED',
           originalSaleRecordId: original.id,

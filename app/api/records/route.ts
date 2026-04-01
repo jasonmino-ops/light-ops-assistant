@@ -108,6 +108,7 @@ export async function GET(req: NextRequest) {
     items: items.map((r) => ({
       id: r.id,
       recordNo: r.recordNo,
+      orderNo: r.orderNo,
       createdAt: r.createdAt.toISOString(),
       storeName: r.store.name,
       operatorDisplayName: r.operatorUser.displayName,
