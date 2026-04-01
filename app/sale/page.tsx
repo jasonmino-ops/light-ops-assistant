@@ -136,7 +136,7 @@ export default function SalePage() {
         setQty(1)
       } else {
         const body = await res.json().catch(() => ({}))
-        setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? '未找到该商品' : '查询失败，请重试')
+        setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? '未找到商品，请联系老板处理' : '查询失败，请重试')
       }
     } catch {
       setQueryError('网络错误，请重试')

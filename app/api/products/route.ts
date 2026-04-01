@@ -3,20 +3,26 @@ import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
 /**
- * GET /api/products?barcode=<barcode>
+ * GET /api/products[?barcode=<barcode>]
  *
- * Returns the active product matching the barcode within the tenant.
- * sellPrice is the authoritative price — the sale page must not allow editing it.
+ * List mode (no barcode): returns all ACTIVE products.
+ *
+ * Single lookup (barcode):
+ *   STAFF → only ACTIVE products (unchanged behaviour)
+ *   OWNER → all products incl. DISABLED; also returns status field so the
+ *            product management page can show the current state.
+ *
+ * POST /api/products — OWNER only
+ * Create a new product. Body: { barcode, name, spec?, sellPrice }
  */
+
 export async function GET(req: NextRequest) {
   const ctx = getContext(req)
-  if (!ctx) {
-    return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
-  }
+  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
 
   const barcode = req.nextUrl.searchParams.get('barcode')
 
-  // ── List mode: no barcode → return all active products for the tenant ──────
+  // ── List mode ──────────────────────────────────────────────────────────────
   if (!barcode) {
     const products = await prisma.product.findMany({
       where: { tenantId: ctx.tenantId, status: 'ACTIVE' },
@@ -35,10 +41,16 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // ── Single lookup mode: barcode provided ───────────────────────────────────
+  // ── Single lookup ──────────────────────────────────────────────────────────
+  // OWNER can see disabled products (to re-enable them in the products page)
+  const statusFilter = ctx.role === 'OWNER' ? undefined : ('ACTIVE' as const)
   const product = await prisma.product.findFirst({
-    where: { tenantId: ctx.tenantId, barcode, status: 'ACTIVE' },
-    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true },
+    where: {
+      tenantId: ctx.tenantId,
+      barcode,
+      ...(statusFilter ? { status: statusFilter } : {}),
+    },
+    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true },
   })
 
   if (!product) {
@@ -51,5 +63,73 @@ export async function GET(req: NextRequest) {
     name: product.name,
     spec: product.spec,
     sellPrice: product.sellPrice.toNumber(),
+    // status only exposed to OWNER (staff doesn't need to see it)
+    ...(ctx.role === 'OWNER' ? { status: product.status } : {}),
   })
+}
+
+// ── POST: create product ───────────────────────────────────────────────────────
+
+export async function POST(req: NextRequest) {
+  const ctx = getContext(req)
+  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
+  if (ctx.role !== 'OWNER') {
+    return NextResponse.json(
+      { error: 'FORBIDDEN', message: '只有老板可以新增商品' },
+      { status: 403 },
+    )
+  }
+
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
+  }
+
+  const { barcode, name, spec, sellPrice } = body
+
+  if (!barcode?.trim()) {
+    return NextResponse.json({ error: 'MISSING_BARCODE', message: '条码不能为空' }, { status: 400 })
+  }
+  if (!name?.trim()) {
+    return NextResponse.json({ error: 'MISSING_NAME', message: '商品名不能为空' }, { status: 400 })
+  }
+  if (sellPrice === undefined || isNaN(Number(sellPrice)) || Number(sellPrice) <= 0) {
+    return NextResponse.json({ error: 'INVALID_PRICE', message: '售价必须大于 0' }, { status: 400 })
+  }
+
+  // Duplicate barcode guard
+  const existing = await prisma.product.findFirst({
+    where: { tenantId: ctx.tenantId, barcode: barcode.trim() },
+  })
+  if (existing) {
+    return NextResponse.json(
+      { error: 'BARCODE_EXISTS', message: '该条码已存在，请直接查询修改' },
+      { status: 409 },
+    )
+  }
+
+  const created = await prisma.product.create({
+    data: {
+      tenantId: ctx.tenantId,
+      barcode: barcode.trim(),
+      name: name.trim(),
+      spec: spec?.trim() || null,
+      sellPrice: String(sellPrice),
+      status: 'ACTIVE',
+    },
+  })
+
+  return NextResponse.json(
+    {
+      id: created.id,
+      barcode: created.barcode,
+      name: created.name,
+      spec: created.spec,
+      sellPrice: created.sellPrice.toNumber(),
+      status: created.status,
+    },
+    { status: 201 },
+  )
 }

@@ -31,7 +31,9 @@ function peekRole(token: string): string | null {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  if (!pathname.startsWith('/dashboard')) {
+  const isOwnerOnly =
+    pathname.startsWith('/dashboard') || pathname.startsWith('/products')
+  if (!isOwnerOnly) {
     return NextResponse.next()
   }
 
@@ -49,5 +51,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
+  matcher: ['/dashboard/:path*', '/products/:path*'],
 }
