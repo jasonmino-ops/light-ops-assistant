@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import { apiFetch } from '@/lib/api'
+import BarcodeScanner from '@/app/components/BarcodeScanner'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ export default function SalePage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [success, setSuccess] = useState<SaleSuccess | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [scannerOpen, setScannerOpen] = useState(false)
 
   // ── 商品列表（自动补全 + 下拉）─────────────────────────────────────────────
   const [allProducts, setAllProducts] = useState<Product[]>([])
@@ -153,35 +155,51 @@ export default function SalePage() {
     if (e.key === 'Escape') setShowSuggestions(false)
   }
 
-  // ── Telegram 扫码 ──────────────────────────────────────────────────────────
-
-  function scanBarcode() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tg = (window as any).Telegram?.WebApp
-    if (!tg?.showScanQrPopup) return // 按钮在非 TMA 环境下已 disabled，不应进入此处
-    setQueryError(null)
-    tg.showScanQrPopup(
-      { text: '对准商品条码扫描' },
-      (scanned: string | null) => {
-        // scanned 为 null 表示用户主动关闭弹窗（取消），忽略即可
-        if (scanned) {
-          const barcode = scanned.trim()
-          if (barcode) {
-            setBarcodeInput(barcode)
-            queryProductByBarcode(barcode)
-          }
-        }
-        return true // 告知 Telegram 关闭扫码弹窗（勿重复调 closeScanQrPopup）
-      },
-    )
-  }
+  // ── 扫码 ──────────────────────────────────────────────────────────────────
 
   const [isTma, setIsTma] = useState(false)
   useEffect(() => {
-    // 用 initData 确认真正在 Telegram WebApp 内（非仅 Telegram.WebApp 对象存在）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setIsTma(!!(window as any).Telegram?.WebApp?.initData)
   }, [])
+
+  /** 打开摄像头扫码（主路径，支持 EAN-13 / Code128 等一维码及 QR） */
+  function scanBarcode() {
+    setQueryError(null)
+    setScannerOpen(true)
+  }
+
+  /** 摄像头扫码成功：回填条码并触发查询 */
+  function handleScanned(barcode: string) {
+    setScannerOpen(false)
+    setBarcodeInput(barcode)
+    queryProductByBarcode(barcode)
+  }
+
+  /**
+   * 摄像头不可用时的降级处理：
+   * - 在 Telegram 内：自动切换到 showScanQrPopup（支持 QR，不需要摄像头权限）
+   * - 其他环境：将错误信息展示到查询区
+   */
+  function handleCameraError(msg: string) {
+    setScannerOpen(false)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    if (isTma && tg?.showScanQrPopup) {
+      tg.showScanQrPopup(
+        { text: '对准商品条码扫描' },
+        (scanned: string | null) => {
+          if (scanned?.trim()) {
+            setBarcodeInput(scanned.trim())
+            queryProductByBarcode(scanned.trim())
+          }
+          return true
+        },
+      )
+    } else {
+      setQueryError(msg)
+    }
+  }
 
   // ── 购物车操作 ─────────────────────────────────────────────────────────────
 
@@ -257,6 +275,15 @@ export default function SalePage() {
 
   return (
     <div style={s.page}>
+      {/* 摄像头扫码弹窗 */}
+      {scannerOpen && (
+        <BarcodeScanner
+          onScanned={handleScanned}
+          onClose={() => setScannerOpen(false)}
+          onCameraError={handleCameraError}
+        />
+      )}
+
       <div style={s.headerBar}>
         <span style={s.headerTitle}>销售</span>
       </div>
@@ -285,16 +312,13 @@ export default function SalePage() {
             <div style={s.card}>
               <button
                 type="button"
-                style={isTma ? s.scanRow : { ...s.scanRow, ...s.scanRowOff }}
-                onClick={isTma ? scanBarcode : undefined}
-                disabled={!isTma || status === 'querying'}
+                style={s.scanRow}
+                onClick={scanBarcode}
+                disabled={status === 'querying' || status === 'submitting'}
               >
                 <span style={s.scanIcon}>⊡</span>
                 <span style={s.scanLabel}>扫码查询</span>
               </button>
-              {!isTma && (
-                <div style={s.scanHint}>📱 扫码功能仅在 Telegram 内可用，请使用下方手动输入</div>
-              )}
 
               <div style={s.orDivider}>
                 <div style={s.orLine} /><span style={s.orText}>或</span><div style={s.orLine} />
@@ -535,11 +559,9 @@ const s: Record<string, React.CSSProperties> = {
   card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: 10 },
   cardLabel: { fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 },
 
-  scanRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, width: '100%', height: 48, background: 'var(--blue)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 16, fontWeight: 600, marginBottom: 6 },
-  scanRowOff: { background: '#e0e0e0', color: '#aaa', cursor: 'default' },
+  scanRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, width: '100%', height: 48, background: 'var(--blue)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 16, fontWeight: 600, marginBottom: 12 },
   scanIcon: { fontSize: 22 },
   scanLabel: { fontSize: 15, fontWeight: 600 },
-  scanHint: { fontSize: 12, color: 'var(--muted)', textAlign: 'center' as const, marginBottom: 10, lineHeight: 1.4 },
 
   orDivider: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 },
   orLine: { flex: 1, height: 1, background: 'var(--border)' },
