@@ -14,12 +14,31 @@ type Summary = {
 
 type RecordItem = {
   id: string
+  recordNo: string
+  orderNo: string | null
   productNameSnapshot: string
   specSnapshot: string | null
+  quantity: number
   lineAmount: number
   saleType: 'SALE' | 'REFUND'
+  refundReason: string | null
   createdAt: string
 }
+
+type OrderGroup = {
+  kind: 'order'
+  orderNo: string
+  createdAt: string
+  items: RecordItem[]
+  totalAmount: number
+}
+
+type RefundEntry = {
+  kind: 'refund'
+  item: RecordItem
+}
+
+type DisplayEntry = OrderGroup | RefundEntry
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
@@ -31,26 +50,53 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+function buildItemSummary(items: RecordItem[]): string {
+  return items.map((i) => `${i.productNameSnapshot}×${i.quantity}`).join('、')
+}
+
+function buildEntries(items: RecordItem[]): DisplayEntry[] {
+  const groupMap = new Map<string, OrderGroup>()
+  const refunds: RefundEntry[] = []
+
+  for (const item of items) {
+    if (item.saleType === 'SALE') {
+      const key = item.orderNo ?? item.recordNo
+      if (!groupMap.has(key)) {
+        groupMap.set(key, { kind: 'order', orderNo: key, createdAt: item.createdAt, items: [], totalAmount: 0 })
+      }
+      const g = groupMap.get(key)!
+      g.items.push(item)
+      g.totalAmount += item.lineAmount
+    } else {
+      refunds.push({ kind: 'refund', item })
+    }
+  }
+
+  const all: DisplayEntry[] = [...groupMap.values(), ...refunds]
+  all.sort((a, b) => {
+    const at = a.kind === 'order' ? a.createdAt : a.item.createdAt
+    const bt = b.kind === 'order' ? b.createdAt : b.item.createdAt
+    return bt.localeCompare(at)
+  })
+  return all.slice(0, 5)
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [recentItems, setRecentItems] = useState<RecordItem[]>([])
+  const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const today = todayStr()
-    const params = new URLSearchParams({
-      dateFrom: today,
-      dateTo: today,
-      pageSize: '3',
-    })
+    const params = new URLSearchParams({ dateFrom: today, dateTo: today, pageSize: '30' })
 
     apiFetch(`/api/records?${params}`, undefined, STAFF_CTX)
       .then((res) => res.json())
       .then((data) => {
         setSummary(data.summary)
-        setRecentItems(data.items ?? [])
+        setEntries(buildEntries(data.items ?? []))
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -112,13 +158,17 @@ export default function HomePage() {
         <Link href="/records" style={s.viewAll}>查看全部 →</Link>
       </div>
 
-      {!loading && recentItems.length === 0 && (
+      {!loading && entries.length === 0 && (
         <div style={s.emptyHint}>今日暂无记录</div>
       )}
 
-      {recentItems.map((item) => (
-        <RecentCard key={item.id} item={item} />
-      ))}
+      {entries.map((entry, i) =>
+        entry.kind === 'order' ? (
+          <OrderCard key={entry.orderNo} group={entry} />
+        ) : (
+          <RefundCard key={entry.item.id + '-' + i} item={entry.item} />
+        )
+      )}
     </main>
   )
 }
@@ -145,22 +195,45 @@ function ActionBtn({ href, icon, label, color }: {
   )
 }
 
-function RecentCard({ item }: { item: RecordItem }) {
-  const isRefund = item.saleType === 'REFUND'
+function OrderCard({ group }: { group: OrderGroup }) {
+  const isSingle = group.items.length === 1
   return (
-    <div style={{ ...s.recentCard, ...(isRefund ? s.recentCardRefund : {}) }}>
+    <div style={s.recentCard}>
       <div style={s.recentLeft}>
-        <span style={isRefund ? s.tagRefund : s.tagSale}>
-          {isRefund ? '退款' : '销售'}
-        </span>
+        <span style={s.tagSale}>销售单</span>
+        <div style={s.recentProduct}>
+          {isSingle
+            ? group.items[0].productNameSnapshot +
+              (group.items[0].specSnapshot ? ` · ${group.items[0].specSnapshot}` : '')
+            : buildItemSummary(group.items)}
+        </div>
+        <div style={s.recentMeta}>
+          {group.orderNo} · {fmtTime(group.createdAt)}
+          {!isSingle && (
+            <span style={s.itemCount}> · {group.items.length}件</span>
+          )}
+        </div>
+      </div>
+      <div style={{ ...s.recentAmount, color: '#1a1a1a' }}>
+        +${group.totalAmount.toFixed(2)}
+      </div>
+    </div>
+  )
+}
+
+function RefundCard({ item }: { item: RecordItem }) {
+  return (
+    <div style={{ ...s.recentCard, ...s.recentCardRefund }}>
+      <div style={s.recentLeft}>
+        <span style={s.tagRefund}>退款</span>
         <div style={s.recentProduct}>
           {item.productNameSnapshot}
           {item.specSnapshot && <span style={s.recentSpec}> · {item.specSnapshot}</span>}
         </div>
-        <div style={s.recentTime}>{fmtTime(item.createdAt)}</div>
+        <div style={s.recentMeta}>{fmtTime(item.createdAt)}</div>
       </div>
-      <div style={{ ...s.recentAmount, color: isRefund ? '#ff4d4f' : '#1a1a1a' }}>
-        {isRefund ? '-' : '+'}${Math.abs(item.lineAmount).toFixed(2)}
+      <div style={{ ...s.recentAmount, color: '#ff4d4f' }}>
+        -${Math.abs(item.lineAmount).toFixed(2)}
       </div>
     </div>
   )
@@ -174,7 +247,6 @@ const s: Record<string, React.CSSProperties> = {
     margin: '0 auto',
     padding: '0 0 16px',
   },
-  // Brand bar
   brandBar: {
     background: '#1677ff',
     padding: '16px 16px 20px',
@@ -222,7 +294,6 @@ const s: Record<string, React.CSSProperties> = {
     padding: '2px 8px',
     cursor: 'pointer',
   },
-  // Summary card
   summaryCard: {
     background: '#fff',
     margin: '0 12px',
@@ -294,7 +365,6 @@ const s: Record<string, React.CSSProperties> = {
     height: 32,
     background: '#e8e8e8',
   },
-  // Section
   sectionHeader: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -315,7 +385,6 @@ const s: Record<string, React.CSSProperties> = {
     color: '#1677ff',
     textDecoration: 'none',
   },
-  // Action buttons
   actionGrid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr 1fr',
@@ -347,7 +416,6 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 600,
   },
-  // Recent records
   recentCard: {
     background: '#fff',
     margin: '0 12px 8px',
@@ -380,9 +448,15 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 400,
     color: '#8c8c8c',
   },
-  recentTime: {
+  recentMeta: {
     fontSize: 12,
     color: '#bbb',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  itemCount: {
+    color: '#1677ff',
   },
   recentAmount: {
     fontSize: 17,

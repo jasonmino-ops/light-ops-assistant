@@ -10,6 +10,7 @@ type SaleType = 'SALE' | 'REFUND'
 type RecordItem = {
   id: string
   recordNo: string
+  orderNo: string | null
   createdAt: string
   storeName: string
   operatorDisplayName: string
@@ -36,6 +37,23 @@ type ApiResponse = {
   summary: Summary
 }
 
+type OrderGroup = {
+  kind: 'order'
+  orderNo: string
+  createdAt: string
+  storeName: string
+  operatorDisplayName: string
+  items: RecordItem[]
+  totalAmount: number
+}
+
+type RefundEntry = {
+  kind: 'refund'
+  item: RecordItem
+}
+
+type DisplayEntry = OrderGroup | RefundEntry
+
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
 function todayStr() {
@@ -51,9 +69,48 @@ function fmtAmount(n: number) {
   return n < 0 ? `-$${abs}` : `$${abs}`
 }
 
+function buildItemSummary(items: RecordItem[]): string {
+  return items.map((i) => `${i.productNameSnapshot}×${i.quantity}`).join('、')
+}
+
+function buildEntries(items: RecordItem[]): DisplayEntry[] {
+  const groupMap = new Map<string, OrderGroup>()
+  const refunds: RefundEntry[] = []
+
+  for (const item of items) {
+    if (item.saleType === 'SALE') {
+      const key = item.orderNo ?? item.recordNo
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          kind: 'order',
+          orderNo: key,
+          createdAt: item.createdAt,
+          storeName: item.storeName,
+          operatorDisplayName: item.operatorDisplayName,
+          items: [],
+          totalAmount: 0,
+        })
+      }
+      const g = groupMap.get(key)!
+      g.items.push(item)
+      g.totalAmount += item.lineAmount
+    } else {
+      refunds.push({ kind: 'refund', item })
+    }
+  }
+
+  const all: DisplayEntry[] = [...groupMap.values(), ...refunds]
+  all.sort((a, b) => {
+    const at = a.kind === 'order' ? a.createdAt : a.item.createdAt
+    const bt = b.kind === 'order' ? b.createdAt : b.item.createdAt
+    return bt.localeCompare(at)
+  })
+  return all
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 50
 
 export default function RecordsPage() {
   const today = todayStr()
@@ -62,7 +119,7 @@ export default function RecordsPage() {
   const [dateTo, setDateTo] = useState(today)
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | SaleType>('ALL')
 
-  const [items, setItems] = useState<RecordItem[]>([])
+  const [allItems, setAllItems] = useState<RecordItem[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -93,8 +150,7 @@ export default function RecordsPage() {
           return
         }
         const data: ApiResponse = await res.json()
-
-        setItems((prev) => (append ? [...prev, ...data.items] : data.items))
+        setAllItems((prev) => (append ? [...prev, ...data.items] : data.items))
         setSummary(data.summary)
         setTotal(data.total)
         setPage(data.page)
@@ -115,13 +171,13 @@ export default function RecordsPage() {
     fetchRecords(page + 1, true)
   }
 
-  const hasMore = items.length < total
+  const entries = buildEntries(allItems)
+  const hasMore = allItems.length < total
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div style={s.page}>
-      {/* ── Blue header bar ── */}
       <div style={s.headerBar}>
         <span style={s.headerTitle}>记录</span>
       </div>
@@ -129,7 +185,6 @@ export default function RecordsPage() {
       <div style={s.body}>
         {/* ── Filter card ── */}
         <div style={s.card}>
-          {/* Date row */}
           <div style={s.dateRow}>
             <input
               type="date"
@@ -147,7 +202,6 @@ export default function RecordsPage() {
               onChange={(e) => setDateTo(e.target.value)}
             />
           </div>
-          {/* Type pills */}
           <div style={s.pillRow}>
             {(['ALL', 'SALE', 'REFUND'] as const).map((t) => (
               <button
@@ -180,16 +234,20 @@ export default function RecordsPage() {
         {loading && <div style={s.hint}>加载中…</div>}
         {error && <div style={s.errorText}>{error}</div>}
 
-        {!loading && !error && items.length === 0 && (
+        {!loading && !error && entries.length === 0 && (
           <div style={s.emptyState}>
             <div style={s.emptyIcon}>📋</div>
             <div style={s.emptyTitle}>暂无记录</div>
           </div>
         )}
 
-        {items.map((item) => (
-          <RecordCard key={item.id} item={item} />
-        ))}
+        {entries.map((entry, i) =>
+          entry.kind === 'order' ? (
+            <OrderCard key={entry.orderNo} group={entry} />
+          ) : (
+            <RefundCard key={entry.item.id + '-' + i} item={entry.item} />
+          )
+        )}
 
         {hasMore && (
           <button
@@ -197,7 +255,7 @@ export default function RecordsPage() {
             onClick={handleLoadMore}
             disabled={loadingMore}
           >
-            {loadingMore ? '加载中…' : `加载更多（${items.length} / ${total}）`}
+            {loadingMore ? '加载中…' : `加载更多（已显示 ${allItems.length} / ${total}）`}
           </button>
         )}
       </div>
@@ -205,37 +263,82 @@ export default function RecordsPage() {
   )
 }
 
-// ─── RecordCard ───────────────────────────────────────────────────────────────
+// ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function RecordCard({ item }: { item: RecordItem }) {
-  const isRefund = item.saleType === 'REFUND'
+function OrderCard({ group }: { group: OrderGroup }) {
+  const isSingle = group.items.length === 1
+  const item = group.items[0]
+
   return (
-    <div style={{ ...s.recordCard, ...(isRefund ? s.recordCardRefund : {}) }}>
+    <div style={s.recordCard}>
       <div style={s.cardHeader}>
-        <span style={isRefund ? s.tagRefund : s.tagSale}>
-          {isRefund ? '退款' : '销售'}
+        <span style={s.tagSale}>销售单</span>
+        <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>
+        <span style={s.cardRecordNo}>{group.orderNo}</span>
+      </div>
+
+      {isSingle ? (
+        <div style={s.cardProduct}>
+          <span style={s.cardProductName}>{item.productNameSnapshot}</span>
+          {item.specSnapshot && <span style={s.cardSpec}> · {item.specSnapshot}</span>}
+        </div>
+      ) : (
+        <div style={s.cardSummary}>{buildItemSummary(group.items)}</div>
+      )}
+
+      <div style={s.cardFooter}>
+        {isSingle ? (
+          <span style={s.cardQtyPrice}>
+            {Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}
+          </span>
+        ) : (
+          <span style={s.cardQtyPrice}>{group.items.length} 种商品</span>
+        )}
+        <span style={{ ...s.cardAmount, color: 'var(--text)' }}>
+          ${group.totalAmount.toFixed(2)}
         </span>
+      </div>
+
+      {!isSingle && (
+        <div style={s.itemList}>
+          {group.items.map((it) => (
+            <div key={it.id} style={s.itemRow}>
+              <span style={s.itemName}>
+                {it.productNameSnapshot}
+                {it.specSnapshot && <span style={s.itemSpec}> · {it.specSnapshot}</span>}
+              </span>
+              <span style={s.itemAmt}>${it.lineAmount.toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── RefundCard ───────────────────────────────────────────────────────────────
+
+function RefundCard({ item }: { item: RecordItem }) {
+  return (
+    <div style={{ ...s.recordCard, ...s.recordCardRefund }}>
+      <div style={s.cardHeader}>
+        <span style={s.tagRefund}>退款</span>
         <span style={s.cardTime}>{fmtTime(item.createdAt)}</span>
         <span style={s.cardRecordNo}>{item.recordNo}</span>
       </div>
-
       <div style={s.cardProduct}>
         <span style={s.cardProductName}>{item.productNameSnapshot}</span>
-        {item.specSnapshot && (
-          <span style={s.cardSpec}> · {item.specSnapshot}</span>
-        )}
+        {item.specSnapshot && <span style={s.cardSpec}> · {item.specSnapshot}</span>}
       </div>
-
       <div style={s.cardFooter}>
         <span style={s.cardQtyPrice}>
-          {Math.abs(item.quantity)} 件 × ${item.unitPrice.toFixed(2)}
+          {Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}
         </span>
-        <span style={{ ...s.cardAmount, color: isRefund ? 'var(--red)' : 'var(--text)' }}>
+        <span style={{ ...s.cardAmount, color: 'var(--red)' }}>
           {fmtAmount(item.lineAmount)}
         </span>
       </div>
-
-      {isRefund && item.refundReason && (
+      {item.refundReason && (
         <div style={s.cardReason}>退款原因：{item.refundReason}</div>
       )}
     </div>
@@ -301,7 +404,6 @@ const s: Record<string, React.CSSProperties> = {
     margin: '0 auto',
     width: '100%',
   },
-  // Filter card
   card: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
@@ -351,7 +453,6 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fff',
     fontWeight: 700,
   },
-  // Summary card
   summaryCard: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
@@ -366,7 +467,6 @@ const s: Record<string, React.CSSProperties> = {
     background: 'var(--border)',
     flexShrink: 0,
   },
-  // Record cards
   recordCard: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
@@ -417,6 +517,14 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'baseline',
     flexWrap: 'wrap',
   },
+  cardSummary: {
+    fontSize: 15,
+    fontWeight: 500,
+    color: 'var(--text)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
   cardProductName: {
     fontSize: 16,
     fontWeight: 600,
@@ -446,7 +554,37 @@ const s: Record<string, React.CSSProperties> = {
     paddingTop: 6,
     marginTop: 2,
   },
-  // States
+  itemList: {
+    borderTop: '1px solid var(--border)',
+    paddingTop: 8,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  itemRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  itemName: {
+    fontSize: 13,
+    color: 'var(--text)',
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  itemSpec: {
+    color: 'var(--muted)',
+    fontWeight: 400,
+  },
+  itemAmt: {
+    fontSize: 13,
+    color: 'var(--muted)',
+    flexShrink: 0,
+    marginLeft: 8,
+  },
   hint: {
     textAlign: 'center',
     color: 'var(--muted)',

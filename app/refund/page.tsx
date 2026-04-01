@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api'
 type SaleListItem = {
   id: string
   recordNo: string
+  orderNo: string | null
   createdAt: string
   storeName: string
   operatorDisplayName: string
@@ -18,6 +19,15 @@ type SaleListItem = {
   lineAmount: number
   saleType: 'SALE' | 'REFUND'
   refundReason: string | null
+}
+
+type OrderGroup = {
+  orderNo: string
+  createdAt: string
+  storeName: string
+  operatorDisplayName: string
+  items: SaleListItem[]
+  totalAmount: number
 }
 
 type LookupItem = {
@@ -50,7 +60,7 @@ type RefundResult = {
   quantity?: number
 }
 
-type Phase = 'list' | 'refund'
+type Phase = 'list' | 'items' | 'refund'
 type QuickFilter = 'recent' | 'today' | 'mine'
 type LookupState = 'idle' | 'loading' | 'found' | 'error'
 type SubmitState = 'idle' | 'submitting'
@@ -91,10 +101,35 @@ function fmtDateTime(iso: string) {
   return `${mm}/${dd} ${hh}:${min}`
 }
 
+function buildItemSummary(items: SaleListItem[]): string {
+  return items.map((i) => `${i.productNameSnapshot}×${i.quantity}`).join('、')
+}
+
+function buildOrderGroups(items: SaleListItem[]): OrderGroup[] {
+  const map = new Map<string, OrderGroup>()
+  for (const item of items) {
+    const key = item.orderNo ?? item.recordNo
+    if (!map.has(key)) {
+      map.set(key, {
+        orderNo: key,
+        createdAt: item.createdAt,
+        storeName: item.storeName,
+        operatorDisplayName: item.operatorDisplayName,
+        items: [],
+        totalAmount: 0,
+      })
+    }
+    const g = map.get(key)!
+    g.items.push(item)
+    g.totalAmount += item.lineAmount
+  }
+  return [...map.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function RefundPage() {
-  // ── List phase state ───────────────────────────────────────────────────────
+  // ── List phase ─────────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('list')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('recent')
   const [searchQuery, setSearchQuery] = useState('')
@@ -102,7 +137,10 @@ export default function RefundPage() {
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
 
-  // ── Refund phase state ─────────────────────────────────────────────────────
+  // ── Items phase ────────────────────────────────────────────────────────────
+  const [selectedOrder, setSelectedOrder] = useState<OrderGroup | null>(null)
+
+  // ── Refund phase ───────────────────────────────────────────────────────────
   const [lookupState, setLookupState] = useState<LookupState>('idle')
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [lookup, setLookup] = useState<LookupResult | null>(null)
@@ -119,19 +157,16 @@ export default function RefundPage() {
   const refundPreview = item ? (item.unitPrice * rQty).toFixed(2) : '0.00'
 
   // ── Fetch sale list ────────────────────────────────────────────────────────
-  // FIX: /api/records always requires dateFrom + dateTo.
-  // 'recent' and 'mine' use last 90 days; 'today' uses today only.
 
   const fetchList = useCallback(async (filter: QuickFilter) => {
     setListLoading(true)
     setListError(null)
     const today = todayStr()
-    const params = new URLSearchParams({ saleType: 'SALE', pageSize: '10' })
+    const params = new URLSearchParams({ saleType: 'SALE', pageSize: '20' })
     if (filter === 'today') {
       params.set('dateFrom', today)
       params.set('dateTo', today)
     } else {
-      // 'recent' and 'mine': past 90 days
       params.set('dateFrom', pastDateStr(90))
       params.set('dateTo', today)
     }
@@ -155,11 +190,12 @@ export default function RefundPage() {
     fetchList(quickFilter)
   }, [fetchList, quickFilter])
 
-  // Client-side search across visible list
+  // Client-side search across visible list (matches any item in the order)
   const filteredItems = searchQuery.trim()
     ? listItems.filter((rec) => {
         const q = searchQuery.toLowerCase()
         return (
+          (rec.orderNo ?? '').toLowerCase().includes(q) ||
           rec.recordNo.toLowerCase().includes(q) ||
           rec.productNameSnapshot.toLowerCase().includes(q) ||
           (rec.specSnapshot ?? '').toLowerCase().includes(q) ||
@@ -168,9 +204,23 @@ export default function RefundPage() {
       })
     : listItems
 
-  // ── Start refund flow from a list card ────────────────────────────────────
+  const orderGroups = buildOrderGroups(filteredItems)
 
-  async function startRefund(record: SaleListItem) {
+  // ── Select order → go to items or refund phase ────────────────────────────
+
+  function selectOrder(order: OrderGroup) {
+    setSelectedOrder(order)
+    if (order.items.length === 1) {
+      // Single-item order: skip items phase, go directly to refund
+      triggerRefund(order.items[0])
+    } else {
+      setPhase('items')
+    }
+  }
+
+  // ── Start refund lookup for a specific line item ───────────────────────────
+
+  async function triggerRefund(record: SaleListItem) {
     setPhase('refund')
     setLookupState('loading')
     setLookupError(null)
@@ -202,10 +252,27 @@ export default function RefundPage() {
     }
   }
 
-  // ── Back to list ──────────────────────────────────────────────────────────
+  // ── Back navigation ────────────────────────────────────────────────────────
+
+  function goBack() {
+    if (phase === 'refund') {
+      if (selectedOrder && selectedOrder.items.length > 1) {
+        setPhase('items')
+        setLookupState('idle')
+        setLookup(null)
+        setResult(null)
+        setSubmitError(null)
+      } else {
+        backToList(false)
+      }
+    } else if (phase === 'items') {
+      backToList(false)
+    }
+  }
 
   function backToList(refresh = false) {
     setPhase('list')
+    setSelectedOrder(null)
     setLookupState('idle')
     setLookupError(null)
     setLookup(null)
@@ -214,7 +281,7 @@ export default function RefundPage() {
     if (refresh) fetchList(quickFilter)
   }
 
-  // ── Submit refund ─────────────────────────────────────────────────────────
+  // ── Submit refund ──────────────────────────────────────────────────────────
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -231,9 +298,7 @@ export default function RefundPage() {
     }
 
     const finalReason =
-      refundReason === '其他'
-        ? `其他：${refundReasonOther.trim()}`
-        : refundReason
+      refundReason === '其他' ? `其他：${refundReasonOther.trim()}` : refundReason
 
     setSubmitError(null)
     setResult(null)
@@ -252,11 +317,7 @@ export default function RefundPage() {
       })
       const body = await res.json()
       if (res.ok) {
-        setResult({
-          ...body,
-          productNameSnapshot: item.productNameSnapshot,
-          quantity: rQty,
-        })
+        setResult({ ...body, productNameSnapshot: item.productNameSnapshot, quantity: rQty })
       } else {
         const msg =
           body.error === 'REFUND_QTY_EXCEEDED'
@@ -273,16 +334,17 @@ export default function RefundPage() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
+  const headerTitle =
+    phase === 'list' ? '退款' : phase === 'items' ? '选择退款商品' : '确认退款'
+
   return (
     <div style={s.page}>
       {/* ── Header ── */}
       <div style={s.headerBar}>
-        {phase === 'refund' && (
-          <button style={s.backBtn} onClick={() => backToList(false)}>‹</button>
+        {phase !== 'list' && (
+          <button style={s.backBtn} onClick={goBack}>‹</button>
         )}
-        <span style={s.headerTitle}>
-          {phase === 'list' ? '退款' : '确认退款'}
-        </span>
+        <span style={s.headerTitle}>{headerTitle}</span>
       </div>
 
       <div style={s.body}>
@@ -290,7 +352,6 @@ export default function RefundPage() {
         {/* ══════════ LIST PHASE ══════════ */}
         {phase === 'list' && (
           <>
-            {/* Search bar */}
             <div style={s.searchCard}>
               <div style={s.searchRow}>
                 <span style={s.searchIcon}>🔍</span>
@@ -307,15 +368,11 @@ export default function RefundPage() {
               </div>
             </div>
 
-            {/* Quick filter pills */}
             <div style={s.filterRow}>
               {FILTERS.map(([key, label]) => (
                 <button
                   key={key}
-                  style={{
-                    ...s.filterPill,
-                    ...(quickFilter === key ? s.filterPillActive : {}),
-                  }}
+                  style={{ ...s.filterPill, ...(quickFilter === key ? s.filterPillActive : {}) }}
                   onClick={() => setQuickFilter(key)}
                 >
                   {label}
@@ -323,7 +380,6 @@ export default function RefundPage() {
               ))}
             </div>
 
-            {/* States */}
             {listLoading && <div style={s.hint}>加载中…</div>}
             {listError && (
               <div style={s.hintError}>
@@ -332,7 +388,7 @@ export default function RefundPage() {
               </div>
             )}
 
-            {!listLoading && !listError && filteredItems.length === 0 && (
+            {!listLoading && !listError && orderGroups.length === 0 && (
               <div style={s.emptyState}>
                 <div style={s.emptyIcon}>↩</div>
                 <div style={s.emptyTitle}>
@@ -344,12 +400,37 @@ export default function RefundPage() {
               </div>
             )}
 
-            {/* Sale record cards */}
-            {filteredItems.map((record) => (
-              <SaleCard
-                key={record.id}
-                item={record}
-                onRefund={() => startRefund(record)}
+            {orderGroups.map((order) => (
+              <OrderCard
+                key={order.orderNo}
+                order={order}
+                onSelect={() => selectOrder(order)}
+              />
+            ))}
+          </>
+        )}
+
+        {/* ══════════ ITEMS PHASE ══════════ */}
+        {phase === 'items' && selectedOrder && (
+          <>
+            {/* Order summary header */}
+            <div style={s.orderSummaryCard}>
+              <div style={s.orderSummaryNo}>{selectedOrder.orderNo}</div>
+              <div style={s.orderSummaryMeta}>
+                {fmtDateTime(selectedOrder.createdAt)} · {selectedOrder.operatorDisplayName}
+              </div>
+              <div style={s.orderSummaryTotal}>
+                共 {selectedOrder.items.length} 件商品 · 合计 ${selectedOrder.totalAmount.toFixed(2)}
+              </div>
+            </div>
+
+            <div style={s.itemsHint}>选择要退款的商品</div>
+
+            {selectedOrder.items.map((lineItem) => (
+              <LineItemCard
+                key={lineItem.id}
+                item={lineItem}
+                onRefund={() => triggerRefund(lineItem)}
               />
             ))}
           </>
@@ -387,25 +468,21 @@ export default function RefundPage() {
               </div>
             )}
 
-            {/* Lookup loading */}
             {!result && lookupState === 'loading' && (
               <div style={s.hint}>查询订单中…</div>
             )}
 
-            {/* Lookup error */}
             {!result && lookupState === 'error' && (
               <div style={s.errorCard}>
                 <div style={s.errorCardText}>{lookupError}</div>
-                <button style={s.backToListBtn} onClick={() => backToList(false)}>
-                  ← 返回列表
+                <button style={s.backToListBtn} onClick={goBack}>
+                  ← 返回
                 </button>
               </div>
             )}
 
-            {/* Refund form */}
             {!result && lookupState === 'found' && lookup && item && (
               <form onSubmit={handleSubmit}>
-                {/* Product info */}
                 <div style={s.productCard}>
                   <div style={s.productName}>{item.productNameSnapshot}</div>
                   {item.specSnapshot && (
@@ -425,8 +502,7 @@ export default function RefundPage() {
                   <div style={s.origNo}>原单号：{lookup.originalRecordNo}</div>
                 </div>
 
-                {/* Qty stepper */}
-                <div style={s.card}>
+                <div style={s.formCard}>
                   <div style={s.cardLabel}>
                     本次退款数量（最多 {item.availableQty}）
                   </div>
@@ -440,21 +516,17 @@ export default function RefundPage() {
                     <button
                       type="button"
                       style={s.stepperBtn}
-                      onClick={() =>
-                        setRefundQty(Math.min(item.availableQty, rQty + 1))
-                      }
+                      onClick={() => setRefundQty(Math.min(item.availableQty, rQty + 1))}
                     >+</button>
                   </div>
                 </div>
 
-                {/* Amount preview */}
                 <div style={s.previewCard}>
                   <span style={s.previewLabel}>退款金额</span>
                   <span style={s.previewAmount}>-${refundPreview}</span>
                 </div>
 
-                {/* Reason (required) — dropdown */}
-                <div style={s.card}>
+                <div style={s.formCard}>
                   <div style={s.cardLabel}>退款原因 *</div>
                   <select
                     style={s.reasonSelect}
@@ -476,8 +548,7 @@ export default function RefundPage() {
                   )}
                 </div>
 
-                {/* Remark (optional) */}
-                <div style={s.card}>
+                <div style={s.formCard}>
                   <div style={s.cardLabel}>备注（可选）</div>
                   <input
                     style={s.remarkInput}
@@ -491,11 +562,7 @@ export default function RefundPage() {
                 {submitError && <div style={s.errorMsg}>{submitError}</div>}
 
                 <div style={s.actions}>
-                  <button
-                    type="button"
-                    style={s.clearBtn}
-                    onClick={() => backToList(false)}
-                  >
+                  <button type="button" style={s.clearBtn} onClick={goBack}>
                     返回
                   </button>
                   <button
@@ -518,39 +585,42 @@ export default function RefundPage() {
   )
 }
 
-// ─── SaleCard ─────────────────────────────────────────────────────────────────
+// ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function SaleCard({
-  item,
-  onRefund,
-}: {
-  item: SaleListItem
-  onRefund: () => void
-}) {
+function OrderCard({ order, onSelect }: { order: OrderGroup; onSelect: () => void }) {
+  const isSingle = order.items.length === 1
+  const item = order.items[0]
+
   return (
-    <div style={sc.card}>
-      <div style={sc.top}>
-        <div style={sc.productLine}>
-          <span style={sc.name}>{item.productNameSnapshot}</span>
-          {item.specSnapshot && (
-            <span style={sc.spec}> · {item.specSnapshot}</span>
-          )}
+    <div style={oc.card}>
+      <div style={oc.top}>
+        <div style={oc.summary}>
+          {isSingle
+            ? item.productNameSnapshot + (item.specSnapshot ? ` · ${item.specSnapshot}` : '')
+            : buildItemSummary(order.items)}
         </div>
-        <span style={sc.time}>{fmtDateTime(item.createdAt)}</span>
+        <span style={oc.time}>{fmtDateTime(order.createdAt)}</span>
       </div>
-      <div style={sc.recNo}>{item.recordNo}</div>
-      <div style={sc.bottom}>
-        <span style={sc.qty}>
-          {Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}
-        </span>
-        <span style={sc.amount}>${item.lineAmount.toFixed(2)}</span>
-        <button style={sc.refundBtn} onClick={onRefund}>退款</button>
+      <div style={oc.meta}>
+        {order.orderNo}
+        {!isSingle && <span style={oc.count}> · {order.items.length}件</span>}
+      </div>
+      <div style={oc.bottom}>
+        {isSingle ? (
+          <span style={oc.qty}>{Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}</span>
+        ) : (
+          <span style={oc.qty}>{order.items.length} 种商品</span>
+        )}
+        <span style={oc.amount}>${order.totalAmount.toFixed(2)}</span>
+        <button style={oc.refundBtn} onClick={onSelect}>
+          {isSingle ? '退款' : '选商品退'}
+        </button>
       </div>
     </div>
   )
 }
 
-const sc: Record<string, React.CSSProperties> = {
+const oc: Record<string, React.CSSProperties> = {
   card: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
@@ -564,32 +634,31 @@ const sc: Record<string, React.CSSProperties> = {
     gap: 8,
     marginBottom: 4,
   },
-  productLine: {
+  summary: {
     flex: 1,
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-  },
-  name: {
     fontSize: 15,
     fontWeight: 600,
     color: 'var(--text)',
-  },
-  spec: {
-    fontSize: 13,
-    color: 'var(--muted)',
   },
   time: {
     fontSize: 12,
     color: 'var(--muted)',
     flexShrink: 0,
   },
-  recNo: {
+  meta: {
     fontSize: 11,
     fontFamily: 'monospace',
     color: '#c0c0c0',
     marginBottom: 8,
+  },
+  count: {
+    fontFamily: 'sans-serif',
+    color: '#1677ff',
+    fontSize: 11,
   },
   bottom: {
     display: 'flex',
@@ -620,49 +689,94 @@ const sc: Record<string, React.CSSProperties> = {
   },
 }
 
+// ─── LineItemCard ─────────────────────────────────────────────────────────────
+
+function LineItemCard({ item, onRefund }: { item: SaleListItem; onRefund: () => void }) {
+  return (
+    <div style={li.card}>
+      <div style={li.left}>
+        <div style={li.name}>
+          {item.productNameSnapshot}
+          {item.specSnapshot && <span style={li.spec}> · {item.specSnapshot}</span>}
+        </div>
+        <div style={li.meta}>
+          {Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}
+          <span style={li.amt}> = ${item.lineAmount.toFixed(2)}</span>
+        </div>
+      </div>
+      <button style={li.btn} onClick={onRefund}>退款</button>
+    </div>
+  )
+}
+
+const li: Record<string, React.CSSProperties> = {
+  card: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '12px 14px',
+    marginBottom: 8,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  left: {
+    flex: 1,
+    minWidth: 0,
+  },
+  name: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: 'var(--text)',
+    marginBottom: 4,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  spec: {
+    fontWeight: 400,
+    color: 'var(--muted)',
+    fontSize: 13,
+  },
+  meta: {
+    fontSize: 13,
+    color: 'var(--muted)',
+  },
+  amt: {
+    color: 'var(--text)',
+    fontWeight: 600,
+  },
+  btn: {
+    flexShrink: 0,
+    height: 36,
+    padding: '0 16px',
+    background: 'var(--red)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 13,
+    fontWeight: 600,
+  },
+}
+
 // ─── InfoRow / QtyCell ────────────────────────────────────────────────────────
 
-function InfoRow({
-  label,
-  value,
-  mono,
-  red,
-}: {
-  label: string
-  value: string
-  mono?: boolean
-  red?: boolean
+function InfoRow({ label, value, mono, red }: {
+  label: string; value: string; mono?: boolean; red?: boolean
 }) {
   return (
     <div style={ir.row}>
       <span style={ir.label}>{label}</span>
-      <span
-        style={{
-          ...ir.value,
-          ...(mono ? ir.mono : {}),
-          ...(red ? ir.red : {}),
-        }}
-      >
+      <span style={{ ...ir.value, ...(mono ? ir.mono : {}), ...(red ? ir.red : {}) }}>
         {value}
       </span>
     </div>
   )
 }
 
-function QtyCell({
-  label,
-  value,
-  highlight,
-}: {
-  label: string
-  value: number
-  highlight?: boolean
-}) {
+function QtyCell({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
   return (
     <div style={qc.cell}>
-      <div style={{ ...qc.value, ...(highlight ? qc.highlight : {}) }}>
-        {value}
-      </div>
+      <div style={{ ...qc.value, ...(highlight ? qc.highlight : {}) }}>{value}</div>
       <div style={qc.label}>{label}</div>
     </div>
   )
@@ -677,27 +791,15 @@ const ir: Record<string, React.CSSProperties> = {
 }
 
 const qc: Record<string, React.CSSProperties> = {
-  cell: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 2,
-  },
+  cell: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 },
   value: { fontSize: 20, fontWeight: 700, color: '#1a1a1a' },
   highlight: { color: '#ff4d4f' },
-  label: {
-    fontSize: 11,
-    color: '#8c8c8c',
-    textTransform: 'uppercase',
-    letterSpacing: '0.03em',
-  },
+  label: { fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.03em' },
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  // ── Layout ──
   page: {
     minHeight: '100vh',
     background: 'var(--bg)',
@@ -735,8 +837,6 @@ const s: Record<string, React.CSSProperties> = {
     margin: '0 auto',
     padding: '12px 12px 20px',
   },
-
-  // ── Search ──
   searchCard: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
@@ -748,10 +848,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 8,
   },
-  searchIcon: {
-    fontSize: 16,
-    flexShrink: 0,
-  },
+  searchIcon: { fontSize: 16, flexShrink: 0 },
   searchInput: {
     flex: 1,
     minWidth: 0,
@@ -770,8 +867,6 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     padding: '0 2px',
   },
-
-  // ── Filter pills ──
   filterRow: {
     display: 'flex',
     gap: 8,
@@ -793,8 +888,6 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fff',
     fontWeight: 700,
   },
-
-  // ── States ──
   hint: {
     textAlign: 'center',
     color: 'var(--muted)',
@@ -828,22 +921,42 @@ const s: Record<string, React.CSSProperties> = {
     padding: '36px 20px',
     gap: 6,
   },
-  emptyIcon: {
-    fontSize: 40,
-    color: '#d0d0d0',
+  emptyIcon: { fontSize: 40, color: '#d0d0d0', marginBottom: 4 },
+  emptyTitle: { fontSize: 15, fontWeight: 600, color: '#bbb' },
+  emptyDesc: { fontSize: 13, color: '#ccc' },
+  // Items phase
+  orderSummaryCard: {
+    background: '#fff7e6',
+    border: '1px solid #ffd591',
+    borderRadius: 'var(--radius)',
+    padding: '14px 16px',
+    marginBottom: 12,
+  },
+  orderSummaryNo: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    color: '#ad6800',
     marginBottom: 4,
   },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: '#bbb',
-  },
-  emptyDesc: {
+  orderSummaryMeta: {
     fontSize: 13,
-    color: '#ccc',
+    color: '#ad6800',
+    marginBottom: 4,
   },
-
-  // ── Refund phase: error card ──
+  orderSummaryTotal: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#d46b08',
+  },
+  itemsHint: {
+    fontSize: 12,
+    color: 'var(--muted)',
+    marginBottom: 8,
+    fontWeight: 500,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
+  // Refund phase form
   errorCard: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
@@ -854,11 +967,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 16,
   },
-  errorCardText: {
-    fontSize: 15,
-    color: 'var(--red)',
-    textAlign: 'center',
-  },
+  errorCardText: { fontSize: 15, color: 'var(--red)', textAlign: 'center' },
   backToListBtn: {
     height: 44,
     padding: '0 20px',
@@ -868,9 +977,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 14,
     color: 'var(--muted)',
   },
-
-  // ── Refund phase: form cards ──
-  card: {
+  formCard: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
     padding: '14px 16px',
@@ -891,17 +998,8 @@ const s: Record<string, React.CSSProperties> = {
     padding: '14px 16px',
     marginBottom: 10,
   },
-  productName: {
-    fontSize: 17,
-    fontWeight: 700,
-    color: 'var(--text)',
-    marginBottom: 2,
-  },
-  productSpec: {
-    fontSize: 13,
-    color: 'var(--muted)',
-    marginBottom: 10,
-  },
+  productName: { fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 2 },
+  productSpec: { fontSize: 13, color: 'var(--muted)', marginBottom: 10 },
   productMeta: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -923,8 +1021,6 @@ const s: Record<string, React.CSSProperties> = {
   },
   qtyDivider: { width: 1, height: 28, background: '#ffccc7' },
   origNo: { fontSize: 11, color: '#aaa', fontFamily: 'monospace' },
-
-  // Stepper
   stepperRow: {
     display: 'flex',
     alignItems: 'center',
@@ -945,15 +1041,7 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 300,
     lineHeight: 1,
   },
-  stepperValue: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 22,
-    fontWeight: 700,
-    color: 'var(--text)',
-  },
-
-  // Preview
+  stepperValue: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: 700, color: 'var(--text)' },
   previewCard: {
     background: 'var(--red)',
     borderRadius: 'var(--radius)',
@@ -964,14 +1052,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
   },
   previewLabel: { fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: 500 },
-  previewAmount: {
-    fontSize: 28,
-    fontWeight: 800,
-    color: '#fff',
-    letterSpacing: '-0.02em',
-  },
-
-  // Reason select
+  previewAmount: { fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' },
   reasonSelect: {
     display: 'block',
     width: '100%',
@@ -984,8 +1065,6 @@ const s: Record<string, React.CSSProperties> = {
     background: '#f7f8fa',
     appearance: 'auto',
   },
-
-  // Inputs
   remarkInput: {
     display: 'block',
     width: '100%',
@@ -997,21 +1076,8 @@ const s: Record<string, React.CSSProperties> = {
     outline: 'none',
     background: '#f7f8fa',
   },
-
-  // Error inline
-  errorMsg: {
-    fontSize: 13,
-    color: 'var(--red)',
-    padding: '4px 2px 6px',
-  },
-
-  // Actions
-  actions: {
-    display: 'flex',
-    gap: 10,
-    marginTop: 4,
-    marginBottom: 8,
-  },
+  errorMsg: { fontSize: 13, color: 'var(--red)', padding: '4px 2px 6px' },
+  actions: { display: 'flex', gap: 10, marginTop: 4, marginBottom: 8 },
   clearBtn: {
     flexShrink: 0,
     width: 80,
@@ -1033,11 +1099,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 16,
     fontWeight: 700,
   },
-  submitBtnLoading: {
-    opacity: 0.7,
-  },
-
-  // Success
+  submitBtnLoading: { opacity: 0.7 },
   successCard: {
     background: 'var(--green)',
     borderRadius: 'var(--radius)',
@@ -1060,12 +1122,7 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fff',
     marginBottom: 6,
   },
-  successTitle: {
-    fontSize: 18,
-    fontWeight: 700,
-    color: '#fff',
-    marginBottom: 14,
-  },
+  successTitle: { fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 14 },
   successGrid: {
     width: '100%',
     borderTop: '1px solid rgba(255,255,255,0.25)',
