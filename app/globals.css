@@ -23,8 +23,8 @@ body {
   font-size: 16px;
   background: var(--bg);
   color: var(--text);
-  /* Reserve space so content is not hidden behind the fixed bottom nav */
-  padding-bottom: 68px;
+  /* Reserve space for fixed bottom nav + iPhone safe area */
+  padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px));
 }
 
 button {
