@@ -69,8 +69,17 @@ export async function GET(req: NextRequest) {
     ...(operatorUserId ? { operatorUserId } : {}),
   }
 
-  // Aggregate SALE and REFUND in parallel
-  const [saleAgg, refundAgg, storeInfo, staffInfo] = await Promise.all([
+  // Run all queries in parallel
+  const [
+    saleAgg,
+    refundAgg,
+    saleOrderGroups,
+    refundOrderGroups,
+    topProductGroups,
+    storeInfo,
+    staffInfo,
+  ] = await Promise.all([
+    // Amount aggregates
     prisma.saleRecord.aggregate({
       where: { ...baseWhere, saleType: 'SALE' },
       _sum: { lineAmount: true },
@@ -81,6 +90,25 @@ export async function GET(req: NextRequest) {
       _sum: { lineAmount: true },
       _count: true,
     }),
+    // Distinct sales order count (by orderNo)
+    prisma.saleRecord.groupBy({
+      by: ['orderNo'],
+      where: { ...baseWhere, saleType: 'SALE', orderNo: { not: null } },
+    }),
+    // Distinct refund order count (by orderNo)
+    prisma.saleRecord.groupBy({
+      by: ['orderNo'],
+      where: { ...baseWhere, saleType: 'REFUND', orderNo: { not: null } },
+    }),
+    // Top 3 hot products by quantity sold
+    prisma.saleRecord.groupBy({
+      by: ['productNameSnapshot', 'specSnapshot'],
+      where: { ...baseWhere, saleType: 'SALE' },
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: 3,
+    }),
+    // Store / staff label lookups
     storeId
       ? prisma.store.findFirst({ where: { id: storeId }, select: { name: true } })
       : Promise.resolve(null),
@@ -94,9 +122,17 @@ export async function GET(req: NextRequest) {
   const netAmount = totalSaleAmount + totalRefundAmount
   const saleCount = saleAgg._count
   const refundCount = refundAgg._count
+  const saleOrderCount = saleOrderGroups.length
+  const refundOrderCount = refundOrderGroups.length
   const avgSaleAmount = saleCount > 0
     ? parseFloat((netAmount / saleCount).toFixed(2))
     : 0
+
+  const topProducts = topProductGroups.map((g) => ({
+    name: g.productNameSnapshot,
+    spec: g.specSnapshot ?? null,
+    totalQty: parseFloat((g._sum.quantity ?? 0).toString()),
+  }))
 
   return NextResponse.json({
     dateFrom,
@@ -109,6 +145,9 @@ export async function GET(req: NextRequest) {
     netAmount,
     saleCount,
     refundCount,
+    saleOrderCount,
+    refundOrderCount,
     avgSaleAmount,
+    topProducts,
   })
 }

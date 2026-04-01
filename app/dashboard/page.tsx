@@ -1,11 +1,17 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Dimension = 'GLOBAL' | 'STORE' | 'STAFF'
+
+type TopProduct = {
+  name: string
+  spec: string | null
+  totalQty: number
+}
 
 type SummaryResult = {
   dateFrom: string
@@ -16,23 +22,13 @@ type SummaryResult = {
   totalSaleAmount: number
   totalRefundAmount: number
   netAmount: number
-  saleCount: number
-  refundCount: number
-  avgSaleAmount: number
+  saleOrderCount: number
+  refundOrderCount: number
+  topProducts: TopProduct[]
 }
 
-// ─── Utils ────────────────────────────────────────────────────────────────────
+// ─── Seed data (replace with API-driven options when auth is done) ─────────────
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function fmtAmount(n: number) {
-  const abs = Math.abs(n).toFixed(2)
-  return n < 0 ? `-$${abs}` : `$${abs}`
-}
-
-// Seed data — replace with API-driven options when auth is implemented
 const STORES = [
   { id: 'seed-store-a', name: '总店' },
   { id: 'seed-store-b', name: '分店' },
@@ -45,217 +41,218 @@ const STAFFS = [
 
 const DIM_LABEL: Record<Dimension, string> = {
   GLOBAL: '全局',
-  STORE: '门店',
-  STAFF: '员工',
+  STORE: '单门店',
+  STAFF: '单店员',
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+
+function fmtAmount(n: number) {
+  const abs = Math.abs(n).toFixed(2)
+  return n < 0 ? `-$${abs}` : `$${abs}`
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const today = todayStr()
-
-  const [dateFrom, setDateFrom] = useState(today)
-  const [dateTo, setDateTo] = useState(today)
+  const [today] = useState(() => new Date().toISOString().slice(0, 10))
   const [dimension, setDimension] = useState<Dimension>('GLOBAL')
   const [storeId, setStoreId] = useState(STORES[0].id)
   const [operatorUserId, setOperatorUserId] = useState(STAFFS[0].id)
-
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SummaryResult | null>(null)
 
-  // ── Dimension switch ────────────────────────────────────────────────────────
+  const load = useCallback(
+    async (dim: Dimension, sid: string, uid: string) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const params = new URLSearchParams({ dateFrom: today, dateTo: today })
+        if (dim === 'STORE') params.set('storeId', sid)
+        if (dim === 'STAFF') params.set('operatorUserId', uid)
+
+        const res = await apiFetch(`/api/summary?${params}`, undefined, OWNER_CTX)
+        const body = await res.json()
+        if (res.ok) {
+          setResult(body)
+        } else {
+          setError(body.message ?? '加载失败')
+        }
+      } catch {
+        setError('网络错误，请重试')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [today],
+  )
+
+  useEffect(() => {
+    load(dimension, storeId, operatorUserId)
+  }, [dimension, storeId, operatorUserId, load])
 
   function handleDimension(d: Dimension) {
+    if (d === dimension) return
     setDimension(d)
     setResult(null)
-    setError(null)
-  }
-
-  // ── Query ──────────────────────────────────────────────────────────────────
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setError(null)
-    setResult(null)
-
-    if (dimension === 'STAFF' && !operatorUserId) {
-      setError('请选择销售员')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ dateFrom, dateTo })
-      if (dimension === 'STORE') params.set('storeId', storeId.trim())
-      if (dimension === 'STAFF') {
-        if (storeId.trim()) params.set('storeId', storeId.trim())
-        params.set('operatorUserId', operatorUserId.trim())
-      }
-
-      const res = await apiFetch(`/api/summary?${params}`, undefined, OWNER_CTX)
-      const body = await res.json()
-
-      if (res.ok) {
-        setResult(body)
-      } else {
-        setError(body.message ?? body.error ?? '查询失败')
-      }
-    } catch {
-      setError('网络错误，请重试')
-    } finally {
-      setLoading(false)
-    }
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div style={s.page}>
-      {/* ── Brand header ── */}
-      <div style={s.headerBar}>
-        <div style={s.headerLeft}>
+      {/* Brand header */}
+      <div style={s.header}>
+        <div>
           <div style={s.brandName}>轻店助手</div>
-          <div style={s.brandSub}>老板概览</div>
+          <div style={s.brandSub}>今日经营概览 · {today}</div>
         </div>
-        <button style={s.langBtn}>中文 / 柬语</button>
+        <button
+          style={s.refreshBtn}
+          onClick={() => load(dimension, storeId, operatorUserId)}
+          disabled={loading}
+        >
+          {loading ? '…' : '刷新'}
+        </button>
       </div>
 
       <div style={s.body}>
-        <form onSubmit={handleSubmit}>
-          {/* Date card */}
-          <div style={s.card}>
-            <div style={s.cardLabel}>日期范围</div>
-            <div style={s.dateRow}>
-              <input
-                type="date"
-                style={s.dateInput}
-                value={dateFrom}
-                max={dateTo}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-              <span style={s.dateSep}>—</span>
-              <input
-                type="date"
-                style={s.dateInput}
-                value={dateTo}
-                min={dateFrom}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
-          </div>
+        {/* Dimension tabs */}
+        <div style={s.dimRow}>
+          {(['GLOBAL', 'STORE', 'STAFF'] as Dimension[]).map((d) => (
+            <button
+              key={d}
+              style={{ ...s.dimBtn, ...(dimension === d ? s.dimBtnActive : {}) }}
+              onClick={() => handleDimension(d)}
+            >
+              {DIM_LABEL[d]}
+            </button>
+          ))}
+        </div>
 
-          {/* Dimension card */}
-          <div style={s.card}>
-            <div style={s.cardLabel}>查询维度</div>
-            <div style={s.dimRow}>
-              {(['GLOBAL', 'STORE', 'STAFF'] as Dimension[]).map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  style={{ ...s.dimBtn, ...(dimension === d ? s.dimBtnActive : {}) }}
-                  onClick={() => handleDimension(d)}
-                >
-                  {DIM_LABEL[d]}
-                </button>
+        {/* Selector */}
+        {dimension === 'STORE' && (
+          <div style={s.selectorCard}>
+            <div style={s.selectorLabel}>选择门店</div>
+            <select
+              style={s.select}
+              value={storeId}
+              onChange={(e) => setStoreId(e.target.value)}
+            >
+              {STORES.map((st) => (
+                <option key={st.id} value={st.id}>{st.name}</option>
               ))}
-            </div>
+            </select>
           </div>
+        )}
 
-          {/* Filter card (store / staff) */}
-          {(dimension === 'STORE' || dimension === 'STAFF') && (
-            <div style={s.card}>
-              <div style={s.group}>
-                <div style={s.cardLabel}>
-                  门店{dimension === 'STAFF' ? '（可选）' : ''}
-                </div>
-                <select
-                  style={s.select}
-                  value={storeId}
-                  onChange={(e) => setStoreId(e.target.value)}
-                >
-                  {dimension === 'STAFF' && <option value="">— 不限门店 —</option>}
-                  {STORES.map((store) => (
-                    <option key={store.id} value={store.id}>{store.name}</option>
-                  ))}
-                </select>
-              </div>
+        {dimension === 'STAFF' && (
+          <div style={s.selectorCard}>
+            <div style={s.selectorLabel}>选择店员</div>
+            <select
+              style={s.select}
+              value={operatorUserId}
+              onChange={(e) => setOperatorUserId(e.target.value)}
+            >
+              {STAFFS.map((st) => (
+                <option key={st.id} value={st.id}>{st.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
-              {dimension === 'STAFF' && (
-                <div style={{ ...s.group, marginTop: 10 }}>
-                  <div style={s.cardLabel}>销售员</div>
-                  <select
-                    style={s.select}
-                    value={operatorUserId}
-                    onChange={(e) => setOperatorUserId(e.target.value)}
-                  >
-                    {STAFFS.map((staff) => (
-                      <option key={staff.id} value={staff.id}>{staff.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
+        {/* Loading skeleton */}
+        {loading && (
+          <div style={s.loadingWrap}>
+            <div style={s.skeleton} />
+            <div style={{ ...s.skeleton, height: 88, marginTop: 10 }} />
+            <div style={{ ...s.skeleton, height: 120, marginTop: 10 }} />
+          </div>
+        )}
 
-          {error && <div style={s.errorMsg}>{error}</div>}
+        {/* Error */}
+        {!loading && error && (
+          <div style={s.errorCard}>{error}</div>
+        )}
 
-          <button type="submit" style={s.submitBtn} disabled={loading}>
-            {loading ? '查询中…' : '查询'}
-          </button>
-        </form>
-
-        {/* ── Result ── */}
-        {result && <SummaryCard result={result} />}
+        {/* Overview */}
+        {!loading && result && <Overview result={result} />}
       </div>
     </div>
   )
 }
 
-// ─── SummaryCard ──────────────────────────────────────────────────────────────
+// ─── Overview ─────────────────────────────────────────────────────────────────
 
-function SummaryCard({ result }: { result: SummaryResult }) {
+function Overview({ result }: { result: SummaryResult }) {
   const subLabel =
     result.dimension === 'STORE'
-      ? result.storeName ?? '全部门店'
+      ? (result.storeName ?? '—')
       : result.dimension === 'STAFF'
-      ? result.operatorDisplayName ?? '全部员工'
+      ? (result.operatorDisplayName ?? '—')
       : '全部门店 · 全部员工'
 
-  const dateLabel =
-    result.dateFrom === result.dateTo
-      ? result.dateFrom
-      : `${result.dateFrom} ~ ${result.dateTo}`
-
   return (
-    <div style={sc.wrap}>
-      {/* Hero net amount */}
-      <div style={sc.hero}>
-        <div style={sc.heroMeta}>
-          <span style={sc.heroDim}>{DIM_LABEL[result.dimension]}</span>
-          <span style={sc.heroSub}>{subLabel}</span>
-          <span style={sc.heroDate}>{dateLabel}</span>
-        </div>
-        <div style={sc.heroLabel}>净收入</div>
-        <div style={{
-          ...sc.heroAmount,
-          color: result.netAmount >= 0 ? '#a0f0a0' : '#ffccc7',
-        }}>
+    <div>
+      {/* Hero — net income */}
+      <div style={ov.heroCard}>
+        <div style={ov.heroSub}>{subLabel}</div>
+        <div style={ov.heroLabel}>今日净收入</div>
+        <div
+          style={{
+            ...ov.heroAmount,
+            color: result.netAmount >= 0 ? '#a0f0a0' : '#ffccc7',
+          }}
+        >
           {fmtAmount(result.netAmount)}
         </div>
       </div>
 
-      {/* Metrics grid */}
-      <div style={sc.grid}>
-        <MetricCell label="销售总额" value={fmtAmount(result.totalSaleAmount)} />
+      {/* Metrics 2×2 grid */}
+      <div style={ov.grid}>
+        <MetricCell label="今日销售额" value={fmtAmount(result.totalSaleAmount)} />
         <MetricCell
-          label="退款总额"
+          label="今日退款额"
           value={fmtAmount(result.totalRefundAmount)}
           red={result.totalRefundAmount < 0}
         />
-        <MetricCell label="销售笔数" value={String(result.saleCount)} unit="笔" />
-        <MetricCell label="退款笔数" value={String(result.refundCount)} unit="笔" />
-        <MetricCell label="客单价" value={fmtAmount(result.avgSaleAmount)} spanFull />
+        <MetricCell label="销售单数" value={String(result.saleOrderCount)} unit="单" />
+        <MetricCell label="退款单数" value={String(result.refundOrderCount)} unit="单" />
+      </div>
+
+      {/* Top 3 products */}
+      <div style={ov.topCard}>
+        <div style={ov.topTitle}>热销商品 Top 3</div>
+        {result.topProducts.length === 0 ? (
+          <div style={ov.emptyTop}>今日暂无销售记录</div>
+        ) : (
+          result.topProducts.map((p, i) => (
+            <div
+              key={i}
+              style={{
+                ...ov.topRow,
+                ...(i === result.topProducts.length - 1
+                  ? { borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }
+                  : {}),
+              }}
+            >
+              <div
+                style={{
+                  ...ov.rank,
+                  ...(i === 0 ? ov.rank1 : i === 1 ? ov.rank2 : ov.rank3),
+                }}
+              >
+                {i + 1}
+              </div>
+              <div style={ov.topName}>
+                {p.name}
+                {p.spec && <span style={ov.topSpec}> · {p.spec}</span>}
+              </div>
+              <div style={ov.topQty}>{p.totalQty} 件</div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   )
@@ -266,16 +263,14 @@ function MetricCell({
   value,
   unit,
   red,
-  spanFull,
 }: {
   label: string
   value: string
   unit?: string
   red?: boolean
-  spanFull?: boolean
 }) {
   return (
-    <div style={{ ...mc.cell, ...(spanFull ? { gridColumn: 'span 2' } : {}) }}>
+    <div style={mc.cell}>
       <div style={{ ...mc.value, ...(red ? { color: 'var(--red)' } : {}) }}>
         {value}
         {unit && <span style={mc.unit}>{unit}</span>}
@@ -283,89 +278,6 @@ function MetricCell({
       <div style={mc.label}>{label}</div>
     </div>
   )
-}
-
-const sc: Record<string, React.CSSProperties> = {
-  wrap: {
-    borderRadius: 'var(--radius)',
-    overflow: 'hidden',
-    marginBottom: 12,
-    background: 'var(--card)',
-  },
-  hero: {
-    background: 'var(--blue)',
-    padding: '18px 18px 20px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 4,
-  },
-  heroMeta: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
-  heroDim: {
-    fontSize: 11,
-    fontWeight: 700,
-    background: 'rgba(255,255,255,0.2)',
-    color: '#fff',
-    padding: '1px 8px',
-    borderRadius: 10,
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-  },
-  heroSub: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: 600,
-  },
-  heroDate: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.65)',
-  },
-  heroLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.75)',
-  },
-  heroAmount: {
-    fontSize: 40,
-    fontWeight: 800,
-    letterSpacing: '-0.03em',
-    lineHeight: 1.1,
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-  },
-}
-
-const mc: Record<string, React.CSSProperties> = {
-  cell: {
-    padding: '14px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 3,
-    borderTop: '1px solid var(--border)',
-  },
-  value: {
-    fontSize: 18,
-    fontWeight: 700,
-    color: 'var(--text)',
-  },
-  unit: {
-    fontSize: 12,
-    fontWeight: 400,
-    color: 'var(--muted)',
-    marginLeft: 2,
-  },
-  label: {
-    fontSize: 12,
-    color: 'var(--muted)',
-  },
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -377,18 +289,12 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
   },
-  // Brand header
-  headerBar: {
+  header: {
     background: 'var(--blue)',
     padding: '16px 16px 20px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-  },
-  headerLeft: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
   },
   brandName: {
     fontSize: 18,
@@ -399,14 +305,16 @@ const s: Record<string, React.CSSProperties> = {
   brandSub: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
   },
-  langBtn: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.8)',
+  refreshBtn: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
     background: 'rgba(255,255,255,0.15)',
     border: '1px solid rgba(255,255,255,0.3)',
-    borderRadius: 12,
-    padding: '3px 10px',
+    borderRadius: 14,
+    padding: '4px 14px',
+    minWidth: 52,
   },
   body: {
     flex: 1,
@@ -415,48 +323,10 @@ const s: Record<string, React.CSSProperties> = {
     margin: '0 auto',
     width: '100%',
   },
-  // Cards
-  card: {
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
-    padding: '14px 16px',
-    marginBottom: 10,
-  },
-  cardLabel: {
-    fontSize: 12,
-    color: 'var(--muted)',
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-    marginBottom: 10,
-  },
-  group: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 0,
-  },
-  dateRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  dateInput: {
-    flex: 1,
-    height: 40,
-    padding: '0 10px',
-    border: '1.5px solid var(--border)',
-    borderRadius: 'var(--radius-sm)',
-    fontSize: 14,
-    background: '#f7f8fa',
-    outline: 'none',
-  },
-  dateSep: {
-    color: 'var(--muted)',
-    flexShrink: 0,
-  },
   dimRow: {
     display: 'flex',
     gap: 8,
+    marginBottom: 10,
   },
   dimBtn: {
     flex: 1,
@@ -467,12 +337,27 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 14,
     color: 'var(--muted)',
     fontWeight: 500,
+    cursor: 'pointer',
   },
   dimBtnActive: {
     background: 'var(--blue)',
     borderColor: 'var(--blue)',
     color: '#fff',
     fontWeight: 700,
+  },
+  selectorCard: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '12px 14px',
+    marginBottom: 10,
+  },
+  selectorLabel: {
+    fontSize: 11,
+    color: 'var(--muted)',
+    fontWeight: 600,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.04em',
+    marginBottom: 8,
   },
   select: {
     height: 42,
@@ -483,23 +368,158 @@ const s: Record<string, React.CSSProperties> = {
     background: '#f7f8fa',
     outline: 'none',
     width: '100%',
-    appearance: 'auto',
+    appearance: 'auto' as const,
   },
-  submitBtn: {
-    width: '100%',
-    height: 48,
-    background: 'var(--blue)',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 'var(--radius-sm)',
-    fontSize: 16,
-    fontWeight: 700,
-    marginBottom: 12,
+  loadingWrap: {
+    marginTop: 4,
   },
-  errorMsg: {
-    fontSize: 13,
+  skeleton: {
+    height: 160,
+    borderRadius: 'var(--radius)',
+    background: 'var(--card)',
+    animation: 'pulse 1.4s ease-in-out infinite',
+  },
+  errorCard: {
+    background: '#fff0f0',
+    border: '1px solid #ffc0c0',
+    borderRadius: 'var(--radius)',
+    padding: '14px 16px',
+    fontSize: 14,
     color: 'var(--red)',
-    padding: '4px 0 6px 2px',
+    marginTop: 4,
   },
 }
 
+const ov: Record<string, React.CSSProperties> = {
+  heroCard: {
+    background: 'var(--blue)',
+    borderRadius: 'var(--radius)',
+    padding: '20px 18px 22px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 10,
+  },
+  heroSub: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.75)',
+    marginBottom: 6,
+  },
+  heroLabel: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  heroAmount: {
+    fontSize: 44,
+    fontWeight: 800,
+    letterSpacing: '-0.03em',
+    lineHeight: 1.1,
+    marginTop: 2,
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  topCard: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '14px 16px',
+    marginBottom: 12,
+  },
+  topTitle: {
+    fontSize: 12,
+    color: 'var(--muted)',
+    fontWeight: 600,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.04em',
+    marginBottom: 12,
+  },
+  topRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    paddingBottom: 12,
+    marginBottom: 12,
+    borderBottom: '1px solid var(--border)',
+  },
+  emptyTop: {
+    fontSize: 14,
+    color: 'var(--muted)',
+    textAlign: 'center' as const,
+    padding: '10px 0',
+  },
+  rank: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  rank1: {
+    background: '#ffe066',
+    color: '#7a5400',
+  },
+  rank2: {
+    background: '#d4d4d4',
+    color: '#444',
+  },
+  rank3: {
+    background: '#e8c19c',
+    color: '#6b3a1f',
+  },
+  topName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: 600,
+    color: 'var(--text)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  },
+  topSpec: {
+    fontWeight: 400,
+    color: 'var(--muted)',
+    fontSize: 13,
+  },
+  topQty: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: 'var(--blue)',
+    flexShrink: 0,
+  },
+}
+
+const mc: Record<string, React.CSSProperties> = {
+  cell: {
+    padding: '14px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    borderTop: '1px solid var(--border)',
+    borderRight: '1px solid var(--border)',
+  },
+  value: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: 'var(--text)',
+  },
+  unit: {
+    fontSize: 12,
+    fontWeight: 400,
+    color: 'var(--muted)',
+    marginLeft: 3,
+  },
+  label: {
+    fontSize: 12,
+    color: 'var(--muted)',
+  },
+}
