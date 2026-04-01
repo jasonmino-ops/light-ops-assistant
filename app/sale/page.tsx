@@ -158,25 +158,29 @@ export default function SalePage() {
   function scanBarcode() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
-    if (!tg?.showScanQrPopup) {
-      setQueryError('请在 Telegram 内使用扫码功能')
-      return
-    }
-    tg.showScanQrPopup({ text: '对准商品条码扫描' }, (scanned: string) => {
-      tg.closeScanQrPopup()
-      const barcode = scanned.trim()
-      if (barcode) {
-        setBarcodeInput(barcode)
-        queryProductByBarcode(barcode)
-      }
-      return true
-    })
+    if (!tg?.showScanQrPopup) return // 按钮在非 TMA 环境下已 disabled，不应进入此处
+    setQueryError(null)
+    tg.showScanQrPopup(
+      { text: '对准商品条码扫描' },
+      (scanned: string | null) => {
+        // scanned 为 null 表示用户主动关闭弹窗（取消），忽略即可
+        if (scanned) {
+          const barcode = scanned.trim()
+          if (barcode) {
+            setBarcodeInput(barcode)
+            queryProductByBarcode(barcode)
+          }
+        }
+        return true // 告知 Telegram 关闭扫码弹窗（勿重复调 closeScanQrPopup）
+      },
+    )
   }
 
   const [isTma, setIsTma] = useState(false)
   useEffect(() => {
+    // 用 initData 确认真正在 Telegram WebApp 内（非仅 Telegram.WebApp 对象存在）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setIsTma(!!(window as any).Telegram?.WebApp)
+    setIsTma(!!(window as any).Telegram?.WebApp?.initData)
   }, [])
 
   // ── 购物车操作 ─────────────────────────────────────────────────────────────
@@ -282,13 +286,15 @@ export default function SalePage() {
               <button
                 type="button"
                 style={isTma ? s.scanRow : { ...s.scanRow, ...s.scanRowOff }}
-                onClick={scanBarcode}
+                onClick={isTma ? scanBarcode : undefined}
+                disabled={!isTma || status === 'querying'}
               >
                 <span style={s.scanIcon}>⊡</span>
-                <span style={s.scanLabel}>
-                  {isTma ? '扫码查询' : '扫码查询（请在 Telegram 内使用）'}
-                </span>
+                <span style={s.scanLabel}>扫码查询</span>
               </button>
+              {!isTma && (
+                <div style={s.scanHint}>📱 扫码功能仅在 Telegram 内可用，请使用下方手动输入</div>
+              )}
 
               <div style={s.orDivider}>
                 <div style={s.orLine} /><span style={s.orText}>或</span><div style={s.orLine} />
@@ -529,10 +535,11 @@ const s: Record<string, React.CSSProperties> = {
   card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: 10 },
   cardLabel: { fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 },
 
-  scanRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, width: '100%', height: 48, background: 'var(--blue)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 16, fontWeight: 600, marginBottom: 12 },
-  scanRowOff: { background: '#d0d0d0', color: '#888' },
+  scanRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, width: '100%', height: 48, background: 'var(--blue)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 16, fontWeight: 600, marginBottom: 6 },
+  scanRowOff: { background: '#e0e0e0', color: '#aaa', cursor: 'default' },
   scanIcon: { fontSize: 22 },
   scanLabel: { fontSize: 15, fontWeight: 600 },
+  scanHint: { fontSize: 12, color: 'var(--muted)', textAlign: 'center' as const, marginBottom: 10, lineHeight: 1.4 },
 
   orDivider: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 },
   orLine: { flex: 1, height: 1, background: 'var(--border)' },
