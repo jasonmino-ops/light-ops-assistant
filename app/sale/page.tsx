@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, FormEvent, KeyboardEvent } from 'react'
+import { useState, useEffect, useRef, FormEvent, KeyboardEvent } from 'react'
 import { apiFetch } from '@/lib/api'
 
-// ─── Types (unchanged) ────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Product = {
   id: string
@@ -35,10 +35,55 @@ export default function SalePage() {
   const [result, setResult] = useState<SaleResult | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // ── Product list for dropdown ──────────────────────────────────────────────
+  const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [dropSearch, setDropSearch] = useState('')
+  const [dropOpen, setDropOpen] = useState(false)
+  const dropRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    apiFetch('/api/products')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: Product[]) => setAllProducts(list))
+      .catch(() => {})
+  }, [])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setDropOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const filteredProducts = dropSearch.trim()
+    ? allProducts.filter((p) => {
+        const q = dropSearch.toLowerCase()
+        return (
+          p.barcode.toLowerCase().includes(q) ||
+          p.name.toLowerCase().includes(q) ||
+          (p.spec ?? '').toLowerCase().includes(q)
+        )
+      })
+    : allProducts
+
+  function selectFromDropdown(p: Product) {
+    setProduct(p)
+    setForm({ ...EMPTY, barcode: p.barcode })
+    setDropSearch('')
+    setDropOpen(false)
+    setQueryError(null)
+    setResult(null)
+    setSubmitError(null)
+  }
+
   const qty = Math.max(1, form.quantity)
   const subtotal = product ? (product.sellPrice * qty).toFixed(2) : '0.00'
 
-  // ── Query product (unchanged logic) ───────────────────────────────────────
+  // ── Query product by barcode (unchanged logic) ─────────────────────────────
 
   async function queryProduct() {
     const barcode = form.barcode.trim()
@@ -112,6 +157,8 @@ export default function SalePage() {
     setResult(null)
     setSubmitError(null)
     setStatus('idle')
+    setDropSearch('')
+    setDropOpen(false)
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -140,19 +187,69 @@ export default function SalePage() {
 
         {!result && (
           <>
-            {/* ── Barcode query card ── */}
+            {/* ── Search card ── */}
             <div style={s.card}>
-              <div style={s.cardLabel}>商品码 / 条码</div>
+              {/* Dropdown picker (shown when product list is available) */}
+              {allProducts.length > 0 && (
+                <div ref={dropRef} style={s.dropWrap}>
+                  <div style={s.cardLabel}>选择商品</div>
+                  <div
+                    style={s.dropTrigger}
+                    onClick={() => setDropOpen((v) => !v)}
+                  >
+                    <span style={s.dropTriggerText}>
+                      {product
+                        ? `${product.barcode}  ${product.name}${product.spec ? ' · ' + product.spec : ''}`
+                        : '点击选择商品…'}
+                    </span>
+                    <span style={s.dropArrow}>{dropOpen ? '▲' : '▼'}</span>
+                  </div>
+                  {dropOpen && (
+                    <div style={s.dropPanel}>
+                      <input
+                        style={s.dropSearch}
+                        type="text"
+                        placeholder="搜索商品名 / 编码…"
+                        value={dropSearch}
+                        onChange={(e) => setDropSearch(e.target.value)}
+                        autoFocus
+                      />
+                      <div style={s.dropList}>
+                        {filteredProducts.length === 0 && (
+                          <div style={s.dropEmpty}>无匹配商品</div>
+                        )}
+                        {filteredProducts.map((p) => (
+                          <div
+                            key={p.id}
+                            style={s.dropItem}
+                            onClick={() => selectFromDropdown(p)}
+                          >
+                            <span style={s.dropItemCode}>{p.barcode}</span>
+                            <span style={s.dropItemName}>{p.name}</span>
+                            {p.spec && <span style={s.dropItemSpec}>{p.spec}</span>}
+                            <span style={s.dropItemPrice}>${p.sellPrice.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Barcode manual input */}
+              <div style={s.cardLabel}>
+                {allProducts.length > 0 ? '或手动输入商品码' : '商品码 / 条码'}
+              </div>
               <div style={s.searchRow}>
                 <span style={s.scanIcon}>⊡</span>
                 <input
                   style={s.searchInput}
                   type="text"
-                  placeholder="例如：CAT001"
+                  placeholder="例如：8888001"
                   value={form.barcode}
                   onChange={(e) => setForm({ ...form, barcode: e.target.value })}
                   onKeyDown={handleBarcodeKeyDown}
-                  autoFocus
+                  autoFocus={allProducts.length === 0}
                 />
                 <button
                   style={s.searchBtn}
@@ -532,5 +629,103 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 'var(--radius-sm)',
     fontSize: 15,
     fontWeight: 600,
+  },
+  // Dropdown picker
+  dropWrap: {
+    position: 'relative',
+    marginBottom: 12,
+  },
+  dropTrigger: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 42,
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '0 12px',
+    background: '#f7f8fa',
+    cursor: 'pointer',
+    gap: 8,
+  },
+  dropTriggerText: {
+    flex: 1,
+    fontSize: 14,
+    color: 'var(--text)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  dropArrow: {
+    fontSize: 10,
+    color: 'var(--muted)',
+    flexShrink: 0,
+  },
+  dropPanel: {
+    position: 'absolute',
+    top: 'calc(100% + 4px)',
+    left: 0,
+    right: 0,
+    background: '#fff',
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+    zIndex: 200,
+    overflow: 'hidden',
+  },
+  dropSearch: {
+    width: '100%',
+    height: 40,
+    border: 'none',
+    borderBottom: '1px solid var(--border)',
+    padding: '0 12px',
+    fontSize: 14,
+    outline: 'none',
+    background: '#fafafa',
+    boxSizing: 'border-box',
+  },
+  dropList: {
+    maxHeight: 220,
+    overflowY: 'auto',
+  },
+  dropItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '10px 12px',
+    borderBottom: '1px solid #f5f5f5',
+    cursor: 'pointer',
+  },
+  dropItemCode: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    color: 'var(--muted)',
+    flexShrink: 0,
+    minWidth: 56,
+  },
+  dropItemName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: 600,
+    color: 'var(--text)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  dropItemSpec: {
+    fontSize: 12,
+    color: 'var(--muted)',
+    flexShrink: 0,
+  },
+  dropItemPrice: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: 'var(--blue)',
+    flexShrink: 0,
+  },
+  dropEmpty: {
+    padding: '16px 12px',
+    fontSize: 13,
+    color: 'var(--muted)',
+    textAlign: 'center',
   },
 }

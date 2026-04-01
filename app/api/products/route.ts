@@ -15,13 +15,27 @@ export async function GET(req: NextRequest) {
   }
 
   const barcode = req.nextUrl.searchParams.get('barcode')
+
+  // ── List mode: no barcode → return all active products for the tenant ──────
   if (!barcode) {
+    const products = await prisma.product.findMany({
+      where: { tenantId: ctx.tenantId, status: 'ACTIVE' },
+      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true },
+      orderBy: { name: 'asc' },
+      take: 200,
+    })
     return NextResponse.json(
-      { error: 'MISSING_PARAM', message: 'barcode is required' },
-      { status: 400 },
+      products.map((p) => ({
+        id: p.id,
+        barcode: p.barcode,
+        name: p.name,
+        spec: p.spec,
+        sellPrice: p.sellPrice.toNumber(),
+      })),
     )
   }
 
+  // ── Single lookup mode: barcode provided ───────────────────────────────────
   const product = await prisma.product.findFirst({
     where: { tenantId: ctx.tenantId, barcode, status: 'ACTIVE' },
     select: { id: true, barcode: true, name: true, spec: true, sellPrice: true },
