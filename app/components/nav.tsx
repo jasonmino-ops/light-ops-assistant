@@ -3,27 +3,35 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const TABS = [
-  { href: '/sale',      label: '销售',  icon: '🛒' },
-  { href: '/refund',    label: '退款',  icon: '↩️' },
-  { href: '/records',   label: '记录',  icon: '📋' },
-  { href: '/dashboard', label: '概览',  icon: '📊' },
+const STAFF_TABS = [
+  { href: '/home',      label: '首页', icon: '🏠' },
+  { href: '/sale',      label: '销售', icon: '💰' },
+  { href: '/refund',    label: '退款', icon: '↩️' },
+  { href: '/records',   label: '记录', icon: '📋' },
 ]
 
-export default function BottomNav() {
+const OWNER_TABS = [
+  { href: '/sale',      label: '销售', icon: '💰' },
+  { href: '/refund',    label: '退款', icon: '↩️' },
+  { href: '/records',   label: '记录', icon: '📋' },
+  { href: '/dashboard', label: '概览', icon: '📊' },
+]
+
+export default function BottomNav({ role }: { role: string }) {
   const pathname = usePathname()
+  const tabs = role === 'OWNER' ? OWNER_TABS : STAFF_TABS
 
   return (
     <nav style={s.nav}>
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active = pathname === tab.href
         return (
           <Link key={tab.href} href={tab.href} style={s.link}>
-            <span style={s.icon}>{tab.icon}</span>
+            <span style={{ ...s.icon, opacity: active ? 1 : 0.45 }}>{tab.icon}</span>
             <span style={{ ...s.label, ...(active ? s.labelActive : {}) }}>
               {tab.label}
             </span>
-            {active && <span style={s.dot} />}
+            {active && <span style={s.activeLine} />}
           </Link>
         )
       })}
@@ -37,11 +45,12 @@ const s: Record<string, React.CSSProperties> = {
     bottom: 0,
     left: 0,
     right: 0,
-    height: 56,
+    height: 60,
     background: '#fff',
     borderTop: '1px solid #e8e8e8',
     display: 'flex',
     zIndex: 100,
+    paddingBottom: 'env(safe-area-inset-bottom)',
   },
   link: {
     flex: 1,
@@ -49,28 +58,29 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 3,
     textDecoration: 'none',
     position: 'relative',
   },
   icon: {
-    fontSize: 20,
+    fontSize: 22,
     lineHeight: 1,
   },
   label: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#aaa',
+    letterSpacing: '0.02em',
   },
   labelActive: {
     color: '#1677ff',
     fontWeight: 600,
   },
-  dot: {
+  activeLine: {
     position: 'absolute',
-    bottom: 4,
-    width: 4,
-    height: 4,
-    borderRadius: '50%',
+    top: 0,
+    width: 24,
+    height: 2,
+    borderRadius: 2,
     background: '#1677ff',
   },
 }

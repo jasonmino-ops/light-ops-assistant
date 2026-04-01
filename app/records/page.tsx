@@ -48,7 +48,7 @@ function fmtTime(iso: string) {
 
 function fmtAmount(n: number) {
   const abs = Math.abs(n).toFixed(2)
-  return n < 0 ? `-¥${abs}` : `¥${abs}`
+  return n < 0 ? `-$${abs}` : `$${abs}`
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -107,7 +107,6 @@ export default function RecordsPage() {
     [dateFrom, dateTo, saleTypeFilter],
   )
 
-  // Reload from page 1 whenever filters change
   useEffect(() => {
     fetchRecords(1, false)
   }, [fetchRecords])
@@ -121,83 +120,88 @@ export default function RecordsPage() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main style={s.page}>
-      <h1 style={s.title}>记录</h1>
-
-      {/* ── Filters ── */}
-      <div style={s.filterBar}>
-        <div style={s.filterRow}>
-          <label style={s.filterLabel}>从</label>
-          <input
-            type="date"
-            style={s.dateInput}
-            value={dateFrom}
-            max={dateTo}
-            onChange={(e) => setDateFrom(e.target.value)}
-          />
-          <label style={s.filterLabel}>到</label>
-          <input
-            type="date"
-            style={s.dateInput}
-            value={dateTo}
-            min={dateFrom}
-            onChange={(e) => setDateTo(e.target.value)}
-          />
-        </div>
-
-        <div style={s.typeRow}>
-          {(['ALL', 'SALE', 'REFUND'] as const).map((t) => (
-            <button
-              key={t}
-              style={{
-                ...s.typeBtn,
-                ...(saleTypeFilter === t ? s.typeBtnActive : {}),
-              }}
-              onClick={() => setSaleTypeFilter(t)}
-            >
-              {t === 'ALL' ? '全部' : t === 'SALE' ? '销售' : '退款'}
-            </button>
-          ))}
-        </div>
+    <div style={s.page}>
+      {/* ── Blue header bar ── */}
+      <div style={s.headerBar}>
+        <span style={s.headerTitle}>记录</span>
       </div>
 
-      {/* ── Summary ── */}
-      {summary && (
-        <div style={s.summaryBar}>
-          <SummaryCell label="销售" value={String(summary.saleCount)} />
-          <div style={s.summaryDivider} />
-          <SummaryCell label="退款" value={String(summary.refundCount)} />
-          <div style={s.summaryDivider} />
-          <SummaryCell
-            label="净收入"
-            value={fmtAmount(summary.netAmount)}
-            valueStyle={{ color: summary.netAmount >= 0 ? '#389e0d' : '#cf1322' }}
-          />
+      <div style={s.body}>
+        {/* ── Filter card ── */}
+        <div style={s.card}>
+          {/* Date row */}
+          <div style={s.dateRow}>
+            <input
+              type="date"
+              style={s.dateInput}
+              value={dateFrom}
+              max={dateTo}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+            <span style={s.dateSep}>—</span>
+            <input
+              type="date"
+              style={s.dateInput}
+              value={dateTo}
+              min={dateFrom}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+          {/* Type pills */}
+          <div style={s.pillRow}>
+            {(['ALL', 'SALE', 'REFUND'] as const).map((t) => (
+              <button
+                key={t}
+                style={{ ...s.pill, ...(saleTypeFilter === t ? s.pillActive : {}) }}
+                onClick={() => setSaleTypeFilter(t)}
+              >
+                {t === 'ALL' ? '全部' : t === 'SALE' ? '销售' : '退款'}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
 
-      {/* ── List ── */}
-      {loading && <p style={s.hint}>加载中…</p>}
-      {error && <p style={s.errorText}>{error}</p>}
+        {/* ── Summary bar ── */}
+        {summary && (
+          <div style={s.summaryCard}>
+            <SummaryCell label="销售" value={String(summary.saleCount)} unit="笔" />
+            <div style={s.summaryDivider} />
+            <SummaryCell label="退款" value={String(summary.refundCount)} unit="笔" />
+            <div style={s.summaryDivider} />
+            <SummaryCell
+              label="净收入"
+              value={fmtAmount(summary.netAmount)}
+              colored={summary.netAmount >= 0 ? 'green' : 'red'}
+            />
+          </div>
+        )}
 
-      {!loading && !error && items.length === 0 && (
-        <p style={s.hint}>暂无记录</p>
-      )}
+        {/* ── List ── */}
+        {loading && <div style={s.hint}>加载中…</div>}
+        {error && <div style={s.errorText}>{error}</div>}
 
-      {items.map((item) => (
-        <RecordCard key={item.id} item={item} />
-      ))}
+        {!loading && !error && items.length === 0 && (
+          <div style={s.emptyState}>
+            <div style={s.emptyIcon}>📋</div>
+            <div style={s.emptyTitle}>暂无记录</div>
+          </div>
+        )}
 
-      {hasMore && (
-        <button
-          style={s.loadMoreBtn}
-          onClick={handleLoadMore}
-          disabled={loadingMore}
-        >
-          {loadingMore ? '加载中…' : `加载更多（已显示 ${items.length} / ${total}）`}
-        </button>
-      )}
-    </main>
+        {items.map((item) => (
+          <RecordCard key={item.id} item={item} />
+        ))}
+
+        {hasMore && (
+          <button
+            style={s.loadMoreBtn}
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? '加载中…' : `加载更多（${items.length} / ${total}）`}
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -206,7 +210,7 @@ export default function RecordsPage() {
 function RecordCard({ item }: { item: RecordItem }) {
   const isRefund = item.saleType === 'REFUND'
   return (
-    <div style={{ ...s.card, ...(isRefund ? s.cardRefund : {}) }}>
+    <div style={{ ...s.recordCard, ...(isRefund ? s.recordCardRefund : {}) }}>
       <div style={s.cardHeader}>
         <span style={isRefund ? s.tagRefund : s.tagSale}>
           {isRefund ? '退款' : '销售'}
@@ -218,15 +222,15 @@ function RecordCard({ item }: { item: RecordItem }) {
       <div style={s.cardProduct}>
         <span style={s.cardProductName}>{item.productNameSnapshot}</span>
         {item.specSnapshot && (
-          <span style={s.cardSpec}>{item.specSnapshot}</span>
+          <span style={s.cardSpec}> · {item.specSnapshot}</span>
         )}
       </div>
 
       <div style={s.cardFooter}>
         <span style={s.cardQtyPrice}>
-          {Math.abs(item.quantity)} 件 × ¥{item.unitPrice.toFixed(2)}
+          {Math.abs(item.quantity)} 件 × ${item.unitPrice.toFixed(2)}
         </span>
-        <span style={{ ...s.cardAmount, color: isRefund ? '#cf1322' : '#1a1a1a' }}>
+        <span style={{ ...s.cardAmount, color: isRefund ? 'var(--red)' : 'var(--text)' }}>
           {fmtAmount(item.lineAmount)}
         </span>
       </div>
@@ -243,128 +247,138 @@ function RecordCard({ item }: { item: RecordItem }) {
 function SummaryCell({
   label,
   value,
-  valueStyle,
+  unit,
+  colored,
 }: {
   label: string
   value: string
-  valueStyle?: React.CSSProperties
+  unit?: string
+  colored?: 'green' | 'red'
 }) {
+  const color = colored === 'green' ? 'var(--green)' : colored === 'red' ? 'var(--red)' : 'var(--text)'
   return (
-    <div style={s.summaryCell}>
-      <span style={{ ...s.summaryCellValue, ...valueStyle }}>{value}</span>
-      <span style={s.summaryCellLabel}>{label}</span>
+    <div style={sc.cell}>
+      <div style={{ ...sc.value, color }}>
+        {value}{unit && <span style={sc.unit}>{unit}</span>}
+      </div>
+      <div style={sc.label}>{label}</div>
     </div>
   )
+}
+
+const sc: Record<string, React.CSSProperties> = {
+  cell: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 },
+  value: { fontSize: 18, fontWeight: 700, color: 'var(--text)' },
+  unit: { fontSize: 12, fontWeight: 400, color: 'var(--muted)', marginLeft: 2 },
+  label: { fontSize: 12, color: 'var(--muted)' },
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
   page: {
+    minHeight: '100vh',
+    background: 'var(--bg)',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  headerBar: {
+    background: 'var(--blue)',
+    padding: '16px 16px 18px',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 700,
+    letterSpacing: '0.02em',
+  },
+  body: {
+    flex: 1,
+    padding: '12px 12px 0',
     maxWidth: 480,
     margin: '0 auto',
-    padding: '16px 16px 40px',
+    width: '100%',
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 600,
-    marginBottom: 16,
-  },
-  // Filter bar
-  filterBar: {
-    background: '#fff',
-    border: '1px solid #e8e8e8',
-    borderRadius: 10,
-    padding: '12px 14px',
-    marginBottom: 12,
+  // Filter card
+  card: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '14px 16px',
+    marginBottom: 10,
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
   },
-  filterRow: {
+  dateRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-  },
-  filterLabel: {
-    fontSize: 13,
-    color: '#888',
-    whiteSpace: 'nowrap',
   },
   dateInput: {
     flex: 1,
-    height: 36,
+    height: 38,
     padding: '0 8px',
-    border: '1px solid #d0d0d0',
-    borderRadius: 6,
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
     fontSize: 14,
-    background: '#fff',
+    background: '#f7f8fa',
+    outline: 'none',
   },
-  typeRow: {
+  dateSep: {
+    color: 'var(--muted)',
+    flexShrink: 0,
+    fontSize: 14,
+  },
+  pillRow: {
     display: 'flex',
     gap: 8,
   },
-  typeBtn: {
+  pill: {
     flex: 1,
     height: 34,
-    border: '1px solid #d0d0d0',
-    borderRadius: 6,
-    background: '#fff',
-    fontSize: 14,
-    cursor: 'pointer',
-    color: '#555',
+    border: '1.5px solid var(--border)',
+    borderRadius: 20,
+    background: '#f7f8fa',
+    fontSize: 13,
+    color: 'var(--muted)',
+    fontWeight: 500,
   },
-  typeBtnActive: {
-    background: '#1677ff',
-    borderColor: '#1677ff',
+  pillActive: {
+    background: 'var(--blue)',
+    borderColor: 'var(--blue)',
     color: '#fff',
-    fontWeight: 600,
+    fontWeight: 700,
   },
-  // Summary bar
-  summaryBar: {
+  // Summary card
+  summaryCard: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '12px 16px',
+    marginBottom: 10,
     display: 'flex',
-    background: '#fff',
-    border: '1px solid #e8e8e8',
-    borderRadius: 10,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  summaryCell: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
-    padding: '10px 0',
-    gap: 2,
-  },
-  summaryCellValue: {
-    fontSize: 18,
-    fontWeight: 600,
-    color: '#1a1a1a',
-  },
-  summaryCellLabel: {
-    fontSize: 12,
-    color: '#888',
   },
   summaryDivider: {
     width: 1,
-    background: '#e8e8e8',
-    margin: '8px 0',
+    height: 30,
+    background: 'var(--border)',
+    flexShrink: 0,
   },
-  // Cards
-  card: {
-    background: '#fff',
-    border: '1px solid #e8e8e8',
-    borderRadius: 10,
+  // Record cards
+  recordCard: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
     padding: '12px 14px',
     marginBottom: 8,
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
   },
-  cardRefund: {
+  recordCardRefund: {
     background: '#fff1f0',
-    borderColor: '#ffa39e',
+    border: '1px solid #ffccc7',
   },
   cardHeader: {
     display: 'flex',
@@ -375,41 +389,42 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 600,
     background: '#e6f4ff',
-    color: '#1677ff',
-    padding: '1px 6px',
-    borderRadius: 4,
+    color: 'var(--blue)',
+    padding: '1px 7px',
+    borderRadius: 10,
   },
   tagRefund: {
     fontSize: 11,
     fontWeight: 600,
     background: '#fff1f0',
-    color: '#cf1322',
-    padding: '1px 6px',
-    borderRadius: 4,
-    border: '1px solid #ffa39e',
+    color: 'var(--red)',
+    padding: '1px 7px',
+    borderRadius: 10,
+    border: '1px solid #ffccc7',
   },
   cardTime: {
     fontSize: 13,
-    color: '#888',
+    color: 'var(--muted)',
   },
   cardRecordNo: {
-    fontSize: 12,
-    color: '#bbb',
+    fontSize: 11,
+    color: '#ccc',
     marginLeft: 'auto',
     fontFamily: 'monospace',
   },
   cardProduct: {
     display: 'flex',
     alignItems: 'baseline',
-    gap: 8,
+    flexWrap: 'wrap',
   },
   cardProductName: {
     fontSize: 16,
-    fontWeight: 500,
+    fontWeight: 600,
+    color: 'var(--text)',
   },
   cardSpec: {
     fontSize: 13,
-    color: '#888',
+    color: 'var(--muted)',
   },
   cardFooter: {
     display: 'flex',
@@ -418,41 +433,57 @@ const s: Record<string, React.CSSProperties> = {
   },
   cardQtyPrice: {
     fontSize: 13,
-    color: '#888',
+    color: 'var(--muted)',
   },
   cardAmount: {
     fontSize: 18,
-    fontWeight: 600,
+    fontWeight: 700,
   },
   cardReason: {
     fontSize: 12,
-    color: '#888',
-    borderTop: '1px solid #ffd6d6',
+    color: 'var(--muted)',
+    borderTop: '1px solid #ffccc7',
     paddingTop: 6,
     marginTop: 2,
   },
-  // Misc
+  // States
   hint: {
     textAlign: 'center',
-    color: '#aaa',
+    color: 'var(--muted)',
     padding: '32px 0',
     fontSize: 14,
   },
   errorText: {
     textAlign: 'center',
-    color: '#cf1322',
+    color: 'var(--red)',
     padding: '16px 0',
     fontSize: 14,
+  },
+  emptyState: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '40px 20px',
+    gap: 8,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    color: '#d0d0d0',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#aaa',
   },
   loadMoreBtn: {
     width: '100%',
     height: 44,
-    background: '#fff',
-    border: '1px solid #d0d0d0',
-    borderRadius: 8,
+    background: 'var(--card)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
     fontSize: 14,
-    color: '#555',
-    cursor: 'pointer',
-    marginTop: 4,
+    color: 'var(--muted)',
+    marginBottom: 12,
   },
 }

@@ -44,9 +44,9 @@ const STAFFS = [
 ]
 
 const DIM_LABEL: Record<Dimension, string> = {
-  GLOBAL: '全局汇总',
-  STORE: '单门店',
-  STAFF: '单销售员',
+  GLOBAL: '全局',
+  STORE: '门店',
+  STAFF: '员工',
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SummaryResult | null>(null)
 
-  // ── Dimension switch — clear result to avoid stale display ─────────────────
+  // ── Dimension switch ────────────────────────────────────────────────────────
 
   function handleDimension(d: Dimension) {
     setDimension(d)
@@ -111,145 +111,150 @@ export default function DashboardPage() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main style={s.page}>
-      <h1 style={s.title}>老板概览</h1>
-
-      <form onSubmit={handleSubmit} style={s.card}>
-
-        {/* ── Date range ── */}
-        <div style={s.group}>
-          <label style={s.label}>日期范围</label>
-          <div style={s.row}>
-            <input
-              type="date"
-              style={{ ...s.input, flex: 1 }}
-              value={dateFrom}
-              max={dateTo}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-            <span style={s.dateSep}>—</span>
-            <input
-              type="date"
-              style={{ ...s.input, flex: 1 }}
-              value={dateTo}
-              min={dateFrom}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </div>
+    <div style={s.page}>
+      {/* ── Brand header ── */}
+      <div style={s.headerBar}>
+        <div style={s.headerLeft}>
+          <div style={s.brandName}>轻店助手</div>
+          <div style={s.brandSub}>老板概览</div>
         </div>
+        <button style={s.langBtn}>中 / EN</button>
+      </div>
 
-        {/* ── Dimension ── */}
-        <div style={s.group}>
-          <label style={s.label}>查询维度</label>
-          <div style={s.dimRow}>
-            {(['GLOBAL', 'STORE', 'STAFF'] as Dimension[]).map((d) => (
-              <button
-                key={d}
-                type="button"
-                style={{ ...s.dimBtn, ...(dimension === d ? s.dimBtnActive : {}) }}
-                onClick={() => handleDimension(d)}
-              >
-                {DIM_LABEL[d]}
-              </button>
-            ))}
+      <div style={s.body}>
+        <form onSubmit={handleSubmit}>
+          {/* Date card */}
+          <div style={s.card}>
+            <div style={s.cardLabel}>日期范围</div>
+            <div style={s.dateRow}>
+              <input
+                type="date"
+                style={s.dateInput}
+                value={dateFrom}
+                max={dateTo}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+              <span style={s.dateSep}>—</span>
+              <input
+                type="date"
+                style={s.dateInput}
+                value={dateTo}
+                min={dateFrom}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </div>
           </div>
-        </div>
 
-        {/* ── Store select (STORE / STAFF) ── */}
-        {(dimension === 'STORE' || dimension === 'STAFF') && (
-          <div style={s.group}>
-            <label style={s.label}>
-              门店{dimension === 'STAFF' ? '（可选）' : ''}
-            </label>
-            <select
-              style={s.select}
-              value={storeId}
-              onChange={(e) => setStoreId(e.target.value)}
-            >
-              {dimension === 'STAFF' && <option value="">— 不限门店 —</option>}
-              {STORES.map((store) => (
-                <option key={store.id} value={store.id}>{store.name}</option>
+          {/* Dimension card */}
+          <div style={s.card}>
+            <div style={s.cardLabel}>查询维度</div>
+            <div style={s.dimRow}>
+              {(['GLOBAL', 'STORE', 'STAFF'] as Dimension[]).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  style={{ ...s.dimBtn, ...(dimension === d ? s.dimBtnActive : {}) }}
+                  onClick={() => handleDimension(d)}
+                >
+                  {DIM_LABEL[d]}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
-        )}
 
-        {/* ── Staff select (STAFF only) ── */}
-        {dimension === 'STAFF' && (
-          <div style={s.group}>
-            <label style={s.label}>销售员</label>
-            <select
-              style={s.select}
-              value={operatorUserId}
-              onChange={(e) => setOperatorUserId(e.target.value)}
-            >
-              {STAFFS.map((staff) => (
-                <option key={staff.id} value={staff.id}>{staff.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
+          {/* Filter card (store / staff) */}
+          {(dimension === 'STORE' || dimension === 'STAFF') && (
+            <div style={s.card}>
+              <div style={s.group}>
+                <div style={s.cardLabel}>
+                  门店{dimension === 'STAFF' ? '（可选）' : ''}
+                </div>
+                <select
+                  style={s.select}
+                  value={storeId}
+                  onChange={(e) => setStoreId(e.target.value)}
+                >
+                  {dimension === 'STAFF' && <option value="">— 不限门店 —</option>}
+                  {STORES.map((store) => (
+                    <option key={store.id} value={store.id}>{store.name}</option>
+                  ))}
+                </select>
+              </div>
 
-        {error && <p style={s.error}>{error}</p>}
+              {dimension === 'STAFF' && (
+                <div style={{ ...s.group, marginTop: 10 }}>
+                  <div style={s.cardLabel}>销售员</div>
+                  <select
+                    style={s.select}
+                    value={operatorUserId}
+                    onChange={(e) => setOperatorUserId(e.target.value)}
+                  >
+                    {STAFFS.map((staff) => (
+                      <option key={staff.id} value={staff.id}>{staff.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
 
-        <button type="submit" style={s.btnPrimary} disabled={loading}>
-          {loading ? '查询中…' : '查询'}
-        </button>
-      </form>
+          {error && <div style={s.errorMsg}>{error}</div>}
 
-      {/* ── Result ── */}
-      {result && <SummaryCard result={result} />}
-    </main>
+          <button type="submit" style={s.submitBtn} disabled={loading}>
+            {loading ? '查询中…' : '查询'}
+          </button>
+        </form>
+
+        {/* ── Result ── */}
+        {result && <SummaryCard result={result} />}
+      </div>
+    </div>
   )
 }
 
 // ─── SummaryCard ──────────────────────────────────────────────────────────────
 
 function SummaryCard({ result }: { result: SummaryResult }) {
-  const dimLabel = DIM_LABEL[result.dimension]
   const subLabel =
     result.dimension === 'STORE'
-      ? result.storeName ?? result.dimension
+      ? result.storeName ?? '全部门店'
       : result.dimension === 'STAFF'
-      ? result.operatorDisplayName ?? result.dimension
-      : '全部门店 / 全部员工'
+      ? result.operatorDisplayName ?? '全部员工'
+      : '全部门店 · 全部员工'
+
+  const dateLabel =
+    result.dateFrom === result.dateTo
+      ? result.dateFrom
+      : `${result.dateFrom} ~ ${result.dateTo}`
 
   return (
-    <div style={s.resultWrap}>
-      {/* Header */}
-      <div style={s.resultHeader}>
-        <div style={s.resultDim}>{dimLabel}</div>
-        <div style={s.resultSub}>{subLabel}</div>
-        <div style={s.resultDate}>
-          {result.dateFrom === result.dateTo
-            ? result.dateFrom
-            : `${result.dateFrom} ~ ${result.dateTo}`}
+    <div style={sc.wrap}>
+      {/* Hero net amount */}
+      <div style={sc.hero}>
+        <div style={sc.heroMeta}>
+          <span style={sc.heroDim}>{DIM_LABEL[result.dimension]}</span>
+          <span style={sc.heroSub}>{subLabel}</span>
+          <span style={sc.heroDate}>{dateLabel}</span>
         </div>
-      </div>
-
-      {/* Main metric */}
-      <div style={s.netAmountBlock}>
-        <div style={s.netAmountLabel}>净收入</div>
-        <div
-          style={{
-            ...s.netAmountValue,
-            color: result.netAmount >= 0 ? '#389e0d' : '#cf1322',
-          }}
-        >
+        <div style={sc.heroLabel}>净收入</div>
+        <div style={{
+          ...sc.heroAmount,
+          color: result.netAmount >= 0 ? '#a0f0a0' : '#ffccc7',
+        }}>
           {fmtAmount(result.netAmount)}
         </div>
       </div>
 
-      {/* Grid metrics */}
-      <div style={s.metricsGrid}>
+      {/* Metrics grid */}
+      <div style={sc.grid}>
         <MetricCell label="销售总额" value={fmtAmount(result.totalSaleAmount)} />
         <MetricCell
           label="退款总额"
           value={fmtAmount(result.totalRefundAmount)}
-          valueStyle={{ color: result.totalRefundAmount < 0 ? '#cf1322' : '#1a1a1a' }}
+          red={result.totalRefundAmount < 0}
         />
-        <MetricCell label="销售笔数" value={String(result.saleCount)} />
-        <MetricCell label="退款笔数" value={String(result.refundCount)} />
+        <MetricCell label="销售笔数" value={String(result.saleCount)} unit="笔" />
+        <MetricCell label="退款笔数" value={String(result.refundCount)} unit="笔" />
         <MetricCell label="客单价" value={fmtAmount(result.avgSaleAmount)} spanFull />
       </div>
     </div>
@@ -259,84 +264,195 @@ function SummaryCard({ result }: { result: SummaryResult }) {
 function MetricCell({
   label,
   value,
-  valueStyle,
+  unit,
+  red,
   spanFull,
 }: {
   label: string
   value: string
-  valueStyle?: React.CSSProperties
+  unit?: string
+  red?: boolean
   spanFull?: boolean
 }) {
   return (
-    <div style={{ ...s.metricCell, ...(spanFull ? { gridColumn: 'span 2' } : {}) }}>
-      <div style={{ ...s.metricValue, ...valueStyle }}>{value}</div>
-      <div style={s.metricLabel}>{label}</div>
+    <div style={{ ...mc.cell, ...(spanFull ? { gridColumn: 'span 2' } : {}) }}>
+      <div style={{ ...mc.value, ...(red ? { color: 'var(--red)' } : {}) }}>
+        {value}
+        {unit && <span style={mc.unit}>{unit}</span>}
+      </div>
+      <div style={mc.label}>{label}</div>
     </div>
   )
+}
+
+const sc: Record<string, React.CSSProperties> = {
+  wrap: {
+    borderRadius: 'var(--radius)',
+    overflow: 'hidden',
+    marginBottom: 12,
+    background: 'var(--card)',
+  },
+  hero: {
+    background: 'var(--blue)',
+    padding: '18px 18px 20px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 4,
+  },
+  heroMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  heroDim: {
+    fontSize: 11,
+    fontWeight: 700,
+    background: 'rgba(255,255,255,0.2)',
+    color: '#fff',
+    padding: '1px 8px',
+    borderRadius: 10,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
+  heroSub: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: 600,
+  },
+  heroDate: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.65)',
+  },
+  heroLabel: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.75)',
+  },
+  heroAmount: {
+    fontSize: 40,
+    fontWeight: 800,
+    letterSpacing: '-0.03em',
+    lineHeight: 1.1,
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+  },
+}
+
+const mc: Record<string, React.CSSProperties> = {
+  cell: {
+    padding: '14px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    borderTop: '1px solid var(--border)',
+  },
+  value: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: 'var(--text)',
+  },
+  unit: {
+    fontSize: 12,
+    fontWeight: 400,
+    color: 'var(--muted)',
+    marginLeft: 2,
+  },
+  label: {
+    fontSize: 12,
+    color: 'var(--muted)',
+  },
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
   page: {
-    maxWidth: 480,
-    margin: '0 auto',
-    padding: '16px 16px 40px',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 600,
-    marginBottom: 16,
-  },
-  card: {
-    background: '#fff',
-    border: '1px solid #e8e8e8',
-    borderRadius: 10,
-    padding: '16px',
-    marginBottom: 16,
+    minHeight: '100vh',
+    background: 'var(--bg)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 14,
+  },
+  // Brand header
+  headerBar: {
+    background: 'var(--blue)',
+    padding: '16px 16px 20px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  headerLeft: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  brandName: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: '#fff',
+    letterSpacing: '0.02em',
+  },
+  brandSub: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  langBtn: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.8)',
+    background: 'rgba(255,255,255,0.15)',
+    border: '1px solid rgba(255,255,255,0.3)',
+    borderRadius: 12,
+    padding: '3px 10px',
+  },
+  body: {
+    flex: 1,
+    padding: '12px 12px 0',
+    maxWidth: 480,
+    margin: '0 auto',
+    width: '100%',
+  },
+  // Cards
+  card: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '14px 16px',
+    marginBottom: 10,
+  },
+  cardLabel: {
+    fontSize: 12,
+    color: 'var(--muted)',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    marginBottom: 10,
   },
   group: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
+    gap: 0,
   },
-  label: {
-    fontSize: 13,
-    color: '#666',
-    fontWeight: 500,
-  },
-  row: {
+  dateRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
   },
+  dateInput: {
+    flex: 1,
+    height: 40,
+    padding: '0 10px',
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 14,
+    background: '#f7f8fa',
+    outline: 'none',
+  },
   dateSep: {
-    color: '#aaa',
+    color: 'var(--muted)',
     flexShrink: 0,
-  },
-  input: {
-    height: 44,
-    padding: '0 12px',
-    border: '1px solid #d0d0d0',
-    borderRadius: 8,
-    fontSize: 15,
-    background: '#fff',
-    outline: 'none',
-    width: '100%',
-  },
-  select: {
-    height: 44,
-    padding: '0 12px',
-    border: '1px solid #d0d0d0',
-    borderRadius: 8,
-    fontSize: 15,
-    background: '#fff',
-    outline: 'none',
-    width: '100%',
-    appearance: 'auto',
   },
   dimRow: {
     display: 'flex',
@@ -344,101 +460,46 @@ const s: Record<string, React.CSSProperties> = {
   },
   dimBtn: {
     flex: 1,
-    height: 36,
-    border: '1px solid #d0d0d0',
-    borderRadius: 6,
-    background: '#fff',
-    fontSize: 13,
-    cursor: 'pointer',
-    color: '#555',
+    height: 38,
+    border: '1.5px solid var(--border)',
+    borderRadius: 20,
+    background: '#f7f8fa',
+    fontSize: 14,
+    color: 'var(--muted)',
+    fontWeight: 500,
   },
   dimBtnActive: {
-    background: '#1677ff',
-    borderColor: '#1677ff',
+    background: 'var(--blue)',
+    borderColor: 'var(--blue)',
     color: '#fff',
-    fontWeight: 600,
+    fontWeight: 700,
   },
-  btnPrimary: {
+  select: {
+    height: 42,
+    padding: '0 12px',
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 15,
+    background: '#f7f8fa',
+    outline: 'none',
+    width: '100%',
+    appearance: 'auto',
+  },
+  submitBtn: {
+    width: '100%',
     height: 48,
-    background: '#1677ff',
+    background: 'var(--blue)',
     color: '#fff',
     border: 'none',
-    borderRadius: 8,
+    borderRadius: 'var(--radius-sm)',
     fontSize: 16,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  error: {
-    fontSize: 13,
-    color: '#cf1322',
-  },
-  // Result
-  resultWrap: {
-    background: '#fff',
-    border: '1px solid #e8e8e8',
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  resultHeader: {
-    background: '#f0f5ff',
-    padding: '12px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-  },
-  resultDim: {
-    fontSize: 12,
-    color: '#1677ff',
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-  },
-  resultSub: {
-    fontSize: 16,
-    fontWeight: 600,
-    color: '#1a1a1a',
-  },
-  resultDate: {
-    fontSize: 12,
-    color: '#888',
-  },
-  netAmountBlock: {
-    padding: '20px 16px 16px',
-    borderBottom: '1px solid #f0f0f0',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 4,
-  },
-  netAmountLabel: {
-    fontSize: 13,
-    color: '#888',
-  },
-  netAmountValue: {
-    fontSize: 36,
     fontWeight: 700,
-    letterSpacing: '-0.02em',
+    marginBottom: 12,
   },
-  metricsGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 1,
-    background: '#f0f0f0',
-  },
-  metricCell: {
-    background: '#fff',
-    padding: '14px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 3,
-  },
-  metricValue: {
-    fontSize: 18,
-    fontWeight: 600,
-    color: '#1a1a1a',
-  },
-  metricLabel: {
-    fontSize: 12,
-    color: '#888',
+  errorMsg: {
+    fontSize: 13,
+    color: 'var(--red)',
+    padding: '4px 0 6px 2px',
   },
 }
+

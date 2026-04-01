@@ -3,7 +3,7 @@
 import { useState, FormEvent, KeyboardEvent } from 'react'
 import { apiFetch } from '@/lib/api'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types (unchanged) ────────────────────────────────────────────────────────
 
 type Product = {
   id: string
@@ -23,15 +23,9 @@ type SaleResult = {
 
 type Status = 'idle' | 'querying' | 'submitting'
 
-// ─── Initial state ────────────────────────────────────────────────────────────
+const EMPTY = { barcode: '', quantity: 1, remark: '' }
 
-const EMPTY = {
-  barcode: '',
-  quantity: '1',
-  remark: '',
-}
-
-// ─── Page ────────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SalePage() {
   const [form, setForm] = useState(EMPTY)
@@ -41,10 +35,10 @@ export default function SalePage() {
   const [result, setResult] = useState<SaleResult | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const qty = Math.max(0, Number(form.quantity) || 0)
-  const subtotal = product ? (product.sellPrice * qty).toFixed(2) : '—'
+  const qty = Math.max(1, form.quantity)
+  const subtotal = product ? (product.sellPrice * qty).toFixed(2) : '0.00'
 
-  // ── Query product ──────────────────────────────────────────────────────────
+  // ── Query product (unchanged logic) ───────────────────────────────────────
 
   async function queryProduct() {
     const barcode = form.barcode.trim()
@@ -54,7 +48,6 @@ export default function SalePage() {
     setResult(null)
     setSubmitError(null)
     setStatus('querying')
-
     try {
       const res = await apiFetch(`/api/products?barcode=${encodeURIComponent(barcode)}`)
       if (res.ok) {
@@ -74,17 +67,15 @@ export default function SalePage() {
     if (e.key === 'Enter') queryProduct()
   }
 
-  // ── Submit sale ────────────────────────────────────────────────────────────
+  // ── Submit sale (unchanged logic) ──────────────────────────────────────────
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!product) return
     if (qty <= 0) { setSubmitError('数量必须大于 0'); return }
-
     setSubmitError(null)
     setResult(null)
     setStatus('submitting')
-
     try {
       const res = await apiFetch('/api/sales', {
         method: 'POST',
@@ -114,8 +105,6 @@ export default function SalePage() {
     }
   }
 
-  // ── Clear ──────────────────────────────────────────────────────────────────
-
   function handleClear() {
     setForm(EMPTY)
     setProduct(null)
@@ -128,255 +117,420 @@ export default function SalePage() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main style={styles.page}>
-      <h1 style={styles.title}>销售录入</h1>
+    <div style={s.page}>
+      {/* ── Blue header bar ── */}
+      <div style={s.headerBar}>
+        <span style={s.headerTitle}>销售</span>
+      </div>
 
-      {/* ── Success result card ── */}
-      {result && (
-        <div style={styles.resultCard}>
-          <div style={styles.resultTitle}>✓ 销售成功</div>
-          <div style={styles.resultRow}>
-            <span style={styles.resultLabel}>单号</span>
-            <span style={styles.resultValue}>{result.recordNo}</span>
+      <div style={s.body}>
+        {/* ── Success card ── */}
+        {result && (
+          <div style={s.successCard}>
+            <div style={s.successIcon}>✓</div>
+            <div style={s.successTitle}>销售成功</div>
+            <div style={s.successGrid}>
+              <InfoRow label="单号" value={result.recordNo} mono />
+              <InfoRow label="金额" value={`$${result.lineAmount.toFixed(2)}`} bold />
+              <InfoRow label="时间" value={new Date(result.createdAt).toLocaleTimeString('zh-CN')} />
+            </div>
+            <button style={s.newSaleBtn} onClick={handleClear}>继续销售</button>
           </div>
-          <div style={styles.resultRow}>
-            <span style={styles.resultLabel}>金额</span>
-            <span style={styles.resultValue}>¥ {result.lineAmount.toFixed(2)}</span>
-          </div>
-          <div style={styles.resultRow}>
-            <span style={styles.resultLabel}>时间</span>
-            <span style={styles.resultValue}>
-              {new Date(result.createdAt).toLocaleTimeString('zh-CN')}
-            </span>
-          </div>
-        </div>
-      )}
+        )}
 
-      <form onSubmit={handleSubmit} style={styles.form}>
+        {!result && (
+          <>
+            {/* ── Barcode query card ── */}
+            <div style={s.card}>
+              <div style={s.cardLabel}>商品码 / 条码</div>
+              <div style={s.searchRow}>
+                <span style={s.scanIcon}>⊡</span>
+                <input
+                  style={s.searchInput}
+                  type="text"
+                  placeholder="例如：CAT001"
+                  value={form.barcode}
+                  onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                  onKeyDown={handleBarcodeKeyDown}
+                  autoFocus
+                />
+                <button
+                  style={s.searchBtn}
+                  type="button"
+                  onClick={queryProduct}
+                  disabled={status === 'querying' || !form.barcode.trim()}
+                >
+                  {status === 'querying' ? '…' : '查询'}
+                </button>
+              </div>
+              {queryError && <div style={s.errorMsg}>{queryError}</div>}
+            </div>
 
-        {/* ── Barcode ── */}
-        <div style={styles.group}>
-          <label style={styles.label}>条码</label>
-          <div style={styles.row}>
-            <input
-              style={{ ...styles.input, flex: 1 }}
-              type="text"
-              placeholder="输入或扫码"
-              value={form.barcode}
-              onChange={(e) => setForm({ ...form, barcode: e.target.value })}
-              onKeyDown={handleBarcodeKeyDown}
-              autoFocus
-            />
-            <button
-              type="button"
-              style={styles.btnSecondary}
-              onClick={queryProduct}
-              disabled={status === 'querying' || !form.barcode.trim()}
-            >
-              {status === 'querying' ? '查询中…' : '查询'}
-            </button>
-          </div>
-          {queryError && <p style={styles.error}>{queryError}</p>}
-        </div>
+            {/* ── Empty state ── */}
+            {!product && (
+              <div style={s.emptyState}>
+                <div style={s.emptyIcon}>⊡</div>
+                <div style={s.emptyTitle}>请先查找商品</div>
+                <div style={s.emptyDesc}>扫码或输入商品码后显示商品信息</div>
+              </div>
+            )}
 
-        {/* ── Product info (read-only) ── */}
-        <div style={styles.group}>
-          <label style={styles.label}>商品名称</label>
-          <input style={styles.inputReadonly} readOnly value={product?.name ?? ''} placeholder="—" />
-        </div>
+            {/* ── Product found ── */}
+            {product && (
+              <form onSubmit={handleSubmit}>
+                {/* Product info card */}
+                <div style={s.card}>
+                  <div style={s.productName}>{product.name}</div>
+                  {product.spec && <div style={s.productSpec}>{product.spec}</div>}
+                  <div style={s.productPriceRow}>
+                    <span style={s.productPriceLabel}>单价</span>
+                    <span style={s.productPrice}>${product.sellPrice.toFixed(2)}</span>
+                  </div>
+                </div>
 
-        <div style={styles.row}>
-          <div style={{ ...styles.group, flex: 1 }}>
-            <label style={styles.label}>规格</label>
-            <input style={styles.inputReadonly} readOnly value={product?.spec ?? ''} placeholder="—" />
-          </div>
-          <div style={{ ...styles.group, flex: 1 }}>
-            <label style={styles.label}>售价</label>
-            <input
-              style={styles.inputReadonly}
-              readOnly
-              value={product ? `¥ ${product.sellPrice.toFixed(2)}` : ''}
-              placeholder="—"
-            />
-          </div>
-        </div>
+                {/* Quantity stepper */}
+                <div style={s.card}>
+                  <div style={s.cardLabel}>数量</div>
+                  <div style={s.stepperRow}>
+                    <button
+                      type="button"
+                      style={s.stepperBtn}
+                      onClick={() => setForm({ ...form, quantity: Math.max(1, qty - 1) })}
+                    >−</button>
+                    <span style={s.stepperValue}>{qty}</span>
+                    <button
+                      type="button"
+                      style={s.stepperBtn}
+                      onClick={() => setForm({ ...form, quantity: qty + 1 })}
+                    >+</button>
+                  </div>
+                </div>
 
-        {/* ── Quantity ── */}
-        <div style={styles.group}>
-          <label style={styles.label}>数量</label>
-          <input
-            style={styles.input}
-            type="number"
-            min="1"
-            step="1"
-            value={form.quantity}
-            onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-          />
-        </div>
+                {/* Total */}
+                <div style={s.totalCard}>
+                  <span style={s.totalLabel}>总额</span>
+                  <span style={s.totalAmount}>${subtotal}</span>
+                </div>
 
-        {/* ── Subtotal ── */}
-        <div style={styles.group}>
-          <label style={styles.label}>小计</label>
-          <div style={styles.subtotal}>¥ {subtotal}</div>
-        </div>
+                {/* Remark */}
+                <div style={s.card}>
+                  <div style={s.cardLabel}>备注（可选）</div>
+                  <input
+                    style={s.remarkInput}
+                    type="text"
+                    placeholder="输入备注…"
+                    value={form.remark}
+                    onChange={(e) => setForm({ ...form, remark: e.target.value })}
+                  />
+                </div>
 
-        {/* ── Remark ── */}
-        <div style={styles.group}>
-          <label style={styles.label}>备注</label>
-          <input
-            style={styles.input}
-            type="text"
-            placeholder="可选"
-            value={form.remark}
-            onChange={(e) => setForm({ ...form, remark: e.target.value })}
-          />
-        </div>
+                {submitError && <div style={s.errorMsg}>{submitError}</div>}
 
-        {submitError && <p style={styles.error}>{submitError}</p>}
-
-        {/* ── Actions ── */}
-        <div style={styles.actions}>
-          <button
-            type="button"
-            style={styles.btnSecondary}
-            onClick={handleClear}
-          >
-            清空
-          </button>
-          <button
-            type="submit"
-            style={styles.btnPrimary}
-            disabled={!product || status === 'submitting' || qty <= 0}
-          >
-            {status === 'submitting' ? '提交中…' : '提交销售'}
-          </button>
-        </div>
-
-      </form>
-    </main>
+                {/* Actions */}
+                <div style={s.actions}>
+                  <button type="button" style={s.clearBtn} onClick={handleClear}>清空</button>
+                  <button
+                    type="submit"
+                    style={s.submitBtn}
+                    disabled={status === 'submitting'}
+                  >
+                    {status === 'submitting' ? '提交中…' : '确认销售'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
-// ─── Inline styles (mobile-first, no deps) ───────────────────────────────────
+// ─── Sub-component ────────────────────────────────────────────────────────────
 
-const styles: Record<string, React.CSSProperties> = {
+function InfoRow({ label, value, mono, bold }: {
+  label: string; value: string; mono?: boolean; bold?: boolean
+}) {
+  return (
+    <div style={ir.row}>
+      <span style={ir.label}>{label}</span>
+      <span style={{ ...ir.value, ...(mono ? ir.mono : {}), ...(bold ? ir.bold : {}) }}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+const ir: Record<string, React.CSSProperties> = {
+  row: { display: 'flex', justifyContent: 'space-between', padding: '5px 0' },
+  label: { fontSize: 13, color: 'rgba(255,255,255,0.75)' },
+  value: { fontSize: 13, color: '#fff' },
+  mono: { fontFamily: 'monospace', fontSize: 12 },
+  bold: { fontWeight: 700, fontSize: 16 },
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const s: Record<string, React.CSSProperties> = {
   page: {
-    maxWidth: 480,
-    margin: '0 auto',
-    padding: '16px 16px 40px',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 600,
-    marginBottom: 20,
-  },
-  form: {
+    minHeight: '100vh',
+    background: 'var(--bg)',
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
   },
-  group: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-  },
-  label: {
-    fontSize: 13,
-    color: '#666',
-    fontWeight: 500,
-  },
-  row: {
-    display: 'flex',
-    gap: 8,
-    alignItems: 'stretch',
-  },
-  input: {
-    height: 44,
-    padding: '0 12px',
-    border: '1px solid #d0d0d0',
-    borderRadius: 8,
-    fontSize: 16,
-    background: '#fff',
-    outline: 'none',
-    width: '100%',
-  },
-  inputReadonly: {
-    height: 44,
-    padding: '0 12px',
-    border: '1px solid #e8e8e8',
-    borderRadius: 8,
-    fontSize: 16,
-    background: '#fafafa',
-    color: '#444',
-    width: '100%',
-  },
-  subtotal: {
-    height: 44,
-    padding: '0 12px',
-    border: '1px solid #e8e8e8',
-    borderRadius: 8,
-    fontSize: 18,
-    fontWeight: 600,
-    background: '#fafafa',
+  headerBar: {
+    background: 'var(--blue)',
+    padding: '16px 16px 18px',
     display: 'flex',
     alignItems: 'center',
-    color: '#d4380d',
   },
-  actions: {
-    display: 'flex',
-    gap: 12,
-    marginTop: 8,
+  headerTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 700,
+    letterSpacing: '0.02em',
   },
-  btnPrimary: {
+  body: {
     flex: 1,
-    height: 48,
-    background: '#1677ff',
+    padding: '12px 12px 0',
+    maxWidth: 480,
+    margin: '0 auto',
+    width: '100%',
+  },
+  // Cards
+  card: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '14px 16px',
+    marginBottom: 10,
+  },
+  cardLabel: {
+    fontSize: 12,
+    color: 'var(--muted)',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    marginBottom: 8,
+  },
+  // Search row
+  searchRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  scanIcon: {
+    fontSize: 22,
+    color: 'var(--muted)',
+    flexShrink: 0,
+  },
+  searchInput: {
+    flex: 1,
+    height: 42,
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '0 12px',
+    fontSize: 16,
+    outline: 'none',
+    background: '#f7f8fa',
+  },
+  searchBtn: {
+    height: 42,
+    padding: '0 16px',
+    background: 'var(--blue)',
     color: '#fff',
     border: 'none',
-    borderRadius: 8,
-    fontSize: 16,
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 14,
     fontWeight: 600,
-    cursor: 'pointer',
+    flexShrink: 0,
   },
-  btnSecondary: {
-    height: 44,
-    padding: '0 16px',
-    background: '#fff',
-    color: '#333',
-    border: '1px solid #d0d0d0',
-    borderRadius: 8,
-    fontSize: 15,
-    cursor: 'pointer',
-  },
-  error: {
-    fontSize: 13,
-    color: '#cf1322',
-    marginTop: 2,
-  },
-  resultCard: {
-    background: '#f6ffed',
-    border: '1px solid #b7eb8f',
-    borderRadius: 8,
-    padding: '12px 16px',
-    marginBottom: 16,
+  // Empty state
+  emptyState: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
+    alignItems: 'center',
+    padding: '40px 20px',
+    gap: 8,
   },
-  resultTitle: {
-    fontWeight: 600,
-    color: '#389e0d',
+  emptyIcon: {
+    fontSize: 48,
+    color: '#d0d0d0',
+    lineHeight: 1,
     marginBottom: 4,
   },
-  resultRow: {
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: 600,
+    color: '#aaa',
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: '#c0c0c0',
+  },
+  // Product info
+  productName: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: 'var(--text)',
+    marginBottom: 4,
+  },
+  productSpec: {
+    fontSize: 13,
+    color: 'var(--muted)',
+    marginBottom: 10,
+  },
+  productPriceRow: {
     display: 'flex',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTop: '1px solid var(--border)',
+  },
+  productPriceLabel: {
+    fontSize: 13,
+    color: 'var(--muted)',
+  },
+  productPrice: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: 'var(--text)',
+  },
+  // Quantity stepper
+  stepperRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 0,
+    background: '#f7f8fa',
+    borderRadius: 'var(--radius-sm)',
+    overflow: 'hidden',
+    border: '1px solid var(--border)',
+    alignSelf: 'flex-start',
+  },
+  stepperBtn: {
+    width: 48,
+    height: 44,
+    background: 'none',
+    border: 'none',
+    fontSize: 22,
+    color: 'var(--blue)',
+    fontWeight: 400,
+  },
+  stepperValue: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: 700,
+    color: 'var(--text)',
+    minWidth: 60,
+  },
+  // Total
+  totalCard: {
+    background: 'var(--blue)',
+    borderRadius: 'var(--radius)',
+    padding: '14px 18px',
+    marginBottom: 10,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalLabel: {
     fontSize: 14,
-  },
-  resultLabel: {
-    color: '#666',
-  },
-  resultValue: {
+    color: 'rgba(255,255,255,0.8)',
     fontWeight: 500,
+  },
+  totalAmount: {
+    fontSize: 26,
+    fontWeight: 800,
+    color: '#fff',
+    letterSpacing: '-0.02em',
+  },
+  // Remark
+  remarkInput: {
+    width: '100%',
+    height: 40,
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '0 12px',
+    fontSize: 15,
+    outline: 'none',
+    background: '#f7f8fa',
+  },
+  // Actions
+  actions: {
+    display: 'flex',
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  clearBtn: {
+    height: 48,
+    padding: '0 18px',
+    background: '#fff',
+    color: '#555',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 15,
+  },
+  submitBtn: {
+    flex: 1,
+    height: 48,
+    background: 'var(--blue)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 16,
+    fontWeight: 700,
+  },
+  // Error
+  errorMsg: {
+    fontSize: 13,
+    color: 'var(--red)',
+    padding: '4px 0 0 2px',
+    marginBottom: 6,
+  },
+  // Success card
+  successCard: {
+    background: 'var(--blue)',
+    borderRadius: 'var(--radius)',
+    padding: '24px 20px 20px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 12,
+  },
+  successIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: '50%',
+    background: 'rgba(255,255,255,0.2)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 24,
+    color: '#fff',
+    marginBottom: 4,
+  },
+  successTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: '#fff',
+    marginBottom: 12,
+  },
+  successGrid: {
+    width: '100%',
+    borderTop: '1px solid rgba(255,255,255,0.2)',
+    paddingTop: 12,
+    marginBottom: 16,
+  },
+  newSaleBtn: {
+    height: 44,
+    padding: '0 28px',
+    background: 'rgba(255,255,255,0.2)',
+    color: '#fff',
+    border: '1px solid rgba(255,255,255,0.35)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 15,
+    fontWeight: 600,
   },
 }
