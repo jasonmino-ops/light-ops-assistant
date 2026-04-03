@@ -1,8 +1,9 @@
-# v0 页面映射冻结文档
+# v0 页面映射基线文档
 
-> 版本：v0（内测冻结）  
-> 日期：2026-04-03  
-> 说明：本文档记录 v0 所有正式页面的权限、入口和跳转关系，作为后续迭代基线。不得在未更新本文档的情况下修改页面路由或权限逻辑。
+> 版本：v0.1（受控修订）
+> 基线版本：v0（内测冻结，2026-04-03）
+> 修订日期：2026-04-04
+> 说明：v0.1 是在 v0 基线上的受控增量修订，不重做 v0 架构。本次修订补充了两项新特性：OWNER 前端工作模式切换、柬语（Khmer）多语言 P0 接入。路由结构、API 权限、认证流程不变。
 
 ---
 
@@ -15,6 +16,13 @@
 | `未绑定` | Telegram 账号未关联 DB 用户，无任何数据权限 | telegramId 在 DB 中无匹配 |
 | `开发模拟` | 本地无 Telegram 上下文，由 `DEV_ROLE` env 模拟 | 仅 NODE_ENV=development |
 
+> **v0.1 新增：工作模式**（仅 OWNER 适用，见第七节）
+>
+> | 工作模式 | 说明 |
+> |----------|------|
+> | `owner`（默认） | OWNER 正常模式，5 tab 导航，完整权限 |
+> | `staff_view` | OWNER 临时切换为店员视角，4 tab 导航，纯前端状态，不改数据库角色 |
+
 ---
 
 ## 二、页面权限总表
@@ -22,9 +30,9 @@
 | 路径 | 页面名称 | OWNER | STAFF | 未绑定 | middleware 保护 | 底部导航入口 |
 |------|----------|:-----:|:-----:|:------:|:---------------:|:------------|
 | `/` | 根页面（重定向） | → /dashboard | → /home | → /home | ✗ | — |
-| `/home` | 员工首页 | ✓（可访问，无导航入口） | ✓ | ✗（数据 API 401） | ✗ | STAFF: 🏠 首页 |
+| `/home` | 员工首页 | ✓（可访问；`staff_view` 模式有导航入口） | ✓ | ✗（数据 API 401） | ✗ | STAFF: 🏠 首页 · OWNER(staff_view): 🏠 首页 |
 | `/sale` | 销售 | ✓ | ✓ | ✗ | ✗ | STAFF: 💰 销售 · OWNER: 💰 销售 |
-| `/refund` | 退款 | ✓（无导航入口） | ✓ | ✗ | ✗ | STAFF: ↩️ 退款 |
+| `/refund` | 退款 | ✓ | ✓ | ✗ | ✗ | STAFF: ↩️ 退款 · OWNER(staff_view): ↩️ 退款 |
 | `/records` | 记录 | ✓ | ✓ | ✗ | ✗ | STAFF: 📋 记录 · OWNER: 📋 记录 |
 | `/dashboard` | 老板经营概览 | ✓ | ✗ → /home | ✗ → /home | ✓ | OWNER: 📊 概览 |
 | `/products` | 商品管理 | ✓ | ✗ → /home | ✗ → /home | ✓ | OWNER: 📦 商品 |
@@ -34,8 +42,8 @@
 
 > **说明**
 > - middleware 重定向目标：非 OWNER 访问受保护路由 → `302 /home`
-> - "无导航入口"：页面可正常访问，但底部导航不显示快捷入口
-> - `/refund` 对 OWNER 可访问但无导航入口（v0 不做 owner 退款入口，保持现状）
+> - OWNER 在 `staff_view` 模式下底部导航切换为 STAFF 4 tab，但 middleware 角色不变（DB 角色仍为 OWNER）
+> - `/refund` 在 OWNER `owner` 模式下无导航入口，在 `staff_view` 下通过 STAFF 4 tab 可见
 
 ---
 
@@ -47,11 +55,19 @@
 🏠 /home → 💰 /sale → ↩️ /refund → 📋 /records
 ```
 
-### OWNER 底部导航（5 tab）
+### OWNER 底部导航（5 tab，`owner` 模式）
 
 ```
 💰 /sale → 📋 /records → 📦 /products → 🔗 /invite → 📊 /dashboard
 ```
+
+### OWNER 底部导航（4 tab，`staff_view` 模式）
+
+```
+🏠 /home → 💰 /sale → ↩️ /refund → 📋 /records
+```
+
+> 模式切换逻辑由前端 `WorkModeProvider` 管理，状态持久化到 `localStorage('work-mode')`。
 
 ### 页头快捷入口
 
@@ -60,10 +76,39 @@
 | `/dashboard` | 「切换账号」按钮 | 退出 + reload → `/bind` 流程 |
 | `/dashboard` | 「系统」链接 | `/system` |
 | `/home` | 「切换账号」按钮 | 退出 + reload → `/bind` 流程 |
+| `/home`（OWNER，`owner` 模式） | 「切换店员模式」按钮 | 切换到 `staff_view`，跳转 `/home` |
 
 ---
 
-## 四、首次绑定 & 认证流程
+## 四、OWNER 工作模式切换（v0.1 新增）
+
+### 机制
+
+- **实现层**：纯前端，`WorkModeProvider` React Context + `localStorage`
+- **不改数据库角色**：DB `User.role` 始终为 `OWNER`，middleware 保护不受影响
+- **STAFF 账号**：无法切换到老板模式，按钮不显示
+
+### 切换入口
+
+| 操作 | 入口 | 条件 |
+|------|------|------|
+| 进入 `staff_view` | `/home` 页头右侧「切换店员模式」按钮 | `realRole === 'OWNER'` 且当前为 `owner` 模式 |
+| 退出 `staff_view` | 页面顶部橙色横幅「退出店员模式」按钮 | `isOwnerInStaffMode === true` |
+
+### staff_view 模式下的变化
+
+| 维度 | 变化 |
+|------|------|
+| 底部导航 | 切换为 STAFF 4 tab（/home /sale /refund /records） |
+| 页面顶部 | 固定显示橙色横幅「当前为店员模式」，含一键退出按钮 |
+| 可访问页面 | /home、/sale、/refund、/records（与 STAFF 相同） |
+| 数据权限 | 不变（仍为 OWNER 的 storeId，API 角色不变） |
+| 持久化 | 刷新后保持 `staff_view` 状态（localStorage） |
+| 退出后跳转 | → `/sale`（恢复 OWNER 模式） |
+
+---
+
+## 五、首次绑定 & 认证流程
 
 ```
 Telegram 用户点击 https://t.me/<bot>?startapp=bind_<token>
@@ -99,7 +144,7 @@ Mini App 开启（根 URL）
 
 ---
 
-## 五、API 权限对照
+## 六、API 权限对照
 
 | API | 方法 | OWNER | STAFF | 未认证 |
 |-----|------|:-----:|:-----:|:------:|
@@ -122,13 +167,41 @@ Mini App 开启（根 URL）
 
 ---
 
-## 六、已知 v0 边界与遗留
+## 七、多语言支持状态（v0.1 新增）
+
+### 支持语言
+
+| 语言 | 代码 | 字典文件 | 字体 |
+|------|------|----------|------|
+| 简体中文（默认） | `zh` | `lib/i18n/zh.ts` | 系统字体 |
+| 柬语（高棉语） | `km` | `lib/i18n/km.ts` | Noto Sans Khmer（Google Fonts） |
+
+语言切换由 `LangProvider` Context 管理，持久化到 `localStorage('lang')`，在 `/home` 页头提供切换按钮。
+
+### 各页面柬语接入状态（P0 范围）
+
+| 页面 | 状态 | 覆盖范围 |
+|------|------|----------|
+| `/home` | ✅ 已完成 | 所有 UI 标签、摘要数值、快捷操作、记录卡、计数单位 |
+| `/bind` | ✅ 已完成 | 全部绑定状态文案（verifying/success/error/no_tg）+ 客户端错误消息 |
+| `/sale` | ✅ 已完成 | 全部 UI 标签、查询/扫码/购物车/成功卡、TMA 扫码提示、商品摘要 |
+| `/refund` | ✅ 已完成 | 全部 UI 标签、三阶段标题、错误查找消息、表单校验、成功卡 |
+| `/records` | ⬜ P1 范围 | 未接入 |
+| `/products` | ⬜ P1 范围 | 未接入 |
+| `/dashboard` | ⬜ P1 范围 | 未接入 |
+| `/invite` | ⬜ P1 范围 | 未接入 |
+
+---
+
+## 八、已知边界与遗留
 
 | 编号 | 描述 | 状态 |
 |------|------|------|
-| B-01 | OWNER 无退款导航入口（/refund 可访问但不在 OWNER tab） | 保留，v1 评估 |
-| B-02 | /home 对 OWNER 可访问（无法拦截），数据以 OWNER storeId 返回 | 保留 |
-| B-03 | `/api/auth/bind`（旧备用路径，按 username 绑定）与 `/api/bind`（token 路径）并存 | 保留，v1 清理 |
+| B-01 | OWNER `owner` 模式无退款导航入口（/refund 可访问但不在 5 tab） | 保留；`staff_view` 下通过 4 tab 可访问 |
+| B-02 | /home 对 OWNER 可访问，数据以 OWNER storeId 返回 | 保留 |
+| B-03 | `/api/auth/bind`（旧备用路径）与 `/api/bind`（token 路径）并存 | 保留，v1 清理 |
 | B-04 | bind token 无 UI 管理列表（已使用/已过期 token 不可查看） | v1 补齐 |
 | B-05 | /system 无导航入口，仅从 /dashboard header 进入 | 保留 |
-| B-06 | OWNER 导航无「首页」入口（进入 Mini App 直接到 /dashboard） | 保留 |
+| B-06 | OWNER `owner` 模式无「首页」导航入口（进入 Mini App 直接到 /dashboard） | 保留；`staff_view` 下通过 4 tab 可访问 |
+| B-07 | OWNER `staff_view` 模式下数据权限不变（仍为 OWNER storeId） | 设计如此，不视为缺陷 |
+| B-08 | `/bind` 页面的 Suspense fallback 文案（「加载中…」）不随语言切换 | 技术限制（SSR 阶段无法访问 LangContext） |
