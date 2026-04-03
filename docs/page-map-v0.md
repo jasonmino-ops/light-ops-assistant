@@ -94,6 +94,12 @@
 | 进入 `staff_view` | `/home` 页头「进入店员模式」按钮（旁显示「老板模式」标签） | `realRole === 'OWNER'` 且当前为 `owner` 模式 |
 | 退出 `staff_view` | `/home` 页头「切回老板模式」按钮（旁显示「店员模式」标签）**或**顶部橙色横幅「退出店员模式」按钮 | `isOwnerInStaffMode === true` |
 
+### 实现说明
+
+- `WorkModeProvider` 必须包裹 `BottomNav`（即 BottomNav 在 WorkModeProvider 内部渲染），否则 `useWorkMode()` 读取默认值，导航永远无法响应模式切换
+- 模式切换使用 `router.push()`（Next.js 软导航），WorkModeProvider 保持挂载，状态立即生效，无页面闪烁
+- 硬刷新后通过 `useEffect` 读取 `localStorage` 恢复模式状态
+
 ### staff_view 模式下的变化
 
 | 维度 | 变化 |

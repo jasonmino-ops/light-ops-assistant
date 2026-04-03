@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { useLocale } from './LangProvider'
 import { apiFetch, STAFF_CTX } from '@/lib/api'
 
@@ -31,6 +32,7 @@ export function useWorkMode() {
 
 export default function WorkModeProvider({ role, children }: { role: string; children: ReactNode }) {
   const { t } = useLocale()
+  const router = useRouter()
   const [workMode, setWorkMode] = useState<'owner' | 'staff'>('owner')
   const [tier, setTier] = useState('LITE')
 
@@ -53,13 +55,13 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   function enterStaffMode() {
     setWorkMode('staff')
     localStorage.setItem(STORAGE_KEY, 'staff')
-    window.location.replace('/home')
+    router.push('/home')
   }
 
   function exitStaffMode() {
     setWorkMode('owner')
     localStorage.removeItem(STORAGE_KEY)
-    window.location.replace('/sale')
+    router.push('/sale')
   }
 
   return (

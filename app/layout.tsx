@@ -37,9 +37,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <LangProvider>
           <WorkModeProvider role={role}>
             {children}
+            <BottomNav />
           </WorkModeProvider>
         </LangProvider>
-        <BottomNav />
       </body>
     </html>
   )
