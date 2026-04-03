@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import { apiFetch } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
+import { useLocale } from '@/app/components/LangProvider'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ type Status = 'idle' | 'querying' | 'submitting'
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SalePage() {
+  const { t } = useLocale()
   const [barcodeInput, setBarcodeInput] = useState('')
   const [qty, setQty] = useState(1)
   const [product, setProduct] = useState<Product | null>(null)
@@ -143,10 +145,10 @@ export default function SalePage() {
         setQty(1)
       } else {
         const body = await res.json().catch(() => ({}))
-        setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? '未找到商品，请联系老板处理' : '查询失败，请重试')
+        setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? t('sale.notFound') : t('sale.queryFailed'))
       }
     } catch {
-      setQueryError('网络错误，请重试')
+      setQueryError(t('common.networkError'))
     } finally {
       setStatus('idle')
     }
@@ -250,10 +252,10 @@ export default function SalePage() {
         setSuccess({ ...body, cartSnapshot })
         setCart([])
       } else {
-        setSubmitError(body.message ?? body.error ?? '提交失败')
+        setSubmitError(body.message ?? body.error ?? t('sale.confirmSale'))
       }
     } catch {
-      setSubmitError('网络错误，请重试')
+      setSubmitError(t('common.networkError'))
     } finally {
       setStatus('idle')
     }
@@ -295,7 +297,7 @@ export default function SalePage() {
       )}
 
       <div style={s.headerBar}>
-        <span style={s.headerTitle}>销售</span>
+        <span style={s.headerTitle}>{t('sale.title')}</span>
       </div>
 
       <div style={s.body}>
@@ -304,14 +306,14 @@ export default function SalePage() {
         {success && (
           <div style={s.successCard}>
             <div style={s.successIconWrap}>✓</div>
-            <div style={s.successTitle}>销售成功</div>
+            <div style={s.successTitle}>{t('sale.saleSuccess')}</div>
             <div style={s.successGrid}>
-              <InfoRow label="单号" value={success.orderNo} mono />
-              <InfoRow label="合计金额" value={`$${success.totalAmount.toFixed(2)}`} bold />
-              <InfoRow label="商品" value={buildCartSummary(success.cartSnapshot)} />
-              <InfoRow label="时间" value={new Date(success.createdAt).toLocaleTimeString('zh-CN')} />
+              <InfoRow label={t('sale.orderNo')} value={success.orderNo} mono />
+              <InfoRow label={t('sale.totalAmount')} value={`$${success.totalAmount.toFixed(2)}`} bold />
+              <InfoRow label={t('sale.product')} value={buildCartSummary(success.cartSnapshot)} />
+              <InfoRow label={t('sale.time')} value={new Date(success.createdAt).toLocaleTimeString('zh-CN')} />
             </div>
-            <button style={s.nextBtn} onClick={handleClear}>继续下一单</button>
+            <button style={s.nextBtn} onClick={handleClear}>{t('sale.nextOrder')}</button>
           </div>
         )}
 
@@ -327,11 +329,11 @@ export default function SalePage() {
                 disabled={status === 'querying' || status === 'submitting'}
               >
                 <span style={s.scanIcon}>⊡</span>
-                <span style={s.scanLabel}>扫码查询</span>
+                <span style={s.scanLabel}>{t('sale.scanBtn')}</span>
               </button>
 
               <div style={s.orDivider}>
-                <div style={s.orLine} /><span style={s.orText}>或</span><div style={s.orLine} />
+                <div style={s.orLine} /><span style={s.orText}>{t('sale.orInput')}</span><div style={s.orLine} />
               </div>
 
               <div ref={suggestWrapRef} style={s.suggestWrap}>
@@ -340,7 +342,7 @@ export default function SalePage() {
                     ref={inputRef}
                     style={s.textInput}
                     type="text"
-                    placeholder="商品条码 / 名称"
+                    placeholder={t('sale.inputPlaceholder')}
                     value={barcodeInput}
                     autoFocus
                     onChange={(e) => {
@@ -356,7 +358,7 @@ export default function SalePage() {
                     onClick={queryProduct}
                     disabled={status === 'querying' || !barcodeInput.trim()}
                   >
-                    {status === 'querying' ? '…' : '查询'}
+                    {status === 'querying' ? t('sale.querying') : t('sale.queryBtn')}
                   </button>
                 </div>
 
@@ -383,14 +385,14 @@ export default function SalePage() {
               {allProducts.length > 0 && (
                 <>
                   <div style={s.orDivider}>
-                    <div style={s.orLine} /><span style={s.orText}>或从列表选</span><div style={s.orLine} />
+                    <div style={s.orLine} /><span style={s.orText}>{t('sale.orFromList')}</span><div style={s.orLine} />
                   </div>
                   <div ref={dropRef} style={s.dropWrap}>
                     <div style={s.dropTrigger} onClick={() => setDropOpen((v) => !v)}>
                       <span style={s.dropTriggerText}>
                         {product
                           ? `${product.name}${product.spec ? ' · ' + product.spec : ''}`
-                          : '全部商品…'}
+                          : t('sale.allProducts')}
                       </span>
                       <span style={s.dropArrow}>{dropOpen ? '▲' : '▼'}</span>
                     </div>
@@ -399,13 +401,13 @@ export default function SalePage() {
                         <input
                           style={s.dropSearch}
                           type="text"
-                          placeholder="搜索商品名 / 编码…"
+                          placeholder={t('sale.dropSearch')}
                           value={dropSearch}
                           onChange={(e) => setDropSearch(e.target.value)}
                           autoFocus
                         />
                         <div style={s.dropList}>
-                          {filteredDrop.length === 0 && <div style={s.dropEmpty}>无匹配商品</div>}
+                          {filteredDrop.length === 0 && <div style={s.dropEmpty}>{t('sale.noMatch')}</div>}
                           {filteredDrop.map((p) => (
                             <div
                               key={p.id}
@@ -430,8 +432,8 @@ export default function SalePage() {
             {!product && cart.length === 0 && (
               <div style={s.emptyState}>
                 <div style={s.emptyIcon}>⊡</div>
-                <div style={s.emptyTitle}>请先查找商品</div>
-                <div style={s.emptyDesc}>扫码 · 输入条码 · 从列表选择</div>
+                <div style={s.emptyTitle}>{t('sale.emptyTitle')}</div>
+                <div style={s.emptyDesc}>{t('sale.emptyDesc')}</div>
               </div>
             )}
 
@@ -441,11 +443,11 @@ export default function SalePage() {
                 <div style={s.productName}>{product.name}</div>
                 {product.spec && <div style={s.productSpec}>{product.spec}</div>}
                 <div style={s.priceRow}>
-                  <span style={s.priceLabel}>单价</span>
+                  <span style={s.priceLabel}>{t('sale.unitPrice')}</span>
                   <span style={s.priceValue}>${product.sellPrice.toFixed(2)}</span>
                 </div>
 
-                <div style={{ ...s.cardLabel, marginTop: 12 }}>数量</div>
+                <div style={{ ...s.cardLabel, marginTop: 12 }}>{t('sale.qty')}</div>
                 <div style={s.stepperRow}>
                   <button type="button" style={s.stepperBtn} onClick={() => setQty(Math.max(1, safeQty - 1))}>−</button>
                   <input
@@ -464,11 +466,11 @@ export default function SalePage() {
                 </div>
 
                 <div style={s.subtotalRow}>
-                  <span style={s.subtotalLabel}>小计</span>
+                  <span style={s.subtotalLabel}>{t('sale.subtotal')}</span>
                   <span style={s.subtotalValue}>${(product.sellPrice * safeQty).toFixed(2)}</span>
                 </div>
 
-                <button style={s.addBtn} onClick={addToCart}>+ 加入本单</button>
+                <button style={s.addBtn} onClick={addToCart}>{t('sale.addToCart')}</button>
               </div>
             )}
 
@@ -476,8 +478,8 @@ export default function SalePage() {
             {cart.length > 0 && (
               <>
                 <div style={s.cartHeader}>
-                  <span style={s.cartHeaderText}>本单商品（{cart.length} 种）</span>
-                  <button style={s.clearCartBtn} onClick={() => setCart([])}>清空本单</button>
+                  <span style={s.cartHeaderText}>{t('sale.cartHeader')}（{cart.length} 种）</span>
+                  <button style={s.clearCartBtn} onClick={() => setCart([])}>{t('sale.clearCart')}</button>
                 </div>
 
                 {cart.map((ci) => (
@@ -485,7 +487,7 @@ export default function SalePage() {
                 ))}
 
                 <div style={s.totalCard}>
-                  <span style={s.totalLabel}>合计</span>
+                  <span style={s.totalLabel}>{t('sale.total')}</span>
                   <span style={s.totalAmount}>${cartTotal.toFixed(2)}</span>
                 </div>
 
@@ -496,7 +498,7 @@ export default function SalePage() {
                   disabled={status === 'submitting'}
                   onClick={handleSubmit}
                 >
-                  {status === 'submitting' ? '提交中…' : '确认销售'}
+                  {status === 'submitting' ? t('common.submitting') : t('sale.confirmSale')}
                 </button>
               </>
             )}

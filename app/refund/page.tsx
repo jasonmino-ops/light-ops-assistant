@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, FormEvent } from 'react'
 import { apiFetch } from '@/lib/api'
+import { useLocale } from '@/app/components/LangProvider'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,15 @@ const FILTERS: Array<[QuickFilter, string]> = [
   ['mine', '我的操作'],
 ]
 
-const REFUND_REASONS = ['商品拿错', '顾客不要了', '商品有问题', '重复录入', '其他']
+const REFUND_REASONS = ['商品拿错', '顾客不要了', '商品有问题', '重复录入', '其他'] as const
+type RefundReasonZh = typeof REFUND_REASONS[number]
+const REASON_LABEL_KEY: Record<RefundReasonZh, string> = {
+  '商品拿错': 'refund.reasons.wrongItem',
+  '顾客不要了': 'refund.reasons.noWant',
+  '商品有问题': 'refund.reasons.defective',
+  '重复录入': 'refund.reasons.duplicate',
+  '其他': 'refund.reasons.other',
+}
 const ORDER_COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#722ed1']
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -130,6 +139,7 @@ function buildOrderGroups(items: SaleListItem[]): OrderGroup[] {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function RefundPage() {
+  const { t } = useLocale()
   // ── List phase ─────────────────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('list')
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('recent')
@@ -337,7 +347,7 @@ export default function RefundPage() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   const headerTitle =
-    phase === 'list' ? '退款' : phase === 'items' ? '选择退款商品' : '确认退款'
+    phase === 'list' ? t('refund.title') : phase === 'items' ? t('refund.titleItems') : t('refund.titleConfirm')
 
   return (
     <div style={s.page}>
@@ -360,7 +370,7 @@ export default function RefundPage() {
                 <input
                   style={s.searchInput}
                   type="text"
-                  placeholder="搜索单号 / 商品名 / 规格 / 店员"
+                  placeholder={t('refund.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -371,22 +381,22 @@ export default function RefundPage() {
             </div>
 
             <div style={s.filterRow}>
-              {FILTERS.map(([key, label]) => (
+              {FILTERS.map(([key]) => (
                 <button
                   key={key}
                   style={{ ...s.filterPill, ...(quickFilter === key ? s.filterPillActive : {}) }}
                   onClick={() => setQuickFilter(key)}
                 >
-                  {label}
+                  {key === 'recent' ? t('refund.filterRecent') : key === 'today' ? t('refund.filterToday') : t('refund.filterMine')}
                 </button>
               ))}
             </div>
 
-            {listLoading && <div style={s.hint}>加载中…</div>}
+            {listLoading && <div style={s.hint}>{t('common.loading')}</div>}
             {listError && (
               <div style={s.hintError}>
                 {listError}
-                <button style={s.retryBtn} onClick={() => fetchList(quickFilter)}>重试</button>
+                <button style={s.retryBtn} onClick={() => fetchList(quickFilter)}>{t('common.retry')}</button>
               </div>
             )}
 
@@ -394,10 +404,10 @@ export default function RefundPage() {
               <div style={s.emptyState}>
                 <div style={s.emptyIcon}>↩</div>
                 <div style={s.emptyTitle}>
-                  {searchQuery ? '无匹配订单' : '暂无可退款销售单'}
+                  {searchQuery ? t('refund.noOrdersSearch') : t('refund.noOrders')}
                 </div>
                 <div style={s.emptyDesc}>
-                  {searchQuery ? '请尝试其他关键词' : '切换筛选条件或等待新销售记录'}
+                  {searchQuery ? t('refund.noOrdersSearchHint') : t('refund.noOrdersHint')}
                 </div>
               </div>
             )}
@@ -408,6 +418,8 @@ export default function RefundPage() {
                 order={order}
                 index={i}
                 onSelect={() => selectOrder(order)}
+                refundLabel={t('refund.refundBtn')}
+                selectRefundLabel={t('refund.selectRefundBtn')}
               />
             ))}
           </>
@@ -427,13 +439,14 @@ export default function RefundPage() {
               </div>
             </div>
 
-            <div style={s.itemsHint}>选择要退款的商品</div>
+            <div style={s.itemsHint}>{t('refund.selectItem')}</div>
 
             {selectedOrder.items.map((lineItem) => (
               <LineItemCard
                 key={lineItem.id}
                 item={lineItem}
                 onRefund={() => triggerRefund(lineItem)}
+                refundLabel={t('refund.refundBtn')}
               />
             ))}
           </>
@@ -446,40 +459,40 @@ export default function RefundPage() {
             {result && (
               <div style={s.successCard}>
                 <div style={s.successIconWrap}>✓</div>
-                <div style={s.successTitle}>退款成功</div>
+                <div style={s.successTitle}>{t('refund.refundSuccess')}</div>
                 <div style={s.successGrid}>
-                  <InfoRow label="退款单号" value={result.recordNo} mono />
+                  <InfoRow label={t('refund.refundNo')} value={result.recordNo} mono />
                   <InfoRow
-                    label="退款金额"
+                    label={t('refund.refundAmountLabel')}
                     value={`-$${Math.abs(result.lineAmount).toFixed(2)}`}
                     red
                   />
                   <InfoRow
-                    label="时间"
+                    label={t('refund.time')}
                     value={new Date(result.createdAt).toLocaleTimeString('zh-CN')}
                   />
                   {result.productNameSnapshot && (
-                    <InfoRow label="商品" value={result.productNameSnapshot} />
+                    <InfoRow label={t('refund.productLabel')} value={result.productNameSnapshot} />
                   )}
                   {result.quantity != null && (
-                    <InfoRow label="数量" value={String(result.quantity)} />
+                    <InfoRow label={t('refund.qtyLabel')} value={String(result.quantity)} />
                   )}
                 </div>
                 <button style={s.nextBtn} onClick={() => backToList(true)}>
-                  返回订单列表
+                  {t('refund.backToList')}
                 </button>
               </div>
             )}
 
             {!result && lookupState === 'loading' && (
-              <div style={s.hint}>查询订单中…</div>
+              <div style={s.hint}>{t('refund.loadingOrder')}</div>
             )}
 
             {!result && lookupState === 'error' && (
               <div style={s.errorCard}>
                 <div style={s.errorCardText}>{lookupError}</div>
                 <button style={s.backToListBtn} onClick={goBack}>
-                  ← 返回
+                  {t('refund.goBack')}
                 </button>
               </div>
             )}
@@ -492,22 +505,22 @@ export default function RefundPage() {
                     <div style={s.productSpec}>{item.specSnapshot}</div>
                   )}
                   <div style={s.productMeta}>
-                    <span style={s.metaLabel}>原售价</span>
+                    <span style={s.metaLabel}>{t('refund.origPrice')}</span>
                     <span style={s.metaValue}>${item.unitPrice.toFixed(2)}</span>
                   </div>
                   <div style={s.qtyGrid}>
-                    <QtyCell label="已售" value={item.originalQty} />
+                    <QtyCell label={t('refund.sold')} value={item.originalQty} />
                     <div style={s.qtyDivider} />
-                    <QtyCell label="已退" value={item.refundedQty} />
+                    <QtyCell label={t('refund.refunded')} value={item.refundedQty} />
                     <div style={s.qtyDivider} />
-                    <QtyCell label="可退" value={item.availableQty} highlight />
+                    <QtyCell label={t('refund.available')} value={item.availableQty} highlight />
                   </div>
-                  <div style={s.origNo}>原单号：{lookup.originalRecordNo}</div>
+                  <div style={s.origNo}>{t('refund.origNo')}{lookup.originalRecordNo}</div>
                 </div>
 
                 <div style={s.formCard}>
                   <div style={s.cardLabel}>
-                    本次退款数量（最多 {item.availableQty}）
+                    {t('refund.refundQtyLabel').replace('{max}', String(item.availableQty))}
                   </div>
                   <div style={s.stepperRow}>
                     <button
@@ -540,26 +553,26 @@ export default function RefundPage() {
                 </div>
 
                 <div style={s.previewCard}>
-                  <span style={s.previewLabel}>退款金额</span>
+                  <span style={s.previewLabel}>{t('refund.refundAmount')}</span>
                   <span style={s.previewAmount}>-${refundPreview}</span>
                 </div>
 
                 <div style={s.formCard}>
-                  <div style={s.cardLabel}>退款原因 *</div>
+                  <div style={s.cardLabel}>{t('refund.reasonLabel')}</div>
                   <select
                     style={s.reasonSelect}
                     value={refundReason}
                     onChange={(e) => setRefundReason(e.target.value)}
                   >
                     {REFUND_REASONS.map((r) => (
-                      <option key={r} value={r}>{r}</option>
+                      <option key={r} value={r}>{t(REASON_LABEL_KEY[r])}</option>
                     ))}
                   </select>
                   {refundReason === '其他' && (
                     <input
                       style={{ ...s.remarkInput, marginTop: 8 }}
                       type="text"
-                      placeholder="请补充说明…"
+                      placeholder={t('refund.reasonOtherPlaceholder')}
                       value={refundReasonOther}
                       onChange={(e) => setRefundReasonOther(e.target.value)}
                     />
@@ -567,11 +580,11 @@ export default function RefundPage() {
                 </div>
 
                 <div style={s.formCard}>
-                  <div style={s.cardLabel}>备注（可选）</div>
+                  <div style={s.cardLabel}>{t('refund.remarkLabel')}</div>
                   <input
                     style={s.remarkInput}
                     type="text"
-                    placeholder="输入备注…"
+                    placeholder={t('refund.remarkPlaceholder')}
                     value={remark}
                     onChange={(e) => setRemark(e.target.value)}
                   />
@@ -581,7 +594,7 @@ export default function RefundPage() {
 
                 <div style={s.actions}>
                   <button type="button" style={s.clearBtn} onClick={goBack}>
-                    返回
+                    {t('common.back')}
                   </button>
                   <button
                     type="submit"
@@ -591,7 +604,7 @@ export default function RefundPage() {
                     }}
                     disabled={submitState === 'submitting' || rQty <= 0}
                   >
-                    {submitState === 'submitting' ? '提交中…' : '确认退款'}
+                    {submitState === 'submitting' ? t('common.submitting') : t('refund.confirmRefund')}
                   </button>
                 </div>
               </form>
@@ -605,7 +618,9 @@ export default function RefundPage() {
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ order, index, onSelect }: { order: OrderGroup; index: number; onSelect: () => void }) {
+function OrderCard({ order, index, onSelect, refundLabel, selectRefundLabel }: {
+  order: OrderGroup; index: number; onSelect: () => void; refundLabel: string; selectRefundLabel: string
+}) {
   const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = order.items.length === 1
   const item = order.items[0]
@@ -632,7 +647,7 @@ function OrderCard({ order, index, onSelect }: { order: OrderGroup; index: numbe
         )}
         <span style={oc.amount}>${order.totalAmount.toFixed(2)}</span>
         <button style={oc.refundBtn} onClick={onSelect}>
-          {isSingle ? '退款' : '选商品退'}
+          {isSingle ? refundLabel : selectRefundLabel}
         </button>
       </div>
     </div>
@@ -710,7 +725,7 @@ const oc: Record<string, React.CSSProperties> = {
 
 // ─── LineItemCard ─────────────────────────────────────────────────────────────
 
-function LineItemCard({ item, onRefund }: { item: SaleListItem; onRefund: () => void }) {
+function LineItemCard({ item, onRefund, refundLabel }: { item: SaleListItem; onRefund: () => void; refundLabel: string }) {
   return (
     <div style={li.card}>
       <div style={li.left}>
@@ -723,7 +738,7 @@ function LineItemCard({ item, onRefund }: { item: SaleListItem; onRefund: () => 
           <span style={li.amt}> = ${item.lineAmount.toFixed(2)}</span>
         </div>
       </div>
-      <button style={li.btn} onClick={onRefund}>退款</button>
+      <button style={li.btn} onClick={onRefund}>{refundLabel}</button>
     </div>
   )
 }
