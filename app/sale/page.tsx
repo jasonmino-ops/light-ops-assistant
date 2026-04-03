@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import { apiFetch } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useLocale } from '@/app/components/LangProvider'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ type Status = 'idle' | 'querying' | 'submitting'
 
 export default function SalePage() {
   const { t } = useLocale()
+  const { tier } = useWorkMode()
   const [barcodeInput, setBarcodeInput] = useState('')
   const [qty, setQty] = useState(1)
   const [product, setProduct] = useState<Product | null>(null)
@@ -46,6 +48,10 @@ export default function SalePage() {
   const [scannerOpen, setScannerOpen] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
+  const scanSucceededRef = useRef(false)
+  const [cameraFailCount, setCameraFailCount] = useState(0)
+  const [hidFailCount, setHidFailCount] = useState(0)
+  const isHidTier = tier === 'STANDARD' || tier === 'MULTI_STORE'
 
   function focusInput() {
     // defer one tick so the input is visible/mounted before focusing
@@ -143,9 +149,13 @@ export default function SalePage() {
       if (res.ok) {
         setProduct(await res.json())
         setQty(1)
+        setHidFailCount(0) // reset on success
       } else {
         const body = await res.json().catch(() => ({}))
         setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? t('sale.notFound') : t('sale.queryFailed'))
+        if (body.error === 'PRODUCT_NOT_FOUND' && isHidTier) {
+          setHidFailCount((c) => Math.min(c + 1, 5))
+        }
       }
     } catch {
       setQueryError(t('common.networkError'))
@@ -166,49 +176,38 @@ export default function SalePage() {
 
   // ── 扫码 ──────────────────────────────────────────────────────────────────
 
-  const [isTma, setIsTma] = useState(false)
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setIsTma(!!(window as any).Telegram?.WebApp?.initData)
-  }, [])
-
-  /** 打开摄像头扫码（主路径，支持 EAN-13 / Code128 等一维码及 QR） */
+  /** 打开摄像头扫码（仅一维商品条码，不扫二维码） */
   function scanBarcode() {
+    scanSucceededRef.current = false
     setQueryError(null)
     setScannerOpen(true)
   }
 
-  /** 摄像头扫码成功：回填条码并触发查询，完成后恢复文本框焦点以便 HID 枪继续扫码 */
+  /** 摄像头扫码成功：回填条码、触发查询、重置失败计数 */
   function handleScanned(barcode: string) {
+    scanSucceededRef.current = true
+    setCameraFailCount(0)
+    setHidFailCount(0)
     setScannerOpen(false)
     setBarcodeInput(barcode)
     queryProductByBarcode(barcode)
     focusInput()
   }
 
-  /**
-   * 摄像头不可用时的降级处理：
-   * - 在 Telegram 内：自动切换到 showScanQrPopup（支持 QR，不需要摄像头权限）
-   * - 其他环境：将错误信息展示到查询区
-   */
+  /** 用户手动关闭扫码窗口（未扫到结果）：记录失败次数 */
+  function handleScannerClose() {
+    if (!scanSucceededRef.current) {
+      setCameraFailCount((c) => Math.min(c + 1, 5))
+    }
+    scanSucceededRef.current = false
+    setScannerOpen(false)
+  }
+
+  /** 摄像头启动失败：关闭弹窗、记录失败次数、展示错误 */
   function handleCameraError(msg: string) {
     setScannerOpen(false)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tg = (window as any).Telegram?.WebApp
-    if (isTma && tg?.showScanQrPopup) {
-      tg.showScanQrPopup(
-        { text: t('sale.searchHint') },
-        (scanned: string | null) => {
-          if (scanned?.trim()) {
-            setBarcodeInput(scanned.trim())
-            queryProductByBarcode(scanned.trim())
-          }
-          return true
-        },
-      )
-    } else {
-      setQueryError(msg)
-    }
+    setCameraFailCount((c) => Math.min(c + 1, 5))
+    setQueryError(msg)
   }
 
   // ── 购物车操作 ─────────────────────────────────────────────────────────────
@@ -220,6 +219,7 @@ export default function SalePage() {
     setBarcodeInput('')
     setQty(1)
     setQueryError(null)
+    setHidFailCount(0)
     focusInput()
   }
 
@@ -287,11 +287,11 @@ export default function SalePage() {
 
   return (
     <div style={s.page}>
-      {/* 摄像头扫码弹窗 */}
+      {/* 摄像头扫码弹窗（仅一维商品条码） */}
       {scannerOpen && (
         <BarcodeScanner
           onScanned={handleScanned}
-          onClose={() => setScannerOpen(false)}
+          onClose={handleScannerClose}
           onCameraError={handleCameraError}
         />
       )}
@@ -331,6 +331,10 @@ export default function SalePage() {
                 <span style={s.scanIcon}>⊡</span>
                 <span style={s.scanLabel}>{t('sale.scanBtn')}</span>
               </button>
+
+              {cameraFailCount >= 5 && (
+                <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>
+              )}
 
               <div style={s.orDivider}>
                 <div style={s.orLine} /><span style={s.orText}>{t('sale.orInput')}</span><div style={s.orLine} />
@@ -381,6 +385,9 @@ export default function SalePage() {
               </div>
 
               {queryError && <div style={s.errorMsg}>{queryError}</div>}
+              {isHidTier && hidFailCount >= 5 && (
+                <div style={s.scanHintMsg}>{t('sale.hidFailHint')}</div>
+              )}
 
               {allProducts.length > 0 && (
                 <>
@@ -608,6 +615,7 @@ const s: Record<string, React.CSSProperties> = {
   dropEmpty: { padding: '14px 12px', fontSize: 13, color: 'var(--muted)', textAlign: 'center' },
 
   errorMsg: { fontSize: 13, color: 'var(--red)', padding: '6px 2px 0' },
+  scanHintMsg: { fontSize: 12, color: '#fa8c16', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6, padding: '6px 10px', marginBottom: 8 },
 
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '36px 20px', gap: 8 },
   emptyIcon: { fontSize: 44, color: '#d0d0d0', lineHeight: 1, marginBottom: 4 },

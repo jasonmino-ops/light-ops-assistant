@@ -72,10 +72,23 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
 
       // ── 3. Start ZXing scanner (dynamic import — not bundled until needed) ─
       try {
-        const { BrowserMultiFormatReader } = await import('@zxing/browser')
+        const { BrowserMultiFormatReader, BarcodeFormat } = await import('@zxing/browser')
+        const { DecodeHintType } = await import('@zxing/library')
         if (cancelled || !videoRef.current) return
 
-        const reader = new BrowserMultiFormatReader()
+        // Restrict to 1D barcodes only — QR codes and 2D formats are not supported
+        const hints = new Map()
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.ITF,
+          BarcodeFormat.CODABAR,
+        ])
+        const reader = new BrowserMultiFormatReader(hints)
         const controls = await reader.decodeFromConstraints(
           { audio: false, video: { facingMode: 'environment' } },
           videoRef.current,
@@ -236,7 +249,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   frame: {
     width: '74%',
-    height: '26%', // wide, short frame for 1D barcodes (EAN-13, Code128)
+    height: '26%', // wide, short frame for 1D barcodes only (EAN-13, Code128, UPC etc.)
     border: '2px solid rgba(255,255,255,0.9)',
     borderRadius: 6,
     // Shadow makes everything outside the frame darker

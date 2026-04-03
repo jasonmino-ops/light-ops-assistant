@@ -70,6 +70,8 @@ const zh = {
     dropSearch: '搜索商品名 / 编码…',
     searchHint: '将商品条码对准框内',
     moreItems: '另 {n} 件',
+    scanFailHint: '已连续 5 次未识别，请尝试手动输入条码',
+    hidFailHint: '已连续 5 次未匹配，建议切换摄像头扫码',
   },
   refund: {
     title: '退款',

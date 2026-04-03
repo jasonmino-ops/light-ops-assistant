@@ -76,9 +76,19 @@
 | 扫码规则 | 完全继承标准收银版策略 |
 | 打印/贴标能力 | 单独定义（v1+ 迭代），当前版本暂不包含 |
 
-### 当前实现状态
+### 当前实现状态（v0.1 已落地）
 
-> 以上为产品定义与规则约束，当前 v0.x 代码实现以摄像头扫码为主（`@zxing/browser`），HID 扫码枪通过键盘事件接收，连续失败检测与确认停留逻辑规划在后续迭代补齐。
+| 规则 | 状态 | 说明 |
+|------|------|------|
+| 摄像头扫码为兜底方式 | ✅ | `/sale` `/products` 均使用 `BarcodeScanner` 组件 |
+| 仅扫一维商品条码，禁止二维码 | ✅ | ZXing `DecodeHintType.POSSIBLE_FORMATS` 限制为 EAN/Code128/UPC 等 1D 格式 |
+| 摄像头未扫成功前不自动闪退 | ✅ | 用户手动关闭触发 `onClose`，camera error 独立处理 |
+| 连续 5 次未识别提示手动输入 | ✅ | `cameraFailCount` 计数，≥5 显示橙色提示条（中/柬双语） |
+| Telegram `showScanQrPopup` 降级 | ✅ 已移除 | 所有版本统一走摄像头路径 |
+| STANDARD 输入框默认聚焦（HID优先） | ✅ | 输入框 `autoFocus`，进入即可 HID 扫枪直接输入 |
+| HID 连续 5 次不匹配提示切换摄像头 | ✅ | `hidFailCount` 计数（STANDARD/MULTI_STORE），≥5 显示橙色提示条 |
+| 扫码成功确认停留 0.8~1.2 秒 | ✅ | `BarcodeScanner` 扫码成功后 `scanned` 状态停留 800ms |
+| 商户 tier 驱动扫码行为 | ✅ | `WorkModeProvider` 从 `/api/me` 获取 tier，`useWorkMode()` 全局可用 |
 
 ---
 

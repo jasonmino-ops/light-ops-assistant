@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, KeyboardEvent, useRef } from 'react'
+import { useState, KeyboardEvent, useRef, useCallback } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
 
@@ -28,6 +28,8 @@ type ImportResult = {
 export default function ProductsPage() {
   const [scannerOpen, setScannerOpen] = useState(false)
   const [barcodeInput, setBarcodeInput] = useState('')
+  const [cameraFailCount, setCameraFailCount] = useState(0)
+  const scanSucceededRef = useRef(false)
   const [mode, setMode] = useState<Mode>('idle')
   const [product, setProduct] = useState<Product | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -144,10 +146,31 @@ export default function ProductsPage() {
     }
   }
 
-  function handleScanned(barcode: string) {
+  const handleScanned = useCallback((barcode: string) => {
+    scanSucceededRef.current = true
+    setCameraFailCount(0)
     setScannerOpen(false)
     setBarcodeInput(barcode)
     lookup(barcode)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function handleScannerClose() {
+    if (!scanSucceededRef.current) setCameraFailCount((c) => Math.min(c + 1, 5))
+    scanSucceededRef.current = false
+    setScannerOpen(false)
+  }
+
+  function handleCameraError(msg: string) {
+    setScannerOpen(false)
+    setCameraFailCount((c) => Math.min(c + 1, 5))
+    setError(msg)
+  }
+
+  function openScanner() {
+    scanSucceededRef.current = false
+    setError(null)
+    setScannerOpen(true)
   }
 
   function handleBarcodeKey(e: KeyboardEvent<HTMLInputElement>) {
@@ -242,7 +265,8 @@ export default function ProductsPage() {
       {scannerOpen && (
         <BarcodeScanner
           onScanned={handleScanned}
-          onClose={() => setScannerOpen(false)}
+          onClose={handleScannerClose}
+          onCameraError={handleCameraError}
         />
       )}
 
@@ -339,12 +363,16 @@ export default function ProductsPage() {
               <button
                 type="button"
                 style={s.scanBtn}
-                onClick={() => { setError(null); setScannerOpen(true) }}
+                onClick={openScanner}
                 disabled={mode === 'loading'}
               >
                 <span style={s.scanIcon}>⊡</span>
                 <span>扫码查询 / 新增</span>
               </button>
+
+              {cameraFailCount >= 5 && (
+                <div style={s.scanHintMsg}>已连续 5 次未识别，请尝试手动输入条码</div>
+              )}
 
               <div style={s.orRow}>
                 <div style={s.orLine} /><span style={s.orText}>或手动输入条码</span><div style={s.orLine} />
@@ -677,6 +705,10 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: 'var(--red)',
     padding: '0 2px 8px',
+  },
+  scanHintMsg: {
+    fontSize: 12, color: '#fa8c16', background: '#fff7e6',
+    border: '1px solid #ffd591', borderRadius: 6, padding: '6px 10px', marginBottom: 8,
   },
   // ── Saved / Success ──
   savedCard: {
