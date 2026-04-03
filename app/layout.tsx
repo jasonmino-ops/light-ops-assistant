@@ -16,6 +16,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="zh-CN">
       <head>
+        {/* Prevent iOS Safari from zooming on input focus; viewport-fit=cover for notch/home-indicator */}
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+        />
         {/* Telegram WebApp SDK — no-op when opened outside Telegram */}
         <script src="https://telegram.org/js/telegram-web-app.js" />
       </head>

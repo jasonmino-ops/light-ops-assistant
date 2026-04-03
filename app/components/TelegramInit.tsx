@@ -47,6 +47,9 @@ export default function TelegramInit() {
     const tg = (window as any).Telegram?.WebApp
     if (!tg?.initData) return
 
+    // Request full viewport height — prevents Telegram's default half-screen mode
+    tg.expand?.()
+
     // ── startapp bind token: e.g. https://t.me/bot?startapp=bind_<token> ──
     // Telegram passes the startapp value via initDataUnsafe.start_param.
     // Navigating to /bind?token= within the same origin preserves WebApp context.
