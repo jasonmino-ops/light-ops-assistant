@@ -10,6 +10,7 @@ type TenantRow = {
   id: string
   name: string
   status: string
+  tier: string
   createdAt: string
   storeCount: number
   ownerBound: number
@@ -18,6 +19,12 @@ type TenantRow = {
   staffTotal: number
   todaySaleCount: number
   lastActiveAt: string | null
+}
+
+const TIER_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  LITE:        { label: '轻试用版',     color: '#389e0d', bg: '#f6ffed', border: '#b7eb8f' },
+  STANDARD:    { label: '标准收银版',   color: '#1677ff', bg: '#e6f4ff', border: '#91caff' },
+  MULTI_STORE: { label: '门店标准化版', color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7' },
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -122,9 +129,14 @@ function TenantCard({ tenant: t }: { tenant: TenantRow }) {
     <Link href={`/ops/${t.id}`} style={s.card}>
       <div style={s.cardTop}>
         <div style={s.cardName}>{t.name}</div>
-        <span style={active ? { ...s.statusBadge, background: '#f6ffed', color: '#52c41a', borderColor: '#b7eb8f' } : { ...s.statusBadge, background: '#fff1f0', color: '#ff4d4f', borderColor: '#ffa39e' }}>
-          {active ? '运营中' : '停用'}
-        </span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {(() => { const tm = TIER_META[t.tier] ?? TIER_META.LITE; return (
+            <span style={{ ...s.statusBadge, background: tm.bg, color: tm.color, borderColor: tm.border }}>{tm.label}</span>
+          )})()}
+          <span style={active ? { ...s.statusBadge, background: '#f6ffed', color: '#52c41a', borderColor: '#b7eb8f' } : { ...s.statusBadge, background: '#fff1f0', color: '#ff4d4f', borderColor: '#ffa39e' }}>
+            {active ? '运营中' : '停用'}
+          </span>
+        </div>
       </div>
       <div style={s.cardId}>ID: {t.id.slice(0, 16)}…</div>
 

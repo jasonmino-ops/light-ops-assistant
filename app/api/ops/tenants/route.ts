@@ -75,6 +75,7 @@ export async function GET(req: NextRequest) {
     id: t.id,
     name: t.name,
     status: t.status,
+    tier: t.tier,
     createdAt: t.createdAt.toISOString(),
     storeCount: storeCountMap.get(t.id) ?? 0,
     ...(userMap.get(t.id) ?? { ownerBound: 0, ownerTotal: 0, staffBound: 0, staffTotal: 0 }),

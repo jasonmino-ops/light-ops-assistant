@@ -16,10 +16,17 @@ type TenantDetail = {
   id: string
   name: string
   status: string
+  tier: string
   createdAt: string
   stores: Store[]
   members: Member[]
   today: TodayStats
+}
+
+const TIER_META: Record<string, { label: string; color: string; bg: string; border: string; desc: string }> = {
+  LITE:        { label: '轻试用版',     color: '#389e0d', bg: '#f6ffed', border: '#b7eb8f', desc: '手机即用，适合个体小摊初次体验数字化' },
+  STANDARD:    { label: '标准收银版',   color: '#1677ff', bg: '#e6f4ff', border: '#91caff', desc: '单店实体零售，含商品管理与条码扫描' },
+  MULTI_STORE: { label: '门店标准化版', color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7', desc: '多门店连锁，老板视角概览与店员模式' },
 }
 
 type GenResult = { token: string; role: string; storeName: string; expiresAt: string; tgLink: string | null }
@@ -82,6 +89,11 @@ export default function TenantDetailPage() {
             ['门店数', String(detail.stores.length)],
             ['成员数', String(detail.members.length)],
           ]} />
+        </Section>
+
+        {/* Tier */}
+        <Section title="产品档次">
+          <TierPanel tenantId={detail.id} currentTier={detail.tier} onChanged={load} />
         </Section>
 
         {/* Today stats */}
@@ -147,6 +159,57 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
     <div style={s.statBox}>
       <div style={{ ...s.statBoxValue, color: color ?? '#333' }}>{value}</div>
       <div style={s.statBoxLabel}>{label}</div>
+    </div>
+  )
+}
+
+// ─── TierPanel ───────────────────────────────────────────────────────────────
+
+function TierPanel({ tenantId, currentTier, onChanged }: { tenantId: string; currentTier: string; onChanged: () => void }) {
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const tm = TIER_META[currentTier] ?? TIER_META.LITE
+
+  async function changeTier(tier: string) {
+    if (tier === currentTier) return
+    setSaving(true)
+    setErr(null)
+    try {
+      const r = await apiFetch(`/api/ops/tenants/${tenantId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ tier }),
+      }, OWNER_CTX)
+      if (r.ok) onChanged()
+      else setErr('更新失败')
+    } catch {
+      setErr('网络错误')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <span style={{ ...s.tierBadge, background: tm.bg, color: tm.color, borderColor: tm.border }}>{tm.label}</span>
+        <span style={{ fontSize: 12, color: '#888' }}>{tm.desc}</span>
+      </div>
+      <div style={s.tierRow}>
+        {Object.entries(TIER_META).map(([key, meta]) => (
+          <button
+            key={key}
+            disabled={saving}
+            onClick={() => changeTier(key)}
+            style={{
+              ...s.tierBtn,
+              ...(currentTier === key ? { background: meta.bg, color: meta.color, borderColor: meta.border, fontWeight: 700 } : {}),
+            }}
+          >
+            {meta.label}
+          </button>
+        ))}
+      </div>
+      {err && <div style={s.errMsg}>{err}</div>}
     </div>
   )
 }
@@ -353,6 +416,16 @@ const s: Record<string, React.CSSProperties> = {
     border: '1px solid #ffa39e', borderRadius: 6, fontSize: 12, cursor: 'pointer',
   },
 
+  tierBadge: {
+    fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 10,
+    border: '1px solid', flexShrink: 0,
+  },
+  tierRow: { display: 'flex', gap: 8, flexWrap: 'wrap' },
+  tierBtn: {
+    height: 32, padding: '0 14px', border: '1.5px solid #e8e8e8',
+    borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    background: '#f5f5f5', color: '#888',
+  },
   errMsg: { fontSize: 13, color: '#ff4d4f', marginBottom: 8 },
   infoMsg: { fontSize: 13, color: '#52c41a', marginBottom: 8, padding: '8px 12px', background: '#f6ffed', borderRadius: 6, border: '1px solid #b7eb8f' },
   emptyHint: { fontSize: 13, color: '#bbb', textAlign: 'center', padding: '16px 0' },

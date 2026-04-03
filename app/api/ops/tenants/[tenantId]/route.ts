@@ -1,5 +1,6 @@
 /**
- * GET /api/ops/tenants/[tenantId]  — tenant detail with members + today's stats
+ * GET   /api/ops/tenants/[tenantId]  — tenant detail with members + today's stats
+ * PATCH /api/ops/tenants/[tenantId]  — update tier
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -71,6 +72,7 @@ export async function GET(
     id: tenant.id,
     name: tenant.name,
     status: tenant.status,
+    tier: tenant.tier,
     createdAt: tenant.createdAt.toISOString(),
     stores,
     members: users.map((u) => ({
@@ -88,4 +90,24 @@ export async function GET(
       lastActiveAt: lastSale?.createdAt.toISOString() ?? null,
     },
   })
+}
+
+const VALID_TIERS = ['LITE', 'STANDARD', 'MULTI_STORE']
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ tenantId: string }> },
+) {
+  if (!checkOpsAuth(req)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  const { tenantId } = await params
+
+  let body: { tier?: string }
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }
+
+  const { tier } = body
+  if (!tier || !VALID_TIERS.includes(tier))
+    return NextResponse.json({ error: 'INVALID_TIER' }, { status: 400 })
+
+  await prisma.tenant.update({ where: { id: tenantId }, data: { tier } })
+  return NextResponse.json({ ok: true, tier })
 }
