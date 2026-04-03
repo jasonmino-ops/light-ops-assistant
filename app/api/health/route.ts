@@ -79,25 +79,33 @@ export async function GET(req: NextRequest) {
     checks.push({ key: 'products', name: '商品数量', status: 'FAIL', detail: '数据库未连接，无法查询' })
   } else {
     try {
-      const [productCount, userCount, boundUserCount] = await Promise.all([
-        prisma.product.count({ where: { status: 'ACTIVE' } }),
-        prisma.user.count({ where: { status: 'ACTIVE' } }),
-        prisma.user.count({ where: { status: 'ACTIVE', telegramId: { not: null } } }),
-      ])
+      // Single query — avoid opening multiple connections for a health check
+      type Row = { user_count: bigint; bound_count: bigint; product_count: bigint }
+      const [row] = await prisma.$queryRaw<Row[]>`
+        SELECT
+          COUNT(*)                                            AS user_count,
+          COUNT(*) FILTER (WHERE "telegramId" IS NOT NULL)   AS bound_count,
+          (SELECT COUNT(*) FROM "Product" WHERE status = 'ACTIVE') AS product_count
+        FROM "User"
+        WHERE status = 'ACTIVE'
+      `
+      const userCount    = Number(row.user_count)
+      const boundCount   = Number(row.bound_count)
+      const productCount = Number(row.product_count)
 
       checks.push({ key: 'db', name: '数据库连接', status: 'PASS', detail: `连接正常，${userCount} 个用户，${productCount} 件商品` })
 
-      if (boundUserCount === 0) {
-        checks.push({ key: 'bound_users', name: '已绑定用户数', status: 'WARN', detail: `${boundUserCount} / ${userCount}，无已绑定账号` })
-      } else {
-        checks.push({ key: 'bound_users', name: '已绑定用户数', status: 'PASS', detail: `${boundUserCount} / ${userCount}` })
-      }
+      checks.push({
+        key: 'bound_users', name: '已绑定用户数',
+        status: boundCount === 0 ? 'WARN' : 'PASS',
+        detail: boundCount === 0 ? `${boundCount} / ${userCount}，无已绑定账号` : `${boundCount} / ${userCount}`,
+      })
 
-      if (productCount === 0) {
-        checks.push({ key: 'products', name: '商品数量', status: 'WARN', detail: '暂无上架商品，销售功能将无法使用' })
-      } else {
-        checks.push({ key: 'products', name: '商品数量', status: 'PASS', detail: `${productCount} 件上架商品` })
-      }
+      checks.push({
+        key: 'products', name: '商品数量',
+        status: productCount === 0 ? 'WARN' : 'PASS',
+        detail: productCount === 0 ? '暂无上架商品，销售功能将无法使用' : `${productCount} 件上架商品`,
+      })
     } catch (e) {
       const msg = String(e).replace(/postgres(ql)?:\/\/[^@]+@/gi, 'postgres://***@')
       checks.push({ key: 'db', name: '数据库连接', status: 'FAIL', detail: msg.slice(0, 120) })
