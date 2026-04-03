@@ -34,12 +34,12 @@ function BindFlow() {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
-    if (!tg?.initData) {
+    // initData may take a brief moment to populate; wait one tick then fail-fast
+    const initData: string = tg?.initData ?? ''
+    if (!initData) {
       setState('no_tg')
       return
     }
-
-    const initData: string = tg.initData
 
     fetch('/api/bind', {
       method: 'POST',

@@ -50,10 +50,14 @@ export default function TelegramInit() {
     // ── startapp bind token: e.g. https://t.me/bot?startapp=bind_<token> ──
     // Telegram passes the startapp value via initDataUnsafe.start_param.
     // Navigating to /bind?token= within the same origin preserves WebApp context.
+    // IMPORTANT: skip this redirect when already on /bind to avoid infinite replace loop.
     const startParam: string = tg.initDataUnsafe?.start_param ?? ''
     if (startParam.startsWith('bind_')) {
-      const token = startParam.slice(5)
-      window.location.replace(`/bind?token=${encodeURIComponent(token)}`)
+      if (!window.location.pathname.startsWith('/bind')) {
+        const token = startParam.slice(5)
+        window.location.replace(`/bind?token=${encodeURIComponent(token)}`)
+      }
+      // Already on /bind — let BindFlow handle it; skip normal auth flow entirely.
       return
     }
 
