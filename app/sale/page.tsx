@@ -176,11 +176,12 @@ export default function SalePage() {
     setScannerOpen(true)
   }
 
-  /** 摄像头扫码成功：回填条码并触发查询 */
+  /** 摄像头扫码成功：回填条码并触发查询，完成后恢复文本框焦点以便 HID 枪继续扫码 */
   function handleScanned(barcode: string) {
     setScannerOpen(false)
     setBarcodeInput(barcode)
     queryProductByBarcode(barcode)
+    focusInput()
   }
 
   /**

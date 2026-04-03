@@ -16,7 +16,7 @@ type Props = {
   onCameraError?: (errorMsg: string) => void
 }
 
-type ScanState = 'loading' | 'active' | 'error'
+type ScanState = 'loading' | 'active' | 'scanned' | 'error'
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -27,6 +27,7 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
 
   const [scanState, setScanState] = useState<ScanState>('loading')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [scannedText, setScannedText] = useState<string>('')
 
   // Stable callback to hand to ZXing — avoids re-mounting the effect
   const handleResult = useCallback(
@@ -34,7 +35,10 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
       if (doneRef.current) return
       doneRef.current = true
       controlsRef.current?.stop()
-      onScanned(text)
+      // Show "scanned" confirmation for 800ms before firing onScanned
+      setScannedText(text)
+      setScanState('scanned')
+      setTimeout(() => onScanned(text), 800)
     },
     [onScanned],
   )
@@ -133,10 +137,18 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
         <div style={s.viewport}>
           <video ref={videoRef} style={s.video} autoPlay playsInline muted />
 
-          {scanState === 'active' && (
+          {(scanState === 'active') && (
             <div style={s.frameWrap}>
               <div style={s.frame} />
               <div style={s.frameHint}>将商品条码对准框内</div>
+            </div>
+          )}
+
+          {scanState === 'scanned' && (
+            <div style={s.scannedLayer}>
+              <div style={s.scannedCheck}>✓</div>
+              <div style={s.scannedLabel}>已识别</div>
+              <div style={s.scannedCode}>{scannedText}</div>
             </div>
           )}
 
@@ -251,6 +263,42 @@ const s: Record<string, React.CSSProperties> = {
   stateText: {
     fontSize: 14,
     color: '#777',
+  },
+  scannedLayer: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    background: 'rgba(0,0,0,0.82)',
+  },
+  scannedCheck: {
+    width: 60,
+    height: 60,
+    borderRadius: '50%',
+    background: '#52c41a',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 30,
+    color: '#fff',
+    fontWeight: 700,
+  },
+  scannedLabel: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#52c41a',
+  },
+  scannedCode: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.75)',
+    fontFamily: 'monospace',
+    maxWidth: 260,
+    textAlign: 'center' as const,
+    wordBreak: 'break-all' as const,
+    padding: '0 16px',
   },
   errIcon: {
     fontSize: 42,

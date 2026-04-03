@@ -65,8 +65,11 @@ export default function ProductsPage() {
       const a = document.createElement('a')
       a.href = url
       a.download = 'products_template.xlsx'
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      // delay revoke so browser finishes reading the blob before it's released
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
     } catch {
       // silent fail — user can retry
     }
