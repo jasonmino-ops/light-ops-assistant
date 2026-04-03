@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, KeyboardEvent } from 'react'
+import { useState, KeyboardEvent, useRef } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
 
@@ -17,6 +17,12 @@ type Product = {
 
 type Mode = 'idle' | 'loading' | 'found' | 'not-found' | 'saved'
 
+type ImportResult = {
+  imported: number
+  failed: number
+  errors: Array<{ row: number; barcode: string; reason: string }>
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProductsPage() {
@@ -25,6 +31,14 @@ export default function ProductsPage() {
   const [mode, setMode] = useState<Mode>('idle')
   const [product, setProduct] = useState<Product | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Import state
+  const [importOpen, setImportOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Edit form
   const [editName, setEditName] = useState('')
@@ -37,6 +51,54 @@ export default function ProductsPage() {
   const [newName, setNewName] = useState('')
   const [newSpec, setNewSpec] = useState('')
   const [newPrice, setNewPrice] = useState('')
+
+  // ── Import ────────────────────────────────────────────────────────────────
+
+  async function downloadTemplate() {
+    try {
+      const res = await fetch('/api/products/import', {
+        headers: { ...OWNER_CTX },
+      })
+      if (!res.ok) return
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'products_template.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // silent fail — user can retry
+    }
+  }
+
+  async function handleImport() {
+    if (!importFile) return
+    setImporting(true)
+    setImportResult(null)
+    setImportError(null)
+    try {
+      const form = new FormData()
+      form.append('file', importFile)
+      const res = await fetch('/api/products/import', {
+        method: 'POST',
+        headers: { ...OWNER_CTX },
+        body: form,
+      })
+      const body = await res.json()
+      if (res.ok) {
+        setImportResult(body)
+        setImportFile(null)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      } else {
+        setImportError(body.message ?? body.error ?? '导入失败')
+      }
+    } catch {
+      setImportError('网络错误，请重试')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   // ── Lookup ────────────────────────────────────────────────────────────────
 
@@ -187,6 +249,68 @@ export default function ProductsPage() {
       </div>
 
       <div style={s.body}>
+
+        {/* ── 批量导入 ── */}
+        <div style={s.importSection}>
+          <button style={s.importToggle} onClick={() => { setImportOpen((v) => !v); setImportResult(null); setImportError(null) }}>
+            <span style={s.importToggleText}>批量导入</span>
+            <span style={s.importToggleArrow}>{importOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {importOpen && (
+            <div style={s.importBody}>
+              <button style={s.templateBtn} onClick={downloadTemplate} type="button">
+                下载 Excel 模板
+              </button>
+
+              <div style={s.uploadRow}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  style={s.fileInput}
+                  onChange={(e) => {
+                    setImportFile(e.target.files?.[0] ?? null)
+                    setImportResult(null)
+                    setImportError(null)
+                  }}
+                />
+                <button
+                  style={{ ...s.importBtn, opacity: (!importFile || importing) ? 0.5 : 1 }}
+                  type="button"
+                  disabled={!importFile || importing}
+                  onClick={handleImport}
+                >
+                  {importing ? '导入中…' : '开始导入'}
+                </button>
+              </div>
+
+              {importError && <div style={s.importErrorMsg}>{importError}</div>}
+
+              {importResult && (
+                <div style={s.importResult}>
+                  <div style={s.importResultSummary}>
+                    <span style={s.importOk}>✓ 成功 {importResult.imported} 条</span>
+                    {importResult.failed > 0 && (
+                      <span style={s.importFail}>✕ 失败 {importResult.failed} 条</span>
+                    )}
+                  </div>
+                  {importResult.errors.length > 0 && (
+                    <div style={s.importErrorList}>
+                      {importResult.errors.map((e, i) => (
+                        <div key={i} style={s.importErrorRow}>
+                          <span style={s.importErrorRowNum}>第 {e.row} 行</span>
+                          <span style={s.importErrorBarcode}>{e.barcode}</span>
+                          <span style={s.importErrorReason}>{e.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* ── 成功反馈 ── */}
         {mode === 'saved' && product && (
@@ -594,6 +718,131 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 'var(--radius-sm)',
     fontSize: 15,
     fontWeight: 600,
+  },
+  // ── Import ──
+  importSection: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  importToggle: {
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '13px 16px',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+  },
+  importToggleText: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: 'var(--text)',
+  },
+  importToggleArrow: {
+    fontSize: 10,
+    color: 'var(--muted)',
+  },
+  importBody: {
+    padding: '0 16px 16px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 10,
+    borderTop: '1px solid var(--border)',
+  },
+  templateBtn: {
+    height: 40,
+    background: '#f0f5ff',
+    border: '1.5px solid #91caff',
+    borderRadius: 'var(--radius-sm)',
+    color: 'var(--blue)',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    marginTop: 12,
+  },
+  uploadRow: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+  },
+  fileInput: {
+    flex: 1,
+    fontSize: 13,
+    color: 'var(--text)',
+    minWidth: 0,
+  },
+  importBtn: {
+    flexShrink: 0,
+    height: 40,
+    padding: '0 16px',
+    background: 'var(--blue)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 14,
+    fontWeight: 600,
+    whiteSpace: 'nowrap' as const,
+  },
+  importErrorMsg: {
+    fontSize: 13,
+    color: 'var(--red)',
+  },
+  importResult: {
+    background: '#f8f8f8',
+    borderRadius: 'var(--radius-sm)',
+    padding: '10px 12px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 8,
+  },
+  importResultSummary: {
+    display: 'flex',
+    gap: 16,
+    alignItems: 'center',
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  importOk: {
+    color: '#52c41a',
+  },
+  importFail: {
+    color: 'var(--red)',
+  },
+  importErrorList: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+    maxHeight: 200,
+    overflowY: 'auto' as const,
+    borderTop: '1px solid var(--border)',
+    paddingTop: 8,
+  },
+  importErrorRow: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'flex-start',
+    fontSize: 12,
+  },
+  importErrorRowNum: {
+    flexShrink: 0,
+    color: 'var(--muted)',
+    minWidth: 44,
+  },
+  importErrorBarcode: {
+    flexShrink: 0,
+    fontFamily: 'monospace',
+    color: 'var(--text)',
+    minWidth: 80,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  },
+  importErrorReason: {
+    color: 'var(--red)',
+    flex: 1,
   },
   // ── Empty ──
   empty: {
