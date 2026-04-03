@@ -45,6 +45,7 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
 
   useEffect(() => {
     let cancelled = false
+    let stream: MediaStream | null = null
 
     function reportError(msg: string) {
       if (cancelled) return
@@ -70,7 +71,53 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
         return
       }
 
-      // ── 3. Start ZXing scanner (dynamic import — not bundled until needed) ─
+      // ── 3. Manually acquire stream so we control timing ───────────────────
+      // decodeFromConstraints has an IndexSizeError on Telegram WebView/iPhone
+      // because it starts the ZXing decode loop before video dimensions are
+      // available (videoWidth === 0). We fix this by acquiring the stream
+      // ourselves and polling until the video is fully warm before handing it
+      // to ZXing's decodeFromVideoElement.
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: 'environment' } },
+        })
+      } catch (e: unknown) {
+        const name = (e as Error)?.name ?? 'UnknownError'
+        const msg =
+          name === 'NotAllowedError'
+            ? '摄像头权限被拒绝，请在系统/浏览器设置中允许'
+            : name === 'NotFoundError'
+            ? '未找到摄像头设备'
+            : name === 'NotReadableError'
+            ? '摄像头被其他应用占用，请关闭后重试'
+            : `摄像头启动失败（${name}）`
+        reportError(msg)
+        return
+      }
+
+      if (cancelled || !videoRef.current) { stream.getTracks().forEach(t => t.stop()); return }
+
+      const video = videoRef.current
+      video.srcObject = stream
+
+      // ── 4. Poll until video dimensions are ready ──────────────────────────
+      // Telegram WebView / iOS Safari may report videoWidth===0 for several
+      // frames after srcObject is set. Starting ZXing before this causes
+      // an IndexSizeError inside the scan-region crop code.
+      await new Promise<void>((resolve) => {
+        function checkDimensions() {
+          if (cancelled) { resolve(); return }
+          if (video.videoWidth > 0 && video.videoHeight > 0) { resolve(); return }
+          requestAnimationFrame(checkDimensions)
+        }
+        // Begin polling once the video element fires 'loadedmetadata'
+        video.addEventListener('loadedmetadata', () => requestAnimationFrame(checkDimensions), { once: true })
+      })
+
+      if (cancelled || !videoRef.current) return
+
+      // ── 5. Start ZXing on the already-warm video element ──────────────────
       try {
         const { BrowserMultiFormatReader, BarcodeFormat } = await import('@zxing/browser')
         const { DecodeHintType } = await import('@zxing/library')
@@ -89,8 +136,7 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
           BarcodeFormat.CODABAR,
         ])
         const reader = new BrowserMultiFormatReader(hints)
-        const controls = await reader.decodeFromConstraints(
-          { audio: false, video: { facingMode: 'environment' } },
+        const controls = await reader.decodeFromVideoElement(
           videoRef.current,
           (result, err) => {
             if (result) {
@@ -132,6 +178,7 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
     return () => {
       cancelled = true
       controlsRef.current?.stop()
+      stream?.getTracks().forEach(t => t.stop())
     }
   }, [handleResult, onCameraError])
 
