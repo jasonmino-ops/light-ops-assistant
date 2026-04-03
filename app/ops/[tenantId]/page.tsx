@@ -23,10 +23,10 @@ type TenantDetail = {
   today: TodayStats
 }
 
-const TIER_META: Record<string, { label: string; color: string; bg: string; border: string; desc: string }> = {
-  LITE:        { label: '轻试用版',     color: '#389e0d', bg: '#f6ffed', border: '#b7eb8f', desc: '手机即用，适合个体小摊初次体验数字化' },
-  STANDARD:    { label: '标准收银版',   color: '#1677ff', bg: '#e6f4ff', border: '#91caff', desc: '单店实体零售，含商品管理与条码扫描' },
-  MULTI_STORE: { label: '门店标准化版', color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7', desc: '多门店连锁，老板视角概览与店员模式' },
+const TIER_META: Record<string, { label: string; color: string; bg: string; border: string; desc: string; scan: string }> = {
+  LITE:        { label: '轻试用版',     color: '#389e0d', bg: '#f6ffed', border: '#b7eb8f', desc: '手机即用，适合个体小摊初次体验数字化',     scan: '摄像头扫码（强制）· 连续5次失败提示手动输入' },
+  STANDARD:    { label: '标准收银版',   color: '#1677ff', bg: '#e6f4ff', border: '#91caff', desc: '单店实体零售，含商品管理与条码扫描',         scan: 'HID扫码枪优先 · 输入框默认聚焦 · 5次失败切换摄像头' },
+  MULTI_STORE: { label: '门店标准化版', color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7', desc: '多门店连锁，老板视角概览与店员模式',         scan: '继承标准收银版扫码策略 · 打印/贴标能力单独定义' },
 }
 
 type GenResult = { token: string; role: string; storeName: string; expiresAt: string; tgLink: string | null }
@@ -190,9 +190,12 @@ function TierPanel({ tenantId, currentTier, onChanged }: { tenantId: string; cur
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         <span style={{ ...s.tierBadge, background: tm.bg, color: tm.color, borderColor: tm.border }}>{tm.label}</span>
         <span style={{ fontSize: 12, color: '#888' }}>{tm.desc}</span>
+      </div>
+      <div style={{ fontSize: 11, color: '#aaa', marginBottom: 12, paddingLeft: 2 }}>
+        📷 扫码策略：{tm.scan}
       </div>
       <div style={s.tierRow}>
         {Object.entries(TIER_META).map(([key, meta]) => (
