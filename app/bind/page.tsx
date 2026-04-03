@@ -29,7 +29,7 @@ function BindFlow() {
 
   useEffect(() => {
     if (!token) {
-      setErrorMsg('链接无效：缺少邀请码参数')
+      setErrorMsg(t('bind.invalidToken'))
       setState('error')
       return
     }
@@ -66,12 +66,12 @@ function BindFlow() {
             window.location.replace(body.role === 'OWNER' ? '/dashboard' : '/home')
           }, 800)
         } else {
-          setErrorMsg(body.message ?? body.error ?? '绑定失败，请联系管理员')
+          setErrorMsg(body.message ?? body.error ?? t('bind.bindFailed'))
           setState('error')
         }
       })
       .catch(() => {
-        setErrorMsg('网络错误，请重试')
+        setErrorMsg(t('common.networkError'))
         setState('error')
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps

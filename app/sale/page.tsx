@@ -197,7 +197,7 @@ export default function SalePage() {
     const tg = (window as any).Telegram?.WebApp
     if (isTma && tg?.showScanQrPopup) {
       tg.showScanQrPopup(
-        { text: '对准商品条码扫描' },
+        { text: t('sale.searchHint') },
         (scanned: string | null) => {
           if (scanned?.trim()) {
             setBarcodeInput(scanned.trim())
@@ -279,7 +279,7 @@ export default function SalePage() {
   // ── 成功卡商品摘要 ─────────────────────────────────────────────────────────
   function buildCartSummary(items: CartItem[]) {
     const shown = items.slice(0, 2).map((i) => `${i.product.name}×${i.qty}`)
-    if (items.length > 2) shown.push(`另 ${items.length - 2} 件`)
+    if (items.length > 2) shown.push(t('sale.moreItems').replace('{n}', String(items.length - 2)))
     return shown.join('、')
   }
 

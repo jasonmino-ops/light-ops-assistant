@@ -66,11 +66,11 @@ type QuickFilter = 'recent' | 'today' | 'mine'
 type LookupState = 'idle' | 'loading' | 'found' | 'error'
 type SubmitState = 'idle' | 'submitting'
 
-const LOOKUP_ERROR_MSG: Record<string, string> = {
-  NOT_FOUND: '未找到该销售单',
-  IS_REFUND_RECORD: '该单号是退款单，不能再次退款',
-  FULLY_REFUNDED: '该商品已全部退款，无可退数量',
-  NOT_COMPLETED: '该订单状态不允许退款',
+const LOOKUP_ERROR_KEY: Record<string, string> = {
+  NOT_FOUND: 'refund.lookupNotFound',
+  IS_REFUND_RECORD: 'refund.lookupIsRefund',
+  FULLY_REFUNDED: 'refund.lookupFullyRefunded',
+  NOT_COMPLETED: 'refund.lookupNotCompleted',
 }
 
 const FILTERS: Array<[QuickFilter, string]> = [
@@ -188,10 +188,10 @@ export default function RefundPage() {
         setListItems(data.items ?? [])
       } else {
         const body = await res.json().catch(() => ({}))
-        setListError(body.message ?? '加载失败，请重试')
+        setListError(body.message ?? t('refund.loadFailed'))
       }
     } catch {
-      setListError('网络错误，请重试')
+      setListError(t('common.networkError'))
     } finally {
       setListLoading(false)
     }
@@ -253,12 +253,12 @@ export default function RefundPage() {
         setRefundQtyStr(String(body.items[0]?.availableQty ?? 1))
         setLookupState('found')
       } else {
-        const msg = LOOKUP_ERROR_MSG[body.reason ?? body.error] ?? '该订单无法退款'
-        setLookupError(msg)
+        const key = LOOKUP_ERROR_KEY[body.reason ?? body.error]
+        setLookupError(key ? t(key) : t('refund.lookupFailed'))
         setLookupState('error')
       }
     } catch {
-      setLookupError('网络错误，请重试')
+      setLookupError(t('common.networkError'))
       setLookupState('error')
     }
   }
@@ -298,14 +298,14 @@ export default function RefundPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!item) return
-    if (rQty <= 0) { setSubmitError('退款数量必须大于 0'); return }
+    if (rQty <= 0) { setSubmitError(t('refund.qtyRequired')); return }
     if (rQty > item.availableQty) {
-      setSubmitError(`退款数量不能超过可退数量 ${item.availableQty}`)
+      setSubmitError(t('refund.qtyExceedsMax').replace('{max}', String(item.availableQty)))
       return
     }
-    if (!refundReason) { setSubmitError('请选择退款原因'); return }
+    if (!refundReason) { setSubmitError(t('refund.selectReason')); return }
     if (refundReason === '其他' && !refundReasonOther.trim()) {
-      setSubmitError('请补充"其他"的具体原因')
+      setSubmitError(t('refund.otherReasonRequired'))
       return
     }
 
@@ -333,12 +333,12 @@ export default function RefundPage() {
       } else {
         const msg =
           body.error === 'REFUND_QTY_EXCEEDED'
-            ? `超出可退数量，当前可退 ${body.availableQty}`
-            : body.message ?? body.error ?? '提交失败'
+            ? t('refund.qtyExceededError').replace('{n}', String(body.availableQty))
+            : body.message ?? body.error ?? t('refund.submitFailed')
         setSubmitError(msg)
       }
     } catch {
-      setSubmitError('网络错误，请重试')
+      setSubmitError(t('common.networkError'))
     } finally {
       setSubmitState('idle')
     }

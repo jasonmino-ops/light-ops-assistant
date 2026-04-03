@@ -180,7 +180,7 @@ export default function HomePage() {
       <div style={s.actionGrid}>
         <ActionBtn href="/sale" icon="💰" label={t('home.sale')} color="#1677ff" />
         <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
-        <ActionBtn href="/records" icon="📋" label="记录" color="#fa8c16" />
+        <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
       </div>
 
       {/* ── Recent records ── */}
@@ -203,7 +203,7 @@ export default function HomePage() {
 
       {entries.map((entry, i) =>
         entry.kind === 'order' ? (
-          <OrderCard key={entry.orderNo} group={entry} index={i} tagSale={t('home.tagSale')} />
+          <OrderCard key={entry.orderNo} group={entry} index={i} tagSale={t('home.tagSale')} itemCountUnit={t('home.itemCountUnit')} />
         ) : (
           <RefundCard key={entry.item.id + '-' + i} item={entry.item} tagRefund={t('home.tagRefund')} />
         )
@@ -234,7 +234,7 @@ function ActionBtn({ href, icon, label, color }: {
   )
 }
 
-function OrderCard({ group, index, tagSale }: { group: OrderGroup; index: number; tagSale: string }) {
+function OrderCard({ group, index, tagSale, itemCountUnit }: { group: OrderGroup; index: number; tagSale: string; itemCountUnit: string }) {
   const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   return (
@@ -250,7 +250,7 @@ function OrderCard({ group, index, tagSale }: { group: OrderGroup; index: number
         <div style={s.recentMeta}>
           {group.orderNo} · {fmtTime(group.createdAt)}
           {!isSingle && (
-            <span style={s.itemCount}> · {group.items.length}件</span>
+            <span style={s.itemCount}> · {group.items.length}{itemCountUnit}</span>
           )}
         </div>
       </div>
