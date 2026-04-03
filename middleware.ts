@@ -35,7 +35,8 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/products') ||
     pathname.startsWith('/invite') ||
-    pathname.startsWith('/system')
+    pathname.startsWith('/system') ||
+    pathname.startsWith('/ops')
   if (!isOwnerOnly) {
     return NextResponse.next()
   }
@@ -54,5 +55,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/products/:path*', '/invite/:path*', '/system/:path*'],
+  matcher: ['/dashboard/:path*', '/products/:path*', '/invite/:path*', '/system/:path*', '/ops/:path*'],
 }
