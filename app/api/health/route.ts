@@ -1,53 +1,111 @@
+/**
+ * GET /api/health
+ *
+ * Structured system health check. Returns an array of checks each with
+ * status PASS | WARN | FAIL, plus an overall status.
+ *
+ * Safe to call publicly — never exposes secrets or credentials.
+ * Auth context is checked opportunistically (shows WARN if not authed).
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
-/**
- * GET /api/health
- * Diagnostic endpoint — check DB connectivity, env vars, and auth context.
- * Safe to call publicly; never returns secrets.
- */
+type Status = 'PASS' | 'WARN' | 'FAIL'
+
+type Check = {
+  key: string
+  name: string
+  status: Status
+  detail: string
+}
+
+function overall(checks: Check[]): Status {
+  if (checks.some((c) => c.status === 'FAIL')) return 'FAIL'
+  if (checks.some((c) => c.status === 'WARN')) return 'WARN'
+  return 'PASS'
+}
+
 export async function GET(req: NextRequest) {
-  const urlSet = !!process.env.DATABASE_URL
+  const checks: Check[] = []
 
-  // Auth context check (no MISSING_CONTEXT error — just diagnostic)
+  // ── 1. ENV: AUTH_SECRET ────────────────────────────────────────────────────
+  const authSecret = process.env.AUTH_SECRET ?? ''
+  if (!authSecret) {
+    checks.push({ key: 'auth_secret', name: 'AUTH_SECRET', status: 'FAIL', detail: '未配置，Session 签名不安全' })
+  } else if (authSecret === 'dev-secret-change-in-production' || authSecret.length < 16) {
+    checks.push({ key: 'auth_secret', name: 'AUTH_SECRET', status: 'WARN', detail: '正在使用默认弱密钥，请在生产环境替换' })
+  } else {
+    checks.push({ key: 'auth_secret', name: 'AUTH_SECRET', status: 'PASS', detail: '已配置' })
+  }
+
+  // ── 2. ENV: TELEGRAM_BOT_TOKEN ────────────────────────────────────────────
+  if (!process.env.TELEGRAM_BOT_TOKEN) {
+    checks.push({ key: 'bot_token', name: 'TELEGRAM_BOT_TOKEN', status: 'WARN', detail: '未配置，HMAC 验证已跳过（仅限开发）' })
+  } else {
+    checks.push({ key: 'bot_token', name: 'TELEGRAM_BOT_TOKEN', status: 'PASS', detail: '已配置，initData 验证开启' })
+  }
+
+  // ── 3. ENV: TENANT_ID ─────────────────────────────────────────────────────
+  const tenantId = process.env.TENANT_ID ?? ''
+  if (!tenantId) {
+    checks.push({ key: 'tenant_id', name: 'TENANT_ID', status: 'WARN', detail: '未配置，使用默认 seed-tenant-001' })
+  } else if (tenantId === 'seed-tenant-001') {
+    checks.push({ key: 'tenant_id', name: 'TENANT_ID', status: 'WARN', detail: `当前值 ${tenantId}（种子租户，生产环境应使用正式 ID）` })
+  } else {
+    checks.push({ key: 'tenant_id', name: 'TENANT_ID', status: 'PASS', detail: tenantId })
+  }
+
+  // ── 4. ENV: TELEGRAM_BOT_USERNAME ─────────────────────────────────────────
+  if (!process.env.TELEGRAM_BOT_USERNAME) {
+    checks.push({ key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME', status: 'WARN', detail: '未配置，无法生成 tgLink 和二维码' })
+  } else {
+    checks.push({ key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME', status: 'PASS', detail: `@${process.env.TELEGRAM_BOT_USERNAME}` })
+  }
+
+  // ── 5. Auth context ────────────────────────────────────────────────────────
   const ctx = getContext(req)
-  const authInfo = ctx
-    ? { authed: true, userId: ctx.userId, role: ctx.role, storeId: ctx.storeId }
-    : { authed: false, hasCookie: !!req.cookies.get('auth-session')?.value }
-
-  const envInfo = {
-    hasAuthSecret: !!process.env.AUTH_SECRET,
-    hasBotToken: !!process.env.TELEGRAM_BOT_TOKEN,
-    hasTenantId: !!process.env.TENANT_ID,
-    tenantId: process.env.TENANT_ID ?? '(unset → seed-tenant-001)',
-    nodeEnv: process.env.NODE_ENV,
+  if (!ctx) {
+    checks.push({ key: 'auth_ctx', name: '当前认证状态', status: 'WARN', detail: '未携带有效 Session，请先登录' })
+  } else {
+    checks.push({ key: 'auth_ctx', name: '当前认证状态', status: 'PASS', detail: `${ctx.role} · userId ${ctx.userId.slice(-6)}` })
   }
 
-  if (!urlSet) {
-    return NextResponse.json(
-      { ok: false, reason: 'DATABASE_URL not configured', auth: authInfo, env: envInfo },
-      { status: 503 },
-    )
+  // ── 6. DB + data checks ────────────────────────────────────────────────────
+  if (!process.env.DATABASE_URL) {
+    checks.push({ key: 'db', name: '数据库连接', status: 'FAIL', detail: 'DATABASE_URL 未配置' })
+    checks.push({ key: 'bound_users', name: '已绑定用户数', status: 'FAIL', detail: '数据库未连接，无法查询' })
+    checks.push({ key: 'products', name: '商品数量', status: 'FAIL', detail: '数据库未连接，无法查询' })
+  } else {
+    try {
+      const [productCount, userCount, boundUserCount] = await Promise.all([
+        prisma.product.count({ where: { status: 'ACTIVE' } }),
+        prisma.user.count({ where: { status: 'ACTIVE' } }),
+        prisma.user.count({ where: { status: 'ACTIVE', telegramId: { not: null } } }),
+      ])
+
+      checks.push({ key: 'db', name: '数据库连接', status: 'PASS', detail: `连接正常，${userCount} 个用户，${productCount} 件商品` })
+
+      if (boundUserCount === 0) {
+        checks.push({ key: 'bound_users', name: '已绑定用户数', status: 'WARN', detail: `${boundUserCount} / ${userCount}，无已绑定账号` })
+      } else {
+        checks.push({ key: 'bound_users', name: '已绑定用户数', status: 'PASS', detail: `${boundUserCount} / ${userCount}` })
+      }
+
+      if (productCount === 0) {
+        checks.push({ key: 'products', name: '商品数量', status: 'WARN', detail: '暂无上架商品，销售功能将无法使用' })
+      } else {
+        checks.push({ key: 'products', name: '商品数量', status: 'PASS', detail: `${productCount} 件上架商品` })
+      }
+    } catch (e) {
+      const msg = String(e).replace(/postgres(ql)?:\/\/[^@]+@/gi, 'postgres://***@')
+      checks.push({ key: 'db', name: '数据库连接', status: 'FAIL', detail: msg.slice(0, 120) })
+      checks.push({ key: 'bound_users', name: '已绑定用户数', status: 'FAIL', detail: '数据库连接失败' })
+      checks.push({ key: 'products', name: '商品数量', status: 'FAIL', detail: '数据库连接失败' })
+    }
   }
 
-  try {
-    const productCount = await prisma.product.count()
-    const tenantCount = await prisma.tenant.count()
-    const userCount = await prisma.user.count()
-    const boundUserCount = await prisma.user.count({ where: { telegramId: { not: null } } })
-
-    return NextResponse.json({
-      ok: true,
-      db: { productCount, tenantCount, userCount, boundUserCount },
-      auth: authInfo,
-      env: envInfo,
-    })
-  } catch (e) {
-    const msg = String(e).replace(/postgres(ql)?:\/\/[^@]+@/gi, 'postgres://***@')
-    return NextResponse.json(
-      { ok: false, reason: 'DB connection failed', detail: msg, auth: authInfo, env: envInfo },
-      { status: 503 },
-    )
-  }
+  const status = overall(checks)
+  return NextResponse.json({ status, checks }, { status: status === 'FAIL' ? 503 : 200 })
 }

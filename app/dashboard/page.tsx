@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 
 const SESSION_KEY = 'tg-authed-uid'
@@ -118,6 +119,7 @@ export default function DashboardPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button style={s.switchBtn} onClick={doLogout}>切换账号</button>
+          <Link href="/system" style={s.switchBtn}>系统</Link>
           <button
             style={s.refreshBtn}
             onClick={() => load(dimension, storeId, operatorUserId)}
