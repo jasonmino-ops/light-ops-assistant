@@ -114,6 +114,7 @@ export default function HomePage() {
 
   return (
     <main style={s.page}>
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
       {/* ── Brand header ── */}
       <div style={s.brandBar}>
         <div style={s.brandLeft}>
@@ -132,7 +133,13 @@ export default function HomePage() {
       <div style={s.summaryCard}>
         <div style={s.summaryTitle}>今日汇总</div>
         {loading ? (
-          <div style={s.summaryLoading}>加载中…</div>
+          <div style={s.summarySkeletonWrap}>
+            <div style={s.summarySkeleton} />
+            <div style={s.summarySkeletonRow}>
+              <div style={{ ...s.summarySkeleton, flex: 1, height: 32 }} />
+              <div style={{ ...s.summarySkeleton, flex: 1, height: 32 }} />
+            </div>
+          </div>
         ) : (
           <>
             <div style={s.netRow}>
@@ -166,6 +173,14 @@ export default function HomePage() {
         <span style={s.sectionTitle}>最近记录</span>
         <Link href="/records" style={s.viewAll}>查看全部 →</Link>
       </div>
+
+      {loading && (
+        <div style={s.recentSkeletonWrap}>
+          {[52, 44, 52].map((h, i) => (
+            <div key={i} style={{ ...s.summarySkeleton, height: h, borderRadius: 10, margin: '0 12px 8px' }} />
+          ))}
+        </div>
+      )}
 
       {!loading && entries.length === 0 && (
         <div style={s.emptyHint}>今日暂无记录</div>
@@ -316,12 +331,22 @@ const s: Record<string, React.CSSProperties> = {
     letterSpacing: '0.05em',
     marginBottom: 10,
   },
-  summaryLoading: {
-    textAlign: 'center',
-    color: '#bbb',
-    padding: '12px 0',
-    fontSize: 14,
+  summarySkeletonWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
   },
+  summarySkeletonRow: {
+    display: 'flex',
+    gap: 10,
+  },
+  summarySkeleton: {
+    height: 20,
+    borderRadius: 6,
+    background: '#e8e8e8',
+    animation: 'pulse 1.2s ease-in-out infinite',
+  },
+  recentSkeletonWrap: {},
   netRow: {
     display: 'flex',
     justifyContent: 'space-between',

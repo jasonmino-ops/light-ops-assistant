@@ -1120,7 +1120,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   submitBtnLoading: { opacity: 0.7 },
   successCard: {
-    background: 'var(--green)',
+    background: 'var(--blue)',
     borderRadius: 'var(--radius)',
     padding: '28px 20px 22px',
     display: 'flex',

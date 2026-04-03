@@ -180,6 +180,7 @@ export default function RecordsPage() {
 
   return (
     <div style={s.page}>
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
       <div style={s.headerBar}>
         <span style={s.headerTitle}>记录</span>
       </div>
@@ -233,7 +234,13 @@ export default function RecordsPage() {
         )}
 
         {/* ── List ── */}
-        {loading && <div style={s.hint}>加载中…</div>}
+        {loading && (
+          <div style={s.skeletonWrap}>
+            {[72, 60, 72, 60, 72].map((h, i) => (
+              <div key={i} style={{ ...s.skeletonCard, height: h }} />
+            ))}
+          </div>
+        )}
         {error && <div style={s.errorText}>{error}</div>}
 
         {!loading && !error && entries.length === 0 && (
@@ -588,11 +595,15 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     marginLeft: 8,
   },
-  hint: {
-    textAlign: 'center',
-    color: 'var(--muted)',
-    padding: '32px 0',
-    fontSize: 14,
+  skeletonWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  skeletonCard: {
+    borderRadius: 'var(--radius)',
+    background: '#e8e8e8',
+    animation: 'pulse 1.2s ease-in-out infinite',
   },
   errorText: {
     textAlign: 'center',

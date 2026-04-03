@@ -133,7 +133,6 @@ export default function InvitePage() {
     <div style={s.page}>
       <div style={s.header}>
         <div style={s.headerTitle}>邀请 & 成员</div>
-        <div style={s.headerSub}>生成绑定码邀请员工 · 管理绑定状态</div>
       </div>
 
       <div style={s.body}>
@@ -198,7 +197,7 @@ export default function InvitePage() {
               onClick={generate}
               disabled={loading || !storeId}
             >
-              {loading ? '生成中…' : '生成 STAFF 绑定码'}
+              {loading ? '生成中…' : '生成员工绑定码'}
             </button>
           </div>
         ) : (
@@ -211,12 +210,12 @@ export default function InvitePage() {
             </div>
 
             <div style={s.infoCard}>
-              <InfoRow label="角色" value={result.role} />
+              <InfoRow label="角色" value={result.role === 'OWNER' ? '老板' : '员工'} />
               <InfoRow label="门店" value={result.storeName} />
               <InfoRow label="备注" value={result.label ?? '—'} />
               <InfoRow label="过期时间" value={fmtExpiry(result.expiresAt)} />
               <InfoRow label="最多使用" value={`${result.maxUses} 次`} />
-              <InfoRow label="状态" value="ACTIVE" color="#52c41a" />
+              <InfoRow label="状态" value="有效" color="#52c41a" />
             </div>
 
             {result.tgLink && (
