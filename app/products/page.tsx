@@ -182,7 +182,7 @@ export default function ProductsPage() {
       )}
 
       {/* Header */}
-      <div style={s.header}>
+      <div style={s.headerBar}>
         <span style={s.headerTitle}>商品管理</span>
       </div>
 
@@ -400,7 +400,7 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
   },
-  header: {
+  headerBar: {
     background: 'var(--blue)',
     padding: '16px 16px 18px',
     display: 'flex',

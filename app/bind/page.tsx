@@ -101,7 +101,7 @@ function BindFlow() {
 
       {state === 'no_tg' && (
         <>
-          <div style={{ ...errIcon, background: '#fffbe6', borderColor: '#ffe58f', color: '#fa8c16' }}>⚠</div>
+          <div style={warnIcon}>⚠</div>
           <p style={{ ...msg, color: '#fa8c16' }}>请在 Telegram 中打开此链接</p>
           <p style={hint}>此页面需要通过 Telegram Mini App 访问</p>
         </>
@@ -163,6 +163,19 @@ const checkmark: React.CSSProperties = {
   justifyContent: 'center',
   fontSize: 24,
   color: '#52c41a',
+}
+
+const warnIcon: React.CSSProperties = {
+  width: 52,
+  height: 52,
+  borderRadius: '50%',
+  background: '#fffbe6',
+  border: '2px solid #ffe58f',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: 22,
+  color: '#fa8c16',
 }
 
 const errIcon: React.CSSProperties = {

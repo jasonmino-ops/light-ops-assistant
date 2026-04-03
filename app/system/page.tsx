@@ -65,6 +65,7 @@ export default function SystemPage() {
 
   return (
     <div style={s.page}>
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
       {/* Header */}
       <div style={{ ...s.header, background: STATUS_COLOR[overall] }}>
         <div>
