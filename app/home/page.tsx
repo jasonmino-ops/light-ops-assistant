@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch, STAFF_CTX } from '@/lib/api'
+import { useLocale } from '@/app/components/LangProvider'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 
 const SESSION_KEY = 'tg-authed-uid'
 
@@ -94,6 +96,8 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
+  const { t, lang, setLang } = useLocale()
+  const { realRole, isOwnerInStaffMode, enterStaffMode } = useWorkMode()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,13 +129,24 @@ export default function HomePage() {
           </div>
         </div>
         <div style={s.brandRight}>
-          <button style={s.switchBtn} onClick={doLogout}>切换账号</button>
+          <button
+            style={s.switchBtn}
+            onClick={() => setLang(lang === 'zh' ? 'km' : 'zh')}
+          >
+            {t('home.langBtn')}
+          </button>
+          {realRole === 'OWNER' && !isOwnerInStaffMode && (
+            <button style={{ ...s.switchBtn, background: '#fa8c16', color: '#fff', border: 'none' }} onClick={enterStaffMode}>
+              {t('home.staffModeBtn')}
+            </button>
+          )}
+          <button style={s.switchBtn} onClick={doLogout}>{t('common.switchAccount')}</button>
         </div>
       </div>
 
       {/* ── Today summary ── */}
       <div style={s.summaryCard}>
-        <div style={s.summaryTitle}>今日汇总</div>
+        <div style={s.summaryTitle}>{t('home.todaySummary')}</div>
         {loading ? (
           <div style={s.summarySkeletonWrap}>
             <div style={s.summarySkeleton} />
@@ -143,7 +158,7 @@ export default function HomePage() {
         ) : (
           <>
             <div style={s.netRow}>
-              <span style={s.netLabel}>净收入</span>
+              <span style={s.netLabel}>{t('home.netIncome')}</span>
               <span style={{
                 ...s.netAmount,
                 color: (summary?.netAmount ?? 0) >= 0 ? '#52c41a' : '#ff4d4f',
@@ -152,26 +167,26 @@ export default function HomePage() {
               </span>
             </div>
             <div style={s.summaryGrid}>
-              <SummaryCell label="销售" value={String(summary?.saleCount ?? 0)} unit="笔" />
+              <SummaryCell label={t('home.sale')} value={String(summary?.saleCount ?? 0)} unit={t('home.unit')} />
               <div style={s.summaryDivider} />
-              <SummaryCell label="退款" value={String(summary?.refundCount ?? 0)} unit="笔" />
+              <SummaryCell label={t('home.refund')} value={String(summary?.refundCount ?? 0)} unit={t('home.unit')} />
             </div>
           </>
         )}
       </div>
 
       {/* ── Quick actions ── */}
-      <div style={s.sectionTitle}>快捷操作</div>
+      <div style={s.sectionTitle}>{t('home.quickActions')}</div>
       <div style={s.actionGrid}>
-        <ActionBtn href="/sale" icon="💰" label="销售" color="#1677ff" />
-        <ActionBtn href="/refund" icon="↩️" label="退款" color="#ff4d4f" />
+        <ActionBtn href="/sale" icon="💰" label={t('home.sale')} color="#1677ff" />
+        <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
         <ActionBtn href="/records" icon="📋" label="记录" color="#fa8c16" />
       </div>
 
       {/* ── Recent records ── */}
       <div style={s.sectionHeader}>
-        <span style={s.sectionTitle}>最近记录</span>
-        <Link href="/records" style={s.viewAll}>查看全部 →</Link>
+        <span style={s.sectionTitle}>{t('home.recentRecords')}</span>
+        <Link href="/records" style={s.viewAll}>{t('home.viewAll')}</Link>
       </div>
 
       {loading && (
@@ -183,14 +198,14 @@ export default function HomePage() {
       )}
 
       {!loading && entries.length === 0 && (
-        <div style={s.emptyHint}>今日暂无记录</div>
+        <div style={s.emptyHint}>{t('home.noRecordsToday')}</div>
       )}
 
       {entries.map((entry, i) =>
         entry.kind === 'order' ? (
-          <OrderCard key={entry.orderNo} group={entry} index={i} />
+          <OrderCard key={entry.orderNo} group={entry} index={i} tagSale={t('home.tagSale')} />
         ) : (
-          <RefundCard key={entry.item.id + '-' + i} item={entry.item} />
+          <RefundCard key={entry.item.id + '-' + i} item={entry.item} tagRefund={t('home.tagRefund')} />
         )
       )}
     </main>
@@ -219,13 +234,13 @@ function ActionBtn({ href, icon, label, color }: {
   )
 }
 
-function OrderCard({ group, index }: { group: OrderGroup; index: number }) {
+function OrderCard({ group, index, tagSale }: { group: OrderGroup; index: number; tagSale: string }) {
   const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   return (
     <div style={{ ...s.recentCard, borderLeft: `3px solid ${accent}` }}>
       <div style={s.recentLeft}>
-        <span style={s.tagSale}>销售单</span>
+        <span style={s.tagSale}>{tagSale}</span>
         <div style={s.recentProduct}>
           {isSingle
             ? group.items[0].productNameSnapshot +
@@ -246,11 +261,11 @@ function OrderCard({ group, index }: { group: OrderGroup; index: number }) {
   )
 }
 
-function RefundCard({ item }: { item: RecordItem }) {
+function RefundCard({ item, tagRefund }: { item: RecordItem; tagRefund: string }) {
   return (
     <div style={{ ...s.recentCard, ...s.recentCardRefund }}>
       <div style={s.recentLeft}>
-        <span style={s.tagRefund}>退款</span>
+        <span style={s.tagRefund}>{tagRefund}</span>
         <div style={s.recentProduct}>
           {item.productNameSnapshot}
           {item.specSnapshot && <span style={s.recentSpec}> · {item.specSnapshot}</span>}

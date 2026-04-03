@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useWorkMode } from './WorkModeProvider'
 
 const STAFF_TABS = [
   { href: '/home',      label: '首页', icon: '🏠' },
@@ -18,9 +19,10 @@ const OWNER_TABS = [
   { href: '/dashboard', label: '概览', icon: '📊' },
 ]
 
-export default function BottomNav({ role }: { role: string }) {
+export default function BottomNav() {
   const pathname = usePathname()
-  const tabs = role === 'OWNER' ? OWNER_TABS : STAFF_TABS
+  const { effectiveRole } = useWorkMode()
+  const tabs = effectiveRole === 'OWNER' ? OWNER_TABS : STAFF_TABS
 
   return (
     <nav style={s.nav}>

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useLocale } from '@/app/components/LangProvider'
 
 /**
  * /bind?token=<token>
@@ -19,6 +20,7 @@ type BindState = 'loading' | 'success' | 'error' | 'no_tg'
 const SESSION_KEY = 'tg-authed-uid'
 
 function BindFlow() {
+  const { t } = useLocale()
   const searchParams = useSearchParams()
   const token = searchParams.get('token') ?? ''
 
@@ -80,14 +82,14 @@ function BindFlow() {
       {state === 'loading' && (
         <>
           <div style={spinnerStyle} />
-          <p style={msg}>正在验证邀请码…</p>
+          <p style={msg}>{t('bind.verifying')}</p>
         </>
       )}
 
       {state === 'success' && (
         <>
           <div style={checkmark}>✓</div>
-          <p style={{ ...msg, color: '#52c41a', fontWeight: 700 }}>绑定成功！正在跳转…</p>
+          <p style={{ ...msg, color: '#52c41a', fontWeight: 700 }}>{t('bind.success')}</p>
         </>
       )}
 
@@ -95,15 +97,15 @@ function BindFlow() {
         <>
           <div style={errIcon}>✕</div>
           <p style={{ ...msg, color: '#ff4d4f' }}>{errorMsg}</p>
-          <p style={hint}>请联系管理员重新生成邀请链接</p>
+          <p style={hint}>{t('bind.contactAdmin')}</p>
         </>
       )}
 
       {state === 'no_tg' && (
         <>
           <div style={warnIcon}>⚠</div>
-          <p style={{ ...msg, color: '#fa8c16' }}>请在 Telegram 中打开此链接</p>
-          <p style={hint}>此页面需要通过 Telegram Mini App 访问</p>
+          <p style={{ ...msg, color: '#fa8c16' }}>{t('bind.openInTg')}</p>
+          <p style={hint}>{t('bind.openInTgHint')}</p>
         </>
       )}
     </div>

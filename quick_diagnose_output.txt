@@ -1,0 +1,1158 @@
+================ BASIC INFO ================
+/Users/jason/light-ops-assistant
+Thu Apr  2 05:05:14 +07 2026
+
+================ GIT STATUS ================
+?? quick_diagnose.sh
+?? quick_diagnose_output.txt
+
+1496eda feat: 老板商品管理 — 扫码查/改/新增，STAFF 访问收口
+98b770f feat: 摄像头扫码闭环 — 支持 EAN-13 / Code128，Telegram 扫码作降级保留
+b097140 fix: 销售页扫码闭环修复 — 正确处理取消/null、移除重复关闭、非 TMA 提示收口
+6c8327f feat: Telegram WebApp 身份验证 + /dashboard 权限收口
+53fc0aa docs: 内测冻结基线 V1 — 补运行说明与环境配置
+986c4fa feat: 老板端经营概览 V0 — 今日数据自动加载 + 三维度 + 热销 Top 3
+2aee78d fix: 移除 schema.prisma 中的 url 字段，消除 P1012 冲突
+a6e77f6 fix: 补提交整单 API — sales 接受 items[] 数组，records 返回 orderNo
+
+================ BUILD CHECK ================
+
+> light-ops-assistant@1.0.0 build
+> next build
+
+   ▲ Next.js 15.5.14
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 978ms
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/17) ...
+   Generating static pages (4/17) 
+   Generating static pages (8/17) 
+   Generating static pages (12/17) 
+ ✓ Generating static pages (17/17)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ƒ /                                      146 B         102 kB
+├ ƒ /_not-found                            996 B         103 kB
+├ ƒ /api/auth/telegram                     146 B         102 kB
+├ ƒ /api/health                            146 B         102 kB
+├ ƒ /api/products                          146 B         102 kB
+├ ƒ /api/products/[id]                     146 B         102 kB
+├ ƒ /api/records                           146 B         102 kB
+├ ƒ /api/sales                             146 B         102 kB
+├ ƒ /api/sales/lookup                      146 B         102 kB
+├ ƒ /api/summary                           146 B         102 kB
+├ ƒ /dashboard                           2.98 kB         105 kB
+├ ƒ /home                                3.12 kB         109 kB
+├ ƒ /products                            4.88 kB         107 kB
+├ ƒ /records                              3.4 kB         106 kB
+├ ƒ /refund                              6.24 kB         108 kB
+└ ƒ /sale                                6.49 kB         109 kB
++ First Load JS shared by all             102 kB
+  ├ chunks/255-38b49df12a94ee57.js         46 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)          1.95 kB
+
+
+ƒ Middleware                             34.2 kB
+
+ƒ  (Dynamic)  server-rendered on demand
+
+
+================ KEY SEARCH ================
+[sale page allProducts / dropdown]
+5:import BarcodeScanner from '@/app/components/BarcodeScanner'
+50:  const [dropOpen, setDropOpen] = useState(false)
+64:    if (!q || allProducts.length === 0) {
+101:  const filteredDrop = dropSearch.trim()
+280:        <BarcodeScanner
+371:              {allProducts.length > 0 && (
+383:                      <span style={s.dropArrow}>{dropOpen ? '▲' : '▼'}</span>
+385:                    {dropOpen && (
+396:                          {filteredDrop.length === 0 && <div style={s.dropEmpty}>无匹配商品</div>}
+397:                          {filteredDrop.map((p) => (
+
+[network error text]
+app/sale/page.tsx:139:        setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? '未找到商品，请联系老板处理' : '查询失败，请重试')
+app/sale/page.tsx:142:      setQueryError('网络错误，请重试')
+app/sale/page.tsx:247:      setSubmitError('网络错误，请重试')
+app/records/page.tsx:151:          setError('加载失败，请重试')
+app/records/page.tsx:160:        setError('网络错误，请重试')
+app/products/page.tsx:72:          setError('查询失败，请重试')
+app/products/page.tsx:77:      setError('网络错误，请重试')
+app/products/page.tsx:130:      setError('网络错误，请重试')
+app/products/page.tsx:169:      setError('网络错误，请重试')
+app/dashboard/page.tsx:80:          setError(body.message ?? '加载失败')
+app/dashboard/page.tsx:83:        setError('网络错误，请重试')
+app/components/TelegramInit.tsx:43:        tg.showAlert?.('网络错误，请重试')
+app/refund/page.tsx:181:        setListError(body.message ?? '加载失败，请重试')
+app/refund/page.tsx:184:      setListError('网络错误，请重试')
+app/refund/page.tsx:251:      setLookupError('网络错误，请重试')
+app/refund/page.tsx:331:      setSubmitError('网络错误，请重试')
+
+================ FILE SNAPSHOTS ================
+--- app/api/products/route.ts ---
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { getContext } from '@/lib/context'
+
+/**
+ * GET /api/products[?barcode=<barcode>]
+ *
+ * List mode (no barcode): returns all ACTIVE products.
+ *
+ * Single lookup (barcode):
+ *   STAFF → only ACTIVE products (unchanged behaviour)
+ *   OWNER → all products incl. DISABLED; also returns status field so the
+ *            product management page can show the current state.
+ *
+ * POST /api/products — OWNER only
+ * Create a new product. Body: { barcode, name, spec?, sellPrice }
+ */
+
+export async function GET(req: NextRequest) {
+  const ctx = getContext(req)
+  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
+
+  const barcode = req.nextUrl.searchParams.get('barcode')
+
+  // ── List mode ──────────────────────────────────────────────────────────────
+  if (!barcode) {
+    const products = await prisma.product.findMany({
+      where: { tenantId: ctx.tenantId, status: 'ACTIVE' },
+      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true },
+      orderBy: { name: 'asc' },
+      take: 200,
+    })
+    return NextResponse.json(
+      products.map((p) => ({
+        id: p.id,
+        barcode: p.barcode,
+        name: p.name,
+        spec: p.spec,
+        sellPrice: p.sellPrice.toNumber(),
+      })),
+    )
+  }
+
+  // ── Single lookup ──────────────────────────────────────────────────────────
+  // OWNER can see disabled products (to re-enable them in the products page)
+  const statusFilter = ctx.role === 'OWNER' ? undefined : ('ACTIVE' as const)
+  const product = await prisma.product.findFirst({
+    where: {
+      tenantId: ctx.tenantId,
+      barcode,
+      ...(statusFilter ? { status: statusFilter } : {}),
+    },
+    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true },
+  })
+
+  if (!product) {
+    return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
+  }
+
+  return NextResponse.json({
+    id: product.id,
+    barcode: product.barcode,
+    name: product.name,
+    spec: product.spec,
+    sellPrice: product.sellPrice.toNumber(),
+    // status only exposed to OWNER (staff doesn't need to see it)
+    ...(ctx.role === 'OWNER' ? { status: product.status } : {}),
+  })
+}
+
+// ── POST: create product ───────────────────────────────────────────────────────
+
+export async function POST(req: NextRequest) {
+  const ctx = getContext(req)
+  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
+  if (ctx.role !== 'OWNER') {
+    return NextResponse.json(
+      { error: 'FORBIDDEN', message: '只有老板可以新增商品' },
+      { status: 403 },
+    )
+  }
+
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
+  }
+
+  const { barcode, name, spec, sellPrice } = body
+
+  if (!barcode?.trim()) {
+    return NextResponse.json({ error: 'MISSING_BARCODE', message: '条码不能为空' }, { status: 400 })
+  }
+  if (!name?.trim()) {
+    return NextResponse.json({ error: 'MISSING_NAME', message: '商品名不能为空' }, { status: 400 })
+  }
+  if (sellPrice === undefined || isNaN(Number(sellPrice)) || Number(sellPrice) <= 0) {
+    return NextResponse.json({ error: 'INVALID_PRICE', message: '售价必须大于 0' }, { status: 400 })
+  }
+
+  // Duplicate barcode guard
+  const existing = await prisma.product.findFirst({
+    where: { tenantId: ctx.tenantId, barcode: barcode.trim() },
+  })
+  if (existing) {
+    return NextResponse.json(
+      { error: 'BARCODE_EXISTS', message: '该条码已存在，请直接查询修改' },
+      { status: 409 },
+    )
+  }
+
+  const created = await prisma.product.create({
+    data: {
+      tenantId: ctx.tenantId,
+      barcode: barcode.trim(),
+      name: name.trim(),
+      spec: spec?.trim() || null,
+      sellPrice: String(sellPrice),
+      status: 'ACTIVE',
+    },
+  })
+
+  return NextResponse.json(
+    {
+      id: created.id,
+      barcode: created.barcode,
+      name: created.name,
+      spec: created.spec,
+      sellPrice: created.sellPrice.toNumber(),
+      status: created.status,
+    },
+    { status: 201 },
+  )
+}
+
+--- middleware.ts ---
+/**
+ * Next.js Edge middleware — route-level access control.
+ *
+ * Protects /dashboard: only OWNER may access it.
+ * Non-owners are redirected to /home.
+ *
+ * The role is read from the auth-session cookie (set by /api/auth/telegram).
+ * The cookie payload is parsed without HMAC verification here (Edge runtime
+ * cannot use Node.js crypto). The real HMAC check happens in lib/context.ts
+ * inside each API route, so forging the cookie only grants UI access — all
+ * data calls still fail.
+ *
+ * In local dev (no cookie), falls back to the DEV_ROLE env var.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+
+function peekRole(token: string): string | null {
+  try {
+    // token format: <base64url-json>.<sig>
+    const payload = token.slice(0, token.lastIndexOf('.'))
+    const padded = payload.replace(/-/g, '+').replace(/_/g, '/') +
+      '=='.slice((payload.length + 2) % 4 ? (payload.length + 2) % 4 - 2 : 4)
+    const json = atob(padded)
+    return (JSON.parse(json) as { role?: string }).role ?? null
+  } catch {
+    return null
+  }
+}
+
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+
+  const isOwnerOnly =
+    pathname.startsWith('/dashboard') || pathname.startsWith('/products')
+  if (!isOwnerOnly) {
+    return NextResponse.next()
+  }
+
+  // Check session cookie
+  const sessionToken = req.cookies.get('auth-session')?.value
+  const roleFromCookie = sessionToken ? peekRole(sessionToken) : null
+
+  // Fall back to DEV_ROLE in non-production environments
+  const role = roleFromCookie ??
+    (process.env.NODE_ENV !== 'production' ? process.env.DEV_ROLE : null)
+
+  if (role === 'OWNER') return NextResponse.next()
+
+  return NextResponse.redirect(new URL('/home', req.url))
+}
+
+export const config = {
+  matcher: ['/dashboard/:path*', '/products/:path*'],
+}
+
+--- lib/context.ts ---
+import { NextRequest } from 'next/server'
+import { verifySession } from './session'
+
+export type UserRole = 'OWNER' | 'STAFF'
+
+export type RequestContext = {
+  tenantId: string
+  userId: string
+  storeId: string
+  role: UserRole
+}
+
+/**
+ * Extracts the request context in priority order:
+ *
+ * 1. auth-session cookie — set by /api/auth/telegram after HMAC-verified
+ *    Telegram WebApp auth. Signature is fully verified here with Node.js crypto.
+ *
+ * 2. x-* dev headers — local development fallback (injected by lib/api.ts).
+ *    Never present in production Telegram WebApp traffic.
+ */
+export function getContext(req: NextRequest): RequestContext | null {
+  // ── 1. Signed session cookie ───────────────────────────────────────────────
+  const sessionToken = req.cookies.get('auth-session')?.value
+  if (sessionToken) {
+    const session = verifySession(sessionToken)
+    if (session) {
+      return {
+        tenantId: session.tenantId,
+        userId: session.userId,
+        storeId: session.storeId,
+        role: session.role,
+      }
+    }
+  }
+
+  // ── 2. Dev x-* header fallback ────────────────────────────────────────────
+  const tenantId = req.headers.get('x-tenant-id')
+  const userId = req.headers.get('x-user-id')
+  const storeId = req.headers.get('x-store-id')
+  const role = req.headers.get('x-role')
+
+  if (!tenantId || !userId || !storeId || !role) return null
+  if (role !== 'OWNER' && role !== 'STAFF') return null
+
+  return { tenantId, userId, storeId, role }
+}
+
+--- app/api/auth/telegram/route.ts ---
+/**
+ * POST /api/auth/telegram
+ *
+ * Validates Telegram WebApp initData, looks up the user by telegramId,
+ * and sets an auth-session cookie.
+ *
+ * Required env vars:
+ *   TELEGRAM_BOT_TOKEN — used to verify the HMAC signature of initData
+ *   AUTH_SECRET        — used to sign the session cookie
+ *   TENANT_ID          — the tenant this bot serves (defaults to seed-tenant-001)
+ *
+ * Dev mode: if TELEGRAM_BOT_TOKEN is not set, HMAC verification is skipped
+ * so the flow can be tested without a real bot.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
+import { prisma } from '@/lib/prisma'
+import { signSession } from '@/lib/session'
+
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
+const TENANT_ID = process.env.TENANT_ID ?? 'seed-tenant-001'
+
+// ── Telegram initData verification ──────────────────────────────────────────
+
+/**
+ * Verifies the HMAC of Telegram WebApp initData.
+ * Returns the decoded params (excluding hash) or null if invalid.
+ */
+function verifyInitData(initData: string): URLSearchParams | null {
+  const params = new URLSearchParams(initData)
+  const hash = params.get('hash')
+  if (!hash) return null
+
+  params.delete('hash')
+  const dataCheckString = [...params.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('\n')
+
+  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest()
+  const expected = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
+
+  return expected === hash ? params : null
+}
+
+// ── Route handler ────────────────────────────────────────────────────────────
+
+export async function POST(req: NextRequest) {
+  let body: { initData?: string }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
+  }
+
+  const { initData } = body
+  if (!initData) {
+    return NextResponse.json({ error: 'MISSING_INIT_DATA' }, { status: 400 })
+  }
+
+  // Verify or skip (dev mode)
+  let params: URLSearchParams
+  if (!BOT_TOKEN) {
+    // Dev: skip HMAC, just parse
+    params = new URLSearchParams(initData)
+  } else {
+    const verified = verifyInitData(initData)
+    if (!verified) {
+      return NextResponse.json(
+        { error: 'INVALID_SIGNATURE', message: 'Telegram initData 签名验证失败' },
+        { status: 401 },
+      )
+    }
+    params = verified
+  }
+
+  // Extract Telegram user id
+  const userStr = params.get('user')
+  if (!userStr) {
+    return NextResponse.json({ error: 'MISSING_USER' }, { status: 400 })
+  }
+  let telegramUserId: string
+  try {
+    telegramUserId = String(JSON.parse(userStr).id)
+  } catch {
+    return NextResponse.json({ error: 'INVALID_USER_PAYLOAD' }, { status: 400 })
+  }
+
+  // Look up user by telegramId
+  const user = await prisma.user.findFirst({
+    where: { tenantId: TENANT_ID, telegramId: telegramUserId, status: 'ACTIVE' },
+    include: {
+      storeRoles: {
+        where: { status: 'ACTIVE' },
+        orderBy: { createdAt: 'asc' },
+        take: 1,
+        select: { storeId: true },
+      },
+    },
+  })
+
+  if (!user) {
+    return NextResponse.json(
+      { error: 'USER_NOT_FOUND', message: '未找到绑定账号，请联系管理员' },
+      { status: 404 },
+    )
+  }
+
+  // Resolve storeId: use primary store role, or first store in tenant
+  let storeId = user.storeRoles[0]?.storeId
+  if (!storeId) {
+    const firstStore = await prisma.store.findFirst({
+      where: { tenantId: TENANT_ID, status: 'ACTIVE' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    })
+    storeId = firstStore?.id ?? ''
+  }
+
+  const sessionToken = signSession({
+    tenantId: user.tenantId,
+    userId: user.id,
+    storeId,
+    role: user.role,
+  })
+
+  const isProd = process.env.NODE_ENV === 'production'
+  const res = NextResponse.json({ ok: true, role: user.role })
+  res.cookies.set('auth-session', sessionToken, {
+    httpOnly: true,
+    sameSite: isProd ? 'none' : 'lax',
+    secure: isProd,
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+    path: '/',
+  })
+  return res
+}
+
+--- app/sale/page.tsx (first 260 lines) ---
+'use client'
+
+import { useState, useEffect, useRef, KeyboardEvent } from 'react'
+import { apiFetch } from '@/lib/api'
+import BarcodeScanner from '@/app/components/BarcodeScanner'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Product = {
+  id: string
+  barcode: string
+  name: string
+  spec: string | null
+  sellPrice: number
+}
+
+type CartItem = {
+  key: string
+  product: Product
+  qty: number
+}
+
+type SaleSuccess = {
+  orderNo: string
+  totalAmount: number
+  itemCount: number
+  createdAt: string
+  cartSnapshot: CartItem[]  // 用于成功卡片的商品摘要
+}
+
+type Status = 'idle' | 'querying' | 'submitting'
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function SalePage() {
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const [qty, setQty] = useState(1)
+  const [product, setProduct] = useState<Product | null>(null)
+  const [queryError, setQueryError] = useState<string | null>(null)
+  const [status, setStatus] = useState<Status>('idle')
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [success, setSuccess] = useState<SaleSuccess | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [scannerOpen, setScannerOpen] = useState(false)
+
+  // ── 商品列表（自动补全 + 下拉）─────────────────────────────────────────────
+  const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [suggestions, setSuggestions] = useState<Product[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [dropOpen, setDropOpen] = useState(false)
+  const [dropSearch, setDropSearch] = useState('')
+  const suggestWrapRef = useRef<HTMLDivElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    apiFetch('/api/products')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: Product[]) => setAllProducts(list))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const q = barcodeInput.trim()
+    if (!q || allProducts.length === 0) {
+      setSuggestions([])
+      setShowSuggestions(false)
+      return
+    }
+    const ql = q.toLowerCase()
+    const isNumeric = /^\d+$/.test(q)
+    const matches = allProducts.filter(
+      (p) =>
+        p.barcode.toLowerCase().includes(ql) ||
+        p.name.toLowerCase().includes(ql) ||
+        (p.spec ?? '').toLowerCase().includes(ql),
+    )
+    matches.sort((a, b) => {
+      if (isNumeric) {
+        return (a.barcode.toLowerCase().startsWith(ql) ? 0 : 1) -
+               (b.barcode.toLowerCase().startsWith(ql) ? 0 : 1)
+      }
+      return (a.name.toLowerCase().includes(ql) ? 0 : 1) -
+             (b.name.toLowerCase().includes(ql) ? 0 : 1)
+    })
+    const top = matches.slice(0, 5)
+    setSuggestions(top)
+    setShowSuggestions(top.length > 0)
+  }, [barcodeInput, allProducts])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (suggestWrapRef.current && !suggestWrapRef.current.contains(e.target as Node))
+        setShowSuggestions(false)
+      if (dropRef.current && !dropRef.current.contains(e.target as Node))
+        setDropOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  const filteredDrop = dropSearch.trim()
+    ? allProducts.filter((p) => {
+        const q = dropSearch.toLowerCase()
+        return (
+          p.barcode.toLowerCase().includes(q) ||
+          p.name.toLowerCase().includes(q) ||
+          (p.spec ?? '').toLowerCase().includes(q)
+        )
+      })
+    : allProducts
+
+  function selectProduct(p: Product) {
+    setProduct(p)
+    setBarcodeInput(p.barcode)
+    setQty(1)
+    setShowSuggestions(false)
+    setDropSearch('')
+    setDropOpen(false)
+    setQueryError(null)
+  }
+
+  const safeQty = Math.max(1, qty)
+  const cartTotal = cart.reduce((sum, i) => sum + i.product.sellPrice * i.qty, 0)
+
+  // ── 按条码查询 ─────────────────────────────────────────────────────────────
+
+  async function queryProductByBarcode(barcode: string) {
+    if (!barcode) return
+    setQueryError(null)
+    setProduct(null)
+    setStatus('querying')
+    try {
+      const res = await apiFetch(`/api/products?barcode=${encodeURIComponent(barcode)}`)
+      if (res.ok) {
+        setProduct(await res.json())
+        setQty(1)
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setQueryError(body.error === 'PRODUCT_NOT_FOUND' ? '未找到商品，请联系老板处理' : '查询失败，请重试')
+      }
+    } catch {
+      setQueryError('网络错误，请重试')
+    } finally {
+      setStatus('idle')
+    }
+  }
+
+  function queryProduct() {
+    setShowSuggestions(false)
+    queryProductByBarcode(barcodeInput.trim())
+  }
+
+  function handleBarcodeKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') queryProduct()
+    if (e.key === 'Escape') setShowSuggestions(false)
+  }
+
+  // ── 扫码 ──────────────────────────────────────────────────────────────────
+
+  const [isTma, setIsTma] = useState(false)
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setIsTma(!!(window as any).Telegram?.WebApp?.initData)
+  }, [])
+
+  /** 打开摄像头扫码（主路径，支持 EAN-13 / Code128 等一维码及 QR） */
+  function scanBarcode() {
+    setQueryError(null)
+    setScannerOpen(true)
+  }
+
+  /** 摄像头扫码成功：回填条码并触发查询 */
+  function handleScanned(barcode: string) {
+    setScannerOpen(false)
+    setBarcodeInput(barcode)
+    queryProductByBarcode(barcode)
+  }
+
+  /**
+   * 摄像头不可用时的降级处理：
+   * - 在 Telegram 内：自动切换到 showScanQrPopup（支持 QR，不需要摄像头权限）
+   * - 其他环境：将错误信息展示到查询区
+   */
+  function handleCameraError(msg: string) {
+    setScannerOpen(false)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    if (isTma && tg?.showScanQrPopup) {
+      tg.showScanQrPopup(
+        { text: '对准商品条码扫描' },
+        (scanned: string | null) => {
+          if (scanned?.trim()) {
+            setBarcodeInput(scanned.trim())
+            queryProductByBarcode(scanned.trim())
+          }
+          return true
+        },
+      )
+    } else {
+      setQueryError(msg)
+    }
+  }
+
+  // ── 购物车操作 ─────────────────────────────────────────────────────────────
+
+  function addToCart() {
+    if (!product) return
+    setCart((prev) => [...prev, { key: `${product.id}-${Date.now()}`, product, qty: safeQty }])
+    setProduct(null)
+    setBarcodeInput('')
+    setQty(1)
+    setQueryError(null)
+  }
+
+  function removeFromCart(key: string) {
+    setCart((prev) => prev.filter((i) => i.key !== key))
+  }
+
+  // ── 提交整单 ───────────────────────────────────────────────────────────────
+
+  async function handleSubmit() {
+    if (cart.length === 0) return
+    setSubmitError(null)
+    setStatus('submitting')
+
+    const cartSnapshot = [...cart]
+
+    try {
+      const res = await apiFetch('/api/sales', {
+        method: 'POST',
+        body: JSON.stringify({
+          saleType: 'SALE',
+          items: cart.map((ci) => ({
+            barcode: ci.product.barcode,
+            quantity: ci.qty,
+          })),
+        }),
+      })
+      const body = await res.json()
+      if (res.ok) {
+        setSuccess({ ...body, cartSnapshot })
+        setCart([])
+      } else {
+        setSubmitError(body.message ?? body.error ?? '提交失败')
+      }
+    } catch {
+      setSubmitError('网络错误，请重试')
+    } finally {
+      setStatus('idle')
+    }
+  }
+
+  function handleClear() {
+    setBarcodeInput('')
+    setQty(1)
+    setProduct(null)
+    setQueryError(null)
+    setSuccess(null)
+    setSubmitError(null)
+    setStatus('idle')
+
+--- app/sale/page.tsx (261-520 lines) ---
+    setDropSearch('')
+    setDropOpen(false)
+    setShowSuggestions(false)
+    setCart([])
+  }
+
+  // ── 成功卡商品摘要 ─────────────────────────────────────────────────────────
+  function buildCartSummary(items: CartItem[]) {
+    const shown = items.slice(0, 2).map((i) => `${i.product.name}×${i.qty}`)
+    if (items.length > 2) shown.push(`另 ${items.length - 2} 件`)
+    return shown.join('、')
+  }
+
+  // ─── 渲染 ──────────────────────────────────────────────────────────────────
+
+  return (
+    <div style={s.page}>
+      {/* 摄像头扫码弹窗 */}
+      {scannerOpen && (
+        <BarcodeScanner
+          onScanned={handleScanned}
+          onClose={() => setScannerOpen(false)}
+          onCameraError={handleCameraError}
+        />
+      )}
+
+      <div style={s.headerBar}>
+        <span style={s.headerTitle}>销售</span>
+      </div>
+
+      <div style={s.body}>
+
+        {/* ══ 成功状态 ══ */}
+        {success && (
+          <div style={s.successCard}>
+            <div style={s.successIconWrap}>✓</div>
+            <div style={s.successTitle}>销售成功</div>
+            <div style={s.successGrid}>
+              <InfoRow label="单号" value={success.orderNo} mono />
+              <InfoRow label="合计金额" value={`$${success.totalAmount.toFixed(2)}`} bold />
+              <InfoRow label="商品" value={buildCartSummary(success.cartSnapshot)} />
+              <InfoRow label="时间" value={new Date(success.createdAt).toLocaleTimeString('zh-CN')} />
+            </div>
+            <button style={s.nextBtn} onClick={handleClear}>继续下一单</button>
+          </div>
+        )}
+
+        {/* ══ 主流程 ══ */}
+        {!success && (
+          <>
+            {/* 查询卡：扫码 / 输入 / 下拉 */}
+            <div style={s.card}>
+              <button
+                type="button"
+                style={s.scanRow}
+                onClick={scanBarcode}
+                disabled={status === 'querying' || status === 'submitting'}
+              >
+                <span style={s.scanIcon}>⊡</span>
+                <span style={s.scanLabel}>扫码查询</span>
+              </button>
+
+              <div style={s.orDivider}>
+                <div style={s.orLine} /><span style={s.orText}>或</span><div style={s.orLine} />
+              </div>
+
+              <div ref={suggestWrapRef} style={s.suggestWrap}>
+                <div style={s.inputRow}>
+                  <input
+                    style={s.textInput}
+                    type="text"
+                    placeholder="商品条码 / 名称"
+                    value={barcodeInput}
+                    onChange={(e) => {
+                      setBarcodeInput(e.target.value)
+                      if (product) setProduct(null)
+                    }}
+                    onKeyDown={handleBarcodeKeyDown}
+                    onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
+                  />
+                  <button
+                    style={s.queryBtn}
+                    type="button"
+                    onClick={queryProduct}
+                    disabled={status === 'querying' || !barcodeInput.trim()}
+                  >
+                    {status === 'querying' ? '…' : '查询'}
+                  </button>
+                </div>
+
+                {showSuggestions && (
+                  <div style={s.suggestPanel}>
+                    {suggestions.map((p) => (
+                      <div
+                        key={p.id}
+                        style={s.suggestItem}
+                        onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}
+                      >
+                        <span style={s.suggestCode}>{p.barcode}</span>
+                        <span style={s.suggestName}>{p.name}</span>
+                        {p.spec && <span style={s.suggestSpec}> · {p.spec}</span>}
+                        <span style={s.suggestPrice}>${p.sellPrice.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {queryError && <div style={s.errorMsg}>{queryError}</div>}
+
+              {allProducts.length > 0 && (
+                <>
+                  <div style={s.orDivider}>
+                    <div style={s.orLine} /><span style={s.orText}>或从列表选</span><div style={s.orLine} />
+                  </div>
+                  <div ref={dropRef} style={s.dropWrap}>
+                    <div style={s.dropTrigger} onClick={() => setDropOpen((v) => !v)}>
+                      <span style={s.dropTriggerText}>
+                        {product
+                          ? `${product.name}${product.spec ? ' · ' + product.spec : ''}`
+                          : '全部商品…'}
+                      </span>
+                      <span style={s.dropArrow}>{dropOpen ? '▲' : '▼'}</span>
+                    </div>
+                    {dropOpen && (
+                      <div style={s.dropPanel}>
+                        <input
+                          style={s.dropSearch}
+                          type="text"
+                          placeholder="搜索商品名 / 编码…"
+                          value={dropSearch}
+                          onChange={(e) => setDropSearch(e.target.value)}
+                          autoFocus
+                        />
+                        <div style={s.dropList}>
+                          {filteredDrop.length === 0 && <div style={s.dropEmpty}>无匹配商品</div>}
+                          {filteredDrop.map((p) => (
+                            <div
+                              key={p.id}
+                              style={s.dropItem}
+                              onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}
+                            >
+                              <span style={s.dropCode}>{p.barcode}</span>
+                              <span style={s.dropName}>{p.name}</span>
+                              {p.spec && <span style={s.dropSpec}>{p.spec}</span>}
+                              <span style={s.dropPrice}>${p.sellPrice.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 空提示 */}
+            {!product && cart.length === 0 && (
+              <div style={s.emptyState}>
+                <div style={s.emptyIcon}>⊡</div>
+                <div style={s.emptyTitle}>请先查找商品</div>
+                <div style={s.emptyDesc}>扫码 · 输入条码 · 从列表选择</div>
+              </div>
+            )}
+
+            {/* 商品已选：步进器 + 加入本单 */}
+            {product && (
+              <div style={s.card}>
+                <div style={s.productName}>{product.name}</div>
+                {product.spec && <div style={s.productSpec}>{product.spec}</div>}
+                <div style={s.priceRow}>
+                  <span style={s.priceLabel}>单价</span>
+                  <span style={s.priceValue}>${product.sellPrice.toFixed(2)}</span>
+                </div>
+
+                <div style={{ ...s.cardLabel, marginTop: 12 }}>数量</div>
+                <div style={s.stepperRow}>
+                  <button type="button" style={s.stepperBtn} onClick={() => setQty(Math.max(1, safeQty - 1))}>−</button>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    style={s.stepperInput}
+                    value={qty || ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9]/g, '')
+                      setQty(raw === '' ? 0 : Math.min(999, parseInt(raw, 10)))
+                    }}
+                    onBlur={() => { if (!qty || qty < 1) setQty(1) }}
+                  />
+                  <button type="button" style={s.stepperBtn} onClick={() => setQty(safeQty + 1)}>+</button>
+                </div>
+
+                <div style={s.subtotalRow}>
+                  <span style={s.subtotalLabel}>小计</span>
+                  <span style={s.subtotalValue}>${(product.sellPrice * safeQty).toFixed(2)}</span>
+                </div>
+
+                <button style={s.addBtn} onClick={addToCart}>+ 加入本单</button>
+              </div>
+            )}
+
+            {/* 购物车 */}
+            {cart.length > 0 && (
+              <>
+                <div style={s.cartHeader}>
+                  <span style={s.cartHeaderText}>本单商品（{cart.length} 种）</span>
+                  <button style={s.clearCartBtn} onClick={() => setCart([])}>清空本单</button>
+                </div>
+
+                {cart.map((ci) => (
+                  <CartItemRow key={ci.key} item={ci} onDelete={() => removeFromCart(ci.key)} />
+                ))}
+
+                <div style={s.totalCard}>
+                  <span style={s.totalLabel}>合计</span>
+                  <span style={s.totalAmount}>${cartTotal.toFixed(2)}</span>
+                </div>
+
+                {submitError && <div style={s.errorMsg}>{submitError}</div>}
+
+                <button
+                  style={{ ...s.submitBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
+                  disabled={status === 'submitting'}
+                  onClick={handleSubmit}
+                >
+                  {status === 'submitting' ? '提交中…' : '确认销售'}
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── CartItemRow ──────────────────────────────────────────────────────────────
+
+function CartItemRow({ item, onDelete }: { item: CartItem; onDelete: () => void }) {
+  return (
+    <div style={ci.card}>
+      <div style={ci.top}>
+        <div style={ci.nameWrap}>
+          <span style={ci.name}>{item.product.name}</span>
+          {item.product.spec && <span style={ci.spec}> · {item.product.spec}</span>}
+        </div>
+        <button style={ci.del} onClick={onDelete}>✕</button>
+      </div>
+      <div style={ci.bottom}>
+        <span style={ci.meta}>{item.qty} 件 × ${item.product.sellPrice.toFixed(2)}</span>
+        <span style={ci.subtotal}>${(item.qty * item.product.sellPrice).toFixed(2)}</span>
+      </div>
+    </div>
+  )
+}
+
+const ci: Record<string, React.CSSProperties> = {
+  card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '11px 14px', marginBottom: 8 },
+  top: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 },
+
+================ ENV CHECK ================
+.env exists
+DATABASE_URL set? -> YES
+AUTH_SECRET set?  -> NO
+TELEGRAM_BOT_TOKEN set? -> NO
+TENANT_ID set? -> NO
+DEV_ROLE set? -> YES
+
+================ LOCAL API CHECK ================
+No local server on :3000. Skip curl tests.
+
+================ PRISMA CHECK ================
+--- prisma/schema.prisma ---
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum StoreStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ProductStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum SaleType {
+  SALE
+  REFUND
+}
+
+enum RecordStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum LogStatus {
+  SUCCESS
+  FAILED
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stores   Store[]
+  users    User[]
+  products Product[]
+  sales    SaleRecord[]
+  logs     OperationLog[]
+}
+
+model Store {
+  id        String      @id @default(cuid())
+  tenantId  String
+  code      String      @unique
+  name      String
+  status    StoreStatus @default(ACTIVE)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  userRoles UserStoreRole[]
+  sales     SaleRecord[]
+  logs      OperationLog[]
+
+  @@index([tenantId])
+}
+
+model User {
+  id          String     @id @default(cuid())
+  tenantId    String
+  username    String
+  displayName String
+  role        UserRole
+  status      UserStatus @default(ACTIVE)
+  telegramId  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id])
+  storeRoles UserStoreRole[]
+  sales      SaleRecord[]
+  logs       OperationLog[]
+
+  @@unique([tenantId, username])
+  @@index([tenantId])
+}
+
+model UserStoreRole {
+  id        String     @id @default(cuid())
+  tenantId  String
+  userId    String
+  storeId   String
+  role      UserRole
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id])
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([userId, storeId])
+  @@index([tenantId])
+  @@index([storeId])
+}
+
+model Product {
+  id        String        @id @default(cuid())
+  tenantId  String
+  barcode   String
+  sku       String?
+  name      String
+  spec      String?
+  sellPrice Decimal       @db.Decimal(12, 2)
+
+--- prisma.config.ts ---
+import "dotenv/config";
+import { defineConfig, env } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations",
+    seed: "tsx prisma/seed.ts",
+  },
+  datasource: {
+    url: env("DATABASE_URL"),
+  },
+});
+================ SUMMARY HINTS ================
+1. If /api/products is empty -> likely context/env/data issue.
+2. If sale page has allProducts.length conditional -> dropdown disappears when products API returns empty.
+3. If '网络错误' appears in grep -> that file is the direct UI source of the message.
+4. If middleware touches /api or protected routes too broadly -> mobile/Telegram may fail.
+

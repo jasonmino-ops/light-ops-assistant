@@ -2,6 +2,8 @@ import { cookies } from 'next/headers'
 import './globals.css'
 import BottomNav from './components/nav'
 import TelegramInit from './components/TelegramInit'
+import LangProvider from './components/LangProvider'
+import WorkModeProvider from './components/WorkModeProvider'
 import { verifySession } from '@/lib/session'
 
 export const metadata = { title: '轻店助手' }
@@ -21,13 +23,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
         />
+        {/* Noto Sans Khmer — for Khmer language UI */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&display=swap"
+          rel="stylesheet"
+        />
         {/* Telegram WebApp SDK — no-op when opened outside Telegram */}
         <script src="https://telegram.org/js/telegram-web-app.js" />
       </head>
       <body>
         <TelegramInit />
-        {children}
-        <BottomNav role={role} />
+        <LangProvider>
+          <WorkModeProvider role={role}>
+            {children}
+          </WorkModeProvider>
+        </LangProvider>
+        <BottomNav />
       </body>
     </html>
   )
