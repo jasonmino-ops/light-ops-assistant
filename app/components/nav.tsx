@@ -12,9 +12,9 @@ const STAFF_TABS = [
 
 const OWNER_TABS = [
   { href: '/sale',      label: '销售', icon: '💰' },
-  { href: '/refund',    label: '退款', icon: '↩️' },
   { href: '/records',   label: '记录', icon: '📋' },
   { href: '/products',  label: '商品', icon: '📦' },
+  { href: '/invite',    label: '邀请', icon: '🔗' },
   { href: '/dashboard', label: '概览', icon: '📊' },
 ]
 

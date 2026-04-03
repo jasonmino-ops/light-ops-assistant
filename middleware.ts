@@ -32,7 +32,9 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   const isOwnerOnly =
-    pathname.startsWith('/dashboard') || pathname.startsWith('/products')
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/products') ||
+    pathname.startsWith('/invite')
   if (!isOwnerOnly) {
     return NextResponse.next()
   }
@@ -51,5 +53,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/products/:path*'],
+  matcher: ['/dashboard/:path*', '/products/:path*', '/invite/:path*'],
 }
