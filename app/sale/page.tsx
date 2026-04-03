@@ -43,6 +43,13 @@ export default function SalePage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [scannerOpen, setScannerOpen] = useState(false)
 
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function focusInput() {
+    // defer one tick so the input is visible/mounted before focusing
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
   // ── 商品列表（自动补全 + 下拉）─────────────────────────────────────────────
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [suggestions, setSuggestions] = useState<Product[]>([])
@@ -210,6 +217,7 @@ export default function SalePage() {
     setBarcodeInput('')
     setQty(1)
     setQueryError(null)
+    focusInput()
   }
 
   function removeFromCart(key: string) {
@@ -262,6 +270,7 @@ export default function SalePage() {
     setDropOpen(false)
     setShowSuggestions(false)
     setCart([])
+    focusInput()
   }
 
   // ── 成功卡商品摘要 ─────────────────────────────────────────────────────────
@@ -327,10 +336,12 @@ export default function SalePage() {
               <div ref={suggestWrapRef} style={s.suggestWrap}>
                 <div style={s.inputRow}>
                   <input
+                    ref={inputRef}
                     style={s.textInput}
                     type="text"
                     placeholder="商品条码 / 名称"
                     value={barcodeInput}
+                    autoFocus
                     onChange={(e) => {
                       setBarcodeInput(e.target.value)
                       if (product) setProduct(null)
