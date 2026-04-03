@@ -48,11 +48,12 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stores   Store[]
-  users    User[]
-  products Product[]
-  sales    SaleRecord[]
-  logs     OperationLog[]
+  stores      Store[]
+  users       User[]
+  products    Product[]
+  sales       SaleRecord[]
+  logs        OperationLog[]
+  bindTokens  BindToken[]
 }
 
 model Store {
@@ -64,10 +65,11 @@ model Store {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
-  tenant    Tenant          @relation(fields: [tenantId], references: [id])
-  userRoles UserStoreRole[]
-  sales     SaleRecord[]
-  logs      OperationLog[]
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  userRoles   UserStoreRole[]
+  sales       SaleRecord[]
+  logs        OperationLog[]
+  bindTokens  BindToken[]
 
   @@index([tenantId])
 }
@@ -174,6 +176,27 @@ model SaleRecord {
   @@index([saleType, createdAt])
   @@index([originalSaleRecordId])
   @@index([barcode])
+}
+
+model BindToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  tenantId  String
+  storeId   String
+  role      UserRole
+  label     String?          // 人工备注，如"总店员工邀请"
+  expiresAt DateTime
+  maxUses   Int      @default(1)
+  usedCount Int      @default(0)
+  status    String   @default("ACTIVE") // ACTIVE | REVOKED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  store  Store  @relation(fields: [storeId], references: [id])
+
+  @@index([tenantId])
+  @@index([token])
 }
 
 model OperationLog {
