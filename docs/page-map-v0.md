@@ -75,8 +75,7 @@
 |------|----------|------|
 | `/dashboard` | 「切换账号」按钮 | 退出 + reload → `/bind` 流程 |
 | `/dashboard` | 「系统」链接 | `/system` |
-| `/home` | 「切换账号」按钮 | 退出 + reload → `/bind` 流程 |
-| `/home`（OWNER，`owner` 模式） | 「切换店员模式」按钮 | 切换到 `staff_view`，跳转 `/home` |
+| `/home`（OWNER，任意模式） | 当前模式标签 + 模式切换按钮 | `owner` 模式下显示「进入店员模式」→ 切换；`staff_view` 下显示「切回老板模式」→ 退出 |
 
 ---
 
@@ -92,8 +91,8 @@
 
 | 操作 | 入口 | 条件 |
 |------|------|------|
-| 进入 `staff_view` | `/home` 页头右侧「切换店员模式」按钮 | `realRole === 'OWNER'` 且当前为 `owner` 模式 |
-| 退出 `staff_view` | 页面顶部橙色横幅「退出店员模式」按钮 | `isOwnerInStaffMode === true` |
+| 进入 `staff_view` | `/home` 页头「进入店员模式」按钮（旁显示「老板模式」标签） | `realRole === 'OWNER'` 且当前为 `owner` 模式 |
+| 退出 `staff_view` | `/home` 页头「切回老板模式」按钮（旁显示「店员模式」标签）**或**顶部橙色横幅「退出店员模式」按钮 | `isOwnerInStaffMode === true` |
 
 ### staff_view 模式下的变化
 

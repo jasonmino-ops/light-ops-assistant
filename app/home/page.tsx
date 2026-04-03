@@ -6,14 +6,6 @@ import { apiFetch, STAFF_CTX } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 
-const SESSION_KEY = 'tg-authed-uid'
-
-async function doLogout() {
-  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
-  sessionStorage.removeItem(SESSION_KEY)
-  window.location.reload()
-}
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Summary = {
@@ -97,7 +89,7 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
 
 export default function HomePage() {
   const { t, lang, setLang } = useLocale()
-  const { realRole, isOwnerInStaffMode, enterStaffMode } = useWorkMode()
+  const { realRole, isOwnerInStaffMode, enterStaffMode, exitStaffMode } = useWorkMode()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -129,18 +121,22 @@ export default function HomePage() {
           </div>
         </div>
         <div style={s.brandRight}>
-          <button
-            style={s.switchBtn}
-            onClick={() => setLang(lang === 'zh' ? 'km' : 'zh')}
-          >
+          <button style={s.switchBtn} onClick={() => setLang(lang === 'zh' ? 'km' : 'zh')}>
             {t('home.langBtn')}
           </button>
-          {realRole === 'OWNER' && !isOwnerInStaffMode && (
-            <button style={{ ...s.switchBtn, background: '#fa8c16', color: '#fff', border: 'none' }} onClick={enterStaffMode}>
-              {t('home.staffModeBtn')}
-            </button>
+          {realRole === 'OWNER' && (
+            <div style={s.modeRow}>
+              <span style={s.modeLabelText}>
+                {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
+              </span>
+              <button
+                style={isOwnerInStaffMode ? s.switchBtn : { ...s.switchBtn, ...s.modeBtnOwner }}
+                onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}
+              >
+                {isOwnerInStaffMode ? t('home.exitStaffModeBtn') : t('home.enterStaffModeBtn')}
+              </button>
+            </div>
           )}
-          <button style={s.switchBtn} onClick={doLogout}>{t('common.switchAccount')}</button>
         </div>
       </div>
 
@@ -328,6 +324,21 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     padding: '4px 10px',
     cursor: 'pointer',
+  },
+  modeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  modeLabelText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: 600,
+  },
+  modeBtnOwner: {
+    background: 'rgba(250,140,22,0.85)',
+    border: '1px solid rgba(250,140,22,0.5)',
+    color: '#fff',
   },
   summaryCard: {
     background: '#fff',
