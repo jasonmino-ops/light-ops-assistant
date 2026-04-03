@@ -73,6 +73,15 @@ export async function POST(req: NextRequest) {
     },
   })
 
+  // Telegram deep link — open Mini App with startapp parameter
+  // Format: https://t.me/<bot_username>?startapp=bind_<token>
+  // The Mini App receives start_param via initDataUnsafe.start_param,
+  // then navigates to /bind?token= (same origin, WebApp context preserved).
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME ?? ''
+  const tgLink = botUsername
+    ? `https://t.me/${botUsername}?startapp=bind_${bt.token}`
+    : null
+
   return NextResponse.json({
     token: bt.token,
     role: bt.role,
@@ -81,5 +90,6 @@ export async function POST(req: NextRequest) {
     label: bt.label,
     expiresAt: bt.expiresAt.toISOString(),
     maxUses: bt.maxUses,
+    tgLink,
   })
 }

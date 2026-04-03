@@ -47,6 +47,16 @@ export default function TelegramInit() {
     const tg = (window as any).Telegram?.WebApp
     if (!tg?.initData) return
 
+    // ── startapp bind token: e.g. https://t.me/bot?startapp=bind_<token> ──
+    // Telegram passes the startapp value via initDataUnsafe.start_param.
+    // Navigating to /bind?token= within the same origin preserves WebApp context.
+    const startParam: string = tg.initDataUnsafe?.start_param ?? ''
+    if (startParam.startsWith('bind_')) {
+      const token = startParam.slice(5)
+      window.location.replace(`/bind?token=${encodeURIComponent(token)}`)
+      return
+    }
+
     const initData: string = tg.initData
     const tgUserId = extractTgUserId(initData)
 
