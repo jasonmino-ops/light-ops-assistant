@@ -3,25 +3,40 @@
 import { useEffect, useState } from 'react'
 
 /**
- * TelegramInit — mounts on every page.
+ * TelegramInit — mounts once per layout.
  *
- * Normal flow (telegramId already bound in DB):
- *  1. Reads window.Telegram.WebApp.initData
- *  2. Calls POST /api/auth/telegram → sets auth-session cookie
- *  3. Reloads once so the server layout picks up the new cookie
+ * Session guard stores the TG user ID (not just a boolean) so that if a
+ * different Telegram account opens the same WebApp in the same WebView
+ * session, auth is re-triggered for the new account.
  *
- * First-time binding flow (USER_NOT_FOUND):
- *  - Shows an overlay asking the user to enter their app username
- *  - Calls POST /api/auth/bind → binds telegramId + sets cookie in one step
- *  - Reloads on success
+ * Normal flow (telegramId already bound):
+ *  1. Parse TG user ID from initData (no HMAC, client-side only)
+ *  2. Compare to sessionStorage key — skip if same user already authed
+ *  3. Call POST /api/auth/telegram → cookie set → reload once
  *
- * No-op when not inside a Telegram WebApp.
+ * First-time binding (USER_NOT_FOUND):
+ *  - Clear sessionStorage guard
+ *  - Show username input overlay
+ *  - POST /api/auth/bind → cookie set → reload
+ *
+ * No-op when not inside Telegram WebApp.
  */
 
 type BindState = 'idle' | 'binding' | 'error'
 
+const SESSION_KEY = 'tg-authed-uid'
+
+function extractTgUserId(initData: string): string | null {
+  try {
+    const userStr = new URLSearchParams(initData).get('user')
+    if (!userStr) return null
+    return String(JSON.parse(userStr).id)
+  } catch {
+    return null
+  }
+}
+
 export default function TelegramInit() {
-  // null = hidden, string = initData waiting for bind
   const [pendingInitData, setPendingInitData] = useState<string | null>(null)
   const [username, setUsername] = useState('')
   const [bindState, setBindState] = useState<BindState>('idle')
@@ -32,9 +47,11 @@ export default function TelegramInit() {
     const tg = (window as any).Telegram?.WebApp
     if (!tg?.initData) return
 
-    if (sessionStorage.getItem('tg-authed')) return
-
     const initData: string = tg.initData
+    const tgUserId = extractTgUserId(initData)
+
+    // Skip only if the SAME Telegram user already authed in this WebView session
+    if (tgUserId && sessionStorage.getItem(SESSION_KEY) === tgUserId) return
 
     fetch('/api/auth/telegram', {
       method: 'POST',
@@ -44,10 +61,10 @@ export default function TelegramInit() {
       .then((r) => r.json())
       .then((body) => {
         if (body.ok) {
-          sessionStorage.setItem('tg-authed', '1')
+          sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
           window.location.reload()
         } else if (body.error === 'USER_NOT_FOUND') {
-          // First-time user — show binding UI
+          sessionStorage.removeItem(SESSION_KEY)
           setPendingInitData(initData)
         } else {
           tg.showAlert?.(body.message ?? '登录失败，请联系管理员')
@@ -71,7 +88,8 @@ export default function TelegramInit() {
       })
       const body = await r.json()
       if (body.ok) {
-        sessionStorage.setItem('tg-authed', '1')
+        const tgUserId = extractTgUserId(pendingInitData)
+        sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
         window.location.reload()
       } else {
         setErrorMsg(body.message ?? '绑定失败，请检查用户名')

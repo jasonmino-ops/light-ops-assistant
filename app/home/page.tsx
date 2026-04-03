@@ -4,6 +4,14 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch, STAFF_CTX } from '@/lib/api'
 
+const SESSION_KEY = 'tg-authed-uid'
+
+async function doLogout() {
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+  sessionStorage.removeItem(SESSION_KEY)
+  window.location.reload()
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Summary = {
@@ -116,8 +124,7 @@ export default function HomePage() {
           </div>
         </div>
         <div style={s.brandRight}>
-          <div style={s.identity}>BKK1 · Amy</div>
-          <button style={s.langBtn}>中文 / 柬语</button>
+          <button style={s.switchBtn} onClick={doLogout}>切换账号</button>
         </div>
       </div>
 
@@ -283,18 +290,13 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'flex-end',
     gap: 6,
   },
-  identity: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: 500,
-  },
-  langBtn: {
+  switchBtn: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.8)',
     background: 'rgba(255,255,255,0.15)',
     border: '1px solid rgba(255,255,255,0.3)',
     borderRadius: 12,
-    padding: '2px 8px',
+    padding: '4px 10px',
     cursor: 'pointer',
   },
   summaryCard: {

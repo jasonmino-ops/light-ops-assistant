@@ -3,6 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 
+const SESSION_KEY = 'tg-authed-uid'
+
+async function doLogout() {
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+  sessionStorage.removeItem(SESSION_KEY)
+  window.location.reload()
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Dimension = 'GLOBAL' | 'STORE' | 'STAFF'
@@ -108,13 +116,16 @@ export default function DashboardPage() {
           <div style={s.brandName}>轻店助手</div>
           <div style={s.brandSub}>今日经营概览 · {today}</div>
         </div>
-        <button
-          style={s.refreshBtn}
-          onClick={() => load(dimension, storeId, operatorUserId)}
-          disabled={loading}
-        >
-          {loading ? '…' : '刷新'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button style={s.switchBtn} onClick={doLogout}>切换账号</button>
+          <button
+            style={s.refreshBtn}
+            onClick={() => load(dimension, storeId, operatorUserId)}
+            disabled={loading}
+          >
+            {loading ? '…' : '刷新'}
+          </button>
+        </div>
       </div>
 
       <div style={s.body}>
@@ -306,6 +317,15 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
+  },
+  switchBtn: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.75)',
+    background: 'transparent',
+    border: '1px solid rgba(255,255,255,0.3)',
+    borderRadius: 12,
+    padding: '3px 9px',
+    cursor: 'pointer',
   },
   refreshBtn: {
     fontSize: 13,
