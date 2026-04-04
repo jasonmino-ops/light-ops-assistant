@@ -24,6 +24,7 @@ type Member = {
   username: string
   displayName: string
   role: 'OWNER' | 'STAFF'
+  status: 'ACTIVE' | 'DISABLED'
   bound: boolean
   staffNumber: number | null
   storeName: string
@@ -51,10 +52,13 @@ export default function InvitePage() {
 
   // ── Member list ──────────────────────────────────────────────────────────
   const [members, setMembers] = useState<Member[]>([])
-  const [unbinding, setUnbinding] = useState<string | null>(null) // userId being unbound
+  const [showArchived, setShowArchived] = useState(false)
+  const [unbinding, setUnbinding] = useState<string | null>(null)
+  const [resigning, setResigning] = useState<string | null>(null)
 
-  const loadMembers = useCallback(() => {
-    apiFetch('/api/admin/users', undefined, OWNER_CTX)
+  const loadMembers = useCallback((withArchived: boolean) => {
+    const url = withArchived ? '/api/admin/users?includeArchived=true' : '/api/admin/users'
+    apiFetch(url, undefined, OWNER_CTX)
       .then((r) => (r.ok ? r.json() : []))
       .then(setMembers)
       .catch(() => {})
@@ -69,7 +73,7 @@ export default function InvitePage() {
       })
       .catch(() => {})
 
-    loadMembers()
+    loadMembers(false)
   }, [loadMembers])
 
   // ── Generate ─────────────────────────────────────────────────────────────
@@ -113,22 +117,42 @@ export default function InvitePage() {
     setLabel('')
   }
 
-  // ── Unbind ───────────────────────────────────────────────────────────────
+  // ── Unbind (re-bind to a different TG account) ───────────────────────────
   async function unbind(userId: string, displayName: string) {
     if (!window.confirm(`${t('invite.unbindBtn')}「${displayName}」?`)) return
     setUnbinding(userId)
     try {
-      const r = await apiFetch(`/api/admin/users/${userId}/unbind`, {
-        method: 'POST',
-      }, OWNER_CTX)
+      const r = await apiFetch(`/api/admin/users/${userId}/unbind`, { method: 'POST' }, OWNER_CTX)
       const body = await r.json()
-      if (r.ok) loadMembers()
+      if (r.ok) loadMembers(showArchived)
       else window.alert(body.message ?? body.error ?? t('invite.unbindFailed'))
     } catch {
       window.alert(t('common.networkError'))
     } finally {
       setUnbinding(null)
     }
+  }
+
+  // ── Resign / archive (离职归档) ───────────────────────────────────────────
+  async function resign(userId: string, displayName: string) {
+    if (!window.confirm(`确认将「${displayName}」离职归档？\n将解绑账号并停用，历史销售记录保留。`)) return
+    setResigning(userId)
+    try {
+      const r = await apiFetch(`/api/admin/users/${userId}/resign`, { method: 'POST' }, OWNER_CTX)
+      const body = await r.json()
+      if (r.ok) loadMembers(showArchived)
+      else window.alert(body.message ?? body.error ?? '归档失败')
+    } catch {
+      window.alert(t('common.networkError'))
+    } finally {
+      setResigning(null)
+    }
+  }
+
+  function toggleArchived() {
+    const next = !showArchived
+    setShowArchived(next)
+    loadMembers(next)
   }
 
   const qrValue = result?.tgLink ?? ''
@@ -234,43 +258,69 @@ export default function InvitePage() {
         )}
 
         {/* ── Members section ── */}
-        <div style={{ ...s.sectionTitle, marginTop: 24 }}>{t('invite.membersSection')}</div>
+        <div style={{ ...s.sectionTitle, marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{t('invite.membersSection')}</span>
+          <button
+            type="button"
+            onClick={toggleArchived}
+            style={{ fontSize: 11, color: showArchived ? '#1677ff' : '#aaa', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+          >
+            {showArchived ? '隐藏已停用' : '查看已停用员工'}
+          </button>
+        </div>
 
-        {members.length === 0 ? (
+        {members.filter((m) => m.status === 'ACTIVE').length === 0 && !showArchived ? (
           <div style={s.emptyHint}>{t('invite.noMembers')}</div>
         ) : (
           <div style={s.memberList}>
-            {members.map((m) => (
-              <div key={m.id} style={s.memberCard}>
-                <div style={s.memberLeft}>
-                  <div style={s.memberName}>{m.displayName}</div>
-                  <div style={s.memberMeta}>
-                    <span style={m.role === 'OWNER' ? s.tagOwner : s.tagStaff}>
-                      {m.role === 'OWNER' ? t('invite.roleOwner') : t('invite.roleStaff')}
-                    </span>
-                    {m.staffNumber != null && (
-                      <span style={s.staffNumBadge}>#{m.staffNumber}</span>
+            {members.map((m) => {
+              const isArchived = m.status === 'DISABLED'
+              return (
+                <div key={m.id} style={{ ...s.memberCard, opacity: isArchived ? 0.6 : 1, background: isArchived ? '#fafafa' : '#fff' }}>
+                  <div style={s.memberLeft}>
+                    <div style={s.memberName}>{m.displayName}</div>
+                    <div style={s.memberMeta}>
+                      <span style={m.role === 'OWNER' ? s.tagOwner : s.tagStaff}>
+                        {m.role === 'OWNER' ? t('invite.roleOwner') : t('invite.roleStaff')}
+                      </span>
+                      {m.staffNumber != null && (
+                        <span style={s.staffNumBadge}>#{m.staffNumber}</span>
+                      )}
+                      {isArchived && (
+                        <span style={s.tagArchived}>已停用</span>
+                      )}
+                      <span style={s.metaDot}>·</span>
+                      <span style={s.metaStore}>{m.username} · {m.storeName}</span>
+                    </div>
+                  </div>
+                  <div style={s.memberRight}>
+                    {!isArchived && (
+                      <span style={m.bound ? s.badgeBound : s.badgeUnbound}>
+                        {m.bound ? t('invite.bound') : t('invite.unbound')}
+                      </span>
                     )}
-                    <span style={s.metaDot}>·</span>
-                    <span style={s.metaStore}>{m.username} · {m.storeName}</span>
+                    {!isArchived && m.bound && (
+                      <button
+                        style={{ ...s.unbindBtn, opacity: unbinding === m.id ? 0.5 : 1 }}
+                        disabled={unbinding === m.id}
+                        onClick={() => unbind(m.id, m.displayName)}
+                      >
+                        {t('invite.unbindBtn')}
+                      </button>
+                    )}
+                    {!isArchived && m.role === 'STAFF' && (
+                      <button
+                        style={{ ...s.resignBtn, opacity: resigning === m.id ? 0.5 : 1 }}
+                        disabled={resigning === m.id}
+                        onClick={() => resign(m.id, m.displayName)}
+                      >
+                        离职归档
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div style={s.memberRight}>
-                  <span style={m.bound ? s.badgeBound : s.badgeUnbound}>
-                    {m.bound ? t('invite.bound') : t('invite.unbound')}
-                  </span>
-                  {m.bound && (
-                    <button
-                      style={{ ...s.unbindBtn, opacity: unbinding === m.id ? 0.5 : 1 }}
-                      disabled={unbinding === m.id}
-                      onClick={() => unbind(m.id, m.displayName)}
-                    >
-                      {t('invite.unbindBtn')}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -351,5 +401,14 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12, fontWeight: 600, color: '#ff4d4f',
     background: '#fff1f0', border: '1px solid #ffa39e',
     borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+  },
+  resignBtn: {
+    fontSize: 12, fontWeight: 600, color: '#8c8c8c',
+    background: '#f5f5f5', border: '1px solid #d9d9d9',
+    borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+  },
+  tagArchived: {
+    fontSize: 10, fontWeight: 700, background: '#f5f5f5', color: '#bbb',
+    border: '1px solid #e8e8e8', borderRadius: 4, padding: '1px 5px',
   },
 }
