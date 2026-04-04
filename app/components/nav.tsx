@@ -24,6 +24,8 @@ export default function BottomNav() {
   const { effectiveRole } = useWorkMode()
   const tabs = effectiveRole === 'OWNER' ? OWNER_TABS : STAFF_TABS
 
+  if (pathname.startsWith('/ops')) return null
+
   return (
     <nav style={s.nav}>
       {tabs.map((tab) => {
