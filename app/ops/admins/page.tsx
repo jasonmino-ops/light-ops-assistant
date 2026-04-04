@@ -14,6 +14,14 @@ type Admin = {
   createdAt: string
 }
 
+type CreatedResult = {
+  id: string
+  name: string
+  username: string
+  role: string
+  initialPassword: string
+}
+
 const ROLE_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
   SUPER_ADMIN: { label: 'SUPER_ADMIN', color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7' },
   OPS_ADMIN:   { label: 'OPS_ADMIN',   color: '#1677ff', bg: '#e6f4ff', border: '#91caff' },
@@ -25,9 +33,19 @@ export default function OpsAdminsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', username: '', password: '', telegramId: '', role: 'OPS_ADMIN' })
+  const [form, setForm] = useState({ name: '', role: 'OPS_ADMIN' })
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
+  const [created, setCreated] = useState<CreatedResult | null>(null)
+  const [copied, setCopied] = useState(false)
+  // TG binding dialog
+  const [tgAdmin, setTgAdmin] = useState<Admin | null>(null)
+  const [tgInput, setTgInput] = useState('')
+  const [tgSubmitting, setTgSubmitting] = useState(false)
+  const [tgError, setTgError] = useState('')
+  // Reset password result
+  const [resetResult, setResetResult] = useState<{ adminName: string; newPassword: string } | null>(null)
+  const [resetCopied, setResetCopied] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -45,24 +63,19 @@ export default function OpsAdminsPage() {
   useEffect(() => { load() }, [])
 
   async function createAdmin() {
-    if (!form.name.trim() || !form.username.trim()) { setFormError('请填写姓名和用户名'); return }
+    if (!form.name.trim()) { setFormError('请填写姓名'); return }
     setSubmitting(true)
     setFormError('')
     try {
       const r = await apiFetch('/api/ops/admins', {
         method: 'POST',
-        body: JSON.stringify({
-          name: form.name.trim(),
-          username: form.username.trim(),
-          password: form.password || undefined,
-          telegramId: form.telegramId.trim() || undefined,
-          role: form.role,
-        }),
+        body: JSON.stringify({ name: form.name.trim(), role: form.role }),
       }, OWNER_CTX)
       const body = await r.json()
       if (r.ok) {
+        setCreated({ id: body.id, name: body.name, username: body.username, role: body.role, initialPassword: body.initialPassword })
         setShowForm(false)
-        setForm({ name: '', username: '', password: '', telegramId: '', role: 'OPS_ADMIN' })
+        setForm({ name: '', role: 'OPS_ADMIN' })
         load()
       } else {
         setFormError(body.message ?? body.error ?? '创建失败')
@@ -85,6 +98,47 @@ export default function OpsAdminsPage() {
     load()
   }
 
+  function copyLoginInfo(a: Admin | CreatedResult, password: string) {
+    const text = `登录账号：${a.username}\n初始密码：${password}`
+    navigator.clipboard.writeText(text).catch(() => {})
+  }
+
+  async function resetPassword(admin: Admin) {
+    if (!confirm(`确认重置「${admin.name}」的登录密码？`)) return
+    const r = await apiFetch(`/api/ops/admins/${admin.id}/reset-password`, { method: 'POST' }, OWNER_CTX)
+    if (r.ok) {
+      const body = await r.json()
+      setResetResult({ adminName: admin.name, newPassword: body.newPassword })
+      setResetCopied(false)
+    } else {
+      alert('重置失败，请重试')
+    }
+  }
+
+  async function bindTelegram() {
+    if (!tgInput.trim()) { setTgError('请输入 Telegram ID'); return }
+    setTgSubmitting(true)
+    setTgError('')
+    try {
+      const r = await apiFetch(`/api/ops/admins/${tgAdmin!.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ telegramId: tgInput.trim() }),
+      }, OWNER_CTX)
+      const body = await r.json()
+      if (r.ok) {
+        setTgAdmin(null)
+        setTgInput('')
+        load()
+      } else {
+        setTgError(body.message ?? body.error ?? '绑定失败')
+      }
+    } catch {
+      setTgError('网络错误')
+    } finally {
+      setTgSubmitting(false)
+    }
+  }
+
   return (
     <div style={s.page}>
       <div style={s.header}>
@@ -94,23 +148,22 @@ export default function OpsAdminsPage() {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <Link href="/ops" style={s.backLink}>← 返回后台</Link>
-          <button style={s.addBtn} onClick={() => setShowForm((v) => !v)}>
+          <button style={s.addBtn} onClick={() => { setShowForm((v) => !v); setCreated(null) }}>
             {showForm ? '取消' : '+ 新增管理员'}
           </button>
         </div>
       </div>
 
       <div style={s.body}>
+        {/* Create form */}
         {showForm && (
           <div style={s.formCard}>
             <div style={s.formTitle}>新增管理员</div>
-            <div style={s.formGrid}>
-              <Field label="姓名 *" value={form.name} onChange={(v) => setForm((f) => ({ ...f, name: v }))} placeholder="运营张三" />
-              <Field label="登录账号 *" value={form.username} onChange={(v) => setForm((f) => ({ ...f, username: v }))} placeholder="zhangsan" />
-              <Field label="登录密码" value={form.password} onChange={(v) => setForm((f) => ({ ...f, password: v }))} placeholder="留空则禁用密码登录" type="password" />
-              <Field label="Telegram ID" value={form.telegramId} onChange={(v) => setForm((f) => ({ ...f, telegramId: v }))} placeholder="数字 ID，如 123456789" />
+            <div style={{ marginBottom: 10 }}>
+              <div style={s.fieldLabel}>姓名 *</div>
+              <input style={s.fieldInput} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="运营张三" />
             </div>
-            <div style={{ marginTop: 10 }}>
+            <div>
               <div style={s.fieldLabel}>角色</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                 {(['SUPER_ADMIN', 'OPS_ADMIN', 'BD'] as const).map((r) => {
@@ -126,6 +179,7 @@ export default function OpsAdminsPage() {
                 })}
               </div>
             </div>
+            <div style={s.hint2}>账号和初始密码将自动生成，Telegram 可后续绑定</div>
             {formError && <div style={s.errMsg}>{formError}</div>}
             <button style={{ ...s.submitBtn, opacity: submitting ? 0.6 : 1 }} onClick={createAdmin} disabled={submitting}>
               {submitting ? '创建中…' : '确认创建'}
@@ -133,6 +187,58 @@ export default function OpsAdminsPage() {
           </div>
         )}
 
+        {/* Created result card */}
+        {created && (
+          <div style={s.resultCard}>
+            <div style={s.resultTitle}>✓ 管理员已创建</div>
+            <div style={s.resultRow}><span style={s.resultLabel}>姓名</span><span>{created.name}</span></div>
+            <div style={s.resultRow}><span style={s.resultLabel}>角色</span>
+              <span style={{ ...s.badge, ...badgeStyle(created.role) }}>{ROLE_META[created.role]?.label ?? created.role}</span>
+            </div>
+            <div style={s.resultRow}><span style={s.resultLabel}>账号</span><span style={s.mono}>{created.username}</span></div>
+            <div style={s.resultRow}><span style={s.resultLabel}>初始密码</span><span style={s.mono}>{created.initialPassword}</span></div>
+            <button style={s.copyBtn} onClick={() => {
+              copyLoginInfo(created, created.initialPassword)
+              setCopied(true)
+              setTimeout(() => setCopied(false), 2000)
+            }}>{copied ? '✓ 已复制' : '复制登录信息'}</button>
+            <button style={s.dismissBtn} onClick={() => setCreated(null)}>关闭</button>
+          </div>
+        )}
+
+        {/* Reset password result */}
+        {resetResult && (
+          <div style={{ ...s.resultCard, borderColor: '#ffd591' }}>
+            <div style={{ ...s.resultTitle, color: '#fa8c16' }}>密码已重置</div>
+            <div style={s.resultRow}><span style={s.resultLabel}>管理员</span><span>{resetResult.adminName}</span></div>
+            <div style={s.resultRow}><span style={s.resultLabel}>新密码</span><span style={s.mono}>{resetResult.newPassword}</span></div>
+            <button style={s.copyBtn} onClick={() => {
+              navigator.clipboard.writeText(resetResult.newPassword).catch(() => {})
+              setResetCopied(true)
+              setTimeout(() => setResetCopied(false), 2000)
+            }}>{resetCopied ? '✓ 已复制' : '复制新密码'}</button>
+            <button style={s.dismissBtn} onClick={() => setResetResult(null)}>关闭</button>
+          </div>
+        )}
+
+        {/* TG binding dialog */}
+        {tgAdmin && (
+          <div style={s.formCard}>
+            <div style={s.formTitle}>绑定 Telegram — {tgAdmin.name}</div>
+            <div style={s.fieldLabel}>Telegram 数字 ID</div>
+            <input style={{ ...s.fieldInput, marginTop: 6 }} value={tgInput} onChange={(e) => setTgInput(e.target.value)} placeholder="如 123456789" />
+            {tgError && <div style={s.errMsg}>{tgError}</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button style={{ ...s.submitBtn, flex: 1, opacity: tgSubmitting ? 0.6 : 1 }} onClick={bindTelegram} disabled={tgSubmitting}>
+                {tgSubmitting ? '绑定中…' : '确认绑定'}
+              </button>
+              <button style={{ ...s.submitBtn, flex: 1, background: '#f5f5f5', color: '#666', border: '1px solid #e8e8e8' }}
+                onClick={() => { setTgAdmin(null); setTgInput(''); setTgError('') }}>取消</button>
+            </div>
+          </div>
+        )}
+
+        {/* Admin list */}
         {loading ? (
           <div style={s.hint}>加载中…</div>
         ) : error ? (
@@ -146,7 +252,7 @@ export default function OpsAdminsPage() {
               const isDisabled = a.status === 'DISABLED'
               return (
                 <div key={a.id} style={{ ...s.row, opacity: isDisabled ? 0.55 : 1 }}>
-                  <div style={s.rowLeft}>
+                  <div style={s.rowTop}>
                     <div style={s.rowName}>{a.name}</div>
                     <div style={s.rowMeta}>
                       <span style={{ ...s.badge, background: rm.bg, color: rm.color, borderColor: rm.border }}>{rm.label}</span>
@@ -157,12 +263,20 @@ export default function OpsAdminsPage() {
                       {isDisabled && <span style={s.disabledTag}>已停用</span>}
                     </div>
                   </div>
-                  <button
-                    style={{ ...s.actionBtn, color: isDisabled ? '#52c41a' : '#ff4d4f', borderColor: isDisabled ? '#b7eb8f' : '#ffa39e', background: isDisabled ? '#f6ffed' : '#fff1f0' }}
-                    onClick={() => toggleStatus(a)}
-                  >
-                    {isDisabled ? '启用' : '停用'}
-                  </button>
+                  <div style={s.actionRow}>
+                    <button style={s.actBtn} onClick={() => {
+                      const info = `登录账号：${a.username}\n（密码请使用初始密码或重置后的密码）`
+                      navigator.clipboard.writeText(info).catch(() => {})
+                    }}>复制账号</button>
+                    <button style={s.actBtn} onClick={() => { setTgAdmin(a); setTgInput(''); setTgError('') }}>
+                      {a.telegramId ? '换绑 TG' : '绑定 TG'}
+                    </button>
+                    <button style={s.actBtn} onClick={() => resetPassword(a)}>重置密码</button>
+                    <button
+                      style={{ ...s.actBtn, color: isDisabled ? '#52c41a' : '#ff4d4f', borderColor: isDisabled ? '#b7eb8f' : '#ffa39e', background: isDisabled ? '#f6ffed' : '#fff1f0' }}
+                      onClick={() => toggleStatus(a)}
+                    >{isDisabled ? '启用' : '停用'}</button>
+                  </div>
                 </div>
               )
             })}
@@ -173,15 +287,9 @@ export default function OpsAdminsPage() {
   )
 }
 
-function Field({ label, value, onChange, placeholder, type = 'text' }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string
-}) {
-  return (
-    <div>
-      <div style={s.fieldLabel}>{label}</div>
-      <input style={s.fieldInput} type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
-    </div>
-  )
+function badgeStyle(role: string) {
+  const m = ROLE_META[role] ?? ROLE_META.OPS_ADMIN
+  return { background: m.bg, color: m.color, borderColor: m.border }
 }
 
 const s: Record<string, React.CSSProperties> = {
@@ -194,19 +302,27 @@ const s: Record<string, React.CSSProperties> = {
   body: { maxWidth: 680, margin: '0 auto', padding: '14px 12px' },
   formCard: { background: '#fff', borderRadius: 12, padding: '16px', marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1.5px solid #1677ff33' },
   formTitle: { fontSize: 14, fontWeight: 700, color: '#1677ff', marginBottom: 12 },
-  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
   fieldLabel: { fontSize: 12, color: '#888', marginBottom: 4 },
   fieldInput: { width: '100%', height: 36, border: '1.5px solid #e8e8e8', borderRadius: 6, padding: '0 10px', fontSize: 13, outline: 'none', boxSizing: 'border-box' },
+  hint2: { fontSize: 11, color: '#aaa', marginTop: 10, marginBottom: 2 },
   errMsg: { fontSize: 13, color: '#ff4d4f', marginTop: 8 },
   submitBtn: { marginTop: 12, height: 36, width: '100%', background: '#1677ff', color: '#fff', border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
+  resultCard: { background: '#fff', borderRadius: 12, padding: '16px', marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1.5px solid #52c41a66' },
+  resultTitle: { fontSize: 14, fontWeight: 700, color: '#52c41a', marginBottom: 12 },
+  resultRow: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, marginBottom: 8 },
+  resultLabel: { fontSize: 11, color: '#aaa', width: 52, flexShrink: 0 },
+  mono: { fontFamily: 'monospace', background: '#f5f5f5', padding: '2px 8px', borderRadius: 4, fontSize: 13 },
+  copyBtn: { marginTop: 10, height: 34, width: '100%', background: '#1677ff', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  dismissBtn: { marginTop: 8, height: 32, width: '100%', background: 'none', color: '#aaa', border: '1px solid #e8e8e8', borderRadius: 6, fontSize: 12, cursor: 'pointer' },
   list: { display: 'flex', flexDirection: 'column', gap: 8 },
-  row: { background: '#fff', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
-  rowLeft: { display: 'flex', flexDirection: 'column', gap: 4 },
+  row: { background: '#fff', borderRadius: 10, padding: '12px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' },
+  rowTop: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   rowName: { fontSize: 15, fontWeight: 700, color: '#1a1a1a' },
-  rowMeta: { display: 'flex', alignItems: 'center', gap: 8 },
+  rowMeta: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const, justifyContent: 'flex-end' },
   badge: { fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 8, border: '1px solid' },
   metaText: { fontSize: 12, color: '#888' },
   disabledTag: { fontSize: 10, color: '#bbb', background: '#f5f5f5', border: '1px solid #e8e8e8', borderRadius: 4, padding: '1px 5px' },
-  actionBtn: { height: 28, padding: '0 12px', border: '1px solid', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+  actionRow: { display: 'flex', gap: 6 },
+  actBtn: { flex: 1, height: 28, border: '1px solid #e8e8e8', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#fafafa', color: '#555' },
   hint: { fontSize: 13, color: '#bbb', textAlign: 'center', padding: '20px 0' },
 }

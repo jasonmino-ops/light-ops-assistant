@@ -28,30 +28,42 @@ export async function GET(req: NextRequest) {
   })))
 }
 
+function genUsername(): string {
+  return 'ops_' + Array.from(crypto.getRandomValues(new Uint8Array(3)))
+    .map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function genPassword(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(6)))
+    .map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export async function POST(req: NextRequest) {
   const opsRole = checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   if (opsRole !== 'SUPER_ADMIN') return NextResponse.json({ error: 'FORBIDDEN', message: '仅 SUPER_ADMIN 可新增管理员' }, { status: 403 })
 
-  let body: { name?: string; username?: string; password?: string; telegramId?: string; role?: string }
+  let body: { name?: string; role?: string }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { name, username, password, telegramId, role = 'OPS_ADMIN' } = body
+  const { name, role = 'OPS_ADMIN' } = body
   if (!name?.trim()) return NextResponse.json({ error: 'MISSING_NAME' }, { status: 400 })
-  if (!username?.trim()) return NextResponse.json({ error: 'MISSING_USERNAME' }, { status: 400 })
   if (!['SUPER_ADMIN', 'OPS_ADMIN', 'BD'].includes(role)) return NextResponse.json({ error: 'INVALID_ROLE' }, { status: 400 })
 
-  const existing = await prisma.opsAdmin.findFirst({ where: { username: username.trim() } })
-  if (existing) return NextResponse.json({ error: 'USERNAME_TAKEN', message: '用户名已存在' }, { status: 409 })
+  // Auto-generate unique username
+  let username = genUsername()
+  while (await prisma.opsAdmin.findFirst({ where: { username } })) {
+    username = genUsername()
+  }
+  const initialPassword = genPassword()
 
   const admin = await prisma.opsAdmin.create({
     data: {
       name: name.trim(),
-      username: username.trim(),
-      passwordHash: password ? hashPassword(password) : null,
-      telegramId: telegramId?.trim() || null,
+      username,
+      passwordHash: hashPassword(initialPassword),
       role,
       status: 'ACTIVE',
     },
@@ -63,7 +75,7 @@ export async function POST(req: NextRequest) {
     username: admin.username,
     role: admin.role,
     status: admin.status,
-    telegramBound: !!admin.telegramId,
+    initialPassword,
     createdAt: admin.createdAt.toISOString(),
   }, { status: 201 })
 }
