@@ -20,7 +20,9 @@ export async function GET(
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   const { tenantId } = await params
 
-  const [tenant, stores, users, todayRecords, lastSale] = await Promise.all([
+  const todayUtc = new Date().toISOString().slice(0, 10)
+
+  const [tenant, stores, users, todaySummary, lastSale] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId } }),
     prisma.store.findMany({
       where: { tenantId, status: 'ACTIVE' },
@@ -44,9 +46,10 @@ export async function GET(
         },
       },
     }),
-    prisma.saleRecord.findMany({
-      where: { tenantId, createdAt: { gte: todayStart() } },
-      select: { saleType: true, lineAmount: true, orderNo: true },
+    // Try summary table first for today
+    prisma.tenantDailySummary.findUnique({
+      where: { tenantId_date: { tenantId, date: todayUtc } },
+      select: { salesCount: true, refundCount: true, grossSales: true },
     }),
     prisma.saleRecord.findFirst({
       where: { tenantId },
@@ -57,16 +60,34 @@ export async function GET(
 
   if (!tenant) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
 
-  // Compute today's stats
-  const saleOrders = new Set<string>()
-  let saleAmount = 0
-  let refundCount = 0
-  for (const r of todayRecords) {
-    if (r.saleType === 'SALE') {
-      if (r.orderNo) saleOrders.add(r.orderNo)
-      saleAmount += Number(r.lineAmount)
-    } else {
-      refundCount++
+  // Today's stats: summary first, fall back to raw if missing
+  let todayStats: { saleCount: number; saleAmount: number; refundCount: number }
+  if (todaySummary) {
+    todayStats = {
+      saleCount: todaySummary.salesCount,
+      saleAmount: Math.round(Number(todaySummary.grossSales) * 100) / 100,
+      refundCount: todaySummary.refundCount,
+    }
+  } else {
+    const todayRecords = await prisma.saleRecord.findMany({
+      where: { tenantId, createdAt: { gte: todayStart() } },
+      select: { saleType: true, lineAmount: true, orderNo: true },
+    })
+    const saleOrders = new Set<string>()
+    let saleAmount = 0
+    let refundCount = 0
+    for (const r of todayRecords) {
+      if (r.saleType === 'SALE') {
+        if (r.orderNo) saleOrders.add(r.orderNo)
+        saleAmount += Number(r.lineAmount)
+      } else {
+        refundCount++
+      }
+    }
+    todayStats = {
+      saleCount: saleOrders.size,
+      saleAmount: Math.round(saleAmount * 100) / 100,
+      refundCount,
     }
   }
 
@@ -87,9 +108,7 @@ export async function GET(
       storeName: u.storeRoles[0]?.store.name ?? '—',
     })),
     today: {
-      saleCount: saleOrders.size,
-      saleAmount: Math.round(saleAmount * 100) / 100,
-      refundCount,
+      ...todayStats,
       lastActiveAt: lastSale?.createdAt.toISOString() ?? null,
     },
   })

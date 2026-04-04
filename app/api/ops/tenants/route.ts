@@ -44,7 +44,9 @@ export async function GET(req: NextRequest) {
   const tenants = await prisma.tenant.findMany({ where: statusWhere, orderBy: { createdAt: 'desc' } })
   const ids = tenants.map((t) => t.id)
 
-  const [storeGroups, users, todaySaleRows, lastSaleRows] = await Promise.all([
+  const todayUtc = new Date().toISOString().slice(0, 10)
+
+  const [storeGroups, users, todaySummaries, lastSaleRows] = await Promise.all([
     prisma.store.groupBy({
       by: ['tenantId'],
       where: { tenantId: { in: ids }, status: 'ACTIVE' },
@@ -54,14 +56,10 @@ export async function GET(req: NextRequest) {
       where: { tenantId: { in: ids }, status: 'ACTIVE' },
       select: { tenantId: true, role: true, telegramId: true },
     }),
-    prisma.saleRecord.findMany({
-      where: {
-        tenantId: { in: ids },
-        saleType: 'SALE',
-        orderNo: { not: null },
-        createdAt: { gte: todayStart() },
-      },
-      select: { tenantId: true, orderNo: true },
+    // Try summary table first for today's sale counts
+    prisma.tenantDailySummary.findMany({
+      where: { tenantId: { in: ids }, date: todayUtc },
+      select: { tenantId: true, salesCount: true },
     }),
     prisma.saleRecord.findMany({
       where: { tenantId: { in: ids }, createdAt: { gte: ninetyDaysAgo() } },
@@ -87,11 +85,30 @@ export async function GET(req: NextRequest) {
     userMap.set(u.tenantId, cur)
   }
 
-  // Count distinct orders per tenant
-  const orderSets = new Map<string, Set<string>>()
-  for (const row of todaySaleRows) {
-    if (!orderSets.has(row.tenantId)) orderSets.set(row.tenantId, new Set())
-    orderSets.get(row.tenantId)!.add(row.orderNo!)
+  // Today's sale count: use summary if available for ALL tenants; else fall back to raw
+  const summarizedIds = new Set(todaySummaries.map((s) => s.tenantId))
+  const allCovered = ids.every((id) => summarizedIds.has(id))
+
+  let todaySaleCountMap: Map<string, number>
+  if (allCovered && ids.length > 0) {
+    todaySaleCountMap = new Map(todaySummaries.map((s) => [s.tenantId, s.salesCount]))
+  } else {
+    // Fallback: raw distinct-order count from SaleRecord
+    const todaySaleRows = await prisma.saleRecord.findMany({
+      where: {
+        tenantId: { in: ids },
+        saleType: 'SALE',
+        orderNo: { not: null },
+        createdAt: { gte: todayStart() },
+      },
+      select: { tenantId: true, orderNo: true },
+    })
+    const orderSets = new Map<string, Set<string>>()
+    for (const row of todaySaleRows) {
+      if (!orderSets.has(row.tenantId)) orderSets.set(row.tenantId, new Set())
+      orderSets.get(row.tenantId)!.add(row.orderNo!)
+    }
+    todaySaleCountMap = new Map(Array.from(orderSets.entries()).map(([id, s]) => [id, s.size]))
   }
 
   const lastActiveMap = new Map(lastSaleRows.map((r) => [r.tenantId, r.createdAt.toISOString()]))
@@ -104,7 +121,7 @@ export async function GET(req: NextRequest) {
     createdAt: t.createdAt.toISOString(),
     storeCount: storeCountMap.get(t.id) ?? 0,
     ...(userMap.get(t.id) ?? { ownerBound: 0, ownerTotal: 0, staffBound: 0, staffTotal: 0 }),
-    todaySaleCount: orderSets.get(t.id)?.size ?? 0,
+    todaySaleCount: todaySaleCountMap.get(t.id) ?? 0,
     lastActiveAt: lastActiveMap.get(t.id) ?? null,
   }))
 

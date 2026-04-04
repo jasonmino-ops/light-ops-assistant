@@ -229,6 +229,37 @@ model OperationLog {
   @@index([requestId])
 }
 
+model TenantDailySummary {
+  id           String   @id @default(cuid())
+  date         String   // YYYY-MM-DD (UTC)
+  tenantId     String
+  salesCount   Int      @default(0)
+  refundCount  Int      @default(0)
+  grossSales   Decimal  @default(0) @db.Decimal(12, 2)
+  refundAmount Decimal  @default(0) @db.Decimal(12, 2)
+  netSales     Decimal  @default(0) @db.Decimal(12, 2)
+  computedAt   DateTime @default(now())
+
+  @@unique([tenantId, date])
+  @@index([date])
+}
+
+model StoreDailySummary {
+  id           String   @id @default(cuid())
+  date         String   // YYYY-MM-DD (UTC)
+  tenantId     String
+  storeId      String
+  salesCount   Int      @default(0)
+  refundCount  Int      @default(0)
+  grossSales   Decimal  @default(0) @db.Decimal(12, 2)
+  refundAmount Decimal  @default(0) @db.Decimal(12, 2)
+  netSales     Decimal  @default(0) @db.Decimal(12, 2)
+  computedAt   DateTime @default(now())
+
+  @@unique([storeId, date])
+  @@index([tenantId, date])
+}
+
 model OpsAdmin {
   id           String   @id @default(cuid())
   name         String

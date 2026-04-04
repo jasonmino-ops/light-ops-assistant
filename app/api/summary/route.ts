@@ -61,6 +61,48 @@ export async function GET(req: NextRequest) {
     dimension = 'GLOBAL'
   }
 
+  // ── Summary-table fast path ───────────────────────────────────────────────
+  // Only for single-day non-staff queries (GLOBAL or STORE dimension).
+  if (dateFrom === dateTo && !operatorUserId) {
+    const summaryDate = dateFrom
+    const row = storeId
+      ? await prisma.storeDailySummary.findUnique({
+          where: { storeId_date: { storeId, date: summaryDate } },
+          select: { salesCount: true, refundCount: true, grossSales: true, refundAmount: true, netSales: true },
+        })
+      : await prisma.tenantDailySummary.findFirst({
+          where: { tenantId: ctx.tenantId, date: summaryDate },
+          select: { salesCount: true, refundCount: true, grossSales: true, refundAmount: true, netSales: true },
+        })
+
+    if (row) {
+      const storeInfo = storeId
+        ? await prisma.store.findFirst({ where: { id: storeId }, select: { name: true } })
+        : null
+      const totalSaleAmount   = Number(row.grossSales)
+      const totalRefundAmount = -Number(row.refundAmount) // negative to match raw-query contract
+      const netAmount         = Number(row.netSales)
+      return NextResponse.json({
+        dateFrom, dateTo, dimension,
+        storeName: storeInfo?.name ?? null,
+        operatorDisplayName: null,
+        totalSaleAmount,
+        totalRefundAmount,
+        netAmount,
+        saleCount: row.salesCount,
+        refundCount: row.refundCount,
+        saleOrderCount: row.salesCount,
+        refundOrderCount: row.refundCount,
+        avgSaleAmount: row.salesCount > 0
+          ? parseFloat((netAmount / row.salesCount).toFixed(2))
+          : 0,
+        topProducts: [],      // not stored in summary; fallback to raw for top-products detail
+        _source: 'summary',
+      })
+    }
+    // summary missing for this date → fall through to raw queries below
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const baseWhere: any = {
     tenantId: ctx.tenantId,
