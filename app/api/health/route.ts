@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 5. Auth context ────────────────────────────────────────────────────────
-  const ctx = getContext(req)
+  const ctx = await getContext(req)
   if (!ctx) {
     checks.push({ key: 'auth_ctx', name: '当前认证状态', status: 'WARN', detail: '未携带有效 Session，请先登录' })
   } else {

@@ -17,7 +17,7 @@ import { getContext } from '@/lib/context'
  * and in the write path (POST /api/sales REFUND branch).
  */
 export async function GET(req: NextRequest) {
-  const ctx = getContext(req)
+  const ctx = await getContext(req)
   if (!ctx) {
     return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   }

@@ -15,7 +15,7 @@ import { getContext } from '@/lib/context'
  * Dates are interpreted as UTC day boundaries.
  */
 export async function GET(req: NextRequest) {
-  const ctx = getContext(req)
+  const ctx = await getContext(req)
   if (!ctx) {
     return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   }

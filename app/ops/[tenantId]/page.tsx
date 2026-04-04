@@ -84,7 +84,7 @@ export default function TenantDetailPage() {
         {/* Basic info */}
         <Section title="基本信息">
           <InfoGrid rows={[
-            ['状态', detail.status === 'ACTIVE' ? '✅ 运营中' : '🔴 已停用'],
+            ['状态', detail.status === 'ACTIVE' ? '✅ 运营中' : '🔴 已归档停用'],
             ['创建时间', new Date(detail.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })],
             ['门店数', String(detail.stores.length)],
             ['成员数', String(detail.members.length)],
@@ -231,8 +231,8 @@ function LifecyclePanel({ tenantId, currentStatus, onChanged }: { tenantId: stri
   const isActive = currentStatus === 'ACTIVE'
 
   async function toggleStatus() {
-    const next = isActive ? 'INACTIVE' : 'ACTIVE'
-    const msg = isActive ? `确认停用该商户？停用后商户将无法正常使用系统。` : `确认恢复该商户为运营状态？`
+    const next = isActive ? 'ARCHIVED' : 'ACTIVE'
+    const msg = isActive ? `确认归档/停用该商户？停用后商户前台将立即无法使用（现有 session 被拒绝）。` : `确认恢复该商户为运营状态？`
     if (!confirm(msg)) return
     setSaving(true)
     setErr(null)
@@ -299,7 +299,7 @@ function LifecyclePanel({ tenantId, currentStatus, onChanged }: { tenantId: stri
       </div>
       {!isActive && (
         <div style={{ fontSize: 12, color: '#fa8c16', marginTop: 8, background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 6, padding: '6px 10px' }}>
-          ⚠️ 该商户已停用。如需永久删除，请先导出数据备份，联系技术人员手动处理（不支持界面直删，防止财务记录丢失）。
+          ⚠️ 该商户已归档停用，前台所有 API 调用将被拒绝（401）。数据保留。如需永久删除请先导出备份，联系技术人员手动处理。
         </div>
       )}
       {err && <div style={s.errMsg}>{err}</div>}

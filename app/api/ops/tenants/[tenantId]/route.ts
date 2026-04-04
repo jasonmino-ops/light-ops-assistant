@@ -95,7 +95,7 @@ export async function GET(
 }
 
 const VALID_TIERS = ['LITE', 'STANDARD', 'MULTI_STORE']
-const VALID_STATUS = ['ACTIVE', 'INACTIVE']
+const VALID_STATUS = ['ACTIVE', 'ARCHIVED']
 
 export async function PATCH(
   req: NextRequest,

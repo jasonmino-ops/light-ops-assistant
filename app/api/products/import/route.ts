@@ -30,7 +30,7 @@ const TEMPLATE_COL_WIDTHS = [
 ]
 
 export async function GET(req: NextRequest) {
-  const ctx = getContext(req)
+  const ctx = await getContext(req)
   if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   if (ctx.role !== 'OWNER') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
 type ErrorRow = { row: number; barcode: string; reason: string }
 
 export async function POST(req: NextRequest) {
-  const ctx = getContext(req)
+  const ctx = await getContext(req)
   if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   if (ctx.role !== 'OWNER') {
     return NextResponse.json(

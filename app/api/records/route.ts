@@ -13,7 +13,7 @@ import { getContext } from '@/lib/context'
  * summary reflects the current filtered result set, not the full day.
  */
 export async function GET(req: NextRequest) {
-  const ctx = getContext(req)
+  const ctx = await getContext(req)
   if (!ctx) {
     return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   }

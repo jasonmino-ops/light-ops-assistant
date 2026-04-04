@@ -68,6 +68,43 @@ export async function GET(
     createdAt: r.createdAt.toISOString(),
   })
 
+  // ── Business summary ────────────────────────────────────────────────────────
+  const saleRows = sales.filter((r) => r.saleType === 'SALE')
+  const refundRows = sales.filter((r) => r.saleType === 'REFUND')
+  const totalRevenue = saleRows.reduce((s, r) => s + r.lineAmount.toNumber(), 0)
+  const totalRefundAmt = refundRows.reduce((s, r) => s + r.lineAmount.toNumber(), 0)
+  const uniqueOrders = new Set(saleRows.map((r) => r.orderNo).filter(Boolean)).size
+
+  // Top 5 products by quantity sold
+  const productQty = new Map<string, { name: string; qty: number }>()
+  for (const r of saleRows) {
+    const key = r.productNameSnapshot + (r.specSnapshot ? ` (${r.specSnapshot})` : '')
+    const cur = productQty.get(key) ?? { name: key, qty: 0 }
+    cur.qty += r.quantity.toNumber()
+    productQty.set(key, cur)
+  }
+  const topProducts = [...productQty.values()]
+    .sort((a, b) => b.qty - a.qty)
+    .slice(0, 5)
+
+  const dateRange = saleRows.length > 0
+    ? { from: saleRows[saleRows.length - 1].createdAt.toISOString(), to: saleRows[0].createdAt.toISOString() }
+    : null
+
+  const summary = {
+    totalOrders: uniqueOrders,
+    totalSaleLines: saleRows.length,
+    totalRevenue: Math.round(totalRevenue * 100) / 100,
+    totalRefunds: refundRows.length,
+    totalRefundAmount: Math.round(totalRefundAmt * 100) / 100,
+    netRevenue: Math.round((totalRevenue - totalRefundAmt) * 100) / 100,
+    productCount: products.length,
+    memberCount: members.length,
+    storeCount: stores.length,
+    topProducts,
+    dateRange,
+  }
+
   const payload = {
     exportedAt: new Date().toISOString(),
     tenant: {
@@ -75,6 +112,7 @@ export async function GET(
       status: tenant.status, tier: tenant.tier,
       createdAt: tenant.createdAt.toISOString(),
     },
+    summary,
     stores: stores.map((s) => ({ ...s, createdAt: s.createdAt.toISOString() })),
     members: members.map((m) => ({
       ...m,
@@ -86,8 +124,8 @@ export async function GET(
       sellPrice: p.sellPrice.toNumber(),
       createdAt: p.createdAt.toISOString(),
     })),
-    saleRecords: sales.filter((r) => r.saleType === 'SALE').map(mapSale),
-    refundRecords: sales.filter((r) => r.saleType === 'REFUND').map(mapSale),
+    saleRecords: saleRows.map(mapSale),
+    refundRecords: refundRows.map(mapSale),
   }
 
   const slug = tenant.name.replace(/[^\w\u4e00-\u9fa5]/g, '_')

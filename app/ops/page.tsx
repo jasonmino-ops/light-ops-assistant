@@ -134,7 +134,7 @@ function TenantCard({ tenant: t }: { tenant: TenantRow }) {
             <span style={{ ...s.statusBadge, background: tm.bg, color: tm.color, borderColor: tm.border }}>{tm.label}</span>
           )})()}
           <span style={active ? { ...s.statusBadge, background: '#f6ffed', color: '#52c41a', borderColor: '#b7eb8f' } : { ...s.statusBadge, background: '#fff1f0', color: '#ff4d4f', borderColor: '#ffa39e' }}>
-            {active ? '运营中' : '停用'}
+            {active ? '运营中' : '已归档'}
           </span>
         </div>
       </div>

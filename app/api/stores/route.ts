@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
 export async function GET(req: NextRequest) {
-  const ctx = getContext(req)
+  const ctx = await getContext(req)
   if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   if (ctx.role !== 'OWNER') {
     return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })

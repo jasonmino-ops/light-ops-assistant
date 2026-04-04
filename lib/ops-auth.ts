@@ -1,17 +1,40 @@
 import { NextRequest } from 'next/server'
-import { getContext } from './context'
+import { verifySession } from './session'
 
-/** Returns the request context if the caller is an authorized ops admin, else null. */
-export function checkOpsAuth(req: NextRequest) {
-  const ctx = getContext(req)
-  if (!ctx || ctx.role !== 'OWNER') return null
+/**
+ * Checks if the caller is an authorized ops admin.
+ *
+ * Verifies the session directly (bypassing tenant status check) so that
+ * ops admins can manage tenants including ARCHIVED ones without being
+ * locked out by their own tenant's status.
+ *
+ * Returns true if authorized, false otherwise.
+ */
+export function checkOpsAuth(req: NextRequest): boolean {
+  const sessionToken = req.cookies.get('auth-session')?.value
+  let userId: string | null = null
+  let role: string | null = null
+
+  if (sessionToken) {
+    const session = verifySession(sessionToken)
+    if (session) {
+      userId = session.userId
+      role = session.role
+    }
+  }
+
+  // Dev x-* header fallback
+  if (!role) {
+    role = req.headers.get('x-role')
+    userId = req.headers.get('x-user-id')
+  }
+
+  if (role !== 'OWNER') return false
 
   const allowed = (process.env.OPS_USER_IDS ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
 
-  // Empty whitelist = allow any OWNER (dev / single-admin deployments)
-  if (allowed.length > 0 && !allowed.includes(ctx.userId)) return null
-  return ctx
+  return allowed.length === 0 || (userId != null && allowed.includes(userId))
 }

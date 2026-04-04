@@ -9,22 +9,9 @@
  * Leave empty to allow any OWNER (dev / single-operator setups).
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { getContext } from '@/lib/context'
+import { checkOpsAuth } from '@/lib/ops-auth'
 
 export async function GET(req: NextRequest) {
-  const ctx = getContext(req)
-  if (!ctx) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
-  if (ctx.role !== 'OWNER') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
-
-  const allowed = (process.env.OPS_USER_IDS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-
-  // Empty whitelist = allow any OWNER (dev / single-operator deployment)
-  if (allowed.length === 0 || allowed.includes(ctx.userId)) {
-    return NextResponse.json({ ok: true, userId: ctx.userId, tenantId: ctx.tenantId })
-  }
-
-  return NextResponse.json({ error: 'NOT_IN_WHITELIST' }, { status: 403 })
+  if (!checkOpsAuth(req)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  return NextResponse.json({ ok: true })
 }

@@ -14,7 +14,7 @@ import { generateRecordNo } from '@/lib/record-no'
  *         退款针对单条 SaleRecord 行，逻辑不变。
  */
 export async function POST(req: NextRequest) {
-  const ctx = getContext(req)
+  const ctx = await getContext(req)
   if (!ctx) {
     return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   }
