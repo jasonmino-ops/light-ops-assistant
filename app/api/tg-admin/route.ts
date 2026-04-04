@@ -228,7 +228,7 @@ async function handleUpdate(update: any) {
     case '/start':
     case '/help':
       await sendText(chatId, [
-        '🛠 <b>轻店助手管理后台</b>',
+        '🛠 <b>E-shop 店小二助手管理后台</b>',
         '',
         '/genowner — 生成老板绑定码（24h · 单次）',
         '/genstaff — 生成员工绑定码（24h · 单次）',

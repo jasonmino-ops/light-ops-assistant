@@ -6,7 +6,7 @@ import LangProvider from './components/LangProvider'
 import WorkModeProvider from './components/WorkModeProvider'
 import { verifySession } from '@/lib/session'
 
-export const metadata = { title: '轻店助手' }
+export const metadata = { title: 'E-shop 店小二助手' }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Resolve role: signed cookie (Telegram auth) → DEV_ROLE env (local dev) → STAFF

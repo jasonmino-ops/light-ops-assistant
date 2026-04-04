@@ -116,8 +116,7 @@ export default function HomePage() {
         <div style={s.brandLeft}>
           <span style={s.brandIcon}>🏪</span>
           <div>
-            <div style={s.brandName}>店小二</div>
-            <div style={s.brandSub}>轻店助手</div>
+            <div style={s.brandName}>E-shop 店小二助手</div>
           </div>
         </div>
         <div style={s.brandRight}>

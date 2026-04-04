@@ -153,7 +153,7 @@ const zh = {
   },
   dashboard: {
     title: '今日经营概览',
-    brandName: '轻店助手',
+    brandName: 'E-shop 店小二助手',
     refresh: '刷新',
     dimGlobal: '全局',
     dimStore: '单门店',

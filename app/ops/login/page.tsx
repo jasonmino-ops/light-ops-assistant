@@ -35,8 +35,8 @@ export default function OpsLoginPage() {
     <div style={pg}>
       <div style={card}>
         <div style={logo}>🔧</div>
-        <div style={title}>内部运营后台</div>
-        <div style={sub}>账号密码登录</div>
+        <div style={title}>E-shop 店小二助手</div>
+        <div style={sub}>运营后台登录</div>
 
         <input
           style={inp}
