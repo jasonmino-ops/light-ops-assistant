@@ -45,7 +45,10 @@ export default function TelegramInit() {
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
+    const isOpsRoute = window.location.pathname.startsWith('/ops')
     if (!tg?.initData) return
+
+    const authEndpoint = isOpsRoute ? '/api/auth/telegram-ops' : '/api/auth/telegram'
 
     // Request full viewport height — prevents Telegram's default half-screen mode
     tg.expand?.()
