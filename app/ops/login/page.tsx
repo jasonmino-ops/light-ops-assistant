@@ -8,8 +8,12 @@ export default function OpsLoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleLogin() {
-    if (!username.trim() || !password) return
+  async function handleLogin(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (!username.trim() || !password) {
+      setError('请填写用户名和密码')
+      return
+    }
     setLoading(true)
     setError('')
     try {
@@ -38,35 +42,35 @@ export default function OpsLoginPage() {
         <div style={title}>E-shop 店小二助手</div>
         <div style={sub}>运营后台登录</div>
 
-        <input
-          style={inp}
-          type="text"
-          placeholder="用户名"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-          autoCapitalize="none"
-          autoComplete="username"
-        />
-        <input
-          style={inp}
-          type="password"
-          placeholder="密码"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-          autoComplete="current-password"
-        />
+        <form onSubmit={handleLogin} style={{ display: 'contents' }}>
+          <input
+            style={inp}
+            type="text"
+            placeholder="用户名"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoCapitalize="none"
+            autoComplete="username"
+          />
+          <input
+            style={inp}
+            type="password"
+            placeholder="密码"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
 
-        {error && <div style={err}>{error}</div>}
+          {error && <div style={err}>{error}</div>}
 
-        <button
-          style={{ ...btn, opacity: loading || !username.trim() || !password ? 0.6 : 1 }}
-          onClick={handleLogin}
-          disabled={loading || !username.trim() || !password}
-        >
-          {loading ? '登录中…' : '登录'}
-        </button>
+          <button
+            type="submit"
+            style={{ ...btn, opacity: loading ? 0.6 : 1 }}
+            disabled={loading}
+          >
+            {loading ? '登录中…' : '登录'}
+          </button>
+        </form>
       </div>
     </div>
   )
