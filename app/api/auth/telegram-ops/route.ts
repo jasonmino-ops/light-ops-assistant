@@ -67,14 +67,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'MISSING_INIT_DATA' }, { status: 400 })
     }
 
-    const botToken = process.env.OPS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
-    if (!botToken) {
-      return NextResponse.json({ ok: false, error: 'MISSING_OPS_BOT_TOKEN' }, { status: 500 })
+    // ── HMAC verification: try OPS_BOT_TOKEN first, then TELEGRAM_BOT_TOKEN ─
+    const opsToken = process.env.OPS_BOT_TOKEN?.trim()
+    const tgToken = process.env.TELEGRAM_BOT_TOKEN?.trim()
+
+    if (!opsToken && !tgToken) {
+      return NextResponse.json({
+        ok: false, error: 'MISSING_BOT_TOKEN',
+        message: '未配置 OPS_BOT_TOKEN 或 TELEGRAM_BOT_TOKEN，请在 Vercel 环境变量中设置',
+      }, { status: 500 })
     }
 
-    const valid = verifyTelegramWebAppData(initData, botToken)
+    const valid =
+      (opsToken ? verifyTelegramWebAppData(initData, opsToken) : false) ||
+      (tgToken  ? verifyTelegramWebAppData(initData, tgToken)  : false)
+
     if (!valid) {
-      return NextResponse.json({ ok: false, error: 'OPS_INITDATA_INVALID' }, { status: 401 })
+      return NextResponse.json({
+        ok: false, error: 'OPS_INITDATA_INVALID',
+        message: 'Telegram 签名验证失败，请确认 OPS_BOT_TOKEN 与 ops bot 的 token 一致',
+      }, { status: 401 })
     }
 
     const tgUser = parseTelegramUser(initData)
@@ -84,7 +96,7 @@ export async function POST(req: NextRequest) {
 
     const telegramId = String(tgUser.id)
 
-    // ── New: OpsAdmin table lookup ────────────────────────────────────────
+    // ── New: OpsAdmin table lookup ────────────────────────────────────────────
     const admin = await prisma.opsAdmin.findFirst({
       where: { telegramId, status: 'ACTIVE' },
       select: { role: true },
@@ -94,7 +106,19 @@ export async function POST(req: NextRequest) {
       return issueOpsSession(admin.role)
     }
 
-    // ── Backward-compat: OPS_TG_IDS whitelist → SUPER_ADMIN ──────────────
+    // ── Hint: admin exists but is DISABLED? ───────────────────────────────────
+    const disabledAdmin = await prisma.opsAdmin.findFirst({
+      where: { telegramId, status: 'DISABLED' },
+      select: { name: true },
+    })
+    if (disabledAdmin) {
+      return NextResponse.json({
+        ok: false, error: 'ADMIN_DISABLED',
+        message: `管理员「${disabledAdmin.name}」已被停用，请在 /ops/admins 中重新启用`,
+      }, { status: 403 })
+    }
+
+    // ── Backward-compat: OPS_TG_IDS whitelist → SUPER_ADMIN ──────────────────
     if (OPS_TG_IDS.length > 0) {
       if (OPS_TG_IDS.includes(telegramId)) {
         return issueOpsSession('SUPER_ADMIN')
@@ -105,14 +129,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ── Backward-compat: DB user lookup ──────────────────────────────────
+    // ── Backward-compat: DB user lookup ──────────────────────────────────────
     const user = await prisma.user.findFirst({
       where: { telegramId, role: 'OWNER' },
       select: { id: true, role: true, tenantId: true, status: true },
     })
 
     if (!user || user.status !== 'ACTIVE') {
-      return NextResponse.json({ ok: false, error: 'OPS_USER_NOT_FOUND' }, { status: 403 })
+      return NextResponse.json({
+        ok: false, error: 'OPS_USER_NOT_FOUND',
+        message: `Telegram ID ${telegramId} 未绑定任何 ops 管理员账号，请在 /ops/admins 中绑定`,
+      }, { status: 403 })
     }
 
     const defaultStore = await prisma.store.findFirst({
