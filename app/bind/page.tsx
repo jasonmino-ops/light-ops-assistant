@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useLocale } from '@/app/components/LangProvider'
+import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 /**
  * /bind?token=<token>
@@ -115,6 +116,9 @@ function BindFlow() {
 export default function BindPage() {
   return (
     <div style={pg}>
+      <div style={{ position: 'absolute', top: 12, right: 16 }}>
+        <LangToggleBtn style={{ color: '#666', background: '#f0f0f0', border: '1px solid #ddd' }} />
+      </div>
       <Suspense fallback={<div style={card}><p style={msg}>加载中…</p></div>}>
         <BindFlow />
       </Suspense>

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import QRCode from 'react-qr-code'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
+import { useLocale } from '@/app/components/LangProvider'
+import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 type Store = { id: string; name: string }
 
@@ -34,6 +36,7 @@ function fmtExpiry(iso: string) {
 }
 
 export default function InvitePage() {
+  const { t } = useLocale()
   // ── Generate form ────────────────────────────────────────────────────────
   const [stores, setStores] = useState<Store[]>([])
   const [storeId, setStoreId] = useState('')
@@ -87,9 +90,9 @@ export default function InvitePage() {
       }, OWNER_CTX)
       const body = await r.json()
       if (r.ok) setResult(body)
-      else setGenError(body.message ?? body.error ?? '生成失败')
+      else setGenError(body.message ?? body.error ?? t('invite.genFailed'))
     } catch {
-      setGenError('网络错误，请重试')
+      setGenError(t('common.networkError'))
     } finally {
       setLoading(false)
     }
@@ -111,7 +114,7 @@ export default function InvitePage() {
 
   // ── Unbind ───────────────────────────────────────────────────────────────
   async function unbind(userId: string, displayName: string) {
-    if (!window.confirm(`确认解绑「${displayName}」的 Telegram 账号？\n解绑后该员工需重新扫码绑定。`)) return
+    if (!window.confirm(`${t('invite.unbindBtn')}「${displayName}」?`)) return
     setUnbinding(userId)
     try {
       const r = await apiFetch(`/api/admin/users/${userId}/unbind`, {
@@ -119,9 +122,9 @@ export default function InvitePage() {
       }, OWNER_CTX)
       const body = await r.json()
       if (r.ok) loadMembers()
-      else window.alert(body.message ?? body.error ?? '解绑失败')
+      else window.alert(body.message ?? body.error ?? t('invite.unbindFailed'))
     } catch {
-      window.alert('网络错误，请重试')
+      window.alert(t('common.networkError'))
     } finally {
       setUnbinding(null)
     }
@@ -131,20 +134,21 @@ export default function InvitePage() {
 
   return (
     <div style={s.page}>
-      <div style={s.header}>
-        <div style={s.headerTitle}>邀请 & 成员</div>
+      <div style={{ ...s.header, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={s.headerTitle}>{t('invite.title')}</div>
+        <LangToggleBtn />
       </div>
 
       <div style={s.body}>
         {/* ── Generate section ── */}
-        <div style={s.sectionTitle}>生成绑定码</div>
+        <div style={s.sectionTitle}>{t('invite.genSection')}</div>
 
         {!result ? (
           <div style={s.card}>
             <div style={s.field}>
-              <label style={s.fieldLabel}>所属门店</label>
+              <label style={s.fieldLabel}>{t('invite.fieldStore')}</label>
               {stores.length === 0 ? (
-                <div style={s.placeholder}>加载中…</div>
+                <div style={s.placeholder}>{t('invite.loading')}</div>
               ) : (
                 <select style={s.select} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
                   {stores.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
@@ -153,11 +157,11 @@ export default function InvitePage() {
             </div>
 
             <div style={s.field}>
-              <label style={s.fieldLabel}>备注（可选）</label>
+              <label style={s.fieldLabel}>{t('invite.fieldNote')}</label>
               <input
                 style={s.input}
                 type="text"
-                placeholder="如：新员工-小王"
+                placeholder={t('invite.notePlaceholder')}
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 maxLength={40}
@@ -165,27 +169,27 @@ export default function InvitePage() {
             </div>
 
             <div style={s.field}>
-              <label style={s.fieldLabel}>有效期</label>
+              <label style={s.fieldLabel}>{t('invite.fieldExpiry')}</label>
               <div style={s.radioRow}>
-                {[{ h: 24, t: '24小时' }, { h: 48, t: '48小时' }, { h: 168, t: '7天' }].map(({ h, t }) => (
+                {[{ h: 24, lbl: '24h' }, { h: 48, lbl: '48h' }, { h: 168, lbl: '7d' }].map(({ h, lbl }) => (
                   <button
                     key={h}
                     style={{ ...s.radioBtn, ...(expiresInHours === h ? s.radioBtnActive : {}) }}
                     onClick={() => setExpiresInHours(h)}
-                  >{t}</button>
+                  >{lbl}</button>
                 ))}
               </div>
             </div>
 
             <div style={s.field}>
-              <label style={s.fieldLabel}>使用次数</label>
+              <label style={s.fieldLabel}>{t('invite.fieldUses')}</label>
               <div style={s.radioRow}>
                 {[1, 3, 5].map((n) => (
                   <button
                     key={n}
                     style={{ ...s.radioBtn, ...(maxUses === n ? s.radioBtnActive : {}) }}
                     onClick={() => setMaxUses(n)}
-                  >{n} 次</button>
+                  >{n}x</button>
                 ))}
               </div>
             </div>
@@ -197,7 +201,7 @@ export default function InvitePage() {
               onClick={generate}
               disabled={loading || !storeId}
             >
-              {loading ? '生成中…' : '生成员工绑定码'}
+              {loading ? t('invite.generating') : t('invite.genBtn')}
             </button>
           </div>
         ) : (
@@ -205,34 +209,34 @@ export default function InvitePage() {
             <div style={s.qrCard}>
               {qrValue
                 ? <QRCode value={qrValue} size={180} style={{ display: 'block' }} />
-                : <div style={s.noLink}>未配置 TELEGRAM_BOT_USERNAME，无法生成二维码</div>
+                : <div style={s.noLink}>{t('invite.noTgLink')}</div>
               }
             </div>
 
             <div style={s.infoCard}>
-              <InfoRow label="角色" value={result.role === 'OWNER' ? '老板' : '员工'} />
-              <InfoRow label="门店" value={result.storeName} />
-              <InfoRow label="备注" value={result.label ?? '—'} />
-              <InfoRow label="过期时间" value={fmtExpiry(result.expiresAt)} />
-              <InfoRow label="最多使用" value={`${result.maxUses} 次`} />
-              <InfoRow label="状态" value="有效" color="#52c41a" />
+              <InfoRow label={t('invite.infoRole')} value={result.role === 'OWNER' ? t('invite.roleOwner') : t('invite.roleStaff')} />
+              <InfoRow label={t('invite.infoStore')} value={result.storeName} />
+              <InfoRow label={t('invite.infoNote')} value={result.label ?? '—'} />
+              <InfoRow label={t('invite.infoExpiry')} value={fmtExpiry(result.expiresAt)} />
+              <InfoRow label={t('invite.infoMaxUses')} value={`${result.maxUses}x`} />
+              <InfoRow label={t('invite.infoStatus')} value={t('invite.statusValid')} color="#52c41a" />
             </div>
 
             {result.tgLink && (
               <button style={s.copyBtn} onClick={copyLink}>
-                {copied ? '已复制 ✓' : '复制邀请链接'}
+                {copied ? t('invite.copied') : t('invite.copyLink')}
               </button>
             )}
 
-            <button style={s.resetBtn} onClick={reset}>再生成一个</button>
+            <button style={s.resetBtn} onClick={reset}>{t('invite.genAnother')}</button>
           </div>
         )}
 
         {/* ── Members section ── */}
-        <div style={{ ...s.sectionTitle, marginTop: 24 }}>成员列表</div>
+        <div style={{ ...s.sectionTitle, marginTop: 24 }}>{t('invite.membersSection')}</div>
 
         {members.length === 0 ? (
-          <div style={s.emptyHint}>暂无成员数据</div>
+          <div style={s.emptyHint}>{t('invite.noMembers')}</div>
         ) : (
           <div style={s.memberList}>
             {members.map((m) => (
@@ -241,7 +245,7 @@ export default function InvitePage() {
                   <div style={s.memberName}>{m.displayName}</div>
                   <div style={s.memberMeta}>
                     <span style={m.role === 'OWNER' ? s.tagOwner : s.tagStaff}>
-                      {m.role}
+                      {m.role === 'OWNER' ? t('invite.roleOwner') : t('invite.roleStaff')}
                     </span>
                     <span style={s.metaDot}>·</span>
                     <span style={s.metaStore}>{m.storeName}</span>
@@ -249,7 +253,7 @@ export default function InvitePage() {
                 </div>
                 <div style={s.memberRight}>
                   <span style={m.bound ? s.badgeBound : s.badgeUnbound}>
-                    {m.bound ? '已绑定' : '未绑定'}
+                    {m.bound ? t('invite.bound') : t('invite.unbound')}
                   </span>
                   {m.bound && (
                     <button
@@ -257,7 +261,7 @@ export default function InvitePage() {
                       disabled={unbinding === m.id}
                       onClick={() => unbind(m.id, m.displayName)}
                     >
-                      解绑
+                      {t('invite.unbindBtn')}
                     </button>
                   )}
                 </div>

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
+import { useLocale } from '@/app/components/LangProvider'
+import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 const SESSION_KEY = 'tg-authed-uid'
 
@@ -48,11 +50,7 @@ const STAFFS = [
   { id: 'seed-user-staff-b', name: '小李（分店）' },
 ]
 
-const DIM_LABEL: Record<Dimension, string> = {
-  GLOBAL: '全局',
-  STORE: '单门店',
-  STAFF: '单店员',
-}
+// DIM_LABEL is now computed dynamically inside the component using t()
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
@@ -64,7 +62,13 @@ function fmtAmount(n: number) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { t } = useLocale()
   const [today] = useState(() => new Date().toISOString().slice(0, 10))
+  const DIM_LABEL: Record<Dimension, string> = {
+    GLOBAL: t('dashboard.dimGlobal'),
+    STORE: t('dashboard.dimStore'),
+    STAFF: t('dashboard.dimStaff'),
+  }
   const [dimension, setDimension] = useState<Dimension>('GLOBAL')
   const [storeId, setStoreId] = useState(STORES[0].id)
   const [operatorUserId, setOperatorUserId] = useState(STAFFS[0].id)
@@ -86,10 +90,10 @@ export default function DashboardPage() {
         if (res.ok) {
           setResult(body)
         } else {
-          setError(body.message ?? '加载失败')
+          setError(body.message ?? t('dashboard.loadFailed'))
         }
       } catch {
-        setError('网络错误，请重试')
+        setError(t('common.networkError'))
       } finally {
         setLoading(false)
       }
@@ -114,18 +118,18 @@ export default function DashboardPage() {
       {/* Brand header */}
       <div style={s.header}>
         <div>
-          <div style={s.brandName}>轻店助手</div>
-          <div style={s.brandSub}>今日经营概览 · {today}</div>
+          <div style={s.brandName}>{t('dashboard.brandName')}</div>
+          <div style={s.brandSub}>{t('dashboard.title')} · {today}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button style={s.switchBtn} onClick={doLogout}>切换账号</button>
+          <LangToggleBtn />
           <Link href="/system" style={s.switchBtn}>系统</Link>
           <button
             style={s.refreshBtn}
             onClick={() => load(dimension, storeId, operatorUserId)}
             disabled={loading}
           >
-            {loading ? '…' : '刷新'}
+            {loading ? '…' : t('dashboard.refresh')}
           </button>
         </div>
       </div>
@@ -147,7 +151,7 @@ export default function DashboardPage() {
         {/* Selector */}
         {dimension === 'STORE' && (
           <div style={s.selectorCard}>
-            <div style={s.selectorLabel}>选择门店</div>
+            <div style={s.selectorLabel}>{t('dashboard.selectStore')}</div>
             <select
               style={s.select}
               value={storeId}
@@ -162,7 +166,7 @@ export default function DashboardPage() {
 
         {dimension === 'STAFF' && (
           <div style={s.selectorCard}>
-            <div style={s.selectorLabel}>选择店员</div>
+            <div style={s.selectorLabel}>{t('dashboard.selectStaff')}</div>
             <select
               style={s.select}
               value={operatorUserId}
@@ -190,7 +194,7 @@ export default function DashboardPage() {
         )}
 
         {/* Overview */}
-        {!loading && result && <Overview result={result} />}
+        {!loading && result && <Overview result={result} t={t} />}
       </div>
     </div>
   )
@@ -198,20 +202,20 @@ export default function DashboardPage() {
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
 
-function Overview({ result }: { result: SummaryResult }) {
+function Overview({ result, t }: { result: SummaryResult; t: (k: string) => string }) {
   const subLabel =
     result.dimension === 'STORE'
       ? (result.storeName ?? '—')
       : result.dimension === 'STAFF'
       ? (result.operatorDisplayName ?? '—')
-      : '全部门店 · 全部员工'
+      : t('dashboard.subAll')
 
   return (
     <div>
       {/* Hero — net income */}
       <div style={ov.heroCard}>
         <div style={ov.heroSub}>{subLabel}</div>
-        <div style={ov.heroLabel}>今日净收入</div>
+        <div style={ov.heroLabel}>{t('dashboard.heroLabel')}</div>
         <div
           style={{
             ...ov.heroAmount,
@@ -224,21 +228,21 @@ function Overview({ result }: { result: SummaryResult }) {
 
       {/* Metrics 2×2 grid */}
       <div style={ov.grid}>
-        <MetricCell label="今日销售额" value={fmtAmount(result.totalSaleAmount)} />
+        <MetricCell label={t('dashboard.saleStat')} value={fmtAmount(result.totalSaleAmount)} />
         <MetricCell
-          label="今日退款额"
+          label={t('dashboard.refundStat')}
           value={fmtAmount(result.totalRefundAmount)}
           red={result.totalRefundAmount < 0}
         />
-        <MetricCell label="销售单数" value={String(result.saleOrderCount)} unit="单" />
-        <MetricCell label="退款单数" value={String(result.refundOrderCount)} unit="单" />
+        <MetricCell label={t('dashboard.saleCount')} value={String(result.saleOrderCount)} unit={t('dashboard.orderUnit')} />
+        <MetricCell label={t('dashboard.refundCount')} value={String(result.refundOrderCount)} unit={t('dashboard.orderUnit')} />
       </div>
 
       {/* Top 3 products */}
       <div style={ov.topCard}>
-        <div style={ov.topTitle}>热销商品 Top 3</div>
+        <div style={ov.topTitle}>{t('dashboard.topTitle')}</div>
         {result.topProducts.length === 0 ? (
-          <div style={ov.emptyTop}>今日暂无销售记录</div>
+          <div style={ov.emptyTop}>{t('dashboard.noSales')}</div>
         ) : (
           result.topProducts.map((p, i) => (
             <div
@@ -262,7 +266,7 @@ function Overview({ result }: { result: SummaryResult }) {
                 {p.name}
                 {p.spec && <span style={ov.topSpec}> · {p.spec}</span>}
               </div>
-              <div style={ov.topQty}>{p.totalQty} 件</div>
+              <div style={ov.topQty}>{p.totalQty} {t('dashboard.qtyUnit')}</div>
             </div>
           ))
         )}

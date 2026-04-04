@@ -71,12 +71,11 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
         return
       }
 
-      // ── 3. Manually acquire stream so we control timing ───────────────────
-      // decodeFromConstraints has an IndexSizeError on Telegram WebView/iPhone
-      // because it starts the ZXing decode loop before video dimensions are
-      // available (videoWidth === 0). We fix this by acquiring the stream
-      // ourselves and polling until the video is fully warm before handing it
-      // to ZXing's decodeFromVideoElement.
+      // ── 3. Manually acquire stream ────────────────────────────────────────
+      // We manage the stream ourselves so we can guarantee video dimensions are
+      // non-zero before handing the element to ZXing. decodeFromConstraints has
+      // an IndexSizeError on Telegram WebView / iPhone because it starts the
+      // decode loop before videoWidth is ready.
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
@@ -100,30 +99,34 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
 
       const video = videoRef.current
       video.srcObject = stream
+      // Explicitly call play() — autoPlay attribute alone is not reliable in
+      // some WebView environments (Telegram iOS).
+      try { await video.play() } catch { /* ignore: play() may throw if interrupted */ }
 
       // ── 4. Poll until video dimensions are ready ──────────────────────────
-      // Telegram WebView / iOS Safari may report videoWidth===0 for several
-      // frames after srcObject is set. Starting ZXing before this causes
-      // an IndexSizeError inside the scan-region crop code.
+      // Telegram WebView / iOS Safari: videoWidth can remain 0 for several
+      // rAF cycles after srcObject is set. ZXing's internal canvas crop will
+      // throw IndexSizeError if we start decoding before dimensions arrive.
       await new Promise<void>((resolve) => {
-        function checkDimensions() {
+        function poll() {
           if (cancelled) { resolve(); return }
           if (video.videoWidth > 0 && video.videoHeight > 0) { resolve(); return }
-          requestAnimationFrame(checkDimensions)
+          requestAnimationFrame(poll)
         }
-        // Begin polling once the video element fires 'loadedmetadata'
-        video.addEventListener('loadedmetadata', () => requestAnimationFrame(checkDimensions), { once: true })
+        // Start polling immediately; also covers the case where loadedmetadata
+        // already fired before we registered the listener.
+        requestAnimationFrame(poll)
       })
 
       if (cancelled || !videoRef.current) return
 
-      // ── 5. Start ZXing on the already-warm video element ──────────────────
+      // ── 5. Start ZXing on the warmed video element ────────────────────────
       try {
         const { BrowserMultiFormatReader, BarcodeFormat } = await import('@zxing/browser')
         const { DecodeHintType } = await import('@zxing/library')
         if (cancelled || !videoRef.current) return
 
-        // Restrict to 1D barcodes only — QR codes and 2D formats are not supported
+        // Restrict to 1D barcodes only — QR / 2D formats not supported
         const hints = new Map()
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [
           BarcodeFormat.EAN_13,
@@ -138,21 +141,16 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
         const reader = new BrowserMultiFormatReader(hints)
         const controls = await reader.decodeFromVideoElement(
           videoRef.current,
-          (result, err) => {
+          (result) => {
+            // Only handle successful decodes. ALL callback errors (NotFoundException,
+            // ChecksumException, etc.) are "no barcode this frame" — safe to ignore.
+            // In minified production builds, error class names are mangled (e.g.
+            // NotFoundException → 'e'), so name-based filtering is unreliable.
+            // Real camera errors (NotAllowedError, NotReadableError) are thrown as
+            // exceptions and caught by the outer try-catch, never via callback.
             if (result) {
               const text = result.getText()
               if (text) handleResult(text)
-              return
-            }
-            // NotFoundException fires every frame with no barcode — safe to ignore
-            if (err && err.name !== 'NotFoundException') {
-              const msg =
-                err.name === 'NotAllowedError'
-                  ? '摄像头权限被拒绝，请在系统/浏览器设置中允许'
-                  : err.name === 'NotReadableError'
-                  ? '摄像头被其他应用占用，请关闭后重试'
-                  : `摄像头错误（${err.name}）`
-              reportError(msg)
             }
           },
         )

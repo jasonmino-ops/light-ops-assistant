@@ -3,6 +3,8 @@
 import { useState, KeyboardEvent, useRef, useCallback } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
+import { useLocale } from '@/app/components/LangProvider'
+import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +28,7 @@ type ImportResult = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProductsPage() {
+  const { t } = useLocale()
   const [scannerOpen, setScannerOpen] = useState(false)
   const [barcodeInput, setBarcodeInput] = useState('')
   const [cameraFailCount, setCameraFailCount] = useState(0)
@@ -189,8 +192,8 @@ export default function ProductsPage() {
   async function handleSave() {
     if (!product) return
     const price = parseFloat(editPrice)
-    if (!editName.trim()) { setError('商品名不能为空'); return }
-    if (isNaN(price) || price <= 0) { setError('请输入有效的售价（大于 0）'); return }
+    if (!editName.trim()) { setError(t('products.nameRequired')); return }
+    if (isNaN(price) || price <= 0) { setError(t('products.priceInvalid')); return }
     setError(null)
 
     try {
@@ -212,10 +215,10 @@ export default function ProductsPage() {
         setProduct(body)
         setMode('saved')
       } else {
-        setError(body.message ?? '保存失败')
+        setError(body.message ?? t('products.saveFailed'))
       }
     } catch {
-      setError('网络错误，请重试')
+      setError(t('common.networkError'))
     }
   }
 
@@ -223,9 +226,9 @@ export default function ProductsPage() {
 
   async function handleCreate() {
     const price = parseFloat(newPrice)
-    if (!newBarcode.trim()) { setError('条码不能为空'); return }
-    if (!newName.trim()) { setError('商品名不能为空'); return }
-    if (isNaN(price) || price <= 0) { setError('请输入有效的售价（大于 0）'); return }
+    if (!newBarcode.trim()) { setError(t('products.barcodeRequired')); return }
+    if (!newName.trim()) { setError(t('products.nameRequired')); return }
+    if (isNaN(price) || price <= 0) { setError(t('products.priceInvalid')); return }
     setError(null)
 
     try {
@@ -251,10 +254,10 @@ export default function ProductsPage() {
         setEditStatus(body.status)
         setMode('saved')
       } else {
-        setError(body.message ?? '新增失败')
+        setError(body.message ?? t('products.createFailed'))
       }
     } catch {
-      setError('网络错误，请重试')
+      setError(t('common.networkError'))
     }
   }
 
@@ -271,8 +274,9 @@ export default function ProductsPage() {
       )}
 
       {/* Header */}
-      <div style={s.headerBar}>
-        <span style={s.headerTitle}>商品管理</span>
+      <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={s.headerTitle}>{t('products.title')}</span>
+        <LangToggleBtn />
       </div>
 
       <div style={s.body}>
@@ -280,14 +284,14 @@ export default function ProductsPage() {
         {/* ── 批量导入 ── */}
         <div style={s.importSection}>
           <button style={s.importToggle} onClick={() => { setImportOpen((v) => !v); setImportResult(null); setImportError(null) }}>
-            <span style={s.importToggleText}>批量导入</span>
+            <span style={s.importToggleText}>{t('products.importToggle')}</span>
             <span style={s.importToggleArrow}>{importOpen ? '▲' : '▼'}</span>
           </button>
 
           {importOpen && (
             <div style={s.importBody}>
               <button style={s.templateBtn} onClick={downloadTemplate} type="button">
-                下载 Excel 模板
+                {t('products.downloadTemplate')}
               </button>
 
               <div style={s.uploadRow}>
@@ -308,7 +312,7 @@ export default function ProductsPage() {
                   disabled={!importFile || importing}
                   onClick={handleImport}
                 >
-                  {importing ? '导入中…' : '开始导入'}
+                  {importing ? t('products.importing') : t('products.importBtn')}
                 </button>
               </div>
 
@@ -317,16 +321,16 @@ export default function ProductsPage() {
               {importResult && (
                 <div style={s.importResult}>
                   <div style={s.importResultSummary}>
-                    <span style={s.importOk}>✓ 成功 {importResult.imported} 条</span>
+                    <span style={s.importOk}>{t('products.importOkPrefix')} {importResult.imported} {t('products.importCountSuffix')}</span>
                     {importResult.failed > 0 && (
-                      <span style={s.importFail}>✕ 失败 {importResult.failed} 条</span>
+                      <span style={s.importFail}>{t('products.importFailPrefix')} {importResult.failed} {t('products.importCountSuffix')}</span>
                     )}
                   </div>
                   {importResult.errors.length > 0 && (
                     <div style={s.importErrorList}>
                       {importResult.errors.map((e, i) => (
                         <div key={i} style={s.importErrorRow}>
-                          <span style={s.importErrorRowNum}>第 {e.row} 行</span>
+                          <span style={s.importErrorRowNum}>{t('products.importRowPrefix')} {e.row} {t('products.importRowSuffix')}</span>
                           <span style={s.importErrorBarcode}>{e.barcode}</span>
                           <span style={s.importErrorReason}>{e.reason}</span>
                         </div>
@@ -343,16 +347,16 @@ export default function ProductsPage() {
         {mode === 'saved' && product && (
           <div style={s.savedCard}>
             <div style={s.savedCheck}>✓</div>
-            <div style={s.savedTitle}>已保存</div>
+            <div style={s.savedTitle}>{t('products.saved')}</div>
             <div style={s.savedName}>{product.name}{product.spec ? ` · ${product.spec}` : ''}</div>
             <div style={s.savedPrice}>${product.sellPrice.toFixed(2)}</div>
             <div style={{
               ...s.savedBadge,
               background: product.status === 'ACTIVE' ? 'rgba(255,255,255,0.2)' : 'rgba(255,100,100,0.3)',
             }}>
-              {product.status === 'ACTIVE' ? '✓ 已启用' : '✕ 已停用'}
+              {product.status === 'ACTIVE' ? t('products.statusActiveBadge') : t('products.statusDisabledBadge')}
             </div>
-            <button style={s.nextBtn} onClick={reset}>继续查询 / 新增</button>
+            <button style={s.nextBtn} onClick={reset}>{t('products.continueBtn')}</button>
           </div>
         )}
 
@@ -367,22 +371,22 @@ export default function ProductsPage() {
                 disabled={mode === 'loading'}
               >
                 <span style={s.scanIcon}>⊡</span>
-                <span>扫码查询 / 新增</span>
+                <span>{t('products.scanBtn')}</span>
               </button>
 
               {cameraFailCount >= 5 && (
-                <div style={s.scanHintMsg}>已连续 5 次未识别，请尝试手动输入条码</div>
+                <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>
               )}
 
               <div style={s.orRow}>
-                <div style={s.orLine} /><span style={s.orText}>或手动输入条码</span><div style={s.orLine} />
+                <div style={s.orLine} /><span style={s.orText}>{t('products.orInput')}</span><div style={s.orLine} />
               </div>
 
               <div style={s.inputRow}>
                 <input
                   style={s.input}
                   type="text"
-                  placeholder="条码"
+                  placeholder={t('products.barcodePlaceholder')}
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
                   onKeyDown={handleBarcodeKey}
@@ -393,7 +397,7 @@ export default function ProductsPage() {
                   onClick={() => lookup(barcodeInput)}
                   disabled={mode === 'loading' || !barcodeInput.trim()}
                 >
-                  {mode === 'loading' ? '…' : '查询'}
+                  {mode === 'loading' ? '…' : t('products.queryBtn')}
                 </button>
               </div>
             </div>
@@ -403,32 +407,32 @@ export default function ProductsPage() {
             {/* ── 商品已存在：编辑表单 ── */}
             {mode === 'found' && product && (
               <div style={s.card}>
-                <div style={s.sectionLabel}>修改商品信息</div>
+                <div style={s.sectionLabel}>{t('products.editSection')}</div>
 
                 <div style={s.barcodeRow}>
-                  <span style={s.barcodeLabel}>条码</span>
+                  <span style={s.barcodeLabel}>{t('products.barcodeLabel')}</span>
                   <span style={s.barcodeValue}>{product.barcode}</span>
                 </div>
 
-                <Field label="商品名 *">
+                <Field label={t('products.fieldName')}>
                   <input
                     style={s.field}
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    placeholder="商品名称"
+                    placeholder={t('products.namePlaceholder')}
                   />
                 </Field>
 
-                <Field label="规格">
+                <Field label={t('products.fieldSpec')}>
                   <input
                     style={s.field}
                     value={editSpec}
                     onChange={(e) => setEditSpec(e.target.value)}
-                    placeholder="如 550ml（可留空）"
+                    placeholder={t('products.specPlaceholder')}
                   />
                 </Field>
 
-                <Field label="售价 *">
+                <Field label={t('products.fieldPrice')}>
                   <input
                     style={s.field}
                     type="text"
@@ -439,7 +443,7 @@ export default function ProductsPage() {
                   />
                 </Field>
 
-                <Field label="状态">
+                <Field label={t('products.fieldStatus')}>
                   <div style={s.statusRow}>
                     {(['ACTIVE', 'DISABLED'] as const).map((st) => (
                       <button
@@ -451,13 +455,13 @@ export default function ProductsPage() {
                         }}
                         onClick={() => setEditStatus(st)}
                       >
-                        {st === 'ACTIVE' ? '启用' : '停用'}
+                        {st === 'ACTIVE' ? t('products.statusActiveBtn') : t('products.statusDisabledBtn')}
                       </button>
                     ))}
                   </div>
                 </Field>
 
-                <button style={s.saveBtn} onClick={handleSave}>保存修改</button>
+                <button style={s.saveBtn} onClick={handleSave}>{t('products.saveBtn')}</button>
               </div>
             )}
 
@@ -467,40 +471,40 @@ export default function ProductsPage() {
                 <div style={s.noticeRow}>
                   <span style={s.noticeIcon}>＋</span>
                   <div>
-                    <div style={s.noticeTitle}>未找到该条码，快速新增商品</div>
-                    <div style={s.noticeSub}>条码：{newBarcode}</div>
+                    <div style={s.noticeTitle}>{t('products.notFoundTitle')}</div>
+                    <div style={s.noticeSub}>{t('products.barcodeLabel')}：{newBarcode}</div>
                   </div>
                 </div>
 
-                <Field label="条码">
+                <Field label={t('products.barcodeLabel')}>
                   <input
                     style={s.field}
                     value={newBarcode}
                     onChange={(e) => setNewBarcode(e.target.value)}
-                    placeholder="条码"
+                    placeholder={t('products.barcodePlaceholder')}
                   />
                 </Field>
 
-                <Field label="商品名 *">
+                <Field label={t('products.fieldName')}>
                   <input
                     style={s.field}
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="商品名称"
+                    placeholder={t('products.namePlaceholder')}
                     autoFocus
                   />
                 </Field>
 
-                <Field label="规格">
+                <Field label={t('products.fieldSpec')}>
                   <input
                     style={s.field}
                     value={newSpec}
                     onChange={(e) => setNewSpec(e.target.value)}
-                    placeholder="如 550ml（可留空）"
+                    placeholder={t('products.specPlaceholder')}
                   />
                 </Field>
 
-                <Field label="售价 *">
+                <Field label={t('products.fieldPrice')}>
                   <input
                     style={s.field}
                     type="text"
@@ -511,7 +515,7 @@ export default function ProductsPage() {
                   />
                 </Field>
 
-                <button style={s.saveBtn} onClick={handleCreate}>确认新增</button>
+                <button style={s.saveBtn} onClick={handleCreate}>{t('products.createBtn')}</button>
               </div>
             )}
 
@@ -519,8 +523,8 @@ export default function ProductsPage() {
             {mode === 'idle' && (
               <div style={s.empty}>
                 <div style={s.emptyIcon}>⊡</div>
-                <div style={s.emptyTitle}>扫码或输入条码</div>
-                <div style={s.emptySub}>查询已有商品或新增商品</div>
+                <div style={s.emptyTitle}>{t('products.emptyTitle')}</div>
+                <div style={s.emptySub}>{t('products.emptySub')}</div>
               </div>
             )}
           </>

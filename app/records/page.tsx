@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
+import { useLocale } from '@/app/components/LangProvider'
+import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,6 +117,7 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
 const PAGE_SIZE = 50
 
 export default function RecordsPage() {
+  const { t } = useLocale()
   const today = todayStr()
 
   const [dateFrom, setDateFrom] = useState(today)
@@ -148,7 +151,7 @@ export default function RecordsPage() {
       try {
         const res = await apiFetch(`/api/records?${params}`)
         if (!res.ok) {
-          setError('加载失败，请重试')
+          setError(t('records.loadFailed'))
           return
         }
         const data: ApiResponse = await res.json()
@@ -157,7 +160,7 @@ export default function RecordsPage() {
         setTotal(data.total)
         setPage(data.page)
       } catch {
-        setError('网络错误，请重试')
+        setError(t('common.networkError'))
       } finally {
         append ? setLoadingMore(false) : setLoading(false)
       }
@@ -181,8 +184,9 @@ export default function RecordsPage() {
   return (
     <div style={s.page}>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
-      <div style={s.headerBar}>
-        <span style={s.headerTitle}>记录</span>
+      <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={s.headerTitle}>{t('records.title')}</span>
+        <LangToggleBtn />
       </div>
 
       <div style={s.body}>
@@ -206,13 +210,13 @@ export default function RecordsPage() {
             />
           </div>
           <div style={s.pillRow}>
-            {(['ALL', 'SALE', 'REFUND'] as const).map((t) => (
+            {(['ALL', 'SALE', 'REFUND'] as const).map((f) => (
               <button
-                key={t}
-                style={{ ...s.pill, ...(saleTypeFilter === t ? s.pillActive : {}) }}
-                onClick={() => setSaleTypeFilter(t)}
+                key={f}
+                style={{ ...s.pill, ...(saleTypeFilter === f ? s.pillActive : {}) }}
+                onClick={() => setSaleTypeFilter(f)}
               >
-                {t === 'ALL' ? '全部' : t === 'SALE' ? '销售' : '退款'}
+                {f === 'ALL' ? t('records.filterAll') : f === 'SALE' ? t('records.filterSale') : t('records.filterRefund')}
               </button>
             ))}
           </div>
@@ -221,12 +225,12 @@ export default function RecordsPage() {
         {/* ── Summary bar ── */}
         {summary && (
           <div style={s.summaryCard}>
-            <SummaryCell label="销售" value={String(summary.saleCount)} unit="笔" />
+            <SummaryCell label={t('records.sale')} value={String(summary.saleCount)} unit={t('records.unit')} />
             <div style={s.summaryDivider} />
-            <SummaryCell label="退款" value={String(summary.refundCount)} unit="笔" />
+            <SummaryCell label={t('records.refund')} value={String(summary.refundCount)} unit={t('records.unit')} />
             <div style={s.summaryDivider} />
             <SummaryCell
-              label="净收入"
+              label={t('records.netIncome')}
               value={fmtAmount(summary.netAmount)}
               colored={summary.netAmount >= 0 ? 'green' : 'red'}
             />
@@ -246,15 +250,26 @@ export default function RecordsPage() {
         {!loading && !error && entries.length === 0 && (
           <div style={s.emptyState}>
             <div style={s.emptyIcon}>📋</div>
-            <div style={s.emptyTitle}>暂无记录</div>
+            <div style={s.emptyTitle}>{t('records.empty')}</div>
           </div>
         )}
 
         {entries.map((entry, i) =>
           entry.kind === 'order' ? (
-            <OrderCard key={entry.orderNo} group={entry} index={i} />
+            <OrderCard
+              key={entry.orderNo}
+              group={entry}
+              index={i}
+              tagSale={t('records.tagSale')}
+              kindItems={t('records.kindItems')}
+            />
           ) : (
-            <RefundCard key={entry.item.id + '-' + i} item={entry.item} />
+            <RefundCard
+              key={entry.item.id + '-' + i}
+              item={entry.item}
+              tagRefund={t('records.tagRefund')}
+              refundReasonLabel={t('records.refundReason')}
+            />
           )
         )}
 
@@ -264,7 +279,7 @@ export default function RecordsPage() {
             onClick={handleLoadMore}
             disabled={loadingMore}
           >
-            {loadingMore ? '加载中…' : `加载更多（已显示 ${allItems.length} / ${total}）`}
+            {loadingMore ? t('records.loadingMore') : `${t('records.loadMore')}（${allItems.length} / ${total}）`}
           </button>
         )}
       </div>
@@ -274,7 +289,7 @@ export default function RecordsPage() {
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ group, index }: { group: OrderGroup; index: number }) {
+function OrderCard({ group, index, tagSale, kindItems }: { group: OrderGroup; index: number; tagSale: string; kindItems: string }) {
   const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   const item = group.items[0]
@@ -282,7 +297,7 @@ function OrderCard({ group, index }: { group: OrderGroup; index: number }) {
   return (
     <div style={{ ...s.recordCard, borderLeft: `3px solid ${accent}` }}>
       <div style={s.cardHeader}>
-        <span style={s.tagSale}>销售单</span>
+        <span style={s.tagSale}>{tagSale}</span>
         <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>
         <span style={s.cardRecordNo}>{group.orderNo}</span>
       </div>
@@ -302,7 +317,7 @@ function OrderCard({ group, index }: { group: OrderGroup; index: number }) {
             {Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}
           </span>
         ) : (
-          <span style={s.cardQtyPrice}>{group.items.length} 种商品</span>
+          <span style={s.cardQtyPrice}>{group.items.length} {kindItems}</span>
         )}
         <span style={{ ...s.cardAmount, color: 'var(--text)' }}>
           ${group.totalAmount.toFixed(2)}
@@ -328,11 +343,11 @@ function OrderCard({ group, index }: { group: OrderGroup; index: number }) {
 
 // ─── RefundCard ───────────────────────────────────────────────────────────────
 
-function RefundCard({ item }: { item: RecordItem }) {
+function RefundCard({ item, tagRefund, refundReasonLabel }: { item: RecordItem; tagRefund: string; refundReasonLabel: string }) {
   return (
     <div style={{ ...s.recordCard, ...s.recordCardRefund }}>
       <div style={s.cardHeader}>
-        <span style={s.tagRefund}>退款</span>
+        <span style={s.tagRefund}>{tagRefund}</span>
         <span style={s.cardTime}>{fmtTime(item.createdAt)}</span>
         <span style={s.cardRecordNo}>{item.recordNo}</span>
       </div>
@@ -349,7 +364,7 @@ function RefundCard({ item }: { item: RecordItem }) {
         </span>
       </div>
       {item.refundReason && (
-        <div style={s.cardReason}>退款原因：{item.refundReason}</div>
+        <div style={s.cardReason}>{refundReasonLabel}{item.refundReason}</div>
       )}
     </div>
   )

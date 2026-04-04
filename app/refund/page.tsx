@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, FormEvent } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
+import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -352,11 +353,14 @@ export default function RefundPage() {
   return (
     <div style={s.page}>
       {/* ── Header ── */}
-      <div style={s.headerBar}>
-        {phase !== 'list' && (
-          <button style={s.backBtn} onClick={goBack}>‹</button>
-        )}
-        <span style={s.headerTitle}>{headerTitle}</span>
+      <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {phase !== 'list' && (
+            <button style={s.backBtn} onClick={goBack}>‹</button>
+          )}
+          <span style={s.headerTitle}>{headerTitle}</span>
+        </div>
+        <LangToggleBtn />
       </div>
 
       <div style={s.body}>

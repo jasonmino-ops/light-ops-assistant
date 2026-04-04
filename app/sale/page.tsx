@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -296,8 +297,9 @@ export default function SalePage() {
         />
       )}
 
-      <div style={s.headerBar}>
+      <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={s.headerTitle}>{t('sale.title')}</span>
+        <LangToggleBtn />
       </div>
 
       <div style={s.body}>
