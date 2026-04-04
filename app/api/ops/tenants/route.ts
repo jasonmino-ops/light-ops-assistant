@@ -7,6 +7,15 @@ import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuth } from '@/lib/ops-auth'
 
+// Test products seeded for every new tenant.
+// Barcodes are prefixed DEMO- to be clearly non-production.
+// Owner can disable or delete these after going live.
+const DEMO_PRODUCTS = [
+  { barcode: 'DEMO-0001', name: '【测试】样品商品甲', spec: '单件',  sellPrice: '10.00', status: 'ACTIVE' as const },
+  { barcode: 'DEMO-0002', name: '【测试】样品商品乙', spec: '两件装', sellPrice: '18.00', status: 'ACTIVE' as const },
+  { barcode: 'DEMO-0003', name: '【测试】样品商品丙', spec: null,    sellPrice: '5.50',  status: 'ACTIVE' as const },
+]
+
 function todayStart() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
@@ -115,6 +124,11 @@ export async function POST(req: NextRequest) {
     })
     await tx.userStoreRole.create({
       data: { tenantId: t.id, userId: u.id, storeId: s.id, role: 'OWNER' },
+    })
+    // Seed 3 clearly-marked test products. Owner can DISABLE or replace them after setup.
+    // No sale records, refunds, or staff bindings — all other data starts blank.
+    await tx.product.createMany({
+      data: DEMO_PRODUCTS.map((p) => ({ ...p, tenantId: t.id })),
     })
     return [t, s, u]
   })

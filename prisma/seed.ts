@@ -145,117 +145,24 @@ async function main() {
   })
   console.log('✓ UserStoreRoles bound')
 
-  // ─── Products ─────────────────────────────────────────────────────────────
-  const products = [
-    {
-      id: 'seed-product-001',
-      barcode: '8888001',
-      name: '矿泉水',
-      spec: '550ml',
-      sellPrice: '2.50',
-    },
-    {
-      id: 'seed-product-002',
-      barcode: '8888002',
-      name: '红牛',
-      spec: '250ml',
-      sellPrice: '6.00',
-    },
-    {
-      id: 'seed-product-003',
-      barcode: '8888003',
-      name: '薯片',
-      spec: '大包装',
-      sellPrice: '12.80',
-    },
+  // ─── Products — same template as production new-tenant init ──────────────
+  // Barcodes prefixed DEMO- are clearly non-production.
+  // Owner should disable or replace these after going live.
+  const demoProducts = [
+    { id: 'seed-product-001', barcode: 'DEMO-0001', name: '【测试】样品商品甲', spec: '单件',   sellPrice: '10.00' },
+    { id: 'seed-product-002', barcode: 'DEMO-0002', name: '【测试】样品商品乙', spec: '两件装', sellPrice: '18.00' },
+    { id: 'seed-product-003', barcode: 'DEMO-0003', name: '【测试】样品商品丙', spec: null,    sellPrice: '5.50'  },
   ]
 
-  for (const p of products) {
+  for (const p of demoProducts) {
     await prisma.product.upsert({
       where: { tenantId_barcode: { tenantId: tenant.id, barcode: p.barcode } },
       update: {},
-      create: {
-        id: p.id,
-        tenantId: tenant.id,
-        barcode: p.barcode,
-        name: p.name,
-        spec: p.spec,
-        sellPrice: p.sellPrice,
-        status: 'ACTIVE',
-      },
+      create: { ...p, tenantId: tenant.id, status: 'ACTIVE' },
     })
   }
-  console.log('✓ Products: 矿泉水 / 红牛 / 薯片')
-
-  // ─── Sample SaleRecords ───────────────────────────────────────────────────
-  // A few sales so that /api/records and /api/summary return non-empty results
-  // immediately after seed. Use today's date.
-
-  const saleSeeds = [
-    {
-      id: 'seed-sale-001',
-      recordNo: 'S-SEED-STORE-A-0001',
-      storeId: storeA.id,
-      operatorUserId: staffA.id,
-      productId: 'seed-product-001',
-      barcode: '8888001',
-      productNameSnapshot: '矿泉水',
-      specSnapshot: '550ml',
-      unitPrice: '2.50',
-      quantity: '3',
-      lineAmount: '7.50',
-    },
-    {
-      id: 'seed-sale-002',
-      recordNo: 'S-SEED-STORE-A-0002',
-      storeId: storeA.id,
-      operatorUserId: staffA.id,
-      productId: 'seed-product-002',
-      barcode: '8888002',
-      productNameSnapshot: '红牛',
-      specSnapshot: '250ml',
-      unitPrice: '6.00',
-      quantity: '2',
-      lineAmount: '12.00',
-    },
-    {
-      id: 'seed-sale-003',
-      recordNo: 'S-SEED-STORE-B-0001',
-      storeId: storeB.id,
-      operatorUserId: staffB.id,
-      productId: 'seed-product-003',
-      barcode: '8888003',
-      productNameSnapshot: '薯片',
-      specSnapshot: '大包装',
-      unitPrice: '12.80',
-      quantity: '1',
-      lineAmount: '12.80',
-    },
-  ]
-
-  for (const s of saleSeeds) {
-    await prisma.saleRecord.upsert({
-      where: { recordNo: s.recordNo },
-      update: {},
-      create: {
-        id: s.id,
-        tenantId: tenant.id,
-        storeId: s.storeId,
-        operatorUserId: s.operatorUserId,
-        recordNo: s.recordNo,
-        saleType: 'SALE',
-        status: 'COMPLETED',
-        productId: s.productId,
-        barcode: s.barcode,
-        productNameSnapshot: s.productNameSnapshot,
-        specSnapshot: s.specSnapshot,
-        unitPrice: s.unitPrice,
-        quantity: s.quantity,
-        lineAmount: s.lineAmount,
-      },
-    })
-  }
-  console.log('✓ Sample SaleRecords: 3 sales inserted (storeA×2, storeB×1)')
+  console.log('✓ Products (test template): 样品商品甲 / 乙 / 丙')
+  console.log('  Note: no sale records, refunds, or staff bindings — all other data starts blank.')
 
   console.log('\n─── Seed complete ───────────────────────────────────────────')
   console.log('Tenant ID  :', tenant.id)
@@ -264,10 +171,6 @@ async function main() {
   console.log('Owner  ID  :', owner.id, '(boss)')
   console.log('StaffA ID  :', staffA.id, '(staff_a → 总店)')
   console.log('StaffB ID  :', staffB.id, '(staff_b → 分店)')
-  console.log('\nSample sale recordNos for refund testing:')
-  console.log('  S-SEED-STORE-A-0001  矿泉水 ×3  (storeA / staffA)')
-  console.log('  S-SEED-STORE-A-0002  红牛   ×2  (storeA / staffA)')
-  console.log('  S-SEED-STORE-B-0001  薯片   ×1  (storeB / staffB)')
 }
 
 main()
