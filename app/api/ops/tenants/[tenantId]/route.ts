@@ -35,6 +35,7 @@ export async function GET(
         displayName: true,
         role: true,
         telegramId: true,
+        staffNumber: true,
         storeRoles: {
           where: { status: 'ACTIVE' },
           take: 1,
@@ -81,6 +82,7 @@ export async function GET(
       displayName: u.displayName,
       role: u.role,
       bound: !!u.telegramId,
+      staffNumber: u.staffNumber ?? null,
       storeName: u.storeRoles[0]?.store.name ?? '—',
     })),
     today: {

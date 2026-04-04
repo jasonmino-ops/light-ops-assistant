@@ -9,14 +9,15 @@ import LangToggleBtn from '@/app/components/LangToggleBtn'
  * /bind?token=<token>
  *
  * Opens inside the Telegram Mini App via an invite link.
- * Reads the token from the query string and the current user's Telegram
- * identity from window.Telegram.WebApp.initData, then calls POST /api/bind.
- *
- * On success: redirects to /dashboard (OWNER) or /home (STAFF).
- * On error:   shows an error message.
+ * Flow:
+ *  1. Read token + Telegram initData
+ *  2. Parse display name from initData client-side → show confirm form
+ *  3. User confirms (or edits) their display name
+ *  4. POST /api/bind { token, initData, displayName }
+ *  5. Redirect on success
  */
 
-type BindState = 'loading' | 'success' | 'error' | 'no_tg'
+type BindState = 'loading' | 'confirm' | 'submitting' | 'success' | 'error' | 'no_tg'
 
 const SESSION_KEY = 'tg-authed-uid'
 
@@ -27,6 +28,8 @@ function BindFlow() {
 
   const [state, setState] = useState<BindState>('loading')
   const [errorMsg, setErrorMsg] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [initDataRef, setInitDataRef] = useState('')
 
   useEffect(() => {
     if (!token) {
@@ -37,46 +40,64 @@ function BindFlow() {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
-    // initData may take a brief moment to populate; wait one tick then fail-fast
     const initData: string = tg?.initData ?? ''
     if (!initData) {
       setState('no_tg')
       return
     }
 
-    fetch('/api/bind', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, initData }),
-    })
-      .then((r) => r.json())
-      .then((body) => {
-        if (body.ok) {
-          // Store TG user ID so TelegramInit doesn't re-auth on reload
-          try {
-            const tgUserId = String(
-              JSON.parse(new URLSearchParams(initData).get('user') ?? '{}').id,
-            )
-            sessionStorage.setItem(SESSION_KEY, tgUserId)
-          } catch {
-            sessionStorage.setItem(SESSION_KEY, '1')
-          }
+    // Parse display name from Telegram initData client-side so we can
+    // pre-fill the confirm form without a round-trip.
+    try {
+      const params = new URLSearchParams(initData)
+      const tgUser = JSON.parse(params.get('user') ?? '{}')
+      const autoName =
+        [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') ||
+        tgUser.username ||
+        ''
+      setDisplayName(autoName)
+    } catch {
+      setDisplayName('')
+    }
 
-          setState('success')
-          setTimeout(() => {
-            window.location.replace(body.role === 'OWNER' ? '/dashboard' : '/home')
-          }, 800)
-        } else {
-          setErrorMsg(body.message ?? body.error ?? t('bind.bindFailed'))
-          setState('error')
-        }
-      })
-      .catch(() => {
-        setErrorMsg(t('common.networkError'))
-        setState('error')
-      })
+    setInitDataRef(initData)
+    setState('confirm')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
+
+  async function handleConfirm() {
+    if (!displayName.trim()) return
+    setState('submitting')
+    try {
+      const r = await fetch('/api/bind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, initData: initDataRef, displayName: displayName.trim() }),
+      })
+      const body = await r.json()
+      if (body.ok) {
+        // Cache TG user ID so TelegramInit doesn't re-auth on reload
+        try {
+          const tgUserId = String(
+            JSON.parse(new URLSearchParams(initDataRef).get('user') ?? '{}').id,
+          )
+          sessionStorage.setItem(SESSION_KEY, tgUserId)
+        } catch {
+          sessionStorage.setItem(SESSION_KEY, '1')
+        }
+        setState('success')
+        setTimeout(() => {
+          window.location.replace(body.role === 'OWNER' ? '/dashboard' : '/home')
+        }, 800)
+      } else {
+        setErrorMsg(body.message ?? body.error ?? t('bind.bindFailed'))
+        setState('error')
+      }
+    } catch {
+      setErrorMsg(t('common.networkError'))
+      setState('error')
+    }
+  }
 
   return (
     <div style={card}>
@@ -84,6 +105,37 @@ function BindFlow() {
         <>
           <div style={spinnerStyle} />
           <p style={msg}>{t('bind.verifying')}</p>
+        </>
+      )}
+
+      {state === 'confirm' && (
+        <>
+          <div style={avatarIcon}>👤</div>
+          <p style={{ ...msg, fontWeight: 700 }}>{t('bind.confirmName')}</p>
+          <p style={hint}>{t('bind.confirmNameHint')}</p>
+          <input
+            style={nameInput}
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder={t('bind.namePlaceholder')}
+            maxLength={40}
+            autoFocus
+          />
+          <button
+            style={{ ...confirmBtn, opacity: displayName.trim() ? 1 : 0.5 }}
+            onClick={handleConfirm}
+            disabled={!displayName.trim()}
+          >
+            {t('bind.confirm')}
+          </button>
+        </>
+      )}
+
+      {state === 'submitting' && (
+        <>
+          <div style={spinnerStyle} />
+          <p style={msg}>{t('common.submitting')}</p>
         </>
       )}
 
@@ -123,7 +175,7 @@ export default function BindPage() {
         <BindFlow />
       </Suspense>
 
-      {/* Inline keyframe for spinner (avoids adding a global CSS file) */}
+      {/* Inline keyframe for spinner */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
@@ -135,6 +187,7 @@ const pg: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   background: '#f5f7fa',
+  position: 'relative',
 }
 
 const card: React.CSSProperties = {
@@ -156,6 +209,18 @@ const spinnerStyle: React.CSSProperties = {
   border: '3px solid #e8e8e8',
   borderTopColor: '#1677ff',
   animation: 'spin 0.8s linear infinite',
+}
+
+const avatarIcon: React.CSSProperties = {
+  width: 52,
+  height: 52,
+  borderRadius: '50%',
+  background: '#e6f4ff',
+  border: '2px solid #91caff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: 24,
 }
 
 const checkmark: React.CSSProperties = {
@@ -209,4 +274,29 @@ const hint: React.CSSProperties = {
   fontSize: 13,
   color: '#aaa',
   textAlign: 'center',
+}
+
+const nameInput: React.CSSProperties = {
+  width: '100%',
+  height: 44,
+  border: '1.5px solid #d9d9d9',
+  borderRadius: 8,
+  padding: '0 12px',
+  fontSize: 16,
+  outline: 'none',
+  boxSizing: 'border-box',
+  textAlign: 'center',
+}
+
+const confirmBtn: React.CSSProperties = {
+  width: '100%',
+  height: 48,
+  background: '#1677ff',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 10,
+  fontSize: 16,
+  fontWeight: 700,
+  cursor: 'pointer',
+  marginTop: 4,
 }

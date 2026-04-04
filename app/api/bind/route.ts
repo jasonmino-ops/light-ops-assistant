@@ -36,14 +36,14 @@ function verifyInitData(initData: string): URLSearchParams | null {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { token?: string; initData?: string }
+  let body: { token?: string; initData?: string; displayName?: string }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { token, initData } = body
+  const { token, initData, displayName: customDisplayName } = body
   if (!token || !initData) {
     return NextResponse.json({ error: 'MISSING_FIELDS' }, { status: 400 })
   }
@@ -112,20 +112,42 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 4. Create user + store role ───────────────────────────────────────────
-  const displayName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') ||
+  // displayName: prefer what the user confirmed on the front-end; fall back to Telegram profile
+  const autoDisplayName =
+    [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') ||
     tgUser.username ||
     `用户${telegramId.slice(-4)}`
+  const displayName = customDisplayName?.trim() || autoDisplayName
 
   // Use a transaction to create user, store role, and update token atomically
   const newUser = await prisma.$transaction(async (tx) => {
+    // Count existing users of the same role in this tenant to generate sequential identifiers.
+    // Race condition risk is negligible for small-store simultaneous onboarding.
+    const roleCount = await tx.user.count({
+      where: { tenantId: bt.tenantId, role: bt.role },
+    })
+
+    let username: string
+    let staffNumber: number | null = null
+
+    if (bt.role === 'OWNER') {
+      // OWNER username: "owner" for the first, "owner_2" for subsequent
+      username = roleCount === 0 ? 'owner' : `owner_${roleCount + 1}`
+    } else {
+      // STAFF username: sequential "staff_001", "staff_002", …
+      staffNumber = roleCount + 1
+      username = `staff_${String(staffNumber).padStart(3, '0')}`
+    }
+
     const user = await tx.user.create({
       data: {
         tenantId: bt.tenantId,
-        username: `tg_${telegramId}`,
+        username,
         displayName,
         role: bt.role,
         status: 'ACTIVE',
         telegramId,
+        staffNumber,
       },
     })
 

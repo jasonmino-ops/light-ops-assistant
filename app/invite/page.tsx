@@ -25,6 +25,7 @@ type Member = {
   displayName: string
   role: 'OWNER' | 'STAFF'
   bound: boolean
+  staffNumber: number | null
   storeName: string
 }
 
@@ -247,8 +248,11 @@ export default function InvitePage() {
                     <span style={m.role === 'OWNER' ? s.tagOwner : s.tagStaff}>
                       {m.role === 'OWNER' ? t('invite.roleOwner') : t('invite.roleStaff')}
                     </span>
+                    {m.staffNumber != null && (
+                      <span style={s.staffNumBadge}>#{m.staffNumber}</span>
+                    )}
                     <span style={s.metaDot}>·</span>
-                    <span style={s.metaStore}>{m.storeName}</span>
+                    <span style={s.metaStore}>{m.username} · {m.storeName}</span>
                   </div>
                 </div>
                 <div style={s.memberRight}>
@@ -338,6 +342,7 @@ const s: Record<string, React.CSSProperties> = {
 
   tagOwner: { fontSize: 10, fontWeight: 700, background: '#fff7e6', color: '#fa8c16', border: '1px solid #ffd591', borderRadius: 4, padding: '1px 5px' },
   tagStaff: { fontSize: 10, fontWeight: 700, background: '#e6f4ff', color: '#1677ff', border: '1px solid #91caff', borderRadius: 4, padding: '1px 5px' },
+  staffNumBadge: { fontSize: 10, fontWeight: 700, color: '#1677ff', background: '#e6f4ff', border: '1px solid #91caff', borderRadius: 4, padding: '1px 5px' },
 
   memberRight: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
   badgeBound: { fontSize: 11, fontWeight: 600, color: '#52c41a', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 10, padding: '2px 8px' },

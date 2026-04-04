@@ -38,6 +38,10 @@ const zh = {
     contactAdmin: '请联系管理员重新生成邀请链接',
     invalidToken: '链接无效：缺少邀请码参数',
     bindFailed: '绑定失败，请联系管理员',
+    confirmName: '确认您的显示名',
+    confirmNameHint: '系统已自动生成，可直接确认或修改',
+    namePlaceholder: '您的名字',
+    confirm: '确认并绑定',
   },
   sale: {
     title: '销售',

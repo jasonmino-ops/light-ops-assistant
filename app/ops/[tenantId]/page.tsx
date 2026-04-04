@@ -9,7 +9,7 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Store = { id: string; name: string; code: string }
-type Member = { id: string; username: string; displayName: string; role: string; bound: boolean; storeName: string }
+type Member = { id: string; username: string; displayName: string; role: string; bound: boolean; staffNumber: number | null; storeName: string }
 type TodayStats = { saleCount: number; saleAmount: number; refundCount: number; lastActiveAt: string | null }
 
 type TenantDetail = {
@@ -324,7 +324,11 @@ function MemberList({ tenantId, members, onUnbound }: { tenantId: string; member
               </span>
               <div>
                 <div style={s.memberName}>{m.displayName || m.username}</div>
-                <div style={s.memberSub}>{m.username} · {m.storeName}</div>
+                <div style={s.memberSub}>
+                  {m.username}
+                  {m.staffNumber != null && <span style={s.staffNumBadge}>#{m.staffNumber}</span>}
+                  {' · '}{m.storeName}
+                </div>
               </div>
             </div>
             <div style={s.memberRight}>
@@ -411,7 +415,8 @@ const s: Record<string, React.CSSProperties> = {
   memberLeft: { display: 'flex', alignItems: 'center', gap: 10 },
   roleBadge: { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, border: '1px solid #f0f0f0' },
   memberName: { fontSize: 14, fontWeight: 600, color: '#1a1a1a' },
-  memberSub: { fontSize: 11, color: '#bbb', marginTop: 2 },
+  memberSub: { fontSize: 11, color: '#bbb', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 },
+  staffNumBadge: { fontSize: 10, fontWeight: 700, color: '#1677ff', background: '#e6f4ff', border: '1px solid #91caff', borderRadius: 4, padding: '0 4px' },
   memberRight: { display: 'flex', alignItems: 'center', gap: 8 },
   boundBadge: { fontSize: 12, fontWeight: 600 },
   unbindBtn: {

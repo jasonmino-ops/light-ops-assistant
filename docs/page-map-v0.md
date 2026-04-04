@@ -113,7 +113,23 @@
 
 ---
 
-## 五、首次绑定 & 认证流程
+## 五、账号创建规则（v0.1 新增）
+
+### 账号字段自动生成规则
+
+| 角色 | 登录名（username） | 员工编号（staffNumber） | 显示名（displayName） |
+|------|-------------------|------------------------|----------------------|
+| OWNER | `owner`（首个）/ `owner_2`（后续） | 不适用（null） | Telegram 姓名 → 用户名 → 自动生成；**用户可在绑定时确认/修改** |
+| STAFF | `staff_001` / `staff_002` … | 按加入顺序自动递增（1, 2, 3…） | 同上；**用户可在绑定时确认/修改** |
+
+**设计原则**：
+- 登录名由系统自动生成，前台绑定流程不显示、不要求填写登录名
+- 员工编号仅用于内部标识，对员工透明（仅在 /ops 和老板端成员列表中显示）
+- 前台绑定时**仅要求确认或补充显示名**，最大限度减少信息填写
+
+---
+
+## 六、首次绑定 & 认证流程
 
 ```
 Telegram 用户点击 https://t.me/<bot>?startapp=bind_<token>
@@ -126,10 +142,15 @@ Mini App 开启（根 URL）
     │
     ▼
 /bind 页面
-    ├─ POST /api/bind { token, initData }
+    ├─ 步骤1：从 initData 解析 Telegram 姓名 → 预填显示名
+    │         展示"确认您的显示名"表单（可编辑，最多40字）
+    │
+    ├─ 步骤2：用户确认后 POST /api/bind { token, initData, displayName }
     │       ├─ token 验证（有效 / 未过期 / 未用完）
     │       ├─ HMAC 验证 initData
     │       ├─ telegramId 重复检查
+    │       ├─ 系统生成 username（owner / staff_NNN）
+    │       ├─ 系统生成 staffNumber（STAFF 按顺序）
     │       ├─ 创建 User + UserStoreRole
     │       └─ 写 auth-session cookie
     │
