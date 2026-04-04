@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
@@ -23,14 +24,6 @@ export async function PATCH(
 
   const { id } = await params
 
-  // Verify product belongs to this tenant
-  const existing = await prisma.product.findFirst({
-    where: { id, tenantId: ctx.tenantId },
-  })
-  if (!existing) {
-    return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
-  }
-
   let body: { name?: string; spec?: string | null; sellPrice?: number; status?: string }
   try {
     body = await req.json()
@@ -50,15 +43,23 @@ export async function PATCH(
     return NextResponse.json({ error: 'INVALID_STATUS' }, { status: 400 })
   }
 
-  const updated = await prisma.product.update({
-    where: { id },
-    data: {
-      ...(name !== undefined ? { name: String(name).trim() } : {}),
-      ...(spec !== undefined ? { spec: spec ? String(spec).trim() || null : null } : {}),
-      ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
-      ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
-    },
-  })
+  let updated: Awaited<ReturnType<typeof prisma.product.update>>
+  try {
+    updated = await prisma.product.update({
+      where: { id, tenantId: ctx.tenantId },
+      data: {
+        ...(name !== undefined ? { name: String(name).trim() } : {}),
+        ...(spec !== undefined ? { spec: spec ? String(spec).trim() || null : null } : {}),
+        ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
+        ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
+      },
+    })
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+      return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
+    }
+    throw e
+  }
 
   return NextResponse.json({
     id: updated.id,
