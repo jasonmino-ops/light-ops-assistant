@@ -171,12 +171,15 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
 // ─── TierPanel ───────────────────────────────────────────────────────────────
 
 function TierPanel({ tenantId, currentTier, onChanged }: { tenantId: string; currentTier: string; onChanged: () => void }) {
+  const [expanded, setExpanded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const tm = TIER_META[currentTier] ?? TIER_META.LITE
 
   async function changeTier(tier: string) {
     if (tier === currentTier) return
+    const target = TIER_META[tier]
+    if (!confirm(`确认将档次从「${tm.label}」调整为「${target?.label ?? tier}」？`)) return
     setSaving(true)
     setErr(null)
     try {
@@ -184,7 +187,7 @@ function TierPanel({ tenantId, currentTier, onChanged }: { tenantId: string; cur
         method: 'PATCH',
         body: JSON.stringify({ tier }),
       }, OWNER_CTX)
-      if (r.ok) onChanged()
+      if (r.ok) { setExpanded(false); onChanged() }
       else setErr('更新失败')
     } catch {
       setErr('网络错误')
@@ -195,28 +198,51 @@ function TierPanel({ tenantId, currentTier, onChanged }: { tenantId: string; cur
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+      {/* Current tier display */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
         <span style={{ ...s.tierBadge, background: tm.bg, color: tm.color, borderColor: tm.border }}>{tm.label}</span>
-        <span style={{ fontSize: 12, color: '#888' }}>{tm.desc}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#52c41a', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 8, padding: '1px 8px' }}>当前使用中</span>
       </div>
+      <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>{tm.desc}</div>
       <div style={{ fontSize: 11, color: '#aaa', marginBottom: 12, paddingLeft: 2 }}>
         📷 扫码策略：{tm.scan}
       </div>
-      <div style={s.tierRow}>
-        {Object.entries(TIER_META).map(([key, meta]) => (
-          <button
-            key={key}
-            disabled={saving}
-            onClick={() => changeTier(key)}
-            style={{
-              ...s.tierBtn,
-              ...(currentTier === key ? { background: meta.bg, color: meta.color, borderColor: meta.border, fontWeight: 700 } : {}),
-            }}
-          >
-            {meta.label}
-          </button>
-        ))}
-      </div>
+
+      {/* Adjust trigger */}
+      {!expanded && (
+        <button style={s.adjustBtn} onClick={() => setExpanded(true)}>
+          调整档次
+        </button>
+      )}
+
+      {/* Expanded picker */}
+      {expanded && (
+        <div style={s.tierPicker}>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>选择新档次（当前档次不可重复选择）：</div>
+          <div style={s.tierRow}>
+            {Object.entries(TIER_META).map(([key, meta]) => {
+              const isCurrent = key === currentTier
+              return (
+                <button
+                  key={key}
+                  disabled={isCurrent || saving}
+                  onClick={() => changeTier(key)}
+                  style={{
+                    ...s.tierBtn,
+                    ...(isCurrent
+                      ? { background: meta.bg, color: meta.color, borderColor: meta.border, fontWeight: 700, opacity: 0.5, cursor: 'not-allowed' }
+                      : {}),
+                  }}
+                >
+                  {meta.label}{isCurrent ? ' ✓' : ''}
+                </button>
+              )
+            })}
+          </div>
+          <button style={s.cancelBtn} onClick={() => { setExpanded(false); setErr(null) }}>取消</button>
+        </div>
+      )}
+
       {err && <div style={s.errMsg}>{err}</div>}
     </div>
   )
@@ -566,6 +592,19 @@ const s: Record<string, React.CSSProperties> = {
     height: 32, padding: '0 14px', border: '1.5px solid #e8e8e8',
     borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
     background: '#f5f5f5', color: '#888',
+  },
+  adjustBtn: {
+    height: 32, padding: '0 16px', border: '1.5px solid #d9d9d9',
+    borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    background: '#fafafa', color: '#555',
+  },
+  tierPicker: {
+    marginTop: 4, padding: '12px 14px', background: '#fafafa',
+    border: '1.5px solid #e8e8e8', borderRadius: 10,
+  },
+  cancelBtn: {
+    marginTop: 10, height: 28, padding: '0 14px', border: '1px solid #e8e8e8',
+    borderRadius: 6, fontSize: 12, cursor: 'pointer', background: '#fff', color: '#888',
   },
   errMsg: { fontSize: 13, color: '#ff4d4f', marginBottom: 8 },
   infoMsg: { fontSize: 13, color: '#52c41a', marginBottom: 8, padding: '8px 12px', background: '#f6ffed', borderRadius: 6, border: '1px solid #b7eb8f' },
