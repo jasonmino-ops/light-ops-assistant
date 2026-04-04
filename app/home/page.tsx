@@ -115,8 +115,10 @@ export default function HomePage() {
       <div style={s.brandBar}>
         <div style={s.brandLeft}>
           <span style={s.brandIcon}>🏪</span>
-          <div>
-            <div style={s.brandName}>E-shop 店小二助手</div>
+          <div style={s.brandTextBlock}>
+            <div style={s.brandTitle}>E-shop</div>
+            <div style={s.brandName}>店小二助手</div>
+            <div style={s.brandSub}>轻门店经营助手</div>
           </div>
         </div>
         <div style={s.brandRight}>
@@ -291,23 +293,37 @@ const s: Record<string, React.CSSProperties> = {
   },
   brandLeft: {
     display: 'flex',
-    alignItems: 'center',
-    gap: 10,
+    alignItems: 'flex-start',
+    gap: 12,
   },
   brandIcon: {
-    fontSize: 32,
+    fontSize: 36,
     lineHeight: 1,
+    marginTop: 2,
+  },
+  brandTextBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 1,
+  },
+  brandTitle: {
+    fontSize: 26,
+    fontWeight: 800,
+    color: '#fff',
+    letterSpacing: '-0.5px',
+    lineHeight: 1.15,
   },
   brandName: {
-    fontSize: 20,
-    fontWeight: 700,
-    color: '#fff',
-    lineHeight: 1.2,
+    fontSize: 15,
+    fontWeight: 600,
+    color: 'rgba(255,255,255,0.92)',
+    lineHeight: 1.3,
   },
   brandSub: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.75)',
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.55)',
     marginTop: 2,
+    letterSpacing: '0.02em',
   },
   brandRight: {
     display: 'flex',
