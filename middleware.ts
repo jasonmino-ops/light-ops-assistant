@@ -20,7 +20,7 @@ function peekRole(token: string): string | null {
     // token format: <base64url-json>.<sig>
     const payload = token.slice(0, token.lastIndexOf('.'))
     const padded = payload.replace(/-/g, '+').replace(/_/g, '/') +
-      '=='.slice((payload.length + 2) % 4 ? (payload.length + 2) % 4 - 2 : 4)
+      '='.repeat((4 - payload.length % 4) % 4)
     const json = atob(padded)
     return (JSON.parse(json) as { role?: string }).role ?? null
   } catch {
