@@ -37,11 +37,20 @@ export default function OpsPage() {
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ACTIVE')
+  const [opsRole, setOpsRole] = useState<string>('')
 
   // ── Auth check ─────────────────────────────────────────────────────────────
   useEffect(() => {
     apiFetch('/api/ops/check', undefined, OWNER_CTX)
-      .then((r) => setAuthState(r.ok ? 'ok' : 'denied'))
+      .then(async (r) => {
+        if (r.ok) {
+          const data = await r.json()
+          setOpsRole(data.opsRole ?? '')
+          setAuthState('ok')
+        } else {
+          setAuthState('denied')
+        }
+      })
       .catch(() => setAuthState('denied'))
   }, [])
 
@@ -95,6 +104,9 @@ export default function OpsPage() {
           <div style={s.headerSub}>{tenants.length} 个商户</div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {opsRole === 'SUPER_ADMIN' && (
+            <Link href="/ops/admins" style={s.sysLink}>管理员</Link>
+          )}
           <Link href="/system" style={s.sysLink}>系统自检</Link>
           <button style={s.createBtn} onClick={() => setShowCreate((v) => !v)}>
             {showCreate ? '取消' : '+ 新增商户'}

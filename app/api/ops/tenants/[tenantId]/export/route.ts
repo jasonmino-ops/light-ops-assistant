@@ -18,7 +18,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
-  if (!checkOpsAuth(req)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  const opsRole = checkOpsAuth(req)
+  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (opsRole === 'BD') return NextResponse.json({ error: 'FORBIDDEN', message: 'BD 角色无数据导出权限' }, { status: 403 })
   const { tenantId } = await params
 
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } })

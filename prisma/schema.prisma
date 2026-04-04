@@ -228,3 +228,15 @@ model OperationLog {
   @@index([userId, createdAt])
   @@index([requestId])
 }
+
+model OpsAdmin {
+  id           String   @id @default(cuid())
+  name         String
+  username     String   @unique
+  passwordHash String?  // scrypt hash; null = password login disabled
+  telegramId   String?  @unique
+  role         String   @default("OPS_ADMIN") // SUPER_ADMIN | OPS_ADMIN | BD
+  status       String   @default("ACTIVE")    // ACTIVE | DISABLED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

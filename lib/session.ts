@@ -13,6 +13,7 @@ export type SessionData = {
   userId: string
   storeId: string
   role: 'OWNER' | 'STAFF'
+  opsRole?: string  // present only for ops admin sessions: SUPER_ADMIN | OPS_ADMIN | BD
 }
 
 function secret(): string {

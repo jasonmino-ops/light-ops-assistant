@@ -13,7 +13,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
-  if (!checkOpsAuth(req)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  const opsRole = checkOpsAuth(req)
+  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   const { tenantId } = await params
 
   let body: { storeId?: string; role?: string; expiresInHours?: number }
@@ -23,6 +24,9 @@ export async function POST(
   if (!storeId) return NextResponse.json({ error: 'MISSING_STORE_ID' }, { status: 400 })
   if (!role || !['OWNER', 'STAFF'].includes(role))
     return NextResponse.json({ error: 'INVALID_ROLE' }, { status: 400 })
+
+  // BD can only generate OWNER bind tokens
+  const effectiveRole = opsRole === 'BD' ? 'OWNER' : role
 
   const store = await prisma.store.findFirst({
     where: { id: storeId, tenantId, status: 'ACTIVE' },
@@ -38,8 +42,8 @@ export async function POST(
       token,
       tenantId,
       storeId,
-      role: role as 'OWNER' | 'STAFF',
-      label: `Ops-${role}-${new Date().toISOString().slice(0, 10)}`,
+      role: effectiveRole as 'OWNER' | 'STAFF',
+      label: `Ops-${effectiveRole}-${new Date().toISOString().slice(0, 10)}`,
       expiresAt,
       maxUses: 1,
     },
@@ -50,7 +54,7 @@ export async function POST(
 
   return NextResponse.json({
     token,
-    role,
+    role: effectiveRole,
     storeName: store.name,
     expiresAt: expiresAt.toISOString(),
     tgLink,

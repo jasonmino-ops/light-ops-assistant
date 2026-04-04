@@ -2,24 +2,29 @@ import { NextRequest } from 'next/server'
 import { verifySession } from './session'
 
 /**
- * Checks if the caller is an authorized ops admin.
+ * Checks if the caller is an authorized ops admin and returns their role.
+ * Returns false if not authorized.
  *
- * Verifies the session directly (bypassing tenant status check) so that
- * ops admins can manage tenants including ARCHIVED ones without being
- * locked out by their own tenant's status.
+ * Role hierarchy: SUPER_ADMIN > OPS_ADMIN > BD
  *
- * Returns true if authorized, false otherwise.
+ * Backward compat:
+ * - _ops_admin userId (legacy web login without opsRole) → SUPER_ADMIN
+ * - OPS_USER_IDS env var (legacy DB user IDs) → OPS_ADMIN
  */
-export function checkOpsAuth(req: NextRequest): boolean {
+export type OpsRole = 'SUPER_ADMIN' | 'OPS_ADMIN' | 'BD'
+
+export function checkOpsAuth(req: NextRequest): OpsRole | false {
   const sessionToken = req.cookies.get('auth-session')?.value
   let userId: string | null = null
   let role: string | null = null
+  let opsRole: string | null = null
 
   if (sessionToken) {
     const session = verifySession(sessionToken)
     if (session) {
       userId = session.userId
       role = session.role
+      opsRole = session.opsRole ?? null
     }
   }
 
@@ -27,18 +32,30 @@ export function checkOpsAuth(req: NextRequest): boolean {
   if (!role) {
     role = req.headers.get('x-role')
     userId = req.headers.get('x-user-id')
+    opsRole = req.headers.get('x-ops-role')
   }
 
   if (role !== 'OWNER') return false
 
-  // Web password login issues a session with this special userId.
-  // It bypasses OPS_USER_IDS because the password itself is the auth factor.
-  if (userId === '_ops_admin') return true
+  // New: opsRole in session (set by new OpsAdmin-based login)
+  if (opsRole === 'SUPER_ADMIN') return 'SUPER_ADMIN'
+  if (opsRole === 'OPS_ADMIN') return 'OPS_ADMIN'
+  if (opsRole === 'BD') return 'BD'
 
-  const allowed = (process.env.OPS_USER_IDS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
+  // Legacy: _ops_admin without opsRole → SUPER_ADMIN
+  if (userId === '_ops_admin') return 'SUPER_ADMIN'
 
-  return allowed.length === 0 || (userId != null && allowed.includes(userId))
+  // Legacy: OPS_USER_IDS check
+  const allowed = (process.env.OPS_USER_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  if (allowed.length === 0 || (userId != null && allowed.includes(userId))) {
+    return 'OPS_ADMIN'
+  }
+
+  return false
+}
+
+/** Returns true if the given ops role meets the minimum required role. */
+export function hasOpsRole(actual: OpsRole, required: OpsRole): boolean {
+  const rank: Record<OpsRole, number> = { SUPER_ADMIN: 3, OPS_ADMIN: 2, BD: 1 }
+  return rank[actual] >= rank[required]
 }

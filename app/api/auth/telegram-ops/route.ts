@@ -35,18 +35,17 @@ function parseTelegramUser(initData: string) {
   }
 }
 
-// Comma-separated Telegram user IDs that may access /ops without a DB user record.
-// If set, ONLY these IDs are allowed via Telegram; others are rejected.
-// If empty, falls back to DB user lookup (backward-compat).
+// OPS_TG_IDS: backward-compat whitelist (deprecated; prefer OpsAdmin.telegramId)
 const OPS_TG_IDS = (process.env.OPS_TG_IDS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean)
 
-function issueOpsSession(): NextResponse {
+function issueOpsSession(opsRole: string): NextResponse {
   const sessionToken = signSession({
     tenantId: '_ops',
-    userId: '_ops_admin',
+    userId: '_ops_tg',
     storeId: '',
     role: 'OWNER',
+    opsRole,
   })
   const isProd = process.env.NODE_ENV === 'production'
   const res = NextResponse.json({ ok: true })
@@ -85,30 +84,35 @@ export async function POST(req: NextRequest) {
 
     const telegramId = String(tgUser.id)
 
-    // ── OPS_TG_IDS whitelist mode ─────────────────────────────────────────
-    // If the env var is populated, it is the sole gate for Telegram access.
-    if (OPS_TG_IDS.length > 0) {
-      if (!OPS_TG_IDS.includes(telegramId)) {
-        return NextResponse.json(
-          { ok: false, error: 'FORBIDDEN', message: '该 Telegram 账号无 ops 访问权限，请联系运营管理员' },
-          { status: 403 },
-        )
-      }
-      return issueOpsSession()
+    // ── New: OpsAdmin table lookup ────────────────────────────────────────
+    const admin = await prisma.opsAdmin.findFirst({
+      where: { telegramId, status: 'ACTIVE' },
+      select: { role: true },
+    })
+
+    if (admin) {
+      return issueOpsSession(admin.role)
     }
 
-    // ── Backward-compat: DB user lookup ───────────────────────────────────
+    // ── Backward-compat: OPS_TG_IDS whitelist → SUPER_ADMIN ──────────────
+    if (OPS_TG_IDS.length > 0) {
+      if (OPS_TG_IDS.includes(telegramId)) {
+        return issueOpsSession('SUPER_ADMIN')
+      }
+      return NextResponse.json(
+        { ok: false, error: 'FORBIDDEN', message: '该 Telegram 账号无 ops 访问权限，请联系运营管理员' },
+        { status: 403 },
+      )
+    }
+
+    // ── Backward-compat: DB user lookup ──────────────────────────────────
     const user = await prisma.user.findFirst({
       where: { telegramId, role: 'OWNER' },
       select: { id: true, role: true, tenantId: true, status: true },
     })
 
-    if (!user) {
+    if (!user || user.status !== 'ACTIVE') {
       return NextResponse.json({ ok: false, error: 'OPS_USER_NOT_FOUND' }, { status: 403 })
-    }
-
-    if (user.status !== 'ACTIVE') {
-      return NextResponse.json({ ok: false, error: 'OPS_USER_INACTIVE' }, { status: 403 })
     }
 
     const defaultStore = await prisma.store.findFirst({
@@ -126,6 +130,7 @@ export async function POST(req: NextRequest) {
       role: user.role,
       tenantId: user.tenantId,
       storeId: defaultStore.id,
+      opsRole: 'OPS_ADMIN',
     })
 
     const isProd = process.env.NODE_ENV === 'production'
