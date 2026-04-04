@@ -70,7 +70,12 @@ export default function TelegramInit() {
     // Skip only if the SAME Telegram user already authed in this WebView session
     if (tgUserId && sessionStorage.getItem(SESSION_KEY) === tgUserId) return
 
-    fetch('/api/auth/telegram', {
+    // /ops uses a separate bot (Mino ops) which may have a different bot token.
+    // Route to the ops-specific auth endpoint to avoid INVALID_SIGNATURE errors.
+    const isOpsPath = window.location.pathname.startsWith('/ops')
+    const authUrl = isOpsPath ? '/api/auth/telegram-ops' : '/api/auth/telegram'
+
+    fetch(authUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ initData }),

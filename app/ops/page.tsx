@@ -29,11 +29,14 @@ const TIER_META: Record<string, { label: string; color: string; bg: string; bord
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+type StatusFilter = 'ACTIVE' | 'ARCHIVED' | 'all'
+
 export default function OpsPage() {
   const [authState, setAuthState] = useState<'checking' | 'ok' | 'denied'>('checking')
   const [tenants, setTenants] = useState<TenantRow[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ACTIVE')
 
   // ── Auth check ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -43,14 +46,20 @@ export default function OpsPage() {
   }, [])
 
   // ── Load tenants ───────────────────────────────────────────────────────────
-  async function loadTenants() {
+  async function loadTenants(filter: StatusFilter = statusFilter) {
     setLoading(true)
     try {
-      const r = await apiFetch('/api/ops/tenants', undefined, OWNER_CTX)
+      const url = filter === 'ACTIVE' ? '/api/ops/tenants' : `/api/ops/tenants?status=${filter}`
+      const r = await apiFetch(url, undefined, OWNER_CTX)
       if (r.ok) setTenants(await r.json())
     } finally {
       setLoading(false)
     }
+  }
+
+  function applyFilter(f: StatusFilter) {
+    setStatusFilter(f)
+    loadTenants(f)
   }
 
   useEffect(() => {
@@ -94,6 +103,27 @@ export default function OpsPage() {
       </div>
 
       <div style={s.body}>
+
+        {/* ── Status filter tabs ── */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {([
+            { key: 'ACTIVE',   label: '运营中' },
+            { key: 'ARCHIVED', label: '已归档' },
+            { key: 'all',      label: '全部' },
+          ] as { key: StatusFilter; label: string }[]).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => applyFilter(key)}
+              style={{
+                height: 30, padding: '0 14px', fontSize: 12, fontWeight: statusFilter === key ? 700 : 400,
+                border: `1.5px solid ${statusFilter === key ? '#1677ff' : '#e8e8e8'}`,
+                borderRadius: 20, cursor: 'pointer',
+                background: statusFilter === key ? '#e6f4ff' : '#fff',
+                color: statusFilter === key ? '#1677ff' : '#888',
+              }}
+            >{label}</button>
+          ))}
+        </div>
 
         {/* ── Create form ── */}
         {showCreate && (

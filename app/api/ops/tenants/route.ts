@@ -33,7 +33,14 @@ function ninetyDaysAgo() {
 export async function GET(req: NextRequest) {
   if (!checkOpsAuth(req)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
-  const tenants = await prisma.tenant.findMany({ orderBy: { createdAt: 'desc' } })
+  // Default to ACTIVE only. Pass ?status=ARCHIVED or ?status=all to override.
+  const statusParam = req.nextUrl.searchParams.get('status')
+  const statusWhere =
+    !statusParam || statusParam === 'ACTIVE' ? { status: 'ACTIVE' }
+    : statusParam === 'ARCHIVED'             ? { status: 'ARCHIVED' }
+    : {}                                      // 'all' — no filter
+
+  const tenants = await prisma.tenant.findMany({ where: statusWhere, orderBy: { createdAt: 'desc' } })
   const ids = tenants.map((t) => t.id)
 
   const [storeGroups, users, todaySaleRows, lastSaleRows] = await Promise.all([
