@@ -113,13 +113,16 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!checkOpsAuth(req)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
-  let body: { tenantName?: string; storeName?: string; ownerUsername?: string; ownerDisplayName?: string; tier?: string }
+  let body: { tenantName?: string; storeName?: string; tier?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }
 
-  const { tenantName, storeName = '总店', ownerUsername, ownerDisplayName, tier = 'LITE' } = body
+  const { tenantName, storeName = '总店', tier = 'LITE' } = body
   if (!tenantName?.trim()) return NextResponse.json({ error: 'MISSING_TENANT_NAME' }, { status: 400 })
-  if (!ownerUsername?.trim()) return NextResponse.json({ error: 'MISSING_OWNER_USERNAME' }, { status: 400 })
-  if (!ownerDisplayName?.trim()) return NextResponse.json({ error: 'MISSING_OWNER_DISPLAY_NAME' }, { status: 400 })
+
+  // Auto-generate owner credentials — username is unique within the tenant;
+  // displayName defaults to a placeholder updated when the owner first binds.
+  const ownerUsername = 'owner_' + crypto.randomBytes(3).toString('hex')
+  const ownerDisplayName = tenantName.trim().slice(0, 10) + '老板'
 
   const validTier = ['LITE', 'STANDARD', 'MULTI_STORE'].includes(tier) ? tier : 'LITE'
   const storeCode = 'ST' + crypto.randomBytes(4).toString('hex').toUpperCase()

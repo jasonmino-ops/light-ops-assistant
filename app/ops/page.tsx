@@ -204,15 +204,15 @@ const TIER_OPTIONS = [
 ]
 
 function CreateForm({ onCreated, onCancel }: { onCreated: (tenantId: string) => void; onCancel: () => void }) {
-  const [form, setForm] = useState({ tenantName: '', storeName: '总店', ownerUsername: '', ownerDisplayName: '', tier: 'LITE' })
+  const [form, setForm] = useState({ tenantName: '', storeName: '总店', tier: 'LITE' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   function set(k: keyof typeof form, v: string) { setForm((f) => ({ ...f, [k]: v })) }
 
   async function submit() {
-    if (!form.tenantName.trim() || !form.ownerUsername.trim() || !form.ownerDisplayName.trim()) {
-      setError('请填写所有必填项')
+    if (!form.tenantName.trim()) {
+      setError('请填写商户名')
       return
     }
     setSubmitting(true)
@@ -238,8 +238,6 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (tenantId: string) => 
       <div style={s.formGrid}>
         <Field label="商户名 *" value={form.tenantName} onChange={(v) => set('tenantName', v)} placeholder="张记超市" />
         <Field label="门店名" value={form.storeName} onChange={(v) => set('storeName', v)} placeholder="总店" />
-        <Field label="老板用户名 *" value={form.ownerUsername} onChange={(v) => set('ownerUsername', v)} placeholder="英文 ID，登录用" />
-        <Field label="老板显示名 *" value={form.ownerDisplayName} onChange={(v) => set('ownerDisplayName', v)} placeholder="界面展示名" />
       </div>
       <div style={{ marginTop: 12 }}>
         <div style={s.fieldLabel}>产品档次</div>
@@ -270,7 +268,7 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (tenantId: string) => 
           {submitting ? '创建中…' : '确认创建'}
         </button>
       </div>
-      <p style={{ ...s.emptyHint, marginTop: 10 }}>创建后跳转详情页，再生成老板绑定码</p>
+      <p style={{ ...s.emptyHint, marginTop: 10 }}>老板账号自动生成，创建后跳转详情页生成绑定码</p>
     </div>
   )
 }
