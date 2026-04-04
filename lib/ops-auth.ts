@@ -31,6 +31,10 @@ export function checkOpsAuth(req: NextRequest): boolean {
 
   if (role !== 'OWNER') return false
 
+  // Web password login issues a session with this special userId.
+  // It bypasses OPS_USER_IDS because the password itself is the auth factor.
+  if (userId === '_ops_admin') return true
+
   const allowed = (process.env.OPS_USER_IDS ?? '')
     .split(',')
     .map((s) => s.trim())

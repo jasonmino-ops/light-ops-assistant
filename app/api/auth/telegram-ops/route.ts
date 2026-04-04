@@ -35,6 +35,31 @@ function parseTelegramUser(initData: string) {
   }
 }
 
+// Comma-separated Telegram user IDs that may access /ops without a DB user record.
+// If set, ONLY these IDs are allowed via Telegram; others are rejected.
+// If empty, falls back to DB user lookup (backward-compat).
+const OPS_TG_IDS = (process.env.OPS_TG_IDS ?? '')
+  .split(',').map((s) => s.trim()).filter(Boolean)
+
+function issueOpsSession(): NextResponse {
+  const sessionToken = signSession({
+    tenantId: '_ops',
+    userId: '_ops_admin',
+    storeId: '',
+    role: 'OWNER',
+  })
+  const isProd = process.env.NODE_ENV === 'production'
+  const res = NextResponse.json({ ok: true })
+  res.cookies.set('auth-session', sessionToken, {
+    httpOnly: true,
+    sameSite: isProd ? 'none' : 'lax',
+    secure: isProd,
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7,
+  })
+  return res
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null)
@@ -60,17 +85,22 @@ export async function POST(req: NextRequest) {
 
     const telegramId = String(tgUser.id)
 
+    // ── OPS_TG_IDS whitelist mode ─────────────────────────────────────────
+    // If the env var is populated, it is the sole gate for Telegram access.
+    if (OPS_TG_IDS.length > 0) {
+      if (!OPS_TG_IDS.includes(telegramId)) {
+        return NextResponse.json(
+          { ok: false, error: 'FORBIDDEN', message: '该 Telegram 账号无 ops 访问权限，请联系运营管理员' },
+          { status: 403 },
+        )
+      }
+      return issueOpsSession()
+    }
+
+    // ── Backward-compat: DB user lookup ───────────────────────────────────
     const user = await prisma.user.findFirst({
-      where: {
-        telegramId,
-        role: 'OWNER',
-      },
-      select: {
-        id: true,
-        role: true,
-        tenantId: true,
-        status: true,
-      },
+      where: { telegramId, role: 'OWNER' },
+      select: { id: true, role: true, tenantId: true, status: true },
     })
 
     if (!user) {
@@ -82,10 +112,7 @@ export async function POST(req: NextRequest) {
     }
 
     const defaultStore = await prisma.store.findFirst({
-      where: {
-        tenantId: user.tenantId,
-        status: 'ACTIVE',
-      },
+      where: { tenantId: user.tenantId, status: 'ACTIVE' },
       select: { id: true },
       orderBy: { createdAt: 'asc' },
     })
@@ -101,11 +128,12 @@ export async function POST(req: NextRequest) {
       storeId: defaultStore.id,
     })
 
+    const isProd = process.env.NODE_ENV === 'production'
     const res = NextResponse.json({ ok: true })
     res.cookies.set('auth-session', session, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      sameSite: isProd ? 'none' : 'lax',
+      secure: isProd,
       path: '/',
       maxAge: 60 * 60 * 24 * 14,
     })

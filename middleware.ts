@@ -31,6 +31,9 @@ function peekRole(token: string): string | null {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
+  // /ops/login is always public — it IS the login page
+  if (pathname.startsWith('/ops/login')) return NextResponse.next()
+
   const isOwnerOnly =
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/products') ||
@@ -50,6 +53,11 @@ export function middleware(req: NextRequest) {
     (process.env.NODE_ENV !== 'production' ? process.env.DEV_ROLE : null)
 
   if (role === 'OWNER') return NextResponse.next()
+
+  // /ops paths without a session go to the ops login page (not the tenant /home)
+  if (pathname.startsWith('/ops')) {
+    return NextResponse.redirect(new URL('/ops/login', req.url))
+  }
 
   return NextResponse.redirect(new URL('/home', req.url))
 }
