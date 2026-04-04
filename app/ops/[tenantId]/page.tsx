@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import QRCode from 'react-qr-code'
@@ -84,11 +84,16 @@ export default function TenantDetailPage() {
         {/* Basic info */}
         <Section title="基本信息">
           <InfoGrid rows={[
-            ['状态', detail.status === 'ACTIVE' ? '✅ 运营中' : '🔴 停用'],
+            ['状态', detail.status === 'ACTIVE' ? '✅ 运营中' : '🔴 已停用'],
             ['创建时间', new Date(detail.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })],
             ['门店数', String(detail.stores.length)],
             ['成员数', String(detail.members.length)],
           ]} />
+        </Section>
+
+        {/* Lifecycle actions */}
+        <Section title="商户管理">
+          <LifecyclePanel tenantId={detail.id} currentStatus={detail.status} onChanged={load} />
         </Section>
 
         {/* Tier */}
@@ -217,6 +222,91 @@ function TierPanel({ tenantId, currentTier, onChanged }: { tenantId: string; cur
   )
 }
 
+// ─── LifecyclePanel ───────────────────────────────────────────────────────────
+
+function LifecyclePanel({ tenantId, currentStatus, onChanged }: { tenantId: string; currentStatus: string; onChanged: () => void }) {
+  const [saving, setSaving] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const isActive = currentStatus === 'ACTIVE'
+
+  async function toggleStatus() {
+    const next = isActive ? 'INACTIVE' : 'ACTIVE'
+    const msg = isActive ? `确认停用该商户？停用后商户将无法正常使用系统。` : `确认恢复该商户为运营状态？`
+    if (!confirm(msg)) return
+    setSaving(true)
+    setErr(null)
+    try {
+      const r = await apiFetch(`/api/ops/tenants/${tenantId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: next }),
+      }, OWNER_CTX)
+      if (r.ok) onChanged()
+      else setErr('操作失败')
+    } catch {
+      setErr('网络错误')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function downloadBackup() {
+    setDownloading(true)
+    setErr(null)
+    try {
+      const r = await apiFetch(`/api/ops/tenants/${tenantId}/export`, undefined, OWNER_CTX)
+      if (!r.ok) { setErr('导出失败'); return }
+      const blob = await r.blob()
+      const cd = r.headers.get('content-disposition') ?? ''
+      const match = cd.match(/filename="([^"]+)"/)
+      const filename = match?.[1] ?? `tenant_${tenantId}_export.json`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setErr('网络错误')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button
+          style={{
+            ...s.actionBtn,
+            background: isActive ? '#fff1f0' : '#f6ffed',
+            color: isActive ? '#ff4d4f' : '#52c41a',
+            borderColor: isActive ? '#ffa39e' : '#b7eb8f',
+            opacity: saving ? 0.6 : 1,
+          }}
+          disabled={saving}
+          onClick={toggleStatus}
+        >
+          {saving ? '…' : isActive ? '停用商户' : '恢复运营'}
+        </button>
+        <button
+          style={{ ...s.actionBtn, opacity: downloading ? 0.6 : 1 }}
+          disabled={downloading}
+          onClick={downloadBackup}
+        >
+          {downloading ? '导出中…' : '下载数据备份'}
+        </button>
+      </div>
+      {!isActive && (
+        <div style={{ fontSize: 12, color: '#fa8c16', marginTop: 8, background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 6, padding: '6px 10px' }}>
+          ⚠️ 该商户已停用。如需永久删除，请先导出数据备份，联系技术人员手动处理（不支持界面直删，防止财务记录丢失）。
+        </div>
+      )}
+      {err && <div style={s.errMsg}>{err}</div>}
+    </div>
+  )
+}
+
 // ─── GenCodePanel ─────────────────────────────────────────────────────────────
 
 function GenCodePanel({ tenantId, stores }: { tenantId: string; stores: Store[] }) {
@@ -225,6 +315,8 @@ function GenCodePanel({ tenantId, stores }: { tenantId: string; stores: Store[] 
   const [generating, setGenerating] = useState(false)
   const [result, setResult] = useState<GenResult | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const qrRef = useRef<HTMLDivElement>(null)
 
   async function generate() {
     if (!storeId) { setErr('请选择门店'); return }
@@ -244,6 +336,37 @@ function GenCodePanel({ tenantId, stores }: { tenantId: string; stores: Store[] 
     } finally {
       setGenerating(false)
     }
+  }
+
+  function copyLink() {
+    if (!result?.tgLink) return
+    navigator.clipboard.writeText(result.tgLink).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  function downloadQR() {
+    const svg = qrRef.current?.querySelector('svg')
+    if (!svg) return
+    const size = 240
+    const xml = new XMLSerializer().serializeToString(svg)
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, size, size)
+      ctx.drawImage(img, 0, 0, size, size)
+      const a = document.createElement('a')
+      a.href = canvas.toDataURL('image/png')
+      const roleLabel = result?.role === 'OWNER' ? 'owner' : 'staff'
+      a.download = `bind_qr_${roleLabel}.png`
+      a.click()
+    }
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(xml)))
   }
 
   return (
@@ -272,8 +395,18 @@ function GenCodePanel({ tenantId, stores }: { tenantId: string; stores: Store[] 
             <span style={s.genExp}>过期：{new Date(result.expiresAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
           </div>
           {result.tgLink && (
-            <div style={s.qrWrap}>
+            <div ref={qrRef} style={s.qrWrap}>
               <QRCode value={result.tgLink} size={160} />
+            </div>
+          )}
+          {result.tgLink && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <button style={s.qrActionBtn} onClick={copyLink}>
+                {copied ? '已复制 ✓' : '复制链接'}
+              </button>
+              <button style={s.qrActionBtn} onClick={downloadQR}>
+                下载二维码
+              </button>
             </div>
           )}
           {result.tgLink && (
@@ -436,6 +569,14 @@ const s: Record<string, React.CSSProperties> = {
   },
   errMsg: { fontSize: 13, color: '#ff4d4f', marginBottom: 8 },
   infoMsg: { fontSize: 13, color: '#52c41a', marginBottom: 8, padding: '8px 12px', background: '#f6ffed', borderRadius: 6, border: '1px solid #b7eb8f' },
+  actionBtn: {
+    height: 34, padding: '0 16px', border: '1.5px solid #e8e8e8',
+    borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#f5f5f5', color: '#666',
+  },
+  qrActionBtn: {
+    flex: 1, height: 32, border: '1.5px solid #d6e4ff', borderRadius: 6,
+    fontSize: 12, fontWeight: 600, cursor: 'pointer', background: '#f0f7ff', color: '#1677ff',
+  },
   emptyHint: { fontSize: 13, color: '#bbb', textAlign: 'center', padding: '16px 0' },
   center: {
     minHeight: '100vh', display: 'flex', flexDirection: 'column',

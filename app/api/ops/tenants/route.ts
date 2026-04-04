@@ -89,18 +89,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!checkOpsAuth(req)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
-  let body: { tenantName?: string; storeName?: string; ownerUsername?: string; ownerDisplayName?: string }
+  let body: { tenantName?: string; storeName?: string; ownerUsername?: string; ownerDisplayName?: string; tier?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }
 
-  const { tenantName, storeName = '总店', ownerUsername, ownerDisplayName } = body
+  const { tenantName, storeName = '总店', ownerUsername, ownerDisplayName, tier = 'LITE' } = body
   if (!tenantName?.trim()) return NextResponse.json({ error: 'MISSING_TENANT_NAME' }, { status: 400 })
   if (!ownerUsername?.trim()) return NextResponse.json({ error: 'MISSING_OWNER_USERNAME' }, { status: 400 })
   if (!ownerDisplayName?.trim()) return NextResponse.json({ error: 'MISSING_OWNER_DISPLAY_NAME' }, { status: 400 })
 
+  const validTier = ['LITE', 'STANDARD', 'MULTI_STORE'].includes(tier) ? tier : 'LITE'
   const storeCode = 'ST' + crypto.randomBytes(4).toString('hex').toUpperCase()
 
   const [tenant, store, user] = await prisma.$transaction(async (tx) => {
-    const t = await tx.tenant.create({ data: { name: tenantName.trim() } })
+    const t = await tx.tenant.create({ data: { name: tenantName.trim(), tier: validTier } })
     const s = await tx.store.create({
       data: { tenantId: t.id, code: storeCode, name: storeName.trim() },
     })

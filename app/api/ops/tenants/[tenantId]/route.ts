@@ -95,6 +95,7 @@ export async function GET(
 }
 
 const VALID_TIERS = ['LITE', 'STANDARD', 'MULTI_STORE']
+const VALID_STATUS = ['ACTIVE', 'INACTIVE']
 
 export async function PATCH(
   req: NextRequest,
@@ -103,13 +104,20 @@ export async function PATCH(
   if (!checkOpsAuth(req)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   const { tenantId } = await params
 
-  let body: { tier?: string }
+  let body: { tier?: string; status?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }
 
-  const { tier } = body
-  if (!tier || !VALID_TIERS.includes(tier))
-    return NextResponse.json({ error: 'INVALID_TIER' }, { status: 400 })
+  const data: { tier?: string; status?: string } = {}
+  if (body.tier !== undefined) {
+    if (!VALID_TIERS.includes(body.tier)) return NextResponse.json({ error: 'INVALID_TIER' }, { status: 400 })
+    data.tier = body.tier
+  }
+  if (body.status !== undefined) {
+    if (!VALID_STATUS.includes(body.status)) return NextResponse.json({ error: 'INVALID_STATUS' }, { status: 400 })
+    data.status = body.status
+  }
+  if (Object.keys(data).length === 0) return NextResponse.json({ error: 'NO_CHANGE' }, { status: 400 })
 
-  await prisma.tenant.update({ where: { id: tenantId }, data: { tier } })
-  return NextResponse.json({ ok: true, tier })
+  await prisma.tenant.update({ where: { id: tenantId }, data })
+  return NextResponse.json({ ok: true, ...data })
 }

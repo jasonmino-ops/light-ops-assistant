@@ -167,8 +167,14 @@ function StatPill({ icon, label, value, color }: { icon: string; label: string; 
 
 // ─── CreateForm ───────────────────────────────────────────────────────────────
 
+const TIER_OPTIONS = [
+  { value: 'LITE',        label: '轻试用版' },
+  { value: 'STANDARD',    label: '标准收银版' },
+  { value: 'MULTI_STORE', label: '门店标准化版' },
+]
+
 function CreateForm({ onCreated, onCancel }: { onCreated: (tenantId: string) => void; onCancel: () => void }) {
-  const [form, setForm] = useState({ tenantName: '', storeName: '总店', ownerUsername: '', ownerDisplayName: '' })
+  const [form, setForm] = useState({ tenantName: '', storeName: '总店', ownerUsername: '', ownerDisplayName: '', tier: 'LITE' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -204,6 +210,28 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (tenantId: string) => 
         <Field label="门店名" value={form.storeName} onChange={(v) => set('storeName', v)} placeholder="总店" />
         <Field label="老板用户名 *" value={form.ownerUsername} onChange={(v) => set('ownerUsername', v)} placeholder="英文 ID，登录用" />
         <Field label="老板显示名 *" value={form.ownerDisplayName} onChange={(v) => set('ownerDisplayName', v)} placeholder="界面展示名" />
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <div style={s.fieldLabel}>产品档次</div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          {TIER_OPTIONS.map(({ value, label }) => {
+            const tm = TIER_META[value]
+            const active = form.tier === value
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => set('tier', value)}
+                style={{
+                  flex: 1, height: 34, border: `1.5px solid ${active ? tm.border : '#e8e8e8'}`,
+                  borderRadius: 6, fontSize: 12, fontWeight: active ? 700 : 400,
+                  background: active ? tm.bg : '#f5f5f5', color: active ? tm.color : '#888',
+                  cursor: 'pointer',
+                }}
+              >{label}</button>
+            )
+          })}
+        </div>
       </div>
       {error && <div style={s.errorMsg}>{error}</div>}
       <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
