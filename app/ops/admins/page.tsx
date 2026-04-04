@@ -258,7 +258,7 @@ export default function OpsAdminsPage() {
                       <span style={{ ...s.badge, background: rm.bg, color: rm.color, borderColor: rm.border }}>{rm.label}</span>
                       <span style={s.metaText}>{a.username}</span>
                       <span style={{ fontSize: 11, color: a.telegramId ? '#52c41a' : '#bbb' }}>
-                        {a.telegramId ? '✓ TG已绑' : 'TG未绑'}
+                        {a.telegramId ? `✓ TG:${a.telegramId}` : 'TG未绑'}
                       </span>
                       {isDisabled && <span style={s.disabledTag}>已停用</span>}
                     </div>

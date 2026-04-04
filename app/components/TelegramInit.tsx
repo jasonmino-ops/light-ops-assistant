@@ -87,7 +87,11 @@ export default function TelegramInit() {
       .then((body) => {
         if (body.ok) {
           sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
-          window.location.reload()
+          if (window.location.pathname.startsWith('/ops')) {
+            window.location.href = '/ops'
+          } else {
+            window.location.reload()
+          }
         } else if (body.error === 'USER_NOT_FOUND') {
           sessionStorage.removeItem(SESSION_KEY)
           setPendingInitData(initData)

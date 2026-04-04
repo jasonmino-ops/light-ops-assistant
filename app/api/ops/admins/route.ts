@@ -23,7 +23,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(admins.map((a) => ({
     ...a,
-    telegramId: a.telegramId ? '(bound)' : null, // redacted
     createdAt: a.createdAt.toISOString(),
   })))
 }
