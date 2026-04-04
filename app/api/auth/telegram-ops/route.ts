@@ -1,32 +1,12 @@
-/**
- * POST /api/auth/telegram-ops
- *
- * Ops-admin specific Telegram auth endpoint.
- *
- * Why separate from /api/auth/telegram:
- *   The main mini-app bot and the Mino ops bot may have different bot tokens.
- *   /api/auth/telegram uses TELEGRAM_BOT_TOKEN and scopes user lookup to TENANT_ID.
- *   This endpoint uses OPS_BOT_TOKEN (falls back to TELEGRAM_BOT_TOKEN if not set)
- *   and searches for the user across ALL tenants by telegramId.
- *
- * Required env vars:
- *   OPS_BOT_TOKEN  — bot token for the ops Telegram bot (separate bot)
- *                    If not set, falls back to TELEGRAM_BOT_TOKEN.
- *   AUTH_SECRET    — used to sign the session cookie
- *
- * The issued session is then validated by checkOpsAuth() (role=OWNER + OPS_USER_IDS).
- */
-import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { signSession } from '@/lib/session'
 
-const OPS_BOT_TOKEN = process.env.OPS_BOT_TOKEN ?? process.env.TELEGRAM_BOT_TOKEN ?? ''
-
-function verifyInitData(initData: string): URLSearchParams | null {
+function verifyTelegramWebAppData(initData: string, botToken: string) {
   const params = new URLSearchParams(initData)
   const hash = params.get('hash')
-  if (!hash) return null
+  if (!hash) return false
 
   params.delete('hash')
   const dataCheckString = [...params.entries()]
@@ -34,92 +14,104 @@ function verifyInitData(initData: string): URLSearchParams | null {
     .map(([k, v]) => `${k}=${v}`)
     .join('\n')
 
-  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(OPS_BOT_TOKEN).digest()
-  const expected = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
+  const secret = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest()
+  const calc = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex')
+  return calc === hash
+}
 
-  return expected === hash ? params : null
+function parseTelegramUser(initData: string) {
+  const params = new URLSearchParams(initData)
+  const raw = params.get('user')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as {
+      id: number
+      username?: string
+      first_name?: string
+      last_name?: string
+    }
+  } catch {
+    return null
+  }
 }
 
 export async function POST(req: NextRequest) {
-  let body: { initData?: string }
-  try { body = await req.json() } catch {
-    return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
-  }
-
-  const { initData } = body
-  if (!initData) return NextResponse.json({ error: 'MISSING_INIT_DATA' }, { status: 400 })
-
-  // Verify or skip (dev mode — no token configured)
-  let params: URLSearchParams
-  if (!OPS_BOT_TOKEN) {
-    params = new URLSearchParams(initData)
-  } else {
-    const verified = verifyInitData(initData)
-    if (!verified) {
-      return NextResponse.json(
-        { error: 'INVALID_SIGNATURE', message: 'Ops initData 签名验证失败' },
-        { status: 401 },
-      )
-    }
-    params = verified
-  }
-
-  const userStr = params.get('user')
-  if (!userStr) return NextResponse.json({ error: 'MISSING_USER' }, { status: 400 })
-
-  let telegramUserId: string
   try {
-    telegramUserId = String(JSON.parse(userStr).id)
-  } catch {
-    return NextResponse.json({ error: 'INVALID_USER_PAYLOAD' }, { status: 400 })
-  }
+    const body = await req.json().catch(() => null)
+    const initData = String(body?.initData || '')
+    if (!initData) {
+      return NextResponse.json({ ok: false, error: 'MISSING_INIT_DATA' }, { status: 400 })
+    }
 
-  // Search across ALL tenants (ops admin may belong to any tenant)
-  const user = await prisma.user.findFirst({
-    where: { telegramId: telegramUserId, status: 'ACTIVE' },
-    orderBy: { createdAt: 'asc' },
-    include: {
-      storeRoles: {
-        where: { status: 'ACTIVE' },
-        orderBy: { createdAt: 'asc' },
-        take: 1,
-        select: { storeId: true },
+    const botToken = process.env.OPS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
+    if (!botToken) {
+      return NextResponse.json({ ok: false, error: 'MISSING_OPS_BOT_TOKEN' }, { status: 500 })
+    }
+
+    const valid = verifyTelegramWebAppData(initData, botToken)
+    if (!valid) {
+      return NextResponse.json({ ok: false, error: 'OPS_INITDATA_INVALID' }, { status: 401 })
+    }
+
+    const tgUser = parseTelegramUser(initData)
+    if (!tgUser?.id) {
+      return NextResponse.json({ ok: false, error: 'MISSING_TELEGRAM_USER' }, { status: 400 })
+    }
+
+    const telegramId = String(tgUser.id)
+
+    const user = await prisma.user.findFirst({
+      where: {
+        telegramId,
+        role: 'OWNER',
       },
-    },
-  })
-
-  if (!user) {
-    return NextResponse.json(
-      { error: 'USER_NOT_FOUND', message: '未找到绑定账号，请联系运营管理员' },
-      { status: 404 },
-    )
-  }
-
-  let storeId = user.storeRoles[0]?.storeId
-  if (!storeId) {
-    const firstStore = await prisma.store.findFirst({
-      where: { tenantId: user.tenantId, status: 'ACTIVE' },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
+      select: {
+        id: true,
+        role: true,
+        tenantId: true,
+        status: true,
+      },
     })
-    storeId = firstStore?.id ?? ''
+
+    if (!user) {
+      return NextResponse.json({ ok: false, error: 'OPS_USER_NOT_FOUND' }, { status: 403 })
+    }
+
+    if (user.status !== 'ACTIVE') {
+      return NextResponse.json({ ok: false, error: 'OPS_USER_INACTIVE' }, { status: 403 })
+    }
+
+    const defaultStore = await prisma.store.findFirst({
+      where: {
+        tenantId: user.tenantId,
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    if (!defaultStore) {
+      return NextResponse.json({ ok: false, error: 'OPS_STORE_NOT_FOUND' }, { status: 500 })
+    }
+
+    const session = await signSession({
+      userId: user.id,
+      role: user.role,
+      tenantId: user.tenantId,
+      storeId: defaultStore.id,
+    })
+
+    const res = NextResponse.json({ ok: true })
+    res.cookies.set('auth-session', session, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 14,
+    })
+    return res
+  } catch (err) {
+    console.error('telegram-ops auth error:', err)
+    return NextResponse.json({ ok: false, error: 'OPS_AUTH_INTERNAL_ERROR' }, { status: 500 })
   }
-
-  const sessionToken = signSession({
-    tenantId: user.tenantId,
-    userId: user.id,
-    storeId,
-    role: user.role,
-  })
-
-  const isProd = process.env.NODE_ENV === 'production'
-  const res = NextResponse.json({ ok: true, role: user.role })
-  res.cookies.set('auth-session', sessionToken, {
-    httpOnly: true,
-    sameSite: isProd ? 'none' : 'lax',
-    secure: isProd,
-    maxAge: 60 * 60 * 24 * 7,
-    path: '/',
-  })
-  return res
 }
