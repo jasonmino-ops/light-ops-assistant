@@ -62,6 +62,12 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function sevenDaysAgoStr() {
+  const d = new Date()
+  d.setDate(d.getDate() - 6) // inclusive of today = 7 days
+  return d.toISOString().slice(0, 10)
+}
+
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
@@ -120,7 +126,7 @@ export default function RecordsPage() {
   const { t } = useLocale()
   const today = todayStr()
 
-  const [dateFrom, setDateFrom] = useState(today)
+  const [dateFrom, setDateFrom] = useState(() => sevenDaysAgoStr())
   const [dateTo, setDateTo] = useState(today)
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | SaleType>('ALL')
 

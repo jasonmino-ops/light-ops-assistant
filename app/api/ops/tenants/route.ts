@@ -22,6 +22,14 @@ function todayStart() {
   return d
 }
 
+// Query boundary for "last active" lookup — avoids full-table scan on SaleRecord.
+// Tenants with no activity in the last 90 days show lastActiveAt = null (treated as inactive).
+function ninetyDaysAgo() {
+  const d = new Date()
+  d.setDate(d.getDate() - 90)
+  return d
+}
+
 export async function GET(req: NextRequest) {
   if (!checkOpsAuth(req)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
@@ -48,7 +56,7 @@ export async function GET(req: NextRequest) {
       select: { tenantId: true, orderNo: true },
     }),
     prisma.saleRecord.findMany({
-      where: { tenantId: { in: ids } },
+      where: { tenantId: { in: ids }, createdAt: { gte: ninetyDaysAgo() } },
       orderBy: { createdAt: 'desc' },
       distinct: ['tenantId'],
       select: { tenantId: true, createdAt: true },
