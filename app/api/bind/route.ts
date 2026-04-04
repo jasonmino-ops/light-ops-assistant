@@ -97,18 +97,23 @@ export async function POST(req: NextRequest) {
   }
   const telegramId = String(tgUser.id)
 
-  // ── 3. Check if telegramId already bound ─────────────────────────────────
+  // ── 3. Check if telegramId already bound to ANY active user globally ─────
+  // Rule: one Telegram account → one active user binding across all tenants.
+  // Same-tenant multi-store is NOT a conflict (user already exists, just re-scanned).
+  // Cross-tenant and same-tenant different-user are both blocked.
   const existing = await prisma.user.findFirst({
-    where: { tenantId: bt.tenantId, telegramId },
+    where: { telegramId, status: 'ACTIVE' },
+    select: { displayName: true, tenantId: true, tenant: { select: { name: true, status: true } } },
   })
   if (existing) {
-    return NextResponse.json(
-      {
-        error: 'ALREADY_BOUND',
-        message: `该 Telegram 账号已绑定用户「${existing.displayName}」，如需重新绑定请联系管理员`,
-      },
-      { status: 409 },
-    )
+    const isSameTenant = existing.tenantId === bt.tenantId
+    const tenantArchived = existing.tenant?.status === 'ARCHIVED'
+    const message = isSameTenant
+      ? `该 Telegram 账号已绑定本商户账号「${existing.displayName}」，如需重新绑定请联系管理员解绑`
+      : tenantArchived
+        ? `该 Telegram 账号已绑定已归档商户「${existing.tenant?.name ?? ''}」，请联系运营管理员解绑后重试`
+        : `该 Telegram 账号已绑定其他商户「${existing.tenant?.name ?? ''}」，不允许跨商户重复绑定，请联系运营管理员`
+    return NextResponse.json({ error: 'ALREADY_BOUND', message }, { status: 409 })
   }
 
   // ── 4. Create user + store role ───────────────────────────────────────────

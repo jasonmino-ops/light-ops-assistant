@@ -81,18 +81,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_USER_PAYLOAD' }, { status: 400 })
   }
 
-  // Check if this telegramId is already bound to a DIFFERENT user
+  // Check if this telegramId is already bound to ANY active user globally
   const existing = await prisma.user.findFirst({
-    where: { tenantId: TENANT_ID, telegramId: telegramUserId },
+    where: { telegramId: telegramUserId, status: 'ACTIVE' },
+    select: { displayName: true, tenantId: true, tenant: { select: { name: true, status: true } } },
   })
   if (existing) {
-    return NextResponse.json(
-      {
-        error: 'ALREADY_BOUND',
-        message: `该 Telegram 账号已绑定用户「${existing.displayName}」，请联系管理员`,
-      },
-      { status: 409 },
-    )
+    const isSameTenant = existing.tenantId === TENANT_ID
+    const tenantArchived = existing.tenant?.status === 'ARCHIVED'
+    const message = isSameTenant
+      ? `该 Telegram 账号已绑定用户「${existing.displayName}」，请联系管理员解绑`
+      : tenantArchived
+        ? `该 Telegram 账号已绑定已归档商户「${existing.tenant?.name ?? ''}」，请联系运营管理员解绑后重试`
+        : `该 Telegram 账号已绑定其他商户「${existing.tenant?.name ?? ''}」，不允许跨商户重复绑定，请联系运营管理员`
+    return NextResponse.json({ error: 'ALREADY_BOUND', message }, { status: 409 })
   }
 
   // Find target user by username
