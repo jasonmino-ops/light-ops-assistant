@@ -248,6 +248,8 @@ function ApplicationsSection({
   const [approving, setApproving] = useState<string | null>(null)
   const [approvedLinks, setApprovedLinks] = useState<Record<string, string>>({})
   const [copied, setCopied] = useState<string | null>(null)
+  const [sending, setSending] = useState<string | null>(null)
+  const [sendResult, setSendResult] = useState<Record<string, 'sent' | string>>({})
 
   async function approve(id: string) {
     setApproving(id)
@@ -272,6 +274,24 @@ function ApplicationsSection({
       setCopied(id)
       setTimeout(() => setCopied(null), 2000)
     })
+  }
+
+  async function sendToUser(id: string) {
+    setSending(id)
+    setSendResult((prev) => { const n = { ...prev }; delete n[id]; return n })
+    try {
+      const r = await apiFetch(`/api/ops/applications/${id}/notify`, { method: 'POST' }, OWNER_CTX)
+      const body = await r.json()
+      if (r.ok && body.ok) {
+        setSendResult((prev) => ({ ...prev, [id]: 'sent' }))
+      } else {
+        setSendResult((prev) => ({ ...prev, [id]: body.message ?? body.error ?? '发送失败' }))
+      }
+    } catch {
+      setSendResult((prev) => ({ ...prev, [id]: '网络错误，请重试' }))
+    } finally {
+      setSending(null)
+    }
   }
 
   return (
@@ -300,6 +320,14 @@ function ApplicationsSection({
                 </button>
               </div>
             )}
+            {sendResult[app.id] && (
+              <div style={{
+                fontSize: 12, marginTop: 4,
+                color: sendResult[app.id] === 'sent' ? '#52c41a' : '#ff4d4f',
+              }}>
+                {sendResult[app.id] === 'sent' ? '✓ 已发送给客户' : `✕ ${sendResult[app.id]}`}
+              </div>
+            )}
           </div>
           {!approvedLinks[app.id] && (
             <button
@@ -311,7 +339,16 @@ function ApplicationsSection({
             </button>
           )}
           {approvedLinks[app.id] && (
-            <span style={s.approvedTag}>✓ 已通过</span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+              <span style={s.approvedTag}>✓ 已通过</span>
+              <button
+                style={{ ...s.sendBtn, opacity: sending === app.id ? 0.6 : 1 }}
+                disabled={sending === app.id}
+                onClick={() => sendToUser(app.id)}
+              >
+                {sending === app.id ? '发送中…' : '发送给客户'}
+              </button>
+            </div>
           )}
         </div>
       ))}
@@ -518,6 +555,10 @@ const s: Record<string, React.CSSProperties> = {
     border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
   },
   approvedTag: {
-    fontSize: 12, color: '#52c41a', fontWeight: 600, flexShrink: 0, paddingTop: 6,
+    fontSize: 12, color: '#52c41a', fontWeight: 600, flexShrink: 0,
+  },
+  sendBtn: {
+    height: 28, padding: '0 12px', background: '#1677ff', color: '#fff',
+    border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
   },
 }
