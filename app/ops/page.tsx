@@ -216,7 +216,7 @@ const TIER_OPTIONS = [
 ]
 
 function CreateForm({ onCreated, onCancel }: { onCreated: (tenantId: string) => void; onCancel: () => void }) {
-  const [form, setForm] = useState({ tenantName: '', storeName: '总店', tier: 'LITE' })
+  const [form, setForm] = useState({ tenantName: '', storeName: '', tier: 'LITE' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -225,6 +225,10 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (tenantId: string) => 
   async function submit() {
     if (!form.tenantName.trim()) {
       setError('请填写商户名')
+      return
+    }
+    if (!form.storeName.trim()) {
+      setError('请填写门店名')
       return
     }
     setSubmitting(true)
@@ -249,7 +253,7 @@ function CreateForm({ onCreated, onCancel }: { onCreated: (tenantId: string) => 
       <div style={s.formTitle}>新增商户</div>
       <div style={s.formGrid}>
         <Field label="商户名 *" value={form.tenantName} onChange={(v) => set('tenantName', v)} placeholder="张记超市" />
-        <Field label="门店名" value={form.storeName} onChange={(v) => set('storeName', v)} placeholder="总店" />
+        <Field label="门店名 *" value={form.storeName} onChange={(v) => set('storeName', v)} placeholder="请输入门店名称 / សូមបញ្ចូលឈ្មោះហាង" />
       </div>
       <div style={{ marginTop: 12 }}>
         <div style={s.fieldLabel}>产品档次</div>

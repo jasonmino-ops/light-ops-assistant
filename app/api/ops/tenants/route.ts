@@ -135,8 +135,9 @@ export async function POST(req: NextRequest) {
   let body: { tenantName?: string; storeName?: string; tier?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }
 
-  const { tenantName, storeName = '总店', tier = 'LITE' } = body
+  const { tenantName, storeName, tier = 'LITE' } = body
   if (!tenantName?.trim()) return NextResponse.json({ error: 'MISSING_TENANT_NAME' }, { status: 400 })
+  if (!storeName?.trim()) return NextResponse.json({ error: 'MISSING_STORE_NAME' }, { status: 400 })
 
   // Auto-generate owner credentials — username is unique within the tenant;
   // displayName defaults to a placeholder updated when the owner first binds.
