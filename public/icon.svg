@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- 圆角背景 -->
+  <rect width="512" height="512" rx="96" fill="#1677ff"/>
+  <!-- 屋顶三角 -->
+  <polygon points="256,90 72,236 440,236" fill="white"/>
+  <!-- 墙体 -->
+  <rect x="104" y="228" width="304" height="200" rx="0" fill="white"/>
+  <!-- 门牌区（深蓝横条） -->
+  <rect x="104" y="228" width="304" height="50" fill="#0958d9"/>
+  <!-- 门 -->
+  <rect x="206" y="298" width="100" height="130" rx="10" fill="#1677ff"/>
+  <!-- 门把手 -->
+  <circle cx="292" cy="365" r="7" fill="white"/>
+  <!-- 左窗 -->
+  <rect x="122" y="262" width="64" height="52" rx="8" fill="white" opacity="0.25"/>
+  <!-- 右窗 -->
+  <rect x="326" y="262" width="64" height="52" rx="8" fill="white" opacity="0.25"/>
+  <!-- 牌匾文字区（小白块） -->
+  <rect x="160" y="238" width="192" height="28" rx="4" fill="white" opacity="0.18"/>
+</svg>

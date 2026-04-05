@@ -6,7 +6,10 @@ import LangProvider from './components/LangProvider'
 import WorkModeProvider from './components/WorkModeProvider'
 import { verifySession } from '@/lib/session'
 
-export const metadata = { title: 'E-shop 店小二助手' }
+export const metadata = {
+  title: '店小二助手',
+  description: '门店轻经营助手 — 扫码销售 · 库存管理 · 经营概览',
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Resolve role: signed cookie (Telegram auth) → DEV_ROLE env (local dev) → STAFF
@@ -23,6 +26,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
         />
+
+        {/* ── PWA ───────────────────────────────────────────────────────────── */}
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#1677ff" />
+        {/* iOS "Add to Home Screen" — SVG icon works on Chrome/Android;
+            icon-192.png needed for iOS apple-touch-icon (generate with any
+            icon tool at 192×192 and 512×512, place in /public/) */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="店小二助手" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        {/* ─────────────────────────────────────────────────────────────────── */}
+
         {/* Noto Sans Khmer — for Khmer language UI */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
