@@ -42,6 +42,11 @@ const km = {
     confirmNameHint: 'ប្រព័ន្ធបានបង្កើតដោយស្វ័យប្រវត្តិ អាចបញ្ជាក់ ឬ កែបាន',
     namePlaceholder: 'ឈ្មោះរបស់អ្នក',
     confirm: 'បញ្ជាក់ & ភ្ជាប់',
+    ownerTitle: 'ការបើកម្ចាស់ហាង — ផ្ទៀងផ្ទាត់ព័ត៌មាន',
+    ownerStoreLabel: 'ឈ្មោះហាង',
+    ownerStorePlaceholder: 'ឈ្មោះហាងដែលអតិថិជនឃើញ',
+    ownerNameLabel: 'ឈ្មោះម្ចាស់ហាង',
+    staffTitle: 'ការភ្ជាប់បុគ្គលិក — ផ្ទៀងផ្ទាត់ឈ្មោះ',
   },
   sale: {
     title: 'ការលក់',

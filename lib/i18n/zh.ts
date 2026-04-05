@@ -42,6 +42,11 @@ const zh = {
     confirmNameHint: '系统已自动生成，可直接确认或修改',
     namePlaceholder: '您的名字',
     confirm: '确认并绑定',
+    ownerTitle: '老板开通 — 确认信息',
+    ownerStoreLabel: '店铺名称',
+    ownerStorePlaceholder: '顾客看到的店铺名称',
+    ownerNameLabel: '老板姓名',
+    staffTitle: '员工绑定 — 确认姓名',
   },
   sale: {
     title: '销售',

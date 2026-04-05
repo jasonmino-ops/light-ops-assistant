@@ -52,14 +52,14 @@ function verifyInitData(initData: string): URLSearchParams | null {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { token?: string; initData?: string; displayName?: string }
+  let body: { token?: string; initData?: string; displayName?: string; storeName?: string }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON', message: '请求格式错误，请重试' }, { status: 400 })
   }
 
-  const { token, initData, displayName: customDisplayName } = body
+  const { token, initData, displayName: customDisplayName, storeName: customStoreName } = body
   if (!token || !initData) {
     return NextResponse.json({ error: 'MISSING_FIELDS', message: '链接参数不完整，请重新扫码' }, { status: 400 })
   }
@@ -176,6 +176,14 @@ export async function POST(req: NextRequest) {
         status: 'ACTIVE',
       },
     })
+
+    // Update store display name when OWNER provides one during first bind
+    if (bt.role === 'OWNER' && customStoreName?.trim()) {
+      await tx.store.update({
+        where: { id: bt.storeId },
+        data: { name: customStoreName.trim() },
+      })
+    }
 
     // ── 5. Consume token ──────────────────────────────────────────────────
     const newCount = bt.usedCount + 1

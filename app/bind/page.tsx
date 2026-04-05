@@ -29,6 +29,8 @@ function BindFlow() {
   const [state, setState] = useState<BindState>('loading')
   const [errorMsg, setErrorMsg] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [storeName, setStoreName] = useState('')
+  const [role, setRole] = useState<'OWNER' | 'STAFF' | null>(null)
   const [initDataRef, setInitDataRef] = useState('')
 
   useEffect(() => {
@@ -61,18 +63,45 @@ function BindFlow() {
     }
 
     setInitDataRef(initData)
-    setState('confirm')
+
+    // Fetch token info to determine role and pre-fill store name for OWNER
+    fetch(`/api/bind/info?token=${encodeURIComponent(token)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) {
+          setErrorMsg(data.message ?? t('bind.invalidToken'))
+          setState('error')
+          return
+        }
+        setRole(data.role)
+        if (data.role === 'OWNER') setStoreName(data.storeName ?? '')
+        setState('confirm')
+      })
+      .catch(() => {
+        setErrorMsg(t('common.networkError'))
+        setState('error')
+      })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
+  const canSubmit =
+    role === 'OWNER'
+      ? displayName.trim().length > 0 && storeName.trim().length > 0
+      : displayName.trim().length > 0
+
   async function handleConfirm() {
-    if (!displayName.trim()) return
+    if (!canSubmit) return
     setState('submitting')
     try {
       const r = await fetch('/api/bind', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, initData: initDataRef, displayName: displayName.trim() }),
+        body: JSON.stringify({
+          token,
+          initData: initDataRef,
+          displayName: displayName.trim(),
+          ...(role === 'OWNER' && storeName.trim() ? { storeName: storeName.trim() } : {}),
+        }),
       })
       const body = await r.json()
       if (body.ok) {
@@ -110,9 +139,31 @@ function BindFlow() {
 
       {state === 'confirm' && (
         <>
-          <div style={avatarIcon}>👤</div>
-          <p style={{ ...msg, fontWeight: 700 }}>{t('bind.confirmName')}</p>
-          <p style={hint}>{t('bind.confirmNameHint')}</p>
+          <div style={avatarIcon}>{role === 'OWNER' ? '🏪' : '👤'}</div>
+          <p style={{ ...msg, fontWeight: 700 }}>
+            {role === 'OWNER' ? t('bind.ownerTitle') : t('bind.staffTitle')}
+          </p>
+
+          {role === 'OWNER' && (
+            <>
+              <p style={{ ...fieldLabel }}>{t('bind.ownerStoreLabel')}</p>
+              <input
+                style={nameInput}
+                type="text"
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
+                placeholder={t('bind.ownerStorePlaceholder')}
+                maxLength={40}
+                autoFocus
+              />
+              <p style={{ ...fieldLabel }}>{t('bind.ownerNameLabel')}</p>
+            </>
+          )}
+
+          {role !== 'OWNER' && (
+            <p style={hint}>{t('bind.confirmNameHint')}</p>
+          )}
+
           <input
             style={nameInput}
             type="text"
@@ -120,12 +171,12 @@ function BindFlow() {
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder={t('bind.namePlaceholder')}
             maxLength={40}
-            autoFocus
+            autoFocus={role !== 'OWNER'}
           />
           <button
-            style={{ ...confirmBtn, opacity: displayName.trim() ? 1 : 0.5 }}
+            style={{ ...confirmBtn, opacity: canSubmit ? 1 : 0.5 }}
             onClick={handleConfirm}
-            disabled={!displayName.trim()}
+            disabled={!canSubmit}
           >
             {t('bind.confirm')}
           </button>
@@ -286,6 +337,15 @@ const nameInput: React.CSSProperties = {
   outline: 'none',
   boxSizing: 'border-box',
   textAlign: 'center',
+}
+
+const fieldLabel: React.CSSProperties = {
+  margin: 0,
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#888',
+  alignSelf: 'flex-start',
+  width: '100%',
 }
 
 const confirmBtn: React.CSSProperties = {
