@@ -87,7 +87,7 @@ function BindFlow() {
         }
         setState('success')
         setTimeout(() => {
-          window.location.replace(body.role === 'OWNER' ? '/dashboard' : '/home')
+          window.location.replace('/home')
         }, 800)
       } else {
         setErrorMsg(body.message ?? t('bind.bindFailed'))
