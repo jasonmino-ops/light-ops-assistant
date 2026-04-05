@@ -54,7 +54,7 @@ export async function POST(
   // which then routes them to /bind?token= via TelegramInit start_param handling.
   // Strip leading '@' — env vars are sometimes set as "@qingdianboss_bot" which
   // produces https://t.me/@username and triggers "user doesn't seem to exist" in Telegram.
-  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').trim()
+  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
   const tgLink = botUsername ? `https://t.me/${botUsername}?startapp=bind_${token}` : null
 
   return NextResponse.json({

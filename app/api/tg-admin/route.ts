@@ -24,7 +24,7 @@ const BOT_TOKEN = process.env.TG_BOT_TOKEN ?? ''
 const WEBHOOK_SECRET = process.env.TG_WEBHOOK_SECRET ?? ''
 // Strip leading '@' — env vars are sometimes set as "@qingdianboss_bot" which
 // produces https://t.me/@username and triggers "user doesn't seem to exist" in Telegram.
-const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').trim()
+const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
 const ADMIN_IDS = new Set(
   (process.env.TG_ADMIN_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
 )

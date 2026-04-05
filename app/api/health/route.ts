@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
         detail: `值包含 @ 前缀（"${raw}"）— 生成的 t.me 链接无效，会触发 "user doesn't seem to exist"。请去掉 @ 改为 "${raw.slice(1)}"`,
       })
     } else {
-      const clean = raw.replace(/^@/, '').trim()
+      const clean = raw.replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
       checks.push({
         key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME（商户bot）', status: 'PASS',
         detail: `@${clean} · 实际生成链接：https://t.me/${clean}?startapp=bind_<token>`,
@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 4c. ENV: STORE_OPEN_CODE — fixed "open store" QR entry code ──────────
-  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').trim()
+  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
   const storeOpenCode = process.env.STORE_OPEN_CODE?.trim() ?? ''
   if (!storeOpenCode) {
     checks.push({ key: 'store_open_code', name: 'STORE_OPEN_CODE（开店验证码）', status: 'WARN', detail: '未配置，新商户自助开店功能不可用' })
