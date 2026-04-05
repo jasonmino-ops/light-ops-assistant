@@ -260,6 +260,23 @@ model StoreDailySummary {
   @@index([tenantId, date])
 }
 
+model StoreApplication {
+  id               String    @id @default(cuid())
+  storeName        String
+  ownerName        String
+  telegramId       String
+  telegramUsername String?
+  status           String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  createdAt        DateTime  @default(now())
+  approvedAt       DateTime?
+  tenantId         String?   // set on approval
+  bindTokenValue   String?   // set on approval, mirrors BindToken.token
+  note             String?
+
+  @@index([status])
+  @@index([telegramId])
+}
+
 model OpsAdmin {
   id           String   @id @default(cuid())
   name         String

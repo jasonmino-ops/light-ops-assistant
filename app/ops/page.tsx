@@ -6,6 +6,16 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type StoreApplicationRow = {
+  id: string
+  storeName: string
+  ownerName: string
+  telegramId: string
+  telegramUsername: string | null
+  status: string
+  createdAt: string
+}
+
 type TenantRow = {
   id: string
   name: string
@@ -38,6 +48,7 @@ export default function OpsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ACTIVE')
   const [opsRole, setOpsRole] = useState<string>('')
+  const [applications, setApplications] = useState<StoreApplicationRow[]>([])
 
   // ── Auth check ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -71,8 +82,18 @@ export default function OpsPage() {
     loadTenants(f)
   }
 
+  function loadApplications() {
+    apiFetch('/api/ops/applications', undefined, OWNER_CTX)
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setApplications)
+      .catch(() => {})
+  }
+
   useEffect(() => {
-    if (authState === 'ok') loadTenants()
+    if (authState === 'ok') {
+      loadTenants()
+      loadApplications()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authState])
 
@@ -136,6 +157,14 @@ export default function OpsPage() {
             >{label}</button>
           ))}
         </div>
+
+        {/* ── Store applications ── */}
+        {applications.length > 0 && (
+          <ApplicationsSection
+            applications={applications}
+            onApproved={() => { loadApplications(); loadTenants() }}
+          />
+        )}
 
         {/* ── Create form ── */}
         {showCreate && (
@@ -203,6 +232,89 @@ function StatPill({ icon, label, value, color }: { icon: string; label: string; 
       <span style={s.statIcon}>{icon}</span>
       <span style={s.statLabel}>{label}</span>
       <span style={{ ...s.statValue, color: color ?? '#333' }}>{value}</span>
+    </div>
+  )
+}
+
+// ─── ApplicationsSection ─────────────────────────────────────────────────────
+
+function ApplicationsSection({
+  applications,
+  onApproved,
+}: {
+  applications: StoreApplicationRow[]
+  onApproved: () => void
+}) {
+  const [approving, setApproving] = useState<string | null>(null)
+  const [approvedLinks, setApprovedLinks] = useState<Record<string, string>>({})
+  const [copied, setCopied] = useState<string | null>(null)
+
+  async function approve(id: string) {
+    setApproving(id)
+    try {
+      const r = await apiFetch(`/api/ops/applications/${id}/approve`, { method: 'POST' }, OWNER_CTX)
+      const body = await r.json()
+      if (r.ok && body.tgLink) {
+        setApprovedLinks((prev) => ({ ...prev, [id]: body.tgLink }))
+        onApproved()
+      } else {
+        window.alert(body.message ?? body.error ?? '审核失败')
+      }
+    } catch {
+      window.alert('网络错误')
+    } finally {
+      setApproving(null)
+    }
+  }
+
+  function copyLink(id: string, link: string) {
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(id)
+      setTimeout(() => setCopied(null), 2000)
+    })
+  }
+
+  return (
+    <div style={s.appSection}>
+      <div style={s.appSectionTitle}>
+        📋 开店申请
+        <span style={s.appBadge}>{applications.length}</span>
+      </div>
+      {applications.map((app) => (
+        <div key={app.id} style={s.appRow}>
+          <div style={s.appInfo}>
+            <div style={s.appStoreName}>{app.storeName}</div>
+            <div style={s.appMeta}>
+              {app.ownerName}
+              {app.telegramUsername ? ` · @${app.telegramUsername}` : ` · ID:${app.telegramId}`}
+              {' · '}
+              {new Date(app.createdAt).toLocaleString('zh-CN', {
+                month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+              })}
+            </div>
+            {approvedLinks[app.id] && (
+              <div style={s.appLink}>
+                <span style={s.appLinkText}>{approvedLinks[app.id]}</span>
+                <button style={s.appCopyBtn} onClick={() => copyLink(app.id, approvedLinks[app.id])}>
+                  {copied === app.id ? '已复制 ✓' : '复制链接'}
+                </button>
+              </div>
+            )}
+          </div>
+          {!approvedLinks[app.id] && (
+            <button
+              style={{ ...s.approveBtn, opacity: approving === app.id ? 0.6 : 1 }}
+              disabled={approving === app.id}
+              onClick={() => approve(app.id)}
+            >
+              {approving === app.id ? '处理中…' : '通过'}
+            </button>
+          )}
+          {approvedLinks[app.id] && (
+            <span style={s.approvedTag}>✓ 已通过</span>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
@@ -371,4 +483,41 @@ const s: Record<string, React.CSSProperties> = {
   },
   backLink: { fontSize: 14, color: '#1677ff', textDecoration: 'none' },
   emptyHint: { fontSize: 13, color: '#bbb', textAlign: 'center', padding: '20px 0' },
+
+  appSection: {
+    background: '#fff', borderRadius: 12, padding: '14px 16px',
+    marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    border: '1.5px solid #fa8c1633',
+  },
+  appSectionTitle: {
+    fontSize: 13, fontWeight: 700, color: '#fa8c16', marginBottom: 10,
+    display: 'flex', alignItems: 'center', gap: 6,
+  },
+  appBadge: {
+    fontSize: 11, fontWeight: 700, background: '#fa8c16', color: '#fff',
+    borderRadius: 10, padding: '1px 7px',
+  },
+  appRow: {
+    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10,
+    padding: '10px 0', borderTop: '1px solid #f5f5f5',
+  },
+  appInfo: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 },
+  appStoreName: { fontSize: 14, fontWeight: 700, color: '#1a1a1a' },
+  appMeta: { fontSize: 12, color: '#8c8c8c' },
+  appLink: {
+    display: 'flex', alignItems: 'center', gap: 8, marginTop: 4,
+    background: '#f6ffed', borderRadius: 6, padding: '6px 8px', border: '1px solid #b7eb8f',
+  },
+  appLinkText: { fontSize: 11, color: '#389e0d', wordBreak: 'break-all' as const, flex: 1 },
+  appCopyBtn: {
+    fontSize: 11, fontWeight: 600, color: '#389e0d', background: 'transparent',
+    border: '1px solid #b7eb8f', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', flexShrink: 0,
+  },
+  approveBtn: {
+    height: 32, padding: '0 14px', background: '#52c41a', color: '#fff',
+    border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+  },
+  approvedTag: {
+    fontSize: 12, color: '#52c41a', fontWeight: 600, flexShrink: 0, paddingTop: 6,
+  },
 }

@@ -8,12 +8,12 @@ import km from '@/lib/i18n/km'
 /**
  * /open
  *
- * Self-service merchant registration page.
+ * Store-opening application page.
  * Opened when the fixed "开店" QR code is scanned:
  *   https://t.me/<bot>?startapp=open
  *
- * TelegramInit detects start_param === 'open' for unbound users
- * and redirects here. Already-bound users bypass this page via normal auth.
+ * Submits a PENDING StoreApplication. Ops reviews and approves it, then
+ * the applicant receives an owner bind token link → /bind → /home.
  */
 
 function bi(zhStr: string, kmStr: string) {
@@ -28,18 +28,14 @@ function bi(zhStr: string, kmStr: string) {
 
 type OpenState = 'form' | 'submitting' | 'success' | 'error' | 'no_tg' | 'already_bound'
 
-const SESSION_KEY = 'tg-authed-uid'
-
 function OpenFlow() {
   const searchParams = useSearchParams()
-  // Allow ?from=open as a debug hint, but primarily driven by TelegramInit redirect
   void searchParams
 
   const [state, setState] = useState<OpenState>('form')
   const [errorMsg, setErrorMsg] = useState('')
   const [storeName, setStoreName] = useState('')
   const [ownerName, setOwnerName] = useState('')
-  const [verifyCode, setVerifyCode] = useState('')
   const [initDataRef, setInitDataRef] = useState('')
 
   useEffect(() => {
@@ -68,10 +64,7 @@ function OpenFlow() {
     setInitDataRef(initData)
   }, [])
 
-  const canSubmit =
-    storeName.trim().length > 0 &&
-    ownerName.trim().length > 0 &&
-    verifyCode.trim().length > 0
+  const canSubmit = storeName.trim().length > 0 && ownerName.trim().length > 0
 
   async function handleSubmit() {
     if (!canSubmit) return
@@ -84,29 +77,16 @@ function OpenFlow() {
           initData: initDataRef,
           storeName: storeName.trim(),
           ownerName: ownerName.trim(),
-          verifyCode: verifyCode.trim(),
         }),
       })
       const body = await r.json()
       if (body.ok) {
-        // Cache TG user ID so TelegramInit skips re-auth on next load
-        try {
-          const tgUserId = String(
-            JSON.parse(new URLSearchParams(initDataRef).get('user') ?? '{}').id,
-          )
-          sessionStorage.setItem(SESSION_KEY, tgUserId)
-        } catch {
-          sessionStorage.setItem(SESSION_KEY, '1')
-        }
         setState('success')
-        setTimeout(() => {
-          window.location.replace('/home')
-        }, 800)
       } else if (body.error === 'ALREADY_BOUND') {
         setState('already_bound')
         setErrorMsg(body.message ?? '该账号已绑定商户')
       } else {
-        setErrorMsg(body.message ?? '开通失败，请重试')
+        setErrorMsg(body.message ?? '提交失败，请重试')
         setState('error')
       }
     } catch {
@@ -149,20 +129,6 @@ function OpenFlow() {
             />
           </div>
 
-          <div style={fieldGroup}>
-            <label style={fieldLabel}>{bi(zh.open.fieldVerifyCode, km.open.fieldVerifyCode)}</label>
-            <input
-              style={inputStyle}
-              type="text"
-              value={verifyCode}
-              onChange={(e) => setVerifyCode(e.target.value)}
-              placeholder={zh.open.verifyCodePlaceholder}
-              maxLength={20}
-              disabled={state === 'submitting'}
-              autoComplete="off"
-            />
-          </div>
-
           <button
             style={{ ...submitBtn, opacity: canSubmit ? 1 : 0.5 }}
             onClick={handleSubmit}
@@ -177,10 +143,11 @@ function OpenFlow() {
 
       {state === 'success' && (
         <>
-          <div style={checkIcon}>✓</div>
-          <p style={{ ...msgStyle, color: '#52c41a', fontWeight: 700 }}>
+          <div style={pendingIcon}>⏳</div>
+          <p style={{ ...msgStyle, color: '#1677ff', fontWeight: 700 }}>
             {bi(zh.open.success, km.open.success)}
           </p>
+          <p style={hintStyle}>{bi(zh.open.successDesc, km.open.successDesc)}</p>
         </>
       )}
 
@@ -248,122 +215,60 @@ const card: React.CSSProperties = {
 }
 
 const shopIcon: React.CSSProperties = {
-  width: 56,
-  height: 56,
-  borderRadius: '50%',
-  background: '#fff7e6',
-  border: '2px solid #ffd591',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: 26,
+  width: 56, height: 56, borderRadius: '50%',
+  background: '#fff7e6', border: '2px solid #ffd591',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
 }
 
-const checkIcon: React.CSSProperties = {
-  width: 56,
-  height: 56,
-  borderRadius: '50%',
-  background: '#f6ffed',
-  border: '2px solid #b7eb8f',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: 26,
-  color: '#52c41a',
+const pendingIcon: React.CSSProperties = {
+  width: 56, height: 56, borderRadius: '50%',
+  background: '#e6f4ff', border: '2px solid #91caff',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
 }
 
 const errIconStyle: React.CSSProperties = {
-  width: 56,
-  height: 56,
-  borderRadius: '50%',
-  background: '#fff1f0',
-  border: '2px solid #ffa39e',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: 22,
-  color: '#ff4d4f',
+  width: 56, height: 56, borderRadius: '50%',
+  background: '#fff1f0', border: '2px solid #ffa39e',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: '#ff4d4f',
 }
 
 const warnIconStyle: React.CSSProperties = {
-  width: 56,
-  height: 56,
-  borderRadius: '50%',
-  background: '#fffbe6',
-  border: '2px solid #ffe58f',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: 22,
-  color: '#fa8c16',
+  width: 56, height: 56, borderRadius: '50%',
+  background: '#fffbe6', border: '2px solid #ffe58f',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: '#fa8c16',
 }
 
 const titleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 700,
-  color: '#1a1a1a',
-  textAlign: 'center',
+  margin: 0, fontSize: 18, fontWeight: 700, color: '#1a1a1a', textAlign: 'center',
 }
 
 const msgStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 15,
-  color: '#1a1a1a',
-  textAlign: 'center',
+  margin: 0, fontSize: 15, color: '#1a1a1a', textAlign: 'center',
 }
 
 const hintStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 13,
-  color: '#aaa',
-  textAlign: 'center',
+  margin: 0, fontSize: 13, color: '#aaa', textAlign: 'center', lineHeight: 1.5,
 }
 
 const fieldGroup: React.CSSProperties = {
-  width: '100%',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 6,
+  width: '100%', display: 'flex', flexDirection: 'column', gap: 6,
 }
 
 const fieldLabel: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#888',
+  fontSize: 12, fontWeight: 600, color: '#888',
 }
 
 const inputStyle: React.CSSProperties = {
-  width: '100%',
-  height: 44,
-  border: '1.5px solid #d9d9d9',
-  borderRadius: 8,
-  padding: '0 12px',
-  fontSize: 15,
-  outline: 'none',
-  boxSizing: 'border-box',
+  width: '100%', height: 44, border: '1.5px solid #d9d9d9', borderRadius: 8,
+  padding: '0 12px', fontSize: 15, outline: 'none', boxSizing: 'border-box',
 }
 
 const submitBtn: React.CSSProperties = {
-  width: '100%',
-  height: 50,
-  background: '#1677ff',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 10,
-  fontSize: 15,
-  fontWeight: 700,
-  cursor: 'pointer',
-  marginTop: 4,
+  width: '100%', height: 50, background: '#1677ff', color: '#fff',
+  border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: 'pointer', marginTop: 4,
 }
 
 const retryBtn: React.CSSProperties = {
-  width: '100%',
-  height: 44,
-  background: 'transparent',
-  color: '#666',
-  border: '1.5px solid #e8e8e8',
-  borderRadius: 10,
-  fontSize: 14,
-  cursor: 'pointer',
+  width: '100%', height: 44, background: 'transparent', color: '#666',
+  border: '1.5px solid #e8e8e8', borderRadius: 10, fontSize: 14, cursor: 'pointer',
 }
