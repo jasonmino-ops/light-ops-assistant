@@ -19,9 +19,13 @@ import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { signSession } from '@/lib/session'
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
+// Dual-token HMAC: try merchant bot first, then ops bot.
+// Ops-generated bind tokens may be scanned via the ops bot Mini App, whose
+// initData is signed with OPS_BOT_TOKEN rather than TELEGRAM_BOT_TOKEN.
+const MERCHANT_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
+const OPS_BOT_TOKEN = process.env.OPS_BOT_TOKEN ?? ''
 
-function verifyInitData(initData: string): URLSearchParams | null {
+function verifyWithToken(initData: string, botToken: string): URLSearchParams | null {
   const params = new URLSearchParams(initData)
   const hash = params.get('hash')
   if (!hash) return null
@@ -30,9 +34,21 @@ function verifyInitData(initData: string): URLSearchParams | null {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${k}=${v}`)
     .join('\n')
-  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest()
+  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest()
   const expected = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
   return expected === hash ? params : null
+}
+
+function verifyInitData(initData: string): URLSearchParams | null {
+  if (!MERCHANT_BOT_TOKEN && !OPS_BOT_TOKEN) return new URLSearchParams(initData) // dev: skip
+  if (MERCHANT_BOT_TOKEN) {
+    const result = verifyWithToken(initData, MERCHANT_BOT_TOKEN)
+    if (result) return result
+  }
+  if (OPS_BOT_TOKEN && OPS_BOT_TOKEN !== MERCHANT_BOT_TOKEN) {
+    return verifyWithToken(initData, OPS_BOT_TOKEN)
+  }
+  return null
 }
 
 export async function POST(req: NextRequest) {
@@ -71,19 +87,14 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 2. Verify Telegram initData ───────────────────────────────────────────
-  let params: URLSearchParams
-  if (!BOT_TOKEN) {
-    params = new URLSearchParams(initData)
-  } else {
-    const verified = verifyInitData(initData)
-    if (!verified) {
-      return NextResponse.json(
-        { error: 'INVALID_SIGNATURE', message: 'Telegram 签名验证失败' },
-        { status: 401 },
-      )
-    }
-    params = verified
+  const verified = verifyInitData(initData)
+  if (!verified) {
+    return NextResponse.json(
+      { error: 'INVALID_SIGNATURE', message: 'Telegram 签名验证失败' },
+      { status: 401 },
+    )
   }
+  const params = verified
 
   const userStr = params.get('user')
   if (!userStr) {

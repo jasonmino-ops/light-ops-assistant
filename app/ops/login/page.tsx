@@ -1,12 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function OpsLoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // When opened via Telegram Mini App with a bind token, suppress the ops login
+  // form entirely — TelegramInit (in root layout) will redirect to /bind.
+  // This prevents customers from seeing the ops backend when they scan a
+  // merchant bind QR whose bot happens to open at the /ops path.
+  const [isTgBind, setIsTgBind] = useState(false)
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    if (tg?.initData && String(tg.initDataUnsafe?.start_param ?? '').startsWith('bind_')) {
+      setIsTgBind(true)
+    }
+  }, [])
 
   async function handleLogin(e?: React.FormEvent) {
     e?.preventDefault()
@@ -33,6 +46,15 @@ export default function OpsLoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (isTgBind) {
+    return (
+      <div style={pg}>
+        <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid #e8e8e8', borderTopColor: '#1677ff', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    )
   }
 
   return (
