@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { storeId, role, label, expiresInHours = 48, maxUses = 1 } = body
+  const { storeId, role, label, expiresInHours = 24, maxUses = 1 } = body
 
   if (!storeId) {
     return NextResponse.json({ error: 'MISSING_STORE_ID' }, { status: 400 })
@@ -60,6 +60,12 @@ export async function POST(req: NextRequest) {
 
   const token = crypto.randomBytes(20).toString('hex') // 40 hex chars
   const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000)
+
+  // Revoke any existing ACTIVE tokens for this store+role so old links are immediately invalid
+  await prisma.bindToken.updateMany({
+    where: { storeId, tenantId: ctx.tenantId, role: role as 'OWNER' | 'STAFF', status: 'ACTIVE' },
+    data: { status: 'REVOKED' },
+  })
 
   const bt = await prisma.bindToken.create({
     data: {

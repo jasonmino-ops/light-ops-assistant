@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     bt.usedCount >= bt.maxUses
   ) {
     return NextResponse.json(
-      { error: 'INVALID_TOKEN', message: '邀请码无效、已过期或已被使用' },
+      { error: 'INVALID_TOKEN', message: '邀请码无效或已失效 / លេខអញ្ជើញមិនត្រឹមត្រូវ ឬផុតកំណត់' },
       { status: 400 },
     )
   }

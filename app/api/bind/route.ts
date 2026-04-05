@@ -67,23 +67,16 @@ export async function POST(req: NextRequest) {
   // ── 1. Validate bind token ────────────────────────────────────────────────
   const bt = await prisma.bindToken.findUnique({ where: { token } })
 
+  const INVALID_MSG = '邀请码无效或已失效 / លេខអញ្ជើញមិនត្រឹមត្រូវ ឬផុតកំណត់'
+
   if (!bt || bt.status !== 'ACTIVE') {
-    return NextResponse.json(
-      { error: 'INVALID_TOKEN', message: '邀请码无效或已失效' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: 'INVALID_TOKEN', message: INVALID_MSG }, { status: 400 })
   }
   if (bt.expiresAt < new Date()) {
-    return NextResponse.json(
-      { error: 'TOKEN_EXPIRED', message: '邀请码已过期，请联系管理员重新生成' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: 'TOKEN_EXPIRED', message: INVALID_MSG }, { status: 400 })
   }
   if (bt.usedCount >= bt.maxUses) {
-    return NextResponse.json(
-      { error: 'TOKEN_EXHAUSTED', message: '邀请码已被使用，请联系管理员' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: 'TOKEN_EXHAUSTED', message: INVALID_MSG }, { status: 400 })
   }
 
   // ── 2. Verify Telegram initData ───────────────────────────────────────────

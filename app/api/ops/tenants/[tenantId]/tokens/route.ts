@@ -37,6 +37,12 @@ export async function POST(
   const token = crypto.randomBytes(20).toString('hex')
   const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000)
 
+  // Revoke any existing ACTIVE tokens for this store+role so old links are immediately invalid
+  await prisma.bindToken.updateMany({
+    where: { storeId, tenantId, role: effectiveRole as 'OWNER' | 'STAFF', status: 'ACTIVE' },
+    data: { status: 'REVOKED' },
+  })
+
   await prisma.bindToken.create({
     data: {
       token,

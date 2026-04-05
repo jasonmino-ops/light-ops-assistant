@@ -93,6 +93,12 @@ async function cmdGenCode(chatId: number, role: 'OWNER' | 'STAFF', tgId: string)
   const token = crypto.randomBytes(20).toString('hex')
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
+  // Revoke any existing ACTIVE tokens for this store+role so old links are immediately invalid
+  await prisma.bindToken.updateMany({
+    where: { storeId: ctx.store.id, tenantId: ctx.tenantId, role, status: 'ACTIVE' },
+    data: { status: 'REVOKED' },
+  })
+
   await prisma.bindToken.create({
     data: {
       token,
