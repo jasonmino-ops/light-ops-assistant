@@ -61,9 +61,13 @@ export default function TelegramInit() {
 
     // ── startapp bind token: e.g. https://t.me/bot?startapp=bind_<token> ──
     // Telegram passes the startapp value via initDataUnsafe.start_param.
-    // Navigating to /bind?token= within the same origin preserves WebApp context.
+    // Fallback: parse start_param from raw initData string in case initDataUnsafe
+    // is not yet populated (timing issue observed in some Telegram clients).
     // IMPORTANT: skip this redirect when already on /bind to avoid infinite replace loop.
-    const startParam: string = tg.initDataUnsafe?.start_param ?? ''
+    const startParam: string =
+      tg.initDataUnsafe?.start_param ||
+      new URLSearchParams(initData).get('start_param') ||
+      ''
     if (startParam.startsWith('bind_')) {
       if (!window.location.pathname.startsWith('/bind')) {
         const token = startParam.slice(5)
@@ -93,6 +97,16 @@ export default function TelegramInit() {
             window.location.reload()
           }
         } else if (body.error === 'USER_NOT_FOUND') {
+          // If a bind token is present (QR code scan), redirect to /bind instead of
+          // showing the legacy "首次登录" username overlay.
+          const sp =
+            tg.initDataUnsafe?.start_param ||
+            new URLSearchParams(initData).get('start_param') ||
+            ''
+          if (sp.startsWith('bind_') && !window.location.pathname.startsWith('/bind')) {
+            window.location.replace(`/bind?token=${encodeURIComponent(sp.slice(5))}`)
+            return
+          }
           sessionStorage.removeItem(SESSION_KEY)
           setPendingInitData(initData)
         } else {
