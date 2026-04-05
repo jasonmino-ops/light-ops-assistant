@@ -26,6 +26,7 @@ type BindState = 'idle' | 'binding' | 'error'
 
 const SESSION_KEY = 'tg-authed-uid'
 
+
 function extractTgUserId(initData: string): string | null {
   try {
     const userStr = new URLSearchParams(initData).get('user')
@@ -41,17 +42,22 @@ export default function TelegramInit() {
   const [username, setUsername] = useState('')
   const [bindState, setBindState] = useState<BindState>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
-    const isOpsRoute = window.location.pathname.startsWith('/ops')
     if (!tg?.initData) return
-
-    const authEndpoint = isOpsRoute ? '/api/auth/telegram-ops' : '/api/auth/telegram'
 
     // Request full viewport height — prevents Telegram's default half-screen mode
     tg.expand?.()
+
+    const initData: string = tg.initData
+    const tgUserId = extractTgUserId(initData)
+
+    // If this Telegram user already authed in this WebView session, skip everything
+    // (including bind redirects — prevents redirect loop after successful bind)
+    if (tgUserId && sessionStorage.getItem(SESSION_KEY) === tgUserId) return
 
     // ── startapp bind token: e.g. https://t.me/bot?startapp=bind_<token> ──
     // Telegram passes the startapp value via initDataUnsafe.start_param.
@@ -66,12 +72,6 @@ export default function TelegramInit() {
       // Already on /bind — let BindFlow handle it; skip normal auth flow entirely.
       return
     }
-
-    const initData: string = tg.initData
-    const tgUserId = extractTgUserId(initData)
-
-    // Skip only if the SAME Telegram user already authed in this WebView session
-    if (tgUserId && sessionStorage.getItem(SESSION_KEY) === tgUserId) return
 
     // /ops uses a separate bot (Mino ops) which may have a different bot token.
     // Route to the ops-specific auth endpoint to avoid INVALID_SIGNATURE errors.
@@ -96,11 +96,11 @@ export default function TelegramInit() {
           sessionStorage.removeItem(SESSION_KEY)
           setPendingInitData(initData)
         } else {
-          tg.showAlert?.(body.message ?? '登录失败，请联系管理员')
+          setAuthError(body.message ?? '登录失败，请联系管理员')
         }
       })
       .catch(() => {
-        tg.showAlert?.('网络错误，请重试')
+        setAuthError('网络错误，请重试')
       })
   }, [])
 
@@ -130,7 +130,19 @@ export default function TelegramInit() {
     }
   }
 
-  if (!pendingInitData) return null
+  if (!pendingInitData && !authError) return null
+
+  // Auth error overlay (replaces tg.showAlert to avoid Telegram-native English dialog chrome)
+  if (authError) {
+    return (
+      <div style={overlay}>
+        <div style={card}>
+          <p style={{ ...title, color: '#ff4d4f' }}>⚠ 登录失败</p>
+          <p style={{ ...hint, color: '#555' }}>{authError}</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={overlay}>

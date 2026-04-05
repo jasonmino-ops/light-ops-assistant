@@ -90,7 +90,7 @@ function BindFlow() {
           window.location.replace(body.role === 'OWNER' ? '/dashboard' : '/home')
         }, 800)
       } else {
-        setErrorMsg(body.message ?? body.error ?? t('bind.bindFailed'))
+        setErrorMsg(body.message ?? t('bind.bindFailed'))
         setState('error')
       }
     } catch {

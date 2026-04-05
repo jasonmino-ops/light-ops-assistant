@@ -40,12 +40,12 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json()
   } catch {
-    return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'INVALID_JSON', message: '请求格式错误，请重试' }, { status: 400 })
   }
 
   const { token, initData, displayName: customDisplayName } = body
   if (!token || !initData) {
-    return NextResponse.json({ error: 'MISSING_FIELDS' }, { status: 400 })
+    return NextResponse.json({ error: 'MISSING_FIELDS', message: '链接参数不完整，请重新扫码' }, { status: 400 })
   }
 
   // ── 1. Validate bind token ────────────────────────────────────────────────
@@ -87,13 +87,13 @@ export async function POST(req: NextRequest) {
 
   const userStr = params.get('user')
   if (!userStr) {
-    return NextResponse.json({ error: 'MISSING_USER' }, { status: 400 })
+    return NextResponse.json({ error: 'MISSING_USER', message: '无法获取 Telegram 用户信息，请重新打开链接' }, { status: 400 })
   }
   let tgUser: { id: number; first_name?: string; last_name?: string; username?: string }
   try {
     tgUser = JSON.parse(userStr)
   } catch {
-    return NextResponse.json({ error: 'INVALID_USER_PAYLOAD' }, { status: 400 })
+    return NextResponse.json({ error: 'INVALID_USER_PAYLOAD', message: 'Telegram 用户信息格式错误，请重试' }, { status: 400 })
   }
   const telegramId = String(tgUser.id)
 
