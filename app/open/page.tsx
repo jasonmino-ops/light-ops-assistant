@@ -79,7 +79,17 @@ function OpenFlow() {
           ownerName: ownerName.trim(),
         }),
       })
-      const body = await r.json()
+
+      // Guard: server may return non-JSON (e.g. 500 HTML) — parse defensively
+      let body: { ok?: boolean; error?: string; message?: string }
+      try {
+        body = await r.json()
+      } catch {
+        setErrorMsg(`提交失败（服务器错误 ${r.status}），请稍后重试`)
+        setState('error')
+        return
+      }
+
       if (body.ok) {
         setState('success')
       } else if (body.error === 'ALREADY_BOUND') {

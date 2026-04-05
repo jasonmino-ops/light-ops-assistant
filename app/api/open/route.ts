@@ -82,15 +82,23 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 3. Create PENDING application ─────────────────────────────────────────
-  await prisma.storeApplication.create({
-    data: {
-      storeName: storeName.trim(),
-      ownerName: ownerName.trim(),
-      telegramId,
-      telegramUsername: tgUser.username ?? null,
-      status: 'PENDING',
-    },
-  })
+  try {
+    await prisma.storeApplication.create({
+      data: {
+        storeName: storeName.trim(),
+        ownerName: ownerName.trim(),
+        telegramId,
+        telegramUsername: tgUser.username ?? null,
+        status: 'PENDING',
+      },
+    })
+  } catch (err) {
+    console.error('[/api/open] DB error:', err)
+    return NextResponse.json(
+      { error: 'DB_ERROR', message: '服务暂时不可用，请稍后重试（数据库写入失败）' },
+      { status: 500 },
+    )
+  }
 
   return NextResponse.json({ ok: true })
 }
