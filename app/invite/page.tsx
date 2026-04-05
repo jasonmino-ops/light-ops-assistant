@@ -38,6 +38,8 @@ function fmtExpiry(iso: string) {
 export default function InvitePage() {
   const [stores, setStores] = useState<Store[]>([])
   const [storeId, setStoreId] = useState('')
+  const [storesLoading, setStoresLoading] = useState(true)
+  const [storesError, setStoresError] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<BindTokenResult | null>(null)
   const [genError, setGenError] = useState('')
@@ -54,13 +56,23 @@ export default function InvitePage() {
   }, [])
 
   useEffect(() => {
+    setStoresLoading(true)
+    setStoresError('')
     apiFetch('/api/stores', undefined, OWNER_CTX)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((list: Store[]) => {
-        setStores(list)
-        if (list.length > 0) setStoreId(list[0].id)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
       })
-      .catch(() => {})
+      .then((list: Store[]) => {
+        if (list.length === 0) {
+          setStoresError('未找到门店信息，请联系管理员')
+        } else {
+          setStores(list)
+          setStoreId(list[0].id)
+        }
+      })
+      .catch(() => setStoresError('加载门店信息失败，请刷新重试'))
+      .finally(() => setStoresLoading(false))
     loadMembers()
   }, [loadMembers])
 
@@ -136,29 +148,30 @@ export default function InvitePage() {
               </div>
             )}
 
+            {storesError && <div style={s.errorMsg}>{storesError}</div>}
             {genError && <div style={s.errorMsg}>{genError}</div>}
 
             <div style={s.actionRow}>
               <button
-                style={{ ...s.ownerBtn, opacity: loading ? 0.6 : 1 }}
+                style={{ ...s.ownerBtn, opacity: (storesLoading || !storeId || loading) ? 0.4 : 1 }}
                 onClick={() => generate('OWNER')}
-                disabled={loading || !storeId}
+                disabled={storesLoading || !storeId || loading}
               >
                 <span style={s.btnIcon}>🏪</span>
                 <span style={s.btnText}>
                   <span style={s.btnLabel}>老板开通码</span>
-                  <span style={s.btnSub}>用于新增商户</span>
+                  <span style={s.btnSub}>{storesLoading ? '加载中…' : '用于新增商户'}</span>
                 </span>
               </button>
               <button
-                style={{ ...s.staffBtn, opacity: loading ? 0.6 : 1 }}
+                style={{ ...s.staffBtn, opacity: (storesLoading || !storeId || loading) ? 0.4 : 1 }}
                 onClick={() => generate('STAFF')}
-                disabled={loading || !storeId}
+                disabled={storesLoading || !storeId || loading}
               >
                 <span style={s.btnIcon}>👤</span>
                 <span style={s.btnText}>
                   <span style={s.btnLabel}>员工绑定码</span>
-                  <span style={s.btnSub}>用于邀请员工</span>
+                  <span style={s.btnSub}>{storesLoading ? '加载中…' : '用于邀请员工'}</span>
                 </span>
               </button>
             </div>
