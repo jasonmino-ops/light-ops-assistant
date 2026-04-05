@@ -110,10 +110,34 @@ export default function InvitePage() {
 
   function copyLink() {
     if (!result?.tgLink) return
-    navigator.clipboard.writeText(result.tgLink).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+    const text = result.tgLink
+
+    // Clipboard API may be unavailable in some Android WebViews — fall back to execCommand
+    const doFallback = () => {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      try {
+        document.execCommand('copy')
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } catch {
+        // Copy failed silently — button stays unchanged, user can long-press to copy manually
+      }
+      document.body.removeChild(ta)
+    }
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }).catch(doFallback)
+    } else {
+      doFallback()
+    }
   }
 
   function reset() {
