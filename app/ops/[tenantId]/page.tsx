@@ -31,6 +31,12 @@ const TIER_META: Record<string, { label: string; color: string; bg: string; bord
 
 type GenResult = { token: string; role: string; storeName: string; expiresAt: string; tgLink: string | null }
 
+type BizOverview = { saleAmount: number; saleCount: number; refundAmount: number; refundCount: number; netAmount: number }
+type BizProduct  = { name: string; spec: string | null; qty: number; amount: number }
+type BizRecord   = { id: string; createdAt: string; saleType: string; productName: string; spec: string | null; qty: number; lineAmount: number; storeName: string; operator: string; orderNo: string | null }
+type BizStaff    = { displayName: string; saleCount: number; saleAmount: number }
+type BizData     = { days: number; overview: BizOverview; topProducts: BizProduct[]; recentRecords: BizRecord[]; staffStats: BizStaff[]; productCount: number }
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TenantDetailPage() {
@@ -114,6 +120,11 @@ export default function TenantDetailPage() {
               color="#888"
             />
           </div>
+        </Section>
+
+        {/* Business data — read-only ops view */}
+        <Section title="经营数据（只读）">
+          <BizDataPanel tenantId={detail.id} />
         </Section>
 
         {/* Bind code generator */}
@@ -329,6 +340,144 @@ function LifecyclePanel({ tenantId, currentStatus, onChanged }: { tenantId: stri
         </div>
       )}
       {err && <div style={s.errMsg}>{err}</div>}
+    </div>
+  )
+}
+
+// ─── BizDataPanel ────────────────────────────────────────────────────────────
+
+function BizDataPanel({ tenantId }: { tenantId: string }) {
+  const [data, setData] = useState<BizData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [days, setDays] = useState(7)
+
+  async function load(d = days) {
+    setLoading(true)
+    setErr(null)
+    try {
+      const r = await apiFetch(`/api/ops/tenants/${tenantId}/bizview?days=${d}`, undefined, OWNER_CTX)
+      if (r.ok) setData(await r.json())
+      else setErr('加载失败')
+    } catch {
+      setErr('网络错误')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [tenantId])
+
+  function switchDays(d: number) {
+    setDays(d)
+    load(d)
+  }
+
+  if (loading && !data) return <div style={{ color: '#bbb', fontSize: 13, padding: '12px 0' }}>加载中…</div>
+  if (err && !data) return <div style={{ color: '#ff4d4f', fontSize: 13 }}>{err}</div>
+  if (!data) return null
+
+  const ov = data.overview
+  const fmtAmt = (n: number) => `¥${n.toFixed(2)}`
+  const fmtTime = (iso: string) =>
+    new Date(iso).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <div>
+      {/* Day toggle */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        {[7, 30].map((d) => (
+          <button key={d} onClick={() => switchDays(d)} style={{
+            height: 26, padding: '0 12px', fontSize: 12, borderRadius: 13, cursor: 'pointer',
+            border: `1.5px solid ${days === d ? '#1677ff' : '#e8e8e8'}`,
+            background: days === d ? '#e6f4ff' : '#fff',
+            color: days === d ? '#1677ff' : '#888',
+            fontWeight: days === d ? 700 : 400,
+          }}>最近 {d} 天</button>
+        ))}
+        <span style={{ fontSize: 12, color: '#bbb', lineHeight: '26px', marginLeft: 4 }}>共 {data.productCount} 个在售商品</span>
+      </div>
+
+      {/* Overview */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6, marginBottom: 14 }}>
+        {[
+          { label: '销售额', value: fmtAmt(ov.saleAmount), color: '#52c41a' },
+          { label: '销售单数', value: String(ov.saleCount), color: '#1677ff' },
+          { label: '退款额', value: fmtAmt(ov.refundAmount), color: ov.refundCount > 0 ? '#ff4d4f' : '#bbb' },
+          { label: '退款次数', value: String(ov.refundCount), color: ov.refundCount > 0 ? '#ff4d4f' : '#bbb' },
+          { label: '净收入', value: fmtAmt(ov.netAmount), color: '#722ed1' },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color }}>{value}</div>
+            <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Top products */}
+      {data.topProducts.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={s.bizSubTitle}>热销商品 Top {data.topProducts.length}</div>
+          <table style={s.bizTable}>
+            <thead><tr>{['商品', '规格', '数量', '销售额'].map(h => <th key={h} style={s.bizTh}>{h}</th>)}</tr></thead>
+            <tbody>
+              {data.topProducts.map((p, i) => (
+                <tr key={i}>
+                  <td style={s.bizTd}>{p.name}</td>
+                  <td style={s.bizTd}>{p.spec ?? '—'}</td>
+                  <td style={s.bizTd}>{p.qty}</td>
+                  <td style={s.bizTd}>{fmtAmt(p.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Staff stats */}
+      {data.staffStats.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={s.bizSubTitle}>员工销售表现</div>
+          <table style={s.bizTable}>
+            <thead><tr>{['员工', '销售单数', '销售额'].map(h => <th key={h} style={s.bizTh}>{h}</th>)}</tr></thead>
+            <tbody>
+              {data.staffStats.map((st, i) => (
+                <tr key={i}>
+                  <td style={s.bizTd}>{st.displayName}</td>
+                  <td style={s.bizTd}>{st.saleCount}</td>
+                  <td style={s.bizTd}>{fmtAmt(st.saleAmount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Recent records */}
+      <div>
+        <div style={s.bizSubTitle}>最近记录（最新 {data.recentRecords.length} 条）</div>
+        {data.recentRecords.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#bbb', padding: '8px 0' }}>暂无记录</div>
+        ) : (
+          <table style={s.bizTable}>
+            <thead><tr>{['时间', '类型', '商品', '数量', '金额', '店员'].map(h => <th key={h} style={s.bizTh}>{h}</th>)}</tr></thead>
+            <tbody>
+              {data.recentRecords.map((r) => (
+                <tr key={r.id}>
+                  <td style={s.bizTd}>{fmtTime(r.createdAt)}</td>
+                  <td style={{ ...s.bizTd, color: r.saleType === 'SALE' ? '#52c41a' : '#ff4d4f', fontWeight: 600 }}>
+                    {r.saleType === 'SALE' ? '销售' : '退款'}
+                  </td>
+                  <td style={s.bizTd}>{r.productName}{r.spec ? ` · ${r.spec}` : ''}</td>
+                  <td style={s.bizTd}>{r.qty}</td>
+                  <td style={s.bizTd}>{fmtAmt(Math.abs(r.lineAmount))}</td>
+                  <td style={s.bizTd}>{r.operator}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
@@ -617,6 +766,10 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12, fontWeight: 600, cursor: 'pointer', background: '#f0f7ff', color: '#1677ff',
   },
   emptyHint: { fontSize: 13, color: '#bbb', textAlign: 'center', padding: '16px 0' },
+  bizSubTitle: { fontSize: 12, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase' as const, letterSpacing: '0.04em', marginBottom: 6 },
+  bizTable: { width: '100%', borderCollapse: 'collapse' as const, fontSize: 12 },
+  bizTh: { textAlign: 'left' as const, padding: '4px 8px', color: '#aaa', fontWeight: 600, borderBottom: '1px solid #f0f0f0' },
+  bizTd: { padding: '5px 8px', borderBottom: '1px solid #f5f5f5', color: '#333', verticalAlign: 'top' as const },
   center: {
     minHeight: '100vh', display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center', gap: 12, background: '#f0f2f5',
