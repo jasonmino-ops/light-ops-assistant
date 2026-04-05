@@ -67,25 +67,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'MISSING_INIT_DATA' }, { status: 400 })
     }
 
-    // ── HMAC verification: try OPS_BOT_TOKEN first, then TELEGRAM_BOT_TOKEN ─
+    // ── HMAC verification ──────────────────────────────────────────────────────
+    // Strict separation: when OPS_BOT_TOKEN (mino_ops_admin_bot) is configured,
+    // ONLY accept initData signed by that bot — no fallback to the merchant bot token.
+    // This prevents merchant-bot users from accidentally authenticating to the ops endpoint.
+    //
+    // Single-bot / dev mode: if OPS_BOT_TOKEN is not set, fall back to TELEGRAM_BOT_TOKEN.
     const opsToken = process.env.OPS_BOT_TOKEN?.trim()
     const tgToken = process.env.TELEGRAM_BOT_TOKEN?.trim()
 
     if (!opsToken && !tgToken) {
       return NextResponse.json({
         ok: false, error: 'MISSING_BOT_TOKEN',
-        message: '未配置 OPS_BOT_TOKEN 或 TELEGRAM_BOT_TOKEN，请在 Vercel 环境变量中设置',
+        message: '未配置 OPS_BOT_TOKEN（mino_ops_admin_bot token），请在 Vercel 环境变量中设置',
       }, { status: 500 })
     }
 
-    const valid =
-      (opsToken ? verifyTelegramWebAppData(initData, opsToken) : false) ||
-      (tgToken  ? verifyTelegramWebAppData(initData, tgToken)  : false)
+    // If OPS_BOT_TOKEN is set → strict: only accept ops bot initData
+    // If OPS_BOT_TOKEN is not set → fall back to TELEGRAM_BOT_TOKEN (dev / single-bot mode)
+    const valid = opsToken
+      ? verifyTelegramWebAppData(initData, opsToken)
+      : (tgToken ? verifyTelegramWebAppData(initData, tgToken) : false)
 
     if (!valid) {
       return NextResponse.json({
         ok: false, error: 'OPS_INITDATA_INVALID',
-        message: 'Telegram 签名验证失败，请确认 OPS_BOT_TOKEN 与 ops bot 的 token 一致',
+        message: 'Telegram 签名验证失败，请确认使用的是 mino_ops_admin_bot 打开的页面，且 OPS_BOT_TOKEN 与该 bot token 一致',
       }, { status: 401 })
     }
 
