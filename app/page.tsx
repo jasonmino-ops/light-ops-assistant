@@ -19,5 +19,5 @@ export default async function Root() {
   const sessionRole = sessionToken ? verifySession(sessionToken)?.role : undefined
   const role = sessionRole ?? process.env.DEV_ROLE ?? 'STAFF'
 
-  redirect(role === 'OWNER' ? '/dashboard' : '/home')
+  redirect('/home')
 }

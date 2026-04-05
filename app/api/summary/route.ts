@@ -63,7 +63,10 @@ export async function GET(req: NextRequest) {
 
   // ── Summary-table fast path ───────────────────────────────────────────────
   // Only for single-day non-staff queries (GLOBAL or STORE dimension).
+  // Wrapped in try/catch: if the summary tables don't exist yet (P2021),
+  // fall through silently to the raw-query path below.
   if (dateFrom === dateTo && !operatorUserId) {
+    try {
     const summaryDate = dateFrom
     const row = storeId
       ? await prisma.storeDailySummary.findUnique({
@@ -101,6 +104,9 @@ export async function GET(req: NextRequest) {
       })
     }
     // summary missing for this date → fall through to raw queries below
+    } catch {
+      // Summary tables don't exist yet (P2021) — fall through to raw queries
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

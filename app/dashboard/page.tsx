@@ -86,11 +86,12 @@ export default function DashboardPage() {
         if (dim === 'STAFF') params.set('operatorUserId', uid)
 
         const res = await apiFetch(`/api/summary?${params}`, undefined, OWNER_CTX)
-        const body = await res.json()
-        if (res.ok) {
+        let body: any
+        try { body = await res.json() } catch { body = null }
+        if (res.ok && body) {
           setResult(body)
         } else {
-          setError(body.message ?? t('dashboard.loadFailed'))
+          setError(body?.message ?? t('dashboard.loadFailed'))
         }
       } catch {
         setError(t('common.networkError'))
