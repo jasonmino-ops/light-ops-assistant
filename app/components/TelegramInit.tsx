@@ -60,11 +60,18 @@ export default function TelegramInit() {
     if (tgUserId && sessionStorage.getItem(SESSION_KEY) === tgUserId) return
 
     // ── startapp bind token: e.g. https://t.me/bot?startapp=bind_<token> ──
-    // Telegram passes the startapp value via initDataUnsafe.start_param.
-    // Fallback: parse start_param from raw initData string in case initDataUnsafe
-    // is not yet populated (timing issue observed in some Telegram clients).
+    //
+    // Read start_param from all sources, most-reliable first:
+    //  1. URL hash tgWebAppStartParam — Telegram writes this directly into the Mini App
+    //     URL hash before the JS SDK initialises, making it the most reliable source.
+    //     Format: #tgWebAppData=...&tgWebAppStartParam=bind_<token>&...
+    //  2. initDataUnsafe.start_param — parsed by Telegram JS SDK (may have timing lag)
+    //  3. raw initData query string   — fallback for SDK parse timing issues
+    //
     // IMPORTANT: skip this redirect when already on /bind to avoid infinite replace loop.
+    const hashParams = new URLSearchParams(window.location.hash.slice(1))
     const startParam: string =
+      hashParams.get('tgWebAppStartParam') ||
       tg.initDataUnsafe?.start_param ||
       new URLSearchParams(initData).get('start_param') ||
       ''
@@ -99,7 +106,9 @@ export default function TelegramInit() {
         } else if (body.error === 'USER_NOT_FOUND') {
           // If a bind token is present (QR code scan), redirect to /bind instead of
           // showing the legacy "首次登录" username overlay.
+          // Use the same three-source priority as the early startParam check above.
           const sp =
+            new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam') ||
             tg.initDataUnsafe?.start_param ||
             new URLSearchParams(initData).get('start_param') ||
             ''

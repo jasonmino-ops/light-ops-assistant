@@ -199,7 +199,13 @@ async function cmdUnbind(chatId: number, targetId: string, tgId: string) {
     return
   }
 
-  await prisma.user.update({ where: { id: targetId }, data: { telegramId: null } })
+  // Follow the same unbind rules as the API routes: clear telegramId, mark user
+  // DISABLED, and revoke all store roles so the old session cookie is immediately
+  // invalidated. The user record is preserved for audit history.
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: targetId }, data: { telegramId: null, status: 'DISABLED' } }),
+    prisma.userStoreRole.updateMany({ where: { userId: targetId }, data: { status: 'DISABLED' } }),
+  ])
   await sendText(
     chatId,
     `✅ 已解绑 <b>${target.displayName || target.username}</b> 的 Telegram 账号。\n他们可重新扫码绑定。`,
