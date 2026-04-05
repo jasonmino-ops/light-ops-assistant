@@ -49,6 +49,9 @@ export async function POST(
     },
   })
 
+  // TELEGRAM_BOT_USERNAME must be the MERCHANT bot username (e.g. qingdianboss_bot),
+  // NOT the ops bot. The customer scans this QR to open the merchant Mini App,
+  // which then routes them to /bind?token= via TelegramInit start_param handling.
   const botUsername = process.env.TELEGRAM_BOT_USERNAME ?? ''
   const tgLink = botUsername ? `https://t.me/${botUsername}?startapp=bind_${token}` : null
 

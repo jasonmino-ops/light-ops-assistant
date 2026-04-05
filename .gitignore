@@ -1,5 +1,11 @@
 node_modules/
 .env
 .env.local
+.env.bak
+.env*.bak
 .next/
 /generated/prisma
+# local debug / diagnostic scripts
+quick_diagnose*.sh
+quick_diagnose*.txt
+fix_owner_bind*.sh

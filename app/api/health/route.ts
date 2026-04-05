@@ -57,11 +57,25 @@ export async function GET(req: NextRequest) {
     checks.push({ key: 'tenant_id', name: 'TENANT_ID', status: 'PASS', detail: tenantId })
   }
 
-  // ── 4. ENV: TELEGRAM_BOT_USERNAME ─────────────────────────────────────────
+  // ── 4. ENV: TELEGRAM_BOT_USERNAME (merchant bot) ──────────────────────────
+  // Must be the MERCHANT bot username (@qingdianboss_bot or similar), NOT the ops bot.
   if (!process.env.TELEGRAM_BOT_USERNAME) {
-    checks.push({ key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME', status: 'WARN', detail: '未配置，无法生成 tgLink 和二维码' })
+    checks.push({ key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME（商户bot）', status: 'WARN', detail: '未配置，无法生成绑定二维码链接' })
   } else {
-    checks.push({ key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME', status: 'PASS', detail: `@${process.env.TELEGRAM_BOT_USERNAME}` })
+    checks.push({ key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME（商户bot）', status: 'PASS', detail: `@${process.env.TELEGRAM_BOT_USERNAME}` })
+  }
+
+  // ── 4b. ENV: OPS_BOT_TOKEN — must differ from TELEGRAM_BOT_TOKEN ──────────
+  // Ops bot and merchant bot must be separate bots with separate tokens.
+  // If OPS_BOT_TOKEN is not set, ops auth falls back to TELEGRAM_BOT_TOKEN (shared bot mode).
+  const opsBotToken = process.env.OPS_BOT_TOKEN?.trim() ?? ''
+  const merchantBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? ''
+  if (!opsBotToken) {
+    checks.push({ key: 'ops_bot_token', name: 'OPS_BOT_TOKEN（运营bot）', status: 'WARN', detail: '未配置，ops 验签回退到商户 bot token（单 bot 模式）' })
+  } else if (opsBotToken === merchantBotToken) {
+    checks.push({ key: 'ops_bot_token', name: 'OPS_BOT_TOKEN（运营bot）', status: 'WARN', detail: '与 TELEGRAM_BOT_TOKEN 相同 — 商户 bot 与 ops bot 共用同一个 token，建议分开' })
+  } else {
+    checks.push({ key: 'ops_bot_token', name: 'OPS_BOT_TOKEN（运营bot）', status: 'PASS', detail: '已配置，与商户 bot token 不同 ✓' })
   }
 
   // ── 5. Auth context ────────────────────────────────────────────────────────
