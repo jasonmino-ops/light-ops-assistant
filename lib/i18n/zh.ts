@@ -11,6 +11,9 @@ const zh = {
     loginFailed: '登录失败',
     tenantInactive: '该商户已停用，请联系管理员',
     tenantInactiveHint: '3 秒后自动跳转…',
+    sessionExpired: '登录已过期，请通过 Telegram 重新打开',
+    sessionExpiredHint: '点击下方按钮，在 Telegram 中重新进入',
+    openInTelegram: '通过 Telegram 打开',
   },
   home: {
     todaySummary: '今日汇总',

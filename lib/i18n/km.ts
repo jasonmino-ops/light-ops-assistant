@@ -11,6 +11,9 @@ const km = {
     loginFailed: 'ការចូលបានបរាជ័យ',
     tenantInactive: 'ហាងត្រូវបានបិទ សូមទាក់ទងអ្នករដ្ឋបាល',
     tenantInactiveHint: 'នឹងប្តូរទៅទំព័រដំបូងក្នុង 3 វិនាទី…',
+    sessionExpired: 'វគ្គបានផុតកំណត់ សូមបើកឡើងវិញតាម Telegram',
+    sessionExpiredHint: 'ចុចប៊ូតុងខាងក្រោម ដើម្បីបើកក្នុង Telegram',
+    openInTelegram: 'បើកតាម Telegram',
   },
   home: {
     todaySummary: 'សង្ខេបថ្ងៃនេះ',
