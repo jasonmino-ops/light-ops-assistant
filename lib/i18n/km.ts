@@ -9,6 +9,8 @@ const km = {
     submitting: 'កំពុងដាក់ស្នើ…',
     loadFailed: 'ផ្ទុកបានបរាជ័យ សូមផ្ទុកឡើងវិញ',
     loginFailed: 'ការចូលបានបរាជ័យ',
+    tenantInactive: 'ហាងត្រូវបានបិទ សូមទាក់ទងអ្នករដ្ឋបាល',
+    tenantInactiveHint: 'នឹងប្តូរទៅទំព័រដំបូងក្នុង 3 វិនាទី…',
   },
   home: {
     todaySummary: 'សង្ខេបថ្ងៃនេះ',

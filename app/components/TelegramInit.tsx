@@ -39,6 +39,7 @@ function extractTgUserId(initData: string): string | null {
 
 export default function TelegramInit() {
   const [authError, setAuthError] = useState('')
+  const [tenantInactive, setTenantInactive] = useState(false)
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -132,6 +133,11 @@ export default function TelegramInit() {
           // Default: send to unified entry page.
           sessionStorage.removeItem(SESSION_KEY)
           window.location.replace('/start')
+        } else if (body.error === 'TENANT_INACTIVE') {
+          // Clear session so next open re-auth and sees the same message, then → /start
+          sessionStorage.removeItem(SESSION_KEY)
+          setTenantInactive(true)
+          setTimeout(() => window.location.replace('/start'), 3000)
         } else {
           setAuthError(body.message ?? '登录失败，请联系管理员')
         }
@@ -141,7 +147,26 @@ export default function TelegramInit() {
       })
   }, [])
 
-  if (!authError) return null
+  if (!authError && !tenantInactive) return null
+
+  if (tenantInactive) {
+    return (
+      <div style={overlay}>
+        <div style={card}>
+          <p style={{ ...title, color: '#fa8c16' }}>
+            ⚠ {zh.common.tenantInactive}
+            <br />
+            <span style={{ fontSize: '0.85em', opacity: 0.72 }}>{km.common.tenantInactive}</span>
+          </p>
+          <p style={hint}>
+            {zh.common.tenantInactiveHint}
+            <br />
+            <span style={{ fontSize: '0.85em', opacity: 0.72 }}>{km.common.tenantInactiveHint}</span>
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   // Auth error overlay (replaces tg.showAlert to avoid Telegram-native English dialog chrome)
   return (

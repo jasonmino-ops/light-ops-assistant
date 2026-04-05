@@ -9,6 +9,8 @@ const zh = {
     submitting: '提交中…',
     loadFailed: '加载失败，请刷新重试',
     loginFailed: '登录失败',
+    tenantInactive: '该商户已停用，请联系管理员',
+    tenantInactiveHint: '3 秒后自动跳转…',
   },
   home: {
     todaySummary: '今日汇总',
