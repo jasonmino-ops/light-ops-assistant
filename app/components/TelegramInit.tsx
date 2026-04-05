@@ -14,18 +14,16 @@ import { useEffect, useState } from 'react'
  *  2. Compare to sessionStorage key — skip if same user already authed
  *  3. Call POST /api/auth/telegram → cookie set → reload once
  *
- * First-time binding (USER_NOT_FOUND):
- *  - Clear sessionStorage guard
- *  - Show username input overlay
- *  - POST /api/auth/bind → cookie set → reload
+ * First-time / unbound user (USER_NOT_FOUND):
+ *  - startParam = bind_<token>  → /bind?token=<token>
+ *  - startParam = open          → /open
+ *  - no startParam              → /start  (unified onboarding entry)
+ *  - already on /start, /open, /bind → no-op (page handles its own flow)
  *
  * No-op when not inside Telegram WebApp.
  */
 
-type BindState = 'idle' | 'binding' | 'error'
-
 const SESSION_KEY = 'tg-authed-uid'
-
 
 function extractTgUserId(initData: string): string | null {
   try {
@@ -38,10 +36,6 @@ function extractTgUserId(initData: string): string | null {
 }
 
 export default function TelegramInit() {
-  const [pendingInitData, setPendingInitData] = useState<string | null>(null)
-  const [username, setUsername] = useState('')
-  const [bindState, setBindState] = useState<BindState>('idle')
-  const [errorMsg, setErrorMsg] = useState('')
   const [authError, setAuthError] = useState('')
 
   useEffect(() => {
@@ -104,8 +98,7 @@ export default function TelegramInit() {
             window.location.reload()
           }
         } else if (body.error === 'USER_NOT_FOUND') {
-          // Route to the correct onboarding page based on start_param.
-          // Use the same three-source priority as the early startParam check above.
+          // Use same three-source priority for start_param.
           const sp =
             new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam') ||
             tg.initDataUnsafe?.start_param ||
@@ -124,8 +117,13 @@ export default function TelegramInit() {
             return
           }
 
+          // Already on an onboarding page — let it handle its own flow, do not interfere.
+          const onboardingPaths = ['/start', '/open', '/bind']
+          if (onboardingPaths.some((p) => window.location.pathname.startsWith(p))) return
+
+          // Default: send to unified entry page.
           sessionStorage.removeItem(SESSION_KEY)
-          setPendingInitData(initData)
+          window.location.replace('/start')
         } else {
           setAuthError(body.message ?? '登录失败，请联系管理员')
         }
@@ -135,69 +133,14 @@ export default function TelegramInit() {
       })
   }, [])
 
-  async function handleBind() {
-    if (!pendingInitData || !username.trim()) return
-    setBindState('binding')
-    setErrorMsg('')
-
-    try {
-      const r = await fetch('/api/auth/bind', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData: pendingInitData, username: username.trim() }),
-      })
-      const body = await r.json()
-      if (body.ok) {
-        const tgUserId = extractTgUserId(pendingInitData)
-        sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
-        window.location.reload()
-      } else {
-        setErrorMsg(body.message ?? '绑定失败，请检查用户名')
-        setBindState('error')
-      }
-    } catch {
-      setErrorMsg('网络错误，请重试')
-      setBindState('error')
-    }
-  }
-
-  if (!pendingInitData && !authError) return null
+  if (!authError) return null
 
   // Auth error overlay (replaces tg.showAlert to avoid Telegram-native English dialog chrome)
-  if (authError) {
-    return (
-      <div style={overlay}>
-        <div style={card}>
-          <p style={{ ...title, color: '#ff4d4f' }}>⚠ 登录失败</p>
-          <p style={{ ...hint, color: '#555' }}>{authError}</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div style={overlay}>
       <div style={card}>
-        <p style={title}>首次登录，请绑定账号</p>
-        <p style={hint}>输入管理员分配给你的用户名</p>
-        <input
-          style={input}
-          type="text"
-          placeholder="用户名（如 boss / staff_a）"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleBind()}
-          autoCapitalize="none"
-          autoComplete="off"
-        />
-        {errorMsg && <p style={errStyle}>{errorMsg}</p>}
-        <button
-          style={{ ...btn, opacity: bindState === 'binding' ? 0.6 : 1 }}
-          onClick={handleBind}
-          disabled={bindState === 'binding'}
-        >
-          {bindState === 'binding' ? '绑定中…' : '确认绑定'}
-        </button>
+        <p style={{ ...title, color: '#ff4d4f' }}>⚠ 登录失败</p>
+        <p style={hint}>{authError}</p>
       </div>
     </div>
   )
@@ -236,32 +179,4 @@ const hint: React.CSSProperties = {
   fontSize: 13,
   color: '#888',
   textAlign: 'center',
-}
-
-const input: React.CSSProperties = {
-  border: '1px solid #d9d9d9',
-  borderRadius: 8,
-  padding: '10px 12px',
-  fontSize: 15,
-  outline: 'none',
-  width: '100%',
-  boxSizing: 'border-box',
-}
-
-const errStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 13,
-  color: '#ff4d4f',
-  textAlign: 'center',
-}
-
-const btn: React.CSSProperties = {
-  background: '#1677ff',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 8,
-  padding: '12px 0',
-  fontSize: 15,
-  fontWeight: 600,
-  cursor: 'pointer',
 }
