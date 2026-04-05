@@ -96,6 +96,12 @@ export default function TelegramInit() {
           sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
           if (window.location.pathname.startsWith('/ops')) {
             window.location.href = '/ops'
+          } else if (
+            window.location.pathname.startsWith('/start') ||
+            window.location.pathname.startsWith('/open')
+          ) {
+            // Auth succeeded but user is on an onboarding page — send them home.
+            window.location.replace('/home')
           } else {
             window.location.reload()
           }
