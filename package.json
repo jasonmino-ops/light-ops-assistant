@@ -5,9 +5,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma migrate deploy && next build",
+    "build": "next build",
     "start": "next start",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "migrate:prod": "DATABASE_URL=$DIRECT_URL prisma migrate deploy"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
