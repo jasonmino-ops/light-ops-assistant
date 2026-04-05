@@ -2,6 +2,8 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import zh from '@/lib/i18n/zh'
+import km from '@/lib/i18n/km'
 
 /**
  * /open
@@ -13,6 +15,16 @@ import { useSearchParams } from 'next/navigation'
  * TelegramInit detects start_param === 'open' for unbound users
  * and redirects here. Already-bound users bypass this page via normal auth.
  */
+
+function bi(zhStr: string, kmStr: string) {
+  return (
+    <>
+      {zhStr}
+      <br />
+      <span style={{ fontSize: '0.85em', opacity: 0.72 }}>{kmStr}</span>
+    </>
+  )
+}
 
 type OpenState = 'form' | 'submitting' | 'success' | 'error' | 'no_tg' | 'already_bound'
 
@@ -108,16 +120,16 @@ function OpenFlow() {
       {(state === 'form' || state === 'submitting') && (
         <>
           <div style={shopIcon}>🏪</div>
-          <p style={titleStyle}>开通店铺</p>
+          <p style={titleStyle}>{bi(zh.open.title, km.open.title)}</p>
 
           <div style={fieldGroup}>
-            <label style={fieldLabel}>店铺名称 *</label>
+            <label style={fieldLabel}>{bi(zh.open.fieldStoreName, km.open.fieldStoreName)}</label>
             <input
               style={inputStyle}
               type="text"
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
-              placeholder="顾客看到的店铺名称"
+              placeholder={zh.open.storeNamePlaceholder}
               maxLength={40}
               disabled={state === 'submitting'}
               autoFocus
@@ -125,26 +137,26 @@ function OpenFlow() {
           </div>
 
           <div style={fieldGroup}>
-            <label style={fieldLabel}>老板姓名 *</label>
+            <label style={fieldLabel}>{bi(zh.open.fieldOwnerName, km.open.fieldOwnerName)}</label>
             <input
               style={inputStyle}
               type="text"
               value={ownerName}
               onChange={(e) => setOwnerName(e.target.value)}
-              placeholder="您的姓名"
+              placeholder={zh.open.ownerNamePlaceholder}
               maxLength={40}
               disabled={state === 'submitting'}
             />
           </div>
 
           <div style={fieldGroup}>
-            <label style={fieldLabel}>开通验证码 *</label>
+            <label style={fieldLabel}>{bi(zh.open.fieldVerifyCode, km.open.fieldVerifyCode)}</label>
             <input
               style={inputStyle}
               type="text"
               value={verifyCode}
               onChange={(e) => setVerifyCode(e.target.value)}
-              placeholder="请联系管理员获取"
+              placeholder={zh.open.verifyCodePlaceholder}
               maxLength={20}
               disabled={state === 'submitting'}
               autoComplete="off"
@@ -156,7 +168,9 @@ function OpenFlow() {
             onClick={handleSubmit}
             disabled={!canSubmit || state === 'submitting'}
           >
-            {state === 'submitting' ? '开通中…' : '立即开通'}
+            {state === 'submitting'
+              ? bi(zh.open.submitting, km.open.submitting)
+              : bi(zh.open.submit, km.open.submit)}
           </button>
         </>
       )}
@@ -164,7 +178,9 @@ function OpenFlow() {
       {state === 'success' && (
         <>
           <div style={checkIcon}>✓</div>
-          <p style={{ ...msgStyle, color: '#52c41a', fontWeight: 700 }}>开通成功！正在跳转…</p>
+          <p style={{ ...msgStyle, color: '#52c41a', fontWeight: 700 }}>
+            {bi(zh.open.success, km.open.success)}
+          </p>
         </>
       )}
 
@@ -172,7 +188,9 @@ function OpenFlow() {
         <>
           <div style={errIconStyle}>✕</div>
           <p style={{ ...msgStyle, color: '#ff4d4f' }}>{errorMsg}</p>
-          <button style={retryBtn} onClick={() => setState('form')}>重试</button>
+          <button style={retryBtn} onClick={() => setState('form')}>
+            {bi(zh.open.retry, km.open.retry)}
+          </button>
         </>
       )}
 
@@ -180,15 +198,19 @@ function OpenFlow() {
         <>
           <div style={warnIconStyle}>⚠</div>
           <p style={{ ...msgStyle, color: '#fa8c16' }}>{errorMsg}</p>
-          <button style={retryBtn} onClick={() => window.location.replace('/home')}>进入我的账号</button>
+          <button style={retryBtn} onClick={() => window.location.replace('/home')}>
+            {bi(zh.open.enterAccount, km.open.enterAccount)}
+          </button>
         </>
       )}
 
       {state === 'no_tg' && (
         <>
           <div style={warnIconStyle}>⚠</div>
-          <p style={{ ...msgStyle, color: '#fa8c16' }}>请在 Telegram 中打开此链接</p>
-          <p style={hintStyle}>扫描管理员提供的二维码进入</p>
+          <p style={{ ...msgStyle, color: '#fa8c16' }}>
+            {bi(zh.open.noTg, km.open.noTg)}
+          </p>
+          <p style={hintStyle}>{bi(zh.open.noTgHint, km.open.noTgHint)}</p>
         </>
       )}
     </div>
@@ -198,7 +220,7 @@ function OpenFlow() {
 export default function OpenPage() {
   return (
     <div style={pg}>
-      <Suspense fallback={<div style={card}><p style={msgStyle}>加载中…</p></div>}>
+      <Suspense fallback={<div style={card}><p style={msgStyle}>{zh.common.loading}</p></div>}>
         <OpenFlow />
       </Suspense>
     </div>
@@ -281,6 +303,7 @@ const titleStyle: React.CSSProperties = {
   fontSize: 18,
   fontWeight: 700,
   color: '#1a1a1a',
+  textAlign: 'center',
 }
 
 const msgStyle: React.CSSProperties = {
@@ -328,7 +351,7 @@ const submitBtn: React.CSSProperties = {
   color: '#fff',
   border: 'none',
   borderRadius: 10,
-  fontSize: 16,
+  fontSize: 15,
   fontWeight: 700,
   cursor: 'pointer',
   marginTop: 4,

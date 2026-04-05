@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import zh from '@/lib/i18n/zh'
+import km from '@/lib/i18n/km'
 
 /**
  * TelegramInit — mounts once per layout.
@@ -139,7 +141,11 @@ export default function TelegramInit() {
   return (
     <div style={overlay}>
       <div style={card}>
-        <p style={{ ...title, color: '#ff4d4f' }}>⚠ 登录失败</p>
+        <p style={{ ...title, color: '#ff4d4f' }}>
+          ⚠ {zh.common.loginFailed}
+          <br />
+          <span style={{ fontSize: '0.85em', opacity: 0.72 }}>{km.common.loginFailed}</span>
+        </p>
         <p style={hint}>{authError}</p>
       </div>
     </div>

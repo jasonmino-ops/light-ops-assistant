@@ -3,6 +3,18 @@
 import { useState, useEffect, useCallback } from 'react'
 import QRCode from 'react-qr-code'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
+import zh from '@/lib/i18n/zh'
+import km from '@/lib/i18n/km'
+
+function bi(zhStr: string, kmStr: string) {
+  return (
+    <>
+      {zhStr}
+      <br />
+      <span style={{ fontSize: '0.85em', opacity: 0.72 }}>{kmStr}</span>
+    </>
+  )
+}
 
 type Store = { id: string; name: string }
 
@@ -132,7 +144,7 @@ export default function InvitePage() {
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <div style={s.headerTitle}>开通与邀请</div>
+        <div style={s.headerTitle}>{bi(zh.invite.headerTitle, km.invite.headerTitle)}</div>
       </div>
 
       <div style={s.body}>
@@ -159,8 +171,8 @@ export default function InvitePage() {
               >
                 <span style={s.btnIcon}>🏪</span>
                 <span style={s.btnText}>
-                  <span style={s.btnLabel}>老板开通码</span>
-                  <span style={s.btnSub}>{storesLoading ? '加载中…' : '用于新增商户'}</span>
+                  <span style={s.btnLabel}>{bi(zh.invite.ownerCodeTitle, km.invite.ownerCodeTitle)}</span>
+                  <span style={s.btnSub}>{storesLoading ? bi(zh.common.loading, km.common.loading) : bi(zh.invite.ownerCodeDesc, km.invite.ownerCodeDesc)}</span>
                 </span>
               </button>
               <button
@@ -170,8 +182,8 @@ export default function InvitePage() {
               >
                 <span style={s.btnIcon}>👤</span>
                 <span style={s.btnText}>
-                  <span style={s.btnLabel}>员工绑定码</span>
-                  <span style={s.btnSub}>{storesLoading ? '加载中…' : '用于邀请员工'}</span>
+                  <span style={s.btnLabel}>{bi(zh.invite.staffCodeTitle, km.invite.staffCodeTitle)}</span>
+                  <span style={s.btnSub}>{storesLoading ? bi(zh.common.loading, km.common.loading) : bi(zh.invite.staffCodeDesc, km.invite.staffCodeDesc)}</span>
                 </span>
               </button>
             </div>
@@ -186,9 +198,9 @@ export default function InvitePage() {
             </div>
 
             <div style={s.infoCard}>
-              <InfoRow label="类型" value={result.role === 'OWNER' ? '老板开通码' : '员工绑定码'} />
-              <InfoRow label="门店" value={result.storeName} />
-              <InfoRow label="有效至" value={fmtExpiry(result.expiresAt)} />
+              <InfoRow label={bi(zh.invite.typeLabel, km.invite.typeLabel)} value={result.role === 'OWNER' ? bi(zh.invite.ownerCodeTitle, km.invite.ownerCodeTitle) : bi(zh.invite.staffCodeTitle, km.invite.staffCodeTitle)} />
+              <InfoRow label={bi(zh.invite.infoStore, km.invite.infoStore)} value={result.storeName} />
+              <InfoRow label={bi(zh.invite.validUntil, km.invite.validUntil)} value={fmtExpiry(result.expiresAt)} />
             </div>
 
             {result.tgLink && (
@@ -200,21 +212,22 @@ export default function InvitePage() {
                   </a>
                 </div>
                 <button style={s.copyBtn} onClick={copyLink}>
-                  {copied ? '已复制 ✓' : '复制邀请链接'}
+                  {copied ? bi(zh.invite.copied, km.invite.copied) : bi(zh.invite.copyLink, km.invite.copyLink)}
                 </button>
+                <div style={s.sendHint}>{bi(zh.invite.sendHint, km.invite.sendHint)}</div>
               </>
             )}
-            <button style={s.resetBtn} onClick={reset}>重新生成</button>
+            <button style={s.resetBtn} onClick={reset}>{bi(zh.invite.resetBtn, km.invite.resetBtn)}</button>
           </div>
         )}
 
         {/* ── Members section ── */}
-        <div style={s.sectionLabel}>门店成员</div>
+        <div style={s.sectionLabel}>{bi(zh.invite.membersTitle, km.invite.membersTitle)}</div>
 
         {/* Owner block */}
         {owners.length > 0 && (
           <div style={s.memberGroup}>
-            <div style={s.groupLabel}>老板</div>
+            <div style={s.groupLabel}>{bi(zh.invite.groupOwner, km.invite.groupOwner)}</div>
             {owners.map((m) => (
               <MemberCard
                 key={m.id}
@@ -228,9 +241,9 @@ export default function InvitePage() {
 
         {/* Staff block */}
         <div style={s.memberGroup}>
-          <div style={s.groupLabel}>员工</div>
+          <div style={s.groupLabel}>{bi(zh.invite.groupStaff, km.invite.groupStaff)}</div>
           {staff.length === 0 ? (
-            <div style={s.emptyHint}>暂无员工</div>
+            <div style={s.emptyHint}>{bi(zh.invite.noStaff, km.invite.noStaff)}</div>
           ) : (
             staff.map((m) => (
               <MemberCard
@@ -263,10 +276,10 @@ function MemberCard({
         <div style={s.memberName}>{name}</div>
         <div style={s.memberMeta}>
           <span style={m.role === 'OWNER' ? s.tagOwner : s.tagStaff}>
-            {m.role === 'OWNER' ? '老板' : '员工'}
+            {m.role === 'OWNER' ? bi(zh.invite.groupOwner, km.invite.groupOwner) : bi(zh.invite.groupStaff, km.invite.groupStaff)}
           </span>
           <span style={m.bound ? s.badgeBound : s.badgeUnbound}>
-            {m.bound ? '已绑定' : '未绑定'}
+            {m.bound ? bi(zh.invite.bound, km.invite.bound) : bi(zh.invite.unbound, km.invite.unbound)}
           </span>
         </div>
       </div>
@@ -276,14 +289,14 @@ function MemberCard({
           disabled={unbinding === m.id}
           onClick={() => onUnbind(m.id, name)}
         >
-          解绑
+          {bi(zh.invite.unbindBtn, km.invite.unbindBtn)}
         </button>
       )}
     </div>
   )
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div style={ir.row}>
       <span style={ir.label}>{label}</span>
@@ -367,4 +380,5 @@ const s: Record<string, React.CSSProperties> = {
 
   linkBox: { width: '100%', background: '#f8f8f8', borderRadius: 8, padding: '8px 10px' },
   linkText: { fontSize: 11, color: '#1677ff', wordBreak: 'break-all' as const, textDecoration: 'none' },
+  sendHint: { fontSize: 12, color: '#8c8c8c', textAlign: 'center' as const, lineHeight: 1.5 },
 }
