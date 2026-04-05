@@ -19,7 +19,6 @@ import { prisma } from '@/lib/prisma'
 import { signSession } from '@/lib/session'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
-const TENANT_ID = process.env.TENANT_ID ?? 'seed-tenant-001'
 
 // ── Telegram initData verification ──────────────────────────────────────────
 
@@ -87,21 +86,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_USER_PAYLOAD' }, { status: 400 })
   }
 
-  // Verify tenant is still active before issuing any session cookie
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: TENANT_ID },
-    select: { status: true },
-  })
-  if (!tenant || tenant.status !== 'ACTIVE') {
-    return NextResponse.json(
-      { error: 'TENANT_INACTIVE', message: '商户已停用，请联系管理员' },
-      { status: 403 },
-    )
-  }
-
-  // Look up user by telegramId
+  // Look up user by telegramId (cross-tenant: each user belongs to their own tenant)
   const user = await prisma.user.findFirst({
-    where: { tenantId: TENANT_ID, telegramId: telegramUserId, status: 'ACTIVE' },
+    where: { telegramId: telegramUserId, status: 'ACTIVE' },
     include: {
       storeRoles: {
         where: { status: 'ACTIVE' },
@@ -119,11 +106,23 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Resolve storeId: use primary store role, or first store in tenant
+  // Verify the user's own tenant is still active
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: user.tenantId },
+    select: { status: true },
+  })
+  if (!tenant || tenant.status !== 'ACTIVE') {
+    return NextResponse.json(
+      { error: 'TENANT_INACTIVE', message: '商户已停用，请联系管理员' },
+      { status: 403 },
+    )
+  }
+
+  // Resolve storeId: use primary store role, or first store in user's tenant
   let storeId = user.storeRoles[0]?.storeId
   if (!storeId) {
     const firstStore = await prisma.store.findFirst({
-      where: { tenantId: TENANT_ID, status: 'ACTIVE' },
+      where: { tenantId: user.tenantId, status: 'ACTIVE' },
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     })
