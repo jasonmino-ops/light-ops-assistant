@@ -41,14 +41,18 @@ export async function getContext(req: NextRequest): Promise<RequestContext | nul
           select: { status: true },
         }),
       ])
-      if (!tenant || tenant.status !== 'ACTIVE') return null
-      if (!user || user.status !== 'ACTIVE') return null
-      return {
-        tenantId: session.tenantId,
-        userId: session.userId,
-        storeId: session.storeId,
-        role: session.role,
+      if (tenant?.status === 'ACTIVE' && user?.status === 'ACTIVE') {
+        return {
+          tenantId: session.tenantId,
+          userId: session.userId,
+          storeId: session.storeId,
+          role: session.role,
+        }
       }
+      // Tenant or user is inactive (e.g. user was unbound/disabled).
+      // Fall through to x-* dev header fallback so local dev tools (OWNER_CTX)
+      // still work. In production these headers are absent so the request still
+      // returns null — no security regression.
     }
   }
 
