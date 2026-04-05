@@ -93,16 +93,20 @@ export default function HomePage() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [storeName, setStoreName] = useState<string | null>(null)
 
   useEffect(() => {
     const today = todayStr()
     const params = new URLSearchParams({ dateFrom: today, dateTo: today, pageSize: '30' })
 
-    apiFetch(`/api/records?${params}`, undefined, STAFF_CTX)
-      .then((res) => res.json())
-      .then((data) => {
+    Promise.all([
+      apiFetch(`/api/records?${params}`, undefined, STAFF_CTX).then((res) => res.json()),
+      apiFetch('/api/me', undefined, STAFF_CTX).then((res) => res.json()),
+    ])
+      .then(([data, me]) => {
         setSummary(data.summary)
         setEntries(buildEntries(data.items ?? []))
+        setStoreName(me.storeName ?? me.tenantName ?? null)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -116,9 +120,8 @@ export default function HomePage() {
         <div style={s.brandLeft}>
           <span style={s.brandIcon}>🏪</span>
           <div style={s.brandTextBlock}>
-            <div style={s.brandTitle}>E-shop</div>
-            <div style={s.brandName}>店小二助手</div>
-            <div style={s.brandSub}>轻门店经营助手</div>
+            <div style={s.brandTitle}>{storeName ?? 'E-Shop'}</div>
+            <div style={s.brandSub}>E-Shop 店小二助手</div>
           </div>
         </div>
         <div style={s.brandRight}>
@@ -307,23 +310,17 @@ const s: Record<string, React.CSSProperties> = {
     gap: 1,
   },
   brandTitle: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: 800,
     color: '#fff',
-    letterSpacing: '-0.5px',
-    lineHeight: 1.15,
-  },
-  brandName: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: 'rgba(255,255,255,0.92)',
-    lineHeight: 1.3,
+    letterSpacing: '-0.3px',
+    lineHeight: 1.2,
   },
   brandSub: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.55)',
-    marginTop: 2,
-    letterSpacing: '0.02em',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 3,
+    letterSpacing: '0.01em',
   },
   brandRight: {
     display: 'flex',
