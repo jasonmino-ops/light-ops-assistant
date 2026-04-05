@@ -179,9 +179,17 @@ export default function InvitePage() {
             </div>
 
             {result.tgLink && (
-              <button style={s.copyBtn} onClick={copyLink}>
-                {copied ? '已复制 ✓' : '复制邀请链接'}
-              </button>
+              <>
+                {/* Show the actual link text so the URL can be visually verified */}
+                <div style={s.linkBox}>
+                  <a href={result.tgLink} target="_blank" rel="noreferrer" style={s.linkText}>
+                    {result.tgLink}
+                  </a>
+                </div>
+                <button style={s.copyBtn} onClick={copyLink}>
+                  {copied ? '已复制 ✓' : '复制邀请链接'}
+                </button>
+              </>
             )}
             <button style={s.resetBtn} onClick={reset}>重新生成</button>
           </div>
@@ -343,4 +351,7 @@ const s: Record<string, React.CSSProperties> = {
     background: '#fff1f0', border: '1px solid #ffa39e',
     borderRadius: 6, padding: '5px 12px', cursor: 'pointer', flexShrink: 0,
   },
+
+  linkBox: { width: '100%', background: '#f8f8f8', borderRadius: 8, padding: '8px 10px' },
+  linkText: { fontSize: 11, color: '#1677ff', wordBreak: 'break-all' as const, textDecoration: 'none' },
 }

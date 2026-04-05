@@ -71,9 +71,10 @@ export async function GET(req: NextRequest) {
         detail: `值包含 @ 前缀（"${raw}"）— 生成的 t.me 链接无效，会触发 "user doesn't seem to exist"。请去掉 @ 改为 "${raw.slice(1)}"`,
       })
     } else {
+      const clean = raw.replace(/^@/, '').trim()
       checks.push({
         key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME（商户bot）', status: 'PASS',
-        detail: `@${raw} · 当前生成链接格式：https://t.me/${raw}?startapp=bind_<token>`,
+        detail: `@${clean} · 实际生成链接：https://t.me/${clean}?startapp=bind_<token>`,
       })
     }
   }
