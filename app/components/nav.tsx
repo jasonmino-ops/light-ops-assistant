@@ -2,13 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { useWorkMode } from './WorkModeProvider'
 
 const STAFF_TABS = [
-  { href: '/home',      label: '首页', icon: '🏠' },
-  { href: '/sale',      label: '销售', icon: '💰' },
-  { href: '/refund',    label: '退款', icon: '↩️' },
-  { href: '/records',   label: '记录', icon: '📋' },
+  { href: '/home',    label: '首页', icon: '🏠' },
+  { href: '/sale',    label: '销售', icon: '💰' },
+  { href: '/records', label: '记录', icon: '📋' },
 ]
 
 const OWNER_TABS = [
@@ -19,12 +19,29 @@ const OWNER_TABS = [
   { href: '/dashboard', label: '概览', icon: '📊' },
 ]
 
+// 只在这些页面显示底部导航
+const SHOW_PATHS = new Set(['/home', '/sale', '/records', '/products', '/invite', '/dashboard'])
+
 export default function BottomNav() {
   const pathname = usePathname()
   const { effectiveRole } = useWorkMode()
-  const tabs = effectiveRole === 'OWNER' ? OWNER_TABS : STAFF_TABS
+  const [isStandalone, setIsStandalone] = useState(false)
 
-  if (pathname.startsWith('/ops')) return null
+  useEffect(() => {
+    // 仅在 standalone 模式（从桌面图标启动）且不在 Telegram WebApp 内时显示
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inTelegram = !!(window as any).Telegram?.WebApp?.initData
+    const standalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (navigator as any).standalone === true
+    setIsStandalone(standalone && !inTelegram)
+  }, [])
+
+  if (!isStandalone) return null
+  if (!SHOW_PATHS.has(pathname)) return null
+
+  const tabs = effectiveRole === 'OWNER' ? OWNER_TABS : STAFF_TABS
 
   return (
     <nav style={s.nav}>
