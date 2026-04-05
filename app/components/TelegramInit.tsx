@@ -37,13 +37,12 @@ function extractTgUserId(initData: string): string | null {
   }
 }
 
-// Onboarding paths that don't require an active session in PWA mode.
-const ONBOARDING_PATHS = ['/start', '/open', '/bind']
+// Paths that don't require an active session in PWA mode (non-Telegram context).
+const ONBOARDING_PATHS = ['/start', '/open', '/bind', '/relogin']
 
 export default function TelegramInit() {
   const [authError, setAuthError] = useState('')
   const [tenantInactive, setTenantInactive] = useState(false)
-  const [sessionExpired, setSessionExpired] = useState(false)
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,7 +54,7 @@ export default function TelegramInit() {
       if (ONBOARDING_PATHS.some((p) => path.startsWith(p))) return
 
       fetch('/api/auth/status')
-        .then((r) => { if (r.status === 401) setSessionExpired(true) })
+        .then((r) => { if (r.status === 401) window.location.replace('/relogin') })
         .catch(() => { /* network error — stay silent, don't block the page */ })
       return
     }
@@ -161,35 +160,7 @@ export default function TelegramInit() {
       })
   }, [])
 
-  if (!authError && !tenantInactive && !sessionExpired) return null
-
-  if (sessionExpired) {
-    const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
-    const botUrl = botUsername ? `https://t.me/${botUsername}` : undefined
-    return (
-      <div style={overlay}>
-        <div style={card}>
-          <p style={{ ...title, color: '#fa8c16' }}>
-            ⚠ {zh.common.sessionExpired}
-            <br />
-            <span style={{ fontSize: '0.85em', opacity: 0.72 }}>{km.common.sessionExpired}</span>
-          </p>
-          <p style={hint}>
-            {zh.common.sessionExpiredHint}
-            <br />
-            <span style={{ fontSize: '0.85em', opacity: 0.72 }}>{km.common.sessionExpiredHint}</span>
-          </p>
-          {botUrl && (
-            <a href={botUrl} style={telegramBtn}>
-              {zh.common.openInTelegram}
-              <br />
-              <span style={{ fontSize: '0.85em', opacity: 0.72 }}>{km.common.openInTelegram}</span>
-            </a>
-          )}
-        </div>
-      </div>
-    )
-  }
+  if (!authError && !tenantInactive) return null
 
   if (tenantInactive) {
     return (
@@ -258,17 +229,4 @@ const hint: React.CSSProperties = {
   fontSize: 13,
   color: '#888',
   textAlign: 'center',
-}
-
-const telegramBtn: React.CSSProperties = {
-  display: 'block',
-  marginTop: 4,
-  padding: '10px 16px',
-  background: '#1677ff',
-  color: '#fff',
-  borderRadius: 10,
-  textAlign: 'center',
-  fontSize: 15,
-  fontWeight: 600,
-  textDecoration: 'none',
 }
