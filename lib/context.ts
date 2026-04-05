@@ -28,12 +28,21 @@ export async function getContext(req: NextRequest): Promise<RequestContext | nul
   if (sessionToken) {
     const session = verifySession(sessionToken)
     if (session) {
-      // Block archived/stopped tenants — existing sessions are invalidated
-      const tenant = await prisma.tenant.findUnique({
-        where: { id: session.tenantId },
-        select: { status: true },
-      })
+      // Block archived/stopped tenants and unbound/disabled users in parallel.
+      // Ensures that unbind, resign, or tenant deactivation immediately invalidates
+      // existing session cookies without waiting for cookie expiry.
+      const [tenant, user] = await Promise.all([
+        prisma.tenant.findUnique({
+          where: { id: session.tenantId },
+          select: { status: true },
+        }),
+        prisma.user.findUnique({
+          where: { id: session.userId },
+          select: { status: true },
+        }),
+      ])
       if (!tenant || tenant.status !== 'ACTIVE') return null
+      if (!user || user.status !== 'ACTIVE') return null
       return {
         tenantId: session.tenantId,
         userId: session.userId,

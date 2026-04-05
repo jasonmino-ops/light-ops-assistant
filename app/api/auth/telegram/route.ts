@@ -87,6 +87,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_USER_PAYLOAD' }, { status: 400 })
   }
 
+  // Verify tenant is still active before issuing any session cookie
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: TENANT_ID },
+    select: { status: true },
+  })
+  if (!tenant || tenant.status !== 'ACTIVE') {
+    return NextResponse.json(
+      { error: 'TENANT_INACTIVE', message: '商户已停用，请联系管理员' },
+      { status: 403 },
+    )
+  }
+
   // Look up user by telegramId
   const user = await prisma.user.findFirst({
     where: { tenantId: TENANT_ID, telegramId: telegramUserId, status: 'ACTIVE' },

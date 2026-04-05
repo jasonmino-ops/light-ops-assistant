@@ -23,7 +23,18 @@ export async function POST(
   if (!user) return NextResponse.json({ error: 'USER_NOT_FOUND' }, { status: 404 })
   if (!user.telegramId) return NextResponse.json({ error: 'NOT_BOUND' }, { status: 400 })
 
-  await prisma.user.update({ where: { id: userId }, data: { telegramId: null } })
+  // Unbind: clear Telegram link, mark user DISABLED, and revoke all store roles.
+  // This invalidates any existing session cookie immediately (context.ts checks user.status).
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { telegramId: null, status: 'DISABLED' },
+    }),
+    prisma.userStoreRole.updateMany({
+      where: { userId },
+      data: { status: 'DISABLED' },
+    }),
+  ])
 
   return NextResponse.json({ ok: true, displayName: user.displayName || user.username })
 }

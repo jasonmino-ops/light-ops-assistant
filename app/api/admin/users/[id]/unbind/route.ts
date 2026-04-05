@@ -49,10 +49,19 @@ export async function POST(
     )
   }
 
-  await prisma.user.update({
-    where: { id },
-    data: { telegramId: null },
-  })
+  // Unbind: clear Telegram link, mark user DISABLED, and revoke all store roles.
+  // This invalidates any existing session cookie immediately (context.ts checks user.status).
+  // The user record is preserved for audit history; re-onboarding creates a new record.
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id },
+      data: { telegramId: null, status: 'DISABLED' },
+    }),
+    prisma.userStoreRole.updateMany({
+      where: { userId: id },
+      data: { status: 'DISABLED' },
+    }),
+  ])
 
   return NextResponse.json({ ok: true })
 }
