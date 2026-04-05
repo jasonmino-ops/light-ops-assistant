@@ -104,18 +104,26 @@ export default function TelegramInit() {
             window.location.reload()
           }
         } else if (body.error === 'USER_NOT_FOUND') {
-          // If a bind token is present (QR code scan), redirect to /bind instead of
-          // showing the legacy "首次登录" username overlay.
+          // Route to the correct onboarding page based on start_param.
           // Use the same three-source priority as the early startParam check above.
           const sp =
             new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam') ||
             tg.initDataUnsafe?.start_param ||
             new URLSearchParams(initData).get('start_param') ||
             ''
+
+          // Employee/owner bind token: e.g. bind_<token>
           if (sp.startsWith('bind_') && !window.location.pathname.startsWith('/bind')) {
             window.location.replace(`/bind?token=${encodeURIComponent(sp.slice(5))}`)
             return
           }
+
+          // Fixed "open store" QR code: startapp=open
+          if (sp === 'open' && !window.location.pathname.startsWith('/open')) {
+            window.location.replace('/open')
+            return
+          }
+
           sessionStorage.removeItem(SESSION_KEY)
           setPendingInitData(initData)
         } else {

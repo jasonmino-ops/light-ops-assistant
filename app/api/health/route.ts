@@ -78,6 +78,16 @@ export async function GET(req: NextRequest) {
     checks.push({ key: 'ops_bot_token', name: 'OPS_BOT_TOKEN（运营bot）', status: 'PASS', detail: '已配置，与商户 bot token 不同 ✓' })
   }
 
+  // ── 4c. ENV: STORE_OPEN_CODE — fixed "open store" QR entry code ──────────
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME?.trim() ?? ''
+  const storeOpenCode = process.env.STORE_OPEN_CODE?.trim() ?? ''
+  if (!storeOpenCode) {
+    checks.push({ key: 'store_open_code', name: 'STORE_OPEN_CODE（开店验证码）', status: 'WARN', detail: '未配置，新商户自助开店功能不可用' })
+  } else {
+    const openLink = botUsername ? `https://t.me/${botUsername}?startapp=open` : '（需先配置 TELEGRAM_BOT_USERNAME）'
+    checks.push({ key: 'store_open_code', name: 'STORE_OPEN_CODE（开店验证码）', status: 'PASS', detail: `已配置 · 固定开店码：${openLink}` })
+  }
+
   // ── 5. Auth context ────────────────────────────────────────────────────────
   const ctx = await getContext(req)
   if (!ctx) {
