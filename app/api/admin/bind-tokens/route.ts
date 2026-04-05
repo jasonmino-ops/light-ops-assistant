@@ -77,7 +77,9 @@ export async function POST(req: NextRequest) {
   // Format: https://t.me/<bot_username>?startapp=bind_<token>
   // The Mini App receives start_param via initDataUnsafe.start_param,
   // then navigates to /bind?token= (same origin, WebApp context preserved).
-  const botUsername = process.env.TELEGRAM_BOT_USERNAME ?? ''
+  // Strip leading '@' — env vars are sometimes set as "@qingdianboss_bot" which
+  // produces https://t.me/@username and triggers "user doesn't seem to exist" in Telegram.
+  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').trim()
   const tgLink = botUsername
     ? `https://t.me/${botUsername}?startapp=bind_${bt.token}`
     : null

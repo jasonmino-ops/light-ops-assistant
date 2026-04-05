@@ -52,7 +52,9 @@ export async function POST(
   // TELEGRAM_BOT_USERNAME must be the MERCHANT bot username (e.g. qingdianboss_bot),
   // NOT the ops bot. The customer scans this QR to open the merchant Mini App,
   // which then routes them to /bind?token= via TelegramInit start_param handling.
-  const botUsername = process.env.TELEGRAM_BOT_USERNAME ?? ''
+  // Strip leading '@' — env vars are sometimes set as "@qingdianboss_bot" which
+  // produces https://t.me/@username and triggers "user doesn't seem to exist" in Telegram.
+  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').trim()
   const tgLink = botUsername ? `https://t.me/${botUsername}?startapp=bind_${token}` : null
 
   return NextResponse.json({

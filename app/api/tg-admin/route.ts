@@ -22,7 +22,9 @@ import QRCode from 'qrcode'
 
 const BOT_TOKEN = process.env.TG_BOT_TOKEN ?? ''
 const WEBHOOK_SECRET = process.env.TG_WEBHOOK_SECRET ?? ''
-const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME ?? ''
+// Strip leading '@' — env vars are sometimes set as "@qingdianboss_bot" which
+// produces https://t.me/@username and triggers "user doesn't seem to exist" in Telegram.
+const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').trim()
 const ADMIN_IDS = new Set(
   (process.env.TG_ADMIN_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
 )
@@ -75,6 +77,13 @@ async function getAdminCtx(tgId: string) {
 // ─── Command: /genowner | /genstaff ───────────────────────────────────────────
 
 async function cmdGenCode(chatId: number, role: 'OWNER' | 'STAFF', tgId: string) {
+  // Guard: require TELEGRAM_BOT_USERNAME to be configured; otherwise the link
+  // would be https://t.me/?startapp=... which Telegram rejects as invalid.
+  if (!BOT_USERNAME) {
+    await sendText(chatId, '❌ 未配置 TELEGRAM_BOT_USERNAME，无法生成有效链接。请在环境变量中设置商户 bot 用户名（不带 @）。')
+    return
+  }
+
   const ctx = await getAdminCtx(tgId)
   if (!ctx?.store) {
     await sendText(chatId, '❌ 未找到你的店铺信息，请确认账号已绑定。')

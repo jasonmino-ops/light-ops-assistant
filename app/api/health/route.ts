@@ -58,11 +58,24 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 4. ENV: TELEGRAM_BOT_USERNAME (merchant bot) ──────────────────────────
-  // Must be the MERCHANT bot username (@qingdianboss_bot or similar), NOT the ops bot.
-  if (!process.env.TELEGRAM_BOT_USERNAME) {
-    checks.push({ key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME（商户bot）', status: 'WARN', detail: '未配置，无法生成绑定二维码链接' })
-  } else {
-    checks.push({ key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME（商户bot）', status: 'PASS', detail: `@${process.env.TELEGRAM_BOT_USERNAME}` })
+  // Must be the MERCHANT bot username WITHOUT leading '@' (e.g. qingdianboss_bot).
+  // If set with '@', t.me links become https://t.me/@username → Telegram shows
+  // "Sorry, this user doesn't seem to exist."
+  {
+    const raw = process.env.TELEGRAM_BOT_USERNAME ?? ''
+    if (!raw) {
+      checks.push({ key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME（商户bot）', status: 'WARN', detail: '未配置，无法生成绑定二维码链接' })
+    } else if (raw.startsWith('@')) {
+      checks.push({
+        key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME（商户bot）', status: 'FAIL',
+        detail: `值包含 @ 前缀（"${raw}"）— 生成的 t.me 链接无效，会触发 "user doesn't seem to exist"。请去掉 @ 改为 "${raw.slice(1)}"`,
+      })
+    } else {
+      checks.push({
+        key: 'bot_username', name: 'TELEGRAM_BOT_USERNAME（商户bot）', status: 'PASS',
+        detail: `@${raw} · 当前生成链接格式：https://t.me/${raw}?startapp=bind_<token>`,
+      })
+    }
   }
 
   // ── 4b. ENV: OPS_BOT_TOKEN — must differ from TELEGRAM_BOT_TOKEN ──────────
@@ -79,7 +92,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 4c. ENV: STORE_OPEN_CODE — fixed "open store" QR entry code ──────────
-  const botUsername = process.env.TELEGRAM_BOT_USERNAME?.trim() ?? ''
+  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').trim()
   const storeOpenCode = process.env.STORE_OPEN_CODE?.trim() ?? ''
   if (!storeOpenCode) {
     checks.push({ key: 'store_open_code', name: 'STORE_OPEN_CODE（开店验证码）', status: 'WARN', detail: '未配置，新商户自助开店功能不可用' })
