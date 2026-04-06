@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS launchd 定时任务：每天凌晨 02:00 执行备份
+  注册方式（通过 setup-backup.sh 自动完成，或手动执行）：
+    sed "s|__HOME__|$HOME|g" scripts/com.shopassistant.backup.plist \
+      > ~/Library/LaunchAgents/com.shopassistant.backup.plist
+    launchctl load -w ~/Library/LaunchAgents/com.shopassistant.backup.plist
+
+  卸载：
+    launchctl unload ~/Library/LaunchAgents/com.shopassistant.backup.plist
+
+  立即触发（测试）：
+    launchctl start com.shopassistant.backup
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.shopassistant.backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__HOME__/light-ops-assistant/scripts/backup.sh</string>
+  </array>
+
+  <!-- 每天凌晨 02:00 执行 -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- 若 Mac 关机错过时间，开机后补跑 -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/logs/backup-shop-assistant.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>__HOME__/logs/backup-shop-assistant-error.log</string>
+
+  <!-- Homebrew 路径（Apple Silicon 和 Intel 均兼容） -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+  </dict>
+</dict>
+</plist>
