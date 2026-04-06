@@ -15,6 +15,21 @@
 # 保留 -u（未定义变量报错）和 -o pipefail（管道错误传递）
 set -uo pipefail
 
+# ─── macOS 兼容 timeout 函数 ──────────────────────────────────────────────────
+# macOS 自带 bash 3.2 + 无 GNU timeout；优先用 gtimeout（brew coreutils），
+# 否则用 perl alarm（macOS 所有版本内置）。
+_timeout() {
+  local secs=$1; shift
+  if command -v gtimeout &>/dev/null; then
+    gtimeout "$secs" "$@"
+  elif command -v timeout &>/dev/null; then
+    timeout "$secs" "$@"
+  else
+    # perl alarm 兜底：超时发 ALRM 信号终止子进程，退出码 142
+    perl -e "alarm($secs); exec \@ARGV or die 'exec: \$!'" -- "$@"
+  fi
+}
+
 # ─── 配置区（按实际情况修改）────────────────────────────────────────────────
 PROJECT_DIR="$HOME/light-ops-assistant"
 BACKUP_ROOT="$HOME/backups/shop-assistant"
@@ -51,6 +66,7 @@ STATUS_MIGRATIONS="未执行"
 STATUS_DOCS="未执行"
 STATUS_GDRIVE="未执行"
 DETAIL_DB=""            # 失败时存错误摘要
+DB_ERR_FILE=""          # 提前初始化，避免 set -u unbound variable
 
 # ─── 加载数据库连接配置 ───────────────────────────────────────────────────────
 DIRECT_URL=""
@@ -76,8 +92,8 @@ if [ -n "${DIRECT_URL:-}" ]; then
   else
     log "数据库备份中（超时 ${PG_DUMP_TIMEOUT}s）..."
     DB_ERR_FILE="$BACKUP_DIR/db-error.log"
-    # timeout 防止 DNS 解析挂起把脚本卡死
-    if timeout "$PG_DUMP_TIMEOUT" pg_dump "$DIRECT_URL" \
+    # _timeout 防止 DNS 解析挂起把脚本卡死（兼容 macOS）
+    if _timeout "$PG_DUMP_TIMEOUT" pg_dump "$DIRECT_URL" \
          --format=custom \
          --no-acl \
          --no-owner \
@@ -88,7 +104,8 @@ if [ -n "${DIRECT_URL:-}" ]; then
       STATUS_DB="成功（$DB_SIZE）"
     else
       EXIT_CODE=$?
-      if [ "$EXIT_CODE" = "124" ]; then
+      # 124 = GNU timeout 超时；142 = perl alarm 超时（SIGALRM）
+      if [ "$EXIT_CODE" = "124" ] || [ "$EXIT_CODE" = "142" ]; then
         DETAIL_DB="超时（${PG_DUMP_TIMEOUT}s），DNS 可能无法解析 Supabase 域名"
       else
         DETAIL_DB=$(head -3 "$DB_ERR_FILE" 2>/dev/null | tr '\n' ' ')
