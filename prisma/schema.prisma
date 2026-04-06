@@ -294,6 +294,14 @@ model TelegramMessage {
   @@index([createdAt])
 }
 
+model ProductImportSession {
+  telegramId  String   @id
+  tenantId    String?
+  phase       String   @default("AWAITING_DATA") // AWAITING_DATA | AWAITING_CONFIRM
+  pendingRows String   @default("[]")            // JSON — TgImportRow[]
+  updatedAt   DateTime @updatedAt
+}
+
 model OpsAdmin {
   id           String   @id @default(cuid())
   name         String
