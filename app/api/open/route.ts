@@ -69,12 +69,14 @@ export async function POST(req: NextRequest) {
   }
   const telegramId = String(tgUser.id)
 
-  // ── 2. Guard: must not already be bound to an active account ─────────────
+  // ── 2. Guard: must not already be bound to an active account under an active tenant ──
   const existing = await prisma.user.findFirst({
     where: { telegramId, status: 'ACTIVE' },
-    select: { id: true, displayName: true },
+    select: { id: true, displayName: true, tenant: { select: { status: true } } },
   })
-  if (existing) {
+  // Only block if the user's own tenant is also active — if tenant was deactivated,
+  // allow the user to submit a new store-opening application.
+  if (existing && existing.tenant?.status === 'ACTIVE') {
     return NextResponse.json(
       { error: 'ALREADY_BOUND', message: `该 Telegram 账号已绑定商户账号「${existing.displayName}」，请直接使用已有账号` },
       { status: 409 },

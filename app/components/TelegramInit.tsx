@@ -45,14 +45,15 @@ export default function TelegramInit() {
   const [tenantInactive, setTenantInactive] = useState(false)
 
   useEffect(() => {
+    // Skip auth entirely on onboarding pages — they handle their own flow.
+    // This applies in BOTH Telegram and PWA modes to prevent TENANT_INACTIVE loops.
+    const path = window.location.pathname
+    if (ONBOARDING_PATHS.some((p) => path.startsWith(p))) return
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
     if (!tg?.initData) {
       // PWA mode (opened from home screen or browser, no Telegram context).
-      // Skip session check on onboarding pages — they handle their own auth state.
-      const path = window.location.pathname
-      if (ONBOARDING_PATHS.some((p) => path.startsWith(p))) return
-
       fetch('/api/auth/status')
         .then((r) => { if (r.status === 401) window.location.replace('/relogin') })
         .catch(() => { /* network error — stay silent, don't block the page */ })
@@ -147,8 +148,9 @@ export default function TelegramInit() {
           sessionStorage.removeItem(SESSION_KEY)
           window.location.replace('/start')
         } else if (body.error === 'TENANT_INACTIVE') {
-          // Clear session so next open re-auth and sees the same message, then → /start
+          // Clear session + server cookie so next open doesn't loop back here, then → /start
           sessionStorage.removeItem(SESSION_KEY)
+          fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
           setTenantInactive(true)
           setTimeout(() => window.location.replace('/start'), 3000)
         } else {
