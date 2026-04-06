@@ -246,8 +246,8 @@ function ApplicationsSection({
   onApproved: () => void
 }) {
   const [approving, setApproving] = useState<string | null>(null)
-  const [approvedLinks, setApprovedLinks] = useState<Record<string, string>>({})
-  const [copied, setCopied] = useState<string | null>(null)
+  // approved: id → { notified: boolean }
+  const [approved, setApproved] = useState<Record<string, { notified: boolean }>>({})
   const [sending, setSending] = useState<string | null>(null)
   const [sendResult, setSendResult] = useState<Record<string, 'sent' | string>>({})
 
@@ -256,8 +256,8 @@ function ApplicationsSection({
     try {
       const r = await apiFetch(`/api/ops/applications/${id}/approve`, { method: 'POST' }, OWNER_CTX)
       const body = await r.json()
-      if (r.ok && body.tgLink) {
-        setApprovedLinks((prev) => ({ ...prev, [id]: body.tgLink }))
+      if (r.ok && body.ok) {
+        setApproved((prev) => ({ ...prev, [id]: { notified: !!body.notified } }))
         onApproved()
       } else {
         window.alert(body.message ?? body.error ?? '审核失败')
@@ -269,14 +269,7 @@ function ApplicationsSection({
     }
   }
 
-  function copyLink(id: string, link: string) {
-    navigator.clipboard.writeText(link).then(() => {
-      setCopied(id)
-      setTimeout(() => setCopied(null), 2000)
-    })
-  }
-
-  async function sendToUser(id: string) {
+  async function resendNotify(id: string) {
     setSending(id)
     setSendResult((prev) => { const n = { ...prev }; delete n[id]; return n })
     try {
@@ -312,24 +305,21 @@ function ApplicationsSection({
                 month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
               })}
             </div>
-            {approvedLinks[app.id] && (
-              <div style={s.appLink}>
-                <span style={s.appLinkText}>{approvedLinks[app.id]}</span>
-                <button style={s.appCopyBtn} onClick={() => copyLink(app.id, approvedLinks[app.id])}>
-                  {copied === app.id ? '已复制 ✓' : '复制链接'}
-                </button>
+            {approved[app.id] && (
+              <div style={{ fontSize: 12, marginTop: 4, color: approved[app.id].notified ? '#52c41a' : '#fa8c16' }}>
+                {approved[app.id].notified ? '✓ 已通过，通知已发送' : '✓ 已通过（通知发送失败，请手动补发）'}
               </div>
             )}
             {sendResult[app.id] && (
               <div style={{
-                fontSize: 12, marginTop: 4,
+                fontSize: 12, marginTop: 2,
                 color: sendResult[app.id] === 'sent' ? '#52c41a' : '#ff4d4f',
               }}>
-                {sendResult[app.id] === 'sent' ? '✓ 已发送给客户' : `✕ ${sendResult[app.id]}`}
+                {sendResult[app.id] === 'sent' ? '✓ 通知已重新发送' : `✕ ${sendResult[app.id]}`}
               </div>
             )}
           </div>
-          {!approvedLinks[app.id] && (
+          {!approved[app.id] && (
             <button
               style={{ ...s.approveBtn, opacity: approving === app.id ? 0.6 : 1 }}
               disabled={approving === app.id}
@@ -338,15 +328,15 @@ function ApplicationsSection({
               {approving === app.id ? '处理中…' : '通过'}
             </button>
           )}
-          {approvedLinks[app.id] && (
+          {approved[app.id] && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
               <span style={s.approvedTag}>✓ 已通过</span>
               <button
                 style={{ ...s.sendBtn, opacity: sending === app.id ? 0.6 : 1 }}
                 disabled={sending === app.id}
-                onClick={() => sendToUser(app.id)}
+                onClick={() => resendNotify(app.id)}
               >
-                {sending === app.id ? '发送中…' : '发送给客户'}
+                {sending === app.id ? '发送中…' : '重新发送通知'}
               </button>
             </div>
           )}
@@ -541,15 +531,6 @@ const s: Record<string, React.CSSProperties> = {
   appInfo: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 },
   appStoreName: { fontSize: 14, fontWeight: 700, color: '#1a1a1a' },
   appMeta: { fontSize: 12, color: '#8c8c8c' },
-  appLink: {
-    display: 'flex', alignItems: 'center', gap: 8, marginTop: 4,
-    background: '#f6ffed', borderRadius: 6, padding: '6px 8px', border: '1px solid #b7eb8f',
-  },
-  appLinkText: { fontSize: 11, color: '#389e0d', wordBreak: 'break-all' as const, flex: 1 },
-  appCopyBtn: {
-    fontSize: 11, fontWeight: 600, color: '#389e0d', background: 'transparent',
-    border: '1px solid #b7eb8f', borderRadius: 4, padding: '3px 8px', cursor: 'pointer', flexShrink: 0,
-  },
   approveBtn: {
     height: 32, padding: '0 14px', background: '#52c41a', color: '#fff',
     border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0,

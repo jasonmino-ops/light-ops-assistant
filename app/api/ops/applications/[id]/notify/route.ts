@@ -1,13 +1,17 @@
 /**
  * POST /api/ops/applications/[id]/notify
  *
- * 向申请人的 Telegram 账号发送开通链接消息。
- * 前提：申请已处于 APPROVED 状态，bindTokenValue 已写入。
+ * 向申请人重新发送审批通过通知（补发兜底）。
+ * 前提：申请已处于 APPROVED 状态。
  * Ops-admin only.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuth } from '@/lib/ops-auth'
+
+const NOTIFY_TEXT =
+  '你的开店申请已通过！请返回 Telegram，重新打开店小二助手进入系统。\n' +
+  'ការស្នើសុំបើកហាងរបស់អ្នកត្រូវបានអនុម័តហើយ! សូមត្រឡប់ទៅ Telegram ហើយបើក店小二助手ម្ដងទៀតដើម្បីចូលប្រព័ន្ធ។'
 
 export async function POST(
   req: NextRequest,
@@ -20,29 +24,21 @@ export async function POST(
 
   const app = await prisma.storeApplication.findUnique({ where: { id } })
   if (!app) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
-  if (app.status !== 'APPROVED' || !app.bindTokenValue) {
-    return NextResponse.json({ error: 'NOT_APPROVED', message: '申请尚未通过或缺少开通链接' }, { status: 409 })
+  if (app.status !== 'APPROVED') {
+    return NextResponse.json({ error: 'NOT_APPROVED', message: '申请尚未审批通过' }, { status: 409 })
   }
 
   const botToken = process.env.TELEGRAM_BOT_TOKEN
-  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
-  if (!botToken || !botUsername) {
-    return NextResponse.json({ error: 'BOT_NOT_CONFIGURED', message: '未配置 TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME' }, { status: 500 })
+  if (!botToken) {
+    return NextResponse.json({ error: 'BOT_NOT_CONFIGURED', message: '未配置 TELEGRAM_BOT_TOKEN' }, { status: 500 })
   }
-
-  const tgLink = `https://t.me/${botUsername}?startapp=bind_${app.bindTokenValue}`
-
-  const text =
-    `你的店铺申请已通过，请点击下方链接完成正式开通。\n` +
-    `ការស្នើសុំបើកហាងរបស់អ្នកត្រូវបានអនុម័តហើយ។ សូមចុចតំណខាងក្រោមដើម្បីបញ្ចប់ការបើកដំណើរការ។\n\n` +
-    tgLink
 
   const apiRes = await fetch(
     `https://api.telegram.org/bot${botToken}/sendMessage`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: app.telegramId, text }),
+      body: JSON.stringify({ chat_id: app.telegramId, text: NOTIFY_TEXT }),
     },
   )
   const apiBody = await apiRes.json()

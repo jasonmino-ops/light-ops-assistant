@@ -1,18 +1,31 @@
 /**
  * POST /api/ops/applications/[id]/approve
  *
- * Approve a PENDING store application:
- *  1. Create Tenant + Store atomically
- *  2. Generate a 72-hour owner BindToken
- *  3. Mark application as APPROVED
+ * 审批通过开店申请 — 直接完成老板账号绑定，无需再发绑定码给客户。
  *
- * The applicant scans the returned tgLink → /bind → /home.
+ * 事务内：
+ *  1. 创建 Tenant
+ *  2. 创建 Store
+ *  3. 创建 User（OWNER 角色，直接写入申请人的 telegramId）
+ *  4. 创建 UserStoreRole（将老板绑定到门店）
+ *  5. 标记 StoreApplication 为 APPROVED
+ *
+ * 事务完成后（非事务，失败不回滚）：
+ *  6. 通过 Telegram Bot API 向申请人发送通知："已通过，请重新打开进入系统"
+ *
+ * 客户收到通知后，在 Telegram 内重新打开 Mini App，
+ * /api/auth/telegram 按 telegramId 查到新建的 User，直接登录。
+ *
  * Ops-admin only.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuth } from '@/lib/ops-auth'
+
+const NOTIFY_TEXT =
+  '你的开店申请已通过！请返回 Telegram，重新打开店小二助手进入系统。\n' +
+  'ការស្នើសុំបើកហាងរបស់អ្នកត្រូវបានអនុម័តហើយ! សូមត្រឡប់ទៅ Telegram ហើយបើក店小二助手ម្ដងទៀតដើម្បីចូលប្រព័ន្ធ។'
 
 export async function POST(
   req: NextRequest,
@@ -30,46 +43,73 @@ export async function POST(
   }
 
   const storeCode = 'ST' + crypto.randomBytes(4).toString('hex').toUpperCase()
-  const token = crypto.randomBytes(20).toString('hex')
-  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000) // 72h for new-store onboarding
 
-  const { tenant, store } = await prisma.$transaction(async (tx) => {
+  // ── 事务：建商户 + 门店 + 老板账号 + 角色绑定 ────────────────────────────────
+  const { tenant, store, user } = await prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({ data: { name: app.storeName } })
+
     const store = await tx.store.create({
       data: { tenantId: tenant.id, code: storeCode, name: app.storeName },
     })
-    await tx.bindToken.create({
+
+    // 直接创建已绑定 telegramId 的老板 User，无需二次绑定
+    const user = await tx.user.create({
       data: {
-        token,
         tenantId: tenant.id,
-        storeId: store.id,
+        username: 'owner',
+        displayName: app.ownerName,
         role: 'OWNER',
-        label: `申请-${app.ownerName}-${new Date().toISOString().slice(0, 10)}`,
-        expiresAt,
-        maxUses: 1,
+        telegramId: app.telegramId,
+        status: 'ACTIVE',
       },
     })
+
+    await tx.userStoreRole.create({
+      data: {
+        tenantId: tenant.id,
+        userId: user.id,
+        storeId: store.id,
+        role: 'OWNER',
+        status: 'ACTIVE',
+      },
+    })
+
     await tx.storeApplication.update({
       where: { id },
       data: {
         status: 'APPROVED',
         approvedAt: new Date(),
         tenantId: tenant.id,
-        bindTokenValue: token,
       },
     })
-    return { tenant, store }
+
+    return { tenant, store, user }
   })
 
-  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '')
-    .replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
-  const tgLink = botUsername ? `https://t.me/${botUsername}?startapp=bind_${token}` : null
+  // ── 通知申请人（失败不影响审批结果）────────────────────────────────────────
+  let notified = false
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
+  if (botToken) {
+    try {
+      const r = await fetch(
+        `https://api.telegram.org/bot${botToken}/sendMessage`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: app.telegramId, text: NOTIFY_TEXT }),
+        },
+      )
+      notified = r.ok && (await r.json()).ok === true
+    } catch (e) {
+      console.error('[approve] Telegram notify failed:', e)
+    }
+  }
 
   return NextResponse.json({
     ok: true,
     tenantId: tenant.id,
     storeName: store.name,
-    tgLink,
-    token,
+    userId: user.id,
+    notified,
   }, { status: 201 })
 }
