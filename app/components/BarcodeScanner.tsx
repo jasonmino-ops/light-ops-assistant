@@ -7,35 +7,45 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 type Props = {
   onScanned: (barcode: string) => void
   onClose: () => void
-  /**
-   * Called the moment camera fails to start (HTTPS missing, no device,
-   * permission denied, etc.). Parent may choose to close the scanner and
-   * trigger a fallback (e.g. Telegram showScanQrPopup).
-   * If not provided, the error is shown inside the scanner component only.
-   */
   onCameraError?: (errorMsg: string) => void
 }
 
 type ScanState = 'loading' | 'active' | 'scanned' | 'error'
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+// ROI：只解码中心扫描框区域，降低全画面背景干扰
+// 对应视觉 frame（74% 宽 × 26% 高）并留少量余量
+const ROI_X_RATIO = 0.10   // 从视频宽度 10% 处开始
+const ROI_Y_RATIO = 0.28   // 从视频高度 28% 处开始
+const ROI_W_RATIO = 0.80   // 取视频宽度的 80%
+const ROI_H_RATIO = 0.44   // 取视频高度的 44%（宽松包住条码区）
+
+// 解码画布最大宽度（超出则等比缩小，提升性能）
+const MAX_CANVAS_W = 640
+
+// 安卓适度提升扫码频率（6~7fps），其他平台 5fps
+const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
+const FRAME_INTERVAL_MS = isAndroid ? 150 : 200
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<{ stop: () => void } | null>(null)
-  const doneRef = useRef(false) // prevent double-fire
+  const doneRef = useRef(false)
 
   const [scanState, setScanState] = useState<ScanState>('loading')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [scannedText, setScannedText] = useState<string>('')
 
-  // Stable callback to hand to ZXing — avoids re-mounting the effect
   const handleResult = useCallback(
     (text: string) => {
       if (doneRef.current) return
       doneRef.current = true
       controlsRef.current?.stop()
-      // Show "scanned" confirmation for 800ms before firing onScanned
+      // 震动反馈：成功识别后轻震 60ms（安卓有效，iOS/不支持环境静默跳过）
+      try { navigator.vibrate?.(60) } catch { /* ignore */ }
       setScannedText(text)
       setScanState('scanned')
       setTimeout(() => onScanned(text), 800)
@@ -46,6 +56,7 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
   useEffect(() => {
     let cancelled = false
     let stream: MediaStream | null = null
+    let intervalId: ReturnType<typeof setInterval> | null = null
 
     function reportError(msg: string) {
       if (cancelled) return
@@ -71,15 +82,16 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
         return
       }
 
-      // ── 3. Manually acquire stream ────────────────────────────────────────
-      // We manage the stream ourselves so we can guarantee video dimensions are
-      // non-zero before handing the element to ZXing. decodeFromConstraints has
-      // an IndexSizeError on Telegram WebView / iPhone because it starts the
-      // decode loop before videoWidth is ready.
+      // ── 3. Acquire stream ─────────────────────────────────────────────────
+      // 720p 分辨率：画质足够识别小条码，不会过大影响性能
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: { ideal: 'environment' } },
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
         })
       } catch (e: unknown) {
         const name = (e as Error)?.name ?? 'UnknownError'
@@ -97,36 +109,58 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
 
       if (cancelled || !videoRef.current) { stream.getTracks().forEach(t => t.stop()); return }
 
+      // ── 4. 请求连续自动对焦（近距离/小商品码场景）────────────────────────
+      // 失败静默跳过，不影响扫码启动
+      const track = stream.getVideoTracks()[0]
+      if (track) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (track as any).applyConstraints({
+            advanced: [{ focusMode: 'continuous' }],
+          })
+        } catch { /* device/browser does not support focusMode constraint */ }
+      }
+
       const video = videoRef.current
       video.srcObject = stream
-      // Explicitly call play() — autoPlay attribute alone is not reliable in
-      // some WebView environments (Telegram iOS).
-      try { await video.play() } catch { /* ignore: play() may throw if interrupted */ }
+      try { await video.play() } catch { /* ignore interrupted play */ }
 
-      // ── 4. Poll until video dimensions are ready ──────────────────────────
-      // Telegram WebView / iOS Safari: videoWidth can remain 0 for several
-      // rAF cycles after srcObject is set. ZXing's internal canvas crop will
-      // throw IndexSizeError if we start decoding before dimensions arrive.
+      // ── 5. Wait for video dimensions ──────────────────────────────────────
       await new Promise<void>((resolve) => {
         function poll() {
           if (cancelled) { resolve(); return }
           if (video.videoWidth > 0 && video.videoHeight > 0) { resolve(); return }
           requestAnimationFrame(poll)
         }
-        // Start polling immediately; also covers the case where loadedmetadata
-        // already fired before we registered the listener.
         requestAnimationFrame(poll)
       })
 
       if (cancelled || !videoRef.current) return
 
-      // ── 5. Start ZXing on the warmed video element ────────────────────────
+      // ── 6. Build ROI canvas ───────────────────────────────────────────────
+      const vw = video.videoWidth
+      const vh = video.videoHeight
+      const srcX = Math.round(vw * ROI_X_RATIO)
+      const srcY = Math.round(vh * ROI_Y_RATIO)
+      const srcW = Math.round(vw * ROI_W_RATIO)
+      const srcH = Math.round(vh * ROI_H_RATIO)
+
+      // 画布等比缩小（如需），避免高分辨率摄像头导致解码慢
+      const scale = Math.min(1, MAX_CANVAS_W / srcW)
+      const canvasW = Math.round(srcW * scale)
+      const canvasH = Math.round(srcH * scale)
+
+      const canvas = document.createElement('canvas')
+      canvas.width = canvasW
+      canvas.height = canvasH
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+
+      // ── 7. Load ZXing ─────────────────────────────────────────────────────
       try {
         const { BrowserMultiFormatReader, BarcodeFormat } = await import('@zxing/browser')
         const { DecodeHintType } = await import('@zxing/library')
         if (cancelled || !videoRef.current) return
 
-        // Restrict to 1D barcodes only — QR / 2D formats not supported
         const hints = new Map()
         hints.set(DecodeHintType.POSSIBLE_FORMATS, [
           BarcodeFormat.EAN_13,
@@ -139,24 +173,23 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
           BarcodeFormat.CODABAR,
         ])
         const reader = new BrowserMultiFormatReader(hints)
-        const controls = await reader.decodeFromVideoElement(
-          videoRef.current,
-          (result) => {
-            // Only handle successful decodes. ALL callback errors (NotFoundException,
-            // ChecksumException, etc.) are "no barcode this frame" — safe to ignore.
-            // In minified production builds, error class names are mangled (e.g.
-            // NotFoundException → 'e'), so name-based filtering is unreliable.
-            // Real camera errors (NotAllowedError, NotReadableError) are thrown as
-            // exceptions and caught by the outer try-catch, never via callback.
-            if (result) {
-              const text = result.getText()
-              if (text) handleResult(text)
-            }
-          },
-        )
 
-        if (cancelled) { controls.stop(); return }
-        controlsRef.current = controls
+        // ── 8. 定时抽帧 → ROI 裁剪 → 解码 ───────────────────────────────────
+        intervalId = setInterval(() => {
+          if (cancelled || !videoRef.current || video.readyState < 2) return
+          // 只绘制中心 ROI 区域到 canvas
+          ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, canvasW, canvasH)
+          try {
+            const result = reader.decodeFromCanvas(canvas)
+            const text = result?.getText?.()
+            if (text) handleResult(text)
+          } catch {
+            // NotFoundException (no barcode in this frame) — expected, ignore
+          }
+        }, FRAME_INTERVAL_MS)
+
+        if (cancelled) { clearInterval(intervalId); return }
+        controlsRef.current = { stop: () => { if (intervalId) clearInterval(intervalId) } }
         setScanState('active')
       } catch (e: unknown) {
         const name = (e as Error)?.name ?? 'UnknownError'
@@ -175,6 +208,7 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
     init()
     return () => {
       cancelled = true
+      if (intervalId) clearInterval(intervalId)
       controlsRef.current?.stop()
       stream?.getTracks().forEach(t => t.stop())
     }
@@ -185,17 +219,15 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
   return (
     <div style={s.overlay}>
       <div style={s.sheet}>
-        {/* Header */}
         <div style={s.header}>
           <span style={s.title}>扫描商品条码</span>
           <button style={s.closeBtn} type="button" onClick={onClose}>✕</button>
         </div>
 
-        {/* Viewport */}
         <div style={s.viewport}>
           <video ref={videoRef} style={s.video} autoPlay playsInline muted />
 
-          {(scanState === 'active') && (
+          {scanState === 'active' && (
             <div style={s.frameWrap}>
               <div style={s.frame} />
               <div style={s.frameHint}>将商品条码对准框内</div>
@@ -281,7 +313,6 @@ const s: Record<string, React.CSSProperties> = {
     objectFit: 'cover',
     display: 'block',
   },
-  // Scanning overlay: dim everything outside the frame box
   frameWrap: {
     position: 'absolute',
     inset: 0,
@@ -294,10 +325,9 @@ const s: Record<string, React.CSSProperties> = {
   },
   frame: {
     width: '74%',
-    height: '26%', // wide, short frame for 1D barcodes only (EAN-13, Code128, UPC etc.)
+    height: '26%',
     border: '2px solid rgba(255,255,255,0.9)',
     borderRadius: 6,
-    // Shadow makes everything outside the frame darker
     boxShadow: '0 0 0 2000px rgba(0,0,0,0.42)',
   },
   frameHint: {
