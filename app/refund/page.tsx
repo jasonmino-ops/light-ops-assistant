@@ -355,7 +355,9 @@ export default function RefundPage() {
       {/* ── Header ── */}
       <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {phase !== 'list' && (
+          {phase === 'list' ? (
+            <a href="/sale" style={s.backBtn}>‹</a>
+          ) : (
             <button style={s.backBtn} onClick={goBack}>‹</button>
           )}
           <span style={s.headerTitle}>{headerTitle}</span>
