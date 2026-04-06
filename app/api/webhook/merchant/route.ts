@@ -17,6 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
 const WEBHOOK_SECRET = process.env.MERCHANT_WEBHOOK_SECRET ?? ''
@@ -50,8 +51,8 @@ export async function POST(req: NextRequest) {
 
   const message: TgMessage | undefined = update.message
 
-  // Only handle regular user messages; skip if forwarding is not configured
-  if (!message || !FORWARD_CHAT_ID || !BOT_TOKEN) {
+  // Only handle regular user messages
+  if (!message || !BOT_TOKEN) {
     return NextResponse.json({ ok: true })
   }
 
@@ -68,14 +69,50 @@ export async function POST(req: NextRequest) {
 
   // Forward the message — Telegram shows "Forwarded from: <user>" automatically
   // This preserves all content types: text, photos, voice, stickers, etc.
-  try {
-    await tgSend('forwardMessage', {
-      chat_id: FORWARD_CHAT_ID,
-      from_chat_id: message.chat.id,
-      message_id: message.message_id,
-    })
-  } catch {
-    // Forward failed — return 200 so Telegram doesn't retry endlessly
+  if (FORWARD_CHAT_ID && BOT_TOKEN) {
+    try {
+      await tgSend('forwardMessage', {
+        chat_id: FORWARD_CHAT_ID,
+        from_chat_id: message.chat.id,
+        message_id: message.message_id,
+      })
+    } catch {
+      // Forward failed — return 200 so Telegram doesn't retry endlessly
+    }
+  }
+
+  // Save inbound customer message to DB for ops visibility
+  const senderId = String(message.from?.id ?? message.chat?.id ?? '')
+  if (senderId) {
+    const firstName: string = message.from?.first_name ?? ''
+    const lastName: string = message.from?.last_name ?? ''
+    const username: string = message.from?.username ?? ''
+    const senderLabel = [firstName, lastName].filter(Boolean).join(' ') || (username ? `@${username}` : senderId)
+
+    const msgContent: string =
+      message.text || message.caption ||
+      (message.photo ? '[图片]' : message.sticker ? '[贴纸]' : message.voice ? '[语音]' :
+        message.video ? '[视频]' : message.document ? '[文件]' : '[消息]')
+
+    // Try to match sender to a tenant (non-blocking)
+    let tenantId: string | null = null
+    try {
+      const user = await prisma.user.findFirst({
+        where: { telegramId: senderId },
+        select: { tenantId: true },
+      })
+      tenantId = user?.tenantId ?? null
+    } catch { /* ignore lookup failure */ }
+
+    prisma.telegramMessage.create({
+      data: {
+        recipientTelegramId: senderId,
+        content: `[${senderLabel}] ${msgContent}`,
+        tenantId,
+        sentBy: 'CUSTOMER',
+        status: 'RECEIVED',
+      },
+    }).catch(() => {})
   }
 
   return NextResponse.json({ ok: true })

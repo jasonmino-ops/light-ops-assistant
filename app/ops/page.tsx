@@ -16,6 +16,14 @@ type StoreApplicationRow = {
   createdAt: string
 }
 
+type CustomerMessageRow = {
+  id: string
+  recipientTelegramId: string
+  content: string
+  tenantId: string | null
+  createdAt: string
+}
+
 type TenantRow = {
   id: string
   name: string
@@ -49,6 +57,7 @@ export default function OpsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ACTIVE')
   const [opsRole, setOpsRole] = useState<string>('')
   const [applications, setApplications] = useState<StoreApplicationRow[]>([])
+  const [customerMessages, setCustomerMessages] = useState<CustomerMessageRow[]>([])
 
   // ── Auth check ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -89,10 +98,18 @@ export default function OpsPage() {
       .catch(() => {})
   }
 
+  function loadCustomerMessages() {
+    apiFetch('/api/ops/messages?limit=30', undefined, OWNER_CTX)
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setCustomerMessages)
+      .catch(() => {})
+  }
+
   useEffect(() => {
     if (authState === 'ok') {
       loadTenants()
       loadApplications()
+      loadCustomerMessages()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authState])
@@ -166,6 +183,11 @@ export default function OpsPage() {
           />
         )}
 
+        {/* ── Customer messages ── */}
+        {customerMessages.length > 0 && (
+          <CustomerMessagesSection messages={customerMessages} onRefresh={loadCustomerMessages} />
+        )}
+
         {/* ── Create form ── */}
         {showCreate && (
           <CreateForm
@@ -232,6 +254,67 @@ function StatPill({ icon, label, value, color }: { icon: string; label: string; 
       <span style={s.statIcon}>{icon}</span>
       <span style={s.statLabel}>{label}</span>
       <span style={{ ...s.statValue, color: color ?? '#333' }}>{value}</span>
+    </div>
+  )
+}
+
+// ─── CustomerMessagesSection ──────────────────────────────────────────────────
+
+function CustomerMessagesSection({
+  messages,
+  onRefresh,
+}: {
+  messages: CustomerMessageRow[]
+  onRefresh: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? messages : messages.slice(0, 5)
+
+  return (
+    <div style={{ ...s.appSection, border: '1.5px solid #1677ff33', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ ...s.appSectionTitle, color: '#1677ff', margin: 0 }}>
+          💬 客户来信
+          <span style={{ ...s.appBadge, background: '#1677ff' }}>{messages.length}</span>
+        </div>
+        <button
+          onClick={onRefresh}
+          style={{ fontSize: 12, color: '#1677ff', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+        >
+          刷新
+        </button>
+      </div>
+      {visible.map((m) => {
+        const time = new Date(m.createdAt).toLocaleString('zh-CN', {
+          timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit',
+        })
+        return (
+          <div key={m.id} style={{ padding: '8px 0', borderTop: '1px solid #f5f5f5' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{ fontSize: 13, color: '#1a1a1a', flex: 1, wordBreak: 'break-word' }}>
+                {m.content}
+              </div>
+              <div style={{ fontSize: 11, color: '#bbb', flexShrink: 0, whiteSpace: 'nowrap', marginTop: 2 }}>
+                {time}
+              </div>
+            </div>
+            {m.tenantId && (
+              <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>
+                商户 ID: {m.tenantId.slice(0, 12)}…
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {messages.length > 5 && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          style={{ marginTop: 8, fontSize: 12, color: '#1677ff', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          {expanded ? '收起' : `查看全部 ${messages.length} 条`}
+        </button>
+      )}
     </div>
   )
 }
