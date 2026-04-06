@@ -280,12 +280,13 @@ model StoreApplication {
 model TelegramMessage {
   id                  String   @id @default(cuid())
   tenantId            String?           // null = ops/系统级消息
-  recipientTelegramId String
-  messageType         String   @default("TEXT") // TEXT | IMAGE
+  recipientTelegramId String            // 发件方(CUSTOMER)或收件方(OPS/SYSTEM)的 TG ID
+  senderName          String?           // 客户名称，CUSTOMER 消息时填入
+  messageType         String   @default("TEXT") // TEXT | IMAGE | STICKER | VOICE | VIDEO | FILE | OTHER
   content             String
-  status              String   @default("SENT") // SENT | FAILED
+  status              String   @default("SENT") // SENT | FAILED | RECEIVED
   errorMessage        String?
-  sentBy              String   @default("SYSTEM") // SYSTEM | OPS
+  sentBy              String   @default("SYSTEM") // SYSTEM | OPS | CUSTOMER
   createdAt           DateTime @default(now())
 
   @@index([tenantId])

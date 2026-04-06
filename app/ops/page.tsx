@@ -16,11 +16,23 @@ type StoreApplicationRow = {
   createdAt: string
 }
 
-type CustomerMessageRow = {
-  id: string
-  recipientTelegramId: string
-  content: string
+type ConversationRow = {
+  telegramId: string
+  senderName: string | null
   tenantId: string | null
+  lastMessage: string
+  lastAt: string
+  messageCount: number
+}
+
+type ThreadMessage = {
+  id: string
+  sentBy: string
+  senderName: string | null
+  content: string
+  messageType: string
+  status: string
+  errorMessage: string | null
   createdAt: string
 }
 
@@ -57,7 +69,7 @@ export default function OpsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ACTIVE')
   const [opsRole, setOpsRole] = useState<string>('')
   const [applications, setApplications] = useState<StoreApplicationRow[]>([])
-  const [customerMessages, setCustomerMessages] = useState<CustomerMessageRow[]>([])
+  const [conversations, setConversations] = useState<ConversationRow[]>([])
 
   // ── Auth check ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -98,10 +110,10 @@ export default function OpsPage() {
       .catch(() => {})
   }
 
-  function loadCustomerMessages() {
-    apiFetch('/api/ops/messages?limit=30', undefined, OWNER_CTX)
+  function loadConversations() {
+    apiFetch('/api/ops/conversations', undefined, OWNER_CTX)
       .then((r) => (r.ok ? r.json() : []))
-      .then(setCustomerMessages)
+      .then(setConversations)
       .catch(() => {})
   }
 
@@ -109,7 +121,7 @@ export default function OpsPage() {
     if (authState === 'ok') {
       loadTenants()
       loadApplications()
-      loadCustomerMessages()
+      loadConversations()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authState])
@@ -183,10 +195,8 @@ export default function OpsPage() {
           />
         )}
 
-        {/* ── Customer messages ── */}
-        {customerMessages.length > 0 && (
-          <CustomerMessagesSection messages={customerMessages} onRefresh={loadCustomerMessages} />
-        )}
+        {/* ── Customer conversations ── */}
+        <ConversationsSection conversations={conversations} onRefresh={loadConversations} />
 
         {/* ── Create form ── */}
         {showCreate && (
@@ -258,62 +268,204 @@ function StatPill({ icon, label, value, color }: { icon: string; label: string; 
   )
 }
 
-// ─── CustomerMessagesSection ──────────────────────────────────────────────────
+// ─── ConversationsSection ────────────────────────────────────────────────────
 
-function CustomerMessagesSection({
-  messages,
+function ConversationsSection({
+  conversations,
   onRefresh,
 }: {
-  messages: CustomerMessageRow[]
+  conversations: ConversationRow[]
   onRefresh: () => void
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const visible = expanded ? messages : messages.slice(0, 5)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [thread, setThread] = useState<ThreadMessage[]>([])
+  const [loadingThread, setLoadingThread] = useState(false)
+  const [replyText, setReplyText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState('')
+
+  async function openConversation(telegramId: string) {
+    setSelected(telegramId)
+    setReplyText('')
+    setSendError('')
+    setLoadingThread(true)
+    try {
+      const r = await apiFetch(`/api/ops/conversations/${telegramId}`, undefined, OWNER_CTX)
+      if (r.ok) setThread(await r.json())
+    } finally {
+      setLoadingThread(false)
+    }
+  }
+
+  async function sendReply(conv: ConversationRow) {
+    if (!replyText.trim() || sending) return
+    setSending(true)
+    setSendError('')
+    try {
+      const r = await apiFetch('/api/ops/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          recipientTelegramId: conv.telegramId,
+          text: replyText.trim(),
+          ...(conv.tenantId ? { tenantId: conv.tenantId } : {}),
+        }),
+      }, OWNER_CTX)
+      const body = await r.json()
+      if (r.ok && body.ok) {
+        setReplyText('')
+        // 重新拉线程
+        const r2 = await apiFetch(`/api/ops/conversations/${conv.telegramId}`, undefined, OWNER_CTX)
+        if (r2.ok) setThread(await r2.json())
+      } else {
+        setSendError(body.message ?? body.error ?? '发送失败')
+      }
+    } catch {
+      setSendError('网络错误，请重试')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const selectedConv = conversations.find((c) => c.telegramId === selected) ?? null
+
+  const fmtTime = (iso: string) =>
+    new Date(iso).toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    })
 
   return (
-    <div style={{ ...s.appSection, border: '1.5px solid #1677ff33', marginBottom: 12 }}>
+    <div style={{ ...s.appSection, border: '1.5px solid #1677ff22', marginBottom: 12 }}>
+      {/* 区块标题 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ ...s.appSectionTitle, color: '#1677ff', margin: 0 }}>
-          💬 客户来信
-          <span style={{ ...s.appBadge, background: '#1677ff' }}>{messages.length}</span>
+          💬 客户会话
+          {conversations.length > 0 && (
+            <span style={{ ...s.appBadge, background: '#1677ff' }}>{conversations.length}</span>
+          )}
         </div>
-        <button
-          onClick={onRefresh}
-          style={{ fontSize: 12, color: '#1677ff', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
-        >
-          刷新
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {selected && (
+            <button
+              onClick={() => { setSelected(null); setThread([]) }}
+              style={{ fontSize: 12, color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              ← 返回列表
+            </button>
+          )}
+          <button
+            onClick={() => { onRefresh(); if (selected) openConversation(selected) }}
+            style={{ fontSize: 12, color: '#1677ff', background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            刷新
+          </button>
+        </div>
       </div>
-      {visible.map((m) => {
-        const time = new Date(m.createdAt).toLocaleString('zh-CN', {
-          timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit',
-          hour: '2-digit', minute: '2-digit',
-        })
-        return (
-          <div key={m.id} style={{ padding: '8px 0', borderTop: '1px solid #f5f5f5' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-              <div style={{ fontSize: 13, color: '#1a1a1a', flex: 1, wordBreak: 'break-word' }}>
-                {m.content}
-              </div>
-              <div style={{ fontSize: 11, color: '#bbb', flexShrink: 0, whiteSpace: 'nowrap', marginTop: 2 }}>
-                {time}
-              </div>
+
+      {/* 会话列表 */}
+      {!selected && (
+        <>
+          {conversations.length === 0 ? (
+            <div style={{ fontSize: 13, color: '#ccc', textAlign: 'center', padding: '12px 0' }}>
+              暂无客户消息
             </div>
-            {m.tenantId && (
-              <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>
-                商户 ID: {m.tenantId.slice(0, 12)}…
+          ) : (
+            conversations.map((conv) => (
+              <div
+                key={conv.telegramId}
+                onClick={() => openConversation(conv.telegramId)}
+                style={s.convRow}
+              >
+                <div style={s.convAvatar}>
+                  {(conv.senderName ?? conv.telegramId).slice(0, 1).toUpperCase()}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={s.convName}>{conv.senderName ?? conv.telegramId}</span>
+                    <span style={s.convTime}>{fmtTime(conv.lastAt)}</span>
+                  </div>
+                  <div style={s.convPreview}>
+                    {conv.lastMessage.length > 50 ? conv.lastMessage.slice(0, 50) + '…' : conv.lastMessage}
+                  </div>
+                  {conv.tenantId && (
+                    <div style={{ fontSize: 10, color: '#ccc', marginTop: 1 }}>
+                      商户 {conv.tenantId.slice(0, 10)}…
+                    </div>
+                  )}
+                </div>
+                <div style={s.convCount}>{conv.messageCount}</div>
               </div>
+            ))
+          )}
+        </>
+      )}
+
+      {/* 会话详情 + 回复 */}
+      {selected && selectedConv && (
+        <div>
+          {/* 客户名称 */}
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a', marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' }}>
+            {selectedConv.senderName ?? selectedConv.telegramId}
+            <span style={{ fontSize: 11, color: '#bbb', marginLeft: 8, fontWeight: 400 }}>
+              TG: {selectedConv.telegramId}
+            </span>
+          </div>
+
+          {/* 消息气泡区 */}
+          <div style={s.threadBox}>
+            {loadingThread ? (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={s.spinner} />
+                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+              </div>
+            ) : thread.length === 0 ? (
+              <div style={{ fontSize: 12, color: '#ccc', textAlign: 'center', padding: '16px 0' }}>暂无记录</div>
+            ) : (
+              thread.map((msg) => {
+                const isOps = msg.sentBy === 'OPS' || msg.sentBy === 'SYSTEM'
+                return (
+                  <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isOps ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+                    <div style={{ ...s.bubble, ...(isOps ? s.bubbleOps : s.bubbleCustomer) }}>
+                      {msg.content}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#ccc', marginTop: 2 }}>
+                      {fmtTime(msg.createdAt)}
+                      {isOps && msg.status === 'FAILED' && (
+                        <span style={{ color: '#ff4d4f', marginLeft: 4 }}>✕ 发送失败</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
             )}
           </div>
-        )
-      })}
-      {messages.length > 5 && (
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          style={{ marginTop: 8, fontSize: 12, color: '#1677ff', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-        >
-          {expanded ? '收起' : `查看全部 ${messages.length} 条`}
-        </button>
+
+          {/* 回复输入区 */}
+          <div style={{ marginTop: 10 }}>
+            <textarea
+              style={s.replyArea}
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="输入回复内容…"
+              rows={3}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendReply(selectedConv)
+              }}
+            />
+            {sendError && (
+              <div style={{ fontSize: 12, color: '#ff4d4f', marginTop: 4 }}>{sendError}</div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+              <button
+                style={{ ...s.sendBtn, opacity: (!replyText.trim() || sending) ? 0.5 : 1 }}
+                disabled={!replyText.trim() || sending}
+                onClick={() => sendReply(selectedConv)}
+              >
+                {sending ? '发送中…' : '发送 (Ctrl+Enter)'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -622,7 +774,44 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12, color: '#52c41a', fontWeight: 600, flexShrink: 0,
   },
   sendBtn: {
-    height: 28, padding: '0 12px', background: '#1677ff', color: '#fff',
-    border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+    height: 32, padding: '0 16px', background: '#1677ff', color: '#fff',
+    border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
   },
+
+  // conversations
+  convRow: {
+    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0',
+    borderTop: '1px solid #f5f5f5', cursor: 'pointer',
+  },
+  convAvatar: {
+    width: 36, height: 36, borderRadius: '50%', background: '#e6f4ff',
+    border: '1.5px solid #91caff', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#1677ff', flexShrink: 0,
+  },
+  convName: { fontSize: 13, fontWeight: 600, color: '#1a1a1a' },
+  convTime: { fontSize: 11, color: '#bbb' },
+  convPreview: { fontSize: 12, color: '#888', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  convCount: {
+    minWidth: 20, height: 20, borderRadius: 10, background: '#1677ff', color: '#fff',
+    fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '0 5px', flexShrink: 0,
+  },
+
+  // thread
+  threadBox: {
+    maxHeight: 280, overflowY: 'auto', padding: '8px 0',
+    borderTop: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0',
+  },
+  bubble: {
+    maxWidth: '75%', padding: '8px 12px', borderRadius: 12,
+    fontSize: 13, lineHeight: 1.5, wordBreak: 'break-word',
+  },
+  bubbleCustomer: { background: '#f5f5f5', color: '#1a1a1a', borderBottomLeftRadius: 4 },
+  bubbleOps: { background: '#1677ff', color: '#fff', borderBottomRightRadius: 4 },
+
+  replyArea: {
+    width: '100%', border: '1.5px solid #e8e8e8', borderRadius: 8,
+    padding: '8px 10px', fontSize: 13, outline: 'none',
+    boxSizing: 'border-box', resize: 'none', fontFamily: 'inherit',
+  } as React.CSSProperties,
 }

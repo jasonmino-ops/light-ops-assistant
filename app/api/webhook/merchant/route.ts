@@ -87,12 +87,17 @@ export async function POST(req: NextRequest) {
     const firstName: string = message.from?.first_name ?? ''
     const lastName: string = message.from?.last_name ?? ''
     const username: string = message.from?.username ?? ''
-    const senderLabel = [firstName, lastName].filter(Boolean).join(' ') || (username ? `@${username}` : senderId)
+    const senderName = [firstName, lastName].filter(Boolean).join(' ') || (username ? `@${username}` : null)
 
     const msgContent: string =
       message.text || message.caption ||
       (message.photo ? '[图片]' : message.sticker ? '[贴纸]' : message.voice ? '[语音]' :
-        message.video ? '[视频]' : message.document ? '[文件]' : '[消息]')
+        message.video ? '[视频]' : message.document ? '[文件]' : '[其他消息]')
+
+    const msgType: string =
+      message.photo ? 'IMAGE' : message.sticker ? 'STICKER' : message.voice ? 'VOICE' :
+        message.video ? 'VIDEO' : message.document ? 'FILE' :
+          message.text ? 'TEXT' : 'OTHER'
 
     // Try to match sender to a tenant (non-blocking)
     let tenantId: string | null = null
@@ -107,7 +112,9 @@ export async function POST(req: NextRequest) {
     prisma.telegramMessage.create({
       data: {
         recipientTelegramId: senderId,
-        content: `[${senderLabel}] ${msgContent}`,
+        senderName,
+        content: msgContent,
+        messageType: msgType,
         tenantId,
         sentBy: 'CUSTOMER',
         status: 'RECEIVED',
