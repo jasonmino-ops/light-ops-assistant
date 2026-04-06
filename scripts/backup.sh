@@ -15,21 +15,6 @@
 # 保留 -u（未定义变量报错）和 -o pipefail（管道错误传递）
 set -uo pipefail
 
-# ─── macOS 兼容 timeout 函数 ──────────────────────────────────────────────────
-# macOS 自带 bash 3.2 + 无 GNU timeout；优先用 gtimeout（brew coreutils），
-# 否则用 perl alarm（macOS 所有版本内置）。
-_timeout() {
-  local secs=$1; shift
-  if command -v gtimeout &>/dev/null; then
-    gtimeout "$secs" "$@"
-  elif command -v timeout &>/dev/null; then
-    timeout "$secs" "$@"
-  else
-    # perl alarm 兜底：超时发 ALRM 信号终止子进程，退出码 142
-    perl -e "alarm($secs); exec \@ARGV or die 'exec: \$!'" -- "$@"
-  fi
-}
-
 # ─── 配置区（按实际情况修改）────────────────────────────────────────────────
 PROJECT_DIR="$HOME/light-ops-assistant"
 BACKUP_ROOT="$HOME/backups/shop-assistant"
@@ -66,7 +51,6 @@ STATUS_MIGRATIONS="未执行"
 STATUS_DOCS="未执行"
 STATUS_GDRIVE="未执行"
 DETAIL_DB=""            # 失败时存错误摘要
-DB_ERR_FILE=""          # 提前初始化，避免 set -u unbound variable
 
 # ─── 加载数据库连接配置 ───────────────────────────────────────────────────────
 DIRECT_URL=""
@@ -74,52 +58,64 @@ if [ -f "$SECRETS_FILE" ]; then
   # shellcheck source=/dev/null
   source "$SECRETS_FILE"
 else
-  warn "未找到 $SECRETS_FILE，数据库备份将跳过"
+  warn "未找到 ${SECRETS_FILE}，数据库备份将跳过"
 fi
 
 # ─── 建立本次备份目录 ─────────────────────────────────────────────────────────
 BACKUP_DIR="$BACKUP_ROOT/daily/$DATE"
 mkdir -p "$BACKUP_DIR"
 
+# DB_ERR_FILE 在 BACKUP_DIR 确定后立即赋真实路径，不用空串占位
+DB_ERR_FILE="$BACKUP_DIR/db-error.log"
+
 log "开始备份 → $BACKUP_DIR"
 
-# ─── 1. 数据库备份（非阻断，带超时） ─────────────────────────────────────────
-if [ -n "${DIRECT_URL:-}" ]; then
-  if ! command -v pg_dump &>/dev/null; then
-    STATUS_DB="跳过"
-    DETAIL_DB="pg_dump 未安装（brew install libpq）"
-    warn "pg_dump 未找到，跳过数据库备份"
-  else
-    log "数据库备份中（超时 ${PG_DUMP_TIMEOUT}s）..."
-    DB_ERR_FILE="$BACKUP_DIR/db-error.log"
-    # _timeout 防止 DNS 解析挂起把脚本卡死（兼容 macOS）
-    if _timeout "$PG_DUMP_TIMEOUT" pg_dump "$DIRECT_URL" \
-         --format=custom \
-         --no-acl \
-         --no-owner \
-         --file="$BACKUP_DIR/db.dump" 2>"$DB_ERR_FILE"; then
-      DB_SIZE=$(du -sh "$BACKUP_DIR/db.dump" | cut -f1)
-      ok "数据库备份完成（$DB_SIZE）"
-      rm -f "$DB_ERR_FILE"
-      STATUS_DB="成功（$DB_SIZE）"
-    else
-      EXIT_CODE=$?
-      # 124 = GNU timeout 超时；142 = perl alarm 超时（SIGALRM）
-      if [ "$EXIT_CODE" = "124" ] || [ "$EXIT_CODE" = "142" ]; then
-        DETAIL_DB="超时（${PG_DUMP_TIMEOUT}s），DNS 可能无法解析 Supabase 域名"
-      else
-        DETAIL_DB=$(head -3 "$DB_ERR_FILE" 2>/dev/null | tr '\n' ' ')
-      fi
-      STATUS_DB="失败"
-      fail "数据库备份失败：$DETAIL_DB"
-      fail "（错误详情见 $DB_ERR_FILE，其他备份继续执行）"
-      # 清除可能产生的空/残缺 dump 文件
-      rm -f "$BACKUP_DIR/db.dump"
-    fi
-  fi
-else
+# ─── 1. 数据库备份（非阻断，纯 bash 后台进程超时，无需 timeout/perl） ────────
+if [ -z "${DIRECT_URL:-}" ]; then
   warn "DIRECT_URL 未配置，跳过数据库备份"
   DETAIL_DB="DIRECT_URL 未在 ~/.backup-secrets 中配置"
+elif ! command -v pg_dump &>/dev/null; then
+  STATUS_DB="跳过"
+  DETAIL_DB="pg_dump 未安装（brew install libpq）"
+  warn "pg_dump 未找到，跳过数据库备份"
+else
+  log "数据库备份中（超时 ${PG_DUMP_TIMEOUT}s）..."
+
+  # 后台启动 pg_dump
+  pg_dump "$DIRECT_URL" \
+    --format=custom --no-acl --no-owner \
+    --file="$BACKUP_DIR/db.dump" 2>"$DB_ERR_FILE" &
+  PG_PID=$!
+
+  # 看门狗：超时后 kill pg_dump（纯 bash，macOS 3.2 兼容）
+  ( sleep "$PG_DUMP_TIMEOUT" && kill "$PG_PID" 2>/dev/null ) &
+  WATCHDOG_PID=$!
+
+  # 等待 pg_dump 结束，获取其真实退出码
+  wait "$PG_PID"
+  PG_EXIT=$?
+
+  # 停掉看门狗
+  kill "$WATCHDOG_PID" 2>/dev/null
+  wait "$WATCHDOG_PID" 2>/dev/null
+
+  if [ "$PG_EXIT" -eq 0 ]; then
+    DB_SIZE=$(du -sh "$BACKUP_DIR/db.dump" | cut -f1)
+    ok "数据库备份完成（${DB_SIZE}）"
+    rm -f "$DB_ERR_FILE"
+    STATUS_DB="成功（${DB_SIZE}）"
+  else
+    # exit 143 = 被 SIGTERM 杀掉（看门狗超时）
+    if [ "$PG_EXIT" -eq 143 ]; then
+      DETAIL_DB="超时（${PG_DUMP_TIMEOUT}s），DNS 可能无法解析 Supabase 域名"
+    else
+      DETAIL_DB=$(head -3 "$DB_ERR_FILE" 2>/dev/null | tr '\n' ' ')
+    fi
+    STATUS_DB="失败"
+    fail "数据库备份失败：$DETAIL_DB"
+    fail "error log: ${DB_ERR_FILE} — 其他备份继续执行"
+    rm -f "$BACKUP_DIR/db.dump"
+  fi
 fi
 
 # ─── 2. 代码快照（git archive，不含 node_modules/.next） ─────────────────────
@@ -130,8 +126,8 @@ if [ -d "$PROJECT_DIR/.git" ]; then
   if git archive --format=tar.gz \
        --output="$BACKUP_DIR/code-$GIT_COMMIT.tar.gz" HEAD 2>/dev/null; then
     CODE_SIZE=$(du -sh "$BACKUP_DIR/code-$GIT_COMMIT.tar.gz" | cut -f1)
-    ok "代码快照完成 commit=$GIT_COMMIT（$CODE_SIZE）"
-    STATUS_CODE="成功 commit=$GIT_COMMIT（$CODE_SIZE）"
+    ok "代码快照完成 commit=${GIT_COMMIT}（${CODE_SIZE}）"
+    STATUS_CODE="成功 commit=${GIT_COMMIT}（${CODE_SIZE}）"
   else
     fail "代码快照失败"
     STATUS_CODE="失败"
@@ -145,8 +141,8 @@ fi
 if [ -d "$PROJECT_DIR/prisma/migrations" ]; then
   if cp -r "$PROJECT_DIR/prisma/migrations" "$BACKUP_DIR/migrations" 2>/dev/null; then
     MIG_COUNT=$(ls "$BACKUP_DIR/migrations" | wc -l | tr -d ' ')
-    ok "migrations 备份完成（$MIG_COUNT 个）"
-    STATUS_MIGRATIONS="成功（$MIG_COUNT 个）"
+    ok "migrations 备份完成（${MIG_COUNT} 个）"
+    STATUS_MIGRATIONS="成功（${MIG_COUNT} 个）"
   else
     fail "migrations 备份失败"
     STATUS_MIGRATIONS="失败"
@@ -288,6 +284,6 @@ printf "  migrations：%s\n"    "$STATUS_MIGRATIONS"
 printf "  关键文档：  %s\n"    "$STATUS_DOCS"
 printf "  Google Drive：%s\n"  "$STATUS_GDRIVE"
 echo "────────────────────────────────────"
-echo "  本地路径：$BACKUP_DIR（$TOTAL_SIZE）"
+echo "  本地路径：${BACKUP_DIR}（${TOTAL_SIZE}）"
 echo "════════════════════════════════════"
 echo ""
