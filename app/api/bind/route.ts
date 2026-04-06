@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { signSession } from '@/lib/session'
+import { sendAndLogMessage, WELCOME_TEXT } from '@/lib/telegram'
 
 // Dual-token HMAC: try merchant bot first, then ops bot.
 // Ops-generated bind tokens may be scanned via the ops bot Mini App, whose
@@ -191,7 +192,15 @@ export async function POST(req: NextRequest) {
     return user
   })
 
-  // ── 6. Sign session cookie ────────────────────────────────────────────────
+  // ── 6. 发送首次欢迎消息（非事务，失败不影响绑定结果）──────────────────────
+  sendAndLogMessage({
+    recipientTelegramId: newUser.telegramId!,
+    text: WELCOME_TEXT,
+    tenantId: newUser.tenantId,
+    sentBy: 'SYSTEM',
+  }).catch((e) => console.error('[bind] welcome message failed:', e))
+
+  // ── 7. Sign session cookie ────────────────────────────────────────────────
   const sessionToken = signSession({
     tenantId: newUser.tenantId,
     userId: newUser.id,

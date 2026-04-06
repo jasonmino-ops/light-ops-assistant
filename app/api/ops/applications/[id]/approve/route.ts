@@ -22,10 +22,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuth } from '@/lib/ops-auth'
+import { sendAndLogMessage, WELCOME_TEXT } from '@/lib/telegram'
 
+// 审批通过通知 + 欢迎消息合并成一条，减少打扰
 const NOTIFY_TEXT =
   '你的开店申请已通过！请返回 Telegram，重新打开店小二助手进入系统。\n' +
-  'ការស្នើសុំបើកហាងរបស់អ្នកត្រូវបានអនុម័តហើយ! សូមត្រឡប់ទៅ Telegram ហើយបើក店小二助手ម្ដងទៀតដើម្បីចូលប្រព័ន្ធ។'
+  'ការស្នើសុំបើកហាងរបស់អ្នកត្រូវបានអនុម័តហើយ! សូមត្រឡប់ទៅ Telegram ហើយបើក店小二助手ម្ដងទៀតដើម្បីចូលប្រព័ន្ធ។\n\n' +
+  WELCOME_TEXT
 
 export async function POST(
   req: NextRequest,
@@ -86,24 +89,13 @@ export async function POST(
     return { tenant, store, user }
   })
 
-  // ── 通知申请人（失败不影响审批结果）────────────────────────────────────────
-  let notified = false
-  const botToken = process.env.TELEGRAM_BOT_TOKEN
-  if (botToken) {
-    try {
-      const r = await fetch(
-        `https://api.telegram.org/bot${botToken}/sendMessage`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: app.telegramId, text: NOTIFY_TEXT }),
-        },
-      )
-      notified = r.ok && (await r.json()).ok === true
-    } catch (e) {
-      console.error('[approve] Telegram notify failed:', e)
-    }
-  }
+  // ── 通知申请人 + 欢迎消息（失败不影响审批结果）──────────────────────────
+  const { ok: notified } = await sendAndLogMessage({
+    recipientTelegramId: app.telegramId,
+    text: NOTIFY_TEXT,
+    tenantId: tenant.id,
+    sentBy: 'SYSTEM',
+  }).catch((e) => { console.error('[approve] notify failed:', e); return { ok: false } })
 
   return NextResponse.json({
     ok: true,

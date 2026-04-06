@@ -9,7 +9,7 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Store = { id: string; name: string; code: string }
-type Member = { id: string; username: string; displayName: string; role: string; bound: boolean; staffNumber: number | null; storeName: string }
+type Member = { id: string; username: string; displayName: string; role: string; bound: boolean; telegramId: string | null; staffNumber: number | null; storeName: string }
 type TodayStats = { saleCount: number; saleAmount: number; refundCount: number; lastActiveAt: string | null }
 
 type TenantDetail = {
@@ -601,6 +601,10 @@ function GenCodePanel({ tenantId, stores }: { tenantId: string; stores: Store[] 
 function MemberList({ tenantId, members, onUnbound }: { tenantId: string; members: Member[]; onUnbound: () => void }) {
   const [unbinding, setUnbinding] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  // composing: { memberId, telegramId } | null
+  const [composing, setComposing] = useState<{ memberId: string; telegramId: string } | null>(null)
+  const [composeText, setComposeText] = useState('')
+  const [sending, setSending] = useState(false)
 
   async function unbind(userId: string, displayName: string) {
     if (!confirm(`确认解绑「${displayName}」的 Telegram 账号？`)) return
@@ -618,6 +622,36 @@ function MemberList({ tenantId, members, onUnbound }: { tenantId: string; member
     }
   }
 
+  function openCompose(memberId: string, telegramId: string) {
+    setComposing({ memberId, telegramId })
+    setComposeText('')
+    setMsg(null)
+  }
+
+  async function sendMessage() {
+    if (!composing || !composeText.trim()) return
+    setSending(true)
+    setMsg(null)
+    try {
+      const r = await apiFetch('/api/ops/messages', {
+        method: 'POST',
+        body: JSON.stringify({ recipientTelegramId: composing.telegramId, text: composeText.trim(), tenantId }),
+      }, OWNER_CTX)
+      const body = await r.json()
+      if (r.ok && body.ok) {
+        setMsg('✓ 消息已发送')
+        setComposing(null)
+        setComposeText('')
+      } else {
+        setMsg(body.message ?? body.error ?? '发送失败')
+      }
+    } catch {
+      setMsg('网络错误，请重试')
+    } finally {
+      setSending(false)
+    }
+  }
+
   if (members.length === 0) return <div style={s.emptyHint}>暂无成员</div>
 
   return (
@@ -625,34 +659,62 @@ function MemberList({ tenantId, members, onUnbound }: { tenantId: string; member
       {msg && <div style={s.infoMsg}>{msg}</div>}
       <div style={s.memberList}>
         {members.map((m) => (
-          <div key={m.id} style={s.memberRow}>
-            <div style={s.memberLeft}>
-              <span style={{ ...s.roleBadge, background: m.role === 'OWNER' ? '#fff7e6' : '#f6f6f6', color: m.role === 'OWNER' ? '#fa8c16' : '#666' }}>
-                {m.role === 'OWNER' ? '老板' : '员工'}
-              </span>
-              <div>
-                <div style={s.memberName}>{m.displayName || m.username}</div>
-                <div style={s.memberSub}>
-                  {m.username}
-                  {m.staffNumber != null && <span style={s.staffNumBadge}>#{m.staffNumber}</span>}
-                  {' · '}{m.storeName}
+          <div key={m.id}>
+            <div style={s.memberRow}>
+              <div style={s.memberLeft}>
+                <span style={{ ...s.roleBadge, background: m.role === 'OWNER' ? '#fff7e6' : '#f6f6f6', color: m.role === 'OWNER' ? '#fa8c16' : '#666' }}>
+                  {m.role === 'OWNER' ? '老板' : '员工'}
+                </span>
+                <div>
+                  <div style={s.memberName}>{m.displayName || m.username}</div>
+                  <div style={s.memberSub}>
+                    {m.username}
+                    {m.staffNumber != null && <span style={s.staffNumBadge}>#{m.staffNumber}</span>}
+                    {' · '}{m.storeName}
+                  </div>
                 </div>
               </div>
+              <div style={s.memberRight}>
+                <span style={{ ...s.boundBadge, color: m.bound ? '#52c41a' : '#bbb' }}>
+                  {m.bound ? '已绑定' : '未绑定'}
+                </span>
+                {m.bound && m.telegramId && (
+                  <button
+                    style={s.msgBtn}
+                    onClick={() => composing?.memberId === m.id ? setComposing(null) : openCompose(m.id, m.telegramId!)}
+                  >
+                    {composing?.memberId === m.id ? '取消' : '发消息'}
+                  </button>
+                )}
+                {m.bound && (
+                  <button
+                    style={{ ...s.unbindBtn, opacity: unbinding === m.id ? 0.6 : 1 }}
+                    disabled={unbinding === m.id}
+                    onClick={() => unbind(m.id, m.displayName || m.username)}
+                  >
+                    {unbinding === m.id ? '…' : '解绑'}
+                  </button>
+                )}
+              </div>
             </div>
-            <div style={s.memberRight}>
-              <span style={{ ...s.boundBadge, color: m.bound ? '#52c41a' : '#bbb' }}>
-                {m.bound ? '已绑定' : '未绑定'}
-              </span>
-              {m.bound && (
+            {composing?.memberId === m.id && (
+              <div style={s.composeBox}>
+                <textarea
+                  style={s.composeArea}
+                  rows={3}
+                  placeholder="输入消息内容…"
+                  value={composeText}
+                  onChange={(e) => setComposeText(e.target.value)}
+                />
                 <button
-                  style={{ ...s.unbindBtn, opacity: unbinding === m.id ? 0.6 : 1 }}
-                  disabled={unbinding === m.id}
-                  onClick={() => unbind(m.id, m.displayName || m.username)}
+                  style={{ ...s.composeSendBtn, opacity: sending || !composeText.trim() ? 0.6 : 1 }}
+                  disabled={sending || !composeText.trim()}
+                  onClick={sendMessage}
                 >
-                  {unbinding === m.id ? '…' : '解绑'}
+                  {sending ? '发送中…' : '发送'}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -727,6 +789,22 @@ const s: Record<string, React.CSSProperties> = {
   staffNumBadge: { fontSize: 10, fontWeight: 700, color: '#1677ff', background: '#e6f4ff', border: '1px solid #91caff', borderRadius: 4, padding: '0 4px' },
   memberRight: { display: 'flex', alignItems: 'center', gap: 8 },
   boundBadge: { fontSize: 12, fontWeight: 600 },
+  msgBtn: {
+    height: 26, padding: '0 10px', background: '#e6f4ff', border: '1px solid #91caff',
+    borderRadius: 4, fontSize: 11, fontWeight: 600, color: '#1677ff', cursor: 'pointer',
+  },
+  composeBox: {
+    margin: '0 0 8px 0', padding: '10px 12px', background: '#f5f7fa',
+    borderRadius: 8, border: '1px solid #e8e8e8', display: 'flex', flexDirection: 'column' as const, gap: 8,
+  },
+  composeArea: {
+    width: '100%', fontSize: 14, border: '1px solid #d9d9d9', borderRadius: 6,
+    padding: '8px 10px', resize: 'none' as const, outline: 'none', boxSizing: 'border-box' as const,
+  },
+  composeSendBtn: {
+    alignSelf: 'flex-end' as const, height: 32, padding: '0 18px', background: '#1677ff',
+    color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  },
   unbindBtn: {
     height: 28, padding: '0 12px', background: '#fff1f0', color: '#ff4d4f',
     border: '1px solid #ffa39e', borderRadius: 6, fontSize: 12, cursor: 'pointer',

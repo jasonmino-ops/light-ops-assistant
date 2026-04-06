@@ -277,6 +277,22 @@ model StoreApplication {
   @@index([telegramId])
 }
 
+model TelegramMessage {
+  id                  String   @id @default(cuid())
+  tenantId            String?           // null = ops/系统级消息
+  recipientTelegramId String
+  messageType         String   @default("TEXT") // TEXT | IMAGE
+  content             String
+  status              String   @default("SENT") // SENT | FAILED
+  errorMessage        String?
+  sentBy              String   @default("SYSTEM") // SYSTEM | OPS
+  createdAt           DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([recipientTelegramId])
+  @@index([createdAt])
+}
+
 model OpsAdmin {
   id           String   @id @default(cuid())
   name         String

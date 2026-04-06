@@ -8,10 +8,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuth } from '@/lib/ops-auth'
+import { sendAndLogMessage, WELCOME_TEXT } from '@/lib/telegram'
 
 const NOTIFY_TEXT =
   '你的开店申请已通过！请返回 Telegram，重新打开店小二助手进入系统。\n' +
-  'ការស្នើសុំបើកហាងរបស់អ្នកត្រូវបានអនុម័តហើយ! សូមត្រឡប់ទៅ Telegram ហើយបើក店小二助手ម្ដងទៀតដើម្បីចូលប្រព័ន្ធ។'
+  'ការស្នើសុំបើកហាងរបស់អ្នកត្រូវបានអនុម័តហើយ! សូមត្រឡប់ទៅ Telegram ហើយបើក店小二助手ម្ដងទៀតដើម្បីចូលប្រព័ន្ធ។\n\n' +
+  WELCOME_TEXT
 
 export async function POST(
   req: NextRequest,
@@ -28,25 +30,16 @@ export async function POST(
     return NextResponse.json({ error: 'NOT_APPROVED', message: '申请尚未审批通过' }, { status: 409 })
   }
 
-  const botToken = process.env.TELEGRAM_BOT_TOKEN
-  if (!botToken) {
-    return NextResponse.json({ error: 'BOT_NOT_CONFIGURED', message: '未配置 TELEGRAM_BOT_TOKEN' }, { status: 500 })
-  }
+  const result = await sendAndLogMessage({
+    recipientTelegramId: app.telegramId,
+    text: NOTIFY_TEXT,
+    tenantId: app.tenantId ?? undefined,
+    sentBy: 'OPS',
+  })
 
-  const apiRes = await fetch(
-    `https://api.telegram.org/bot${botToken}/sendMessage`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: app.telegramId, text: NOTIFY_TEXT }),
-    },
-  )
-  const apiBody = await apiRes.json()
-
-  if (!apiRes.ok || !apiBody.ok) {
-    console.error('[notify] Telegram API error:', apiBody)
+  if (!result.ok) {
     return NextResponse.json(
-      { error: 'TG_SEND_FAILED', message: `Telegram 发送失败：${apiBody.description ?? apiRes.status}` },
+      { error: 'TG_SEND_FAILED', message: `Telegram 发送失败：${result.error}` },
       { status: 502 },
     )
   }

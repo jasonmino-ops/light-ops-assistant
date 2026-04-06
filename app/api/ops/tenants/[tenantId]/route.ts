@@ -104,6 +104,7 @@ export async function GET(
       displayName: u.displayName,
       role: u.role,
       bound: !!u.telegramId,
+      telegramId: u.telegramId ?? null,
       staffNumber: u.staffNumber ?? null,
       storeName: u.storeRoles[0]?.store.name ?? '—',
     })),

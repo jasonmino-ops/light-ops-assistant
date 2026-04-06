@@ -53,3 +53,4 @@ git push
 | `20260405000000_add_ops_admin` | OpsAdmin 表 |
 | `20260406000000_add_daily_summaries` | 每日汇总表 |
 | `20260407000000_add_store_application` | StoreApplication 表（开店申请） |
+| `20260407000000_add_telegram_messages` | TelegramMessage 表（消息发送日志） |
