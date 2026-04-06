@@ -195,6 +195,9 @@ export default function OpsPage() {
           />
         )}
 
+        {/* ── Broadcast ── */}
+        <BroadcastSection tenants={tenants} />
+
         {/* ── Customer conversations ── */}
         <ConversationsSection conversations={conversations} onRefresh={loadConversations} />
 
@@ -264,6 +267,169 @@ function StatPill({ icon, label, value, color }: { icon: string; label: string; 
       <span style={s.statIcon}>{icon}</span>
       <span style={s.statLabel}>{label}</span>
       <span style={{ ...s.statValue, color: color ?? '#333' }}>{value}</span>
+    </div>
+  )
+}
+
+// ─── BroadcastSection ────────────────────────────────────────────────────────
+
+type BroadcastScope = 'ALL_OWNERS' | 'ALL_STAFF' | 'TENANT_MEMBERS'
+
+type BroadcastResult = {
+  total: number
+  success: number
+  failed: number
+  errors: { displayName: string; telegramId: string; error: string }[]
+}
+
+const SCOPE_OPTIONS: { value: BroadcastScope; label: string; desc: string }[] = [
+  { value: 'ALL_OWNERS', label: '全部老板', desc: '所有已绑定的 OWNER 账号' },
+  { value: 'ALL_STAFF',  label: '全部员工', desc: '所有已绑定的 STAFF 账号' },
+  { value: 'TENANT_MEMBERS', label: '指定商户', desc: '某个商户下全部已绑定成员' },
+]
+
+function BroadcastSection({ tenants }: { tenants: TenantRow[] }) {
+  const [open, setOpen] = useState(false)
+  const [scope, setScope] = useState<BroadcastScope>('ALL_OWNERS')
+  const [tenantId, setTenantId] = useState('')
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [result, setResult] = useState<BroadcastResult | null>(null)
+  const [sendError, setSendError] = useState('')
+
+  const activeTenants = tenants.filter((t) => t.status === 'ACTIVE')
+
+  async function send() {
+    if (!text.trim()) { setSendError('请输入消息内容'); return }
+    if (scope === 'TENANT_MEMBERS' && !tenantId) { setSendError('请选择目标商户'); return }
+    setSending(true)
+    setSendError('')
+    setResult(null)
+    try {
+      const r = await apiFetch('/api/ops/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ scope, tenantId: scope === 'TENANT_MEMBERS' ? tenantId : undefined, text }),
+      }, OWNER_CTX)
+      const body = await r.json()
+      if (r.ok && body.ok) {
+        setResult(body)
+        setText('')
+      } else {
+        setSendError(body.message ?? body.error ?? '发送失败')
+      }
+    } catch {
+      setSendError('网络错误，请重试')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div style={{ ...s.appSection, border: '1.5px solid #722ed122', marginBottom: 12 }}>
+      {/* 标题栏 */}
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+        onClick={() => { setOpen((v) => !v); setResult(null); setSendError('') }}
+      >
+        <div style={{ ...s.appSectionTitle, color: '#722ed1', margin: 0 }}>
+          📣 广播发送
+        </div>
+        <span style={{ fontSize: 12, color: '#aaa' }}>{open ? '收起 ↑' : '展开 ↓'}</span>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 14 }}>
+          {/* 发送范围 */}
+          <div style={s.fieldLabel}>发送范围</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            {SCOPE_OPTIONS.map(({ value, label, desc }) => (
+              <button
+                key={value}
+                onClick={() => { setScope(value); setTenantId('') }}
+                title={desc}
+                style={{
+                  height: 32, padding: '0 14px', fontSize: 12, cursor: 'pointer', borderRadius: 6,
+                  fontWeight: scope === value ? 700 : 400,
+                  border: `1.5px solid ${scope === value ? '#722ed1' : '#e8e8e8'}`,
+                  background: scope === value ? '#f9f0ff' : '#f5f5f5',
+                  color: scope === value ? '#722ed1' : '#888',
+                }}
+              >{label}</button>
+            ))}
+          </div>
+
+          {/* 商户选择（仅 TENANT_MEMBERS） */}
+          {scope === 'TENANT_MEMBERS' && (
+            <div style={{ marginTop: 10 }}>
+              <div style={s.fieldLabel}>目标商户</div>
+              <select
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                style={{ ...s.fieldInput, marginTop: 6, height: 38, cursor: 'pointer' }}
+              >
+                <option value="">请选择商户…</option>
+                {activeTenants.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 消息内容 */}
+          <div style={{ marginTop: 10 }}>
+            <div style={s.fieldLabel}>消息内容（文本）</div>
+            <textarea
+              style={{ ...s.replyArea, marginTop: 6, height: 100 }}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="请输入要群发的消息内容…"
+            />
+            <div style={{ fontSize: 11, color: '#bbb', marginTop: 3, textAlign: 'right' }}>
+              {text.length} 字
+            </div>
+          </div>
+
+          {/* 错误提示 */}
+          {sendError && (
+            <div style={{ fontSize: 12, color: '#ff4d4f', marginTop: 6 }}>{sendError}</div>
+          )}
+
+          {/* 发送结果 */}
+          {result && (
+            <div style={{ marginTop: 10, padding: '10px 12px', background: '#f6ffed', borderRadius: 8, border: '1px solid #b7eb8f' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#389e0d', marginBottom: 6 }}>
+                发送完成 — 共 {result.total} 人，成功 {result.success}，失败 {result.failed}
+              </div>
+              {result.errors.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, color: '#ff4d4f', marginBottom: 4 }}>失败详情：</div>
+                  {result.errors.map((e, i) => (
+                    <div key={i} style={{ fontSize: 11, color: '#ff4d4f', marginBottom: 2 }}>
+                      · {e.displayName}（{e.telegramId}）：{e.error}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 发送按钮 */}
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              style={{
+                height: 36, padding: '0 20px', background: '#722ed1', color: '#fff',
+                border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                cursor: (!text.trim() || sending) ? 'not-allowed' : 'pointer',
+                opacity: (!text.trim() || sending) ? 0.5 : 1,
+              }}
+              disabled={!text.trim() || sending}
+              onClick={send}
+            >
+              {sending ? '发送中…' : '群发消息'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
