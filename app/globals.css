@@ -30,8 +30,8 @@ body {
   font-size: 16px;
   background: var(--bg);
   color: var(--text);
-  /* Reserve space for fixed bottom nav + iPhone safe area */
-  padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  /* Reserve space for fixed bottom nav + safe area (Android gesture bar / iOS home bar) */
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   /* Prevent pull-to-refresh jitter and overscroll bounce */
   overscroll-behavior-y: none;
   /* Full height for Telegram Mini App fullscreen mode */

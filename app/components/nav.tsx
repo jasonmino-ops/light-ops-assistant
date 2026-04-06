@@ -28,14 +28,15 @@ export default function BottomNav() {
   const [isStandalone, setIsStandalone] = useState(false)
 
   useEffect(() => {
-    // 仅在 standalone 模式（从桌面图标启动）且不在 Telegram WebApp 内时显示
+    // 在 Telegram WebApp 或 standalone（桌面图标启动）两种模式下均显示
+    // 普通浏览器（非 standalone 且非 Telegram）不显示
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const inTelegram = !!(window as any).Telegram?.WebApp?.initData
     const standalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (navigator as any).standalone === true
-    setIsStandalone(standalone && !inTelegram)
+    setIsStandalone(inTelegram || standalone)
   }, [])
 
   if (!isStandalone) return null
