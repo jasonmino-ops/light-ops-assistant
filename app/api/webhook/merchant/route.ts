@@ -437,19 +437,26 @@ export async function POST(req: NextRequest) {
         select: { tenantId: true },
       })
       tenantId = user?.tenantId ?? null
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('[webhook] tenantId lookup failed:', e)
+    }
 
-    prisma.telegramMessage.create({
-      data: {
-        recipientTelegramId: senderId,
-        senderName,
-        content: msgContent,
-        messageType: msgType,
-        tenantId,
-        sentBy: 'CUSTOMER',
-        status: 'RECEIVED',
-      },
-    }).catch(() => {})
+    // 必须 await — Vercel serverless 函数 return 后 unawaited Promise 会被丢弃
+    try {
+      await prisma.telegramMessage.create({
+        data: {
+          recipientTelegramId: senderId,
+          senderName,
+          content: msgContent,
+          messageType: msgType,
+          tenantId,
+          sentBy: 'CUSTOMER',
+          status: 'RECEIVED',
+        },
+      })
+    } catch (e) {
+      console.error('[webhook] TelegramMessage insert failed:', e)
+    }
   }
 
   return NextResponse.json({ ok: true })
