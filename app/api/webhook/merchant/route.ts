@@ -134,7 +134,9 @@ async function buildAndSendPreview(
           pendingRows: JSON.stringify(importable),
         },
       })
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('[webhook/import] preview session upsert failed:', e)
+    }
   } else {
     preview += `\n没有可导入的商品，请检查后重新发送。`
     const allErrors = [
@@ -146,16 +148,23 @@ async function buildAndSendPreview(
       preview += `\n\n${allErrors.slice(0, 8).join('\n')}`
     }
     if (onNoValid === 'delete') {
-      try { await prisma.productImportSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+      try {
+        await prisma.productImportSession.delete({ where: { telegramId: senderId } })
+      } catch (e) {
+        console.error('[webhook/import] session delete failed:', e)
+      }
     }
   }
 
-  await sendAndLogMessage({
+  const sendRes = await sendAndLogMessage({
     recipientTelegramId: chatId,
     text: preview,
     tenantId,
     sentBy: 'SYSTEM',
   })
+  if (!sendRes.ok) {
+    console.error('[webhook/import] preview send failed:', sendRes.error)
+  }
 }
 
 // ─── 主处理器 ─────────────────────────────────────────────────────────────────
@@ -249,29 +258,34 @@ export async function POST(req: NextRequest) {
 
   // ─── 文字导入流程 ─────────────────────────────────────────────────────────────
   if (senderId && message.text) {
-    const textNorm    = text.trim().toLowerCase()
+    // 多空格归一化，兼容 "new  good" / "new  goods" 等写法
+    const textNorm    = text.trim().toLowerCase().replace(/\s+/g, ' ')
     const textTrimmed = text.trim()
 
-    const tenantId = await lookupTenantId(senderId)
-
-    // ── 触发口令 → 进入导入模式 ───────────────────────────────────────────────
-    if (IMPORT_TRIGGERS.has(textNorm) || textTrimmed === '新商品') {
+    // ── 触发口令检查（优先，不等待 DB 查询） ──────────────────────────────────
+    if (IMPORT_TRIGGERS.has(textNorm)) {
+      // 直接用 tgSend 回复，移除日志 DB 依赖，确保回复能送达
+      const replyRes  = await tgSend('sendMessage', { chat_id: chatId, text: IMPORT_GUIDE })
+      const replyBody = await replyRes.json().catch(() => null)
+      if (!replyRes.ok || replyBody?.ok !== true) {
+        console.error('[webhook/import] guide reply failed:', replyBody?.description ?? replyRes.status)
+      }
+      // session upsert 非阻断（DB 慢/未迁移均不影响已送出的回复）
+      const tenantId = await lookupTenantId(senderId)
       try {
         await prisma.productImportSession.upsert({
           where: { telegramId: senderId },
           create: { telegramId: senderId, tenantId, phase: 'AWAITING_DATA' },
           update: { tenantId, phase: 'AWAITING_DATA', pendingRows: '[]' },
         })
-      } catch { /* ignore */ }
-
-      await sendAndLogMessage({
-        recipientTelegramId: chatId,
-        text: IMPORT_GUIDE,
-        tenantId: tenantId ?? undefined,
-        sentBy: 'SYSTEM',
-      })
+      } catch (e) {
+        console.error('[webhook/import] session upsert failed:', e)
+      }
       return NextResponse.json({ ok: true })
     }
+
+    // 非触发消息：查 tenantId 与 session
+    const tenantId = await lookupTenantId(senderId)
 
     // ── 查询活跃 session ──────────────────────────────────────────────────────
     let session: {
@@ -284,7 +298,9 @@ export async function POST(req: NextRequest) {
 
     try {
       session = await prisma.productImportSession.findUnique({ where: { telegramId: senderId } })
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('[webhook/import] session lookup failed:', e)
+    }
 
     const sessionActive = session && Date.now() - session.updatedAt.getTime() < SESSION_TTL_MS
 
@@ -354,18 +370,24 @@ export async function POST(req: NextRequest) {
           let reply = `✅ 导入完成！成功导入 ${imported} 条商品。`
           if (skipped > 0) reply += `\n（${skipped} 条因条码已存在已跳过）`
 
-          await sendAndLogMessage({ recipientTelegramId: chatId, text: reply, tenantId: tid, sentBy: 'SYSTEM' })
-          try { await prisma.productImportSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+          const importRes = await sendAndLogMessage({ recipientTelegramId: chatId, text: reply, tenantId: tid, sentBy: 'SYSTEM' })
+          if (!importRes.ok) console.error('[webhook/import] confirm reply failed:', importRes.error)
+          try { await prisma.productImportSession.delete({ where: { telegramId: senderId } }) } catch (e) {
+            console.error('[webhook/import] session delete failed:', e)
+          }
           return NextResponse.json({ ok: true })
         } else {
           // 任何非确认回复 → 取消
-          try { await prisma.productImportSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
-          await sendAndLogMessage({
+          try { await prisma.productImportSession.delete({ where: { telegramId: senderId } }) } catch (e) {
+            console.error('[webhook/import] session delete failed:', e)
+          }
+          const cancelRes = await sendAndLogMessage({
             recipientTelegramId: chatId,
             text: '已取消商品导入。',
             tenantId: tenantId ?? undefined,
             sentBy: 'SYSTEM',
           })
+          if (!cancelRes.ok) console.error('[webhook/import] cancel reply failed:', cancelRes.error)
           return NextResponse.json({ ok: true })
         }
       }
