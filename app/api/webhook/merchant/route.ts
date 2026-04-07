@@ -182,6 +182,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 400 })
   }
 
+  console.log('[webhook] received update:', JSON.stringify(update).slice(0, 200))
+
   const message: TgMessage | undefined = update.message
   if (!message || !BOT_TOKEN) return NextResponse.json({ ok: true })
 
@@ -305,6 +307,27 @@ export async function POST(req: NextRequest) {
     const sessionActive = session && Date.now() - session.updatedAt.getTime() < SESSION_TTL_MS
 
     if (sessionActive) {
+      // 无论 session 如何处理，先保证客户消息入库（避免导入流程 return 后消息丢失）
+      try {
+        const _first = message.from?.first_name ?? ''
+        const _last  = message.from?.last_name  ?? ''
+        const _user  = message.from?.username   ?? ''
+        const _name  = [_first, _last].filter(Boolean).join(' ') || (_user ? `@${_user}` : null)
+        await prisma.telegramMessage.create({
+          data: {
+            recipientTelegramId: senderId,
+            senderName: _name,
+            content: textTrimmed,
+            messageType: 'TEXT',
+            tenantId,
+            sentBy: 'CUSTOMER',
+            status: 'RECEIVED',
+          },
+        })
+      } catch (e) {
+        console.error('[webhook/import] session pre-save failed:', e)
+      }
+
       // ── AWAITING_DATA：解析文字清单 → 预览 ──────────────────────────────────
       if (session!.phase === 'AWAITING_DATA') {
         const parseResult = parseProductTextLines(text)
