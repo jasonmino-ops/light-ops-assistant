@@ -302,6 +302,18 @@ model ProductImportSession {
   updatedAt   DateTime @updatedAt
 }
 
+model SupportSession {
+  telegramId   String   @id
+  tenantId     String?
+  sessionState String   @default("auto_active") // auto_active | awaiting_human | human_active
+  language     String   @default("zh")           // zh | en | km
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([sessionState])
+}
+
 model OpsAdmin {
   id           String   @id @default(cuid())
   name         String

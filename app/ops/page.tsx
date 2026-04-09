@@ -23,6 +23,7 @@ type ConversationRow = {
   lastMessage: string
   lastAt: string
   messageCount: number
+  sessionState: string | null  // auto_active | awaiting_human | human_active | null
 }
 
 type ThreadMessage = {
@@ -449,6 +450,8 @@ function ConversationsSection({
   const [replyText, setReplyText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
+  const [takingOver, setTakingOver] = useState(false)
+  const [takeoverDone, setTakeoverDone] = useState<Set<string>>(new Set())
 
   async function openConversation(telegramId: string) {
     setSelected(telegramId)
@@ -460,6 +463,20 @@ function ConversationsSection({
       if (r.ok) setThread(await r.json())
     } finally {
       setLoadingThread(false)
+    }
+  }
+
+  async function takeover(telegramId: string) {
+    if (takingOver) return
+    setTakingOver(true)
+    try {
+      const r = await apiFetch(`/api/ops/support/${telegramId}/takeover`, { method: 'POST' }, OWNER_CTX)
+      if (r.ok) {
+        setTakeoverDone((prev) => new Set([...prev, telegramId]))
+        onRefresh()
+      }
+    } catch { /* ignore */ } finally {
+      setTakingOver(false)
     }
   }
 
@@ -550,8 +567,16 @@ function ConversationsSection({
                     <span style={s.convName}>{conv.senderName ?? conv.telegramId}</span>
                     <span style={s.convTime}>{fmtTime(conv.lastAt)}</span>
                   </div>
-                  <div style={s.convPreview}>
-                    {conv.lastMessage.length > 50 ? conv.lastMessage.slice(0, 50) + '…' : conv.lastMessage}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    <div style={s.convPreview}>
+                      {conv.lastMessage.length > 40 ? conv.lastMessage.slice(0, 40) + '…' : conv.lastMessage}
+                    </div>
+                    {conv.sessionState === 'awaiting_human' && (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#fff7e6', color: '#fa8c16', border: '1px solid #ffd591', whiteSpace: 'nowrap' }}>等待接管</span>
+                    )}
+                    {conv.sessionState === 'human_active' && (
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#f6ffed', color: '#52c41a', border: '1px solid #b7eb8f', whiteSpace: 'nowrap' }}>人工中</span>
+                    )}
                   </div>
                   {conv.tenantId && (
                     <div style={{ fontSize: 10, color: '#ccc', marginTop: 1 }}>
@@ -569,12 +594,34 @@ function ConversationsSection({
       {/* 会话详情 + 回复 */}
       {selected && selectedConv && (
         <div>
-          {/* 客户名称 */}
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a', marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' }}>
-            {selectedConv.senderName ?? selectedConv.telegramId}
-            <span style={{ fontSize: 11, color: '#bbb', marginLeft: 8, fontWeight: 400 }}>
-              TG: {selectedConv.telegramId}
-            </span>
+          {/* 客户名称 + 接管按钮 */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a' }}>
+              {selectedConv.senderName ?? selectedConv.telegramId}
+              <span style={{ fontSize: 11, color: '#bbb', marginLeft: 8, fontWeight: 400 }}>
+                TG: {selectedConv.telegramId}
+              </span>
+              {(selectedConv.sessionState === 'human_active' || takeoverDone.has(selectedConv.telegramId)) && (
+                <span style={{ fontSize: 10, marginLeft: 8, padding: '1px 6px', borderRadius: 10, background: '#f6ffed', color: '#52c41a', border: '1px solid #b7eb8f' }}>人工接管中</span>
+              )}
+              {selectedConv.sessionState === 'awaiting_human' && !takeoverDone.has(selectedConv.telegramId) && (
+                <span style={{ fontSize: 10, marginLeft: 8, padding: '1px 6px', borderRadius: 10, background: '#fff7e6', color: '#fa8c16', border: '1px solid #ffd591' }}>等待接管</span>
+              )}
+            </div>
+            {selectedConv.sessionState !== 'human_active' && !takeoverDone.has(selectedConv.telegramId) && (
+              <button
+                onClick={() => takeover(selectedConv.telegramId)}
+                disabled={takingOver}
+                style={{
+                  height: 28, padding: '0 12px', fontSize: 11, fontWeight: 600,
+                  background: '#1677ff', color: '#fff', border: 'none', borderRadius: 6,
+                  cursor: takingOver ? 'not-allowed' : 'pointer',
+                  opacity: takingOver ? 0.6 : 1,
+                }}
+              >
+                {takingOver ? '接管中…' : '人工接管'}
+              </button>
+            )}
           </div>
 
           {/* 消息气泡区 */}

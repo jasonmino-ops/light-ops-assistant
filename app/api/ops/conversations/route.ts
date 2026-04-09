@@ -12,19 +12,26 @@ export async function GET(req: NextRequest) {
   const opsRole = checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
-  // 拉取最近 300 条客户消息，在 JS 侧按 telegramId 聚合
-  const messages = await prisma.telegramMessage.findMany({
-    where: { sentBy: 'CUSTOMER' },
-    orderBy: { createdAt: 'desc' },
-    take: 300,
-    select: {
-      recipientTelegramId: true,
-      senderName: true,
-      content: true,
-      tenantId: true,
-      createdAt: true,
-    },
-  })
+  // 并发拉取消息列表和支持会话状态
+  const [messages, supportSessions] = await Promise.all([
+    prisma.telegramMessage.findMany({
+      where: { sentBy: 'CUSTOMER' },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+      select: {
+        recipientTelegramId: true,
+        senderName: true,
+        content: true,
+        tenantId: true,
+        createdAt: true,
+      },
+    }),
+    prisma.supportSession.findMany({
+      select: { telegramId: true, sessionState: true },
+    }),
+  ])
+
+  const sessionStateMap = new Map(supportSessions.map((s) => [s.telegramId, s.sessionState]))
 
   // 按 telegramId 聚合，保留最新消息作为预览
   const map = new Map<string, {
@@ -34,6 +41,7 @@ export async function GET(req: NextRequest) {
     lastMessage: string
     lastAt: string
     messageCount: number
+    sessionState: string | null
   }>()
 
   for (const m of messages) {
@@ -46,6 +54,7 @@ export async function GET(req: NextRequest) {
         lastMessage: m.content,
         lastAt: m.createdAt.toISOString(),
         messageCount: 1,
+        sessionState: sessionStateMap.get(tid) ?? null,
       })
     } else {
       const entry = map.get(tid)!

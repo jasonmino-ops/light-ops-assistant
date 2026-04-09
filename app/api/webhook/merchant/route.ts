@@ -21,6 +21,10 @@ import { prisma } from '@/lib/prisma'
 import { sendAndLogMessage } from '@/lib/telegram'
 import { parseProductTextLines, parseProductFile, isFileParseError } from '@/lib/product-import'
 import type { TgImportRow, TgParseResult } from '@/lib/product-import'
+import {
+  routeMessage, matchFaq, detectLanguage,
+  ESCALATION_REPLY, GENERAL_HELP_OWNER, GENERAL_HELP_STAFF,
+} from '@/lib/support-faq'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
 const WEBHOOK_SECRET = process.env.MERCHANT_WEBHOOK_SECRET ?? ''
@@ -59,6 +63,63 @@ const IMPORT_GUIDE = `📦 商品批量录入
 
 也可以直接发送 .xlsx 或 .csv 文件，系统自动识别表头。
 发完整列表后会显示预览，确认后正式导入。`
+
+// ─── 辅助：支持会话 ───────────────────────────────────────────────────────────
+
+async function getSupportSession(telegramId: string) {
+  try {
+    return await prisma.supportSession.findUnique({ where: { telegramId } })
+  } catch {
+    return null
+  }
+}
+
+async function upsertSupportSession(
+  telegramId: string,
+  tenantId: string | null,
+  sessionState: string,
+  language: string,
+): Promise<void> {
+  try {
+    await prisma.supportSession.upsert({
+      where: { telegramId },
+      create: { telegramId, tenantId, sessionState, language },
+      update: { sessionState, language, ...(tenantId ? { tenantId } : {}) },
+    })
+  } catch (e) {
+    console.error('[webhook/support] upsertSupportSession failed:', e)
+  }
+}
+
+// ─── 辅助：客户消息入库 ───────────────────────────────────────────────────────
+
+async function logCustomerMsg(
+  senderId: string,
+  content: string,
+  tenantId: string | null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  from: Record<string, any> | undefined,
+): Promise<void> {
+  const firstName  = from?.first_name ?? ''
+  const lastName   = from?.last_name  ?? ''
+  const username   = from?.username   ?? ''
+  const senderName = [firstName, lastName].filter(Boolean).join(' ') || (username ? `@${username}` : null)
+  try {
+    await prisma.telegramMessage.create({
+      data: {
+        recipientTelegramId: senderId,
+        senderName,
+        content,
+        messageType: 'TEXT',
+        tenantId,
+        sentBy: 'CUSTOMER',
+        status: 'RECEIVED',
+      },
+    })
+  } catch (e) {
+    console.error('[webhook/support] logCustomerMsg failed:', e)
+  }
+}
 
 // ─── 辅助：查询用户 tenantId ──────────────────────────────────────────────────
 
@@ -318,6 +379,8 @@ export async function POST(req: NextRequest) {
 
     const sessionActive = session && Date.now() - session.updatedAt.getTime() < SESSION_TTL_MS
 
+    let messageSaved = false
+
     if (sessionActive) {
       // 无论 session 如何处理，先保证客户消息入库（避免导入流程 return 后消息丢失）
       try {
@@ -336,6 +399,7 @@ export async function POST(req: NextRequest) {
             status: 'RECEIVED',
           },
         })
+        messageSaved = true
       } catch (e) {
         console.error('[webhook/import] session pre-save failed:', e)
       }
@@ -426,6 +490,50 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ ok: true })
         }
       }
+    }
+
+    // ── 支持助手路由（仅无活跃导入 session 的消息走此分支）────────────────────
+    if (!sessionActive) {
+      // 若人工已接管，静默入库后返回，不发任何 bot 回复
+      const suppSession = await getSupportSession(senderId)
+      if (suppSession?.sessionState === 'human_active') {
+        if (!messageSaved) await logCustomerMsg(senderId, textTrimmed, tenantId, message.from)
+        return NextResponse.json({ ok: true })
+      }
+
+      const route = routeMessage(textTrimmed)
+      const lang  = detectLanguage(textTrimmed)
+
+      // D — 升级到人工
+      if (route === 'D') {
+        await upsertSupportSession(senderId, tenantId, 'awaiting_human', lang)
+        await tgSend('sendMessage', { chat_id: chatId, text: ESCALATION_REPLY[lang] })
+        if (!messageSaved) await logCustomerMsg(senderId, textTrimmed, tenantId, message.from)
+        return NextResponse.json({ ok: true })
+      }
+
+      // B — FAQ 模板回复
+      if (route === 'B') {
+        const faq = matchFaq(textTrimmed)!
+        await tgSend('sendMessage', { chat_id: chatId, text: faq.reply[lang] })
+        if (!messageSaved) await logCustomerMsg(senderId, textTrimmed, tenantId, message.from)
+        return NextResponse.json({ ok: true })
+      }
+
+      // C — 通用问题（OWNER 显示功能引导；STAFF 提示联系老板）
+      if (route === 'C') {
+        let userRole: string | undefined
+        try {
+          const u = await prisma.user.findFirst({ where: { telegramId: senderId }, select: { role: true } })
+          userRole = u?.role
+        } catch { /* ignore */ }
+        const reply = userRole === 'OWNER' ? GENERAL_HELP_OWNER[lang] : GENERAL_HELP_STAFF[lang]
+        await tgSend('sendMessage', { chat_id: chatId, text: reply })
+        if (!messageSaved) await logCustomerMsg(senderId, textTrimmed, tenantId, message.from)
+        return NextResponse.json({ ok: true })
+      }
+
+      // A — 业务口令但无 session（如「确认」无导入上下文）→ 不拦截，fall through 到普通消息
     }
   }
 
