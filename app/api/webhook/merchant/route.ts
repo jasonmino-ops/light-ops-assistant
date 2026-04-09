@@ -115,7 +115,7 @@ async function buildAndSendPreview(
     preview += `\n可导入商品：\n`
     preview += importable
       .slice(0, 10)
-      .map((r, i) => `${i + 1}. ${r.name} | ${r.barcode} | ¥${r.sellPrice}`)
+      .map((r, i) => `${i + 1}. ${r.name} | ${r.barcode} | $${r.sellPrice.toFixed(2)}`)
       .join('\n')
     if (importable.length > 10) preview += `\n…（共 ${importable.length} 条）`
     preview += `\n\n回复「确认」正式导入，回复其他内容取消。`

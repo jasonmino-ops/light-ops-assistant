@@ -111,14 +111,10 @@ export default function TelegramInit() {
           sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
           if (window.location.pathname.startsWith('/ops')) {
             window.location.href = '/ops'
-          } else if (
-            window.location.pathname.startsWith('/start') ||
-            window.location.pathname.startsWith('/open')
-          ) {
-            // Auth succeeded but user is on an onboarding page — send them home.
-            window.location.replace('/home')
           } else {
-            window.location.reload()
+            // 首次进入（sessionStorage 为空 → 触发了 auth）统一落到 /home，
+            // 不管 WebView 上次记住的路径是哪里（避免留在 /dashboard 等非默认页）
+            window.location.replace('/home')
           }
         } else if (body.error === 'USER_NOT_FOUND') {
           // Use same three-source priority for start_param.
