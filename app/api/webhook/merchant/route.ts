@@ -205,59 +205,69 @@ export async function POST(req: NextRequest) {
     const isXlsx   = mime.includes('spreadsheetml') || fileName.endsWith('.xlsx')
     const isCsv    = mime.includes('csv') || fileName.endsWith('.csv')
 
-    if (isXlsx || isCsv) {
+    console.log('[webhook/file] document received:', { fileName, mime, isXlsx, isCsv, fileSize: doc.file_size })
+
+    // 不支持的文件格式 → 明确告知，不能静默
+    if (!(isXlsx || isCsv)) {
+      await tgSend('sendMessage', {
+        chat_id: chatId,
+        text: '❌ 仅支持 .xlsx 或 .csv 文件，其他格式暂不支持。\n请将表格另存为 Excel（.xlsx）或 CSV（.csv）后重新发送。',
+      })
+      return NextResponse.json({ ok: true })
+    }
+
+    // 支持格式：全程 try/catch，任何失败都必须回复用户
+    try {
       const tenantId = await lookupTenantId(senderId)
 
       if (!tenantId) {
-        await sendAndLogMessage({
-          recipientTelegramId: chatId,
-          text: '❌ 您的账号尚未绑定商户，无法导入商品。',
-          sentBy: 'SYSTEM',
-        })
+        await tgSend('sendMessage', { chat_id: chatId, text: '❌ 您的账号尚未绑定商户，无法导入商品。' })
         return NextResponse.json({ ok: true })
       }
 
       if ((doc.file_size ?? 0) > 2 * 1024 * 1024) {
-        await sendAndLogMessage({
-          recipientTelegramId: chatId,
-          text: '❌ 文件太大，请上传 2MB 以内的文件。',
-          tenantId,
-          sentBy: 'SYSTEM',
-        })
+        await tgSend('sendMessage', { chat_id: chatId, text: '❌ 文件太大，请上传 2MB 以内的文件。' })
         return NextResponse.json({ ok: true })
       }
 
       // 从 Telegram 下载文件
-      let fileBuffer: Buffer | null = null
+      let fileBuffer: Buffer
       try {
-        const fileInfoRes  = await tgSend('getFile', { file_id: doc.file_id })
-        const fileInfo     = await fileInfoRes.json()
+        const fileInfoRes = await tgSend('getFile', { file_id: doc.file_id })
+        const fileInfo    = await fileInfoRes.json()
         const filePath: string = fileInfo.result?.file_path ?? ''
-        if (!filePath) throw new Error('no file_path')
-        const dlRes  = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`)
-        fileBuffer   = Buffer.from(await dlRes.arrayBuffer())
-      } catch {
-        await sendAndLogMessage({
-          recipientTelegramId: chatId,
-          text: '❌ 文件下载失败，请重试。',
-          tenantId,
-          sentBy: 'SYSTEM',
-        })
+        console.log('[webhook/file] getFile:', { ok: fileInfo.ok, filePath: filePath?.slice(0, 60) })
+        if (!filePath) throw new Error(`getFile failed: ${fileInfo.description ?? 'no file_path'}`)
+        const dlRes = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`)
+        if (!dlRes.ok) throw new Error(`download HTTP ${dlRes.status}`)
+        fileBuffer = Buffer.from(await dlRes.arrayBuffer())
+      } catch (e) {
+        console.error('[webhook/file] download failed:', e)
+        await tgSend('sendMessage', { chat_id: chatId, text: '❌ 文件下载失败，请重试。' })
         return NextResponse.json({ ok: true })
       }
 
       const parseResult = parseProductFile(fileBuffer, doc.file_name ?? '')
+      console.log('[webhook/file] parse result:', isFileParseError(parseResult)
+        ? { error: parseResult.type, missing: parseResult.missing }
+        : { total: parseResult.total, valid: parseResult.valid.length, errors: parseResult.fieldErrors.length })
 
       if (isFileParseError(parseResult)) {
         const errMsg = `❌ 无法识别文件格式：\n${parseResult.missing.map((m) => `  · ${m}`).join('\n')}`
-        await sendAndLogMessage({ recipientTelegramId: chatId, text: errMsg, tenantId, sentBy: 'SYSTEM' })
+        await tgSend('sendMessage', { chat_id: chatId, text: errMsg })
         return NextResponse.json({ ok: true })
       }
 
       // 文件来源：无有效行时删除 session（不保留 AWAITING_DATA）
       await buildAndSendPreview(parseResult, senderId, chatId, tenantId, 'delete')
-      return NextResponse.json({ ok: true })
+
+    } catch (e) {
+      // 兜底：任何未预期的异常都必须回复用户，不能静默
+      console.error('[webhook/file] unexpected error:', e)
+      await tgSend('sendMessage', { chat_id: chatId, text: '❌ 文件处理出现异常，请重试或联系管理员。' })
     }
+
+    return NextResponse.json({ ok: true })
   }
 
   // ─── 文字导入流程 ─────────────────────────────────────────────────────────────
