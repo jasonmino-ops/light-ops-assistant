@@ -46,6 +46,9 @@ const IMPORT_TRIGGERS = new Set(['新商品', 'new good', 'new goods'])
 const CONFIRM_WORDS   = new Set(['确认', 'confirm', 'yes', 'ok'])
 const SESSION_TTL_MS  = 30 * 60 * 1000
 
+/** 导入态退出词 */
+const IMPORT_EXIT_WORDS = new Set(['退出', '取消', '结束', '退出录入', 'exit', 'cancel', 'quit'])
+
 const IMPORT_GUIDE = `📦 商品批量录入
 
 已进入导入模式，请每行发送一个商品。支持多种写法：
@@ -402,6 +405,40 @@ export async function POST(req: NextRequest) {
         messageSaved = true
       } catch (e) {
         console.error('[webhook/import] session pre-save failed:', e)
+      }
+
+      // ── 导入态高优先级豁免检查（退出词 / 帮助 / 升级，优先于商品解析）────────
+      {
+        const isExit    = IMPORT_EXIT_WORDS.has(textNorm)
+        const isEscalate = routeMessage(textTrimmed) === 'D'
+        const isFaq     = routeMessage(textTrimmed) === 'B'
+
+        if (isExit) {
+          try { await prisma.productImportSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+          const lang = detectLanguage(textTrimmed)
+          const exitReply: Record<string, string> = {
+            zh: '已退出商品录入模式，可以继续正常使用。',
+            en: 'Exited product import mode. You can continue using the app normally.',
+            km: 'បានចេញពីរបៀបបញ្ចូលទំនិញ។ អ្នកអាចប្រើប្រាស់ App ជាធម្មតា។',
+          }
+          await tgSend('sendMessage', { chat_id: chatId, text: exitReply[lang] })
+          return NextResponse.json({ ok: true })
+        }
+
+        if (isEscalate) {
+          try { await prisma.productImportSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+          const lang = detectLanguage(textTrimmed)
+          await upsertSupportSession(senderId, tenantId, 'awaiting_human', lang)
+          await tgSend('sendMessage', { chat_id: chatId, text: ESCALATION_REPLY[lang] })
+          return NextResponse.json({ ok: true })
+        }
+
+        if (isFaq) {
+          const faq = matchFaq(textTrimmed)!
+          const lang = detectLanguage(textTrimmed)
+          await tgSend('sendMessage', { chat_id: chatId, text: faq.reply[lang] })
+          return NextResponse.json({ ok: true })
+        }
       }
 
       // ── AWAITING_DATA：解析文字清单 → 预览 ──────────────────────────────────
