@@ -418,7 +418,6 @@ export async function POST(req: NextRequest) {
           const lang = detectLanguage(textTrimmed)
           const exitReply: Record<string, string> = {
             zh: '已退出商品录入模式，可以继续正常使用。',
-            en: 'Exited product import mode. You can continue using the app normally.',
             km: 'បានចេញពីរបៀបបញ្ចូលទំនិញ។ អ្នកអាចប្រើប្រាស់ App ជាធម្មតា។',
           }
           await tgSend('sendMessage', { chat_id: chatId, text: exitReply[lang] })

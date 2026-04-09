@@ -3,6 +3,9 @@
  *
  * 支持助手 v1 — FAQ 卡片、语言检测、消息路由
  *
+ * 语言：中文 / 柬文（不含英文）
+ * 用户发中文 → 回中文；用户发柬文 → 回柬文
+ *
  * 消息分流规则：
  *   A — 业务口令（新商品/确认等）→ 现有导入流程，不拦截
  *   B — FAQ 关键词命中             → 模板回复
@@ -10,92 +13,182 @@
  *   D — 升级关键词（人工/故障等）  → 发升级回复 + session → awaiting_human
  */
 
-// ─── FAQ 主题 ─────────────────────────────────────────────────────────────────
+// ─── FAQ 卡片类型 ─────────────────────────────────────────────────────────────
 
 export type FaqTopic = {
   id: string
-  /** 小写关键词；命中任意一个即触发 */
+  /** 小写关键词（中文 + 柬文）；命中任意一个即触发 */
   keywords: string[]
-  reply: { zh: string; en: string; km: string }
+  reply: { zh: string; km: string }
 }
 
+// ─── FAQ 主题（8 组）────────────────────────────────────────────────────────
+
 export const FAQ_TOPICS: FaqTopic[] = [
+
+  // ── 1. 安装与进入 ─────────────────────────────────────────────────────────
   {
-    id: 'install',
-    keywords: ['安装', '打不开', '怎么进', '怎么用', '怎么打开', 'install', 'how to open', 'how to use', 'open app'],
+    id: 'install_enter',
+    keywords: [
+      // 中文
+      '怎么进', '怎么打开', '进不去', '打不开', '打开失败', '登录失败', '会话过期',
+      '过期了', '重新登录', '怎么安装', '怎么启动', '进入店小二', '店小二怎么',
+      // 柬文
+      'ចូលប្រើ', 'ចូល mini', 'ចូល app', 'app ចូល', 'mini app', 'app បើក',
+      'បើក app', 'ចូល telegram', 'session ផុត',
+    ],
     reply: {
-      zh: '📱 如何使用店小二\n\n在 Telegram 中点击 Mini App 链接即可打开。\n\n常见问题：\n  · 打不开 → 更新 Telegram 至最新版\n  · 无权限 → 联系老板申请邀请\n  · 网络慢 → 稍后重试\n\n如需更多帮助，回复「人工」联系客服。',
-      en: '📱 How to use the app\n\nOpen the Mini App link in Telegram.\n\nCommon issues:\n  · Cannot open → Update Telegram\n  · No access → Ask your manager for an invite\n  · Slow → Retry later\n\nReply "human" for more help.',
-      km: '📱 របៀបប្រើ\n\nចុច Mini App link នៅក្នុង Telegram.\n\nបញ្ហាទូទៅ:\n  · បើកមិនបាន → Update Telegram\n  · មិនមាន access → សុំ invite ពី manager\n\nReply "ជំនួយ" ដើម្បីទទួលការជួយ',
+      zh: '📱 进入店小二\n\n在 Telegram 中点击 Mini App 链接即可进入。\n\n排查：\n  1. 打不开 → 更新 Telegram 至最新版\n  2. 会话过期 → 关掉重新打开即可\n  3. 无权限 → 联系老板获取邀请链接\n\n还是进不去？回复「人工」联系客服。',
+      km: '📱 ចូលប្រើ 店小二\n\nចុចលើ Mini App link នៅក្នុង Telegram ដើម្បីចូល។\n\nការដោះស្រាយ:\n  1. App បើកមិនបាន → Update Telegram\n  2. Session ផុតកំណត → បិទ ហើយបើកឡើងវិញ\n  3. គ្មាន permission → ទំនាក់ទំនងម្ចាស់ shop ដើម្បីទទួល invite link\n\nនៅមានបញ្ហា? ផ្ញើ "ជំនួយ"',
     },
   },
+
+  // ── 2. 员工绑定 ───────────────────────────────────────────────────────────
   {
-    id: 'binding',
-    keywords: ['绑定', '怎么绑', '邀请员工', '新员工', '绑账号', 'bind', 'invite staff', 'link account'],
+    id: 'bind_staff',
+    keywords: [
+      // 中文
+      '员工绑定', '邀请员工', '怎么绑员工', '新员工怎么', '员工怎么用', '员工进不来',
+      '生成链接', '邀请链接', '如何绑定', '绑定员工',
+      // 柬文
+      'ភ្ជាប់បុគ្គលិក', 'invite link', 'link ភ្ជាប់', 'link ​ភ្ជាប់', 'ភ្ជាប់ employee',
+      'អ邀請 employee', 'ភ្ជាប់ account',
+    ],
     reply: {
-      zh: '🔗 账号绑定 / 邀请员工\n\n老板邀请员工步骤：\n  1. 进入「后台 → 用户管理」\n  2. 点击「生成邀请链接」\n  3. 将链接发给员工，员工点击即自动绑定\n\n绑定后员工在 Telegram 打开 Mini App 即可使用。\n\n如需帮助，回复「人工」联系客服。',
-      en: '🔗 Binding / Invite Staff\n\nTo invite staff:\n  1. Go to Admin → User Management\n  2. Click "Generate Invite Link"\n  3. Send the link to staff — they tap it to bind\n\nReply "human" for support.',
-      km: '🔗 ការភ្ជាប់ / ការអញ្ជើញ Staff\n\nដើម្បី invite staff:\n  1. ចូល Admin → User Management\n  2. ចុច "Generate Invite Link"\n  3. ផ្ញើ link → staff ចុច ដើម្បីភ្ជាប់\n\nReply "ជំនួយ" ដើម្បីទទួលការជួយ',
+      zh: '🔗 邀请员工绑定\n\n老板操作步骤：\n  1. 进入「后台 → 用户管理」\n  2. 点击「生成邀请链接」\n  3. 将链接发给员工\n  4. 员工点击链接 → 自动完成绑定\n\n链接有时效，过期需重新生成。\n有问题？回复「人工」。',
+      km: '🔗 ការអញ្ជើញបុគ្គលិក\n\nជំហានសម្រាប់ម្ចាស់:\n  1. ចូល Admin → User Management\n  2. ចុច "Generate Invite Link"\n  3. ផ្ញើ link ទៅ employee\n  4. Employee ចុច link → ភ្ជាប់ដោយស្វ័យប្រវត្តិ\n\nLink ផុតកំណត? ត្រូវ generate ថ្មី\nមានបញ្ហា? ផ្ញើ "ជំនួយ"',
     },
   },
+
+  // ── 3. 绑定失败 ───────────────────────────────────────────────────────────
+  {
+    id: 'bind_fail',
+    keywords: [
+      // 中文
+      '绑定失败', '链接失效', '邀请码失效', '绑不上', '无法绑定', '绑定出错',
+      '链接无效', '绑定码', '重复绑定', '链接过期',
+      // 柬文
+      'link ផុត', 'ភ្ជាប់មិនបាន', 'link invalid', 'ភ្ជាប់ fail', 'ភ្ជាប់ error',
+    ],
+    reply: {
+      zh: '🔗 绑定失败处理\n\n常见原因：\n  1. 链接过期 → 老板重新在「用户管理」生成新链接\n  2. 链接已用过 → 同一链接只能绑定一次\n  3. 网络问题 → 稍后重试\n\n还是不行？回复「人工」联系客服。',
+      km: '🔗 ការភ្ជាប់មិនជោគជ័យ\n\nមូលហេតុ:\n  1. Link ផុតកំណត → ម្ចាស់ generate link ថ្មីនៅ User Management\n  2. Link ត្រូវបានប្រើហើយ → link ប្រើបានតែម្ដង\n  3. Network → ព្យាយាមម្ដងទៀត\n\nនៅមានបញ្ហា? ផ្ញើ "ជំនួយ"',
+    },
+  },
+
+  // ── 4. 商品录入方法 ───────────────────────────────────────────────────────
   {
     id: 'product_entry',
-    keywords: ['录商品', '添加商品', '怎么加商品', '商品录入', 'add product', 'new product', 'product entry'],
+    keywords: [
+      // 中文
+      '录商品', '添加商品', '怎么录', '加商品', '商品录入', '录入格式', '格式怎么',
+      '录入商品格式', '怎么新增商品', '批量录商品', '商品格式', '怎么批量加',
+      // 柬文
+      'បញ្ចូលទំនិញ', 'ទំនិញ format', 'ទម្រង់ទំនិញ', 'new goods', 'ដាក់ទំនិញ',
+    ],
     reply: {
-      zh: '📦 录入商品\n\n发口令「新商品」进入导入模式，每行一个：\n\n  苹果 | 1234567890 | 3.5\n\n识别规则：\n  · 5 位以上纯数字 → 条码\n  · 含小数点或短整数 → 售价\n  · 其余文字 → 商品名称（支持中/英/柬语）\n\n也可直接发 .xlsx/.csv 文件批量导入。',
-      en: '📦 Adding Products\n\nSend "new goods" to enter import mode, one per line:\n\n  Apple | 1234567890 | 3.5\n\nRules:\n  · 5+ digit number → barcode\n  · decimal/short int → price\n  · remaining text → name\n\nOr send a .xlsx/.csv file for bulk import.',
-      km: '📦 ការបញ្ចូលទំនិញ\n\nផ្ញើ "new goods" ដើម្បីចាប់ផ្តើម ១ ជួរ = ១ ផលិតផល:\n\n  Apple | 1234567890 | 3.5\n\nOr send .xlsx/.csv file.',
+      zh: '📦 录入商品\n\n发口令「新商品」进入录入模式，每行一个：\n\n  苹果 | 1234567890 | 3.5\n\n识别规则：\n  · 5位以上纯数字 → 条码\n  · 含小数点或短整数 → 售价\n  · 其余文字 → 商品名称\n\n也可直接发 .xlsx/.csv 文件批量导入。\n录完或不想录了，发「退出」离开。',
+      km: '📦 ការបញ្ចូលទំនិញ\n\nផ្ញើ "new goods" ដើម្បីចូលទៅ mode, ១ ជួរ = ១ ទំនិញ:\n\n  ផ្លែប៉ោម | 1234567890 | 3.5\n\nច្បាប់:\n  · 5+ digits → barcode\n  · decimal → ថ្លៃ\n  · ពាក្យ → ឈ្មោះ\n\nOr ផ្ញើ .xlsx/.csv file\nចង់ចេញ? ផ្ញើ "退出" ឬ "cancel"',
     },
   },
+
+  // ── 5. 录入模式进出与格式问题 ─────────────────────────────────────────────
+  {
+    id: 'product_mode',
+    keywords: [
+      // 中文
+      '怎么退出录入', '退出录入', '商品录入模式', '文字被当商品', '解析错误',
+      '格式错误', '被当成商品行', '录入模式', '进了录入', '录入里', '怎么出录入',
+      '已进入录入', '在录入里', '录入状态',
+      // 柬文
+      'ចេញពី mode', 'exit import mode', 'format ខុស', 'ចេញ mode',
+    ],
+    reply: {
+      zh: '📦 商品录入模式说明\n\n进入：发「新商品」\n退出：发以下任意词\n  退出 / 取消 / 结束 / exit / cancel / quit\n\n其他说明：\n  · 在录入模式下，问帮助或发「人工」会被自动识别，不会误解析为商品行\n  · 30 分钟无操作，模式自动超时\n\n还有问题？回复「人工」。',
+      km: '📦 ការប្រើ import mode\n\nចូល: ផ្ញើ "new goods"\nចេញ: ផ្ញើ\n  退出 / 取消 / cancel / exit / quit\n\nចំណាំ:\n  · នៅក្នុង mode ប្រសិនបើ ផ្ញើ "ជំនួយ" ប្រព័ន្ធ​ស្គាល់ ។ មិន​ parse ជាទំនិញ​\n  · 30 នាទីមិនប្រើ mode ផុតដោយស្វ័យប្រវត្តិ\n\nនៅមានបញ្ហា? ផ្ញើ "ជំនួយ"',
+    },
+  },
+
+  // ── 6. Excel/CSV 批量导入 ─────────────────────────────────────────────────
   {
     id: 'excel_import',
-    keywords: ['excel', 'xlsx', 'csv', '表格', '文件导入', '导入文件', 'import file', 'upload file', 'spreadsheet'],
+    keywords: [
+      // 中文
+      'excel', 'xlsx', 'csv', '表格', '批量导入', '文件导入', '上传文件', '导入商品',
+      '导入没反应', '预览0条', '预览零条', '0条', '导入失败', '导入出错', '导入错误',
+      '表头', '表头识别', '识别不了',
+      // 柬文
+      'ឯកសារ import', 'import file', 'upload', 'file ផ្ញើ', 'ឯកសារ excel',
+    ],
     reply: {
-      zh: '📊 Excel/CSV 批量导入\n\n直接将 .xlsx 或 .csv 文件发到对话框，无需口令。\n\n表头要求（中英文均支持）：\n  · 商品名称 / name / product\n  · 条码 / barcode / sku\n  · 售价 / price / unit price\n\n列顺序不限，说明行会自动跳过。\n预览后回复「确认」完成导入。',
-      en: '📊 Excel/CSV Bulk Import\n\nSend a .xlsx or .csv file directly — no command needed.\n\nRequired columns:\n  · name / product name\n  · barcode / sku\n  · price / unit price\n\nColumn order is flexible. Reply "confirm" after preview.',
-      km: '📊 Excel/CSV Import\n\nផ្ញើ .xlsx ឬ .csv file ដោយផ្ទាល់.\n\nColumn ដែលត្រូវការ:\n  · name / barcode / price\n\nReply "confirm" ដើម្បីបញ្ចូល.',
+      zh: '📊 Excel/CSV 批量导入\n\n直接将 .xlsx 或 .csv 文件发到对话框（无需口令）。\n\n常见问题：\n  · 预览 0 条 → 检查表头是否包含：商品名称、条码、售价\n  · 导入没反应 → 文件超 2MB 或格式不符\n  · 表头识别失败 → 确认列名为以下之一：\n    商品名称 / 条码 / 售价\n\n预览正常后，回复「确认」完成导入。\n还是有问题？回复「人工」。',
+      km: '📊 Excel/CSV Import\n\nផ្ញើ .xlsx ឬ .csv file ដោយផ្ទាល់ (គ្មាន command).\n\nបញ្ហាទូទៅ:\n  · Preview 0 rows → ពិនិត្យ column header (ត្រូវការ: ឈ្មោះ/barcode/ថ្លៃ)\n  · File ធំ >2MB → ត្រូវ compress\n  · Import fail → ពិនិត្យ column ថ្លៃ\n\nColumn headers ដែលរ​支持:\n  商品名称 / 条码 / 售价 ឬ name/barcode/price\n\nPreview OK? ផ្ញើ "确认" ដើម្បី import\nនៅមានបញ្ហា? ផ្ញើ "ជំនួយ"',
     },
   },
+
+  // ── 7. 扫码问题 ───────────────────────────────────────────────────────────
   {
     id: 'scan',
-    keywords: ['扫码', '扫不出', '扫描问题', '扫不到', 'scan', 'barcode scan', 'camera', 'qr code'],
+    keywords: [
+      // 中文
+      '扫码', '扫不了', '扫不出', '扫不到', '扫描', '相机', '摄像头', '条码扫描',
+      '扫了没反应', '扫码失败', '打开相机', '扫码打不开', '扫码问题',
+      // 柬文
+      'ស្គែន', 'ស្កែន', 'scan barcode', 'camera', 'barcode ស្គែន', 'scan fail',
+    ],
     reply: {
-      zh: '📷 扫码问题\n\n常见原因：\n  · 光线不足 → 确保环境光线充足\n  · 条码污损/模糊 → 尝试手动输入条码\n  · 商品未录入 → 先在商品管理中添加\n  · 摄像头权限 → 检查浏览器是否授权\n  · 设备兼容 → 尝试换一部手机\n\n仍有问题请回复「人工」联系客服。',
-      en: '📷 Scan Issues\n\nCommon causes:\n  · Low light → improve lighting\n  · Damaged barcode → try manual entry\n  · Product not added → add it first\n  · Camera permission → grant browser access\n\nReply "human" for further support.',
-      km: '📷 បញ្ហា Scan\n\nមូលហេតុទូទៅ:\n  · ពន្លឺខ្សោយ → ធ្វើឱ្យពន្លឺ\n  · barcode ខូច → វាយដោយដៃ\n  · product មិនទាន់បញ្ចូល → បញ្ចូលជាមុន\n\nReply "ជំនួយ"',
+      zh: '📷 扫码问题\n\n排查步骤：\n  1. 浏览器是否授予摄像头权限？ → 授权后刷新\n  2. 光线是否充足？ → 保持光线足够\n  3. 条码污损/模糊 → 手动输入条码\n  4. 商品未录入 → 先在商品管理中添加\n  5. 以上都正常 → 尝试换一部手机\n\n还是扫不了？回复「人工」。',
+      km: '📷 បញ្ហា Scan\n\nជំហានដោះស្រាយ:\n  1. ពិនិត្យ camera permission ក្នុង browser\n  2. ធ្វើឱ្យពន្លឺ\n  3. Barcode ខូច/ព្រិល → វាយ barcode ដោយដៃ\n  4. ទំនិញមិនទាន់បញ្ចូល → បញ្ចូលទំនិញជាមុន\n  5. ព្យាយាមប្ដូរទូរស័ព្ទ\n\nនៅ scan មិនបាន? ផ្ញើ "ជំនួយ"',
     },
   },
+
+  // ── 8. 机器人不回复 / 员工端限制 ─────────────────────────────────────────
+  {
+    id: 'bot_silent',
+    keywords: [
+      // 中文（刻意避开「人工」防止误触 D 路由，用具体描述词）
+      '机器人不回', '为什么不回', '没有回复', '机器人没反应', '接管后没回复',
+      '员工没有帮助', '为什么员工端', '员工不能用', '没有智能回复', '不回复了',
+      // 柬文
+      'bot មិនឆ្លើយ', 'ហេតុអ្វីមិនឆ្លើយ', 'ហេតុអ្វីbot',
+    ],
+    reply: {
+      zh: '🔕 关于机器人不回复\n\n可能原因：\n  1. 已开启人工接管 → 人工客服正在处理，机器人暂停自动回复\n  2. 您是员工账号 → 员工端暂不提供 AI 助手回复\n\n需要帮助？回复「人工」联系客服。',
+      km: '🔕 ហេតុអ្វី Bot មិនឆ្លើយ\n\nមូលហេតុ:\n  1. ការគ្រប់គ្រងដោយ Agent → Agent ដោះស្រាយ bot ផ្អាក\n  2. Account របស់អ្នក = Staff → Staff មិនមាន AI assistant\n\nត្រូវការជំនួយ? ផ្ញើ "ជំនួយ"',
+    },
+  },
+
 ]
 
 // ─── 固定回复文案 ─────────────────────────────────────────────────────────────
 
 /** D 类：升级到人工客服 */
 export const ESCALATION_REPLY: Record<string, string> = {
-  zh: '🙋 已通知人工客服，稍后会回复您。\n\n等待期间可继续描述问题，或发截图，方便客服更快处理。\n感谢您的耐心等待。',
-  en: '🙋 Human support has been notified. We will reply shortly.\n\nFeel free to describe your issue or send a screenshot while waiting.\nThank you for your patience.',
+  zh: '🙋 已通知人工客服，稍后会回复您。\n\n等待期间可继续描述问题或发截图，方便客服更快处理。\n感谢耐心等待。',
   km: '🙋 ការគាំទ្រពីមនុស្សត្រូវបានជូនដំណឹង។ យើងនឹងឆ្លើយ​ឆាប់ៗ.\n\nអ្នកអាចពិពណ៌នាបញ្ហា ឬផ្ញើ screenshot ពេលរង់ចាំ.\nអរគុណ',
 }
 
 /** C 类：OWNER 通用问题 */
 export const GENERAL_HELP_OWNER: Record<string, string> = {
-  zh: '👋 您好！我是店小二助手。\n\n常用功能：\n  · 发「新商品」→ 文字批量录入\n  · 发 Excel/CSV 文件 → 批量导入\n  · App 销售页面 → 扫码开单\n  · App 记录页面 → 历史订单\n\n有产品问题可以直接问我，或回复「人工」联系客服。',
-  en: '👋 Hi! I\'m your shop assistant.\n\nCommon features:\n  · Send "new goods" → bulk add products\n  · Send Excel/CSV → bulk import\n  · Sales page in App → scan & checkout\n  · Records page → order history\n\nAsk me product questions, or reply "human" for support.',
-  km: '👋 សួស្ដី! ខ្ញុំជា shop assistant.\n\nមុខងារ:\n  · ផ្ញើ "new goods" → បញ្ចូលទំនិញ\n  · ផ្ញើ Excel/CSV → import\n  · Sales page → scan\n\nReply "ជំនួយ" ដើម្បីទទួលការជួយ',
+  zh: '👋 您好！我是店小二助手。\n\n常用功能：\n  · 发「新商品」→ 文字批量录入\n  · 发 Excel/CSV 文件 → 批量导入\n  · App 销售页面 → 扫码开单\n  · App 记录页面 → 历史订单\n\n可以直接问我产品问题，或回复「人工」联系客服。',
+  km: '👋 សួស្ដី! ខ្ញុំជា 店小二 assistant.\n\nមុខងារ:\n  · ផ្ញើ "new goods" → បញ្ចូលទំនិញ\n  · ផ្ញើ Excel/CSV → import\n  · Sales page → scan\n  · Records page → ប្រវត្តិ\n\nសួរបញ្ហាអំពី app ឬ ផ្ញើ "ជំនួយ"',
 }
 
 /** C 类：STAFF 无权限 AI */
 export const GENERAL_HELP_STAFF: Record<string, string> = {
   zh: '👋 您好！如有操作问题，可向您的老板咨询，或回复「人工」寻求客服支持。',
-  en: '👋 Hi! For operational questions, please check with your manager, or reply "human" for customer support.',
-  km: '👋 សួស្ដី! ប្រសិនបើមានបញ្ហា សូមសួរ manager ឬ reply "ជំនួយ".',
+  km: '👋 សួស្ដី! ប្រសិនបើមានបញ្ហា សូមសួរម្ចាស់ shop ឬ ផ្ញើ "ជំនួយ".',
 }
 
-// ─── 语言检测 ─────────────────────────────────────────────────────────────────
+// ─── 语言检测（中文 / 柬文，不含英文）────────────────────────────────────────
 
-export function detectLanguage(text: string): 'zh' | 'en' | 'km' {
+/**
+ * 根据文字 Unicode 范围判断语言。
+ * 柬文 U+1780–U+17FF 优先；其余（含中文）统一回 zh。
+ */
+export function detectLanguage(text: string): 'zh' | 'km' {
   if (/[\u1780-\u17FF]/.test(text)) return 'km'
-  if (/[\u4e00-\u9FFF\u3400-\u4DBF]/.test(text)) return 'zh'
-  return 'en'
+  return 'zh'
 }
 
 // ─── FAQ 匹配 ─────────────────────────────────────────────────────────────────
@@ -118,10 +211,10 @@ const BUSINESS_PASS_THROUGH = new Set([
   '确认', 'confirm', 'yes', 'ok',
 ])
 
-/** 升级关键词 → D 类 */
+/** 升级关键词 → D 类（含柬文求助词） */
 const ESCALATE_KW = [
-  '人工', '转人工', '联系客服', '故障', '出错',
-  'human', 'agent', 'ជំនួយ',
+  '人工', '转人工', '联系客服', '故障', '出错', '报错',
+  'ជំនួយ', 'ទំនាក់ទំនង',
 ]
 
 export type RouteCategory = 'A' | 'B' | 'C' | 'D'
