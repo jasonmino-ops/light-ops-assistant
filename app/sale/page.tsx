@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react'
+import QRCode from 'react-qr-code'
 import { apiFetch } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useLocale } from '@/app/components/LangProvider'
@@ -28,10 +29,21 @@ type SaleSuccess = {
   totalAmount: number
   itemCount: number
   createdAt: string
-  cartSnapshot: CartItem[]  // 用于成功卡片的商品摘要
+  paymentMethod: 'CASH' | 'KHQR'
+  cartSnapshot: CartItem[]
 }
 
-type Status = 'idle' | 'querying' | 'submitting'
+type PendingPayment = {
+  id: string
+  orderNo: string
+  amount: number
+  khqrPayload: string
+  createdAt: string
+  cartSnapshot: CartItem[]
+}
+
+type Status = 'idle' | 'querying' | 'submitting' | 'confirming_payment' | 'cancelling_payment'
+type PayStep = 'none' | 'selecting' | 'khqr_pending'
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +59,8 @@ export default function SalePage() {
   const [success, setSuccess] = useState<SaleSuccess | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [payStep, setPayStep] = useState<PayStep>('none')
+  const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -228,13 +242,18 @@ export default function SalePage() {
     setCart((prev) => prev.filter((i) => i.key !== key))
   }
 
-  // ── 提交整单 ───────────────────────────────────────────────────────────────
+  // ── 收款方式选择 + 提交 ────────────────────────────────────────────────────
 
-  async function handleSubmit() {
+  function openPayModal() {
     if (cart.length === 0) return
     setSubmitError(null)
-    setStatus('submitting')
+    setPayStep('selecting')
+  }
 
+  async function handlePayWithMethod(method: 'CASH' | 'KHQR') {
+    setPayStep('none')
+    setSubmitError(null)
+    setStatus('submitting')
     const cartSnapshot = [...cart]
 
     try {
@@ -242,6 +261,7 @@ export default function SalePage() {
         method: 'POST',
         body: JSON.stringify({
           saleType: 'SALE',
+          paymentMethod: method,
           items: cart.map((ci) => ({
             barcode: ci.product.barcode,
             quantity: ci.qty,
@@ -250,10 +270,68 @@ export default function SalePage() {
       })
       const body = await res.json()
       if (res.ok) {
-        setSuccess({ ...body, cartSnapshot })
         setCart([])
+        if (method === 'CASH') {
+          setSuccess({ ...body, paymentMethod: 'CASH', cartSnapshot })
+        } else {
+          setPendingPayment({
+            id: body.paymentIntentId,
+            orderNo: body.orderNo,
+            amount: body.totalAmount,
+            khqrPayload: body.khqrPayload,
+            createdAt: body.createdAt,
+            cartSnapshot,
+          })
+          setPayStep('khqr_pending')
+        }
       } else {
         setSubmitError(body.message ?? body.error ?? t('sale.confirmSale'))
+      }
+    } catch {
+      setSubmitError(t('common.networkError'))
+    } finally {
+      setStatus('idle')
+    }
+  }
+
+  async function handleKhqrConfirm() {
+    if (!pendingPayment) return
+    setStatus('confirming_payment')
+    try {
+      const res = await apiFetch(`/api/payments/${pendingPayment.id}/confirm`, { method: 'POST' })
+      if (res.ok) {
+        setSuccess({
+          orderNo: pendingPayment.orderNo,
+          totalAmount: pendingPayment.amount,
+          itemCount: pendingPayment.cartSnapshot.length,
+          createdAt: pendingPayment.createdAt,
+          paymentMethod: 'KHQR',
+          cartSnapshot: pendingPayment.cartSnapshot,
+        })
+        setPendingPayment(null)
+        setPayStep('none')
+      } else {
+        const b = await res.json().catch(() => ({}))
+        setSubmitError(b.error ?? 'confirm failed')
+      }
+    } catch {
+      setSubmitError(t('common.networkError'))
+    } finally {
+      setStatus('idle')
+    }
+  }
+
+  async function handleKhqrCancel() {
+    if (!pendingPayment) return
+    setStatus('cancelling_payment')
+    try {
+      const res = await apiFetch(`/api/payments/${pendingPayment.id}/cancel`, { method: 'POST' })
+      if (res.ok) {
+        setPendingPayment(null)
+        setPayStep('none')
+      } else {
+        const b = await res.json().catch(() => ({}))
+        setSubmitError(b.error ?? 'cancel failed')
       }
     } catch {
       setSubmitError(t('common.networkError'))
@@ -274,6 +352,8 @@ export default function SalePage() {
     setDropOpen(false)
     setShowSuggestions(false)
     setCart([])
+    setPayStep('none')
+    setPendingPayment(null)
     focusInput()
   }
 
@@ -297,6 +377,37 @@ export default function SalePage() {
         />
       )}
 
+      {/* 收款方式选择 Modal */}
+      {payStep === 'selecting' && (
+        <div style={pm.overlay} onClick={() => setPayStep('none')}>
+          <div style={pm.sheet} onClick={(e) => e.stopPropagation()}>
+            <div style={pm.title}>{t('sale.paymentTitle')}</div>
+            <button
+              style={pm.option}
+              onClick={() => handlePayWithMethod('CASH')}
+              disabled={status === 'submitting'}
+            >
+              <span style={pm.optionIcon}>💵</span>
+              <div style={pm.optionText}>
+                <span style={pm.optionLabel}>{t('sale.paymentCash')}</span>
+                <span style={pm.optionDesc}>{t('sale.paymentCashDesc')}</span>
+              </div>
+            </button>
+            <button
+              style={pm.option}
+              onClick={() => handlePayWithMethod('KHQR')}
+              disabled={status === 'submitting'}
+            >
+              <span style={pm.optionIcon}>📱</span>
+              <div style={pm.optionText}>
+                <span style={pm.optionLabel}>{t('sale.paymentKhqr')}</span>
+                <span style={pm.optionDesc}>{t('sale.paymentKhqrDesc')}</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={s.headerTitle}>{t('sale.title')}</span>
         <LangToggleBtn />
@@ -304,8 +415,38 @@ export default function SalePage() {
 
       <div style={s.body}>
 
+        {/* ══ KHQR 待收款 ══ */}
+        {payStep === 'khqr_pending' && pendingPayment && (
+          <div style={s.khqrCard}>
+            <div style={s.khqrTitle}>{t('sale.khqrTitle')}</div>
+            <div style={s.khqrHint}>{t('sale.khqrScanHint')}</div>
+            <div style={s.qrWrap}>
+              <QRCode value={pendingPayment.khqrPayload} size={200} />
+            </div>
+            <div style={s.khqrInfoGrid}>
+              <InfoRow label={t('sale.khqrOrderLabel')} value={pendingPayment.orderNo} mono />
+              <InfoRow label={t('sale.khqrAmountLabel')} value={`$${pendingPayment.amount.toFixed(2)}`} bold />
+            </div>
+            {submitError && <div style={{ ...s.errorMsg, marginBottom: 8 }}>{submitError}</div>}
+            <button
+              style={s.khqrConfirmBtn}
+              disabled={status === 'confirming_payment' || status === 'cancelling_payment'}
+              onClick={handleKhqrConfirm}
+            >
+              {status === 'confirming_payment' ? t('sale.khqrConfirming') : t('sale.khqrConfirmBtn')}
+            </button>
+            <button
+              style={s.khqrCancelBtn}
+              disabled={status === 'confirming_payment' || status === 'cancelling_payment'}
+              onClick={handleKhqrCancel}
+            >
+              {status === 'cancelling_payment' ? t('sale.khqrCancelling') : t('sale.khqrCancelBtn')}
+            </button>
+          </div>
+        )}
+
         {/* ══ 成功状态 ══ */}
-        {success && (
+        {success && payStep !== 'khqr_pending' && (
           <div style={s.successCard}>
             <div style={s.successIconWrap}>✓</div>
             <div style={s.successTitle}>{t('sale.saleSuccess')}</div>
@@ -320,7 +461,7 @@ export default function SalePage() {
         )}
 
         {/* ══ 主流程 ══ */}
-        {!success && (
+        {!success && payStep !== 'khqr_pending' && (
           <>
             {/* 查询卡：扫码 / 输入 / 下拉 */}
             <div style={s.card}>
@@ -505,7 +646,7 @@ export default function SalePage() {
                 <button
                   style={{ ...s.submitBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
                   disabled={status === 'submitting'}
-                  onClick={handleSubmit}
+                  onClick={openPayModal}
                 >
                   {status === 'submitting' ? t('common.submitting') : t('sale.confirmSale')}
                 </button>
@@ -656,4 +797,26 @@ const s: Record<string, React.CSSProperties> = {
   successTitle: { fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 14 },
   successGrid: { width: '100%', borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 12, marginBottom: 18 },
   nextBtn: { height: 44, padding: '0 32px', background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 'var(--radius-sm)', fontSize: 15, fontWeight: 600 },
+
+  // KHQR screen
+  khqrCard: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '24px 20px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 12 },
+  khqrTitle: { fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 2 },
+  khqrHint: { fontSize: 13, color: 'var(--muted)', marginBottom: 8 },
+  qrWrap: { background: '#fff', padding: 12, borderRadius: 8, marginBottom: 8 },
+  khqrInfoGrid: { width: '100%', borderTop: '1px solid var(--border)', paddingTop: 12, marginBottom: 4 },
+  khqrConfirmBtn: { display: 'block', width: '100%', height: 50, background: '#52c41a', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 16, fontWeight: 700, marginBottom: 8 },
+  khqrCancelBtn: { display: 'block', width: '100%', height: 44, background: 'none', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: 14 },
+}
+
+// ─── Payment Modal Styles ──────────────────────────────────────────────────────
+
+const pm: Record<string, React.CSSProperties> = {
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' },
+  sheet: { width: '100%', maxWidth: 480, background: '#fff', borderRadius: '16px 16px 0 0', padding: '20px 16px 32px', boxShadow: '0 -4px 24px rgba(0,0,0,0.15)' },
+  title: { fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 16, textAlign: 'center' },
+  option: { display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 16px', background: '#f7f8fa', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', marginBottom: 10, textAlign: 'left' },
+  optionIcon: { fontSize: 28, flexShrink: 0 },
+  optionText: { display: 'flex', flexDirection: 'column', gap: 2 },
+  optionLabel: { fontSize: 15, fontWeight: 600, color: 'var(--text)' },
+  optionDesc: { fontSize: 12, color: 'var(--muted)' },
 }

@@ -36,6 +36,19 @@ enum RecordStatus {
   CANCELLED
 }
 
+enum PaymentMethod {
+  CASH
+  KHQR
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
 enum LogStatus {
   SUCCESS
   FAILED
@@ -178,6 +191,26 @@ model SaleRecord {
   @@index([saleType, createdAt])
   @@index([originalSaleRecordId])
   @@index([barcode])
+}
+
+model PaymentIntent {
+  id             String        @id @default(cuid())
+  tenantId       String
+  storeId        String
+  operatorUserId String
+  orderNo        String        @unique
+  paymentMethod  PaymentMethod
+  status         PaymentStatus @default(PENDING)
+  amount         Decimal       @db.Decimal(12, 2)
+  khqrPayload    String?       // EMV QR string; null for CASH
+  paidAt         DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([orderNo])
+  @@index([status])
 }
 
 model BindToken {

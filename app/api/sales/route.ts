@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
+import { generateKhqrPayload } from '@/lib/khqr'
 
 /**
  * POST /api/sales
@@ -47,7 +48,14 @@ async function handleSale(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any,
 ) {
-  const { items } = body as { items: CartItem[] }
+  const { items, paymentMethod = 'CASH' } = body as { items: CartItem[]; paymentMethod?: string }
+
+  if (paymentMethod !== 'CASH' && paymentMethod !== 'KHQR') {
+    return NextResponse.json(
+      { error: 'VALIDATION_ERROR', message: 'paymentMethod must be CASH or KHQR' },
+      { status: 400 },
+    )
+  }
 
   if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json(
@@ -155,11 +163,32 @@ async function handleSale(
         })
       }
 
+      const khqrPayload = paymentMethod === 'KHQR'
+        ? generateKhqrPayload({ amount: totalAmount, orderNo })
+        : null
+
+      const pi = await tx.paymentIntent.create({
+        data: {
+          tenantId: ctx.tenantId,
+          storeId: ctx.storeId,
+          operatorUserId: ctx.userId,
+          orderNo,
+          paymentMethod: paymentMethod as 'CASH' | 'KHQR',
+          status: paymentMethod === 'CASH' ? 'PAID' : 'PENDING',
+          amount: totalAmount,
+          khqrPayload,
+          paidAt: paymentMethod === 'CASH' ? new Date() : null,
+        },
+      })
+
       return {
         orderNo,
         totalAmount,
         itemCount: items.length,
         createdAt: firstCreatedAt!.toISOString(),
+        paymentMethod,
+        paymentIntentId: pi.id,
+        khqrPayload,
       }
     })
 
