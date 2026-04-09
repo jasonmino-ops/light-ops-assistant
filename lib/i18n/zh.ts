@@ -175,6 +175,11 @@ const zh = {
     refundReason: '退款原因：',
     kindItems: '种商品',
     loadFailed: '加载失败，请重试',
+    cashSale: '现金',
+    khqrSale: 'KHQR',
+    payPending: '待收款',
+    payPaid: '已付',
+    payCancelled: '已取消',
   },
   dashboard: {
     title: '今日经营概览',
@@ -196,6 +201,8 @@ const zh = {
     noSales: '今日暂无销售记录',
     qtyUnit: '件',
     loadFailed: '加载失败',
+    cashSaleLabel: '现金收款',
+    khqrSaleLabel: 'KHQR 扫码',
   },
   invite: {
     title: '邀请 & 成员',

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { getPaymentBreakdown } from '@/lib/payment-breakdown'
 
 /**
  * GET /api/summary?dateFrom=yyyy-MM-dd&dateTo=yyyy-MM-dd[&storeId=][&operatorUserId=]
@@ -79,9 +80,12 @@ export async function GET(req: NextRequest) {
         })
 
     if (row) {
-      const storeInfo = storeId
-        ? await prisma.store.findFirst({ where: { id: storeId }, select: { name: true } })
-        : null
+      const [storeInfo, breakdown] = await Promise.all([
+        storeId
+          ? prisma.store.findFirst({ where: { id: storeId }, select: { name: true } })
+          : Promise.resolve(null),
+        getPaymentBreakdown({ tenantId: ctx.tenantId, from, to, storeId }),
+      ])
       const totalSaleAmount   = Number(row.grossSales)
       const totalRefundAmount = -Number(row.refundAmount) // negative to match raw-query contract
       const netAmount         = Number(row.netSales)
@@ -100,6 +104,8 @@ export async function GET(req: NextRequest) {
           ? parseFloat((netAmount / row.salesCount).toFixed(2))
           : 0,
         topProducts: [],      // not stored in summary; fallback to raw for top-products detail
+        cashSaleAmount: breakdown.cashSaleAmount,
+        khqrSaleAmount: breakdown.khqrSaleAmount,
         _source: 'summary',
       })
     }
@@ -182,6 +188,14 @@ export async function GET(req: NextRequest) {
     totalQty: parseFloat((g._sum.quantity ?? 0).toString()),
   }))
 
+  const breakdown = await getPaymentBreakdown({
+    tenantId: ctx.tenantId,
+    from,
+    to,
+    storeId,
+    operatorUserId,
+  })
+
   return NextResponse.json({
     dateFrom,
     dateTo,
@@ -197,5 +211,7 @@ export async function GET(req: NextRequest) {
     refundOrderCount,
     avgSaleAmount,
     topProducts,
+    cashSaleAmount: breakdown.cashSaleAmount,
+    khqrSaleAmount: breakdown.khqrSaleAmount,
   })
 }

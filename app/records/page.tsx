@@ -23,12 +23,16 @@ type RecordItem = {
   lineAmount: number
   saleType: SaleType
   refundReason: string | null
+  paymentMethod?: 'CASH' | 'KHQR' | null
+  paymentStatus?: string | null
 }
 
 type Summary = {
   saleCount: number
   refundCount: number
   netAmount: number
+  cashSaleAmount?: number
+  khqrSaleAmount?: number
 }
 
 type ApiResponse = {
@@ -47,6 +51,8 @@ type OrderGroup = {
   operatorDisplayName: string
   items: RecordItem[]
   totalAmount: number
+  paymentMethod?: 'CASH' | 'KHQR' | null
+  paymentStatus?: string | null
 }
 
 type RefundEntry = {
@@ -99,6 +105,8 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
           operatorDisplayName: item.operatorDisplayName,
           items: [],
           totalAmount: 0,
+          paymentMethod: item.paymentMethod ?? null,
+          paymentStatus: item.paymentStatus ?? null,
         })
       }
       const g = groupMap.get(key)!
@@ -230,17 +238,26 @@ export default function RecordsPage() {
 
         {/* ── Summary bar ── */}
         {summary && (
-          <div style={s.summaryCard}>
-            <SummaryCell label={t('records.sale')} value={String(summary.saleCount)} unit={t('records.unit')} />
-            <div style={s.summaryDivider} />
-            <SummaryCell label={t('records.refund')} value={String(summary.refundCount)} unit={t('records.unit')} />
-            <div style={s.summaryDivider} />
-            <SummaryCell
-              label={t('records.netIncome')}
-              value={fmtAmount(summary.netAmount)}
-              colored={summary.netAmount >= 0 ? 'green' : 'red'}
-            />
-          </div>
+          <>
+            <div style={s.summaryCard}>
+              <SummaryCell label={t('records.sale')} value={String(summary.saleCount)} unit={t('records.unit')} />
+              <div style={s.summaryDivider} />
+              <SummaryCell label={t('records.refund')} value={String(summary.refundCount)} unit={t('records.unit')} />
+              <div style={s.summaryDivider} />
+              <SummaryCell
+                label={t('records.netIncome')}
+                value={fmtAmount(summary.netAmount)}
+                colored={summary.netAmount >= 0 ? 'green' : 'red'}
+              />
+            </div>
+            {((summary.cashSaleAmount ?? 0) > 0 || (summary.khqrSaleAmount ?? 0) > 0) && (
+              <div style={s.payBreakCard}>
+                <span style={s.payBreakItem}>💵 {t('records.cashSale')} {fmtAmount(summary.cashSaleAmount ?? 0)}</span>
+                <span style={s.payBreakSep}>·</span>
+                <span style={s.payBreakItem}>📱 {t('records.khqrSale')} {fmtAmount(summary.khqrSaleAmount ?? 0)}</span>
+              </div>
+            )}
+          </>
         )}
 
         {/* ── List ── */}
@@ -268,6 +285,13 @@ export default function RecordsPage() {
               index={i}
               tagSale={t('records.tagSale')}
               kindItems={t('records.kindItems')}
+              payLabels={{
+                cash: t('records.cashSale'),
+                khqr: t('records.khqrSale'),
+                pending: t('records.payPending'),
+                paid: t('records.payPaid'),
+                cancelled: t('records.payCancelled'),
+              }}
             />
           ) : (
             <RefundCard
@@ -295,10 +319,25 @@ export default function RecordsPage() {
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ group, index, tagSale, kindItems }: { group: OrderGroup; index: number; tagSale: string; kindItems: string }) {
+function OrderCard({ group, index, tagSale, kindItems, payLabels }: {
+  group: OrderGroup
+  index: number
+  tagSale: string
+  kindItems: string
+  payLabels: { cash: string; khqr: string; pending: string; paid: string; cancelled: string }
+}) {
   const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   const item = group.items[0]
+
+  const pm = group.paymentMethod
+  const ps = group.paymentStatus
+  const payMethodLabel = pm === 'KHQR' ? `📱 ${payLabels.khqr}` : `💵 ${payLabels.cash}`
+  const payStatusLabel =
+    ps === 'PENDING' ? payLabels.pending :
+    ps === 'CANCELLED' ? payLabels.cancelled :
+    null  // PAID = default, no extra badge needed
+  const isPending = ps === 'PENDING'
 
   return (
     <div style={{ ...s.recordCard, borderLeft: `3px solid ${accent}` }}>
@@ -306,6 +345,9 @@ function OrderCard({ group, index, tagSale, kindItems }: { group: OrderGroup; in
         <span style={s.tagSale}>{tagSale}</span>
         <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>
         <span style={s.cardRecordNo}>{group.orderNo}</span>
+        <span style={{ ...s.payBadge, ...(isPending ? s.payBadgePending : {}) }}>
+          {payMethodLabel}{payStatusLabel ? ` · ${payStatusLabel}` : ''}
+        </span>
       </div>
 
       {isSingle ? (
@@ -488,7 +530,7 @@ const s: Record<string, React.CSSProperties> = {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
     padding: '12px 16px',
-    marginBottom: 10,
+    marginBottom: 6,
     display: 'flex',
     alignItems: 'center',
   },
@@ -497,6 +539,30 @@ const s: Record<string, React.CSSProperties> = {
     height: 30,
     background: 'var(--border)',
     flexShrink: 0,
+  },
+  payBreakCard: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '8px 16px',
+    marginBottom: 10,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  payBreakItem: { fontSize: 12, color: 'var(--muted)' },
+  payBreakSep: { fontSize: 12, color: 'var(--border)' },
+  payBadge: {
+    fontSize: 10,
+    color: '#8c8c8c',
+    background: '#f5f5f5',
+    borderRadius: 8,
+    padding: '1px 6px',
+    marginLeft: 'auto',
+    whiteSpace: 'nowrap' as const,
+  },
+  payBadgePending: {
+    color: '#fa8c16',
+    background: '#fff7e6',
   },
   recordCard: {
     background: 'var(--card)',

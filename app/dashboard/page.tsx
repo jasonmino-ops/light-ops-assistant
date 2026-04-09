@@ -36,6 +36,8 @@ type SummaryResult = {
   saleOrderCount: number
   refundOrderCount: number
   topProducts: TopProduct[]
+  cashSaleAmount?: number
+  khqrSaleAmount?: number
 }
 
 // ─── Seed data (replace with API-driven options when auth is done) ─────────────
@@ -239,6 +241,14 @@ function Overview({ result, t }: { result: SummaryResult; t: (k: string) => stri
         <MetricCell label={t('dashboard.refundCount')} value={String(result.refundOrderCount)} unit={t('dashboard.orderUnit')} />
       </div>
 
+      {/* Payment breakdown */}
+      {((result.cashSaleAmount ?? 0) > 0 || (result.khqrSaleAmount ?? 0) > 0) && (
+        <div style={ov.payGrid}>
+          <PayCell icon="💵" label={t('dashboard.cashSaleLabel')} value={fmtAmount(result.cashSaleAmount ?? 0)} />
+          <PayCell icon="📱" label={t('dashboard.khqrSaleLabel')} value={fmtAmount(result.khqrSaleAmount ?? 0)} />
+        </div>
+      )}
+
       {/* Top 3 products */}
       <div style={ov.topCard}>
         <div style={ov.topTitle}>{t('dashboard.topTitle')}</div>
@@ -294,6 +304,18 @@ function MetricCell({
         {unit && <span style={mc.unit}>{unit}</span>}
       </div>
       <div style={mc.label}>{label}</div>
+    </div>
+  )
+}
+
+function PayCell({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div style={pc.cell}>
+      <span style={pc.icon}>{icon}</span>
+      <div style={pc.text}>
+        <div style={pc.val}>{value}</div>
+        <div style={pc.lbl}>{label}</div>
+      </div>
     </div>
   )
 }
@@ -452,6 +474,12 @@ const ov: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     marginBottom: 10,
   },
+  payGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8,
+    marginBottom: 10,
+  },
   topCard: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
@@ -549,4 +577,12 @@ const mc: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: 'var(--muted)',
   },
+}
+
+const pc: Record<string, React.CSSProperties> = {
+  cell: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 },
+  icon: { fontSize: 22, flexShrink: 0 },
+  text: { display: 'flex', flexDirection: 'column', gap: 2 },
+  val: { fontSize: 17, fontWeight: 700, color: 'var(--text)' },
+  lbl: { fontSize: 11, color: 'var(--muted)' },
 }

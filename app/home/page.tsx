@@ -12,6 +12,8 @@ type Summary = {
   saleCount: number
   refundCount: number
   netAmount: number
+  cashSaleAmount?: number
+  khqrSaleAmount?: number
 }
 
 type RecordItem = {
@@ -166,6 +168,13 @@ export default function HomePage() {
                 ${(summary?.netAmount ?? 0).toFixed(2)}
               </span>
             </div>
+            {((summary?.cashSaleAmount ?? 0) > 0 || (summary?.khqrSaleAmount ?? 0) > 0) && (
+              <div style={s.payBreakRow}>
+                <span style={s.payBreakItem}>💵 ${(summary?.cashSaleAmount ?? 0).toFixed(2)}</span>
+                <span style={s.payBreakSep}>·</span>
+                <span style={s.payBreakItem}>📱 KHQR ${(summary?.khqrSaleAmount ?? 0).toFixed(2)}</span>
+              </div>
+            )}
             <div style={s.summaryGrid}>
               <SummaryCell label={t('home.sale')} value={String(summary?.saleCount ?? 0)} unit={t('home.unit')} />
               <div style={s.summaryDivider} />
@@ -389,10 +398,18 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 6,
+  },
+  payBreakRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
     marginBottom: 12,
     paddingBottom: 12,
     borderBottom: '1px solid #f0f0f0',
   },
+  payBreakItem: { fontSize: 12, color: '#8c8c8c' },
+  payBreakSep: { fontSize: 12, color: '#d9d9d9' },
   netLabel: {
     fontSize: 14,
     color: '#8c8c8c',

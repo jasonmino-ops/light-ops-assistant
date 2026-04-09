@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { getPaymentBreakdown, getOrderPaymentMap } from '@/lib/payment-breakdown'
 
 /**
  * GET /api/records?dateFrom=yyyy-MM-dd&dateTo=yyyy-MM-dd[&saleType=SALE|REFUND][&storeId=][&operatorUserId=][&page=1][&pageSize=20]
@@ -101,29 +102,53 @@ export async function GET(req: NextRequest) {
   const totalSaleAmount = saleAgg._sum.lineAmount?.toNumber() ?? 0
   const totalRefundAmount = refundAgg._sum.lineAmount?.toNumber() ?? 0
 
+  // Payment breakdown (CASH vs KHQR paid) + per-order PI info
+  const storeId = ctx.role === 'STAFF' ? ctx.storeId : (where.storeId as string | undefined)
+  const operatorUserId = ctx.role === 'STAFF' ? ctx.userId : (where.operatorUserId as string | undefined)
+
+  const [breakdown, paymentMap] = await Promise.all([
+    saleTypeParam !== 'REFUND'
+      ? getPaymentBreakdown({ tenantId: ctx.tenantId, from, to, storeId, operatorUserId })
+      : { cashSaleAmount: 0, khqrSaleAmount: 0 },
+    (() => {
+      const saleOrderNos = items
+        .filter((r) => r.saleType === 'SALE' && r.orderNo)
+        .map((r) => r.orderNo as string)
+      return getOrderPaymentMap([...new Set(saleOrderNos)])
+    })(),
+  ])
+
   return NextResponse.json({
     total,
     page,
     pageSize,
-    items: items.map((r) => ({
-      id: r.id,
-      recordNo: r.recordNo,
-      orderNo: r.orderNo,
-      createdAt: r.createdAt.toISOString(),
-      storeName: r.store.name,
-      operatorDisplayName: r.operatorUser.displayName,
-      productNameSnapshot: r.productNameSnapshot,
-      specSnapshot: r.specSnapshot,
-      quantity: r.quantity.toNumber(),
-      unitPrice: r.unitPrice.toNumber(),
-      lineAmount: r.lineAmount.toNumber(),
-      saleType: r.saleType,
-      refundReason: r.refundReason,
-    })),
+    items: items.map((r) => {
+      const pi = r.saleType === 'SALE' && r.orderNo ? paymentMap.get(r.orderNo) : undefined
+      return {
+        id: r.id,
+        recordNo: r.recordNo,
+        orderNo: r.orderNo,
+        createdAt: r.createdAt.toISOString(),
+        storeName: r.store.name,
+        operatorDisplayName: r.operatorUser.displayName,
+        productNameSnapshot: r.productNameSnapshot,
+        specSnapshot: r.specSnapshot,
+        quantity: r.quantity.toNumber(),
+        unitPrice: r.unitPrice.toNumber(),
+        lineAmount: r.lineAmount.toNumber(),
+        saleType: r.saleType,
+        refundReason: r.refundReason,
+        // Payment info (null for REFUND / historical orders without PI)
+        paymentMethod: pi?.paymentMethod ?? (r.saleType === 'SALE' ? 'CASH' : null),
+        paymentStatus: pi?.paymentStatus ?? (r.saleType === 'SALE' ? 'PAID' : null),
+      }
+    }),
     summary: {
       saleCount: saleAgg._count,
       refundCount: refundAgg._count,
       netAmount: totalSaleAmount + totalRefundAmount,
+      cashSaleAmount: breakdown.cashSaleAmount,
+      khqrSaleAmount: breakdown.khqrSaleAmount,
     },
   })
 }

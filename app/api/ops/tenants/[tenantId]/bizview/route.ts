@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuth } from '@/lib/ops-auth'
+import { getPaymentBreakdown } from '@/lib/payment-breakdown'
 
 export async function GET(
   req: NextRequest,
@@ -79,6 +80,8 @@ export async function GET(
   const saleAmount = saleAgg._sum.lineAmount?.toNumber() ?? 0
   const refundRaw = refundAgg._sum.lineAmount?.toNumber() ?? 0
 
+  const breakdown = await getPaymentBreakdown({ tenantId, from, to: new Date() })
+
   return NextResponse.json({
     days,
     overview: {
@@ -87,6 +90,8 @@ export async function GET(
       refundAmount: parseFloat(Math.abs(refundRaw).toFixed(2)),
       refundCount: refundAgg._count,
       netAmount: parseFloat((saleAmount + refundRaw).toFixed(2)),
+      cashSaleAmount: breakdown.cashSaleAmount,
+      khqrSaleAmount: breakdown.khqrSaleAmount,
     },
     topProducts: topProducts.map((p) => ({
       name: p.productNameSnapshot,

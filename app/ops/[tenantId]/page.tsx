@@ -31,7 +31,7 @@ const TIER_META: Record<string, { label: string; color: string; bg: string; bord
 
 type GenResult = { token: string; role: string; storeName: string; expiresAt: string; tgLink: string | null }
 
-type BizOverview = { saleAmount: number; saleCount: number; refundAmount: number; refundCount: number; netAmount: number }
+type BizOverview = { saleAmount: number; saleCount: number; refundAmount: number; refundCount: number; netAmount: number; cashSaleAmount?: number; khqrSaleAmount?: number }
 type BizProduct  = { name: string; spec: string | null; qty: number; amount: number }
 type BizRecord   = { id: string; createdAt: string; saleType: string; productName: string; spec: string | null; qty: number; lineAmount: number; storeName: string; operator: string; orderNo: string | null }
 type BizStaff    = { displayName: string; saleCount: number; saleAmount: number }
@@ -399,7 +399,7 @@ function BizDataPanel({ tenantId }: { tenantId: string }) {
       </div>
 
       {/* Overview */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6, marginBottom: 8 }}>
         {[
           { label: '销售额', value: fmtAmt(ov.saleAmount), color: '#52c41a' },
           { label: '销售单数', value: String(ov.saleCount), color: '#1677ff' },
@@ -413,6 +413,21 @@ function BizDataPanel({ tenantId }: { tenantId: string }) {
           </div>
         ))}
       </div>
+
+      {/* Payment breakdown */}
+      {((ov.cashSaleAmount ?? 0) > 0 || (ov.khqrSaleAmount ?? 0) > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 14 }}>
+          {[
+            { label: '💵 现金收款', value: fmtAmt(ov.cashSaleAmount ?? 0), color: '#389e0d' },
+            { label: '📱 KHQR 扫码', value: fmtAmt(ov.khqrSaleAmount ?? 0), color: '#1677ff' },
+          ].map(({ label, value, color }) => (
+            <div key={label} style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: 11, color: '#888' }}>{label}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Top products */}
       {data.topProducts.length > 0 && (
