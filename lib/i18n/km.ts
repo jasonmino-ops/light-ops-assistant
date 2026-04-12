@@ -101,6 +101,7 @@ const km = {
     khqrCancelBtn: 'បោះបង់ការទូទាត់',
     khqrConfirming: 'កំពុងបញ្ជាក់…',
     khqrCancelling: 'កំពុងបោះបង់…',
+    khqrNotConfigured: 'ហាងនេះមិនទាន់កំណត់ KHQR ទេ សូមទាក់ទងម្ចាស់ហាង',
   },
   refund: {
     title: 'ការសងប្រាក់',

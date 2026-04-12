@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
-import { generateKhqrPayload } from '@/lib/khqr'
+import { generateKhqrPayload, KhqrProviderConfig } from '@/lib/khqr'
 
 /**
  * POST /api/sales
@@ -106,6 +106,19 @@ async function handleSale(
     }
   }
 
+  // KHQR 配置前置检查（事务外快速失败，避免创建半成品记录）
+  let khqrConfig: KhqrProviderConfig & { id: string } | null = null
+  if (paymentMethod === 'KHQR') {
+    const cfg = await findKhqrConfig(ctx.tenantId, ctx.storeId)
+    if (!cfg) {
+      return NextResponse.json(
+        { error: 'KHQR_NOT_CONFIGURED', message: '当前门店未配置 KHQR 收款，请联系老板' },
+        { status: 422 },
+      )
+    }
+    khqrConfig = cfg
+  }
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       // 生成第一条记录号，同时用作整单的 orderNo
@@ -163,8 +176,8 @@ async function handleSale(
         })
       }
 
-      const khqrPayload = paymentMethod === 'KHQR'
-        ? generateKhqrPayload({ amount: totalAmount, orderNo })
+      const khqrPayload = paymentMethod === 'KHQR' && khqrConfig
+        ? generateKhqrPayload({ amount: totalAmount, orderNo, config: khqrConfig })
         : null
 
       const pi = await tx.paymentIntent.create({
@@ -177,6 +190,8 @@ async function handleSale(
           status: paymentMethod === 'CASH' ? 'PAID' : 'PENDING',
           amount: totalAmount,
           khqrPayload,
+          provider: khqrConfig?.provider ?? null,
+          merchantConfigId: khqrConfig?.id ?? null,
           paidAt: paymentMethod === 'CASH' ? new Date() : null,
         },
       })
@@ -197,6 +212,25 @@ async function handleSale(
     console.error('[POST /api/sales SALE]', err)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
   }
+}
+
+// ─── KHQR config lookup ───────────────────────────────────────────────────────
+
+/**
+ * 按优先级查找门店的 KHQR 支付配置：
+ *  1. 当前 storeId 的专属启用配置
+ *  2. 租户级默认配置（storeId = null, isDefault = true）
+ *  3. 两者都没有 → 返回 null（调用方应拒绝 KHQR 并提示）
+ */
+async function findKhqrConfig(tenantId: string, storeId: string) {
+  const storeConfig = await prisma.merchantPaymentConfig.findFirst({
+    where: { tenantId, storeId, khqrEnabled: true, isActive: true },
+  })
+  if (storeConfig) return storeConfig
+
+  return prisma.merchantPaymentConfig.findFirst({
+    where: { tenantId, storeId: null, khqrEnabled: true, isActive: true, isDefault: true },
+  })
 }
 
 // ─── REFUND ───────────────────────────────────────────────────────────────────

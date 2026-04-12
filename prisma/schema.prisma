@@ -193,24 +193,50 @@ model SaleRecord {
   @@index([barcode])
 }
 
+model MerchantPaymentConfig {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  storeId            String?                    // null = tenant 级默认配置
+  provider           String   @default("BAKONG_KHQR") // BAKONG_KHQR | ...
+  merchantId         String
+  merchantName       String
+  merchantAccountRef String                     // Bakong 账户手机号 / ref
+  currency           String   @default("USD")   // USD | KHR
+  khqrEnabled        Boolean  @default(true)
+  isDefault          Boolean  @default(false)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  paymentIntents PaymentIntent[]
+
+  @@index([tenantId])
+  @@index([tenantId, storeId])
+}
+
 model PaymentIntent {
-  id             String        @id @default(cuid())
-  tenantId       String
-  storeId        String
-  operatorUserId String
-  orderNo        String        @unique
-  paymentMethod  PaymentMethod
-  status         PaymentStatus @default(PENDING)
-  amount         Decimal       @db.Decimal(12, 2)
-  khqrPayload    String?       // EMV QR string; null for CASH
-  paidAt         DateTime?
-  cancelledAt    DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id               String        @id @default(cuid())
+  tenantId         String
+  storeId          String
+  operatorUserId   String
+  orderNo          String        @unique
+  paymentMethod    PaymentMethod
+  status           PaymentStatus @default(PENDING)
+  amount           Decimal       @db.Decimal(12, 2)
+  khqrPayload      String?       // EMV QR string; null for CASH
+  provider         String?       // from MerchantPaymentConfig.provider
+  merchantConfigId String?       // FK to MerchantPaymentConfig
+  paidAt           DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  merchantConfig MerchantPaymentConfig? @relation(fields: [merchantConfigId], references: [id])
 
   @@index([tenantId, createdAt])
   @@index([orderNo])
   @@index([status])
+  @@index([merchantConfigId])
 }
 
 model BindToken {

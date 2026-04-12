@@ -101,6 +101,7 @@ const zh = {
     khqrCancelBtn: '取消收款',
     khqrConfirming: '确认中…',
     khqrCancelling: '取消中…',
+    khqrNotConfigured: '当前门店未配置 KHQR 收款，请联系老板',
   },
   refund: {
     title: '退款',

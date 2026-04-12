@@ -61,6 +61,7 @@ export default function SalePage() {
   const [scannerOpen, setScannerOpen] = useState(false)
   const [payStep, setPayStep] = useState<PayStep>('none')
   const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null)
+  const [modalError, setModalError] = useState<string | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -247,11 +248,12 @@ export default function SalePage() {
   function openPayModal() {
     if (cart.length === 0) return
     setSubmitError(null)
+    setModalError(null)
     setPayStep('selecting')
   }
 
   async function handlePayWithMethod(method: 'CASH' | 'KHQR') {
-    setPayStep('none')
+    setModalError(null)
     setSubmitError(null)
     setStatus('submitting')
     const cartSnapshot = [...cart]
@@ -270,6 +272,7 @@ export default function SalePage() {
       })
       const body = await res.json()
       if (res.ok) {
+        setPayStep('none')
         setCart([])
         if (method === 'CASH') {
           setSuccess({ ...body, paymentMethod: 'CASH', cartSnapshot })
@@ -284,10 +287,15 @@ export default function SalePage() {
           })
           setPayStep('khqr_pending')
         }
+      } else if (body.error === 'KHQR_NOT_CONFIGURED') {
+        // 保持 modal 打开，在弹窗内展示错误，不允许继续
+        setModalError(body.message ?? t('sale.khqrNotConfigured'))
       } else {
+        setPayStep('none')
         setSubmitError(body.message ?? body.error ?? t('sale.confirmSale'))
       }
     } catch {
+      setPayStep('none')
       setSubmitError(t('common.networkError'))
     } finally {
       setStatus('idle')
@@ -354,6 +362,7 @@ export default function SalePage() {
     setCart([])
     setPayStep('none')
     setPendingPayment(null)
+    setModalError(null)
     focusInput()
   }
 
@@ -379,7 +388,7 @@ export default function SalePage() {
 
       {/* 收款方式选择 Modal */}
       {payStep === 'selecting' && (
-        <div style={pm.overlay} onClick={() => setPayStep('none')}>
+        <div style={pm.overlay} onClick={() => { setPayStep('none'); setModalError(null) }}>
           <div style={pm.sheet} onClick={(e) => e.stopPropagation()}>
             <div style={pm.title}>{t('sale.paymentTitle')}</div>
             <button
@@ -394,9 +403,9 @@ export default function SalePage() {
               </div>
             </button>
             <button
-              style={pm.option}
+              style={{ ...pm.option, ...(modalError ? pm.optionDisabled : {}) }}
               onClick={() => handlePayWithMethod('KHQR')}
-              disabled={status === 'submitting'}
+              disabled={status === 'submitting' || !!modalError}
             >
               <span style={pm.optionIcon}>📱</span>
               <div style={pm.optionText}>
@@ -404,6 +413,9 @@ export default function SalePage() {
                 <span style={pm.optionDesc}>{t('sale.paymentKhqrDesc')}</span>
               </div>
             </button>
+            {modalError && (
+              <div style={pm.modalErrorMsg}>{modalError}</div>
+            )}
           </div>
         </div>
       )}
@@ -819,4 +831,6 @@ const pm: Record<string, React.CSSProperties> = {
   optionText: { display: 'flex', flexDirection: 'column', gap: 2 },
   optionLabel: { fontSize: 15, fontWeight: 600, color: 'var(--text)' },
   optionDesc: { fontSize: 12, color: 'var(--muted)' },
+  optionDisabled: { opacity: 0.45, cursor: 'not-allowed' },
+  modalErrorMsg: { fontSize: 13, color: '#d97706', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '8px 12px', textAlign: 'center', marginTop: 4 },
 }

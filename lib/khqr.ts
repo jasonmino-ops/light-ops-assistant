@@ -1,15 +1,62 @@
 /**
- * lib/khqr.ts — KHQR v1 stub
+ * lib/khqr.ts — KHQR provider 路由层
  *
- * v1 生成可渲染为二维码的占位字符串。
- * v2 会替换为 bakong-khqr npm 包 + Bakong 商户凭证的真实实现。
+ * 架构：
+ *   generateKhqrPayload() 按 config.provider 分发到具体实现。
+ *   v1: BAKONG_KHQR → _generateBakongStub()（占位字符串，可渲染二维码）
+ *   v2: 替换 _generateBakongStub 为 bakong-khqr npm SDK + 真实 Bakong 商户凭证。
+ *
+ * 新增 provider 时在 generateKhqrPayload() 的 switch 分支中追加，
+ * 原有分支不变，保持向后兼容。
+ */
+
+export type KhqrProviderConfig = {
+  provider: string            // 'BAKONG_KHQR' | future providers
+  merchantId: string
+  merchantName: string
+  merchantAccountRef: string  // Bakong 账户号 / 手机号
+  currency: string            // 'USD' | 'KHR'
+}
+
+/**
+ * Provider 路由入口 — 对外唯一暴露的生成函数。
  */
 export function generateKhqrPayload(params: {
   amount: number
   orderNo: string
+  config: KhqrProviderConfig
 }): string {
-  const { amount, orderNo } = params
-  // v1 stub: 将单号和金额编码为简单字符串
-  // react-qr-code 可以将其渲染为二维码（不是真实 Bakong 付款码）
-  return `KHQR|${orderNo}|${amount.toFixed(2)}|USD`
+  switch (params.config.provider) {
+    case 'BAKONG_KHQR':
+      return _generateBakongStub(params)
+    default:
+      // 未知 provider 退回 stub，保持可渲染性
+      return _generateBakongStub(params)
+  }
+}
+
+/**
+ * Bakong KHQR v1 stub.
+ *
+ * 编码格式：KHQR|<accountRef>|<merchantName>|<orderNo>|<amount>|<currency>
+ * 这是 v1 占位格式，react-qr-code 可渲染，但不是真实 Bakong EMV 码。
+ *
+ * v2 替换为：
+ *   import { BakongKHQR } from 'bakong-khqr'
+ *   new BakongKHQR(merchantConfig).createMerchantQR({ amount, currency, billNumber })
+ */
+function _generateBakongStub(params: {
+  amount: number
+  orderNo: string
+  config: KhqrProviderConfig
+}): string {
+  const { amount, orderNo, config } = params
+  return [
+    'KHQR',
+    config.merchantAccountRef,
+    config.merchantName,
+    orderNo,
+    amount.toFixed(2),
+    config.currency,
+  ].join('|')
 }
