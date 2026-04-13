@@ -356,6 +356,13 @@ const zh = {
     preparingPrint: '打印中…',
     qty: '数量',
     unpaidHint: '未结账',
+    cancelOrder: '取消订单',
+    cancelConfirmTitle: '确认取消这笔订单吗？',
+    cancelConfirmHint: '取消后将无法继续结账',
+    cancelConfirmBtn: '确认取消',
+    cancelBack: '返回',
+    cancelling: '取消中…',
+    cancelFailed: '取消失败，请重试',
   },
 } as const
 

@@ -356,6 +356,13 @@ const km = {
     preparingPrint: 'កំពុងបោះពុម្ព…',
     qty: 'ចំនួន',
     unpaidHint: 'មិនទាន់ទូទាត់',
+    cancelOrder: 'បោះបង់ការបញ្ជា',
+    cancelConfirmTitle: 'បញ្ជាក់ការបោះបង់ការបញ្ជានេះ?',
+    cancelConfirmHint: 'បន្ទាប់ពីបោះបង់ មិនអាចទូទាត់បន្តបានទេ',
+    cancelConfirmBtn: 'បញ្ជាក់ការបោះបង់',
+    cancelBack: 'ត្រលប់',
+    cancelling: 'កំពុងបោះបង់…',
+    cancelFailed: 'បោះបង់បានបរាជ័យ សូមព្យាយាមម្តងទៀត',
   },
 } as const
 

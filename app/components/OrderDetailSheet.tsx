@@ -60,6 +60,9 @@ export default function OrderDetailSheet({
   const [showCheckout, setShowCheckout] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [shareStatus, setShareStatus] = useState<'idle' | 'generating' | 'printing'>('idle')
+  const [cancelConfirm, setCancelConfirm] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
   const shareCardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -128,6 +131,26 @@ export default function OrderDetailSheet({
   }
 
   // ── Handlers ──────────────────────────────────────────────────────────────
+
+  async function handleCancelOrder() {
+    if (!d) return
+    setCancelling(true)
+    setCancelError(null)
+    try {
+      const res = await apiFetch(`/api/orders/${encodeURIComponent(d.orderNo)}/cancel`, { method: 'POST' })
+      if (res.ok) {
+        setCancelConfirm(false)
+        setReloadKey((k) => k + 1)
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setCancelError(body.message ?? t('order.cancelFailed'))
+      }
+    } catch {
+      setCancelError(t('order.cancelFailed'))
+    } finally {
+      setCancelling(false)
+    }
+  }
 
   async function handleShare() {
     if (!d || !shareCardRef.current || shareStatus !== 'idle') return
@@ -291,6 +314,13 @@ export default function OrderDetailSheet({
               </button>
             )}
 
+            {/* Cancel order button — only for deferred unpaid orders */}
+            {isDeferred && (
+              <button style={sh.cancelOrderBtn} onClick={() => { setCancelError(null); setCancelConfirm(true) }}>
+                {t('order.cancelOrder')}
+              </button>
+            )}
+
             {/* Share / Print action row */}
             <div style={sh.actionRow}>
               <button style={{ ...sh.actionBtn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={handleShare}>
@@ -308,6 +338,25 @@ export default function OrderDetailSheet({
       {d && (
         <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1, pointerEvents: 'none' }}>
           <OrderShareCard ref={shareCardRef} data={d as ShareData} labels={shareLabels} />
+        </div>
+      )}
+
+      {/* Cancel confirmation dialog */}
+      {cancelConfirm && (
+        <div style={sh.confirmOverlay} onClick={() => { if (!cancelling) setCancelConfirm(false) }}>
+          <div style={sh.confirmBox} onClick={(e) => e.stopPropagation()}>
+            <div style={sh.confirmTitle}>{t('order.cancelConfirmTitle')}</div>
+            <div style={sh.confirmHint}>{t('order.cancelConfirmHint')}</div>
+            {cancelError && <div style={sh.confirmError}>{cancelError}</div>}
+            <div style={sh.confirmBtns}>
+              <button style={sh.confirmBackBtn} disabled={cancelling} onClick={() => setCancelConfirm(false)}>
+                {t('order.cancelBack')}
+              </button>
+              <button style={{ ...sh.confirmDoBtn, opacity: cancelling ? 0.6 : 1 }} disabled={cancelling} onClick={handleCancelOrder}>
+                {cancelling ? t('order.cancelling') : t('order.cancelConfirmBtn')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -405,5 +454,48 @@ const sh: Record<string, React.CSSProperties> = {
     background: 'transparent', color: '#595959',
     border: '1.5px solid #d9d9d9', borderRadius: 10,
     fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  },
+  cancelOrderBtn: {
+    display: 'block', width: '100%', height: 42, marginTop: 8,
+    background: 'transparent', color: '#ff4d4f',
+    border: '1.5px solid #ffccc7', borderRadius: 10,
+    fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  },
+  confirmOverlay: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+    zIndex: 800, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '0 24px',
+  },
+  confirmBox: {
+    width: '100%', maxWidth: 340, background: '#fff',
+    borderRadius: 16, padding: '24px 20px 20px',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+  },
+  confirmTitle: {
+    fontSize: 16, fontWeight: 700, color: '#1a1a1a',
+    textAlign: 'center', marginBottom: 8,
+  },
+  confirmHint: {
+    fontSize: 13, color: '#8c8c8c', textAlign: 'center', marginBottom: 16,
+  },
+  confirmError: {
+    fontSize: 12, color: '#ff4d4f', textAlign: 'center',
+    background: '#fff2f0', border: '1px solid #ffccc7',
+    borderRadius: 6, padding: '6px 10px', marginBottom: 12,
+  },
+  confirmBtns: {
+    display: 'flex', gap: 10,
+  },
+  confirmBackBtn: {
+    flex: 1, height: 44,
+    background: '#f5f5f5', color: '#595959',
+    border: 'none', borderRadius: 10,
+    fontSize: 15, fontWeight: 600, cursor: 'pointer',
+  },
+  confirmDoBtn: {
+    flex: 1, height: 44,
+    background: '#ff4d4f', color: '#fff',
+    border: 'none', borderRadius: 10,
+    fontSize: 15, fontWeight: 700, cursor: 'pointer',
   },
 }
