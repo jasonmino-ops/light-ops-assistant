@@ -298,9 +298,10 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   const [pending, setPending] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saved, setSaved] = useState<Record<string, boolean>>({})
+  const [saveError, setSaveError] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    apiFetch('/api/stores', undefined, OWNER_CTX)
+    apiFetch('/api/stores', { cache: 'no-store' }, OWNER_CTX)
       .then((r) => (r.ok ? r.json() : []))
       .then((list: StoreConfig[]) => {
         setStores(list)
@@ -314,16 +315,25 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   async function handleSave(storeId: string) {
     setSaving((v) => ({ ...v, [storeId]: true }))
     setSaved((v) => ({ ...v, [storeId]: false }))
+    setSaveError((v) => ({ ...v, [storeId]: '' }))
     try {
       const res = await apiFetch(`/api/stores/${storeId}/checkout-mode`, {
         method: 'PATCH',
         body: JSON.stringify({ checkoutMode: pending[storeId] }),
       }, OWNER_CTX)
       if (res.ok) {
+        const body = await res.json().catch(() => null)
+        // Sync pending to what DB actually persisted
+        if (body?.checkoutMode) setPending((v) => ({ ...v, [storeId]: body.checkoutMode }))
         setSaved((v) => ({ ...v, [storeId]: true }))
         setTimeout(() => setSaved((v) => ({ ...v, [storeId]: false })), 2000)
+      } else {
+        const body = await res.json().catch(() => null)
+        setSaveError((v) => ({ ...v, [storeId]: body?.message ?? body?.error ?? '保存失败' }))
       }
-    } catch { /* ignore */ } finally {
+    } catch {
+      setSaveError((v) => ({ ...v, [storeId]: '网络错误，请重试' }))
+    } finally {
       setSaving((v) => ({ ...v, [storeId]: false }))
     }
   }
@@ -341,7 +351,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
             <select
               style={sc.select}
               value={pending[store.id] ?? store.checkoutMode}
-              onChange={(e) => setPending((v) => ({ ...v, [store.id]: e.target.value }))}
+              onChange={(e) => { setPending((v) => ({ ...v, [store.id]: e.target.value })); setSaveError((v) => ({ ...v, [store.id]: '' })) }}
             >
               <option value="DIRECT_PAYMENT">{t('dashboard.modeDirect')}</option>
               <option value="DEFERRED_PAYMENT">{t('dashboard.modeDeferred')}</option>
@@ -354,6 +364,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
               {saved[store.id] ? t('dashboard.modeSaved') : saving[store.id] ? '…' : t('dashboard.saveMode')}
             </button>
           </div>
+          {saveError[store.id] ? <div style={sc.errMsg}>{saveError[store.id]}</div> : null}
         </div>
       ))}
     </div>
@@ -369,6 +380,7 @@ const sc: Record<string, React.CSSProperties> = {
   controls: { display: 'flex', gap: 8, alignItems: 'center' },
   select: { flex: 1, fontSize: 14, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' },
   saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' },
+  errMsg: { fontSize: 12, color: '#d97706', marginTop: 4 },
 }
 
 function MetricCell({

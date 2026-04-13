@@ -94,7 +94,7 @@ export default function SalePage() {
   const dropRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    apiFetch('/api/me')
+    apiFetch('/api/me', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => { if (data?.checkoutMode) setCheckoutMode(data.checkoutMode) })
       .catch(() => {})

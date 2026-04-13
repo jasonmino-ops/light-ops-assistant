@@ -15,7 +15,12 @@ export async function GET(req: NextRequest) {
     }),
     ctx.storeId
       ? prisma.store.findUnique({ where: { id: ctx.storeId }, select: { name: true, checkoutMode: true } })
-      : Promise.resolve(null),
+      // storeId baked into session may be empty (logged in before stores were created) — fall back to first active store
+      : prisma.store.findFirst({
+          where: { tenantId: ctx.tenantId, status: 'ACTIVE' },
+          orderBy: { createdAt: 'asc' },
+          select: { name: true, checkoutMode: true },
+        }),
   ])
   return NextResponse.json({
     tier: tenant?.tier ?? 'LITE',
