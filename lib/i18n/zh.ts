@@ -350,6 +350,12 @@ const zh = {
     saleStatusCancelled: '已取消',
     noPayment: '尚未收款',
     loadFailed: '订单加载失败，请重试',
+    shareImage: '分享图片',
+    print: '打印',
+    generating: '生成中…',
+    preparingPrint: '打印中…',
+    qty: '数量',
+    unpaidHint: '未结账',
   },
 } as const
 

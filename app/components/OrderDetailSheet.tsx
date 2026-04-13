@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
+import OrderShareCard, { buildPrintHTML, type ShareData, type ShareLabels } from '@/app/components/OrderShareCard'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,8 @@ export default function OrderDetailSheet({
   const [error, setError] = useState<string | null>(null)
   const [showCheckout, setShowCheckout] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
+  const [shareStatus, setShareStatus] = useState<'idle' | 'generating' | 'printing'>('idle')
+  const shareCardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!orderNo) {
@@ -99,6 +102,100 @@ export default function OrderDetailSheet({
     d?.saleStatus === 'PENDING_PAYMENT' ? t('order.saleStatusPending') :
     d?.saleStatus === 'CANCELLED'       ? t('order.saleStatusCancelled') :
     d?.saleStatus ?? ''
+
+  // ── Share / Print labels ──────────────────────────────────────────────────
+
+  const shareLabels: ShareLabels & { title: string; subtotal: string } = {
+    title: d?.orderNo ?? '',
+    orderNo: t('order.labelOrderNo'),
+    time: t('order.labelCreatedAt'),
+    operator: t('order.labelOperator'),
+    products: t('order.labelProduct'),
+    qty: t('order.qty'),
+    unitPrice: t('sale.unitPrice'),
+    subtotal: t('sale.subtotal'),
+    total: t('order.labelTotal'),
+    payMethod: t('order.labelPayMethod'),
+    payStatus: t('order.labelPayStatus'),
+    cash: t('order.payMethodCash'),
+    khqr: 'KHQR',
+    noPayment: t('order.noPayment'),
+    completed: t('order.saleStatusCompleted'),
+    pending: t('order.saleStatusPending'),
+    cancelled: t('order.saleStatusCancelled'),
+    paid: t('order.payStatusPaid'),
+    unpaidHint: t('order.unpaidHint'),
+  }
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  async function handleShare() {
+    if (!d || !shareCardRef.current || shareStatus !== 'idle') return
+    setShareStatus('generating')
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const canvas = await html2canvas(shareCardRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#fff',
+        logging: false,
+      })
+      canvas.toBlob(async (blob) => {
+        if (!blob) { setShareStatus('idle'); return }
+        const file = new File([blob], `order-${d.orderNo}.png`, { type: 'image/png' })
+        if (navigator.share && navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file] }).catch(() => {})
+        } else {
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `order-${d.orderNo}.png`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        }
+        setShareStatus('idle')
+      }, 'image/png')
+    } catch {
+      setShareStatus('idle')
+    }
+  }
+
+  function handlePrint() {
+    if (!d || shareStatus !== 'idle') return
+    setShareStatus('printing')
+    const html = buildPrintHTML(d as ShareData, shareLabels)
+    const win = window.open('', '_blank', 'width=420,height=700')
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+      setTimeout(() => {
+        win.focus()
+        win.print()
+        setShareStatus('idle')
+      }, 400)
+    } else {
+      // Fallback: inject into current page for @media print
+      const styleEl = document.createElement('style')
+      styleEl.id = '__oprint_style'
+      styleEl.textContent = '@media print{body>*:not(#__oprint){display:none!important}#__oprint{display:block!important}}'
+      const divEl = document.createElement('div')
+      divEl.id = '__oprint'
+      divEl.style.cssText = 'display:none'
+      divEl.innerHTML = html
+      document.head.appendChild(styleEl)
+      document.body.appendChild(divEl)
+      window.print()
+      window.addEventListener('afterprint', () => {
+        styleEl.remove()
+        divEl.remove()
+        setShareStatus('idle')
+      }, { once: true })
+    }
+  }
+
+  const busy = shareStatus !== 'idle'
 
   return (
     <div style={sh.overlay} onClick={onClose}>
@@ -187,15 +284,32 @@ export default function OrderDetailSheet({
               </div>
             </div>
 
-            {/* Checkout button for deferred unpaid orders */}
+            {/* Checkout button — only for deferred unpaid orders */}
             {isDeferred && (
               <button style={sh.checkoutBtn} onClick={() => setShowCheckout(true)}>
                 {t('sale.checkoutBtn')}
               </button>
             )}
+
+            {/* Share / Print action row */}
+            <div style={sh.actionRow}>
+              <button style={{ ...sh.actionBtn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={handleShare}>
+                {shareStatus === 'generating' ? t('order.generating') : t('order.shareImage')}
+              </button>
+              <button style={{ ...sh.actionBtn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={handlePrint}>
+                {shareStatus === 'printing' ? t('order.preparingPrint') : t('order.print')}
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Hidden share card — rendered off-screen for html2canvas capture */}
+      {d && (
+        <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1, pointerEvents: 'none' }}>
+          <OrderShareCard ref={shareCardRef} data={d as ShareData} labels={shareLabels} />
+        </div>
+      )}
 
       {showCheckout && d && (
         <CheckoutSheet
@@ -282,5 +396,14 @@ const sh: Record<string, React.CSSProperties> = {
     display: 'block', width: '100%', height: 48, marginTop: 16,
     background: '#fa8c16', color: '#fff', border: 'none',
     borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer',
+  },
+  actionRow: {
+    display: 'flex', gap: 10, marginTop: 12,
+  },
+  actionBtn: {
+    flex: 1, height: 42,
+    background: 'transparent', color: '#595959',
+    border: '1.5px solid #d9d9d9', borderRadius: 10,
+    fontSize: 14, fontWeight: 600, cursor: 'pointer',
   },
 }

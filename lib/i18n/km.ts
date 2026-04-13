@@ -350,6 +350,12 @@ const km = {
     saleStatusCancelled: 'បានបោះបង់',
     noPayment: 'មិនទាន់ទូទាត់',
     loadFailed: 'មិនអាចផ្ទុកការបញ្ជាបាន',
+    shareImage: 'ចែករំលែករូបភាព',
+    print: 'បោះពុម្ព',
+    generating: 'កំពុងបង្កើត…',
+    preparingPrint: 'កំពុងបោះពុម្ព…',
+    qty: 'ចំនួន',
+    unpaidHint: 'មិនទាន់ទូទាត់',
   },
 } as const
 
