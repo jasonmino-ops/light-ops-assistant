@@ -107,6 +107,7 @@ const zh = {
     deferredSuccess: '已挂单',
     deferredHint: '订单已提交，可随时结账',
     checkoutNow: '立即结账',
+    checkoutBtn: '结账',
   },
   refund: {
     title: '退款',

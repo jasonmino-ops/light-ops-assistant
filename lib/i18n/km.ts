@@ -107,6 +107,7 @@ const km = {
     deferredSuccess: 'បានបញ្ជូន',
     deferredHint: 'ការបញ្ជាត្រូវបានបញ្ជូន អាចទូទាត់នៅពេលណាក៏បាន',
     checkoutNow: 'ទូទាត់ឥឡូវ',
+    checkoutBtn: 'ទូទាត់',
   },
   refund: {
     title: 'ការសងប្រាក់',

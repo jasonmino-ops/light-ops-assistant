@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
+import CheckoutSheet from '@/app/components/CheckoutSheet'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,6 +149,7 @@ export default function RecordsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedOrderNo, setSelectedOrderNo] = useState<string | null>(null)
+  const [checkoutOrder, setCheckoutOrder] = useState<{ orderNo: string; totalAmount: number } | null>(null)
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -287,6 +289,7 @@ export default function RecordsPage() {
               index={i}
               tagSale={t('records.tagSale')}
               kindItems={t('records.kindItems')}
+              checkoutBtn={t('sale.checkoutBtn')}
               payLabels={{
                 cash: t('records.cashSale'),
                 khqr: t('records.khqrSale'),
@@ -295,6 +298,9 @@ export default function RecordsPage() {
                 cancelled: t('records.payCancelled'),
               }}
               onOpen={() => setSelectedOrderNo(entry.orderNo)}
+              onCheckout={entry.paymentMethod === null
+                ? () => setCheckoutOrder({ orderNo: entry.orderNo, totalAmount: entry.totalAmount })
+                : undefined}
             />
           ) : (
             <RefundCard
@@ -321,21 +327,33 @@ export default function RecordsPage() {
         orderNo={selectedOrderNo}
         onClose={() => setSelectedOrderNo(null)}
       />
+
+      {checkoutOrder && (
+        <CheckoutSheet
+          orderNo={checkoutOrder.orderNo}
+          totalAmount={checkoutOrder.totalAmount}
+          onSuccess={() => { setCheckoutOrder(null); fetchRecords(1, false) }}
+          onClose={() => setCheckoutOrder(null)}
+        />
+      )}
     </div>
   )
 }
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ group, index, tagSale, kindItems, payLabels, onOpen }: {
+function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, onOpen, onCheckout }: {
   group: OrderGroup
   index: number
   tagSale: string
   kindItems: string
+  checkoutBtn: string
   payLabels: { cash: string; khqr: string; pending: string; paid: string; cancelled: string }
   onOpen?: () => void
+  onCheckout?: () => void
 }) {
-  const accent = ORDER_COLORS[index % ORDER_COLORS.length]
+  const isPending = group.paymentMethod === null
+  const accent = isPending ? '#fa8c16' : ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   const item = group.items[0]
 
@@ -349,11 +367,10 @@ function OrderCard({ group, index, tagSale, kindItems, payLabels, onOpen }: {
     ps === 'PENDING'   ? payLabels.pending :
     ps === 'CANCELLED' ? payLabels.cancelled :
     null  // PAID = default / null (deferred) already shown via payMethodLabel
-  const isPending = ps === 'PENDING' || pm === null
 
   return (
     <div
-      style={{ ...s.recordCard, borderLeft: `3px solid ${accent}`, cursor: 'pointer' }}
+      style={{ ...s.recordCard, borderLeft: `3px solid ${accent}`, cursor: 'pointer', ...(isPending ? s.recordCardPending : {}) }}
       onClick={onOpen}
     >
       <div style={s.cardHeader}>
@@ -382,9 +399,19 @@ function OrderCard({ group, index, tagSale, kindItems, payLabels, onOpen }: {
         ) : (
           <span style={s.cardQtyPrice}>{group.items.length} {kindItems}</span>
         )}
-        <span style={{ ...s.cardAmount, color: 'var(--text)' }}>
-          ${group.totalAmount.toFixed(2)}
-        </span>
+        <div style={s.cardAmountRow}>
+          <span style={{ ...s.cardAmount, color: 'var(--text)' }}>
+            ${group.totalAmount.toFixed(2)}
+          </span>
+          {isPending && onCheckout && (
+            <button
+              style={s.checkoutBtn}
+              onClick={(e) => { e.stopPropagation(); onCheckout() }}
+            >
+              {checkoutBtn}
+            </button>
+          )}
+        </div>
       </div>
 
       {!isSingle && (
@@ -591,6 +618,26 @@ const s: Record<string, React.CSSProperties> = {
   recordCardRefund: {
     background: '#fff1f0',
     border: '1px solid #ffccc7',
+  },
+  recordCardPending: {
+    background: '#fffbe6',
+    border: '1px solid #ffe58f',
+  },
+  cardAmountRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  checkoutBtn: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#fff',
+    background: '#fa8c16',
+    border: 'none',
+    borderRadius: 6,
+    padding: '4px 10px',
+    cursor: 'pointer',
+    flexShrink: 0,
   },
   cardHeader: {
     display: 'flex',

@@ -6,6 +6,7 @@ import { apiFetch, STAFF_CTX } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
+import CheckoutSheet from '@/app/components/CheckoutSheet'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,8 @@ type RecordItem = {
   saleType: 'SALE' | 'REFUND'
   refundReason: string | null
   createdAt: string
+  paymentMethod?: 'CASH' | 'KHQR' | null
+  paymentStatus?: string | null
 }
 
 type OrderGroup = {
@@ -36,6 +39,8 @@ type OrderGroup = {
   createdAt: string
   items: RecordItem[]
   totalAmount: number
+  paymentMethod?: 'CASH' | 'KHQR' | null
+  paymentStatus?: string | null
 }
 
 type RefundEntry = {
@@ -69,7 +74,11 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
     if (item.saleType === 'SALE') {
       const key = item.orderNo ?? item.recordNo
       if (!groupMap.has(key)) {
-        groupMap.set(key, { kind: 'order', orderNo: key, createdAt: item.createdAt, items: [], totalAmount: 0 })
+        groupMap.set(key, {
+          kind: 'order', orderNo: key, createdAt: item.createdAt, items: [], totalAmount: 0,
+          paymentMethod: item.paymentMethod ?? null,
+          paymentStatus: item.paymentStatus ?? null,
+        })
       }
       const g = groupMap.get(key)!
       g.items.push(item)
@@ -98,6 +107,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [storeName, setStoreName] = useState<string | null>(null)
   const [selectedOrderNo, setSelectedOrderNo] = useState<string | null>(null)
+  const [checkoutOrder, setCheckoutOrder] = useState<{ orderNo: string; totalAmount: number } | null>(null)
+  const [loadKey, setLoadKey] = useState(0)
 
   useEffect(() => {
     const today = todayStr()
@@ -105,7 +116,7 @@ export default function HomePage() {
 
     Promise.all([
       apiFetch(`/api/records?${params}`, undefined, STAFF_CTX).then((res) => res.json()),
-      apiFetch('/api/me', undefined, STAFF_CTX).then((res) => res.json()),
+      apiFetch('/api/me', { cache: 'no-store' }, STAFF_CTX).then((res) => res.json()),
     ])
       .then(([data, me]) => {
         setSummary(data.summary)
@@ -114,7 +125,7 @@ export default function HomePage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [loadKey])
 
   return (
     <main style={s.page}>
@@ -220,7 +231,11 @@ export default function HomePage() {
             index={i}
             tagSale={t('home.tagSale')}
             itemCountUnit={t('home.itemCountUnit')}
+            checkoutBtn={t('sale.checkoutBtn')}
             onOpen={() => setSelectedOrderNo(entry.orderNo)}
+            onCheckout={entry.paymentMethod === null
+              ? () => setCheckoutOrder({ orderNo: entry.orderNo, totalAmount: entry.totalAmount })
+              : undefined}
           />
         ) : (
           <RefundCard key={entry.item.id + '-' + i} item={entry.item} tagRefund={t('home.tagRefund')} />
@@ -231,6 +246,15 @@ export default function HomePage() {
         orderNo={selectedOrderNo}
         onClose={() => setSelectedOrderNo(null)}
       />
+
+      {checkoutOrder && (
+        <CheckoutSheet
+          orderNo={checkoutOrder.orderNo}
+          totalAmount={checkoutOrder.totalAmount}
+          onSuccess={() => { setCheckoutOrder(null); setLoadKey((k) => k + 1) }}
+          onClose={() => setCheckoutOrder(null)}
+        />
+      )}
     </main>
   )
 }
@@ -257,13 +281,23 @@ function ActionBtn({ href, icon, label, color }: {
   )
 }
 
-function OrderCard({ group, index, tagSale, itemCountUnit, onOpen }: { group: OrderGroup; index: number; tagSale: string; itemCountUnit: string; onOpen?: () => void }) {
-  const accent = ORDER_COLORS[index % ORDER_COLORS.length]
+function OrderCard({ group, index, tagSale, itemCountUnit, checkoutBtn, onOpen, onCheckout }: {
+  group: OrderGroup; index: number; tagSale: string; itemCountUnit: string
+  checkoutBtn: string; onOpen?: () => void; onCheckout?: () => void
+}) {
+  const isPending = group.paymentMethod === null
+  const accent = isPending ? '#fa8c16' : ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   return (
-    <div style={{ ...s.recentCard, borderLeft: `3px solid ${accent}`, cursor: 'pointer' }} onClick={onOpen}>
+    <div
+      style={{ ...s.recentCard, borderLeft: `3px solid ${accent}`, cursor: 'pointer', ...(isPending ? s.recentCardPending : {}) }}
+      onClick={onOpen}
+    >
       <div style={s.recentLeft}>
-        <span style={s.tagSale}>{tagSale}</span>
+        <div style={s.recentTagRow}>
+          <span style={s.tagSale}>{tagSale}</span>
+          {isPending && <span style={s.tagPending}>待收款</span>}
+        </div>
         <div style={s.recentProduct}>
           {isSingle
             ? group.items[0].productNameSnapshot +
@@ -277,8 +311,18 @@ function OrderCard({ group, index, tagSale, itemCountUnit, onOpen }: { group: Or
           )}
         </div>
       </div>
-      <div style={{ ...s.recentAmount, color: '#1a1a1a' }}>
-        +${group.totalAmount.toFixed(2)}
+      <div style={s.recentRight}>
+        <div style={{ ...s.recentAmount, color: '#1a1a1a' }}>
+          +${group.totalAmount.toFixed(2)}
+        </div>
+        {isPending && onCheckout && (
+          <button
+            style={s.checkoutBtn}
+            onClick={(e) => { e.stopPropagation(); onCheckout() }}
+          >
+            {checkoutBtn}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -528,12 +572,48 @@ const s: Record<string, React.CSSProperties> = {
   recentCardRefund: {
     background: '#fff1f0',
   },
+  recentCardPending: {
+    background: '#fffbe6',
+    border: '1px solid #ffe58f',
+  },
   recentLeft: {
     display: 'flex',
     flexDirection: 'column',
     gap: 3,
     flex: 1,
     minWidth: 0,
+  },
+  recentRight: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 6,
+    flexShrink: 0,
+  },
+  recentTagRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tagPending: {
+    fontSize: 10,
+    fontWeight: 600,
+    background: '#fff7e6',
+    color: '#fa8c16',
+    border: '1px solid #ffd591',
+    padding: '1px 6px',
+    borderRadius: 4,
+  },
+  checkoutBtn: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#fff',
+    background: '#fa8c16',
+    border: 'none',
+    borderRadius: 6,
+    padding: '4px 10px',
+    cursor: 'pointer',
+    flexShrink: 0,
   },
   recentProduct: {
     fontSize: 15,
