@@ -341,12 +341,15 @@ function OrderCard({ group, index, tagSale, kindItems, payLabels, onOpen }: {
 
   const pm = group.paymentMethod
   const ps = group.paymentStatus
-  const payMethodLabel = pm === 'KHQR' ? `📱 ${payLabels.khqr}` : `💵 ${payLabels.cash}`
+  const payMethodLabel =
+    pm === 'KHQR' ? `📱 ${payLabels.khqr}` :
+    pm === null   ? `⏳ ${payLabels.pending}` :
+    `💵 ${payLabels.cash}`
   const payStatusLabel =
-    ps === 'PENDING' ? payLabels.pending :
+    ps === 'PENDING'   ? payLabels.pending :
     ps === 'CANCELLED' ? payLabels.cancelled :
-    null  // PAID = default, no extra badge needed
-  const isPending = ps === 'PENDING'
+    null  // PAID = default / null (deferred) already shown via payMethodLabel
+  const isPending = ps === 'PENDING' || pm === null
 
   return (
     <div

@@ -25,8 +25,8 @@ type OrderDetail = {
   saleStatus: string
   items: OrderItem[]
   totalAmount: number
-  paymentMethod: 'CASH' | 'KHQR'
-  paymentStatus: string
+  paymentMethod: 'CASH' | 'KHQR' | null
+  paymentStatus: string | null
   paidAt: string | null
   cancelledAt: string | null
 }
@@ -75,20 +75,26 @@ export default function OrderDetailSheet({
   if (!orderNo) return null
 
   const d = detail
-  const isPending = d?.paymentStatus === 'PENDING'
+  const isDeferred = d?.saleStatus === 'PENDING_PAYMENT' && !d?.paymentMethod
+  const isPending = d?.paymentStatus === 'PENDING' || isDeferred
   const isCancelled = d?.paymentStatus === 'CANCELLED' || d?.saleStatus === 'CANCELLED'
 
-  const payMethodLabel = d?.paymentMethod === 'KHQR' ? 'KHQR' : t('order.payMethodCash')
+  const payMethodLabel =
+    d?.paymentMethod === 'KHQR' ? 'KHQR' :
+    d?.paymentMethod === 'CASH' ? t('order.payMethodCash') :
+    t('order.noPayment')
   const payStatusLabel =
     d?.paymentStatus === 'PENDING'   ? t('order.payStatusPending') :
     d?.paymentStatus === 'PAID'      ? t('order.payStatusPaid') :
     d?.paymentStatus === 'CANCELLED' ? t('order.payStatusCancelled') :
     d?.paymentStatus === 'FAILED'    ? t('order.payStatusFailed') :
     d?.paymentStatus === 'EXPIRED'   ? t('order.payStatusExpired') :
+    isDeferred                       ? t('order.payStatusPending') :
     d?.paymentStatus ?? ''
   const saleStatusLabel =
-    d?.saleStatus === 'COMPLETED' ? t('order.saleStatusCompleted') :
-    d?.saleStatus === 'CANCELLED' ? t('order.saleStatusCancelled') :
+    d?.saleStatus === 'COMPLETED'       ? t('order.saleStatusCompleted') :
+    d?.saleStatus === 'PENDING_PAYMENT' ? t('order.saleStatusPending') :
+    d?.saleStatus === 'CANCELLED'       ? t('order.saleStatusCancelled') :
     d?.saleStatus ?? ''
 
   return (
@@ -170,7 +176,8 @@ export default function OrderDetailSheet({
                 <span style={sh.infoLabel}>{t('order.labelSaleStatus')}</span>
                 <span style={{
                   ...sh.statusBadge,
-                  ...(d.saleStatus === 'CANCELLED' ? sh.statusCancelled : sh.statusPaid),
+                  ...(d.saleStatus === 'CANCELLED' ? sh.statusCancelled :
+                      d.saleStatus === 'PENDING_PAYMENT' ? sh.statusPending : sh.statusPaid),
                 }}>
                   {saleStatusLabel}
                 </span>

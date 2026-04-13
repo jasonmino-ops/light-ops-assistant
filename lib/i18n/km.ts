@@ -102,6 +102,7 @@ const km = {
     khqrConfirming: 'កំពុងបញ្ជាក់…',
     khqrCancelling: 'កំពុងបោះបង់…',
     khqrNotConfigured: 'ហាងនេះមិនទាន់កំណត់ KHQR ទេ សូមទាក់ទងម្ចាស់ហាង',
+    deferBtn: 'ព្យួរការបញ្ជា',
     submitDeferred: 'បញ្ជូនការបញ្ជា',
     deferredSuccess: 'បានបញ្ជូន',
     deferredHint: 'ការបញ្ជាត្រូវបានបញ្ជូន អាចទូទាត់នៅពេលណាក៏បាន',
@@ -344,7 +345,9 @@ const km = {
     payStatusFailed: 'បរាជ័យ',
     payStatusExpired: 'ផុតកំណត់',
     saleStatusCompleted: 'បានបញ្ចប់',
+    saleStatusPending: 'រង់ចាំទូទាត់',
     saleStatusCancelled: 'បានបោះបង់',
+    noPayment: 'មិនទាន់ទូទាត់',
     loadFailed: 'មិនអាចផ្ទុកការបញ្ជាបាន',
   },
 } as const

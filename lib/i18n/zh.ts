@@ -102,6 +102,7 @@ const zh = {
     khqrConfirming: '确认中…',
     khqrCancelling: '取消中…',
     khqrNotConfigured: '当前门店未配置 KHQR 收款，请联系老板',
+    deferBtn: '先挂单',
     submitDeferred: '提交挂单',
     deferredSuccess: '已挂单',
     deferredHint: '订单已提交，可随时结账',
@@ -344,7 +345,9 @@ const zh = {
     payStatusFailed: '支付失败',
     payStatusExpired: '已过期',
     saleStatusCompleted: '已完成',
+    saleStatusPending: '待收款',
     saleStatusCancelled: '已取消',
+    noPayment: '尚未收款',
     loadFailed: '订单加载失败，请重试',
   },
 } as const

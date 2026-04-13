@@ -52,8 +52,8 @@ export async function GET(
       saleType: r.saleType,
     })),
     totalAmount,
-    paymentMethod: pi?.paymentMethod ?? 'CASH',
-    paymentStatus: pi?.status ?? 'PAID',
+    paymentMethod: pi?.paymentMethod ?? null,
+    paymentStatus: pi?.status ?? null,
     paidAt: pi?.paidAt?.toISOString() ?? null,
     cancelledAt: pi?.cancelledAt?.toISOString() ?? null,
   })

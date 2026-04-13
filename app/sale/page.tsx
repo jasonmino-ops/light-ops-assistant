@@ -771,13 +771,16 @@ export default function SalePage() {
                 <button
                   style={{ ...s.submitBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
                   disabled={status === 'submitting'}
-                  onClick={checkoutMode === 'DEFERRED_PAYMENT' ? handleDeferredSubmit : openPayModal}
+                  onClick={openPayModal}
                 >
-                  {status === 'submitting'
-                    ? t('common.submitting')
-                    : checkoutMode === 'DEFERRED_PAYMENT'
-                    ? t('sale.submitDeferred')
-                    : t('sale.confirmSale')}
+                  {status === 'submitting' ? t('common.submitting') : t('sale.confirmSale')}
+                </button>
+                <button
+                  style={{ ...s.deferBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
+                  disabled={status === 'submitting'}
+                  onClick={handleDeferredSubmit}
+                >
+                  {t('sale.deferBtn')}
                 </button>
               </>
             )}
@@ -919,6 +922,7 @@ const s: Record<string, React.CSSProperties> = {
   totalAmount: { fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' },
 
   submitBtn: { display: 'block', width: '100%', height: 50, background: 'var(--blue)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 16, fontWeight: 700, marginBottom: 8 },
+  deferBtn: { display: 'block', width: '100%', height: 44, background: 'transparent', color: 'var(--blue)', border: '1.5px solid var(--blue)', borderRadius: 'var(--radius-sm)', fontSize: 15, fontWeight: 600, marginBottom: 8, cursor: 'pointer' },
   submitBtnLoading: { opacity: 0.7 },
 
   successCard: { background: 'var(--blue)', borderRadius: 'var(--radius)', padding: '28px 20px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginBottom: 12 },
