@@ -14,12 +14,13 @@ export async function GET(req: NextRequest) {
       select: { tier: true, name: true },
     }),
     ctx.storeId
-      ? prisma.store.findUnique({ where: { id: ctx.storeId }, select: { name: true } })
+      ? prisma.store.findUnique({ where: { id: ctx.storeId }, select: { name: true, checkoutMode: true } })
       : Promise.resolve(null),
   ])
   return NextResponse.json({
     tier: tenant?.tier ?? 'LITE',
     storeName: store?.name ?? null,
     tenantName: tenant?.name ?? null,
+    checkoutMode: store?.checkoutMode ?? 'DIRECT_PAYMENT',
   })
 }

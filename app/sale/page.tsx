@@ -42,6 +42,14 @@ type PendingPayment = {
   cartSnapshot: CartItem[]
 }
 
+type DeferredOrder = {
+  orderNo: string
+  totalAmount: number
+  itemCount: number
+  createdAt: string
+  cartSnapshot: CartItem[]
+}
+
 type Status = 'idle' | 'querying' | 'submitting' | 'confirming_payment' | 'cancelling_payment'
 type PayStep = 'none' | 'selecting' | 'khqr_pending'
 
@@ -62,6 +70,8 @@ export default function SalePage() {
   const [payStep, setPayStep] = useState<PayStep>('none')
   const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null)
   const [modalError, setModalError] = useState<string | null>(null)
+  const [checkoutMode, setCheckoutMode] = useState<'DIRECT_PAYMENT' | 'DEFERRED_PAYMENT'>('DIRECT_PAYMENT')
+  const [deferredOrder, setDeferredOrder] = useState<DeferredOrder | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -82,6 +92,13 @@ export default function SalePage() {
   const [dropSearch, setDropSearch] = useState('')
   const suggestWrapRef = useRef<HTMLDivElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    apiFetch('/api/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data?.checkoutMode) setCheckoutMode(data.checkoutMode) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     apiFetch('/api/products')
@@ -348,6 +365,83 @@ export default function SalePage() {
     }
   }
 
+  async function handleDeferredSubmit() {
+    if (cart.length === 0) return
+    setSubmitError(null)
+    setStatus('submitting')
+    const cartSnapshot = [...cart]
+    try {
+      const res = await apiFetch('/api/sales', {
+        method: 'POST',
+        body: JSON.stringify({
+          saleType: 'SALE',
+          paymentMethod: 'DEFER',
+          items: cart.map((ci) => ({ barcode: ci.product.barcode, quantity: ci.qty })),
+        }),
+      })
+      const body = await res.json()
+      if (res.ok) {
+        setCart([])
+        setDeferredOrder({ ...body, cartSnapshot })
+      } else {
+        setSubmitError(body.message ?? body.error ?? t('common.networkError'))
+      }
+    } catch {
+      setSubmitError(t('common.networkError'))
+    } finally {
+      setStatus('idle')
+    }
+  }
+
+  async function handleCheckoutDeferred(method: 'CASH' | 'KHQR') {
+    if (!deferredOrder) return
+    setModalError(null)
+    setSubmitError(null)
+    setStatus('submitting')
+    const cartSnapshot = deferredOrder.cartSnapshot
+    try {
+      const res = await apiFetch(`/api/orders/${encodeURIComponent(deferredOrder.orderNo)}/checkout`, {
+        method: 'POST',
+        body: JSON.stringify({ paymentMethod: method }),
+      })
+      const body = await res.json()
+      if (res.ok) {
+        setPayStep('none')
+        setDeferredOrder(null)
+        if (method === 'CASH') {
+          setSuccess({
+            orderNo: body.orderNo,
+            totalAmount: body.totalAmount,
+            itemCount: cartSnapshot.length,
+            createdAt: new Date().toISOString(),
+            paymentMethod: 'CASH',
+            cartSnapshot,
+          })
+        } else {
+          setPendingPayment({
+            id: body.paymentIntentId,
+            orderNo: body.orderNo,
+            amount: body.totalAmount,
+            khqrPayload: body.khqrPayload,
+            createdAt: new Date().toISOString(),
+            cartSnapshot,
+          })
+          setPayStep('khqr_pending')
+        }
+      } else if (body.error === 'KHQR_NOT_CONFIGURED') {
+        setModalError(body.message ?? t('sale.khqrNotConfigured'))
+      } else {
+        setPayStep('none')
+        setSubmitError(body.message ?? body.error ?? t('common.networkError'))
+      }
+    } catch {
+      setPayStep('none')
+      setSubmitError(t('common.networkError'))
+    } finally {
+      setStatus('idle')
+    }
+  }
+
   function handleClear() {
     setBarcodeInput('')
     setQty(1)
@@ -362,6 +456,7 @@ export default function SalePage() {
     setCart([])
     setPayStep('none')
     setPendingPayment(null)
+    setDeferredOrder(null)
     setModalError(null)
     focusInput()
   }
@@ -393,7 +488,7 @@ export default function SalePage() {
             <div style={pm.title}>{t('sale.paymentTitle')}</div>
             <button
               style={pm.option}
-              onClick={() => handlePayWithMethod('CASH')}
+              onClick={() => deferredOrder ? handleCheckoutDeferred('CASH') : handlePayWithMethod('CASH')}
               disabled={status === 'submitting'}
             >
               <span style={pm.optionIcon}>💵</span>
@@ -404,7 +499,7 @@ export default function SalePage() {
             </button>
             <button
               style={{ ...pm.option, ...(modalError ? pm.optionDisabled : {}) }}
-              onClick={() => handlePayWithMethod('KHQR')}
+              onClick={() => deferredOrder ? handleCheckoutDeferred('KHQR') : handlePayWithMethod('KHQR')}
               disabled={status === 'submitting' || !!modalError}
             >
               <span style={pm.optionIcon}>📱</span>
@@ -457,6 +552,24 @@ export default function SalePage() {
           </div>
         )}
 
+        {/* ══ 已挂单 ══ */}
+        {deferredOrder && !success && payStep !== 'khqr_pending' && (
+          <div style={s.successCard}>
+            <div style={s.successIconWrap}>⏳</div>
+            <div style={s.successTitle}>{t('sale.deferredSuccess')}</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12, textAlign: 'center' }}>{t('sale.deferredHint')}</div>
+            <div style={s.successGrid}>
+              <InfoRow label={t('sale.orderNo')} value={deferredOrder.orderNo} mono />
+              <InfoRow label={t('sale.totalAmount')} value={`$${deferredOrder.totalAmount.toFixed(2)}`} bold />
+              <InfoRow label={t('sale.product')} value={buildCartSummary(deferredOrder.cartSnapshot)} />
+              <InfoRow label={t('sale.time')} value={new Date(deferredOrder.createdAt).toLocaleTimeString('zh-CN')} />
+            </div>
+            {submitError && <div style={{ ...s.errorMsg, marginBottom: 8 }}>{submitError}</div>}
+            <button style={s.submitBtn} onClick={openPayModal}>{t('sale.checkoutNow')}</button>
+            <button style={{ ...s.nextBtn, marginTop: 8 }} onClick={handleClear}>{t('sale.nextOrder')}</button>
+          </div>
+        )}
+
         {/* ══ 成功状态 ══ */}
         {success && payStep !== 'khqr_pending' && (
           <div style={s.successCard}>
@@ -473,7 +586,7 @@ export default function SalePage() {
         )}
 
         {/* ══ 主流程 ══ */}
-        {!success && payStep !== 'khqr_pending' && (
+        {!success && !deferredOrder && payStep !== 'khqr_pending' && (
           <>
             {/* 查询卡：扫码 / 输入 / 下拉 */}
             <div style={s.card}>
@@ -658,9 +771,13 @@ export default function SalePage() {
                 <button
                   style={{ ...s.submitBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
                   disabled={status === 'submitting'}
-                  onClick={openPayModal}
+                  onClick={checkoutMode === 'DEFERRED_PAYMENT' ? handleDeferredSubmit : openPayModal}
                 >
-                  {status === 'submitting' ? t('common.submitting') : t('sale.confirmSale')}
+                  {status === 'submitting'
+                    ? t('common.submitting')
+                    : checkoutMode === 'DEFERRED_PAYMENT'
+                    ? t('sale.submitDeferred')
+                    : t('sale.confirmSale')}
                 </button>
               </>
             )}

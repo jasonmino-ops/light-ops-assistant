@@ -102,6 +102,10 @@ const km = {
     khqrConfirming: 'កំពុងបញ្ជាក់…',
     khqrCancelling: 'កំពុងបោះបង់…',
     khqrNotConfigured: 'ហាងនេះមិនទាន់កំណត់ KHQR ទេ សូមទាក់ទងម្ចាស់ហាង',
+    submitDeferred: 'បញ្ជូនការបញ្ជា',
+    deferredSuccess: 'បានបញ្ជូន',
+    deferredHint: 'ការបញ្ជាត្រូវបានបញ្ជូន អាចទូទាត់នៅពេលណាក៏បាន',
+    checkoutNow: 'ទូទាត់ឥឡូវ',
   },
   refund: {
     title: 'ការសងប្រាក់',
@@ -204,6 +208,12 @@ const km = {
     loadFailed: 'ផ្ទុកបានបរាជ័យ',
     cashSaleLabel: 'ទទួលជាសាច់ប្រាក់',
     khqrSaleLabel: 'KHQR ស្កែន',
+    storeSettings: 'ការកំណត់ហាង',
+    checkoutMode: 'របៀបទូទាត់',
+    modeDirect: 'ទូទាត់ភ្លាម',
+    modeDeferred: 'បញ្ជូនរង់ចាំទូទាត់',
+    saveMode: 'រក្សាទុក',
+    modeSaved: 'បានរក្សាទុក',
   },
   invite: {
     title: 'អញ្ជើញ & សមាជិក',

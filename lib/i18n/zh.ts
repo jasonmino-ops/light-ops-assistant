@@ -102,6 +102,10 @@ const zh = {
     khqrConfirming: '确认中…',
     khqrCancelling: '取消中…',
     khqrNotConfigured: '当前门店未配置 KHQR 收款，请联系老板',
+    submitDeferred: '提交挂单',
+    deferredSuccess: '已挂单',
+    deferredHint: '订单已提交，可随时结账',
+    checkoutNow: '立即结账',
   },
   refund: {
     title: '退款',
@@ -204,6 +208,12 @@ const zh = {
     loadFailed: '加载失败',
     cashSaleLabel: '现金收款',
     khqrSaleLabel: 'KHQR 扫码',
+    storeSettings: '门店配置',
+    checkoutMode: '结账模式',
+    modeDirect: '即时收款',
+    modeDeferred: '挂单待结账',
+    saveMode: '保存',
+    modeSaved: '已保存',
   },
   invite: {
     title: '邀请 & 成员',

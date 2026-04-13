@@ -198,6 +198,9 @@ export default function DashboardPage() {
 
         {/* Overview */}
         {!loading && result && <Overview result={result} t={t} />}
+
+        {/* Store config */}
+        <StoreConfigPanel t={t} />
       </div>
     </div>
   )
@@ -284,6 +287,88 @@ function Overview({ result, t }: { result: SummaryResult; t: (k: string) => stri
       </div>
     </div>
   )
+}
+
+// ─── StoreConfigPanel ─────────────────────────────────────────────────────────
+
+type StoreConfig = { id: string; name: string; checkoutMode: string }
+
+function StoreConfigPanel({ t }: { t: (k: string) => string }) {
+  const [stores, setStores] = useState<StoreConfig[]>([])
+  const [pending, setPending] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [saved, setSaved] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    apiFetch('/api/stores', undefined, OWNER_CTX)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: StoreConfig[]) => {
+        setStores(list)
+        const init: Record<string, string> = {}
+        list.forEach((s) => { init[s.id] = s.checkoutMode })
+        setPending(init)
+      })
+      .catch(() => {})
+  }, [])
+
+  async function handleSave(storeId: string) {
+    setSaving((v) => ({ ...v, [storeId]: true }))
+    setSaved((v) => ({ ...v, [storeId]: false }))
+    try {
+      const res = await apiFetch(`/api/stores/${storeId}/checkout-mode`, {
+        method: 'PATCH',
+        body: JSON.stringify({ checkoutMode: pending[storeId] }),
+      }, OWNER_CTX)
+      if (res.ok) {
+        setSaved((v) => ({ ...v, [storeId]: true }))
+        setTimeout(() => setSaved((v) => ({ ...v, [storeId]: false })), 2000)
+      }
+    } catch { /* ignore */ } finally {
+      setSaving((v) => ({ ...v, [storeId]: false }))
+    }
+  }
+
+  if (stores.length === 0) return null
+
+  return (
+    <div style={sc.card}>
+      <div style={sc.title}>{t('dashboard.storeSettings')}</div>
+      {stores.map((store) => (
+        <div key={store.id} style={sc.row}>
+          <div style={sc.storeName}>{store.name}</div>
+          <div style={sc.label}>{t('dashboard.checkoutMode')}</div>
+          <div style={sc.controls}>
+            <select
+              style={sc.select}
+              value={pending[store.id] ?? store.checkoutMode}
+              onChange={(e) => setPending((v) => ({ ...v, [store.id]: e.target.value }))}
+            >
+              <option value="DIRECT_PAYMENT">{t('dashboard.modeDirect')}</option>
+              <option value="DEFERRED_PAYMENT">{t('dashboard.modeDeferred')}</option>
+            </select>
+            <button
+              style={sc.saveBtn}
+              onClick={() => handleSave(store.id)}
+              disabled={saving[store.id]}
+            >
+              {saved[store.id] ? t('dashboard.modeSaved') : saving[store.id] ? '…' : t('dashboard.saveMode')}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const sc: Record<string, React.CSSProperties> = {
+  card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '14px 16px', marginTop: 12 },
+  title: { fontSize: 14, fontWeight: 700, color: 'var(--muted)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.04em' },
+  row: { paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--border)' },
+  storeName: { fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 },
+  label: { fontSize: 12, color: 'var(--muted)', marginBottom: 6 },
+  controls: { display: 'flex', gap: 8, alignItems: 'center' },
+  select: { flex: 1, fontSize: 14, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' },
+  saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' },
 }
 
 function MetricCell({

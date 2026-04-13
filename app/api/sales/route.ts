@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
-import { generateKhqrPayload, KhqrProviderConfig } from '@/lib/khqr'
+import { generateKhqrPayload, type KhqrProviderConfig } from '@/lib/khqr'
+import { findKhqrConfig } from '@/lib/merchant-config'
 
 /**
  * POST /api/sales
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
 
   const { saleType } = body
 
+  if (saleType === 'SALE' && body.paymentMethod === 'DEFER') return handleDeferredSale(ctx, body)
   if (saleType === 'SALE') return handleSale(ctx, body)
   if (saleType === 'REFUND') return handleRefund(ctx, body)
 
@@ -224,23 +226,109 @@ async function handleSale(
   }
 }
 
-// ─── KHQR config lookup ───────────────────────────────────────────────────────
+// ─── DEFERRED SALE ────────────────────────────────────────────────────────────
 
 /**
- * 按优先级查找门店的 KHQR 支付配置：
- *  1. 当前 storeId 的专属启用配置
- *  2. 租户级默认配置（storeId = null, isDefault = true）
- *  3. 两者都没有 → 返回 null（调用方应拒绝 KHQR 并提示）
+ * 挂单模式（DEFERRED_PAYMENT 门店）：先建单 PENDING_PAYMENT，不创建 PaymentIntent。
+ * 后续由 POST /api/orders/:orderNo/checkout 发起收款。
  */
-async function findKhqrConfig(tenantId: string, storeId: string) {
-  const storeConfig = await prisma.merchantPaymentConfig.findFirst({
-    where: { tenantId, storeId, khqrEnabled: true, isActive: true },
-  })
-  if (storeConfig) return storeConfig
+async function handleDeferredSale(
+  ctx: { tenantId: string; userId: string; storeId: string },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  body: any,
+) {
+  const { items } = body as { items: CartItem[] }
 
-  return prisma.merchantPaymentConfig.findFirst({
-    where: { tenantId, storeId: null, khqrEnabled: true, isActive: true, isDefault: true },
+  if (!Array.isArray(items) || items.length === 0) {
+    return NextResponse.json(
+      { error: 'VALIDATION_ERROR', message: 'items must be a non-empty array' },
+      { status: 400 },
+    )
+  }
+
+  for (const it of items) {
+    if (!it.barcode || typeof it.barcode !== 'string') {
+      return NextResponse.json(
+        { error: 'VALIDATION_ERROR', message: 'each item must have a barcode string' },
+        { status: 400 },
+      )
+    }
+    const qty = Number(it.quantity)
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return NextResponse.json(
+        { error: 'VALIDATION_ERROR', message: `quantity for barcode ${it.barcode} must be positive` },
+        { status: 400 },
+      )
+    }
+  }
+
+  const store = await prisma.store.findFirst({
+    where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
+    select: { code: true },
   })
+  if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
+
+  const barcodes = [...new Set(items.map((i) => i.barcode))]
+  const products = await prisma.product.findMany({
+    where: { tenantId: ctx.tenantId, barcode: { in: barcodes }, status: 'ACTIVE' },
+  })
+  const productMap = new Map(products.map((p) => [p.barcode, p]))
+
+  for (const it of items) {
+    if (!productMap.has(it.barcode)) {
+      return NextResponse.json({ error: 'PRODUCT_NOT_FOUND', barcode: it.barcode }, { status: 404 })
+    }
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const orderNo = await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
+
+      let totalAmount = 0
+      let firstCreatedAt: Date | null = null
+      let isFirst = true
+
+      for (const it of items) {
+        const product = productMap.get(it.barcode)!
+        const qty = Number(it.quantity)
+        const lineAmount = product.sellPrice.mul(qty)
+        totalAmount += lineAmount.toNumber()
+
+        const recordNo = isFirst
+          ? orderNo
+          : await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
+        isFirst = false
+
+        const record = await tx.saleRecord.create({
+          data: {
+            tenantId: ctx.tenantId,
+            storeId: ctx.storeId,
+            operatorUserId: ctx.userId,
+            recordNo,
+            orderNo,
+            saleType: 'SALE',
+            status: 'PENDING_PAYMENT',  // 挂单状态，待收款
+            productId: product.id,
+            barcode: product.barcode,
+            productNameSnapshot: product.name,
+            specSnapshot: product.spec ?? null,
+            unitPrice: product.sellPrice,
+            quantity: qty,
+            lineAmount,
+          },
+        })
+
+        if (!firstCreatedAt) firstCreatedAt = record.createdAt
+      }
+
+      return { orderNo, totalAmount, itemCount: items.length, createdAt: firstCreatedAt!.toISOString() }
+    })
+
+    return NextResponse.json({ ...result, paymentMethod: 'DEFER' }, { status: 201 })
+  } catch (err) {
+    console.error('[POST /api/sales DEFER]', err)
+    return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
+  }
 }
 
 // ─── REFUND ───────────────────────────────────────────────────────────────────

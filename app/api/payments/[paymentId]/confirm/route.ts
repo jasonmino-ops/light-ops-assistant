@@ -30,10 +30,18 @@ export async function POST(
     )
   }
 
-  const updated = await prisma.paymentIntent.update({
-    where: { id: paymentId },
-    data: { status: 'PAID', paidAt: new Date() },
-  })
+  const [updated] = await prisma.$transaction([
+    prisma.paymentIntent.update({
+      where: { id: paymentId },
+      data: { status: 'PAID', paidAt: new Date() },
+    }),
+    // Deferred orders: KHQR confirm transitions PENDING_PAYMENT → COMPLETED
+    // Direct retail orders: records are already COMPLETED, updateMany is a no-op
+    prisma.saleRecord.updateMany({
+      where: { orderNo: pi.orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
+      data: { status: 'COMPLETED' },
+    }),
+  ])
 
   return NextResponse.json({ id: updated.id, status: updated.status, paidAt: updated.paidAt })
 }
