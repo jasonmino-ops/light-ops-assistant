@@ -32,18 +32,18 @@ export async function GET(
   const [saleAgg, refundAgg, topProducts, recentRecords, staffGroups, productCount] =
     await Promise.all([
       prisma.saleRecord.aggregate({
-        where: { tenantId, saleType: 'SALE', createdAt: { gte: from } },
+        where: { tenantId, saleType: 'SALE', status: 'COMPLETED', createdAt: { gte: from } },
         _sum: { lineAmount: true },
         _count: true,
       }),
       prisma.saleRecord.aggregate({
-        where: { tenantId, saleType: 'REFUND', createdAt: { gte: from } },
+        where: { tenantId, saleType: 'REFUND', status: 'COMPLETED', createdAt: { gte: from } },
         _sum: { lineAmount: true },
         _count: true,
       }),
       prisma.saleRecord.groupBy({
         by: ['productNameSnapshot', 'specSnapshot'],
-        where: { tenantId, saleType: 'SALE', createdAt: { gte: from } },
+        where: { tenantId, saleType: 'SALE', status: 'COMPLETED', createdAt: { gte: from } },
         _sum: { quantity: true, lineAmount: true },
         orderBy: { _sum: { lineAmount: 'desc' } },
         take: 5,
@@ -59,7 +59,7 @@ export async function GET(
       }),
       prisma.saleRecord.groupBy({
         by: ['operatorUserId'],
-        where: { tenantId, saleType: 'SALE', createdAt: { gte: from } },
+        where: { tenantId, saleType: 'SALE', status: 'COMPLETED', createdAt: { gte: from } },
         _sum: { lineAmount: true },
         _count: true,
       }),

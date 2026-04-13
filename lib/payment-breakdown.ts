@@ -7,8 +7,9 @@
  *  - 无 PaymentIntent（历史单）→ 全归入现金已付
  *  - PaymentIntent.status = PAID, paymentMethod = CASH  → 现金已付
  *  - PaymentIntent.status = PAID, paymentMethod = KHQR  → KHQR 已付
- *  - PaymentIntent.status = PENDING / CANCELLED / FAILED → 不计入任何拆分
- *  - SaleRecord.status = CANCELLED → 已被 status 过滤掉，不参与
+ *  - PaymentIntent.status = PENDING / CANCELLED / FAILED / EXPIRED → 不计入任何拆分
+ *  - SaleRecord.status = CANCELLED         → 已被 status 过滤掉，不参与
+ *  - SaleRecord.status = PENDING_PAYMENT   → 已被 status 过滤掉，不参与（待收款单不计收入）
  */
 import { prisma } from './prisma'
 

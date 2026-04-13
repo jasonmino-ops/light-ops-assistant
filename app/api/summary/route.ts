@@ -133,31 +133,31 @@ export async function GET(req: NextRequest) {
     storeInfo,
     staffInfo,
   ] = await Promise.all([
-    // Amount aggregates
+    // Amount aggregates — only COMPLETED records count as confirmed revenue
     prisma.saleRecord.aggregate({
-      where: { ...baseWhere, saleType: 'SALE' },
+      where: { ...baseWhere, saleType: 'SALE', status: 'COMPLETED' },
       _sum: { lineAmount: true },
       _count: true,
     }),
     prisma.saleRecord.aggregate({
-      where: { ...baseWhere, saleType: 'REFUND' },
+      where: { ...baseWhere, saleType: 'REFUND', status: 'COMPLETED' },
       _sum: { lineAmount: true },
       _count: true,
     }),
     // Distinct sales order count (by orderNo)
     prisma.saleRecord.groupBy({
       by: ['orderNo'],
-      where: { ...baseWhere, saleType: 'SALE', orderNo: { not: null } },
+      where: { ...baseWhere, saleType: 'SALE', status: 'COMPLETED', orderNo: { not: null } },
     }),
     // Distinct refund order count (by orderNo)
     prisma.saleRecord.groupBy({
       by: ['orderNo'],
-      where: { ...baseWhere, saleType: 'REFUND', orderNo: { not: null } },
+      where: { ...baseWhere, saleType: 'REFUND', status: 'COMPLETED', orderNo: { not: null } },
     }),
     // Top 3 hot products by quantity sold
     prisma.saleRecord.groupBy({
       by: ['productNameSnapshot', 'specSnapshot'],
-      where: { ...baseWhere, saleType: 'SALE' },
+      where: { ...baseWhere, saleType: 'SALE', status: 'COMPLETED' },
       _sum: { quantity: true },
       orderBy: { _sum: { quantity: 'desc' } },
       take: 3,

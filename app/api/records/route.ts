@@ -82,9 +82,10 @@ export async function GET(req: NextRequest) {
       take: pageSize,
     }),
     // Only aggregate SALE when the filter is ALL or SALE
+    // status: 'COMPLETED' — summary only counts confirmed revenue; CANCELLED/PENDING_PAYMENT excluded
     saleTypeParam !== 'REFUND'
       ? prisma.saleRecord.aggregate({
-          where: { ...where, saleType: 'SALE' },
+          where: { ...where, saleType: 'SALE', status: 'COMPLETED' },
           _sum: { lineAmount: true },
           _count: true,
         })
@@ -92,7 +93,7 @@ export async function GET(req: NextRequest) {
     // Only aggregate REFUND when the filter is ALL or REFUND
     saleTypeParam !== 'SALE'
       ? prisma.saleRecord.aggregate({
-          where: { ...where, saleType: 'REFUND' },
+          where: { ...where, saleType: 'REFUND', status: 'COMPLETED' },
           _sum: { lineAmount: true },
           _count: true,
         })

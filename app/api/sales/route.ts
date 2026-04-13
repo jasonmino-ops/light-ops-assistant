@@ -13,6 +13,16 @@ import { generateKhqrPayload, KhqrProviderConfig } from '@/lib/khqr'
  *
  * REFUND: body = { saleType:'REFUND', originalSaleRecordId, refundQty, refundReason, remark? }
  *         退款针对单条 SaleRecord 行，逻辑不变。
+ *
+ * ── 餐饮场景扩展预留（未启用）────────────────────────────────────────────────────
+ * 当前零售路径：建单即 COMPLETED + CASH→PaymentIntent PAID / KHQR→PaymentIntent PENDING。
+ * 未来餐饮"先下单后结账"路径扩展点：
+ *   1. 接受 paymentMethod: 'DEFER'（或 body.deferred: true）
+ *   2. SaleRecord.status = 'PENDING_PAYMENT'（代替 COMPLETED）
+ *   3. 不创建 PaymentIntent — 等待收银员发起结账
+ *   4. 结账时由新的 POST /api/orders/:orderNo/checkout 创建 PaymentIntent
+ *      并将 SaleRecord.status 更新为 COMPLETED
+ * 本路径当前不激活，只预留枚举值和注释。
  */
 export async function POST(req: NextRequest) {
   const ctx = await getContext(req)

@@ -32,8 +32,9 @@ enum SaleType {
 }
 
 enum RecordStatus {
-  COMPLETED
-  CANCELLED
+  PENDING_PAYMENT  // 已建单，待收款（零售 KHQR 挂单 / 未来餐饮预留）
+  COMPLETED        // 已完成（含收款确认）
+  CANCELLED        // 已取消（含 KHQR 超时/主动取消）
 }
 
 enum PaymentMethod {
