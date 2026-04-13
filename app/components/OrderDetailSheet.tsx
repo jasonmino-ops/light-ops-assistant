@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
+import CheckoutSheet from '@/app/components/CheckoutSheet'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,8 @@ export default function OrderDetailSheet({
   const [detail, setDetail] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showCheckout, setShowCheckout] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (!orderNo) {
@@ -70,7 +73,7 @@ export default function OrderDetailSheet({
       .then(setDetail)
       .catch(() => setError(t('order.loadFailed')))
       .finally(() => setLoading(false))
-  }, [orderNo]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orderNo, reloadKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!orderNo) return null
 
@@ -183,9 +186,25 @@ export default function OrderDetailSheet({
                 </span>
               </div>
             </div>
+
+            {/* Checkout button for deferred unpaid orders */}
+            {isDeferred && (
+              <button style={sh.checkoutBtn} onClick={() => setShowCheckout(true)}>
+                {t('sale.checkoutBtn')}
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {showCheckout && d && (
+        <CheckoutSheet
+          orderNo={d.orderNo}
+          totalAmount={d.totalAmount}
+          onSuccess={() => { setShowCheckout(false); setReloadKey((k) => k + 1) }}
+          onClose={() => setShowCheckout(false)}
+        />
+      )}
     </div>
   )
 }
@@ -259,4 +278,9 @@ const sh: Record<string, React.CSSProperties> = {
   statusPaid: { background: '#f6ffed', color: '#52c41a', border: '1px solid #b7eb8f' },
   statusPending: { background: '#fff7e6', color: '#fa8c16', border: '1px solid #ffd591' },
   statusCancelled: { background: '#f5f5f5', color: '#8c8c8c', border: '1px solid #d9d9d9' },
+  checkoutBtn: {
+    display: 'block', width: '100%', height: 48, marginTop: 16,
+    background: '#fa8c16', color: '#fff', border: 'none',
+    borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer',
+  },
 }
