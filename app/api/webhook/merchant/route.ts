@@ -43,7 +43,68 @@ async function tgSend(method: string, body: object) {
 }
 
 const IMPORT_TRIGGERS = new Set(['新商品', 'new good', 'new goods'])
-const KHQR_TRIGGERS   = new Set(['配置khqr', '上传收款码', '设置khqr', 'configure khqr', 'khqr setup', 'khqr config', '配置收款码'])
+
+/**
+ * KHQR 强触发词：精确全文匹配（textNorm），直接进入配置流程。
+ * 规则：消息本身已含"操作意图 + QR/收款码"，无歧义。
+ */
+const KHQR_STRONG_TRIGGERS = new Set([
+  // 中文
+  '配置khqr', '设置khqr', '上传khqr', '更换khqr', '更新khqr',
+  '上传收款码', '设置收款码', '配置收款码', '更换收款码', '更新收款码',
+  '配置二维码', '上传二维码', '设置二维码', '更换二维码', '更新二维码',
+  '配置qr', '上传qr', '设置qr', '更换qr', '更新qr',
+  '配置 qr', '上传 qr', '设置 qr',
+  // 英文
+  'configure khqr', 'setup khqr', 'upload khqr', 'set up khqr', 'change khqr',
+  'khqr setup', 'khqr config', 'khqr configure', 'khqr upload',
+  'upload qr', 'configure qr', 'setup qr', 'set up qr',
+  // 柬文（常见写法）
+  'កំណត់ khqr', 'ផ្ទុកឡើង khqr', 'ដំឡើង khqr', 'ផ្ញើ khqr',
+  'kho khqr', 'dak khqr',
+])
+
+/**
+ * KHQR 弱触发词：单独出现时不进入配置，先发确认分流消息。
+ * 避免因消息里顺带提及 QR/KHQR 就误触发。
+ */
+const KHQR_WEAK_TRIGGERS = new Set([
+  'qr', 'khqr', 'qr code', 'khqr code',
+  '二维码', '收款码',
+])
+
+/**
+ * KHQR 组合触发检测：消息含"操作词 + QR关键词"时视为强触发。
+ * 覆盖"我想配置一下KHQR"、"帮我上传收款码"等自由表达。
+ */
+const KHQR_ACTION_WORDS = ['配置', '设置', '上传', '更换', '更新', 'configure', 'setup', 'upload', 'set up', 'change', 'update']
+const KHQR_QR_WORDS     = ['khqr', 'qr', '收款码', '二维码']
+
+function isKhqrStrongComposite(textNorm: string): boolean {
+  const hasAction = KHQR_ACTION_WORDS.some((w) => textNorm.includes(w))
+  const hasQr     = KHQR_QR_WORDS.some((w) => textNorm.includes(w))
+  return hasAction && hasQr
+}
+
+function isKhqrWeakOnly(textNorm: string): boolean {
+  // 只有裸关键词，没有操作词
+  if (!KHQR_QR_WORDS.some((w) => textNorm.includes(w))) return false
+  if (KHQR_ACTION_WORDS.some((w) => textNorm.includes(w))) return false
+  return KHQR_WEAK_TRIGGERS.has(textNorm)
+}
+
+/** 弱触发时的确认分流消息（双语） */
+const KHQR_CLARIFY: Record<string, string> = {
+  zh: '你是要配置收款码，还是咨询 KHQR 使用问题？\n\n· 回复「配置收款码」→ 进入图片上传流程\n· 回复「人工」→ 联系客服',
+  km: 'តើអ្នកចង់កំណត់ QR code ទូទាត់ ឬ សួរអំពីការប្រើ KHQR?\n\n· ឆ្លើយ «កំណត់ khqr» → ចូលដំណើរការ upload\n· ឆ្លើយ «ជំនួយ» → ទំនាក់ទំនងផ្ទាល់',
+}
+
+/** 非 OWNER 命中 KHQR 配置词时的提示（双语） */
+const KHQR_OWNER_ONLY: Record<string, string> = {
+  zh: '❌ 只有老板可以配置 KHQR 收款码。',
+  km: '❌ មានតែម្ចាស់ហាងទេ ដែលអាចកំណត់ KHQR code.',
+}
+
 const CONFIRM_WORDS   = new Set(['确认', 'confirm', 'yes', 'ok'])
 const SESSION_TTL_MS  = 30 * 60 * 1000
 
@@ -395,9 +456,14 @@ export async function POST(req: NextRequest) {
     const textNorm    = text.trim().toLowerCase().replace(/\s+/g, ' ')
     const textTrimmed = text.trim()
 
-    // ── KHQR 配置触发词 ────────────────────────────────────────────────────────
-    if (KHQR_TRIGGERS.has(textNorm)) {
-      // 仅 OWNER 可操作
+    // ── KHQR 配置触发词（强 / 弱 两层） ─────────────────────────────────────
+    const isKhqrStrong = KHQR_STRONG_TRIGGERS.has(textNorm) || isKhqrStrongComposite(textNorm)
+    const isKhqrWeak   = !isKhqrStrong && isKhqrWeakOnly(textNorm)
+
+    if (isKhqrStrong || isKhqrWeak) {
+      const lang = detectLanguage(textTrimmed)
+
+      // 强 + 弱 都先确认角色
       let userRole: string | undefined
       try {
         const u = await prisma.user.findFirst({ where: { telegramId: senderId }, select: { role: true } })
@@ -405,13 +471,17 @@ export async function POST(req: NextRequest) {
       } catch { /* ignore */ }
 
       if (userRole !== 'OWNER') {
-        await tgSend('sendMessage', {
-          chat_id: chatId,
-          text: '❌ 仅老板可以配置 KHQR 收款码。',
-        })
+        await tgSend('sendMessage', { chat_id: chatId, text: KHQR_OWNER_ONLY[lang] })
         return NextResponse.json({ ok: true })
       }
 
+      if (isKhqrWeak) {
+        // 弱触发：不进入配置态，先确认用户意图
+        await tgSend('sendMessage', { chat_id: chatId, text: KHQR_CLARIFY[lang] })
+        return NextResponse.json({ ok: true })
+      }
+
+      // 强触发：进入配置流程
       const tenantId = await lookupTenantId(senderId)
       try {
         await prisma.khqrConfigSession.upsert({
@@ -423,10 +493,11 @@ export async function POST(req: NextRequest) {
         console.error('[webhook/khqr] session init failed:', e)
       }
 
-      await tgSend('sendMessage', {
-        chat_id: chatId,
-        text: '📱 KHQR 收款码配置\n\n请直接发送您的 KHQR 收款码图片（截图/相册均可）。\n\n发送后系统会显示预览，确认后保存为收款码。\n\n发送「取消」退出。',
-      })
+      const KHQR_GUIDE: Record<string, string> = {
+        zh: '📱 KHQR 收款码配置\n\n请直接发送您的 KHQR 收款码图片（截图/相册均可）。\n发送后系统会显示预览，确认后保存。\n\n发送「取消」退出。',
+        km: '📱 កំណត់ KHQR QR code\n\nសូមផ្ញើរូបភាព KHQR code របស់អ្នក (screenshot ឬ album).\nប្រព័ន្ធនឹងបង្ហាញ preview ហើយអ្នកបញ្ជាក់ «确认» ដើម្បីរក្សាទុក.\n\nផ្ញើ «取消» ដើម្បីចេញ.',
+      }
+      await tgSend('sendMessage', { chat_id: chatId, text: KHQR_GUIDE[lang] })
       return NextResponse.json({ ok: true })
     }
 
