@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
-import { generateKhqrPayload, type KhqrProviderConfig } from '@/lib/khqr'
-import { findKhqrConfig } from '@/lib/merchant-config'
+import { generateKhqrPayload } from '@/lib/khqr'
+import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 
 /**
  * POST /api/sales
@@ -119,7 +119,7 @@ async function handleSale(
   }
 
   // KHQR 配置前置检查（事务外快速失败，避免创建半成品记录）
-  let khqrConfig: KhqrProviderConfig & { id: string } | null = null
+  let khqrConfig: MerchantKhqrConfig | null = null
   if (paymentMethod === 'KHQR') {
     const cfg = await findKhqrConfig(ctx.tenantId, ctx.storeId)
     if (!cfg) {
@@ -216,6 +216,7 @@ async function handleSale(
         paymentMethod,
         paymentIntentId: pi.id,
         khqrPayload,
+        khqrImageUrl: khqrConfig?.khqrImageUrl ?? null,
       }
     })
 

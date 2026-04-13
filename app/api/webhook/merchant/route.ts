@@ -43,6 +43,7 @@ async function tgSend(method: string, body: object) {
 }
 
 const IMPORT_TRIGGERS = new Set(['新商品', 'new good', 'new goods'])
+const KHQR_TRIGGERS   = new Set(['配置khqr', '上传收款码', '设置khqr', 'configure khqr', 'khqr setup', 'khqr config', '配置收款码'])
 const CONFIRM_WORDS   = new Set(['确认', 'confirm', 'yes', 'ok'])
 const SESSION_TTL_MS  = 30 * 60 * 1000
 
@@ -261,6 +262,60 @@ export async function POST(req: NextRequest) {
   const senderId = String(message.from?.id ?? message.chat?.id ?? '')
   const chatId   = String(message.chat?.id ?? senderId)
 
+  // ─── KHQR 收款码图片上传 ──────────────────────────────────────────────────────
+  if (senderId && message.photo) {
+    let khqrSess: {
+      telegramId: string; tenantId: string | null; phase: string; fileId: string | null; updatedAt: Date
+    } | null = null
+    try {
+      khqrSess = await prisma.khqrConfigSession.findUnique({ where: { telegramId: senderId } })
+    } catch { /* ignore */ }
+
+    const khqrSessActive = khqrSess && Date.now() - khqrSess.updatedAt.getTime() < SESSION_TTL_MS
+
+    if (khqrSessActive && khqrSess!.phase === 'AWAITING_IMAGE') {
+      const photos = message.photo as { file_id: string; file_size?: number }[]
+      const largest = photos[photos.length - 1]
+      const fileId  = largest.file_id
+
+      const tenantId = khqrSess!.tenantId ?? await lookupTenantId(senderId)
+      if (!tenantId) {
+        await tgSend('sendMessage', { chat_id: chatId, text: '❌ 账号未绑定商户，无法配置 KHQR。' })
+        return NextResponse.json({ ok: true })
+      }
+
+      // 检查是否已有收款码（提示覆盖）
+      let replaceHint = ''
+      try {
+        const existing = await prisma.merchantPaymentConfig.findFirst({
+          where: { tenantId, khqrEnabled: true, isActive: true },
+          select: { khqrImageUrl: true },
+        })
+        if (existing?.khqrImageUrl) replaceHint = '\n⚠️ 当前已有收款码，确认后将覆盖。'
+      } catch { /* ignore */ }
+
+      try {
+        await prisma.khqrConfigSession.upsert({
+          where: { telegramId: senderId },
+          create: { telegramId: senderId, tenantId, phase: 'AWAITING_CONFIRM', fileId },
+          update: { tenantId, phase: 'AWAITING_CONFIRM', fileId },
+        })
+      } catch (e) {
+        console.error('[webhook/khqr] session upsert failed:', e)
+        await tgSend('sendMessage', { chat_id: chatId, text: '❌ 会话保存失败，请重试。' })
+        return NextResponse.json({ ok: true })
+      }
+
+      await tgSend('sendPhoto', {
+        chat_id: chatId,
+        photo: fileId,
+        caption: `✅ 已收到图片，请确认上传此收款码。${replaceHint}\n\n回复「确认」保存，其他内容取消。`,
+      })
+      return NextResponse.json({ ok: true })
+    }
+    // 未在 KHQR 配置态 → 落入底部普通消息转发逻辑
+  }
+
   // ─── 文件导入：.xlsx / .csv ──────────────────────────────────────────────────
   if (senderId && message.document) {
     const doc      = message.document
@@ -340,6 +395,41 @@ export async function POST(req: NextRequest) {
     const textNorm    = text.trim().toLowerCase().replace(/\s+/g, ' ')
     const textTrimmed = text.trim()
 
+    // ── KHQR 配置触发词 ────────────────────────────────────────────────────────
+    if (KHQR_TRIGGERS.has(textNorm)) {
+      // 仅 OWNER 可操作
+      let userRole: string | undefined
+      try {
+        const u = await prisma.user.findFirst({ where: { telegramId: senderId }, select: { role: true } })
+        userRole = u?.role
+      } catch { /* ignore */ }
+
+      if (userRole !== 'OWNER') {
+        await tgSend('sendMessage', {
+          chat_id: chatId,
+          text: '❌ 仅老板可以配置 KHQR 收款码。',
+        })
+        return NextResponse.json({ ok: true })
+      }
+
+      const tenantId = await lookupTenantId(senderId)
+      try {
+        await prisma.khqrConfigSession.upsert({
+          where: { telegramId: senderId },
+          create: { telegramId: senderId, tenantId, phase: 'AWAITING_IMAGE' },
+          update: { tenantId, phase: 'AWAITING_IMAGE', fileId: null },
+        })
+      } catch (e) {
+        console.error('[webhook/khqr] session init failed:', e)
+      }
+
+      await tgSend('sendMessage', {
+        chat_id: chatId,
+        text: '📱 KHQR 收款码配置\n\n请直接发送您的 KHQR 收款码图片（截图/相册均可）。\n\n发送后系统会显示预览，确认后保存为收款码。\n\n发送「取消」退出。',
+      })
+      return NextResponse.json({ ok: true })
+    }
+
     // ── 触发口令检查（优先，不等待 DB 查询） ──────────────────────────────────
     if (IMPORT_TRIGGERS.has(textNorm)) {
       // 直接用 tgSend 回复，移除日志 DB 依赖，确保回复能送达
@@ -381,6 +471,117 @@ export async function POST(req: NextRequest) {
     }
 
     const sessionActive = session && Date.now() - session.updatedAt.getTime() < SESSION_TTL_MS
+
+    // ── KHQR 配置会话：确认/取消 ──────────────────────────────────────────────
+    {
+      let khqrSess: {
+        telegramId: string; tenantId: string | null; phase: string; fileId: string | null; updatedAt: Date
+      } | null = null
+      try {
+        khqrSess = await prisma.khqrConfigSession.findUnique({ where: { telegramId: senderId } })
+      } catch { /* ignore */ }
+
+      const khqrSessActive = khqrSess && Date.now() - khqrSess.updatedAt.getTime() < SESSION_TTL_MS
+
+      if (khqrSessActive && khqrSess!.phase === 'AWAITING_CONFIRM') {
+        const isCancel = IMPORT_EXIT_WORDS.has(textNorm) || !CONFIRM_WORDS.has(textNorm)
+
+        if (CONFIRM_WORDS.has(textNorm)) {
+          const fileId  = khqrSess!.fileId
+          const tid     = khqrSess!.tenantId ?? tenantId
+
+          if (!fileId || !tid) {
+            await tgSend('sendMessage', { chat_id: chatId, text: '❌ 配置信息丢失，请重新发送「配置KHQR」开始。' })
+            try { await prisma.khqrConfigSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+            return NextResponse.json({ ok: true })
+          }
+
+          // 下载图片并转 base64
+          let khqrImageUrl: string | null = null
+          try {
+            const fileInfoRes = await tgSend('getFile', { file_id: fileId })
+            const fileInfo    = await fileInfoRes.json()
+            const filePath: string = fileInfo.result?.file_path ?? ''
+            if (!filePath) throw new Error('no file_path')
+            const dlRes = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`)
+            if (!dlRes.ok) throw new Error(`download HTTP ${dlRes.status}`)
+            const buf    = Buffer.from(await dlRes.arrayBuffer())
+            const mime   = filePath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg'
+            khqrImageUrl = `data:${mime};base64,${buf.toString('base64')}`
+          } catch (e) {
+            console.error('[webhook/khqr] image download failed:', e)
+            await tgSend('sendMessage', { chat_id: chatId, text: '❌ 图片下载失败，请重新上传。' })
+            try { await prisma.khqrConfigSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+            return NextResponse.json({ ok: true })
+          }
+
+          // 查询当前用户 id 用于记录上传者
+          let uploadedByUserId: string | null = null
+          try {
+            const u = await prisma.user.findFirst({ where: { telegramId: senderId }, select: { id: true } })
+            uploadedByUserId = u?.id ?? null
+          } catch { /* ignore */ }
+
+          // Upsert 收款配置（tenant 级 isDefault 配置）
+          try {
+            const existing = await prisma.merchantPaymentConfig.findFirst({
+              where: { tenantId: tid, storeId: null, isDefault: true },
+              select: { id: true },
+            })
+            if (existing) {
+              await prisma.merchantPaymentConfig.update({
+                where: { id: existing.id },
+                data: { khqrImageUrl, uploadedByUserId, khqrEnabled: true, isActive: true },
+              })
+            } else {
+              await prisma.merchantPaymentConfig.create({
+                data: {
+                  tenantId: tid,
+                  storeId: null,
+                  isDefault: true,
+                  khqrEnabled: true,
+                  isActive: true,
+                  khqrImageUrl,
+                  uploadedByUserId,
+                },
+              })
+            }
+          } catch (e) {
+            console.error('[webhook/khqr] config save failed:', e)
+            await tgSend('sendMessage', { chat_id: chatId, text: '❌ 保存失败，请重试。' })
+            try { await prisma.khqrConfigSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+            return NextResponse.json({ ok: true })
+          }
+
+          try { await prisma.khqrConfigSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+          await tgSend('sendMessage', {
+            chat_id: chatId,
+            text: '✅ KHQR 收款码已保存！\n\n店员销售时选择「KHQR 扫码」即可展示此收款码图片。',
+          })
+          return NextResponse.json({ ok: true })
+        }
+
+        if (isCancel) {
+          try { await prisma.khqrConfigSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+          await tgSend('sendMessage', { chat_id: chatId, text: '已取消 KHQR 收款码配置。' })
+          return NextResponse.json({ ok: true })
+        }
+      }
+
+      // AWAITING_IMAGE 阶段收到文字（非退出词）→ 提醒用户发图片
+      if (khqrSessActive && khqrSess!.phase === 'AWAITING_IMAGE') {
+        if (IMPORT_EXIT_WORDS.has(textNorm)) {
+          try { await prisma.khqrConfigSession.delete({ where: { telegramId: senderId } }) } catch { /* ignore */ }
+          await tgSend('sendMessage', { chat_id: chatId, text: '已退出 KHQR 配置。' })
+          return NextResponse.json({ ok: true })
+        }
+        await tgSend('sendMessage', {
+          chat_id: chatId,
+          text: '请直接发送 KHQR 收款码图片（截图或相册），不需要输入文字。\n\n发送「取消」退出。',
+        })
+        return NextResponse.json({ ok: true })
+      }
+    }
 
     let messageSaved = false
 

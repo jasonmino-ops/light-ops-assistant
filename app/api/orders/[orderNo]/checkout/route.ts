@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateKhqrPayload } from '@/lib/khqr'
-import { findKhqrConfig } from '@/lib/merchant-config'
+import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 
 /**
  * POST /api/orders/:orderNo/checkout
@@ -66,7 +66,7 @@ export async function POST(
   const totalAmount = records.reduce((sum, r) => sum + r.lineAmount.toNumber(), 0)
 
   // KHQR config pre-check
-  let khqrConfig: Awaited<ReturnType<typeof findKhqrConfig>> = null
+  let khqrConfig: MerchantKhqrConfig | null = null
   if (paymentMethod === 'KHQR') {
     khqrConfig = await findKhqrConfig(ctx.tenantId, ctx.storeId)
     if (!khqrConfig) {
@@ -119,6 +119,7 @@ export async function POST(
         paymentMethod,
         paymentIntentId: pi.id,
         khqrPayload: pi.khqrPayload,
+        khqrImageUrl: khqrConfig?.khqrImageUrl ?? null,
         status: pi.status,
       },
       { status: 201 },

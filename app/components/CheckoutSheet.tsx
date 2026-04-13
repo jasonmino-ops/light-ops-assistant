@@ -11,12 +11,12 @@
  */
 
 import { useState } from 'react'
-import QRCode from 'react-qr-code'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
+import KhqrSheet from '@/app/components/KhqrSheet'
 
 type Step = 'selecting' | 'khqr_pending'
-type Status = 'idle' | 'loading' | 'confirming' | 'cancelling'
+type Status = 'idle' | 'loading'
 
 export default function CheckoutSheet({
   orderNo,
@@ -34,6 +34,7 @@ export default function CheckoutSheet({
   const [status, setStatus] = useState<Status>('idle')
   const [khqrId, setKhqrId] = useState<string | null>(null)
   const [khqrPayload, setKhqrPayload] = useState<string | null>(null)
+  const [khqrImageUrl, setKhqrImageUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function handlePay(method: 'CASH' | 'KHQR') {
@@ -50,7 +51,8 @@ export default function CheckoutSheet({
           onSuccess()
         } else {
           setKhqrId(body.paymentIntentId)
-          setKhqrPayload(body.khqrPayload)
+          setKhqrPayload(body.khqrPayload ?? null)
+          setKhqrImageUrl(body.khqrImageUrl ?? null)
           setStep('khqr_pending')
           setStatus('idle')
         }
@@ -67,91 +69,52 @@ export default function CheckoutSheet({
     }
   }
 
-  async function handleConfirm() {
-    if (!khqrId) return
-    setStatus('confirming')
-    try {
-      const res = await apiFetch(`/api/payments/${khqrId}/confirm`, { method: 'POST' })
-      if (res.ok) {
-        onSuccess()
-      } else {
-        const b = await res.json().catch(() => ({}))
-        setError(b.error ?? t('common.networkError'))
-        setStatus('idle')
-      }
-    } catch {
-      setError(t('common.networkError'))
-      setStatus('idle')
-    }
-  }
-
-  async function handleCancel() {
-    if (!khqrId) return
-    setStatus('cancelling')
-    try {
-      await apiFetch(`/api/payments/${khqrId}/cancel`, { method: 'POST' })
-    } catch { /* ignore */ }
-    onClose()
-  }
-
   const busy = status !== 'idle'
+
+  if (step === 'khqr_pending' && khqrId) {
+    return (
+      <KhqrSheet
+        orderNo={orderNo}
+        totalAmount={totalAmount}
+        paymentIntentId={khqrId}
+        khqrPayload={khqrPayload}
+        khqrImageUrl={khqrImageUrl}
+        onSuccess={onSuccess}
+        onCancel={onClose}
+      />
+    )
+  }
 
   return (
     <div style={cs.overlay} onClick={() => { if (!busy) onClose() }}>
       <div style={cs.sheet} onClick={(e) => e.stopPropagation()}>
+        <div style={cs.title}>{t('sale.paymentTitle')}</div>
+        <div style={cs.amtRow}>
+          <span style={cs.amtLabel}>{t('sale.total')}</span>
+          <span style={cs.amtValue}>${totalAmount.toFixed(2)}</span>
+        </div>
 
-        {step === 'selecting' && (
-          <>
-            <div style={cs.title}>{t('sale.paymentTitle')}</div>
-            <div style={cs.amtRow}>
-              <span style={cs.amtLabel}>{t('sale.total')}</span>
-              <span style={cs.amtValue}>${totalAmount.toFixed(2)}</span>
-            </div>
+        <button style={cs.option} onClick={() => handlePay('CASH')} disabled={busy}>
+          <span style={cs.optIcon}>💵</span>
+          <div style={cs.optText}>
+            <div style={cs.optLabel}>{t('sale.paymentCash')}</div>
+            <div style={cs.optDesc}>{busy ? t('common.submitting') : t('sale.paymentCashDesc')}</div>
+          </div>
+        </button>
 
-            <button style={cs.option} onClick={() => handlePay('CASH')} disabled={busy}>
-              <span style={cs.optIcon}>💵</span>
-              <div style={cs.optText}>
-                <div style={cs.optLabel}>{t('sale.paymentCash')}</div>
-                <div style={cs.optDesc}>{busy ? t('common.submitting') : t('sale.paymentCashDesc')}</div>
-              </div>
-            </button>
+        <button
+          style={{ ...cs.option, ...(error ? cs.optDisabled : {}) }}
+          onClick={() => handlePay('KHQR')}
+          disabled={busy || !!error}
+        >
+          <span style={cs.optIcon}>📱</span>
+          <div style={cs.optText}>
+            <div style={cs.optLabel}>{t('sale.paymentKhqr')}</div>
+            <div style={cs.optDesc}>{t('sale.paymentKhqrDesc')}</div>
+          </div>
+        </button>
 
-            <button
-              style={{ ...cs.option, ...(error ? cs.optDisabled : {}) }}
-              onClick={() => handlePay('KHQR')}
-              disabled={busy || !!error}
-            >
-              <span style={cs.optIcon}>📱</span>
-              <div style={cs.optText}>
-                <div style={cs.optLabel}>{t('sale.paymentKhqr')}</div>
-                <div style={cs.optDesc}>{t('sale.paymentKhqrDesc')}</div>
-              </div>
-            </button>
-
-            {error && <div style={cs.errorMsg}>{error}</div>}
-          </>
-        )}
-
-        {step === 'khqr_pending' && khqrPayload && (
-          <>
-            <div style={cs.title}>{t('sale.khqrTitle')}</div>
-            <div style={cs.khqrHint}>{t('sale.khqrScanHint')}</div>
-            <div style={cs.qrWrap}>
-              <QRCode value={khqrPayload} size={200} />
-            </div>
-            <div style={cs.amtRow}>
-              <span style={cs.amtLabel}>{t('sale.khqrAmountLabel')}</span>
-              <span style={cs.amtValue}>${totalAmount.toFixed(2)}</span>
-            </div>
-            {error && <div style={cs.errorMsg}>{error}</div>}
-            <button style={cs.confirmBtn} disabled={busy} onClick={handleConfirm}>
-              {status === 'confirming' ? t('sale.khqrConfirming') : t('sale.khqrConfirmBtn')}
-            </button>
-            <button style={cs.cancelBtn} disabled={busy} onClick={handleCancel}>
-              {status === 'cancelling' ? t('sale.khqrCancelling') : t('sale.khqrCancelBtn')}
-            </button>
-          </>
-        )}
+        {error && <div style={cs.errorMsg}>{error}</div>}
       </div>
     </div>
   )
@@ -188,17 +151,5 @@ const cs: Record<string, React.CSSProperties> = {
     fontSize: 13, color: '#d97706', background: '#fffbeb',
     border: '1px solid #fcd34d', borderRadius: 8, padding: '8px 12px',
     textAlign: 'center', marginTop: 4,
-  },
-  khqrHint: { fontSize: 13, color: '#8c8c8c', textAlign: 'center', marginBottom: 16 },
-  qrWrap: { display: 'flex', justifyContent: 'center', marginBottom: 16 },
-  confirmBtn: {
-    display: 'block', width: '100%', height: 48,
-    background: '#52c41a', color: '#fff', border: 'none',
-    borderRadius: 10, fontSize: 16, fontWeight: 700, marginBottom: 10, cursor: 'pointer',
-  },
-  cancelBtn: {
-    display: 'block', width: '100%', height: 44,
-    background: 'transparent', color: '#8c8c8c',
-    border: '1px solid #d9d9d9', borderRadius: 10, fontSize: 14, cursor: 'pointer',
   },
 }

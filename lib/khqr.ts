@@ -6,31 +6,34 @@
  *   v1: BAKONG_KHQR → _generateBakongStub()（占位字符串，可渲染二维码）
  *   v2: 替换 _generateBakongStub 为 bakong-khqr npm SDK + 真实 Bakong 商户凭证。
  *
+ * 图片模式：merchantAccountRef 为 null 时返回 null（由前端展示 khqrImageUrl）。
+ *
  * 新增 provider 时在 generateKhqrPayload() 的 switch 分支中追加，
  * 原有分支不变，保持向后兼容。
  */
 
 export type KhqrProviderConfig = {
-  provider: string            // 'BAKONG_KHQR' | future providers
-  merchantId: string
-  merchantName: string
-  merchantAccountRef: string  // Bakong 账户号 / 手机号
-  currency: string            // 'USD' | 'KHR'
+  provider: string
+  merchantId: string | null
+  merchantName: string | null
+  merchantAccountRef: string | null  // null = 纯图片模式，不生成动态码
+  currency: string
 }
 
 /**
  * Provider 路由入口 — 对外唯一暴露的生成函数。
+ * 当 merchantAccountRef 为空时返回 null（纯图片模式，调用方应使用 khqrImageUrl）。
  */
 export function generateKhqrPayload(params: {
   amount: number
   orderNo: string
   config: KhqrProviderConfig
-}): string {
+}): string | null {
+  if (!params.config.merchantAccountRef) return null
   switch (params.config.provider) {
     case 'BAKONG_KHQR':
       return _generateBakongStub(params)
     default:
-      // 未知 provider 退回 stub，保持可渲染性
       return _generateBakongStub(params)
   }
 }
@@ -53,8 +56,8 @@ function _generateBakongStub(params: {
   const { amount, orderNo, config } = params
   return [
     'KHQR',
-    config.merchantAccountRef,
-    config.merchantName,
+    config.merchantAccountRef ?? '',
+    config.merchantName ?? '',
     orderNo,
     amount.toFixed(2),
     config.currency,

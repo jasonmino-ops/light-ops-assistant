@@ -200,13 +200,15 @@ model MerchantPaymentConfig {
   tenantId           String
   storeId            String?                    // null = tenant 级默认配置
   provider           String   @default("BAKONG_KHQR") // BAKONG_KHQR | ...
-  merchantId         String
-  merchantName       String
-  merchantAccountRef String                     // Bakong 账户手机号 / ref
+  merchantId         String?                    // null = 纯图片模式
+  merchantName       String?                    // null = 纯图片模式
+  merchantAccountRef String?                    // null = 纯图片模式；Bakong 账户手机号 / ref
   currency           String   @default("USD")   // USD | KHR
   khqrEnabled        Boolean  @default(true)
   isDefault          Boolean  @default(false)
   isActive           Boolean  @default(true)
+  khqrImageUrl       String?  @db.Text          // base64 data URL (老板通过 Telegram 上传)
+  uploadedByUserId   String?                    // 上传者 User.id
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -361,6 +363,14 @@ model ProductImportSession {
   phase       String   @default("AWAITING_DATA") // AWAITING_DATA | AWAITING_CONFIRM
   pendingRows String   @default("[]")            // JSON — TgImportRow[]
   updatedAt   DateTime @updatedAt
+}
+
+model KhqrConfigSession {
+  telegramId String   @id
+  tenantId   String?
+  phase      String   @default("AWAITING_IMAGE") // AWAITING_IMAGE | AWAITING_CONFIRM
+  fileId     String?                              // Telegram file_id，确认时下载转 base64
+  updatedAt  DateTime @updatedAt
 }
 
 model SupportSession {

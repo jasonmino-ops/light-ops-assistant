@@ -6,6 +6,11 @@
 import { prisma } from './prisma'
 import type { KhqrProviderConfig } from './khqr'
 
+export type MerchantKhqrConfig = KhqrProviderConfig & {
+  id: string
+  khqrImageUrl: string | null
+}
+
 /**
  * 按优先级查找门店的 KHQR 支付配置：
  *  1. 当前 storeId 的专属启用配置
@@ -15,7 +20,7 @@ import type { KhqrProviderConfig } from './khqr'
 export async function findKhqrConfig(
   tenantId: string,
   storeId: string,
-): Promise<(KhqrProviderConfig & { id: string }) | null> {
+): Promise<MerchantKhqrConfig | null> {
   const storeConfig = await prisma.merchantPaymentConfig.findFirst({
     where: { tenantId, storeId, khqrEnabled: true, isActive: true },
   })
