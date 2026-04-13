@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
+import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -146,6 +147,7 @@ export default function RecordsPage() {
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedOrderNo, setSelectedOrderNo] = useState<string | null>(null)
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -292,6 +294,7 @@ export default function RecordsPage() {
                 paid: t('records.payPaid'),
                 cancelled: t('records.payCancelled'),
               }}
+              onOpen={() => setSelectedOrderNo(entry.orderNo)}
             />
           ) : (
             <RefundCard
@@ -313,18 +316,24 @@ export default function RecordsPage() {
           </button>
         )}
       </div>
+
+      <OrderDetailSheet
+        orderNo={selectedOrderNo}
+        onClose={() => setSelectedOrderNo(null)}
+      />
     </div>
   )
 }
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ group, index, tagSale, kindItems, payLabels }: {
+function OrderCard({ group, index, tagSale, kindItems, payLabels, onOpen }: {
   group: OrderGroup
   index: number
   tagSale: string
   kindItems: string
   payLabels: { cash: string; khqr: string; pending: string; paid: string; cancelled: string }
+  onOpen?: () => void
 }) {
   const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
@@ -340,7 +349,10 @@ function OrderCard({ group, index, tagSale, kindItems, payLabels }: {
   const isPending = ps === 'PENDING'
 
   return (
-    <div style={{ ...s.recordCard, borderLeft: `3px solid ${accent}` }}>
+    <div
+      style={{ ...s.recordCard, borderLeft: `3px solid ${accent}`, cursor: 'pointer' }}
+      onClick={onOpen}
+    >
       <div style={s.cardHeader}>
         <span style={s.tagSale}>{tagSale}</span>
         <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>

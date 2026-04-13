@@ -315,6 +315,28 @@ const zh = {
     priceInvalid: '请输入有效的售价（大于 0）',
     barcodeLabel: '条码',
   },
+  order: {
+    detailTitle: '订单详情',
+    labelOrderNo: '订单号',
+    labelStore: '门店',
+    labelOperator: '操作员',
+    labelCreatedAt: '创建时间',
+    labelProduct: '商品明细',
+    labelTotal: '合计',
+    labelPayMethod: '支付方式',
+    labelPayStatus: '支付状态',
+    labelPaidAt: '支付时间',
+    labelSaleStatus: '销售状态',
+    payMethodCash: '现金',
+    payStatusPending: '待支付',
+    payStatusPaid: '已支付',
+    payStatusCancelled: '已取消',
+    payStatusFailed: '支付失败',
+    payStatusExpired: '已过期',
+    saleStatusCompleted: '已完成',
+    saleStatusCancelled: '已取消',
+    loadFailed: '订单加载失败，请重试',
+  },
 } as const
 
 export default zh

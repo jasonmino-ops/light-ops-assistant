@@ -315,6 +315,28 @@ const km = {
     priceInvalid: 'សូមបញ្ចូលតម្លៃត្រឹមត្រូវ (លើស 0)',
     barcodeLabel: 'លេខបន្ទះ',
   },
+  order: {
+    detailTitle: 'ព័ត៌មានលម្អិតការបញ្ជា',
+    labelOrderNo: 'លេខការបញ្ជា',
+    labelStore: 'ហាង',
+    labelOperator: 'បុគ្គលិក',
+    labelCreatedAt: 'ម៉ោងបង្កើត',
+    labelProduct: 'បញ្ជីទំនិញ',
+    labelTotal: 'សរុប',
+    labelPayMethod: 'វិធីបង់ប្រាក់',
+    labelPayStatus: 'ស្ថានភាពការទូទាត់',
+    labelPaidAt: 'ម៉ោងទូទាត់',
+    labelSaleStatus: 'ស្ថានភាពការលក់',
+    payMethodCash: 'សាច់ប្រាក់',
+    payStatusPending: 'រង់ចាំ',
+    payStatusPaid: 'បានទូទាត់',
+    payStatusCancelled: 'បានបោះបង់',
+    payStatusFailed: 'បរាជ័យ',
+    payStatusExpired: 'ផុតកំណត់',
+    saleStatusCompleted: 'បានបញ្ចប់',
+    saleStatusCancelled: 'បានបោះបង់',
+    loadFailed: 'មិនអាចផ្ទុកការបញ្ជាបាន',
+  },
 } as const
 
 export default km

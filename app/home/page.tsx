@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { apiFetch, STAFF_CTX } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export default function HomePage() {
   const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [storeName, setStoreName] = useState<string | null>(null)
+  const [selectedOrderNo, setSelectedOrderNo] = useState<string | null>(null)
 
   useEffect(() => {
     const today = todayStr()
@@ -212,11 +214,23 @@ export default function HomePage() {
 
       {entries.map((entry, i) =>
         entry.kind === 'order' ? (
-          <OrderCard key={entry.orderNo} group={entry} index={i} tagSale={t('home.tagSale')} itemCountUnit={t('home.itemCountUnit')} />
+          <OrderCard
+            key={entry.orderNo}
+            group={entry}
+            index={i}
+            tagSale={t('home.tagSale')}
+            itemCountUnit={t('home.itemCountUnit')}
+            onOpen={() => setSelectedOrderNo(entry.orderNo)}
+          />
         ) : (
           <RefundCard key={entry.item.id + '-' + i} item={entry.item} tagRefund={t('home.tagRefund')} />
         )
       )}
+
+      <OrderDetailSheet
+        orderNo={selectedOrderNo}
+        onClose={() => setSelectedOrderNo(null)}
+      />
     </main>
   )
 }
@@ -243,11 +257,11 @@ function ActionBtn({ href, icon, label, color }: {
   )
 }
 
-function OrderCard({ group, index, tagSale, itemCountUnit }: { group: OrderGroup; index: number; tagSale: string; itemCountUnit: string }) {
+function OrderCard({ group, index, tagSale, itemCountUnit, onOpen }: { group: OrderGroup; index: number; tagSale: string; itemCountUnit: string; onOpen?: () => void }) {
   const accent = ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   return (
-    <div style={{ ...s.recentCard, borderLeft: `3px solid ${accent}` }}>
+    <div style={{ ...s.recentCard, borderLeft: `3px solid ${accent}`, cursor: 'pointer' }} onClick={onOpen}>
       <div style={s.recentLeft}>
         <span style={s.tagSale}>{tagSale}</span>
         <div style={s.recentProduct}>
