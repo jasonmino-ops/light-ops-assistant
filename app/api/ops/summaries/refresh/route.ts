@@ -34,9 +34,9 @@ export async function POST(req: NextRequest) {
   const start = new Date(date + 'T00:00:00.000Z')
   const end   = new Date(date + 'T23:59:59.999Z')
 
-  // Fetch all relevant fields for the day (may be large; acceptable for nightly batch)
+  // Fetch only COMPLETED records — CANCELLED and PENDING_PAYMENT must not count as revenue
   const records = await prisma.saleRecord.findMany({
-    where: { createdAt: { gte: start, lte: end } },
+    where: { createdAt: { gte: start, lte: end }, status: 'COMPLETED' },
     select: { id: true, tenantId: true, storeId: true, saleType: true, lineAmount: true, orderNo: true },
   })
 

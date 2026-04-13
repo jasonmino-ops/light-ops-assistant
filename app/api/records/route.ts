@@ -139,9 +139,10 @@ export async function GET(req: NextRequest) {
         lineAmount: r.lineAmount.toNumber(),
         saleType: r.saleType,
         refundReason: r.refundReason,
-        // Payment info: null for REFUND, PENDING_PAYMENT (no PI yet), or historical SALE without PI
-        paymentMethod: pi?.paymentMethod ?? (r.saleType === 'SALE' && r.status !== 'PENDING_PAYMENT' ? 'CASH' : null),
-        paymentStatus: pi?.paymentStatus ?? (r.saleType === 'SALE' && r.status !== 'PENDING_PAYMENT' ? 'PAID' : null),
+        // Payment info: null for REFUND, PENDING_PAYMENT, CANCELLED (no PI), or any non-COMPLETED record
+        // Only COMPLETED SALE records without a PI are historical cash sales → fallback to CASH/PAID
+        paymentMethod: pi?.paymentMethod ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'CASH' : null),
+        paymentStatus: pi?.paymentStatus ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'PAID' : null),
       }
     }),
     summary: {
