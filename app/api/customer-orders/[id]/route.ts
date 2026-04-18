@@ -73,6 +73,7 @@ export async function PATCH(
         text,
         tenantId: ctx.tenantId,
         sentBy: 'SYSTEM',
+        botToken: process.env.CUSTOMER_BOT_TOKEN,
       }).catch((e) => console.error('[customer-order] 通知顾客失败:', e))
     }
   }
