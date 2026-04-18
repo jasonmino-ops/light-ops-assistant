@@ -2,13 +2,33 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { apiFetch, STAFF_CTX } from '@/lib/api'
+import { apiFetch, STAFF_CTX, OWNER_CTX } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type CustomerOrderItem = {
+  productId: string
+  name: string
+  spec: string | null
+  price: number
+  quantity: number
+  lineAmount: number
+}
+
+type CustomerOrderRecord = {
+  id: string
+  orderNo: string
+  storeCode: string
+  customerTelegramId: string | null
+  items: CustomerOrderItem[]
+  totalAmount: number
+  status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'
+  createdAt: string
+}
 
 type Summary = {
   saleCount: number
@@ -109,6 +129,9 @@ export default function HomePage() {
   const [selectedOrderNo, setSelectedOrderNo] = useState<string | null>(null)
   const [checkoutOrder, setCheckoutOrder] = useState<{ orderNo: string; totalAmount: number } | null>(null)
   const [loadKey, setLoadKey] = useState(0)
+  const [customerOrders, setCustomerOrders] = useState<CustomerOrderRecord[]>([])
+  const [ordersKey, setOrdersKey] = useState(0)
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
 
   useEffect(() => {
     const today = todayStr()
@@ -126,6 +149,31 @@ export default function HomePage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [loadKey])
+
+  // 加载顾客订单（仅 OWNER 可见）
+  useEffect(() => {
+    if (realRole !== 'OWNER') return
+    apiFetch('/api/customer-orders?status=PENDING,CONFIRMED', undefined, OWNER_CTX)
+      .then((r) => r.json())
+      .then((data) => setCustomerOrders(Array.isArray(data) ? data : []))
+      .catch(() => {})
+  }, [ordersKey, realRole])
+
+  async function updateOrderStatus(id: string, status: string) {
+    setUpdatingOrderId(id)
+    try {
+      await apiFetch(`/api/customer-orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      }, OWNER_CTX)
+      setOrdersKey((k) => k + 1)
+    } catch (e) {
+      console.error('更新顾客订单状态失败', e)
+    } finally {
+      setUpdatingOrderId(null)
+    }
+  }
 
   return (
     <main style={s.page}>
@@ -204,6 +252,23 @@ export default function HomePage() {
         <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
         <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
       </div>
+
+      {/* ── 顾客订单区（仅 OWNER 可见） ── */}
+      {realRole === 'OWNER' && customerOrders.length > 0 && (
+        <>
+          <div style={s.sectionTitle}>顾客订单</div>
+          {customerOrders.map((order) => (
+            <CustomerOrderCard
+              key={order.id}
+              order={order}
+              updating={updatingOrderId === order.id}
+              onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
+              onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
+              onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
+            />
+          ))}
+        </>
+      )}
 
       {/* ── Recent records ── */}
       <div style={s.sectionHeader}>
@@ -341,6 +406,78 @@ function RefundCard({ item, tagRefund }: { item: RecordItem; tagRefund: string }
       </div>
       <div style={{ ...s.recentAmount, color: '#ff4d4f' }}>
         -${Math.abs(item.lineAmount).toFixed(2)}
+      </div>
+    </div>
+  )
+}
+
+const CO_STATUS_COLOR: Record<string, string> = {
+  PENDING:   '#fa8c16',
+  CONFIRMED: '#52c41a',
+  COMPLETED: '#8c8c8c',
+  CANCELLED: '#ff4d4f',
+}
+const CO_STATUS_LABEL: Record<string, string> = {
+  PENDING:   '待确认',
+  CONFIRMED: '已确认',
+  COMPLETED: '已完成',
+  CANCELLED: '已取消',
+}
+
+function buildOrderItemSummary(items: CustomerOrderItem[]): string {
+  return items.map((i) => `${i.name}×${i.quantity}`).join('、')
+}
+
+function CustomerOrderCard({
+  order, updating, onConfirm, onComplete, onCancel,
+}: {
+  order: CustomerOrderRecord
+  updating: boolean
+  onConfirm: () => void
+  onComplete: () => void
+  onCancel: () => void
+}) {
+  const color = CO_STATUS_COLOR[order.status] ?? '#8c8c8c'
+  const label = CO_STATUS_LABEL[order.status] ?? order.status
+
+  return (
+    <div style={{ ...s.recentCard, borderLeft: `3px solid ${color}` }}>
+      <div style={s.recentLeft}>
+        <div style={s.recentTagRow}>
+          <span style={{ ...s.tagSale, background: color + '15', color, border: `1px solid ${color}44` }}>
+            {label}
+          </span>
+          {order.customerTelegramId && (
+            <span style={s.coTgBadge}>TG</span>
+          )}
+        </div>
+        <div style={s.recentProduct}>{buildOrderItemSummary(order.items)}</div>
+        <div style={s.recentMeta}>
+          {order.orderNo} · {fmtTime(order.createdAt)}
+        </div>
+        {/* 操作按钮 */}
+        {!updating && (
+          <div style={s.coActions}>
+            {order.status === 'PENDING' && (
+              <>
+                <button style={s.coConfirmBtn} onClick={onConfirm}>✓ 确认</button>
+                <button style={s.coCancelBtn} onClick={onCancel}>✗ 取消</button>
+              </>
+            )}
+            {order.status === 'CONFIRMED' && (
+              <>
+                <button style={s.coCompleteBtn} onClick={onComplete}>完成</button>
+                <button style={s.coCancelBtn} onClick={onCancel}>取消</button>
+              </>
+            )}
+          </div>
+        )}
+        {updating && <div style={s.coUpdating}>处理中…</div>}
+      </div>
+      <div style={s.recentRight}>
+        <div style={{ ...s.recentAmount, color: '#1a1a1a' }}>
+          ${order.totalAmount.toFixed(2)}
+        </div>
       </div>
     </div>
   )
@@ -666,5 +803,58 @@ const s: Record<string, React.CSSProperties> = {
     color: '#bbb',
     padding: '24px 0',
     fontSize: 14,
+  },
+
+  // 顾客订单操作区
+  coActions: {
+    display: 'flex',
+    gap: 6,
+    marginTop: 6,
+  },
+  coConfirmBtn: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#fff',
+    background: '#52c41a',
+    border: 'none',
+    borderRadius: 6,
+    padding: '4px 12px',
+    cursor: 'pointer',
+  },
+  coCompleteBtn: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#fff',
+    background: '#1677ff',
+    border: 'none',
+    borderRadius: 6,
+    padding: '4px 12px',
+    cursor: 'pointer',
+  },
+  coCancelBtn: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#ff4d4f',
+    background: '#fff1f0',
+    border: '1px solid #ffccc7',
+    borderRadius: 6,
+    padding: '4px 12px',
+    cursor: 'pointer',
+  },
+  coTgBadge: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: '#1677ff',
+    background: '#e6f4ff',
+    border: '1px solid #91caff',
+    borderRadius: 3,
+    padding: '1px 4px',
+    letterSpacing: '0.05em',
+  },
+  coUpdating: {
+    fontSize: 11,
+    color: '#fa8c16',
+    marginTop: 6,
+    animation: 'pulse 1.2s ease-in-out infinite',
   },
 }

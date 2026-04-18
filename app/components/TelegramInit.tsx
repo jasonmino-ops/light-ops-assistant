@@ -38,7 +38,8 @@ function extractTgUserId(initData: string): string | null {
 }
 
 // Paths that don't require an active session in PWA mode (non-Telegram context).
-const ONBOARDING_PATHS = ['/start', '/open', '/bind', '/relogin']
+// /menu 是顾客端商品预览页，无需登录态
+const ONBOARDING_PATHS = ['/start', '/open', '/bind', '/relogin', '/menu']
 
 export default function TelegramInit() {
   const [authError, setAuthError] = useState('')
