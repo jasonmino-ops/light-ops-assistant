@@ -135,6 +135,7 @@ export default function HomePage() {
   const [customerOrders, setCustomerOrders] = useState<CustomerOrderRecord[]>([])
   const [ordersKey, setOrdersKey] = useState(0)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+  const [customerCheckout, setCustomerCheckout] = useState<{ id: string; orderNo: string; totalAmount: number } | null>(null)
 
   useEffect(() => {
     const today = todayStr()
@@ -178,19 +179,15 @@ export default function HomePage() {
     }
   }
 
-  async function markOrderPaid(id: string, method: 'CASH' | 'QR') {
-    setUpdatingOrderId(id)
-    try {
-      await apiFetch(`/api/customer-orders/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentMethod: method }),
-      }, OWNER_CTX)
-      setOrdersKey((k) => k + 1)
-    } catch (e) {
-      console.error('收款登记失败', e)
-    } finally {
-      setUpdatingOrderId(null)
+  async function handleCustomerOrderPay(id: string, method: 'CASH' | 'KHQR') {
+    const res = await apiFetch(`/api/customer-orders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentMethod: method === 'KHQR' ? 'QR' : 'CASH' }),
+    }, OWNER_CTX)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.error ?? '收款登记失败')
     }
   }
 
@@ -294,8 +291,7 @@ export default function HomePage() {
                   onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
                   onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
                   onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
-                  onPayCash={() => markOrderPaid(order.id, 'CASH')}
-                  onPayQr={() => markOrderPaid(order.id, 'QR')}
+                  onCollect={() => setCustomerCheckout({ id: order.id, orderNo: order.orderNo, totalAmount: order.totalAmount })}
                 />
               ))
             )}
@@ -351,6 +347,16 @@ export default function HomePage() {
           totalAmount={checkoutOrder.totalAmount}
           onSuccess={() => { setCheckoutOrder(null); setLoadKey((k) => k + 1) }}
           onClose={() => setCheckoutOrder(null)}
+        />
+      )}
+
+      {customerCheckout && (
+        <CheckoutSheet
+          orderNo={customerCheckout.orderNo}
+          totalAmount={customerCheckout.totalAmount}
+          onSuccess={() => { setCustomerCheckout(null); setOrdersKey((k) => k + 1) }}
+          onClose={() => setCustomerCheckout(null)}
+          onOverridePay={(method) => handleCustomerOrderPay(customerCheckout.id, method)}
         />
       )}
     </main>
@@ -462,15 +468,14 @@ function buildOrderItemSummary(items: CustomerOrderItem[]): string {
 }
 
 function CustomerOrderCard({
-  order, updating, onConfirm, onComplete, onCancel, onPayCash, onPayQr,
+  order, updating, onConfirm, onComplete, onCancel, onCollect,
 }: {
   order: CustomerOrderRecord
   updating: boolean
   onConfirm: () => void
   onComplete: () => void
   onCancel: () => void
-  onPayCash: () => void
-  onPayQr: () => void
+  onCollect: () => void
 }) {
   const [showDetail, setShowDetail] = useState(false)
   const needsPay = order.status === 'COMPLETED' && order.paymentStatus === 'UNPAID'
@@ -508,10 +513,7 @@ function CustomerOrderCard({
                 </>
               )}
               {needsPay && (
-                <>
-                  <button style={s.coPayCashBtn} onClick={onPayCash}>💵 现金</button>
-                  <button style={s.coPayQrBtn} onClick={onPayQr}>📱 收款码</button>
-                </>
+                <button style={s.checkoutBtn} onClick={onCollect}>去收款</button>
               )}
             </div>
           )}
@@ -969,26 +971,6 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fa8c16',
     marginTop: 6,
     animation: 'pulse 1.2s ease-in-out infinite',
-  },
-  coPayCashBtn: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: '#fff',
-    background: '#52c41a',
-    border: 'none',
-    borderRadius: 6,
-    padding: '4px 12px',
-    cursor: 'pointer',
-  },
-  coPayQrBtn: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: '#fff',
-    background: '#1677ff',
-    border: 'none',
-    borderRadius: 6,
-    padding: '4px 12px',
-    cursor: 'pointer',
   },
   coDetailToggleBtn: {
     fontSize: 11,

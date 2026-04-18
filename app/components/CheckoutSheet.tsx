@@ -23,11 +23,14 @@ export default function CheckoutSheet({
   totalAmount,
   onSuccess,
   onClose,
+  onOverridePay,
 }: {
   orderNo: string
   totalAmount: number
   onSuccess: () => void
   onClose: () => void
+  /** 传入后完全接管付款逻辑（用于顾客订单等非主链场景），成功后由组件内部调用 onSuccess */
+  onOverridePay?: (method: 'CASH' | 'KHQR') => Promise<void>
 }) {
   const { t } = useLocale()
   const [step, setStep] = useState<Step>('selecting')
@@ -36,6 +39,18 @@ export default function CheckoutSheet({
   const [khqrPayload, setKhqrPayload] = useState<string | null>(null)
   const [khqrImageUrl, setKhqrImageUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  async function handleOverridePay(method: 'CASH' | 'KHQR') {
+    setError(null)
+    setStatus('loading')
+    try {
+      await onOverridePay!(method)
+      onSuccess()
+    } catch (e) {
+      setError((e as Error).message ?? '操作失败，请重试')
+      setStatus('idle')
+    }
+  }
 
   async function handlePay(method: 'CASH' | 'KHQR') {
     setError(null)
@@ -94,7 +109,7 @@ export default function CheckoutSheet({
           <span style={cs.amtValue}>${totalAmount.toFixed(2)}</span>
         </div>
 
-        <button style={cs.option} onClick={() => handlePay('CASH')} disabled={busy}>
+        <button style={cs.option} onClick={() => onOverridePay ? handleOverridePay('CASH') : handlePay('CASH')} disabled={busy}>
           <span style={cs.optIcon}>💵</span>
           <div style={cs.optText}>
             <div style={cs.optLabel}>{t('sale.paymentCash')}</div>
@@ -103,14 +118,14 @@ export default function CheckoutSheet({
         </button>
 
         <button
-          style={{ ...cs.option, ...(error ? cs.optDisabled : {}) }}
-          onClick={() => handlePay('KHQR')}
-          disabled={busy || !!error}
+          style={{ ...cs.option, ...((!onOverridePay && error) ? cs.optDisabled : {}) }}
+          onClick={() => onOverridePay ? handleOverridePay('KHQR') : handlePay('KHQR')}
+          disabled={busy || (!onOverridePay && !!error)}
         >
           <span style={cs.optIcon}>📱</span>
           <div style={cs.optText}>
-            <div style={cs.optLabel}>{t('sale.paymentKhqr')}</div>
-            <div style={cs.optDesc}>{t('sale.paymentKhqrDesc')}</div>
+            <div style={cs.optLabel}>{onOverridePay ? '收款码' : t('sale.paymentKhqr')}</div>
+            <div style={cs.optDesc}>{onOverridePay ? '确认已通过收款码收款' : t('sale.paymentKhqrDesc')}</div>
           </div>
         </button>
 
