@@ -253,21 +253,30 @@ export default function HomePage() {
         <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
       </div>
 
-      {/* ── 顾客订单区（仅 OWNER 可见） ── */}
-      {realRole === 'OWNER' && customerOrders.length > 0 && (
-        <>
-          <div style={s.sectionTitle}>顾客订单</div>
-          {customerOrders.map((order) => (
-            <CustomerOrderCard
-              key={order.id}
-              order={order}
-              updating={updatingOrderId === order.id}
-              onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
-              onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
-              onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
-            />
-          ))}
-        </>
+      {/* ── 顾客订单区（仅 OWNER 可见，常驻显示） ── */}
+      {realRole === 'OWNER' && (
+        <div style={s.coSection}>
+          <div style={s.coSectionHeader}>
+            <span style={s.coSectionTitle}>顾客订单</span>
+            {customerOrders.length > 0 && (
+              <span style={s.coBadge}>{customerOrders.length}</span>
+            )}
+          </div>
+          {customerOrders.length === 0 ? (
+            <div style={s.coEmpty}>暂无待处理订单</div>
+          ) : (
+            customerOrders.map((order) => (
+              <CustomerOrderCard
+                key={order.id}
+                order={order}
+                updating={updatingOrderId === order.id}
+                onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
+                onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
+                onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
+              />
+            ))
+          )}
+        </div>
       )}
 
       {/* ── Recent records ── */}
@@ -437,48 +446,81 @@ function CustomerOrderCard({
   onComplete: () => void
   onCancel: () => void
 }) {
+  const [showDetail, setShowDetail] = useState(false)
   const color = CO_STATUS_COLOR[order.status] ?? '#8c8c8c'
   const label = CO_STATUS_LABEL[order.status] ?? order.status
 
   return (
-    <div style={{ ...s.recentCard, borderLeft: `3px solid ${color}` }}>
-      <div style={s.recentLeft}>
-        <div style={s.recentTagRow}>
-          <span style={{ ...s.tagSale, background: color + '15', color, border: `1px solid ${color}44` }}>
-            {label}
-          </span>
-          {order.customerTelegramId && (
-            <span style={s.coTgBadge}>TG</span>
-          )}
-        </div>
-        <div style={s.recentProduct}>{buildOrderItemSummary(order.items)}</div>
-        <div style={s.recentMeta}>
-          {order.orderNo} · {fmtTime(order.createdAt)}
-        </div>
-        {/* 操作按钮 */}
-        {!updating && (
-          <div style={s.coActions}>
-            {order.status === 'PENDING' && (
-              <>
-                <button style={s.coConfirmBtn} onClick={onConfirm}>✓ 确认</button>
-                <button style={s.coCancelBtn} onClick={onCancel}>✗ 取消</button>
-              </>
-            )}
-            {order.status === 'CONFIRMED' && (
-              <>
-                <button style={s.coCompleteBtn} onClick={onComplete}>完成</button>
-                <button style={s.coCancelBtn} onClick={onCancel}>取消</button>
-              </>
+    <div style={{ ...s.recentCard, borderLeft: `3px solid ${color}`, margin: '0 8px 8px', background: '#fff', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', gap: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+        <div style={s.recentLeft}>
+          <div style={s.recentTagRow}>
+            <span style={{ ...s.tagSale, background: color + '15', color, border: `1px solid ${color}44` }}>
+              {label}
+            </span>
+            {order.customerTelegramId && (
+              <span style={s.coTgBadge}>TG</span>
             )}
           </div>
-        )}
-        {updating && <div style={s.coUpdating}>处理中…</div>}
-      </div>
-      <div style={s.recentRight}>
-        <div style={{ ...s.recentAmount, color: '#1a1a1a' }}>
-          ${order.totalAmount.toFixed(2)}
+          <div style={s.recentProduct}>{buildOrderItemSummary(order.items)}</div>
+          <div style={s.recentMeta}>
+            {order.orderNo} · {fmtTime(order.createdAt)}
+          </div>
+          {!updating && (
+            <div style={s.coActions}>
+              {order.status === 'PENDING' && (
+                <>
+                  <button style={s.coConfirmBtn} onClick={onConfirm}>✓ 确认</button>
+                  <button style={s.coCancelBtn} onClick={onCancel}>✗ 取消</button>
+                </>
+              )}
+              {order.status === 'CONFIRMED' && (
+                <>
+                  <button style={s.coCompleteBtn} onClick={onComplete}>完成</button>
+                  <button style={s.coCancelBtn} onClick={onCancel}>取消</button>
+                </>
+              )}
+            </div>
+          )}
+          {updating && <div style={s.coUpdating}>处理中…</div>}
+        </div>
+        <div style={s.recentRight}>
+          <div style={{ ...s.recentAmount, color: '#1a1a1a' }}>
+            ${order.totalAmount.toFixed(2)}
+          </div>
+          <button style={s.coDetailToggleBtn} onClick={() => setShowDetail((d) => !d)}>
+            {showDetail ? '收起 ▴' : '明细 ▾'}
+          </button>
         </div>
       </div>
+      {showDetail && (
+        <div style={s.coDetail}>
+          <div style={s.coDetailMeta}>
+            <span>{order.orderNo}</span>
+            <span style={{ color: '#ddd' }}>·</span>
+            <span>{new Date(order.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+          {order.items.map((item) => (
+            <div key={item.productId} style={s.coDetailItem}>
+              <div style={s.coDetailItemName}>
+                {item.name}
+                {item.spec && <span style={s.coDetailItemSpec}> · {item.spec}</span>}
+              </div>
+              <div style={s.coDetailItemRight}>
+                <span style={s.coDetailItemUnit}>${item.price.toFixed(2)}×{item.quantity}</span>
+                <span style={s.coDetailItemLine}>${item.lineAmount.toFixed(2)}</span>
+              </div>
+            </div>
+          ))}
+          <div style={s.coDetailFooter}>
+            <span style={s.coDetailTotalLabel}>合计</span>
+            <span style={s.coDetailTotalAmt}>${order.totalAmount.toFixed(2)}</span>
+          </div>
+          {order.customerTelegramId && (
+            <div style={s.coDetailTg}>顾客 TG ID：{order.customerTelegramId}</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -805,6 +847,44 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
 
+  // 顾客订单区块
+  coSection: {
+    background: '#fff7e6',
+    border: '1px solid #ffe58f',
+    borderRadius: 14,
+    margin: '0 12px 20px',
+    padding: '12px 0 4px',
+  },
+  coSectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '0 16px',
+    marginBottom: 8,
+  },
+  coSectionTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#ad6800',
+  },
+  coBadge: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#fff',
+    background: '#ff4d4f',
+    borderRadius: 10,
+    padding: '1px 7px',
+    minWidth: 20,
+    textAlign: 'center' as const,
+    animation: 'pulse 1.8s ease-in-out infinite',
+  },
+  coEmpty: {
+    textAlign: 'center' as const,
+    color: '#ad6800',
+    fontSize: 13,
+    padding: '8px 0 12px',
+    opacity: 0.6,
+  },
   // 顾客订单操作区
   coActions: {
     display: 'flex',
@@ -856,5 +936,89 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fa8c16',
     marginTop: 6,
     animation: 'pulse 1.2s ease-in-out infinite',
+  },
+  coDetailToggleBtn: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#1677ff',
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '2px 0',
+    marginTop: 4,
+    alignSelf: 'flex-end',
+  },
+  coDetail: {
+    borderTop: '1px solid #f0f0f0',
+    marginTop: 10,
+    paddingTop: 10,
+  },
+  coDetailMeta: {
+    display: 'flex',
+    gap: 6,
+    fontSize: 11,
+    color: '#bbb',
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  coDetailItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '6px 0',
+    borderBottom: '1px solid #f5f5f5',
+  },
+  coDetailItemName: {
+    fontSize: 13,
+    fontWeight: 500,
+    color: '#1a1a1a',
+    flex: 1,
+    marginRight: 8,
+  },
+  coDetailItemSpec: {
+    fontSize: 11,
+    color: '#aaa',
+    fontWeight: 400,
+  },
+  coDetailItemRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 0,
+  },
+  coDetailItemUnit: {
+    fontSize: 11,
+    color: '#aaa',
+  },
+  coDetailItemLine: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#1a1a1a',
+    minWidth: 52,
+    textAlign: 'right' as const,
+  },
+  coDetailFooter: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 0 0',
+  },
+  coDetailTotalLabel: {
+    fontSize: 12,
+    color: '#8c8c8c',
+  },
+  coDetailTotalAmt: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#1a1a1a',
+  },
+  coDetailTg: {
+    marginTop: 6,
+    fontSize: 11,
+    color: '#1677ff',
+    background: '#e6f4ff',
+    borderRadius: 4,
+    padding: '3px 8px',
+    display: 'inline-block',
   },
 }

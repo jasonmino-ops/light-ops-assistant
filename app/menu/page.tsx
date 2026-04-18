@@ -40,6 +40,9 @@ const T: Record<Lang, {
   retryCart: string
   statusPending: string
   orderHint2: string
+  confirmTitle: string
+  confirmSubmit: string
+  backToEdit: string
 }> = {
   zh: {
     open:             '营业中',
@@ -63,6 +66,9 @@ const T: Record<Lang, {
     retryCart:        '继续选购',
     statusPending:    '待商家确认',
     orderHint2:       '商家确认后将为您备货/处理',
+    confirmTitle:     '确认订单',
+    confirmSubmit:    '确认提交',
+    backToEdit:       '返回修改',
   },
   en: {
     open:             'Open',
@@ -86,6 +92,9 @@ const T: Record<Lang, {
     retryCart:        'Continue shopping',
     statusPending:    'Awaiting confirmation',
     orderHint2:       'Merchant will prepare your order upon confirmation',
+    confirmTitle:     'Confirm Order',
+    confirmSubmit:    'Submit Order',
+    backToEdit:       'Back',
   },
   km: {
     open:             'កំពុងបើក',
@@ -109,6 +118,9 @@ const T: Record<Lang, {
     retryCart:        'ជ្រើសទំនិញម្តងទៀត',
     statusPending:    'រង់ចាំការបញ្ជាក់',
     orderHint2:       'ម្ចាស់ហាងនឹងរៀបចំទំនិញបន្ទាប់ពីបញ្ជាក់',
+    confirmTitle:     'បញ្ជាក់បញ្ជាទិញ',
+    confirmSubmit:    'ដាក់ស្នើ',
+    backToEdit:       'ត្រឡប់',
   },
 }
 
@@ -157,14 +169,20 @@ export default function MenuPage() {
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([])
   const [loading,     setLoading]     = useState(true)
   const [fetchError,  setFetchError]  = useState('')
-  const [submitting,  setSubmitting]  = useState(false)
-  const [orderResult, setOrderResult] = useState<{ orderNo: string; totalAmount: number } | null>(null)
-  const [submitError, setSubmitError] = useState('')
+  const [submitting,   setSubmitting]  = useState(false)
+  const [orderResult,  setOrderResult] = useState<{ orderNo: string; totalAmount: number } | null>(null)
+  const [submitError,  setSubmitError] = useState('')
+  const [showConfirm,  setShowConfirm] = useState(false)
 
   const ui         = T[lang]
   const cartTotal  = cart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
   const cartCount  = cart.reduce((s, c) => s + c.quantity, 0)
   const canCheckout = cartCount > 0
+  const confirmItems = cart.flatMap((c) => {
+    const p = apiProducts.find((ap) => ap.id === c.id)
+    if (!p) return []
+    return [{ ...p, quantity: c.quantity, lineAmount: p.price * c.quantity }]
+  })
 
   // ── Telegram Mini App 适配 ───────────────────────────────────────────────
   // TelegramInit.tsx 对 /menu 路径早返回，不会调用 expand()，需要自行初始化
@@ -260,6 +278,7 @@ export default function MenuPage() {
       }
       setOrderResult({ orderNo: body.orderNo, totalAmount: body.totalAmount })
       setCart([])
+      setShowConfirm(false)
     } catch {
       setSubmitError(ui.errSubmitFail)
     } finally {
@@ -386,6 +405,52 @@ export default function MenuPage() {
         </div>
       </main>
 
+      {/* ── 下单确认弹层 ── */}
+      {!orderResult && showConfirm && (
+        <div style={s.successOverlay}>
+          <div style={s.confirmModal}>
+            <div style={s.confirmHeader}>
+              <span style={s.confirmHeaderIcon}>📋</span>
+              <span style={s.confirmHeaderTitle}>{ui.confirmTitle}</span>
+            </div>
+            <div style={s.confirmItemList}>
+              {confirmItems.map((item) => (
+                <div key={item.id} style={s.confirmItem}>
+                  <div style={s.confirmItemName}>
+                    {item.name}
+                    {item.spec && <span style={s.confirmItemSpec}> · {item.spec}</span>}
+                  </div>
+                  <div style={s.confirmItemRight}>
+                    <span style={s.confirmItemQty}>×{item.quantity}</span>
+                    <span style={s.confirmItemAmt}>${item.lineAmount.toFixed(2)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={s.confirmTotal}>
+              <span style={s.confirmTotalLabel}>{ui.itemCount(cartCount)}</span>
+              <span style={s.confirmTotalAmount}>${cartTotal.toFixed(2)}</span>
+            </div>
+            {submitError && <div style={s.confirmErr}>{submitError}</div>}
+            <div style={s.confirmBtns}>
+              <button
+                style={s.confirmBackBtn}
+                onClick={() => { setShowConfirm(false); setSubmitError('') }}
+              >
+                {ui.backToEdit}
+              </button>
+              <button
+                style={{ ...s.confirmSubmitBtn, ...(submitting ? s.confirmSubmitBtnDisabled : {}) }}
+                disabled={submitting}
+                onClick={handleCheckout}
+              >
+                {submitting ? ui.submitting : ui.confirmSubmit}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 下单成功覆盖弹层 ── */}
       {orderResult && (
         <div style={s.successOverlay}>
@@ -401,7 +466,7 @@ export default function MenuPage() {
             <div style={s.successModalAmount}>${orderResult.totalAmount.toFixed(2)}</div>
             <button
               style={s.retryBtnFull}
-              onClick={() => { setOrderResult(null); setSubmitError('') }}
+              onClick={() => { setOrderResult(null); setSubmitError(''); setShowConfirm(false) }}
             >
               {ui.retryCart}
             </button>
@@ -433,7 +498,7 @@ export default function MenuPage() {
         <button
           style={{ ...s.checkoutBtn, ...(canCheckout && !submitting ? s.checkoutBtnOn : {}) }}
           disabled={!canCheckout || submitting}
-          onClick={handleCheckout}
+          onClick={() => setShowConfirm(true)}
         >
           {submitting ? ui.submitting : canCheckout ? ui.checkout : ui.selectFirst}
         </button>
@@ -854,6 +919,87 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 15,
     fontWeight: 700,
     cursor: 'pointer',
+  },
+  confirmModal: {
+    background: '#fff',
+    borderRadius: 20,
+    padding: '24px 20px 20px',
+    width: '100%',
+    maxWidth: 360,
+    maxHeight: '80dvh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  confirmHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottom: '1px solid #f0f0f0',
+  },
+  confirmHeaderIcon: { fontSize: 18 },
+  confirmHeaderTitle: { fontSize: 17, fontWeight: 700, color: '#1a1a1a' },
+  confirmItemList: {
+    flex: 1,
+    overflowY: 'auto' as const,
+    display: 'flex',
+    flexDirection: 'column',
+    marginBottom: 12,
+  },
+  confirmItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '10px 0',
+    borderBottom: '1px solid #f5f5f5',
+  },
+  confirmItemName: { fontSize: 14, fontWeight: 500, color: '#1a1a1a', flex: 1, marginRight: 12 },
+  confirmItemSpec: { fontSize: 12, color: '#aaa', fontWeight: 400 },
+  confirmItemRight: { display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 },
+  confirmItemQty: { fontSize: 13, color: '#8c8c8c' },
+  confirmItemAmt: { fontSize: 14, fontWeight: 600, color: '#e53e3e', minWidth: 56, textAlign: 'right' as const },
+  confirmTotal: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 0',
+    borderTop: '1px solid #ebebeb',
+    marginBottom: 12,
+  },
+  confirmTotalLabel: { fontSize: 13, color: '#8c8c8c' },
+  confirmTotalAmount: { fontSize: 22, fontWeight: 800, color: '#1677ff', letterSpacing: '-0.4px' },
+  confirmErr: { fontSize: 12, color: '#ff4d4f', textAlign: 'center' as const, marginBottom: 8 },
+  confirmBtns: { display: 'flex', gap: 10 },
+  confirmBackBtn: {
+    flex: 1,
+    background: '#f5f5f5',
+    color: '#555',
+    border: 'none',
+    borderRadius: 24,
+    padding: '13px 0',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  confirmSubmitBtn: {
+    flex: 2,
+    background: `linear-gradient(135deg, #ff8c00 0%, ${PRIMARY} 100%)`,
+    color: '#fff',
+    border: 'none',
+    borderRadius: 24,
+    padding: '13px 0',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: `0 4px 14px ${PRIMARY}55`,
+  },
+  confirmSubmitBtnDisabled: {
+    background: '#e8e8e8',
+    color: '#b0b0b0',
+    cursor: 'not-allowed',
+    boxShadow: 'none',
   },
   cartLeft: {
     display: 'flex',
