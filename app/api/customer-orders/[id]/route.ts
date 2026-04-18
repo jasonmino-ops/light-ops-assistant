@@ -32,18 +32,52 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { status?: string }
+  let body: { status?: string; paymentMethod?: string }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
-
-  const { status: newStatus } = body
-  if (!newStatus) return NextResponse.json({ error: 'MISSING_STATUS' }, { status: 400 })
 
   const order = await prisma.customerOrder.findFirst({
     where: { id, tenantId: ctx.tenantId },
   })
   if (!order) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+
+  // ── 分支 A：收款登记 ────────────────────────────────────────────────────────
+  if (body.paymentMethod) {
+    const { paymentMethod } = body
+    if (!['CASH', 'QR'].includes(paymentMethod)) {
+      return NextResponse.json({ error: 'INVALID_PAYMENT_METHOD' }, { status: 400 })
+    }
+    if (order.status !== 'COMPLETED') {
+      return NextResponse.json({ error: 'ORDER_NOT_COMPLETED' }, { status: 400 })
+    }
+    if (order.paymentStatus === 'PAID') {
+      return NextResponse.json({ error: 'ALREADY_PAID' }, { status: 400 })
+    }
+
+    const updated = await prisma.customerOrder.update({
+      where: { id },
+      data: {
+        paymentStatus: 'PAID',
+        paymentMethod,
+        paidAt: new Date(),
+        paidAmount: order.totalAmount,
+      },
+      select: { id: true, orderNo: true, status: true, paymentStatus: true, paymentMethod: true },
+    })
+
+    return NextResponse.json({
+      id: updated.id,
+      orderNo: updated.orderNo,
+      status: updated.status,
+      paymentStatus: updated.paymentStatus,
+      paymentMethod: updated.paymentMethod,
+    })
+  }
+
+  // ── 分支 B：状态流转 ────────────────────────────────────────────────────────
+  const { status: newStatus } = body
+  if (!newStatus) return NextResponse.json({ error: 'MISSING_ACTION' }, { status: 400 })
 
   const allowed = ALLOWED_TRANSITIONS[order.status] ?? []
   if (!allowed.includes(newStatus)) {
@@ -59,11 +93,11 @@ export async function PATCH(
     select: { id: true, orderNo: true, status: true, customerTelegramId: true, totalAmount: true },
   })
 
-  // 若顾客有 Telegram ID，异步发送状态变更通知
+  // 若顾客有 Telegram ID，异步发送状态变更通知（走顾客端机器人）
   if (updated.customerTelegramId) {
     const msgMap: Record<string, string> = {
       CONFIRMED: `✅ 您的订单已确认\n订单号：${updated.orderNo}\n商家正在为您准备，请等待联系。`,
-      COMPLETED: `🎉 您的订单已完成\n订单号：${updated.orderNo}\n感谢您的购买！`,
+      COMPLETED: `🎉 您的订单已完成\n订单号：${updated.orderNo}\n请完成付款后提货，感谢您的购买！`,
       CANCELLED: `❌ 您的订单已取消\n订单号：${updated.orderNo}\n如有疑问请联系商家。`,
     }
     const text = msgMap[newStatus]

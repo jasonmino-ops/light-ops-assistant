@@ -27,6 +27,9 @@ type CustomerOrderRecord = {
   items: CustomerOrderItem[]
   totalAmount: number
   status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'
+  paymentStatus: 'UNPAID' | 'PAID'
+  paymentMethod: string | null
+  paidAt: string | null
   createdAt: string
 }
 
@@ -150,10 +153,10 @@ export default function HomePage() {
       .finally(() => setLoading(false))
   }, [loadKey])
 
-  // 加载顾客订单（仅 OWNER 可见）
+  // 加载顾客订单（仅 OWNER 可见，默认返回 PENDING+CONFIRMED+COMPLETED 中未付款的）
   useEffect(() => {
     if (realRole !== 'OWNER') return
-    apiFetch('/api/customer-orders?status=PENDING,CONFIRMED', undefined, OWNER_CTX)
+    apiFetch('/api/customer-orders?status=PENDING,CONFIRMED,COMPLETED', undefined, OWNER_CTX)
       .then((r) => r.json())
       .then((data) => setCustomerOrders(Array.isArray(data) ? data : []))
       .catch(() => {})
@@ -170,6 +173,22 @@ export default function HomePage() {
       setOrdersKey((k) => k + 1)
     } catch (e) {
       console.error('更新顾客订单状态失败', e)
+    } finally {
+      setUpdatingOrderId(null)
+    }
+  }
+
+  async function markOrderPaid(id: string, method: 'CASH' | 'QR') {
+    setUpdatingOrderId(id)
+    try {
+      await apiFetch(`/api/customer-orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentMethod: method }),
+      }, OWNER_CTX)
+      setOrdersKey((k) => k + 1)
+    } catch (e) {
+      console.error('收款登记失败', e)
     } finally {
       setUpdatingOrderId(null)
     }
@@ -254,30 +273,35 @@ export default function HomePage() {
       </div>
 
       {/* ── 顾客订单区（仅 OWNER 可见，常驻显示） ── */}
-      {realRole === 'OWNER' && (
-        <div style={s.coSection}>
-          <div style={s.coSectionHeader}>
-            <span style={s.coSectionTitle}>顾客订单</span>
-            {customerOrders.length > 0 && (
-              <span style={s.coBadge}>{customerOrders.length}</span>
+      {realRole === 'OWNER' && (() => {
+        const actionableCount = customerOrders.length
+        return (
+          <div style={s.coSection}>
+            <div style={s.coSectionHeader}>
+              <span style={s.coSectionTitle}>顾客订单</span>
+              {actionableCount > 0 && (
+                <span style={s.coBadge}>{actionableCount}</span>
+              )}
+            </div>
+            {actionableCount === 0 ? (
+              <div style={s.coEmpty}>暂无待处理订单</div>
+            ) : (
+              customerOrders.map((order) => (
+                <CustomerOrderCard
+                  key={order.id}
+                  order={order}
+                  updating={updatingOrderId === order.id}
+                  onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
+                  onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
+                  onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
+                  onPayCash={() => markOrderPaid(order.id, 'CASH')}
+                  onPayQr={() => markOrderPaid(order.id, 'QR')}
+                />
+              ))
             )}
           </div>
-          {customerOrders.length === 0 ? (
-            <div style={s.coEmpty}>暂无待处理订单</div>
-          ) : (
-            customerOrders.map((order) => (
-              <CustomerOrderCard
-                key={order.id}
-                order={order}
-                updating={updatingOrderId === order.id}
-                onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
-                onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
-                onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
-              />
-            ))
-          )}
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── Recent records ── */}
       <div style={s.sectionHeader}>
@@ -438,17 +462,20 @@ function buildOrderItemSummary(items: CustomerOrderItem[]): string {
 }
 
 function CustomerOrderCard({
-  order, updating, onConfirm, onComplete, onCancel,
+  order, updating, onConfirm, onComplete, onCancel, onPayCash, onPayQr,
 }: {
   order: CustomerOrderRecord
   updating: boolean
   onConfirm: () => void
   onComplete: () => void
   onCancel: () => void
+  onPayCash: () => void
+  onPayQr: () => void
 }) {
   const [showDetail, setShowDetail] = useState(false)
-  const color = CO_STATUS_COLOR[order.status] ?? '#8c8c8c'
-  const label = CO_STATUS_LABEL[order.status] ?? order.status
+  const needsPay = order.status === 'COMPLETED' && order.paymentStatus === 'UNPAID'
+  const color = needsPay ? '#fa8c16' : (CO_STATUS_COLOR[order.status] ?? '#8c8c8c')
+  const label = needsPay ? '待收款' : (CO_STATUS_LABEL[order.status] ?? order.status)
 
   return (
     <div style={{ ...s.recentCard, borderLeft: `3px solid ${color}`, margin: '0 8px 8px', background: '#fff', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', gap: 0 }}>
@@ -478,6 +505,12 @@ function CustomerOrderCard({
                 <>
                   <button style={s.coCompleteBtn} onClick={onComplete}>完成</button>
                   <button style={s.coCancelBtn} onClick={onCancel}>取消</button>
+                </>
+              )}
+              {needsPay && (
+                <>
+                  <button style={s.coPayCashBtn} onClick={onPayCash}>💵 现金</button>
+                  <button style={s.coPayQrBtn} onClick={onPayQr}>📱 收款码</button>
                 </>
               )}
             </div>
@@ -936,6 +969,26 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fa8c16',
     marginTop: 6,
     animation: 'pulse 1.2s ease-in-out infinite',
+  },
+  coPayCashBtn: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#fff',
+    background: '#52c41a',
+    border: 'none',
+    borderRadius: 6,
+    padding: '4px 12px',
+    cursor: 'pointer',
+  },
+  coPayQrBtn: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#fff',
+    background: '#1677ff',
+    border: 'none',
+    borderRadius: 6,
+    padding: '4px 12px',
+    cursor: 'pointer',
   },
   coDetailToggleBtn: {
     fontSize: 11,

@@ -366,18 +366,22 @@ model ProductImportSession {
 }
 
 model CustomerOrder {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   tenantId           String
   storeId            String
   storeCode          String
-  orderNo            String   @unique
+  orderNo            String    @unique
   customerTelegramId String?           // null = 匿名；可后续由顾客绑定 TG 后回填
-  itemsJson          String   @db.Text // JSON: [{productId,name,spec,price,quantity,lineAmount}]
-  totalAmount        Decimal  @db.Decimal(12, 2)
-  status             String   @default("PENDING") // PENDING | CONFIRMED | CANCELLED
+  itemsJson          String    @db.Text // JSON: [{productId,name,spec,price,quantity,lineAmount}]
+  totalAmount        Decimal   @db.Decimal(12, 2)
+  status             String    @default("PENDING") // PENDING | CONFIRMED | COMPLETED | CANCELLED
   remark             String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  paymentStatus      String    @default("UNPAID")  // UNPAID | PAID
+  paymentMethod      String?                        // CASH | QR
+  paidAt             DateTime?
+  paidAmount         Decimal?  @db.Decimal(12, 2)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([tenantId, createdAt])
   @@index([storeId, createdAt])

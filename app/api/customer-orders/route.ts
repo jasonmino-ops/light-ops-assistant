@@ -14,10 +14,24 @@ export async function GET(req: NextRequest) {
   if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
 
   const statusParam = req.nextUrl.searchParams.get('status')
-  const statuses = statusParam ? statusParam.split(',') : ['PENDING', 'CONFIRMED']
+  const statuses = statusParam
+    ? statusParam.split(',')
+    : ['PENDING', 'CONFIRMED', 'COMPLETED']
+
+  // COMPLETED 状态只返回未付款的，已付款订单不再需要操作
+  const includesCompleted = statuses.includes('COMPLETED')
+  const where = includesCompleted
+    ? {
+        tenantId: ctx.tenantId,
+        OR: [
+          { status: { in: statuses.filter((s) => s !== 'COMPLETED') } },
+          { status: 'COMPLETED', paymentStatus: 'UNPAID' },
+        ],
+      }
+    : { tenantId: ctx.tenantId, status: { in: statuses } }
 
   const orders = await prisma.customerOrder.findMany({
-    where: { tenantId: ctx.tenantId, status: { in: statuses } },
+    where,
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: {
@@ -28,6 +42,9 @@ export async function GET(req: NextRequest) {
       itemsJson: true,
       totalAmount: true,
       status: true,
+      paymentStatus: true,
+      paymentMethod: true,
+      paidAt: true,
       createdAt: true,
     },
   })
@@ -41,6 +58,9 @@ export async function GET(req: NextRequest) {
       items: JSON.parse(o.itemsJson) as unknown[],
       totalAmount: o.totalAmount.toNumber(),
       status: o.status,
+      paymentStatus: o.paymentStatus,
+      paymentMethod: o.paymentMethod,
+      paidAt: o.paidAt ? o.paidAt.toISOString() : null,
       createdAt: o.createdAt.toISOString(),
     })),
   )
