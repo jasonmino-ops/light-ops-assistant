@@ -154,7 +154,7 @@ export default function HomePage() {
       .finally(() => setLoading(false))
   }, [loadKey])
 
-  // 加载顾客订单（仅 OWNER 可见，默认返回 PENDING+CONFIRMED+COMPLETED 中未付款的）
+  // 加载顾客订单（仅 OWNER 可见）
   useEffect(() => {
     if (realRole !== 'OWNER') return
     apiFetch('/api/customer-orders?status=PENDING,CONFIRMED,COMPLETED', undefined, OWNER_CTX)
@@ -162,6 +162,20 @@ export default function HomePage() {
       .then((data) => setCustomerOrders(Array.isArray(data) ? data : []))
       .catch(() => {})
   }, [ordersKey, realRole])
+
+  // 顾客订单自动刷新：页面重新可见时立刻刷新 + 每 30 秒后台轮询
+  useEffect(() => {
+    if (realRole !== 'OWNER') return
+    function onVisible() {
+      if (!document.hidden) setOrdersKey((k) => k + 1)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    const timer = setInterval(() => setOrdersKey((k) => k + 1), 30_000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      clearInterval(timer)
+    }
+  }, [realRole])
 
   async function updateOrderStatus(id: string, status: string) {
     setUpdatingOrderId(id)
@@ -512,9 +526,6 @@ function CustomerOrderCard({
                   <button style={s.coCancelBtn} onClick={onCancel}>取消</button>
                 </>
               )}
-              {needsPay && (
-                <button style={s.checkoutBtn} onClick={onCollect}>去收款</button>
-              )}
             </div>
           )}
           {updating && <div style={s.coUpdating}>处理中…</div>}
@@ -523,6 +534,9 @@ function CustomerOrderCard({
           <div style={{ ...s.recentAmount, color: '#1a1a1a' }}>
             ${order.totalAmount.toFixed(2)}
           </div>
+          {needsPay && !updating && (
+            <button style={s.checkoutBtn} onClick={onCollect}>去收款</button>
+          )}
           <button style={s.coDetailToggleBtn} onClick={() => setShowDetail((d) => !d)}>
             {showDetail ? '收起 ▴' : '明细 ▾'}
           </button>
