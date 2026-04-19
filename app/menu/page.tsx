@@ -371,13 +371,21 @@ export default function MenuPage() {
                 {isOpen ? ui.open : ui.closed}
               </span>
             </div>
-            {hasTgId && storeCode && (
-              <a href={`/menu/orders?code=${storeCode}`} style={s.myOrdersLink}>
-                📋 {lang === 'zh' ? '我的订单' : lang === 'en' ? 'My Orders' : 'បញ្ជាទិញ'}
-              </a>
-            )}
           </div>
         </div>
+
+        {/* ── 我的订单入口条（仅 Telegram 顾客可见） ── */}
+        {hasTgId && storeCode && (
+          <a href={`/menu/orders?code=${storeCode}`} style={s.myOrdersBar}>
+            <div style={s.myOrdersBarLeft}>
+              <span style={s.myOrdersBarIcon}>📋</span>
+              <span style={s.myOrdersBarLabel}>
+                {lang === 'zh' ? '我的订单' : lang === 'en' ? 'My Orders' : 'បញ្ជាទិញ'}
+              </span>
+            </div>
+            <span style={s.myOrdersBarArrow}>›</span>
+          </a>
+        )}
 
         {/* ── 3. 商品列表（无分类侧栏，全宽单列） ── */}
         <div style={s.productCol}>
@@ -944,13 +952,36 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     cursor: 'pointer',
   },
-  myOrdersLink: {
-    display: 'inline-block',
-    marginTop: 5,
-    fontSize: 12,
-    fontWeight: 600,
-    color: PRIMARY,
+  myOrdersBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '13px 16px',
+    background: '#fffaf7',
+    borderTop: '1px solid #ffe8d6',
+    borderBottom: '1px solid #ffe8d6',
     textDecoration: 'none',
+    cursor: 'pointer',
+  },
+  myOrdersBarLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  myOrdersBarIcon: {
+    fontSize: 20,
+    lineHeight: 1,
+  },
+  myOrdersBarLabel: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#1a1a1a',
+  },
+  myOrdersBarArrow: {
+    fontSize: 22,
+    color: '#c0a090',
+    lineHeight: 1,
+    fontWeight: 300,
   },
   myOrdersBtnLink: {
     display: 'block',
