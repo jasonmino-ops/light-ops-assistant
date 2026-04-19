@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
@@ -471,18 +471,24 @@ type StoreConfig = {
   bannerUrl: string | null; announcement: string | null; promoText: string | null
 }
 
-type MenuDraft = { bannerUrl: string; announcement: string; promoText: string }
-
 function StoreConfigPanel({ t }: { t: (k: string) => string }) {
-  const [stores, setStores]         = useState<StoreConfig[]>([])
-  const [pending, setPending]       = useState<Record<string, string>>({})
-  const [saving, setSaving]         = useState<Record<string, boolean>>({})
-  const [saved, setSaved]           = useState<Record<string, boolean>>({})
-  const [saveError, setSaveError]   = useState<Record<string, string>>({})
-  const [menuDraft, setMenuDraft]   = useState<Record<string, MenuDraft>>({})
-  const [menuSaving, setMenuSaving] = useState<Record<string, boolean>>({})
-  const [menuSaved, setMenuSaved]   = useState<Record<string, boolean>>({})
-  const [menuErr, setMenuErr]       = useState<Record<string, string>>({})
+  const [stores, setStores]           = useState<StoreConfig[]>([])
+  const [pending, setPending]         = useState<Record<string, string>>({})
+  const [saving, setSaving]           = useState<Record<string, boolean>>({})
+  const [saved, setSaved]             = useState<Record<string, boolean>>({})
+  const [saveError, setSaveError]     = useState<Record<string, string>>({})
+  const [bannerUrls, setBannerUrls]   = useState<Record<string, string | null>>({})
+  const [bannerLoading, setBannerLoading] = useState<Record<string, boolean>>({})
+  const [bannerErr, setBannerErr]     = useState<Record<string, string>>({})
+  const [annDraft, setAnnDraft]       = useState<Record<string, string>>({})
+  const [annSaving, setAnnSaving]     = useState<Record<string, boolean>>({})
+  const [annSaved, setAnnSaved]       = useState<Record<string, boolean>>({})
+  const [annErr, setAnnErr]           = useState<Record<string, string>>({})
+  const [promoDraft, setPromoDraft]   = useState<Record<string, string>>({})
+  const [promoSaving, setPromoSaving] = useState<Record<string, boolean>>({})
+  const [promoSaved, setPromoSaved]   = useState<Record<string, boolean>>({})
+  const [promoErr, setPromoErr]       = useState<Record<string, string>>({})
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   useEffect(() => {
     apiFetch('/api/stores', { cache: 'no-store' }, OWNER_CTX)
@@ -490,17 +496,19 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
       .then((list: StoreConfig[]) => {
         setStores(list)
         const initMode: Record<string, string> = {}
-        const initMenu: Record<string, MenuDraft> = {}
+        const initBanner: Record<string, string | null> = {}
+        const initAnn: Record<string, string> = {}
+        const initPromo: Record<string, string> = {}
         list.forEach((s) => {
-          initMode[s.id] = s.checkoutMode
-          initMenu[s.id] = {
-            bannerUrl:    s.bannerUrl    ?? '',
-            announcement: s.announcement ?? '',
-            promoText:    s.promoText    ?? '',
-          }
+          initMode[s.id]   = s.checkoutMode
+          initBanner[s.id] = s.bannerUrl ?? null
+          initAnn[s.id]    = s.announcement ?? ''
+          initPromo[s.id]  = s.promoText ?? ''
         })
         setPending(initMode)
-        setMenuDraft(initMenu)
+        setBannerUrls(initBanner)
+        setAnnDraft(initAnn)
+        setPromoDraft(initPromo)
       })
       .catch(() => {})
   }, [])
@@ -530,33 +538,92 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
     }
   }
 
-  async function handleMenuSave(sid: string) {
-    setMenuSaving((v) => ({ ...v, [sid]: true }))
-    setMenuSaved((v) => ({ ...v, [sid]: false }))
-    setMenuErr((v) => ({ ...v, [sid]: '' }))
+  async function handleBannerUpload(sid: string, file: File) {
+    setBannerLoading((v) => ({ ...v, [sid]: true }))
+    setBannerErr((v) => ({ ...v, [sid]: '' }))
     try {
-      const draft = menuDraft[sid]
-      const res = await apiFetch(`/api/stores/${sid}/menu-config`, {
-        method: 'PATCH',
-        body: JSON.stringify(draft),
-      }, OWNER_CTX)
-      if (res.ok) {
-        setMenuSaved((v) => ({ ...v, [sid]: true }))
-        setTimeout(() => setMenuSaved((v) => ({ ...v, [sid]: false })), 2000)
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`/api/stores/${sid}/banner`, {
+        method: 'POST',
+        headers: { ...(OWNER_CTX as Record<string, string>) },
+        body: formData,
+      })
+      const body = await res.json().catch(() => null)
+      if (res.ok && body?.bannerUrl) {
+        setBannerUrls((v) => ({ ...v, [sid]: body.bannerUrl }))
       } else {
-        const body = await res.json().catch(() => null)
-        setMenuErr((v) => ({ ...v, [sid]: body?.error ?? '保存失败' }))
+        setBannerErr((v) => ({ ...v, [sid]: body?.error ?? '上传失败' }))
       }
     } catch {
-      setMenuErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+      setBannerErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
     } finally {
-      setMenuSaving((v) => ({ ...v, [sid]: false }))
+      setBannerLoading((v) => ({ ...v, [sid]: false }))
     }
   }
 
-  function setField(sid: string, field: keyof MenuDraft, val: string) {
-    setMenuDraft((v) => ({ ...v, [sid]: { ...v[sid], [field]: val } }))
-    setMenuErr((v) => ({ ...v, [sid]: '' }))
+  async function handleBannerDelete(sid: string) {
+    setBannerLoading((v) => ({ ...v, [sid]: true }))
+    setBannerErr((v) => ({ ...v, [sid]: '' }))
+    try {
+      const res = await apiFetch(`/api/stores/${sid}/banner`, { method: 'DELETE' }, OWNER_CTX)
+      if (res.ok) {
+        setBannerUrls((v) => ({ ...v, [sid]: null }))
+      } else {
+        const body = await res.json().catch(() => null)
+        setBannerErr((v) => ({ ...v, [sid]: body?.error ?? '删除失败' }))
+      }
+    } catch {
+      setBannerErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+    } finally {
+      setBannerLoading((v) => ({ ...v, [sid]: false }))
+    }
+  }
+
+  async function handleSaveAnn(sid: string) {
+    setAnnSaving((v) => ({ ...v, [sid]: true }))
+    setAnnSaved((v) => ({ ...v, [sid]: false }))
+    setAnnErr((v) => ({ ...v, [sid]: '' }))
+    try {
+      const res = await apiFetch(`/api/stores/${sid}/menu-config`, {
+        method: 'PATCH',
+        body: JSON.stringify({ announcement: annDraft[sid] ?? '' }),
+      }, OWNER_CTX)
+      if (res.ok) {
+        setAnnSaved((v) => ({ ...v, [sid]: true }))
+        setTimeout(() => setAnnSaved((v) => ({ ...v, [sid]: false })), 2000)
+      } else {
+        const body = await res.json().catch(() => null)
+        setAnnErr((v) => ({ ...v, [sid]: body?.error ?? '保存失败' }))
+      }
+    } catch {
+      setAnnErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+    } finally {
+      setAnnSaving((v) => ({ ...v, [sid]: false }))
+    }
+  }
+
+  async function handleSavePromo(sid: string) {
+    setPromoSaving((v) => ({ ...v, [sid]: true }))
+    setPromoSaved((v) => ({ ...v, [sid]: false }))
+    setPromoErr((v) => ({ ...v, [sid]: '' }))
+    try {
+      const res = await apiFetch(`/api/stores/${sid}/menu-config`, {
+        method: 'PATCH',
+        body: JSON.stringify({ promoText: promoDraft[sid] ?? '' }),
+      }, OWNER_CTX)
+      if (res.ok) {
+        setPromoSaved((v) => ({ ...v, [sid]: true }))
+        setTimeout(() => setPromoSaved((v) => ({ ...v, [sid]: false })), 2000)
+      } else {
+        const body = await res.json().catch(() => null)
+        setPromoErr((v) => ({ ...v, [sid]: body?.error ?? '保存失败' }))
+      }
+    } catch {
+      setPromoErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+    } finally {
+      setPromoSaving((v) => ({ ...v, [sid]: false }))
+    }
   }
 
   if (stores.length === 0) return null
@@ -595,43 +662,105 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
           <div style={sc.menuSection}>
             <div style={sc.menuSectionTitle}>{t('dashboard.menuDisplay')}</div>
 
-            <div style={sc.fieldLabel}>{t('dashboard.menuBannerUrl')}</div>
+            {/* 头图 */}
+            <div style={sc.fieldLabel}>{t('dashboard.menuBannerTitle')}</div>
             <input
-              type="url"
-              style={sc.textInput}
-              placeholder="https://..."
-              value={menuDraft[store.id]?.bannerUrl ?? ''}
-              onChange={(e) => setField(store.id, 'bannerUrl', e.target.value)}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              style={{ display: 'none' }}
+              ref={(el) => { fileRefs.current[store.id] = el }}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleBannerUpload(store.id, file)
+                e.target.value = ''
+              }}
             />
+            {bannerUrls[store.id] ? (
+              <div style={sc.bannerPreviewWrap}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={bannerUrls[store.id]!}
+                  alt="banner"
+                  style={sc.bannerPreview}
+                />
+                <div style={sc.bannerBtns}>
+                  <button
+                    style={sc.bannerBtn}
+                    disabled={bannerLoading[store.id]}
+                    onClick={() => fileRefs.current[store.id]?.click()}
+                  >
+                    {bannerLoading[store.id] ? t('dashboard.menuBannerUploading') : t('dashboard.menuBannerReplace')}
+                  </button>
+                  <button
+                    style={{ ...sc.bannerBtn, ...sc.bannerBtnDanger }}
+                    disabled={bannerLoading[store.id]}
+                    onClick={() => handleBannerDelete(store.id)}
+                  >
+                    {bannerLoading[store.id] ? t('dashboard.menuBannerDeleting') : t('dashboard.menuBannerDelete')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={sc.bannerEmpty}>
+                <span style={sc.bannerEmptyText}>{t('dashboard.menuBannerNoImage')}</span>
+                <button
+                  style={sc.bannerBtn}
+                  disabled={bannerLoading[store.id]}
+                  onClick={() => fileRefs.current[store.id]?.click()}
+                >
+                  {bannerLoading[store.id] ? t('dashboard.menuBannerUploading') : t('dashboard.menuBannerUpload')}
+                </button>
+              </div>
+            )}
+            {bannerErr[store.id] ? <div style={sc.errMsg}>{bannerErr[store.id]}</div> : null}
 
+            {/* 公告 */}
             <div style={sc.fieldLabel}>{t('dashboard.menuAnnouncement')}</div>
             <textarea
               style={sc.textarea}
               rows={2}
               placeholder={t('dashboard.menuAnnouncementPh')}
-              value={menuDraft[store.id]?.announcement ?? ''}
-              onChange={(e) => setField(store.id, 'announcement', e.target.value)}
+              value={annDraft[store.id] ?? ''}
+              onChange={(e) => {
+                setAnnDraft((v) => ({ ...v, [store.id]: e.target.value }))
+                setAnnErr((v) => ({ ...v, [store.id]: '' }))
+              }}
             />
+            <div style={sc.fieldAction}>
+              {annSaved[store.id] && <span style={sc.savedHint}>{t('dashboard.modeSaved')}</span>}
+              {annErr[store.id] && <span style={sc.errMsg}>{annErr[store.id]}</span>}
+              <button
+                style={sc.saveBtn}
+                onClick={() => handleSaveAnn(store.id)}
+                disabled={annSaving[store.id]}
+              >
+                {annSaving[store.id] ? '…' : t('dashboard.saveMode')}
+              </button>
+            </div>
 
+            {/* 活动文案 */}
             <div style={sc.fieldLabel}>{t('dashboard.menuPromoText')}</div>
             <textarea
               style={sc.textarea}
               rows={2}
               placeholder={t('dashboard.menuPromoTextPh')}
-              value={menuDraft[store.id]?.promoText ?? ''}
-              onChange={(e) => setField(store.id, 'promoText', e.target.value)}
+              value={promoDraft[store.id] ?? ''}
+              onChange={(e) => {
+                setPromoDraft((v) => ({ ...v, [store.id]: e.target.value }))
+                setPromoErr((v) => ({ ...v, [store.id]: '' }))
+              }}
             />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <div style={sc.fieldAction}>
+              {promoSaved[store.id] && <span style={sc.savedHint}>{t('dashboard.modeSaved')}</span>}
+              {promoErr[store.id] && <span style={sc.errMsg}>{promoErr[store.id]}</span>}
               <button
                 style={sc.saveBtn}
-                onClick={() => handleMenuSave(store.id)}
-                disabled={menuSaving[store.id]}
+                onClick={() => handleSavePromo(store.id)}
+                disabled={promoSaving[store.id]}
               >
-                {menuSaved[store.id] ? t('dashboard.modeSaved') : menuSaving[store.id] ? '…' : t('dashboard.saveMode')}
+                {promoSaving[store.id] ? '…' : t('dashboard.saveMode')}
               </button>
             </div>
-            {menuErr[store.id] ? <div style={sc.errMsg}>{menuErr[store.id]}</div> : null}
           </div>
         </div>
       ))}
@@ -905,11 +1034,19 @@ const sc: Record<string, React.CSSProperties> = {
   label: { fontSize: 12, color: 'var(--muted)', marginBottom: 6 },
   controls: { display: 'flex', gap: 8, alignItems: 'center' },
   select: { flex: 1, fontSize: 14, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' },
-  saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' },
+  saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' as const },
   errMsg: { fontSize: 12, color: '#d97706', marginTop: 4 },
   menuSection: { marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' },
   menuSectionTitle: { fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '0.04em', marginBottom: 10 },
   fieldLabel: { fontSize: 12, color: 'var(--muted)', marginBottom: 4, marginTop: 8 },
-  textInput: { width: '100%', fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', outline: 'none', boxSizing: 'border-box' as const },
+  fieldAction: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 6 },
+  savedHint: { fontSize: 12, color: '#16a34a', fontWeight: 600 },
   textarea: { width: '100%', fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical' as const, outline: 'none', lineHeight: 1.5, boxSizing: 'border-box' as const },
+  bannerPreviewWrap: { borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 4 },
+  bannerPreview: { width: '100%', height: 120, objectFit: 'cover' as const, display: 'block' },
+  bannerBtns: { display: 'flex', gap: 8, padding: '8px 8px' },
+  bannerEmpty: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 8, border: '1px dashed var(--border)', background: 'var(--bg)', marginBottom: 4 },
+  bannerEmptyText: { fontSize: 12, color: 'var(--muted)' },
+  bannerBtn: { fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer' },
+  bannerBtnDanger: { color: '#dc2626', borderColor: '#fca5a5' },
 }

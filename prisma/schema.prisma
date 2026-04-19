@@ -78,7 +78,8 @@ model Store {
   name         String
   status       StoreStatus @default(ACTIVE)
   checkoutMode String      @default("DIRECT_PAYMENT") // DIRECT_PAYMENT | DEFERRED_PAYMENT
-  bannerUrl    String?                                // 顾客页头图 URL（https 链接）
+  bannerUrl    String?                                // 顾客页头图访问 URL（指向内部图片端点）
+  bannerData   String?   @db.Text                    // 头图 base64 数据（data:image/...;base64,...）
   announcement String?                               // 公告文本
   promoText    String?                               // 活动文案
   createdAt    DateTime    @default(now())
