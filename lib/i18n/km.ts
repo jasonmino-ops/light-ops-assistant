@@ -336,6 +336,13 @@ const km = {
     barcodeRequired: 'លេខបន្ទះមិនអាចទទេ',
     priceInvalid: 'សូមបញ្ចូលតម្លៃត្រឹមត្រូវ (លើស 0)',
     barcodeLabel: 'លេខបន្ទះ',
+    categories: 'ប្រភេទទំនិញ',
+    catAddPlaceholder: 'ឈ្មោះប្រភេទថ្មី',
+    catParentNone: 'ប្រភេទទី១ (គ្មានមេ)',
+    catAddBtn: 'បន្ថែមប្រភេទ',
+    catSaveError: 'បន្ថែមមិនបាន សូមព្យាយាម',
+    fieldCategory: 'ប្រភេទ',
+    noCategory: 'គ្មានប្រភេទ',
   },
   order: {
     detailTitle: 'ព័ត៌មានលម្អិតការបញ្ជា',

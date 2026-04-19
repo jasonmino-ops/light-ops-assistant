@@ -1,12 +1,19 @@
 'use client'
 
-import { useState, KeyboardEvent, useRef, useCallback } from 'react'
+import { useState, KeyboardEvent, useRef, useCallback, useEffect } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type Category = {
+  id: string
+  name: string
+  parentId: string | null
+  sortOrder: number
+}
 
 type Product = {
   id: string
@@ -15,6 +22,7 @@ type Product = {
   spec: string | null
   sellPrice: number
   status: 'ACTIVE' | 'DISABLED'
+  categoryId: string | null
 }
 
 type Mode = 'idle' | 'loading' | 'found' | 'not-found' | 'saved'
@@ -50,12 +58,59 @@ export default function ProductsPage() {
   const [editSpec, setEditSpec] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editStatus, setEditStatus] = useState<'ACTIVE' | 'DISABLED'>('ACTIVE')
+  const [editCategoryId, setEditCategoryId] = useState<string>('')
 
   // Create form
   const [newBarcode, setNewBarcode] = useState('')
   const [newName, setNewName] = useState('')
   const [newSpec, setNewSpec] = useState('')
   const [newPrice, setNewPrice] = useState('')
+  const [newCategoryId, setNewCategoryId] = useState<string>('')
+
+  // Category management
+  const [categories, setCategories] = useState<Category[]>([])
+  const [catOpen, setCatOpen] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatParentId, setNewCatParentId] = useState('')
+  const [catSaving, setCatSaving] = useState(false)
+  const [catError, setCatError] = useState<string | null>(null)
+
+  // ── Load categories on mount ──────────────────────────────────────────────
+
+  useEffect(() => {
+    apiFetch('/api/categories', undefined, OWNER_CTX)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: Category[]) => setCategories(list))
+      .catch(() => {})
+  }, [])
+
+  // ── Add category ──────────────────────────────────────────────────────────
+
+  async function handleAddCategory() {
+    const name = newCatName.trim()
+    if (!name) return
+    setCatSaving(true)
+    setCatError(null)
+    try {
+      const res = await apiFetch(
+        '/api/categories',
+        { method: 'POST', body: JSON.stringify({ name, parentId: newCatParentId || null }) },
+        OWNER_CTX,
+      )
+      const body = await res.json()
+      if (res.ok) {
+        setCategories((prev) => [...prev, body].sort((a, b) => a.name.localeCompare(b.name)))
+        setNewCatName('')
+        setNewCatParentId('')
+      } else {
+        setCatError(body.message ?? t('products.catSaveError'))
+      }
+    } catch {
+      setCatError(t('products.catSaveError'))
+    } finally {
+      setCatSaving(false)
+    }
+  }
 
   // ── Import ────────────────────────────────────────────────────────────────
 
@@ -129,6 +184,7 @@ export default function ProductsPage() {
         setEditSpec(p.spec ?? '')
         setEditPrice(String(p.sellPrice))
         setEditStatus(p.status)
+        setEditCategoryId(p.categoryId ?? '')
         setMode('found')
       } else {
         const body = await res.json().catch(() => ({}))
@@ -185,6 +241,8 @@ export default function ProductsPage() {
     setProduct(null)
     setMode('idle')
     setError(null)
+    setEditCategoryId('')
+    setNewCategoryId('')
   }
 
   // ── Save (edit) ───────────────────────────────────────────────────────────
@@ -206,6 +264,7 @@ export default function ProductsPage() {
             spec: editSpec.trim() || null,
             sellPrice: price,
             status: editStatus,
+            categoryId: editCategoryId || null,
           }),
         },
         OWNER_CTX,
@@ -241,6 +300,7 @@ export default function ProductsPage() {
             name: newName.trim(),
             spec: newSpec.trim() || null,
             sellPrice: price,
+            categoryId: newCategoryId || null,
           }),
         },
         OWNER_CTX,
@@ -252,6 +312,7 @@ export default function ProductsPage() {
         setEditSpec(body.spec ?? '')
         setEditPrice(String(body.sellPrice))
         setEditStatus(body.status)
+        setEditCategoryId(body.categoryId ?? '')
         setMode('saved')
       } else {
         setError(body.message ?? t('products.createFailed'))
@@ -339,6 +400,83 @@ export default function ProductsPage() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* ── 分类管理 ── */}
+        <div style={s.importSection}>
+          <button style={s.importToggle} onClick={() => { setCatOpen((v) => !v); setCatError(null) }}>
+            <span style={s.importToggleText}>{t('products.categories')}</span>
+            <span style={s.importToggleArrow}>{catOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {catOpen && (
+            <div style={s.importBody}>
+              {/* 分类列表 */}
+              {categories.length > 0 && (
+                <div style={s.catList}>
+                  {(() => {
+                    const l1 = categories.filter((c) => !c.parentId)
+                    const l2Map = new Map<string, Category[]>()
+                    categories.filter((c) => c.parentId).forEach((c) => {
+                      const arr = l2Map.get(c.parentId!) ?? []
+                      arr.push(c)
+                      l2Map.set(c.parentId!, arr)
+                    })
+                    // Also collect l2 with no matching l1 parent (orphans)
+                    const orphanL2 = categories.filter((c) => c.parentId && !l1.find((p) => p.id === c.parentId))
+
+                    return (
+                      <>
+                        {l1.map((cat) => (
+                          <div key={cat.id}>
+                            <div style={s.catL1Row}>{cat.name}</div>
+                            {(l2Map.get(cat.id) ?? []).map((sub) => (
+                              <div key={sub.id} style={s.catL2Row}>└ {sub.name}</div>
+                            ))}
+                          </div>
+                        ))}
+                        {orphanL2.map((c) => (
+                          <div key={c.id} style={s.catL2Row}>└ {c.name}</div>
+                        ))}
+                      </>
+                    )
+                  })()}
+                </div>
+              )}
+              {categories.length === 0 && (
+                <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0 8px' }}>暂无分类</div>
+              )}
+
+              {/* 添加分类 */}
+              <div style={s.catAddRow}>
+                <input
+                  style={{ ...s.field, flex: 1, height: 40, marginBottom: 0 }}
+                  placeholder={t('products.catAddPlaceholder')}
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory() }}
+                />
+                <select
+                  style={s.catParentSelect}
+                  value={newCatParentId}
+                  onChange={(e) => setNewCatParentId(e.target.value)}
+                >
+                  <option value="">{t('products.catParentNone')}</option>
+                  {categories.filter((c) => !c.parentId).map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                style={{ ...s.importBtn, opacity: (!newCatName.trim() || catSaving) ? 0.5 : 1, height: 40, marginTop: 6 }}
+                disabled={!newCatName.trim() || catSaving}
+                onClick={handleAddCategory}
+              >
+                {catSaving ? '…' : t('products.catAddBtn')}
+              </button>
+              {catError && <div style={s.importErrorMsg}>{catError}</div>}
             </div>
           )}
         </div>
@@ -443,6 +581,15 @@ export default function ProductsPage() {
                   />
                 </Field>
 
+                <Field label={t('products.fieldCategory')}>
+                  <CategorySelect
+                    categories={categories}
+                    value={editCategoryId}
+                    onChange={setEditCategoryId}
+                    noneLabel={t('products.noCategory')}
+                  />
+                </Field>
+
                 <Field label={t('products.fieldStatus')}>
                   <div style={s.statusRow}>
                     {(['ACTIVE', 'DISABLED'] as const).map((st) => (
@@ -515,6 +662,15 @@ export default function ProductsPage() {
                   />
                 </Field>
 
+                <Field label={t('products.fieldCategory')}>
+                  <CategorySelect
+                    categories={categories}
+                    value={newCategoryId}
+                    onChange={setNewCategoryId}
+                    noneLabel={t('products.noCategory')}
+                  />
+                </Field>
+
                 <button style={s.saveBtn} onClick={handleCreate}>{t('products.createBtn')}</button>
               </div>
             )}
@@ -548,6 +704,60 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const f: Record<string, React.CSSProperties> = {
   wrap: { marginBottom: 12 },
   label: { fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 6 },
+}
+
+// ─── CategorySelect ───────────────────────────────────────────────────────────
+// 扁平 select，L1 直接显示，L2 用"└ "前缀缩进，视觉清晰。
+
+function CategorySelect({
+  categories, value, onChange, noneLabel,
+}: {
+  categories: Category[]
+  value: string
+  onChange: (v: string) => void
+  noneLabel: string
+}) {
+  const l1 = categories.filter((c) => !c.parentId)
+  const l2ByParent = new Map<string, Category[]>()
+  categories.filter((c) => c.parentId).forEach((c) => {
+    const arr = l2ByParent.get(c.parentId!) ?? []
+    arr.push(c)
+    l2ByParent.set(c.parentId!, arr)
+  })
+  // Orphan L2 (parent removed) shown at bottom
+  const knownL1Ids = new Set(l1.map((c) => c.id))
+  const orphans = categories.filter((c) => c.parentId && !knownL1Ids.has(c.parentId))
+
+  return (
+    <select
+      style={cs.catSelectField}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{noneLabel}</option>
+      {l1.map((cat) => (
+        <optgroup key={cat.id} label={cat.name}>
+          <option value={cat.id}>{cat.name}（大类）</option>
+          {(l2ByParent.get(cat.id) ?? []).map((sub) => (
+            <option key={sub.id} value={sub.id}>└ {sub.name}</option>
+          ))}
+        </optgroup>
+      ))}
+      {orphans.map((c) => (
+        <option key={c.id} value={c.id}>└ {c.name}</option>
+      ))}
+    </select>
+  )
+}
+
+const cs: Record<string, React.CSSProperties> = {
+  catSelectField: {
+    display: 'block', width: '100%', height: 44,
+    border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)',
+    padding: '0 12px', fontSize: 15, outline: 'none',
+    background: '#f7f8fa', boxSizing: 'border-box',
+    color: 'var(--text)',
+  },
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -882,6 +1092,34 @@ const s: Record<string, React.CSSProperties> = {
   importErrorReason: {
     color: 'var(--red)',
     flex: 1,
+  },
+  // ── Category management ──
+  catList: {
+    borderBottom: '1px solid var(--border)',
+    paddingBottom: 10,
+    marginBottom: 10,
+  },
+  catL1Row: {
+    fontSize: 13, fontWeight: 700, color: 'var(--text)',
+    padding: '4px 0',
+  },
+  catL2Row: {
+    fontSize: 13, color: 'var(--muted)',
+    padding: '2px 0 2px 12px',
+  },
+  catAddRow: {
+    display: 'flex', gap: 8, alignItems: 'center',
+  },
+  catParentSelect: {
+    flexShrink: 0,
+    height: 40,
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '0 8px',
+    fontSize: 13,
+    background: '#f7f8fa',
+    color: 'var(--text)',
+    maxWidth: 130,
   },
   // ── Empty ──
   empty: {

@@ -24,14 +24,14 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { name?: string; spec?: string | null; sellPrice?: number; status?: string }
+  let body: { name?: string; spec?: string | null; sellPrice?: number; status?: string; categoryId?: string | null }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { name, spec, sellPrice, status } = body
+  const { name, spec, sellPrice, status, categoryId } = body
 
   if (name !== undefined && !String(name).trim()) {
     return NextResponse.json({ error: 'INVALID_NAME', message: '商品名不能为空' }, { status: 400 })
@@ -52,6 +52,7 @@ export async function PATCH(
         ...(spec !== undefined ? { spec: spec ? String(spec).trim() || null : null } : {}),
         ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
         ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
+        ...(categoryId !== undefined ? { categoryId: categoryId ?? null } : {}),
       },
     })
   } catch (e) {
@@ -68,5 +69,6 @@ export async function PATCH(
     spec: updated.spec,
     sellPrice: updated.sellPrice.toNumber(),
     status: updated.status,
+    categoryId: updated.categoryId,
   })
 }

@@ -129,24 +129,44 @@ model UserStoreRole {
   @@index([storeId])
 }
 
-model Product {
-  id        String        @id @default(cuid())
+model ProductCategory {
+  id        String   @id @default(cuid())
   tenantId  String
-  barcode   String
-  sku       String?
   name      String
-  spec      String?
-  sellPrice Decimal       @db.Decimal(12, 2)
-  status    ProductStatus @default(ACTIVE)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  parentId  String?  // null = 一级分类；non-null = 二级分类
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant Tenant       @relation(fields: [tenantId], references: [id])
-  sales  SaleRecord[]
+  parent   ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children ProductCategory[] @relation("CategoryHierarchy")
+  products Product[]
+
+  @@index([tenantId])
+  @@index([tenantId, parentId])
+}
+
+model Product {
+  id         String        @id @default(cuid())
+  tenantId   String
+  barcode    String
+  sku        String?
+  name       String
+  spec       String?
+  sellPrice  Decimal       @db.Decimal(12, 2)
+  status     ProductStatus @default(ACTIVE)
+  categoryId String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
+  category ProductCategory? @relation(fields: [categoryId], references: [id])
+  sales    SaleRecord[]
 
   @@unique([tenantId, barcode])
   @@index([tenantId])
   @@index([name])
+  @@index([categoryId])
 }
 
 model SaleRecord {

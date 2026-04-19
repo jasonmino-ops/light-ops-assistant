@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   if (!barcode) {
     const products = await prisma.product.findMany({
       where: { tenantId: ctx.tenantId, status: 'ACTIVE' },
-      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true },
+      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, categoryId: true },
       orderBy: { name: 'asc' },
       take: 200,
     })
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
         name: p.name,
         spec: p.spec,
         sellPrice: p.sellPrice.toNumber(),
+        categoryId: p.categoryId,
       })),
     )
   }
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
       barcode,
       ...(statusFilter ? { status: statusFilter } : {}),
     },
-    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true },
+    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true },
   })
 
   if (!product) {
@@ -63,6 +64,7 @@ export async function GET(req: NextRequest) {
     name: product.name,
     spec: product.spec,
     sellPrice: product.sellPrice.toNumber(),
+    categoryId: product.categoryId,
     // status only exposed to OWNER (staff doesn't need to see it)
     ...(ctx.role === 'OWNER' ? { status: product.status } : {}),
   })
@@ -80,14 +82,14 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; categoryId?: string | null }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { barcode, name, spec, sellPrice } = body
+  const { barcode, name, spec, sellPrice, categoryId } = body
 
   if (!barcode?.trim()) {
     return NextResponse.json({ error: 'MISSING_BARCODE', message: '条码不能为空' }, { status: 400 })
@@ -118,6 +120,7 @@ export async function POST(req: NextRequest) {
       spec: spec?.trim() || null,
       sellPrice: String(sellPrice),
       status: 'ACTIVE',
+      categoryId: categoryId ?? null,
     },
   })
 
@@ -129,6 +132,7 @@ export async function POST(req: NextRequest) {
       spec: created.spec,
       sellPrice: created.sellPrice.toNumber(),
       status: created.status,
+      categoryId: created.categoryId,
     },
     { status: 201 },
   )

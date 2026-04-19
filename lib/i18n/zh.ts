@@ -336,6 +336,13 @@ const zh = {
     barcodeRequired: '条码不能为空',
     priceInvalid: '请输入有效的售价（大于 0）',
     barcodeLabel: '条码',
+    categories: '商品分类',
+    catAddPlaceholder: '新分类名称',
+    catParentNone: '一级分类（无父级）',
+    catAddBtn: '添加分类',
+    catSaveError: '添加失败，请重试',
+    fieldCategory: '分类',
+    noCategory: '不设分类',
   },
   order: {
     detailTitle: '订单详情',
