@@ -71,7 +71,16 @@ type RefundEntry = {
   item: RecordItem
 }
 
-type DisplayEntry = OrderGroup | RefundEntry
+type CustomerOrderEntry = {
+  kind: 'customer_order'
+  orderNo: string
+  createdAt: string
+  itemSummary: string
+  totalAmount: number
+  paymentMethod: string | null
+}
+
+type DisplayEntry = OrderGroup | RefundEntry | CustomerOrderEntry
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
@@ -89,7 +98,7 @@ function buildItemSummary(items: RecordItem[]): string {
   return items.map((i) => `${i.productNameSnapshot}×${i.quantity}`).join('、')
 }
 
-function buildEntries(items: RecordItem[]): DisplayEntry[] {
+function buildSaleEntries(items: RecordItem[]): DisplayEntry[] {
   const groupMap = new Map<string, OrderGroup>()
   const refunds: RefundEntry[] = []
 
@@ -113,8 +122,27 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
 
   const all: DisplayEntry[] = [...groupMap.values(), ...refunds]
   all.sort((a, b) => {
-    const at = a.kind === 'order' ? a.createdAt : a.item.createdAt
-    const bt = b.kind === 'order' ? b.createdAt : b.item.createdAt
+    const at = a.kind === 'order' ? a.createdAt : a.kind === 'customer_order' ? a.createdAt : a.item.createdAt
+    const bt = b.kind === 'order' ? b.createdAt : b.kind === 'customer_order' ? b.createdAt : b.item.createdAt
+    return bt.localeCompare(at)
+  })
+  return all
+}
+
+function mergeEntries(saleEntries: DisplayEntry[], paidCustomerOrders: CustomerOrderRecord[]): DisplayEntry[] {
+  const coEntries: CustomerOrderEntry[] = paidCustomerOrders.map((o) => ({
+    kind: 'customer_order' as const,
+    orderNo: o.orderNo,
+    createdAt: o.paidAt ?? o.createdAt,
+    itemSummary: buildOrderItemSummary(o.items),
+    totalAmount: o.totalAmount,
+    paymentMethod: o.paymentMethod,
+  }))
+
+  const all = [...saleEntries, ...coEntries]
+  all.sort((a, b) => {
+    const at = a.kind === 'order' ? a.createdAt : a.kind === 'customer_order' ? a.createdAt : a.item.createdAt
+    const bt = b.kind === 'order' ? b.createdAt : b.kind === 'customer_order' ? b.createdAt : b.item.createdAt
     return bt.localeCompare(at)
   })
   return all.slice(0, 5)
@@ -144,15 +172,39 @@ export default function HomePage() {
     Promise.all([
       apiFetch(`/api/records?${params}`, undefined, STAFF_CTX).then((res) => res.json()),
       apiFetch('/api/me', { cache: 'no-store' }, STAFF_CTX).then((res) => res.json()),
+      // OWNER 额外加载今日已付款顾客订单，用于叠加概览与最近记录
+      realRole === 'OWNER'
+        ? apiFetch(`/api/customer-orders?paymentStatus=PAID&dateFrom=${today}`, undefined, OWNER_CTX)
+            .then((r) => r.json())
+            .catch(() => [])
+        : Promise.resolve([]),
     ])
-      .then(([data, me]) => {
-        setSummary(data.summary)
-        setEntries(buildEntries(data.items ?? []))
+      .then(([data, me, paidOrdersRaw]) => {
+        const paidOrders = (Array.isArray(paidOrdersRaw) ? paidOrdersRaw : []) as CustomerOrderRecord[]
+
+        // 叠加顾客订单到今日概览
+        if (paidOrders.length > 0) {
+          const coTotal   = paidOrders.reduce((s, o) => s + o.totalAmount, 0)
+          const coCash    = paidOrders.filter((o) => o.paymentMethod === 'CASH').reduce((s, o) => s + o.totalAmount, 0)
+          const coQR      = paidOrders.filter((o) => o.paymentMethod === 'QR').reduce((s, o) => s + o.totalAmount, 0)
+          const base: Summary = data.summary ?? { saleCount: 0, refundCount: 0, netAmount: 0 }
+          setSummary({
+            saleCount:      base.saleCount + paidOrders.length,
+            refundCount:    base.refundCount,
+            netAmount:      base.netAmount + coTotal,
+            cashSaleAmount: (base.cashSaleAmount ?? 0) + coCash,
+            khqrSaleAmount: (base.khqrSaleAmount ?? 0) + coQR,
+          })
+        } else {
+          setSummary(data.summary)
+        }
+
+        setEntries(mergeEntries(buildSaleEntries(data.items ?? []), paidOrders))
         setStoreName(me.storeName ?? me.tenantName ?? null)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [loadKey])
+  }, [loadKey, realRole])
 
   // 加载顾客订单（仅 OWNER 可见）
   useEffect(() => {
@@ -345,6 +397,8 @@ export default function HomePage() {
               ? () => setCheckoutOrder({ orderNo: entry.orderNo, totalAmount: entry.totalAmount })
               : undefined}
           />
+        ) : entry.kind === 'customer_order' ? (
+          <CustomerOrderEntryCard key={entry.orderNo} entry={entry} />
         ) : (
           <RefundCard key={entry.item.id + '-' + i} item={entry.item} tagRefund={t('home.tagRefund')} />
         )
@@ -368,7 +422,11 @@ export default function HomePage() {
         <CheckoutSheet
           orderNo={customerCheckout.orderNo}
           totalAmount={customerCheckout.totalAmount}
-          onSuccess={() => { setCustomerCheckout(null); setOrdersKey((k) => k + 1) }}
+          onSuccess={() => {
+            setCustomerCheckout(null)
+            setOrdersKey((k) => k + 1)
+            setLoadKey((k) => k + 1)  // 触发概览 + 最近记录刷新
+          }}
           onClose={() => setCustomerCheckout(null)}
           onOverridePay={(method) => handleCustomerOrderPay(customerCheckout.id, method)}
         />
@@ -460,6 +518,23 @@ function RefundCard({ item, tagRefund }: { item: RecordItem; tagRefund: string }
       <div style={{ ...s.recentAmount, color: '#ff4d4f' }}>
         -${Math.abs(item.lineAmount).toFixed(2)}
       </div>
+    </div>
+  )
+}
+
+function CustomerOrderEntryCard({ entry }: { entry: CustomerOrderEntry }) {
+  const payIcon = entry.paymentMethod === 'QR' ? '📱' : '💵'
+  return (
+    <div style={{ ...s.recentCard, borderLeft: '3px solid #722ed1' }}>
+      <div style={s.recentLeft}>
+        <div style={s.recentTagRow}>
+          <span style={{ ...s.tagSale, background: '#f9f0ff', color: '#722ed1' }}>扫码单</span>
+          <span style={{ fontSize: 13 }}>{payIcon}</span>
+        </div>
+        <div style={s.recentProduct}>{entry.itemSummary}</div>
+        <div style={s.recentMeta}>{entry.orderNo} · {fmtTime(entry.createdAt)}</div>
+      </div>
+      <div style={{ ...s.recentAmount, color: '#722ed1' }}>+${entry.totalAmount.toFixed(2)}</div>
     </div>
   )
 }
