@@ -173,6 +173,8 @@ export default function MenuPage() {
   const [orderResult,  setOrderResult] = useState<{ orderNo: string; totalAmount: number } | null>(null)
   const [submitError,  setSubmitError] = useState('')
   const [showConfirm,  setShowConfirm] = useState(false)
+  const [storeCode,    setStoreCode]   = useState('')
+  const [hasTgId,      setHasTgId]     = useState(false)
 
   const ui         = T[lang]
   const cartTotal  = cart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
@@ -211,6 +213,18 @@ export default function MenuPage() {
       setFetchError('no_code')
       return
     }
+    setStoreCode(code)
+
+    // 检测是否在 Telegram 中（决定是否显示"我的订单"入口）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    if (tg?.initData) {
+      try {
+        const userStr = new URLSearchParams(tg.initData).get('user')
+        if (userStr) { JSON.parse(userStr); setHasTgId(true) }
+      } catch { /* 解析失败则不显示入口 */ }
+    }
+
     fetch(`/api/public/menu?code=${encodeURIComponent(code)}`)
       .then((r) => r.json())
       .then((body) => {
@@ -357,6 +371,11 @@ export default function MenuPage() {
                 {isOpen ? ui.open : ui.closed}
               </span>
             </div>
+            {hasTgId && storeCode && (
+              <a href={`/menu/orders?code=${storeCode}`} style={s.myOrdersLink}>
+                📋 {lang === 'zh' ? '我的订单' : lang === 'en' ? 'My Orders' : 'បញ្ជាទិញ'}
+              </a>
+            )}
           </div>
         </div>
 
@@ -470,6 +489,11 @@ export default function MenuPage() {
             >
               {ui.retryCart}
             </button>
+            {hasTgId && storeCode && (
+              <a href={`/menu/orders?code=${storeCode}`} style={s.myOrdersBtnLink}>
+                {lang === 'zh' ? '查看订单进度 →' : lang === 'en' ? 'View Order Status →' : 'មើលស្ថានភាព →'}
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -919,6 +943,24 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 15,
     fontWeight: 700,
     cursor: 'pointer',
+  },
+  myOrdersLink: {
+    display: 'inline-block',
+    marginTop: 5,
+    fontSize: 12,
+    fontWeight: 600,
+    color: PRIMARY,
+    textDecoration: 'none',
+  },
+  myOrdersBtnLink: {
+    display: 'block',
+    textAlign: 'center' as const,
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: 600,
+    color: PRIMARY,
+    textDecoration: 'none',
+    padding: '6px 0',
   },
   confirmModal: {
     background: '#fff',
