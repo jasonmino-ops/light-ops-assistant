@@ -105,8 +105,8 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // ── 通知 OWNER（fire-and-forget） ─────────────────────────────────────────
-  notifyOwner(store.tenantId, store.name, order.orderNo, itemsForJson, totalAmount).catch(
+  // ── 通知 OWNER ────────────────────────────────────────────────────────────
+  await notifyOwner(store.tenantId, store.name, order.orderNo, itemsForJson, totalAmount).catch(
     (e) => console.error('[customer-order] notify owner failed:', e),
   )
 
