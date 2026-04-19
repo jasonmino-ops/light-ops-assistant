@@ -129,6 +129,7 @@ const LANG_LABELS: Record<Lang, string> = { zh: '中', en: 'EN', km: 'ខ្ម�
 // ─── 分类标签翻译 ─────────────────────────────────────────────────────────────
 
 const ALL_CAT: ML = { zh: '全部商品', en: 'All Items', km: 'ទំនិញទាំងអស់' }
+const UNCATEGORIZED: ML = { zh: '其他', en: 'Others', km: 'ផ្សេងៗ' }
 
 // ─── 商品视觉预设（无图片时按 index 循环取色/图标） ──────────────────────────
 
@@ -144,11 +145,19 @@ const CARD_EMOJIS = [
 
 // ─── API 响应类型 ────────────────────────────────────────────────────────────
 
+type ApiCategory = {
+  id: string
+  name: string
+  parentId: string | null
+  sortOrder: number
+}
+
 type ApiProduct = {
   id: string
   name: string
   spec: string | null
   price: number
+  categoryId: string | null
 }
 
 type ApiStore = {
@@ -170,6 +179,8 @@ export default function MenuPage() {
   const [cart,        setCart]        = useState<CartItem[]>([])
   const [storeData,   setStoreData]   = useState<ApiStore | null>(null)
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([])
+  const [categories,  setCategories]  = useState<ApiCategory[]>([])
+  const [activeCatId, setActiveCatId] = useState<string | null>(null)
   const [loading,     setLoading]     = useState(true)
   const [fetchError,  setFetchError]  = useState('')
   const [submitting,   setSubmitting]  = useState(false)
@@ -188,6 +199,60 @@ export default function MenuPage() {
     if (!p) return []
     return [{ ...p, quantity: c.quantity, lineAmount: p.price * c.quantity }]
   })
+
+  // ── 分类分组计算 ──────────────────────────────────────────────────────────
+  const l1Cats = categories.filter((c) => !c.parentId)
+  const hasL1Cats = l1Cats.length > 0
+  const l2ByParent = new Map<string, ApiCategory[]>()
+  categories.filter((c) => c.parentId).forEach((c) => {
+    const arr = l2ByParent.get(c.parentId!) ?? []
+    arr.push(c)
+    l2ByParent.set(c.parentId!, arr)
+  })
+  const allCatIds = new Set(categories.map((c) => c.id))
+
+  type Group = { gid: string; title: string; items: ApiProduct[] }
+
+  const displayGroups: Group[] = (() => {
+    if (!hasL1Cats) {
+      // 无分类：全部商品归入一个「全部」组（退化为原来的单列展示）
+      return apiProducts.length > 0
+        ? [{ gid: '__all', title: gl(ALL_CAT, lang), items: apiProducts }]
+        : []
+    }
+
+    if (activeCatId === null) {
+      // 「全部」tab — 按一级分类为组分组展示
+      const groups: Group[] = []
+      for (const l1 of l1Cats) {
+        const l2Ids = new Set((l2ByParent.get(l1.id) ?? []).map((c) => c.id))
+        const items = apiProducts.filter(
+          (p) => p.categoryId === l1.id || (p.categoryId !== null && l2Ids.has(p.categoryId)),
+        )
+        if (items.length > 0) groups.push({ gid: l1.id, title: l1.name, items })
+      }
+      // 无 categoryId 或 categoryId 已失效的商品 → 归入「其他」
+      const uncategorized = apiProducts.filter((p) => !p.categoryId || !allCatIds.has(p.categoryId))
+      if (uncategorized.length > 0) {
+        groups.push({ gid: '__other', title: gl(UNCATEGORIZED, lang), items: uncategorized })
+      }
+      return groups
+    } else {
+      // 特定一级分类 — 按二级分类分组展示
+      const l1Name = l1Cats.find((c) => c.id === activeCatId)?.name ?? ''
+      const l2s = l2ByParent.get(activeCatId) ?? []
+      const groups: Group[] = []
+      // 直属该一级分类（未挂二级分类）的商品
+      const directItems = apiProducts.filter((p) => p.categoryId === activeCatId)
+      if (directItems.length > 0) groups.push({ gid: activeCatId + '_d', title: l1Name, items: directItems })
+      // 各二级分类分组
+      for (const l2 of l2s) {
+        const items = apiProducts.filter((p) => p.categoryId === l2.id)
+        if (items.length > 0) groups.push({ gid: l2.id, title: l2.name, items })
+      }
+      return groups
+    }
+  })()
 
   // ── Telegram Mini App 适配 ───────────────────────────────────────────────
   // TelegramInit.tsx 对 /menu 路径早返回，不会调用 expand()，需要自行初始化
@@ -235,7 +300,8 @@ export default function MenuPage() {
           setFetchError(body.error)
         } else {
           setStoreData(body.store)
-          setApiProducts(body.products)
+          setApiProducts(body.products ?? [])
+          setCategories(body.categories ?? [])
         }
       })
       .catch(() => setFetchError('NETWORK_ERROR'))
@@ -413,48 +479,76 @@ export default function MenuPage() {
           </a>
         )}
 
-        {/* ── 3. 商品列表（无分类侧栏，全宽单列） ── */}
-        <div style={s.productCol}>
-          <div style={s.catHeading}>{gl(ALL_CAT, lang)}</div>
+        {/* ── 3. 商品展示区（有一级分类时左右布局，无分类时全宽单列） ── */}
+        <div style={hasL1Cats ? s.catLayout : { marginTop: 8 }}>
 
-          {apiProducts.length === 0 ? (
-            <div style={{ padding: '40px 16px', textAlign: 'center', color: '#ccc', fontSize: 14 }}>
-              {ui.empty}
+          {/* 左侧一级分类栏（仅有一级分类时显示） */}
+          {hasL1Cats && (
+            <div style={s.catSidebar}>
+              <button
+                style={{ ...s.catSideItem, ...(activeCatId === null ? s.catSideItemOn : {}) }}
+                onClick={() => setActiveCatId(null)}
+              >
+                {gl(ALL_CAT, lang)}
+              </button>
+              {l1Cats.map((cat) => (
+                <button
+                  key={cat.id}
+                  style={{ ...s.catSideItem, ...(activeCatId === cat.id ? s.catSideItemOn : {}) }}
+                  onClick={() => setActiveCatId(cat.id)}
+                >
+                  {cat.name}
+                </button>
+              ))}
             </div>
-          ) : (
-            apiProducts.map((product, idx) => {
-              const qty   = cart.find((c) => c.id === product.id)?.quantity ?? 0
-              const color = CARD_COLORS[idx % CARD_COLORS.length]
-              const emoji = CARD_EMOJIS[idx % CARD_EMOJIS.length]
-              return (
-                <div key={product.id} style={s.productCard}>
-                  <div style={{ ...s.productImg, background: color }}>
-                    <span style={s.productEmoji}>{emoji}</span>
-                  </div>
-                  <div style={s.productMeta}>
-                    <div style={s.productName}>{product.name}</div>
-                    {product.spec && <div style={s.productSpec}>{product.spec}</div>}
-                    <div style={s.productFoot}>
-                      <span style={s.productPrice}>
-                        <span style={s.priceSign}>$</span>{product.price.toFixed(2)}
-                      </span>
-                      {qty === 0 ? (
-                        <button style={s.addBtn} onClick={() => addToCart(product.id)}>
-                          <span style={s.plus}>+</span>
-                        </button>
-                      ) : (
-                        <div style={s.qtyRow}>
-                          <button style={s.qtyMinus} onClick={() => removeFromCart(product.id)}>−</button>
-                          <span style={s.qtyNum}>{qty}</span>
-                          <button style={s.qtyPlus} onClick={() => addToCart(product.id)}>+</button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })
           )}
+
+          {/* 右侧商品分组区 */}
+          <div style={hasL1Cats ? s.catContent : s.productCol}>
+            {displayGroups.length === 0 ? (
+              <div style={{ padding: '40px 16px', textAlign: 'center', color: '#ccc', fontSize: 14 }}>
+                {ui.empty}
+              </div>
+            ) : (
+              displayGroups.map(({ gid, title, items }) => (
+                <div key={gid}>
+                  <div style={s.catHeading}>{title}</div>
+                  {items.map((product, idx) => {
+                    const qty   = cart.find((c) => c.id === product.id)?.quantity ?? 0
+                    const color = CARD_COLORS[idx % CARD_COLORS.length]
+                    const emoji = CARD_EMOJIS[idx % CARD_EMOJIS.length]
+                    return (
+                      <div key={product.id} style={s.productCard}>
+                        <div style={{ ...s.productImg, background: color }}>
+                          <span style={s.productEmoji}>{emoji}</span>
+                        </div>
+                        <div style={s.productMeta}>
+                          <div style={s.productName}>{product.name}</div>
+                          {product.spec && <div style={s.productSpec}>{product.spec}</div>}
+                          <div style={s.productFoot}>
+                            <span style={s.productPrice}>
+                              <span style={s.priceSign}>$</span>{product.price.toFixed(2)}
+                            </span>
+                            {qty === 0 ? (
+                              <button style={s.addBtn} onClick={() => addToCart(product.id)}>
+                                <span style={s.plus}>+</span>
+                              </button>
+                            ) : (
+                              <div style={s.qtyRow}>
+                                <button style={s.qtyMinus} onClick={() => removeFromCart(product.id)}>−</button>
+                                <span style={s.qtyNum}>{qty}</span>
+                                <button style={s.qtyPlus} onClick={() => addToCart(product.id)}>+</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </main>
 
@@ -746,7 +840,6 @@ const s: Record<string, React.CSSProperties> = {
   productCol: {
     flex: 1,
     minWidth: 0,
-    marginTop: 8,
   },
   catHeading: {
     fontSize: 11,
@@ -756,6 +849,45 @@ const s: Record<string, React.CSSProperties> = {
     background: '#f0f0f0',
     letterSpacing: '0.04em',
     textTransform: 'uppercase',
+  },
+  // ── 分类左右布局 ──
+  catLayout: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    marginTop: 8,
+  },
+  catSidebar: {
+    width: 76,
+    flexShrink: 0,
+    background: '#ebebeb',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 0,
+    minHeight: 200,
+  },
+  catSideItem: {
+    width: '100%',
+    padding: '14px 6px',
+    background: 'none',
+    border: 'none',
+    borderLeft: '3px solid transparent',
+    fontSize: 12,
+    fontWeight: 500,
+    color: '#666',
+    textAlign: 'center' as const,
+    lineHeight: 1.4,
+    cursor: 'pointer',
+    wordBreak: 'break-all' as const,
+  },
+  catSideItemOn: {
+    background: '#fff',
+    borderLeftColor: PRIMARY,
+    color: PRIMARY,
+    fontWeight: 700,
+  },
+  catContent: {
+    flex: 1,
+    minWidth: 0,
   },
 
   productCard: {

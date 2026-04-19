@@ -22,12 +22,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
 
-  const products = await prisma.product.findMany({
-    where: { tenantId: store.tenantId, status: 'ACTIVE' },
-    select: { id: true, name: true, spec: true, sellPrice: true },
-    orderBy: { name: 'asc' },
-    take: 200,
-  })
+  const [products, categories] = await Promise.all([
+    prisma.product.findMany({
+      where: { tenantId: store.tenantId, status: 'ACTIVE' },
+      select: { id: true, name: true, spec: true, sellPrice: true, categoryId: true },
+      orderBy: { name: 'asc' },
+      take: 200,
+    }),
+    prisma.productCategory.findMany({
+      where: { tenantId: store.tenantId },
+      select: { id: true, name: true, parentId: true, sortOrder: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    }),
+  ])
 
   return NextResponse.json({
     store: {
@@ -37,11 +44,18 @@ export async function GET(req: NextRequest) {
       announcement: store.announcement ?? null,
       promoText:    store.promoText    ?? null,
     },
+    categories: categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      parentId: c.parentId ?? null,
+      sortOrder: c.sortOrder,
+    })),
     products: products.map((p) => ({
       id: p.id,
       name: p.name,
       spec: p.spec ?? null,
       price: p.sellPrice.toNumber(),
+      categoryId: p.categoryId ?? null,
     })),
   })
 }
