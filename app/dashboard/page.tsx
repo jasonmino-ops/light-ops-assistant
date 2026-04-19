@@ -6,17 +6,10 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 
-const SESSION_KEY = 'tg-authed-uid'
-
-async function doLogout() {
-  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
-  sessionStorage.removeItem(SESSION_KEY)
-  window.location.reload()
-}
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Dimension = 'GLOBAL' | 'STORE' | 'STAFF'
+type TimePeriod = 'TODAY' | 'WEEK' | 'MONTH' | 'CUSTOM'
 
 type TopProduct = {
   name: string
@@ -40,7 +33,7 @@ type SummaryResult = {
   khqrSaleAmount?: number
 }
 
-// ─── Seed data (replace with API-driven options when auth is done) ─────────────
+// ─── Seed data ─────────────────────────────────────────────────────────────────
 
 const STORES = [
   { id: 'seed-store-a', name: '总店' },
@@ -52,8 +45,6 @@ const STAFFS = [
   { id: 'seed-user-staff-b', name: '小李（分店）' },
 ]
 
-// DIM_LABEL is now computed dynamically inside the component using t()
-
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
 function fmtAmount(n: number) {
@@ -61,33 +52,76 @@ function fmtAmount(n: number) {
   return n < 0 ? `-$${abs}` : `$${abs}`
 }
 
+function getWeekStart(today: string): string {
+  const d = new Date(today + 'T00:00:00.000Z')
+  const dow = d.getUTCDay()
+  const diff = dow === 0 ? 6 : dow - 1 // 周一为起点
+  d.setUTCDate(d.getUTCDate() - diff)
+  return d.toISOString().slice(0, 10)
+}
+
+function getMonthStart(today: string): string {
+  return today.slice(0, 8) + '01'
+}
+
+function getPeriodRange(
+  period: TimePeriod,
+  today: string,
+  cFrom: string,
+  cTo: string,
+): { from: string; to: string } {
+  switch (period) {
+    case 'TODAY':  return { from: today, to: today }
+    case 'WEEK':   return { from: getWeekStart(today), to: today }
+    case 'MONTH':  return { from: getMonthStart(today), to: today }
+    case 'CUSTOM': return { from: cFrom || today, to: cTo || today }
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { t } = useLocale()
   const [today] = useState(() => new Date().toISOString().slice(0, 10))
+
   const DIM_LABEL: Record<Dimension, string> = {
     GLOBAL: t('dashboard.dimGlobal'),
-    STORE: t('dashboard.dimStore'),
-    STAFF: t('dashboard.dimStaff'),
+    STORE:  t('dashboard.dimStore'),
+    STAFF:  t('dashboard.dimStaff'),
   }
-  const [dimension, setDimension] = useState<Dimension>('GLOBAL')
-  const [storeId, setStoreId] = useState(STORES[0].id)
-  const [operatorUserId, setOperatorUserId] = useState(STAFFS[0].id)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<SummaryResult | null>(null)
+  const PERIOD_LABEL: Record<TimePeriod, string> = {
+    TODAY:  t('dashboard.periodToday'),
+    WEEK:   t('dashboard.periodWeek'),
+    MONTH:  t('dashboard.periodMonth'),
+    CUSTOM: t('dashboard.periodCustom'),
+  }
+
+  const [dimension, setDimension]               = useState<Dimension>('GLOBAL')
+  const [storeId, setStoreId]                   = useState(STORES[0].id)
+  const [operatorUserId, setOperatorUserId]     = useState(STAFFS[0].id)
+  const [timePeriod, setTimePeriod]             = useState<TimePeriod>('TODAY')
+  const [customFrom, setCustomFrom]             = useState('')
+  const [customTo, setCustomTo]                 = useState('')
+  const [loading, setLoading]                   = useState(true)
+  const [error, setError]                       = useState<string | null>(null)
+  const [result, setResult]                     = useState<SummaryResult | null>(null)
+  const [weekHot, setWeekHot]                   = useState<TopProduct[]>([])
+  const [monthHot, setMonthHot]                 = useState<TopProduct[]>([])
+  const [hotLoading, setHotLoading]             = useState(false)
+  const [showStoreConfig, setShowStoreConfig]   = useState(false)
 
   const load = useCallback(
-    async (dim: Dimension, sid: string, uid: string) => {
+    async (dim: Dimension, sid: string, uid: string, period: TimePeriod, cFrom: string, cTo: string) => {
       setLoading(true)
       setError(null)
       try {
-        const params = new URLSearchParams({ dateFrom: today, dateTo: today })
+        const { from, to } = getPeriodRange(period, today, cFrom, cTo)
+        const params = new URLSearchParams({ dateFrom: from, dateTo: to })
         if (dim === 'STORE') params.set('storeId', sid)
         if (dim === 'STAFF') params.set('operatorUserId', uid)
 
         const res = await apiFetch(`/api/summary?${params}`, undefined, OWNER_CTX)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let body: any
         try { body = await res.json() } catch { body = null }
         if (res.ok && body) {
@@ -101,18 +135,67 @@ export default function DashboardPage() {
         setLoading(false)
       }
     },
+    [today], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  const loadHot = useCallback(
+    async (dim: Dimension, sid: string) => {
+      if (dim === 'STAFF') {
+        setWeekHot([])
+        setMonthHot([])
+        return
+      }
+      setHotLoading(true)
+      const weekFrom  = getWeekStart(today)
+      const monthFrom = getMonthStart(today)
+      try {
+        const buildParams = (from: string) => {
+          const pp = new URLSearchParams({ dateFrom: from, dateTo: today })
+          if (dim === 'STORE') pp.set('storeId', sid)
+          return pp.toString()
+        }
+        const [wRes, mRes] = await Promise.all([
+          apiFetch(`/api/summary?${buildParams(weekFrom)}`,  undefined, OWNER_CTX),
+          apiFetch(`/api/summary?${buildParams(monthFrom)}`, undefined, OWNER_CTX),
+        ])
+        const [wBody, mBody] = await Promise.all([
+          wRes.ok ? wRes.json() : null,
+          mRes.ok ? mRes.json() : null,
+        ])
+        setWeekHot((wBody?.topProducts  as TopProduct[] | undefined) ?? [])
+        setMonthHot((mBody?.topProducts as TopProduct[] | undefined) ?? [])
+      } catch {
+        // silent
+      } finally {
+        setHotLoading(false)
+      }
+    },
     [today],
   )
 
   useEffect(() => {
-    load(dimension, storeId, operatorUserId)
-  }, [dimension, storeId, operatorUserId, load])
+    if (timePeriod === 'CUSTOM' && (!customFrom || !customTo)) return
+    load(dimension, storeId, operatorUserId, timePeriod, customFrom, customTo)
+  }, [dimension, storeId, operatorUserId, timePeriod, customFrom, customTo, load])
+
+  useEffect(() => {
+    loadHot(dimension, storeId)
+  }, [dimension, storeId, loadHot])
 
   function handleDimension(d: Dimension) {
     if (d === dimension) return
     setDimension(d)
     setResult(null)
   }
+
+  const heroLabelText = (() => {
+    switch (timePeriod) {
+      case 'TODAY':  return t('dashboard.heroLabelToday')
+      case 'WEEK':   return t('dashboard.heroLabelWeek')
+      case 'MONTH':  return t('dashboard.heroLabelMonth')
+      case 'CUSTOM': return t('dashboard.heroLabelRange')
+    }
+  })()
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -129,7 +212,10 @@ export default function DashboardPage() {
           <Link href="/system" style={s.switchBtn}>系统</Link>
           <button
             style={s.refreshBtn}
-            onClick={() => load(dimension, storeId, operatorUserId)}
+            onClick={() => {
+              load(dimension, storeId, operatorUserId, timePeriod, customFrom, customTo)
+              loadHot(dimension, storeId)
+            }}
             disabled={loading}
           >
             {loading ? '…' : t('dashboard.refresh')}
@@ -151,7 +237,7 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Selector */}
+        {/* Store selector */}
         {dimension === 'STORE' && (
           <div style={s.selectorCard}>
             <div style={s.selectorLabel}>{t('dashboard.selectStore')}</div>
@@ -167,6 +253,7 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Staff selector */}
         {dimension === 'STAFF' && (
           <div style={s.selectorCard}>
             <div style={s.selectorLabel}>{t('dashboard.selectStaff')}</div>
@@ -182,12 +269,47 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Time period tabs */}
+        <div style={s.periodRow}>
+          {(['TODAY', 'WEEK', 'MONTH', 'CUSTOM'] as TimePeriod[]).map((p) => (
+            <button
+              key={p}
+              style={{ ...s.periodBtn, ...(timePeriod === p ? s.periodBtnActive : {}) }}
+              onClick={() => setTimePeriod(p)}
+            >
+              {PERIOD_LABEL[p]}
+            </button>
+          ))}
+        </div>
+
+        {/* Custom date range */}
+        {timePeriod === 'CUSTOM' && (
+          <div style={s.customRow}>
+            <input
+              type="date"
+              style={s.dateInput}
+              value={customFrom}
+              max={customTo || today}
+              onChange={(e) => setCustomFrom(e.target.value)}
+            />
+            <span style={s.dateSep}>—</span>
+            <input
+              type="date"
+              style={s.dateInput}
+              value={customTo}
+              min={customFrom}
+              max={today}
+              onChange={(e) => setCustomTo(e.target.value)}
+            />
+          </div>
+        )}
+
         {/* Loading skeleton */}
         {loading && (
           <div style={s.loadingWrap}>
             <div style={s.skeleton} />
             <div style={{ ...s.skeleton, height: 88, marginTop: 10 }} />
-            <div style={{ ...s.skeleton, height: 120, marginTop: 10 }} />
+            <div style={{ ...s.skeleton, height: 88, marginTop: 10 }} />
           </div>
         )}
 
@@ -197,10 +319,31 @@ export default function DashboardPage() {
         )}
 
         {/* Overview */}
-        {!loading && result && <Overview result={result} t={t} />}
+        {!loading && result && (
+          <Overview result={result} t={t} heroLabel={heroLabelText} />
+        )}
 
-        {/* Store config */}
-        <StoreConfigPanel t={t} />
+        {/* Hot products (GLOBAL / STORE only) */}
+        {dimension !== 'STAFF' && (
+          <HotSection
+            weekHot={weekHot}
+            monthHot={monthHot}
+            loading={hotLoading}
+            t={t}
+          />
+        )}
+
+        {/* Store config — collapsed entry */}
+        <div
+          style={s.configEntry}
+          onClick={() => setShowStoreConfig((v) => !v)}
+        >
+          <span style={s.configLabel}>{t('dashboard.storeSettings')}</span>
+          <span style={s.configArrow}>{showStoreConfig ? '▴' : '▾'}</span>
+        </div>
+        {showStoreConfig && <StoreConfigPanel t={t} />}
+
+        <div style={{ height: 24 }} />
       </div>
     </div>
   )
@@ -208,7 +351,15 @@ export default function DashboardPage() {
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
 
-function Overview({ result, t }: { result: SummaryResult; t: (k: string) => string }) {
+function Overview({
+  result,
+  t,
+  heroLabel,
+}: {
+  result: SummaryResult
+  t: (k: string) => string
+  heroLabel: string
+}) {
   const subLabel =
     result.dimension === 'STORE'
       ? (result.storeName ?? '—')
@@ -218,21 +369,16 @@ function Overview({ result, t }: { result: SummaryResult; t: (k: string) => stri
 
   return (
     <div>
-      {/* Hero — net income */}
+      {/* Hero */}
       <div style={ov.heroCard}>
         <div style={ov.heroSub}>{subLabel}</div>
-        <div style={ov.heroLabel}>{t('dashboard.heroLabel')}</div>
-        <div
-          style={{
-            ...ov.heroAmount,
-            color: result.netAmount >= 0 ? '#a0f0a0' : '#ffccc7',
-          }}
-        >
+        <div style={ov.heroLabel}>{heroLabel}</div>
+        <div style={{ ...ov.heroAmount, color: result.netAmount >= 0 ? '#a0f0a0' : '#ffccc7' }}>
           {fmtAmount(result.netAmount)}
         </div>
       </div>
 
-      {/* Metrics 2×2 grid */}
+      {/* Metrics 2×2 */}
       <div style={ov.grid}>
         <MetricCell label={t('dashboard.saleStat')} value={fmtAmount(result.totalSaleAmount)} />
         <MetricCell
@@ -251,40 +397,69 @@ function Overview({ result, t }: { result: SummaryResult; t: (k: string) => stri
           <PayCell icon="📱" label={t('dashboard.khqrSaleLabel')} value={fmtAmount(result.khqrSaleAmount ?? 0)} />
         </div>
       )}
+    </div>
+  )
+}
 
-      {/* Top 3 products */}
-      <div style={ov.topCard}>
-        <div style={ov.topTitle}>{t('dashboard.topTitle')}</div>
-        {result.topProducts.length === 0 ? (
-          <div style={ov.emptyTop}>{t('dashboard.noSales')}</div>
-        ) : (
-          result.topProducts.map((p, i) => (
-            <div
-              key={i}
-              style={{
-                ...ov.topRow,
-                ...(i === result.topProducts.length - 1
-                  ? { borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }
-                  : {}),
-              }}
-            >
-              <div
-                style={{
-                  ...ov.rank,
-                  ...(i === 0 ? ov.rank1 : i === 1 ? ov.rank2 : ov.rank3),
-                }}
-              >
-                {i + 1}
-              </div>
-              <div style={ov.topName}>
-                {p.name}
-                {p.spec && <span style={ov.topSpec}> · {p.spec}</span>}
-              </div>
-              <div style={ov.topQty}>{p.totalQty} {t('dashboard.qtyUnit')}</div>
+// ─── HotSection ───────────────────────────────────────────────────────────────
+
+function HotSection({
+  weekHot,
+  monthHot,
+  loading,
+  t,
+}: {
+  weekHot: TopProduct[]
+  monthHot: TopProduct[]
+  loading: boolean
+  t: (k: string) => string
+}) {
+  return (
+    <div style={hot.wrap}>
+      <HotColumn title={t('dashboard.weekHotTitle')} products={weekHot} loading={loading} t={t} />
+      <HotColumn title={t('dashboard.monthHotTitle')} products={monthHot} loading={loading} t={t} />
+    </div>
+  )
+}
+
+function HotColumn({
+  title,
+  products,
+  loading,
+  t,
+}: {
+  title: string
+  products: TopProduct[]
+  loading: boolean
+  t: (k: string) => string
+}) {
+  return (
+    <div style={hot.col}>
+      <div style={hot.colTitle}>{title}</div>
+      {loading ? (
+        <div style={hot.empty}>…</div>
+      ) : products.length === 0 ? (
+        <div style={hot.empty}>{t('dashboard.noSales')}</div>
+      ) : (
+        products.map((p, i) => (
+          <div
+            key={i}
+            style={{
+              ...hot.row,
+              ...(i === products.length - 1 ? { borderBottom: 'none', marginBottom: 0, paddingBottom: 0 } : {}),
+            }}
+          >
+            <div style={{ ...hot.rank, ...(i === 0 ? hot.rank1 : i === 1 ? hot.rank2 : hot.rank3) }}>
+              {i + 1}
             </div>
-          ))
-        )}
-      </div>
+            <div style={hot.name}>
+              {p.name}
+              {p.spec && <span style={hot.spec}> · {p.spec}</span>}
+            </div>
+            <div style={hot.qty}>{p.totalQty}{t('dashboard.qtyUnit')}</div>
+          </div>
+        ))
+      )}
     </div>
   )
 }
@@ -312,29 +487,28 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
       .catch(() => {})
   }, [])
 
-  async function handleSave(storeId: string) {
-    setSaving((v) => ({ ...v, [storeId]: true }))
-    setSaved((v) => ({ ...v, [storeId]: false }))
-    setSaveError((v) => ({ ...v, [storeId]: '' }))
+  async function handleSave(sid: string) {
+    setSaving((v) => ({ ...v, [sid]: true }))
+    setSaved((v) => ({ ...v, [sid]: false }))
+    setSaveError((v) => ({ ...v, [sid]: '' }))
     try {
-      const res = await apiFetch(`/api/stores/${storeId}/checkout-mode`, {
+      const res = await apiFetch(`/api/stores/${sid}/checkout-mode`, {
         method: 'PATCH',
-        body: JSON.stringify({ checkoutMode: pending[storeId] }),
+        body: JSON.stringify({ checkoutMode: pending[sid] }),
       }, OWNER_CTX)
       if (res.ok) {
         const body = await res.json().catch(() => null)
-        // Sync pending to what DB actually persisted
-        if (body?.checkoutMode) setPending((v) => ({ ...v, [storeId]: body.checkoutMode }))
-        setSaved((v) => ({ ...v, [storeId]: true }))
-        setTimeout(() => setSaved((v) => ({ ...v, [storeId]: false })), 2000)
+        if (body?.checkoutMode) setPending((v) => ({ ...v, [sid]: body.checkoutMode }))
+        setSaved((v) => ({ ...v, [sid]: true }))
+        setTimeout(() => setSaved((v) => ({ ...v, [sid]: false })), 2000)
       } else {
         const body = await res.json().catch(() => null)
-        setSaveError((v) => ({ ...v, [storeId]: body?.message ?? body?.error ?? '保存失败' }))
+        setSaveError((v) => ({ ...v, [sid]: body?.message ?? body?.error ?? '保存失败' }))
       }
     } catch {
-      setSaveError((v) => ({ ...v, [storeId]: '网络错误，请重试' }))
+      setSaveError((v) => ({ ...v, [sid]: '网络错误，请重试' }))
     } finally {
-      setSaving((v) => ({ ...v, [storeId]: false }))
+      setSaving((v) => ({ ...v, [sid]: false }))
     }
   }
 
@@ -342,7 +516,6 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
 
   return (
     <div style={sc.card}>
-      <div style={sc.title}>{t('dashboard.storeSettings')}</div>
       {stores.map((store) => (
         <div key={store.id} style={sc.row}>
           <div style={sc.storeName}>{store.name}</div>
@@ -351,7 +524,10 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
             <select
               style={sc.select}
               value={pending[store.id] ?? store.checkoutMode}
-              onChange={(e) => { setPending((v) => ({ ...v, [store.id]: e.target.value })); setSaveError((v) => ({ ...v, [store.id]: '' })) }}
+              onChange={(e) => {
+                setPending((v) => ({ ...v, [store.id]: e.target.value }))
+                setSaveError((v) => ({ ...v, [store.id]: '' }))
+              }}
             >
               <option value="DIRECT_PAYMENT">{t('dashboard.modeDirect')}</option>
               <option value="DEFERRED_PAYMENT">{t('dashboard.modeDeferred')}</option>
@@ -371,29 +547,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   )
 }
 
-const sc: Record<string, React.CSSProperties> = {
-  card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '14px 16px', marginTop: 12 },
-  title: { fontSize: 14, fontWeight: 700, color: 'var(--muted)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.04em' },
-  row: { paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--border)' },
-  storeName: { fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 },
-  label: { fontSize: 12, color: 'var(--muted)', marginBottom: 6 },
-  controls: { display: 'flex', gap: 8, alignItems: 'center' },
-  select: { flex: 1, fontSize: 14, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' },
-  saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' },
-  errMsg: { fontSize: 12, color: '#d97706', marginTop: 4 },
-}
-
-function MetricCell({
-  label,
-  value,
-  unit,
-  red,
-}: {
-  label: string
-  value: string
-  unit?: string
-  red?: boolean
-}) {
+function MetricCell({ label, value, unit, red }: { label: string; value: string; unit?: string; red?: boolean }) {
   return (
     <div style={mc.cell}>
       <div style={{ ...mc.value, ...(red ? { color: 'var(--red)' } : {}) }}>
@@ -420,12 +574,7 @@ function PayCell({ icon, label, value }: { icon: string; label: string; value: s
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: '100vh',
-    background: 'var(--bg)',
-    display: 'flex',
-    flexDirection: 'column',
-  },
+  page: { minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' },
   header: {
     background: 'var(--blue)',
     padding: '16px 16px 20px',
@@ -433,17 +582,8 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  brandName: {
-    fontSize: 18,
-    fontWeight: 700,
-    color: '#fff',
-    letterSpacing: '0.02em',
-  },
-  brandSub: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 2,
-  },
+  brandName: { fontSize: 18, fontWeight: 700, color: '#fff', letterSpacing: '0.02em' },
+  brandSub: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
   switchBtn: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.75)',
@@ -462,18 +602,8 @@ const s: Record<string, React.CSSProperties> = {
     padding: '4px 14px',
     minWidth: 52,
   },
-  body: {
-    flex: 1,
-    padding: '12px 12px 0',
-    maxWidth: 480,
-    margin: '0 auto',
-    width: '100%',
-  },
-  dimRow: {
-    display: 'flex',
-    gap: 8,
-    marginBottom: 10,
-  },
+  body: { flex: 1, padding: '12px 12px 0', maxWidth: 480, margin: '0 auto', width: '100%' },
+  dimRow: { display: 'flex', gap: 8, marginBottom: 10 },
   dimBtn: {
     flex: 1,
     height: 38,
@@ -485,12 +615,7 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 500,
     cursor: 'pointer',
   },
-  dimBtnActive: {
-    background: 'var(--blue)',
-    borderColor: 'var(--blue)',
-    color: '#fff',
-    fontWeight: 700,
-  },
+  dimBtnActive: { background: 'var(--blue)', borderColor: 'var(--blue)', color: '#fff', fontWeight: 700 },
   selectorCard: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
@@ -516,9 +641,46 @@ const s: Record<string, React.CSSProperties> = {
     width: '100%',
     appearance: 'auto' as const,
   },
-  loadingWrap: {
-    marginTop: 4,
+  periodRow: { display: 'flex', gap: 6, marginBottom: 10 },
+  periodBtn: {
+    flex: 1,
+    height: 34,
+    border: '1.5px solid var(--border)',
+    borderRadius: 16,
+    background: '#f7f8fa',
+    fontSize: 13,
+    color: 'var(--muted)',
+    fontWeight: 500,
+    cursor: 'pointer',
   },
+  periodBtnActive: {
+    background: 'var(--blue)',
+    borderColor: 'var(--blue)',
+    color: '#fff',
+    fontWeight: 700,
+  },
+  customRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '10px 12px',
+    marginBottom: 10,
+  },
+  dateInput: {
+    flex: 1,
+    height: 38,
+    padding: '0 10px',
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 14,
+    background: '#f7f8fa',
+    color: 'var(--text)',
+    outline: 'none',
+  },
+  dateSep: { fontSize: 14, color: 'var(--muted)', flexShrink: 0 },
+  loadingWrap: { marginTop: 4 },
   skeleton: {
     height: 160,
     borderRadius: 'var(--radius)',
@@ -534,6 +696,18 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--red)',
     marginTop: 4,
   },
+  configEntry: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '12px 16px',
+    marginTop: 12,
+    cursor: 'pointer',
+  },
+  configLabel: { fontSize: 14, fontWeight: 600, color: 'var(--muted)' },
+  configArrow: { fontSize: 14, color: 'var(--muted)' },
 }
 
 const ov: Record<string, React.CSSProperties> = {
@@ -547,22 +721,9 @@ const ov: Record<string, React.CSSProperties> = {
     gap: 4,
     marginBottom: 10,
   },
-  heroSub: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.75)',
-    marginBottom: 6,
-  },
-  heroLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-  },
-  heroAmount: {
-    fontSize: 44,
-    fontWeight: 800,
-    letterSpacing: '-0.03em',
-    lineHeight: 1.1,
-    marginTop: 2,
-  },
+  heroSub: { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: 6 },
+  heroLabel: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
+  heroAmount: { fontSize: 44, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.1, marginTop: 2 },
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -571,109 +732,70 @@ const ov: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     marginBottom: 10,
   },
-  payGrid: {
+  payGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 },
+}
+
+const hot: Record<string, React.CSSProperties> = {
+  wrap: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: 8,
-    marginBottom: 10,
-  },
-  topCard: {
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
-    padding: '14px 16px',
     marginBottom: 12,
   },
-  topTitle: {
-    fontSize: 12,
+  col: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '12px 12px',
+  },
+  colTitle: {
+    fontSize: 11,
     color: 'var(--muted)',
     fontWeight: 600,
     textTransform: 'uppercase' as const,
     letterSpacing: '0.04em',
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  topRow: {
+  row: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
-    paddingBottom: 12,
-    marginBottom: 12,
+    gap: 8,
+    paddingBottom: 8,
+    marginBottom: 8,
     borderBottom: '1px solid var(--border)',
   },
-  emptyTop: {
-    fontSize: 14,
-    color: 'var(--muted)',
-    textAlign: 'center' as const,
-    padding: '10px 0',
-  },
+  empty: { fontSize: 12, color: 'var(--muted)', textAlign: 'center' as const, padding: '8px 0' },
   rank: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 800,
     flexShrink: 0,
   },
-  rank1: {
-    background: '#ffe066',
-    color: '#7a5400',
-  },
-  rank2: {
-    background: '#d4d4d4',
-    color: '#444',
-  },
-  rank3: {
-    background: '#e8c19c',
-    color: '#6b3a1f',
-  },
-  topName: {
+  rank1: { background: '#ffe066', color: '#7a5400' },
+  rank2: { background: '#d4d4d4', color: '#444' },
+  rank3: { background: '#e8c19c', color: '#6b3a1f' },
+  name: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: 600,
     color: 'var(--text)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap' as const,
   },
-  topSpec: {
-    fontWeight: 400,
-    color: 'var(--muted)',
-    fontSize: 13,
-  },
-  topQty: {
-    fontSize: 15,
-    fontWeight: 700,
-    color: 'var(--blue)',
-    flexShrink: 0,
-  },
+  spec: { fontWeight: 400, color: 'var(--muted)', fontSize: 11 },
+  qty: { fontSize: 13, fontWeight: 700, color: 'var(--blue)', flexShrink: 0 },
 }
 
 const mc: Record<string, React.CSSProperties> = {
-  cell: {
-    padding: '14px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-    borderTop: '1px solid var(--border)',
-    borderRight: '1px solid var(--border)',
-  },
-  value: {
-    fontSize: 20,
-    fontWeight: 700,
-    color: 'var(--text)',
-  },
-  unit: {
-    fontSize: 12,
-    fontWeight: 400,
-    color: 'var(--muted)',
-    marginLeft: 3,
-  },
-  label: {
-    fontSize: 12,
-    color: 'var(--muted)',
-  },
+  cell: { padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 4, borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' },
+  value: { fontSize: 20, fontWeight: 700, color: 'var(--text)' },
+  unit: { fontSize: 12, fontWeight: 400, color: 'var(--muted)', marginLeft: 3 },
+  label: { fontSize: 12, color: 'var(--muted)' },
 }
 
 const pc: Record<string, React.CSSProperties> = {
@@ -682,4 +804,15 @@ const pc: Record<string, React.CSSProperties> = {
   text: { display: 'flex', flexDirection: 'column', gap: 2 },
   val: { fontSize: 17, fontWeight: 700, color: 'var(--text)' },
   lbl: { fontSize: 11, color: 'var(--muted)' },
+}
+
+const sc: Record<string, React.CSSProperties> = {
+  card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '14px 16px', marginTop: 0 },
+  row: { paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--border)' },
+  storeName: { fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 6 },
+  label: { fontSize: 12, color: 'var(--muted)', marginBottom: 6 },
+  controls: { display: 'flex', gap: 8, alignItems: 'center' },
+  select: { flex: 1, fontSize: 14, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' },
+  saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' },
+  errMsg: { fontSize: 12, color: '#d97706', marginTop: 4 },
 }

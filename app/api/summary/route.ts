@@ -6,14 +6,8 @@ import { getPaymentBreakdown } from '@/lib/payment-breakdown'
 /**
  * GET /api/summary?dateFrom=yyyy-MM-dd&dateTo=yyyy-MM-dd[&storeId=][&operatorUserId=]
  *
- * Owner overview page. STAFF requests are rejected with 403.
- *
- * Dimension is inferred from query params:
- *   neither storeId nor operatorUserId  → GLOBAL
- *   storeId only                        → STORE
- *   operatorUserId (with or without storeId) → STAFF
- *
- * Dates are interpreted as UTC day boundaries.
+ * 口径：SaleRecord（普通单）+ CustomerOrder（COMPLETED+PAID，按 paidAt 过滤）
+ * 维度：GLOBAL / STORE / STAFF（STAFF 不含顾客订单）
  */
 export async function GET(req: NextRequest) {
   const ctx = await getContext(req)
@@ -52,7 +46,6 @@ export async function GET(req: NextRequest) {
   const storeId = p.get('storeId') ?? undefined
   const operatorUserId = p.get('operatorUserId') ?? undefined
 
-  // Infer dimension
   let dimension: 'GLOBAL' | 'STORE' | 'STAFF'
   if (operatorUserId) {
     dimension = 'STAFF'
@@ -62,59 +55,79 @@ export async function GET(req: NextRequest) {
     dimension = 'GLOBAL'
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const coWhere: any = dimension !== 'STAFF' ? {
+    tenantId: ctx.tenantId,
+    status: 'COMPLETED',
+    paymentStatus: 'PAID',
+    paidAt: { gte: from, lte: to },
+    ...(storeId ? { storeId } : {}),
+  } : null
+
   // ── Summary-table fast path ───────────────────────────────────────────────
-  // Only for single-day non-staff queries (GLOBAL or STORE dimension).
-  // Wrapped in try/catch: if the summary tables don't exist yet (P2021),
-  // fall through silently to the raw-query path below.
   if (dateFrom === dateTo && !operatorUserId) {
     try {
-    const summaryDate = dateFrom
-    const row = storeId
-      ? await prisma.storeDailySummary.findUnique({
-          where: { storeId_date: { storeId, date: summaryDate } },
-          select: { salesCount: true, refundCount: true, grossSales: true, refundAmount: true, netSales: true },
-        })
-      : await prisma.tenantDailySummary.findFirst({
-          where: { tenantId: ctx.tenantId, date: summaryDate },
-          select: { salesCount: true, refundCount: true, grossSales: true, refundAmount: true, netSales: true },
-        })
+      const summaryDate = dateFrom
+      const row = storeId
+        ? await prisma.storeDailySummary.findUnique({
+            where: { storeId_date: { storeId, date: summaryDate } },
+            select: { salesCount: true, refundCount: true, grossSales: true, refundAmount: true, netSales: true },
+          })
+        : await prisma.tenantDailySummary.findFirst({
+            where: { tenantId: ctx.tenantId, date: summaryDate },
+            select: { salesCount: true, refundCount: true, grossSales: true, refundAmount: true, netSales: true },
+          })
 
-    if (row) {
-      const [storeInfo, breakdown] = await Promise.all([
-        storeId
-          ? prisma.store.findFirst({ where: { id: storeId }, select: { name: true } })
-          : Promise.resolve(null),
-        getPaymentBreakdown({ tenantId: ctx.tenantId, from, to, storeId }),
-      ])
-      const totalSaleAmount   = Number(row.grossSales)
-      const totalRefundAmount = -Number(row.refundAmount) // negative to match raw-query contract
-      const netAmount         = Number(row.netSales)
-      return NextResponse.json({
-        dateFrom, dateTo, dimension,
-        storeName: storeInfo?.name ?? null,
-        operatorDisplayName: null,
-        totalSaleAmount,
-        totalRefundAmount,
-        netAmount,
-        saleCount: row.salesCount,
-        refundCount: row.refundCount,
-        saleOrderCount: row.salesCount,
-        refundOrderCount: row.refundCount,
-        avgSaleAmount: row.salesCount > 0
-          ? parseFloat((netAmount / row.salesCount).toFixed(2))
-          : 0,
-        topProducts: [],      // not stored in summary; fallback to raw for top-products detail
-        cashSaleAmount: breakdown.cashSaleAmount,
-        khqrSaleAmount: breakdown.khqrSaleAmount,
-        _source: 'summary',
-      })
-    }
-    // summary missing for this date → fall through to raw queries below
+      if (row) {
+        const [storeInfo, breakdown] = await Promise.all([
+          storeId
+            ? prisma.store.findFirst({ where: { id: storeId }, select: { name: true } })
+            : Promise.resolve(null),
+          getPaymentBreakdown({ tenantId: ctx.tenantId, from, to, storeId }),
+        ])
+
+        let coTotal = 0, coCount = 0, coCashAmt = 0, coQRAmt = 0
+        if (coWhere) {
+          const [coAgg, coCashRes, coQRRes] = await Promise.all([
+            prisma.customerOrder.aggregate({ where: coWhere, _sum: { totalAmount: true }, _count: true }),
+            prisma.customerOrder.aggregate({ where: { ...coWhere, paymentMethod: 'CASH' }, _sum: { totalAmount: true } }),
+            prisma.customerOrder.aggregate({ where: { ...coWhere, paymentMethod: 'QR' }, _sum: { totalAmount: true } }),
+          ])
+          coTotal   = coAgg._sum.totalAmount?.toNumber() ?? 0
+          coCount   = coAgg._count
+          coCashAmt = coCashRes._sum.totalAmount?.toNumber() ?? 0
+          coQRAmt   = coQRRes._sum.totalAmount?.toNumber() ?? 0
+        }
+
+        const totalSaleAmount   = Number(row.grossSales) + coTotal
+        const totalRefundAmount = -Number(row.refundAmount)
+        const netAmount         = Number(row.netSales) + coTotal
+        const finalCount        = row.salesCount + coCount
+
+        return NextResponse.json({
+          dateFrom, dateTo, dimension,
+          storeName: storeInfo?.name ?? null,
+          operatorDisplayName: null,
+          totalSaleAmount,
+          totalRefundAmount,
+          netAmount,
+          saleCount: finalCount,
+          refundCount: row.refundCount,
+          saleOrderCount: finalCount,
+          refundOrderCount: row.refundCount,
+          avgSaleAmount: finalCount > 0 ? parseFloat((netAmount / finalCount).toFixed(2)) : 0,
+          topProducts: [],
+          cashSaleAmount: breakdown.cashSaleAmount + coCashAmt,
+          khqrSaleAmount: breakdown.khqrSaleAmount + coQRAmt,
+          _source: 'summary',
+        })
+      }
     } catch {
       // Summary tables don't exist yet (P2021) — fall through to raw queries
     }
   }
 
+  // ── Raw queries ───────────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const baseWhere: any = {
     tenantId: ctx.tenantId,
@@ -123,7 +136,6 @@ export async function GET(req: NextRequest) {
     ...(operatorUserId ? { operatorUserId } : {}),
   }
 
-  // Run all queries in parallel
   const [
     saleAgg,
     refundAgg,
@@ -133,7 +145,6 @@ export async function GET(req: NextRequest) {
     storeInfo,
     staffInfo,
   ] = await Promise.all([
-    // Amount aggregates — only COMPLETED records count as confirmed revenue
     prisma.saleRecord.aggregate({
       where: { ...baseWhere, saleType: 'SALE', status: 'COMPLETED' },
       _sum: { lineAmount: true },
@@ -144,25 +155,22 @@ export async function GET(req: NextRequest) {
       _sum: { lineAmount: true },
       _count: true,
     }),
-    // Distinct sales order count (by orderNo)
     prisma.saleRecord.groupBy({
       by: ['orderNo'],
       where: { ...baseWhere, saleType: 'SALE', status: 'COMPLETED', orderNo: { not: null } },
     }),
-    // Distinct refund order count (by orderNo)
     prisma.saleRecord.groupBy({
       by: ['orderNo'],
       where: { ...baseWhere, saleType: 'REFUND', status: 'COMPLETED', orderNo: { not: null } },
     }),
-    // Top 3 hot products by quantity sold
+    // take: 50 以便与顾客订单合并后再取 top 3
     prisma.saleRecord.groupBy({
       by: ['productNameSnapshot', 'specSnapshot'],
       where: { ...baseWhere, saleType: 'SALE', status: 'COMPLETED' },
       _sum: { quantity: true },
       orderBy: { _sum: { quantity: 'desc' } },
-      take: 3,
+      take: 50,
     }),
-    // Store / staff label lookups
     storeId
       ? prisma.store.findFirst({ where: { id: storeId }, select: { name: true } })
       : Promise.resolve(null),
@@ -171,30 +179,67 @@ export async function GET(req: NextRequest) {
       : Promise.resolve(null),
   ])
 
-  const totalSaleAmount = saleAgg._sum.lineAmount?.toNumber() ?? 0
-  const totalRefundAmount = refundAgg._sum.lineAmount?.toNumber() ?? 0 // negative number
-  const netAmount = totalSaleAmount + totalRefundAmount
-  const saleCount = saleAgg._count
-  const refundCount = refundAgg._count
-  const saleOrderCount = saleOrderGroups.length
-  const refundOrderCount = refundOrderGroups.length
-  const avgSaleAmount = saleCount > 0
-    ? parseFloat((netAmount / saleCount).toFixed(2))
-    : 0
+  const totalSaleAmount   = saleAgg._sum.lineAmount?.toNumber() ?? 0
+  const totalRefundAmount = refundAgg._sum.lineAmount?.toNumber() ?? 0
+  const netAmount         = totalSaleAmount + totalRefundAmount
+  const saleCount         = saleAgg._count
+  const refundCount       = refundAgg._count
+  const saleOrderCount    = saleOrderGroups.length
+  const refundOrderCount  = refundOrderGroups.length
+  const avgSaleAmount     = saleCount > 0 ? parseFloat((netAmount / saleCount).toFixed(2)) : 0
 
-  const topProducts = topProductGroups.map((g) => ({
-    name: g.productNameSnapshot,
-    spec: g.specSnapshot ?? null,
-    totalQty: parseFloat((g._sum.quantity ?? 0).toString()),
-  }))
+  // 收款拆分 + 顾客订单（并行）
+  type CoRow = { itemsJson: string; totalAmount: { toNumber(): number }; paymentMethod: string | null }
+  const [breakdown, coOrders] = await Promise.all([
+    getPaymentBreakdown({ tenantId: ctx.tenantId, from, to, storeId, operatorUserId }),
+    (coWhere
+      ? prisma.customerOrder.findMany({
+          where: coWhere,
+          select: { itemsJson: true, totalAmount: true, paymentMethod: true },
+        })
+      : Promise.resolve([])) as Promise<CoRow[]>,
+  ])
 
-  const breakdown = await getPaymentBreakdown({
-    tenantId: ctx.tenantId,
-    from,
-    to,
-    storeId,
-    operatorUserId,
-  })
+  // 顾客订单汇总
+  const coTotal   = coOrders.reduce((s, o) => s + o.totalAmount.toNumber(), 0)
+  const coCount   = coOrders.length
+  const coCashAmt = coOrders
+    .filter((o) => o.paymentMethod === 'CASH')
+    .reduce((s, o) => s + o.totalAmount.toNumber(), 0)
+  const coQRAmt   = coOrders
+    .filter((o) => o.paymentMethod === 'QR')
+    .reduce((s, o) => s + o.totalAmount.toNumber(), 0)
+
+  // 合并热销商品（SaleRecord top50 + CustomerOrder itemsJson）
+  const productMap = new Map<string, { name: string; spec: string | null; totalQty: number }>()
+  for (const g of topProductGroups) {
+    const key = `${g.productNameSnapshot}||${g.specSnapshot ?? ''}`
+    productMap.set(key, {
+      name: g.productNameSnapshot,
+      spec: g.specSnapshot ?? null,
+      totalQty: parseFloat((g._sum.quantity ?? 0).toString()),
+    })
+  }
+  for (const order of coOrders) {
+    let items: Array<{ name: string; spec?: string; quantity: number }>
+    try { items = JSON.parse(order.itemsJson) } catch { items = [] }
+    for (const item of items) {
+      const key = `${item.name}||${item.spec ?? ''}`
+      const existing = productMap.get(key)
+      if (existing) {
+        existing.totalQty += item.quantity
+      } else {
+        productMap.set(key, { name: item.name, spec: item.spec ?? null, totalQty: item.quantity })
+      }
+    }
+  }
+  const topProducts = Array.from(productMap.values())
+    .sort((a, b) => b.totalQty - a.totalQty)
+    .slice(0, 3)
+
+  const finalTotal = totalSaleAmount + coTotal
+  const finalNet   = netAmount + coTotal
+  const finalCount = saleCount + coCount
 
   return NextResponse.json({
     dateFrom,
@@ -202,16 +247,16 @@ export async function GET(req: NextRequest) {
     dimension,
     storeName: storeInfo?.name ?? null,
     operatorDisplayName: staffInfo?.displayName ?? null,
-    totalSaleAmount,
+    totalSaleAmount: finalTotal,
     totalRefundAmount,
-    netAmount,
-    saleCount,
+    netAmount: finalNet,
+    saleCount: finalCount,
     refundCount,
-    saleOrderCount,
+    saleOrderCount: saleOrderCount + coCount,
     refundOrderCount,
-    avgSaleAmount,
+    avgSaleAmount: finalCount > 0 ? parseFloat((finalNet / finalCount).toFixed(2)) : avgSaleAmount,
     topProducts,
-    cashSaleAmount: breakdown.cashSaleAmount,
-    khqrSaleAmount: breakdown.khqrSaleAmount,
+    cashSaleAmount: breakdown.cashSaleAmount + coCashAmt,
+    khqrSaleAmount: breakdown.khqrSaleAmount + coQRAmt,
   })
 }
