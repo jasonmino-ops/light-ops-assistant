@@ -24,11 +24,21 @@ export async function GET(req: NextRequest) {
 
   // ── List mode ──────────────────────────────────────────────────────────────
   if (!barcode) {
+    const all = req.nextUrl.searchParams.get('all') === 'true'
+
+    // all=true is OWNER-only; returns DISABLED products too (for delete management)
+    if (all && ctx.role !== 'OWNER') {
+      return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+    }
+
     const products = await prisma.product.findMany({
-      where: { tenantId: ctx.tenantId, status: 'ACTIVE' },
-      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, categoryId: true },
+      where: {
+        tenantId: ctx.tenantId,
+        ...(all ? {} : { status: 'ACTIVE' }),
+      },
+      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true },
       orderBy: { name: 'asc' },
-      take: 200,
+      take: 500,
     })
     return NextResponse.json(
       products.map((p) => ({
@@ -37,6 +47,7 @@ export async function GET(req: NextRequest) {
         name: p.name,
         spec: p.spec,
         sellPrice: p.sellPrice.toNumber(),
+        status: p.status,
         categoryId: p.categoryId,
       })),
     )

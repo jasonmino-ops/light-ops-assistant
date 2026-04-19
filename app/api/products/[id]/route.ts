@@ -4,6 +4,54 @@ import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
 /**
+ * DELETE /api/products/[id]  — OWNER only
+ *
+ * Physically deletes a product if it has no SaleRecord references.
+ * If the product has been sold, returns 409 PRODUCT_HAS_SALES.
+ */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const ctx = await getContext(req)
+  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
+  if (ctx.role !== 'OWNER') {
+    return NextResponse.json({ error: 'FORBIDDEN', message: '只有老板可以删除商品' }, { status: 403 })
+  }
+
+  const { id } = await params
+
+  // Verify product belongs to tenant
+  const product = await prisma.product.findFirst({
+    where: { id, tenantId: ctx.tenantId },
+    select: { id: true, name: true },
+  })
+  if (!product) {
+    return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
+  }
+
+  // Guard: refuse if product has any sale history
+  const salesCount = await prisma.saleRecord.count({ where: { productId: id } })
+  if (salesCount > 0) {
+    return NextResponse.json(
+      { error: 'PRODUCT_HAS_SALES', message: '该商品已有销售记录，无法删除，建议改为停用' },
+      { status: 409 },
+    )
+  }
+
+  try {
+    await prisma.product.delete({ where: { id } })
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+      return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
+    }
+    throw e
+  }
+
+  return NextResponse.json({ success: true })
+}
+
+/**
  * PATCH /api/products/[id]  — OWNER only
  *
  * Updates one or more fields of an existing product.

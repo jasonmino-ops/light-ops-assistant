@@ -27,6 +27,10 @@ type Product = {
 
 type Mode = 'idle' | 'loading' | 'found' | 'not-found' | 'saved'
 
+type DeleteConfirm =
+  | { type: 'single'; id: string; name: string }
+  | { type: 'batch'; ids: string[] }
+
 type ImportResult = {
   imported: number
   failed: number
@@ -75,6 +79,15 @@ export default function ProductsPage() {
   const [catSaving, setCatSaving] = useState(false)
   const [catError, setCatError] = useState<string | null>(null)
 
+  // Product list + delete
+  const [listOpen, setListOpen] = useState(false)
+  const [productList, setProductList] = useState<Product[]>([])
+  const [listLoading, setListLoading] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteMsg, setDeleteMsg] = useState<string | null>(null)
+
   // ── Load categories on mount ──────────────────────────────────────────────
 
   useEffect(() => {
@@ -109,6 +122,104 @@ export default function ProductsPage() {
       setCatError(t('products.catSaveError'))
     } finally {
       setCatSaving(false)
+    }
+  }
+
+  // ── Product list ──────────────────────────────────────────────────────────
+
+  async function loadProductList() {
+    setListLoading(true)
+    setDeleteMsg(null)
+    try {
+      const res = await apiFetch('/api/products?all=true', undefined, OWNER_CTX)
+      if (res.ok) {
+        const list: Product[] = await res.json()
+        setProductList(list)
+        setSelectedIds(new Set())
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setListLoading(false)
+    }
+  }
+
+  function toggleList() {
+    const next = !listOpen
+    setListOpen(next)
+    if (next && productList.length === 0) loadProductList()
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === productList.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(productList.map((p) => p.id)))
+    }
+  }
+
+  async function executeDelete() {
+    if (!deleteConfirm) return
+    setDeleting(true)
+    setDeleteMsg(null)
+    try {
+      if (deleteConfirm.type === 'single') {
+        const res = await apiFetch(
+          `/api/products/${deleteConfirm.id}`,
+          { method: 'DELETE' },
+          OWNER_CTX,
+        )
+        const body = await res.json()
+        if (res.ok) {
+          setProductList((prev) => prev.filter((p) => p.id !== deleteConfirm.id))
+          setSelectedIds((prev) => { const next = new Set(prev); next.delete(deleteConfirm.id); return next })
+          setDeleteConfirm(null)
+        } else if (body.error === 'PRODUCT_HAS_SALES') {
+          setDeleteMsg(t('products.hasSalesHint'))
+          setDeleteConfirm(null)
+        } else {
+          setDeleteMsg(body.message ?? '删除失败')
+          setDeleteConfirm(null)
+        }
+      } else {
+        const res = await apiFetch(
+          '/api/products/batch-delete',
+          { method: 'POST', body: JSON.stringify({ ids: deleteConfirm.ids }) },
+          OWNER_CTX,
+        )
+        const body = await res.json()
+        if (res.ok) {
+          const deletedSet = new Set<string>(body.deleted)
+          setProductList((prev) => prev.filter((p) => !deletedSet.has(p.id)))
+          setSelectedIds(new Set())
+          setDeleteConfirm(null)
+          const skippedCount: number = body.skipped?.length ?? 0
+          if (skippedCount > 0) {
+            setDeleteMsg(
+              t('products.batchDeleteResult')
+                .replace('{deleted}', String(body.deleted.length))
+                .replace('{skipped}', String(skippedCount))
+            )
+          }
+        } else {
+          setDeleteMsg(body.message ?? '批量删除失败')
+          setDeleteConfirm(null)
+        }
+      }
+    } catch {
+      setDeleteMsg(t('common.networkError'))
+      setDeleteConfirm(null)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -481,6 +592,104 @@ export default function ProductsPage() {
           )}
         </div>
 
+        {/* ── 商品列表（删除管理） ── */}
+        <div style={s.importSection}>
+          <button style={s.importToggle} onClick={toggleList}>
+            <span style={s.importToggleText}>{t('products.productList')}</span>
+            <span style={s.importToggleArrow}>{listOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {listOpen && (
+            <div style={s.importBody}>
+              {listLoading && (
+                <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0' }}>{t('common.loading')}</div>
+              )}
+
+              {!listLoading && productList.length > 0 && (
+                <>
+                  {/* Header row: select-all + batch delete */}
+                  <div style={ls.headerRow}>
+                    <label style={ls.checkLabel}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.size === productList.length && productList.length > 0}
+                        onChange={toggleSelectAll}
+                        style={ls.checkbox}
+                      />
+                      <span style={ls.selectAllText}>{t('products.selectAll')}</span>
+                    </label>
+                    {selectedIds.size > 0 && (
+                      <button
+                        style={ls.batchDeleteBtn}
+                        onClick={() => setDeleteConfirm({ type: 'batch', ids: Array.from(selectedIds) })}
+                      >
+                        {t('products.batchDelete')}（{selectedIds.size}）
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Product rows */}
+                  {productList.map((p) => (
+                    <div key={p.id} style={ls.row}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(p.id)}
+                        onChange={() => toggleSelect(p.id)}
+                        style={ls.checkbox}
+                      />
+                      <div style={ls.rowInfo}>
+                        <span style={{ ...ls.rowName, color: p.status === 'DISABLED' ? 'var(--muted)' : 'var(--text)' }}>
+                          {p.name}{p.spec ? ` · ${p.spec}` : ''}
+                        </span>
+                        <span style={ls.rowMeta}>
+                          {p.barcode}
+                          {p.status === 'DISABLED' && <span style={ls.disabledTag}> 停用</span>}
+                        </span>
+                      </div>
+                      <button
+                        style={ls.deleteRowBtn}
+                        onClick={() => setDeleteConfirm({ type: 'single', id: p.id, name: p.name })}
+                      >
+                        {t('products.deleteBtn')}
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {!listLoading && productList.length === 0 && (
+                <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0 8px' }}>暂无商品</div>
+              )}
+
+              {deleteMsg && <div style={s.errorMsg}>{deleteMsg}</div>}
+            </div>
+          )}
+        </div>
+
+        {/* ── 删除确认弹框 ── */}
+        {deleteConfirm && (
+          <div style={dlg.overlay}>
+            <div style={dlg.box}>
+              <div style={dlg.title}>{t('products.deleteConfirmTitle')}</div>
+              {deleteConfirm.type === 'single' && (
+                <div style={dlg.body}>{deleteConfirm.name}</div>
+              )}
+              {deleteConfirm.type === 'batch' && (
+                <div style={dlg.body}>{deleteConfirm.ids.length} 件商品</div>
+              )}
+              <div style={dlg.hint}>{t('products.deleteConfirmHint')}</div>
+              <div style={dlg.actions}>
+                <button style={dlg.cancelBtn} onClick={() => setDeleteConfirm(null)} disabled={deleting}>
+                  {t('products.deleteBack')}
+                </button>
+                <button style={dlg.confirmBtn} onClick={executeDelete} disabled={deleting}>
+                  {deleting ? t('products.deleting') : t('products.deleteConfirmBtn')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── 成功反馈 ── */}
         {mode === 'saved' && product && (
           <div style={s.savedCard}>
@@ -609,6 +818,12 @@ export default function ProductsPage() {
                 </Field>
 
                 <button style={s.saveBtn} onClick={handleSave}>{t('products.saveBtn')}</button>
+                <button
+                  style={s.dangerBtn}
+                  onClick={() => setDeleteConfirm({ type: 'single', id: product.id, name: product.name })}
+                >
+                  {t('products.deleteBtn')}
+                </button>
               </div>
             )}
 
@@ -902,6 +1117,18 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 16,
     fontWeight: 700,
   },
+  dangerBtn: {
+    display: 'block',
+    width: '100%',
+    height: 40,
+    marginTop: 8,
+    background: 'none',
+    color: 'var(--red)',
+    border: '1.5px solid var(--red)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 14,
+    fontWeight: 600,
+  },
   noticeRow: {
     display: 'flex',
     alignItems: 'flex-start',
@@ -1132,4 +1359,156 @@ const s: Record<string, React.CSSProperties> = {
   emptyIcon: { fontSize: 48, color: '#d0d0d0', lineHeight: 1, marginBottom: 4 },
   emptyTitle: { fontSize: 15, fontWeight: 600, color: '#bbb' },
   emptySub: { fontSize: 13, color: '#ccc' },
+}
+
+// ─── Product list row styles ──────────────────────────────────────────────────
+
+const ls: Record<string, React.CSSProperties> = {
+  headerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 8,
+    borderBottom: '1px solid var(--border)',
+    marginBottom: 4,
+  },
+  checkLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    cursor: 'pointer',
+  },
+  checkbox: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    cursor: 'pointer',
+  },
+  selectAllText: {
+    fontSize: 13,
+    color: 'var(--muted)',
+    fontWeight: 600,
+  },
+  batchDeleteBtn: {
+    height: 32,
+    padding: '0 12px',
+    background: 'none',
+    border: '1.5px solid var(--red)',
+    borderRadius: 'var(--radius-sm)',
+    color: 'var(--red)',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '8px 0',
+    borderBottom: '1px solid var(--border)',
+  },
+  rowInfo: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 2,
+  },
+  rowName: {
+    fontSize: 14,
+    fontWeight: 600,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  },
+  rowMeta: {
+    fontSize: 12,
+    color: 'var(--muted)',
+    fontFamily: 'monospace',
+  },
+  disabledTag: {
+    fontSize: 11,
+    color: 'var(--red)',
+    fontFamily: 'inherit',
+  },
+  deleteRowBtn: {
+    flexShrink: 0,
+    height: 30,
+    padding: '0 10px',
+    background: 'none',
+    border: '1px solid var(--red)',
+    borderRadius: 'var(--radius-sm)',
+    color: 'var(--red)',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+}
+
+// ─── Delete confirm dialog styles ────────────────────────────────────────────
+
+const dlg: Record<string, React.CSSProperties> = {
+  overlay: {
+    position: 'fixed' as const,
+    inset: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 800,
+    padding: '0 24px',
+  },
+  box: {
+    background: '#fff',
+    borderRadius: 'var(--radius)',
+    padding: '24px 20px 20px',
+    width: '100%',
+    maxWidth: 360,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 8,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: 700,
+    color: 'var(--text)',
+  },
+  body: {
+    fontSize: 15,
+    color: 'var(--text)',
+    fontWeight: 600,
+    wordBreak: 'break-all' as const,
+  },
+  hint: {
+    fontSize: 13,
+    color: 'var(--muted)',
+    marginBottom: 4,
+  },
+  actions: {
+    display: 'flex',
+    gap: 10,
+    marginTop: 4,
+  },
+  cancelBtn: {
+    flex: 1,
+    height: 44,
+    background: '#f5f5f5',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 15,
+    fontWeight: 600,
+    color: 'var(--text)',
+    cursor: 'pointer',
+  },
+  confirmBtn: {
+    flex: 1,
+    height: 44,
+    background: 'var(--red)',
+    border: 'none',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#fff',
+    cursor: 'pointer',
+  },
 }
