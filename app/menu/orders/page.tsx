@@ -281,7 +281,11 @@ export default function MyOrdersPage() {
             const statusLabel = STATUS_LABELS[lang][order.status] ?? order.status
 
             return (
-              <div key={order.id} style={{ ...s.orderCard, borderLeft: `3px solid ${statusColor}` }}>
+              <div
+                key={order.id}
+                style={{ ...s.orderCard, borderLeft: `3px solid ${statusColor}`, cursor: 'pointer' }}
+                onClick={() => setExpandedId(expanded ? null : order.id)}
+              >
 
                 {/* 卡片主行 */}
                 <div style={s.cardMain}>
@@ -295,12 +299,7 @@ export default function MyOrdersPage() {
                   </div>
                   <div style={s.cardRight}>
                     <div style={s.amount}>${order.totalAmount.toFixed(2)}</div>
-                    <button
-                      style={s.toggleBtn}
-                      onClick={() => setExpandedId(expanded ? null : order.id)}
-                    >
-                      {expanded ? ui.collapse : ui.detail}
-                    </button>
+                    <span style={s.expandArrow}>{expanded ? '▴' : '▾'}</span>
                   </div>
                 </div>
 
@@ -454,9 +453,9 @@ const s: Record<string, React.CSSProperties> = {
   },
   meta: { fontSize: 11, color: '#c0c0c0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   amount: { fontSize: 18, fontWeight: 700, color: '#1a1a1a' },
-  toggleBtn: {
-    fontSize: 11, fontWeight: 600, color: PRIMARY,
-    background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 0',
+  expandArrow: {
+    fontSize: 14, color: '#c0a090',
+    lineHeight: 1, userSelect: 'none' as const,
   },
 
   detail: {

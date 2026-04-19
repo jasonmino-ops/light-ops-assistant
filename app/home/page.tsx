@@ -572,7 +572,10 @@ function CustomerOrderCard({
   const label = needsPay ? '待收款' : (CO_STATUS_LABEL[order.status] ?? order.status)
 
   return (
-    <div style={{ ...s.recentCard, borderLeft: `3px solid ${color}`, margin: '0 8px 8px', background: '#fff', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', gap: 0 }}>
+    <div
+      style={{ ...s.recentCard, borderLeft: `3px solid ${color}`, margin: '0 8px 8px', background: '#fff', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', gap: 0, cursor: 'pointer' }}
+      onClick={() => setShowDetail((d) => !d)}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <div style={s.recentLeft}>
           <div style={s.recentTagRow}>
@@ -588,7 +591,7 @@ function CustomerOrderCard({
             {order.orderNo} · {fmtTime(order.createdAt)}
           </div>
           {!updating && (
-            <div style={s.coActions}>
+            <div style={s.coActions} onClick={(e) => e.stopPropagation()}>
               {order.status === 'PENDING' && (
                 <>
                   <button style={s.coConfirmBtn} onClick={onConfirm}>✓ 确认</button>
@@ -610,11 +613,9 @@ function CustomerOrderCard({
             ${order.totalAmount.toFixed(2)}
           </div>
           {needsPay && !updating && (
-            <button style={s.checkoutBtn} onClick={onCollect}>去收款</button>
+            <button style={s.checkoutBtn} onClick={(e) => { e.stopPropagation(); onCollect() }}>去收款</button>
           )}
-          <button style={s.coDetailToggleBtn} onClick={() => setShowDetail((d) => !d)}>
-            {showDetail ? '收起 ▴' : '明细 ▾'}
-          </button>
+          <span style={s.coExpandArrow}>{showDetail ? '▴' : '▾'}</span>
         </div>
       </div>
       {showDetail && (
@@ -1061,14 +1062,11 @@ const s: Record<string, React.CSSProperties> = {
     marginTop: 6,
     animation: 'pulse 1.2s ease-in-out infinite',
   },
-  coDetailToggleBtn: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: '#1677ff',
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    padding: '2px 0',
+  coExpandArrow: {
+    fontSize: 14,
+    color: '#c0b090',
+    lineHeight: 1,
+    userSelect: 'none' as const,
     marginTop: 4,
     alignSelf: 'flex-end',
   },
