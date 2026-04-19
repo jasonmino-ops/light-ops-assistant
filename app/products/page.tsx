@@ -37,6 +37,25 @@ type ImportResult = {
   errors: Array<{ row: number; barcode: string; reason: string }>
 }
 
+type CatSource = 'MANUAL' | 'AUTO' | 'NONE'
+
+type PreviewRow = {
+  rowNum: number
+  barcode: string
+  sku: string | null
+  name: string
+  spec: string | null
+  sellPrice: number
+  status: 'ACTIVE' | 'DISABLED'
+  category1Raw: string
+  category2Raw: string
+  resolvedL1: string | null
+  resolvedL2: string | null
+  catSource: CatSource
+  isDuplicate: boolean
+  error: string | null
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProductsPage() {
@@ -53,6 +72,9 @@ export default function ProductsPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
+  const [importStep, setImportStep] = useState<'upload' | 'preview' | 'done'>('upload')
+  const [importPreview, setImportPreview] = useState<PreviewRow[] | null>(null)
+  const [importConfirming, setImportConfirming] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -250,6 +272,7 @@ export default function ProductsPage() {
     if (!importFile) return
     setImporting(true)
     setImportResult(null)
+    setImportPreview(null)
     setImportError(null)
     try {
       const form = new FormData()
@@ -261,16 +284,42 @@ export default function ProductsPage() {
       })
       const body = await res.json()
       if (res.ok) {
-        setImportResult(body)
+        setImportPreview(body.preview)
+        setImportStep('preview')
         setImportFile(null)
         if (fileInputRef.current) fileInputRef.current.value = ''
+      } else {
+        setImportError(body.message ?? body.error ?? '解析失败')
+      }
+    } catch {
+      setImportError('网络错误，请重试')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function handleConfirmImport() {
+    if (!importPreview) return
+    setImportConfirming(true)
+    setImportError(null)
+    try {
+      const rows = importPreview.filter((r) => !r.error)
+      const res = await apiFetch(
+        '/api/products/import/confirm',
+        { method: 'POST', body: JSON.stringify({ rows }) },
+        OWNER_CTX,
+      )
+      const body = await res.json()
+      if (res.ok) {
+        setImportResult(body)
+        setImportStep('done')
       } else {
         setImportError(body.message ?? body.error ?? '导入失败')
       }
     } catch {
       setImportError('网络错误，请重试')
     } finally {
-      setImporting(false)
+      setImportConfirming(false)
     }
   }
 
@@ -455,62 +504,160 @@ export default function ProductsPage() {
 
         {/* ── 批量导入 ── */}
         <div style={s.importSection}>
-          <button style={s.importToggle} onClick={() => { setImportOpen((v) => !v); setImportResult(null); setImportError(null) }}>
+          <button
+            style={s.importToggle}
+            onClick={() => {
+              setImportOpen((v) => !v)
+              setImportStep('upload')
+              setImportPreview(null)
+              setImportResult(null)
+              setImportError(null)
+            }}
+          >
             <span style={s.importToggleText}>{t('products.importToggle')}</span>
             <span style={s.importToggleArrow}>{importOpen ? '▲' : '▼'}</span>
           </button>
 
           {importOpen && (
             <div style={s.importBody}>
-              <button style={s.templateBtn} onClick={downloadTemplate} type="button">
-                {t('products.downloadTemplate')}
-              </button>
 
-              <div style={s.uploadRow}>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  style={s.fileInput}
-                  onChange={(e) => {
-                    setImportFile(e.target.files?.[0] ?? null)
-                    setImportResult(null)
-                    setImportError(null)
-                  }}
-                />
-                <button
-                  style={{ ...s.importBtn, opacity: (!importFile || importing) ? 0.5 : 1 }}
-                  type="button"
-                  disabled={!importFile || importing}
-                  onClick={handleImport}
-                >
-                  {importing ? t('products.importing') : t('products.importBtn')}
-                </button>
-              </div>
+              {/* ── 步骤一：上传文件 ── */}
+              {importStep === 'upload' && (
+                <>
+                  <button style={s.templateBtn} onClick={downloadTemplate} type="button">
+                    {t('products.downloadTemplate')}
+                  </button>
 
-              {importError && <div style={s.importErrorMsg}>{importError}</div>}
+                  <div style={s.uploadRow}>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      style={s.fileInput}
+                      onChange={(e) => {
+                        setImportFile(e.target.files?.[0] ?? null)
+                        setImportResult(null)
+                        setImportError(null)
+                      }}
+                    />
+                    <button
+                      style={{ ...s.importBtn, opacity: (!importFile || importing) ? 0.5 : 1 }}
+                      type="button"
+                      disabled={!importFile || importing}
+                      onClick={handleImport}
+                    >
+                      {importing ? t('products.importing') : t('products.importBtn')}
+                    </button>
+                  </div>
 
-              {importResult && (
-                <div style={s.importResult}>
-                  <div style={s.importResultSummary}>
-                    <span style={s.importOk}>{t('products.importOkPrefix')} {importResult.imported} {t('products.importCountSuffix')}</span>
-                    {importResult.failed > 0 && (
-                      <span style={s.importFail}>{t('products.importFailPrefix')} {importResult.failed} {t('products.importCountSuffix')}</span>
+                  {importError && <div style={s.importErrorMsg}>{importError}</div>}
+                </>
+              )}
+
+              {/* ── 步骤二：预览确认 ── */}
+              {importStep === 'preview' && importPreview && (
+                <>
+                  <div style={pr.summary}>
+                    共 {importPreview.length} 行 ·{' '}
+                    <span style={{ color: '#52c41a', fontWeight: 700 }}>
+                      {importPreview.filter((r) => !r.error).length} 可导入
+                    </span>
+                    {importPreview.filter((r) => r.error).length > 0 && (
+                      <span style={{ color: '#ff4d4f' }}>
+                        {' '}· {importPreview.filter((r) => r.error).length} 有问题（将跳过）
+                      </span>
                     )}
                   </div>
-                  {importResult.errors.length > 0 && (
-                    <div style={s.importErrorList}>
-                      {importResult.errors.map((e, i) => (
-                        <div key={i} style={s.importErrorRow}>
-                          <span style={s.importErrorRowNum}>{t('products.importRowPrefix')} {e.row} {t('products.importRowSuffix')}</span>
-                          <span style={s.importErrorBarcode}>{e.barcode}</span>
-                          <span style={s.importErrorReason}>{e.reason}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+
+                  <div style={pr.scroll}>
+                    <table style={pr.table}>
+                      <thead>
+                        <tr>
+                          <th style={pr.th}>商品名</th>
+                          <th style={pr.th}>售价</th>
+                          <th style={pr.th}>一级分类</th>
+                          <th style={pr.th}>二级分类</th>
+                          <th style={pr.th}>分类来源</th>
+                          <th style={pr.th}>状态</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importPreview.map((row) => (
+                          <tr key={row.rowNum} style={row.error ? pr.errRow : {}}>
+                            <td style={pr.td}>
+                              <div style={{ fontWeight: 600 }}>{row.name}</div>
+                              {row.spec && <div style={{ color: '#aaa', fontSize: 11 }}>{row.spec}</div>}
+                            </td>
+                            <td style={pr.td}>${row.sellPrice.toFixed(2)}</td>
+                            <td style={pr.td}>{row.resolvedL1 ?? <span style={{ color: '#ccc' }}>—</span>}</td>
+                            <td style={pr.td}>{row.resolvedL2 ?? <span style={{ color: '#ccc' }}>—</span>}</td>
+                            <td style={pr.td}><CatSourceBadge source={row.catSource} /></td>
+                            <td style={pr.td}>
+                              {row.error
+                                ? <span style={{ color: '#ff4d4f', fontSize: 11 }}>{row.error}</span>
+                                : <span style={{ color: '#52c41a', fontSize: 13 }}>✓</span>
+                              }
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {importError && <div style={s.importErrorMsg}>{importError}</div>}
+
+                  <div style={pr.actions}>
+                    <button
+                      style={{ ...s.importBtn, background: '#f5f5f5', color: '#555', border: '1px solid #d9d9d9' }}
+                      onClick={() => { setImportStep('upload'); setImportPreview(null); setImportError(null) }}
+                    >
+                      重新上传
+                    </button>
+                    <button
+                      style={{
+                        ...s.importBtn,
+                        opacity: (importConfirming || importPreview.filter((r) => !r.error).length === 0) ? 0.5 : 1,
+                      }}
+                      disabled={importConfirming || importPreview.filter((r) => !r.error).length === 0}
+                      onClick={handleConfirmImport}
+                    >
+                      {importConfirming ? '导入中…' : `确认导入 ${importPreview.filter((r) => !r.error).length} 件`}
+                    </button>
+                  </div>
+                </>
               )}
+
+              {/* ── 步骤三：导入结果 ── */}
+              {importStep === 'done' && importResult && (
+                <>
+                  <div style={s.importResult}>
+                    <div style={s.importResultSummary}>
+                      <span style={s.importOk}>{t('products.importOkPrefix')} {importResult.imported} {t('products.importCountSuffix')}</span>
+                      {importResult.failed > 0 && (
+                        <span style={s.importFail}>{t('products.importFailPrefix')} {importResult.failed} {t('products.importCountSuffix')}</span>
+                      )}
+                    </div>
+                    {importResult.errors.length > 0 && (
+                      <div style={s.importErrorList}>
+                        {importResult.errors.map((e, i) => (
+                          <div key={i} style={s.importErrorRow}>
+                            <span style={s.importErrorRowNum}>{t('products.importRowPrefix')} {e.row} {t('products.importRowSuffix')}</span>
+                            <span style={s.importErrorBarcode}>{e.barcode}</span>
+                            <span style={s.importErrorReason}>{e.reason}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    style={{ ...s.importBtn, marginTop: 4 }}
+                    onClick={() => { setImportStep('upload'); setImportPreview(null); setImportResult(null); setImportError(null) }}
+                  >
+                    继续导入
+                  </button>
+                </>
+              )}
+
             </div>
           )}
         </div>
@@ -919,6 +1066,20 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const f: Record<string, React.CSSProperties> = {
   wrap: { marginBottom: 12 },
   label: { fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 6 },
+}
+
+// ─── 分类来源标签 ─────────────────────────────────────────────────────────────
+
+function CatSourceBadge({ source }: { source: 'MANUAL' | 'AUTO' | 'NONE' }) {
+  if (source === 'MANUAL') return <span style={badge.manual}>表格</span>
+  if (source === 'AUTO')   return <span style={badge.auto}>自动识别</span>
+  return <span style={badge.none}>未分类</span>
+}
+
+const badge: Record<string, React.CSSProperties> = {
+  manual: { fontSize: 10, padding: '2px 6px', borderRadius: 4, background: '#e6f4ff', color: '#1677ff', fontWeight: 700 },
+  auto:   { fontSize: 10, padding: '2px 6px', borderRadius: 4, background: '#fff7e6', color: '#fa8c16', fontWeight: 700 },
+  none:   { fontSize: 10, padding: '2px 6px', borderRadius: 4, background: '#f5f5f5', color: '#999',    fontWeight: 600 },
 }
 
 // ─── CategorySelect ───────────────────────────────────────────────────────────
@@ -1359,6 +1520,53 @@ const s: Record<string, React.CSSProperties> = {
   emptyIcon: { fontSize: 48, color: '#d0d0d0', lineHeight: 1, marginBottom: 4 },
   emptyTitle: { fontSize: 15, fontWeight: 600, color: '#bbb' },
   emptySub: { fontSize: 13, color: '#ccc' },
+}
+
+// ─── 导入预览表格样式 ─────────────────────────────────────────────────────────
+
+const pr: Record<string, React.CSSProperties> = {
+  summary: {
+    fontSize: 13,
+    color: 'var(--muted)',
+    padding: '4px 0 6px',
+  },
+  scroll: {
+    overflowX: 'auto' as const,
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border)',
+    maxHeight: 320,
+    overflowY: 'auto' as const,
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse' as const,
+    fontSize: 12,
+    whiteSpace: 'nowrap' as const,
+  },
+  th: {
+    background: '#f5f5f5',
+    fontWeight: 700,
+    color: 'var(--muted)',
+    padding: '8px 10px',
+    textAlign: 'left' as const,
+    borderBottom: '1px solid var(--border)',
+    position: 'sticky' as const,
+    top: 0,
+  },
+  td: {
+    padding: '7px 10px',
+    borderBottom: '1px solid var(--border)',
+    color: 'var(--text)',
+    verticalAlign: 'top' as const,
+  },
+  errRow: {
+    background: '#fff5f5',
+  },
+  actions: {
+    display: 'flex',
+    gap: 8,
+    marginTop: 4,
+  },
 }
 
 // ─── Product list row styles ──────────────────────────────────────────────────
