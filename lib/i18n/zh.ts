@@ -226,6 +226,12 @@ const zh = {
     modeDeferred: '挂单待结账',
     saveMode: '保存',
     modeSaved: '已保存',
+    menuDisplay: '顾客页展示',
+    menuBannerUrl: '头图 URL',
+    menuAnnouncement: '店铺公告',
+    menuAnnouncementPh: '向顾客展示的公告文字',
+    menuPromoText: '活动文案',
+    menuPromoTextPh: '促销活动、限时优惠等文案',
   },
   invite: {
     title: '邀请 & 成员',

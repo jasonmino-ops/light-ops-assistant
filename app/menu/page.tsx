@@ -154,6 +154,9 @@ type ApiProduct = {
 type ApiStore = {
   name: string
   isOpen: boolean
+  bannerUrl:    string | null
+  announcement: string | null
+  promoText:    string | null
 }
 
 // ─── 购物车 ──────────────────────────────────────────────────────────────────
@@ -341,7 +344,14 @@ export default function MenuPage() {
       <main style={s.page}>
 
         {/* ── 1. 顶部门店头图 ── */}
-        <div style={s.banner}>
+        <div style={{
+          ...s.banner,
+          ...(storeData?.bannerUrl ? {
+            backgroundImage: `url(${storeData.bannerUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          } : {}),
+        }}>
           <div style={s.bannerMask} />
           <button style={s.circleBtn} onClick={() => history.back()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -373,6 +383,22 @@ export default function MenuPage() {
             </div>
           </div>
         </div>
+
+        {/* ── 公告条 ── */}
+        {storeData?.announcement && (
+          <div style={s.announcementBar}>
+            <span style={s.announcementIcon}>📢</span>
+            <span style={s.announcementText}>{storeData.announcement}</span>
+          </div>
+        )}
+
+        {/* ── 活动文案条 ── */}
+        {storeData?.promoText && (
+          <div style={s.promoBar}>
+            <span style={s.promoIcon}>🎉</span>
+            <span style={s.promoText}>{storeData.promoText}</span>
+          </div>
+        )}
 
         {/* ── 我的订单入口条（仅 Telegram 顾客可见） ── */}
         {hasTgId && storeCode && (
@@ -952,6 +978,29 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     cursor: 'pointer',
   },
+  announcementBar: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: '10px 16px',
+    background: '#fffbe6',
+    borderTop: '1px solid #ffe58f',
+    borderBottom: '1px solid #ffe58f',
+  },
+  announcementIcon: { fontSize: 15, lineHeight: '1.5', flexShrink: 0, marginTop: 1 },
+  announcementText: { fontSize: 13, color: '#7c5e00', lineHeight: 1.5 },
+
+  promoBar: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: '10px 16px',
+    background: 'linear-gradient(90deg, #fff5ee 0%, #fff0e6 100%)',
+    borderBottom: '1px solid #ffd6b3',
+  },
+  promoIcon: { fontSize: 15, lineHeight: '1.5', flexShrink: 0, marginTop: 1 },
+  promoText: { fontSize: 13, color: '#c04a00', lineHeight: 1.5, fontWeight: 500 },
+
   myOrdersBar: {
     display: 'flex',
     alignItems: 'center',

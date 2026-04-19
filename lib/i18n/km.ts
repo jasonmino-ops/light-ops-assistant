@@ -226,6 +226,12 @@ const km = {
     modeDeferred: 'បញ្ជូនរង់ចាំទូទាត់',
     saveMode: 'រក្សាទុក',
     modeSaved: 'បានរក្សាទុក',
+    menuDisplay: 'ការបង្ហាញទំព័រអតិថិជន',
+    menuBannerUrl: 'URL រូបភាពបដា',
+    menuAnnouncement: 'សេចក្តីប្រកាស',
+    menuAnnouncementPh: 'ព័ត៌មានប្រកាសសម្រាប់អតិថិជន',
+    menuPromoText: 'ការផ្សព្វផ្សាយ',
+    menuPromoTextPh: 'អត្ថបទលក់ដំណើការ កូដបញ្ចុះតម្លៃ ។ល',
   },
   invite: {
     title: 'អញ្ជើញ & សមាជិក',

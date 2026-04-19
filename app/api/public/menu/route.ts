@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   const store = await prisma.store.findUnique({
     where: { code },
-    select: { name: true, status: true, tenantId: true },
+    select: { name: true, status: true, tenantId: true, bannerUrl: true, announcement: true, promoText: true },
   })
 
   if (!store || store.status !== 'ACTIVE') {
@@ -33,6 +33,9 @@ export async function GET(req: NextRequest) {
     store: {
       name: store.name,
       isOpen: true,
+      bannerUrl:    store.bannerUrl    ?? null,
+      announcement: store.announcement ?? null,
+      promoText:    store.promoText    ?? null,
     },
     products: products.map((p) => ({
       id: p.id,

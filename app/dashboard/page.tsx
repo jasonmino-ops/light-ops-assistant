@@ -466,23 +466,41 @@ function HotColumn({
 
 // ─── StoreConfigPanel ─────────────────────────────────────────────────────────
 
-type StoreConfig = { id: string; name: string; checkoutMode: string }
+type StoreConfig = {
+  id: string; name: string; checkoutMode: string
+  bannerUrl: string | null; announcement: string | null; promoText: string | null
+}
+
+type MenuDraft = { bannerUrl: string; announcement: string; promoText: string }
 
 function StoreConfigPanel({ t }: { t: (k: string) => string }) {
-  const [stores, setStores] = useState<StoreConfig[]>([])
-  const [pending, setPending] = useState<Record<string, string>>({})
-  const [saving, setSaving] = useState<Record<string, boolean>>({})
-  const [saved, setSaved] = useState<Record<string, boolean>>({})
-  const [saveError, setSaveError] = useState<Record<string, string>>({})
+  const [stores, setStores]         = useState<StoreConfig[]>([])
+  const [pending, setPending]       = useState<Record<string, string>>({})
+  const [saving, setSaving]         = useState<Record<string, boolean>>({})
+  const [saved, setSaved]           = useState<Record<string, boolean>>({})
+  const [saveError, setSaveError]   = useState<Record<string, string>>({})
+  const [menuDraft, setMenuDraft]   = useState<Record<string, MenuDraft>>({})
+  const [menuSaving, setMenuSaving] = useState<Record<string, boolean>>({})
+  const [menuSaved, setMenuSaved]   = useState<Record<string, boolean>>({})
+  const [menuErr, setMenuErr]       = useState<Record<string, string>>({})
 
   useEffect(() => {
     apiFetch('/api/stores', { cache: 'no-store' }, OWNER_CTX)
       .then((r) => (r.ok ? r.json() : []))
       .then((list: StoreConfig[]) => {
         setStores(list)
-        const init: Record<string, string> = {}
-        list.forEach((s) => { init[s.id] = s.checkoutMode })
-        setPending(init)
+        const initMode: Record<string, string> = {}
+        const initMenu: Record<string, MenuDraft> = {}
+        list.forEach((s) => {
+          initMode[s.id] = s.checkoutMode
+          initMenu[s.id] = {
+            bannerUrl:    s.bannerUrl    ?? '',
+            announcement: s.announcement ?? '',
+            promoText:    s.promoText    ?? '',
+          }
+        })
+        setPending(initMode)
+        setMenuDraft(initMenu)
       })
       .catch(() => {})
   }, [])
@@ -512,6 +530,35 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
     }
   }
 
+  async function handleMenuSave(sid: string) {
+    setMenuSaving((v) => ({ ...v, [sid]: true }))
+    setMenuSaved((v) => ({ ...v, [sid]: false }))
+    setMenuErr((v) => ({ ...v, [sid]: '' }))
+    try {
+      const draft = menuDraft[sid]
+      const res = await apiFetch(`/api/stores/${sid}/menu-config`, {
+        method: 'PATCH',
+        body: JSON.stringify(draft),
+      }, OWNER_CTX)
+      if (res.ok) {
+        setMenuSaved((v) => ({ ...v, [sid]: true }))
+        setTimeout(() => setMenuSaved((v) => ({ ...v, [sid]: false })), 2000)
+      } else {
+        const body = await res.json().catch(() => null)
+        setMenuErr((v) => ({ ...v, [sid]: body?.error ?? '保存失败' }))
+      }
+    } catch {
+      setMenuErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+    } finally {
+      setMenuSaving((v) => ({ ...v, [sid]: false }))
+    }
+  }
+
+  function setField(sid: string, field: keyof MenuDraft, val: string) {
+    setMenuDraft((v) => ({ ...v, [sid]: { ...v[sid], [field]: val } }))
+    setMenuErr((v) => ({ ...v, [sid]: '' }))
+  }
+
   if (stores.length === 0) return null
 
   return (
@@ -519,6 +566,8 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
       {stores.map((store) => (
         <div key={store.id} style={sc.row}>
           <div style={sc.storeName}>{store.name}</div>
+
+          {/* 结账模式 */}
           <div style={sc.label}>{t('dashboard.checkoutMode')}</div>
           <div style={sc.controls}>
             <select
@@ -541,6 +590,49 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
             </button>
           </div>
           {saveError[store.id] ? <div style={sc.errMsg}>{saveError[store.id]}</div> : null}
+
+          {/* 顾客页展示配置 */}
+          <div style={sc.menuSection}>
+            <div style={sc.menuSectionTitle}>{t('dashboard.menuDisplay')}</div>
+
+            <div style={sc.fieldLabel}>{t('dashboard.menuBannerUrl')}</div>
+            <input
+              type="url"
+              style={sc.textInput}
+              placeholder="https://..."
+              value={menuDraft[store.id]?.bannerUrl ?? ''}
+              onChange={(e) => setField(store.id, 'bannerUrl', e.target.value)}
+            />
+
+            <div style={sc.fieldLabel}>{t('dashboard.menuAnnouncement')}</div>
+            <textarea
+              style={sc.textarea}
+              rows={2}
+              placeholder={t('dashboard.menuAnnouncementPh')}
+              value={menuDraft[store.id]?.announcement ?? ''}
+              onChange={(e) => setField(store.id, 'announcement', e.target.value)}
+            />
+
+            <div style={sc.fieldLabel}>{t('dashboard.menuPromoText')}</div>
+            <textarea
+              style={sc.textarea}
+              rows={2}
+              placeholder={t('dashboard.menuPromoTextPh')}
+              value={menuDraft[store.id]?.promoText ?? ''}
+              onChange={(e) => setField(store.id, 'promoText', e.target.value)}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+              <button
+                style={sc.saveBtn}
+                onClick={() => handleMenuSave(store.id)}
+                disabled={menuSaving[store.id]}
+              >
+                {menuSaved[store.id] ? t('dashboard.modeSaved') : menuSaving[store.id] ? '…' : t('dashboard.saveMode')}
+              </button>
+            </div>
+            {menuErr[store.id] ? <div style={sc.errMsg}>{menuErr[store.id]}</div> : null}
+          </div>
         </div>
       ))}
     </div>
@@ -815,4 +907,9 @@ const sc: Record<string, React.CSSProperties> = {
   select: { flex: 1, fontSize: 14, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' },
   saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' },
   errMsg: { fontSize: 12, color: '#d97706', marginTop: 4 },
+  menuSection: { marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' },
+  menuSectionTitle: { fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '0.04em', marginBottom: 10 },
+  fieldLabel: { fontSize: 12, color: 'var(--muted)', marginBottom: 4, marginTop: 8 },
+  textInput: { width: '100%', fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', outline: 'none', boxSizing: 'border-box' as const },
+  textarea: { width: '100%', fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical' as const, outline: 'none', lineHeight: 1.5, boxSizing: 'border-box' as const },
 }

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const stores = await prisma.store.findMany({
     where: { tenantId: ctx.tenantId, status: 'ACTIVE' },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, name: true, checkoutMode: true },
+    select: { id: true, name: true, checkoutMode: true, bannerUrl: true, announcement: true, promoText: true },
   })
 
   return NextResponse.json(stores)
