@@ -300,7 +300,15 @@ export default function SalePage() {
 
   function addToCart() {
     if (!product) return
-    setCart((prev) => [...prev, { key: `${product.id}-${Date.now()}`, product, qty: safeQty }])
+    setCart((prev) => {
+      const existing = prev.find((i) => i.product.id === product.id)
+      if (existing) {
+        return prev.map((i) =>
+          i.product.id === product.id ? { ...i, qty: i.qty + safeQty } : i
+        )
+      }
+      return [...prev, { key: `${product.id}-${Date.now()}`, product, qty: safeQty }]
+    })
     setProduct(null)
     setBarcodeInput('')
     setQty(1)
@@ -598,7 +606,7 @@ export default function SalePage() {
           <>
             {/* 查询卡：下拉选择（主路径）/ 摄像头扫码 / 手动输入（备用） */}
             <div style={s.card}>
-              <div style={s.cardLabel}>选择商品</div>
+              <div style={s.cardLabel}>{t('sale.selectProduct')}</div>
               {scannerMsg && (
                 <div style={scannerMsg.type === 'ok' ? s.scannerOkMsg : s.scannerFailMsg}>
                   {scannerMsg.text}
@@ -636,11 +644,11 @@ export default function SalePage() {
                   )}
                 </div>
               ) : (
-                <div style={s.dropEmpty}>商品加载中…</div>
+                <div style={s.dropEmpty}>{t('sale.loadingProducts')}</div>
               )}
 
               <div style={{ ...s.orDivider, marginTop: 14 }}>
-                <div style={s.orLine} /><span style={s.orText}>或摄像头扫码</span><div style={s.orLine} />
+                <div style={s.orLine} /><span style={s.orText}>{t('sale.orCamera')}</span><div style={s.orLine} />
               </div>
               <button type="button" style={s.scanRow} onClick={scanBarcode} disabled={status === 'querying' || status === 'submitting'}>
                 <span style={s.scanIcon}>⊡</span>
@@ -651,14 +659,14 @@ export default function SalePage() {
               <div style={s.orDivider}>
                 <div style={s.orLine} />
                 <button type="button" style={s.manualToggle} onClick={() => { setManualOpen((v) => !v); setScannerMsg(null) }}>
-                  {manualOpen ? '收起手动输入 ▲' : '手动输入商品码 / 条码 ▼'}
+                  {manualOpen ? t('sale.manualClose') : t('sale.manualOpen')}
                 </button>
                 <div style={s.orLine} />
               </div>
 
               {manualOpen && (
                 <>
-                  <div style={s.scanHintMsg}>已连接扫码枪时，建议优先使用上方下拉选择；手动输入仅作备用。</div>
+                  <div style={s.scanHintMsg}>{t('sale.manualHint')}</div>
                   <div ref={suggestWrapRef} style={s.suggestWrap}>
                     <div style={s.inputRow}>
                       <input
