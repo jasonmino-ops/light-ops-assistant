@@ -1025,6 +1025,19 @@ export default function ProductsPage() {
                     onChange={(e) => setEditPrice(e.target.value.replace(/[^0-9.]/g, ''))}
                     placeholder="0.00"
                   />
+                  <div style={s.priceAdjRow}>
+                    {[
+                      { label: '清空', fn: () => setEditPrice('') },
+                      { label: '-1',   fn: () => setEditPrice((v) => String(Math.max(0, parseFloat(v || '0') - 1))) },
+                      { label: '-0.5', fn: () => setEditPrice((v) => String(Math.max(0, parseFloat(v || '0') - 0.5))) },
+                      { label: '+0.5', fn: () => setEditPrice((v) => String(Math.max(0, parseFloat(v || '0') + 0.5))) },
+                      { label: '+1',   fn: () => setEditPrice((v) => String(Math.max(0, parseFloat(v || '0') + 1))) },
+                    ].map(({ label, fn }) => (
+                      <button key={label} type="button" style={s.priceAdjBtn} onClick={fn}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </Field>
 
                 <Field label={t('products.fieldCategory')}>
@@ -1321,6 +1334,22 @@ const s: Record<string, React.CSSProperties> = {
     outline: 'none',
     background: '#f7f8fa',
     boxSizing: 'border-box' as const,
+  },
+  priceAdjRow: {
+    display: 'flex',
+    gap: 6,
+    marginTop: 6,
+  },
+  priceAdjBtn: {
+    flex: 1,
+    height: 34,
+    fontSize: 13,
+    fontWeight: 600,
+    background: '#f0f5ff',
+    border: '1.5px solid #91caff',
+    borderRadius: 6,
+    color: 'var(--blue)',
+    cursor: 'pointer',
   },
   barcodeRow: {
     display: 'flex',
