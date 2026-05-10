@@ -64,6 +64,17 @@ export default function ProductsPage() {
   const [barcodeInput, setBarcodeInput] = useState('')
   const [cameraFailCount, setCameraFailCount] = useState(0)
   const scanSucceededRef = useRef(false)
+  const hidBlockedRef = useRef(false)
+  const hidBlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function blockHidBriefly() {
+    hidBlockedRef.current = true
+    if (hidBlockTimerRef.current) clearTimeout(hidBlockTimerRef.current)
+    hidBlockTimerRef.current = setTimeout(() => {
+      hidBlockedRef.current = false
+    }, 400)
+  }
+
   const [mode, setMode] = useState<Mode>('idle')
   const [product, setProduct] = useState<Product | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -109,6 +120,22 @@ export default function ProductsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteMsg, setDeleteMsg] = useState<string | null>(null)
+
+  // ── 扫码枪输入防污染：mode 切换后 400ms 内屏蔽非输入框的全局字符 ────────────
+
+  useEffect(() => {
+    function handleKeyDown(e: globalThis.KeyboardEvent) {
+      if (!hidBlockedRef.current) return
+      const active = document.activeElement
+      const isTypingField =
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement
+      if (isTypingField) return
+      if (e.key.length === 1) e.preventDefault()
+    }
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [])
 
   // ── Load categories on mount ──────────────────────────────────────────────
 
@@ -346,6 +373,7 @@ export default function ProductsPage() {
         setEditStatus(p.status)
         setEditCategoryId(p.categoryId ?? '')
         setMode('found')
+        blockHidBriefly()
       } else {
         const body = await res.json().catch(() => ({}))
         if (body.error === 'PRODUCT_NOT_FOUND') {
@@ -354,6 +382,7 @@ export default function ProductsPage() {
           setNewSpec('')
           setNewPrice('')
           setMode('not-found')
+          blockHidBriefly()
         } else {
           setError('查询失败，请重试')
           setMode('idle')
@@ -371,6 +400,7 @@ export default function ProductsPage() {
     setScannerOpen(false)
     setBarcodeInput(barcode)
     lookup(barcode)
+    blockHidBriefly()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
