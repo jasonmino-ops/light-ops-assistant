@@ -1,12 +1,45 @@
 'use client'
 
-import { useState, useEffect, useRef, KeyboardEvent } from 'react'
+import { useState, useEffect, useRef, KeyboardEvent, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import KhqrSheet from '@/app/components/KhqrSheet'
+
+// ─── HID Scanner Hook ─────────────────────────────────────────────────────────
+
+function useHidScanner(onScan: (code: string) => void) {
+  const bufRef = useRef('')
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    function handleKeyDown(e: globalThis.KeyboardEvent) {
+      const active = document.activeElement
+      const isTypingField = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement
+      if (isTypingField) return
+      if (e.key === 'Enter') {
+        if (bufRef.current.length >= 4) onScan(bufRef.current)
+        bufRef.current = ''
+        if (timerRef.current) clearTimeout(timerRef.current)
+        return
+      }
+      if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        bufRef.current += e.key
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => {
+          if (bufRef.current.length >= 4) onScan(bufRef.current)
+          bufRef.current = ''
+        }, 80)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [onScan])
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,6 +112,8 @@ export default function SalePage() {
   const [cameraFailCount, setCameraFailCount] = useState(0)
   const [hidFailCount, setHidFailCount] = useState(0)
   const isHidTier = tier === 'STANDARD' || tier === 'MULTI_STORE'
+  const [manualOpen, setManualOpen] = useState(false)
+  const [scannerMsg, setScannerMsg] = useState<{ type: 'ok' | 'fail'; text: string } | null>(null)
 
   function focusInput() {
     // defer one tick so the input is visible/mounted before focusing
@@ -207,6 +242,23 @@ export default function SalePage() {
     if (e.key === 'Enter') queryProduct()
     if (e.key === 'Escape') setShowSuggestions(false)
   }
+
+  const handleHidScan = useCallback((code: string) => {
+    setScannerMsg(null)
+    const clean = code.trim()
+    if (!clean) return
+    const hit = allProducts.find((p) => p.barcode === clean) ||
+      allProducts.find((p) => p.barcode.toLowerCase() === clean.toLowerCase())
+    if (hit) {
+      selectProduct(hit)
+      setScannerMsg({ type: 'ok', text: `✓ 已选中：${hit.name}` })
+      setTimeout(() => setScannerMsg(null), 2500)
+    } else {
+      queryProductByBarcode(clean)
+      setScannerMsg({ type: 'fail', text: `未找到条码 ${clean}，请用下拉选择或手动输入` })
+    }
+  }, [allProducts]) // eslint-disable-line react-hooks/exhaustive-deps
+  useHidScanner(handleHidScan)
 
   // ── 扫码 ──────────────────────────────────────────────────────────────────
 
@@ -410,6 +462,8 @@ export default function SalePage() {
     setDropSearch('')
     setDropOpen(false)
     setShowSuggestions(false)
+    setScannerMsg(null)
+    setManualOpen(false)
     setCart([])
     setPayStep('none')
     setPendingPayment(null)
@@ -542,119 +596,102 @@ export default function SalePage() {
         {/* ══ 主流程 ══ */}
         {!success && !deferredOrder && payStep !== 'khqr_pending' && (
           <>
-            {/* 查询卡：扫码 / 输入 / 下拉 */}
+            {/* 查询卡：下拉选择（主路径）/ 摄像头扫码 / 手动输入（备用） */}
             <div style={s.card}>
-              <button
-                type="button"
-                style={s.scanRow}
-                onClick={scanBarcode}
-                disabled={status === 'querying' || status === 'submitting'}
-              >
+              <div style={s.cardLabel}>选择商品</div>
+              {scannerMsg && (
+                <div style={scannerMsg.type === 'ok' ? s.scannerOkMsg : s.scannerFailMsg}>
+                  {scannerMsg.text}
+                </div>
+              )}
+              {allProducts.length > 0 ? (
+                <div ref={dropRef} style={s.dropWrap}>
+                  <div style={s.dropTrigger} onClick={() => setDropOpen((v) => !v)}>
+                    <span style={s.dropTriggerText}>
+                      {product ? `${product.name}${product.spec ? ' · ' + product.spec : ''}` : t('sale.allProducts')}
+                    </span>
+                    <span style={s.dropArrow}>{dropOpen ? '▲' : '▼'}</span>
+                  </div>
+                  {dropOpen && (
+                    <div style={s.dropPanel}>
+                      <input
+                        style={s.dropSearch}
+                        type="text"
+                        placeholder={t('sale.dropSearch')}
+                        value={dropSearch}
+                        onChange={(e) => setDropSearch(e.target.value)}
+                      />
+                      <div style={s.dropList}>
+                        {filteredDrop.length === 0 && <div style={s.dropEmpty}>{t('sale.noMatch')}</div>}
+                        {filteredDrop.map((p) => (
+                          <div key={p.id} style={s.dropItem} onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}>
+                            <span style={s.dropCode}>{p.barcode}</span>
+                            <span style={s.dropName}>{p.name}</span>
+                            {p.spec && <span style={s.dropSpec}>{p.spec}</span>}
+                            <span style={s.dropPrice}>${p.sellPrice.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={s.dropEmpty}>商品加载中…</div>
+              )}
+
+              <div style={{ ...s.orDivider, marginTop: 14 }}>
+                <div style={s.orLine} /><span style={s.orText}>或摄像头扫码</span><div style={s.orLine} />
+              </div>
+              <button type="button" style={s.scanRow} onClick={scanBarcode} disabled={status === 'querying' || status === 'submitting'}>
                 <span style={s.scanIcon}>⊡</span>
                 <span style={s.scanLabel}>{t('sale.scanBtn')}</span>
               </button>
-
-              {cameraFailCount >= 5 && (
-                <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>
-              )}
+              {cameraFailCount >= 5 && <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>}
 
               <div style={s.orDivider}>
-                <div style={s.orLine} /><span style={s.orText}>{t('sale.orInput')}</span><div style={s.orLine} />
+                <div style={s.orLine} />
+                <button type="button" style={s.manualToggle} onClick={() => { setManualOpen((v) => !v); setScannerMsg(null) }}>
+                  {manualOpen ? '收起手动输入 ▲' : '手动输入商品码 / 条码 ▼'}
+                </button>
+                <div style={s.orLine} />
               </div>
 
-              <div ref={suggestWrapRef} style={s.suggestWrap}>
-                <div style={s.inputRow}>
-                  <input
-                    ref={inputRef}
-                    style={s.textInput}
-                    type="text"
-                    placeholder={t('sale.inputPlaceholder')}
-                    value={barcodeInput}
-                    autoFocus
-                    onChange={(e) => {
-                      setBarcodeInput(e.target.value)
-                      if (product) setProduct(null)
-                    }}
-                    onKeyDown={handleBarcodeKeyDown}
-                    onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
-                  />
-                  <button
-                    style={s.queryBtn}
-                    type="button"
-                    onClick={queryProduct}
-                    disabled={status === 'querying' || !barcodeInput.trim()}
-                  >
-                    {status === 'querying' ? t('sale.querying') : t('sale.queryBtn')}
-                  </button>
-                </div>
-
-                {showSuggestions && (
-                  <div style={s.suggestPanel}>
-                    {suggestions.map((p) => (
-                      <div
-                        key={p.id}
-                        style={s.suggestItem}
-                        onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}
-                      >
-                        <span style={s.suggestCode}>{p.barcode}</span>
-                        <span style={s.suggestName}>{p.name}</span>
-                        {p.spec && <span style={s.suggestSpec}> · {p.spec}</span>}
-                        <span style={s.suggestPrice}>${p.sellPrice.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {queryError && <div style={s.errorMsg}>{queryError}</div>}
-              {isHidTier && hidFailCount >= 5 && (
-                <div style={s.scanHintMsg}>{t('sale.hidFailHint')}</div>
-              )}
-
-              {allProducts.length > 0 && (
+              {manualOpen && (
                 <>
-                  <div style={s.orDivider}>
-                    <div style={s.orLine} /><span style={s.orText}>{t('sale.orFromList')}</span><div style={s.orLine} />
-                  </div>
-                  <div ref={dropRef} style={s.dropWrap}>
-                    <div style={s.dropTrigger} onClick={() => setDropOpen((v) => !v)}>
-                      <span style={s.dropTriggerText}>
-                        {product
-                          ? `${product.name}${product.spec ? ' · ' + product.spec : ''}`
-                          : t('sale.allProducts')}
-                      </span>
-                      <span style={s.dropArrow}>{dropOpen ? '▲' : '▼'}</span>
+                  <div style={s.scanHintMsg}>已连接扫码枪时，建议优先使用上方下拉选择；手动输入仅作备用。</div>
+                  <div ref={suggestWrapRef} style={s.suggestWrap}>
+                    <div style={s.inputRow}>
+                      <input
+                        ref={inputRef}
+                        style={s.textInput}
+                        type="text"
+                        placeholder={t('sale.inputPlaceholder')}
+                        value={barcodeInput}
+                        onChange={(e) => { setBarcodeInput(e.target.value); if (product) setProduct(null) }}
+                        onKeyDown={handleBarcodeKeyDown}
+                        onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
+                      />
+                      <button style={s.queryBtn} type="button" onClick={queryProduct} disabled={status === 'querying' || !barcodeInput.trim()}>
+                        {status === 'querying' ? t('sale.querying') : t('sale.queryBtn')}
+                      </button>
                     </div>
-                    {dropOpen && (
-                      <div style={s.dropPanel}>
-                        <input
-                          style={s.dropSearch}
-                          type="text"
-                          placeholder={t('sale.dropSearch')}
-                          value={dropSearch}
-                          onChange={(e) => setDropSearch(e.target.value)}
-                          autoFocus
-                        />
-                        <div style={s.dropList}>
-                          {filteredDrop.length === 0 && <div style={s.dropEmpty}>{t('sale.noMatch')}</div>}
-                          {filteredDrop.map((p) => (
-                            <div
-                              key={p.id}
-                              style={s.dropItem}
-                              onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}
-                            >
-                              <span style={s.dropCode}>{p.barcode}</span>
-                              <span style={s.dropName}>{p.name}</span>
-                              {p.spec && <span style={s.dropSpec}>{p.spec}</span>}
-                              <span style={s.dropPrice}>${p.sellPrice.toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </div>
+                    {showSuggestions && (
+                      <div style={s.suggestPanel}>
+                        {suggestions.map((p) => (
+                          <div key={p.id} style={s.suggestItem} onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}>
+                            <span style={s.suggestCode}>{p.barcode}</span>
+                            <span style={s.suggestName}>{p.name}</span>
+                            {p.spec && <span style={s.suggestSpec}> · {p.spec}</span>}
+                            <span style={s.suggestPrice}>${p.sellPrice.toFixed(2)}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
                 </>
               )}
+              {queryError && <div style={s.errorMsg}>{queryError}</div>}
+              {isHidTier && hidFailCount >= 5 && <div style={s.scanHintMsg}>{t('sale.hidFailHint')}</div>}
             </div>
 
             {/* 空提示 */}
@@ -845,6 +882,9 @@ const s: Record<string, React.CSSProperties> = {
 
   errorMsg: { fontSize: 13, color: 'var(--red)', padding: '6px 2px 0' },
   scanHintMsg: { fontSize: 12, color: '#fa8c16', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6, padding: '6px 10px', marginBottom: 8 },
+  scannerOkMsg: { fontSize: 13, color: '#389e0d', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6, padding: '6px 10px', marginBottom: 8 },
+  scannerFailMsg: { fontSize: 13, color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 6, padding: '6px 10px', marginBottom: 8 },
+  manualToggle: { background: 'none', border: 'none', fontSize: 12, color: 'var(--blue)', padding: '0 8px', whiteSpace: 'nowrap', cursor: 'pointer' },
 
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '36px 20px', gap: 8 },
   emptyIcon: { fontSize: 44, color: '#d0d0d0', lineHeight: 1, marginBottom: 4 },
