@@ -6,6 +6,41 @@ import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 
+// ─── HID Scanner Hook ─────────────────────────────────────────────────────────
+
+function useHidScanner(onScan: (code: string) => void) {
+  const bufRef = useRef('')
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    function handleKeyDown(e: globalThis.KeyboardEvent) {
+      const active = document.activeElement
+      const isTypingField =
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement
+      if (isTypingField) return
+      if (e.key === 'Enter') {
+        if (bufRef.current.length >= 4) onScan(bufRef.current)
+        bufRef.current = ''
+        if (timerRef.current) clearTimeout(timerRef.current)
+        return
+      }
+      if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        bufRef.current += e.key
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => {
+          if (bufRef.current.length >= 4) onScan(bufRef.current)
+          bufRef.current = ''
+        }, 80)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [onScan])
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Category = {
@@ -120,6 +155,19 @@ export default function ProductsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteMsg, setDeleteMsg] = useState<string | null>(null)
+
+  // 扫码枪反馈
+  const [hidMsg, setHidMsg] = useState<{ type: 'ok' | 'fail'; text: string } | null>(null)
+
+  const handleHidScan = useCallback((code: string) => {
+    setHidMsg(null)
+    const clean = code.trim()
+    if (!clean) return
+    setBarcodeInput(clean)
+    lookup(clean)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useHidScanner(handleHidScan)
 
   // ── 扫码枪输入防污染：mode 切换后 400ms 内屏蔽非输入框的全局字符 ────────────
 
@@ -374,6 +422,8 @@ export default function ProductsPage() {
         setEditCategoryId(p.categoryId ?? '')
         setMode('found')
         blockHidBriefly()
+        setHidMsg({ type: 'ok', text: `✓ 已找到：${p.name}` })
+        setTimeout(() => setHidMsg(null), 2500)
       } else {
         const body = await res.json().catch(() => ({}))
         if (body.error === 'PRODUCT_NOT_FOUND') {
@@ -383,6 +433,8 @@ export default function ProductsPage() {
           setNewPrice('')
           setMode('not-found')
           blockHidBriefly()
+          setHidMsg({ type: 'fail', text: `未找到条码 ${b}，已进入新增模式` })
+          setTimeout(() => setHidMsg(null), 3000)
         } else {
           setError('查询失败，请重试')
           setMode('idle')
@@ -888,6 +940,11 @@ export default function ProductsPage() {
           <>
             {/* 扫码 + 手动输入 */}
             <div style={s.card}>
+              {hidMsg && (
+                <div style={hidMsg.type === 'ok' ? s.hidOkMsg : s.hidFailMsg}>
+                  {hidMsg.text}
+                </div>
+              )}
               <button
                 type="button"
                 style={s.scanBtn}
@@ -1342,6 +1399,8 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12, color: '#fa8c16', background: '#fff7e6',
     border: '1px solid #ffd591', borderRadius: 6, padding: '6px 10px', marginBottom: 8,
   },
+  hidOkMsg: { fontSize: 13, color: '#389e0d', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6, padding: '6px 10px', marginBottom: 8 },
+  hidFailMsg: { fontSize: 13, color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 6, padding: '6px 10px', marginBottom: 8 },
   // ── Saved / Success ──
   savedCard: {
     background: 'var(--blue)',
