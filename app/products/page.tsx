@@ -124,6 +124,7 @@ export default function ProductsPage() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const editNameRef = useRef<HTMLInputElement>(null)
 
   // Edit form
   const [editName, setEditName] = useState('')
@@ -421,6 +422,7 @@ export default function ProductsPage() {
         setEditStatus(p.status)
         setEditCategoryId(p.categoryId ?? '')
         setMode('found')
+        setTimeout(() => editNameRef.current?.focus(), 100)
         blockHidBriefly()
         setHidMsg({ type: 'ok', text: `✓ 已找到：${p.name}` })
         setTimeout(() => setHidMsg(null), 2500)
@@ -997,6 +999,7 @@ export default function ProductsPage() {
 
                 <Field label={t('products.fieldName')}>
                   <input
+                    ref={editNameRef}
                     style={s.field}
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
