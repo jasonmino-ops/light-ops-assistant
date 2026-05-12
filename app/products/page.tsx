@@ -89,7 +89,11 @@ type PreviewRow = {
   catSource: CatSource
   isDuplicate: boolean
   error: string | null
+  confidence?: number
+  warnings?: string[]
 }
+
+type AiRow = PreviewRow & { include: boolean }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -125,6 +129,15 @@ export default function ProductsPage() {
   const [importError, setImportError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editNameRef = useRef<HTMLInputElement>(null)
+
+  // AI 识别菜单导入
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiStep, setAiStep] = useState<'upload' | 'recognizing' | 'preview' | 'done'>('upload')
+  const [aiImageFile, setAiImageFile] = useState<File | null>(null)
+  const [aiPreview, setAiPreview] = useState<AiRow[] | null>(null)
+  const [aiResult, setAiResult] = useState<ImportResult | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const aiFileRef = useRef<HTMLInputElement>(null)
 
   // Edit form
   const [editName, setEditName] = useState('')
@@ -397,6 +410,119 @@ export default function ProductsPage() {
     } finally {
       setImportConfirming(false)
     }
+  }
+
+  // ── AI 识别菜单导入 ───────────────────────────────────────────────────────
+
+  async function handleAiRecognize() {
+    if (!aiImageFile) return
+    setAiStep('recognizing')
+    setAiError(null)
+    try {
+      const form = new FormData()
+      form.append('file', aiImageFile)
+      const res = await fetch('/api/products/import-ai/recognize', {
+        method: 'POST',
+        headers: { ...OWNER_CTX },
+        body: form,
+      })
+      const body = await res.json()
+      if (res.ok && Array.isArray(body.preview) && body.preview.length > 0) {
+        setAiPreview(
+          (body.preview as PreviewRow[]).map((r) => ({
+            ...r,
+            include: !!r.name.trim() && r.sellPrice > 0,
+          })),
+        )
+        setAiStep('preview')
+      } else {
+        setAiError(body.message ?? body.error ?? t('products.aiEmptyResult'))
+        setAiStep('upload')
+      }
+    } catch {
+      setAiError(t('common.networkError'))
+      setAiStep('upload')
+    }
+  }
+
+  async function handleAiConfirm() {
+    if (!aiPreview) return
+    const rows = aiPreview
+      .filter((r) => r.include)
+      .filter((r) => r.name.trim() && r.sellPrice > 0)
+      .map((r) => {
+        const { include: _unused, ...rest } = r
+        void _unused
+        return rest
+      })
+    if (rows.length === 0) {
+      setAiError(t('products.aiNoneSelected'))
+      return
+    }
+    setAiError(null)
+    setAiStep('recognizing')
+    try {
+      const res = await apiFetch(
+        '/api/products/import/confirm',
+        { method: 'POST', body: JSON.stringify({ rows }) },
+        OWNER_CTX,
+      )
+      const body = await res.json()
+      if (res.ok) {
+        setAiResult(body)
+        setAiStep('done')
+      } else {
+        setAiError(body.message ?? body.error ?? '导入失败')
+        setAiStep('preview')
+      }
+    } catch {
+      setAiError(t('common.networkError'))
+      setAiStep('preview')
+    }
+  }
+
+  function aiEditRow(i: number, field: 'name' | 'category' | 'price', val: string) {
+    setAiPreview((prev) => {
+      if (!prev) return prev
+      const next = [...prev]
+      const r = { ...next[i] }
+      if (field === 'name') {
+        r.name = val
+      } else if (field === 'category') {
+        const v = val.trim()
+        r.resolvedL1 = v || null
+        r.category1Raw = v
+        r.catSource = v ? 'AUTO' : 'NONE'
+      } else if (field === 'price') {
+        const num = parseFloat(val.replace(/[^0-9.]/g, ''))
+        r.sellPrice = isNaN(num) || num < 0 ? 0 : num
+      }
+      next[i] = r
+      return next
+    })
+    setAiError(null)
+  }
+
+  function aiToggleInclude(i: number) {
+    setAiPreview((prev) => {
+      if (!prev) return prev
+      const next = [...prev]
+      next[i] = { ...next[i], include: !next[i].include }
+      return next
+    })
+  }
+
+  function aiDeleteRow(i: number) {
+    setAiPreview((prev) => (prev ? prev.filter((_, idx) => idx !== i) : prev))
+  }
+
+  function aiReset() {
+    setAiStep('upload')
+    setAiPreview(null)
+    setAiResult(null)
+    setAiError(null)
+    setAiImageFile(null)
+    if (aiFileRef.current) aiFileRef.current.value = ''
   }
 
   // ── Lookup ────────────────────────────────────────────────────────────────
@@ -742,6 +868,185 @@ export default function ProductsPage() {
                 </>
               )}
 
+            </div>
+          )}
+        </div>
+
+        {/* ── AI 识别菜单导入 ── */}
+        <div style={s.importSection}>
+          <button
+            style={s.importToggle}
+            onClick={() => {
+              setAiOpen((v) => !v)
+              aiReset()
+            }}
+          >
+            <span style={s.importToggleText}>{t('products.aiImportToggle')}</span>
+            <span style={s.importToggleArrow}>{aiOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {aiOpen && (
+            <div style={s.importBody}>
+              {aiStep === 'upload' && (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0 4px' }}>
+                    {t('products.aiHint')}
+                  </div>
+                  <div style={s.uploadRow}>
+                    <input
+                      ref={aiFileRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      style={s.fileInput}
+                      onChange={(e) => {
+                        setAiImageFile(e.target.files?.[0] ?? null)
+                        setAiError(null)
+                      }}
+                    />
+                    <button
+                      style={{ ...s.importBtn, opacity: !aiImageFile ? 0.5 : 1 }}
+                      type="button"
+                      disabled={!aiImageFile}
+                      onClick={handleAiRecognize}
+                    >
+                      {t('products.aiBtn')}
+                    </button>
+                  </div>
+                  {aiError && <div style={s.importErrorMsg}>{aiError}</div>}
+                </>
+              )}
+
+              {aiStep === 'recognizing' && (
+                <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>
+                  {t('products.aiRecognizing')}
+                </div>
+              )}
+
+              {aiStep === 'preview' && aiPreview && (
+                <>
+                  <div style={pr.summary}>
+                    {t('products.aiPreviewTitle')} · {aiPreview.filter((r) => r.include).length} / {aiPreview.length}
+                  </div>
+                  <div style={pr.scroll}>
+                    <table style={pr.table}>
+                      <thead>
+                        <tr>
+                          <th style={{ ...pr.th, width: 40 }}>{t('products.aiInclude')}</th>
+                          <th style={pr.th}>{t('products.aiName')}</th>
+                          <th style={pr.th}>{t('products.aiCategory')}</th>
+                          <th style={{ ...pr.th, width: 80 }}>{t('products.aiPrice')}</th>
+                          <th style={{ ...pr.th, width: 40 }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aiPreview.map((row, i) => {
+                          const nameEmpty = !row.name.trim()
+                          const priceEmpty = !row.sellPrice || row.sellPrice <= 0
+                          const incomplete = nameEmpty || priceEmpty
+                          return (
+                            <tr key={i} style={incomplete && row.include ? pr.errRow : {}}>
+                              <td style={pr.td}>
+                                <input
+                                  type="checkbox"
+                                  checked={row.include && !incomplete}
+                                  disabled={incomplete}
+                                  onChange={() => aiToggleInclude(i)}
+                                />
+                              </td>
+                              <td style={pr.td}>
+                                <input
+                                  style={ai.cellInput}
+                                  value={row.name}
+                                  onChange={(e) => aiEditRow(i, 'name', e.target.value)}
+                                />
+                                {nameEmpty && <div style={ai.warnText}>{t('products.aiNeedName')}</div>}
+                                {row.warnings && row.warnings.length > 0 && (
+                                  <div style={ai.warnText}>⚠ {row.warnings.join('; ')}</div>
+                                )}
+                              </td>
+                              <td style={pr.td}>
+                                <input
+                                  style={ai.cellInput}
+                                  value={row.resolvedL1 ?? ''}
+                                  placeholder="—"
+                                  onChange={(e) => aiEditRow(i, 'category', e.target.value)}
+                                />
+                              </td>
+                              <td style={pr.td}>
+                                <input
+                                  style={ai.cellInput}
+                                  inputMode="decimal"
+                                  value={row.sellPrice > 0 ? String(row.sellPrice) : ''}
+                                  placeholder="0.00"
+                                  onChange={(e) => aiEditRow(i, 'price', e.target.value)}
+                                />
+                                {priceEmpty && <div style={ai.warnText}>{t('products.aiNeedPrice')}</div>}
+                              </td>
+                              <td style={pr.td}>
+                                <button
+                                  type="button"
+                                  style={ai.delBtn}
+                                  onClick={() => aiDeleteRow(i)}
+                                  aria-label={t('products.aiDelete')}
+                                >
+                                  ×
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {aiError && <div style={s.importErrorMsg}>{aiError}</div>}
+
+                  <div style={pr.actions}>
+                    <button
+                      style={{ ...s.importBtn, background: '#f5f5f5', color: '#555', border: '1px solid #d9d9d9' }}
+                      onClick={() => { setAiStep('upload'); setAiPreview(null); setAiError(null) }}
+                    >
+                      {t('products.aiRedo')}
+                    </button>
+                    <button
+                      style={{
+                        ...s.importBtn,
+                        opacity: aiPreview.filter((r) => r.include && r.name.trim() && r.sellPrice > 0).length === 0 ? 0.5 : 1,
+                      }}
+                      disabled={aiPreview.filter((r) => r.include && r.name.trim() && r.sellPrice > 0).length === 0}
+                      onClick={handleAiConfirm}
+                    >
+                      {t('products.aiConfirm')} {aiPreview.filter((r) => r.include && r.name.trim() && r.sellPrice > 0).length}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {aiStep === 'done' && aiResult && (
+                <>
+                  <div style={s.importResult}>
+                    <div style={s.importResultSummary}>
+                      <span style={s.importOk}>{t('products.importOkPrefix')} {aiResult.imported} {t('products.importCountSuffix')}</span>
+                      {aiResult.failed > 0 && (
+                        <span style={s.importFail}>{t('products.importFailPrefix')} {aiResult.failed} {t('products.importCountSuffix')}</span>
+                      )}
+                    </div>
+                    {aiResult.errors.length > 0 && (
+                      <div style={s.importErrorList}>
+                        {aiResult.errors.map((e, idx) => (
+                          <div key={idx} style={s.importErrorRow}>
+                            <span style={s.importErrorBarcode}>{e.barcode}</span>
+                            <span style={s.importErrorReason}>{e.reason}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button style={{ ...s.importBtn, marginTop: 4 }} onClick={aiReset}>
+                    {t('products.aiRedo')}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -1687,6 +1992,41 @@ const pr: Record<string, React.CSSProperties> = {
     display: 'flex',
     gap: 8,
     marginTop: 4,
+  },
+}
+
+// ─── AI 识别表格单元样式 ──────────────────────────────────────────────────────
+
+const ai: Record<string, React.CSSProperties> = {
+  cellInput: {
+    width: '100%',
+    height: 28,
+    fontSize: 12,
+    padding: '0 6px',
+    border: '1px solid var(--border)',
+    borderRadius: 4,
+    background: '#fff',
+    color: 'var(--text)',
+    boxSizing: 'border-box' as const,
+    outline: 'none',
+  },
+  warnText: {
+    fontSize: 10,
+    color: '#fa8c16',
+    marginTop: 2,
+    whiteSpace: 'normal' as const,
+  },
+  delBtn: {
+    width: 24,
+    height: 24,
+    background: 'none',
+    border: '1px solid #d9d9d9',
+    borderRadius: 4,
+    color: '#999',
+    fontSize: 16,
+    cursor: 'pointer',
+    padding: 0,
+    lineHeight: 1,
   },
 }
 

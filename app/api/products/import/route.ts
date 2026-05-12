@@ -75,6 +75,8 @@ export type PreviewRow = {
   catSource: 'MANUAL' | 'AUTO' | 'NONE'  // 表格填写 / 系统识别 / 未识别
   isDuplicate: boolean      // 数据库中条码已存在
   error: string | null      // 行级别错误（导入时此行将被跳过）
+  confidence?: number       // AI 识别专用：0..1 信心度（Excel 导入路径不填）
+  warnings?: string[]       // AI 识别专用：警告说明
 }
 
 // ── 表头多别名识别 ────────────────────────────────────────────────────────────
