@@ -16,7 +16,7 @@ function bi(zhStr: string, kmStr: string) {
   )
 }
 
-type Store = { id: string; name: string }
+type Store = { id: string; name: string; code: string }
 
 type BindTokenResult = {
   token: string
@@ -60,6 +60,14 @@ export default function InvitePage() {
   const [members, setMembers] = useState<Member[]>([])
   const [unbinding, setUnbinding] = useState<string | null>(null)
 
+  const [customerStoreId, setCustomerStoreId] = useState('')
+  const [customerCopied, setCustomerCopied] = useState(false)
+  const [origin, setOrigin] = useState('')
+
+  useEffect(() => {
+    setOrigin(window.location.origin)
+  }, [])
+
   const loadMembers = useCallback(() => {
     apiFetch('/api/admin/users', undefined, OWNER_CTX)
       .then((r) => (r.ok ? r.json() : []))
@@ -81,6 +89,7 @@ export default function InvitePage() {
         } else {
           setStores(list)
           setStoreId(list[0].id)
+          setCustomerStoreId(list[0].id)
         }
       })
       .catch(() => setStoresError('加载门店信息失败，请刷新重试'))
@@ -245,6 +254,16 @@ export default function InvitePage() {
           </div>
         )}
 
+        {/* ── Customer order code ── */}
+        <CustomerCodeCard
+          stores={stores}
+          customerStoreId={customerStoreId}
+          setCustomerStoreId={setCustomerStoreId}
+          origin={origin}
+          copied={customerCopied}
+          setCopied={setCustomerCopied}
+        />
+
         {/* ── Members section ── */}
         <div style={s.sectionLabel}>{bi(zh.invite.membersTitle, km.invite.membersTitle)}</div>
 
@@ -320,6 +339,93 @@ function MemberCard({
   )
 }
 
+function CustomerCodeCard({
+  stores,
+  customerStoreId,
+  setCustomerStoreId,
+  origin,
+  copied,
+  setCopied,
+}: {
+  stores: Store[]
+  customerStoreId: string
+  setCustomerStoreId: (id: string) => void
+  origin: string
+  copied: boolean
+  setCopied: (v: boolean) => void
+}) {
+  const current = stores.find((st) => st.id === customerStoreId)
+  const url = origin && current ? `${origin}/m/${current.code}` : ''
+
+  function copy() {
+    if (!url) return
+
+    const doFallback = () => {
+      const ta = document.createElement('textarea')
+      ta.value = url
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      try {
+        document.execCommand('copy')
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } catch {}
+      document.body.removeChild(ta)
+    }
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }).catch(doFallback)
+    } else {
+      doFallback()
+    }
+  }
+
+  return (
+    <>
+      <div style={s.sectionLabel}>{bi(zh.invite.customerCodeTitle, km.invite.customerCodeTitle)}</div>
+      <div style={s.customerCard}>
+        <div style={s.customerDesc}>{bi(zh.invite.customerCodeDesc, km.invite.customerCodeDesc)}</div>
+
+        {stores.length > 1 && (
+          <div style={s.field}>
+            <label style={s.fieldLabel}>{bi(zh.invite.customerCodeStoreLabel, km.invite.customerCodeStoreLabel)}</label>
+            <select
+              style={s.select}
+              value={customerStoreId}
+              onChange={(e) => setCustomerStoreId(e.target.value)}
+            >
+              {stores.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        <div style={s.qrCard}>
+          {url
+            ? <QRCode value={url} size={200} style={{ display: 'block' }} />
+            : <div style={s.noLink}>—</div>
+          }
+        </div>
+
+        {url && (
+          <>
+            <div style={s.linkBox}>
+              <a href={url} target="_blank" rel="noreferrer" style={s.linkText}>{url}</a>
+            </div>
+            <button style={s.copyBtn} onClick={copy}>
+              {copied ? bi(zh.invite.copied, km.invite.copied) : bi(zh.invite.copyLink, km.invite.copyLink)}
+            </button>
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
 function InfoRow({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div style={ir.row}>
@@ -376,6 +482,14 @@ const s: Record<string, React.CSSProperties> = {
   resetBtn: { height: 44, background: 'transparent', color: '#666', border: '1.5px solid #e8e8e8', borderRadius: 10, fontSize: 14, cursor: 'pointer' },
 
   sectionLabel: { fontSize: 12, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 10 },
+
+  customerCard: {
+    background: '#fff', borderRadius: 14, padding: '16px 16px',
+    display: 'flex', flexDirection: 'column', gap: 12,
+    boxShadow: '0 2px 12px rgba(0,0,0,0.06)', marginBottom: 24,
+  },
+  customerDesc: { fontSize: 13, color: '#8c8c8c', lineHeight: 1.5 },
+
   memberGroup: { marginBottom: 16 },
   groupLabel: { fontSize: 11, fontWeight: 700, color: '#bbb', marginBottom: 6, paddingLeft: 2 },
 

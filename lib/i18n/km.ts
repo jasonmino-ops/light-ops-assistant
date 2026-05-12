@@ -290,6 +290,9 @@ const km = {
     noStaff: 'គ្មានបុគ្គលិក',
     resetBtn: 'បង្កើតម្តងទៀត',
     membersTitle: 'សមាជិកហាង',
+    customerCodeTitle: 'កូដកម្ម៉ង់អតិថិជន',
+    customerCodeDesc: 'អតិថិជនស្កែនដើម្បីបញ្ជាទិញ',
+    customerCodeStoreLabel: 'ហាង',
   },
   start: {
     welcomeTitle: 'សូមស្វាគមន៍',

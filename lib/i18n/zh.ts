@@ -290,6 +290,9 @@ const zh = {
     noStaff: '暂无员工',
     resetBtn: '重新生成',
     membersTitle: '门店成员',
+    customerCodeTitle: '顾客点单码',
+    customerCodeDesc: '顾客扫码进入门店点单页',
+    customerCodeStoreLabel: '门店',
   },
   start: {
     welcomeTitle: '欢迎使用店小二',
