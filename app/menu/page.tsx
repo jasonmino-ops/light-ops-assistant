@@ -411,6 +411,28 @@ export default function MenuPage() {
     <>
       <main style={s.page}>
 
+        {/* ── Sticky 顶部条：滚动时保持店铺名 + 营业状态 + 语言切换 ── */}
+        <div style={s.stickyTop}>
+          <span style={s.stickyLogo}>🏪</span>
+          <div style={s.stickyName}>
+            <span style={s.stickyNameText}>{storeName}</span>
+            <span style={isOpen ? s.openBadge : s.closedBadge}>
+              {isOpen ? ui.open : ui.closed}
+            </span>
+          </div>
+          <div style={s.stickyLangs}>
+            {(['zh', 'en', 'km'] as Lang[]).map((l) => (
+              <button
+                key={l}
+                style={{ ...s.stickyLangBtn, ...(lang === l ? s.stickyLangBtnOn : {}) }}
+                onClick={() => setLang(l)}
+              >
+                {LANG_LABELS[l]}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ── 1. 顶部门店头图 ── */}
         <div style={{
           ...s.banner,
@@ -426,17 +448,6 @@ export default function MenuPage() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <div style={s.langSwitcher}>
-            {(['zh', 'en', 'km'] as Lang[]).map((l) => (
-              <button
-                key={l}
-                style={{ ...s.langBtn, ...(lang === l ? s.langBtnOn : {}) }}
-                onClick={() => setLang(l)}
-              >
-                {LANG_LABELS[l]}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* ── 2. 门店信息卡片 ── */}
@@ -780,6 +791,68 @@ const s: Record<string, React.CSSProperties> = {
     paddingBottom: 92,
   },
 
+  // ── Sticky 顶部条 ──
+  stickyTop: {
+    position: 'sticky' as const,
+    top: 0,
+    zIndex: 30,
+    background: '#fff',
+    borderBottom: '1px solid #ebebeb',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '8px 12px',
+    minHeight: 48,
+    boxSizing: 'border-box' as const,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+  },
+  stickyLogo: {
+    fontSize: 18,
+    flexShrink: 0,
+    lineHeight: 1,
+  },
+  stickyName: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    overflow: 'hidden' as const,
+  },
+  stickyNameText: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#1a1a1a',
+    overflow: 'hidden' as const,
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
+    minWidth: 0,
+  },
+  stickyLangs: {
+    display: 'flex',
+    background: '#f5f5f5',
+    borderRadius: 14,
+    padding: 2,
+    gap: 1,
+    flexShrink: 0,
+  },
+  stickyLangBtn: {
+    border: 'none',
+    background: 'transparent',
+    color: '#888',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '3px 8px',
+    borderRadius: 12,
+    cursor: 'pointer',
+    lineHeight: 1.4,
+  },
+  stickyLangBtnOn: {
+    background: '#fff',
+    color: PRIMARY,
+    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+  },
+
   banner: {
     height: 152,
     background: BANNER_BG,
@@ -926,6 +999,11 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     gap: 0,
     minHeight: 200,
+    position: 'sticky' as const,
+    top: 48,
+    alignSelf: 'flex-start' as const,
+    maxHeight: 'calc(100dvh - 48px - 92px)',
+    overflowY: 'auto' as const,
   },
   catSideItem: {
     width: '100%',
