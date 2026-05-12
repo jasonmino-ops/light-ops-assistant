@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
         tenantId: ctx.tenantId,
         ...(all ? {} : { status: 'ACTIVE' }),
       },
-      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true },
+      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true, imageUrl: true },
       orderBy: { name: 'asc' },
       take: 500,
     })
@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
         sellPrice: p.sellPrice.toNumber(),
         status: p.status,
         categoryId: p.categoryId,
+        imageUrl: p.imageUrl,
       })),
     )
   }
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
       barcode,
       ...(statusFilter ? { status: statusFilter } : {}),
     },
-    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true },
+    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true, imageUrl: true },
   })
 
   if (!product) {
@@ -76,6 +77,7 @@ export async function GET(req: NextRequest) {
     spec: product.spec,
     sellPrice: product.sellPrice.toNumber(),
     categoryId: product.categoryId,
+    imageUrl: product.imageUrl,
     // status only exposed to OWNER (staff doesn't need to see it)
     ...(ctx.role === 'OWNER' ? { status: product.status } : {}),
   })

@@ -392,6 +392,13 @@ const zh = {
     aiRedo: '重新识别',
     aiNoneSelected: '请勾选要导入的商品',
     aiEmptyResult: '未识别到任何商品，换一张更清晰的图片',
+    imageTitle: '商品主图',
+    imageUpload: '上传图片',
+    imageReplace: '替换',
+    imageDelete: '删除',
+    imageNone: '暂无图片',
+    imageUploading: '上传中…',
+    imageDeleting: '删除中…',
   },
   order: {
     detailTitle: '订单详情',

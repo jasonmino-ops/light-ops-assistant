@@ -158,6 +158,7 @@ type ApiProduct = {
   spec: string | null
   price: number
   categoryId: string | null
+  imageUrl: string | null
 }
 
 type ApiStore = {
@@ -189,6 +190,7 @@ export default function MenuPage() {
   const [showConfirm,  setShowConfirm] = useState(false)
   const [storeCode,    setStoreCode]   = useState('')
   const [hasTgId,      setHasTgId]     = useState(false)
+  const [lightboxUrl,  setLightboxUrl] = useState<string | null>(null)
 
   const ui         = T[lang]
   const cartTotal  = cart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
@@ -519,9 +521,23 @@ export default function MenuPage() {
                     const emoji = CARD_EMOJIS[idx % CARD_EMOJIS.length]
                     return (
                       <div key={product.id} style={s.productCard}>
-                        <div style={{ ...s.productImg, background: color }}>
-                          <span style={s.productEmoji}>{emoji}</span>
-                        </div>
+                        {product.imageUrl ? (
+                          <div
+                            style={{ ...s.productImg, background: '#f5f5f5', overflow: 'hidden', cursor: 'zoom-in' }}
+                            onClick={() => setLightboxUrl(product.imageUrl)}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={product.imageUrl}
+                              alt={product.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ ...s.productImg, background: color }}>
+                            <span style={s.productEmoji}>{emoji}</span>
+                          </div>
+                        )}
                         <div style={s.productMeta}>
                           <div style={s.productName}>{product.name}</div>
                           {product.spec && <div style={s.productSpec}>{product.spec}</div>}
@@ -551,6 +567,52 @@ export default function MenuPage() {
           </div>
         </div>
       </main>
+
+      {/* ── 商品图放大查看 ── */}
+      {lightboxUrl && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            cursor: 'zoom-out',
+          }}
+          onClick={() => setLightboxUrl(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt=""
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
+          />
+          <button
+            type="button"
+            aria-label="close"
+            onClick={(e) => { e.stopPropagation(); setLightboxUrl(null) }}
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.18)',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.3)',
+              fontSize: 20,
+              lineHeight: 1,
+              cursor: 'pointer',
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* ── 下单确认弹层 ── */}
       {!orderResult && showConfirm && (

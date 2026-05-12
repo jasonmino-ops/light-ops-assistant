@@ -392,6 +392,13 @@ const km = {
     aiRedo: 'ស្គាល់ឡើងវិញ',
     aiNoneSelected: 'សូមជ្រើសរើសទំនិញដែលត្រូវបញ្ចូល',
     aiEmptyResult: 'រកមិនឃើញទំនិញទេ សូមផ្លាស់ប្តូររូបភាពច្បាស់ជាង',
+    imageTitle: 'រូបភាពទំនិញ',
+    imageUpload: 'បង្ហោះរូបភាព',
+    imageReplace: 'ជំនួស',
+    imageDelete: 'លុប',
+    imageNone: 'គ្មានរូបភាព',
+    imageUploading: 'កំពុងបង្ហោះ…',
+    imageDeleting: 'កំពុងលុប…',
   },
   order: {
     detailTitle: 'ព័ត៌មានលម្អិតការបញ្ជា',

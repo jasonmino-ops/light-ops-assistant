@@ -58,6 +58,7 @@ type Product = {
   sellPrice: number
   status: 'ACTIVE' | 'DISABLED'
   categoryId: string | null
+  imageUrl: string | null
 }
 
 type Mode = 'idle' | 'loading' | 'found' | 'not-found' | 'saved'
@@ -129,6 +130,11 @@ export default function ProductsPage() {
   const [importError, setImportError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editNameRef = useRef<HTMLInputElement>(null)
+
+  // 商品主图
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
+  const imageFileRef = useRef<HTMLInputElement>(null)
 
   // AI 识别菜单导入
   const [aiOpen, setAiOpen] = useState(false)
@@ -523,6 +529,101 @@ export default function ProductsPage() {
     setAiError(null)
     setAiImageFile(null)
     if (aiFileRef.current) aiFileRef.current.value = ''
+  }
+
+  // ── 商品主图 ──────────────────────────────────────────────────────────────
+
+  async function compressForUpload(file: File): Promise<Blob> {
+    const url = URL.createObjectURL(file)
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image()
+        el.onload = () => resolve(el)
+        el.onerror = () => reject(new Error('image load failed'))
+        el.src = url
+      })
+      const maxW = 1000
+      let w = img.naturalWidth
+      let h = img.naturalHeight
+      if (w > maxW) {
+        h = Math.round((h * maxW) / w)
+        w = maxW
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return file
+      ctx.drawImage(img, 0, 0, w, h)
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), 'image/webp', 0.8)
+      })
+      return blob ?? file
+    } catch {
+      return file
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  async function handleImageUpload(file: File) {
+    if (!product) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setImageError('仅支持 JPG / PNG / WebP')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      // 上传前给个宽松上限，压缩后服务端再卡 2MB
+      setImageError('原图不能超过 5MB')
+      return
+    }
+    setImageUploading(true)
+    setImageError(null)
+    try {
+      const blob = await compressForUpload(file)
+      const uploadName = blob.type === 'image/webp' ? 'main.webp' : file.name
+      const form = new FormData()
+      form.append('file', new File([blob], uploadName, { type: blob.type || file.type }))
+      const res = await fetch(`/api/products/${product.id}/image`, {
+        method: 'POST',
+        headers: { ...OWNER_CTX },
+        body: form,
+      })
+      const body = await res.json().catch(() => null)
+      if (res.ok && body?.imageUrl) {
+        setProduct({ ...product, imageUrl: body.imageUrl })
+      } else {
+        setImageError(body?.message ?? body?.error ?? '上传失败')
+      }
+    } catch {
+      setImageError(t('common.networkError'))
+    } finally {
+      setImageUploading(false)
+      if (imageFileRef.current) imageFileRef.current.value = ''
+    }
+  }
+
+  async function handleImageDelete() {
+    if (!product) return
+    setImageUploading(true)
+    setImageError(null)
+    try {
+      const res = await apiFetch(
+        `/api/products/${product.id}/image`,
+        { method: 'DELETE' },
+        OWNER_CTX,
+      )
+      if (res.ok) {
+        setProduct({ ...product, imageUrl: null })
+      } else {
+        const body = await res.json().catch(() => null)
+        setImageError(body?.message ?? body?.error ?? '删除失败')
+      }
+    } catch {
+      setImageError(t('common.networkError'))
+    } finally {
+      setImageUploading(false)
+    }
   }
 
   // ── Lookup ────────────────────────────────────────────────────────────────
@@ -1297,6 +1398,58 @@ export default function ProductsPage() {
               <div style={s.card}>
                 <div style={s.sectionLabel}>{t('products.editSection')}</div>
 
+                {/* 商品主图管理 */}
+                <div style={img.section}>
+                  <div style={img.title}>{t('products.imageTitle')}</div>
+                  <input
+                    ref={imageFileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleImageUpload(file)
+                    }}
+                  />
+                  {product.imageUrl ? (
+                    <div style={img.previewWrap}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={product.imageUrl} alt={product.name} style={img.preview} />
+                      <div style={img.btnRow}>
+                        <button
+                          type="button"
+                          style={img.btn}
+                          disabled={imageUploading}
+                          onClick={() => imageFileRef.current?.click()}
+                        >
+                          {imageUploading ? t('products.imageUploading') : t('products.imageReplace')}
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...img.btn, ...img.btnDanger }}
+                          disabled={imageUploading}
+                          onClick={handleImageDelete}
+                        >
+                          {imageUploading ? t('products.imageDeleting') : t('products.imageDelete')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={img.empty}>
+                      <span style={img.emptyText}>{t('products.imageNone')}</span>
+                      <button
+                        type="button"
+                        style={img.btn}
+                        disabled={imageUploading}
+                        onClick={() => imageFileRef.current?.click()}
+                      >
+                        {imageUploading ? t('products.imageUploading') : t('products.imageUpload')}
+                      </button>
+                    </div>
+                  )}
+                  {imageError && <div style={img.err}>{imageError}</div>}
+                </div>
+
                 <div style={s.barcodeRow}>
                   <span style={s.barcodeLabel}>{t('products.barcodeLabel')}</span>
                   <span style={s.barcodeValue}>{product.barcode}</span>
@@ -1993,6 +2146,57 @@ const pr: Record<string, React.CSSProperties> = {
     gap: 8,
     marginTop: 4,
   },
+}
+
+// ─── 商品主图管理样式 ─────────────────────────────────────────────────────────
+
+const img: Record<string, React.CSSProperties> = {
+  section: {
+    marginBottom: 14,
+    padding: '12px 12px',
+    background: '#f7f8fa',
+    borderRadius: 'var(--radius-sm)',
+  },
+  title: {
+    fontSize: 12,
+    color: 'var(--muted)',
+    fontWeight: 600,
+    marginBottom: 8,
+  },
+  previewWrap: { display: 'flex', flexDirection: 'column' as const, gap: 8 },
+  preview: {
+    width: '100%',
+    maxHeight: 200,
+    objectFit: 'contain' as const,
+    background: '#fff',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+  },
+  btnRow: { display: 'flex', gap: 8 },
+  btn: {
+    flex: 1,
+    height: 36,
+    fontSize: 13,
+    fontWeight: 600,
+    background: '#fff',
+    border: '1.5px solid var(--border)',
+    borderRadius: 6,
+    cursor: 'pointer',
+    color: 'var(--text)',
+  },
+  btnDanger: {
+    color: 'var(--red)',
+    borderColor: '#ffa39e',
+  },
+  empty: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    padding: '8px 4px',
+  },
+  emptyText: { fontSize: 13, color: 'var(--muted)' },
+  err: { fontSize: 12, color: 'var(--red)', marginTop: 6 },
 }
 
 // ─── AI 识别表格单元样式 ──────────────────────────────────────────────────────
