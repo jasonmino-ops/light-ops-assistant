@@ -479,19 +479,6 @@ export default function MenuPage() {
           </div>
         )}
 
-        {/* ── 我的订单入口条（仅 Telegram 顾客可见） ── */}
-        {hasTgId && storeCode && (
-          <a href={`/menu/orders?code=${storeCode}`} style={s.myOrdersBar}>
-            <div style={s.myOrdersBarLeft}>
-              <span style={s.myOrdersBarIcon}>📋</span>
-              <span style={s.myOrdersBarLabel}>
-                {lang === 'zh' ? '我的订单' : lang === 'en' ? 'My Orders' : 'បញ្ជាទិញ'}
-              </span>
-            </div>
-            <span style={s.myOrdersBarArrow}>›</span>
-          </a>
-        )}
-
         {/* ── 3. 商品展示区（有一级分类时左右布局，无分类时全宽单列） ── */}
         <div style={hasL1Cats ? s.catLayout : { marginTop: 8 }}>
 
@@ -701,6 +688,18 @@ export default function MenuPage() {
 
       {/* ── 底部购物车浮层 ── */}
       <div style={s.cartBar}>
+        {hasTgId && storeCode && (
+          <a
+            href={`/menu/orders?code=${storeCode}`}
+            style={s.myOrdersTab}
+            aria-label={lang === 'zh' ? '我的订单' : lang === 'en' ? 'My Orders' : 'បញ្ជាទិញ'}
+          >
+            <span style={s.myOrdersTabIcon}>📋</span>
+            <span style={s.myOrdersTabLabel}>
+              {lang === 'zh' ? '我的订单' : lang === 'en' ? 'Orders' : 'បញ្ជា'}
+            </span>
+          </a>
+        )}
         <div style={s.cartLeft}>
           <div style={s.cartIconBox}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" color="#fff">
@@ -1399,6 +1398,34 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 14,
+    flex: 1,
+    minWidth: 0,
+  },
+  myOrdersTab: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    width: 52,
+    height: 44,
+    textDecoration: 'none',
+    color: '#666',
+    flexShrink: 0,
+    borderRight: '1px solid #ebebeb',
+    paddingRight: 8,
+    marginRight: 4,
+  },
+  myOrdersTabIcon: {
+    fontSize: 20,
+    lineHeight: 1,
+  },
+  myOrdersTabLabel: {
+    fontSize: 10,
+    fontWeight: 600,
+    color: '#666',
+    whiteSpace: 'nowrap' as const,
+    lineHeight: 1,
   },
   cartIconBox: {
     width: 48,
