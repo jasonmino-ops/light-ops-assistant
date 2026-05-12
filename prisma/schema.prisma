@@ -446,3 +446,27 @@ model OpsAdmin {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+// 顾客下单后通过 /start bind_<storeCode>_<orderNo> 主动绑定 Telegram，沉淀为门店常驻联系人
+model StoreCustomerContact {
+  id                   String   @id @default(cuid())
+  tenantId             String?
+  storeCode            String
+  telegramId           String
+  telegramUsername     String?
+  telegramFirstName    String?
+  telegramLastName     String?
+  telegramLanguageCode String?
+  lastOrderId          String?
+  source               String   @default("telegram_bind_after_order")
+  status               String   @default("active")
+  firstBoundAt         DateTime @default(now())
+  lastSeenAt           DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([storeCode, telegramId])
+  @@index([tenantId])
+  @@index([storeCode])
+  @@index([telegramId])
+}

@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 
 /**
  * POST /api/webhook/customer
  *
  * Telegram webhook for the customer-facing bot (@Eshop_sale_bot).
- * 收到任意消息或 /start 命令时，回复一条带 Mini App 按钮的消息，
- * 引导顾客打开顾客端商品页 /menu?code=<STORE_CODE>。
+ *
+ * 支持的 /start 形态：
+ *   /start                                  → 欢迎 + 默认门店 Mini App 按钮
+ *   /start bind_<STORECODE>                 → 顾客主动绑定门店联系人
+ *   /start bind_<STORECODE>_<ORDERNO>       → 顾客主动绑定 + 记录订单号
  *
  * 所需环境变量：
- *   CUSTOMER_BOT_TOKEN     — @Eshop_sale_bot 的 bot token（BotFather 获取）
+ *   CUSTOMER_BOT_TOKEN     — @Eshop_sale_bot 的 bot token
  *   CUSTOMER_WEBHOOK_SECRET — 可选，Webhook secret 防伪
- *   NEXT_PUBLIC_APP_URL    — 生产域名，例如 https://your-app.vercel.app
- *   DEFAULT_STORE_CODE     — 测试门店 code，默认 STORE-A
+ *   NEXT_PUBLIC_APP_URL    — 生产域名
+ *   DEFAULT_STORE_CODE     — 测试门店 code（仅无参 /start 用）
  *
  * Webhook 注册（首次部署后执行一次）：
  *   curl "https://api.telegram.org/bot<CUSTOMER_BOT_TOKEN>/setWebhook" \
@@ -22,7 +26,7 @@ import { NextRequest, NextResponse } from 'next/server'
 const BOT_TOKEN       = process.env.CUSTOMER_BOT_TOKEN ?? ''
 const WEBHOOK_SECRET  = process.env.CUSTOMER_WEBHOOK_SECRET ?? ''
 const APP_URL         = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
-const STORE_CODE      = process.env.DEFAULT_STORE_CODE ?? 'STORE-A'
+const DEFAULT_STORE   = process.env.DEFAULT_STORE_CODE ?? 'STORE-A'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TgUpdate = Record<string, any>
@@ -33,6 +37,90 @@ async function tgSend(method: string, body: object) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+}
+
+function menuKeyboard(storeCode: string) {
+  if (!APP_URL) return undefined
+  return {
+    inline_keyboard: [[
+      { text: '🛍️ 再次点单', web_app: { url: `${APP_URL}/menu?code=${encodeURIComponent(storeCode)}` } },
+    ]],
+  }
+}
+
+// 解析 /start payload：'bind_STORECODE' 或 'bind_STORECODE_ORDERNO'
+function parseBindPayload(payload: string): { storeCode: string; orderNo: string | null } | null {
+  if (!payload.startsWith('bind_')) return null
+  const rest = payload.slice(5) // 去掉 'bind_'
+  if (!rest) return null
+  const idx = rest.indexOf('_')
+  if (idx === -1) return { storeCode: rest, orderNo: null }
+  return {
+    storeCode: rest.slice(0, idx),
+    orderNo:   rest.slice(idx + 1) || null,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleBind(msg: any, payload: { storeCode: string; orderNo: string | null }) {
+  const chatId = msg.chat?.id
+  const from   = msg.from
+  if (!chatId || !from?.id) return
+
+  const { storeCode, orderNo } = payload
+
+  // 校验 storeCode 是否存在
+  const store = await prisma.store.findUnique({
+    where: { code: storeCode },
+    select: { tenantId: true, name: true },
+  })
+  if (!store) {
+    await tgSend('sendMessage', {
+      chat_id: chatId,
+      text: '门店信息无效，请重新扫码点单。',
+    })
+    return
+  }
+
+  const telegramId = String(from.id)
+
+  // upsert：同 storeCode + telegramId 不新增重复，更新 lastSeenAt / lastOrderId / 用户名
+  await prisma.storeCustomerContact.upsert({
+    where: { storeCode_telegramId: { storeCode, telegramId } },
+    create: {
+      tenantId:             store.tenantId,
+      storeCode,
+      telegramId,
+      telegramUsername:     from.username      ?? null,
+      telegramFirstName:    from.first_name    ?? null,
+      telegramLastName:     from.last_name     ?? null,
+      telegramLanguageCode: from.language_code ?? null,
+      lastOrderId:          orderNo,
+      source:               'telegram_bind_after_order',
+      status:               'active',
+    },
+    update: {
+      tenantId:             store.tenantId,
+      telegramUsername:     from.username      ?? null,
+      telegramFirstName:    from.first_name    ?? null,
+      telegramLastName:     from.last_name     ?? null,
+      telegramLanguageCode: from.language_code ?? null,
+      lastOrderId:          orderNo ?? undefined,
+      lastSeenAt:           new Date(),
+    },
+  })
+
+  const lines = [
+    '绑定成功。以后你可以在这里接收订单通知、查看订单进度和再次点单。',
+    `已绑定门店：${store.name}（${storeCode}）`,
+  ]
+  if (orderNo) lines.push(`本次订单已记录：${orderNo}`)
+
+  await tgSend('sendMessage', {
+    chat_id: chatId,
+    text: lines.join('\n\n'),
+    reply_markup: menuKeyboard(storeCode),
   })
 }
 
@@ -65,14 +153,28 @@ export async function POST(req: NextRequest) {
   const msg = update.message
   if (!msg) return NextResponse.json({ ok: true })
 
-  const chatId  = msg.chat?.id
-  const text    = (msg.text ?? '').trim()
+  const chatId = msg.chat?.id
+  const text   = (msg.text ?? '').trim()
   if (!chatId) return NextResponse.json({ ok: true })
 
-  const menuUrl = `${APP_URL}/menu?code=${encodeURIComponent(STORE_CODE)}`
-
-  // /start 命令：发送欢迎消息 + Mini App 按钮
+  // /start [payload]
   if (text.startsWith('/start')) {
+    const payload = text.split(/\s+/)[1] ?? ''
+
+    // 顾客主动绑定
+    const bindPayload = parseBindPayload(payload)
+    if (bindPayload) {
+      try {
+        await handleBind(msg, bindPayload)
+      } catch (e) {
+        console.error('[customer-webhook] handleBind failed', e)
+        await tgSend('sendMessage', { chat_id: chatId, text: '门店信息无效，请重新扫码点单。' })
+      }
+      return NextResponse.json({ ok: true })
+    }
+
+    // 无参/未识别参数：原有欢迎逻辑
+    const menuUrl = `${APP_URL}/menu?code=${encodeURIComponent(DEFAULT_STORE)}`
     await tgSend('sendMessage', {
       chat_id: chatId,
       text: '👋 欢迎！点击下方按钮查看商品，选好后可直接下单，商家会及时处理。',
@@ -85,7 +187,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // 其他消息：同样回复入口按钮
+  // 其他消息：同样回复入口按钮（保持原行为）
+  const menuUrl = `${APP_URL}/menu?code=${encodeURIComponent(DEFAULT_STORE)}`
   await tgSend('sendMessage', {
     chat_id: chatId,
     text: '点击下方按钮查看商品并下单 👇',

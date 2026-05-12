@@ -6,6 +6,9 @@ import { useState, useEffect } from 'react'
 
 const PRIMARY = '#ff6b00'
 
+// 顾客端 Bot 用户名（前端公开变量，不允许写死；清理误填的 @）
+const CUSTOMER_BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
+
 // ─── 多语言类型 ───────────────────────────────────────────────────────────────
 
 type Lang = 'zh' | 'en' | 'km'
@@ -43,6 +46,8 @@ const T: Record<Lang, {
   confirmTitle: string
   confirmSubmit: string
   backToEdit: string
+  bindTgBtn: string
+  bindTgHint: string
 }> = {
   zh: {
     open:             '营业中',
@@ -69,6 +74,8 @@ const T: Record<Lang, {
     confirmTitle:     '确认订单',
     confirmSubmit:    '确认提交',
     backToEdit:       '返回修改',
+    bindTgBtn:        '📲 绑定 Telegram，接收订单通知',
+    bindTgHint:       '绑定后可在 Telegram 查看订单进度、再次点单',
   },
   en: {
     open:             'Open',
@@ -95,6 +102,8 @@ const T: Record<Lang, {
     confirmTitle:     'Confirm Order',
     confirmSubmit:    'Submit Order',
     backToEdit:       'Back',
+    bindTgBtn:        '📲 Bind Telegram for Order Updates',
+    bindTgHint:       'Get order notifications and reorder easily',
   },
   km: {
     open:             'កំពុងបើក',
@@ -121,6 +130,8 @@ const T: Record<Lang, {
     confirmTitle:     'បញ្ជាក់បញ្ជាទិញ',
     confirmSubmit:    'ដាក់ស្នើ',
     backToEdit:       'ត្រឡប់',
+    bindTgBtn:        '📲 ភ្ជាប់ Telegram ដើម្បីទទួលដំណឹង',
+    bindTgHint:       'មើលស្ថានភាព និងបញ្ជាទិញម្តងទៀតបាន',
   },
 }
 
@@ -671,6 +682,21 @@ export default function MenuPage() {
             </div>
             <div style={s.successModalHint}>{ui.orderHint2}</div>
             <div style={s.successModalAmount}>${orderResult.totalAmount.toFixed(2)}</div>
+
+            {CUSTOMER_BOT && storeCode && (
+              <a
+                href={`https://t.me/${CUSTOMER_BOT}?start=bind_${encodeURIComponent(storeCode)}${orderResult.orderNo ? `_${encodeURIComponent(orderResult.orderNo)}` : ''}`}
+                target="_blank"
+                rel="noreferrer"
+                style={s.bindTgBtn}
+              >
+                {ui.bindTgBtn}
+              </a>
+            )}
+            {CUSTOMER_BOT && storeCode && (
+              <div style={s.bindTgHint}>{ui.bindTgHint}</div>
+            )}
+
             <button
               style={s.retryBtnFull}
               onClick={() => { setOrderResult(null); setSubmitError(''); setShowConfirm(false) }}
@@ -1312,6 +1338,31 @@ const s: Record<string, React.CSSProperties> = {
     color: PRIMARY,
     textDecoration: 'none',
     padding: '6px 0',
+  },
+  bindTgBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: 48,
+    marginTop: 14,
+    background: '#0088cc',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 12,
+    fontSize: 15,
+    fontWeight: 700,
+    textDecoration: 'none' as const,
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(0,136,204,0.25)',
+  },
+  bindTgHint: {
+    fontSize: 12,
+    color: '#888',
+    textAlign: 'center' as const,
+    marginTop: 6,
+    marginBottom: 4,
+    lineHeight: 1.5,
   },
   confirmModal: {
     background: '#fff',
