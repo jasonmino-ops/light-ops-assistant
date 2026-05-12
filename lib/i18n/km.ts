@@ -399,6 +399,8 @@ const km = {
     imageNone: 'គ្មានរូបភាព',
     imageUploading: 'កំពុងបង្ហោះ…',
     imageDeleting: 'កំពុងលុប…',
+    manualNewBtn: 'បន្ថែមដោយដៃ',
+    editBtn: 'កែសម្រួល',
   },
   order: {
     detailTitle: 'ព័ត៌មានលម្អិតការបញ្ជា',

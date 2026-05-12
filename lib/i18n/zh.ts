@@ -399,6 +399,8 @@ const zh = {
     imageNone: '暂无图片',
     imageUploading: '上传中…',
     imageDeleting: '删除中…',
+    manualNewBtn: '手动新增商品',
+    editBtn: '编辑',
   },
   order: {
     detailTitle: '订单详情',

@@ -131,10 +131,16 @@ export default function ProductsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editNameRef = useRef<HTMLInputElement>(null)
 
-  // 商品主图
+  // 商品主图（lookup → 编辑表单内）
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
   const imageFileRef = useRef<HTMLInputElement>(null)
+
+  // 商品列表展开 + 行内图片管理
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [listImgUploading, setListImgUploading] = useState<Record<string, boolean>>({})
+  const [listImgError, setListImgError] = useState<Record<string, string>>({})
+  const listImageRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   // AI 识别菜单导入
   const [aiOpen, setAiOpen] = useState(false)
@@ -623,6 +629,86 @@ export default function ProductsPage() {
       setImageError(t('common.networkError'))
     } finally {
       setImageUploading(false)
+    }
+  }
+
+  // ── 手动新增 / 从列表编辑 ─────────────────────────────────────────────────
+
+  function startManualNew() {
+    setError(null)
+    setBarcodeInput('')
+    setNewBarcode('')
+    setNewName('')
+    setNewSpec('')
+    setNewPrice('')
+    setNewCategoryId('')
+    setProduct(null)
+    setMode('not-found')
+  }
+
+  function handleEditFromList(p: Product) {
+    setExpandedId(null)
+    setListOpen(false)
+    lookup(p.barcode)
+  }
+
+  // ── 列表行内图片操作（独立于 lookup → 编辑表单的 handler）───────────────
+
+  async function listImgUpload(p: Product, file: File) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setListImgError((v) => ({ ...v, [p.id]: '仅支持 JPG / PNG / WebP' }))
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setListImgError((v) => ({ ...v, [p.id]: '原图不能超过 5MB' }))
+      return
+    }
+    setListImgUploading((v) => ({ ...v, [p.id]: true }))
+    setListImgError((v) => ({ ...v, [p.id]: '' }))
+    try {
+      const blob = await compressForUpload(file)
+      const uploadName = blob.type === 'image/webp' ? 'main.webp' : file.name
+      const form = new FormData()
+      form.append('file', new File([blob], uploadName, { type: blob.type || file.type }))
+      const res = await fetch(`/api/products/${p.id}/image`, {
+        method: 'POST',
+        headers: { ...OWNER_CTX },
+        body: form,
+      })
+      const body = await res.json().catch(() => null)
+      if (res.ok && body?.imageUrl) {
+        setProductList((prev) => prev.map((it) => (it.id === p.id ? { ...it, imageUrl: body.imageUrl } : it)))
+      } else {
+        setListImgError((v) => ({ ...v, [p.id]: body?.message ?? body?.error ?? '上传失败' }))
+      }
+    } catch {
+      setListImgError((v) => ({ ...v, [p.id]: t('common.networkError') }))
+    } finally {
+      setListImgUploading((v) => ({ ...v, [p.id]: false }))
+      const inp = listImageRefs.current[p.id]
+      if (inp) inp.value = ''
+    }
+  }
+
+  async function listImgDelete(p: Product) {
+    setListImgUploading((v) => ({ ...v, [p.id]: true }))
+    setListImgError((v) => ({ ...v, [p.id]: '' }))
+    try {
+      const res = await apiFetch(
+        `/api/products/${p.id}/image`,
+        { method: 'DELETE' },
+        OWNER_CTX,
+      )
+      if (res.ok) {
+        setProductList((prev) => prev.map((it) => (it.id === p.id ? { ...it, imageUrl: null } : it)))
+      } else {
+        const body = await res.json().catch(() => null)
+        setListImgError((v) => ({ ...v, [p.id]: body?.message ?? body?.error ?? '删除失败' }))
+      }
+    } catch {
+      setListImgError((v) => ({ ...v, [p.id]: t('common.networkError') }))
+    } finally {
+      setListImgUploading((v) => ({ ...v, [p.id]: false }))
     }
   }
 
@@ -1266,31 +1352,105 @@ export default function ProductsPage() {
                   </div>
 
                   {/* Product rows */}
-                  {productList.map((p) => (
-                    <div key={p.id} style={ls.row}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(p.id)}
-                        onChange={() => toggleSelect(p.id)}
-                        style={ls.checkbox}
-                      />
-                      <div style={ls.rowInfo}>
-                        <span style={{ ...ls.rowName, color: p.status === 'DISABLED' ? 'var(--muted)' : 'var(--text)' }}>
-                          {p.name}{p.spec ? ` · ${p.spec}` : ''}
-                        </span>
-                        <span style={ls.rowMeta}>
-                          {p.barcode}
-                          {p.status === 'DISABLED' && <span style={ls.disabledTag}> 停用</span>}
-                        </span>
+                  {productList.map((p) => {
+                    const isExpanded = expandedId === p.id
+                    const uploading = !!listImgUploading[p.id]
+                    return (
+                      <div key={p.id} style={ls.rowWrap}>
+                        <div style={ls.row}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(p.id)}
+                            onChange={() => toggleSelect(p.id)}
+                            style={ls.checkbox}
+                          />
+                          <div
+                            style={{ ...ls.rowInfo, cursor: 'pointer' }}
+                            onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                          >
+                            <span style={{ ...ls.rowName, color: p.status === 'DISABLED' ? 'var(--muted)' : 'var(--text)' }}>
+                              {p.name}{p.spec ? ` · ${p.spec}` : ''}
+                            </span>
+                            <span style={ls.rowMeta}>
+                              {p.barcode}
+                              {p.status === 'DISABLED' && <span style={ls.disabledTag}> 停用</span>}
+                              {p.imageUrl && <span style={ls.imgTag}> · 图</span>}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            style={ls.chevronBtn}
+                            onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                            aria-label="展开"
+                          >
+                            {isExpanded ? '▴' : '▾'}
+                          </button>
+                        </div>
+
+                        {isExpanded && (
+                          <div style={ls.expandedPanel}>
+                            <input
+                              ref={(el) => { listImageRefs.current[p.id] = el }}
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              style={{ display: 'none' }}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) listImgUpload(p, file)
+                              }}
+                            />
+
+                            <div style={ls.imgRow}>
+                              {p.imageUrl ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                <img src={p.imageUrl} alt={p.name} style={ls.imgPreview} />
+                              ) : (
+                                <div style={ls.imgEmpty}>—</div>
+                              )}
+                              <div style={ls.imgBtns}>
+                                <button
+                                  type="button"
+                                  style={ls.imgBtn}
+                                  disabled={uploading}
+                                  onClick={() => listImageRefs.current[p.id]?.click()}
+                                >
+                                  {uploading
+                                    ? t('products.imageUploading')
+                                    : p.imageUrl
+                                    ? t('products.imageReplace')
+                                    : t('products.imageUpload')}
+                                </button>
+                                {p.imageUrl && (
+                                  <button
+                                    type="button"
+                                    style={{ ...ls.imgBtn, ...ls.imgBtnDanger }}
+                                    disabled={uploading}
+                                    onClick={() => listImgDelete(p)}
+                                  >
+                                    {uploading ? t('products.imageDeleting') : t('products.imageDelete')}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {listImgError[p.id] && <div style={ls.imgErr}>{listImgError[p.id]}</div>}
+
+                            <div style={ls.actionRow}>
+                              <button type="button" style={ls.actionBtn} onClick={() => handleEditFromList(p)}>
+                                {t('products.editBtn')}
+                              </button>
+                              <button
+                                type="button"
+                                style={{ ...ls.actionBtn, ...ls.actionBtnDanger }}
+                                onClick={() => setDeleteConfirm({ type: 'single', id: p.id, name: p.name })}
+                              >
+                                {t('products.deleteBtn')}
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <button
-                        style={ls.deleteRowBtn}
-                        onClick={() => setDeleteConfirm({ type: 'single', id: p.id, name: p.name })}
-                      >
-                        {t('products.deleteBtn')}
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </>
               )}
 
@@ -1353,15 +1513,26 @@ export default function ProductsPage() {
                   {hidMsg.text}
                 </div>
               )}
-              <button
-                type="button"
-                style={s.scanBtn}
-                onClick={openScanner}
-                disabled={mode === 'loading'}
-              >
-                <span style={s.scanIcon}>⊡</span>
-                <span>{t('products.scanBtn')}</span>
-              </button>
+              <div style={s.entryRow}>
+                <button
+                  type="button"
+                  style={{ ...s.scanBtn, width: 'auto', flex: 1, marginBottom: 0 }}
+                  onClick={openScanner}
+                  disabled={mode === 'loading'}
+                >
+                  <span style={s.scanIcon}>⊡</span>
+                  <span>{t('products.scanBtn')}</span>
+                </button>
+                <button
+                  type="button"
+                  style={s.manualNewBtn}
+                  onClick={startManualNew}
+                  disabled={mode === 'loading'}
+                >
+                  <span style={s.plusIcon}>＋</span>
+                  <span>{t('products.manualNewBtn')}</span>
+                </button>
+              </div>
 
               {cameraFailCount >= 5 && (
                 <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>
@@ -1755,6 +1926,23 @@ const s: Record<string, React.CSSProperties> = {
     marginBottom: 12,
   },
   scanIcon: { fontSize: 22 },
+  entryRow: { display: 'flex', gap: 8, marginBottom: 12 },
+  manualNewBtn: {
+    flex: 1,
+    height: 48,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    background: '#fff',
+    color: 'var(--blue)',
+    border: '1.5px solid var(--blue)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  plusIcon: { fontSize: 22, fontWeight: 700, lineHeight: 1 },
   orRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 },
   orLine: { flex: 1, height: 1, background: 'var(--border)' },
   orText: { fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' as const },
@@ -2273,12 +2461,93 @@ const ls: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  rowWrap: {
+    borderBottom: '1px solid var(--border)',
+  },
   row: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
     padding: '8px 0',
-    borderBottom: '1px solid var(--border)',
+  },
+  chevronBtn: {
+    flexShrink: 0,
+    width: 30,
+    height: 30,
+    padding: 0,
+    background: 'none',
+    border: 'none',
+    color: 'var(--muted)',
+    fontSize: 14,
+    cursor: 'pointer',
+  },
+  imgTag: {
+    fontSize: 11,
+    color: '#52c41a',
+    fontFamily: 'inherit',
+  },
+  expandedPanel: {
+    padding: '4px 0 12px 24px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 8,
+  },
+  imgRow: {
+    display: 'flex',
+    gap: 10,
+    alignItems: 'center',
+  },
+  imgPreview: {
+    width: 56,
+    height: 56,
+    objectFit: 'cover' as const,
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: '#f5f5f5',
+    flexShrink: 0,
+  },
+  imgEmpty: {
+    width: 56,
+    height: 56,
+    borderRadius: 6,
+    border: '1px dashed var(--border)',
+    background: '#fafafa',
+    color: 'var(--muted)',
+    fontSize: 13,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  imgBtns: { display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' as const },
+  imgBtn: {
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 12px',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: '#fff',
+    color: 'var(--text)',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  },
+  imgBtnDanger: { color: 'var(--red)', borderColor: '#ffa39e' },
+  imgErr: { fontSize: 12, color: 'var(--red)' },
+  actionRow: { display: 'flex', gap: 8 },
+  actionBtn: {
+    flex: 1,
+    height: 34,
+    fontSize: 13,
+    fontWeight: 600,
+    background: '#fff',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    color: 'var(--text)',
+    cursor: 'pointer',
+  },
+  actionBtnDanger: {
+    color: 'var(--red)',
+    borderColor: 'var(--red)',
   },
   rowInfo: {
     flex: 1,
