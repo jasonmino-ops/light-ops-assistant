@@ -29,7 +29,7 @@ const T: Record<Lang, {
   zh: {
     title:        '我的订单',
     loading:      '加载中…',
-    empty:        '暂无订单记录',
+    empty:        '暂无历史订单',
     errNoCode:    '请通过有效的商品页链接访问',
     errNoTg:      '请在 Telegram 中打开此页面以查看订单',
     errNetwork:   '网络错误，请刷新重试',
@@ -45,7 +45,7 @@ const T: Record<Lang, {
   en: {
     title:        'My Orders',
     loading:      'Loading…',
-    empty:        'No orders yet',
+    empty:        'No order history yet',
     errNoCode:    'Please open via a valid menu link',
     errNoTg:      'Please open this page inside Telegram',
     errNetwork:   'Network error, please refresh',
@@ -61,7 +61,7 @@ const T: Record<Lang, {
   km: {
     title:        'បញ្ជាទិញរបស់ខ្ញុំ',
     loading:      'កំពុងផ្ទុក…',
-    empty:        'គ្មានបញ្ជាទិញ',
+    empty:        'គ្មានប្រវត្តិបញ្ជាទិញ',
     errNoCode:    'សូមចូលតាមតំណភ្ជាប់ត្រឹមត្រូវ',
     errNoTg:      'សូមបើកទំព័រនេះក្នុង Telegram',
     errNetwork:   'បញ្ហាបណ្តាញ សូម refresh',
@@ -182,13 +182,28 @@ export default function MyOrdersPage() {
       setLoading(false)
       return
     }
+
+    // 非 TG 用户：读本设备 localStorage 里缓存的本店 orderNos
+    let orderNosFromLocal: string[] = []
     if (!tgId) {
-      setError('no_tg')
-      setLoading(false)
-      return
+      try {
+        const raw = localStorage.getItem(`menu_orders_${code}`)
+        if (raw) {
+          const arr = JSON.parse(raw)
+          if (Array.isArray(arr)) orderNosFromLocal = arr.filter((x) => typeof x === 'string')
+        }
+      } catch { /* localStorage 不可用 → 空列表 */ }
     }
 
-    fetch(`/api/public/my-orders?tgId=${encodeURIComponent(tgId)}&code=${encodeURIComponent(code)}`)
+    // 拼查询：tgId 优先；否则用 orderNos；两者都缺时仍调接口拿 storeName + 空 orders
+    const params = new URLSearchParams({ code })
+    if (tgId) {
+      params.set('tgId', tgId)
+    } else if (orderNosFromLocal.length > 0) {
+      params.set('orderNos', orderNosFromLocal.join(','))
+    }
+
+    fetch(`/api/public/my-orders?${params.toString()}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) { setError(data.error); return }

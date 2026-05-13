@@ -638,6 +638,13 @@ export default function MenuPage() {
       setOrderRemark('')
       setPickupMethod('dineIn')
       setShowConfirm(false)
+      // 写本设备订单号到 localStorage（按 storeCode 维度，供 /menu/orders 非 TG 路径查询）
+      try {
+        const key = `menu_orders_${code}`
+        const prev = JSON.parse(localStorage.getItem(key) ?? '[]') as string[]
+        const next = [body.orderNo, ...prev.filter((n) => n !== body.orderNo)].slice(0, 30)
+        localStorage.setItem(key, JSON.stringify(next))
+      } catch { /* localStorage 不可用时静默 */ }
     } catch {
       setSubmitError(ui.errSubmitFail)
     } finally {
