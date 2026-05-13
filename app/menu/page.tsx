@@ -74,7 +74,7 @@ const T: Record<Lang, {
     confirmTitle:     '确认订单',
     confirmSubmit:    '确认提交',
     backToEdit:       '返回修改',
-    bindTgBtn:        '📲 绑定 Telegram，接收订单通知',
+    bindTgBtn:        '📲 绑定 Telegram，接收 {store} 订单通知',
     bindTgHint:       '绑定后可在 Telegram 查看订单进度、再次点单',
   },
   en: {
@@ -102,7 +102,7 @@ const T: Record<Lang, {
     confirmTitle:     'Confirm Order',
     confirmSubmit:    'Submit Order',
     backToEdit:       'Back',
-    bindTgBtn:        '📲 Bind Telegram for Order Updates',
+    bindTgBtn:        '📲 Bind Telegram for {store} Updates',
     bindTgHint:       'Get order notifications and reorder easily',
   },
   km: {
@@ -130,7 +130,7 @@ const T: Record<Lang, {
     confirmTitle:     'បញ្ជាក់បញ្ជាទិញ',
     confirmSubmit:    'ដាក់ស្នើ',
     backToEdit:       'ត្រឡប់',
-    bindTgBtn:        '📲 ភ្ជាប់ Telegram ដើម្បីទទួលដំណឹង',
+    bindTgBtn:        '📲 ភ្ជាប់ Telegram ដើម្បីទទួលដំណឹង {store}',
     bindTgHint:       'មើលស្ថានភាព និងបញ្ជាទិញម្តងទៀតបាន',
   },
 }
@@ -201,6 +201,7 @@ export default function MenuPage() {
   const [showConfirm,  setShowConfirm] = useState(false)
   const [storeCode,    setStoreCode]   = useState('')
   const [hasTgId,      setHasTgId]     = useState(false)
+  const [customerBound, setCustomerBound] = useState(false)
   const [lightboxUrl,  setLightboxUrl] = useState<string | null>(null)
 
   const ui         = T[lang]
@@ -286,6 +287,11 @@ export default function MenuPage() {
     }
   }, [])
 
+  // ── 同步浏览器/Mini App 页面标题为当前门店名 ───────────────────────────
+  useEffect(() => {
+    document.title = (storeData?.name && storeData.name.trim()) || '店小二'
+  }, [storeData?.name])
+
   // ── 数据加载 ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get('code')
@@ -296,17 +302,29 @@ export default function MenuPage() {
     }
     setStoreCode(code)
 
-    // 检测是否在 Telegram 中（决定是否显示"我的订单"入口）
+    // 检测是否在 Telegram 中并提取 tgId，用于：
+    //   1) 显示"我的订单"入口
+    //   2) 后端查 StoreCustomerContact 判断当前顾客是否已绑定本门店
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
+    let tgIdLocal: string | null = null
     if (tg?.initData) {
       try {
         const userStr = new URLSearchParams(tg.initData).get('user')
-        if (userStr) { JSON.parse(userStr); setHasTgId(true) }
+        if (userStr) {
+          const u = JSON.parse(userStr)
+          if (u?.id != null) {
+            tgIdLocal = String(u.id)
+            setHasTgId(true)
+          }
+        }
       } catch { /* 解析失败则不显示入口 */ }
     }
 
-    fetch(`/api/public/menu?code=${encodeURIComponent(code)}`)
+    const menuUrl = `/api/public/menu?code=${encodeURIComponent(code)}` +
+      (tgIdLocal ? `&tgId=${encodeURIComponent(tgIdLocal)}` : '')
+
+    fetch(menuUrl)
       .then((r) => r.json())
       .then((body) => {
         if (body.error) {
@@ -315,6 +333,7 @@ export default function MenuPage() {
           setStoreData(body.store)
           setApiProducts(body.products ?? [])
           setCategories(body.categories ?? [])
+          setCustomerBound(!!body.customerBound)
         }
       })
       .catch(() => setFetchError('NETWORK_ERROR'))
@@ -415,7 +434,7 @@ export default function MenuPage() {
   }
 
   // ── 正常态 ────────────────────────────────────────────────────────────────
-  const storeName = storeData?.name ?? '—'
+  const storeName = (storeData?.name && storeData.name.trim()) || '店小二'
   const isOpen    = storeData?.isOpen ?? false
 
   return (
@@ -674,6 +693,7 @@ export default function MenuPage() {
         <div style={s.successOverlay}>
           <div style={s.successModal}>
             <div style={s.successCheckCircle}>✓</div>
+            <div style={s.successModalStoreName}>{storeName}</div>
             <div style={s.successModalTitle}>{ui.orderSubmitted}</div>
             <div style={s.successModalOrderNo}>{orderResult.orderNo}</div>
             <div style={s.successStatusPill}>
@@ -683,18 +703,18 @@ export default function MenuPage() {
             <div style={s.successModalHint}>{ui.orderHint2}</div>
             <div style={s.successModalAmount}>${orderResult.totalAmount.toFixed(2)}</div>
 
-            {CUSTOMER_BOT && storeCode && (
-              <a
-                href={`https://t.me/${CUSTOMER_BOT}?start=bind_${encodeURIComponent(storeCode)}${orderResult.orderNo ? `_${encodeURIComponent(orderResult.orderNo)}` : ''}`}
-                target="_blank"
-                rel="noreferrer"
-                style={s.bindTgBtn}
-              >
-                {ui.bindTgBtn}
-              </a>
-            )}
-            {CUSTOMER_BOT && storeCode && (
-              <div style={s.bindTgHint}>{ui.bindTgHint}</div>
+            {CUSTOMER_BOT && storeCode && !customerBound && (
+              <>
+                <a
+                  href={`https://t.me/${CUSTOMER_BOT}?start=bind_${encodeURIComponent(storeCode)}${orderResult.orderNo ? `_${encodeURIComponent(orderResult.orderNo)}` : ''}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={s.bindTgBtn}
+                >
+                  {ui.bindTgBtn.replace('{store}', storeName)}
+                </a>
+                <div style={s.bindTgHint}>{ui.bindTgHint}</div>
+              </>
             )}
 
             <button
@@ -1225,6 +1245,17 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 28,
     fontWeight: 700,
     marginBottom: 4,
+  },
+  successModalStoreName: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#888',
+    marginBottom: 4,
+    textAlign: 'center' as const,
+    maxWidth: 280,
+    overflow: 'hidden' as const,
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
   },
   successModalTitle: {
     fontSize: 20,

@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'MISSING_CODE' }, { status: 400 })
   }
 
+  const tgId = req.nextUrl.searchParams.get('tgId')?.trim() || null
+
   const store = await prisma.store.findUnique({
     where: { code },
     select: { name: true, status: true, tenantId: true, bannerUrl: true, announcement: true, promoText: true },
@@ -20,6 +22,17 @@ export async function GET(req: NextRequest) {
 
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  }
+
+  // 顾客绑定状态：仅当客户端能提供自己的 tgId（Telegram WebApp）时才查；
+  // 普通浏览器无 tgId → customerBound: false，前端正常显示绑定引导
+  let customerBound = false
+  if (tgId) {
+    const contact = await prisma.storeCustomerContact.findUnique({
+      where: { storeCode_telegramId: { storeCode: code, telegramId: tgId } },
+      select: { id: true, status: true },
+    })
+    customerBound = !!contact && contact.status === 'active'
   }
 
   const [products, categories] = await Promise.all([
@@ -44,6 +57,7 @@ export async function GET(req: NextRequest) {
       announcement: store.announcement ?? null,
       promoText:    store.promoText    ?? null,
     },
+    customerBound,
     categories: categories.map((c) => ({
       id: c.id,
       name: c.name,
