@@ -69,7 +69,27 @@ export async function GET(req: NextRequest) {
   // Zero-value placeholder for skipped aggregation branches
   const ZERO_AGG = { _sum: { lineAmount: null }, _count: 0 } as const
 
-  const [total, items, saleAgg, refundAgg] = await Promise.all([
+  // ── 顾客 H5 订单合并条件 ─────────────────────────────────────────────────
+  // 与 /api/summary 口径完全一致：status='COMPLETED' && paymentStatus='PAID'
+  // 仅首页合并（避免分页重复）；STAFF / REFUND filter / 按员工筛选时不合并
+  const operatorUserIdQ = p.get('operatorUserId')
+  const shouldIncludeCO =
+    ctx.role !== 'STAFF' &&
+    saleTypeParam !== 'REFUND' &&
+    !operatorUserIdQ &&
+    page === 1
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const coWhere: any = shouldIncludeCO
+    ? {
+        tenantId: ctx.tenantId,
+        status: 'COMPLETED',
+        paymentStatus: 'PAID',
+        paidAt: { gte: from, lte: to },
+        ...(where.storeId ? { storeId: where.storeId } : {}),
+      }
+    : null
+
+  const [total, items, saleAgg, refundAgg, customerOrders] = await Promise.all([
     prisma.saleRecord.count({ where }),
     prisma.saleRecord.findMany({
       where,
@@ -81,8 +101,6 @@ export async function GET(req: NextRequest) {
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    // Only aggregate SALE when the filter is ALL or SALE
-    // status: 'COMPLETED' — summary only counts confirmed revenue; CANCELLED/PENDING_PAYMENT excluded
     saleTypeParam !== 'REFUND'
       ? prisma.saleRecord.aggregate({
           where: { ...where, saleType: 'SALE', status: 'COMPLETED' },
@@ -90,7 +108,6 @@ export async function GET(req: NextRequest) {
           _count: true,
         })
       : Promise.resolve(ZERO_AGG),
-    // Only aggregate REFUND when the filter is ALL or REFUND
     saleTypeParam !== 'SALE'
       ? prisma.saleRecord.aggregate({
           where: { ...where, saleType: 'REFUND', status: 'COMPLETED' },
@@ -98,7 +115,24 @@ export async function GET(req: NextRequest) {
           _count: true,
         })
       : Promise.resolve(ZERO_AGG),
+    coWhere
+      ? prisma.customerOrder.findMany({
+          where: coWhere,
+          orderBy: { paidAt: 'desc' },
+          take: 500,
+        })
+      : Promise.resolve([]),
   ])
+
+  // CO 门店名映射（CustomerOrder 无 store relation，按需单独查）
+  const coStoreIds = Array.from(new Set(customerOrders.map((o) => o.storeId)))
+  const coStores = coStoreIds.length > 0
+    ? await prisma.store.findMany({
+        where: { id: { in: coStoreIds } },
+        select: { id: true, name: true },
+      })
+    : []
+  const coStoreMap = new Map(coStores.map((s) => [s.id, s.name]))
 
   const totalSaleAmount = saleAgg._sum.lineAmount?.toNumber() ?? 0
   const totalRefundAmount = refundAgg._sum.lineAmount?.toNumber() ?? 0
@@ -119,38 +153,88 @@ export async function GET(req: NextRequest) {
     })(),
   ])
 
+  // 映射 SR 行（透传 source）
+  const srItems = items.map((r) => {
+    const pi = r.saleType === 'SALE' && r.orderNo ? paymentMap.get(r.orderNo) : undefined
+    return {
+      id: r.id,
+      recordNo: r.recordNo,
+      orderNo: r.orderNo,
+      createdAt: r.createdAt.toISOString(),
+      storeName: r.store.name,
+      operatorDisplayName: r.operatorUser.displayName,
+      productNameSnapshot: r.productNameSnapshot,
+      specSnapshot: r.specSnapshot,
+      quantity: r.quantity.toNumber(),
+      unitPrice: r.unitPrice.toNumber(),
+      lineAmount: r.lineAmount.toNumber(),
+      saleType: r.saleType,
+      refundReason: r.refundReason,
+      paymentMethod: pi?.paymentMethod ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'CASH' : null),
+      paymentStatus: pi?.paymentStatus ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'PAID' : null),
+      source: 'SALE_RECORD' as const,
+    }
+  })
+
+  // 映射 CO 行（单行聚合：itemsJson 解析后取首项 + 计数说明）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type CoItem = { name?: string; spec?: string | null; quantity?: number; price?: number; lineAmount?: number }
+  const coRows = customerOrders.map((o) => {
+    let parsedItems: CoItem[] = []
+    try { parsedItems = JSON.parse(o.itemsJson) } catch { /* keep [] */ }
+    const first = parsedItems[0] ?? {}
+    const totalQty = parsedItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0) || 1
+    const totalAmt = o.totalAmount.toNumber()
+    const nameLabel = parsedItems.length > 1
+      ? `${first.name ?? '商品'} 等${parsedItems.length}项`
+      : (first.name ?? '商品')
+    const pm = o.paymentMethod === 'QR' ? 'KHQR' : (o.paymentMethod === 'CASH' ? 'CASH' : 'CASH')
+    return {
+      id: o.id,
+      recordNo: o.orderNo,
+      orderNo: o.orderNo,
+      createdAt: (o.paidAt ?? o.createdAt).toISOString(),
+      storeName: coStoreMap.get(o.storeId) ?? '—',
+      operatorDisplayName: 'H5 顾客',
+      productNameSnapshot: nameLabel,
+      specSnapshot: first.spec ?? null,
+      quantity: totalQty,
+      unitPrice: totalAmt / totalQty,
+      lineAmount: totalAmt,
+      saleType: 'SALE' as const,
+      refundReason: null,
+      paymentMethod: pm as 'CASH' | 'KHQR',
+      paymentStatus: 'PAID' as const,
+      source: 'CUSTOMER_ORDER' as const,
+    }
+  })
+
+  // 合并并按时间倒序（仅首页有 coRows；后续页 coRows 为空，自然不重复）
+  const merged = coRows.length > 0
+    ? [...srItems, ...coRows].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    : srItems
+
+  // 汇总数字与 /api/summary 对齐：含 CO 已确认+已付的金额与笔数
+  const coCount = customerOrders.length
+  const coSum = customerOrders.reduce((s, o) => s + o.totalAmount.toNumber(), 0)
+  const coCash = customerOrders
+    .filter((o) => o.paymentMethod === 'CASH')
+    .reduce((s, o) => s + o.totalAmount.toNumber(), 0)
+  const coKhqr = customerOrders
+    .filter((o) => o.paymentMethod === 'QR')
+    .reduce((s, o) => s + o.totalAmount.toNumber(), 0)
+
   return NextResponse.json({
-    total,
+    total: total + coCount,
     page,
     pageSize,
-    items: items.map((r) => {
-      const pi = r.saleType === 'SALE' && r.orderNo ? paymentMap.get(r.orderNo) : undefined
-      return {
-        id: r.id,
-        recordNo: r.recordNo,
-        orderNo: r.orderNo,
-        createdAt: r.createdAt.toISOString(),
-        storeName: r.store.name,
-        operatorDisplayName: r.operatorUser.displayName,
-        productNameSnapshot: r.productNameSnapshot,
-        specSnapshot: r.specSnapshot,
-        quantity: r.quantity.toNumber(),
-        unitPrice: r.unitPrice.toNumber(),
-        lineAmount: r.lineAmount.toNumber(),
-        saleType: r.saleType,
-        refundReason: r.refundReason,
-        // Payment info: null for REFUND, PENDING_PAYMENT, CANCELLED (no PI), or any non-COMPLETED record
-        // Only COMPLETED SALE records without a PI are historical cash sales → fallback to CASH/PAID
-        paymentMethod: pi?.paymentMethod ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'CASH' : null),
-        paymentStatus: pi?.paymentStatus ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'PAID' : null),
-      }
-    }),
+    items: merged,
     summary: {
-      saleCount: saleAgg._count,
+      saleCount: saleAgg._count + coCount,
       refundCount: refundAgg._count,
-      netAmount: totalSaleAmount + totalRefundAmount,
-      cashSaleAmount: breakdown.cashSaleAmount,
-      khqrSaleAmount: breakdown.khqrSaleAmount,
+      netAmount: totalSaleAmount + totalRefundAmount + coSum,
+      cashSaleAmount: breakdown.cashSaleAmount + coCash,
+      khqrSaleAmount: breakdown.khqrSaleAmount + coKhqr,
     },
   })
 }

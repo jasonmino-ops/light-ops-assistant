@@ -27,6 +27,7 @@ type RecordItem = {
   refundReason: string | null
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
+  source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
 }
 
 type Summary = {
@@ -55,6 +56,7 @@ type OrderGroup = {
   totalAmount: number
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
+  source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
 }
 
 type RefundEntry = {
@@ -109,6 +111,7 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
           totalAmount: 0,
           paymentMethod: item.paymentMethod ?? null,
           paymentStatus: item.paymentStatus ?? null,
+          source: item.source,
         })
       }
       const g = groupMap.get(key)!
@@ -375,6 +378,9 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, o
     >
       <div style={s.cardHeader}>
         <span style={s.tagSale}>{tagSale}</span>
+        {group.source === 'CUSTOMER_ORDER' && (
+          <span style={s.tagH5}>H5 顾客</span>
+        )}
         <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>
         <span style={s.cardRecordNo}>{group.orderNo}</span>
         <span style={{ ...s.payBadge, ...(isPending ? s.payBadgePending : {}) }}>
@@ -660,6 +666,15 @@ const s: Record<string, React.CSSProperties> = {
     padding: '1px 7px',
     borderRadius: 10,
     border: '1px solid #ffccc7',
+  },
+  tagH5: {
+    fontSize: 11,
+    fontWeight: 700,
+    background: '#fff7e6',
+    color: '#fa8c16',
+    padding: '1px 7px',
+    borderRadius: 10,
+    border: '1px solid #ffd591',
   },
   cardTime: {
     fontSize: 13,
