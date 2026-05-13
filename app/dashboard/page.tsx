@@ -109,6 +109,7 @@ export default function DashboardPage() {
   const [monthHot, setMonthHot]                 = useState<TopProduct[]>([])
   const [hotLoading, setHotLoading]             = useState(false)
   const [showStoreConfig, setShowStoreConfig]   = useState(false)
+  const [dimMenuOpen, setDimMenuOpen]           = useState(false)
 
   const load = useCallback(
     async (dim: Dimension, sid: string, uid: string, period: TimePeriod, cFrom: string, cTo: string) => {
@@ -224,17 +225,40 @@ export default function DashboardPage() {
       </div>
 
       <div style={s.body}>
-        {/* Dimension tabs */}
-        <div style={s.dimRow}>
-          {(['GLOBAL', 'STORE', 'STAFF'] as Dimension[]).map((d) => (
-            <button
-              key={d}
-              style={{ ...s.dimBtn, ...(dimension === d ? s.dimBtnActive : {}) }}
-              onClick={() => handleDimension(d)}
-            >
-              {DIM_LABEL[d]}
-            </button>
-          ))}
+        {/* 门店经营查询入口（合并 GLOBAL / STORE / STAFF） */}
+        <div style={s.dimMenuWrap}>
+          <button
+            type="button"
+            style={s.dimMenuToggle}
+            onClick={() => setDimMenuOpen((v) => !v)}
+          >
+            <span style={s.dimMenuToggleLeft}>
+              <span style={s.dimMenuIcon}>📊</span>
+              <span>
+                <span style={s.dimMenuTitle}>{t('dashboard.dimMenuTitle')}</span>
+                <span style={s.dimMenuCurrent}>· {DIM_LABEL[dimension]}</span>
+              </span>
+            </span>
+            <span style={s.dimMenuArrow}>{dimMenuOpen ? '▴' : '▾'}</span>
+          </button>
+          {dimMenuOpen && (
+            <div style={s.dimMenuPanel}>
+              {([
+                { key: 'GLOBAL', label: t('dashboard.dimAll') },
+                { key: 'STORE',  label: t('dashboard.dimByStore') },
+                { key: 'STAFF',  label: t('dashboard.dimByStaff') },
+              ] as { key: Dimension; label: string }[]).map((d) => (
+                <button
+                  key={d.key}
+                  type="button"
+                  style={{ ...s.dimMenuItem, ...(dimension === d.key ? s.dimMenuItemOn : {}) }}
+                  onClick={() => { handleDimension(d.key); setDimMenuOpen(false) }}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Store selector */}
@@ -323,23 +347,13 @@ export default function DashboardPage() {
           <Overview result={result} t={t} heroLabel={heroLabelText} />
         )}
 
-        {/* Hot products (GLOBAL / STORE only) — 合并为 tab 切换 */}
-        {dimension !== 'STAFF' && (
-          <HotSection
-            weekHot={weekHot}
-            monthHot={monthHot}
-            loading={hotLoading}
-            t={t}
-          />
-        )}
-
-        {/* 大入口区：顾客资产 + 门店配置（2 列大卡） */}
+        {/* 大入口区：顾客资产 + 门店配置（上移到 Overview 下方，保证首屏可见） */}
         <div style={s.bigEntryRow}>
           <Link href="/customers" style={s.bigEntryCard}>
             <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#69b1ff,#1677ff)' }}>👥</div>
             <div style={s.bigEntryBody}>
-              <div style={s.bigEntryTitle}>顾客资产</div>
-              <div style={s.bigEntryDesc}>会员、订单、消费洞察</div>
+              <div style={s.bigEntryTitle}>{t('dashboard.customersCenter')}</div>
+              <div style={s.bigEntryDesc}>{t('dashboard.customersCenterDesc')}</div>
             </div>
             <span style={s.bigEntryArrow}>›</span>
           </Link>
@@ -351,14 +365,24 @@ export default function DashboardPage() {
             <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ffc069,#fa8c16)' }}>🏪</div>
             <div style={s.bigEntryBody}>
               <div style={s.bigEntryTitle}>{t('dashboard.storeSettings')}</div>
-              <div style={s.bigEntryDesc}>结账模式、菜单展示</div>
+              <div style={s.bigEntryDesc}>{t('dashboard.storeSettingsDesc')}</div>
             </div>
             <span style={s.bigEntryArrow}>{showStoreConfig ? '▴' : '›'}</span>
           </button>
         </div>
         {showStoreConfig && <StoreConfigPanel t={t} />}
 
-        <div style={{ height: 32 }} />
+        {/* Hot products (GLOBAL / STORE only) — 合并为 tab 切换 */}
+        {dimension !== 'STAFF' && (
+          <HotSection
+            weekHot={weekHot}
+            monthHot={monthHot}
+            loading={hotLoading}
+            t={t}
+          />
+        )}
+
+        <div style={{ height: 24 }} />
       </div>
     </div>
   )
@@ -869,6 +893,51 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
   dimBtnActive: { background: 'var(--blue)', borderColor: 'var(--blue)', color: '#fff', fontWeight: 700 },
+
+  // ── 门店经营查询单入口 + 抽屉 ──
+  dimMenuWrap: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    marginBottom: 10,
+    overflow: 'hidden' as const,
+  },
+  dimMenuToggle: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '11px 14px',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+  },
+  dimMenuToggleLeft: { display: 'flex', alignItems: 'center', gap: 10 },
+  dimMenuIcon: { fontSize: 18, lineHeight: 1 },
+  dimMenuTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
+  dimMenuCurrent: { fontSize: 12, color: 'var(--muted)', marginLeft: 6, fontWeight: 500 },
+  dimMenuArrow: { fontSize: 14, color: 'var(--muted)' },
+  dimMenuPanel: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    borderTop: '1px solid var(--border)',
+  },
+  dimMenuItem: {
+    padding: '11px 14px',
+    background: 'none',
+    border: 'none',
+    borderBottom: '1px solid var(--border)',
+    textAlign: 'left' as const,
+    fontSize: 13,
+    color: 'var(--text)',
+    cursor: 'pointer',
+    fontWeight: 500,
+  },
+  dimMenuItemOn: {
+    background: 'var(--bg)',
+    color: 'var(--blue)',
+    fontWeight: 700,
+  },
   selectorCard: {
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
@@ -1006,16 +1075,16 @@ const ov: Record<string, React.CSSProperties> = {
   heroCard: {
     background: 'var(--blue)',
     borderRadius: 'var(--radius)',
-    padding: '20px 18px 22px',
+    padding: '12px 18px 14px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 10,
+    gap: 2,
+    marginBottom: 8,
   },
-  heroSub: { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginBottom: 6 },
-  heroLabel: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
-  heroAmount: { fontSize: 44, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.1, marginTop: 2 },
+  heroSub: { fontSize: 11, color: 'rgba(255,255,255,0.72)', marginBottom: 2 },
+  heroLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
+  heroAmount: { fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.1, marginTop: 0 },
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
