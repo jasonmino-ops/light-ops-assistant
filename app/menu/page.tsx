@@ -81,6 +81,7 @@ const T: Record<Lang, {
   orderTypeLabel: string
   pickup: string
   dineIn: string
+  delivery: string
   remarksLabel: string
   remarksPh: string
   couponLabel: string
@@ -145,6 +146,7 @@ const T: Record<Lang, {
     orderTypeLabel:   '取餐方式',
     pickup:           '到店自取',
     dineIn:           '堂食',
+    delivery:         '外卖送货上门',
     remarksLabel:     '备注',
     remarksPh:        '少辣、不要葱…（可选）',
     couponLabel:      '优惠券',
@@ -208,7 +210,8 @@ const T: Record<Lang, {
     assetSectionTitle: 'My Assets',
     orderTypeLabel:   'Order Type',
     pickup:           'Pickup',
-    dineIn:           'Dine-in',
+    dineIn:           'Dine in',
+    delivery:         'Delivery',
     remarksLabel:     'Remarks',
     remarksPh:        'Less spicy, no onions… (optional)',
     couponLabel:      'Coupon',
@@ -273,6 +276,7 @@ const T: Record<Lang, {
     orderTypeLabel:   'ប្រភេទបញ្ជា',
     pickup:           'យកដោយខ្លួនឯង',
     dineIn:           'ហូបនៅហាង',
+    delivery:         'ដឹកជញ្ជូនដល់ផ្ទះ',
     remarksLabel:     'កំណត់ចំណាំ',
     remarksPh:        'មិនហឹរ មិនដាក់ខ្ទឹមបារាំង… (ស្រេចចិត្ត)',
     couponLabel:      'គូប៉ុង',
@@ -289,6 +293,52 @@ const LANG_LABELS: Record<Lang, string> = { zh: '中', en: 'EN', km: 'ខ្ម�
 
 const ALL_CAT: ML = { zh: '全部商品', en: 'All Items', km: 'ទំនិញទាំងអស់' }
 const UNCATEGORIZED: ML = { zh: '其他', en: 'Others', km: 'ផ្សេងៗ' }
+
+// 分类名前端 fallback 多语言映射（key = 后端中文名 trim 后；未命中则原样返回）
+const CAT_MAP: Record<string, ML> = {
+  '全部':       ALL_CAT,
+  '全部商品':   ALL_CAT,
+  '其他':       UNCATEGORIZED,
+
+  // 主食类
+  '主食':       { zh: '主食',   en: 'Main',         km: 'អាហារសំខាន់' },
+  '主菜':       { zh: '主菜',   en: 'Main',         km: 'អាហារសំខាន់' },
+  '套餐':       { zh: '套餐',   en: 'Combo',        km: 'ឈុត' },
+  '米饭':       { zh: '米饭',   en: 'Rice',         km: 'បាយ' },
+  '面条':       { zh: '面条',   en: 'Noodles',      km: 'មី' },
+  '面食':       { zh: '面食',   en: 'Noodles',      km: 'មី' },
+
+  // 副食/菜品
+  '小吃':       { zh: '小吃',   en: 'Snacks',       km: 'អាហារសម្រន់' },
+  '零食':       { zh: '零食',   en: 'Snacks',       km: 'អាហារសម្រន់' },
+  '炒菜':       { zh: '炒菜',   en: 'Stir-fry',     km: 'បំពង' },
+  '烧烤':       { zh: '烧烤',   en: 'BBQ',          km: 'អាំង' },
+  '凉菜':       { zh: '凉菜',   en: 'Cold Dishes',  km: 'អាហារត្រជាក់' },
+  '汤':         { zh: '汤',     en: 'Soup',         km: 'ស៊ុប' },
+  '汤类':       { zh: '汤类',   en: 'Soup',         km: 'ស៊ុប' },
+
+  // 饮料类
+  '饮料':       { zh: '饮料',   en: 'Drinks',       km: 'ភេសជ្ជៈ' },
+  '酒水':       { zh: '酒水',   en: 'Beverages',    km: 'ភេសជ្ជៈ' },
+  '咖啡':       { zh: '咖啡',   en: 'Coffee',       km: 'កាហ្វេ' },
+  '奶茶':       { zh: '奶茶',   en: 'Milk Tea',     km: 'តែទឹកដោះ' },
+  '果汁':       { zh: '果汁',   en: 'Juice',        km: 'ទឹកផ្លែឈើ' },
+
+  // 甜品 / 烘焙
+  '甜品':       { zh: '甜品',   en: 'Dessert',      km: 'បង្អែម' },
+  '蛋糕':       { zh: '蛋糕',   en: 'Cake',         km: 'នំខេក' },
+  '面包':       { zh: '面包',   en: 'Bread',        km: 'នំប៉័ង' },
+
+  // 其它
+  '日化用品':   { zh: '日化用品', en: 'Daily Goods', km: 'ប្រើប្រាស់ប្រចាំថ្ងៃ' },
+  '宠物用品':   { zh: '宠物用品', en: 'Pet Supplies', km: 'សម្រាប់សត្វចិញ្ចឹម' },
+  '方便食品':   { zh: '方便食品', en: 'Instant Food', km: 'អាហារភ្លាមៗ' },
+}
+
+function categoryLabel(name: string, lang: Lang): string {
+  const entry = CAT_MAP[name.trim()]
+  return entry ? gl(entry, lang) : name
+}
 
 // ─── 商品视觉预设（无图片时按 index 循环取色/图标） ──────────────────────────
 
@@ -355,7 +405,7 @@ export default function MenuPage() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [cartExpand,    setCartExpand]    = useState(false)
   // 结算选项（取餐方式 + 备注；优惠券位先占位）
-  const [pickupMethod,  setPickupMethod]  = useState<'pickup' | 'dineIn'>('pickup')
+  const [pickupMethod,  setPickupMethod]  = useState<'dineIn' | 'delivery'>('dineIn')
   const [orderRemark,   setOrderRemark]   = useState('')
 
   const ui         = T[lang]
@@ -405,7 +455,7 @@ export default function MenuPage() {
         const items = filteredProducts.filter(
           (p) => p.categoryId === l1.id || (p.categoryId !== null && l2Ids.has(p.categoryId)),
         )
-        if (items.length > 0) groups.push({ gid: l1.id, title: l1.name, items })
+        if (items.length > 0) groups.push({ gid: l1.id, title: categoryLabel(l1.name, lang), items })
       }
       const uncategorized = filteredProducts.filter((p) => !p.categoryId || !allCatIds.has(p.categoryId))
       if (uncategorized.length > 0) {
@@ -417,10 +467,10 @@ export default function MenuPage() {
       const l2s = l2ByParent.get(activeCatId) ?? []
       const groups: Group[] = []
       const directItems = filteredProducts.filter((p) => p.categoryId === activeCatId)
-      if (directItems.length > 0) groups.push({ gid: activeCatId + '_d', title: l1Name, items: directItems })
+      if (directItems.length > 0) groups.push({ gid: activeCatId + '_d', title: categoryLabel(l1Name, lang), items: directItems })
       for (const l2 of l2s) {
         const items = filteredProducts.filter((p) => p.categoryId === l2.id)
-        if (items.length > 0) groups.push({ gid: l2.id, title: l2.name, items })
+        if (items.length > 0) groups.push({ gid: l2.id, title: categoryLabel(l2.name, lang), items })
       }
       return groups
     }
@@ -559,7 +609,7 @@ export default function MenuPage() {
     setSubmitError('')
 
     // 把取餐方式 + 顾客备注合并为 remark 字段透传给 API（API 写入 CustomerOrder.remark）
-    const methodLabel = pickupMethod === 'pickup' ? T[lang].pickup : T[lang].dineIn
+    const methodLabel = pickupMethod === 'dineIn' ? T[lang].dineIn : T[lang].delivery
     const remarkLines = [`${T[lang].orderTypeLabel}: ${methodLabel}`]
     if (orderRemark.trim()) remarkLines.push(`${T[lang].remarksLabel}: ${orderRemark.trim()}`)
     const remark = remarkLines.join(' | ')
@@ -586,7 +636,7 @@ export default function MenuPage() {
       setOrderResult({ orderNo: body.orderNo, totalAmount: body.totalAmount })
       setCart([])
       setOrderRemark('')
-      setPickupMethod('pickup')
+      setPickupMethod('dineIn')
       setShowConfirm(false)
     } catch {
       setSubmitError(ui.errSubmitFail)
@@ -717,21 +767,15 @@ export default function MenuPage() {
               {lang === 'zh' ? '优惠券' : lang === 'en' ? 'Coupons' : 'គូប៉ុង'}
             </span>
           </Link>
-          {hasTgId && storeCode ? (
-            <Link href={`/menu/orders?code=${storeCode}`} style={s.quickEntry}>
-              <span style={s.quickEntryIcon}>📦</span>
-              <span style={s.quickEntryLabel}>
-                {lang === 'zh' ? '订单' : lang === 'en' ? 'Orders' : 'បញ្ជា'}
-              </span>
-            </Link>
-          ) : (
-            <button type="button" style={s.quickEntry} onClick={() => alert(lang === 'zh' ? '请在 Telegram 中打开以查看订单' : lang === 'en' ? 'Open in Telegram to view orders' : 'បើកក្នុង Telegram')}>
-              <span style={s.quickEntryIcon}>📦</span>
-              <span style={s.quickEntryLabel}>
-                {lang === 'zh' ? '订单' : lang === 'en' ? 'Orders' : 'បញ្ជា'}
-              </span>
-            </button>
-          )}
+          <Link
+            href={storeCode ? `/menu/orders?code=${storeCode}` : '/menu'}
+            style={s.quickEntry}
+          >
+            <span style={s.quickEntryIcon}>📦</span>
+            <span style={s.quickEntryLabel}>
+              {lang === 'zh' ? '订单' : lang === 'en' ? 'Orders' : 'បញ្ជា'}
+            </span>
+          </Link>
           <button
             type="button"
             style={s.quickEntry}
@@ -773,7 +817,7 @@ export default function MenuPage() {
                   style={{ ...s.catLeftItem, ...(activeCatId === cat.id ? s.catLeftItemOn : {}) }}
                   onClick={() => setActiveCatId(cat.id)}
                 >
-                  {cat.name}
+                  {categoryLabel(cat.name, lang)}
                 </button>
               ))}
             </div>
@@ -925,14 +969,14 @@ export default function MenuPage() {
             <div style={s.chkSection}>
               <div style={s.chkSectionLabel}>{ui.orderTypeLabel}</div>
               <div style={s.chkPickupRow}>
-                {(['pickup', 'dineIn'] as const).map((m) => (
+                {(['dineIn', 'delivery'] as const).map((m) => (
                   <button
                     key={m}
                     type="button"
                     style={{ ...s.chkPickupBtn, ...(pickupMethod === m ? s.chkPickupBtnOn : {}) }}
                     onClick={() => setPickupMethod(m)}
                   >
-                    {m === 'pickup' ? `🥡 ${ui.pickup}` : `🍽️ ${ui.dineIn}`}
+                    {m === 'dineIn' ? `🍽️ ${ui.dineIn}` : `🛵 ${ui.delivery}`}
                   </button>
                 ))}
               </div>
@@ -1021,7 +1065,7 @@ export default function MenuPage() {
             >
               {ui.retryCart}
             </button>
-            {hasTgId && storeCode && (
+            {storeCode && (
               <a href={`/menu/orders?code=${storeCode}`} style={s.myOrdersBtnLink}>
                 {lang === 'zh' ? '查看订单进度 →' : lang === 'en' ? 'View Order Status →' : 'មើលស្ថានភាព →'}
               </a>

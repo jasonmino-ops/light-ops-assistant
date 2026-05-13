@@ -291,19 +291,14 @@ export default function MePage() {
 
             {/* 列表入口 */}
             <div style={s.list}>
-              {hasTgId && storeCode ? (
-                <Link href={`/menu/orders?code=${storeCode}`} style={s.listItem}>
-                  <span style={s.listIcon}>📦</span>
-                  <span style={s.listLabel}>{ui.myOrders}</span>
-                  <span style={s.listArrow}>›</span>
-                </Link>
-              ) : (
-                <button type="button" style={s.listItem} onClick={() => alert(ui.comingSoon)}>
-                  <span style={s.listIcon}>📦</span>
-                  <span style={s.listLabel}>{ui.myOrders}</span>
-                  <span style={s.listArrow}>›</span>
-                </button>
-              )}
+              <Link
+                href={storeCode ? `/menu/orders?code=${storeCode}` : '/menu'}
+                style={s.listItem}
+              >
+                <span style={s.listIcon}>📦</span>
+                <span style={s.listLabel}>{ui.myOrders}</span>
+                <span style={s.listArrow}>›</span>
+              </Link>
               <button type="button" style={s.listItem} onClick={() => setSubView('coupons')}>
                 <span style={s.listIcon}>🎟️</span>
                 <span style={s.listLabel}>{ui.couponCenter}</span>
