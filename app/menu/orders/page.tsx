@@ -139,10 +139,16 @@ function fmtDate(iso: string, lang: Lang): string {
     ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
-function buildItemSummary(items: OrderItem[]): string {
+function buildItemSummary(items: OrderItem[], lang: Lang): string {
   if (items.length === 0) return '—'
   const first = items[0].name + (items[0].spec ? ` · ${items[0].spec}` : '')
-  return items.length === 1 ? first : `${first} 等${items.length}件`
+  if (items.length === 1) return first
+  const more = items.length - 1
+  const suffix =
+    lang === 'zh' ? ` 等${items.length}件` :
+    lang === 'en' ? ` +${more} more` :
+                    ` និង${more} មុខទៀត`
+  return first + suffix
 }
 
 // ─── 主页面 ───────────────────────────────────────────────────────────────────
@@ -309,7 +315,7 @@ export default function MyOrdersPage() {
                       <span style={{ ...s.dot, background: statusColor }} />
                       <span style={{ ...s.statusText, color: statusColor }}>{statusLabel}</span>
                     </div>
-                    <div style={s.itemSummary}>{buildItemSummary(order.items)}</div>
+                    <div style={s.itemSummary}>{buildItemSummary(order.items, lang)}</div>
                     <div style={s.meta}>{ui.orderNo} {order.orderNo} · {fmtDate(order.createdAt, lang)}</div>
                   </div>
                   <div style={s.cardRight}>
