@@ -14,8 +14,50 @@ import { sendAndLogMessage } from '@/lib/telegram'
 
 type OrderItem = { productId: string; quantity: number }
 
+// 顾客 H5 三语文案（按下单时 lang 返回；商户通知保持中文）
+type Lang = 'zh' | 'en' | 'km'
+const MSG: Record<Lang, {
+  submitted: string; orderNo: string; total: string; statusPending: string
+  emptyCart: string; storeNotFound: string; productUnavailable: string; invalidQty: string
+}> = {
+  zh: {
+    submitted: '订单已提交',
+    orderNo:   '订单号',
+    total:     '合计',
+    statusPending: '待商家确认',
+    emptyCart: '购物车为空',
+    storeNotFound: '门店不存在或已暂停营业',
+    productUnavailable: '部分商品已下架，请刷新页面后重试',
+    invalidQty: '商品数量无效',
+  },
+  en: {
+    submitted: 'Order placed',
+    orderNo:   'Order No.',
+    total:     'Total',
+    statusPending: 'Awaiting confirmation',
+    emptyCart: 'Cart is empty',
+    storeNotFound: 'Store not found or unavailable',
+    productUnavailable: 'Some items are unavailable. Please refresh and try again.',
+    invalidQty: 'Invalid quantity',
+  },
+  km: {
+    submitted: 'បញ្ជាទិញបានដាក់ស្នើ',
+    orderNo:   'លេខបញ្ជា',
+    total:     'សរុប',
+    statusPending: 'រង់ចាំការបញ្ជាក់',
+    emptyCart: 'រទេះទិញទំនិញទទេ',
+    storeNotFound: 'រកមិនឃើញហាង ឬហាងបិទ',
+    productUnavailable: 'ទំនិញខ្លះអស់ហើយ សូម refresh',
+    invalidQty: 'ចំនួនមិនត្រឹមត្រូវ',
+  },
+}
+
+function pickLang(v: unknown): Lang {
+  return v === 'en' || v === 'km' ? v : 'zh'
+}
+
 export async function POST(req: NextRequest) {
-  let body: { storeCode?: string; items?: OrderItem[]; customerTelegramId?: string; remark?: string }
+  let body: { storeCode?: string; items?: OrderItem[]; customerTelegramId?: string; remark?: string; lang?: string }
   try {
     body = await req.json()
   } catch {
@@ -23,12 +65,14 @@ export async function POST(req: NextRequest) {
   }
 
   const { storeCode, items, customerTelegramId, remark } = body
+  const lang = pickLang(body.lang)
+  const T = MSG[lang]
 
   if (!storeCode) {
     return NextResponse.json({ error: 'MISSING_STORE_CODE' }, { status: 400 })
   }
   if (!items?.length) {
-    return NextResponse.json({ error: 'EMPTY_CART', message: '购物车为空' }, { status: 400 })
+    return NextResponse.json({ error: 'EMPTY_CART', message: T.emptyCart }, { status: 400 })
   }
 
   // ── 查门店 ────────────────────────────────────────────────────────────────
@@ -39,7 +83,7 @@ export async function POST(req: NextRequest) {
 
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json(
-      { error: 'STORE_NOT_FOUND', message: '门店不存在或已暂停营业' },
+      { error: 'STORE_NOT_FOUND', message: T.storeNotFound },
       { status: 404 },
     )
   }
@@ -56,13 +100,13 @@ export async function POST(req: NextRequest) {
   for (const item of items) {
     if (!productMap.has(item.productId)) {
       return NextResponse.json(
-        { error: 'PRODUCT_UNAVAILABLE', message: '部分商品已下架，请刷新页面后重试' },
+        { error: 'PRODUCT_UNAVAILABLE', message: T.productUnavailable },
         { status: 400 },
       )
     }
     if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
       return NextResponse.json(
-        { error: 'INVALID_QUANTITY', message: '商品数量无效' },
+        { error: 'INVALID_QUANTITY', message: T.invalidQty },
         { status: 400 },
       )
     }
@@ -115,6 +159,15 @@ export async function POST(req: NextRequest) {
     orderNo:     order.orderNo,
     totalAmount: Number(totalAmount.toFixed(2)),
     itemCount:   items.reduce((s, i) => s + i.quantity, 0),
+    // 三语文案，由 H5 顾客下单时 lang 决定；客户端可直接展示无需自己映射
+    message:     T.submitted,
+    labels: {
+      submitted:     T.submitted,
+      orderNo:       T.orderNo,
+      total:         T.total,
+      statusPending: T.statusPending,
+    },
+    lang,
   })
 }
 

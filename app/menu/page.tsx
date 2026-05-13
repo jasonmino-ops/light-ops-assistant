@@ -623,6 +623,7 @@ export default function MenuPage() {
           items: cart.map((c) => ({ productId: c.id, quantity: c.quantity })),
           ...(customerTelegramId ? { customerTelegramId } : {}),
           remark,
+          lang,
         }),
       })
       const body = await res.json()
