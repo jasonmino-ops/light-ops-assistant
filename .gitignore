@@ -9,3 +9,7 @@ node_modules/
 quick_diagnose*.sh
 quick_diagnose*.txt
 fix_owner_bind*.sh
+
+# 灾备发布包（含真实业务数据 / 敏感信息；仅本地与云盘归档，不入仓库）
+/店小二_Beta_v1_0_全栈灾备包/
+/light_ops_beta_v1_0_disaster_recovery.zip
