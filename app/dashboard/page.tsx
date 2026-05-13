@@ -225,6 +225,9 @@ export default function DashboardPage() {
       </div>
 
       <div style={s.body}>
+        {/* 首页门头快捷管理（OWNER only — dashboard 本就 OWNER 才能进） */}
+        <BannerQuickPanel t={t} />
+
         {/* 门店经营查询入口（合并 GLOBAL / STORE / STAFF） */}
         <div style={s.dimMenuWrap}>
           <button
@@ -544,6 +547,11 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   const [promoSaving, setPromoSaving] = useState<Record<string, boolean>>({})
   const [promoSaved, setPromoSaved]   = useState<Record<string, boolean>>({})
   const [promoErr, setPromoErr]       = useState<Record<string, string>>({})
+  // 编辑态 + 编辑前快照（用于取消恢复）
+  const [annEditing, setAnnEditing]   = useState<Record<string, boolean>>({})
+  const [annOrig, setAnnOrig]         = useState<Record<string, string>>({})
+  const [promoEditing, setPromoEditing] = useState<Record<string, boolean>>({})
+  const [promoOrig, setPromoOrig]     = useState<Record<string, string>>({})
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   useEffect(() => {
@@ -647,6 +655,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
       }, OWNER_CTX)
       if (res.ok) {
         setAnnSaved((v) => ({ ...v, [sid]: true }))
+        setAnnEditing((v) => ({ ...v, [sid]: false }))
         setTimeout(() => setAnnSaved((v) => ({ ...v, [sid]: false })), 2000)
       } else {
         const body = await res.json().catch(() => null)
@@ -670,6 +679,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
       }, OWNER_CTX)
       if (res.ok) {
         setPromoSaved((v) => ({ ...v, [sid]: true }))
+        setPromoEditing((v) => ({ ...v, [sid]: false }))
         setTimeout(() => setPromoSaved((v) => ({ ...v, [sid]: false })), 2000)
       } else {
         const body = await res.json().catch(() => null)
@@ -680,6 +690,27 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
     } finally {
       setPromoSaving((v) => ({ ...v, [sid]: false }))
     }
+  }
+
+  function startEditAnn(sid: string) {
+    setAnnOrig((v) => ({ ...v, [sid]: annDraft[sid] ?? '' }))
+    setAnnEditing((v) => ({ ...v, [sid]: true }))
+    setAnnErr((v) => ({ ...v, [sid]: '' }))
+  }
+  function cancelEditAnn(sid: string) {
+    setAnnDraft((v) => ({ ...v, [sid]: annOrig[sid] ?? '' }))
+    setAnnEditing((v) => ({ ...v, [sid]: false }))
+    setAnnErr((v) => ({ ...v, [sid]: '' }))
+  }
+  function startEditPromo(sid: string) {
+    setPromoOrig((v) => ({ ...v, [sid]: promoDraft[sid] ?? '' }))
+    setPromoEditing((v) => ({ ...v, [sid]: true }))
+    setPromoErr((v) => ({ ...v, [sid]: '' }))
+  }
+  function cancelEditPromo(sid: string) {
+    setPromoDraft((v) => ({ ...v, [sid]: promoOrig[sid] ?? '' }))
+    setPromoEditing((v) => ({ ...v, [sid]: false }))
+    setPromoErr((v) => ({ ...v, [sid]: '' }))
   }
 
   if (stores.length === 0) return null
@@ -770,58 +801,270 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
             )}
             {bannerErr[store.id] ? <div style={sc.errMsg}>{bannerErr[store.id]}</div> : null}
 
-            {/* 公告 */}
+            {/* 公告 — 修改/保存/取消 三态 */}
             <div style={sc.fieldLabel}>{t('dashboard.menuAnnouncement')}</div>
-            <textarea
-              style={sc.textarea}
-              rows={2}
-              placeholder={t('dashboard.menuAnnouncementPh')}
-              value={annDraft[store.id] ?? ''}
-              onChange={(e) => {
-                setAnnDraft((v) => ({ ...v, [store.id]: e.target.value }))
-                setAnnErr((v) => ({ ...v, [store.id]: '' }))
-              }}
-            />
-            <div style={sc.fieldAction}>
-              {annSaved[store.id] && <span style={sc.savedHint}>{t('dashboard.modeSaved')}</span>}
-              {annErr[store.id] && <span style={sc.errMsg}>{annErr[store.id]}</span>}
-              <button
-                style={sc.saveBtn}
-                onClick={() => handleSaveAnn(store.id)}
-                disabled={annSaving[store.id]}
-              >
-                {annSaving[store.id] ? '…' : t('dashboard.saveMode')}
-              </button>
-            </div>
+            {annEditing[store.id] ? (
+              <>
+                <textarea
+                  style={sc.textarea}
+                  rows={2}
+                  placeholder={t('dashboard.menuAnnouncementPh')}
+                  value={annDraft[store.id] ?? ''}
+                  onChange={(e) => {
+                    setAnnDraft((v) => ({ ...v, [store.id]: e.target.value }))
+                    setAnnErr((v) => ({ ...v, [store.id]: '' }))
+                  }}
+                  autoFocus
+                />
+                <div style={sc.fieldAction}>
+                  {annErr[store.id] && <span style={sc.errMsg}>{annErr[store.id]}</span>}
+                  <button
+                    type="button"
+                    style={sc.cancelBtn}
+                    onClick={() => cancelEditAnn(store.id)}
+                    disabled={annSaving[store.id]}
+                  >
+                    {t('dashboard.cancelBtn')}
+                  </button>
+                  <button
+                    type="button"
+                    style={sc.saveBtn}
+                    onClick={() => handleSaveAnn(store.id)}
+                    disabled={annSaving[store.id]}
+                  >
+                    {annSaving[store.id] ? '…' : t('dashboard.saveBtnFull')}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={sc.readonlyRow}>
+                <div style={sc.readonlyText}>
+                  {annDraft[store.id]?.trim()
+                    ? annDraft[store.id]
+                    : <span style={sc.readonlyMuted}>{t('dashboard.annNonePlaceholder')}</span>}
+                </div>
+                {annSaved[store.id] && <span style={sc.savedHint}>{t('dashboard.modeSaved')}</span>}
+                <button
+                  type="button"
+                  style={sc.editBtn}
+                  onClick={() => startEditAnn(store.id)}
+                >
+                  {t('dashboard.editBtn')}
+                </button>
+              </div>
+            )}
 
-            {/* 活动文案 */}
+            {/* 活动文案 — 修改/保存/取消 三态 */}
             <div style={sc.fieldLabel}>{t('dashboard.menuPromoText')}</div>
-            <textarea
-              style={sc.textarea}
-              rows={2}
-              placeholder={t('dashboard.menuPromoTextPh')}
-              value={promoDraft[store.id] ?? ''}
-              onChange={(e) => {
-                setPromoDraft((v) => ({ ...v, [store.id]: e.target.value }))
-                setPromoErr((v) => ({ ...v, [store.id]: '' }))
-              }}
-            />
-            <div style={sc.fieldAction}>
-              {promoSaved[store.id] && <span style={sc.savedHint}>{t('dashboard.modeSaved')}</span>}
-              {promoErr[store.id] && <span style={sc.errMsg}>{promoErr[store.id]}</span>}
-              <button
-                style={sc.saveBtn}
-                onClick={() => handleSavePromo(store.id)}
-                disabled={promoSaving[store.id]}
-              >
-                {promoSaving[store.id] ? '…' : t('dashboard.saveMode')}
-              </button>
-            </div>
+            {promoEditing[store.id] ? (
+              <>
+                <textarea
+                  style={sc.textarea}
+                  rows={2}
+                  placeholder={t('dashboard.menuPromoTextPh')}
+                  value={promoDraft[store.id] ?? ''}
+                  onChange={(e) => {
+                    setPromoDraft((v) => ({ ...v, [store.id]: e.target.value }))
+                    setPromoErr((v) => ({ ...v, [store.id]: '' }))
+                  }}
+                  autoFocus
+                />
+                <div style={sc.fieldAction}>
+                  {promoErr[store.id] && <span style={sc.errMsg}>{promoErr[store.id]}</span>}
+                  <button
+                    type="button"
+                    style={sc.cancelBtn}
+                    onClick={() => cancelEditPromo(store.id)}
+                    disabled={promoSaving[store.id]}
+                  >
+                    {t('dashboard.cancelBtn')}
+                  </button>
+                  <button
+                    type="button"
+                    style={sc.saveBtn}
+                    onClick={() => handleSavePromo(store.id)}
+                    disabled={promoSaving[store.id]}
+                  >
+                    {promoSaving[store.id] ? '…' : t('dashboard.saveBtnFull')}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={sc.readonlyRow}>
+                <div style={sc.readonlyText}>
+                  {promoDraft[store.id]?.trim()
+                    ? promoDraft[store.id]
+                    : <span style={sc.readonlyMuted}>{t('dashboard.promoNonePlaceholder')}</span>}
+                </div>
+                {promoSaved[store.id] && <span style={sc.savedHint}>{t('dashboard.modeSaved')}</span>}
+                <button
+                  type="button"
+                  style={sc.editBtn}
+                  onClick={() => startEditPromo(store.id)}
+                >
+                  {t('dashboard.editBtn')}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       ))}
     </div>
   )
+}
+
+// ─── 首页门头快捷管理（OWNER 可见，dashboard 顶部直达） ────────────────────
+
+function BannerQuickPanel({ t }: { t: (k: string) => string }) {
+  type S = { id: string; name: string; bannerUrl: string | null }
+  const [stores, setStores]   = useState<S[]>([])
+  const [activeId, setActiveId] = useState<string>('')
+  const [loading, setLoading] = useState<Record<string, boolean>>({})
+  const [err, setErr]         = useState<Record<string, string>>({})
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  useEffect(() => {
+    apiFetch('/api/stores', { cache: 'no-store' }, OWNER_CTX)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: S[]) => {
+        setStores(list)
+        if (list.length > 0) setActiveId(list[0].id)
+      })
+      .catch(() => {})
+  }, [])
+
+  async function upload(sid: string, file: File) {
+    setLoading((v) => ({ ...v, [sid]: true }))
+    setErr((v) => ({ ...v, [sid]: '' }))
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`/api/stores/${sid}/banner`, {
+        method: 'POST',
+        headers: { ...(OWNER_CTX as Record<string, string>) },
+        body: form,
+      })
+      const body = await res.json().catch(() => null)
+      if (res.ok && body?.bannerUrl) {
+        setStores((prev) => prev.map((s) => (s.id === sid ? { ...s, bannerUrl: body.bannerUrl } : s)))
+      } else {
+        setErr((v) => ({ ...v, [sid]: body?.error ?? '上传失败' }))
+      }
+    } catch {
+      setErr((v) => ({ ...v, [sid]: '网络错误' }))
+    } finally {
+      setLoading((v) => ({ ...v, [sid]: false }))
+    }
+  }
+
+  async function del(sid: string) {
+    setLoading((v) => ({ ...v, [sid]: true }))
+    setErr((v) => ({ ...v, [sid]: '' }))
+    try {
+      const res = await apiFetch(`/api/stores/${sid}/banner`, { method: 'DELETE' }, OWNER_CTX)
+      if (res.ok) {
+        setStores((prev) => prev.map((s) => (s.id === sid ? { ...s, bannerUrl: null } : s)))
+      } else {
+        const body = await res.json().catch(() => null)
+        setErr((v) => ({ ...v, [sid]: body?.error ?? '删除失败' }))
+      }
+    } catch {
+      setErr((v) => ({ ...v, [sid]: '网络错误' }))
+    } finally {
+      setLoading((v) => ({ ...v, [sid]: false }))
+    }
+  }
+
+  if (stores.length === 0) return null
+  const active = stores.find((s) => s.id === activeId) ?? stores[0]
+  const busy = !!loading[active.id]
+
+  return (
+    <div style={bq.card}>
+      <div style={bq.header}>
+        <span style={bq.title}>🏪 {t('dashboard.bannerQuickTitle')}</span>
+        {stores.length > 1 && (
+          <select
+            style={bq.select}
+            value={activeId}
+            onChange={(e) => setActiveId(e.target.value)}
+          >
+            {stores.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+          </select>
+        )}
+      </div>
+
+      <input
+        ref={(el) => { fileRefs.current[active.id] = el }}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) upload(active.id, f)
+          e.target.value = ''
+        }}
+      />
+
+      {active.bannerUrl ? (
+        <div style={bq.previewBox}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={active.bannerUrl} alt={active.name} style={bq.previewImg} />
+          <div style={bq.actions}>
+            <button
+              type="button"
+              style={bq.btn}
+              disabled={busy}
+              onClick={() => fileRefs.current[active.id]?.click()}
+            >
+              {busy ? '…' : t('products.imageReplace')}
+            </button>
+            <button
+              type="button"
+              style={{ ...bq.btn, ...bq.btnDanger }}
+              disabled={busy}
+              onClick={() => del(active.id)}
+            >
+              {busy ? '…' : t('products.imageDelete')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          style={bq.uploadEmpty}
+          disabled={busy}
+          onClick={() => fileRefs.current[active.id]?.click()}
+        >
+          <span style={bq.uploadIcon}>📷</span>
+          <span style={bq.uploadText}>{busy ? '…' : t('dashboard.bannerNoneHint')}</span>
+        </button>
+      )}
+      {err[active.id] && <div style={bq.err}>{err[active.id]}</div>}
+    </div>
+  )
+}
+
+const bq: Record<string, React.CSSProperties> = {
+  card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 10 },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10 },
+  title: { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
+  select: { fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', maxWidth: 140 },
+  previewBox: { display: 'flex', flexDirection: 'column' as const, gap: 8 },
+  previewImg: { width: '100%', height: 96, objectFit: 'cover' as const, borderRadius: 8, border: '1px solid var(--border)', background: '#f5f5f5' },
+  actions: { display: 'flex', gap: 8 },
+  btn: { flex: 1, height: 34, fontSize: 13, fontWeight: 600, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 6, color: 'var(--text)', cursor: 'pointer' },
+  btnDanger: { color: 'var(--red)', borderColor: '#ffa39e' },
+  uploadEmpty: {
+    width: '100%', height: 80,
+    border: '1.5px dashed var(--border)', borderRadius: 10,
+    background: '#fafafa', color: 'var(--muted)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+    cursor: 'pointer', fontSize: 13, fontWeight: 500,
+  },
+  uploadIcon: { fontSize: 18, lineHeight: 1 },
+  uploadText: {},
+  err: { fontSize: 12, color: '#d97706', marginTop: 6 },
 }
 
 function MetricCell({ label, value, unit, red }: { label: string; value: string; unit?: string; red?: boolean }) {
@@ -1204,6 +1447,11 @@ const sc: Record<string, React.CSSProperties> = {
   controls: { display: 'flex', gap: 8, alignItems: 'center' },
   select: { flex: 1, fontSize: 14, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' },
   saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' as const },
+  cancelBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--muted)', cursor: 'pointer', whiteSpace: 'nowrap' as const },
+  editBtn: { fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--blue)', background: '#fff', color: 'var(--blue)', cursor: 'pointer', whiteSpace: 'nowrap' as const, flexShrink: 0 },
+  readonlyRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#f7f8fa', borderRadius: 8, border: '1px solid var(--border)' },
+  readonlyText: { flex: 1, fontSize: 13, color: 'var(--text)', minWidth: 0, lineHeight: 1.4, wordBreak: 'break-word' as const },
+  readonlyMuted: { color: '#bbb', fontWeight: 400 },
   errMsg: { fontSize: 12, color: '#d97706', marginTop: 4 },
   menuSection: { marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' },
   menuSectionTitle: { fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '0.04em', marginBottom: 10 },
