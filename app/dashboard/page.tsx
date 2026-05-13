@@ -323,7 +323,7 @@ export default function DashboardPage() {
           <Overview result={result} t={t} heroLabel={heroLabelText} />
         )}
 
-        {/* Hot products (GLOBAL / STORE only) */}
+        {/* Hot products (GLOBAL / STORE only) — 合并为 tab 切换 */}
         {dimension !== 'STAFF' && (
           <HotSection
             weekHot={weekHot}
@@ -333,23 +333,32 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* Customers entry — 顾客资产中心 */}
-        <Link href="/customers" style={{ ...s.configEntry, textDecoration: 'none', color: 'inherit' }}>
-          <span style={s.configLabel}>👥 顾客资产</span>
-          <span style={s.configArrow}>›</span>
-        </Link>
-
-        {/* Store config — collapsed entry */}
-        <div
-          style={s.configEntry}
-          onClick={() => setShowStoreConfig((v) => !v)}
-        >
-          <span style={s.configLabel}>{t('dashboard.storeSettings')}</span>
-          <span style={s.configArrow}>{showStoreConfig ? '▴' : '▾'}</span>
+        {/* 大入口区：顾客资产 + 门店配置（2 列大卡） */}
+        <div style={s.bigEntryRow}>
+          <Link href="/customers" style={s.bigEntryCard}>
+            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#69b1ff,#1677ff)' }}>👥</div>
+            <div style={s.bigEntryBody}>
+              <div style={s.bigEntryTitle}>顾客资产</div>
+              <div style={s.bigEntryDesc}>会员、订单、消费洞察</div>
+            </div>
+            <span style={s.bigEntryArrow}>›</span>
+          </Link>
+          <button
+            type="button"
+            style={s.bigEntryCard}
+            onClick={() => setShowStoreConfig((v) => !v)}
+          >
+            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ffc069,#fa8c16)' }}>🏪</div>
+            <div style={s.bigEntryBody}>
+              <div style={s.bigEntryTitle}>{t('dashboard.storeSettings')}</div>
+              <div style={s.bigEntryDesc}>结账模式、菜单展示</div>
+            </div>
+            <span style={s.bigEntryArrow}>{showStoreConfig ? '▴' : '›'}</span>
+          </button>
         </div>
         {showStoreConfig && <StoreConfigPanel t={t} />}
 
-        <div style={{ height: 24 }} />
+        <div style={{ height: 32 }} />
       </div>
     </div>
   )
@@ -420,10 +429,27 @@ function HotSection({
   loading: boolean
   t: (k: string) => string
 }) {
+  const [tab, setTab] = useState<'week' | 'month'>('week')
+  const products = tab === 'week' ? weekHot : monthHot
   return (
-    <div style={hot.wrap}>
-      <HotColumn title={t('dashboard.weekHotTitle')} products={weekHot} loading={loading} t={t} />
-      <HotColumn title={t('dashboard.monthHotTitle')} products={monthHot} loading={loading} t={t} />
+    <div style={hot.singleCard}>
+      <div style={hot.tabRow}>
+        <button
+          type="button"
+          style={{ ...hot.tabBtn, ...(tab === 'week' ? hot.tabBtnOn : {}) }}
+          onClick={() => setTab('week')}
+        >
+          {t('dashboard.weekHotTitle')}
+        </button>
+        <button
+          type="button"
+          style={{ ...hot.tabBtn, ...(tab === 'month' ? hot.tabBtnOn : {}) }}
+          onClick={() => setTab('month')}
+        >
+          {t('dashboard.monthHotTitle')}
+        </button>
+      </div>
+      <HotColumn title="" products={products} loading={loading} t={t} />
     </div>
   )
 }
@@ -441,7 +467,7 @@ function HotColumn({
 }) {
   return (
     <div style={hot.col}>
-      <div style={hot.colTitle}>{title}</div>
+      {title && <div style={hot.colTitle}>{title}</div>}
       {loading ? (
         <div style={hot.empty}>…</div>
       ) : products.length === 0 ? (
@@ -829,7 +855,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: '4px 14px',
     minWidth: 52,
   },
-  body: { flex: 1, padding: '12px 12px 0', maxWidth: 480, margin: '0 auto', width: '100%' },
+  body: { flex: 1, padding: '14px 14px 0', maxWidth: 480, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' as const, gap: 4 },
   dimRow: { display: 'flex', gap: 8, marginBottom: 10 },
   dimBtn: {
     flex: 1,
@@ -935,6 +961,45 @@ const s: Record<string, React.CSSProperties> = {
   },
   configLabel: { fontSize: 14, fontWeight: 600, color: 'var(--muted)' },
   configArrow: { fontSize: 14, color: 'var(--muted)' },
+
+  // ── 大入口卡（顾客资产 / 门店配置） ──
+  bigEntryRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 10,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  bigEntryCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '14px 12px',
+    border: 'none',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    color: 'inherit',
+    textAlign: 'left' as const,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+  },
+  bigEntryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 20,
+    color: '#fff',
+    flexShrink: 0,
+    boxShadow: '0 2px 6px rgba(0,0,0,0.10)',
+  },
+  bigEntryBody: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' as const, gap: 2 },
+  bigEntryTitle: { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
+  bigEntryDesc: { fontSize: 11, color: 'var(--muted)' },
+  bigEntryArrow: { fontSize: 18, color: 'var(--muted)', flexShrink: 0 },
 }
 
 const ov: Record<string, React.CSSProperties> = {
@@ -963,11 +1028,40 @@ const ov: Record<string, React.CSSProperties> = {
 }
 
 const hot: Record<string, React.CSSProperties> = {
+  // 兼容旧引用（已不再用）
   wrap: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: 8,
     marginBottom: 12,
+  },
+  // 单卡 + tab 切换
+  singleCard: {
+    background: 'var(--card)',
+    borderRadius: 'var(--radius)',
+    padding: '12px 14px 10px',
+    marginBottom: 12,
+  },
+  tabRow: {
+    display: 'flex',
+    gap: 8,
+    marginBottom: 10,
+    borderBottom: '1px solid var(--border)',
+  },
+  tabBtn: {
+    background: 'none',
+    border: 'none',
+    padding: '6px 10px 8px',
+    fontSize: 13,
+    fontWeight: 600,
+    color: 'var(--muted)',
+    cursor: 'pointer',
+    borderBottom: '2px solid transparent',
+    marginBottom: -1,
+  },
+  tabBtnOn: {
+    color: 'var(--blue)',
+    borderBottomColor: 'var(--blue)',
   },
   col: {
     background: 'var(--card)',
