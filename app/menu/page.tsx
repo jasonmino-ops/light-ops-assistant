@@ -754,8 +754,31 @@ export default function MenuPage() {
           </button>
         </div>
 
-        {/* ── 3. 商品展示区（左商品 / 右分类栏） ── */}
+        {/* ── 3. 商品展示区（左分类栏 / 右商品） ── */}
         <div style={hasL1Cats ? s.catRightLayout : { marginTop: 4 }}>
+          {/* 左侧竖向分类栏 */}
+          {hasL1Cats && (
+            <div style={s.catLeftSidebar}>
+              <button
+                type="button"
+                style={{ ...s.catLeftItem, ...(activeCatId === null ? s.catLeftItemOn : {}) }}
+                onClick={() => setActiveCatId(null)}
+              >
+                {gl(ALL_CAT, lang)}
+              </button>
+              {l1Cats.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  style={{ ...s.catLeftItem, ...(activeCatId === cat.id ? s.catLeftItemOn : {}) }}
+                  onClick={() => setActiveCatId(cat.id)}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div style={s.productCol}>
             {displayGroups.length === 0 ? (
               <div style={{ padding: '40px 16px', textAlign: 'center', color: '#ccc', fontSize: 14 }}>
@@ -818,29 +841,6 @@ export default function MenuPage() {
               ))
             )}
           </div>
-
-          {/* 右侧竖向分类栏 */}
-          {hasL1Cats && (
-            <div style={s.catRightSidebar}>
-              <button
-                type="button"
-                style={{ ...s.catRightItem, ...(activeCatId === null ? s.catRightItemOn : {}) }}
-                onClick={() => setActiveCatId(null)}
-              >
-                {gl(ALL_CAT, lang)}
-              </button>
-              {l1Cats.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  style={{ ...s.catRightItem, ...(activeCatId === cat.id ? s.catRightItemOn : {}) }}
-                  onClick={() => setActiveCatId(cat.id)}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </main>
 
@@ -1320,11 +1320,11 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'flex-start' as const,
     marginTop: 4,
   },
-  catRightSidebar: {
+  catLeftSidebar: {
     width: 76,
     flexShrink: 0,
     background: '#fafafa',
-    borderLeft: '1px solid #ebebeb',
+    borderRight: '1px solid #ebebeb',
     display: 'flex',
     flexDirection: 'column' as const,
     position: 'sticky' as const,
@@ -1333,11 +1333,11 @@ const s: Record<string, React.CSSProperties> = {
     overflowY: 'auto' as const,
     minHeight: 180,
   },
-  catRightItem: {
+  catLeftItem: {
     padding: '12px 6px',
     background: 'none',
     border: 'none',
-    borderRight: '3px solid transparent',
+    borderLeft: '3px solid transparent',
     fontSize: 12,
     fontWeight: 500,
     color: '#666',
@@ -1346,9 +1346,9 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     wordBreak: 'break-all' as const,
   },
-  catRightItemOn: {
+  catLeftItemOn: {
     background: '#fff',
-    borderRightColor: PRIMARY,
+    borderLeftColor: PRIMARY,
     color: PRIMARY,
     fontWeight: 700,
   },
@@ -1482,13 +1482,13 @@ const s: Record<string, React.CSSProperties> = {
   },
 
   banner: {
-    height: 152,
+    height: 112,
     background: BANNER_BG,
     position: 'relative',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    padding: '48px 16px 16px',
+    padding: '14px 14px 10px',
   },
   bannerMask: {
     position: 'absolute',
@@ -1540,34 +1540,36 @@ const s: Record<string, React.CSSProperties> = {
   storeCard: {
     background: '#fff',
     margin: '0',
-    marginTop: -20,
-    borderRadius: 0,
-    padding: '20px 16px 16px',
-    boxShadow: '0 1px 0 rgba(0,0,0,0.06)',
+    marginTop: -16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: '14px 16px 12px',
+    boxShadow: '0 -2px 6px rgba(0,0,0,0.04)',
     display: 'flex',
-    gap: 14,
-    alignItems: 'flex-start',
+    gap: 12,
+    alignItems: 'center',
     position: 'relative',
     zIndex: 2,
   },
   storeLogo: {
-    width: 62,
-    height: 62,
-    borderRadius: 14,
-    background: '#fff8f2',
-    border: '1.5px solid #ffe0cc',
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    background: `linear-gradient(135deg, #fff5e6, #ffe0cc)`,
+    border: '1.5px solid #ffd591',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 30,
+    fontSize: 24,
     flexShrink: 0,
+    boxShadow: `0 2px 8px ${PRIMARY}20`,
   },
   storeBody: {
     flex: 1,
     minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: 5,
+    gap: 3,
     justifyContent: 'center',
   },
   storeTopRow: {
@@ -1576,10 +1578,13 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   storeName: {
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: 800,
     color: '#1a1a1a',
     letterSpacing: '-0.2px',
+    overflow: 'hidden' as const,
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
   },
   openBadge: {
     fontSize: 10,
@@ -1778,18 +1783,19 @@ const s: Record<string, React.CSSProperties> = {
 
   cartBar: {
     position: 'fixed',
-    bottom: 'calc(56px + env(safe-area-inset-bottom))', // 抬到 bottom nav 之上
+    bottom: 'calc(56px + env(safe-area-inset-bottom) + 8px)', // 悬浮抬高，与 bottom nav 留间距
     left: '50%',
     transform: 'translateX(-50%)',
-    width: '100%',
-    maxWidth: 480,
-    background: '#fff',
-    borderTop: '1px solid #ebebeb',
-    padding: '12px 16px',
+    width: 'calc(100% - 16px)',
+    maxWidth: 464,
+    background: 'linear-gradient(180deg, #2a2a2e 0%, #1a1a1d 100%)',
+    border: '1px solid rgba(255,255,255,0.06)',
+    borderRadius: 28,
+    padding: '10px 12px 10px 14px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    boxShadow: '0 -4px 20px rgba(0,0,0,0.09)',
+    boxShadow: '0 8px 28px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.18)',
     zIndex: 60,
   },
 
@@ -2126,7 +2132,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   cartHint: {
     fontSize: 11,
-    color: '#c0c0c0',
+    color: 'rgba(255,255,255,0.55)',
     marginTop: 2,
   },
   checkoutBtn: {
