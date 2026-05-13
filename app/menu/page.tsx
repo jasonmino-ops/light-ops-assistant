@@ -48,6 +48,33 @@ const T: Record<Lang, {
   backToEdit: string
   bindTgBtn: string
   bindTgHint: string
+  // ── 我的页相关（v1 私域承接占位） ────────────────────────────────────
+  profileTitle: string
+  guestUser: string
+  normalMember: string
+  vipMember: string
+  balance: string
+  coupon: string
+  voucher: string
+  points: string
+  myAddress: string
+  myFavorites: string
+  contactService: string
+  langSwitchLabel: string
+  bindTgProfileTitle: string
+  bindTgProfileSub: string
+  alreadyBoundTitle: string
+  alreadyBoundSub: string
+  couponCenter: string
+  couponAvailable: string
+  couponUsed: string
+  couponExpired: string
+  emptyCoupons: string
+  tabMenu: string
+  tabProfile: string
+  comingSoon: string
+  myOrdersEntry: string
+  assetSectionTitle: string
 }> = {
   zh: {
     open:             '营业中',
@@ -76,6 +103,32 @@ const T: Record<Lang, {
     backToEdit:       '返回修改',
     bindTgBtn:        '📲 绑定 Telegram，接收 {store} 订单通知',
     bindTgHint:       '绑定后可在 Telegram 查看订单进度、再次点单',
+    profileTitle:     '个人中心',
+    guestUser:        '顾客',
+    normalMember:     '普通顾客',
+    vipMember:        '会员',
+    balance:          '余额',
+    coupon:           '优惠券',
+    voucher:          '抵扣券',
+    points:           '积分',
+    myAddress:        '我的地址',
+    myFavorites:      '我的收藏',
+    contactService:   '联系客服',
+    langSwitchLabel:  '语言',
+    bindTgProfileTitle: '关注本店，接收订单通知',
+    bindTgProfileSub:   '绑定 Telegram 获取订单进度和优惠提醒',
+    alreadyBoundTitle:  '已绑定 Telegram',
+    alreadyBoundSub:    '可在 Telegram 接收订单和优惠通知',
+    couponCenter:     '优惠券中心',
+    couponAvailable:  '可用',
+    couponUsed:       '已使用',
+    couponExpired:    '已过期',
+    emptyCoupons:     '暂无优惠券',
+    tabMenu:          '点单',
+    tabProfile:       '我的',
+    comingSoon:       '该功能开发中，敬请期待',
+    myOrdersEntry:    '我的订单',
+    assetSectionTitle: '我的资产',
   },
   en: {
     open:             'Open',
@@ -104,6 +157,32 @@ const T: Record<Lang, {
     backToEdit:       'Back',
     bindTgBtn:        '📲 Bind Telegram for {store} Updates',
     bindTgHint:       'Get order notifications and reorder easily',
+    profileTitle:     'Profile',
+    guestUser:        'Customer',
+    normalMember:     'Regular',
+    vipMember:        'VIP',
+    balance:          'Balance',
+    coupon:           'Coupons',
+    voucher:          'Vouchers',
+    points:           'Points',
+    myAddress:        'My Address',
+    myFavorites:      'Favorites',
+    contactService:   'Support',
+    langSwitchLabel:  'Language',
+    bindTgProfileTitle: 'Follow this store on Telegram',
+    bindTgProfileSub:   'Bind Telegram for order updates and promos',
+    alreadyBoundTitle:  'Telegram Bound',
+    alreadyBoundSub:    'You will receive order and promo updates',
+    couponCenter:     'Coupons',
+    couponAvailable:  'Available',
+    couponUsed:       'Used',
+    couponExpired:    'Expired',
+    emptyCoupons:     'No coupons yet',
+    tabMenu:          'Menu',
+    tabProfile:       'Me',
+    comingSoon:       'Coming soon',
+    myOrdersEntry:    'My Orders',
+    assetSectionTitle: 'My Assets',
   },
   km: {
     open:             'កំពុងបើក',
@@ -132,6 +211,32 @@ const T: Record<Lang, {
     backToEdit:       'ត្រឡប់',
     bindTgBtn:        '📲 ភ្ជាប់ Telegram ដើម្បីទទួលដំណឹង {store}',
     bindTgHint:       'មើលស្ថានភាព និងបញ្ជាទិញម្តងទៀតបាន',
+    profileTitle:     'ប្រវត្តិរូប',
+    guestUser:        'អតិថិជន',
+    normalMember:     'អតិថិជនធម្មតា',
+    vipMember:        'សមាជិក',
+    balance:          'សមតុល្យ',
+    coupon:           'គូប៉ុង',
+    voucher:          'ប័ណ្ណបញ្ចុះ',
+    points:           'ពិន្ទុ',
+    myAddress:        'អាសយដ្ឋាន',
+    myFavorites:      'ចំណូលចិត្ត',
+    contactService:   'ទំនាក់ទំនង',
+    langSwitchLabel:  'ភាសា',
+    bindTgProfileTitle: 'តាមដានហាងនេះតាម Telegram',
+    bindTgProfileSub:   'ភ្ជាប់ Telegram ដើម្បីទទួលដំណឹង និងការផ្សព្វផ្សាយ',
+    alreadyBoundTitle:  'បានភ្ជាប់ Telegram',
+    alreadyBoundSub:    'អ្នកនឹងទទួលដំណឹង',
+    couponCenter:     'គូប៉ុង',
+    couponAvailable:  'ប្រើបាន',
+    couponUsed:       'បានប្រើ',
+    couponExpired:    'អស់សុពលភាព',
+    emptyCoupons:     'គ្មានគូប៉ុង',
+    tabMenu:          'ម៉ឺនុយ',
+    tabProfile:       'ខ្ញុំ',
+    comingSoon:       'កំពុងអភិវឌ្ឍ',
+    myOrdersEntry:    'បញ្ជាទិញរបស់ខ្ញុំ',
+    assetSectionTitle: 'ទ្រព្យសម្បត្តិរបស់ខ្ញុំ',
   },
 }
 
@@ -203,6 +308,11 @@ export default function MenuPage() {
   const [hasTgId,      setHasTgId]     = useState(false)
   const [customerBound, setCustomerBound] = useState(false)
   const [lightboxUrl,  setLightboxUrl] = useState<string | null>(null)
+  // 我的视图（v1 私域承接占位；mock 值预留 membership/points/coupon/voucher）
+  const [view,         setView]        = useState<'menu' | 'profile'>('menu')
+  const [profileSub,   setProfileSub]  = useState<'home' | 'coupons'>('home')
+  const [couponTab,    setCouponTab]   = useState<'available' | 'used' | 'expired'>('available')
+  const [customerName, setCustomerName] = useState('')
 
   const ui         = T[lang]
   const cartTotal  = cart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
@@ -292,6 +402,11 @@ export default function MenuPage() {
     document.title = (storeData?.name && storeData.name.trim()) || '店小二'
   }, [storeData?.name])
 
+  // ── 切换"点单 / 我的"视图或进入子页时回到顶部 ──────────────────────
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.scrollTo(0, 0)
+  }, [view, profileSub])
+
   // ── 数据加载 ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get('code')
@@ -316,6 +431,8 @@ export default function MenuPage() {
           if (u?.id != null) {
             tgIdLocal = String(u.id)
             setHasTgId(true)
+            const name = String(u.first_name || u.username || '').trim()
+            if (name) setCustomerName(name)
           }
         }
       } catch { /* 解析失败则不显示入口 */ }
@@ -463,6 +580,8 @@ export default function MenuPage() {
           </div>
         </div>
 
+        {view === 'menu' && (
+        <>
         {/* ── 1. 顶部门店头图 ── */}
         <div style={{
           ...s.banner,
@@ -594,6 +713,152 @@ export default function MenuPage() {
             )}
           </div>
         </div>
+        </>
+        )}
+
+        {/* ── 我的视图（v1 私域承接占位） ── */}
+        {view === 'profile' && (
+          <div style={p.wrap}>
+            {profileSub === 'home' && (
+              <>
+                {/* 顶部身份卡 */}
+                <div style={p.headerCard}>
+                  <div style={p.avatar}>{customerName ? customerName.slice(0, 1).toUpperCase() : '👤'}</div>
+                  <div style={p.headerBody}>
+                    <div style={p.userName}>{customerName || ui.guestUser}</div>
+                    <div style={p.userStore}>{storeName}</div>
+                  </div>
+                  <div style={p.memberBadge}>{ui.normalMember}</div>
+                </div>
+
+                {/* 资产 4 格 */}
+                <div style={p.sectionLabel}>{ui.assetSectionTitle}</div>
+                <div style={p.assetGrid}>
+                  <div style={p.assetCell}>
+                    <div style={p.assetValue}>$0.00</div>
+                    <div style={p.assetLabel}>{ui.balance}</div>
+                  </div>
+                  <div style={p.assetCell} onClick={() => setProfileSub('coupons')}>
+                    <div style={p.assetValue}>0</div>
+                    <div style={p.assetLabel}>{ui.coupon}</div>
+                  </div>
+                  <div style={p.assetCell} onClick={() => setProfileSub('coupons')}>
+                    <div style={p.assetValue}>0</div>
+                    <div style={p.assetLabel}>{ui.voucher}</div>
+                  </div>
+                  <div style={p.assetCell}>
+                    <div style={p.assetValue}>0</div>
+                    <div style={p.assetLabel}>{ui.points}</div>
+                  </div>
+                </div>
+
+                {/* Telegram 绑定卡 */}
+                {customerBound ? (
+                  <div style={p.bindCard}>
+                    <div style={{ ...p.bindIcon, background: '#52c41a' }}>✓</div>
+                    <div style={p.bindBody}>
+                      <div style={p.bindTitle}>{ui.alreadyBoundTitle}</div>
+                      <div style={p.bindSub}>{ui.alreadyBoundSub}</div>
+                    </div>
+                  </div>
+                ) : CUSTOMER_BOT && storeCode ? (
+                  <a
+                    href={`https://t.me/${CUSTOMER_BOT}?start=bind_${encodeURIComponent(storeCode)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={p.bindCardLink}
+                  >
+                    <div style={p.bindIcon}>📲</div>
+                    <div style={p.bindBody}>
+                      <div style={p.bindTitle}>{ui.bindTgProfileTitle}</div>
+                      <div style={p.bindSub}>{ui.bindTgProfileSub}</div>
+                    </div>
+                    <div style={p.bindArrow}>›</div>
+                  </a>
+                ) : null}
+
+                {/* 列表入口 */}
+                <div style={p.list}>
+                  {hasTgId && storeCode ? (
+                    <a href={`/menu/orders?code=${storeCode}`} style={p.listItem}>
+                      <span style={p.listIcon}>📦</span>
+                      <span style={p.listLabel}>{ui.myOrdersEntry}</span>
+                      <span style={p.listArrow}>›</span>
+                    </a>
+                  ) : (
+                    <button type="button" style={p.listItem} onClick={() => alert(ui.comingSoon)}>
+                      <span style={p.listIcon}>📦</span>
+                      <span style={p.listLabel}>{ui.myOrdersEntry}</span>
+                      <span style={p.listArrow}>›</span>
+                    </button>
+                  )}
+                  <button type="button" style={p.listItem} onClick={() => setProfileSub('coupons')}>
+                    <span style={p.listIcon}>🎟️</span>
+                    <span style={p.listLabel}>{ui.couponCenter}</span>
+                    <span style={p.listArrow}>›</span>
+                  </button>
+                  <button type="button" style={p.listItem} onClick={() => alert(ui.comingSoon)}>
+                    <span style={p.listIcon}>📍</span>
+                    <span style={p.listLabel}>{ui.myAddress}</span>
+                    <span style={p.listArrow}>›</span>
+                  </button>
+                  <button type="button" style={p.listItem} onClick={() => alert(ui.comingSoon)}>
+                    <span style={p.listIcon}>⭐</span>
+                    <span style={p.listLabel}>{ui.myFavorites}</span>
+                    <span style={p.listArrow}>›</span>
+                  </button>
+                  <button type="button" style={p.listItem} onClick={() => alert(ui.comingSoon)}>
+                    <span style={p.listIcon}>💬</span>
+                    <span style={p.listLabel}>{ui.contactService}</span>
+                    <span style={p.listArrow}>›</span>
+                  </button>
+                  <div style={{ ...p.listItem, borderBottom: 'none' }}>
+                    <span style={p.listIcon}>🌐</span>
+                    <span style={p.listLabel}>{ui.langSwitchLabel}</span>
+                    <div style={p.langInline}>
+                      {(['zh', 'en', 'km'] as Lang[]).map((l) => (
+                        <button
+                          key={l}
+                          type="button"
+                          style={{ ...p.langInlineBtn, ...(lang === l ? p.langInlineBtnOn : {}) }}
+                          onClick={() => setLang(l)}
+                        >
+                          {LANG_LABELS[l]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {profileSub === 'coupons' && (
+              <>
+                {/* 优惠券子页 */}
+                <div style={cp.header}>
+                  <button type="button" style={cp.backBtn} onClick={() => setProfileSub('home')} aria-label="back">‹</button>
+                  <span style={cp.title}>{ui.couponCenter}</span>
+                </div>
+                <div style={cp.tabs}>
+                  {(['available', 'used', 'expired'] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      style={{ ...cp.tab, ...(couponTab === tab ? cp.tabActive : {}) }}
+                      onClick={() => setCouponTab(tab)}
+                    >
+                      {tab === 'available' ? ui.couponAvailable : tab === 'used' ? ui.couponUsed : ui.couponExpired}
+                    </button>
+                  ))}
+                </div>
+                <div style={cp.empty}>
+                  <div style={cp.emptyIcon}>🎟️</div>
+                  <div>{ui.emptyCoupons}</div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </main>
 
       {/* ── 商品图放大查看 ── */}
@@ -734,17 +999,20 @@ export default function MenuPage() {
 
       {/* ── 底部购物车浮层 ── */}
       <div style={s.cartBar}>
-        {hasTgId && storeCode && (
-          <a
-            href={`/menu/orders?code=${storeCode}`}
-            style={s.myOrdersTab}
-            aria-label={lang === 'zh' ? '我的订单' : lang === 'en' ? 'My Orders' : 'បញ្ជាទិញ'}
+        {storeCode && (
+          <button
+            type="button"
+            style={{ ...s.myOrdersTab, background: 'none', border: 'none', borderRight: '1px solid #ebebeb', cursor: 'pointer' }}
+            onClick={() => { setView(view === 'menu' ? 'profile' : 'menu'); setProfileSub('home') }}
+            aria-label={view === 'menu' ? ui.tabProfile : ui.tabMenu}
           >
-            <span style={s.myOrdersTabIcon}>📋</span>
-            <span style={s.myOrdersTabLabel}>
-              {lang === 'zh' ? '我的订单' : lang === 'en' ? 'Orders' : 'បញ្ជា'}
+            <span style={{ ...s.myOrdersTabIcon, color: view === 'profile' ? PRIMARY : '#666' }}>
+              {view === 'menu' ? '👤' : '🍽️'}
             </span>
-          </a>
+            <span style={{ ...s.myOrdersTabLabel, color: view === 'profile' ? PRIMARY : '#666' }}>
+              {view === 'menu' ? ui.tabProfile : ui.tabMenu}
+            </span>
+          </button>
         )}
         <div style={s.cartLeft}>
           <div style={s.cartIconBox}>
@@ -1565,5 +1833,279 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fff',
     cursor: 'pointer',
     boxShadow: `0 4px 14px ${PRIMARY}55`,
+  },
+}
+
+// ─── 我的视图样式 ─────────────────────────────────────────────────────────────
+
+const p: Record<string, React.CSSProperties> = {
+  wrap: { padding: '12px 12px 24px' },
+  headerCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    background: `linear-gradient(135deg, #ff8c00 0%, ${PRIMARY} 100%)`,
+    borderRadius: 16,
+    padding: '16px 16px',
+    color: '#fff',
+    marginBottom: 14,
+    boxShadow: `0 4px 16px ${PRIMARY}30`,
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: '50%',
+    background: 'rgba(255,255,255,0.25)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 22,
+    fontWeight: 700,
+    color: '#fff',
+    flexShrink: 0,
+  },
+  headerBody: { flex: 1, minWidth: 0 },
+  userName: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#fff',
+    marginBottom: 3,
+    overflow: 'hidden' as const,
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
+  },
+  userStore: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    overflow: 'hidden' as const,
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
+  },
+  memberBadge: {
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '4px 10px',
+    borderRadius: 12,
+    background: 'rgba(255,255,255,0.25)',
+    color: '#fff',
+    flexShrink: 0,
+  },
+
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#888',
+    letterSpacing: '0.04em',
+    padding: '0 4px 6px',
+    textTransform: 'uppercase' as const,
+  },
+
+  assetGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr 1fr',
+    gap: 4,
+    background: '#fff',
+    borderRadius: 12,
+    padding: '14px 8px',
+    marginBottom: 14,
+  },
+  assetCell: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    gap: 4,
+    padding: '4px 0',
+    cursor: 'pointer',
+  },
+  assetValue: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: '#1a1a1a',
+    letterSpacing: '-0.4px',
+  },
+  assetLabel: {
+    fontSize: 11,
+    color: '#888',
+  },
+
+  bindCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    background: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    border: '1.5px solid #d9f7be',
+  },
+  bindCardLink: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    background: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    border: '1.5px solid #ffd591',
+    textDecoration: 'none',
+    color: 'inherit',
+  },
+  bindIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: '50%',
+    background: '#0088cc',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 18,
+    color: '#fff',
+    flexShrink: 0,
+  },
+  bindBody: { flex: 1, minWidth: 0 },
+  bindTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#1a1a1a',
+    marginBottom: 2,
+    overflow: 'hidden' as const,
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
+  },
+  bindSub: {
+    fontSize: 12,
+    color: '#888',
+    overflow: 'hidden' as const,
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
+  },
+  bindArrow: {
+    fontSize: 24,
+    color: '#c0c0c0',
+    flexShrink: 0,
+    lineHeight: 1,
+  },
+
+  list: {
+    background: '#fff',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  listItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '13px 14px',
+    borderBottom: '1px solid #f5f5f5',
+    textDecoration: 'none',
+    color: '#1a1a1a',
+    background: 'transparent',
+    border: 'none',
+    borderTop: 'none',
+    width: '100%',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+    fontSize: 14,
+  },
+  listIcon: {
+    fontSize: 18,
+    width: 22,
+    textAlign: 'center' as const,
+    flexShrink: 0,
+  },
+  listLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: 500,
+    color: '#1a1a1a',
+  },
+  listArrow: {
+    fontSize: 18,
+    color: '#c0c0c0',
+    flexShrink: 0,
+    lineHeight: 1,
+  },
+  langInline: {
+    display: 'flex',
+    gap: 4,
+    background: '#f5f5f5',
+    borderRadius: 12,
+    padding: 2,
+  },
+  langInlineBtn: {
+    border: 'none',
+    background: 'transparent',
+    color: '#666',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '3px 8px',
+    borderRadius: 10,
+    cursor: 'pointer',
+    lineHeight: 1.4,
+  },
+  langInlineBtnOn: {
+    background: '#fff',
+    color: PRIMARY,
+    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+  },
+}
+
+// ─── 优惠券子页样式 ─────────────────────────────────────────────────────────
+
+const cp: Record<string, React.CSSProperties> = {
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '4px 0 12px',
+  },
+  backBtn: {
+    background: 'none',
+    border: 'none',
+    fontSize: 26,
+    color: '#1a1a1a',
+    cursor: 'pointer',
+    padding: '0 6px',
+    lineHeight: 1,
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#1a1a1a',
+  },
+  tabs: {
+    display: 'flex',
+    background: '#fff',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 12,
+  },
+  tab: {
+    flex: 1,
+    padding: '8px 0',
+    background: 'none',
+    border: 'none',
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#888',
+    cursor: 'pointer',
+    borderRadius: 8,
+  },
+  tabActive: {
+    color: '#fff',
+    background: PRIMARY,
+  },
+  empty: {
+    padding: '60px 20px',
+    textAlign: 'center' as const,
+    color: '#bbb',
+    fontSize: 14,
+    background: '#fff',
+    borderRadius: 12,
+  },
+  emptyIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+    opacity: 0.4,
   },
 }
