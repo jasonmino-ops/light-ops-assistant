@@ -24,6 +24,7 @@ export default function CheckoutSheet({
   onSuccess,
   onClose,
   onOverridePay,
+  overrideKhqrUrl,
 }: {
   orderNo: string
   totalAmount: number
@@ -31,6 +32,12 @@ export default function CheckoutSheet({
   onClose: () => void
   /** 传入后完全接管付款逻辑（用于顾客订单等非主链场景），成功后由组件内部调用 onSuccess */
   onOverridePay?: (method: 'CASH' | 'KHQR') => Promise<void>
+  /**
+   * onOverridePay 场景下，点击 KHQR 时调此 URL 获取门店 KHQR payload/imageUrl，
+   * 不创建 PaymentIntent；KhqrSheet 走 confirmOnly 模式，点「已收款」时再 onOverridePay('KHQR')。
+   * 不传则 KHQR 沿用旧行为（直接 onOverridePay 登记）。
+   */
+  overrideKhqrUrl?: string
 }) {
   const { t } = useLocale()
   const [step, setStep] = useState<Step>('selecting')
@@ -39,11 +46,29 @@ export default function CheckoutSheet({
   const [khqrPayload, setKhqrPayload] = useState<string | null>(null)
   const [khqrImageUrl, setKhqrImageUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [overrideConfirmOnly, setOverrideConfirmOnly] = useState(false)
 
   async function handleOverridePay(method: 'CASH' | 'KHQR') {
     setError(null)
     setStatus('loading')
     try {
+      // CASH 直接登记（原行为）；KHQR 若提供 overrideKhqrUrl 则先拉二维码弹层
+      if (method === 'KHQR' && overrideKhqrUrl) {
+        const res = await apiFetch(overrideKhqrUrl, { method: 'GET' })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setError(body.message ?? body.error ?? t('sale.khqrNotConfigured'))
+          setStatus('idle')
+          return
+        }
+        setKhqrPayload(body.khqrPayload ?? null)
+        setKhqrImageUrl(body.khqrImageUrl ?? null)
+        setKhqrId(null)
+        setOverrideConfirmOnly(true)
+        setStep('khqr_pending')
+        setStatus('idle')
+        return
+      }
       await onOverridePay!(method)
       onSuccess()
     } catch (e) {
@@ -86,7 +111,7 @@ export default function CheckoutSheet({
 
   const busy = status !== 'idle'
 
-  if (step === 'khqr_pending' && khqrId) {
+  if (step === 'khqr_pending' && (khqrId || overrideConfirmOnly)) {
     return (
       <KhqrSheet
         orderNo={orderNo}
@@ -96,6 +121,10 @@ export default function CheckoutSheet({
         khqrImageUrl={khqrImageUrl}
         onSuccess={onSuccess}
         onCancel={onClose}
+        confirmOnly={overrideConfirmOnly}
+        onConfirm={overrideConfirmOnly && onOverridePay
+          ? () => onOverridePay('KHQR')
+          : undefined}
       />
     )
   }

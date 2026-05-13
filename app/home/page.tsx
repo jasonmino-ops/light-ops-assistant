@@ -429,6 +429,7 @@ export default function HomePage() {
           }}
           onClose={() => setCustomerCheckout(null)}
           onOverridePay={(method) => handleCustomerOrderPay(customerCheckout.id, method)}
+          overrideKhqrUrl={`/api/customer-orders/${customerCheckout.id}/khqr`}
         />
       )}
     </main>

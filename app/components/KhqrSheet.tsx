@@ -33,14 +33,24 @@ export default function KhqrSheet({
   khqrImageUrl,
   onSuccess,
   onCancel,
+  confirmOnly,
+  onConfirm,
 }: {
   orderNo: string
   totalAmount: number
-  paymentIntentId: string
+  paymentIntentId?: string | null
   khqrPayload: string | null
   khqrImageUrl: string | null
   onSuccess: () => void
   onCancel: () => void
+  /**
+   * confirmOnly = true 时：
+   *   - 不调用 /api/payments/[id]/confirm | /cancel
+   *   - 点「已收款」走 onConfirm()，点「取消」直接 onCancel()
+   *   - 用于无 PaymentIntent 的场景（如 /home 顾客订单）
+   */
+  confirmOnly?: boolean
+  onConfirm?: () => Promise<void>
 }) {
   const { t } = useLocale()
   const [status, setStatus] = useState<Status>('idle')
@@ -50,6 +60,16 @@ export default function KhqrSheet({
     setStatus('confirming')
     setError(null)
     try {
+      if (confirmOnly) {
+        if (onConfirm) await onConfirm()
+        onSuccess()
+        return
+      }
+      if (!paymentIntentId) {
+        setError(t('common.networkError'))
+        setStatus('idle')
+        return
+      }
       const res = await apiFetch(`/api/payments/${paymentIntentId}/confirm`, { method: 'POST' })
       if (res.ok) {
         onSuccess()
@@ -58,17 +78,19 @@ export default function KhqrSheet({
         setError(b.error ?? t('common.networkError'))
         setStatus('idle')
       }
-    } catch {
-      setError(t('common.networkError'))
+    } catch (e) {
+      setError((e as Error)?.message ?? t('common.networkError'))
       setStatus('idle')
     }
   }
 
   async function handleCancel() {
     setStatus('cancelling')
-    try {
-      await apiFetch(`/api/payments/${paymentIntentId}/cancel`, { method: 'POST' })
-    } catch { /* ignore */ }
+    if (!confirmOnly && paymentIntentId) {
+      try {
+        await apiFetch(`/api/payments/${paymentIntentId}/cancel`, { method: 'POST' })
+      } catch { /* ignore */ }
+    }
     onCancel()
   }
 
