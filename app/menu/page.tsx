@@ -77,6 +77,17 @@ const T: Record<Lang, {
   comingSoon: string
   myOrdersEntry: string
   assetSectionTitle: string
+  // ── 本轮补充：取餐 / 备注 / 优惠 / 推荐徽标 ────────────────────────────
+  orderTypeLabel: string
+  pickup: string
+  dineIn: string
+  remarksLabel: string
+  remarksPh: string
+  couponLabel: string
+  noCoupon: string
+  discountLabel: string
+  recommendBadge: string
+  storeLabel: string
 }> = {
   zh: {
     open:             '营业中',
@@ -131,6 +142,16 @@ const T: Record<Lang, {
     comingSoon:       '该功能开发中，敬请期待',
     myOrdersEntry:    '我的订单',
     assetSectionTitle: '我的资产',
+    orderTypeLabel:   '取餐方式',
+    pickup:           '到店自取',
+    dineIn:           '堂食',
+    remarksLabel:     '备注',
+    remarksPh:        '少辣、不要葱…（可选）',
+    couponLabel:      '优惠券',
+    noCoupon:         '暂无可用优惠券',
+    discountLabel:    '已优惠',
+    recommendBadge:   '推荐',
+    storeLabel:       '门店',
   },
   en: {
     open:             'Open',
@@ -185,6 +206,16 @@ const T: Record<Lang, {
     comingSoon:       'Coming soon',
     myOrdersEntry:    'My Orders',
     assetSectionTitle: 'My Assets',
+    orderTypeLabel:   'Order Type',
+    pickup:           'Pickup',
+    dineIn:           'Dine-in',
+    remarksLabel:     'Remarks',
+    remarksPh:        'Less spicy, no onions… (optional)',
+    couponLabel:      'Coupon',
+    noCoupon:         'No coupons available',
+    discountLabel:    'Discount',
+    recommendBadge:   'HOT',
+    storeLabel:       'Store',
   },
   km: {
     open:             'កំពុងបើក',
@@ -239,6 +270,16 @@ const T: Record<Lang, {
     comingSoon:       'កំពុងអភិវឌ្ឍ',
     myOrdersEntry:    'បញ្ជាទិញរបស់ខ្ញុំ',
     assetSectionTitle: 'ទ្រព្យសម្បត្តិរបស់ខ្ញុំ',
+    orderTypeLabel:   'ប្រភេទបញ្ជា',
+    pickup:           'យកដោយខ្លួនឯង',
+    dineIn:           'ហូបនៅហាង',
+    remarksLabel:     'កំណត់ចំណាំ',
+    remarksPh:        'មិនហឹរ មិនដាក់ខ្ទឹមបារាំង… (ស្រេចចិត្ត)',
+    couponLabel:      'គូប៉ុង',
+    noCoupon:         'គ្មានគូប៉ុង',
+    discountLabel:    'បញ្ចុះតម្លៃ',
+    recommendBadge:   'ពេញនិយម',
+    storeLabel:       'ហាង',
   },
 }
 
@@ -313,6 +354,9 @@ export default function MenuPage() {
   // 搜索 + 购物车展开
   const [searchKeyword, setSearchKeyword] = useState('')
   const [cartExpand,    setCartExpand]    = useState(false)
+  // 结算选项（取餐方式 + 备注；优惠券位先占位）
+  const [pickupMethod,  setPickupMethod]  = useState<'pickup' | 'dineIn'>('pickup')
+  const [orderRemark,   setOrderRemark]   = useState('')
 
   const ui         = T[lang]
   const cartTotal  = cart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
@@ -514,6 +558,12 @@ export default function MenuPage() {
     setSubmitting(true)
     setSubmitError('')
 
+    // 把取餐方式 + 顾客备注合并为 remark 字段透传给 API（API 写入 CustomerOrder.remark）
+    const methodLabel = pickupMethod === 'pickup' ? T[lang].pickup : T[lang].dineIn
+    const remarkLines = [`${T[lang].orderTypeLabel}: ${methodLabel}`]
+    if (orderRemark.trim()) remarkLines.push(`${T[lang].remarksLabel}: ${orderRemark.trim()}`)
+    const remark = remarkLines.join(' | ')
+
     try {
       const res = await fetch('/api/public/orders', {
         method: 'POST',
@@ -522,6 +572,7 @@ export default function MenuPage() {
           storeCode: code,
           items: cart.map((c) => ({ productId: c.id, quantity: c.quantity })),
           ...(customerTelegramId ? { customerTelegramId } : {}),
+          remark,
         }),
       })
       const body = await res.json()
@@ -534,6 +585,8 @@ export default function MenuPage() {
       }
       setOrderResult({ orderNo: body.orderNo, totalAmount: body.totalAmount })
       setCart([])
+      setOrderRemark('')
+      setPickupMethod('pickup')
       setShowConfirm(false)
     } catch {
       setSubmitError(ui.errSubmitFail)
@@ -585,7 +638,7 @@ export default function MenuPage() {
         {/* ── Sticky 顶部条：店铺名 + 营业状态 + 语言切换 + 搜索 ── */}
         <div style={s.stickyTopWrap}>
           <div style={s.stickyTop}>
-            <span style={s.stickyLogo}>🏪</span>
+            <span style={s.stickyLogo}>📍</span>
             <div style={s.stickyName}>
               <span style={s.stickyNameText}>{storeName}</span>
               <span style={isOpen ? s.openBadge : s.closedBadge}>
@@ -769,7 +822,10 @@ export default function MenuPage() {
                           </div>
                         )}
                         <div style={s.productMeta}>
-                          <div style={s.productName}>{product.name}</div>
+                          <div style={s.productName}>
+                            {product.name}
+                            {idx === 0 && <span style={s.recommendBadge}>{ui.recommendBadge}</span>}
+                          </div>
                           {product.spec && <div style={s.productSpec}>{product.spec}</div>}
                           <div style={s.productFoot}>
                             <span style={s.productPrice}>
@@ -852,6 +908,14 @@ export default function MenuPage() {
               <span style={s.confirmHeaderIcon}>📋</span>
               <span style={s.confirmHeaderTitle}>{ui.confirmTitle}</span>
             </div>
+
+            {/* 门店行 */}
+            <div style={s.chkRow}>
+              <span style={s.chkRowKey}>📍 {ui.storeLabel}</span>
+              <span style={s.chkRowVal}>{storeName}</span>
+            </div>
+
+            {/* 商品清单 */}
             <div style={s.confirmItemList}>
               {confirmItems.map((item) => (
                 <div key={item.id} style={s.confirmItem}>
@@ -866,6 +930,48 @@ export default function MenuPage() {
                 </div>
               ))}
             </div>
+
+            {/* 取餐方式 */}
+            <div style={s.chkSection}>
+              <div style={s.chkSectionLabel}>{ui.orderTypeLabel}</div>
+              <div style={s.chkPickupRow}>
+                {(['pickup', 'dineIn'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    style={{ ...s.chkPickupBtn, ...(pickupMethod === m ? s.chkPickupBtnOn : {}) }}
+                    onClick={() => setPickupMethod(m)}
+                  >
+                    {m === 'pickup' ? `🥡 ${ui.pickup}` : `🍽️ ${ui.dineIn}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 备注 */}
+            <div style={s.chkSection}>
+              <div style={s.chkSectionLabel}>{ui.remarksLabel}</div>
+              <textarea
+                style={s.chkRemarks}
+                rows={2}
+                placeholder={ui.remarksPh}
+                value={orderRemark}
+                onChange={(e) => setOrderRemark(e.target.value.slice(0, 200))}
+              />
+            </div>
+
+            {/* 优惠券占位 */}
+            <div style={s.chkRow}>
+              <span style={s.chkRowKey}>🎟️ {ui.couponLabel}</span>
+              <span style={s.chkRowMuted}>{ui.noCoupon}</span>
+            </div>
+
+            {/* 优惠合计（mock $0.00） */}
+            <div style={s.chkRow}>
+              <span style={s.chkRowKey}>{ui.discountLabel}</span>
+              <span style={s.chkRowMuted}>-$0.00</span>
+            </div>
+
             <div style={s.confirmTotal}>
               <span style={s.confirmTotalLabel}>{ui.itemCount(cartCount)}</span>
               <span style={s.confirmTotalAmount}>${cartTotal.toFixed(2)}</span>
@@ -991,6 +1097,9 @@ export default function MenuPage() {
             </div>
             <div style={{ ...s.cartHint, color: submitError ? '#ff4d4f' : '#c0c0c0' }}>
               {submitError || (cartCount === 0 ? ui.notSelected : ui.itemCount(cartCount))}
+              {cartCount > 0 && !submitError && (
+                <span style={s.discountInline}> · {ui.discountLabel} $0.00</span>
+              )}
             </div>
           </div>
         </div>
@@ -1275,6 +1384,74 @@ const s: Record<string, React.CSSProperties> = {
   },
   cartItemPrice: { fontSize: 14, fontWeight: 700, color: PRIMARY },
   cartItemQtyRow: { display: 'flex', alignItems: 'center', gap: 8 },
+  // ── 推荐徽标（商品名旁） ──
+  recommendBadge: {
+    display: 'inline-block',
+    marginLeft: 6,
+    padding: '1px 6px',
+    borderRadius: 4,
+    background: `${PRIMARY}1a`,
+    color: PRIMARY,
+    fontSize: 10,
+    fontWeight: 800,
+    verticalAlign: 'middle' as const,
+    letterSpacing: '0.04em',
+  },
+  // ── cartBar 优惠内联文本 ──
+  discountInline: {
+    color: '#fa8c16',
+    fontWeight: 600,
+  },
+  // ── confirm modal 行 + 分段 ──
+  chkRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 0',
+    borderTop: '1px solid #f5f5f5',
+    fontSize: 13,
+  },
+  chkRowKey: { color: '#666', fontWeight: 600 },
+  chkRowVal: { color: '#1a1a1a', fontWeight: 700, maxWidth: '65%', textAlign: 'right' as const, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  chkRowMuted: { color: '#aaa', fontWeight: 500 },
+  chkSection: {
+    padding: '10px 0',
+    borderTop: '1px solid #f5f5f5',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 6,
+  },
+  chkSectionLabel: { fontSize: 12, color: '#888', fontWeight: 600 },
+  chkPickupRow: { display: 'flex', gap: 8 },
+  chkPickupBtn: {
+    flex: 1,
+    height: 36,
+    background: '#fafafa',
+    border: '1px solid #e5e5e5',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#666',
+    cursor: 'pointer',
+  },
+  chkPickupBtnOn: {
+    background: `${PRIMARY}15`,
+    borderColor: PRIMARY,
+    color: PRIMARY,
+  },
+  chkRemarks: {
+    width: '100%',
+    fontSize: 13,
+    padding: '8px 10px',
+    borderRadius: 8,
+    border: '1px solid #e5e5e5',
+    background: '#fafafa',
+    color: '#1a1a1a',
+    outline: 'none',
+    resize: 'vertical' as const,
+    boxSizing: 'border-box' as const,
+    lineHeight: 1.5,
+  },
 
   banner: {
     height: 152,

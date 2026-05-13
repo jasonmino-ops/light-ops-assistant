@@ -15,14 +15,14 @@ import { sendAndLogMessage } from '@/lib/telegram'
 type OrderItem = { productId: string; quantity: number }
 
 export async function POST(req: NextRequest) {
-  let body: { storeCode?: string; items?: OrderItem[]; customerTelegramId?: string }
+  let body: { storeCode?: string; items?: OrderItem[]; customerTelegramId?: string; remark?: string }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { storeCode, items, customerTelegramId } = body
+  const { storeCode, items, customerTelegramId, remark } = body
 
   if (!storeCode) {
     return NextResponse.json({ error: 'MISSING_STORE_CODE' }, { status: 400 })
@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
       itemsJson:          JSON.stringify(itemsForJson),
       totalAmount:        String(totalAmount.toFixed(2)),
       status:             'PENDING',
+      remark:             typeof remark === 'string' && remark.trim() ? remark.trim().slice(0, 500) : null,
     },
   })
 
