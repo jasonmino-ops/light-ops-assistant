@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import CustomerBottomNav from '@/app/components/CustomerBottomNav'
 
 // ─── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -308,11 +310,9 @@ export default function MenuPage() {
   const [hasTgId,      setHasTgId]     = useState(false)
   const [customerBound, setCustomerBound] = useState(false)
   const [lightboxUrl,  setLightboxUrl] = useState<string | null>(null)
-  // 我的视图（v1 私域承接占位；mock 值预留 membership/points/coupon/voucher）
-  const [view,         setView]        = useState<'menu' | 'profile'>('menu')
-  const [profileSub,   setProfileSub]  = useState<'home' | 'coupons'>('home')
-  const [couponTab,    setCouponTab]   = useState<'available' | 'used' | 'expired'>('available')
-  const [customerName, setCustomerName] = useState('')
+  // 搜索 + 购物车展开
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [cartExpand,    setCartExpand]    = useState(false)
 
   const ui         = T[lang]
   const cartTotal  = cart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
@@ -337,41 +337,45 @@ export default function MenuPage() {
 
   type Group = { gid: string; title: string; items: ApiProduct[] }
 
+  // 搜索关键词（在分类分组前应用，命中名称/规格的商品都保留）
+  const kw = searchKeyword.trim().toLowerCase()
+  const filteredProducts = kw
+    ? apiProducts.filter(
+        (p) =>
+          p.name.toLowerCase().includes(kw) ||
+          (p.spec ?? '').toLowerCase().includes(kw),
+      )
+    : apiProducts
+
   const displayGroups: Group[] = (() => {
     if (!hasL1Cats) {
-      // 无分类：全部商品归入一个「全部」组（退化为原来的单列展示）
-      return apiProducts.length > 0
-        ? [{ gid: '__all', title: gl(ALL_CAT, lang), items: apiProducts }]
+      return filteredProducts.length > 0
+        ? [{ gid: '__all', title: gl(ALL_CAT, lang), items: filteredProducts }]
         : []
     }
 
     if (activeCatId === null) {
-      // 「全部」tab — 按一级分类为组分组展示
       const groups: Group[] = []
       for (const l1 of l1Cats) {
         const l2Ids = new Set((l2ByParent.get(l1.id) ?? []).map((c) => c.id))
-        const items = apiProducts.filter(
+        const items = filteredProducts.filter(
           (p) => p.categoryId === l1.id || (p.categoryId !== null && l2Ids.has(p.categoryId)),
         )
         if (items.length > 0) groups.push({ gid: l1.id, title: l1.name, items })
       }
-      // 无 categoryId 或 categoryId 已失效的商品 → 归入「其他」
-      const uncategorized = apiProducts.filter((p) => !p.categoryId || !allCatIds.has(p.categoryId))
+      const uncategorized = filteredProducts.filter((p) => !p.categoryId || !allCatIds.has(p.categoryId))
       if (uncategorized.length > 0) {
         groups.push({ gid: '__other', title: gl(UNCATEGORIZED, lang), items: uncategorized })
       }
       return groups
     } else {
-      // 特定一级分类 — 按二级分类分组展示
       const l1Name = l1Cats.find((c) => c.id === activeCatId)?.name ?? ''
       const l2s = l2ByParent.get(activeCatId) ?? []
       const groups: Group[] = []
-      // 直属该一级分类（未挂二级分类）的商品
-      const directItems = apiProducts.filter((p) => p.categoryId === activeCatId)
+      const directItems = filteredProducts.filter((p) => p.categoryId === activeCatId)
       if (directItems.length > 0) groups.push({ gid: activeCatId + '_d', title: l1Name, items: directItems })
-      // 各二级分类分组
       for (const l2 of l2s) {
-        const items = apiProducts.filter((p) => p.categoryId === l2.id)
+        const items = filteredProducts.filter((p) => p.categoryId === l2.id)
         if (items.length > 0) groups.push({ gid: l2.id, title: l2.name, items })
       }
       return groups
@@ -402,10 +406,32 @@ export default function MenuPage() {
     document.title = (storeData?.name && storeData.name.trim()) || '店小二'
   }, [storeData?.name])
 
-  // ── 切换"点单 / 我的"视图或进入子页时回到顶部 ──────────────────────
+  // ── 购物车持久化（localStorage，与 /me 页共享 storeCode 维度） ───────────
   useEffect(() => {
-    if (typeof window !== 'undefined') window.scrollTo(0, 0)
-  }, [view, profileSub])
+    if (!storeCode) return
+    try {
+      const saved = localStorage.getItem(`cart_${storeCode}`)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) setCart(parsed)
+      }
+    } catch { /* ignore */ }
+  }, [storeCode])
+  useEffect(() => {
+    if (!storeCode) return
+    try { localStorage.setItem(`cart_${storeCode}`, JSON.stringify(cart)) } catch { /* ignore */ }
+  }, [cart, storeCode])
+
+  // ── 语言偏好持久化（与 /me 共享） ───────────────────────────────────────
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('menu_lang') as Lang | null
+      if (saved && (['zh', 'en', 'km'] as Lang[]).includes(saved)) setLang(saved)
+    } catch { /* ignore */ }
+  }, [])
+  useEffect(() => {
+    try { localStorage.setItem('menu_lang', lang) } catch { /* ignore */ }
+  }, [lang])
 
   // ── 数据加载 ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -431,8 +457,6 @@ export default function MenuPage() {
           if (u?.id != null) {
             tgIdLocal = String(u.id)
             setHasTgId(true)
-            const name = String(u.first_name || u.username || '').trim()
-            if (name) setCustomerName(name)
           }
         }
       } catch { /* 解析失败则不显示入口 */ }
@@ -558,30 +582,44 @@ export default function MenuPage() {
     <>
       <main style={s.page}>
 
-        {/* ── Sticky 顶部条：滚动时保持店铺名 + 营业状态 + 语言切换 ── */}
-        <div style={s.stickyTop}>
-          <span style={s.stickyLogo}>🏪</span>
-          <div style={s.stickyName}>
-            <span style={s.stickyNameText}>{storeName}</span>
-            <span style={isOpen ? s.openBadge : s.closedBadge}>
-              {isOpen ? ui.open : ui.closed}
-            </span>
+        {/* ── Sticky 顶部条：店铺名 + 营业状态 + 语言切换 + 搜索 ── */}
+        <div style={s.stickyTopWrap}>
+          <div style={s.stickyTop}>
+            <span style={s.stickyLogo}>🏪</span>
+            <div style={s.stickyName}>
+              <span style={s.stickyNameText}>{storeName}</span>
+              <span style={isOpen ? s.openBadge : s.closedBadge}>
+                {isOpen ? ui.open : ui.closed}
+              </span>
+            </div>
+            <div style={s.stickyLangs}>
+              {(['zh', 'en', 'km'] as Lang[]).map((l) => (
+                <button
+                  key={l}
+                  style={{ ...s.stickyLangBtn, ...(lang === l ? s.stickyLangBtnOn : {}) }}
+                  onClick={() => setLang(l)}
+                >
+                  {LANG_LABELS[l]}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={s.stickyLangs}>
-            {(['zh', 'en', 'km'] as Lang[]).map((l) => (
-              <button
-                key={l}
-                style={{ ...s.stickyLangBtn, ...(lang === l ? s.stickyLangBtnOn : {}) }}
-                onClick={() => setLang(l)}
-              >
-                {LANG_LABELS[l]}
-              </button>
-            ))}
+          {/* 搜索栏 */}
+          <div style={s.searchRow}>
+            <span style={s.searchIcon}>🔍</span>
+            <input
+              style={s.searchInput}
+              type="text"
+              placeholder={lang === 'zh' ? '搜索商品…' : lang === 'en' ? 'Search products…' : 'ស្វែងរកទំនិញ…'}
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+            />
+            {searchKeyword && (
+              <button type="button" style={s.searchClear} onClick={() => setSearchKeyword('')}>×</button>
+            )}
           </div>
         </div>
 
-        {view === 'menu' && (
-        <>
         {/* ── 1. 顶部门店头图 ── */}
         <div style={{
           ...s.banner,
@@ -628,32 +666,77 @@ export default function MenuPage() {
           </div>
         )}
 
-        {/* ── 3. 商品展示区（有一级分类时左右布局，无分类时全宽单列） ── */}
-        <div style={hasL1Cats ? s.catLayout : { marginTop: 8 }}>
-
-          {/* 左侧一级分类栏（仅有一级分类时显示） */}
-          {hasL1Cats && (
-            <div style={s.catSidebar}>
-              <button
-                style={{ ...s.catSideItem, ...(activeCatId === null ? s.catSideItemOn : {}) }}
-                onClick={() => setActiveCatId(null)}
-              >
-                {gl(ALL_CAT, lang)}
-              </button>
-              {l1Cats.map((cat) => (
-                <button
-                  key={cat.id}
-                  style={{ ...s.catSideItem, ...(activeCatId === cat.id ? s.catSideItemOn : {}) }}
-                  onClick={() => setActiveCatId(cat.id)}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
+        {/* ── 快捷入口（优惠券/订单/收藏/地址） ── */}
+        <div style={s.quickEntryRow}>
+          <Link href={`/me?code=${encodeURIComponent(storeCode)}`} style={s.quickEntry}>
+            <span style={s.quickEntryIcon}>🎟️</span>
+            <span style={s.quickEntryLabel}>
+              {lang === 'zh' ? '优惠券' : lang === 'en' ? 'Coupons' : 'គូប៉ុង'}
+            </span>
+          </Link>
+          {hasTgId && storeCode ? (
+            <Link href={`/menu/orders?code=${storeCode}`} style={s.quickEntry}>
+              <span style={s.quickEntryIcon}>📦</span>
+              <span style={s.quickEntryLabel}>
+                {lang === 'zh' ? '订单' : lang === 'en' ? 'Orders' : 'បញ្ជា'}
+              </span>
+            </Link>
+          ) : (
+            <button type="button" style={s.quickEntry} onClick={() => alert(lang === 'zh' ? '请在 Telegram 中打开以查看订单' : lang === 'en' ? 'Open in Telegram to view orders' : 'បើកក្នុង Telegram')}>
+              <span style={s.quickEntryIcon}>📦</span>
+              <span style={s.quickEntryLabel}>
+                {lang === 'zh' ? '订单' : lang === 'en' ? 'Orders' : 'បញ្ជា'}
+              </span>
+            </button>
           )}
+          <button
+            type="button"
+            style={s.quickEntry}
+            onClick={() => alert(lang === 'zh' ? '收藏即将开放' : lang === 'en' ? 'Favorites coming soon' : 'កំពុងអភិវឌ្ឍ')}
+          >
+            <span style={s.quickEntryIcon}>⭐</span>
+            <span style={s.quickEntryLabel}>
+              {lang === 'zh' ? '收藏' : lang === 'en' ? 'Favs' : 'ចំណូល'}
+            </span>
+          </button>
+          <button
+            type="button"
+            style={s.quickEntry}
+            onClick={() => alert(lang === 'zh' ? '地址管理即将开放' : lang === 'en' ? 'Addresses coming soon' : 'កំពុងអភិវឌ្ឍ')}
+          >
+            <span style={s.quickEntryIcon}>📍</span>
+            <span style={s.quickEntryLabel}>
+              {lang === 'zh' ? '地址' : lang === 'en' ? 'Address' : 'អាសយដ្ឋាន'}
+            </span>
+          </button>
+        </div>
 
-          {/* 右侧商品分组区 */}
-          <div style={hasL1Cats ? s.catContent : s.productCol}>
+        {/* ── 横向分类 tab ── */}
+        {hasL1Cats && (
+          <div style={s.catTabsScroll}>
+            <button
+              type="button"
+              style={{ ...s.catTabBtn, ...(activeCatId === null ? s.catTabBtnOn : {}) }}
+              onClick={() => setActiveCatId(null)}
+            >
+              {gl(ALL_CAT, lang)}
+            </button>
+            {l1Cats.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                style={{ ...s.catTabBtn, ...(activeCatId === cat.id ? s.catTabBtnOn : {}) }}
+                onClick={() => setActiveCatId(cat.id)}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── 3. 商品展示区（全宽单列） ── */}
+        <div style={{ marginTop: 4 }}>
+          <div style={s.productCol}>
             {displayGroups.length === 0 ? (
               <div style={{ padding: '40px 16px', textAlign: 'center', color: '#ccc', fontSize: 14 }}>
                 {ui.empty}
@@ -713,152 +796,6 @@ export default function MenuPage() {
             )}
           </div>
         </div>
-        </>
-        )}
-
-        {/* ── 我的视图（v1 私域承接占位） ── */}
-        {view === 'profile' && (
-          <div style={p.wrap}>
-            {profileSub === 'home' && (
-              <>
-                {/* 顶部身份卡 */}
-                <div style={p.headerCard}>
-                  <div style={p.avatar}>{customerName ? customerName.slice(0, 1).toUpperCase() : '👤'}</div>
-                  <div style={p.headerBody}>
-                    <div style={p.userName}>{customerName || ui.guestUser}</div>
-                    <div style={p.userStore}>{storeName}</div>
-                  </div>
-                  <div style={p.memberBadge}>{ui.normalMember}</div>
-                </div>
-
-                {/* 资产 4 格 */}
-                <div style={p.sectionLabel}>{ui.assetSectionTitle}</div>
-                <div style={p.assetGrid}>
-                  <div style={p.assetCell}>
-                    <div style={p.assetValue}>$0.00</div>
-                    <div style={p.assetLabel}>{ui.balance}</div>
-                  </div>
-                  <div style={p.assetCell} onClick={() => setProfileSub('coupons')}>
-                    <div style={p.assetValue}>0</div>
-                    <div style={p.assetLabel}>{ui.coupon}</div>
-                  </div>
-                  <div style={p.assetCell} onClick={() => setProfileSub('coupons')}>
-                    <div style={p.assetValue}>0</div>
-                    <div style={p.assetLabel}>{ui.voucher}</div>
-                  </div>
-                  <div style={p.assetCell}>
-                    <div style={p.assetValue}>0</div>
-                    <div style={p.assetLabel}>{ui.points}</div>
-                  </div>
-                </div>
-
-                {/* Telegram 绑定卡 */}
-                {customerBound ? (
-                  <div style={p.bindCard}>
-                    <div style={{ ...p.bindIcon, background: '#52c41a' }}>✓</div>
-                    <div style={p.bindBody}>
-                      <div style={p.bindTitle}>{ui.alreadyBoundTitle}</div>
-                      <div style={p.bindSub}>{ui.alreadyBoundSub}</div>
-                    </div>
-                  </div>
-                ) : CUSTOMER_BOT && storeCode ? (
-                  <a
-                    href={`https://t.me/${CUSTOMER_BOT}?start=bind_${encodeURIComponent(storeCode)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={p.bindCardLink}
-                  >
-                    <div style={p.bindIcon}>📲</div>
-                    <div style={p.bindBody}>
-                      <div style={p.bindTitle}>{ui.bindTgProfileTitle}</div>
-                      <div style={p.bindSub}>{ui.bindTgProfileSub}</div>
-                    </div>
-                    <div style={p.bindArrow}>›</div>
-                  </a>
-                ) : null}
-
-                {/* 列表入口 */}
-                <div style={p.list}>
-                  {hasTgId && storeCode ? (
-                    <a href={`/menu/orders?code=${storeCode}`} style={p.listItem}>
-                      <span style={p.listIcon}>📦</span>
-                      <span style={p.listLabel}>{ui.myOrdersEntry}</span>
-                      <span style={p.listArrow}>›</span>
-                    </a>
-                  ) : (
-                    <button type="button" style={p.listItem} onClick={() => alert(ui.comingSoon)}>
-                      <span style={p.listIcon}>📦</span>
-                      <span style={p.listLabel}>{ui.myOrdersEntry}</span>
-                      <span style={p.listArrow}>›</span>
-                    </button>
-                  )}
-                  <button type="button" style={p.listItem} onClick={() => setProfileSub('coupons')}>
-                    <span style={p.listIcon}>🎟️</span>
-                    <span style={p.listLabel}>{ui.couponCenter}</span>
-                    <span style={p.listArrow}>›</span>
-                  </button>
-                  <button type="button" style={p.listItem} onClick={() => alert(ui.comingSoon)}>
-                    <span style={p.listIcon}>📍</span>
-                    <span style={p.listLabel}>{ui.myAddress}</span>
-                    <span style={p.listArrow}>›</span>
-                  </button>
-                  <button type="button" style={p.listItem} onClick={() => alert(ui.comingSoon)}>
-                    <span style={p.listIcon}>⭐</span>
-                    <span style={p.listLabel}>{ui.myFavorites}</span>
-                    <span style={p.listArrow}>›</span>
-                  </button>
-                  <button type="button" style={p.listItem} onClick={() => alert(ui.comingSoon)}>
-                    <span style={p.listIcon}>💬</span>
-                    <span style={p.listLabel}>{ui.contactService}</span>
-                    <span style={p.listArrow}>›</span>
-                  </button>
-                  <div style={{ ...p.listItem, borderBottom: 'none' }}>
-                    <span style={p.listIcon}>🌐</span>
-                    <span style={p.listLabel}>{ui.langSwitchLabel}</span>
-                    <div style={p.langInline}>
-                      {(['zh', 'en', 'km'] as Lang[]).map((l) => (
-                        <button
-                          key={l}
-                          type="button"
-                          style={{ ...p.langInlineBtn, ...(lang === l ? p.langInlineBtnOn : {}) }}
-                          onClick={() => setLang(l)}
-                        >
-                          {LANG_LABELS[l]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {profileSub === 'coupons' && (
-              <>
-                {/* 优惠券子页 */}
-                <div style={cp.header}>
-                  <button type="button" style={cp.backBtn} onClick={() => setProfileSub('home')} aria-label="back">‹</button>
-                  <span style={cp.title}>{ui.couponCenter}</span>
-                </div>
-                <div style={cp.tabs}>
-                  {(['available', 'used', 'expired'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      style={{ ...cp.tab, ...(couponTab === tab ? cp.tabActive : {}) }}
-                      onClick={() => setCouponTab(tab)}
-                    >
-                      {tab === 'available' ? ui.couponAvailable : tab === 'used' ? ui.couponUsed : ui.couponExpired}
-                    </button>
-                  ))}
-                </div>
-                <div style={cp.empty}>
-                  <div style={cp.emptyIcon}>🎟️</div>
-                  <div>{ui.emptyCoupons}</div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
       </main>
 
       {/* ── 商品图放大查看 ── */}
@@ -997,24 +934,48 @@ export default function MenuPage() {
         </div>
       )}
 
+      {/* ── 购物车展开面板（仅在 cart 非空且 cartExpand 为 true 时显示） ── */}
+      {cartExpand && cart.length > 0 && (
+        <div style={s.cartExpandMask} onClick={() => setCartExpand(false)}>
+          <div style={s.cartExpandPanel} onClick={(e) => e.stopPropagation()}>
+            <div style={s.cartExpandHeader}>
+              <span style={s.cartExpandTitle}>
+                {lang === 'zh' ? `已选 ${cartCount} 件` : lang === 'en' ? `${cartCount} item(s)` : `${cartCount} មុខ`}
+              </span>
+              <button type="button" style={s.cartExpandClear} onClick={() => setCart([])}>
+                {lang === 'zh' ? '清空' : lang === 'en' ? 'Clear' : 'សម្អាត'}
+              </button>
+            </div>
+            <div style={s.cartExpandList}>
+              {cart.map((c) => {
+                const p = apiProducts.find((ap) => ap.id === c.id)
+                if (!p) return null
+                return (
+                  <div key={c.id} style={s.cartItemRow}>
+                    <div style={s.cartItemInfo}>
+                      <div style={s.cartItemName}>{p.name}</div>
+                      {p.spec && <div style={s.cartItemSpec}>{p.spec}</div>}
+                    </div>
+                    <div style={s.cartItemRight}>
+                      <span style={s.cartItemPrice}>${(p.price * c.quantity).toFixed(2)}</span>
+                      <div style={s.cartItemQtyRow}>
+                        <button style={s.qtyMinus} onClick={() => removeFromCart(c.id)}>−</button>
+                        <span style={s.qtyNum}>{c.quantity}</span>
+                        <button style={s.qtyPlus} onClick={() => addToCart(c.id)}>+</button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 底部购物车浮层 ── */}
       <div style={s.cartBar}>
-        {storeCode && (
-          <button
-            type="button"
-            style={{ ...s.myOrdersTab, background: 'none', border: 'none', borderRight: '1px solid #ebebeb', cursor: 'pointer' }}
-            onClick={() => { setView(view === 'menu' ? 'profile' : 'menu'); setProfileSub('home') }}
-            aria-label={view === 'menu' ? ui.tabProfile : ui.tabMenu}
-          >
-            <span style={{ ...s.myOrdersTabIcon, color: view === 'profile' ? PRIMARY : '#666' }}>
-              {view === 'menu' ? '👤' : '🍽️'}
-            </span>
-            <span style={{ ...s.myOrdersTabLabel, color: view === 'profile' ? PRIMARY : '#666' }}>
-              {view === 'menu' ? ui.tabProfile : ui.tabMenu}
-            </span>
-          </button>
-        )}
-        <div style={s.cartLeft}>
+        <div style={{ ...s.cartLeft, cursor: cart.length > 0 ? 'pointer' : 'default' }}
+             onClick={() => cart.length > 0 && setCartExpand((v) => !v)}>
           <div style={s.cartIconBox}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" color="#fff">
               <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
@@ -1036,11 +997,14 @@ export default function MenuPage() {
         <button
           style={{ ...s.checkoutBtn, ...(canCheckout && !submitting ? s.checkoutBtnOn : {}) }}
           disabled={!canCheckout || submitting}
-          onClick={() => setShowConfirm(true)}
+          onClick={() => { setCartExpand(false); setShowConfirm(true) }}
         >
           {submitting ? ui.submitting : canCheckout ? ui.checkout : ui.selectFirst}
         </button>
       </div>
+
+      {/* ── 顾客底部导航（首页/点单/订单/消息/我的） ── */}
+      <CustomerBottomNav code={storeCode} lang={lang} />
     </>
   )
 }
@@ -1101,7 +1065,7 @@ const s: Record<string, React.CSSProperties> = {
     margin: '0 auto',
     background: '#f0f0f0',
     minHeight: '100dvh',
-    paddingBottom: 92,
+    paddingBottom: 148, // cart bar (~80) + bottom nav (56) + safe-area
   },
 
   // ── Sticky 顶部条 ──
@@ -1165,6 +1129,152 @@ const s: Record<string, React.CSSProperties> = {
     color: PRIMARY,
     boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
   },
+  // ── 新增：sticky 顶部容器 + 搜索栏 ──
+  stickyTopWrap: {
+    position: 'sticky' as const,
+    top: 0,
+    zIndex: 30,
+    background: '#fff',
+    borderBottom: '1px solid #ebebeb',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+  },
+  searchRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '0 12px 8px',
+    background: '#fff',
+  },
+  searchIcon: { fontSize: 14, color: '#999', flexShrink: 0 },
+  searchInput: {
+    flex: 1,
+    height: 32,
+    padding: '0 12px',
+    border: 'none',
+    borderRadius: 16,
+    fontSize: 13,
+    background: '#f5f5f5',
+    color: '#1a1a1a',
+    outline: 'none',
+  },
+  searchClear: {
+    width: 26, height: 26,
+    border: 'none', background: 'transparent',
+    color: '#999', fontSize: 18, cursor: 'pointer', lineHeight: 1,
+  },
+  // ── 快捷入口 ──
+  quickEntryRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr 1fr',
+    background: '#fff',
+    margin: '8px 0 0',
+    padding: '12px 4px',
+  },
+  quickEntry: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    padding: 4,
+    background: 'transparent',
+    border: 'none',
+    textDecoration: 'none',
+    color: 'inherit',
+    cursor: 'pointer',
+  },
+  quickEntryIcon: { fontSize: 22, lineHeight: 1 },
+  quickEntryLabel: { fontSize: 11, color: '#444', fontWeight: 500 },
+  // ── 横向分类 tab ──
+  catTabsScroll: {
+    display: 'flex',
+    gap: 6,
+    overflowX: 'auto' as const,
+    padding: '10px 12px',
+    background: '#fff',
+    marginTop: 1,
+    position: 'sticky' as const,
+    top: 84,
+    zIndex: 25,
+    borderBottom: '1px solid #f0f0f0',
+    WebkitOverflowScrolling: 'touch' as const,
+  },
+  catTabBtn: {
+    flexShrink: 0,
+    padding: '6px 12px',
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#666',
+    background: '#f5f5f5',
+    border: 'none',
+    borderRadius: 16,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  },
+  catTabBtnOn: {
+    background: PRIMARY,
+    color: '#fff',
+  },
+  // ── 购物车展开面板 ──
+  cartExpandMask: {
+    position: 'fixed' as const,
+    inset: 0,
+    background: 'rgba(0,0,0,0.4)',
+    zIndex: 55,
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  cartExpandPanel: {
+    width: '100%',
+    maxWidth: 480,
+    background: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: '60dvh',
+    marginBottom: 'calc(80px + 56px + env(safe-area-inset-bottom))',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    overflow: 'hidden' as const,
+  },
+  cartExpandHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 16px',
+    borderBottom: '1px solid #eee',
+    background: '#fafafa',
+  },
+  cartExpandTitle: { fontSize: 14, fontWeight: 700, color: '#1a1a1a' },
+  cartExpandClear: {
+    fontSize: 13, color: '#fa541c',
+    background: 'transparent', border: 'none',
+    cursor: 'pointer', fontWeight: 600,
+  },
+  cartExpandList: {
+    flex: 1,
+    overflowY: 'auto' as const,
+    padding: '0 16px',
+  },
+  cartItemRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '12px 0',
+    borderBottom: '1px solid #f5f5f5',
+  },
+  cartItemInfo: { flex: 1, minWidth: 0 },
+  cartItemName: { fontSize: 14, fontWeight: 600, color: '#1a1a1a' },
+  cartItemSpec: { fontSize: 11, color: '#aaa', marginTop: 2 },
+  cartItemRight: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'flex-end',
+    gap: 6,
+    flexShrink: 0,
+  },
+  cartItemPrice: { fontSize: 14, fontWeight: 700, color: PRIMARY },
+  cartItemQtyRow: { display: 'flex', alignItems: 'center', gap: 8 },
 
   banner: {
     height: 152,
@@ -1463,20 +1573,19 @@ const s: Record<string, React.CSSProperties> = {
 
   cartBar: {
     position: 'fixed',
-    bottom: 0,
+    bottom: 'calc(56px + env(safe-area-inset-bottom))', // 抬到 bottom nav 之上
     left: '50%',
     transform: 'translateX(-50%)',
     width: '100%',
     maxWidth: 480,
     background: '#fff',
     borderTop: '1px solid #ebebeb',
-    padding: '14px 16px',
-    paddingBottom: 'calc(14px + env(safe-area-inset-bottom))',
+    padding: '12px 16px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     boxShadow: '0 -4px 20px rgba(0,0,0,0.09)',
-    zIndex: 100,
+    zIndex: 60,
   },
 
   // 下单成功态 — 全屏覆盖弹层
