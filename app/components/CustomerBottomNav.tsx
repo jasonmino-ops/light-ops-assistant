@@ -8,17 +8,9 @@ type Lang = 'zh' | 'en' | 'km'
 const PRIMARY = '#ff6b00'
 
 const LABELS: Record<string, Record<Lang, string>> = {
-  home:     { zh: '首页', en: 'Home',   km: 'ដើម' },
-  order:    { zh: '点单', en: 'Menu',   km: 'ម៉ឺនុយ' },
-  orders:   { zh: '订单', en: 'Orders', km: 'បញ្ជា' },
-  messages: { zh: '消息', en: 'Msg',    km: 'សារ' },
-  me:       { zh: '我的', en: 'Me',     km: 'ខ្ញុំ' },
-}
-
-const COMING_SOON: Record<Lang, string> = {
-  zh: '消息中心即将开放',
-  en: 'Messages coming soon',
-  km: 'សារកំពុងអភិវឌ្ឍ',
+  order:  { zh: '点单',     en: 'Menu',         km: 'ម៉ឺនុយ' },
+  orders: { zh: '历史订单', en: 'Order History', km: 'ប្រវត្តិបញ្ជា' },
+  me:     { zh: '我的',     en: 'Me',           km: 'ខ្ញុំ' },
 }
 
 export default function CustomerBottomNav({
@@ -32,11 +24,9 @@ export default function CustomerBottomNav({
   const qs = code ? `?code=${encodeURIComponent(code)}` : ''
 
   const tabs = [
-    { key: 'home',     icon: '🏠', href: `/menu${qs}`,        active: pathname === '/menu' },
-    { key: 'order',    icon: '🍽️', href: `/menu${qs}`,        active: false },
-    { key: 'orders',   icon: '📦', href: `/menu/orders${qs}`, active: pathname.startsWith('/menu/orders') },
-    { key: 'messages', icon: '💬', href: null as string | null, active: false, placeholder: true },
-    { key: 'me',       icon: '👤', href: `/me${qs}`,          active: pathname === '/me' },
+    { key: 'order',  icon: '🍽️', href: `/menu${qs}`,        active: pathname === '/menu' },
+    { key: 'orders', icon: '📦', href: `/menu/orders${qs}`, active: pathname.startsWith('/menu/orders') },
+    { key: 'me',     icon: '👤', href: `/me${qs}`,          active: pathname === '/me' },
   ]
 
   return (
@@ -58,18 +48,6 @@ export default function CustomerBottomNav({
             </span>
           </>
         )
-        if (t.placeholder || !t.href) {
-          return (
-            <button
-              key={t.key}
-              type="button"
-              style={s.tab}
-              onClick={() => alert(COMING_SOON[lang])}
-            >
-              {inner}
-            </button>
-          )
-        }
         return (
           <Link key={t.key} href={t.href} style={s.tab}>
             {inner}

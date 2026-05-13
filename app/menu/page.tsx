@@ -635,29 +635,8 @@ export default function MenuPage() {
     <>
       <main style={s.page}>
 
-        {/* ── Sticky 顶部条：店铺名 + 营业状态 + 语言切换 + 搜索 ── */}
+        {/* ── Sticky 顶部条：仅搜索 + 语言切换（门店名只在下方门头展示一次） ── */}
         <div style={s.stickyTopWrap}>
-          <div style={s.stickyTop}>
-            <span style={s.stickyLogo}>📍</span>
-            <div style={s.stickyName}>
-              <span style={s.stickyNameText}>{storeName}</span>
-              <span style={isOpen ? s.openBadge : s.closedBadge}>
-                {isOpen ? ui.open : ui.closed}
-              </span>
-            </div>
-            <div style={s.stickyLangs}>
-              {(['zh', 'en', 'km'] as Lang[]).map((l) => (
-                <button
-                  key={l}
-                  style={{ ...s.stickyLangBtn, ...(lang === l ? s.stickyLangBtnOn : {}) }}
-                  onClick={() => setLang(l)}
-                >
-                  {LANG_LABELS[l]}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* 搜索栏 */}
           <div style={s.searchRow}>
             <span style={s.searchIcon}>🔍</span>
             <input
@@ -670,6 +649,17 @@ export default function MenuPage() {
             {searchKeyword && (
               <button type="button" style={s.searchClear} onClick={() => setSearchKeyword('')}>×</button>
             )}
+            <div style={s.stickyLangs}>
+              {(['zh', 'en', 'km'] as Lang[]).map((l) => (
+                <button
+                  key={l}
+                  style={{ ...s.stickyLangBtn, ...(lang === l ? s.stickyLangBtnOn : {}) }}
+                  onClick={() => setLang(l)}
+                >
+                  {LANG_LABELS[l]}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -764,31 +754,8 @@ export default function MenuPage() {
           </button>
         </div>
 
-        {/* ── 横向分类 tab ── */}
-        {hasL1Cats && (
-          <div style={s.catTabsScroll}>
-            <button
-              type="button"
-              style={{ ...s.catTabBtn, ...(activeCatId === null ? s.catTabBtnOn : {}) }}
-              onClick={() => setActiveCatId(null)}
-            >
-              {gl(ALL_CAT, lang)}
-            </button>
-            {l1Cats.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                style={{ ...s.catTabBtn, ...(activeCatId === cat.id ? s.catTabBtnOn : {}) }}
-                onClick={() => setActiveCatId(cat.id)}
-              >
-                {cat.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ── 3. 商品展示区（全宽单列） ── */}
-        <div style={{ marginTop: 4 }}>
+        {/* ── 3. 商品展示区（左商品 / 右分类栏） ── */}
+        <div style={hasL1Cats ? s.catRightLayout : { marginTop: 4 }}>
           <div style={s.productCol}>
             {displayGroups.length === 0 ? (
               <div style={{ padding: '40px 16px', textAlign: 'center', color: '#ccc', fontSize: 14 }}>
@@ -851,6 +818,29 @@ export default function MenuPage() {
               ))
             )}
           </div>
+
+          {/* 右侧竖向分类栏 */}
+          {hasL1Cats && (
+            <div style={s.catRightSidebar}>
+              <button
+                type="button"
+                style={{ ...s.catRightItem, ...(activeCatId === null ? s.catRightItemOn : {}) }}
+                onClick={() => setActiveCatId(null)}
+              >
+                {gl(ALL_CAT, lang)}
+              </button>
+              {l1Cats.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  style={{ ...s.catRightItem, ...(activeCatId === cat.id ? s.catRightItemOn : {}) }}
+                  onClick={() => setActiveCatId(cat.id)}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </main>
 
@@ -1323,6 +1313,44 @@ const s: Record<string, React.CSSProperties> = {
   catTabBtnOn: {
     background: PRIMARY,
     color: '#fff',
+  },
+  // ── 右侧竖向分类栏 ──
+  catRightLayout: {
+    display: 'flex',
+    alignItems: 'flex-start' as const,
+    marginTop: 4,
+  },
+  catRightSidebar: {
+    width: 76,
+    flexShrink: 0,
+    background: '#fafafa',
+    borderLeft: '1px solid #ebebeb',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    position: 'sticky' as const,
+    top: 56,
+    maxHeight: 'calc(100dvh - 56px - 80px - 56px - env(safe-area-inset-bottom))',
+    overflowY: 'auto' as const,
+    minHeight: 180,
+  },
+  catRightItem: {
+    padding: '12px 6px',
+    background: 'none',
+    border: 'none',
+    borderRight: '3px solid transparent',
+    fontSize: 12,
+    fontWeight: 500,
+    color: '#666',
+    textAlign: 'center' as const,
+    lineHeight: 1.4,
+    cursor: 'pointer',
+    wordBreak: 'break-all' as const,
+  },
+  catRightItemOn: {
+    background: '#fff',
+    borderRightColor: PRIMARY,
+    color: PRIMARY,
+    fontWeight: 700,
   },
   // ── 购物车展开面板 ──
   cartExpandMask: {
