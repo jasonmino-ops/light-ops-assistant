@@ -20,7 +20,7 @@ const OWNER_TABS = [
 ]
 
 // 只在这些页面显示底部导航
-const SHOW_PATHS = new Set(['/home', '/sale', '/records', '/products', '/invite', '/dashboard', '/refund'])
+const SHOW_PATHS = new Set(['/home', '/sale', '/records', '/products', '/invite', '/dashboard', '/refund', '/customers'])
 
 export default function BottomNav() {
   const pathname = usePathname()

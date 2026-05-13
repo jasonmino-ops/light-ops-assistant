@@ -333,6 +333,12 @@ export default function DashboardPage() {
           />
         )}
 
+        {/* Customers entry — 顾客资产中心 */}
+        <Link href="/customers" style={{ ...s.configEntry, textDecoration: 'none', color: 'inherit' }}>
+          <span style={s.configLabel}>👥 顾客资产</span>
+          <span style={s.configArrow}>›</span>
+        </Link>
+
         {/* Store config — collapsed entry */}
         <div
           style={s.configEntry}
