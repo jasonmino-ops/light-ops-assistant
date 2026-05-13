@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getContext } from '@/lib/context'
 
 const MAX_SIZE = 2 * 1024 * 1024 // 2MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 
-function getCtx(req: NextRequest) {
-  return {
-    tenantId: req.headers.get('x-tenant-id') ?? '',
-    userId:   req.headers.get('x-user-id')   ?? '',
-    role:     req.headers.get('x-role')       ?? '',
-  }
-}
-
+// 与 /api/stores/[id]/checkout-mode 和 menu-config 保持一致：
+//   1) cookie session (生产/Mini App) 优先
+//   2) x-* dev header fallback
+// 之前此路由只读 header，导致生产 cookie 路径下被识别为"无身份"而 403
 async function assertOwner(req: NextRequest, storeId: string) {
-  const ctx = getCtx(req)
-  if (ctx.role !== 'OWNER' || !ctx.tenantId) return null
+  const ctx = await getContext(req)
+  if (!ctx) return null
+  if (ctx.role !== 'OWNER') return null
   const store = await prisma.store.findFirst({
     where: { id: storeId, tenantId: ctx.tenantId },
     select: { id: true, code: true },
