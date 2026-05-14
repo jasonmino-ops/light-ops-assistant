@@ -37,6 +37,11 @@
 - TelegramMessage 242 · OperationLog 134 · SupportSession 3
 - OpsAdmin 1 · _prisma_migrations 5
 
+> ⚠️ **2026-05-15 后新增表（不在 full_backup.sql 行数快照中）**：
+> - `CustomerTouchLog` — 商户触达顾客日志（commit `c2f633b`）
+>   - DDL 见 `docs/db/CUSTOMER_TOUCH_LOG_DDL.md`
+>   - 灾备恢复时如果 full_backup.sql 是旧版（2026-05-14 之前），必须在阶段一额外执行该文档 §6 DDL
+
 ---
 
 ## 3. 需要人工补充的部分
@@ -60,8 +65,13 @@
    ```bash
    psql "$NEW_DATABASE_URL" -f backups/beta_v1_0/full_backup.sql
    ```
-3. **恢复 Storage**：在 Supabase Dashboard 创建 `product-images` bucket（Public），上传备份的对象
-4. **跑 Prisma generate**：`npx prisma generate`，校对 `prisma/schema.prisma` 一致
+3. **应用 beta_v1_0 后新增的手动 DDL**（若 full_backup.sql 不含 / 比快照时间晚）：
+   - `docs/db/CUSTOMER_TOUCH_LOG_DDL.md` — 2026-05-15 后新增 `CustomerTouchLog` 表
+   - 操作：复制该文档 §6 完整 DDL 块到 Supabase SQL Editor 执行；或 `psql -f <inline-sql-file>`
+   - **未执行则 /customers 触达功能 500**
+   - 已执行可通过该文档 §8 验证三段查询确认
+4. **恢复 Storage**：在 Supabase Dashboard 创建 `product-images` bucket（Public），上传备份的对象
+5. **跑 Prisma generate**：`npx prisma generate`，校对 `prisma/schema.prisma` 一致
 
 ### 阶段二：代码（Git + Vercel 部署）
 5. **本地切到冻结点**：
@@ -130,6 +140,7 @@
 - `backups/beta_v1_0/backup_notes.md` — DB 备份操作手册
 - `backups/beta_v1_0/vercel_env_backup.md` — 环境变量清单
 - `backups/beta_v1_0/bot_config_inventory.md` — Bot 配置清单
+- `docs/db/CUSTOMER_TOUCH_LOG_DDL.md` — 2026-05-15 后新增 `CustomerTouchLog` 表的手动 DDL 记录（灾备恢复必执行）
 
 ---
 
