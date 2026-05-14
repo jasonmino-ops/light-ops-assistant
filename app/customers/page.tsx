@@ -54,6 +54,9 @@ export default function CustomersPage() {
   const [sortKey,   setSortKey]   = useState<SortKey>('recent')
   const [tagFilter, setTagFilter] = useState<TagFilter>('all')
   const [selected,  setSelected]  = useState<Customer | null>(null)
+  // Telegram 触达弹窗
+  const [touchTarget, setTouchTarget] = useState<Customer | null>(null)
+  const [toast, setToast]             = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   useEffect(() => {
     apiFetch('/api/customers', { cache: 'no-store' }, OWNER_CTX)
@@ -69,6 +72,12 @@ export default function CustomersPage() {
       .catch(() => setErrMsg('网络错误，请刷新重试'))
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3000)
+    return () => clearTimeout(t)
+  }, [toast])
 
   const filtered = useMemo(() => {
     let list = customers
@@ -178,14 +187,43 @@ export default function CustomersPage() {
             </div>
           ) : (
             <div style={s.list}>
-              {filtered.map((c) => <CustomerCard key={c.telegramId} c={c} onClick={() => setSelected(c)} />)}
+              {filtered.map((c) => (
+                <CustomerCard
+                  key={c.telegramId}
+                  c={c}
+                  onClick={() => setSelected(c)}
+                  onTouch={() => setTouchTarget(c)}
+                />
+              ))}
             </div>
           )
         )}
       </div>
 
       {/* 详情 Drawer */}
-      {selected && <Drawer c={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <Drawer
+          c={selected}
+          onClose={() => setSelected(null)}
+          onTouch={() => { setTouchTarget(selected); setSelected(null) }}
+        />
+      )}
+
+      {/* Telegram 触达弹窗 */}
+      {touchTarget && (
+        <TouchModal
+          c={touchTarget}
+          onClose={() => setTouchTarget(null)}
+          onResult={(ok, text) => { setTouchTarget(null); setToast({ type: ok ? 'ok' : 'err', text }) }}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div style={{ ...s.toast, ...(toast.type === 'ok' ? s.toastOk : s.toastErr) }}>
+          {toast.text}
+        </div>
+      )}
     </div>
   )
 }
@@ -201,7 +239,7 @@ function OverCell({ value, label }: { value: string; label: string }) {
   )
 }
 
-function CustomerCard({ c, onClick }: { c: Customer; onClick: () => void }) {
+function CustomerCard({ c, onClick, onTouch }: { c: Customer; onClick: () => void; onTouch: () => void }) {
   const initial = (c.displayName || c.username || '?').slice(0, 1).toUpperCase()
   return (
     <div style={s.card} onClick={onClick}>
@@ -228,12 +266,25 @@ function CustomerCard({ c, onClick }: { c: Customer; onClick: () => void }) {
       <div style={s.subRow}>
         <span>最近：{fmtDate(c.lastActiveAt)}</span>
         {c.favoriteProductName && <span>· 常购：{c.favoriteProductName}</span>}
+        <span style={{ marginLeft: 'auto' }}>
+          {c.bound ? (
+            <button
+              type="button"
+              style={s.touchInlineBtn}
+              onClick={(e) => { e.stopPropagation(); onTouch() }}
+            >
+              📨 触达
+            </button>
+          ) : (
+            <span style={s.touchInlineDisabled}>未绑定 Telegram</span>
+          )}
+        </span>
       </div>
     </div>
   )
 }
 
-function Drawer({ c, onClose }: { c: Customer; onClose: () => void }) {
+function Drawer({ c, onClose, onTouch }: { c: Customer; onClose: () => void; onTouch: () => void }) {
   return (
     <div style={s.drawerMask} onClick={onClose}>
       <div style={s.drawer} onClick={(e) => e.stopPropagation()}>
@@ -303,8 +354,12 @@ function Drawer({ c, onClose }: { c: Customer; onClose: () => void }) {
           </Section>
 
           <div style={s.drawerActions}>
-            <button type="button" style={s.drawerActionBtn} onClick={() => alert('该功能开发中')}>发送优惠券</button>
-            <button type="button" style={s.drawerActionBtn} onClick={() => alert('该功能开发中')}>Telegram 触达</button>
+            <button type="button" style={{ ...s.drawerActionBtn, opacity: 0.5, cursor: 'not-allowed' }} onClick={() => alert('优惠券功能开发中')}>发送优惠券</button>
+            {c.bound ? (
+              <button type="button" style={{ ...s.drawerActionBtn, ...s.drawerActionPrimary }} onClick={onTouch}>📨 Telegram 触达</button>
+            ) : (
+              <button type="button" style={{ ...s.drawerActionBtn, opacity: 0.5, cursor: 'not-allowed' }} disabled title="该顾客未绑定 Telegram">📨 未绑定 Telegram</button>
+            )}
           </div>
         </div>
       </div>
@@ -328,6 +383,121 @@ function Field({ k, v }: { k: string; v: string }) {
       <span style={s.fieldV}>{v}</span>
     </div>
   )
+}
+
+// ─── Telegram 触达弹窗 ───────────────────────────────────────────────────────
+
+type TemplateKey = 'THANK_YOU' | 'PROMO' | 'ORDER_CARE'
+
+const TEMPLATE_LABELS: Record<TemplateKey, { name: string; preview: string }> = {
+  THANK_YOU: {
+    name: '感谢消费',
+    preview: '感谢您选择本店！期待您再次光临 🌟',
+  },
+  PROMO: {
+    name: '优惠提醒',
+    preview: '近期有新活动，欢迎扫码查看最新菜单与优惠 🎉',
+  },
+  ORDER_CARE: {
+    name: '订单关怀',
+    preview: '您的最近订单一切顺利吗？如有任何问题请告诉我们 🙏',
+  },
+}
+
+function TouchModal({
+  c,
+  onClose,
+  onResult,
+}: {
+  c: Customer
+  onClose: () => void
+  onResult: (ok: boolean, text: string) => void
+}) {
+  const [tpl, setTpl]         = useState<TemplateKey>('THANK_YOU')
+  const [sending, setSending] = useState(false)
+  const [errMsg, setErrMsg]   = useState('')
+
+  async function handleSend() {
+    setSending(true)
+    setErrMsg('')
+    try {
+      const r = await apiFetch('/api/customers/touch', {
+        method: 'POST',
+        body: JSON.stringify({ telegramId: c.telegramId, templateKey: tpl }),
+      }, OWNER_CTX)
+      const body = await r.json().catch(() => ({}))
+      if (r.ok) {
+        onResult(true, '已发送 ✓')
+      } else if (r.status === 429) {
+        onResult(false, body.message ?? '24 小时内已发送过同模板')
+      } else {
+        setErrMsg(body.message ?? body.error ?? '发送失败')
+      }
+    } catch {
+      setErrMsg('网络错误，请重试')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div style={tm.mask} onClick={() => !sending && onClose()}>
+      <div style={tm.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={tm.title}>📨 Telegram 触达</div>
+        <div style={tm.subtitle}>
+          收件人：{c.displayName || c.username || c.telegramId}
+          {c.username && <span style={tm.subMeta}> · @{c.username}</span>}
+        </div>
+
+        <div style={tm.tplLabel}>选择模板</div>
+        <div style={tm.tplRow}>
+          {(Object.keys(TEMPLATE_LABELS) as TemplateKey[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              style={{ ...tm.tplBtn, ...(tpl === k ? tm.tplBtnOn : {}) }}
+              onClick={() => setTpl(k)}
+            >
+              {TEMPLATE_LABELS[k].name}
+            </button>
+          ))}
+        </div>
+
+        <div style={tm.tplLabel}>消息预览</div>
+        <div style={tm.preview}>{TEMPLATE_LABELS[tpl].preview}</div>
+        <div style={tm.previewNote}>
+          实际发送时模板会自动按顾客 Telegram 语言（zh / en / km）渲染并填入门店名。
+        </div>
+
+        {errMsg && <div style={tm.err}>{errMsg}</div>}
+
+        <div style={tm.actions}>
+          <button type="button" style={tm.cancelBtn} onClick={onClose} disabled={sending}>取消</button>
+          <button type="button" style={tm.sendBtn} onClick={handleSend} disabled={sending}>
+            {sending ? '发送中…' : '确认发送'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const tm: Record<string, React.CSSProperties> = {
+  mask: { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  modal: { width: '100%', maxWidth: 360, background: '#fff', borderRadius: 14, padding: '18px 16px', display: 'flex', flexDirection: 'column' as const, gap: 8 },
+  title: { fontSize: 16, fontWeight: 700, color: '#1a1a1a' },
+  subtitle: { fontSize: 12, color: '#666' },
+  subMeta: { color: '#aaa', fontFamily: 'monospace' as const },
+  tplLabel: { fontSize: 11, fontWeight: 700, color: '#888', marginTop: 6, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
+  tplRow: { display: 'flex', gap: 6 },
+  tplBtn: { flex: 1, height: 34, fontSize: 12, fontWeight: 600, background: '#f5f5f5', color: '#666', border: 'none', borderRadius: 6, cursor: 'pointer' },
+  tplBtnOn: { background: '#1677ff', color: '#fff' },
+  preview: { fontSize: 13, color: '#1a1a1a', background: '#f7f8fa', borderRadius: 8, padding: '10px 12px', lineHeight: 1.5, border: '1px solid #ebebeb' },
+  previewNote: { fontSize: 11, color: '#aaa', lineHeight: 1.4, marginTop: 2 },
+  err: { fontSize: 12, color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 6, padding: '6px 8px' },
+  actions: { display: 'flex', gap: 8, marginTop: 8 },
+  cancelBtn: { flex: 1, height: 38, fontSize: 14, color: '#666', background: '#f5f5f5', border: 'none', borderRadius: 8, cursor: 'pointer' },
+  sendBtn: { flex: 2, height: 38, fontSize: 14, fontWeight: 700, color: '#fff', background: '#1677ff', border: 'none', borderRadius: 8, cursor: 'pointer' },
 }
 
 // ─── 工具 ────────────────────────────────────────────────────────────────────
@@ -543,4 +713,30 @@ const s: Record<string, React.CSSProperties> = {
     background: '#fff', color: '#1677ff',
     border: '1px solid #91caff', borderRadius: 8, cursor: 'pointer',
   },
+  drawerActionPrimary: {
+    background: '#1677ff', color: '#fff', borderColor: '#1677ff',
+  },
+
+  // ── 列表卡片内联触达按钮 ──
+  touchInlineBtn: {
+    fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 11,
+    background: '#e6f4ff', color: '#1677ff', border: '1px solid #91caff',
+    cursor: 'pointer', whiteSpace: 'nowrap' as const,
+  },
+  touchInlineDisabled: {
+    fontSize: 11, color: '#bbb', fontWeight: 500,
+  },
+
+  // ── Toast ──
+  toast: {
+    position: 'fixed' as const,
+    top: 'calc(env(safe-area-inset-top) + 16px)',
+    left: '50%', transform: 'translateX(-50%)',
+    maxWidth: 340, padding: '10px 16px',
+    borderRadius: 10, fontSize: 13, fontWeight: 600,
+    boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+    zIndex: 400,
+  },
+  toastOk: { background: '#52c41a', color: '#fff' },
+  toastErr: { background: '#fa541c', color: '#fff' },
 }

@@ -470,3 +470,24 @@ model StoreCustomerContact {
   @@index([storeCode])
   @@index([telegramId])
 }
+
+// 商户单顾客 Telegram 触达日志
+// - 由 /customers 页 OWNER 主动触发，模板化（THANK_YOU / PROMO / ORDER_CARE）
+// - 走 CUSTOMER_BOT_TOKEN 发送，不串商户 bot / OPS bot
+// - 24h 同顾客同模板节流由应用层在 API 中查询本表实现
+model CustomerTouchLog {
+  id           String   @id @default(cuid())
+  tenantId     String
+  storeId      String?
+  telegramId   String
+  templateKey  String   // THANK_YOU | PROMO | ORDER_CARE
+  messageText  String   @db.Text
+  status       String   // SENT | FAILED | THROTTLED
+  errorMessage String?
+  sentByUserId String
+  sentAt       DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, telegramId, sentAt])
+  @@index([sentByUserId])
+}
