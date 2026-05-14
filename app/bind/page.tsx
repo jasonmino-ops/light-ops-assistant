@@ -32,24 +32,59 @@ function BindFlow() {
   const [storeName, setStoreName] = useState('')
   const [role, setRole] = useState<'OWNER' | 'STAFF' | null>(null)
   const [initDataRef, setInitDataRef] = useState('')
+  // 安卓兜底：no_tg 状态下也能拿到 tgLink，提供「用 TG 打开」+「复制」操作
+  const [tgLink, setTgLink] = useState<string | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    const initData: string = tg?.initData ?? ''
+    const startParam: string | undefined = tg?.initDataUnsafe?.start_param
+
+    // 安卓真机日志辅助（不暴露任何 token / secret）
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.log('[bind] entry', {
+        userAgent: navigator.userAgent,
+        hasTelegramWebApp: !!tg,
+        hasInitData: !!initData,
+        startParam: startParam ?? null,
+        urlToken: token ? '<present>' : '<missing>',
+        href: window.location.href.split('?')[0],
+      })
+    }
+
     if (!token) {
       setErrorMsg(t('bind.invalidToken'))
       setState('error')
       return
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tg = (window as any).Telegram?.WebApp
-    const initData: string = tg?.initData ?? ''
     if (!initData) {
-      setState('no_tg')
+      // 安卓 / 外部浏览器场景：拉 tgLink 提供继续路径，避免白屏
+      fetch(`/api/bind/info?token=${encodeURIComponent(token)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!data?.error) {
+            setRole(data.role ?? null)
+            if (data.tgLink) setTgLink(data.tgLink)
+            // eslint-disable-next-line no-console
+            console.log('[bind] no_tg info', { role: data.role, hasTgLink: !!data.tgLink })
+          } else {
+            // eslint-disable-next-line no-console
+            console.warn('[bind] info fetch failed', data.error)
+          }
+        })
+        .catch((e) => {
+          // eslint-disable-next-line no-console
+          console.warn('[bind] info fetch error', String(e))
+        })
+        .finally(() => setState('no_tg'))
       return
     }
 
-    // Parse display name from Telegram initData client-side so we can
-    // pre-fill the confirm form without a round-trip.
+    // ── 标准路径：Telegram Mini App + initData ──
     try {
       const params = new URLSearchParams(initData)
       const tgUser = JSON.parse(params.get('user') ?? '{}')
@@ -64,17 +99,21 @@ function BindFlow() {
 
     setInitDataRef(initData)
 
-    // Fetch token info to determine role and pre-fill store name for OWNER
     fetch(`/api/bind/info?token=${encodeURIComponent(token)}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) {
+          // eslint-disable-next-line no-console
+          console.warn('[bind] info error', data.error)
           setErrorMsg(data.message ?? t('bind.invalidToken'))
           setState('error')
           return
         }
         setRole(data.role)
         if (data.role === 'OWNER') setStoreName(data.storeName ?? '')
+        if (data.tgLink) setTgLink(data.tgLink)
+        // eslint-disable-next-line no-console
+        console.log('[bind] info ok', { role: data.role, storeName: data.storeName ?? null })
         setState('confirm')
       })
       .catch(() => {
@@ -83,6 +122,28 @@ function BindFlow() {
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
+
+  function copyBindLink() {
+    if (!tgLink) return
+    const fallback = () => {
+      const ta = document.createElement('textarea')
+      ta.value = tgLink
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
+      document.body.appendChild(ta)
+      ta.focus(); ta.select()
+      try { document.execCommand('copy') } catch {}
+      document.body.removeChild(ta)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(tgLink)
+        .then(() => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) })
+        .catch(fallback)
+    } else {
+      fallback()
+    }
+  }
 
   const canSubmit =
     role === 'OWNER'
@@ -104,6 +165,8 @@ function BindFlow() {
         }),
       })
       const body = await r.json()
+      // eslint-disable-next-line no-console
+      console.log('[bind] submit result', { ok: !!body.ok, role, error: body.error ?? null })
       if (body.ok) {
         // Cache TG user ID so TelegramInit doesn't re-auth on reload
         try {
@@ -210,6 +273,48 @@ function BindFlow() {
           <div style={warnIcon}>⚠</div>
           <p style={{ ...msg, color: '#fa8c16' }}>{t('bind.openInTg')}</p>
           <p style={hint}>{t('bind.openInTgHint')}</p>
+          {role && (
+            <p style={{ ...hint, color: '#888', fontWeight: 600 }}>
+              {role === 'OWNER' ? '🏪 ' + t('bind.ownerTitle') : '👤 ' + t('bind.staffTitle')}
+            </p>
+          )}
+          {tgLink ? (
+            <>
+              <a
+                href={tgLink}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  ...confirmBtn,
+                  background: '#0088cc',
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                📲 {t('bind.openInTgBtn')}
+              </a>
+              <button
+                type="button"
+                onClick={copyBindLink}
+                style={{
+                  ...confirmBtn,
+                  background: '#fff',
+                  color: '#1677ff',
+                  border: '1.5px solid #1677ff',
+                  marginTop: 8,
+                }}
+              >
+                {linkCopied ? t('bind.bindLinkCopied') : t('bind.copyBindLink')}
+              </button>
+              <p style={{ ...hint, fontSize: 11, color: '#bbb', wordBreak: 'break-all', marginTop: 4 }}>
+                {tgLink}
+              </p>
+            </>
+          ) : (
+            <p style={hint}>{t('common.networkError')}</p>
+          )}
         </>
       )}
     </div>
