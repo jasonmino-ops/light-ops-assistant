@@ -1,10 +1,21 @@
 /**
  * lib/api.ts
  *
- * Thin fetch wrapper that injects the dev identity headers.
- * Replace DEV_CTX with real JWT logic when auth is implemented.
+ * Thin fetch wrapper. 安全模型：
  *
- * Pass ctxOverride to use a different identity context (e.g. OWNER for dashboard).
+ *  生产环境（NODE_ENV === 'production'）：
+ *    - 默认不注入任何 x-* 身份头
+ *    - 服务端 getContext 仅从 auth-session cookie 解析真实身份
+ *    - 即使代码里漏传 ctxOverride，也不会出现 seed-tenant-001 跨租户访问
+ *
+ *  开发环境（NODE_ENV !== 'production'）：
+ *    - 默认注入 STAFF_CTX，便于不带 cookie 测试
+ *    - 仍可通过 ctxOverride 指定 OWNER_CTX
+ *
+ *  显式 ctxOverride 永远生效（dev 与 prod 都生效），便于本地脚本或 CI。
+ *
+ * 配合 lib/context.ts：cookie session 失效时 fallback 到 header；生产因 header 不存在
+ * 直接返 null → 401，不会用 dev 死值越权。
  */
 
 export type DevCtx = {
@@ -28,17 +39,20 @@ export const OWNER_CTX: DevCtx = {
   'x-role': 'OWNER',
 }
 
+const IS_DEV = process.env.NODE_ENV !== 'production'
+
 export async function apiFetch(
   path: string,
   init?: RequestInit,
   ctxOverride?: DevCtx,
 ) {
-  const ctx = ctxOverride ?? STAFF_CTX
+  // 仅 dev / 显式 override 时注入身份头；生产默认走 cookie session
+  const ctx: DevCtx | undefined = ctxOverride ?? (IS_DEV ? STAFF_CTX : undefined)
   const res = await fetch(path, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...ctx,
+      ...(ctx ?? {}),
       ...(init?.headers ?? {}),
     },
   })

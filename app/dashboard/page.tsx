@@ -225,6 +225,15 @@ export default function DashboardPage() {
       </div>
 
       <div style={s.body}>
+        {/* KHQR 当前模式提示（第一阶段：静态图 + 人工确认；动态码后续接入） */}
+        <div style={s.khqrNotice}>
+          <span style={s.khqrNoticeIcon}>📱</span>
+          <div style={s.khqrNoticeBody}>
+            <div style={s.khqrNoticeTitle}>{t('dashboard.khqrModeNoticeTitle')}</div>
+            <div style={s.khqrNoticeText}>{t('dashboard.khqrModeNoticeBody')}</div>
+          </div>
+        </div>
+
         {/* 首页门头快捷管理（OWNER only — dashboard 本就 OWNER 才能进） */}
         <BannerQuickPanel t={t} />
 
@@ -1123,6 +1132,22 @@ const s: Record<string, React.CSSProperties> = {
     minWidth: 52,
   },
   body: { flex: 1, padding: '14px 14px 0', maxWidth: 480, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' as const, gap: 4 },
+
+  // ── KHQR 当前模式提示（第一阶段静态图模式） ──
+  khqrNotice: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+    background: '#fffbe6',
+    border: '1px solid #ffe58f',
+    borderRadius: 10,
+    padding: '10px 12px',
+    marginBottom: 10,
+  },
+  khqrNoticeIcon: { fontSize: 18, lineHeight: 1.3, flexShrink: 0 },
+  khqrNoticeBody: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' as const, gap: 2 },
+  khqrNoticeTitle: { fontSize: 12, fontWeight: 700, color: '#7c4a00' },
+  khqrNoticeText: { fontSize: 11, color: '#ad6800', lineHeight: 1.5 },
   dimRow: { display: 'flex', gap: 8, marginBottom: 10 },
   dimBtn: {
     flex: 1,

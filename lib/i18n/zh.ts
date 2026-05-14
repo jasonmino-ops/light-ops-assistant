@@ -240,6 +240,8 @@ const zh = {
     editBtn: '修改',
     cancelBtn: '取消',
     saveBtnFull: '保存',
+    khqrModeNoticeTitle: 'KHQR 收款当前模式',
+    khqrModeNoticeBody: '当前 KHQR 使用商户上传的静态收款码图片；动态 KHQR 自动查单 / 回调将在后续版本接入。',
     bannerQuickTitle: '首页门头管理',
     bannerNoneHint: '暂未上传，点击上传图片',
     annNonePlaceholder: '暂无公告',

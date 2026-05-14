@@ -240,6 +240,8 @@ const km = {
     editBtn: 'កែប្រែ',
     cancelBtn: 'បោះបង់',
     saveBtnFull: 'រក្សាទុក',
+    khqrModeNoticeTitle: 'របៀប KHQR បច្ចុប្បន្ន',
+    khqrModeNoticeBody: 'បច្ចុប្បន្ន KHQR ប្រើរូបភាពកូដទូទាត់ឋិតិវន្ត; KHQR ថាមវន្ត (ស្វ័យប្រវត្តិ / Callback) នឹងភ្ជាប់នៅជំនាន់ក្រោយ។',
     bannerQuickTitle: 'រូបភាពក្បាលទំព័រ',
     bannerNoneHint: 'មិនទាន់បង្ហោះ ចុចដើម្បីបង្ហោះ',
     annNonePlaceholder: 'គ្មានសេចក្តីប្រកាស',
