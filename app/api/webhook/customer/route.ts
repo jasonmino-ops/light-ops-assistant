@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { classifyIntent, type Lang } from '@/lib/bot/intent'
+import { TPL } from '@/lib/bot/templates'
+import { chatReply } from '@/lib/bot/handlers/chat'
+import { businessReply } from '@/lib/bot/handlers/business'
+import { escalateReply } from '@/lib/bot/handlers/escalate'
 
 /**
  * POST /api/webhook/customer
@@ -187,17 +192,132 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // 其他消息：同样回复入口按钮（保持原行为）
-  const menuUrl = `${APP_URL}/menu?code=${encodeURIComponent(DEFAULT_STORE)}`
-  await tgSend('sendMessage', {
-    chat_id: chatId,
-    text: '点击下方按钮查看商品并下单 👇',
-    reply_markup: {
-      inline_keyboard: [[
-        { text: '🛍️ 查看商品', web_app: { url: menuUrl } },
-      ]],
-    },
+  // ── 三层对话路由（阶段一：纯规则）─────────────────────────────────────
+  const telegramId = String(msg.from?.id ?? '')
+  if (!telegramId) return NextResponse.json({ ok: true })
+
+  // 频控：60s 内 > 10 提示稍候；> 30 静默
+  const rl = checkRate(telegramId)
+  const langForRL: Lang = normalizeLang(msg.from?.language_code)
+  if (rl === 'BLOCK') return NextResponse.json({ ok: true })
+  if (rl === 'WARN') {
+    await tgSend('sendMessage', { chat_id: chatId, text: RATE_HINT[langForRL] })
+    return NextResponse.json({ ok: true })
+  }
+
+  // 找顾客上下文（最近活跃的 active contact）
+  const contact = await prisma.storeCustomerContact.findFirst({
+    where:   { telegramId, status: 'active' },
+    orderBy: { lastSeenAt: 'desc' },
+    select:  { tenantId: true, storeCode: true, telegramLanguageCode: true },
+  }).catch(() => null)
+
+  // 没绑过：fallback 到 DEFAULT_STORE 的 tenant（仍能回闲聊/转人工，但订单查询查不到）
+  let tenantId   = contact?.tenantId  ?? null
+  let storeCode  = contact?.storeCode ?? DEFAULT_STORE
+  let storeName  = ''
+  const fbStore = await prisma.store.findUnique({
+    where: { code: storeCode }, select: { tenantId: true, name: true },
+  }).catch(() => null)
+  if (fbStore) {
+    if (!tenantId) tenantId = fbStore.tenantId
+    storeName = fbStore.name
+  }
+  const lang: Lang = normalizeLang(contact?.telegramLanguageCode ?? msg.from?.language_code)
+
+  // 语音消息直接温柔引导
+  if (msg.voice || msg.video_note || msg.audio) {
+    const reply = TPL.voice[lang]
+    await tgSend('sendMessage', { chat_id: chatId, text: reply })
+    void logConv({ tenantId, storeCode, telegramId, lang, direction: 'IN',  text: '[voice]', intentLayer: 2, intentSource: 'VOICE', escalated: false })
+    void logConv({ tenantId, storeCode, telegramId, lang, direction: 'OUT', text: reply,     intentLayer: 2, intentSource: 'VOICE', escalated: false })
+    return NextResponse.json({ ok: true })
+  }
+
+  // 文字消息：分类 → 分发
+  const intent = classifyIntent(text, lang)
+  void logConv({
+    tenantId, storeCode, telegramId, lang,
+    direction: 'IN', text: text.slice(0, 1000),
+    intentLayer: intent.layer, intentSlot: intent.slot ?? intent.chatKind ?? null,
+    intentSource: intent.source, escalated: intent.escalate,
+  })
+
+  let reply = ''
+  if (intent.layer === 1 && intent.slot && tenantId) {
+    reply = await businessReply(intent.slot, { text, lang, storeCode, storeName, tenantId, telegramId })
+  } else if (intent.layer === 2 && intent.chatKind) {
+    reply = chatReply(intent.chatKind, lang, storeName || DEFAULT_STORE)
+  } else {
+    reply = escalateReply({ text, lang, tenantId: tenantId ?? '', telegramId, source: intent.source })
+  }
+
+  await tgSend('sendMessage', { chat_id: chatId, text: reply })
+  void logConv({
+    tenantId, storeCode, telegramId, lang,
+    direction: 'OUT', text: reply,
+    intentLayer: intent.layer, intentSlot: intent.slot ?? intent.chatKind ?? null,
+    intentSource: intent.source, escalated: intent.escalate,
   })
 
   return NextResponse.json({ ok: true })
+}
+
+// ── 工具：lang normalize / 频控 / 日志 / 频控文案 ─────────────────────────
+
+function normalizeLang(v: string | null | undefined): Lang {
+  const s = (v ?? '').toLowerCase()
+  if (s === 'zh' || s.startsWith('zh-') || s.startsWith('zh_')) return 'zh'
+  if (s === 'en' || s.startsWith('en-') || s.startsWith('en_')) return 'en'
+  if (s === 'km' || s.startsWith('km-') || s.startsWith('kh') || s === 'km_kh') return 'km'
+  return 'zh'
+}
+
+const RATE_HINT: Record<Lang, string> = {
+  zh: '您消息有点多，我先休息一下哦～❤️',
+  en: "I'm catching up — please give me a moment ❤️",
+  km: 'ខ្ញុំសុំសម្រាកបន្តិច សូមមួយរំពេច ❤️',
+}
+
+// 模块级 in-memory 频控（serverless 实例级；够用，跨实例不共享）
+const rateMap = new Map<string, number[]>()
+function checkRate(telegramId: string): 'OK' | 'WARN' | 'BLOCK' {
+  const now = Date.now()
+  const arr = (rateMap.get(telegramId) ?? []).filter((t) => now - t < 60_000)
+  arr.push(now)
+  rateMap.set(telegramId, arr)
+  if (arr.length > 30) return 'BLOCK'
+  if (arr.length > 10) return 'WARN'
+  return 'OK'
+}
+
+type LogEntry = {
+  tenantId:     string | null
+  storeCode:    string | null
+  telegramId:   string
+  lang:         string
+  direction:    'IN' | 'OUT'
+  text:         string
+  intentLayer:  number | null
+  intentSlot?:  string | null
+  intentSource: string
+  escalated:    boolean
+}
+async function logConv(e: LogEntry): Promise<void> {
+  try {
+    await prisma.conversationLog.create({
+      data: {
+        tenantId:     e.tenantId,
+        storeCode:    e.storeCode,
+        telegramId:   e.telegramId,
+        lang:         e.lang,
+        direction:    e.direction,
+        text:         e.text,
+        intentLayer:  e.intentLayer ?? undefined,
+        intentSlot:   e.intentSlot ?? undefined,
+        intentSource: e.intentSource,
+        escalated:    e.escalated,
+      },
+    })
+  } catch { /* DDL 未跑或落盘失败时静默，不影响回复 */ }
 }

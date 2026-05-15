@@ -598,3 +598,23 @@ model CouponIssueBatch {
 
   @@index([tenantId, createdAt])
 }
+
+// ─── 顾客 bot 三层对话日志（阶段一） ─────────────────────────────────────
+// 数据底座由 Supabase SQL Editor 手动建表：docs/db/CONVERSATION_LOG_DDL.md
+model ConversationLog {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  storeCode    String?
+  telegramId   String
+  lang         String?      // zh | en | km
+  direction    String       // IN | OUT
+  text         String   @db.Text
+  intentLayer  Int?
+  intentSlot   String?
+  intentSource String?      // RISK | BIZ | CHAT | FALLBACK_SHORT | FALLBACK_UNKNOWN | VOICE | RATE_LIMIT
+  escalated    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([telegramId, createdAt])
+  @@index([tenantId, createdAt])
+}
