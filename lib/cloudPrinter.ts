@@ -165,44 +165,82 @@ function buildReceiptText(input: ReceiptInput): string {
 
 // ── 打印 ──────────────────────────────────────────────────────────────────
 
-export async function printReceipt(
-  input: ReceiptInput,
-): Promise<{ ok: boolean; error?: string }> {
+export type PrintResult = {
+  ok: boolean
+  error?: string
+  httpStatus?: number
+  rawBody?: unknown
+  parsedDiag?: {
+    code?: unknown
+    message?: unknown
+    dataCode?: unknown
+    dataMessage?: unknown
+    reqId?: unknown
+  }
+  request?: {
+    devid: string
+    pwidth: number
+    ptype: number
+    pcopy: number
+    vtype: number
+    msgPreview: string  // 前 200 字符
+  }
+}
+
+export async function printReceipt(input: ReceiptInput): Promise<PrintResult> {
   if (!isPrinterConfigured()) return { ok: false, error: 'PRINTER_NOT_CONFIGURED' }
   const token = await getPrinterToken()
   if (!token) return { ok: false, error: 'TOKEN_FAILED' }
 
-  const msg = buildReceiptText(input)
+  // SW-AIOT 官方标准：msg 必须是 { "print": [...lines...] } 形式（stringify 后传）
+  const lines = buildReceiptText(input).split('\n').filter((s) => s.trim().length > 0)
+  const msgObj = { print: lines }
+  const msgStr = JSON.stringify(msgObj)
+
+  const requestParams = { devid: DEVID, pwidth: 58, ptype: 1, pcopy: 1, vtype: -1 }
+  const reqMeta = { ...requestParams, msgPreview: msgStr.slice(0, 200) }
+
   try {
-    const times = Date.now() // 13 位毫秒，与 token 接口口径一致
     const r = await fetch(PRINT_API, {
       method: 'POST',
       headers: {
+        token,                        // 与 bindDevice 一致（非 Authorization Bearer）
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        devid: DEVID,
-        key: KEY,
-        msg,
-        times,
+        devid:  DEVID,
+        key:    KEY,
+        msg:    msgStr,
+        times:  Date.now(),
+        pwidth: 58,
+        ptype:  1,
+        pcopy:  1,
+        vtype:  -1,
       }),
     })
+    const httpStatus = r.status
     const body = await r.json().catch(() => null) as Record<string, unknown> | null
-    // 兼容多种"成功"返回（具体以厂商为准）
     const ok =
       r.ok &&
-      (body?.code === 0 ||
-        body?.code === '0' ||
-        body?.success === true ||
-        body?.status === 'ok')
-    if (ok) return { ok: true }
+      (body?.code === 0 || body?.code === '0' || body?.success === true || body?.status === 'ok')
+
+    const data = body?.data as Record<string, unknown> | undefined
+    const parsedDiag = {
+      code:        body?.code,
+      message:     body?.message ?? body?.msg,
+      dataCode:    data?.code,
+      dataMessage: data?.message,
+      reqId:       body?.reqId ?? body?.requestId ?? body?.request_id,
+    }
+
+    if (ok) return { ok: true, httpStatus, rawBody: body, parsedDiag, request: reqMeta }
     return {
       ok: false,
-      error: (body?.message ?? body?.msg ?? body?.error ?? `HTTP ${r.status}`) as string,
+      error: String(body?.message ?? body?.msg ?? body?.error ?? `HTTP ${httpStatus}`),
+      httpStatus, rawBody: body, parsedDiag, request: reqMeta,
     }
   } catch (e) {
-    return { ok: false, error: (e as Error).message ?? 'network error' }
+    return { ok: false, error: (e as Error).message ?? 'network error', request: reqMeta }
   }
 }
 

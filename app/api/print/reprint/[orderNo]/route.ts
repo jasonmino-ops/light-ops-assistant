@@ -82,8 +82,8 @@ export async function POST(
     reason:   'reprint',
   })
 
-  if (!result.ok) {
-    return NextResponse.json({ error: 'PRINT_FAILED', message: result.error }, { status: 502 })
-  }
-  return NextResponse.json({ ok: true, orderNo: order.orderNo })
+  return NextResponse.json(
+    { ...result, orderNo: order.orderNo },
+    { status: result.ok ? 200 : 502 },
+  )
 }

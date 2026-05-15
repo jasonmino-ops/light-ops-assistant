@@ -53,8 +53,9 @@ export async function POST(req: NextRequest) {
     reason: 'test',
   })
 
-  if (!result.ok) {
-    return NextResponse.json({ error: 'PRINT_FAILED', message: result.error }, { status: 502 })
-  }
-  return NextResponse.json({ ok: true, orderNo: fakeOrderNo })
+  // 不论成败都透传完整 result（含 parsedDiag / rawBody / request），便于前端 dashboard 展示诊断
+  return NextResponse.json(
+    { ...result, orderNo: fakeOrderNo },
+    { status: result.ok ? 200 : 502 },
+  )
 }

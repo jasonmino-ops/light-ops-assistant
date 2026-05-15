@@ -1111,11 +1111,19 @@ function PrinterPanel() {
   useEffect(() => { refresh() }, [refresh])
 
   async function handleTest() {
-    setTesting(true); setMsg(null)
+    setTesting(true); setMsg(null); setDiag(null)
     try {
       const r = await apiFetch('/api/print/test', { method: 'POST' }, OWNER_CTX)
       const body = await r.json().catch(() => ({}))
-      setMsg({ ok: r.ok, text: r.ok ? '✓ 测试小票已发送' : (body.message ?? body.error ?? '打印失败') })
+      // 失败时显示完整 printMsg 诊断（含 parsedDiag.code / message / dataCode / dataMessage / reqId）
+      if (!r.ok || !body?.ok) {
+        setDiag(body)
+        const pd = body?.parsedDiag as { message?: unknown; dataMessage?: unknown } | undefined
+        const errMsg = String(pd?.dataMessage ?? pd?.message ?? body?.error ?? body?.message ?? '打印失败')
+        setMsg({ ok: false, text: `打印失败：${errMsg}` })
+      } else {
+        setMsg({ ok: true, text: '✓ 测试小票已发送' })
+      }
       refresh()
     } catch {
       setMsg({ ok: false, text: '网络错误' })
@@ -1169,13 +1177,20 @@ function PrinterPanel() {
 
   async function handleReprintLast() {
     if (!data) return
-    const last = data.recent.find((r) => r.status === 'SUCCESS' && r.orderNo && !r.orderNo.startsWith('TEST-'))
+    const last = data.recent.find((r) => r.status === 'SUCCESS' && r.orderNo && !r.orderNo.startsWith('TEST-') && !r.orderNo.startsWith('BIND-'))
     if (!last?.orderNo) { setMsg({ ok: false, text: '暂无可重打的真实订单' }); return }
-    setReprinting(true); setMsg(null)
+    setReprinting(true); setMsg(null); setDiag(null)
     try {
       const r = await apiFetch(`/api/print/reprint/${encodeURIComponent(last.orderNo)}`, { method: 'POST' }, OWNER_CTX)
       const body = await r.json().catch(() => ({}))
-      setMsg({ ok: r.ok, text: r.ok ? `✓ 已重打 ${last.orderNo}` : (body.message ?? body.error ?? '重打失败') })
+      if (!r.ok || !body?.ok) {
+        setDiag(body)
+        const pd = body?.parsedDiag as { message?: unknown; dataMessage?: unknown } | undefined
+        const errMsg = String(pd?.dataMessage ?? pd?.message ?? body?.error ?? body?.message ?? '重打失败')
+        setMsg({ ok: false, text: `重打失败：${errMsg}` })
+      } else {
+        setMsg({ ok: true, text: `✓ 已重打 ${last.orderNo}` })
+      }
       refresh()
     } catch {
       setMsg({ ok: false, text: '网络错误' })
