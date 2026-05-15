@@ -313,7 +313,8 @@ export default function OrderDetailSheet({
             {/* 配送/上门 */}
             {(d.deliveryAddress || d.customerPhone) && (
               <div style={sh.section}>
-                <div style={sh.sectionLabel}>🚚 送货/上门</div>
+                <div style={sh.deliveryBanner}>🚚 送货/上门订单</div>
+                <div style={sh.sectionLabel}>详情</div>
                 {d.customerName    && <InfoRow label="联系人" value={d.customerName} />}
                 {d.customerPhone   && <InfoRow label="电话"   value={d.customerPhone} />}
                 {d.deliveryAddress && (
@@ -512,6 +513,11 @@ const sh: Record<string, React.CSSProperties> = {
   subAmt:   { fontSize: 14, fontWeight: 600, color: '#1a1a1a' },
   totalLabel: { fontSize: 14, fontWeight: 600, color: '#1a1a1a' },
   totalAmt: { fontSize: 20, fontWeight: 700, color: '#1677ff' },
+  deliveryBanner: {
+    fontSize: 13, fontWeight: 700, color: '#1677ff',
+    background: '#e6f4ff', border: '1px solid #91caff',
+    borderRadius: 8, padding: '6px 10px', marginBottom: 8,
+  },
   infoRowWrap: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   infoLabel: { fontSize: 13, color: '#8c8c8c', flexShrink: 0 },
   infoValue: { fontSize: 13, color: '#1a1a1a', textAlign: 'right' },

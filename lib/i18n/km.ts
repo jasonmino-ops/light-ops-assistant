@@ -196,6 +196,11 @@ const km = {
     payPending: 'រង់ចាំទូទាត់',
     payPaid: 'បានទូទាត់',
     payCancelled: 'បានបោះបង់',
+    delivery: 'ដឹក/សេវាដល់ផ្ទះ',
+    deliveryTag: '🚚 ដឹក/សេវាដល់ផ្ទះ',
+    deliveryPhone: 'ទូរស័ព្ទ',
+    deliveryAddr: 'អាសយដ្ឋាន',
+    deliveryMap: 'ផែនទី ›',
   },
   dashboard: {
     title: 'ទិដ្ឋភាពអាជីវកម្ម',

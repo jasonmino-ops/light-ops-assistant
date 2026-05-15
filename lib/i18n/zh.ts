@@ -196,6 +196,11 @@ const zh = {
     payPending: '待收款',
     payPaid: '已付',
     payCancelled: '已取消',
+    delivery: '送货/上门',
+    deliveryTag: '🚚 送货/上门',
+    deliveryPhone: '电话',
+    deliveryAddr: '地址',
+    deliveryMap: '地图 ›',
   },
   dashboard: {
     title: '经营概览',

@@ -28,6 +28,13 @@ type RecordItem = {
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
   source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
+  // 送货/上门（仅 CUSTOMER_ORDER 行）
+  isDelivery?: boolean
+  customerPhone?: string | null
+  deliveryAddress?: string | null
+  deliveryLat?: number | null
+  deliveryLng?: number | null
+  mapUrl?: string | null
 }
 
 type Summary = {
@@ -36,6 +43,8 @@ type Summary = {
   netAmount: number
   cashSaleAmount?: number
   khqrSaleAmount?: number
+  deliveryCount?: number
+  deliveryAmount?: number
 }
 
 type ApiResponse = {
@@ -57,6 +66,11 @@ type OrderGroup = {
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
   source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
+  // 送货/上门摘要
+  isDelivery?: boolean
+  customerPhone?: string | null
+  deliveryAddress?: string | null
+  mapUrl?: string | null
 }
 
 type RefundEntry = {
@@ -112,6 +126,10 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
           paymentMethod: item.paymentMethod ?? null,
           paymentStatus: item.paymentStatus ?? null,
           source: item.source,
+          isDelivery:      item.isDelivery ?? false,
+          customerPhone:   item.customerPhone   ?? null,
+          deliveryAddress: item.deliveryAddress ?? null,
+          mapUrl:          item.mapUrl          ?? null,
         })
       }
       const g = groupMap.get(key)!
@@ -264,6 +282,14 @@ export default function RecordsPage() {
                 <span style={s.payBreakItem}>📱 {t('records.khqrSale')} {fmtAmount(summary.khqrSaleAmount ?? 0)}</span>
               </div>
             )}
+            {(summary.deliveryCount ?? 0) > 0 && (
+              <div style={s.deliveryStatCard}>
+                <span style={s.deliveryStatTag}>{t('records.deliveryTag')}</span>
+                <span style={s.deliveryStatNum}>{summary.deliveryCount} {t('records.unit')}</span>
+                <span style={s.payBreakSep}>·</span>
+                <span style={s.deliveryStatAmt}>{fmtAmount(summary.deliveryAmount ?? 0)}</span>
+              </div>
+            )}
           </>
         )}
 
@@ -381,12 +407,25 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, o
         {group.source === 'CUSTOMER_ORDER' && (
           <span style={s.tagH5}>H5 顾客</span>
         )}
+        {group.isDelivery && (
+          <span style={s.tagDelivery}>🚚 送货/上门</span>
+        )}
         <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>
         <span style={s.cardRecordNo}>{group.orderNo}</span>
         <span style={{ ...s.payBadge, ...(isPending ? s.payBadgePending : {}) }}>
           {payMethodLabel}{payStatusLabel ? ` · ${payStatusLabel}` : ''}
         </span>
       </div>
+
+      {group.isDelivery && (group.customerPhone || group.deliveryAddress) && (
+        <div style={s.deliveryRow}>
+          {group.customerPhone   && <span style={s.deliveryPhone}>📞 {group.customerPhone}</span>}
+          {group.deliveryAddress && <span style={s.deliveryAddr}>📍 {group.deliveryAddress.length > 40 ? group.deliveryAddress.slice(0, 40) + '…' : group.deliveryAddress}</span>}
+          {group.mapUrl && (
+            <a href={group.mapUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={s.deliveryMap}>地图 ›</a>
+          )}
+        </div>
+      )}
 
       {isSingle ? (
         <div style={s.cardProduct}>
@@ -676,6 +715,27 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 10,
     border: '1px solid #ffd591',
   },
+  tagDelivery: {
+    fontSize: 11, fontWeight: 700,
+    background: '#e6f4ff', color: '#1677ff',
+    padding: '1px 7px', borderRadius: 10, border: '1px solid #91caff',
+  },
+  deliveryRow: {
+    display: 'flex', flexWrap: 'wrap' as const, gap: 8, alignItems: 'center',
+    fontSize: 12, color: '#595959',
+    background: '#f0f7ff', borderRadius: 6, padding: '4px 8px', marginTop: 4,
+  },
+  deliveryPhone: { fontWeight: 600 },
+  deliveryAddr:  { flex: 1, minWidth: 0, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const },
+  deliveryMap:   { color: '#1677ff', fontWeight: 700, textDecoration: 'none' },
+  deliveryStatCard: {
+    display: 'flex', alignItems: 'center', gap: 8,
+    background: '#f0f7ff', border: '1px solid #91caff',
+    borderRadius: 8, padding: '8px 12px', marginTop: 8,
+  },
+  deliveryStatTag: { fontSize: 12, fontWeight: 700, color: '#1677ff' },
+  deliveryStatNum: { fontSize: 13, fontWeight: 700, color: 'var(--text)' },
+  deliveryStatAmt: { fontSize: 13, fontWeight: 700, color: '#1677ff' },
   cardTime: {
     fontSize: 13,
     color: 'var(--muted)',

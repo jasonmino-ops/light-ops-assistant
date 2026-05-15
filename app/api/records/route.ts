@@ -206,6 +206,15 @@ export async function GET(req: NextRequest) {
       paymentMethod: pm as 'CASH' | 'KHQR',
       paymentStatus: 'PAID' as const,
       source: 'CUSTOMER_ORDER' as const,
+      // 配送/上门信息（按 deliveryAddress 是否非空判定 isDelivery）
+      isDelivery:      !!o.deliveryAddress,
+      customerName:    o.customerName ?? null,
+      customerPhone:   o.customerPhone ?? null,
+      deliveryAddress: o.deliveryAddress ?? null,
+      deliveryLat:     o.deliveryLat ?? null,
+      deliveryLng:     o.deliveryLng ?? null,
+      mapUrl: (o.deliveryLat != null && o.deliveryLng != null)
+        ? `https://maps.google.com/?q=${o.deliveryLat},${o.deliveryLng}` : null,
     }
   })
 
@@ -223,6 +232,10 @@ export async function GET(req: NextRequest) {
   const coKhqr = customerOrders
     .filter((o) => o.paymentMethod === 'QR')
     .reduce((s, o) => s + o.totalAmount.toNumber(), 0)
+  // 送货/上门统计：仅 CO 行参与（SR 是线下到店）
+  const deliveryOrders = customerOrders.filter((o) => !!o.deliveryAddress)
+  const deliveryCount  = deliveryOrders.length
+  const deliveryAmount = deliveryOrders.reduce((s, o) => s + o.totalAmount.toNumber(), 0)
 
   return NextResponse.json({
     total: total + coCount,
@@ -235,6 +248,8 @@ export async function GET(req: NextRequest) {
       netAmount: totalSaleAmount + totalRefundAmount + coSum,
       cashSaleAmount: breakdown.cashSaleAmount + coCash,
       khqrSaleAmount: breakdown.khqrSaleAmount + coKhqr,
+      deliveryCount,
+      deliveryAmount,
     },
   })
 }
