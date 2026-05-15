@@ -256,6 +256,9 @@ export default function DashboardPage() {
         </div>
         {showStoreConfig && <StoreConfigPanel t={t} />}
 
+        {/* 店铺类型（OWNER only — dashboard 本就 OWNER 才能进） */}
+        <BusinessTypeCard t={t} />
+
         {/* 首页门头快捷管理（折叠，默认收起） */}
         <details style={s.collapseCard}>
           <summary style={s.collapseSummary}>🏷️ {t('dashboard.bannerQuickTitle')}</summary>
@@ -928,6 +931,93 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
 }
 
 // ─── 首页门头快捷管理（OWNER 可见，dashboard 顶部直达） ────────────────────
+
+// ─── 店铺类型卡片（OWNER） ────────────────────────────────────────────────
+function BusinessTypeCard({ t }: { t: (k: string) => string }) {
+  const [value, setValue]     = useState<string>('GENERAL')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving]   = useState(false)
+  const [msg, setMsg]         = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    apiFetch('/api/store/settings', { cache: 'no-store' }, OWNER_CTX)
+      .then((r) => r.json())
+      .then((b) => { if (b && !b.error && b.businessType) setValue(b.businessType) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function pick(next: string) {
+    if (saving || next === value) return
+    setSaving(true); setMsg(null)
+    const prev = value
+    setValue(next)
+    try {
+      const r = await apiFetch('/api/store/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ businessType: next }),
+      }, OWNER_CTX)
+      const b = await r.json().catch(() => ({}))
+      if (r.ok) {
+        setMsg({ ok: true, text: t('dashboard.bizTypeSaved') })
+      } else {
+        setValue(prev)
+        setMsg({ ok: false, text: b.message ?? t('dashboard.bizTypeSaveFail') })
+      }
+    } catch {
+      setValue(prev)
+      setMsg({ ok: false, text: t('dashboard.bizTypeSaveFail') })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const items: Array<{ k: string; label: string }> = [
+    { k: 'FOOD',    label: t('dashboard.bizTypeFood') },
+    { k: 'RETAIL',  label: t('dashboard.bizTypeRetail') },
+    { k: 'SERVICE', label: t('dashboard.bizTypeService') },
+    { k: 'GENERAL', label: t('dashboard.bizTypeGeneral') },
+  ]
+
+  return (
+    <div style={bt.card}>
+      <div style={bt.title}>🏷️ {t('dashboard.bizTypeTitle')}</div>
+      <div style={bt.desc}>{t('dashboard.bizTypeDesc')}</div>
+      <div style={bt.row}>
+        {items.map((it) => {
+          const on = value === it.k
+          return (
+            <button
+              key={it.k}
+              type="button"
+              disabled={saving || loading}
+              onClick={() => pick(it.k)}
+              style={{ ...bt.btn, ...(on ? bt.btnOn : {}) }}
+            >
+              {it.label}{on && ' ✓'}
+            </button>
+          )
+        })}
+      </div>
+      {(saving || msg) && (
+        <div style={msg?.ok === false ? bt.err : bt.muted}>
+          {saving ? t('dashboard.bizTypeSaving') : msg?.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const bt: Record<string, React.CSSProperties> = {
+  card:  { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 10 },
+  title: { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
+  desc:  { fontSize: 12, color: 'var(--muted)', marginTop: 4, marginBottom: 10 },
+  row:   { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  btn:   { height: 36, fontSize: 13, fontWeight: 600, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 8, color: 'var(--text)', cursor: 'pointer' },
+  btnOn: { background: '#e6f4ff', borderColor: '#1677ff', color: '#1677ff' },
+  muted: { fontSize: 11, color: 'var(--muted)', marginTop: 8 },
+  err:   { fontSize: 11, color: '#cf1322', marginTop: 8 },
+}
 
 function BannerQuickPanel({ t }: { t: (k: string) => string }) {
   type S = { id: string; name: string; bannerUrl: string | null }

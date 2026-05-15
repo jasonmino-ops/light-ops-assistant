@@ -247,6 +247,16 @@ const zh = {
     bannerUploadFailed: '上传失败',
     bannerDeleteFailed: '删除失败',
     bannerNetworkError: '网络错误',
+    // 店铺类型卡片（OWNER）
+    bizTypeTitle: '店铺类型',
+    bizTypeDesc:  '店铺类型会影响顾客端显示的下单方式文案。',
+    bizTypeFood:    '餐饮',
+    bizTypeRetail:  '零售/电商',
+    bizTypeService: '服务',
+    bizTypeGeneral: '通用',
+    bizTypeSaving:  '保存中…',
+    bizTypeSaved:   '已保存',
+    bizTypeSaveFail:'保存失败',
     // 云打印机面板
     printerTitle: '云打印机',
     printerLoading: '加载中…',
