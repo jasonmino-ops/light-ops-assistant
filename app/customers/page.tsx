@@ -56,6 +56,7 @@ export default function CustomersPage() {
   const [selected,  setSelected]  = useState<Customer | null>(null)
   // Telegram 触达弹窗
   const [touchTarget, setTouchTarget] = useState<Customer | null>(null)
+  const [touchIntro, setTouchIntro]   = useState(false)
   const [toast, setToast]             = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   useEffect(() => {
@@ -129,13 +130,11 @@ export default function CustomersPage() {
           </div>
         )}
 
-        {/* 私域功能入口（占位） */}
+        {/* 私域功能入口 */}
         <div style={s.opsRow}>
-          {(['发券', 'Telegram 触达', '会员等级'] as const).map((name) => (
-            <button key={name} type="button" style={s.opsBtn} onClick={() => alert('该功能开发中，敬请期待')}>
-              {name}
-            </button>
-          ))}
+          <button type="button" style={s.opsBtn} onClick={() => alert('该功能开发中，敬请期待')}>发券</button>
+          <button type="button" style={s.opsBtn} onClick={() => setTouchIntro(true)}>Telegram 触达</button>
+          <button type="button" style={s.opsBtn} onClick={() => alert('该功能开发中，敬请期待')}>会员等级</button>
         </div>
 
         {/* 搜索 + 筛选 */}
@@ -208,6 +207,9 @@ export default function CustomersPage() {
           onTouch={() => { setTouchTarget(selected); setSelected(null) }}
         />
       )}
+
+      {/* Telegram 触达说明弹窗 */}
+      {touchIntro && <TouchIntroModal onClose={() => setTouchIntro(false)} />}
 
       {/* Telegram 触达弹窗 */}
       {touchTarget && (
@@ -404,6 +406,8 @@ const TEMPLATE_LABELS: Record<TemplateKey, { name: string; preview: string }> = 
   },
 }
 
+const MSG_MAX = 300
+
 function TouchModal({
   c,
   onClose,
@@ -413,17 +417,40 @@ function TouchModal({
   onClose: () => void
   onResult: (ok: boolean, text: string) => void
 }) {
-  const [tpl, setTpl]         = useState<TemplateKey>('THANK_YOU')
-  const [sending, setSending] = useState(false)
-  const [errMsg, setErrMsg]   = useState('')
+  const [tpl, setTpl]               = useState<TemplateKey>('THANK_YOU')
+  const [messageText, setMessageText] = useState<string>(TEMPLATE_LABELS.THANK_YOU.preview)
+  const [sending, setSending]       = useState(false)
+  const [errMsg, setErrMsg]         = useState('')
+
+  // 切换模板时自动用模板默认内容填充 textarea（覆盖当前编辑）
+  function selectTpl(k: TemplateKey) {
+    setTpl(k)
+    setMessageText(TEMPLATE_LABELS[k].preview)
+    setErrMsg('')
+  }
+
+  function restoreTpl() {
+    setMessageText(TEMPLATE_LABELS[tpl].preview)
+    setErrMsg('')
+  }
+
+  const trimmed   = messageText.trim()
+  const tooLong   = messageText.length > MSG_MAX
+  const tooShort  = trimmed.length === 0
+  const canSend   = !sending && !tooLong && !tooShort
 
   async function handleSend() {
+    if (!canSend) return
     setSending(true)
     setErrMsg('')
     try {
       const r = await apiFetch('/api/customers/touch', {
         method: 'POST',
-        body: JSON.stringify({ telegramId: c.telegramId, templateKey: tpl }),
+        body: JSON.stringify({
+          telegramId:  c.telegramId,
+          templateKey: tpl,
+          messageText: trimmed,
+        }),
       }, OWNER_CTX)
       const body = await r.json().catch(() => ({}))
       if (r.ok) {
@@ -439,6 +466,8 @@ function TouchModal({
       setSending(false)
     }
   }
+
+  const counterColor = tooLong ? '#cf1322' : (messageText.length > MSG_MAX * 0.9 ? '#fa8c16' : '#aaa')
 
   return (
     <div style={tm.mask} onClick={() => !sending && onClose()}>
@@ -456,24 +485,42 @@ function TouchModal({
               key={k}
               type="button"
               style={{ ...tm.tplBtn, ...(tpl === k ? tm.tplBtnOn : {}) }}
-              onClick={() => setTpl(k)}
+              onClick={() => selectTpl(k)}
             >
               {TEMPLATE_LABELS[k].name}
             </button>
           ))}
         </div>
 
-        <div style={tm.tplLabel}>消息预览</div>
-        <div style={tm.preview}>{TEMPLATE_LABELS[tpl].preview}</div>
-        <div style={tm.previewNote}>
-          实际发送时模板会自动按顾客 Telegram 语言（zh / en / km）渲染并填入门店名。
+        <div style={tm.editLabelRow}>
+          <span style={tm.tplLabel}>消息内容（可编辑）</span>
+          <button type="button" style={tm.restoreBtn} onClick={restoreTpl} disabled={sending}>
+            ↻ 恢复模板
+          </button>
+        </div>
+        <textarea
+          style={{ ...tm.textarea, ...(tooLong ? tm.textareaErr : {}) }}
+          rows={4}
+          maxLength={MSG_MAX + 50}
+          value={messageText}
+          onChange={(e) => { setMessageText(e.target.value); setErrMsg('') }}
+          disabled={sending}
+          placeholder="请输入要发送给该顾客的消息内容"
+        />
+        <div style={tm.counterRow}>
+          <span style={tm.previewNote}>
+            实际发送以上方内容为准；模板用于节流与统计。
+          </span>
+          <span style={{ ...tm.counter, color: counterColor }}>
+            {messageText.length}/{MSG_MAX}
+          </span>
         </div>
 
         {errMsg && <div style={tm.err}>{errMsg}</div>}
 
         <div style={tm.actions}>
           <button type="button" style={tm.cancelBtn} onClick={onClose} disabled={sending}>取消</button>
-          <button type="button" style={tm.sendBtn} onClick={handleSend} disabled={sending}>
+          <button type="button" style={{ ...tm.sendBtn, ...(canSend ? {} : tm.sendBtnDisabled) }} onClick={handleSend} disabled={!canSend}>
             {sending ? '发送中…' : '确认发送'}
           </button>
         </div>
@@ -493,11 +540,49 @@ const tm: Record<string, React.CSSProperties> = {
   tplBtn: { flex: 1, height: 34, fontSize: 12, fontWeight: 600, background: '#f5f5f5', color: '#666', border: 'none', borderRadius: 6, cursor: 'pointer' },
   tplBtnOn: { background: '#1677ff', color: '#fff' },
   preview: { fontSize: 13, color: '#1a1a1a', background: '#f7f8fa', borderRadius: 8, padding: '10px 12px', lineHeight: 1.5, border: '1px solid #ebebeb' },
-  previewNote: { fontSize: 11, color: '#aaa', lineHeight: 1.4, marginTop: 2 },
+  previewNote: { fontSize: 11, color: '#aaa', lineHeight: 1.4, marginTop: 2, flex: 1 },
+  editLabelRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  restoreBtn: { fontSize: 11, color: '#1677ff', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px' },
+  textarea: { fontSize: 13, color: '#1a1a1a', background: '#fff', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5, border: '1px solid #d9d9d9', resize: 'vertical' as const, fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box' as const },
+  textareaErr: { borderColor: '#ff4d4f' },
+  counterRow: { display: 'flex', alignItems: 'center', gap: 8 },
+  counter: { fontSize: 11, fontFamily: 'monospace' as const },
   err: { fontSize: 12, color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 6, padding: '6px 8px' },
   actions: { display: 'flex', gap: 8, marginTop: 8 },
   cancelBtn: { flex: 1, height: 38, fontSize: 14, color: '#666', background: '#f5f5f5', border: 'none', borderRadius: 8, cursor: 'pointer' },
   sendBtn: { flex: 2, height: 38, fontSize: 14, fontWeight: 700, color: '#fff', background: '#1677ff', border: 'none', borderRadius: 8, cursor: 'pointer' },
+  sendBtnDisabled: { background: '#bfbfbf', cursor: 'not-allowed' },
+  introList: { display: 'flex', flexDirection: 'column' as const, gap: 10, marginTop: 4 },
+  introItem: { fontSize: 13, color: '#1a1a1a', lineHeight: 1.55, background: '#f7f8fa', borderRadius: 8, padding: '10px 12px', border: '1px solid #ebebeb' },
+  introItemMuted: { fontSize: 13, color: '#666', lineHeight: 1.55, background: '#fafafa', borderRadius: 8, padding: '10px 12px', border: '1px dashed #d9d9d9' },
+  introLabel: { display: 'inline-block', fontSize: 10, fontWeight: 700, color: '#888', background: '#e8e8e8', padding: '1px 6px', borderRadius: 3, marginRight: 6, letterSpacing: '0.04em' },
+  introLabelSoon: { display: 'inline-block', fontSize: 10, fontWeight: 700, color: '#1677ff', background: '#e6f4ff', padding: '1px 6px', borderRadius: 3, marginRight: 6, letterSpacing: '0.04em', border: '1px solid #91caff' },
+  introClose: { width: '100%', height: 38, fontSize: 14, fontWeight: 700, color: '#fff', background: '#1677ff', border: 'none', borderRadius: 8, cursor: 'pointer', marginTop: 6 },
+}
+
+function TouchIntroModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div style={tm.mask} onClick={onClose}>
+      <div style={tm.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={tm.title}>📨 Telegram 触达</div>
+        <div style={tm.introList}>
+          <div style={tm.introItem}>
+            <span style={tm.introLabel}>当前</span>
+            已支持对单个已绑定顾客发送 Telegram 消息。
+          </div>
+          <div style={tm.introItem}>
+            <span style={tm.introLabel}>用法</span>
+            请在下方顾客列表中选择顾客，点击「📨 触达」发送。
+          </div>
+          <div style={tm.introItemMuted}>
+            <span style={tm.introLabelSoon}>即将</span>
+            批量触达、分组触达、发券联动、复购提醒。
+          </div>
+        </div>
+        <button type="button" style={tm.introClose} onClick={onClose}>知道了</button>
+      </div>
+    </div>
+  )
 }
 
 // ─── 工具 ────────────────────────────────────────────────────────────────────

@@ -4,12 +4,17 @@
  * 商户 OWNER 对本店已绑定 Telegram 的顾客发送模板化 Telegram 消息。
  *
  * Body:
- *   { telegramId: string, templateKey: 'THANK_YOU' | 'PROMO' | 'ORDER_CARE' }
+ *   {
+ *     telegramId:   string,
+ *     templateKey:  'THANK_YOU' | 'PROMO' | 'ORDER_CARE',
+ *     messageText?: string,           // 商户基于模板编辑后的最终内容（trim 后 1~300）
+ *   }
  *
  * 安全：
  *   - role !== 'OWNER' → 403
  *   - StoreCustomerContact 必须属当前 tenant（防跨租户）
  *   - 必须有 telegramId（页面已过滤，后端二次校验）
+ *   - messageText：trim 非空、长度 ≤ 300（缺失则用模板默认渲染）
  *   - 24h 同顾客同模板节流 → 429 THROTTLED
  *
  * 通道：
@@ -32,6 +37,7 @@ type Lang = 'zh' | 'en' | 'km'
 
 const VALID_KEYS = new Set(['THANK_YOU', 'PROMO', 'ORDER_CARE'])
 const THROTTLE_MS = 24 * 60 * 60 * 1000 // 同顾客同模板 24h 节流
+const MSG_MAX_LEN = 300                 // 商户编辑后的消息最大长度（字符数）
 
 const TEMPLATES: Record<TemplateKey, Record<Lang, (storeName: string) => string>> = {
   THANK_YOU: {
@@ -65,7 +71,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'FORBIDDEN', message: '只有老板可以触达顾客' }, { status: 403 })
   }
 
-  let body: { telegramId?: string; templateKey?: string }
+  let body: { telegramId?: string; templateKey?: string; messageText?: string }
   try {
     body = await req.json()
   } catch {
@@ -76,6 +82,25 @@ export async function POST(req: NextRequest) {
   const templateKey = (body.templateKey ?? '').trim() as TemplateKey
   if (!telegramId || !VALID_KEYS.has(templateKey)) {
     return NextResponse.json({ error: 'INVALID_PARAMS', message: '参数无效' }, { status: 400 })
+  }
+
+  // messageText：商户编辑后的最终内容；可选字段，若提供则需 trim 非空 + ≤ 300 字
+  let userText: string | null = null
+  if (typeof body.messageText === 'string') {
+    const t = body.messageText.trim()
+    if (t.length === 0) {
+      return NextResponse.json(
+        { error: 'INVALID_MESSAGE', message: '消息内容不能为空' },
+        { status: 400 },
+      )
+    }
+    if (t.length > MSG_MAX_LEN) {
+      return NextResponse.json(
+        { error: 'INVALID_MESSAGE', message: `消息内容最多 ${MSG_MAX_LEN} 字` },
+        { status: 400 },
+      )
+    }
+    userText = t
   }
 
   // ── 1) 校验顾客属本租户 + 已绑定 TG ─────────────────────────────────────
@@ -129,7 +154,8 @@ export async function POST(req: NextRequest) {
   }
 
   const lang = pickLang(contact.telegramLanguageCode)
-  const messageText = TEMPLATES[templateKey][lang](store.name)
+  // 优先使用商户编辑后的内容；缺失时 fallback 到模板按顾客语言渲染
+  const messageText = userText ?? TEMPLATES[templateKey][lang](store.name)
 
   // ── 4) 走顾客 bot 发送（不使用商户/OPS bot） ──────────────────────────
   const customerBotToken = process.env.CUSTOMER_BOT_TOKEN
