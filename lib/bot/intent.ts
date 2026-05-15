@@ -98,18 +98,20 @@ export function classifyIntent(rawText: string, lang: Lang): IntentResult {
     }
   }
 
-  const { biz, chat } = dictFor(lang)
-
-  // 业务槽位
-  const bizHit = findBizSlot(text, biz)
-  if (bizHit) {
-    return { layer: 1, slot: bizHit.slot, escalate: false, confidence: 0.85, matchedKeyword: bizHit.kw, source: 'BIZ' }
+  // 业务槽位（跨三语扫描，避免顾客混用语言时漏判）
+  for (const l of allDicts) {
+    const bizHit = findBizSlot(text, dictFor(l).biz)
+    if (bizHit) {
+      return { layer: 1, slot: bizHit.slot, escalate: false, confidence: 0.85, matchedKeyword: bizHit.kw, source: 'BIZ' }
+    }
   }
 
-  // 闲聊
-  const chatHit = findChatKind(text, chat)
-  if (chatHit) {
-    return { layer: 2, chatKind: chatHit.kind, escalate: false, confidence: 0.8, matchedKeyword: chatHit.kw, source: 'CHAT' }
+  // 闲聊（跨三语扫描，"thanks"/"អរគុណ"/"谢谢" 均能命中 → 不通知商户）
+  for (const l of allDicts) {
+    const chatHit = findChatKind(text, dictFor(l).chat)
+    if (chatHit) {
+      return { layer: 2, chatKind: chatHit.kind, escalate: false, confidence: 0.8, matchedKeyword: chatHit.kw, source: 'CHAT' }
+    }
   }
 
   // 短文本兜底为问候
