@@ -225,17 +225,44 @@ export default function DashboardPage() {
       </div>
 
       <div style={s.body}>
-        {/* KHQR 当前模式提示（第一阶段：静态图 + 人工确认；动态码后续接入） */}
-        <div style={s.khqrNotice}>
+        {/* KHQR 当前模式提示（压缩为一行） */}
+        <div style={s.khqrNoticeSlim}>
           <span style={s.khqrNoticeIcon}>📱</span>
-          <div style={s.khqrNoticeBody}>
-            <div style={s.khqrNoticeTitle}>{t('dashboard.khqrModeNoticeTitle')}</div>
-            <div style={s.khqrNoticeText}>{t('dashboard.khqrModeNoticeBody')}</div>
-          </div>
+          <span style={s.khqrNoticeTitle}>{t('dashboard.khqrModeNoticeTitle')}</span>
         </div>
 
-        {/* 首页门头快捷管理（OWNER only — dashboard 本就 OWNER 才能进） */}
-        <BannerQuickPanel t={t} />
+        {/* 大入口区：顾客资产 + 门店配置（首屏必见） */}
+        <div style={s.bigEntryRow}>
+          <Link href="/customers" style={s.bigEntryCard}>
+            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#69b1ff,#1677ff)' }}>👥</div>
+            <div style={s.bigEntryBody}>
+              <div style={s.bigEntryTitle}>{t('dashboard.customersCenter')}</div>
+              <div style={s.bigEntryDesc}>{t('dashboard.customersCenterDesc')}</div>
+            </div>
+            <span style={s.bigEntryArrow}>›</span>
+          </Link>
+          <button
+            type="button"
+            style={s.bigEntryCard}
+            onClick={() => setShowStoreConfig((v) => !v)}
+          >
+            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ffc069,#fa8c16)' }}>🏪</div>
+            <div style={s.bigEntryBody}>
+              <div style={s.bigEntryTitle}>{t('dashboard.storeSettings')}</div>
+              <div style={s.bigEntryDesc}>{t('dashboard.storeSettingsDesc')}</div>
+            </div>
+            <span style={s.bigEntryArrow}>{showStoreConfig ? '▴' : '›'}</span>
+          </button>
+        </div>
+        {showStoreConfig && <StoreConfigPanel t={t} />}
+
+        {/* 首页门头快捷管理（折叠，默认收起） */}
+        <details style={s.collapseCard}>
+          <summary style={s.collapseSummary}>🏷️ 首页门头管理</summary>
+          <div style={{ marginTop: 8 }}>
+            <BannerQuickPanel t={t} />
+          </div>
+        </details>
 
         {/* 云打印机面板（高级版） */}
         <PrinterPanel />
@@ -361,31 +388,6 @@ export default function DashboardPage() {
         {!loading && result && (
           <Overview result={result} t={t} heroLabel={heroLabelText} />
         )}
-
-        {/* 大入口区：顾客资产 + 门店配置（上移到 Overview 下方，保证首屏可见） */}
-        <div style={s.bigEntryRow}>
-          <Link href="/customers" style={s.bigEntryCard}>
-            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#69b1ff,#1677ff)' }}>👥</div>
-            <div style={s.bigEntryBody}>
-              <div style={s.bigEntryTitle}>{t('dashboard.customersCenter')}</div>
-              <div style={s.bigEntryDesc}>{t('dashboard.customersCenterDesc')}</div>
-            </div>
-            <span style={s.bigEntryArrow}>›</span>
-          </Link>
-          <button
-            type="button"
-            style={s.bigEntryCard}
-            onClick={() => setShowStoreConfig((v) => !v)}
-          >
-            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ffc069,#fa8c16)' }}>🏪</div>
-            <div style={s.bigEntryBody}>
-              <div style={s.bigEntryTitle}>{t('dashboard.storeSettings')}</div>
-              <div style={s.bigEntryDesc}>{t('dashboard.storeSettingsDesc')}</div>
-            </div>
-            <span style={s.bigEntryArrow}>{showStoreConfig ? '▴' : '›'}</span>
-          </button>
-        </div>
-        {showStoreConfig && <StoreConfigPanel t={t} />}
 
         {/* Hot products (GLOBAL / STORE only) — 合并为 tab 切换 */}
         {dimension !== 'STAFF' && (
@@ -1222,50 +1224,59 @@ function PrinterPanel() {
       )}
 
       {data.tierEnabled && (
-        <>
-          <div style={pp.actionsRow}>
-            <button type="button" style={pp.btn} disabled={testing || !data.configured} onClick={handleTest}>
-              {testing ? '打印中…' : '🧾 测试打印'}
-            </button>
-            <button type="button" style={pp.btn} disabled={reprinting || !data.configured} onClick={handleReprintLast}>
-              {reprinting ? '重打中…' : '↻ 重打最近订单'}
-            </button>
-          </div>
-          <div style={pp.actionsRow}>
-            <button type="button" style={pp.btnDiag} disabled={diagnosing} onClick={handleDiagnose}>
-              {diagnosing ? '诊断中…' : '🔍 token 诊断（强制重拉）'}
-            </button>
-            <button type="button" style={pp.btnDiag} disabled={binding || !data.configured} onClick={handleBindDevice}>
-              {binding ? '绑定中…' : '🔗 绑定 / 确认设备'}
-            </button>
-          </div>
-        </>
+        <div style={pp.actionsRow}>
+          <button type="button" style={pp.btn} disabled={testing || !data.configured} onClick={handleTest}>
+            {testing ? '打印中…' : '🧾 测试打印'}
+          </button>
+        </div>
       )}
 
       {msg && (
         <div style={msg.ok ? pp.msgOk : pp.msgErr}>{msg.text}</div>
       )}
 
-      {diag !== null && (
-        <pre style={pp.diagBox}>{JSON.stringify(diag, null, 2)}</pre>
-      )}
+      {/* 高级诊断（默认完全收起；含 重打 / token 诊断 / 绑定 / JSON / 最近日志） */}
+      {data.tierEnabled && (
+        <details style={{ marginTop: 10 }}>
+          <summary style={pp.advSummary}>⚙ 高级诊断</summary>
+          <div style={{ marginTop: 8 }}>
+            <div style={pp.actionsRow}>
+              <button type="button" style={pp.btn} disabled={reprinting || !data.configured} onClick={handleReprintLast}>
+                {reprinting ? '重打中…' : '↻ 重打最近订单'}
+              </button>
+              <button type="button" style={pp.btnDiag} disabled={diagnosing} onClick={handleDiagnose}>
+                {diagnosing ? '诊断中…' : '🔍 token 诊断（强制重拉）'}
+              </button>
+            </div>
+            <div style={pp.actionsRow}>
+              <button type="button" style={pp.btnDiag} disabled={binding || !data.configured} onClick={handleBindDevice}>
+                {binding ? '绑定中…' : '🔗 绑定 / 确认设备'}
+              </button>
+            </div>
 
-      {data.recent.length > 0 && (
-        <>
-          <div style={pp.recentTitle}>最近 {data.recent.length} 条打印日志</div>
-          <div style={pp.recentList}>
-            {data.recent.map((r, i) => (
-              <div key={i} style={pp.recentRow}>
-                <span style={r.status === 'SUCCESS' ? pp.recentOk : pp.recentFail}>
-                  {r.status === 'SUCCESS' ? '✓' : '✕'}
-                </span>
-                <span style={pp.recentOrder}>{r.orderNo ?? '—'}</span>
-                <span style={pp.recentTime}>{new Date(r.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                {r.message && <span style={pp.recentMsg}>{r.message.slice(0, 30)}</span>}
-              </div>
-            ))}
+            {diag !== null && (
+              <pre style={pp.diagBox}>{JSON.stringify(diag, null, 2)}</pre>
+            )}
+
+            {data.recent.length > 0 && (
+              <>
+                <div style={pp.recentTitle}>最近 {data.recent.length} 条打印日志</div>
+                <div style={pp.recentList}>
+                  {data.recent.map((r, i) => (
+                    <div key={i} style={pp.recentRow}>
+                      <span style={r.status === 'SUCCESS' ? pp.recentOk : pp.recentFail}>
+                        {r.status === 'SUCCESS' ? '✓' : '✕'}
+                      </span>
+                      <span style={pp.recentOrder}>{r.orderNo ?? '—'}</span>
+                      <span style={pp.recentTime}>{new Date(r.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                      {r.message && <span style={pp.recentMsg}>{r.message.slice(0, 30)}</span>}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        </>
+        </details>
       )}
     </div>
   )
@@ -1283,6 +1294,7 @@ const pp: Record<string, React.CSSProperties> = {
   actionsRow: { display: 'flex', gap: 8, marginBottom: 8 },
   btn: { flex: 1, height: 36, fontSize: 13, fontWeight: 600, background: '#fff', border: '1.5px solid var(--blue)', color: 'var(--blue)', borderRadius: 8, cursor: 'pointer' },
   btnDiag: { flex: 1, height: 32, fontSize: 12, fontWeight: 600, background: '#fafafa', border: '1px dashed #d9d9d9', color: '#666', borderRadius: 8, cursor: 'pointer' },
+  advSummary: { fontSize: 11, color: '#999', cursor: 'pointer', listStyle: 'none', userSelect: 'none' as const },
   diagBox: {
     fontSize: 10, lineHeight: 1.4, color: '#1a1a1a',
     background: '#f7f8fa',
@@ -1378,6 +1390,19 @@ const s: Record<string, React.CSSProperties> = {
   khqrNoticeBody: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' as const, gap: 2 },
   khqrNoticeTitle: { fontSize: 12, fontWeight: 700, color: '#7c4a00' },
   khqrNoticeText: { fontSize: 11, color: '#ad6800', lineHeight: 1.5 },
+  khqrNoticeSlim: {
+    display: 'flex', alignItems: 'center', gap: 8,
+    background: '#fffbe6', border: '1px solid #ffe58f',
+    borderRadius: 8, padding: '6px 10px', marginBottom: 10,
+  },
+  collapseCard: {
+    background: 'var(--card)', borderRadius: 'var(--radius)',
+    padding: '10px 14px', marginBottom: 10,
+  },
+  collapseSummary: {
+    fontSize: 13, fontWeight: 600, color: 'var(--text)',
+    cursor: 'pointer', listStyle: 'none', userSelect: 'none' as const,
+  },
   dimRow: { display: 'flex', gap: 8, marginBottom: 10 },
   dimBtn: {
     flex: 1,
