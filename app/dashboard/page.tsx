@@ -258,7 +258,7 @@ export default function DashboardPage() {
 
         {/* 首页门头快捷管理（折叠，默认收起） */}
         <details style={s.collapseCard}>
-          <summary style={s.collapseSummary}>🏷️ 首页门头管理</summary>
+          <summary style={s.collapseSummary}>🏷️ {t('dashboard.bannerQuickTitle')}</summary>
           <div style={{ marginTop: 8 }}>
             <BannerQuickPanel t={t} />
           </div>
@@ -1092,6 +1092,7 @@ type PrintStatus = {
 }
 
 function PrinterPanel() {
+  const { t } = useLocale()
   const [data, setData]       = useState<PrintStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [testing, setTesting] = useState(false)
@@ -1121,14 +1122,14 @@ function PrinterPanel() {
       if (!r.ok || !body?.ok) {
         setDiag(body)
         const pd = body?.parsedDiag as { message?: unknown; dataMessage?: unknown } | undefined
-        const errMsg = String(pd?.dataMessage ?? pd?.message ?? body?.error ?? body?.message ?? '打印失败')
-        setMsg({ ok: false, text: `打印失败：${errMsg}` })
+        const errMsg = String(pd?.dataMessage ?? pd?.message ?? body?.error ?? body?.message ?? t('dashboard.printerToastSendFail'))
+        setMsg({ ok: false, text: `${t('dashboard.printerToastSendFail')}：${errMsg}` })
       } else {
-        setMsg({ ok: true, text: '✓ 测试小票已发送' })
+        setMsg({ ok: true, text: `✓ ${t('dashboard.printerToastSent')}` })
       }
       refresh()
     } catch {
-      setMsg({ ok: false, text: '网络错误' })
+      setMsg({ ok: false, text: t('dashboard.printerToastNetErr') })
     } finally {
       setTesting(false)
     }
@@ -1141,13 +1142,13 @@ function PrinterPanel() {
       const body = await r.json().catch(() => ({}))
       setDiag(body)  // 完整 response（含 rawBody / request / tokenDiag）
       if (r.ok && body?.ok) {
-        setMsg({ ok: true, text: '✓ 设备绑定/确认成功' })
+        setMsg({ ok: true, text: `✓ ${t('dashboard.printerToastBindOk')}` })
         refresh()
       } else {
-        setMsg({ ok: false, text: body?.errorMessage ?? body?.message ?? body?.error ?? '绑定失败，请看下方完整响应' })
+        setMsg({ ok: false, text: body?.errorMessage ?? body?.message ?? body?.error ?? t('dashboard.printerToastBindFail') })
       }
     } catch {
-      setMsg({ ok: false, text: '网络错误' })
+      setMsg({ ok: false, text: t('dashboard.printerToastNetErr') })
     } finally {
       setBinding(false)
     }
@@ -1162,16 +1163,16 @@ function PrinterPanel() {
         setDiag(body.diag ?? null)
         const d = body.diag as { tokenObtained?: boolean; errorMessage?: string } | null
         if (d?.tokenObtained) {
-          setMsg({ ok: true, text: '✓ token 拉取成功，打印机可用' })
+          setMsg({ ok: true, text: `✓ ${t('dashboard.printerToastTokenOk')}` })
           refresh()
         } else {
-          setMsg({ ok: false, text: d?.errorMessage ? `token 失败：${d.errorMessage}` : 'token 拉取失败，请查看下方诊断' })
+          setMsg({ ok: false, text: d?.errorMessage ? `${t('dashboard.printerToastTokenFail')}：${d.errorMessage}` : t('dashboard.printerToastTokenFail') })
         }
       } else {
         setMsg({ ok: false, text: body.error ?? 'HTTP error' })
       }
     } catch {
-      setMsg({ ok: false, text: '网络错误' })
+      setMsg({ ok: false, text: t('dashboard.printerToastNetErr') })
     } finally {
       setDiagnosing(false)
     }
@@ -1180,7 +1181,7 @@ function PrinterPanel() {
   async function handleReprintLast() {
     if (!data) return
     const last = data.recent.find((r) => r.status === 'SUCCESS' && r.orderNo && !r.orderNo.startsWith('TEST-') && !r.orderNo.startsWith('BIND-'))
-    if (!last?.orderNo) { setMsg({ ok: false, text: '暂无可重打的真实订单' }); return }
+    if (!last?.orderNo) { setMsg({ ok: false, text: t('dashboard.printerToastNoReprint') }); return }
     setReprinting(true); setMsg(null); setDiag(null)
     try {
       const r = await apiFetch(`/api/print/reprint/${encodeURIComponent(last.orderNo)}`, { method: 'POST' }, OWNER_CTX)
@@ -1188,45 +1189,45 @@ function PrinterPanel() {
       if (!r.ok || !body?.ok) {
         setDiag(body)
         const pd = body?.parsedDiag as { message?: unknown; dataMessage?: unknown } | undefined
-        const errMsg = String(pd?.dataMessage ?? pd?.message ?? body?.error ?? body?.message ?? '重打失败')
-        setMsg({ ok: false, text: `重打失败：${errMsg}` })
+        const errMsg = String(pd?.dataMessage ?? pd?.message ?? body?.error ?? body?.message ?? t('dashboard.printerToastReprintFail'))
+        setMsg({ ok: false, text: `${t('dashboard.printerToastReprintFail')}：${errMsg}` })
       } else {
-        setMsg({ ok: true, text: `✓ 已重打 ${last.orderNo}` })
+        setMsg({ ok: true, text: `✓ ${t('dashboard.printerToastReprintOk')} ${last.orderNo}` })
       }
       refresh()
     } catch {
-      setMsg({ ok: false, text: '网络错误' })
+      setMsg({ ok: false, text: t('dashboard.printerToastNetErr') })
     } finally {
       setReprinting(false)
     }
   }
 
-  if (loading) return <div style={pp.card}><div style={pp.muted}>加载中…</div></div>
+  if (loading) return <div style={pp.card}><div style={pp.muted}>{t('dashboard.printerLoading')}</div></div>
   if (!data) return null
 
   return (
     <div style={pp.card}>
       <div style={pp.header}>
-        <span style={pp.title}>🖨️ 云打印机</span>
+        <span style={pp.title}>🖨️ {t('dashboard.printerTitle')}</span>
         <span style={data.tierEnabled
           ? (data.configured ? pp.badgeOk : pp.badgeWarn)
           : pp.badgeOff}>
           {data.tierEnabled
-            ? (data.configured ? '已启用 · 自动出票' : '需配置环境变量')
-            : `${data.tier} 版 · 自动打印未开放`}
+            ? (data.configured ? t('dashboard.printerEnabled') : t('dashboard.printerNeedConfig'))
+            : `${data.tier}${t('dashboard.printerTierDisabled')}`}
         </span>
       </div>
 
       {!data.tierEnabled && (
         <div style={pp.upgradeHint}>
-          自动打印为高级版（STANDARD / MULTI_STORE）功能，当前商户版本为 {data.tier}。
+          {t('dashboard.printerUpgradeHint')} {data.tier}.
         </div>
       )}
 
       {data.tierEnabled && (
         <div style={pp.actionsRow}>
           <button type="button" style={pp.btn} disabled={testing || !data.configured} onClick={handleTest}>
-            {testing ? '打印中…' : '🧾 测试打印'}
+            {testing ? t('dashboard.printerTesting') : `🧾 ${t('dashboard.printerTestBtn')}`}
           </button>
         </div>
       )}
@@ -1238,19 +1239,19 @@ function PrinterPanel() {
       {/* 高级诊断（默认完全收起；含 重打 / token 诊断 / 绑定 / JSON / 最近日志） */}
       {data.tierEnabled && (
         <details style={{ marginTop: 10 }}>
-          <summary style={pp.advSummary}>⚙ 高级诊断</summary>
+          <summary style={pp.advSummary}>⚙ {t('dashboard.printerAdvDiag')}</summary>
           <div style={{ marginTop: 8 }}>
             <div style={pp.actionsRow}>
               <button type="button" style={pp.btn} disabled={reprinting || !data.configured} onClick={handleReprintLast}>
-                {reprinting ? '重打中…' : '↻ 重打最近订单'}
+                {reprinting ? t('dashboard.printerReprinting') : `↻ ${t('dashboard.printerReprint')}`}
               </button>
               <button type="button" style={pp.btnDiag} disabled={diagnosing} onClick={handleDiagnose}>
-                {diagnosing ? '诊断中…' : '🔍 token 诊断（强制重拉）'}
+                {diagnosing ? t('dashboard.printerDiagnosing') : `🔍 ${t('dashboard.printerTokenDiag')}`}
               </button>
             </div>
             <div style={pp.actionsRow}>
               <button type="button" style={pp.btnDiag} disabled={binding || !data.configured} onClick={handleBindDevice}>
-                {binding ? '绑定中…' : '🔗 绑定 / 确认设备'}
+                {binding ? t('dashboard.printerBinding') : `🔗 ${t('dashboard.printerBind')}`}
               </button>
             </div>
 
@@ -1260,7 +1261,7 @@ function PrinterPanel() {
 
             {data.recent.length > 0 && (
               <>
-                <div style={pp.recentTitle}>最近 {data.recent.length} 条打印日志</div>
+                <div style={pp.recentTitle}>{t('dashboard.printerRecentTitle').replace('{n}', String(data.recent.length))}</div>
                 <div style={pp.recentList}>
                   {data.recent.map((r, i) => (
                     <div key={i} style={pp.recentRow}>
