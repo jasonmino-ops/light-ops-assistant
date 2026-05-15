@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { classifyIntent, type Lang } from '@/lib/bot/intent'
+import { resolveReplyLang } from '@/lib/bot/lang'
 import { TPL } from '@/lib/bot/templates'
 import { chatReply } from '@/lib/bot/handlers/chat'
 import { businessReply } from '@/lib/bot/handlers/business'
@@ -223,7 +224,13 @@ export async function POST(req: NextRequest) {
     if (!tenantId) tenantId = fbStore.tenantId
     storeName = fbStore.name
   }
-  const lang: Lang = normalizeLang(contact?.telegramLanguageCode ?? msg.from?.language_code)
+  const isText = typeof msg.text === 'string' && msg.text.trim().length > 0
+  const lang: Lang = resolveReplyLang({
+    text:         isText ? msg.text : null,
+    isText,
+    contactLang:  contact?.telegramLanguageCode,
+    telegramLang: msg.from?.language_code,
+  })
 
   // 非文本媒体识别（含语音）：统一走温柔模板，不进入文本分类
   const media = detectMedia(msg)
