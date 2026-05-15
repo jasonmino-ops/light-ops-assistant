@@ -33,21 +33,44 @@ function normalizeLang(v: string | null | undefined): Lang {
   return 'zh'
 }
 
-const STATUS_MSG: Record<'CONFIRMED'|'COMPLETED'|'CANCELLED', Record<Lang, (orderNo: string) => string>> = {
+function shortOrderNo(orderNo: string): string {
+  // 取末段（C-YYYYMMDD-STORE-####）的最后一段；不足则取末 4 位
+  const seg = orderNo.split('-').pop() ?? orderNo
+  return `#${seg.slice(-6) || seg}`
+}
+
+type TplCtx = { no: string; total: string }
+
+const STATUS_MSG: Record<string, Record<Lang, (c: TplCtx) => string>> = {
+  PENDING: {
+    zh: ({ no, total }) => `主人，您的订单 ${no} 已收到，我们正在为您安排 ❤️\n金额：$${total}`,
+    en: ({ no, total }) => `Hi! Your order ${no} has been received — we're getting it ready for you ❤️\nTotal: $${total}`,
+    km: ({ no, total }) => `សួស្តីម្ចាស់! ការបញ្ជាទិញ ${no} ត្រូវបានទទួល យើងកំពុងរៀបចំ ❤️\nចំនួន: $${total}`,
+  },
   CONFIRMED: {
-    zh: (n) => `✅ 您的订单已确认\n订单号：${n}\n商家正在为您准备，请等待联系。`,
-    en: (n) => `✅ Your order is confirmed\nOrder No.: ${n}\nThe merchant is preparing your order. Please wait for contact.`,
-    km: (n) => `✅ ការបញ្ជាទិញរបស់អ្នកត្រូវបានបញ្ជាក់\nលេខបញ្ជាទិញ៖ ${n}\nហាងកំពុងរៀបចំ សូមរង់ចាំការទាក់ទង។`,
+    zh: ({ no, total }) => `主人，您的订单 ${no} 正在处理中，请稍候 ✨\n金额：$${total}`,
+    en: ({ no, total }) => `Hi! Your order ${no} is being prepared — please hold on ✨\nTotal: $${total}`,
+    km: ({ no, total }) => `សួស្តីម្ចាស់! ការបញ្ជាទិញ ${no} កំពុងដំណើរការ សូមរង់ចាំបន្តិច ✨\nចំនួន: $${total}`,
+  },
+  READY: {
+    zh: ({ no, total }) => `主人，您的订单 ${no} 已准备完成，感谢您的支持 🎉\n金额：$${total}`,
+    en: ({ no, total }) => `Hi! Your order ${no} is ready — thanks for your support 🎉\nTotal: $${total}`,
+    km: ({ no, total }) => `សួស្តីម្ចាស់! ការបញ្ជាទិញ ${no} បានរៀបចំរួចរាល់ សូមអរគុណ 🎉\nចំនួន: $${total}`,
   },
   COMPLETED: {
-    zh: (n) => `🎉 您的订单已完成\n订单号：${n}\n请完成付款后提货，感谢您的购买！`,
-    en: (n) => `🎉 Your order is completed\nOrder No.: ${n}\nPlease complete payment to pick up. Thank you for your purchase!`,
-    km: (n) => `🎉 ការបញ្ជាទិញរបស់អ្នកបានបញ្ចប់\nលេខបញ្ជាទិញ៖ ${n}\nសូមបញ្ចប់ការទូទាត់ ហើយយកទំនិញ។ សូមអរគុណ!`,
+    zh: ({ no, total }) => `主人，您的订单 ${no} 已准备完成，感谢您的支持 🎉\n金额：$${total}`,
+    en: ({ no, total }) => `Hi! Your order ${no} is ready — thanks for your support 🎉\nTotal: $${total}`,
+    km: ({ no, total }) => `សួស្តីម្ចាស់! ការបញ្ជាទិញ ${no} បានរៀបចំរួចរាល់ សូមអរគុណ 🎉\nចំនួន: $${total}`,
+  },
+  OUT_FOR_DELIVERY: {
+    zh: ({ no }) => `主人，您的订单 ${no} 正在赶来，请注意查收 🚀`,
+    en: ({ no }) => `Hi! Your order ${no} is on the way — please be ready 🚀`,
+    km: ({ no }) => `សួស្តីម្ចាស់! ការបញ្ជាទិញ ${no} កំពុងដឹកមកដល់ សូមត្រៀមទទួល 🚀`,
   },
   CANCELLED: {
-    zh: (n) => `❌ 您的订单已取消\n订单号：${n}\n如有疑问请联系商家。`,
-    en: (n) => `❌ Your order is cancelled\nOrder No.: ${n}\nPlease contact the merchant if you have any questions.`,
-    km: (n) => `❌ ការបញ្ជាទិញរបស់អ្នកត្រូវបានបោះបង់\nលេខបញ្ជាទិញ៖ ${n}\nបើមានសំណួរ សូមទាក់ទងហាង។`,
+    zh: ({ no }) => `很抱歉主人，您的订单 ${no} 未能完成，请联系商家 🙏`,
+    en: ({ no }) => `Sorry — your order ${no} could not be completed. Please contact the merchant 🙏`,
+    km: ({ no }) => `សុំទោសម្ចាស់! ការបញ្ជាទិញ ${no} មិនអាចបញ្ចប់បាន សូមទាក់ទងហាង 🙏`,
   },
 }
 
@@ -132,8 +155,11 @@ export async function PATCH(
       }).catch(() => null)
       lang = normalizeLang(contact?.telegramLanguageCode)
     }
-    const tpl = STATUS_MSG[newStatus as 'CONFIRMED'|'COMPLETED'|'CANCELLED']
-    const text = tpl ? tpl[lang](updated.orderNo) : null
+    const tpl = STATUS_MSG[newStatus]
+    const text = tpl ? tpl[lang]({
+      no:    shortOrderNo(updated.orderNo),
+      total: updated.totalAmount.toNumber().toFixed(2),
+    }) : null
     if (text) {
       sendAndLogMessage({
         recipientTelegramId: updated.customerTelegramId,
