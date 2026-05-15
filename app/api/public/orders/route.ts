@@ -57,7 +57,7 @@ function pickLang(v: unknown): Lang {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { storeCode?: string; items?: OrderItem[]; customerTelegramId?: string; remark?: string; lang?: string }
+  let body: { storeCode?: string; items?: OrderItem[]; customerTelegramId?: string; remark?: string; lang?: string; couponId?: string }
   try {
     body = await req.json()
   } catch {
@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { storeCode, items, customerTelegramId, remark } = body
+  const couponId = typeof body.couponId === 'string' ? body.couponId.trim() : ''
   const lang = pickLang(body.lang)
   const T = MSG[lang]
 
@@ -113,14 +114,51 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 服务端计算总金额 ────────────────────────────────────────────────────
-  let totalAmount = 0
+  let subtotal = 0
   const itemsForJson = items.map((item) => {
     const p = productMap.get(item.productId)!
     const price = p.sellPrice.toNumber()
     const lineAmount = price * item.quantity
-    totalAmount += lineAmount
+    subtotal += lineAmount
     return { productId: item.productId, name: p.name, spec: p.spec ?? null, price, quantity: item.quantity, lineAmount }
   })
+  subtotal = +subtotal.toFixed(2)
+  const trimmedTgId = customerTelegramId?.trim() || null
+
+  // ── 校验优惠券（如有） ───────────────────────────────────────────────────
+  let discountAmount = 0
+  let couponSnapshot: { id: string; name: string; type: 'AMOUNT_OFF' | 'PERCENT_OFF' } | null = null
+  if (couponId) {
+    if (!trimmedTgId) {
+      return NextResponse.json({ error: 'COUPON_NEED_TG', message: '使用优惠券需绑定 Telegram 顾客身份' }, { status: 400 })
+    }
+    const coupon = await prisma.customerCoupon.findFirst({
+      where: {
+        id: couponId, tenantId: store.tenantId, telegramId: trimmedTgId, status: 'AVAILABLE',
+        OR: [{ storeId: store.id }, { storeId: null }],
+      },
+    })
+    if (!coupon) {
+      return NextResponse.json({ error: 'COUPON_INVALID', message: '优惠券不可用' }, { status: 400 })
+    }
+    if (coupon.expiresAt.getTime() <= Date.now()) {
+      return NextResponse.json({ error: 'COUPON_EXPIRED', message: '优惠券已过期' }, { status: 400 })
+    }
+    const minSpend = coupon.minSpend.toNumber()
+    if (subtotal < minSpend) {
+      return NextResponse.json({ error: 'COUPON_MIN_NOT_MET', message: `未满 ${minSpend.toFixed(2)} 不可用` }, { status: 400 })
+    }
+    if (coupon.type === 'AMOUNT_OFF') discountAmount = Math.min(Number(coupon.amountOff ?? 0), subtotal)
+    else if (coupon.type === 'PERCENT_OFF') {
+      const p = Math.max(0, Math.min(100, Number(coupon.percentOff ?? 0)))
+      discountAmount = +((subtotal * p) / 100).toFixed(2)
+    }
+    discountAmount = +Math.max(0, discountAmount).toFixed(2)
+    couponSnapshot = { id: coupon.id, name: coupon.name, type: coupon.type as 'AMOUNT_OFF' | 'PERCENT_OFF' }
+  }
+
+  const payableAmount = +Math.max(0, subtotal - discountAmount).toFixed(2)
+  const totalAmount = payableAmount
 
   // ── 生成 orderNo：格式 C-yyyyMMdd-STORECODE-seq ─────────────────────────
   const now = new Date()
@@ -135,20 +173,51 @@ export async function POST(req: NextRequest) {
   const seq     = String(todayCount + 1).padStart(4, '0')
   const orderNo = `C-${dateStr}-${store.code.toUpperCase().slice(0, 6)}-${seq}`
 
-  // ── 创建订单 ──────────────────────────────────────────────────────────────
-  const order = await prisma.customerOrder.create({
-    data: {
-      tenantId:           store.tenantId,
-      storeId:            store.id,
-      storeCode:          store.code,
-      orderNo,
-      customerTelegramId: customerTelegramId?.trim() || null,
-      itemsJson:          JSON.stringify(itemsForJson),
-      totalAmount:        String(totalAmount.toFixed(2)),
-      status:             'PENDING',
-      remark:             typeof remark === 'string' && remark.trim() ? remark.trim().slice(0, 500) : null,
-    },
-  })
+  // ── 事务：创建订单 + 核销优惠券 ─────────────────────────────────────────
+  // 单券并发防御：UPDATE WHERE status='AVAILABLE'，影响行 = 0 → 已被他人核销
+  let order
+  try {
+    order = await prisma.$transaction(async (tx) => {
+      const created = await tx.customerOrder.create({
+        data: {
+          tenantId:           store.tenantId,
+          storeId:            store.id,
+          storeCode:          store.code,
+          orderNo,
+          customerTelegramId: trimmedTgId,
+          itemsJson:          JSON.stringify(itemsForJson),
+          totalAmount:        String(payableAmount.toFixed(2)),
+          status:             'PENDING',
+          remark:             typeof remark === 'string' && remark.trim() ? remark.trim().slice(0, 500) : null,
+        },
+      })
+
+      if (couponSnapshot) {
+        const upd = await tx.customerCoupon.updateMany({
+          where: { id: couponSnapshot.id, status: 'AVAILABLE' },
+          data:  { status: 'USED', usedAt: new Date(), usedOrderNo: created.orderNo },
+        })
+        if (upd.count !== 1) throw new Error('COUPON_ALREADY_USED')
+        await tx.couponRedemption.create({
+          data: {
+            tenantId:   store.tenantId,
+            storeId:    store.id,
+            couponId:   couponSnapshot.id,
+            telegramId: trimmedTgId!,
+            orderNo:    created.orderNo,
+            discountAmount: String(discountAmount.toFixed(2)),
+          },
+        })
+      }
+
+      return created
+    })
+  } catch (e) {
+    if ((e as Error).message === 'COUPON_ALREADY_USED') {
+      return NextResponse.json({ error: 'COUPON_ALREADY_USED', message: '该优惠券已被使用' }, { status: 409 })
+    }
+    throw e
+  }
 
   // ── 通知 OWNER ────────────────────────────────────────────────────────────
   await notifyOwner(store.tenantId, store.name, order.orderNo, itemsForJson, totalAmount).catch(
@@ -185,9 +254,13 @@ export async function POST(req: NextRequest) {
   })()
 
   return NextResponse.json({
-    orderNo:     order.orderNo,
-    totalAmount: Number(totalAmount.toFixed(2)),
-    itemCount:   items.reduce((s, i) => s + i.quantity, 0),
+    orderNo:        order.orderNo,
+    totalAmount:    payableAmount,
+    subtotal,
+    discountAmount,
+    payableAmount,
+    coupon:         couponSnapshot,
+    itemCount:      items.reduce((s, i) => s + i.quantity, 0),
     // 三语文案，由 H5 顾客下单时 lang 决定；客户端可直接展示无需自己映射
     message:     T.submitted,
     labels: {

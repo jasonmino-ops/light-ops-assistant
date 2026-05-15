@@ -381,6 +381,16 @@ type ApiStore = {
 // ─── 购物车 ──────────────────────────────────────────────────────────────────
 
 type CartItem = { id: string; quantity: number }
+type CouponBrief = {
+  id: string
+  name: string
+  type: 'AMOUNT_OFF' | 'PERCENT_OFF'
+  amountOff: number | null
+  percentOff: number | null
+  minSpend: number
+  expiresAt: string
+  reason?: 'MIN_NOT_MET' | 'EXPIRED' | 'NOT_FOUND' | 'OTHER'
+}
 
 // ─── 主页面 ───────────────────────────────────────────────────────────────────
 
@@ -404,12 +414,65 @@ export default function MenuPage() {
   // 搜索 + 购物车展开
   const [searchKeyword, setSearchKeyword] = useState('')
   const [cartExpand,    setCartExpand]    = useState(false)
-  // 结算选项（取餐方式 + 备注；优惠券位先占位）
+  // 结算选项（取餐方式 + 备注 + 优惠券）
   const [pickupMethod,  setPickupMethod]  = useState<'dineIn' | 'delivery'>('dineIn')
   const [orderRemark,   setOrderRemark]   = useState('')
+  // 优惠券
+  const [tgId, setTgId]                         = useState<string>('')
+  const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null)
+  const [couponPickerOpen, setCouponPickerOpen] = useState(false)
+  const [couponMsg, setCouponMsg]               = useState<string>('')
+  const [couponState, setCouponState] = useState<{
+    available:   CouponBrief[]
+    unavailable: CouponBrief[]
+    selectedCoupon: CouponBrief | null
+    discountAmount: number
+    payableAmount:  number
+  } | null>(null)
 
   const ui         = T[lang]
   const cartTotal  = cart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
+  const payableLabel = lang === 'en' ? 'Payable' : lang === 'km' ? 'ត្រូវបង់' : '应付'
+  const couponDoneLabel = lang === 'en' ? 'Done' : lang === 'km' ? 'យល់ព្រម' : '完成'
+  const noneLabel       = lang === 'en' ? 'None'  : lang === 'km' ? 'គ្មាន'   : '不使用'
+
+  // 在确认弹窗开启 / 购物车变动 / 选中券变动时，重新拉可用券与折扣金额
+  useEffect(() => {
+    if (!showConfirm || !storeCode || cartTotal <= 0) { setCouponState(null); return }
+    if (!tgId) {
+      // 未识别到 telegramId，无法发券，置空但允许下单
+      setCouponState({ available: [], unavailable: [], selectedCoupon: null, discountAmount: 0, payableAmount: cartTotal })
+      return
+    }
+    let aborted = false
+    fetch('/api/public/coupons/available', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeCode, telegramId: tgId, subtotal: +cartTotal.toFixed(2), couponId: selectedCouponId ?? undefined }),
+    }).then((r) => r.json()).then((b) => {
+      if (aborted) return
+      if (b?.error) {
+        setCouponState({ available: [], unavailable: [], selectedCoupon: null, discountAmount: 0, payableAmount: cartTotal })
+        return
+      }
+      setCouponState({
+        available:      b.available ?? [],
+        unavailable:    b.unavailable ?? [],
+        selectedCoupon: b.selectedCoupon ?? null,
+        discountAmount: Number(b.discountAmount ?? 0),
+        payableAmount:  Number(b.payableAmount ?? cartTotal),
+      })
+      // 若传入的 selectedCouponId 不在 available，前端清掉并提示
+      if (selectedCouponId && !b.selectedCoupon) {
+        const u = (b.unavailable ?? []).find((c: CouponBrief) => c.id === selectedCouponId)
+        setSelectedCouponId(null)
+        setCouponMsg(u?.reason === 'MIN_NOT_MET' ? `需满足最低消费方可使用` : `该优惠券不可用`)
+      } else {
+        setCouponMsg('')
+      }
+    }).catch(() => { /* 静默：仍允许下单 */ })
+    return () => { aborted = true }
+  }, [showConfirm, storeCode, tgId, cartTotal, selectedCouponId])
   const cartCount  = cart.reduce((s, c) => s + c.quantity, 0)
   const canCheckout = cartCount > 0
   const confirmItems = cart.flatMap((c) => {
@@ -551,10 +614,15 @@ export default function MenuPage() {
           if (u?.id != null) {
             tgIdLocal = String(u.id)
             setHasTgId(true)
+            setTgId(tgIdLocal)
           }
         }
       } catch { /* 解析失败则不显示入口 */ }
     }
+
+    // 读取 URL 的 couponId（可能来自 /me/coupons 的「去使用」）
+    const initCouponId = new URLSearchParams(window.location.search).get('couponId')
+    if (initCouponId) setSelectedCouponId(initCouponId)
 
     const menuUrl = `/api/public/menu?code=${encodeURIComponent(code)}` +
       (tgIdLocal ? `&tgId=${encodeURIComponent(tgIdLocal)}` : '')
@@ -622,6 +690,7 @@ export default function MenuPage() {
           storeCode: code,
           items: cart.map((c) => ({ productId: c.id, quantity: c.quantity })),
           ...(customerTelegramId ? { customerTelegramId } : {}),
+          ...(selectedCouponId ? { couponId: selectedCouponId } : {}),
           remark,
           lang,
         }),
@@ -629,15 +698,22 @@ export default function MenuPage() {
       const body = await res.json()
       if (!res.ok) {
         const msg =
-          body.error === 'PRODUCT_UNAVAILABLE' ? ui.errSubmitProduct :
+          body.error === 'PRODUCT_UNAVAILABLE'   ? ui.errSubmitProduct :
+          body.error === 'COUPON_ALREADY_USED'   ? '该优惠券已被使用，请重新选择' :
+          body.error === 'COUPON_INVALID'        ? '优惠券不可用' :
+          body.error === 'COUPON_EXPIRED'        ? '优惠券已过期' :
+          body.error === 'COUPON_MIN_NOT_MET'    ? (body.message ?? '未满最低消费') :
+          body.error === 'COUPON_NEED_TG'        ? '使用优惠券需绑定 Telegram 身份' :
           ui.errSubmitFail
         setSubmitError(msg)
+        if (typeof body.error === 'string' && body.error.startsWith('COUPON_')) setSelectedCouponId(null)
         return
       }
       setOrderResult({ orderNo: body.orderNo, totalAmount: body.totalAmount })
       setCart([])
       setOrderRemark('')
       setPickupMethod('dineIn')
+      setSelectedCouponId(null)
       setShowConfirm(false)
       // 写本设备订单号到 localStorage（按 storeCode 维度，供 /menu/orders 非 TG 路径查询）
       try {
@@ -1002,21 +1078,37 @@ export default function MenuPage() {
               />
             </div>
 
-            {/* 优惠券占位 */}
-            <div style={s.chkRow}>
+            {/* 优惠券选择 */}
+            <div
+              style={{ ...s.chkRow, cursor: (couponState && (couponState.available.length > 0 || selectedCouponId)) ? 'pointer' : 'default' }}
+              onClick={() => { if (couponState && (couponState.available.length > 0 || couponState.selectedCoupon)) setCouponPickerOpen(true) }}
+            >
               <span style={s.chkRowKey}>🎟️ {ui.couponLabel}</span>
-              <span style={s.chkRowMuted}>{ui.noCoupon}</span>
+              <span style={s.chkRowMuted}>
+                {couponState?.selectedCoupon
+                  ? couponState.selectedCoupon.name
+                  : couponState && couponState.available.length > 0
+                    ? `${couponState.available.length} 张可用 ›`
+                    : ui.noCoupon}
+              </span>
+            </div>
+            {couponMsg && <div style={{ ...s.chkRow, color: '#fa8c16', fontSize: 12 }}>{couponMsg}</div>}
+
+            {/* 商品金额 */}
+            <div style={s.chkRow}>
+              <span style={s.chkRowKey}>{ui.itemCount(cartCount)}</span>
+              <span style={s.chkRowMuted}>${cartTotal.toFixed(2)}</span>
             </div>
 
-            {/* 优惠合计（mock $0.00） */}
+            {/* 优惠合计 */}
             <div style={s.chkRow}>
               <span style={s.chkRowKey}>{ui.discountLabel}</span>
-              <span style={s.chkRowMuted}>-$0.00</span>
+              <span style={s.chkRowMuted}>-${(couponState?.discountAmount ?? 0).toFixed(2)}</span>
             </div>
 
             <div style={s.confirmTotal}>
-              <span style={s.confirmTotalLabel}>{ui.itemCount(cartCount)}</span>
-              <span style={s.confirmTotalAmount}>${cartTotal.toFixed(2)}</span>
+              <span style={s.confirmTotalLabel}>{payableLabel}</span>
+              <span style={s.confirmTotalAmount}>${(couponState?.payableAmount ?? cartTotal).toFixed(2)}</span>
             </div>
             {submitError && <div style={s.confirmErr}>{submitError}</div>}
             <div style={s.confirmBtns}>
@@ -1034,6 +1126,46 @@ export default function MenuPage() {
                 {submitting ? ui.submitting : ui.confirmSubmit}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 优惠券选择弹窗 ── */}
+      {couponPickerOpen && couponState && (
+        <div style={cpk.mask} onClick={() => setCouponPickerOpen(false)}>
+          <div style={cpk.panel} onClick={(e) => e.stopPropagation()}>
+            <div style={cpk.title}>🎟️ {ui.couponLabel}</div>
+            <div style={cpk.list}>
+              <label style={{ ...cpk.item, ...(selectedCouponId == null ? cpk.itemOn : {}) }}>
+                <input type="radio" checked={selectedCouponId == null} onChange={() => setSelectedCouponId(null)} style={{ marginRight: 8 }} />
+                <div style={{ flex: 1, fontWeight: 600 }}>{noneLabel}</div>
+              </label>
+              {couponState.available.map((c) => (
+                <label key={c.id} style={{ ...cpk.item, ...(selectedCouponId === c.id ? cpk.itemOn : {}) }}>
+                  <input type="radio" checked={selectedCouponId === c.id} onChange={() => setSelectedCouponId(c.id)} style={{ marginRight: 8 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                      {c.type === 'AMOUNT_OFF' ? `满 $${c.minSpend.toFixed(2)} 减 $${(c.amountOff ?? 0).toFixed(2)}` : `${c.percentOff ?? 0}% off · 满 $${c.minSpend.toFixed(2)}`}
+                    </div>
+                  </div>
+                </label>
+              ))}
+              {couponState.unavailable.filter((c) => c.name).map((c) => (
+                <div key={c.id} style={{ ...cpk.item, opacity: 0.5 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: '#fa8c16', marginTop: 2 }}>
+                      {c.reason === 'MIN_NOT_MET' ? `未满 $${c.minSpend.toFixed(2)} 不可用` : '不可用'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {couponState.available.length === 0 && couponState.unavailable.filter((c) => c.name).length === 0 && (
+                <div style={cpk.empty}>{ui.noCoupon}</div>
+              )}
+            </div>
+            <button type="button" style={cpk.done} onClick={() => setCouponPickerOpen(false)}>{couponDoneLabel}</button>
           </div>
         </div>
       )}
@@ -2480,4 +2612,15 @@ const cp: Record<string, React.CSSProperties> = {
     marginBottom: 12,
     opacity: 0.4,
   },
+}
+
+const cpk: Record<string, React.CSSProperties> = {
+  mask:  { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' },
+  panel: { width: '100%', maxWidth: 480, background: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, display: 'flex', flexDirection: 'column' as const, gap: 10, maxHeight: '70vh' },
+  title: { fontSize: 15, fontWeight: 700, color: '#1a1a1a' },
+  list:  { display: 'flex', flexDirection: 'column' as const, gap: 8, overflowY: 'auto' as const, flex: 1 },
+  item:  { display: 'flex', alignItems: 'center', padding: '10px 12px', border: '1px solid #ebebeb', borderRadius: 8, background: '#fff', cursor: 'pointer' },
+  itemOn:{ borderColor: '#ff6b00', background: '#fff7e6' },
+  empty: { padding: '20px 0', textAlign: 'center' as const, color: '#bbb', fontSize: 13 },
+  done:  { height: 40, fontSize: 14, fontWeight: 700, color: '#fff', background: '#ff6b00', border: 'none', borderRadius: 8, cursor: 'pointer' },
 }
