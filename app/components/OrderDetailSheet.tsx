@@ -46,6 +46,7 @@ type OrderDetail = {
   deliveryLat?: number | null
   deliveryLng?: number | null
   mapUrl?: string | null
+  deliveryAddressPhotoUrl?: string | null
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -332,6 +333,16 @@ export default function OrderDetailSheet({
                     <span style={sh.infoLabel}>地图</span>
                     <a href={d.mapUrl} target="_blank" rel="noreferrer" style={{ ...sh.infoValue, color: '#1677ff', textDecoration: 'underline' }}>
                       Google Maps ›
+                    </a>
+                  </div>
+                )}
+                {d.deliveryAddressPhotoUrl && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ ...sh.infoLabel, marginBottom: 4 }}>门牌/位置照片</div>
+                    <a href={d.deliveryAddressPhotoUrl} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={d.deliveryAddressPhotoUrl} alt="门牌照片"
+                           style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8, border: '1px solid #ebebeb' }} />
                     </a>
                   </div>
                 )}

@@ -407,6 +407,8 @@ model CustomerOrder {
   deliveryNote       String?   @db.Text// 门牌/楼层/备注
   deliveryLat        Float?            // 定位纬度（可选）
   deliveryLng        Float?            // 定位经度（可选）
+  deliveryAddressPhotoUrl  String?              // 门牌/位置照片对外可点击的 URL（通常指向内部 GET 端点）
+  deliveryAddressPhotoData String?    @db.Text  // 门牌/位置照片 base64 data URL（与上字段配套；由内部端点读取返回二进制）
   itemsJson          String    @db.Text // JSON: [{productId,name,spec,price,quantity,lineAmount}]
   totalAmount        Decimal   @db.Decimal(12, 2)
   status             String    @default("PENDING") // PENDING | CONFIRMED | COMPLETED | CANCELLED

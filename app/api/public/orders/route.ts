@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
     customerName?: string; customerPhone?: string
     deliveryAddress?: string; deliveryNote?: string
     deliveryLat?: number; deliveryLng?: number
+    deliveryAddressPhotoUrl?: string  // 可为 data URL 或外部 URL
   }
   try {
     body = await req.json()
@@ -89,6 +90,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'DELIVERY_INFO_REQUIRED', message: '请填写联系电话和送货/上门地址' }, { status: 400 })
     }
   }
+
+  // 门牌/位置照片：可为 data URL 或外部 https URL
+  const rawPhoto = typeof body.deliveryAddressPhotoUrl === 'string' ? body.deliveryAddressPhotoUrl.trim() : ''
+  let deliveryAddressPhotoData: string | null = null
+  let deliveryAddressPhotoUrl:  string | null = null
+  if (rawPhoto) {
+    if (rawPhoto.startsWith('data:image/')) {
+      if (rawPhoto.length > 8 * 1024 * 1024) {
+        return NextResponse.json({ error: 'PHOTO_TOO_LARGE' }, { status: 400 })
+      }
+      deliveryAddressPhotoData = rawPhoto
+      // URL 等订单创建后再回填（依赖 orderNo）
+    } else if (/^https?:\/\//i.test(rawPhoto)) {
+      deliveryAddressPhotoUrl = rawPhoto.slice(0, 1000)
+    }
+  }
+  const appUrlBase = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
   const lang = pickLang(body.lang)
   const T = MSG[lang]
 
@@ -215,6 +233,8 @@ export async function POST(req: NextRequest) {
           deliveryNote,
           deliveryLat,
           deliveryLng,
+          deliveryAddressPhotoData,
+          deliveryAddressPhotoUrl,
           itemsJson:          JSON.stringify(itemsForJson),
           totalAmount:        String(payableAmount.toFixed(2)),
           status:             'PENDING',
@@ -257,9 +277,21 @@ export async function POST(req: NextRequest) {
     throw e
   }
 
+  // 回填 deliveryAddressPhotoUrl：若顾客上传 data URL，把 url 写为内部端点
+  if (deliveryAddressPhotoData && !deliveryAddressPhotoUrl) {
+    deliveryAddressPhotoUrl = appUrlBase
+      ? `${appUrlBase}/api/orders/${encodeURIComponent(order.orderNo)}/delivery-photo`
+      : `/api/orders/${encodeURIComponent(order.orderNo)}/delivery-photo`
+    await prisma.customerOrder.update({
+      where: { id: order.id },
+      data:  { deliveryAddressPhotoUrl },
+    }).catch(() => { /* swallow */ })
+  }
+
   // ── 通知 OWNER ────────────────────────────────────────────────────────────
   await notifyOwner(store.tenantId, store.name, order.orderNo, itemsForJson, totalAmount, {
     pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng,
+    deliveryAddressPhotoUrl,
   }).catch(
     (e) => console.error('[customer-order] notify owner failed:', e),
   )
@@ -326,6 +358,7 @@ async function notifyOwner(
     customerName: string | null; customerPhone: string | null
     deliveryAddress: string | null; deliveryNote: string | null
     deliveryLat: number | null; deliveryLng: number | null
+    deliveryAddressPhotoUrl: string | null
   },
 ) {
   const owner = await prisma.user.findFirst({
@@ -347,6 +380,9 @@ async function notifyOwner(
     if (delivery.deliveryNote)    lines.push(`备注：${delivery.deliveryNote}`)
     if (delivery.deliveryLat != null && delivery.deliveryLng != null) {
       lines.push(`地图：https://maps.google.com/?q=${delivery.deliveryLat},${delivery.deliveryLng}`)
+    }
+    if (delivery.deliveryAddressPhotoUrl) {
+      lines.push(`门牌照片：${delivery.deliveryAddressPhotoUrl}`)
     }
     deliveryBlock = `\n${lines.join('\n')}\n─────────────`
   }

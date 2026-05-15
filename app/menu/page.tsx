@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import CustomerBottomNav from '@/app/components/CustomerBottomNav'
 
@@ -447,7 +447,8 @@ export default function MenuPage() {
     customerName: string; customerPhone: string
     deliveryAddress: string; deliveryNote: string
     deliveryLat: number | null; deliveryLng: number | null
-  }>({ customerName: '', customerPhone: '', deliveryAddress: '', deliveryNote: '', deliveryLat: null, deliveryLng: null })
+    deliveryAddressPhotoUrl: string | null
+  }>({ customerName: '', customerPhone: '', deliveryAddress: '', deliveryNote: '', deliveryLat: null, deliveryLng: null, deliveryAddressPhotoUrl: null })
   // 优惠券
   const [tgId, setTgId]                         = useState<string>('')
   const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null)
@@ -748,6 +749,8 @@ export default function MenuPage() {
             deliveryNote:    deliveryInfo.deliveryNote    || undefined,
             ...(deliveryInfo.deliveryLat != null && deliveryInfo.deliveryLng != null
               ? { deliveryLat: deliveryInfo.deliveryLat, deliveryLng: deliveryInfo.deliveryLng } : {}),
+            ...(deliveryInfo.deliveryAddressPhotoUrl
+              ? { deliveryAddressPhotoUrl: deliveryInfo.deliveryAddressPhotoUrl } : {}),
           } : {}),
           remark,
           lang,
@@ -1120,6 +1123,9 @@ export default function MenuPage() {
                       {(deliveryInfo.deliveryLat != null && deliveryInfo.deliveryLng != null) && '  ·  📌 已获取定位'}
                     </div>
                     {deliveryInfo.deliveryNote && <div style={addr.noteLine}>{deliveryInfo.deliveryNote}</div>}
+                    {deliveryInfo.deliveryAddressPhotoUrl && (
+                      <div style={addr.noteLine}>📷 {lang === 'en' ? 'photo attached' : lang === 'km' ? 'រូបភាពភ្ជាប់' : '已附门牌照片'}</div>
+                    )}
                   </>
                 ) : (
                   <div style={addr.placeholder}>
@@ -2741,6 +2747,28 @@ const dm: Record<string, React.CSSProperties> = {
   err:   { fontSize: 12, color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 6, padding: '6px 8px' },
   ok:    { fontSize: 12, color: '#389e0d' },
   geoBtn:{ height: 36, fontSize: 13, fontWeight: 600, color: '#1677ff', background: '#e6f4ff', border: '1px solid #91caff', borderRadius: 8, cursor: 'pointer' },
+  geoBigBtn: {
+    width: '100%', minHeight: 56, background: '#1677ff', color: '#fff',
+    border: 'none', borderRadius: 12, padding: '10px 14px', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', gap: 2,
+    boxShadow: '0 2px 8px rgba(22,119,255,0.25)',
+  },
+  geoBigMain: { fontSize: 16, fontWeight: 700 },
+  geoBigSub:  { fontSize: 11, color: 'rgba(255,255,255,0.85)' },
+  locPreview: { background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column' as const, gap: 4 },
+  locPreviewTitle: { fontSize: 13, fontWeight: 700, color: '#389e0d' },
+  locPreviewCoord: { fontSize: 11, color: '#666', fontFamily: 'monospace' as const },
+  locPreviewLink:  { fontSize: 12, fontWeight: 700, color: '#1677ff', textDecoration: 'none' },
+  photoBox: { display: 'flex', flexDirection: 'column' as const, gap: 6 },
+  photoUploadEmpty: {
+    width: '100%', height: 100, border: '1.5px dashed #d9d9d9', borderRadius: 10,
+    background: '#fafafa', display: 'flex', flexDirection: 'column' as const,
+    alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer',
+    color: '#888', fontSize: 13,
+  },
+  photoThumbWrap: { position: 'relative' as const },
+  photoThumb: { width: '100%', maxHeight: 180, objectFit: 'cover' as const, borderRadius: 10, border: '1px solid #ebebeb' },
+  photoReplaceBtn: { position: 'absolute' as const, right: 8, bottom: 8, fontSize: 12, fontWeight: 600, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' },
   actions:    { display: 'flex', gap: 8, marginTop: 8 },
   cancelBtn:  { flex: 1, height: 40, fontSize: 14, color: '#666', background: '#f5f5f5', border: 'none', borderRadius: 8, cursor: 'pointer' },
   saveBtn:    { flex: 2, height: 40, fontSize: 14, fontWeight: 700, color: '#fff', background: '#ff6b00', border: 'none', borderRadius: 8, cursor: 'pointer' },
@@ -2751,6 +2779,86 @@ type DeliveryForm = {
   customerName: string; customerPhone: string
   deliveryAddress: string; deliveryNote: string
   deliveryLat: number | null; deliveryLng: number | null
+  deliveryAddressPhotoUrl: string | null
+}
+
+function DeliveryPhotoUploader({
+  current, onChange, L,
+}: {
+  current: string | null
+  onChange: (url: string | null) => void
+  L: { photoUpload: string; photoReplace: string; photoUploading: string; photoFail: string }
+}) {
+  const ref = useRef<HTMLInputElement | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr]   = useState('')
+
+  async function compress(file: File): Promise<Blob> {
+    // 等比缩到长边 1200，JPEG 0.85
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const i = new Image()
+      i.onload = () => res(i)
+      i.onerror = () => rej(new Error('decode'))
+      i.src = URL.createObjectURL(file)
+    })
+    const max = 1200
+    const w = img.naturalWidth, h = img.naturalHeight
+    const r = Math.min(1, max / Math.max(w, h))
+    const cw = Math.round(w * r), ch = Math.round(h * r)
+    const canvas = document.createElement('canvas')
+    canvas.width = cw; canvas.height = ch
+    canvas.getContext('2d')!.drawImage(img, 0, 0, cw, ch)
+    URL.revokeObjectURL(img.src)
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('canvas')), 'image/jpeg', 0.85)
+    })
+  }
+
+  async function handlePick(f: File) {
+    setBusy(true); setErr('')
+    try {
+      const blob = await compress(f).catch(() => f)  // 压缩失败则用原图
+      const form = new FormData()
+      form.append('file', blob, 'address.jpg')
+      const res = await fetch('/api/uploads/delivery-photo', { method: 'POST', body: form })
+      const body = await res.json().catch(() => ({}))
+      if (res.ok && body?.dataUrl) onChange(body.dataUrl)
+      else setErr(body?.message ?? L.photoFail)
+    } catch {
+      setErr(L.photoFail)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={dm.photoBox}>
+      <input
+        ref={ref} type="file" accept="image/jpeg,image/png,image/webp"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) void handlePick(f)
+          e.target.value = ''
+        }}
+      />
+      {current ? (
+        <div style={dm.photoThumbWrap}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={current} alt="address" style={dm.photoThumb} />
+          <button type="button" style={dm.photoReplaceBtn} onClick={() => ref.current?.click()} disabled={busy}>
+            {busy ? L.photoUploading : `📷 ${L.photoReplace}`}
+          </button>
+        </div>
+      ) : (
+        <button type="button" style={dm.photoUploadEmpty} onClick={() => ref.current?.click()} disabled={busy}>
+          <span style={{ fontSize: 24 }}>📷</span>
+          <span>{busy ? L.photoUploading : L.photoUpload}</span>
+        </button>
+      )}
+      {err && <div style={dm.err}>{err}</div>}
+    </div>
+  )
 }
 
 function DeliveryEditModal({
@@ -2764,29 +2872,56 @@ function DeliveryEditModal({
     title: 'Delivery / on-site address',
     name: 'Contact name', phone: 'Phone number',
     address: 'Address', note: 'Door / floor / note',
-    useLoc: 'Use current location', locating: 'Locating…',
+    useLocMain: '📍 Use current location',
+    useLocSub:  'Help the store find you faster',
+    locating: 'Locating…',
     save: 'Save address', cancel: 'Cancel',
     needPhoneAddr: 'Phone and address are required',
     locOk: 'Location captured', locFail: 'Cannot get location. Please type the address.',
     phonePh: 'e.g. 855 12 345 678', addrPh: 'Street, building, city',
+    locPreviewTitle: '📍 Approximate location saved',
+    locPreviewCoord: 'Coordinates',
+    locPreviewOpen:  'Open Google Maps ›',
+    photoTitle: 'Address photo',
+    photoHint:  'Upload a door / front / location photo to help delivery',
+    photoUpload: 'Upload photo', photoReplace: 'Replace',
+    photoUploading: 'Uploading…', photoFail: 'Upload failed',
   } : lang === 'km' ? {
     title: 'អាសយដ្ឋានដឹក/សេវាដល់ផ្ទះ',
     name: 'ឈ្មោះទំនាក់ទំនង', phone: 'លេខទូរស័ព្ទ',
     address: 'អាសយដ្ឋាន', note: 'ផ្ទះ/ជាន់/សម្គាល់',
-    useLoc: 'ប្រើទីតាំងបច្ចុប្បន្ន', locating: 'កំពុងកំណត់ទីតាំង…',
+    useLocMain: '📍 ទាញទីតាំងបច្ចុប្បន្ន',
+    useLocSub:  'ជួយឱ្យហាង/អ្នកដឹករកអ្នកបានឆាប់',
+    locating: 'កំពុងកំណត់ទីតាំង…',
     save: 'រក្សាទុក', cancel: 'បោះបង់',
     needPhoneAddr: 'ត្រូវការលេខទូរស័ព្ទ និងអាសយដ្ឋាន',
     locOk: 'ទទួលបានទីតាំង', locFail: 'មិនអាចទាញទីតាំងបាន សូមវាយជាអក្សរ',
     phonePh: 'ឧ. 855 12 345 678', addrPh: 'ផ្លូវ អគារ ទីក្រុង',
+    locPreviewTitle: '📍 ទីតាំងប្រហែលត្រូវបានរក្សាទុក',
+    locPreviewCoord: 'កូអរដោនេ',
+    locPreviewOpen:  'បើក Google Maps ›',
+    photoTitle: 'រូបភាពអាសយដ្ឋាន',
+    photoHint:  'បង្ហោះរូបទ្វារ ឬទីតាំងជិតៗ ជួយការដឹកជញ្ជូន',
+    photoUpload: 'បង្ហោះរូប', photoReplace: 'ប្ដូររូប',
+    photoUploading: 'កំពុងបង្ហោះ…', photoFail: 'បង្ហោះបរាជ័យ',
   } : {
     title: '送货/上门地址',
     name: '联系人', phone: '联系电话',
     address: '详细地址', note: '门牌/楼层/备注',
-    useLoc: '使用当前位置', locating: '定位中…',
+    useLocMain: '📍 一键获取当前位置',
+    useLocSub:  '用于帮助商户/配送员更快找到你',
+    locating: '定位中…',
     save: '保存地址', cancel: '取消',
     needPhoneAddr: '请填写联系电话和详细地址',
-    locOk: '已获取定位', locFail: '无法获取当前位置，请手动填写地址',
+    locOk: '已获取大概位置', locFail: '无法获取当前位置，请手动填写地址',
     phonePh: '例如 855 12 345 678', addrPh: '街道、楼宇、城市',
+    locPreviewTitle: '📍 已获取大概位置',
+    locPreviewCoord: '经纬度',
+    locPreviewOpen:  '打开 Google Maps ›',
+    photoTitle: '门牌/位置照片',
+    photoHint:  '上传门牌、楼栋入口或附近明显位置，方便配送员找到你',
+    photoUpload: '上传照片', photoReplace: '重新上传',
+    photoUploading: '上传中…', photoFail: '上传失败',
   }
 
   function set<K extends keyof DeliveryForm>(k: K, v: DeliveryForm[K]) {
@@ -2860,12 +2995,36 @@ function DeliveryEditModal({
         <input style={dm.input} value={form.deliveryNote}
                onChange={(e) => set('deliveryNote', e.target.value.slice(0, 300))} />
 
-        <button type="button" style={dm.geoBtn} onClick={pickLocation} disabled={geoBusy}>
-          {geoBusy ? L.locating : `📌 ${L.useLoc}`}
+        {/* 大按钮：一键获取当前位置 */}
+        <button type="button" style={dm.geoBigBtn} onClick={pickLocation} disabled={geoBusy}>
+          <div style={dm.geoBigMain}>{geoBusy ? L.locating : L.useLocMain}</div>
+          <div style={dm.geoBigSub}>{L.useLocSub}</div>
         </button>
-        {geoMsg && (
-          <div style={geoMsg.ok ? dm.ok : dm.err}>{geoMsg.text}</div>
+
+        {/* 定位成功预览卡片 */}
+        {form.deliveryLat != null && form.deliveryLng != null && (
+          <div style={dm.locPreview}>
+            <div style={dm.locPreviewTitle}>{L.locPreviewTitle}</div>
+            <div style={dm.locPreviewCoord}>
+              {L.locPreviewCoord}: {form.deliveryLat.toFixed(5)}, {form.deliveryLng.toFixed(5)}
+            </div>
+            <a
+              href={`https://maps.google.com/?q=${form.deliveryLat},${form.deliveryLng}`}
+              target="_blank" rel="noreferrer" style={dm.locPreviewLink}
+            >{L.locPreviewOpen}</a>
+          </div>
         )}
+        {geoMsg && !geoMsg.ok && <div style={dm.err}>{geoMsg.text}</div>}
+
+        {/* 门牌/位置照片 */}
+        <div style={dm.label}>{L.photoTitle}</div>
+        <div style={{ fontSize: 11, color: '#888', marginTop: -4 }}>{L.photoHint}</div>
+        <DeliveryPhotoUploader
+          current={form.deliveryAddressPhotoUrl}
+          onChange={(url) => set('deliveryAddressPhotoUrl', url)}
+          L={L}
+        />
+
         {!canSave && (
           <div style={{ fontSize: 11, color: '#fa8c16' }}>{L.needPhoneAddr}</div>
         )}

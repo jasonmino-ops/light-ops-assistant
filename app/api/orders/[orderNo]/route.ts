@@ -98,6 +98,7 @@ export async function GET(
       deliveryLng:         co.deliveryLng,
       mapUrl: (co.deliveryLat != null && co.deliveryLng != null)
         ? `https://maps.google.com/?q=${co.deliveryLat},${co.deliveryLng}` : null,
+      deliveryAddressPhotoUrl: co.deliveryAddressPhotoUrl ?? null,
     })
   }
 
