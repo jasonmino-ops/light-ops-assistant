@@ -91,22 +91,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 门牌/位置照片：可为 data URL 或外部 https URL
+  // 门牌/位置照片：本期只接受 Storage 等 https URL；不再接收 base64 data URL。
+  // 旧订单的 base64（deliveryAddressPhotoData）保留，但新订单不写入该字段。
   const rawPhoto = typeof body.deliveryAddressPhotoUrl === 'string' ? body.deliveryAddressPhotoUrl.trim() : ''
-  let deliveryAddressPhotoData: string | null = null
-  let deliveryAddressPhotoUrl:  string | null = null
-  if (rawPhoto) {
-    if (rawPhoto.startsWith('data:image/')) {
-      if (rawPhoto.length > 8 * 1024 * 1024) {
-        return NextResponse.json({ error: 'PHOTO_TOO_LARGE' }, { status: 400 })
-      }
-      deliveryAddressPhotoData = rawPhoto
-      // URL 等订单创建后再回填（依赖 orderNo）
-    } else if (/^https?:\/\//i.test(rawPhoto)) {
-      deliveryAddressPhotoUrl = rawPhoto.slice(0, 1000)
-    }
-  }
-  const appUrlBase = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
+  const deliveryAddressPhotoUrl: string | null =
+    rawPhoto && /^https?:\/\//i.test(rawPhoto) ? rawPhoto.slice(0, 1000) : null
   const lang = pickLang(body.lang)
   const T = MSG[lang]
 
@@ -233,8 +222,8 @@ export async function POST(req: NextRequest) {
           deliveryNote,
           deliveryLat,
           deliveryLng,
-          deliveryAddressPhotoData,
           deliveryAddressPhotoUrl,
+          // 新订单不写入 deliveryAddressPhotoData（base64 旧方案已停用，旧订单数据保留）
           itemsJson:          JSON.stringify(itemsForJson),
           totalAmount:        String(payableAmount.toFixed(2)),
           status:             'PENDING',
@@ -275,17 +264,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'COUPON_ALREADY_USED', message: '该优惠券已被使用' }, { status: 409 })
     }
     throw e
-  }
-
-  // 回填 deliveryAddressPhotoUrl：若顾客上传 data URL，把 url 写为内部端点
-  if (deliveryAddressPhotoData && !deliveryAddressPhotoUrl) {
-    deliveryAddressPhotoUrl = appUrlBase
-      ? `${appUrlBase}/api/orders/${encodeURIComponent(order.orderNo)}/delivery-photo`
-      : `/api/orders/${encodeURIComponent(order.orderNo)}/delivery-photo`
-    await prisma.customerOrder.update({
-      where: { id: order.id },
-      data:  { deliveryAddressPhotoUrl },
-    }).catch(() => { /* swallow */ })
   }
 
   // ── 通知 OWNER ────────────────────────────────────────────────────────────

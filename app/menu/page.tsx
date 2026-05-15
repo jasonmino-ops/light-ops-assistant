@@ -2822,7 +2822,7 @@ function DeliveryPhotoUploader({
       form.append('file', blob, 'address.jpg')
       const res = await fetch('/api/uploads/delivery-photo', { method: 'POST', body: form })
       const body = await res.json().catch(() => ({}))
-      if (res.ok && body?.dataUrl) onChange(body.dataUrl)
+      if (res.ok && body?.url) onChange(body.url)
       else setErr(body?.message ?? L.photoFail)
     } catch {
       setErr(L.photoFail)
