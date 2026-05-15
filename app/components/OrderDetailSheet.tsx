@@ -38,6 +38,14 @@ type OrderDetail = {
   orderSource?: 'CUSTOMER_H5' | string
   customerTelegramId?: string | null
   remark?: string | null
+  // 配送/上门订单
+  customerName?: string | null
+  customerPhone?: string | null
+  deliveryAddress?: string | null
+  deliveryNote?: string | null
+  deliveryLat?: number | null
+  deliveryLng?: number | null
+  mapUrl?: string | null
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -300,6 +308,35 @@ export default function OrderDetailSheet({
                 </div>
               )}
             </div>
+
+            {/* 配送/上门 */}
+            {(d.deliveryAddress || d.customerPhone) && (
+              <div style={sh.section}>
+                <div style={sh.sectionLabel}>🚚 送货/上门</div>
+                {d.customerName    && <InfoRow label="联系人" value={d.customerName} />}
+                {d.customerPhone   && <InfoRow label="电话"   value={d.customerPhone} />}
+                {d.deliveryAddress && (
+                  <div style={sh.infoRowWrap}>
+                    <span style={sh.infoLabel}>地址</span>
+                    <span style={{ ...sh.infoValue, whiteSpace: 'pre-wrap' }}>{d.deliveryAddress}</span>
+                  </div>
+                )}
+                {d.deliveryNote && (
+                  <div style={sh.infoRowWrap}>
+                    <span style={sh.infoLabel}>备注</span>
+                    <span style={{ ...sh.infoValue, whiteSpace: 'pre-wrap' }}>{d.deliveryNote}</span>
+                  </div>
+                )}
+                {d.mapUrl && (
+                  <div style={sh.infoRowWrap}>
+                    <span style={sh.infoLabel}>地图</span>
+                    <a href={d.mapUrl} target="_blank" rel="noreferrer" style={{ ...sh.infoValue, color: '#1677ff', textDecoration: 'underline' }}>
+                      Google Maps ›
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Payment */}
             <div style={sh.section}>

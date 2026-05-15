@@ -57,7 +57,14 @@ function pickLang(v: unknown): Lang {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { storeCode?: string; items?: OrderItem[]; customerTelegramId?: string; remark?: string; lang?: string; couponId?: string }
+  let body: {
+    storeCode?: string; items?: OrderItem[]; customerTelegramId?: string
+    remark?: string; lang?: string; couponId?: string
+    pickupMethod?: 'dineIn' | 'delivery' | string
+    customerName?: string; customerPhone?: string
+    deliveryAddress?: string; deliveryNote?: string
+    deliveryLat?: number; deliveryLng?: number
+  }
   try {
     body = await req.json()
   } catch {
@@ -66,6 +73,22 @@ export async function POST(req: NextRequest) {
 
   const { storeCode, items, customerTelegramId, remark } = body
   const couponId = typeof body.couponId === 'string' ? body.couponId.trim() : ''
+
+  // 配送/上门字段（可选；当 pickupMethod=delivery 时强制电话+地址非空）
+  const pickupMethod    = (body.pickupMethod ?? '').trim()
+  const customerName    = (body.customerName    ?? '').trim().slice(0, 60) || null
+  const customerPhone   = (body.customerPhone   ?? '').trim().slice(0, 40) || null
+  const deliveryAddress = (body.deliveryAddress ?? '').trim().slice(0, 500) || null
+  const deliveryNote    = (body.deliveryNote    ?? '').trim().slice(0, 300) || null
+  const latRaw = Number(body.deliveryLat)
+  const lngRaw = Number(body.deliveryLng)
+  const deliveryLat = Number.isFinite(latRaw) && latRaw >= -90  && latRaw <= 90  ? latRaw : null
+  const deliveryLng = Number.isFinite(lngRaw) && lngRaw >= -180 && lngRaw <= 180 ? lngRaw : null
+  if (pickupMethod === 'delivery') {
+    if (!customerPhone || !deliveryAddress) {
+      return NextResponse.json({ error: 'DELIVERY_INFO_REQUIRED', message: '请填写联系电话和送货/上门地址' }, { status: 400 })
+    }
+  }
   const lang = pickLang(body.lang)
   const T = MSG[lang]
 
@@ -186,6 +209,12 @@ export async function POST(req: NextRequest) {
           orderNo,
           customerTelegramId: trimmedTgId,
           customerLang:       lang,
+          customerName,
+          customerPhone,
+          deliveryAddress,
+          deliveryNote,
+          deliveryLat,
+          deliveryLng,
           itemsJson:          JSON.stringify(itemsForJson),
           totalAmount:        String(payableAmount.toFixed(2)),
           status:             'PENDING',
@@ -229,7 +258,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 通知 OWNER ────────────────────────────────────────────────────────────
-  await notifyOwner(store.tenantId, store.name, order.orderNo, itemsForJson, totalAmount).catch(
+  await notifyOwner(store.tenantId, store.name, order.orderNo, itemsForJson, totalAmount, {
+    pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng,
+  }).catch(
     (e) => console.error('[customer-order] notify owner failed:', e),
   )
 
@@ -290,6 +321,12 @@ async function notifyOwner(
   orderNo: string,
   items: { name: string; spec: string | null; quantity: number; price: number }[],
   totalAmount: number,
+  delivery: {
+    pickupMethod: string
+    customerName: string | null; customerPhone: string | null
+    deliveryAddress: string | null; deliveryNote: string | null
+    deliveryLat: number | null; deliveryLng: number | null
+  },
 ) {
   const owner = await prisma.user.findFirst({
     where: { tenantId, role: 'OWNER', status: 'ACTIVE', telegramId: { not: null } },
@@ -301,13 +338,26 @@ async function notifyOwner(
     .map((i) => `  · ${i.name}${i.spec ? ` (${i.spec})` : ''} × ${i.quantity}`)
     .join('\n')
 
+  let deliveryBlock = ''
+  if (delivery.pickupMethod === 'delivery' && (delivery.customerPhone || delivery.deliveryAddress)) {
+    const lines: string[] = ['🚚 送货/上门信息']
+    if (delivery.customerName)    lines.push(`联系人：${delivery.customerName}`)
+    if (delivery.customerPhone)   lines.push(`电话：${delivery.customerPhone}`)
+    if (delivery.deliveryAddress) lines.push(`地址：${delivery.deliveryAddress}`)
+    if (delivery.deliveryNote)    lines.push(`备注：${delivery.deliveryNote}`)
+    if (delivery.deliveryLat != null && delivery.deliveryLng != null) {
+      lines.push(`地图：https://maps.google.com/?q=${delivery.deliveryLat},${delivery.deliveryLng}`)
+    }
+    deliveryBlock = `\n${lines.join('\n')}\n─────────────`
+  }
+
   const text =
     `🛒 新顾客订单\n` +
     `门店：${storeName}\n` +
     `订单号：${orderNo}\n` +
     `─────────────\n` +
     `${itemLines}\n` +
-    `─────────────\n` +
+    `─────────────${deliveryBlock}\n` +
     `合计：$${totalAmount.toFixed(2)}\n\n` +
     `状态：待确认`
 

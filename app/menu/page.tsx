@@ -438,9 +438,16 @@ export default function MenuPage() {
   // 搜索 + 购物车展开
   const [searchKeyword, setSearchKeyword] = useState('')
   const [cartExpand,    setCartExpand]    = useState(false)
-  // 结算选项（取餐方式 + 备注 + 优惠券）
+  // 结算选项（取餐方式 + 备注 + 优惠券 + 配送地址）
   const [pickupMethod,  setPickupMethod]  = useState<'dineIn' | 'delivery'>('dineIn')
   const [orderRemark,   setOrderRemark]   = useState('')
+  // 配送地址（仅 delivery 用）
+  const [deliveryEditOpen, setDeliveryEditOpen] = useState(false)
+  const [deliveryInfo, setDeliveryInfo] = useState<{
+    customerName: string; customerPhone: string
+    deliveryAddress: string; deliveryNote: string
+    deliveryLat: number | null; deliveryLng: number | null
+  }>({ customerName: '', customerPhone: '', deliveryAddress: '', deliveryNote: '', deliveryLat: null, deliveryLng: null })
   // 优惠券
   const [tgId, setTgId]                         = useState<string>('')
   const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null)
@@ -605,6 +612,22 @@ export default function MenuPage() {
     try { localStorage.setItem(`cart_${storeCode}`, JSON.stringify(cart)) } catch { /* ignore */ }
   }, [cart, storeCode])
 
+  // 配送地址持久化（按 storeCode）
+  useEffect(() => {
+    if (!storeCode) return
+    try {
+      const saved = localStorage.getItem(`menu_delivery_${storeCode}`)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed && typeof parsed === 'object') setDeliveryInfo((v) => ({ ...v, ...parsed }))
+      }
+    } catch { /* ignore */ }
+  }, [storeCode])
+  useEffect(() => {
+    if (!storeCode) return
+    try { localStorage.setItem(`menu_delivery_${storeCode}`, JSON.stringify(deliveryInfo)) } catch { /* ignore */ }
+  }, [deliveryInfo, storeCode])
+
   // ── 语言偏好持久化（与 /me 共享） ───────────────────────────────────────
   useEffect(() => {
     try {
@@ -717,6 +740,15 @@ export default function MenuPage() {
           items: cart.map((c) => ({ productId: c.id, quantity: c.quantity })),
           ...(customerTelegramId ? { customerTelegramId } : {}),
           ...(selectedCouponId ? { couponId: selectedCouponId } : {}),
+          pickupMethod,
+          ...(pickupMethod === 'delivery' ? {
+            customerName:    deliveryInfo.customerName    || undefined,
+            customerPhone:   deliveryInfo.customerPhone   || undefined,
+            deliveryAddress: deliveryInfo.deliveryAddress || undefined,
+            deliveryNote:    deliveryInfo.deliveryNote    || undefined,
+            ...(deliveryInfo.deliveryLat != null && deliveryInfo.deliveryLng != null
+              ? { deliveryLat: deliveryInfo.deliveryLat, deliveryLng: deliveryInfo.deliveryLng } : {}),
+          } : {}),
           remark,
           lang,
         }),
@@ -724,6 +756,7 @@ export default function MenuPage() {
       const body = await res.json()
       if (!res.ok) {
         const msg =
+          body.error === 'DELIVERY_INFO_REQUIRED'? (body.message ?? '请填写联系电话和送货/上门地址') :
           body.error === 'PRODUCT_UNAVAILABLE'   ? ui.errSubmitProduct :
           body.error === 'COUPON_ALREADY_USED'   ? '该优惠券已被使用，请重新选择' :
           body.error === 'COUPON_INVALID'        ? '优惠券不可用' :
@@ -1075,6 +1108,29 @@ export default function MenuPage() {
               ))}
             </div>
 
+            {/* 配送/上门地址卡片（仅 delivery 显示） */}
+            {pickupMethod === 'delivery' && (
+              <button type="button" style={addr.card} onClick={() => setDeliveryEditOpen(true)}>
+                {deliveryInfo.deliveryAddress ? (
+                  <>
+                    <div style={addr.addrLine}>📍 {deliveryInfo.deliveryAddress}</div>
+                    <div style={addr.subLine}>
+                      {deliveryInfo.customerName ? `${deliveryInfo.customerName} · ` : ''}
+                      {deliveryInfo.customerPhone || ''}
+                      {(deliveryInfo.deliveryLat != null && deliveryInfo.deliveryLng != null) && '  ·  📌 已获取定位'}
+                    </div>
+                    {deliveryInfo.deliveryNote && <div style={addr.noteLine}>{deliveryInfo.deliveryNote}</div>}
+                  </>
+                ) : (
+                  <div style={addr.placeholder}>
+                    📍 {lang === 'en' ? 'Please add delivery / on-site address ›'
+                       : lang === 'km' ? 'សូមបន្ថែមអាសយដ្ឋានដឹក/សេវាដល់ផ្ទះ ›'
+                       : '请填写送货/上门地址 ›'}
+                  </div>
+                )}
+              </button>
+            )}
+
             {/* 取餐方式 */}
             <div style={s.chkSection}>
               <div style={s.chkSectionLabel}>{fulfillTpl.title}</div>
@@ -1194,6 +1250,16 @@ export default function MenuPage() {
             <button type="button" style={cpk.done} onClick={() => setCouponPickerOpen(false)}>{couponDoneLabel}</button>
           </div>
         </div>
+      )}
+
+      {/* ── 配送/上门地址编辑弹层 ── */}
+      {deliveryEditOpen && (
+        <DeliveryEditModal
+          initial={deliveryInfo}
+          lang={lang}
+          onClose={() => setDeliveryEditOpen(false)}
+          onSave={(v) => { setDeliveryInfo(v); setDeliveryEditOpen(false) }}
+        />
       )}
 
       {/* ── 下单成功覆盖弹层 ── */}
@@ -2649,4 +2715,173 @@ const cpk: Record<string, React.CSSProperties> = {
   itemOn:{ borderColor: '#ff6b00', background: '#fff7e6' },
   empty: { padding: '20px 0', textAlign: 'center' as const, color: '#bbb', fontSize: 13 },
   done:  { height: 40, fontSize: 14, fontWeight: 700, color: '#fff', background: '#ff6b00', border: 'none', borderRadius: 8, cursor: 'pointer' },
+}
+
+// ─── 配送/上门地址 ───────────────────────────────────────────────────────────
+
+const addr: Record<string, React.CSSProperties> = {
+  card: {
+    width: '100%', textAlign: 'left' as const, background: '#fff7e6',
+    border: '1px dashed #ffd591', borderRadius: 10, padding: '10px 12px',
+    margin: '0 0 10px', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column' as const, gap: 4,
+  },
+  addrLine:    { fontSize: 13, fontWeight: 700, color: '#1a1a1a' },
+  subLine:     { fontSize: 12, color: '#666' },
+  noteLine:    { fontSize: 11, color: '#999' },
+  placeholder: { fontSize: 13, color: '#fa8c16', fontWeight: 600 },
+}
+
+const dm: Record<string, React.CSSProperties> = {
+  mask:  { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 700, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' },
+  panel: { width: '100%', maxWidth: 480, background: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, display: 'flex', flexDirection: 'column' as const, gap: 10, maxHeight: '90vh', overflowY: 'auto' as const },
+  title: { fontSize: 15, fontWeight: 700, color: '#1a1a1a' },
+  label: { fontSize: 12, color: '#888', marginTop: 4 },
+  input: { fontSize: 14, color: '#1a1a1a', background: '#fff', borderRadius: 8, padding: '8px 10px', border: '1px solid #d9d9d9', width: '100%', boxSizing: 'border-box' as const, outline: 'none' },
+  err:   { fontSize: 12, color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 6, padding: '6px 8px' },
+  ok:    { fontSize: 12, color: '#389e0d' },
+  geoBtn:{ height: 36, fontSize: 13, fontWeight: 600, color: '#1677ff', background: '#e6f4ff', border: '1px solid #91caff', borderRadius: 8, cursor: 'pointer' },
+  actions:    { display: 'flex', gap: 8, marginTop: 8 },
+  cancelBtn:  { flex: 1, height: 40, fontSize: 14, color: '#666', background: '#f5f5f5', border: 'none', borderRadius: 8, cursor: 'pointer' },
+  saveBtn:    { flex: 2, height: 40, fontSize: 14, fontWeight: 700, color: '#fff', background: '#ff6b00', border: 'none', borderRadius: 8, cursor: 'pointer' },
+  saveBtnDis: { background: '#bfbfbf', cursor: 'not-allowed' },
+}
+
+type DeliveryForm = {
+  customerName: string; customerPhone: string
+  deliveryAddress: string; deliveryNote: string
+  deliveryLat: number | null; deliveryLng: number | null
+}
+
+function DeliveryEditModal({
+  initial, lang, onClose, onSave,
+}: { initial: DeliveryForm; lang: 'zh' | 'en' | 'km'; onClose: () => void; onSave: (v: DeliveryForm) => void }) {
+  const [form, setForm] = useState<DeliveryForm>(initial)
+  const [geoMsg, setGeoMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [geoBusy, setGeoBusy] = useState(false)
+
+  const L = lang === 'en' ? {
+    title: 'Delivery / on-site address',
+    name: 'Contact name', phone: 'Phone number',
+    address: 'Address', note: 'Door / floor / note',
+    useLoc: 'Use current location', locating: 'Locating…',
+    save: 'Save address', cancel: 'Cancel',
+    needPhoneAddr: 'Phone and address are required',
+    locOk: 'Location captured', locFail: 'Cannot get location. Please type the address.',
+    phonePh: 'e.g. 855 12 345 678', addrPh: 'Street, building, city',
+  } : lang === 'km' ? {
+    title: 'អាសយដ្ឋានដឹក/សេវាដល់ផ្ទះ',
+    name: 'ឈ្មោះទំនាក់ទំនង', phone: 'លេខទូរស័ព្ទ',
+    address: 'អាសយដ្ឋាន', note: 'ផ្ទះ/ជាន់/សម្គាល់',
+    useLoc: 'ប្រើទីតាំងបច្ចុប្បន្ន', locating: 'កំពុងកំណត់ទីតាំង…',
+    save: 'រក្សាទុក', cancel: 'បោះបង់',
+    needPhoneAddr: 'ត្រូវការលេខទូរស័ព្ទ និងអាសយដ្ឋាន',
+    locOk: 'ទទួលបានទីតាំង', locFail: 'មិនអាចទាញទីតាំងបាន សូមវាយជាអក្សរ',
+    phonePh: 'ឧ. 855 12 345 678', addrPh: 'ផ្លូវ អគារ ទីក្រុង',
+  } : {
+    title: '送货/上门地址',
+    name: '联系人', phone: '联系电话',
+    address: '详细地址', note: '门牌/楼层/备注',
+    useLoc: '使用当前位置', locating: '定位中…',
+    save: '保存地址', cancel: '取消',
+    needPhoneAddr: '请填写联系电话和详细地址',
+    locOk: '已获取定位', locFail: '无法获取当前位置，请手动填写地址',
+    phonePh: '例如 855 12 345 678', addrPh: '街道、楼宇、城市',
+  }
+
+  function set<K extends keyof DeliveryForm>(k: K, v: DeliveryForm[K]) {
+    setForm((p) => ({ ...p, [k]: v }))
+  }
+
+  function pickLocation() {
+    if (geoBusy) return
+    setGeoBusy(true); setGeoMsg(null)
+    const done = (lat: number, lng: number) => {
+      setForm((p) => ({ ...p, deliveryLat: lat, deliveryLng: lng }))
+      setGeoMsg({ ok: true, text: L.locOk })
+      setGeoBusy(false)
+    }
+    const fail = () => {
+      setGeoMsg({ ok: false, text: L.locFail })
+      setGeoBusy(false)
+    }
+    // 优先 Telegram WebApp LocationManager
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    const lm = tg?.LocationManager
+    try {
+      if (lm && typeof lm.init === 'function' && typeof lm.getLocation === 'function') {
+        lm.init(() => {
+          try {
+            lm.getLocation((loc: { latitude?: number; longitude?: number } | null) => {
+              if (loc && typeof loc.latitude === 'number' && typeof loc.longitude === 'number') done(loc.latitude, loc.longitude)
+              else fail()
+            })
+          } catch { fail() }
+        })
+        return
+      }
+    } catch { /* ignore */ }
+    // fallback：navigator.geolocation
+    if (navigator?.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => done(pos.coords.latitude, pos.coords.longitude),
+        () => fail(),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+      )
+    } else {
+      fail()
+    }
+  }
+
+  const canSave = form.customerPhone.trim().length > 0 && form.deliveryAddress.trim().length > 0
+
+  return (
+    <div style={dm.mask} onClick={onClose}>
+      <div style={dm.panel} onClick={(e) => e.stopPropagation()}>
+        <div style={dm.title}>📍 {L.title}</div>
+
+        <div style={dm.label}>{L.name}</div>
+        <input style={dm.input} value={form.customerName}
+               onChange={(e) => set('customerName', e.target.value.slice(0, 60))} />
+
+        <div style={dm.label}>{L.phone} *</div>
+        <input style={dm.input} type="tel" inputMode="tel" placeholder={L.phonePh}
+               value={form.customerPhone}
+               onChange={(e) => set('customerPhone', e.target.value.slice(0, 40))} />
+
+        <div style={dm.label}>{L.address} *</div>
+        <textarea style={{ ...dm.input, minHeight: 60, fontFamily: 'inherit', resize: 'vertical' as const }}
+                  rows={2} placeholder={L.addrPh}
+                  value={form.deliveryAddress}
+                  onChange={(e) => set('deliveryAddress', e.target.value.slice(0, 500))} />
+
+        <div style={dm.label}>{L.note}</div>
+        <input style={dm.input} value={form.deliveryNote}
+               onChange={(e) => set('deliveryNote', e.target.value.slice(0, 300))} />
+
+        <button type="button" style={dm.geoBtn} onClick={pickLocation} disabled={geoBusy}>
+          {geoBusy ? L.locating : `📌 ${L.useLoc}`}
+        </button>
+        {geoMsg && (
+          <div style={geoMsg.ok ? dm.ok : dm.err}>{geoMsg.text}</div>
+        )}
+        {!canSave && (
+          <div style={{ fontSize: 11, color: '#fa8c16' }}>{L.needPhoneAddr}</div>
+        )}
+
+        <div style={dm.actions}>
+          <button type="button" style={dm.cancelBtn} onClick={onClose}>{L.cancel}</button>
+          <button
+            type="button"
+            style={{ ...dm.saveBtn, ...(canSave ? {} : dm.saveBtnDis) }}
+            disabled={!canSave}
+            onClick={() => canSave && onSave(form)}
+          >
+            {L.save}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }

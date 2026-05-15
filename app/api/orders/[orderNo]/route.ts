@@ -90,6 +90,14 @@ export async function GET(
       cancelledAt:         null,
       customerTelegramId:  co.customerTelegramId,
       remark:              co.remark,
+      customerName:        co.customerName,
+      customerPhone:       co.customerPhone,
+      deliveryAddress:     co.deliveryAddress,
+      deliveryNote:        co.deliveryNote,
+      deliveryLat:         co.deliveryLat,
+      deliveryLng:         co.deliveryLng,
+      mapUrl: (co.deliveryLat != null && co.deliveryLng != null)
+        ? `https://maps.google.com/?q=${co.deliveryLat},${co.deliveryLng}` : null,
     })
   }
 
