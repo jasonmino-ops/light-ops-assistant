@@ -27,10 +27,17 @@ type OrderDetail = {
   saleStatus: string
   items: OrderItem[]
   totalAmount: number
-  paymentMethod: 'CASH' | 'KHQR' | null
+  paymentMethod: 'CASH' | 'KHQR' | 'QR' | string | null
   paymentStatus: string | null
   paidAt: string | null
   cancelledAt: string | null
+  // 顾客 H5 订单专用（可选）
+  subtotal?: number
+  discountAmount?: number
+  couponName?: string | null
+  orderSource?: 'CUSTOMER_H5' | string
+  customerTelegramId?: string | null
+  remark?: string | null
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -270,10 +277,28 @@ export default function OrderDetailSheet({
                   </div>
                 </div>
               ))}
-              <div style={sh.totalRow}>
-                <span style={sh.totalLabel}>{t('order.labelTotal')}</span>
-                <span style={sh.totalAmt}>${Math.abs(d.totalAmount).toFixed(2)}</span>
-              </div>
+              {/* 顾客 H5 订单 + 用券：展示「商品金额 / 已优惠 / 实收」三段 */}
+              {d.orderSource === 'CUSTOMER_H5' && typeof d.discountAmount === 'number' && d.discountAmount > 0 ? (
+                <>
+                  <div style={sh.subRow}>
+                    <span style={sh.subLabel}>{t('sale.subtotal')}</span>
+                    <span style={sh.subAmt}>${(d.subtotal ?? d.totalAmount).toFixed(2)}</span>
+                  </div>
+                  <div style={sh.subRow}>
+                    <span style={sh.subLabel}>🎟️ {d.couponName || '优惠券'}</span>
+                    <span style={{ ...sh.subAmt, color: '#fa8c16' }}>-${d.discountAmount.toFixed(2)}</span>
+                  </div>
+                  <div style={sh.totalRow}>
+                    <span style={sh.totalLabel}>实收</span>
+                    <span style={sh.totalAmt}>${Math.abs(d.totalAmount).toFixed(2)}</span>
+                  </div>
+                </>
+              ) : (
+                <div style={sh.totalRow}>
+                  <span style={sh.totalLabel}>{t('order.labelTotal')}</span>
+                  <span style={sh.totalAmt}>${Math.abs(d.totalAmount).toFixed(2)}</span>
+                </div>
+              )}
             </div>
 
             {/* Payment */}
@@ -431,6 +456,12 @@ const sh: Record<string, React.CSSProperties> = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     borderTop: '1px dashed #e8e8e8', paddingTop: 8, marginTop: 4,
   },
+  subRow: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    paddingTop: 4,
+  },
+  subLabel: { fontSize: 13, color: '#595959' },
+  subAmt:   { fontSize: 14, fontWeight: 600, color: '#1a1a1a' },
   totalLabel: { fontSize: 14, fontWeight: 600, color: '#1a1a1a' },
   totalAmt: { fontSize: 20, fontWeight: 700, color: '#1677ff' },
   infoRowWrap: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
