@@ -17,6 +17,7 @@ const KEY      = process.env.SW_PRINTER_KEY      ?? ''
 
 const TOKEN_API = 'https://open.sw-aiot.com/api/getToken'
 const PRINT_API = 'https://open.sw-aiot.com/api/message/printMsg'
+const BIND_API  = 'https://open.sw-aiot.com/api/device/bindPrint'
 
 export function isPrinterConfigured(): boolean {
   return !!(USERNAME && SECRET && DEVID && KEY)
@@ -286,6 +287,64 @@ export async function autoPrintCustomerOrder(opts: {
 }
 
 // ── tier 门控辅助 ─────────────────────────────────────────────────────────
+
+// ── 设备绑定确认（排查离线/未绑定，复用 getPrinterTokenWithDiag） ────────
+
+export type BindDeviceResult = {
+  ok: boolean
+  httpStatus?: number
+  rawBody?: unknown
+  errorMessage?: string
+  tokenDiag?: TokenDiag  // 拿 token 阶段失败时附上诊断
+  request?: { devid: string; key: string; pwidth: number; timeout: number; nickname: string }
+}
+
+export async function bindDevice(opts: {
+  pwidth?: number      // 默认 58
+  timeout?: number     // 默认 600
+  nickname?: string    // 默认 '店小二_测试打印机'
+}): Promise<BindDeviceResult> {
+  const pwidth   = opts.pwidth   ?? 58
+  const timeout  = opts.timeout  ?? 600
+  const nickname = opts.nickname ?? '店小二_测试打印机'
+  const request  = { devid: DEVID, key: KEY, pwidth, timeout, nickname }
+
+  if (!isPrinterConfigured()) {
+    return { ok: false, errorMessage: 'PRINTER_NOT_CONFIGURED', request }
+  }
+
+  // 复用既有 token 获取链路；失败回传诊断
+  const tokenResult = await getPrinterTokenWithDiag(false)
+  if (!tokenResult.token) {
+    return { ok: false, errorMessage: 'TOKEN_FAILED', tokenDiag: tokenResult.diag, request }
+  }
+
+  try {
+    const r = await fetch(BIND_API, {
+      method: 'POST',
+      headers: {
+        token: tokenResult.token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    })
+    const httpStatus = r.status
+    const body = await r.json().catch(() => null) as Record<string, unknown> | null
+    const ok =
+      r.ok &&
+      (body?.code === 0 || body?.code === '0' || body?.success === true || body?.status === 'ok')
+    if (ok) return { ok: true, httpStatus, rawBody: body, request }
+    return {
+      ok: false,
+      httpStatus,
+      rawBody: body,
+      errorMessage: String(body?.message ?? body?.msg ?? body?.error ?? `HTTP ${httpStatus}`),
+      request,
+    }
+  } catch (e) {
+    return { ok: false, errorMessage: (e as Error).message ?? 'network error', request }
+  }
+}
 
 export function isPrintingTier(tier: string | null | undefined): boolean {
   return tier === 'STANDARD' || tier === 'MULTI_STORE'

@@ -1096,6 +1096,7 @@ function PrinterPanel() {
   const [reprinting, setReprinting] = useState(false)
   const [diagnosing, setDiagnosing] = useState(false)
   const [diag, setDiag]       = useState<unknown | null>(null)
+  const [binding, setBinding] = useState(false)
   const [msg, setMsg]         = useState<{ ok: boolean; text: string } | null>(null)
 
   const refresh = useCallback(() => {
@@ -1120,6 +1121,25 @@ function PrinterPanel() {
       setMsg({ ok: false, text: '网络错误' })
     } finally {
       setTesting(false)
+    }
+  }
+
+  async function handleBindDevice() {
+    setBinding(true); setMsg(null); setDiag(null)
+    try {
+      const r = await apiFetch('/api/print/bind', { method: 'POST' }, OWNER_CTX)
+      const body = await r.json().catch(() => ({}))
+      setDiag(body)  // 完整 response（含 rawBody / request / tokenDiag）
+      if (r.ok && body?.ok) {
+        setMsg({ ok: true, text: '✓ 设备绑定/确认成功' })
+        refresh()
+      } else {
+        setMsg({ ok: false, text: body?.errorMessage ?? body?.message ?? body?.error ?? '绑定失败，请看下方完整响应' })
+      }
+    } catch {
+      setMsg({ ok: false, text: '网络错误' })
+    } finally {
+      setBinding(false)
     }
   }
 
@@ -1199,6 +1219,9 @@ function PrinterPanel() {
           <div style={pp.actionsRow}>
             <button type="button" style={pp.btnDiag} disabled={diagnosing} onClick={handleDiagnose}>
               {diagnosing ? '诊断中…' : '🔍 token 诊断（强制重拉）'}
+            </button>
+            <button type="button" style={pp.btnDiag} disabled={binding || !data.configured} onClick={handleBindDevice}>
+              {binding ? '绑定中…' : '🔗 绑定 / 确认设备'}
             </button>
           </div>
         </>
