@@ -133,34 +133,54 @@ export type ReceiptInput = {
   qrPayload?: string | null
 }
 
-/** 通用 ESC/POS 风格文本（具体指令以厂商解析为准；v2 再细化字号/对齐） */
-function buildReceiptText(input: ReceiptInput): string {
-  const now = new Date().toLocaleString('zh-CN', { hour12: false })
-  const lines: string[] = []
-  lines.push('<C><B>店小二订单</B></C>')
-  lines.push(`<C>${input.storeName}</C>`)
-  lines.push('--------------------------------')
-  lines.push(`单号: ${input.orderNo}`)
-  lines.push(`时间: ${now}`)
-  lines.push('--------------------------------')
+/**
+ * SW-AIOT type=5 JSON 模式 message 构造（官方协议）
+ *
+ * 每个元素必须是对象：
+ *   { cont: 文本, type?: 'title'|'cut'|..., bold?: boolean, align?: 'left'|'center'|'right' }
+ *
+ * 不能使用 <C><B><L><R><QR><CUT> 等 ESC/POS 风格字符串标签，否则服务端返回 code=5000 系统异常。
+ */
+type PrintLine = {
+  cont: string
+  type?: 'title' | 'cut' | 'qrcode' | string
+  bold?: boolean
+  align?: 'left' | 'center' | 'right'
+}
+
+function buildReceiptMessage(input: ReceiptInput): { print: PrintLine[] } {
+  const now   = new Date().toLocaleString('zh-CN', { hour12: false })
+  const print: PrintLine[] = []
+
+  print.push({ cont: '店小二订单', type: 'title' })
+  print.push({ cont: input.storeName })
+  print.push({ cont: '--------------------------------' })
+  print.push({ cont: `单号: ${input.orderNo}` })
+  print.push({ cont: `时间: ${now}` })
+  print.push({ cont: '--------------------------------' })
+
   for (const it of input.items) {
     const nameLine = it.spec ? `${it.name} (${it.spec})` : it.name
-    lines.push(nameLine)
-    lines.push(`  x${it.quantity}   $${it.lineAmount.toFixed(2)}`)
+    print.push({ cont: nameLine })
+    print.push({ cont: `  x${it.quantity}   $${it.lineAmount.toFixed(2)}` })
   }
-  lines.push('--------------------------------')
-  lines.push(`<R><B>合计: $${input.totalAmount.toFixed(2)}</B></R>`)
+
+  print.push({ cont: '--------------------------------' })
+  print.push({ cont: `合计: $${input.totalAmount.toFixed(2)}`, bold: true })
+
   if (input.remark) {
-    lines.push('--------------------------------')
-    lines.push(`备注: ${input.remark}`)
+    print.push({ cont: '--------------------------------' })
+    print.push({ cont: `备注: ${input.remark}` })
   }
   if (input.qrPayload) {
-    lines.push('--------------------------------')
-    lines.push(`<QR>${input.qrPayload}</QR>`)
+    print.push({ cont: '--------------------------------' })
+    print.push({ cont: input.qrPayload, type: 'qrcode' })
   }
-  lines.push('<C>感谢惠顾</C>')
-  lines.push('<CUT>')
-  return lines.join('\n')
+
+  print.push({ cont: '感谢惠顾' })
+  print.push({ cont: '1', type: 'cut' })
+
+  return { print }
 }
 
 // ── 打印 ──────────────────────────────────────────────────────────────────
@@ -179,11 +199,12 @@ export type PrintResult = {
   }
   request?: {
     devid: string
+    type: number     // 5 = JSON 对象数组模式
     pwidth: number
     ptype: number
     pcopy: number
     vtype: number
-    msgPreview: string  // 前 200 字符
+    msgPreview: string  // 前 400 字符（含完整 print 数组）
   }
 }
 
@@ -192,13 +213,12 @@ export async function printReceipt(input: ReceiptInput): Promise<PrintResult> {
   const token = await getPrinterToken()
   if (!token) return { ok: false, error: 'TOKEN_FAILED' }
 
-  // SW-AIOT 官方标准：msg 必须是 { "print": [...lines...] } 形式（stringify 后传）
-  const lines = buildReceiptText(input).split('\n').filter((s) => s.trim().length > 0)
-  const msgObj = { print: lines }
+  // SW-AIOT type=5 JSON 模式：msg = { print: [PrintLine 对象数组] } 的 stringify
+  const msgObj = buildReceiptMessage(input)
   const msgStr = JSON.stringify(msgObj)
 
-  const requestParams = { devid: DEVID, pwidth: 58, ptype: 1, pcopy: 1, vtype: -1 }
-  const reqMeta = { ...requestParams, msgPreview: msgStr.slice(0, 200) }
+  const requestParams = { devid: DEVID, type: 5, pwidth: 58, ptype: 1, pcopy: 1, vtype: -1 }
+  const reqMeta = { ...requestParams, msgPreview: msgStr.slice(0, 400) }
 
   try {
     const r = await fetch(PRINT_API, {
@@ -212,6 +232,7 @@ export async function printReceipt(input: ReceiptInput): Promise<PrintResult> {
         key:    KEY,
         msg:    msgStr,
         times:  Date.now(),
+        type:   5,                    // type=5 = JSON 对象数组打印模式
         pwidth: 58,
         ptype:  1,
         pcopy:  1,
