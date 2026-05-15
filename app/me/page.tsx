@@ -146,8 +146,8 @@ export default function MePage() {
   const [customerName, setCustomerName]  = useState('')
   const [customerBound, setCustomerBound] = useState(false)
   const [hasTgId,      setHasTgId]       = useState(false)
-  const [subView,      setSubView]       = useState<'home' | 'coupons'>('home')
-  const [couponTab,    setCouponTab]     = useState<'available' | 'used' | 'expired'>('available')
+  const [tgId,         setTgId]          = useState('')
+  const [availableCouponCount, setAvailableCouponCount] = useState(0)
 
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get('code') ?? ''
@@ -171,6 +171,7 @@ export default function MePage() {
           if (u?.id != null) {
             tgIdLocal = String(u.id)
             setHasTgId(true)
+            setTgId(tgIdLocal)
             const nm = String(u.first_name || u.username || '').trim()
             if (nm) setCustomerName(nm)
           }
@@ -193,6 +194,14 @@ export default function MePage() {
         }
       })
       .catch(() => { /* silent */ })
+
+    // 优惠券可用数量（仅在有 tgId 时拉取）
+    if (tgIdLocal) {
+      fetch(`/api/customer/coupons?code=${encodeURIComponent(code)}&tgId=${encodeURIComponent(tgIdLocal)}`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((b) => { if (!b?.error) setAvailableCouponCount(b?.counts?.available ?? 0) })
+        .catch(() => { /* silent */ })
+    }
   }, [])
 
   useEffect(() => {
@@ -210,12 +219,8 @@ export default function MePage() {
     <main style={s.page}>
       {/* Header */}
       <div style={s.header}>
-        {subView === 'coupons' ? (
-          <button type="button" style={s.headerBack} onClick={() => setSubView('home')}>‹ {ui.back}</button>
-        ) : (
-          <Link href={`/menu${qs}`} style={s.headerBack}>‹ {ui.backToMenu}</Link>
-        )}
-        <span style={s.headerTitle}>{subView === 'coupons' ? ui.couponCenter : ui.title}</span>
+        <Link href={`/menu${qs}`} style={s.headerBack}>‹ {ui.backToMenu}</Link>
+        <span style={s.headerTitle}>{ui.title}</span>
         <div style={s.langSwitch}>
           {(['zh', 'en', 'km'] as Lang[]).map((l) => (
             <button
@@ -231,8 +236,7 @@ export default function MePage() {
       </div>
 
       <div style={s.body}>
-        {subView === 'home' && (
-          <>
+        <>
             {/* 身份卡 */}
             <div style={s.userCard}>
               <div style={s.avatar}>{customerName ? customerName.slice(0, 1).toUpperCase() : '👤'}</div>
@@ -250,14 +254,14 @@ export default function MePage() {
                 <div style={s.assetValue}>$0.00</div>
                 <div style={s.assetLabel}>{ui.balance}</div>
               </div>
-              <div style={s.assetCell} onClick={() => setSubView('coupons')}>
-                <div style={s.assetValue}>0</div>
+              <Link href={`/me/coupons${qs}`} style={{ ...s.assetCell, textDecoration: 'none', color: 'inherit' }}>
+                <div style={s.assetValue}>{availableCouponCount}</div>
                 <div style={s.assetLabel}>{ui.coupon}</div>
-              </div>
-              <div style={s.assetCell} onClick={() => setSubView('coupons')}>
-                <div style={s.assetValue}>0</div>
+              </Link>
+              <Link href={`/me/coupons${qs}`} style={{ ...s.assetCell, textDecoration: 'none', color: 'inherit' }}>
+                <div style={s.assetValue}>{availableCouponCount}</div>
                 <div style={s.assetLabel}>{ui.voucher}</div>
-              </div>
+              </Link>
               <div style={s.assetCell} onClick={() => alert(ui.comingSoon)}>
                 <div style={s.assetValue}>0</div>
                 <div style={s.assetLabel}>{ui.points}</div>
@@ -299,11 +303,11 @@ export default function MePage() {
                 <span style={s.listLabel}>{ui.myOrders}</span>
                 <span style={s.listArrow}>›</span>
               </Link>
-              <button type="button" style={s.listItem} onClick={() => setSubView('coupons')}>
+              <Link href={`/me/coupons${qs}`} style={s.listItem}>
                 <span style={s.listIcon}>🎟️</span>
                 <span style={s.listLabel}>{ui.couponCenter}</span>
                 <span style={s.listArrow}>›</span>
-              </button>
+              </Link>
               <button type="button" style={s.listItem} onClick={() => alert(ui.comingSoon)}>
                 <span style={s.listIcon}>📍</span>
                 <span style={s.listLabel}>{ui.myAddress}</span>
@@ -331,29 +335,7 @@ export default function MePage() {
                 <Link href="/menu" style={s.hintLink}>{ui.goLogin} ›</Link>
               </div>
             )}
-          </>
-        )}
-
-        {subView === 'coupons' && (
-          <>
-            <div style={cp.tabs}>
-              {(['available', 'used', 'expired'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  style={{ ...cp.tab, ...(couponTab === tab ? cp.tabActive : {}) }}
-                  onClick={() => setCouponTab(tab)}
-                >
-                  {tab === 'available' ? ui.couponAvailable : tab === 'used' ? ui.couponUsed : ui.couponExpired}
-                </button>
-              ))}
-            </div>
-            <div style={cp.empty}>
-              <div style={cp.emptyIcon}>🎟️</div>
-              <div>{ui.emptyCoupons}</div>
-            </div>
-          </>
-        )}
+        </>
       </div>
 
       <CustomerBottomNav code={storeCode} lang={lang} />
