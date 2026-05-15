@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 
 type Customer = {
   telegramId: string
@@ -57,7 +58,10 @@ export default function CustomersPage() {
   // Telegram 触达弹窗
   const [touchTarget, setTouchTarget] = useState<Customer | null>(null)
   const [touchIntro, setTouchIntro]   = useState(false)
+  const [batchOpen, setBatchOpen]     = useState(false)
   const [toast, setToast]             = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const { tier } = useWorkMode()
+  const isFlagship = tier === 'MULTI_STORE'
 
   useEffect(() => {
     apiFetch('/api/customers', { cache: 'no-store' }, OWNER_CTX)
@@ -133,7 +137,16 @@ export default function CustomersPage() {
         {/* 私域功能入口 */}
         <div style={s.opsRow}>
           <button type="button" style={s.opsBtn} onClick={() => alert('该功能开发中，敬请期待')}>发券</button>
-          <button type="button" style={s.opsBtn} onClick={() => setTouchIntro(true)}>Telegram 触达</button>
+          <button
+            type="button"
+            style={s.opsBtn}
+            onClick={() => {
+              if (isFlagship) setBatchOpen(true)
+              else setTouchIntro(true)
+            }}
+          >
+            Telegram 触达{isFlagship && <span style={s.flagBadge}>旗舰</span>}
+          </button>
           <button type="button" style={s.opsBtn} onClick={() => alert('该功能开发中，敬请期待')}>会员等级</button>
         </div>
 
@@ -208,8 +221,17 @@ export default function CustomersPage() {
         />
       )}
 
-      {/* Telegram 触达说明弹窗 */}
+      {/* Telegram 触达说明弹窗（非旗舰） */}
       {touchIntro && <TouchIntroModal onClose={() => setTouchIntro(false)} />}
+
+      {/* 批量触达弹窗（旗舰） */}
+      {batchOpen && (
+        <BatchTouchModal
+          customers={customers}
+          onClose={() => setBatchOpen(false)}
+          onDone={(text) => { setBatchOpen(false); setToast({ type: 'ok', text }) }}
+        />
+      )}
 
       {/* Telegram 触达弹窗 */}
       {touchTarget && (
@@ -585,6 +607,163 @@ function TouchIntroModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ─── 批量触达弹窗（旗舰） ────────────────────────────────────────────────────
+
+const BATCH_MAX_PEOPLE = 50
+
+function BatchTouchModal({
+  customers,
+  onClose,
+  onDone,
+}: {
+  customers: Customer[]
+  onClose: () => void
+  onDone: (text: string) => void
+}) {
+  const [tpl, setTpl]                 = useState<TemplateKey>('THANK_YOU')
+  const [messageText, setMessageText] = useState<string>(TEMPLATE_LABELS.THANK_YOU.preview)
+  const [confirming, setConfirming]   = useState(false)
+  const [sending, setSending]         = useState(false)
+  const [errMsg, setErrMsg]           = useState('')
+  const [result, setResult]           = useState<{ sent: number; skipped: number; failed: number; total: number } | null>(null)
+
+  const reachable   = useMemo(() => customers.filter((c) => c.bound && !!c.telegramId), [customers])
+  const unreachable = customers.length - reachable.length
+  const willSend    = reachable.slice(0, BATCH_MAX_PEOPLE)
+  const overflow    = reachable.length - willSend.length
+
+  function selectTpl(k: TemplateKey) {
+    setTpl(k); setMessageText(TEMPLATE_LABELS[k].preview); setErrMsg('')
+  }
+
+  const trimmed  = messageText.trim()
+  const tooLong  = messageText.length > MSG_MAX
+  const tooShort = trimmed.length === 0
+  const canNext  = !sending && !tooLong && !tooShort && willSend.length > 0
+
+  async function handleSend() {
+    if (!canNext) return
+    setSending(true); setErrMsg('')
+    try {
+      const r = await apiFetch('/api/customers/touch/batch', {
+        method: 'POST',
+        body: JSON.stringify({
+          telegramIds: willSend.map((c) => c.telegramId),
+          templateKey: tpl,
+          messageText: trimmed,
+        }),
+      }, OWNER_CTX)
+      const body = await r.json().catch(() => ({}))
+      if (r.ok) {
+        setResult({ sent: body.sent ?? 0, skipped: body.skipped ?? 0, failed: body.failed ?? 0, total: body.total ?? 0 })
+      } else {
+        setErrMsg(body.message ?? body.error ?? '发送失败')
+        setConfirming(false)
+      }
+    } catch {
+      setErrMsg('网络错误，请重试')
+      setConfirming(false)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  function close() {
+    if (sending) return
+    if (result) onDone(`批量触达完成：成功 ${result.sent} / 跳过 ${result.skipped} / 失败 ${result.failed}`)
+    else onClose()
+  }
+
+  const counterColor = tooLong ? '#cf1322' : (messageText.length > MSG_MAX * 0.9 ? '#fa8c16' : '#aaa')
+
+  return (
+    <div style={tm.mask} onClick={close}>
+      <div style={tm.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={tm.title}>📢 批量 Telegram 触达 <span style={{ ...tm.introLabelSoon, marginLeft: 6 }}>旗舰</span></div>
+
+        {result ? (
+          <>
+            <div style={{ ...tm.introItem, fontSize: 13, lineHeight: 1.7 }}>
+              <div>共处理：{result.total} 人</div>
+              <div>✅ 成功：{result.sent}</div>
+              <div>⏭ 跳过（24h 节流 / 未绑定）：{result.skipped}</div>
+              <div>❌ 失败：{result.failed}</div>
+            </div>
+            <button type="button" style={tm.introClose} onClick={close}>知道了</button>
+          </>
+        ) : confirming ? (
+          <>
+            <div style={tm.introItem}>
+              即将向 <b>{willSend.length}</b> 位顾客发送「{TEMPLATE_LABELS[tpl].name}」模板消息。
+              <br />Telegram 24 小时内已发送过同模板的顾客将被跳过。
+            </div>
+            <div style={{ ...tm.introItemMuted, whiteSpace: 'pre-wrap' as const }}>{trimmed}</div>
+            {errMsg && <div style={tm.err}>{errMsg}</div>}
+            <div style={tm.actions}>
+              <button type="button" style={tm.cancelBtn} onClick={() => setConfirming(false)} disabled={sending}>返回修改</button>
+              <button type="button" style={{ ...tm.sendBtn, ...(sending ? tm.sendBtnDisabled : {}) }} onClick={handleSend} disabled={sending}>
+                {sending ? '发送中…' : `确认发送 (${willSend.length})`}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={tm.subtitle}>
+              可触达 <b style={{ color: '#1677ff' }}>{reachable.length}</b> 人 · 不可触达 {unreachable} 人
+              {overflow > 0 && <span style={{ color: '#fa8c16' }}> · 本次仅前 {BATCH_MAX_PEOPLE} 人</span>}
+            </div>
+
+            <div style={tm.tplLabel}>选择模板</div>
+            <div style={tm.tplRow}>
+              {(Object.keys(TEMPLATE_LABELS) as TemplateKey[]).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  style={{ ...tm.tplBtn, ...(tpl === k ? tm.tplBtnOn : {}) }}
+                  onClick={() => selectTpl(k)}
+                >
+                  {TEMPLATE_LABELS[k].name}
+                </button>
+              ))}
+            </div>
+
+            <div style={tm.editLabelRow}>
+              <span style={tm.tplLabel}>消息内容（可编辑）</span>
+              <button type="button" style={tm.restoreBtn} onClick={() => selectTpl(tpl)}>↻ 恢复模板</button>
+            </div>
+            <textarea
+              style={{ ...tm.textarea, ...(tooLong ? tm.textareaErr : {}) }}
+              rows={4}
+              maxLength={MSG_MAX + 50}
+              value={messageText}
+              onChange={(e) => { setMessageText(e.target.value); setErrMsg('') }}
+              placeholder="请输入要群发给顾客的消息内容"
+            />
+            <div style={tm.counterRow}>
+              <span style={tm.previewNote}>内容将作为所有顾客的统一发送文本，不再按语言渲染。</span>
+              <span style={{ ...tm.counter, color: counterColor }}>{messageText.length}/{MSG_MAX}</span>
+            </div>
+
+            {errMsg && <div style={tm.err}>{errMsg}</div>}
+
+            <div style={tm.actions}>
+              <button type="button" style={tm.cancelBtn} onClick={onClose}>取消</button>
+              <button
+                type="button"
+                style={{ ...tm.sendBtn, ...(canNext ? {} : tm.sendBtnDisabled) }}
+                onClick={() => canNext && setConfirming(true)}
+                disabled={!canNext}
+              >
+                下一步
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── 工具 ────────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null): string {
@@ -650,6 +829,12 @@ const s: Record<string, React.CSSProperties> = {
     flex: 1, height: 36, fontSize: 13, fontWeight: 600,
     background: '#fff', color: '#1677ff',
     border: '1px solid #91caff', borderRadius: 8, cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  flagBadge: {
+    fontSize: 9, fontWeight: 700, color: '#fff',
+    background: 'linear-gradient(135deg,#722ed1,#1677ff)',
+    padding: '1px 5px', borderRadius: 3, letterSpacing: '0.04em',
   },
 
   filterCard: {
