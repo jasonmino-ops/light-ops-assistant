@@ -140,12 +140,44 @@ export const TPL = {
     },
   },
 
-  // 第四层：语音兜底
+  // 第四层：语音 / 非文本媒体兜底
   voice: {
     zh: '为方便准确回复，请用文字描述一下您的需求～❤️',
     en: 'To help you more accurately, please type your question in text ❤️',
     km: 'សូមវាយជាអក្សរ ដើម្បីឱ្យខ្ញុំជួយបានច្បាស់លាស់ ❤️',
   } as SingleTpl,
+  media: {
+    PHOTO: {
+      zh: '主人，我已收到图片 ❤️ 为了更准确帮助您，麻烦用文字描述一下您的问题哦～',
+      en: 'Got your photo ❤️ To help you better, please describe your question in text.',
+      km: 'ខ្ញុំបានទទួលរូបភាពហើយ ❤️ សូមរៀបរាប់ជាអក្សរ ដើម្បីខ្ញុំជួយបានច្បាស់ជាង។',
+    } as SingleTpl,
+    STICKER: {
+      zh: '收到您的消息啦 😊 有任何商品、订单或优惠问题都可以直接告诉我～',
+      en: "Got it 😊 Feel free to ask me about products, orders, or coupons anytime.",
+      km: 'ទទួលបានហើយ 😊 សួរអំពីផលិតផល បញ្ជាទិញ ឬគូប៉ុងបានគ្រប់ពេល។',
+    } as SingleTpl,
+    LOCATION: {
+      zh: '主人，已收到您的位置 📍 如需配送或地址帮助，请告诉我您的需求～',
+      en: 'Got your location 📍 If you need delivery or address help, please let me know.',
+      km: 'ខ្ញុំបានទទួលទីតាំងរបស់អ្នកហើយ 📍 ប្រាប់ខ្ញុំបើត្រូវការដឹកជញ្ជូន ឬជំនួយអាសយដ្ឋាន។',
+    } as SingleTpl,
+    CONTACT: {
+      zh: '主人，已收到您分享的联系方式 ❤️ 请用文字告诉我您的需求，我会尽快帮您～',
+      en: 'Got the contact info you shared ❤️ Please describe your need in text and I will help.',
+      km: 'ខ្ញុំបានទទួលព័ត៌មានទំនាក់ទំនងហើយ ❤️ សូមរៀបរាប់ជាអក្សរ ខ្ញុំនឹងជួយ។',
+    } as SingleTpl,
+    DOCUMENT: {
+      zh: '主人，我暂时无法直接处理文件 📄 您可以发送文字说明，我会尽力帮您～',
+      en: "I can't open documents directly 📄 Please send a text description and I'll do my best.",
+      km: 'ខ្ញុំមិនអាចបើកឯកសារដោយផ្ទាល់បាននៅឡើយ 📄 សូមផ្ញើជាអក្សរ ខ្ញុំនឹងព្យាយាមជួយ។',
+    } as SingleTpl,
+    UNSUPPORTED: {
+      zh: '主人，我先帮您记录啦 ❤️ 麻烦用文字告诉我您的需求会更快哦～',
+      en: "I've noted your message ❤️ Sending it in text will help me respond faster.",
+      km: 'ខ្ញុំបានកត់ត្រាហើយ ❤️ បើផ្ញើជាអក្សរ ខ្ញុំអាចឆ្លើយឆាប់ជាង។',
+    } as SingleTpl,
+  },
 } as const
 
 export function pickRandom<T>(arr: readonly T[]): T {

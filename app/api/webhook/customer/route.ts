@@ -225,12 +225,14 @@ export async function POST(req: NextRequest) {
   }
   const lang: Lang = normalizeLang(contact?.telegramLanguageCode ?? msg.from?.language_code)
 
-  // 语音消息直接温柔引导
-  if (msg.voice || msg.video_note || msg.audio) {
-    const reply = TPL.voice[lang]
+  // 非文本媒体识别（含语音）：统一走温柔模板，不进入文本分类
+  const media = detectMedia(msg)
+  if (media) {
+    const reply = media === 'VOICE' ? TPL.voice[lang] : TPL.media[media][lang]
     await tgSend('sendMessage', { chat_id: chatId, text: reply })
-    void logConv({ tenantId, storeCode, telegramId, lang, direction: 'IN',  text: '[voice]', intentLayer: 2, intentSource: 'VOICE', escalated: false })
-    void logConv({ tenantId, storeCode, telegramId, lang, direction: 'OUT', text: reply,     intentLayer: 2, intentSource: 'VOICE', escalated: false })
+    const tag = `[${media.toLowerCase()}]`
+    void logConv({ tenantId, storeCode, telegramId, lang, direction: 'IN',  text: tag,   intentLayer: 2, intentSource: media, escalated: false })
+    void logConv({ tenantId, storeCode, telegramId, lang, direction: 'OUT', text: reply, intentLayer: 2, intentSource: media, escalated: false })
     return NextResponse.json({ ok: true })
   }
 
@@ -261,6 +263,25 @@ export async function POST(req: NextRequest) {
   })
 
   return NextResponse.json({ ok: true })
+}
+
+// ── 媒体类型识别 ─────────────────────────────────────────────────────────
+
+type MediaKind = 'VOICE' | 'PHOTO' | 'STICKER' | 'LOCATION' | 'CONTACT' | 'DOCUMENT' | 'UNSUPPORTED'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function detectMedia(m: any): MediaKind | null {
+  if (m.voice || m.video_note || m.audio) return 'VOICE'
+  if (m.photo)    return 'PHOTO'
+  if (m.sticker)  return 'STICKER'
+  if (m.location || m.venue) return 'LOCATION'
+  if (m.contact)  return 'CONTACT'
+  if (m.document) return 'DOCUMENT'
+  if (m.animation || m.video || m.dice || m.game || m.poll || m.invoice) return 'UNSUPPORTED'
+  // 文本消息时返回 null（外层走文本分类）
+  if (typeof m.text === 'string' && m.text.length > 0) return null
+  // 既无文本又无识别媒体 → 仍兜底
+  return 'UNSUPPORTED'
 }
 
 // ── 工具：lang normalize / 频控 / 日志 / 频控文案 ─────────────────────────
