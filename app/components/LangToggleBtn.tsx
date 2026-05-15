@@ -1,32 +1,12 @@
 'use client'
 
-import { useLocale } from './LangProvider'
-
 /**
- * Minimal language toggle button — switches between zh ↔ km.
- * Styled for placement inside a blue header bar.
- * Pass `style` to override/extend appearance.
+ * 商户端语言切换器已收敛到 /home（国旗下拉）。
+ * 其它商户页面（dashboard / sale / products / records / bind / refund 等）
+ * 通过此组件占位，但默认不渲染任何 UI，让语言由 /home 统一选择并持久化。
+ * 顾客端 /menu /me 自带独立切换器，不受此影响。
  */
-export default function LangToggleBtn({ style }: { style?: React.CSSProperties }) {
-  const { lang, setLang, t } = useLocale()
-  return (
-    <button
-      type="button"
-      style={{
-        fontSize: 11,
-        color: 'rgba(255,255,255,0.85)',
-        background: 'rgba(255,255,255,0.15)',
-        border: '1px solid rgba(255,255,255,0.3)',
-        borderRadius: 12,
-        padding: '4px 10px',
-        cursor: 'pointer',
-        flexShrink: 0,
-        whiteSpace: 'nowrap',
-        ...style,
-      }}
-      onClick={() => setLang(lang === 'zh' ? 'km' : 'zh')}
-    >
-      {t('home.langBtn')}
-    </button>
-  )
+export default function LangToggleBtn(_props?: { style?: React.CSSProperties }) {
+  void _props
+  return null
 }

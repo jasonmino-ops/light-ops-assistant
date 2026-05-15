@@ -270,9 +270,7 @@ export default function HomePage() {
           </div>
         </div>
         <div style={s.brandRight}>
-          <button style={s.switchBtn} onClick={() => setLang(lang === 'zh' ? 'km' : 'zh')}>
-            {t('home.langBtn')}
-          </button>
+          <LangDropdown lang={lang} setLang={setLang} />
           {realRole === 'OWNER' && (
             <div style={s.modeRow}>
               <span style={s.modeLabelText}>
@@ -519,6 +517,76 @@ function RefundCard({ item, tagRefund }: { item: RecordItem; tagRefund: string }
       <div style={{ ...s.recentAmount, color: '#ff4d4f' }}>
         -${Math.abs(item.lineAmount).toFixed(2)}
       </div>
+    </div>
+  )
+}
+
+// 国旗下拉：商户端只在 /home 渲染；选择持久化到 LangProvider 的 localStorage
+function LangDropdown({ lang, setLang }: { lang: 'zh' | 'km'; setLang: (l: 'zh' | 'km') => void }) {
+  const [open, setOpen] = useState(false)
+  const items: Array<{ code: 'zh' | 'km' | 'en'; flag: string; label: string; disabled?: boolean }> = [
+    { code: 'zh', flag: '🇨🇳', label: '中文' },
+    { code: 'en', flag: '🇺🇸', label: 'English', disabled: true },
+    { code: 'km', flag: '🇰🇭', label: 'ខ្មែរ' },
+  ]
+  const current = items.find((i) => i.code === lang) ?? items[0]
+
+  return (
+    <div style={{ position: 'relative' as const }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          fontSize: 11, color: 'rgba(255,255,255,0.95)',
+          background: 'rgba(255,255,255,0.15)',
+          border: '1px solid rgba(255,255,255,0.3)',
+          borderRadius: 12, padding: '4px 10px', cursor: 'pointer',
+          display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' as const,
+        }}
+      >
+        <span>{current.flag}</span>
+        <span>{current.label}</span>
+        <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed' as const, inset: 0, zIndex: 50 }} />
+          <div style={{
+            position: 'absolute' as const, top: 'calc(100% + 4px)', right: 0, zIndex: 60,
+            minWidth: 130, background: '#fff', border: '1px solid #e8e8e8',
+            borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', padding: 4,
+          }}>
+            {items.map((it) => {
+              const active = it.code === lang
+              return (
+                <button
+                  key={it.code}
+                  type="button"
+                  disabled={it.disabled}
+                  onClick={() => {
+                    if (it.disabled) return
+                    if (it.code !== lang) setLang(it.code as 'zh' | 'km')
+                    setOpen(false)
+                  }}
+                  style={{
+                    width: '100%', textAlign: 'left' as const,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 10px', borderRadius: 6,
+                    background: active ? '#e6f4ff' : 'transparent',
+                    color: it.disabled ? '#bbb' : '#1a1a1a',
+                    fontSize: 13, border: 'none',
+                    cursor: it.disabled ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{it.flag}</span>
+                  <span style={{ flex: 1 }}>{it.label}</span>
+                  {active && <span style={{ color: '#1677ff' }}>✓</span>}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }
