@@ -59,6 +59,9 @@ export default function CustomersPage() {
   const [touchTarget, setTouchTarget] = useState<Customer | null>(null)
   const [touchIntro, setTouchIntro]   = useState(false)
   const [batchOpen, setBatchOpen]     = useState(false)
+  // 发券
+  const [issueTarget, setIssueTarget] = useState<Customer | null>(null)
+  const [batchIssueOpen, setBatchIssueOpen] = useState(false)
   const [toast, setToast]             = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const { tier } = useWorkMode()
   const isFlagship = tier === 'MULTI_STORE'
@@ -136,7 +139,7 @@ export default function CustomersPage() {
 
         {/* 私域功能入口 */}
         <div style={s.opsRow}>
-          <button type="button" style={s.opsBtn} onClick={() => alert('该功能开发中，敬请期待')}>发券</button>
+          <button type="button" style={s.opsBtn} onClick={() => setBatchIssueOpen(true)}>🎫 批量发券</button>
           <button
             type="button"
             style={s.opsBtn}
@@ -218,6 +221,25 @@ export default function CustomersPage() {
           c={selected}
           onClose={() => setSelected(null)}
           onTouch={() => { setTouchTarget(selected); setSelected(null) }}
+          onIssue={() => { setIssueTarget(selected); setSelected(null) }}
+        />
+      )}
+
+      {/* 单人发券 */}
+      {issueTarget && (
+        <IssueCouponModal
+          c={issueTarget}
+          onClose={() => setIssueTarget(null)}
+          onResult={(ok, text) => { setIssueTarget(null); setToast({ type: ok ? 'ok' : 'err', text }) }}
+        />
+      )}
+
+      {/* 批量发券 */}
+      {batchIssueOpen && (
+        <BatchIssueCouponModal
+          customers={customers}
+          onClose={() => setBatchIssueOpen(false)}
+          onDone={(text) => { setBatchIssueOpen(false); setToast({ type: 'ok', text }) }}
         />
       )}
 
@@ -308,7 +330,7 @@ function CustomerCard({ c, onClick, onTouch }: { c: Customer; onClick: () => voi
   )
 }
 
-function Drawer({ c, onClose, onTouch }: { c: Customer; onClose: () => void; onTouch: () => void }) {
+function Drawer({ c, onClose, onTouch, onIssue }: { c: Customer; onClose: () => void; onTouch: () => void; onIssue: () => void }) {
   return (
     <div style={s.drawerMask} onClick={onClose}>
       <div style={s.drawer} onClick={(e) => e.stopPropagation()}>
@@ -378,7 +400,7 @@ function Drawer({ c, onClose, onTouch }: { c: Customer; onClose: () => void; onT
           </Section>
 
           <div style={s.drawerActions}>
-            <button type="button" style={{ ...s.drawerActionBtn, opacity: 0.5, cursor: 'not-allowed' }} onClick={() => alert('优惠券功能开发中')}>发送优惠券</button>
+            <button type="button" style={s.drawerActionBtn} onClick={onIssue}>🎫 发送优惠券</button>
             {c.bound ? (
               <button type="button" style={{ ...s.drawerActionBtn, ...s.drawerActionPrimary }} onClick={onTouch}>📨 Telegram 触达</button>
             ) : (
@@ -762,6 +784,225 @@ function BatchTouchModal({
       </div>
     </div>
   )
+}
+
+// ─── 发券弹窗 ────────────────────────────────────────────────────────────────
+
+type CouponTpl = {
+  id: string
+  name: string
+  type: 'AMOUNT_OFF' | 'PERCENT_OFF'
+  amountOff: number | null
+  percentOff: number | null
+  minSpend: number
+  validDays: number
+  status: string
+}
+
+function useCouponTemplates() {
+  const [templates, setTemplates] = useState<CouponTpl[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [err, setErr]             = useState('')
+  useEffect(() => {
+    apiFetch('/api/coupons/templates', { cache: 'no-store' }, OWNER_CTX)
+      .then((r) => r.json())
+      .then((b) => {
+        if (b?.error) setErr(b.message ?? b.error)
+        else setTemplates(b.templates ?? [])
+      })
+      .catch(() => setErr('网络错误'))
+      .finally(() => setLoading(false))
+  }, [])
+  return { templates, loading, err }
+}
+
+function tplDesc(t: CouponTpl): string {
+  if (t.type === 'AMOUNT_OFF') return `满 ${t.minSpend.toFixed(2)} 减 ${(t.amountOff ?? 0).toFixed(2)} · ${t.validDays} 天有效`
+  return `${t.percentOff ?? 0}% off · 满 ${t.minSpend.toFixed(2)} · ${t.validDays} 天有效`
+}
+
+function IssueCouponModal({
+  c, onClose, onResult,
+}: { c: Customer; onClose: () => void; onResult: (ok: boolean, text: string) => void }) {
+  const { templates, loading, err } = useCouponTemplates()
+  const [tplId, setTplId]   = useState('')
+  const [sending, setSending] = useState(false)
+  const [errMsg, setErrMsg]   = useState('')
+  const active = templates.filter((t) => t.status === 'ACTIVE')
+  const sel    = active.find((t) => t.id === tplId)
+
+  async function handleSend() {
+    if (!sel || sending) return
+    setSending(true); setErrMsg('')
+    try {
+      const r = await apiFetch(`/api/customers/${encodeURIComponent(c.telegramId)}/coupons/issue`, {
+        method: 'POST',
+        body: JSON.stringify({ templateId: sel.id }),
+      }, OWNER_CTX)
+      const body = await r.json().catch(() => ({}))
+      if (r.ok) onResult(true, body.notified ? '发券成功，已通知顾客 ✓' : '发券成功 ✓')
+      else setErrMsg(body.message ?? body.error ?? '发券失败')
+    } catch { setErrMsg('网络错误，请重试') }
+    finally { setSending(false) }
+  }
+
+  return (
+    <div style={tm.mask} onClick={() => !sending && onClose()}>
+      <div style={tm.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={tm.title}>🎫 发送优惠券</div>
+        <div style={tm.subtitle}>
+          收件人：{c.displayName || c.username || c.telegramId}
+          {c.username && <span style={tm.subMeta}> · @{c.username}</span>}
+          {!c.bound && <span style={{ ...tm.subMeta, color: '#fa8c16' }}> · 未绑定 TG（仍可发券，但不会推送）</span>}
+        </div>
+
+        <div style={tm.tplLabel}>选择优惠券</div>
+        {loading ? <div style={tm.previewNote}>加载中…</div>
+          : err ? <div style={tm.err}>{err}</div>
+          : active.length === 0 ? <div style={tm.previewNote}>暂无可用模板</div>
+          : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {active.map((t) => (
+                <label key={t.id} style={{ ...ic.tplCard, ...(tplId === t.id ? ic.tplCardOn : {}) }}>
+                  <input type="radio" name="tpl" checked={tplId === t.id} onChange={() => setTplId(t.id)} style={{ marginRight: 8 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</div>
+                    <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{tplDesc(t)}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+        {errMsg && <div style={tm.err}>{errMsg}</div>}
+
+        <div style={tm.actions}>
+          <button type="button" style={tm.cancelBtn} onClick={onClose} disabled={sending}>取消</button>
+          <button type="button" style={{ ...tm.sendBtn, ...((!sel || sending) ? tm.sendBtnDisabled : {}) }} onClick={handleSend} disabled={!sel || sending}>
+            {sending ? '发放中…' : '确认发放'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const BATCH_ISSUE_MAX = 50
+
+function BatchIssueCouponModal({
+  customers, onClose, onDone,
+}: { customers: Customer[]; onClose: () => void; onDone: (text: string) => void }) {
+  const { templates, loading, err } = useCouponTemplates()
+  const [tplId, setTplId]       = useState('')
+  const [confirming, setConfirming] = useState(false)
+  const [sending, setSending]   = useState(false)
+  const [errMsg, setErrMsg]     = useState('')
+  const [result, setResult]     = useState<{ total: number; success: number; skipped: number; failed: number; notified: number } | null>(null)
+
+  const active = templates.filter((t) => t.status === 'ACTIVE')
+  const sel    = active.find((t) => t.id === tplId)
+  const reachable = useMemo(() => customers.filter((c) => c.bound && !!c.telegramId), [customers])
+  const willIssue = reachable.slice(0, BATCH_ISSUE_MAX)
+  const overflow  = reachable.length - willIssue.length
+
+  async function handleSend() {
+    if (!sel || sending) return
+    setSending(true); setErrMsg('')
+    try {
+      const r = await apiFetch('/api/customers/coupons/batch-issue', {
+        method: 'POST',
+        body: JSON.stringify({ templateId: sel.id, telegramIds: willIssue.map((c) => c.telegramId) }),
+      }, OWNER_CTX)
+      const body = await r.json().catch(() => ({}))
+      if (r.ok) setResult({ total: body.total ?? 0, success: body.success ?? 0, skipped: body.skipped ?? 0, failed: body.failed ?? 0, notified: body.notified ?? 0 })
+      else { setErrMsg(body.message ?? body.error ?? '发券失败'); setConfirming(false) }
+    } catch { setErrMsg('网络错误，请重试'); setConfirming(false) }
+    finally { setSending(false) }
+  }
+
+  function close() {
+    if (sending) return
+    if (result) onDone(`批量发券完成：成功 ${result.success} / 跳过 ${result.skipped} / 失败 ${result.failed} · 已通知 ${result.notified}`)
+    else onClose()
+  }
+
+  return (
+    <div style={tm.mask} onClick={close}>
+      <div style={tm.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={tm.title}>🎫 批量发券</div>
+
+        {result ? (
+          <>
+            <div style={{ ...tm.introItem, fontSize: 13, lineHeight: 1.7 }}>
+              <div>共处理：{result.total} 人</div>
+              <div>✅ 成功：{result.success}（已通知 {result.notified}）</div>
+              <div>⏭ 跳过（未绑定 / 已持有同款）：{result.skipped}</div>
+              <div>❌ 失败：{result.failed}</div>
+            </div>
+            <button type="button" style={tm.introClose} onClick={close}>知道了</button>
+          </>
+        ) : confirming ? (
+          <>
+            <div style={tm.introItem}>
+              即将向 <b>{willIssue.length}</b> 位顾客发送「{sel?.name}」。<br />
+              已持有同款可用券的顾客将被跳过。
+            </div>
+            {errMsg && <div style={tm.err}>{errMsg}</div>}
+            <div style={tm.actions}>
+              <button type="button" style={tm.cancelBtn} onClick={() => setConfirming(false)} disabled={sending}>返回</button>
+              <button type="button" style={{ ...tm.sendBtn, ...(sending ? tm.sendBtnDisabled : {}) }} onClick={handleSend} disabled={sending}>
+                {sending ? '发放中…' : `确认发放 (${willIssue.length})`}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={tm.subtitle}>
+              已绑定可发券 <b style={{ color: '#1677ff' }}>{reachable.length}</b> 人
+              {overflow > 0 && <span style={{ color: '#fa8c16' }}> · 本次仅前 {BATCH_ISSUE_MAX} 人</span>}
+            </div>
+
+            <div style={tm.tplLabel}>选择优惠券</div>
+            {loading ? <div style={tm.previewNote}>加载中…</div>
+              : err ? <div style={tm.err}>{err}</div>
+              : active.length === 0 ? <div style={tm.previewNote}>暂无可用模板</div>
+              : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {active.map((t) => (
+                    <label key={t.id} style={{ ...ic.tplCard, ...(tplId === t.id ? ic.tplCardOn : {}) }}>
+                      <input type="radio" name="batchTpl" checked={tplId === t.id} onChange={() => setTplId(t.id)} style={{ marginRight: 8 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</div>
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{tplDesc(t)}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+            {errMsg && <div style={tm.err}>{errMsg}</div>}
+
+            <div style={tm.actions}>
+              <button type="button" style={tm.cancelBtn} onClick={onClose}>取消</button>
+              <button
+                type="button"
+                style={{ ...tm.sendBtn, ...((!sel || willIssue.length === 0) ? tm.sendBtnDisabled : {}) }}
+                onClick={() => sel && willIssue.length > 0 && setConfirming(true)}
+                disabled={!sel || willIssue.length === 0}
+              >
+                下一步
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const ic: Record<string, React.CSSProperties> = {
+  tplCard: { display: 'flex', alignItems: 'center', padding: '8px 10px', border: '1px solid #ebebeb', borderRadius: 8, cursor: 'pointer', background: '#fff' },
+  tplCardOn: { borderColor: '#1677ff', background: '#e6f4ff' },
 }
 
 // ─── 工具 ────────────────────────────────────────────────────────────────────
