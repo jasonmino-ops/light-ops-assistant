@@ -845,7 +845,7 @@ export default function MenuPage() {
 
         {/* ── 快捷入口（优惠券/订单/收藏/地址） ── */}
         <div style={s.quickEntryRow}>
-          <Link href={`/me?code=${encodeURIComponent(storeCode)}`} style={s.quickEntry}>
+          <Link href={`/me/coupons?code=${encodeURIComponent(storeCode)}`} style={s.quickEntry}>
             <span style={s.quickEntryIcon}>🎟️</span>
             <span style={s.quickEntryLabel}>
               {lang === 'zh' ? '优惠券' : lang === 'en' ? 'Coupons' : 'គូប៉ុង'}
