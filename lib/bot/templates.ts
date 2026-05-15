@@ -80,11 +80,17 @@ export const TPL = {
       en: "Sorry, I can't handle this one yet 🙏 I have noted it — the merchant will follow up soon.",
       km: 'សុំទោស ខ្ញុំមិនអាចជួយផ្នែកនេះបាននៅឡើយ 🙏 ខ្ញុំបានកត់ត្រា គេនឹងឆ្លើយតបឆាប់ៗ។',
     } as SingleTpl,
-    // OWNER 收到的告警
-    OWNER_ALERT: {
-      zh: '⚠️ 顾客求助\n顾客 TG: {tg}\n语言: {lang}\n来源: {source}\n原文: {text}',
-      en: '⚠️ Customer help request\nCustomer TG: {tg}\nLang: {lang}\nSource: {source}\nMessage: {text}',
-      km: '⚠️ អតិថិជនសុំជំនួយ\nអតិថិជន TG: {tg}\nភាសា: {lang}\nប្រភព: {source}\nសារ: {text}',
+    // OWNER 收到的摘要式提醒（节流后单次推送）
+    OWNER_SUMMARY: {
+      zh: '⚠️ 顾客需要人工协助\n顾客：{user}\n类型：{kind}\n最后消息：{text}\n时间：{time}\n请进入顾客对话记录查看或主动联系顾客。',
+      en: '⚠️ Customer needs human help\nCustomer: {user}\nType: {kind}\nLast message: {text}\nTime: {time}\nOpen the conversation log or reach out to the customer.',
+      km: '⚠️ អតិថិជនត្រូវការជំនួយពិតមនុស្ស\nអតិថិជន៖ {user}\nប្រភេទ៖ {kind}\nសារចុងក្រោយ៖ {text}\nពេលវេលា៖ {time}\nសូមមើលកំណត់ហេតុ ឬទាក់ទងអតិថិជន។',
+    } as SingleTpl,
+    KIND_HUMAN_HELP: {
+      zh: '需要人工协助', en: 'Needs human help', km: 'ត្រូវការមនុស្សពិត',
+    } as SingleTpl,
+    KIND_UNKNOWN: {
+      zh: '无法判断',     en: 'Cannot understand', km: 'មិនអាចស្គាល់',
     } as SingleTpl,
   },
 

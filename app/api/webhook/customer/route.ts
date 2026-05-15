@@ -258,7 +258,12 @@ export async function POST(req: NextRequest) {
   } else if (intent.layer === 2 && intent.chatKind) {
     reply = chatReply(intent.chatKind, lang, storeName || DEFAULT_STORE)
   } else {
-    reply = escalateReply({ text, lang, tenantId: tenantId ?? '', telegramId, source: intent.source })
+    reply = escalateReply({
+      text, lang, tenantId: tenantId ?? '', telegramId,
+      source:    intent.source,
+      storeCode,
+      username:  msg.from?.username ?? null,
+    })
   }
 
   await tgSend('sendMessage', { chat_id: chatId, text: reply })
