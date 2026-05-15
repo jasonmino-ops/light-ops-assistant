@@ -244,6 +244,9 @@ const zh = {
     khqrModeNoticeBody: '当前 KHQR 使用商户上传的静态收款码图片；动态 KHQR 自动查单 / 回调将在后续版本接入。',
     bannerQuickTitle: '首页门头管理',
     bannerNoneHint: '暂未上传，点击上传图片',
+    bannerUploadFailed: '上传失败',
+    bannerDeleteFailed: '删除失败',
+    bannerNetworkError: '网络错误',
     // 云打印机面板
     printerTitle: '云打印机',
     printerLoading: '加载中…',

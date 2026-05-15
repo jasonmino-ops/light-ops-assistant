@@ -962,10 +962,10 @@ function BannerQuickPanel({ t }: { t: (k: string) => string }) {
       if (res.ok && body?.bannerUrl) {
         setStores((prev) => prev.map((s) => (s.id === sid ? { ...s, bannerUrl: body.bannerUrl } : s)))
       } else {
-        setErr((v) => ({ ...v, [sid]: body?.error ?? '上传失败' }))
+        setErr((v) => ({ ...v, [sid]: body?.error ?? t('dashboard.bannerUploadFailed') }))
       }
     } catch {
-      setErr((v) => ({ ...v, [sid]: '网络错误' }))
+      setErr((v) => ({ ...v, [sid]: t('dashboard.bannerNetworkError') }))
     } finally {
       setLoading((v) => ({ ...v, [sid]: false }))
     }
@@ -980,10 +980,10 @@ function BannerQuickPanel({ t }: { t: (k: string) => string }) {
         setStores((prev) => prev.map((s) => (s.id === sid ? { ...s, bannerUrl: null } : s)))
       } else {
         const body = await res.json().catch(() => null)
-        setErr((v) => ({ ...v, [sid]: body?.error ?? '删除失败' }))
+        setErr((v) => ({ ...v, [sid]: body?.error ?? t('dashboard.bannerDeleteFailed') }))
       }
     } catch {
-      setErr((v) => ({ ...v, [sid]: '网络错误' }))
+      setErr((v) => ({ ...v, [sid]: t('dashboard.bannerNetworkError') }))
     } finally {
       setLoading((v) => ({ ...v, [sid]: false }))
     }
