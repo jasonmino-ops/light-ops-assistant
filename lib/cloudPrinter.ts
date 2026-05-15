@@ -9,6 +9,7 @@
 
 import crypto from 'crypto'
 import { prisma } from './prisma'
+import { isPrintingTier as _isPrintingTier } from './tier'
 
 const USERNAME = process.env.SW_PRINTER_USERNAME ?? ''
 const SECRET   = process.env.SW_PRINTER_SECRET   ?? ''
@@ -405,6 +406,5 @@ export async function bindDevice(opts: {
   }
 }
 
-export function isPrintingTier(tier: string | null | undefined): boolean {
-  return tier === 'STANDARD' || tier === 'MULTI_STORE'
-}
+// 实现迁移至 lib/tier.ts，这里仅为兼容现有 import 路径而 re-export
+export const isPrintingTier = _isPrintingTier
