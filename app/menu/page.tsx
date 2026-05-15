@@ -376,6 +376,30 @@ type ApiStore = {
   bannerUrl:    string | null
   announcement: string | null
   promoText:    string | null
+  businessType?: 'FOOD' | 'RETAIL' | 'SERVICE' | 'GENERAL'
+}
+
+type BizType = 'FOOD' | 'RETAIL' | 'SERVICE' | 'GENERAL'
+type FulfillTpl = { title: string; dineIn: string; delivery: string }
+const FULFILLMENT_TPL: Record<'zh' | 'en' | 'km', Record<BizType, FulfillTpl>> = {
+  zh: {
+    FOOD:    { title: '取餐方式', dineIn: '堂食/自取', delivery: '外卖送货' },
+    RETAIL:  { title: '获取方式', dineIn: '到店自取', delivery: '送货上门' },
+    SERVICE: { title: '服务方式', dineIn: '到店服务', delivery: '上门服务' },
+    GENERAL: { title: '获取方式', dineIn: '到店',     delivery: '送货/上门' },
+  },
+  en: {
+    FOOD:    { title: 'Dining option',   dineIn: 'Dine in or pickup', delivery: 'Delivery' },
+    RETAIL:  { title: 'How to receive',  dineIn: 'Store pickup',      delivery: 'Delivery' },
+    SERVICE: { title: 'Service option',  dineIn: 'In-store service',  delivery: 'On-site service' },
+    GENERAL: { title: 'How to receive',  dineIn: 'In-store',          delivery: 'Delivery or on-site' },
+  },
+  km: {
+    FOOD:    { title: 'ប្រភេទបញ្ជា',     dineIn: 'ហូបនៅហាង / យកនៅហាង', delivery: 'ដឹកជញ្ជូនដល់ផ្ទះ' },
+    RETAIL:  { title: 'វិធីទទួល',         dineIn: 'យកនៅហាង',             delivery: 'ដឹកដល់ផ្ទះ' },
+    SERVICE: { title: 'វិធីផ្តល់សេវា',    dineIn: 'សេវានៅហាង',           delivery: 'សេវាដល់ផ្ទះ' },
+    GENERAL: { title: 'វិធីទទួល',         dineIn: 'នៅហាង',               delivery: 'ដឹក / ដល់ផ្ទះ' },
+  },
 }
 
 // ─── 购物车 ──────────────────────────────────────────────────────────────────
@@ -431,6 +455,8 @@ export default function MenuPage() {
   } | null>(null)
 
   const ui         = T[lang]
+  const bizType: BizType = (storeData?.businessType ?? 'GENERAL') as BizType
+  const fulfillTpl = (FULFILLMENT_TPL[lang] ?? FULFILLMENT_TPL.zh)[bizType] ?? FULFILLMENT_TPL[lang].GENERAL
   const cartTotal  = cart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
   const payableLabel = lang === 'en' ? 'Payable' : lang === 'km' ? 'ត្រូវបង់' : '应付'
   const couponDoneLabel = lang === 'en' ? 'Done' : lang === 'km' ? 'យល់ព្រម' : '完成'
@@ -677,8 +703,8 @@ export default function MenuPage() {
     setSubmitError('')
 
     // 把取餐方式 + 顾客备注合并为 remark 字段透传给 API（API 写入 CustomerOrder.remark）
-    const methodLabel = pickupMethod === 'dineIn' ? T[lang].dineIn : T[lang].delivery
-    const remarkLines = [`${T[lang].orderTypeLabel}: ${methodLabel}`]
+    const methodLabel = pickupMethod === 'dineIn' ? fulfillTpl.dineIn : fulfillTpl.delivery
+    const remarkLines = [`${fulfillTpl.title}: ${methodLabel}`]
     if (orderRemark.trim()) remarkLines.push(`${T[lang].remarksLabel}: ${orderRemark.trim()}`)
     const remark = remarkLines.join(' | ')
 
@@ -1051,7 +1077,7 @@ export default function MenuPage() {
 
             {/* 取餐方式 */}
             <div style={s.chkSection}>
-              <div style={s.chkSectionLabel}>{ui.orderTypeLabel}</div>
+              <div style={s.chkSectionLabel}>{fulfillTpl.title}</div>
               <div style={s.chkPickupRow}>
                 {(['dineIn', 'delivery'] as const).map((m) => (
                   <button
@@ -1060,7 +1086,7 @@ export default function MenuPage() {
                     style={{ ...s.chkPickupBtn, ...(pickupMethod === m ? s.chkPickupBtnOn : {}) }}
                     onClick={() => setPickupMethod(m)}
                   >
-                    {m === 'dineIn' ? `🍽️ ${ui.dineIn}` : `🛵 ${ui.delivery}`}
+                    {m === 'dineIn' ? `🍽️ ${fulfillTpl.dineIn}` : `🛵 ${fulfillTpl.delivery}`}
                   </button>
                 ))}
               </div>
