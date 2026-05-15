@@ -185,6 +185,7 @@ export async function POST(req: NextRequest) {
           storeCode:          store.code,
           orderNo,
           customerTelegramId: trimmedTgId,
+          customerLang:       lang,
           itemsJson:          JSON.stringify(itemsForJson),
           totalAmount:        String(payableAmount.toFixed(2)),
           status:             'PENDING',

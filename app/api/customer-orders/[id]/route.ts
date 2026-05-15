@@ -23,6 +23,34 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: '已取消',
 }
 
+type Lang = 'zh' | 'en' | 'km'
+
+function normalizeLang(v: string | null | undefined): Lang {
+  const s = (v ?? '').toLowerCase()
+  if (s === 'zh' || s.startsWith('zh-') || s.startsWith('zh_')) return 'zh'
+  if (s === 'en' || s.startsWith('en-') || s.startsWith('en_')) return 'en'
+  if (s === 'km' || s.startsWith('km-') || s.startsWith('kh') || s === 'km_kh') return 'km'
+  return 'zh'
+}
+
+const STATUS_MSG: Record<'CONFIRMED'|'COMPLETED'|'CANCELLED', Record<Lang, (orderNo: string) => string>> = {
+  CONFIRMED: {
+    zh: (n) => `✅ 您的订单已确认\n订单号：${n}\n商家正在为您准备，请等待联系。`,
+    en: (n) => `✅ Your order is confirmed\nOrder No.: ${n}\nThe merchant is preparing your order. Please wait for contact.`,
+    km: (n) => `✅ ការបញ្ជាទិញរបស់អ្នកត្រូវបានបញ្ជាក់\nលេខបញ្ជាទិញ៖ ${n}\nហាងកំពុងរៀបចំ សូមរង់ចាំការទាក់ទង។`,
+  },
+  COMPLETED: {
+    zh: (n) => `🎉 您的订单已完成\n订单号：${n}\n请完成付款后提货，感谢您的购买！`,
+    en: (n) => `🎉 Your order is completed\nOrder No.: ${n}\nPlease complete payment to pick up. Thank you for your purchase!`,
+    km: (n) => `🎉 ការបញ្ជាទិញរបស់អ្នកបានបញ្ចប់\nលេខបញ្ជាទិញ៖ ${n}\nសូមបញ្ចប់ការទូទាត់ ហើយយកទំនិញ។ សូមអរគុណ!`,
+  },
+  CANCELLED: {
+    zh: (n) => `❌ 您的订单已取消\n订单号：${n}\n如有疑问请联系商家。`,
+    en: (n) => `❌ Your order is cancelled\nOrder No.: ${n}\nPlease contact the merchant if you have any questions.`,
+    km: (n) => `❌ ការបញ្ជាទិញរបស់អ្នកត្រូវបានបោះបង់\nលេខបញ្ជាទិញ៖ ${n}\nបើមានសំណួរ សូមទាក់ទងហាង។`,
+  },
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -90,17 +118,22 @@ export async function PATCH(
   const updated = await prisma.customerOrder.update({
     where: { id },
     data: { status: newStatus },
-    select: { id: true, orderNo: true, status: true, customerTelegramId: true, totalAmount: true },
+    select: { id: true, orderNo: true, status: true, customerTelegramId: true, totalAmount: true, customerLang: true, storeCode: true },
   })
 
   // 若顾客有 Telegram ID，异步发送状态变更通知（走顾客端机器人）
   if (updated.customerTelegramId) {
-    const msgMap: Record<string, string> = {
-      CONFIRMED: `✅ 您的订单已确认\n订单号：${updated.orderNo}\n商家正在为您准备，请等待联系。`,
-      COMPLETED: `🎉 您的订单已完成\n订单号：${updated.orderNo}\n请完成付款后提货，感谢您的购买！`,
-      CANCELLED: `❌ 您的订单已取消\n订单号：${updated.orderNo}\n如有疑问请联系商家。`,
+    // 语言决议：customerLang → StoreCustomerContact.telegramLanguageCode → 'zh'
+    let lang: Lang | null = updated.customerLang ? normalizeLang(updated.customerLang) : null
+    if (!lang) {
+      const contact = await prisma.storeCustomerContact.findFirst({
+        where: { tenantId: ctx.tenantId, telegramId: updated.customerTelegramId },
+        select: { telegramLanguageCode: true },
+      }).catch(() => null)
+      lang = normalizeLang(contact?.telegramLanguageCode)
     }
-    const text = msgMap[newStatus]
+    const tpl = STATUS_MSG[newStatus as 'CONFIRMED'|'COMPLETED'|'CANCELLED']
+    const text = tpl ? tpl[lang](updated.orderNo) : null
     if (text) {
       sendAndLogMessage({
         recipientTelegramId: updated.customerTelegramId,
