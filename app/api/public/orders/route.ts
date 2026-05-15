@@ -155,6 +155,35 @@ export async function POST(req: NextRequest) {
     (e) => console.error('[customer-order] notify owner failed:', e),
   )
 
+  // ── 自动云打印（仅 STANDARD/MULTI_STORE，fire-and-forget，失败不阻塞订单） ──
+  void (async () => {
+    try {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: store.tenantId },
+        select: { tier: true },
+      })
+      const { autoPrintCustomerOrder, isPrintingTier, logPrintAttempt } = await import('@/lib/cloudPrinter')
+      if (!isPrintingTier(tenant?.tier)) {
+        await logPrintAttempt({
+          tenantId: store.tenantId, storeId: store.id, orderNo: order.orderNo,
+          status: 'skipped', reason: `tier_${tenant?.tier ?? 'unknown'}`,
+        })
+        return
+      }
+      await autoPrintCustomerOrder({
+        tenantId:    store.tenantId,
+        storeId:     store.id,
+        storeName:   store.name,
+        orderNo:     order.orderNo,
+        items:       itemsForJson,
+        totalAmount,
+        remark:      typeof remark === 'string' && remark.trim() ? remark.trim() : null,
+      })
+    } catch (e) {
+      console.error('[customer-order] auto-print error:', e)
+    }
+  })()
+
   return NextResponse.json({
     orderNo:     order.orderNo,
     totalAmount: Number(totalAmount.toFixed(2)),

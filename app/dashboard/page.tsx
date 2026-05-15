@@ -237,6 +237,9 @@ export default function DashboardPage() {
         {/* 首页门头快捷管理（OWNER only — dashboard 本就 OWNER 才能进） */}
         <BannerQuickPanel t={t} />
 
+        {/* 云打印机面板（高级版） */}
+        <PrinterPanel />
+
         {/* 门店经营查询入口（合并 GLOBAL / STORE / STAFF） */}
         <div style={s.dimMenuWrap}>
           <button
@@ -1074,6 +1077,145 @@ const bq: Record<string, React.CSSProperties> = {
   uploadIcon: { fontSize: 18, lineHeight: 1 },
   uploadText: {},
   err: { fontSize: 12, color: '#d97706', marginTop: 6 },
+}
+
+// ─── 云打印机面板（高级版功能 / LITE 显示升级提示） ────────────────────────
+
+type PrintStatus = {
+  configured: boolean
+  tier: string
+  tierEnabled: boolean
+  recent: Array<{ orderNo: string | null; status: string; message: string | null; at: string }>
+}
+
+function PrinterPanel() {
+  const [data, setData]       = useState<PrintStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [testing, setTesting] = useState(false)
+  const [reprinting, setReprinting] = useState(false)
+  const [msg, setMsg]         = useState<{ ok: boolean; text: string } | null>(null)
+
+  const refresh = useCallback(() => {
+    setLoading(true)
+    apiFetch('/api/print/status', { cache: 'no-store' }, OWNER_CTX)
+      .then((r) => r.json())
+      .then((body) => { if (!body?.error) setData(body) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  async function handleTest() {
+    setTesting(true); setMsg(null)
+    try {
+      const r = await apiFetch('/api/print/test', { method: 'POST' }, OWNER_CTX)
+      const body = await r.json().catch(() => ({}))
+      setMsg({ ok: r.ok, text: r.ok ? '✓ 测试小票已发送' : (body.message ?? body.error ?? '打印失败') })
+      refresh()
+    } catch {
+      setMsg({ ok: false, text: '网络错误' })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  async function handleReprintLast() {
+    if (!data) return
+    const last = data.recent.find((r) => r.status === 'SUCCESS' && r.orderNo && !r.orderNo.startsWith('TEST-'))
+    if (!last?.orderNo) { setMsg({ ok: false, text: '暂无可重打的真实订单' }); return }
+    setReprinting(true); setMsg(null)
+    try {
+      const r = await apiFetch(`/api/print/reprint/${encodeURIComponent(last.orderNo)}`, { method: 'POST' }, OWNER_CTX)
+      const body = await r.json().catch(() => ({}))
+      setMsg({ ok: r.ok, text: r.ok ? `✓ 已重打 ${last.orderNo}` : (body.message ?? body.error ?? '重打失败') })
+      refresh()
+    } catch {
+      setMsg({ ok: false, text: '网络错误' })
+    } finally {
+      setReprinting(false)
+    }
+  }
+
+  if (loading) return <div style={pp.card}><div style={pp.muted}>加载中…</div></div>
+  if (!data) return null
+
+  return (
+    <div style={pp.card}>
+      <div style={pp.header}>
+        <span style={pp.title}>🖨️ 云打印机</span>
+        <span style={data.tierEnabled
+          ? (data.configured ? pp.badgeOk : pp.badgeWarn)
+          : pp.badgeOff}>
+          {data.tierEnabled
+            ? (data.configured ? '已启用 · 自动出票' : '需配置环境变量')
+            : `${data.tier} 版 · 自动打印未开放`}
+        </span>
+      </div>
+
+      {!data.tierEnabled && (
+        <div style={pp.upgradeHint}>
+          自动打印为高级版（STANDARD / MULTI_STORE）功能，当前商户版本为 {data.tier}。
+        </div>
+      )}
+
+      {data.tierEnabled && (
+        <div style={pp.actionsRow}>
+          <button type="button" style={pp.btn} disabled={testing || !data.configured} onClick={handleTest}>
+            {testing ? '打印中…' : '🧾 测试打印'}
+          </button>
+          <button type="button" style={pp.btn} disabled={reprinting || !data.configured} onClick={handleReprintLast}>
+            {reprinting ? '重打中…' : '↻ 重打最近订单'}
+          </button>
+        </div>
+      )}
+
+      {msg && (
+        <div style={msg.ok ? pp.msgOk : pp.msgErr}>{msg.text}</div>
+      )}
+
+      {data.recent.length > 0 && (
+        <>
+          <div style={pp.recentTitle}>最近 {data.recent.length} 条打印日志</div>
+          <div style={pp.recentList}>
+            {data.recent.map((r, i) => (
+              <div key={i} style={pp.recentRow}>
+                <span style={r.status === 'SUCCESS' ? pp.recentOk : pp.recentFail}>
+                  {r.status === 'SUCCESS' ? '✓' : '✕'}
+                </span>
+                <span style={pp.recentOrder}>{r.orderNo ?? '—'}</span>
+                <span style={pp.recentTime}>{new Date(r.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                {r.message && <span style={pp.recentMsg}>{r.message.slice(0, 30)}</span>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+const pp: Record<string, React.CSSProperties> = {
+  card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 10 },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  title: { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
+  muted: { fontSize: 12, color: 'var(--muted)' },
+  badgeOk:   { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#f6ffed', color: '#52c41a', border: '1px solid #b7eb8f' },
+  badgeWarn: { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fffbe6', color: '#d97706', border: '1px solid #ffe58f' },
+  badgeOff:  { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fafafa', color: '#999',   border: '1px solid #d9d9d9' },
+  upgradeHint: { fontSize: 12, color: '#888', background: '#fafafa', borderRadius: 8, padding: '8px 10px', marginBottom: 6 },
+  actionsRow: { display: 'flex', gap: 8, marginBottom: 8 },
+  btn: { flex: 1, height: 36, fontSize: 13, fontWeight: 600, background: '#fff', border: '1.5px solid var(--blue)', color: 'var(--blue)', borderRadius: 8, cursor: 'pointer' },
+  msgOk:  { fontSize: 12, color: '#52c41a', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6, padding: '6px 10px', marginBottom: 6 },
+  msgErr: { fontSize: 12, color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 6, padding: '6px 10px', marginBottom: 6 },
+  recentTitle: { fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginTop: 4, marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
+  recentList: { display: 'flex', flexDirection: 'column' as const, gap: 4 },
+  recentRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#666' },
+  recentOk:   { color: '#52c41a', fontWeight: 700, width: 12 },
+  recentFail: { color: '#cf1322', fontWeight: 700, width: 12 },
+  recentOrder: { fontFamily: 'monospace' as const, color: '#1a1a1a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  recentTime: { color: '#aaa' },
+  recentMsg:  { color: '#aaa', fontStyle: 'italic' as const, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
 }
 
 function MetricCell({ label, value, unit, red }: { label: string; value: string; unit?: string; red?: boolean }) {
