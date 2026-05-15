@@ -1,23 +1,10 @@
 /**
- * lib/cloudPrinter.ts — SW-AIOT 云打印机最小闭环（v1）
- *
- * 目标：顾客下单成功 → 异步打印小票，失败不阻塞主链。
- *
- * 环境变量：
- *   SW_PRINTER_USERNAME  — 主账号用户名
- *   SW_PRINTER_SECRET    — API secret（用于生成 password 签名）
- *   SW_PRINTER_DEVID     — 打印机设备 ID
- *   SW_PRINTER_KEY       — 打印机 key
- *
- * 协议参考：
- *   password = MD5("secret=...&times=...&username=...").toUpperCase()
- *   POST https://open.sw-aiot.com/api/getToken      → 拿 token（24h 内缓存）
- *   POST https://open.sw-aiot.com/api/message/printMsg  → 实际打印
- *
- * 设计：
- *   - 所有调用 fire-and-forget；失败 console + runtime/print_logs（dev）+ DB OperationLog
- *   - tier 门控由调用方负责（仅 STANDARD / MULTI_STORE 启用自动打印）
- *   - 单文件 < 300 行
+ * lib/cloudPrinter.ts — SW-AIOT 云打印 v1
+ * env: SW_PRINTER_USERNAME / SECRET / DEVID / KEY
+ * password = MD5("secret=...&times=...&username=...").toUpperCase()
+ * times 为 13 位毫秒级时间戳（与商为开放平台规范一致）
+ * /api/getToken（缓存 23h）→ /api/message/printMsg
+ * tier 门控由调用方负责；失败 fire-and-forget 写 OperationLog
  */
 
 import crypto from 'crypto'
@@ -42,41 +29,80 @@ function md5Upper(s: string): string {
   return crypto.createHash('md5').update(s).digest('hex').toUpperCase()
 }
 
-/** 按 SW-AIOT 协议生成签名：MD5(secret=...&times=...&username=...) 大写 */
+function maskSecret(s: string): string {
+  return s.length > 8 ? `${s.slice(0, 4)}***${s.slice(-4)}` : '***'
+}
+
+/** 按 SW-AIOT 协议生成签名：MD5(secret=...&times=...&username=...) 大写
+ *  times 必须为 13 位毫秒级时间戳（与商为开放平台规范一致） */
 export function generatePassword(times: number): string {
   return md5Upper(`secret=${SECRET}&times=${times}&username=${USERNAME}`)
 }
 
-export async function getPrinterToken(): Promise<string | null> {
-  if (!isPrinterConfigured()) return null
-  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.token
+export type TokenDiag = {
+  username: string
+  times: number          // 13 位毫秒
+  signSource: string     // secret=****&times=xxx&username=xxx（secret 脱敏）
+  md5: string
+  httpStatus?: number
+  rawBody?: unknown
+  errorMessage?: string
+  cached?: boolean
+  configured: boolean
+}
 
-  const times = Math.floor(Date.now() / 1000)
+/**
+ * 获取 token 并附带诊断信息（用于 /api/print/status?diagnose=1 排障）。
+ * force=true 时跳过内存缓存强制重新拉取。
+ */
+export async function getPrinterTokenWithDiag(
+  force = false,
+): Promise<{ token: string | null; diag: TokenDiag }> {
+  const username = USERNAME
+  const times = Date.now() // 13 位毫秒（修复 TOKEN_FAILED 根因）
+  const md5 = generatePassword(times)
+  const signSource = `secret=${maskSecret(SECRET)}&times=${times}&username=${username}`
+  const baseDiag: TokenDiag = { username, times, signSource, md5, configured: isPrinterConfigured() }
+
+  if (!isPrinterConfigured()) {
+    return { token: null, diag: { ...baseDiag, errorMessage: 'PRINTER_NOT_CONFIGURED' } }
+  }
+
+  if (force) cachedToken = null
+  if (cachedToken && cachedToken.expiresAt > Date.now()) {
+    return { token: cachedToken.token, diag: { ...baseDiag, cached: true } }
+  }
+
   try {
     const r = await fetch(TOKEN_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: USERNAME,
-        password: generatePassword(times),
-        times,
-      }),
+      body: JSON.stringify({ username, password: md5, times }),
     })
+    const httpStatus = r.status
     const body = await r.json().catch(() => null) as Record<string, unknown> | null
-    // 兼容多种返回字段命名（具体以厂商响应为准）
     const data = body?.data as Record<string, unknown> | undefined
     const token = (data?.token ?? body?.token ?? body?.access_token ?? null) as string | null
     if (token) {
-      // 默认 23h 重用一次（小于厂商常用 24h），cold start 不影响
       cachedToken = { token: String(token), expiresAt: Date.now() + 23 * 3600 * 1000 }
-      return cachedToken.token
+      return { token: cachedToken.token, diag: { ...baseDiag, httpStatus, rawBody: body } }
     }
-    console.warn('[cloudPrinter] getToken: no token in response', body)
-    return null
+    const errorMessage = String(
+      (body?.message ?? body?.msg ?? body?.error ?? `no token in response (HTTP ${httpStatus})`) ?? 'unknown',
+    )
+    console.error('[cloudPrinter] getToken failed', { ...baseDiag, httpStatus, rawBody: body, errorMessage })
+    return { token: null, diag: { ...baseDiag, httpStatus, rawBody: body, errorMessage } }
   } catch (e) {
-    console.error('[cloudPrinter] getToken error', e)
-    return null
+    const errorMessage = (e as Error).message ?? 'network error'
+    console.error('[cloudPrinter] getToken error', { ...baseDiag, errorMessage })
+    return { token: null, diag: { ...baseDiag, errorMessage } }
   }
+}
+
+/** 业务路径调用（不需要 diag） */
+export async function getPrinterToken(): Promise<string | null> {
+  const { token } = await getPrinterTokenWithDiag(false)
+  return token
 }
 
 /** 连通性 / 绑定状态检查；SW-AIOT 设备通常云端预绑定，本函数复用 token 拉取作为健康检查 */
@@ -147,7 +173,7 @@ export async function printReceipt(
 
   const msg = buildReceiptText(input)
   try {
-    const times = Math.floor(Date.now() / 1000)
+    const times = Date.now() // 13 位毫秒，与 token 接口口径一致
     const r = await fetch(PRINT_API, {
       method: 'POST',
       headers: {

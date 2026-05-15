@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
-import { isPrinterConfigured, isPrintingTier } from '@/lib/cloudPrinter'
+import { isPrinterConfigured, isPrintingTier, getPrinterTokenWithDiag } from '@/lib/cloudPrinter'
 
 export async function GET(req: NextRequest) {
   const ctx = await getContext(req)
@@ -28,6 +28,15 @@ export async function GET(req: NextRequest) {
     select: { targetId: true, status: true, message: true, createdAt: true },
   })
 
+  // ?diagnose=1 触发强制重拉 token，返回完整诊断信息（用于 TOKEN_FAILED 排障）
+  // secret 已脱敏；不缓存（每次都重新签名）
+  const diagnose = req.nextUrl.searchParams.get('diagnose') === '1'
+  let diag: unknown = null
+  if (diagnose) {
+    const r = await getPrinterTokenWithDiag(true)
+    diag = { tokenObtained: !!r.token, ...r.diag }
+  }
+
   return NextResponse.json({
     configured:  isPrinterConfigured(),
     tier:        tenant?.tier ?? 'LITE',
@@ -38,5 +47,6 @@ export async function GET(req: NextRequest) {
       message: l.message,
       at:      l.createdAt.toISOString(),
     })),
+    diag,
   })
 }

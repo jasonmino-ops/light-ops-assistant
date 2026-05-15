@@ -1086,6 +1086,7 @@ type PrintStatus = {
   tier: string
   tierEnabled: boolean
   recent: Array<{ orderNo: string | null; status: string; message: string | null; at: string }>
+  diag?: unknown | null
 }
 
 function PrinterPanel() {
@@ -1093,6 +1094,8 @@ function PrinterPanel() {
   const [loading, setLoading] = useState(true)
   const [testing, setTesting] = useState(false)
   const [reprinting, setReprinting] = useState(false)
+  const [diagnosing, setDiagnosing] = useState(false)
+  const [diag, setDiag]       = useState<unknown | null>(null)
   const [msg, setMsg]         = useState<{ ok: boolean; text: string } | null>(null)
 
   const refresh = useCallback(() => {
@@ -1117,6 +1120,30 @@ function PrinterPanel() {
       setMsg({ ok: false, text: '网络错误' })
     } finally {
       setTesting(false)
+    }
+  }
+
+  async function handleDiagnose() {
+    setDiagnosing(true); setMsg(null); setDiag(null)
+    try {
+      const r = await apiFetch('/api/print/status?diagnose=1', { cache: 'no-store' }, OWNER_CTX)
+      const body = await r.json().catch(() => ({}))
+      if (r.ok) {
+        setDiag(body.diag ?? null)
+        const d = body.diag as { tokenObtained?: boolean; errorMessage?: string } | null
+        if (d?.tokenObtained) {
+          setMsg({ ok: true, text: '✓ token 拉取成功，打印机可用' })
+          refresh()
+        } else {
+          setMsg({ ok: false, text: d?.errorMessage ? `token 失败：${d.errorMessage}` : 'token 拉取失败，请查看下方诊断' })
+        }
+      } else {
+        setMsg({ ok: false, text: body.error ?? 'HTTP error' })
+      }
+    } catch {
+      setMsg({ ok: false, text: '网络错误' })
+    } finally {
+      setDiagnosing(false)
     }
   }
 
@@ -1160,18 +1187,29 @@ function PrinterPanel() {
       )}
 
       {data.tierEnabled && (
-        <div style={pp.actionsRow}>
-          <button type="button" style={pp.btn} disabled={testing || !data.configured} onClick={handleTest}>
-            {testing ? '打印中…' : '🧾 测试打印'}
-          </button>
-          <button type="button" style={pp.btn} disabled={reprinting || !data.configured} onClick={handleReprintLast}>
-            {reprinting ? '重打中…' : '↻ 重打最近订单'}
-          </button>
-        </div>
+        <>
+          <div style={pp.actionsRow}>
+            <button type="button" style={pp.btn} disabled={testing || !data.configured} onClick={handleTest}>
+              {testing ? '打印中…' : '🧾 测试打印'}
+            </button>
+            <button type="button" style={pp.btn} disabled={reprinting || !data.configured} onClick={handleReprintLast}>
+              {reprinting ? '重打中…' : '↻ 重打最近订单'}
+            </button>
+          </div>
+          <div style={pp.actionsRow}>
+            <button type="button" style={pp.btnDiag} disabled={diagnosing} onClick={handleDiagnose}>
+              {diagnosing ? '诊断中…' : '🔍 token 诊断（强制重拉）'}
+            </button>
+          </div>
+        </>
       )}
 
       {msg && (
         <div style={msg.ok ? pp.msgOk : pp.msgErr}>{msg.text}</div>
+      )}
+
+      {diag !== null && (
+        <pre style={pp.diagBox}>{JSON.stringify(diag, null, 2)}</pre>
       )}
 
       {data.recent.length > 0 && (
@@ -1206,6 +1244,18 @@ const pp: Record<string, React.CSSProperties> = {
   upgradeHint: { fontSize: 12, color: '#888', background: '#fafafa', borderRadius: 8, padding: '8px 10px', marginBottom: 6 },
   actionsRow: { display: 'flex', gap: 8, marginBottom: 8 },
   btn: { flex: 1, height: 36, fontSize: 13, fontWeight: 600, background: '#fff', border: '1.5px solid var(--blue)', color: 'var(--blue)', borderRadius: 8, cursor: 'pointer' },
+  btnDiag: { flex: 1, height: 32, fontSize: 12, fontWeight: 600, background: '#fafafa', border: '1px dashed #d9d9d9', color: '#666', borderRadius: 8, cursor: 'pointer' },
+  diagBox: {
+    fontSize: 10, lineHeight: 1.4, color: '#1a1a1a',
+    background: '#f7f8fa',
+    border: '1px solid #e8e8e8',
+    borderRadius: 6, padding: '8px 10px',
+    overflowX: 'auto' as const, maxHeight: 240,
+    whiteSpace: 'pre-wrap' as const, wordBreak: 'break-all' as const,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    marginTop: 4,
+  } as React.CSSProperties,
+
   msgOk:  { fontSize: 12, color: '#52c41a', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6, padding: '6px 10px', marginBottom: 6 },
   msgErr: { fontSize: 12, color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 6, padding: '6px 10px', marginBottom: 6 },
   recentTitle: { fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginTop: 4, marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
