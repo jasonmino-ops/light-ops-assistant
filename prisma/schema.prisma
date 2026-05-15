@@ -491,3 +491,109 @@ model CustomerTouchLog {
   @@index([tenantId, telegramId, sentAt])
   @@index([sentByUserId])
 }
+
+// ─── 优惠券（v1 最小闭环） ───────────────────────────────────────────────
+//
+// 数据底座由 Supabase SQL Editor 手动建表（见 docs/db/COUPON_TABLES_DDL.md），
+// 不走 prisma migrate；本 schema 仅声明 model 供 Prisma Client 类型使用。
+
+enum CouponType {
+  AMOUNT_OFF
+  PERCENT_OFF
+}
+
+enum CouponTemplateStatus {
+  ACTIVE
+  PAUSED
+  EXPIRED
+  DELETED
+}
+
+enum CustomerCouponStatus {
+  AVAILABLE
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+model CouponTemplate {
+  id            String               @id @default(cuid())
+  tenantId      String
+  storeId       String?              // null 表示全租户通用
+  name          String
+  type          CouponType           @default(AMOUNT_OFF)
+  amountOff     Decimal?             @db.Decimal(10, 2) // AMOUNT_OFF 必填
+  percentOff    Int?                 // PERCENT_OFF 必填，1~99
+  minSpend      Decimal              @default(0) @db.Decimal(10, 2)
+  validDays     Int                  @default(7)        // 自发放起 N 天过期
+  status        CouponTemplateStatus @default(ACTIVE)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  coupons       CustomerCoupon[]
+  batches       CouponIssueBatch[]
+
+  @@index([tenantId, status])
+}
+
+model CustomerCoupon {
+  id           String                @id @default(cuid())
+  tenantId     String
+  storeId      String?               // 仅限该门店使用；null = 全租户通用
+  templateId   String
+  telegramId   String                // 顾客主键（与 StoreCustomerContact 一致）
+  status       CustomerCouponStatus  @default(AVAILABLE)
+  // 发放时的快照（避免模板后续修改影响已发放券）
+  name         String
+  type         CouponType
+  amountOff    Decimal?              @db.Decimal(10, 2)
+  percentOff   Int?
+  minSpend     Decimal               @default(0) @db.Decimal(10, 2)
+  expiresAt    DateTime
+  usedAt       DateTime?
+  usedOrderNo  String?
+  batchId      String?
+  issuedByUserId String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  template     CouponTemplate        @relation(fields: [templateId], references: [id])
+  redemptions  CouponRedemption[]
+
+  @@index([tenantId, telegramId, status])
+  @@index([tenantId, storeId, telegramId, status])
+  @@index([batchId])
+}
+
+model CouponRedemption {
+  id             String   @id @default(cuid())
+  tenantId       String
+  storeId        String
+  couponId       String
+  telegramId     String
+  orderNo        String
+  discountAmount Decimal  @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  coupon         CustomerCoupon @relation(fields: [couponId], references: [id])
+
+  @@unique([orderNo])
+  @@index([tenantId, storeId, createdAt])
+  @@index([couponId])
+}
+
+model CouponIssueBatch {
+  id            String   @id @default(cuid())
+  tenantId      String
+  storeId       String?
+  templateId    String
+  issuedByUserId String
+  totalCount    Int      @default(0)
+  successCount  Int      @default(0)
+  failedCount   Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  template      CouponTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([tenantId, createdAt])
+}
