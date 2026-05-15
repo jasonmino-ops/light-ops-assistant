@@ -193,9 +193,17 @@ export async function POST(req: NextRequest) {
       })
 
       if (couponSnapshot) {
+        // 占券 where 重复所有关键约束（防 id 注入 / 跨租户 / 跨店 / 跨人 / 过期 / 已用）
         const upd = await tx.customerCoupon.updateMany({
-          where: { id: couponSnapshot.id, status: 'AVAILABLE' },
-          data:  { status: 'USED', usedAt: new Date(), usedOrderNo: created.orderNo },
+          where: {
+            id:         couponSnapshot.id,
+            tenantId:   store.tenantId,
+            telegramId: trimmedTgId!,
+            status:     'AVAILABLE',
+            expiresAt:  { gt: new Date() },
+            OR: [{ storeId: store.id }, { storeId: null }],
+          },
+          data: { status: 'USED', usedAt: new Date(), usedOrderNo: created.orderNo },
         })
         if (upd.count !== 1) throw new Error('COUPON_ALREADY_USED')
         await tx.couponRedemption.create({
