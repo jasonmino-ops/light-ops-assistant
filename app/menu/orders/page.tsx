@@ -120,6 +120,10 @@ type MyOrder = {
   orderNo: string
   items: OrderItem[]
   totalAmount: number
+  subtotal?: number
+  discountAmount?: number
+  payableAmount?: number
+  couponName?: string | null
   status: string
   paymentStatus: string
   paymentMethod: string | null
@@ -339,6 +343,18 @@ export default function MyOrdersPage() {
                         </div>
                       </div>
                     ))}
+                    {typeof order.discountAmount === 'number' && order.discountAmount > 0 && (
+                      <>
+                        <div style={s.detailFooter}>
+                          <span style={s.detailTotalLabel}>{lang === 'en' ? 'Subtotal' : lang === 'km' ? 'សរុបរង' : '商品金额'}</span>
+                          <span style={s.detailUnit}>${(order.subtotal ?? order.totalAmount).toFixed(2)}</span>
+                        </div>
+                        <div style={s.detailFooter}>
+                          <span style={s.detailTotalLabel}>🎟️ {order.couponName ?? '优惠券'}</span>
+                          <span style={{ ...s.detailUnit, color: '#fa8c16' }}>-${order.discountAmount.toFixed(2)}</span>
+                        </div>
+                      </>
+                    )}
                     <div style={s.detailFooter}>
                       <span style={s.detailTotalLabel}>{ui.total}</span>
                       <span style={s.detailTotalAmt}>${order.totalAmount.toFixed(2)}</span>

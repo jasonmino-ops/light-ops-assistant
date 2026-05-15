@@ -58,18 +58,51 @@ export async function GET(req: NextRequest) {
     },
   })
 
+  // 一次性按 orderNo 批量取 CouponRedemption；再批量取 CustomerCoupon 拿名称
+  const orderNos = orders.map((o) => o.orderNo)
+  const redemptions = orderNos.length === 0 ? [] : await prisma.couponRedemption.findMany({
+    where: { orderNo: { in: orderNos } },
+    select: { orderNo: true, discountAmount: true, couponId: true },
+  })
+  const redByOrder = new Map(redemptions.map((r) => [r.orderNo, r]))
+  const couponIds = Array.from(new Set(redemptions.map((r) => r.couponId)))
+  const coupons = couponIds.length === 0 ? [] : await prisma.customerCoupon.findMany({
+    where: { id: { in: couponIds } },
+    select: { id: true, name: true },
+  })
+  const couponNameById = new Map(coupons.map((c) => [c.id, c.name]))
+
   return NextResponse.json({
     storeName: store.name,
-    orders: orders.map((o) => ({
-      id: o.id,
-      orderNo: o.orderNo,
-      items: JSON.parse(o.itemsJson),
-      totalAmount: o.totalAmount.toNumber(),
-      status: o.status,
-      paymentStatus: o.paymentStatus,
-      paymentMethod: o.paymentMethod,
-      paidAt: o.paidAt?.toISOString() ?? null,
-      createdAt: o.createdAt.toISOString(),
-    })),
+    orders: orders.map((o) => {
+      type RawItem = { lineAmount?: number; price?: number; quantity?: number }
+      const items = JSON.parse(o.itemsJson) as RawItem[]
+      const subtotalFromItems = +items.reduce((sum, it) => {
+        const l = typeof it.lineAmount === 'number' ? it.lineAmount
+                : (typeof it.price === 'number' && typeof it.quantity === 'number' ? it.price * it.quantity : 0)
+        return sum + l
+      }, 0).toFixed(2)
+      const total = o.totalAmount.toNumber()
+      const red = redByOrder.get(o.orderNo)
+      const discountAmount = red ? red.discountAmount.toNumber() : +(subtotalFromItems - total).toFixed(2)
+      const safeDiscount   = (!Number.isFinite(discountAmount) || discountAmount < 0) ? 0 : discountAmount
+      // 保证 subtotal - discount = total（兜底校准）
+      const subtotal = +(total + safeDiscount).toFixed(2)
+      return {
+        id: o.id,
+        orderNo: o.orderNo,
+        items,
+        totalAmount:    total,
+        subtotal,
+        discountAmount: safeDiscount,
+        payableAmount:  total,
+        couponName:     red ? (couponNameById.get(red.couponId) ?? null) : null,
+        status: o.status,
+        paymentStatus: o.paymentStatus,
+        paymentMethod: o.paymentMethod,
+        paidAt: o.paidAt?.toISOString() ?? null,
+        createdAt: o.createdAt.toISOString(),
+      }
+    }),
   })
 }
