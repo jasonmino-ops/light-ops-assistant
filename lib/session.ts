@@ -14,6 +14,7 @@ export type SessionData = {
   storeId: string
   role: 'OWNER' | 'STAFF'
   opsRole?: string  // present only for ops admin sessions: SUPER_ADMIN | OPS_ADMIN | BD
+  opsSessionVersion?: number // 与 OpsAdmin.sessionVersion 对齐；不一致即视为已失效
 }
 
 function secret(): string {

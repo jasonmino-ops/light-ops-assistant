@@ -20,7 +20,7 @@ interface Agg {
 }
 
 export async function POST(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   let body: { date?: string } = {}

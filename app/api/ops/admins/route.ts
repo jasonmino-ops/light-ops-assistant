@@ -9,7 +9,7 @@ import { checkOpsAuth } from '@/lib/ops-auth'
 import { hashPassword } from '@/lib/password'
 
 export async function GET(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   if (opsRole !== 'SUPER_ADMIN') return NextResponse.json({ error: 'FORBIDDEN', message: '仅 SUPER_ADMIN 可管理管理员列表' }, { status: 403 })
 
@@ -38,7 +38,7 @@ function genPassword(): string {
 }
 
 export async function POST(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   if (opsRole !== 'SUPER_ADMIN') return NextResponse.json({ error: 'FORBIDDEN', message: '仅 SUPER_ADMIN 可新增管理员' }, { status: 403 })
 

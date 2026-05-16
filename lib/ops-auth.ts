@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { verifySession } from './session'
+import { prisma } from './prisma'
 
 /**
  * Checks if the caller is an authorized ops admin and returns their role.
@@ -28,11 +29,17 @@ import { verifySession } from './session'
  */
 export type OpsRole = 'SUPER_ADMIN' | 'OPS_ADMIN' | 'BD'
 
-export function checkOpsAuth(req: NextRequest): OpsRole | false {
+/**
+ * 异步 OPS 鉴权（必须 await）。在通过 session/whitelist 初步识别 ops 角色后，
+ * 额外查 OpsAdmin 表校验 sessionVersion / status / lockedUntil，
+ * 任何被踢出 / 禁用 / 锁定的旧 cookie 均返回 false。
+ */
+export async function checkOpsAuth(req: NextRequest): Promise<OpsRole | false> {
   const sessionToken = req.cookies.get('auth-session')?.value
   let userId: string | null = null
   let role: string | null = null
   let opsRole: string | null = null
+  let opsSessionVersion: number | undefined = undefined
 
   if (sessionToken) {
     const session = verifySession(sessionToken)
@@ -40,10 +47,11 @@ export function checkOpsAuth(req: NextRequest): OpsRole | false {
       userId = session.userId
       role = session.role
       opsRole = session.opsRole ?? null
+      opsSessionVersion = session.opsSessionVersion
     }
   }
 
-  // Dev x-* header fallback — 仅在非生产生效，避免线上被绕过
+  // Dev x-* header fallback — 仅在非生产生效
   if (!role && process.env.NODE_ENV !== 'production') {
     role = req.headers.get('x-role')
     userId = req.headers.get('x-user-id')
@@ -52,24 +60,42 @@ export function checkOpsAuth(req: NextRequest): OpsRole | false {
 
   if (role !== 'OWNER') return false
 
-  // 1) session.opsRole（OpsAdmin 表登录写入）
-  if (opsRole === 'SUPER_ADMIN') return 'SUPER_ADMIN'
-  if (opsRole === 'OPS_ADMIN')   return 'OPS_ADMIN'
-  if (opsRole === 'BD')          return 'BD'
-
-  // 2) legacy _ops_admin
-  if (userId === '_ops_admin') return 'SUPER_ADMIN'
-
-  // 3) OPS_USER_IDS 白名单（必须显式配置且包含当前 userId 才放行）
-  const allowed = (process.env.OPS_USER_IDS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  if (allowed.length > 0 && userId != null && allowed.includes(userId)) {
-    return 'OPS_ADMIN'
+  // 优先：session.opsRole（OpsAdmin 表登录写入）
+  let candidate: OpsRole | null = null
+  if (opsRole === 'SUPER_ADMIN' || opsRole === 'OPS_ADMIN' || opsRole === 'BD') {
+    candidate = opsRole as OpsRole
+  } else if (userId === '_ops_admin') {
+    candidate = 'SUPER_ADMIN'
+  } else {
+    // OPS_USER_IDS 白名单
+    const allowed = (process.env.OPS_USER_IDS ?? '')
+      .split(',').map((s) => s.trim()).filter(Boolean)
+    if (allowed.length > 0 && userId != null && allowed.includes(userId)) {
+      candidate = 'OPS_ADMIN'
+    }
   }
+  if (!candidate) return false
 
-  return false
+  // 仅对 OpsAdmin 表登录链路（candidate 来自 session.opsRole 且 userId 是 OpsAdmin.id）做强校验。
+  // legacy 路径（_ops_admin / OPS_USER_IDS 白名单）无 sessionVersion 概念，沿用 candidate。
+  const isOpsAdminSession = !!opsRole && !!userId && userId !== '_ops_admin'
+  if (!isOpsAdminSession) return candidate
+
+  try {
+    const admin = await prisma.opsAdmin.findUnique({
+      where: { id: userId! },
+      select: { status: true, role: true, sessionVersion: true, lockedUntil: true },
+    })
+    if (!admin) return false
+    if (admin.status !== 'ACTIVE') return false
+    if (admin.lockedUntil && admin.lockedUntil.getTime() > Date.now()) return false
+    if (opsSessionVersion == null) return false
+    if (opsSessionVersion !== admin.sessionVersion) return false
+    if (admin.role !== candidate) return false
+    return candidate
+  } catch {
+    return false
+  }
 }
 
 /**

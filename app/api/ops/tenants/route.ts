@@ -31,7 +31,7 @@ function ninetyDaysAgo() {
 }
 
 export async function GET(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   // Default to ACTIVE only. Pass ?status=ARCHIVED or ?status=all to override.
@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   let body: { tenantName?: string; storeName?: string; tier?: string }

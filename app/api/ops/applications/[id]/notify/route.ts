@@ -19,7 +19,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   const { id } = await params

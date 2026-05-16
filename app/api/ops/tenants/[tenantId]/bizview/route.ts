@@ -19,7 +19,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   const { tenantId } = await params

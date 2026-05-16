@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkOpsAuth } from '@/lib/ops-auth'
 
 export async function GET(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   return NextResponse.json({ ok: true, opsRole })
 }

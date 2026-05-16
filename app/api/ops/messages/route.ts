@@ -10,7 +10,7 @@ import { sendAndLogMessage } from '@/lib/telegram'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   const limit = Math.min(Number(req.nextUrl.searchParams.get('limit') ?? '50'), 100)
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   let body: { recipientTelegramId?: string; text?: string; tenantId?: string }

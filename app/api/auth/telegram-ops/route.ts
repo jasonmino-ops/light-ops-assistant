@@ -39,13 +39,14 @@ function parseTelegramUser(initData: string) {
 const OPS_TG_IDS = (process.env.OPS_TG_IDS ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean)
 
-function issueOpsSession(opsRole: string): NextResponse {
+function issueOpsSession(opsRole: string, opts?: { adminId?: string; sessionVersion?: number }): NextResponse {
   const sessionToken = signSession({
     tenantId: '_ops',
-    userId: '_ops_tg',
-    storeId: '',
-    role: 'OWNER',
+    userId:   opts?.adminId ?? '_ops_tg',
+    storeId:  '',
+    role:     'OWNER',
     opsRole,
+    opsSessionVersion: opts?.sessionVersion,
   })
   const isProd = process.env.NODE_ENV === 'production'
   const res = NextResponse.json({ ok: true })
@@ -57,6 +58,23 @@ function issueOpsSession(opsRole: string): NextResponse {
     maxAge: 60 * 60 * 24 * 7,
   })
   return res
+}
+
+async function auditTg(action: string, adminId: string | null, telegramId: string, message: string, ok: boolean) {
+  try {
+    await prisma.operationLog.create({
+      data: {
+        tenantId:   '_ops',
+        userId:     null,
+        actionType: action,
+        targetType: 'OpsAdmin',
+        targetId:   adminId,
+        status:     ok ? 'SUCCESS' : 'FAILED',
+        message,
+        payloadSnapshot: { telegramId },
+      },
+    })
+  } catch { /* swallow */ }
 }
 
 export async function POST(req: NextRequest) {
@@ -106,11 +124,16 @@ export async function POST(req: NextRequest) {
     // ── New: OpsAdmin table lookup ────────────────────────────────────────────
     const admin = await prisma.opsAdmin.findFirst({
       where: { telegramId, status: 'ACTIVE' },
-      select: { role: true },
+      select: { id: true, role: true, sessionVersion: true, lockedUntil: true },
     })
 
     if (admin) {
-      return issueOpsSession(admin.role)
+      if (admin.lockedUntil && admin.lockedUntil.getTime() > Date.now()) {
+        await auditTg('OPS_TG_LOGIN_LOCKED', admin.id, telegramId, `locked until ${admin.lockedUntil.toISOString()}`, false)
+        return NextResponse.json({ ok: false, error: 'ACCOUNT_LOCKED', message: '账号已锁定' }, { status: 423 })
+      }
+      await auditTg('OPS_TG_LOGIN_OK', admin.id, telegramId, `role=${admin.role}, ver=${admin.sessionVersion ?? 0}`, true)
+      return issueOpsSession(admin.role, { adminId: admin.id, sessionVersion: admin.sessionVersion ?? 0 })
     }
 
     // ── Hint: admin exists but is DISABLED? ───────────────────────────────────

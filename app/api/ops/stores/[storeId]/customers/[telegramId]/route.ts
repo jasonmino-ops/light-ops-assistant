@@ -19,7 +19,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ storeId: string; telegramId: string }> },
 ) {
-  const role = checkOpsAuth(req)
+  const role = await checkOpsAuth(req)
   if (!role) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   const { storeId, telegramId } = await params

@@ -9,7 +9,7 @@ import { checkOpsAuth } from '@/lib/ops-auth'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   // 并发拉取消息列表和支持会话状态

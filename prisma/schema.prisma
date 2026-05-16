@@ -453,6 +453,9 @@ model OpsAdmin {
   telegramId   String?  @unique
   role         String   @default("OPS_ADMIN") // SUPER_ADMIN | OPS_ADMIN | BD
   status       String   @default("ACTIVE")    // ACTIVE | DISABLED
+  sessionVersion   Int      @default(0)   // bump 后旧 session 失效（被盗 cookie 强制下线）
+  failedLoginCount Int      @default(0)   // 连续登录失败次数（成功后清零）
+  lockedUntil      DateTime?              // 账号锁定到期时间（5 次失败锁 15 分钟）
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

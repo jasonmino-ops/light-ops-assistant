@@ -16,7 +16,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   const { tenantId } = await params
 
@@ -122,7 +122,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   // BD cannot modify tenant tier or status
   if (opsRole === 'BD') return NextResponse.json({ error: 'FORBIDDEN', message: 'BD 角色无此操作权限' }, { status: 403 })

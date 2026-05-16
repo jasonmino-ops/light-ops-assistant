@@ -24,7 +24,7 @@ const VALID_SCOPES = ['ALL_OWNERS', 'ALL_STAFF', 'TENANT_MEMBERS'] as const
 type Scope = (typeof VALID_SCOPES)[number]
 
 export async function POST(req: NextRequest) {
-  const opsRole = checkOpsAuth(req)
+  const opsRole = await checkOpsAuth(req)
   if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   let body: { scope?: string; tenantId?: string; text?: string }
