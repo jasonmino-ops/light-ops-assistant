@@ -443,6 +443,7 @@ export default function MenuPage() {
   const [orderRemark,   setOrderRemark]   = useState('')
   // 配送地址（仅 delivery 用）
   const [deliveryEditOpen, setDeliveryEditOpen] = useState(false)
+  const [addrQuickOpen, setAddrQuickOpen] = useState(false)
   const [deliveryInfo, setDeliveryInfo] = useState<{
     customerName: string; customerPhone: string
     deliveryAddress: string; deliveryNote: string
@@ -935,7 +936,15 @@ export default function MenuPage() {
           <button
             type="button"
             style={s.quickEntry}
-            onClick={() => alert(lang === 'zh' ? '地址管理即将开放' : lang === 'en' ? 'Addresses coming soon' : 'កំពុងអភិវឌ្ឍ')}
+            onClick={() => {
+              // 有历史外卖地址 → 弹快速确认；否则直接进入地图/地址编辑
+              if (deliveryInfo.deliveryAddress && deliveryInfo.deliveryAddress.trim()) {
+                setAddrQuickOpen(true)
+              } else {
+                setPickupMethod('delivery')
+                setDeliveryEditOpen(true)
+              }
+            }}
           >
             <span style={s.quickEntryIcon}>📍</span>
             <span style={s.quickEntryLabel}>
@@ -1256,6 +1265,24 @@ export default function MenuPage() {
             <button type="button" style={cpk.done} onClick={() => setCouponPickerOpen(false)}>{couponDoneLabel}</button>
           </div>
         </div>
+      )}
+
+      {/* ── 地址快速确认弹层（首页地址快捷入口） ── */}
+      {addrQuickOpen && (
+        <AddressQuickModal
+          info={deliveryInfo}
+          lang={lang}
+          onClose={() => setAddrQuickOpen(false)}
+          onUse={() => {
+            setAddrQuickOpen(false)
+            setPickupMethod('delivery')
+          }}
+          onEdit={() => {
+            setAddrQuickOpen(false)
+            setPickupMethod('delivery')
+            setDeliveryEditOpen(true)
+          }}
+        />
       )}
 
       {/* ── 配送/上门地址编辑弹层 ── */}
@@ -2793,6 +2820,71 @@ type DeliveryForm = {
   deliveryAddress: string; deliveryNote: string
   deliveryLat: number | null; deliveryLng: number | null
   deliveryAddressPhotoUrl: string | null
+}
+
+function AddressQuickModal({
+  info, lang, onClose, onUse, onEdit,
+}: {
+  info: DeliveryForm
+  lang: 'zh' | 'en' | 'km'
+  onClose: () => void
+  onUse: () => void
+  onEdit: () => void
+}) {
+  const L = lang === 'en' ? {
+    title: 'Use your saved address?',
+    use: 'Use this address', edit: 'Edit address',
+    coord: 'Coordinates', map: 'Open Google Maps ›',
+  } : lang === 'km' ? {
+    title: 'ប្រើអាសយដ្ឋានដែលរក្សាទុក?',
+    use: 'ប្រើអាសយដ្ឋាននេះ', edit: 'កែសម្រួលអាសយដ្ឋាន',
+    coord: 'កូអរដោនេ', map: 'បើក Google Maps ›',
+  } : {
+    title: '使用最近一次的外卖地址？',
+    use: '使用该地址', edit: '修改地址',
+    coord: '经纬度', map: '打开 Google Maps ›',
+  }
+  const hasLoc = info.deliveryLat != null && info.deliveryLng != null
+
+  return (
+    <div style={dm.mask} onClick={onClose}>
+      <div style={dm.panel} onClick={(e) => e.stopPropagation()}>
+        <div style={dm.title}>📍 {L.title}</div>
+
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.5 }}>
+          {info.deliveryAddress}
+        </div>
+        {(info.customerName || info.customerPhone) && (
+          <div style={{ fontSize: 12, color: '#666' }}>
+            {info.customerName ? `${info.customerName} · ` : ''}{info.customerPhone}
+          </div>
+        )}
+        {info.deliveryNote && (
+          <div style={{ fontSize: 11, color: '#999' }}>{info.deliveryNote}</div>
+        )}
+        {hasLoc && (
+          <div style={{ fontSize: 11, color: '#666', fontFamily: 'monospace' as const }}>
+            {L.coord}: {info.deliveryLat!.toFixed(5)}, {info.deliveryLng!.toFixed(5)}
+            <a
+              href={`https://maps.google.com/?q=${info.deliveryLat},${info.deliveryLng}`}
+              target="_blank" rel="noreferrer"
+              style={{ marginLeft: 8, color: '#1677ff', textDecoration: 'none', fontWeight: 700 }}
+            >{L.map}</a>
+          </div>
+        )}
+        {info.deliveryAddressPhotoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={info.deliveryAddressPhotoUrl} alt="address"
+               style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 10, border: '1px solid #ebebeb' }} />
+        )}
+
+        <div style={dm.actions}>
+          <button type="button" style={dm.cancelBtn} onClick={onEdit}>{L.edit}</button>
+          <button type="button" style={dm.saveBtn} onClick={onUse}>{L.use}</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function DeliveryPhotoUploader({
