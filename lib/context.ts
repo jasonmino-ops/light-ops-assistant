@@ -28,6 +28,18 @@ export async function getContext(req: NextRequest): Promise<RequestContext | nul
   if (sessionToken) {
     const session = verifySession(sessionToken)
     if (session) {
+      // OPS session 短路：不走商户 tenant/user 表校验（_ops 不是真 tenant，
+      // OpsAdmin.id 不是 User.id）。OPS 鉴权由 checkOpsAuth 单独 verify
+      // OpsAdmin.status / sessionVersion / lockedUntil；这里只为 /api/auth/status
+      // 等通用通道返回一个合法 ctx，避免 PWA 模式被踢到 /relogin。
+      if (session.tenantId === '_ops' && session.opsRole) {
+        return {
+          tenantId: session.tenantId,
+          userId:   session.userId,
+          storeId:  session.storeId,
+          role:     session.role,
+        }
+      }
       // Block archived/stopped tenants and unbound/disabled users in parallel.
       // Ensures that unbind, resign, or tenant deactivation immediately invalidates
       // existing session cookies without waiting for cookie expiry.

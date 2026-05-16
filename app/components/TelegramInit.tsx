@@ -53,8 +53,11 @@ export default function TelegramInit() {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
+    const isOpsRoute = path.startsWith('/ops')
     if (!tg?.initData) {
       // PWA mode (opened from home screen or browser, no Telegram context).
+      // OPS 路径有自己的 /ops/login 表单 + cookie，不走商户 Bot relogin。
+      if (isOpsRoute) return
       fetch('/api/auth/status')
         .then((r) => { if (r.status === 401) window.location.replace('/relogin') })
         .catch(() => { /* network error — stay silent, don't block the page */ })
