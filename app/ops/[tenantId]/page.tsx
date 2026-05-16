@@ -127,6 +127,29 @@ export default function TenantDetailPage() {
           <BizDataPanel tenantId={detail.id} />
         </Section>
 
+        {/* 顾客资产入口（按门店打开） */}
+        <Section title="顾客资产（按门店）">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {detail.stores.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>该商户暂无门店</div>
+            ) : detail.stores.map((st) => (
+              <Link
+                key={st.id}
+                href={`/ops/stores/${encodeURIComponent(st.id)}/customers`}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 12px', background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
+                  color: '#fff', textDecoration: 'none', fontSize: 13,
+                }}
+              >
+                <span><b>{st.name}</b> <span style={{ fontFamily: 'monospace', opacity: 0.7 }}>{st.code}</span></span>
+                <span style={{ opacity: 0.7 }}>顾客资产 ›</span>
+              </Link>
+            ))}
+          </div>
+        </Section>
+
         {/* Bind code generator */}
         <Section title="生成绑定码">
           <GenCodePanel tenantId={detail.id} stores={detail.stores} />

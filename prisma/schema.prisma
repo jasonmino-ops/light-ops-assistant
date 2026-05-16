@@ -469,7 +469,8 @@ model StoreCustomerContact {
   telegramLanguageCode String?
   lastOrderId          String?
   source               String   @default("telegram_bind_after_order")
-  status               String   @default("active")
+  status               String   @default("active") // active | flagged（OPS 标记异常） | revoked（OPS 解除绑定）
+  opsNote              String?  @db.Text           // OPS 后台维护备注（不对老板端展示）
   firstBoundAt         DateTime @default(now())
   lastSeenAt           DateTime @default(now())
   createdAt            DateTime @default(now())
