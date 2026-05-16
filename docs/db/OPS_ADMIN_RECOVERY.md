@@ -22,20 +22,20 @@ UPDATE "OpsAdmin" SET "sessionVersion" = "sessionVersion" + 1;
 ## 2. 重置某个 SUPER_ADMIN 的密码
 
 ```bash
-# 本地生成 scrypt 密码 hash（与 lib/password.ts 一致）
+# 本地生成 scrypt 密码 hash（与 lib/password.ts 完全一致：salt:hash 两段无前缀）
 node -e "
 const c = require('crypto');
 const pw = 'NEW_STRONG_PASSWORD_HERE';
 const salt = c.randomBytes(16).toString('hex');
 const buf  = c.scryptSync(pw, salt, 64).toString('hex');
-console.log('scrypt:' + salt + ':' + buf);
+console.log(salt + ':' + buf);
 "
 ```
 
 把上面输出贴到 SQL：
 ```sql
 UPDATE "OpsAdmin"
-   SET "passwordHash"      = '<刚生成的 scrypt:salt:hash>',
+   SET "passwordHash"      = '<刚生成的 salt:hash>',
        "sessionVersion"    = "sessionVersion" + 1,
        "failedLoginCount"  = 0,
        "lockedUntil"       = NULL,
@@ -70,7 +70,7 @@ VALUES
   (substr(md5(random()::text), 1, 25),
    'Super Admin Recovery',
    '<新用户名>',
-   '<scrypt:salt:hash>',
+   '<salt:hash>',
    'SUPER_ADMIN', 'ACTIVE', 0, 0, NULL, NOW(), NOW())
 ON CONFLICT (username) DO NOTHING;
 ```
