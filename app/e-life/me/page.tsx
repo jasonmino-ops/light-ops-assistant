@@ -115,6 +115,24 @@ export default function ELifeMePage() {
         setTgUsername(u.username ? `@${u.username}` : '')
       }
     } catch { /* ignore */ }
+
+    // 从后端读取真实最近访问（覆盖 localStorage）
+    fetch('/api/e-life/recent-stores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tg.initData }),
+    })
+      .then((r) => r.json())
+      .then((body) => {
+        if (body.ok && Array.isArray(body.stores) && body.stores.length > 0) {
+          setRecentStores(
+            body.stores.map((s: { storeCode: string; storeName: string; lastSeenAt: string }) => ({
+              code: s.storeCode, name: s.storeName, lastVisitedAt: s.lastSeenAt,
+            }))
+          )
+        }
+      })
+      .catch(() => { /* 静默失败，localStorage 结果保持 */ })
   }, [])
 
   function changeLang(l: Lang) {

@@ -161,6 +161,28 @@ export default function ELifeHomePage() {
       const savedLang = localStorage.getItem('eLife_lang') as Lang | null
       if (savedLang && (['zh', 'en', 'km'] as string[]).includes(savedLang)) setLang(savedLang)
     } catch { /* ignore */ }
+
+    // 有 Telegram initData 时从后端读取真实最近访问（覆盖 localStorage）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    if (tg?.initData) {
+      fetch('/api/e-life/recent-stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tg.initData }),
+      })
+        .then((r) => r.json())
+        .then((body) => {
+          if (body.ok && Array.isArray(body.stores) && body.stores.length > 0) {
+            setRecentStores(
+              body.stores.map((s: { storeCode: string; storeName: string; lastSeenAt: string }) => ({
+                code: s.storeCode, name: s.storeName, lastVisitedAt: s.lastSeenAt,
+              }))
+            )
+          }
+        })
+        .catch(() => { /* 静默失败，localStorage 结果保持 */ })
+    }
   }, [])
 
   function changeLang(l: Lang) {

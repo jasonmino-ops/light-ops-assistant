@@ -693,13 +693,23 @@ export default function MenuPage() {
           setApiProducts(body.products ?? [])
           setCategories(body.categories ?? [])
           setCustomerBound(!!body.customerBound)
-          // 记录到 E-Life 最近访问店铺（供 /e-life 首页「我的常去」读取）
+          // 记录到 E-Life 最近访问店铺（localStorage + 后端双写）
           try {
             const entry = { code, name: body.store.name as string, lastVisitedAt: new Date().toISOString() }
             const prev: { code: string }[] = JSON.parse(localStorage.getItem('eLife_recentStores') ?? '[]')
             const next = [entry, ...prev.filter((s) => s.code !== code)].slice(0, 8)
             localStorage.setItem('eLife_recentStores', JSON.stringify(next))
           } catch { /* localStorage 不可用时静默 */ }
+          // 异步上报后端（仅 Telegram WebApp 内），fire-and-forget，不阻塞页面
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const tgWA = (window as any).Telegram?.WebApp
+          if (tgWA?.initData) {
+            fetch('/api/e-life/recent-stores/visit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ initData: tgWA.initData, storeCode: code }),
+            }).catch(() => { /* 静默失败，localStorage 已兜底 */ })
+          }
         }
       })
       .catch(() => setFetchError('NETWORK_ERROR'))
