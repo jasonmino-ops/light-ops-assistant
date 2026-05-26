@@ -1,0 +1,331 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+
+const BRAND = '#07c160'
+
+type Lang = 'zh' | 'en' | 'km'
+
+const T = {
+  zh: {
+    title:      '我的订单',
+    sub:        '跨商户订单历史',
+    loading:    '加载中…',
+    empty:      '暂无订单',
+    emptyHint:  '去首页逛逛',
+    noTg:       '请在 Telegram 中打开以查看订单',
+    statusPending:   '待确认',
+    statusConfirmed: '已确认',
+    statusCompleted: '已完成',
+    statusCancelled: '已取消',
+    paid:   '已收款',
+    unpaid: '未收款',
+    more: (n: number) => `等${n + 1}件`,
+  },
+  en: {
+    title:      'My Orders',
+    sub:        'Cross-store order history',
+    loading:    'Loading…',
+    empty:      'No orders yet',
+    emptyHint:  'Browse the home page',
+    noTg:       'Open in Telegram to view orders',
+    statusPending:   'Pending',
+    statusConfirmed: 'Confirmed',
+    statusCompleted: 'Completed',
+    statusCancelled: 'Cancelled',
+    paid:   'Paid',
+    unpaid: 'Unpaid',
+    more: (n: number) => `+${n} more`,
+  },
+  km: {
+    title:      'ការបញ្ជាទិញ',
+    sub:        'ប្រវត្តិបញ្ជាទិញ',
+    loading:    'កំពុងផ្ទុក…',
+    empty:      'គ្មានការបញ្ជាទិញ',
+    emptyHint:  'ត្រឡប់ទំព័រដើម',
+    noTg:       'សូមបើកក្នុង Telegram ដើម្បីមើលការបញ្ជាទិញ',
+    statusPending:   'រង់ចាំ',
+    statusConfirmed: 'បានបញ្ជាក់',
+    statusCompleted: 'បានបញ្ចប់',
+    statusCancelled: 'បានលុបចោល',
+    paid:   'បានបង់',
+    unpaid: 'មិនទាន់បង់',
+    more: (n: number) => `+${n}`,
+  },
+}
+
+const STATUS_COLOR: Record<string, string> = {
+  PENDING:   '#fa8c16',
+  CONFIRMED: '#1677ff',
+  COMPLETED: BRAND,
+  CANCELLED: '#bbb',
+}
+
+type Order = {
+  id: string
+  orderNo: string
+  storeCode: string
+  storeName: string
+  itemCount: number
+  firstItem: string
+  extraCount: number
+  totalAmount: number
+  status: string
+  paymentStatus: string
+  createdAt: string
+}
+
+function fmtDate(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) +
+    ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+export default function ELifeOrdersPage() {
+  const router = useRouter()
+  const [lang,    setLang]    = useState<Lang>('zh')
+  const [orders,  setOrders]  = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
+  const [noTg,    setNoTg]    = useState(false)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('eLife_lang') as Lang | null
+      if (saved && (['zh', 'en', 'km'] as string[]).includes(saved)) setLang(saved)
+    } catch { /* ignore */ }
+
+    // 从 Telegram initData 提取 tgId
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    tg?.expand?.()
+
+    let tgId: string | null = null
+    if (tg?.initData) {
+      try {
+        const userStr = new URLSearchParams(tg.initData).get('user')
+        if (userStr) tgId = String(JSON.parse(userStr).id)
+      } catch { /* ignore */ }
+    }
+
+    const url = tgId
+      ? `/api/e-life/orders?tgId=${encodeURIComponent(tgId)}`
+      : '/api/e-life/orders'
+
+    fetch(url)
+      .then((r) => r.json())
+      .then((body) => {
+        setOrders(body.orders ?? [])
+        if (body.noTg) setNoTg(true)
+      })
+      .catch(() => { /* silent — show empty state */ })
+      .finally(() => setLoading(false))
+  }, [])
+
+  const t = T[lang]
+
+  function statusLabel(s: string) {
+    if (s === 'PENDING')   return t.statusPending
+    if (s === 'CONFIRMED') return t.statusConfirmed
+    if (s === 'COMPLETED') return t.statusCompleted
+    if (s === 'CANCELLED') return t.statusCancelled
+    return s
+  }
+
+  function itemSummary(o: Order) {
+    if (o.extraCount <= 0) return o.firstItem
+    return o.firstItem + ' ' + t.more(o.extraCount)
+  }
+
+  return (
+    <div style={s.page}>
+
+      {/* ── Header ── */}
+      <header style={s.header}>
+        <button style={s.backBtn} onClick={() => router.push('/e-life')}>
+          <ChevronLeftIcon />
+        </button>
+        <div style={s.headerCenter}>
+          <h1 style={s.headerTitle}>{t.title}</h1>
+          <p style={s.headerSub}>{t.sub}</p>
+        </div>
+        <div style={{ width: 36 }} />
+      </header>
+
+      {/* ── Body ── */}
+      <main style={s.main}>
+        {loading ? (
+          <div style={s.center}><span style={{ color: '#bbb', fontSize: 14 }}>{t.loading}</span></div>
+        ) : noTg && orders.length === 0 ? (
+          <div style={s.center}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>💬</div>
+            <p style={s.emptyText}>{t.noTg}</p>
+            <button style={s.homeBtn} onClick={() => router.push('/e-life')}>{t.emptyHint}</button>
+          </div>
+        ) : orders.length === 0 ? (
+          <div style={s.center}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
+            <p style={s.emptyText}>{t.empty}</p>
+            <button style={s.homeBtn} onClick={() => router.push('/e-life')}>{t.emptyHint}</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {orders.map((order) => {
+              const color = STATUS_COLOR[order.status] ?? '#bbb'
+              return (
+                <div
+                  key={order.id}
+                  style={s.card}
+                  onClick={() => router.push(`/menu/orders?code=${encodeURIComponent(order.storeCode)}&from=e-life-orders`)}
+                >
+                  {/* 店铺行 */}
+                  <div style={s.cardTop}>
+                    <div style={s.storeName}>{order.storeName}</div>
+                    <div style={{ fontSize: 11, color: '#bbb' }}>{fmtDate(order.createdAt)}</div>
+                  </div>
+                  {/* 商品摘要行 */}
+                  <div style={s.itemRow}>{itemSummary(order)}</div>
+                  {/* 状态 + 金额行 */}
+                  <div style={s.cardBottom}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ ...s.dot, background: color }} />
+                      <span style={{ fontSize: 12, color, fontWeight: 600 }}>{statusLabel(order.status)}</span>
+                      {order.status === 'COMPLETED' && (
+                        <span style={{ fontSize: 11, color: '#bbb' }}>
+                          · {order.paymentStatus === 'PAID' ? t.paid : t.unpaid}
+                        </span>
+                      )}
+                    </div>
+                    <div style={s.amount}>${order.totalAmount.toFixed(2)}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
+
+function ChevronLeftIcon() {
+  return (
+    <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  )
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const s: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: '100dvh',
+    background: '#F7F8FA',
+    maxWidth: 448,
+    margin: '0 auto',
+  },
+
+  header: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 50,
+    background: 'linear-gradient(to bottom, #EEFBF3, #ffffff)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 16px 10px',
+    borderBottom: '1px solid rgba(0,0,0,0.05)',
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: '50%',
+    background: 'rgba(0,0,0,0.05)',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: '#333',
+    flexShrink: 0,
+  },
+  headerCenter: { textAlign: 'center' as const, flex: 1 },
+  headerTitle: { fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 },
+  headerSub:   { fontSize: 11, color: `rgba(7,193,96,0.65)`, margin: '2px 0 0', fontWeight: 500 },
+
+  main: { padding: '14px 16px 32px' },
+
+  center: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '60vh',
+    gap: 8,
+  },
+  emptyText: { fontSize: 15, color: '#bbb', margin: 0, textAlign: 'center' as const },
+  homeBtn: {
+    marginTop: 8,
+    padding: '10px 24px',
+    background: BRAND,
+    color: '#fff',
+    border: 'none',
+    borderRadius: 20,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+
+  card: {
+    background: '#fff',
+    borderRadius: 14,
+    padding: '14px 16px',
+    border: '1px solid rgba(0,0,0,0.06)',
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 6,
+  },
+  cardTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  storeName: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#111827',
+    overflow: 'hidden' as const,
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
+    maxWidth: '60%',
+  },
+  itemRow: {
+    fontSize: 13,
+    color: '#6b7280',
+    overflow: 'hidden' as const,
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
+  },
+  cardBottom: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: '50%',
+    flexShrink: 0,
+    display: 'inline-block',
+  },
+  amount: {
+    fontSize: 17,
+    fontWeight: 700,
+    color: '#111827',
+  },
+}

@@ -192,8 +192,7 @@ export default function ELifeHomePage() {
   }
 
   function handleOrders() {
-    if (lastCode) navTo(`/menu/orders?code=${encodeURIComponent(lastCode)}&from=e-life`)
-    else showToast(t.toastVisitFirst)
+    navTo('/e-life/orders')
   }
 
   function handleProfile() {
