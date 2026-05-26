@@ -123,28 +123,29 @@ async function handleBind(msg: any, payload: { storeCode: string; orderNo: strin
   ]
   if (orderNo) lines.push(`本次订单已记录：${orderNo}`)
 
-  // 更新 bot 持久菜单按钮（左下角「查看商品」），覆盖 BotFather 默认值
-  // 与下方 inline keyboard 「再次点单」使用相同 storeCode，保持一致
-  // 失败不中断绑定流程，但记录日志
+  // 更新 bot 持久菜单按钮（左下角「查看商品」）→ 始终指向 /e-life 多店平台首页
+  // 不再动态指向某家店，避免多店场景下用户从底部按钮误进旧店铺
+  // inline keyboard「再次点单」仍使用当前 storeCode（见下方 sendMessage）
   if (APP_URL) {
-    const menuUrl = `${APP_URL}/menu?code=${encodeURIComponent(storeCode)}`
+    const platformUrl   = `${APP_URL}/e-life`
+    const inlineStoreCode = storeCode
     try {
       const res = await tgSend('setChatMenuButton', {
         chat_id: chatId,
         menu_button: {
           type:    'web_app',
           text:    '🛍️ 查看商品',
-          web_app: { url: menuUrl },
+          web_app: { url: platformUrl },
         },
       })
       const resJson = res ? await res.json().catch(() => null) : null
       console.log('[customer-webhook] setChatMenuButton', {
-        chat_id: chatId, storeCode, menuUrl,
+        chat_id: chatId, menuUrl: platformUrl, inlineStoreCode,
         ok: resJson?.ok ?? false,
         error: resJson?.description ?? null,
       })
     } catch (e) {
-      console.error('[customer-webhook] setChatMenuButton failed', { chat_id: chatId, storeCode, error: e })
+      console.error('[customer-webhook] setChatMenuButton failed', { chat_id: chatId, error: e })
     }
   }
 
@@ -204,23 +205,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    // 无参/未识别参数：查顾客最近绑定的店铺，否则兜底 DEFAULT_STORE
-    const tgUserId = String(msg.from?.id ?? '')
-    const recentContact = tgUserId
-      ? await prisma.storeCustomerContact.findFirst({
-          where:   { telegramId: tgUserId, status: 'active' },
-          orderBy: { lastSeenAt: 'desc' },
-          select:  { storeCode: true },
-        }).catch(() => null)
-      : null
-    const welcomeStoreCode = recentContact?.storeCode ?? DEFAULT_STORE
-    const menuUrl = `${APP_URL}/menu?code=${encodeURIComponent(welcomeStoreCode)}`
+    // 无参/未识别参数：引导到 E-Life 多店平台首页
+    // 不再默认跳某一家店，由顾客在首页自行选择
+    const platformUrl = `${APP_URL}/e-life`
     await tgSend('sendMessage', {
       chat_id: chatId,
-      text: '👋 欢迎！点击下方按钮查看商品，选好后可直接下单，商家会及时处理。',
+      text: '👋 欢迎来到 E-Life 超生活！点击下方按钮浏览店铺，找到喜欢的直接下单。',
       reply_markup: {
         inline_keyboard: [[
-          { text: '🛍️ 查看商品', web_app: { url: menuUrl } },
+          { text: '🛍️ 查看商品', web_app: { url: platformUrl } },
         ]],
       },
     })
