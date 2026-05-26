@@ -83,19 +83,20 @@ const LANG_OPTIONS: { code: Lang; label: string; sub: string }[] = [
 
 const CATEGORIES: {
   id: number
+  type: string
   names: Record<Lang, string>
   icon: string
   color: string
   bg: string
 }[] = [
-  { id: 1, names: { zh: '美食餐饮', en: 'Food',      km: 'អាហារ'    }, icon: 'utensils',    color: 'rgba(249,115,22,0.7)',  bg: 'rgba(255,247,237,0.8)' },
-  { id: 2, names: { zh: '零售超市', en: 'Grocery',   km: 'គ្រឿងទេស' }, icon: 'shopping-bag', color: 'rgba(16,185,129,0.7)',  bg: 'rgba(236,253,245,0.8)' },
-  { id: 3, names: { zh: '咖啡饮品', en: 'Coffee',    km: 'កាហ្វេ'   }, icon: 'coffee',       color: 'rgba(245,158,11,0.7)',  bg: 'rgba(255,251,235,0.8)' },
-  { id: 4, names: { zh: '生活服务', en: 'Services',  km: 'សេវាកម្ម' }, icon: 'wrench',       color: 'rgba(59,130,246,0.7)',  bg: 'rgba(239,246,255,0.8)' },
-  { id: 5, names: { zh: '休闲娱乐', en: 'Leisure',   km: 'កម្សាន្ត' }, icon: 'gamepad',      color: 'rgba(236,72,153,0.7)',  bg: 'rgba(253,242,248,0.8)' },
-  { id: 6, names: { zh: '医疗健康', en: 'Health',    km: 'សុខភាព'   }, icon: 'heart',        color: 'rgba(248,113,113,0.7)', bg: 'rgba(254,242,242,0.8)' },
-  { id: 7, names: { zh: '汽车服务', en: 'Auto',      km: 'រថយន្ត'   }, icon: 'car',          color: 'rgba(100,116,139,0.7)', bg: 'rgba(248,250,252,0.8)' },
-  { id: 8, names: { zh: '亲子教育', en: 'Education', km: 'អប់រំ'    }, icon: 'graduation',   color: 'rgba(99,102,241,0.7)',  bg: 'rgba(238,242,255,0.8)' },
+  { id: 1, type: 'food',          names: { zh: '美食餐饮', en: 'Food',      km: 'អាហារ'    }, icon: 'utensils',    color: 'rgba(249,115,22,0.7)',  bg: 'rgba(255,247,237,0.8)' },
+  { id: 2, type: 'retail',        names: { zh: '零售超市', en: 'Grocery',   km: 'គ្រឿងទេស' }, icon: 'shopping-bag', color: 'rgba(16,185,129,0.7)',  bg: 'rgba(236,253,245,0.8)' },
+  { id: 3, type: 'cafe',          names: { zh: '咖啡饮品', en: 'Coffee',    km: 'កាហ្វេ'   }, icon: 'coffee',       color: 'rgba(245,158,11,0.7)',  bg: 'rgba(255,251,235,0.8)' },
+  { id: 4, type: 'service',       names: { zh: '生活服务', en: 'Services',  km: 'សេវាកម្ម' }, icon: 'wrench',       color: 'rgba(59,130,246,0.7)',  bg: 'rgba(239,246,255,0.8)' },
+  { id: 5, type: 'entertainment', names: { zh: '休闲娱乐', en: 'Leisure',   km: 'កម្សាន្ត' }, icon: 'gamepad',      color: 'rgba(236,72,153,0.7)',  bg: 'rgba(253,242,248,0.8)' },
+  { id: 6, type: 'health',        names: { zh: '医疗健康', en: 'Health',    km: 'សុខភាព'   }, icon: 'heart',        color: 'rgba(248,113,113,0.7)', bg: 'rgba(254,242,242,0.8)' },
+  { id: 7, type: 'auto',          names: { zh: '汽车服务', en: 'Auto',      km: 'រថយន្ត'   }, icon: 'car',          color: 'rgba(100,116,139,0.7)', bg: 'rgba(248,250,252,0.8)' },
+  { id: 8, type: 'kids',          names: { zh: '亲子教育', en: 'Education', km: 'អប់រំ'    }, icon: 'graduation',   color: 'rgba(99,102,241,0.7)',  bg: 'rgba(238,242,255,0.8)' },
 ]
 
 // 无封面图时按索引循环使用的备用真实照片（Unsplash，按 idx 循环）
@@ -454,7 +455,7 @@ export default function ELifeHomePage() {
           <h2 style={{ ...s.secTitle, marginBottom: 8 }}>{t.categories}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', rowGap: 8 }}>
             {CATEGORIES.map(cat => (
-              <button key={cat.id} style={s.catBtn}>
+              <button key={cat.id} style={s.catBtn} onClick={() => navTo(`/e-life/category?type=${cat.type}`)}>
                 <div style={{ width: 40, height: 40, borderRadius: 12, background: cat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <CatIcon type={cat.icon} color={cat.color} />
                 </div>
