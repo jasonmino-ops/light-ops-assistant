@@ -108,6 +108,13 @@ const CATEGORIES: {
   { id: 8, names: { zh: '亲子教育', en: 'Education', km: 'អប់រំ'    }, icon: 'graduation',   color: 'rgba(99,102,241,0.7)',  bg: 'rgba(238,242,255,0.8)' },
 ]
 
+// 无封面图时的备用渐变色板（按索引循环）
+const CARD_GRADIENTS = [
+  'linear-gradient(135deg, #34d399 0%, #059669 100%)',
+  'linear-gradient(135deg, #60a5fa 0%, #2563eb 100%)',
+  'linear-gradient(135deg, #f9a8d4 0%, #db2777 100%)',
+]
+
 const RECOMMENDED_MOCK = [
   {
     code: 'dintaifung-main',
@@ -159,9 +166,16 @@ export default function ELifeHomePage() {
 
   const t = T[lang]
 
-  const shopsToShow: ShopDisplay[] = recentStores.length > 0
-    ? recentStores.slice(0, 3).map(s => ({ code: s.code, name: s.name, subtitle: '', image: '' }))
-    : FREQUENT_MOCK
+  // 常去：优先真实访问记录，不足 3 个时用 FREQUENT_MOCK 补满
+  const recentAsDisplay: ShopDisplay[] = recentStores.slice(0, 3).map(s => ({
+    code: s.code, name: s.name, subtitle: '', image: '',
+  }))
+  const shopsToShow: ShopDisplay[] = recentStores.length === 0
+    ? FREQUENT_MOCK
+    : [
+        ...recentAsDisplay,
+        ...FREQUENT_MOCK.filter(m => !recentAsDisplay.some(r => r.code === m.code)),
+      ].slice(0, 3)
 
   function navTo(path: string) { router.push(path) }
 
@@ -297,16 +311,28 @@ export default function ELifeHomePage() {
                 style={{ flex: 1, cursor: 'pointer' }}
                 onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}
               >
+                {/* 固定宽高比容器，所有子层用 absolute inset:0 铺满 */}
                 <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: 6, aspectRatio: '1/1', border: '1px solid rgba(0,0,0,0.08)' }}>
+                  {/* 底层：图片 or 品牌渐变 */}
                   {shop.image ? (
-                    <img src={shop.image} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <img
+                      src={shop.image}
+                      alt={shop.name}
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
                   ) : (
-                    <div style={{ width: '100%', height: '100%', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, aspectRatio: '1/1' }}>🏪</div>
+                    <div style={{ position: 'absolute', inset: 0, background: CARD_GRADIENTS[idx % CARD_GRADIENTS.length], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: 40, color: 'rgba(255,255,255,0.92)', fontWeight: 700, lineHeight: 1, userSelect: 'none' }}>
+                        {shop.name.charAt(0)}
+                      </span>
+                    </div>
                   )}
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.4), transparent, transparent)' }} />
+                  {/* 暗角渐变：图片和渐变背景均叠加 */}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.1) 50%, transparent 100%)' }} />
+                  {/* 店名文字 */}
                   <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8 }}>
-                    <p style={{ fontSize: 11, color: '#fff', fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>{shop.name}</p>
-                    {shop.subtitle && <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.subtitle}</p>}
+                    <p style={{ fontSize: 11, color: '#fff', fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{shop.name}</p>
+                    {shop.subtitle && <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.85)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.subtitle}</p>}
                   </div>
                 </div>
               </div>
