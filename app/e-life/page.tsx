@@ -196,8 +196,7 @@ export default function ELifeHomePage() {
   }
 
   function handleProfile() {
-    if (lastCode) navTo(`/me?code=${encodeURIComponent(lastCode)}&from=e-life`)
-    else showToast(t.toastVisitFirst)
+    navTo('/e-life/me')
   }
 
   function closeScanPanel() {
