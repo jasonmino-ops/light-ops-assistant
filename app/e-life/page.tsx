@@ -9,6 +9,7 @@ const BRAND = '#07c160'
 type Lang = 'zh' | 'en' | 'km'
 type RecentStore = { code: string; name: string; lastVisitedAt: string }
 type ShopDisplay = { code: string; name: string; subtitle: string; image: string }
+type FeaturedStore = { code: string; name: string; businessType: string; imageUrl: string | null }
 
 // ─── Translations ─────────────────────────────────────────────────────────────
 
@@ -101,25 +102,16 @@ const FALLBACK_IMAGES = [
   'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200&h=200&fit=crop',
 ]
 
-const RECOMMENDED_MOCK = [
-  {
-    code: 'dintaifung-main',
-    name: '鼎泰丰',
-    category: '台式料理',
-    image: 'https://images.unsplash.com/photo-1496116218417-1a781b1c416c?w=400&h=300&fit=crop',
-    rating: 4.9,
-    distance: '1.2km',
-    tags: ['小笼包', '必吃榜'],
-  },
-  {
-    code: 'heytea-flagship',
-    name: '喜茶',
-    category: '新茶饮',
-    image: 'https://images.unsplash.com/photo-1558857563-b371033873b8?w=400&h=300&fit=crop',
-    rating: 4.8,
-    distance: '0.8km',
-    tags: ['人气爆款', '新品'],
-  },
+const BIZ_LABEL: Record<string, Record<Lang, string>> = {
+  FOOD:    { zh: '美食餐饮', en: 'Food & Drink', km: 'អាហារ' },
+  RETAIL:  { zh: '零售购物', en: 'Retail',       km: 'ហាងលក់' },
+  SERVICE: { zh: '生活服务', en: 'Services',      km: 'សេវាកម្ម' },
+  GENERAL: { zh: '综合商户', en: 'General',       km: 'ទូទៅ' },
+}
+
+const RECOMMENDED_MOCK_FALLBACK: FeaturedStore[] = [
+  { code: 'dintaifung-main',  name: '鼎泰丰', businessType: 'FOOD', imageUrl: 'https://images.unsplash.com/photo-1496116218417-1a781b1c416c?w=400&h=300&fit=crop' },
+  { code: 'heytea-flagship',  name: '喜茶',   businessType: 'FOOD', imageUrl: 'https://images.unsplash.com/photo-1558857563-b371033873b8?w=400&h=300&fit=crop' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -149,7 +141,8 @@ export default function ELifeHomePage() {
   const [manualCode, setManualCode]           = useState('')
   const [toast, setToast]               = useState<string | null>(null)
   const [search, setSearch]             = useState('')
-  const [recentStores, setRecentStores] = useState<RecentStore[]>([])
+  const [recentStores, setRecentStores]     = useState<RecentStore[]>([])
+  const [featuredStores, setFeaturedStores] = useState<FeaturedStore[] | null>(null)
 
   useEffect(() => {
     try {
@@ -161,6 +154,20 @@ export default function ELifeHomePage() {
       const savedLang = localStorage.getItem('eLife_lang') as Lang | null
       if (savedLang && (['zh', 'en', 'km'] as string[]).includes(savedLang)) setLang(savedLang)
     } catch { /* ignore */ }
+
+    // 为你推荐：从后端拉取真实商户（无 auth，公开接口）
+    fetch('/api/e-life/featured-stores')
+      .then((r) => r.json())
+      .then((body) => {
+        if (Array.isArray(body.stores)) {
+          setFeaturedStores(
+            body.stores.map((s: { storeCode: string; storeName: string; businessType: string; bannerUrl: string | null }) => ({
+              code: s.storeCode, name: s.storeName, businessType: s.businessType, imageUrl: s.bannerUrl,
+            }))
+          )
+        }
+      })
+      .catch(() => { /* 静默失败，保持 mock fallback */ })
 
     // 有 Telegram initData 时从后端读取真实最近访问（覆盖 localStorage）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -480,29 +487,18 @@ export default function ELifeHomePage() {
             <button style={s.moreBtn}>{t.more} <ChevronRightIcon /></button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {RECOMMENDED_MOCK.map((shop, idx) => (
+            {(featuredStores ?? RECOMMENDED_MOCK_FALLBACK).map((shop, idx) => (
               <div
-                key={idx}
+                key={shop.code}
                 style={{ display: 'flex', gap: 10, padding: 10, background: '#fff', borderRadius: 12, border: '1px solid rgba(0,0,0,0.06)', cursor: 'pointer' }}
                 onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}
               >
                 <div style={{ width: 76, height: 76, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
-                  <img src={shop.image} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <img src={shop.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </div>
-                <div style={{ flex: 1, minWidth: 0, padding: '2px 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</h3>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                      <StarIcon size={13} />
-                      <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{shop.rating}</span>
-                    </div>
-                  </div>
-                  <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 8px' }}>{shop.category} · {shop.distance}</p>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {shop.tags.map((tag, i) => (
-                      <span key={i} style={{ fontSize: 11, color: BRAND, background: `rgba(7,193,96,0.07)`, padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>{tag}</span>
-                    ))}
-                  </div>
+                <div style={{ flex: 1, minWidth: 0, padding: '10px 0' }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</h3>
+                  <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>{BIZ_LABEL[shop.businessType]?.[lang] ?? shop.businessType}</p>
                 </div>
               </div>
             ))}
@@ -626,13 +622,6 @@ function ChevronRightIcon({ size = 12, color = `rgba(7,193,96,0.6)` }: IP) {
   )
 }
 
-function StarIcon({ size = 12 }: IP) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="#fbbf24" stroke="#fbbf24" strokeWidth="1">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-    </svg>
-  )
-}
 
 function CrownIcon({ size = 14, color = BRAND }: IP) {
   return (
