@@ -467,7 +467,7 @@ export default function ELifeHomePage() {
 
         {/* § Member Banner */}
         <section>
-          <div style={s.memberBanner}>
+          <div style={{ ...s.memberBanner, cursor: 'pointer' }} onClick={() => navTo('/e-life/membership')}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: 8, background: `rgba(7,193,96,0.1)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <CrownIcon />
@@ -477,7 +477,7 @@ export default function ELifeHomePage() {
                 <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>{t.memberSub}</p>
               </div>
             </div>
-            <button style={s.memberBtn}>{t.memberBtn}</button>
+            <button style={s.memberBtn} onClick={e => { e.stopPropagation(); navTo('/e-life/membership') }}>{t.memberBtn}</button>
           </div>
         </section>
 
