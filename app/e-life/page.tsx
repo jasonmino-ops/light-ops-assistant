@@ -27,6 +27,7 @@ const T = {
     scanTable: '桌台码', scanTableDesc: '扫码在店内点单',
     scanCoupon: '优惠券码', scanCouponDesc: '扫码领取优惠',
     scanBtn: '打开扫码',
+    addFav: '添加常去', discoverShops: '发现好店', toastComingSoon: '更多商户即将上线，敬请期待',
   },
   en: {
     brandSub: 'Super Life', slogan: 'Your Life, One Touch Away', city: 'Phnom Penh', langLabel: 'EN',
@@ -42,6 +43,7 @@ const T = {
     scanTable: 'Table Code', scanTableDesc: 'Scan to order at table',
     scanCoupon: 'Coupon Code', scanCouponDesc: 'Scan to claim coupon',
     scanBtn: 'Open Scanner',
+    addFav: 'Add Favorite', discoverShops: 'Discover', toastComingSoon: 'More shops coming soon',
   },
   km: {
     brandSub: 'ជីវិតល្អ', slogan: 'ជីវិតរបស់អ្នក មួយប៉ះ', city: 'ភ្នំពេញ', langLabel: 'ខ្មែរ',
@@ -57,6 +59,7 @@ const T = {
     scanTable: 'កូដតុ', scanTableDesc: 'ស្កេនដើម្បីបញ្ជាទិញ',
     scanCoupon: 'កូដគូប៉ុង', scanCouponDesc: 'ស្កេនដើម្បីទទួលគូប៉ុង',
     scanBtn: 'បើកស្កេន',
+    addFav: 'បន្ថែម', discoverShops: 'រកឃើញ', toastComingSoon: 'ហាងបន្ថែមនឹងមកដល់',
   },
 }
 
@@ -66,29 +69,6 @@ const LANG_OPTIONS: { code: Lang; label: string; sub: string }[] = [
   { code: 'zh', label: '中文', sub: 'Chinese' },
   { code: 'en', label: 'English', sub: 'English' },
   { code: 'km', label: 'ខ្មែរ', sub: 'Khmer' },
-]
-
-// ─── Static mock data ──────────────────────────────────────────────────────────
-
-const FREQUENT_MOCK: ShopDisplay[] = [
-  {
-    code: 'luckin-chaoyangmen',
-    name: '瑞幸咖啡',
-    subtitle: '朝阳门店',
-    image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&h=200&fit=crop',
-  },
-  {
-    code: 'hema-wangjing',
-    name: '盒马鲜生',
-    subtitle: '望京店',
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&h=200&fit=crop',
-  },
-  {
-    code: 'starbucks-sanlitun',
-    name: '星巴克',
-    subtitle: '三里屯店',
-    image: 'https://images.unsplash.com/photo-1453614512568-c4024d13c247?w=200&h=200&fit=crop',
-  },
 ]
 
 const CATEGORIES: {
@@ -143,6 +123,7 @@ export default function ELifeHomePage() {
   const [lang, setLang]                 = useState<Lang>('zh')
   const [showLangPanel, setShowLangPanel] = useState(false)
   const [showScanPanel, setShowScanPanel] = useState(false)
+  const [toast, setToast]               = useState<string | null>(null)
   const [search, setSearch]             = useState('')
   const [recentStores, setRecentStores] = useState<RecentStore[]>([])
 
@@ -166,18 +147,23 @@ export default function ELifeHomePage() {
 
   const t = T[lang]
 
-  // 常去：优先真实访问记录，不足 3 个时用 FREQUENT_MOCK 补满
-  const recentAsDisplay: ShopDisplay[] = recentStores.slice(0, 3).map(s => ({
-    code: s.code, name: s.name, subtitle: '', image: '',
-  }))
-  const shopsToShow: ShopDisplay[] = recentStores.length === 0
-    ? FREQUENT_MOCK
-    : [
-        ...recentAsDisplay,
-        ...FREQUENT_MOCK.filter(m => !recentAsDisplay.some(r => r.code === m.code)),
-      ].slice(0, 3)
+  type DisplayCard = { type: 'store'; shop: ShopDisplay } | { type: 'add' } | { type: 'discover' }
+  const displayCards: DisplayCard[] = (() => {
+    const stores: DisplayCard[] = recentStores.slice(0, 6).map(s => ({
+      type: 'store' as const, shop: { code: s.code, name: s.name, subtitle: '', image: '' },
+    }))
+    if (stores.length === 0) return [{ type: 'add' }, { type: 'discover' }]
+    if (stores.length === 1) return [...stores, { type: 'add' }, { type: 'discover' }]
+    if (stores.length === 2) return [...stores, { type: 'add' }]
+    return stores
+  })()
 
   function navTo(path: string) { router.push(path) }
+
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2200)
+  }
 
   return (
     <div style={s.page}>
@@ -298,37 +284,49 @@ export default function ELifeHomePage() {
 
         {/* § My Frequent Shops */}
         <section>
-          <div style={s.secHead}>
-            <h2 style={s.secTitle}>{t.frequentShops}</h2>
-            <button style={s.moreBtn}>
-              {t.manage} <ChevronRightIcon />
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            {shopsToShow.map((shop, idx) => (
-              <div
-                key={idx}
-                style={{ flex: 1, cursor: 'pointer' }}
-                onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}
-              >
-                {/* 固定宽高比容器，所有子层用 absolute inset:0 铺满 */}
-                <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: 6, aspectRatio: '1/1', border: '1px solid rgba(0,0,0,0.08)' }}>
-                  {/* 底层：真实封面图或备用照片，两种情况均铺满 */}
-                  <img
-                    src={shop.image || FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
-                    alt={shop.name}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-                  {/* 暗角渐变，加深底部确保白字可读 */}
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.22) 55%, transparent 100%)' }} />
-                  {/* 店名文字 */}
-                  <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8 }}>
-                    <p style={{ fontSize: 15, color: '#fff', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 5px rgba(0,0,0,0.8)' }}>{shop.name}</p>
-                    {shop.subtitle && <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.92)', fontWeight: 500, margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.subtitle}</p>}
+          <h2 style={{ ...s.secTitle, marginBottom: 10 }}>{t.frequentShops}</h2>
+          {/* 横向滚动，负 margin 撑破容器边距以实现全宽视觉 */}
+          <div style={{ margin: '0 -22px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+            <div style={{ display: 'flex', gap: 10, paddingLeft: 22, paddingRight: 22, paddingBottom: 4 }}>
+              {displayCards.map((card, idx) => {
+                if (card.type === 'store') {
+                  const shop = card.shop
+                  return (
+                    <div key={idx} style={{ minWidth: 110, flexShrink: 0, cursor: 'pointer' }} onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}>
+                      <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', aspectRatio: '1/1', border: '1px solid rgba(0,0,0,0.08)' }}>
+                        <img src={shop.image || FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]} alt={shop.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.22) 55%, transparent 100%)' }} />
+                        <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8 }}>
+                          <p style={{ fontSize: 14, color: '#fff', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 5px rgba(0,0,0,0.8)' }}>{shop.name}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+                if (card.type === 'add') {
+                  return (
+                    <div key={idx} style={{ minWidth: 110, flexShrink: 0, cursor: 'pointer' }} onClick={() => setShowScanPanel(true)}>
+                      <div style={{ aspectRatio: '1/1', borderRadius: 14, border: '1.5px dashed rgba(7,193,96,0.4)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'rgba(7,193,96,0.03)' }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(7,193,96,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <PlusIcon />
+                        </div>
+                        <span style={{ fontSize: 12, color: BRAND, fontWeight: 500 }}>{t.addFav}</span>
+                      </div>
+                    </div>
+                  )
+                }
+                return (
+                  <div key={idx} style={{ minWidth: 110, flexShrink: 0, cursor: 'pointer' }} onClick={() => showToast(t.toastComingSoon)}>
+                    <div style={{ aspectRatio: '1/1', borderRadius: 14, background: 'linear-gradient(135deg, #f0fdf4, #ecfdf5)', border: '1px solid rgba(7,193,96,0.12)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(7,193,96,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CompassIcon />
+                      </div>
+                      <span style={{ fontSize: 12, color: BRAND, fontWeight: 500 }}>{t.discoverShops}</span>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                )
+              })}
+            </div>
           </div>
         </section>
 
@@ -344,6 +342,22 @@ export default function ELifeHomePage() {
                 <span style={{ fontSize: 14, color: '#1f2937', fontWeight: 500 }}>{cat.names[lang]}</span>
               </button>
             ))}
+          </div>
+        </section>
+
+        {/* § Member Banner */}
+        <section>
+          <div style={s.memberBanner}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: `rgba(7,193,96,0.1)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CrownIcon />
+              </div>
+              <div>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: 0 }}>{t.memberTitle}</h3>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>{t.memberSub}</p>
+              </div>
+            </div>
+            <button style={s.memberBtn}>{t.memberBtn}</button>
           </div>
         </section>
 
@@ -386,23 +400,14 @@ export default function ELifeHomePage() {
           </div>
         </section>
 
-        {/* § Member Banner */}
-        <section>
-          <div style={s.memberBanner}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: `rgba(7,193,96,0.1)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CrownIcon />
-              </div>
-              <div>
-                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: 0 }}>{t.memberTitle}</h3>
-                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>{t.memberSub}</p>
-              </div>
-            </div>
-            <button style={s.memberBtn}>{t.memberBtn}</button>
-          </div>
-        </section>
-
       </main>
+
+      {/* ── Toast ── */}
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 12px)', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.72)', color: '#fff', fontSize: 13, padding: '9px 18px', borderRadius: 20, whiteSpace: 'nowrap', zIndex: 200, pointerEvents: 'none' }}>
+          {toast}
+        </div>
+      )}
 
       {/* ── Bottom Nav ── */}
       <BottomNav onScan={() => setShowScanPanel(true)} t={t} />
@@ -588,6 +593,23 @@ function TicketIcon({ size = 16, color = '#f59e0b' }: IP) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 9a3 3 0 000 6v2a2 2 0 002 2h16a2 2 0 002-2v-2a3 3 0 000-6V7a2 2 0 00-2-2H4a2 2 0 00-2 2z"/>
       <line x1="13" y1="5" x2="13" y2="7"/><line x1="13" y1="17" x2="13" y2="19"/><line x1="13" y1="11" x2="13" y2="13"/>
+    </svg>
+  )
+}
+
+function PlusIcon({ size = 16, color = BRAND }: IP) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  )
+}
+
+function CompassIcon({ size = 16, color = BRAND }: IP) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
     </svg>
   )
 }
