@@ -123,17 +123,29 @@ async function handleBind(msg: any, payload: { storeCode: string; orderNo: strin
   ]
   if (orderNo) lines.push(`本次订单已记录：${orderNo}`)
 
-  // 更新 bot 持久菜单按钮（左下角入口），确保始终指向当前绑定的店铺
-  // 无论顾客之前绑过哪家店，下次从 bot 入口进来都是最新绑定的店铺
+  // 更新 bot 持久菜单按钮（左下角「查看商品」），覆盖 BotFather 默认值
+  // 与下方 inline keyboard 「再次点单」使用相同 storeCode，保持一致
+  // 失败不中断绑定流程，但记录日志
   if (APP_URL) {
-    await tgSend('setChatMenuButton', {
-      chat_id: chatId,
-      menu_button: {
-        type:    'web_app',
-        text:    '🛍️ 点单',
-        web_app: { url: `${APP_URL}/menu?code=${encodeURIComponent(storeCode)}` },
-      },
-    })
+    const menuUrl = `${APP_URL}/menu?code=${encodeURIComponent(storeCode)}`
+    try {
+      const res = await tgSend('setChatMenuButton', {
+        chat_id: chatId,
+        menu_button: {
+          type:    'web_app',
+          text:    '🛍️ 查看商品',
+          web_app: { url: menuUrl },
+        },
+      })
+      const resJson = res ? await res.json().catch(() => null) : null
+      console.log('[customer-webhook] setChatMenuButton', {
+        chat_id: chatId, storeCode, menuUrl,
+        ok: resJson?.ok ?? false,
+        error: resJson?.description ?? null,
+      })
+    } catch (e) {
+      console.error('[customer-webhook] setChatMenuButton failed', { chat_id: chatId, storeCode, error: e })
+    }
   }
 
   await tgSend('sendMessage', {
