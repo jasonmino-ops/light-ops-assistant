@@ -320,11 +320,11 @@ export default function ELifeHomePage() {
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
                   {/* 暗角渐变，加深底部确保白字可读 */}
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.18) 50%, transparent 100%)' }} />
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.22) 55%, transparent 100%)' }} />
                   {/* 店名文字 */}
                   <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8 }}>
-                    <p style={{ fontSize: 13, color: '#fff', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>{shop.name}</p>
-                    {shop.subtitle && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.92)', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.subtitle}</p>}
+                    <p style={{ fontSize: 15, color: '#fff', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 5px rgba(0,0,0,0.8)' }}>{shop.name}</p>
+                    {shop.subtitle && <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.92)', fontWeight: 500, margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.subtitle}</p>}
                   </div>
                 </div>
               </div>
@@ -341,7 +341,7 @@ export default function ELifeHomePage() {
                 <div style={{ width: 40, height: 40, borderRadius: 12, background: cat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <CatIcon type={cat.icon} color={cat.color} />
                 </div>
-                <span style={{ fontSize: 12, color: '#374151', fontWeight: 500 }}>{cat.names[lang]}</span>
+                <span style={{ fontSize: 14, color: '#1f2937', fontWeight: 500 }}>{cat.names[lang]}</span>
               </button>
             ))}
           </div>
