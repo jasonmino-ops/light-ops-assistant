@@ -95,28 +95,30 @@ export default function ELifeOrdersPage() {
       if (saved && (['zh', 'en', 'km'] as string[]).includes(saved)) setLang(saved)
     } catch { /* ignore */ }
 
-    // 从 Telegram initData 提取 tgId
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
     tg?.expand?.()
 
-    let tgId: string | null = null
-    if (tg?.initData) {
-      try {
-        const userStr = new URLSearchParams(tg.initData).get('user')
-        if (userStr) tgId = String(JSON.parse(userStr).id)
-      } catch { /* ignore */ }
+    // 无 initData（浏览器直接访问）→ 不发请求，直接显示"请在 Telegram 中打开"
+    if (!tg?.initData) {
+      setNoTg(true)
+      setLoading(false)
+      return
     }
 
-    const url = tgId
-      ? `/api/e-life/orders?tgId=${encodeURIComponent(tgId)}`
-      : '/api/e-life/orders'
-
-    fetch(url)
+    // POST initData 给后端，由后端校验 HMAC，不在前端传 tgId
+    fetch('/api/e-life/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tg.initData }),
+    })
       .then((r) => r.json())
       .then((body) => {
-        setOrders(body.orders ?? [])
-        if (body.noTg) setNoTg(true)
+        if (body.error === 'INVALID_TELEGRAM_AUTH' || body.error === 'MISSING_INIT_DATA') {
+          setNoTg(true)
+        } else {
+          setOrders(body.orders ?? [])
+        }
       })
       .catch(() => { /* silent — show empty state */ })
       .finally(() => setLoading(false))
