@@ -29,6 +29,7 @@ const T = {
     scanBtn: '打开扫码',
     addFav: '添加常去', discoverShops: '发现好店', toastComingSoon: '更多商户即将上线，敬请期待',
     toastVisitFirst: '请先访问一家商户',
+    scanEnter: '输入门店码', scanPlaceholder: 'ST8194AE60 或粘贴链接', scanGo: '进入店铺', scanInvalid: '无法识别门店码',
   },
   en: {
     brandSub: 'Super Life', slogan: 'Your Life, One Touch Away', city: 'Phnom Penh', langLabel: 'EN',
@@ -46,6 +47,7 @@ const T = {
     scanBtn: 'Open Scanner',
     addFav: 'Add Favorite', discoverShops: 'Discover', toastComingSoon: 'More shops coming soon',
     toastVisitFirst: 'Please visit a store first',
+    scanEnter: 'Enter Store Code', scanPlaceholder: 'ST8194AE60 or paste link', scanGo: 'Enter Store', scanInvalid: 'Invalid store code',
   },
   km: {
     brandSub: 'ជីវិតល្អ', slogan: 'ជីវិតរបស់អ្នក មួយប៉ះ', city: 'ភ្នំពេញ', langLabel: 'ខ្មែរ',
@@ -63,6 +65,7 @@ const T = {
     scanBtn: 'បើកស្កេន',
     addFav: 'បន្ថែម', discoverShops: 'រកឃើញ', toastComingSoon: 'ហាងបន្ថែមនឹងមកដល់',
     toastVisitFirst: 'សូមចូលទស្សនាហាងមុន',
+    scanEnter: 'បញ្ចូលកូដហាង', scanPlaceholder: 'ST8194AE60 ឬបិទភ្ជាប់', scanGo: 'ចូលហាង', scanInvalid: 'មិនអាចសម្គាល់កូដហាង',
   },
 }
 
@@ -119,6 +122,22 @@ const RECOMMENDED_MOCK = [
   },
 ]
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// 从扫码内容或手动输入中提取 storeCode（ST 开头字母数字串）
+function extractStoreCode(raw: string): string | null {
+  const s = raw.trim()
+  // 直接门店码：ST + 4~16位字母数字
+  if (/^ST[A-Za-z0-9]{4,16}$/.test(s)) return s
+  // URL 参数：?code=STxxxx 或 &code=STxxxx
+  const codeMatch = s.match(/[?&]code=(ST[A-Za-z0-9]{4,16})/)
+  if (codeMatch) return codeMatch[1]
+  // startapp=STxxxx 或 startapp_STxxxx
+  const startMatch = s.match(/startapp[=_](ST[A-Za-z0-9]{4,16})/)
+  if (startMatch) return startMatch[1]
+  return null
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ELifeHomePage() {
@@ -126,6 +145,8 @@ export default function ELifeHomePage() {
   const [lang, setLang]                 = useState<Lang>('zh')
   const [showLangPanel, setShowLangPanel] = useState(false)
   const [showScanPanel, setShowScanPanel] = useState(false)
+  const [showManualInput, setShowManualInput] = useState(false)
+  const [manualCode, setManualCode]           = useState('')
   const [toast, setToast]               = useState<string | null>(null)
   const [search, setSearch]             = useState('')
   const [recentStores, setRecentStores] = useState<RecentStore[]>([])
@@ -178,6 +199,36 @@ export default function ELifeHomePage() {
   function handleProfile() {
     if (lastCode) navTo(`/me?code=${encodeURIComponent(lastCode)}&from=e-life`)
     else showToast(t.toastVisitFirst)
+  }
+
+  function closeScanPanel() {
+    setShowScanPanel(false)
+    setShowManualInput(false)
+    setManualCode('')
+  }
+
+  function handleScanResult(raw: string) {
+    const code = extractStoreCode(raw)
+    if (code) {
+      closeScanPanel()
+      navTo(`/menu?code=${encodeURIComponent(code)}&from=scan`)
+    } else {
+      showToast(t.scanInvalid)
+    }
+  }
+
+  function handleScanBtn() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    if (typeof tg?.showScanQrPopup === 'function') {
+      tg.showScanQrPopup({ text: t.scanDesc }, (text: string) => {
+        tg.closeScanQrPopup?.()
+        handleScanResult(text)
+        return true
+      })
+    } else {
+      setShowManualInput(true)
+    }
   }
 
   return (
@@ -256,14 +307,14 @@ export default function ELifeHomePage() {
       {/* ── Scan Panel ── */}
       {showScanPanel && (
         <>
-          <div style={s.overlay} onClick={() => setShowScanPanel(false)} />
+          <div style={s.overlay} onClick={closeScanPanel} />
           <div style={s.sheet}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
                 <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>{t.scanTitle}</h3>
                 <p style={{ fontSize: 11, color: '#8c8c8c', margin: '2px 0 0' }}>{t.scanDesc}</p>
               </div>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6 }} onClick={() => setShowScanPanel(false)}>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6 }} onClick={closeScanPanel}>
                 <XIcon />
               </button>
             </div>
@@ -273,7 +324,7 @@ export default function ELifeHomePage() {
                 { icon: 'grid',   label: t.scanTable,  desc: t.scanTableDesc,  color: '#3b82f6', bg: '#eff6ff' },
                 { icon: 'ticket', label: t.scanCoupon, desc: t.scanCouponDesc, color: '#f59e0b', bg: '#fffbeb' },
               ] as const).map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, background: 'rgba(0,0,0,0.03)', cursor: 'pointer' }}>
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, background: 'rgba(0,0,0,0.03)' }}>
                   <div style={{ width: 36, height: 36, borderRadius: 8, background: item.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {item.icon === 'store'  && <StoreIcon  color={item.color} />}
                     {item.icon === 'grid'   && <Grid3Icon  color={item.color} />}
@@ -286,10 +337,33 @@ export default function ELifeHomePage() {
                 </div>
               ))}
             </div>
-            <button style={{ width: '100%', padding: '12px 0', background: BRAND, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <button
+              style={{ width: '100%', padding: '12px 0', background: BRAND, color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              onClick={handleScanBtn}
+            >
               <ScanLineIcon color="#fff" />
               {t.scanBtn}
             </button>
+            {showManualInput && (
+              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <p style={{ fontSize: 12, color: '#8c8c8c', margin: 0 }}>{t.scanEnter}</p>
+                <input
+                  type="text"
+                  placeholder={t.scanPlaceholder}
+                  value={manualCode}
+                  onChange={e => setManualCode(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleScanResult(manualCode) }}
+                  autoFocus
+                  style={{ width: '100%', padding: '10px 12px', fontSize: 14, border: '1px solid rgba(0,0,0,0.15)', borderRadius: 10, outline: 'none', boxSizing: 'border-box' }}
+                />
+                <button
+                  onClick={() => handleScanResult(manualCode)}
+                  style={{ width: '100%', padding: '11px 0', background: BRAND, color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  {t.scanGo}
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
