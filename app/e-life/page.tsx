@@ -28,6 +28,7 @@ const T = {
     scanCoupon: '优惠券码', scanCouponDesc: '扫码领取优惠',
     scanBtn: '打开扫码',
     addFav: '添加常去', discoverShops: '发现好店', toastComingSoon: '更多商户即将上线，敬请期待',
+    toastVisitFirst: '请先访问一家商户',
   },
   en: {
     brandSub: 'Super Life', slogan: 'Your Life, One Touch Away', city: 'Phnom Penh', langLabel: 'EN',
@@ -44,6 +45,7 @@ const T = {
     scanCoupon: 'Coupon Code', scanCouponDesc: 'Scan to claim coupon',
     scanBtn: 'Open Scanner',
     addFav: 'Add Favorite', discoverShops: 'Discover', toastComingSoon: 'More shops coming soon',
+    toastVisitFirst: 'Please visit a store first',
   },
   km: {
     brandSub: 'ជីវិតល្អ', slogan: 'ជីវិតរបស់អ្នក មួយប៉ះ', city: 'ភ្នំពេញ', langLabel: 'ខ្មែរ',
@@ -60,6 +62,7 @@ const T = {
     scanCoupon: 'កូដគូប៉ុង', scanCouponDesc: 'ស្កេនដើម្បីទទួលគូប៉ុង',
     scanBtn: 'បើកស្កេន',
     addFav: 'បន្ថែម', discoverShops: 'រកឃើញ', toastComingSoon: 'ហាងបន្ថែមនឹងមកដល់',
+    toastVisitFirst: 'សូមចូលទស្សនាហាងមុន',
   },
 }
 
@@ -158,11 +161,23 @@ export default function ELifeHomePage() {
     return stores
   })()
 
+  const lastCode = recentStores[0]?.code ?? ''
+
   function navTo(path: string) { router.push(path) }
 
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 2200)
+  }
+
+  function handleOrders() {
+    if (lastCode) navTo(`/menu/orders?code=${encodeURIComponent(lastCode)}&from=e-life`)
+    else showToast(t.toastVisitFirst)
+  }
+
+  function handleProfile() {
+    if (lastCode) navTo(`/me?code=${encodeURIComponent(lastCode)}&from=e-life`)
+    else showToast(t.toastVisitFirst)
   }
 
   return (
@@ -410,21 +425,21 @@ export default function ELifeHomePage() {
       )}
 
       {/* ── Bottom Nav ── */}
-      <BottomNav onScan={() => setShowScanPanel(true)} t={t} />
+      <BottomNav onScan={() => setShowScanPanel(true)} onOrders={handleOrders} onProfile={handleProfile} t={t} />
     </div>
   )
 }
 
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
 
-function BottomNav({ onScan, t }: { onScan: () => void; t: TLocale }) {
+function BottomNav({ onScan, onOrders, onProfile, t }: { onScan: () => void; onOrders: () => void; onProfile: () => void; t: TLocale }) {
   const pathname = usePathname()
 
   const tabs = [
-    { id: 'home',    label: t.navHome,    href: '/e-life',      Icon: HomeIcon,    onClick: undefined as (() => void) | undefined },
-    { id: 'scan',    label: t.navScan,    href: null,           Icon: ScanLineIcon, onClick: onScan },
-    { id: 'orders',  label: t.navOrders,  href: '/menu/orders', Icon: ClipboardIcon, onClick: undefined as (() => void) | undefined },
-    { id: 'profile', label: t.navProfile, href: '/me',          Icon: UserSmIcon,  onClick: undefined as (() => void) | undefined },
+    { id: 'home',    label: t.navHome,    href: '/e-life' as string | null, Icon: HomeIcon,     onClick: undefined as (() => void) | undefined },
+    { id: 'scan',    label: t.navScan,    href: null,                        Icon: ScanLineIcon, onClick: onScan },
+    { id: 'orders',  label: t.navOrders,  href: null,                        Icon: ClipboardIcon, onClick: onOrders },
+    { id: 'profile', label: t.navProfile, href: null,                        Icon: UserSmIcon,   onClick: onProfile },
   ]
 
   return (
