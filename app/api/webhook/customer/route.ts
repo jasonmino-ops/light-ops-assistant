@@ -55,6 +55,27 @@ function menuKeyboard(storeCode: string) {
   }
 }
 
+// 确保该 chat 的底部「查看商品」按钮始终指向 /e-life 平台首页
+// fire-and-forget：失败不中断主流程，但打印日志供 Vercel 排查
+async function ensurePlatformMenuButton(chatId: number, reason: string, extra?: Record<string, unknown>) {
+  if (!APP_URL || !BOT_TOKEN) return
+  const menuUrl = `${APP_URL}/e-life`
+  try {
+    const res = await tgSend('setChatMenuButton', {
+      chat_id: chatId,
+      menu_button: { type: 'web_app', text: '🛍️ 查看商品', web_app: { url: menuUrl } },
+    })
+    const json = res ? await res.json().catch(() => null) : null
+    console.log('[customer-webhook] setChatMenuButton', {
+      chatId, menuUrl, reason, ...extra,
+      ok:    json?.ok         ?? false,
+      error: json?.description ?? null,
+    })
+  } catch (e) {
+    console.error('[customer-webhook] setChatMenuButton failed', { chatId, reason, error: e })
+  }
+}
+
 // 解析 /start payload：'bind_STORECODE' 或 'bind_STORECODE_ORDERNO'
 function parseBindPayload(payload: string): { storeCode: string; orderNo: string | null } | null {
   if (!payload.startsWith('bind_')) return null
@@ -123,31 +144,8 @@ async function handleBind(msg: any, payload: { storeCode: string; orderNo: strin
   ]
   if (orderNo) lines.push(`本次订单已记录：${orderNo}`)
 
-  // 更新 bot 持久菜单按钮（左下角「查看商品」）→ 始终指向 /e-life 多店平台首页
-  // 不再动态指向某家店，避免多店场景下用户从底部按钮误进旧店铺
-  // inline keyboard「再次点单」仍使用当前 storeCode（见下方 sendMessage）
-  if (APP_URL) {
-    const platformUrl   = `${APP_URL}/e-life`
-    const inlineStoreCode = storeCode
-    try {
-      const res = await tgSend('setChatMenuButton', {
-        chat_id: chatId,
-        menu_button: {
-          type:    'web_app',
-          text:    '🛍️ 查看商品',
-          web_app: { url: platformUrl },
-        },
-      })
-      const resJson = res ? await res.json().catch(() => null) : null
-      console.log('[customer-webhook] setChatMenuButton', {
-        chat_id: chatId, menuUrl: platformUrl, inlineStoreCode,
-        ok: resJson?.ok ?? false,
-        error: resJson?.description ?? null,
-      })
-    } catch (e) {
-      console.error('[customer-webhook] setChatMenuButton failed', { chat_id: chatId, error: e })
-    }
-  }
+  // 无论新绑/重复绑定，底部按钮统一指向 /e-life
+  await ensurePlatformMenuButton(chatId, 'bind', { inlineStoreCode: storeCode })
 
   await tgSend('sendMessage', {
     chat_id: chatId,
@@ -205,9 +203,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    // 无参/未识别参数：引导到 E-Life 多店平台首页
-    // 不再默认跳某一家店，由顾客在首页自行选择
+    // 无参/未识别参数：引导到 E-Life 多店平台首页，同时确保底部按钮已覆盖
     const platformUrl = `${APP_URL}/e-life`
+    await ensurePlatformMenuButton(chatId, 'start')
     await tgSend('sendMessage', {
       chat_id: chatId,
       text: '👋 欢迎来到 E-Life 超生活！点击下方按钮浏览店铺，找到喜欢的直接下单。',
