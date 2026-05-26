@@ -432,6 +432,7 @@ export default function MenuPage() {
   const [submitError,  setSubmitError] = useState('')
   const [showConfirm,  setShowConfirm] = useState(false)
   const [storeCode,    setStoreCode]   = useState('')
+  const [fromELife,    setFromELife]   = useState(false)
   const [hasTgId,      setHasTgId]     = useState(false)
   const [customerBound, setCustomerBound] = useState(false)
   const [lightboxUrl,  setLightboxUrl] = useState<string | null>(null)
@@ -661,6 +662,7 @@ export default function MenuPage() {
       return
     }
     setStoreCode(code)
+    if (new URLSearchParams(window.location.search).get('from') === 'e-life') setFromELife(true)
     let tgIdLocal: string | null = null
     if (tg?.initData) {
       try {
@@ -693,6 +695,13 @@ export default function MenuPage() {
           setApiProducts(body.products ?? [])
           setCategories(body.categories ?? [])
           setCustomerBound(!!body.customerBound)
+          // 记录到 E-Life 最近访问店铺（供 /e-life 首页「我的常去」读取）
+          try {
+            const entry = { code, name: body.store.name as string, lastVisitedAt: new Date().toISOString() }
+            const prev: { code: string }[] = JSON.parse(localStorage.getItem('eLife_recentStores') ?? '[]')
+            const next = [entry, ...prev.filter((s) => s.code !== code)].slice(0, 8)
+            localStorage.setItem('eLife_recentStores', JSON.stringify(next))
+          } catch { /* localStorage 不可用时静默 */ }
         }
       })
       .catch(() => setFetchError('NETWORK_ERROR'))
@@ -839,6 +848,11 @@ export default function MenuPage() {
 
         {/* ── Sticky 顶部条：仅搜索 + 语言切换（门店名只在下方门头展示一次） ── */}
         <div style={s.stickyTopWrap}>
+          {fromELife && (
+            <button style={s.backToELifeBar} onClick={() => { window.location.href = '/e-life' }}>
+              ← 返回 E-Life
+            </button>
+          )}
           <div style={s.searchRow}>
             <span style={s.searchIcon}>🔍</span>
             <input
@@ -875,7 +889,7 @@ export default function MenuPage() {
           } : {}),
         }}>
           <div style={s.bannerMask} />
-          <button style={s.circleBtn} onClick={() => history.back()}>
+          <button style={s.circleBtn} onClick={() => fromELife ? (window.location.href = '/e-life') : history.back()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <path d="M15 18l-6-6 6-6" />
             </svg>
@@ -1833,6 +1847,20 @@ const s: Record<string, React.CSSProperties> = {
     position: 'relative',
     zIndex: 1,
     flexShrink: 0,
+  },
+  backToELifeBar: {
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+    padding: '6px 14px',
+    background: '#f0fdf4',
+    borderBottom: '1px solid #dcfce7',
+    border: 'none',
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#07c160',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
   },
 
   langSwitcher: {

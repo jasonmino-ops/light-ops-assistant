@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -8,9 +8,10 @@ import { usePathname } from 'next/navigation'
 
 const BRAND = '#07c160'
 
-// ─── Mock 数据（V1 静态，不接 DB）────────────────────────────────────────────
+// ─── 类型 ─────────────────────────────────────────────────────────────────────
 
 type MockStore = { code: string; name: string; sub: string; emoji: string; tags?: string[] }
+type RecentStore = { code: string; name: string; lastVisitedAt: string }
 
 const FREQUENT: MockStore[] = [
   { code: 'ST8194AE60', name: 'E-Life 超市',   sub: '超市便利', emoji: '🛒' },
@@ -38,6 +39,23 @@ const RECOMMENDED: MockStore[] = [
 export default function ELifePage() {
   const [toast, setToast] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [recentStores, setRecentStores] = useState<RecentStore[]>([])
+
+  // 读取最近访问记录（由 /menu 页在成功加载后写入）
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('eLife_recentStores')
+      if (saved) {
+        const parsed = JSON.parse(saved) as RecentStore[]
+        if (Array.isArray(parsed) && parsed.length > 0) setRecentStores(parsed)
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  // 常去店铺：优先真实访问记录，否则用 mock 兜底
+  const frequentDisplay: MockStore[] = recentStores.length > 0
+    ? recentStores.map((s) => ({ code: s.code, name: s.name, sub: '', emoji: '🏪' }))
+    : FREQUENT
 
   function showToast(msg: string) {
     setToast(msg)
@@ -95,15 +113,15 @@ export default function ELifePage() {
             <span style={s.sectionTitle}>我的常去</span>
           </div>
           <div style={s.hScroll}>
-            {FREQUENT.map((st) => (
+            {frequentDisplay.map((st) => (
               <Link
                 key={st.code}
-                href={`/menu?code=${encodeURIComponent(st.code)}`}
+                href={`/menu?code=${encodeURIComponent(st.code)}&from=e-life`}
                 style={s.frequentCard}
               >
                 <div style={s.frequentEmoji}>{st.emoji}</div>
                 <div style={s.frequentName}>{st.name}</div>
-                <div style={s.frequentSub}>{st.sub}</div>
+                {st.sub && <div style={s.frequentSub}>{st.sub}</div>}
               </Link>
             ))}
           </div>
@@ -137,7 +155,7 @@ export default function ELifePage() {
             {RECOMMENDED.map((st) => (
               <Link
                 key={st.code}
-                href={`/menu?code=${encodeURIComponent(st.code)}`}
+                href={`/menu?code=${encodeURIComponent(st.code)}&from=e-life`}
                 style={s.recCard}
               >
                 <div style={s.recAvatar}>{st.emoji}</div>
