@@ -8,7 +8,7 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Store = { id: string; name: string; code: string }
+type Store = { id: string; name: string; code: string; eLifeFeatured: boolean; eLifeFeaturedSort: number }
 type Member = { id: string; username: string; displayName: string; role: string; bound: boolean; telegramId: string | null; staffNumber: number | null; storeName: string }
 type TodayStats = { saleCount: number; saleAmount: number; refundCount: number; lastActiveAt: string | null }
 
@@ -150,6 +150,11 @@ export default function TenantDetailPage() {
           </div>
         </Section>
 
+        {/* E-Life featured config */}
+        <Section title="E-Life 推荐设置">
+          <ELifeFeaturedSection stores={detail.stores} onChanged={load} />
+        </Section>
+
         {/* Bind code generator */}
         <Section title="生成绑定码">
           <GenCodePanel tenantId={detail.id} stores={detail.stores} />
@@ -172,6 +177,108 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div style={s.section}>
       <div style={s.sectionTitle}>{title}</div>
       {children}
+    </div>
+  )
+}
+
+// ─── ELifeFeaturedSection ─────────────────────────────────────────────────────
+
+function ELifeFeaturedSection({ stores, onChanged }: { stores: Store[]; onChanged: () => void }) {
+  const [featured, setFeatured] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(stores.map((s) => [s.id, s.eLifeFeatured]))
+  )
+  const [sorts, setSorts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(stores.map((s) => [s.id, String(s.eLifeFeaturedSort)]))
+  )
+  const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [err, setErr] = useState<Record<string, string>>({})
+
+  async function patch(storeId: string, data: object) {
+    setSaving((p) => ({ ...p, [storeId]: true }))
+    setErr((p) => { const n = { ...p }; delete n[storeId]; return n })
+    try {
+      const r = await apiFetch(`/api/ops/stores/${storeId}/e-life-featured`, {
+        method: 'PATCH', body: JSON.stringify(data),
+      }, OWNER_CTX)
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        setErr((p) => ({ ...p, [storeId]: body.error ?? '保存失败' }))
+      } else {
+        onChanged()
+      }
+    } catch {
+      setErr((p) => ({ ...p, [storeId]: '网络错误' }))
+    } finally {
+      setSaving((p) => ({ ...p, [storeId]: false }))
+    }
+  }
+
+  function toggleFeatured(storeId: string) {
+    const newVal = !featured[storeId]
+    setFeatured((p) => ({ ...p, [storeId]: newVal }))
+    patch(storeId, { eLifeFeatured: newVal })
+  }
+
+  function saveSort(storeId: string) {
+    const raw = sorts[storeId] ?? '0'
+    const val = parseInt(raw, 10)
+    patch(storeId, { eLifeFeaturedSort: isNaN(val) ? 0 : val })
+  }
+
+  if (stores.length === 0) {
+    return <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>该商户暂无门店</div>
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {stores.map((st) => (
+        <div key={st.id}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'rgba(255,255,255,0.06)', border: `1px solid ${featured[st.id] ? 'rgba(7,193,96,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>{st.name}</span>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginLeft: 8, fontFamily: 'monospace' }}>{st.code}</span>
+            </div>
+            <button
+              disabled={saving[st.id]}
+              onClick={() => toggleFeatured(st.id)}
+              style={{
+                height: 28, padding: '0 12px', fontSize: 11, fontWeight: 600, cursor: saving[st.id] ? 'not-allowed' : 'pointer', borderRadius: 6,
+                background: featured[st.id] ? '#07c160' : 'rgba(255,255,255,0.1)',
+                color: featured[st.id] ? '#fff' : 'rgba(255,255,255,0.55)',
+                border: featured[st.id] ? '1px solid #07c160' : '1px solid rgba(255,255,255,0.18)',
+                opacity: saving[st.id] ? 0.5 : 1,
+                flexShrink: 0,
+              }}
+            >
+              {saving[st.id] ? '保存中…' : featured[st.id] ? '✓ 推荐中' : '设为推荐'}
+            </button>
+            {featured[st.id] && (
+              <>
+                <input
+                  type="number"
+                  value={sorts[st.id] ?? '0'}
+                  onChange={(e) => setSorts((p) => ({ ...p, [st.id]: e.target.value }))}
+                  style={{ width: 54, height: 28, textAlign: 'center', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: '#fff', fontSize: 12, outline: 'none' }}
+                  placeholder="排序"
+                />
+                <button
+                  disabled={saving[st.id]}
+                  onClick={() => saveSort(st.id)}
+                  style={{ height: 28, padding: '0 10px', fontSize: 11, cursor: saving[st.id] ? 'not-allowed' : 'pointer', borderRadius: 6, background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.18)', opacity: saving[st.id] ? 0.5 : 1, flexShrink: 0 }}
+                >
+                  保存排序
+                </button>
+              </>
+            )}
+          </div>
+          {err[st.id] && (
+            <div style={{ fontSize: 11, color: '#ff7875', marginTop: 3, paddingLeft: 4 }}>{err[st.id]}</div>
+          )}
+        </div>
+      ))}
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
+        排序数字越小排越前。首页展示前 2 家，完整推荐列表最多 6 家。
+      </div>
     </div>
   )
 }

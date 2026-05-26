@@ -79,12 +79,14 @@ model Store {
   status       StoreStatus @default(ACTIVE)
   checkoutMode String      @default("DIRECT_PAYMENT") // DIRECT_PAYMENT | DEFERRED_PAYMENT
   businessType String      @default("GENERAL")        // FOOD | RETAIL | SERVICE | GENERAL
-  bannerUrl    String?                                // 顾客页头图访问 URL（指向内部图片端点）
-  bannerData   String?   @db.Text                    // 头图 base64 数据（data:image/...;base64,...）
-  announcement String?                               // 公告文本
-  promoText    String?                               // 活动文案
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  bannerUrl         String?                           // 顾客页头图访问 URL（指向内部图片端点）
+  bannerData        String?   @db.Text               // 头图 base64 数据（data:image/...;base64,...）
+  announcement      String?                          // 公告文本
+  promoText         String?                          // 活动文案
+  eLifeFeatured     Boolean   @default(false)        // E-Life 首页「为你推荐」运营位
+  eLifeFeaturedSort Int       @default(0)            // 推荐排序，数字越小排越前
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   tenant      Tenant          @relation(fields: [tenantId], references: [id])
   userRoles   UserStoreRole[]

@@ -113,10 +113,6 @@ const BIZ_LABEL: Record<string, Record<Lang, string>> = {
   GENERAL: { zh: '综合商户', en: 'General',       km: 'ទូទៅ' },
 }
 
-const RECOMMENDED_MOCK_FALLBACK: FeaturedStore[] = [
-  { code: 'dintaifung-main',  name: '鼎泰丰', businessType: 'FOOD', imageUrl: 'https://images.unsplash.com/photo-1496116218417-1a781b1c416c?w=400&h=300&fit=crop' },
-  { code: 'heytea-flagship',  name: '喜茶',   businessType: 'FOOD', imageUrl: 'https://images.unsplash.com/photo-1558857563-b371033873b8?w=400&h=300&fit=crop' },
-]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -481,44 +477,43 @@ export default function ELifeHomePage() {
           </div>
         </section>
 
-        {/* § Recommended */}
-        <section>
-          <div style={s.secHead}>
-            <div>
-              <h2 style={s.secTitle}>{t.recommend}</h2>
-              <p style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 0' }}>{t.recommendSub}</p>
-            </div>
-            <button style={s.moreBtn} onClick={() => showToast(t.toastRecommendSoon)}>
-              {t.viewAll} <ChevronRightIcon />
-            </button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {(featuredStores ?? RECOMMENDED_MOCK_FALLBACK).slice(0, 2).map((shop, idx) => (
-              <div
-                key={shop.code}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: '#fff', borderRadius: 14, border: '1px solid rgba(0,0,0,0.06)', cursor: 'pointer', minHeight: 88 }}
-                onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}
-              >
-                {/* cover image */}
-                <div style={{ width: 80, height: 80, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
-                  <img
-                    src={shop.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
-                    alt={shop.name}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-                </div>
-                {/* info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</h3>
-                  <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 6px' }}>{BIZ_LABEL[shop.businessType]?.[lang] ?? shop.businessType}</p>
-                  <span style={{ display: 'inline-block', fontSize: 11, color: BRAND, background: 'rgba(7,193,96,0.08)', padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>{t.recommended}</span>
-                </div>
-                {/* arrow */}
-                <ChevronRightIcon size={14} color="rgba(0,0,0,0.2)" />
+        {/* § Recommended — only rendered when OPS has set at least 1 featured store */}
+        {featuredStores !== null && featuredStores.length > 0 && (
+          <section>
+            <div style={s.secHead}>
+              <div>
+                <h2 style={s.secTitle}>{t.recommend}</h2>
+                <p style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 0' }}>{t.recommendSub}</p>
               </div>
-            ))}
-          </div>
-        </section>
+              <button style={s.moreBtn} onClick={() => showToast(t.toastRecommendSoon)}>
+                {t.viewAll} <ChevronRightIcon />
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {featuredStores.slice(0, 2).map((shop, idx) => (
+                <div
+                  key={shop.code}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: '#fff', borderRadius: 14, border: '1px solid rgba(0,0,0,0.06)', cursor: 'pointer', minHeight: 88 }}
+                  onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}
+                >
+                  <div style={{ width: 80, height: 80, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
+                    <img
+                      src={shop.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
+                      alt={shop.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</h3>
+                    <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 6px' }}>{BIZ_LABEL[shop.businessType]?.[lang] ?? shop.businessType}</p>
+                    <span style={{ display: 'inline-block', fontSize: 11, color: BRAND, background: 'rgba(7,193,96,0.08)', padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>{t.recommended}</span>
+                  </div>
+                  <ChevronRightIcon size={14} color="rgba(0,0,0,0.2)" />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
       </main>
 
