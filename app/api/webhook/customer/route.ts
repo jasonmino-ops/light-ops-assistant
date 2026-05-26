@@ -123,6 +123,19 @@ async function handleBind(msg: any, payload: { storeCode: string; orderNo: strin
   ]
   if (orderNo) lines.push(`本次订单已记录：${orderNo}`)
 
+  // 更新 bot 持久菜单按钮（左下角入口），确保始终指向当前绑定的店铺
+  // 无论顾客之前绑过哪家店，下次从 bot 入口进来都是最新绑定的店铺
+  if (APP_URL) {
+    await tgSend('setChatMenuButton', {
+      chat_id: chatId,
+      menu_button: {
+        type:    'web_app',
+        text:    '🛍️ 点单',
+        web_app: { url: `${APP_URL}/menu?code=${encodeURIComponent(storeCode)}` },
+      },
+    })
+  }
+
   await tgSend('sendMessage', {
     chat_id: chatId,
     text: lines.join('\n\n'),
@@ -179,8 +192,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    // 无参/未识别参数：原有欢迎逻辑
-    const menuUrl = `${APP_URL}/menu?code=${encodeURIComponent(DEFAULT_STORE)}`
+    // 无参/未识别参数：查顾客最近绑定的店铺，否则兜底 DEFAULT_STORE
+    const tgUserId = String(msg.from?.id ?? '')
+    const recentContact = tgUserId
+      ? await prisma.storeCustomerContact.findFirst({
+          where:   { telegramId: tgUserId, status: 'active' },
+          orderBy: { lastSeenAt: 'desc' },
+          select:  { storeCode: true },
+        }).catch(() => null)
+      : null
+    const welcomeStoreCode = recentContact?.storeCode ?? DEFAULT_STORE
+    const menuUrl = `${APP_URL}/menu?code=${encodeURIComponent(welcomeStoreCode)}`
     await tgSend('sendMessage', {
       chat_id: chatId,
       text: '👋 欢迎！点击下方按钮查看商品，选好后可直接下单，商家会及时处理。',

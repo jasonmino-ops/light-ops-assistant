@@ -643,19 +643,24 @@ export default function MenuPage() {
 
   // ── 数据加载 ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get('code')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+
+    // storeCode 来源优先级：URL ?code= > Telegram start_param > 报错
+    // start_param 用于 t.me/bot?startapp=<storeCode> 格式的入口链接
+    const urlCode = new URLSearchParams(window.location.search).get('code')
+    const startParam: string =
+      new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam') ||
+      tg?.initDataUnsafe?.start_param ||
+      ''
+    // bind_ 前缀是员工绑定 token，不是 storeCode；仅接受非 bind_ 参数作为 storeCode
+    const code = urlCode || (startParam && !startParam.startsWith('bind_') ? startParam : null)
     if (!code) {
       setLoading(false)
       setFetchError('no_code')
       return
     }
     setStoreCode(code)
-
-    // 检测是否在 Telegram 中并提取 tgId，用于：
-    //   1) 显示"我的订单"入口
-    //   2) 后端查 StoreCustomerContact 判断当前顾客是否已绑定本门店
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tg = (window as any).Telegram?.WebApp
     let tgIdLocal: string | null = null
     if (tg?.initData) {
       try {
