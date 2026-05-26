@@ -29,7 +29,8 @@ const T = {
     scanCoupon: '优惠券码', scanCouponDesc: '扫码领取优惠',
     scanBtn: '打开扫码',
     addFav: '添加常去', discoverShops: '发现好店', toastComingSoon: '更多商户即将上线，敬请期待',
-    toastVisitFirst: '请先访问一家商户',
+    toastVisitFirst: '请先访问一家商户', toastRecommendSoon: '更多推荐即将开放',
+    viewAll: '查看全部', recommended: '推荐商户',
     scanEnter: '输入门店码', scanPlaceholder: 'ST8194AE60 或粘贴链接', scanGo: '进入店铺', scanInvalid: '无法识别门店码',
   },
   en: {
@@ -47,7 +48,8 @@ const T = {
     scanCoupon: 'Coupon Code', scanCouponDesc: 'Scan to claim coupon',
     scanBtn: 'Open Scanner',
     addFav: 'Add Favorite', discoverShops: 'Discover', toastComingSoon: 'More shops coming soon',
-    toastVisitFirst: 'Please visit a store first',
+    toastVisitFirst: 'Please visit a store first', toastRecommendSoon: 'More recommendations coming soon',
+    viewAll: 'View All', recommended: 'Recommended',
     scanEnter: 'Enter Store Code', scanPlaceholder: 'ST8194AE60 or paste link', scanGo: 'Enter Store', scanInvalid: 'Invalid store code',
   },
   km: {
@@ -65,7 +67,8 @@ const T = {
     scanCoupon: 'កូដគូប៉ុង', scanCouponDesc: 'ស្កេនដើម្បីទទួលគូប៉ុង',
     scanBtn: 'បើកស្កេន',
     addFav: 'បន្ថែម', discoverShops: 'រកឃើញ', toastComingSoon: 'ហាងបន្ថែមនឹងមកដល់',
-    toastVisitFirst: 'សូមចូលទស្សនាហាងមុន',
+    toastVisitFirst: 'សូមចូលទស្សនាហាងមុន', toastRecommendSoon: 'ការណែនាំបន្ថែមនឹងមកដល់',
+    viewAll: 'មើលទាំងអស់', recommended: 'ណែនាំ',
     scanEnter: 'បញ្ចូលកូដហាង', scanPlaceholder: 'ST8194AE60 ឬបិទភ្ជាប់', scanGo: 'ចូលហាង', scanInvalid: 'មិនអាចសម្គាល់កូដហាង',
   },
 }
@@ -484,22 +487,33 @@ export default function ELifeHomePage() {
               <h2 style={s.secTitle}>{t.recommend}</h2>
               <p style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 0' }}>{t.recommendSub}</p>
             </div>
-            <button style={s.moreBtn}>{t.more} <ChevronRightIcon /></button>
+            <button style={s.moreBtn} onClick={() => showToast(t.toastRecommendSoon)}>
+              {t.viewAll} <ChevronRightIcon />
+            </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {(featuredStores ?? RECOMMENDED_MOCK_FALLBACK).map((shop, idx) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(featuredStores ?? RECOMMENDED_MOCK_FALLBACK).slice(0, 2).map((shop, idx) => (
               <div
                 key={shop.code}
-                style={{ display: 'flex', gap: 10, padding: 10, background: '#fff', borderRadius: 12, border: '1px solid rgba(0,0,0,0.06)', cursor: 'pointer' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: '#fff', borderRadius: 14, border: '1px solid rgba(0,0,0,0.06)', cursor: 'pointer', minHeight: 88 }}
                 onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}
               >
-                <div style={{ width: 76, height: 76, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
-                  <img src={shop.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                {/* cover image */}
+                <div style={{ width: 80, height: 80, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
+                  <img
+                    src={shop.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
+                    alt={shop.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
                 </div>
-                <div style={{ flex: 1, minWidth: 0, padding: '10px 0' }}>
+                {/* info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</h3>
-                  <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>{BIZ_LABEL[shop.businessType]?.[lang] ?? shop.businessType}</p>
+                  <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 6px' }}>{BIZ_LABEL[shop.businessType]?.[lang] ?? shop.businessType}</p>
+                  <span style={{ display: 'inline-block', fontSize: 11, color: BRAND, background: 'rgba(7,193,96,0.08)', padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>{t.recommended}</span>
                 </div>
+                {/* arrow */}
+                <ChevronRightIcon size={14} color="rgba(0,0,0,0.2)" />
               </div>
             ))}
           </div>
