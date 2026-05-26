@@ -108,11 +108,11 @@ const CATEGORIES: {
   { id: 8, names: { zh: '亲子教育', en: 'Education', km: 'អប់រំ'    }, icon: 'graduation',   color: 'rgba(99,102,241,0.7)',  bg: 'rgba(238,242,255,0.8)' },
 ]
 
-// 无封面图时的备用渐变色板（按索引循环）
-const CARD_GRADIENTS = [
-  'linear-gradient(135deg, #34d399 0%, #059669 100%)',
-  'linear-gradient(135deg, #60a5fa 0%, #2563eb 100%)',
-  'linear-gradient(135deg, #f9a8d4 0%, #db2777 100%)',
+// 无封面图时按索引循环使用的备用真实照片（Unsplash，按 idx 循环）
+const FALLBACK_IMAGES = [
+  'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=200&h=200&fit=crop',
+  'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=200&h=200&fit=crop',
+  'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200&h=200&fit=crop',
 ]
 
 const RECOMMENDED_MOCK = [
@@ -313,26 +313,18 @@ export default function ELifeHomePage() {
               >
                 {/* 固定宽高比容器，所有子层用 absolute inset:0 铺满 */}
                 <div style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', marginBottom: 6, aspectRatio: '1/1', border: '1px solid rgba(0,0,0,0.08)' }}>
-                  {/* 底层：图片 or 品牌渐变 */}
-                  {shop.image ? (
-                    <img
-                      src={shop.image}
-                      alt={shop.name}
-                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                    />
-                  ) : (
-                    <div style={{ position: 'absolute', inset: 0, background: CARD_GRADIENTS[idx % CARD_GRADIENTS.length], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ fontSize: 40, color: 'rgba(255,255,255,0.92)', fontWeight: 700, lineHeight: 1, userSelect: 'none' }}>
-                        {shop.name.charAt(0)}
-                      </span>
-                    </div>
-                  )}
-                  {/* 暗角渐变：图片和渐变背景均叠加 */}
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.1) 50%, transparent 100%)' }} />
+                  {/* 底层：真实封面图或备用照片，两种情况均铺满 */}
+                  <img
+                    src={shop.image || FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
+                    alt={shop.name}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                  {/* 暗角渐变，加深底部确保白字可读 */}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.18) 50%, transparent 100%)' }} />
                   {/* 店名文字 */}
                   <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8 }}>
-                    <p style={{ fontSize: 11, color: '#fff', fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>{shop.name}</p>
-                    {shop.subtitle && <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.85)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.subtitle}</p>}
+                    <p style={{ fontSize: 13, color: '#fff', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>{shop.name}</p>
+                    {shop.subtitle && <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.92)', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.subtitle}</p>}
                   </div>
                 </div>
               </div>
@@ -349,7 +341,7 @@ export default function ELifeHomePage() {
                 <div style={{ width: 40, height: 40, borderRadius: 12, background: cat.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <CatIcon type={cat.icon} color={cat.color} />
                 </div>
-                <span style={{ fontSize: 10, color: 'rgba(26,26,26,0.65)', fontWeight: 500 }}>{cat.names[lang]}</span>
+                <span style={{ fontSize: 12, color: '#374151', fontWeight: 500 }}>{cat.names[lang]}</span>
               </button>
             ))}
           </div>
@@ -360,7 +352,7 @@ export default function ELifeHomePage() {
           <div style={s.secHead}>
             <div>
               <h2 style={s.secTitle}>{t.recommend}</h2>
-              <p style={{ fontSize: 10, color: 'rgba(140,140,140,0.6)', margin: '2px 0 0' }}>{t.recommendSub}</p>
+              <p style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 0' }}>{t.recommendSub}</p>
             </div>
             <button style={s.moreBtn}>{t.more} <ChevronRightIcon /></button>
           </div>
@@ -371,21 +363,21 @@ export default function ELifeHomePage() {
                 style={{ display: 'flex', gap: 10, padding: 10, background: '#fff', borderRadius: 12, border: '1px solid rgba(0,0,0,0.06)', cursor: 'pointer' }}
                 onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}
               >
-                <div style={{ width: 72, height: 72, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                <div style={{ width: 76, height: 76, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
                   <img src={shop.image} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0, padding: '2px 0' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                    <h3 style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</h3>
+                    <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                      <StarIcon />
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#1a1a1a' }}>{shop.rating}</span>
+                      <StarIcon size={13} />
+                      <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{shop.rating}</span>
                     </div>
                   </div>
-                  <p style={{ fontSize: 11, color: 'rgba(140,140,140,0.7)', margin: '0 0 8px' }}>{shop.category} · {shop.distance}</p>
+                  <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 8px' }}>{shop.category} · {shop.distance}</p>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {shop.tags.map((tag, i) => (
-                      <span key={i} style={{ fontSize: 9, color: `rgba(7,193,96,0.6)`, background: `rgba(7,193,96,0.05)`, padding: '2px 6px', borderRadius: 4, fontWeight: 500 }}>{tag}</span>
+                      <span key={i} style={{ fontSize: 11, color: BRAND, background: `rgba(7,193,96,0.07)`, padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>{tag}</span>
                     ))}
                   </div>
                 </div>
@@ -402,8 +394,8 @@ export default function ELifeHomePage() {
                 <CrownIcon />
               </div>
               <div>
-                <h3 style={{ fontSize: 12, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>{t.memberTitle}</h3>
-                <p style={{ fontSize: 9, color: 'rgba(140,140,140,0.7)', margin: 0 }}>{t.memberSub}</p>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: 0 }}>{t.memberTitle}</h3>
+                <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>{t.memberSub}</p>
               </div>
             </div>
             <button style={s.memberBtn}>{t.memberBtn}</button>
@@ -437,11 +429,11 @@ function BottomNav({ onScan, t }: { onScan: () => void; t: TLocale }) {
           const active = tab.href
             ? pathname === tab.href || pathname.startsWith(tab.href + '/')
             : false
-          const color = active ? BRAND : 'rgba(140,140,140,0.6)'
+          const color = active ? BRAND : '#6b7280'
           const inner = (
             <>
-              <tab.Icon color={color} strokeWidth={active ? 2 : 1.5} />
-              <span style={{ fontSize: 10, color, fontWeight: active ? 600 : 500 }}>{tab.label}</span>
+              <tab.Icon size={20} color={color} strokeWidth={active ? 2 : 1.5} />
+              <span style={{ fontSize: 11, color, fontWeight: active ? 700 : 500 }}>{tab.label}</span>
             </>
           )
           if (tab.onClick) {
@@ -647,15 +639,15 @@ const s: Record<string, React.CSSProperties> = {
     lineHeight: 1.2,
     letterSpacing: '-0.02em',
   },
-  brandSubText: { color: 'rgba(26,26,26,0.8)' },
-  slogan: { fontSize: 10, color: `rgba(7,193,96,0.4)`, margin: '2px 0 0', fontWeight: 500 },
+  brandSubText: { color: '#1a1a1a', fontWeight: 600 },
+  slogan: { fontSize: 11, color: `rgba(7,193,96,0.65)`, margin: '2px 0 0', fontWeight: 500 },
   headerRight: { display: 'flex', alignItems: 'center' },
   textBtn: {
     display: 'flex',
     alignItems: 'center',
     gap: 2,
-    fontSize: 11,
-    color: '#8c8c8c',
+    fontSize: 12,
+    color: '#555',
     background: 'transparent',
     border: 'none',
     borderRadius: 9999,
@@ -716,7 +708,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  secTitle: { fontSize: 15, fontWeight: 600, color: '#1a1a1a', margin: 0 },
+  secTitle: { fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 },
   moreBtn: {
     display: 'flex',
     alignItems: 'center',
@@ -755,13 +747,13 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
   },
   memberBtn: {
-    padding: '4px 10px',
-    background: 'linear-gradient(to right, rgba(251,191,36,0.85), rgba(245,158,11,0.85))',
+    padding: '6px 14px',
+    background: 'linear-gradient(to right, rgba(251,191,36,0.9), rgba(245,158,11,0.9))',
     color: '#fff',
     border: 'none',
     borderRadius: 9999,
-    fontSize: 10,
-    fontWeight: 500,
+    fontSize: 12,
+    fontWeight: 600,
     cursor: 'pointer',
     flexShrink: 0,
   },
