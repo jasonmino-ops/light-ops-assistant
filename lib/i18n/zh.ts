@@ -35,6 +35,7 @@ const zh = {
     staffModeBanner: '当前为店员模式',
     exitStaffMode: '退出店员模式',
     records: '记录',
+    campaign: '推广带货',
     itemCountUnit: '件',
   },
   bind: {

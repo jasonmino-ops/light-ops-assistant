@@ -60,6 +60,12 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/ops/login', req.url))
   }
 
+  // /campaign requires Telegram OWNER session; non-Telegram browsers land here
+  // without a cookie → send to /relogin (clear "please open in Telegram" message)
+  if (pathname.startsWith('/campaign')) {
+    return NextResponse.redirect(new URL('/relogin', req.url))
+  }
+
   return NextResponse.redirect(new URL('/home', req.url))
 }
 

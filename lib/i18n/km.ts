@@ -35,6 +35,7 @@ const km = {
     staffModeBanner: 'បច្ចុប្បន្នស្ថិតក្នុងរបៀបបុគ្គលិក',
     exitStaffMode: 'ចេញពីរបៀបបុគ្គលិក',
     records: 'កំណត់ត្រា',
+    campaign: 'ផ្សព្វផ្សាយ',
     itemCountUnit: 'គ្រឿង',
   },
   bind: {
