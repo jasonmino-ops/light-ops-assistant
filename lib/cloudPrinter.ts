@@ -216,10 +216,19 @@ export async function printReceipt(input: ReceiptInput): Promise<PrintResult> {
 
   // SW-AIOT type=5 JSON 模式：msg = { print: [PrintLine 对象数组] } 的 stringify
   const msgObj = buildReceiptMessage(input)
-  const msgStr = JSON.stringify(msgObj)
+  const msgStr = JSON.stringify(msgObj)  // msg 是 JSON.stringify 后的字符串
 
   const requestParams = { devid: DEVID, type: 5, pwidth: 58, ptype: 1, pcopy: 1, vtype: -1 }
   const reqMeta = { ...requestParams, msgPreview: msgStr.slice(0, 400) }
+
+  const snTail = DEVID.length >= 4 ? `****${DEVID.slice(-4)}` : '****'
+  console.log('[cloudPrinter] printReceipt → request', {
+    snTail,
+    type: 5,
+    pwidth: 58, ptype: 1, pcopy: 1, vtype: -1,
+    msgIsString: true,
+    msgPreview: msgStr.slice(0, 500),
+  })
 
   try {
     const r = await fetch(PRINT_API, {
@@ -255,6 +264,16 @@ export async function printReceipt(input: ReceiptInput): Promise<PrintResult> {
       reqId:       body?.reqId ?? body?.requestId ?? body?.request_id,
     }
 
+    console.log('[cloudPrinter] printReceipt ← response', {
+      httpStatus,
+      ok,
+      code:        parsedDiag.code,
+      message:     parsedDiag.message,
+      dataCode:    parsedDiag.dataCode,
+      dataMessage: parsedDiag.dataMessage,
+      reqId:       parsedDiag.reqId,
+    })
+
     if (ok) return { ok: true, httpStatus, rawBody: body, parsedDiag, request: reqMeta }
     return {
       ok: false,
@@ -262,7 +281,9 @@ export async function printReceipt(input: ReceiptInput): Promise<PrintResult> {
       httpStatus, rawBody: body, parsedDiag, request: reqMeta,
     }
   } catch (e) {
-    return { ok: false, error: (e as Error).message ?? 'network error', request: reqMeta }
+    const errMsg = (e as Error).message ?? 'network error'
+    console.error('[cloudPrinter] printReceipt error', { snTail, orderNo: input.orderNo, error: errMsg })
+    return { ok: false, error: errMsg, request: reqMeta }
   }
 }
 
@@ -408,3 +429,19 @@ export async function bindDevice(opts: {
 
 // 实现迁移至 lib/tier.ts，这里仅为兼容现有 import 路径而 re-export
 export const isPrintingTier = _isPrintingTier
+
+// ── 测试打印（API 路由 /api/print/test 内部调用） ───────────────────────────
+
+export async function testCloudPrint(storeName: string): Promise<PrintResult> {
+  const fakeOrderNo = `TEST-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-4)}`
+  return printReceipt({
+    storeName,
+    orderNo:     fakeOrderNo,
+    items: [
+      { name: '测试商品 A', spec: '500ml', quantity: 1, price: 3.5, lineAmount: 3.5 },
+      { name: '测试商品 B', spec: null,    quantity: 2, price: 5,   lineAmount: 10  },
+    ],
+    totalAmount: 13.5,
+    remark:      '这是一张测试小票，请勿出餐',
+  })
+}
