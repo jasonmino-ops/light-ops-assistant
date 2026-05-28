@@ -88,11 +88,12 @@ model Store {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  tenant      Tenant          @relation(fields: [tenantId], references: [id])
-  userRoles   UserStoreRole[]
-  sales       SaleRecord[]
-  logs        OperationLog[]
-  bindTokens  BindToken[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  userRoles      UserStoreRole[]
+  sales          SaleRecord[]
+  logs           OperationLog[]
+  bindTokens     BindToken[]
+  campaignLinks  CampaignLink[]
 
   @@index([tenantId])
 }
@@ -632,4 +633,23 @@ model ConversationLog {
 
   @@index([telegramId, createdAt])
   @@index([tenantId, createdAt])
+}
+
+// ─── TikTok / 社交媒体推广短链 ────────────────────────────────────────────
+model CampaignLink {
+  id             String   @id @default(cuid())
+  code           String   @unique          // 短链码，如 A1B2C3，对应 /v/A1B2C3
+  storeId        String
+  sourcePlatform String   @default("tiktok")
+  creatorName    String?                   // 达人 / 博主名称
+  videoTitle     String?                   // 视频标题备注
+  targetUrl      String                    // 跳转目标，通常是 /menu?code=xxx
+  viewCount      Int      @default(0)
+  clickCount     Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  store          Store    @relation(fields: [storeId], references: [id])
+
+  @@index([storeId])
 }
