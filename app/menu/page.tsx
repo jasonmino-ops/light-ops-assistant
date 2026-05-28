@@ -1115,135 +1115,143 @@ export default function MenuPage() {
       {!orderResult && showConfirm && (
         <div style={s.successOverlay}>
           <div style={s.confirmModal}>
+            {/* 固定头部 */}
             <div style={s.confirmHeader}>
               <span style={s.confirmHeaderIcon}>📋</span>
               <span style={s.confirmHeaderTitle}>{ui.confirmTitle}</span>
             </div>
 
-            {/* 门店行 */}
-            <div style={s.chkRow}>
-              <span style={s.chkRowKey}>📍 {ui.storeLabel}</span>
-              <span style={s.chkRowVal}>{storeName}</span>
-            </div>
+            {/* 可滚动内容区 */}
+            <div style={s.confirmBody}>
+              {/* 门店行 */}
+              <div style={s.chkRow}>
+                <span style={s.chkRowKey}>📍 {ui.storeLabel}</span>
+                <span style={s.chkRowVal}>{storeName}</span>
+              </div>
 
-            {/* 商品清单 */}
-            <div style={s.confirmItemList}>
-              {confirmItems.map((item) => (
-                <div key={item.id} style={s.confirmItem}>
-                  <div style={s.confirmItemName}>
-                    {item.name}
-                    {item.spec && <span style={s.confirmItemSpec}> · {item.spec}</span>}
-                  </div>
-                  <div style={s.confirmItemRight}>
-                    <span style={s.confirmItemQty}>×{item.quantity}</span>
-                    <span style={s.confirmItemAmt}>${item.lineAmount.toFixed(2)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* 配送/上门地址卡片（仅 delivery 显示） */}
-            {pickupMethod === 'delivery' && (
-              <button type="button" style={addr.card} onClick={() => setDeliveryEditOpen(true)}>
-                {deliveryInfo.deliveryAddress ? (
-                  <>
-                    <div style={addr.addrLine}>📍 {deliveryInfo.deliveryAddress}</div>
-                    <div style={addr.subLine}>
-                      {deliveryInfo.customerName ? `${deliveryInfo.customerName} · ` : ''}
-                      {deliveryInfo.customerPhone || ''}
-                      {(deliveryInfo.deliveryLat != null && deliveryInfo.deliveryLng != null) && '  ·  📌 已获取定位'}
+              {/* 商品清单 */}
+              <div style={s.confirmItemList}>
+                {confirmItems.map((item) => (
+                  <div key={item.id} style={s.confirmItem}>
+                    <div style={s.confirmItemName}>
+                      {item.name}
+                      {item.spec && <span style={s.confirmItemSpec}> · {item.spec}</span>}
                     </div>
-                    {deliveryInfo.deliveryNote && <div style={addr.noteLine}>{deliveryInfo.deliveryNote}</div>}
-                    {deliveryInfo.deliveryAddressPhotoUrl && (
-                      <div style={addr.noteLine}>📷 {lang === 'en' ? 'photo attached' : lang === 'km' ? 'រូបភាពភ្ជាប់' : '已附门牌照片'}</div>
-                    )}
-                  </>
-                ) : (
-                  <div style={addr.placeholder}>
-                    📍 {lang === 'en' ? 'Please add delivery / on-site address ›'
-                       : lang === 'km' ? 'សូមបន្ថែមអាសយដ្ឋានដឹក/សេវាដល់ផ្ទះ ›'
-                       : '请填写送货/上门地址 ›'}
+                    <div style={s.confirmItemRight}>
+                      <span style={s.confirmItemQty}>×{item.quantity}</span>
+                      <span style={s.confirmItemAmt}>${item.lineAmount.toFixed(2)}</span>
+                    </div>
                   </div>
-                )}
-              </button>
-            )}
-
-            {/* 取餐方式 */}
-            <div style={s.chkSection}>
-              <div style={s.chkSectionLabel}>{fulfillTpl.title}</div>
-              <div style={s.chkPickupRow}>
-                {(['dineIn', 'delivery'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    style={{ ...s.chkPickupBtn, ...(pickupMethod === m ? s.chkPickupBtnOn : {}) }}
-                    onClick={() => setPickupMethod(m)}
-                  >
-                    {m === 'dineIn' ? `🍽️ ${fulfillTpl.dineIn}` : `🛵 ${fulfillTpl.delivery}`}
-                  </button>
                 ))}
               </div>
-            </div>
 
-            {/* 备注 */}
-            <div style={s.chkSection}>
-              <div style={s.chkSectionLabel}>{ui.remarksLabel}</div>
-              <textarea
-                style={s.chkRemarks}
-                rows={2}
-                placeholder={ui.remarksPh}
-                value={orderRemark}
-                onChange={(e) => setOrderRemark(e.target.value.slice(0, 200))}
-              />
-            </div>
+              {/* 配送/上门地址卡片（仅 delivery 显示） */}
+              {pickupMethod === 'delivery' && (
+                <button type="button" style={addr.card} onClick={() => setDeliveryEditOpen(true)}>
+                  {deliveryInfo.deliveryAddress ? (
+                    <>
+                      <div style={addr.addrLine}>📍 {deliveryInfo.deliveryAddress}</div>
+                      <div style={addr.subLine}>
+                        {deliveryInfo.customerName ? `${deliveryInfo.customerName} · ` : ''}
+                        {deliveryInfo.customerPhone || ''}
+                        {(deliveryInfo.deliveryLat != null && deliveryInfo.deliveryLng != null) && '  ·  📌 已获取定位'}
+                      </div>
+                      {deliveryInfo.deliveryNote && <div style={addr.noteLine}>{deliveryInfo.deliveryNote}</div>}
+                      {deliveryInfo.deliveryAddressPhotoUrl && (
+                        <div style={addr.noteLine}>📷 {lang === 'en' ? 'photo attached' : lang === 'km' ? 'រូបភាពភ្ជាប់' : '已附门牌照片'}</div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={addr.placeholder}>
+                      📍 {lang === 'en' ? 'Please add delivery / on-site address ›'
+                         : lang === 'km' ? 'សូមបន្ថែមអាសយដ្ឋានដឹក/សេវាដល់ផ្ទះ ›'
+                         : '请填写送货/上门地址 ›'}
+                    </div>
+                  )}
+                </button>
+              )}
 
-            {/* 优惠券选择 */}
-            <div
-              style={{ ...s.chkRow, cursor: (couponState && (couponState.available.length > 0 || selectedCouponId)) ? 'pointer' : 'default' }}
-              onClick={() => { if (couponState && (couponState.available.length > 0 || couponState.selectedCoupon)) setCouponPickerOpen(true) }}
-            >
-              <span style={s.chkRowKey}>🎟️ {ui.couponLabel}</span>
-              <span style={s.chkRowMuted}>
-                {couponState?.selectedCoupon
-                  ? couponState.selectedCoupon.name
-                  : couponState && couponState.available.length > 0
-                    ? `${couponState.available.length} 张可用 ›`
-                    : ui.noCoupon}
-              </span>
-            </div>
-            {couponMsg && <div style={{ ...s.chkRow, color: '#fa8c16', fontSize: 12 }}>{couponMsg}</div>}
+              {/* 取餐方式 */}
+              <div style={s.chkSection}>
+                <div style={s.chkSectionLabel}>{fulfillTpl.title}</div>
+                <div style={s.chkPickupRow}>
+                  {(['dineIn', 'delivery'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      style={{ ...s.chkPickupBtn, ...(pickupMethod === m ? s.chkPickupBtnOn : {}) }}
+                      onClick={() => setPickupMethod(m)}
+                    >
+                      {m === 'dineIn' ? `🍽️ ${fulfillTpl.dineIn}` : `🛵 ${fulfillTpl.delivery}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            {/* 商品金额 */}
-            <div style={s.chkRow}>
-              <span style={s.chkRowKey}>{ui.itemCount(cartCount)}</span>
-              <span style={s.chkRowMuted}>${cartTotal.toFixed(2)}</span>
-            </div>
+              {/* 备注 */}
+              <div style={s.chkSection}>
+                <div style={s.chkSectionLabel}>{ui.remarksLabel}</div>
+                <textarea
+                  style={s.chkRemarks}
+                  rows={2}
+                  placeholder={ui.remarksPh}
+                  value={orderRemark}
+                  onChange={(e) => setOrderRemark(e.target.value.slice(0, 200))}
+                />
+              </div>
 
-            {/* 优惠合计 */}
-            <div style={s.chkRow}>
-              <span style={s.chkRowKey}>{ui.discountLabel}</span>
-              <span style={s.chkRowMuted}>-${(couponState?.discountAmount ?? 0).toFixed(2)}</span>
-            </div>
-
-            <div style={s.confirmTotal}>
-              <span style={s.confirmTotalLabel}>{payableLabel}</span>
-              <span style={s.confirmTotalAmount}>${(couponState?.payableAmount ?? cartTotal).toFixed(2)}</span>
-            </div>
-            {submitError && <div style={s.confirmErr}>{submitError}</div>}
-            <div style={s.confirmBtns}>
-              <button
-                style={s.confirmBackBtn}
-                onClick={() => { setShowConfirm(false); setSubmitError('') }}
+              {/* 优惠券选择 */}
+              <div
+                style={{ ...s.chkRow, cursor: (couponState && (couponState.available.length > 0 || selectedCouponId)) ? 'pointer' : 'default' }}
+                onClick={() => { if (couponState && (couponState.available.length > 0 || couponState.selectedCoupon)) setCouponPickerOpen(true) }}
               >
-                {ui.backToEdit}
-              </button>
-              <button
-                style={{ ...s.confirmSubmitBtn, ...(submitting ? s.confirmSubmitBtnDisabled : {}) }}
-                disabled={submitting}
-                onClick={handleCheckout}
-              >
-                {submitting ? ui.submitting : ui.confirmSubmit}
-              </button>
+                <span style={s.chkRowKey}>🎟️ {ui.couponLabel}</span>
+                <span style={s.chkRowMuted}>
+                  {couponState?.selectedCoupon
+                    ? couponState.selectedCoupon.name
+                    : couponState && couponState.available.length > 0
+                      ? `${couponState.available.length} 张可用 ›`
+                      : ui.noCoupon}
+                </span>
+              </div>
+              {couponMsg && <div style={{ ...s.chkRow, color: '#fa8c16', fontSize: 12 }}>{couponMsg}</div>}
+
+              {/* 商品金额 */}
+              <div style={s.chkRow}>
+                <span style={s.chkRowKey}>{ui.itemCount(cartCount)}</span>
+                <span style={s.chkRowMuted}>${cartTotal.toFixed(2)}</span>
+              </div>
+
+              {/* 优惠合计 */}
+              <div style={s.chkRow}>
+                <span style={s.chkRowKey}>{ui.discountLabel}</span>
+                <span style={s.chkRowMuted}>-${(couponState?.discountAmount ?? 0).toFixed(2)}</span>
+              </div>
+
+              <div style={s.confirmTotal}>
+                <span style={s.confirmTotalLabel}>{payableLabel}</span>
+                <span style={s.confirmTotalAmount}>${(couponState?.payableAmount ?? cartTotal).toFixed(2)}</span>
+              </div>
+              {submitError && <div style={s.confirmErr}>{submitError}</div>}
+            </div>
+
+            {/* 固定底部操作栏 */}
+            <div style={s.confirmFooter}>
+              <div style={s.confirmBtns}>
+                <button
+                  style={s.confirmBackBtn}
+                  onClick={() => { setShowConfirm(false); setSubmitError('') }}
+                >
+                  {ui.backToEdit}
+                </button>
+                <button
+                  style={{ ...s.confirmSubmitBtn, ...(submitting ? s.confirmSubmitBtnDisabled : {}) }}
+                  disabled={submitting}
+                  onClick={handleCheckout}
+                >
+                  {submitting ? ui.submitting : ui.confirmSubmit}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2147,10 +2155,10 @@ const s: Record<string, React.CSSProperties> = {
     inset: 0,
     background: 'rgba(0,0,0,0.65)',
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-end',      // 底部对齐，bottom sheet 样式
     justifyContent: 'center',
     zIndex: 200,
-    padding: 20,
+    padding: 0,
   },
   successModal: {
     background: '#fff',
@@ -2329,11 +2337,14 @@ const s: Record<string, React.CSSProperties> = {
   },
   confirmModal: {
     background: '#fff',
-    borderRadius: 20,
-    padding: '24px 20px 20px',
+    borderRadius: '20px 20px 0 0',   // bottom sheet 圆角
     width: '100%',
-    maxWidth: 360,
-    maxHeight: '80dvh',
+    maxWidth: 480,
+    // 高度约束：fallback 先用 92vh，支持 dvh 的设备用 92dvh
+    maxHeight: '92vh',
+    // @ts-ignore — dvh 部分安卓/Huawei 浏览器识别，作为优化覆盖
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ...(typeof window !== 'undefined' ? {} : {}), // SSR guard
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -2342,15 +2353,26 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 14,
-    paddingBottom: 12,
+    flexShrink: 0 as const,         // 头部不压缩
+    padding: '20px 20px 12px',
     borderBottom: '1px solid #f0f0f0',
+  },
+  confirmBody: {
+    flex: 1,
+    overflowY: 'auto' as const,
+    WebkitOverflowScrolling: 'touch' as const,
+    padding: '0 20px 8px',
+  },
+  confirmFooter: {
+    flexShrink: 0 as const,         // 底部按钮区不压缩
+    padding: '12px 20px',
+    paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+    background: '#fff',
+    borderTop: '1px solid #f0f0f0',
   },
   confirmHeaderIcon: { fontSize: 18 },
   confirmHeaderTitle: { fontSize: 17, fontWeight: 700, color: '#1a1a1a' },
   confirmItemList: {
-    flex: 1,
-    overflowY: 'auto' as const,
     display: 'flex',
     flexDirection: 'column',
     marginBottom: 12,
