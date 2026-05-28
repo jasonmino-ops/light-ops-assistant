@@ -548,22 +548,43 @@ export default function ProductsPage() {
         el.onerror = () => reject(new Error('image load failed'))
         el.src = url
       })
-      const maxW = 1000
+      const MAX_DIM = 1280
       let w = img.naturalWidth
       let h = img.naturalHeight
-      if (w > maxW) {
-        h = Math.round((h * maxW) / w)
-        w = maxW
+      if (w > MAX_DIM || h > MAX_DIM) {
+        if (w >= h) {
+          h = Math.round((h * MAX_DIM) / w)
+          w = MAX_DIM
+        } else {
+          w = Math.round((w * MAX_DIM) / h)
+          h = MAX_DIM
+        }
       }
       const canvas = document.createElement('canvas')
       canvas.width = w
       canvas.height = h
       const ctx = canvas.getContext('2d')
       if (!ctx) return file
+
       ctx.drawImage(img, 0, 0, w, h)
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((b) => resolve(b), 'image/webp', 0.8)
-      })
+
+      const TARGET = 1.2 * 1024 * 1024
+      const MIN_QUALITY = 0.65
+      let quality = 0.82
+      let blob: Blob | null = null
+      while (quality >= MIN_QUALITY) {
+        blob = await new Promise<Blob | null>((resolve) => {
+          canvas.toBlob((b) => resolve(b), 'image/webp', quality)
+        })
+        if (!blob || blob.size <= TARGET) break
+        quality = Math.round((quality - 0.05) * 100) / 100
+      }
+      // fallback to jpeg if webp toBlob unsupported
+      if (!blob) {
+        blob = await new Promise<Blob | null>((resolve) => {
+          canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.82)
+        })
+      }
       return blob ?? file
     } catch {
       return file
@@ -584,10 +605,12 @@ export default function ProductsPage() {
       return
     }
     setImageUploading(true)
-    setImageError(null)
+    setImageError('正在压缩图片…')
     try {
       const blob = await compressForUpload(file)
-      const uploadName = blob.type === 'image/webp' ? 'main.webp' : file.name
+      setImageError('正在上传…')
+      const uploadName = blob.type === 'image/webp' ? 'main.webp'
+        : blob.type === 'image/jpeg' ? 'main.jpg' : file.name
       const form = new FormData()
       form.append('file', new File([blob], uploadName, { type: blob.type || file.type }))
       const res = await fetch(`/api/products/${product.id}/image`, {
@@ -598,6 +621,7 @@ export default function ProductsPage() {
       const body = await res.json().catch(() => null)
       if (res.ok && body?.imageUrl) {
         setProduct({ ...product, imageUrl: body.imageUrl })
+        setImageError(null)
       } else {
         setImageError(body?.message ?? body?.error ?? '上传失败')
       }

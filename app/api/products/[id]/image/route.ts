@@ -20,7 +20,7 @@ import {
 } from '@/lib/supabase-storage'
 
 const BUCKET = 'product-images'
-const MAX_SIZE = 2 * 1024 * 1024 // 2MB
+const MAX_SIZE = 3 * 1024 * 1024 // 3MB（前端已压缩，保留余量）
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 function extFromMime(mime: string): string {
@@ -76,7 +76,7 @@ export async function POST(
     return NextResponse.json({ error: 'INVALID_TYPE', message: '仅支持 JPG / PNG / WebP' }, { status: 400 })
   }
   if (file.size > MAX_SIZE) {
-    return NextResponse.json({ error: 'FILE_TOO_LARGE', message: '图片不能超过 2MB' }, { status: 400 })
+    return NextResponse.json({ error: 'FILE_TOO_LARGE', message: '图片压缩后仍超过 3MB，请换一张图片' }, { status: 400 })
   }
 
   const buf = Buffer.from(await file.arrayBuffer())
