@@ -331,9 +331,6 @@ export default function HomePage() {
         <ActionBtn href="/sale" icon="💰" label={t('home.sale')} color="#1677ff" />
         <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
         <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
-        {realRole === 'OWNER' && (
-          <ActionBtn href="/campaign" icon="📱" label={t('home.campaign')} color="#ff6b35" />
-        )}
       </div>
 
       {/* ── 顾客订单区（仅 OWNER 可见，常驻显示） ── */}

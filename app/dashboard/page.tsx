@@ -256,6 +256,16 @@ export default function DashboardPage() {
         </div>
         {showStoreConfig && <StoreConfigPanel t={t} />}
 
+        {/* 推广带货入口 */}
+        <Link href="/campaign" style={s.bigEntryCard}>
+          <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ff9a56,#ff6b35)' }}>📱</div>
+          <div style={s.bigEntryBody}>
+            <div style={s.bigEntryTitle}>推广带货</div>
+            <div style={s.bigEntryDesc}>生成 TikTok/博主推广短链，查看访问与点击效果</div>
+          </div>
+          <span style={s.bigEntryArrow}>›</span>
+        </Link>
+
         {/* 店铺类型（OWNER only — dashboard 本就 OWNER 才能进） */}
         <BusinessTypeCard t={t} />
 
