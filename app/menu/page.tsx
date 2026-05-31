@@ -451,6 +451,8 @@ export default function MenuPage() {
     deliveryAddressPhotoUrl: string | null
   }>({ customerName: '', customerPhone: '', deliveryAddress: '', deliveryNote: '', deliveryLat: null, deliveryLng: null, deliveryAddressPhotoUrl: null })
   // 优惠券
+  const [campaignCode,   setCampaignCode]   = useState('')
+  const [campaignIntent, setCampaignIntent] = useState('')
   const [tgId, setTgId]                         = useState<string>('')
   const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null)
   const [couponPickerOpen, setCouponPickerOpen] = useState(false)
@@ -649,6 +651,10 @@ export default function MenuPage() {
     // storeCode 来源优先级：URL ?code= > Telegram start_param > 报错
     // start_param 用于 t.me/bot?startapp=<storeCode> 格式的入口链接
     const urlCode = new URLSearchParams(window.location.search).get('code')
+    const urlRef    = new URLSearchParams(window.location.search).get('ref')    || ''
+    const urlIntent = new URLSearchParams(window.location.search).get('intent') || ''
+    if (urlRef)    setCampaignCode(urlRef)
+    if (urlIntent) setCampaignIntent(urlIntent)
     const startParam: string =
       new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam') ||
       tg?.initDataUnsafe?.start_param ||
@@ -777,6 +783,7 @@ export default function MenuPage() {
           } : {}),
           remark,
           lang,
+          ...(campaignCode ? { campaignCode, campaignIntent } : {}),
         }),
       })
       const body = await res.json()

@@ -26,7 +26,29 @@ export async function GET(req: NextRequest) {
       viewCount: true, clickCount: true, createdAt: true,
     },
   })
-  return NextResponse.json({ links })
+
+  // 聚合归因订单数和成交金额
+  const linkIds = links.map((l) => l.id)
+  const stats = linkIds.length
+    ? await prisma.customerOrder.groupBy({
+        by: ['campaignLinkId'],
+        where: { campaignLinkId: { in: linkIds } },
+        _count: { id: true },
+        _sum: { totalAmount: true },
+      })
+    : []
+  const statsMap = new Map(stats.map((s) => [s.campaignLinkId, s]))
+
+  const result = links.map((l) => {
+    const st = statsMap.get(l.id)
+    return {
+      ...l,
+      attributedOrderCount:  st?._count.id ?? 0,
+      attributedSalesAmount: st?._sum.totalAmount ? Number(st._sum.totalAmount) : 0,
+    }
+  })
+
+  return NextResponse.json({ links: result })
 }
 
 export async function POST(req: NextRequest) {

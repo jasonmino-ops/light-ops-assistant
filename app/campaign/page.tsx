@@ -14,6 +14,8 @@ type CampaignLink = {
   targetUrl:      string
   viewCount:      number
   clickCount:     number
+  attributedOrderCount:  number
+  attributedSalesAmount: number
   createdAt:      string
 }
 
@@ -227,7 +229,11 @@ export default function CampaignPage() {
 
               {/* 统计 */}
               <div style={s.stat}>
-                👁 {lk.viewCount} 次浏览　🛒 {lk.clickCount} 次点击下单
+                👁 {lk.viewCount} 次浏览　🛒 {lk.clickCount} 次点击
+              </div>
+              <div style={{ ...s.stat, marginTop: 2, color: lk.attributedOrderCount > 0 ? '#07c160' : '#d1d5db' }}>
+                📦 {lk.attributedOrderCount} 单成交
+                {lk.attributedOrderCount > 0 && `　💰 $${lk.attributedSalesAmount.toFixed(2)}`}
               </div>
             </div>
           ))

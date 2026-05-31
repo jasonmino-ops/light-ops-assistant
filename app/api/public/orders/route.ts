@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
     deliveryAddress?: string; deliveryNote?: string
     deliveryLat?: number; deliveryLng?: number
     deliveryAddressPhotoUrl?: string  // 可为 data URL 或外部 URL
+    campaignCode?: string; campaignIntent?: string
   }
   try {
     body = await req.json()
@@ -73,6 +74,8 @@ export async function POST(req: NextRequest) {
   }
 
   const { storeCode, items, customerTelegramId, remark } = body
+  const rawCampaignCode   = typeof body.campaignCode   === 'string' ? body.campaignCode.trim()   : ''
+  const rawCampaignIntent = typeof body.campaignIntent === 'string' ? body.campaignIntent.trim() : ''
   const couponId = typeof body.couponId === 'string' ? body.couponId.trim() : ''
 
   // 配送/上门字段（可选；当 pickupMethod=delivery 时强制电话+地址非空）
@@ -190,6 +193,28 @@ export async function POST(req: NextRequest) {
   const payableAmount = +Math.max(0, subtotal - discountAmount).toFixed(2)
   const totalAmount = payableAmount
 
+  // ── 推广归因（非阻断，CampaignLink 不存在时静默忽略） ────────────────────
+  let campaignAttribution: {
+    sourcePlatform: string; campaignCode: string
+    campaignLinkId: string; campaignIntent: string
+  } | null = null
+  if (rawCampaignCode) {
+    try {
+      const cl = await prisma.campaignLink.findUnique({
+        where: { code: rawCampaignCode },
+        select: { id: true, sourcePlatform: true },
+      })
+      if (cl) {
+        campaignAttribution = {
+          sourcePlatform: cl.sourcePlatform,
+          campaignCode:   rawCampaignCode,
+          campaignLinkId: cl.id,
+          campaignIntent: rawCampaignIntent || 'order',
+        }
+      }
+    } catch { /* 查询失败不阻断下单 */ }
+  }
+
   // ── 生成 orderNo：格式 C-yyyyMMdd-STORECODE-seq ─────────────────────────
   const now = new Date()
   const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
@@ -228,6 +253,7 @@ export async function POST(req: NextRequest) {
           totalAmount:        String(payableAmount.toFixed(2)),
           status:             'PENDING',
           remark:             typeof remark === 'string' && remark.trim() ? remark.trim().slice(0, 500) : null,
+          ...(campaignAttribution ?? {}),
         },
       })
 
