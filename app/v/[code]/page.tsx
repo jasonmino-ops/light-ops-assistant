@@ -121,7 +121,7 @@ function LandingInner() {
 
   function handleIntent(intent: 'order' | 'menu') {
     fetch(`/api/v/${code}/click`, { method: 'POST' }).catch(() => {})
-    window.location.href = `/m/${data?.storeCode ?? ''}?ref=${encodeURIComponent(code)}&intent=${intent}`
+    window.location.href = `/menu?code=${encodeURIComponent(data?.storeCode ?? '')}&ref=${encodeURIComponent(code)}&intent=${intent}`
   }
 
   function handleTelegram() {
