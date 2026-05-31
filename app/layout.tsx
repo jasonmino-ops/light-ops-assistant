@@ -4,6 +4,7 @@ import BottomNav from './components/nav'
 import TelegramInit from './components/TelegramInit'
 import LangProvider from './components/LangProvider'
 import WorkModeProvider from './components/WorkModeProvider'
+import DelegateBanner from './components/DelegateBanner'
 import { verifySession } from '@/lib/session'
 
 export const metadata = {
@@ -51,6 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <TelegramInit />
+        <DelegateBanner />
         <LangProvider>
           <WorkModeProvider role={role}>
             {children}

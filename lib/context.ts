@@ -33,6 +33,22 @@ export async function getContext(req: NextRequest): Promise<RequestContext | nul
       // OpsAdmin.status / sessionVersion / lockedUntil；这里只为 /api/auth/status
       // 等通用通道返回一个合法 ctx，避免 PWA 模式被踢到 /relogin。
       if (session.tenantId === '_ops' && session.opsRole) {
+        // 平台代运营模式：ops 管理员携带有效 delegate-session 时，
+        // 以目标商户 owner 身份访问 owner API 路由。
+        // 安全保障：delegate-session 由 HMAC 签名，无 opsRole 字段（与 ops session 严格区分）；
+        // checkOpsAuth 仍从 auth-session 读取，不受此分支影响。
+        const delegateToken = req.cookies.get('delegate-session')?.value
+        if (delegateToken) {
+          const ds = verifySession(delegateToken)
+          if (ds && ds.storeId && ds.tenantId && !ds.opsRole) {
+            return {
+              tenantId: ds.tenantId,
+              storeId:  ds.storeId,
+              userId:   ds.userId,
+              role:     'OWNER' as const,
+            }
+          }
+        }
         return {
           tenantId: session.tenantId,
           userId:   session.userId,

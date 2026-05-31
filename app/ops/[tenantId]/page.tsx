@@ -211,18 +211,26 @@ function StoreRow({ st, onChanged }: { st: Store; onChanged: () => void }) {
 
   return (
     <div style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${featured ? 'rgba(7,193,96,0.35)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, overflow: 'hidden' }}>
-      {/* 顶行：店名 + 顾客资产入口 */}
+      {/* 顶行：店名 + 操作入口 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px' }}>
         <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>
           {st.name}
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginLeft: 8, fontFamily: 'monospace', fontWeight: 400 }}>{st.code}</span>
         </span>
-        <Link
-          href={`/ops/stores/${encodeURIComponent(st.id)}/customers`}
-          style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', textDecoration: 'none', flexShrink: 0 }}
-        >
-          顾客资产 ›
-        </Link>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
+          <Link
+            href={`/ops/stores/${encodeURIComponent(st.id)}/delegate`}
+            style={{ fontSize: 12, color: '#fbbf24', textDecoration: 'none', fontWeight: 600 }}
+          >
+            代运营 ›
+          </Link>
+          <Link
+            href={`/ops/stores/${encodeURIComponent(st.id)}/customers`}
+            style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}
+          >
+            顾客资产 ›
+          </Link>
+        </div>
       </div>
 
       {/* 底行：E-Life 推荐控件 */}
