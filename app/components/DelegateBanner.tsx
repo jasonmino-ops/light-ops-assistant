@@ -51,18 +51,20 @@ export default function DelegateBanner() {
       {/* 标识行 */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '5px 14px', borderBottom: '1px solid rgba(255,255,255,0.1)',
+        padding: '6px 12px', borderBottom: '1px solid rgba(255,255,255,0.12)',
       }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#fef3c7', letterSpacing: '0.01em' }}>
-          ⚠️ 平台代运营模式｜当前商户：<strong style={{ color: '#fcd34d' }}>{info.storeName}</strong>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#fef3c7', letterSpacing: '0.01em', flex: 1, minWidth: 0 }}>
+          ⚠️ 平台代运营模式｜<strong style={{ color: '#fcd34d' }}>{info.storeName}</strong>
         </span>
         <a
           href={`/ops/stores/${encodeURIComponent(info.storeId)}/delegate/clear`}
           style={{
-            fontSize: 11, fontWeight: 600, color: '#fbbf24',
-            textDecoration: 'none', padding: '2px 10px',
-            border: '1px solid rgba(251,191,36,0.45)', borderRadius: 6,
-            flexShrink: 0, marginLeft: 12,
+            fontSize: 12, fontWeight: 700, color: '#78350f',
+            textDecoration: 'none', padding: '4px 14px',
+            background: '#fbbf24', borderRadius: 6,
+            flexShrink: 0, marginLeft: 10,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+            whiteSpace: 'nowrap',
           }}
         >
           退出代运营

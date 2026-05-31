@@ -8,7 +8,7 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Store = { id: string; name: string; code: string; eLifeFeatured: boolean; eLifeFeaturedSort: number }
+type Store = { id: string; name: string; code: string; eLifeFeatured: boolean; eLifeFeaturedSort: number; businessType: string }
 type Member = { id: string; username: string; displayName: string; role: string; bound: boolean; telegramId: string | null; staffNumber: number | null; storeName: string }
 type TodayStats = { saleCount: number; saleAmount: number; refundCount: number; lastActiveAt: string | null }
 
@@ -164,7 +164,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-// ─── StoreRow — 门店行（顾客资产 + E-Life 推荐） ────────────────────────────────
+// ─── StoreRow — 门店卡片（代运营 + 顾客资产 + E-Life 推荐） ─────────────────────
+
+const BIZ_LABELS: Record<string, string> = {
+  FOOD: '餐饮', RETAIL: '零售', SERVICE: '服务', GENERAL: '综合',
+}
 
 function StoreRow({ st, onChanged }: { st: Store; onChanged: () => void }) {
   const [featured, setFeatured] = useState(st.eLifeFeatured)
@@ -172,110 +176,99 @@ function StoreRow({ st, onChanged }: { st: Store; onChanged: () => void }) {
   const [saving, setSaving]     = useState(false)
   const [err, setErr]           = useState('')
 
-  // 父组件重取数据后同步最新值
   useEffect(() => {
     setFeatured(st.eLifeFeatured)
     setSort(String(st.eLifeFeaturedSort))
   }, [st.eLifeFeatured, st.eLifeFeaturedSort])
 
   async function patch(data: object) {
-    setSaving(true)
-    setErr('')
+    setSaving(true); setErr('')
     try {
       const r = await apiFetch(`/api/ops/stores/${st.id}/e-life-featured`, {
         method: 'PATCH', body: JSON.stringify(data),
       }, OWNER_CTX)
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}))
-        setErr(body.error ?? '保存失败')
-      } else {
-        onChanged()
-      }
-    } catch {
-      setErr('网络错误')
-    } finally {
-      setSaving(false)
-    }
+      if (!r.ok) { const b = await r.json().catch(() => ({})); setErr(b.error ?? '保存失败') }
+      else { onChanged() }
+    } catch { setErr('网络错误') }
+    finally { setSaving(false) }
   }
 
-  function toggleFeatured() {
-    const newVal = !featured
-    setFeatured(newVal)
-    patch({ eLifeFeatured: newVal })
-  }
-
-  function saveSort() {
-    const val = parseInt(sort, 10)
-    patch({ eLifeFeaturedSort: isNaN(val) ? 0 : val })
-  }
+  function toggleFeatured() { const v = !featured; setFeatured(v); patch({ eLifeFeatured: v }) }
+  function saveSort() { const v = parseInt(sort, 10); patch({ eLifeFeaturedSort: isNaN(v) ? 0 : v }) }
 
   return (
-    <div style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${featured ? 'rgba(7,193,96,0.35)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, overflow: 'hidden' }}>
-      {/* 顶行：店名 + 操作入口 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px' }}>
-        <span style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>
-          {st.name}
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginLeft: 8, fontFamily: 'monospace', fontWeight: 400 }}>{st.code}</span>
-        </span>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
+    <div style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${featured ? 'rgba(7,193,96,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 10, overflow: 'hidden', marginBottom: 0 }}>
+
+      {/* ── 信息区 ── */}
+      <div style={{ padding: '12px 12px 10px' }}>
+        {/* 店名 + code + 类型 + 推荐 badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ color: '#fff', fontSize: 14, fontWeight: 700, marginRight: 2 }}>{st.name}</span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontFamily: 'monospace', background: 'rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: 4, letterSpacing: '0.03em' }}>
+            {st.code}
+          </span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: 4 }}>
+            {BIZ_LABELS[st.businessType] ?? st.businessType}
+          </span>
+          {/* E-Life 推荐 badge */}
+          <span style={{
+            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+            background: featured ? 'rgba(7,193,96,0.18)' : 'rgba(255,255,255,0.06)',
+            color:      featured ? '#4ade80'             : 'rgba(255,255,255,0.3)',
+            border:     featured ? '1px solid rgba(7,193,96,0.35)' : '1px solid rgba(255,255,255,0.1)',
+          }}>
+            {featured ? '✓ E-Life 推荐' : 'E-Life 未推荐'}
+          </span>
+        </div>
+
+        {/* 操作按钮 — 换行排列，代运营优先 */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <Link
             href={`/ops/stores/${encodeURIComponent(st.id)}/delegate`}
-            style={{ fontSize: 12, color: '#fbbf24', textDecoration: 'none', fontWeight: 600 }}
+            style={{
+              display: 'inline-block', padding: '7px 16px',
+              background: '#d97706', color: '#fff',
+              fontSize: 12, fontWeight: 700, borderRadius: 7,
+              textDecoration: 'none', flexShrink: 0,
+              boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+            }}
           >
-            代运营 ›
+            🛠 进入代运营
           </Link>
           <Link
             href={`/ops/stores/${encodeURIComponent(st.id)}/customers`}
-            style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', textDecoration: 'none' }}
+            style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', textDecoration: 'none', flexShrink: 0, padding: '7px 4px' }}
           >
             顾客资产 ›
           </Link>
         </div>
       </div>
 
-      {/* 底行：E-Life 推荐控件 */}
+      {/* ── E-Life 推荐控件 ── */}
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', flexShrink: 0 }}>
-          E-Life推荐：
-          <span style={{ color: featured ? '#07c160' : 'rgba(255,255,255,0.35)', fontWeight: featured ? 600 : 400 }}>
-            {featured ? '已推荐' : '未推荐'}
-          </span>
-        </span>
-
         {featured ? (
           <>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>排序：</span>
             <input
-              type="number"
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
+              type="number" value={sort} onChange={(e) => setSort(e.target.value)}
               style={{ width: 52, height: 26, textAlign: 'center', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: '#fff', fontSize: 11, outline: 'none' }}
             />
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', flexShrink: 0 }}>越小越前</span>
-            <button
-              disabled={saving}
-              onClick={saveSort}
-              style={{ height: 26, padding: '0 10px', fontSize: 11, cursor: saving ? 'not-allowed' : 'pointer', borderRadius: 6, background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.15)', opacity: saving ? 0.5 : 1, flexShrink: 0 }}
-            >
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>越小越前</span>
+            <button disabled={saving} onClick={saveSort}
+              style={{ height: 26, padding: '0 10px', fontSize: 11, cursor: 'pointer', borderRadius: 6, background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.15)', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
               {saving ? '…' : '保存排序'}
             </button>
-            <button
-              disabled={saving}
-              onClick={toggleFeatured}
-              style={{ height: 26, padding: '0 10px', fontSize: 11, cursor: saving ? 'not-allowed' : 'pointer', borderRadius: 6, background: 'rgba(220,50,50,0.18)', color: 'rgba(255,110,110,0.9)', border: '1px solid rgba(220,60,60,0.25)', opacity: saving ? 0.5 : 1, flexShrink: 0 }}
-            >
+            <button disabled={saving} onClick={toggleFeatured}
+              style={{ height: 26, padding: '0 10px', fontSize: 11, cursor: 'pointer', borderRadius: 6, background: 'rgba(220,50,50,0.18)', color: 'rgba(255,110,110,0.9)', border: '1px solid rgba(220,60,60,0.25)', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
               取消推荐
             </button>
           </>
         ) : (
-          <button
-            disabled={saving}
-            onClick={toggleFeatured}
-            style={{ height: 26, padding: '0 12px', fontSize: 11, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', borderRadius: 6, background: '#07c160', color: '#fff', border: 'none', opacity: saving ? 0.5 : 1, flexShrink: 0 }}
-          >
-            {saving ? '…' : '设为推荐'}
+          <button disabled={saving} onClick={toggleFeatured}
+            style={{ height: 26, padding: '0 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', borderRadius: 6, background: '#07c160', color: '#fff', border: 'none', opacity: saving ? 0.5 : 1, flexShrink: 0 }}>
+            {saving ? '…' : '设为 E-Life 推荐'}
           </button>
         )}
-
         {err && <span style={{ fontSize: 11, color: '#ff7875' }}>{err}</span>}
       </div>
     </div>

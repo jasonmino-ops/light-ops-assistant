@@ -26,7 +26,7 @@ export async function GET(
     prisma.tenant.findUnique({ where: { id: tenantId } }),
     prisma.store.findMany({
       where: { tenantId, status: 'ACTIVE' },
-      select: { id: true, name: true, code: true, eLifeFeatured: true, eLifeFeaturedSort: true },
+      select: { id: true, name: true, code: true, eLifeFeatured: true, eLifeFeaturedSort: true, businessType: true },
       orderBy: { createdAt: 'asc' },
     }),
     prisma.user.findMany({
