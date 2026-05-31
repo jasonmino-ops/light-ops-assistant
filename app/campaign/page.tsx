@@ -34,6 +34,36 @@ const ZH_TPL = (url: string) =>
 const EN_TPL = (url: string) =>
   `Menu and order link are in bio. Comment "menu" and we'll send you the shop link.\n🔗 ${url}`
 
+// ── Material templates (trilingual) ──────────────────────────────────────────
+
+type MLang = 'zh' | 'en' | 'km'
+const ML_LABELS: Record<MLang, string> = { zh: '中文', en: 'English', km: 'ខ្មែរ' }
+const ML_LANGS: MLang[] = ['zh', 'en', 'km']
+
+function matBio(lang: MLang): string {
+  if (lang === 'en') return `👇 Order link is in my bio\nExclusive deals for TikTok fans`
+  if (lang === 'km') return `👇 ចុចតំណភ្ជាប់ក្នុងជីវប្រវត្តិ\nការផ្តល់ជូនពិសេសសម្រាប់អ្នកតាម TikTok`
+  return `👇 点主页链接进店下单\nTikTok 粉丝专享价`
+}
+
+function matComment(url: string, lang: MLang): string {
+  if (lang === 'en') return `Want to order? 👇\nTap the link in bio — exclusive TikTok deal!\n🔗 ${url}`
+  if (lang === 'km') return `ចង់ទិញ? 👇\nចុចតំណភ្ជាប់ — ការផ្តល់ជូន TikTok ពិសេស!\n🔗 ${url}`
+  return `想买的宝子看这里 👇\n主页有下单链接，TikTok 粉丝专属价！\n🔗 ${url}`
+}
+
+function matDM(url: string, lang: MLang): string {
+  if (lang === 'en') return `Hi! Thanks for your interest ❤️\nClick here to order: ${url}\nFeel free to ask if you have any questions 😊`
+  if (lang === 'km') return `សួស្ដី! អរគុណសម្រាប់ការចាប់អារម្មណ៍ ❤️\nចុចទីនេះដើម្បីបញ្ជាទិញ: ${url} 😊`
+  return `你好！感谢关注 ❤️\n下单直接点这个链接：${url}\n有问题随时找我 😊`
+}
+
+function matScript(url: string, lang: MLang): string {
+  if (lang === 'en') return `【Script Template】\n\nHook (0-3s):\nShow product / scene to grab attention\n\nIntro (3-15s):\n"Today I'm recommending… (describe product)"\n"Great quality — lots of repeat buyers"\n\nCTA (final 3s):\n"Order via link in bio — exclusive TikTok deal!"\n\nPinned comment:\n${url}`
+  if (lang === 'km') return `【គំរូស្គ្រីបវីដេអូ】\n\nការបើក (0-3s):\nបង្ហាញផលិតផល ទាក់ទាញការចាប់អារម្មណ៍\n\nការណែនាំ (3-15s):\n"ថ្ងៃនេះខ្ញុំចង់ណែនាំ… (ណែនាំផលិតផល)"\n"គុណភាពល្អ អ្នកច្រើននាក់ទិញម្តងទៀត"\n\nCTA (3s ចុងក្រោយ):\n"ចុចតំណភ្ជាប់ / Link: ${url}"\n\nMuted comment:\n${url}`
+  return `【视频脚本模板】\n\n开场（0-3秒）：\n展示产品或使用场景，吸引眼球\n\n介绍（3-15秒）：\n"今天给大家推荐一款…（产品介绍）"\n"口感 / 效果很好，很多人回购"\n\n行动引导（最后3秒）：\n"主页链接直接下单，TikTok 粉丝专属价！"\n\n置顶评论：\n${url}`
+}
+
 // ── Commission helpers ────────────────────────────────────────────────────────
 
 function commLabel(type: string | null, value: number | null): string {
@@ -76,6 +106,10 @@ export default function CampaignPage() {
 
   // dashboard token
   const [tokenBusyId, setTokenBusyId] = useState<string | null>(null)
+
+  // material drawer
+  const [materialLink, setMaterialLink] = useState<CampaignLink | null>(null)
+  const [materialLang, setMaterialLang] = useState<MLang>('zh')
 
   // copy
   const [copied, setCopied] = useState<string | null>(null)
@@ -248,6 +282,16 @@ export default function CampaignPage() {
       display: 'inline-block', padding: '2px 7px', borderRadius: 10, fontSize: 11, fontWeight: 600,
       background: settled ? '#f0fdf4' : '#fef9c3',
       color:      settled ? '#15803d' : '#854d0e',
+    }
+  }
+
+  function matLangBtn(active: boolean): CSSProperties {
+    return {
+      padding: '3px 8px', fontSize: 11, fontWeight: 600, borderRadius: 12,
+      border: '1px solid', cursor: 'pointer',
+      background:  active ? '#07c160' : '#f3f4f6',
+      color:       active ? '#fff'    : '#6b7280',
+      borderColor: active ? '#07c160' : '#e5e7eb',
     }
   }
 
@@ -472,6 +516,71 @@ export default function CampaignPage() {
         </div>
       )}
 
+      {/* ── 推广素材弹层 ────────────────────────────────────────────────── */}
+      {materialLink && (() => {
+        const matUrl = `${APP_URL}/v/${materialLink.code}`
+        const sections: { title: string; key: string; tpl: string }[] = [
+          { title: 'TikTok 主页 Bio 文案',  key: 'bio',     tpl: matBio(materialLang) },
+          { title: '视频置顶评论文案',       key: 'comment', tpl: matComment(matUrl, materialLang) },
+          { title: '私信人工回复模板',       key: 'dm',      tpl: matDM(matUrl, materialLang) },
+          { title: '博主拍摄脚本模板',       key: 'script',  tpl: matScript(matUrl, materialLang) },
+        ]
+        const qrHint =
+          materialLang === 'en' ? 'Screenshot QR code and share with followers' :
+          materialLang === 'km' ? 'ថតរូបខូដ QR ហើយចែករំលែកដល់អ្នកតាម' :
+          '截图二维码，粉丝扫码直接进店下单'
+        return (
+          <div
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 999, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setMaterialLink(null) }}
+          >
+            <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', maxHeight: '88dvh', overflowY: 'auto' }}>
+              {/* 标题栏 */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 10px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>📱 推广素材 · /v/{materialLink.code}</div>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  {ML_LANGS.map((l) => (
+                    <button key={l} style={matLangBtn(l === materialLang)} onClick={() => setMaterialLang(l)}>{ML_LABELS[l]}</button>
+                  ))}
+                  <button style={{ marginLeft: 8, background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9ca3af', lineHeight: 1, padding: 0 }} onClick={() => setMaterialLink(null)}>✕</button>
+                </div>
+              </div>
+
+              <div style={{ padding: '16px' }}>
+                {/* 推广短链 */}
+                <div style={{ ...s.row, background: '#f3f4f6', borderRadius: 8, padding: '7px 10px', marginBottom: 12 }}>
+                  <span style={{ flex: 1, fontSize: 12, color: '#374151', fontFamily: 'ui-monospace,monospace', overflow: 'hidden', whiteSpace: 'nowrap' as const, display: 'block' }}>{matUrl}</span>
+                  <button style={s.btnCopy} onClick={() => copy(matUrl, 'm:url')}>{copied === 'm:url' ? '已复制 ✓' : '复制'}</button>
+                </div>
+
+                {/* 二维码 */}
+                <div style={{ textAlign: 'center' as const, marginBottom: 16 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(matUrl)}`}
+                    alt="QR Code"
+                    width={160} height={160}
+                    style={{ borderRadius: 8, border: '1px solid #e5e7eb' }}
+                  />
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>{qrHint}</div>
+                </div>
+
+                {/* 四段文案 */}
+                {sections.map(({ title, key, tpl }) => (
+                  <div key={key} style={{ marginBottom: 16 }}>
+                    <div style={{ ...s.row, justifyContent: 'space-between', marginBottom: 6 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{title}</div>
+                      <button style={s.btnCopy} onClick={() => copy(tpl, `m:${key}`)}>{copied === `m:${key}` ? '已复制 ✓' : '复制'}</button>
+                    </div>
+                    <div style={s.tplBox}>{tpl}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── 4. 历史短链 ─────────────────────────────────────────────────── */}
       <div style={{ ...s.card, marginTop: 8 }}>
         <div style={{ ...s.sectionTitle, marginBottom: 12 }}>📋 历史短链</div>
@@ -489,12 +598,16 @@ export default function CampaignPage() {
                 paddingBottom: i < links.length - 1 ? 14 : 0,
                 marginBottom:  i < links.length - 1 ? 14 : 0,
               }}>
-                {/* 码 + 复制 + 结算状态 */}
+                {/* 码 + 复制 + 素材 + 结算状态 */}
                 <div style={{ ...s.row, justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 4 }}>
                   <span style={{ fontSize: 15, fontWeight: 700, color: '#07c160', letterSpacing: '0.04em' }}>/v/{lk.code}</span>
                   <div style={s.row}>
                     <button style={s.btnCopy} onClick={() => copy(fullUrl, lk.code)}>
                       {copied === lk.code ? '已复制 ✓' : '复制'}
+                    </button>
+                    <button style={{ ...s.btnCopy, background: '#eff6ff', borderColor: '#bfdbfe', color: '#1d4ed8' }}
+                      onClick={() => { setMaterialLink(lk); setMaterialLang('zh') }}>
+                      📱 素材
                     </button>
                     <span style={badge(isSettled)}>{isSettled ? '已结算' : '未结算'}</span>
                   </div>

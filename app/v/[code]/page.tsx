@@ -18,39 +18,47 @@ const I18N: Record<Lang, {
   notFound:     string
   notFoundHint: string
   loading:      string
+  tiktokSource: string
+  dealBadge:    string
 }> = {
   zh: {
     orderNow:     '立即下单',
     viewMenu:     '查看菜单',
     telegram:     '💬 打开 Telegram 客服',
-    recommendedBy:'来自 @{name} 的视频推荐',
+    recommendedBy:'@{name} 为你推荐',
     videoTitle:   '「{title}」',
     poweredBy:    '由店小二 · E-Life 驱动',
     notFound:     '链接不存在或已失效',
     notFoundHint: '请联系商家获取最新下单入口',
     loading:      '加载中…',
+    tiktokSource: '🎵 来自 TikTok 推荐',
+    dealBadge:    '✨ TikTok 粉丝专属通道',
   },
   en: {
     orderNow:     'Order Now',
     viewMenu:     'View Menu',
     telegram:     '💬 Telegram Support',
-    recommendedBy:'Recommended by @{name}',
+    recommendedBy:'@{name} recommends',
     videoTitle:   '"{title}"',
     poweredBy:    'Powered by 店小二 · E-Life',
     notFound:     'Link not found or expired',
     notFoundHint: 'Please contact the shop for the latest link',
     loading:      'Loading…',
+    tiktokSource: '🎵 Via TikTok',
+    dealBadge:    '✨ Exclusive TikTok Fan Offer',
   },
   km: {
     orderNow:     'ចូលបញ្ជាទិញ',
     viewMenu:     'មើលម៉ឺនុយ',
     telegram:     '💬 Telegram',
-    recommendedBy:'ណែនាំដោយ @{name}',
+    recommendedBy:'@{name} ណែនាំ',
     videoTitle:   '「{title}」',
     poweredBy:    'ដំណើរការដោយ 店小二 · E-Life',
     notFound:     'តំណភ្ជាប់មិនមាន ឬ​ផុតកំណត់',
     notFoundHint: 'សូមទំនាក់ទំនងហាងដើម្បីទទួលបានតំណភ្ជាប់ថ្មី',
     loading:      'កំពុងផ្ទុក…',
+    tiktokSource: '🎵 ណែនាំតាម TikTok',
+    dealBadge:    '✨ ការផ្តល់ជូនពិសេសសម្រាប់ TikTok',
   },
 }
 
@@ -188,6 +196,21 @@ function LandingInner() {
     body: { padding: '20px 20px 24px' },
     storeName: { fontSize: 22, fontWeight: 700, color: '#111827', margin: '0 0 8px' },
     subline: { fontSize: 13, color: '#6b7280', margin: '0 0 4px' },
+    tiktokBadge: {
+      display: 'inline-flex', alignItems: 'center',
+      background: '#000', color: '#fff', fontSize: 12, fontWeight: 600,
+      borderRadius: 20, padding: '4px 12px', marginBottom: 12, letterSpacing: '0.01em',
+    },
+    creatorLine: {
+      display: 'flex', alignItems: 'center', gap: 6,
+      fontSize: 14, fontWeight: 600, color: '#111827',
+      background: '#f3f4f6', borderRadius: 8, padding: '6px 10px',
+      margin: '0 0 8px',
+    },
+    dealHint: {
+      textAlign: 'center' as const, fontSize: 12, color: '#07c160', fontWeight: 600,
+      marginTop: -4, marginBottom: 10,
+    },
     announcement: {
       fontSize: 13, color: '#374151', background: '#f3f4f6',
       borderRadius: 8, padding: '8px 12px', margin: '12px 0 0',
@@ -278,12 +301,16 @@ function LandingInner() {
         )}
 
         <div style={s.body}>
+          {/* TikTok source badge — always shown on campaign landing pages */}
+          <div style={s.tiktokBadge}>{t('tiktokSource')}</div>
+
           <h1 style={s.storeName}>{data.storeName}</h1>
 
           {data.creatorName && (
-            <p style={s.subline}>
-              {t('recommendedBy').replace('{name}', data.creatorName)}
-            </p>
+            <div style={s.creatorLine}>
+              <span>🎵</span>
+              <span>{t('recommendedBy').replace('{name}', data.creatorName)}</span>
+            </div>
           )}
           {data.videoTitle && (
             <p style={s.subline}>
@@ -300,6 +327,9 @@ function LandingInner() {
           <button style={s.btnPrimary} onClick={() => handleIntent('order')}>
             {t('orderNow')}
           </button>
+
+          {/* Deal hint below primary CTA */}
+          <div style={s.dealHint}>{t('dealBadge')}</div>
 
           {/* Secondary CTA */}
           <button style={s.btnSecondary} onClick={() => handleIntent('menu')}>
