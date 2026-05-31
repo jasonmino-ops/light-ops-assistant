@@ -424,7 +424,7 @@ function pDesc(p: ApiProduct, lang: Lang): string | null {
 
 // ─── 购物车 ──────────────────────────────────────────────────────────────────
 
-type CartItem = { id: string; quantity: number }
+type CartItem = { id: string; quantity: number; sugar?: string }
 type CouponBrief = {
   id: string
   name: string
@@ -484,6 +484,8 @@ export default function MenuPage() {
     discountAmount: number
     payableAmount:  number
   } | null>(null)
+  const [sugarModal, setSugarModal] = useState<string | null>(null)   // productId pending sugar choice
+  const [pendingSugar, setPendingSugar] = useState('50')
 
   const ui         = T[lang]
   const bizType: BizType = (storeData?.businessType ?? 'GENERAL') as BizType
@@ -535,11 +537,17 @@ export default function MenuPage() {
   const confirmItems = cart.flatMap((c) => {
     const p = apiProducts.find((ap) => ap.id === c.id)
     if (!p) return []
-    return [{ ...p, quantity: c.quantity, lineAmount: p.price * c.quantity }]
+    return [{ ...p, quantity: c.quantity, lineAmount: p.price * c.quantity, sugar: c.sugar }]
   })
 
   // ── 分类分组计算 ──────────────────────────────────────────────────────────
-  const l1Cats = categories.filter((c) => !c.parentId)
+  const l1Cats = categories.filter((c) => !c.parentId).sort((a, b) => {
+    const isIcedA = /冰咖啡|iced\s*coffee/i.test(a.name)
+    const isIcedB = /冰咖啡|iced\s*coffee/i.test(b.name)
+    if (isIcedA && !isIcedB) return -1
+    if (!isIcedA && isIcedB) return 1
+    return 0
+  })
   const hasL1Cats = l1Cats.length > 0
   const l2ByParent = new Map<string, ApiCategory[]>()
   categories.filter((c) => c.parentId).forEach((c) => {
@@ -743,18 +751,54 @@ export default function MenuPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  function addToCart(id: string) {
+  function needsSugar(productId: string): boolean {
+    const p = apiProducts.find((ap) => ap.id === productId)
+    if (!p?.categoryId) return false
+    const cat = categories.find((c) => c.id === p.categoryId)
+    if (!cat) return false
+    const parentName = cat.parentId ? (categories.find((c) => c.id === cat.parentId)?.name ?? '') : ''
+    return /coffee|咖啡/i.test(cat.name) || /coffee|咖啡/i.test(parentName)
+  }
+
+  function sugarLabel(sugar: string): string {
+    if (sugar === 'no_sugar') return lang === 'en' ? 'No sugar' : lang === 'km' ? 'គ្មានស្ករ' : '无糖'
+    if (sugar === '25')       return lang === 'en' ? '25% sugar' : lang === 'km' ? 'ស្ករ 25%' : '微糖 25%'
+    if (sugar === '50')       return lang === 'en' ? '50% sugar' : lang === 'km' ? 'ស្ករ 50%' : '半糖 50%'
+    if (sugar === '75')       return lang === 'en' ? '75% sugar' : lang === 'km' ? 'ស្ករ 75%' : '少糖 75%'
+    if (sugar === '100')      return lang === 'en' ? 'Full sugar' : lang === 'km' ? 'ស្ករ 100%' : '正常糖 100%'
+    return sugar
+  }
+
+  function addToCart(id: string, sugar?: string) {
     setCart((prev) => {
-      const found = prev.find((c) => c.id === id)
-      if (found) return prev.map((c) => c.id === id ? { ...c, quantity: c.quantity + 1 } : c)
-      return [...prev, { id, quantity: 1 }]
+      const found = prev.find((c) => c.id === id && c.sugar === sugar)
+      if (found) return prev.map((c) => c.id === id && c.sugar === sugar ? { ...c, quantity: c.quantity + 1 } : c)
+      return [...prev, { id, quantity: 1, sugar }]
     })
   }
 
-  function removeFromCart(id: string) {
+  function removeFromCart(id: string, sugar?: string) {
     setCart((prev) =>
-      prev.map((c) => c.id === id ? { ...c, quantity: c.quantity - 1 } : c).filter((c) => c.quantity > 0),
+      prev.map((c) => c.id === id && c.sugar === sugar ? { ...c, quantity: c.quantity - 1 } : c).filter((c) => c.quantity > 0),
     )
+  }
+
+  function removeFromCartAny(id: string) {
+    setCart((prev) => {
+      const idx = prev.findIndex((c) => c.id === id)
+      if (idx === -1) return prev
+      const updated = prev.map((c, i) => i === idx ? { ...c, quantity: c.quantity - 1 } : c)
+      return updated.filter((c) => c.quantity > 0)
+    })
+  }
+
+  function handleAddClick(productId: string) {
+    if (needsSugar(productId)) {
+      setPendingSugar('50')
+      setSugarModal(productId)
+    } else {
+      addToCart(productId)
+    }
   }
 
   async function handleCheckout() {
@@ -788,7 +832,7 @@ export default function MenuPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storeCode: code,
-          items: cart.map((c) => ({ productId: c.id, quantity: c.quantity })),
+          items: cart.map((c) => ({ productId: c.id, quantity: c.quantity, ...(c.sugar ? { sugar: c.sugar } : {}) })),
           ...(customerTelegramId ? { customerTelegramId } : {}),
           ...(selectedCouponId ? { couponId: selectedCouponId } : {}),
           pickupMethod,
@@ -1038,7 +1082,7 @@ export default function MenuPage() {
                 <div key={gid}>
                   <div style={s.catHeading}>{title}</div>
                   {items.map((product, idx) => {
-                    const qty   = cart.find((c) => c.id === product.id)?.quantity ?? 0
+                    const qty   = cart.filter((c) => c.id === product.id).reduce((s, c) => s + c.quantity, 0)
                     const color = CARD_COLORS[idx % CARD_COLORS.length]
                     const emoji = CARD_EMOJIS[idx % CARD_EMOJIS.length]
                     return (
@@ -1072,14 +1116,14 @@ export default function MenuPage() {
                               <span style={s.priceSign}>$</span>{product.price.toFixed(2)}
                             </span>
                             {qty === 0 ? (
-                              <button style={s.addBtn} onClick={() => addToCart(product.id)}>
+                              <button style={s.addBtn} onClick={() => handleAddClick(product.id)}>
                                 <span style={s.plus}>+</span>
                               </button>
                             ) : (
                               <div style={s.qtyRow}>
-                                <button style={s.qtyMinus} onClick={() => removeFromCart(product.id)}>−</button>
+                                <button style={s.qtyMinus} onClick={() => removeFromCartAny(product.id)}>−</button>
                                 <span style={s.qtyNum}>{qty}</span>
-                                <button style={s.qtyPlus} onClick={() => addToCart(product.id)}>+</button>
+                                <button style={s.qtyPlus} onClick={() => handleAddClick(product.id)}>+</button>
                               </div>
                             )}
                           </div>
@@ -1093,6 +1137,54 @@ export default function MenuPage() {
           </div>
         </div>
       </main>
+
+      {/* ── 糖度选择弹窗 ── */}
+      {sugarModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 900, display: 'flex', alignItems: 'flex-end' }}
+          onClick={() => setSugarModal(null)}
+        >
+          <div
+            style={{ width: '100%', background: '#fff', borderRadius: '16px 16px 0 0', padding: '20px 20px 32px', boxSizing: 'border-box' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16, textAlign: 'center', color: '#1a1a1a' }}>
+              {lang === 'en' ? 'Sugar level' : lang === 'km' ? 'កម្រិតស្ករ' : '糖度选择'}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+              {(['no_sugar', '25', '50', '75', '100'] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setPendingSugar(s)}
+                  style={{
+                    padding: '10px 0',
+                    borderRadius: 10,
+                    border: pendingSugar === s ? '2px solid var(--blue, #2563eb)' : '2px solid #e5e7eb',
+                    background: pendingSugar === s ? '#eff6ff' : '#fafafa',
+                    color: pendingSugar === s ? 'var(--blue, #2563eb)' : '#374151',
+                    fontWeight: pendingSugar === s ? 700 : 400,
+                    fontSize: 14,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {sugarLabel(s)}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => { addToCart(sugarModal, pendingSugar); setSugarModal(null) }}
+              style={{
+                width: '100%', padding: '13px 0', borderRadius: 12, border: 'none',
+                background: 'var(--blue, #2563eb)', color: '#fff', fontWeight: 700, fontSize: 16, cursor: 'pointer',
+              }}
+            >
+              {lang === 'en' ? 'Add to cart' : lang === 'km' ? 'បន្ថែមទៅរទេះ' : '加入购物车'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── 商品图放大查看 ── */}
       {lightboxUrl && (
@@ -1160,11 +1252,12 @@ export default function MenuPage() {
 
               {/* 商品清单 */}
               <div style={s.confirmItemList}>
-                {confirmItems.map((item) => (
-                  <div key={item.id} style={s.confirmItem}>
+                {confirmItems.map((item, idx) => (
+                  <div key={item.id + (item.sugar ?? '') + idx} style={s.confirmItem}>
                     <div style={s.confirmItemName}>
                       {pName(item, lang)}
                       {item.spec && <span style={s.confirmItemSpec}> · {item.spec}</span>}
+                      {item.sugar && <span style={s.confirmItemSpec}> · {sugarLabel(item.sugar)}</span>}
                     </div>
                     <div style={s.confirmItemRight}>
                       <span style={s.confirmItemQty}>×{item.quantity}</span>
@@ -1414,18 +1507,20 @@ export default function MenuPage() {
               {cart.map((c) => {
                 const p = apiProducts.find((ap) => ap.id === c.id)
                 if (!p) return null
+                const itemKey = c.id + (c.sugar ?? '')
+                const specParts = [p.spec, c.sugar ? sugarLabel(c.sugar) : null].filter(Boolean)
                 return (
-                  <div key={c.id} style={s.cartItemRow}>
+                  <div key={itemKey} style={s.cartItemRow}>
                     <div style={s.cartItemInfo}>
                       <div style={s.cartItemName}>{pName(p, lang)}</div>
-                      {p.spec && <div style={s.cartItemSpec}>{p.spec}</div>}
+                      {specParts.length > 0 && <div style={s.cartItemSpec}>{specParts.join(' · ')}</div>}
                     </div>
                     <div style={s.cartItemRight}>
                       <span style={s.cartItemPrice}>${(p.price * c.quantity).toFixed(2)}</span>
                       <div style={s.cartItemQtyRow}>
-                        <button style={s.qtyMinus} onClick={() => removeFromCart(c.id)}>−</button>
+                        <button style={s.qtyMinus} onClick={() => removeFromCart(c.id, c.sugar)}>−</button>
                         <span style={s.qtyNum}>{c.quantity}</span>
-                        <button style={s.qtyPlus} onClick={() => addToCart(c.id)}>+</button>
+                        <button style={s.qtyPlus} onClick={() => needsSugar(c.id) ? (setPendingSugar(c.sugar ?? '50'), setSugarModal(c.id)) : addToCart(c.id, c.sugar)}>+</button>
                       </div>
                     </div>
                   </div>

@@ -12,7 +12,7 @@ import { sendAndLogMessage } from '@/lib/telegram'
  * 订单创建后异步通知门店 OWNER 的 Telegram（fire-and-forget，不阻塞响应）。
  */
 
-type OrderItem = { productId: string; quantity: number }
+type OrderItem = { productId: string; quantity: number; sugar?: string }
 
 // 顾客 H5 三语文案（按下单时 lang 返回；商户通知保持中文）
 type Lang = 'zh' | 'en' | 'km'
@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
     const price = p.sellPrice.toNumber()
     const lineAmount = price * item.quantity
     subtotal += lineAmount
-    return { productId: item.productId, name: p.name, spec: p.spec ?? null, price, quantity: item.quantity, lineAmount }
+    return { productId: item.productId, name: p.name, spec: p.spec ?? null, price, quantity: item.quantity, lineAmount, ...(item.sugar ? { sugar: item.sugar } : {}) }
   })
   subtotal = +subtotal.toFixed(2)
   const trimmedTgId = customerTelegramId?.trim() || null
