@@ -149,17 +149,19 @@ export default function CampaignPage() {
 
   // ── Creator summary (frontend aggregation) ──────────────────────────────────
 
+  // 博主汇总：正式博主按 creatorId 聚合，临时博主（无 creatorId）按 creatorName 聚合，两组严格分离
+  type SummaryEntry = {
+    creatorId: string | null; name: string; tiktokHandle: string | null; isOfficial: boolean
+    linkCount: number; views: number; clicks: number
+    orders: number; sales: number; commission: number; settled: number
+  }
   const creatorSummary = (() => {
-    const map = new Map<string, {
-      creatorId: string | null; name: string; tiktokHandle: string | null
-      linkCount: number; views: number; clicks: number
-      orders: number; sales: number; commission: number; settled: number
-    }>()
-    for (const lk of links) {
-      const key = lk.creatorId ?? lk.creatorName ?? '__anon__'
-      if (key === '__anon__') continue
-      const existing = map.get(key)
+    const official = new Map<string, SummaryEntry>()  // key: creatorId
+    const temp     = new Map<string, SummaryEntry>()  // key: creatorName
+
+    function accumulate(map: Map<string, SummaryEntry>, key: string, lk: CampaignLink, isOfficial: boolean) {
       const isSettled = lk.settlementStatus === 'settled'
+      const existing  = map.get(key)
       if (existing) {
         existing.linkCount++
         existing.views      += lk.viewCount
@@ -173,6 +175,7 @@ export default function CampaignPage() {
           creatorId:   lk.creatorId,
           name:        lk.creatorName ?? '未知博主',
           tiktokHandle: lk.tiktokHandle,
+          isOfficial,
           linkCount:   1,
           views:       lk.viewCount,
           clicks:      lk.clickCount,
@@ -183,7 +186,17 @@ export default function CampaignPage() {
         })
       }
     }
-    return [...map.values()]
+
+    for (const lk of links) {
+      if (lk.creatorId) {
+        accumulate(official, lk.creatorId, lk, true)
+      } else if (lk.creatorName) {
+        accumulate(temp, lk.creatorName, lk, false)
+      }
+      // 既无 creatorId 也无 creatorName 的短链不计入汇总
+    }
+
+    return [...official.values(), ...temp.values()]
   })()
 
   // ── Styles ──────────────────────────────────────────────────────────────────
@@ -371,12 +384,22 @@ export default function CampaignPage() {
           {creatorSummary.map((cs, i) => {
             const unsettled = +(cs.commission - cs.settled).toFixed(2)
             return (
-              <div key={cs.creatorId ?? cs.name} style={{
+              <div key={(cs.creatorId ?? cs.name) + String(cs.isOfficial)} style={{
                 borderBottom: i < creatorSummary.length - 1 ? '1px solid #f0f0f0' : 'none',
                 paddingBottom: i < creatorSummary.length - 1 ? 12 : 0,
                 marginBottom:  i < creatorSummary.length - 1 ? 12 : 0,
               }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{cs.name}</div>
+                {/* 名称 + 正式/临时 标签 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{cs.name}</span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8,
+                    background: cs.isOfficial ? '#eff6ff' : '#f3f4f6',
+                    color:      cs.isOfficial ? '#1d4ed8' : '#6b7280',
+                  }}>
+                    {cs.isOfficial ? '正式博主' : '临时'}
+                  </span>
+                </div>
                 {cs.tiktokHandle && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>🎵 @{cs.tiktokHandle}</div>}
                 <div style={{ ...s.stat, marginTop: 6 }}>
                   🔗 {cs.linkCount} 条短链　👁 {cs.views} 浏览　🛒 {cs.clicks} 点击
@@ -385,12 +408,14 @@ export default function CampaignPage() {
                   📦 {cs.orders} 单　💰 ${cs.sales.toFixed(2)} 成交
                 </div>
                 {cs.commission > 0 && (
-                  <div style={{ ...s.stat, marginTop: 3 }}>
-                    💵 预计佣金 ${cs.commission.toFixed(2)}
-                    已结算 ${cs.settled.toFixed(2)}
-                    <span style={{ color: unsettled > 0 ? '#b45309' : '#9ca3af' }}>
-                      待结算 ${unsettled.toFixed(2)}
-                    </span>
+                  <div style={{ marginTop: 5 }}>
+                    <div style={{ ...s.stat }}>💵 预计佣金：${cs.commission.toFixed(2)}</div>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 3 }}>
+                      <span style={{ fontSize: 11, color: '#6b7280' }}>已结算：${cs.settled.toFixed(2)}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: unsettled > 0 ? '#b45309' : '#9ca3af' }}>
+                        待结算：${unsettled.toFixed(2)}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
