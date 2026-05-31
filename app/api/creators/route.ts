@@ -17,7 +17,9 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
     select: {
       id: true, name: true, displayName: true,
-      tiktokHandle: true, phone: true, note: true, status: true, createdAt: true,
+      tiktokHandle: true, phone: true, note: true, status: true,
+      dashboardToken: true, dashboardTokenCreatedAt: true,
+      createdAt: true,
     },
   })
   return NextResponse.json({ creators })

@@ -10,6 +10,7 @@ const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 type Creator = {
   id: string; name: string; displayName: string | null
   tiktokHandle: string | null; phone: string | null; note: string | null; status: string
+  dashboardToken: string | null; dashboardTokenCreatedAt: string | null
 }
 
 type CampaignLink = {
@@ -70,6 +71,9 @@ export default function CampaignPage() {
   const [settlingId,   setSettlingId]   = useState<string | null>(null)
   const [settleNote,   setSettleNote]   = useState('')
   const [settlingBusy, setSettlingBusy] = useState(false)
+
+  // dashboard token
+  const [tokenBusyId, setTokenBusyId] = useState<string | null>(null)
 
   // copy
   const [copied, setCopied] = useState<string | null>(null)
@@ -139,6 +143,15 @@ export default function CampaignPage() {
       if (r.ok) { setSettlingId(null); setSettleNote(''); loadAll() }
     } catch { /* silent */ }
     finally { setSettlingBusy(false) }
+  }
+
+  async function handleGenerateToken(creatorId: string) {
+    setTokenBusyId(creatorId)
+    try {
+      const r = await apiFetch(`/api/creators/${creatorId}/dashboard-token`, { method: 'POST' }, OWNER_CTX)
+      if (r.ok) { loadAll() }
+    } catch { /* silent */ }
+    finally { setTokenBusyId(null) }
   }
 
   function copy(text: string, key: string) {
@@ -295,6 +308,23 @@ export default function CampaignPage() {
               {c.tiktokHandle && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>🎵 @{c.tiktokHandle}</div>}
               {c.phone        && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>📞 {c.phone}</div>}
               {c.note         && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>📝 {c.note}</div>}
+              {/* 看板链接管理 */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginTop: 8 }}>
+                {!c.dashboardToken ? (
+                  <button style={s.btnSm} onClick={() => handleGenerateToken(c.id)} disabled={tokenBusyId === c.id}>
+                    {tokenBusyId === c.id ? '生成中…' : '📊 生成看板链接'}
+                  </button>
+                ) : (
+                  <>
+                    <button style={s.btnSm} onClick={() => copy(`${APP_URL}/creator/p/${c.dashboardToken}`, `tk-${c.id}`)}>
+                      {copied === `tk-${c.id}` ? '已复制 ✓' : '📊 复制看板链接'}
+                    </button>
+                    <button style={s.btnGhost} onClick={() => handleGenerateToken(c.id)} disabled={tokenBusyId === c.id}>
+                      {tokenBusyId === c.id ? '重置中…' : '重置链接'}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))
         )}

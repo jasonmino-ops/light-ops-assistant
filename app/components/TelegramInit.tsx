@@ -40,7 +40,7 @@ function extractTgUserId(initData: string): string | null {
 // Paths that don't require an active merchant session.
 // 顾客端公共入口（/e-life /menu /me）和商户端引导页（/start /open /bind /relogin）
 // 均跳过商户 Bot auth 流程，由各页面自身处理身份或无需身份。
-const ONBOARDING_PATHS = ['/start', '/open', '/bind', '/relogin', '/menu', '/e-life', '/me', '/v']
+const ONBOARDING_PATHS = ['/start', '/open', '/bind', '/relogin', '/menu', '/e-life', '/me', '/v', '/creator/p']
 
 export default function TelegramInit() {
   const [authError, setAuthError] = useState('')

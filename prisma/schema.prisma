@@ -678,9 +678,12 @@ model Creator {
   telegramId    String?
   tiktokHandle  String?
   note          String?
-  status        String   @default("active") // active | inactive
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  status                  String    @default("active") // active | inactive
+  dashboardToken          String?   @unique
+  dashboardTokenCreatedAt DateTime?
+  dashboardTokenRevokedAt DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   store          Store          @relation(fields: [storeId], references: [id])
   campaignLinks  CampaignLink[]
