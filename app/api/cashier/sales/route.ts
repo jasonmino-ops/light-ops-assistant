@@ -13,7 +13,16 @@ import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 
-type CartItem = { barcode: string; quantity: number }
+type CartItem = { barcode: string; quantity: number; sugar?: string }
+
+function sugarZh(sugar: string): string {
+  if (sugar === 'no_sugar') return '无糖'
+  if (sugar === '25')       return '微糖 25%'
+  if (sugar === '50')       return '半糖 50%'
+  if (sugar === '75')       return '少糖 75%'
+  if (sugar === '100')      return '正常糖 100%'
+  return sugar
+}
 
 export async function POST(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,6 +129,9 @@ export async function POST(req: NextRequest) {
           : await generateRecordNo(tx, 'S', store.tenantId, store.id, store.code)
         isFirst = false
 
+        const sugarLabel = it.sugar ? sugarZh(it.sugar) : null
+        const specSnapshot = [product.spec ?? null, sugarLabel].filter(Boolean).join(' / ') || null
+
         const record = await tx.saleRecord.create({
           data: {
             tenantId: store.tenantId,
@@ -132,7 +144,7 @@ export async function POST(req: NextRequest) {
             productId: product.id,
             barcode: product.barcode,
             productNameSnapshot: product.name,
-            specSnapshot: product.spec ?? null,
+            specSnapshot,
             unitPrice: product.sellPrice,
             quantity: qty,
             lineAmount,
