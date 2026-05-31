@@ -1,5 +1,5 @@
 /**
- * GET  /api/campaign-links  — 当前门店的推广链接列表（OWNER）
+ * GET  /api/campaign-links  — 当前门店推广链接列表（OWNER）
  * POST /api/campaign-links  — 新建推广短链（OWNER）
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -8,6 +8,16 @@ import { getContext } from '@/lib/context'
 
 function genCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase()
+}
+
+function calcCommission(
+  type: string | null, value: number | null,
+  orderCount: number, salesAmount: number,
+): number {
+  if (!type || value == null || value <= 0) return 0
+  if (type === 'percent') return +(salesAmount * value / 100).toFixed(2)
+  if (type === 'fixed')   return +(orderCount  * value).toFixed(2)
+  return 0
 }
 
 export async function GET(req: NextRequest) {
@@ -19,11 +29,15 @@ export async function GET(req: NextRequest) {
   const links = await prisma.campaignLink.findMany({
     where: { storeId: ctx.storeId },
     orderBy: { createdAt: 'desc' },
-    take: 30,
+    take: 50,
     select: {
       id: true, code: true, sourcePlatform: true,
-      creatorName: true, videoTitle: true, targetUrl: true,
-      viewCount: true, clickCount: true, createdAt: true,
+      creatorId: true, creatorName: true, videoTitle: true, targetUrl: true,
+      viewCount: true, clickCount: true,
+      commissionType: true, commissionValue: true,
+      settlementStatus: true, settledAt: true, settledNote: true,
+      createdAt: true,
+      creator: { select: { id: true, name: true, tiktokHandle: true } },
     },
   })
 
@@ -41,10 +55,28 @@ export async function GET(req: NextRequest) {
 
   const result = links.map((l) => {
     const st = statsMap.get(l.id)
+    const orderCount  = st?._count.id ?? 0
+    const salesAmount = st?._sum.totalAmount ? Number(st._sum.totalAmount) : 0
+    const commVal = l.commissionValue ? Number(l.commissionValue) : null
     return {
-      ...l,
-      attributedOrderCount:  st?._count.id ?? 0,
-      attributedSalesAmount: st?._sum.totalAmount ? Number(st._sum.totalAmount) : 0,
+      id:               l.id,
+      code:             l.code,
+      sourcePlatform:   l.sourcePlatform,
+      creatorId:        l.creatorId,
+      creatorName:      l.creator?.name ?? l.creatorName ?? null,
+      tiktokHandle:     l.creator?.tiktokHandle ?? null,
+      videoTitle:       l.videoTitle,
+      viewCount:        l.viewCount,
+      clickCount:       l.clickCount,
+      commissionType:   l.commissionType,
+      commissionValue:  commVal,
+      settlementStatus: l.settlementStatus,
+      settledAt:        l.settledAt,
+      settledNote:      l.settledNote,
+      attributedOrderCount:  orderCount,
+      attributedSalesAmount: salesAmount,
+      estimatedCommission:   calcCommission(l.commissionType, commVal, orderCount, salesAmount),
+      createdAt:        l.createdAt,
     }
   })
 
@@ -57,8 +89,34 @@ export async function POST(req: NextRequest) {
   if (ctx.role !== 'OWNER') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   if (!ctx.storeId) return NextResponse.json({ error: 'NO_STORE' }, { status: 400 })
 
-  let body: { creatorName?: string; videoTitle?: string; sourcePlatform?: string } = {}
+  let body: {
+    creatorId?: string; creatorName?: string; videoTitle?: string
+    sourcePlatform?: string; commissionType?: string; commissionValue?: number
+  } = {}
   try { body = await req.json() } catch { /* no body ok */ }
+
+  // 验证 creatorId 归属当前门店
+  let resolvedCreatorId: string | null = null
+  let resolvedCreatorName: string | null = null
+  if (typeof body.creatorId === 'string' && body.creatorId) {
+    const creator = await prisma.creator.findUnique({
+      where: { id: body.creatorId },
+      select: { id: true, name: true, storeId: true },
+    })
+    if (creator && creator.storeId === ctx.storeId) {
+      resolvedCreatorId   = creator.id
+      resolvedCreatorName = creator.name
+    }
+  }
+  // 如未绑定 Creator，用手填名称
+  if (!resolvedCreatorName) {
+    resolvedCreatorName = typeof body.creatorName === 'string' ? body.creatorName.trim() || null : null
+  }
+
+  const commissionType = ['percent', 'fixed'].includes(body.commissionType ?? '')
+    ? body.commissionType! : null
+  const commissionValue = typeof body.commissionValue === 'number' && body.commissionValue > 0
+    ? body.commissionValue : null
 
   const store = await prisma.store.findUnique({
     where: { id: ctx.storeId },
@@ -69,7 +127,6 @@ export async function POST(req: NextRequest) {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
   const targetUrl = `${appUrl}/menu?code=${store.code}`
 
-  // unique code retry (collision极低，最多重试5次)
   let code = genCode()
   for (let i = 0; i < 5; i++) {
     const exists = await prisma.campaignLink.findUnique({ where: { code }, select: { id: true } })
@@ -82,14 +139,17 @@ export async function POST(req: NextRequest) {
       code,
       storeId:        ctx.storeId,
       sourcePlatform: typeof body.sourcePlatform === 'string' ? body.sourcePlatform : 'tiktok',
-      creatorName:    typeof body.creatorName === 'string' ? body.creatorName.trim() || null : null,
-      videoTitle:     typeof body.videoTitle  === 'string' ? body.videoTitle.trim()  || null : null,
+      creatorId:      resolvedCreatorId,
+      creatorName:    resolvedCreatorName,
+      videoTitle:     typeof body.videoTitle === 'string' ? body.videoTitle.trim() || null : null,
       targetUrl,
+      commissionType,
+      commissionValue: commissionValue != null ? String(commissionValue) : null,
     },
   })
 
   return NextResponse.json(
-    { ...link, shortUrl: `${appUrl}/v/${link.code}` },
+    { ...link, commissionValue: commissionValue, shortUrl: `${appUrl}/v/${link.code}` },
     { status: 201 },
   )
 }
