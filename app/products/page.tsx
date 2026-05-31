@@ -927,15 +927,7 @@ export default function ProductsPage() {
       {/* Header */}
       <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={s.headerTitle}>{t('products.title')}</span>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button
-            style={{ fontSize: 13, padding: '5px 12px', borderRadius: 7, border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151', cursor: 'pointer', fontWeight: 500 }}
-            onClick={() => { window.location.href = '/table-qrcodes' }}
-          >
-            🪑 桌号二维码
-          </button>
-          <LangToggleBtn />
-        </div>
+        <LangToggleBtn />
       </div>
 
       <div style={s.body}>

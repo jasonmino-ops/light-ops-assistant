@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, CSSProperties } from 'react'
+import { useState, useEffect, useRef, CSSProperties } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import QRCode from 'react-qr-code'
 
@@ -11,7 +11,6 @@ function parseTableInput(raw: string): string[] {
   const result: string[] = []
 
   for (const seg of segments) {
-    // 范围格式：A01-A20 或 01-20 或 A1-A20
     const m = seg.match(/^([A-Za-z]*)(\d+)-([A-Za-z]*)(\d+)$/)
     if (m) {
       const prefix = m[1] || m[3]
@@ -28,9 +27,27 @@ function parseTableInput(raw: string): string[] {
     result.push(seg)
   }
 
-  // 去重 + 最多 100 张
   const seen = new Set<string>()
   return result.filter((t) => { if (seen.has(t)) return false; seen.add(t); return true }).slice(0, 100)
+}
+
+// ─── 复制到剪贴板（兼容 WebView fallback） ──────────────────────────────────
+
+function copyText(text: string, onDone: () => void) {
+  const doFallback = () => {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
+    document.body.appendChild(ta)
+    ta.focus(); ta.select()
+    try { document.execCommand('copy'); onDone() } catch {}
+    document.body.removeChild(ta)
+  }
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(onDone).catch(doFallback)
+  } else {
+    doFallback()
+  }
 }
 
 // ─── 单张 PNG 下载（canvas） ─────────────────────────────────────────────────
@@ -49,7 +66,6 @@ async function downloadQRPng(tableNo: string, url: string, storeName: string) {
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-  // QR code → temp canvas
   const qrCanvas = document.createElement('canvas')
   await QRLib.toCanvas(qrCanvas, url, { width: QR_SIZE, margin: 1, color: { dark: '#111827', light: '#ffffff' } })
   ctx.drawImage(qrCanvas, PAD, PAD)
@@ -90,23 +106,27 @@ const s: Record<string, CSSProperties> = {
   parseBtn:  { marginTop: 10, padding: '9px 20px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
   actionRow: { display: 'flex', gap: 10, marginBottom: 16 },
   printBtn:  { padding: '9px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
-  grid:      { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 },
+  grid:      { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 },
   qrCard:    { background: '#fff', borderRadius: 12, padding: '16px 12px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 },
   qrTableNo: { fontSize: 16, fontWeight: 700, color: '#111827', marginTop: 10, marginBottom: 2 },
   qrStore:   { fontSize: 12, color: '#6b7280', marginBottom: 2 },
   qrScan:    { fontSize: 12, color: '#2563eb', marginBottom: 8 },
-  dlBtn:     { marginTop: 4, padding: '5px 14px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 12, cursor: 'pointer' },
+  linkBox:   { width: '100%', background: '#f8f8f8', borderRadius: 6, padding: '6px 8px', marginTop: 8, marginBottom: 4, wordBreak: 'break-all' as const, fontSize: 10, color: '#6b7280', lineHeight: 1.4 },
+  copyBtn:   { width: '100%', padding: '6px 0', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 12, cursor: 'pointer', fontWeight: 500 },
+  copyBtnOk: { width: '100%', padding: '6px 0', borderRadius: 6, border: '1px solid #86efac', background: '#f0fdf4', color: '#15803d', fontSize: 12, cursor: 'pointer', fontWeight: 600 },
+  dlBtn:     { marginTop: 6, padding: '5px 0', width: '100%', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 12, cursor: 'pointer' },
   empty:     { textAlign: 'center', color: '#9ca3af', padding: '40px 0', fontSize: 14 },
 }
 
 // ─── 页面 ────────────────────────────────────────────────────────────────────
 
 export default function TableQRCodesPage() {
-  const [storeCode, setStoreCode] = useState('')
-  const [storeName, setStoreName] = useState('')
-  const [input,     setInput]     = useState('A01-A10')
-  const [tables,    setTables]    = useState<string[]>([])
-  const [origin,    setOrigin]    = useState('')
+  const [storeCode,  setStoreCode]  = useState('')
+  const [storeName,  setStoreName]  = useState('')
+  const [input,      setInput]      = useState('A01-A10')
+  const [tables,     setTables]     = useState<string[]>([])
+  const [origin,     setOrigin]     = useState('')
+  const [copiedMap,  setCopiedMap]  = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     setOrigin(window.location.origin)
@@ -117,39 +137,43 @@ export default function TableQRCodesPage() {
     }).catch(() => {})
   }, [])
 
-  function handleParse() {
-    setTables(parseTableInput(input))
-  }
-
   function tableUrl(t: string) {
     return `${origin}/menu?code=${encodeURIComponent(storeCode)}&table=${encodeURIComponent(t)}`
   }
 
-  function handlePrint() {
-    window.print()
+  function handleCopy(t: string) {
+    const url = tableUrl(t)
+    copyText(url, () => {
+      setCopiedMap((prev) => ({ ...prev, [t]: true }))
+      setTimeout(() => setCopiedMap((prev) => ({ ...prev, [t]: false })), 2000)
+    })
+  }
+
+  function handleParse() {
+    setTables(parseTableInput(input))
+    setCopiedMap({})
   }
 
   const qrGridRef = useRef<HTMLDivElement>(null)
 
   return (
     <>
-      {/* 打印专用样式 */}
       <style>{`
         @media print {
           .no-print { display: none !important; }
           body { background: #fff !important; }
           .qr-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 12px !important; padding: 12px !important; }
           .qr-card { break-inside: avoid; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 8px 8px; box-shadow: none !important; }
-          .qr-dl-btn { display: none !important; }
+          .qr-card-btns { display: none !important; }
+          .qr-card-link { display: none !important; }
           .print-header { display: flex !important; justify-content: center; margin-bottom: 8px; font-size: 14px; color: #6b7280; }
         }
         @media screen { .print-header { display: none; } }
       `}</style>
 
       <div style={s.page}>
-        {/* Header */}
-        <div style={{ ...s.header }} className="no-print">
-          <button style={s.backBtn} onClick={() => window.history.back()}>← 返回</button>
+        <div style={s.header} className="no-print">
+          <button style={s.backBtn} onClick={() => window.location.href = '/invite'}>← 返回</button>
           <span style={s.title}>🪑 桌号二维码</span>
         </div>
 
@@ -190,7 +214,7 @@ export default function TableQRCodesPage() {
           {/* 操作栏 */}
           {tables.length > 0 && (
             <div style={s.actionRow} className="no-print">
-              <button style={s.printBtn} onClick={handlePrint}>
+              <button style={s.printBtn} onClick={() => window.print()}>
                 🖨️ 批量打印（{tables.length} 张）
               </button>
             </div>
@@ -204,27 +228,43 @@ export default function TableQRCodesPage() {
             <div style={s.empty} className="no-print">输入桌号后点击「生成二维码」</div>
           ) : (
             <div style={s.grid} ref={qrGridRef} className="qr-grid">
-              {tables.map((t) => (
-                <div key={t} style={s.qrCard} className="qr-card">
-                  <QRCode
-                    value={storeCode ? tableUrl(t) : `table:${t}`}
-                    size={140}
-                    style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
-                    viewBox="0 0 256 256"
-                  />
-                  <div style={s.qrTableNo}>桌号 {t}</div>
-                  <div style={s.qrStore}>{storeName || '—'}</div>
-                  <div style={s.qrScan}>扫码点单</div>
-                  <button
-                    style={s.dlBtn}
-                    className="qr-dl-btn"
-                    onClick={() => storeCode && downloadQRPng(t, tableUrl(t), storeName)}
-                    disabled={!storeCode}
-                  >
-                    ↓ 下载 PNG
-                  </button>
-                </div>
-              ))}
+              {tables.map((t) => {
+                const url = storeCode ? tableUrl(t) : `table:${t}`
+                const isCopied = copiedMap[t] ?? false
+                return (
+                  <div key={t} style={s.qrCard} className="qr-card">
+                    <QRCode
+                      value={url}
+                      size={140}
+                      style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
+                      viewBox="0 0 256 256"
+                    />
+                    <div style={s.qrTableNo}>桌号 {t}</div>
+                    <div style={s.qrStore}>{storeName || '—'}</div>
+                    <div style={s.qrScan}>扫码点单</div>
+
+                    {/* 链接区（屏幕可见，打印隐藏） */}
+                    <div style={s.linkBox} className="qr-card-link">{url}</div>
+
+                    {/* 操作按钮（打印时隐藏） */}
+                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }} className="qr-card-btns">
+                      <button
+                        style={isCopied ? s.copyBtnOk : s.copyBtn}
+                        onClick={() => handleCopy(t)}
+                      >
+                        {isCopied ? '✓ 已复制' : '复制链接'}
+                      </button>
+                      <button
+                        style={s.dlBtn}
+                        onClick={() => storeCode && downloadQRPng(t, url, storeName)}
+                        disabled={!storeCode}
+                      >
+                        ↓ 下载 PNG
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

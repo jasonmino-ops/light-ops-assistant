@@ -264,6 +264,20 @@ export default function InvitePage() {
           setCopied={setCustomerCopied}
         />
 
+        {/* ── 桌号二维码 ── */}
+        <div style={s.sectionLabel}>桌号二维码</div>
+        <div style={{ ...s.customerCard, gap: 10 }}>
+          <div style={s.customerDesc}>
+            为每张餐桌生成专属二维码，顾客扫码后自动带桌号下单。
+          </div>
+          <button
+            style={{ height: 44, background: '#f0fdf4', color: '#15803d', border: '1.5px solid #86efac', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+            onClick={() => { window.location.href = '/table-qrcodes' }}
+          >
+            🪑 生成桌号二维码 →
+          </button>
+        </div>
+
         {/* ── Members section ── */}
         <div style={s.sectionLabel}>{bi(zh.invite.membersTitle, km.invite.membersTitle)}</div>
 
