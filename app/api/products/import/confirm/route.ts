@@ -6,7 +6,7 @@
  * 按需查找/新建 ProductCategory，再批量创建商品。
  *
  * Body: { rows: PreviewRow[] }
- * 返回: { imported: number; failed: number; errors: ErrorRow[] }
+ * 返回: { imported, catCreated, imageCount, failed, errors }
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (validRows.length === 0) {
-    return NextResponse.json({ imported: 0, failed: errors.length, errors })
+    return NextResponse.json({ imported: 0, catCreated: 0, imageCount: 0, failed: errors.length, errors })
   }
 
   // 再次防重：检查数据库已存在的条码
@@ -69,14 +69,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (toCreate.length === 0) {
-    return NextResponse.json({ imported: 0, failed: errors.length, errors })
+    return NextResponse.json({ imported: 0, catCreated: 0, imageCount: 0, failed: errors.length, errors })
   }
 
   // ── 分类处理：查找或新建 ProductCategory ─────────────────────────────────
-  // 收集本次需要用到的所有 (l1Name, l2Name) 组合
   const catKeyMap = new Map<string, string>() // catKey → categoryId
-
-  // 用 catKey = `${l1}__${l2 ?? ''}` 作为唯一键
   const neededPairs = new Map<string, { l1: string; l2: string | null }>()
   for (const row of toCreate) {
     if (!row.resolvedL1) continue
@@ -84,8 +81,8 @@ export async function POST(req: NextRequest) {
     neededPairs.set(key, { l1: row.resolvedL1, l2: row.resolvedL2 ?? null })
   }
 
+  let catCreated = 0
   for (const [catKey, pair] of neededPairs) {
-    // 查找或创建一级分类
     let l1Cat = await prisma.productCategory.findFirst({
       where: { tenantId: ctx.tenantId, name: pair.l1, parentId: null },
     })
@@ -93,13 +90,12 @@ export async function POST(req: NextRequest) {
       l1Cat = await prisma.productCategory.create({
         data: { tenantId: ctx.tenantId, name: pair.l1, sortOrder: 0 },
       })
+      catCreated++
     }
 
     if (!pair.l2) {
-      // 只有一级分类
       catKeyMap.set(catKey, l1Cat.id)
     } else {
-      // 查找或创建二级分类
       let l2Cat = await prisma.productCategory.findFirst({
         where: { tenantId: ctx.tenantId, name: pair.l2, parentId: l1Cat.id },
       })
@@ -107,12 +103,15 @@ export async function POST(req: NextRequest) {
         l2Cat = await prisma.productCategory.create({
           data: { tenantId: ctx.tenantId, name: pair.l2, parentId: l1Cat.id, sortOrder: 0 },
         })
+        catCreated++
       }
       catKeyMap.set(catKey, l2Cat.id)
     }
   }
 
   // ── 批量插入商品 ──────────────────────────────────────────────────────────
+  const imageCount = toCreate.filter((r) => !!r.imageUrl).length
+
   const result = await prisma.product.createMany({
     data: toCreate.map((r) => {
       const catKey = r.resolvedL1 ? `${r.resolvedL1}__${r.resolvedL2 ?? ''}` : null
@@ -122,10 +121,17 @@ export async function POST(req: NextRequest) {
         barcode:    r.barcode.trim(),
         sku:        r.sku ?? null,
         name:       r.name.trim(),
+        nameZh:     r.nameZh ?? null,
+        nameEn:     r.nameEn ?? null,
+        nameKm:     r.nameKm ?? null,
+        descZh:     r.descZh ?? null,
+        descEn:     r.descEn ?? null,
+        descKm:     r.descKm ?? null,
         spec:       r.spec ?? null,
         sellPrice:  String(r.sellPrice),
         status:     r.status,
         categoryId: categoryId,
+        imageUrl:   r.imageUrl ?? null,
       }
     }),
     skipDuplicates: true,
@@ -133,5 +139,11 @@ export async function POST(req: NextRequest) {
 
   errors.sort((a, b) => a.row - b.row)
 
-  return NextResponse.json({ imported: result.count, failed: errors.length, errors })
+  return NextResponse.json({
+    imported:   result.count,
+    catCreated,
+    imageCount,
+    failed:     errors.length,
+    errors,
+  })
 }

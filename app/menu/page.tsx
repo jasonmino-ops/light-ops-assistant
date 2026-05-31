@@ -363,11 +363,17 @@ type ApiCategory = {
 
 type ApiProduct = {
   id: string
-  name: string
-  spec: string | null
-  price: number
+  name:   string
+  nameZh: string | null
+  nameEn: string | null
+  nameKm: string | null
+  descZh: string | null
+  descEn: string | null
+  descKm: string | null
+  spec:   string | null
+  price:  number
   categoryId: string | null
-  imageUrl: string | null
+  imageUrl:   string | null
 }
 
 type ApiStore = {
@@ -400,6 +406,20 @@ const FULFILLMENT_TPL: Record<'zh' | 'en' | 'km', Record<BizType, FulfillTpl>> =
     SERVICE: { title: 'វិធីផ្តល់សេវា',    dineIn: 'សេវានៅហាង',           delivery: 'សេវាដល់ផ្ទះ' },
     GENERAL: { title: 'វិធីទទួល',         dineIn: 'នៅហាង',               delivery: 'ដឹក / ដល់ផ្ទះ' },
   },
+}
+
+// ─── 商品多语言 fallback ───────────────────────────────────────────────────────
+
+function pName(p: ApiProduct, lang: Lang): string {
+  if (lang === 'en') return p.nameEn || p.nameZh || p.name
+  if (lang === 'km') return p.nameKm || p.nameZh || p.name
+  return p.nameZh || p.name
+}
+
+function pDesc(p: ApiProduct, lang: Lang): string | null {
+  if (lang === 'en') return p.descEn || p.descZh || null
+  if (lang === 'km') return p.descKm || p.descZh || null
+  return p.descZh || null
 }
 
 // ─── 购物车 ──────────────────────────────────────────────────────────────────
@@ -536,6 +556,7 @@ export default function MenuPage() {
   const filteredProducts = kw
     ? apiProducts.filter(
         (p) =>
+          pName(p, lang).toLowerCase().includes(kw) ||
           p.name.toLowerCase().includes(kw) ||
           (p.spec ?? '').toLowerCase().includes(kw),
       )
@@ -1041,10 +1062,11 @@ export default function MenuPage() {
                         )}
                         <div style={s.productMeta}>
                           <div style={s.productName}>
-                            {product.name}
+                            {pName(product, lang)}
                             {idx === 0 && <span style={s.recommendBadge}>{ui.recommendBadge}</span>}
                           </div>
                           {product.spec && <div style={s.productSpec}>{product.spec}</div>}
+                          {pDesc(product, lang) && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, lineHeight: 1.4 }}>{pDesc(product, lang)}</div>}
                           <div style={s.productFoot}>
                             <span style={s.productPrice}>
                               <span style={s.priceSign}>$</span>{product.price.toFixed(2)}
@@ -1141,7 +1163,7 @@ export default function MenuPage() {
                 {confirmItems.map((item) => (
                   <div key={item.id} style={s.confirmItem}>
                     <div style={s.confirmItemName}>
-                      {item.name}
+                      {pName(item, lang)}
                       {item.spec && <span style={s.confirmItemSpec}> · {item.spec}</span>}
                     </div>
                     <div style={s.confirmItemRight}>
@@ -1395,7 +1417,7 @@ export default function MenuPage() {
                 return (
                   <div key={c.id} style={s.cartItemRow}>
                     <div style={s.cartItemInfo}>
-                      <div style={s.cartItemName}>{p.name}</div>
+                      <div style={s.cartItemName}>{pName(p, lang)}</div>
                       {p.spec && <div style={s.cartItemSpec}>{p.spec}</div>}
                     </div>
                     <div style={s.cartItemRight}>

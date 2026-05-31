@@ -68,8 +68,10 @@ type DeleteConfirm =
   | { type: 'batch'; ids: string[] }
 
 type ImportResult = {
-  imported: number
-  failed: number
+  imported:   number
+  catCreated: number
+  imageCount: number
+  failed:     number
   errors: Array<{ row: number; barcode: string; reason: string }>
 }
 
@@ -79,10 +81,17 @@ type PreviewRow = {
   rowNum: number
   barcode: string
   sku: string | null
-  name: string
-  spec: string | null
+  name:   string
+  nameZh: string | null
+  nameEn: string | null
+  nameKm: string | null
+  descZh: string | null
+  descEn: string | null
+  descKm: string | null
+  spec:     string | null
   sellPrice: number
   status: 'ACTIVE' | 'DISABLED'
+  imageUrl: string | null
   category1Raw: string
   category2Raw: string
   resolvedL1: string | null
@@ -978,27 +987,32 @@ export default function ProductsPage() {
               {/* ── 步骤二：预览确认 ── */}
               {importStep === 'preview' && importPreview && (
                 <>
+                  {/* 预览摘要 */}
                   <div style={pr.summary}>
-                    共 {importPreview.length} 行 ·{' '}
-                    <span style={{ color: '#52c41a', fontWeight: 700 }}>
-                      {importPreview.filter((r) => !r.error).length} 可导入
-                    </span>
-                    {importPreview.filter((r) => r.error).length > 0 && (
-                      <span style={{ color: '#ff4d4f' }}>
-                        {' '}· {importPreview.filter((r) => r.error).length} 有问题（将跳过）
-                      </span>
-                    )}
+                    {(() => {
+                      const ok  = importPreview.filter((r) => !r.error)
+                      const bad = importPreview.filter((r) => r.error)
+                      const cats = new Set(ok.filter((r) => r.resolvedL1).map((r) => `${r.resolvedL1}__${r.resolvedL2 ?? ''}`))
+                      const imgs = ok.filter((r) => r.imageUrl).length
+                      return (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', fontSize: 13 }}>
+                          <span>分类 <strong style={{ color: '#1677ff' }}>{cats.size}</strong></span>
+                          <span>商品 <strong style={{ color: '#52c41a' }}>{ok.length}</strong></span>
+                          <span>图片 <strong style={{ color: '#faad14' }}>{imgs}</strong></span>
+                          {bad.length > 0 && <span style={{ color: '#ff4d4f' }}>问题行 {bad.length}（将跳过）</span>}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   <div style={pr.scroll}>
                     <table style={pr.table}>
                       <thead>
                         <tr>
-                          <th style={pr.th}>商品名</th>
+                          <th style={pr.th}>商品名（中/英）</th>
                           <th style={pr.th}>售价</th>
-                          <th style={pr.th}>一级分类</th>
-                          <th style={pr.th}>二级分类</th>
-                          <th style={pr.th}>分类来源</th>
+                          <th style={pr.th}>分类</th>
+                          <th style={pr.th}>图片</th>
                           <th style={pr.th}>状态</th>
                         </tr>
                       </thead>
@@ -1006,13 +1020,23 @@ export default function ProductsPage() {
                         {importPreview.map((row) => (
                           <tr key={row.rowNum} style={row.error ? pr.errRow : {}}>
                             <td style={pr.td}>
-                              <div style={{ fontWeight: 600 }}>{row.name}</div>
+                              <div style={{ fontWeight: 600 }}>{row.nameZh || row.name}</div>
+                              {row.nameEn && <div style={{ color: '#6b7280', fontSize: 11 }}>{row.nameEn}</div>}
                               {row.spec && <div style={{ color: '#aaa', fontSize: 11 }}>{row.spec}</div>}
                             </td>
                             <td style={pr.td}>${row.sellPrice.toFixed(2)}</td>
-                            <td style={pr.td}>{row.resolvedL1 ?? <span style={{ color: '#ccc' }}>—</span>}</td>
-                            <td style={pr.td}>{row.resolvedL2 ?? <span style={{ color: '#ccc' }}>—</span>}</td>
-                            <td style={pr.td}><CatSourceBadge source={row.catSource} /></td>
+                            <td style={pr.td}>
+                              {row.resolvedL1
+                                ? <span>{row.resolvedL1}{row.resolvedL2 ? ` › ${row.resolvedL2}` : ''} <CatSourceBadge source={row.catSource} /></span>
+                                : <span style={{ color: '#ccc' }}>—</span>
+                              }
+                            </td>
+                            <td style={pr.td}>
+                              {row.imageUrl
+                                ? <span style={{ color: '#faad14', fontSize: 12 }}>📷</span>
+                                : <span style={{ color: '#e5e7eb', fontSize: 12 }}>—</span>
+                              }
+                            </td>
                             <td style={pr.td}>
                               {row.error
                                 ? <span style={{ color: '#ff4d4f', fontSize: 11 }}>{row.error}</span>
@@ -1053,10 +1077,12 @@ export default function ProductsPage() {
                 <>
                   <div style={s.importResult}>
                     <div style={s.importResultSummary}>
-                      <span style={s.importOk}>{t('products.importOkPrefix')} {importResult.imported} {t('products.importCountSuffix')}</span>
-                      {importResult.failed > 0 && (
-                        <span style={s.importFail}>{t('products.importFailPrefix')} {importResult.failed} {t('products.importCountSuffix')}</span>
-                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: 13, marginBottom: 8 }}>
+                        <span>分类新建 <strong style={{ color: '#1677ff' }}>{importResult.catCreated}</strong></span>
+                        <span>商品导入 <strong style={{ color: '#52c41a' }}>{importResult.imported}</strong></span>
+                        <span>含图片 <strong style={{ color: '#faad14' }}>{importResult.imageCount}</strong></span>
+                        <span>失败 <strong style={{ color: importResult.failed > 0 ? '#ff4d4f' : '#9ca3af' }}>{importResult.failed}</strong></span>
+                      </div>
                     </div>
                     {importResult.errors.length > 0 && (
                       <div style={s.importErrorList}>

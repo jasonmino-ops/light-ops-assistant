@@ -4,8 +4,9 @@
  *
  * 仅 OWNER 可用。
  *
- * 模板字段：barcode, sku, name, spec, sellPrice, status, category1（一级分类）, category2（二级分类）
- * 表头识别支持中英文别名（如「一级分类」或「category1」均可）。
+ * 模板字段（v2）：barcode, sku, name_zh, name_en, name_km,
+ *   desc_zh, desc_en, desc_km, spec, sell_price, status, image_url, category1, category2
+ * 兼容旧模板：name 列 → nameZh；sellPrice 列 → sell_price
  *
  * POST 返回 { preview: PreviewRow[] }，不直接入库。
  * 确认入库请调用 POST /api/products/import/confirm。
@@ -19,17 +20,39 @@ import { hintCategory } from '@/lib/product-category-hint'
 
 // ── 模板定义 ──────────────────────────────────────────────────────────────────
 
-const TEMPLATE_HEADER = ['barcode', 'sku', 'name', 'spec', 'sellPrice', 'status', 'category1', 'category2']
-const TEMPLATE_SAMPLE = ['1234567890123', 'SKU001', '可口可乐', '330ml', '3.50', 'ACTIVE', '饮料', '碳酸饮料']
-const TEMPLATE_SAMPLE2 = ['9876543210987', '', '矿泉水', '500ml', '2.00', 'ACTIVE', '饮料', '水']
-const TEMPLATE_SAMPLE3 = ['1111111111111', '', '猫粮', '1.5kg', '45.00', 'ACTIVE', '', '']
+const TEMPLATE_HEADER = [
+  'barcode', 'sku', 'name_zh', 'name_en', 'name_km',
+  'desc_zh', 'desc_en', 'desc_km',
+  'spec', 'sell_price', 'status', 'image_url', 'category1', 'category2',
+]
+const TEMPLATE_SAMPLE = [
+  '1234567890123', 'SKU001', '冰美式', 'Iced Americano', 'អាមេរិកាណូ',
+  '浓缩咖啡加冰水', 'Strong espresso with ice', '',
+  'Large', '4.50', 'ACTIVE', 'https://example.com/img.jpg', '咖啡', '冰咖啡',
+]
+const TEMPLATE_SAMPLE2 = [
+  '9876543210987', 'SKU002', '抹茶拿铁', 'Matcha Latte', 'ម៉ាចា',
+  '', '', '',
+  '', '5.00', 'ACTIVE', '', '咖啡', '特色饮品',
+]
+const TEMPLATE_SAMPLE3 = [
+  '1111111111111', '', '矿泉水', 'Water', '',
+  '', '', '',
+  '500ml', '1.00', 'ACTIVE', '', '', '',
+]
 const TEMPLATE_COL_WIDTHS = [
   { wch: 18 }, // barcode
-  { wch: 12 }, // sku
-  { wch: 22 }, // name
+  { wch: 10 }, // sku
+  { wch: 18 }, // name_zh
+  { wch: 22 }, // name_en
+  { wch: 20 }, // name_km
+  { wch: 20 }, // desc_zh
+  { wch: 24 }, // desc_en
+  { wch: 20 }, // desc_km
   { wch: 12 }, // spec
-  { wch: 10 }, // sellPrice
+  { wch: 10 }, // sell_price
   { wch: 10 }, // status
+  { wch: 50 }, // image_url
   { wch: 14 }, // category1
   { wch: 14 }, // category2
 ]
@@ -64,19 +87,26 @@ export type PreviewRow = {
   rowNum: number
   barcode: string
   sku: string | null
-  name: string
+  name: string          // 写入 Product.name 的主名（nameZh ?? nameEn ?? nameKm）
+  nameZh: string | null
+  nameEn: string | null
+  nameKm: string | null
+  descZh: string | null
+  descEn: string | null
+  descKm: string | null
   spec: string | null
   sellPrice: number
   status: 'ACTIVE' | 'DISABLED'
-  category1Raw: string      // 表格原始值
-  category2Raw: string      // 表格原始值
-  resolvedL1: string | null // 最终使用的一级分类名
-  resolvedL2: string | null // 最终使用的二级分类名
-  catSource: 'MANUAL' | 'AUTO' | 'NONE'  // 表格填写 / 系统识别 / 未识别
-  isDuplicate: boolean      // 数据库中条码已存在
-  error: string | null      // 行级别错误（导入时此行将被跳过）
-  confidence?: number       // AI 识别专用：0..1 信心度（Excel 导入路径不填）
-  warnings?: string[]       // AI 识别专用：警告说明
+  imageUrl: string | null
+  category1Raw: string
+  category2Raw: string
+  resolvedL1: string | null
+  resolvedL2: string | null
+  catSource: 'MANUAL' | 'AUTO' | 'NONE'
+  isDuplicate: boolean
+  error: string | null
+  confidence?: number   // AI 识别专用
+  warnings?: string[]   // AI 识别专用
 }
 
 // ── 表头多别名识别 ────────────────────────────────────────────────────────────
@@ -108,8 +138,8 @@ export async function POST(req: NextRequest) {
 
   const file = formData.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'NO_FILE', message: '未收到文件' }, { status: 400 })
-  if (file.size > 2 * 1024 * 1024) {
-    return NextResponse.json({ error: 'FILE_TOO_LARGE', message: '文件不能超过 2MB' }, { status: 400 })
+  if (file.size > 5 * 1024 * 1024) {
+    return NextResponse.json({ error: 'FILE_TOO_LARGE', message: '文件不能超过 5MB' }, { status: 400 })
   }
 
   // 解析 Excel
@@ -127,53 +157,74 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'EMPTY_FILE', message: '文件中无数据行（需包含表头+至少一行数据）' }, { status: 400 })
   }
 
-  // 识别表头列位置（支持中英文别名）
+  // 识别表头列位置（新旧模板均支持）
   const headerRow = (rows[0] as unknown[]).map((h) => String(h).trim().toLowerCase())
   const col = {
     barcode:   findCol(headerRow, 'barcode', '条码', '商品条码', '条形码'),
     sku:       findCol(headerRow, 'sku'),
-    name:      findCol(headerRow, 'name', '商品名', '商品名称', '名称'),
+    // 新模板优先，旧模板 name 列兼容为 nameZh
+    nameZh:    findCol(headerRow, 'name_zh', '中文名', '名称_中文', 'name', '商品名', '商品名称', '名称'),
+    nameEn:    findCol(headerRow, 'name_en', '英文名', '名称_英文'),
+    nameKm:    findCol(headerRow, 'name_km', '柬文名', '名称_柬文'),
+    descZh:    findCol(headerRow, 'desc_zh', 'description', '描述', '商品描述', '中文描述'),
+    descEn:    findCol(headerRow, 'desc_en', '英文描述'),
+    descKm:    findCol(headerRow, 'desc_km', '柬文描述'),
     spec:      findCol(headerRow, 'spec', '规格'),
-    sellPrice: findCol(headerRow, 'sellprice', '售价', '价格', '单价'),
+    sellPrice: findCol(headerRow, 'sell_price', 'sellprice', '售价', '价格', '单价', '销售单价'),
     status:    findCol(headerRow, 'status', '状态'),
+    imageUrl:  findCol(headerRow, 'image_url', 'imageurl', '图片', '商品图片', '主图', '图片链接'),
     category1: findCol(headerRow, 'category1', 'cat1', '一级分类', '大类', '分类'),
     category2: findCol(headerRow, 'category2', 'cat2', '二级分类', '小类', '子分类'),
   }
 
-  const missing = (['barcode', 'name', 'sellPrice'] as const).filter((k) => col[k] === -1)
-  if (missing.length > 0) {
+  // barcode 和 sellPrice 必须存在；name 至少一个语言版本必须存在
+  const hasName = col.nameZh >= 0 || col.nameEn >= 0 || col.nameKm >= 0
+  if (col.barcode === -1 || col.sellPrice === -1 || !hasName) {
+    const missing: string[] = []
+    if (col.barcode === -1) missing.push('barcode（条码）')
+    if (col.sellPrice === -1) missing.push('sell_price（售价）')
+    if (!hasName) missing.push('name_zh / name_en / name_km（至少一个名称列）')
     return NextResponse.json(
-      { error: 'INVALID_HEADER', message: `缺少必需列：${missing.join(', ')}（支持中英文列名）` },
+      { error: 'INVALID_HEADER', message: `缺少必需列：${missing.join('、')}` },
       { status: 400 },
     )
   }
 
   // 逐行解析
   const preview: PreviewRow[] = []
-  const seenBarcodes = new Map<string, number>() // barcode → 第一次出现的行号
+  const seenBarcodes = new Map<string, number>()
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i] as unknown[]
     const rowNum = i + 1
 
-    const barcode    = String(row[col.barcode]   ?? '').trim()
-    const name       = String(row[col.name]       ?? '').trim()
-    const priceRaw   = String(row[col.sellPrice]  ?? '').trim()
-    const sku        = col.sku       >= 0 ? (String(row[col.sku]    ?? '').trim() || null) : null
-    const spec       = col.spec      >= 0 ? (String(row[col.spec]   ?? '').trim() || null) : null
-    const statusRaw  = col.status    >= 0 ? String(row[col.status]  ?? '').trim().toUpperCase() : 'ACTIVE'
-    const cat1Raw    = col.category1 >= 0 ? String(row[col.category1] ?? '').trim() : ''
-    const cat2Raw    = col.category2 >= 0 ? String(row[col.category2] ?? '').trim() : ''
+    const barcode  = String(row[col.barcode]  ?? '').trim()
+    const priceRaw = String(row[col.sellPrice] ?? '').trim()
+    const nameZh   = col.nameZh  >= 0 ? String(row[col.nameZh]  ?? '').trim() || null : null
+    const nameEn   = col.nameEn  >= 0 ? String(row[col.nameEn]  ?? '').trim() || null : null
+    const nameKm   = col.nameKm  >= 0 ? String(row[col.nameKm]  ?? '').trim() || null : null
+    const descZh   = col.descZh  >= 0 ? String(row[col.descZh]  ?? '').trim() || null : null
+    const descEn   = col.descEn  >= 0 ? String(row[col.descEn]  ?? '').trim() || null : null
+    const descKm   = col.descKm  >= 0 ? String(row[col.descKm]  ?? '').trim() || null : null
+    const spec     = col.spec     >= 0 ? String(row[col.spec]    ?? '').trim() || null : null
+    const sku      = col.sku      >= 0 ? String(row[col.sku]     ?? '').trim() || null : null
+    const imageUrl = col.imageUrl >= 0 ? String(row[col.imageUrl]?? '').trim() || null : null
+    const statusRaw = col.status  >= 0 ? String(row[col.status]  ?? '').trim().toUpperCase() : 'ACTIVE'
+    const cat1Raw  = col.category1 >= 0 ? String(row[col.category1] ?? '').trim() : ''
+    const cat2Raw  = col.category2 >= 0 ? String(row[col.category2] ?? '').trim() : ''
+
+    // 主名（Product.name）= 最优先的非空语言
+    const primaryName = nameZh || nameEn || nameKm || ''
 
     // 跳过完全空行
-    if (!barcode && !name && !priceRaw) continue
+    if (!barcode && !primaryName && !priceRaw) continue
 
     // 行级错误校验
     let rowError: string | null = null
     if (!barcode) {
       rowError = '条码不能为空'
-    } else if (!name) {
-      rowError = '商品名不能为空'
+    } else if (!primaryName) {
+      rowError = '商品名不能为空（需要 name_zh / name_en / name_km 其中之一）'
     } else if (seenBarcodes.has(barcode)) {
       rowError = `文件内条码重复（第 ${seenBarcodes.get(barcode)} 行）`
     } else {
@@ -186,19 +237,17 @@ export async function POST(req: NextRequest) {
     const sellPrice = parseFloat(priceRaw) || 0
     const status: 'ACTIVE' | 'DISABLED' = statusRaw === 'DISABLED' ? 'DISABLED' : 'ACTIVE'
 
-    // 分类解析：表格 → 自动识别 → 无
+    // 分类解析：表格手填 → 自动识别 → 无
     let resolvedL1: string | null = null
     let resolvedL2: string | null = null
     let catSource: 'MANUAL' | 'AUTO' | 'NONE' = 'NONE'
 
     if (cat1Raw) {
-      // 表格有填写
       resolvedL1 = cat1Raw
       resolvedL2 = cat2Raw || null
       catSource = 'MANUAL'
-    } else if (name) {
-      // 尝试关键词自动识别
-      const hint = hintCategory(name)
+    } else if (primaryName) {
+      const hint = hintCategory(primaryName)
       if (hint) {
         resolvedL1 = hint.l1
         resolvedL2 = hint.l2
@@ -210,16 +259,23 @@ export async function POST(req: NextRequest) {
       rowNum,
       barcode,
       sku,
-      name,
+      name:    primaryName,
+      nameZh,
+      nameEn,
+      nameKm,
+      descZh,
+      descEn,
+      descKm,
       spec,
       sellPrice,
       status,
+      imageUrl,
       category1Raw: cat1Raw,
       category2Raw: cat2Raw,
       resolvedL1,
       resolvedL2,
       catSource,
-      isDuplicate: false, // 下面批量查库后更新
+      isDuplicate: false,
       error: rowError,
     })
   }

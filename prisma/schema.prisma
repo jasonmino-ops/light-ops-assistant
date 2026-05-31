@@ -165,6 +165,12 @@ model Product {
   sellPrice  Decimal       @db.Decimal(12, 2)
   status     ProductStatus @default(ACTIVE)
   categoryId String?
+  nameZh     String?
+  nameEn     String?
+  nameKm     String?
+  descZh     String?
+  descEn     String?
+  descKm     String?
   imageUrl        String?    // 商品主图公开访问 URL（Supabase Storage public bucket）
   imageStorageKey String?    // Storage 对象 key，用于删除/替换
   imageUpdatedAt  DateTime?  // 图片最近一次更新时间
