@@ -376,9 +376,9 @@ export default function HomePage() {
         <div style={s.shortcutSection}>
           <div style={s.sectionTitle}>常用入口</div>
           {([
-            { key: 'menu',    label: '顾客点单',   icon: '📱', url: `${origin}/m/${storeCode}`,       hint: '' },
-            { key: 'cashier', label: '电脑收银台', icon: '🖥️', url: `${origin}/cashier`,               hint: '给电脑浏览器使用，不经过 Telegram。' },
-            { key: 'qrcodes', label: '桌号二维码', icon: '🪑', url: `${origin}/table-qrcodes`,         hint: '' },
+            { key: 'menu',    label: '顾客点单',   icon: '📱', url: `${origin}/m/${storeCode}`,                              hint: '' },
+            { key: 'cashier', label: '电脑收银台', icon: '🖥️', url: `${origin}/cashier?storeCode=${storeCode}`,              hint: '给电脑浏览器使用，不经过 Telegram。' },
+            { key: 'qrcodes', label: '桌号二维码', icon: '🪑', url: `${origin}/table-qrcodes`,                               hint: '' },
           ] as { key: string; label: string; icon: string; url: string; hint: string }[]).map(({ key, label, icon, url, hint }) => {
             const isCopied = copiedKey === key
             return (

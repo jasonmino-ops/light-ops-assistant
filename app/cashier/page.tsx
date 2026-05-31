@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react'
-import { apiFetch } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +47,7 @@ const s: Record<string, CSSProperties> = {
   sidebar:   { width: 210, flexShrink: 0, height: '100vh', display: 'flex', flexDirection: 'column', background: SIDEBAR_BG, overflowY: 'auto' },
   sideHead:  { padding: '18px 16px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)' },
   sideTitle: { fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 2 },
-  sideStore: { fontSize: 12, color: '#94a3b8' },
+  sideStore: { fontSize: 12, color: '#94a3b8', marginTop: 2, lineHeight: 1.4 },
   sideCats:  { padding: '8px 6px', flex: 1 },
   sideCat:   { display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', borderRadius: 8, border: 'none', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', marginBottom: 2 },
   sideCatOn: { background: SIDEBAR_ACTIVE, color: '#fff', fontWeight: 600 },
@@ -59,7 +58,6 @@ const s: Record<string, CSSProperties> = {
   mid:       { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' },
   topbar:    { padding: '10px 16px', background: '#fff', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 },
   search:    { flex: 1, height: 36, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0 12px', fontSize: 14, outline: 'none', background: '#f9fafb' },
-  pendingBtn:{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1.5px solid #fcd34d', background: '#fffbeb', color: '#92400e', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 },
   grid:      { flex: 1, overflowY: 'auto', padding: '14px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: 10, alignContent: 'start' },
   pcard:     { background: '#fff', borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: '1.5px solid transparent', transition: 'all .12s', userSelect: 'none' as const },
   pcardImg:  { height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, overflow: 'hidden' },
@@ -105,11 +103,22 @@ const s: Record<string, CSSProperties> = {
   modalAmt:  { fontSize: 32, fontWeight: 800, color: ACCENT, marginBottom: 4 },
   modalSub:  { fontSize: 13, color: '#6b7280', marginBottom: 20 },
   modalBtn:  { padding: '11px 32px', borderRadius: 10, border: 'none', background: ACCENT, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' },
+
+  // Toast
+  toast:     { position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', background: 'rgba(17,24,39,0.88)', color: '#fff', borderRadius: 10, padding: '10px 20px', fontSize: 13, zIndex: 200, whiteSpace: 'nowrap' as const, pointerEvents: 'none' },
+
+  // No-code error screen
+  errScreen: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f1f5f9', flexDirection: 'column', gap: 12, padding: 32 },
+  errTitle:  { fontSize: 18, fontWeight: 700, color: '#111827' },
+  errSub:    { fontSize: 13, color: '#6b7280', textAlign: 'center' as const, maxWidth: 380, lineHeight: 1.6 },
+  errCode:   { fontSize: 12, color: '#9ca3af', fontFamily: 'monospace', background: '#fff', padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb' },
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function CashierPage() {
+  const [storeCode,    setStoreCode]    = useState<string | null>(null)
+  const [noCodeError,  setNoCodeError]  = useState(false)
   const [products,     setProducts]     = useState<Product[]>([])
   const [categories,   setCategories]   = useState<Category[]>([])
   const [activeCatId,  setActiveCatId]  = useState<string | null>(null)
@@ -119,24 +128,30 @@ export default function CashierPage() {
   const [submitting,   setSubmitting]   = useState(false)
   const [submitError,  setSubmitError]  = useState('')
   const [saleResult,   setSaleResult]   = useState<SaleResult | null>(null)
-  const [pendingCount, setPendingCount] = useState(0)
   const [storeName,    setStoreName]    = useState('')
   const [loading,      setLoading]      = useState(true)
+  const [toast,        setToast]        = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
 
-  // ── Load data ───────────────────────────────────────────────────────────────
+  // ── Load store data via public cashier API ───────────────────────────────────
   useEffect(() => {
-    Promise.all([
-      apiFetch('/api/products').then(r => r.json()),
-      apiFetch('/api/categories').then(r => r.json()),
-      apiFetch('/api/me').then(r => r.json()),
-      apiFetch('/api/customer-orders?status=PENDING,CONFIRMED').then(r => r.json()),
-    ]).then(([prods, cats, me, orders]) => {
-      setProducts(Array.isArray(prods) ? prods : [])
-      setCategories(Array.isArray(cats) ? cats : [])
-      setStoreName(me?.storeName ?? '')
-      setPendingCount(Array.isArray(orders) ? orders.length : 0)
-    }).catch(() => {}).finally(() => setLoading(false))
+    const sc = new URLSearchParams(window.location.search).get('storeCode')?.trim() || null
+    if (!sc) {
+      setNoCodeError(true)
+      setLoading(false)
+      return
+    }
+    setStoreCode(sc)
+
+    fetch(`/api/cashier/store?storeCode=${encodeURIComponent(sc)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setProducts(Array.isArray(data.products) ? data.products : [])
+        setCategories(Array.isArray(data.categories) ? data.categories : [])
+        setStoreName(data.storeName ?? '')
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
   // ── Keyboard shortcut: focus search on '/' ──────────────────────────────────
@@ -150,6 +165,12 @@ export default function CashierPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // ── Toast helper ─────────────────────────────────────────────────────────────
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(''), 3000)
+  }
 
   // ── Category hierarchy ──────────────────────────────────────────────────────
   const l1Cats = categories.filter(c => !c.parentId)
@@ -182,17 +203,18 @@ export default function CashierPage() {
     )
   }, [])
 
-  // ── Submit sale ──────────────────────────────────────────────────────────────
+  // ── Submit sale via public cashier API ────────────────────────────────────────
   async function handleSubmit() {
-    if (cart.length === 0 || submitting) return
+    if (cart.length === 0 || submitting || !storeCode) return
     setSubmitting(true)
     setSubmitError('')
     const apiPayment = payment === 'OTHER' ? 'CASH' : payment
     try {
-      const res = await apiFetch('/api/sales', {
+      const res = await fetch('/api/cashier/sales', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          saleType: 'SALE',
+          storeCode,
           items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty })),
           paymentMethod: apiPayment,
         }),
@@ -204,7 +226,7 @@ export default function CashierPage() {
       }
       const total = cartTotal(cart)
       setCart([])
-      setSaleResult({ recordNo: body.recordNo ?? body.orderNo, totalAmount: total })
+      setSaleResult({ recordNo: body.orderNo, totalAmount: total })
     } catch {
       setSubmitError('网络错误，请重试')
     } finally {
@@ -215,8 +237,26 @@ export default function CashierPage() {
   const total = cartTotal(cart)
   const count = cartCount(cart)
 
+  // ── No storeCode error screen ─────────────────────────────────────────────────
+  if (noCodeError) {
+    return (
+      <div style={s.errScreen}>
+        <div style={{ fontSize: 36 }}>🖥️</div>
+        <div style={s.errTitle}>缺少门店信息</div>
+        <div style={s.errSub}>
+          请在手机商户端打开「/home」页，找到「常用入口 → 电脑收银台」，
+          复制完整链接后在电脑浏览器中打开。
+        </div>
+        <div style={s.errCode}>链接格式：/cashier?storeCode=你的门店编号</div>
+      </div>
+    )
+  }
+
   return (
     <div style={s.root}>
+      {/* ── Toast ────────────────────────────────────────────────────────────── */}
+      {toast && <div style={s.toast}>{toast}</div>}
+
       {/* ── LEFT SIDEBAR ─────────────────────────────────────────────────────── */}
       <div style={s.sidebar}>
         <div style={s.sideHead}>
@@ -251,9 +291,9 @@ export default function CashierPage() {
         </div>
 
         <div style={s.sideFooter}>
-          <button style={s.sideLink} onClick={() => window.location.href = '/home'}>← 接单看板</button>
-          <button style={s.sideLink} onClick={() => window.location.href = '/products'}>商品管理</button>
-          <button style={s.sideLink} onClick={() => window.location.href = '/records'}>销售记录</button>
+          <button style={s.sideLink} onClick={() => showToast('请在手机商户端管理商品')}>商品管理</button>
+          <button style={s.sideLink} onClick={() => showToast('请在手机商户端查看销售记录')}>销售记录</button>
+          <button style={s.sideLink} onClick={() => showToast('请在手机商户端查看接单面板')}>接单看板</button>
         </div>
       </div>
 
@@ -268,14 +308,6 @@ export default function CashierPage() {
             value={searchKw}
             onChange={e => setSearchKw(e.target.value)}
           />
-          {pendingCount > 0 && (
-            <button style={s.pendingBtn} onClick={() => window.location.href = '/home'}>
-              📋 待处理扫码订单
-              <span style={{ background: '#f59e0b', color: '#fff', borderRadius: 12, padding: '1px 7px', fontSize: 12, fontWeight: 700 }}>
-                {pendingCount}
-              </span>
-            </button>
-          )}
         </div>
 
         {/* Product grid */}
@@ -303,9 +335,7 @@ export default function CashierPage() {
                   boxShadow: inCart ? `0 0 0 1px ${ACCENT}` : '0 1px 4px rgba(0,0,0,0.07)',
                 }}
                 onClick={() => addToCart(p)}
-                title={`点击加入购物车`}
               >
-                {/* Image or color block */}
                 {p.imageUrl ? (
                   <div style={s.pcardImg}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -366,7 +396,6 @@ export default function CashierPage() {
 
         {/* Footer: payment + submit */}
         <div style={s.cartFoot}>
-          {/* Payment method */}
           <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8, fontWeight: 600 }}>收款方式</div>
           <div style={s.payRow}>
             {(['CASH','KHQR','OTHER'] as const).map(m => (
@@ -386,20 +415,17 @@ export default function CashierPage() {
             </div>
           )}
 
-          {/* Total */}
           <div style={s.totalRow}>
             <span style={s.totalLbl}>合计</span>
             <span style={s.totalAmt}>${total.toFixed(2)}</span>
           </div>
 
-          {/* Error */}
           {submitError && (
             <div style={{ fontSize: 13, color: '#ef4444', marginBottom: 10, padding: '6px 10px', background: '#fef2f2', borderRadius: 6 }}>
               {submitError}
             </div>
           )}
 
-          {/* Submit */}
           <button
             style={{ ...s.submitBtn, ...(cart.length === 0 || submitting ? s.submitDis : {}) }}
             disabled={cart.length === 0 || submitting}
@@ -408,7 +434,6 @@ export default function CashierPage() {
             {submitting ? '处理中…' : '✓ 完成销售'}
           </button>
 
-          {/* Print hint */}
           <div style={s.printHint}>
             🖨️ 打印暂未连接<br />
             如需打印小票，请在 mPOS 手机端操作
