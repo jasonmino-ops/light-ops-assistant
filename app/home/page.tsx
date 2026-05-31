@@ -25,6 +25,7 @@ type CustomerOrderRecord = {
   orderNo: string
   storeCode: string
   customerTelegramId: string | null
+  tableNo: string | null
   items: CustomerOrderItem[]
   totalAmount: number
   status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'
@@ -661,6 +662,11 @@ function CustomerOrderCard({
             <span style={{ ...s.tagSale, background: color + '15', color, border: `1px solid ${color}44` }}>
               {label}
             </span>
+            {order.tableNo && (
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', borderRadius: 4, padding: '1px 7px', letterSpacing: 0.5 }}>
+                🪑 {order.tableNo}
+              </span>
+            )}
             {order.customerTelegramId && (
               <span style={s.coTgBadge}>TG</span>
             )}
@@ -703,6 +709,7 @@ function CustomerOrderCard({
             <span>{order.orderNo}</span>
             <span style={{ color: '#ddd' }}>·</span>
             <span>{new Date(order.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+            {order.tableNo && <span style={{ color: '#1d4ed8', fontWeight: 700 }}>· 桌号 {order.tableNo}</span>}
           </div>
           {order.items.map((item, idx) => (
             <div key={item.productId + idx} style={s.coDetailItem}>

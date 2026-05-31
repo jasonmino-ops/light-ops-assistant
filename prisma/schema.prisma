@@ -427,6 +427,7 @@ model CustomerOrder {
   paymentMethod      String?                        // CASH | QR
   paidAt             DateTime?
   paidAmount         Decimal?  @db.Decimal(12, 2)
+  tableNo            String?                        // 餐饮桌号，URL table= 参数传入，null = 外卖/自取
   sourcePlatform     String?                        // 推广来源平台，如 tiktok
   campaignCode       String?                        // 短链 code，对应 CampaignLink.code
   campaignLinkId     String?                        // 关联 CampaignLink.id

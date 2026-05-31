@@ -452,6 +452,7 @@ export default function MenuPage() {
   const [submitError,  setSubmitError] = useState('')
   const [showConfirm,  setShowConfirm] = useState(false)
   const [storeCode,    setStoreCode]   = useState('')
+  const [tableNo,      setTableNo]     = useState<string | null>(null)
   const [hasTgId,      setHasTgId]     = useState(false)
   const [customerBound, setCustomerBound] = useState(false)
   const [lightboxUrl,  setLightboxUrl] = useState<string | null>(null)
@@ -679,11 +680,14 @@ export default function MenuPage() {
 
     // storeCode 来源优先级：URL ?code= > Telegram start_param > 报错
     // start_param 用于 t.me/bot?startapp=<storeCode> 格式的入口链接
-    const urlCode = new URLSearchParams(window.location.search).get('code')
-    const urlRef    = new URLSearchParams(window.location.search).get('ref')    || ''
-    const urlIntent = new URLSearchParams(window.location.search).get('intent') || ''
+    const urlParams = new URLSearchParams(window.location.search)
+    const urlCode   = urlParams.get('code')
+    const urlRef    = urlParams.get('ref')    || ''
+    const urlIntent = urlParams.get('intent') || ''
+    const urlTable  = urlParams.get('table')
     if (urlRef)    setCampaignCode(urlRef)
     if (urlIntent) setCampaignIntent(urlIntent)
+    if (urlTable)  setTableNo(urlTable.slice(0, 20))
     const startParam: string =
       new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam') ||
       tg?.initDataUnsafe?.start_param ||
@@ -848,6 +852,7 @@ export default function MenuPage() {
         body: JSON.stringify({
           storeCode: code,
           items: cart.map((c) => ({ productId: c.id, quantity: c.quantity, ...(c.sugar ? { sugar: c.sugar } : {}) })),
+          ...(tableNo ? { tableNo } : {}),
           ...(customerTelegramId ? { customerTelegramId } : {}),
           ...(selectedCouponId ? { couponId: selectedCouponId } : {}),
           pickupMethod,
@@ -985,6 +990,16 @@ export default function MenuPage() {
             </svg>
           </button>
         </div>
+
+        {/* ── 桌号横幅（仅扫桌码时显示） ── */}
+        {tableNo && (
+          <div style={{ margin: '8px 12px 0', padding: '10px 16px', background: '#1d4ed8', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>🪑</span>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 16, letterSpacing: 0.5 }}>
+              {lang === 'en' ? `Table ${tableNo}` : lang === 'km' ? `តុ ${tableNo}` : `桌号：${tableNo}`}
+            </span>
+          </div>
+        )}
 
         {/* ── 2. 门店信息卡片 ── */}
         <div style={s.storeCard}>
@@ -1264,6 +1279,12 @@ export default function MenuPage() {
                 <span style={s.chkRowKey}>📍 {ui.storeLabel}</span>
                 <span style={s.chkRowVal}>{storeName}</span>
               </div>
+              {tableNo && (
+                <div style={s.chkRow}>
+                  <span style={s.chkRowKey}>🪑 {lang === 'en' ? 'Table' : lang === 'km' ? 'តុ' : '桌号'}</span>
+                  <span style={{ ...s.chkRowVal, fontWeight: 700, color: '#1d4ed8' }}>{tableNo}</span>
+                </div>
+              )}
 
               {/* 商品清单 */}
               <div style={s.confirmItemList}>

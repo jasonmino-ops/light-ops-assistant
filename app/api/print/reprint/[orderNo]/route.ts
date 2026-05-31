@@ -37,7 +37,7 @@ export async function POST(
     where: { orderNo },
     select: {
       id: true, orderNo: true, tenantId: true, storeId: true,
-      itemsJson: true, totalAmount: true, remark: true,
+      itemsJson: true, totalAmount: true, remark: true, tableNo: true,
     },
   })
   if (!order || order.tenantId !== ctx.tenantId) {
@@ -69,6 +69,7 @@ export async function POST(
   const result = await printReceipt({
     storeName:   store?.name ?? '店小二',
     orderNo:     order.orderNo,
+    tableNo:     order.tableNo,
     items,
     totalAmount: order.totalAmount.toNumber(),
     remark:      order.remark,

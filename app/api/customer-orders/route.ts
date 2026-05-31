@@ -7,6 +7,7 @@ const ORDER_SELECT = {
   orderNo: true,
   storeCode: true,
   customerTelegramId: true,
+  tableNo: true,
   itemsJson: true,
   totalAmount: true,
   status: true,
@@ -18,6 +19,7 @@ const ORDER_SELECT = {
 
 function mapOrder(o: {
   id: string; orderNo: string; storeCode: string; customerTelegramId: string | null
+  tableNo: string | null
   itemsJson: string; totalAmount: { toNumber(): number }; status: string
   paymentStatus: string; paymentMethod: string | null; paidAt: Date | null; createdAt: Date
 }) {
@@ -26,6 +28,7 @@ function mapOrder(o: {
     orderNo: o.orderNo,
     storeCode: o.storeCode,
     customerTelegramId: o.customerTelegramId,
+    tableNo: o.tableNo,
     items: JSON.parse(o.itemsJson) as unknown[],
     totalAmount: o.totalAmount.toNumber(),
     status: o.status,

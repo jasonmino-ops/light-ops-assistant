@@ -128,6 +128,7 @@ export type ReceiptItem = {
 export type ReceiptInput = {
   storeName: string
   orderNo: string
+  tableNo?: string | null
   items: ReceiptItem[]
   totalAmount: number
   remark?: string | null
@@ -167,6 +168,7 @@ function buildReceiptMessage(input: ReceiptInput): { print: PrintLine[] } {
   print.push({ cont: input.storeName })
   print.push({ cont: '--------------------------------' })
   print.push({ cont: `单号: ${input.orderNo}` })
+  if (input.tableNo) print.push({ cont: `桌号: ${input.tableNo}`, bold: true })
   print.push({ cont: `时间: ${now}` })
   print.push({ cont: '--------------------------------' })
 
@@ -353,6 +355,7 @@ export async function autoPrintCustomerOrder(opts: {
   storeId: string
   storeName: string
   orderNo: string
+  tableNo?: string | null
   items: ReceiptItem[]
   totalAmount: number
   remark?: string | null

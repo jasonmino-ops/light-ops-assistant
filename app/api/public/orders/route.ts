@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     storeCode?: string; items?: OrderItem[]; customerTelegramId?: string
     remark?: string; lang?: string; couponId?: string
     pickupMethod?: 'dineIn' | 'delivery' | string
+    tableNo?: string
     customerName?: string; customerPhone?: string
     deliveryAddress?: string; deliveryNote?: string
     deliveryLat?: number; deliveryLng?: number
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { storeCode, items, customerTelegramId, remark } = body
+  const tableNo = typeof body.tableNo === 'string' ? body.tableNo.trim().slice(0, 20) || null : null
   const rawCampaignCode   = typeof body.campaignCode   === 'string' ? body.campaignCode.trim()   : ''
   const rawCampaignIntent = typeof body.campaignIntent === 'string' ? body.campaignIntent.trim() : ''
   const couponId = typeof body.couponId === 'string' ? body.couponId.trim() : ''
@@ -248,6 +250,7 @@ export async function POST(req: NextRequest) {
           deliveryLat,
           deliveryLng,
           deliveryAddressPhotoUrl,
+          tableNo,
           // 新订单不写入 deliveryAddressPhotoData（base64 旧方案已停用，旧订单数据保留）
           itemsJson:          JSON.stringify(itemsForJson),
           totalAmount:        String(payableAmount.toFixed(2)),
@@ -294,7 +297,7 @@ export async function POST(req: NextRequest) {
 
   // ── 通知 OWNER ────────────────────────────────────────────────────────────
   await notifyOwner(store.tenantId, store.name, order.orderNo, itemsForJson, totalAmount, {
-    pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng,
+    tableNo, pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng,
     deliveryAddressPhotoUrl,
   }).catch(
     (e) => console.error('[customer-order] notify owner failed:', e),
@@ -320,6 +323,7 @@ export async function POST(req: NextRequest) {
         storeId:     store.id,
         storeName:   store.name,
         orderNo:     order.orderNo,
+        tableNo,
         items:       itemsForJson,
         totalAmount,
         remark:      typeof remark === 'string' && remark.trim() ? remark.trim() : null,
@@ -367,6 +371,7 @@ async function notifyOwner(
   items: { name: string; spec: string | null; quantity: number; price: number; sugar?: string }[],
   totalAmount: number,
   delivery: {
+    tableNo: string | null
     pickupMethod: string
     customerName: string | null; customerPhone: string | null
     deliveryAddress: string | null; deliveryNote: string | null
@@ -408,6 +413,7 @@ async function notifyOwner(
     `🛒 新顾客订单\n` +
     `门店：${storeName}\n` +
     `订单号：${orderNo}\n` +
+    (delivery.tableNo ? `桌号：${delivery.tableNo}\n` : '') +
     `─────────────\n` +
     `${itemLines}\n` +
     `─────────────${deliveryBlock}\n` +
