@@ -751,9 +751,15 @@ export default function MenuPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const SUGAR_SPEC_RE = /no\s*sugar|无糖|微糖|半糖|少糖|正常糖|(?:25|50|75|100)%/i
+
   function needsSugar(productId: string): boolean {
     const p = apiProducts.find((ap) => ap.id === productId)
-    if (!p?.categoryId) return false
+    if (!p) return false
+    // Primary: spec explicitly lists sugar options
+    if (p.spec && SUGAR_SPEC_RE.test(p.spec)) return true
+    // Fallback: category is coffee-type
+    if (!p.categoryId) return false
     const cat = categories.find((c) => c.id === p.categoryId)
     if (!cat) return false
     const parentName = cat.parentId ? (categories.find((c) => c.id === cat.parentId)?.name ?? '') : ''
@@ -761,11 +767,20 @@ export default function MenuPage() {
   }
 
   function sugarLabel(sugar: string): string {
-    if (sugar === 'no_sugar') return lang === 'en' ? 'No sugar' : lang === 'km' ? 'គ្មានស្ករ' : '无糖'
-    if (sugar === '25')       return lang === 'en' ? '25% sugar' : lang === 'km' ? 'ស្ករ 25%' : '微糖 25%'
-    if (sugar === '50')       return lang === 'en' ? '50% sugar' : lang === 'km' ? 'ស្ករ 50%' : '半糖 50%'
-    if (sugar === '75')       return lang === 'en' ? '75% sugar' : lang === 'km' ? 'ស្ករ 75%' : '少糖 75%'
-    if (sugar === '100')      return lang === 'en' ? 'Full sugar' : lang === 'km' ? 'ស្ករ 100%' : '正常糖 100%'
+    if (lang === 'zh') {
+      if (sugar === 'no_sugar') return '无糖'
+      if (sugar === '25')       return '微糖 25%'
+      if (sugar === '50')       return '半糖 50%'
+      if (sugar === '75')       return '少糖 75%'
+      if (sugar === '100')      return '正常糖 100%'
+    } else {
+      // en and km both use English (no km sugar translations in project)
+      if (sugar === 'no_sugar') return 'No sugar'
+      if (sugar === '25')       return '25% sugar'
+      if (sugar === '50')       return '50% sugar'
+      if (sugar === '75')       return '75% sugar'
+      if (sugar === '100')      return '100% sugar'
+    }
     return sugar
   }
 
