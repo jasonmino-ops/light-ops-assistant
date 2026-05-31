@@ -376,11 +376,10 @@ export default function HomePage() {
         <div style={s.shortcutSection}>
           <div style={s.sectionTitle}>常用入口</div>
           {([
-            { key: 'menu',     label: '顾客点单', icon: '📱', path: `/m/${storeCode}` },
-            { key: 'cashier',  label: '电脑收银台', icon: '🖥️', path: '/cashier' },
-            { key: 'qrcodes', label: '桌号二维码', icon: '🪑', path: '/table-qrcodes' },
-          ] as { key: string; label: string; icon: string; path: string }[]).map(({ key, label, icon, path }) => {
-            const url = key === 'menu' ? `${origin}${path}` : `${origin}${path}`
+            { key: 'menu',    label: '顾客点单',   icon: '📱', url: `${origin}/m/${storeCode}`,       hint: '' },
+            { key: 'cashier', label: '电脑收银台', icon: '🖥️', url: `${origin}/cashier`,               hint: '给电脑浏览器使用，不经过 Telegram。' },
+            { key: 'qrcodes', label: '桌号二维码', icon: '🪑', url: `${origin}/table-qrcodes`,         hint: '' },
+          ] as { key: string; label: string; icon: string; url: string; hint: string }[]).map(({ key, label, icon, url, hint }) => {
             const isCopied = copiedKey === key
             return (
               <div key={key} style={s.shortcutRow}>
@@ -388,6 +387,7 @@ export default function HomePage() {
                   <span style={s.shortcutIcon}>{icon}</span>
                   <div style={s.shortcutTextCol}>
                     <span style={s.shortcutLabel}>{label}</span>
+                    {hint && <span style={s.shortcutHint}>{hint}</span>}
                     <span style={s.shortcutUrl}>{url}</span>
                   </div>
                 </div>
@@ -400,7 +400,7 @@ export default function HomePage() {
                   </button>
                   <button
                     style={s.shortcutBtn}
-                    onClick={() => window.open(url, '_blank')}
+                    onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
                   >
                     打开↗
                   </button>
@@ -1025,6 +1025,10 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 600,
     color: '#111827',
+  },
+  shortcutHint: {
+    fontSize: 10,
+    color: '#2563eb',
   },
   shortcutUrl: {
     fontSize: 10,
