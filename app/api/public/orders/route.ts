@@ -351,11 +351,20 @@ export async function POST(req: NextRequest) {
 
 // ── 通知老板 Telegram ─────────────────────────────────────────────────────────
 
+function notifySugarZh(sugar: string): string {
+  if (sugar === 'no_sugar') return '无糖'
+  if (sugar === '25')       return '微糖 25%'
+  if (sugar === '50')       return '半糖 50%'
+  if (sugar === '75')       return '少糖 75%'
+  if (sugar === '100')      return '正常糖 100%'
+  return sugar
+}
+
 async function notifyOwner(
   tenantId: string,
   storeName: string,
   orderNo: string,
-  items: { name: string; spec: string | null; quantity: number; price: number }[],
+  items: { name: string; spec: string | null; quantity: number; price: number; sugar?: string }[],
   totalAmount: number,
   delivery: {
     pickupMethod: string
@@ -372,7 +381,11 @@ async function notifyOwner(
   if (!owner?.telegramId) return
 
   const itemLines = items
-    .map((i) => `  · ${i.name}${i.spec ? ` (${i.spec})` : ''} × ${i.quantity}`)
+    .map((i) => {
+      const sugarText = i.sugar ? notifySugarZh(i.sugar) : null
+      const opts = [i.spec, sugarText].filter(Boolean).join('／')
+      return `  · ${i.name}${opts ? ` (${opts})` : ''} × ${i.quantity}`
+    })
     .join('\n')
 
   let deliveryBlock = ''

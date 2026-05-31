@@ -17,6 +17,7 @@ type CustomerOrderItem = {
   price: number
   quantity: number
   lineAmount: number
+  sugar?: string | null
 }
 
 type CustomerOrderRecord = {
@@ -31,6 +32,15 @@ type CustomerOrderRecord = {
   paymentMethod: string | null
   paidAt: string | null
   createdAt: string
+}
+
+function sugarZh(sugar: string): string {
+  if (sugar === 'no_sugar') return '无糖'
+  if (sugar === '25')       return '微糖 25%'
+  if (sugar === '50')       return '半糖 50%'
+  if (sugar === '75')       return '少糖 75%'
+  if (sugar === '100')      return '正常糖 100%'
+  return sugar
 }
 
 type Summary = {
@@ -694,11 +704,12 @@ function CustomerOrderCard({
             <span style={{ color: '#ddd' }}>·</span>
             <span>{new Date(order.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
           </div>
-          {order.items.map((item) => (
-            <div key={item.productId} style={s.coDetailItem}>
+          {order.items.map((item, idx) => (
+            <div key={item.productId + idx} style={s.coDetailItem}>
               <div style={s.coDetailItemName}>
                 {item.name}
                 {item.spec && <span style={s.coDetailItemSpec}> · {item.spec}</span>}
+                {item.sugar && <span style={s.coDetailItemSpec}> · {sugarZh(item.sugar)}</span>}
               </div>
               <div style={s.coDetailItemRight}>
                 <span style={s.coDetailItemUnit}>${item.price.toFixed(2)}×{item.quantity}</span>

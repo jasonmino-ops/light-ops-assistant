@@ -122,6 +122,7 @@ export type ReceiptItem = {
   quantity: number
   price: number
   lineAmount: number
+  sugar?: string | null
 }
 
 export type ReceiptInput = {
@@ -149,6 +150,15 @@ type PrintLine = {
   align?: 'left' | 'center' | 'right'
 }
 
+function printerSugarZh(sugar: string): string {
+  if (sugar === 'no_sugar') return '无糖'
+  if (sugar === '25')       return '微糖25%'
+  if (sugar === '50')       return '半糖50%'
+  if (sugar === '75')       return '少糖75%'
+  if (sugar === '100')      return '正常糖'
+  return sugar
+}
+
 function buildReceiptMessage(input: ReceiptInput): { print: PrintLine[] } {
   const now   = new Date().toLocaleString('zh-CN', { hour12: false })
   const print: PrintLine[] = []
@@ -161,7 +171,9 @@ function buildReceiptMessage(input: ReceiptInput): { print: PrintLine[] } {
   print.push({ cont: '--------------------------------' })
 
   for (const it of input.items) {
-    const nameLine = it.spec ? `${it.name} (${it.spec})` : it.name
+    const sugarText = it.sugar ? printerSugarZh(it.sugar) : null
+    const opts = [it.spec, sugarText].filter(Boolean).join('/')
+    const nameLine = opts ? `${it.name} (${opts})` : it.name
     print.push({ cont: nameLine })
     print.push({ cont: `  x${it.quantity}   $${it.lineAmount.toFixed(2)}` })
   }

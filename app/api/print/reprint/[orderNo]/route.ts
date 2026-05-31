@@ -52,7 +52,7 @@ export async function POST(
   let items: ReceiptItem[] = []
   try {
     const raw = JSON.parse(order.itemsJson) as Array<{
-      name?: string; spec?: string | null; quantity?: number; price?: number; lineAmount?: number
+      name?: string; spec?: string | null; quantity?: number; price?: number; lineAmount?: number; sugar?: string | null
     }>
     items = raw.map((it) => ({
       name:       it.name       ?? '商品',
@@ -60,6 +60,7 @@ export async function POST(
       quantity:   typeof it.quantity   === 'number' ? it.quantity   : 1,
       price:      typeof it.price      === 'number' ? it.price      : 0,
       lineAmount: typeof it.lineAmount === 'number' ? it.lineAmount : 0,
+      sugar:      it.sugar      ?? null,
     }))
   } catch {
     return NextResponse.json({ error: 'ITEMS_PARSE_ERROR' }, { status: 500 })
