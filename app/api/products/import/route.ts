@@ -198,7 +198,9 @@ export async function POST(req: NextRequest) {
     const row = rows[i] as unknown[]
     const rowNum = i + 1
 
-    const barcode  = String(row[col.barcode]  ?? '').trim()
+    const rawBarcode = String(row[col.barcode] ?? '').trim()
+    const sku        = col.sku >= 0 ? String(row[col.sku] ?? '').trim() || null : null
+    const barcode    = rawBarcode || sku || `GEN-${Date.now().toString(36).toUpperCase()}-${i}`
     const priceRaw = String(row[col.sellPrice] ?? '').trim()
     const nameZh   = col.nameZh  >= 0 ? String(row[col.nameZh]  ?? '').trim() || null : null
     const nameEn   = col.nameEn  >= 0 ? String(row[col.nameEn]  ?? '').trim() || null : null
@@ -207,7 +209,6 @@ export async function POST(req: NextRequest) {
     const descEn   = col.descEn  >= 0 ? String(row[col.descEn]  ?? '').trim() || null : null
     const descKm   = col.descKm  >= 0 ? String(row[col.descKm]  ?? '').trim() || null : null
     const spec     = col.spec     >= 0 ? String(row[col.spec]    ?? '').trim() || null : null
-    const sku      = col.sku      >= 0 ? String(row[col.sku]     ?? '').trim() || null : null
     const imageUrl = col.imageUrl >= 0 ? String(row[col.imageUrl]?? '').trim() || null : null
     const statusRaw = col.status  >= 0 ? String(row[col.status]  ?? '').trim().toUpperCase() : 'ACTIVE'
     const cat1Raw  = col.category1 >= 0 ? String(row[col.category1] ?? '').trim() : ''
@@ -221,9 +222,7 @@ export async function POST(req: NextRequest) {
 
     // 行级错误校验
     let rowError: string | null = null
-    if (!barcode) {
-      rowError = '条码不能为空'
-    } else if (!primaryName) {
+    if (!primaryName) {
       rowError = '商品名不能为空（需要 name_zh / name_en / name_km 其中之一）'
     } else if (seenBarcodes.has(barcode)) {
       rowError = `文件内条码重复（第 ${seenBarcodes.get(barcode)} 行）`
