@@ -4,23 +4,20 @@ import { useEffect, useState, CSSProperties } from 'react'
 import { useParams } from 'next/navigation'
 
 const BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 
 type LinkData = {
   storeCode:    string
   storeName:    string
   bannerUrl:    string | null
   announcement: string | null
-  targetUrl:    string
   creatorName:  string | null
   videoTitle:   string | null
 }
 
 export default function CampaignLandingPage() {
   const { code } = useParams<{ code: string }>()
-  const [data, setData]       = useState<LinkData | null>(null)
+  const [data, setData]         = useState<LinkData | null>(null)
   const [notFound, setNotFound] = useState(false)
-  const [clicked, setClicked]   = useState(false)
 
   useEffect(() => {
     fetch(`/api/v/${code}`)
@@ -32,12 +29,11 @@ export default function CampaignLandingPage() {
       .catch(() => setNotFound(true))
   }, [code])
 
-  async function handleOrder() {
-    if (!clicked) {
-      setClicked(true)
-      fetch(`/api/v/${code}/click`, { method: 'POST' }).catch(() => {})
-    }
-    if (data?.targetUrl) window.location.href = data.targetUrl
+  function handleOrder() {
+    // fire-and-forget click count
+    fetch(`/api/v/${code}/click`, { method: 'POST' }).catch(() => {})
+    // 跳到公开 H5 点单页，携带 ref 追踪参数
+    window.location.href = `/m/${data?.storeCode ?? ''}?ref=${encodeURIComponent(code)}`
   }
 
   function handleTelegram() {
@@ -79,9 +75,7 @@ export default function CampaignLandingPage() {
       justifyContent: 'center',
       fontSize: 40,
     },
-    body: {
-      padding: '24px 20px 28px',
-    },
+    body: { padding: '24px 20px 28px' },
     storeName: {
       fontSize: 22,
       fontWeight: 700,
@@ -101,16 +95,12 @@ export default function CampaignLandingPage() {
       padding: '8px 12px',
       margin: '12px 0 0',
     },
-    divider: {
-      height: 1,
-      background: '#f0f0f0',
-      margin: '20px 0',
-    },
+    divider: { height: 1, background: '#f0f0f0', margin: '20px 0' },
     btnPrimary: {
       display: 'block',
       width: '100%',
       padding: '14px',
-      background: 'var(--blue, #07c160)',
+      background: '#07c160',
       color: '#fff',
       border: 'none',
       borderRadius: 10,
@@ -216,9 +206,11 @@ export default function CampaignLandingPage() {
           <button style={s.btnSecondary} onClick={handleOrder}>
             查看菜单
           </button>
-          <button style={s.btnTelegram} onClick={handleTelegram}>
-            📱 打开 Telegram
-          </button>
+          {BOT && (
+            <button style={s.btnTelegram} onClick={handleTelegram}>
+              💬 打开 Telegram 客服
+            </button>
+          )}
         </div>
       </div>
 
