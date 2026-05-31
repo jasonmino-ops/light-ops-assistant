@@ -10,6 +10,7 @@ const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 type Creator = {
   id: string; name: string; displayName: string | null
   tiktokHandle: string | null; phone: string | null; note: string | null; status: string
+  preferredLang: string | null
   dashboardToken: string | null; dashboardTokenCreatedAt: string | null
 }
 
@@ -54,6 +55,7 @@ export default function CampaignPage() {
   const [cTiktok,         setCTiktok]         = useState('')
   const [cPhone,          setCPhone]          = useState('')
   const [cNote,           setCNote]           = useState('')
+  const [cLang,           setCLang]           = useState('')
   const [addingCreator,   setAddingCreator]   = useState(false)
   const [creatorError,    setCreatorError]    = useState<string | null>(null)
 
@@ -97,12 +99,12 @@ export default function CampaignPage() {
     try {
       const r = await apiFetch('/api/creators', {
         method: 'POST',
-        body: JSON.stringify({ name: cName.trim(), tiktokHandle: cTiktok.trim(), phone: cPhone.trim(), note: cNote.trim() }),
+        body: JSON.stringify({ name: cName.trim(), tiktokHandle: cTiktok.trim(), phone: cPhone.trim(), note: cNote.trim(), preferredLang: cLang || undefined }),
       }, OWNER_CTX)
       const d = await r.json()
       if (r.ok) {
         setCName(''); setCTiktok(''); setCPhone(''); setCNote('')
-        setAddCreatorOpen(false)
+        setAddCreatorOpen(false); setCLang('')
         loadAll()
       } else { setCreatorError(d.message ?? d.error ?? '新增失败') }
     } catch { setCreatorError('网络错误，请重试') }
@@ -281,9 +283,20 @@ export default function CampaignPage() {
                 <input style={s.input} placeholder="可选" value={cPhone} onChange={(e) => setCPhone(e.target.value)} />
               </div>
             </div>
-            <div style={{ marginBottom: 8 }}>
-              <label style={s.label}>备注</label>
-              <input style={s.input} placeholder="可选" value={cNote} onChange={(e) => setCNote(e.target.value)} />
+            <div style={{ ...s.halfRow, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <label style={s.label}>备注</label>
+                <input style={s.input} placeholder="可选" value={cNote} onChange={(e) => setCNote(e.target.value)} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={s.label}>默认语言</label>
+                <select style={s.select} value={cLang} onChange={(e) => setCLang(e.target.value)}>
+                  <option value="">未设置</option>
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                  <option value="km">ខ្មែរ</option>
+                </select>
+              </div>
             </div>
             {creatorError && <div style={s.error}>{creatorError}</div>}
             <div style={{ ...s.row, marginTop: 10 }}>
@@ -306,8 +319,13 @@ export default function CampaignPage() {
             }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{c.name}</div>
               {c.tiktokHandle && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>🎵 @{c.tiktokHandle}</div>}
-              {c.phone        && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>📞 {c.phone}</div>}
-              {c.note         && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>📝 {c.note}</div>}
+              {c.preferredLang && (
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                  🌐 {c.preferredLang === 'zh' ? '中文' : c.preferredLang === 'en' ? 'English' : 'ខ្មែរ'}
+                </div>
+              )}
+              {c.phone && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>📞 {c.phone}</div>}
+              {c.note  && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>📝 {c.note}</div>}
               {/* 看板链接管理 */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginTop: 8 }}>
                 {!c.dashboardToken ? (

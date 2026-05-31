@@ -27,7 +27,7 @@ export async function GET(
     where: { dashboardToken: token },
     select: {
       id: true, name: true, displayName: true, tiktokHandle: true,
-      dashboardTokenRevokedAt: true,
+      preferredLang: true, dashboardTokenRevokedAt: true,
     },
   })
 
@@ -95,9 +95,10 @@ export async function GET(
 
   return NextResponse.json({
     creator: {
-      name:         creator.name,
-      displayName:  creator.displayName,
-      tiktokHandle: creator.tiktokHandle,
+      name:          creator.name,
+      displayName:   creator.displayName,
+      tiktokHandle:  creator.tiktokHandle,
+      preferredLang: creator.preferredLang,
     },
     summary: {
       totalViews,

@@ -679,6 +679,7 @@ model Creator {
   tiktokHandle  String?
   note          String?
   status                  String    @default("active") // active | inactive
+  preferredLang           String?                      // zh | en | km
   dashboardToken          String?   @unique
   dashboardTokenCreatedAt DateTime?
   dashboardTokenRevokedAt DateTime?

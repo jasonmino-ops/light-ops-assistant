@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
     select: {
       id: true, name: true, displayName: true,
-      tiktokHandle: true, phone: true, note: true, status: true,
+      tiktokHandle: true, phone: true, note: true, status: true, preferredLang: true,
       dashboardToken: true, dashboardTokenCreatedAt: true,
       createdAt: true,
     },
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   if (ctx.role !== 'OWNER') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   if (!ctx.storeId) return NextResponse.json({ error: 'NO_STORE' }, { status: 400 })
 
-  let body: { name?: string; tiktokHandle?: string; phone?: string; note?: string } = {}
+  let body: { name?: string; tiktokHandle?: string; phone?: string; note?: string; preferredLang?: string } = {}
   try { body = await req.json() } catch { /* empty body ok */ }
 
   const name = typeof body.name === 'string' ? body.name.trim() : ''
@@ -42,9 +42,10 @@ export async function POST(req: NextRequest) {
       tenantId:    ctx.tenantId,
       storeId:     ctx.storeId,
       name,
-      tiktokHandle: typeof body.tiktokHandle === 'string' ? body.tiktokHandle.trim() || null : null,
-      phone:        typeof body.phone        === 'string' ? body.phone.trim()        || null : null,
-      note:         typeof body.note         === 'string' ? body.note.trim()         || null : null,
+      tiktokHandle:  typeof body.tiktokHandle  === 'string' ? body.tiktokHandle.trim()  || null : null,
+      phone:         typeof body.phone         === 'string' ? body.phone.trim()         || null : null,
+      note:          typeof body.note          === 'string' ? body.note.trim()          || null : null,
+      preferredLang: ['zh','en','km'].includes(body.preferredLang ?? '') ? body.preferredLang! : null,
     },
   })
   return NextResponse.json(creator, { status: 201 })
