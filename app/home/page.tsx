@@ -175,6 +175,9 @@ export default function HomePage() {
   const [ordersKey, setOrdersKey] = useState(0)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   const [customerCheckout, setCustomerCheckout] = useState<{ id: string; orderNo: string; totalAmount: number } | null>(null)
+  const [storeCode, setStoreCode] = useState<string | null>(null)
+  const [origin, setOrigin] = useState('')
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
   useEffect(() => {
     const today = todayStr()
@@ -212,6 +215,8 @@ export default function HomePage() {
 
         setEntries(mergeEntries(buildSaleEntries(data.items ?? []), paidOrders))
         setStoreName(me.storeName ?? me.tenantName ?? null)
+        if (me.storeCode) setStoreCode(me.storeCode)
+        setOrigin(window.location.origin)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -239,6 +244,28 @@ export default function HomePage() {
       clearInterval(timer)
     }
   }, [realRole])
+
+  function copyLink(key: string, url: string) {
+    const doFallback = () => {
+      const ta = document.createElement('textarea')
+      ta.value = url
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
+      document.body.appendChild(ta)
+      ta.focus(); ta.select()
+      try { document.execCommand('copy') } catch {}
+      document.body.removeChild(ta)
+      setCopiedKey(key)
+      setTimeout(() => setCopiedKey(null), 2000)
+    }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopiedKey(key)
+        setTimeout(() => setCopiedKey(null), 2000)
+      }).catch(doFallback)
+    } else {
+      doFallback()
+    }
+  }
 
   async function updateOrderStatus(id: string, status: string) {
     setUpdatingOrderId(id)
@@ -343,6 +370,46 @@ export default function HomePage() {
         <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
         <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
       </div>
+
+      {/* ── 常用入口 ── */}
+      {storeCode && origin && (
+        <div style={s.shortcutSection}>
+          <div style={s.sectionTitle}>常用入口</div>
+          {([
+            { key: 'menu',     label: '顾客点单', icon: '📱', path: `/m/${storeCode}` },
+            { key: 'cashier',  label: '电脑收银台', icon: '🖥️', path: '/cashier' },
+            { key: 'qrcodes', label: '桌号二维码', icon: '🪑', path: '/table-qrcodes' },
+          ] as { key: string; label: string; icon: string; path: string }[]).map(({ key, label, icon, path }) => {
+            const url = key === 'menu' ? `${origin}${path}` : `${origin}${path}`
+            const isCopied = copiedKey === key
+            return (
+              <div key={key} style={s.shortcutRow}>
+                <div style={s.shortcutLeft}>
+                  <span style={s.shortcutIcon}>{icon}</span>
+                  <div style={s.shortcutTextCol}>
+                    <span style={s.shortcutLabel}>{label}</span>
+                    <span style={s.shortcutUrl}>{url}</span>
+                  </div>
+                </div>
+                <div style={s.shortcutBtns}>
+                  <button
+                    style={isCopied ? s.shortcutBtnOk : s.shortcutBtn}
+                    onClick={() => copyLink(key, url)}
+                  >
+                    {isCopied ? '✓' : '复制'}
+                  </button>
+                  <button
+                    style={s.shortcutBtn}
+                    onClick={() => window.open(url, '_blank')}
+                  >
+                    打开↗
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* ── 顾客订单区（仅 OWNER 可见，常驻显示） ── */}
       {realRole === 'OWNER' && (() => {
@@ -925,6 +992,75 @@ const s: Record<string, React.CSSProperties> = {
     gap: 10,
     padding: '0 12px',
     marginBottom: 20,
+  },
+  shortcutSection: {
+    marginBottom: 16,
+  },
+  shortcutRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 16px',
+    background: '#fff',
+    borderBottom: '1px solid #f0f0f0',
+  },
+  shortcutLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+    flex: 1,
+  },
+  shortcutIcon: {
+    fontSize: 20,
+    flexShrink: 0,
+  },
+  shortcutTextCol: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 1,
+    minWidth: 0,
+  },
+  shortcutLabel: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#111827',
+  },
+  shortcutUrl: {
+    fontSize: 10,
+    color: '#9ca3af',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+    maxWidth: 180,
+  },
+  shortcutBtns: {
+    display: 'flex',
+    gap: 6,
+    flexShrink: 0,
+    marginLeft: 8,
+  },
+  shortcutBtn: {
+    padding: '5px 10px',
+    borderRadius: 6,
+    border: '1px solid #d1d5db',
+    background: '#f9fafb',
+    color: '#374151',
+    fontSize: 12,
+    cursor: 'pointer',
+    fontWeight: 500,
+    whiteSpace: 'nowrap' as const,
+  },
+  shortcutBtnOk: {
+    padding: '5px 10px',
+    borderRadius: 6,
+    border: '1px solid #86efac',
+    background: '#f0fdf4',
+    color: '#15803d',
+    fontSize: 12,
+    cursor: 'pointer',
+    fontWeight: 600,
+    whiteSpace: 'nowrap' as const,
   },
   actionBtn: {
     background: '#fff',
