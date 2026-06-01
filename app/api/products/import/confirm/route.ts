@@ -52,24 +52,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ imported: 0, catCreated: 0, imageCount: 0, failed: errors.length, errors })
   }
 
-  // 再次防重：检查数据库已存在的条码
+  // 查出已存在的条码及其 id，用于后续 update
   const existing = await prisma.product.findMany({
     where: { tenantId: ctx.tenantId, barcode: { in: validRows.map((r) => r.barcode) } },
-    select: { barcode: true },
+    select: { barcode: true, id: true },
   })
-  const existingSet = new Set(existing.map((p) => p.barcode))
+  const existingIdMap = new Map(existing.map((p) => [p.barcode, p.id]))
 
   const toCreate: PreviewRow[] = []
+  const toUpdate: PreviewRow[] = []
   for (const row of validRows) {
-    if (existingSet.has(row.barcode)) {
-      errors.push({ row: row.rowNum, barcode: row.barcode, reason: '条码已存在（跳过）' })
+    if (existingIdMap.has(row.barcode)) {
+      toUpdate.push(row)
     } else {
       toCreate.push(row)
     }
-  }
-
-  if (toCreate.length === 0) {
-    return NextResponse.json({ imported: 0, catCreated: 0, imageCount: 0, failed: errors.length, errors })
   }
 
   // ── 分类处理：查找或新建 ProductCategory ─────────────────────────────────
@@ -109,38 +106,62 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── 批量插入商品 ──────────────────────────────────────────────────────────
-  const imageCount = toCreate.filter((r) => !!r.imageUrl).length
+  // ── 批量新增 ─────────────────────────────────────────────────────────────
+  const imageCount = [...toCreate, ...toUpdate].filter((r) => !!r.imageUrl).length
 
-  const result = await prisma.product.createMany({
-    data: toCreate.map((r) => {
-      const catKey = r.resolvedL1 ? `${r.resolvedL1}__${r.resolvedL2 ?? ''}` : null
-      const categoryId = catKey ? (catKeyMap.get(catKey) ?? null) : null
-      return {
-        tenantId:   ctx.tenantId,
-        barcode:    r.barcode.trim(),
-        sku:        r.sku ?? null,
-        name:       r.name.trim(),
-        nameZh:     r.nameZh ?? null,
-        nameEn:     r.nameEn ?? null,
-        nameKm:     r.nameKm ?? null,
-        descZh:     r.descZh ?? null,
-        descEn:     r.descEn ?? null,
-        descKm:     r.descKm ?? null,
-        spec:       r.spec ?? null,
-        sellPrice:  String(r.sellPrice),
-        status:     r.status,
-        categoryId: categoryId,
-        imageUrl:   r.imageUrl ?? null,
-      }
-    }),
-    skipDuplicates: true,
-  })
+  function rowToData(r: PreviewRow) {
+    const catKey = r.resolvedL1 ? `${r.resolvedL1}__${r.resolvedL2 ?? ''}` : null
+    return {
+      sku:        r.sku ?? null,
+      name:       r.name.trim(),
+      nameZh:     r.nameZh ?? null,
+      nameEn:     r.nameEn ?? null,
+      nameKm:     r.nameKm ?? null,
+      descZh:     r.descZh ?? null,
+      descEn:     r.descEn ?? null,
+      descKm:     r.descKm ?? null,
+      spec:       r.spec ?? null,
+      sellPrice:  String(r.sellPrice),
+      status:     r.status,
+      categoryId: catKey ? (catKeyMap.get(catKey) ?? null) : null,
+    }
+  }
+
+  let createdCount = 0
+  if (toCreate.length > 0) {
+    const result = await prisma.product.createMany({
+      data: toCreate.map((r) => ({
+        tenantId: ctx.tenantId,
+        barcode:  r.barcode.trim(),
+        imageUrl: r.imageUrl ?? null,
+        ...rowToData(r),
+      })),
+      skipDuplicates: true,
+    })
+    createdCount = result.count
+  }
+
+  // ── 更新已有商品 ──────────────────────────────────────────────────────────
+  let updatedCount = 0
+  for (const r of toUpdate) {
+    const id = existingIdMap.get(r.barcode)!
+    await prisma.product.update({
+      where: { id },
+      data: {
+        ...rowToData(r),
+        // only overwrite image if Excel row provides one; don't clear existing image
+        ...(r.imageUrl ? { imageUrl: r.imageUrl } : {}),
+      },
+    })
+    updatedCount++
+  }
 
   errors.sort((a, b) => a.row - b.row)
 
   return NextResponse.json({
-    imported:   result.count,
+    imported:   createdCount + updatedCount,
+    created:    createdCount,
+    updated:    updatedCount,
     catCreated,
     imageCount,
     failed:     errors.length,

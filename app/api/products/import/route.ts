@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
     spec:      findCol(headerRow, 'spec', '规格'),
     sellPrice: findCol(headerRow, 'sell_price', 'sellprice', '售价', '价格', '单价', '销售单价'),
     status:    findCol(headerRow, 'status', '状态'),
-    imageUrl:  findCol(headerRow, 'image_url', 'imageurl', '图片', '商品图片', '主图', '图片链接'),
+    imageUrl:  findCol(headerRow, 'image_url', 'imageurl', 'image', 'photo_url', 'main_image_url', 'mainimageurl', '图片', '商品图片', '主图', '图片链接', '图片地址', '主图地址', '商品主图'),
     category1: findCol(headerRow, 'category1', 'cat1', '一级分类', '大类', '分类'),
     category2: findCol(headerRow, 'category2', 'cat2', '二级分类', '小类', '子分类'),
   }
@@ -294,7 +294,7 @@ export async function POST(req: NextRequest) {
     for (const row of preview) {
       if (!row.error && existingSet.has(row.barcode)) {
         row.isDuplicate = true
-        row.error = '条码已存在（请手动修改）'
+        // no error — confirm step will UPDATE existing product instead of creating
       }
     }
   }

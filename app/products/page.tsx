@@ -992,12 +992,15 @@ export default function ProductsPage() {
                     {(() => {
                       const ok  = importPreview.filter((r) => !r.error)
                       const bad = importPreview.filter((r) => r.error)
+                      const newRows = ok.filter((r) => !r.isDuplicate)
+                      const updRows = ok.filter((r) => r.isDuplicate)
                       const cats = new Set(ok.filter((r) => r.resolvedL1).map((r) => `${r.resolvedL1}__${r.resolvedL2 ?? ''}`))
                       const imgs = ok.filter((r) => r.imageUrl).length
                       return (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', fontSize: 13 }}>
                           <span>分类 <strong style={{ color: '#1677ff' }}>{cats.size}</strong></span>
-                          <span>商品 <strong style={{ color: '#52c41a' }}>{ok.length}</strong></span>
+                          <span>新增 <strong style={{ color: '#52c41a' }}>{newRows.length}</strong></span>
+                          {updRows.length > 0 && <span>更新 <strong style={{ color: '#1677ff' }}>{updRows.length}</strong></span>}
                           <span>图片 <strong style={{ color: '#faad14' }}>{imgs}</strong></span>
                           {bad.length > 0 && <span style={{ color: '#ff4d4f' }}>问题行 {bad.length}（将跳过）</span>}
                         </div>
@@ -1040,7 +1043,9 @@ export default function ProductsPage() {
                             <td style={pr.td}>
                               {row.error
                                 ? <span style={{ color: '#ff4d4f', fontSize: 11 }}>{row.error}</span>
-                                : <span style={{ color: '#52c41a', fontSize: 13 }}>✓</span>
+                                : row.isDuplicate
+                                  ? <span style={{ color: '#1677ff', fontSize: 12 }}>🔄 更新</span>
+                                  : <span style={{ color: '#52c41a', fontSize: 13 }}>✓ 新增</span>
                               }
                             </td>
                           </tr>
