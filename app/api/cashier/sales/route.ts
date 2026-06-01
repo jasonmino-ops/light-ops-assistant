@@ -98,17 +98,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // KHQR config pre-check
+  // KHQR config pre-check — no hard error; fall back gracefully if unconfigured
   let khqrConfig: MerchantKhqrConfig | null = null
+  let khqrFallback = false
   if (paymentMethod === 'KHQR') {
     const cfg = await findKhqrConfig(store.tenantId, store.id)
-    if (!cfg) {
-      return NextResponse.json(
-        { error: 'KHQR_NOT_CONFIGURED', message: '当前门店未配置 KHQR 收款，请联系老板' },
-        { status: 422 },
-      )
+    if (cfg) {
+      khqrConfig = cfg
+    } else {
+      khqrFallback = true // record as KHQR but treat as manually confirmed
     }
-    khqrConfig = cfg
   }
 
   try {
@@ -148,7 +147,7 @@ export async function POST(req: NextRequest) {
             unitPrice: product.sellPrice,
             quantity: qty,
             lineAmount,
-            remark: '电脑收银台',
+            remark: khqrFallback ? '电脑收银台-KHQR兜底' : '电脑收银台',
           },
         })
         if (!firstCreatedAt) firstCreatedAt = record.createdAt
@@ -158,6 +157,8 @@ export async function POST(req: NextRequest) {
         ? generateKhqrPayload({ amount: totalAmount, orderNo, config: khqrConfig })
         : null
 
+      // Fallback KHQR treated as manually confirmed — mark PAID immediately
+      const isPaid = paymentMethod === 'CASH' || khqrFallback
       const pi = await tx.paymentIntent.create({
         data: {
           tenantId: store.tenantId,
@@ -165,12 +166,12 @@ export async function POST(req: NextRequest) {
           operatorUserId: ownerRole.userId,
           orderNo,
           paymentMethod: paymentMethod as 'CASH' | 'KHQR',
-          status: paymentMethod === 'CASH' ? 'PAID' : 'PENDING',
+          status: isPaid ? 'PAID' : 'PENDING',
           amount: totalAmount,
           khqrPayload,
           provider: khqrConfig?.provider ?? null,
           merchantConfigId: khqrConfig?.id ?? null,
-          paidAt: paymentMethod === 'CASH' ? new Date() : null,
+          paidAt: isPaid ? new Date() : null,
         },
       })
 
@@ -181,6 +182,7 @@ export async function POST(req: NextRequest) {
         createdAt: firstCreatedAt!.toISOString(),
         paymentMethod,
         paymentIntentId: pi.id,
+        khqrFallback,
       }
     })
 

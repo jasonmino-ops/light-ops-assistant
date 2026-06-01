@@ -18,7 +18,7 @@ type CartLine = {
   sugar?: string
 }
 
-type SaleResult = { orderNo?: string; totalAmount: number }
+type SaleResult = { orderNo?: string; totalAmount: number; khqrFallback?: boolean }
 
 type CashierOrderItem = {
   productId: string; name: string; spec: string | null
@@ -340,7 +340,7 @@ export default function CashierPage() {
       const body = await res.json()
       if (!res.ok) { setSubmitError(body.message ?? body.error ?? '提交失败，请重试'); return }
       setCart([])
-      setSaleResult({ orderNo: body.orderNo, totalAmount: cartTotal(cart) })
+      setSaleResult({ orderNo: body.orderNo, totalAmount: cartTotal(cart), khqrFallback: body.khqrFallback ?? false })
     } catch { setSubmitError('网络错误，请重试') }
     finally { setSubmitting(false) }
   }
@@ -674,6 +674,11 @@ export default function CashierPage() {
             <div style={s.modalTitle}>销售完成</div>
             <div style={s.modalAmt}>${saleResult.totalAmount.toFixed(2)}</div>
             {saleResult.orderNo && <div style={s.modalSub}>单号：{saleResult.orderNo}</div>}
+            {saleResult.khqrFallback && (
+              <div style={{ margin: '10px 0 4px', padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.5, textAlign: 'left' as const }}>
+                ⚠️ 未配置自动 KHQR，本次已记录为 KHQR 收款，请确认顾客已实际付款。
+              </div>
+            )}
             <button style={s.modalBtn} onClick={() => { setSaleResult(null); searchRef.current?.focus() }}>继续收银</button>
           </div>
         </div>
