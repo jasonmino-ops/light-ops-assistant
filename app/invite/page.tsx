@@ -62,7 +62,6 @@ export default function InvitePage() {
 
   const [customerStoreId, setCustomerStoreId] = useState('')
   const [customerCopied, setCustomerCopied] = useState(false)
-  const [tableQrCopied, setTableQrCopied] = useState(false)
   const [origin, setOrigin] = useState('')
 
   useEffect(() => {
@@ -269,43 +268,14 @@ export default function InvitePage() {
         <div style={s.sectionLabel}>桌号二维码</div>
         <div style={{ ...s.customerCard, gap: 10 }}>
           <div style={s.customerDesc}>
-            用于生成桌号二维码或写入 NFC 桌牌，顾客扫码后自动带桌号下单。
+            为每张餐桌生成专属二维码，顾客扫码后自动带桌号下单。可复制每个桌号的点单链接写入 NFC 桌牌。
           </div>
-          {origin && (() => {
-            const tableUrl = `${origin}/table-qrcodes`
-            function copyTableUrl() {
-              const doFallback = () => {
-                const ta = document.createElement('textarea')
-                ta.value = tableUrl
-                ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
-                document.body.appendChild(ta)
-                ta.focus(); ta.select()
-                try { document.execCommand('copy'); setTableQrCopied(true); setTimeout(() => setTableQrCopied(false), 2000) } catch {}
-                document.body.removeChild(ta)
-              }
-              if (navigator.clipboard?.writeText) {
-                navigator.clipboard.writeText(tableUrl).then(() => { setTableQrCopied(true); setTimeout(() => setTableQrCopied(false), 2000) }).catch(doFallback)
-              } else { doFallback() }
-            }
-            return (
-              <>
-                <div style={s.linkBox}>
-                  <a href={tableUrl} target="_blank" rel="noreferrer" style={s.linkText}>{tableUrl}</a>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button style={tableQrCopied ? { ...s.copyBtn, background: '#52c41a' } : s.copyBtn} onClick={copyTableUrl}>
-                    {tableQrCopied ? '已复制 ✓' : '复制链接'}
-                  </button>
-                  <button
-                    style={{ height: 48, flex: '0 0 auto', padding: '0 16px', background: '#f0fdf4', color: '#15803d', border: '1.5px solid #86efac', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-                    onClick={() => window.open(tableUrl, '_blank', 'noopener,noreferrer')}
-                  >
-                    打开↗
-                  </button>
-                </div>
-              </>
-            )
-          })()}
+          <button
+            style={{ height: 44, background: '#f0fdf4', color: '#15803d', border: '1.5px solid #86efac', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+            onClick={() => { window.location.href = '/table-qrcodes' }}
+          >
+            🪑 生成/管理桌号二维码
+          </button>
         </div>
 
         {/* ── Members section ── */}
