@@ -91,6 +91,7 @@ type PreviewRow = {
   spec:     string | null
   sellPrice: number
   status: 'ACTIVE' | 'DISABLED'
+  statusProvided?: boolean
   imageUrl: string | null
   category1Raw: string
   category2Raw: string

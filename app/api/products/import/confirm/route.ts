@@ -77,6 +77,11 @@ export async function POST(req: NextRequest) {
     const key = `${row.resolvedL1}__${row.resolvedL2 ?? ''}`
     neededPairs.set(key, { l1: row.resolvedL1, l2: row.resolvedL2 ?? null })
   }
+  for (const row of toUpdate) {
+    if (!row.category1Raw.trim() || !row.resolvedL1) continue
+    const key = `${row.resolvedL1}__${row.resolvedL2 ?? ''}`
+    neededPairs.set(key, { l1: row.resolvedL1, l2: row.resolvedL2 ?? null })
+  }
 
   let catCreated = 0
   for (const [catKey, pair] of neededPairs) {
@@ -127,6 +132,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  function rowToUpdateData(r: PreviewRow) {
+    const catKey = r.category1Raw.trim() && r.resolvedL1
+      ? `${r.resolvedL1}__${r.resolvedL2 ?? ''}`
+      : null
+    return {
+      name:      r.name.trim(),
+      sellPrice: String(r.sellPrice),
+      ...(r.sku ? { sku: r.sku } : {}),
+      ...(r.nameZh ? { nameZh: r.nameZh } : {}),
+      ...(r.nameEn ? { nameEn: r.nameEn } : {}),
+      ...(r.nameKm ? { nameKm: r.nameKm } : {}),
+      ...(r.descZh ? { descZh: r.descZh } : {}),
+      ...(r.descEn ? { descEn: r.descEn } : {}),
+      ...(r.descKm ? { descKm: r.descKm } : {}),
+      ...(r.spec ? { spec: r.spec } : {}),
+      ...(r.statusProvided ? { status: r.status } : {}),
+      ...(catKey ? { categoryId: catKeyMap.get(catKey) ?? null } : {}),
+      ...(r.imageUrl ? { imageUrl: r.imageUrl } : {}),
+    }
+  }
+
   let createdCount = 0
   if (toCreate.length > 0) {
     const result = await prisma.product.createMany({
@@ -147,11 +173,7 @@ export async function POST(req: NextRequest) {
     const id = existingIdMap.get(r.barcode)!
     await prisma.product.update({
       where: { id },
-      data: {
-        ...rowToData(r),
-        // only overwrite image if Excel row provides one; don't clear existing image
-        ...(r.imageUrl ? { imageUrl: r.imageUrl } : {}),
-      },
+      data: rowToUpdateData(r),
     })
     updatedCount++
   }

@@ -97,6 +97,7 @@ export type PreviewRow = {
   spec: string | null
   sellPrice: number
   status: 'ACTIVE' | 'DISABLED'
+  statusProvided?: boolean
   imageUrl: string | null
   category1Raw: string
   category2Raw: string
@@ -210,7 +211,9 @@ export async function POST(req: NextRequest) {
     const descKm   = col.descKm  >= 0 ? String(row[col.descKm]  ?? '').trim() || null : null
     const spec     = col.spec     >= 0 ? String(row[col.spec]    ?? '').trim() || null : null
     const imageUrl = col.imageUrl >= 0 ? String(row[col.imageUrl]?? '').trim() || null : null
-    const statusRaw = col.status  >= 0 ? String(row[col.status]  ?? '').trim().toUpperCase() : 'ACTIVE'
+    const statusCell = col.status >= 0 ? String(row[col.status] ?? '').trim() : ''
+    const statusRaw = statusCell ? statusCell.toUpperCase() : 'ACTIVE'
+    const statusProvided = !!statusCell
     const cat1Raw  = col.category1 >= 0 ? String(row[col.category1] ?? '').trim() : ''
     const cat2Raw  = col.category2 >= 0 ? String(row[col.category2] ?? '').trim() : ''
 
@@ -268,6 +271,7 @@ export async function POST(req: NextRequest) {
       spec,
       sellPrice,
       status,
+      statusProvided,
       imageUrl,
       category1Raw: cat1Raw,
       category2Raw: cat2Raw,
