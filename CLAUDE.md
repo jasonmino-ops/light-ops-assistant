@@ -196,3 +196,179 @@ SaleRecord → SaleRecord（退款自引用，originalSaleRecordId）
 - 删除已有入口；
 - 合并多个业务模块；
 - 引入新第三方服务。
+
+---
+
+# Obsidian Documentation Rules
+
+## Purpose
+
+本项目已建立 Obsidian 企业知识库。
+
+所有重要开发活动必须同步沉淀到 Obsidian。
+
+目标：
+
+开发即留痕。
+
+验收即归档。
+
+知识持续积累。
+
+---
+
+## Documentation Required
+
+以下情况必须生成 Obsidian 文档：
+
+1. 新功能开发完成
+2. 重大 Bug 修复
+3. 数据库结构变更
+4. API结构变更
+5. SOP变更
+6. 架构调整
+7. 冻结文档更新
+8. 灾备方案更新
+
+---
+
+## Required Output
+
+开发完成后必须额外输出：
+
+### 修改文件
+
+列出所有修改文件。
+
+---
+
+### Build Result
+
+输出：
+
+Build通过
+
+或
+
+Build失败
+
+---
+
+### Git Information
+
+输出：
+
+Commit Hash
+
+Git Status
+
+---
+
+### Risk Level
+
+输出：
+
+低风险
+
+中风险
+
+高风险
+
+---
+
+### Obsidian Development Record
+
+必须生成以下格式：
+
+# YYYY-MM-DD 事项名称
+
+## 问题
+
+描述问题。
+
+---
+
+## 原因
+
+描述根因。
+
+---
+
+## 修改文件
+
+列出修改文件。
+
+---
+
+## 修改内容
+
+说明修改内容。
+
+---
+
+## Build
+
+通过 / 失败
+
+---
+
+## Commit
+
+Commit Hash
+
+---
+
+## 风险
+
+低 / 中 / 高
+
+---
+
+## 结果
+
+最终结果。
+
+---
+
+## 建议归档
+
+必须给出建议归档目录：
+
+例如：
+
+05-开发记录/开发日志
+
+或
+
+04-SOP
+
+或
+
+03-冻结文档/02-冻结过程资料
+
+---
+
+## Classification Rules
+
+Claude 必须判断输出内容属于：
+
+1. 冻结文档
+2. SOP
+3. 开发日志
+4. Bug案例
+5. 验收记录
+6. 架构文档
+
+并给出建议归档位置。
+
+---
+
+## Important
+
+开发完成后：
+
+先输出开发结果。
+
+再输出 Obsidian 文档。
+
+不得省略 Obsidian 文档部分。
