@@ -22,8 +22,192 @@ type PageData = {
 
 type OrderResult = { orderNo: string; totalAmount: number }
 
+type Lang = 'zh' | 'en' | 'km'
+
+const LS_KEY = 'marketing_product_lang'
+const LANGS: Lang[] = ['km', 'en', 'zh']
+const LANG_LABELS: Record<Lang, string> = { km: 'KM', en: 'EN', zh: '中文' }
+
+const I18N: Record<Lang, {
+  loading: string
+  notFoundTitle: string
+  notFoundSub: string
+  flashBar: string
+  cod: string
+  freeDelivery: string
+  localDelivery: string
+  limitedOffer: string
+  priorityDelivery: string
+  sold: string
+  afterSale: string
+  whyTitle: string
+  defaultFeatures: string[]
+  detailTitle: string
+  reviewTitle: string
+  orderTitle: string
+  name: string
+  namePlaceholder: string
+  phone: string
+  phonePlaceholder: string
+  address: string
+  addressPlaceholder: string
+  note: string
+  notePlaceholder: string
+  quantity: string
+  total: string
+  submitOrder: string
+  submitting: string
+  successTitle: string
+  successText: string
+  orderNo: string
+  errorName: string
+  errorPhone: string
+  errorAddress: string
+  errorSubmit: string
+  errorNetwork: string
+}> = {
+  km: {
+    loading: 'កំពុងផ្ទុក...',
+    notFoundTitle: 'ទំព័រផលិតផលមិនមាន ឬត្រូវបានដកចេញ',
+    notFoundSub: 'សូមទាក់ទងហាង ដើម្បីទទួលបានតំណថ្មី',
+    flashBar: 'លក់ដាច់លើ TikTok · បង់ប្រាក់ពេលទទួលទំនិញ COD',
+    cod: 'បង់ប្រាក់ពេលទទួលទំនិញ COD',
+    freeDelivery: 'ដឹកជញ្ជូនឥតគិតថ្លៃ',
+    localDelivery: 'ដឹកជញ្ជូនក្នុងតំបន់',
+    limitedOffer: 'ប្រូម៉ូសិនមានកំណត់',
+    priorityDelivery: 'បញ្ជាទិញថ្ងៃនេះ ដឹកជញ្ជូនអាទិភាព',
+    sold: 'លក់បាន',
+    afterSale: 'ធានាសេវាក្រោយលក់',
+    whyTitle: 'ហេតុអ្វីជ្រើសរើសផលិតផលនេះ',
+    defaultFeatures: [
+      'ផលិតផលជ្រើសរើសដោយហាង គុណភាពបានត្រួតពិនិត្យ',
+      'បន្ទាប់ពីបញ្ជាទិញ ហាងនឹងទទួលបានដំណឹងភ្លាមៗតាម Telegram',
+      'គាំទ្រការបញ្ជាក់ព័ត៌មានដឹកជញ្ជូនតាមទូរស័ព្ទ',
+    ],
+    detailTitle: 'ព័ត៌មានលម្អិតផលិតផល',
+    reviewTitle: 'ការវាយតម្លៃអតិថិជន',
+    orderTitle: 'បំពេញការបញ្ជាទិញ',
+    name: 'ឈ្មោះ',
+    namePlaceholder: 'ឈ្មោះអ្នកទទួល',
+    phone: 'លេខទូរស័ព្ទ',
+    phonePlaceholder: 'លេខទំនាក់ទំនង',
+    address: 'អាសយដ្ឋាន',
+    addressPlaceholder: 'អាសយដ្ឋានដឹកជញ្ជូន',
+    note: 'ចំណាំ',
+    notePlaceholder: 'ពណ៌ ពេលវេលា ឬតម្រូវការផ្សេងៗ (បើមាន)',
+    quantity: 'ចំនួន',
+    total: 'សរុប',
+    submitOrder: 'បញ្ជាទិញឥឡូវ',
+    submitting: 'កំពុងផ្ញើ...',
+    successTitle: 'បញ្ជាទិញបានជោគជ័យ',
+    successText: 'ហាងបានទទួលការបញ្ជាទិញរបស់អ្នក ហើយនឹងទាក់ទងដើម្បីបញ្ជាក់ការដឹកជញ្ជូន។',
+    orderNo: 'លេខបញ្ជាទិញ',
+    errorName: 'សូមបំពេញឈ្មោះ',
+    errorPhone: 'សូមបំពេញលេខទូរស័ព្ទ',
+    errorAddress: 'សូមបំពេញអាសយដ្ឋានដឹកជញ្ជូន',
+    errorSubmit: 'ផ្ញើមិនបាន សូមព្យាយាមម្តងទៀត',
+    errorNetwork: 'បញ្ហាបណ្តាញ សូមព្យាយាមម្តងទៀត',
+  },
+  en: {
+    loading: 'Loading...',
+    notFoundTitle: 'Product page not found or unavailable',
+    notFoundSub: 'Please contact the shop for the latest link',
+    flashBar: 'TikTok hot sale · Cash on Delivery',
+    cod: 'Cash on Delivery',
+    freeDelivery: 'Free delivery',
+    localDelivery: 'Local delivery',
+    limitedOffer: 'Limited offer',
+    priorityDelivery: 'Order today for priority delivery',
+    sold: 'Sold',
+    afterSale: 'After-sales support',
+    whyTitle: 'Why choose this product',
+    defaultFeatures: [
+      'Selected shop product with merchant-checked quality',
+      'The shop receives your order instantly via Telegram',
+      'Phone confirmation for delivery details is supported',
+    ],
+    detailTitle: 'Product Details',
+    reviewTitle: 'Customer Reviews',
+    orderTitle: 'Place Your Order',
+    name: 'Name',
+    namePlaceholder: 'Recipient name',
+    phone: 'Phone',
+    phonePlaceholder: 'Contact phone',
+    address: 'Address',
+    addressPlaceholder: 'Delivery address',
+    note: 'Note',
+    notePlaceholder: 'Color, time, or other requests (optional)',
+    quantity: 'Quantity',
+    total: 'Total',
+    submitOrder: 'Submit Order',
+    submitting: 'Submitting...',
+    successTitle: 'Order submitted',
+    successText: 'The shop has received your order and will contact you to confirm delivery.',
+    orderNo: 'Order No.',
+    errorName: 'Please enter your name',
+    errorPhone: 'Please enter your phone number',
+    errorAddress: 'Please enter your delivery address',
+    errorSubmit: 'Failed to submit. Please try again',
+    errorNetwork: 'Network error. Please try again',
+  },
+  zh: {
+    loading: '加载中...',
+    notFoundTitle: '商品页不存在或已下架',
+    notFoundSub: '请联系商家获取最新链接',
+    flashBar: 'TikTok 热卖 · 货到付款 COD',
+    cod: '货到付款 COD',
+    freeDelivery: '免费配送',
+    localDelivery: '本地配送',
+    limitedOffer: '限时优惠',
+    priorityDelivery: '今日下单优先配送',
+    sold: '已售',
+    afterSale: '售后保障',
+    whyTitle: '为什么选择这款',
+    defaultFeatures: [
+      '精选门店商品，质量由商家把关',
+      '提交后商家 Telegram 实时接单',
+      '支持电话确认配送信息',
+    ],
+    detailTitle: '商品详情',
+    reviewTitle: '客户评价',
+    orderTitle: '填写订单',
+    name: '姓名',
+    namePlaceholder: '收货人姓名',
+    phone: '电话',
+    phonePlaceholder: '联系电话',
+    address: '地址',
+    addressPlaceholder: '收货地址',
+    note: '备注',
+    notePlaceholder: '颜色、时间、其他要求（可选）',
+    quantity: '数量',
+    total: '合计',
+    submitOrder: '提交订单',
+    submitting: '提交中...',
+    successTitle: '下单成功',
+    successText: '商家已收到订单，将尽快联系你确认配送。',
+    orderNo: '订单号',
+    errorName: '请填写姓名',
+    errorPhone: '请填写电话',
+    errorAddress: '请填写收货地址',
+    errorSubmit: '提交失败，请重试',
+    errorNetwork: '网络错误，请重试',
+  },
+}
+
+function detectLang(): Lang {
+  const params = new URLSearchParams(window.location.search)
+  const fromUrl = params.get('lang')
+  if (fromUrl && LANGS.includes(fromUrl as Lang)) return fromUrl as Lang
+  try {
+    const saved = localStorage.getItem(LS_KEY)
+    if (saved && LANGS.includes(saved as Lang)) return saved as Lang
+  } catch { /* ignore */ }
+  return 'km'
+}
+
 export default function MarketingProductPage() {
   const { slug } = useParams<{ slug: string }>()
+  const [lang, setLang] = useState<Lang>('km')
   const [data, setData] = useState<PageData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -35,6 +219,11 @@ export default function MarketingProductPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<OrderResult | null>(null)
+  const text = I18N[lang]
+
+  useEffect(() => {
+    setLang(detectLang())
+  }, [])
 
   useEffect(() => {
     fetch(`/api/public/product-pages/${encodeURIComponent(slug)}`)
@@ -56,9 +245,9 @@ export default function MarketingProductPage() {
 
   async function submitOrder() {
     if (!data || submitting) return
-    if (!name.trim()) { setError('请填写姓名'); return }
-    if (!phone.trim()) { setError('请填写电话'); return }
-    if (!address.trim()) { setError('请填写收货地址'); return }
+    if (!name.trim()) { setError(text.errorName); return }
+    if (!phone.trim()) { setError(text.errorPhone); return }
+    if (!address.trim()) { setError(text.errorAddress); return }
     setSubmitting(true)
     setError('')
 
@@ -91,28 +280,51 @@ export default function MarketingProductPage() {
           remark: note.trim() ? `营销商品页备注：${note.trim()}` : '营销商品页',
           ...(campaignCode ? { campaignCode } : {}),
           campaignIntent,
-          lang: 'zh',
+          lang,
         }),
       })
       const body = await res.json()
       if (!res.ok) {
-        setError(body.message ?? body.error ?? '提交失败，请重试')
+        setError(body.message ?? body.error ?? text.errorSubmit)
         return
       }
       setResult({ orderNo: body.orderNo, totalAmount: Number(body.totalAmount ?? total) })
     } catch {
-      setError('网络错误，请重试')
+      setError(text.errorNetwork)
     } finally {
       setSubmitting(false)
     }
   }
 
-  if (loading) return <div style={s.center}>加载中...</div>
+  function switchLang(nextLang: Lang) {
+    setLang(nextLang)
+    try { localStorage.setItem(LS_KEY, nextLang) } catch { /* ignore */ }
+  }
+
+  const langSwitcher = (
+    <div style={s.langSwitcher}>
+      {LANGS.map((l) => (
+        <button
+          key={l}
+          style={{
+            ...s.langBtn,
+            ...(lang === l ? s.langBtnActive : {}),
+          }}
+          onClick={() => switchLang(l)}
+        >
+          {LANG_LABELS[l]}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (loading) return <div style={s.center}>{text.loading}</div>
   if (notFound || !data) {
     return (
       <div style={s.center}>
-        <div style={s.emptyTitle}>商品页不存在或已下架</div>
-        <div style={s.emptySub}>请联系商家获取最新链接</div>
+        {langSwitcher}
+        <div style={s.emptyTitle}>{text.notFoundTitle}</div>
+        <div style={s.emptySub}>{text.notFoundSub}</div>
       </div>
     )
   }
@@ -120,21 +332,18 @@ export default function MarketingProductPage() {
   const imageUrl = data.heroImageUrl || data.product.imageUrl
   const displayPrice = data.salePrice ?? data.product.price
   const total = +(displayPrice * qty).toFixed(2)
-  const features = data.features.length > 0 ? data.features : [
-    '精选门店商品，质量由商家把关',
-    '提交后商家 Telegram 实时接单',
-    '支持电话确认配送信息',
-  ]
+  const features = data.features.length > 0 ? data.features : text.defaultFeatures
 
   if (result) {
     return (
       <main style={s.page}>
+        {langSwitcher}
         <section style={s.successBox}>
           <div style={s.successIcon}>✓</div>
-          <h1 style={s.successTitle}>订单已提交</h1>
-          <p style={s.successText}>商家已收到订单，将尽快联系你确认配送。</p>
-          <div style={s.orderNo}>订单号：{result.orderNo}</div>
-          <div style={s.successTotal}>合计：${result.totalAmount.toFixed(2)}</div>
+          <h1 style={s.successTitle}>{text.successTitle}</h1>
+          <p style={s.successText}>{text.successText}</p>
+          <div style={s.orderNo}>{text.orderNo}：{result.orderNo}</div>
+          <div style={s.successTotal}>{text.total}：${result.totalAmount.toFixed(2)}</div>
         </section>
       </main>
     )
@@ -142,6 +351,7 @@ export default function MarketingProductPage() {
 
   return (
     <main style={s.page}>
+      {langSwitcher}
       <section style={s.hero}>
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -151,7 +361,7 @@ export default function MarketingProductPage() {
         )}
         <div style={s.heroBody}>
           <div style={s.storeName}>{data.store.name}</div>
-          <div style={s.flashBar}>TikTok 热卖 · 货到付款 COD</div>
+          <div style={s.flashBar}>{text.flashBar}</div>
           <h1 style={s.title}>{data.title}</h1>
           {data.subtitle && <p style={s.subtitle}>{data.subtitle}</p>}
           <div style={s.priceRow}>
@@ -159,22 +369,22 @@ export default function MarketingProductPage() {
             {data.originalPrice != null && <span style={s.originalPrice}>${data.originalPrice.toFixed(2)}</span>}
           </div>
           <div style={s.metaRow}>
-            <span>COD 到付</span>
-            <span>本地配送</span>
-            {data.soldCount != null && <span>已售 {data.soldCount}</span>}
+            <span>{text.cod}</span>
+            <span>{text.freeDelivery}</span>
+            {data.soldCount != null && <span>{text.sold} {data.soldCount}</span>}
           </div>
-          {data.enableCountdown && <div style={s.countdown}>限时活动中 · 今日下单优先配送</div>}
+          {data.enableCountdown && <div style={s.countdown}>{text.limitedOffer} · {text.priorityDelivery}</div>}
           {data.product.spec && <div style={s.spec}>{data.product.spec}</div>}
           <div style={s.badges}>
-            <span style={s.badge}>货到付款 COD</span>
-            <span style={s.badge}>本地配送</span>
-            <span style={s.badge}>售后保障</span>
+            <span style={s.badge}>{text.cod}</span>
+            <span style={s.badge}>{text.freeDelivery}</span>
+            <span style={s.badge}>{text.afterSale}</span>
           </div>
         </div>
       </section>
 
       <section style={s.section}>
-        <h2 style={s.sectionTitle}>为什么选择这款</h2>
+        <h2 style={s.sectionTitle}>{text.whyTitle}</h2>
         <div style={s.points}>
           {features.map((feature, idx) => <div key={idx} style={s.point}>{feature}</div>)}
         </div>
@@ -182,11 +392,11 @@ export default function MarketingProductPage() {
 
       {data.detailImages.length > 0 && (
         <section style={s.section}>
-          <h2 style={s.sectionTitle}>商品详情</h2>
+          <h2 style={s.sectionTitle}>{text.detailTitle}</h2>
           <div style={s.imageStack}>
             {data.detailImages.map((url, idx) => (
               // eslint-disable-next-line @next/next/no-img-element
-              <img key={idx} src={url} alt={`商品详情 ${idx + 1}`} style={s.detailImg} />
+              <img key={idx} src={url} alt={`${text.detailTitle} ${idx + 1}`} style={s.detailImg} />
             ))}
           </div>
         </section>
@@ -194,36 +404,36 @@ export default function MarketingProductPage() {
 
       {data.reviewImages.length > 0 && (
         <section style={s.section}>
-          <h2 style={s.sectionTitle}>真实反馈</h2>
+          <h2 style={s.sectionTitle}>{text.reviewTitle}</h2>
           <div style={s.reviewGrid}>
             {data.reviewImages.map((url, idx) => (
               // eslint-disable-next-line @next/next/no-img-element
-              <img key={idx} src={url} alt={`顾客反馈 ${idx + 1}`} style={s.reviewImg} />
+              <img key={idx} src={url} alt={`${text.reviewTitle} ${idx + 1}`} style={s.reviewImg} />
             ))}
           </div>
         </section>
       )}
 
       <section style={s.section}>
-        <h2 style={s.sectionTitle}>填写订单</h2>
-        <label style={s.label}>姓名</label>
-        <input style={s.input} value={name} onChange={(e) => setName(e.target.value)} placeholder="收货人姓名" />
-        <label style={s.label}>电话</label>
-        <input style={s.input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="联系电话" inputMode="tel" />
-        <label style={s.label}>地址</label>
-        <textarea style={s.textarea} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="收货地址" />
-        <label style={s.label}>备注</label>
-        <input style={s.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="颜色、时间、其他要求（可选）" />
-        <label style={s.label}>数量</label>
+        <h2 style={s.sectionTitle}>{text.orderTitle}</h2>
+        <label style={s.label}>{text.name}</label>
+        <input style={s.input} value={name} onChange={(e) => setName(e.target.value)} placeholder={text.namePlaceholder} />
+        <label style={s.label}>{text.phone}</label>
+        <input style={s.input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={text.phonePlaceholder} inputMode="tel" />
+        <label style={s.label}>{text.address}</label>
+        <textarea style={s.textarea} value={address} onChange={(e) => setAddress(e.target.value)} placeholder={text.addressPlaceholder} />
+        <label style={s.label}>{text.note}</label>
+        <input style={s.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder={text.notePlaceholder} />
+        <label style={s.label}>{text.quantity}</label>
         <div style={s.qtyRow}>
           <button style={s.qtyBtn} onClick={() => setQty((v) => Math.max(1, v - 1))}>-</button>
           <span style={s.qtyNum}>{qty}</span>
           <button style={s.qtyBtn} onClick={() => setQty((v) => Math.min(99, v + 1))}>+</button>
-          <span style={s.total}>合计 ${total.toFixed(2)}</span>
+          <span style={s.total}>{text.total} ${total.toFixed(2)}</span>
         </div>
         {error && <div style={s.error}>{error}</div>}
         <button style={{ ...s.submit, opacity: submitting ? 0.6 : 1 }} disabled={submitting} onClick={submitOrder}>
-          {submitting ? '提交中...' : (data.buttonText || '提交订单')}
+          {submitting ? text.submitting : (data.buttonText || text.submitOrder)}
         </button>
       </section>
     </main>
@@ -237,6 +447,33 @@ const s: Record<string, CSSProperties> = {
     color: '#172018',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     paddingBottom: 28,
+  },
+  langSwitcher: {
+    position: 'fixed' as const,
+    top: 10,
+    right: 10,
+    zIndex: 20,
+    display: 'flex',
+    gap: 4,
+    background: 'rgba(255,255,255,0.88)',
+    border: '1px solid #e3e8df',
+    borderRadius: 16,
+    padding: 3,
+    boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+  },
+  langBtn: {
+    border: 0,
+    borderRadius: 12,
+    background: 'transparent',
+    color: '#667085',
+    fontSize: 11,
+    fontWeight: 800,
+    padding: '4px 8px',
+    cursor: 'pointer',
+  },
+  langBtnActive: {
+    background: '#1f7a33',
+    color: '#fff',
   },
   center: {
     minHeight: '100dvh',
