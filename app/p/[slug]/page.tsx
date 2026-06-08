@@ -34,7 +34,7 @@ type OrderResult = { orderNo: string; totalAmount: number }
 
 type Lang = 'zh' | 'en' | 'km'
 type TemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
-type TemplateSection = 'features' | 'details' | 'reviews' | 'order'
+type TemplateSection = 'price' | 'features' | 'details' | 'reviews' | 'trust' | 'order'
 
 type TemplateTheme = {
   background: string
@@ -54,6 +54,10 @@ type TemplateTheme = {
   countdownBg: string
   countdownText: string
   countdownBorder: string
+  heroVariant: 'bold' | 'scene' | 'menu' | 'soft'
+  priceVariant: 'deal' | 'clean' | 'ticket' | 'premium'
+  featureVariant: 'cards' | 'checklist' | 'menu' | 'soft'
+  imageVariant: 'stack' | 'scene' | 'grid' | 'polished'
   sectionOrder: TemplateSection[]
 }
 
@@ -80,7 +84,11 @@ const TEMPLATE_THEMES: Record<TemplateType, TemplateTheme> = {
     countdownBg: '#fff1f2',
     countdownText: '#be123c',
     countdownBorder: '#fecdd3',
-    sectionOrder: ['features', 'reviews', 'details', 'order'],
+    heroVariant: 'bold',
+    priceVariant: 'deal',
+    featureVariant: 'cards',
+    imageVariant: 'stack',
+    sectionOrder: ['price', 'features', 'reviews', 'details', 'order'],
   },
   HOME_GOODS: {
     background: '#f3f8f2',
@@ -100,7 +108,11 @@ const TEMPLATE_THEMES: Record<TemplateType, TemplateTheme> = {
     countdownBg: '#ecfdf3',
     countdownText: '#166534',
     countdownBorder: '#bbf7d0',
-    sectionOrder: ['features', 'details', 'reviews', 'order'],
+    heroVariant: 'scene',
+    priceVariant: 'clean',
+    featureVariant: 'checklist',
+    imageVariant: 'scene',
+    sectionOrder: ['features', 'details', 'trust', 'reviews', 'price', 'order'],
   },
   FOOD_SET: {
     background: '#fff7ed',
@@ -120,7 +132,11 @@ const TEMPLATE_THEMES: Record<TemplateType, TemplateTheme> = {
     countdownBg: '#ffedd5',
     countdownText: '#c2410c',
     countdownBorder: '#fdba74',
-    sectionOrder: ['features', 'order', 'details', 'reviews'],
+    heroVariant: 'menu',
+    priceVariant: 'ticket',
+    featureVariant: 'menu',
+    imageVariant: 'grid',
+    sectionOrder: ['features', 'trust', 'price', 'order', 'reviews', 'details'],
   },
   BEAUTY: {
     background: '#faf5ff',
@@ -140,7 +156,11 @@ const TEMPLATE_THEMES: Record<TemplateType, TemplateTheme> = {
     countdownBg: '#fdf4ff',
     countdownText: '#a21caf',
     countdownBorder: '#f5d0fe',
-    sectionOrder: ['features', 'reviews', 'details', 'order'],
+    heroVariant: 'soft',
+    priceVariant: 'premium',
+    featureVariant: 'soft',
+    imageVariant: 'polished',
+    sectionOrder: ['features', 'reviews', 'trust', 'details', 'price', 'order'],
   },
 }
 
@@ -343,6 +363,66 @@ function localizedButtonText(data: PageData, lang: Lang, fallback: string): stri
   return nonEmpty(localized) || nonEmpty(data.buttonText) || fallback
 }
 
+function templateCopy(template: TemplateType, lang: Lang, text: typeof I18N[Lang]) {
+  const base = {
+    priceTitle: text.limitedOffer,
+    featureTitle: text.whyTitle,
+    detailTitle: text.detailTitle,
+    reviewTitle: text.reviewTitle,
+    trustTitle: text.afterSale,
+    heroTag: text.flashBar,
+    trustItems: [text.cod, text.freeDelivery, text.afterSale],
+  }
+  if (template === 'HOME_GOODS') {
+    return {
+      ...base,
+      heroTag: lang === 'en' ? 'Practical home upgrade' : lang === 'zh' ? '家居实用好物' : 'ផលិតផលប្រើប្រាស់ក្នុងផ្ទះ',
+      featureTitle: lang === 'en' ? 'Functional Benefits' : lang === 'zh' ? '功能卖点' : 'អត្ថប្រយោជន៍សំខាន់ៗ',
+      detailTitle: lang === 'en' ? 'Scenes & Details' : lang === 'zh' ? '使用场景与细节' : 'រូបភាពប្រើប្រាស់ និងព័ត៌មានលម្អិត',
+      trustTitle: lang === 'en' ? 'Easy to use at home' : lang === 'zh' ? '安装/使用更省心' : 'ងាយស្រួលប្រើនៅផ្ទះ',
+      trustItems: [
+        lang === 'en' ? 'Space-saving design' : lang === 'zh' ? '节省空间' : 'ជួយសន្សំកន្លែង',
+        lang === 'en' ? 'Durable daily use' : lang === 'zh' ? '日常耐用' : 'ប្រើបានយូរ',
+        lang === 'en' ? 'Simple setup' : lang === 'zh' ? '安装方便' : 'រៀបចំងាយស្រួល',
+      ],
+    }
+  }
+  if (template === 'FOOD_SET') {
+    return {
+      ...base,
+      heroTag: lang === 'en' ? 'Fresh set meal · Fast order' : lang === 'zh' ? '门店套餐 · 快速下单' : 'ឈុតអាហារស្រស់ · បញ្ជាទិញលឿន',
+      featureTitle: lang === 'en' ? 'Set Includes' : lang === 'zh' ? '套餐内容' : 'មុខម្ហូបក្នុងឈុត',
+      priceTitle: lang === 'en' ? 'Today Set Price' : lang === 'zh' ? '今日套餐价' : 'តម្លៃឈុតថ្ងៃនេះ',
+      trustTitle: lang === 'en' ? 'Delivery & freshness' : lang === 'zh' ? '配送 / 自取 / 新鲜保障' : 'ដឹកជញ្ជូន / មកយក / ធានាថាស្រស់',
+      trustItems: [
+        text.localDelivery,
+        lang === 'en' ? 'Freshly prepared' : lang === 'zh' ? '新鲜现做' : 'រៀបចំថ្មីៗ',
+        lang === 'en' ? 'Shop-confirmed order' : lang === 'zh' ? '门店确认订单' : 'ហាងបញ្ជាក់ការបញ្ជាទិញ',
+      ],
+    }
+  }
+  if (template === 'BEAUTY') {
+    return {
+      ...base,
+      heroTag: lang === 'en' ? 'Beauty care selected by the shop' : lang === 'zh' ? '美妆个护精选' : 'ផលិតផលថែរក្សាសម្រស់ជ្រើសរើសដោយហាង',
+      featureTitle: lang === 'en' ? 'Key Effects' : lang === 'zh' ? '核心功效' : 'ប្រសិទ្ធភាពសំខាន់ៗ',
+      detailTitle: lang === 'en' ? 'Texture & Details' : lang === 'zh' ? '质感与详情' : 'គុណភាព និងព័ត៌មានលម្អិត',
+      trustTitle: lang === 'en' ? 'Care guarantee' : lang === 'zh' ? '安心保障' : 'ការធានាទំនុកចិត្ត',
+      trustItems: [
+        lang === 'en' ? 'Shop-selected product' : lang === 'zh' ? '门店精选' : 'ផលិតផលជ្រើសរើសដោយហាង',
+        lang === 'en' ? 'Customer feedback' : lang === 'zh' ? '真实评价参考' : 'មតិអតិថិជន',
+        text.afterSale,
+      ],
+    }
+  }
+  return {
+    ...base,
+    heroTag: lang === 'en' ? 'TikTok hot sale · COD' : lang === 'zh' ? 'TikTok 爆款 · 货到付款' : 'លក់ដាច់លើ TikTok · បង់ប្រាក់ពេលទទួលទំនិញ',
+    priceTitle: lang === 'en' ? 'Flash Deal Price' : lang === 'zh' ? '限时爆款价' : 'តម្លៃពិសេសមានកំណត់',
+    trustTitle: lang === 'en' ? 'Fast COD order' : lang === 'zh' ? 'COD 快速下单' : 'បញ្ជាទិញ COD លឿន',
+  }
+}
+
 export default function MarketingProductPage() {
   const { slug } = useParams<{ slug: string }>()
   const [lang, setLang] = useState<Lang>('km')
@@ -480,14 +560,69 @@ export default function MarketingProductPage() {
   const buttonText = localizedButtonText(data, lang, text.submitOrder)
   const templateType = data.templateType ?? 'TIKTOK_HOT'
   const theme = TEMPLATE_THEMES[templateType] ?? TEMPLATE_THEMES.TIKTOK_HOT
+  const copy = templateCopy(templateType, lang, text)
+
+  const renderPriceCard = () => {
+    const priceCardStyle = {
+      ...s.priceCard,
+      ...(theme.priceVariant === 'deal' ? s.priceCardDeal : {}),
+      ...(theme.priceVariant === 'clean' ? s.priceCardClean : {}),
+      ...(theme.priceVariant === 'ticket' ? s.priceCardTicket : {}),
+      ...(theme.priceVariant === 'premium' ? s.priceCardPremium : {}),
+      borderColor: theme.sectionBorder,
+    }
+    return (
+      <section key="price" style={{ ...s.section, ...s.priceSection, borderColor: theme.sectionBorder }}>
+        <div style={priceCardStyle}>
+          <div>
+            <div style={{ ...s.priceLabel, color: theme.priceVariant === 'deal' ? '#fff' : theme.accentDark }}>{copy.priceTitle}</div>
+            <div style={s.priceCardMeta}>
+              <span>{text.cod}</span>
+              {data.soldCount != null && <span>{text.sold} {data.soldCount}</span>}
+            </div>
+          </div>
+          <div style={s.priceCardValue}>
+            <span style={{ ...s.price, color: theme.priceVariant === 'deal' ? '#fff' : theme.accent }}>${displayPrice.toFixed(2)}</span>
+            {data.originalPrice != null && <span style={{ ...s.originalPrice, color: theme.priceVariant === 'deal' ? 'rgba(255,255,255,0.68)' : '#98a2b3' }}>${data.originalPrice.toFixed(2)}</span>}
+          </div>
+        </div>
+        {(data.enableCountdown || templateType === 'TIKTOK_HOT') && (
+          <div style={{ ...s.countdown, background: theme.countdownBg, color: theme.countdownText, borderColor: theme.countdownBorder }}>
+            {text.limitedOffer} · {text.priorityDelivery}
+          </div>
+        )}
+      </section>
+    )
+  }
 
   const renderFeatures = () => (
     <section key="features" style={{ ...s.section, borderColor: theme.sectionBorder }}>
-      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.whyTitle}</h2>
-      <div style={s.points}>
+      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{copy.featureTitle}</h2>
+      <div
+        style={{
+          ...s.points,
+          ...(theme.featureVariant === 'checklist' ? s.pointsChecklist : {}),
+          ...(theme.featureVariant === 'menu' ? s.pointsMenu : {}),
+          ...(theme.featureVariant === 'soft' ? s.pointsSoft : {}),
+        }}
+      >
         {displayFeatures.map((feature, idx) => (
-          <div key={idx} style={{ ...s.point, background: theme.pointBg, borderColor: theme.pointBorder, color: theme.text }}>
-            {feature}
+          <div
+            key={idx}
+            style={{
+              ...s.point,
+              ...(theme.featureVariant === 'checklist' ? s.pointChecklist : {}),
+              ...(theme.featureVariant === 'menu' ? s.pointMenu : {}),
+              ...(theme.featureVariant === 'soft' ? s.pointSoft : {}),
+              background: theme.pointBg,
+              borderColor: theme.pointBorder,
+              color: theme.text,
+            }}
+          >
+            <span style={{ ...s.pointIndex, background: theme.accent, color: '#fff' }}>
+              {theme.featureVariant === 'checklist' ? '✓' : idx + 1}
+            </span>
+            <span>{feature}</span>
           </div>
         ))}
       </div>
@@ -496,11 +631,18 @@ export default function MarketingProductPage() {
 
   const renderDetails = () => data.detailImages.length > 0 ? (
     <section key="details" style={{ ...s.section, borderColor: theme.sectionBorder }}>
-      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.detailTitle}</h2>
-      <div style={s.imageStack}>
+      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{copy.detailTitle}</h2>
+      <div
+        style={{
+          ...s.imageStack,
+          ...(theme.imageVariant === 'scene' ? s.imageScene : {}),
+          ...(theme.imageVariant === 'grid' ? s.imageGrid : {}),
+          ...(theme.imageVariant === 'polished' ? s.imagePolished : {}),
+        }}
+      >
         {data.detailImages.map((url, idx) => (
           // eslint-disable-next-line @next/next/no-img-element
-          <img key={idx} src={url} alt={`${text.detailTitle} ${idx + 1}`} style={s.detailImg} />
+          <img key={idx} src={url} alt={`${copy.detailTitle} ${idx + 1}`} style={s.detailImg} />
         ))}
       </div>
     </section>
@@ -508,15 +650,29 @@ export default function MarketingProductPage() {
 
   const renderReviews = () => data.reviewImages.length > 0 ? (
     <section key="reviews" style={{ ...s.section, borderColor: theme.sectionBorder }}>
-      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.reviewTitle}</h2>
-      <div style={s.reviewGrid}>
+      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{copy.reviewTitle}</h2>
+      <div style={{ ...s.reviewGrid, ...(templateType === 'BEAUTY' ? s.reviewGridBeauty : {}), ...(templateType === 'FOOD_SET' ? s.reviewGridFood : {}) }}>
         {data.reviewImages.map((url, idx) => (
           // eslint-disable-next-line @next/next/no-img-element
-          <img key={idx} src={url} alt={`${text.reviewTitle} ${idx + 1}`} style={s.reviewImg} />
+          <img key={idx} src={url} alt={`${copy.reviewTitle} ${idx + 1}`} style={{ ...s.reviewImg, ...(templateType === 'BEAUTY' ? s.reviewImgBeauty : {}) }} />
         ))}
       </div>
     </section>
   ) : null
+
+  const renderTrust = () => (
+    <section key="trust" style={{ ...s.section, borderColor: theme.sectionBorder }}>
+      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{copy.trustTitle}</h2>
+      <div style={s.trustGrid}>
+        {copy.trustItems.map((item, idx) => (
+          <div key={idx} style={{ ...s.trustItem, background: theme.badgeBg, borderColor: theme.badgeBorder, color: theme.badgeText }}>
+            <span style={{ ...s.trustDot, background: theme.accent }} />
+            {item}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
 
   const renderOrder = () => (
     <section key="order" style={{ ...s.section, borderColor: theme.sectionBorder }}>
@@ -547,6 +703,8 @@ export default function MarketingProductPage() {
     if (section === 'features') return renderFeatures()
     if (section === 'details') return renderDetails()
     if (section === 'reviews') return renderReviews()
+    if (section === 'trust') return renderTrust()
+    if (section === 'price') return renderPriceCard()
     return renderOrder()
   }
 
@@ -568,37 +726,48 @@ export default function MarketingProductPage() {
   return (
     <main style={{ ...s.page, background: theme.background, color: theme.text }}>
       {langSwitcher}
-      <section style={{ ...s.hero, background: theme.heroBg, borderColor: theme.sectionBorder }}>
+      <section
+        style={{
+          ...s.hero,
+          ...(theme.heroVariant === 'scene' ? s.heroScene : {}),
+          ...(theme.heroVariant === 'menu' ? s.heroMenu : {}),
+          ...(theme.heroVariant === 'soft' ? s.heroSoft : {}),
+          background: theme.heroBg,
+          borderColor: theme.sectionBorder,
+        }}
+      >
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt={title} style={s.heroImg} />
+          <img
+            src={imageUrl}
+            alt={title}
+            style={{
+              ...s.heroImg,
+              ...(theme.heroVariant === 'scene' ? s.heroImgScene : {}),
+              ...(theme.heroVariant === 'menu' ? s.heroImgMenu : {}),
+              ...(theme.heroVariant === 'soft' ? s.heroImgSoft : {}),
+            }}
+          />
         ) : (
           <div style={{ ...s.heroPlaceholder, background: theme.pointBg, color: theme.accentDark }}>店小二</div>
         )}
         <div style={s.heroBody}>
           <div style={{ ...s.storeName, color: theme.muted }}>{data.store.name}</div>
-          <div style={{ ...s.flashBar, background: theme.flashBg, color: theme.flashText }}>{text.flashBar}</div>
+          <div style={{ ...s.flashBar, background: theme.flashBg, color: theme.flashText }}>{copy.heroTag}</div>
           <h1 style={{ ...s.title, color: theme.text }}>{title}</h1>
           {data.subtitle && <p style={{ ...s.subtitle, color: theme.muted }}>{data.subtitle}</p>}
-          <div style={s.priceRow}>
-            <span style={{ ...s.price, color: theme.accent }}>${displayPrice.toFixed(2)}</span>
-            {data.originalPrice != null && <span style={s.originalPrice}>${data.originalPrice.toFixed(2)}</span>}
-          </div>
           <div style={{ ...s.metaRow, color: theme.muted }}>
             <span>{text.cod}</span>
-            <span>{text.freeDelivery}</span>
+            <span>{templateType === 'FOOD_SET' ? text.localDelivery : text.freeDelivery}</span>
             {data.soldCount != null && <span>{text.sold} {data.soldCount}</span>}
           </div>
-          {data.enableCountdown && (
-            <div style={{ ...s.countdown, background: theme.countdownBg, color: theme.countdownText, borderColor: theme.countdownBorder }}>
-              {text.limitedOffer} · {text.priorityDelivery}
-            </div>
-          )}
           {data.product.spec && <div style={{ ...s.spec, color: theme.muted }}>{data.product.spec}</div>}
           <div style={s.badges}>
-            <span style={{ ...s.badge, background: theme.badgeBg, color: theme.badgeText, borderColor: theme.badgeBorder }}>{text.cod}</span>
-            <span style={{ ...s.badge, background: theme.badgeBg, color: theme.badgeText, borderColor: theme.badgeBorder }}>{text.freeDelivery}</span>
-            <span style={{ ...s.badge, background: theme.badgeBg, color: theme.badgeText, borderColor: theme.badgeBorder }}>{text.afterSale}</span>
+            {copy.trustItems.slice(0, 3).map((item) => (
+              <span key={item} style={{ ...s.badge, background: theme.badgeBg, color: theme.badgeText, borderColor: theme.badgeBorder }}>
+                {item}
+              </span>
+            ))}
           </div>
         </div>
       </section>
@@ -657,7 +826,13 @@ const s: Record<string, CSSProperties> = {
   emptyTitle: { fontSize: 20, fontWeight: 700, color: '#172018', marginBottom: 8 },
   emptySub: { fontSize: 14, color: '#667085' },
   hero: { background: '#fff', borderBottom: '1px solid #e3e8df' },
+  heroScene: { padding: 14 },
+  heroMenu: { display: 'flex', flexDirection: 'column', borderBottomWidth: 0 },
+  heroSoft: { margin: 12, borderRadius: 18, overflow: 'hidden', border: '1px solid #e9d5ff', boxShadow: '0 12px 28px rgba(126,34,206,0.12)' },
   heroImg: { width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' },
+  heroImgScene: { borderRadius: 14, aspectRatio: '4 / 3' },
+  heroImgMenu: { aspectRatio: '16 / 11' },
+  heroImgSoft: { aspectRatio: '4 / 5', objectFit: 'cover' },
   heroPlaceholder: {
     width: '100%',
     aspectRatio: '1 / 1',
@@ -686,6 +861,23 @@ const s: Record<string, CSSProperties> = {
   priceRow: { display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 14 },
   price: { fontSize: 34, fontWeight: 900, color: '#e04f1a' },
   originalPrice: { fontSize: 16, color: '#98a2b3', textDecoration: 'line-through', fontWeight: 700 },
+  priceSection: { paddingTop: 12, paddingBottom: 12 },
+  priceCard: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    border: '1px solid #e5e7eb',
+    borderRadius: 10,
+    padding: 14,
+  },
+  priceCardDeal: { background: '#111827', color: '#fff', borderRadius: 6, boxShadow: '0 10px 24px rgba(225,29,72,0.22)' },
+  priceCardClean: { background: '#ffffff', color: '#172018', borderRadius: 12 },
+  priceCardTicket: { background: '#ffedd5', color: '#24150b', borderStyle: 'dashed', borderRadius: 14 },
+  priceCardPremium: { background: '#ffffff', color: '#25113a', borderRadius: 18, boxShadow: '0 10px 24px rgba(168,85,247,0.12)' },
+  priceLabel: { fontSize: 13, fontWeight: 900, marginBottom: 6 },
+  priceCardMeta: { display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, fontWeight: 800, opacity: 0.82 },
+  priceCardValue: { display: 'grid', justifyItems: 'end', gap: 2, flexShrink: 0 },
   metaRow: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, fontSize: 12, color: '#667085', fontWeight: 700 },
   countdown: { marginTop: 10, background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '8px 10px', fontSize: 13, fontWeight: 800 },
   spec: { marginTop: 4, fontSize: 13, color: '#667085' },
@@ -702,11 +894,27 @@ const s: Record<string, CSSProperties> = {
   section: { background: '#fff', marginTop: 10, padding: 18, borderTop: '1px solid #e3e8df', borderBottom: '1px solid #e3e8df' },
   sectionTitle: { margin: '0 0 12px', fontSize: 18, lineHeight: 1.25, letterSpacing: 0 },
   points: { display: 'grid', gap: 8 },
-  point: { background: '#f7faf5', border: '1px solid #e3e8df', borderRadius: 6, padding: 12, fontSize: 14, color: '#344236' },
+  pointsChecklist: { gap: 6 },
+  pointsMenu: { gridTemplateColumns: '1fr 1fr' },
+  pointsSoft: { gap: 10 },
+  point: { display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f7faf5', border: '1px solid #e3e8df', borderRadius: 6, padding: 12, fontSize: 14, color: '#344236' },
+  pointChecklist: { borderRadius: 4, borderLeftWidth: 4 },
+  pointMenu: { display: 'grid', gap: 8, borderStyle: 'dashed', minHeight: 78 },
+  pointSoft: { borderRadius: 16, boxShadow: '0 8px 20px rgba(126,34,206,0.08)' },
+  pointIndex: { width: 22, height: 22, borderRadius: 999, display: 'inline-grid', placeItems: 'center', fontSize: 12, fontWeight: 900, flexShrink: 0 },
   imageStack: { display: 'grid', gap: 10 },
+  imageScene: { gap: 12 },
+  imageGrid: { gridTemplateColumns: '1fr 1fr' },
+  imagePolished: { gap: 12 },
   detailImg: { width: '100%', borderRadius: 8, display: 'block', objectFit: 'cover' },
   reviewGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 },
+  reviewGridBeauty: { gridTemplateColumns: '1fr', gap: 10 },
+  reviewGridFood: { gridTemplateColumns: 'repeat(2, 1fr)' },
   reviewImg: { width: '100%', aspectRatio: '1 / 1', borderRadius: 8, objectFit: 'cover', display: 'block' },
+  reviewImgBeauty: { aspectRatio: '4 / 3', borderRadius: 16 },
+  trustGrid: { display: 'grid', gap: 8 },
+  trustItem: { display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', fontSize: 14, fontWeight: 800 },
+  trustDot: { width: 8, height: 8, borderRadius: 999, flexShrink: 0 },
   label: { display: 'block', fontSize: 13, fontWeight: 700, color: '#344236', margin: '12px 0 6px' },
   input: { width: '100%', boxSizing: 'border-box', height: 46, border: '1px solid #d5ddd1', borderRadius: 6, padding: '0 12px', fontSize: 15, background: '#fff' },
   textarea: { width: '100%', boxSizing: 'border-box', minHeight: 82, border: '1px solid #d5ddd1', borderRadius: 6, padding: 12, fontSize: 15, background: '#fff', resize: 'vertical' },
