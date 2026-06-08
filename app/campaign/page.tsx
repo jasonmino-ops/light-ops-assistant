@@ -82,6 +82,23 @@ function commLabel(type: string | null, value: number | null): string {
   return `$${value.toFixed(2)}/单`
 }
 
+function commissionMethodLabel(type: string | null): string {
+  if (type === 'percent') return '比例'
+  if (type === 'fixed') return '固定'
+  return '未设置'
+}
+
+function commissionValueLabel(type: string | null, value: number | null): string {
+  if (!type || value == null) return '未设置'
+  if (type === 'percent') return `${value}%`
+  if (type === 'fixed') return `$${value.toFixed(2)}/单`
+  return '未设置'
+}
+
+function settlementLabel(status: string): string {
+  return status === 'settled' ? '已结算' : '待结算'
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function CampaignPage() {
@@ -286,6 +303,14 @@ export default function CampaignPage() {
     return b.attributedSalesAmount - a.attributedSalesAmount
   })
 
+  const analyticsTotals = links.reduce((acc, lk) => {
+    acc.sales += lk.attributedSalesAmount
+    acc.orders += lk.attributedOrderCount
+    acc.commission += lk.estimatedCommission
+    if (lk.settlementStatus !== 'settled') acc.unsettled += lk.estimatedCommission
+    return acc
+  }, { sales: 0, orders: 0, commission: 0, unsettled: 0 })
+
   // ── Creator summary (frontend aggregation) ──────────────────────────────────
 
   // 博主汇总：正式博主按 creatorId 聚合，临时博主（无 creatorId）按 creatorName 聚合，两组严格分离
@@ -357,9 +382,13 @@ export default function CampaignPage() {
     btnSettle:{ padding: '4px 10px', background: '#fff', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' as const },
     sortBtn:  { padding: '5px 10px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' as const },
     tableWrap:{ overflowX: 'auto' as const, border: '1px solid #e5e7eb', borderRadius: 8 },
-    table:    { width: '100%', minWidth: 680, borderCollapse: 'collapse' as const, fontSize: 12 },
+    table:    { width: '100%', minWidth: 980, borderCollapse: 'collapse' as const, fontSize: 12 },
     th:       { textAlign: 'left' as const, padding: '9px 10px', background: '#f9fafb', color: '#6b7280', fontWeight: 700, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' as const },
     td:       { padding: '10px', borderBottom: '1px solid #f3f4f6', color: '#374151', verticalAlign: 'top' as const },
+    metricGrid:{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginBottom: 12 },
+    metricBox:{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' },
+    metricLabel:{ fontSize: 11, color: '#6b7280', marginBottom: 4 },
+    metricValue:{ fontSize: 18, color: '#111827', fontWeight: 800 },
     error:    { color: '#ef4444', fontSize: 13, marginTop: 8 },
     success:  { background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: 16, marginTop: 12 },
     divider:  { height: 1, background: '#e5e7eb', margin: '12px 0' },
@@ -619,43 +648,72 @@ export default function CampaignPage() {
         {analyticsLinks.length === 0 ? (
           <div style={{ fontSize: 13, color: '#9ca3af' }}>暂无推广短链，生成后会在这里显示效果数据。</div>
         ) : (
-          <div style={s.tableWrap}>
-            <table style={s.table}>
-              <thead>
-                <tr>
-                  <th style={s.th}>推广名称</th>
-                  <th style={s.th}>来源</th>
-                  <th style={s.th}>曝光</th>
-                  <th style={s.th}>点击</th>
-                  <th style={s.th}>订单</th>
-                  <th style={s.th}>销售额</th>
-                  <th style={s.th}>转化率</th>
-                </tr>
-              </thead>
-              <tbody>
-                {analyticsLinks.map((lk) => {
-                  const name = lk.videoTitle || lk.creatorName || `/v/${lk.code}`
-                  return (
-                    <tr key={lk.id}>
-                      <td style={s.td}>
-                        <div style={{ fontWeight: 700, color: '#111827' }}>{name}</div>
-                        <div style={{ color: '#9ca3af', marginTop: 2 }}>/v/{lk.code} · {landingLabel(lk.targetUrl)}</div>
-                      </td>
-                      <td style={s.td}>
-                        <div>{sourceTypeLabel(lk)}</div>
-                        {lk.creatorName && <div style={{ color: '#9ca3af', marginTop: 2 }}>{lk.creatorName}</div>}
-                      </td>
-                      <td style={s.td}>{lk.viewCount}</td>
-                      <td style={s.td}>{lk.clickCount}</td>
-                      <td style={s.td}>{lk.attributedOrderCount}</td>
-                      <td style={s.td}>${lk.attributedSalesAmount.toFixed(2)}</td>
-                      <td style={s.td}>{conversionRate(lk)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div style={s.metricGrid}>
+              <div style={s.metricBox}>
+                <div style={s.metricLabel}>总销售额</div>
+                <div style={s.metricValue}>${analyticsTotals.sales.toFixed(2)}</div>
+              </div>
+              <div style={s.metricBox}>
+                <div style={s.metricLabel}>总订单数</div>
+                <div style={s.metricValue}>{analyticsTotals.orders}</div>
+              </div>
+              <div style={s.metricBox}>
+                <div style={s.metricLabel}>预计佣金总额</div>
+                <div style={s.metricValue}>${analyticsTotals.commission.toFixed(2)}</div>
+              </div>
+              <div style={s.metricBox}>
+                <div style={s.metricLabel}>待结算佣金</div>
+                <div style={s.metricValue}>${analyticsTotals.unsettled.toFixed(2)}</div>
+              </div>
+            </div>
+            <div style={s.tableWrap}>
+              <table style={s.table}>
+                <thead>
+                  <tr>
+                    <th style={s.th}>推广名称</th>
+                    <th style={s.th}>来源</th>
+                    <th style={s.th}>曝光</th>
+                    <th style={s.th}>点击</th>
+                    <th style={s.th}>订单</th>
+                    <th style={s.th}>销售额</th>
+                    <th style={s.th}>转化率</th>
+                    <th style={s.th}>佣金方式</th>
+                    <th style={s.th}>佣金金额/比例</th>
+                    <th style={s.th}>预计佣金</th>
+                    <th style={s.th}>结算状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analyticsLinks.map((lk) => {
+                    const name = lk.videoTitle || lk.creatorName || `/v/${lk.code}`
+                    const hasCommission = !!lk.commissionType && lk.commissionValue != null
+                    return (
+                      <tr key={lk.id}>
+                        <td style={s.td}>
+                          <div style={{ fontWeight: 700, color: '#111827' }}>{name}</div>
+                          <div style={{ color: '#9ca3af', marginTop: 2 }}>/v/{lk.code} · {landingLabel(lk.targetUrl)}</div>
+                        </td>
+                        <td style={s.td}>
+                          <div>{sourceTypeLabel(lk)}</div>
+                          {lk.creatorName && <div style={{ color: '#9ca3af', marginTop: 2 }}>{lk.creatorName}</div>}
+                        </td>
+                        <td style={s.td}>{lk.viewCount}</td>
+                        <td style={s.td}>{lk.clickCount}</td>
+                        <td style={s.td}>{lk.attributedOrderCount}</td>
+                        <td style={s.td}>${lk.attributedSalesAmount.toFixed(2)}</td>
+                        <td style={s.td}>{conversionRate(lk)}</td>
+                        <td style={s.td}>{commissionMethodLabel(lk.commissionType)}</td>
+                        <td style={s.td}>{commissionValueLabel(lk.commissionType, lk.commissionValue)}</td>
+                        <td style={s.td}>{hasCommission ? `$${lk.estimatedCommission.toFixed(2)}` : '未设置'}</td>
+                        <td style={s.td}>{hasCommission ? settlementLabel(lk.settlementStatus) : '未设置'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
