@@ -36,6 +36,7 @@ type MarketingPageOption = {
 }
 
 type AnalyticsSort = 'sales' | 'orders' | 'clicks'
+type AnalyticsFilter = 'all' | 'official' | 'creator'
 
 // ── Copy templates ────────────────────────────────────────────────────────────
 
@@ -149,6 +150,7 @@ export default function CampaignPage() {
   const [landingSavingId, setLandingSavingId] = useState<string | null>(null)
   const [landingError, setLandingError] = useState<string | null>(null)
   const [analyticsSort, setAnalyticsSort] = useState<AnalyticsSort>('sales')
+  const [analyticsFilter, setAnalyticsFilter] = useState<AnalyticsFilter>('all')
 
   async function loadAll() {
     const [rc, rl, rp] = await Promise.all([
@@ -292,18 +294,38 @@ export default function CampaignPage() {
     return link.creatorId || link.creatorName ? '博主推广' : '官方推广'
   }
 
+  function isCreatorPromotion(link: CampaignLink): boolean {
+    return !!(link.creatorId || link.creatorName)
+  }
+
+  function ctr(link: CampaignLink): string {
+    if (link.viewCount <= 0) return '0.0%'
+    return `${((link.clickCount / link.viewCount) * 100).toFixed(1)}%`
+  }
+
   function conversionRate(link: CampaignLink): string {
     if (link.clickCount <= 0) return '0.0%'
     return `${((link.attributedOrderCount / link.clickCount) * 100).toFixed(1)}%`
   }
 
-  const analyticsLinks = [...links].sort((a, b) => {
+  function avgOrderValue(link: CampaignLink): string {
+    if (link.attributedOrderCount <= 0) return '$0.00'
+    return `$${(link.attributedSalesAmount / link.attributedOrderCount).toFixed(2)}`
+  }
+
+  const filteredAnalyticsLinks = links.filter((lk) => {
+    if (analyticsFilter === 'creator') return isCreatorPromotion(lk)
+    if (analyticsFilter === 'official') return !isCreatorPromotion(lk)
+    return true
+  })
+
+  const analyticsLinks = [...filteredAnalyticsLinks].sort((a, b) => {
     if (analyticsSort === 'orders') return b.attributedOrderCount - a.attributedOrderCount
     if (analyticsSort === 'clicks') return b.clickCount - a.clickCount
     return b.attributedSalesAmount - a.attributedSalesAmount
   })
 
-  const analyticsTotals = links.reduce((acc, lk) => {
+  const analyticsTotals = filteredAnalyticsLinks.reduce((acc, lk) => {
     acc.sales += lk.attributedSalesAmount
     acc.orders += lk.attributedOrderCount
     acc.commission += lk.estimatedCommission
@@ -382,7 +404,7 @@ export default function CampaignPage() {
     btnSettle:{ padding: '4px 10px', background: '#fff', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' as const },
     sortBtn:  { padding: '5px 10px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' as const },
     tableWrap:{ overflowX: 'auto' as const, border: '1px solid #e5e7eb', borderRadius: 8 },
-    table:    { width: '100%', minWidth: 980, borderCollapse: 'collapse' as const, fontSize: 12 },
+    table:    { width: '100%', minWidth: 1120, borderCollapse: 'collapse' as const, fontSize: 12 },
     th:       { textAlign: 'left' as const, padding: '9px 10px', background: '#f9fafb', color: '#6b7280', fontWeight: 700, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' as const },
     td:       { padding: '10px', borderBottom: '1px solid #f3f4f6', color: '#374151', verticalAlign: 'top' as const },
     metricGrid:{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginBottom: 12 },
@@ -623,25 +645,47 @@ export default function CampaignPage() {
             <div style={{ ...s.sectionTitle, marginBottom: 4 }}>📈 推广效果看板</div>
             <div style={{ fontSize: 11, color: '#9ca3af' }}>按现有短链和已归因顾客订单统计，不含时间筛选。</div>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, justifyContent: 'flex-end' }}>
-            {([
-              ['sales', '销售额最高'],
-              ['orders', '订单最多'],
-              ['clicks', '点击最多'],
-            ] as [AnalyticsSort, string][]).map(([key, label]) => (
-              <button
-                key={key}
-                style={{
-                  ...s.sortBtn,
-                  background: analyticsSort === key ? '#07c160' : '#f3f4f6',
-                  borderColor: analyticsSort === key ? '#07c160' : '#d1d5db',
-                  color: analyticsSort === key ? '#fff' : '#374151',
-                }}
-                onClick={() => setAnalyticsSort(key)}
-              >
-                {label}
-              </button>
-            ))}
+          <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, justifyContent: 'flex-end' }}>
+              {([
+                ['all', '全部'],
+                ['official', '官方推广'],
+                ['creator', '博主推广'],
+              ] as [AnalyticsFilter, string][]).map(([key, label]) => (
+                <button
+                  key={key}
+                  style={{
+                    ...s.sortBtn,
+                    background: analyticsFilter === key ? '#111827' : '#f3f4f6',
+                    borderColor: analyticsFilter === key ? '#111827' : '#d1d5db',
+                    color: analyticsFilter === key ? '#fff' : '#374151',
+                  }}
+                  onClick={() => setAnalyticsFilter(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, justifyContent: 'flex-end' }}>
+              {([
+                ['sales', '销售额最高'],
+                ['orders', '订单最多'],
+                ['clicks', '点击最多'],
+              ] as [AnalyticsSort, string][]).map(([key, label]) => (
+                <button
+                  key={key}
+                  style={{
+                    ...s.sortBtn,
+                    background: analyticsSort === key ? '#07c160' : '#f3f4f6',
+                    borderColor: analyticsSort === key ? '#07c160' : '#d1d5db',
+                    color: analyticsSort === key ? '#fff' : '#374151',
+                  }}
+                  onClick={() => setAnalyticsSort(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -675,9 +719,11 @@ export default function CampaignPage() {
                     <th style={s.th}>来源</th>
                     <th style={s.th}>曝光</th>
                     <th style={s.th}>点击</th>
+                    <th style={s.th}>CTR</th>
                     <th style={s.th}>订单</th>
                     <th style={s.th}>销售额</th>
                     <th style={s.th}>转化率</th>
+                    <th style={s.th}>客单价</th>
                     <th style={s.th}>佣金方式</th>
                     <th style={s.th}>佣金金额/比例</th>
                     <th style={s.th}>预计佣金</th>
@@ -700,9 +746,11 @@ export default function CampaignPage() {
                         </td>
                         <td style={s.td}>{lk.viewCount}</td>
                         <td style={s.td}>{lk.clickCount}</td>
+                        <td style={s.td}>{ctr(lk)}</td>
                         <td style={s.td}>{lk.attributedOrderCount}</td>
                         <td style={s.td}>${lk.attributedSalesAmount.toFixed(2)}</td>
                         <td style={s.td}>{conversionRate(lk)}</td>
+                        <td style={s.td}>{avgOrderValue(lk)}</td>
                         <td style={s.td}>{commissionMethodLabel(lk.commissionType)}</td>
                         <td style={s.td}>{commissionValueLabel(lk.commissionType, lk.commissionValue)}</td>
                         <td style={s.td}>{hasCommission ? `$${lk.estimatedCommission.toFixed(2)}` : '未设置'}</td>
@@ -861,6 +909,17 @@ export default function CampaignPage() {
                     </button>
                     <span style={badge(isSettled)}>{isSettled ? '已结算' : '未结算'}</span>
                   </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginTop: 8 }}>
+                  <button style={s.btnCopy} onClick={() => copy(fullUrl, `tt-anchor:${lk.code}`)}>
+                    {copied === `tt-anchor:${lk.code}` ? '已复制 ✓' : '复制 TikTok锚点链接'}
+                  </button>
+                  <button style={s.btnCopy} onClick={() => copy(fullUrl, `bio:${lk.code}`)}>
+                    {copied === `bio:${lk.code}` ? '已复制 ✓' : '复制 Bio链接'}
+                  </button>
+                  <button style={s.btnCopy} onClick={() => copy(fullUrl, `tg:${lk.code}`)}>
+                    {copied === `tg:${lk.code}` ? '已复制 ✓' : '复制 Telegram链接'}
+                  </button>
                 </div>
 
                 {/* 博主 + 视频 */}
