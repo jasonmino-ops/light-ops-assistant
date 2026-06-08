@@ -26,6 +26,12 @@ enum ProductStatus {
   DISABLED
 }
 
+enum MarketingProductPageStatus {
+  DRAFT
+  PUBLISHED
+  DISABLED
+}
+
 enum SaleType {
   SALE
   REFUND
@@ -66,6 +72,7 @@ model Tenant {
   stores      Store[]
   users       User[]
   products    Product[]
+  marketingProductPages MarketingProductPage[]
   sales       SaleRecord[]
   logs        OperationLog[]
   bindTokens  BindToken[]
@@ -95,6 +102,7 @@ model Store {
   bindTokens     BindToken[]
   campaignLinks  CampaignLink[]
   creators       Creator[]
+  marketingProductPages MarketingProductPage[]
 
   @@index([tenantId])
 }
@@ -180,11 +188,34 @@ model Product {
   tenant   Tenant           @relation(fields: [tenantId], references: [id])
   category ProductCategory? @relation(fields: [categoryId], references: [id])
   sales    SaleRecord[]
+  marketingProductPages MarketingProductPage[]
 
   @@unique([tenantId, barcode])
   @@index([tenantId])
   @@index([name])
   @@index([categoryId])
+}
+
+model MarketingProductPage {
+  id           String                     @id @default(cuid())
+  tenantId     String
+  storeId      String
+  productId    String
+  slug         String                     @unique
+  status       MarketingProductPageStatus @default(DRAFT)
+  title        String?
+  subtitle     String?
+  heroImageUrl String?
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  store   Store   @relation(fields: [storeId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([tenantId])
+  @@index([storeId])
+  @@index([productId])
 }
 
 model SaleRecord {

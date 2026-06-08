@@ -6,6 +6,8 @@ import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
+
 // ─── HID Scanner Hook ─────────────────────────────────────────────────────────
 
 function useHidScanner(onScan: (code: string) => void) {
@@ -59,6 +61,16 @@ type Product = {
   status: 'ACTIVE' | 'DISABLED'
   categoryId: string | null
   imageUrl: string | null
+}
+
+type MarketingProductPage = {
+  id: string
+  productId: string
+  slug: string
+  status: 'DRAFT' | 'PUBLISHED' | 'DISABLED'
+  title: string | null
+  subtitle: string | null
+  heroImageUrl: string | null
 }
 
 type Mode = 'idle' | 'loading' | 'found' | 'not-found' | 'saved'
@@ -191,6 +203,15 @@ export default function ProductsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteMsg, setDeleteMsg] = useState<string | null>(null)
+  const [marketingPages, setMarketingPages] = useState<Record<string, MarketingProductPage>>({})
+  const [marketingEditing, setMarketingEditing] = useState<{ product: Product; page: MarketingProductPage } | null>(null)
+  const [marketingTitle, setMarketingTitle] = useState('')
+  const [marketingSubtitle, setMarketingSubtitle] = useState('')
+  const [marketingSlug, setMarketingSlug] = useState('')
+  const [marketingStatus, setMarketingStatus] = useState<'DRAFT' | 'PUBLISHED' | 'DISABLED'>('DRAFT')
+  const [marketingHeroImageUrl, setMarketingHeroImageUrl] = useState('')
+  const [marketingSaving, setMarketingSaving] = useState(false)
+  const [marketingMsg, setMarketingMsg] = useState<string | null>(null)
 
   // 扫码枪反馈
   const [hidMsg, setHidMsg] = useState<{ type: 'ok' | 'fail'; text: string } | null>(null)
@@ -264,11 +285,19 @@ export default function ProductsPage() {
     setListLoading(true)
     setDeleteMsg(null)
     try {
-      const res = await apiFetch('/api/products?all=true', undefined, OWNER_CTX)
+      const [res, mpRes] = await Promise.all([
+        apiFetch('/api/products?all=true', undefined, OWNER_CTX),
+        apiFetch('/api/marketing-product-pages', undefined, OWNER_CTX),
+      ])
       if (res.ok) {
         const list: Product[] = await res.json()
         setProductList(list)
         setSelectedIds(new Set())
+      }
+      if (mpRes.ok) {
+        const body = await mpRes.json()
+        const pages = Array.isArray(body.pages) ? body.pages as MarketingProductPage[] : []
+        setMarketingPages(Object.fromEntries(pages.map((p) => [p.productId, p])))
       }
     } catch {
       // silent fail
@@ -298,6 +327,91 @@ export default function ProductsPage() {
     } else {
       setSelectedIds(new Set(productList.map((p) => p.id)))
     }
+  }
+
+  function productPageUrl(slug: string): string {
+    if (APP_URL) return `${APP_URL}/p/${slug}`
+    if (typeof window !== 'undefined') return `${window.location.origin}/p/${slug}`
+    return `/p/${slug}`
+  }
+
+  function openMarketingEditor(product: Product, page: MarketingProductPage) {
+    setMarketingEditing({ product, page })
+    setMarketingTitle(page.title ?? product.name)
+    setMarketingSubtitle(page.subtitle ?? '')
+    setMarketingSlug(page.slug)
+    setMarketingStatus(page.status)
+    setMarketingHeroImageUrl(page.heroImageUrl ?? product.imageUrl ?? '')
+    setMarketingMsg(null)
+  }
+
+  async function handleMarketingPage(product: Product) {
+    const existing = marketingPages[product.id]
+    if (existing) {
+      openMarketingEditor(product, existing)
+      return
+    }
+    setMarketingMsg(null)
+    try {
+      const res = await apiFetch(
+        '/api/marketing-product-pages',
+        { method: 'POST', body: JSON.stringify({ productId: product.id }) },
+        OWNER_CTX,
+      )
+      const body = await res.json()
+      if (!res.ok) {
+        setMarketingMsg(body.message ?? body.error ?? '营销页创建失败')
+        return
+      }
+      const page = body as MarketingProductPage
+      setMarketingPages((prev) => ({ ...prev, [page.productId]: page }))
+      openMarketingEditor(product, page)
+    } catch {
+      setMarketingMsg(t('common.networkError'))
+    }
+  }
+
+  async function saveMarketingPage() {
+    if (!marketingEditing) return
+    setMarketingSaving(true)
+    setMarketingMsg(null)
+    try {
+      const res = await apiFetch(
+        `/api/marketing-product-pages/${marketingEditing.page.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            title: marketingTitle,
+            subtitle: marketingSubtitle,
+            slug: marketingSlug,
+            status: marketingStatus,
+            heroImageUrl: marketingHeroImageUrl,
+          }),
+        },
+        OWNER_CTX,
+      )
+      const body = await res.json()
+      if (!res.ok) {
+        setMarketingMsg(body.message ?? body.error ?? '营销页保存失败')
+        return
+      }
+      const page = body as MarketingProductPage
+      setMarketingPages((prev) => ({ ...prev, [page.productId]: page }))
+      setMarketingEditing({ product: marketingEditing.product, page })
+      setMarketingMsg('营销页已保存')
+    } catch {
+      setMarketingMsg(t('common.networkError'))
+    } finally {
+      setMarketingSaving(false)
+    }
+  }
+
+  function copyMarketingLink(productId: string) {
+    const page = marketingPages[productId]
+    if (!page) return
+    navigator.clipboard.writeText(productPageUrl(page.slug))
+      .then(() => setMarketingMsg('营销页链接已复制'))
+      .catch(() => setMarketingMsg('复制失败，请手动复制链接'))
   }
 
   async function executeDelete() {
@@ -1407,12 +1521,13 @@ export default function ProductsPage() {
                     )}
                   </div>
 
-                  {/* Product rows */}
-                  {productList.map((p) => {
-                    const isExpanded = expandedId === p.id
-                    const uploading = !!listImgUploading[p.id]
-                    return (
-                      <div key={p.id} style={ls.rowWrap}>
+	                  {/* Product rows */}
+	                  {productList.map((p) => {
+	                    const isExpanded = expandedId === p.id
+	                    const uploading = !!listImgUploading[p.id]
+	                    const marketingPage = marketingPages[p.id]
+	                    return (
+	                      <div key={p.id} style={ls.rowWrap}>
                         <div style={ls.row}>
                           <input
                             type="checkbox"
@@ -1428,11 +1543,12 @@ export default function ProductsPage() {
                               {p.name}{p.spec ? ` · ${p.spec}` : ''}
                             </span>
                             <span style={ls.rowMeta}>
-                              {p.barcode}
-                              {p.status === 'DISABLED' && <span style={ls.disabledTag}> 停用</span>}
-                              {p.imageUrl && <span style={ls.imgTag}> · 图</span>}
-                            </span>
-                          </div>
+	                              {p.barcode}
+	                              {p.status === 'DISABLED' && <span style={ls.disabledTag}> 停用</span>}
+	                              {p.imageUrl && <span style={ls.imgTag}> · 图</span>}
+	                              {marketingPage && <span style={ls.imgTag}> · 营销页 {marketingPage.status}</span>}
+	                            </span>
+	                          </div>
                           <button
                             type="button"
                             style={ls.chevronBtn}
@@ -1488,12 +1604,23 @@ export default function ProductsPage() {
                                 )}
                               </div>
                             </div>
-                            {listImgError[p.id] && <div style={ls.imgErr}>{listImgError[p.id]}</div>}
+	                            {listImgError[p.id] && <div style={ls.imgErr}>{listImgError[p.id]}</div>}
 
-                            <div style={ls.actionRow}>
-                              <button type="button" style={ls.actionBtn} onClick={() => handleEditFromList(p)}>
-                                {t('products.editBtn')}
-                              </button>
+	                            <div style={ls.actionRow}>
+	                              <button type="button" style={ls.actionBtn} onClick={() => handleMarketingPage(p)}>
+	                                营销页
+	                              </button>
+	                              <button
+	                                type="button"
+	                                style={{ ...ls.actionBtn, opacity: marketingPage ? 1 : 0.5 }}
+	                                disabled={!marketingPage}
+	                                onClick={() => copyMarketingLink(p.id)}
+	                              >
+	                                复制链接
+	                              </button>
+	                              <button type="button" style={ls.actionBtn} onClick={() => handleEditFromList(p)}>
+	                                {t('products.editBtn')}
+	                              </button>
                               <button
                                 type="button"
                                 style={{ ...ls.actionBtn, ...ls.actionBtnDanger }}
@@ -1501,10 +1628,68 @@ export default function ProductsPage() {
                               >
                                 {t('products.deleteBtn')}
                               </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+	                            </div>
+
+	                            {marketingEditing?.product.id === p.id && (
+	                              <div style={{ marginTop: 10, padding: 10, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+	                                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>营销商品页</div>
+	                                <input
+	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                  value={marketingTitle}
+	                                  onChange={(e) => setMarketingTitle(e.target.value)}
+	                                  placeholder="标题"
+	                                />
+	                                <input
+	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                  value={marketingSubtitle}
+	                                  onChange={(e) => setMarketingSubtitle(e.target.value)}
+	                                  placeholder="副标题"
+	                                />
+	                                <input
+	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                  value={marketingSlug}
+	                                  onChange={(e) => setMarketingSlug(e.target.value)}
+	                                  placeholder="slug"
+	                                />
+	                                <input
+	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                  value={marketingHeroImageUrl}
+	                                  onChange={(e) => setMarketingHeroImageUrl(e.target.value)}
+	                                  placeholder="Hero 图片 URL"
+	                                />
+	                                <select
+	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                  value={marketingStatus}
+	                                  onChange={(e) => setMarketingStatus(e.target.value as 'DRAFT' | 'PUBLISHED' | 'DISABLED')}
+	                                >
+	                                  <option value="DRAFT">DRAFT</option>
+	                                  <option value="PUBLISHED">PUBLISHED</option>
+	                                  <option value="DISABLED">DISABLED</option>
+	                                </select>
+	                                <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, overflowWrap: 'anywhere' }}>
+	                                  {productPageUrl(marketingSlug)}
+	                                </div>
+	                                <div style={ls.actionRow}>
+	                                  <button
+	                                    type="button"
+	                                    style={{ ...ls.actionBtn, opacity: marketingSaving ? 0.5 : 1 }}
+	                                    disabled={marketingSaving}
+	                                    onClick={saveMarketingPage}
+	                                  >
+	                                    {marketingSaving ? '保存中...' : '保存'}
+	                                  </button>
+	                                  <button type="button" style={ls.actionBtn} onClick={() => copyMarketingLink(p.id)}>
+	                                    复制链接
+	                                  </button>
+	                                  <button type="button" style={ls.actionBtn} onClick={() => setMarketingEditing(null)}>
+	                                    收起
+	                                  </button>
+	                                </div>
+	                              </div>
+	                            )}
+	                          </div>
+	                        )}
+	                      </div>
                     )
                   })}
                 </>
@@ -1514,10 +1699,11 @@ export default function ProductsPage() {
                 <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0 8px' }}>暂无商品</div>
               )}
 
-              {deleteMsg && <div style={s.errorMsg}>{deleteMsg}</div>}
-            </div>
-          )}
-        </div>
+	              {deleteMsg && <div style={s.errorMsg}>{deleteMsg}</div>}
+	              {marketingMsg && <div style={marketingMsg.includes('失败') ? s.errorMsg : s.successMsg}>{marketingMsg}</div>}
+	            </div>
+	          )}
+	        </div>
 
         {/* ── 删除确认弹框 ── */}
         {deleteConfirm && (
@@ -2127,6 +2313,11 @@ const s: Record<string, React.CSSProperties> = {
   errorMsg: {
     fontSize: 13,
     color: 'var(--red)',
+    padding: '0 2px 8px',
+  },
+  successMsg: {
+    fontSize: 13,
+    color: '#15803d',
     padding: '0 2px 8px',
   },
   scanHintMsg: {
