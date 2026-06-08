@@ -6,16 +6,25 @@ import { useParams } from 'next/navigation'
 type PageData = {
   slug: string
   title: string
+  titleZh: string | null
+  titleEn: string | null
+  titleKm: string | null
   subtitle: string | null
   heroImageUrl: string | null
   salePrice: number | null
   originalPrice: number | null
   soldCount: number | null
-  features: string[]
+  features: Array<string | null>
+  featuresZh: Array<string | null>
+  featuresEn: Array<string | null>
+  featuresKm: Array<string | null>
   enableCountdown: boolean
   detailImages: string[]
   reviewImages: string[]
   buttonText: string
+  buttonTextZh: string | null
+  buttonTextEn: string | null
+  buttonTextKm: string | null
   store: { code: string; name: string }
   product: { id: string; name: string; spec: string | null; price: number; imageUrl: string | null }
 }
@@ -205,6 +214,28 @@ function detectLang(): Lang {
   return 'km'
 }
 
+function nonEmpty(value: string | null | undefined): string | null {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
+}
+
+function localizedTitle(data: PageData, lang: Lang): string {
+  const localized = lang === 'km' ? data.titleKm : lang === 'en' ? data.titleEn : data.titleZh
+  return nonEmpty(localized) || nonEmpty(data.title) || data.product.name
+}
+
+function localizedFeatures(data: PageData, lang: Lang): string[] {
+  const localized = lang === 'km' ? data.featuresKm : lang === 'en' ? data.featuresEn : data.featuresZh
+  return [0, 1, 2, 3, 4]
+    .map((idx) => nonEmpty(localized[idx]) || nonEmpty(data.features[idx]))
+    .filter((value): value is string => !!value)
+}
+
+function localizedButtonText(data: PageData, lang: Lang, fallback: string): string {
+  const localized = lang === 'km' ? data.buttonTextKm : lang === 'en' ? data.buttonTextEn : data.buttonTextZh
+  return nonEmpty(localized) || nonEmpty(data.buttonText) || fallback
+}
+
 export default function MarketingProductPage() {
   const { slug } = useParams<{ slug: string }>()
   const [lang, setLang] = useState<Lang>('km')
@@ -236,12 +267,16 @@ export default function MarketingProductPage() {
       .then((body) => {
         if (body) {
           setData(body)
-          document.title = `${body.title} - ${body.store.name}`
         }
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false))
   }, [slug])
+
+  useEffect(() => {
+    if (!data) return
+    document.title = `${localizedTitle(data, lang)} - ${data.store.name}`
+  }, [data, lang])
 
   async function submitOrder() {
     if (!data || submitting) return
@@ -332,7 +367,10 @@ export default function MarketingProductPage() {
   const imageUrl = data.heroImageUrl || data.product.imageUrl
   const displayPrice = data.salePrice ?? data.product.price
   const total = +(displayPrice * qty).toFixed(2)
-  const features = data.features.length > 0 ? data.features : text.defaultFeatures
+  const title = localizedTitle(data, lang)
+  const features = localizedFeatures(data, lang)
+  const displayFeatures = features.length > 0 ? features : text.defaultFeatures
+  const buttonText = localizedButtonText(data, lang, text.submitOrder)
 
   if (result) {
     return (
@@ -355,14 +393,14 @@ export default function MarketingProductPage() {
       <section style={s.hero}>
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt={data.title} style={s.heroImg} />
+          <img src={imageUrl} alt={title} style={s.heroImg} />
         ) : (
           <div style={s.heroPlaceholder}>店小二</div>
         )}
         <div style={s.heroBody}>
           <div style={s.storeName}>{data.store.name}</div>
           <div style={s.flashBar}>{text.flashBar}</div>
-          <h1 style={s.title}>{data.title}</h1>
+          <h1 style={s.title}>{title}</h1>
           {data.subtitle && <p style={s.subtitle}>{data.subtitle}</p>}
           <div style={s.priceRow}>
             <span style={s.price}>${displayPrice.toFixed(2)}</span>
@@ -386,7 +424,7 @@ export default function MarketingProductPage() {
       <section style={s.section}>
         <h2 style={s.sectionTitle}>{text.whyTitle}</h2>
         <div style={s.points}>
-          {features.map((feature, idx) => <div key={idx} style={s.point}>{feature}</div>)}
+          {displayFeatures.map((feature, idx) => <div key={idx} style={s.point}>{feature}</div>)}
         </div>
       </section>
 
@@ -433,7 +471,7 @@ export default function MarketingProductPage() {
         </div>
         {error && <div style={s.error}>{error}</div>}
         <button style={{ ...s.submit, opacity: submitting ? 0.6 : 1 }} disabled={submitting} onClick={submitOrder}>
-          {submitting ? text.submitting : (data.buttonText || text.submitOrder)}
+          {submitting ? text.submitting : buttonText}
         </button>
       </section>
     </main>

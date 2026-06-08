@@ -7,13 +7,17 @@ type PageStatus = typeof STATUS_VALUES[number]
 
 const PAGE_SELECT = {
   id: true, productId: true, slug: true, status: true,
-  title: true, subtitle: true, heroImageUrl: true,
+  title: true, titleZh: true, titleEn: true, titleKm: true,
+  subtitle: true, heroImageUrl: true,
   salePrice: true, originalPrice: true, soldCount: true,
   feature1: true, feature2: true, feature3: true, feature4: true, feature5: true,
+  feature1Zh: true, feature2Zh: true, feature3Zh: true, feature4Zh: true, feature5Zh: true,
+  feature1En: true, feature2En: true, feature3En: true, feature4En: true, feature5En: true,
+  feature1Km: true, feature2Km: true, feature3Km: true, feature4Km: true, feature5Km: true,
   enableCountdown: true,
   detailImage1: true, detailImage2: true, detailImage3: true,
   reviewImage1: true, reviewImage2: true, reviewImage3: true,
-  buttonText: true,
+  buttonText: true, buttonTextZh: true, buttonTextEn: true, buttonTextKm: true,
 } as const
 
 function cleanSlug(input: string): string {
@@ -31,6 +35,9 @@ function mapPage(p: {
   slug: string
   status: PageStatus
   title: string | null
+  titleZh: string | null
+  titleEn: string | null
+  titleKm: string | null
   subtitle: string | null
   heroImageUrl: string | null
   salePrice: { toNumber(): number } | null
@@ -41,6 +48,21 @@ function mapPage(p: {
   feature3: string | null
   feature4: string | null
   feature5: string | null
+  feature1Zh: string | null
+  feature2Zh: string | null
+  feature3Zh: string | null
+  feature4Zh: string | null
+  feature5Zh: string | null
+  feature1En: string | null
+  feature2En: string | null
+  feature3En: string | null
+  feature4En: string | null
+  feature5En: string | null
+  feature1Km: string | null
+  feature2Km: string | null
+  feature3Km: string | null
+  feature4Km: string | null
+  feature5Km: string | null
   enableCountdown: boolean
   detailImage1: string | null
   detailImage2: string | null
@@ -49,6 +71,9 @@ function mapPage(p: {
   reviewImage2: string | null
   reviewImage3: string | null
   buttonText: string | null
+  buttonTextZh: string | null
+  buttonTextEn: string | null
+  buttonTextKm: string | null
 }) {
   return {
     id: p.id,
@@ -56,6 +81,9 @@ function mapPage(p: {
     slug: p.slug,
     status: p.status,
     title: p.title,
+    titleZh: p.titleZh,
+    titleEn: p.titleEn,
+    titleKm: p.titleKm,
     subtitle: p.subtitle,
     heroImageUrl: p.heroImageUrl,
     salePrice: p.salePrice ? p.salePrice.toNumber() : null,
@@ -66,6 +94,21 @@ function mapPage(p: {
     feature3: p.feature3,
     feature4: p.feature4,
     feature5: p.feature5,
+    feature1Zh: p.feature1Zh,
+    feature2Zh: p.feature2Zh,
+    feature3Zh: p.feature3Zh,
+    feature4Zh: p.feature4Zh,
+    feature5Zh: p.feature5Zh,
+    feature1En: p.feature1En,
+    feature2En: p.feature2En,
+    feature3En: p.feature3En,
+    feature4En: p.feature4En,
+    feature5En: p.feature5En,
+    feature1Km: p.feature1Km,
+    feature2Km: p.feature2Km,
+    feature3Km: p.feature3Km,
+    feature4Km: p.feature4Km,
+    feature5Km: p.feature5Km,
     enableCountdown: p.enableCountdown,
     detailImage1: p.detailImage1,
     detailImage2: p.detailImage2,
@@ -74,6 +117,9 @@ function mapPage(p: {
     reviewImage2: p.reviewImage2,
     reviewImage3: p.reviewImage3,
     buttonText: p.buttonText,
+    buttonTextZh: p.buttonTextZh,
+    buttonTextEn: p.buttonTextEn,
+    buttonTextKm: p.buttonTextKm,
   }
 }
 

@@ -204,6 +204,9 @@ model MarketingProductPage {
   slug         String                     @unique
   status       MarketingProductPageStatus @default(DRAFT)
   title        String?
+  titleZh      String?
+  titleEn      String?
+  titleKm      String?
   subtitle     String?
   heroImageUrl String?
   salePrice    Decimal?                   @db.Decimal(12, 2)
@@ -214,6 +217,21 @@ model MarketingProductPage {
   feature3     String?
   feature4     String?
   feature5     String?
+  feature1Zh   String?
+  feature2Zh   String?
+  feature3Zh   String?
+  feature4Zh   String?
+  feature5Zh   String?
+  feature1En   String?
+  feature2En   String?
+  feature3En   String?
+  feature4En   String?
+  feature5En   String?
+  feature1Km   String?
+  feature2Km   String?
+  feature3Km   String?
+  feature4Km   String?
+  feature5Km   String?
   enableCountdown Boolean                 @default(false)
   detailImage1 String?
   detailImage2 String?
@@ -222,6 +240,9 @@ model MarketingProductPage {
   reviewImage2 String?
   reviewImage3 String?
   buttonText   String?
+  buttonTextZh String?
+  buttonTextEn String?
+  buttonTextKm String?
   createdAt    DateTime                   @default(now())
   updatedAt    DateTime                   @updatedAt
 

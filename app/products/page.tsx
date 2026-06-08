@@ -7,6 +7,27 @@ import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
+type MarketingLang = 'zh' | 'en' | 'km'
+
+type MarketingLangContent = {
+  title: string
+  features: string[]
+  buttonText: string
+}
+
+function emptyMarketingLangContent(): Record<MarketingLang, MarketingLangContent> {
+  return {
+    zh: { title: '', features: ['', '', '', '', ''], buttonText: '' },
+    en: { title: '', features: ['', '', '', '', ''], buttonText: '' },
+    km: { title: '', features: ['', '', '', '', ''], buttonText: '' },
+  }
+}
+
+const MARKETING_LANG_LABELS: Array<{ lang: MarketingLang; label: string }> = [
+  { lang: 'zh', label: '中文' },
+  { lang: 'en', label: 'English' },
+  { lang: 'km', label: 'ខ្មែរ' },
+]
 
 // ─── HID Scanner Hook ─────────────────────────────────────────────────────────
 
@@ -69,6 +90,9 @@ type MarketingProductPage = {
   slug: string
   status: 'DRAFT' | 'PUBLISHED' | 'DISABLED'
   title: string | null
+  titleZh: string | null
+  titleEn: string | null
+  titleKm: string | null
   subtitle: string | null
   heroImageUrl: string | null
   salePrice: number | null
@@ -79,6 +103,21 @@ type MarketingProductPage = {
   feature3: string | null
   feature4: string | null
   feature5: string | null
+  feature1Zh: string | null
+  feature2Zh: string | null
+  feature3Zh: string | null
+  feature4Zh: string | null
+  feature5Zh: string | null
+  feature1En: string | null
+  feature2En: string | null
+  feature3En: string | null
+  feature4En: string | null
+  feature5En: string | null
+  feature1Km: string | null
+  feature2Km: string | null
+  feature3Km: string | null
+  feature4Km: string | null
+  feature5Km: string | null
   enableCountdown: boolean
   detailImage1: string | null
   detailImage2: string | null
@@ -87,6 +126,9 @@ type MarketingProductPage = {
   reviewImage2: string | null
   reviewImage3: string | null
   buttonText: string | null
+  buttonTextZh: string | null
+  buttonTextEn: string | null
+  buttonTextKm: string | null
 }
 
 type Mode = 'idle' | 'loading' | 'found' | 'not-found' | 'saved'
@@ -230,6 +272,7 @@ export default function ProductsPage() {
   const [marketingOriginalPrice, setMarketingOriginalPrice] = useState('')
   const [marketingSoldCount, setMarketingSoldCount] = useState('')
   const [marketingFeatures, setMarketingFeatures] = useState(['', '', '', '', ''])
+  const [marketingLangContent, setMarketingLangContent] = useState(emptyMarketingLangContent)
   const [marketingEnableCountdown, setMarketingEnableCountdown] = useState(false)
   const [marketingDetailImages, setMarketingDetailImages] = useState(['', '', ''])
   const [marketingReviewImages, setMarketingReviewImages] = useState(['', '', ''])
@@ -370,6 +413,23 @@ export default function ProductsPage() {
     setMarketingOriginalPrice(page.originalPrice != null ? String(page.originalPrice) : '')
     setMarketingSoldCount(page.soldCount != null ? String(page.soldCount) : '')
     setMarketingFeatures([page.feature1 ?? '', page.feature2 ?? '', page.feature3 ?? '', page.feature4 ?? '', page.feature5 ?? ''])
+    setMarketingLangContent({
+      zh: {
+        title: page.titleZh ?? '',
+        features: [page.feature1Zh ?? '', page.feature2Zh ?? '', page.feature3Zh ?? '', page.feature4Zh ?? '', page.feature5Zh ?? ''],
+        buttonText: page.buttonTextZh ?? '',
+      },
+      en: {
+        title: page.titleEn ?? '',
+        features: [page.feature1En ?? '', page.feature2En ?? '', page.feature3En ?? '', page.feature4En ?? '', page.feature5En ?? ''],
+        buttonText: page.buttonTextEn ?? '',
+      },
+      km: {
+        title: page.titleKm ?? '',
+        features: [page.feature1Km ?? '', page.feature2Km ?? '', page.feature3Km ?? '', page.feature4Km ?? '', page.feature5Km ?? ''],
+        buttonText: page.buttonTextKm ?? '',
+      },
+    })
     setMarketingEnableCountdown(!!page.enableCountdown)
     setMarketingDetailImages([page.detailImage1 ?? '', page.detailImage2 ?? '', page.detailImage3 ?? ''])
     setMarketingReviewImages([page.reviewImage1 ?? '', page.reviewImage2 ?? '', page.reviewImage3 ?? ''])
@@ -426,6 +486,24 @@ export default function ProductsPage() {
             feature3: marketingFeatures[2],
             feature4: marketingFeatures[3],
             feature5: marketingFeatures[4],
+            titleZh: marketingLangContent.zh.title,
+            titleEn: marketingLangContent.en.title,
+            titleKm: marketingLangContent.km.title,
+            feature1Zh: marketingLangContent.zh.features[0],
+            feature2Zh: marketingLangContent.zh.features[1],
+            feature3Zh: marketingLangContent.zh.features[2],
+            feature4Zh: marketingLangContent.zh.features[3],
+            feature5Zh: marketingLangContent.zh.features[4],
+            feature1En: marketingLangContent.en.features[0],
+            feature2En: marketingLangContent.en.features[1],
+            feature3En: marketingLangContent.en.features[2],
+            feature4En: marketingLangContent.en.features[3],
+            feature5En: marketingLangContent.en.features[4],
+            feature1Km: marketingLangContent.km.features[0],
+            feature2Km: marketingLangContent.km.features[1],
+            feature3Km: marketingLangContent.km.features[2],
+            feature4Km: marketingLangContent.km.features[3],
+            feature5Km: marketingLangContent.km.features[4],
             enableCountdown: marketingEnableCountdown,
             detailImage1: marketingDetailImages[0],
             detailImage2: marketingDetailImages[1],
@@ -434,6 +512,9 @@ export default function ProductsPage() {
             reviewImage2: marketingReviewImages[1],
             reviewImage3: marketingReviewImages[2],
             buttonText: marketingButtonText,
+            buttonTextZh: marketingLangContent.zh.buttonText,
+            buttonTextEn: marketingLangContent.en.buttonText,
+            buttonTextKm: marketingLangContent.km.buttonText,
           }),
         },
         OWNER_CTX,
@@ -1749,6 +1830,46 @@ export default function ProductsPage() {
 	                                    placeholder={`卖点 ${idx + 1}`}
 	                                  />
 	                                ))}
+	                                <div style={{ display: 'grid', gap: 8, margin: '8px 0 10px' }}>
+	                                  {MARKETING_LANG_LABELS.map(({ lang, label }) => (
+	                                    <div key={lang} style={{ padding: 10, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
+	                                      <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--muted)', marginBottom: 8 }}>
+	                                        {label} 内容
+	                                      </div>
+	                                      <input
+	                                        style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                        value={marketingLangContent[lang].title}
+	                                        onChange={(e) => setMarketingLangContent((prev) => ({
+	                                          ...prev,
+	                                          [lang]: { ...prev[lang], title: e.target.value },
+	                                        }))}
+	                                        placeholder={`${label} 标题`}
+	                                      />
+	                                      {marketingLangContent[lang].features.map((value, idx) => (
+	                                        <input
+	                                          key={`${lang}-feature-${idx}`}
+	                                          style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                          value={value}
+	                                          onChange={(e) => setMarketingLangContent((prev) => {
+	                                            const features = [...prev[lang].features]
+	                                            features[idx] = e.target.value
+	                                            return { ...prev, [lang]: { ...prev[lang], features } }
+	                                          })}
+	                                          placeholder={`${label} 卖点 ${idx + 1}`}
+	                                        />
+	                                      ))}
+	                                      <input
+	                                        style={{ ...s.field, height: 38 }}
+	                                        value={marketingLangContent[lang].buttonText}
+	                                        onChange={(e) => setMarketingLangContent((prev) => ({
+	                                          ...prev,
+	                                          [lang]: { ...prev[lang], buttonText: e.target.value },
+	                                        }))}
+	                                        placeholder={`${label} 按钮文案`}
+	                                      />
+	                                    </div>
+	                                  ))}
+	                                </div>
 	                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '2px 0 10px' }}>
 	                                  <input
 	                                    type="checkbox"
