@@ -41,7 +41,7 @@ function extractTgUserId(initData: string): string | null {
 // 顾客端公共入口（/e-life /menu /me）和商户端引导页（/start /open /bind /relogin）
 // 均跳过商户 Bot auth 流程，由各页面自身处理身份或无需身份。
 // /cashier is a standalone PC POS page — no Telegram session required
-const ONBOARDING_PATHS = ['/start', '/open', '/bind', '/relogin', '/menu', '/e-life', '/me', '/v', '/creator/p', '/cashier']
+const ONBOARDING_PATHS = ['/start', '/open', '/bind', '/relogin', '/menu', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier']
 
 export default function TelegramInit() {
   const [authError, setAuthError] = useState('')
