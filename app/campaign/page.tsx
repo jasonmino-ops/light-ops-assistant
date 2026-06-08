@@ -35,6 +35,8 @@ type MarketingPageOption = {
   title: string | null
 }
 
+type AnalyticsSort = 'sales' | 'orders' | 'clicks'
+
 // ── Copy templates ────────────────────────────────────────────────────────────
 
 const ZH_TPL = (url: string) =>
@@ -129,6 +131,7 @@ export default function CampaignPage() {
   const [editMarketingPageId, setEditMarketingPageId] = useState('')
   const [landingSavingId, setLandingSavingId] = useState<string | null>(null)
   const [landingError, setLandingError] = useState<string | null>(null)
+  const [analyticsSort, setAnalyticsSort] = useState<AnalyticsSort>('sales')
 
   async function loadAll() {
     const [rc, rl, rp] = await Promise.all([
@@ -264,6 +267,25 @@ export default function CampaignPage() {
     })
   }
 
+  function landingLabel(targetUrl: string | null): string {
+    return targetUrl?.startsWith('/p/') ? '营销页' : '菜单页'
+  }
+
+  function sourceTypeLabel(link: CampaignLink): string {
+    return link.creatorId || link.creatorName ? '博主推广' : '官方推广'
+  }
+
+  function conversionRate(link: CampaignLink): string {
+    if (link.clickCount <= 0) return '0.0%'
+    return `${((link.attributedOrderCount / link.clickCount) * 100).toFixed(1)}%`
+  }
+
+  const analyticsLinks = [...links].sort((a, b) => {
+    if (analyticsSort === 'orders') return b.attributedOrderCount - a.attributedOrderCount
+    if (analyticsSort === 'clicks') return b.clickCount - a.clickCount
+    return b.attributedSalesAmount - a.attributedSalesAmount
+  })
+
   // ── Creator summary (frontend aggregation) ──────────────────────────────────
 
   // 博主汇总：正式博主按 creatorId 聚合，临时博主（无 creatorId）按 creatorName 聚合，两组严格分离
@@ -333,6 +355,11 @@ export default function CampaignPage() {
     btnGhost: { padding: '6px 14px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, cursor: 'pointer' },
     btnCopy:  { padding: '5px 12px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' as const, flexShrink: 0 },
     btnSettle:{ padding: '4px 10px', background: '#fff', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' as const },
+    sortBtn:  { padding: '5px 10px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' as const },
+    tableWrap:{ overflowX: 'auto' as const, border: '1px solid #e5e7eb', borderRadius: 8 },
+    table:    { width: '100%', minWidth: 680, borderCollapse: 'collapse' as const, fontSize: 12 },
+    th:       { textAlign: 'left' as const, padding: '9px 10px', background: '#f9fafb', color: '#6b7280', fontWeight: 700, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' as const },
+    td:       { padding: '10px', borderBottom: '1px solid #f3f4f6', color: '#374151', verticalAlign: 'top' as const },
     error:    { color: '#ef4444', fontSize: 13, marginTop: 8 },
     success:  { background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: 16, marginTop: 12 },
     divider:  { height: 1, background: '#e5e7eb', margin: '12px 0' },
@@ -560,7 +587,79 @@ export default function CampaignPage() {
         )
       })()}
 
-      {/* ── 3. 博主汇总 ─────────────────────────────────────────────────── */}
+      {/* ── 3. 推广效果看板 ─────────────────────────────────────────────── */}
+      <div style={{ ...s.card, marginTop: 8 }}>
+        <div style={{ ...s.row, justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+          <div>
+            <div style={{ ...s.sectionTitle, marginBottom: 4 }}>📈 推广效果看板</div>
+            <div style={{ fontSize: 11, color: '#9ca3af' }}>按现有短链和已归因顾客订单统计，不含时间筛选。</div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, justifyContent: 'flex-end' }}>
+            {([
+              ['sales', '销售额最高'],
+              ['orders', '订单最多'],
+              ['clicks', '点击最多'],
+            ] as [AnalyticsSort, string][]).map(([key, label]) => (
+              <button
+                key={key}
+                style={{
+                  ...s.sortBtn,
+                  background: analyticsSort === key ? '#07c160' : '#f3f4f6',
+                  borderColor: analyticsSort === key ? '#07c160' : '#d1d5db',
+                  color: analyticsSort === key ? '#fff' : '#374151',
+                }}
+                onClick={() => setAnalyticsSort(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {analyticsLinks.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#9ca3af' }}>暂无推广短链，生成后会在这里显示效果数据。</div>
+        ) : (
+          <div style={s.tableWrap}>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>推广名称</th>
+                  <th style={s.th}>来源</th>
+                  <th style={s.th}>曝光</th>
+                  <th style={s.th}>点击</th>
+                  <th style={s.th}>订单</th>
+                  <th style={s.th}>销售额</th>
+                  <th style={s.th}>转化率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analyticsLinks.map((lk) => {
+                  const name = lk.videoTitle || lk.creatorName || `/v/${lk.code}`
+                  return (
+                    <tr key={lk.id}>
+                      <td style={s.td}>
+                        <div style={{ fontWeight: 700, color: '#111827' }}>{name}</div>
+                        <div style={{ color: '#9ca3af', marginTop: 2 }}>/v/{lk.code} · {landingLabel(lk.targetUrl)}</div>
+                      </td>
+                      <td style={s.td}>
+                        <div>{sourceTypeLabel(lk)}</div>
+                        {lk.creatorName && <div style={{ color: '#9ca3af', marginTop: 2 }}>{lk.creatorName}</div>}
+                      </td>
+                      <td style={s.td}>{lk.viewCount}</td>
+                      <td style={s.td}>{lk.clickCount}</td>
+                      <td style={s.td}>{lk.attributedOrderCount}</td>
+                      <td style={s.td}>${lk.attributedSalesAmount.toFixed(2)}</td>
+                      <td style={s.td}>{conversionRate(lk)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── 4. 博主汇总 ─────────────────────────────────────────────────── */}
       {creatorSummary.length > 0 && (
         <div style={{ ...s.card, marginTop: 8 }}>
           <div style={{ ...s.sectionTitle, marginBottom: 12 }}>📊 博主汇总</div>
@@ -672,7 +771,7 @@ export default function CampaignPage() {
         )
       })()}
 
-      {/* ── 4. 历史短链 ─────────────────────────────────────────────────── */}
+      {/* ── 5. 历史短链 ─────────────────────────────────────────────────── */}
       <div style={{ ...s.card, marginTop: 8 }}>
         <div style={{ ...s.sectionTitle, marginBottom: 12 }}>📋 历史短链</div>
         {links.length === 0 ? (
