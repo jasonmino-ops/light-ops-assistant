@@ -5,6 +5,17 @@ import { getContext } from '@/lib/context'
 const STATUS_VALUES = ['DRAFT', 'PUBLISHED', 'DISABLED'] as const
 type PageStatus = typeof STATUS_VALUES[number]
 
+const PAGE_SELECT = {
+  id: true, productId: true, slug: true, status: true,
+  title: true, subtitle: true, heroImageUrl: true,
+  salePrice: true, originalPrice: true, soldCount: true,
+  feature1: true, feature2: true, feature3: true, feature4: true, feature5: true,
+  enableCountdown: true,
+  detailImage1: true, detailImage2: true, detailImage3: true,
+  reviewImage1: true, reviewImage2: true, reviewImage3: true,
+  buttonText: true,
+} as const
+
 function cleanSlug(input: string): string {
   return input
     .trim()
@@ -22,6 +33,22 @@ function mapPage(p: {
   title: string | null
   subtitle: string | null
   heroImageUrl: string | null
+  salePrice: { toNumber(): number } | null
+  originalPrice: { toNumber(): number } | null
+  soldCount: number | null
+  feature1: string | null
+  feature2: string | null
+  feature3: string | null
+  feature4: string | null
+  feature5: string | null
+  enableCountdown: boolean
+  detailImage1: string | null
+  detailImage2: string | null
+  detailImage3: string | null
+  reviewImage1: string | null
+  reviewImage2: string | null
+  reviewImage3: string | null
+  buttonText: string | null
 }) {
   return {
     id: p.id,
@@ -31,6 +58,22 @@ function mapPage(p: {
     title: p.title,
     subtitle: p.subtitle,
     heroImageUrl: p.heroImageUrl,
+    salePrice: p.salePrice ? p.salePrice.toNumber() : null,
+    originalPrice: p.originalPrice ? p.originalPrice.toNumber() : null,
+    soldCount: p.soldCount,
+    feature1: p.feature1,
+    feature2: p.feature2,
+    feature3: p.feature3,
+    feature4: p.feature4,
+    feature5: p.feature5,
+    enableCountdown: p.enableCountdown,
+    detailImage1: p.detailImage1,
+    detailImage2: p.detailImage2,
+    detailImage3: p.detailImage3,
+    reviewImage1: p.reviewImage1,
+    reviewImage2: p.reviewImage2,
+    reviewImage3: p.reviewImage3,
+    buttonText: p.buttonText,
   }
 }
 
@@ -62,7 +105,7 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { updatedAt: 'desc' },
     take: 500,
-    select: { id: true, productId: true, slug: true, status: true, title: true, subtitle: true, heroImageUrl: true },
+    select: PAGE_SELECT,
   })
 
   return NextResponse.json({ pages: pages.map(mapPage) })
@@ -90,7 +133,7 @@ export async function POST(req: NextRequest) {
 
   const existing = await prisma.marketingProductPage.findFirst({
     where: { tenantId: ctx.tenantId, storeId: ctx.storeId, productId },
-    select: { id: true, productId: true, slug: true, status: true, title: true, subtitle: true, heroImageUrl: true },
+    select: PAGE_SELECT,
   })
   if (existing) return NextResponse.json(mapPage(existing))
 
@@ -105,8 +148,9 @@ export async function POST(req: NextRequest) {
       title: product.name,
       subtitle: null,
       heroImageUrl: product.imageUrl,
+      buttonText: '立即下单',
     },
-    select: { id: true, productId: true, slug: true, status: true, title: true, subtitle: true, heroImageUrl: true },
+    select: PAGE_SELECT,
   })
 
   return NextResponse.json(mapPage(created), { status: 201 })

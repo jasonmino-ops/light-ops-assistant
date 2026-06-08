@@ -8,6 +8,14 @@ type PageData = {
   title: string
   subtitle: string | null
   heroImageUrl: string | null
+  salePrice: number | null
+  originalPrice: number | null
+  soldCount: number | null
+  features: string[]
+  enableCountdown: boolean
+  detailImages: string[]
+  reviewImages: string[]
+  buttonText: string
   store: { code: string; name: string }
   product: { id: string; name: string; spec: string | null; price: number; imageUrl: string | null }
 }
@@ -108,7 +116,13 @@ export default function MarketingProductPage() {
   }
 
   const imageUrl = data.heroImageUrl || data.product.imageUrl
-  const total = +(data.product.price * qty).toFixed(2)
+  const displayPrice = data.salePrice ?? data.product.price
+  const total = +(displayPrice * qty).toFixed(2)
+  const features = data.features.length > 0 ? data.features : [
+    '精选门店商品，质量由商家把关',
+    '提交后商家 Telegram 实时接单',
+    '支持电话确认配送信息',
+  ]
 
   if (result) {
     return (
@@ -135,9 +149,19 @@ export default function MarketingProductPage() {
         )}
         <div style={s.heroBody}>
           <div style={s.storeName}>{data.store.name}</div>
+          <div style={s.flashBar}>TikTok 热卖 · 货到付款 COD</div>
           <h1 style={s.title}>{data.title}</h1>
           {data.subtitle && <p style={s.subtitle}>{data.subtitle}</p>}
-          <div style={s.price}>${data.product.price.toFixed(2)}</div>
+          <div style={s.priceRow}>
+            <span style={s.price}>${displayPrice.toFixed(2)}</span>
+            {data.originalPrice != null && <span style={s.originalPrice}>${data.originalPrice.toFixed(2)}</span>}
+          </div>
+          <div style={s.metaRow}>
+            <span>COD 到付</span>
+            <span>本地配送</span>
+            {data.soldCount != null && <span>已售 {data.soldCount}</span>}
+          </div>
+          {data.enableCountdown && <div style={s.countdown}>限时活动中 · 今日下单优先配送</div>}
           {data.product.spec && <div style={s.spec}>{data.product.spec}</div>}
           <div style={s.badges}>
             <span style={s.badge}>货到付款 COD</span>
@@ -150,11 +174,33 @@ export default function MarketingProductPage() {
       <section style={s.section}>
         <h2 style={s.sectionTitle}>为什么选择这款</h2>
         <div style={s.points}>
-          <div style={s.point}>精选门店商品，价格由商家确认</div>
-          <div style={s.point}>提交后商家 Telegram 实时接单</div>
-          <div style={s.point}>支持电话确认配送信息</div>
+          {features.map((feature, idx) => <div key={idx} style={s.point}>{feature}</div>)}
         </div>
       </section>
+
+      {data.detailImages.length > 0 && (
+        <section style={s.section}>
+          <h2 style={s.sectionTitle}>商品详情</h2>
+          <div style={s.imageStack}>
+            {data.detailImages.map((url, idx) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={idx} src={url} alt={`商品详情 ${idx + 1}`} style={s.detailImg} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {data.reviewImages.length > 0 && (
+        <section style={s.section}>
+          <h2 style={s.sectionTitle}>真实反馈</h2>
+          <div style={s.reviewGrid}>
+            {data.reviewImages.map((url, idx) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={idx} src={url} alt={`顾客反馈 ${idx + 1}`} style={s.reviewImg} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section style={s.section}>
         <h2 style={s.sectionTitle}>填写订单</h2>
@@ -175,7 +221,7 @@ export default function MarketingProductPage() {
         </div>
         {error && <div style={s.error}>{error}</div>}
         <button style={{ ...s.submit, opacity: submitting ? 0.6 : 1 }} disabled={submitting} onClick={submitOrder}>
-          {submitting ? '提交中...' : '提交订单'}
+          {submitting ? '提交中...' : (data.buttonText || '提交订单')}
         </button>
       </section>
     </main>
@@ -218,9 +264,23 @@ const s: Record<string, CSSProperties> = {
   },
   heroBody: { padding: '18px 18px 20px' },
   storeName: { fontSize: 13, color: '#667085', marginBottom: 8 },
+  flashBar: {
+    display: 'inline-flex',
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 6,
+    padding: '5px 9px',
+    fontSize: 12,
+    fontWeight: 800,
+    marginBottom: 10,
+  },
   title: { margin: 0, fontSize: 26, lineHeight: 1.16, letterSpacing: 0, color: '#172018' },
   subtitle: { margin: '10px 0 0', fontSize: 15, lineHeight: 1.5, color: '#4b5d4c' },
-  price: { marginTop: 14, fontSize: 30, fontWeight: 800, color: '#e04f1a' },
+  priceRow: { display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 14 },
+  price: { fontSize: 34, fontWeight: 900, color: '#e04f1a' },
+  originalPrice: { fontSize: 16, color: '#98a2b3', textDecoration: 'line-through', fontWeight: 700 },
+  metaRow: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, fontSize: 12, color: '#667085', fontWeight: 700 },
+  countdown: { marginTop: 10, background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '8px 10px', fontSize: 13, fontWeight: 800 },
   spec: { marginTop: 4, fontSize: 13, color: '#667085' },
   badges: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 },
   badge: {
@@ -236,6 +296,10 @@ const s: Record<string, CSSProperties> = {
   sectionTitle: { margin: '0 0 12px', fontSize: 18, lineHeight: 1.25, letterSpacing: 0 },
   points: { display: 'grid', gap: 8 },
   point: { background: '#f7faf5', border: '1px solid #e3e8df', borderRadius: 6, padding: 12, fontSize: 14, color: '#344236' },
+  imageStack: { display: 'grid', gap: 10 },
+  detailImg: { width: '100%', borderRadius: 8, display: 'block', objectFit: 'cover' },
+  reviewGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 },
+  reviewImg: { width: '100%', aspectRatio: '1 / 1', borderRadius: 8, objectFit: 'cover', display: 'block' },
   label: { display: 'block', fontSize: 13, fontWeight: 700, color: '#344236', margin: '12px 0 6px' },
   input: { width: '100%', boxSizing: 'border-box', height: 46, border: '1px solid #d5ddd1', borderRadius: 6, padding: '0 12px', fontSize: 15, background: '#fff' },
   textarea: { width: '100%', boxSizing: 'border-box', minHeight: 82, border: '1px solid #d5ddd1', borderRadius: 6, padding: 12, fontSize: 15, background: '#fff', resize: 'vertical' },

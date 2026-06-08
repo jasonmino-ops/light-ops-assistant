@@ -206,6 +206,22 @@ model MarketingProductPage {
   title        String?
   subtitle     String?
   heroImageUrl String?
+  salePrice    Decimal?                   @db.Decimal(12, 2)
+  originalPrice Decimal?                  @db.Decimal(12, 2)
+  soldCount    Int?
+  feature1     String?
+  feature2     String?
+  feature3     String?
+  feature4     String?
+  feature5     String?
+  enableCountdown Boolean                 @default(false)
+  detailImage1 String?
+  detailImage2 String?
+  detailImage3 String?
+  reviewImage1 String?
+  reviewImage2 String?
+  reviewImage3 String?
+  buttonText   String?
   createdAt    DateTime                   @default(now())
   updatedAt    DateTime                   @updatedAt
 

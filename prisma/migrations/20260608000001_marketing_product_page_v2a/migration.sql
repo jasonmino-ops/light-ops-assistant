@@ -1,0 +1,17 @@
+ALTER TABLE "MarketingProductPage"
+  ADD COLUMN "salePrice" DECIMAL(12, 2),
+  ADD COLUMN "originalPrice" DECIMAL(12, 2),
+  ADD COLUMN "soldCount" INTEGER,
+  ADD COLUMN "feature1" TEXT,
+  ADD COLUMN "feature2" TEXT,
+  ADD COLUMN "feature3" TEXT,
+  ADD COLUMN "feature4" TEXT,
+  ADD COLUMN "feature5" TEXT,
+  ADD COLUMN "enableCountdown" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN "detailImage1" TEXT,
+  ADD COLUMN "detailImage2" TEXT,
+  ADD COLUMN "detailImage3" TEXT,
+  ADD COLUMN "reviewImage1" TEXT,
+  ADD COLUMN "reviewImage2" TEXT,
+  ADD COLUMN "reviewImage3" TEXT,
+  ADD COLUMN "buttonText" TEXT;

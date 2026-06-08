@@ -71,6 +71,22 @@ type MarketingProductPage = {
   title: string | null
   subtitle: string | null
   heroImageUrl: string | null
+  salePrice: number | null
+  originalPrice: number | null
+  soldCount: number | null
+  feature1: string | null
+  feature2: string | null
+  feature3: string | null
+  feature4: string | null
+  feature5: string | null
+  enableCountdown: boolean
+  detailImage1: string | null
+  detailImage2: string | null
+  detailImage3: string | null
+  reviewImage1: string | null
+  reviewImage2: string | null
+  reviewImage3: string | null
+  buttonText: string | null
 }
 
 type Mode = 'idle' | 'loading' | 'found' | 'not-found' | 'saved'
@@ -210,6 +226,14 @@ export default function ProductsPage() {
   const [marketingSlug, setMarketingSlug] = useState('')
   const [marketingStatus, setMarketingStatus] = useState<'DRAFT' | 'PUBLISHED' | 'DISABLED'>('DRAFT')
   const [marketingHeroImageUrl, setMarketingHeroImageUrl] = useState('')
+  const [marketingSalePrice, setMarketingSalePrice] = useState('')
+  const [marketingOriginalPrice, setMarketingOriginalPrice] = useState('')
+  const [marketingSoldCount, setMarketingSoldCount] = useState('')
+  const [marketingFeatures, setMarketingFeatures] = useState(['', '', '', '', ''])
+  const [marketingEnableCountdown, setMarketingEnableCountdown] = useState(false)
+  const [marketingDetailImages, setMarketingDetailImages] = useState(['', '', ''])
+  const [marketingReviewImages, setMarketingReviewImages] = useState(['', '', ''])
+  const [marketingButtonText, setMarketingButtonText] = useState('')
   const [marketingSaving, setMarketingSaving] = useState(false)
   const [marketingMsg, setMarketingMsg] = useState<string | null>(null)
 
@@ -342,6 +366,14 @@ export default function ProductsPage() {
     setMarketingSlug(page.slug)
     setMarketingStatus(page.status)
     setMarketingHeroImageUrl(page.heroImageUrl ?? product.imageUrl ?? '')
+    setMarketingSalePrice(page.salePrice != null ? String(page.salePrice) : '')
+    setMarketingOriginalPrice(page.originalPrice != null ? String(page.originalPrice) : '')
+    setMarketingSoldCount(page.soldCount != null ? String(page.soldCount) : '')
+    setMarketingFeatures([page.feature1 ?? '', page.feature2 ?? '', page.feature3 ?? '', page.feature4 ?? '', page.feature5 ?? ''])
+    setMarketingEnableCountdown(!!page.enableCountdown)
+    setMarketingDetailImages([page.detailImage1 ?? '', page.detailImage2 ?? '', page.detailImage3 ?? ''])
+    setMarketingReviewImages([page.reviewImage1 ?? '', page.reviewImage2 ?? '', page.reviewImage3 ?? ''])
+    setMarketingButtonText(page.buttonText ?? '立即下单')
     setMarketingMsg(null)
   }
 
@@ -386,6 +418,22 @@ export default function ProductsPage() {
             slug: marketingSlug,
             status: marketingStatus,
             heroImageUrl: marketingHeroImageUrl,
+            salePrice: marketingSalePrice,
+            originalPrice: marketingOriginalPrice,
+            soldCount: marketingSoldCount,
+            feature1: marketingFeatures[0],
+            feature2: marketingFeatures[1],
+            feature3: marketingFeatures[2],
+            feature4: marketingFeatures[3],
+            feature5: marketingFeatures[4],
+            enableCountdown: marketingEnableCountdown,
+            detailImage1: marketingDetailImages[0],
+            detailImage2: marketingDetailImages[1],
+            detailImage3: marketingDetailImages[2],
+            reviewImage1: marketingReviewImages[0],
+            reviewImage2: marketingReviewImages[1],
+            reviewImage3: marketingReviewImages[2],
+            buttonText: marketingButtonText,
           }),
         },
         OWNER_CTX,
@@ -1657,6 +1705,84 @@ export default function ProductsPage() {
 	                                  onChange={(e) => setMarketingHeroImageUrl(e.target.value)}
 	                                  placeholder="Hero 图片 URL"
 	                                />
+	                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+	                                  <input
+	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                    value={marketingSalePrice}
+	                                    onChange={(e) => setMarketingSalePrice(e.target.value)}
+	                                    placeholder="营销价"
+	                                    inputMode="decimal"
+	                                  />
+	                                  <input
+	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                    value={marketingOriginalPrice}
+	                                    onChange={(e) => setMarketingOriginalPrice(e.target.value)}
+	                                    placeholder="原价"
+	                                    inputMode="decimal"
+	                                  />
+	                                </div>
+	                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+	                                  <input
+	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                    value={marketingSoldCount}
+	                                    onChange={(e) => setMarketingSoldCount(e.target.value)}
+	                                    placeholder="已售数量"
+	                                    inputMode="numeric"
+	                                  />
+	                                  <input
+	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                    value={marketingButtonText}
+	                                    onChange={(e) => setMarketingButtonText(e.target.value)}
+	                                    placeholder="按钮文案"
+	                                  />
+	                                </div>
+	                                {marketingFeatures.map((value, idx) => (
+	                                  <input
+	                                    key={`feature-${idx}`}
+	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                    value={value}
+	                                    onChange={(e) => {
+	                                      const next = [...marketingFeatures]
+	                                      next[idx] = e.target.value
+	                                      setMarketingFeatures(next)
+	                                    }}
+	                                    placeholder={`卖点 ${idx + 1}`}
+	                                  />
+	                                ))}
+	                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, margin: '2px 0 10px' }}>
+	                                  <input
+	                                    type="checkbox"
+	                                    checked={marketingEnableCountdown}
+	                                    onChange={(e) => setMarketingEnableCountdown(e.target.checked)}
+	                                  />
+	                                  开启限时倒计时展示
+	                                </label>
+	                                {marketingDetailImages.map((value, idx) => (
+	                                  <input
+	                                    key={`detail-${idx}`}
+	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                    value={value}
+	                                    onChange={(e) => {
+	                                      const next = [...marketingDetailImages]
+	                                      next[idx] = e.target.value
+	                                      setMarketingDetailImages(next)
+	                                    }}
+	                                    placeholder={`详情图 ${idx + 1} URL`}
+	                                  />
+	                                ))}
+	                                {marketingReviewImages.map((value, idx) => (
+	                                  <input
+	                                    key={`review-${idx}`}
+	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                    value={value}
+	                                    onChange={(e) => {
+	                                      const next = [...marketingReviewImages]
+	                                      next[idx] = e.target.value
+	                                      setMarketingReviewImages(next)
+	                                    }}
+	                                    placeholder={`评价图 ${idx + 1} URL`}
+	                                  />
+	                                ))}
 	                                <select
 	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
 	                                  value={marketingStatus}
