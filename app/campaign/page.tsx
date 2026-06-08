@@ -83,12 +83,6 @@ function commLabel(type: string | null, value: number | null): string {
   return `$${value.toFixed(2)}/单`
 }
 
-function commissionMethodLabel(type: string | null): string {
-  if (type === 'percent') return '比例'
-  if (type === 'fixed') return '固定'
-  return '未设置'
-}
-
 function commissionValueLabel(type: string | null, value: number | null): string {
   if (!type || value == null) return '未设置'
   if (type === 'percent') return `${value}%`
@@ -151,6 +145,7 @@ export default function CampaignPage() {
   const [landingError, setLandingError] = useState<string | null>(null)
   const [analyticsSort, setAnalyticsSort] = useState<AnalyticsSort>('sales')
   const [analyticsFilter, setAnalyticsFilter] = useState<AnalyticsFilter>('all')
+  const [openMoreId, setOpenMoreId] = useState<string | null>(null)
 
   async function loadAll() {
     const [rc, rl, rp] = await Promise.all([
@@ -303,11 +298,6 @@ export default function CampaignPage() {
     return `${((link.clickCount / link.viewCount) * 100).toFixed(1)}%`
   }
 
-  function conversionRate(link: CampaignLink): string {
-    if (link.clickCount <= 0) return '0.0%'
-    return `${((link.attributedOrderCount / link.clickCount) * 100).toFixed(1)}%`
-  }
-
   function avgOrderValue(link: CampaignLink): string {
     if (link.attributedOrderCount <= 0) return '$0.00'
     return `$${(link.attributedSalesAmount / link.attributedOrderCount).toFixed(2)}`
@@ -329,74 +319,31 @@ export default function CampaignPage() {
     acc.sales += lk.attributedSalesAmount
     acc.orders += lk.attributedOrderCount
     acc.commission += lk.estimatedCommission
+    acc.views += lk.viewCount
+    acc.clicks += lk.clickCount
     if (lk.settlementStatus !== 'settled') acc.unsettled += lk.estimatedCommission
     return acc
-  }, { sales: 0, orders: 0, commission: 0, unsettled: 0 })
-
-  // ── Creator summary (frontend aggregation) ──────────────────────────────────
-
-  // 博主汇总：正式博主按 creatorId 聚合，临时博主（无 creatorId）按 creatorName 聚合，两组严格分离
-  type SummaryEntry = {
-    creatorId: string | null; name: string; tiktokHandle: string | null; isOfficial: boolean
-    linkCount: number; views: number; clicks: number
-    orders: number; sales: number; commission: number; settled: number
-  }
-  const creatorSummary = (() => {
-    const official = new Map<string, SummaryEntry>()  // key: creatorId
-    const temp     = new Map<string, SummaryEntry>()  // key: creatorName
-
-    function accumulate(map: Map<string, SummaryEntry>, key: string, lk: CampaignLink, isOfficial: boolean) {
-      const isSettled = lk.settlementStatus === 'settled'
-      const existing  = map.get(key)
-      if (existing) {
-        existing.linkCount++
-        existing.views      += lk.viewCount
-        existing.clicks     += lk.clickCount
-        existing.orders     += lk.attributedOrderCount
-        existing.sales      += lk.attributedSalesAmount
-        existing.commission += lk.estimatedCommission
-        if (isSettled) existing.settled += lk.estimatedCommission
-      } else {
-        map.set(key, {
-          creatorId:   lk.creatorId,
-          name:        lk.creatorName ?? '未知博主',
-          tiktokHandle: lk.tiktokHandle,
-          isOfficial,
-          linkCount:   1,
-          views:       lk.viewCount,
-          clicks:      lk.clickCount,
-          orders:      lk.attributedOrderCount,
-          sales:       lk.attributedSalesAmount,
-          commission:  lk.estimatedCommission,
-          settled:     isSettled ? lk.estimatedCommission : 0,
-        })
-      }
-    }
-
-    for (const lk of links) {
-      if (lk.creatorId) {
-        accumulate(official, lk.creatorId, lk, true)
-      } else if (lk.creatorName) {
-        accumulate(temp, lk.creatorName, lk, false)
-      }
-      // 既无 creatorId 也无 creatorName 的短链不计入汇总
-    }
-
-    return [...official.values(), ...temp.values()]
-  })()
+  }, { sales: 0, orders: 0, commission: 0, unsettled: 0, views: 0, clicks: 0 })
 
   // ── Styles ──────────────────────────────────────────────────────────────────
 
   const s: Record<string, CSSProperties> = {
-    page:     { padding: '20px 16px 72px', maxWidth: 560, margin: '0 auto', fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' },
-    h1:       { fontSize: 20, fontWeight: 700, margin: '0 0 4px', color: '#111827' },
-    desc:     { fontSize: 13, color: '#6b7280', margin: '0 0 20px', lineHeight: 1.6 },
-    sectionTitle: { fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 12px' },
-    card:     { background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '16px', marginBottom: 16 },
+    page:     { padding: '16px 14px 72px', maxWidth: 960, margin: '0 auto', fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', background: '#f6f7f8', minHeight: '100dvh' },
+    topBar:   { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 14, flexWrap: 'wrap' as const },
+    h1:       { fontSize: 24, fontWeight: 800, margin: '0 0 6px', color: '#111827', letterSpacing: 0 },
+    desc:     { fontSize: 13, color: '#6b7280', margin: 0, lineHeight: 1.6 },
+    sectionTitle: { fontSize: 16, fontWeight: 800, color: '#111827', margin: '0 0 4px' },
+    sectionHint: { fontSize: 12, color: '#9ca3af', lineHeight: 1.5 },
+    card:     { background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: '16px', marginBottom: 14, boxShadow: '0 1px 2px rgba(15,23,42,0.04)' },
+    cardHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
     label:    { display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 },
     input:    { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' as const, outline: 'none' },
     select:   { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' as const, outline: 'none', background: '#fff' },
     row:      { display: 'flex', alignItems: 'center', gap: 8 },
+    formGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 },
+    fullSpan: { gridColumn: '1 / -1' },
+    creatorGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 },
+    creatorCard: { border: '1px solid #edf0f3', borderRadius: 8, padding: 12, background: '#fbfcfd' },
     btn:      { padding: '10px 20px', background: '#07c160', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
     btnSm:    { padding: '6px 14px', background: '#07c160', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
     btnGhost: { padding: '6px 14px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, cursor: 'pointer' },
@@ -404,10 +351,10 @@ export default function CampaignPage() {
     btnSettle:{ padding: '4px 10px', background: '#fff', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' as const },
     sortBtn:  { padding: '5px 10px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: 14, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' as const },
     tableWrap:{ overflowX: 'auto' as const, border: '1px solid #e5e7eb', borderRadius: 8 },
-    table:    { width: '100%', minWidth: 1120, borderCollapse: 'collapse' as const, fontSize: 12 },
+    table:    { width: '100%', minWidth: 820, borderCollapse: 'collapse' as const, fontSize: 12 },
     th:       { textAlign: 'left' as const, padding: '9px 10px', background: '#f9fafb', color: '#6b7280', fontWeight: 700, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' as const },
     td:       { padding: '10px', borderBottom: '1px solid #f3f4f6', color: '#374151', verticalAlign: 'top' as const },
-    metricGrid:{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginBottom: 12 },
+    metricGrid:{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 12 },
     metricBox:{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' },
     metricLabel:{ fontSize: 11, color: '#6b7280', marginBottom: 4 },
     metricValue:{ fontSize: 18, color: '#111827', fontWeight: 800 },
@@ -421,6 +368,16 @@ export default function CampaignPage() {
       lineHeight: 1.6, wordBreak: 'break-word' as const, border: '1px solid #e5e7eb', marginBottom: 6,
     },
     halfRow:  { display: 'flex', gap: 8 },
+    linkCard: { border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, background: '#fff', marginBottom: 10 },
+    linkCode: { fontSize: 16, fontWeight: 800, color: '#07c160', letterSpacing: '0.03em' },
+    linkStats: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(86px, 1fr))', gap: 8, marginTop: 10 },
+    linkStatBox: { background: '#f9fafb', borderRadius: 8, padding: '8px 10px', border: '1px solid #edf0f3' },
+    linkStatLabel: { fontSize: 10, color: '#9ca3af', marginBottom: 2 },
+    linkStatValue: { fontSize: 13, fontWeight: 800, color: '#111827' },
+    moreWrap: { position: 'relative' as const },
+    moreMenu: { position: 'absolute' as const, right: 0, top: 34, zIndex: 20, minWidth: 190, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,0.14)', padding: 6 },
+    moreItem: { display: 'block', width: '100%', textAlign: 'left' as const, padding: '8px 10px', border: 0, borderRadius: 6, background: '#fff', color: '#374151', fontSize: 13, cursor: 'pointer' },
+    tips: { background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, color: '#4b5563', fontSize: 13, lineHeight: 1.8 },
   }
 
   function badge(settled: boolean): CSSProperties {
@@ -445,13 +402,26 @@ export default function CampaignPage() {
 
   return (
     <div style={s.page}>
-      <h1 style={s.h1}>📱 TikTok 推广管理</h1>
-      <p style={s.desc}>管理博主档案、生成推广短链，查看成交与佣金数据，一键标记结算。</p>
+      <div style={s.topBar}>
+        <div>
+          <h1 style={s.h1}>TikTok 推广管理</h1>
+          <p style={s.desc}>创建推广短链，追踪点击、订单、销售额和佣金。</p>
+        </div>
+        <button
+          style={s.btn}
+          onClick={() => document.getElementById('create-campaign-link')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        >
+          + 新建推广短链
+        </button>
+      </div>
 
       {/* ── 1. 博主管理 ─────────────────────────────────────────────────── */}
       <div style={s.card}>
-        <div style={{ ...s.row, justifyContent: 'space-between', marginBottom: 12 }}>
-          <div style={s.sectionTitle}>👤 博主管理</div>
+        <div style={s.cardHead}>
+          <div>
+            <div style={s.sectionTitle}>博主管理</div>
+            <div style={s.sectionHint}>维护博主资料和对外看板链接。</div>
+          </div>
           <button style={s.btnSm} onClick={() => { setAddCreatorOpen(!addCreatorOpen); setCreatorError(null) }}>
             {addCreatorOpen ? '收起' : '+ 新增博主'}
           </button>
@@ -501,113 +471,110 @@ export default function CampaignPage() {
         {creators.length === 0 ? (
           <div style={{ fontSize: 13, color: '#9ca3af' }}>暂无博主，点击「新增博主」添加</div>
         ) : (
-          creators.map((c, i) => (
-            <div key={c.id} style={{
-              borderBottom: i < creators.length - 1 ? '1px solid #f0f0f0' : 'none',
-              paddingBottom: i < creators.length - 1 ? 10 : 0,
-              marginBottom:  i < creators.length - 1 ? 10 : 0,
-            }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{c.name}</div>
-              {c.tiktokHandle && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>🎵 @{c.tiktokHandle}</div>}
-              {c.preferredLang && (
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
-                  🌐 {c.preferredLang === 'zh' ? '中文' : c.preferredLang === 'en' ? 'English' : 'ខ្មែរ'}
+          <div style={s.creatorGrid}>
+            {creators.map((c) => (
+              <div key={c.id} style={s.creatorCard}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{c.name}</div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 5 }}>
+                  {c.tiktokHandle ? `@${c.tiktokHandle}` : '未填写 TikTok'}
                 </div>
-              )}
-              {c.phone && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>📞 {c.phone}</div>}
-              {c.note  && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>📝 {c.note}</div>}
-              {/* 看板链接管理 */}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginTop: 8 }}>
-                {!c.dashboardToken ? (
-                  <button style={s.btnSm} onClick={() => handleGenerateToken(c.id)} disabled={tokenBusyId === c.id}>
-                    {tokenBusyId === c.id ? '生成中…' : '📊 生成看板链接'}
-                  </button>
-                ) : (
-                  <>
-                    <button style={s.btnSm} onClick={() => copy(`${APP_URL}/creator/p/${c.dashboardToken}`, `tk-${c.id}`)}>
-                      {copied === `tk-${c.id}` ? '已复制 ✓' : '📊 复制看板链接'}
+                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3 }}>{c.phone || '未填写电话'}</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginTop: 10 }}>
+                  {!c.dashboardToken ? (
+                    <button style={s.btnSm} onClick={() => handleGenerateToken(c.id)} disabled={tokenBusyId === c.id}>
+                      {tokenBusyId === c.id ? '生成中…' : '生成看板链接'}
                     </button>
-                    <button style={s.btnGhost} onClick={() => handleGenerateToken(c.id)} disabled={tokenBusyId === c.id}>
-                      {tokenBusyId === c.id ? '重置中…' : '重置链接'}
-                    </button>
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <button style={s.btnSm} onClick={() => copy(`${APP_URL}/creator/p/${c.dashboardToken}`, `tk-${c.id}`)}>
+                        {copied === `tk-${c.id}` ? '已复制 ✓' : '复制看板链接'}
+                      </button>
+                      <button style={s.btnGhost} onClick={() => handleGenerateToken(c.id)} disabled={tokenBusyId === c.id}>
+                        {tokenBusyId === c.id ? '重置中…' : '重置'}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
 
       {/* ── 2. 生成短链 ─────────────────────────────────────────────────── */}
-      <div style={s.card}>
-        <div style={{ ...s.sectionTitle, marginBottom: 12 }}>🔗 生成推广短链</div>
-
-        {/* 博主选择 */}
-        <div style={{ marginBottom: 10 }}>
-          <label style={s.label}>选择博主</label>
-          <select style={s.select} value={selCreatorId} onChange={(e) => { setSelCreatorId(e.target.value); setManualName('') }}>
-            <option value="">── 手动输入 ──</option>
-            {creators.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}{c.tiktokHandle ? ` (@${c.tiktokHandle})` : ''}</option>
-            ))}
-          </select>
+      <div id="create-campaign-link" style={s.card}>
+        <div style={s.cardHead}>
+          <div>
+            <div style={s.sectionTitle}>生成推广短链</div>
+            <div style={s.sectionHint}>选择博主、佣金和落地页，生成可投放的 /v 短链。</div>
+          </div>
         </div>
-        {!selCreatorId && (
-          <div style={{ marginBottom: 10 }}>
+
+        <div style={s.formGrid}>
+          <div>
+            <label style={s.label}>选择博主</label>
+            <select style={s.select} value={selCreatorId} onChange={(e) => { setSelCreatorId(e.target.value); setManualName('') }}>
+              <option value="">── 手动输入 ──</option>
+              {creators.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}{c.tiktokHandle ? ` (@${c.tiktokHandle})` : ''}</option>
+              ))}
+            </select>
+          </div>
+          {!selCreatorId && (
+          <div>
             <label style={s.label}>临时博主名称（选填）</label>
             <input style={s.input} placeholder="如：@达人名" value={manualName} onChange={(e) => setManualName(e.target.value)} />
           </div>
-        )}
-        <div style={{ marginBottom: 10 }}>
-          <label style={s.label}>视频标题备注（选填）</label>
-          <input style={s.input} placeholder="如：5月新品推荐视频" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)} />
-        </div>
-
-        {/* 佣金 */}
-        <div style={{ ...s.halfRow, marginBottom: 4 }}>
-          <div style={{ flex: 1 }}>
+          )}
+          <div>
+            <label style={s.label}>视频标题备注（选填）</label>
+            <input style={s.input} placeholder="如：5月新品推荐视频" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)} />
+          </div>
+          <div>
             <label style={s.label}>佣金类型</label>
             <select style={s.select} value={commType} onChange={(e) => setCommType(e.target.value as 'percent' | 'fixed')}>
               <option value="percent">百分比（%）</option>
               <option value="fixed">固定金额（$/单）</option>
             </select>
           </div>
-          <div style={{ flex: 1 }}>
+          <div>
             <label style={s.label}>佣金数值（选填）</label>
             <input style={s.input} placeholder={commType === 'percent' ? '如：5' : '如：1.00'} value={commValue} onChange={(e) => setCommValue(e.target.value)} type="number" min="0" step="0.01" />
           </div>
-        </div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
-          {commType === 'percent' ? '预计佣金 = 成交金额 × 填入百分比 / 100' : '预计佣金 = 成交单数 × 填入金额'}
-        </div>
-
-        {/* 落地页 */}
-        <div style={{ marginBottom: 10 }}>
-          <label style={s.label}>落地页类型</label>
-          <select style={s.select} value={landingType} onChange={(e) => { setLandingType(e.target.value as 'menu' | 'product'); setMarketingPageId('') }}>
-            <option value="menu">菜单页</option>
-            <option value="product">营销页</option>
-          </select>
-        </div>
-        {landingType === 'product' && (
-          <div style={{ marginBottom: 12 }}>
-            <label style={s.label}>选择营销页</label>
-            <select style={s.select} value={marketingPageId} onChange={(e) => setMarketingPageId(e.target.value)}>
-              <option value="">请选择已发布营销页</option>
-              {marketingPages.map((p) => (
-                <option key={p.id} value={p.id}>{p.title || p.slug} · /p/{p.slug}</option>
-              ))}
-            </select>
-            {marketingPages.length === 0 && (
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>暂无已发布营销页，请先到商品页发布营销页。</div>
-            )}
+          <div style={s.fullSpan}>
+            <div style={{ fontSize: 11, color: '#9ca3af' }}>
+              {commType === 'percent' ? '预计佣金 = 成交金额 × 填入百分比 / 100' : '预计佣金 = 成交单数 × 填入金额'}
+            </div>
           </div>
-        )}
+          <div>
+            <label style={s.label}>落地页类型</label>
+            <select style={s.select} value={landingType} onChange={(e) => { setLandingType(e.target.value as 'menu' | 'product'); setMarketingPageId('') }}>
+              <option value="menu">菜单页</option>
+              <option value="product">营销页</option>
+            </select>
+          </div>
+          {landingType === 'product' && (
+            <div>
+              <label style={s.label}>选择营销页</label>
+              <select style={s.select} value={marketingPageId} onChange={(e) => setMarketingPageId(e.target.value)}>
+                <option value="">请选择已发布营销页</option>
+                {marketingPages.map((p) => (
+                  <option key={p.id} value={p.id}>{p.title || p.slug} · /p/{p.slug}</option>
+                ))}
+              </select>
+              {marketingPages.length === 0 && (
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>暂无已发布营销页，请先到商品页发布营销页。</div>
+              )}
+            </div>
+          )}
+        </div>
 
         {createError && <div style={s.error}>{createError}</div>}
-        <button style={s.btn} onClick={handleCreate} disabled={creating}>
-          {creating ? '生成中…' : '生成短链'}
-        </button>
+        <div style={{ marginTop: 14 }}>
+          <button style={s.btn} onClick={handleCreate} disabled={creating}>
+            {creating ? '生成中…' : '生成短链'}
+          </button>
+        </div>
       </div>
 
       {/* 新建结果 */}
@@ -710,6 +677,14 @@ export default function CampaignPage() {
                 <div style={s.metricLabel}>待结算佣金</div>
                 <div style={s.metricValue}>${analyticsTotals.unsettled.toFixed(2)}</div>
               </div>
+              <div style={s.metricBox}>
+                <div style={s.metricLabel}>曝光总量</div>
+                <div style={s.metricValue}>{analyticsTotals.views}</div>
+              </div>
+              <div style={s.metricBox}>
+                <div style={s.metricLabel}>点击总量</div>
+                <div style={s.metricValue}>{analyticsTotals.clicks}</div>
+              </div>
             </div>
             <div style={s.tableWrap}>
               <table style={s.table}>
@@ -722,12 +697,8 @@ export default function CampaignPage() {
                     <th style={s.th}>CTR</th>
                     <th style={s.th}>订单</th>
                     <th style={s.th}>销售额</th>
-                    <th style={s.th}>转化率</th>
                     <th style={s.th}>客单价</th>
-                    <th style={s.th}>佣金方式</th>
-                    <th style={s.th}>佣金金额/比例</th>
-                    <th style={s.th}>预计佣金</th>
-                    <th style={s.th}>结算状态</th>
+                    <th style={s.th}>佣金</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -749,12 +720,17 @@ export default function CampaignPage() {
                         <td style={s.td}>{ctr(lk)}</td>
                         <td style={s.td}>{lk.attributedOrderCount}</td>
                         <td style={s.td}>${lk.attributedSalesAmount.toFixed(2)}</td>
-                        <td style={s.td}>{conversionRate(lk)}</td>
                         <td style={s.td}>{avgOrderValue(lk)}</td>
-                        <td style={s.td}>{commissionMethodLabel(lk.commissionType)}</td>
-                        <td style={s.td}>{commissionValueLabel(lk.commissionType, lk.commissionValue)}</td>
-                        <td style={s.td}>{hasCommission ? `$${lk.estimatedCommission.toFixed(2)}` : '未设置'}</td>
-                        <td style={s.td}>{hasCommission ? settlementLabel(lk.settlementStatus) : '未设置'}</td>
+                        <td style={s.td}>
+                          {hasCommission ? (
+                            <>
+                              <div>${lk.estimatedCommission.toFixed(2)}</div>
+                              <div style={{ color: '#9ca3af', marginTop: 2 }}>
+                                {commissionValueLabel(lk.commissionType, lk.commissionValue)} · {settlementLabel(lk.settlementStatus)}
+                              </div>
+                            </>
+                          ) : '未设置'}
+                        </td>
                       </tr>
                     )
                   })}
@@ -764,53 +740,6 @@ export default function CampaignPage() {
           </>
         )}
       </div>
-
-      {/* ── 4. 博主汇总 ─────────────────────────────────────────────────── */}
-      {creatorSummary.length > 0 && (
-        <div style={{ ...s.card, marginTop: 8 }}>
-          <div style={{ ...s.sectionTitle, marginBottom: 12 }}>📊 博主汇总</div>
-          {creatorSummary.map((cs, i) => {
-            const unsettled = +(cs.commission - cs.settled).toFixed(2)
-            return (
-              <div key={(cs.creatorId ?? cs.name) + String(cs.isOfficial)} style={{
-                borderBottom: i < creatorSummary.length - 1 ? '1px solid #f0f0f0' : 'none',
-                paddingBottom: i < creatorSummary.length - 1 ? 12 : 0,
-                marginBottom:  i < creatorSummary.length - 1 ? 12 : 0,
-              }}>
-                {/* 名称 + 正式/临时 标签 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>{cs.name}</span>
-                  <span style={{
-                    fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8,
-                    background: cs.isOfficial ? '#eff6ff' : '#f3f4f6',
-                    color:      cs.isOfficial ? '#1d4ed8' : '#6b7280',
-                  }}>
-                    {cs.isOfficial ? '正式博主' : '临时'}
-                  </span>
-                </div>
-                {cs.tiktokHandle && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>🎵 @{cs.tiktokHandle}</div>}
-                <div style={{ ...s.stat, marginTop: 6 }}>
-                  🔗 {cs.linkCount} 条短链　👁 {cs.views} 浏览　🛒 {cs.clicks} 点击
-                </div>
-                <div style={{ ...s.stat, marginTop: 3 }}>
-                  📦 {cs.orders} 单　💰 ${cs.sales.toFixed(2)} 成交
-                </div>
-                {cs.commission > 0 && (
-                  <div style={{ marginTop: 5 }}>
-                    <div style={{ ...s.stat }}>💵 预计佣金：${cs.commission.toFixed(2)}</div>
-                    <div style={{ display: 'flex', gap: 12, marginTop: 3 }}>
-                      <span style={{ fontSize: 11, color: '#6b7280' }}>已结算：${cs.settled.toFixed(2)}</span>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: unsettled > 0 ? '#b45309' : '#9ca3af' }}>
-                        待结算：${unsettled.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
 
       {/* ── 推广素材弹层 ────────────────────────────────────────────────── */}
       {materialLink && (() => {
@@ -879,11 +808,16 @@ export default function CampaignPage() {
 
       {/* ── 5. 历史短链 ─────────────────────────────────────────────────── */}
       <div style={{ ...s.card, marginTop: 8 }}>
-        <div style={{ ...s.sectionTitle, marginBottom: 12 }}>📋 历史短链</div>
+        <div style={s.cardHead}>
+          <div>
+            <div style={s.sectionTitle}>历史短链</div>
+            <div style={s.sectionHint}>复制推广入口、查看效果，并处理落地页和结算状态。</div>
+          </div>
+        </div>
         {links.length === 0 ? (
           <div style={{ fontSize: 13, color: '#9ca3af' }}>暂无推广短链，生成第一条后会显示在这里</div>
         ) : (
-          links.map((lk, i) => {
+          links.map((lk) => {
             const fullUrl   = `${APP_URL}/v/${lk.code}`
             const isSettled = lk.settlementStatus === 'settled'
             const isSettling = settlingId === lk.id
@@ -891,51 +825,61 @@ export default function CampaignPage() {
             const isEditingLanding = editingLandingId === lk.id
 
             return (
-              <div key={lk.id} style={{
-                borderBottom: i < links.length - 1 ? '1px solid #f0f0f0' : 'none',
-                paddingBottom: i < links.length - 1 ? 14 : 0,
-                marginBottom:  i < links.length - 1 ? 14 : 0,
-              }}>
-                {/* 码 + 复制 + 素材 + 结算状态 */}
-                <div style={{ ...s.row, justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 4 }}>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: '#07c160', letterSpacing: '0.04em' }}>/v/{lk.code}</span>
-                  <div style={s.row}>
-                    <button style={s.btnCopy} onClick={() => copy(fullUrl, lk.code)}>
-                      {copied === lk.code ? '已复制 ✓' : '复制'}
+              <div key={lk.id} style={s.linkCard}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' as const }}>
+                  <div>
+                    <div style={s.linkCode}>/v/{lk.code}</div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                      落地页：{landingPage ? `营销页：${landingPage.title || landingPage.slug}` : '菜单页'}
+                    </div>
+                    {lk.creatorName && (
+                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                        博主：{lk.creatorName}{lk.tiktokHandle ? ` (@${lk.tiktokHandle})` : ''}
+                      </div>
+                    )}
+                    {lk.videoTitle && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>视频：{lk.videoTitle}</div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' as const }}>
+                    <span style={badge(isSettled)}>{isSettled ? '已结算' : '未结算'}</span>
+                    <button style={s.btnSm} onClick={() => copy(fullUrl, lk.code)}>
+                      {copied === lk.code ? '已复制 ✓' : '复制链接'}
                     </button>
                     <button style={{ ...s.btnCopy, background: '#eff6ff', borderColor: '#bfdbfe', color: '#1d4ed8' }}
                       onClick={() => { setMaterialLink(lk); setMaterialLang('zh') }}>
-                      📱 素材
+                      素材
                     </button>
-                    <span style={badge(isSettled)}>{isSettled ? '已结算' : '未结算'}</span>
+                    <div style={s.moreWrap}>
+                      <button style={s.btnGhost} onClick={() => setOpenMoreId(openMoreId === lk.id ? null : lk.id)}>更多</button>
+                      {openMoreId === lk.id && (
+                        <div style={s.moreMenu}>
+                          <button style={s.moreItem} onClick={() => { copy(fullUrl, `tt-anchor:${lk.code}`); setOpenMoreId(null) }}>
+                            复制 TikTok 锚点链接
+                          </button>
+                          <button style={s.moreItem} onClick={() => { copy(fullUrl, `bio:${lk.code}`); setOpenMoreId(null) }}>
+                            复制 Bio 链接
+                          </button>
+                          <button style={s.moreItem} onClick={() => { copy(fullUrl, `tg:${lk.code}`); setOpenMoreId(null) }}>
+                            复制 Telegram 链接
+                          </button>
+                          <button style={s.moreItem} onClick={() => { beginLandingEdit(lk); setOpenMoreId(null) }}>
+                            修改落地页
+                          </button>
+                          {!isSettled && (
+                            <button style={s.moreItem} onClick={() => { setSettlingId(lk.id); setSettleNote(''); setOpenMoreId(null) }}>
+                              标记已结算
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginTop: 8 }}>
-                  <button style={s.btnCopy} onClick={() => copy(fullUrl, `tt-anchor:${lk.code}`)}>
-                    {copied === `tt-anchor:${lk.code}` ? '已复制 ✓' : '复制 TikTok锚点链接'}
-                  </button>
-                  <button style={s.btnCopy} onClick={() => copy(fullUrl, `bio:${lk.code}`)}>
-                    {copied === `bio:${lk.code}` ? '已复制 ✓' : '复制 Bio链接'}
-                  </button>
-                  <button style={s.btnCopy} onClick={() => copy(fullUrl, `tg:${lk.code}`)}>
-                    {copied === `tg:${lk.code}` ? '已复制 ✓' : '复制 Telegram链接'}
-                  </button>
-                </div>
-
-                {/* 博主 + 视频 */}
-                {lk.creatorName && (
-                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-                    👤 {lk.creatorName}{lk.tiktokHandle ? ` (@${lk.tiktokHandle})` : ''}
-                  </div>
-                )}
-                {lk.videoTitle && (
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>🎬 {lk.videoTitle}</div>
-                )}
-
-                {/* 落地页 */}
-                <div style={{ ...s.stat, marginTop: 4 }}>
-                  落地页：{landingPage ? `营销页：${landingPage.title || landingPage.slug}` : '菜单页'}
-                  <button style={{ ...s.btnSettle, marginLeft: 8 }} onClick={() => beginLandingEdit(lk)}>修改</button>
+                <div style={s.linkStats}>
+                  <div style={s.linkStatBox}><div style={s.linkStatLabel}>浏览</div><div style={s.linkStatValue}>{lk.viewCount}</div></div>
+                  <div style={s.linkStatBox}><div style={s.linkStatLabel}>点击</div><div style={s.linkStatValue}>{lk.clickCount}</div></div>
+                  <div style={s.linkStatBox}><div style={s.linkStatLabel}>订单</div><div style={s.linkStatValue}>{lk.attributedOrderCount}</div></div>
+                  <div style={s.linkStatBox}><div style={s.linkStatLabel}>销售额</div><div style={s.linkStatValue}>${lk.attributedSalesAmount.toFixed(2)}</div></div>
+                  <div style={s.linkStatBox}><div style={s.linkStatLabel}>佣金</div><div style={s.linkStatValue}>${lk.estimatedCommission.toFixed(2)}</div></div>
                 </div>
                 {isEditingLanding && (
                   <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginTop: 6 }}>
@@ -968,42 +912,25 @@ export default function CampaignPage() {
                     </div>
                   </div>
                 )}
-
-                {/* 统计 */}
-                <div style={s.stat}>
-                  👁 {lk.viewCount} 浏览　🛒 {lk.clickCount} 点击
-                  📦 {lk.attributedOrderCount} 单　💰 ${lk.attributedSalesAmount.toFixed(2)}
+                <div style={{ ...s.stat, marginTop: 8 }}>
+                  佣金规则：{commLabel(lk.commissionType, lk.commissionValue)}
                 </div>
-
-                {/* 佣金 */}
-                <div style={{ ...s.stat, marginTop: 2 }}>
-                  💵 佣金规则：{commLabel(lk.commissionType, lk.commissionValue)}
-                  {lk.estimatedCommission > 0 && `　预计 $${lk.estimatedCommission.toFixed(2)}`}
-                </div>
-
-                {/* 结算操作 */}
-                {!isSettled && (
+                {!isSettled && isSettling && (
                   <div style={{ marginTop: 6 }}>
-                    {!isSettling ? (
-                      <button style={s.btnSettle} onClick={() => { setSettlingId(lk.id); setSettleNote('') }}>
-                        标记已结算
-                      </button>
-                    ) : (
-                      <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginTop: 4 }}>
-                        <input
-                          style={{ ...s.input, fontSize: 13, marginBottom: 8 }}
-                          placeholder="结算备注（选填）"
-                          value={settleNote}
-                          onChange={(e) => setSettleNote(e.target.value)}
-                        />
-                        <div style={s.row}>
-                          <button style={s.btnSm} onClick={() => handleSettle(lk.id)} disabled={settlingBusy}>
-                            {settlingBusy ? '处理中…' : '确认结算'}
-                          </button>
-                          <button style={s.btnGhost} onClick={() => setSettlingId(null)}>取消</button>
-                        </div>
+                    <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginTop: 4 }}>
+                      <input
+                        style={{ ...s.input, fontSize: 13, marginBottom: 8 }}
+                        placeholder="结算备注（选填）"
+                        value={settleNote}
+                        onChange={(e) => setSettleNote(e.target.value)}
+                      />
+                      <div style={s.row}>
+                        <button style={s.btnSm} onClick={() => handleSettle(lk.id)} disabled={settlingBusy}>
+                          {settlingBusy ? '处理中…' : '确认结算'}
+                        </button>
+                        <button style={s.btnGhost} onClick={() => setSettlingId(null)}>取消</button>
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
                 {isSettled && lk.settledAt && (
@@ -1016,6 +943,11 @@ export default function CampaignPage() {
             )
           })
         )}
+      </div>
+      <div style={s.tips}>
+        <div>TikTok 锚点链接用于 Spark Ads 或锚点授权。</div>
+        <div>Bio 链接适合放主页。</div>
+        <div>Telegram 链接适合发给博主或群推广。</div>
       </div>
     </div>
   )
