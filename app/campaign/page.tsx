@@ -374,9 +374,9 @@ export default function CampaignPage() {
     linkStatBox: { background: '#f9fafb', borderRadius: 8, padding: '8px 10px', border: '1px solid #edf0f3' },
     linkStatLabel: { fontSize: 10, color: '#9ca3af', marginBottom: 2 },
     linkStatValue: { fontSize: 13, fontWeight: 800, color: '#111827' },
-    moreWrap: { position: 'relative' as const },
-    moreMenu: { position: 'absolute' as const, right: 0, top: 34, zIndex: 20, minWidth: 190, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,0.14)', padding: 6 },
-    moreItem: { display: 'block', width: '100%', textAlign: 'left' as const, padding: '8px 10px', border: 0, borderRadius: 6, background: '#fff', color: '#374151', fontSize: 13, cursor: 'pointer' },
+    moreWrap: { width: '100%', marginTop: 10 },
+    moreMenu: { width: '100%', boxSizing: 'border-box' as const, background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 8px 22px rgba(15,23,42,0.12)', padding: 8 },
+    moreItem: { display: 'block', width: '100%', textAlign: 'left' as const, padding: '10px 12px', border: 0, borderBottom: '1px solid #e2e8f0', borderRadius: 6, background: 'transparent', color: '#334155', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
     tips: { background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, color: '#4b5563', fontSize: 13, lineHeight: 1.8 },
   }
 
@@ -823,6 +823,7 @@ export default function CampaignPage() {
             const isSettling = settlingId === lk.id
             const landingPage = pageByTargetUrl(lk.targetUrl)
             const isEditingLanding = editingLandingId === lk.id
+            const isMoreOpen = openMoreId === lk.id
 
             return (
               <div key={lk.id} style={s.linkCard}>
@@ -848,32 +849,40 @@ export default function CampaignPage() {
                       onClick={() => { setMaterialLink(lk); setMaterialLang('zh') }}>
                       素材
                     </button>
-                    <div style={s.moreWrap}>
-                      <button style={s.btnGhost} onClick={() => setOpenMoreId(openMoreId === lk.id ? null : lk.id)}>更多</button>
-                      {openMoreId === lk.id && (
-                        <div style={s.moreMenu}>
-                          <button style={s.moreItem} onClick={() => { copy(fullUrl, `tt-anchor:${lk.code}`); setOpenMoreId(null) }}>
-                            复制 TikTok 锚点链接
-                          </button>
-                          <button style={s.moreItem} onClick={() => { copy(fullUrl, `bio:${lk.code}`); setOpenMoreId(null) }}>
-                            复制 Bio 链接
-                          </button>
-                          <button style={s.moreItem} onClick={() => { copy(fullUrl, `tg:${lk.code}`); setOpenMoreId(null) }}>
-                            复制 Telegram 链接
-                          </button>
-                          <button style={s.moreItem} onClick={() => { beginLandingEdit(lk); setOpenMoreId(null) }}>
-                            修改落地页
-                          </button>
-                          {!isSettled && (
-                            <button style={s.moreItem} onClick={() => { setSettlingId(lk.id); setSettleNote(''); setOpenMoreId(null) }}>
-                              标记已结算
-                            </button>
-                          )}
-                        </div>
+                    <button
+                      style={{
+                        ...s.btnGhost,
+                        ...(isMoreOpen ? { background: '#111827', borderColor: '#111827', color: '#fff' } : {}),
+                      }}
+                      onClick={() => setOpenMoreId(isMoreOpen ? null : lk.id)}
+                    >
+                      {isMoreOpen ? '收起 ↑' : '更多 ↓'}
+                    </button>
+                  </div>
+                </div>
+                {isMoreOpen && (
+                  <div style={s.moreWrap}>
+                    <div style={s.moreMenu}>
+                      <button style={s.moreItem} onClick={() => { copy(fullUrl, `tt-anchor:${lk.code}`); setOpenMoreId(null) }}>
+                        复制 TikTok 锚点链接
+                      </button>
+                      <button style={s.moreItem} onClick={() => { copy(fullUrl, `bio:${lk.code}`); setOpenMoreId(null) }}>
+                        复制 Bio 链接
+                      </button>
+                      <button style={s.moreItem} onClick={() => { copy(fullUrl, `tg:${lk.code}`); setOpenMoreId(null) }}>
+                        复制 Telegram 链接
+                      </button>
+                      <button style={{ ...s.moreItem, ...(isSettled ? { borderBottom: 0 } : {}) }} onClick={() => { beginLandingEdit(lk); setOpenMoreId(null) }}>
+                        修改落地页
+                      </button>
+                      {!isSettled && (
+                        <button style={{ ...s.moreItem, borderBottom: 0 }} onClick={() => { setSettlingId(lk.id); setSettleNote(''); setOpenMoreId(null) }}>
+                          标记已结算
+                        </button>
                       )}
                     </div>
                   </div>
-                </div>
+                )}
                 <div style={s.linkStats}>
                   <div style={s.linkStatBox}><div style={s.linkStatLabel}>浏览</div><div style={s.linkStatValue}>{lk.viewCount}</div></div>
                   <div style={s.linkStatBox}><div style={s.linkStatLabel}>点击</div><div style={s.linkStatValue}>{lk.clickCount}</div></div>
