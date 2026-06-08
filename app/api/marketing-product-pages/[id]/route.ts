@@ -5,9 +5,11 @@ import { getContext } from '@/lib/context'
 
 const STATUS_VALUES = ['DRAFT', 'PUBLISHED', 'DISABLED'] as const
 type PageStatus = typeof STATUS_VALUES[number]
+const TEMPLATE_VALUES = ['TIKTOK_HOT', 'HOME_GOODS', 'FOOD_SET', 'BEAUTY'] as const
+type TemplateType = typeof TEMPLATE_VALUES[number]
 
 const PAGE_SELECT = {
-  id: true, productId: true, slug: true, status: true,
+  id: true, productId: true, slug: true, status: true, templateType: true,
   title: true, titleZh: true, titleEn: true, titleKm: true,
   subtitle: true, heroImageUrl: true,
   salePrice: true, originalPrice: true, soldCount: true,
@@ -35,6 +37,7 @@ function mapPage(p: {
   productId: string
   slug: string
   status: PageStatus
+  templateType: TemplateType | null
   title: string | null
   titleZh: string | null
   titleEn: string | null
@@ -81,6 +84,7 @@ function mapPage(p: {
     productId: p.productId,
     slug: p.slug,
     status: p.status,
+    templateType: p.templateType ?? 'TIKTOK_HOT',
     title: p.title,
     titleZh: p.titleZh,
     titleEn: p.titleEn,
@@ -150,6 +154,7 @@ export async function PATCH(
   let body: {
     slug?: string
     status?: string
+    templateType?: string | null
     title?: string | null
     titleZh?: string | null
     titleEn?: string | null
@@ -198,6 +203,7 @@ export async function PATCH(
   const data: {
     slug?: string
     status?: PageStatus
+    templateType?: TemplateType | null
     title?: string | null
     titleZh?: string | null
     titleEn?: string | null
@@ -250,6 +256,15 @@ export async function PATCH(
       return NextResponse.json({ error: 'INVALID_STATUS' }, { status: 400 })
     }
     data.status = body.status as PageStatus
+  }
+  if (body.templateType !== undefined) {
+    if (body.templateType === null || body.templateType === '') {
+      data.templateType = null
+    } else if (TEMPLATE_VALUES.includes(body.templateType as TemplateType)) {
+      data.templateType = body.templateType as TemplateType
+    } else {
+      return NextResponse.json({ error: 'INVALID_TEMPLATE_TYPE' }, { status: 400 })
+    }
   }
   if (body.title !== undefined) data.title = body.title?.trim() || null
   if (body.titleZh !== undefined) data.titleZh = body.titleZh?.trim() || null

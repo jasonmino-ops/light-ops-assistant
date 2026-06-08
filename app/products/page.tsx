@@ -8,6 +8,7 @@ import LangToggleBtn from '@/app/components/LangToggleBtn'
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 type MarketingLang = 'zh' | 'en' | 'km'
+type MarketingTemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
 
 type MarketingLangContent = {
   title: string
@@ -27,6 +28,13 @@ const MARKETING_LANG_LABELS: Array<{ lang: MarketingLang; label: string }> = [
   { lang: 'zh', label: '中文' },
   { lang: 'en', label: 'English' },
   { lang: 'km', label: 'ខ្មែរ' },
+]
+
+const MARKETING_TEMPLATE_OPTIONS: Array<{ value: MarketingTemplateType; label: string }> = [
+  { value: 'TIKTOK_HOT', label: 'TikTok爆款' },
+  { value: 'HOME_GOODS', label: '家居用品' },
+  { value: 'FOOD_SET', label: '餐饮套餐' },
+  { value: 'BEAUTY', label: '美妆产品' },
 ]
 
 // ─── HID Scanner Hook ─────────────────────────────────────────────────────────
@@ -89,6 +97,7 @@ type MarketingProductPage = {
   productId: string
   slug: string
   status: 'DRAFT' | 'PUBLISHED' | 'DISABLED'
+  templateType: MarketingTemplateType | null
   title: string | null
   titleZh: string | null
   titleEn: string | null
@@ -267,6 +276,7 @@ export default function ProductsPage() {
   const [marketingSubtitle, setMarketingSubtitle] = useState('')
   const [marketingSlug, setMarketingSlug] = useState('')
   const [marketingStatus, setMarketingStatus] = useState<'DRAFT' | 'PUBLISHED' | 'DISABLED'>('DRAFT')
+  const [marketingTemplateType, setMarketingTemplateType] = useState<MarketingTemplateType>('TIKTOK_HOT')
   const [marketingHeroImageUrl, setMarketingHeroImageUrl] = useState('')
   const [marketingSalePrice, setMarketingSalePrice] = useState('')
   const [marketingOriginalPrice, setMarketingOriginalPrice] = useState('')
@@ -408,6 +418,7 @@ export default function ProductsPage() {
     setMarketingSubtitle(page.subtitle ?? '')
     setMarketingSlug(page.slug)
     setMarketingStatus(page.status)
+    setMarketingTemplateType(page.templateType ?? 'TIKTOK_HOT')
     setMarketingHeroImageUrl(page.heroImageUrl ?? product.imageUrl ?? '')
     setMarketingSalePrice(page.salePrice != null ? String(page.salePrice) : '')
     setMarketingOriginalPrice(page.originalPrice != null ? String(page.originalPrice) : '')
@@ -477,6 +488,7 @@ export default function ProductsPage() {
             subtitle: marketingSubtitle,
             slug: marketingSlug,
             status: marketingStatus,
+            templateType: marketingTemplateType,
             heroImageUrl: marketingHeroImageUrl,
             salePrice: marketingSalePrice,
             originalPrice: marketingOriginalPrice,
@@ -1774,6 +1786,15 @@ export default function ProductsPage() {
 	                                  onChange={(e) => setMarketingSubtitle(e.target.value)}
 	                                  placeholder="副标题"
 	                                />
+	                                <select
+	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
+	                                  value={marketingTemplateType}
+	                                  onChange={(e) => setMarketingTemplateType(e.target.value as MarketingTemplateType)}
+	                                >
+	                                  {MARKETING_TEMPLATE_OPTIONS.map((option) => (
+	                                    <option key={option.value} value={option.value}>{option.label}</option>
+	                                  ))}
+	                                </select>
 	                                <input
 	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
 	                                  value={marketingSlug}

@@ -12,6 +12,7 @@ export async function GET(
     select: {
       id: true,
       slug: true,
+      templateType: true,
       title: true,
       titleZh: true,
       titleEn: true,
@@ -68,6 +69,7 @@ export async function GET(
 
   return NextResponse.json({
     slug: page.slug,
+    templateType: page.templateType ?? 'TIKTOK_HOT',
     title: page.title || page.product.name,
     titleZh: page.titleZh,
     titleEn: page.titleEn,

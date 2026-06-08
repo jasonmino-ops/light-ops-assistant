@@ -32,6 +32,13 @@ enum MarketingProductPageStatus {
   DISABLED
 }
 
+enum MarketingProductPageTemplateType {
+  TIKTOK_HOT
+  HOME_GOODS
+  FOOD_SET
+  BEAUTY
+}
+
 enum SaleType {
   SALE
   REFUND
@@ -203,6 +210,7 @@ model MarketingProductPage {
   productId    String
   slug         String                     @unique
   status       MarketingProductPageStatus @default(DRAFT)
+  templateType MarketingProductPageTemplateType?
   title        String?
   titleZh      String?
   titleEn      String?

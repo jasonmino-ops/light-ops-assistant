@@ -4,9 +4,11 @@ import { getContext } from '@/lib/context'
 
 const STATUS_VALUES = ['DRAFT', 'PUBLISHED', 'DISABLED'] as const
 type PageStatus = typeof STATUS_VALUES[number]
+const TEMPLATE_VALUES = ['TIKTOK_HOT', 'HOME_GOODS', 'FOOD_SET', 'BEAUTY'] as const
+type TemplateType = typeof TEMPLATE_VALUES[number]
 
 const PAGE_SELECT = {
-  id: true, productId: true, slug: true, status: true,
+  id: true, productId: true, slug: true, status: true, templateType: true,
   title: true, titleZh: true, titleEn: true, titleKm: true,
   subtitle: true, heroImageUrl: true,
   salePrice: true, originalPrice: true, soldCount: true,
@@ -34,6 +36,7 @@ function mapPage(p: {
   productId: string
   slug: string
   status: PageStatus
+  templateType: TemplateType | null
   title: string | null
   titleZh: string | null
   titleEn: string | null
@@ -80,6 +83,7 @@ function mapPage(p: {
     productId: p.productId,
     slug: p.slug,
     status: p.status,
+    templateType: p.templateType ?? 'TIKTOK_HOT',
     title: p.title,
     titleZh: p.titleZh,
     titleEn: p.titleEn,

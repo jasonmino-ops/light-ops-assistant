@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 
 type PageData = {
   slug: string
+  templateType: TemplateType | null
   title: string
   titleZh: string | null
   titleEn: string | null
@@ -32,10 +33,116 @@ type PageData = {
 type OrderResult = { orderNo: string; totalAmount: number }
 
 type Lang = 'zh' | 'en' | 'km'
+type TemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
+type TemplateSection = 'features' | 'details' | 'reviews' | 'order'
+
+type TemplateTheme = {
+  background: string
+  text: string
+  muted: string
+  accent: string
+  accentDark: string
+  heroBg: string
+  flashBg: string
+  flashText: string
+  badgeBg: string
+  badgeText: string
+  badgeBorder: string
+  pointBg: string
+  pointBorder: string
+  sectionBorder: string
+  countdownBg: string
+  countdownText: string
+  countdownBorder: string
+  sectionOrder: TemplateSection[]
+}
 
 const LS_KEY = 'marketing_product_lang'
 const LANGS: Lang[] = ['km', 'en', 'zh']
 const LANG_LABELS: Record<Lang, string> = { km: 'KM', en: 'EN', zh: '中文' }
+
+const TEMPLATE_THEMES: Record<TemplateType, TemplateTheme> = {
+  TIKTOK_HOT: {
+    background: '#fff5f5',
+    text: '#171717',
+    muted: '#6b7280',
+    accent: '#e11d48',
+    accentDark: '#111827',
+    heroBg: '#ffffff',
+    flashBg: '#111827',
+    flashText: '#ffffff',
+    badgeBg: '#fff1f2',
+    badgeText: '#be123c',
+    badgeBorder: '#fecdd3',
+    pointBg: '#fff7f7',
+    pointBorder: '#fecdd3',
+    sectionBorder: '#fecdd3',
+    countdownBg: '#fff1f2',
+    countdownText: '#be123c',
+    countdownBorder: '#fecdd3',
+    sectionOrder: ['features', 'reviews', 'details', 'order'],
+  },
+  HOME_GOODS: {
+    background: '#f3f8f2',
+    text: '#172018',
+    muted: '#5f7162',
+    accent: '#23834a',
+    accentDark: '#14532d',
+    heroBg: '#ffffff',
+    flashBg: '#e8f5e9',
+    flashText: '#14532d',
+    badgeBg: '#eef7ea',
+    badgeText: '#2d6a2d',
+    badgeBorder: '#cfe4c9',
+    pointBg: '#f7faf5',
+    pointBorder: '#d7e7d2',
+    sectionBorder: '#d7e7d2',
+    countdownBg: '#ecfdf3',
+    countdownText: '#166534',
+    countdownBorder: '#bbf7d0',
+    sectionOrder: ['features', 'details', 'reviews', 'order'],
+  },
+  FOOD_SET: {
+    background: '#fff7ed',
+    text: '#24150b',
+    muted: '#7c5a37',
+    accent: '#f97316',
+    accentDark: '#9a3412',
+    heroBg: '#fffaf2',
+    flashBg: '#ffedd5',
+    flashText: '#9a3412',
+    badgeBg: '#fff7ed',
+    badgeText: '#c2410c',
+    badgeBorder: '#fed7aa',
+    pointBg: '#fffaf2',
+    pointBorder: '#fed7aa',
+    sectionBorder: '#fed7aa',
+    countdownBg: '#ffedd5',
+    countdownText: '#c2410c',
+    countdownBorder: '#fdba74',
+    sectionOrder: ['features', 'order', 'details', 'reviews'],
+  },
+  BEAUTY: {
+    background: '#faf5ff',
+    text: '#25113a',
+    muted: '#6b5a7a',
+    accent: '#a855f7',
+    accentDark: '#6b21a8',
+    heroBg: '#ffffff',
+    flashBg: '#f3e8ff',
+    flashText: '#6b21a8',
+    badgeBg: '#f5edff',
+    badgeText: '#7e22ce',
+    badgeBorder: '#e9d5ff',
+    pointBg: '#fcf8ff',
+    pointBorder: '#e9d5ff',
+    sectionBorder: '#e9d5ff',
+    countdownBg: '#fdf4ff',
+    countdownText: '#a21caf',
+    countdownBorder: '#f5d0fe',
+    sectionOrder: ['features', 'reviews', 'details', 'order'],
+  },
+}
 
 const I18N: Record<Lang, {
   loading: string
@@ -371,109 +478,132 @@ export default function MarketingProductPage() {
   const features = localizedFeatures(data, lang)
   const displayFeatures = features.length > 0 ? features : text.defaultFeatures
   const buttonText = localizedButtonText(data, lang, text.submitOrder)
+  const templateType = data.templateType ?? 'TIKTOK_HOT'
+  const theme = TEMPLATE_THEMES[templateType] ?? TEMPLATE_THEMES.TIKTOK_HOT
+
+  const renderFeatures = () => (
+    <section key="features" style={{ ...s.section, borderColor: theme.sectionBorder }}>
+      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.whyTitle}</h2>
+      <div style={s.points}>
+        {displayFeatures.map((feature, idx) => (
+          <div key={idx} style={{ ...s.point, background: theme.pointBg, borderColor: theme.pointBorder, color: theme.text }}>
+            {feature}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+
+  const renderDetails = () => data.detailImages.length > 0 ? (
+    <section key="details" style={{ ...s.section, borderColor: theme.sectionBorder }}>
+      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.detailTitle}</h2>
+      <div style={s.imageStack}>
+        {data.detailImages.map((url, idx) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={idx} src={url} alt={`${text.detailTitle} ${idx + 1}`} style={s.detailImg} />
+        ))}
+      </div>
+    </section>
+  ) : null
+
+  const renderReviews = () => data.reviewImages.length > 0 ? (
+    <section key="reviews" style={{ ...s.section, borderColor: theme.sectionBorder }}>
+      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.reviewTitle}</h2>
+      <div style={s.reviewGrid}>
+        {data.reviewImages.map((url, idx) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={idx} src={url} alt={`${text.reviewTitle} ${idx + 1}`} style={s.reviewImg} />
+        ))}
+      </div>
+    </section>
+  ) : null
+
+  const renderOrder = () => (
+    <section key="order" style={{ ...s.section, borderColor: theme.sectionBorder }}>
+      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.orderTitle}</h2>
+      <label style={{ ...s.label, color: theme.text }}>{text.name}</label>
+      <input style={s.input} value={name} onChange={(e) => setName(e.target.value)} placeholder={text.namePlaceholder} />
+      <label style={{ ...s.label, color: theme.text }}>{text.phone}</label>
+      <input style={s.input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={text.phonePlaceholder} inputMode="tel" />
+      <label style={{ ...s.label, color: theme.text }}>{text.address}</label>
+      <textarea style={s.textarea} value={address} onChange={(e) => setAddress(e.target.value)} placeholder={text.addressPlaceholder} />
+      <label style={{ ...s.label, color: theme.text }}>{text.note}</label>
+      <input style={s.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder={text.notePlaceholder} />
+      <label style={{ ...s.label, color: theme.text }}>{text.quantity}</label>
+      <div style={s.qtyRow}>
+        <button style={{ ...s.qtyBtn, borderColor: theme.badgeBorder, background: theme.pointBg }} onClick={() => setQty((v) => Math.max(1, v - 1))}>-</button>
+        <span style={s.qtyNum}>{qty}</span>
+        <button style={{ ...s.qtyBtn, borderColor: theme.badgeBorder, background: theme.pointBg }} onClick={() => setQty((v) => Math.min(99, v + 1))}>+</button>
+        <span style={{ ...s.total, color: theme.accent }}>${total.toFixed(2)}</span>
+      </div>
+      {error && <div style={{ ...s.error, color: theme.countdownText, borderColor: theme.countdownBorder, background: theme.countdownBg }}>{error}</div>}
+      <button style={{ ...s.submit, background: theme.accent, opacity: submitting ? 0.6 : 1 }} disabled={submitting} onClick={submitOrder}>
+        {submitting ? text.submitting : buttonText}
+      </button>
+    </section>
+  )
+
+  function renderSection(section: TemplateSection) {
+    if (section === 'features') return renderFeatures()
+    if (section === 'details') return renderDetails()
+    if (section === 'reviews') return renderReviews()
+    return renderOrder()
+  }
 
   if (result) {
     return (
-      <main style={s.page}>
+      <main style={{ ...s.page, background: theme.background, color: theme.text }}>
         {langSwitcher}
-        <section style={s.successBox}>
-          <div style={s.successIcon}>✓</div>
+        <section style={{ ...s.successBox, borderColor: theme.sectionBorder }}>
+          <div style={{ ...s.successIcon, background: theme.accent }}>✓</div>
           <h1 style={s.successTitle}>{text.successTitle}</h1>
           <p style={s.successText}>{text.successText}</p>
           <div style={s.orderNo}>{text.orderNo}：{result.orderNo}</div>
-          <div style={s.successTotal}>{text.total}：${result.totalAmount.toFixed(2)}</div>
+          <div style={{ ...s.successTotal, color: theme.accent }}>{text.total}：${result.totalAmount.toFixed(2)}</div>
         </section>
       </main>
     )
   }
 
   return (
-    <main style={s.page}>
+    <main style={{ ...s.page, background: theme.background, color: theme.text }}>
       {langSwitcher}
-      <section style={s.hero}>
+      <section style={{ ...s.hero, background: theme.heroBg, borderColor: theme.sectionBorder }}>
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt={title} style={s.heroImg} />
         ) : (
-          <div style={s.heroPlaceholder}>店小二</div>
+          <div style={{ ...s.heroPlaceholder, background: theme.pointBg, color: theme.accentDark }}>店小二</div>
         )}
         <div style={s.heroBody}>
-          <div style={s.storeName}>{data.store.name}</div>
-          <div style={s.flashBar}>{text.flashBar}</div>
-          <h1 style={s.title}>{title}</h1>
-          {data.subtitle && <p style={s.subtitle}>{data.subtitle}</p>}
+          <div style={{ ...s.storeName, color: theme.muted }}>{data.store.name}</div>
+          <div style={{ ...s.flashBar, background: theme.flashBg, color: theme.flashText }}>{text.flashBar}</div>
+          <h1 style={{ ...s.title, color: theme.text }}>{title}</h1>
+          {data.subtitle && <p style={{ ...s.subtitle, color: theme.muted }}>{data.subtitle}</p>}
           <div style={s.priceRow}>
-            <span style={s.price}>${displayPrice.toFixed(2)}</span>
+            <span style={{ ...s.price, color: theme.accent }}>${displayPrice.toFixed(2)}</span>
             {data.originalPrice != null && <span style={s.originalPrice}>${data.originalPrice.toFixed(2)}</span>}
           </div>
-          <div style={s.metaRow}>
+          <div style={{ ...s.metaRow, color: theme.muted }}>
             <span>{text.cod}</span>
             <span>{text.freeDelivery}</span>
             {data.soldCount != null && <span>{text.sold} {data.soldCount}</span>}
           </div>
-          {data.enableCountdown && <div style={s.countdown}>{text.limitedOffer} · {text.priorityDelivery}</div>}
-          {data.product.spec && <div style={s.spec}>{data.product.spec}</div>}
+          {data.enableCountdown && (
+            <div style={{ ...s.countdown, background: theme.countdownBg, color: theme.countdownText, borderColor: theme.countdownBorder }}>
+              {text.limitedOffer} · {text.priorityDelivery}
+            </div>
+          )}
+          {data.product.spec && <div style={{ ...s.spec, color: theme.muted }}>{data.product.spec}</div>}
           <div style={s.badges}>
-            <span style={s.badge}>{text.cod}</span>
-            <span style={s.badge}>{text.freeDelivery}</span>
-            <span style={s.badge}>{text.afterSale}</span>
+            <span style={{ ...s.badge, background: theme.badgeBg, color: theme.badgeText, borderColor: theme.badgeBorder }}>{text.cod}</span>
+            <span style={{ ...s.badge, background: theme.badgeBg, color: theme.badgeText, borderColor: theme.badgeBorder }}>{text.freeDelivery}</span>
+            <span style={{ ...s.badge, background: theme.badgeBg, color: theme.badgeText, borderColor: theme.badgeBorder }}>{text.afterSale}</span>
           </div>
         </div>
       </section>
 
-      <section style={s.section}>
-        <h2 style={s.sectionTitle}>{text.whyTitle}</h2>
-        <div style={s.points}>
-          {displayFeatures.map((feature, idx) => <div key={idx} style={s.point}>{feature}</div>)}
-        </div>
-      </section>
-
-      {data.detailImages.length > 0 && (
-        <section style={s.section}>
-          <h2 style={s.sectionTitle}>{text.detailTitle}</h2>
-          <div style={s.imageStack}>
-            {data.detailImages.map((url, idx) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={idx} src={url} alt={`${text.detailTitle} ${idx + 1}`} style={s.detailImg} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {data.reviewImages.length > 0 && (
-        <section style={s.section}>
-          <h2 style={s.sectionTitle}>{text.reviewTitle}</h2>
-          <div style={s.reviewGrid}>
-            {data.reviewImages.map((url, idx) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={idx} src={url} alt={`${text.reviewTitle} ${idx + 1}`} style={s.reviewImg} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section style={s.section}>
-        <h2 style={s.sectionTitle}>{text.orderTitle}</h2>
-        <label style={s.label}>{text.name}</label>
-        <input style={s.input} value={name} onChange={(e) => setName(e.target.value)} placeholder={text.namePlaceholder} />
-        <label style={s.label}>{text.phone}</label>
-        <input style={s.input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={text.phonePlaceholder} inputMode="tel" />
-        <label style={s.label}>{text.address}</label>
-        <textarea style={s.textarea} value={address} onChange={(e) => setAddress(e.target.value)} placeholder={text.addressPlaceholder} />
-        <label style={s.label}>{text.note}</label>
-        <input style={s.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder={text.notePlaceholder} />
-        <label style={s.label}>{text.quantity}</label>
-        <div style={s.qtyRow}>
-          <button style={s.qtyBtn} onClick={() => setQty((v) => Math.max(1, v - 1))}>-</button>
-          <span style={s.qtyNum}>{qty}</span>
-          <button style={s.qtyBtn} onClick={() => setQty((v) => Math.min(99, v + 1))}>+</button>
-          <span style={s.total}>{text.total} ${total.toFixed(2)}</span>
-        </div>
-        {error && <div style={s.error}>{error}</div>}
-        <button style={{ ...s.submit, opacity: submitting ? 0.6 : 1 }} disabled={submitting} onClick={submitOrder}>
-          {submitting ? text.submitting : buttonText}
-        </button>
-      </section>
+      {theme.sectionOrder.map(renderSection)}
     </main>
   )
 }
