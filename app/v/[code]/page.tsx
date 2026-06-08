@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, Suspense, CSSProperties } from 'react'
+import { useEffect, useRef, useState, Suspense, CSSProperties } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 
 const BOT    = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
@@ -95,6 +95,7 @@ function LandingInner() {
   const [data, setData] = useState<LinkData | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [lang, setLang] = useState<Lang>('zh')
+  const autoRedirectedRef = useRef(false)
 
   // language init (client-only)
   useEffect(() => {
@@ -111,6 +112,13 @@ function LandingInner() {
       .catch(() => setNotFound(true))
   }, [code])
 
+  useEffect(() => {
+    if (!data?.targetUrl?.startsWith('/p/') || autoRedirectedRef.current) return
+    autoRedirectedRef.current = true
+    fetch(`/api/v/${code}/click`, { method: 'POST' }).catch(() => {})
+    window.location.replace(buildProductPageUrl(data.targetUrl, code, 'order'))
+  }, [code, data])
+
   function switchLang(l: Lang) {
     setLang(l)
     try { localStorage.setItem(LS_KEY, l) } catch { /* ssr */ }
@@ -120,10 +128,15 @@ function LandingInner() {
     return I18N[lang][key]
   }
 
+  function buildProductPageUrl(targetUrl: string, refCode: string, intent: 'order' | 'menu'): string {
+    const sep = targetUrl.includes('?') ? '&' : '?'
+    return `${targetUrl}${sep}ref=${encodeURIComponent(refCode)}&intent=${intent}`
+  }
+
   function handleIntent(intent: 'order' | 'menu') {
     fetch(`/api/v/${code}/click`, { method: 'POST' }).catch(() => {})
     if (data?.targetUrl?.startsWith('/p/')) {
-      window.location.href = `${data.targetUrl}?ref=${encodeURIComponent(code)}&intent=${intent}`
+      window.location.href = buildProductPageUrl(data.targetUrl, code, intent)
       return
     }
     window.location.href = `/menu?code=${encodeURIComponent(data?.storeCode ?? '')}&ref=${encodeURIComponent(code)}&intent=${intent}`
