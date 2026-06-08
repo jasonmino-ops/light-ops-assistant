@@ -7,6 +7,7 @@ import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
+import { publicUrl } from '@/lib/public-url'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -184,7 +185,6 @@ export default function HomePage() {
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   const [customerCheckout, setCustomerCheckout] = useState<{ id: string; orderNo: string; totalAmount: number } | null>(null)
   const [storeCode, setStoreCode] = useState<string | null>(null)
-  const [origin, setOrigin] = useState('')
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
   useEffect(() => {
@@ -224,7 +224,6 @@ export default function HomePage() {
         setEntries(mergeEntries(buildSaleEntries(data.items ?? []), paidOrders))
         setStoreName(me.storeName ?? me.tenantName ?? null)
         if (me.storeCode) setStoreCode(me.storeCode)
-        setOrigin(window.location.origin)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -380,11 +379,11 @@ export default function HomePage() {
       </div>
 
       {/* ── 常用入口 ── */}
-      {storeCode && origin && (
+      {storeCode && (
         <div style={s.shortcutSection}>
           <div style={s.sectionTitle}>常用入口</div>
           {([
-            { key: 'cashier', label: '电脑收银台', icon: '🖥️', url: `${origin}/cashier?storeCode=${storeCode}`, hint: '给电脑浏览器使用，不经过 Telegram。' },
+            { key: 'cashier', label: '电脑收银台', icon: '🖥️', url: publicUrl(`/cashier?storeCode=${storeCode}`), hint: '给电脑浏览器使用，不经过 Telegram。' },
           ] as { key: string; label: string; icon: string; url: string; hint: string }[]).map(({ key, label, icon, url, hint }) => {
             const isCopied = copiedKey === key
             return (

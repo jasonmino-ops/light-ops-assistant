@@ -7,21 +7,16 @@
 import { prisma } from '@/lib/prisma'
 import type { Lang, BizSlot } from '../intent'
 import { TPL, fill } from '../templates'
+import { publicUrl } from '@/lib/public-url'
 
-function appBase(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
-}
 function menuUrl(storeCode: string): string {
-  const base = appBase()
-  return base ? `${base}/menu?code=${encodeURIComponent(storeCode)}` : `/menu?code=${encodeURIComponent(storeCode)}`
+  return publicUrl(`/menu?code=${encodeURIComponent(storeCode)}`)
 }
 function couponUrl(storeCode: string): string {
-  const base = appBase()
-  return base ? `${base}/me/coupons?code=${encodeURIComponent(storeCode)}` : `/me/coupons?code=${encodeURIComponent(storeCode)}`
+  return publicUrl(`/me/coupons?code=${encodeURIComponent(storeCode)}`)
 }
 function myOrdersUrl(storeCode: string): string {
-  const base = appBase()
-  return base ? `${base}/menu/orders?code=${encodeURIComponent(storeCode)}` : `/menu/orders?code=${encodeURIComponent(storeCode)}`
+  return publicUrl(`/menu/orders?code=${encodeURIComponent(storeCode)}`)
 }
 
 function shortOrderNo(orderNo: string): string {

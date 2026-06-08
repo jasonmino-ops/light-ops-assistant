@@ -8,8 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
-
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
+import { publicUrl } from '@/lib/public-url'
 
 export async function POST(
   req: NextRequest,
@@ -35,5 +34,5 @@ export async function POST(
     },
   })
 
-  return NextResponse.json({ token, dashboardUrl: `${APP_URL}/creator/p/${token}` })
+  return NextResponse.json({ token, dashboardUrl: publicUrl(`/creator/p/${token}`, req.nextUrl.origin) })
 }

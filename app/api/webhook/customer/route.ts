@@ -6,6 +6,7 @@ import { TPL } from '@/lib/bot/templates'
 import { chatReply } from '@/lib/bot/handlers/chat'
 import { businessReply } from '@/lib/bot/handlers/business'
 import { escalateReply } from '@/lib/bot/handlers/escalate'
+import { publicUrl } from '@/lib/public-url'
 
 /**
  * POST /api/webhook/customer
@@ -20,7 +21,7 @@ import { escalateReply } from '@/lib/bot/handlers/escalate'
  * 所需环境变量：
  *   CUSTOMER_BOT_TOKEN     — @Eshop_sale_bot 的 bot token
  *   CUSTOMER_WEBHOOK_SECRET — 可选，Webhook secret 防伪
- *   NEXT_PUBLIC_APP_URL    — 生产域名
+ *   NEXT_PUBLIC_PUBLIC_SITE_URL / PUBLIC_SITE_URL — 生产公开域名
  *   DEFAULT_STORE_CODE     — 测试门店 code（仅无参 /start 用）
  *
  * Webhook 注册（首次部署后执行一次）：
@@ -31,7 +32,6 @@ import { escalateReply } from '@/lib/bot/handlers/escalate'
 
 const BOT_TOKEN       = process.env.CUSTOMER_BOT_TOKEN ?? ''
 const WEBHOOK_SECRET  = process.env.CUSTOMER_WEBHOOK_SECRET ?? ''
-const APP_URL         = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 const DEFAULT_STORE   = process.env.DEFAULT_STORE_CODE ?? 'STORE-A'
 const MAX_WELCOME_COUPONS = 2
 
@@ -48,11 +48,10 @@ async function tgSend(method: string, body: object) {
 }
 
 function menuKeyboard(storeCode: string, lang: Lang = 'km') {
-  if (!APP_URL) return undefined
   const text = lang === 'zh' ? '🛍️ 再次点单' : lang === 'en' ? '🛍️ Order Again' : '🛍️ បញ្ជាទិញម្តងទៀត'
   return {
     inline_keyboard: [[
-      { text, web_app: { url: `${APP_URL}/menu?code=${encodeURIComponent(storeCode)}` } },
+      { text, web_app: { url: publicUrl(`/menu?code=${encodeURIComponent(storeCode)}`) } },
     ]],
   }
 }
@@ -60,8 +59,8 @@ function menuKeyboard(storeCode: string, lang: Lang = 'km') {
 // 确保该 chat 的底部「查看商品」按钮始终指向 /e-life 平台首页
 // fire-and-forget：失败不中断主流程，但打印日志供 Vercel 排查
 async function ensurePlatformMenuButton(chatId: number, reason: string, extra?: Record<string, unknown>) {
-  if (!APP_URL || !BOT_TOKEN) return
-  const menuUrl = `${APP_URL}/e-life`
+  if (!BOT_TOKEN) return
+  const menuUrl = publicUrl('/e-life')
   try {
     const res = await tgSend('setChatMenuButton', {
       chat_id: chatId,
@@ -323,11 +322,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  if (!APP_URL) {
-    console.warn('[customer-webhook] NEXT_PUBLIC_APP_URL 未配置，无法生成 Mini App 链接')
-    return NextResponse.json({ ok: true })
-  }
-
   let update: TgUpdate
   try {
     update = await req.json()
@@ -359,7 +353,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 无参/未识别参数：引导到 E-Life 多店平台首页，同时确保底部按钮已覆盖
-    const platformUrl = `${APP_URL}/e-life`
+    const platformUrl = publicUrl('/e-life')
     await ensurePlatformMenuButton(chatId, 'start')
     await tgSend('sendMessage', {
       chat_id: chatId,

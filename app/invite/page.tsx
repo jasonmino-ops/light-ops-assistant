@@ -5,6 +5,7 @@ import QRCode from 'react-qr-code'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import zh from '@/lib/i18n/zh'
 import km from '@/lib/i18n/km'
+import { publicUrl } from '@/lib/public-url'
 
 function bi(zhStr: string, kmStr: string) {
   return (
@@ -62,12 +63,6 @@ export default function InvitePage() {
 
   const [customerStoreId, setCustomerStoreId] = useState('')
   const [customerCopied, setCustomerCopied] = useState(false)
-  const [origin, setOrigin] = useState('')
-
-  useEffect(() => {
-    setOrigin(window.location.origin)
-  }, [])
-
   const loadMembers = useCallback(() => {
     apiFetch('/api/admin/users', undefined, OWNER_CTX)
       .then((r) => (r.ok ? r.json() : []))
@@ -259,7 +254,6 @@ export default function InvitePage() {
           stores={stores}
           customerStoreId={customerStoreId}
           setCustomerStoreId={setCustomerStoreId}
-          origin={origin}
           copied={customerCopied}
           setCopied={setCustomerCopied}
         />
@@ -357,19 +351,17 @@ function CustomerCodeCard({
   stores,
   customerStoreId,
   setCustomerStoreId,
-  origin,
   copied,
   setCopied,
 }: {
   stores: Store[]
   customerStoreId: string
   setCustomerStoreId: (id: string) => void
-  origin: string
   copied: boolean
   setCopied: (v: boolean) => void
 }) {
   const current = stores.find((st) => st.id === customerStoreId)
-  const url = origin && current ? `${origin}/m/${current.code}` : ''
+  const url = current ? publicUrl(`/m/${current.code}`) : ''
 
   function copy() {
     if (!url) return

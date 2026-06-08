@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, CSSProperties } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import QRCode from 'react-qr-code'
+import { publicUrl } from '@/lib/public-url'
 
 // ─── 解析桌号输入 ────────────────────────────────────────────────────────────
 
@@ -125,11 +126,9 @@ export default function TableQRCodesPage() {
   const [storeName,  setStoreName]  = useState('')
   const [input,      setInput]      = useState('A01-A10')
   const [tables,     setTables]     = useState<string[]>([])
-  const [origin,     setOrigin]     = useState('')
   const [copiedMap,  setCopiedMap]  = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    setOrigin(window.location.origin)
     apiFetch('/api/me', { headers: OWNER_CTX }).then(async (res) => {
       const data = await res.json()
       if (data.storeCode) setStoreCode(data.storeCode)
@@ -138,7 +137,7 @@ export default function TableQRCodesPage() {
   }, [])
 
   function tableUrl(t: string) {
-    return `${origin}/menu?code=${encodeURIComponent(storeCode)}&table=${encodeURIComponent(t)}`
+    return publicUrl(`/menu?code=${encodeURIComponent(storeCode)}&table=${encodeURIComponent(t)}`)
   }
 
   function handleCopy(t: string) {

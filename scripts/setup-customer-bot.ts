@@ -10,15 +10,15 @@
  *
  * 依赖的 .env 变量：
  *   CUSTOMER_BOT_TOKEN    — @Eshop_sale_bot 的 token
- *   NEXT_PUBLIC_APP_URL   — 生产域名，如 https://xxx.vercel.app
+ *   NEXT_PUBLIC_PUBLIC_SITE_URL / PUBLIC_SITE_URL — 生产公开域名
  *   CUSTOMER_WEBHOOK_SECRET — 可选，webhook 安全密钥
  *   DEFAULT_STORE_CODE    — 默认 STORE-A
  */
 
 import 'dotenv/config'
+import { publicUrl } from '../lib/public-url'
 
 const BOT_TOKEN     = process.env.CUSTOMER_BOT_TOKEN ?? ''
-const APP_URL       = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 const STORE_CODE    = process.env.DEFAULT_STORE_CODE ?? 'STORE-A'
 const WEBHOOK_SECRET = process.env.CUSTOMER_WEBHOOK_SECRET ?? ''
 
@@ -33,10 +33,9 @@ async function tg(method: string, body: object) {
 
 async function main() {
   if (!BOT_TOKEN) { console.error('❌  CUSTOMER_BOT_TOKEN 未设置'); process.exit(1) }
-  if (!APP_URL)   { console.error('❌  NEXT_PUBLIC_APP_URL 未设置'); process.exit(1) }
 
-  const menuUrl    = `${APP_URL}/menu?code=${encodeURIComponent(STORE_CODE)}`
-  const webhookUrl = `${APP_URL}/api/webhook/customer`
+  const menuUrl    = publicUrl(`/menu?code=${encodeURIComponent(STORE_CODE)}`)
+  const webhookUrl = publicUrl('/api/webhook/customer')
 
   console.log(`\n菜单页：${menuUrl}`)
   console.log(`Webhook：${webhookUrl}\n`)

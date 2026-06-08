@@ -2,8 +2,9 @@
 
 import { useEffect, useState, CSSProperties } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
+import { publicUrl } from '@/lib/public-url'
 
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
+const publicLink = (path: string) => publicUrl(path)
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -486,7 +487,7 @@ export default function CampaignPage() {
                     </button>
                   ) : (
                     <>
-                      <button style={s.btnSm} onClick={() => copy(`${APP_URL}/creator/p/${c.dashboardToken}`, `tk-${c.id}`)}>
+                      <button style={s.btnSm} onClick={() => copy(publicLink(`/creator/p/${c.dashboardToken}`), `tk-${c.id}`)}>
                         {copied === `tk-${c.id}` ? '已复制 ✓' : '复制看板链接'}
                       </button>
                       <button style={s.btnGhost} onClick={() => handleGenerateToken(c.id)} disabled={tokenBusyId === c.id}>
@@ -579,7 +580,7 @@ export default function CampaignPage() {
 
       {/* 新建结果 */}
       {newLink && (() => {
-        const fullUrl = `${APP_URL}/v/${newLink.code}`
+        const fullUrl = publicLink(`/v/${newLink.code}`)
         return (
           <div style={s.success}>
             <div style={{ fontSize: 13, color: '#15803d', fontWeight: 600, marginBottom: 10 }}>✅ 短链已生成</div>
@@ -743,7 +744,7 @@ export default function CampaignPage() {
 
       {/* ── 推广素材弹层 ────────────────────────────────────────────────── */}
       {materialLink && (() => {
-        const matUrl = `${APP_URL}/v/${materialLink.code}`
+        const matUrl = publicLink(`/v/${materialLink.code}`)
         const sections: { title: string; key: string; tpl: string }[] = [
           { title: 'TikTok 主页 Bio 文案',  key: 'bio',     tpl: matBio(materialLang) },
           { title: '视频置顶评论文案',       key: 'comment', tpl: matComment(matUrl, materialLang) },
@@ -818,7 +819,7 @@ export default function CampaignPage() {
           <div style={{ fontSize: 13, color: '#9ca3af' }}>暂无推广短链，生成第一条后会显示在这里</div>
         ) : (
           links.map((lk) => {
-            const fullUrl   = `${APP_URL}/v/${lk.code}`
+            const fullUrl   = publicLink(`/v/${lk.code}`)
             const isSettled = lk.settlementStatus === 'settled'
             const isSettling = settlingId === lk.id
             const landingPage = pageByTargetUrl(lk.targetUrl)

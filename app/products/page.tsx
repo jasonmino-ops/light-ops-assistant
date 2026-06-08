@@ -5,8 +5,8 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
+import { publicUrl } from '@/lib/public-url'
 
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 type MarketingLang = 'zh' | 'en' | 'km'
 type MarketingTemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
 
@@ -407,9 +407,7 @@ export default function ProductsPage() {
   }
 
   function productPageUrl(slug: string): string {
-    if (APP_URL) return `${APP_URL}/p/${slug}`
-    if (typeof window !== 'undefined') return `${window.location.origin}/p/${slug}`
-    return `/p/${slug}`
+    return publicUrl(`/p/${slug}`)
   }
 
   function openMarketingEditor(product: Product, page: MarketingProductPage) {

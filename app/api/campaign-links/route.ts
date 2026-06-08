@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { publicUrl } from '@/lib/public-url'
 
 function genCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase()
@@ -141,7 +142,6 @@ export async function POST(req: NextRequest) {
   const commissionValue = typeof body.commissionValue === 'number' && body.commissionValue > 0
     ? body.commissionValue : null
 
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
   const targetUrl = await resolveTargetUrl(body.targetUrl, { tenantId: ctx.tenantId, storeId: ctx.storeId })
 
   let code = genCode()
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
   })
 
   return NextResponse.json(
-    { ...link, commissionValue: commissionValue, shortUrl: `${appUrl}/v/${link.code}` },
+    { ...link, commissionValue: commissionValue, shortUrl: publicUrl(`/v/${link.code}`, req.nextUrl.origin) },
     { status: 201 },
   )
 }
