@@ -3,6 +3,8 @@
 import { CSSProperties, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
+const CUSTOMER_BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
+
 type PageData = {
   slug: string
   templateType: TemplateType | null
@@ -196,6 +198,13 @@ const I18N: Record<Lang, {
   successTitle: string
   successText: string
   orderNo: string
+  claimTitle: string
+  claimText: string
+  claimBenefits: string[]
+  claimButton: string
+  claimFallback: string
+  copyOrderNo: string
+  copied: string
   errorName: string
   errorPhone: string
   errorAddress: string
@@ -238,6 +247,13 @@ const I18N: Record<Lang, {
     successTitle: 'បញ្ជាទិញបានជោគជ័យ',
     successText: 'ហាងបានទទួលការបញ្ជាទិញរបស់អ្នក ហើយនឹងទាក់ទងដើម្បីបញ្ជាក់ការដឹកជញ្ជូន។',
     orderNo: 'លេខបញ្ជាទិញ',
+    claimTitle: '🎁 ទទួលអត្ថប្រយោជន៍សមាជិក',
+    claimText: 'បន្ទាប់ពីភ្ជាប់ Telegram អ្នកអាចទទួលបាន៖',
+    claimBenefits: ['ពិនិត្យការបញ្ជាទិញ', 'គូប៉ុងពិសេស', 'ដំណឹងផលិតផលថ្មី', 'រក្សាទុកហាង'],
+    claimButton: 'ទទួលអត្ថប្រយោជន៍ឥឡូវ',
+    claimFallback: 'Telegram Bot មិនទាន់បានកំណត់។ សូមចម្លងលេខបញ្ជាទិញ ហើយទាក់ទងហាង។',
+    copyOrderNo: 'ចម្លងលេខបញ្ជាទិញ',
+    copied: 'បានចម្លង',
     errorName: 'សូមបំពេញឈ្មោះ',
     errorPhone: 'សូមបំពេញលេខទូរស័ព្ទ',
     errorAddress: 'សូមបំពេញអាសយដ្ឋានដឹកជញ្ជូន',
@@ -280,6 +296,13 @@ const I18N: Record<Lang, {
     successTitle: 'Order submitted',
     successText: 'The shop has received your order and will contact you to confirm delivery.',
     orderNo: 'Order No.',
+    claimTitle: '🎁 Claim Member Benefits',
+    claimText: 'After binding Telegram, you can get:',
+    claimBenefits: ['Order lookup', 'Exclusive coupons', 'New arrival alerts', 'Saved shop'],
+    claimButton: 'Claim benefits now',
+    claimFallback: 'Telegram Bot is not configured yet. Please copy your order number and contact the shop.',
+    copyOrderNo: 'Copy order number',
+    copied: 'Copied',
     errorName: 'Please enter your name',
     errorPhone: 'Please enter your phone number',
     errorAddress: 'Please enter your delivery address',
@@ -322,6 +345,13 @@ const I18N: Record<Lang, {
     successTitle: '下单成功',
     successText: '商家已收到订单，将尽快联系你确认配送。',
     orderNo: '订单号',
+    claimTitle: '🎁 领取会员福利',
+    claimText: '绑定 Telegram 后可获得：',
+    claimBenefits: ['订单查询', '专属优惠券', '新品通知', '收藏店铺'],
+    claimButton: '立即领取福利',
+    claimFallback: '暂未配置 Telegram Bot，请复制订单号联系客服。',
+    copyOrderNo: '复制订单号',
+    copied: '已复制',
     errorName: '请填写姓名',
     errorPhone: '请填写电话',
     errorAddress: '请填写收货地址',
@@ -437,6 +467,7 @@ export default function MarketingProductPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<OrderResult | null>(null)
+  const [copiedOrderNo, setCopiedOrderNo] = useState(false)
   const text = I18N[lang]
 
   useEffect(() => {
@@ -521,6 +552,15 @@ export default function MarketingProductPage() {
   function switchLang(nextLang: Lang) {
     setLang(nextLang)
     try { localStorage.setItem(LS_KEY, nextLang) } catch { /* ignore */ }
+  }
+
+  function copyOrderNo(orderNo: string) {
+    navigator.clipboard.writeText(orderNo)
+      .then(() => {
+        setCopiedOrderNo(true)
+        window.setTimeout(() => setCopiedOrderNo(false), 1600)
+      })
+      .catch(() => setCopiedOrderNo(false))
   }
 
   const langSwitcher = (
@@ -709,6 +749,11 @@ export default function MarketingProductPage() {
   }
 
   if (result) {
+    const bindPayload = `bind_${data.store.code}_${result.orderNo}`
+    const benefitLink = CUSTOMER_BOT
+      ? `https://t.me/${CUSTOMER_BOT}?start=${encodeURIComponent(bindPayload)}`
+      : ''
+
     return (
       <main style={{ ...s.page, background: theme.background, color: theme.text }}>
         {langSwitcher}
@@ -718,6 +763,35 @@ export default function MarketingProductPage() {
           <p style={s.successText}>{text.successText}</p>
           <div style={s.orderNo}>{text.orderNo}：{result.orderNo}</div>
           <div style={{ ...s.successTotal, color: theme.accent }}>{text.total}：${result.totalAmount.toFixed(2)}</div>
+        </section>
+        <section style={{ ...s.claimBox, borderColor: theme.sectionBorder }}>
+          <h2 style={{ ...s.claimTitle, color: theme.text }}>{text.claimTitle}</h2>
+          <p style={{ ...s.claimText, color: theme.muted }}>{text.claimText}</p>
+          <div style={s.claimBenefits}>
+            {text.claimBenefits.map((benefit) => (
+              <div key={benefit} style={{ ...s.claimBenefit, background: theme.badgeBg, borderColor: theme.badgeBorder, color: theme.badgeText }}>
+                <span style={{ ...s.trustDot, background: theme.accent }} />
+                {benefit}
+              </div>
+            ))}
+          </div>
+          {benefitLink ? (
+            <a
+              href={benefitLink}
+              target="_blank"
+              rel="noreferrer"
+              style={{ ...s.claimButton, background: theme.accent }}
+            >
+              {text.claimButton}
+            </a>
+          ) : (
+            <>
+              <p style={{ ...s.claimFallback, color: theme.muted }}>{text.claimFallback}</p>
+              <button type="button" style={{ ...s.claimButton, background: theme.accent }} onClick={() => copyOrderNo(result.orderNo)}>
+                {copiedOrderNo ? text.copied : text.copyOrderNo}
+              </button>
+            </>
+          )}
         </section>
       </main>
     )
@@ -930,4 +1004,11 @@ const s: Record<string, CSSProperties> = {
   successText: { color: '#667085', lineHeight: 1.5, fontSize: 14 },
   orderNo: { marginTop: 14, fontSize: 14, fontWeight: 700 },
   successTotal: { marginTop: 8, fontSize: 18, fontWeight: 800, color: '#e04f1a' },
+  claimBox: { margin: '0 18px 18px', background: '#fff', borderRadius: 8, padding: 18, border: '1px solid #e3e8df' },
+  claimTitle: { margin: 0, fontSize: 18, lineHeight: 1.25, letterSpacing: 0 },
+  claimText: { margin: '8px 0 12px', fontSize: 14, lineHeight: 1.45 },
+  claimBenefits: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 },
+  claimBenefit: { display: 'flex', alignItems: 'center', gap: 7, border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 800 },
+  claimButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 46, border: 0, borderRadius: 6, color: '#fff', fontSize: 15, fontWeight: 900, textDecoration: 'none', cursor: 'pointer' },
+  claimFallback: { margin: '0 0 12px', fontSize: 13, lineHeight: 1.45 },
 }
