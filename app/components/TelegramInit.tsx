@@ -38,10 +38,16 @@ function extractTgUserId(initData: string): string | null {
 }
 
 // Paths that don't require an active merchant session.
-// 顾客端公共入口（/e-life /menu /me）、合规公开页和商户端引导页（/start /open /bind /relogin）
+// 公开首页、顾客端公共入口（/e-life /menu /me）、合规公开页和商户端引导页（/start /open /bind /relogin）
 // 均跳过商户 Bot auth 流程，由各页面自身处理身份或无需身份。
 // /cashier is a standalone PC POS page — no Telegram session required
-const ONBOARDING_PATHS = ['/start', '/open', '/bind', '/relogin', '/menu', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/privacy', '/terms', '/contact']
+const PUBLIC_EXACT_PATHS = ['/']
+const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/privacy', '/terms', '/contact']
+
+function isPublicPath(path: string) {
+  return PUBLIC_EXACT_PATHS.includes(path) ||
+    PUBLIC_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+}
 
 export default function TelegramInit() {
   const [authError, setAuthError] = useState('')
@@ -51,7 +57,7 @@ export default function TelegramInit() {
     // Skip auth entirely on onboarding pages — they handle their own flow.
     // This applies in BOTH Telegram and PWA modes to prevent TENANT_INACTIVE loops.
     const path = window.location.pathname
-    if (ONBOARDING_PATHS.some((p) => path.startsWith(p))) return
+    if (isPublicPath(path)) return
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
