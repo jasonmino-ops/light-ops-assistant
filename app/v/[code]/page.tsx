@@ -82,6 +82,7 @@ type LinkData = {
   storeName:    string
   bannerUrl:    string | null
   announcement: string | null
+  targetUrl:    string | null
   creatorName:  string | null
   videoTitle:   string | null
 }
@@ -121,6 +122,10 @@ function LandingInner() {
 
   function handleIntent(intent: 'order' | 'menu') {
     fetch(`/api/v/${code}/click`, { method: 'POST' }).catch(() => {})
+    if (data?.targetUrl?.startsWith('/p/')) {
+      window.location.href = `${data.targetUrl}?ref=${encodeURIComponent(code)}&intent=${intent}`
+      return
+    }
     window.location.href = `/menu?code=${encodeURIComponent(data?.storeCode ?? '')}&ref=${encodeURIComponent(code)}&intent=${intent}`
   }
 

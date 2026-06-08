@@ -73,6 +73,9 @@ export default function MarketingProductPage() {
     }
 
     try {
+      const searchParams = new URLSearchParams(window.location.search)
+      const campaignCode = searchParams.get('ref')?.trim()
+      const campaignIntent = searchParams.get('intent')?.trim() || 'PRODUCT_PAGE'
       const res = await fetch('/api/public/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,9 +89,8 @@ export default function MarketingProductPage() {
           deliveryAddress: address.trim(),
           deliveryNote: note.trim() || undefined,
           remark: note.trim() ? `营销商品页备注：${note.trim()}` : '营销商品页',
-          campaignCode: data.slug,
-          campaignIntent: 'PRODUCT_PAGE',
-          sourcePlatform: 'MARKETING_PAGE',
+          ...(campaignCode ? { campaignCode } : {}),
+          campaignIntent,
           lang: 'zh',
         }),
       })
