@@ -1,9 +1,15 @@
 'use client'
 
-import { CSSProperties, useEffect, useState } from 'react'
+import { CSSProperties, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 
 const CUSTOMER_BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
+const TIKTOK_PIXEL_ID = (
+  process.env.NEXT_PUBLIC_TIKTOK_PIXEL_ID ??
+  process.env.TIKTOK_PIXEL_ID ??
+  ''
+).trim()
+const TRACKING_PARAM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'creator', 'campaignId'] as const
 
 type PageData = {
   slug: string
@@ -37,6 +43,8 @@ type OrderResult = { orderNo: string; totalAmount: number }
 type Lang = 'zh' | 'en' | 'km'
 type TemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
 type TemplateSection = 'price' | 'features' | 'details' | 'reviews' | 'trust' | 'order'
+type TrackingParamKey = typeof TRACKING_PARAM_KEYS[number]
+type TrackingParams = Partial<Record<TrackingParamKey, string>>
 
 type TemplateTheme = {
   background: string
@@ -416,6 +424,109 @@ function localizedButtonText(data: PageData, lang: Lang, fallback: string): stri
   return nonEmpty(localized) || nonEmpty(data.buttonText) || fallback
 }
 
+function trackingStorageKey(slug: string) {
+  return `marketing_product_tracking_${slug}`
+}
+
+function readTrackingParams(slug: string): TrackingParams {
+  const params = new URLSearchParams(window.location.search)
+  const current: TrackingParams = {}
+  for (const key of TRACKING_PARAM_KEYS) {
+    const value = params.get(key)?.trim()
+    if (value) current[key] = value.slice(0, 120)
+  }
+
+  const hasCurrent = Object.keys(current).length > 0
+  if (hasCurrent) {
+    try { localStorage.setItem(trackingStorageKey(slug), JSON.stringify(current)) } catch { /* ignore */ }
+    return current
+  }
+
+  try {
+    const raw = localStorage.getItem(trackingStorageKey(slug))
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const saved: TrackingParams = {}
+    for (const key of TRACKING_PARAM_KEYS) {
+      const value = parsed[key]
+      if (typeof value === 'string' && value.trim()) saved[key] = value.trim().slice(0, 120)
+    }
+    return saved
+  } catch {
+    return {}
+  }
+}
+
+function formatTrackingParams(params: TrackingParams) {
+  return TRACKING_PARAM_KEYS
+    .map((key) => params[key] ? `${key}=${params[key]}` : '')
+    .filter(Boolean)
+    .join('&')
+}
+
+function buildOrderRemark(note: string, trackingParams: TrackingParams) {
+  const base = note.trim() ? `营销商品页备注：${note.trim()}` : '营销商品页'
+  const trackingText = formatTrackingParams(trackingParams)
+  return trackingText ? `${base} | ${trackingText}`.slice(0, 500) : base
+}
+
+function ensureTikTokPixel() {
+  if (!TIKTOK_PIXEL_ID || typeof window === 'undefined') return false
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const w = window as any
+  if (w.__dxTikTokPixelLoaded) return true
+
+  w.TiktokAnalyticsObject = 'ttq'
+  const ttq = w.ttq = w.ttq || []
+  ttq.methods = [
+    'page', 'track', 'identify', 'instances', 'debug', 'on', 'off', 'once',
+    'ready', 'alias', 'group', 'enableCookie', 'disableCookie',
+  ]
+  ttq.setAndDefer = function setAndDefer(target: unknown, method: string) {
+    return function deferCall(...args: unknown[]) {
+      ttq.push([method, ...args])
+    }
+  }
+  for (const method of ttq.methods) {
+    ttq[method] = ttq[method] || ttq.setAndDefer(ttq, method)
+  }
+  ttq.instance = function instance(name: string) {
+    const tracker = ttq._i[name] || []
+    for (const method of ttq.methods) {
+      tracker[method] = tracker[method] || ttq.setAndDefer(tracker, method)
+    }
+    return tracker
+  }
+  ttq.load = function load(id: string) {
+    const url = `https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=${encodeURIComponent(id)}&lib=ttq`
+    if (document.querySelector(`script[src="${url}"]`)) return
+    const script = document.createElement('script')
+    script.type = 'text/javascript'
+    script.async = true
+    script.src = url
+    const firstScript = document.getElementsByTagName('script')[0]
+    firstScript?.parentNode?.insertBefore(script, firstScript)
+  }
+  ttq._i = ttq._i || {}
+  ttq._i[TIKTOK_PIXEL_ID] = []
+  ttq._i[TIKTOK_PIXEL_ID]._u = `https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=${encodeURIComponent(TIKTOK_PIXEL_ID)}&lib=ttq`
+  ttq._t = ttq._t || {}
+  ttq._t[TIKTOK_PIXEL_ID] = Date.now()
+  ttq._o = ttq._o || {}
+  ttq._o[TIKTOK_PIXEL_ID] = {}
+  ttq.load(TIKTOK_PIXEL_ID)
+  ttq.page()
+  w.__dxTikTokPixelLoaded = true
+  return true
+}
+
+function trackTikTok(event: 'ViewContent' | 'SubmitForm' | 'Contact', payload: Record<string, unknown>) {
+  if (!ensureTikTokPixel()) return
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ttq = (window as any).ttq
+  if (typeof ttq?.track === 'function') ttq.track(event, payload)
+}
+
 function templateCopy(template: TemplateType, lang: Lang, text: typeof I18N[Lang]) {
   const base = {
     priceTitle: text.limitedOffer,
@@ -491,11 +602,14 @@ export default function MarketingProductPage() {
   const [error, setError] = useState('')
   const [result, setResult] = useState<OrderResult | null>(null)
   const [copiedOrderNo, setCopiedOrderNo] = useState(false)
+  const [trackingParams, setTrackingParams] = useState<TrackingParams>({})
+  const viewTrackedRef = useRef('')
   const text = I18N[lang]
 
   useEffect(() => {
     setLang(detectLang())
-  }, [])
+    setTrackingParams(readTrackingParams(slug))
+  }, [slug])
 
   useEffect(() => {
     fetch(`/api/public/product-pages/${encodeURIComponent(slug)}`)
@@ -519,8 +633,35 @@ export default function MarketingProductPage() {
     document.title = `${localizedTitle(data, lang)} - ${data.store.name}`
   }, [data, lang])
 
+  useEffect(() => {
+    if (!data) return
+    const trackingKey = `${slug}:${data.product.id}`
+    if (viewTrackedRef.current === trackingKey) return
+    viewTrackedRef.current = trackingKey
+    trackTikTok('ViewContent', {
+      content_id: data.product.id,
+      content_name: localizedTitle(data, lang),
+      content_type: 'product',
+      value: data.salePrice ?? data.product.price,
+      currency: 'USD',
+      store_code: data.store.code,
+      slug: data.slug,
+      ...trackingParams,
+    })
+  }, [data, lang, slug, trackingParams])
+
   async function submitOrder() {
     if (!data || submitting) return
+    trackTikTok('SubmitForm', {
+      content_id: data.product.id,
+      content_name: localizedTitle(data, lang),
+      content_type: 'product',
+      value: total,
+      currency: 'USD',
+      store_code: data.store.code,
+      slug: data.slug,
+      ...trackingParams,
+    })
     if (!name.trim()) { setError(text.errorName); return }
     if (!phone.trim()) { setError(text.errorPhone); return }
     if (!address.trim()) { setError(text.errorAddress); return }
@@ -553,7 +694,8 @@ export default function MarketingProductPage() {
           customerPhone: phone.trim(),
           deliveryAddress: address.trim(),
           deliveryNote: note.trim() || undefined,
-          remark: note.trim() ? `营销商品页备注：${note.trim()}` : '营销商品页',
+          remark: buildOrderRemark(note, trackingParams),
+          marketingTracking: trackingParams,
           ...(campaignCode ? { campaignCode } : {}),
           campaignIntent,
           lang,
@@ -601,6 +743,16 @@ export default function MarketingProductPage() {
         </button>
       ))}
     </div>
+  )
+
+  const legalLinks = (
+    <footer style={s.legalFooter}>
+      <a href="/privacy" target="_blank" rel="noreferrer" style={s.legalLink}>Privacy Policy</a>
+      <span style={s.legalDot}>•</span>
+      <a href="/terms" target="_blank" rel="noreferrer" style={s.legalLink}>Terms of Service</a>
+      <span style={s.legalDot}>•</span>
+      <a href="/contact" target="_blank" rel="noreferrer" style={s.legalLink}>Contact Us</a>
+    </footer>
   )
 
   if (loading) return <div style={s.center}>{text.loading}</div>
@@ -817,6 +969,7 @@ export default function MarketingProductPage() {
             </>
           )}
         </section>
+        {legalLinks}
       </main>
     )
   }
@@ -871,6 +1024,7 @@ export default function MarketingProductPage() {
       </section>
 
       {theme.sectionOrder.map(renderSection)}
+      {legalLinks}
     </main>
   )
 }
@@ -1037,4 +1191,7 @@ const s: Record<string, CSSProperties> = {
   claimBenefit: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 42, border: '1px solid #fde68a', borderRadius: 10, padding: '8px 10px', fontSize: 13, fontWeight: 900, color: '#92400e', background: '#fffbeb', textAlign: 'center' },
   claimButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 50, border: 0, borderRadius: 999, background: '#16a34a', color: '#fff', fontSize: 16, fontWeight: 950, textDecoration: 'none', cursor: 'pointer', boxShadow: '0 10px 20px rgba(22,163,74,0.22)' },
   claimFallback: { margin: '0 0 12px', fontSize: 13, lineHeight: 1.45 },
+  legalFooter: { display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, padding: '12px 18px 2px', color: '#8a94a6', fontSize: 12 },
+  legalLink: { color: '#667085', textDecoration: 'none', fontWeight: 700 },
+  legalDot: { color: '#c0c7d2' },
 }
