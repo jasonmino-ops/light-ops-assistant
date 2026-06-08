@@ -33,6 +33,7 @@ const BOT_TOKEN       = process.env.CUSTOMER_BOT_TOKEN ?? ''
 const WEBHOOK_SECRET  = process.env.CUSTOMER_WEBHOOK_SECRET ?? ''
 const APP_URL         = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 const DEFAULT_STORE   = process.env.DEFAULT_STORE_CODE ?? 'STORE-A'
+const MAX_WELCOME_COUPONS = 2
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TgUpdate = Record<string, any>
@@ -89,6 +90,96 @@ function parseBindPayload(payload: string): { storeCode: string; orderNo: string
   }
 }
 
+function isWelcomeCouponTemplate(tpl: {
+  name: string
+  type: string
+  amountOff: { toNumber(): number } | null
+  percentOff: number | null
+}): boolean {
+  const name = tpl.name.toLowerCase()
+  if (/新人|新客|会员|礼包|欢迎|welcome|new/.test(name)) return true
+  if (tpl.type === 'AMOUNT_OFF' && tpl.amountOff?.toNumber() === 1) return true
+  if (tpl.type === 'PERCENT_OFF' && tpl.percentOff === 5) return true
+  if (name.includes('$1') || name.includes('1$') || name.includes('95折')) return true
+  return false
+}
+
+function couponOfferText(tpl: {
+  type: string
+  amountOff: { toNumber(): number } | null
+  percentOff: number | null
+  minSpend: { toNumber(): number }
+}): string {
+  const min = tpl.minSpend.toNumber()
+  if (tpl.type === 'AMOUNT_OFF') {
+    const amount = tpl.amountOff?.toNumber() ?? 0
+    return min > 0 ? `满 $${min.toFixed(2)} 减 $${amount.toFixed(2)}` : `$${amount.toFixed(2)} 优惠券`
+  }
+  const off = tpl.percentOff ?? 0
+  const label = off === 5 ? '95折' : `${off}% off`
+  return min > 0 ? `${label} · 满 $${min.toFixed(2)} 可用` : `${label} 优惠券`
+}
+
+async function issueWelcomeCoupons(params: {
+  tenantId: string
+  storeId: string
+  telegramId: string
+}) {
+  const templates = await prisma.couponTemplate.findMany({
+    where: {
+      tenantId: params.tenantId,
+      status: 'ACTIVE',
+      OR: [{ storeId: params.storeId }, { storeId: null }],
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  const candidates = templates.filter(isWelcomeCouponTemplate).slice(0, MAX_WELCOME_COUPONS)
+  if (candidates.length === 0) return []
+
+  const issued: Array<{
+    name: string
+    offer: string
+    validDays: number
+  }> = []
+
+  for (const tpl of candidates) {
+    const existing = await prisma.customerCoupon.count({
+      where: {
+        tenantId: params.tenantId,
+        telegramId: params.telegramId,
+        templateId: tpl.id,
+        status: 'AVAILABLE',
+      },
+    })
+    if (existing > 0) continue
+
+    const expiresAt = new Date(Date.now() + tpl.validDays * 24 * 60 * 60 * 1000)
+    await prisma.customerCoupon.create({
+      data: {
+        tenantId: params.tenantId,
+        storeId: params.storeId,
+        templateId: tpl.id,
+        telegramId: params.telegramId,
+        status: 'AVAILABLE',
+        name: tpl.name,
+        type: tpl.type,
+        amountOff: tpl.amountOff,
+        percentOff: tpl.percentOff,
+        minSpend: tpl.minSpend,
+        expiresAt,
+        issuedByUserId: null,
+      },
+    })
+    issued.push({
+      name: tpl.name,
+      offer: couponOfferText(tpl),
+      validDays: tpl.validDays,
+    })
+  }
+
+  return issued
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleBind(msg: any, payload: { storeCode: string; orderNo: string | null }) {
   const chatId = msg.chat?.id
@@ -100,7 +191,7 @@ async function handleBind(msg: any, payload: { storeCode: string; orderNo: strin
   // 校验 storeCode 是否存在
   const store = await prisma.store.findUnique({
     where: { code: storeCode },
-    select: { tenantId: true, name: true },
+    select: { id: true, tenantId: true, name: true },
   })
   if (!store) {
     await tgSend('sendMessage', {
@@ -138,11 +229,26 @@ async function handleBind(msg: any, payload: { storeCode: string; orderNo: strin
     },
   })
 
-  const lines = [
-    '绑定成功。以后你可以在这里接收订单通知、查看订单进度和再次点单。',
-    `已绑定门店：${store.name}（${storeCode}）`,
-  ]
+  const welcomeCoupons = await issueWelcomeCoupons({
+    tenantId: store.tenantId,
+    storeId: store.id,
+    telegramId,
+  }).catch((e) => {
+    console.error('[customer-webhook] issue welcome coupons failed', e)
+    return []
+  })
+
+  const lines = ['🎉 欢迎加入会员', `已绑定门店：${store.name}（${storeCode}）`]
   if (orderNo) lines.push(`本次订单已记录：${orderNo}`)
+  if (welcomeCoupons.length > 0) {
+    lines.push('已获得：')
+    for (const c of welcomeCoupons) {
+      lines.push(`🎁 ${c.name}\n优惠：${c.offer}\n有效期：${c.validDays} 天`)
+    }
+    lines.push('请到"我的优惠券"中查看使用。')
+  } else {
+    lines.push('以后你可以在这里查看订单进度、接收新品通知和再次点单。')
+  }
 
   // 无论新绑/重复绑定，底部按钮统一指向 /e-life
   await ensurePlatformMenuButton(chatId, 'bind', { inlineStoreCode: storeCode })

@@ -198,6 +198,7 @@ const I18N: Record<Lang, {
   successTitle: string
   successText: string
   orderNo: string
+  giftTitle: string
   claimTitle: string
   claimText: string
   claimBenefits: string[]
@@ -244,13 +245,14 @@ const I18N: Record<Lang, {
     total: 'សរុប',
     submitOrder: 'បញ្ជាទិញឥឡូវ',
     submitting: 'កំពុងផ្ញើ...',
-    successTitle: 'បញ្ជាទិញបានជោគជ័យ',
+    successTitle: '🎉 បញ្ជាទិញបានជោគជ័យ',
     successText: 'ហាងបានទទួលការបញ្ជាទិញរបស់អ្នក ហើយនឹងទាក់ទងដើម្បីបញ្ជាក់ការដឹកជញ្ជូន។',
     orderNo: 'លេខបញ្ជាទិញ',
-    claimTitle: '🎁 ទទួលអត្ថប្រយោជន៍សមាជិក',
-    claimText: 'បន្ទាប់ពីភ្ជាប់ Telegram អ្នកអាចទទួលបាន៖',
-    claimBenefits: ['ពិនិត្យការបញ្ជាទិញ', 'គូប៉ុងពិសេស', 'ដំណឹងផលិតផលថ្មី', 'រក្សាទុកហាង'],
-    claimButton: 'ទទួលអត្ថប្រយោជន៍ឥឡូវ',
+    giftTitle: 'ទទួលកញ្ចប់ស្វាគមន៍ឥឡូវ',
+    claimTitle: '🎁 កញ្ចប់ស្វាគមន៍អតិថិជនថ្មី',
+    claimText: 'ភ្ជាប់ Telegram ដើម្បីទទួលបានអត្ថប្រយោជន៍ និងតាមដានការបញ្ជាទិញ។',
+    claimBenefits: ['🎁 គូប៉ុង $1', '🎁 គូប៉ុងបញ្ចុះ 5%', '🎁 ដំណឹងផលិតផលថ្មី', '🎁 ពិនិត្យការបញ្ជាទិញ'],
+    claimButton: 'ទទួលកញ្ចប់ឥឡូវ',
     claimFallback: 'Telegram Bot មិនទាន់បានកំណត់។ សូមចម្លងលេខបញ្ជាទិញ ហើយទាក់ទងហាង។',
     copyOrderNo: 'ចម្លងលេខបញ្ជាទិញ',
     copied: 'បានចម្លង',
@@ -293,13 +295,14 @@ const I18N: Record<Lang, {
     total: 'Total',
     submitOrder: 'Submit Order',
     submitting: 'Submitting...',
-    successTitle: 'Order submitted',
+    successTitle: '🎉 Order submitted',
     successText: 'The shop has received your order and will contact you to confirm delivery.',
     orderNo: 'Order No.',
-    claimTitle: '🎁 Claim Member Benefits',
-    claimText: 'After binding Telegram, you can get:',
-    claimBenefits: ['Order lookup', 'Exclusive coupons', 'New arrival alerts', 'Saved shop'],
-    claimButton: 'Claim benefits now',
+    giftTitle: 'Claim your new-customer gift pack now',
+    claimTitle: '🎁 New Customer Gift Pack',
+    claimText: 'Bind Telegram to receive benefits and track this order.',
+    claimBenefits: ['🎁 $1 coupon', '🎁 5% off coupon', '🎁 New arrival alerts', '🎁 Order lookup'],
+    claimButton: 'Claim gift pack',
     claimFallback: 'Telegram Bot is not configured yet. Please copy your order number and contact the shop.',
     copyOrderNo: 'Copy order number',
     copied: 'Copied',
@@ -342,13 +345,14 @@ const I18N: Record<Lang, {
     total: '合计',
     submitOrder: '提交订单',
     submitting: '提交中...',
-    successTitle: '下单成功',
+    successTitle: '🎉 恭喜下单成功',
     successText: '商家已收到订单，将尽快联系你确认配送。',
     orderNo: '订单号',
-    claimTitle: '🎁 领取会员福利',
-    claimText: '绑定 Telegram 后可获得：',
-    claimBenefits: ['订单查询', '专属优惠券', '新品通知', '收藏店铺'],
-    claimButton: '立即领取福利',
+    giftTitle: '立即领取新人礼包',
+    claimTitle: '🎁 新人礼包',
+    claimText: '绑定 Telegram 后领取礼包，并可查看本次订单进度。',
+    claimBenefits: ['🎁 $1 优惠券', '🎁 95折优惠券', '🎁 新品通知', '🎁 订单查询'],
+    claimButton: '立即领取礼包',
     claimFallback: '暂未配置 Telegram Bot，请复制订单号联系客服。',
     copyOrderNo: '复制订单号',
     copied: '已复制',
@@ -764,13 +768,14 @@ export default function MarketingProductPage() {
           <div style={s.orderNo}>{text.orderNo}：{result.orderNo}</div>
           <div style={{ ...s.successTotal, color: theme.accent }}>{text.total}：${result.totalAmount.toFixed(2)}</div>
         </section>
-        <section style={{ ...s.claimBox, borderColor: theme.sectionBorder }}>
-          <h2 style={{ ...s.claimTitle, color: theme.text }}>{text.claimTitle}</h2>
+        <section style={s.claimBox}>
+          <div style={s.claimGiftIcon}>🎁</div>
+          <div style={s.claimGiftTitle}>{text.giftTitle}</div>
+          <h2 style={s.claimTitle}>{text.claimTitle}</h2>
           <p style={{ ...s.claimText, color: theme.muted }}>{text.claimText}</p>
           <div style={s.claimBenefits}>
             {text.claimBenefits.map((benefit) => (
-              <div key={benefit} style={{ ...s.claimBenefit, background: theme.badgeBg, borderColor: theme.badgeBorder, color: theme.badgeText }}>
-                <span style={{ ...s.trustDot, background: theme.accent }} />
+              <div key={benefit} style={s.claimBenefit}>
                 {benefit}
               </div>
             ))}
@@ -780,14 +785,14 @@ export default function MarketingProductPage() {
               href={benefitLink}
               target="_blank"
               rel="noreferrer"
-              style={{ ...s.claimButton, background: theme.accent }}
+              style={s.claimButton}
             >
               {text.claimButton}
             </a>
           ) : (
             <>
               <p style={{ ...s.claimFallback, color: theme.muted }}>{text.claimFallback}</p>
-              <button type="button" style={{ ...s.claimButton, background: theme.accent }} onClick={() => copyOrderNo(result.orderNo)}>
+              <button type="button" style={s.claimButton} onClick={() => copyOrderNo(result.orderNo)}>
                 {copiedOrderNo ? text.copied : text.copyOrderNo}
               </button>
             </>
@@ -1004,11 +1009,13 @@ const s: Record<string, CSSProperties> = {
   successText: { color: '#667085', lineHeight: 1.5, fontSize: 14 },
   orderNo: { marginTop: 14, fontSize: 14, fontWeight: 700 },
   successTotal: { marginTop: 8, fontSize: 18, fontWeight: 800, color: '#e04f1a' },
-  claimBox: { margin: '0 18px 18px', background: '#fff', borderRadius: 8, padding: 18, border: '1px solid #e3e8df' },
-  claimTitle: { margin: 0, fontSize: 18, lineHeight: 1.25, letterSpacing: 0 },
+  claimBox: { margin: '0 18px 18px', background: 'linear-gradient(180deg, #fff8e1 0%, #ffffff 45%)', borderRadius: 14, padding: 20, border: '1px solid #f6d365', boxShadow: '0 12px 26px rgba(180,124,0,0.14)', textAlign: 'center' },
+  claimGiftIcon: { width: 64, height: 64, margin: '0 auto 10px', borderRadius: 18, background: 'linear-gradient(135deg, #ffd666 0%, #f59e0b 100%)', display: 'grid', placeItems: 'center', fontSize: 34, boxShadow: '0 10px 22px rgba(245,158,11,0.28)' },
+  claimGiftTitle: { fontSize: 20, lineHeight: 1.2, fontWeight: 950, color: '#92400e', marginBottom: 8 },
+  claimTitle: { margin: 0, fontSize: 17, lineHeight: 1.25, letterSpacing: 0, color: '#7c2d12' },
   claimText: { margin: '8px 0 12px', fontSize: 14, lineHeight: 1.45 },
   claimBenefits: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 },
-  claimBenefit: { display: 'flex', alignItems: 'center', gap: 7, border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 800 },
-  claimButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 46, border: 0, borderRadius: 6, color: '#fff', fontSize: 15, fontWeight: 900, textDecoration: 'none', cursor: 'pointer' },
+  claimBenefit: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 42, border: '1px solid #fde68a', borderRadius: 10, padding: '8px 10px', fontSize: 13, fontWeight: 900, color: '#92400e', background: '#fffbeb', textAlign: 'center' },
+  claimButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 50, border: 0, borderRadius: 999, background: '#16a34a', color: '#fff', fontSize: 16, fontWeight: 950, textDecoration: 'none', cursor: 'pointer', boxShadow: '0 10px 20px rgba(22,163,74,0.22)' },
   claimFallback: { margin: '0 0 12px', fontSize: 13, lineHeight: 1.45 },
 }
