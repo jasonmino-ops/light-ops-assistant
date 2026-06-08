@@ -32,6 +32,14 @@ type CustomerOrderRecord = {
   paymentStatus: 'UNPAID' | 'PAID'
   paymentMethod: string | null
   paidAt: string | null
+  sourcePlatform: string | null
+  campaignCode: string | null
+  campaignIntent: string | null
+  campaignLink: {
+    creatorName: string | null
+    videoTitle: string | null
+    landingType: 'MARKETING_PAGE' | 'MENU'
+  } | null
   createdAt: string
 }
 
@@ -701,6 +709,14 @@ function buildOrderItemSummary(items: CustomerOrderItem[]): string {
   return items.map((i) => `${i.name}×${i.quantity}`).join('、')
 }
 
+function sourcePlatformLabel(source: string | null): string {
+  if (!source) return ''
+  if (source.toLowerCase() === 'tiktok') return 'TikTok'
+  if (source.toLowerCase() === 'facebook') return 'Facebook'
+  if (source.toLowerCase() === 'telegram') return 'Telegram'
+  return source
+}
+
 function CustomerOrderCard({
   order, updating, onConfirm, onComplete, onCancel, onCollect,
 }: {
@@ -715,6 +731,9 @@ function CustomerOrderCard({
   const needsPay = order.status === 'COMPLETED' && order.paymentStatus === 'UNPAID'
   const color = needsPay ? '#fa8c16' : (CO_STATUS_COLOR[order.status] ?? '#8c8c8c')
   const label = needsPay ? '待收款' : (CO_STATUS_LABEL[order.status] ?? order.status)
+  const hasCampaignSource = !!order.campaignCode || !!order.campaignLink
+  const sourceLabel = sourcePlatformLabel(order.sourcePlatform)
+  const landingLabel = order.campaignLink?.landingType === 'MARKETING_PAGE' ? '营销页' : '菜单页'
 
   return (
     <div
@@ -735,8 +754,17 @@ function CustomerOrderCard({
             {order.customerTelegramId && (
               <span style={s.coTgBadge}>TG</span>
             )}
+            {hasCampaignSource && (
+              <span style={s.coSourceBadge}>📣 {sourceLabel || '推广'} / {landingLabel}</span>
+            )}
           </div>
           <div style={s.recentProduct}>{buildOrderItemSummary(order.items)}</div>
+          {hasCampaignSource && (
+            <div style={s.coSourceLine}>
+              {order.campaignLink?.creatorName && <span>博主：{order.campaignLink.creatorName}</span>}
+              {order.campaignCode && <span>短链：{order.campaignCode}</span>}
+            </div>
+          )}
           <div style={s.recentMeta}>
             {order.orderNo} · {fmtTime(order.createdAt)}
           </div>
@@ -795,6 +823,14 @@ function CustomerOrderCard({
           </div>
           {order.customerTelegramId && (
             <div style={s.coDetailTg}>顾客 TG ID：{order.customerTelegramId}</div>
+          )}
+          {hasCampaignSource && (
+            <div style={s.coDetailSource}>
+              <div>来源：{sourceLabel || '推广'} / {landingLabel}</div>
+              {order.campaignLink?.creatorName && <div>博主：{order.campaignLink.creatorName}</div>}
+              {order.campaignCode && <div>短链：{order.campaignCode}</div>}
+              {order.campaignLink?.videoTitle && <div>视频：{order.campaignLink.videoTitle}</div>}
+            </div>
           )}
         </div>
       )}
@@ -1281,6 +1317,25 @@ const s: Record<string, React.CSSProperties> = {
     padding: '1px 4px',
     letterSpacing: '0.05em',
   },
+  coSourceBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    borderRadius: 4,
+    padding: '1px 7px',
+    fontSize: 12,
+    fontWeight: 700,
+    background: '#fff7ed',
+    color: '#c2410c',
+    border: '1px solid #fed7aa',
+  },
+  coSourceLine: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap' as const,
+    marginTop: 4,
+    fontSize: 12,
+    color: '#c2410c',
+  },
   coUpdating: {
     fontSize: 11,
     color: '#fa8c16',
@@ -1367,5 +1422,14 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     padding: '3px 8px',
     display: 'inline-block',
+  },
+  coDetailSource: {
+    marginTop: 10,
+    padding: '8px 10px',
+    borderRadius: 6,
+    background: '#fff7ed',
+    color: '#9a3412',
+    fontSize: 12,
+    lineHeight: 1.6,
   },
 }

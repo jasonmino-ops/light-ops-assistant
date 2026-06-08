@@ -299,7 +299,7 @@ export async function POST(req: NextRequest) {
   await notifyOwner(store.tenantId, store.name, order.orderNo, itemsForJson, totalAmount, {
     tableNo, pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng,
     deliveryAddressPhotoUrl,
-  }).catch(
+  }, campaignAttribution).catch(
     (e) => console.error('[customer-order] notify owner failed:', e),
   )
 
@@ -378,6 +378,12 @@ async function notifyOwner(
     deliveryLat: number | null; deliveryLng: number | null
     deliveryAddressPhotoUrl: string | null
   },
+  attribution: {
+    sourcePlatform: string | null
+    campaignCode: string | null
+    campaignLinkId: string | null
+    campaignIntent: string | null
+  } | null,
 ) {
   const owner = await prisma.user.findFirst({
     where: { tenantId, role: 'OWNER', status: 'ACTIVE', telegramId: { not: null } },
@@ -409,6 +415,23 @@ async function notifyOwner(
     deliveryBlock = `\n${lines.join('\n')}\n─────────────`
   }
 
+  let sourceBlock = ''
+  if (attribution?.campaignLinkId) {
+    const link = await prisma.campaignLink.findUnique({
+      where: { id: attribution.campaignLinkId },
+      select: { creatorName: true, videoTitle: true, targetUrl: true },
+    }).catch(() => null)
+    const platform = attribution.sourcePlatform
+      ? attribution.sourcePlatform.charAt(0).toUpperCase() + attribution.sourcePlatform.slice(1)
+      : '推广'
+    const landingType = link?.targetUrl.startsWith('/p/') ? '营销页' : '菜单页'
+    const lines = [`📣 来源：${platform} ${landingType}`]
+    if (link?.creatorName) lines.push(`博主：${link.creatorName}`)
+    if (attribution.campaignCode) lines.push(`短链：${attribution.campaignCode}`)
+    if (link?.videoTitle) lines.push(`视频：${link.videoTitle}`)
+    sourceBlock = `\n${lines.join('\n')}\n─────────────`
+  }
+
   const text =
     `🛒 新顾客订单\n` +
     `门店：${storeName}\n` +
@@ -416,7 +439,7 @@ async function notifyOwner(
     (delivery.tableNo ? `桌号：${delivery.tableNo}\n` : '') +
     `─────────────\n` +
     `${itemLines}\n` +
-    `─────────────${deliveryBlock}\n` +
+    `─────────────${sourceBlock}${deliveryBlock}\n` +
     `合计：$${totalAmount.toFixed(2)}\n\n` +
     `状态：待确认`
 

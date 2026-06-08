@@ -14,6 +14,10 @@ const ORDER_SELECT = {
   paymentStatus: true,
   paymentMethod: true,
   paidAt: true,
+  sourcePlatform: true,
+  campaignCode: true,
+  campaignLinkId: true,
+  campaignIntent: true,
   createdAt: true,
 } as const
 
@@ -21,8 +25,15 @@ function mapOrder(o: {
   id: string; orderNo: string; storeCode: string; customerTelegramId: string | null
   tableNo: string | null
   itemsJson: string; totalAmount: { toNumber(): number }; status: string
-  paymentStatus: string; paymentMethod: string | null; paidAt: Date | null; createdAt: Date
-}) {
+  paymentStatus: string; paymentMethod: string | null; paidAt: Date | null
+  sourcePlatform: string | null; campaignCode: string | null; campaignLinkId: string | null
+  campaignIntent: string | null; createdAt: Date
+}, campaignLinkMap: Map<string, {
+  creatorName: string | null
+  videoTitle: string | null
+  targetUrl: string
+}> = new Map()) {
+  const campaignLink = o.campaignLinkId ? campaignLinkMap.get(o.campaignLinkId) ?? null : null
   return {
     id: o.id,
     orderNo: o.orderNo,
@@ -35,8 +46,30 @@ function mapOrder(o: {
     paymentStatus: o.paymentStatus,
     paymentMethod: o.paymentMethod,
     paidAt: o.paidAt ? o.paidAt.toISOString() : null,
+    sourcePlatform: o.sourcePlatform,
+    campaignCode: o.campaignCode,
+    campaignIntent: o.campaignIntent,
+    campaignLink: campaignLink ? {
+      creatorName: campaignLink.creatorName,
+      videoTitle: campaignLink.videoTitle,
+      landingType: campaignLink.targetUrl.startsWith('/p/') ? 'MARKETING_PAGE' : 'MENU',
+    } : null,
     createdAt: o.createdAt.toISOString(),
   }
+}
+
+async function buildCampaignLinkMap(orders: { campaignLinkId: string | null }[]) {
+  const ids = [...new Set(orders.map((o) => o.campaignLinkId).filter(Boolean) as string[])]
+  if (ids.length === 0) return new Map<string, { creatorName: string | null; videoTitle: string | null; targetUrl: string }>()
+  const links = await prisma.campaignLink.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, creatorName: true, videoTitle: true, targetUrl: true },
+  })
+  return new Map(links.map((l) => [l.id, {
+    creatorName: l.creatorName,
+    videoTitle: l.videoTitle,
+    targetUrl: l.targetUrl,
+  }]))
 }
 
 /**
@@ -72,7 +105,8 @@ export async function GET(req: NextRequest) {
       take: 50,
       select: ORDER_SELECT,
     })
-    return NextResponse.json(orders.map(mapOrder))
+    const campaignLinkMap = await buildCampaignLinkMap(orders)
+    return NextResponse.json(orders.map((o) => mapOrder(o, campaignLinkMap)))
   }
 
   // ── 模式 A：待处理订单 ────────────────────────────────────────────────────
@@ -100,5 +134,6 @@ export async function GET(req: NextRequest) {
     select: ORDER_SELECT,
   })
 
-  return NextResponse.json(orders.map(mapOrder))
+  const campaignLinkMap = await buildCampaignLinkMap(orders)
+  return NextResponse.json(orders.map((o) => mapOrder(o, campaignLinkMap)))
 }
