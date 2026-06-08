@@ -372,7 +372,26 @@ function detectLang(): Lang {
     const saved = localStorage.getItem(LS_KEY)
     if (saved && LANGS.includes(saved as Lang)) return saved as Lang
   } catch { /* ignore */ }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tgLang = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.language_code
+  const fromTg = normalizeLang(tgLang)
+  if (fromTg) return fromTg
+  for (const l of navigator.languages ?? []) {
+    const normalized = normalizeLang(l)
+    if (normalized) return normalized
+  }
+  const fromBrowser = normalizeLang(navigator.language)
+  if (fromBrowser) return fromBrowser
   return 'km'
+}
+
+function normalizeLang(value: string | null | undefined): Lang | null {
+  const s = (value ?? '').toLowerCase()
+  if (!s) return null
+  if (s === 'zh' || s.startsWith('zh-') || s.startsWith('zh_')) return 'zh'
+  if (s === 'en' || s.startsWith('en-') || s.startsWith('en_')) return 'en'
+  if (s === 'km' || s.startsWith('km-') || s.startsWith('kh') || s === 'km_kh') return 'km'
+  return null
 }
 
 function nonEmpty(value: string | null | undefined): string | null {

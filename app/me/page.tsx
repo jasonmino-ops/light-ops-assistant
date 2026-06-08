@@ -13,6 +13,31 @@ type Lang = 'zh' | 'en' | 'km'
 
 const LANG_LABELS: Record<Lang, string> = { zh: '中', en: 'EN', km: 'ខ្មែរ' }
 
+function normalizeLang(value: string | null | undefined): Lang | null {
+  const s = (value ?? '').toLowerCase()
+  if (!s) return null
+  if (s === 'zh' || s.startsWith('zh-') || s.startsWith('zh_')) return 'zh'
+  if (s === 'en' || s.startsWith('en-') || s.startsWith('en_')) return 'en'
+  if (s === 'km' || s.startsWith('km-') || s.startsWith('kh') || s === 'km_kh') return 'km'
+  return null
+}
+
+function pickInitialLang(params: URLSearchParams, tgLang?: string | null): Lang {
+  const fromUrl = normalizeLang(params.get('lang'))
+  if (fromUrl) return fromUrl
+  try {
+    const saved = normalizeLang(localStorage.getItem('menu_lang'))
+    if (saved) return saved
+  } catch { /* ignore */ }
+  const fromTg = normalizeLang(tgLang)
+  if (fromTg) return fromTg
+  for (const l of navigator.languages ?? []) {
+    const normalized = normalizeLang(l)
+    if (normalized) return normalized
+  }
+  return normalizeLang(navigator.language) ?? 'km'
+}
+
 // ─── i18n ────────────────────────────────────────────────────────────────────
 
 const T: Record<Lang, {
@@ -140,7 +165,7 @@ const T: Record<Lang, {
 // ─── 页面 ────────────────────────────────────────────────────────────────────
 
 export default function MePage() {
-  const [lang,         setLang]          = useState<Lang>('zh')
+  const [lang,         setLang]          = useState<Lang>('km')
   const [storeCode,    setStoreCode]     = useState('')
   const [storeName,    setStoreName]     = useState('店小二')
   const [customerName, setCustomerName]  = useState('')
@@ -150,17 +175,13 @@ export default function MePage() {
   const [availableCouponCount, setAvailableCouponCount] = useState(0)
 
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get('code') ?? ''
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code') ?? ''
     setStoreCode(code)
-
-    // 语言偏好同步（与 /menu 共享 key）
-    try {
-      const saved = localStorage.getItem('menu_lang') as Lang | null
-      if (saved && (['zh', 'en', 'km'] as Lang[]).includes(saved)) setLang(saved)
-    } catch { /* ignore */ }
 
     // 检测 Telegram WebApp + 提取 tgId / displayName
     let tgIdLocal: string | null = null
+    let tgLang: string | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
     if (tg?.initData) {
@@ -168,6 +189,7 @@ export default function MePage() {
         const userStr = new URLSearchParams(tg.initData).get('user')
         if (userStr) {
           const u = JSON.parse(userStr)
+          tgLang = typeof u.language_code === 'string' ? u.language_code : null
           if (u?.id != null) {
             tgIdLocal = String(u.id)
             setHasTgId(true)
@@ -178,6 +200,8 @@ export default function MePage() {
         }
       } catch { /* ignore */ }
     }
+
+    setLang(pickInitialLang(params, tgLang))
 
     if (!code) return
 

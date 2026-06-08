@@ -47,11 +47,12 @@ async function tgSend(method: string, body: object) {
   })
 }
 
-function menuKeyboard(storeCode: string) {
+function menuKeyboard(storeCode: string, lang: Lang = 'km') {
   if (!APP_URL) return undefined
+  const text = lang === 'zh' ? '🛍️ 再次点单' : lang === 'en' ? '🛍️ Order Again' : '🛍️ បញ្ជាទិញម្តងទៀត'
   return {
     inline_keyboard: [[
-      { text: '🛍️ 再次点单', web_app: { url: `${APP_URL}/menu?code=${encodeURIComponent(storeCode)}` } },
+      { text, web_app: { url: `${APP_URL}/menu?code=${encodeURIComponent(storeCode)}` } },
     ]],
   }
 }
@@ -109,21 +110,29 @@ function couponOfferText(tpl: {
   amountOff: { toNumber(): number } | null
   percentOff: number | null
   minSpend: { toNumber(): number }
-}): string {
+}, lang: Lang): string {
   const min = tpl.minSpend.toNumber()
   if (tpl.type === 'AMOUNT_OFF') {
     const amount = tpl.amountOff?.toNumber() ?? 0
-    return min > 0 ? `满 $${min.toFixed(2)} 减 $${amount.toFixed(2)}` : `$${amount.toFixed(2)} 优惠券`
+    if (lang === 'zh') return min > 0 ? `满 $${min.toFixed(2)} 减 $${amount.toFixed(2)}` : `$${amount.toFixed(2)} 优惠券`
+    if (lang === 'en') return min > 0 ? `$${amount.toFixed(2)} off over $${min.toFixed(2)}` : `$${amount.toFixed(2)} coupon`
+    return min > 0 ? `បញ្ចុះ $${amount.toFixed(2)} ពេលទិញចាប់ពី $${min.toFixed(2)}` : `គូប៉ុង $${amount.toFixed(2)}`
   }
   const off = tpl.percentOff ?? 0
-  const label = off === 5 ? '95折' : `${off}% off`
-  return min > 0 ? `${label} · 满 $${min.toFixed(2)} 可用` : `${label} 优惠券`
+  if (lang === 'zh') {
+    const label = off === 5 ? '95折' : `${off}% off`
+    return min > 0 ? `${label} · 满 $${min.toFixed(2)} 可用` : `${label} 优惠券`
+  }
+  const percent = `${off}% off`
+  if (lang === 'en') return min > 0 ? `${percent} over $${min.toFixed(2)}` : `${percent} coupon`
+  return min > 0 ? `បញ្ចុះ ${off}% ពេលទិញចាប់ពី $${min.toFixed(2)}` : `គូប៉ុងបញ្ចុះ ${off}%`
 }
 
 async function issueWelcomeCoupons(params: {
   tenantId: string
   storeId: string
   telegramId: string
+  lang: Lang
 }) {
   const templates = await prisma.couponTemplate.findMany({
     where: {
@@ -172,12 +181,56 @@ async function issueWelcomeCoupons(params: {
     })
     issued.push({
       name: tpl.name,
-      offer: couponOfferText(tpl),
+      offer: couponOfferText(tpl, params.lang),
       validDays: tpl.validDays,
     })
   }
 
   return issued
+}
+
+function buildBindSuccessText(params: {
+  lang: Lang
+  storeName: string
+  storeCode: string
+  orderNo: string | null
+  welcomeCoupons: Array<{ name: string; offer: string; validDays: number }>
+}) {
+  const { lang, storeName, storeCode, orderNo, welcomeCoupons } = params
+  if (lang === 'zh') {
+    const lines = ['🎉 欢迎加入会员', `已绑定门店：${storeName}（${storeCode}）`]
+    if (orderNo) lines.push(`本次订单已记录：${orderNo}`)
+    if (welcomeCoupons.length > 0) {
+      lines.push('已获得：')
+      for (const c of welcomeCoupons) lines.push(`🎁 ${c.name}\n优惠：${c.offer}\n有效期：${c.validDays} 天`)
+      lines.push('请到"我的优惠券"中查看使用。')
+    } else {
+      lines.push('以后你可以在这里查看订单进度、接收新品通知和再次点单。')
+    }
+    return lines.join('\n\n')
+  }
+  if (lang === 'en') {
+    const lines = ['🎉 Welcome to membership', `Bound shop: ${storeName} (${storeCode})`]
+    if (orderNo) lines.push(`This order has been recorded: ${orderNo}`)
+    if (welcomeCoupons.length > 0) {
+      lines.push('You received:')
+      for (const c of welcomeCoupons) lines.push(`🎁 ${c.name}\nOffer: ${c.offer}\nValid for: ${c.validDays} days`)
+      lines.push('View and use it in "My Coupons".')
+    } else {
+      lines.push('You can check order status, receive new arrival alerts, and order again here.')
+    }
+    return lines.join('\n\n')
+  }
+  const lines = ['🎉 សូមស្វាគមន៍ជាសមាជិក', `បានភ្ជាប់ហាង៖ ${storeName} (${storeCode})`]
+  if (orderNo) lines.push(`បានកត់ត្រាការបញ្ជាទិញនេះ៖ ${orderNo}`)
+  if (welcomeCoupons.length > 0) {
+    lines.push('អ្នកបានទទួល៖')
+    for (const c of welcomeCoupons) lines.push(`🎁 ${c.name}\nអត្ថប្រយោជន៍៖ ${c.offer}\nសុពលភាព៖ ${c.validDays} ថ្ងៃ`)
+    lines.push('សូមមើល និងប្រើនៅក្នុង "គូប៉ុងរបស់ខ្ញុំ"។')
+  } else {
+    lines.push('អ្នកអាចមើលស្ថានភាពបញ្ជាទិញ ទទួលដំណឹងផលិតផលថ្មី និងបញ្ជាទិញម្តងទៀតនៅទីនេះ។')
+  }
+  return lines.join('\n\n')
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -202,6 +255,7 @@ async function handleBind(msg: any, payload: { storeCode: string; orderNo: strin
   }
 
   const telegramId = String(from.id)
+  const bindLang = normalizeLang(from.language_code)
 
   // upsert：同 storeCode + telegramId 不新增重复，更新 lastSeenAt / lastOrderId / 用户名
   await prisma.storeCustomerContact.upsert({
@@ -233,30 +287,25 @@ async function handleBind(msg: any, payload: { storeCode: string; orderNo: strin
     tenantId: store.tenantId,
     storeId: store.id,
     telegramId,
+    lang: bindLang,
   }).catch((e) => {
     console.error('[customer-webhook] issue welcome coupons failed', e)
     return []
   })
-
-  const lines = ['🎉 欢迎加入会员', `已绑定门店：${store.name}（${storeCode}）`]
-  if (orderNo) lines.push(`本次订单已记录：${orderNo}`)
-  if (welcomeCoupons.length > 0) {
-    lines.push('已获得：')
-    for (const c of welcomeCoupons) {
-      lines.push(`🎁 ${c.name}\n优惠：${c.offer}\n有效期：${c.validDays} 天`)
-    }
-    lines.push('请到"我的优惠券"中查看使用。')
-  } else {
-    lines.push('以后你可以在这里查看订单进度、接收新品通知和再次点单。')
-  }
 
   // 无论新绑/重复绑定，底部按钮统一指向 /e-life
   await ensurePlatformMenuButton(chatId, 'bind', { inlineStoreCode: storeCode })
 
   await tgSend('sendMessage', {
     chat_id: chatId,
-    text: lines.join('\n\n'),
-    reply_markup: menuKeyboard(storeCode),
+    text: buildBindSuccessText({
+      lang: bindLang,
+      storeName: store.name,
+      storeCode,
+      orderNo,
+      welcomeCoupons,
+    }),
+    reply_markup: menuKeyboard(storeCode, bindLang),
   })
 }
 
@@ -434,7 +483,7 @@ function normalizeLang(v: string | null | undefined): Lang {
   if (s === 'zh' || s.startsWith('zh-') || s.startsWith('zh_')) return 'zh'
   if (s === 'en' || s.startsWith('en-') || s.startsWith('en_')) return 'en'
   if (s === 'km' || s.startsWith('km-') || s.startsWith('kh') || s === 'km_kh') return 'km'
-  return 'zh'
+  return 'km'
 }
 
 const RATE_HINT: Record<Lang, string> = {

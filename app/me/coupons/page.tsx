@@ -45,13 +45,38 @@ const T: Record<Lang, Record<string, string>> = {
 
 const LANG_LABELS: Record<Lang, string> = { zh: '中', en: 'EN', km: 'ខ្មែរ' }
 
+function normalizeLang(value: string | null | undefined): Lang | null {
+  const s = (value ?? '').toLowerCase()
+  if (!s) return null
+  if (s === 'zh' || s.startsWith('zh-') || s.startsWith('zh_')) return 'zh'
+  if (s === 'en' || s.startsWith('en-') || s.startsWith('en_')) return 'en'
+  if (s === 'km' || s.startsWith('km-') || s.startsWith('kh') || s === 'km_kh') return 'km'
+  return null
+}
+
+function pickInitialLang(params: URLSearchParams, tgLang?: string | null): Lang {
+  const fromUrl = normalizeLang(params.get('lang'))
+  if (fromUrl) return fromUrl
+  try {
+    const saved = normalizeLang(localStorage.getItem('menu_lang'))
+    if (saved) return saved
+  } catch { /* ignore */ }
+  const fromTg = normalizeLang(tgLang)
+  if (fromTg) return fromTg
+  for (const l of navigator.languages ?? []) {
+    const normalized = normalizeLang(l)
+    if (normalized) return normalized
+  }
+  return normalizeLang(navigator.language) ?? 'km'
+}
+
 function fmtDate(iso: string): string {
   try { return new Date(iso).toLocaleDateString('zh-CN', { year: '2-digit', month: '2-digit', day: '2-digit' }) }
   catch { return iso }
 }
 
 export default function MyCouponsPage() {
-  const [lang, setLang]       = useState<Lang>('zh')
+  const [lang, setLang]       = useState<Lang>('km')
   const [storeCode, setCode]  = useState('')
   const [tgId, setTgId]       = useState('')
   const [tab, setTab]         = useState<Tab>('available')
@@ -64,12 +89,8 @@ export default function MyCouponsPage() {
     const code = params.get('code') ?? ''
     setCode(code)
 
-    try {
-      const saved = localStorage.getItem('menu_lang') as Lang | null
-      if (saved && (['zh', 'en', 'km'] as Lang[]).includes(saved)) setLang(saved)
-    } catch { /* ignore */ }
-
     let tgIdLocal: string | null = null
+    let tgLang: string | null = null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
     if (tg?.initData) {
@@ -78,9 +99,11 @@ export default function MyCouponsPage() {
         if (userStr) {
           const u = JSON.parse(userStr)
           if (u?.id != null) tgIdLocal = String(u.id)
+          tgLang = typeof u?.language_code === 'string' ? u.language_code : null
         }
       } catch { /* ignore */ }
     }
+    setLang(pickInitialLang(params, tgLang))
     if (tgIdLocal) setTgId(tgIdLocal)
 
     if (!code) {

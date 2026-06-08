@@ -104,6 +104,31 @@ const STATUS_COLOR: Record<string, string> = {
   CANCELLED: '#bbb',
 }
 
+function normalizeLang(value: string | null | undefined): Lang | null {
+  const s = (value ?? '').toLowerCase()
+  if (!s) return null
+  if (s === 'zh' || s.startsWith('zh-') || s.startsWith('zh_')) return 'zh'
+  if (s === 'en' || s.startsWith('en-') || s.startsWith('en_')) return 'en'
+  if (s === 'km' || s.startsWith('km-') || s.startsWith('kh') || s === 'km_kh') return 'km'
+  return null
+}
+
+function pickInitialLang(params: URLSearchParams, tgLang?: string | null): Lang {
+  const fromUrl = normalizeLang(params.get('lang'))
+  if (fromUrl) return fromUrl
+  try {
+    const saved = normalizeLang(localStorage.getItem('menu_lang'))
+    if (saved) return saved
+  } catch { /* ignore */ }
+  const fromTg = normalizeLang(tgLang)
+  if (fromTg) return fromTg
+  for (const l of navigator.languages ?? []) {
+    const normalized = normalizeLang(l)
+    if (normalized) return normalized
+  }
+  return normalizeLang(navigator.language) ?? 'km'
+}
+
 // ─── 类型 ─────────────────────────────────────────────────────────────────────
 
 type OrderItem = {
@@ -158,7 +183,7 @@ function buildItemSummary(items: OrderItem[], lang: Lang): string {
 // ─── 主页面 ───────────────────────────────────────────────────────────────────
 
 export default function MyOrdersPage() {
-  const [lang,      setLang]      = useState<Lang>('zh')
+  const [lang,      setLang]      = useState<Lang>('km')
   const [orders,    setOrders]    = useState<MyOrder[]>([])
   const [storeName, setStoreName] = useState('')
   const [loading,   setLoading]   = useState(true)
@@ -166,7 +191,8 @@ export default function MyOrdersPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get('code')
+    const searchParams = new URLSearchParams(window.location.search)
+    const code = searchParams.get('code')
 
     // TG 初始化
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -180,12 +206,18 @@ export default function MyOrdersPage() {
 
     // 读取顾客 Telegram ID
     let tgId: string | null = null
+    let tgLang: string | null = null
     if (tg?.initData) {
       try {
         const userStr = new URLSearchParams(tg.initData).get('user')
-        if (userStr) tgId = String(JSON.parse(userStr).id)
+        if (userStr) {
+          const user = JSON.parse(userStr)
+          if (user?.id != null) tgId = String(user.id)
+          tgLang = typeof user?.language_code === 'string' ? user.language_code : null
+        }
       } catch { /* 解析失败则保持 null */ }
     }
+    setLang(pickInitialLang(searchParams, tgLang))
 
     if (!code) {
       setError('no_code')
@@ -228,6 +260,10 @@ export default function MyOrdersPage() {
       tg?.BackButton?.offClick()
     }
   }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('menu_lang', lang) } catch { /* ignore */ }
+  }, [lang])
 
   const ui = T[lang]
 

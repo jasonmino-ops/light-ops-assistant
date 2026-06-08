@@ -5,7 +5,7 @@
  *   1) 文本可判断 → detectTextLang(text)
  *   2) StoreCustomerContact.telegramLanguageCode
  *   3) Telegram msg.from.language_code
- *   4) 'zh'
+ *   4) 'km'
  *
  * detectTextLang 规则：
  *   - 含 Khmer Unicode (U+1780..U+17FF) → km
@@ -73,5 +73,5 @@ export function resolveReplyLang(input: ResolveReplyLangInput): Lang {
     const d = detectTextLang(input.text)
     if (d) return d
   }
-  return normalizeAny(input.contactLang) ?? normalizeAny(input.telegramLang) ?? 'zh'
+  return normalizeAny(input.contactLang) ?? normalizeAny(input.telegramLang) ?? 'km'
 }
