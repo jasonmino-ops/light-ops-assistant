@@ -18,6 +18,7 @@ type CampaignLink = {
   id: string; code: string
   creatorId: string | null; creatorName: string | null; tiktokHandle: string | null
   videoTitle: string | null
+  targetUrl: string | null
   viewCount: number; clickCount: number
   commissionType: string | null; commissionValue: number | null
   settlementStatus: string
@@ -25,6 +26,13 @@ type CampaignLink = {
   attributedOrderCount: number; attributedSalesAmount: number
   estimatedCommission: number
   createdAt: string
+}
+
+type MarketingPageOption = {
+  id: string
+  slug: string
+  status: string
+  title: string | null
 }
 
 // ── Copy templates ────────────────────────────────────────────────────────────
@@ -78,6 +86,7 @@ export default function CampaignPage() {
   // data
   const [creators, setCreators] = useState<Creator[]>([])
   const [links,    setLinks]    = useState<CampaignLink[]>([])
+  const [marketingPages, setMarketingPages] = useState<MarketingPageOption[]>([])
 
   // creator form
   const [addCreatorOpen,  setAddCreatorOpen]  = useState(false)
@@ -95,6 +104,8 @@ export default function CampaignPage() {
   const [videoTitle,      setVideoTitle]      = useState('')
   const [commType,        setCommType]        = useState<'percent' | 'fixed'>('percent')
   const [commValue,       setCommValue]       = useState('')
+  const [landingType,     setLandingType]     = useState<'menu' | 'product'>('menu')
+  const [marketingPageId, setMarketingPageId] = useState('')
   const [creating,        setCreating]        = useState(false)
   const [newLink,         setNewLink]         = useState<(CampaignLink & { shortUrl: string }) | null>(null)
   const [createError,     setCreateError]     = useState<string | null>(null)
@@ -113,14 +124,24 @@ export default function CampaignPage() {
 
   // copy
   const [copied, setCopied] = useState<string | null>(null)
+  const [editingLandingId, setEditingLandingId] = useState<string | null>(null)
+  const [editLandingType, setEditLandingType] = useState<'menu' | 'product'>('menu')
+  const [editMarketingPageId, setEditMarketingPageId] = useState('')
+  const [landingSavingId, setLandingSavingId] = useState<string | null>(null)
+  const [landingError, setLandingError] = useState<string | null>(null)
 
   async function loadAll() {
-    const [rc, rl] = await Promise.all([
+    const [rc, rl, rp] = await Promise.all([
       apiFetch('/api/creators',       undefined, OWNER_CTX),
       apiFetch('/api/campaign-links', undefined, OWNER_CTX),
+      apiFetch('/api/marketing-product-pages', undefined, OWNER_CTX),
     ])
     if (rc.ok) { const d = await rc.json(); setCreators(d.creators ?? []) }
     if (rl.ok) { const d = await rl.json(); setLinks(d.links ?? []) }
+    if (rp.ok) {
+      const d = await rp.json()
+      setMarketingPages((d.pages ?? []).filter((p: MarketingPageOption) => p.status === 'PUBLISHED'))
+    }
   }
 
   useEffect(() => { loadAll() }, [])
@@ -148,6 +169,10 @@ export default function CampaignPage() {
   // ── Create link ─────────────────────────────────────────────────────────────
 
   async function handleCreate() {
+    if (landingType === 'product' && !marketingPageId) {
+      setCreateError('请选择营销页')
+      return
+    }
     setCreating(true); setCreateError(null); setNewLink(null)
     const commVal = parseFloat(commValue)
     try {
@@ -158,10 +183,15 @@ export default function CampaignPage() {
         body.commissionType  = commType
         body.commissionValue = commVal
       }
+      if (landingType === 'product') {
+        const page = marketingPages.find((p) => p.id === marketingPageId)
+        if (page) body.targetUrl = `/p/${page.slug}`
+      }
       const r = await apiFetch('/api/campaign-links', { method: 'POST', body: JSON.stringify(body) }, OWNER_CTX)
       const d = await r.json()
       if (r.ok) {
         setNewLink(d); setSelCreatorId(''); setManualName(''); setVideoTitle(''); setCommValue('')
+        setLandingType('menu'); setMarketingPageId('')
         loadAll()
       } else { setCreateError(d.message ?? d.error ?? '创建失败') }
     } catch { setCreateError('网络错误，请重试') }
@@ -188,6 +218,44 @@ export default function CampaignPage() {
       if (r.ok) { loadAll() }
     } catch { /* silent */ }
     finally { setTokenBusyId(null) }
+  }
+
+  function pageByTargetUrl(targetUrl: string | null): MarketingPageOption | null {
+    if (!targetUrl?.startsWith('/p/')) return null
+    const slug = targetUrl.slice(3).split(/[?#]/)[0]
+    return marketingPages.find((p) => p.slug === slug) ?? null
+  }
+
+  function beginLandingEdit(link: CampaignLink) {
+    const page = pageByTargetUrl(link.targetUrl)
+    setEditingLandingId(link.id)
+    setEditLandingType(page ? 'product' : 'menu')
+    setEditMarketingPageId(page?.id ?? '')
+    setLandingError(null)
+  }
+
+  async function saveLanding(linkId: string) {
+    if (editLandingType === 'product' && !editMarketingPageId) {
+      setLandingError('请选择营销页')
+      return
+    }
+    setLandingSavingId(linkId); setLandingError(null)
+    const page = marketingPages.find((p) => p.id === editMarketingPageId)
+    const targetUrl = editLandingType === 'product' && page ? `/p/${page.slug}` : ''
+    try {
+      const r = await apiFetch(`/api/campaign-links/${linkId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ targetUrl }),
+      }, OWNER_CTX)
+      const d = await r.json()
+      if (r.ok) {
+        setEditingLandingId(null); setEditMarketingPageId(''); setEditLandingType('menu')
+        loadAll()
+      } else {
+        setLandingError(d.message ?? d.error ?? '保存失败')
+      }
+    } catch { setLandingError('网络错误，请重试') }
+    finally { setLandingSavingId(null) }
   }
 
   function copy(text: string, key: string) {
@@ -435,6 +503,29 @@ export default function CampaignPage() {
           {commType === 'percent' ? '预计佣金 = 成交金额 × 填入百分比 / 100' : '预计佣金 = 成交单数 × 填入金额'}
         </div>
 
+        {/* 落地页 */}
+        <div style={{ marginBottom: 10 }}>
+          <label style={s.label}>落地页类型</label>
+          <select style={s.select} value={landingType} onChange={(e) => { setLandingType(e.target.value as 'menu' | 'product'); setMarketingPageId('') }}>
+            <option value="menu">菜单页</option>
+            <option value="product">营销页</option>
+          </select>
+        </div>
+        {landingType === 'product' && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={s.label}>选择营销页</label>
+            <select style={s.select} value={marketingPageId} onChange={(e) => setMarketingPageId(e.target.value)}>
+              <option value="">请选择已发布营销页</option>
+              {marketingPages.map((p) => (
+                <option key={p.id} value={p.id}>{p.title || p.slug} · /p/{p.slug}</option>
+              ))}
+            </select>
+            {marketingPages.length === 0 && (
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>暂无已发布营销页，请先到商品页发布营销页。</div>
+            )}
+          </div>
+        )}
+
         {createError && <div style={s.error}>{createError}</div>}
         <button style={s.btn} onClick={handleCreate} disabled={creating}>
           {creating ? '生成中…' : '生成短链'}
@@ -591,6 +682,8 @@ export default function CampaignPage() {
             const fullUrl   = `${APP_URL}/v/${lk.code}`
             const isSettled = lk.settlementStatus === 'settled'
             const isSettling = settlingId === lk.id
+            const landingPage = pageByTargetUrl(lk.targetUrl)
+            const isEditingLanding = editingLandingId === lk.id
 
             return (
               <div key={lk.id} style={{
@@ -621,6 +714,43 @@ export default function CampaignPage() {
                 )}
                 {lk.videoTitle && (
                   <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>🎬 {lk.videoTitle}</div>
+                )}
+
+                {/* 落地页 */}
+                <div style={{ ...s.stat, marginTop: 4 }}>
+                  落地页：{landingPage ? `营销页：${landingPage.title || landingPage.slug}` : '菜单页'}
+                  <button style={{ ...s.btnSettle, marginLeft: 8 }} onClick={() => beginLandingEdit(lk)}>修改</button>
+                </div>
+                {isEditingLanding && (
+                  <div style={{ background: '#f9fafb', borderRadius: 8, padding: 10, marginTop: 6 }}>
+                    <div style={{ ...s.halfRow, marginBottom: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={s.label}>落地页类型</label>
+                        <select style={s.select} value={editLandingType} onChange={(e) => { setEditLandingType(e.target.value as 'menu' | 'product'); setEditMarketingPageId('') }}>
+                          <option value="menu">菜单页</option>
+                          <option value="product">营销页</option>
+                        </select>
+                      </div>
+                      {editLandingType === 'product' && (
+                        <div style={{ flex: 1 }}>
+                          <label style={s.label}>营销页</label>
+                          <select style={s.select} value={editMarketingPageId} onChange={(e) => setEditMarketingPageId(e.target.value)}>
+                            <option value="">请选择</option>
+                            {marketingPages.map((p) => (
+                              <option key={p.id} value={p.id}>{p.title || p.slug}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                    {landingError && <div style={s.error}>{landingError}</div>}
+                    <div style={s.row}>
+                      <button style={s.btnSm} onClick={() => saveLanding(lk.id)} disabled={landingSavingId === lk.id}>
+                        {landingSavingId === lk.id ? '保存中…' : '保存落地页'}
+                      </button>
+                      <button style={s.btnGhost} onClick={() => setEditingLandingId(null)}>取消</button>
+                    </div>
+                  </div>
                 )}
 
                 {/* 统计 */}

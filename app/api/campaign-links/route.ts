@@ -20,6 +20,27 @@ function calcCommission(
   return 0
 }
 
+async function resolveTargetUrl(rawTargetUrl: unknown, ctx: { tenantId: string; storeId: string }): Promise<string> {
+  if (typeof rawTargetUrl !== 'string') return ''
+  const targetUrl = rawTargetUrl.trim()
+  if (!targetUrl.startsWith('/p/')) return ''
+
+  const slug = targetUrl.slice(3).split(/[?#]/)[0]?.trim()
+  if (!slug) return ''
+
+  const page = await prisma.marketingProductPage.findFirst({
+    where: {
+      tenantId: ctx.tenantId,
+      storeId: ctx.storeId,
+      slug,
+      status: 'PUBLISHED',
+    },
+    select: { slug: true },
+  })
+
+  return page ? `/p/${page.slug}` : ''
+}
+
 export async function GET(req: NextRequest) {
   const ctx = await getContext(req)
   if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
@@ -66,6 +87,7 @@ export async function GET(req: NextRequest) {
       creatorName:      l.creator?.name ?? l.creatorName ?? null,
       tiktokHandle:     l.creator?.tiktokHandle ?? null,
       videoTitle:       l.videoTitle,
+      targetUrl:        l.targetUrl,
       viewCount:        l.viewCount,
       clickCount:       l.clickCount,
       commissionType:   l.commissionType,
@@ -92,6 +114,7 @@ export async function POST(req: NextRequest) {
   let body: {
     creatorId?: string; creatorName?: string; videoTitle?: string
     sourcePlatform?: string; commissionType?: string; commissionValue?: number
+    targetUrl?: string
   } = {}
   try { body = await req.json() } catch { /* no body ok */ }
 
@@ -118,14 +141,8 @@ export async function POST(req: NextRequest) {
   const commissionValue = typeof body.commissionValue === 'number' && body.commissionValue > 0
     ? body.commissionValue : null
 
-  const store = await prisma.store.findUnique({
-    where: { id: ctx.storeId },
-    select: { code: true },
-  })
-  if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
-
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
-  const targetUrl = `${appUrl}/menu?code=${store.code}`
+  const targetUrl = await resolveTargetUrl(body.targetUrl, { tenantId: ctx.tenantId, storeId: ctx.storeId })
 
   let code = genCode()
   for (let i = 0; i < 5; i++) {
