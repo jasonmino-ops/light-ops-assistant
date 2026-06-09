@@ -9,6 +9,14 @@ import { publicUrl } from '@/lib/public-url'
 
 type MarketingLang = 'zh' | 'en' | 'km'
 type MarketingTemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
+type MarketingImageField =
+  | 'heroImageUrl'
+  | 'detailImage1'
+  | 'detailImage2'
+  | 'detailImage3'
+  | 'reviewImage1'
+  | 'reviewImage2'
+  | 'reviewImage3'
 
 type MarketingLangContent = {
   title: string
@@ -289,7 +297,9 @@ export default function ProductsPage() {
   const [marketingButtonText, setMarketingButtonText] = useState('')
   const [marketingSaving, setMarketingSaving] = useState(false)
   const [marketingGenerating, setMarketingGenerating] = useState<Record<string, boolean>>({})
+  const [marketingImageUploading, setMarketingImageUploading] = useState<Partial<Record<MarketingImageField, boolean>>>({})
   const [marketingMsg, setMarketingMsg] = useState<string | null>(null)
+  const marketingImageRefs = useRef<Partial<Record<MarketingImageField, HTMLInputElement | null>>>({})
 
   // 扫码枪反馈
   const [hidMsg, setHidMsg] = useState<{ type: 'ok' | 'fail'; text: string } | null>(null)
@@ -582,6 +592,105 @@ export default function ProductsPage() {
     navigator.clipboard.writeText(productPageUrl(page.slug))
       .then(() => setMarketingMsg('营销页链接已复制'))
       .catch(() => setMarketingMsg('复制失败，请手动复制链接'))
+  }
+
+  function setMarketingImageField(field: MarketingImageField, url: string) {
+    if (field === 'heroImageUrl') {
+      setMarketingHeroImageUrl(url)
+      return
+    }
+    if (field.startsWith('detailImage')) {
+      const idx = Number(field.replace('detailImage', '')) - 1
+      setMarketingDetailImages((prev) => {
+        const next = [...prev]
+        next[idx] = url
+        return next
+      })
+      return
+    }
+    const idx = Number(field.replace('reviewImage', '')) - 1
+    setMarketingReviewImages((prev) => {
+      const next = [...prev]
+      next[idx] = url
+      return next
+    })
+  }
+
+  async function uploadMarketingImage(field: MarketingImageField, file: File) {
+    if (!marketingEditing) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setMarketingMsg('仅支持 JPG / PNG / WebP')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setMarketingMsg('原图不能超过 5MB')
+      return
+    }
+    setMarketingImageUploading((prev) => ({ ...prev, [field]: true }))
+    setMarketingMsg('正在压缩图片…')
+    try {
+      const blob = await compressForUpload(file)
+      const uploadName = blob.type === 'image/webp' ? 'marketing.webp'
+        : blob.type === 'image/jpeg' ? 'marketing.jpg' : file.name
+      const form = new FormData()
+      form.append('file', new File([blob], uploadName, { type: blob.type || file.type }))
+      setMarketingMsg('正在上传图片…')
+      const res = await fetch(`/api/marketing-product-pages/${marketingEditing.page.id}/image?field=${encodeURIComponent(field)}`, {
+        method: 'POST',
+        headers: { ...OWNER_CTX },
+        body: form,
+      })
+      const body = await res.json().catch(() => null)
+      if (res.ok && body?.imageUrl) {
+        setMarketingImageField(field, body.imageUrl)
+        setMarketingMsg('图片已上传，记得保存营销页')
+      } else {
+        setMarketingMsg(body?.message ?? body?.error ?? '图片上传失败')
+      }
+    } catch {
+      setMarketingMsg(t('common.networkError'))
+    } finally {
+      setMarketingImageUploading((prev) => ({ ...prev, [field]: false }))
+      const input = marketingImageRefs.current[field]
+      if (input) input.value = ''
+    }
+  }
+
+  function renderMarketingImageInput(
+    field: MarketingImageField,
+    value: string,
+    onChange: (value: string) => void,
+    placeholder: string,
+  ) {
+    const uploading = !!marketingImageUploading[field]
+    return (
+      <div style={s.marketingImageRow}>
+        <input
+          style={{ ...s.field, ...s.marketingImageInput }}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+        />
+        <input
+          ref={(el) => { marketingImageRefs.current[field] = el }}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) uploadMarketingImage(field, file)
+          }}
+        />
+        <button
+          type="button"
+          style={{ ...ls.actionBtn, ...s.marketingUploadBtn, opacity: uploading ? 0.55 : 1 }}
+          disabled={uploading}
+          onClick={() => marketingImageRefs.current[field]?.click()}
+        >
+          {uploading ? '上传中...' : '上传'}
+        </button>
+      </div>
+    )
   }
 
   async function executeDelete() {
@@ -1839,12 +1948,7 @@ export default function ProductsPage() {
 	                                  onChange={(e) => setMarketingSlug(e.target.value)}
 	                                  placeholder="slug"
 	                                />
-	                                <input
-	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
-	                                  value={marketingHeroImageUrl}
-	                                  onChange={(e) => setMarketingHeroImageUrl(e.target.value)}
-	                                  placeholder="Hero 图片 URL"
-	                                />
+                                  {renderMarketingImageInput('heroImageUrl', marketingHeroImageUrl, setMarketingHeroImageUrl, 'Hero 图片 URL')}
 	                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
 	                                  <input
 	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
@@ -1937,32 +2041,34 @@ export default function ProductsPage() {
 	                                  />
 	                                  开启限时倒计时展示
 	                                </label>
-	                                {marketingDetailImages.map((value, idx) => (
-	                                  <input
-	                                    key={`detail-${idx}`}
-	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
-	                                    value={value}
-	                                    onChange={(e) => {
-	                                      const next = [...marketingDetailImages]
-	                                      next[idx] = e.target.value
-	                                      setMarketingDetailImages(next)
-	                                    }}
-	                                    placeholder={`详情图 ${idx + 1} URL`}
-	                                  />
-	                                ))}
-	                                {marketingReviewImages.map((value, idx) => (
-	                                  <input
-	                                    key={`review-${idx}`}
-	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}
-	                                    value={value}
-	                                    onChange={(e) => {
-	                                      const next = [...marketingReviewImages]
-	                                      next[idx] = e.target.value
-	                                      setMarketingReviewImages(next)
-	                                    }}
-	                                    placeholder={`评价图 ${idx + 1} URL`}
-	                                  />
-	                                ))}
+                                {marketingDetailImages.map((value, idx) => (
+                                  <div key={`detail-${idx}`}>
+                                    {renderMarketingImageInput(
+                                      `detailImage${idx + 1}` as MarketingImageField,
+                                      value,
+                                      (nextValue) => {
+                                        const next = [...marketingDetailImages]
+                                        next[idx] = nextValue
+                                        setMarketingDetailImages(next)
+                                      },
+                                      `详情图 ${idx + 1} URL`,
+                                    )}
+                                  </div>
+                                ))}
+                                {marketingReviewImages.map((value, idx) => (
+                                  <div key={`review-${idx}`}>
+                                    {renderMarketingImageInput(
+                                      `reviewImage${idx + 1}` as MarketingImageField,
+                                      value,
+                                      (nextValue) => {
+                                        const next = [...marketingReviewImages]
+                                        next[idx] = nextValue
+                                        setMarketingReviewImages(next)
+                                      },
+                                      `评价图 ${idx + 1} URL`,
+                                    )}
+                                  </div>
+                                ))}
 	                                <select
 	                                  style={{ ...s.field, height: 38, marginBottom: 8 }}
 	                                  value={marketingStatus}
@@ -2625,6 +2731,24 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: '#15803d',
     padding: '0 2px 8px',
+  },
+  marketingImageRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 8,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  marketingImageInput: {
+    height: 38,
+    marginBottom: 0,
+    minWidth: 0,
+  },
+  marketingUploadBtn: {
+    height: 38,
+    minWidth: 76,
+    padding: '0 10px',
+    whiteSpace: 'nowrap',
   },
   scanHintMsg: {
     fontSize: 12, color: '#fa8c16', background: '#fff7e6',

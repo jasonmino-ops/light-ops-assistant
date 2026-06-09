@@ -710,6 +710,7 @@ export default function MarketingProductPage() {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<OrderField, true>>>({})
   const [error, setError] = useState('')
   const [result, setResult] = useState<OrderResult | null>(null)
+  const [heroSlideIndex, setHeroSlideIndex] = useState(0)
   const [couponPromptDismissed, setCouponPromptDismissed] = useState(false)
   const [copiedOrderNo, setCopiedOrderNo] = useState(false)
   const [trackingParams, setTrackingParams] = useState<TrackingParams>({})
@@ -722,6 +723,7 @@ export default function MarketingProductPage() {
   useEffect(() => {
     setLang(detectLang())
     setTrackingParams(readTrackingParams(slug))
+    setHeroSlideIndex(0)
   }, [slug])
 
   useEffect(() => {
@@ -942,7 +944,10 @@ export default function MarketingProductPage() {
     )
   }
 
-  const imageUrl = data.heroImageUrl || data.product.imageUrl
+  const heroImages = Array.from(new Set([
+    data.heroImageUrl || data.product.imageUrl,
+    ...data.detailImages,
+  ].filter((url): url is string => !!url)))
   const displayPrice = data.salePrice ?? data.product.price
   const total = +(displayPrice * qty).toFixed(2)
   const title = localizedTitle(data, lang)
@@ -1277,18 +1282,46 @@ export default function MarketingProductPage() {
           borderColor: theme.sectionBorder,
         }}
       >
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={imageUrl}
-            alt={title}
-            style={{
-              ...s.heroImg,
-              ...(theme.heroVariant === 'scene' ? s.heroImgScene : {}),
-              ...(theme.heroVariant === 'menu' ? s.heroImgMenu : {}),
-              ...(theme.heroVariant === 'soft' ? s.heroImgSoft : {}),
-            }}
-          />
+        {heroImages.length > 0 ? (
+          <div style={s.heroCarouselWrap}>
+            <div
+              style={s.heroCarousel}
+              onScroll={(e) => {
+                const el = e.currentTarget
+                const next = Math.round(el.scrollLeft / Math.max(1, el.clientWidth))
+                if (next !== heroSlideIndex) setHeroSlideIndex(Math.max(0, Math.min(heroImages.length - 1, next)))
+              }}
+            >
+              {heroImages.map((url, idx) => (
+                <div key={url} style={s.heroSlide}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`${title} ${idx + 1}`}
+                    style={{
+                      ...s.heroImg,
+                      ...(theme.heroVariant === 'scene' ? s.heroImgScene : {}),
+                      ...(theme.heroVariant === 'menu' ? s.heroImgMenu : {}),
+                      ...(theme.heroVariant === 'soft' ? s.heroImgSoft : {}),
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            {heroImages.length > 1 && (
+              <div style={s.heroDots}>
+                {heroImages.map((url, idx) => (
+                  <span
+                    key={`${url}-dot`}
+                    style={{
+                      ...s.heroDot,
+                      ...(idx === heroSlideIndex ? { background: theme.accent, width: 18 } : {}),
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
           <div style={{ ...s.heroPlaceholder, background: theme.pointBg, color: theme.accentDark }}>店小二</div>
         )}
@@ -1371,10 +1404,15 @@ const s: Record<string, CSSProperties> = {
   heroScene: { padding: 14 },
   heroMenu: { display: 'flex', flexDirection: 'column', borderBottomWidth: 0 },
   heroSoft: { margin: 12, borderRadius: 18, overflow: 'hidden', border: '1px solid #e9d5ff', boxShadow: '0 12px 28px rgba(126,34,206,0.12)' },
+  heroCarouselWrap: { position: 'relative', overflow: 'hidden' },
+  heroCarousel: { display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' },
+  heroSlide: { minWidth: '100%', scrollSnapAlign: 'start' },
   heroImg: { width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' },
   heroImgScene: { borderRadius: 14, aspectRatio: '4 / 3' },
   heroImgMenu: { aspectRatio: '16 / 11' },
   heroImgSoft: { aspectRatio: '4 / 5', objectFit: 'cover' },
+  heroDots: { position: 'absolute', left: 0, right: 0, bottom: 10, display: 'flex', justifyContent: 'center', gap: 6, pointerEvents: 'none' },
+  heroDot: { width: 7, height: 7, borderRadius: 999, background: 'rgba(255,255,255,0.78)', border: '1px solid rgba(0,0,0,0.12)', transition: 'width 160ms ease, background 160ms ease' },
   heroPlaceholder: {
     width: '100%',
     aspectRatio: '1 / 1',
