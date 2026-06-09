@@ -333,7 +333,7 @@ export default function OrderDetailSheet({
                   <div style={sh.infoRowWrap}>
                     <span style={sh.infoLabel}>地图</span>
                     <a href={d.mapUrl} target="_blank" rel="noreferrer" style={{ ...sh.infoValue, color: '#1677ff', textDecoration: 'underline' }}>
-                      Google Maps ›
+                      📍 查看地图
                     </a>
                   </div>
                 )}

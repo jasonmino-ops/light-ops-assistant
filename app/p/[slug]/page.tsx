@@ -38,7 +38,7 @@ type PageData = {
   product: { id: string; name: string; spec: string | null; price: number; imageUrl: string | null }
 }
 
-type OrderResult = { orderNo: string; totalAmount: number }
+type OrderResult = { orderNo: string; totalAmount: number; telegramLinked: boolean }
 
 type Lang = 'zh' | 'en' | 'km'
 type TemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
@@ -211,6 +211,9 @@ const I18N: Record<Lang, {
   claimText: string
   claimBenefits: string[]
   claimButton: string
+  laterButton: string
+  savedCouponTitle: string
+  viewCoupons: string
   claimFallback: string
   copyOrderNo: string
   copied: string
@@ -220,6 +223,11 @@ const I18N: Record<Lang, {
   locationFail: string
   locationUnsupported: string
   locationAddress: (lat: string, lng: string) => string
+  locationPreviewTitle: string
+  latLabel: string
+  lngLabel: string
+  openMap: string
+  addressDetailHint: string
   errorName: string
   errorPhone: string
   errorAddress: string
@@ -259,14 +267,17 @@ const I18N: Record<Lang, {
     total: 'សរុប',
     submitOrder: 'បញ្ជាទិញឥឡូវ',
     submitting: 'កំពុងផ្ញើ...',
-    successTitle: '🎉 បញ្ជាទិញបានជោគជ័យ',
-    successText: 'ហាងបានទទួលការបញ្ជាទិញរបស់អ្នក ហើយនឹងទាក់ទងដើម្បីបញ្ជាក់ការដឹកជញ្ជូន។',
+    successTitle: '✅ បញ្ជាទិញបានដាក់ស្នើ',
+    successText: 'ហាងនឹងទាក់ទងអ្នកឱ្យបានឆាប់បំផុត។',
     orderNo: 'លេខបញ្ជាទិញ',
-    giftTitle: 'ទទួលកញ្ចប់ស្វាគមន៍ឥឡូវ',
+    giftTitle: '🎁 ទទួលគូប៉ុងអតិថិជនថ្មី',
     claimTitle: '🎁 កញ្ចប់ស្វាគមន៍អតិថិជនថ្មី',
     claimText: 'ភ្ជាប់ Telegram ដើម្បីទទួលបានអត្ថប្រយោជន៍ និងតាមដានការបញ្ជាទិញ។',
-    claimBenefits: ['🎁 គូប៉ុង $1', '🎁 គូប៉ុងបញ្ចុះ 5%', '🎁 ដំណឹងផលិតផលថ្មី', '🎁 ពិនិត្យការបញ្ជាទិញ'],
-    claimButton: 'ទទួលកញ្ចប់ឥឡូវ',
+    claimBenefits: ['✓ ពិនិត្យស្ថានភាពបញ្ជាទិញ', '✓ ទទួលគូប៉ុង', '✓ ទទួលដំណឹងប្រូម៉ូសិន'],
+    claimButton: 'ទទួលគូប៉ុង',
+    laterButton: 'ពេលក្រោយ',
+    savedCouponTitle: '🎁 អត្ថប្រយោជន៍ត្រូវបានរក្សាទុកក្នុងគណនីរបស់អ្នក',
+    viewCoupons: 'មើលគូប៉ុង',
     claimFallback: 'Telegram Bot មិនទាន់បានកំណត់។ សូមចម្លងលេខបញ្ជាទិញ ហើយទាក់ទងហាង។',
     copyOrderNo: 'ចម្លងលេខបញ្ជាទិញ',
     copied: 'បានចម្លង',
@@ -276,6 +287,11 @@ const I18N: Record<Lang, {
     locationFail: 'មិនអាចយកទីតាំងបានទេ សូមបំពេញអាសយដ្ឋានដោយដៃ។',
     locationUnsupported: 'កម្មវិធីរុករកមិនគាំទ្រទីតាំងទេ សូមបំពេញអាសយដ្ឋានដោយដៃ។',
     locationAddress: (lat, lng) => `បានយកទីតាំងបច្ចុប្បន្ន៖ ${lat},${lng}`,
+    locationPreviewTitle: '📍 បានយកទីតាំងបច្ចុប្បន្ន',
+    latLabel: 'Lat',
+    lngLabel: 'Lng',
+    openMap: 'មើលក្នុងផែនទី',
+    addressDetailHint: 'អាចបន្ថែមអាសយដ្ឋានលម្អិត លេខផ្ទះ ជាន់ ឈ្មោះហាង ឬចំណាំ។',
     errorName: 'សូមបំពេញឈ្មោះ',
     errorPhone: 'សូមបំពេញលេខទូរស័ព្ទ',
     errorAddress: 'សូមបំពេញអាសយដ្ឋានដឹកជញ្ជូន',
@@ -315,14 +331,17 @@ const I18N: Record<Lang, {
     total: 'Total',
     submitOrder: 'Submit Order',
     submitting: 'Submitting...',
-    successTitle: '🎉 Order submitted',
-    successText: 'The shop has received your order and will contact you to confirm delivery.',
+    successTitle: '✅ Order submitted',
+    successText: 'The merchant will contact you as soon as possible.',
     orderNo: 'Order No.',
-    giftTitle: 'Claim your new-customer gift pack now',
+    giftTitle: '🎁 Claim new-customer coupon',
     claimTitle: '🎁 New Customer Gift Pack',
     claimText: 'Bind Telegram to receive benefits and track this order.',
-    claimBenefits: ['🎁 $1 coupon', '🎁 5% off coupon', '🎁 New arrival alerts', '🎁 Order lookup'],
-    claimButton: 'Claim gift pack',
+    claimBenefits: ['✓ View order status', '✓ Claim coupons', '✓ Receive promotion alerts'],
+    claimButton: 'Claim coupon',
+    laterButton: 'Maybe later',
+    savedCouponTitle: '🎁 Benefits are saved to your account',
+    viewCoupons: 'View coupons',
     claimFallback: 'Telegram Bot is not configured yet. Please copy your order number and contact the shop.',
     copyOrderNo: 'Copy order number',
     copied: 'Copied',
@@ -332,6 +351,11 @@ const I18N: Record<Lang, {
     locationFail: 'Could not get location. Please enter your address manually.',
     locationUnsupported: 'Location is not supported. Please enter your address manually.',
     locationAddress: (lat, lng) => `Current location saved: ${lat},${lng}`,
+    locationPreviewTitle: '📍 Current location saved',
+    latLabel: 'Lat',
+    lngLabel: 'Lng',
+    openMap: 'View on map',
+    addressDetailHint: 'You can add detailed address, house number, floor, shop name, or notes.',
     errorName: 'Please enter your name',
     errorPhone: 'Please enter your phone number',
     errorAddress: 'Please enter your delivery address',
@@ -371,14 +395,17 @@ const I18N: Record<Lang, {
     total: '合计',
     submitOrder: '提交订单',
     submitting: '提交中...',
-    successTitle: '🎉 恭喜下单成功',
-    successText: '商家已收到订单，将尽快联系你确认配送。',
+    successTitle: '✅ 订单已提交',
+    successText: '商家将尽快联系您。',
     orderNo: '订单号',
-    giftTitle: '立即领取新人礼包',
+    giftTitle: '🎁 领取新客优惠券',
     claimTitle: '🎁 新人礼包',
     claimText: '绑定 Telegram 后领取礼包，并可查看本次订单进度。',
-    claimBenefits: ['🎁 $1 优惠券', '🎁 95折优惠券', '🎁 新品通知', '🎁 订单查询'],
-    claimButton: '立即领取礼包',
+    claimBenefits: ['✓ 查看订单状态', '✓ 领取优惠券', '✓ 接收促销通知'],
+    claimButton: '领取优惠',
+    laterButton: '稍后再说',
+    savedCouponTitle: '🎁 优惠已自动保存到您的账户',
+    viewCoupons: '查看优惠',
     claimFallback: '暂未配置 Telegram Bot，请复制订单号联系客服。',
     copyOrderNo: '复制订单号',
     copied: '已复制',
@@ -388,6 +415,11 @@ const I18N: Record<Lang, {
     locationFail: '无法获取定位，请手动填写地址。',
     locationUnsupported: '当前浏览器不支持定位，请手动填写地址。',
     locationAddress: (lat, lng) => `已获取当前位置：${lat},${lng}`,
+    locationPreviewTitle: '📍 已获取当前位置',
+    latLabel: 'Lat',
+    lngLabel: 'Lng',
+    openMap: '在地图中查看',
+    addressDetailHint: '可继续补充详细地址、门牌号、楼层、店名或备注。',
     errorName: '请填写姓名',
     errorPhone: '请填写电话',
     errorAddress: '请填写收货地址',
@@ -735,7 +767,7 @@ export default function MarketingProductPage() {
         setError(body.message ?? body.error ?? text.errorSubmit)
         return
       }
-      setResult({ orderNo: body.orderNo, totalAmount: Number(body.totalAmount ?? total) })
+      setResult({ orderNo: body.orderNo, totalAmount: Number(body.totalAmount ?? total), telegramLinked: !!customerTelegramId })
     } catch {
       setError(text.errorNetwork)
     } finally {
@@ -966,6 +998,7 @@ export default function MarketingProductPage() {
       <input style={s.input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={text.phonePlaceholder} inputMode="tel" />
       <label style={{ ...s.label, color: theme.text }}>{text.address}</label>
       <textarea style={s.textarea} value={address} onChange={(e) => setAddress(e.target.value)} placeholder={text.addressPlaceholder} />
+      <div style={{ ...s.addressHint, color: theme.muted }}>{text.addressDetailHint}</div>
       <button
         type="button"
         style={{ ...s.locationBtn, borderColor: theme.badgeBorder, background: theme.pointBg, color: theme.accentDark, opacity: geoBusy ? 0.65 : 1 }}
@@ -985,6 +1018,21 @@ export default function MarketingProductPage() {
           }}
         >
           {geoMsg.text}
+        </div>
+      )}
+      {deliveryLat != null && deliveryLng != null && (
+        <div style={{ ...s.mapPreview, borderColor: theme.badgeBorder, background: theme.badgeBg, color: theme.badgeText }}>
+          <div style={s.mapPreviewTitle}>{text.locationPreviewTitle}</div>
+          <div style={s.mapPreviewCoord}>{text.latLabel}: {deliveryLat.toFixed(5)}</div>
+          <div style={s.mapPreviewCoord}>{text.lngLabel}: {deliveryLng.toFixed(5)}</div>
+          <a
+            href={`https://maps.google.com/?q=${deliveryLat},${deliveryLng}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{ ...s.mapPreviewLink, color: theme.accentDark }}
+          >
+            {text.openMap}
+          </a>
         </div>
       )}
       <label style={{ ...s.label, color: theme.text }}>{text.note}</label>
@@ -1017,6 +1065,7 @@ export default function MarketingProductPage() {
     const benefitLink = CUSTOMER_BOT
       ? `https://t.me/${CUSTOMER_BOT}?start=${encodeURIComponent(bindPayload)}`
       : ''
+    const couponLink = `/me/coupons?code=${encodeURIComponent(data.store.code)}`
 
     return (
       <main style={{ ...s.page, background: theme.background, color: theme.text }}>
@@ -1030,17 +1079,26 @@ export default function MarketingProductPage() {
         </section>
         <section style={s.claimBox}>
           <div style={s.claimGiftIcon}>🎁</div>
-          <div style={s.claimGiftTitle}>{text.giftTitle}</div>
-          <h2 style={s.claimTitle}>{text.claimTitle}</h2>
-          <p style={{ ...s.claimText, color: theme.muted }}>{text.claimText}</p>
-          <div style={s.claimBenefits}>
-            {text.claimBenefits.map((benefit) => (
-              <div key={benefit} style={s.claimBenefit}>
-                {benefit}
+          {result.telegramLinked ? (
+            <>
+              <div style={s.claimGiftTitle}>{text.savedCouponTitle}</div>
+              <a href={couponLink} style={s.claimButton}>
+                {text.viewCoupons}
+              </a>
+            </>
+          ) : (
+            <>
+              <div style={s.claimGiftTitle}>{text.giftTitle}</div>
+              <h2 style={s.claimTitle}>{text.claimTitle}</h2>
+              <p style={{ ...s.claimText, color: theme.muted }}>{text.claimText}</p>
+              <div style={s.claimBenefits}>
+                {text.claimBenefits.map((benefit) => (
+                  <div key={benefit} style={s.claimBenefit}>
+                    {benefit}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {benefitLink ? (
+              {benefitLink ? (
             <a
               href={benefitLink}
               target="_blank"
@@ -1049,11 +1107,16 @@ export default function MarketingProductPage() {
             >
               {text.claimButton}
             </a>
-          ) : (
+              ) : (
             <>
               <p style={{ ...s.claimFallback, color: theme.muted }}>{text.claimFallback}</p>
               <button type="button" style={s.claimButton} onClick={() => copyOrderNo(result.orderNo)}>
                 {copiedOrderNo ? text.copied : text.copyOrderNo}
+              </button>
+            </>
+              )}
+              <button type="button" style={s.laterButton}>
+                {text.laterButton}
               </button>
             </>
           )}
@@ -1259,10 +1322,15 @@ const s: Record<string, CSSProperties> = {
   label: { display: 'block', fontSize: 13, fontWeight: 700, color: '#344236', margin: '12px 0 6px' },
   input: { width: '100%', boxSizing: 'border-box', height: 46, border: '1px solid #d5ddd1', borderRadius: 6, padding: '0 12px', fontSize: 15, background: '#fff' },
   textarea: { width: '100%', boxSizing: 'border-box', minHeight: 82, border: '1px solid #d5ddd1', borderRadius: 6, padding: 12, fontSize: 15, background: '#fff', resize: 'vertical' },
+  addressHint: { marginTop: 6, fontSize: 12, lineHeight: 1.45 },
   locationBtn: { marginTop: 8, width: '100%', minHeight: 42, border: '1px solid #c8d4c3', borderRadius: 6, background: '#f7faf5', fontSize: 14, fontWeight: 900, cursor: 'pointer' },
   locationMsg: { marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 6, padding: '8px 10px', fontSize: 12, lineHeight: 1.45 },
   locationMsgOk: { background: '#f0fdf4', color: '#166534' },
   locationMsgFail: { background: '#fff7ed', color: '#c2410c' },
+  mapPreview: { marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, fontSize: 13, lineHeight: 1.5 },
+  mapPreviewTitle: { fontWeight: 900, marginBottom: 4 },
+  mapPreviewCoord: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
+  mapPreviewLink: { display: 'inline-flex', marginTop: 6, fontWeight: 900, textDecoration: 'underline' },
   qtyRow: { display: 'flex', alignItems: 'center', gap: 10 },
   qtyBtn: { width: 40, height: 40, borderRadius: 6, border: '1px solid #c8d4c3', background: '#f7faf5', fontSize: 20, cursor: 'pointer' },
   qtyNum: { minWidth: 32, textAlign: 'center', fontSize: 18, fontWeight: 800 },
@@ -1283,6 +1351,7 @@ const s: Record<string, CSSProperties> = {
   claimBenefits: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 },
   claimBenefit: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 42, border: '1px solid #fde68a', borderRadius: 10, padding: '8px 10px', fontSize: 13, fontWeight: 900, color: '#92400e', background: '#fffbeb', textAlign: 'center' },
   claimButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 50, border: 0, borderRadius: 999, background: '#16a34a', color: '#fff', fontSize: 16, fontWeight: 950, textDecoration: 'none', cursor: 'pointer', boxShadow: '0 10px 20px rgba(22,163,74,0.22)' },
+  laterButton: { marginTop: 10, width: '100%', height: 44, border: '1px solid #e5e7eb', borderRadius: 999, background: '#fff', color: '#667085', fontSize: 14, fontWeight: 900, cursor: 'pointer' },
   claimFallback: { margin: '0 0 12px', fontSize: 13, lineHeight: 1.45 },
   legalFooter: { display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, padding: '12px 18px 2px', color: '#8a94a6', fontSize: 12 },
   legalLink: { color: '#667085', textDecoration: 'none', fontWeight: 700 },
