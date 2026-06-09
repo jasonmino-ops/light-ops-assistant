@@ -4,11 +4,9 @@ import { CSSProperties, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 
 const CUSTOMER_BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
-const TIKTOK_PIXEL_ID = (
-  process.env.NEXT_PUBLIC_TIKTOK_PIXEL_ID ??
-  process.env.TIKTOK_PIXEL_ID ??
-  ''
-).trim()
+const TIKTOK_PIXEL_ID = process.env.NODE_ENV === 'production'
+  ? (process.env.NEXT_PUBLIC_TIKTOK_PIXEL_ID ?? 'D8K1V73C77U48KTDSRVG').trim()
+  : ''
 const TRACKING_PARAM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'creator', 'campaignId'] as const
 
 type PageData = {
@@ -580,6 +578,7 @@ function ensureTikTokPixel() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const w = window as any
   if (w.__dxTikTokPixelLoaded) return true
+  if (w.ttq && typeof w.ttq.track === 'function') return true
 
   w.TiktokAnalyticsObject = 'ttq'
   const ttq = w.ttq = w.ttq || []
