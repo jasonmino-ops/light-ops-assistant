@@ -624,7 +624,7 @@ function ensureTikTokPixel() {
   return true
 }
 
-function trackTikTok(event: 'ViewContent' | 'SubmitForm' | 'Contact', payload: Record<string, unknown>) {
+function trackTikTok(event: 'ViewContent' | 'SubmitForm' | 'PlaceAnOrder' | 'Contact', payload: Record<string, unknown>) {
   if (!ensureTikTokPixel()) return
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ttq = (window as any).ttq
@@ -828,8 +828,21 @@ export default function MarketingProductPage() {
         setError(readableOrderError(body, text.errorSubmit))
         return
       }
+      const rawPayableAmount = Number(body.totalAmount ?? total)
+      const payableAmount = Number.isFinite(rawPayableAmount) ? +rawPayableAmount.toFixed(2) : total
+      trackTikTok('PlaceAnOrder', {
+        value: payableAmount,
+        currency: 'USD',
+        content_type: 'product',
+        content_id: data.product.id,
+        content_ids: [data.product.id, data.slug],
+        description: localizedTitle(data, lang),
+        store_code: data.store.code,
+        slug: data.slug,
+        ...trackingParams,
+      })
       setCouponPromptDismissed(false)
-      setResult({ orderNo: body.orderNo, totalAmount: Number(body.totalAmount ?? total), telegramLinked: !!data.customerBound })
+      setResult({ orderNo: body.orderNo, totalAmount: payableAmount, telegramLinked: !!data.customerBound })
     } catch {
       setError(text.errorNetwork)
     } finally {
