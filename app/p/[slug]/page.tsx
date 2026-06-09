@@ -219,6 +219,7 @@ const I18N: Record<Lang, {
   backToProduct: string
   continueBrowsing: string
   contactSeller: string
+  couponLaterMessage: string
   claimFallback: string
   copyOrderNo: string
   copied: string
@@ -286,6 +287,7 @@ const I18N: Record<Lang, {
     backToProduct: 'ត្រឡប់ទៅផលិតផល',
     continueBrowsing: 'បន្តមើល',
     contactSeller: 'ទាក់ទងហាង',
+    couponLaterMessage: 'បានរក្សាទុកសម្រាប់ពេលក្រោយ។ អ្នកអាចបន្តមើល ឬទាក់ទងហាង។',
     claimFallback: 'Telegram Bot មិនទាន់បានកំណត់។ សូមចម្លងលេខបញ្ជាទិញ ហើយទាក់ទងហាង។',
     copyOrderNo: 'ចម្លងលេខបញ្ជាទិញ',
     copied: 'បានចម្លង',
@@ -353,6 +355,7 @@ const I18N: Record<Lang, {
     backToProduct: 'Back to product',
     continueBrowsing: 'Continue browsing',
     contactSeller: 'Contact seller',
+    couponLaterMessage: 'Saved for later. You can continue browsing or contact the seller.',
     claimFallback: 'Telegram Bot is not configured yet. Please copy your order number and contact the shop.',
     copyOrderNo: 'Copy order number',
     copied: 'Copied',
@@ -420,6 +423,7 @@ const I18N: Record<Lang, {
     backToProduct: '返回商品页',
     continueBrowsing: '继续浏览',
     contactSeller: '联系商家',
+    couponLaterMessage: '已稍后处理，可继续浏览或联系商家',
     claimFallback: '暂未配置 Telegram Bot，请复制订单号联系客服。',
     copyOrderNo: '复制订单号',
     copied: '已复制',
@@ -707,6 +711,7 @@ export default function MarketingProductPage() {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<OrderField, true>>>({})
   const [error, setError] = useState('')
   const [result, setResult] = useState<OrderResult | null>(null)
+  const [couponPromptDismissed, setCouponPromptDismissed] = useState(false)
   const [copiedOrderNo, setCopiedOrderNo] = useState(false)
   const [trackingParams, setTrackingParams] = useState<TrackingParams>({})
   const nameRef = useRef<HTMLInputElement | null>(null)
@@ -824,6 +829,7 @@ export default function MarketingProductPage() {
         setError(readableOrderError(body, text.errorSubmit))
         return
       }
+      setCouponPromptDismissed(false)
       setResult({ orderNo: body.orderNo, totalAmount: Number(body.totalAmount ?? total), telegramLinked: !!data.customerBound })
     } catch {
       setError(text.errorNetwork)
@@ -1191,50 +1197,56 @@ export default function MarketingProductPage() {
             )}
           </div>
         </section>
-        <section style={s.claimBox}>
-          <div style={s.claimGiftIcon}>🎁</div>
-          {result.telegramLinked ? (
-            <>
-              <div style={s.claimGiftTitle}>{text.savedCouponTitle}</div>
-              <a href={couponLink} style={s.claimButton}>
-                {text.viewCoupons}
-              </a>
-            </>
-          ) : (
-            <>
-              <div style={s.claimGiftTitle}>{text.giftTitle}</div>
-              <h2 style={s.claimTitle}>{text.claimTitle}</h2>
-              <p style={{ ...s.claimText, color: theme.muted }}>{text.claimText}</p>
-              <div style={s.claimBenefits}>
-                {text.claimBenefits.map((benefit) => (
-                  <div key={benefit} style={s.claimBenefit}>
-                    {benefit}
-                  </div>
-                ))}
-              </div>
-              {benefitLink ? (
-            <a
-              href={benefitLink}
-              target="_blank"
-              rel="noreferrer"
-              style={s.claimButton}
-            >
-              {text.claimButton}
-            </a>
-              ) : (
-            <>
-              <p style={{ ...s.claimFallback, color: theme.muted }}>{text.claimFallback}</p>
-              <button type="button" style={s.claimButton} onClick={() => copyOrderNo(result.orderNo)}>
-                {copiedOrderNo ? text.copied : text.copyOrderNo}
-              </button>
-            </>
-              )}
-              <button type="button" style={s.laterButton}>
-                {text.laterButton}
-              </button>
-            </>
-          )}
-        </section>
+        {couponPromptDismissed ? (
+          <section style={{ ...s.dismissedNotice, borderColor: theme.badgeBorder, background: theme.badgeBg, color: theme.badgeText }}>
+            {text.couponLaterMessage}
+          </section>
+        ) : (
+          <section style={s.claimBox}>
+            <div style={s.claimGiftIcon}>🎁</div>
+            {result.telegramLinked ? (
+              <>
+                <div style={s.claimGiftTitle}>{text.savedCouponTitle}</div>
+                <a href={couponLink} style={s.claimButton}>
+                  {text.viewCoupons}
+                </a>
+              </>
+            ) : (
+              <>
+                <div style={s.claimGiftTitle}>{text.giftTitle}</div>
+                <h2 style={s.claimTitle}>{text.claimTitle}</h2>
+                <p style={{ ...s.claimText, color: theme.muted }}>{text.claimText}</p>
+                <div style={s.claimBenefits}>
+                  {text.claimBenefits.map((benefit) => (
+                    <div key={benefit} style={s.claimBenefit}>
+                      {benefit}
+                    </div>
+                  ))}
+                </div>
+                {benefitLink ? (
+                  <a
+                    href={benefitLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={s.claimButton}
+                  >
+                    {text.claimButton}
+                  </a>
+                ) : (
+                  <>
+                    <p style={{ ...s.claimFallback, color: theme.muted }}>{text.claimFallback}</p>
+                    <button type="button" style={s.claimButton} onClick={() => copyOrderNo(result.orderNo)}>
+                      {copiedOrderNo ? text.copied : text.copyOrderNo}
+                    </button>
+                  </>
+                )}
+                <button type="button" style={s.laterButton} onClick={() => setCouponPromptDismissed(true)}>
+                  {text.laterButton}
+                </button>
+              </>
+            )}
+          </section>
+        )}
         {legalLinks}
       </main>
     )
@@ -1472,6 +1484,7 @@ const s: Record<string, CSSProperties> = {
   claimButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: 50, border: 0, borderRadius: 999, background: '#16a34a', color: '#fff', fontSize: 16, fontWeight: 950, textDecoration: 'none', cursor: 'pointer', boxShadow: '0 10px 20px rgba(22,163,74,0.22)' },
   laterButton: { marginTop: 10, width: '100%', height: 44, border: '1px solid #e5e7eb', borderRadius: 999, background: '#fff', color: '#667085', fontSize: 14, fontWeight: 900, cursor: 'pointer' },
   claimFallback: { margin: '0 0 12px', fontSize: 13, lineHeight: 1.45 },
+  dismissedNotice: { margin: '0 18px 18px', border: '1px solid #e3e8df', borderRadius: 8, padding: '12px 14px', fontSize: 14, lineHeight: 1.45, fontWeight: 800, textAlign: 'center' },
   legalFooter: { display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, padding: '12px 18px 2px', color: '#8a94a6', fontSize: 12 },
   legalLink: { color: '#667085', textDecoration: 'none', fontWeight: 700 },
   legalDot: { color: '#c0c7d2' },
