@@ -13,6 +13,7 @@ const TRACKING_PARAM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'creato
 
 type PageData = {
   slug: string
+  customerBound: boolean
   templateType: TemplateType | null
   title: string
   titleZh: string | null
@@ -458,6 +459,19 @@ function normalizeLang(value: string | null | undefined): Lang | null {
   return null
 }
 
+function readTelegramUserId(): string | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tg = (window as any).Telegram?.WebApp
+  if (!tg?.initData) return null
+  try {
+    const userStr = new URLSearchParams(tg.initData).get('user')
+    if (!userStr) return null
+    return String(JSON.parse(userStr).id)
+  } catch {
+    return null
+  }
+}
+
 function nonEmpty(value: string | null | undefined): string | null {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
@@ -672,7 +686,9 @@ export default function MarketingProductPage() {
   }, [slug])
 
   useEffect(() => {
-    fetch(`/api/public/product-pages/${encodeURIComponent(slug)}`)
+    const customerTelegramId = readTelegramUserId()
+    const qs = customerTelegramId ? `?tgId=${encodeURIComponent(customerTelegramId)}` : ''
+    fetch(`/api/public/product-pages/${encodeURIComponent(slug)}${qs}`)
       .then(async (res) => {
         if (res.status === 404) { setNotFound(true); return null }
         const body = await res.json()
@@ -728,15 +744,7 @@ export default function MarketingProductPage() {
     setSubmitting(true)
     setError('')
 
-    let customerTelegramId: string | null = null
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tg = (window as any).Telegram?.WebApp
-    if (tg?.initData) {
-      try {
-        const userStr = new URLSearchParams(tg.initData).get('user')
-        if (userStr) customerTelegramId = String(JSON.parse(userStr).id)
-      } catch { /* keep anonymous */ }
-    }
+    const customerTelegramId = readTelegramUserId()
 
     try {
       const searchParams = new URLSearchParams(window.location.search)
@@ -767,7 +775,7 @@ export default function MarketingProductPage() {
         setError(body.message ?? body.error ?? text.errorSubmit)
         return
       }
-      setResult({ orderNo: body.orderNo, totalAmount: Number(body.totalAmount ?? total), telegramLinked: !!customerTelegramId })
+      setResult({ orderNo: body.orderNo, totalAmount: Number(body.totalAmount ?? total), telegramLinked: !!data.customerBound })
     } catch {
       setError(text.errorNetwork)
     } finally {

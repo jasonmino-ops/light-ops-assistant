@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await params
+  const tgId = req.nextUrl.searchParams.get('tgId')?.trim() || null
 
   const page = await prisma.marketingProductPage.findUnique({
     where: { slug },
@@ -67,8 +68,18 @@ export async function GET(
     return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
   }
 
+  let customerBound = false
+  if (tgId) {
+    const contact = await prisma.storeCustomerContact.findUnique({
+      where: { storeCode_telegramId: { storeCode: page.store.code, telegramId: tgId } },
+      select: { id: true, status: true },
+    })
+    customerBound = !!contact && contact.status === 'active'
+  }
+
   return NextResponse.json({
     slug: page.slug,
+    customerBound,
     templateType: page.templateType ?? 'TIKTOK_HOT',
     title: page.title || page.product.name,
     titleZh: page.titleZh,
