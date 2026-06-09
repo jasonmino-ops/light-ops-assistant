@@ -46,6 +46,7 @@ type TemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
 type TemplateSection = 'price' | 'features' | 'details' | 'reviews' | 'trust' | 'order'
 type TrackingParamKey = typeof TRACKING_PARAM_KEYS[number]
 type TrackingParams = Partial<Record<TrackingParamKey, string>>
+type OrderField = 'name' | 'phone' | 'address'
 
 type TemplateTheme = {
   background: string
@@ -293,9 +294,9 @@ const I18N: Record<Lang, {
     lngLabel: 'Lng',
     openMap: 'មើលក្នុងផែនទី',
     addressDetailHint: 'អាចបន្ថែមអាសយដ្ឋានលម្អិត លេខផ្ទះ ជាន់ ឈ្មោះហាង ឬចំណាំ។',
-    errorName: 'សូមបំពេញឈ្មោះ',
-    errorPhone: 'សូមបំពេញលេខទូរស័ព្ទ',
-    errorAddress: 'សូមបំពេញអាសយដ្ឋានដឹកជញ្ជូន',
+    errorName: 'សូមបញ្ចូលឈ្មោះរបស់អ្នក',
+    errorPhone: 'សូមបញ្ចូលលេខទូរស័ព្ទរបស់អ្នក',
+    errorAddress: 'សូមបញ្ចូលអាសយដ្ឋានដឹកជញ្ជូន',
     errorSubmit: 'ផ្ញើមិនបាន សូមព្យាយាមម្តងទៀត',
     errorNetwork: 'បញ្ហាបណ្តាញ សូមព្យាយាមម្តងទៀត',
   },
@@ -421,9 +422,9 @@ const I18N: Record<Lang, {
     lngLabel: 'Lng',
     openMap: '在地图中查看',
     addressDetailHint: '可继续补充详细地址、门牌号、楼层、店名或备注。',
-    errorName: '请填写姓名',
-    errorPhone: '请填写电话',
-    errorAddress: '请填写收货地址',
+    errorName: '请输入姓名',
+    errorPhone: '请输入联系电话',
+    errorAddress: '请输入配送地址',
     errorSubmit: '提交失败，请重试',
     errorNetwork: '网络错误，请重试',
   },
@@ -492,6 +493,17 @@ function localizedFeatures(data: PageData, lang: Lang): string[] {
 function localizedButtonText(data: PageData, lang: Lang, fallback: string): string {
   const localized = lang === 'km' ? data.buttonTextKm : lang === 'en' ? data.buttonTextEn : data.buttonTextZh
   return nonEmpty(localized) || nonEmpty(data.buttonText) || fallback
+}
+
+function readableOrderError(body: unknown, fallback: string): string {
+  if (!body || typeof body !== 'object') return fallback
+  const message = 'message' in body ? body.message : 'error' in body ? body.error : null
+  if (typeof message !== 'string') return fallback
+  const trimmed = message.trim()
+  if (!trimmed || /^\d+$/.test(trimmed) || /^[A-Z0-9_]+$/.test(trimmed) || /unknown|network|error/i.test(trimmed)) {
+    return fallback
+  }
+  return trimmed.slice(0, 160)
 }
 
 function trackingStorageKey(slug: string) {
@@ -673,10 +685,14 @@ export default function MarketingProductPage() {
   const [geoBusy, setGeoBusy] = useState(false)
   const [geoMsg, setGeoMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<OrderField, true>>>({})
   const [error, setError] = useState('')
   const [result, setResult] = useState<OrderResult | null>(null)
   const [copiedOrderNo, setCopiedOrderNo] = useState(false)
   const [trackingParams, setTrackingParams] = useState<TrackingParams>({})
+  const nameRef = useRef<HTMLInputElement | null>(null)
+  const phoneRef = useRef<HTMLInputElement | null>(null)
+  const addressRef = useRef<HTMLTextAreaElement | null>(null)
   const viewTrackedRef = useRef('')
   const text = I18N[lang]
 
@@ -728,6 +744,22 @@ export default function MarketingProductPage() {
 
   async function submitOrder() {
     if (!data || submitting) return
+    const nextErrors: Partial<Record<OrderField, true>> = {}
+    if (!name.trim()) nextErrors.name = true
+    if (!phone.trim()) nextErrors.phone = true
+    if (!address.trim()) nextErrors.address = true
+    const firstError = (['name', 'phone', 'address'] as OrderField[]).find((field) => nextErrors[field])
+    if (firstError) {
+      setFieldErrors(nextErrors)
+      setError('')
+      setTimeout(() => {
+        const target = firstError === 'name' ? nameRef.current : firstError === 'phone' ? phoneRef.current : addressRef.current
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        target?.focus({ preventScroll: true })
+      }, 0)
+      return
+    }
+
     trackTikTok('SubmitForm', {
       content_id: data.product.id,
       content_name: localizedTitle(data, lang),
@@ -738,10 +770,8 @@ export default function MarketingProductPage() {
       slug: data.slug,
       ...trackingParams,
     })
-    if (!name.trim()) { setError(text.errorName); return }
-    if (!phone.trim()) { setError(text.errorPhone); return }
-    if (!address.trim()) { setError(text.errorAddress); return }
     setSubmitting(true)
+    setFieldErrors({})
     setError('')
 
     const customerTelegramId = readTelegramUserId()
@@ -772,7 +802,7 @@ export default function MarketingProductPage() {
       })
       const body = await res.json()
       if (!res.ok) {
-        setError(body.message ?? body.error ?? text.errorSubmit)
+        setError(readableOrderError(body, text.errorSubmit))
         return
       }
       setResult({ orderNo: body.orderNo, totalAmount: Number(body.totalAmount ?? total), telegramLinked: !!data.customerBound })
@@ -816,6 +846,7 @@ export default function MarketingProductPage() {
           ) return locationLine
           return `${current}\n${locationLine}`.slice(0, 500)
         })
+        setFieldErrors((prev) => ({ ...prev, address: undefined }))
         setGeoMsg({ ok: true, text: text.locationSuccess })
         setGeoBusy(false)
       },
@@ -1001,11 +1032,45 @@ export default function MarketingProductPage() {
     <section key="order" style={{ ...s.section, borderColor: theme.sectionBorder }}>
       <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.orderTitle}</h2>
       <label style={{ ...s.label, color: theme.text }}>{text.name}</label>
-      <input style={s.input} value={name} onChange={(e) => setName(e.target.value)} placeholder={text.namePlaceholder} />
+      <input
+        ref={nameRef}
+        style={{ ...s.input, ...(fieldErrors.name ? s.inputError : {}) }}
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value)
+          if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: undefined }))
+        }}
+        placeholder={text.namePlaceholder}
+        aria-invalid={!!fieldErrors.name}
+      />
+      {fieldErrors.name && <div style={s.fieldError}>{text.errorName}</div>}
       <label style={{ ...s.label, color: theme.text }}>{text.phone}</label>
-      <input style={s.input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={text.phonePlaceholder} inputMode="tel" />
+      <input
+        ref={phoneRef}
+        style={{ ...s.input, ...(fieldErrors.phone ? s.inputError : {}) }}
+        value={phone}
+        onChange={(e) => {
+          setPhone(e.target.value)
+          if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }))
+        }}
+        placeholder={text.phonePlaceholder}
+        inputMode="tel"
+        aria-invalid={!!fieldErrors.phone}
+      />
+      {fieldErrors.phone && <div style={s.fieldError}>{text.errorPhone}</div>}
       <label style={{ ...s.label, color: theme.text }}>{text.address}</label>
-      <textarea style={s.textarea} value={address} onChange={(e) => setAddress(e.target.value)} placeholder={text.addressPlaceholder} />
+      <textarea
+        ref={addressRef}
+        style={{ ...s.textarea, ...(fieldErrors.address ? s.inputError : {}) }}
+        value={address}
+        onChange={(e) => {
+          setAddress(e.target.value)
+          if (fieldErrors.address) setFieldErrors((prev) => ({ ...prev, address: undefined }))
+        }}
+        placeholder={text.addressPlaceholder}
+        aria-invalid={!!fieldErrors.address}
+      />
+      {fieldErrors.address && <div style={s.fieldError}>{text.errorAddress}</div>}
       <div style={{ ...s.addressHint, color: theme.muted }}>{text.addressDetailHint}</div>
       <button
         type="button"
@@ -1329,7 +1394,9 @@ const s: Record<string, CSSProperties> = {
   trustDot: { width: 8, height: 8, borderRadius: 999, flexShrink: 0 },
   label: { display: 'block', fontSize: 13, fontWeight: 700, color: '#344236', margin: '12px 0 6px' },
   input: { width: '100%', boxSizing: 'border-box', height: 46, border: '1px solid #d5ddd1', borderRadius: 6, padding: '0 12px', fontSize: 15, background: '#fff' },
+  inputError: { borderColor: '#dc2626', background: '#fffafa' },
   textarea: { width: '100%', boxSizing: 'border-box', minHeight: 82, border: '1px solid #d5ddd1', borderRadius: 6, padding: 12, fontSize: 15, background: '#fff', resize: 'vertical' },
+  fieldError: { marginTop: 5, color: '#dc2626', fontSize: 12, lineHeight: 1.4, fontWeight: 700 },
   addressHint: { marginTop: 6, fontSize: 12, lineHeight: 1.45 },
   locationBtn: { marginTop: 8, width: '100%', minHeight: 42, border: '1px solid #c8d4c3', borderRadius: 6, background: '#f7faf5', fontSize: 14, fontWeight: 900, cursor: 'pointer' },
   locationMsg: { marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 6, padding: '8px 10px', fontSize: 12, lineHeight: 1.45 },
