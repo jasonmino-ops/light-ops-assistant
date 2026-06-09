@@ -186,12 +186,33 @@ export async function POST(req: NextRequest) {
     where: { tenantId: ctx.tenantId, storeId: ctx.storeId, productId },
     select: PAGE_SELECT,
   })
-  if (existing) return NextResponse.json(mapPage(existing))
-
-  const slug = await uniqueSlug(`${product.name}-${product.barcode}`)
   const generated = body.mode === 'RULE_GENERATE'
     ? ruleMarketingPageGenerator.generate(product)
     : null
+  if (existing) {
+    if (!generated) return NextResponse.json(mapPage(existing))
+
+    const updated = await prisma.marketingProductPage.update({
+      where: { id: existing.id },
+      data: {
+        title: generated.title,
+        subtitle: generated.subtitle,
+        salePrice: generated.salePrice,
+        originalPrice: generated.originalPrice,
+        soldCount: generated.soldCount,
+        feature1: generated.features[0],
+        feature2: generated.features[1],
+        feature3: generated.features[2],
+        feature4: generated.features[3],
+        feature5: generated.features[4],
+        buttonText: generated.buttonText,
+      },
+      select: PAGE_SELECT,
+    })
+    return NextResponse.json(mapPage(updated))
+  }
+
+  const slug = await uniqueSlug(`${product.name}-${product.barcode}`)
   const created = await prisma.marketingProductPage.create({
     data: {
       tenantId: ctx.tenantId,

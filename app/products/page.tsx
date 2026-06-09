@@ -476,8 +476,8 @@ export default function ProductsPage() {
   async function handleAiGenerateMarketingPage(product: Product) {
     const existing = marketingPages[product.id]
     if (existing) {
-      openMarketingEditor(product, existing)
-      return
+      const ok = window.confirm('将重新生成标题、价格、卖点等营销文案，保留图片和链接，是否继续？')
+      if (!ok) return
     }
     setMarketingMsg(null)
     setMarketingGenerating((prev) => ({ ...prev, [product.id]: true }))
@@ -495,7 +495,7 @@ export default function ProductsPage() {
       const page = body as MarketingProductPage
       setMarketingPages((prev) => ({ ...prev, [page.productId]: page }))
       openMarketingEditor(product, page)
-      setMarketingMsg('AI已生成营销页草稿，可继续微调')
+      setMarketingMsg(existing ? 'AI已重新生成营销文案，可继续微调' : 'AI已生成营销页草稿，可继续微调')
     } catch {
       setMarketingMsg(t('common.networkError'))
     } finally {
@@ -1778,16 +1778,14 @@ export default function ProductsPage() {
 	                            {listImgError[p.id] && <div style={ls.imgErr}>{listImgError[p.id]}</div>}
 
 	                            <div style={ls.actionRow}>
-	                              {!marketingPage && (
-	                                <button
-	                                  type="button"
-	                                  style={{ ...ls.actionBtn, opacity: generatingMarketing ? 0.5 : 1 }}
-	                                  disabled={generatingMarketing}
-	                                  onClick={() => handleAiGenerateMarketingPage(p)}
-	                                >
-	                                  {generatingMarketing ? '生成中...' : '✨ AI生成营销页'}
-	                                </button>
-	                              )}
+	                              <button
+	                                type="button"
+	                                style={{ ...ls.actionBtn, opacity: generatingMarketing ? 0.5 : 1 }}
+	                                disabled={generatingMarketing}
+	                                onClick={() => handleAiGenerateMarketingPage(p)}
+	                              >
+	                                {generatingMarketing ? '生成中...' : marketingPage ? '✨ AI重新生成' : '✨ AI生成营销页'}
+	                              </button>
 	                              <button type="button" style={ls.actionBtn} onClick={() => handleMarketingPage(p)}>
 	                                {marketingPage ? '高级编辑' : '手动营销页'}
 	                              </button>
