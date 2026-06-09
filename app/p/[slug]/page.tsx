@@ -214,6 +214,12 @@ const I18N: Record<Lang, {
   claimFallback: string
   copyOrderNo: string
   copied: string
+  useLocation: string
+  locating: string
+  locationSuccess: string
+  locationFail: string
+  locationUnsupported: string
+  locationAddress: (lat: string, lng: string) => string
   errorName: string
   errorPhone: string
   errorAddress: string
@@ -264,6 +270,12 @@ const I18N: Record<Lang, {
     claimFallback: 'Telegram Bot មិនទាន់បានកំណត់។ សូមចម្លងលេខបញ្ជាទិញ ហើយទាក់ទងហាង។',
     copyOrderNo: 'ចម្លងលេខបញ្ជាទិញ',
     copied: 'បានចម្លង',
+    useLocation: '📍 ប្រើទីតាំងបច្ចុប្បន្ន',
+    locating: 'កំពុងរកទីតាំង...',
+    locationSuccess: 'បានរក្សាទុកទីតាំង។ អ្នកអាចបន្ថែមព័ត៌មានអាសយដ្ឋាន។',
+    locationFail: 'មិនអាចយកទីតាំងបានទេ សូមបំពេញអាសយដ្ឋានដោយដៃ។',
+    locationUnsupported: 'កម្មវិធីរុករកមិនគាំទ្រទីតាំងទេ សូមបំពេញអាសយដ្ឋានដោយដៃ។',
+    locationAddress: (lat, lng) => `បានយកទីតាំងបច្ចុប្បន្ន៖ ${lat},${lng}`,
     errorName: 'សូមបំពេញឈ្មោះ',
     errorPhone: 'សូមបំពេញលេខទូរស័ព្ទ',
     errorAddress: 'សូមបំពេញអាសយដ្ឋានដឹកជញ្ជូន',
@@ -314,6 +326,12 @@ const I18N: Record<Lang, {
     claimFallback: 'Telegram Bot is not configured yet. Please copy your order number and contact the shop.',
     copyOrderNo: 'Copy order number',
     copied: 'Copied',
+    useLocation: '📍 Use current location',
+    locating: 'Getting location...',
+    locationSuccess: 'Location saved. You can add address details manually.',
+    locationFail: 'Could not get location. Please enter your address manually.',
+    locationUnsupported: 'Location is not supported. Please enter your address manually.',
+    locationAddress: (lat, lng) => `Current location saved: ${lat},${lng}`,
     errorName: 'Please enter your name',
     errorPhone: 'Please enter your phone number',
     errorAddress: 'Please enter your delivery address',
@@ -364,6 +382,12 @@ const I18N: Record<Lang, {
     claimFallback: '暂未配置 Telegram Bot，请复制订单号联系客服。',
     copyOrderNo: '复制订单号',
     copied: '已复制',
+    useLocation: '📍 使用当前位置',
+    locating: '正在获取定位...',
+    locationSuccess: '已获取定位，可继续补充详细地址。',
+    locationFail: '无法获取定位，请手动填写地址。',
+    locationUnsupported: '当前浏览器不支持定位，请手动填写地址。',
+    locationAddress: (lat, lng) => `已获取当前位置：${lat},${lng}`,
     errorName: '请填写姓名',
     errorPhone: '请填写电话',
     errorAddress: '请填写收货地址',
@@ -598,6 +622,10 @@ export default function MarketingProductPage() {
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
   const [note, setNote] = useState('')
+  const [deliveryLat, setDeliveryLat] = useState<number | null>(null)
+  const [deliveryLng, setDeliveryLng] = useState<number | null>(null)
+  const [geoBusy, setGeoBusy] = useState(false)
+  const [geoMsg, setGeoMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<OrderResult | null>(null)
@@ -694,6 +722,7 @@ export default function MarketingProductPage() {
           customerPhone: phone.trim(),
           deliveryAddress: address.trim(),
           deliveryNote: note.trim() || undefined,
+          ...(deliveryLat != null && deliveryLng != null ? { deliveryLat, deliveryLng } : {}),
           remark: buildOrderRemark(note, trackingParams),
           marketingTracking: trackingParams,
           ...(campaignCode ? { campaignCode } : {}),
@@ -717,6 +746,45 @@ export default function MarketingProductPage() {
   function switchLang(nextLang: Lang) {
     setLang(nextLang)
     try { localStorage.setItem(LS_KEY, nextLang) } catch { /* ignore */ }
+  }
+
+  function useCurrentLocation() {
+    if (geoBusy) return
+    setGeoMsg(null)
+    if (!navigator.geolocation) {
+      setGeoMsg({ ok: false, text: text.locationUnsupported })
+      return
+    }
+
+    setGeoBusy(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(6))
+        const lng = Number(pos.coords.longitude.toFixed(6))
+        const latText = lat.toFixed(5)
+        const lngText = lng.toFixed(5)
+        const locationLine = text.locationAddress(latText, lngText)
+        setDeliveryLat(lat)
+        setDeliveryLng(lng)
+        setAddress((prev) => {
+          const current = prev.trim()
+          if (!current) return locationLine
+          if (
+            current.startsWith('已获取当前位置：') ||
+            current.startsWith('Current location saved:') ||
+            current.startsWith('បានយកទីតាំងបច្ចុប្បន្ន៖')
+          ) return locationLine
+          return `${current}\n${locationLine}`.slice(0, 500)
+        })
+        setGeoMsg({ ok: true, text: text.locationSuccess })
+        setGeoBusy(false)
+      },
+      () => {
+        setGeoMsg({ ok: false, text: text.locationFail })
+        setGeoBusy(false)
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+    )
   }
 
   function copyOrderNo(orderNo: string) {
@@ -898,6 +966,27 @@ export default function MarketingProductPage() {
       <input style={s.input} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={text.phonePlaceholder} inputMode="tel" />
       <label style={{ ...s.label, color: theme.text }}>{text.address}</label>
       <textarea style={s.textarea} value={address} onChange={(e) => setAddress(e.target.value)} placeholder={text.addressPlaceholder} />
+      <button
+        type="button"
+        style={{ ...s.locationBtn, borderColor: theme.badgeBorder, background: theme.pointBg, color: theme.accentDark, opacity: geoBusy ? 0.65 : 1 }}
+        disabled={geoBusy}
+        onClick={useCurrentLocation}
+      >
+        {geoBusy ? text.locating : text.useLocation}
+      </button>
+      {geoMsg && (
+        <div
+          style={{
+            ...s.locationMsg,
+            ...(geoMsg.ok ? s.locationMsgOk : s.locationMsgFail),
+            ...(geoMsg.ok
+              ? { borderColor: theme.badgeBorder, background: theme.badgeBg, color: theme.badgeText }
+              : { borderColor: theme.countdownBorder, background: theme.countdownBg, color: theme.countdownText }),
+          }}
+        >
+          {geoMsg.text}
+        </div>
+      )}
       <label style={{ ...s.label, color: theme.text }}>{text.note}</label>
       <input style={s.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder={text.notePlaceholder} />
       <label style={{ ...s.label, color: theme.text }}>{text.quantity}</label>
@@ -1170,6 +1259,10 @@ const s: Record<string, CSSProperties> = {
   label: { display: 'block', fontSize: 13, fontWeight: 700, color: '#344236', margin: '12px 0 6px' },
   input: { width: '100%', boxSizing: 'border-box', height: 46, border: '1px solid #d5ddd1', borderRadius: 6, padding: '0 12px', fontSize: 15, background: '#fff' },
   textarea: { width: '100%', boxSizing: 'border-box', minHeight: 82, border: '1px solid #d5ddd1', borderRadius: 6, padding: 12, fontSize: 15, background: '#fff', resize: 'vertical' },
+  locationBtn: { marginTop: 8, width: '100%', minHeight: 42, border: '1px solid #c8d4c3', borderRadius: 6, background: '#f7faf5', fontSize: 14, fontWeight: 900, cursor: 'pointer' },
+  locationMsg: { marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 6, padding: '8px 10px', fontSize: 12, lineHeight: 1.45 },
+  locationMsgOk: { background: '#f0fdf4', color: '#166534' },
+  locationMsgFail: { background: '#fff7ed', color: '#c2410c' },
   qtyRow: { display: 'flex', alignItems: 'center', gap: 10 },
   qtyBtn: { width: 40, height: 40, borderRadius: 6, border: '1px solid #c8d4c3', background: '#f7faf5', fontSize: 20, cursor: 'pointer' },
   qtyNum: { minWidth: 32, textAlign: 'center', fontSize: 18, fontWeight: 800 },
