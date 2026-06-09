@@ -115,7 +115,7 @@ function LandingInner() {
   useEffect(() => {
     if (!data?.targetUrl?.startsWith('/p/') || autoRedirectedRef.current) return
     autoRedirectedRef.current = true
-    fetch(`/api/v/${code}/click`, { method: 'POST' }).catch(() => {})
+    recordClick(code)
     window.location.replace(buildProductPageUrl(data.targetUrl, code, 'order'))
   }, [code, data])
 
@@ -133,8 +133,14 @@ function LandingInner() {
     return `${targetUrl}${sep}ref=${encodeURIComponent(refCode)}&intent=${intent}`
   }
 
+  function recordClick(refCode: string) {
+    const url = `/api/v/${encodeURIComponent(refCode)}/click`
+    if (navigator.sendBeacon?.(url)) return
+    fetch(url, { method: 'POST', keepalive: true }).catch(() => {})
+  }
+
   function handleIntent(intent: 'order' | 'menu') {
-    fetch(`/api/v/${code}/click`, { method: 'POST' }).catch(() => {})
+    recordClick(code)
     if (data?.targetUrl?.startsWith('/p/')) {
       window.location.href = buildProductPageUrl(data.targetUrl, code, intent)
       return
@@ -179,6 +185,10 @@ function LandingInner() {
   }
 
   const s: Record<string, CSSProperties> = {
+    blank: {
+      minHeight: '100dvh',
+      background: '#fff',
+    },
     wrap: {
       minHeight: '100dvh',
       background: '#f9fafb',
@@ -279,11 +289,11 @@ function LandingInner() {
   }
 
   if (!data) {
-    return (
-      <div style={s.wrap}>
-        <div style={s.loader}>{I18N[lang].loading}</div>
-      </div>
-    )
+    return <div style={s.blank} aria-label={I18N[lang].loading} />
+  }
+
+  if (data.targetUrl?.startsWith('/p/')) {
+    return <div style={s.blank} aria-label={I18N[lang].loading} />
   }
 
   // ── has banner: lang buttons overlay on banner; no banner: show below card top ──
