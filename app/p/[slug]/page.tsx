@@ -216,6 +216,9 @@ const I18N: Record<Lang, {
   laterButton: string
   savedCouponTitle: string
   viewCoupons: string
+  backToProduct: string
+  continueBrowsing: string
+  contactSeller: string
   claimFallback: string
   copyOrderNo: string
   copied: string
@@ -280,6 +283,9 @@ const I18N: Record<Lang, {
     laterButton: 'ពេលក្រោយ',
     savedCouponTitle: '🎁 អត្ថប្រយោជន៍ត្រូវបានរក្សាទុកក្នុងគណនីរបស់អ្នក',
     viewCoupons: 'មើលគូប៉ុង',
+    backToProduct: 'ត្រឡប់ទៅផលិតផល',
+    continueBrowsing: 'បន្តមើល',
+    contactSeller: 'ទាក់ទងហាង',
     claimFallback: 'Telegram Bot មិនទាន់បានកំណត់។ សូមចម្លងលេខបញ្ជាទិញ ហើយទាក់ទងហាង។',
     copyOrderNo: 'ចម្លងលេខបញ្ជាទិញ',
     copied: 'បានចម្លង',
@@ -344,6 +350,9 @@ const I18N: Record<Lang, {
     laterButton: 'Maybe later',
     savedCouponTitle: '🎁 Benefits are saved to your account',
     viewCoupons: 'View coupons',
+    backToProduct: 'Back to product',
+    continueBrowsing: 'Continue browsing',
+    contactSeller: 'Contact seller',
     claimFallback: 'Telegram Bot is not configured yet. Please copy your order number and contact the shop.',
     copyOrderNo: 'Copy order number',
     copied: 'Copied',
@@ -408,6 +417,9 @@ const I18N: Record<Lang, {
     laterButton: '稍后再说',
     savedCouponTitle: '🎁 优惠已自动保存到您的账户',
     viewCoupons: '查看优惠',
+    backToProduct: '返回商品页',
+    continueBrowsing: '继续浏览',
+    contactSeller: '联系商家',
     claimFallback: '暂未配置 Telegram Bot，请复制订单号联系客服。',
     copyOrderNo: '复制订单号',
     copied: '已复制',
@@ -504,6 +516,13 @@ function readableOrderError(body: unknown, fallback: string): string {
     return fallback
   }
   return trimmed.slice(0, 160)
+}
+
+function productReturnHref(slug: string, lang: Lang): string {
+  const params = new URLSearchParams(window.location.search)
+  params.set('lang', lang)
+  const query = params.toString()
+  return `/p/${encodeURIComponent(slug)}${query ? `?${query}` : ''}`
 }
 
 function trackingStorageKey(slug: string) {
@@ -1138,6 +1157,8 @@ export default function MarketingProductPage() {
     const benefitLink = CUSTOMER_BOT
       ? `https://t.me/${CUSTOMER_BOT}?start=${encodeURIComponent(bindPayload)}`
       : ''
+    const productHref = productReturnHref(slug, lang)
+    const contactLink = CUSTOMER_BOT ? `https://t.me/${CUSTOMER_BOT}` : ''
     const couponLink = `/me/coupons?code=${encodeURIComponent(data.store.code)}`
 
     return (
@@ -1149,6 +1170,26 @@ export default function MarketingProductPage() {
           <p style={s.successText}>{text.successText}</p>
           <div style={s.orderNo}>{text.orderNo}：{result.orderNo}</div>
           <div style={{ ...s.successTotal, color: theme.accent }}>{text.total}：${result.totalAmount.toFixed(2)}</div>
+          <div style={s.successActions}>
+            <button
+              type="button"
+              style={{ ...s.successPrimaryButton, background: theme.accent }}
+              onClick={() => {
+                setResult(null)
+                window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0)
+              }}
+            >
+              {text.backToProduct}
+            </button>
+            <a href={productHref} style={s.successSecondaryButton}>
+              {text.continueBrowsing}
+            </a>
+            {contactLink && (
+              <a href={contactLink} target="_blank" rel="noreferrer" style={s.successSecondaryButton}>
+                {text.contactSeller}
+              </a>
+            )}
+          </div>
         </section>
         <section style={s.claimBox}>
           <div style={s.claimGiftIcon}>🎁</div>
@@ -1418,6 +1459,9 @@ const s: Record<string, CSSProperties> = {
   successText: { color: '#667085', lineHeight: 1.5, fontSize: 14 },
   orderNo: { marginTop: 14, fontSize: 14, fontWeight: 700 },
   successTotal: { marginTop: 8, fontSize: 18, fontWeight: 800, color: '#e04f1a' },
+  successActions: { display: 'grid', gap: 10, marginTop: 18 },
+  successPrimaryButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 48, border: 0, borderRadius: 6, color: '#fff', fontSize: 16, fontWeight: 900, cursor: 'pointer' },
+  successSecondaryButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 46, boxSizing: 'border-box', border: '1px solid #d0d5dd', borderRadius: 6, background: '#fff', color: '#344054', fontSize: 15, fontWeight: 850, textDecoration: 'none', cursor: 'pointer' },
   claimBox: { margin: '0 18px 18px', background: 'linear-gradient(180deg, #fff8e1 0%, #ffffff 45%)', borderRadius: 14, padding: 20, border: '1px solid #f6d365', boxShadow: '0 12px 26px rgba(180,124,0,0.14)', textAlign: 'center' },
   claimGiftIcon: { width: 64, height: 64, margin: '0 auto 10px', borderRadius: 18, background: 'linear-gradient(135deg, #ffd666 0%, #f59e0b 100%)', display: 'grid', placeItems: 'center', fontSize: 34, boxShadow: '0 10px 22px rgba(245,158,11,0.28)' },
   claimGiftTitle: { fontSize: 20, lineHeight: 1.2, fontWeight: 950, color: '#92400e', marginBottom: 8 },
