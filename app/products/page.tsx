@@ -288,6 +288,7 @@ export default function ProductsPage() {
   const [marketingReviewImages, setMarketingReviewImages] = useState(['', '', ''])
   const [marketingButtonText, setMarketingButtonText] = useState('')
   const [marketingSaving, setMarketingSaving] = useState(false)
+  const [marketingGenerating, setMarketingGenerating] = useState<Record<string, boolean>>({})
   const [marketingMsg, setMarketingMsg] = useState<string | null>(null)
 
   // 扫码枪反馈
@@ -469,6 +470,36 @@ export default function ProductsPage() {
       openMarketingEditor(product, page)
     } catch {
       setMarketingMsg(t('common.networkError'))
+    }
+  }
+
+  async function handleAiGenerateMarketingPage(product: Product) {
+    const existing = marketingPages[product.id]
+    if (existing) {
+      openMarketingEditor(product, existing)
+      return
+    }
+    setMarketingMsg(null)
+    setMarketingGenerating((prev) => ({ ...prev, [product.id]: true }))
+    try {
+      const res = await apiFetch(
+        '/api/marketing-product-pages',
+        { method: 'POST', body: JSON.stringify({ productId: product.id, mode: 'RULE_GENERATE' }) },
+        OWNER_CTX,
+      )
+      const body = await res.json()
+      if (!res.ok) {
+        setMarketingMsg(body.message ?? body.error ?? 'AI生成营销页失败')
+        return
+      }
+      const page = body as MarketingProductPage
+      setMarketingPages((prev) => ({ ...prev, [page.productId]: page }))
+      openMarketingEditor(product, page)
+      setMarketingMsg('AI已生成营销页草稿，可继续微调')
+    } catch {
+      setMarketingMsg(t('common.networkError'))
+    } finally {
+      setMarketingGenerating((prev) => ({ ...prev, [product.id]: false }))
     }
   }
 
@@ -1665,6 +1696,7 @@ export default function ProductsPage() {
 	                    const isExpanded = expandedId === p.id
 	                    const uploading = !!listImgUploading[p.id]
 	                    const marketingPage = marketingPages[p.id]
+	                    const generatingMarketing = !!marketingGenerating[p.id]
 	                    return (
 	                      <div key={p.id} style={ls.rowWrap}>
                         <div style={ls.row}>
@@ -1746,8 +1778,18 @@ export default function ProductsPage() {
 	                            {listImgError[p.id] && <div style={ls.imgErr}>{listImgError[p.id]}</div>}
 
 	                            <div style={ls.actionRow}>
+	                              {!marketingPage && (
+	                                <button
+	                                  type="button"
+	                                  style={{ ...ls.actionBtn, opacity: generatingMarketing ? 0.5 : 1 }}
+	                                  disabled={generatingMarketing}
+	                                  onClick={() => handleAiGenerateMarketingPage(p)}
+	                                >
+	                                  {generatingMarketing ? '生成中...' : '✨ AI生成营销页'}
+	                                </button>
+	                              )}
 	                              <button type="button" style={ls.actionBtn} onClick={() => handleMarketingPage(p)}>
-	                                营销页
+	                                {marketingPage ? '高级编辑' : '手动营销页'}
 	                              </button>
 	                              <button
 	                                type="button"

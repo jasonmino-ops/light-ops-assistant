@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { ruleMarketingPageGenerator } from '@/lib/marketing-page-generator'
 
 const STATUS_VALUES = ['DRAFT', 'PUBLISHED', 'DISABLED'] as const
 type PageStatus = typeof STATUS_VALUES[number]
@@ -167,7 +168,7 @@ export async function POST(req: NextRequest) {
   if (ctx.role !== 'OWNER') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   if (!ctx.storeId) return NextResponse.json({ error: 'NO_STORE' }, { status: 400 })
 
-  let body: { productId?: string }
+  let body: { productId?: string; mode?: string }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
@@ -177,7 +178,7 @@ export async function POST(req: NextRequest) {
 
   const product = await prisma.product.findFirst({
     where: { id: productId, tenantId: ctx.tenantId },
-    select: { id: true, name: true, barcode: true, imageUrl: true },
+    select: { id: true, name: true, barcode: true, imageUrl: true, sellPrice: true },
   })
   if (!product) return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
 
@@ -188,6 +189,9 @@ export async function POST(req: NextRequest) {
   if (existing) return NextResponse.json(mapPage(existing))
 
   const slug = await uniqueSlug(`${product.name}-${product.barcode}`)
+  const generated = body.mode === 'RULE_GENERATE'
+    ? ruleMarketingPageGenerator.generate(product)
+    : null
   const created = await prisma.marketingProductPage.create({
     data: {
       tenantId: ctx.tenantId,
@@ -195,10 +199,19 @@ export async function POST(req: NextRequest) {
       productId,
       slug,
       status: 'DRAFT',
-      title: product.name,
-      subtitle: null,
+      templateType: generated ? 'TIKTOK_HOT' : undefined,
+      title: generated?.title ?? product.name,
+      subtitle: generated?.subtitle ?? null,
       heroImageUrl: product.imageUrl,
-      buttonText: '立即下单',
+      salePrice: generated?.salePrice,
+      originalPrice: generated?.originalPrice,
+      soldCount: generated?.soldCount,
+      feature1: generated?.features[0],
+      feature2: generated?.features[1],
+      feature3: generated?.features[2],
+      feature4: generated?.features[3],
+      feature5: generated?.features[4],
+      buttonText: generated?.buttonText ?? '立即下单',
     },
     select: PAGE_SELECT,
   })
