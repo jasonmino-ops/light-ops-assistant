@@ -29,6 +29,10 @@ function resolveCustomerServiceUrl() {
 
 const CUSTOMER_SERVICE_URL = resolveCustomerServiceUrl()
 
+function isTelegramServiceLink(url: string) {
+  return url.startsWith('https://t.me/') || url.startsWith('tg://resolve')
+}
+
 type Lang = 'zh' | 'en' | 'km'
 type RecentStore = { code: string; name: string; lastVisitedAt: string }
 
@@ -50,6 +54,7 @@ const T = {
     langSetting:   '语言设置',
     service:       '联系客服',
     serviceNotConfigured: '客服入口暂未配置',
+    serviceOpenFailed: '无法打开客服入口，请稍后重试',
     comingSoon:    '该功能即将开放',
     scanHint:      '请回首页使用扫一扫',
     emptyShops:    '暂无常去商户',
@@ -70,6 +75,7 @@ const T = {
     langSetting:   'Language',
     service:       'Customer Service',
     serviceNotConfigured: 'Customer service is not configured',
+    serviceOpenFailed: 'Unable to open customer service. Please try again later',
     comingSoon:    'Coming soon',
     scanHint:      'Use Scan on the home page',
     emptyShops:    'No visited stores yet',
@@ -90,6 +96,7 @@ const T = {
     langSetting:   'ភាសា',
     service:       'ជំនួយ',
     serviceNotConfigured: 'មិនទាន់បានកំណត់ច្រកជំនួយ',
+    serviceOpenFailed: 'មិនអាចបើកច្រកជំនួយបាន សូមព្យាយាមម្តងទៀត',
     comingSoon:    'កំពុងអភិវឌ្ឍ',
     scanHint:      'ប្រើស្កេននៅទំព័រដើម',
     emptyShops:    'គ្មានហាង',
@@ -174,22 +181,28 @@ export default function ELifeMePage() {
   }
 
   function openCustomerService() {
-    if (!CUSTOMER_SERVICE_URL) {
+    const url = CUSTOMER_SERVICE_URL.trim()
+    if (!url) {
       showToast(t.serviceNotConfigured)
       return
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tg = (window as any).Telegram?.WebApp
-    if (CUSTOMER_SERVICE_URL.startsWith('https://t.me/') && typeof tg?.openTelegramLink === 'function') {
-      tg.openTelegramLink(CUSTOMER_SERVICE_URL)
-      return
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tg = (window as any).Telegram?.WebApp
+      if (isTelegramServiceLink(url) && typeof tg?.openTelegramLink === 'function') {
+        tg.openTelegramLink(url)
+        return
+      }
+      if (typeof tg?.openLink === 'function') {
+        tg.openLink(url)
+        return
+      }
+      window.location.href = url
+    } catch {
+      showToast(t.serviceOpenFailed)
+      window.alert?.(t.serviceOpenFailed)
     }
-    if (typeof tg?.openLink === 'function') {
-      tg.openLink(CUSTOMER_SERVICE_URL)
-      return
-    }
-    window.open(CUSTOMER_SERVICE_URL, '_blank', 'noopener,noreferrer')
   }
 
   const t = T[lang]
