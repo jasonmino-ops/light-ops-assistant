@@ -103,7 +103,7 @@ async function readApiMessage(res: Response, fallback: string): Promise<string> 
     if (contentType.includes('application/json')) {
       const body = await res.json() as { message?: unknown; error?: unknown }
       if (typeof body.message === 'string' && body.message.trim()) return body.message
-      if (typeof body.error === 'string' && body.error.trim()) return body.error
+      if (typeof body.error === 'string' && body.error.trim() && !/^[A-Z0-9_]+$/.test(body.error.trim())) return body.error
       return fallback
     }
     const text = (await res.text()).trim()
@@ -238,7 +238,7 @@ export default function CampaignPage() {
         setLandingType('menu'); setMarketingPageId('')
         loadAll()
       } else {
-        setCreateError(await readApiMessage(r, '创建失败'))
+        setCreateError(await readApiMessage(r, '短链创建失败，请稍后重试'))
       }
     } catch { setCreateError('网络错误，请重试') }
     finally { setCreating(false) }
@@ -321,7 +321,7 @@ export default function CampaignPage() {
         setEditingLandingId(null); setEditMarketingPageId(''); setEditLandingType('menu')
         loadAll()
       } else {
-        setLandingError(await readApiMessage(r, '保存失败'))
+        setLandingError(await readApiMessage(r, '落地页保存失败，请稍后重试'))
       }
     } catch { setLandingError('网络错误，请重试') }
     finally { setLandingSavingId(null) }

@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 
 const PRODUCT_PAGE_ERROR = '该营销页不存在或未发布，请先发布营销页'
+const PRODUCT_PAGE_STORE_ERROR = '该营销页不属于当前门店，请重新选择'
 const UNSUPPORTED_TARGET_ERROR = '仅支持菜单页或营销页链接'
 
 type TargetContext = {
@@ -34,17 +35,16 @@ export async function validateCampaignTargetUrl(
   const slug = productSlug(targetUrl)
   if (!slug) return { ok: false, message: PRODUCT_PAGE_ERROR }
 
-  const page = await prisma.marketingProductPage.findFirst({
-    where: {
-      tenantId: ctx.tenantId,
-      storeId: ctx.storeId,
-      slug,
-      status: 'PUBLISHED',
-    },
-    select: { slug: true },
+  const page = await prisma.marketingProductPage.findUnique({
+    where: { slug },
+    select: { slug: true, status: true, tenantId: true, storeId: true },
   })
 
   if (!page) return { ok: false, message: PRODUCT_PAGE_ERROR }
+  if (page.status !== 'PUBLISHED') return { ok: false, message: PRODUCT_PAGE_ERROR }
+  if (page.tenantId !== ctx.tenantId || page.storeId !== ctx.storeId) {
+    return { ok: false, message: PRODUCT_PAGE_STORE_ERROR }
+  }
   return { ok: true, targetUrl: `/p/${page.slug}` }
 }
 

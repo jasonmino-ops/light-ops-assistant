@@ -3,6 +3,7 @@
  * POST /api/campaign-links  — 新建推广短链（OWNER）
  */
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { publicUrl } from '@/lib/public-url'
@@ -10,6 +11,14 @@ import { campaignTargetRisk, validateCampaignTargetUrl } from '@/lib/campaign-ta
 
 function genCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase()
+}
+
+function campaignCreateError(error: unknown): string {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === 'P2002') return '短链码冲突，请重试'
+    if (error.code === 'P2022') return '数据库字段未同步，请先执行生产迁移'
+  }
+  return '短链创建失败，请稍后重试'
 }
 
 function calcCommission(
@@ -114,10 +123,14 @@ export async function POST(req: NextRequest) {
       where: { id: body.creatorId },
       select: { id: true, name: true, storeId: true, status: true },
     })
-    if (creator && creator.storeId === ctx.storeId && creator.status === 'active') {
-      resolvedCreatorId   = creator.id
-      resolvedCreatorName = creator.name
+    if (!creator || creator.storeId !== ctx.storeId) {
+      return NextResponse.json({ error: 'INVALID_CREATOR', message: '该博主不属于当前门店，请重新选择' }, { status: 400 })
     }
+    if (creator.status !== 'active') {
+      return NextResponse.json({ error: 'CREATOR_INACTIVE', message: '该博主已停用，请选择其他博主' }, { status: 400 })
+    }
+    resolvedCreatorId   = creator.id
+    resolvedCreatorName = creator.name
   }
   // 如未绑定 Creator，用手填名称
   if (!resolvedCreatorName) {
@@ -134,29 +147,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_TARGET_URL', message: targetResult.message }, { status: 400 })
   }
 
-  let code = genCode()
-  for (let i = 0; i < 5; i++) {
-    const exists = await prisma.campaignLink.findUnique({ where: { code }, select: { id: true } })
-    if (!exists) break
-    code = genCode()
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const code = genCode()
+    try {
+      const link = await prisma.campaignLink.create({
+        data: {
+          code,
+          storeId:        ctx.storeId,
+          sourcePlatform: typeof body.sourcePlatform === 'string' ? body.sourcePlatform : 'tiktok',
+          creatorId:      resolvedCreatorId,
+          creatorName:    resolvedCreatorName,
+          videoTitle:     typeof body.videoTitle === 'string' ? body.videoTitle.trim() || null : null,
+          targetUrl:      targetResult.targetUrl,
+          commissionType,
+          commissionValue: commissionValue != null ? String(commissionValue) : null,
+        },
+      })
+
+      return NextResponse.json(
+        { ...link, commissionValue: commissionValue, shortUrl: publicUrl(`/v/${link.code}`, req.nextUrl.origin) },
+        { status: 201 },
+      )
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && attempt < 2) {
+        continue
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return NextResponse.json({ error: 'CODE_CONFLICT', message: '短链码冲突，请重试' }, { status: 409 })
+      }
+      return NextResponse.json({ error: 'CREATE_FAILED', message: campaignCreateError(error) }, { status: 500 })
+    }
   }
 
-  const link = await prisma.campaignLink.create({
-    data: {
-      code,
-      storeId:        ctx.storeId,
-      sourcePlatform: typeof body.sourcePlatform === 'string' ? body.sourcePlatform : 'tiktok',
-      creatorId:      resolvedCreatorId,
-      creatorName:    resolvedCreatorName,
-      videoTitle:     typeof body.videoTitle === 'string' ? body.videoTitle.trim() || null : null,
-      targetUrl:      targetResult.targetUrl,
-      commissionType,
-      commissionValue: commissionValue != null ? String(commissionValue) : null,
-    },
-  })
-
-  return NextResponse.json(
-    { ...link, commissionValue: commissionValue, shortUrl: publicUrl(`/v/${link.code}`, req.nextUrl.origin) },
-    { status: 201 },
-  )
+  return NextResponse.json({ error: 'CODE_CONFLICT', message: '短链码冲突，请重试' }, { status: 409 })
 }
