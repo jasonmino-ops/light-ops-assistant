@@ -21,7 +21,7 @@ const T = {
     categories: '精选分类',
     recommend: '为你推荐', recommendSub: '发现附近好店', more: '更多',
     memberTitle: 'E-Life 会员专享', memberSub: '优惠券 · 积分 · 商户福利', memberBtn: '立即开通',
-    navHome: '首页', navScan: '扫一扫', navOrders: '我的订单', navProfile: '我的',
+    navHome: '首页', navCategory: '分类', navOrders: '我的订单', navProfile: '我的',
     langTitle: '选择语言 / Language',
     scanTitle: '扫码点单', scanDesc: '扫描门店码、桌台码或优惠券码',
     scanStore: '门店码', scanStoreDesc: '扫码进入商户主页',
@@ -43,7 +43,7 @@ const T = {
     categories: 'Categories',
     recommend: 'For You', recommendSub: 'Discover nearby shops', more: 'More',
     memberTitle: 'E-Life Membership', memberSub: 'Coupons · Points · Rewards', memberBtn: 'Join Now',
-    navHome: 'Home', navScan: 'Scan', navOrders: 'My Orders', navProfile: 'Me',
+    navHome: 'Home', navCategory: 'Category', navOrders: 'My Orders', navProfile: 'Me',
     langTitle: 'Language',
     scanTitle: 'Scan to Order', scanDesc: 'Scan store code, table code or coupon code',
     scanStore: 'Store Code', scanStoreDesc: 'Scan to enter store page',
@@ -65,7 +65,7 @@ const T = {
     categories: 'ប្រភេទ',
     recommend: 'សម្រាប់អ្នក', recommendSub: 'រកឃើញហាងល្អ', more: 'បន្ថែម',
     memberTitle: 'សមាជិក E-Life', memberSub: 'គូប៉ុង · ពិន្ទុ · រង្វាន់', memberBtn: 'ចូលរួម',
-    navHome: 'ទំព័រដើម', navScan: 'ស្កេន', navOrders: 'ការបញ្ជាទិញ', navProfile: 'ខ្ញុំ',
+    navHome: 'ទំព័រដើម', navCategory: 'ប្រភេទ', navOrders: 'ការបញ្ជាទិញ', navProfile: 'ខ្ញុំ',
     langTitle: 'ភាសា',
     scanTitle: 'ស្កេនបញ្ជាទិញ', scanDesc: 'ស្កេនកូដហាង កូដតុ ឬកូដគូប៉ុង',
     scanStore: 'កូដហាង', scanStoreDesc: 'ស្កេនដើម្បីចូលហាង',
@@ -694,19 +694,19 @@ export default function ELifeHomePage() {
       )}
 
       {/* ── Bottom Nav ── */}
-      <BottomNav onScan={() => setShowScanPanel(true)} onOrders={handleOrders} onProfile={handleProfile} t={t} />
+      <BottomNav onOrders={handleOrders} onProfile={handleProfile} t={t} />
     </div>
   )
 }
 
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
 
-function BottomNav({ onScan, onOrders, onProfile, t }: { onScan: () => void; onOrders: () => void; onProfile: () => void; t: TLocale }) {
+function BottomNav({ onOrders, onProfile, t }: { onOrders: () => void; onProfile: () => void; t: TLocale }) {
   const pathname = usePathname()
 
   const tabs = [
     { id: 'home',    label: t.navHome,    href: '/e-life' as string | null, Icon: HomeIcon,     onClick: undefined as (() => void) | undefined },
-    { id: 'scan',    label: t.navScan,    href: null,                        Icon: ScanLineIcon, onClick: onScan },
+    { id: 'category', label: t.navCategory, href: '/e-life/category' as string | null, Icon: Grid3Icon, onClick: undefined },
     { id: 'orders',  label: t.navOrders,  href: null,                        Icon: ClipboardIcon, onClick: onOrders },
     { id: 'profile', label: t.navProfile, href: null,                        Icon: UserSmIcon,   onClick: onProfile },
   ]
