@@ -32,6 +32,7 @@ const T = {
     toastVisitFirst: '请先访问一家商户', toastRecommendSoon: '更多推荐即将开放',
     viewAll: '查看全部', recommended: '推荐商户',
     scanEnter: '输入门店码', scanPlaceholder: 'ST8194AE60 或粘贴链接', scanGo: '进入店铺', scanInvalid: '无法识别门店码',
+    addFrequent: '加入常去', addedFrequent: '已加入', removeFrequent: '移除',
   },
   en: {
     brandSub: 'Super Life', slogan: 'Your Life, One Touch Away', city: 'Phnom Penh', langLabel: 'EN',
@@ -51,6 +52,7 @@ const T = {
     toastVisitFirst: 'Please visit a store first', toastRecommendSoon: 'More recommendations coming soon',
     viewAll: 'View All', recommended: 'Recommended',
     scanEnter: 'Enter Store Code', scanPlaceholder: 'ST8194AE60 or paste link', scanGo: 'Enter Store', scanInvalid: 'Invalid store code',
+    addFrequent: 'Add favorite', addedFrequent: 'Added', removeFrequent: 'Remove',
   },
   km: {
     brandSub: 'ជីវិតល្អ', slogan: 'ជីវិតរបស់អ្នក មួយប៉ះ', city: 'ភ្នំពេញ', langLabel: 'ខ្មែរ',
@@ -70,6 +72,7 @@ const T = {
     toastVisitFirst: 'សូមចូលទស្សនាហាងមុន', toastRecommendSoon: 'ការណែនាំបន្ថែមនឹងមកដល់',
     viewAll: 'មើលទាំងអស់', recommended: 'ណែនាំ',
     scanEnter: 'បញ្ចូលកូដហាង', scanPlaceholder: 'ST8194AE60 ឬបិទភ្ជាប់', scanGo: 'ចូលហាង', scanInvalid: 'មិនអាចសម្គាល់កូដហាង',
+    addFrequent: 'បន្ថែម', addedFrequent: 'បានបន្ថែម', removeFrequent: 'ដកចេញ',
   },
 }
 
@@ -130,6 +133,15 @@ function extractStoreCode(raw: string): string | null {
   return null
 }
 
+function readTelegramInitData(): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (window as any).Telegram?.WebApp?.initData ?? ''
+}
+
+function saveRecentStores(stores: RecentStore[]) {
+  try { localStorage.setItem('eLife_recentStores', JSON.stringify(stores.slice(0, 6))) } catch { /* ignore */ }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ELifeHomePage() {
@@ -182,6 +194,11 @@ export default function ELifeHomePage() {
         .then((body) => {
           if (body.ok && Array.isArray(body.stores) && body.stores.length > 0) {
             setRecentStores(
+              body.stores.map((s: { storeCode: string; storeName: string; lastSeenAt: string; bannerUrl?: string | null }) => ({
+                code: s.storeCode, name: s.storeName, lastVisitedAt: s.lastSeenAt, imageUrl: s.bannerUrl ?? null,
+              }))
+            )
+            saveRecentStores(
               body.stores.map((s: { storeCode: string; storeName: string; lastSeenAt: string; bannerUrl?: string | null }) => ({
                 code: s.storeCode, name: s.storeName, lastVisitedAt: s.lastSeenAt, imageUrl: s.bannerUrl ?? null,
               }))
@@ -255,6 +272,42 @@ export default function ELifeHomePage() {
       })
     } else {
       setShowManualInput(true)
+    }
+  }
+
+  function isFrequent(code: string) {
+    return recentStores.some((store) => store.code === code)
+  }
+
+  function removeFrequent(code: string) {
+    const next = recentStores.filter((store) => store.code !== code)
+    setRecentStores(next)
+    saveRecentStores(next)
+    const initData = readTelegramInitData()
+    if (initData) {
+      fetch('/api/e-life/recent-stores', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData, storeCode: code }),
+      }).catch(() => { /* local state already updated */ })
+    }
+  }
+
+  function addFrequent(shop: { code: string; name: string; imageUrl?: string | null }) {
+    if (isFrequent(shop.code)) return
+    const next = [
+      { code: shop.code, name: shop.name, lastVisitedAt: new Date().toISOString(), imageUrl: shop.imageUrl ?? null },
+      ...recentStores,
+    ].slice(0, 6)
+    setRecentStores(next)
+    saveRecentStores(next)
+    const initData = readTelegramInitData()
+    if (initData) {
+      fetch('/api/e-life/recent-stores', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData, storeCode: shop.code }),
+      }).catch(() => { /* local state already updated */ })
     }
   }
 
@@ -412,6 +465,12 @@ export default function ELifeHomePage() {
                       <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', aspectRatio: '1/1', border: '1px solid rgba(0,0,0,0.08)' }}>
                         <img src={shop.image || FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]} alt={shop.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.22) 55%, transparent 100%)' }} />
+                        <button
+                          style={s.removeBtn}
+                          onClick={(e) => { e.stopPropagation(); removeFrequent(shop.code) }}
+                        >
+                          {t.removeFrequent}
+                        </button>
                         <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8 }}>
                           <p style={{ fontSize: 14, color: '#fff', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 5px rgba(0,0,0,0.8)' }}>{shop.name}</p>
                         </div>
@@ -507,6 +566,16 @@ export default function ELifeHomePage() {
                     <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shop.name}</h3>
                     <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 6px' }}>{BIZ_LABEL[shop.businessType]?.[lang] ?? shop.businessType}</p>
                     <span style={{ display: 'inline-block', fontSize: 11, color: BRAND, background: 'rgba(7,193,96,0.08)', padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>{t.recommended}</span>
+                    <button
+                      style={{ ...s.addBtn, ...(isFrequent(shop.code) ? s.addBtnDone : {}) }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        addFrequent({ code: shop.code, name: shop.name, imageUrl: shop.imageUrl })
+                      }}
+                      disabled={isFrequent(shop.code)}
+                    >
+                      {isFrequent(shop.code) ? t.addedFrequent : t.addFrequent}
+                    </button>
                   </div>
                   <ChevronRightIcon size={14} color="rgba(0,0,0,0.2)" />
                 </div>
@@ -886,6 +955,38 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     cursor: 'pointer',
     flexShrink: 0,
+  },
+  removeBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    zIndex: 2,
+    border: 'none',
+    borderRadius: 999,
+    background: 'rgba(0,0,0,0.58)',
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '4px 8px',
+    cursor: 'pointer',
+  },
+  addBtn: {
+    display: 'block',
+    marginTop: 8,
+    border: `1px solid rgba(7,193,96,0.25)`,
+    borderRadius: 999,
+    background: '#fff',
+    color: BRAND,
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '4px 10px',
+    cursor: 'pointer',
+  },
+  addBtnDone: {
+    color: '#9ca3af',
+    borderColor: 'rgba(0,0,0,0.08)',
+    background: '#f9fafb',
+    cursor: 'default',
   },
 
   // ── Panels

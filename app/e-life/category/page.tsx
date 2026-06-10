@@ -20,14 +20,17 @@ const T = {
   zh: {
     back: '首页', sub: '发现相关好店', merchant: 'E-Life 商户',
     empty: '暂无相关商户，敬请期待', emptyBtn: '返回首页', loading: '加载中…',
+    addFrequent: '加入常去', addedFrequent: '已加入',
   },
   en: {
     back: 'Home', sub: 'Discover related shops', merchant: 'E-Life Store',
     empty: 'No shops available yet', emptyBtn: 'Go Home', loading: 'Loading…',
+    addFrequent: 'Add favorite', addedFrequent: 'Added',
   },
   km: {
     back: 'ទំព័រដើម', sub: 'រកឃើញហាងពាក់ព័ន្ធ', merchant: 'ហាង E-Life',
     empty: 'មិនទាន់មានហាងទេ', emptyBtn: 'ត្រឡប់ទៅដើម', loading: 'កំពុងផ្ទុក…',
+    addFrequent: 'បន្ថែម', addedFrequent: 'បានបន្ថែម',
   },
 }
 
@@ -57,6 +60,11 @@ const FALLBACK_IMAGES = [
   'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200&h=200&fit=crop',
 ]
 
+function readTelegramInitData(): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (window as any).Telegram?.WebApp?.initData ?? ''
+}
+
 // ─── Inner (uses useSearchParams) ─────────────────────────────────────────────
 
 function CategoryPageInner() {
@@ -66,11 +74,17 @@ function CategoryPageInner() {
 
   const [lang, setLang]     = useState<Lang>('zh')
   const [stores, setStores] = useState<StoreItem[] | null>(null)
+  const [frequentCodes, setFrequentCodes] = useState<string[]>([])
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem('eLife_lang') as Lang | null
       if (saved && (['zh', 'en', 'km'] as string[]).includes(saved)) setLang(saved)
+      const recent = localStorage.getItem('eLife_recentStores')
+      if (recent) {
+        const parsed = JSON.parse(recent) as Array<{ code?: string }>
+        if (Array.isArray(parsed)) setFrequentCodes(parsed.map((item) => item.code).filter((code): code is string => !!code))
+      }
     } catch { /* ignore */ }
 
     fetch(`/api/e-life/stores-by-category?type=${encodeURIComponent(type)}`)
@@ -83,6 +97,26 @@ function CategoryPageInner() {
         }
       })
       .catch(() => setStores([]))
+
+    const initData = readTelegramInitData()
+    if (initData) {
+      fetch('/api/e-life/recent-stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData }),
+      })
+        .then((r) => r.json())
+        .then((body) => {
+          if (body.ok && Array.isArray(body.stores)) {
+            setFrequentCodes(
+              body.stores
+                .map((s: { storeCode?: string }) => s.storeCode)
+                .filter((code: string | undefined): code is string => !!code),
+            )
+          }
+        })
+        .catch(() => { /* localStorage fallback */ })
+    }
   }, [type])
 
   const t    = T[lang]
@@ -91,6 +125,29 @@ function CategoryPageInner() {
 
   function goStore(code: string) {
     router.push(`/menu?code=${encodeURIComponent(code)}&from=e-life-category`)
+  }
+
+  function addFrequent(shop: StoreItem) {
+    if (frequentCodes.includes(shop.storeCode)) return
+    setFrequentCodes((prev) => [shop.storeCode, ...prev].slice(0, 6))
+    try {
+      const raw = localStorage.getItem('eLife_recentStores')
+      const current = raw ? JSON.parse(raw) as Array<{ code: string; name: string; lastVisitedAt: string; imageUrl?: string | null }> : []
+      const next = [
+        { code: shop.storeCode, name: shop.storeName, lastVisitedAt: new Date().toISOString(), imageUrl: shop.bannerUrl ?? null },
+        ...current.filter((item) => item.code !== shop.storeCode),
+      ].slice(0, 6)
+      localStorage.setItem('eLife_recentStores', JSON.stringify(next))
+    } catch { /* ignore */ }
+
+    const initData = readTelegramInitData()
+    if (initData) {
+      fetch('/api/e-life/recent-stores', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData, storeCode: shop.storeCode }),
+      }).catch(() => { /* local state already updated */ })
+    }
   }
 
   return (
@@ -163,6 +220,27 @@ function CategoryPageInner() {
               <span style={{ display: 'inline-block', fontSize: 11, color: BRAND, background: 'rgba(7,193,96,0.08)', padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>
                 {t.merchant}
               </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  addFrequent(shop)
+                }}
+                disabled={frequentCodes.includes(shop.storeCode)}
+                style={{
+                  display: 'block',
+                  marginTop: 8,
+                  border: frequentCodes.includes(shop.storeCode) ? '1px solid rgba(0,0,0,0.08)' : `1px solid rgba(7,193,96,0.25)`,
+                  borderRadius: 999,
+                  background: frequentCodes.includes(shop.storeCode) ? '#f9fafb' : '#fff',
+                  color: frequentCodes.includes(shop.storeCode) ? '#9ca3af' : BRAND,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '4px 10px',
+                  cursor: frequentCodes.includes(shop.storeCode) ? 'default' : 'pointer',
+                }}
+              >
+                {frequentCodes.includes(shop.storeCode) ? t.addedFrequent : t.addFrequent}
+              </button>
             </div>
             {/* Arrow */}
             <ChevronRightIcon />

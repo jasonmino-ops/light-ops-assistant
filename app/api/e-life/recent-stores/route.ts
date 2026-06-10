@@ -3,8 +3,10 @@ import { prisma } from '@/lib/prisma'
 import { verifyTgInitData, extractTgUserIdFromParams } from '@/lib/verify-tg-init-data'
 
 /**
- * POST /api/e-life/recent-stores
- * Body: { initData: string }
+ * POST   /api/e-life/recent-stores
+ * PUT    /api/e-life/recent-stores
+ * DELETE /api/e-life/recent-stores
+ * Body: { initData: string, storeCode?: string }
  *
  * 查询当前 Telegram 用户最近访问的 6 家店铺（按 lastSeenAt 倒序）。
  * 使用 CUSTOMER_BOT_TOKEN 校验 initData HMAC。
@@ -12,30 +14,34 @@ import { verifyTgInitData, extractTgUserIdFromParams } from '@/lib/verify-tg-ini
 
 const CUSTOMER_BOT_TOKEN = process.env.CUSTOMER_BOT_TOKEN?.trim() ?? ''
 
-export async function POST(req: NextRequest) {
-  let body: { initData?: string }
-  try { body = await req.json() } catch {
-    return NextResponse.json({ ok: false, error: 'INVALID_JSON' }, { status: 400 })
-  }
+async function verifiedTelegramId(initData?: string): Promise<string | null> {
+  if (!initData) return null
+  const params = verifyTgInitData(initData, CUSTOMER_BOT_TOKEN)
+  if (!params) return null
+  return extractTgUserIdFromParams(params)
+}
 
-  const { initData } = body
-  if (!initData) {
+async function readBody(req: NextRequest): Promise<{ initData?: string; storeCode?: string } | null> {
+  try { return await req.json() } catch {
+    return null
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const body = await readBody(req)
+  if (!body) return NextResponse.json({ ok: false, error: 'INVALID_JSON' }, { status: 400 })
+
+  const tgId = await verifiedTelegramId(body.initData)
+  if (!body.initData) {
     return NextResponse.json({ ok: false, error: 'MISSING_INIT_DATA' }, { status: 401 })
   }
-
-  const params = verifyTgInitData(initData, CUSTOMER_BOT_TOKEN)
-  if (!params) {
-    return NextResponse.json({ ok: false, error: 'INVALID_TELEGRAM_AUTH' }, { status: 401 })
-  }
-
-  const tgId = extractTgUserIdFromParams(params)
   if (!tgId) {
-    return NextResponse.json({ ok: false, error: 'MISSING_USER' }, { status: 401 })
+    return NextResponse.json({ ok: false, error: 'INVALID_TELEGRAM_AUTH' }, { status: 401 })
   }
 
   // 查最近访问的 6 家店（含 e-life_visit 和传统 telegram_bind_after_order 来源）
   const contacts = await prisma.storeCustomerContact.findMany({
-    where: { telegramId: tgId },
+    where: { telegramId: tgId, status: 'active', NOT: { source: 'e-life_removed' } },
     orderBy: { lastSeenAt: 'desc' },
     take: 6,
     select: { storeCode: true, lastSeenAt: true },
@@ -69,4 +75,60 @@ export async function POST(req: NextRequest) {
     })
 
   return NextResponse.json({ ok: true, stores: result })
+}
+
+export async function PUT(req: NextRequest) {
+  const body = await readBody(req)
+  if (!body) return NextResponse.json({ ok: false, error: 'INVALID_JSON' }, { status: 400 })
+  const tgId = await verifiedTelegramId(body.initData)
+  if (!body.initData) return NextResponse.json({ ok: false, error: 'MISSING_INIT_DATA' }, { status: 401 })
+  if (!tgId) return NextResponse.json({ ok: false, error: 'INVALID_TELEGRAM_AUTH' }, { status: 401 })
+
+  const storeCode = body.storeCode?.trim()
+  if (!storeCode) return NextResponse.json({ ok: false, error: 'MISSING_STORE_CODE' }, { status: 400 })
+
+  const store = await prisma.store.findUnique({
+    where: { code: storeCode },
+    select: { tenantId: true, status: true },
+  })
+  if (!store || store.status !== 'ACTIVE') {
+    return NextResponse.json({ ok: false, error: 'STORE_NOT_FOUND' }, { status: 404 })
+  }
+
+  await prisma.storeCustomerContact.upsert({
+    where: { storeCode_telegramId: { storeCode, telegramId: tgId } },
+    create: {
+      tenantId: store.tenantId,
+      storeCode,
+      telegramId: tgId,
+      source: 'e-life_frequent',
+      status: 'active',
+      lastSeenAt: new Date(),
+    },
+    update: {
+      source: 'e-life_frequent',
+      status: 'active',
+      lastSeenAt: new Date(),
+    },
+  })
+
+  return NextResponse.json({ ok: true })
+}
+
+export async function DELETE(req: NextRequest) {
+  const body = await readBody(req)
+  if (!body) return NextResponse.json({ ok: false, error: 'INVALID_JSON' }, { status: 400 })
+  const tgId = await verifiedTelegramId(body.initData)
+  if (!body.initData) return NextResponse.json({ ok: false, error: 'MISSING_INIT_DATA' }, { status: 401 })
+  if (!tgId) return NextResponse.json({ ok: false, error: 'INVALID_TELEGRAM_AUTH' }, { status: 401 })
+
+  const storeCode = body.storeCode?.trim()
+  if (!storeCode) return NextResponse.json({ ok: false, error: 'MISSING_STORE_CODE' }, { status: 400 })
+
+  await prisma.storeCustomerContact.updateMany({
+    where: { storeCode, telegramId: tgId },
+    data: { source: 'e-life_removed', lastSeenAt: new Date() },
+  })
+
+  return NextResponse.json({ ok: true })
 }
