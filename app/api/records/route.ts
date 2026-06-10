@@ -170,6 +170,7 @@ export async function GET(req: NextRequest) {
       lineAmount: r.lineAmount.toNumber(),
       saleType: r.saleType,
       refundReason: r.refundReason,
+      remark: r.remark,
       paymentMethod: pi?.paymentMethod ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'CASH' : null),
       paymentStatus: pi?.paymentStatus ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'PAID' : null),
       source: 'SALE_RECORD' as const,

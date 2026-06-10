@@ -25,6 +25,7 @@ type RecordItem = {
   lineAmount: number
   saleType: SaleType
   refundReason: string | null
+  remark?: string | null
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
   source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
@@ -66,6 +67,7 @@ type OrderGroup = {
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
   source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
+  remark?: string | null
   // 送货/上门摘要
   isDelivery?: boolean
   customerPhone?: string | null
@@ -126,6 +128,7 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
           paymentMethod: item.paymentMethod ?? null,
           paymentStatus: item.paymentStatus ?? null,
           source: item.source,
+          remark: item.remark ?? null,
           isDelivery:      item.isDelivery ?? false,
           customerPhone:   item.customerPhone   ?? null,
           deliveryAddress: item.deliveryAddress ?? null,
@@ -275,13 +278,11 @@ export default function RecordsPage() {
                 colored={summary.netAmount >= 0 ? 'green' : 'red'}
               />
             </div>
-            {((summary.cashSaleAmount ?? 0) > 0 || (summary.khqrSaleAmount ?? 0) > 0) && (
-              <div style={s.payBreakCard}>
-                <span style={s.payBreakItem}>💵 {t('records.cashSale')} {fmtAmount(summary.cashSaleAmount ?? 0)}</span>
-                <span style={s.payBreakSep}>·</span>
-                <span style={s.payBreakItem}>📱 {t('records.khqrSale')} {fmtAmount(summary.khqrSaleAmount ?? 0)}</span>
-              </div>
-            )}
+            <div style={s.payBreakCard}>
+              <span style={s.payBreakItem}>💵 {t('records.cashSale')} {fmtAmount(summary.cashSaleAmount ?? 0)}</span>
+              <span style={s.payBreakSep}>·</span>
+              <span style={s.payBreakItem}>📱 {t('records.khqrSale')} {fmtAmount(summary.khqrSaleAmount ?? 0)}</span>
+            </div>
             {(summary.deliveryCount ?? 0) > 0 && (
               <div style={s.deliveryStatCard}>
                 <span style={s.deliveryStatTag}>{t('records.deliveryTag')}</span>
@@ -385,6 +386,9 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, o
   const accent = isPending ? '#fa8c16' : ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
   const item = group.items[0]
+  const isCustomerOrder = group.source === 'CUSTOMER_ORDER'
+  const isCashier = group.remark?.startsWith('电脑收银台') ?? false
+  const isKhqrFallback = group.remark === '电脑收银台-KHQR兜底'
 
   const pm = group.paymentMethod
   const ps = group.paymentStatus
@@ -394,22 +398,26 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, o
     `💵 ${payLabels.cash}`
   const payStatusLabel =
     ps === 'PENDING'   ? payLabels.pending :
+    ps === 'PAID'      ? payLabels.paid :
     ps === 'CANCELLED' ? payLabels.cancelled :
-    null  // PAID = default / null (deferred) already shown via payMethodLabel
+    null
 
   return (
     <div
-      style={{ ...s.recordCard, borderLeft: `3px solid ${accent}`, cursor: 'pointer', ...(isPending ? s.recordCardPending : {}) }}
+      style={{ ...s.recordCard, borderLeft: `3px solid ${isCustomerOrder ? '#722ed1' : accent}`, cursor: 'pointer', ...(isPending ? s.recordCardPending : {}) }}
       onClick={onOpen}
     >
       <div style={s.cardHeader}>
-        <span style={s.tagSale}>{tagSale}</span>
-        {group.source === 'CUSTOMER_ORDER' && (
-          <span style={s.tagH5}>H5 顾客</span>
-        )}
+        <span style={isCustomerOrder ? s.tagCustomerOrder : s.tagSale}>
+          {isCustomerOrder ? '扫码单' : tagSale}
+        </span>
+        <span style={isCustomerOrder ? s.sourceBadgeH5 : isCashier ? s.sourceBadgeCashier : s.sourceBadgeMpos}>
+          {isCustomerOrder ? '顾客订单' : isCashier ? '电脑收银台' : 'mPOS'}
+        </span>
         {group.isDelivery && (
           <span style={s.tagDelivery}>🚚 送货/上门</span>
         )}
+        {isKhqrFallback && <span style={s.tagFallback}>KHQR 兜底</span>}
         <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>
         <span style={s.cardRecordNo}>{group.orderNo}</span>
         <span style={{ ...s.payBadge, ...(isPending ? s.payBadgePending : {}) }}>
@@ -713,6 +721,51 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fa8c16',
     padding: '1px 7px',
     borderRadius: 10,
+    border: '1px solid #ffd591',
+  },
+  tagCustomerOrder: {
+    fontSize: 11,
+    fontWeight: 700,
+    background: '#f9f0ff',
+    color: '#722ed1',
+    padding: '1px 7px',
+    borderRadius: 10,
+    border: '1px solid #d3adf7',
+  },
+  sourceBadgeMpos: {
+    fontSize: 10,
+    fontWeight: 700,
+    background: '#f6f8fa',
+    color: '#4b5563',
+    padding: '1px 6px',
+    borderRadius: 8,
+    border: '1px solid #e5e7eb',
+  },
+  sourceBadgeCashier: {
+    fontSize: 10,
+    fontWeight: 700,
+    background: '#e6f4ff',
+    color: '#1677ff',
+    padding: '1px 6px',
+    borderRadius: 8,
+    border: '1px solid #91caff',
+  },
+  sourceBadgeH5: {
+    fontSize: 10,
+    fontWeight: 700,
+    background: '#f9f0ff',
+    color: '#722ed1',
+    padding: '1px 6px',
+    borderRadius: 8,
+    border: '1px solid #d3adf7',
+  },
+  tagFallback: {
+    fontSize: 10,
+    fontWeight: 700,
+    background: '#fff7e6',
+    color: '#ad6800',
+    padding: '1px 6px',
+    borderRadius: 8,
     border: '1px solid #ffd591',
   },
   tagDelivery: {
