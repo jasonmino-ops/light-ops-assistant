@@ -4,27 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
-
-async function resolveTargetUrl(rawTargetUrl: unknown, ctx: { tenantId: string; storeId: string }): Promise<string> {
-  if (typeof rawTargetUrl !== 'string') return ''
-  const targetUrl = rawTargetUrl.trim()
-  if (!targetUrl.startsWith('/p/')) return ''
-
-  const slug = targetUrl.slice(3).split(/[?#]/)[0]?.trim()
-  if (!slug) return ''
-
-  const page = await prisma.marketingProductPage.findFirst({
-    where: {
-      tenantId: ctx.tenantId,
-      storeId: ctx.storeId,
-      slug,
-      status: 'PUBLISHED',
-    },
-    select: { slug: true },
-  })
-
-  return page ? `/p/${page.slug}` : ''
-}
+import { validateCampaignTargetUrl } from '@/lib/campaign-target-url'
 
 export async function PATCH(
   req: NextRequest,
@@ -46,10 +26,14 @@ export async function PATCH(
   if (!link) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
   if (link.storeId !== ctx.storeId) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
-  const targetUrl = await resolveTargetUrl(body.targetUrl, { tenantId: ctx.tenantId, storeId: ctx.storeId })
+  const targetResult = await validateCampaignTargetUrl(body.targetUrl, { tenantId: ctx.tenantId, storeId: ctx.storeId })
+  if (!targetResult.ok) {
+    return NextResponse.json({ error: 'INVALID_TARGET_URL', message: targetResult.message }, { status: 400 })
+  }
+
   const updated = await prisma.campaignLink.update({
     where: { id },
-    data: { targetUrl },
+    data: { targetUrl: targetResult.targetUrl },
     select: { id: true, targetUrl: true },
   })
 

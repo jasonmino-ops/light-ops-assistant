@@ -26,6 +26,7 @@ type CampaignLink = {
   settledAt: string | null; settledNote: string | null
   attributedOrderCount: number; attributedSalesAmount: number
   estimatedCommission: number
+  landingRisk: string | null
   createdAt: string
 }
 
@@ -286,6 +287,13 @@ export default function CampaignPage() {
     return targetUrl?.startsWith('/p/') ? '营销页' : '菜单页'
   }
 
+  function landingDisplay(link: CampaignLink, page: MarketingPageOption | null): string {
+    if (!link.targetUrl) return '菜单页'
+    if (link.targetUrl.startsWith('/menu')) return '菜单页'
+    if (link.targetUrl.startsWith('/p/')) return page ? `营销页：${page.title || page.slug}` : `营销页：${link.targetUrl}`
+    return link.targetUrl
+  }
+
   function sourceTypeLabel(link: CampaignLink): string {
     return link.creatorId || link.creatorName ? '博主推广' : '官方推广'
   }
@@ -375,6 +383,7 @@ export default function CampaignPage() {
     linkStatBox: { background: '#f9fafb', borderRadius: 8, padding: '8px 10px', border: '1px solid #edf0f3' },
     linkStatLabel: { fontSize: 10, color: '#9ca3af', marginBottom: 2 },
     linkStatValue: { fontSize: 13, fontWeight: 800, color: '#111827' },
+    riskBox: { marginTop: 8, padding: '8px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 700 },
     moreWrap: { width: '100%', marginTop: 10 },
     moreMenu: { width: '100%', boxSizing: 'border-box' as const, background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 8px 22px rgba(15,23,42,0.12)', padding: 8 },
     moreItem: { display: 'block', width: '100%', textAlign: 'left' as const, padding: '10px 12px', border: 0, borderBottom: '1px solid #e2e8f0', borderRadius: 6, background: 'transparent', color: '#334155', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
@@ -832,8 +841,9 @@ export default function CampaignPage() {
                   <div>
                     <div style={s.linkCode}>/v/{lk.code}</div>
                     <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-                      落地页：{landingPage ? `营销页：${landingPage.title || landingPage.slug}` : '菜单页'}
+                      落地页：{landingDisplay(lk, landingPage)}
                     </div>
+                    {lk.landingRisk && <div style={s.riskBox}>落地页异常，请重新选择营销页</div>}
                     {lk.creatorName && (
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
                         博主：{lk.creatorName}{lk.tiktokHandle ? ` (@${lk.tiktokHandle})` : ''}

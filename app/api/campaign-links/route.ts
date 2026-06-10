@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { publicUrl } from '@/lib/public-url'
+import { campaignTargetRisk, validateCampaignTargetUrl } from '@/lib/campaign-target-url'
 
 function genCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase()
@@ -19,27 +20,6 @@ function calcCommission(
   if (type === 'percent') return +(salesAmount * value / 100).toFixed(2)
   if (type === 'fixed')   return +(orderCount  * value).toFixed(2)
   return 0
-}
-
-async function resolveTargetUrl(rawTargetUrl: unknown, ctx: { tenantId: string; storeId: string }): Promise<string> {
-  if (typeof rawTargetUrl !== 'string') return ''
-  const targetUrl = rawTargetUrl.trim()
-  if (!targetUrl.startsWith('/p/')) return ''
-
-  const slug = targetUrl.slice(3).split(/[?#]/)[0]?.trim()
-  if (!slug) return ''
-
-  const page = await prisma.marketingProductPage.findFirst({
-    where: {
-      tenantId: ctx.tenantId,
-      storeId: ctx.storeId,
-      slug,
-      status: 'PUBLISHED',
-    },
-    select: { slug: true },
-  })
-
-  return page ? `/p/${page.slug}` : ''
 }
 
 export async function GET(req: NextRequest) {
@@ -75,7 +55,7 @@ export async function GET(req: NextRequest) {
     : []
   const statsMap = new Map(stats.map((s) => [s.campaignLinkId, s]))
 
-  const result = links.map((l) => {
+  const result = await Promise.all(links.map(async (l) => {
     const st = statsMap.get(l.id)
     const orderCount  = st?._count.id ?? 0
     const salesAmount = st?._sum.totalAmount ? Number(st._sum.totalAmount) : 0
@@ -99,9 +79,10 @@ export async function GET(req: NextRequest) {
       attributedOrderCount:  orderCount,
       attributedSalesAmount: salesAmount,
       estimatedCommission:   calcCommission(l.commissionType, commVal, orderCount, salesAmount),
+      landingRisk:       await campaignTargetRisk(l.targetUrl, { tenantId: ctx.tenantId, storeId: ctx.storeId }),
       createdAt:        l.createdAt,
     }
-  })
+  }))
 
   return NextResponse.json({ links: result })
 }
@@ -142,7 +123,10 @@ export async function POST(req: NextRequest) {
   const commissionValue = typeof body.commissionValue === 'number' && body.commissionValue > 0
     ? body.commissionValue : null
 
-  const targetUrl = await resolveTargetUrl(body.targetUrl, { tenantId: ctx.tenantId, storeId: ctx.storeId })
+  const targetResult = await validateCampaignTargetUrl(body.targetUrl, { tenantId: ctx.tenantId, storeId: ctx.storeId })
+  if (!targetResult.ok) {
+    return NextResponse.json({ error: 'INVALID_TARGET_URL', message: targetResult.message }, { status: 400 })
+  }
 
   let code = genCode()
   for (let i = 0; i < 5; i++) {
@@ -159,7 +143,7 @@ export async function POST(req: NextRequest) {
       creatorId:      resolvedCreatorId,
       creatorName:    resolvedCreatorName,
       videoTitle:     typeof body.videoTitle === 'string' ? body.videoTitle.trim() || null : null,
-      targetUrl,
+      targetUrl:      targetResult.targetUrl,
       commissionType,
       commissionValue: commissionValue != null ? String(commissionValue) : null,
     },
