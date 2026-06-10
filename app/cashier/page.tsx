@@ -679,6 +679,9 @@ export default function CashierPage() {
                 ⚠️ 未配置自动 KHQR，本次已记录为 KHQR 收款，请确认顾客已实际付款。
               </div>
             )}
+            <div style={{ margin: '6px 0 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
+              🖨️ 未自动打印小票 · 如需收据请在 mPOS 手机端打印
+            </div>
             <button style={s.modalBtn} onClick={() => { setSaleResult(null); searchRef.current?.focus() }}>继续收银</button>
           </div>
         </div>
