@@ -2568,6 +2568,57 @@ export default function ProductsPage() {
                   </div>
                 </div>
 
+                <div style={{ ...img.section, ...img.createSection }}>
+                  <div style={img.title}>商品主图</div>
+                  <input
+                    ref={createImageFileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleNewImageSelect(file)
+                    }}
+                  />
+                  {newImagePreview ? (
+                    <div style={img.previewWrap}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={newImagePreview} alt={newName || '商品主图'} style={img.preview} />
+                      <div style={img.btnRow}>
+                        <button
+                          type="button"
+                          style={img.btn}
+                          disabled={creating}
+                          onClick={() => createImageFileRef.current?.click()}
+                        >
+                          重新选择图片
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...img.btn, ...img.btnDanger }}
+                          disabled={creating}
+                          onClick={clearNewImage}
+                        >
+                          {t('products.imageDelete')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={img.createEmpty}>
+                      <span style={img.emptyText}>新增时可直接上传 1 张商品主图</span>
+                      <button
+                        type="button"
+                        style={{ ...img.btn, ...img.createBtn }}
+                        disabled={creating}
+                        onClick={() => createImageFileRef.current?.click()}
+                      >
+                        上传商品图片
+                      </button>
+                    </div>
+                  )}
+                  {newImageError && <div style={img.err}>{newImageError}</div>}
+                </div>
+
                 <Field label={t('products.barcodeLabel')}>
                   <input
                     style={s.field}
@@ -2606,57 +2657,6 @@ export default function ProductsPage() {
                     placeholder="0.00"
                   />
                 </Field>
-
-                <div style={img.section}>
-                  <div style={img.title}>{t('products.imageTitle')}</div>
-                  <input
-                    ref={createImageFileRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) handleNewImageSelect(file)
-                    }}
-                  />
-                  {newImagePreview ? (
-                    <div style={img.previewWrap}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={newImagePreview} alt={newName || '商品主图'} style={img.preview} />
-                      <div style={img.btnRow}>
-                        <button
-                          type="button"
-                          style={img.btn}
-                          disabled={creating}
-                          onClick={() => createImageFileRef.current?.click()}
-                        >
-                          {t('products.imageReplace')}
-                        </button>
-                        <button
-                          type="button"
-                          style={{ ...img.btn, ...img.btnDanger }}
-                          disabled={creating}
-                          onClick={clearNewImage}
-                        >
-                          {t('products.imageDelete')}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={img.empty}>
-                      <span style={img.emptyText}>{t('products.imageNone')}</span>
-                      <button
-                        type="button"
-                        style={img.btn}
-                        disabled={creating}
-                        onClick={() => createImageFileRef.current?.click()}
-                      >
-                        {t('products.imageUpload')}
-                      </button>
-                    </div>
-                  )}
-                  {newImageError && <div style={img.err}>{newImageError}</div>}
-                </div>
 
                 <Field label={t('products.fieldCategory')}>
                   <CategorySelect
@@ -3276,6 +3276,10 @@ const img: Record<string, React.CSSProperties> = {
     background: '#f7f8fa',
     borderRadius: 'var(--radius-sm)',
   },
+  createSection: {
+    background: '#f0f7ff',
+    border: '1.5px solid #91caff',
+  },
   title: {
     fontSize: 12,
     color: 'var(--muted)',
@@ -3313,6 +3317,21 @@ const img: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     gap: 8,
     padding: '8px 4px',
+  },
+  createEmpty: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'stretch',
+    gap: 8,
+    padding: '4px 0',
+  },
+  createBtn: {
+    width: '100%',
+    height: 42,
+    background: 'var(--blue)',
+    borderColor: 'var(--blue)',
+    color: '#fff',
+    fontSize: 14,
   },
   emptyText: { fontSize: 13, color: 'var(--muted)' },
   err: { fontSize: 12, color: 'var(--red)', marginTop: 6 },
