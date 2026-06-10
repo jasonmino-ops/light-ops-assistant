@@ -7,7 +7,7 @@ import Link from 'next/link'
 const BRAND = '#07c160'
 
 type Lang = 'zh' | 'en' | 'km'
-type RecentStore = { code: string; name: string; lastVisitedAt: string }
+type RecentStore = { code: string; name: string; lastVisitedAt: string; imageUrl?: string | null }
 type ShopDisplay = { code: string; name: string; subtitle: string; image: string }
 type FeaturedStore = { code: string; name: string; businessType: string; imageUrl: string | null }
 
@@ -182,8 +182,8 @@ export default function ELifeHomePage() {
         .then((body) => {
           if (body.ok && Array.isArray(body.stores) && body.stores.length > 0) {
             setRecentStores(
-              body.stores.map((s: { storeCode: string; storeName: string; lastSeenAt: string }) => ({
-                code: s.storeCode, name: s.storeName, lastVisitedAt: s.lastSeenAt,
+              body.stores.map((s: { storeCode: string; storeName: string; lastSeenAt: string; bannerUrl?: string | null }) => ({
+                code: s.storeCode, name: s.storeName, lastVisitedAt: s.lastSeenAt, imageUrl: s.bannerUrl ?? null,
               }))
             )
           }
@@ -203,7 +203,7 @@ export default function ELifeHomePage() {
   type DisplayCard = { type: 'store'; shop: ShopDisplay } | { type: 'add' } | { type: 'discover' }
   const displayCards: DisplayCard[] = (() => {
     const stores: DisplayCard[] = recentStores.slice(0, 6).map(s => ({
-      type: 'store' as const, shop: { code: s.code, name: s.name, subtitle: '', image: '' },
+      type: 'store' as const, shop: { code: s.code, name: s.name, subtitle: '', image: s.imageUrl ?? '' },
     }))
     if (stores.length === 0) return [{ type: 'add' }, { type: 'discover' }]
     if (stores.length === 1) return [...stores, { type: 'add' }, { type: 'discover' }]
@@ -286,7 +286,7 @@ export default function ELifeHomePage() {
                 <BellIcon />
                 <span style={s.bellDot} />
               </button>
-              <button style={s.iconBtn} onClick={() => navTo('/me')}>
+              <button style={s.iconBtn} onClick={() => navTo('/e-life/me')}>
                 <UserSmIcon />
               </button>
             </div>
