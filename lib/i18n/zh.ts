@@ -421,6 +421,7 @@ const zh = {
     emptySub: '查询已有商品或新增商品',
     saveFailed: '保存失败',
     createFailed: '新增失败',
+    loadFailed: '加载商品失败，请重试',
     nameRequired: '商品名不能为空',
     barcodeRequired: '条码不能为空',
     priceInvalid: '请输入有效的售价（大于 0）',

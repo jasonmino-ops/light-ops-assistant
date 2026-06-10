@@ -13,7 +13,7 @@ import { getContext } from '@/lib/context'
  *            product management page can show the current state.
  *
  * POST /api/products — OWNER only
- * Create a new product. Body: { barcode, name, spec?, sellPrice }
+ * Create a new product. Body: { barcode?, name, spec?, sellPrice }
  */
 
 export async function GET(req: NextRequest) {
@@ -104,9 +104,6 @@ export async function POST(req: NextRequest) {
 
   const { barcode, name, spec, sellPrice, categoryId } = body
 
-  if (!barcode?.trim()) {
-    return NextResponse.json({ error: 'MISSING_BARCODE', message: '条码不能为空' }, { status: 400 })
-  }
   if (!name?.trim()) {
     return NextResponse.json({ error: 'MISSING_NAME', message: '商品名不能为空' }, { status: 400 })
   }
@@ -114,9 +111,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_PRICE', message: '售价必须大于 0' }, { status: 400 })
   }
 
+  const cleanBarcode = barcode?.trim() || `MANUAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+
   // Duplicate barcode guard
   const existing = await prisma.product.findFirst({
-    where: { tenantId: ctx.tenantId, barcode: barcode.trim() },
+    where: { tenantId: ctx.tenantId, barcode: cleanBarcode },
   })
   if (existing) {
     return NextResponse.json(
@@ -128,7 +127,7 @@ export async function POST(req: NextRequest) {
   const created = await prisma.product.create({
     data: {
       tenantId: ctx.tenantId,
-      barcode: barcode.trim(),
+      barcode: cleanBarcode,
       name: name.trim(),
       spec: spec?.trim() || null,
       sellPrice: String(sellPrice),
@@ -146,6 +145,7 @@ export async function POST(req: NextRequest) {
       sellPrice: created.sellPrice.toNumber(),
       status: created.status,
       categoryId: created.categoryId,
+      imageUrl: created.imageUrl,
     },
     { status: 201 },
   )

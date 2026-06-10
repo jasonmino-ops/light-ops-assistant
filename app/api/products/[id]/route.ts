@@ -118,5 +118,6 @@ export async function PATCH(
     sellPrice: updated.sellPrice.toNumber(),
     status: updated.status,
     categoryId: updated.categoryId,
+    imageUrl: updated.imageUrl,
   })
 }

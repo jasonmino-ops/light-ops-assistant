@@ -275,6 +275,9 @@ export default function ProductsPage() {
   const [listOpen, setListOpen] = useState(false)
   const [productList, setProductList] = useState<Product[]>([])
   const [listLoading, setListLoading] = useState(false)
+  const [listError, setListError] = useState<string | null>(null)
+  const [listSearch, setListSearch] = useState('')
+  const [listCategoryId, setListCategoryId] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -376,6 +379,7 @@ export default function ProductsPage() {
   async function loadProductList() {
     setListLoading(true)
     setDeleteMsg(null)
+    setListError(null)
     try {
       const [res, mpRes] = await Promise.all([
         apiFetch('/api/products?all=true', undefined, OWNER_CTX),
@@ -385,6 +389,9 @@ export default function ProductsPage() {
         const list: Product[] = await res.json()
         setProductList(list)
         setSelectedIds(new Set())
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setListError(body.message ?? body.error ?? t('products.loadFailed'))
       }
       if (mpRes.ok) {
         const body = await mpRes.json()
@@ -392,7 +399,7 @@ export default function ProductsPage() {
         setMarketingPages(Object.fromEntries(pages.map((p) => [p.productId, p])))
       }
     } catch {
-      // silent fail
+      setListError(t('common.networkError'))
     } finally {
       setListLoading(false)
     }
@@ -414,11 +421,60 @@ export default function ProductsPage() {
   }
 
   function toggleSelectAll() {
-    if (selectedIds.size === productList.length) {
-      setSelectedIds(new Set())
+    const visibleIds = filteredProductList.map((p) => p.id)
+    if (visibleIds.length === 0) return
+    const allVisibleSelected = visibleIds.every((id) => selectedIds.has(id))
+    if (allVisibleSelected) {
+      const next = new Set(selectedIds)
+      visibleIds.forEach((id) => next.delete(id))
+      setSelectedIds(next)
     } else {
-      setSelectedIds(new Set(productList.map((p) => p.id)))
+      setSelectedIds(new Set([...selectedIds, ...visibleIds]))
     }
+  }
+
+  function matchesListCategory(p: Product): boolean {
+    if (!listCategoryId) return true
+    if (p.categoryId === listCategoryId) return true
+    const childIds = categories.filter((c) => c.parentId === listCategoryId).map((c) => c.id)
+    return !!p.categoryId && childIds.includes(p.categoryId)
+  }
+
+  const filteredProductList = productList.filter((p) => {
+    const q = listSearch.trim().toLowerCase()
+    const keywordOk = !q ||
+      p.name.toLowerCase().includes(q) ||
+      p.barcode.toLowerCase().includes(q) ||
+      (p.spec ?? '').toLowerCase().includes(q)
+    return keywordOk && matchesListCategory(p)
+  })
+
+  function resetListFilters() {
+    setListSearch('')
+    setListCategoryId('')
+    setSelectedIds(new Set())
+  }
+
+  function selectAllVisibleChecked() {
+    return filteredProductList.length > 0 && filteredProductList.every((p) => selectedIds.has(p.id))
+  }
+
+  function selectedVisibleCount() {
+    const visible = new Set(filteredProductList.map((p) => p.id))
+    return [...selectedIds].filter((id) => visible.has(id)).length
+  }
+
+  function selectedVisibleIds() {
+    const visible = new Set(filteredProductList.map((p) => p.id))
+    return [...selectedIds].filter((id) => visible.has(id))
+  }
+
+  function onListSearchChange(value: string) {
+    setListSearch(value)
+  }
+
+  function onListCategoryChange(value: string) {
+    setListCategoryId(value)
   }
 
   function productPageUrl(slug: string): string {
@@ -1310,7 +1366,6 @@ export default function ProductsPage() {
 
   async function handleCreate() {
     const price = parseFloat(newPrice)
-    if (!newBarcode.trim()) { setError(t('products.barcodeRequired')); return }
     if (!newName.trim()) { setError(t('products.nameRequired')); return }
     if (isNaN(price) || price <= 0) { setError(t('products.priceInvalid')); return }
     setError(null)
@@ -1321,7 +1376,7 @@ export default function ProductsPage() {
         {
           method: 'POST',
           body: JSON.stringify({
-            barcode: newBarcode.trim(),
+            barcode: newBarcode.trim() || undefined,
             name: newName.trim(),
             spec: newSpec.trim() || null,
             sellPrice: price,
@@ -1818,31 +1873,65 @@ export default function ProductsPage() {
                 <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0' }}>{t('common.loading')}</div>
               )}
 
+              {listError && <div style={s.importErrorMsg}>{listError}</div>}
+
               {!listLoading && productList.length > 0 && (
                 <>
+                  <div style={ls.filterRow}>
+                    <input
+                      style={ls.searchInput}
+                      value={listSearch}
+                      onChange={(e) => onListSearchChange(e.target.value)}
+                      placeholder="搜索商品名 / 条码 / 规格"
+                    />
+                    <select
+                      style={ls.categoryFilter}
+                      value={listCategoryId}
+                      onChange={(e) => onListCategoryChange(e.target.value)}
+                    >
+                      <option value="">全部分类</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.parentId ? '└ ' : ''}{c.name}
+                        </option>
+                      ))}
+                    </select>
+                    {(listSearch || listCategoryId) && (
+                      <button type="button" style={ls.resetFilterBtn} onClick={resetListFilters}>
+                        清空
+                      </button>
+                    )}
+                  </div>
+
                   {/* Header row: select-all + batch delete */}
                   <div style={ls.headerRow}>
                     <label style={ls.checkLabel}>
                       <input
                         type="checkbox"
-                        checked={selectedIds.size === productList.length && productList.length > 0}
+                        checked={selectAllVisibleChecked()}
                         onChange={toggleSelectAll}
                         style={ls.checkbox}
                       />
-                      <span style={ls.selectAllText}>{t('products.selectAll')}</span>
+                      <span style={ls.selectAllText}>
+                        {t('products.selectAll')}（{filteredProductList.length}）
+                      </span>
                     </label>
-                    {selectedIds.size > 0 && (
+                    {selectedVisibleCount() > 0 && (
                       <button
                         style={ls.batchDeleteBtn}
-                        onClick={() => setDeleteConfirm({ type: 'batch', ids: Array.from(selectedIds) })}
+                        onClick={() => setDeleteConfirm({ type: 'batch', ids: selectedVisibleIds() })}
                       >
-                        {t('products.batchDelete')}（{selectedIds.size}）
+                        {t('products.batchDelete')}（{selectedVisibleCount()}）
                       </button>
                     )}
                   </div>
 
 	                  {/* Product rows */}
-	                  {productList.map((p) => {
+                  {filteredProductList.length === 0 && (
+                    <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>无匹配商品</div>
+                  )}
+
+	                  {filteredProductList.map((p) => {
 	                    const isExpanded = expandedId === p.id
 	                    const uploading = !!listImgUploading[p.id]
 	                    const marketingPage = marketingPages[p.id]
@@ -2431,10 +2520,12 @@ export default function ProductsPage() {
             {mode === 'not-found' && (
               <div style={s.card}>
                 <div style={s.noticeRow}>
-                  <span style={s.noticeIcon}>＋</span>
+                    <span style={s.noticeIcon}>＋</span>
                   <div>
                     <div style={s.noticeTitle}>{t('products.notFoundTitle')}</div>
-                    <div style={s.noticeSub}>{t('products.barcodeLabel')}：{newBarcode}</div>
+                    <div style={s.noticeSub}>
+                      {newBarcode ? `${t('products.barcodeLabel')}：${newBarcode}` : '未填写条码时会自动生成内部码'}
+                    </div>
                   </div>
                 </div>
 
@@ -3169,6 +3260,46 @@ const ai: Record<string, React.CSSProperties> = {
 // ─── Product list row styles ──────────────────────────────────────────────────
 
 const ls: Record<string, React.CSSProperties> = {
+  filterRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 120px auto',
+    gap: 8,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  searchInput: {
+    minWidth: 0,
+    height: 36,
+    border: '1.5px solid var(--border)',
+    borderRadius: 8,
+    padding: '0 10px',
+    fontSize: 13,
+    outline: 'none',
+    background: '#fff',
+    color: 'var(--text)',
+  },
+  categoryFilter: {
+    minWidth: 0,
+    height: 36,
+    border: '1.5px solid var(--border)',
+    borderRadius: 8,
+    padding: '0 8px',
+    fontSize: 12,
+    outline: 'none',
+    background: '#fff',
+    color: 'var(--text)',
+  },
+  resetFilterBtn: {
+    height: 36,
+    border: '1px solid #d9d9d9',
+    borderRadius: 8,
+    background: '#f7f8fa',
+    color: 'var(--muted)',
+    fontSize: 12,
+    padding: '0 10px',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  },
   headerRow: {
     display: 'flex',
     alignItems: 'center',
