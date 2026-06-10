@@ -59,6 +59,8 @@ export default function CustomersPage() {
   const [touchTarget, setTouchTarget] = useState<Customer | null>(null)
   const [touchIntro, setTouchIntro]   = useState(false)
   const [batchOpen, setBatchOpen]     = useState(false)
+  // 会员等级说明弹层（功能未启用，仅作说明）
+  const [memberLevelIntro, setMemberLevelIntro] = useState(false)
   // 发券
   const [issueTarget, setIssueTarget] = useState<Customer | null>(null)
   const [batchIssueOpen, setBatchIssueOpen] = useState(false)
@@ -150,7 +152,7 @@ export default function CustomersPage() {
           >
             Telegram 触达{isFlagship && <span style={s.flagBadge}>旗舰</span>}
           </button>
-          <button type="button" style={s.opsBtn} onClick={() => alert('该功能开发中，敬请期待')}>会员等级</button>
+          <button type="button" style={s.opsBtn} onClick={() => setMemberLevelIntro(true)}>会员等级</button>
         </div>
 
         {/* 搜索 + 筛选 */}
@@ -245,6 +247,9 @@ export default function CustomersPage() {
 
       {/* Telegram 触达说明弹窗（非旗舰） */}
       {touchIntro && <TouchIntroModal onClose={() => setTouchIntro(false)} />}
+
+      {/* 会员等级说明弹窗（功能未启用） */}
+      {memberLevelIntro && <MemberLevelIntroModal onClose={() => setMemberLevelIntro(false)} />}
 
       {/* 批量触达弹窗（旗舰） */}
       {batchOpen && (
@@ -624,6 +629,27 @@ function TouchIntroModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <button type="button" style={tm.introClose} onClick={onClose}>知道了</button>
+      </div>
+    </div>
+  )
+}
+
+// ─── 会员等级说明弹层（功能未启用，仅作占位说明） ────────────────────────────
+
+function MemberLevelIntroModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div style={tm.mask} onClick={onClose}>
+      <div style={tm.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={tm.title}>会员等级</div>
+        <div style={tm.introList}>
+          <div style={tm.introItem}>
+            会员等级功能用于后续按消费次数、消费金额、复购情况对顾客分层运营。
+          </div>
+          <div style={tm.introItemMuted}>
+            当前阶段暂未启用，不影响顾客资料、发券和触达功能。
+          </div>
+        </div>
+        <button type="button" style={tm.introClose} onClick={onClose}>我知道了</button>
       </div>
     </div>
   )
