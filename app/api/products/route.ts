@@ -1,6 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+
+const PRODUCT_SELECT = {
+  id: true,
+  barcode: true,
+  name: true,
+  spec: true,
+  sellPrice: true,
+  status: true,
+  categoryId: true,
+  imageUrl: true,
+  imageUrls: true,
+} satisfies Prisma.ProductSelect
+
+const PRODUCT_LEGACY_SELECT = {
+  id: true,
+  barcode: true,
+  name: true,
+  spec: true,
+  sellPrice: true,
+  status: true,
+  categoryId: true,
+  imageUrl: true,
+} satisfies Prisma.ProductSelect
 
 function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
   try {
@@ -8,6 +32,12 @@ function parseImageUrls(imageUrls: string | null, imageUrl: string | null): stri
     if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 3)
   } catch {}
   return imageUrl ? [imageUrl] : []
+}
+
+function isMissingImageGalleryColumn(e: unknown): boolean {
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2022') return false
+  const text = String(e.message)
+  return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('column') || text.includes('does not exist')
 }
 
 /**
@@ -39,15 +69,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
     }
 
-    const products = await prisma.product.findMany({
-      where: {
-        tenantId: ctx.tenantId,
-        ...(all ? {} : { status: 'ACTIVE' }),
-      },
-      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true, imageUrl: true, imageUrls: true },
-      orderBy: { name: 'asc' },
-      take: 500,
-    })
+    const where = {
+      tenantId: ctx.tenantId,
+      ...(all ? {} : { status: 'ACTIVE' as const }),
+    }
+
+    let products: Array<Prisma.ProductGetPayload<{ select: typeof PRODUCT_SELECT }>>
+    try {
+      products = await prisma.product.findMany({
+        where,
+        select: PRODUCT_SELECT,
+        orderBy: { name: 'asc' },
+        take: 500,
+      })
+    } catch (e) {
+      if (!isMissingImageGalleryColumn(e)) throw e
+      const legacyProducts = await prisma.product.findMany({
+        where,
+        select: PRODUCT_LEGACY_SELECT,
+        orderBy: { name: 'asc' },
+        take: 500,
+      })
+      products = legacyProducts.map((p) => ({ ...p, imageUrls: null }))
+    }
     return NextResponse.json(
       products.map((p) => ({
         id: p.id,
@@ -66,14 +110,19 @@ export async function GET(req: NextRequest) {
   // ── Single lookup ──────────────────────────────────────────────────────────
   // OWNER can see disabled products (to re-enable them in the products page)
   const statusFilter = ctx.role === 'OWNER' ? undefined : ('ACTIVE' as const)
-  const product = await prisma.product.findFirst({
-    where: {
-      tenantId: ctx.tenantId,
-      barcode,
-      ...(statusFilter ? { status: statusFilter } : {}),
-    },
-    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true, imageUrl: true, imageUrls: true },
-  })
+  const where = {
+    tenantId: ctx.tenantId,
+    barcode,
+    ...(statusFilter ? { status: statusFilter } : {}),
+  }
+  let product: Prisma.ProductGetPayload<{ select: typeof PRODUCT_SELECT }> | null
+  try {
+    product = await prisma.product.findFirst({ where, select: PRODUCT_SELECT })
+  } catch (e) {
+    if (!isMissingImageGalleryColumn(e)) throw e
+    const legacyProduct = await prisma.product.findFirst({ where, select: PRODUCT_LEGACY_SELECT })
+    product = legacyProduct ? { ...legacyProduct, imageUrls: null } : null
+  }
 
   if (!product) {
     return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
@@ -144,6 +193,7 @@ export async function POST(req: NextRequest) {
       status: 'ACTIVE',
       categoryId: categoryId ?? null,
     },
+    select: PRODUCT_LEGACY_SELECT,
   })
 
   return NextResponse.json(

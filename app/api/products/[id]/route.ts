@@ -3,12 +3,41 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
+const PRODUCT_PATCH_SELECT = {
+  id: true,
+  barcode: true,
+  name: true,
+  spec: true,
+  sellPrice: true,
+  status: true,
+  categoryId: true,
+  imageUrl: true,
+  imageUrls: true,
+} satisfies Prisma.ProductSelect
+
+const PRODUCT_PATCH_LEGACY_SELECT = {
+  id: true,
+  barcode: true,
+  name: true,
+  spec: true,
+  sellPrice: true,
+  status: true,
+  categoryId: true,
+  imageUrl: true,
+} satisfies Prisma.ProductSelect
+
 function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
   try {
     const parsed = imageUrls ? JSON.parse(imageUrls) : []
     if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 3)
   } catch {}
   return imageUrl ? [imageUrl] : []
+}
+
+function isMissingImageGalleryColumn(e: unknown): boolean {
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2022') return false
+  const text = String(e.message)
+  return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('column') || text.includes('does not exist')
 }
 
 /**
@@ -99,23 +128,32 @@ export async function PATCH(
     return NextResponse.json({ error: 'INVALID_STATUS' }, { status: 400 })
   }
 
-  let updated: Awaited<ReturnType<typeof prisma.product.update>>
+  const data = {
+    ...(name !== undefined ? { name: String(name).trim() } : {}),
+    ...(spec !== undefined ? { spec: spec ? String(spec).trim() || null : null } : {}),
+    ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
+    ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
+    ...(categoryId !== undefined ? { categoryId: categoryId ?? null } : {}),
+  }
+
+  let updated: Prisma.ProductGetPayload<{ select: typeof PRODUCT_PATCH_SELECT }>
   try {
     updated = await prisma.product.update({
       where: { id, tenantId: ctx.tenantId },
-      data: {
-        ...(name !== undefined ? { name: String(name).trim() } : {}),
-        ...(spec !== undefined ? { spec: spec ? String(spec).trim() || null : null } : {}),
-        ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
-        ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
-        ...(categoryId !== undefined ? { categoryId: categoryId ?? null } : {}),
-      },
+      data,
+      select: PRODUCT_PATCH_SELECT,
     })
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
       return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
     }
-    throw e
+    if (!isMissingImageGalleryColumn(e)) throw e
+    const legacyUpdated = await prisma.product.update({
+      where: { id, tenantId: ctx.tenantId },
+      data,
+      select: PRODUCT_PATCH_LEGACY_SELECT,
+    })
+    updated = { ...legacyUpdated, imageUrls: null }
   }
 
   return NextResponse.json({
