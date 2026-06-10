@@ -12,8 +12,12 @@ export async function GET(req: NextRequest) {
   if (ctx.role !== 'OWNER') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   if (!ctx.storeId) return NextResponse.json({ error: 'NO_STORE' }, { status: 400 })
 
+  const includeInactive = req.nextUrl.searchParams.get('includeInactive') === 'true'
   const creators = await prisma.creator.findMany({
-    where: { storeId: ctx.storeId, status: 'active' },
+    where: {
+      storeId: ctx.storeId,
+      ...(includeInactive ? {} : { status: 'active' }),
+    },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true, name: true, displayName: true,

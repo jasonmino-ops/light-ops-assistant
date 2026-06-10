@@ -17,6 +17,7 @@ export async function GET(
       id:            true,
       code:          true,
       targetUrl:     true,
+      status:        true,
       creatorName:   true,
       videoTitle:    true,
       sourcePlatform: true,
@@ -27,6 +28,9 @@ export async function GET(
   })
 
   if (!link) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+  if (link.status === 'PAUSED') {
+    return NextResponse.json({ error: 'PAUSED', message: '该推广活动已结束' }, { status: 410 })
+  }
 
   // fire-and-forget view count
   prisma.campaignLink.update({

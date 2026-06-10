@@ -20,6 +20,7 @@ type CampaignLink = {
   creatorId: string | null; creatorName: string | null; tiktokHandle: string | null
   videoTitle: string | null
   targetUrl: string | null
+  status: 'ACTIVE' | 'PAUSED'
   viewCount: number; clickCount: number
   commissionType: string | null; commissionValue: number | null
   settlementStatus: string
@@ -103,6 +104,8 @@ export default function CampaignPage() {
   const [creators, setCreators] = useState<Creator[]>([])
   const [links,    setLinks]    = useState<CampaignLink[]>([])
   const [marketingPages, setMarketingPages] = useState<MarketingPageOption[]>([])
+  const [showInactiveCreators, setShowInactiveCreators] = useState(false)
+  const [showPausedLinks, setShowPausedLinks] = useState(false)
 
   // creator form
   const [addCreatorOpen,  setAddCreatorOpen]  = useState(false)
@@ -133,6 +136,7 @@ export default function CampaignPage() {
 
   // dashboard token
   const [tokenBusyId, setTokenBusyId] = useState<string | null>(null)
+  const [creatorStatusBusyId, setCreatorStatusBusyId] = useState<string | null>(null)
 
   // material drawer
   const [materialLink, setMaterialLink] = useState<CampaignLink | null>(null)
@@ -148,11 +152,14 @@ export default function CampaignPage() {
   const [analyticsSort, setAnalyticsSort] = useState<AnalyticsSort>('sales')
   const [analyticsFilter, setAnalyticsFilter] = useState<AnalyticsFilter>('all')
   const [openMoreId, setOpenMoreId] = useState<string | null>(null)
+  const [linkStatusBusyId, setLinkStatusBusyId] = useState<string | null>(null)
 
   async function loadAll() {
+    const creatorPath = `/api/creators${showInactiveCreators ? '?includeInactive=true' : ''}`
+    const linkPath = `/api/campaign-links${showPausedLinks ? '?includePaused=true' : ''}`
     const [rc, rl, rp] = await Promise.all([
-      apiFetch('/api/creators',       undefined, OWNER_CTX),
-      apiFetch('/api/campaign-links', undefined, OWNER_CTX),
+      apiFetch(creatorPath,       undefined, OWNER_CTX),
+      apiFetch(linkPath, undefined, OWNER_CTX),
       apiFetch('/api/marketing-product-pages', undefined, OWNER_CTX),
     ])
     if (rc.ok) { const d = await rc.json(); setCreators(d.creators ?? []) }
@@ -163,7 +170,9 @@ export default function CampaignPage() {
     }
   }
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [showInactiveCreators, showPausedLinks])
+
+  const activeCreators = creators.filter((c) => c.status === 'active')
 
   // ── Add creator ─────────────────────────────────────────────────────────────
 
@@ -237,6 +246,30 @@ export default function CampaignPage() {
       if (r.ok) { loadAll() }
     } catch { /* silent */ }
     finally { setTokenBusyId(null) }
+  }
+
+  async function handleCreatorStatus(creatorId: string, status: 'active' | 'inactive') {
+    setCreatorStatusBusyId(creatorId)
+    try {
+      const r = await apiFetch(`/api/creators/${creatorId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }, OWNER_CTX)
+      if (r.ok) loadAll()
+    } catch { /* keep current list */ }
+    finally { setCreatorStatusBusyId(null) }
+  }
+
+  async function handleLinkStatus(linkId: string, status: 'ACTIVE' | 'PAUSED') {
+    setLinkStatusBusyId(linkId)
+    try {
+      const r = await apiFetch(`/api/campaign-links/${linkId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }, OWNER_CTX)
+      if (r.ok) loadAll()
+    } catch { /* keep current list */ }
+    finally { setLinkStatusBusyId(null) }
   }
 
   function pageByTargetUrl(targetUrl: string | null): MarketingPageOption | null {
@@ -432,9 +465,17 @@ export default function CampaignPage() {
             <div style={s.sectionTitle}>博主管理</div>
             <div style={s.sectionHint}>维护博主资料和对外看板链接。</div>
           </div>
-          <button style={s.btnSm} onClick={() => { setAddCreatorOpen(!addCreatorOpen); setCreatorError(null) }}>
-            {addCreatorOpen ? '收起' : '+ 新增博主'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, justifyContent: 'flex-end' }}>
+            <button
+              style={{ ...s.btnGhost, background: showInactiveCreators ? '#111827' : '#f3f4f6', borderColor: showInactiveCreators ? '#111827' : '#d1d5db', color: showInactiveCreators ? '#fff' : '#374151' }}
+              onClick={() => setShowInactiveCreators((v) => !v)}
+            >
+              {showInactiveCreators ? '隐藏已停用博主' : '显示已停用博主'}
+            </button>
+            <button style={s.btnSm} onClick={() => { setAddCreatorOpen(!addCreatorOpen); setCreatorError(null) }}>
+              {addCreatorOpen ? '收起' : '+ 新增博主'}
+            </button>
+          </div>
         </div>
 
         {addCreatorOpen && (
@@ -488,6 +529,9 @@ export default function CampaignPage() {
                 <div style={{ fontSize: 12, color: '#6b7280', marginTop: 5 }}>
                   {c.tiktokHandle ? `@${c.tiktokHandle}` : '未填写 TikTok'}
                 </div>
+                {c.status === 'inactive' && (
+                  <div style={{ fontSize: 12, color: '#dc2626', fontWeight: 700, marginTop: 5 }}>已停用</div>
+                )}
                 <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3 }}>{c.phone || '未填写电话'}</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginTop: 10 }}>
                   {!c.dashboardToken ? (
@@ -504,6 +548,13 @@ export default function CampaignPage() {
                       </button>
                     </>
                   )}
+                  <button
+                    style={s.btnGhost}
+                    onClick={() => handleCreatorStatus(c.id, c.status === 'inactive' ? 'active' : 'inactive')}
+                    disabled={creatorStatusBusyId === c.id}
+                  >
+                    {creatorStatusBusyId === c.id ? '处理中…' : c.status === 'inactive' ? '恢复博主' : '停用博主'}
+                  </button>
                 </div>
               </div>
             ))}
@@ -525,7 +576,7 @@ export default function CampaignPage() {
             <label style={s.label}>选择博主</label>
             <select style={s.select} value={selCreatorId} onChange={(e) => { setSelCreatorId(e.target.value); setManualName('') }}>
               <option value="">── 手动输入 ──</option>
-              {creators.map((c) => (
+              {activeCreators.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}{c.tiktokHandle ? ` (@${c.tiktokHandle})` : ''}</option>
               ))}
             </select>
@@ -823,6 +874,12 @@ export default function CampaignPage() {
             <div style={s.sectionTitle}>历史短链</div>
             <div style={s.sectionHint}>复制推广入口、查看效果，并处理落地页和结算状态。</div>
           </div>
+          <button
+            style={{ ...s.btnGhost, background: showPausedLinks ? '#111827' : '#f3f4f6', borderColor: showPausedLinks ? '#111827' : '#d1d5db', color: showPausedLinks ? '#fff' : '#374151' }}
+            onClick={() => setShowPausedLinks((v) => !v)}
+          >
+            {showPausedLinks ? '隐藏已停用' : '显示已停用'}
+          </button>
         </div>
         {links.length === 0 ? (
           <div style={{ fontSize: 13, color: '#9ca3af' }}>暂无推广短链，生成第一条后会显示在这里</div>
@@ -830,6 +887,7 @@ export default function CampaignPage() {
           links.map((lk) => {
             const fullUrl   = publicLink(`/v/${lk.code}`)
             const isSettled = lk.settlementStatus === 'settled'
+            const isPaused = lk.status === 'PAUSED'
             const isSettling = settlingId === lk.id
             const landingPage = pageByTargetUrl(lk.targetUrl)
             const isEditingLanding = editingLandingId === lk.id
@@ -843,6 +901,7 @@ export default function CampaignPage() {
                     <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
                       落地页：{landingDisplay(lk, landingPage)}
                     </div>
+                    {isPaused && <div style={{ fontSize: 12, color: '#dc2626', fontWeight: 700, marginTop: 4 }}>已停用</div>}
                     {lk.landingRisk && <div style={s.riskBox}>落地页异常，请重新选择营销页</div>}
                     {lk.creatorName && (
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
@@ -855,6 +914,13 @@ export default function CampaignPage() {
                     <span style={badge(isSettled)}>{isSettled ? '已结算' : '未结算'}</span>
                     <button style={s.btnSm} onClick={() => copy(fullUrl, lk.code)}>
                       {copied === lk.code ? '已复制 ✓' : '复制链接'}
+                    </button>
+                    <button
+                      style={{ ...s.btnGhost, color: isPaused ? '#15803d' : '#b91c1c' }}
+                      onClick={() => handleLinkStatus(lk.id, isPaused ? 'ACTIVE' : 'PAUSED')}
+                      disabled={linkStatusBusyId === lk.id}
+                    >
+                      {linkStatusBusyId === lk.id ? '处理中…' : isPaused ? '恢复' : '停用'}
                     </button>
                     <button style={{ ...s.btnCopy, background: '#eff6ff', borderColor: '#bfdbfe', color: '#1d4ed8' }}
                       onClick={() => { setMaterialLink(lk); setMaterialLang('zh') }}>

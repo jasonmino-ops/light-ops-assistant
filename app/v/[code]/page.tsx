@@ -17,6 +17,8 @@ const I18N: Record<Lang, {
   poweredBy:    string
   notFound:     string
   notFoundHint: string
+  paused:       string
+  pausedHint:   string
   loading:      string
   tiktokSource: string
   dealBadge:    string
@@ -30,6 +32,8 @@ const I18N: Record<Lang, {
     poweredBy:    '由店小二 · E-Life 驱动',
     notFound:     '链接不存在或已失效',
     notFoundHint: '请联系商家获取最新下单入口',
+    paused:       '该推广活动已结束',
+    pausedHint:   '请联系商家获取最新优惠或下单入口',
     loading:      '加载中…',
     tiktokSource: '🎵 来自 TikTok 推荐',
     dealBadge:    '✨ TikTok 粉丝专属通道',
@@ -43,6 +47,8 @@ const I18N: Record<Lang, {
     poweredBy:    'Powered by 店小二 · E-Life',
     notFound:     'Link not found or expired',
     notFoundHint: 'Please contact the shop for the latest link',
+    paused:       'This campaign has ended',
+    pausedHint:   'Please contact the shop for the latest offer or order link',
     loading:      'Loading…',
     tiktokSource: '🎵 Via TikTok',
     dealBadge:    '✨ Exclusive TikTok Fan Offer',
@@ -56,6 +62,8 @@ const I18N: Record<Lang, {
     poweredBy:    'ដំណើរការដោយ 店小二 · E-Life',
     notFound:     'តំណភ្ជាប់មិនមាន ឬ​ផុតកំណត់',
     notFoundHint: 'សូមទំនាក់ទំនងហាងដើម្បីទទួលបានតំណភ្ជាប់ថ្មី',
+    paused:       'យុទ្ធនាការនេះបានបញ្ចប់',
+    pausedHint:   'សូមទាក់ទងហាងដើម្បីទទួលបានការផ្តល់ជូន ឬតំណបញ្ជាទិញថ្មី',
     loading:      'កំពុងផ្ទុក…',
     tiktokSource: '🎵 ណែនាំតាម TikTok',
     dealBadge:    '✨ ការផ្តល់ជូនពិសេសសម្រាប់ TikTok',
@@ -94,6 +102,7 @@ function LandingInner() {
   const searchParams    = useSearchParams()
   const [data, setData] = useState<LinkData | null>(null)
   const [notFound, setNotFound] = useState(false)
+  const [paused, setPaused] = useState(false)
   const [lang, setLang] = useState<Lang>('zh')
   const autoRedirectedRef = useRef(false)
 
@@ -106,6 +115,7 @@ function LandingInner() {
     fetch(`/api/v/${code}`)
       .then((r) => {
         if (r.status === 404) { setNotFound(true); return null }
+        if (r.status === 410) { setPaused(true); return null }
         return r.json()
       })
       .then((d) => { if (d) setData(d) })
@@ -276,6 +286,27 @@ function LandingInner() {
           </div>
           <div style={{ fontSize: 13 }}>{t('notFoundHint')}</div>
           {/* minimal lang switcher on error page */}
+          <div style={{ marginTop: 24, display: 'flex', gap: 6, justifyContent: 'center' }}>
+            {LANGS.map((l) => (
+              <button key={l} style={langBtnOnDark(l === lang)} onClick={() => switchLang(l)}>
+                {LANG_LABELS[l]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (paused) {
+    return (
+      <div style={s.wrap}>
+        <div style={s.errorWrap}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>⏸️</div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+            {t('paused')}
+          </div>
+          <div style={{ fontSize: 13 }}>{t('pausedHint')}</div>
           <div style={{ marginTop: 24, display: 'flex', gap: 6, justifyContent: 'center' }}>
             {LANGS.map((l) => (
               <button key={l} style={langBtnOnDark(l === lang)} onClick={() => switchLang(l)}>

@@ -28,13 +28,18 @@ export async function GET(req: NextRequest) {
   if (ctx.role !== 'OWNER') return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   if (!ctx.storeId) return NextResponse.json({ error: 'NO_STORE' }, { status: 400 })
 
+  const includePaused = req.nextUrl.searchParams.get('includePaused') === 'true'
   const links = await prisma.campaignLink.findMany({
-    where: { storeId: ctx.storeId },
+    where: {
+      storeId: ctx.storeId,
+      ...(includePaused ? {} : { status: 'ACTIVE' }),
+    },
     orderBy: { createdAt: 'desc' },
     take: 50,
     select: {
       id: true, code: true, sourcePlatform: true,
       creatorId: true, creatorName: true, videoTitle: true, targetUrl: true,
+      status: true,
       viewCount: true, clickCount: true,
       commissionType: true, commissionValue: true,
       settlementStatus: true, settledAt: true, settledNote: true,
@@ -69,6 +74,7 @@ export async function GET(req: NextRequest) {
       tiktokHandle:     l.creator?.tiktokHandle ?? null,
       videoTitle:       l.videoTitle,
       targetUrl:        l.targetUrl,
+      status:           l.status,
       viewCount:        l.viewCount,
       clickCount:       l.clickCount,
       commissionType:   l.commissionType,
@@ -106,9 +112,9 @@ export async function POST(req: NextRequest) {
   if (typeof body.creatorId === 'string' && body.creatorId) {
     const creator = await prisma.creator.findUnique({
       where: { id: body.creatorId },
-      select: { id: true, name: true, storeId: true },
+      select: { id: true, name: true, storeId: true, status: true },
     })
-    if (creator && creator.storeId === ctx.storeId) {
+    if (creator && creator.storeId === ctx.storeId && creator.status === 'active') {
       resolvedCreatorId   = creator.id
       resolvedCreatorName = creator.name
     }
