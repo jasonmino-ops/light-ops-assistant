@@ -97,6 +97,18 @@ function settlementLabel(status: string): string {
   return status === 'settled' ? '已结算' : '待结算'
 }
 
+function normalizeTargetPath(targetUrl: string | null): string {
+  if (!targetUrl) return ''
+  const trimmed = targetUrl.trim()
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed
+  try {
+    const url = new URL(trimmed)
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return trimmed
+  }
+}
+
 async function readApiMessage(res: Response, fallback: string): Promise<string> {
   try {
     const contentType = res.headers.get('content-type') ?? ''
@@ -291,8 +303,9 @@ export default function CampaignPage() {
   }
 
   function pageByTargetUrl(targetUrl: string | null): MarketingPageOption | null {
-    if (!targetUrl?.startsWith('/p/')) return null
-    const slug = targetUrl.slice(3).split(/[?#]/)[0]
+    const normalized = normalizeTargetPath(targetUrl)
+    if (!normalized.startsWith('/p/')) return null
+    const slug = normalized.slice(3).split(/[?#]/)[0]
     return marketingPages.find((p) => p.slug === slug) ?? null
   }
 
@@ -334,14 +347,15 @@ export default function CampaignPage() {
   }
 
   function landingLabel(targetUrl: string | null): string {
-    return targetUrl?.startsWith('/p/') ? '营销页' : '菜单页'
+    return normalizeTargetPath(targetUrl).startsWith('/p/') ? '营销页' : '菜单页'
   }
 
   function landingDisplay(link: CampaignLink, page: MarketingPageOption | null): string {
-    if (!link.targetUrl) return '菜单页'
-    if (link.targetUrl.startsWith('/menu')) return '菜单页'
-    if (link.targetUrl.startsWith('/p/')) return page ? `营销页：${page.title || page.slug}` : `营销页：${link.targetUrl}`
-    return link.targetUrl
+    const targetUrl = normalizeTargetPath(link.targetUrl)
+    if (!targetUrl) return '菜单页'
+    if (targetUrl.startsWith('/menu')) return '菜单页'
+    if (targetUrl.startsWith('/p/')) return page ? `营销页：${page.title || page.slug}` : `营销页：${targetUrl}`
+    return targetUrl
   }
 
   function sourceTypeLabel(link: CampaignLink): string {
@@ -389,6 +403,7 @@ export default function CampaignPage() {
   const s: Record<string, CSSProperties> = {
     page:     { padding: '16px 14px 72px', maxWidth: 960, margin: '0 auto', fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', background: '#f6f7f8', minHeight: '100dvh' },
     topBar:   { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 14, flexWrap: 'wrap' as const },
+    backLink: { display: 'inline-flex', alignItems: 'center', color: '#2563eb', textDecoration: 'none', fontSize: 13, fontWeight: 700, marginBottom: 8 },
     h1:       { fontSize: 24, fontWeight: 800, margin: '0 0 6px', color: '#111827', letterSpacing: 0 },
     desc:     { fontSize: 13, color: '#6b7280', margin: 0, lineHeight: 1.6 },
     sectionTitle: { fontSize: 16, fontWeight: 800, color: '#111827', margin: '0 0 4px' },
@@ -464,6 +479,7 @@ export default function CampaignPage() {
     <div style={s.page}>
       <div style={s.topBar}>
         <div>
+          <a href="/dashboard" style={s.backLink}>← 返回概览</a>
           <h1 style={s.h1}>TikTok 推广管理</h1>
           <p style={s.desc}>创建推广短链，追踪点击、订单、销售额和佣金。</p>
         </div>

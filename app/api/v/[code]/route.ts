@@ -5,6 +5,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+function normalizeTargetPath(targetUrl: string): string {
+  const trimmed = targetUrl.trim()
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed
+  try {
+    const url = new URL(trimmed)
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return trimmed
+  }
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ code: string }> },
@@ -43,7 +54,7 @@ export async function GET(
     storeName:    link.store.name,
     bannerUrl:    link.store.bannerUrl ?? null,
     announcement: link.store.announcement ?? null,
-    targetUrl:    link.targetUrl,
+    targetUrl:    normalizeTargetPath(link.targetUrl),
     creatorName:  link.creatorName ?? null,
     videoTitle:   link.videoTitle ?? null,
   })
