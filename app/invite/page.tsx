@@ -147,6 +147,7 @@ export default function InvitePage() {
   function reset() {
     setResult(null)
     setGenError('')
+    setCopied(false)
     loadMembers()
   }
 
@@ -218,6 +219,10 @@ export default function InvitePage() {
           </div>
         ) : (
           <div style={s.resultWrap}>
+            <button type="button" style={s.backBtn} onClick={reset}>
+              ← 返回邀请码
+            </button>
+
             <div style={s.qrCard}>
               {result.tgLink
                 ? <QRCode value={result.tgLink} size={200} style={{ display: 'block' }} />
@@ -489,6 +494,16 @@ const s: Record<string, React.CSSProperties> = {
   btnSub: { fontSize: 11, color: '#8c8c8c' },
 
   resultWrap: { display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 },
+  backBtn: {
+    alignSelf: 'flex-start',
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    color: '#1677ff',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
   qrCard: { background: '#fff', borderRadius: 14, padding: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' },
   noLink: { fontSize: 13, color: '#aaa', textAlign: 'center', padding: '16px 0' },
   infoCard: { background: '#fff', borderRadius: 14, padding: '4px 16px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' },
