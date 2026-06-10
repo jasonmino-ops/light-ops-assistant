@@ -3,50 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ELifeBottomNav from '../components/ELifeBottomNav'
+import ELifeSupportModal from '../components/ELifeSupportModal'
 
 const BRAND = '#07c160'
-// TODO: Move production customer service entry to NEXT_PUBLIC_SUPPORT_URL
-// or NEXT_PUBLIC_CUSTOMER_SERVICE_BOT_USERNAME once the final support bot is fixed.
-const FALLBACK_CUSTOMER_SERVICE_URL = 'https://t.me/Eshop_sale_bot'
-
-function cleanBotUsername(raw?: string) {
-  return (raw ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
-}
-
-function resolveCustomerServiceUrl() {
-  const explicitUrl = process.env.NEXT_PUBLIC_SUPPORT_URL?.trim()
-    || process.env.NEXT_PUBLIC_CUSTOMER_SERVICE_URL?.trim()
-  if (explicitUrl) return explicitUrl
-
-  const botUsername = cleanBotUsername(
-    process.env.NEXT_PUBLIC_SUPPORT_BOT_USERNAME
-      || process.env.NEXT_PUBLIC_CUSTOMER_SERVICE_BOT_USERNAME
-      || process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME
-  )
-  if (botUsername) return `https://t.me/${botUsername}`
-
-  return FALLBACK_CUSTOMER_SERVICE_URL
-}
-
-const CUSTOMER_SERVICE_URL = resolveCustomerServiceUrl()
-
-function resolveCustomerServiceAccount() {
-  const botUsername = cleanBotUsername(
-    process.env.NEXT_PUBLIC_SUPPORT_BOT_USERNAME
-      || process.env.NEXT_PUBLIC_CUSTOMER_SERVICE_BOT_USERNAME
-      || process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME
-  )
-  if (botUsername) return `@${botUsername}`
-
-  const match = CUSTOMER_SERVICE_URL.match(/^https:\/\/t\.me\/([a-zA-Z0-9_]+)/)
-  return match ? `@${match[1]}` : '@Eshop_sale_bot'
-}
-
-const CUSTOMER_SERVICE_ACCOUNT = resolveCustomerServiceAccount()
-
-function isTelegramServiceLink(url: string) {
-  return url.startsWith('https://t.me/') || url.startsWith('tg://resolve')
-}
 
 type Lang = 'zh' | 'en' | 'km'
 
@@ -65,12 +24,6 @@ const T = {
     payment:    '支付状态',
     createdAt:  '下单时间',
     contactService: '联系客服',
-    serviceDesc: '如需订单帮助、商户问题或平台咨询，请联系 E-Life 客服',
-    serviceAccount: '客服账号',
-    openService: '打开 Telegram 客服',
-    copyService: '复制客服账号',
-    copiedService: '已复制客服账号',
-    serviceOpenFailed: '请复制客服账号后在 Telegram 搜索联系',
     close:      '关闭',
     navHome:    '首页',
     navCategory:'分类',
@@ -98,12 +51,6 @@ const T = {
     payment:    'Payment',
     createdAt:  'Order time',
     contactService: 'Customer Service',
-    serviceDesc: 'For order help, merchant issues, or platform questions, contact E-Life customer service.',
-    serviceAccount: 'Service account',
-    openService: 'Open Telegram service',
-    copyService: 'Copy service account',
-    copiedService: 'Service account copied',
-    serviceOpenFailed: 'Please copy the account and search it in Telegram',
     close:      'Close',
     navHome:    'Home',
     navCategory:'Category',
@@ -131,12 +78,6 @@ const T = {
     payment:    'ការទូទាត់',
     createdAt:  'ពេលបញ្ជាទិញ',
     contactService: 'ជំនួយ',
-    serviceDesc: 'សម្រាប់ជំនួយការបញ្ជាទិញ បញ្ហាហាង ឬសំណួរអំពីប្រព័ន្ធ សូមទាក់ទងជំនួយ E-Life',
-    serviceAccount: 'គណនីជំនួយ',
-    openService: 'បើកជំនួយ Telegram',
-    copyService: 'ចម្លងគណនីជំនួយ',
-    copiedService: 'បានចម្លងគណនីជំនួយ',
-    serviceOpenFailed: 'សូមចម្លងគណនី ហើយស្វែងរកក្នុង Telegram',
     close:      'បិទ',
     navHome:    'ទំព័រដើម',
     navCategory:'ប្រភេទ',
@@ -244,38 +185,6 @@ export default function ELifeOrdersPage() {
     setTimeout(() => setToast(null), 2200)
   }
 
-  function openCustomerService() {
-    const url = CUSTOMER_SERVICE_URL.trim()
-    if (!url) return
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tg = (window as any).Telegram?.WebApp
-      if (isTelegramServiceLink(url) && typeof tg?.openTelegramLink === 'function') {
-        tg.openTelegramLink(url)
-        return
-      }
-      if (typeof tg?.openLink === 'function') {
-        tg.openLink(url)
-        return
-      }
-      window.location.href = url
-    } catch {
-      showToast(t.serviceOpenFailed)
-      window.alert?.(t.serviceOpenFailed)
-    }
-  }
-
-  async function copyCustomerServiceAccount() {
-    try {
-      await navigator.clipboard.writeText(CUSTOMER_SERVICE_ACCOUNT)
-      showToast(t.copiedService)
-    } catch {
-      showToast(CUSTOMER_SERVICE_ACCOUNT)
-      window.alert?.(CUSTOMER_SERVICE_ACCOUNT)
-    }
-  }
-
   return (
     <div style={s.page}>
 
@@ -368,20 +277,11 @@ export default function ELifeOrdersPage() {
       )}
 
       {showServicePanel && (
-        <>
-          <div style={s.overlay} onClick={() => setShowServicePanel(false)} />
-          <div style={s.serviceSheet}>
-            <div style={s.serviceIcon}>💬</div>
-            <h3 style={s.sheetTitle}>{t.contactService}</h3>
-            <p style={s.serviceDesc}>{t.serviceDesc}</p>
-            <div style={s.serviceAccountBox}>
-              <span style={s.serviceAccountLabel}>{t.serviceAccount}</span>
-              <strong style={s.serviceAccountValue}>{CUSTOMER_SERVICE_ACCOUNT}</strong>
-            </div>
-            <button style={s.servicePrimaryBtn} onClick={openCustomerService}>{t.openService}</button>
-            <button style={s.serviceSecondaryBtn} onClick={copyCustomerServiceAccount}>{t.copyService}</button>
-          </div>
-        </>
+        <ELifeSupportModal
+          lang={lang}
+          onClose={() => setShowServicePanel(false)}
+          onToast={showToast}
+        />
       )}
 
       {toast && <div style={s.toast}>{toast}</div>}
@@ -563,18 +463,6 @@ const s: Record<string, React.CSSProperties> = {
     paddingBottom: 'max(22px, env(safe-area-inset-bottom))',
     boxShadow: '0 -12px 30px rgba(0,0,0,0.14)',
   },
-  serviceSheet: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    background: '#fff',
-    borderRadius: '18px 18px 0 0',
-    zIndex: 102,
-    padding: '22px 20px',
-    paddingBottom: 'max(22px, env(safe-area-inset-bottom))',
-    boxShadow: '0 -12px 30px rgba(0,0,0,0.14)',
-  },
   sheetTitle: {
     fontSize: 18,
     fontWeight: 800,
@@ -611,46 +499,6 @@ const s: Record<string, React.CSSProperties> = {
     color: '#111827',
     textAlign: 'right',
     margin: '4px 0 14px',
-  },
-  serviceIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    background: 'rgba(7,193,96,0.1)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 22,
-    marginBottom: 12,
-  },
-  serviceDesc: {
-    fontSize: 13,
-    lineHeight: 1.55,
-    color: '#6b7280',
-    margin: '8px 0 14px',
-  },
-  serviceAccountBox: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    padding: '12px 14px',
-    borderRadius: 12,
-    background: '#f9fafb',
-    border: '1px solid rgba(0,0,0,0.06)',
-    marginBottom: 14,
-  },
-  serviceAccountLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    flexShrink: 0,
-  },
-  serviceAccountValue: {
-    fontSize: 14,
-    color: '#111827',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
   },
   servicePrimaryBtn: {
     width: '100%',
