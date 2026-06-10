@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { buildTelegramStartAppLink, merchantBotWarning, normalizeTelegramBotUsername } from '@/lib/telegram-link'
 
 export async function POST(req: NextRequest) {
   const ctx = await getContext(req)
@@ -48,6 +49,18 @@ export async function POST(req: NextRequest) {
   }
   if (!role || !['OWNER', 'STAFF'].includes(role)) {
     return NextResponse.json({ error: 'INVALID_ROLE' }, { status: 400 })
+  }
+
+  const botUsername = normalizeTelegramBotUsername(
+    process.env.TELEGRAM_BOT_USERNAME,
+    process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
+    process.env.BOT_USERNAME,
+  )
+  if (!botUsername) {
+    return NextResponse.json(
+      { error: 'BOT_USERNAME_NOT_CONFIGURED', message: merchantBotWarning() },
+      { status: 503 },
+    )
   }
 
   // Verify store belongs to this tenant
@@ -85,10 +98,7 @@ export async function POST(req: NextRequest) {
   // then navigates to /bind?token= (same origin, WebApp context preserved).
   // Strip leading '@' — env vars are sometimes set as "@qingdianboss_bot" which
   // produces https://t.me/@username and triggers "user doesn't seem to exist" in Telegram.
-  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
-  const tgLink = botUsername
-    ? `https://t.me/${botUsername}?startapp=bind_${bt.token}`
-    : null
+  const tgLink = buildTelegramStartAppLink(botUsername, `bind_${bt.token}`)
 
   return NextResponse.json({
     token: bt.token,

@@ -35,6 +35,7 @@ function BindFlow() {
   // 安卓兜底：no_tg 状态下也能拿到 tgLink，提供「用 TG 打开」+「复制」操作
   const [tgLink, setTgLink] = useState<string | null>(null)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [noTgMessage, setNoTgMessage] = useState('')
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -69,9 +70,11 @@ function BindFlow() {
           if (!data?.error) {
             setRole(data.role ?? null)
             if (data.tgLink) setTgLink(data.tgLink)
+            if (data.warning) setNoTgMessage(data.warning)
             // eslint-disable-next-line no-console
             console.log('[bind] no_tg info', { role: data.role, hasTgLink: !!data.tgLink })
           } else {
+            setNoTgMessage(data.message ?? t('bind.invalidToken'))
             // eslint-disable-next-line no-console
             console.warn('[bind] info fetch failed', data.error)
           }
@@ -112,6 +115,7 @@ function BindFlow() {
         setRole(data.role)
         if (data.role === 'OWNER') setStoreName(data.storeName ?? '')
         if (data.tgLink) setTgLink(data.tgLink)
+        if (data.warning) setNoTgMessage(data.warning)
         // eslint-disable-next-line no-console
         console.log('[bind] info ok', { role: data.role, storeName: data.storeName ?? null })
         setState('confirm')
@@ -313,7 +317,7 @@ function BindFlow() {
               </p>
             </>
           ) : (
-            <p style={hint}>{t('common.networkError')}</p>
+            <p style={hint}>{noTgMessage || t('common.networkError')}</p>
           )}
         </>
       )}

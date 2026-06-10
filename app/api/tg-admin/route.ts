@@ -19,12 +19,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import QRCode from 'qrcode'
+import { buildTelegramStartAppLink, normalizeTelegramBotUsername } from '@/lib/telegram-link'
 
 const BOT_TOKEN = process.env.TG_BOT_TOKEN ?? ''
 const WEBHOOK_SECRET = process.env.TG_WEBHOOK_SECRET ?? ''
 // Strip leading '@' — env vars are sometimes set as "@qingdianboss_bot" which
 // produces https://t.me/@username and triggers "user doesn't seem to exist" in Telegram.
-const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
+const BOT_USERNAME = normalizeTelegramBotUsername(
+  process.env.TELEGRAM_BOT_USERNAME,
+  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
+  process.env.BOT_USERNAME,
+)
 const ADMIN_IDS = new Set(
   (process.env.TG_ADMIN_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
 )
@@ -111,7 +116,11 @@ async function cmdGenCode(chatId: number, role: 'OWNER' | 'STAFF', tgId: string)
     },
   })
 
-  const tgLink = `https://t.me/${BOT_USERNAME}?startapp=bind_${token}`
+  const tgLink = buildTelegramStartAppLink(BOT_USERNAME, `bind_${token}`)
+  if (!tgLink) {
+    await sendText(chatId, '❌ 未配置 Telegram Bot username，无法生成有效链接。请在环境变量中设置商户 bot 用户名（不带 @）。')
+    return
+  }
   const expStr = expiresAt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
   const roleLabel = role === 'OWNER' ? '👑 老板' : '👤 员工'
 

@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { normalizeTelegramBotUsername } from '@/lib/telegram-link'
 
-const BOT_URL = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
-  ? `https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME}`
-  : null
+const BOT_USERNAME = normalizeTelegramBotUsername(
+  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
+  process.env.NEXT_PUBLIC_BOT_USERNAME,
+)
+const BOT_URL = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null
 
 const REDIRECT_DELAY = 1500 // ms
 

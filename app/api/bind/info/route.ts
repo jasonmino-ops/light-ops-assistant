@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { buildTelegramStartAppLink, merchantBotWarning, normalizeTelegramBotUsername } from '@/lib/telegram-link'
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get('token')
@@ -30,10 +31,18 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // 与 /api/admin/bind-tokens 同一拼装规则，保证 QR / 明文链接 / 复制三处完全一致
-  // 安卓兜底：/bind 页拿到 tgLink 后可显示「用 Telegram 打开」按钮，避免外部浏览器白屏
-  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
-  const tgLink = botUsername ? `https://t.me/${botUsername}?startapp=bind_${bt.token}` : null
+  const botUsername = normalizeTelegramBotUsername(
+    process.env.TELEGRAM_BOT_USERNAME,
+    process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
+    process.env.BOT_USERNAME,
+  )
+  const tgLink = buildTelegramStartAppLink(botUsername, `bind_${bt.token}`)
 
-  return NextResponse.json({ role: bt.role, storeName: bt.store.name, tgLink })
+  return NextResponse.json({
+    role: bt.role,
+    storeName: bt.store.name,
+    tgLink,
+    botConfigured: !!botUsername,
+    warning: botUsername ? null : merchantBotWarning(),
+  })
 }
