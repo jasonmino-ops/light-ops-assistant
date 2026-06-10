@@ -14,3 +14,6 @@ fix_owner_bind*.sh
 # 灾备发布包（含真实业务数据 / 敏感信息；仅本地与云盘归档，不入仓库）
 /店小二_Beta_v1_0_全栈灾备包/
 /light_ops_beta_v1_0_disaster_recovery.zip
+
+# Obsidian 开发记录目录（应仅写入真实 Vault，不入项目仓库）
+/05-开发记录/
