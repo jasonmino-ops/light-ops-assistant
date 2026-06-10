@@ -598,18 +598,12 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   const [bannerLoading, setBannerLoading] = useState<Record<string, boolean>>({})
   const [bannerErr, setBannerErr]     = useState<Record<string, string>>({})
   const [annDraft, setAnnDraft]       = useState<Record<string, string>>({})
-  const [annSaving, setAnnSaving]     = useState<Record<string, boolean>>({})
-  const [annSaved, setAnnSaved]       = useState<Record<string, boolean>>({})
-  const [annErr, setAnnErr]           = useState<Record<string, string>>({})
-  const [promoDraft, setPromoDraft]   = useState<Record<string, string>>({})
-  const [promoSaving, setPromoSaving] = useState<Record<string, boolean>>({})
-  const [promoSaved, setPromoSaved]   = useState<Record<string, boolean>>({})
-  const [promoErr, setPromoErr]       = useState<Record<string, string>>({})
-  // 编辑态 + 编辑前快照（用于取消恢复）
-  const [annEditing, setAnnEditing]   = useState<Record<string, boolean>>({})
   const [annOrig, setAnnOrig]         = useState<Record<string, string>>({})
-  const [promoEditing, setPromoEditing] = useState<Record<string, boolean>>({})
+  const [promoDraft, setPromoDraft]   = useState<Record<string, string>>({})
   const [promoOrig, setPromoOrig]     = useState<Record<string, string>>({})
+  const [configSaving, setConfigSaving] = useState<Record<string, boolean>>({})
+  const [configSaved, setConfigSaved] = useState<Record<string, boolean>>({})
+  const [configErr, setConfigErr] = useState<Record<string, string>>({})
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   useEffect(() => {
@@ -631,6 +625,8 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         setBannerUrls(initBanner)
         setAnnDraft(initAnn)
         setPromoDraft(initPromo)
+        setAnnOrig(initAnn)
+        setPromoOrig(initPromo)
       })
       .catch(() => {})
   }, [])
@@ -702,73 +698,41 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
     }
   }
 
-  async function handleSaveAnn(sid: string) {
-    setAnnSaving((v) => ({ ...v, [sid]: true }))
-    setAnnSaved((v) => ({ ...v, [sid]: false }))
-    setAnnErr((v) => ({ ...v, [sid]: '' }))
+  async function handleSaveMenuConfig(sid: string) {
+    setConfigSaving((v) => ({ ...v, [sid]: true }))
+    setConfigSaved((v) => ({ ...v, [sid]: false }))
+    setConfigErr((v) => ({ ...v, [sid]: '' }))
     try {
       const res = await apiFetch(`/api/stores/${sid}/menu-config`, {
         method: 'PATCH',
-        body: JSON.stringify({ announcement: annDraft[sid] ?? '' }),
+        body: JSON.stringify({
+          announcement: annDraft[sid] ?? '',
+          promoText: promoDraft[sid] ?? '',
+        }),
       }, OWNER_CTX)
+      const body = await res.json().catch(() => null)
       if (res.ok) {
-        setAnnSaved((v) => ({ ...v, [sid]: true }))
-        setAnnEditing((v) => ({ ...v, [sid]: false }))
-        setTimeout(() => setAnnSaved((v) => ({ ...v, [sid]: false })), 2000)
+        const nextAnn = body?.announcement ?? ''
+        const nextPromo = body?.promoText ?? ''
+        setAnnDraft((v) => ({ ...v, [sid]: nextAnn }))
+        setPromoDraft((v) => ({ ...v, [sid]: nextPromo }))
+        setAnnOrig((v) => ({ ...v, [sid]: nextAnn }))
+        setPromoOrig((v) => ({ ...v, [sid]: nextPromo }))
+        setConfigSaved((v) => ({ ...v, [sid]: true }))
+        setTimeout(() => setConfigSaved((v) => ({ ...v, [sid]: false })), 2000)
       } else {
-        const body = await res.json().catch(() => null)
-        setAnnErr((v) => ({ ...v, [sid]: body?.error ?? '保存失败' }))
+        setConfigErr((v) => ({ ...v, [sid]: body?.message ?? body?.error ?? '保存失败' }))
       }
     } catch {
-      setAnnErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+      setConfigErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
     } finally {
-      setAnnSaving((v) => ({ ...v, [sid]: false }))
+      setConfigSaving((v) => ({ ...v, [sid]: false }))
     }
   }
 
-  async function handleSavePromo(sid: string) {
-    setPromoSaving((v) => ({ ...v, [sid]: true }))
-    setPromoSaved((v) => ({ ...v, [sid]: false }))
-    setPromoErr((v) => ({ ...v, [sid]: '' }))
-    try {
-      const res = await apiFetch(`/api/stores/${sid}/menu-config`, {
-        method: 'PATCH',
-        body: JSON.stringify({ promoText: promoDraft[sid] ?? '' }),
-      }, OWNER_CTX)
-      if (res.ok) {
-        setPromoSaved((v) => ({ ...v, [sid]: true }))
-        setPromoEditing((v) => ({ ...v, [sid]: false }))
-        setTimeout(() => setPromoSaved((v) => ({ ...v, [sid]: false })), 2000)
-      } else {
-        const body = await res.json().catch(() => null)
-        setPromoErr((v) => ({ ...v, [sid]: body?.error ?? '保存失败' }))
-      }
-    } catch {
-      setPromoErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
-    } finally {
-      setPromoSaving((v) => ({ ...v, [sid]: false }))
-    }
-  }
-
-  function startEditAnn(sid: string) {
-    setAnnOrig((v) => ({ ...v, [sid]: annDraft[sid] ?? '' }))
-    setAnnEditing((v) => ({ ...v, [sid]: true }))
-    setAnnErr((v) => ({ ...v, [sid]: '' }))
-  }
-  function cancelEditAnn(sid: string) {
-    setAnnDraft((v) => ({ ...v, [sid]: annOrig[sid] ?? '' }))
-    setAnnEditing((v) => ({ ...v, [sid]: false }))
-    setAnnErr((v) => ({ ...v, [sid]: '' }))
-  }
-  function startEditPromo(sid: string) {
-    setPromoOrig((v) => ({ ...v, [sid]: promoDraft[sid] ?? '' }))
-    setPromoEditing((v) => ({ ...v, [sid]: true }))
-    setPromoErr((v) => ({ ...v, [sid]: '' }))
-  }
-  function cancelEditPromo(sid: string) {
-    setPromoDraft((v) => ({ ...v, [sid]: promoOrig[sid] ?? '' }))
-    setPromoEditing((v) => ({ ...v, [sid]: false }))
-    setPromoErr((v) => ({ ...v, [sid]: '' }))
+  function menuConfigChanged(sid: string) {
+    return (annDraft[sid] ?? '') !== (annOrig[sid] ?? '') ||
+      (promoDraft[sid] ?? '') !== (promoOrig[sid] ?? '')
   }
 
   if (stores.length === 0) return null
@@ -859,111 +823,54 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
             )}
             {bannerErr[store.id] ? <div style={sc.errMsg}>{bannerErr[store.id]}</div> : null}
 
-            {/* 公告 — 修改/保存/取消 三态 */}
+            {/* 公告 / 活动文案：统一保存 */}
             <div style={sc.fieldLabel}>{t('dashboard.menuAnnouncement')}</div>
-            {annEditing[store.id] ? (
-              <>
-                <textarea
-                  style={sc.textarea}
-                  rows={2}
-                  placeholder={t('dashboard.menuAnnouncementPh')}
-                  value={annDraft[store.id] ?? ''}
-                  onChange={(e) => {
-                    setAnnDraft((v) => ({ ...v, [store.id]: e.target.value }))
-                    setAnnErr((v) => ({ ...v, [store.id]: '' }))
-                  }}
-                  autoFocus
-                />
-                <div style={sc.fieldAction}>
-                  {annErr[store.id] && <span style={sc.errMsg}>{annErr[store.id]}</span>}
-                  <button
-                    type="button"
-                    style={sc.cancelBtn}
-                    onClick={() => cancelEditAnn(store.id)}
-                    disabled={annSaving[store.id]}
-                  >
-                    {t('dashboard.cancelBtn')}
-                  </button>
-                  <button
-                    type="button"
-                    style={sc.saveBtn}
-                    onClick={() => handleSaveAnn(store.id)}
-                    disabled={annSaving[store.id]}
-                  >
-                    {annSaving[store.id] ? '…' : t('dashboard.saveBtnFull')}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div style={sc.readonlyRow}>
-                <div style={sc.readonlyText}>
-                  {annDraft[store.id]?.trim()
-                    ? annDraft[store.id]
-                    : <span style={sc.readonlyMuted}>{t('dashboard.annNonePlaceholder')}</span>}
-                </div>
-                {annSaved[store.id] && <span style={sc.savedHint}>{t('dashboard.modeSaved')}</span>}
-                <button
-                  type="button"
-                  style={sc.editBtn}
-                  onClick={() => startEditAnn(store.id)}
-                >
-                  {t('dashboard.editBtn')}
-                </button>
-              </div>
-            )}
+            <textarea
+              style={sc.textarea}
+              rows={2}
+              placeholder={t('dashboard.menuAnnouncementPh')}
+              value={annDraft[store.id] ?? ''}
+              onChange={(e) => {
+                setAnnDraft((v) => ({ ...v, [store.id]: e.target.value }))
+                setConfigErr((v) => ({ ...v, [store.id]: '' }))
+                setConfigSaved((v) => ({ ...v, [store.id]: false }))
+              }}
+            />
 
-            {/* 活动文案 — 修改/保存/取消 三态 */}
             <div style={sc.fieldLabel}>{t('dashboard.menuPromoText')}</div>
-            {promoEditing[store.id] ? (
-              <>
-                <textarea
-                  style={sc.textarea}
-                  rows={2}
-                  placeholder={t('dashboard.menuPromoTextPh')}
-                  value={promoDraft[store.id] ?? ''}
-                  onChange={(e) => {
-                    setPromoDraft((v) => ({ ...v, [store.id]: e.target.value }))
-                    setPromoErr((v) => ({ ...v, [store.id]: '' }))
-                  }}
-                  autoFocus
-                />
-                <div style={sc.fieldAction}>
-                  {promoErr[store.id] && <span style={sc.errMsg}>{promoErr[store.id]}</span>}
-                  <button
-                    type="button"
-                    style={sc.cancelBtn}
-                    onClick={() => cancelEditPromo(store.id)}
-                    disabled={promoSaving[store.id]}
-                  >
-                    {t('dashboard.cancelBtn')}
-                  </button>
-                  <button
-                    type="button"
-                    style={sc.saveBtn}
-                    onClick={() => handleSavePromo(store.id)}
-                    disabled={promoSaving[store.id]}
-                  >
-                    {promoSaving[store.id] ? '…' : t('dashboard.saveBtnFull')}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div style={sc.readonlyRow}>
-                <div style={sc.readonlyText}>
-                  {promoDraft[store.id]?.trim()
-                    ? promoDraft[store.id]
-                    : <span style={sc.readonlyMuted}>{t('dashboard.promoNonePlaceholder')}</span>}
-                </div>
-                {promoSaved[store.id] && <span style={sc.savedHint}>{t('dashboard.modeSaved')}</span>}
-                <button
-                  type="button"
-                  style={sc.editBtn}
-                  onClick={() => startEditPromo(store.id)}
-                >
-                  {t('dashboard.editBtn')}
-                </button>
+            <textarea
+              style={sc.textarea}
+              rows={2}
+              placeholder={t('dashboard.menuPromoTextPh')}
+              value={promoDraft[store.id] ?? ''}
+              onChange={(e) => {
+                setPromoDraft((v) => ({ ...v, [store.id]: e.target.value }))
+                setConfigErr((v) => ({ ...v, [store.id]: '' }))
+                setConfigSaved((v) => ({ ...v, [store.id]: false }))
+              }}
+            />
+            <div style={sc.configFooter}>
+              <div style={sc.configStatus}>
+                {configErr[store.id]
+                  ? <span style={sc.errInline}>{configErr[store.id]}</span>
+                  : configSaved[store.id]
+                    ? <span style={sc.savedHint}>{t('dashboard.modeSaved')}</span>
+                    : menuConfigChanged(store.id)
+                      ? <span style={sc.unsavedHint}>{t('dashboard.configUnsaved')}</span>
+                      : null}
               </div>
-            )}
+              <button
+                type="button"
+                style={{
+                  ...sc.saveBtn,
+                  ...(!menuConfigChanged(store.id) || configSaving[store.id] ? sc.saveBtnDisabled : {}),
+                }}
+                onClick={() => handleSaveMenuConfig(store.id)}
+                disabled={!menuConfigChanged(store.id) || configSaving[store.id]}
+              >
+                {configSaving[store.id] ? t('dashboard.configSaving') : t('dashboard.saveConfig')}
+              </button>
+            </div>
           </div>
         </div>
       ))}
@@ -1859,6 +1766,7 @@ const sc: Record<string, React.CSSProperties> = {
   controls: { display: 'flex', gap: 8, alignItems: 'center' },
   select: { flex: 1, fontSize: 14, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' },
   saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' as const },
+  saveBtnDisabled: { opacity: 0.55, cursor: 'not-allowed' },
   cancelBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--muted)', cursor: 'pointer', whiteSpace: 'nowrap' as const },
   editBtn: { fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--blue)', background: '#fff', color: 'var(--blue)', cursor: 'pointer', whiteSpace: 'nowrap' as const, flexShrink: 0 },
   readonlyRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#f7f8fa', borderRadius: 8, border: '1px solid var(--border)' },
@@ -1870,6 +1778,10 @@ const sc: Record<string, React.CSSProperties> = {
   fieldLabel: { fontSize: 12, color: 'var(--muted)', marginBottom: 4, marginTop: 8 },
   fieldAction: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 6 },
   savedHint: { fontSize: 12, color: '#16a34a', fontWeight: 600 },
+  unsavedHint: { fontSize: 12, color: '#d97706', fontWeight: 600 },
+  errInline: { fontSize: 12, color: '#dc2626', fontWeight: 600 },
+  configFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 8 },
+  configStatus: { flex: 1, minWidth: 0 },
   textarea: { width: '100%', fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical' as const, outline: 'none', lineHeight: 1.5, boxSizing: 'border-box' as const },
   bannerPreviewWrap: { borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 4 },
   bannerPreview: { width: '100%', height: 120, objectFit: 'cover' as const, display: 'block' },
