@@ -4,6 +4,48 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 const BRAND = '#07c160'
+// TODO: Move production customer service entry to NEXT_PUBLIC_SUPPORT_URL
+// or NEXT_PUBLIC_CUSTOMER_SERVICE_BOT_USERNAME once the final support bot is fixed.
+const FALLBACK_CUSTOMER_SERVICE_URL = 'https://t.me/Eshop_sale_bot'
+
+function cleanBotUsername(raw?: string) {
+  return (raw ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
+}
+
+function resolveCustomerServiceUrl() {
+  const explicitUrl = process.env.NEXT_PUBLIC_SUPPORT_URL?.trim()
+    || process.env.NEXT_PUBLIC_CUSTOMER_SERVICE_URL?.trim()
+  if (explicitUrl) return explicitUrl
+
+  const botUsername = cleanBotUsername(
+    process.env.NEXT_PUBLIC_SUPPORT_BOT_USERNAME
+      || process.env.NEXT_PUBLIC_CUSTOMER_SERVICE_BOT_USERNAME
+      || process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME
+  )
+  if (botUsername) return `https://t.me/${botUsername}`
+
+  return FALLBACK_CUSTOMER_SERVICE_URL
+}
+
+const CUSTOMER_SERVICE_URL = resolveCustomerServiceUrl()
+
+function resolveCustomerServiceAccount() {
+  const botUsername = cleanBotUsername(
+    process.env.NEXT_PUBLIC_SUPPORT_BOT_USERNAME
+      || process.env.NEXT_PUBLIC_CUSTOMER_SERVICE_BOT_USERNAME
+      || process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME
+  )
+  if (botUsername) return `@${botUsername}`
+
+  const match = CUSTOMER_SERVICE_URL.match(/^https:\/\/t\.me\/([a-zA-Z0-9_]+)/)
+  return match ? `@${match[1]}` : '@Eshop_sale_bot'
+}
+
+const CUSTOMER_SERVICE_ACCOUNT = resolveCustomerServiceAccount()
+
+function isTelegramServiceLink(url: string) {
+  return url.startsWith('https://t.me/') || url.startsWith('tg://resolve')
+}
 
 type Lang = 'zh' | 'en' | 'km'
 
@@ -15,6 +57,24 @@ const T = {
     empty:      '暂无订单',
     emptyHint:  '去首页逛逛',
     noTg:       '请在 Telegram 中打开以查看订单',
+    noTgHint:   '普通浏览器暂时无法识别您的 Telegram 身份',
+    orderNo:    '订单号',
+    items:      '商品',
+    status:     '订单状态',
+    payment:    '支付状态',
+    createdAt:  '下单时间',
+    contactService: '联系客服',
+    serviceDesc: '如需订单帮助、商户问题或平台咨询，请联系 E-Life 客服',
+    serviceAccount: '客服账号',
+    openService: '打开 Telegram 客服',
+    copyService: '复制客服账号',
+    copiedService: '已复制客服账号',
+    serviceOpenFailed: '请复制客服账号后在 Telegram 搜索联系',
+    close:      '关闭',
+    navHome:    '首页',
+    navCategory:'分类',
+    navOrders:  '订单',
+    navMe:      '我的',
     statusPending:   '待确认',
     statusConfirmed: '已确认',
     statusCompleted: '已完成',
@@ -30,6 +90,24 @@ const T = {
     empty:      'No orders yet',
     emptyHint:  'Browse the home page',
     noTg:       'Open in Telegram to view orders',
+    noTgHint:   'The browser cannot identify your Telegram account yet',
+    orderNo:    'Order No.',
+    items:      'Items',
+    status:     'Status',
+    payment:    'Payment',
+    createdAt:  'Order time',
+    contactService: 'Customer Service',
+    serviceDesc: 'For order help, merchant issues, or platform questions, contact E-Life customer service.',
+    serviceAccount: 'Service account',
+    openService: 'Open Telegram service',
+    copyService: 'Copy service account',
+    copiedService: 'Service account copied',
+    serviceOpenFailed: 'Please copy the account and search it in Telegram',
+    close:      'Close',
+    navHome:    'Home',
+    navCategory:'Category',
+    navOrders:  'Orders',
+    navMe:      'Me',
     statusPending:   'Pending',
     statusConfirmed: 'Confirmed',
     statusCompleted: 'Completed',
@@ -45,6 +123,24 @@ const T = {
     empty:      'គ្មានការបញ្ជាទិញ',
     emptyHint:  'ត្រឡប់ទំព័រដើម',
     noTg:       'សូមបើកក្នុង Telegram ដើម្បីមើលការបញ្ជាទិញ',
+    noTgHint:   'កម្មវិធីរុករកមិនទាន់អាចស្គាល់គណនី Telegram របស់អ្នកបានទេ',
+    orderNo:    'លេខបញ្ជាទិញ',
+    items:      'ទំនិញ',
+    status:     'ស្ថានភាព',
+    payment:    'ការទូទាត់',
+    createdAt:  'ពេលបញ្ជាទិញ',
+    contactService: 'ជំនួយ',
+    serviceDesc: 'សម្រាប់ជំនួយការបញ្ជាទិញ បញ្ហាហាង ឬសំណួរអំពីប្រព័ន្ធ សូមទាក់ទងជំនួយ E-Life',
+    serviceAccount: 'គណនីជំនួយ',
+    openService: 'បើកជំនួយ Telegram',
+    copyService: 'ចម្លងគណនីជំនួយ',
+    copiedService: 'បានចម្លងគណនីជំនួយ',
+    serviceOpenFailed: 'សូមចម្លងគណនី ហើយស្វែងរកក្នុង Telegram',
+    close:      'បិទ',
+    navHome:    'ទំព័រដើម',
+    navCategory:'ប្រភេទ',
+    navOrders:  'ការបញ្ជាទិញ',
+    navMe:      'ខ្ញុំ',
     statusPending:   'រង់ចាំ',
     statusConfirmed: 'បានបញ្ជាក់',
     statusCompleted: 'បានបញ្ចប់',
@@ -88,6 +184,9 @@ export default function ELifeOrdersPage() {
   const [orders,  setOrders]  = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [noTg,    setNoTg]    = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [showServicePanel, setShowServicePanel] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     try {
@@ -139,6 +238,43 @@ export default function ELifeOrdersPage() {
     return o.firstItem + ' ' + t.more(o.extraCount)
   }
 
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2200)
+  }
+
+  function openCustomerService() {
+    const url = CUSTOMER_SERVICE_URL.trim()
+    if (!url) return
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tg = (window as any).Telegram?.WebApp
+      if (isTelegramServiceLink(url) && typeof tg?.openTelegramLink === 'function') {
+        tg.openTelegramLink(url)
+        return
+      }
+      if (typeof tg?.openLink === 'function') {
+        tg.openLink(url)
+        return
+      }
+      window.location.href = url
+    } catch {
+      showToast(t.serviceOpenFailed)
+      window.alert?.(t.serviceOpenFailed)
+    }
+  }
+
+  async function copyCustomerServiceAccount() {
+    try {
+      await navigator.clipboard.writeText(CUSTOMER_SERVICE_ACCOUNT)
+      showToast(t.copiedService)
+    } catch {
+      showToast(CUSTOMER_SERVICE_ACCOUNT)
+      window.alert?.(CUSTOMER_SERVICE_ACCOUNT)
+    }
+  }
+
   return (
     <div style={s.page}>
 
@@ -162,23 +298,27 @@ export default function ELifeOrdersPage() {
           <div style={s.center}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>💬</div>
             <p style={s.emptyText}>{t.noTg}</p>
+            <p style={s.emptyHintText}>{t.noTgHint}</p>
             <button style={s.homeBtn} onClick={() => router.push('/e-life')}>{t.emptyHint}</button>
+            <button style={s.supportBtn} onClick={() => setShowServicePanel(true)}>{t.contactService}</button>
           </div>
         ) : orders.length === 0 ? (
           <div style={s.center}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📭</div>
             <p style={s.emptyText}>{t.empty}</p>
             <button style={s.homeBtn} onClick={() => router.push('/e-life')}>{t.emptyHint}</button>
+            <button style={s.supportBtn} onClick={() => setShowServicePanel(true)}>{t.contactService}</button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button style={s.topSupportBtn} onClick={() => setShowServicePanel(true)}>{t.contactService}</button>
             {orders.map((order) => {
               const color = STATUS_COLOR[order.status] ?? '#bbb'
               return (
                 <div
                   key={order.id}
                   style={s.card}
-                  onClick={() => router.push(`/menu/orders?code=${encodeURIComponent(order.storeCode)}&from=e-life-orders`)}
+                  onClick={() => setSelectedOrder(order)}
                 >
                   {/* 店铺行 */}
                   <div style={s.cardTop}>
@@ -206,6 +346,55 @@ export default function ELifeOrdersPage() {
           </div>
         )}
       </main>
+
+      {selectedOrder && (
+        <>
+          <div style={s.overlay} onClick={() => setSelectedOrder(null)} />
+          <div style={s.detailSheet}>
+            <h3 style={s.sheetTitle}>{selectedOrder.storeName}</h3>
+            <div style={s.detailRows}>
+              <DetailRow label={t.orderNo} value={selectedOrder.orderNo} />
+              <DetailRow label={t.items} value={itemSummary(selectedOrder)} />
+              <DetailRow label={t.status} value={statusLabel(selectedOrder.status)} />
+              <DetailRow label={t.payment} value={selectedOrder.paymentStatus === 'PAID' ? t.paid : t.unpaid} />
+              <DetailRow label={t.createdAt} value={fmtDate(selectedOrder.createdAt)} />
+            </div>
+            <div style={s.detailAmount}>${selectedOrder.totalAmount.toFixed(2)}</div>
+            <button style={s.servicePrimaryBtn} onClick={() => setShowServicePanel(true)}>{t.contactService}</button>
+            <button style={s.serviceSecondaryBtn} onClick={() => setSelectedOrder(null)}>{t.close}</button>
+          </div>
+        </>
+      )}
+
+      {showServicePanel && (
+        <>
+          <div style={s.overlay} onClick={() => setShowServicePanel(false)} />
+          <div style={s.serviceSheet}>
+            <div style={s.serviceIcon}>💬</div>
+            <h3 style={s.sheetTitle}>{t.contactService}</h3>
+            <p style={s.serviceDesc}>{t.serviceDesc}</p>
+            <div style={s.serviceAccountBox}>
+              <span style={s.serviceAccountLabel}>{t.serviceAccount}</span>
+              <strong style={s.serviceAccountValue}>{CUSTOMER_SERVICE_ACCOUNT}</strong>
+            </div>
+            <button style={s.servicePrimaryBtn} onClick={openCustomerService}>{t.openService}</button>
+            <button style={s.serviceSecondaryBtn} onClick={copyCustomerServiceAccount}>{t.copyService}</button>
+          </div>
+        </>
+      )}
+
+      {toast && <div style={s.toast}>{toast}</div>}
+
+      <ELifeBottomNav active="orders" t={t} router={router} />
+    </div>
+  )
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={s.detailRow}>
+      <span style={s.detailLabel}>{label}</span>
+      <span style={s.detailValue}>{value}</span>
     </div>
   )
 }
@@ -220,6 +409,57 @@ function ChevronLeftIcon() {
   )
 }
 
+function HomeIcon() {
+  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+}
+function CategoryIcon() {
+  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+}
+function ClipboardIcon() {
+  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+}
+function UserIcon() {
+  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+}
+
+function ELifeBottomNav({
+  active, t, router,
+}: {
+  active: 'home' | 'category' | 'orders' | 'me'
+  t: typeof T['zh']
+  router: ReturnType<typeof useRouter>
+}) {
+  const tabs = [
+    { id: 'home',     label: t.navHome,     onClick: () => router.push('/e-life') },
+    { id: 'category', label: t.navCategory, onClick: () => router.push('/e-life/category') },
+    { id: 'orders',   label: t.navOrders,   onClick: () => router.push('/e-life/orders') },
+    { id: 'me',       label: t.navMe,       onClick: () => router.push('/e-life/me') },
+  ]
+  const icons: Record<string, React.ReactElement> = {
+    home:     <HomeIcon />,
+    category: <CategoryIcon />,
+    orders:   <ClipboardIcon />,
+    me:       <UserIcon />,
+  }
+  return (
+    <nav style={s.nav}>
+      <div style={s.navInner}>
+        {tabs.map(tab => {
+          const isActive = tab.id === active
+          const color = isActive ? BRAND : '#6b7280'
+          return (
+            <button key={tab.id} style={s.navTab} onClick={tab.onClick}>
+              <span style={{ color }}>{icons[tab.id]}</span>
+              <span style={{ fontSize: 11, color, fontWeight: isActive ? 700 : 500 }}>{tab.label}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div style={{ height: 'env(safe-area-inset-bottom)' }} />
+    </nav>
+  )
+}
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
@@ -228,6 +468,8 @@ const s: Record<string, React.CSSProperties> = {
     background: '#F7F8FA',
     maxWidth: 448,
     margin: '0 auto',
+    paddingBottom: 80,
+    position: 'relative',
   },
 
   header: {
@@ -269,6 +511,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   emptyText: { fontSize: 15, color: '#bbb', margin: 0, textAlign: 'center' as const },
+  emptyHintText: { fontSize: 12, color: '#9ca3af', margin: 0, textAlign: 'center' as const, maxWidth: 260, lineHeight: 1.5 },
   homeBtn: {
     marginTop: 8,
     padding: '10px 24px',
@@ -278,6 +521,27 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 20,
     fontSize: 14,
     fontWeight: 600,
+    cursor: 'pointer',
+  },
+  supportBtn: {
+    padding: '9px 22px',
+    background: '#fff',
+    color: BRAND,
+    border: `1px solid rgba(7,193,96,0.24)`,
+    borderRadius: 20,
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  topSupportBtn: {
+    alignSelf: 'flex-end',
+    border: `1px solid rgba(7,193,96,0.22)`,
+    borderRadius: 999,
+    background: '#fff',
+    color: BRAND,
+    fontSize: 12,
+    fontWeight: 800,
+    padding: '7px 12px',
     cursor: 'pointer',
   },
 
@@ -329,5 +593,178 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 17,
     fontWeight: 700,
     color: '#111827',
+  },
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.2)',
+    zIndex: 100,
+  },
+  detailSheet: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: '#fff',
+    borderRadius: '18px 18px 0 0',
+    zIndex: 101,
+    padding: '22px 20px',
+    paddingBottom: 'max(22px, env(safe-area-inset-bottom))',
+    boxShadow: '0 -12px 30px rgba(0,0,0,0.14)',
+  },
+  serviceSheet: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: '#fff',
+    borderRadius: '18px 18px 0 0',
+    zIndex: 102,
+    padding: '22px 20px',
+    paddingBottom: 'max(22px, env(safe-area-inset-bottom))',
+    boxShadow: '0 -12px 30px rgba(0,0,0,0.14)',
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: '#111827',
+    margin: '0 0 12px',
+  },
+  detailRows: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    padding: '12px 0',
+  },
+  detailRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 14,
+    fontSize: 13,
+  },
+  detailLabel: {
+    color: '#6b7280',
+    flexShrink: 0,
+  },
+  detailValue: {
+    color: '#111827',
+    fontWeight: 700,
+    textAlign: 'right',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  detailAmount: {
+    fontSize: 24,
+    fontWeight: 900,
+    color: '#111827',
+    textAlign: 'right',
+    margin: '4px 0 14px',
+  },
+  serviceIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    background: 'rgba(7,193,96,0.1)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 22,
+    marginBottom: 12,
+  },
+  serviceDesc: {
+    fontSize: 13,
+    lineHeight: 1.55,
+    color: '#6b7280',
+    margin: '8px 0 14px',
+  },
+  serviceAccountBox: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: '12px 14px',
+    borderRadius: 12,
+    background: '#f9fafb',
+    border: '1px solid rgba(0,0,0,0.06)',
+    marginBottom: 14,
+  },
+  serviceAccountLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    flexShrink: 0,
+  },
+  serviceAccountValue: {
+    fontSize: 14,
+    color: '#111827',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  servicePrimaryBtn: {
+    width: '100%',
+    border: 'none',
+    borderRadius: 12,
+    background: BRAND,
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 800,
+    padding: '13px 16px',
+    cursor: 'pointer',
+    marginBottom: 10,
+  },
+  serviceSecondaryBtn: {
+    width: '100%',
+    border: '1px solid rgba(7,193,96,0.25)',
+    borderRadius: 12,
+    background: '#fff',
+    color: BRAND,
+    fontSize: 15,
+    fontWeight: 800,
+    padding: '12px 16px',
+    cursor: 'pointer',
+  },
+  toast: {
+    position: 'fixed',
+    bottom: 'calc(64px + env(safe-area-inset-bottom, 0px) + 12px)',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: 'rgba(0,0,0,0.72)',
+    color: '#fff',
+    fontSize: 13,
+    padding: '9px 18px',
+    borderRadius: 20,
+    whiteSpace: 'nowrap',
+    zIndex: 200,
+    pointerEvents: 'none',
+  },
+  nav: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: 'rgba(255,255,255,0.95)',
+    backdropFilter: 'blur(16px)',
+    borderTop: '1px solid rgba(0,0,0,0.06)',
+    zIndex: 50,
+  },
+  navInner: {
+    maxWidth: 448,
+    margin: '0 auto',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    padding: '4px 16px',
+  },
+  navTab: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 2,
+    padding: '6px 20px',
+    background: 'transparent',
+    border: 'none',
+    borderRadius: 12,
+    cursor: 'pointer',
   },
 }
