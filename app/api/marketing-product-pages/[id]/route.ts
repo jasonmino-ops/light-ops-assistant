@@ -11,7 +11,7 @@ type TemplateType = typeof TEMPLATE_VALUES[number]
 const PAGE_SELECT = {
   id: true, productId: true, slug: true, status: true, templateType: true,
   title: true, titleZh: true, titleEn: true, titleKm: true,
-  subtitle: true, heroImageUrl: true,
+  subtitle: true, heroImageUrl: true, heroVideoUrl: true,
   salePrice: true, originalPrice: true, soldCount: true,
   feature1: true, feature2: true, feature3: true, feature4: true, feature5: true,
   feature1Zh: true, feature2Zh: true, feature3Zh: true, feature4Zh: true, feature5Zh: true,
@@ -44,6 +44,7 @@ function mapPage(p: {
   titleKm: string | null
   subtitle: string | null
   heroImageUrl: string | null
+  heroVideoUrl: string | null
   salePrice: { toNumber(): number } | null
   originalPrice: { toNumber(): number } | null
   soldCount: number | null
@@ -91,6 +92,7 @@ function mapPage(p: {
     titleKm: p.titleKm,
     subtitle: p.subtitle,
     heroImageUrl: p.heroImageUrl,
+    heroVideoUrl: p.heroVideoUrl,
     salePrice: p.salePrice ? p.salePrice.toNumber() : null,
     originalPrice: p.originalPrice ? p.originalPrice.toNumber() : null,
     soldCount: p.soldCount,
@@ -161,6 +163,7 @@ export async function PATCH(
     titleKm?: string | null
     subtitle?: string | null
     heroImageUrl?: string | null
+    heroVideoUrl?: string | null
     salePrice?: number | string | null
     originalPrice?: number | string | null
     soldCount?: number | string | null
@@ -210,6 +213,7 @@ export async function PATCH(
     titleKm?: string | null
     subtitle?: string | null
     heroImageUrl?: string | null
+    heroVideoUrl?: string | null
     salePrice?: string | null
     originalPrice?: string | null
     soldCount?: number | null
@@ -272,6 +276,7 @@ export async function PATCH(
   if (body.titleKm !== undefined) data.titleKm = body.titleKm?.trim() || null
   if (body.subtitle !== undefined) data.subtitle = body.subtitle?.trim() || null
   if (body.heroImageUrl !== undefined) data.heroImageUrl = body.heroImageUrl?.trim() || null
+  if (body.heroVideoUrl !== undefined) data.heroVideoUrl = body.heroVideoUrl?.trim() || null
   if (body.salePrice !== undefined) data.salePrice = optionalMoney(body.salePrice)
   if (body.originalPrice !== undefined) data.originalPrice = optionalMoney(body.originalPrice)
   if (body.soldCount !== undefined) data.soldCount = optionalInt(body.soldCount)

@@ -112,6 +112,7 @@ type MarketingProductPage = {
   titleKm: string | null
   subtitle: string | null
   heroImageUrl: string | null
+  heroVideoUrl: string | null
   salePrice: number | null
   originalPrice: number | null
   soldCount: number | null
@@ -286,6 +287,7 @@ export default function ProductsPage() {
   const [marketingStatus, setMarketingStatus] = useState<'DRAFT' | 'PUBLISHED' | 'DISABLED'>('DRAFT')
   const [marketingTemplateType, setMarketingTemplateType] = useState<MarketingTemplateType>('TIKTOK_HOT')
   const [marketingHeroImageUrl, setMarketingHeroImageUrl] = useState('')
+  const [marketingHeroVideoUrl, setMarketingHeroVideoUrl] = useState('')
   const [marketingSalePrice, setMarketingSalePrice] = useState('')
   const [marketingOriginalPrice, setMarketingOriginalPrice] = useState('')
   const [marketingSoldCount, setMarketingSoldCount] = useState('')
@@ -298,8 +300,10 @@ export default function ProductsPage() {
   const [marketingSaving, setMarketingSaving] = useState(false)
   const [marketingGenerating, setMarketingGenerating] = useState<Record<string, boolean>>({})
   const [marketingImageUploading, setMarketingImageUploading] = useState<Partial<Record<MarketingImageField, boolean>>>({})
+  const [marketingVideoUploading, setMarketingVideoUploading] = useState(false)
   const [marketingMsg, setMarketingMsg] = useState<string | null>(null)
   const marketingImageRefs = useRef<Partial<Record<MarketingImageField, HTMLInputElement | null>>>({})
+  const marketingVideoRef = useRef<HTMLInputElement | null>(null)
 
   // 扫码枪反馈
   const [hidMsg, setHidMsg] = useState<{ type: 'ok' | 'fail'; text: string } | null>(null)
@@ -429,6 +433,7 @@ export default function ProductsPage() {
     setMarketingStatus(page.status)
     setMarketingTemplateType(page.templateType ?? 'TIKTOK_HOT')
     setMarketingHeroImageUrl(page.heroImageUrl ?? product.imageUrl ?? '')
+    setMarketingHeroVideoUrl(page.heroVideoUrl ?? '')
     setMarketingSalePrice(page.salePrice != null ? String(page.salePrice) : '')
     setMarketingOriginalPrice(page.originalPrice != null ? String(page.originalPrice) : '')
     setMarketingSoldCount(page.soldCount != null ? String(page.soldCount) : '')
@@ -529,6 +534,7 @@ export default function ProductsPage() {
             status: marketingStatus,
             templateType: marketingTemplateType,
             heroImageUrl: marketingHeroImageUrl,
+            heroVideoUrl: marketingHeroVideoUrl,
             salePrice: marketingSalePrice,
             originalPrice: marketingOriginalPrice,
             soldCount: marketingSoldCount,
@@ -691,6 +697,41 @@ export default function ProductsPage() {
         </button>
       </div>
     )
+  }
+
+  async function uploadMarketingVideo(file: File) {
+    if (!marketingEditing) return
+    if (file.type !== 'video/mp4') {
+      setMarketingMsg('仅支持 MP4 视频')
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setMarketingMsg('视频不能超过 20MB')
+      return
+    }
+    setMarketingVideoUploading(true)
+    setMarketingMsg('正在上传视频…')
+    try {
+      const form = new FormData()
+      form.append('file', new File([file], 'hero-video.mp4', { type: file.type }))
+      const res = await fetch(`/api/marketing-product-pages/${marketingEditing.page.id}/video`, {
+        method: 'POST',
+        headers: { ...OWNER_CTX },
+        body: form,
+      })
+      const body = await res.json().catch(() => null)
+      if (res.ok && body?.videoUrl) {
+        setMarketingHeroVideoUrl(body.videoUrl)
+        setMarketingMsg('视频已上传，记得保存营销页')
+      } else {
+        setMarketingMsg(body?.message ?? body?.error ?? '视频上传失败')
+      }
+    } catch {
+      setMarketingMsg(t('common.networkError'))
+    } finally {
+      setMarketingVideoUploading(false)
+      if (marketingVideoRef.current) marketingVideoRef.current.value = ''
+    }
   }
 
   async function executeDelete() {
@@ -1949,6 +1990,32 @@ export default function ProductsPage() {
 	                                  placeholder="slug"
 	                                />
                                   {renderMarketingImageInput('heroImageUrl', marketingHeroImageUrl, setMarketingHeroImageUrl, 'Hero 图片 URL')}
+                                  <div style={s.marketingImageRow}>
+                                    <input
+                                      style={{ ...s.field, ...s.marketingImageInput }}
+                                      value={marketingHeroVideoUrl}
+                                      onChange={(e) => setMarketingHeroVideoUrl(e.target.value)}
+                                      placeholder="产品视频 URL（MP4）"
+                                    />
+                                    <input
+                                      ref={marketingVideoRef}
+                                      type="file"
+                                      accept="video/mp4"
+                                      style={{ display: 'none' }}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) uploadMarketingVideo(file)
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      style={{ ...ls.actionBtn, ...s.marketingUploadBtn, opacity: marketingVideoUploading ? 0.55 : 1 }}
+                                      disabled={marketingVideoUploading}
+                                      onClick={() => marketingVideoRef.current?.click()}
+                                    >
+                                      {marketingVideoUploading ? '上传中...' : '上传视频'}
+                                    </button>
+                                  </div>
 	                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
 	                                  <input
 	                                    style={{ ...s.field, height: 38, marginBottom: 8 }}

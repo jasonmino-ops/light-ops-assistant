@@ -19,6 +19,7 @@ type PageData = {
   titleKm: string | null
   subtitle: string | null
   heroImageUrl: string | null
+  heroVideoUrl: string | null
   salePrice: number | null
   originalPrice: number | null
   soldCount: number | null
@@ -1296,6 +1297,21 @@ export default function MarketingProductPage() {
           borderColor: theme.sectionBorder,
         }}
       >
+        {data.heroVideoUrl && (
+          <video
+            src={data.heroVideoUrl}
+            poster={heroImages[0]}
+            controls
+            muted
+            playsInline
+            preload="metadata"
+            style={{
+              ...s.heroVideo,
+              ...(theme.heroVariant === 'scene' ? s.heroVideoScene : {}),
+              ...(theme.heroVariant === 'soft' ? s.heroVideoSoft : {}),
+            }}
+          />
+        )}
         {heroImages.length === 1 ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -1303,13 +1319,14 @@ export default function MarketingProductPage() {
             alt={title}
             style={{
               ...s.heroImg,
+              ...(data.heroVideoUrl ? s.heroImageBelowVideo : {}),
               ...(theme.heroVariant === 'scene' ? s.heroImgScene : {}),
               ...(theme.heroVariant === 'menu' ? s.heroImgMenu : {}),
               ...(theme.heroVariant === 'soft' ? s.heroImgSoft : {}),
             }}
           />
         ) : heroImages.length > 1 ? (
-          <div style={s.heroCarouselWrap}>
+          <div style={{ ...s.heroCarouselWrap, ...(data.heroVideoUrl ? s.heroImageBelowVideo : {}) }}>
             <div
               ref={heroCarouselRef}
               style={s.heroCarousel}
@@ -1352,9 +1369,9 @@ export default function MarketingProductPage() {
               </div>
             )}
           </div>
-        ) : (
+        ) : !data.heroVideoUrl ? (
           <div style={{ ...s.heroPlaceholder, background: theme.pointBg, color: theme.accentDark }}>店小二</div>
-        )}
+        ) : null}
         <div style={s.heroBody}>
           <div style={{ ...s.storeName, color: theme.muted }}>{data.store.name}</div>
           <div style={{ ...s.flashBar, background: theme.flashBg, color: theme.flashText }}>{copy.heroTag}</div>
@@ -1434,6 +1451,10 @@ const s: Record<string, CSSProperties> = {
   heroScene: { padding: 14 },
   heroMenu: { display: 'flex', flexDirection: 'column', borderBottomWidth: 0 },
   heroSoft: { margin: 12, borderRadius: 18, overflow: 'hidden', border: '1px solid #e9d5ff', boxShadow: '0 12px 28px rgba(126,34,206,0.12)' },
+  heroVideo: { width: '100%', aspectRatio: '16 / 9', objectFit: 'cover', display: 'block', background: '#000' },
+  heroVideoScene: { borderRadius: 14 },
+  heroVideoSoft: { aspectRatio: '4 / 5' },
+  heroImageBelowVideo: { marginTop: 8 },
   heroCarouselWrap: { position: 'relative', overflow: 'hidden', width: '100%' },
   heroCarousel: { display: 'flex', width: '100%', overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', touchAction: 'pan-x', overscrollBehaviorX: 'contain' },
   heroSlide: { flex: '0 0 100%', width: '100%', minWidth: 0, scrollSnapAlign: 'start', scrollSnapStop: 'always' },

@@ -217,6 +217,7 @@ model MarketingProductPage {
   titleKm      String?
   subtitle     String?
   heroImageUrl String?
+  heroVideoUrl String?
   salePrice    Decimal?                   @db.Decimal(12, 2)
   originalPrice Decimal?                  @db.Decimal(12, 2)
   soldCount    Int?
