@@ -98,6 +98,7 @@ type Product = {
   status: 'ACTIVE' | 'DISABLED'
   categoryId: string | null
   imageUrl: string | null
+  imageUrls?: string[]
 }
 
 type MarketingProductPage = {
@@ -194,6 +195,17 @@ type PreviewRow = {
 
 type AiRow = PreviewRow & { include: boolean }
 
+function productImages(p: Product | null): string[] {
+  if (!p) return []
+  if (Array.isArray(p.imageUrls) && p.imageUrls.length > 0) return p.imageUrls.filter(Boolean).slice(0, 3)
+  return p.imageUrl ? [p.imageUrl] : []
+}
+
+function withImages(p: Product, imageUrls: string[]): Product {
+  const imgs = imageUrls.filter(Boolean).slice(0, 3)
+  return { ...p, imageUrl: imgs[0] ?? null, imageUrls: imgs }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProductsPage() {
@@ -265,6 +277,8 @@ export default function ProductsPage() {
   const [newCategoryId, setNewCategoryId] = useState<string>('')
   const [newImageFile, setNewImageFile] = useState<File | null>(null)
   const [newImagePreview, setNewImagePreview] = useState<string | null>(null)
+  const [newImageFiles, setNewImageFiles] = useState<File[]>([])
+  const [newImagePreviews, setNewImagePreviews] = useState<string[]>([])
   const [newImageError, setNewImageError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -1098,7 +1112,7 @@ export default function ProductsPage() {
     }
   }
 
-  async function handleImageUpload(file: File) {
+  async function handleImageUpload(file: File, slot = 0) {
     if (!product) return
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       setImageError('仅支持 JPG / PNG / WebP')
@@ -1113,8 +1127,8 @@ export default function ProductsPage() {
     setImageError('正在压缩图片…')
     try {
       setImageError('正在上传…')
-      const imageUrl = await uploadProductImage(product.id, file)
-      setProduct({ ...product, imageUrl })
+      const imageUrls = await uploadProductImage(product.id, file, slot)
+      setProduct(withImages(product, imageUrls))
       setImageError(null)
     } catch (e) {
       setImageError(e instanceof Error ? e.message : t('common.networkError'))
@@ -1124,18 +1138,19 @@ export default function ProductsPage() {
     }
   }
 
-  async function handleImageDelete() {
+  async function handleImageDelete(slot?: number) {
     if (!product) return
     setImageUploading(true)
     setImageError(null)
     try {
       const res = await apiFetch(
-        `/api/products/${product.id}/image`,
+        `/api/products/${product.id}/image${slot === undefined ? '' : `?slot=${slot}`}`,
         { method: 'DELETE' },
         OWNER_CTX,
       )
       if (res.ok) {
-        setProduct({ ...product, imageUrl: null })
+        const nextImages = slot === undefined ? [] : productImages(product).filter((_, i) => i !== slot)
+        setProduct(withImages(product, nextImages))
       } else {
         const body = await res.json().catch(() => null)
         setImageError(body?.message ?? body?.error ?? '删除失败')
@@ -1182,8 +1197,8 @@ export default function ProductsPage() {
     setListImgUploading((v) => ({ ...v, [p.id]: true }))
     setListImgError((v) => ({ ...v, [p.id]: '' }))
     try {
-      const imageUrl = await uploadProductImage(p.id, file)
-      setProductList((prev) => prev.map((it) => (it.id === p.id ? { ...it, imageUrl } : it)))
+      const imageUrls = await uploadProductImage(p.id, file, productImages(p).length > 0 ? 0 : 0)
+      setProductList((prev) => prev.map((it) => (it.id === p.id ? withImages(it, imageUrls) : it)))
     } catch (e) {
       setListImgError((v) => ({ ...v, [p.id]: e instanceof Error ? e.message : t('common.networkError') }))
     } finally {
@@ -1203,7 +1218,7 @@ export default function ProductsPage() {
         OWNER_CTX,
       )
       if (res.ok) {
-        setProductList((prev) => prev.map((it) => (it.id === p.id ? { ...it, imageUrl: null } : it)))
+        setProductList((prev) => prev.map((it) => (it.id === p.id ? withImages(it, []) : it)))
       } else {
         const body = await res.json().catch(() => null)
         setListImgError((v) => ({ ...v, [p.id]: body?.message ?? body?.error ?? '删除失败' }))
@@ -1217,8 +1232,11 @@ export default function ProductsPage() {
 
   function clearNewImage() {
     if (newImagePreview) URL.revokeObjectURL(newImagePreview)
+    newImagePreviews.forEach((url) => URL.revokeObjectURL(url))
     setNewImageFile(null)
     setNewImagePreview(null)
+    setNewImageFiles([])
+    setNewImagePreviews([])
     setNewImageError(null)
     if (createImageFileRef.current) createImageFileRef.current.value = ''
   }
@@ -1233,24 +1251,45 @@ export default function ProductsPage() {
       setNewImageError('原图不能超过 5MB')
       return
     }
-    if (newImagePreview) URL.revokeObjectURL(newImagePreview)
-    setNewImageFile(file)
-    setNewImagePreview(URL.createObjectURL(file))
+    if (newImageFiles.length >= 3) {
+      setNewImageError('每个商品最多 3 张图片')
+      return
+    }
+    const previewUrl = URL.createObjectURL(file)
+    setNewImageFiles((prev) => [...prev, file].slice(0, 3))
+    setNewImagePreviews((prev) => [...prev, previewUrl].slice(0, 3))
+    if (!newImageFile) {
+      setNewImageFile(file)
+      setNewImagePreview(previewUrl)
+    }
   }
 
-  async function uploadProductImage(productId: string, file: File): Promise<string> {
+  function removeNewImage(index: number) {
+    const removed = newImagePreviews[index]
+    if (removed) URL.revokeObjectURL(removed)
+    const nextFiles = newImageFiles.filter((_, i) => i !== index)
+    const nextPreviews = newImagePreviews.filter((_, i) => i !== index)
+    setNewImageFiles(nextFiles)
+    setNewImagePreviews(nextPreviews)
+    setNewImageFile(nextFiles[0] ?? null)
+    setNewImagePreview(nextPreviews[0] ?? null)
+    if (createImageFileRef.current) createImageFileRef.current.value = ''
+  }
+
+  async function uploadProductImage(productId: string, file: File, slot = 0): Promise<string[]> {
     const blob = await compressForUpload(file)
     const uploadName = blob.type === 'image/webp' ? 'main.webp'
       : blob.type === 'image/jpeg' ? 'main.jpg' : file.name
     const form = new FormData()
     form.append('file', new File([blob], uploadName, { type: blob.type || file.type }))
-    const res = await fetch(`/api/products/${productId}/image`, {
+    const res = await fetch(`/api/products/${productId}/image?slot=${slot}`, {
       method: 'POST',
       headers: { ...OWNER_CTX },
       body: form,
     })
     const body = await res.json().catch(() => null)
-    if (res.ok && body?.imageUrl) return body.imageUrl as string
+    if (res.ok && Array.isArray(body?.imageUrls)) return body.imageUrls as string[]
+    if (res.ok && body?.imageUrl) return [body.imageUrl as string]
     throw new Error(body?.message ?? body?.error ?? '上传失败')
   }
 
@@ -1410,9 +1449,12 @@ export default function ProductsPage() {
       const body = await res.json()
       if (res.ok) {
         let created: Product = body
-        if (newImageFile) {
-          const imageUrl = await uploadProductImage(created.id, newImageFile)
-          created = { ...created, imageUrl }
+        if (newImageFiles.length > 0) {
+          let imageUrls: string[] = []
+          for (let i = 0; i < newImageFiles.length; i++) {
+            imageUrls = await uploadProductImage(created.id, newImageFiles[i], i)
+          }
+          created = withImages(created, imageUrls)
         }
         setProduct(created)
         setProductList((prev) => {
@@ -1434,8 +1476,8 @@ export default function ProductsPage() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : t('common.networkError')
-      if (newImageFile) setNewImageError(msg)
-      setError(newImageFile ? `商品创建或图片上传失败：${msg}` : msg)
+      if (newImageFiles.length > 0) setNewImageError(msg)
+      setError(newImageFiles.length > 0 ? `商品创建或图片上传失败：${msg}` : msg)
     } finally {
       setCreating(false)
     }
@@ -2420,7 +2462,7 @@ export default function ProductsPage() {
 
                 {/* 商品主图管理 */}
                 <div style={img.section}>
-                  <div style={img.title}>{t('products.imageTitle')}</div>
+                  <div style={img.title}>商品图片（最多 3 张，第一张为主图）</div>
                   <input
                     ref={imageFileRef}
                     type="file"
@@ -2428,45 +2470,58 @@ export default function ProductsPage() {
                     style={{ display: 'none' }}
                     onChange={(e) => {
                       const file = e.target.files?.[0]
-                      if (file) handleImageUpload(file)
+                      if (file) handleImageUpload(file, Number(imageFileRef.current?.dataset.slot ?? '0'))
                     }}
                   />
-                  {product.imageUrl ? (
-                    <div style={img.previewWrap}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={product.imageUrl} alt={product.name} style={img.preview} />
-                      <div style={img.btnRow}>
-                        <button
-                          type="button"
-                          style={img.btn}
-                          disabled={imageUploading}
-                          onClick={() => imageFileRef.current?.click()}
-                        >
-                          {imageUploading ? t('products.imageUploading') : t('products.imageReplace')}
-                        </button>
-                        <button
-                          type="button"
-                          style={{ ...img.btn, ...img.btnDanger }}
-                          disabled={imageUploading}
-                          onClick={handleImageDelete}
-                        >
-                          {imageUploading ? t('products.imageDeleting') : t('products.imageDelete')}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={img.empty}>
-                      <span style={img.emptyText}>{t('products.imageNone')}</span>
-                      <button
-                        type="button"
-                        style={img.btn}
-                        disabled={imageUploading}
-                        onClick={() => imageFileRef.current?.click()}
-                      >
-                        {imageUploading ? t('products.imageUploading') : t('products.imageUpload')}
-                      </button>
-                    </div>
-                  )}
+                  <div style={img.galleryGrid}>
+                    {[0, 1, 2].map((slot) => {
+                      const url = productImages(product)[slot]
+                      return (
+                        <div key={slot} style={img.gallerySlot}>
+                          <div style={img.slotLabel}>{slot === 0 ? '主图' : `图 ${slot + 1}`}</div>
+                          {url ? (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={url} alt={product.name} style={img.slotImg} />
+                              <div style={img.slotActions}>
+                                <button
+                                  type="button"
+                                  style={img.slotBtn}
+                                  disabled={imageUploading}
+                                  onClick={() => {
+                                    if (imageFileRef.current) imageFileRef.current.dataset.slot = String(slot)
+                                    imageFileRef.current?.click()
+                                  }}
+                                >
+                                  替换
+                                </button>
+                                <button
+                                  type="button"
+                                  style={{ ...img.slotBtn, ...img.slotBtnDanger }}
+                                  disabled={imageUploading}
+                                  onClick={() => handleImageDelete(slot)}
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              style={img.addSlotBtn}
+                              disabled={imageUploading}
+                              onClick={() => {
+                                if (imageFileRef.current) imageFileRef.current.dataset.slot = String(slot)
+                                imageFileRef.current?.click()
+                              }}
+                            >
+                              + 上传
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                   {imageError && <div style={img.err}>{imageError}</div>}
                 </div>
 
@@ -2569,7 +2624,7 @@ export default function ProductsPage() {
                 </div>
 
                 <div style={{ ...img.section, ...img.createSection }}>
-                  <div style={img.title}>商品主图</div>
+                  <div style={img.title}>商品图片（最多 3 张，第一张为主图）</div>
                   <input
                     ref={createImageFileRef}
                     type="file"
@@ -2580,42 +2635,39 @@ export default function ProductsPage() {
                       if (file) handleNewImageSelect(file)
                     }}
                   />
-                  {newImagePreview ? (
-                    <div style={img.previewWrap}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={newImagePreview} alt={newName || '商品主图'} style={img.preview} />
-                      <div style={img.btnRow}>
-                        <button
-                          type="button"
-                          style={img.btn}
-                          disabled={creating}
-                          onClick={() => createImageFileRef.current?.click()}
-                        >
-                          重新选择图片
-                        </button>
-                        <button
-                          type="button"
-                          style={{ ...img.btn, ...img.btnDanger }}
-                          disabled={creating}
-                          onClick={clearNewImage}
-                        >
-                          {t('products.imageDelete')}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={img.createEmpty}>
-                      <span style={img.emptyText}>新增时可直接上传 1 张商品主图</span>
-                      <button
-                        type="button"
-                        style={{ ...img.btn, ...img.createBtn }}
-                        disabled={creating}
-                        onClick={() => createImageFileRef.current?.click()}
-                      >
-                        上传商品图片
-                      </button>
-                    </div>
-                  )}
+                  <div style={img.galleryGrid}>
+                    {[0, 1, 2].map((slot) => {
+                      const url = newImagePreviews[slot]
+                      return (
+                        <div key={slot} style={img.gallerySlot}>
+                          <div style={img.slotLabel}>{slot === 0 ? '主图' : `图 ${slot + 1}`}</div>
+                          {url ? (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={url} alt={newName || '商品主图'} style={img.slotImg} />
+                              <button
+                                type="button"
+                                style={{ ...img.slotBtn, ...img.slotBtnDanger }}
+                                disabled={creating}
+                                onClick={() => removeNewImage(slot)}
+                              >
+                                删除
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              style={img.addSlotBtn}
+                              disabled={creating || newImagePreviews.length >= 3}
+                              onClick={() => createImageFileRef.current?.click()}
+                            >
+                              + 上传
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                   {newImageError && <div style={img.err}>{newImageError}</div>}
                 </div>
 
@@ -3294,6 +3346,64 @@ const img: Record<string, React.CSSProperties> = {
     background: '#fff',
     borderRadius: 6,
     border: '1px solid var(--border)',
+  },
+  galleryGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr',
+    gap: 8,
+  },
+  gallerySlot: {
+    minWidth: 0,
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    background: '#fff',
+    padding: 6,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 6,
+  },
+  slotLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: 'var(--muted)',
+  },
+  slotImg: {
+    width: '100%',
+    aspectRatio: '1 / 1',
+    objectFit: 'cover' as const,
+    borderRadius: 6,
+    background: '#f7f8fa',
+  },
+  slotActions: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 4,
+  },
+  slotBtn: {
+    minWidth: 0,
+    height: 28,
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    background: '#fff',
+    color: 'var(--text)',
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  slotBtnDanger: {
+    color: 'var(--red)',
+    borderColor: '#ffa39e',
+  },
+  addSlotBtn: {
+    width: '100%',
+    aspectRatio: '1 / 1',
+    border: '1.5px dashed #91caff',
+    borderRadius: 8,
+    background: '#f0f7ff',
+    color: 'var(--blue)',
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: 'pointer',
   },
   btnRow: { display: 'flex', gap: 8 },
   btn: {

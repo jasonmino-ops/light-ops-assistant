@@ -188,6 +188,8 @@ model Product {
   descKm     String?
   imageUrl        String?    // 商品主图公开访问 URL（Supabase Storage public bucket）
   imageStorageKey String?    // Storage 对象 key，用于删除/替换
+  imageUrls       String?    @db.Text // JSON: 最多 3 张商品图 URL；第一张同步到 imageUrl
+  imageStorageKeys String?   @db.Text // JSON: 与 imageUrls 对应的 Storage object keys
   imageUpdatedAt  DateTime?  // 图片最近一次更新时间
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt

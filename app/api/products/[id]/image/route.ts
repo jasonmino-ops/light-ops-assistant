@@ -1,12 +1,12 @@
 /**
- * POST   /api/products/[id]/image  — 上传/替换商品主图（OWNER）
- * DELETE /api/products/[id]/image  — 删除商品主图（OWNER）
+ * POST   /api/products/[id]/image[?slot=0|1|2]  — 上传/替换商品图（OWNER）
+ * DELETE /api/products/[id]/image[?slot=0|1|2]  — 删除商品图（OWNER）
  *
  * 存储：Supabase Storage public bucket `product-images`
- * 路径：tenants/{tenantId}/products/{productId}/main-{timestamp}.{ext}
+ * 路径：tenants/{tenantId}/products/{productId}/image-{slot}-{timestamp}.{ext}
  *      （Product 是 tenant 级共享资源，故按 tenantId 而非 storeId 组织）
  *
- * 单图、≤2MB、JPG/PNG/WebP；替换时旧文件尽量异步删除，失败不阻断。
+ * 最多 3 图、≤3MB、JPG/PNG/WebP；第一张同步到 Product.imageUrl。
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -22,6 +22,7 @@ import {
 const BUCKET = 'product-images'
 const MAX_SIZE = 3 * 1024 * 1024 // 3MB（前端已压缩，保留余量）
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const MAX_IMAGES = 3
 
 function extFromMime(mime: string): string {
   if (mime === 'image/jpeg') return 'jpg'
@@ -38,12 +39,56 @@ async function assertOwnerProduct(req: NextRequest, productId: string) {
   }
   const product = await prisma.product.findFirst({
     where: { id: productId, tenantId: ctx.tenantId },
-    select: { id: true, tenantId: true, imageStorageKey: true },
+    select: { id: true, tenantId: true, imageUrl: true, imageStorageKey: true, imageUrls: true, imageStorageKeys: true },
   })
   if (!product) {
     return { error: NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 }) }
   }
   return { ctx, product }
+}
+
+function parseJsonArray(value: string | null | undefined): string[] {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string' && !!x.trim()) : []
+  } catch {
+    return []
+  }
+}
+
+function compactPairs(urls: string[], keys: string[]): { urls: string[]; keys: string[] } {
+  const nextUrls: string[] = []
+  const nextKeys: string[] = []
+  urls.slice(0, MAX_IMAGES).forEach((url, index) => {
+    if (!url) return
+    nextUrls.push(url)
+    nextKeys.push(keys[index] ?? '')
+  })
+  return { urls: nextUrls, keys: nextKeys }
+}
+
+function productImageState(product: {
+  imageUrl: string | null
+  imageStorageKey: string | null
+  imageUrls: string | null
+  imageStorageKeys: string | null
+}) {
+  const urls = parseJsonArray(product.imageUrls)
+  const keys = parseJsonArray(product.imageStorageKeys)
+  if (urls.length === 0 && product.imageUrl) {
+    urls.push(product.imageUrl)
+    keys.push(product.imageStorageKey ?? '')
+  }
+  return compactPairs(urls, keys)
+}
+
+function slotFromReq(req: NextRequest, currentLen: number): number {
+  const raw = req.nextUrl.searchParams.get('slot')
+  if (raw === null) return currentLen > 0 ? 0 : 0
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 0 || n >= MAX_IMAGES) return -1
+  return n
 }
 
 export async function POST(
@@ -61,6 +106,14 @@ export async function POST(
   const guard = await assertOwnerProduct(req, id)
   if ('error' in guard) return guard.error
   const { product } = guard
+  const current = productImageState(product)
+  const slot = slotFromReq(req, current.urls.length)
+  if (slot < 0) {
+    return NextResponse.json({ error: 'INVALID_SLOT', message: '图片位置无效，最多 3 张' }, { status: 400 })
+  }
+  if (slot >= current.urls.length && current.urls.length >= MAX_IMAGES) {
+    return NextResponse.json({ error: 'TOO_MANY_IMAGES', message: '每个商品最多 3 张图片' }, { status: 400 })
+  }
 
   let formData: FormData
   try {
@@ -82,7 +135,7 @@ export async function POST(
   const buf = Buffer.from(await file.arrayBuffer())
   const ts = Date.now()
   const ext = extFromMime(file.type)
-  const newKey = `tenants/${product.tenantId}/products/${product.id}/main-${ts}.${ext}`
+  const newKey = `tenants/${product.tenantId}/products/${product.id}/image-${slot + 1}-${ts}.${ext}`
 
   let publicUrl: string
   try {
@@ -95,21 +148,28 @@ export async function POST(
     return NextResponse.json({ error: 'UPLOAD_FAILED', message: '上传失败：' + msg.slice(0, 200) }, { status: 502 })
   }
 
-  // 写库
+  const oldKey = current.keys[slot] || null
+  const nextUrls = [...current.urls]
+  const nextKeys = [...current.keys]
+  nextUrls[slot] = publicUrl
+  nextKeys[slot] = newKey
+  const compacted = compactPairs(nextUrls, nextKeys)
+
   const updated = await prisma.product.update({
     where: { id: product.id },
     data: {
-      imageUrl: publicUrl,
-      imageStorageKey: newKey,
+      imageUrl: compacted.urls[0] ?? null,
+      imageStorageKey: compacted.keys[0] || null,
+      imageUrls: compacted.urls.length > 0 ? JSON.stringify(compacted.urls) : null,
+      imageStorageKeys: compacted.keys.length > 0 ? JSON.stringify(compacted.keys) : null,
       imageUpdatedAt: new Date(ts),
     },
-    select: { id: true, imageUrl: true, imageStorageKey: true, imageUpdatedAt: true },
+    select: { id: true, imageUrl: true, imageUrls: true, imageStorageKey: true, imageStorageKeys: true, imageUpdatedAt: true },
   })
 
-  // 异步删除旧文件（不阻断响应）
-  if (product.imageStorageKey && product.imageStorageKey !== newKey) {
-    deleteObject(BUCKET, product.imageStorageKey).catch((err) => {
-      console.warn('[product-image] old object delete failed', product.imageStorageKey, err)
+  if (oldKey && oldKey !== newKey) {
+    deleteObject(BUCKET, oldKey).catch((err) => {
+      console.warn('[product-image] old object delete failed', oldKey, err)
     })
   }
 
@@ -125,18 +185,35 @@ export async function DELETE(
   if ('error' in guard) return guard.error
   const { product } = guard
 
-  if (product.imageStorageKey) {
-    // 不阻断：删除失败也清空 DB 字段，留下孤立对象由后续运维清理
-    const ok = await deleteObject(BUCKET, product.imageStorageKey)
-    if (!ok) {
-      console.warn('[product-image] storage delete failed', product.imageStorageKey)
-    }
+  const current = productImageState(product)
+  const rawSlot = req.nextUrl.searchParams.get('slot')
+  const slot = rawSlot === null ? -1 : slotFromReq(req, current.urls.length)
+  if (rawSlot !== null && slot < 0) {
+    return NextResponse.json({ error: 'INVALID_SLOT', message: '图片位置无效' }, { status: 400 })
   }
+
+  const removedKeys = rawSlot === null
+    ? current.keys.filter((key): key is string => !!key)
+    : [current.keys[slot]].filter((key): key is string => !!key)
+  const nextUrls = rawSlot === null ? [] : current.urls.filter((_, index) => index !== slot)
+  const nextKeys = rawSlot === null ? [] : current.keys.filter((_, index) => index !== slot)
+  const compacted = compactPairs(nextUrls, nextKeys)
 
   await prisma.product.update({
     where: { id: product.id },
-    data: { imageUrl: null, imageStorageKey: null, imageUpdatedAt: null },
+    data: {
+      imageUrl: compacted.urls[0] ?? null,
+      imageStorageKey: compacted.keys[0] || null,
+      imageUrls: compacted.urls.length > 0 ? JSON.stringify(compacted.urls) : null,
+      imageStorageKeys: compacted.keys.length > 0 ? JSON.stringify(compacted.keys) : null,
+      imageUpdatedAt: new Date(),
+    },
   })
+
+  for (const key of removedKeys) {
+    const ok = await deleteObject(BUCKET, key)
+    if (!ok) console.warn('[product-image] storage delete failed', key)
+  }
 
   return NextResponse.json({ ok: true })
 }

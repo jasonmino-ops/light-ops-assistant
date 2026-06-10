@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
+function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
+  try {
+    const parsed = imageUrls ? JSON.parse(imageUrls) : []
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 3)
+  } catch {}
+  return imageUrl ? [imageUrl] : []
+}
+
 /**
  * GET /api/products[?barcode=<barcode>]
  *
@@ -36,7 +44,7 @@ export async function GET(req: NextRequest) {
         tenantId: ctx.tenantId,
         ...(all ? {} : { status: 'ACTIVE' }),
       },
-      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true, imageUrl: true },
+      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true, imageUrl: true, imageUrls: true },
       orderBy: { name: 'asc' },
       take: 500,
     })
@@ -50,6 +58,7 @@ export async function GET(req: NextRequest) {
         status: p.status,
         categoryId: p.categoryId,
         imageUrl: p.imageUrl,
+        imageUrls: parseImageUrls(p.imageUrls, p.imageUrl),
       })),
     )
   }
@@ -63,7 +72,7 @@ export async function GET(req: NextRequest) {
       barcode,
       ...(statusFilter ? { status: statusFilter } : {}),
     },
-    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true, imageUrl: true },
+    select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, status: true, categoryId: true, imageUrl: true, imageUrls: true },
   })
 
   if (!product) {
@@ -78,6 +87,7 @@ export async function GET(req: NextRequest) {
     sellPrice: product.sellPrice.toNumber(),
     categoryId: product.categoryId,
     imageUrl: product.imageUrl,
+    imageUrls: parseImageUrls(product.imageUrls, product.imageUrl),
     // status only exposed to OWNER (staff doesn't need to see it)
     ...(ctx.role === 'OWNER' ? { status: product.status } : {}),
   })
@@ -146,6 +156,7 @@ export async function POST(req: NextRequest) {
       status: created.status,
       categoryId: created.categoryId,
       imageUrl: created.imageUrl,
+      imageUrls: [],
     },
     { status: 201 },
   )

@@ -3,6 +3,14 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
+function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
+  try {
+    const parsed = imageUrls ? JSON.parse(imageUrls) : []
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 3)
+  } catch {}
+  return imageUrl ? [imageUrl] : []
+}
+
 /**
  * DELETE /api/products/[id]  — OWNER only
  *
@@ -119,5 +127,6 @@ export async function PATCH(
     status: updated.status,
     categoryId: updated.categoryId,
     imageUrl: updated.imageUrl,
+    imageUrls: parseImageUrls(updated.imageUrls, updated.imageUrl),
   })
 }

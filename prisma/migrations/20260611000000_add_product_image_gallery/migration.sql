@@ -1,0 +1,3 @@
+ALTER TABLE "Product"
+  ADD COLUMN IF NOT EXISTS "imageUrls" TEXT,
+  ADD COLUMN IF NOT EXISTS "imageStorageKeys" TEXT;

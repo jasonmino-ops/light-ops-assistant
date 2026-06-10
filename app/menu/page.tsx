@@ -374,6 +374,7 @@ type ApiProduct = {
   price:  number
   categoryId: string | null
   imageUrl:   string | null
+  imageUrls?: string[]
 }
 
 type ApiStore = {
@@ -422,6 +423,11 @@ function pDesc(p: ApiProduct, lang: Lang): string | null {
   return p.descZh || null
 }
 
+function productImages(p: ApiProduct): string[] {
+  if (Array.isArray(p.imageUrls) && p.imageUrls.length > 0) return p.imageUrls.filter(Boolean).slice(0, 3)
+  return p.imageUrl ? [p.imageUrl] : []
+}
+
 // ─── 购物车 ──────────────────────────────────────────────────────────────────
 
 type CartItem = { id: string; quantity: number; sugar?: string }
@@ -455,7 +461,7 @@ export default function MenuPage() {
   const [tableNo,      setTableNo]     = useState<string | null>(null)
   const [hasTgId,      setHasTgId]     = useState(false)
   const [customerBound, setCustomerBound] = useState(false)
-  const [lightboxUrl,  setLightboxUrl] = useState<string | null>(null)
+  const [lightbox,  setLightbox] = useState<{ images: string[]; index: number } | null>(null)
   // 搜索 + 购物车展开
   const [searchKeyword, setSearchKeyword] = useState('')
   const [cartExpand,    setCartExpand]    = useState(false)
@@ -1125,19 +1131,23 @@ export default function MenuPage() {
                     const qty   = cart.filter((c) => c.id === product.id).reduce((s, c) => s + c.quantity, 0)
                     const color = CARD_COLORS[idx % CARD_COLORS.length]
                     const emoji = CARD_EMOJIS[idx % CARD_EMOJIS.length]
+                    const images = productImages(product)
                     return (
                       <div key={product.id} style={s.productCard}>
-                        {product.imageUrl ? (
+                        {images.length > 0 ? (
                           <div
                             style={{ ...s.productImg, background: '#f5f5f5', overflow: 'hidden', cursor: 'zoom-in' }}
-                            onClick={() => setLightboxUrl(product.imageUrl)}
+                            onClick={() => setLightbox({ images, index: 0 })}
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              src={product.imageUrl}
+                              src={images[0]}
                               alt={product.name}
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
+                            {images.length > 1 && (
+                              <span style={s.productImgCount}>{images.length}</span>
+                            )}
                           </div>
                         ) : (
                           <div style={{ ...s.productImg, background: color }}>
@@ -1227,7 +1237,7 @@ export default function MenuPage() {
       )}
 
       {/* ── 商品图放大查看 ── */}
-      {lightboxUrl && (
+      {lightbox && (
         <div
           style={{
             position: 'fixed',
@@ -1240,18 +1250,60 @@ export default function MenuPage() {
             padding: 24,
             cursor: 'zoom-out',
           }}
-          onClick={() => setLightboxUrl(null)}
+          onClick={() => setLightbox(null)}
+          onTouchStart={(e) => {
+            const x = e.touches[0]?.clientX ?? 0
+            ;(e.currentTarget as HTMLDivElement).dataset.startX = String(x)
+          }}
+          onTouchEnd={(e) => {
+            const start = Number((e.currentTarget as HTMLDivElement).dataset.startX ?? '0')
+            const end = e.changedTouches[0]?.clientX ?? start
+            const delta = end - start
+            if (Math.abs(delta) < 40 || lightbox.images.length <= 1) return
+            setLightbox((prev) => prev
+              ? { ...prev, index: delta < 0 ? Math.min(prev.images.length - 1, prev.index + 1) : Math.max(0, prev.index - 1) }
+              : prev)
+          }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={lightboxUrl}
+            src={lightbox.images[lightbox.index]}
             alt=""
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
           />
+          {lightbox.images.length > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="previous image"
+                disabled={lightbox.index === 0}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setLightbox((prev) => prev ? { ...prev, index: Math.max(0, prev.index - 1) } : prev)
+                }}
+                style={{ ...s.lightboxNav, left: 14, opacity: lightbox.index === 0 ? 0.35 : 1 }}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                aria-label="next image"
+                disabled={lightbox.index === lightbox.images.length - 1}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setLightbox((prev) => prev ? { ...prev, index: Math.min(prev.images.length - 1, prev.index + 1) } : prev)
+                }}
+                style={{ ...s.lightboxNav, right: 14, opacity: lightbox.index === lightbox.images.length - 1 ? 0.35 : 1 }}
+              >
+                ›
+              </button>
+              <div style={s.lightboxCounter}>{lightbox.index + 1} / {lightbox.images.length}</div>
+            </>
+          )}
           <button
             type="button"
             aria-label="close"
-            onClick={(e) => { e.stopPropagation(); setLightboxUrl(null) }}
+            onClick={(e) => { e.stopPropagation(); setLightbox(null) }}
             style={{
               position: 'absolute',
               top: 16,
@@ -2199,6 +2251,23 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+    position: 'relative',
+  },
+  productImgCount: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    background: 'rgba(0,0,0,0.58)',
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 800,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '1px solid rgba(255,255,255,0.4)',
   },
   productEmoji: {
     fontSize: 36,
@@ -2469,6 +2538,32 @@ const s: Record<string, React.CSSProperties> = {
     color: '#c0a090',
     lineHeight: 1,
     fontWeight: 300,
+  },
+  lightboxNav: {
+    position: 'absolute',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: 42,
+    height: 42,
+    borderRadius: '50%',
+    border: '1px solid rgba(255,255,255,0.3)',
+    background: 'rgba(255,255,255,0.18)',
+    color: '#fff',
+    fontSize: 34,
+    lineHeight: 1,
+    cursor: 'pointer',
+  },
+  lightboxCounter: {
+    position: 'absolute',
+    bottom: 20,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    borderRadius: 999,
+    padding: '5px 12px',
+    background: 'rgba(0,0,0,0.45)',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
   },
   myOrdersBtnLink: {
     display: 'block',

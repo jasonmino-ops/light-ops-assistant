@@ -8,6 +8,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
+  try {
+    const parsed = imageUrls ? JSON.parse(imageUrls) : []
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 3)
+  } catch {}
+  return imageUrl ? [imageUrl] : []
+}
+
 export async function GET(req: NextRequest) {
   const storeCode = req.nextUrl.searchParams.get('storeCode')?.trim()
   if (!storeCode) {
@@ -25,7 +33,7 @@ export async function GET(req: NextRequest) {
   const [products, categories] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId: store.tenantId, status: 'ACTIVE' },
-      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, categoryId: true, imageUrl: true },
+      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, categoryId: true, imageUrl: true, imageUrls: true },
       orderBy: { name: 'asc' },
       take: 500,
     }),
@@ -46,6 +54,7 @@ export async function GET(req: NextRequest) {
       sellPrice: p.sellPrice.toNumber(),
       categoryId: p.categoryId,
       imageUrl: p.imageUrl,
+      imageUrls: parseImageUrls(p.imageUrls, p.imageUrl),
     })),
     categories,
   })
