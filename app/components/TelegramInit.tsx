@@ -108,74 +108,100 @@ export default function TelegramInit() {
       return
     }
 
+    if (path === '/home') {
+      setAuthChecking(true)
+      fetch('/api/auth/status', { cache: 'no-store' })
+        .then((r) => {
+          if (r.ok) {
+            sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
+            setAuthChecking(false)
+            return
+          }
+          authenticateTelegram()
+        })
+        .catch(() => authenticateTelegram())
+      return
+    }
+
     // /ops uses a separate bot (Mino ops) which may have a different bot token.
     // Route to the ops-specific auth endpoint to avoid INVALID_SIGNATURE errors.
-    const isOpsPath = window.location.pathname.startsWith('/ops')
-    const authUrl = isOpsPath ? '/api/auth/telegram-ops' : '/api/auth/telegram'
-    setAuthChecking(true)
+    authenticateTelegram()
 
-    fetch(authUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ initData }),
-    })
-      .then((r) => r.json())
-      .then((body) => {
-        if (body.ok) {
-          sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
-          if (window.location.pathname.startsWith('/ops')) {
-            window.location.href = '/ops'
+    function authenticateTelegram() {
+      const isOpsPath = window.location.pathname.startsWith('/ops')
+      const authUrl = isOpsPath ? '/api/auth/telegram-ops' : '/api/auth/telegram'
+      setAuthChecking(true)
+
+      fetch(authUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData }),
+      })
+        .then((r) => r.json())
+        .then((body) => {
+          if (body.ok) {
+            sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
+            if (window.location.pathname.startsWith('/ops')) {
+              window.location.href = '/ops'
+            } else {
+              // 首次进入（sessionStorage 为空 → 触发了 auth）统一落到 /home，
+              // 不管 WebView 上次记住的路径是哪里（避免留在 /dashboard 等非默认页）
+              window.location.replace('/home')
+            }
+          } else if (body.error === 'USER_NOT_FOUND') {
+            // Use same three-source priority for start_param.
+            const sp =
+              new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam') ||
+              tg.initDataUnsafe?.start_param ||
+              new URLSearchParams(initData).get('start_param') ||
+              ''
+
+            // Employee/owner bind token: e.g. bind_<token>
+            if (sp.startsWith('bind_') && !window.location.pathname.startsWith('/bind')) {
+              window.location.replace(`/bind?token=${encodeURIComponent(sp.slice(5))}`)
+              return
+            }
+
+            // Fixed "open store" QR code: startapp=open
+            if (sp === 'open' && !window.location.pathname.startsWith('/open')) {
+              window.location.replace('/open')
+              return
+            }
+
+            // Already on an onboarding page — let it handle its own flow, do not interfere.
+            const onboardingPaths = ['/start', '/open', '/bind']
+            if (onboardingPaths.some((p) => window.location.pathname.startsWith(p))) return
+
+            // Default: send to unified entry page.
+            sessionStorage.removeItem(SESSION_KEY)
+            window.location.replace('/start')
+          } else if (body.error === 'TENANT_INACTIVE') {
+            // Clear session + server cookie so next open doesn't loop back here, then → /start
+            sessionStorage.removeItem(SESSION_KEY)
+            fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+            setTenantInactive(true)
+            setTimeout(() => window.location.replace('/start'), 3000)
           } else {
-            // 首次进入（sessionStorage 为空 → 触发了 auth）统一落到 /home，
-            // 不管 WebView 上次记住的路径是哪里（避免留在 /dashboard 等非默认页）
-            window.location.replace('/home')
+            setAuthChecking(false)
+            setAuthError(body.message ?? '登录失败，请联系管理员')
           }
-        } else if (body.error === 'USER_NOT_FOUND') {
-          // Use same three-source priority for start_param.
-          const sp =
-            new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam') ||
-            tg.initDataUnsafe?.start_param ||
-            new URLSearchParams(initData).get('start_param') ||
-            ''
-
-          // Employee/owner bind token: e.g. bind_<token>
-          if (sp.startsWith('bind_') && !window.location.pathname.startsWith('/bind')) {
-            window.location.replace(`/bind?token=${encodeURIComponent(sp.slice(5))}`)
-            return
-          }
-
-          // Fixed "open store" QR code: startapp=open
-          if (sp === 'open' && !window.location.pathname.startsWith('/open')) {
-            window.location.replace('/open')
-            return
-          }
-
-          // Already on an onboarding page — let it handle its own flow, do not interfere.
-          const onboardingPaths = ['/start', '/open', '/bind']
-          if (onboardingPaths.some((p) => window.location.pathname.startsWith(p))) return
-
-          // Default: send to unified entry page.
-          sessionStorage.removeItem(SESSION_KEY)
-          window.location.replace('/start')
-        } else if (body.error === 'TENANT_INACTIVE') {
-          // Clear session + server cookie so next open doesn't loop back here, then → /start
-          sessionStorage.removeItem(SESSION_KEY)
-          fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
-          setTenantInactive(true)
-          setTimeout(() => window.location.replace('/start'), 3000)
-        } else {
+        })
+        .catch(() => {
           setAuthChecking(false)
-          setAuthError(body.message ?? '登录失败，请联系管理员')
-        }
-      })
-      .catch(() => {
-        setAuthChecking(false)
-        setAuthError('网络错误，请重试')
-      })
+          setAuthError('网络错误，请重试')
+        })
+    }
   }, [])
 
   if (authChecking && !authError && !tenantInactive) {
-    return <div style={bootOverlay} aria-hidden="true" />
+    return (
+      <div style={bootOverlay} aria-live="polite">
+        <div style={bootCard}>
+          <div style={bootMark}>店</div>
+          <div style={bootText}>正在进入店小二...</div>
+        </div>
+      </div>
+    )
   }
 
   if (!authError && !tenantInactive) return null
@@ -229,6 +255,39 @@ const bootOverlay: React.CSSProperties = {
   inset: 0,
   background: '#f5f7fa',
   zIndex: 9998,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const bootCard: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '12px 14px',
+  borderRadius: 10,
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  boxShadow: '0 6px 18px rgba(15,23,42,0.08)',
+}
+
+const bootMark: React.CSSProperties = {
+  width: 30,
+  height: 30,
+  borderRadius: 8,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: '#1677ff',
+  color: '#fff',
+  fontSize: 15,
+  fontWeight: 800,
+}
+
+const bootText: React.CSSProperties = {
+  color: '#344054',
+  fontSize: 14,
+  fontWeight: 700,
 }
 
 const card: React.CSSProperties = {

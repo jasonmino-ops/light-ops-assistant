@@ -172,7 +172,12 @@ function mergeEntries(saleEntries: DisplayEntry[], paidCustomerOrders: CustomerO
 
 export default function HomePage() {
   const { t, lang, setLang } = useLocale()
-  const { realRole, isOwnerInStaffMode, enterStaffMode, exitStaffMode } = useWorkMode()
+  const {
+    realRole, isOwnerInStaffMode, enterStaffMode, exitStaffMode,
+    storeName: contextStoreName,
+    storeCode: contextStoreCode,
+    tenantName: contextTenantName,
+  } = useWorkMode()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -188,18 +193,19 @@ export default function HomePage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
   useEffect(() => {
+    setStoreName(contextStoreName ?? contextTenantName ?? null)
+    setStoreCode(contextStoreCode ?? null)
+  }, [contextStoreName, contextStoreCode, contextTenantName])
+
+  useEffect(() => {
     const today = todayStr()
     const params = new URLSearchParams({ dateFrom: today, dateTo: today, pageSize: '30' })
 
-    Promise.all([
-      apiFetch(`/api/records?${params}`, undefined, STAFF_CTX).then((res) => res.json()),
-      apiFetch('/api/me', { cache: 'no-store' }, STAFF_CTX).then((res) => res.json()),
-    ])
-      .then(([data, me]) => {
+    apiFetch(`/api/records?${params}`, undefined, STAFF_CTX)
+      .then((res) => res.json())
+      .then((data) => {
         setSummary(data.summary)
         setEntries(buildSaleEntries(data.items ?? []).slice(0, 5))
-        setStoreName(me.storeName ?? me.tenantName ?? null)
-        if (me.storeCode) setStoreCode(me.storeCode)
       })
       .catch(() => {})
       .finally(() => setLoading(false))

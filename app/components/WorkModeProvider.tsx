@@ -13,6 +13,10 @@ type Ctx = {
   effectiveRole: string
   isOwnerInStaffMode: boolean
   tier: string
+  storeName: string | null
+  storeCode: string | null
+  tenantName: string | null
+  checkoutMode: string
   enterStaffMode: () => void
   exitStaffMode: () => void
 }
@@ -22,6 +26,10 @@ const WorkModeContext = createContext<Ctx>({
   effectiveRole: 'STAFF',
   isOwnerInStaffMode: false,
   tier: 'LITE',
+  storeName: null,
+  storeCode: null,
+  tenantName: null,
+  checkoutMode: 'DIRECT_PAYMENT',
   enterStaffMode() {},
   exitStaffMode() {},
 })
@@ -35,6 +43,10 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   const router = useRouter()
   const [workMode, setWorkMode] = useState<'owner' | 'staff'>('owner')
   const [tier, setTier] = useState('LITE')
+  const [storeName, setStoreName] = useState<string | null>(null)
+  const [storeCode, setStoreCode] = useState<string | null>(null)
+  const [tenantName, setTenantName] = useState<string | null>(null)
+  const [checkoutMode, setCheckoutMode] = useState('DIRECT_PAYMENT')
 
   useEffect(() => {
     if (role === 'OWNER' && localStorage.getItem(STORAGE_KEY) === 'staff') {
@@ -43,9 +55,15 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   }, [role])
 
   useEffect(() => {
-    apiFetch('/api/me', undefined, STAFF_CTX)
+    apiFetch('/api/me', { cache: 'no-store' }, STAFF_CTX)
       .then((r) => (r.ok ? r.json() : { tier: 'LITE' }))
-      .then((d) => setTier(d.tier ?? 'LITE'))
+      .then((d) => {
+        setTier(d.tier ?? 'LITE')
+        setStoreName(d.storeName ?? null)
+        setStoreCode(d.storeCode ?? null)
+        setTenantName(d.tenantName ?? null)
+        setCheckoutMode(d.checkoutMode ?? 'DIRECT_PAYMENT')
+      })
       .catch(() => {})
   }, [])
 
@@ -65,7 +83,11 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   }
 
   return (
-    <WorkModeContext.Provider value={{ realRole: role, effectiveRole, isOwnerInStaffMode, tier, enterStaffMode, exitStaffMode }}>
+    <WorkModeContext.Provider value={{
+      realRole: role, effectiveRole, isOwnerInStaffMode, tier,
+      storeName, storeCode, tenantName, checkoutMode,
+      enterStaffMode, exitStaffMode,
+    }}>
       {isOwnerInStaffMode && (
         <>
           <div style={bannerStyle}>

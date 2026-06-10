@@ -90,6 +90,9 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findFirst({
     where: { telegramId: telegramUserId, status: 'ACTIVE' },
     include: {
+      tenant: {
+        select: { status: true },
+      },
       storeRoles: {
         where: { status: 'ACTIVE' },
         orderBy: { createdAt: 'asc' },
@@ -106,12 +109,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Verify the user's own tenant is still active
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: user.tenantId },
-    select: { status: true },
-  })
-  if (!tenant || tenant.status !== 'ACTIVE') {
+  // Verify the user's own tenant is still active.
+  if (user.tenant.status !== 'ACTIVE') {
     return NextResponse.json(
       { error: 'TENANT_INACTIVE', message: '商户已停用，请联系管理员' },
       { status: 403 },
