@@ -194,34 +194,10 @@ export default function HomePage() {
     Promise.all([
       apiFetch(`/api/records?${params}`, undefined, STAFF_CTX).then((res) => res.json()),
       apiFetch('/api/me', { cache: 'no-store' }, STAFF_CTX).then((res) => res.json()),
-      // OWNER 额外加载今日已付款顾客订单，用于叠加概览与最近记录
-      realRole === 'OWNER'
-        ? apiFetch(`/api/customer-orders?paymentStatus=PAID&dateFrom=${today}`, undefined, OWNER_CTX)
-            .then((r) => r.json())
-            .catch(() => [])
-        : Promise.resolve([]),
     ])
-      .then(([data, me, paidOrdersRaw]) => {
-        const paidOrders = (Array.isArray(paidOrdersRaw) ? paidOrdersRaw : []) as CustomerOrderRecord[]
-
-        // 叠加顾客订单到今日概览
-        if (paidOrders.length > 0) {
-          const coTotal   = paidOrders.reduce((s, o) => s + o.totalAmount, 0)
-          const coCash    = paidOrders.filter((o) => o.paymentMethod === 'CASH').reduce((s, o) => s + o.totalAmount, 0)
-          const coQR      = paidOrders.filter((o) => o.paymentMethod === 'QR').reduce((s, o) => s + o.totalAmount, 0)
-          const base: Summary = data.summary ?? { saleCount: 0, refundCount: 0, netAmount: 0 }
-          setSummary({
-            saleCount:      base.saleCount + paidOrders.length,
-            refundCount:    base.refundCount,
-            netAmount:      base.netAmount + coTotal,
-            cashSaleAmount: (base.cashSaleAmount ?? 0) + coCash,
-            khqrSaleAmount: (base.khqrSaleAmount ?? 0) + coQR,
-          })
-        } else {
-          setSummary(data.summary)
-        }
-
-        setEntries(mergeEntries(buildSaleEntries(data.items ?? []), paidOrders))
+      .then(([data, me]) => {
+        setSummary(data.summary)
+        setEntries(buildSaleEntries(data.items ?? []).slice(0, 5))
         setStoreName(me.storeName ?? me.tenantName ?? null)
         if (me.storeCode) setStoreCode(me.storeCode)
       })

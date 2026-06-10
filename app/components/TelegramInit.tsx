@@ -52,6 +52,7 @@ function isPublicPath(path: string) {
 export default function TelegramInit() {
   const [authError, setAuthError] = useState('')
   const [tenantInactive, setTenantInactive] = useState(false)
+  const [authChecking, setAuthChecking] = useState(false)
 
   useEffect(() => {
     // Skip auth entirely on onboarding pages — they handle their own flow.
@@ -111,6 +112,7 @@ export default function TelegramInit() {
     // Route to the ops-specific auth endpoint to avoid INVALID_SIGNATURE errors.
     const isOpsPath = window.location.pathname.startsWith('/ops')
     const authUrl = isOpsPath ? '/api/auth/telegram-ops' : '/api/auth/telegram'
+    setAuthChecking(true)
 
     fetch(authUrl, {
       method: 'POST',
@@ -162,13 +164,19 @@ export default function TelegramInit() {
           setTenantInactive(true)
           setTimeout(() => window.location.replace('/start'), 3000)
         } else {
+          setAuthChecking(false)
           setAuthError(body.message ?? '登录失败，请联系管理员')
         }
       })
       .catch(() => {
+        setAuthChecking(false)
         setAuthError('网络错误，请重试')
       })
   }, [])
+
+  if (authChecking && !authError && !tenantInactive) {
+    return <div style={bootOverlay} aria-hidden="true" />
+  }
 
   if (!authError && !tenantInactive) return null
 
@@ -214,6 +222,13 @@ const overlay: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   zIndex: 9999,
+}
+
+const bootOverlay: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: '#f5f7fa',
+  zIndex: 9998,
 }
 
 const card: React.CSSProperties = {

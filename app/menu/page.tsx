@@ -1003,7 +1003,17 @@ export default function MenuPage() {
 
         {/* ── 2. 门店信息卡片 ── */}
         <div style={s.storeCard}>
-          <div style={s.storeLogo}>🏪</div>
+          <div style={{
+            ...s.storeLogo,
+            ...(storeData?.bannerUrl ? {
+              backgroundImage: `url(${storeData.bannerUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              borderColor: 'rgba(255,255,255,0.85)',
+            } : {}),
+          }}>
+            {!storeData?.bannerUrl && '🏪'}
+          </div>
           <div style={s.storeBody}>
             <div style={s.storeTopRow}>
               <span style={s.storeName}>{storeName}</span>
