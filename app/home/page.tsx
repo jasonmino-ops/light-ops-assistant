@@ -74,6 +74,7 @@ type RecordItem = {
   createdAt: string
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
+  source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
 }
 
 type OrderGroup = {
@@ -84,6 +85,7 @@ type OrderGroup = {
   totalAmount: number
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
+  source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
 }
 
 type RefundEntry = {
@@ -91,16 +93,7 @@ type RefundEntry = {
   item: RecordItem
 }
 
-type CustomerOrderEntry = {
-  kind: 'customer_order'
-  orderNo: string
-  createdAt: string
-  itemSummary: string
-  totalAmount: number
-  paymentMethod: string | null
-}
-
-type DisplayEntry = OrderGroup | RefundEntry | CustomerOrderEntry
+type DisplayEntry = OrderGroup | RefundEntry
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
@@ -130,6 +123,7 @@ function buildSaleEntries(items: RecordItem[]): DisplayEntry[] {
           kind: 'order', orderNo: key, createdAt: item.createdAt, items: [], totalAmount: 0,
           paymentMethod: item.paymentMethod ?? null,
           paymentStatus: item.paymentStatus ?? null,
+          source: item.source,
         })
       }
       const g = groupMap.get(key)!
@@ -142,30 +136,11 @@ function buildSaleEntries(items: RecordItem[]): DisplayEntry[] {
 
   const all: DisplayEntry[] = [...groupMap.values(), ...refunds]
   all.sort((a, b) => {
-    const at = a.kind === 'order' ? a.createdAt : a.kind === 'customer_order' ? a.createdAt : a.item.createdAt
-    const bt = b.kind === 'order' ? b.createdAt : b.kind === 'customer_order' ? b.createdAt : b.item.createdAt
+    const at = a.kind === 'order' ? a.createdAt : a.item.createdAt
+    const bt = b.kind === 'order' ? b.createdAt : b.item.createdAt
     return bt.localeCompare(at)
   })
   return all
-}
-
-function mergeEntries(saleEntries: DisplayEntry[], paidCustomerOrders: CustomerOrderRecord[]): DisplayEntry[] {
-  const coEntries: CustomerOrderEntry[] = paidCustomerOrders.map((o) => ({
-    kind: 'customer_order' as const,
-    orderNo: o.orderNo,
-    createdAt: o.paidAt ?? o.createdAt,
-    itemSummary: buildOrderItemSummary(o.items),
-    totalAmount: o.totalAmount,
-    paymentMethod: o.paymentMethod,
-  }))
-
-  const all = [...saleEntries, ...coEntries]
-  all.sort((a, b) => {
-    const at = a.kind === 'order' ? a.createdAt : a.kind === 'customer_order' ? a.createdAt : a.item.createdAt
-    const bt = b.kind === 'order' ? b.createdAt : b.kind === 'customer_order' ? b.createdAt : b.item.createdAt
-    return bt.localeCompare(at)
-  })
-  return all.slice(0, 5)
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -173,7 +148,7 @@ function mergeEntries(saleEntries: DisplayEntry[], paidCustomerOrders: CustomerO
 export default function HomePage() {
   const { t, lang, setLang } = useLocale()
   const {
-    realRole, isOwnerInStaffMode, enterStaffMode, exitStaffMode,
+    realRole, effectiveRole, isOwnerInStaffMode, enterStaffMode, exitStaffMode,
     storeName: contextStoreName,
     storeCode: contextStoreCode,
     tenantName: contextTenantName,
@@ -181,11 +156,13 @@ export default function HomePage() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [storeName, setStoreName] = useState<string | null>(null)
   const [selectedOrderNo, setSelectedOrderNo] = useState<string | null>(null)
   const [checkoutOrder, setCheckoutOrder] = useState<{ orderNo: string; totalAmount: number } | null>(null)
   const [loadKey, setLoadKey] = useState(0)
   const [customerOrders, setCustomerOrders] = useState<CustomerOrderRecord[]>([])
+  const [ordersError, setOrdersError] = useState<string | null>(null)
   const [ordersKey, setOrdersKey] = useState(0)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   const [customerCheckout, setCustomerCheckout] = useState<{ id: string; orderNo: string; totalAmount: number } | null>(null)
@@ -201,28 +178,42 @@ export default function HomePage() {
     const today = todayStr()
     const params = new URLSearchParams({ dateFrom: today, dateTo: today, pageSize: '30' })
 
+    setLoading(true)
+    setLoadError(null)
     apiFetch(`/api/records?${params}`, undefined, STAFF_CTX)
-      .then((res) => res.json())
+      .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
       .then((data) => {
         setSummary(data.summary)
         setEntries(buildSaleEntries(data.items ?? []).slice(0, 5))
       })
-      .catch(() => {})
+      .catch(() => {
+        setLoadError('首页数据加载失败，请稍后重试')
+        setSummary(null)
+        setEntries([])
+      })
       .finally(() => setLoading(false))
   }, [loadKey, realRole])
 
   // 加载顾客订单（仅 OWNER 可见）
   useEffect(() => {
-    if (realRole !== 'OWNER') return
+    if (effectiveRole !== 'OWNER') {
+      setCustomerOrders([])
+      setOrdersError(null)
+      return
+    }
+    setOrdersError(null)
     apiFetch('/api/customer-orders?status=PENDING,CONFIRMED,COMPLETED', undefined, OWNER_CTX)
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data) => setCustomerOrders(Array.isArray(data) ? data : []))
-      .catch(() => {})
-  }, [ordersKey, realRole])
+      .catch(() => {
+        setCustomerOrders([])
+        setOrdersError('顾客订单加载失败，请稍后重试')
+      })
+  }, [ordersKey, effectiveRole])
 
   // 顾客订单自动刷新：页面重新可见时立刻刷新 + 每 30 秒后台轮询
   useEffect(() => {
-    if (realRole !== 'OWNER') return
+    if (effectiveRole !== 'OWNER') return
     function onVisible() {
       if (!document.hidden) setOrdersKey((k) => k + 1)
     }
@@ -232,7 +223,7 @@ export default function HomePage() {
       document.removeEventListener('visibilitychange', onVisible)
       clearInterval(timer)
     }
-  }, [realRole])
+  }, [effectiveRole])
 
   function copyLink(key: string, url: string) {
     const doFallback = () => {
@@ -327,6 +318,7 @@ export default function HomePage() {
           </div>
         ) : (
           <>
+            {loadError && <div style={s.errorHint}>{loadError}</div>}
             <div style={s.netRow}>
               <span style={s.netLabel}>{t('home.netIncome')}</span>
               <span style={{
@@ -336,13 +328,11 @@ export default function HomePage() {
                 ${(summary?.netAmount ?? 0).toFixed(2)}
               </span>
             </div>
-            {((summary?.cashSaleAmount ?? 0) > 0 || (summary?.khqrSaleAmount ?? 0) > 0) && (
-              <div style={s.payBreakRow}>
-                <span style={s.payBreakItem}>💵 ${(summary?.cashSaleAmount ?? 0).toFixed(2)}</span>
-                <span style={s.payBreakSep}>·</span>
-                <span style={s.payBreakItem}>📱 KHQR ${(summary?.khqrSaleAmount ?? 0).toFixed(2)}</span>
-              </div>
-            )}
+            <div style={s.payBreakRow}>
+              <span style={s.payBreakItem}>💵 CASH ${(summary?.cashSaleAmount ?? 0).toFixed(2)}</span>
+              <span style={s.payBreakSep}>·</span>
+              <span style={s.payBreakItem}>📱 KHQR ${(summary?.khqrSaleAmount ?? 0).toFixed(2)}</span>
+            </div>
             <div style={s.summaryGrid}>
               <SummaryCell label={t('home.sale')} value={String(summary?.saleCount ?? 0)} unit={t('home.unit')} />
               <div style={s.summaryDivider} />
@@ -359,6 +349,18 @@ export default function HomePage() {
         <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
         <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
       </div>
+
+      {effectiveRole === 'OWNER' && (
+        <div style={s.ownerEntrySection}>
+          <div style={s.sectionTitle}>老板入口</div>
+          <div style={s.ownerEntryGrid}>
+            <OwnerEntry href="/products" icon="📦" label="商品管理" />
+            <OwnerEntry href="/customers" icon="👥" label="顾客资产" />
+            <OwnerEntry href="/invite" icon="🔗" label="邀请员工" />
+            <OwnerEntry href="/dashboard" icon="📊" label="经营概览" />
+          </div>
+        </div>
+      )}
 
       {/* ── 常用入口 ── */}
       {storeCode && (
@@ -399,7 +401,7 @@ export default function HomePage() {
       )}
 
       {/* ── 顾客订单区（仅 OWNER 可见，常驻显示） ── */}
-      {realRole === 'OWNER' && (() => {
+      {effectiveRole === 'OWNER' && (() => {
         const actionableCount = customerOrders.length
         return (
           <div style={s.coSection}>
@@ -409,7 +411,9 @@ export default function HomePage() {
                 <span style={s.coBadge}>{actionableCount}</span>
               )}
             </div>
-            {actionableCount === 0 ? (
+            {ordersError ? (
+              <div style={s.errorHint}>{ordersError}</div>
+            ) : actionableCount === 0 ? (
               <div style={s.coEmpty}>暂无待处理订单</div>
             ) : (
               customerOrders.map((order) => (
@@ -455,13 +459,11 @@ export default function HomePage() {
             tagSale={t('home.tagSale')}
             itemCountUnit={t('home.itemCountUnit')}
             checkoutBtn={t('sale.checkoutBtn')}
-            onOpen={() => setSelectedOrderNo(entry.orderNo)}
+            onOpen={entry.source === 'CUSTOMER_ORDER' ? undefined : () => setSelectedOrderNo(entry.orderNo)}
             onCheckout={entry.paymentMethod === null
               ? () => setCheckoutOrder({ orderNo: entry.orderNo, totalAmount: entry.totalAmount })
               : undefined}
           />
-        ) : entry.kind === 'customer_order' ? (
-          <CustomerOrderEntryCard key={entry.orderNo} entry={entry} />
         ) : (
           <RefundCard key={entry.item.id + '-' + i} item={entry.item} tagRefund={t('home.tagRefund')} />
         )
@@ -521,6 +523,15 @@ function ActionBtn({ href, icon, label, color }: {
   )
 }
 
+function OwnerEntry({ href, icon, label }: { href: string; icon: string; label: string }) {
+  return (
+    <Link href={href} style={s.ownerEntry}>
+      <span style={s.ownerEntryIcon}>{icon}</span>
+      <span style={s.ownerEntryLabel}>{label}</span>
+    </Link>
+  )
+}
+
 function OrderCard({ group, index, tagSale, itemCountUnit, checkoutBtn, onOpen, onCheckout }: {
   group: OrderGroup; index: number; tagSale: string; itemCountUnit: string
   checkoutBtn: string; onOpen?: () => void; onCheckout?: () => void
@@ -528,14 +539,22 @@ function OrderCard({ group, index, tagSale, itemCountUnit, checkoutBtn, onOpen, 
   const isPending = group.paymentMethod === null
   const accent = isPending ? '#fa8c16' : ORDER_COLORS[index % ORDER_COLORS.length]
   const isSingle = group.items.length === 1
+  const isCustomerOrder = group.source === 'CUSTOMER_ORDER'
   return (
     <div
-      style={{ ...s.recentCard, borderLeft: `3px solid ${accent}`, cursor: 'pointer', ...(isPending ? s.recentCardPending : {}) }}
+      style={{
+        ...s.recentCard,
+        borderLeft: `3px solid ${isCustomerOrder ? '#722ed1' : accent}`,
+        cursor: onOpen ? 'pointer' : 'default',
+        ...(isPending ? s.recentCardPending : {}),
+      }}
       onClick={onOpen}
     >
       <div style={s.recentLeft}>
         <div style={s.recentTagRow}>
-          <span style={s.tagSale}>{tagSale}</span>
+          <span style={isCustomerOrder ? s.tagCustomerOrder : s.tagSale}>
+            {isCustomerOrder ? '扫码单' : tagSale}
+          </span>
           {isPending && <span style={s.tagPending}>待收款</span>}
         </div>
         <div style={s.recentProduct}>
@@ -652,23 +671,6 @@ function LangDropdown({ lang, setLang }: { lang: 'zh' | 'km'; setLang: (l: 'zh' 
           </div>
         </>
       )}
-    </div>
-  )
-}
-
-function CustomerOrderEntryCard({ entry }: { entry: CustomerOrderEntry }) {
-  const payIcon = entry.paymentMethod === 'QR' ? '📱' : '💵'
-  return (
-    <div style={{ ...s.recentCard, borderLeft: '3px solid #722ed1' }}>
-      <div style={s.recentLeft}>
-        <div style={s.recentTagRow}>
-          <span style={{ ...s.tagSale, background: '#f9f0ff', color: '#722ed1' }}>扫码单</span>
-          <span style={{ fontSize: 13 }}>{payIcon}</span>
-        </div>
-        <div style={s.recentProduct}>{entry.itemSummary}</div>
-        <div style={s.recentMeta}>{entry.orderNo} · {fmtTime(entry.createdAt)}</div>
-      </div>
-      <div style={{ ...s.recentAmount, color: '#722ed1' }}>+${entry.totalAmount.toFixed(2)}</div>
     </div>
   )
 }
@@ -1105,6 +1107,45 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 600,
   },
+  ownerEntrySection: {
+    marginBottom: 16,
+  },
+  ownerEntryGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8,
+    padding: '0 12px',
+  },
+  ownerEntry: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: '#fff',
+    border: '1px solid #edf0f2',
+    borderRadius: 10,
+    padding: '10px 12px',
+    textDecoration: 'none',
+    minWidth: 0,
+  },
+  ownerEntryIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    background: '#f6f8fa',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 16,
+    flexShrink: 0,
+  },
+  ownerEntryLabel: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#111827',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  },
   recentCard: {
     background: '#fff',
     margin: '0 12px 8px',
@@ -1197,6 +1238,16 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     alignSelf: 'flex-start',
   },
+  tagCustomerOrder: {
+    fontSize: 10,
+    fontWeight: 600,
+    background: '#f9f0ff',
+    color: '#722ed1',
+    border: '1px solid #d3adf7',
+    padding: '1px 6px',
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
   tagRefund: {
     fontSize: 10,
     fontWeight: 600,
@@ -1212,6 +1263,16 @@ const s: Record<string, React.CSSProperties> = {
     color: '#bbb',
     padding: '24px 0',
     fontSize: 14,
+  },
+  errorHint: {
+    margin: '0 12px 10px',
+    padding: '8px 10px',
+    borderRadius: 8,
+    background: '#fff1f0',
+    border: '1px solid #ffccc7',
+    color: '#cf1322',
+    fontSize: 12,
+    lineHeight: 1.5,
   },
 
   // 顾客订单区块
