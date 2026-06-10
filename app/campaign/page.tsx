@@ -97,6 +97,22 @@ function settlementLabel(status: string): string {
   return status === 'settled' ? '已结算' : '待结算'
 }
 
+async function readApiMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const contentType = res.headers.get('content-type') ?? ''
+    if (contentType.includes('application/json')) {
+      const body = await res.json() as { message?: unknown; error?: unknown }
+      if (typeof body.message === 'string' && body.message.trim()) return body.message
+      if (typeof body.error === 'string' && body.error.trim()) return body.error
+      return fallback
+    }
+    const text = (await res.text()).trim()
+    return text ? text.slice(0, 160) : fallback
+  } catch {
+    return fallback
+  }
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function CampaignPage() {
@@ -216,12 +232,14 @@ export default function CampaignPage() {
         if (page) body.targetUrl = `/p/${page.slug}`
       }
       const r = await apiFetch('/api/campaign-links', { method: 'POST', body: JSON.stringify(body) }, OWNER_CTX)
-      const d = await r.json()
       if (r.ok) {
+        const d = await r.json()
         setNewLink(d); setSelCreatorId(''); setManualName(''); setVideoTitle(''); setCommValue('')
         setLandingType('menu'); setMarketingPageId('')
         loadAll()
-      } else { setCreateError(d.message ?? d.error ?? '创建失败') }
+      } else {
+        setCreateError(await readApiMessage(r, '创建失败'))
+      }
     } catch { setCreateError('网络错误，请重试') }
     finally { setCreating(false) }
   }
@@ -299,12 +317,11 @@ export default function CampaignPage() {
         method: 'PATCH',
         body: JSON.stringify({ targetUrl }),
       }, OWNER_CTX)
-      const d = await r.json()
       if (r.ok) {
         setEditingLandingId(null); setEditMarketingPageId(''); setEditLandingType('menu')
         loadAll()
       } else {
-        setLandingError(d.message ?? d.error ?? '保存失败')
+        setLandingError(await readApiMessage(r, '保存失败'))
       }
     } catch { setLandingError('网络错误，请重试') }
     finally { setLandingSavingId(null) }
