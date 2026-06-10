@@ -184,8 +184,25 @@ const I18N: Record<Lang, {
   freeDelivery: string
   localDelivery: string
   limitedOffer: string
+  salePriceLabel: string
+  regularPriceLabel: string
+  saveAmount: string
+  discountOff: string
+  countdownEndsIn: string
+  stickyBuy: string
   priorityDelivery: string
   sold: string
+  rating: string
+  positiveRate: string
+  authentic: string
+  storeCardTitle: string
+  officialStore: string
+  localMerchant: string
+  phnomPenhDelivery: string
+  deliveryTitle: string
+  deliveryItems: string[]
+  faqTitle: string
+  faqs: { q: string; a: string }[]
   afterSale: string
   whyTitle: string
   defaultFeatures: string[]
@@ -248,8 +265,30 @@ const I18N: Record<Lang, {
     freeDelivery: 'ដឹកជញ្ជូនឥតគិតថ្លៃ',
     localDelivery: 'ដឹកជញ្ជូនក្នុងតំបន់',
     limitedOffer: 'ប្រូម៉ូសិនមានកំណត់',
+    salePriceLabel: 'តម្លៃប្រូម៉ូសិន',
+    regularPriceLabel: 'តម្លៃដើម',
+    saveAmount: 'សន្សំបាន',
+    discountOff: 'បញ្ចុះតម្លៃ',
+    countdownEndsIn: 'បញ្ចប់ក្នុង',
+    stickyBuy: 'បញ្ជាទិញឥឡូវ',
     priorityDelivery: 'បញ្ជាទិញថ្ងៃនេះ ដឹកជញ្ជូនអាទិភាព',
     sold: 'លក់បាន',
+    rating: 'ពិន្ទុ',
+    positiveRate: 'អត្រាពេញចិត្ត',
+    authentic: 'ធានាផលិតផលពិត',
+    storeCardTitle: 'ព័ត៌មានហាង',
+    officialStore: 'ហាងផ្លូវការ',
+    localMerchant: 'អាជីវករក្នុងតំបន់',
+    phnomPenhDelivery: 'ដឹកជញ្ជូននៅភ្នំពេញ',
+    deliveryTitle: 'ការដឹកជញ្ជូន និងសេវា',
+    deliveryItems: ['ដឹកជញ្ជូនក្នុងតំបន់', 'បង់ប្រាក់ពេលទទួលទំនិញ', 'ហាងនឹងទាក់ទងដើម្បីបញ្ជាក់ការបញ្ជាទិញ'],
+    faqTitle: 'សំណួរដែលសួរញឹកញាប់',
+    faqs: [
+      { q: 'មួយបាវប្រើបានប៉ុន្មានថ្ងៃ?', a: 'អាស្រ័យលើចំនួនឆ្មា និងរបៀបប្រើប្រាស់។ ហាងនឹងជួយណែនាំតាមស្ថានភាពរបស់អ្នក។' },
+      { q: 'មានក្លិនក្រអូបទេ?', a: 'មានជម្រើសក្លិនស្រាលសមស្របសម្រាប់ការប្រើប្រាស់ប្រចាំថ្ងៃ។' },
+      { q: 'សមស្របសម្រាប់ផ្ទះមានឆ្មាច្រើនទេ?', a: 'សមស្រប។ អ្នកអាចបញ្ជាទិញច្រើនបាវ ដើម្បីងាយស្រួលប្រើ។' },
+      { q: 'នៅភ្នំពេញដឹកជញ្ជូនប៉ុន្មានម៉ោង?', a: 'ជាទូទៅហាងនឹងទាក់ទងបញ្ជាក់ ហើយរៀបចំដឹកជញ្ជូនឱ្យបានឆាប់តាមតំបន់។' },
+    ],
     afterSale: 'ធានាសេវាក្រោយលក់',
     whyTitle: 'ហេតុអ្វីជ្រើសរើសផលិតផលនេះ',
     defaultFeatures: [
@@ -316,8 +355,30 @@ const I18N: Record<Lang, {
     freeDelivery: 'Free delivery',
     localDelivery: 'Local delivery',
     limitedOffer: 'Limited offer',
+    salePriceLabel: 'Deal price',
+    regularPriceLabel: 'Original price',
+    saveAmount: 'Save',
+    discountOff: 'off',
+    countdownEndsIn: 'Ends in',
+    stickyBuy: 'Order now',
     priorityDelivery: 'Order today for priority delivery',
     sold: 'Sold',
+    rating: 'Rating',
+    positiveRate: 'Positive rate',
+    authentic: 'Authentic product',
+    storeCardTitle: 'Shop Information',
+    officialStore: 'Official shop',
+    localMerchant: 'Local merchant',
+    phnomPenhDelivery: 'Phnom Penh delivery',
+    deliveryTitle: 'Delivery & Service',
+    deliveryItems: ['Local delivery available', 'Cash on Delivery supported', 'The shop will contact you to confirm the order'],
+    faqTitle: 'FAQ',
+    faqs: [
+      { q: 'How long can one bag last?', a: 'It depends on the number of cats and daily usage. The shop can recommend the right quantity for you.' },
+      { q: 'Does it have fragrance?', a: 'There are lightly scented options suitable for everyday home use.' },
+      { q: 'Is it suitable for multi-cat homes?', a: 'Yes. You can order multiple bags for easier daily replacement.' },
+      { q: 'How fast is delivery in Phnom Penh?', a: 'The shop will confirm your order and arrange delivery as soon as possible based on your area.' },
+    ],
     afterSale: 'After-sales support',
     whyTitle: 'Why choose this product',
     defaultFeatures: [
@@ -384,8 +445,30 @@ const I18N: Record<Lang, {
     freeDelivery: '免费配送',
     localDelivery: '本地配送',
     limitedOffer: '限时优惠',
+    salePriceLabel: '活动价',
+    regularPriceLabel: '原价',
+    saveAmount: '节省',
+    discountOff: '折',
+    countdownEndsIn: '距结束',
+    stickyBuy: '立即下单',
     priorityDelivery: '今日下单优先配送',
     sold: '已售',
+    rating: '评分',
+    positiveRate: '好评率',
+    authentic: '正品保障',
+    storeCardTitle: '店铺信息',
+    officialStore: '官方店铺',
+    localMerchant: '本地商家',
+    phnomPenhDelivery: '金边配送',
+    deliveryTitle: '配送说明',
+    deliveryItems: ['支持金边本地配送', '支持货到付款 COD', '提交订单后商家会尽快电话确认'],
+    faqTitle: '常见问题',
+    faqs: [
+      { q: '一袋能用多久？', a: '根据猫咪数量和使用习惯不同会有差异，商家可按你的情况建议购买数量。' },
+      { q: '是否有香味？', a: '有轻香型选择，适合日常家庭使用。' },
+      { q: '是否适合多猫家庭？', a: '适合，多猫家庭可以一次购买多袋，方便日常更换。' },
+      { q: '金边多久送达？', a: '下单后商家会尽快联系确认，并根据所在区域安排配送。' },
+    ],
     afterSale: '售后保障',
     whyTitle: '为什么选择这款',
     defaultFeatures: [
@@ -574,6 +657,14 @@ function buildOrderRemark(note: string, trackingParams: TrackingParams) {
   return trackingText ? `${base} | ${trackingText}`.slice(0, 500) : base
 }
 
+function formatCountdown(totalSeconds: number) {
+  const safe = Math.max(0, Math.floor(totalSeconds))
+  const hours = Math.floor(safe / 3600)
+  const minutes = Math.floor((safe % 3600) / 60)
+  const seconds = safe % 60
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':')
+}
+
 function ensureTikTokPixel() {
   if (!TIKTOK_PIXEL_ID || typeof window === 'undefined') return false
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -715,9 +806,11 @@ export default function MarketingProductPage() {
   const [couponPromptDismissed, setCouponPromptDismissed] = useState(false)
   const [copiedOrderNo, setCopiedOrderNo] = useState(false)
   const [trackingParams, setTrackingParams] = useState<TrackingParams>({})
+  const [countdownSeconds, setCountdownSeconds] = useState(0)
   const nameRef = useRef<HTMLInputElement | null>(null)
   const phoneRef = useRef<HTMLInputElement | null>(null)
   const addressRef = useRef<HTMLTextAreaElement | null>(null)
+  const orderSectionRef = useRef<HTMLElement | null>(null)
   const heroCarouselRef = useRef<HTMLDivElement | null>(null)
   const viewTrackedRef = useRef('')
   const text = I18N[lang]
@@ -768,6 +861,21 @@ export default function MarketingProductPage() {
       ...trackingParams,
     })
   }, [data, lang, slug, trackingParams])
+
+  useEffect(() => {
+    if (!data?.enableCountdown) {
+      setCountdownSeconds(0)
+      return
+    }
+    const updateCountdown = () => {
+      const daySeconds = 24 * 60 * 60
+      const elapsed = Math.floor((Date.now() / 1000) % daySeconds)
+      setCountdownSeconds(daySeconds - elapsed)
+    }
+    updateCountdown()
+    const timer = window.setInterval(updateCountdown, 1000)
+    return () => window.clearInterval(timer)
+  }, [data?.enableCountdown])
 
   async function submitOrder() {
     if (!data || submitting) return
@@ -857,6 +965,10 @@ export default function MarketingProductPage() {
   function switchLang(nextLang: Lang) {
     setLang(nextLang)
     try { localStorage.setItem(LS_KEY, nextLang) } catch { /* ignore */ }
+  }
+
+  function scrollToOrder() {
+    orderSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   function useCurrentLocation() {
@@ -964,6 +1076,10 @@ export default function MarketingProductPage() {
   const templateType = data.templateType ?? 'TIKTOK_HOT'
   const theme = TEMPLATE_THEMES[templateType] ?? TEMPLATE_THEMES.TIKTOK_HOT
   const copy = templateCopy(templateType, lang, text)
+  const hasSalePrice = data.salePrice != null
+  const hasOriginalDiscount = hasSalePrice && data.originalPrice != null && data.originalPrice > displayPrice
+  const savedAmount = hasOriginalDiscount ? +(data.originalPrice! - displayPrice).toFixed(2) : 0
+  const discountPercent = hasOriginalDiscount ? Math.round((savedAmount / data.originalPrice!) * 100) : 0
 
   const renderPriceCard = () => {
     const priceCardStyle = {
@@ -985,13 +1101,26 @@ export default function MarketingProductPage() {
             </div>
           </div>
           <div style={s.priceCardValue}>
+            <span style={{ ...s.salePriceLabel, color: theme.priceVariant === 'deal' ? 'rgba(255,255,255,0.78)' : theme.muted }}>
+              {hasSalePrice ? text.salePriceLabel : text.regularPriceLabel}
+            </span>
             <span style={{ ...s.price, color: theme.priceVariant === 'deal' ? '#fff' : theme.accent }}>${displayPrice.toFixed(2)}</span>
-            {data.originalPrice != null && <span style={{ ...s.originalPrice, color: theme.priceVariant === 'deal' ? 'rgba(255,255,255,0.68)' : '#98a2b3' }}>${data.originalPrice.toFixed(2)}</span>}
+            {hasOriginalDiscount && (
+              <span style={{ ...s.originalPrice, color: theme.priceVariant === 'deal' ? 'rgba(255,255,255,0.68)' : '#98a2b3' }}>
+                {text.regularPriceLabel} ${data.originalPrice!.toFixed(2)}
+              </span>
+            )}
           </div>
         </div>
-        {(data.enableCountdown || templateType === 'TIKTOK_HOT') && (
+        {hasOriginalDiscount && (
+          <div style={{ ...s.savingsRow, color: theme.badgeText }}>
+            <span>{text.saveAmount} ${savedAmount.toFixed(2)}</span>
+            <span>{discountPercent}% {text.discountOff}</span>
+          </div>
+        )}
+        {data.enableCountdown && (
           <div style={{ ...s.countdown, background: theme.countdownBg, color: theme.countdownText, borderColor: theme.countdownBorder }}>
-            {text.limitedOffer} · {text.priorityDelivery}
+            {text.countdownEndsIn} {formatCountdown(countdownSeconds)} · {text.priorityDelivery}
           </div>
         )}
       </section>
@@ -1066,8 +1195,22 @@ export default function MarketingProductPage() {
   const renderTrust = () => (
     <section key="trust" style={{ ...s.section, borderColor: theme.sectionBorder }}>
       <h2 style={{ ...s.sectionTitle, color: theme.text }}>{copy.trustTitle}</h2>
+      <div style={s.trustStatsGrid}>
+        <div style={s.trustStatCard}>
+          <strong>4.8/5</strong>
+          <span>{text.rating}</span>
+        </div>
+        <div style={s.trustStatCard}>
+          <strong>{data.soldCount ?? 128}</strong>
+          <span>{text.sold}</span>
+        </div>
+        <div style={s.trustStatCard}>
+          <strong>98%</strong>
+          <span>{text.positiveRate}</span>
+        </div>
+      </div>
       <div style={s.trustGrid}>
-        {copy.trustItems.map((item, idx) => (
+        {[text.localDelivery, text.authentic, ...copy.trustItems].slice(0, 5).map((item, idx) => (
           <div key={idx} style={{ ...s.trustItem, background: theme.badgeBg, borderColor: theme.badgeBorder, color: theme.badgeText }}>
             <span style={{ ...s.trustDot, background: theme.accent }} />
             {item}
@@ -1075,6 +1218,57 @@ export default function MarketingProductPage() {
         ))}
       </div>
     </section>
+  )
+
+  const renderStoreCard = () => (
+    <section style={{ ...s.section, borderColor: theme.sectionBorder }}>
+      <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.storeCardTitle}</h2>
+      <div style={{ ...s.storeCard, borderColor: theme.badgeBorder, background: theme.badgeBg }}>
+        <div>
+          <div style={{ ...s.storeCardName, color: theme.text }}>{data.store.name}</div>
+          <div style={{ ...s.storeCardMeta, color: theme.muted }}>
+            {text.officialStore} · {text.localMerchant} · {text.phnomPenhDelivery}
+          </div>
+        </div>
+        {CUSTOMER_BOT && (
+          <a
+            href={`https://t.me/${CUSTOMER_BOT}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{ ...s.storeContactBtn, background: theme.accent }}
+          >
+            {text.contactSeller}
+          </a>
+        )}
+      </div>
+    </section>
+  )
+
+  const renderDeliveryFaq = () => (
+    <>
+      <section style={{ ...s.section, borderColor: theme.sectionBorder }}>
+        <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.deliveryTitle}</h2>
+        <div style={s.deliveryList}>
+          {text.deliveryItems.map((item) => (
+            <div key={item} style={{ ...s.deliveryItem, borderColor: theme.pointBorder, background: theme.pointBg, color: theme.text }}>
+              <span style={{ ...s.deliveryIcon, background: theme.accent }}>✓</span>
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section style={{ ...s.section, borderColor: theme.sectionBorder }}>
+        <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.faqTitle}</h2>
+        <div style={s.faqList}>
+          {text.faqs.map((faq) => (
+            <details key={faq.q} style={{ ...s.faqItem, borderColor: theme.sectionBorder }}>
+              <summary style={{ ...s.faqQuestion, color: theme.text }}>{faq.q}</summary>
+              <div style={{ ...s.faqAnswer, color: theme.muted }}>{faq.a}</div>
+            </details>
+          ))}
+        </div>
+      </section>
+    </>
   )
 
   function scrollHeroTo(index: number) {
@@ -1086,7 +1280,7 @@ export default function MarketingProductPage() {
   }
 
   const renderOrder = () => (
-    <section key="order" style={{ ...s.section, borderColor: theme.sectionBorder }}>
+    <section key="order" ref={orderSectionRef} style={{ ...s.section, borderColor: theme.sectionBorder, scrollMarginTop: 12 }}>
       <h2 style={{ ...s.sectionTitle, color: theme.text }}>{text.orderTitle}</h2>
       <label style={{ ...s.label, color: theme.text }}>{text.name}</label>
       <input
@@ -1394,7 +1588,18 @@ export default function MarketingProductPage() {
       </section>
 
       {theme.sectionOrder.map(renderSection)}
+      {renderStoreCard()}
+      {renderDeliveryFaq()}
       {legalLinks}
+      <div style={s.stickyBuyBar}>
+        <div>
+          <div style={s.stickyBuyLabel}>{hasSalePrice ? text.salePriceLabel : text.regularPriceLabel}</div>
+          <div style={{ ...s.stickyBuyPrice, color: theme.accent }}>${displayPrice.toFixed(2)}</div>
+        </div>
+        <button type="button" style={{ ...s.stickyBuyButton, background: theme.accent }} onClick={scrollToOrder}>
+          {text.stickyBuy}
+        </button>
+      </div>
     </main>
   )
 }
@@ -1405,7 +1610,7 @@ const s: Record<string, CSSProperties> = {
     background: '#f5f7f4',
     color: '#172018',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    paddingBottom: 28,
+    paddingBottom: 112,
   },
   langSwitcher: {
     position: 'fixed' as const,
@@ -1509,6 +1714,8 @@ const s: Record<string, CSSProperties> = {
   priceLabel: { fontSize: 13, fontWeight: 900, marginBottom: 6 },
   priceCardMeta: { display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12, fontWeight: 800, opacity: 0.82 },
   priceCardValue: { display: 'grid', justifyItems: 'end', gap: 2, flexShrink: 0 },
+  salePriceLabel: { fontSize: 11, fontWeight: 900, textTransform: 'uppercase' as const },
+  savingsRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8, padding: '8px 10px', borderRadius: 8, background: '#fff7ed', fontSize: 13, fontWeight: 900 },
   metaRow: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, fontSize: 12, color: '#667085', fontWeight: 700 },
   countdown: { marginTop: 10, background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', borderRadius: 6, padding: '8px 10px', fontSize: 13, fontWeight: 800 },
   spec: { marginTop: 4, fontSize: 13, color: '#667085' },
@@ -1544,8 +1751,21 @@ const s: Record<string, CSSProperties> = {
   reviewImg: { width: '100%', aspectRatio: '1 / 1', borderRadius: 8, objectFit: 'cover', display: 'block' },
   reviewImgBeauty: { aspectRatio: '4 / 3', borderRadius: 16 },
   trustGrid: { display: 'grid', gap: 8 },
+  trustStatsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 },
+  trustStatCard: { display: 'grid', gap: 2, padding: '10px 8px', borderRadius: 10, background: '#f9fafb', textAlign: 'center', fontSize: 12, color: '#667085' },
   trustItem: { display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', fontSize: 14, fontWeight: 800 },
   trustDot: { width: 8, height: 8, borderRadius: 999, flexShrink: 0 },
+  storeCard: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 },
+  storeCardName: { fontSize: 17, fontWeight: 950, marginBottom: 4 },
+  storeCardMeta: { fontSize: 12, lineHeight: 1.45, fontWeight: 750 },
+  storeContactBtn: { flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 40, padding: '0 12px', borderRadius: 999, color: '#fff', fontSize: 13, fontWeight: 900, textDecoration: 'none' },
+  deliveryList: { display: 'grid', gap: 8 },
+  deliveryItem: { display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #e5e7eb', borderRadius: 10, padding: '11px 12px', fontSize: 14, fontWeight: 800 },
+  deliveryIcon: { width: 22, height: 22, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: '#fff', fontSize: 12, fontWeight: 950, flexShrink: 0 },
+  faqList: { display: 'grid', gap: 8 },
+  faqItem: { border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', background: '#fff' },
+  faqQuestion: { cursor: 'pointer', fontSize: 14, fontWeight: 900, lineHeight: 1.4 },
+  faqAnswer: { paddingTop: 8, fontSize: 13, lineHeight: 1.55 },
   label: { display: 'block', fontSize: 13, fontWeight: 700, color: '#344236', margin: '12px 0 6px' },
   input: { width: '100%', boxSizing: 'border-box', height: 46, border: '1px solid #d5ddd1', borderRadius: 6, padding: '0 12px', fontSize: 15, background: '#fff' },
   inputError: { borderColor: '#dc2626', background: '#fffafa' },
@@ -1589,4 +1809,8 @@ const s: Record<string, CSSProperties> = {
   legalFooter: { display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, padding: '12px 18px 2px', color: '#8a94a6', fontSize: 12 },
   legalLink: { color: '#667085', textDecoration: 'none', fontWeight: 700 },
   legalDot: { color: '#c0c7d2' },
+  stickyBuyBar: { position: 'fixed' as const, left: 0, right: 0, bottom: 0, zIndex: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 14px calc(10px + env(safe-area-inset-bottom))', background: 'rgba(255,255,255,0.96)', borderTop: '1px solid #e5e7eb', boxShadow: '0 -8px 24px rgba(15,23,42,0.12)', backdropFilter: 'blur(10px)' },
+  stickyBuyLabel: { fontSize: 11, color: '#667085', fontWeight: 800 },
+  stickyBuyPrice: { fontSize: 20, fontWeight: 950, lineHeight: 1.1 },
+  stickyBuyButton: { minWidth: 148, minHeight: 46, border: 0, borderRadius: 999, color: '#fff', fontSize: 16, fontWeight: 950, cursor: 'pointer', boxShadow: '0 8px 18px rgba(15,23,42,0.16)' },
 }
