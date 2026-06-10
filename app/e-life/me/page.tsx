@@ -4,6 +4,30 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 const BRAND = '#07c160'
+// TODO: Move production customer service entry to NEXT_PUBLIC_SUPPORT_URL
+// or NEXT_PUBLIC_CUSTOMER_SERVICE_BOT_USERNAME once the final support bot is fixed.
+const FALLBACK_CUSTOMER_SERVICE_URL = 'https://t.me/Eshop_sale_bot'
+
+function cleanBotUsername(raw?: string) {
+  return (raw ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
+}
+
+function resolveCustomerServiceUrl() {
+  const explicitUrl = process.env.NEXT_PUBLIC_SUPPORT_URL?.trim()
+    || process.env.NEXT_PUBLIC_CUSTOMER_SERVICE_URL?.trim()
+  if (explicitUrl) return explicitUrl
+
+  const botUsername = cleanBotUsername(
+    process.env.NEXT_PUBLIC_SUPPORT_BOT_USERNAME
+      || process.env.NEXT_PUBLIC_CUSTOMER_SERVICE_BOT_USERNAME
+      || process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME
+  )
+  if (botUsername) return `https://t.me/${botUsername}`
+
+  return FALLBACK_CUSTOMER_SERVICE_URL
+}
+
+const CUSTOMER_SERVICE_URL = resolveCustomerServiceUrl()
 
 type Lang = 'zh' | 'en' | 'km'
 type RecentStore = { code: string; name: string; lastVisitedAt: string }
@@ -25,6 +49,7 @@ const T = {
     myCoupons:     '我的优惠券',
     langSetting:   '语言设置',
     service:       '联系客服',
+    serviceNotConfigured: '客服入口暂未配置',
     comingSoon:    '该功能即将开放',
     scanHint:      '请回首页使用扫一扫',
     emptyShops:    '暂无常去商户',
@@ -44,6 +69,7 @@ const T = {
     myCoupons:     'My Coupons',
     langSetting:   'Language',
     service:       'Customer Service',
+    serviceNotConfigured: 'Customer service is not configured',
     comingSoon:    'Coming soon',
     scanHint:      'Use Scan on the home page',
     emptyShops:    'No visited stores yet',
@@ -63,6 +89,7 @@ const T = {
     myCoupons:     'គូប៉ុងរបស់ខ្ញុំ',
     langSetting:   'ភាសា',
     service:       'ជំនួយ',
+    serviceNotConfigured: 'មិនទាន់បានកំណត់ច្រកជំនួយ',
     comingSoon:    'កំពុងអភិវឌ្ឍ',
     scanHint:      'ប្រើស្កេននៅទំព័រដើម',
     emptyShops:    'គ្មានហាង',
@@ -144,6 +171,25 @@ export default function ELifeMePage() {
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 2200)
+  }
+
+  function openCustomerService() {
+    if (!CUSTOMER_SERVICE_URL) {
+      showToast(t.serviceNotConfigured)
+      return
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    if (CUSTOMER_SERVICE_URL.startsWith('https://t.me/') && typeof tg?.openTelegramLink === 'function') {
+      tg.openTelegramLink(CUSTOMER_SERVICE_URL)
+      return
+    }
+    if (typeof tg?.openLink === 'function') {
+      tg.openLink(CUSTOMER_SERVICE_URL)
+      return
+    }
+    window.open(CUSTOMER_SERVICE_URL, '_blank', 'noopener,noreferrer')
   }
 
   const t = T[lang]
@@ -256,7 +302,7 @@ export default function ELifeMePage() {
           </button>
 
           {/* 联系客服 */}
-          <button style={{ ...s.listItem, borderBottom: 'none' }} onClick={() => showToast(t.comingSoon)}>
+          <button style={{ ...s.listItem, borderBottom: 'none' }} onClick={openCustomerService}>
             <span style={s.listIcon}>💬</span>
             <span style={s.listLabel}>{t.service}</span>
             <ChevronRightSmIcon />
