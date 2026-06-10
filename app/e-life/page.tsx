@@ -33,6 +33,8 @@ const T = {
     viewAll: '查看全部', recommended: '推荐商户',
     scanEnter: '输入门店码', scanPlaceholder: 'ST8194AE60 或粘贴链接', scanGo: '进入店铺', scanInvalid: '无法识别门店码',
     addFrequent: '加入常去', addedFrequent: '已加入', removeFrequent: '移除',
+    manageFrequentTitle: '常去商户管理', noFrequent: '还没有常去商户', noMoreRecommendations: '暂无更多推荐商户',
+    close: '关闭',
   },
   en: {
     brandSub: 'Super Life', slogan: 'Your Life, One Touch Away', city: 'Phnom Penh', langLabel: 'EN',
@@ -53,6 +55,8 @@ const T = {
     viewAll: 'View All', recommended: 'Recommended',
     scanEnter: 'Enter Store Code', scanPlaceholder: 'ST8194AE60 or paste link', scanGo: 'Enter Store', scanInvalid: 'Invalid store code',
     addFrequent: 'Add favorite', addedFrequent: 'Added', removeFrequent: 'Remove',
+    manageFrequentTitle: 'Manage favorites', noFrequent: 'No favorite stores yet', noMoreRecommendations: 'No more recommended stores',
+    close: 'Close',
   },
   km: {
     brandSub: 'ជីវិតល្អ', slogan: 'ជីវិតរបស់អ្នក មួយប៉ះ', city: 'ភ្នំពេញ', langLabel: 'ខ្មែរ',
@@ -73,6 +77,8 @@ const T = {
     viewAll: 'មើលទាំងអស់', recommended: 'ណែនាំ',
     scanEnter: 'បញ្ចូលកូដហាង', scanPlaceholder: 'ST8194AE60 ឬបិទភ្ជាប់', scanGo: 'ចូលហាង', scanInvalid: 'មិនអាចសម្គាល់កូដហាង',
     addFrequent: 'បន្ថែម', addedFrequent: 'បានបន្ថែម', removeFrequent: 'ដកចេញ',
+    manageFrequentTitle: 'គ្រប់គ្រងហាងញឹកញាប់', noFrequent: 'មិនទាន់មានហាងញឹកញាប់', noMoreRecommendations: 'មិនមានហាងណែនាំបន្ថែម',
+    close: 'បិទ',
   },
 }
 
@@ -155,6 +161,7 @@ export default function ELifeHomePage() {
   const [search, setSearch]             = useState('')
   const [recentStores, setRecentStores]     = useState<RecentStore[]>([])
   const [featuredStores, setFeaturedStores] = useState<FeaturedStore[] | null>(null)
+  const [showFrequentManager, setShowFrequentManager] = useState(false)
 
   useEffect(() => {
     try {
@@ -222,10 +229,7 @@ export default function ELifeHomePage() {
     const stores: DisplayCard[] = recentStores.slice(0, 6).map(s => ({
       type: 'store' as const, shop: { code: s.code, name: s.name, subtitle: '', image: s.imageUrl ?? '' },
     }))
-    if (stores.length === 0) return [{ type: 'add' }, { type: 'discover' }]
-    if (stores.length === 1) return [...stores, { type: 'add' }, { type: 'discover' }]
-    if (stores.length === 2) return [...stores, { type: 'add' }]
-    return stores
+    return [...stores, { type: 'add' }]
   })()
 
   const lastCode = recentStores[0]?.code ?? ''
@@ -310,6 +314,9 @@ export default function ELifeHomePage() {
       }).catch(() => { /* local state already updated */ })
     }
   }
+
+  const recommendedStores = featuredStores ?? []
+  const storesToAdd = recommendedStores.filter((shop) => !isFrequent(shop.code))
 
   return (
     <div style={s.page}>
@@ -453,7 +460,12 @@ export default function ELifeHomePage() {
 
         {/* § My Frequent Shops */}
         <section>
-          <h2 style={{ ...s.secTitle, marginBottom: 10 }}>{t.frequentShops}</h2>
+          <div style={{ ...s.secHead, marginBottom: 10 }}>
+            <h2 style={s.secTitle}>{t.frequentShops}</h2>
+            <button style={s.moreBtn} onClick={() => setShowFrequentManager(true)}>
+              {t.manage} <ChevronRightIcon />
+            </button>
+          </div>
           {/* 横向滚动，负 margin 撑破容器边距以实现全宽视觉 */}
           <div style={{ margin: '0 -22px', overflowX: 'auto', scrollbarWidth: 'none' }}>
             <div style={{ display: 'flex', gap: 10, paddingLeft: 22, paddingRight: 22, paddingBottom: 4 }}>
@@ -480,10 +492,10 @@ export default function ELifeHomePage() {
                 }
                 if (card.type === 'add') {
                   return (
-                    <div key={idx} style={{ minWidth: 110, flexShrink: 0, cursor: 'pointer' }} onClick={() => setShowScanPanel(true)}>
-                      <div style={{ aspectRatio: '1/1', borderRadius: 14, border: '1.5px dashed rgba(7,193,96,0.4)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'rgba(7,193,96,0.03)' }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(7,193,96,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <PlusIcon />
+                    <div key={idx} style={{ minWidth: 110, flexShrink: 0, cursor: 'pointer' }} onClick={() => setShowFrequentManager(true)}>
+                      <div style={s.addFrequentCard}>
+                        <div style={s.addFrequentIcon}>
+                          <PlusIcon size={22} />
                         </div>
                         <span style={{ fontSize: 12, color: BRAND, fontWeight: 500 }}>{t.addFav}</span>
                       </div>
@@ -585,6 +597,94 @@ export default function ELifeHomePage() {
         )}
 
       </main>
+
+      {/* ── Frequent Store Manager ── */}
+      {showFrequentManager && (
+        <>
+          <div style={s.overlay} onClick={() => setShowFrequentManager(false)} />
+          <div style={s.managerSheet}>
+            <div style={s.managerHeader}>
+              <h3 style={s.managerTitle}>{t.manageFrequentTitle}</h3>
+              <button style={s.managerCloseBtn} onClick={() => setShowFrequentManager(false)}>{t.close}</button>
+            </div>
+
+            <div style={s.managerSection}>
+              <h4 style={s.managerSectionTitle}>{t.frequentShops}</h4>
+              {recentStores.length === 0 ? (
+                <p style={s.emptyText}>{t.noFrequent}</p>
+              ) : (
+                <div style={s.managerList}>
+                  {recentStores.map((store, idx) => (
+                    <div
+                      key={store.code}
+                      style={s.managerRow}
+                      onClick={() => navTo(`/menu?code=${encodeURIComponent(store.code)}&from=e-life`)}
+                    >
+                      <img
+                        src={store.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
+                        alt={store.name}
+                        style={s.managerThumb}
+                      />
+                      <div style={s.managerRowText}>
+                        <p style={s.managerStoreName}>{store.name}</p>
+                      </div>
+                      <button
+                        style={s.managerRemoveBtn}
+                        onClick={(e) => { e.stopPropagation(); removeFrequent(store.code) }}
+                      >
+                        {t.removeFrequent}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={s.managerSection}>
+              <h4 style={s.managerSectionTitle}>{t.recommended}</h4>
+              {recommendedStores.length === 0 ? (
+                <p style={s.emptyText}>{t.noMoreRecommendations}</p>
+              ) : (
+                <>
+                  <div style={s.managerList}>
+                    {recommendedStores.map((shop, idx) => {
+                      const added = isFrequent(shop.code)
+                      return (
+                        <div
+                          key={shop.code}
+                          style={s.managerRow}
+                          onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}
+                        >
+                          <img
+                            src={shop.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
+                            alt={shop.name}
+                            style={s.managerThumb}
+                          />
+                          <div style={s.managerRowText}>
+                            <p style={s.managerStoreName}>{shop.name}</p>
+                            <p style={s.managerStoreSub}>{BIZ_LABEL[shop.businessType]?.[lang] ?? shop.businessType}</p>
+                          </div>
+                          <button
+                            style={{ ...s.managerAddBtn, ...(added ? s.managerAddBtnDone : {}) }}
+                            disabled={added}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              addFrequent({ code: shop.code, name: shop.name, imageUrl: shop.imageUrl })
+                            }}
+                          >
+                            {added ? t.addedFrequent : t.addFrequent}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {storesToAdd.length === 0 && <p style={s.emptyText}>{t.noMoreRecommendations}</p>}
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── Toast ── */}
       {toast && (
@@ -988,6 +1088,27 @@ const s: Record<string, React.CSSProperties> = {
     background: '#f9fafb',
     cursor: 'default',
   },
+  addFrequentCard: {
+    aspectRatio: '1/1',
+    borderRadius: 14,
+    border: '1.5px dashed rgba(7,193,96,0.48)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    background: 'rgba(7,193,96,0.05)',
+    boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.7)',
+  },
+  addFrequentIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: '50%',
+    background: 'rgba(7,193,96,0.14)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // ── Panels
   overlay: {
@@ -1031,6 +1152,133 @@ const s: Record<string, React.CSSProperties> = {
   },
   langOptLabel: { fontSize: 14, fontWeight: 500, color: '#1a1a1a', margin: 0 },
   langOptSub: { fontSize: 11, color: '#8c8c8c', margin: '1px 0 0' },
+  managerSheet: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    maxHeight: '82dvh',
+    overflowY: 'auto',
+    background: '#fff',
+    borderRadius: '18px 18px 0 0',
+    zIndex: 101,
+    padding: 18,
+    paddingBottom: 'max(22px, env(safe-area-inset-bottom))',
+    boxShadow: '0 -12px 30px rgba(0,0,0,0.14)',
+  },
+  managerHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 14,
+  },
+  managerTitle: {
+    fontSize: 17,
+    fontWeight: 800,
+    color: '#111827',
+    margin: 0,
+  },
+  managerCloseBtn: {
+    border: 'none',
+    borderRadius: 999,
+    background: '#f3f4f6',
+    color: '#4b5563',
+    fontSize: 12,
+    fontWeight: 700,
+    padding: '7px 12px',
+    cursor: 'pointer',
+  },
+  managerSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    marginTop: 12,
+  },
+  managerSectionTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: '#111827',
+    margin: 0,
+  },
+  managerList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  managerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    borderRadius: 14,
+    border: '1px solid rgba(0,0,0,0.06)',
+    background: '#fff',
+    cursor: 'pointer',
+    minHeight: 66,
+  },
+  managerThumb: {
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    objectFit: 'cover',
+    flexShrink: 0,
+    background: '#f3f4f6',
+  },
+  managerRowText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  managerStoreName: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: '#111827',
+    margin: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  managerStoreSub: {
+    fontSize: 11,
+    color: '#6b7280',
+    margin: '3px 0 0',
+  },
+  managerRemoveBtn: {
+    border: 'none',
+    borderRadius: 999,
+    background: '#fee2e2',
+    color: '#b91c1c',
+    fontSize: 12,
+    fontWeight: 800,
+    padding: '7px 12px',
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  managerAddBtn: {
+    border: `1px solid rgba(7,193,96,0.22)`,
+    borderRadius: 999,
+    background: 'rgba(7,193,96,0.08)',
+    color: BRAND,
+    fontSize: 12,
+    fontWeight: 800,
+    padding: '7px 12px',
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  managerAddBtnDone: {
+    borderColor: 'rgba(0,0,0,0.08)',
+    background: '#f3f4f6',
+    color: '#9ca3af',
+    cursor: 'default',
+  },
+  emptyText: {
+    margin: 0,
+    padding: '12px 10px',
+    borderRadius: 12,
+    background: '#f9fafb',
+    color: '#6b7280',
+    fontSize: 13,
+  },
 
   // ── Nav
   nav: {
