@@ -32,6 +32,9 @@ const T = {
     toastVisitFirst: '请先访问一家商户', toastRecommendSoon: '更多推荐即将开放',
     viewAll: '查看全部', recommended: '推荐商户',
     scanEnter: '输入门店码', scanPlaceholder: 'ST8194AE60 或粘贴链接', scanGo: '进入店铺', scanInvalid: '无法识别门店码',
+    scanUnsupported: '请使用手机相机或 Telegram 扫描商户码 / 桌码',
+    scanExternalConfirm: '将打开外部链接，是否继续？',
+    scanCancelled: '已取消打开外部链接',
     addFrequent: '加入常去', addedFrequent: '已加入', removeFrequent: '移除',
     manageFrequentTitle: '常去商户管理', noFrequent: '还没有常去商户', noMoreRecommendations: '暂无更多推荐商户',
     close: '关闭',
@@ -54,6 +57,9 @@ const T = {
     toastVisitFirst: 'Please visit a store first', toastRecommendSoon: 'More recommendations coming soon',
     viewAll: 'View All', recommended: 'Recommended',
     scanEnter: 'Enter Store Code', scanPlaceholder: 'ST8194AE60 or paste link', scanGo: 'Enter Store', scanInvalid: 'Invalid store code',
+    scanUnsupported: 'Please use your phone camera or Telegram to scan the store/table code',
+    scanExternalConfirm: 'Open this external link?',
+    scanCancelled: 'External link cancelled',
     addFrequent: 'Add favorite', addedFrequent: 'Added', removeFrequent: 'Remove',
     manageFrequentTitle: 'Manage favorites', noFrequent: 'No favorite stores yet', noMoreRecommendations: 'No more recommended stores',
     close: 'Close',
@@ -76,6 +82,9 @@ const T = {
     toastVisitFirst: 'សូមចូលទស្សនាហាងមុន', toastRecommendSoon: 'ការណែនាំបន្ថែមនឹងមកដល់',
     viewAll: 'មើលទាំងអស់', recommended: 'ណែនាំ',
     scanEnter: 'បញ្ចូលកូដហាង', scanPlaceholder: 'ST8194AE60 ឬបិទភ្ជាប់', scanGo: 'ចូលហាង', scanInvalid: 'មិនអាចសម្គាល់កូដហាង',
+    scanUnsupported: 'សូមប្រើកាមេរ៉ាទូរស័ព្ទ ឬ Telegram ដើម្បីស្កេនកូដហាង / កូដតុ',
+    scanExternalConfirm: 'បើកតំណខាងក្រៅនេះ?',
+    scanCancelled: 'បានបោះបង់តំណខាងក្រៅ',
     addFrequent: 'បន្ថែម', addedFrequent: 'បានបន្ថែម', removeFrequent: 'ដកចេញ',
     manageFrequentTitle: 'គ្រប់គ្រងហាងញឹកញាប់', noFrequent: 'មិនទាន់មានហាងញឹកញាប់', noMoreRecommendations: 'មិនមានហាងណែនាំបន្ថែម',
     close: 'បិទ',
@@ -135,6 +144,50 @@ function extractStoreCode(raw: string): string | null {
   const startMatch = s.match(/startapp[=_](ST[A-Za-z0-9]{4,16})/)
   if (startMatch) return startMatch[1]
   return null
+}
+
+function getInternalScanPath(raw: string): string | null {
+  const s = raw.trim()
+  if (!s) return null
+
+  const code = extractStoreCode(s)
+  if (code) return `/menu?code=${encodeURIComponent(code)}&from=scan`
+
+  try {
+    const currentOrigin = window.location.origin
+    const url = new URL(s, currentOrigin)
+    const internalHosts = new Set([
+      window.location.hostname,
+      'elifekh.com',
+      'www.elifekh.com',
+      'light-ops-assistant.vercel.app',
+    ])
+    const isInternalHost = internalHosts.has(url.hostname)
+    if (!isInternalHost) return null
+
+    if (url.pathname === '/menu' && url.searchParams.get('code')) {
+      url.searchParams.set('from', 'scan')
+      return `${url.pathname}${url.search}${url.hash}`
+    }
+    if (url.pathname.startsWith('/m/')) return `${url.pathname}${url.search}${url.hash}`
+    if (url.pathname.startsWith('/e-life')) return `${url.pathname}${url.search}${url.hash}`
+    if (url.pathname.startsWith('/p/')) return `${url.pathname}${url.search}${url.hash}`
+  } catch { /* ignore */ }
+
+  return null
+}
+
+function getExternalScanUrl(raw: string): string | null {
+  const s = raw.trim()
+  if (!/^https?:\/\//i.test(s)) return null
+  try {
+    const url = new URL(s)
+    const internalHosts = new Set(['elifekh.com', 'www.elifekh.com', 'light-ops-assistant.vercel.app'])
+    if (internalHosts.has(url.hostname) || url.hostname === window.location.hostname) return null
+    return url.toString()
+  } catch {
+    return null
+  }
 }
 
 function readTelegramInitData(): string {
@@ -246,13 +299,25 @@ export default function ELifeHomePage() {
   }
 
   function handleScanResult(raw: string) {
-    const code = extractStoreCode(raw)
-    if (code) {
+    const internalPath = getInternalScanPath(raw)
+    if (internalPath) {
       closeScanPanel()
-      navTo(`/menu?code=${encodeURIComponent(code)}&from=scan`)
-    } else {
-      showToast(t.scanInvalid)
+      navTo(internalPath)
+      return
     }
+
+    const externalUrl = getExternalScanUrl(raw)
+    if (externalUrl) {
+      closeScanPanel()
+      if (window.confirm(t.scanExternalConfirm)) {
+        window.location.href = externalUrl
+      } else {
+        showToast(t.scanCancelled)
+      }
+      return
+    }
+
+    showToast(t.scanInvalid)
   }
 
   function handleScanBtn() {
@@ -265,6 +330,7 @@ export default function ELifeHomePage() {
         return true
       })
     } else {
+      showToast(t.scanUnsupported)
       setShowManualInput(true)
     }
   }
@@ -352,6 +418,15 @@ export default function ELifeHomePage() {
               onChange={e => setSearch(e.target.value)}
               style={s.searchInput}
             />
+            <button
+              type="button"
+              style={s.scanQuickBtn}
+              onClick={() => setShowScanPanel(true)}
+              aria-label={t.scanTitle}
+            >
+              <ScanLineIcon size={15} color={BRAND} strokeWidth={2} />
+              <span>{t.scanBtn}</span>
+            </button>
           </div>
         </div>
       </header>
@@ -917,11 +992,27 @@ const s: Record<string, React.CSSProperties> = {
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
     border: 'none',
     outline: 'none',
     background: 'transparent',
     fontSize: 14,
     color: '#333',
+  },
+  scanQuickBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+    border: `1px solid rgba(7,193,96,0.18)`,
+    borderRadius: 999,
+    background: 'rgba(7,193,96,0.08)',
+    color: BRAND,
+    fontSize: 12,
+    fontWeight: 800,
+    padding: '5px 9px',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
   },
 
   // ── Main
