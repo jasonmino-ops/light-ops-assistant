@@ -33,17 +33,12 @@ type SummaryResult = {
   khqrSaleAmount?: number
 }
 
-// ─── Seed data ─────────────────────────────────────────────────────────────────
+// ─── Dimension dropdown options ───────────────────────────────────────────────
+// 真实数据由 /api/stores 与 /api/admin/users 在挂载时拉取，
+// 未加载完成时 STORE/STAFF 选择器渲染为禁用占位，避免误用历史 seed id。
 
-const STORES = [
-  { id: 'seed-store-a', name: '总店' },
-  { id: 'seed-store-b', name: '分店' },
-]
-
-const STAFFS = [
-  { id: 'seed-user-staff-a', name: '小张（总店）' },
-  { id: 'seed-user-staff-b', name: '小李（分店）' },
-]
+type StoreOption = { id: string; name: string }
+type StaffOption = { id: string; name: string }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
@@ -97,8 +92,10 @@ export default function DashboardPage() {
   }
 
   const [dimension, setDimension]               = useState<Dimension>('GLOBAL')
-  const [storeId, setStoreId]                   = useState(STORES[0].id)
-  const [operatorUserId, setOperatorUserId]     = useState(STAFFS[0].id)
+  const [stores, setStores]                     = useState<StoreOption[]>([])
+  const [staffs, setStaffs]                     = useState<StaffOption[]>([])
+  const [storeId, setStoreId]                   = useState('')
+  const [operatorUserId, setOperatorUserId]     = useState('')
   const [timePeriod, setTimePeriod]             = useState<TimePeriod>('TODAY')
   const [customFrom, setCustomFrom]             = useState('')
   const [customTo, setCustomTo]                 = useState('')
@@ -174,12 +171,42 @@ export default function DashboardPage() {
     [today],
   )
 
+  // 拉取当前租户真实的门店与员工列表，替换历史 seed 占位
+  useEffect(() => {
+    apiFetch('/api/stores', { cache: 'no-store' }, OWNER_CTX)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => {
+        if (!Array.isArray(list)) return
+        const opts: StoreOption[] = list.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name }))
+        setStores(opts)
+        if (opts.length > 0) setStoreId((prev) => prev || opts[0].id)
+      })
+      .catch(() => {})
+    apiFetch('/api/admin/users', { cache: 'no-store' }, OWNER_CTX)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => {
+        if (!Array.isArray(list)) return
+        const opts: StaffOption[] = list
+          .filter((u: { role: string; status: string }) => u.role === 'STAFF' && u.status === 'ACTIVE')
+          .map((u: { id: string; displayName: string | null; username: string; storeName: string }) => ({
+            id: u.id,
+            name: `${u.displayName ?? u.username}（${u.storeName}）`,
+          }))
+        setStaffs(opts)
+        if (opts.length > 0) setOperatorUserId((prev) => prev || opts[0].id)
+      })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     if (timePeriod === 'CUSTOM' && (!customFrom || !customTo)) return
+    if (dimension === 'STORE' && !storeId) return
+    if (dimension === 'STAFF' && !operatorUserId) return
     load(dimension, storeId, operatorUserId, timePeriod, customFrom, customTo)
   }, [dimension, storeId, operatorUserId, timePeriod, customFrom, customTo, load])
 
   useEffect(() => {
+    if (dimension === 'STORE' && !storeId) return
     loadHot(dimension, storeId)
   }, [dimension, storeId, loadHot])
 
@@ -323,9 +350,11 @@ export default function DashboardPage() {
             <select
               style={s.select}
               value={storeId}
+              disabled={stores.length === 0}
               onChange={(e) => setStoreId(e.target.value)}
             >
-              {STORES.map((st) => (
+              {stores.length === 0 && <option value="">—</option>}
+              {stores.map((st) => (
                 <option key={st.id} value={st.id}>{st.name}</option>
               ))}
             </select>
@@ -339,9 +368,11 @@ export default function DashboardPage() {
             <select
               style={s.select}
               value={operatorUserId}
+              disabled={staffs.length === 0}
               onChange={(e) => setOperatorUserId(e.target.value)}
             >
-              {STAFFS.map((st) => (
+              {staffs.length === 0 && <option value="">—</option>}
+              {staffs.map((st) => (
                 <option key={st.id} value={st.id}>{st.name}</option>
               ))}
             </select>
