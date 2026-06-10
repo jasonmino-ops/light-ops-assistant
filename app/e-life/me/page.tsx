@@ -74,11 +74,12 @@ const T = {
     copiedService: '已复制客服账号',
     serviceNotConfigured: '客服入口暂未配置',
     serviceOpenFailed: '请复制客服账号后在 Telegram 搜索联系',
-    comingSoon:    '该功能即将开放',
-    scanHint:      '请回首页使用扫一扫',
+    unavailableTitle: '功能说明',
+    couponsUnavailable: '优惠券入口暂未启用。如需领取优惠，请先联系客服或查看商户活动。',
+    close:         '关闭',
     emptyShops:    '暂无常去商户',
     navHome:       '首页',
-    navScan:       '扫一扫',
+    navCategory:   '分类',
     navOrders:     '我的订单',
     navMe:         '我的',
     langTitle:     '选择语言',
@@ -100,11 +101,12 @@ const T = {
     copiedService: 'Service account copied',
     serviceNotConfigured: 'Customer service is not configured',
     serviceOpenFailed: 'Please copy the account and search it in Telegram',
-    comingSoon:    'Coming soon',
-    scanHint:      'Use Scan on the home page',
+    unavailableTitle: 'Feature note',
+    couponsUnavailable: 'Coupons are not enabled yet. Please contact support or check merchant promotions.',
+    close:         'Close',
     emptyShops:    'No visited stores yet',
     navHome:       'Home',
-    navScan:       'Scan',
+    navCategory:   'Category',
     navOrders:     'Orders',
     navMe:         'Me',
     langTitle:     'Language',
@@ -126,11 +128,12 @@ const T = {
     copiedService: 'បានចម្លងគណនីជំនួយ',
     serviceNotConfigured: 'មិនទាន់បានកំណត់ច្រកជំនួយ',
     serviceOpenFailed: 'សូមចម្លងគណនី ហើយស្វែងរកក្នុង Telegram',
-    comingSoon:    'កំពុងអភិវឌ្ឍ',
-    scanHint:      'ប្រើស្កេននៅទំព័រដើម',
+    unavailableTitle: 'ព័ត៌មានមុខងារ',
+    couponsUnavailable: 'គូប៉ុងមិនទាន់បើកប្រើ។ សូមទាក់ទងជំនួយ ឬមើលប្រូម៉ូសិនរបស់ហាង។',
+    close:         'បិទ',
     emptyShops:    'គ្មានហាង',
     navHome:       'ទំព័រដើម',
-    navScan:       'ស្កេន',
+    navCategory:   'ប្រភេទ',
     navOrders:     'ការបញ្ជាទិញ',
     navMe:         'ខ្ញុំ',
     langTitle:     'ភាសា',
@@ -148,6 +151,7 @@ export default function ELifeMePage() {
   const [recentStores, setRecentStores] = useState<RecentStore[]>([])
   const [toast,        setToast]        = useState<string | null>(null)
   const [showServicePanel, setShowServicePanel] = useState(false)
+  const [unavailableMessage, setUnavailableMessage] = useState<string | null>(null)
 
   useEffect(() => {
     try {
@@ -315,10 +319,14 @@ export default function ELifeMePage() {
 
           {/* 我的常去 */}
           <div style={{ ...s.listItem, flexDirection: 'column', alignItems: 'stretch', gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            <button
+              style={s.frequentHeaderBtn}
+              onClick={() => router.push('/e-life')}
+            >
               <span style={s.listIcon}>🏪</span>
               <span style={s.listLabel}>{t.frequentShops}</span>
-            </div>
+              <ChevronRightSmIcon />
+            </button>
             {recentStores.length === 0 ? (
               <p style={{ fontSize: 12, color: '#bbb', margin: '4px 0 0 34px' }}>{t.emptyShops}</p>
             ) : (
@@ -338,7 +346,7 @@ export default function ELifeMePage() {
           </div>
 
           {/* 我的优惠券 */}
-          <button style={s.listItem} onClick={() => showToast(t.comingSoon)}>
+          <button style={s.listItem} onClick={() => setUnavailableMessage(t.couponsUnavailable)}>
             <span style={s.listIcon}>🎟️</span>
             <span style={s.listLabel}>{t.myCoupons}</span>
             <ChevronRightSmIcon />
@@ -384,13 +392,26 @@ export default function ELifeMePage() {
         </>
       )}
 
+      {unavailableMessage && (
+        <>
+          <div style={s.overlay} onClick={() => setUnavailableMessage(null)} />
+          <div style={s.noticeSheet}>
+            <h3 style={s.noticeTitle}>{t.unavailableTitle}</h3>
+            <p style={s.noticeText}>{unavailableMessage}</p>
+            <button style={s.noticeBtn} onClick={() => setUnavailableMessage(null)}>
+              {t.close}
+            </button>
+          </div>
+        </>
+      )}
+
       {/* ── Toast ── */}
       {toast && (
         <div style={s.toast}>{toast}</div>
       )}
 
       {/* ── Bottom Nav ── */}
-      <ELifeBottomNav active="me" t={t} onScan={() => showToast(t.scanHint)} router={router} />
+      <ELifeBottomNav active="me" t={t} router={router} />
     </div>
   )
 }
@@ -398,24 +419,23 @@ export default function ELifeMePage() {
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
 
 function ELifeBottomNav({
-  active, t, onScan, router,
+  active, t, router,
 }: {
-  active: 'home' | 'scan' | 'orders' | 'me'
+  active: 'home' | 'category' | 'orders' | 'me'
   t: typeof T['zh']
-  onScan: () => void
   router: ReturnType<typeof useRouter>
 }) {
   const tabs = [
-    { id: 'home',   label: t.navHome,   onClick: () => router.push('/e-life') },
-    { id: 'scan',   label: t.navScan,   onClick: onScan },
-    { id: 'orders', label: t.navOrders, onClick: () => router.push('/e-life/orders') },
-    { id: 'me',     label: t.navMe,     onClick: () => {} },
+    { id: 'home',     label: t.navHome,     onClick: () => router.push('/e-life') },
+    { id: 'category', label: t.navCategory, onClick: () => router.push('/e-life/category') },
+    { id: 'orders',   label: t.navOrders,   onClick: () => router.push('/e-life/orders') },
+    { id: 'me',       label: t.navMe,       onClick: () => router.push('/e-life/me') },
   ]
   const icons: Record<string, React.ReactElement> = {
-    home:   <HomeIcon />,
-    scan:   <ScanIcon />,
-    orders: <ClipboardIcon />,
-    me:     <UserIcon />,
+    home:     <HomeIcon />,
+    category: <CategoryIcon />,
+    orders:   <ClipboardIcon />,
+    me:       <UserIcon />,
   }
   return (
     <nav style={s.nav}>
@@ -450,8 +470,8 @@ function CheckIcon() {
 function HomeIcon() {
   return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
 }
-function ScanIcon() {
-  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 7V5a2 2 0 012-2h2"/><path d="M17 3h2a2 2 0 012 2v2"/><path d="M21 17v2a2 2 0 01-2 2h-2"/><path d="M7 21H5a2 2 0 01-2-2v-2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+function CategoryIcon() {
+  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
 }
 function ClipboardIcon() {
   return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
@@ -540,6 +560,17 @@ const s: Record<string, React.CSSProperties> = {
   },
   listIcon: { fontSize: 18, width: 24, textAlign: 'center' as const, flexShrink: 0 },
   listLabel: { flex: 1, fontSize: 14, fontWeight: 500, color: '#1a1a1a' },
+  frequentHeaderBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    background: 'transparent',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+  },
 
   shopRow: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -658,6 +689,41 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 15,
     fontWeight: 800,
     padding: '12px 16px',
+    cursor: 'pointer',
+  },
+  noticeSheet: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: '#fff',
+    borderRadius: '18px 18px 0 0',
+    zIndex: 101,
+    padding: '22px 20px',
+    paddingBottom: 'max(22px, env(safe-area-inset-bottom))',
+    boxShadow: '0 -12px 30px rgba(0,0,0,0.14)',
+  },
+  noticeTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: '#111827',
+    margin: 0,
+  },
+  noticeText: {
+    fontSize: 13,
+    lineHeight: 1.55,
+    color: '#6b7280',
+    margin: '10px 0 16px',
+  },
+  noticeBtn: {
+    width: '100%',
+    border: 'none',
+    borderRadius: 12,
+    background: BRAND,
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 800,
+    padding: '13px 16px',
     cursor: 'pointer',
   },
 
