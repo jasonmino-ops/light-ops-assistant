@@ -26,6 +26,11 @@ import km from '@/lib/i18n/km'
  */
 
 const SESSION_KEY = 'tg-authed-uid'
+const BOOT_COPY = {
+  zh: '正在进入店小二',
+  en: 'Entering your store workspace',
+  km: 'កំពុងចូលទៅកាន់ផ្ទាំងគ្រប់គ្រងហាង',
+}
 
 function extractTgUserId(initData: string): string | null {
   try {
@@ -196,9 +201,27 @@ export default function TelegramInit() {
   if (authChecking && !authError && !tenantInactive) {
     return (
       <div style={bootOverlay} aria-live="polite">
+        <style>{`
+          @keyframes tgBootPulse {
+            0%, 80%, 100% { opacity: 0.35; transform: translateY(0); }
+            40% { opacity: 1; transform: translateY(-4px); }
+          }
+        `}</style>
         <div style={bootCard}>
-          <div style={bootMark}>店</div>
-          <div style={bootText}>正在进入店小二...</div>
+          <div style={bootMark}>
+            <span style={bootMarkText}>E</span>
+          </div>
+          <div style={bootBrand}>E-shop</div>
+          <div style={bootCopy}>
+            <div style={bootTextPrimary}>{BOOT_COPY.zh}</div>
+            <div style={bootTextSecondary}>{BOOT_COPY.en}</div>
+            <div style={bootTextSecondary}>{BOOT_COPY.km}</div>
+          </div>
+          <div style={bootDots} aria-hidden="true">
+            <span style={{ ...bootDot, animationDelay: '0ms' }} />
+            <span style={{ ...bootDot, animationDelay: '140ms' }} />
+            <span style={{ ...bootDot, animationDelay: '280ms' }} />
+          </div>
         </div>
       </div>
     )
@@ -253,41 +276,93 @@ const overlay: React.CSSProperties = {
 const bootOverlay: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: '#f5f7fa',
+  background: 'linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%)',
   zIndex: 9998,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  padding: 24,
+  boxSizing: 'border-box',
 }
 
 const bootCard: React.CSSProperties = {
   display: 'flex',
+  flexDirection: 'column',
   alignItems: 'center',
-  gap: 10,
-  padding: '12px 14px',
-  borderRadius: 10,
-  background: '#fff',
-  border: '1px solid #e5e7eb',
-  boxShadow: '0 6px 18px rgba(15,23,42,0.08)',
+  justifyContent: 'center',
+  gap: 12,
+  width: 'min(320px, 100%)',
+  minHeight: 260,
+  padding: '28px 24px',
+  borderRadius: 18,
+  background: 'rgba(255,255,255,0.88)',
+  border: '1px solid rgba(226,232,240,0.95)',
+  boxShadow: '0 20px 48px rgba(15,23,42,0.10)',
+  boxSizing: 'border-box',
 }
 
 const bootMark: React.CSSProperties = {
-  width: 30,
-  height: 30,
-  borderRadius: 8,
+  width: 68,
+  height: 68,
+  borderRadius: '50%',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  background: '#1677ff',
+  background: 'linear-gradient(135deg, #1677ff 0%, #16a3ff 100%)',
   color: '#fff',
-  fontSize: 15,
-  fontWeight: 800,
+  boxShadow: '0 12px 26px rgba(22,119,255,0.24)',
 }
 
-const bootText: React.CSSProperties = {
-  color: '#344054',
+const bootMarkText: React.CSSProperties = {
+  fontSize: 30,
+  lineHeight: 1,
+  fontWeight: 900,
+  letterSpacing: 0,
+}
+
+const bootBrand: React.CSSProperties = {
+  color: '#101828',
+  fontSize: 20,
+  fontWeight: 800,
+  letterSpacing: 0,
+}
+
+const bootCopy: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 4,
+  textAlign: 'center',
+}
+
+const bootTextPrimary: React.CSSProperties = {
+  color: '#1d2939',
   fontSize: 14,
   fontWeight: 700,
+  lineHeight: 1.45,
+}
+
+const bootTextSecondary: React.CSSProperties = {
+  color: '#667085',
+  fontSize: 12,
+  fontWeight: 600,
+  lineHeight: 1.45,
+}
+
+const bootDots: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 5,
+  marginTop: 4,
+}
+
+const bootDot: React.CSSProperties = {
+  width: 6,
+  height: 6,
+  borderRadius: '50%',
+  background: '#1677ff',
+  animation: 'tgBootPulse 900ms ease-in-out infinite',
 }
 
 const card: React.CSSProperties = {
