@@ -232,6 +232,40 @@ SaleRecord → SaleRecord（退款自引用，originalSaleRecordId）
 
 ---
 
+## Obsidian Vault Path Rules
+
+所有开发记录、收口记录、排障记录、SOP 沉淀，必须写入真实 Obsidian Vault：
+
+`/Users/jason/E-Life-Knowledge-Base/E-life knowledge Base/`
+
+开发记录默认写入：
+
+`/Users/jason/E-Life-Knowledge-Base/E-life knowledge Base/05-开发记录/`
+
+不得默认写入项目仓库内的同名目录：
+
+`/Users/jason/light-ops-assistant/05-开发记录/`
+
+如果需要在项目仓库中保留技术文档，只能放在：
+
+`/Users/jason/light-ops-assistant/docs/`
+
+并且必须明确区分：
+
+- 项目技术文档：`light-ops-assistant/docs/`
+- 企业知识沉淀：真实 Obsidian Vault `/Users/jason/E-Life-Knowledge-Base/E-life knowledge Base/`
+
+每次业务开发完成后，如果属于功能开发、页面收口、API 调整、数据库变更或故障排查，必须同步真实 Obsidian Vault 中的开发记录。
+
+最终回复必须包含：
+
+- 业务 commit hash
+- Obsidian 文件真实路径
+- 是否同步到真实 Vault
+- 是否误写项目仓库 `05-开发记录`
+
+---
+
 ## Required Output
 
 开发完成后必须额外输出：
