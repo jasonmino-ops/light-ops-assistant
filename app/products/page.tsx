@@ -233,6 +233,7 @@ export default function ProductsPage() {
   const [imageUploading, setImageUploading] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
   const imageFileRef = useRef<HTMLInputElement>(null)
+  const createImageFileRef = useRef<HTMLInputElement>(null)
 
   // 商品列表展开 + 行内图片管理
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -262,6 +263,10 @@ export default function ProductsPage() {
   const [newSpec, setNewSpec] = useState('')
   const [newPrice, setNewPrice] = useState('')
   const [newCategoryId, setNewCategoryId] = useState<string>('')
+  const [newImageFile, setNewImageFile] = useState<File | null>(null)
+  const [newImagePreview, setNewImagePreview] = useState<string | null>(null)
+  const [newImageError, setNewImageError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
 
   // Category management
   const [categories, setCategories] = useState<Category[]>([])
@@ -1107,26 +1112,12 @@ export default function ProductsPage() {
     setImageUploading(true)
     setImageError('正在压缩图片…')
     try {
-      const blob = await compressForUpload(file)
       setImageError('正在上传…')
-      const uploadName = blob.type === 'image/webp' ? 'main.webp'
-        : blob.type === 'image/jpeg' ? 'main.jpg' : file.name
-      const form = new FormData()
-      form.append('file', new File([blob], uploadName, { type: blob.type || file.type }))
-      const res = await fetch(`/api/products/${product.id}/image`, {
-        method: 'POST',
-        headers: { ...OWNER_CTX },
-        body: form,
-      })
-      const body = await res.json().catch(() => null)
-      if (res.ok && body?.imageUrl) {
-        setProduct({ ...product, imageUrl: body.imageUrl })
-        setImageError(null)
-      } else {
-        setImageError(body?.message ?? body?.error ?? '上传失败')
-      }
-    } catch {
-      setImageError(t('common.networkError'))
+      const imageUrl = await uploadProductImage(product.id, file)
+      setProduct({ ...product, imageUrl })
+      setImageError(null)
+    } catch (e) {
+      setImageError(e instanceof Error ? e.message : t('common.networkError'))
     } finally {
       setImageUploading(false)
       if (imageFileRef.current) imageFileRef.current.value = ''
@@ -1166,6 +1157,7 @@ export default function ProductsPage() {
     setNewSpec('')
     setNewPrice('')
     setNewCategoryId('')
+    clearNewImage()
     setProduct(null)
     setMode('not-found')
   }
@@ -1190,23 +1182,10 @@ export default function ProductsPage() {
     setListImgUploading((v) => ({ ...v, [p.id]: true }))
     setListImgError((v) => ({ ...v, [p.id]: '' }))
     try {
-      const blob = await compressForUpload(file)
-      const uploadName = blob.type === 'image/webp' ? 'main.webp' : file.name
-      const form = new FormData()
-      form.append('file', new File([blob], uploadName, { type: blob.type || file.type }))
-      const res = await fetch(`/api/products/${p.id}/image`, {
-        method: 'POST',
-        headers: { ...OWNER_CTX },
-        body: form,
-      })
-      const body = await res.json().catch(() => null)
-      if (res.ok && body?.imageUrl) {
-        setProductList((prev) => prev.map((it) => (it.id === p.id ? { ...it, imageUrl: body.imageUrl } : it)))
-      } else {
-        setListImgError((v) => ({ ...v, [p.id]: body?.message ?? body?.error ?? '上传失败' }))
-      }
-    } catch {
-      setListImgError((v) => ({ ...v, [p.id]: t('common.networkError') }))
+      const imageUrl = await uploadProductImage(p.id, file)
+      setProductList((prev) => prev.map((it) => (it.id === p.id ? { ...it, imageUrl } : it)))
+    } catch (e) {
+      setListImgError((v) => ({ ...v, [p.id]: e instanceof Error ? e.message : t('common.networkError') }))
     } finally {
       setListImgUploading((v) => ({ ...v, [p.id]: false }))
       const inp = listImageRefs.current[p.id]
@@ -1234,6 +1213,45 @@ export default function ProductsPage() {
     } finally {
       setListImgUploading((v) => ({ ...v, [p.id]: false }))
     }
+  }
+
+  function clearNewImage() {
+    if (newImagePreview) URL.revokeObjectURL(newImagePreview)
+    setNewImageFile(null)
+    setNewImagePreview(null)
+    setNewImageError(null)
+    if (createImageFileRef.current) createImageFileRef.current.value = ''
+  }
+
+  function handleNewImageSelect(file: File) {
+    setNewImageError(null)
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setNewImageError('仅支持 JPG / PNG / WebP')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setNewImageError('原图不能超过 5MB')
+      return
+    }
+    if (newImagePreview) URL.revokeObjectURL(newImagePreview)
+    setNewImageFile(file)
+    setNewImagePreview(URL.createObjectURL(file))
+  }
+
+  async function uploadProductImage(productId: string, file: File): Promise<string> {
+    const blob = await compressForUpload(file)
+    const uploadName = blob.type === 'image/webp' ? 'main.webp'
+      : blob.type === 'image/jpeg' ? 'main.jpg' : file.name
+    const form = new FormData()
+    form.append('file', new File([blob], uploadName, { type: blob.type || file.type }))
+    const res = await fetch(`/api/products/${productId}/image`, {
+      method: 'POST',
+      headers: { ...OWNER_CTX },
+      body: form,
+    })
+    const body = await res.json().catch(() => null)
+    if (res.ok && body?.imageUrl) return body.imageUrl as string
+    throw new Error(body?.message ?? body?.error ?? '上传失败')
   }
 
   // ── Lookup ────────────────────────────────────────────────────────────────
@@ -1324,6 +1342,7 @@ export default function ProductsPage() {
     setError(null)
     setEditCategoryId('')
     setNewCategoryId('')
+    clearNewImage()
   }
 
   // ── Save (edit) ───────────────────────────────────────────────────────────
@@ -1365,10 +1384,13 @@ export default function ProductsPage() {
   // ── Create ────────────────────────────────────────────────────────────────
 
   async function handleCreate() {
+    if (creating) return
     const price = parseFloat(newPrice)
     if (!newName.trim()) { setError(t('products.nameRequired')); return }
     if (isNaN(price) || price <= 0) { setError(t('products.priceInvalid')); return }
     setError(null)
+    setNewImageError(null)
+    setCreating(true)
 
     try {
       const res = await apiFetch(
@@ -1387,18 +1409,35 @@ export default function ProductsPage() {
       )
       const body = await res.json()
       if (res.ok) {
-        setProduct(body)
-        setEditName(body.name)
-        setEditSpec(body.spec ?? '')
-        setEditPrice(String(body.sellPrice))
-        setEditStatus(body.status)
-        setEditCategoryId(body.categoryId ?? '')
+        let created: Product = body
+        if (newImageFile) {
+          const imageUrl = await uploadProductImage(created.id, newImageFile)
+          created = { ...created, imageUrl }
+        }
+        setProduct(created)
+        setProductList((prev) => {
+          if (!listOpen && prev.length === 0) return prev
+          const exists = prev.some((p) => p.id === created.id)
+          return exists
+            ? prev.map((p) => (p.id === created.id ? created : p))
+            : [created, ...prev]
+        })
+        setEditName(created.name)
+        setEditSpec(created.spec ?? '')
+        setEditPrice(String(created.sellPrice))
+        setEditStatus(created.status)
+        setEditCategoryId(created.categoryId ?? '')
+        clearNewImage()
         setMode('saved')
       } else {
         setError(body.message ?? t('products.createFailed'))
       }
-    } catch {
-      setError(t('common.networkError'))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : t('common.networkError')
+      if (newImageFile) setNewImageError(msg)
+      setError(newImageFile ? `商品创建或图片上传失败：${msg}` : msg)
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -2568,6 +2607,57 @@ export default function ProductsPage() {
                   />
                 </Field>
 
+                <div style={img.section}>
+                  <div style={img.title}>{t('products.imageTitle')}</div>
+                  <input
+                    ref={createImageFileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleNewImageSelect(file)
+                    }}
+                  />
+                  {newImagePreview ? (
+                    <div style={img.previewWrap}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={newImagePreview} alt={newName || '商品主图'} style={img.preview} />
+                      <div style={img.btnRow}>
+                        <button
+                          type="button"
+                          style={img.btn}
+                          disabled={creating}
+                          onClick={() => createImageFileRef.current?.click()}
+                        >
+                          {t('products.imageReplace')}
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...img.btn, ...img.btnDanger }}
+                          disabled={creating}
+                          onClick={clearNewImage}
+                        >
+                          {t('products.imageDelete')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={img.empty}>
+                      <span style={img.emptyText}>{t('products.imageNone')}</span>
+                      <button
+                        type="button"
+                        style={img.btn}
+                        disabled={creating}
+                        onClick={() => createImageFileRef.current?.click()}
+                      >
+                        {t('products.imageUpload')}
+                      </button>
+                    </div>
+                  )}
+                  {newImageError && <div style={img.err}>{newImageError}</div>}
+                </div>
+
                 <Field label={t('products.fieldCategory')}>
                   <CategorySelect
                     categories={categories}
@@ -2577,7 +2667,13 @@ export default function ProductsPage() {
                   />
                 </Field>
 
-                <button style={s.saveBtn} onClick={handleCreate}>{t('products.createBtn')}</button>
+                <button
+                  style={{ ...s.saveBtn, opacity: creating ? 0.65 : 1 }}
+                  disabled={creating}
+                  onClick={handleCreate}
+                >
+                  {creating ? '保存中…' : t('products.createBtn')}
+                </button>
               </div>
             )}
 
