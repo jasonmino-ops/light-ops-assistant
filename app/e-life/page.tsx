@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import ELifeBottomNav from './components/ELifeBottomNav'
 
 const BRAND = '#07c160'
 
@@ -81,8 +81,6 @@ const T = {
     close: 'បិទ',
   },
 }
-
-type TLocale = typeof T[Lang]
 
 const LANG_OPTIONS: { code: Lang; label: string; sub: string }[] = [
   { code: 'zh', label: '中文', sub: 'Chinese' },
@@ -239,14 +237,6 @@ export default function ELifeHomePage() {
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 2200)
-  }
-
-  function handleOrders() {
-    navTo('/e-life/orders')
-  }
-
-  function handleProfile() {
-    navTo('/e-life/me')
   }
 
   function closeScanPanel() {
@@ -694,49 +684,8 @@ export default function ELifeHomePage() {
       )}
 
       {/* ── Bottom Nav ── */}
-      <BottomNav onOrders={handleOrders} onProfile={handleProfile} t={t} />
+      <ELifeBottomNav lang={lang} />
     </div>
-  )
-}
-
-// ─── Bottom Nav ───────────────────────────────────────────────────────────────
-
-function BottomNav({ onOrders, onProfile, t }: { onOrders: () => void; onProfile: () => void; t: TLocale }) {
-  const pathname = usePathname()
-
-  const tabs = [
-    { id: 'home',    label: t.navHome,    href: '/e-life' as string | null, Icon: HomeIcon,     onClick: undefined as (() => void) | undefined },
-    { id: 'category', label: t.navCategory, href: '/e-life/category' as string | null, Icon: Grid3Icon, onClick: undefined },
-    { id: 'orders',  label: t.navOrders,  href: null,                        Icon: ClipboardIcon, onClick: onOrders },
-    { id: 'profile', label: t.navProfile, href: null,                        Icon: UserSmIcon,   onClick: onProfile },
-  ]
-
-  return (
-    <nav style={s.nav}>
-      <div style={s.navInner}>
-        {tabs.map(tab => {
-          const active = tab.href
-            ? pathname === tab.href || pathname.startsWith(tab.href + '/')
-            : false
-          const color = active ? BRAND : '#6b7280'
-          const inner = (
-            <>
-              <tab.Icon size={20} color={color} strokeWidth={active ? 2 : 1.5} />
-              <span style={{ fontSize: 11, color, fontWeight: active ? 700 : 500 }}>{tab.label}</span>
-            </>
-          )
-          if (tab.onClick) {
-            return (
-              <button key={tab.id} style={s.navTab} onClick={tab.onClick}>{inner}</button>
-            )
-          }
-          return (
-            <Link key={tab.id} href={tab.href!} style={s.navTab}>{inner}</Link>
-          )
-        })}
-      </div>
-      <div style={{ height: 'env(safe-area-inset-bottom)' }} />
-    </nav>
   )
 }
 
@@ -810,31 +759,12 @@ function CrownIcon({ size = 14, color = BRAND }: IP) {
   )
 }
 
-function HomeIcon({ size = 18, color = '#8c8c8c', strokeWidth = 1.5 }: IP) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
-    </svg>
-  )
-}
-
 function ScanLineIcon({ size = 18, color = '#8c8c8c', strokeWidth = 1.5 }: IP) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 7V5a2 2 0 012-2h2"/><path d="M17 3h2a2 2 0 012 2v2"/>
       <path d="M21 17v2a2 2 0 01-2 2h-2"/><path d="M7 21H5a2 2 0 01-2-2v-2"/>
       <line x1="3" y1="12" x2="21" y2="12"/>
-    </svg>
-  )
-}
-
-function ClipboardIcon({ size = 18, color = '#8c8c8c', strokeWidth = 1.5 }: IP) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/>
-      <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-      <line x1="12" y1="11" x2="16" y2="11"/><line x1="12" y1="16" x2="16" y2="16"/>
-      <line x1="8" y1="11" x2="8.01" y2="11"/><line x1="8" y1="16" x2="8.01" y2="16"/>
     </svg>
   )
 }
@@ -1280,36 +1210,4 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
   },
 
-  // ── Nav
-  nav: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    background: 'rgba(255,255,255,0.95)',
-    backdropFilter: 'blur(16px)',
-    borderTop: '1px solid rgba(0,0,0,0.06)',
-    zIndex: 50,
-  },
-  navInner: {
-    maxWidth: 448,
-    margin: '0 auto',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    padding: '4px 16px',
-  },
-  navTab: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 2,
-    padding: '6px 20px',
-    background: 'transparent',
-    border: 'none',
-    borderRadius: 12,
-    cursor: 'pointer',
-    textDecoration: 'none',
-    color: 'inherit',
-  },
 }

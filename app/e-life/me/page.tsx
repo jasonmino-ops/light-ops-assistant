@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import ELifeBottomNav from '../components/ELifeBottomNav'
 
 const BRAND = '#07c160'
 // TODO: Move production customer service entry to NEXT_PUBLIC_SUPPORT_URL
@@ -411,48 +412,8 @@ export default function ELifeMePage() {
       )}
 
       {/* ── Bottom Nav ── */}
-      <ELifeBottomNav active="me" t={t} router={router} />
+      <ELifeBottomNav lang={lang} />
     </div>
-  )
-}
-
-// ─── Bottom Nav ───────────────────────────────────────────────────────────────
-
-function ELifeBottomNav({
-  active, t, router,
-}: {
-  active: 'home' | 'category' | 'orders' | 'me'
-  t: typeof T['zh']
-  router: ReturnType<typeof useRouter>
-}) {
-  const tabs = [
-    { id: 'home',     label: t.navHome,     onClick: () => router.push('/e-life') },
-    { id: 'category', label: t.navCategory, onClick: () => router.push('/e-life/category') },
-    { id: 'orders',   label: t.navOrders,   onClick: () => router.push('/e-life/orders') },
-    { id: 'me',       label: t.navMe,       onClick: () => router.push('/e-life/me') },
-  ]
-  const icons: Record<string, React.ReactElement> = {
-    home:     <HomeIcon />,
-    category: <CategoryIcon />,
-    orders:   <ClipboardIcon />,
-    me:       <UserIcon />,
-  }
-  return (
-    <nav style={s.nav}>
-      <div style={s.navInner}>
-        {tabs.map(tab => {
-          const isActive = tab.id === active
-          const color = isActive ? BRAND : '#6b7280'
-          return (
-            <button key={tab.id} style={s.navTab} onClick={tab.onClick}>
-              <span style={{ color }}>{icons[tab.id]}</span>
-              <span style={{ fontSize: 11, color, fontWeight: isActive ? 700 : 500 }}>{tab.label}</span>
-            </button>
-          )
-        })}
-      </div>
-      <div style={{ height: 'env(safe-area-inset-bottom)' }} />
-    </nav>
   )
 }
 
@@ -467,19 +428,6 @@ function ChevronRightSmIcon() {
 function CheckIcon() {
   return <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={BRAND} strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
 }
-function HomeIcon() {
-  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-}
-function CategoryIcon() {
-  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-}
-function ClipboardIcon() {
-  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-}
-function UserIcon() {
-  return <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-}
-
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
@@ -727,20 +675,4 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
 
-  // 底部导航
-  nav: {
-    position: 'fixed', bottom: 0, left: 0, right: 0,
-    background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px)',
-    borderTop: '1px solid rgba(0,0,0,0.06)', zIndex: 50,
-  },
-  navInner: {
-    maxWidth: 448, margin: '0 auto',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-around',
-    padding: '4px 16px',
-  },
-  navTab: {
-    display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 2,
-    padding: '6px 20px', background: 'transparent', border: 'none',
-    borderRadius: 12, cursor: 'pointer',
-  },
 }
