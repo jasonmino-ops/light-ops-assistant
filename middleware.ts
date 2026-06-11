@@ -30,9 +30,12 @@ function peekRole(token: string): string | null {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.set('x-current-path', pathname)
+  const next = () => NextResponse.next({ request: { headers: requestHeaders } })
 
   // /ops/login is always public — it IS the login page
-  if (pathname.startsWith('/ops/login')) return NextResponse.next()
+  if (pathname.startsWith('/ops/login')) return next()
 
   const isOwnerOnly =
     pathname.startsWith('/dashboard') ||
@@ -42,7 +45,7 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/campaign') ||
     pathname.startsWith('/ops')
   if (!isOwnerOnly) {
-    return NextResponse.next()
+    return next()
   }
 
   // Check session cookie
@@ -53,7 +56,7 @@ export function middleware(req: NextRequest) {
   const role = roleFromCookie ??
     (process.env.NODE_ENV !== 'production' ? process.env.DEV_ROLE : null)
 
-  if (role === 'OWNER') return NextResponse.next()
+  if (role === 'OWNER') return next()
 
   // /ops paths without a session go to the ops login page (not the tenant /home)
   if (pathname.startsWith('/ops')) {
@@ -70,5 +73,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/products/:path*', '/invite/:path*', '/system/:path*', '/campaign/:path*', '/campaign', '/ops/:path*'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|icon.svg|icon-192.png|manifest.json).*)',
+  ],
 }

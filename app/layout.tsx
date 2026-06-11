@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import Script from 'next/script'
 import './globals.css'
 import BottomNav from './components/nav'
@@ -17,12 +17,23 @@ const TIKTOK_PIXEL_ID = process.env.NODE_ENV === 'production'
   ? (process.env.NEXT_PUBLIC_TIKTOK_PIXEL_ID ?? 'D8K1V73C77U48KTDSRVG').trim()
   : ''
 
+const PUBLIC_EXACT_PATHS = ['/']
+const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/privacy', '/terms', '/contact', '/ops']
+
+function isProtectedMerchantPath(path: string) {
+  if (!path || PUBLIC_EXACT_PATHS.includes(path)) return false
+  return !PUBLIC_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+}
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Resolve role: signed cookie (Telegram auth) → DEV_ROLE env (local dev) → STAFF
   const cookieStore = await cookies()
+  const headerStore = await headers()
   const sessionToken = cookieStore.get('auth-session')?.value
   const sessionRole = sessionToken ? verifySession(sessionToken)?.role : undefined
   const role = sessionRole ?? process.env.DEV_ROLE ?? 'STAFF'
+  const pathname = headerStore.get('x-current-path') ?? ''
+  const initialProtected = isProtectedMerchantPath(pathname)
 
   return (
     <html lang="zh-CN">
@@ -45,42 +56,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         {/* ─────────────────────────────────────────────────────────────────── */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function () {
-                try {
-                  var path = window.location.pathname;
-                  var exact = ['/'];
-                  var prefixes = ['/start','/open','/bind','/relogin','/menu','/e-life','/me','/v','/p','/creator/p','/cashier','/privacy','/terms','/contact','/ops'];
-                  var isPublic = exact.indexOf(path) >= 0 || prefixes.some(function (prefix) {
-                    return path === prefix || path.indexOf(prefix + '/') === 0;
-                  });
-                  if (!isPublic) document.documentElement.setAttribute('data-entry-pending', 'true');
-                } catch (e) {}
-              })();
-            `,
-          }}
-        />
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-              #entry-boot-guard { display: none; }
-              html[data-entry-pending="true"] body > :not(#entry-boot-guard) { visibility: hidden !important; }
-              html[data-entry-pending="true"] #entry-boot-guard {
-                position: fixed;
-                inset: 0;
-                z-index: 10000;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-sizing: border-box;
-                padding: 24px;
-                background: linear-gradient(180deg, #f8fafc 0%, #eef4ff 100%);
-              }
-            `,
-          }}
-        />
 
         {/* Noto Sans Khmer — for Khmer language UI */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -92,44 +67,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script src="https://telegram.org/js/telegram-web-app.js" />
       </head>
       <body>
-        <div id="entry-boot-guard" aria-live="polite">
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 12,
-            width: 'min(320px, 100%)',
-            minHeight: 260,
-            padding: '28px 24px',
-            borderRadius: 18,
-            background: 'rgba(255,255,255,0.88)',
-            border: '1px solid rgba(226,232,240,0.95)',
-            boxShadow: '0 20px 48px rgba(15,23,42,0.10)',
-            boxSizing: 'border-box',
-          }}>
-            <div style={{
-              width: 68,
-              height: 68,
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'linear-gradient(135deg, #1677ff 0%, #16a3ff 100%)',
-              color: '#fff',
-              boxShadow: '0 12px 26px rgba(22,119,255,0.24)',
-              fontSize: 30,
-              lineHeight: 1,
-              fontWeight: 900,
-            }}>E</div>
-            <div style={{ color: '#101828', fontSize: 20, fontWeight: 800 }}>E-shop</div>
-            <div style={{ textAlign: 'center', color: '#1d2939', fontSize: 14, fontWeight: 700, lineHeight: 1.55 }}>
-              正在进入店小二
-              <div style={{ color: '#667085', fontSize: 12, fontWeight: 600 }}>Entering your store workspace</div>
-              <div style={{ color: '#667085', fontSize: 12, fontWeight: 600 }}>កំពុងចូលទៅកាន់ផ្ទាំងគ្រប់គ្រងហាង</div>
-            </div>
-          </div>
-        </div>
         {TIKTOK_PIXEL_ID && (
           <Script
             id="tiktok-pixel"
@@ -154,14 +91,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             }}
           />
         )}
-        <TelegramInit />
-        <DelegateBanner />
-        <LangProvider>
-          <WorkModeProvider role={role}>
-            {children}
-            <BottomNav />
-          </WorkModeProvider>
-        </LangProvider>
+        <TelegramInit initialProtected={initialProtected}>
+          <DelegateBanner />
+          <LangProvider>
+            <WorkModeProvider role={role}>
+              {children}
+              <BottomNav />
+            </WorkModeProvider>
+          </LangProvider>
+        </TelegramInit>
       </body>
     </html>
   )

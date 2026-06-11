@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import zh from '@/lib/i18n/zh'
 import km from '@/lib/i18n/km'
 
@@ -58,23 +58,22 @@ function isMerchantEntryPath(path: string) {
   return !isPublicPath(path) && !path.startsWith('/ops')
 }
 
-function clearEntryPending() {
-  document.documentElement.removeAttribute('data-entry-pending')
-}
-
-export default function TelegramInit() {
+export default function TelegramInit({
+  children,
+  initialProtected = false,
+}: {
+  children: ReactNode
+  initialProtected?: boolean
+}) {
   const [authError, setAuthError] = useState('')
   const [tenantInactive, setTenantInactive] = useState(false)
-  const [authChecking, setAuthChecking] = useState(() => (
-    typeof window !== 'undefined' && isMerchantEntryPath(window.location.pathname)
-  ))
+  const [authChecking, setAuthChecking] = useState(initialProtected)
 
   useEffect(() => {
     // Skip auth entirely on onboarding pages — they handle their own flow.
     // This applies in BOTH Telegram and PWA modes to prevent TENANT_INACTIVE loops.
     const path = window.location.pathname
     if (isPublicPath(path)) {
-      clearEntryPending()
       setAuthChecking(false)
       return
     }
@@ -86,7 +85,6 @@ export default function TelegramInit() {
       // PWA mode (opened from home screen or browser, no Telegram context).
       // OPS 路径有自己的 /ops/login 表单 + cookie，不走商户 Bot relogin。
       if (isOpsRoute) {
-        clearEntryPending()
         setAuthChecking(false)
         return
       }
@@ -97,11 +95,9 @@ export default function TelegramInit() {
             window.location.replace('/relogin')
             return
           }
-          clearEntryPending()
           setAuthChecking(false)
         })
         .catch(() => {
-          clearEntryPending()
           setAuthChecking(false)
         })
       return
@@ -147,7 +143,6 @@ export default function TelegramInit() {
         .then((r) => {
           if (r.ok) {
             sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
-            clearEntryPending()
             setAuthChecking(false)
             return
           }
@@ -213,17 +208,14 @@ export default function TelegramInit() {
             // Clear session + server cookie so next open doesn't loop back here, then → /start
             sessionStorage.removeItem(SESSION_KEY)
             fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
-            clearEntryPending()
             setTenantInactive(true)
             setTimeout(() => window.location.replace('/start'), 3000)
           } else {
-            clearEntryPending()
             setAuthChecking(false)
             setAuthError(body.message ?? '登录失败，请联系管理员')
           }
         })
         .catch(() => {
-          clearEntryPending()
           setAuthChecking(false)
           setAuthError('网络错误，请重试')
         })
@@ -259,7 +251,7 @@ export default function TelegramInit() {
     )
   }
 
-  if (!authError && !tenantInactive) return null
+  if (!authError && !tenantInactive) return <>{children}</>
 
   if (tenantInactive) {
     return (
