@@ -542,7 +542,7 @@ export default function ELifeHomePage() {
                   return (
                     <div key={idx} style={{ minWidth: 110, flexShrink: 0, cursor: 'pointer' }} onClick={() => navTo(`/menu?code=${encodeURIComponent(shop.code)}&from=e-life`)}>
                       <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', aspectRatio: '1/1', border: '1px solid rgba(0,0,0,0.08)' }}>
-                        <img src={shop.image || FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]} alt={shop.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        <img src={shop.image || FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]} alt={shop.name} loading="lazy" decoding="async" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0.22) 55%, transparent 100%)' }} />
                         <button
                           style={s.removeBtn}
@@ -638,6 +638,8 @@ export default function ELifeHomePage() {
                     <img
                       src={shop.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
                       alt={shop.name}
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     />
                   </div>
@@ -690,6 +692,8 @@ export default function ELifeHomePage() {
                       <img
                         src={store.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
                         alt={store.name}
+                        loading="lazy"
+                        decoding="async"
                         style={s.managerThumb}
                       />
                       <div style={s.managerRowText}>
@@ -725,6 +729,8 @@ export default function ELifeHomePage() {
                           <img
                             src={shop.imageUrl ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
                             alt={shop.name}
+                            loading="lazy"
+                            decoding="async"
                             style={s.managerThumb}
                           />
                           <div style={s.managerRowText}>

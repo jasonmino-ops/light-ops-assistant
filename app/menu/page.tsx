@@ -1228,6 +1228,8 @@ export default function MenuPage() {
                             <img
                               src={images[0]}
                               alt={product.name}
+                              loading="lazy"
+                              decoding="async"
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
                             {images.length > 1 && (
@@ -1348,6 +1350,8 @@ export default function MenuPage() {
                   <img
                     src={url}
                     alt={`${lightbox.name} ${idx + 1}`}
+                    loading={idx === lightbox.index ? 'eager' : 'lazy'}
+                    decoding="async"
                     style={s.lightboxImg}
                   />
                 </div>
@@ -3375,7 +3379,7 @@ function AddressQuickModal({
         )}
         {info.deliveryAddressPhotoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={info.deliveryAddressPhotoUrl} alt="address"
+          <img src={info.deliveryAddressPhotoUrl} alt="address" loading="lazy" decoding="async"
                style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 10, border: '1px solid #ebebeb' }} />
         )}
 
@@ -3451,7 +3455,7 @@ function DeliveryPhotoUploader({
       {current ? (
         <div style={dm.photoThumbWrap}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={current} alt="address" style={dm.photoThumb} />
+          <img src={current} alt="address" loading="lazy" decoding="async" style={dm.photoThumb} />
           <button type="button" style={dm.photoReplaceBtn} onClick={() => ref.current?.click()} disabled={busy}>
             {busy ? L.photoUploading : `📷 ${L.photoReplace}`}
           </button>

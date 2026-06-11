@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     customerBound = !!contact && contact.status === 'active'
   }
 
-  const [products, categories, marketingPages] = await Promise.all([
+  const [products, categories] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId: store.tenantId, status: 'ACTIVE' },
       select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, categoryId: true, imageUrl: true, imageUrls: true },
@@ -67,8 +67,16 @@ export async function GET(req: NextRequest) {
       select: { id: true, name: true, parentId: true, sortOrder: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     }),
-    prisma.marketingProductPage.findMany({
-      where: { tenantId: store.tenantId, status: { not: 'DISABLED' } },
+  ])
+
+  const productIds = products.map((p) => p.id)
+  const marketingPages = productIds.length > 0
+    ? await prisma.marketingProductPage.findMany({
+      where: {
+        tenantId: store.tenantId,
+        productId: { in: productIds },
+        status: { not: 'DISABLED' },
+      },
       select: {
         productId: true,
         heroImageUrl: true,
@@ -80,9 +88,9 @@ export async function GET(req: NextRequest) {
         reviewImage3: true,
       },
       orderBy: { updatedAt: 'desc' },
-      take: 500,
-    }),
-  ])
+      take: Math.min(productIds.length * 3, 500),
+    })
+    : []
 
   const marketingImagesByProduct = new Map<string, string[]>()
   marketingPages.forEach((page) => {

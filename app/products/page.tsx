@@ -2066,7 +2066,7 @@ export default function ProductsPage() {
                             <div style={ls.imgRow}>
                               {p.imageUrl ? (
                                 /* eslint-disable-next-line @next/next/no-img-element */
-                                <img src={p.imageUrl} alt={p.name} style={ls.imgPreview} />
+                                <img src={p.imageUrl} alt={p.name} loading="lazy" decoding="async" style={ls.imgPreview} />
                               ) : (
                                 <div style={ls.imgEmpty}>—</div>
                               )}
@@ -2482,7 +2482,7 @@ export default function ProductsPage() {
                           {url ? (
                             <>
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={url} alt={product.name} style={img.slotImg} />
+                              <img src={url} alt={product.name} loading="lazy" decoding="async" style={img.slotImg} />
                               <div style={img.slotActions}>
                                 <button
                                   type="button"
@@ -2644,7 +2644,7 @@ export default function ProductsPage() {
                           {url ? (
                             <>
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={url} alt={newName || '商品主图'} style={img.slotImg} />
+                              <img src={url} alt={newName || '商品主图'} loading="lazy" decoding="async" style={img.slotImg} />
                               <button
                                 type="button"
                                 style={{ ...img.slotBtn, ...img.slotBtnDanger }}
