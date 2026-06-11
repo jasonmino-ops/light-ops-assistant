@@ -250,6 +250,19 @@ async function main() {
         && result.provider === 'LINGSHUO'
         && result.reason === 'SELECTED_STORE_CONFIG',
     ))
+    await setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'MOCK', enabled: true })
+    cases.push(expect(
+      'selection rejects multiple enabled store configs',
+      summarizeSelection(await resolveAiSupportProviderForStore({
+        tenantId: store.tenantId,
+        storeId: store.id,
+        scenario: 'customer_support_l3',
+      })),
+      (result) => result.shouldCallAi === false
+        && result.provider === null
+        && result.reason === 'MULTIPLE_ENABLED_CONFIGS',
+    ))
+    await setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'MOCK', enabled: false })
     await setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'LINGSHUO', enabled: false })
 
     await setStoreProvider({
