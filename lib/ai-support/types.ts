@@ -1,6 +1,39 @@
-export type AiSupportProvider = 'LINGSHUO'
+export type AiSupportProvider = 'LINGSHUO' | 'OPENAI' | 'CLAUDE' | 'GEMINI' | 'SELF_HOSTED' | 'MOCK'
 
 export type AiSupportStatus = 'SUCCESS' | 'FAILED' | 'TIMEOUT' | 'LOW_CONFIDENCE' | 'NEED_HUMAN'
+
+export type AiSupportRequest = {
+  tenantId: string
+  storeId: string
+  storeName?: string | null
+  telegramId: string
+  customerId?: string | null
+  sessionId: string
+  language?: string | null
+  userMessage: string
+  channel: 'TELEGRAM_CUSTOMER'
+  allowedTools: string[]
+  context?: Record<string, unknown>
+}
+
+export type AiSupportResponse = {
+  ok: boolean
+  provider: AiSupportProvider | string
+  replyText?: string
+  confidence?: number | null
+  needHuman?: boolean | null
+  intent?: string | null
+  auditId?: string | null
+  raw?: unknown
+  errorCode?: string | null
+  errorMessage?: string | null
+  latencyMs?: number | null
+}
+
+export type AiProviderAdapter = {
+  provider: AiSupportProvider
+  callAiProvider(input: AiSupportRequest, config: unknown): Promise<AiSupportResponse>
+}
 
 export type AiSupportProviderConfig = {
   id: string
