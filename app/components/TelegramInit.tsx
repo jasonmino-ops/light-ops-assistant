@@ -43,11 +43,11 @@ function extractTgUserId(initData: string): string | null {
 }
 
 // Paths that don't require an active merchant session.
-// 公开首页、顾客端公共入口（/e-life /menu /me）、合规公开页和商户端引导页（/start /open /bind /relogin）
+// 公开首页、顾客端公共入口（/e-life /menu /m /me）、合规公开页和商户端引导页（/start /open /bind /relogin）
 // 均跳过商户 Bot auth 流程，由各页面自身处理身份或无需身份。
 // /cashier is a standalone PC POS page — no Telegram session required
 const PUBLIC_EXACT_PATHS = ['/']
-const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/privacy', '/terms', '/contact']
+const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/m', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/privacy', '/terms', '/contact']
 
 function isPublicPath(path: string) {
   return PUBLIC_EXACT_PATHS.includes(path) ||
