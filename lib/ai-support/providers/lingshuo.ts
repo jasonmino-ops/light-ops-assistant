@@ -50,7 +50,7 @@ export const lingshuoProviderAdapter: AiProviderAdapter = {
       sessionId: input.sessionId,
       language: input.language,
       message: input.userMessage,
-      allowedTools: input.allowedTools,
+      allowedTools: input.allowedTools.length > 0 ? input.allowedTools : providerConfig.allowedTools,
       context: input.context,
     })
 

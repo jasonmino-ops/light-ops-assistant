@@ -7,8 +7,7 @@ import { chatReply } from '@/lib/bot/handlers/chat'
 import { businessReply } from '@/lib/bot/handlers/business'
 import { escalateReply } from '@/lib/bot/handlers/escalate'
 import { publicUrl } from '@/lib/public-url'
-import { getAiSupportConfig } from '@/lib/ai-support/config'
-import { callLingshuoReply } from '@/lib/ai-support/lingshuo-client'
+import { tryAiSupportReply as callAiSupportRouter } from '@/lib/ai-support/router'
 import { writeAiSupportAudit } from '@/lib/ai-support/audit'
 
 /**
@@ -504,11 +503,6 @@ async function upsertCustomerSupportSession(params: {
   }
 }
 
-function aiKillSwitchEngaged(): boolean {
-  const v = (process.env.AI_SUPPORT_KILL_SWITCH ?? '').trim().toLowerCase()
-  return v === '1' || v === 'true' || v === 'yes' || v === 'on'
-}
-
 async function tryAiSupportReply(params: {
   chatId: number
   text: string
@@ -521,37 +515,29 @@ async function tryAiSupportReply(params: {
   customerId: string
   username: string | null
 }): Promise<boolean> {
-  // 全局熔断：env AI_SUPPORT_KILL_SWITCH=1 时直接跳过 AI，回退到原 escalate 兜底
-  if (aiKillSwitchEngaged()) return false
   if (!params.tenantId || !params.storeId || !params.text.trim()) return false
 
   const sessionId = `${params.storeCode}:${params.telegramId}`
-  const config = await getAiSupportConfig({
+  const result = await callAiSupportRouter({
     tenantId: params.tenantId,
     storeId: params.storeId,
-    provider: 'LINGSHUO',
-  })
-  if (!config?.enabled) return false
-
-  const result = await callLingshuoReply({
-    apiBaseUrl: config.apiBaseUrl,
-    clientId: config.clientId,
-    apiSecret: config.encryptedApiSecret ?? (config.secretRef ? process.env[config.secretRef] : null),
-    timeoutMs: config.timeoutMs,
-    tenantId: params.tenantId,
-    storeId: params.storeId,
+    storeName: params.storeName,
+    telegramId: params.telegramId,
     customerId: params.customerId,
     sessionId,
     language: params.lang,
-    message: params.text,
-    allowedTools: config.allowedTools,
+    userMessage: params.text,
+    channel: 'TELEGRAM_CUSTOMER',
+    allowedTools: [],
     context: {
       storeCode: params.storeCode,
       storeName: params.storeName,
     },
+    provider: 'LINGSHUO',
   })
 
-  if (!result.ok) {
+  if (!result.handled) {
+    if (!result.errorCode) return false
     void writeAiSupportAudit({
       tenantId: params.tenantId,
       storeId: params.storeId,
@@ -625,7 +611,8 @@ async function tryAiSupportReply(params: {
     return false
   }
 
-  await tgSend('sendMessage', { chat_id: params.chatId, text: result.replyText })
+  const replyText = result.replyText ?? ''
+  await tgSend('sendMessage', { chat_id: params.chatId, text: replyText })
   void writeAiSupportAudit({
     tenantId: params.tenantId,
     storeId: params.storeId,
@@ -633,7 +620,7 @@ async function tryAiSupportReply(params: {
     sessionId,
     provider: 'LINGSHUO',
     userMessage: params.text,
-    aiReply: result.replyText,
+    aiReply: replyText,
     intent: result.intent,
     confidence: result.confidence,
     needHuman: result.needHuman,
@@ -643,7 +630,7 @@ async function tryAiSupportReply(params: {
   })
   void logConv({
     tenantId: params.tenantId, storeCode: params.storeCode, telegramId: params.telegramId, lang: params.lang,
-    direction: 'OUT', text: result.replyText, intentLayer: 2,
+    direction: 'OUT', text: replyText, intentLayer: 2,
     intentSlot: result.intent, intentSource: 'LINGSHUO', escalated: false,
   })
   return true
