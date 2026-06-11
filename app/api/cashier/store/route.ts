@@ -6,7 +6,29 @@
  * Does NOT return KHQR config, user data, or any sensitive merchant info.
  */
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+
+const CASHIER_PRODUCT_SELECT = {
+  id: true,
+  barcode: true,
+  name: true,
+  spec: true,
+  sellPrice: true,
+  categoryId: true,
+  imageUrl: true,
+  imageUrls: true,
+} satisfies Prisma.ProductSelect
+
+const CASHIER_PRODUCT_LEGACY_SELECT = {
+  id: true,
+  barcode: true,
+  name: true,
+  spec: true,
+  sellPrice: true,
+  categoryId: true,
+  imageUrl: true,
+} satisfies Prisma.ProductSelect
 
 function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
   try {
@@ -14,6 +36,12 @@ function parseImageUrls(imageUrls: string | null, imageUrl: string | null): stri
     if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 3)
   } catch {}
   return imageUrl ? [imageUrl] : []
+}
+
+function isMissingImageGalleryColumn(e: unknown): boolean {
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2022') return false
+  const text = String(e.message)
+  return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('column') || text.includes('does not exist')
 }
 
 export async function GET(req: NextRequest) {
@@ -30,13 +58,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
 
-  const [products, categories] = await Promise.all([
-    prisma.product.findMany({
-      where: { tenantId: store.tenantId, status: 'ACTIVE' },
-      select: { id: true, barcode: true, name: true, spec: true, sellPrice: true, categoryId: true, imageUrl: true, imageUrls: true },
+  const productWhere = { tenantId: store.tenantId, status: 'ACTIVE' as const }
+  const productsPromise = prisma.product.findMany({
+    where: productWhere,
+    select: CASHIER_PRODUCT_SELECT,
+    orderBy: { name: 'asc' },
+    take: 500,
+  }).catch(async (e) => {
+    if (!isMissingImageGalleryColumn(e)) throw e
+    const legacyProducts = await prisma.product.findMany({
+      where: productWhere,
+      select: CASHIER_PRODUCT_LEGACY_SELECT,
       orderBy: { name: 'asc' },
       take: 500,
-    }),
+    })
+    return legacyProducts.map((p) => ({ ...p, imageUrls: null }))
+  })
+
+  const [products, categories] = await Promise.all([
+    productsPromise,
     prisma.productCategory.findMany({
       where: { tenantId: store.tenantId },
       select: { id: true, name: true, parentId: true },
