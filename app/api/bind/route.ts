@@ -20,11 +20,7 @@ import { prisma } from '@/lib/prisma'
 import { signSession } from '@/lib/session'
 import { sendAndLogMessage, WELCOME_TEXT } from '@/lib/telegram'
 
-// Dual-token HMAC: try merchant bot first, then ops bot.
-// Ops-generated bind tokens may be scanned via the ops bot Mini App, whose
-// initData is signed with OPS_BOT_TOKEN rather than TELEGRAM_BOT_TOKEN.
 const MERCHANT_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
-const OPS_BOT_TOKEN = process.env.OPS_BOT_TOKEN ?? ''
 
 function verifyWithToken(initData: string, botToken: string): URLSearchParams | null {
   const params = new URLSearchParams(initData)
@@ -41,15 +37,8 @@ function verifyWithToken(initData: string, botToken: string): URLSearchParams | 
 }
 
 function verifyInitData(initData: string): URLSearchParams | null {
-  if (!MERCHANT_BOT_TOKEN && !OPS_BOT_TOKEN) return new URLSearchParams(initData) // dev: skip
-  if (MERCHANT_BOT_TOKEN) {
-    const result = verifyWithToken(initData, MERCHANT_BOT_TOKEN)
-    if (result) return result
-  }
-  if (OPS_BOT_TOKEN && OPS_BOT_TOKEN !== MERCHANT_BOT_TOKEN) {
-    return verifyWithToken(initData, OPS_BOT_TOKEN)
-  }
-  return null
+  if (!MERCHANT_BOT_TOKEN) return new URLSearchParams(initData) // dev: skip
+  return verifyWithToken(initData, MERCHANT_BOT_TOKEN)
 }
 
 export async function POST(req: NextRequest) {
@@ -66,12 +55,21 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 1. Validate bind token ────────────────────────────────────────────────
-  const bt = await prisma.bindToken.findUnique({ where: { token } })
+  const bt = await prisma.bindToken.findUnique({
+    where: { token },
+    include: {
+      tenant: { select: { status: true } },
+      store:  { select: { status: true } },
+    },
+  })
 
   const INVALID_MSG = '邀请码无效或已失效 / លេខអញ្ជើញមិនត្រឹមត្រូវ ឬផុតកំណត់'
 
   if (!bt || bt.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'INVALID_TOKEN', message: INVALID_MSG }, { status: 400 })
+  }
+  if (bt.tenant.status !== 'ACTIVE' || bt.store.status !== 'ACTIVE') {
+    return NextResponse.json({ error: 'TOKEN_STORE_INACTIVE', message: INVALID_MSG }, { status: 400 })
   }
   if (bt.expiresAt < new Date()) {
     return NextResponse.json({ error: 'TOKEN_EXPIRED', message: INVALID_MSG }, { status: 400 })

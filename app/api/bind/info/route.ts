@@ -16,12 +16,17 @@ export async function GET(req: NextRequest) {
 
   const bt = await prisma.bindToken.findUnique({
     where: { token },
-    include: { store: { select: { name: true } } },
+    include: {
+      tenant: { select: { status: true } },
+      store:  { select: { name: true, status: true } },
+    },
   })
 
   if (
     !bt ||
     bt.status !== 'ACTIVE' ||
+    bt.tenant.status !== 'ACTIVE' ||
+    bt.store.status !== 'ACTIVE' ||
     bt.expiresAt < new Date() ||
     bt.usedCount >= bt.maxUses
   ) {
