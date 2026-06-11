@@ -7,6 +7,9 @@ import { chatReply } from '@/lib/bot/handlers/chat'
 import { businessReply } from '@/lib/bot/handlers/business'
 import { escalateReply } from '@/lib/bot/handlers/escalate'
 import { publicUrl } from '@/lib/public-url'
+import { getAiSupportConfig } from '@/lib/ai-support/config'
+import { callLingshuoReply } from '@/lib/ai-support/lingshuo-client'
+import { writeAiSupportAudit } from '@/lib/ai-support/audit'
 
 /**
  * POST /api/webhook/customer
@@ -384,7 +387,7 @@ export async function POST(req: NextRequest) {
   const contact = await prisma.storeCustomerContact.findFirst({
     where:   { telegramId, status: 'active' },
     orderBy: { lastSeenAt: 'desc' },
-    select:  { tenantId: true, storeCode: true, telegramLanguageCode: true },
+    select:  { id: true, tenantId: true, storeCode: true, telegramLanguageCode: true },
   }).catch(() => null)
 
   // 没绑过：fallback 到 DEFAULT_STORE 的 tenant（仍能回闲聊/转人工，但订单查询查不到）
@@ -392,7 +395,7 @@ export async function POST(req: NextRequest) {
   let storeCode  = contact?.storeCode ?? DEFAULT_STORE
   let storeName  = ''
   const fbStore = await prisma.store.findUnique({
-    where: { code: storeCode }, select: { tenantId: true, name: true },
+    where: { code: storeCode }, select: { id: true, tenantId: true, name: true },
   }).catch(() => null)
   if (fbStore) {
     if (!tenantId) tenantId = fbStore.tenantId
@@ -416,6 +419,20 @@ export async function POST(req: NextRequest) {
     void logConv({ tenantId, storeCode, telegramId, lang, direction: 'OUT', text: reply, intentLayer: 2, intentSource: media, escalated: false })
     return NextResponse.json({ ok: true })
   }
+
+  const aiHandled = await tryAiSupportReply({
+    chatId,
+    text,
+    lang,
+    tenantId,
+    storeId: fbStore?.id ?? null,
+    storeCode,
+    storeName,
+    telegramId,
+    customerId: contact?.id ?? telegramId,
+    username: msg.from?.username ?? null,
+  })
+  if (aiHandled) return NextResponse.json({ ok: true })
 
   // 文字消息：分类 → 分发
   const intent = classifyIntent(text, lang)
@@ -449,6 +466,181 @@ export async function POST(req: NextRequest) {
   })
 
   return NextResponse.json({ ok: true })
+}
+
+async function upsertCustomerSupportSession(params: {
+  telegramId: string
+  tenantId: string | null
+  sessionState: string
+  lang: Lang
+}) {
+  try {
+    await prisma.supportSession.upsert({
+      where: { telegramId: params.telegramId },
+      create: {
+        telegramId: params.telegramId,
+        tenantId: params.tenantId,
+        sessionState: params.sessionState,
+        language: params.lang,
+      },
+      update: {
+        tenantId: params.tenantId ?? undefined,
+        sessionState: params.sessionState,
+        language: params.lang,
+      },
+    })
+  } catch (error) {
+    console.error('[customer-webhook] support session upsert failed', error)
+  }
+}
+
+async function tryAiSupportReply(params: {
+  chatId: number
+  text: string
+  lang: Lang
+  tenantId: string | null
+  storeId: string | null
+  storeCode: string
+  storeName: string
+  telegramId: string
+  customerId: string
+  username: string | null
+}): Promise<boolean> {
+  if (!params.tenantId || !params.storeId || !params.text.trim()) return false
+
+  const sessionId = `${params.storeCode}:${params.telegramId}`
+  const supportSession = await prisma.supportSession.findUnique({
+    where: { telegramId: params.telegramId },
+    select: { sessionState: true },
+  }).catch(() => null)
+  if (supportSession && supportSession.sessionState !== 'auto_active') return false
+
+  const config = await getAiSupportConfig({
+    tenantId: params.tenantId,
+    storeId: params.storeId,
+    provider: 'LINGSHUO',
+  })
+  if (!config?.enabled) return false
+
+  const result = await callLingshuoReply({
+    apiBaseUrl: config.apiBaseUrl,
+    clientId: config.clientId,
+    apiSecret: config.encryptedApiSecret ?? (config.secretRef ? process.env[config.secretRef] : null),
+    timeoutMs: config.timeoutMs,
+    tenantId: params.tenantId,
+    storeId: params.storeId,
+    customerId: params.customerId,
+    sessionId,
+    language: params.lang,
+    message: params.text,
+    allowedTools: config.allowedTools,
+    context: {
+      storeCode: params.storeCode,
+      storeName: params.storeName,
+    },
+  })
+
+  if (!result.ok) {
+    void writeAiSupportAudit({
+      tenantId: params.tenantId,
+      storeId: params.storeId,
+      customerId: params.customerId,
+      sessionId,
+      provider: 'LINGSHUO',
+      userMessage: params.text,
+      status: result.errorCode === 'TIMEOUT' ? 'TIMEOUT' : 'FAILED',
+      errorMessage: result.errorMessage,
+      latencyMs: result.latencyMs,
+    })
+    return false
+  }
+
+  if (result.needHuman) {
+    await upsertCustomerSupportSession({
+      telegramId: params.telegramId,
+      tenantId: params.tenantId,
+      sessionState: 'awaiting_human',
+      lang: params.lang,
+    })
+    const reply = escalateReply({
+      text: params.text,
+      lang: params.lang,
+      tenantId: params.tenantId,
+      telegramId: params.telegramId,
+      source: 'FALLBACK_UNKNOWN',
+      storeCode: params.storeCode,
+      username: params.username,
+    })
+    await tgSend('sendMessage', { chat_id: params.chatId, text: reply })
+    void writeAiSupportAudit({
+      tenantId: params.tenantId,
+      storeId: params.storeId,
+      customerId: params.customerId,
+      sessionId,
+      provider: 'LINGSHUO',
+      userMessage: params.text,
+      aiReply: result.replyText,
+      intent: result.intent,
+      confidence: result.confidence,
+      needHuman: result.needHuman,
+      providerAuditId: result.auditId,
+      latencyMs: result.latencyMs,
+      status: 'NEED_HUMAN',
+    })
+    void logConv({
+      tenantId: params.tenantId, storeCode: params.storeCode, telegramId: params.telegramId, lang: params.lang,
+      direction: 'OUT', text: reply, intentLayer: 3, intentSource: 'LINGSHUO_NEED_HUMAN', escalated: true,
+    })
+    return true
+  }
+
+  if ((result.confidence ?? 0) < 0.7) {
+    void writeAiSupportAudit({
+      tenantId: params.tenantId,
+      storeId: params.storeId,
+      customerId: params.customerId,
+      sessionId,
+      provider: 'LINGSHUO',
+      userMessage: params.text,
+      aiReply: result.replyText,
+      intent: result.intent,
+      confidence: result.confidence,
+      needHuman: result.needHuman,
+      providerAuditId: result.auditId,
+      latencyMs: result.latencyMs,
+      status: 'SKIPPED',
+      errorMessage: 'LOW_CONFIDENCE',
+    })
+    return false
+  }
+
+  await tgSend('sendMessage', { chat_id: params.chatId, text: result.replyText })
+  void writeAiSupportAudit({
+    tenantId: params.tenantId,
+    storeId: params.storeId,
+    customerId: params.customerId,
+    sessionId,
+    provider: 'LINGSHUO',
+    userMessage: params.text,
+    aiReply: result.replyText,
+    intent: result.intent,
+    confidence: result.confidence,
+    needHuman: result.needHuman,
+    providerAuditId: result.auditId,
+    latencyMs: result.latencyMs,
+    status: 'SUCCESS',
+  })
+  void logConv({
+    tenantId: params.tenantId, storeCode: params.storeCode, telegramId: params.telegramId, lang: params.lang,
+    direction: 'IN', text: params.text.slice(0, 1000), intentLayer: 2,
+    intentSource: 'LINGSHUO', escalated: false,
+  })
+  void logConv({
+    tenantId: params.tenantId, storeCode: params.storeCode, telegramId: params.telegramId, lang: params.lang,
+    direction: 'OUT', text: result.replyText, intentLayer: 2,
+    intentSlot: result.intent, intentSource: 'LINGSHUO', escalated: false,
+  })
+  return true
 }
 
 // ── 媒体类型识别 ─────────────────────────────────────────────────────────
