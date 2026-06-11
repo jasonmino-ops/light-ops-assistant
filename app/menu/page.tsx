@@ -461,7 +461,8 @@ export default function MenuPage() {
   const [tableNo,      setTableNo]     = useState<string | null>(null)
   const [hasTgId,      setHasTgId]     = useState(false)
   const [customerBound, setCustomerBound] = useState(false)
-  const [lightbox,  setLightbox] = useState<{ images: string[]; index: number } | null>(null)
+  const [lightbox,  setLightbox] = useState<{ productId: string; name: string; images: string[]; index: number } | null>(null)
+  const lightboxCarouselRef = useRef<HTMLDivElement | null>(null)
   // 搜索 + 购物车展开
   const [searchKeyword, setSearchKeyword] = useState('')
   const [cartExpand,    setCartExpand]    = useState(false)
@@ -817,6 +818,31 @@ export default function MenuPage() {
     })
   }
 
+  function openProductPreview(product: ApiProduct) {
+    const images = productImages(product)
+    if (images.length === 0) return
+    setLightbox({ productId: product.id, name: pName(product, lang), images, index: 0 })
+    window.setTimeout(() => {
+      lightboxCarouselRef.current?.scrollTo({ left: 0, behavior: 'auto' })
+    }, 0)
+  }
+
+  function closeProductPreview() {
+    setLightbox(null)
+  }
+
+  function scrollLightboxTo(index: number) {
+    setLightbox((prev) => {
+      if (!prev) return prev
+      const target = Math.max(0, Math.min(prev.images.length - 1, index))
+      lightboxCarouselRef.current?.scrollTo({
+        left: target * lightboxCarouselRef.current.clientWidth,
+        behavior: 'smooth',
+      })
+      return { ...prev, index: target }
+    })
+  }
+
   function handleAddClick(productId: string) {
     if (needsSugar(productId)) {
       setPendingSugar('50')
@@ -1137,7 +1163,7 @@ export default function MenuPage() {
                         {images.length > 0 ? (
                           <div
                             style={{ ...s.productImg, background: '#f5f5f5', overflow: 'hidden', cursor: 'zoom-in' }}
-                            onClick={() => setLightbox({ images, index: 0 })}
+                            onClick={() => openProductPreview(product)}
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -1239,38 +1265,35 @@ export default function MenuPage() {
       {/* ── 商品图放大查看 ── */}
       {lightbox && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.85)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            cursor: 'zoom-out',
-          }}
-          onClick={() => setLightbox(null)}
-          onTouchStart={(e) => {
-            const x = e.touches[0]?.clientX ?? 0
-            ;(e.currentTarget as HTMLDivElement).dataset.startX = String(x)
-          }}
-          onTouchEnd={(e) => {
-            const start = Number((e.currentTarget as HTMLDivElement).dataset.startX ?? '0')
-            const end = e.changedTouches[0]?.clientX ?? start
-            const delta = end - start
-            if (Math.abs(delta) < 40 || lightbox.images.length <= 1) return
-            setLightbox((prev) => prev
-              ? { ...prev, index: delta < 0 ? Math.min(prev.images.length - 1, prev.index + 1) : Math.max(0, prev.index - 1) }
-              : prev)
-          }}
+          style={s.lightboxMask}
+          onClick={closeProductPreview}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightbox.images[lightbox.index]}
-            alt=""
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
-          />
+          <div style={s.lightboxPanel} onClick={(e) => e.stopPropagation()}>
+            <div
+              ref={lightboxCarouselRef}
+              style={s.lightboxCarousel}
+              onScroll={(e) => {
+                const el = e.currentTarget
+                const next = Math.round(el.scrollLeft / Math.max(1, el.clientWidth))
+                if (next !== lightbox.index) {
+                  setLightbox((prev) => prev
+                    ? { ...prev, index: Math.max(0, Math.min(prev.images.length - 1, next)) }
+                    : prev)
+                }
+              }}
+            >
+              {lightbox.images.map((url, idx) => (
+                <div key={`${lightbox.productId}-${url}-${idx}`} style={s.lightboxSlide}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`${lightbox.name} ${idx + 1}`}
+                    style={s.lightboxImg}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
           {lightbox.images.length > 1 && (
             <>
               <button
@@ -1279,7 +1302,7 @@ export default function MenuPage() {
                 disabled={lightbox.index === 0}
                 onClick={(e) => {
                   e.stopPropagation()
-                  setLightbox((prev) => prev ? { ...prev, index: Math.max(0, prev.index - 1) } : prev)
+                  scrollLightboxTo(lightbox.index - 1)
                 }}
                 style={{ ...s.lightboxNav, left: 14, opacity: lightbox.index === 0 ? 0.35 : 1 }}
               >
@@ -1291,19 +1314,19 @@ export default function MenuPage() {
                 disabled={lightbox.index === lightbox.images.length - 1}
                 onClick={(e) => {
                   e.stopPropagation()
-                  setLightbox((prev) => prev ? { ...prev, index: Math.min(prev.images.length - 1, prev.index + 1) } : prev)
+                  scrollLightboxTo(lightbox.index + 1)
                 }}
                 style={{ ...s.lightboxNav, right: 14, opacity: lightbox.index === lightbox.images.length - 1 ? 0.35 : 1 }}
               >
                 ›
               </button>
-              <div style={s.lightboxCounter}>{lightbox.index + 1} / {lightbox.images.length}</div>
             </>
           )}
+          <div style={s.lightboxCounter}>{lightbox.index + 1} / {lightbox.images.length}</div>
           <button
             type="button"
             aria-label="close"
-            onClick={(e) => { e.stopPropagation(); setLightbox(null) }}
+            onClick={(e) => { e.stopPropagation(); closeProductPreview() }}
             style={{
               position: 'absolute',
               top: 16,
@@ -2538,6 +2561,57 @@ const s: Record<string, React.CSSProperties> = {
     color: '#c0a090',
     lineHeight: 1,
     fontWeight: 300,
+  },
+  lightboxMask: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.9)',
+    zIndex: 1000,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    cursor: 'zoom-out',
+  },
+  lightboxPanel: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    cursor: 'default',
+  },
+  lightboxCarousel: {
+    display: 'flex',
+    width: '100%',
+    height: '100%',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    scrollSnapType: 'x mandatory',
+    WebkitOverflowScrolling: 'touch' as const,
+    scrollbarWidth: 'none' as const,
+    touchAction: 'pan-x',
+    overscrollBehaviorX: 'contain' as const,
+  },
+  lightboxSlide: {
+    flex: '0 0 100%',
+    width: '100%',
+    height: '100%',
+    minWidth: 0,
+    scrollSnapAlign: 'start',
+    scrollSnapStop: 'always' as const,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 22,
+    boxSizing: 'border-box' as const,
+  },
+  lightboxImg: {
+    maxWidth: '100%',
+    maxHeight: '100%',
+    objectFit: 'contain',
+    borderRadius: 8,
   },
   lightboxNav: {
     position: 'absolute',
