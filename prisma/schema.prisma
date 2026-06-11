@@ -540,6 +540,54 @@ model SupportSession {
   @@index([sessionState])
 }
 
+model AiSupportProviderConfig {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  storeId            String?
+  provider           String
+  enabled            Boolean  @default(false)
+  apiBaseUrl         String?
+  clientId           String?
+  encryptedApiSecret String?
+  secretRef          String?
+  allowedToolsJson   String   @default("[]") @db.Text
+  timeoutMs          Int      @default(3000)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, storeId])
+  @@index([provider])
+  @@unique([tenantId, storeId, provider])
+}
+
+model AiSupportAuditLog {
+  id              String   @id @default(cuid())
+  tenantId        String?
+  storeId         String?
+  customerId      String?
+  sessionId       String?
+  provider        String
+  userMessage     String   @db.Text
+  aiReply         String?  @db.Text
+  intent          String?
+  confidence      Float?
+  needHuman       Boolean?
+  toolCallsJson   String?  @db.Text
+  providerAuditId String?
+  latencyMs       Int?
+  status          String
+  errorMessage    String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([storeId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([provider, createdAt])
+  @@index([status, createdAt])
+}
+
 model OpsAdmin {
   id           String   @id @default(cuid())
   name         String
