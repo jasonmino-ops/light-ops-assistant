@@ -72,7 +72,7 @@ export default function CheckoutSheet({
       await onOverridePay!(method)
       onSuccess()
     } catch (e) {
-      setError((e as Error).message ?? '操作失败，请重试')
+      setError((e as Error).message ?? t('sale.checkoutFailed'))
       setStatus('idle')
     }
   }
@@ -153,8 +153,8 @@ export default function CheckoutSheet({
         >
           <span style={cs.optIcon}>📱</span>
           <div style={cs.optText}>
-            <div style={cs.optLabel}>{onOverridePay ? '收款码' : t('sale.paymentKhqr')}</div>
-            <div style={cs.optDesc}>{onOverridePay ? '确认已通过收款码收款' : t('sale.paymentKhqrDesc')}</div>
+            <div style={cs.optLabel}>{onOverridePay ? t('sale.checkoutQrLabel') : t('sale.paymentKhqr')}</div>
+            <div style={cs.optDesc}>{onOverridePay ? t('sale.checkoutQrDesc') : t('sale.paymentKhqrDesc')}</div>
           </div>
         </button>
 

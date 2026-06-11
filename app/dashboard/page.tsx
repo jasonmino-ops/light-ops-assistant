@@ -237,7 +237,7 @@ export default function DashboardPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <LangToggleBtn />
-          <Link href="/system" style={s.switchBtn}>系统</Link>
+          <Link href="/system" style={s.switchBtn}>{t('dashboard.system')}</Link>
           <button
             style={s.refreshBtn}
             onClick={() => {
@@ -287,8 +287,8 @@ export default function DashboardPage() {
         <Link href="/campaign" style={s.bigEntryCard}>
           <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ff9a56,#ff6b35)' }}>📱</div>
           <div style={s.bigEntryBody}>
-            <div style={s.bigEntryTitle}>推广带货</div>
-            <div style={s.bigEntryDesc}>生成 TikTok/博主推广短链，查看访问与点击效果</div>
+            <div style={s.bigEntryTitle}>{t('dashboard.campaignEntryTitle')}</div>
+            <div style={s.bigEntryDesc}>{t('dashboard.campaignEntryDesc')}</div>
           </div>
           <span style={s.bigEntryArrow}>›</span>
         </Link>
@@ -647,10 +647,10 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         setTimeout(() => setSaved((v) => ({ ...v, [sid]: false })), 2000)
       } else {
         const body = await res.json().catch(() => null)
-        setSaveError((v) => ({ ...v, [sid]: body?.message ?? body?.error ?? '保存失败' }))
+        setSaveError((v) => ({ ...v, [sid]: body?.message ?? body?.error ?? t('dashboard.saveFailed') }))
       }
     } catch {
-      setSaveError((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+      setSaveError((v) => ({ ...v, [sid]: t('common.networkError') }))
     } finally {
       setSaving((v) => ({ ...v, [sid]: false }))
     }
@@ -671,10 +671,10 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
       if (res.ok && body?.bannerUrl) {
         setBannerUrls((v) => ({ ...v, [sid]: body.bannerUrl }))
       } else {
-        setBannerErr((v) => ({ ...v, [sid]: body?.error ?? '上传失败' }))
+        setBannerErr((v) => ({ ...v, [sid]: body?.error ?? t('dashboard.uploadFailed') }))
       }
     } catch {
-      setBannerErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+      setBannerErr((v) => ({ ...v, [sid]: t('common.networkError') }))
     } finally {
       setBannerLoading((v) => ({ ...v, [sid]: false }))
     }
@@ -689,10 +689,10 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         setBannerUrls((v) => ({ ...v, [sid]: null }))
       } else {
         const body = await res.json().catch(() => null)
-        setBannerErr((v) => ({ ...v, [sid]: body?.error ?? '删除失败' }))
+        setBannerErr((v) => ({ ...v, [sid]: body?.error ?? t('dashboard.deleteFailed') }))
       }
     } catch {
-      setBannerErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+      setBannerErr((v) => ({ ...v, [sid]: t('common.networkError') }))
     } finally {
       setBannerLoading((v) => ({ ...v, [sid]: false }))
     }
@@ -721,10 +721,10 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         setConfigSaved((v) => ({ ...v, [sid]: true }))
         setTimeout(() => setConfigSaved((v) => ({ ...v, [sid]: false })), 2000)
       } else {
-        setConfigErr((v) => ({ ...v, [sid]: body?.message ?? body?.error ?? '保存失败' }))
+        setConfigErr((v) => ({ ...v, [sid]: body?.message ?? body?.error ?? t('dashboard.saveFailed') }))
       }
     } catch {
-      setConfigErr((v) => ({ ...v, [sid]: '网络错误，请重试' }))
+      setConfigErr((v) => ({ ...v, [sid]: t('common.networkError') }))
     } finally {
       setConfigSaving((v) => ({ ...v, [sid]: false }))
     }

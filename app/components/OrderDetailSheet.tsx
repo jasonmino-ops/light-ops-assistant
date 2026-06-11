@@ -294,11 +294,11 @@ export default function OrderDetailSheet({
                     <span style={sh.subAmt}>${(d.subtotal ?? d.totalAmount).toFixed(2)}</span>
                   </div>
                   <div style={sh.subRow}>
-                    <span style={sh.subLabel}>🎟️ {d.couponName || '优惠券'}</span>
+                    <span style={sh.subLabel}>🎟️ {d.couponName || t('order.coupon')}</span>
                     <span style={{ ...sh.subAmt, color: '#fa8c16' }}>-${d.discountAmount.toFixed(2)}</span>
                   </div>
                   <div style={sh.totalRow}>
-                    <span style={sh.totalLabel}>实收</span>
+                    <span style={sh.totalLabel}>{t('order.paidAmount')}</span>
                     <span style={sh.totalAmt}>${Math.abs(d.totalAmount).toFixed(2)}</span>
                   </div>
                 </>
@@ -313,36 +313,36 @@ export default function OrderDetailSheet({
             {/* 配送/上门 */}
             {(d.deliveryAddress || d.customerPhone) && (
               <div style={sh.section}>
-                <div style={sh.deliveryBanner}>🚚 送货/上门订单</div>
-                <div style={sh.sectionLabel}>详情</div>
-                {d.customerName    && <InfoRow label="联系人" value={d.customerName} />}
-                {d.customerPhone   && <InfoRow label="电话"   value={d.customerPhone} />}
+                <div style={sh.deliveryBanner}>🚚 {t('order.deliveryOrder')}</div>
+                <div style={sh.sectionLabel}>{t('order.detail')}</div>
+                {d.customerName    && <InfoRow label={t('order.contact')} value={d.customerName} />}
+                {d.customerPhone   && <InfoRow label={t('order.phone')}   value={d.customerPhone} />}
                 {d.deliveryAddress && (
                   <div style={sh.infoRowWrap}>
-                    <span style={sh.infoLabel}>地址</span>
+                    <span style={sh.infoLabel}>{t('order.address')}</span>
                     <span style={{ ...sh.infoValue, whiteSpace: 'pre-wrap' }}>{d.deliveryAddress}</span>
                   </div>
                 )}
                 {d.deliveryNote && (
                   <div style={sh.infoRowWrap}>
-                    <span style={sh.infoLabel}>备注</span>
+                    <span style={sh.infoLabel}>{t('order.remark')}</span>
                     <span style={{ ...sh.infoValue, whiteSpace: 'pre-wrap' }}>{d.deliveryNote}</span>
                   </div>
                 )}
                 {d.mapUrl && (
                   <div style={sh.infoRowWrap}>
-                    <span style={sh.infoLabel}>地图</span>
+                    <span style={sh.infoLabel}>{t('order.map')}</span>
                     <a href={d.mapUrl} target="_blank" rel="noreferrer" style={{ ...sh.infoValue, color: '#1677ff', textDecoration: 'underline' }}>
-                      📍 查看地图
+                      {t('order.viewMap')}
                     </a>
                   </div>
                 )}
                 {d.deliveryAddressPhotoUrl && (
                   <div style={{ marginTop: 6 }}>
-                    <div style={{ ...sh.infoLabel, marginBottom: 4 }}>门牌/位置照片</div>
+                    <div style={{ ...sh.infoLabel, marginBottom: 4 }}>{t('order.addressPhoto')}</div>
                     <a href={d.deliveryAddressPhotoUrl} target="_blank" rel="noreferrer">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={d.deliveryAddressPhotoUrl} alt="门牌照片"
+                      <img src={d.deliveryAddressPhotoUrl} alt={t('order.addressPhotoAlt')}
                            style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8, border: '1px solid #ebebeb' }} />
                     </a>
                   </div>

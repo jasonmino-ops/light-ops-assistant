@@ -4,19 +4,20 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useWorkMode } from './WorkModeProvider'
+import { useLocale } from './LangProvider'
 
 const STAFF_TABS = [
-  { href: '/home',    label: '首页', icon: '🏠' },
-  { href: '/sale',    label: '销售', icon: '💰' },
-  { href: '/records', label: '记录', icon: '📋' },
+  { href: '/home',    labelKey: 'nav.home', icon: '🏠' },
+  { href: '/sale',    labelKey: 'nav.sale', icon: '💰' },
+  { href: '/records', labelKey: 'nav.records', icon: '📋' },
 ]
 
 const OWNER_TABS = [
-  { href: '/home',      label: '首页', icon: '🏠' },
-  { href: '/sale',      label: '销售', icon: '💰' },
-  { href: '/products',  label: '商品', icon: '📦' },
-  { href: '/invite',    label: '邀请', icon: '🔗' },
-  { href: '/dashboard', label: '概览', icon: '📊' },
+  { href: '/home',      labelKey: 'nav.home', icon: '🏠' },
+  { href: '/sale',      labelKey: 'nav.sale', icon: '💰' },
+  { href: '/products',  labelKey: 'nav.products', icon: '📦' },
+  { href: '/invite',    labelKey: 'nav.invite', icon: '🔗' },
+  { href: '/dashboard', labelKey: 'nav.dashboard', icon: '📊' },
 ]
 
 // 只在这些页面显示底部导航
@@ -25,6 +26,7 @@ const SHOW_PATHS = new Set(['/home', '/sale', '/records', '/products', '/invite'
 export default function BottomNav() {
   const pathname = usePathname()
   const { effectiveRole } = useWorkMode()
+  const { t } = useLocale()
   const [isStandalone, setIsStandalone] = useState(false)
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export default function BottomNav() {
           <Link key={tab.href} href={tab.href} style={s.link}>
             <span style={{ ...s.icon, opacity: active ? 1 : 0.45 }}>{tab.icon}</span>
             <span style={{ ...s.label, ...(active ? s.labelActive : {}) }}>
-              {tab.label}
+              {t(tab.labelKey)}
             </span>
             {active && <span style={s.activeLine} />}
           </Link>

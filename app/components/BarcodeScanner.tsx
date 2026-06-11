@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useLocale } from './LangProvider'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ const FRAME_INTERVAL_MS = isAndroid ? 150 : 200
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Props) {
+  const { t, lang } = useLocale()
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<{ stop: () => void } | null>(null)
   const doneRef = useRef(false)
@@ -72,13 +74,13 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
         window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1'
       if (!secure) {
-        reportError('摄像头扫码需要 HTTPS 连接，请通过安全链接访问')
+        reportError(t('sale.barcodeHttpsRequired'))
         return
       }
 
       // ── 2. getUserMedia support guard ─────────────────────────────────────
       if (!navigator.mediaDevices?.getUserMedia) {
-        reportError('当前浏览器不支持摄像头访问')
+        reportError(t('sale.barcodeUnsupported'))
         return
       }
 
@@ -97,12 +99,12 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
         const name = (e as Error)?.name ?? 'UnknownError'
         const msg =
           name === 'NotAllowedError'
-            ? '摄像头权限被拒绝，请在系统/浏览器设置中允许'
+            ? t('sale.barcodePermissionDenied')
             : name === 'NotFoundError'
-            ? '未找到摄像头设备'
+            ? t('sale.barcodeNotFound')
             : name === 'NotReadableError'
-            ? '摄像头被其他应用占用，请关闭后重试'
-            : `摄像头启动失败（${name}）`
+            ? t('sale.barcodeBusy')
+            : t('sale.barcodeStartFailed').replace('{name}', name)
         reportError(msg)
         return
       }
@@ -195,12 +197,12 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
         const name = (e as Error)?.name ?? 'UnknownError'
         const msg =
           name === 'NotAllowedError'
-            ? '摄像头权限被拒绝，请在系统/浏览器设置中允许'
+            ? t('sale.barcodePermissionDenied')
             : name === 'NotFoundError'
-            ? '未找到摄像头设备'
+            ? t('sale.barcodeNotFound')
             : name === 'NotReadableError'
-            ? '摄像头被其他应用占用，请关闭后重试'
-            : `摄像头启动失败（${name}）`
+            ? t('sale.barcodeBusy')
+            : t('sale.barcodeStartFailed').replace('{name}', name)
         reportError(msg)
       }
     }
@@ -212,7 +214,7 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
       controlsRef.current?.stop()
       stream?.getTracks().forEach(t => t.stop())
     }
-  }, [handleResult, onCameraError])
+  }, [handleResult, onCameraError, lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -220,7 +222,7 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
     <div style={s.overlay}>
       <div style={s.sheet}>
         <div style={s.header}>
-          <span style={s.title}>扫描商品条码</span>
+          <span style={s.title}>{t('sale.barcodeTitle')}</span>
           <button style={s.closeBtn} type="button" onClick={onClose}>✕</button>
         </div>
 
@@ -230,21 +232,21 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
           {scanState === 'active' && (
             <div style={s.frameWrap}>
               <div style={s.frame} />
-              <div style={s.frameHint}>将商品条码对准框内</div>
+              <div style={s.frameHint}>{t('sale.searchHint')}</div>
             </div>
           )}
 
           {scanState === 'scanned' && (
             <div style={s.scannedLayer}>
               <div style={s.scannedCheck}>✓</div>
-              <div style={s.scannedLabel}>已识别</div>
+              <div style={s.scannedLabel}>{t('sale.barcodeScanned')}</div>
               <div style={s.scannedCode}>{scannedText}</div>
             </div>
           )}
 
           {scanState === 'loading' && (
             <div style={s.stateLayer}>
-              <div style={s.stateText}>摄像头启动中…</div>
+              <div style={s.stateText}>{t('sale.barcodeStarting')}</div>
             </div>
           )}
 
@@ -252,7 +254,7 @@ export default function BarcodeScanner({ onScanned, onClose, onCameraError }: Pr
             <div style={s.stateLayer}>
               <div style={s.errIcon}>📷</div>
               <div style={s.errText}>{errorMsg}</div>
-              <button style={s.errBtn} type="button" onClick={onClose}>关闭</button>
+              <button style={s.errBtn} type="button" onClick={onClose}>{t('common.close')}</button>
             </div>
           )}
         </div>

@@ -44,12 +44,23 @@ type CustomerOrderRecord = {
   createdAt: string
 }
 
-function sugarZh(sugar: string): string {
-  if (sugar === 'no_sugar') return '无糖'
-  if (sugar === '25')       return '微糖 25%'
-  if (sugar === '50')       return '半糖 50%'
-  if (sugar === '75')       return '少糖 75%'
-  if (sugar === '100')      return '正常糖 100%'
+function sugarLabel(sugar: string, lang: 'zh' | 'km'): string {
+  const labels = lang === 'km'
+    ? {
+        no_sugar: 'មិនដាក់ស្ករ',
+        '25': 'ស្ករតិច 25%',
+        '50': 'ស្ករពាក់កណ្តាល 50%',
+        '75': 'ស្ករ 75%',
+        '100': 'ស្ករធម្មតា 100%',
+      }
+    : {
+        no_sugar: '无糖',
+        '25': '微糖 25%',
+        '50': '半糖 50%',
+        '75': '少糖 75%',
+        '100': '正常糖 100%',
+      }
+  if (sugar in labels) return labels[sugar as keyof typeof labels]
   return sugar
 }
 
@@ -187,12 +198,12 @@ export default function HomePage() {
         setEntries(buildSaleEntries(data.items ?? []).slice(0, 5))
       })
       .catch(() => {
-        setLoadError('首页数据加载失败，请稍后重试')
+        setLoadError(t('home.homeLoadFailed'))
         setSummary(null)
         setEntries([])
       })
       .finally(() => setLoading(false))
-  }, [loadKey, realRole])
+  }, [loadKey, realRole, lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 加载顾客订单（仅 OWNER 可见）
   useEffect(() => {
@@ -207,9 +218,9 @@ export default function HomePage() {
       .then((data) => setCustomerOrders(Array.isArray(data) ? data : []))
       .catch(() => {
         setCustomerOrders([])
-        setOrdersError('顾客订单加载失败，请稍后重试')
+        setOrdersError(t('home.customerOrdersLoadFailed'))
       })
-  }, [ordersKey, effectiveRole])
+  }, [ordersKey, effectiveRole, lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 顾客订单自动刷新：页面重新可见时立刻刷新 + 每 30 秒后台轮询
   useEffect(() => {
@@ -271,7 +282,7 @@ export default function HomePage() {
     }, OWNER_CTX)
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      throw new Error(body.error ?? '收款登记失败')
+      throw new Error(body.error ?? t('home.collectFailed'))
     }
   }
 
@@ -284,7 +295,7 @@ export default function HomePage() {
           <span style={s.brandIcon}>🏪</span>
           <div style={s.brandTextBlock}>
             <div style={s.brandTitle}>{storeName ?? 'E-Shop'}</div>
-            <div style={s.brandSub}>E-Shop 店小二助手</div>
+            <div style={s.brandSub}>{t('home.brandSub')}</div>
           </div>
         </div>
         <div style={s.brandRight}>
@@ -352,12 +363,12 @@ export default function HomePage() {
 
       {effectiveRole === 'OWNER' && (
         <div style={s.ownerEntrySection}>
-          <div style={s.sectionTitle}>老板入口</div>
+          <div style={s.sectionTitle}>{t('home.ownerEntry')}</div>
           <div style={s.ownerEntryGrid}>
-            <OwnerEntry href="/products" icon="📦" label="商品管理" />
-            <OwnerEntry href="/customers" icon="👥" label="顾客资产" />
-            <OwnerEntry href="/invite" icon="🔗" label="邀请员工" />
-            <OwnerEntry href="/dashboard" icon="📊" label="经营概览" />
+            <OwnerEntry href="/products" icon="📦" label={t('home.products')} />
+            <OwnerEntry href="/customers" icon="👥" label={t('home.customers')} />
+            <OwnerEntry href="/invite" icon="🔗" label={t('home.inviteStaff')} />
+            <OwnerEntry href="/dashboard" icon="📊" label={t('home.dashboard')} />
           </div>
         </div>
       )}
@@ -365,9 +376,9 @@ export default function HomePage() {
       {/* ── 常用入口 ── */}
       {storeCode && (
         <div style={s.shortcutSection}>
-          <div style={s.sectionTitle}>常用入口</div>
+          <div style={s.sectionTitle}>{t('home.commonEntry')}</div>
           {([
-            { key: 'cashier', label: '电脑收银台', icon: '🖥️', url: publicUrl(`/cashier?storeCode=${storeCode}`), hint: '给电脑浏览器使用，不经过 Telegram。' },
+            { key: 'cashier', label: t('home.cashier'), icon: '🖥️', url: publicUrl(`/cashier?storeCode=${storeCode}`), hint: t('home.cashierHint') },
           ] as { key: string; label: string; icon: string; url: string; hint: string }[]).map(({ key, label, icon, url, hint }) => {
             const isCopied = copiedKey === key
             return (
@@ -385,13 +396,13 @@ export default function HomePage() {
                     style={isCopied ? s.shortcutBtnOk : s.shortcutBtn}
                     onClick={() => copyLink(key, url)}
                   >
-                    {isCopied ? '✓' : '复制'}
+                    {isCopied ? '✓' : t('home.copy')}
                   </button>
                   <button
                     style={s.shortcutBtn}
                     onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
                   >
-                    打开↗
+                    {t('home.open')}
                   </button>
                 </div>
               </div>
@@ -406,7 +417,7 @@ export default function HomePage() {
         return (
           <div style={s.coSection}>
             <div style={s.coSectionHeader}>
-              <span style={s.coSectionTitle}>顾客订单</span>
+              <span style={s.coSectionTitle}>{t('home.customerOrders')}</span>
               {actionableCount > 0 && (
                 <span style={s.coBadge}>{actionableCount}</span>
               )}
@@ -414,7 +425,7 @@ export default function HomePage() {
             {ordersError ? (
               <div style={s.errorHint}>{ordersError}</div>
             ) : actionableCount === 0 ? (
-              <div style={s.coEmpty}>暂无待处理订单</div>
+              <div style={s.coEmpty}>{t('home.noPendingOrders')}</div>
             ) : (
               customerOrders.map((order) => (
                 <CustomerOrderCard
@@ -459,6 +470,8 @@ export default function HomePage() {
             tagSale={t('home.tagSale')}
             itemCountUnit={t('home.itemCountUnit')}
             checkoutBtn={t('sale.checkoutBtn')}
+            customerOrderTag={t('home.customerOrderTag')}
+            pendingPay={t('home.pendingPay')}
             onOpen={entry.source === 'CUSTOMER_ORDER' ? undefined : () => setSelectedOrderNo(entry.orderNo)}
             onCheckout={entry.paymentMethod === null
               ? () => setCheckoutOrder({ orderNo: entry.orderNo, totalAmount: entry.totalAmount })
@@ -532,9 +545,9 @@ function OwnerEntry({ href, icon, label }: { href: string; icon: string; label: 
   )
 }
 
-function OrderCard({ group, index, tagSale, itemCountUnit, checkoutBtn, onOpen, onCheckout }: {
+function OrderCard({ group, index, tagSale, itemCountUnit, checkoutBtn, customerOrderTag, pendingPay, onOpen, onCheckout }: {
   group: OrderGroup; index: number; tagSale: string; itemCountUnit: string
-  checkoutBtn: string; onOpen?: () => void; onCheckout?: () => void
+  checkoutBtn: string; customerOrderTag: string; pendingPay: string; onOpen?: () => void; onCheckout?: () => void
 }) {
   const isPending = group.paymentMethod === null
   const accent = isPending ? '#fa8c16' : ORDER_COLORS[index % ORDER_COLORS.length]
@@ -553,9 +566,9 @@ function OrderCard({ group, index, tagSale, itemCountUnit, checkoutBtn, onOpen, 
       <div style={s.recentLeft}>
         <div style={s.recentTagRow}>
           <span style={isCustomerOrder ? s.tagCustomerOrder : s.tagSale}>
-            {isCustomerOrder ? '扫码单' : tagSale}
+            {isCustomerOrder ? customerOrderTag : tagSale}
           </span>
-          {isPending && <span style={s.tagPending}>待收款</span>}
+          {isPending && <span style={s.tagPending}>{pendingPay}</span>}
         </div>
         <div style={s.recentProduct}>
           {isSingle
@@ -682,10 +695,10 @@ const CO_STATUS_COLOR: Record<string, string> = {
   CANCELLED: '#ff4d4f',
 }
 const CO_STATUS_LABEL: Record<string, string> = {
-  PENDING:   '待确认',
-  CONFIRMED: '已确认',
-  COMPLETED: '已完成',
-  CANCELLED: '已取消',
+  PENDING:   'home.statusPending',
+  CONFIRMED: 'home.statusConfirmed',
+  COMPLETED: 'home.statusCompleted',
+  CANCELLED: 'home.statusCancelled',
 }
 
 function buildOrderItemSummary(items: CustomerOrderItem[]): string {
@@ -710,13 +723,14 @@ function CustomerOrderCard({
   onCancel: () => void
   onCollect: () => void
 }) {
+  const { t, lang } = useLocale()
   const [showDetail, setShowDetail] = useState(false)
   const needsPay = order.status === 'COMPLETED' && order.paymentStatus === 'UNPAID'
   const color = needsPay ? '#fa8c16' : (CO_STATUS_COLOR[order.status] ?? '#8c8c8c')
-  const label = needsPay ? '待收款' : (CO_STATUS_LABEL[order.status] ?? order.status)
+  const label = needsPay ? t('home.pendingPay') : (CO_STATUS_LABEL[order.status] ? t(CO_STATUS_LABEL[order.status]) : order.status)
   const hasCampaignSource = !!order.campaignCode || !!order.campaignLink
   const sourceLabel = sourcePlatformLabel(order.sourcePlatform)
-  const landingLabel = order.campaignLink?.landingType === 'MARKETING_PAGE' ? '营销页' : '菜单页'
+  const landingLabel = order.campaignLink?.landingType === 'MARKETING_PAGE' ? t('home.landingMarketing') : t('home.landingMenu')
 
   return (
     <div
@@ -738,14 +752,14 @@ function CustomerOrderCard({
               <span style={s.coTgBadge}>TG</span>
             )}
             {hasCampaignSource && (
-              <span style={s.coSourceBadge}>📣 {sourceLabel || '推广'} / {landingLabel}</span>
+              <span style={s.coSourceBadge}>📣 {sourceLabel || t('home.promotion')} / {landingLabel}</span>
             )}
           </div>
           <div style={s.recentProduct}>{buildOrderItemSummary(order.items)}</div>
           {hasCampaignSource && (
             <div style={s.coSourceLine}>
-              {order.campaignLink?.creatorName && <span>博主：{order.campaignLink.creatorName}</span>}
-              {order.campaignCode && <span>短链：{order.campaignCode}</span>}
+              {order.campaignLink?.creatorName && <span>{t('home.creator')}：{order.campaignLink.creatorName}</span>}
+              {order.campaignCode && <span>{t('home.shortLink')}：{order.campaignCode}</span>}
             </div>
           )}
           <div style={s.recentMeta}>
@@ -755,26 +769,26 @@ function CustomerOrderCard({
             <div style={s.coActions} onClick={(e) => e.stopPropagation()}>
               {order.status === 'PENDING' && (
                 <>
-                  <button style={s.coConfirmBtn} onClick={onConfirm}>✓ 确认</button>
-                  <button style={s.coCancelBtn} onClick={onCancel}>✗ 取消</button>
+                  <button style={s.coConfirmBtn} onClick={onConfirm}>{t('home.confirmAction')}</button>
+                  <button style={s.coCancelBtn} onClick={onCancel}>{t('home.cancelAction')}</button>
                 </>
               )}
               {order.status === 'CONFIRMED' && (
                 <>
-                  <button style={s.coCompleteBtn} onClick={onComplete}>完成</button>
-                  <button style={s.coCancelBtn} onClick={onCancel}>取消</button>
+                  <button style={s.coCompleteBtn} onClick={onComplete}>{t('home.completeAction')}</button>
+                  <button style={s.coCancelBtn} onClick={onCancel}>{t('home.cancel')}</button>
                 </>
               )}
             </div>
           )}
-          {updating && <div style={s.coUpdating}>处理中…</div>}
+          {updating && <div style={s.coUpdating}>{t('home.processing')}</div>}
         </div>
         <div style={s.recentRight}>
           <div style={{ ...s.recentAmount, color: '#1a1a1a' }}>
             ${order.totalAmount.toFixed(2)}
           </div>
           {needsPay && !updating && (
-            <button style={s.checkoutBtn} onClick={(e) => { e.stopPropagation(); onCollect() }}>去收款</button>
+            <button style={s.checkoutBtn} onClick={(e) => { e.stopPropagation(); onCollect() }}>{t('home.collect')}</button>
           )}
           <span style={s.coExpandArrow}>{showDetail ? '▴' : '▾'}</span>
         </div>
@@ -785,14 +799,14 @@ function CustomerOrderCard({
             <span>{order.orderNo}</span>
             <span style={{ color: '#ddd' }}>·</span>
             <span>{new Date(order.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-            {order.tableNo && <span style={{ color: '#1d4ed8', fontWeight: 700 }}>· 桌号 {order.tableNo}</span>}
+            {order.tableNo && <span style={{ color: '#1d4ed8', fontWeight: 700 }}>· {t('home.tableNo')} {order.tableNo}</span>}
           </div>
           {order.items.map((item, idx) => (
             <div key={item.productId + idx} style={s.coDetailItem}>
               <div style={s.coDetailItemName}>
                 {item.name}
                 {item.spec && <span style={s.coDetailItemSpec}> · {item.spec}</span>}
-                {item.sugar && <span style={s.coDetailItemSpec}> · {sugarZh(item.sugar)}</span>}
+                {item.sugar && <span style={s.coDetailItemSpec}> · {sugarLabel(item.sugar, lang)}</span>}
               </div>
               <div style={s.coDetailItemRight}>
                 <span style={s.coDetailItemUnit}>${item.price.toFixed(2)}×{item.quantity}</span>
@@ -801,18 +815,18 @@ function CustomerOrderCard({
             </div>
           ))}
           <div style={s.coDetailFooter}>
-            <span style={s.coDetailTotalLabel}>合计</span>
+            <span style={s.coDetailTotalLabel}>{t('home.totalLabel')}</span>
             <span style={s.coDetailTotalAmt}>${order.totalAmount.toFixed(2)}</span>
           </div>
           {order.customerTelegramId && (
-            <div style={s.coDetailTg}>顾客 TG ID：{order.customerTelegramId}</div>
+            <div style={s.coDetailTg}>{t('home.customerTgId')}：{order.customerTelegramId}</div>
           )}
           {hasCampaignSource && (
             <div style={s.coDetailSource}>
-              <div>来源：{sourceLabel || '推广'} / {landingLabel}</div>
-              {order.campaignLink?.creatorName && <div>博主：{order.campaignLink.creatorName}</div>}
-              {order.campaignCode && <div>短链：{order.campaignCode}</div>}
-              {order.campaignLink?.videoTitle && <div>视频：{order.campaignLink.videoTitle}</div>}
+              <div>{t('home.source')}：{sourceLabel || t('home.promotion')} / {landingLabel}</div>
+              {order.campaignLink?.creatorName && <div>{t('home.creator')}：{order.campaignLink.creatorName}</div>}
+              {order.campaignCode && <div>{t('home.shortLink')}：{order.campaignCode}</div>}
+              {order.campaignLink?.videoTitle && <div>{t('home.video')}：{order.campaignLink.videoTitle}</div>}
             </div>
           )}
         </div>

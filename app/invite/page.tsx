@@ -6,15 +6,15 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 import zh from '@/lib/i18n/zh'
 import km from '@/lib/i18n/km'
 import { publicUrl } from '@/lib/public-url'
+import { useLocale } from '@/app/components/LangProvider'
 
 function bi(zhStr: string, kmStr: string) {
-  return (
-    <>
-      {zhStr}
-      <br />
-      <span style={{ fontSize: '0.85em', opacity: 0.72 }}>{kmStr}</span>
-    </>
-  )
+  return <LocalizedText zhStr={zhStr} kmStr={kmStr} />
+}
+
+function LocalizedText({ zhStr, kmStr }: { zhStr: string; kmStr: string }) {
+  const { lang } = useLocale()
+  return <>{lang === 'km' ? kmStr : zhStr}</>
 }
 
 type Store = { id: string; name: string; code: string }
@@ -49,6 +49,7 @@ function fmtExpiry(iso: string) {
 }
 
 export default function InvitePage() {
+  const { lang } = useLocale()
   const [stores, setStores] = useState<Store[]>([])
   const [storeId, setStoreId] = useState('')
   const [storesLoading, setStoresLoading] = useState(true)
@@ -80,17 +81,17 @@ export default function InvitePage() {
       })
       .then((list: Store[]) => {
         if (list.length === 0) {
-          setStoresError('未找到门店信息，请联系管理员')
+          setStoresError(lang === 'km' ? km.invite.storesNotFound : zh.invite.storesNotFound)
         } else {
           setStores(list)
           setStoreId(list[0].id)
           setCustomerStoreId(list[0].id)
         }
       })
-      .catch(() => setStoresError('加载门店信息失败，请刷新重试'))
+      .catch(() => setStoresError(lang === 'km' ? km.invite.storesLoadFailed : zh.invite.storesLoadFailed))
       .finally(() => setStoresLoading(false))
     loadMembers()
-  }, [loadMembers])
+  }, [loadMembers, lang])
 
   async function generate(role: 'OWNER' | 'STAFF') {
     if (!storeId) return
@@ -104,9 +105,9 @@ export default function InvitePage() {
       }, OWNER_CTX)
       const body = await r.json()
       if (r.ok) setResult(body)
-      else setGenError(body.message ?? body.error ?? '生成失败')
+      else setGenError(body.message ?? body.error ?? (lang === 'km' ? km.invite.genFailed : zh.invite.genFailed))
     } catch {
-      setGenError('网络错误，请重试')
+      setGenError(lang === 'km' ? km.common.networkError : zh.common.networkError)
     } finally {
       setLoading(false)
     }
@@ -152,15 +153,16 @@ export default function InvitePage() {
   }
 
   async function unbind(userId: string, name: string) {
-    if (!window.confirm(`确认解绑「${name}」的 Telegram 账号？`)) return
+    const confirmText = (lang === 'km' ? km.invite.unbindConfirm : zh.invite.unbindConfirm).replace('{name}', name)
+    if (!window.confirm(confirmText)) return
     setUnbinding(userId)
     try {
       const r = await apiFetch(`/api/admin/users/${userId}/unbind`, { method: 'POST' }, OWNER_CTX)
       const body = await r.json()
       if (r.ok) loadMembers()
-      else window.alert(body.message ?? body.error ?? '解绑失败')
+      else window.alert(body.message ?? body.error ?? (lang === 'km' ? km.invite.unbindFailed : zh.invite.unbindFailed))
     } catch {
-      window.alert('网络错误')
+      window.alert(lang === 'km' ? km.common.networkError : zh.common.networkError)
     } finally {
       setUnbinding(null)
     }
@@ -182,7 +184,7 @@ export default function InvitePage() {
           <div style={s.card}>
             {stores.length > 1 && (
               <div style={s.field}>
-                <label style={s.fieldLabel}>门店</label>
+                <label style={s.fieldLabel}>{bi(zh.invite.infoStore, km.invite.infoStore)}</label>
                 <select style={s.select} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
                   {stores.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
                 </select>
@@ -220,13 +222,13 @@ export default function InvitePage() {
         ) : (
           <div style={s.resultWrap}>
             <button type="button" style={s.backBtn} onClick={reset}>
-              ← 返回邀请码
+              {bi(zh.invite.backToInvite, km.invite.backToInvite)}
             </button>
 
             <div style={s.qrCard}>
               {result.tgLink
                 ? <QRCode value={result.tgLink} size={200} style={{ display: 'block' }} />
-                : <div style={s.noLink}>未配置 Telegram Bot，无法生成链接</div>
+                : <div style={s.noLink}>{bi(zh.invite.noTelegramBot, km.invite.noTelegramBot)}</div>
               }
             </div>
 
@@ -263,17 +265,17 @@ export default function InvitePage() {
           setCopied={setCustomerCopied}
         />
 
-        {/* ── 桌号二维码 ── */}
-        <div style={s.sectionLabel}>桌号二维码</div>
+        {/* ── Table QR codes ── */}
+        <div style={s.sectionLabel}>{bi(zh.invite.tableQrTitle, km.invite.tableQrTitle)}</div>
         <div style={{ ...s.customerCard, gap: 10 }}>
           <div style={s.customerDesc}>
-            为每张餐桌生成专属二维码，顾客扫码后自动带桌号下单。可复制每个桌号的点单链接写入 NFC 桌牌。
+            {bi(zh.invite.tableQrDesc, km.invite.tableQrDesc)}
           </div>
           <button
             style={{ height: 44, background: '#f0fdf4', color: '#15803d', border: '1.5px solid #86efac', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
             onClick={() => { window.location.href = '/table-qrcodes' }}
           >
-            🪑 生成/管理桌号二维码
+            {bi(zh.invite.tableQrManage, km.invite.tableQrManage)}
           </button>
         </div>
 
@@ -435,7 +437,7 @@ function CustomerCodeCard({
                 style={{ height: 48, flex: '0 0 auto', padding: '0 16px', background: '#f0f6ff', color: '#1d4ed8', border: '1.5px solid #93c5fd', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
                 onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
               >
-                打开↗
+                {bi(zh.invite.openLink, km.invite.openLink)}
               </button>
             </div>
           </>

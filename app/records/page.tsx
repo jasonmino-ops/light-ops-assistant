@@ -327,6 +327,16 @@ export default function RecordsPage() {
                 paid: t('records.payPaid'),
                 cancelled: t('records.payCancelled'),
               }}
+              sourceLabels={{
+                customerOrderTag: t('records.customerOrderTag'),
+                customerOrder: t('records.customerOrderSource'),
+                cashier: t('records.cashierSource'),
+                mpos: t('records.mposSource'),
+                delivery: t('records.deliveryTag'),
+                khqrFallback: t('records.khqrFallback'),
+                map: t('records.deliveryMap'),
+                itemUnit: t('records.itemUnit'),
+              }}
               onOpen={() => setSelectedOrderNo(entry.orderNo)}
               onCheckout={entry.paymentMethod === null
                 ? () => setCheckoutOrder({ orderNo: entry.orderNo, totalAmount: entry.totalAmount })
@@ -338,6 +348,7 @@ export default function RecordsPage() {
               item={entry.item}
               tagRefund={t('records.tagRefund')}
               refundReasonLabel={t('records.refundReason')}
+              itemUnit={t('records.itemUnit')}
             />
           )
         )}
@@ -372,13 +383,23 @@ export default function RecordsPage() {
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, onOpen, onCheckout }: {
+function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, sourceLabels, onOpen, onCheckout }: {
   group: OrderGroup
   index: number
   tagSale: string
   kindItems: string
   checkoutBtn: string
   payLabels: { cash: string; khqr: string; pending: string; paid: string; cancelled: string }
+  sourceLabels: {
+    customerOrderTag: string
+    customerOrder: string
+    cashier: string
+    mpos: string
+    delivery: string
+    khqrFallback: string
+    map: string
+    itemUnit: string
+  }
   onOpen?: () => void
   onCheckout?: () => void
 }) {
@@ -409,15 +430,15 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, o
     >
       <div style={s.cardHeader}>
         <span style={isCustomerOrder ? s.tagCustomerOrder : s.tagSale}>
-          {isCustomerOrder ? '扫码单' : tagSale}
+          {isCustomerOrder ? sourceLabels.customerOrderTag : tagSale}
         </span>
         <span style={isCustomerOrder ? s.sourceBadgeH5 : isCashier ? s.sourceBadgeCashier : s.sourceBadgeMpos}>
-          {isCustomerOrder ? '顾客订单' : isCashier ? '电脑收银台' : 'mPOS'}
+          {isCustomerOrder ? sourceLabels.customerOrder : isCashier ? sourceLabels.cashier : sourceLabels.mpos}
         </span>
         {group.isDelivery && (
-          <span style={s.tagDelivery}>🚚 送货/上门</span>
+          <span style={s.tagDelivery}>{sourceLabels.delivery}</span>
         )}
-        {isKhqrFallback && <span style={s.tagFallback}>KHQR 兜底</span>}
+        {isKhqrFallback && <span style={s.tagFallback}>{sourceLabels.khqrFallback}</span>}
         <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>
         <span style={s.cardRecordNo}>{group.orderNo}</span>
         <span style={{ ...s.payBadge, ...(isPending ? s.payBadgePending : {}) }}>
@@ -430,7 +451,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, o
           {group.customerPhone   && <span style={s.deliveryPhone}>📞 {group.customerPhone}</span>}
           {group.deliveryAddress && <span style={s.deliveryAddr}>📍 {group.deliveryAddress.length > 40 ? group.deliveryAddress.slice(0, 40) + '…' : group.deliveryAddress}</span>}
           {group.mapUrl && (
-            <a href={group.mapUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={s.deliveryMap}>地图 ›</a>
+            <a href={group.mapUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={s.deliveryMap}>{sourceLabels.map}</a>
           )}
         </div>
       )}
@@ -447,7 +468,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, o
       <div style={s.cardFooter}>
         {isSingle ? (
           <span style={s.cardQtyPrice}>
-            {Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}
+            {Math.abs(item.quantity)}{sourceLabels.itemUnit} × ${item.unitPrice.toFixed(2)}
           </span>
         ) : (
           <span style={s.cardQtyPrice}>{group.items.length} {kindItems}</span>
@@ -486,7 +507,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, o
 
 // ─── RefundCard ───────────────────────────────────────────────────────────────
 
-function RefundCard({ item, tagRefund, refundReasonLabel }: { item: RecordItem; tagRefund: string; refundReasonLabel: string }) {
+function RefundCard({ item, tagRefund, refundReasonLabel, itemUnit }: { item: RecordItem; tagRefund: string; refundReasonLabel: string; itemUnit: string }) {
   return (
     <div style={{ ...s.recordCard, ...s.recordCardRefund }}>
       <div style={s.cardHeader}>
@@ -500,7 +521,7 @@ function RefundCard({ item, tagRefund, refundReasonLabel }: { item: RecordItem; 
       </div>
       <div style={s.cardFooter}>
         <span style={s.cardQtyPrice}>
-          {Math.abs(item.quantity)}件 × ${item.unitPrice.toFixed(2)}
+          {Math.abs(item.quantity)}{itemUnit} × ${item.unitPrice.toFixed(2)}
         </span>
         <span style={{ ...s.cardAmount, color: 'var(--red)' }}>
           {fmtAmount(item.lineAmount)}
