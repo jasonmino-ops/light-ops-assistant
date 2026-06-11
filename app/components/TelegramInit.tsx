@@ -26,6 +26,7 @@ import km from '@/lib/i18n/km'
  */
 
 const SESSION_KEY = 'tg-authed-uid'
+const OPS_SESSION_KEY = 'tg-ops-authed-uid'
 const BOOT_COPY = {
   zh: '正在进入店小二',
   en: 'Entering your store workspace',
@@ -134,6 +135,14 @@ export default function TelegramInit({
       return
     }
 
+    // Ops Mini App uses its own bot/auth endpoint. Once the same Telegram user
+    // has completed ops auth in this WebView, let the ops pages run their own
+    // /api/ops/check guard instead of looping through the merchant boot shell.
+    if (isOpsRoute && tgUserId && sessionStorage.getItem(OPS_SESSION_KEY) === tgUserId) {
+      setAuthChecking(false)
+      return
+    }
+
     // Even when this WebView saw the same Telegram user before, verify the
     // server cookie before revealing merchant UI. This prevents expired-cookie
     // or first-load pages from flashing /home before /relogin or re-auth.
@@ -159,6 +168,7 @@ export default function TelegramInit({
     function authenticateTelegram() {
       const isOpsPath = window.location.pathname.startsWith('/ops')
       const authUrl = isOpsPath ? '/api/auth/telegram-ops' : '/api/auth/telegram'
+      const sessionKey = isOpsPath ? OPS_SESSION_KEY : SESSION_KEY
       setAuthChecking(true)
 
       fetch(authUrl, {
@@ -169,7 +179,7 @@ export default function TelegramInit({
         .then((r) => r.json())
         .then((body) => {
           if (body.ok) {
-            sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
+            sessionStorage.setItem(sessionKey, tgUserId ?? '1')
             if (window.location.pathname.startsWith('/ops')) {
               window.location.href = '/ops'
             } else {
