@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import CustomerBottomNav from '@/app/components/CustomerBottomNav'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 // ─── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -89,6 +90,17 @@ const T: Record<Lang, {
   discountLabel: string
   recommendBadge: string
   storeLabel: string
+  deliveryInfoRequired: string
+  couponAlreadyUsed: string
+  couponInvalid: string
+  couponExpiredMsg: string
+  couponMinNotMet: string
+  couponNeedTg: string
+  couponAvailableCount: (n: number) => string
+  couponAmountOff: (minSpend: number, amountOff: number) => string
+  couponPercentOff: (percentOff: number, minSpend: number) => string
+  couponUnavailableMin: (minSpend: number) => string
+  couponUnavailable: string
 }> = {
   zh: {
     open:             '营业中',
@@ -154,6 +166,17 @@ const T: Record<Lang, {
     discountLabel:    '已优惠',
     recommendBadge:   '推荐',
     storeLabel:       '门店',
+    deliveryInfoRequired: '请填写联系电话和送货/上门地址',
+    couponAlreadyUsed: '该优惠券已被使用，请重新选择',
+    couponInvalid: '优惠券不可用',
+    couponExpiredMsg: '优惠券已过期',
+    couponMinNotMet: '未满最低消费',
+    couponNeedTg: '使用优惠券需绑定 Telegram 身份',
+    couponAvailableCount: (n) => `${n} 张可用 ›`,
+    couponAmountOff: (minSpend, amountOff) => `满 $${minSpend.toFixed(2)} 减 $${amountOff.toFixed(2)}`,
+    couponPercentOff: (percentOff, minSpend) => `${percentOff}% off · 满 $${minSpend.toFixed(2)}`,
+    couponUnavailableMin: (minSpend) => `未满 $${minSpend.toFixed(2)} 不可用`,
+    couponUnavailable: '不可用',
   },
   en: {
     open:             'Open',
@@ -219,6 +242,17 @@ const T: Record<Lang, {
     discountLabel:    'Discount',
     recommendBadge:   'HOT',
     storeLabel:       'Store',
+    deliveryInfoRequired: 'Please enter phone and delivery address',
+    couponAlreadyUsed: 'This coupon has already been used. Please choose another.',
+    couponInvalid: 'Coupon unavailable',
+    couponExpiredMsg: 'Coupon expired',
+    couponMinNotMet: 'Minimum spend not met',
+    couponNeedTg: 'Telegram identity is required to use coupons',
+    couponAvailableCount: (n) => `${n} available ›`,
+    couponAmountOff: (minSpend, amountOff) => `Spend $${minSpend.toFixed(2)}, save $${amountOff.toFixed(2)}`,
+    couponPercentOff: (percentOff, minSpend) => `${percentOff}% off · min $${minSpend.toFixed(2)}`,
+    couponUnavailableMin: (minSpend) => `Min $${minSpend.toFixed(2)} not met`,
+    couponUnavailable: 'Unavailable',
   },
   km: {
     open:             'កំពុងបើក',
@@ -284,6 +318,17 @@ const T: Record<Lang, {
     discountLabel:    'បញ្ចុះតម្លៃ',
     recommendBadge:   'ពេញនិយម',
     storeLabel:       'ហាង',
+    deliveryInfoRequired: 'សូមបំពេញលេខទូរស័ព្ទ និងអាសយដ្ឋានដឹកជញ្ជូន',
+    couponAlreadyUsed: 'គូប៉ុងនេះត្រូវបានប្រើរួច សូមជ្រើសមួយផ្សេង',
+    couponInvalid: 'គូប៉ុងមិនអាចប្រើបាន',
+    couponExpiredMsg: 'គូប៉ុងផុតកំណត់',
+    couponMinNotMet: 'មិនទាន់គ្រប់ចំណាយអប្បបរមា',
+    couponNeedTg: 'ត្រូវមាន Telegram ដើម្បីប្រើគូប៉ុង',
+    couponAvailableCount: (n) => `មាន ${n} គូប៉ុង ›`,
+    couponAmountOff: (minSpend, amountOff) => `ចំណាយ $${minSpend.toFixed(2)} បញ្ចុះ $${amountOff.toFixed(2)}`,
+    couponPercentOff: (percentOff, minSpend) => `បញ្ចុះ ${percentOff}% · អប្បបរមា $${minSpend.toFixed(2)}`,
+    couponUnavailableMin: (minSpend) => `ត្រូវចំណាយយ៉ាងហោច $${minSpend.toFixed(2)}`,
+    couponUnavailable: 'មិនអាចប្រើបាន',
   },
 }
 
@@ -448,6 +493,7 @@ type CouponBrief = {
 
 export default function MenuPage() {
   const [lang,        setLang]        = useState<Lang>('zh')
+  useDocumentLang(lang)
   const [cart,        setCart]        = useState<CartItem[]>([])
   const [storeData,   setStoreData]   = useState<ApiStore | null>(null)
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([])
@@ -537,7 +583,7 @@ export default function MenuPage() {
       if (selectedCouponId && !b.selectedCoupon) {
         const u = (b.unavailable ?? []).find((c: CouponBrief) => c.id === selectedCouponId)
         setSelectedCouponId(null)
-        setCouponMsg(u?.reason === 'MIN_NOT_MET' ? `需满足最低消费方可使用` : `该优惠券不可用`)
+        setCouponMsg(u?.reason === 'MIN_NOT_MET' ? ui.couponMinNotMet : ui.couponInvalid)
       } else {
         setCouponMsg('')
       }
@@ -916,13 +962,13 @@ export default function MenuPage() {
       const body = await res.json()
       if (!res.ok) {
         const msg =
-          body.error === 'DELIVERY_INFO_REQUIRED'? (body.message ?? '请填写联系电话和送货/上门地址') :
+          body.error === 'DELIVERY_INFO_REQUIRED'? (body.message ?? ui.deliveryInfoRequired) :
           body.error === 'PRODUCT_UNAVAILABLE'   ? ui.errSubmitProduct :
-          body.error === 'COUPON_ALREADY_USED'   ? '该优惠券已被使用，请重新选择' :
-          body.error === 'COUPON_INVALID'        ? '优惠券不可用' :
-          body.error === 'COUPON_EXPIRED'        ? '优惠券已过期' :
-          body.error === 'COUPON_MIN_NOT_MET'    ? (body.message ?? '未满最低消费') :
-          body.error === 'COUPON_NEED_TG'        ? '使用优惠券需绑定 Telegram 身份' :
+          body.error === 'COUPON_ALREADY_USED'   ? ui.couponAlreadyUsed :
+          body.error === 'COUPON_INVALID'        ? ui.couponInvalid :
+          body.error === 'COUPON_EXPIRED'        ? ui.couponExpiredMsg :
+          body.error === 'COUPON_MIN_NOT_MET'    ? (body.message ?? ui.couponMinNotMet) :
+          body.error === 'COUPON_NEED_TG'        ? ui.couponNeedTg :
           ui.errSubmitFail
         setSubmitError(msg)
         if (typeof body.error === 'string' && body.error.startsWith('COUPON_')) setSelectedCouponId(null)
@@ -1486,7 +1532,7 @@ export default function MenuPage() {
                   {couponState?.selectedCoupon
                     ? couponState.selectedCoupon.name
                     : couponState && couponState.available.length > 0
-                      ? `${couponState.available.length} 张可用 ›`
+                      ? ui.couponAvailableCount(couponState.available.length)
                       : ui.noCoupon}
                 </span>
               </div>
@@ -1549,7 +1595,7 @@ export default function MenuPage() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 13 }}>{c.name}</div>
                     <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
-                      {c.type === 'AMOUNT_OFF' ? `满 $${c.minSpend.toFixed(2)} 减 $${(c.amountOff ?? 0).toFixed(2)}` : `${c.percentOff ?? 0}% off · 满 $${c.minSpend.toFixed(2)}`}
+                      {c.type === 'AMOUNT_OFF' ? ui.couponAmountOff(c.minSpend, c.amountOff ?? 0) : ui.couponPercentOff(c.percentOff ?? 0, c.minSpend)}
                     </div>
                   </div>
                 </label>
@@ -1559,7 +1605,7 @@ export default function MenuPage() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, fontSize: 13 }}>{c.name}</div>
                     <div style={{ fontSize: 11, color: '#fa8c16', marginTop: 2 }}>
-                      {c.reason === 'MIN_NOT_MET' ? `未满 $${c.minSpend.toFixed(2)} 不可用` : '不可用'}
+                      {c.reason === 'MIN_NOT_MET' ? ui.couponUnavailableMin(c.minSpend) : ui.couponUnavailable}
                     </div>
                   </div>
                 </div>

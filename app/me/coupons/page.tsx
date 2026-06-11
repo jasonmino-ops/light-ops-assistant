@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import CustomerBottomNav from '@/app/components/CustomerBottomNav'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 const PRIMARY = '#ff6b00'
 
@@ -77,6 +78,7 @@ function fmtDate(iso: string): string {
 
 export default function MyCouponsPage() {
   const [lang, setLang]       = useState<Lang>('km')
+  useDocumentLang(lang)
   const [storeCode, setCode]  = useState('')
   const [tgId, setTgId]       = useState('')
   const [tab, setTab]         = useState<Tab>('available')

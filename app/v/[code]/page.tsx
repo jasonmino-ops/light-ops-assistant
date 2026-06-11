@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, Suspense, CSSProperties } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 const BOT    = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
 const LS_KEY = 'eLife_lang'
@@ -104,6 +105,7 @@ function LandingInner() {
   const [notFound, setNotFound] = useState(false)
   const [paused, setPaused] = useState(false)
   const [lang, setLang] = useState<Lang>('zh')
+  useDocumentLang(lang)
   const autoRedirectedRef = useRef(false)
 
   // language init (client-only)

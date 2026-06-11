@@ -29,7 +29,7 @@ export default function ELifeBottomNav({ lang }: { lang: Lang }) {
   const labels = LABELS[lang] ?? LABELS.zh
 
   return (
-    <nav style={s.nav} aria-label="E-Life customer bottom navigation">
+    <nav style={s.nav} aria-label="E-Life customer bottom navigation" data-customer-bottom-nav="true">
       <div style={s.navInner}>
         {TABS.map((tab) => {
           const active = tab.href === '/e-life'
@@ -38,8 +38,8 @@ export default function ELifeBottomNav({ lang }: { lang: Lang }) {
           const color = active ? BRAND : '#6b7280'
           return (
             <Link key={tab.id} href={tab.href} style={s.navTab}>
-              <tab.Icon color={color} strokeWidth={active ? 2 : 1.5} />
-              <span style={{ fontSize: 11, color, fontWeight: active ? 700 : 500 }}>{labels[tab.id]}</span>
+              <span data-nav-icon="true"><tab.Icon color={color} strokeWidth={active ? 2 : 1.5} /></span>
+              <span style={{ fontSize: 11, color, fontWeight: active ? 700 : 500 }} data-nav-label="true">{labels[tab.id]}</span>
             </Link>
           )
         })}

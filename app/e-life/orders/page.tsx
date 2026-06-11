@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ELifeBottomNav from '../components/ELifeBottomNav'
 import ELifeSupportModal from '../components/ELifeSupportModal'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 const BRAND = '#07c160'
 
@@ -123,6 +124,7 @@ function fmtDate(iso: string): string {
 export default function ELifeOrdersPage() {
   const router = useRouter()
   const [lang,    setLang]    = useState<Lang>('zh')
+  useDocumentLang(lang)
   const [orders,  setOrders]  = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [noTg,    setNoTg]    = useState(false)

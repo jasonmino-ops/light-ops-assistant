@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import CustomerBottomNav from '@/app/components/CustomerBottomNav'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 // ─── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,7 @@ const T: Record<Lang, {
 
 export default function MePage() {
   const [lang,         setLang]          = useState<Lang>('km')
+  useDocumentLang(lang)
   const [storeCode,    setStoreCode]     = useState('')
   const [storeName,    setStoreName]     = useState('店小二')
   const [customerName, setCustomerName]  = useState('')

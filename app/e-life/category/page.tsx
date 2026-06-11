@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import ELifeBottomNav from '../components/ELifeBottomNav'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 const BRAND = '#07c160'
 
@@ -77,6 +78,7 @@ function CategoryPageInner() {
   const type = params.get('type') ?? 'food'
 
   const [lang, setLang]     = useState<Lang>('zh')
+  useDocumentLang(lang)
   const [stores, setStores] = useState<StoreItem[] | null>(null)
   const [frequentCodes, setFrequentCodes] = useState<string[]>([])
 

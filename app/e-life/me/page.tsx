@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ELifeBottomNav from '../components/ELifeBottomNav'
 import ELifeSupportModal from '../components/ELifeSupportModal'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 const BRAND = '#07c160'
 
@@ -82,6 +83,7 @@ const T = {
 export default function ELifeMePage() {
   const router = useRouter()
   const [lang,         setLang]         = useState<Lang>('zh')
+  useDocumentLang(lang)
   const [showLangPanel, setShowLangPanel] = useState(false)
   const [noTg,         setNoTg]         = useState(false)
   const [tgName,       setTgName]       = useState('')

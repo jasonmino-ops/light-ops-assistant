@@ -30,11 +30,12 @@ export default function CustomerBottomNav({
   ]
 
   return (
-    <nav style={s.nav} aria-label="customer bottom nav">
+    <nav style={s.nav} aria-label="customer bottom nav" data-customer-bottom-nav="true">
       {tabs.map((t) => {
         const inner = (
           <>
             <span
+              data-nav-icon="true"
               style={{
                 ...s.icon,
                 opacity: t.active ? 1 : 0.55,
@@ -43,7 +44,7 @@ export default function CustomerBottomNav({
             >
               {t.icon}
             </span>
-            <span style={{ ...s.label, color: t.active ? PRIMARY : '#8a8a8a' }}>
+            <span style={{ ...s.label, color: t.active ? PRIMARY : '#8a8a8a' }} data-nav-label="true">
               {LABELS[t.key][lang]}
             </span>
           </>

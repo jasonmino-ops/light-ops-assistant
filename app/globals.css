@@ -84,14 +84,20 @@ html[data-lang="km"] [data-merchant-bottom-nav="true"] {
   height: 64px !important;
 }
 
-html[data-lang="km"] [data-merchant-bottom-nav="true"] [data-nav-label="true"] {
+html[data-lang="km"] [data-customer-bottom-nav="true"] {
+  min-height: 62px !important;
+}
+
+html[data-lang="km"] [data-merchant-bottom-nav="true"] [data-nav-label="true"],
+html[data-lang="km"] [data-customer-bottom-nav="true"] [data-nav-label="true"] {
   font-size: 12px !important;
   font-weight: 700 !important;
   line-height: 1.25 !important;
   letter-spacing: 0 !important;
 }
 
-html[data-lang="km"] [data-merchant-bottom-nav="true"] [data-nav-icon="true"] {
+html[data-lang="km"] [data-merchant-bottom-nav="true"] [data-nav-icon="true"],
+html[data-lang="km"] [data-customer-bottom-nav="true"] [data-nav-icon="true"] {
   line-height: 1 !important;
 }
 

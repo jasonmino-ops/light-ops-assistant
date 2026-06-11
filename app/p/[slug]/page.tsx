@@ -2,6 +2,7 @@
 
 import { CSSProperties, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 const CUSTOMER_BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
 const TIKTOK_PIXEL_ID = process.env.NODE_ENV === 'production'
@@ -786,6 +787,7 @@ function templateCopy(template: TemplateType, lang: Lang, text: typeof I18N[Lang
 export default function MarketingProductPage() {
   const { slug } = useParams<{ slug: string }>()
   const [lang, setLang] = useState<Lang>('km')
+  useDocumentLang(lang)
   const [data, setData] = useState<PageData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)

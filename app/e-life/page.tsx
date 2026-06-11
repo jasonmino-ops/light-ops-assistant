@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ELifeBottomNav from './components/ELifeBottomNav'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 const BRAND = '#07c160'
 
@@ -204,6 +205,7 @@ function saveRecentStores(stores: RecentStore[]) {
 export default function ELifeHomePage() {
   const router = useRouter()
   const [lang, setLang]                 = useState<Lang>('zh')
+  useDocumentLang(lang)
   const [showLangPanel, setShowLangPanel] = useState(false)
   const [showScanPanel, setShowScanPanel] = useState(false)
   const [showManualInput, setShowManualInput] = useState(false)

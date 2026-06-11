@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ELifeBottomNav from '../components/ELifeBottomNav'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 const BRAND = '#07c160'
 const GOLD  = '#f59e0b'
@@ -66,6 +67,7 @@ const PERK_COLORS = [
 export default function MembershipPage() {
   const router  = useRouter()
   const [lang, setLang]   = useState<Lang>('zh')
+  useDocumentLang(lang)
 
   useEffect(() => {
     try {

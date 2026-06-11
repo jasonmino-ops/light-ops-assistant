@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useDocumentLang } from '@/app/components/useDocumentLang'
 
 // ─── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -184,6 +185,7 @@ function buildItemSummary(items: OrderItem[], lang: Lang): string {
 
 export default function MyOrdersPage() {
   const [lang,      setLang]      = useState<Lang>('km')
+  useDocumentLang(lang)
   const [orders,    setOrders]    = useState<MyOrder[]>([])
   const [storeName, setStoreName] = useState('')
   const [loading,   setLoading]   = useState(true)
