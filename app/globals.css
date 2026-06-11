@@ -40,6 +40,74 @@ body {
 }
 
 /*
+ * Khmer readability pass.
+ * Many merchant screens use compact inline styles for mobile density. When the
+ * active UI language is Khmer, give glyphs a Khmer-friendly font stack, a little
+ * more weight, and extra vertical room without changing Chinese layouts.
+ */
+html[data-lang="km"] body,
+html[data-lang="km"] button,
+html[data-lang="km"] input,
+html[data-lang="km"] select,
+html[data-lang="km"] textarea {
+  font-family: "Noto Sans Khmer", system-ui, sans-serif !important;
+  line-height: 1.55;
+}
+
+html[data-lang="km"] body {
+  font-weight: 500;
+  text-rendering: optimizeLegibility;
+}
+
+html[data-lang="km"] button,
+html[data-lang="km"] a,
+html[data-lang="km"] label,
+html[data-lang="km"] summary {
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+}
+
+html[data-lang="km"] button,
+html[data-lang="km"] input,
+html[data-lang="km"] select,
+html[data-lang="km"] textarea {
+  min-height: 34px;
+}
+
+html[data-lang="km"] input,
+html[data-lang="km"] select,
+html[data-lang="km"] textarea {
+  font-size: 16px !important;
+}
+
+html[data-lang="km"] [data-merchant-bottom-nav="true"] {
+  height: 64px !important;
+}
+
+html[data-lang="km"] [data-merchant-bottom-nav="true"] [data-nav-label="true"] {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+}
+
+html[data-lang="km"] [data-merchant-bottom-nav="true"] [data-nav-icon="true"] {
+  line-height: 1 !important;
+}
+
+html[data-lang="km"] [style*="font-size: 9px"],
+html[data-lang="km"] [style*="font-size: 10px"],
+html[data-lang="km"] [style*="font-size: 11px"] {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+html[data-lang="km"] [style*="font-size: 12px"] {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+/*
  * iOS Safari / Telegram WebView auto-zoom prevention.
  * Zoom triggers when a focused input has font-size < 16px.
  * !important is required to override per-component inline styles.

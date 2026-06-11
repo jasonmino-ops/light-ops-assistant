@@ -47,13 +47,13 @@ export default function BottomNav() {
   const tabs = effectiveRole === 'OWNER' ? OWNER_TABS : STAFF_TABS
 
   return (
-    <nav style={s.nav}>
+    <nav style={s.nav} data-merchant-bottom-nav="true">
       {tabs.map((tab) => {
         const active = pathname === tab.href
         return (
           <Link key={tab.href} href={tab.href} style={s.link}>
-            <span style={{ ...s.icon, opacity: active ? 1 : 0.45 }}>{tab.icon}</span>
-            <span style={{ ...s.label, ...(active ? s.labelActive : {}) }}>
+            <span style={{ ...s.icon, opacity: active ? 1 : 0.45 }} data-nav-icon="true">{tab.icon}</span>
+            <span style={{ ...s.label, ...(active ? s.labelActive : {}) }} data-nav-label="true">
               {t(tab.labelKey)}
             </span>
             {active && <span style={s.activeLine} />}

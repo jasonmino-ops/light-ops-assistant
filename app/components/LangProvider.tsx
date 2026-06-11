@@ -38,6 +38,12 @@ export default function LangProvider({ children }: { children: ReactNode }) {
     if (stored === 'km' || stored === 'zh') setLangState(stored)
   }, [])
 
+  useEffect(() => {
+    document.documentElement.lang = lang
+    document.documentElement.dataset.lang = lang
+    document.body.dataset.lang = lang
+  }, [lang])
+
   function setLang(l: Lang) {
     setLangState(l)
     localStorage.setItem('lang', l)
