@@ -54,16 +54,30 @@ function isPublicPath(path: string) {
     PUBLIC_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }
 
+function isMerchantEntryPath(path: string) {
+  return !isPublicPath(path) && !path.startsWith('/ops')
+}
+
+function clearEntryPending() {
+  document.documentElement.removeAttribute('data-entry-pending')
+}
+
 export default function TelegramInit() {
   const [authError, setAuthError] = useState('')
   const [tenantInactive, setTenantInactive] = useState(false)
-  const [authChecking, setAuthChecking] = useState(false)
+  const [authChecking, setAuthChecking] = useState(() => (
+    typeof window !== 'undefined' && isMerchantEntryPath(window.location.pathname)
+  ))
 
   useEffect(() => {
     // Skip auth entirely on onboarding pages — they handle their own flow.
     // This applies in BOTH Telegram and PWA modes to prevent TENANT_INACTIVE loops.
     const path = window.location.pathname
-    if (isPublicPath(path)) return
+    if (isPublicPath(path)) {
+      clearEntryPending()
+      setAuthChecking(false)
+      return
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
@@ -71,10 +85,25 @@ export default function TelegramInit() {
     if (!tg?.initData) {
       // PWA mode (opened from home screen or browser, no Telegram context).
       // OPS 路径有自己的 /ops/login 表单 + cookie，不走商户 Bot relogin。
-      if (isOpsRoute) return
+      if (isOpsRoute) {
+        clearEntryPending()
+        setAuthChecking(false)
+        return
+      }
+      setAuthChecking(true)
       fetch('/api/auth/status')
-        .then((r) => { if (r.status === 401) window.location.replace('/relogin') })
-        .catch(() => { /* network error — stay silent, don't block the page */ })
+        .then((r) => {
+          if (r.status === 401) {
+            window.location.replace('/relogin')
+            return
+          }
+          clearEntryPending()
+          setAuthChecking(false)
+        })
+        .catch(() => {
+          clearEntryPending()
+          setAuthChecking(false)
+        })
       return
     }
 
@@ -83,10 +112,6 @@ export default function TelegramInit() {
 
     const initData: string = tg.initData
     const tgUserId = extractTgUserId(initData)
-
-    // If this Telegram user already authed in this WebView session, skip everything
-    // (including bind redirects — prevents redirect loop after successful bind)
-    if (tgUserId && sessionStorage.getItem(SESSION_KEY) === tgUserId) return
 
     // ── startapp bind token: e.g. https://t.me/bot?startapp=bind_<token> ──
     //
@@ -113,12 +138,16 @@ export default function TelegramInit() {
       return
     }
 
-    if (path === '/home') {
+    // Even when this WebView saw the same Telegram user before, verify the
+    // server cookie before revealing merchant UI. This prevents expired-cookie
+    // or first-load pages from flashing /home before /relogin or re-auth.
+    if (isMerchantEntryPath(path) && tgUserId && sessionStorage.getItem(SESSION_KEY) === tgUserId) {
       setAuthChecking(true)
       fetch('/api/auth/status', { cache: 'no-store' })
         .then((r) => {
           if (r.ok) {
             sessionStorage.setItem(SESSION_KEY, tgUserId ?? '1')
+            clearEntryPending()
             setAuthChecking(false)
             return
           }
@@ -184,14 +213,17 @@ export default function TelegramInit() {
             // Clear session + server cookie so next open doesn't loop back here, then → /start
             sessionStorage.removeItem(SESSION_KEY)
             fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+            clearEntryPending()
             setTenantInactive(true)
             setTimeout(() => window.location.replace('/start'), 3000)
           } else {
+            clearEntryPending()
             setAuthChecking(false)
             setAuthError(body.message ?? '登录失败，请联系管理员')
           }
         })
         .catch(() => {
+          clearEntryPending()
           setAuthChecking(false)
           setAuthError('网络错误，请重试')
         })
