@@ -33,6 +33,7 @@ async function setStoreProvider(params: {
   storeId: string
   provider: string
   enabled: boolean
+  apiBaseUrl?: string
 }) {
   await prisma.aiSupportProviderConfig.upsert({
     where: {
@@ -47,12 +48,13 @@ async function setStoreProvider(params: {
       storeId: params.storeId,
       provider: params.provider,
       enabled: params.enabled,
-      apiBaseUrl: `mock://${params.provider.toLowerCase()}`,
+      apiBaseUrl: params.apiBaseUrl ?? `mock://${params.provider.toLowerCase()}`,
       allowedToolsJson: '[]',
       timeoutMs: 3000,
     },
     update: {
       enabled: params.enabled,
+      ...(params.apiBaseUrl ? { apiBaseUrl: params.apiBaseUrl } : {}),
     },
   })
 }
@@ -178,6 +180,29 @@ async function main() {
     await setStoreProvider({
       tenantId: store.tenantId,
       storeId: store.id,
+      provider: 'LINGSHUO',
+      enabled: true,
+      apiBaseUrl: 'mock://lingshuo',
+    })
+    cases.push(expect(
+      'LINGSHUO mock success returns handled=true',
+      await tryAiSupportReply(request({
+        tenantId: store.tenantId,
+        storeId: store.id,
+        storeName: store.name,
+        provider: 'LINGSHUO',
+        message: 'router smoke lingshuo mock_success',
+      })),
+      (result) => result.handled === true
+        && result.status === 'SUCCESS'
+        && result.provider === 'LINGSHUO'
+        && result.intent === 'mock_reply'
+        && result.confidence === 0.9,
+    ))
+
+    await setStoreProvider({
+      tenantId: store.tenantId,
+      storeId: store.id,
       provider: 'MINO_SUPPORT_SKILL',
       enabled: false,
     })
@@ -250,6 +275,7 @@ async function main() {
     }
 
     await Promise.all([
+      setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'LINGSHUO', enabled: false }),
       setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'MOCK', enabled: false }),
       setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'MINO_SUPPORT_SKILL', enabled: false }),
       setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'UNKNOWN', enabled: false }),
