@@ -11,6 +11,36 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 type Store = { id: string; name: string; code: string; eLifeFeatured: boolean; eLifeFeaturedSort: number; businessType: string }
 type Member = { id: string; username: string; displayName: string; role: string; bound: boolean; telegramId: string | null; staffNumber: number | null; storeName: string }
 type TodayStats = { saleCount: number; saleAmount: number; refundCount: number; lastActiveAt: string | null }
+type AiSupportConfigRow = {
+  id: string
+  provider: string
+  enabled: boolean
+  scope: 'TENANT' | 'STORE' | string
+  tenantId: string
+  storeId: string | null
+  storeName: string | null
+  storeCode: string | null
+  apiBaseUrlMasked: string | null
+  timeoutMs: number
+  createdAt: string
+  updatedAt: string
+}
+type AiSupportSummary = {
+  totalConfigs: number
+  enabledCount: number
+  hasMultipleEnabled: boolean
+  allDisabled: boolean
+  blockedByTier: boolean
+  canBeSelected: boolean
+  safeStateLabel: string
+  notes: string[]
+}
+type AiSupportOpsView = {
+  tier: string
+  canUseAiSupport: boolean
+  configs: AiSupportConfigRow[]
+  selectionSummary: AiSupportSummary
+}
 
 type TenantDetail = {
   id: string
@@ -21,6 +51,7 @@ type TenantDetail = {
   stores: Store[]
   members: Member[]
   today: TodayStats
+  aiSupport: AiSupportOpsView
 }
 
 const TIER_META: Record<string, { label: string; color: string; bg: string; border: string; desc: string; scan: string }> = {
@@ -105,6 +136,11 @@ export default function TenantDetailPage() {
         {/* Tier */}
         <Section title="产品档次">
           <TierPanel tenantId={detail.id} currentTier={detail.tier} onChanged={load} />
+        </Section>
+
+        {/* AI Support provider config — read-only ops view */}
+        <Section title="AI Support 配置">
+          <AiSupportPanel aiSupport={detail.aiSupport} />
         </Section>
 
         {/* Today stats */}
@@ -377,6 +413,110 @@ function TierPanel({ tenantId, currentTier, onChanged }: { tenantId: string; cur
       )}
 
       {err && <div style={s.errMsg}>{err}</div>}
+    </div>
+  )
+}
+
+// ─── AiSupportPanel — Provider 配置只读摘要 ───────────────────────────────────
+
+function AiSupportPanel({ aiSupport }: { aiSupport: AiSupportOpsView }) {
+  const tierMeta = TIER_META[aiSupport.tier] ?? TIER_META.LITE
+  const summary = aiSupport.selectionSummary
+  const statusColor = summary.hasMultipleEnabled
+    ? '#ff4d4f'
+    : summary.canBeSelected
+      ? '#fa8c16'
+      : '#52c41a'
+  const statusBg = summary.hasMultipleEnabled
+    ? '#fff1f0'
+    : summary.canBeSelected
+      ? '#fff7e6'
+      : '#f6ffed'
+  const statusBorder = summary.hasMultipleEnabled
+    ? '#ffa39e'
+    : summary.canBeSelected
+      ? '#ffd591'
+      : '#b7eb8f'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={s.aiSummaryGrid}>
+        <div style={s.aiSummaryBox}>
+          <div style={s.aiSummaryLabel}>当前档次</div>
+          <div style={s.aiSummaryValue}>{tierMeta.label}</div>
+          <div style={s.aiSummaryHint}>{aiSupport.tier}</div>
+        </div>
+        <div style={s.aiSummaryBox}>
+          <div style={s.aiSummaryLabel}>AI Support L3</div>
+          <div style={{ ...s.aiSummaryValue, color: aiSupport.canUseAiSupport ? '#52c41a' : '#ff4d4f' }}>
+            {aiSupport.canUseAiSupport ? '允许' : '不允许'}
+          </div>
+          <div style={s.aiSummaryHint}>LITE 不允许；STANDARD / MULTI_STORE 允许</div>
+        </div>
+      </div>
+
+      <div style={{ ...s.aiStatusBox, color: statusColor, background: statusBg, borderColor: statusBorder }}>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>{summary.safeStateLabel}</div>
+        <div style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+          共 {summary.totalConfigs} 条配置，enabled=true {summary.enabledCount} 条。
+        </div>
+      </div>
+
+      {summary.notes.length > 0 && (
+        <div style={s.aiNotes}>
+          {summary.notes.map((note) => (
+            <div key={note} style={s.aiNoteItem}>• {note}</div>
+          ))}
+        </div>
+      )}
+
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#666', marginBottom: 8 }}>Provider 配置</div>
+        {aiSupport.configs.length === 0 ? (
+          <div style={s.aiEmpty}>暂无 AI Support Provider 配置。</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {aiSupport.configs.map((config) => (
+              <AiSupportConfigCard key={config.id} config={config} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AiSupportConfigCard({ config }: { config: AiSupportConfigRow }) {
+  const scopeLabel = config.scope === 'STORE' ? 'store 级' : 'tenant 级'
+  const storeLabel = config.scope === 'STORE'
+    ? `${config.storeName ?? '未知门店'}${config.storeCode ? ` / ${config.storeCode}` : ''}`
+    : '全部门店（tenant 级）'
+
+  return (
+    <div style={s.aiConfigCard}>
+      <div style={s.aiConfigTop}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={s.aiProviderName}>{config.provider}</span>
+          <span style={{
+            ...s.aiEnabledBadge,
+            background: config.enabled ? '#f6ffed' : '#f5f5f5',
+            color: config.enabled ? '#389e0d' : '#999',
+            borderColor: config.enabled ? '#b7eb8f' : '#e8e8e8',
+          }}>
+            {config.enabled ? 'enabled=true' : 'enabled=false'}
+          </span>
+          <span style={s.aiScopeBadge}>{scopeLabel}</span>
+        </div>
+        <div style={s.aiConfigId}>{config.id.slice(0, 8)}…</div>
+      </div>
+
+      <InfoGrid rows={[
+        ['绑定门店', storeLabel],
+        ['apiBaseUrl', config.apiBaseUrlMasked ?? '—'],
+        ['timeoutMs', String(config.timeoutMs)],
+        ['创建时间', new Date(config.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })],
+        ['更新时间', new Date(config.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })],
+      ]} />
     </div>
   )
 }
@@ -972,6 +1112,21 @@ const s: Record<string, React.CSSProperties> = {
   },
   errMsg: { fontSize: 13, color: '#ff4d4f', marginBottom: 8 },
   infoMsg: { fontSize: 13, color: '#52c41a', marginBottom: 8, padding: '8px 12px', background: '#f6ffed', borderRadius: 6, border: '1px solid #b7eb8f' },
+  aiSummaryGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  aiSummaryBox: { background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, padding: '10px 12px' },
+  aiSummaryLabel: { fontSize: 11, color: '#999', marginBottom: 4 },
+  aiSummaryValue: { fontSize: 15, fontWeight: 700, color: '#333' },
+  aiSummaryHint: { fontSize: 11, color: '#aaa', marginTop: 4, lineHeight: 1.4 },
+  aiStatusBox: { border: '1px solid', borderRadius: 8, padding: '9px 12px' },
+  aiNotes: { background: '#f8faff', border: '1px solid #d6e4ff', borderRadius: 8, padding: '8px 10px' },
+  aiNoteItem: { fontSize: 12, color: '#555', lineHeight: 1.55 },
+  aiEmpty: { fontSize: 12, color: '#999', background: '#fafafa', border: '1px dashed #d9d9d9', borderRadius: 8, padding: '12px' },
+  aiConfigCard: { background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '10px 12px' },
+  aiConfigTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 },
+  aiProviderName: { fontSize: 13, fontWeight: 800, color: '#1a1a1a', fontFamily: 'monospace' },
+  aiEnabledBadge: { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, border: '1px solid' },
+  aiScopeBadge: { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, border: '1px solid #d6e4ff', color: '#1677ff', background: '#f8faff' },
+  aiConfigId: { fontSize: 10, color: '#bbb', fontFamily: 'monospace', flexShrink: 0 },
   actionBtn: {
     height: 34, padding: '0 16px', border: '1.5px solid #e8e8e8',
     borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#f5f5f5', color: '#666',

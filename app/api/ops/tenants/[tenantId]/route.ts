@@ -5,11 +5,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuth } from '@/lib/ops-auth'
+import { canUseAiSupport } from '@/lib/tier'
 
 function todayStart() {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
   return d
+}
+
+function maskAiSupportApiBaseUrl(value: string | null): string | null {
+  if (!value) return null
+  if (value.startsWith('mock://')) return value
+  try {
+    const url = new URL(value)
+    return `${url.protocol}//${url.host}`
+  } catch {
+    return value.length > 32 ? `${value.slice(0, 32)}…` : value
+  }
 }
 
 export async function GET(
@@ -22,7 +34,7 @@ export async function GET(
 
   const todayUtc = new Date().toISOString().slice(0, 10)
 
-  const [tenant, stores, users, todaySummary, lastSale] = await Promise.all([
+  const [tenant, stores, users, todaySummary, lastSale, aiSupportConfigs] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId } }),
     prisma.store.findMany({
       where: { tenantId, status: 'ACTIVE' },
@@ -56,9 +68,42 @@ export async function GET(
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     }),
+    prisma.aiSupportProviderConfig.findMany({
+      where: { tenantId },
+      orderBy: [{ storeId: 'asc' }, { provider: 'asc' }],
+      select: {
+        id: true,
+        tenantId: true,
+        storeId: true,
+        provider: true,
+        enabled: true,
+        apiBaseUrl: true,
+        timeoutMs: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
   ])
 
   if (!tenant) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+  const storeById = new Map(stores.map((store) => [store.id, store]))
+  const aiTierAllowed = canUseAiSupport(tenant.tier)
+  const enabledCount = aiSupportConfigs.filter((config) => config.enabled).length
+  const hasMultipleEnabled = enabledCount > 1
+  const allDisabled = enabledCount === 0
+  const selectionNotes: string[] = []
+  if (!aiTierAllowed) selectionNotes.push('当前套餐不允许 AI Support L3，即使存在 Provider 配置也不会调用 AI。')
+  if (allDisabled) selectionNotes.push('当前安全：所有 AI Provider 均为关闭状态，不会调用 AI。')
+  if (hasMultipleEnabled) selectionNotes.push('配置冲突：存在多个 enabled=true，selection policy 会拒绝调用 AI。')
+  if (aiTierAllowed && enabledCount === 1) selectionNotes.push('当前存在一个可选 Provider；仍需确认是否为测试门店与灰度场景。')
+  if (aiSupportConfigs.length === 0) selectionNotes.push('当前没有 AI Support Provider 配置，selection policy 不会调用 AI。')
+  const safeStateLabel = !aiTierAllowed
+    ? '套餐拦截'
+    : hasMultipleEnabled
+      ? '配置冲突'
+      : allDisabled
+        ? '全部关闭'
+        : '存在可选 Provider'
 
   // Today's stats: summary first, fall back to raw if missing
   let todayStats: { saleCount: number; saleAmount: number; refundCount: number }
@@ -111,6 +156,37 @@ export async function GET(
     today: {
       ...todayStats,
       lastActiveAt: lastSale?.createdAt.toISOString() ?? null,
+    },
+    aiSupport: {
+      tier: tenant.tier,
+      canUseAiSupport: aiTierAllowed,
+      configs: aiSupportConfigs.map((config) => {
+        const store = config.storeId ? storeById.get(config.storeId) : null
+        return {
+          id: config.id,
+          provider: config.provider,
+          enabled: config.enabled,
+          scope: config.storeId ? 'STORE' : 'TENANT',
+          tenantId: config.tenantId,
+          storeId: config.storeId,
+          storeName: store?.name ?? null,
+          storeCode: store?.code ?? null,
+          apiBaseUrlMasked: maskAiSupportApiBaseUrl(config.apiBaseUrl),
+          timeoutMs: config.timeoutMs,
+          createdAt: config.createdAt.toISOString(),
+          updatedAt: config.updatedAt.toISOString(),
+        }
+      }),
+      selectionSummary: {
+        totalConfigs: aiSupportConfigs.length,
+        enabledCount,
+        hasMultipleEnabled,
+        allDisabled,
+        blockedByTier: !aiTierAllowed,
+        canBeSelected: aiTierAllowed && enabledCount === 1,
+        safeStateLabel,
+        notes: selectionNotes,
+      },
     },
   })
 }
