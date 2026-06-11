@@ -30,6 +30,20 @@ export type AiSupportResponse = {
   latencyMs?: number | null
 }
 
+export type AiSupportRouterResult = {
+  handled: boolean
+  provider?: AiSupportProvider | string
+  replyText?: string
+  confidence?: number | null
+  needHuman?: boolean
+  intent?: string | null
+  auditId?: string | null
+  status?: string
+  errorCode?: string | null
+  errorMessage?: string | null
+  latencyMs?: number | null
+}
+
 export type AiProviderAdapter = {
   provider: AiSupportProvider
   callAiProvider(input: AiSupportRequest, config: unknown): Promise<AiSupportResponse>
