@@ -32,6 +32,12 @@ export function isPrintingTier(tier: string | null | undefined): boolean {
   return normalized === TENANT_TIERS.STANDARD || normalized === TENANT_TIERS.MULTI_STORE
 }
 
+/** 是否允许 AI 客服 L3 能力（STANDARD / MULTI_STORE）。 */
+export function canUseAiSupport(tier: string | null | undefined): boolean {
+  const normalized = normalizeTier(tier)
+  return normalized === TENANT_TIERS.STANDARD || normalized === TENANT_TIERS.MULTI_STORE
+}
+
 /** 是否为"旗舰版"（当前等价于 MULTI_STORE）。用于批量触达等顶档专属能力。 */
 export function isFlagshipTier(tier: string | null | undefined): boolean {
   const normalized = normalizeTier(tier)

@@ -9,6 +9,7 @@ import { escalateReply } from '@/lib/bot/handlers/escalate'
 import { publicUrl } from '@/lib/public-url'
 import { tryAiSupportReply as callAiSupportRouter } from '@/lib/ai-support/router'
 import { writeAiSupportAudit } from '@/lib/ai-support/audit'
+import { resolveAiSupportProviderForStore } from '@/lib/ai-support/config'
 
 /**
  * POST /api/webhook/customer
@@ -518,6 +519,13 @@ async function tryAiSupportReply(params: {
   if (!params.tenantId || !params.storeId || !params.text.trim()) return false
 
   const sessionId = `${params.storeCode}:${params.telegramId}`
+  const selection = await resolveAiSupportProviderForStore({
+    tenantId: params.tenantId,
+    storeId: params.storeId,
+    scenario: 'customer_support_l3',
+  })
+  if (!selection.shouldCallAi || !selection.provider) return false
+
   const result = await callAiSupportRouter({
     tenantId: params.tenantId,
     storeId: params.storeId,
@@ -532,8 +540,12 @@ async function tryAiSupportReply(params: {
     context: {
       storeCode: params.storeCode,
       storeName: params.storeName,
+      providerConfigId: selection.configId,
+      providerSelectionReason: selection.reason,
+      tier: selection.tier,
+      tierAllowed: selection.tierAllowed,
     },
-    provider: 'LINGSHUO',
+    provider: selection.provider,
   })
 
   if (!result.handled) {
@@ -543,7 +555,7 @@ async function tryAiSupportReply(params: {
       storeId: params.storeId,
       customerId: params.customerId,
       sessionId,
-      provider: 'LINGSHUO',
+      provider: selection.provider,
       userMessage: params.text,
       status: result.errorCode === 'TIMEOUT' ? 'TIMEOUT' : 'FAILED',
       errorMessage: result.errorMessage,
@@ -574,7 +586,7 @@ async function tryAiSupportReply(params: {
       storeId: params.storeId,
       customerId: params.customerId,
       sessionId,
-      provider: 'LINGSHUO',
+      provider: selection.provider,
       userMessage: params.text,
       aiReply: result.replyText,
       intent: result.intent,
@@ -586,7 +598,7 @@ async function tryAiSupportReply(params: {
     })
     void logConv({
       tenantId: params.tenantId, storeCode: params.storeCode, telegramId: params.telegramId, lang: params.lang,
-      direction: 'OUT', text: reply, intentLayer: 3, intentSource: 'LINGSHUO_NEED_HUMAN', escalated: true,
+      direction: 'OUT', text: reply, intentLayer: 3, intentSource: `${selection.provider}_NEED_HUMAN`, escalated: true,
     })
     return true
   }
@@ -597,7 +609,7 @@ async function tryAiSupportReply(params: {
       storeId: params.storeId,
       customerId: params.customerId,
       sessionId,
-      provider: 'LINGSHUO',
+      provider: selection.provider,
       userMessage: params.text,
       aiReply: result.replyText,
       intent: result.intent,
@@ -618,7 +630,7 @@ async function tryAiSupportReply(params: {
     storeId: params.storeId,
     customerId: params.customerId,
     sessionId,
-    provider: 'LINGSHUO',
+    provider: selection.provider,
     userMessage: params.text,
     aiReply: replyText,
     intent: result.intent,
@@ -631,7 +643,7 @@ async function tryAiSupportReply(params: {
   void logConv({
     tenantId: params.tenantId, storeCode: params.storeCode, telegramId: params.telegramId, lang: params.lang,
     direction: 'OUT', text: replyText, intentLayer: 2,
-    intentSlot: result.intent, intentSource: 'LINGSHUO', escalated: false,
+    intentSlot: result.intent, intentSource: String(selection.provider), escalated: false,
   })
   return true
 }
