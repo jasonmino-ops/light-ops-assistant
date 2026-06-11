@@ -504,6 +504,11 @@ async function upsertCustomerSupportSession(params: {
   }
 }
 
+function aiKillSwitchEngaged(): boolean {
+  const v = (process.env.AI_SUPPORT_KILL_SWITCH ?? '').trim().toLowerCase()
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on'
+}
+
 async function tryAiSupportReply(params: {
   chatId: number
   text: string
@@ -516,6 +521,8 @@ async function tryAiSupportReply(params: {
   customerId: string
   username: string | null
 }): Promise<boolean> {
+  // 全局熔断：env AI_SUPPORT_KILL_SWITCH=1 时直接跳过 AI，回退到原 escalate 兜底
+  if (aiKillSwitchEngaged()) return false
   if (!params.tenantId || !params.storeId || !params.text.trim()) return false
 
   const sessionId = `${params.storeCode}:${params.telegramId}`
