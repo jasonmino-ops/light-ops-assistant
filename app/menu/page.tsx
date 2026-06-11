@@ -375,6 +375,7 @@ type ApiProduct = {
   categoryId: string | null
   imageUrl:   string | null
   imageUrls?: string[]
+  marketingImageUrls?: string[]
 }
 
 type ApiStore = {
@@ -424,6 +425,7 @@ function pDesc(p: ApiProduct, lang: Lang): string | null {
 }
 
 function productImages(p: ApiProduct): string[] {
+  if (Array.isArray(p.marketingImageUrls) && p.marketingImageUrls.length > 0) return p.marketingImageUrls.filter(Boolean)
   if (Array.isArray(p.imageUrls) && p.imageUrls.length > 0) return p.imageUrls.filter(Boolean).slice(0, 3)
   return p.imageUrl ? [p.imageUrl] : []
 }

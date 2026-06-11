@@ -9,6 +9,18 @@ function parseImageUrls(imageUrls: string | null, imageUrl: string | null): stri
   return imageUrl ? [imageUrl] : []
 }
 
+function compactUrls(urls: Array<string | null | undefined>, limit?: number): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  urls.forEach((raw) => {
+    const url = raw?.trim()
+    if (!url || seen.has(url)) return
+    seen.add(url)
+    result.push(url)
+  })
+  return typeof limit === 'number' ? result.slice(0, limit) : result
+}
+
 /**
  * GET /api/public/menu?code=<storeCode>
  *
@@ -43,7 +55,7 @@ export async function GET(req: NextRequest) {
     customerBound = !!contact && contact.status === 'active'
   }
 
-  const [products, categories] = await Promise.all([
+  const [products, categories, marketingPages] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId: store.tenantId, status: 'ACTIVE' },
       select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, categoryId: true, imageUrl: true, imageUrls: true },
@@ -55,7 +67,37 @@ export async function GET(req: NextRequest) {
       select: { id: true, name: true, parentId: true, sortOrder: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     }),
+    prisma.marketingProductPage.findMany({
+      where: { tenantId: store.tenantId, status: { not: 'DISABLED' } },
+      select: {
+        productId: true,
+        heroImageUrl: true,
+        detailImage1: true,
+        detailImage2: true,
+        detailImage3: true,
+        reviewImage1: true,
+        reviewImage2: true,
+        reviewImage3: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 500,
+    }),
   ])
+
+  const marketingImagesByProduct = new Map<string, string[]>()
+  marketingPages.forEach((page) => {
+    if (marketingImagesByProduct.has(page.productId)) return
+    const images = compactUrls([
+      page.detailImage1,
+      page.detailImage2,
+      page.detailImage3,
+      page.heroImageUrl,
+      page.reviewImage1,
+      page.reviewImage2,
+      page.reviewImage3,
+    ])
+    if (images.length > 0) marketingImagesByProduct.set(page.productId, images)
+  })
 
   return NextResponse.json({
     store: {
@@ -87,6 +129,7 @@ export async function GET(req: NextRequest) {
       categoryId: p.categoryId ?? null,
       imageUrl:   p.imageUrl ?? null,
       imageUrls:  parseImageUrls(p.imageUrls, p.imageUrl),
+      marketingImageUrls: marketingImagesByProduct.get(p.id) ?? [],
     })),
   })
 }
