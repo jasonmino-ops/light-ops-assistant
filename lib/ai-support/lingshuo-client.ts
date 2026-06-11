@@ -25,6 +25,33 @@ function elapsedSince(start: number): number {
 }
 
 function mockReply(input: LingshuoReplyInput, start: number): LingshuoReplyResult {
+  const message = input.message.toLowerCase()
+  if (message.includes('mock_need_human')) {
+    return {
+      ok: true,
+      replyText: '[mock] human handoff requested',
+      language: input.language ?? null,
+      intent: 'mock_need_human',
+      confidence: 0.95,
+      needHuman: true,
+      auditId: 'mock-lingshuo-need-human',
+      raw: { mock: true, mode: 'needHuman' },
+      latencyMs: elapsedSince(start),
+    }
+  }
+  if (message.includes('mock_low_confidence')) {
+    return {
+      ok: true,
+      replyText: '[mock] low confidence reply',
+      language: input.language ?? null,
+      intent: 'mock_low_confidence',
+      confidence: 0.3,
+      needHuman: false,
+      auditId: 'mock-lingshuo-low-confidence',
+      raw: { mock: true, mode: 'lowConfidence' },
+      latencyMs: elapsedSince(start),
+    }
+  }
   return {
     ok: true,
     replyText: `[mock] ${input.message}`,

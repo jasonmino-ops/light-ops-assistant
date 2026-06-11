@@ -420,20 +420,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  const aiHandled = await tryAiSupportReply({
-    chatId,
-    text,
-    lang,
-    tenantId,
-    storeId: fbStore?.id ?? null,
-    storeCode,
-    storeName,
-    telegramId,
-    customerId: contact?.id ?? telegramId,
-    username: msg.from?.username ?? null,
-  })
-  if (aiHandled) return NextResponse.json({ ok: true })
-
   // 文字消息：分类 → 分发
   const intent = classifyIntent(text, lang)
   void logConv({
@@ -442,6 +428,30 @@ export async function POST(req: NextRequest) {
     intentLayer: intent.layer, intentSlot: intent.slot ?? intent.chatKind ?? null,
     intentSource: intent.source, escalated: intent.escalate,
   })
+
+  const supportSession = await prisma.supportSession.findUnique({
+    where: { telegramId },
+    select: { sessionState: true },
+  }).catch(() => null)
+  if (supportSession && supportSession.sessionState !== 'auto_active') {
+    return NextResponse.json({ ok: true })
+  }
+
+  if (intent.layer === 3) {
+    const aiHandled = await tryAiSupportReply({
+      chatId,
+      text,
+      lang,
+      tenantId,
+      storeId: fbStore?.id ?? null,
+      storeCode,
+      storeName,
+      telegramId,
+      customerId: contact?.id ?? telegramId,
+      username: msg.from?.username ?? null,
+    })
+    if (aiHandled) return NextResponse.json({ ok: true })
+  }
 
   let reply = ''
   if (intent.layer === 1 && intent.slot && tenantId) {
@@ -509,12 +519,6 @@ async function tryAiSupportReply(params: {
   if (!params.tenantId || !params.storeId || !params.text.trim()) return false
 
   const sessionId = `${params.storeCode}:${params.telegramId}`
-  const supportSession = await prisma.supportSession.findUnique({
-    where: { telegramId: params.telegramId },
-    select: { sessionState: true },
-  }).catch(() => null)
-  if (supportSession && supportSession.sessionState !== 'auto_active') return false
-
   const config = await getAiSupportConfig({
     tenantId: params.tenantId,
     storeId: params.storeId,
@@ -608,7 +612,7 @@ async function tryAiSupportReply(params: {
       needHuman: result.needHuman,
       providerAuditId: result.auditId,
       latencyMs: result.latencyMs,
-      status: 'SKIPPED',
+      status: 'LOW_CONFIDENCE',
       errorMessage: 'LOW_CONFIDENCE',
     })
     return false

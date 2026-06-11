@@ -1,6 +1,6 @@
 export type AiSupportProvider = 'LINGSHUO'
 
-export type AiSupportStatus = 'SKIPPED' | 'SUCCESS' | 'FAILED' | 'TIMEOUT' | 'NEED_HUMAN'
+export type AiSupportStatus = 'SUCCESS' | 'FAILED' | 'TIMEOUT' | 'LOW_CONFIDENCE' | 'NEED_HUMAN'
 
 export type AiSupportProviderConfig = {
   id: string

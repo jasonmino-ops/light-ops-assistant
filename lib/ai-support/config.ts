@@ -50,6 +50,8 @@ export async function getAiSupportConfig(params: {
   storeId?: string | null
   provider?: AiSupportProvider | string
 }): Promise<AiSupportProviderConfig | null> {
+  if (process.env.AI_SUPPORT_KILL_SWITCH === '1') return null
+
   const tenantId = params.tenantId?.trim()
   if (!tenantId) return null
 
@@ -57,10 +59,10 @@ export async function getAiSupportConfig(params: {
   try {
     const storeConfig = params.storeId
       ? await prisma.aiSupportProviderConfig.findFirst({
-          where: { tenantId, storeId: params.storeId, provider, enabled: true },
+          where: { tenantId, storeId: params.storeId, provider },
         })
       : null
-    if (storeConfig) return normalizeConfig(storeConfig)
+    if (storeConfig) return storeConfig.enabled ? normalizeConfig(storeConfig) : null
 
     const tenantConfig = await prisma.aiSupportProviderConfig.findFirst({
       where: { tenantId, storeId: null, provider, enabled: true },
