@@ -1163,7 +1163,10 @@ export default function MenuPage() {
                         {images.length > 0 ? (
                           <div
                             style={{ ...s.productImg, background: '#f5f5f5', overflow: 'hidden', cursor: 'zoom-in' }}
-                            onClick={() => openProductPreview(product)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openProductPreview(product)
+                            }}
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -1269,6 +1272,7 @@ export default function MenuPage() {
           onClick={closeProductPreview}
         >
           <div style={s.lightboxPanel} onClick={(e) => e.stopPropagation()}>
+            <div style={s.lightboxTitle}>{lightbox.name}</div>
             <div
               ref={lightboxCarouselRef}
               style={s.lightboxCarousel}
@@ -1323,6 +1327,25 @@ export default function MenuPage() {
             </>
           )}
           <div style={s.lightboxCounter}>{lightbox.index + 1} / {lightbox.images.length}</div>
+          {lightbox.images.length > 1 && (
+            <div style={s.lightboxDots}>
+              {lightbox.images.map((url, idx) => (
+                <button
+                  type="button"
+                  key={`${lightbox.productId}-${url}-dot-${idx}`}
+                  aria-label={`Go to image ${idx + 1}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    scrollLightboxTo(idx)
+                  }}
+                  style={{
+                    ...s.lightboxDot,
+                    ...(idx === lightbox.index ? s.lightboxDotActive : {}),
+                  }}
+                />
+              ))}
+            </div>
+          )}
           <button
             type="button"
             aria-label="close"
@@ -2613,6 +2636,20 @@ const s: Record<string, React.CSSProperties> = {
     objectFit: 'contain',
     borderRadius: 8,
   },
+  lightboxTitle: {
+    position: 'absolute',
+    top: 18,
+    left: 60,
+    right: 60,
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 700,
+    textAlign: 'center',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    pointerEvents: 'none',
+  },
   lightboxNav: {
     position: 'absolute',
     top: '50%',
@@ -2629,7 +2666,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   lightboxCounter: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 46,
     left: '50%',
     transform: 'translateX(-50%)',
     borderRadius: 999,
@@ -2638,6 +2675,31 @@ const s: Record<string, React.CSSProperties> = {
     color: '#fff',
     fontSize: 13,
     fontWeight: 700,
+  },
+  lightboxDots: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 18,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    pointerEvents: 'auto',
+  },
+  lightboxDot: {
+    width: 7,
+    height: 7,
+    padding: 0,
+    borderRadius: 999,
+    background: 'rgba(255,255,255,0.56)',
+    border: '1px solid rgba(255,255,255,0.28)',
+    cursor: 'pointer',
+    transition: 'width 160ms ease, background 160ms ease',
+  },
+  lightboxDotActive: {
+    width: 20,
+    background: '#fff',
   },
   myOrdersBtnLink: {
     display: 'block',
