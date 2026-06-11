@@ -1,4 +1,4 @@
-export type AiSupportProvider = 'LINGSHUO' | 'OPENAI' | 'CLAUDE' | 'GEMINI' | 'SELF_HOSTED' | 'MOCK'
+export type AiSupportProvider = 'MOCK' | 'LINGSHUO' | 'MINO_AGENT' | 'LOCAL_MODEL' | 'VENDOR_AI'
 
 export type AiSupportStatus = 'SUCCESS' | 'FAILED' | 'TIMEOUT' | 'LOW_CONFIDENCE' | 'NEED_HUMAN'
 

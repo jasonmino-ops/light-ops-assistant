@@ -107,7 +107,7 @@ async function main() {
         tenantId: store.tenantId,
         storeId: store.id,
         storeName: store.name,
-        provider: 'GEMINI',
+        provider: 'VENDOR_AI',
         message: 'router smoke no config',
       })),
       (result) => result.handled === false && result.status === 'CONFIG_DISABLED_OR_MISSING',
