@@ -46,6 +46,35 @@ export async function GET(req: NextRequest) {
   const storeId = p.get('storeId') ?? undefined
   const operatorUserId = p.get('operatorUserId') ?? undefined
 
+  const [selectedStore, selectedOperator] = await Promise.all([
+    storeId
+      ? prisma.store.findFirst({
+          where: { id: storeId, tenantId: ctx.tenantId },
+          select: { name: true },
+        })
+      : Promise.resolve(null),
+    operatorUserId
+      ? prisma.user.findFirst({
+          where: { id: operatorUserId, tenantId: ctx.tenantId },
+          select: { displayName: true },
+        })
+      : Promise.resolve(null),
+  ])
+
+  if (storeId && !selectedStore) {
+    return NextResponse.json(
+      { error: 'STORE_NOT_FOUND', message: 'Store not found in current tenant' },
+      { status: 404 },
+    )
+  }
+
+  if (operatorUserId && !selectedOperator) {
+    return NextResponse.json(
+      { error: 'OPERATOR_NOT_FOUND', message: 'Operator not found in current tenant' },
+      { status: 404 },
+    )
+  }
+
   let dimension: 'GLOBAL' | 'STORE' | 'STAFF'
   if (operatorUserId) {
     dimension = 'STAFF'
@@ -64,70 +93,9 @@ export async function GET(req: NextRequest) {
     ...(storeId ? { storeId } : {}),
   } : null
 
-  // ── Summary-table fast path ───────────────────────────────────────────────
-  if (dateFrom === dateTo && !operatorUserId) {
-    try {
-      const summaryDate = dateFrom
-      const row = storeId
-        ? await prisma.storeDailySummary.findUnique({
-            where: { storeId_date: { storeId, date: summaryDate } },
-            select: { salesCount: true, refundCount: true, grossSales: true, refundAmount: true, netSales: true },
-          })
-        : await prisma.tenantDailySummary.findFirst({
-            where: { tenantId: ctx.tenantId, date: summaryDate },
-            select: { salesCount: true, refundCount: true, grossSales: true, refundAmount: true, netSales: true },
-          })
-
-      if (row) {
-        const [storeInfo, breakdown] = await Promise.all([
-          storeId
-            ? prisma.store.findFirst({ where: { id: storeId }, select: { name: true } })
-            : Promise.resolve(null),
-          getPaymentBreakdown({ tenantId: ctx.tenantId, from, to, storeId }),
-        ])
-
-        let coTotal = 0, coCount = 0, coCashAmt = 0, coQRAmt = 0
-        if (coWhere) {
-          const [coAgg, coCashRes, coQRRes] = await Promise.all([
-            prisma.customerOrder.aggregate({ where: coWhere, _sum: { totalAmount: true }, _count: true }),
-            prisma.customerOrder.aggregate({ where: { ...coWhere, paymentMethod: 'CASH' }, _sum: { totalAmount: true } }),
-            prisma.customerOrder.aggregate({ where: { ...coWhere, paymentMethod: 'QR' }, _sum: { totalAmount: true } }),
-          ])
-          coTotal   = coAgg._sum.totalAmount?.toNumber() ?? 0
-          coCount   = coAgg._count
-          coCashAmt = coCashRes._sum.totalAmount?.toNumber() ?? 0
-          coQRAmt   = coQRRes._sum.totalAmount?.toNumber() ?? 0
-        }
-
-        const totalSaleAmount   = Number(row.grossSales) + coTotal
-        const totalRefundAmount = -Number(row.refundAmount)
-        const netAmount         = Number(row.netSales) + coTotal
-        const finalCount        = row.salesCount + coCount
-
-        return NextResponse.json({
-          dateFrom, dateTo, dimension,
-          storeName: storeInfo?.name ?? null,
-          operatorDisplayName: null,
-          totalSaleAmount,
-          totalRefundAmount,
-          netAmount,
-          saleCount: finalCount,
-          refundCount: row.refundCount,
-          saleOrderCount: finalCount,
-          refundOrderCount: row.refundCount,
-          avgSaleAmount: finalCount > 0 ? parseFloat((netAmount / finalCount).toFixed(2)) : 0,
-          topProducts: [],
-          cashSaleAmount: breakdown.cashSaleAmount + coCashAmt,
-          khqrSaleAmount: breakdown.khqrSaleAmount + coQRAmt,
-          _source: 'summary',
-        })
-      }
-    } catch {
-      // Summary tables don't exist yet (P2021) — fall through to raw queries
-    }
-  }
-
-  // ── Raw queries ───────────────────────────────────────────────────────────
+  // ── Live queries ──────────────────────────────────────────────────────────
+  // Keep /dashboard aligned with /records. Daily summary tables are maintained
+  // by ops jobs and can lag behind same-day SaleRecord / CustomerOrder changes.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const baseWhere: any = {
     tenantId: ctx.tenantId,
@@ -172,10 +140,10 @@ export async function GET(req: NextRequest) {
       take: 50,
     }),
     storeId
-      ? prisma.store.findFirst({ where: { id: storeId }, select: { name: true } })
+      ? Promise.resolve(selectedStore)
       : Promise.resolve(null),
     operatorUserId
-      ? prisma.user.findFirst({ where: { id: operatorUserId }, select: { displayName: true } })
+      ? Promise.resolve(selectedOperator)
       : Promise.resolve(null),
   ])
 
