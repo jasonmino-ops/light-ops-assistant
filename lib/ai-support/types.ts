@@ -33,3 +33,40 @@ export type AiSupportAuditInput = {
   status: AiSupportStatus | string
   errorMessage?: string | null
 }
+
+export type LingshuoReplyInput = {
+  apiBaseUrl?: string | null
+  clientId?: string | null
+  apiSecret?: string | null
+  timeoutMs?: number | null
+  tenantId?: string | null
+  storeId?: string | null
+  customerId?: string | null
+  sessionId?: string | null
+  language?: string | null
+  message: string
+  allowedTools?: string[]
+  context?: Record<string, unknown>
+}
+
+export type LingshuoReplySuccess = {
+  ok: true
+  replyText: string
+  language: string | null
+  intent: string | null
+  confidence: number | null
+  needHuman: boolean
+  auditId: string | null
+  raw: unknown
+  latencyMs: number
+}
+
+export type LingshuoReplyFailure = {
+  ok: false
+  errorCode: 'CONFIG_MISSING' | 'TIMEOUT' | 'HTTP_ERROR' | 'INVALID_RESPONSE' | 'REQUEST_FAILED'
+  errorMessage: string
+  latencyMs: number
+  raw?: unknown
+}
+
+export type LingshuoReplyResult = LingshuoReplySuccess | LingshuoReplyFailure
