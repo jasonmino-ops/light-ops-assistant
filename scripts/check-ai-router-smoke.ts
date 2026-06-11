@@ -175,6 +175,46 @@ async function main() {
         && result.confidence === 0.95,
     ))
 
+    await setStoreProvider({
+      tenantId: store.tenantId,
+      storeId: store.id,
+      provider: 'MINO_SUPPORT_SKILL',
+      enabled: false,
+    })
+    cases.push(expect(
+      'MINO_SUPPORT_SKILL disabled returns handled=false',
+      await tryAiSupportReply(request({
+        tenantId: store.tenantId,
+        storeId: store.id,
+        storeName: store.name,
+        provider: 'MINO_SUPPORT_SKILL',
+        message: 'router smoke mino support disabled',
+      })),
+      (result) => result.handled === false && result.status === 'CONFIG_DISABLED_OR_MISSING',
+    ))
+
+    await setStoreProvider({
+      tenantId: store.tenantId,
+      storeId: store.id,
+      provider: 'MINO_SUPPORT_SKILL',
+      enabled: true,
+    })
+    cases.push(expect(
+      'MINO_SUPPORT_SKILL enabled returns safe human stub',
+      await tryAiSupportReply(request({
+        tenantId: store.tenantId,
+        storeId: store.id,
+        storeName: store.name,
+        provider: 'MINO_SUPPORT_SKILL',
+        message: 'router smoke mino support stub',
+      })),
+      (result) => result.handled === true
+        && result.provider === 'MINO_SUPPORT_SKILL'
+        && result.intent === 'mino_support_skill_stub'
+        && result.needHuman === true
+        && result.confidence === 0.2,
+    ))
+
     await setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'UNKNOWN', enabled: true })
     cases.push(expect(
       'UNKNOWN provider returns adapter not found',
@@ -211,6 +251,7 @@ async function main() {
 
     await Promise.all([
       setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'MOCK', enabled: false }),
+      setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'MINO_SUPPORT_SKILL', enabled: false }),
       setStoreProvider({ tenantId: store.tenantId, storeId: store.id, provider: 'UNKNOWN', enabled: false }),
     ])
   }
@@ -218,6 +259,7 @@ async function main() {
   const finalState = {
     LINGSHUO: await readProviderEnabled(store.tenantId, store.id, 'LINGSHUO'),
     MOCK: await readProviderEnabled(store.tenantId, store.id, 'MOCK'),
+    MINO_SUPPORT_SKILL: await readProviderEnabled(store.tenantId, store.id, 'MINO_SUPPORT_SKILL'),
     UNKNOWN: await readProviderEnabled(store.tenantId, store.id, 'UNKNOWN'),
   }
 
@@ -229,7 +271,12 @@ async function main() {
   if (!cases.every((item) => item.pass)) {
     throw new Error('AI router smoke check failed')
   }
-  if (finalState.LINGSHUO !== false || finalState.MOCK !== false || finalState.UNKNOWN !== false) {
+  if (
+    finalState.LINGSHUO !== false
+    || finalState.MOCK !== false
+    || finalState.MINO_SUPPORT_SKILL !== false
+    || finalState.UNKNOWN !== false
+  ) {
     throw new Error('AI provider config was not restored to enabled=false')
   }
 }
