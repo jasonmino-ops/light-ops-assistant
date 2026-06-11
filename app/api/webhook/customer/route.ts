@@ -643,11 +643,6 @@ async function tryAiSupportReply(params: {
   })
   void logConv({
     tenantId: params.tenantId, storeCode: params.storeCode, telegramId: params.telegramId, lang: params.lang,
-    direction: 'IN', text: params.text.slice(0, 1000), intentLayer: 2,
-    intentSource: 'LINGSHUO', escalated: false,
-  })
-  void logConv({
-    tenantId: params.tenantId, storeCode: params.storeCode, telegramId: params.telegramId, lang: params.lang,
     direction: 'OUT', text: result.replyText, intentLayer: 2,
     intentSlot: result.intent, intentSource: 'LINGSHUO', escalated: false,
   })

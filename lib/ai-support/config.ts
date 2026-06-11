@@ -3,6 +3,11 @@ import type { AiSupportProvider, AiSupportProviderConfig } from './types'
 
 const DEFAULT_TIMEOUT_MS = 3000
 
+function aiKillSwitchEngaged(): boolean {
+  const value = (process.env.AI_SUPPORT_KILL_SWITCH ?? '').trim().toLowerCase()
+  return value === '1' || value === 'true' || value === 'yes' || value === 'on'
+}
+
 function parseAllowedTools(value: string | null | undefined): string[] {
   if (!value) return []
   try {
@@ -50,7 +55,7 @@ export async function getAiSupportConfig(params: {
   storeId?: string | null
   provider?: AiSupportProvider | string
 }): Promise<AiSupportProviderConfig | null> {
-  if (process.env.AI_SUPPORT_KILL_SWITCH === '1') return null
+  if (aiKillSwitchEngaged()) return null
 
   const tenantId = params.tenantId?.trim()
   if (!tenantId) return null
