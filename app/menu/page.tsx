@@ -500,10 +500,12 @@ export default function MenuPage() {
   const ui         = T[lang]
   const bizType: BizType = (storeData?.businessType ?? 'GENERAL') as BizType
   const fulfillTpl = (FULFILLMENT_TPL[lang] ?? FULFILLMENT_TPL.zh)[bizType] ?? FULFILLMENT_TPL[lang].GENERAL
-  const cartTotal  = cart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
   const payableLabel = lang === 'en' ? 'Payable' : lang === 'km' ? 'ត្រូវបង់' : '应付'
   const couponDoneLabel = lang === 'en' ? 'Done' : lang === 'km' ? 'យល់ព្រម' : '完成'
   const noneLabel       = lang === 'en' ? 'None'  : lang === 'km' ? 'គ្មាន'   : '不使用'
+  const availableProductIds = new Set(apiProducts.map((p) => p.id))
+  const activeCart = cart.filter((c) => availableProductIds.has(c.id) && Number.isInteger(c.quantity) && c.quantity > 0)
+  const cartTotal  = activeCart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
 
   // 在确认弹窗开启 / 购物车变动 / 选中券变动时，重新拉可用券与折扣金额
   useEffect(() => {
@@ -542,9 +544,9 @@ export default function MenuPage() {
     }).catch(() => { /* 静默：仍允许下单 */ })
     return () => { aborted = true }
   }, [showConfirm, storeCode, tgId, cartTotal, selectedCouponId])
-  const cartCount  = cart.reduce((s, c) => s + c.quantity, 0)
+  const cartCount  = activeCart.reduce((s, c) => s + c.quantity, 0)
   const canCheckout = cartCount > 0
-  const confirmItems = cart.flatMap((c) => {
+  const confirmItems = activeCart.flatMap((c) => {
     const p = apiProducts.find((ap) => ap.id === c.id)
     if (!p) return []
     return [{ ...p, quantity: c.quantity, lineAmount: p.price * c.quantity, sugar: c.sugar }]
@@ -654,6 +656,12 @@ export default function MenuPage() {
     if (!storeCode) return
     try { localStorage.setItem(`cart_${storeCode}`, JSON.stringify(cart)) } catch { /* ignore */ }
   }, [cart, storeCode])
+
+  useEffect(() => {
+    if (loading || apiProducts.length === 0 || cart.length === 0) return
+    setCart((prev) => prev.filter((c) => availableProductIds.has(c.id) && Number.isInteger(c.quantity) && c.quantity > 0))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, apiProducts])
 
   // 配送地址持久化（按 storeCode）
   useEffect(() => {
@@ -856,7 +864,7 @@ export default function MenuPage() {
 
   async function handleCheckout() {
     if (!canCheckout || submitting) return
-    const code = new URLSearchParams(window.location.search).get('code')
+    const code = storeCode || new URLSearchParams(window.location.search).get('code')
     if (!code) return
 
     // 尝试从 Telegram WebApp 获取顾客身份（普通浏览器会 null）
@@ -885,7 +893,7 @@ export default function MenuPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storeCode: code,
-          items: cart.map((c) => ({ productId: c.id, quantity: c.quantity, ...(c.sugar ? { sugar: c.sugar } : {}) })),
+          items: activeCart.map((c) => ({ productId: c.id, quantity: c.quantity, ...(c.sugar ? { sugar: c.sugar } : {}) })),
           ...(tableNo ? { tableNo } : {}),
           ...(customerTelegramId ? { customerTelegramId } : {}),
           ...(selectedCouponId ? { couponId: selectedCouponId } : {}),
