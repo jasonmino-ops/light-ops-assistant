@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
+import { getAiSupportModuleStatus } from '@/lib/tier'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +79,7 @@ function getPeriodRange(
 
 export default function DashboardPage() {
   const { t } = useLocale()
+  const { tier } = useWorkMode()
   const [today] = useState(() => new Date().toISOString().slice(0, 10))
 
   const DIM_LABEL: Record<Dimension, string> = {
@@ -303,6 +306,9 @@ export default function DashboardPage() {
             <BannerQuickPanel t={t} />
           </div>
         </details>
+
+        {/* 数字员工模块（只读展示，不提供启用开关） */}
+        <AiSupportModulePanel tier={tier} />
 
         {/* 云打印机面板（高级版） */}
         <PrinterPanel />
@@ -1117,6 +1123,85 @@ const bq: Record<string, React.CSSProperties> = {
   uploadIcon: { fontSize: 18, lineHeight: 1 },
   uploadText: {},
   err: { fontSize: 12, color: '#d97706', marginTop: 6 },
+}
+
+// ─── 数字员工模块（只读展示）───────────────────────────────────────────────
+
+function AiSupportModulePanel({ tier }: { tier: string }) {
+  const { t } = useLocale()
+  const moduleStatus = getAiSupportModuleStatus(tier)
+  const labelKey = moduleStatus.status === 'BETA_AVAILABLE'
+    ? 'dashboard.aiSupportStatusTrial'
+    : moduleStatus.status === 'REQUESTABLE'
+      ? 'dashboard.aiSupportStatusRequestable'
+      : 'dashboard.aiSupportStatusUnavailable'
+  const descKey = moduleStatus.status === 'BETA_AVAILABLE'
+    ? 'dashboard.aiSupportDescTrial'
+    : moduleStatus.status === 'REQUESTABLE'
+      ? 'dashboard.aiSupportDescRequestable'
+      : 'dashboard.aiSupportDescUnavailable'
+  const actionKey = moduleStatus.status === 'BETA_AVAILABLE'
+    ? 'dashboard.aiSupportActionTrial'
+    : moduleStatus.status === 'REQUESTABLE'
+      ? 'dashboard.aiSupportActionRequest'
+      : 'dashboard.aiSupportActionUpgrade'
+  const badgeStyle = moduleStatus.status === 'BETA_AVAILABLE'
+    ? ai.badgeOk
+    : moduleStatus.status === 'REQUESTABLE'
+      ? ai.badgeWarn
+      : ai.badgeOff
+
+  return (
+    <div style={ai.card}>
+      <div style={ai.sectionTitle}>{t('dashboard.aiModuleTitle')}</div>
+      <div style={ai.moduleRow}>
+        <div style={ai.icon}>🤖</div>
+        <div style={ai.body}>
+          <div style={ai.header}>
+            <span style={ai.title}>{t('dashboard.aiSupportTitle')}</span>
+            <span style={badgeStyle}>{t(labelKey)}</span>
+          </div>
+          <div style={ai.desc}>{t(descKey)}</div>
+          <button type="button" disabled style={moduleStatus.available ? ai.actionBtn : ai.actionBtnOff}>
+            {t(actionKey)}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ai: Record<string, React.CSSProperties> = {
+  card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 10 },
+  sectionTitle: { fontSize: 13, fontWeight: 800, color: 'var(--text)', marginBottom: 10 },
+  moduleRow: { display: 'flex', gap: 10, alignItems: 'flex-start' },
+  icon: {
+    width: 34, height: 34, borderRadius: 8,
+    background: '#e6f4ff', color: '#1677ff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 18, flexShrink: 0,
+  },
+  body: { flex: 1, minWidth: 0 },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 },
+  title: { fontSize: 14, fontWeight: 800, color: 'var(--text)' },
+  desc: { fontSize: 12, lineHeight: 1.5, color: 'var(--muted)', marginBottom: 10 },
+  badgeOk:   { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#f6ffed', color: '#52c41a', border: '1px solid #b7eb8f', whiteSpace: 'nowrap' as const },
+  badgeWarn: { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fffbe6', color: '#d97706', border: '1px solid #ffe58f', whiteSpace: 'nowrap' as const },
+  badgeOff:  { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: '#fafafa', color: '#999', border: '1px solid #d9d9d9', whiteSpace: 'nowrap' as const },
+  actionBtn: {
+    height: 32, minWidth: 108, padding: '0 12px',
+    borderRadius: 8, border: '1px solid #91caff',
+    background: '#f0f7ff', color: '#1677ff',
+    fontSize: 12, fontWeight: 700,
+    cursor: 'not-allowed', opacity: 0.85,
+  },
+  actionBtnOff: {
+    height: 32, minWidth: 108, padding: '0 12px',
+    borderRadius: 8, border: '1px solid #d9d9d9',
+    background: '#fafafa', color: '#999',
+    fontSize: 12, fontWeight: 700,
+    cursor: 'not-allowed', opacity: 0.85,
+  },
 }
 
 // ─── 云打印机面板（高级版功能 / LITE 显示升级提示） ────────────────────────

@@ -333,6 +333,18 @@ const zh = {
     bizTypeSaving:  '保存中…',
     bizTypeSaved:   '已保存',
     bizTypeSaveFail:'保存失败',
+    // 数字员工模块
+    aiModuleTitle: '数字员工模块',
+    aiSupportTitle: 'AI 客服助手 Beta',
+    aiSupportStatusUnavailable: '未开放',
+    aiSupportStatusRequestable: '可申请开通',
+    aiSupportStatusTrial: '可试用',
+    aiSupportDescUnavailable: '当前套餐支持基础 FAQ / 规则回复。AI 客服助手 Beta 适用于标准收银版及以上。',
+    aiSupportDescRequestable: 'AI 客服助手 Beta 可用于顾客 L3 兜底客服。开通后仍默认关闭，并受人工接管与审计保护。',
+    aiSupportDescTrial: 'AI 客服助手 Beta 支持单店灰度、人工接管、审计记录与快速关闭。当前默认关闭。',
+    aiSupportActionUpgrade: '升级后可申请',
+    aiSupportActionRequest: '联系开通',
+    aiSupportActionTrial: 'Beta 可试用',
     // 云打印机面板
     printerTitle: '云打印机',
     printerLoading: '加载中…',

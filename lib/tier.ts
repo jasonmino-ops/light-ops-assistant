@@ -38,6 +38,19 @@ export function canUseAiSupport(tier: string | null | undefined): boolean {
   return normalized === TENANT_TIERS.STANDARD || normalized === TENANT_TIERS.MULTI_STORE
 }
 
+export type AiSupportModuleStatus = {
+  status: 'UNAVAILABLE' | 'REQUESTABLE' | 'BETA_AVAILABLE'
+  available: boolean
+}
+
+/** 商户 dashboard 上 AI 客服助手 Beta 的只读展示状态。 */
+export function getAiSupportModuleStatus(tier: string | null | undefined): AiSupportModuleStatus {
+  const normalized = normalizeTier(tier)
+  if (normalized === TENANT_TIERS.MULTI_STORE) return { status: 'BETA_AVAILABLE', available: true }
+  if (normalized === TENANT_TIERS.STANDARD) return { status: 'REQUESTABLE', available: true }
+  return { status: 'UNAVAILABLE', available: false }
+}
+
 /** 是否为"旗舰版"（当前等价于 MULTI_STORE）。用于批量触达等顶档专属能力。 */
 export function isFlagshipTier(tier: string | null | undefined): boolean {
   const normalized = normalizeTier(tier)
