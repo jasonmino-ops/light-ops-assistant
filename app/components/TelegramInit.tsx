@@ -27,6 +27,7 @@ import km from '@/lib/i18n/km'
 
 const SESSION_KEY = 'tg-authed-uid'
 const OPS_SESSION_KEY = 'tg-ops-authed-uid'
+const BOOT_DELAY_MS = 420
 const BOOT_COPY = {
   zh: '正在进入店小二',
   en: 'Entering your store workspace',
@@ -69,6 +70,16 @@ export default function TelegramInit({
   const [authError, setAuthError] = useState('')
   const [tenantInactive, setTenantInactive] = useState(false)
   const [authChecking, setAuthChecking] = useState(initialProtected)
+  const [showBoot, setShowBoot] = useState(false)
+
+  useEffect(() => {
+    if (!authChecking || authError || tenantInactive) {
+      setShowBoot(false)
+      return
+    }
+    const timer = window.setTimeout(() => setShowBoot(true), BOOT_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [authChecking, authError, tenantInactive])
 
   useEffect(() => {
     // Skip auth entirely on onboarding pages — they handle their own flow.
@@ -233,7 +244,7 @@ export default function TelegramInit({
   }, [])
 
   if (authChecking && !authError && !tenantInactive) {
-    return (
+    return showBoot ? (
       <div style={bootOverlay} aria-live="polite">
         <style>{`
           @keyframes tgBootPulse {
@@ -258,6 +269,8 @@ export default function TelegramInit({
           </div>
         </div>
       </div>
+    ) : (
+      <div style={bootBlank} aria-live="polite" />
     )
   }
 
@@ -317,6 +330,11 @@ const bootOverlay: React.CSSProperties = {
   justifyContent: 'center',
   padding: 24,
   boxSizing: 'border-box',
+}
+
+const bootBlank: React.CSSProperties = {
+  minHeight: '100dvh',
+  background: '#f8fafc',
 }
 
 const bootCard: React.CSSProperties = {
