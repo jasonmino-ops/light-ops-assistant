@@ -422,6 +422,7 @@ function TierPanel({ tenantId, currentTier, onChanged }: { tenantId: string; cur
 function AiSupportPanel({ aiSupport }: { aiSupport: AiSupportOpsView }) {
   const tierMeta = TIER_META[aiSupport.tier] ?? TIER_META.LITE
   const summary = aiSupport.selectionSummary
+  const statusCopy = getAiSupportStatusCopy(summary)
   const statusColor = summary.hasMultipleEnabled
     ? '#ff4d4f'
     : summary.canBeSelected
@@ -437,9 +438,17 @@ function AiSupportPanel({ aiSupport }: { aiSupport: AiSupportOpsView }) {
     : summary.canBeSelected
       ? '#ffd591'
       : '#b7eb8f'
+  const productionConfigs = aiSupport.configs.filter((config) => !isTestAiProvider(config.provider))
+  const testConfigs = aiSupport.configs.filter((config) => isTestAiProvider(config.provider))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ ...s.aiStatusBox, color: statusColor, background: statusBg, borderColor: statusBorder }}>
+        <div style={{ fontSize: 14, fontWeight: 800 }}>{statusCopy.title}</div>
+        <div style={{ fontSize: 12, marginTop: 5, lineHeight: 1.55 }}>{statusCopy.description}</div>
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#666' }}>套餐权限</div>
       <div style={s.aiSummaryGrid}>
         <div style={s.aiSummaryBox}>
           <div style={s.aiSummaryLabel}>当前档次</div>
@@ -455,15 +464,10 @@ function AiSupportPanel({ aiSupport }: { aiSupport: AiSupportOpsView }) {
         </div>
       </div>
 
-      <div style={{ ...s.aiStatusBox, color: statusColor, background: statusBg, borderColor: statusBorder }}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>{summary.safeStateLabel}</div>
-        <div style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
-          共 {summary.totalConfigs} 条配置，enabled=true {summary.enabledCount} 条。
-        </div>
-      </div>
-
       {summary.notes.length > 0 && (
         <div style={s.aiNotes}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#333', marginBottom: 4 }}>安全检查</div>
+          <div style={s.aiNoteItem}>• 当前配置 {summary.totalConfigs} 条，开启 {summary.enabledCount} 条。</div>
           {summary.notes.map((note) => (
             <div key={note} style={s.aiNoteItem}>• {note}</div>
           ))}
@@ -475,10 +479,9 @@ function AiSupportPanel({ aiSupport }: { aiSupport: AiSupportOpsView }) {
         {aiSupport.configs.length === 0 ? (
           <div style={s.aiEmpty}>暂无 AI Support Provider 配置。</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {aiSupport.configs.map((config) => (
-              <AiSupportConfigCard key={config.id} config={config} />
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <AiSupportProviderGroup title="正式 / 可灰度 Provider" configs={productionConfigs} summary={summary} />
+            <AiSupportProviderGroup title="测试 / 调试 Provider" configs={testConfigs} summary={summary} />
           </div>
         )}
       </div>
@@ -486,11 +489,71 @@ function AiSupportPanel({ aiSupport }: { aiSupport: AiSupportOpsView }) {
   )
 }
 
-function AiSupportConfigCard({ config }: { config: AiSupportConfigRow }) {
+function getAiSupportStatusCopy(summary: AiSupportSummary): { title: string; description: string } {
+  if (summary.blockedByTier) {
+    return {
+      title: 'AI Support 当前状态：套餐未开放',
+      description: '当前套餐不允许 AI Support L3，即使存在 Provider 配置也不会调用 AI。',
+    }
+  }
+  if (summary.hasMultipleEnabled) {
+    return {
+      title: 'AI Support 当前状态：配置冲突',
+      description: '存在多个 enabled=true 的 Provider，selection policy 会拒绝调用 AI。',
+    }
+  }
+  if (summary.canBeSelected) {
+    return {
+      title: 'AI Support 当前状态：存在可选 Provider',
+      description: '当前存在一个可选 Provider，需确认是否为测试门店与灰度场景。',
+    }
+  }
+  return {
+    title: 'AI Support 当前状态：安全关闭',
+    description: '当前没有启用任何 AI Provider，顾客消息不会调用 AI。',
+  }
+}
+
+function isTestAiProvider(provider: string): boolean {
+  return provider === 'MOCK' || provider === 'UNKNOWN'
+}
+
+function AiSupportProviderGroup({ title, configs, summary }: { title: string; configs: AiSupportConfigRow[]; summary: AiSupportSummary }) {
+  if (configs.length === 0) {
+    return (
+      <div>
+        <div style={s.aiGroupTitle}>{title}</div>
+        <div style={s.aiEmpty}>暂无配置。</div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={s.aiGroupTitle}>{title}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {configs.map((config) => (
+          <AiSupportConfigCard key={config.id} config={config} summary={summary} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function getAiProviderSafetyLabel(config: AiSupportConfigRow, summary: AiSupportSummary): { label: string; color: string; bg: string; border: string } {
+  if (!config.enabled) return { label: '关闭', color: '#999', bg: '#f5f5f5', border: '#e8e8e8' }
+  if (summary.hasMultipleEnabled) return { label: '冲突', color: '#ff4d4f', bg: '#fff1f0', border: '#ffa39e' }
+  if (isTestAiProvider(config.provider)) return { label: '测试', color: '#1677ff', bg: '#e6f4ff', border: '#91caff' }
+  if (summary.canBeSelected) return { label: '可选', color: '#fa8c16', bg: '#fff7e6', border: '#ffd591' }
+  return { label: '关闭', color: '#999', bg: '#f5f5f5', border: '#e8e8e8' }
+}
+
+function AiSupportConfigCard({ config, summary }: { config: AiSupportConfigRow; summary: AiSupportSummary }) {
   const scopeLabel = config.scope === 'STORE' ? 'store 级' : 'tenant 级'
   const storeLabel = config.scope === 'STORE'
     ? `${config.storeName ?? '未知门店'}${config.storeCode ? ` / ${config.storeCode}` : ''}`
     : '全部门店（tenant 级）'
+  const safety = getAiProviderSafetyLabel(config, summary)
 
   return (
     <div style={s.aiConfigCard}>
@@ -503,20 +566,27 @@ function AiSupportConfigCard({ config }: { config: AiSupportConfigRow }) {
             color: config.enabled ? '#389e0d' : '#999',
             borderColor: config.enabled ? '#b7eb8f' : '#e8e8e8',
           }}>
-            {config.enabled ? 'enabled=true' : 'enabled=false'}
+            {config.enabled ? '开启' : '关闭'}
           </span>
           <span style={s.aiScopeBadge}>{scopeLabel}</span>
+          <span style={{ ...s.aiSafetyBadge, color: safety.color, background: safety.bg, borderColor: safety.border }}>
+            {safety.label}
+          </span>
         </div>
-        <div style={s.aiConfigId}>{config.id.slice(0, 8)}…</div>
       </div>
 
-      <InfoGrid rows={[
-        ['绑定门店', storeLabel],
-        ['apiBaseUrl', config.apiBaseUrlMasked ?? '—'],
-        ['timeoutMs', String(config.timeoutMs)],
-        ['创建时间', new Date(config.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })],
-        ['更新时间', new Date(config.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })],
-      ]} />
+      <div style={s.aiStoreLine}>绑定门店：{storeLabel}</div>
+
+      <details style={s.aiDetails}>
+        <summary style={s.aiDetailsSummary}>查看技术详情</summary>
+        <InfoGrid rows={[
+          ['apiBaseUrl', config.apiBaseUrlMasked ?? '—'],
+          ['timeoutMs', String(config.timeoutMs)],
+          ['创建时间', new Date(config.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })],
+          ['更新时间', new Date(config.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })],
+          ['configId', `${config.id.slice(0, 8)}…`],
+        ]} />
+      </details>
     </div>
   )
 }
@@ -1121,12 +1191,16 @@ const s: Record<string, React.CSSProperties> = {
   aiNotes: { background: '#f8faff', border: '1px solid #d6e4ff', borderRadius: 8, padding: '8px 10px' },
   aiNoteItem: { fontSize: 12, color: '#555', lineHeight: 1.55 },
   aiEmpty: { fontSize: 12, color: '#999', background: '#fafafa', border: '1px dashed #d9d9d9', borderRadius: 8, padding: '12px' },
+  aiGroupTitle: { fontSize: 11, fontWeight: 800, color: '#999', marginBottom: 6 },
   aiConfigCard: { background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '10px 12px' },
-  aiConfigTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 },
+  aiConfigTop: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 },
   aiProviderName: { fontSize: 13, fontWeight: 800, color: '#1a1a1a', fontFamily: 'monospace' },
   aiEnabledBadge: { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, border: '1px solid' },
   aiScopeBadge: { fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, border: '1px solid #d6e4ff', color: '#1677ff', background: '#f8faff' },
-  aiConfigId: { fontSize: 10, color: '#bbb', fontFamily: 'monospace', flexShrink: 0 },
+  aiSafetyBadge: { fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 10, border: '1px solid' },
+  aiStoreLine: { fontSize: 12, color: '#666', lineHeight: 1.45, marginBottom: 7 },
+  aiDetails: { borderTop: '1px solid #f0f0f0', paddingTop: 7 },
+  aiDetailsSummary: { fontSize: 12, color: '#1677ff', fontWeight: 700, cursor: 'pointer', marginBottom: 7 },
   actionBtn: {
     height: 34, padding: '0 16px', border: '1.5px solid #e8e8e8',
     borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#f5f5f5', color: '#666',
