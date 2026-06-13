@@ -303,17 +303,22 @@ export default function SalePage() {
 
   // ── 购物车操作 ─────────────────────────────────────────────────────────────
 
-  function addToCart() {
-    if (!product) return
+  function addProductToCart(p: Product, quantity = 1) {
+    const addQty = Math.max(1, quantity)
     setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === product.id)
+      const existing = prev.find((i) => i.product.id === p.id)
       if (existing) {
         return prev.map((i) =>
-          i.product.id === product.id ? { ...i, qty: i.qty + safeQty } : i
+          i.product.id === p.id ? { ...i, qty: i.qty + addQty } : i
         )
       }
-      return [...prev, { key: `${product.id}-${Date.now()}`, product, qty: safeQty }]
+      return [...prev, { key: `${p.id}-${Date.now()}`, product: p, qty: addQty }]
     })
+  }
+
+  function addToCart() {
+    if (!product) return
+    addProductToCart(product, safeQty)
     setProduct(null)
     setBarcodeInput('')
     setQty(1)
@@ -327,18 +332,10 @@ export default function SalePage() {
   }
 
   // ── AI 拍照识别 mock-only 加入本单 ─────────────────────────────────────────
-  // 直接复用与 addToCart 一致的 setCart 累加语义；qty 固定为 1（Phase 1 单商品识别）。
+  // 复用统一购物车累加 helper；qty 固定为 1（Phase 1 单商品识别）。
   // 不读 product / safeQty state，避免 setProduct 异步导致的状态时序坑。
   function addCandidateToCart(p: Product) {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === p.id)
-      if (existing) {
-        return prev.map((i) =>
-          i.product.id === p.id ? { ...i, qty: i.qty + 1 } : i
-        )
-      }
-      return [...prev, { key: `${p.id}-${Date.now()}`, product: p, qty: 1 }]
-    })
+    addProductToCart(p, 1)
     setPhotoModalOpen(false)
   }
 
