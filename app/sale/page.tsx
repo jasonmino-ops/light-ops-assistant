@@ -70,6 +70,16 @@ type PhotoRecognizeResponse = {
   fallbackMessage?: string
 }
 
+type PhotoDebugInfo = {
+  fileType?: string
+  fileSize?: number
+  compressedMime?: string
+  compressedSize?: number
+  apiStatus?: number
+  errorCode?: string
+  stage?: string
+}
+
 type CartItem = {
   key: string
   product: Product
@@ -131,6 +141,7 @@ export default function SalePage() {
   const [photoStatus, setPhotoStatus] = useState<'idle' | 'loading'>('idle')
   const [photoCandidates, setPhotoCandidates] = useState<PhotoCandidate[]>([])
   const [photoError, setPhotoError] = useState<string | null>(null)
+  const [photoDebug, setPhotoDebug] = useState<PhotoDebugInfo | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -360,7 +371,23 @@ export default function SalePage() {
     setPhotoModalOpen(true)
     setPhotoError(null)
     setPhotoCandidates([])
+    setPhotoDebug(null)
     setPhotoStatus('idle')
+  }
+
+  function setPhotoFailure(message: string, debug: PhotoDebugInfo) {
+    setPhotoError(message)
+    setPhotoDebug((prev) => ({ ...(prev ?? {}), ...debug }))
+  }
+
+  function aiPhotoErrorMessage(errorCode: string): string {
+    if (errorCode === 'AI_NOT_CONFIGURED') return 'AI 识别暂未配置，请使用扫码或手动选择商品'
+    if (errorCode === 'AI_TIMEOUT') return '识别超时，请换一张更清晰的图片重试'
+    if (errorCode === 'AI_EMPTY') return '未识别到清晰商品，请拍商品正面'
+    if (errorCode === 'AI_FAILED') return 'AI 识别失败，请使用扫码或手动选择商品'
+    if (errorCode === 'INVALID_IMAGE') return '图片无效或过大，请换一张 JPG 图片'
+    if (errorCode === 'INVALID_MIME') return '图片格式不支持，请换 JPG 图片'
+    return '识别失败，请使用扫码或手动选择商品'
   }
 
   function blobToBase64(blob: Blob): Promise<string> {
@@ -402,7 +429,9 @@ export default function SalePage() {
       canvas.width = w
       canvas.height = h
       const ctx = canvas.getContext('2d')
-      if (!ctx) return { blob: file, mime: file.type }
+      if (!ctx) throw new Error('COMPRESS_FAILED')
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, w, h)
       ctx.drawImage(img, 0, 0, w, h)
 
       const TARGET = 500 * 1024
@@ -412,7 +441,7 @@ export default function SalePage() {
       let best: Blob | null = null
       while (quality >= MIN_QUALITY) {
         const blob = await new Promise<Blob | null>((resolve) => {
-          canvas.toBlob((b) => resolve(b), 'image/webp', quality)
+          canvas.toBlob((b) => resolve(b), 'image/jpeg', quality)
         })
         if (blob) {
           best = blob
@@ -420,54 +449,117 @@ export default function SalePage() {
         }
         quality = Math.round((quality - 0.08) * 100) / 100
       }
-      if (!best) {
-        best = await new Promise<Blob | null>((resolve) => {
-          canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.78)
-        })
-      }
-      const finalBlob = best ?? file
+      if (!best) throw new Error('COMPRESS_FAILED')
+      const finalBlob = best.type ? best : new Blob([best], { type: 'image/jpeg' })
       if (finalBlob.size > HARD_LIMIT) throw new Error('IMAGE_TOO_LARGE_AFTER_COMPRESS')
-      return { blob: finalBlob, mime: finalBlob.type || file.type }
+      return { blob: finalBlob, mime: finalBlob.type || 'image/jpeg' }
     } finally {
       URL.revokeObjectURL(url)
     }
   }
 
   async function handlePhotoFile(file: File | null | undefined) {
-    if (!file) return
+    if (!file) {
+      setPhotoFailure('未选择图片', { stage: 'failed_before_post' })
+      return
+    }
     setPhotoError(null)
     setPhotoCandidates([])
+    setPhotoDebug({
+      fileType: file.type || '(empty)',
+      fileSize: file.size,
+      stage: 'file_selected',
+    })
 
     const allowed = new Set(['image/jpeg', 'image/png', 'image/webp'])
     if (!allowed.has(file.type)) {
-      setPhotoError('仅支持 JPG / PNG / WebP 图片，请换一张商品图。')
+      setPhotoFailure('仅支持 JPG、PNG、WebP 图片', {
+        errorCode: 'INVALID_MIME',
+        stage: 'failed_before_post',
+      })
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setPhotoError('图片超过 5MB，请先压缩后再识别。')
+      setPhotoFailure('图片太大，请换一张小于 5MB 的图片', {
+        errorCode: 'IMAGE_TOO_LARGE',
+        stage: 'failed_before_post',
+      })
       return
     }
 
     setPhotoStatus('loading')
+    let stage = 'file_selected'
     try {
+      stage = 'compressing'
+      setPhotoDebug((prev) => ({ ...(prev ?? {}), stage }))
       const { blob, mime } = await compressPhotoForRecognize(file)
+      stage = 'compressed'
+      setPhotoDebug((prev) => ({
+        ...(prev ?? {}),
+        compressedMime: mime,
+        compressedSize: blob.size,
+        stage,
+      }))
       const imageBase64 = await blobToBase64(blob)
+      stage = 'posting'
+      setPhotoDebug((prev) => ({ ...(prev ?? {}), stage }))
       const res = await apiFetch('/api/sales/photo-recognize', {
         method: 'POST',
         body: JSON.stringify({ imageBase64, mime, source: 'sale_recognize_v1' }),
       })
+      stage = 'response_received'
       const body = await res.json().catch(() => ({})) as PhotoRecognizeResponse & { error?: string }
+      setPhotoDebug((prev) => ({
+        ...(prev ?? {}),
+        apiStatus: res.status,
+        errorCode: body.errorCode ?? body.error ?? undefined,
+        stage,
+      }))
       if (!res.ok) {
-        setPhotoError(body.error ?? '识别失败，请使用扫码或手动选择商品。')
+        const errorCode = body.error ?? `HTTP_${res.status}`
+        if (res.status === 401 || res.status === 403) {
+          setPhotoFailure('登录状态失效，请重新打开店小二后再试', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+          return
+        }
+        if (res.status === 400) {
+          setPhotoFailure('图片参数无效，请换一张 JPG 图片重试', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+          return
+        }
+        setPhotoFailure('识别失败，请使用扫码或手动选择商品', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
         return
       }
       if (body.errorCode) {
-        setPhotoError(body.fallbackMessage ?? '识别失败，请使用扫码或手动选择商品。')
+        setPhotoFailure(aiPhotoErrorMessage(body.errorCode), {
+          apiStatus: res.status,
+          errorCode: body.errorCode,
+          stage: 'failed_after_post',
+        })
         return
       }
-      setPhotoCandidates(Array.isArray(body.candidates) ? body.candidates.slice(0, 5) : [])
-    } catch {
-      setPhotoError('识别失败，请使用扫码或手动选择商品。')
+      const candidates = Array.isArray(body.candidates) ? body.candidates.slice(0, 5) : []
+      if (candidates.length === 0) {
+        setPhotoFailure('未找到匹配商品，请使用扫码或手动选择商品', {
+          apiStatus: res.status,
+          stage: 'response_received',
+        })
+        return
+      }
+      setPhotoCandidates(candidates)
+    } catch (e) {
+      const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
+      if (code === 'IMAGE_LOAD_FAILED') {
+        setPhotoFailure('图片无法读取，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+      } else if (code === 'COMPRESS_FAILED') {
+        setPhotoFailure('图片压缩失败，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+      } else if (code === 'IMAGE_TOO_LARGE_AFTER_COMPRESS') {
+        setPhotoFailure('图片压缩后仍过大，请换一张更小的图片', { errorCode: code, stage: 'failed_before_post' })
+      } else if (code === 'FILE_READ_FAILED') {
+        setPhotoFailure('图片无法读取，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+      } else if (stage === 'posting') {
+        setPhotoFailure('网络请求失败，请检查网络后重试', { errorCode: code, stage: 'failed_after_post' })
+      } else {
+        setPhotoFailure('识别失败，请使用扫码或手动选择商品', { errorCode: code, stage: 'failed_before_post' })
+      }
     } finally {
       setPhotoStatus('idle')
     }
@@ -706,6 +798,18 @@ export default function SalePage() {
             )}
             {photoStatus !== 'loading' && photoError && (
               <div style={ph.empty}>{photoError}</div>
+            )}
+            {photoStatus !== 'loading' && photoError && photoDebug && (
+              <div style={ph.debugBox}>
+                <div style={ph.debugTitle}>调试信息</div>
+                {photoDebug.fileType !== undefined && <div>file.type: {photoDebug.fileType}</div>}
+                {photoDebug.fileSize !== undefined && <div>file.size: {photoDebug.fileSize}</div>}
+                {photoDebug.compressedMime !== undefined && <div>compressedMime: {photoDebug.compressedMime}</div>}
+                {photoDebug.compressedSize !== undefined && <div>compressedSize: {photoDebug.compressedSize}</div>}
+                {photoDebug.apiStatus !== undefined && <div>apiStatus: {photoDebug.apiStatus}</div>}
+                {photoDebug.errorCode !== undefined && <div>errorCode: {photoDebug.errorCode}</div>}
+                {photoDebug.stage !== undefined && <div>stage: {photoDebug.stage}</div>}
+              </div>
             )}
             {photoStatus !== 'loading' && !photoError && photoCandidates.length === 0 && (
               <div style={ph.empty}>未找到匹配商品，请使用扫码或手动选择商品。</div>
@@ -1284,6 +1388,14 @@ const ph: Record<string, React.CSSProperties> = {
     background: '#fffbeb', border: '1px solid #fcd34d',
     borderRadius: 'var(--radius-sm)', textAlign: 'center', marginBottom: 10,
   },
+  debugBox: {
+    fontSize: 10, lineHeight: 1.5, color: '#64748b',
+    background: '#f8fafc', border: '1px solid #e2e8f0',
+    borderRadius: 8, padding: '8px 10px', marginBottom: 10,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+    wordBreak: 'break-word',
+  },
+  debugTitle: { fontWeight: 700, color: '#475569', marginBottom: 3 },
   candidatesLabel: { fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6 },
   candidate: {
     display: 'flex', alignItems: 'center', gap: 10,
