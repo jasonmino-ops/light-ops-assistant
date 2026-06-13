@@ -53,6 +53,23 @@ type Product = {
   imageUrl?: string | null
 }
 
+type PhotoCandidate = {
+  productId: string
+  name: string
+  spec: string | null
+  price: number
+  imageUrl: string | null
+  confidence: number
+  reason: string[]
+}
+
+type PhotoRecognizeResponse = {
+  candidates?: PhotoCandidate[]
+  needManualConfirm?: true
+  errorCode?: string
+  fallbackMessage?: string
+}
+
 type CartItem = {
   key: string
   product: Product
@@ -109,8 +126,11 @@ export default function SalePage() {
   const [khqrUnavailable, setKhqrUnavailable] = useState(false)
   const [checkoutMode, setCheckoutMode] = useState<'DIRECT_PAYMENT' | 'DEFERRED_PAYMENT'>('DIRECT_PAYMENT')
   const [deferredOrder, setDeferredOrder] = useState<DeferredOrder | null>(null)
-  // AI 拍照识别 mock-only 弹层（Phase 1：不接真实 AI、不上传图片、不调新 API）
+  // AI 拍照识别弹层（Phase 2B：真实 API 只返回候选，店员必须手动确认加入本单）
   const [photoModalOpen, setPhotoModalOpen] = useState(false)
+  const [photoStatus, setPhotoStatus] = useState<'idle' | 'loading'>('idle')
+  const [photoCandidates, setPhotoCandidates] = useState<PhotoCandidate[]>([])
+  const [photoError, setPhotoError] = useState<string | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -331,18 +351,137 @@ export default function SalePage() {
     setCart((prev) => prev.filter((i) => i.key !== key))
   }
 
-  // ── AI 拍照识别 mock-only 加入本单 ─────────────────────────────────────────
-  // 复用统一购物车累加 helper；qty 固定为 1（Phase 1 单商品识别）。
-  // 不读 product / safeQty state，避免 setProduct 异步导致的状态时序坑。
-  function addCandidateToCart(p: Product) {
-    addProductToCart(p, 1)
-    setPhotoModalOpen(false)
-  }
-
   // mock 候选：取当前 allProducts 前 3 个；置信度硬编码三档（仅 UI 真实感，不参与决策）
   const photoMockCandidates: Array<Product & { confidence: number }> = allProducts
     .slice(0, 3)
     .map((p, i) => ({ ...p, confidence: [0.92, 0.84, 0.76][i] ?? 0.7 }))
+
+  function openPhotoModal() {
+    setPhotoModalOpen(true)
+    setPhotoError(null)
+    setPhotoCandidates([])
+    setPhotoStatus('idle')
+  }
+
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = typeof reader.result === 'string' ? reader.result : ''
+        const [, base64 = ''] = result.split(',')
+        resolve(base64)
+      }
+      reader.onerror = () => reject(new Error('FILE_READ_FAILED'))
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  async function compressPhotoForRecognize(file: File): Promise<{ blob: Blob; mime: string }> {
+    const url = URL.createObjectURL(file)
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image()
+        el.onload = () => resolve(el)
+        el.onerror = () => reject(new Error('IMAGE_LOAD_FAILED'))
+        el.src = url
+      })
+      const MAX_DIM = 1280
+      let w = img.naturalWidth
+      let h = img.naturalHeight
+      if (w > MAX_DIM || h > MAX_DIM) {
+        if (w >= h) {
+          h = Math.round((h * MAX_DIM) / w)
+          w = MAX_DIM
+        } else {
+          w = Math.round((w * MAX_DIM) / h)
+          h = MAX_DIM
+        }
+      }
+
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return { blob: file, mime: file.type }
+      ctx.drawImage(img, 0, 0, w, h)
+
+      const TARGET = 500 * 1024
+      const HARD_LIMIT = 1024 * 1024
+      const MIN_QUALITY = 0.55
+      let quality = 0.82
+      let best: Blob | null = null
+      while (quality >= MIN_QUALITY) {
+        const blob = await new Promise<Blob | null>((resolve) => {
+          canvas.toBlob((b) => resolve(b), 'image/webp', quality)
+        })
+        if (blob) {
+          best = blob
+          if (blob.size <= TARGET) break
+        }
+        quality = Math.round((quality - 0.08) * 100) / 100
+      }
+      if (!best) {
+        best = await new Promise<Blob | null>((resolve) => {
+          canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.78)
+        })
+      }
+      const finalBlob = best ?? file
+      if (finalBlob.size > HARD_LIMIT) throw new Error('IMAGE_TOO_LARGE_AFTER_COMPRESS')
+      return { blob: finalBlob, mime: finalBlob.type || file.type }
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  async function handlePhotoFile(file: File | null | undefined) {
+    if (!file) return
+    setPhotoError(null)
+    setPhotoCandidates([])
+
+    const allowed = new Set(['image/jpeg', 'image/png', 'image/webp'])
+    if (!allowed.has(file.type)) {
+      setPhotoError('仅支持 JPG / PNG / WebP 图片，请换一张商品图。')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError('图片超过 5MB，请先压缩后再识别。')
+      return
+    }
+
+    setPhotoStatus('loading')
+    try {
+      const { blob, mime } = await compressPhotoForRecognize(file)
+      const imageBase64 = await blobToBase64(blob)
+      const res = await apiFetch('/api/sales/photo-recognize', {
+        method: 'POST',
+        body: JSON.stringify({ imageBase64, mime, source: 'sale_recognize_v1' }),
+      })
+      const body = await res.json().catch(() => ({})) as PhotoRecognizeResponse & { error?: string }
+      if (!res.ok) {
+        setPhotoError(body.error ?? '识别失败，请使用扫码或手动选择商品。')
+        return
+      }
+      if (body.errorCode) {
+        setPhotoError(body.fallbackMessage ?? '识别失败，请使用扫码或手动选择商品。')
+        return
+      }
+      setPhotoCandidates(Array.isArray(body.candidates) ? body.candidates.slice(0, 5) : [])
+    } catch {
+      setPhotoError('识别失败，请使用扫码或手动选择商品。')
+    } finally {
+      setPhotoStatus('idle')
+    }
+  }
+
+  function addPhotoCandidateToCart(c: PhotoCandidate) {
+    const productMatch = allProducts.find((p) => p.id === c.productId)
+    if (!productMatch) {
+      setPhotoError('候选商品未在当前商品列表中，请刷新后重试。')
+      return
+    }
+    addProductToCart(productMatch, 1)
+    setPhotoModalOpen(false)
+  }
 
   // ── 收款方式选择 + 提交 ────────────────────────────────────────────────────
 
@@ -533,7 +672,7 @@ export default function SalePage() {
         />
       )}
 
-      {/* AI 拍照识别 mock-only 弹层（Phase 1：不接 AI、不上传、不调新 API） */}
+      {/* AI 拍照识别弹层：真实 API 只返回候选，店员手动确认加入本单 */}
       {photoModalOpen && (
         <div style={ph.overlay} onClick={() => setPhotoModalOpen(false)}>
           <div style={ph.sheet} onClick={(e) => e.stopPropagation()}>
@@ -543,28 +682,39 @@ export default function SalePage() {
             </div>
             <div style={ph.intro}>识别结果仅供参考，请确认后加入本单。</div>
 
-            {/* 拍照 / 上传图片入口（mock 阶段：纯占位，不实际上传） */}
+            {/* 拍照 / 上传图片入口 */}
             <label style={ph.uploadBox}>
               <input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp"
                 capture="environment"
                 style={{ display: 'none' }}
-                onChange={() => { /* mock-only：忽略文件内容，仅触发候选展示 */ }}
+                disabled={photoStatus === 'loading'}
+                onChange={(e) => {
+                  void handlePhotoFile(e.target.files?.[0])
+                  e.currentTarget.value = ''
+                }}
               />
               <div style={ph.uploadIcon}>📷</div>
               <div style={ph.uploadText}>点击拍照 / 选择图片</div>
-              <div style={ph.uploadHint}>JPG / PNG / HEIC，单张商品</div>
+              <div style={ph.uploadHint}>JPG / PNG / WebP，单张商品，最大 5MB</div>
             </label>
 
             {/* 候选商品 / 空态 */}
-            {photoMockCandidates.length === 0 ? (
-              <div style={ph.empty}>暂无可识别商品，请先维护商品库或使用手动输入。</div>
-            ) : (
+            {photoStatus === 'loading' && (
+              <div style={ph.empty}>正在识别商品...</div>
+            )}
+            {photoStatus !== 'loading' && photoError && (
+              <div style={ph.empty}>{photoError}</div>
+            )}
+            {photoStatus !== 'loading' && !photoError && photoCandidates.length === 0 && (
+              <div style={ph.empty}>未找到匹配商品，请使用扫码或手动选择商品。</div>
+            )}
+            {photoStatus !== 'loading' && !photoError && photoCandidates.length > 0 && (
               <>
-                <div style={ph.candidatesLabel}>候选商品（试用）</div>
-                {photoMockCandidates.map((c) => (
-                  <div key={c.id} style={ph.candidate}>
+                <div style={ph.candidatesLabel}>候选商品（需人工确认）</div>
+                {photoCandidates.map((c) => (
+                  <div key={c.productId} style={ph.candidate}>
                     <div style={ph.thumb}>
                       {c.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -577,23 +727,44 @@ export default function SalePage() {
                       <div style={ph.candName}>{c.name}</div>
                       {c.spec && <div style={ph.candSpec}>{c.spec}</div>}
                       <div style={ph.candFoot}>
-                        <span style={ph.candPrice}>${c.sellPrice.toFixed(2)}</span>
+                        <span style={ph.candPrice}>${c.price.toFixed(2)}</span>
                         <span style={ph.candConf}>{Math.round(c.confidence * 100)}%</span>
                       </div>
+                      {c.reason.length > 0 && (
+                        <div style={ph.candReason}>{c.reason.join(' / ')}</div>
+                      )}
                     </div>
                     <button
                       type="button"
                       style={ph.candAddBtn}
-                      onClick={() => addCandidateToCart(c)}
+                      onClick={() => addPhotoCandidateToCart(c)}
                     >
                       加入本单
                     </button>
                   </div>
                 ))}
-                <div style={ph.recognizeFailHint}>
-                  识别失败请使用扫码或手动选择商品。
-                </div>
               </>
+            )}
+            {process.env.NODE_ENV !== 'production' && photoStatus !== 'loading' && photoCandidates.length === 0 && (
+              <button
+                type="button"
+                style={ph.mockBtn}
+                onClick={() => {
+                  const mockCandidates = photoMockCandidates.map((p) => ({
+                    productId: p.id,
+                    name: p.name,
+                    spec: p.spec,
+                    price: p.sellPrice,
+                    imageUrl: p.imageUrl ?? null,
+                    confidence: p.confidence,
+                    reason: ['MOCK_DEV'],
+                  }))
+                  setPhotoError(null)
+                  setPhotoCandidates(mockCandidates)
+                }}
+              >
+                使用模拟候选（开发）
+              </button>
             )}
 
             <div style={ph.disclaimer}>
@@ -774,7 +945,7 @@ export default function SalePage() {
               <button
                 type="button"
                 style={ph.entryBtn}
-                onClick={() => setPhotoModalOpen(true)}
+                onClick={openPhotoModal}
                 disabled={status === 'querying' || status === 'submitting'}
               >
                 📷 拍照识别（试用）
@@ -1131,6 +1302,7 @@ const ph: Record<string, React.CSSProperties> = {
   candSpec: { fontSize: 11, color: 'var(--muted)' },
   candFoot: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 },
   candPrice: { fontSize: 14, fontWeight: 700, color: 'var(--blue)' },
+  candReason: { fontSize: 10, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 },
   candConf: {
     fontSize: 10, fontWeight: 600, color: '#52c41a',
     background: '#f6ffed', border: '1px solid #b7eb8f',
@@ -1145,6 +1317,12 @@ const ph: Record<string, React.CSSProperties> = {
   recognizeFailHint: {
     fontSize: 11, color: 'var(--muted)', textAlign: 'center',
     marginTop: 8, marginBottom: 4,
+  },
+  mockBtn: {
+    width: '100%', padding: '9px 12px',
+    background: '#f8fafc', color: 'var(--muted)',
+    border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)',
+    fontSize: 12, fontWeight: 600, cursor: 'pointer', marginTop: 8,
   },
   disclaimer: {
     fontSize: 11, color: '#8c8c8c', textAlign: 'center',
