@@ -49,6 +49,8 @@ type Product = {
   name: string
   spec: string | null
   sellPrice: number
+  // imageUrl 由 /api/products 返回（route.ts 已 select）；仅 AI 拍照识别 mock 候选卡片读取
+  imageUrl?: string | null
 }
 
 type CartItem = {
@@ -106,6 +108,8 @@ export default function SalePage() {
   const [modalError, setModalError] = useState<string | null>(null)
   const [checkoutMode, setCheckoutMode] = useState<'DIRECT_PAYMENT' | 'DEFERRED_PAYMENT'>('DIRECT_PAYMENT')
   const [deferredOrder, setDeferredOrder] = useState<DeferredOrder | null>(null)
+  // AI 拍照识别 mock-only 弹层（Phase 1：不接真实 AI、不上传图片、不调新 API）
+  const [photoModalOpen, setPhotoModalOpen] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -321,6 +325,27 @@ export default function SalePage() {
     setCart((prev) => prev.filter((i) => i.key !== key))
   }
 
+  // ── AI 拍照识别 mock-only 加入本单 ─────────────────────────────────────────
+  // 直接复用与 addToCart 一致的 setCart 累加语义；qty 固定为 1（Phase 1 单商品识别）。
+  // 不读 product / safeQty state，避免 setProduct 异步导致的状态时序坑。
+  function addCandidateToCart(p: Product) {
+    setCart((prev) => {
+      const existing = prev.find((i) => i.product.id === p.id)
+      if (existing) {
+        return prev.map((i) =>
+          i.product.id === p.id ? { ...i, qty: i.qty + 1 } : i
+        )
+      }
+      return [...prev, { key: `${p.id}-${Date.now()}`, product: p, qty: 1 }]
+    })
+    setPhotoModalOpen(false)
+  }
+
+  // mock 候选：取当前 allProducts 前 3 个；置信度硬编码三档（仅 UI 真实感，不参与决策）
+  const photoMockCandidates: Array<Product & { confidence: number }> = allProducts
+    .slice(0, 3)
+    .map((p, i) => ({ ...p, confidence: [0.92, 0.84, 0.76][i] ?? 0.7 }))
+
   // ── 收款方式选择 + 提交 ────────────────────────────────────────────────────
 
   function openPayModal() {
@@ -500,6 +525,76 @@ export default function SalePage() {
         />
       )}
 
+      {/* AI 拍照识别 mock-only 弹层（Phase 1：不接 AI、不上传、不调新 API） */}
+      {photoModalOpen && (
+        <div style={ph.overlay} onClick={() => setPhotoModalOpen(false)}>
+          <div style={ph.sheet} onClick={(e) => e.stopPropagation()}>
+            <div style={ph.header}>
+              <span style={ph.title}>AI 拍照识别商品</span>
+              <button type="button" style={ph.closeBtn} onClick={() => setPhotoModalOpen(false)}>✕</button>
+            </div>
+            <div style={ph.intro}>识别结果仅供参考，请确认后加入本单。</div>
+
+            {/* 拍照 / 上传图片入口（mock 阶段：纯占位，不实际上传） */}
+            <label style={ph.uploadBox}>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={() => { /* mock-only：忽略文件内容，仅触发候选展示 */ }}
+              />
+              <div style={ph.uploadIcon}>📷</div>
+              <div style={ph.uploadText}>点击拍照 / 选择图片</div>
+              <div style={ph.uploadHint}>JPG / PNG / HEIC，单张商品</div>
+            </label>
+
+            {/* 候选商品 / 空态 */}
+            {photoMockCandidates.length === 0 ? (
+              <div style={ph.empty}>暂无可识别商品，请先维护商品库或使用手动输入。</div>
+            ) : (
+              <>
+                <div style={ph.candidatesLabel}>候选商品（试用）</div>
+                {photoMockCandidates.map((c) => (
+                  <div key={c.id} style={ph.candidate}>
+                    <div style={ph.thumb}>
+                      {c.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.imageUrl} alt={c.name} style={ph.thumbImg} />
+                      ) : (
+                        <span style={ph.thumbEmoji}>🛒</span>
+                      )}
+                    </div>
+                    <div style={ph.candMeta}>
+                      <div style={ph.candName}>{c.name}</div>
+                      {c.spec && <div style={ph.candSpec}>{c.spec}</div>}
+                      <div style={ph.candFoot}>
+                        <span style={ph.candPrice}>${c.sellPrice.toFixed(2)}</span>
+                        <span style={ph.candConf}>{Math.round(c.confidence * 100)}%</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      style={ph.candAddBtn}
+                      onClick={() => addCandidateToCart(c)}
+                    >
+                      加入本单
+                    </button>
+                  </div>
+                ))}
+                <div style={ph.recognizeFailHint}>
+                  识别失败请使用扫码或手动选择商品。
+                </div>
+              </>
+            )}
+
+            <div style={ph.disclaimer}>
+              AI 识别结果可能不准确，请以店员确认结果为准。
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 收款方式选择 Modal */}
       {payStep === 'selecting' && (
         <div style={pm.overlay} onClick={() => { setPayStep('none'); setModalError(null) }}>
@@ -655,6 +750,16 @@ export default function SalePage() {
                 <span style={s.scanLabel}>{t('sale.scanBtn')}</span>
               </button>
               {cameraFailCount >= 5 && <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>}
+
+              {/* AI 拍照识别（Phase 1 mock-only）：辅助入口，不抢主流程 */}
+              <button
+                type="button"
+                style={ph.entryBtn}
+                onClick={() => setPhotoModalOpen(true)}
+                disabled={status === 'querying' || status === 'submitting'}
+              >
+                📷 拍照识别（试用）
+              </button>
 
               <div style={s.orDivider}>
                 <div style={s.orLine} />
@@ -948,4 +1053,82 @@ const pm: Record<string, React.CSSProperties> = {
   optionDesc: { fontSize: 12, color: 'var(--muted)' },
   optionDisabled: { opacity: 0.45, cursor: 'not-allowed' },
   modalErrorMsg: { fontSize: 13, color: '#d97706', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '8px 12px', textAlign: 'center', marginTop: 4 },
+}
+
+// ─── AI 拍照识别 mock-only 弹层样式（Phase 1） ────────────────────────────────
+
+const ph: Record<string, React.CSSProperties> = {
+  entryBtn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    width: '100%', height: 38, marginBottom: 12,
+    background: 'transparent', color: 'var(--blue)',
+    border: '1px dashed var(--blue)', borderRadius: 'var(--radius-sm)',
+    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  },
+  overlay: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+    zIndex: 600, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+  },
+  sheet: {
+    width: '100%', maxWidth: 480, background: '#fff',
+    borderRadius: '16px 16px 0 0', padding: '16px 16px 28px',
+    maxHeight: '90vh', overflowY: 'auto',
+    boxShadow: '0 -4px 24px rgba(0,0,0,0.15)',
+  },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  title: { fontSize: 16, fontWeight: 700, color: 'var(--text)' },
+  closeBtn: { background: 'none', border: 'none', fontSize: 18, color: '#8c8c8c', cursor: 'pointer', padding: '0 4px' },
+  intro: { fontSize: 12, color: 'var(--muted)', marginBottom: 12 },
+  uploadBox: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    padding: '20px 12px', background: '#f7f8fa',
+    border: '1.5px dashed var(--border)', borderRadius: 'var(--radius-sm)',
+    cursor: 'pointer', marginBottom: 14, gap: 4,
+  },
+  uploadIcon: { fontSize: 30, lineHeight: 1, marginBottom: 4 },
+  uploadText: { fontSize: 14, fontWeight: 600, color: 'var(--text)' },
+  uploadHint: { fontSize: 11, color: 'var(--muted)' },
+  empty: {
+    padding: '20px 12px', fontSize: 13, color: 'var(--muted)',
+    background: '#fffbeb', border: '1px solid #fcd34d',
+    borderRadius: 'var(--radius-sm)', textAlign: 'center', marginBottom: 10,
+  },
+  candidatesLabel: { fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6 },
+  candidate: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: 10, marginBottom: 8,
+    background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+  },
+  thumb: {
+    width: 56, height: 56, borderRadius: 8, flexShrink: 0,
+    background: '#f0f4f8', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  thumbImg: { width: '100%', height: '100%', objectFit: 'cover' },
+  thumbEmoji: { fontSize: 26 },
+  candMeta: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 },
+  candName: { fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  candSpec: { fontSize: 11, color: 'var(--muted)' },
+  candFoot: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 },
+  candPrice: { fontSize: 14, fontWeight: 700, color: 'var(--blue)' },
+  candConf: {
+    fontSize: 10, fontWeight: 600, color: '#52c41a',
+    background: '#f6ffed', border: '1px solid #b7eb8f',
+    borderRadius: 4, padding: '1px 6px',
+  },
+  candAddBtn: {
+    flexShrink: 0, padding: '8px 12px',
+    background: 'var(--blue)', color: '#fff', border: 'none',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  },
+  recognizeFailHint: {
+    fontSize: 11, color: 'var(--muted)', textAlign: 'center',
+    marginTop: 8, marginBottom: 4,
+  },
+  disclaimer: {
+    fontSize: 11, color: '#8c8c8c', textAlign: 'center',
+    background: '#fafafa', borderRadius: 6,
+    padding: '8px 10px', marginTop: 8, lineHeight: 1.5,
+  },
 }
