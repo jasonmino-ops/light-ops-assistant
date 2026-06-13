@@ -154,6 +154,11 @@ function buildSaleEntries(items: RecordItem[]): DisplayEntry[] {
   return all
 }
 
+function isPendingCustomerOrder(order: CustomerOrderRecord): boolean {
+  if (order.status === 'PENDING' || order.status === 'CONFIRMED') return true
+  return order.status === 'COMPLETED' && order.paymentStatus === 'UNPAID'
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
@@ -257,6 +262,8 @@ export default function HomePage() {
       doFallback()
     }
   }
+
+  const pendingCustomerOrders = customerOrders.filter(isPendingCustomerOrder)
 
   async function updateOrderStatus(id: string, status: string) {
     setUpdatingOrderId(id)
@@ -411,38 +418,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── 顾客订单区（仅 OWNER 可见，常驻显示） ── */}
-      {effectiveRole === 'OWNER' && (() => {
-        const actionableCount = customerOrders.length
-        return (
-          <div style={s.coSection}>
-            <div style={s.coSectionHeader}>
-              <span style={s.coSectionTitle}>{t('home.customerOrders')}</span>
-              {actionableCount > 0 && (
-                <span style={s.coBadge}>{actionableCount}</span>
-              )}
-            </div>
-            {ordersError ? (
-              <div style={s.errorHint}>{ordersError}</div>
-            ) : actionableCount === 0 ? (
-              <div style={s.coEmpty}>{t('home.noPendingOrders')}</div>
-            ) : (
-              customerOrders.map((order) => (
-                <CustomerOrderCard
-                  key={order.id}
-                  order={order}
-                  updating={updatingOrderId === order.id}
-                  onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
-                  onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
-                  onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
-                  onCollect={() => setCustomerCheckout({ id: order.id, orderNo: order.orderNo, totalAmount: order.totalAmount })}
-                />
-              ))
-            )}
-          </div>
-        )
-      })()}
-
       {/* ── Recent records ── */}
       <div style={s.sectionHeader}>
         <span style={s.sectionTitle}>{t('home.recentRecords')}</span>
@@ -481,6 +456,38 @@ export default function HomePage() {
           <RefundCard key={entry.item.id + '-' + i} item={entry.item} tagRefund={t('home.tagRefund')} />
         )
       )}
+
+      {/* ── 待处理顾客订单区（仅 OWNER 可见） ── */}
+      {effectiveRole === 'OWNER' && (() => {
+        const actionableCount = pendingCustomerOrders.length
+        return (
+          <div style={s.coSection}>
+            <div style={s.coSectionHeader}>
+              <span style={s.coSectionTitle}>{t('home.customerOrders')}</span>
+              {actionableCount > 0 && (
+                <span style={s.coBadge}>{actionableCount}</span>
+              )}
+            </div>
+            {ordersError ? (
+              <div style={s.errorHint}>{ordersError}</div>
+            ) : actionableCount === 0 ? (
+              <div style={s.coEmpty}>{t('home.noPendingOrders')}</div>
+            ) : (
+              pendingCustomerOrders.map((order) => (
+                <CustomerOrderCard
+                  key={order.id}
+                  order={order}
+                  updating={updatingOrderId === order.id}
+                  onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
+                  onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
+                  onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
+                  onCollect={() => setCustomerCheckout({ id: order.id, orderNo: order.orderNo, totalAmount: order.totalAmount })}
+                />
+              ))
+            )}
+          </div>
+        )
+      })()}
 
       <OrderDetailSheet
         orderNo={selectedOrderNo}
