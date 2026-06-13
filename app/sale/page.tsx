@@ -106,6 +106,7 @@ export default function SalePage() {
   const [payStep, setPayStep] = useState<PayStep>('none')
   const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null)
   const [modalError, setModalError] = useState<string | null>(null)
+  const [khqrUnavailable, setKhqrUnavailable] = useState(false)
   const [checkoutMode, setCheckoutMode] = useState<'DIRECT_PAYMENT' | 'DEFERRED_PAYMENT'>('DIRECT_PAYMENT')
   const [deferredOrder, setDeferredOrder] = useState<DeferredOrder | null>(null)
   // AI 拍照识别 mock-only 弹层（Phase 1：不接真实 AI、不上传图片、不调新 API）
@@ -356,6 +357,10 @@ export default function SalePage() {
   }
 
   async function handlePayWithMethod(method: 'CASH' | 'KHQR') {
+    if (method === 'KHQR' && khqrUnavailable) {
+      setModalError(t('sale.khqrUnavailableHint'))
+      return
+    }
     setModalError(null)
     setSubmitError(null)
     setStatus('submitting')
@@ -393,7 +398,8 @@ export default function SalePage() {
         }
       } else if (body.error === 'KHQR_NOT_CONFIGURED') {
         // 保持 modal 打开，在弹窗内展示错误，不允许继续
-        setModalError(body.message ?? t('sale.khqrNotConfigured'))
+        setKhqrUnavailable(true)
+        setModalError(t('sale.khqrUnavailableHint'))
       } else {
         setPayStep('none')
         setSubmitError(body.message ?? body.error ?? t('sale.confirmSale'))
@@ -436,6 +442,10 @@ export default function SalePage() {
 
   async function handleCheckoutDeferred(method: 'CASH' | 'KHQR') {
     if (!deferredOrder) return
+    if (method === 'KHQR' && khqrUnavailable) {
+      setModalError(t('sale.khqrUnavailableHint'))
+      return
+    }
     setModalError(null)
     setSubmitError(null)
     setStatus('submitting')
@@ -471,7 +481,8 @@ export default function SalePage() {
           setPayStep('khqr_pending')
         }
       } else if (body.error === 'KHQR_NOT_CONFIGURED') {
-        setModalError(body.message ?? t('sale.khqrNotConfigured'))
+        setKhqrUnavailable(true)
+        setModalError(t('sale.khqrUnavailableHint'))
       } else {
         setPayStep('none')
         setSubmitError(body.message ?? body.error ?? t('common.networkError'))
@@ -612,14 +623,25 @@ export default function SalePage() {
               </div>
             </button>
             <button
-              style={{ ...pm.option, ...(modalError ? pm.optionDisabled : {}) }}
-              onClick={() => deferredOrder ? handleCheckoutDeferred('KHQR') : handlePayWithMethod('KHQR')}
-              disabled={status === 'submitting' || !!modalError}
+              style={{ ...pm.option, ...(khqrUnavailable ? pm.optionDisabled : {}) }}
+              onClick={() => {
+                if (khqrUnavailable) {
+                  setModalError(t('sale.khqrUnavailableHint'))
+                  return
+                }
+                deferredOrder ? handleCheckoutDeferred('KHQR') : handlePayWithMethod('KHQR')
+              }}
+              disabled={status === 'submitting'}
             >
               <span style={pm.optionIcon}>📱</span>
               <div style={pm.optionText}>
-                <span style={pm.optionLabel}>{t('sale.paymentKhqr')}</span>
-                <span style={pm.optionDesc}>{t('sale.paymentKhqrDesc')}</span>
+                <span style={pm.optionLabel}>
+                  {t('sale.paymentKhqr')}
+                  {khqrUnavailable && <span style={pm.unavailableBadge}>{t('sale.khqrUnavailableBadge')}</span>}
+                </span>
+                <span style={pm.optionDesc}>
+                  {khqrUnavailable ? t('sale.khqrUnavailableDesc') : t('sale.paymentKhqrDesc')}
+                </span>
               </div>
             </button>
             {modalError && (
@@ -1049,9 +1071,10 @@ const pm: Record<string, React.CSSProperties> = {
   option: { display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '14px 16px', background: '#f7f8fa', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', marginBottom: 10, textAlign: 'left' },
   optionIcon: { fontSize: 28, flexShrink: 0 },
   optionText: { display: 'flex', flexDirection: 'column', gap: 2 },
-  optionLabel: { fontSize: 15, fontWeight: 600, color: 'var(--text)' },
+  optionLabel: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 15, fontWeight: 600, color: 'var(--text)' },
   optionDesc: { fontSize: 12, color: 'var(--muted)' },
   optionDisabled: { opacity: 0.45, cursor: 'not-allowed' },
+  unavailableBadge: { fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 999, padding: '2px 7px' },
   modalErrorMsg: { fontSize: 13, color: '#d97706', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '8px 12px', textAlign: 'center', marginTop: 4 },
 }
 
