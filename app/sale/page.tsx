@@ -74,6 +74,35 @@ type PhotoRecognizeResponse = {
   }
 }
 
+type PhotoMultiAiHint = {
+  name?: string | null
+  brand?: string | null
+  spec?: string | null
+  category?: string | null
+  color?: string | null
+  packageText?: string | null
+  confidence?: number | null
+}
+
+type PhotoMultiItem = {
+  itemIndex: number
+  aiHint?: PhotoMultiAiHint | null
+  candidates?: PhotoCandidate[]
+  needManualConfirm?: true
+}
+
+type PhotoRecognizeMultiResponse = {
+  items?: PhotoMultiItem[]
+  itemCount?: number
+  needManualConfirm?: true
+  errorCode?: string | null
+  fallbackMessage?: string | null
+  usage?: {
+    usedToday: number
+    dailyLimit: number
+  }
+}
+
 type PhotoDebugInfo = {
   fileType?: string
   fileSize?: number
@@ -148,6 +177,15 @@ export default function SalePage() {
   const [photoDebug, setPhotoDebug] = useState<PhotoDebugInfo | null>(null)
   const [photoDebugOpen, setPhotoDebugOpen] = useState(false)
   const [photoUsage, setPhotoUsage] = useState<{ usedToday: number; dailyLimit: number } | null>(null)
+  const [photoMultiModalOpen, setPhotoMultiModalOpen] = useState(false)
+  const [photoMultiStatus, setPhotoMultiStatus] = useState<'idle' | 'loading'>('idle')
+  const [photoMultiItems, setPhotoMultiItems] = useState<PhotoMultiItem[]>([])
+  const [photoMultiError, setPhotoMultiError] = useState<string | null>(null)
+  const [photoMultiDebug, setPhotoMultiDebug] = useState<PhotoDebugInfo | null>(null)
+  const [photoMultiDebugOpen, setPhotoMultiDebugOpen] = useState(false)
+  const [photoMultiUsage, setPhotoMultiUsage] = useState<{ usedToday: number; dailyLimit: number } | null>(null)
+  const [photoMultiHandled, setPhotoMultiHandled] = useState<Record<number, 'added' | 'ignored'>>({})
+  const [photoMultiManualHintIndex, setPhotoMultiManualHintIndex] = useState<number | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -156,6 +194,7 @@ export default function SalePage() {
   const isHidTier = tier === 'STANDARD' || tier === 'MULTI_STORE'
   const [manualOpen, setManualOpen] = useState(false)
   const [scannerMsg, setScannerMsg] = useState<{ type: 'ok' | 'fail'; text: string } | null>(null)
+  const isPhotoMultiEnabled = process.env.NEXT_PUBLIC_AI_PHOTO_MULTI_ENABLED === '1'
 
   function focusInput() {
     // defer one tick so the input is visible/mounted before focusing
@@ -383,12 +422,30 @@ export default function SalePage() {
     setPhotoStatus('idle')
   }
 
+  function openPhotoMultiModal() {
+    setPhotoMultiModalOpen(true)
+    setPhotoMultiError(null)
+    setPhotoMultiItems([])
+    setPhotoMultiDebug(null)
+    setPhotoMultiDebugOpen(false)
+    setPhotoMultiUsage(null)
+    setPhotoMultiHandled({})
+    setPhotoMultiManualHintIndex(null)
+    setPhotoMultiStatus('idle')
+  }
+
   function setPhotoFailure(message: string, debug: PhotoDebugInfo) {
     setPhotoError(message)
     setPhotoDebug((prev) => ({ ...(prev ?? {}), ...debug }))
   }
 
+  function setPhotoMultiFailure(message: string, debug: PhotoDebugInfo) {
+    setPhotoMultiError(message)
+    setPhotoMultiDebug((prev) => ({ ...(prev ?? {}), ...debug }))
+  }
+
   function aiPhotoErrorMessage(errorCode: string): string {
+    if (errorCode === 'AI_MULTI_BETA_DISABLED') return '多商品识别 Beta 暂未开启'
     if (errorCode === 'AI_DISABLED_BY_OPS') return '当前门店 AI 拍照识别已暂停，请使用扫码或手动选择商品。'
     if (errorCode === 'AI_DAILY_LIMIT_REACHED') return '今日免费 AI 拍照识别次数已用完。请使用扫码或手动选择商品，或联系开通高级版继续使用。'
     if (errorCode === 'AI_NOT_CONFIGURED') return 'AI 识别暂未配置，请使用扫码或手动选择商品'
@@ -578,6 +635,123 @@ export default function SalePage() {
     }
   }
 
+  async function handlePhotoMultiFile(file: File | null | undefined) {
+    if (!file) {
+      setPhotoMultiFailure('未选择图片', { stage: 'failed_before_post' })
+      return
+    }
+    setPhotoMultiError(null)
+    setPhotoMultiItems([])
+    setPhotoMultiHandled({})
+    setPhotoMultiManualHintIndex(null)
+    setPhotoMultiDebugOpen(false)
+    setPhotoMultiUsage(null)
+    setPhotoMultiDebug({
+      fileType: file.type || '(empty)',
+      fileSize: file.size,
+      stage: 'file_selected',
+    })
+
+    const allowed = new Set(['image/jpeg', 'image/png', 'image/webp'])
+    if (!allowed.has(file.type)) {
+      setPhotoMultiFailure('仅支持 JPG、PNG、WebP 图片', {
+        errorCode: 'INVALID_MIME',
+        stage: 'failed_before_post',
+      })
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoMultiFailure('图片太大，请换一张小于 5MB 的图片', {
+        errorCode: 'IMAGE_TOO_LARGE',
+        stage: 'failed_before_post',
+      })
+      return
+    }
+
+    setPhotoMultiStatus('loading')
+    let stage = 'file_selected'
+    try {
+      stage = 'compressing'
+      setPhotoMultiDebug((prev) => ({ ...(prev ?? {}), stage }))
+      const { blob, mime } = await compressPhotoForRecognize(file)
+      stage = 'compressed'
+      setPhotoMultiDebug((prev) => ({
+        ...(prev ?? {}),
+        compressedMime: mime,
+        compressedSize: blob.size,
+        stage,
+      }))
+      const imageBase64 = await blobToBase64(blob)
+      stage = 'posting'
+      setPhotoMultiDebug((prev) => ({ ...(prev ?? {}), stage }))
+      const res = await apiFetch('/api/sales/photo-recognize-multi', {
+        method: 'POST',
+        body: JSON.stringify({ imageBase64, mime, source: 'sale_recognize_multi_v1' }),
+      })
+      stage = 'response_received'
+      const body = await res.json().catch(() => ({})) as PhotoRecognizeMultiResponse & { error?: string }
+      if (body.usage) setPhotoMultiUsage(body.usage)
+      setPhotoMultiDebug((prev) => ({
+        ...(prev ?? {}),
+        apiStatus: res.status,
+        errorCode: body.errorCode ?? body.error ?? undefined,
+        stage,
+      }))
+      if (!res.ok) {
+        const errorCode = body.error ?? `HTTP_${res.status}`
+        if (res.status === 401 || res.status === 403) {
+          setPhotoMultiFailure('登录状态失效，请重新打开店小二后再试', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+          return
+        }
+        if (res.status === 400) {
+          setPhotoMultiFailure('图片参数无效，请换一张 JPG 图片重试', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+          return
+        }
+        setPhotoMultiFailure('多商品识别失败，请使用扫码或手动选择商品', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+        return
+      }
+      if (body.errorCode) {
+        setPhotoMultiFailure(body.fallbackMessage || aiPhotoErrorMessage(body.errorCode), {
+          apiStatus: res.status,
+          errorCode: body.errorCode,
+          stage: 'failed_after_post',
+        })
+        return
+      }
+      const items = Array.isArray(body.items) ? body.items.slice(0, 3) : []
+      if (items.length === 0) {
+        setPhotoMultiFailure('未找到匹配商品，请使用扫码或手动选择商品', {
+          apiStatus: res.status,
+          stage: 'response_received',
+        })
+        return
+      }
+      setPhotoMultiItems(items.map((item, index) => ({
+        ...item,
+        itemIndex: typeof item.itemIndex === 'number' ? item.itemIndex : index,
+        candidates: Array.isArray(item.candidates) ? item.candidates.slice(0, 3) : [],
+        needManualConfirm: true,
+      })))
+    } catch (e) {
+      const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
+      if (code === 'IMAGE_LOAD_FAILED') {
+        setPhotoMultiFailure('图片无法读取，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+      } else if (code === 'COMPRESS_FAILED') {
+        setPhotoMultiFailure('图片压缩失败，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+      } else if (code === 'IMAGE_TOO_LARGE_AFTER_COMPRESS') {
+        setPhotoMultiFailure('图片压缩后仍过大，请换一张更小的图片', { errorCode: code, stage: 'failed_before_post' })
+      } else if (code === 'FILE_READ_FAILED') {
+        setPhotoMultiFailure('图片无法读取，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+      } else if (stage === 'posting') {
+        setPhotoMultiFailure('网络请求失败，请检查网络后重试', { errorCode: code, stage: 'failed_after_post' })
+      } else {
+        setPhotoMultiFailure('多商品识别失败，请使用扫码或手动选择商品', { errorCode: code, stage: 'failed_before_post' })
+      }
+    } finally {
+      setPhotoMultiStatus('idle')
+    }
+  }
+
   function addPhotoCandidateToCart(c: PhotoCandidate) {
     const productMatch = allProducts.find((p) => p.id === c.productId)
     if (!productMatch) {
@@ -586,6 +760,22 @@ export default function SalePage() {
     }
     addProductToCart(productMatch, 1)
     setPhotoModalOpen(false)
+  }
+
+  function addPhotoMultiCandidateToCart(itemIndex: number, c: PhotoCandidate) {
+    const productMatch = allProducts.find((p) => p.id === c.productId)
+    if (!productMatch) {
+      setPhotoMultiError('候选商品未在当前商品列表中，请刷新后重试。')
+      return
+    }
+    addProductToCart(productMatch, 1)
+    setPhotoMultiHandled((prev) => ({ ...prev, [itemIndex]: 'added' }))
+    setPhotoMultiManualHintIndex(null)
+  }
+
+  function ignorePhotoMultiItem(itemIndex: number) {
+    setPhotoMultiHandled((prev) => ({ ...prev, [itemIndex]: 'ignored' }))
+    setPhotoMultiManualHintIndex(null)
   }
 
   // ── 收款方式选择 + 提交 ────────────────────────────────────────────────────
@@ -906,6 +1096,168 @@ export default function SalePage() {
         </div>
       )}
 
+      {/* AI 多商品识别 Beta：只展示候选，店员逐项确认加入本单 */}
+      {photoMultiModalOpen && (
+        <div style={ph.overlay} onClick={() => setPhotoMultiModalOpen(false)}>
+          <div style={ph.sheet} onClick={(e) => e.stopPropagation()}>
+            <div style={ph.header}>
+              <span style={ph.title}>AI 多商品识别 Beta</span>
+              <button type="button" style={ph.closeBtn} onClick={() => setPhotoMultiModalOpen(false)}>✕</button>
+            </div>
+            <div style={ph.intro}>AI 只提供候选，请逐项确认后加入本单。</div>
+            {photoMultiUsage && (
+              <div style={ph.usage}>今日已用：{photoMultiUsage.usedToday}/{photoMultiUsage.dailyLimit} 次</div>
+            )}
+
+            <label style={ph.uploadBox}>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                capture="environment"
+                style={{ display: 'none' }}
+                disabled={photoMultiStatus === 'loading'}
+                onChange={(e) => {
+                  void handlePhotoMultiFile(e.target.files?.[0])
+                  e.currentTarget.value = ''
+                }}
+              />
+              <div style={ph.uploadIcon}>📷</div>
+              <div style={ph.uploadText}>点击拍照 / 选择图片</div>
+              <div style={ph.uploadHint}>多商品 Beta，每项仍需店员确认</div>
+            </label>
+
+            {photoMultiStatus === 'loading' && (
+              <div style={ph.empty}>正在识别多个商品...</div>
+            )}
+            {photoMultiStatus !== 'loading' && photoMultiError && (
+              <div style={ph.empty}>{photoMultiError}</div>
+            )}
+            {photoMultiStatus !== 'loading' && photoMultiError && photoMultiDebug && (
+              <>
+                <button
+                  type="button"
+                  style={ph.debugToggle}
+                  onClick={() => setPhotoMultiDebugOpen((v) => !v)}
+                >
+                  {photoMultiDebugOpen ? '收起调试信息' : '查看调试信息'}
+                </button>
+                {photoMultiDebugOpen && (
+                  <div style={ph.debugBox}>
+                    <div style={ph.debugTitle}>识别调试信息</div>
+                    {photoMultiDebug.fileType !== undefined && <div>file.type: {photoMultiDebug.fileType}</div>}
+                    {photoMultiDebug.fileSize !== undefined && <div>file.size: {photoMultiDebug.fileSize}</div>}
+                    {photoMultiDebug.compressedMime !== undefined && <div>compressedMime: {photoMultiDebug.compressedMime}</div>}
+                    {photoMultiDebug.compressedSize !== undefined && <div>compressedSize: {photoMultiDebug.compressedSize}</div>}
+                    {photoMultiDebug.apiStatus !== undefined && <div>apiStatus: {photoMultiDebug.apiStatus}</div>}
+                    {photoMultiDebug.errorCode !== undefined && <div>errorCode: {photoMultiDebug.errorCode}</div>}
+                    {photoMultiDebug.stage !== undefined && <div>stage: {photoMultiDebug.stage}</div>}
+                  </div>
+                )}
+              </>
+            )}
+            {photoMultiStatus !== 'loading' && !photoMultiError && photoMultiItems.length === 0 && (
+              <div style={ph.empty}>未找到匹配商品，请使用扫码或手动选择商品。</div>
+            )}
+            {photoMultiStatus !== 'loading' && !photoMultiError && photoMultiItems.length > 0 && (
+              <>
+                <div style={ph.candidatesLabel}>AI 找到以下疑似商品项</div>
+                <div style={ph.candidatesHint}>请店员逐项确认，默认每项加入 1 件</div>
+                {photoMultiItems.map((item, idx) => {
+                  const itemKey = item.itemIndex
+                  const handled = photoMultiHandled[itemKey]
+                  const hint = item.aiHint
+                  const hintParts = [
+                    hint?.name,
+                    hint?.brand,
+                    hint?.spec,
+                    hint?.category,
+                    hint?.packageText,
+                  ].filter(Boolean)
+                  const candidates = item.candidates ?? []
+                  return (
+                    <div key={itemKey} style={ph.multiItem}>
+                      <div style={ph.multiHeader}>
+                        <div>
+                          <div style={ph.multiTitle}>第 {idx + 1} 项</div>
+                          <div style={ph.multiHint}>
+                            {hintParts.length > 0 ? hintParts.join(' · ') : 'AI 未给出明确商品描述'}
+                          </div>
+                        </div>
+                        {typeof hint?.confidence === 'number' && (
+                          <span style={ph.candConf}>{Math.round(hint.confidence * 100)}%</span>
+                        )}
+                      </div>
+
+                      {handled === 'added' && <div style={ph.multiDone}>已加入本单</div>}
+                      {handled === 'ignored' && <div style={ph.multiIgnored}>已忽略</div>}
+
+                      {candidates.length === 0 && (
+                        <div style={ph.multiEmpty}>这一项未找到匹配商品，请手动选择商品。</div>
+                      )}
+                      {candidates.map((c) => (
+                        <div key={`${itemKey}-${c.productId}`} style={ph.candidate}>
+                          <div style={ph.thumb}>
+                            {c.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={c.imageUrl} alt={c.name} style={ph.thumbImg} />
+                            ) : (
+                              <span style={ph.thumbEmoji}>🛒</span>
+                            )}
+                          </div>
+                          <div style={ph.candMeta}>
+                            <div style={ph.candName}>{c.name}</div>
+                            {c.spec && <div style={ph.candSpec}>{c.spec}</div>}
+                            <div style={ph.candFoot}>
+                              <span style={ph.candPrice}>${c.price.toFixed(2)}</span>
+                              <span style={ph.candConf}>{Math.round(c.confidence * 100)}%</span>
+                            </div>
+                            {c.reason.length > 0 && (
+                              <div style={ph.candReason}>{c.reason.join(' / ')}</div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            style={{ ...ph.candAddBtn, ...(handled ? ph.candAddBtnDisabled : {}) }}
+                            onClick={() => addPhotoMultiCandidateToCart(itemKey, c)}
+                            disabled={Boolean(handled)}
+                          >
+                            加入本单
+                          </button>
+                        </div>
+                      ))}
+                      <div style={ph.multiActions}>
+                        <button
+                          type="button"
+                          style={ph.secondaryBtn}
+                          onClick={() => ignorePhotoMultiItem(itemKey)}
+                          disabled={Boolean(handled)}
+                        >
+                          忽略
+                        </button>
+                        <button
+                          type="button"
+                          style={ph.secondaryBtn}
+                          onClick={() => setPhotoMultiManualHintIndex(itemKey)}
+                        >
+                          手动搜索
+                        </button>
+                      </div>
+                      {photoMultiManualHintIndex === itemKey && (
+                        <div style={ph.multiManualHint}>请关闭弹层后使用下方商品选择手动加入。</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
+            )}
+
+            <div style={ph.disclaimer}>
+              AI 多商品识别仍在 Beta，结果可能不准确，请以店员逐项确认结果为准。
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 收款方式选择 Modal */}
       {payStep === 'selecting' && (
         <div style={pm.overlay} onClick={() => { setPayStep('none'); setModalError(null) }}>
@@ -1082,6 +1434,16 @@ export default function SalePage() {
               >
                 📷 拍照识别（试用）
               </button>
+              {isPhotoMultiEnabled && (
+                <button
+                  type="button"
+                  style={ph.multiEntryBtn}
+                  onClick={openPhotoMultiModal}
+                  disabled={status === 'querying' || status === 'submitting'}
+                >
+                  📷 多商品识别 Beta
+                </button>
+              )}
 
               <div style={s.orDivider}>
                 <div style={s.orLine} />
@@ -1388,6 +1750,13 @@ const ph: Record<string, React.CSSProperties> = {
     border: '1px dashed var(--blue)', borderRadius: 'var(--radius-sm)',
     fontSize: 13, fontWeight: 600, cursor: 'pointer',
   },
+  multiEntryBtn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    width: '100%', height: 36, marginTop: -4, marginBottom: 12,
+    background: '#f8fafc', color: '#475569',
+    border: '1px dashed #cbd5e1', borderRadius: 'var(--radius-sm)',
+    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  },
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
     zIndex: 600, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
@@ -1461,6 +1830,49 @@ const ph: Record<string, React.CSSProperties> = {
     background: 'var(--blue)', color: '#fff', border: 'none',
     borderRadius: 'var(--radius-sm)',
     fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  },
+  candAddBtnDisabled: {
+    background: '#cbd5e1', cursor: 'not-allowed',
+  },
+  multiItem: {
+    padding: 10, marginBottom: 10,
+    background: '#f8fafc',
+    border: '1px solid #e2e8f0',
+    borderRadius: 'var(--radius-sm)',
+  },
+  multiHeader: {
+    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+    gap: 10, marginBottom: 8,
+  },
+  multiTitle: { fontSize: 13, fontWeight: 700, color: 'var(--text)' },
+  multiHint: { fontSize: 11, color: 'var(--muted)', lineHeight: 1.5, marginTop: 2 },
+  multiDone: {
+    fontSize: 12, color: '#15803d', background: '#f0fdf4',
+    border: '1px solid #bbf7d0', borderRadius: 6,
+    padding: '6px 8px', marginBottom: 8,
+  },
+  multiIgnored: {
+    fontSize: 12, color: '#64748b', background: '#f1f5f9',
+    border: '1px solid #e2e8f0', borderRadius: 6,
+    padding: '6px 8px', marginBottom: 8,
+  },
+  multiEmpty: {
+    fontSize: 12, color: 'var(--muted)',
+    background: '#fff', border: '1px dashed var(--border)',
+    borderRadius: 6, padding: '8px 10px', marginBottom: 8,
+  },
+  multiActions: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 },
+  secondaryBtn: {
+    padding: '7px 10px',
+    background: '#fff', color: '#475569',
+    border: '1px solid #cbd5e1',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  },
+  multiManualHint: {
+    marginTop: 8, fontSize: 11, color: 'var(--muted)',
+    background: '#fff7ed', border: '1px solid #fed7aa',
+    borderRadius: 6, padding: '7px 9px',
   },
   recognizeFailHint: {
     fontSize: 11, color: 'var(--muted)', textAlign: 'center',
