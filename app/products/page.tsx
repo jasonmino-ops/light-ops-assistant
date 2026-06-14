@@ -210,6 +210,13 @@ function withImages(p: Product, imageUrls: string[]): Product {
 
 export default function ProductsPage() {
   const { t } = useLocale()
+  const fmt = useCallback((key: string, vars: Record<string, string | number>) => {
+    let text = t(key)
+    Object.entries(vars).forEach(([name, value]) => {
+      text = text.replaceAll(`{${name}}`, String(value))
+    })
+    return text
+  }, [t])
   const [scannerOpen, setScannerOpen] = useState(false)
   const [barcodeInput, setBarcodeInput] = useState('')
   const [cameraFailCount, setCameraFailCount] = useState(0)
@@ -1115,18 +1122,18 @@ export default function ProductsPage() {
   async function handleImageUpload(file: File, slot = 0) {
     if (!product) return
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setImageError('仅支持 JPG / PNG / WebP')
+      setImageError(t('products.imageTypeError'))
       return
     }
     if (file.size > 5 * 1024 * 1024) {
       // 上传前给个宽松上限，压缩后服务端再卡 2MB
-      setImageError('原图不能超过 5MB')
+      setImageError(t('products.imageSizeError'))
       return
     }
     setImageUploading(true)
-    setImageError('正在压缩图片…')
+    setImageError(t('products.imageCompressing'))
     try {
-      setImageError('正在上传…')
+      setImageError(t('products.imageUploadingNow'))
       const imageUrls = await uploadProductImage(product.id, file, slot)
       setProduct(withImages(product, imageUrls))
       setImageError(null)
@@ -1153,7 +1160,7 @@ export default function ProductsPage() {
         setProduct(withImages(product, nextImages))
       } else {
         const body = await res.json().catch(() => null)
-        setImageError(body?.message ?? body?.error ?? '删除失败')
+        setImageError(body?.message ?? body?.error ?? t('products.imageDeleteFailed'))
       }
     } catch {
       setImageError(t('common.networkError'))
@@ -1187,11 +1194,11 @@ export default function ProductsPage() {
 
   async function listImgUpload(p: Product, file: File) {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setListImgError((v) => ({ ...v, [p.id]: '仅支持 JPG / PNG / WebP' }))
+      setListImgError((v) => ({ ...v, [p.id]: t('products.imageTypeError') }))
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setListImgError((v) => ({ ...v, [p.id]: '原图不能超过 5MB' }))
+      setListImgError((v) => ({ ...v, [p.id]: t('products.imageSizeError') }))
       return
     }
     setListImgUploading((v) => ({ ...v, [p.id]: true }))
@@ -1221,7 +1228,7 @@ export default function ProductsPage() {
         setProductList((prev) => prev.map((it) => (it.id === p.id ? withImages(it, []) : it)))
       } else {
         const body = await res.json().catch(() => null)
-        setListImgError((v) => ({ ...v, [p.id]: body?.message ?? body?.error ?? '删除失败' }))
+        setListImgError((v) => ({ ...v, [p.id]: body?.message ?? body?.error ?? t('products.imageDeleteFailed') }))
       }
     } catch {
       setListImgError((v) => ({ ...v, [p.id]: t('common.networkError') }))
@@ -1244,15 +1251,15 @@ export default function ProductsPage() {
   function handleNewImageSelect(file: File) {
     setNewImageError(null)
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setNewImageError('仅支持 JPG / PNG / WebP')
+      setNewImageError(t('products.imageTypeError'))
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setNewImageError('原图不能超过 5MB')
+      setNewImageError(t('products.imageSizeError'))
       return
     }
     if (newImageFiles.length >= 3) {
-      setNewImageError('每个商品最多 3 张图片')
+      setNewImageError(t('products.imageMaxCount'))
       return
     }
     const previewUrl = URL.createObjectURL(file)
@@ -1290,7 +1297,7 @@ export default function ProductsPage() {
     const body = await res.json().catch(() => null)
     if (res.ok && Array.isArray(body?.imageUrls)) return body.imageUrls as string[]
     if (res.ok && body?.imageUrl) return [body.imageUrl as string]
-    throw new Error(body?.message ?? body?.error ?? '上传失败')
+    throw new Error(body?.message ?? body?.error ?? t('products.imageUploadFailed'))
   }
 
   // ── Lookup ────────────────────────────────────────────────────────────────
@@ -1318,7 +1325,7 @@ export default function ProductsPage() {
         setMode('found')
         setTimeout(() => editNameRef.current?.focus(), 100)
         blockHidBriefly()
-        setHidMsg({ type: 'ok', text: `✓ 已找到：${p.name}` })
+        setHidMsg({ type: 'ok', text: fmt('products.hidFound', { name: p.name }) })
         setTimeout(() => setHidMsg(null), 2500)
       } else {
         const body = await res.json().catch(() => ({}))
@@ -1329,15 +1336,15 @@ export default function ProductsPage() {
           setNewPrice('')
           setMode('not-found')
           blockHidBriefly()
-          setHidMsg({ type: 'fail', text: `未找到条码 ${b}，已进入新增模式` })
+          setHidMsg({ type: 'fail', text: fmt('products.hidNotFound', { barcode: b }) })
           setTimeout(() => setHidMsg(null), 3000)
         } else {
-          setError('查询失败，请重试')
+          setError(t('products.queryFailedShort'))
           setMode('idle')
         }
       }
     } catch {
-      setError('网络错误，请重试')
+      setError(t('common.networkError'))
       setMode('idle')
     }
   }
@@ -1477,7 +1484,7 @@ export default function ProductsPage() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : t('common.networkError')
       if (newImageFiles.length > 0) setNewImageError(msg)
-      setError(newImageFiles.length > 0 ? `商品创建或图片上传失败：${msg}` : msg)
+      setError(newImageFiles.length > 0 ? fmt('products.createWithImageFailed', { message: msg }) : msg)
     } finally {
       setCreating(false)
     }
@@ -1906,7 +1913,7 @@ export default function ProductsPage() {
                 </div>
               )}
               {categories.length === 0 && (
-                <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0 8px' }}>暂无分类</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0 8px' }}>{t('products.noCategories')}</div>
               )}
 
               {/* 添加分类 */}
@@ -1963,14 +1970,14 @@ export default function ProductsPage() {
                       style={ls.searchInput}
                       value={listSearch}
                       onChange={(e) => onListSearchChange(e.target.value)}
-                      placeholder="搜索商品名 / 条码 / 规格"
+                      placeholder={t('products.searchPlaceholder')}
                     />
                     <select
                       style={ls.categoryFilter}
                       value={listCategoryId}
                       onChange={(e) => onListCategoryChange(e.target.value)}
                     >
-                      <option value="">全部分类</option>
+                      <option value="">{t('products.allCategories')}</option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.parentId ? '└ ' : ''}{c.name}
@@ -1979,7 +1986,7 @@ export default function ProductsPage() {
                     </select>
                     {(listSearch || listCategoryId) && (
                       <button type="button" style={ls.resetFilterBtn} onClick={resetListFilters}>
-                        清空
+                        {t('products.clearFilter')}
                       </button>
                     )}
                   </div>
@@ -2009,7 +2016,7 @@ export default function ProductsPage() {
 
 	                  {/* Product rows */}
                   {filteredProductList.length === 0 && (
-                    <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>无匹配商品</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>{t('products.noProductMatch')}</div>
                   )}
 
 	                  {filteredProductList.map((p) => {
@@ -2035,8 +2042,8 @@ export default function ProductsPage() {
                             </span>
                             <span style={ls.rowMeta}>
 	                              {p.barcode}
-	                              {p.status === 'DISABLED' && <span style={ls.disabledTag}> 停用</span>}
-	                              {p.imageUrl && <span style={ls.imgTag}> · 图</span>}
+	                              {p.status === 'DISABLED' && <span style={ls.disabledTag}>{t('products.disabledInlineTag')}</span>}
+	                              {p.imageUrl && <span style={ls.imgTag}>{t('products.imageInlineTag')}</span>}
 	                              {marketingPage && <span style={ls.imgTag}> · 营销页 {marketingPage.status}</span>}
 	                            </span>
 	                          </div>
@@ -2345,7 +2352,7 @@ export default function ProductsPage() {
               )}
 
               {!listLoading && productList.length === 0 && (
-                <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0 8px' }}>暂无商品</div>
+                <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0 8px' }}>{t('products.noProducts')}</div>
               )}
 
 	              {deleteMsg && <div style={s.errorMsg}>{deleteMsg}</div>}
@@ -2363,7 +2370,7 @@ export default function ProductsPage() {
                 <div style={dlg.body}>{deleteConfirm.name}</div>
               )}
               {deleteConfirm.type === 'batch' && (
-                <div style={dlg.body}>{deleteConfirm.ids.length} 件商品</div>
+                <div style={dlg.body}>{fmt('products.deleteProductCount', { count: deleteConfirm.ids.length })}</div>
               )}
               <div style={dlg.hint}>{t('products.deleteConfirmHint')}</div>
               <div style={dlg.actions}>
@@ -2462,7 +2469,7 @@ export default function ProductsPage() {
 
                 {/* 商品主图管理 */}
                 <div style={img.section}>
-                  <div style={img.title}>商品图片（最多 3 张，第一张为主图）</div>
+                  <div style={img.title}>{t('products.imageManageTitle')}</div>
                   <input
                     ref={imageFileRef}
                     type="file"
@@ -2478,7 +2485,7 @@ export default function ProductsPage() {
                       const url = productImages(product)[slot]
                       return (
                         <div key={slot} style={img.gallerySlot}>
-                          <div style={img.slotLabel}>{slot === 0 ? '主图' : `图 ${slot + 1}`}</div>
+                          <div style={img.slotLabel}>{slot === 0 ? t('products.mainImage') : fmt('products.imageSlot', { index: slot + 1 })}</div>
                           {url ? (
                             <>
                               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2493,7 +2500,7 @@ export default function ProductsPage() {
                                     imageFileRef.current?.click()
                                   }}
                                 >
-                                  替换
+                                  {t('products.imageReplace')}
                                 </button>
                                 <button
                                   type="button"
@@ -2501,7 +2508,7 @@ export default function ProductsPage() {
                                   disabled={imageUploading}
                                   onClick={() => handleImageDelete(slot)}
                                 >
-                                  删除
+                                  {t('products.imageDelete')}
                                 </button>
                               </div>
                             </>
@@ -2515,7 +2522,7 @@ export default function ProductsPage() {
                                 imageFileRef.current?.click()
                               }}
                             >
-                              + 上传
+                              {t('products.uploadPlus')}
                             </button>
                           )}
                         </div>
@@ -2560,7 +2567,7 @@ export default function ProductsPage() {
                   />
                   <div style={s.priceAdjRow}>
                     {[
-                      { label: '清空', fn: () => setEditPrice('') },
+                      { label: t('products.clearFilter'), fn: () => setEditPrice('') },
                       { label: '-1',   fn: () => setEditPrice((v) => String(Math.max(0, parseFloat(v || '0') - 1))) },
                       { label: '-0.5', fn: () => setEditPrice((v) => String(Math.max(0, parseFloat(v || '0') - 0.5))) },
                       { label: '+0.5', fn: () => setEditPrice((v) => String(Math.max(0, parseFloat(v || '0') + 0.5))) },
@@ -2618,13 +2625,13 @@ export default function ProductsPage() {
                   <div>
                     <div style={s.noticeTitle}>{t('products.notFoundTitle')}</div>
                     <div style={s.noticeSub}>
-                      {newBarcode ? `${t('products.barcodeLabel')}：${newBarcode}` : '未填写条码时会自动生成内部码'}
+                      {newBarcode ? `${t('products.barcodeLabel')}：${newBarcode}` : t('products.barcodeAutoHint')}
                     </div>
                   </div>
                 </div>
 
                 <div style={{ ...img.section, ...img.createSection }}>
-                  <div style={img.title}>商品图片（最多 3 张，第一张为主图）</div>
+                  <div style={img.title}>{t('products.imageManageTitle')}</div>
                   <input
                     ref={createImageFileRef}
                     type="file"
@@ -2640,18 +2647,18 @@ export default function ProductsPage() {
                       const url = newImagePreviews[slot]
                       return (
                         <div key={slot} style={img.gallerySlot}>
-                          <div style={img.slotLabel}>{slot === 0 ? '主图' : `图 ${slot + 1}`}</div>
+                          <div style={img.slotLabel}>{slot === 0 ? t('products.mainImage') : fmt('products.imageSlot', { index: slot + 1 })}</div>
                           {url ? (
                             <>
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={url} alt={newName || '商品主图'} loading="lazy" decoding="async" style={img.slotImg} />
+                              <img src={url} alt={newName || t('products.imageTitle')} loading="lazy" decoding="async" style={img.slotImg} />
                               <button
                                 type="button"
                                 style={{ ...img.slotBtn, ...img.slotBtnDanger }}
                                 disabled={creating}
                                 onClick={() => removeNewImage(slot)}
                               >
-                                删除
+                                {t('products.imageDelete')}
                               </button>
                             </>
                           ) : (
@@ -2661,7 +2668,7 @@ export default function ProductsPage() {
                               disabled={creating || newImagePreviews.length >= 3}
                               onClick={() => createImageFileRef.current?.click()}
                             >
-                              + 上传
+                              {t('products.uploadPlus')}
                             </button>
                           )}
                         </div>
@@ -2724,7 +2731,7 @@ export default function ProductsPage() {
                   disabled={creating}
                   onClick={handleCreate}
                 >
-                  {creating ? '保存中…' : t('products.createBtn')}
+                  {creating ? t('products.saving') : t('products.createBtn')}
                 </button>
               </div>
             )}
@@ -2763,9 +2770,10 @@ const f: Record<string, React.CSSProperties> = {
 // ─── 分类来源标签 ─────────────────────────────────────────────────────────────
 
 function CatSourceBadge({ source }: { source: 'MANUAL' | 'AUTO' | 'NONE' }) {
-  if (source === 'MANUAL') return <span style={badge.manual}>表格</span>
-  if (source === 'AUTO')   return <span style={badge.auto}>自动识别</span>
-  return <span style={badge.none}>未分类</span>
+  const { t } = useLocale()
+  if (source === 'MANUAL') return <span style={badge.manual}>{t('products.catSourceManual')}</span>
+  if (source === 'AUTO')   return <span style={badge.auto}>{t('products.catSourceAuto')}</span>
+  return <span style={badge.none}>{t('products.catSourceNone')}</span>
 }
 
 const badge: Record<string, React.CSSProperties> = {
@@ -2785,6 +2793,7 @@ function CategorySelect({
   onChange: (v: string) => void
   noneLabel: string
 }) {
+  const { t } = useLocale()
   const l1 = categories.filter((c) => !c.parentId)
   const l2ByParent = new Map<string, Category[]>()
   categories.filter((c) => c.parentId).forEach((c) => {
@@ -2805,7 +2814,7 @@ function CategorySelect({
       <option value="">{noneLabel}</option>
       {l1.map((cat) => (
         <optgroup key={cat.id} label={cat.name}>
-          <option value={cat.id}>{cat.name}（大类）</option>
+          <option value={cat.id}>{cat.name}{t('products.catParentSuffix')}</option>
           {(l2ByParent.get(cat.id) ?? []).map((sub) => (
             <option key={sub.id} value={sub.id}>└ {sub.name}</option>
           ))}
