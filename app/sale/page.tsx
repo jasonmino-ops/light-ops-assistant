@@ -407,6 +407,88 @@ export default function SalePage() {
     setCart((prev) => prev.filter((i) => i.key !== key))
   }
 
+  // ── POS Session mirror sync（fire-and-forget；只镜像到 PosSession 表，不动主销售链路） ──
+  // 失败仅 console.warn；任何错误都不阻断 /api/sales 提交、KhqrSheet、CASH 流程。
+  function postPosMirror(path: 'update' | 'complete' | 'cancel', body: object) {
+    apiFetch(`/api/pos/session/${path}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).catch((e) => console.warn('[pos-mirror]', path, e))
+  }
+
+  const posMirrorSigRef = useRef<string>('')
+
+  useEffect(() => {
+    if (success) {
+      // 销售完成 → 终态
+      posMirrorSigRef.current = '__terminal__'
+      postPosMirror('complete', {
+        orderNo: success.orderNo,
+        totalAmount: success.totalAmount,
+        paymentMethod: success.paymentMethod,
+      })
+      return
+    }
+
+    // 解析当前镜像负载
+    let activeItems: CartItem[] = []
+    let mirrorStatus: 'DRAFT' | 'AWAITING_PAYMENT' = 'DRAFT'
+    let mPM: 'CASH' | 'KHQR' | null = null
+    let mPS: 'PENDING' | 'PAID' | null = null
+    let mKQ: string | null = null
+    let mKI: string | null = null
+
+    if (pendingPayment) {
+      activeItems = pendingPayment.cartSnapshot
+      mirrorStatus = 'AWAITING_PAYMENT'
+      mPM = 'KHQR'; mPS = 'PENDING'
+      mKQ = pendingPayment.khqrPayload
+      mKI = pendingPayment.khqrImageUrl
+    } else if (deferredOrder) {
+      activeItems = deferredOrder.cartSnapshot
+      mirrorStatus = 'AWAITING_PAYMENT'
+    } else if (cart.length > 0) {
+      activeItems = cart
+      mirrorStatus = 'DRAFT'
+    } else {
+      // 无活动状态：仅当上一次发过非终态时才补一次 cancel
+      if (!posMirrorSigRef.current || posMirrorSigRef.current === '__terminal__') return
+      posMirrorSigRef.current = '__terminal__'
+      postPosMirror('cancel', {})
+      return
+    }
+
+    const items = activeItems.map((ci) => ({
+      productId: ci.product.id,
+      name: ci.product.name,
+      spec: ci.product.spec,
+      price: ci.product.sellPrice,
+      qty: ci.qty,
+      lineAmount: +(ci.product.sellPrice * ci.qty).toFixed(2),
+    }))
+
+    const sig = JSON.stringify({
+      s: mirrorStatus, pm: mPM, ps: mPS,
+      kq: !!mKQ, ki: !!mKI,
+      items: items.map((i) => `${i.productId}:${i.qty}`).join('|'),
+    })
+    if (sig === posMirrorSigRef.current) return
+    posMirrorSigRef.current = sig
+
+    // 400ms 防抖：避免 +/- 连点造成的高频写
+    const t = setTimeout(() => {
+      postPosMirror('update', {
+        items,
+        status: mirrorStatus,
+        paymentMethod: mPM,
+        paymentStatus: mPS,
+        khqrPayload: mKQ,
+        khqrImageUrl: mKI,
+      })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [cart, payStep, pendingPayment, deferredOrder, success])
+
   // mock 候选：取当前 allProducts 前 3 个；置信度硬编码三档（仅 UI 真实感，不参与决策）
   const photoMockCandidates: Array<Product & { confidence: number }> = allProducts
     .slice(0, 3)

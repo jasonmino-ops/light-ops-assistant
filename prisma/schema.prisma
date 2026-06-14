@@ -851,3 +851,33 @@ model Creator {
   @@index([storeId])
   @@index([tenantId])
 }
+
+/// 手机 /sale ↔ 电脑 /desktop 同屏联动：每店仅一条 active 草稿会话。
+/// 手机端在 cart/payStep/success 变化时 fire-and-forget upsert；
+/// 电脑端 /desktop?storeCode= 每 1.5s GET 同一行做镜像展示。
+/// 与 SaleRecord / PaymentIntent 主交易链路完全解耦：本表不承载任何业务真相，
+/// 仅是 UI 镜像；丢失数据不影响最终销售记录。
+model PosSession {
+  id             String    @id @default(cuid())
+  tenantId       String
+  storeId        String
+  storeCode      String                              // 反查用，避免每次 desktop GET 都 JOIN Store
+  operatorUserId String?                              // 最后一次更新的操作员
+  status         String    @default("DRAFT")          // DRAFT | AWAITING_PAYMENT | COMPLETED | CANCELLED
+  paymentMethod  String?                              // CASH | KHQR
+  paymentStatus  String?                              // PENDING | PAID
+  itemsJson      String    @default("[]") @db.Text   // [{productId,name,spec,price,qty,lineAmount}]
+  totalAmount    Decimal   @default(0) @db.Decimal(12, 2)
+  itemCount      Int       @default(0)
+  khqrPayload    String?   @db.Text
+  khqrImageUrl   String?   @db.Text
+  orderNo        String?                              // 完成时回填，desktop 展示用
+  message        String?   @db.Text                   // 给 desktop 的提示文案，可选
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([tenantId, storeId])
+  @@index([storeCode])
+  @@index([updatedAt])
+}
