@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { findKhqrConfig } from '@/lib/merchant-config'
 
 type PosItem = {
   productId: string
@@ -13,6 +14,7 @@ type PosItem = {
   price: number
   qty: number
   lineAmount: number
+  imageUrl?: string | null
 }
 
 type RecentOrder = {
@@ -109,6 +111,10 @@ export async function GET(req: NextRequest) {
     order.status = payment.status
   }
 
+  const khqrFallbackConfig = row?.paymentMethod === 'KHQR' && !row.khqrPayload && !row.khqrImageUrl
+    ? await findKhqrConfig(store.tenantId, store.id)
+    : null
+
   return NextResponse.json({
     storeCode: store.code,
     storeName: store.name,
@@ -121,7 +127,7 @@ export async function GET(req: NextRequest) {
       totalAmount: row.totalAmount.toNumber(),
       itemCount: row.itemCount,
       khqrPayload: row.khqrPayload,
-      khqrImageUrl: row.khqrImageUrl,
+      khqrImageUrl: row.khqrImageUrl ?? khqrFallbackConfig?.khqrImageUrl ?? null,
       orderNo: row.orderNo,
       message: row.message,
       completedAt: row.completedAt?.toISOString() ?? null,

@@ -17,6 +17,7 @@ type PosItem = {
   productId: string
   name: string
   spec: string | null
+  imageUrl?: string | null
   price: number
   qty: number
   lineAmount: number
@@ -203,6 +204,7 @@ function CartList({ items, t }: { items: PosItem[]; t: DisplayCopy }) {
       <div style={s.cartTitle}>{t.cartTitle}</div>
       {items.map((it) => (
         <div key={it.productId + '-' + it.qty} style={s.cartRow}>
+          <ProductThumb item={it} />
           <div style={s.cartName}>
             {it.name}
             {it.spec && <span style={s.cartSpec}> · {it.spec}</span>}
@@ -212,6 +214,17 @@ function CartList({ items, t }: { items: PosItem[]; t: DisplayCopy }) {
         </div>
       ))}
     </div>
+  )
+}
+
+function ProductThumb({ item }: { item: PosItem }) {
+  const [failed, setFailed] = useState(false)
+  if (!item.imageUrl || failed) {
+    return <div style={s.productPlaceholder}>📦</div>
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={item.imageUrl} alt={item.name} style={s.productImage} onError={() => setFailed(true)} />
   )
 }
 
@@ -306,7 +319,8 @@ function PaymentCard({ session, recentlyCompleted, t }: { session: SessionPayloa
         </div>
       ) : (
         <div style={s.payIdle}>
-          {session.status === 'AWAITING_PAYMENT' ? t.waitingPaymentMethod :
+          {session.status === 'AWAITING_PAYMENT' && session.paymentMethod === 'KHQR' ? t.payStaff :
+           session.status === 'AWAITING_PAYMENT' ? t.waitingPaymentMethod :
            session.status === 'DRAFT' ? t.draftNoPayment :
            session.status === 'COMPLETED' ? t.completed :
            '—'}
@@ -397,6 +411,7 @@ const displayCopy = {
     paymentMethod: '收款方式',
     paid: '已收款',
     scanToPay: '请扫码付款',
+    payStaff: '请向店员付款',
     waitingPaymentMethod: '等待手机端选择收款方式',
     draftNoPayment: '草稿中 · 尚未发起收款',
     connected: (seconds: number) => `已连接 · 每 ${seconds}s 刷新`,
@@ -433,6 +448,7 @@ const displayCopy = {
     paymentMethod: 'Payment Method',
     paid: 'Paid',
     scanToPay: 'Please scan to pay',
+    payStaff: 'Please pay the cashier',
     waitingPaymentMethod: 'Waiting for payment method on phone',
     draftNoPayment: 'Draft · Payment not started',
     connected: (seconds: number) => `Connected · refreshes every ${seconds}s`,
@@ -469,6 +485,7 @@ const displayCopy = {
     paymentMethod: 'វិធីបង់ប្រាក់',
     paid: 'បានទទួលប្រាក់',
     scanToPay: 'សូមស្កេនដើម្បីបង់ប្រាក់',
+    payStaff: 'សូមបង់ប្រាក់ជាមួយបុគ្គលិក',
     waitingPaymentMethod: 'រង់ចាំជ្រើសរើសវិធីបង់ប្រាក់ពីទូរស័ព្ទ',
     draftNoPayment: 'ព្រាង · មិនទាន់ចាប់ផ្តើមបង់ប្រាក់',
     connected: (seconds: number) => `បានភ្ជាប់ · ធ្វើបច្ចុប្បន្នភាពរៀងរាល់ ${seconds}s`,
@@ -505,7 +522,9 @@ const s: Record<string, CSSProperties> = {
 
   cartList: { display: 'flex', flexDirection: 'column' },
   cartTitle: { fontSize: 13, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 12 },
-  cartRow: { display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'baseline', gap: 16, padding: '14px 4px', borderBottom: '1px solid #f1f5f9' },
+  cartRow: { display: 'grid', gridTemplateColumns: '58px 1fr auto auto', alignItems: 'center', gap: 14, padding: '12px 4px', borderBottom: '1px solid #f1f5f9' },
+  productImage: { width: 52, height: 52, objectFit: 'cover', borderRadius: 10, border: '1px solid #e5e7eb', background: '#f8fafc' },
+  productPlaceholder: { width: 52, height: 52, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 },
   cartName: { fontSize: 18, fontWeight: 600, color: '#111827' },
   cartSpec: { fontSize: 14, color: '#9ca3af', fontWeight: 400 },
   cartQty: { fontSize: 14, color: '#6b7280', whiteSpace: 'nowrap' },

@@ -462,6 +462,7 @@ export default function SalePage() {
       productId: ci.product.id,
       name: ci.product.name,
       spec: ci.product.spec,
+      imageUrl: ci.product.imageUrl ?? null,
       price: ci.product.sellPrice,
       qty: ci.qty,
       lineAmount: +(ci.product.sellPrice * ci.qty).toFixed(2),

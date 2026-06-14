@@ -11,8 +11,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
-type ClientItem = { productId?: unknown; name?: unknown; spec?: unknown; price?: unknown; qty?: unknown; lineAmount?: unknown }
-type CleanItem  = { productId: string; name: string; spec: string | null; price: number; qty: number; lineAmount: number }
+type ClientItem = { productId?: unknown; name?: unknown; spec?: unknown; imageUrl?: unknown; price?: unknown; qty?: unknown; lineAmount?: unknown }
+type CleanItem  = { productId: string; name: string; spec: string | null; imageUrl: string | null; price: number; qty: number; lineAmount: number }
 
 const ALLOWED_STATUS         = new Set(['DRAFT', 'AWAITING_PAYMENT'])
 const ALLOWED_PAYMENT_METHOD = new Set(['CASH', 'KHQR'])
@@ -32,6 +32,7 @@ function cleanItems(raw: unknown): CleanItem[] {
     out.push({
       productId, name,
       spec: typeof r.spec === 'string' && r.spec.trim() ? r.spec.slice(0, 200) : null,
+      imageUrl: typeof r.imageUrl === 'string' && r.imageUrl.trim() ? r.imageUrl.slice(0, 2048) : null,
       price: +price.toFixed(2),
       qty: +qty.toFixed(3),
       lineAmount: Number.isFinite(line) ? +line.toFixed(2) : +(price * qty).toFixed(2),
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
   const paymentMethod = typeof body.paymentMethod === 'string' && ALLOWED_PAYMENT_METHOD.has(body.paymentMethod) ? body.paymentMethod : null
   const paymentStatus = typeof body.paymentStatus === 'string' && ALLOWED_PAYMENT_STATUS.has(body.paymentStatus) ? body.paymentStatus : null
   const khqrPayload = typeof body.khqrPayload === 'string' && body.khqrPayload ? body.khqrPayload.slice(0, 1024) : null
-  const khqrImageUrl = typeof body.khqrImageUrl === 'string' && body.khqrImageUrl ? body.khqrImageUrl.slice(0, 2048) : null
+  const khqrImageUrl = typeof body.khqrImageUrl === 'string' && body.khqrImageUrl ? body.khqrImageUrl.slice(0, 300000) : null
   const message = typeof body.message === 'string' && body.message ? body.message.slice(0, 200) : null
 
   try {
