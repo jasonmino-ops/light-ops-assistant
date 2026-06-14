@@ -68,6 +68,10 @@ type PhotoRecognizeResponse = {
   needManualConfirm?: true
   errorCode?: string
   fallbackMessage?: string
+  usage?: {
+    usedToday: number
+    dailyLimit: number
+  }
 }
 
 type PhotoDebugInfo = {
@@ -143,6 +147,7 @@ export default function SalePage() {
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [photoDebug, setPhotoDebug] = useState<PhotoDebugInfo | null>(null)
   const [photoDebugOpen, setPhotoDebugOpen] = useState(false)
+  const [photoUsage, setPhotoUsage] = useState<{ usedToday: number; dailyLimit: number } | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -374,6 +379,7 @@ export default function SalePage() {
     setPhotoCandidates([])
     setPhotoDebug(null)
     setPhotoDebugOpen(false)
+    setPhotoUsage(null)
     setPhotoStatus('idle')
   }
 
@@ -383,8 +389,7 @@ export default function SalePage() {
   }
 
   function aiPhotoErrorMessage(errorCode: string): string {
-    if (errorCode === 'AI_DISABLED_FOR_STORE') return '当前门店暂未开通 AI 拍照识别，请使用扫码或手动选择商品'
-    if (errorCode === 'AI_DAILY_LIMIT_REACHED') return '今日 AI 拍照识别次数已用完，请使用扫码或手动选择商品'
+    if (errorCode === 'AI_DAILY_LIMIT_REACHED') return '今日免费 AI 拍照识别次数已用完。请使用扫码或手动选择商品，或联系开通高级版继续使用。'
     if (errorCode === 'AI_NOT_CONFIGURED') return 'AI 识别暂未配置，请使用扫码或手动选择商品'
     if (errorCode === 'AI_TIMEOUT') return '识别超时，请换一张更清晰的图片重试'
     if (errorCode === 'AI_EMPTY') return '未识别到清晰商品，请拍商品正面'
@@ -470,6 +475,7 @@ export default function SalePage() {
     setPhotoError(null)
     setPhotoCandidates([])
     setPhotoDebugOpen(false)
+    setPhotoUsage(null)
     setPhotoDebug({
       fileType: file.type || '(empty)',
       fileSize: file.size,
@@ -514,6 +520,7 @@ export default function SalePage() {
       })
       stage = 'response_received'
       const body = await res.json().catch(() => ({})) as PhotoRecognizeResponse & { error?: string }
+      if (body.usage) setPhotoUsage(body.usage)
       setPhotoDebug((prev) => ({
         ...(prev ?? {}),
         apiStatus: res.status,
@@ -534,7 +541,7 @@ export default function SalePage() {
         return
       }
       if (body.errorCode) {
-        setPhotoFailure(aiPhotoErrorMessage(body.errorCode), {
+        setPhotoFailure(body.fallbackMessage || aiPhotoErrorMessage(body.errorCode), {
           apiStatus: res.status,
           errorCode: body.errorCode,
           stage: 'failed_after_post',
@@ -778,6 +785,9 @@ export default function SalePage() {
               <button type="button" style={ph.closeBtn} onClick={() => setPhotoModalOpen(false)}>✕</button>
             </div>
             <div style={ph.intro}>识别结果仅供参考，请确认后加入本单。</div>
+            {photoUsage && (
+              <div style={ph.usage}>今日已用：{photoUsage.usedToday}/{photoUsage.dailyLimit} 次</div>
+            )}
 
             {/* 拍照 / 上传图片入口 */}
             <label style={ph.uploadBox}>
@@ -1391,6 +1401,7 @@ const ph: Record<string, React.CSSProperties> = {
   title: { fontSize: 16, fontWeight: 700, color: 'var(--text)' },
   closeBtn: { background: 'none', border: 'none', fontSize: 18, color: '#8c8c8c', cursor: 'pointer', padding: '0 4px' },
   intro: { fontSize: 12, color: 'var(--muted)', marginBottom: 12 },
+  usage: { fontSize: 12, color: 'var(--blue)', margin: '-4px 0 12px', fontWeight: 600 },
   uploadBox: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     padding: '20px 12px', background: '#f7f8fa',

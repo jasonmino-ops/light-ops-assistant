@@ -7,12 +7,12 @@
  *   1. 校验 body：imageBase64 + mime + (可选) source
  *   2. base64 解码 ≤ 1MB
  *   3. ctx = getContext(req) —— 拒绝匿名；tenantId/userId/storeId 由服务端决定
- *   4. 校验门店白名单 + 每日调用次数；未授权 / 超限不调 AI
+ *   4. 按 tenant tier / 试点 store 计算每日次数；超限不调 AI
  *   5. 调 Anthropic 视觉模型（lib/ai-photo-product-recognize.ts，5s 超时）
- *   5. 在当前 tenant ACTIVE 商品库内做"AI 文本特征 → Product"打分匹配
- *   6. 返回最多 5 个候选 + needManualConfirm=true
- *   7. 任何 AI 失败 / 超时 / 空结果都返回 200 + candidates:[] + errorCode + fallbackMessage
- *   8. 全程写一条 OperationLog（actionType='AI_PHOTO_RECOGNIZE'）
+ *   6. 在当前 tenant ACTIVE 商品库内做"AI 文本特征 → Product"打分匹配
+ *   7. 返回最多 5 个候选 + needManualConfirm=true
+ *   8. 任何 AI 失败 / 超时 / 空结果都返回 200 + candidates:[] + errorCode + fallbackMessage
+ *   9. 全程写一条 OperationLog（actionType='AI_PHOTO_RECOGNIZE'）
  *
  * 安全契约（不可破坏）：
  *   - 不接受前端 tenantId / storeId / productId
@@ -26,6 +26,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { recognizeSingleProduct, type AiProductFeature } from '@/lib/ai-photo-product-recognize'
+import { normalizeTier, TENANT_TIERS, type TenantTier } from '@/lib/tier'
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_BYTES = 1024 * 1024              // 1MB（base64 解码后）
@@ -46,7 +47,6 @@ type Candidate = {
 }
 
 type ErrorCode =
-  | 'AI_DISABLED_FOR_STORE'
   | 'AI_DAILY_LIMIT_REACHED'
   | 'AI_NOT_CONFIGURED'
   | 'AI_TIMEOUT'
@@ -59,12 +59,15 @@ type SuccessBody = {
   needManualConfirm: true
   errorCode?: ErrorCode
   fallbackMessage?: string
+  usage?: {
+    usedToday: number
+    dailyLimit: number
+  }
 }
 
 const FALLBACK_MSG = '识别失败，请使用扫码或手动选择商品'
 const FALLBACK_BY_ERROR: Partial<Record<ErrorCode, string>> = {
-  AI_DISABLED_FOR_STORE: '当前门店暂未开通 AI 拍照识别，请使用扫码或手动选择商品',
-  AI_DAILY_LIMIT_REACHED: '今日 AI 拍照识别次数已用完，请使用扫码或手动选择商品',
+  AI_DAILY_LIMIT_REACHED: '今日免费 AI 拍照识别次数已用完，请使用扫码或手动选择商品，或联系开通高级版继续使用。',
 }
 
 export async function POST(req: NextRequest) {
@@ -89,20 +92,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_MIME' }, { status: 400 })
   }
 
-  const dailyLimit = getAiPhotoDailyLimit()
-  const enabledStoreIds = getAiPhotoEnabledStoreIds()
-  if (!ctx.storeId || !enabledStoreIds.has(ctx.storeId)) {
-    return respondLogged({
-      ctx, startedAt, source: sourceRaw,
-      candidates: [], errorCode: 'AI_DISABLED_FOR_STORE',
-      imageSizeBytes: 0, status: 'FAILED',
-      message: 'AI_DISABLED_FOR_STORE',
-      dailyLimit,
-      usedToday: 0,
-    })
-  }
-
-  const usedToday = await getAiPhotoUsedToday(ctx.storeId)
+  const usagePolicy = await resolveAiPhotoUsagePolicy(ctx.tenantId, ctx.storeId)
+  const { dailyLimit, tenantTier } = usagePolicy
+  const usedToday = ctx.storeId ? await getAiPhotoUsedToday(ctx.storeId) : 0
   if (usedToday >= dailyLimit) {
     return respondLogged({
       ctx, startedAt, source: sourceRaw,
@@ -111,8 +103,10 @@ export async function POST(req: NextRequest) {
       message: 'AI_DAILY_LIMIT_REACHED',
       dailyLimit,
       usedToday,
+      tenantTier,
     })
   }
+  const usedTodayAfterThisCall = usedToday + 1
 
   if (imageBase64.length > MAX_BASE64_LEN) {
     return respondLogged({
@@ -121,7 +115,8 @@ export async function POST(req: NextRequest) {
       imageSizeBytes: imageBase64.length, status: 'FAILED',
       message: 'IMAGE_TOO_LARGE',
       dailyLimit,
-      usedToday,
+      usedToday: usedTodayAfterThisCall,
+      tenantTier,
     })
   }
 
@@ -138,7 +133,8 @@ export async function POST(req: NextRequest) {
         imageSizeBytes, status: 'FAILED',
         message: 'IMAGE_TOO_LARGE',
         dailyLimit,
-        usedToday,
+        usedToday: usedTodayAfterThisCall,
+        tenantTier,
       })
     }
   } catch {
@@ -148,7 +144,8 @@ export async function POST(req: NextRequest) {
       imageSizeBytes: 0, status: 'FAILED',
       message: 'BASE64_DECODE_FAIL',
       dailyLimit,
-      usedToday,
+      usedToday: usedTodayAfterThisCall,
+      tenantTier,
     })
   }
 
@@ -173,7 +170,8 @@ export async function POST(req: NextRequest) {
       imageSizeBytes, status: 'FAILED',
       message: aiErrorRaw ?? aiError,
       dailyLimit,
-      usedToday,
+      usedToday: usedTodayAfterThisCall,
+      tenantTier,
     })
   }
 
@@ -185,7 +183,8 @@ export async function POST(req: NextRequest) {
       imageSizeBytes, status: 'SUCCESS',
       message: `confidence=${feature?.confidence ?? 0}`,
       dailyLimit,
-      usedToday,
+      usedToday: usedTodayAfterThisCall,
+      tenantTier,
     })
   }
 
@@ -208,23 +207,51 @@ export async function POST(req: NextRequest) {
     imageSizeBytes, status: 'SUCCESS',
     message: `aiConf=${feature.confidence};hits=${candidates.length}`,
     dailyLimit,
-    usedToday,
+    usedToday: usedTodayAfterThisCall,
+    tenantTier,
   })
 }
 
-function getAiPhotoEnabledStoreIds(): Set<string> {
+function getEnvPositiveInt(name: string, defaultValue: number): number {
+  const raw = process.env[name]
+  const parsed = Number.parseInt(raw ?? '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue
+}
+
+function getAiPhotoTierDailyLimit(tier: TenantTier): number {
+  if (tier === TENANT_TIERS.MULTI_STORE) return getEnvPositiveInt('AI_PHOTO_MULTI_STORE_DAILY_LIMIT', 100)
+  if (tier === TENANT_TIERS.STANDARD) return getEnvPositiveInt('AI_PHOTO_STANDARD_DAILY_LIMIT', 30)
+  return getEnvPositiveInt('AI_PHOTO_LITE_DAILY_LIMIT', 3)
+}
+
+function getTrialStoreIds(): Set<string> {
   return new Set(
-    (process.env.AI_PHOTO_ENABLED_STORE_IDS ?? '')
+    (process.env.AI_PHOTO_TRIAL_STORE_IDS ?? '')
       .split(',')
       .map((id) => id.trim())
       .filter(Boolean),
   )
 }
 
-function getAiPhotoDailyLimit(): number {
-  const raw = process.env.AI_PHOTO_DAILY_LIMIT
-  const parsed = Number.parseInt(raw ?? '', 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 100
+async function resolveAiPhotoUsagePolicy(
+  tenantId: string,
+  storeId: string | null | undefined,
+): Promise<{ tenantTier: TenantTier; dailyLimit: number }> {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { tier: true },
+  })
+  const tenantTier = normalizeTier(tenant?.tier)
+  if (storeId && getTrialStoreIds().has(storeId)) {
+    return {
+      tenantTier,
+      dailyLimit: getEnvPositiveInt('AI_PHOTO_TRIAL_STORE_DAILY_LIMIT', 200),
+    }
+  }
+  return {
+    tenantTier,
+    dailyLimit: getAiPhotoTierDailyLimit(tenantTier),
+  }
 }
 
 function getUtcDayStart(d = new Date()): Date {
@@ -351,6 +378,7 @@ async function respondLogged(params: {
   message?: string
   dailyLimit?: number
   usedToday?: number
+  tenantTier?: TenantTier
 }) {
   const latencyMs = Date.now() - params.startedAt
   const body: SuccessBody = {
@@ -360,6 +388,12 @@ async function respondLogged(params: {
   if (params.errorCode) {
     body.errorCode = params.errorCode
     body.fallbackMessage = FALLBACK_BY_ERROR[params.errorCode] ?? FALLBACK_MSG
+  }
+  if (typeof params.dailyLimit === 'number' && typeof params.usedToday === 'number') {
+    body.usage = {
+      usedToday: params.usedToday,
+      dailyLimit: params.dailyLimit,
+    }
   }
 
   // OperationLog：失败也写一行；不阻断响应
@@ -378,6 +412,7 @@ async function respondLogged(params: {
           aiProvider: AI_PROVIDER,
           aiModel: AI_MODEL,
           storeId: params.ctx.storeId ?? null,
+          tenantTier: params.tenantTier ?? null,
           source: params.source || 'sale_recognize_v1',
           dailyLimit: params.dailyLimit ?? null,
           usedToday: params.usedToday ?? null,
