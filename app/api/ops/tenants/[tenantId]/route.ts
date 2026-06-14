@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuth } from '@/lib/ops-auth'
-import { canUseAiSupport } from '@/lib/tier'
+import { canUseAiSupport, normalizeTier, TENANT_TIERS, type TenantTier } from '@/lib/tier'
 
 function todayStart() {
   const d = new Date()
@@ -24,6 +24,60 @@ function maskAiSupportApiBaseUrl(value: string | null): string | null {
   }
 }
 
+function getEnvPositiveInt(name: string, defaultValue: number): number {
+  const raw = process.env[name]
+  const parsed = Number.parseInt(raw ?? '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue
+}
+
+function getAiPhotoTierDailyLimit(tier: TenantTier): number {
+  if (tier === TENANT_TIERS.MULTI_STORE) return getEnvPositiveInt('AI_PHOTO_MULTI_STORE_DAILY_LIMIT', 100)
+  if (tier === TENANT_TIERS.STANDARD) return getEnvPositiveInt('AI_PHOTO_STANDARD_DAILY_LIMIT', 30)
+  return getEnvPositiveInt('AI_PHOTO_LITE_DAILY_LIMIT', 3)
+}
+
+function getTrialStoreIds(): Set<string> {
+  return new Set(
+    (process.env.AI_PHOTO_TRIAL_STORE_IDS ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean),
+  )
+}
+
+function resolveAiPhotoLimit(tier: TenantTier, storeId: string): { dailyLimit: number; limitSource: 'TIER_DEFAULT' | 'TRIAL_STORE_ENV' } {
+  if (getTrialStoreIds().has(storeId)) {
+    return {
+      dailyLimit: getEnvPositiveInt('AI_PHOTO_TRIAL_STORE_DAILY_LIMIT', 200),
+      limitSource: 'TRIAL_STORE_ENV',
+    }
+  }
+  return {
+    dailyLimit: getAiPhotoTierDailyLimit(tier),
+    limitSource: 'TIER_DEFAULT',
+  }
+}
+
+function getUtcDayStart(d = new Date()): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+}
+
+function asPayloadObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function numberFromPayload(payload: Record<string, unknown>, key: string): number | null {
+  const value = payload[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function stringFromPayload(payload: Record<string, unknown>, key: string): string | null {
+  const value = payload[key]
+  return typeof value === 'string' && value ? value : null
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ tenantId: string }> },
@@ -33,8 +87,10 @@ export async function GET(
   const { tenantId } = await params
 
   const todayUtc = new Date().toISOString().slice(0, 10)
+  const todayStartUtc = getUtcDayStart()
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
-  const [tenant, stores, users, todaySummary, lastSale, aiSupportConfigs] = await Promise.all([
+  const [tenant, stores, users, todaySummary, lastSale, aiSupportConfigs, aiPhotoLogs] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId } }),
     prisma.store.findMany({
       where: { tenantId, status: 'ACTIVE' },
@@ -83,9 +139,26 @@ export async function GET(
         updatedAt: true,
       },
     }),
+    prisma.operationLog.findMany({
+      where: {
+        tenantId,
+        actionType: 'AI_PHOTO_RECOGNIZE',
+        createdAt: { gte: sevenDaysAgo },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        storeId: true,
+        status: true,
+        message: true,
+        payloadSnapshot: true,
+        createdAt: true,
+      },
+    }),
   ])
 
   if (!tenant) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+  const tenantTier = normalizeTier(tenant.tier)
   const storeById = new Map(stores.map((store) => [store.id, store]))
   const aiTierAllowed = canUseAiSupport(tenant.tier)
   const enabledCount = aiSupportConfigs.filter((config) => config.enabled).length
@@ -187,6 +260,59 @@ export async function GET(
         safeStateLabel,
         notes: selectionNotes,
       },
+    },
+    aiPhoto: {
+      tier: tenant.tier,
+      stores: stores.map((store) => {
+        const { dailyLimit, limitSource } = resolveAiPhotoLimit(tenantTier, store.id)
+        const storeLogs = aiPhotoLogs.filter((log) => log.storeId === store.id)
+        const todayLogs = storeLogs.filter((log) => log.createdAt >= todayStartUtc)
+        const latest = storeLogs[0] ?? null
+        const latestPayload = latest ? asPayloadObject(latest.payloadSnapshot) : {}
+        const latestErrorCode = latest?.message === 'AI_DAILY_LIMIT_REACHED'
+          ? 'AI_DAILY_LIMIT_REACHED'
+          : stringFromPayload(latestPayload, 'errorCode')
+        const totalCalls7d = storeLogs.length
+        const successCalls7d = storeLogs.filter((log) => log.status === 'SUCCESS').length
+        const failedCalls7d = storeLogs.filter((log) => log.status === 'FAILED').length
+        const limitReached7d = storeLogs.filter((log) => {
+          const payload = asPayloadObject(log.payloadSnapshot)
+          return log.message === 'AI_DAILY_LIMIT_REACHED' || stringFromPayload(payload, 'errorCode') === 'AI_DAILY_LIMIT_REACHED'
+        }).length
+        const usedToday = todayLogs.length
+        const statusLabel = usedToday >= dailyLimit
+          ? '今日已超限'
+          : usedToday === 0
+            ? '今日未使用'
+            : latest?.status === 'FAILED'
+              ? '最近失败'
+              : '可试用'
+        return {
+          storeId: store.id,
+          storeName: store.name,
+          storeCode: store.code,
+          tier: tenant.tier,
+          statusLabel,
+          usedToday,
+          dailyLimit,
+          limitSource,
+          latest: latest ? {
+            id: latest.id,
+            createdAt: latest.createdAt.toISOString(),
+            status: latest.status,
+            message: latest.message,
+            errorCode: latestErrorCode,
+            candidateCount: numberFromPayload(latestPayload, 'candidateCount'),
+            latencyMs: numberFromPayload(latestPayload, 'latencyMs'),
+          } : null,
+          last7Days: {
+            totalCalls: totalCalls7d,
+            successCalls: successCalls7d,
+            failedCalls: failedCalls7d,
+            limitReachedCalls: limitReached7d,
+          },
+        }
+      }),
     },
   })
 }

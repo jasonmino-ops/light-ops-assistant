@@ -41,6 +41,35 @@ type AiSupportOpsView = {
   configs: AiSupportConfigRow[]
   selectionSummary: AiSupportSummary
 }
+type AiPhotoStoreUsage = {
+  storeId: string
+  storeName: string
+  storeCode: string
+  tier: string
+  statusLabel: string
+  usedToday: number
+  dailyLimit: number
+  limitSource: 'TIER_DEFAULT' | 'TRIAL_STORE_ENV' | string
+  latest: {
+    id: string
+    createdAt: string
+    status: string
+    message: string | null
+    errorCode: string | null
+    candidateCount: number | null
+    latencyMs: number | null
+  } | null
+  last7Days: {
+    totalCalls: number
+    successCalls: number
+    failedCalls: number
+    limitReachedCalls: number
+  }
+}
+type AiPhotoOpsView = {
+  tier: string
+  stores: AiPhotoStoreUsage[]
+}
 
 type TenantDetail = {
   id: string
@@ -52,6 +81,7 @@ type TenantDetail = {
   members: Member[]
   today: TodayStats
   aiSupport: AiSupportOpsView
+  aiPhoto: AiPhotoOpsView
 }
 
 const TIER_META: Record<string, { label: string; color: string; bg: string; border: string; desc: string; scan: string }> = {
@@ -141,6 +171,11 @@ export default function TenantDetailPage() {
         {/* AI Support provider config — read-only ops view */}
         <Section title="AI Support 配置">
           <AiSupportPanel aiSupport={detail.aiSupport} />
+        </Section>
+
+        {/* AI photo recognition usage — read-only ops view */}
+        <Section title="AI 拍照识别">
+          <AiPhotoPanel aiPhoto={detail.aiPhoto} />
         </Section>
 
         {/* Today stats */}
@@ -587,6 +622,111 @@ function AiSupportConfigCard({ config, summary }: { config: AiSupportConfigRow; 
           ['configId', `${config.id.slice(0, 8)}…`],
         ]} />
       </details>
+    </div>
+  )
+}
+
+// ─── AiPhotoPanel — AI 拍照识别用量只读摘要 ───────────────────────────────────
+
+function AiPhotoPanel({ aiPhoto }: { aiPhoto: AiPhotoOpsView }) {
+  const tierMeta = TIER_META[aiPhoto.tier] ?? TIER_META.LITE
+
+  if (aiPhoto.stores.length === 0) {
+    return <div style={s.aiEmpty}>暂无 ACTIVE 门店，无法统计 AI 拍照识别用量。</div>
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={s.aiSummaryGrid}>
+        <div style={s.aiSummaryBox}>
+          <div style={s.aiSummaryLabel}>当前套餐</div>
+          <div style={s.aiSummaryValue}>{tierMeta.label}</div>
+          <div style={s.aiSummaryHint}>{aiPhoto.tier}</div>
+        </div>
+        <div style={s.aiSummaryBox}>
+          <div style={s.aiSummaryLabel}>统计来源</div>
+          <div style={s.aiSummaryValue}>OperationLog</div>
+          <div style={s.aiSummaryHint}>actionType = AI_PHOTO_RECOGNIZE</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {aiPhoto.stores.map((store) => (
+          <AiPhotoStoreCard key={store.storeId} store={store} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function getAiPhotoStatusTone(statusLabel: string): { color: string; bg: string; border: string } {
+  if (statusLabel === '今日已超限') return { color: '#ff4d4f', bg: '#fff1f0', border: '#ffa39e' }
+  if (statusLabel === '最近失败') return { color: '#fa8c16', bg: '#fff7e6', border: '#ffd591' }
+  if (statusLabel === '今日未使用') return { color: '#999', bg: '#f5f5f5', border: '#e8e8e8' }
+  return { color: '#389e0d', bg: '#f6ffed', border: '#b7eb8f' }
+}
+
+function getAiPhotoLimitSourceLabel(source: string): string {
+  if (source === 'TRIAL_STORE_ENV') return '试点门店 env 覆盖'
+  if (source === 'TIER_DEFAULT') return '套餐默认'
+  return '未知'
+}
+
+function formatOpsTime(iso: string): string {
+  return new Date(iso).toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function AiPhotoStoreCard({ store }: { store: AiPhotoStoreUsage }) {
+  const tone = getAiPhotoStatusTone(store.statusLabel)
+  const latest = store.latest
+
+  return (
+    <div style={s.aiConfigCard}>
+      <div style={s.aiConfigTop}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={s.aiProviderName}>{store.storeName}</span>
+          <span style={s.aiScopeBadge}>{store.storeCode}</span>
+          <span style={{ ...s.aiSafetyBadge, color: tone.color, background: tone.bg, borderColor: tone.border }}>
+            {store.statusLabel}
+          </span>
+        </div>
+      </div>
+
+      <div style={s.aiSummaryGrid}>
+        <div style={s.aiSummaryBox}>
+          <div style={s.aiSummaryLabel}>今日用量</div>
+          <div style={s.aiSummaryValue}>{store.usedToday} / {store.dailyLimit} 次</div>
+          <div style={s.aiSummaryHint}>{getAiPhotoLimitSourceLabel(store.limitSource)}</div>
+        </div>
+        <div style={s.aiSummaryBox}>
+          <div style={s.aiSummaryLabel}>近 7 天</div>
+          <div style={s.aiSummaryValue}>{store.last7Days.totalCalls} 次</div>
+          <div style={s.aiSummaryHint}>
+            成功 {store.last7Days.successCalls} · 失败 {store.last7Days.failedCalls} · 超限 {store.last7Days.limitReachedCalls}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <div style={s.aiGroupTitle}>最近一次识别</div>
+        {latest ? (
+          <InfoGrid rows={[
+            ['时间', formatOpsTime(latest.createdAt)],
+            ['状态', latest.status],
+            ['errorCode', latest.errorCode ?? '—'],
+            ['candidateCount', latest.candidateCount == null ? '—' : String(latest.candidateCount)],
+            ['latencyMs', latest.latencyMs == null ? '—' : String(latest.latencyMs)],
+          ]} />
+        ) : (
+          <div style={s.aiEmpty}>暂无识别记录。</div>
+        )}
+      </div>
     </div>
   )
 }
