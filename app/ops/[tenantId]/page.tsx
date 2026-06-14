@@ -707,6 +707,14 @@ function AiPhotoStoreCard({ tenantId, store, onChanged }: { tenantId: string; st
   const [opsNote, setOpsNote] = useState(store.config?.opsNote ?? '')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const currentEnabled = store.config?.enabled ?? true
+  const currentDailyLimitOverride = store.config?.dailyLimitOverride == null ? '' : String(store.config.dailyLimitOverride)
+  const currentTrialUntil = toDateInputValue(store.config?.trialUntil ?? null)
+  const currentOpsNote = store.config?.opsNote ?? ''
+  const hasConfigChanges = enabled !== currentEnabled
+    || dailyLimitOverride !== currentDailyLimitOverride
+    || trialUntil !== currentTrialUntil
+    || opsNote !== currentOpsNote
 
   useEffect(() => {
     setEnabled(store.config?.enabled ?? true)
@@ -830,8 +838,16 @@ function AiPhotoStoreCard({ tenantId, store, onChanged }: { tenantId: string; st
           {msg && <span style={{ fontSize: 12, color: msg === '已保存' ? '#52c41a' : '#ff4d4f' }}>{msg}</span>}
           <button
             type="button"
-            style={{ ...s.actionBtn, height: 30, opacity: saving ? 0.6 : 1 }}
-            disabled={saving}
+            style={{
+              ...s.actionBtn,
+              height: 30,
+              opacity: saving || !hasConfigChanges ? 0.6 : 1,
+              background: hasConfigChanges ? '#1677ff' : '#f5f5f5',
+              borderColor: hasConfigChanges ? '#1677ff' : '#e8e8e8',
+              color: hasConfigChanges ? '#fff' : '#666',
+              cursor: saving || !hasConfigChanges ? 'not-allowed' : 'pointer',
+            }}
+            disabled={saving || !hasConfigChanges}
             onClick={saveConfig}
           >
             {saving ? '保存中…' : '保存配置'}
