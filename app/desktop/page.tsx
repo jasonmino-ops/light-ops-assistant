@@ -24,11 +24,20 @@ export default function DesktopModePage() {
 
   const t = desktopCopy[lang]
   const qs = buildDesktopQuery(storeCode, lang)
+  function changeLang(nextLang: DesktopLang) {
+    setLang(nextLang)
+    document.documentElement.lang = nextLang === 'km' ? 'km' : nextLang === 'en' ? 'en' : 'zh-CN'
+    const nextQuery = buildDesktopQuery(storeCode, nextLang)
+    window.history.replaceState(null, '', `/desktop${nextQuery}`)
+  }
 
   return (
     <main style={s.page}>
       <section style={s.panel}>
-        <div style={s.kicker}>{t.kicker}</div>
+        <div style={s.topLine}>
+          <div style={s.kicker}>{t.kicker}</div>
+          <LangSwitch lang={lang} onChange={changeLang} />
+        </div>
         <h1 style={s.title}>{t.title}</h1>
         <p style={s.desc}>
           {t.desc}
@@ -122,6 +131,23 @@ const desktopCopy: Record<DesktopLang, Record<string, string>> = {
   },
 }
 
+function LangSwitch({ lang, onChange }: { lang: DesktopLang; onChange: (lang: DesktopLang) => void }) {
+  return (
+    <div style={s.langSwitch} aria-label="Language">
+      {(['zh', 'en', 'km'] as DesktopLang[]).map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onChange(item)}
+          style={item === lang ? s.langBtnOn : s.langBtn}
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 const s: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
@@ -141,7 +167,11 @@ const s: Record<string, CSSProperties> = {
     marginTop: 36,
     boxShadow: '0 18px 45px rgba(15,23,42,0.12)',
   },
-  kicker: { fontSize: 13, fontWeight: 800, color: '#2563eb', marginBottom: 8 },
+  topLine: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 },
+  kicker: { fontSize: 13, fontWeight: 800, color: '#2563eb' },
+  langSwitch: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 3, borderRadius: 999, background: '#f1f5f9', border: '1px solid #e2e8f0' },
+  langBtn: { border: 'none', borderRadius: 999, background: 'transparent', color: '#64748b', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
+  langBtnOn: { border: 'none', borderRadius: 999, background: '#2563eb', color: '#fff', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
   title: { margin: 0, fontSize: 30, lineHeight: 1.2, color: '#0f172a' },
   desc: { margin: '10px 0 14px', fontSize: 14, lineHeight: 1.7, color: '#64748b' },
   storeBadge: {

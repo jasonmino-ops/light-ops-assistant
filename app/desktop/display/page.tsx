@@ -111,6 +111,14 @@ export default function DesktopMirrorPage() {
   }, [])
 
   const t = displayCopy[lang]
+  function changeLang(nextLang: DesktopLang) {
+    setLang(nextLang)
+    document.documentElement.lang = nextLang === 'km' ? 'km' : nextLang === 'en' ? 'en' : 'zh-CN'
+    const params = new URLSearchParams(window.location.search)
+    if (storeCode) params.set('storeCode', storeCode)
+    params.set('lang', nextLang)
+    window.history.replaceState(null, '', `/desktop/display?${params.toString()}`)
+  }
 
   if (noCode) {
     return (
@@ -141,6 +149,7 @@ export default function DesktopMirrorPage() {
         <span style={{ ...s.statusPill, ...statusPillStyle(session, recentlyCompleted, recentlyCancelled) }}>
           {statusLabel(t, session, recentlyCompleted, recentlyCancelled)}
         </span>
+        <LangSwitch lang={lang} onChange={changeLang} />
       </div>
 
       {/* Body: 左 = 商品列表，右 = 金额与收款 */}
@@ -350,6 +359,23 @@ function paymentMethodLabel(method: string | null, t: DisplayCopy) {
   return '—'
 }
 
+function LangSwitch({ lang, onChange }: { lang: DesktopLang; onChange: (lang: DesktopLang) => void }) {
+  return (
+    <div style={s.langSwitch} aria-label="Language">
+      {(['zh', 'en', 'km'] as DesktopLang[]).map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onChange(item)}
+          style={item === lang ? s.langBtnOn : s.langBtn}
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 const displayCopy = {
   zh: {
     missingStoreTitle: '缺少门店信息',
@@ -473,6 +499,9 @@ const s: Record<string, CSSProperties> = {
   storeName: { fontSize: 22, fontWeight: 800, letterSpacing: '-0.3px' },
   storeCode: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
   statusPill: { fontSize: 14, fontWeight: 700, padding: '6px 16px', borderRadius: 999, flexShrink: 0 },
+  langSwitch: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 3, borderRadius: 999, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.16)', flexShrink: 0 },
+  langBtn: { border: 'none', borderRadius: 999, background: 'transparent', color: '#cbd5e1', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
+  langBtnOn: { border: 'none', borderRadius: 999, background: '#fff', color: '#0f172a', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
 
   body: { flex: 1, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 12, padding: 12, minHeight: 0 },
   cartCol: { background: '#fff', borderRadius: 14, padding: 18, overflow: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,.05)' },
