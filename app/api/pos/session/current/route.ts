@@ -17,6 +17,14 @@ type PosItem = {
   imageUrl?: string | null
 }
 
+type DisplayProduct = {
+  id: string
+  name: string
+  spec: string | null
+  sellPrice: number
+  imageUrl: string
+}
+
 function parseItems(raw: string | null | undefined): PosItem[] {
   if (!raw) return []
   try {
@@ -71,6 +79,30 @@ export async function GET(req: NextRequest) {
     },
   })
 
+  const productRows = await prisma.product.findMany({
+    where: {
+      tenantId: store.tenantId,
+      status: 'ACTIVE',
+      OR: [
+        { imageUrl: { not: null } },
+        { imageUrls: { not: null } },
+      ],
+    },
+    select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true, updatedAt: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 12,
+  })
+  const displayProducts: DisplayProduct[] = productRows
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      spec: p.spec,
+      sellPrice: p.sellPrice.toNumber(),
+      imageUrl: cleanDisplayImageUrl(p.imageUrl) ?? cleanDisplayImageUrl(parseImageUrls(p.imageUrls, p.imageUrl)[0]) ?? '',
+    }))
+    .filter((p) => !!p.imageUrl)
+    .slice(0, 3)
+
   const items = parseItems(row?.itemsJson)
   const missingImageProductIds = items
     .filter((item) => !cleanDisplayImageUrl(item.imageUrl))
@@ -103,6 +135,7 @@ export async function GET(req: NextRequest) {
     storeCode: store.code,
     storeName: store.name,
     storeKhqrImageUrl,
+    displayProducts,
     serverNow: new Date().toISOString(),
     session: row ? {
       status: row.status,

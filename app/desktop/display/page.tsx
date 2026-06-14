@@ -23,6 +23,14 @@ type PosItem = {
   lineAmount: number
 }
 
+type DisplayProduct = {
+  id: string
+  name: string
+  spec: string | null
+  sellPrice: number
+  imageUrl: string
+}
+
 type SessionPayload = {
   status: 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED' | string
   paymentMethod: 'CASH' | 'KHQR' | null
@@ -42,6 +50,7 @@ type ApiResp = {
   storeCode: string
   storeName: string
   storeKhqrImageUrl?: string | null
+  displayProducts?: DisplayProduct[]
   serverNow: string
   session: SessionPayload | null
 }
@@ -129,6 +138,8 @@ export default function DesktopMirrorPage() {
   const recentlyCancelled = session?.status === 'CANCELLED' && completedAtMs > 0 && (now - completedAtMs) < COMPLETED_LINGER_MS
   const isLive = !!session && (session.status === 'DRAFT' || session.status === 'AWAITING_PAYMENT') && session.items.length > 0
   const isIdle = !isLive && !recentlyCompleted && !recentlyCancelled
+  const displaySession = isIdle ? null : session
+  const displayTotal = displaySession?.totalAmount ?? 0
 
   return (
     <div style={s.root}>
@@ -155,14 +166,14 @@ export default function DesktopMirrorPage() {
           ) : recentlyCancelled ? (
             <CancelledCard t={t} />
           ) : (
-            <IdleCard t={t} />
+            <IdleCard storeName={data?.storeName ?? storeCode ?? ''} products={data?.displayProducts ?? []} t={t} />
           )}
         </div>
 
         <div style={s.payCol}>
           <div style={s.totalCard}>
-            <div style={s.totalLabel}>{t.amountDue}</div>
-            <div style={s.totalAmt}>${(session?.totalAmount ?? 0).toFixed(2)}</div>
+            <div style={s.totalLabel}>{isIdle ? t.readyCheckout : t.amountDue}</div>
+            <div style={s.totalAmt}>${displayTotal.toFixed(2)}</div>
             <div style={s.totalMeta}>
               {isLive && t.itemMeta(session!.itemCount, session!.items.length)}
               {recentlyCompleted && t.completed}
@@ -172,7 +183,7 @@ export default function DesktopMirrorPage() {
           </div>
 
           <PaymentCard
-            session={session}
+            session={displaySession}
             recentlyCompleted={recentlyCompleted}
             storeKhqrImageUrl={data?.storeKhqrImageUrl ?? null}
             t={t}
@@ -234,14 +245,18 @@ function CartList({ items, itemCount, totalAmount, t }: { items: PosItem[]; item
 }
 
 function ProductThumb({ item }: { item: PosItem }) {
+  return <ProductImage src={item.imageUrl} name={item.name} />
+}
+
+function ProductImage({ src, name }: { src: string | null | undefined; name: string }) {
   const [failed, setFailed] = useState(false)
-  const src = displayImageSrc(item.imageUrl)
-  if (!src || failed) {
+  const imageSrc = displayImageSrc(src)
+  if (!imageSrc || failed) {
     return <div style={s.productPlaceholder}>📦</div>
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={item.name} style={s.productImage} onError={() => setFailed(true)} />
+    <img src={imageSrc} alt={name} style={s.productImage} onError={() => setFailed(true)} />
   )
 }
 
@@ -270,12 +285,40 @@ function CancelledCard({ t }: { t: DisplayCopy }) {
   )
 }
 
-function IdleCard({ t }: { t: DisplayCopy }) {
+function IdleCard({ storeName, products, t }: { storeName: string; products: DisplayProduct[]; t: DisplayCopy }) {
   return (
-    <div style={s.bigCard}>
-      <div style={{ ...s.bigIcon, color: '#cbd5e1' }}>🛒</div>
-      <div style={s.bigTitle}>{t.welcome}</div>
-      <div style={s.bigSub}>{t.waitingCashier}</div>
+    <div style={s.idleShowcase}>
+      <div style={s.idleHero}>
+        <div style={s.idleBadge}>{t.customerDisplay}</div>
+        <div style={s.idleStore}>{storeName || t.welcome}</div>
+        <div style={s.idleWelcome}>{t.welcome}</div>
+        <div style={s.idleSub}>{t.waitingCashier}</div>
+      </div>
+
+      <div style={s.pickSection}>
+        <div style={s.pickHeader}>
+          <span>{t.todaysPick}</span>
+          <span style={s.pickHint}>{t.pickHint}</span>
+        </div>
+        {products.length > 0 ? (
+          <div style={s.pickGrid}>
+            {products.slice(0, 3).map((product) => (
+              <div key={product.id} style={s.pickCard}>
+                <ProductImage src={product.imageUrl} name={product.name} />
+                <div style={s.pickName}>{product.name}</div>
+                {product.spec && <div style={s.pickSpec}>{product.spec}</div>}
+                <div style={s.pickPrice}>${product.sellPrice.toFixed(2)}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={s.brandFallback}>
+            <div style={s.brandFallbackIcon}>✨</div>
+            <div style={s.brandFallbackTitle}>{t.brandFallbackTitle}</div>
+            <div style={s.brandFallbackSub}>{t.brandFallbackSub}</div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -409,12 +452,18 @@ const displayCopy = {
     cancelled: '本单已取消',
     expired: '本单已超时',
     waitingOrder: '等待新订单',
+    readyCheckout: '准备结账',
     waitingNext: '等待下一单',
     cartTitle: '当前订单',
     orderNo: '单号',
     thanks: '谢谢光临',
     welcome: '欢迎光临',
     waitingCashier: '等待收银 · 支持 CASH / KHQR',
+    customerDisplay: '顾客收银显示屏',
+    todaysPick: '今日推荐',
+    pickHint: '店员添加商品后，请核对应付金额',
+    brandFallbackTitle: '请等待店员添加商品',
+    brandFallbackSub: '本屏将实时显示商品、金额和付款方式。',
     summaryTitle: '订单汇总',
     productKinds: '商品种类',
     productCount: '商品件数',
@@ -450,12 +499,18 @@ const displayCopy = {
     cancelled: 'Order cancelled',
     expired: 'Order expired',
     waitingOrder: 'Waiting for next order',
+    readyCheckout: 'Ready for checkout',
     waitingNext: 'Waiting for next order',
     cartTitle: 'Current Order',
     orderNo: 'Order',
     thanks: 'Thank you',
     welcome: 'Welcome',
     waitingCashier: 'Waiting for cashier · CASH / KHQR supported',
+    customerDisplay: 'Customer checkout display',
+    todaysPick: "Today's Pick",
+    pickHint: 'Check the amount after the cashier adds items',
+    brandFallbackTitle: 'Please wait for the cashier',
+    brandFallbackSub: 'This screen will show items, total, and payment method.',
     summaryTitle: 'Order Summary',
     productKinds: 'Product kinds',
     productCount: 'Items',
@@ -491,12 +546,18 @@ const displayCopy = {
     cancelled: 'ការបញ្ជាទិញបានលុបចោល',
     expired: 'ការបញ្ជាទិញអស់ពេល',
     waitingOrder: 'រង់ចាំការបញ្ជាទិញថ្មី',
+    readyCheckout: 'រួចរាល់សម្រាប់គិតលុយ',
     waitingNext: 'រង់ចាំការបញ្ជាទិញបន្ទាប់',
     cartTitle: 'ការបញ្ជាទិញបច្ចុប្បន្ន',
     orderNo: 'លេខវិក្កយបត្រ',
     thanks: 'អរគុណ',
     welcome: 'សូមស្វាគមន៍',
     waitingCashier: 'រង់ចាំបញ្ជរ · គាំទ្រ CASH / KHQR',
+    customerDisplay: 'អេក្រង់គិតលុយអតិថិជន',
+    todaysPick: 'ទំនិញណែនាំថ្ងៃនេះ',
+    pickHint: 'សូមពិនិត្យចំនួនទឹកប្រាក់បន្ទាប់ពីបុគ្គលិកបន្ថែមទំនិញ',
+    brandFallbackTitle: 'សូមរង់ចាំបុគ្គលិកបន្ថែមទំនិញ',
+    brandFallbackSub: 'អេក្រង់នេះនឹងបង្ហាញទំនិញ ចំនួនសរុប និងវិធីបង់ប្រាក់។',
     summaryTitle: 'សរុបការបញ្ជាទិញ',
     productKinds: 'ប្រភេទទំនិញ',
     productCount: 'ចំនួនទំនិញ',
@@ -567,6 +628,25 @@ const s: Record<string, CSSProperties> = {
   payTag: { padding: '2px 10px', background: '#dbeafe', color: '#1d4ed8', borderRadius: 999, fontSize: 12, fontWeight: 700 },
   paidTag: { padding: '2px 10px', background: '#dcfce7', color: '#15803d', borderRadius: 999, fontSize: 12, fontWeight: 700 },
   payIdle: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 14, marginTop: 10 },
+
+  idleShowcase: { minHeight: '100%', display: 'flex', flexDirection: 'column', gap: 18 },
+  idleHero: { borderRadius: 18, padding: 28, minHeight: 210, background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 56%, #2563eb 100%)', color: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 18px 38px rgba(15,23,42,.18)' },
+  idleBadge: { alignSelf: 'flex-start', padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,.14)', color: '#dbeafe', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em' },
+  idleStore: { marginTop: 20, fontSize: 46, lineHeight: 1.05, fontWeight: 900, letterSpacing: '-1px' },
+  idleWelcome: { marginTop: 10, fontSize: 24, fontWeight: 800, color: '#bfdbfe' },
+  idleSub: { marginTop: 8, fontSize: 16, color: '#dbeafe' },
+  pickSection: { background: '#fff', borderRadius: 18, padding: 18, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,.05)' },
+  pickHeader: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, fontSize: 18, fontWeight: 900, color: '#0f172a', marginBottom: 14 },
+  pickHint: { fontSize: 12, fontWeight: 600, color: '#94a3b8' },
+  pickGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 },
+  pickCard: { minWidth: 0, borderRadius: 14, border: '1px solid #e5e7eb', background: '#f8fafc', padding: 12, display: 'grid', gridTemplateColumns: '52px 1fr', columnGap: 10, alignItems: 'center' },
+  pickName: { minWidth: 0, fontSize: 13, fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  pickSpec: { gridColumn: '2 / 3', marginTop: -18, fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  pickPrice: { gridColumn: '2 / 3', marginTop: -2, fontSize: 15, fontWeight: 900, color: ACCENT },
+  brandFallback: { minHeight: 150, borderRadius: 14, border: '1px dashed #cbd5e1', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20 },
+  brandFallbackIcon: { fontSize: 34 },
+  brandFallbackTitle: { marginTop: 8, fontSize: 18, fontWeight: 900, color: '#0f172a' },
+  brandFallbackSub: { marginTop: 6, fontSize: 13, color: '#64748b' },
 
   qrWrap: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 10 },
   qrImage: { maxWidth: 280, maxHeight: 280, width: '100%', objectFit: 'contain', borderRadius: 10, border: '1px solid #f0f0f0' },
