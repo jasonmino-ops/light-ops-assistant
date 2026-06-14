@@ -29,6 +29,7 @@ type DisplayProduct = {
   spec: string | null
   sellPrice: number
   imageUrl: string
+  totalQty?: number
 }
 
 type SessionPayload = {
@@ -49,6 +50,7 @@ type SessionPayload = {
 type ApiResp = {
   storeCode: string
   storeName: string
+  storeBannerUrl?: string | null
   storeKhqrImageUrl?: string | null
   displayProducts?: DisplayProduct[]
   serverNow: string
@@ -166,21 +168,32 @@ export default function DesktopMirrorPage() {
           ) : recentlyCancelled ? (
             <CancelledCard t={t} />
           ) : (
-            <IdleCard storeName={data?.storeName ?? storeCode ?? ''} products={data?.displayProducts ?? []} t={t} />
+            <IdleCard
+              storeName={data?.storeName ?? storeCode ?? ''}
+              bannerUrl={data?.storeBannerUrl ?? null}
+              products={data?.displayProducts ?? []}
+              t={t}
+            />
           )}
         </div>
 
         <div style={s.payCol}>
-          <div style={s.totalCard}>
-            <div style={s.totalLabel}>{isIdle ? t.readyCheckout : t.amountDue}</div>
-            <div style={s.totalAmt}>${displayTotal.toFixed(2)}</div>
-            <div style={s.totalMeta}>
-              {isLive && t.itemMeta(session!.itemCount, session!.items.length)}
-              {recentlyCompleted && t.completed}
-              {recentlyCancelled && t.cancelled}
-              {isIdle && t.waitingOrder}
+          {isIdle ? (
+            <div style={s.readyCard}>
+              <div style={s.readyTitle}>{t.readyCheckout}</div>
+              <div style={s.readySub}>{t.waitingCashier}</div>
             </div>
-          </div>
+          ) : (
+            <div style={s.totalCard}>
+              <div style={s.totalLabel}>{t.amountDue}</div>
+              <div style={s.totalAmt}>${displayTotal.toFixed(2)}</div>
+              <div style={s.totalMeta}>
+                {isLive && t.itemMeta(session!.itemCount, session!.items.length)}
+                {recentlyCompleted && t.completed}
+                {recentlyCancelled && t.cancelled}
+              </div>
+            </div>
+          )}
 
           <PaymentCard
             session={displaySession}
@@ -248,15 +261,25 @@ function ProductThumb({ item }: { item: PosItem }) {
   return <ProductImage src={item.imageUrl} name={item.name} />
 }
 
-function ProductImage({ src, name }: { src: string | null | undefined; name: string }) {
+function ProductImage({
+  src,
+  name,
+  imageStyle,
+  placeholderStyle,
+}: {
+  src: string | null | undefined
+  name: string
+  imageStyle?: CSSProperties
+  placeholderStyle?: CSSProperties
+}) {
   const [failed, setFailed] = useState(false)
   const imageSrc = displayImageSrc(src)
   if (!imageSrc || failed) {
-    return <div style={s.productPlaceholder}>📦</div>
+    return <div style={{ ...s.productPlaceholder, ...placeholderStyle }}>📦</div>
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={imageSrc} alt={name} style={s.productImage} onError={() => setFailed(true)} />
+    <img src={imageSrc} alt={name} style={{ ...s.productImage, ...imageStyle }} onError={() => setFailed(true)} />
   )
 }
 
@@ -285,29 +308,51 @@ function CancelledCard({ t }: { t: DisplayCopy }) {
   )
 }
 
-function IdleCard({ storeName, products, t }: { storeName: string; products: DisplayProduct[]; t: DisplayCopy }) {
+function IdleCard({ storeName, bannerUrl, products, t }: { storeName: string; bannerUrl: string | null; products: DisplayProduct[]; t: DisplayCopy }) {
+  const heroImage = displayImageSrc(bannerUrl)
   return (
     <div style={s.idleShowcase}>
-      <div style={s.idleHero}>
-        <div style={s.idleBadge}>{t.customerDisplay}</div>
-        <div style={s.idleStore}>{storeName || t.welcome}</div>
-        <div style={s.idleWelcome}>{t.welcome}</div>
-        <div style={s.idleSub}>{t.waitingCashier}</div>
+      <div
+        style={{
+          ...s.idleHero,
+          ...(heroImage ? {
+            backgroundImage: `linear-gradient(90deg, rgba(15,23,42,.84), rgba(15,23,42,.42)), url("${heroImage}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          } : {}),
+        }}
+      >
+        <div style={s.idleHeroContent}>
+          <div style={s.idleBadge}>{t.customerDisplay}</div>
+          <div style={s.idleStore}>{storeName || t.welcome}</div>
+          <div style={s.idleWelcome}>{t.welcome}</div>
+          <div style={s.idleSub}>{t.waitingCashier}</div>
+        </div>
       </div>
 
       <div style={s.pickSection}>
         <div style={s.pickHeader}>
-          <span>{t.todaysPick}</span>
+          <span>{t.topSellers}</span>
           <span style={s.pickHint}>{t.pickHint}</span>
         </div>
         {products.length > 0 ? (
           <div style={s.pickGrid}>
             {products.slice(0, 3).map((product) => (
               <div key={product.id} style={s.pickCard}>
-                <ProductImage src={product.imageUrl} name={product.name} />
-                <div style={s.pickName}>{product.name}</div>
-                {product.spec && <div style={s.pickSpec}>{product.spec}</div>}
-                <div style={s.pickPrice}>${product.sellPrice.toFixed(2)}</div>
+                <ProductImage
+                  src={product.imageUrl}
+                  name={product.name}
+                  imageStyle={s.pickImage}
+                  placeholderStyle={s.pickImage}
+                />
+                <div style={s.pickBody}>
+                  <div style={s.pickName}>{product.name}</div>
+                  {product.spec && <div style={s.pickSpec}>{product.spec}</div>}
+                  <div style={s.pickFooter}>
+                    <span style={s.pickPrice}>${product.sellPrice.toFixed(2)}</span>
+                    {product.totalQty !== undefined && <span style={s.pickSold}>{t.soldThisWeek(product.totalQty)}</span>}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -460,8 +505,9 @@ const displayCopy = {
     welcome: '欢迎光临',
     waitingCashier: '等待收银 · 支持 CASH / KHQR',
     customerDisplay: '顾客收银显示屏',
-    todaysPick: '今日推荐',
+    topSellers: '本周热销',
     pickHint: '店员添加商品后，请核对应付金额',
+    soldThisWeek: (qty: number) => `本周 ${qty} 件`,
     brandFallbackTitle: '请等待店员添加商品',
     brandFallbackSub: '本屏将实时显示商品、金额和付款方式。',
     summaryTitle: '订单汇总',
@@ -507,8 +553,9 @@ const displayCopy = {
     welcome: 'Welcome',
     waitingCashier: 'Waiting for cashier · CASH / KHQR supported',
     customerDisplay: 'Customer checkout display',
-    todaysPick: "Today's Pick",
+    topSellers: 'Top sellers this week',
     pickHint: 'Check the amount after the cashier adds items',
+    soldThisWeek: (qty: number) => `${qty} sold`,
     brandFallbackTitle: 'Please wait for the cashier',
     brandFallbackSub: 'This screen will show items, total, and payment method.',
     summaryTitle: 'Order Summary',
@@ -554,8 +601,9 @@ const displayCopy = {
     welcome: 'សូមស្វាគមន៍',
     waitingCashier: 'រង់ចាំបញ្ជរ · គាំទ្រ CASH / KHQR',
     customerDisplay: 'អេក្រង់គិតលុយអតិថិជន',
-    todaysPick: 'ទំនិញណែនាំថ្ងៃនេះ',
+    topSellers: 'ទំនិញលក់ដាច់សប្តាហ៍នេះ',
     pickHint: 'សូមពិនិត្យចំនួនទឹកប្រាក់បន្ទាប់ពីបុគ្គលិកបន្ថែមទំនិញ',
+    soldThisWeek: (qty: number) => `សប្តាហ៍នេះ ${qty}`,
     brandFallbackTitle: 'សូមរង់ចាំបុគ្គលិកបន្ថែមទំនិញ',
     brandFallbackSub: 'អេក្រង់នេះនឹងបង្ហាញទំនិញ ចំនួនសរុប និងវិធីបង់ប្រាក់។',
     summaryTitle: 'សរុបការបញ្ជាទិញ',
@@ -622,6 +670,9 @@ const s: Record<string, CSSProperties> = {
   totalLabel: { fontSize: 12, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' },
   totalAmt: { fontSize: 48, fontWeight: 800, color: ACCENT, marginTop: 6, letterSpacing: '-1px' },
   totalMeta: { fontSize: 13, color: '#9ca3af', marginTop: 6 },
+  readyCard: { background: '#fff', borderRadius: 14, padding: 24, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.05)' },
+  readyTitle: { fontSize: 30, lineHeight: 1.15, fontWeight: 900, color: '#0f172a', letterSpacing: '-.4px' },
+  readySub: { marginTop: 8, fontSize: 14, color: '#64748b', lineHeight: 1.5 },
 
   payCard: { flex: 1, background: '#fff', borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', boxShadow: '0 1px 3px rgba(0,0,0,.05)', minHeight: 0 },
   payLabel: { fontSize: 13, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
@@ -630,19 +681,24 @@ const s: Record<string, CSSProperties> = {
   payIdle: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 14, marginTop: 10 },
 
   idleShowcase: { minHeight: '100%', display: 'flex', flexDirection: 'column', gap: 18 },
-  idleHero: { borderRadius: 18, padding: 28, minHeight: 210, background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 56%, #2563eb 100%)', color: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 18px 38px rgba(15,23,42,.18)' },
+  idleHero: { borderRadius: 18, padding: 28, minHeight: 250, background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 56%, #2563eb 100%)', color: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 18px 38px rgba(15,23,42,.18)', overflow: 'hidden' },
+  idleHeroContent: { maxWidth: 660 },
   idleBadge: { alignSelf: 'flex-start', padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,.14)', color: '#dbeafe', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em' },
   idleStore: { marginTop: 20, fontSize: 46, lineHeight: 1.05, fontWeight: 900, letterSpacing: '-1px' },
   idleWelcome: { marginTop: 10, fontSize: 24, fontWeight: 800, color: '#bfdbfe' },
   idleSub: { marginTop: 8, fontSize: 16, color: '#dbeafe' },
-  pickSection: { background: '#fff', borderRadius: 18, padding: 18, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,.05)' },
+  pickSection: { background: '#fff', borderRadius: 18, padding: 20, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,.05)', flex: 1 },
   pickHeader: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, fontSize: 18, fontWeight: 900, color: '#0f172a', marginBottom: 14 },
   pickHint: { fontSize: 12, fontWeight: 600, color: '#94a3b8' },
-  pickGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 },
-  pickCard: { minWidth: 0, borderRadius: 14, border: '1px solid #e5e7eb', background: '#f8fafc', padding: 12, display: 'grid', gridTemplateColumns: '52px 1fr', columnGap: 10, alignItems: 'center' },
-  pickName: { minWidth: 0, fontSize: 13, fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  pickSpec: { gridColumn: '2 / 3', marginTop: -18, fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  pickPrice: { gridColumn: '2 / 3', marginTop: -2, fontSize: 15, fontWeight: 900, color: ACCENT },
+  pickGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16 },
+  pickCard: { minWidth: 0, minHeight: 230, borderRadius: 16, border: '1px solid #e5e7eb', background: '#f8fafc', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 },
+  pickImage: { width: '100%', height: 132, borderRadius: 14, fontSize: 38 },
+  pickBody: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5, flex: 1 },
+  pickName: { minWidth: 0, fontSize: 15, lineHeight: 1.25, fontWeight: 900, color: '#111827', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
+  pickSpec: { fontSize: 12, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  pickFooter: { marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  pickPrice: { fontSize: 18, fontWeight: 900, color: ACCENT },
+  pickSold: { fontSize: 11, color: '#64748b', fontWeight: 800, background: '#e2e8f0', borderRadius: 999, padding: '3px 8px', whiteSpace: 'nowrap' },
   brandFallback: { minHeight: 150, borderRadius: 14, border: '1px dashed #cbd5e1', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20 },
   brandFallbackIcon: { fontSize: 34 },
   brandFallbackTitle: { marginTop: 8, fontSize: 18, fontWeight: 900, color: '#0f172a' },

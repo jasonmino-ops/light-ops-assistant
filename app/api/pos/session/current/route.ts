@@ -23,6 +23,7 @@ type DisplayProduct = {
   spec: string | null
   sellPrice: number
   imageUrl: string
+  totalQty?: number
 }
 
 function parseItems(raw: string | null | undefined): PosItem[] {
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
 
   const store = await prisma.store.findUnique({
     where: { code: storeCode },
-    select: { id: true, code: true, tenantId: true, name: true, status: true },
+    select: { id: true, code: true, tenantId: true, name: true, status: true, bannerUrl: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -79,7 +80,42 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  const productRows = await prisma.product.findMany({
+  const weekStart = new Date()
+  weekStart.setHours(0, 0, 0, 0)
+  weekStart.setDate(weekStart.getDate() - 6)
+  const weeklyHotRows = await prisma.saleRecord.groupBy({
+    by: ['productId'],
+    where: {
+      tenantId: store.tenantId,
+      storeId: store.id,
+      saleType: 'SALE',
+      status: 'COMPLETED',
+      createdAt: { gte: weekStart },
+    },
+    _sum: { quantity: true },
+    orderBy: { _sum: { quantity: 'desc' } },
+    take: 6,
+  })
+  const weeklyProductIds = weeklyHotRows
+    .map((row) => row.productId)
+    .filter((id): id is string => !!id)
+  const weeklyQtyMap = new Map(weeklyHotRows.map((row) => [
+    row.productId,
+    row._sum.quantity?.toNumber() ?? 0,
+  ]))
+  const weeklyProductRows = weeklyProductIds.length > 0
+    ? await prisma.product.findMany({
+        where: {
+          tenantId: store.tenantId,
+          id: { in: weeklyProductIds },
+          status: 'ACTIVE',
+        },
+        select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true },
+      })
+    : []
+  const weeklyProductMap = new Map(weeklyProductRows.map((p) => [p.id, p]))
+
+  const fallbackRows = await prisma.product.findMany({
     where: {
       tenantId: store.tenantId,
       status: 'ACTIVE',
@@ -92,16 +128,34 @@ export async function GET(req: NextRequest) {
     orderBy: { updatedAt: 'desc' },
     take: 12,
   })
-  const displayProducts: DisplayProduct[] = productRows
-    .map((p) => ({
+
+  function toDisplayProduct(p: { id: string; name: string; spec: string | null; sellPrice: { toNumber(): number }; imageUrl: string | null; imageUrls: string | null }, totalQty?: number): DisplayProduct | null {
+    const imageUrl = cleanDisplayImageUrl(p.imageUrl) ?? cleanDisplayImageUrl(parseImageUrls(p.imageUrls, p.imageUrl)[0])
+    if (!imageUrl) return null
+    return {
       id: p.id,
       name: p.name,
       spec: p.spec,
       sellPrice: p.sellPrice.toNumber(),
-      imageUrl: cleanDisplayImageUrl(p.imageUrl) ?? cleanDisplayImageUrl(parseImageUrls(p.imageUrls, p.imageUrl)[0]) ?? '',
-    }))
-    .filter((p) => !!p.imageUrl)
-    .slice(0, 3)
+      imageUrl,
+      ...(totalQty !== undefined ? { totalQty } : {}),
+    }
+  }
+
+  const displayProductMap = new Map<string, DisplayProduct>()
+  for (const id of weeklyProductIds) {
+    const product = weeklyProductMap.get(id)
+    const displayProduct = product ? toDisplayProduct(product, weeklyQtyMap.get(id) ?? 0) : null
+    if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
+    if (displayProductMap.size >= 3) break
+  }
+  for (const product of fallbackRows) {
+    if (displayProductMap.size >= 3) break
+    if (displayProductMap.has(product.id)) continue
+    const displayProduct = toDisplayProduct(product)
+    if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
+  }
+  const displayProducts = Array.from(displayProductMap.values()).slice(0, 3)
 
   const items = parseItems(row?.itemsJson)
   const missingImageProductIds = items
@@ -134,6 +188,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     storeCode: store.code,
     storeName: store.name,
+    storeBannerUrl: cleanDisplayImageUrl(store.bannerUrl),
     storeKhqrImageUrl,
     displayProducts,
     serverNow: new Date().toISOString(),
