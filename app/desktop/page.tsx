@@ -36,14 +36,18 @@ export default function DesktopModePage() {
         <div style={s.grid}>
           <a href={`/desktop/pos${qs}`} style={{ ...s.card, ...s.primaryCard }}>
             <div style={s.icon}>🧾</div>
-            <div style={s.cardTitle}>员工收银台</div>
-            <div style={s.cardDesc}>商品搜索、购物车、CASH / KHQR、完成销售。</div>
+            <div style={s.cardBody}>
+              <div style={s.cardTitle}>员工收银台</div>
+              <div style={s.cardDesc}>适合店员在电脑上操作销售、收款、查看购物车。</div>
+            </div>
             <div style={s.cardAction}>进入收银台</div>
           </a>
           <a href={`/desktop/display${qs}`} style={s.card}>
             <div style={s.icon}>🖥️</div>
-            <div style={s.cardTitle}>顾客显示屏</div>
-            <div style={s.cardDesc}>只读展示当前订单、收款二维码和完成状态。</div>
+            <div style={s.cardBody}>
+              <div style={s.cardTitle}>顾客显示屏</div>
+              <div style={s.cardDesc}>适合二手一体机/柜台大屏，给顾客查看商品、金额和 KHQR。</div>
+            </div>
             <div style={s.cardAction}>打开显示屏</div>
           </a>
         </div>
@@ -57,17 +61,18 @@ const s: Record<string, CSSProperties> = {
     minHeight: '100vh',
     background: '#f1f5f9',
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
     padding: 24,
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   panel: {
     width: '100%',
-    maxWidth: 760,
+    maxWidth: 860,
     background: '#fff',
     borderRadius: 18,
     padding: 28,
+    marginTop: 36,
     boxShadow: '0 18px 45px rgba(15,23,42,0.12)',
   },
   kicker: { fontSize: 13, fontWeight: 800, color: '#2563eb', marginBottom: 8 },
@@ -92,13 +97,13 @@ const s: Record<string, CSSProperties> = {
     fontSize: 13,
     marginBottom: 18,
   },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 },
+  grid: { display: 'grid', gridTemplateColumns: '1fr', gap: 12 },
   card: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    minHeight: 180,
-    padding: 20,
+    alignItems: 'center',
+    gap: 14,
+    minHeight: 96,
+    padding: 18,
     borderRadius: 16,
     border: '1px solid #e2e8f0',
     background: '#fff',
@@ -106,8 +111,9 @@ const s: Record<string, CSSProperties> = {
     textDecoration: 'none',
   },
   primaryCard: { borderColor: '#bfdbfe', background: '#f8fbff' },
-  icon: { fontSize: 34 },
+  icon: { fontSize: 34, flex: '0 0 auto' },
+  cardBody: { flex: 1, minWidth: 0 },
   cardTitle: { fontSize: 20, fontWeight: 850 },
-  cardDesc: { flex: 1, fontSize: 14, lineHeight: 1.6, color: '#64748b' },
-  cardAction: { fontSize: 14, fontWeight: 800, color: '#2563eb' },
+  cardDesc: { marginTop: 4, fontSize: 14, lineHeight: 1.6, color: '#64748b' },
+  cardAction: { flex: '0 0 auto', fontSize: 14, fontWeight: 800, color: '#2563eb' },
 }
