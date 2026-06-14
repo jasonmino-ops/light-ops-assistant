@@ -491,6 +491,7 @@ export default function SalePage() {
     setModalError(null)
     setRestorePrompt(null)
     posMirrorSigRef.current = ''
+    setScannerMsg({ type: 'ok', text: t('sale.restoreSuccess') })
     focusInput()
   }
 
@@ -500,8 +501,9 @@ export default function SalePage() {
       await apiFetch('/api/pos/session/cancel', { method: 'POST' })
       posMirrorSigRef.current = '__terminal__'
       setRestorePrompt(null)
+      setScannerMsg({ type: 'ok', text: t('sale.restoreCancelled') })
     } catch {
-      setSubmitError(t('common.networkError'))
+      setSubmitError(t('sale.restoreCancelFailed'))
     } finally {
       setRestoreBusy(false)
     }
@@ -1485,17 +1487,19 @@ export default function SalePage() {
       <div style={s.body}>
         {restorePrompt && !success && payStep !== 'khqr_pending' && (
           <div style={s.restoreCard}>
-            <div style={s.restoreTitle}>发现一笔未完成订单</div>
+            <div style={s.restoreTitle}>{t('sale.restoreTitle')}</div>
             <div style={s.restoreMeta}>
-              {restorePrompt.itemCount} 件 · ${restorePrompt.totalAmount.toFixed(2)}
-              {cart.length > 0 ? ' · 当前购物车已有商品，请选择是否覆盖恢复' : ''}
+              {t('sale.restoreSummary')
+                .replace('{count}', String(restorePrompt.itemCount))
+                .replace('{amount}', `$${restorePrompt.totalAmount.toFixed(2)}`)}
+              {cart.length > 0 ? ` · ${t('sale.restoreCartHasItems')}` : ''}
             </div>
             <div style={s.restoreActions}>
               <button type="button" style={s.restorePrimaryBtn} onClick={continueRestoredOrder} disabled={restoreBusy}>
-                继续收银
+                {t('sale.restoreContinue')}
               </button>
               <button type="button" style={s.restoreSecondaryBtn} onClick={cancelRestoredOrder} disabled={restoreBusy}>
-                取消订单
+                {t('sale.restoreCancel')}
               </button>
             </div>
           </div>

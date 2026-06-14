@@ -12,6 +12,7 @@ import { useEffect, useState, CSSProperties } from 'react'
 export default function DesktopModePage() {
   const [storeCode, setStoreCode] = useState('')
   const [lang, setLang] = useState<DesktopLang>('zh')
+  const [activeEntry, setActiveEntry] = useState<'pos' | 'display' | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -24,6 +25,7 @@ export default function DesktopModePage() {
 
   const t = desktopCopy[lang]
   const qs = buildDesktopQuery(storeCode, lang)
+  const entryStyle = (entry: 'pos' | 'display') => activeEntry === entry ? { ...s.card, ...s.cardActive } : s.card
   function changeLang(nextLang: DesktopLang) {
     setLang(nextLang)
     document.documentElement.lang = nextLang === 'km' ? 'km' : nextLang === 'en' ? 'en' : 'zh-CN'
@@ -49,7 +51,14 @@ export default function DesktopModePage() {
         )}
 
         <div style={s.grid}>
-          <a href={`/desktop/pos${qs}`} style={{ ...s.card, ...s.primaryCard }}>
+          <a
+            href={`/desktop/pos${qs}`}
+            style={entryStyle('pos')}
+            onMouseEnter={() => setActiveEntry('pos')}
+            onMouseLeave={() => setActiveEntry(null)}
+            onFocus={() => setActiveEntry('pos')}
+            onBlur={() => setActiveEntry(null)}
+          >
             <div style={s.icon}>🧾</div>
             <div style={s.cardBody}>
               <div style={s.cardTitle}>{t.posTitle}</div>
@@ -57,7 +66,14 @@ export default function DesktopModePage() {
             </div>
             <div style={s.cardAction}>{t.posAction}</div>
           </a>
-          <a href={`/desktop/display${qs}`} style={s.card}>
+          <a
+            href={`/desktop/display${qs}`}
+            style={entryStyle('display')}
+            onMouseEnter={() => setActiveEntry('display')}
+            onMouseLeave={() => setActiveEntry(null)}
+            onFocus={() => setActiveEntry('display')}
+            onBlur={() => setActiveEntry(null)}
+          >
             <div style={s.icon}>🖥️</div>
             <div style={s.cardBody}>
               <div style={s.cardTitle}>{t.displayTitle}</div>
@@ -201,8 +217,16 @@ const s: Record<string, CSSProperties> = {
     background: '#fff',
     color: '#0f172a',
     textDecoration: 'none',
+    boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+    outline: 'none',
+    transition: 'border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease',
   },
-  primaryCard: { borderColor: '#bfdbfe', background: '#f8fbff' },
+  cardActive: {
+    borderColor: '#93c5fd',
+    background: '#f8fbff',
+    boxShadow: '0 12px 28px rgba(37,99,235,0.14)',
+    transform: 'translateY(-1px)',
+  },
   icon: { fontSize: 34, flex: '0 0 auto' },
   cardBody: { flex: 1, minWidth: 0 },
   cardTitle: { fontSize: 20, fontWeight: 850 },
