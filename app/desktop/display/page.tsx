@@ -41,17 +41,9 @@ type SessionPayload = {
 type ApiResp = {
   storeCode: string
   storeName: string
+  storeKhqrImageUrl?: string | null
   serverNow: string
   session: SessionPayload | null
-  recentOrders?: RecentOrder[]
-}
-
-type RecentOrder = {
-  orderNo: string
-  totalAmount: number
-  paymentMethod: 'CASH' | 'KHQR' | string | null
-  status: string
-  createdAt: string
 }
 
 type DesktopLang = 'zh' | 'en' | 'km'
@@ -157,7 +149,7 @@ export default function DesktopMirrorPage() {
       <div style={s.body}>
         <div style={s.cartCol}>
           {isLive ? (
-            <CartList items={session!.items} t={t} />
+            <CartList items={session!.items} itemCount={session!.itemCount} totalAmount={session!.totalAmount} t={t} />
           ) : recentlyCompleted ? (
             <CompletedCard session={session!} t={t} />
           ) : recentlyCancelled ? (
@@ -179,8 +171,12 @@ export default function DesktopMirrorPage() {
             </div>
           </div>
 
-          <PaymentCard session={session} recentlyCompleted={recentlyCompleted} t={t} />
-          <RecentOrders orders={data?.recentOrders ?? []} t={t} />
+          <PaymentCard
+            session={session}
+            recentlyCompleted={recentlyCompleted}
+            storeKhqrImageUrl={data?.storeKhqrImageUrl ?? null}
+            t={t}
+          />
         </div>
       </div>
 
@@ -198,7 +194,8 @@ export default function DesktopMirrorPage() {
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────
 
-function CartList({ items, t }: { items: PosItem[]; t: DisplayCopy }) {
+function CartList({ items, itemCount, totalAmount, t }: { items: PosItem[]; itemCount: number; totalAmount: number; t: DisplayCopy }) {
+  const subtotal = items.reduce((sum, item) => sum + item.lineAmount, 0)
   return (
     <div style={s.cartList}>
       <div style={s.cartTitle}>{t.cartTitle}</div>
@@ -213,6 +210,25 @@ function CartList({ items, t }: { items: PosItem[]; t: DisplayCopy }) {
           <div style={s.cartLine}>${it.lineAmount.toFixed(2)}</div>
         </div>
       ))}
+      <div style={s.summaryCard}>
+        <div style={s.summaryTitle}>{t.summaryTitle}</div>
+        <div style={s.summaryRow}>
+          <span style={s.summaryLabel}>{t.productKinds}</span>
+          <span style={s.summaryValue}>{items.length}</span>
+        </div>
+        <div style={s.summaryRow}>
+          <span style={s.summaryLabel}>{t.productCount}</span>
+          <span style={s.summaryValue}>{itemCount}</span>
+        </div>
+        <div style={s.summaryRow}>
+          <span style={s.summaryLabel}>{t.subtotal}</span>
+          <span style={s.summaryValue}>${subtotal.toFixed(2)}</span>
+        </div>
+        <div style={s.summaryDueRow}>
+          <span>{t.amountDue}</span>
+          <span>${totalAmount.toFixed(2)}</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -264,53 +280,36 @@ function IdleCard({ t }: { t: DisplayCopy }) {
   )
 }
 
-function RecentOrders({ orders, t }: { orders: RecentOrder[]; t: DisplayCopy }) {
-  return (
-    <div style={s.recentCard}>
-      <div style={s.recentTitle}>{t.recentOrders}</div>
-      {orders.length === 0 ? (
-        <div style={s.recentEmpty}>{t.noRecentOrders}</div>
-      ) : orders.slice(0, 3).map((o) => (
-        <div key={o.orderNo} style={s.recentRow}>
-          <div style={s.recentNo}>{shortOrderNo(o.orderNo)}</div>
-          <div style={s.recentMeta}>
-            {paymentMethodLabel(o.paymentMethod, t)} · {o.status}
-          </div>
-          <div style={s.recentAmount}>${o.totalAmount.toFixed(2)}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function PaymentCard({ session, recentlyCompleted, t }: { session: SessionPayload | null; recentlyCompleted: boolean; t: DisplayCopy }) {
-  if (!session || (session.items.length === 0 && !recentlyCompleted)) {
-    return (
-      <div style={s.payCard}>
-        <div style={s.payLabel}>{t.paymentMethod}</div>
-        <div style={s.payIdle}>—</div>
-      </div>
-    )
-  }
-
-  const khqrImageSrc = displayImageSrc(session.khqrImageUrl)
-  const qrValue = session.khqrPayload || (!khqrImageSrc ? session.khqrImageUrl : null)
-  const showKhqr = session.status === 'AWAITING_PAYMENT'
-    && session.paymentMethod === 'KHQR'
-    && (khqrImageSrc || qrValue)
+function PaymentCard({
+  session,
+  recentlyCompleted,
+  storeKhqrImageUrl,
+  t,
+}: {
+  session: SessionPayload | null
+  recentlyCompleted: boolean
+  storeKhqrImageUrl: string | null
+  t: DisplayCopy
+}) {
+  const sessionKhqrImageSrc = displayImageSrc(session?.khqrImageUrl)
+  const storeKhqrImageSrc = displayImageSrc(storeKhqrImageUrl)
+  const khqrImageSrc = sessionKhqrImageSrc ?? storeKhqrImageSrc
+  const qrValue = session?.khqrPayload || (!khqrImageSrc ? session?.khqrImageUrl : null)
+  const hasKhqr = Boolean(khqrImageSrc || qrValue)
+  const hasOrder = Boolean(session && session.items.length > 0)
 
   return (
     <div style={s.payCard}>
       <div style={s.payLabel}>
         {t.paymentMethod}
-        {session.paymentMethod && (
+        {(session?.paymentMethod || hasKhqr) && (
           <span style={s.payTag}>
-            {paymentMethodLabel(session.paymentMethod, t)}
+            {session?.paymentMethod ? paymentMethodLabel(session.paymentMethod, t) : '📱 KHQR'}
           </span>
         )}
-        {session.paymentStatus === 'PAID' && <span style={s.paidTag}>{t.paid}</span>}
+        {session?.paymentStatus === 'PAID' && <span style={s.paidTag}>{t.paid}</span>}
       </div>
-      {showKhqr ? (
+      {hasKhqr ? (
         <div style={s.qrWrap}>
           {khqrImageSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -318,14 +317,17 @@ function PaymentCard({ session, recentlyCompleted, t }: { session: SessionPayloa
           ) : (
             <QRCode value={qrValue || ''} size={220} />
           )}
-          <div style={s.qrHint}>{t.scanToPay}</div>
+          <div style={s.qrHint}>
+            {hasOrder && !recentlyCompleted ? t.scanToPay : t.scanSupported}
+          </div>
         </div>
       ) : (
         <div style={s.payIdle}>
-          {session.status === 'AWAITING_PAYMENT' && session.paymentMethod === 'KHQR' ? t.payStaff :
-           session.status === 'AWAITING_PAYMENT' ? t.waitingPaymentMethod :
-           session.status === 'DRAFT' ? t.draftNoPayment :
-           session.status === 'COMPLETED' ? t.completed :
+          {session?.status === 'AWAITING_PAYMENT' && session.paymentMethod === 'KHQR' ? t.payStaff :
+           session?.status === 'AWAITING_PAYMENT' ? t.waitingPaymentMethod :
+           session?.status === 'DRAFT' ? t.draftNoPayment :
+           session?.status === 'COMPLETED' ? t.completed :
+           !hasOrder ? t.selectItemsFirst :
            '—'}
         </div>
       )}
@@ -354,11 +356,6 @@ function statusPillStyle(sess: SessionPayload | null, completed: boolean, cancel
 function fmtTime(iso: string, lang: DesktopLang): string {
   const locale = lang === 'km' ? 'km-KH' : lang === 'en' ? 'en-US' : 'zh-CN'
   return new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
-function shortOrderNo(orderNo: string): string {
-  const tail = orderNo.split('-').pop() ?? orderNo
-  return `#${tail.slice(-6) || tail}`
 }
 
 function resolveDesktopLang(raw: string | null): DesktopLang {
@@ -418,11 +415,15 @@ const displayCopy = {
     thanks: '谢谢光临',
     welcome: '欢迎光临',
     waitingCashier: '等待收银 · 支持 CASH / KHQR',
-    recentOrders: '最近订单',
-    noRecentOrders: '暂无最近订单',
+    summaryTitle: '订单汇总',
+    productKinds: '商品种类',
+    productCount: '商品件数',
+    subtotal: '小计',
     paymentMethod: '收款方式',
     paid: '已收款',
     scanToPay: '请扫码付款',
+    scanSupported: '支持扫码付款 · 请先选择商品',
+    selectItemsFirst: '请先选择商品',
     payStaff: '请向店员付款',
     waitingPaymentMethod: '等待手机端选择收款方式',
     draftNoPayment: '草稿中 · 尚未发起收款',
@@ -455,11 +456,15 @@ const displayCopy = {
     thanks: 'Thank you',
     welcome: 'Welcome',
     waitingCashier: 'Waiting for cashier · CASH / KHQR supported',
-    recentOrders: 'Recent Orders',
-    noRecentOrders: 'No recent orders',
+    summaryTitle: 'Order Summary',
+    productKinds: 'Product kinds',
+    productCount: 'Items',
+    subtotal: 'Subtotal',
     paymentMethod: 'Payment Method',
     paid: 'Paid',
     scanToPay: 'Please scan to pay',
+    scanSupported: 'Scan payment supported · Select items first',
+    selectItemsFirst: 'Select items first',
     payStaff: 'Please pay the cashier',
     waitingPaymentMethod: 'Waiting for payment method on phone',
     draftNoPayment: 'Draft · Payment not started',
@@ -492,11 +497,15 @@ const displayCopy = {
     thanks: 'អរគុណ',
     welcome: 'សូមស្វាគមន៍',
     waitingCashier: 'រង់ចាំបញ្ជរ · គាំទ្រ CASH / KHQR',
-    recentOrders: 'ការបញ្ជាទិញថ្មីៗ',
-    noRecentOrders: 'មិនទាន់មានការបញ្ជាទិញថ្មីៗ',
+    summaryTitle: 'សរុបការបញ្ជាទិញ',
+    productKinds: 'ប្រភេទទំនិញ',
+    productCount: 'ចំនួនទំនិញ',
+    subtotal: 'សរុបរង',
     paymentMethod: 'វិធីបង់ប្រាក់',
     paid: 'បានទទួលប្រាក់',
     scanToPay: 'សូមស្កេនដើម្បីបង់ប្រាក់',
+    scanSupported: 'គាំទ្រការស្កេនបង់ប្រាក់ · សូមជ្រើសទំនិញជាមុន',
+    selectItemsFirst: 'សូមជ្រើសទំនិញជាមុន',
     payStaff: 'សូមបង់ប្រាក់ជាមួយបុគ្គលិក',
     waitingPaymentMethod: 'រង់ចាំជ្រើសរើសវិធីបង់ប្រាក់ពីទូរស័ព្ទ',
     draftNoPayment: 'ព្រាង · មិនទាន់ចាប់ផ្តើមបង់ប្រាក់',
@@ -528,7 +537,7 @@ const s: Record<string, CSSProperties> = {
   langBtn: { border: 'none', borderRadius: 999, background: 'transparent', color: '#cbd5e1', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
   langBtnOn: { border: 'none', borderRadius: 999, background: '#fff', color: '#0f172a', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
 
-  body: { flex: 1, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 12, padding: 12, minHeight: 0 },
+  body: { flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 410px', gap: 14, padding: 14, minHeight: 0 },
   cartCol: { background: '#fff', borderRadius: 14, padding: 18, overflow: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,.05)' },
   payCol: { display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 },
 
@@ -541,6 +550,12 @@ const s: Record<string, CSSProperties> = {
   cartSpec: { fontSize: 14, color: '#9ca3af', fontWeight: 400 },
   cartQty: { fontSize: 14, color: '#6b7280', whiteSpace: 'nowrap' },
   cartLine: { fontSize: 18, fontWeight: 700, color: '#111827', minWidth: 80, textAlign: 'right' },
+  summaryCard: { marginTop: 18, marginLeft: 'auto', width: 'min(100%, 360px)', borderRadius: 12, border: '1px solid #e5e7eb', background: '#f8fafc', padding: 16 },
+  summaryTitle: { fontSize: 13, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 },
+  summaryRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#64748b', padding: '6px 0' },
+  summaryLabel: { color: '#64748b' },
+  summaryValue: { color: '#0f172a', fontWeight: 800 },
+  summaryDueRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10, paddingTop: 12, borderTop: '1px solid #e2e8f0', fontSize: 20, fontWeight: 900, color: '#0f172a' },
 
   totalCard: { background: '#fff', borderRadius: 14, padding: 20, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.05)' },
   totalLabel: { fontSize: 12, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' },
@@ -554,16 +569,8 @@ const s: Record<string, CSSProperties> = {
   payIdle: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 14, marginTop: 10 },
 
   qrWrap: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 10 },
-  qrImage: { maxWidth: 240, maxHeight: 240, width: '100%', objectFit: 'contain', borderRadius: 8, border: '1px solid #f0f0f0' },
+  qrImage: { maxWidth: 280, maxHeight: 280, width: '100%', objectFit: 'contain', borderRadius: 10, border: '1px solid #f0f0f0' },
   qrHint: { fontSize: 14, color: '#6b7280' },
-
-  recentCard: { background: '#fff', borderRadius: 14, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,.05)' },
-  recentTitle: { fontSize: 13, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 },
-  recentEmpty: { fontSize: 13, color: '#cbd5e1', padding: '10px 0' },
-  recentRow: { display: 'grid', gridTemplateColumns: '70px 1fr auto', gap: 8, alignItems: 'center', padding: '8px 0', borderTop: '1px solid #f1f5f9' },
-  recentNo: { fontSize: 13, fontWeight: 800, color: '#0f172a', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
-  recentMeta: { fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  recentAmount: { fontSize: 13, fontWeight: 800, color: '#0f172a' },
 
   bigCard: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, textAlign: 'center', padding: 30 },
   bigIcon: { fontSize: 80, lineHeight: 1 },
