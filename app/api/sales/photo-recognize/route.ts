@@ -7,7 +7,8 @@
  *   1. 校验 body：imageBase64 + mime + (可选) source
  *   2. base64 解码 ≤ 1MB
  *   3. ctx = getContext(req) —— 拒绝匿名；tenantId/userId/storeId 由服务端决定
- *   4. 调 Anthropic 视觉模型（lib/ai-photo-product-recognize.ts，5s 超时）
+ *   4. 校验门店白名单 + 每日调用次数；未授权 / 超限不调 AI
+ *   5. 调 Anthropic 视觉模型（lib/ai-photo-product-recognize.ts，5s 超时）
  *   5. 在当前 tenant ACTIVE 商品库内做"AI 文本特征 → Product"打分匹配
  *   6. 返回最多 5 个候选 + needManualConfirm=true
  *   7. 任何 AI 失败 / 超时 / 空结果都返回 200 + candidates:[] + errorCode + fallbackMessage
@@ -44,7 +45,14 @@ type Candidate = {
   reason: string[]
 }
 
-type ErrorCode = 'AI_NOT_CONFIGURED' | 'AI_TIMEOUT' | 'AI_EMPTY' | 'AI_FAILED' | 'INVALID_IMAGE'
+type ErrorCode =
+  | 'AI_DISABLED_FOR_STORE'
+  | 'AI_DAILY_LIMIT_REACHED'
+  | 'AI_NOT_CONFIGURED'
+  | 'AI_TIMEOUT'
+  | 'AI_EMPTY'
+  | 'AI_FAILED'
+  | 'INVALID_IMAGE'
 
 type SuccessBody = {
   candidates: Candidate[]
@@ -54,6 +62,10 @@ type SuccessBody = {
 }
 
 const FALLBACK_MSG = '识别失败，请使用扫码或手动选择商品'
+const FALLBACK_BY_ERROR: Partial<Record<ErrorCode, string>> = {
+  AI_DISABLED_FOR_STORE: '当前门店暂未开通 AI 拍照识别，请使用扫码或手动选择商品',
+  AI_DAILY_LIMIT_REACHED: '今日 AI 拍照识别次数已用完，请使用扫码或手动选择商品',
+}
 
 export async function POST(req: NextRequest) {
   const startedAt = Date.now()
@@ -76,12 +88,40 @@ export async function POST(req: NextRequest) {
   if (!ALLOWED_MIME.has(mime)) {
     return NextResponse.json({ error: 'INVALID_MIME' }, { status: 400 })
   }
+
+  const dailyLimit = getAiPhotoDailyLimit()
+  const enabledStoreIds = getAiPhotoEnabledStoreIds()
+  if (!ctx.storeId || !enabledStoreIds.has(ctx.storeId)) {
+    return respondLogged({
+      ctx, startedAt, source: sourceRaw,
+      candidates: [], errorCode: 'AI_DISABLED_FOR_STORE',
+      imageSizeBytes: 0, status: 'FAILED',
+      message: 'AI_DISABLED_FOR_STORE',
+      dailyLimit,
+      usedToday: 0,
+    })
+  }
+
+  const usedToday = await getAiPhotoUsedToday(ctx.storeId)
+  if (usedToday >= dailyLimit) {
+    return respondLogged({
+      ctx, startedAt, source: sourceRaw,
+      candidates: [], errorCode: 'AI_DAILY_LIMIT_REACHED',
+      imageSizeBytes: 0, status: 'FAILED',
+      message: 'AI_DAILY_LIMIT_REACHED',
+      dailyLimit,
+      usedToday,
+    })
+  }
+
   if (imageBase64.length > MAX_BASE64_LEN) {
     return respondLogged({
       ctx, startedAt, source: sourceRaw,
       candidates: [], errorCode: 'INVALID_IMAGE',
       imageSizeBytes: imageBase64.length, status: 'FAILED',
       message: 'IMAGE_TOO_LARGE',
+      dailyLimit,
+      usedToday,
     })
   }
 
@@ -97,6 +137,8 @@ export async function POST(req: NextRequest) {
         candidates: [], errorCode: 'INVALID_IMAGE',
         imageSizeBytes, status: 'FAILED',
         message: 'IMAGE_TOO_LARGE',
+        dailyLimit,
+        usedToday,
       })
     }
   } catch {
@@ -105,6 +147,8 @@ export async function POST(req: NextRequest) {
       candidates: [], errorCode: 'INVALID_IMAGE',
       imageSizeBytes: 0, status: 'FAILED',
       message: 'BASE64_DECODE_FAIL',
+      dailyLimit,
+      usedToday,
     })
   }
 
@@ -128,6 +172,8 @@ export async function POST(req: NextRequest) {
       candidates: [], errorCode: aiError,
       imageSizeBytes, status: 'FAILED',
       message: aiErrorRaw ?? aiError,
+      dailyLimit,
+      usedToday,
     })
   }
 
@@ -138,6 +184,8 @@ export async function POST(req: NextRequest) {
       candidates: [], errorCode: 'AI_EMPTY',
       imageSizeBytes, status: 'SUCCESS',
       message: `confidence=${feature?.confidence ?? 0}`,
+      dailyLimit,
+      usedToday,
     })
   }
 
@@ -159,6 +207,37 @@ export async function POST(req: NextRequest) {
     candidates,
     imageSizeBytes, status: 'SUCCESS',
     message: `aiConf=${feature.confidence};hits=${candidates.length}`,
+    dailyLimit,
+    usedToday,
+  })
+}
+
+function getAiPhotoEnabledStoreIds(): Set<string> {
+  return new Set(
+    (process.env.AI_PHOTO_ENABLED_STORE_IDS ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean),
+  )
+}
+
+function getAiPhotoDailyLimit(): number {
+  const raw = process.env.AI_PHOTO_DAILY_LIMIT
+  const parsed = Number.parseInt(raw ?? '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 100
+}
+
+function getUtcDayStart(d = new Date()): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+}
+
+async function getAiPhotoUsedToday(storeId: string): Promise<number> {
+  return prisma.operationLog.count({
+    where: {
+      storeId,
+      actionType: 'AI_PHOTO_RECOGNIZE',
+      createdAt: { gte: getUtcDayStart() },
+    },
   })
 }
 
@@ -270,6 +349,8 @@ async function respondLogged(params: {
   imageSizeBytes: number
   status: 'SUCCESS' | 'FAILED'
   message?: string
+  dailyLimit?: number
+  usedToday?: number
 }) {
   const latencyMs = Date.now() - params.startedAt
   const body: SuccessBody = {
@@ -278,7 +359,7 @@ async function respondLogged(params: {
   }
   if (params.errorCode) {
     body.errorCode = params.errorCode
-    body.fallbackMessage = FALLBACK_MSG
+    body.fallbackMessage = FALLBACK_BY_ERROR[params.errorCode] ?? FALLBACK_MSG
   }
 
   // OperationLog：失败也写一行；不阻断响应
@@ -296,7 +377,10 @@ async function respondLogged(params: {
         payloadSnapshot: {
           aiProvider: AI_PROVIDER,
           aiModel: AI_MODEL,
+          storeId: params.ctx.storeId ?? null,
           source: params.source || 'sale_recognize_v1',
+          dailyLimit: params.dailyLimit ?? null,
+          usedToday: params.usedToday ?? null,
           imageSizeBytes: params.imageSizeBytes,
           latencyMs,
           candidateProductIds: params.candidates.map((c) => c.productId),
