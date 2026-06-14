@@ -53,11 +53,15 @@ type RecentOrder = {
   createdAt: string
 }
 
+type DesktopLang = 'zh' | 'en' | 'km'
+type DisplayCopy = typeof displayCopy.zh
+
 const POLL_MS = 1500
 const COMPLETED_LINGER_MS = 8000  // 完成态展示 8 秒后回到 idle
 
 export default function DesktopMirrorPage() {
   const [storeCode, setStoreCode] = useState<string | null>(null)
+  const [lang, setLang] = useState<DesktopLang>('zh')
   const [noCode, setNoCode] = useState(false)
   const [data, setData] = useState<ApiResp | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -65,7 +69,11 @@ export default function DesktopMirrorPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    const sc = new URLSearchParams(window.location.search).get('storeCode')?.trim() || null
+    const params = new URLSearchParams(window.location.search)
+    const nextLang = resolveDesktopLang(params.get('lang'))
+    const sc = params.get('storeCode')?.trim() || null
+    setLang(nextLang)
+    document.documentElement.lang = nextLang === 'km' ? 'km' : nextLang === 'en' ? 'en' : 'zh-CN'
     if (!sc) { setNoCode(true); return }
     setStoreCode(sc)
   }, [])
@@ -77,7 +85,7 @@ export default function DesktopMirrorPage() {
       try {
         const res = await fetch(`/api/pos/session/current?storeCode=${encodeURIComponent(storeCode!)}`, { cache: 'no-store' })
         if (!res.ok) {
-          if (!aborted) setLoadError(res.status === 404 ? '门店不存在或已停用' : `HTTP ${res.status}`)
+          if (!aborted) setLoadError(res.status === 404 ? displayCopy[lang].storeNotFound : `HTTP ${res.status}`)
           return
         }
         const body = await res.json() as ApiResp
@@ -85,7 +93,7 @@ export default function DesktopMirrorPage() {
         setData(body)
         setLoadError(null)
       } catch {
-        if (!aborted) setLoadError('网络错误，自动重试中…')
+        if (!aborted) setLoadError(displayCopy[lang].networkRetry)
       }
     }
     poll()
@@ -94,7 +102,7 @@ export default function DesktopMirrorPage() {
       aborted = true
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [storeCode])
+  }, [storeCode, lang])
 
   // 本地时钟用于"完成 N 秒后回到 idle"判断
   useEffect(() => {
@@ -102,12 +110,14 @@ export default function DesktopMirrorPage() {
     return () => clearInterval(t)
   }, [])
 
+  const t = displayCopy[lang]
+
   if (noCode) {
     return (
       <div style={s.errScreen}>
         <div style={{ fontSize: 48 }}>🖥️</div>
-        <div style={s.errTitle}>缺少门店信息</div>
-        <div style={s.errSub}>请使用 /desktop/display?storeCode=&lt;门店编号&gt; 打开本页。</div>
+        <div style={s.errTitle}>{t.missingStoreTitle}</div>
+        <div style={s.errSub}>{t.missingStoreSub}</div>
       </div>
     )
   }
@@ -125,11 +135,11 @@ export default function DesktopMirrorPage() {
       <div style={s.header}>
         <span style={s.brandIcon}>🖥️</span>
         <div style={s.headerCenter}>
-          <div style={s.storeName}>{data?.storeName ?? '加载中…'}</div>
-          <div style={s.storeCode}>门店编号 {data?.storeCode ?? storeCode ?? '—'} · 顾客端收银显示屏</div>
+          <div style={s.storeName}>{data?.storeName ?? t.loading}</div>
+          <div style={s.storeCode}>{t.storeCode} {data?.storeCode ?? storeCode ?? '—'} · {t.displayName}</div>
         </div>
         <span style={{ ...s.statusPill, ...statusPillStyle(session, recentlyCompleted, recentlyCancelled) }}>
-          {statusLabel(session, recentlyCompleted, recentlyCancelled)}
+          {statusLabel(t, session, recentlyCompleted, recentlyCancelled)}
         </span>
       </div>
 
@@ -137,39 +147,39 @@ export default function DesktopMirrorPage() {
       <div style={s.body}>
         <div style={s.cartCol}>
           {isLive ? (
-            <CartList items={session!.items} />
+            <CartList items={session!.items} t={t} />
           ) : recentlyCompleted ? (
-            <CompletedCard session={session!} />
+            <CompletedCard session={session!} t={t} />
           ) : recentlyCancelled ? (
-            <CancelledCard />
+            <CancelledCard t={t} />
           ) : (
-            <IdleCard />
+            <IdleCard t={t} />
           )}
         </div>
 
         <div style={s.payCol}>
           <div style={s.totalCard}>
-            <div style={s.totalLabel}>应收金额</div>
+            <div style={s.totalLabel}>{t.amountDue}</div>
             <div style={s.totalAmt}>${(session?.totalAmount ?? 0).toFixed(2)}</div>
             <div style={s.totalMeta}>
-              {isLive && `${session!.itemCount} 件 · ${session!.items.length} 种`}
-              {recentlyCompleted && '本单已完成'}
-              {recentlyCancelled && '本单已取消'}
-              {isIdle && '等待新订单'}
+              {isLive && t.itemMeta(session!.itemCount, session!.items.length)}
+              {recentlyCompleted && t.completed}
+              {recentlyCancelled && t.cancelled}
+              {isIdle && t.waitingOrder}
             </div>
           </div>
 
-          <PaymentCard session={session} recentlyCompleted={recentlyCompleted} />
-          <RecentOrders orders={data?.recentOrders ?? []} />
+          <PaymentCard session={session} recentlyCompleted={recentlyCompleted} t={t} />
+          <RecentOrders orders={data?.recentOrders ?? []} t={t} />
         </div>
       </div>
 
       {/* Footer */}
       <div style={s.footer}>
         {loadError ? <span style={s.footerErr}>⚠ {loadError}</span>
-          : <span style={s.footerOk}>● 已连接 · 每 {POLL_MS / 1000}s 刷新</span>}
+          : <span style={s.footerOk}>● {t.connected(POLL_MS / 1000)}</span>}
         {data?.session && (
-          <span style={s.footerMeta}>updated {fmtTime(data.session.updatedAt)}</span>
+          <span style={s.footerMeta}>{t.updated} {fmtTime(data.session.updatedAt, lang)}</span>
         )}
       </div>
     </div>
@@ -178,10 +188,10 @@ export default function DesktopMirrorPage() {
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────
 
-function CartList({ items }: { items: PosItem[] }) {
+function CartList({ items, t }: { items: PosItem[]; t: DisplayCopy }) {
   return (
     <div style={s.cartList}>
-      <div style={s.cartTitle}>商品明细</div>
+      <div style={s.cartTitle}>{t.cartTitle}</div>
       {items.map((it) => (
         <div key={it.productId + '-' + it.qty} style={s.cartRow}>
           <div style={s.cartName}>
@@ -196,51 +206,52 @@ function CartList({ items }: { items: PosItem[] }) {
   )
 }
 
-function CompletedCard({ session }: { session: SessionPayload }) {
+function CompletedCard({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
   return (
     <div style={s.bigCard}>
       <div style={{ ...s.bigIcon, color: '#16a34a' }}>✓</div>
-      <div style={s.bigTitle}>本单已完成</div>
-      {session.orderNo && <div style={s.bigSub}>单号 {session.orderNo}</div>}
+      <div style={s.bigTitle}>{t.completed}</div>
+      {session.orderNo && <div style={s.bigSub}>{t.orderNo} {session.orderNo}</div>}
       <div style={s.bigAmt}>${session.totalAmount.toFixed(2)}</div>
       <div style={s.bigMeta}>
-        {session.paymentMethod === 'CASH' ? '💵 现金' : session.paymentMethod === 'KHQR' ? '📱 KHQR' : '—'}
+        {paymentMethodLabel(session.paymentMethod, t)}
       </div>
+      <div style={s.bigSub}>{t.thanks}</div>
     </div>
   )
 }
 
-function CancelledCard() {
+function CancelledCard({ t }: { t: DisplayCopy }) {
   return (
     <div style={s.bigCard}>
       <div style={{ ...s.bigIcon, color: '#9ca3af' }}>—</div>
-      <div style={s.bigTitle}>本单已取消</div>
-      <div style={s.bigSub}>等待下一单</div>
+      <div style={s.bigTitle}>{t.cancelled}</div>
+      <div style={s.bigSub}>{t.waitingNext}</div>
     </div>
   )
 }
 
-function IdleCard() {
+function IdleCard({ t }: { t: DisplayCopy }) {
   return (
     <div style={s.bigCard}>
       <div style={{ ...s.bigIcon, color: '#cbd5e1' }}>🛒</div>
-      <div style={s.bigTitle}>欢迎光临</div>
-      <div style={s.bigSub}>等待收银 · 支持 CASH / KHQR</div>
+      <div style={s.bigTitle}>{t.welcome}</div>
+      <div style={s.bigSub}>{t.waitingCashier}</div>
     </div>
   )
 }
 
-function RecentOrders({ orders }: { orders: RecentOrder[] }) {
+function RecentOrders({ orders, t }: { orders: RecentOrder[]; t: DisplayCopy }) {
   return (
     <div style={s.recentCard}>
-      <div style={s.recentTitle}>最近记录</div>
+      <div style={s.recentTitle}>{t.recentOrders}</div>
       {orders.length === 0 ? (
-        <div style={s.recentEmpty}>暂无最近订单</div>
+        <div style={s.recentEmpty}>{t.noRecentOrders}</div>
       ) : orders.slice(0, 3).map((o) => (
         <div key={o.orderNo} style={s.recentRow}>
           <div style={s.recentNo}>{shortOrderNo(o.orderNo)}</div>
           <div style={s.recentMeta}>
-            {o.paymentMethod === 'CASH' ? '现金' : o.paymentMethod === 'KHQR' ? 'KHQR' : '—'} · {o.status}
+            {paymentMethodLabel(o.paymentMethod, t)} · {o.status}
           </div>
           <div style={s.recentAmount}>${o.totalAmount.toFixed(2)}</div>
         </div>
@@ -249,11 +260,11 @@ function RecentOrders({ orders }: { orders: RecentOrder[] }) {
   )
 }
 
-function PaymentCard({ session, recentlyCompleted }: { session: SessionPayload | null; recentlyCompleted: boolean }) {
+function PaymentCard({ session, recentlyCompleted, t }: { session: SessionPayload | null; recentlyCompleted: boolean; t: DisplayCopy }) {
   if (!session || (session.items.length === 0 && !recentlyCompleted)) {
     return (
       <div style={s.payCard}>
-        <div style={s.payLabel}>收款方式</div>
+        <div style={s.payLabel}>{t.paymentMethod}</div>
         <div style={s.payIdle}>—</div>
       </div>
     )
@@ -266,13 +277,13 @@ function PaymentCard({ session, recentlyCompleted }: { session: SessionPayload |
   return (
     <div style={s.payCard}>
       <div style={s.payLabel}>
-        收款方式
+        {t.paymentMethod}
         {session.paymentMethod && (
           <span style={s.payTag}>
-            {session.paymentMethod === 'CASH' ? '💵 现金' : '📱 KHQR'}
+            {paymentMethodLabel(session.paymentMethod, t)}
           </span>
         )}
-        {session.paymentStatus === 'PAID' && <span style={s.paidTag}>已收款</span>}
+        {session.paymentStatus === 'PAID' && <span style={s.paidTag}>{t.paid}</span>}
       </div>
       {showKhqr ? (
         <div style={s.qrWrap}>
@@ -282,13 +293,13 @@ function PaymentCard({ session, recentlyCompleted }: { session: SessionPayload |
           ) : (
             <QRCode value={session.khqrPayload || ''} size={220} />
           )}
-          <div style={s.qrHint}>请客户扫码付款</div>
+          <div style={s.qrHint}>{t.scanToPay}</div>
         </div>
       ) : (
         <div style={s.payIdle}>
-          {session.status === 'AWAITING_PAYMENT' ? '等待手机端选择收款方式' :
-           session.status === 'DRAFT' ? '草稿中 · 尚未发起收款' :
-           session.status === 'COMPLETED' ? '本单已完成' :
+          {session.status === 'AWAITING_PAYMENT' ? t.waitingPaymentMethod :
+           session.status === 'DRAFT' ? t.draftNoPayment :
+           session.status === 'COMPLETED' ? t.completed :
            '—'}
         </div>
       )}
@@ -298,12 +309,12 @@ function PaymentCard({ session, recentlyCompleted }: { session: SessionPayload |
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function statusLabel(s: SessionPayload | null, completed: boolean, cancelled: boolean): string {
-  if (completed) return '已完成'
-  if (cancelled) return '已取消'
-  if (!s || s.items.length === 0) return '空闲中'
-  if (s.status === 'AWAITING_PAYMENT') return '收款中'
-  return '草稿中'
+function statusLabel(t: DisplayCopy, s: SessionPayload | null, completed: boolean, cancelled: boolean): string {
+  if (completed) return t.completedShort
+  if (cancelled) return t.cancelledShort
+  if (!s || s.items.length === 0) return t.idle
+  if (s.status === 'AWAITING_PAYMENT') return t.collecting
+  return t.draft
 }
 
 function statusPillStyle(sess: SessionPayload | null, completed: boolean, cancelled: boolean): CSSProperties {
@@ -314,8 +325,9 @@ function statusPillStyle(sess: SessionPayload | null, completed: boolean, cancel
   return { background: '#dbeafe', color: '#1d4ed8' }
 }
 
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+function fmtTime(iso: string, lang: DesktopLang): string {
+  const locale = lang === 'km' ? 'km-KH' : lang === 'en' ? 'en-US' : 'zh-CN'
+  return new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function shortOrderNo(orderNo: string): string {
@@ -323,12 +335,138 @@ function shortOrderNo(orderNo: string): string {
   return `#${tail.slice(-6) || tail}`
 }
 
+function resolveDesktopLang(raw: string | null): DesktopLang {
+  if (raw === 'en' || raw === 'km' || raw === 'zh') return raw
+  if (typeof window !== 'undefined') {
+    const stored = window.localStorage.getItem('lang')
+    if (stored === 'km' || stored === 'zh') return stored
+  }
+  return 'zh'
+}
+
+function paymentMethodLabel(method: string | null, t: DisplayCopy) {
+  if (method === 'CASH') return `💵 ${t.cash}`
+  if (method === 'KHQR') return '📱 KHQR'
+  return '—'
+}
+
+const displayCopy = {
+  zh: {
+    missingStoreTitle: '缺少门店信息',
+    missingStoreSub: '请使用 /desktop/display?storeCode=<门店编号> 打开本页。',
+    storeNotFound: '门店不存在或已停用',
+    networkRetry: '网络错误，自动重试中…',
+    loading: '加载中…',
+    storeCode: '门店编号',
+    displayName: '顾客端收银显示屏',
+    amountDue: '应付金额',
+    completed: '本单已完成',
+    cancelled: '本单已取消',
+    expired: '本单已超时',
+    waitingOrder: '等待新订单',
+    waitingNext: '等待下一单',
+    cartTitle: '当前订单',
+    orderNo: '单号',
+    thanks: '谢谢光临',
+    welcome: '欢迎光临',
+    waitingCashier: '等待收银 · 支持 CASH / KHQR',
+    recentOrders: '最近订单',
+    noRecentOrders: '暂无最近订单',
+    paymentMethod: '收款方式',
+    paid: '已收款',
+    scanToPay: '请扫码付款',
+    waitingPaymentMethod: '等待手机端选择收款方式',
+    draftNoPayment: '草稿中 · 尚未发起收款',
+    connected: (seconds: number) => `已连接 · 每 ${seconds}s 刷新`,
+    updated: 'updated',
+    itemMeta: (count: number, kinds: number) => `${count} 件 · ${kinds} 种`,
+    completedShort: '已完成',
+    cancelledShort: '已取消',
+    idle: '空闲中',
+    collecting: '收款中',
+    draft: '草稿中',
+    cash: '现金',
+  },
+  en: {
+    missingStoreTitle: 'Missing Store',
+    missingStoreSub: 'Open this page with /desktop/display?storeCode=STORE_CODE.',
+    storeNotFound: 'Store not found or inactive',
+    networkRetry: 'Network error. Retrying automatically...',
+    loading: 'Loading...',
+    storeCode: 'Store code',
+    displayName: 'Customer Display',
+    amountDue: 'Amount Due',
+    completed: 'Order completed',
+    cancelled: 'Order cancelled',
+    expired: 'Order expired',
+    waitingOrder: 'Waiting for next order',
+    waitingNext: 'Waiting for next order',
+    cartTitle: 'Current Order',
+    orderNo: 'Order',
+    thanks: 'Thank you',
+    welcome: 'Welcome',
+    waitingCashier: 'Waiting for cashier · CASH / KHQR supported',
+    recentOrders: 'Recent Orders',
+    noRecentOrders: 'No recent orders',
+    paymentMethod: 'Payment Method',
+    paid: 'Paid',
+    scanToPay: 'Please scan to pay',
+    waitingPaymentMethod: 'Waiting for payment method on phone',
+    draftNoPayment: 'Draft · Payment not started',
+    connected: (seconds: number) => `Connected · refreshes every ${seconds}s`,
+    updated: 'updated',
+    itemMeta: (count: number, kinds: number) => `${count} items · ${kinds} kinds`,
+    completedShort: 'Completed',
+    cancelledShort: 'Cancelled',
+    idle: 'Idle',
+    collecting: 'Collecting',
+    draft: 'Draft',
+    cash: 'Cash',
+  },
+  km: {
+    missingStoreTitle: 'ខ្វះព័ត៌មានហាង',
+    missingStoreSub: 'សូមបើក /desktop/display?storeCode=STORE_CODE។',
+    storeNotFound: 'រកមិនឃើញហាង ឬហាងត្រូវបានបិទ',
+    networkRetry: 'បញ្ហាបណ្តាញ កំពុងព្យាយាមម្តងទៀត…',
+    loading: 'កំពុងផ្ទុក…',
+    storeCode: 'លេខកូដហាង',
+    displayName: 'អេក្រង់អតិថិជន',
+    amountDue: 'ចំនួនត្រូវបង់',
+    completed: 'ការបញ្ជាទិញបានបញ្ចប់',
+    cancelled: 'ការបញ្ជាទិញបានលុបចោល',
+    expired: 'ការបញ្ជាទិញអស់ពេល',
+    waitingOrder: 'រង់ចាំការបញ្ជាទិញថ្មី',
+    waitingNext: 'រង់ចាំការបញ្ជាទិញបន្ទាប់',
+    cartTitle: 'ការបញ្ជាទិញបច្ចុប្បន្ន',
+    orderNo: 'លេខវិក្កយបត្រ',
+    thanks: 'អរគុណ',
+    welcome: 'សូមស្វាគមន៍',
+    waitingCashier: 'រង់ចាំបញ្ជរ · គាំទ្រ CASH / KHQR',
+    recentOrders: 'ការបញ្ជាទិញថ្មីៗ',
+    noRecentOrders: 'មិនទាន់មានការបញ្ជាទិញថ្មីៗ',
+    paymentMethod: 'វិធីបង់ប្រាក់',
+    paid: 'បានទទួលប្រាក់',
+    scanToPay: 'សូមស្កេនដើម្បីបង់ប្រាក់',
+    waitingPaymentMethod: 'រង់ចាំជ្រើសរើសវិធីបង់ប្រាក់ពីទូរស័ព្ទ',
+    draftNoPayment: 'ព្រាង · មិនទាន់ចាប់ផ្តើមបង់ប្រាក់',
+    connected: (seconds: number) => `បានភ្ជាប់ · ធ្វើបច្ចុប្បន្នភាពរៀងរាល់ ${seconds}s`,
+    updated: 'បានធ្វើបច្ចុប្បន្នភាព',
+    itemMeta: (count: number, kinds: number) => `${count} មុខ · ${kinds} ប្រភេទ`,
+    completedShort: 'បានបញ្ចប់',
+    cancelledShort: 'បានលុប',
+    idle: 'ទំនេរ',
+    collecting: 'កំពុងទទួលប្រាក់',
+    draft: 'ព្រាង',
+    cash: 'សាច់ប្រាក់',
+  },
+}
+
 // ─── styles ──────────────────────────────────────────────────────────────────
 
 const ACCENT = '#2563eb'
 
 const s: Record<string, CSSProperties> = {
-  root: { minHeight: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif' },
+  root: { minHeight: '100vh', background: 'var(--bg, #f1f5f9)', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-sans, system-ui, -apple-system, sans-serif)' },
   header: { background: '#0f172a', color: '#fff', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 },
   brandIcon: { fontSize: 30 },
   headerCenter: { flex: 1, minWidth: 0 },

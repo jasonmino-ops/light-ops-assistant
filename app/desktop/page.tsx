@@ -11,44 +11,50 @@ import { useEffect, useState, CSSProperties } from 'react'
 
 export default function DesktopModePage() {
   const [storeCode, setStoreCode] = useState('')
+  const [lang, setLang] = useState<DesktopLang>('zh')
 
   useEffect(() => {
-    const sc = new URLSearchParams(window.location.search).get('storeCode')?.trim() ?? ''
+    const params = new URLSearchParams(window.location.search)
+    const sc = params.get('storeCode')?.trim() ?? ''
+    const nextLang = resolveDesktopLang(params.get('lang'))
     setStoreCode(sc)
+    setLang(nextLang)
+    document.documentElement.lang = nextLang === 'km' ? 'km' : nextLang === 'en' ? 'en' : 'zh-CN'
   }, [])
 
-  const qs = storeCode ? `?storeCode=${encodeURIComponent(storeCode)}` : ''
+  const t = desktopCopy[lang]
+  const qs = buildDesktopQuery(storeCode, lang)
 
   return (
     <main style={s.page}>
       <section style={s.panel}>
-        <div style={s.kicker}>店小二电脑端</div>
-        <h1 style={s.title}>选择电脑端模式</h1>
+        <div style={s.kicker}>{t.kicker}</div>
+        <h1 style={s.title}>{t.title}</h1>
         <p style={s.desc}>
-          员工收银台用于电脑端直接点单收款；顾客显示屏用于把手机 /sale 当前订单同步给顾客查看。
+          {t.desc}
         </p>
         {storeCode ? (
-          <div style={s.storeBadge}>当前门店：{storeCode}</div>
+          <div style={s.storeBadge}>{t.storeLabel}{storeCode}</div>
         ) : (
-          <div style={s.warn}>未带门店编号。建议使用 /desktop?storeCode=门店编号 打开。</div>
+          <div style={s.warn}>{t.missingStore}</div>
         )}
 
         <div style={s.grid}>
           <a href={`/desktop/pos${qs}`} style={{ ...s.card, ...s.primaryCard }}>
             <div style={s.icon}>🧾</div>
             <div style={s.cardBody}>
-              <div style={s.cardTitle}>员工收银台</div>
-              <div style={s.cardDesc}>适合店员在电脑上操作销售、收款、查看购物车。</div>
+              <div style={s.cardTitle}>{t.posTitle}</div>
+              <div style={s.cardDesc}>{t.posDesc}</div>
             </div>
-            <div style={s.cardAction}>进入收银台</div>
+            <div style={s.cardAction}>{t.posAction}</div>
           </a>
           <a href={`/desktop/display${qs}`} style={s.card}>
             <div style={s.icon}>🖥️</div>
             <div style={s.cardBody}>
-              <div style={s.cardTitle}>顾客显示屏</div>
-              <div style={s.cardDesc}>适合二手一体机/柜台大屏，给顾客查看商品、金额和 KHQR。</div>
+              <div style={s.cardTitle}>{t.displayTitle}</div>
+              <div style={s.cardDesc}>{t.displayDesc}</div>
             </div>
-            <div style={s.cardAction}>打开显示屏</div>
+            <div style={s.cardAction}>{t.displayAction}</div>
           </a>
         </div>
       </section>
@@ -56,15 +62,75 @@ export default function DesktopModePage() {
   )
 }
 
+type DesktopLang = 'zh' | 'en' | 'km'
+
+function resolveDesktopLang(raw: string | null): DesktopLang {
+  if (raw === 'en' || raw === 'km' || raw === 'zh') return raw
+  if (typeof window !== 'undefined') {
+    const stored = window.localStorage.getItem('lang')
+    if (stored === 'km' || stored === 'zh') return stored
+  }
+  return 'zh'
+}
+
+function buildDesktopQuery(storeCode: string, lang: DesktopLang) {
+  const params = new URLSearchParams()
+  if (storeCode) params.set('storeCode', storeCode)
+  params.set('lang', lang)
+  return `?${params.toString()}`
+}
+
+const desktopCopy: Record<DesktopLang, Record<string, string>> = {
+  zh: {
+    kicker: '店小二电脑端',
+    title: '选择电脑端模式',
+    desc: '员工收银台用于电脑端直接点单收款；顾客显示屏用于把手机 /sale 当前订单同步给顾客查看。',
+    storeLabel: '当前门店：',
+    missingStore: '未带门店编号。建议使用 /desktop?storeCode=门店编号 打开。',
+    posTitle: '员工收银台',
+    posDesc: '适合店员在电脑上操作销售、收款、查看购物车。',
+    posAction: '进入收银台',
+    displayTitle: '顾客显示屏',
+    displayDesc: '适合二手一体机/柜台大屏，给顾客查看商品、金额和 KHQR。',
+    displayAction: '打开显示屏',
+  },
+  en: {
+    kicker: 'Light Ops Desktop',
+    title: 'Choose Desktop Mode',
+    desc: 'Use Staff POS to sell and collect payment on a computer, or Customer Display to mirror the current /sale order for shoppers.',
+    storeLabel: 'Store: ',
+    missingStore: 'Missing store code. Open this page with /desktop?storeCode=STORE_CODE.',
+    posTitle: 'Staff POS',
+    posDesc: 'For staff to sell, collect payment, and manage the cart on a computer.',
+    posAction: 'Open POS',
+    displayTitle: 'Customer Display',
+    displayDesc: 'For a counter screen or second-hand all-in-one PC showing items, amount, and KHQR.',
+    displayAction: 'Open Display',
+  },
+  km: {
+    kicker: 'Light Ops លើកុំព្យូទ័រ',
+    title: 'ជ្រើសរើសរបៀបកុំព្យូទ័រ',
+    desc: 'បញ្ជរបុគ្គលិកសម្រាប់លក់ និងទទួលប្រាក់លើកុំព្យូទ័រ។ អេក្រង់អតិថិជនសម្រាប់បង្ហាញការបញ្ជាទិញពី /sale។',
+    storeLabel: 'ហាង៖ ',
+    missingStore: 'ខ្វះលេខកូដហាង។ សូមបើក /desktop?storeCode=STORE_CODE។',
+    posTitle: 'បញ្ជរបុគ្គលិក',
+    posDesc: 'សម្រាប់បុគ្គលិកលក់ ទទួលប្រាក់ និងមើលកន្ត្រកលើកុំព្យូទ័រ។',
+    posAction: 'ចូលបញ្ជរ',
+    displayTitle: 'អេក្រង់អតិថិជន',
+    displayDesc: 'សម្រាប់អេក្រង់មុខបញ្ជរ បង្ហាញទំនិញ ចំនួនទឹកប្រាក់ និង KHQR។',
+    displayAction: 'បើកអេក្រង់',
+  },
+}
+
 const s: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: '#f1f5f9',
+    background: 'var(--bg, #f1f5f9)',
     display: 'flex',
     alignItems: 'flex-start',
     justifyContent: 'center',
     padding: 24,
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontFamily: 'var(--font-sans, system-ui, -apple-system, sans-serif)',
   },
   panel: {
     width: '100%',
