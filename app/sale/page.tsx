@@ -142,6 +142,7 @@ export default function SalePage() {
   const [photoCandidates, setPhotoCandidates] = useState<PhotoCandidate[]>([])
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [photoDebug, setPhotoDebug] = useState<PhotoDebugInfo | null>(null)
+  const [photoDebugOpen, setPhotoDebugOpen] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -372,6 +373,7 @@ export default function SalePage() {
     setPhotoError(null)
     setPhotoCandidates([])
     setPhotoDebug(null)
+    setPhotoDebugOpen(false)
     setPhotoStatus('idle')
   }
 
@@ -465,6 +467,7 @@ export default function SalePage() {
     }
     setPhotoError(null)
     setPhotoCandidates([])
+    setPhotoDebugOpen(false)
     setPhotoDebug({
       fileType: file.type || '(empty)',
       fileSize: file.size,
@@ -800,23 +803,35 @@ export default function SalePage() {
               <div style={ph.empty}>{photoError}</div>
             )}
             {photoStatus !== 'loading' && photoError && photoDebug && (
-              <div style={ph.debugBox}>
-                <div style={ph.debugTitle}>调试信息</div>
-                {photoDebug.fileType !== undefined && <div>file.type: {photoDebug.fileType}</div>}
-                {photoDebug.fileSize !== undefined && <div>file.size: {photoDebug.fileSize}</div>}
-                {photoDebug.compressedMime !== undefined && <div>compressedMime: {photoDebug.compressedMime}</div>}
-                {photoDebug.compressedSize !== undefined && <div>compressedSize: {photoDebug.compressedSize}</div>}
-                {photoDebug.apiStatus !== undefined && <div>apiStatus: {photoDebug.apiStatus}</div>}
-                {photoDebug.errorCode !== undefined && <div>errorCode: {photoDebug.errorCode}</div>}
-                {photoDebug.stage !== undefined && <div>stage: {photoDebug.stage}</div>}
-              </div>
+              <>
+                <button
+                  type="button"
+                  style={ph.debugToggle}
+                  onClick={() => setPhotoDebugOpen((v) => !v)}
+                >
+                  {photoDebugOpen ? '收起调试信息' : '查看调试信息'}
+                </button>
+                {photoDebugOpen && (
+                  <div style={ph.debugBox}>
+                    <div style={ph.debugTitle}>识别调试信息</div>
+                    {photoDebug.fileType !== undefined && <div>file.type: {photoDebug.fileType}</div>}
+                    {photoDebug.fileSize !== undefined && <div>file.size: {photoDebug.fileSize}</div>}
+                    {photoDebug.compressedMime !== undefined && <div>compressedMime: {photoDebug.compressedMime}</div>}
+                    {photoDebug.compressedSize !== undefined && <div>compressedSize: {photoDebug.compressedSize}</div>}
+                    {photoDebug.apiStatus !== undefined && <div>apiStatus: {photoDebug.apiStatus}</div>}
+                    {photoDebug.errorCode !== undefined && <div>errorCode: {photoDebug.errorCode}</div>}
+                    {photoDebug.stage !== undefined && <div>stage: {photoDebug.stage}</div>}
+                  </div>
+                )}
+              </>
             )}
             {photoStatus !== 'loading' && !photoError && photoCandidates.length === 0 && (
               <div style={ph.empty}>未找到匹配商品，请使用扫码或手动选择商品。</div>
             )}
             {photoStatus !== 'loading' && !photoError && photoCandidates.length > 0 && (
               <>
-                <div style={ph.candidatesLabel}>候选商品（需人工确认）</div>
+                <div style={ph.candidatesLabel}>AI 找到以下可能商品</div>
+                <div style={ph.candidatesHint}>请店员确认后加入本单</div>
                 {photoCandidates.map((c) => (
                   <div key={c.productId} style={ph.candidate}>
                     <div style={ph.thumb}>
@@ -1388,6 +1403,12 @@ const ph: Record<string, React.CSSProperties> = {
     background: '#fffbeb', border: '1px solid #fcd34d',
     borderRadius: 'var(--radius-sm)', textAlign: 'center', marginBottom: 10,
   },
+  debugToggle: {
+    display: 'block', margin: '-2px auto 10px',
+    background: 'transparent', border: 'none',
+    color: 'var(--muted)', fontSize: 11,
+    textDecoration: 'underline', cursor: 'pointer',
+  },
   debugBox: {
     fontSize: 10, lineHeight: 1.5, color: '#64748b',
     background: '#f8fafc', border: '1px solid #e2e8f0',
@@ -1397,6 +1418,7 @@ const ph: Record<string, React.CSSProperties> = {
   },
   debugTitle: { fontWeight: 700, color: '#475569', marginBottom: 3 },
   candidatesLabel: { fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6 },
+  candidatesHint: { fontSize: 11, color: '#8c8c8c', marginTop: -3, marginBottom: 8 },
   candidate: {
     display: 'flex', alignItems: 'center', gap: 10,
     padding: 10, marginBottom: 8,
