@@ -3,19 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import QRCode from 'react-qr-code'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
-import zh from '@/lib/i18n/zh'
-import km from '@/lib/i18n/km'
 import { publicUrl } from '@/lib/public-url'
 import { useLocale } from '@/app/components/LangProvider'
-
-function bi(zhStr: string, kmStr: string) {
-  return <LocalizedText zhStr={zhStr} kmStr={kmStr} />
-}
-
-function LocalizedText({ zhStr, kmStr }: { zhStr: string; kmStr: string }) {
-  const { lang } = useLocale()
-  return <>{lang === 'km' ? kmStr : zhStr}</>
-}
 
 type Store = { id: string; name: string; code: string }
 
@@ -41,15 +30,16 @@ type Member = {
   storeName: string
 }
 
-function fmtExpiry(iso: string) {
-  return new Date(iso).toLocaleString('zh-CN', {
+function fmtExpiry(iso: string, lang: 'zh' | 'km' | 'en') {
+  const locale = lang === 'km' ? 'km-KH' : lang === 'en' ? 'en-US' : 'zh-CN'
+  return new Date(iso).toLocaleString(locale, {
     month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit',
   })
 }
 
 export default function InvitePage() {
-  const { lang } = useLocale()
+  const { lang, t } = useLocale()
   const [stores, setStores] = useState<Store[]>([])
   const [storeId, setStoreId] = useState('')
   const [storesLoading, setStoresLoading] = useState(true)
@@ -81,14 +71,14 @@ export default function InvitePage() {
       })
       .then((list: Store[]) => {
         if (list.length === 0) {
-          setStoresError(lang === 'km' ? km.invite.storesNotFound : zh.invite.storesNotFound)
+          setStoresError(t('invite.storesNotFound'))
         } else {
           setStores(list)
           setStoreId(list[0].id)
           setCustomerStoreId(list[0].id)
         }
       })
-      .catch(() => setStoresError(lang === 'km' ? km.invite.storesLoadFailed : zh.invite.storesLoadFailed))
+      .catch(() => setStoresError(t('invite.storesLoadFailed')))
       .finally(() => setStoresLoading(false))
     loadMembers()
   }, [loadMembers, lang])
@@ -105,9 +95,9 @@ export default function InvitePage() {
       }, OWNER_CTX)
       const body = await r.json()
       if (r.ok) setResult(body)
-      else setGenError(body.message ?? body.error ?? (lang === 'km' ? km.invite.genFailed : zh.invite.genFailed))
+      else setGenError(body.message ?? body.error ?? t('invite.genFailed'))
     } catch {
-      setGenError(lang === 'km' ? km.common.networkError : zh.common.networkError)
+      setGenError(t('common.networkError'))
     } finally {
       setLoading(false)
     }
@@ -153,16 +143,16 @@ export default function InvitePage() {
   }
 
   async function unbind(userId: string, name: string) {
-    const confirmText = (lang === 'km' ? km.invite.unbindConfirm : zh.invite.unbindConfirm).replace('{name}', name)
+    const confirmText = t('invite.unbindConfirm').replace('{name}', name)
     if (!window.confirm(confirmText)) return
     setUnbinding(userId)
     try {
       const r = await apiFetch(`/api/admin/users/${userId}/unbind`, { method: 'POST' }, OWNER_CTX)
       const body = await r.json()
       if (r.ok) loadMembers()
-      else window.alert(body.message ?? body.error ?? (lang === 'km' ? km.invite.unbindFailed : zh.invite.unbindFailed))
+      else window.alert(body.message ?? body.error ?? t('invite.unbindFailed'))
     } catch {
-      window.alert(lang === 'km' ? km.common.networkError : zh.common.networkError)
+      window.alert(t('common.networkError'))
     } finally {
       setUnbinding(null)
     }
@@ -175,7 +165,7 @@ export default function InvitePage() {
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <div style={s.headerTitle}>{bi(zh.invite.headerTitle, km.invite.headerTitle)}</div>
+        <div style={s.headerTitle}>{t('invite.headerTitle')}</div>
       </div>
 
       <div style={s.body}>
@@ -184,7 +174,7 @@ export default function InvitePage() {
           <div style={s.card}>
             {stores.length > 1 && (
               <div style={s.field}>
-                <label style={s.fieldLabel}>{bi(zh.invite.infoStore, km.invite.infoStore)}</label>
+                <label style={s.fieldLabel}>{t('invite.infoStore')}</label>
                 <select style={s.select} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
                   {stores.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
                 </select>
@@ -202,8 +192,8 @@ export default function InvitePage() {
               >
                 <span style={s.btnIcon}>🏪</span>
                 <span style={s.btnText}>
-                  <span style={s.btnLabel}>{bi(zh.invite.ownerCodeTitle, km.invite.ownerCodeTitle)}</span>
-                  <span style={s.btnSub}>{storesLoading ? bi(zh.common.loading, km.common.loading) : bi(zh.invite.ownerCodeDesc, km.invite.ownerCodeDesc)}</span>
+                  <span style={s.btnLabel}>{t('invite.ownerCodeTitle')}</span>
+                  <span style={s.btnSub}>{storesLoading ? t('common.loading') : t('invite.ownerCodeDesc')}</span>
                 </span>
               </button>
               <button
@@ -213,8 +203,8 @@ export default function InvitePage() {
               >
                 <span style={s.btnIcon}>👤</span>
                 <span style={s.btnText}>
-                  <span style={s.btnLabel}>{bi(zh.invite.staffCodeTitle, km.invite.staffCodeTitle)}</span>
-                  <span style={s.btnSub}>{storesLoading ? bi(zh.common.loading, km.common.loading) : bi(zh.invite.staffCodeDesc, km.invite.staffCodeDesc)}</span>
+                  <span style={s.btnLabel}>{t('invite.staffCodeTitle')}</span>
+                  <span style={s.btnSub}>{storesLoading ? t('common.loading') : t('invite.staffCodeDesc')}</span>
                 </span>
               </button>
             </div>
@@ -222,20 +212,20 @@ export default function InvitePage() {
         ) : (
           <div style={s.resultWrap}>
             <button type="button" style={s.backBtn} onClick={reset}>
-              {bi(zh.invite.backToInvite, km.invite.backToInvite)}
+              {t('invite.backToInvite')}
             </button>
 
             <div style={s.qrCard}>
               {result.tgLink
                 ? <QRCode value={result.tgLink} size={200} style={{ display: 'block' }} />
-                : <div style={s.noLink}>{bi(zh.invite.noTelegramBot, km.invite.noTelegramBot)}</div>
+                : <div style={s.noLink}>{t('invite.noTelegramBot')}</div>
               }
             </div>
 
             <div style={s.infoCard}>
-              <InfoRow label={bi(zh.invite.typeLabel, km.invite.typeLabel)} value={result.role === 'OWNER' ? bi(zh.invite.ownerCodeTitle, km.invite.ownerCodeTitle) : bi(zh.invite.staffCodeTitle, km.invite.staffCodeTitle)} />
-              <InfoRow label={bi(zh.invite.infoStore, km.invite.infoStore)} value={result.storeName} />
-              <InfoRow label={bi(zh.invite.validUntil, km.invite.validUntil)} value={fmtExpiry(result.expiresAt)} />
+              <InfoRow label={t('invite.typeLabel')} value={result.role === 'OWNER' ? t('invite.ownerCodeTitle') : t('invite.staffCodeTitle')} />
+              <InfoRow label={t('invite.infoStore')} value={result.storeName} />
+              <InfoRow label={t('invite.validUntil')} value={fmtExpiry(result.expiresAt, lang)} />
             </div>
 
             {result.tgLink && (
@@ -247,12 +237,12 @@ export default function InvitePage() {
                   </a>
                 </div>
                 <button style={s.copyBtn} onClick={copyLink}>
-                  {copied ? bi(zh.invite.copied, km.invite.copied) : bi(zh.invite.copyLink, km.invite.copyLink)}
+                  {copied ? t('invite.copied') : t('invite.copyLink')}
                 </button>
-                <div style={s.sendHint}>{bi(zh.invite.sendHint, km.invite.sendHint)}</div>
+                <div style={s.sendHint}>{t('invite.sendHint')}</div>
               </>
             )}
-            <button style={s.resetBtn} onClick={reset}>{bi(zh.invite.resetBtn, km.invite.resetBtn)}</button>
+            <button style={s.resetBtn} onClick={reset}>{t('invite.resetBtn')}</button>
           </div>
         )}
 
@@ -266,26 +256,26 @@ export default function InvitePage() {
         />
 
         {/* ── Table QR codes ── */}
-        <div style={s.sectionLabel}>{bi(zh.invite.tableQrTitle, km.invite.tableQrTitle)}</div>
+        <div style={s.sectionLabel}>{t('invite.tableQrTitle')}</div>
         <div style={{ ...s.customerCard, gap: 10 }}>
           <div style={s.customerDesc}>
-            {bi(zh.invite.tableQrDesc, km.invite.tableQrDesc)}
+            {t('invite.tableQrDesc')}
           </div>
           <button
             style={{ height: 44, background: '#f0fdf4', color: '#15803d', border: '1.5px solid #86efac', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
             onClick={() => { window.location.href = '/table-qrcodes' }}
           >
-            {bi(zh.invite.tableQrManage, km.invite.tableQrManage)}
+            {t('invite.tableQrManage')}
           </button>
         </div>
 
         {/* ── Members section ── */}
-        <div style={s.sectionLabel}>{bi(zh.invite.membersTitle, km.invite.membersTitle)}</div>
+        <div style={s.sectionLabel}>{t('invite.membersTitle')}</div>
 
         {/* Owner block */}
         {owners.length > 0 && (
           <div style={s.memberGroup}>
-            <div style={s.groupLabel}>{bi(zh.invite.groupOwner, km.invite.groupOwner)}</div>
+            <div style={s.groupLabel}>{t('invite.groupOwner')}</div>
             {owners.map((m) => (
               <MemberCard
                 key={m.id}
@@ -299,9 +289,9 @@ export default function InvitePage() {
 
         {/* Staff block */}
         <div style={s.memberGroup}>
-          <div style={s.groupLabel}>{bi(zh.invite.groupStaff, km.invite.groupStaff)}</div>
+          <div style={s.groupLabel}>{t('invite.groupStaff')}</div>
           {staff.length === 0 ? (
-            <div style={s.emptyHint}>{bi(zh.invite.noStaff, km.invite.noStaff)}</div>
+            <div style={s.emptyHint}>{t('invite.noStaff')}</div>
           ) : (
             staff.map((m) => (
               <MemberCard
@@ -327,6 +317,7 @@ function MemberCard({
   unbinding: string | null
   onUnbind: (id: string, name: string) => void
 }) {
+  const { t } = useLocale()
   const name = m.displayName || m.username
   return (
     <div style={s.memberCard}>
@@ -334,10 +325,10 @@ function MemberCard({
         <div style={s.memberName}>{name}</div>
         <div style={s.memberMeta}>
           <span style={m.role === 'OWNER' ? s.tagOwner : s.tagStaff}>
-            {m.role === 'OWNER' ? bi(zh.invite.groupOwner, km.invite.groupOwner) : bi(zh.invite.groupStaff, km.invite.groupStaff)}
+            {m.role === 'OWNER' ? t('invite.groupOwner') : t('invite.groupStaff')}
           </span>
           <span style={m.bound ? s.badgeBound : s.badgeUnbound}>
-            {m.bound ? bi(zh.invite.bound, km.invite.bound) : bi(zh.invite.unbound, km.invite.unbound)}
+            {m.bound ? t('invite.bound') : t('invite.unbound')}
           </span>
         </div>
       </div>
@@ -347,7 +338,7 @@ function MemberCard({
           disabled={unbinding === m.id}
           onClick={() => onUnbind(m.id, name)}
         >
-          {bi(zh.invite.unbindBtn, km.invite.unbindBtn)}
+          {t('invite.unbindBtn')}
         </button>
       )}
     </div>
@@ -367,6 +358,7 @@ function CustomerCodeCard({
   copied: boolean
   setCopied: (v: boolean) => void
 }) {
+  const { t } = useLocale()
   const current = stores.find((st) => st.id === customerStoreId)
   const url = current ? publicUrl(`/m/${current.code}`) : ''
 
@@ -400,13 +392,13 @@ function CustomerCodeCard({
 
   return (
     <>
-      <div style={s.sectionLabel}>{bi(zh.invite.customerCodeTitle, km.invite.customerCodeTitle)}</div>
+      <div style={s.sectionLabel}>{t('invite.customerCodeTitle')}</div>
       <div style={s.customerCard}>
-        <div style={s.customerDesc}>{bi(zh.invite.customerCodeDesc, km.invite.customerCodeDesc)}</div>
+        <div style={s.customerDesc}>{t('invite.customerCodeDesc')}</div>
 
         {stores.length > 1 && (
           <div style={s.field}>
-            <label style={s.fieldLabel}>{bi(zh.invite.customerCodeStoreLabel, km.invite.customerCodeStoreLabel)}</label>
+            <label style={s.fieldLabel}>{t('invite.customerCodeStoreLabel')}</label>
             <select
               style={s.select}
               value={customerStoreId}
@@ -431,13 +423,13 @@ function CustomerCodeCard({
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button style={copied ? { ...s.copyBtn, background: '#52c41a' } : s.copyBtn} onClick={copy}>
-                {copied ? bi(zh.invite.copied, km.invite.copied) : bi(zh.invite.copyLink, km.invite.copyLink)}
+                {copied ? t('invite.copied') : t('invite.copyLink')}
               </button>
               <button
                 style={{ height: 48, flex: '0 0 auto', padding: '0 16px', background: '#f0f6ff', color: '#1d4ed8', border: '1.5px solid #93c5fd', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
                 onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
               >
-                {bi(zh.invite.openLink, km.invite.openLink)}
+                {t('invite.openLink')}
               </button>
             </div>
           </>
