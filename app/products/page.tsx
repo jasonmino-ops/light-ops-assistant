@@ -99,6 +99,7 @@ type Product = {
   categoryId: string | null
   imageUrl: string | null
   imageUrls?: string[]
+  createdAt?: string
 }
 
 type MarketingProductPage = {
@@ -431,6 +432,11 @@ export default function ProductsPage() {
     }
   }
 
+  useEffect(() => {
+    loadProductList()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function toggleList() {
     const next = !listOpen
     setListOpen(next)
@@ -474,6 +480,29 @@ export default function ProductsPage() {
       (p.spec ?? '').toLowerCase().includes(q)
     return keywordOk && matchesListCategory(p)
   })
+  const displayedProductList = listOpen ? filteredProductList : filteredProductList.slice(0, 5)
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+  const todayNewCount = productList.filter((p) => p.createdAt && new Date(p.createdAt) >= todayStart).length
+  const stats = [
+    { label: t('products.statsTotalProducts'), value: productList.length },
+    { label: t('products.statsCategories'), value: categories.length },
+    { label: t('products.statsTodayNew'), value: todayNewCount },
+    { label: t('products.statsStockWarning'), value: 0 },
+  ]
+
+  function openAiImport() {
+    setAiOpen(true)
+    aiReset()
+  }
+
+  function openBulkImport() {
+    setImportOpen(true)
+    setImportStep('upload')
+    setImportPreview(null)
+    setImportResult(null)
+    setImportError(null)
+  }
 
   function resetListFilters() {
     setListSearch('')
@@ -1509,20 +1538,99 @@ export default function ProductsPage() {
       </div>
 
       <div style={s.body}>
+        <div style={s.centerIntro}>
+          <div>
+            <div style={s.centerSubtitle}>{t('products.centerSubtitle')}</div>
+          </div>
+        </div>
+
+        <div style={s.statsGrid}>
+          {stats.map((item) => (
+            <div key={item.label} style={s.statCard}>
+              <div style={s.statValue}>{listLoading && productList.length === 0 ? '…' : item.value}</div>
+              <div style={s.statLabel}>{item.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={s.aiHeroCard}>
+          <div style={s.aiHeroGlow} />
+          <div style={s.aiHeroContent}>
+            <div style={s.aiHeroEyebrow}>AI Beta</div>
+            <div style={s.aiHeroTitle}>{t('products.aiHeroTitle')}</div>
+            <div style={s.aiHeroSubtitle}>{t('products.aiHeroSubtitle')}</div>
+            <div style={s.aiHeroTags}>
+              <span style={s.aiHeroTag}>{t('products.aiHeroTagAccuracy')}</span>
+              <span style={s.aiHeroTag}>{t('products.aiHeroTagAutoFile')}</span>
+              <span style={s.aiHeroTag}>{t('products.aiHeroTagEfficient')}</span>
+            </div>
+            <button type="button" style={s.aiHeroBtn} onClick={openAiImport}>
+              {t('products.aiHeroAction')}
+            </button>
+          </div>
+        </div>
+
+        <div style={s.quickEntryGrid}>
+          <button type="button" style={s.secondaryEntryBtn} onClick={startManualNew}>
+            {t('products.manualEntryAction')}
+          </button>
+          <button type="button" style={s.secondaryEntryBtn} onClick={openBulkImport}>
+            {t('products.bulkImportAction')}
+          </button>
+        </div>
+
+        <div style={s.searchCard}>
+          {hidMsg && (
+            <div style={hidMsg.type === 'ok' ? s.hidOkMsg : s.hidFailMsg}>
+              {hidMsg.text}
+            </div>
+          )}
+          {cameraFailCount >= 5 && (
+            <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>
+          )}
+          <div style={s.searchInputWrap}>
+            <input
+              style={s.searchInput}
+              type="text"
+              placeholder={t('products.searchSkuPlaceholder')}
+              value={barcodeInput}
+              onChange={(e) => {
+                setBarcodeInput(e.target.value)
+                onListSearchChange(e.target.value)
+              }}
+              onKeyDown={handleBarcodeKey}
+            />
+            <button
+              type="button"
+              style={s.searchIconBtn}
+              onClick={() => lookup(barcodeInput)}
+              disabled={mode === 'loading' || !barcodeInput.trim()}
+              aria-label={t('products.queryBtn')}
+            >
+              {mode === 'loading' ? '…' : '⌕'}
+            </button>
+            <button
+              type="button"
+              style={s.scanIconBtn}
+              onClick={openScanner}
+              disabled={mode === 'loading'}
+              aria-label={t('products.scanIconLabel')}
+            >
+              ⊡
+            </button>
+          </div>
+        </div>
+
+        {error && <div style={s.errorMsg}>{error}</div>}
 
         {/* ── 批量导入 ── */}
-        <div style={s.importSection}>
+        {importOpen && (
+        <div style={{ ...s.importSection, order: 3 }}>
           <button
             style={s.importToggle}
-            onClick={() => {
-              setImportOpen((v) => !v)
-              setImportStep('upload')
-              setImportPreview(null)
-              setImportResult(null)
-              setImportError(null)
-            }}
+            onClick={() => setImportOpen((v) => !v)}
           >
-            <span style={s.importToggleText}>{t('products.importToggle')}</span>
+            <span style={s.importToggleText}>{t('products.bulkImportAction')}</span>
             <span style={s.importToggleArrow}>{importOpen ? '▲' : '▼'}</span>
           </button>
 
@@ -1691,9 +1799,11 @@ export default function ProductsPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* ── AI 识别菜单导入 ── */}
-        <div style={s.importSection}>
+        {aiOpen && (
+        <div style={{ ...s.importSection, order: 3 }}>
           <button
             style={s.importToggle}
             onClick={() => {
@@ -1701,7 +1811,7 @@ export default function ProductsPage() {
               aiReset()
             }}
           >
-            <span style={s.importToggleText}>{t('products.aiImportToggle')}</span>
+            <span style={s.importToggleText}>{t('products.aiHeroTitle')}</span>
             <span style={s.importToggleArrow}>{aiOpen ? '▲' : '▼'}</span>
           </button>
 
@@ -1870,9 +1980,10 @@ export default function ProductsPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* ── 分类管理 ── */}
-        <div style={s.importSection}>
+        <div style={{ ...s.importSection, order: 8 }}>
           <button style={s.importToggle} onClick={() => { setCatOpen((v) => !v); setCatError(null) }}>
             <span style={s.importToggleText}>{t('products.categories')}</span>
             <span style={s.importToggleArrow}>{catOpen ? '▲' : '▼'}</span>
@@ -1949,13 +2060,13 @@ export default function ProductsPage() {
         </div>
 
         {/* ── 商品列表（删除管理） ── */}
-        <div style={s.importSection}>
+        <div style={{ ...s.importSection, order: 4 }}>
           <button style={s.importToggle} onClick={toggleList}>
-            <span style={s.importToggleText}>{t('products.productList')}</span>
-            <span style={s.importToggleArrow}>{listOpen ? '▲' : '▼'}</span>
+            <span style={s.importToggleText}>{listOpen ? t('products.allProductsEntry') : t('products.recentProducts')}</span>
+            <span style={s.importToggleArrow}>{listOpen ? t('products.collapseProducts') : t('products.showAllProducts')}</span>
           </button>
 
-          {listOpen && (
+          {(
             <div style={s.importBody}>
               {listLoading && (
                 <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0' }}>{t('common.loading')}</div>
@@ -1965,7 +2076,7 @@ export default function ProductsPage() {
 
               {!listLoading && productList.length > 0 && (
                 <>
-                  <div style={ls.filterRow}>
+                  <div style={{ ...ls.filterRow, display: listOpen ? 'flex' : 'none' }}>
                     <input
                       style={ls.searchInput}
                       value={listSearch}
@@ -1992,7 +2103,7 @@ export default function ProductsPage() {
                   </div>
 
                   {/* Header row: select-all + batch delete */}
-                  <div style={ls.headerRow}>
+                  <div style={{ ...ls.headerRow, display: listOpen ? 'flex' : 'none' }}>
                     <label style={ls.checkLabel}>
                       <input
                         type="checkbox"
@@ -2019,7 +2130,7 @@ export default function ProductsPage() {
                     <div style={{ fontSize: 13, color: 'var(--muted)', padding: '10px 0' }}>{t('products.noProductMatch')}</div>
                   )}
 
-	                  {filteredProductList.map((p) => {
+	                  {displayedProductList.map((p) => {
 	                    const isExpanded = expandedId === p.id
 	                    const uploading = !!listImgUploading[p.id]
 	                    const marketingPage = marketingPages[p.id]
@@ -2404,64 +2515,6 @@ export default function ProductsPage() {
 
         {mode !== 'saved' && (
           <>
-            {/* 扫码 + 手动输入 */}
-            <div style={s.card}>
-              {hidMsg && (
-                <div style={hidMsg.type === 'ok' ? s.hidOkMsg : s.hidFailMsg}>
-                  {hidMsg.text}
-                </div>
-              )}
-              <div style={s.entryRow}>
-                <button
-                  type="button"
-                  style={{ ...s.scanBtn, width: 'auto', flex: 1, marginBottom: 0 }}
-                  onClick={openScanner}
-                  disabled={mode === 'loading'}
-                >
-                  <span style={s.scanIcon}>⊡</span>
-                  <span>{t('products.scanBtn')}</span>
-                </button>
-                <button
-                  type="button"
-                  style={s.manualNewBtn}
-                  onClick={startManualNew}
-                  disabled={mode === 'loading'}
-                >
-                  <span style={s.plusIcon}>＋</span>
-                  <span>{t('products.manualNewBtn')}</span>
-                </button>
-              </div>
-
-              {cameraFailCount >= 5 && (
-                <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>
-              )}
-
-              <div style={s.orRow}>
-                <div style={s.orLine} /><span style={s.orText}>{t('products.orInput')}</span><div style={s.orLine} />
-              </div>
-
-              <div style={s.inputRow}>
-                <input
-                  style={s.input}
-                  type="text"
-                  placeholder={t('products.barcodePlaceholder')}
-                  value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
-                  onKeyDown={handleBarcodeKey}
-                />
-                <button
-                  style={s.queryBtn}
-                  type="button"
-                  onClick={() => lookup(barcodeInput)}
-                  disabled={mode === 'loading' || !barcodeInput.trim()}
-                >
-                  {mode === 'loading' ? '…' : t('products.queryBtn')}
-                </button>
-              </div>
-            </div>
-
-            {error && <div style={s.errorMsg}>{error}</div>}
-
             {/* ── 商品已存在：编辑表单 ── */}
             {mode === 'found' && product && (
               <div style={s.card}>
@@ -2864,8 +2917,191 @@ const s: Record<string, React.CSSProperties> = {
     maxWidth: 480,
     margin: '0 auto',
     width: '100%',
+    display: 'flex',
+    flexDirection: 'column' as const,
+  },
+  centerIntro: {
+    order: 0,
+    margin: '2px 2px 10px',
+  },
+  centerSubtitle: {
+    fontSize: 13,
+    lineHeight: 1.45,
+    color: 'var(--muted)',
+  },
+  statsGrid: {
+    order: 0,
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr 1fr',
+    gap: 8,
+    marginBottom: 10,
+  },
+  statCard: {
+    minWidth: 0,
+    background: '#fff',
+    border: '1px solid rgba(15, 23, 42, 0.06)',
+    borderRadius: 16,
+    padding: '10px 6px',
+    textAlign: 'center' as const,
+    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
+  },
+  statValue: {
+    fontSize: 18,
+    lineHeight: 1.1,
+    fontWeight: 800,
+    color: 'var(--text)',
+    letterSpacing: '-0.01em',
+  },
+  statLabel: {
+    marginTop: 4,
+    fontSize: 10,
+    lineHeight: 1.2,
+    color: 'var(--muted)',
+    fontWeight: 700,
+  },
+  aiHeroCard: {
+    order: 0,
+    position: 'relative' as const,
+    overflow: 'hidden',
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 10,
+    background: 'linear-gradient(135deg, #101828 0%, #155eef 54%, #38bdf8 100%)',
+    color: '#fff',
+    boxShadow: '0 18px 42px rgba(21, 94, 239, 0.22)',
+  },
+  aiHeroGlow: {
+    position: 'absolute' as const,
+    right: -36,
+    top: -44,
+    width: 140,
+    height: 140,
+    borderRadius: '50%',
+    background: 'rgba(255,255,255,0.22)',
+  },
+  aiHeroContent: {
+    position: 'relative' as const,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 10,
+  },
+  aiHeroEyebrow: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    padding: '4px 9px',
+    background: 'rgba(255,255,255,0.16)',
+    border: '1px solid rgba(255,255,255,0.22)',
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: '0.04em',
+  },
+  aiHeroTitle: {
+    fontSize: 24,
+    lineHeight: 1.12,
+    fontWeight: 900,
+    letterSpacing: '-0.02em',
+  },
+  aiHeroSubtitle: {
+    maxWidth: 330,
+    fontSize: 14,
+    lineHeight: 1.45,
+    color: 'rgba(255,255,255,0.84)',
+  },
+  aiHeroTags: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 6,
+  },
+  aiHeroTag: {
+    borderRadius: 999,
+    padding: '5px 9px',
+    background: 'rgba(255,255,255,0.14)',
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 800,
+  },
+  aiHeroBtn: {
+    height: 46,
+    marginTop: 2,
+    border: 'none',
+    borderRadius: 14,
+    background: '#fff',
+    color: '#0f172a',
+    fontSize: 15,
+    fontWeight: 900,
+    cursor: 'pointer',
+    boxShadow: '0 10px 24px rgba(15,23,42,0.2)',
+  },
+  quickEntryGrid: {
+    order: 0,
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8,
+    marginBottom: 10,
+  },
+  secondaryEntryBtn: {
+    minHeight: 48,
+    border: '1px solid rgba(15, 23, 42, 0.08)',
+    borderRadius: 16,
+    background: '#fff',
+    color: 'var(--text)',
+    fontSize: 14,
+    fontWeight: 850,
+    cursor: 'pointer',
+    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
+  },
+  searchCard: {
+    order: 0,
+    background: '#fff',
+    border: '1px solid rgba(15, 23, 42, 0.06)',
+    borderRadius: 18,
+    padding: 10,
+    marginBottom: 10,
+    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
+  },
+  searchInputWrap: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 42px 42px',
+    gap: 6,
+    alignItems: 'center',
+  },
+  searchInput: {
+    width: '100%',
+    height: 42,
+    minWidth: 0,
+    border: 'none',
+    borderRadius: 12,
+    padding: '0 11px',
+    fontSize: 15,
+    outline: 'none',
+    background: '#f7f8fa',
+    color: 'var(--text)',
+    boxSizing: 'border-box' as const,
+  },
+  searchIconBtn: {
+    width: 42,
+    height: 42,
+    border: 'none',
+    borderRadius: 12,
+    background: '#eef4ff',
+    color: 'var(--blue)',
+    fontSize: 19,
+    fontWeight: 900,
+    cursor: 'pointer',
+  },
+  scanIconBtn: {
+    width: 42,
+    height: 42,
+    border: 'none',
+    borderRadius: 12,
+    background: 'var(--blue)',
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: 900,
+    cursor: 'pointer',
   },
   card: {
+    order: 1,
     background: 'var(--card)',
     borderRadius: 'var(--radius)',
     padding: '14px 16px',
