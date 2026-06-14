@@ -219,12 +219,13 @@ function CartList({ items, t }: { items: PosItem[]; t: DisplayCopy }) {
 
 function ProductThumb({ item }: { item: PosItem }) {
   const [failed, setFailed] = useState(false)
-  if (!item.imageUrl || failed) {
+  const src = displayImageSrc(item.imageUrl)
+  if (!src || failed) {
     return <div style={s.productPlaceholder}>📦</div>
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={item.imageUrl} alt={item.name} style={s.productImage} onError={() => setFailed(true)} />
+    <img src={src} alt={item.name} style={s.productImage} onError={() => setFailed(true)} />
   )
 }
 
@@ -292,9 +293,11 @@ function PaymentCard({ session, recentlyCompleted, t }: { session: SessionPayloa
     )
   }
 
+  const khqrImageSrc = displayImageSrc(session.khqrImageUrl)
+  const qrValue = session.khqrPayload || (!khqrImageSrc ? session.khqrImageUrl : null)
   const showKhqr = session.status === 'AWAITING_PAYMENT'
     && session.paymentMethod === 'KHQR'
-    && (session.khqrImageUrl || session.khqrPayload)
+    && (khqrImageSrc || qrValue)
 
   return (
     <div style={s.payCard}>
@@ -309,11 +312,11 @@ function PaymentCard({ session, recentlyCompleted, t }: { session: SessionPayloa
       </div>
       {showKhqr ? (
         <div style={s.qrWrap}>
-          {session.khqrImageUrl ? (
+          {khqrImageSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={session.khqrImageUrl} alt="KHQR" style={s.qrImage} />
+            <img src={khqrImageSrc} alt="KHQR" style={s.qrImage} />
           ) : (
-            <QRCode value={session.khqrPayload || ''} size={220} />
+            <QRCode value={qrValue || ''} size={220} />
           )}
           <div style={s.qrHint}>{t.scanToPay}</div>
         </div>
@@ -367,6 +370,15 @@ function paymentMethodLabel(method: string | null, t: DisplayCopy) {
   if (method === 'CASH') return `💵 ${t.cash}`
   if (method === 'KHQR') return '📱 KHQR'
   return '—'
+}
+
+function displayImageSrc(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const value = raw.trim()
+  if (value.startsWith('http://') || value.startsWith('https://')) return value
+  if (value.startsWith('/')) return value
+  if (value.startsWith('data:image/') && value.includes(',')) return value
+  return null
 }
 
 function LangSwitch({ lang, onChange }: { lang: DesktopLang; onChange: (lang: DesktopLang) => void }) {

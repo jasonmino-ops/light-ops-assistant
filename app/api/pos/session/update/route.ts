@@ -11,7 +11,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
-type ClientItem = { productId?: unknown; name?: unknown; spec?: unknown; imageUrl?: unknown; price?: unknown; qty?: unknown; lineAmount?: unknown }
+type ClientItem = {
+  productId?: unknown
+  name?: unknown
+  spec?: unknown
+  imageUrl?: unknown
+  image?: unknown
+  mainImageUrl?: unknown
+  photoUrl?: unknown
+  thumbnailUrl?: unknown
+  price?: unknown
+  qty?: unknown
+  lineAmount?: unknown
+}
 type CleanItem  = { productId: string; name: string; spec: string | null; imageUrl: string | null; price: number; qty: number; lineAmount: number }
 
 const ALLOWED_STATUS         = new Set(['DRAFT', 'AWAITING_PAYMENT'])
@@ -32,13 +44,20 @@ function cleanItems(raw: unknown): CleanItem[] {
     out.push({
       productId, name,
       spec: typeof r.spec === 'string' && r.spec.trim() ? r.spec.slice(0, 200) : null,
-      imageUrl: typeof r.imageUrl === 'string' && r.imageUrl.trim() ? r.imageUrl.slice(0, 2048) : null,
+      imageUrl: cleanImageUrl(r),
       price: +price.toFixed(2),
       qty: +qty.toFixed(3),
       lineAmount: Number.isFinite(line) ? +line.toFixed(2) : +(price * qty).toFixed(2),
     })
   }
   return out
+}
+
+function cleanImageUrl(item: ClientItem): string | null {
+  for (const raw of [item.imageUrl, item.image, item.mainImageUrl, item.photoUrl, item.thumbnailUrl]) {
+    if (typeof raw === 'string' && raw.trim()) return raw.trim().slice(0, 2048)
+  }
+  return null
 }
 
 export async function POST(req: NextRequest) {

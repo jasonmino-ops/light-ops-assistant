@@ -34,6 +34,26 @@ function parseItems(raw: string | null | undefined): PosItem[] {
   } catch { return [] }
 }
 
+function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
+  try {
+    const parsed = imageUrls ? JSON.parse(imageUrls) : []
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 3)
+    }
+  } catch {}
+  return imageUrl ? [imageUrl] : []
+}
+
+function cleanDisplayImageUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const value = raw.trim()
+  if (!value) return null
+  if (value.startsWith('http://') || value.startsWith('https://')) return value
+  if (value.startsWith('/')) return value
+  if (value.startsWith('data:image/') && value.includes(',')) return value
+  return null
+}
+
 export async function GET(req: NextRequest) {
   const storeCode = req.nextUrl.searchParams.get('storeCode')?.trim()
   if (!storeCode) {
@@ -111,9 +131,34 @@ export async function GET(req: NextRequest) {
     order.status = payment.status
   }
 
-  const khqrFallbackConfig = row?.paymentMethod === 'KHQR' && !row.khqrPayload && !row.khqrImageUrl
+  const items = parseItems(row?.itemsJson)
+  const missingImageProductIds = items
+    .filter((item) => !cleanDisplayImageUrl(item.imageUrl))
+    .map((item) => item.productId)
+  const productImageRows = missingImageProductIds.length > 0
+    ? await prisma.product.findMany({
+        where: {
+          tenantId: store.tenantId,
+          id: { in: [...new Set(missingImageProductIds)] },
+          status: 'ACTIVE',
+        },
+        select: { id: true, imageUrl: true, imageUrls: true },
+      })
+    : []
+  const productImageMap = new Map(productImageRows.map((p) => [
+    p.id,
+    cleanDisplayImageUrl(p.imageUrl) ?? cleanDisplayImageUrl(parseImageUrls(p.imageUrls, p.imageUrl)[0]),
+  ]))
+  const displayItems = items.map((item) => ({
+    ...item,
+    imageUrl: cleanDisplayImageUrl(item.imageUrl) ?? productImageMap.get(item.productId) ?? null,
+  }))
+
+  const khqrFallbackConfig = row?.paymentMethod === 'KHQR'
     ? await findKhqrConfig(store.tenantId, store.id)
     : null
+  const khqrImageUrl = cleanDisplayImageUrl(khqrFallbackConfig?.khqrImageUrl)
+    ?? cleanDisplayImageUrl(row?.khqrImageUrl)
 
   return NextResponse.json({
     storeCode: store.code,
@@ -123,11 +168,11 @@ export async function GET(req: NextRequest) {
       status: row.status,
       paymentMethod: row.paymentMethod,
       paymentStatus: row.paymentStatus,
-      items: parseItems(row.itemsJson),
+      items: displayItems,
       totalAmount: row.totalAmount.toNumber(),
       itemCount: row.itemCount,
       khqrPayload: row.khqrPayload,
-      khqrImageUrl: row.khqrImageUrl ?? khqrFallbackConfig?.khqrImageUrl ?? null,
+      khqrImageUrl,
       orderNo: row.orderNo,
       message: row.message,
       completedAt: row.completedAt?.toISOString() ?? null,

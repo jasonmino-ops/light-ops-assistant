@@ -51,6 +51,7 @@ type Product = {
   sellPrice: number
   // imageUrl 由 /api/products 返回（route.ts 已 select）；仅 AI 拍照识别 mock 候选卡片读取
   imageUrl?: string | null
+  imageUrls?: string[] | null
 }
 
 type PhotoCandidate = {
@@ -117,6 +118,10 @@ type CartItem = {
   key: string
   product: Product
   qty: number
+}
+
+function productImageUrl(product: Product): string | null {
+  return product.imageUrl ?? product.imageUrls?.find((url) => typeof url === 'string' && url.trim()) ?? null
 }
 
 type SaleSuccess = {
@@ -462,7 +467,7 @@ export default function SalePage() {
       productId: ci.product.id,
       name: ci.product.name,
       spec: ci.product.spec,
-      imageUrl: ci.product.imageUrl ?? null,
+      imageUrl: productImageUrl(ci.product),
       price: ci.product.sellPrice,
       qty: ci.qty,
       lineAmount: +(ci.product.sellPrice * ci.qty).toFixed(2),
