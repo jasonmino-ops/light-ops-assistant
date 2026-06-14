@@ -393,11 +393,11 @@ export default function SalePage() {
       allProducts.find((p) => p.barcode.toLowerCase() === clean.toLowerCase())
     if (hit) {
       selectProduct(hit)
-      setScannerMsg({ type: 'ok', text: `✓ 已选中：${hit.name}` })
+      setScannerMsg({ type: 'ok', text: t('sale.scanSelected').replace('{name}', hit.name) })
       setTimeout(() => setScannerMsg(null), 2500)
     } else {
       queryProductByBarcode(clean)
-      setScannerMsg({ type: 'fail', text: `未找到条码 ${clean}，请用下拉选择或手动输入` })
+      setScannerMsg({ type: 'fail', text: t('sale.scanNotFound').replace('{code}', clean) })
     }
   }, [allProducts]) // eslint-disable-line react-hooks/exhaustive-deps
   useHidScanner(handleHidScan)
@@ -621,16 +621,16 @@ export default function SalePage() {
   }
 
   function aiPhotoErrorMessage(errorCode: string): string {
-    if (errorCode === 'AI_MULTI_BETA_DISABLED') return '多商品识别 Beta 暂未开启'
-    if (errorCode === 'AI_DISABLED_BY_OPS') return '当前门店 AI 拍照识别已暂停，请使用扫码或手动选择商品。'
-    if (errorCode === 'AI_DAILY_LIMIT_REACHED') return '今日免费 AI 拍照识别次数已用完。请使用扫码或手动选择商品，或联系开通高级版继续使用。'
-    if (errorCode === 'AI_NOT_CONFIGURED') return 'AI 识别暂未配置，请使用扫码或手动选择商品'
-    if (errorCode === 'AI_TIMEOUT') return '识别超时，请换一张更清晰的图片重试'
-    if (errorCode === 'AI_EMPTY') return '未识别到清晰商品，请拍商品正面'
-    if (errorCode === 'AI_FAILED') return 'AI 识别失败，请使用扫码或手动选择商品'
-    if (errorCode === 'INVALID_IMAGE') return '图片无效或过大，请换一张 JPG 图片'
-    if (errorCode === 'INVALID_MIME') return '图片格式不支持，请换 JPG 图片'
-    return '识别失败，请使用扫码或手动选择商品'
+    if (errorCode === 'AI_MULTI_BETA_DISABLED') return t('sale.aiMultiBetaDisabled')
+    if (errorCode === 'AI_DISABLED_BY_OPS') return t('sale.aiDisabledByOps')
+    if (errorCode === 'AI_DAILY_LIMIT_REACHED') return t('sale.aiDailyLimitReached')
+    if (errorCode === 'AI_NOT_CONFIGURED') return t('sale.aiNotConfigured')
+    if (errorCode === 'AI_TIMEOUT') return t('sale.aiTimeout')
+    if (errorCode === 'AI_EMPTY') return t('sale.aiEmpty')
+    if (errorCode === 'AI_FAILED') return t('sale.aiFailed')
+    if (errorCode === 'INVALID_IMAGE') return t('sale.invalidImage')
+    if (errorCode === 'INVALID_MIME') return t('sale.invalidMime')
+    return t('sale.aiGenericFailed')
   }
 
   function blobToBase64(blob: Blob): Promise<string> {
@@ -703,7 +703,7 @@ export default function SalePage() {
 
   async function handlePhotoFile(file: File | null | undefined) {
     if (!file) {
-      setPhotoFailure('未选择图片', { stage: 'failed_before_post' })
+      setPhotoFailure(t('sale.photoNoFile'), { stage: 'failed_before_post' })
       return
     }
     setPhotoError(null)
@@ -718,14 +718,14 @@ export default function SalePage() {
 
     const allowed = new Set(['image/jpeg', 'image/png', 'image/webp'])
     if (!allowed.has(file.type)) {
-      setPhotoFailure('仅支持 JPG、PNG、WebP 图片', {
+      setPhotoFailure(t('sale.photoUnsupported'), {
         errorCode: 'INVALID_MIME',
         stage: 'failed_before_post',
       })
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setPhotoFailure('图片太大，请换一张小于 5MB 的图片', {
+      setPhotoFailure(t('sale.photoTooLarge'), {
         errorCode: 'IMAGE_TOO_LARGE',
         stage: 'failed_before_post',
       })
@@ -764,14 +764,14 @@ export default function SalePage() {
       if (!res.ok) {
         const errorCode = body.error ?? `HTTP_${res.status}`
         if (res.status === 401 || res.status === 403) {
-          setPhotoFailure('登录状态失效，请重新打开店小二后再试', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+          setPhotoFailure(t('sale.photoLoginExpired'), { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
           return
         }
         if (res.status === 400) {
-          setPhotoFailure('图片参数无效，请换一张 JPG 图片重试', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+          setPhotoFailure(t('sale.photoInvalidParams'), { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
           return
         }
-        setPhotoFailure('识别失败，请使用扫码或手动选择商品', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+        setPhotoFailure(t('sale.aiGenericFailed'), { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
         return
       }
       if (body.errorCode) {
@@ -784,7 +784,7 @@ export default function SalePage() {
       }
       const candidates = Array.isArray(body.candidates) ? body.candidates.slice(0, 5) : []
       if (candidates.length === 0) {
-        setPhotoFailure('未找到匹配商品，请使用扫码或手动选择商品', {
+        setPhotoFailure(t('sale.photoNoCandidates'), {
           apiStatus: res.status,
           stage: 'response_received',
         })
@@ -794,17 +794,17 @@ export default function SalePage() {
     } catch (e) {
       const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
       if (code === 'IMAGE_LOAD_FAILED') {
-        setPhotoFailure('图片无法读取，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoFailure(t('sale.photoReadFailed'), { errorCode: code, stage: 'failed_before_post' })
       } else if (code === 'COMPRESS_FAILED') {
-        setPhotoFailure('图片压缩失败，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoFailure(t('sale.photoCompressFailed'), { errorCode: code, stage: 'failed_before_post' })
       } else if (code === 'IMAGE_TOO_LARGE_AFTER_COMPRESS') {
-        setPhotoFailure('图片压缩后仍过大，请换一张更小的图片', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoFailure(t('sale.photoCompressedTooLarge'), { errorCode: code, stage: 'failed_before_post' })
       } else if (code === 'FILE_READ_FAILED') {
-        setPhotoFailure('图片无法读取，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoFailure(t('sale.photoReadFailed'), { errorCode: code, stage: 'failed_before_post' })
       } else if (stage === 'posting') {
-        setPhotoFailure('网络请求失败，请检查网络后重试', { errorCode: code, stage: 'failed_after_post' })
+        setPhotoFailure(t('sale.photoNetworkFailed'), { errorCode: code, stage: 'failed_after_post' })
       } else {
-        setPhotoFailure('识别失败，请使用扫码或手动选择商品', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoFailure(t('sale.aiGenericFailed'), { errorCode: code, stage: 'failed_before_post' })
       }
     } finally {
       setPhotoStatus('idle')
@@ -813,7 +813,7 @@ export default function SalePage() {
 
   async function handlePhotoMultiFile(file: File | null | undefined) {
     if (!file) {
-      setPhotoMultiFailure('未选择图片', { stage: 'failed_before_post' })
+      setPhotoMultiFailure(t('sale.photoNoFile'), { stage: 'failed_before_post' })
       return
     }
     setPhotoMultiError(null)
@@ -830,14 +830,14 @@ export default function SalePage() {
 
     const allowed = new Set(['image/jpeg', 'image/png', 'image/webp'])
     if (!allowed.has(file.type)) {
-      setPhotoMultiFailure('仅支持 JPG、PNG、WebP 图片', {
+      setPhotoMultiFailure(t('sale.photoUnsupported'), {
         errorCode: 'INVALID_MIME',
         stage: 'failed_before_post',
       })
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setPhotoMultiFailure('图片太大，请换一张小于 5MB 的图片', {
+      setPhotoMultiFailure(t('sale.photoTooLarge'), {
         errorCode: 'IMAGE_TOO_LARGE',
         stage: 'failed_before_post',
       })
@@ -876,14 +876,14 @@ export default function SalePage() {
       if (!res.ok) {
         const errorCode = body.error ?? `HTTP_${res.status}`
         if (res.status === 401 || res.status === 403) {
-          setPhotoMultiFailure('登录状态失效，请重新打开店小二后再试', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+          setPhotoMultiFailure(t('sale.photoLoginExpired'), { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
           return
         }
         if (res.status === 400) {
-          setPhotoMultiFailure('图片参数无效，请换一张 JPG 图片重试', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+          setPhotoMultiFailure(t('sale.photoInvalidParams'), { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
           return
         }
-        setPhotoMultiFailure('多商品识别失败，请使用扫码或手动选择商品', { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
+        setPhotoMultiFailure(t('sale.photoMultiFailedGeneric'), { apiStatus: res.status, errorCode, stage: 'failed_after_post' })
         return
       }
       if (body.errorCode) {
@@ -896,7 +896,7 @@ export default function SalePage() {
       }
       const items = Array.isArray(body.items) ? body.items.slice(0, 3) : []
       if (items.length === 0) {
-        setPhotoMultiFailure('未找到匹配商品，请使用扫码或手动选择商品', {
+        setPhotoMultiFailure(t('sale.photoNoCandidates'), {
           apiStatus: res.status,
           stage: 'response_received',
         })
@@ -911,17 +911,17 @@ export default function SalePage() {
     } catch (e) {
       const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
       if (code === 'IMAGE_LOAD_FAILED') {
-        setPhotoMultiFailure('图片无法读取，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoMultiFailure(t('sale.photoReadFailed'), { errorCode: code, stage: 'failed_before_post' })
       } else if (code === 'COMPRESS_FAILED') {
-        setPhotoMultiFailure('图片压缩失败，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoMultiFailure(t('sale.photoCompressFailed'), { errorCode: code, stage: 'failed_before_post' })
       } else if (code === 'IMAGE_TOO_LARGE_AFTER_COMPRESS') {
-        setPhotoMultiFailure('图片压缩后仍过大，请换一张更小的图片', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoMultiFailure(t('sale.photoCompressedTooLarge'), { errorCode: code, stage: 'failed_before_post' })
       } else if (code === 'FILE_READ_FAILED') {
-        setPhotoMultiFailure('图片无法读取，请换一张 JPG 图片重试', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoMultiFailure(t('sale.photoReadFailed'), { errorCode: code, stage: 'failed_before_post' })
       } else if (stage === 'posting') {
-        setPhotoMultiFailure('网络请求失败，请检查网络后重试', { errorCode: code, stage: 'failed_after_post' })
+        setPhotoMultiFailure(t('sale.photoNetworkFailed'), { errorCode: code, stage: 'failed_after_post' })
       } else {
-        setPhotoMultiFailure('多商品识别失败，请使用扫码或手动选择商品', { errorCode: code, stage: 'failed_before_post' })
+        setPhotoMultiFailure(t('sale.photoMultiFailedGeneric'), { errorCode: code, stage: 'failed_before_post' })
       }
     } finally {
       setPhotoMultiStatus('idle')
@@ -931,7 +931,7 @@ export default function SalePage() {
   function addPhotoCandidateToCart(c: PhotoCandidate) {
     const productMatch = allProducts.find((p) => p.id === c.productId)
     if (!productMatch) {
-      setPhotoError('候选商品未在当前商品列表中，请刷新后重试。')
+      setPhotoError(t('sale.photoCandidateMissing'))
       return
     }
     addProductToCart(productMatch, 1)
@@ -941,7 +941,7 @@ export default function SalePage() {
   function addPhotoMultiCandidateToCart(itemIndex: number, c: PhotoCandidate) {
     const productMatch = allProducts.find((p) => p.id === c.productId)
     if (!productMatch) {
-      setPhotoMultiError('候选商品未在当前商品列表中，请刷新后重试。')
+      setPhotoMultiError(t('sale.photoCandidateMissing'))
       return
     }
     addProductToCart(productMatch, 1)
@@ -1148,12 +1148,12 @@ export default function SalePage() {
         <div style={ph.overlay} onClick={() => setPhotoModalOpen(false)}>
           <div style={ph.sheet} onClick={(e) => e.stopPropagation()}>
             <div style={ph.header}>
-              <span style={ph.title}>AI 拍照识别商品</span>
+              <span style={ph.title}>{t('sale.photoTitle')}</span>
               <button type="button" style={ph.closeBtn} onClick={() => setPhotoModalOpen(false)}>✕</button>
             </div>
-            <div style={ph.intro}>识别结果仅供参考，请确认后加入本单。</div>
+            <div style={ph.intro}>{t('sale.photoIntro')}</div>
             {photoUsage && (
-              <div style={ph.usage}>今日已用：{photoUsage.usedToday}/{photoUsage.dailyLimit} 次</div>
+              <div style={ph.usage}>{t('sale.photoUsage').replace('{used}', String(photoUsage.usedToday)).replace('{limit}', String(photoUsage.dailyLimit))}</div>
             )}
 
             {/* 拍照 / 上传图片入口 */}
@@ -1170,13 +1170,13 @@ export default function SalePage() {
                 }}
               />
               <div style={ph.uploadIcon}>📷</div>
-              <div style={ph.uploadText}>点击拍照 / 选择图片</div>
-              <div style={ph.uploadHint}>JPG / PNG / WebP，单张商品，最大 5MB</div>
+              <div style={ph.uploadText}>{t('sale.photoUploadText')}</div>
+              <div style={ph.uploadHint}>{t('sale.photoUploadHint')}</div>
             </label>
 
             {/* 候选商品 / 空态 */}
             {photoStatus === 'loading' && (
-              <div style={ph.empty}>正在识别商品...</div>
+              <div style={ph.empty}>{t('sale.photoLoading')}</div>
             )}
             {photoStatus !== 'loading' && photoError && (
               <div style={ph.empty}>{photoError}</div>
@@ -1188,11 +1188,11 @@ export default function SalePage() {
                   style={ph.debugToggle}
                   onClick={() => setPhotoDebugOpen((v) => !v)}
                 >
-                  {photoDebugOpen ? '收起调试信息' : '查看调试信息'}
+                  {photoDebugOpen ? t('sale.photoDebugClose') : t('sale.photoDebugOpen')}
                 </button>
                 {photoDebugOpen && (
                   <div style={ph.debugBox}>
-                    <div style={ph.debugTitle}>识别调试信息</div>
+                    <div style={ph.debugTitle}>{t('sale.photoDebugTitle')}</div>
                     {photoDebug.fileType !== undefined && <div>file.type: {photoDebug.fileType}</div>}
                     {photoDebug.fileSize !== undefined && <div>file.size: {photoDebug.fileSize}</div>}
                     {photoDebug.compressedMime !== undefined && <div>compressedMime: {photoDebug.compressedMime}</div>}
@@ -1205,12 +1205,12 @@ export default function SalePage() {
               </>
             )}
             {photoStatus !== 'loading' && !photoError && photoCandidates.length === 0 && (
-              <div style={ph.empty}>未找到匹配商品，请使用扫码或手动选择商品。</div>
+              <div style={ph.empty}>{t('sale.photoNoCandidates')}</div>
             )}
             {photoStatus !== 'loading' && !photoError && photoCandidates.length > 0 && (
               <>
-                <div style={ph.candidatesLabel}>AI 找到以下可能商品</div>
-                <div style={ph.candidatesHint}>请店员确认后加入本单</div>
+                <div style={ph.candidatesLabel}>{t('sale.photoCandidatesLabel')}</div>
+                <div style={ph.candidatesHint}>{t('sale.photoCandidatesHint')}</div>
                 {photoCandidates.map((c) => (
                   <div key={c.productId} style={ph.candidate}>
                     <div style={ph.thumb}>
@@ -1237,7 +1237,7 @@ export default function SalePage() {
                       style={ph.candAddBtn}
                       onClick={() => addPhotoCandidateToCart(c)}
                     >
-                      加入本单
+                      {t('sale.photoAddToCart')}
                     </button>
                   </div>
                 ))}
@@ -1261,12 +1261,12 @@ export default function SalePage() {
                   setPhotoCandidates(mockCandidates)
                 }}
               >
-                使用模拟候选（开发）
+                {t('sale.photoMockCandidatesDev')}
               </button>
             )}
 
             <div style={ph.disclaimer}>
-              AI 识别结果可能不准确，请以店员确认结果为准。
+              {t('sale.photoSafetyHint')}
             </div>
           </div>
         </div>
@@ -1277,12 +1277,12 @@ export default function SalePage() {
         <div style={ph.overlay} onClick={() => setPhotoMultiModalOpen(false)}>
           <div style={ph.sheet} onClick={(e) => e.stopPropagation()}>
             <div style={ph.header}>
-              <span style={ph.title}>AI 多商品识别 Beta</span>
+              <span style={ph.title}>{t('sale.photoMultiTitle')}</span>
               <button type="button" style={ph.closeBtn} onClick={() => setPhotoMultiModalOpen(false)}>✕</button>
             </div>
-            <div style={ph.intro}>AI 只提供候选，请逐项确认后加入本单。</div>
+            <div style={ph.intro}>{t('sale.photoMultiIntro')}</div>
             {photoMultiUsage && (
-              <div style={ph.usage}>今日已用：{photoMultiUsage.usedToday}/{photoMultiUsage.dailyLimit} 次</div>
+              <div style={ph.usage}>{t('sale.photoUsage').replace('{used}', String(photoMultiUsage.usedToday)).replace('{limit}', String(photoMultiUsage.dailyLimit))}</div>
             )}
 
             <label style={ph.uploadBox}>
@@ -1298,12 +1298,12 @@ export default function SalePage() {
                 }}
               />
               <div style={ph.uploadIcon}>📷</div>
-              <div style={ph.uploadText}>点击拍照 / 选择图片</div>
-              <div style={ph.uploadHint}>多商品 Beta，每项仍需店员确认</div>
+              <div style={ph.uploadText}>{t('sale.photoUploadText')}</div>
+              <div style={ph.uploadHint}>{t('sale.photoMultiUploadHint')}</div>
             </label>
 
             {photoMultiStatus === 'loading' && (
-              <div style={ph.empty}>正在识别多个商品...</div>
+              <div style={ph.empty}>{t('sale.photoMultiLoading')}</div>
             )}
             {photoMultiStatus !== 'loading' && photoMultiError && (
               <div style={ph.empty}>{photoMultiError}</div>
@@ -1315,11 +1315,11 @@ export default function SalePage() {
                   style={ph.debugToggle}
                   onClick={() => setPhotoMultiDebugOpen((v) => !v)}
                 >
-                  {photoMultiDebugOpen ? '收起调试信息' : '查看调试信息'}
+                  {photoMultiDebugOpen ? t('sale.photoDebugClose') : t('sale.photoDebugOpen')}
                 </button>
                 {photoMultiDebugOpen && (
                   <div style={ph.debugBox}>
-                    <div style={ph.debugTitle}>识别调试信息</div>
+                    <div style={ph.debugTitle}>{t('sale.photoDebugTitle')}</div>
                     {photoMultiDebug.fileType !== undefined && <div>file.type: {photoMultiDebug.fileType}</div>}
                     {photoMultiDebug.fileSize !== undefined && <div>file.size: {photoMultiDebug.fileSize}</div>}
                     {photoMultiDebug.compressedMime !== undefined && <div>compressedMime: {photoMultiDebug.compressedMime}</div>}
@@ -1332,12 +1332,12 @@ export default function SalePage() {
               </>
             )}
             {photoMultiStatus !== 'loading' && !photoMultiError && photoMultiItems.length === 0 && (
-              <div style={ph.empty}>未找到匹配商品，请使用扫码或手动选择商品。</div>
+              <div style={ph.empty}>{t('sale.photoNoCandidates')}</div>
             )}
             {photoMultiStatus !== 'loading' && !photoMultiError && photoMultiItems.length > 0 && (
               <>
-                <div style={ph.candidatesLabel}>AI 找到以下疑似商品项</div>
-                <div style={ph.candidatesHint}>请店员逐项确认，默认每项加入 1 件</div>
+                <div style={ph.candidatesLabel}>{t('sale.photoMultiCandidatesLabel')}</div>
+                <div style={ph.candidatesHint}>{t('sale.photoMultiCandidatesHint')}</div>
                 {photoMultiItems.map((item, idx) => {
                   const itemKey = item.itemIndex
                   const handled = photoMultiHandled[itemKey]
@@ -1354,9 +1354,9 @@ export default function SalePage() {
                     <div key={itemKey} style={ph.multiItem}>
                       <div style={ph.multiHeader}>
                         <div>
-                          <div style={ph.multiTitle}>第 {idx + 1} 项</div>
+                          <div style={ph.multiTitle}>{t('sale.photoMultiItemTitle').replace('{n}', String(idx + 1))}</div>
                           <div style={ph.multiHint}>
-                            {hintParts.length > 0 ? hintParts.join(' · ') : 'AI 未给出明确商品描述'}
+                            {hintParts.length > 0 ? hintParts.join(' · ') : t('sale.photoMultiNoHint')}
                           </div>
                         </div>
                         {typeof hint?.confidence === 'number' && (
@@ -1364,11 +1364,11 @@ export default function SalePage() {
                         )}
                       </div>
 
-                      {handled === 'added' && <div style={ph.multiDone}>已加入本单</div>}
-                      {handled === 'ignored' && <div style={ph.multiIgnored}>已忽略</div>}
+                      {handled === 'added' && <div style={ph.multiDone}>{t('sale.photoMultiAdded')}</div>}
+                      {handled === 'ignored' && <div style={ph.multiIgnored}>{t('sale.photoMultiIgnored')}</div>}
 
                       {candidates.length === 0 && (
-                        <div style={ph.multiEmpty}>这一项未找到匹配商品，请手动选择商品。</div>
+                        <div style={ph.multiEmpty}>{t('sale.photoMultiEmpty')}</div>
                       )}
                       {candidates.map((c) => (
                         <div key={`${itemKey}-${c.productId}`} style={ph.candidate}>
@@ -1397,7 +1397,7 @@ export default function SalePage() {
                             onClick={() => addPhotoMultiCandidateToCart(itemKey, c)}
                             disabled={Boolean(handled)}
                           >
-                            加入本单
+                            {t('sale.photoAddToCart')}
                           </button>
                         </div>
                       ))}
@@ -1408,18 +1408,18 @@ export default function SalePage() {
                           onClick={() => ignorePhotoMultiItem(itemKey)}
                           disabled={Boolean(handled)}
                         >
-                          忽略
+                          {t('sale.photoMultiIgnore')}
                         </button>
                         <button
                           type="button"
                           style={ph.secondaryBtn}
                           onClick={() => setPhotoMultiManualHintIndex(itemKey)}
                         >
-                          手动搜索
+                          {t('sale.photoMultiManualSearch')}
                         </button>
                       </div>
                       {photoMultiManualHintIndex === itemKey && (
-                        <div style={ph.multiManualHint}>请关闭弹层后使用下方商品选择手动加入。</div>
+                        <div style={ph.multiManualHint}>{t('sale.photoMultiManualHint')}</div>
                       )}
                     </div>
                   )
@@ -1428,7 +1428,7 @@ export default function SalePage() {
             )}
 
             <div style={ph.disclaimer}>
-              AI 多商品识别仍在 Beta，结果可能不准确，请以店员逐项确认结果为准。
+              {t('sale.photoMultiSafetyHint')}
             </div>
           </div>
         </div>
@@ -1627,7 +1627,7 @@ export default function SalePage() {
                 onClick={openPhotoModal}
                 disabled={status === 'querying' || status === 'submitting'}
               >
-                📷 拍照识别（试用）
+                📷 {t('sale.photoTitle')}
               </button>
               {isPhotoMultiEnabled && (
                 <button
@@ -1636,7 +1636,7 @@ export default function SalePage() {
                   onClick={openPhotoMultiModal}
                   disabled={status === 'querying' || status === 'submitting'}
                 >
-                  📷 多商品识别 Beta
+                  📷 {t('sale.photoMultiTitle')}
                 </button>
               )}
 
@@ -1736,12 +1736,12 @@ export default function SalePage() {
             {cart.length > 0 && (
               <>
                 <div style={s.cartHeader}>
-                  <span style={s.cartHeaderText}>{t('sale.cartHeader')}（{cart.length} 种）</span>
+                  <span style={s.cartHeaderText}>{t('sale.cartHeader')}（{cart.length} {t('sale.kindUnit')}）</span>
                   <button style={s.clearCartBtn} onClick={() => setCart([])}>{t('sale.clearCart')}</button>
                 </div>
 
                 {cart.map((ci) => (
-                  <CartItemRow key={ci.key} item={ci} onDelete={() => removeFromCart(ci.key)} />
+                  <CartItemRow key={ci.key} item={ci} itemUnit={t('sale.itemUnit')} onDelete={() => removeFromCart(ci.key)} />
                 ))}
 
                 <div style={s.totalCard}>
@@ -1776,7 +1776,7 @@ export default function SalePage() {
 
 // ─── CartItemRow ──────────────────────────────────────────────────────────────
 
-function CartItemRow({ item, onDelete }: { item: CartItem; onDelete: () => void }) {
+function CartItemRow({ item, itemUnit, onDelete }: { item: CartItem; itemUnit: string; onDelete: () => void }) {
   return (
     <div style={ci.card}>
       <div style={ci.top}>
@@ -1787,7 +1787,7 @@ function CartItemRow({ item, onDelete }: { item: CartItem; onDelete: () => void 
         <button style={ci.del} onClick={onDelete}>✕</button>
       </div>
       <div style={ci.bottom}>
-        <span style={ci.meta}>{item.qty} 件 × ${item.product.sellPrice.toFixed(2)}</span>
+        <span style={ci.meta}>{item.qty} {itemUnit} × ${item.product.sellPrice.toFixed(2)}</span>
         <span style={ci.subtotal}>${(item.qty * item.product.sellPrice).toFixed(2)}</span>
       </div>
     </div>

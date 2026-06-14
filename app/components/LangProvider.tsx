@@ -3,8 +3,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import zh from '@/lib/i18n/zh'
 import km from '@/lib/i18n/km'
+import en from '@/lib/i18n/en'
 
-export type Lang = 'zh' | 'km'
+export type Lang = 'zh' | 'km' | 'en'
 
 type Ctx = {
   lang: Lang
@@ -35,11 +36,11 @@ export default function LangProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem('lang')
-    if (stored === 'km' || stored === 'zh') setLangState(stored)
+    if (stored === 'km' || stored === 'zh' || stored === 'en') setLangState(stored)
   }, [])
 
   useEffect(() => {
-    document.documentElement.lang = lang
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : lang
     document.documentElement.dataset.lang = lang
     document.body.dataset.lang = lang
   }, [lang])
@@ -49,7 +50,7 @@ export default function LangProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('lang', l)
   }
 
-  const dict = lang === 'km' ? km : zh
+  const dict = lang === 'km' ? km : lang === 'en' ? en : zh
 
   function t(key: string): string {
     return lookup(dict, key)

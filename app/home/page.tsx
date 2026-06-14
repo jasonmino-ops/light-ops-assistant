@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch, STAFF_CTX, OWNER_CTX } from '@/lib/api'
-import { useLocale } from '@/app/components/LangProvider'
+import { useLocale, type Lang } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
@@ -44,22 +44,31 @@ type CustomerOrderRecord = {
   createdAt: string
 }
 
-function sugarLabel(sugar: string, lang: 'zh' | 'km'): string {
-  const labels = lang === 'km'
-    ? {
-        no_sugar: 'មិនដាក់ស្ករ',
-        '25': 'ស្ករតិច 25%',
-        '50': 'ស្ករពាក់កណ្តាល 50%',
-        '75': 'ស្ករ 75%',
-        '100': 'ស្ករធម្មតា 100%',
-      }
-    : {
-        no_sugar: '无糖',
-        '25': '微糖 25%',
-        '50': '半糖 50%',
-        '75': '少糖 75%',
-        '100': '正常糖 100%',
-      }
+function sugarLabel(sugar: string, lang: Lang): string {
+  const labelMap: Record<Lang, Record<string, string>> = {
+    zh: {
+      no_sugar: '无糖',
+      '25': '微糖 25%',
+      '50': '半糖 50%',
+      '75': '少糖 75%',
+      '100': '正常糖 100%',
+    },
+    en: {
+      no_sugar: 'No sugar',
+      '25': 'Light sugar 25%',
+      '50': 'Half sugar 50%',
+      '75': 'Less sugar 75%',
+      '100': 'Regular sugar 100%',
+    },
+    km: {
+      no_sugar: 'មិនដាក់ស្ករ',
+      '25': 'ស្ករតិច 25%',
+      '50': 'ស្ករពាក់កណ្តាល 50%',
+      '75': 'ស្ករ 75%',
+      '100': 'ស្ករធម្មតា 100%',
+    },
+  }
+  const labels = labelMap[lang] ?? labelMap.zh
   if (sugar in labels) return labels[sugar as keyof typeof labels]
   return sugar
 }
@@ -626,11 +635,11 @@ function RefundCard({ item, tagRefund }: { item: RecordItem; tagRefund: string }
 }
 
 // 国旗下拉：商户端只在 /home 渲染；选择持久化到 LangProvider 的 localStorage
-function LangDropdown({ lang, setLang }: { lang: 'zh' | 'km'; setLang: (l: 'zh' | 'km') => void }) {
+function LangDropdown({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
   const [open, setOpen] = useState(false)
-  const items: Array<{ code: 'zh' | 'km' | 'en'; flag: string; label: string; disabled?: boolean }> = [
+  const items: Array<{ code: Lang; flag: string; label: string }> = [
     { code: 'zh', flag: '🇨🇳', label: '中文' },
-    { code: 'en', flag: '🇺🇸', label: 'English', disabled: true },
+    { code: 'en', flag: '🇺🇸', label: 'English' },
     { code: 'km', flag: '🇰🇭', label: 'ខ្មែរ' },
   ]
   const current = items.find((i) => i.code === lang) ?? items[0]
@@ -666,10 +675,8 @@ function LangDropdown({ lang, setLang }: { lang: 'zh' | 'km'; setLang: (l: 'zh' 
                 <button
                   key={it.code}
                   type="button"
-                  disabled={it.disabled}
                   onClick={() => {
-                    if (it.disabled) return
-                    if (it.code !== lang) setLang(it.code as 'zh' | 'km')
+                    if (it.code !== lang) setLang(it.code)
                     setOpen(false)
                   }}
                   style={{
@@ -677,9 +684,9 @@ function LangDropdown({ lang, setLang }: { lang: 'zh' | 'km'; setLang: (l: 'zh' 
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 10px', borderRadius: 6,
                     background: active ? '#e6f4ff' : 'transparent',
-                    color: it.disabled ? '#bbb' : '#1a1a1a',
+                    color: '#1a1a1a',
                     fontSize: 13, border: 'none',
-                    cursor: it.disabled ? 'not-allowed' : 'pointer',
+                    cursor: 'pointer',
                   }}
                 >
                   <span style={{ fontSize: 16 }}>{it.flag}</span>
