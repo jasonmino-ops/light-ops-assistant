@@ -385,7 +385,7 @@ export default function HomePage() {
         <div style={s.shortcutSection}>
           <div style={s.sectionTitle}>{t('home.commonEntry')}</div>
           {([
-            { key: 'cashier', label: t('home.cashier'), icon: '🖥️', url: publicUrl(`/cashier?storeCode=${storeCode}`), hint: t('home.cashierHint') },
+            { key: 'cashier', label: t('home.cashier'), icon: '🖥️', url: publicUrl(`/desktop?storeCode=${storeCode}`), hint: t('home.cashierHint') },
           ] as { key: string; label: string; icon: string; url: string; hint: string }[]).map(({ key, label, icon, url, hint }) => {
             const isCopied = copiedKey === key
             return (

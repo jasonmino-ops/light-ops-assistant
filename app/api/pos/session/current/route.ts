@@ -15,6 +15,14 @@ type PosItem = {
   lineAmount: number
 }
 
+type RecentOrder = {
+  orderNo: string
+  totalAmount: number
+  paymentMethod: string | null
+  status: string
+  createdAt: string
+}
+
 function parseItems(raw: string | null | undefined): PosItem[] {
   if (!raw) return []
   try {
@@ -49,6 +57,58 @@ export async function GET(req: NextRequest) {
     },
   })
 
+  const recentRows = await prisma.saleRecord.findMany({
+    where: {
+      tenantId: store.tenantId,
+      storeId: store.id,
+      saleType: 'SALE',
+      status: 'COMPLETED',
+    },
+    select: {
+      recordNo: true,
+      orderNo: true,
+      lineAmount: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  })
+
+  const recentMap = new Map<string, RecentOrder>()
+  for (const sale of recentRows) {
+    const key = sale.orderNo ?? sale.recordNo
+    const existing = recentMap.get(key)
+    if (existing) {
+      existing.totalAmount += sale.lineAmount.toNumber()
+      continue
+    }
+    recentMap.set(key, {
+      orderNo: key,
+      totalAmount: sale.lineAmount.toNumber(),
+      paymentMethod: null,
+      status: 'COMPLETED',
+      createdAt: sale.createdAt.toISOString(),
+    })
+  }
+  const recentOrders = Array.from(recentMap.values()).slice(0, 3)
+  const recentOrderKeys = recentOrders.map((order) => order.orderNo)
+  const paymentRows = recentOrderKeys.length > 0
+    ? await prisma.paymentIntent.findMany({
+        where: {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          orderNo: { in: recentOrderKeys },
+        },
+        select: { orderNo: true, paymentMethod: true, status: true },
+      })
+    : []
+  for (const payment of paymentRows) {
+    const order = recentMap.get(payment.orderNo)
+    if (!order) continue
+    order.paymentMethod = payment.paymentMethod
+    order.status = payment.status
+  }
+
   return NextResponse.json({
     storeCode: store.code,
     storeName: store.name,
@@ -67,5 +127,9 @@ export async function GET(req: NextRequest) {
       completedAt: row.completedAt?.toISOString() ?? null,
       updatedAt: row.updatedAt.toISOString(),
     } : null,
+    recentOrders: recentOrders.map((o) => ({
+      ...o,
+      totalAmount: Number(o.totalAmount.toFixed(2)),
+    })),
   })
 }
