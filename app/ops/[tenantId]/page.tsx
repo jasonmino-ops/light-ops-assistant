@@ -845,9 +845,9 @@ function AiPhotoStoreCard({ tenantId, store, onChanged }: { tenantId: string; st
               background: hasConfigChanges ? '#1677ff' : '#f5f5f5',
               borderColor: hasConfigChanges ? '#1677ff' : '#e8e8e8',
               color: hasConfigChanges ? '#fff' : '#666',
-              cursor: saving || !hasConfigChanges ? 'not-allowed' : 'pointer',
+              cursor: saving ? 'not-allowed' : 'pointer',
             }}
-            disabled={saving || !hasConfigChanges}
+            disabled={saving}
             onClick={saveConfig}
           >
             {saving ? '保存中…' : '保存配置'}
