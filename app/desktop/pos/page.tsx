@@ -13,9 +13,7 @@ type DesktopLang = 'zh' | 'en' | 'km'
 
 function resolveDesktopLang(raw: string | null): DesktopLang {
   if (raw === 'en' || raw === 'km' || raw === 'zh') return raw
-  const stored = window.localStorage.getItem('lang')
-  if (stored === 'km' || stored === 'zh') return stored
-  return 'zh'
+  return 'en'
 }
 
 export default function DesktopPosPage() {

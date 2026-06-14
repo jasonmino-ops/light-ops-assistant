@@ -346,11 +346,7 @@ function shortOrderNo(orderNo: string): string {
 
 function resolveDesktopLang(raw: string | null): DesktopLang {
   if (raw === 'en' || raw === 'km' || raw === 'zh') return raw
-  if (typeof window !== 'undefined') {
-    const stored = window.localStorage.getItem('lang')
-    if (stored === 'km' || stored === 'zh') return stored
-  }
-  return 'zh'
+  return 'en'
 }
 
 function paymentMethodLabel(method: string | null, t: DisplayCopy) {
