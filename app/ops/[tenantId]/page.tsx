@@ -49,7 +49,15 @@ type AiPhotoStoreUsage = {
   statusLabel: string
   usedToday: number
   dailyLimit: number
-  limitSource: 'TIER_DEFAULT' | 'TRIAL_STORE_ENV' | string
+  limitSource: 'OPS_OVERRIDE' | 'ENV_TRIAL' | 'TIER_DEFAULT' | string
+  config: {
+    id: string
+    enabled: boolean
+    dailyLimitOverride: number | null
+    trialUntil: string | null
+    opsNote: string
+    updatedAt: string
+  } | null
   latest: {
     id: string
     createdAt: string
@@ -175,7 +183,7 @@ export default function TenantDetailPage() {
 
         {/* AI photo recognition usage — read-only ops view */}
         <Section title="AI 拍照识别">
-          <AiPhotoPanel aiPhoto={detail.aiPhoto} />
+          <AiPhotoPanel tenantId={detail.id} aiPhoto={detail.aiPhoto} onChanged={load} />
         </Section>
 
         {/* Today stats */}
@@ -628,7 +636,7 @@ function AiSupportConfigCard({ config, summary }: { config: AiSupportConfigRow; 
 
 // ─── AiPhotoPanel — AI 拍照识别用量只读摘要 ───────────────────────────────────
 
-function AiPhotoPanel({ aiPhoto }: { aiPhoto: AiPhotoOpsView }) {
+function AiPhotoPanel({ tenantId, aiPhoto, onChanged }: { tenantId: string; aiPhoto: AiPhotoOpsView; onChanged: () => void }) {
   const tierMeta = TIER_META[aiPhoto.tier] ?? TIER_META.LITE
 
   if (aiPhoto.stores.length === 0) {
@@ -652,7 +660,7 @@ function AiPhotoPanel({ aiPhoto }: { aiPhoto: AiPhotoOpsView }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {aiPhoto.stores.map((store) => (
-          <AiPhotoStoreCard key={store.storeId} store={store} />
+          <AiPhotoStoreCard key={store.storeId} tenantId={tenantId} store={store} onChanged={onChanged} />
         ))}
       </div>
     </div>
@@ -667,7 +675,8 @@ function getAiPhotoStatusTone(statusLabel: string): { color: string; bg: string;
 }
 
 function getAiPhotoLimitSourceLabel(source: string): string {
-  if (source === 'TRIAL_STORE_ENV') return '试点门店 env 覆盖'
+  if (source === 'OPS_OVERRIDE') return 'OPS 单店配置'
+  if (source === 'ENV_TRIAL' || source === 'TRIAL_STORE_ENV') return '试点门店 env 覆盖'
   if (source === 'TIER_DEFAULT') return '套餐默认'
   return '未知'
 }
@@ -682,9 +691,61 @@ function formatOpsTime(iso: string): string {
   })
 }
 
-function AiPhotoStoreCard({ store }: { store: AiPhotoStoreUsage }) {
+function toDateInputValue(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toISOString().slice(0, 10)
+}
+
+function AiPhotoStoreCard({ tenantId, store, onChanged }: { tenantId: string; store: AiPhotoStoreUsage; onChanged: () => void }) {
   const tone = getAiPhotoStatusTone(store.statusLabel)
   const latest = store.latest
+  const [enabled, setEnabled] = useState(store.config?.enabled ?? true)
+  const [dailyLimitOverride, setDailyLimitOverride] = useState(
+    store.config?.dailyLimitOverride == null ? '' : String(store.config.dailyLimitOverride),
+  )
+  const [trialUntil, setTrialUntil] = useState(toDateInputValue(store.config?.trialUntil ?? null))
+  const [opsNote, setOpsNote] = useState(store.config?.opsNote ?? '')
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    setEnabled(store.config?.enabled ?? true)
+    setDailyLimitOverride(store.config?.dailyLimitOverride == null ? '' : String(store.config.dailyLimitOverride))
+    setTrialUntil(toDateInputValue(store.config?.trialUntil ?? null))
+    setOpsNote(store.config?.opsNote ?? '')
+    setMsg(null)
+  }, [store.config?.enabled, store.config?.dailyLimitOverride, store.config?.trialUntil, store.config?.opsNote])
+
+  async function saveConfig() {
+    setSaving(true)
+    setMsg(null)
+    try {
+      const r = await apiFetch(
+        `/api/ops/tenants/${encodeURIComponent(tenantId)}/stores/${encodeURIComponent(store.storeId)}/ai-photo-config`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            enabled,
+            dailyLimitOverride: dailyLimitOverride.trim() === '' ? null : dailyLimitOverride.trim(),
+            trialUntil: trialUntil || null,
+            opsNote,
+          }),
+        },
+        OWNER_CTX,
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        setMsg(body.message ?? body.error ?? '保存失败')
+        return
+      }
+      setMsg('已保存')
+      onChanged()
+    } catch {
+      setMsg('网络错误')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div style={s.aiConfigCard}>
@@ -726,6 +787,56 @@ function AiPhotoStoreCard({ store }: { store: AiPhotoStoreUsage }) {
         ) : (
           <div style={s.aiEmpty}>暂无识别记录。</div>
         )}
+      </div>
+
+      <div style={s.aiPhotoConfigBox}>
+        <div style={s.aiGroupTitle}>OPS 单店配置</div>
+        <label style={s.aiPhotoFormRow}>
+          <span style={s.aiPhotoFormLabel}>启用</span>
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+        </label>
+        <label style={s.aiPhotoFormRow}>
+          <span style={s.aiPhotoFormLabel}>每日额度 override</span>
+          <input
+            style={s.aiPhotoInput}
+            type="number"
+            min={1}
+            max={10000}
+            placeholder="清空则回退"
+            value={dailyLimitOverride}
+            onChange={(e) => setDailyLimitOverride(e.target.value)}
+          />
+        </label>
+        <label style={s.aiPhotoFormRow}>
+          <span style={s.aiPhotoFormLabel}>试用到期</span>
+          <input
+            style={s.aiPhotoInput}
+            type="date"
+            value={trialUntil}
+            onChange={(e) => setTrialUntil(e.target.value)}
+          />
+        </label>
+        <label style={{ ...s.aiPhotoFormRow, alignItems: 'flex-start' }}>
+          <span style={s.aiPhotoFormLabel}>OPS 备注</span>
+          <textarea
+            style={{ ...s.aiPhotoInput, minHeight: 54, resize: 'vertical' }}
+            value={opsNote}
+            maxLength={500}
+            placeholder="可留空"
+            onChange={(e) => setOpsNote(e.target.value)}
+          />
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+          {msg && <span style={{ fontSize: 12, color: msg === '已保存' ? '#52c41a' : '#ff4d4f' }}>{msg}</span>}
+          <button
+            type="button"
+            style={{ ...s.actionBtn, height: 30, opacity: saving ? 0.6 : 1 }}
+            disabled={saving}
+            onClick={saveConfig}
+          >
+            {saving ? '保存中…' : '保存配置'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -1341,6 +1452,14 @@ const s: Record<string, React.CSSProperties> = {
   aiStoreLine: { fontSize: 12, color: '#666', lineHeight: 1.45, marginBottom: 7 },
   aiDetails: { borderTop: '1px solid #f0f0f0', paddingTop: 7 },
   aiDetailsSummary: { fontSize: 12, color: '#1677ff', fontWeight: 700, cursor: 'pointer', marginBottom: 7 },
+  aiPhotoConfigBox: { marginTop: 10, paddingTop: 10, borderTop: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', gap: 8 },
+  aiPhotoFormRow: { display: 'grid', gridTemplateColumns: '110px 1fr', gap: 8, alignItems: 'center' },
+  aiPhotoFormLabel: { fontSize: 12, color: '#666', fontWeight: 700 },
+  aiPhotoInput: {
+    width: '100%', boxSizing: 'border-box' as const,
+    border: '1px solid #d9d9d9', borderRadius: 6,
+    padding: '6px 8px', fontSize: 13, background: '#fff',
+  },
   actionBtn: {
     height: 34, padding: '0 16px', border: '1.5px solid #e8e8e8',
     borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#f5f5f5', color: '#666',

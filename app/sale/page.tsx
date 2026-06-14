@@ -389,6 +389,7 @@ export default function SalePage() {
   }
 
   function aiPhotoErrorMessage(errorCode: string): string {
+    if (errorCode === 'AI_DISABLED_BY_OPS') return '当前门店 AI 拍照识别已暂停，请使用扫码或手动选择商品。'
     if (errorCode === 'AI_DAILY_LIMIT_REACHED') return '今日免费 AI 拍照识别次数已用完。请使用扫码或手动选择商品，或联系开通高级版继续使用。'
     if (errorCode === 'AI_NOT_CONFIGURED') return 'AI 识别暂未配置，请使用扫码或手动选择商品'
     if (errorCode === 'AI_TIMEOUT') return '识别超时，请换一张更清晰的图片重试'

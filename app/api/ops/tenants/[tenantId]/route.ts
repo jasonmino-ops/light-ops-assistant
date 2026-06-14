@@ -5,7 +5,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuth } from '@/lib/ops-auth'
-import { canUseAiSupport, normalizeTier, TENANT_TIERS, type TenantTier } from '@/lib/tier'
+import { canUseAiSupport, normalizeTier, type TenantTier } from '@/lib/tier'
+import {
+  AI_PHOTO_FEATURE_KEY,
+  getAiPhotoTierDailyLimit,
+  getAiPhotoTrialStoreIds,
+  getEnvPositiveInt,
+  getUtcDayStart,
+  isFutureOrUnset,
+  type AiPhotoConfigSource,
+} from '@/lib/ai-photo-usage'
 
 function todayStart() {
   const d = new Date()
@@ -24,48 +33,49 @@ function maskAiSupportApiBaseUrl(value: string | null): string | null {
   }
 }
 
-function getEnvPositiveInt(name: string, defaultValue: number): number {
-  const raw = process.env[name]
-  const parsed = Number.parseInt(raw ?? '', 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue
-}
-
-function getAiPhotoTierDailyLimit(tier: TenantTier): number {
-  if (tier === TENANT_TIERS.MULTI_STORE) return getEnvPositiveInt('AI_PHOTO_MULTI_STORE_DAILY_LIMIT', 100)
-  if (tier === TENANT_TIERS.STANDARD) return getEnvPositiveInt('AI_PHOTO_STANDARD_DAILY_LIMIT', 30)
-  return getEnvPositiveInt('AI_PHOTO_LITE_DAILY_LIMIT', 3)
-}
-
-function getTrialStoreIds(): Set<string> {
-  return new Set(
-    (process.env.AI_PHOTO_TRIAL_STORE_IDS ?? '')
-      .split(',')
-      .map((id) => id.trim())
-      .filter(Boolean),
-  )
-}
-
-function resolveAiPhotoLimit(tier: TenantTier, storeId: string): { dailyLimit: number; limitSource: 'TIER_DEFAULT' | 'TRIAL_STORE_ENV' } {
-  if (getTrialStoreIds().has(storeId)) {
-    return {
-      dailyLimit: getEnvPositiveInt('AI_PHOTO_TRIAL_STORE_DAILY_LIMIT', 200),
-      limitSource: 'TRIAL_STORE_ENV',
-    }
-  }
-  return {
-    dailyLimit: getAiPhotoTierDailyLimit(tier),
-    limitSource: 'TIER_DEFAULT',
-  }
-}
-
-function getUtcDayStart(d = new Date()): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
-}
-
 function asPayloadObject(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
+}
+
+type StoreAiConfigRow = {
+  id: string
+  enabled: boolean
+  dailyLimitOverride: number | null
+  trialUntil: Date | null
+  opsNote: string | null
+  updatedAt: Date
+}
+
+function resolveAiPhotoLimit(
+  tier: TenantTier,
+  storeId: string,
+  config: StoreAiConfigRow | null | undefined,
+): {
+  dailyLimit: number
+  limitSource: AiPhotoConfigSource
+} {
+  const envLimit = getAiPhotoTrialStoreIds().has(storeId)
+    ? getEnvPositiveInt('AI_PHOTO_TRIAL_STORE_DAILY_LIMIT', 200)
+    : null
+  const fallbackLimit = envLimit ?? getAiPhotoTierDailyLimit(tier)
+  const fallbackSource: AiPhotoConfigSource = envLimit != null ? 'ENV_TRIAL' : 'TIER_DEFAULT'
+
+  if (!config) return { dailyLimit: fallbackLimit, limitSource: fallbackSource }
+  if (!config.enabled) {
+    return {
+      dailyLimit: config.dailyLimitOverride ?? fallbackLimit,
+      limitSource: 'OPS_OVERRIDE',
+    }
+  }
+  if (config.dailyLimitOverride != null && isFutureOrUnset(config.trialUntil)) {
+    return {
+      dailyLimit: config.dailyLimitOverride,
+      limitSource: 'OPS_OVERRIDE',
+    }
+  }
+  return { dailyLimit: fallbackLimit, limitSource: fallbackSource }
 }
 
 function numberFromPayload(payload: Record<string, unknown>, key: string): number | null {
@@ -90,7 +100,7 @@ export async function GET(
   const todayStartUtc = getUtcDayStart()
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
-  const [tenant, stores, users, todaySummary, lastSale, aiSupportConfigs, aiPhotoLogs] = await Promise.all([
+  const [tenant, stores, users, todaySummary, lastSale, aiSupportConfigs, aiPhotoLogs, aiPhotoConfigs] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId } }),
     prisma.store.findMany({
       where: { tenantId, status: 'ACTIVE' },
@@ -155,11 +165,24 @@ export async function GET(
         createdAt: true,
       },
     }),
+    prisma.storeAiFeatureConfig.findMany({
+      where: { tenantId, featureKey: AI_PHOTO_FEATURE_KEY },
+      select: {
+        id: true,
+        storeId: true,
+        enabled: true,
+        dailyLimitOverride: true,
+        trialUntil: true,
+        opsNote: true,
+        updatedAt: true,
+      },
+    }),
   ])
 
   if (!tenant) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
   const tenantTier = normalizeTier(tenant.tier)
   const storeById = new Map(stores.map((store) => [store.id, store]))
+  const aiPhotoConfigByStoreId = new Map(aiPhotoConfigs.map((config) => [config.storeId, config]))
   const aiTierAllowed = canUseAiSupport(tenant.tier)
   const enabledCount = aiSupportConfigs.filter((config) => config.enabled).length
   const hasMultipleEnabled = enabledCount > 1
@@ -264,7 +287,8 @@ export async function GET(
     aiPhoto: {
       tier: tenant.tier,
       stores: stores.map((store) => {
-        const { dailyLimit, limitSource } = resolveAiPhotoLimit(tenantTier, store.id)
+        const config = aiPhotoConfigByStoreId.get(store.id) ?? null
+        const { dailyLimit, limitSource } = resolveAiPhotoLimit(tenantTier, store.id, config)
         const storeLogs = aiPhotoLogs.filter((log) => log.storeId === store.id)
         const todayLogs = storeLogs.filter((log) => log.createdAt >= todayStartUtc)
         const latest = storeLogs[0] ?? null
@@ -296,6 +320,14 @@ export async function GET(
           usedToday,
           dailyLimit,
           limitSource,
+          config: config ? {
+            id: config.id,
+            enabled: config.enabled,
+            dailyLimitOverride: config.dailyLimitOverride,
+            trialUntil: config.trialUntil?.toISOString() ?? null,
+            opsNote: config.opsNote ?? '',
+            updatedAt: config.updatedAt.toISOString(),
+          } : null,
           latest: latest ? {
             id: latest.id,
             createdAt: latest.createdAt.toISOString(),

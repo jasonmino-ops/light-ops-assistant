@@ -45,9 +45,9 @@ enum SaleType {
 }
 
 enum RecordStatus {
-  PENDING_PAYMENT  // 已建单，待收款（零售 KHQR 挂单 / 未来餐饮预留）
-  COMPLETED        // 已完成（含收款确认）
-  CANCELLED        // 已取消（含 KHQR 超时/主动取消）
+  PENDING_PAYMENT // 已建单，待收款（零售 KHQR 挂单 / 未来餐饮预留）
+  COMPLETED // 已完成（含收款确认）
+  CANCELLED // 已取消（含 KHQR 超时/主动取消）
 }
 
 enum PaymentMethod {
@@ -76,42 +76,65 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stores      Store[]
-  users       User[]
-  products    Product[]
+  stores                Store[]
+  users                 User[]
+  products              Product[]
   marketingProductPages MarketingProductPage[]
-  sales       SaleRecord[]
-  logs        OperationLog[]
-  bindTokens  BindToken[]
+  sales                 SaleRecord[]
+  logs                  OperationLog[]
+  bindTokens            BindToken[]
+  storeAiFeatureConfigs StoreAiFeatureConfig[]
 }
 
 model Store {
-  id           String      @id @default(cuid())
-  tenantId     String
-  code         String      @unique
-  name         String
-  status       StoreStatus @default(ACTIVE)
-  checkoutMode String      @default("DIRECT_PAYMENT") // DIRECT_PAYMENT | DEFERRED_PAYMENT
-  businessType String      @default("GENERAL")        // FOOD | RETAIL | SERVICE | GENERAL
-  bannerUrl         String?                           // 顾客页头图访问 URL（指向内部图片端点）
-  bannerData        String?   @db.Text               // 头图 base64 数据（data:image/...;base64,...）
-  announcement      String?                          // 公告文本
-  promoText         String?                          // 活动文案
-  eLifeFeatured     Boolean   @default(false)        // E-Life 首页「为你推荐」运营位
-  eLifeFeaturedSort Int       @default(0)            // 推荐排序，数字越小排越前
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                String      @id @default(cuid())
+  tenantId          String
+  code              String      @unique
+  name              String
+  status            StoreStatus @default(ACTIVE)
+  checkoutMode      String      @default("DIRECT_PAYMENT") // DIRECT_PAYMENT | DEFERRED_PAYMENT
+  businessType      String      @default("GENERAL") // FOOD | RETAIL | SERVICE | GENERAL
+  bannerUrl         String? // 顾客页头图访问 URL（指向内部图片端点）
+  bannerData        String?     @db.Text // 头图 base64 数据（data:image/...;base64,...）
+  announcement      String? // 公告文本
+  promoText         String? // 活动文案
+  eLifeFeatured     Boolean     @default(false) // E-Life 首页「为你推荐」运营位
+  eLifeFeaturedSort Int         @default(0) // 推荐排序，数字越小排越前
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id])
-  userRoles      UserStoreRole[]
-  sales          SaleRecord[]
-  logs           OperationLog[]
-  bindTokens     BindToken[]
-  campaignLinks  CampaignLink[]
-  creators       Creator[]
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
+  userRoles             UserStoreRole[]
+  sales                 SaleRecord[]
+  logs                  OperationLog[]
+  bindTokens            BindToken[]
+  campaignLinks         CampaignLink[]
+  creators              Creator[]
   marketingProductPages MarketingProductPage[]
+  aiFeatureConfigs      StoreAiFeatureConfig[]
 
   @@index([tenantId])
+}
+
+model StoreAiFeatureConfig {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  storeId             String
+  featureKey          String
+  enabled             Boolean   @default(true)
+  dailyLimitOverride  Int?
+  trialUntil          DateTime?
+  opsNote             String?   @db.Text
+  updatedByOpsAdminId String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  store  Store  @relation(fields: [storeId], references: [id])
+
+  @@unique([tenantId, storeId, featureKey])
+  @@index([tenantId])
+  @@index([storeId])
 }
 
 model User {
@@ -122,7 +145,7 @@ model User {
   role        UserRole
   status      UserStatus @default(ACTIVE)
   telegramId  String?
-  staffNumber Int?       // null for OWNER; sequential (1,2,3…) for STAFF within tenant
+  staffNumber Int? // null for OWNER; sequential (1,2,3…) for STAFF within tenant
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -157,7 +180,7 @@ model ProductCategory {
   id        String   @id @default(cuid())
   tenantId  String
   name      String
-  parentId  String?  // null = 一级分类；non-null = 二级分类
+  parentId  String? // null = 一级分类；non-null = 二级分类
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -171,32 +194,32 @@ model ProductCategory {
 }
 
 model Product {
-  id         String        @id @default(cuid())
-  tenantId   String
-  barcode    String
-  sku        String?
-  name       String
-  spec       String?
-  sellPrice  Decimal       @db.Decimal(12, 2)
-  status     ProductStatus @default(ACTIVE)
-  categoryId String?
-  nameZh     String?
-  nameEn     String?
-  nameKm     String?
-  descZh     String?
-  descEn     String?
-  descKm     String?
-  imageUrl        String?    // 商品主图公开访问 URL（Supabase Storage public bucket）
-  imageStorageKey String?    // Storage 对象 key，用于删除/替换
-  imageUrls       String?    @db.Text // JSON: 最多 3 张商品图 URL；第一张同步到 imageUrl
-  imageStorageKeys String?   @db.Text // JSON: 与 imageUrls 对应的 Storage object keys
-  imageUpdatedAt  DateTime?  // 图片最近一次更新时间
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id               String        @id @default(cuid())
+  tenantId         String
+  barcode          String
+  sku              String?
+  name             String
+  spec             String?
+  sellPrice        Decimal       @db.Decimal(12, 2)
+  status           ProductStatus @default(ACTIVE)
+  categoryId       String?
+  nameZh           String?
+  nameEn           String?
+  nameKm           String?
+  descZh           String?
+  descEn           String?
+  descKm           String?
+  imageUrl         String? // 商品主图公开访问 URL（Supabase Storage public bucket）
+  imageStorageKey  String? // Storage 对象 key，用于删除/替换
+  imageUrls        String?       @db.Text // JSON: 最多 3 张商品图 URL；第一张同步到 imageUrl
+  imageStorageKeys String?       @db.Text // JSON: 与 imageUrls 对应的 Storage object keys
+  imageUpdatedAt   DateTime? // 图片最近一次更新时间
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  tenant   Tenant           @relation(fields: [tenantId], references: [id])
-  category ProductCategory? @relation(fields: [categoryId], references: [id])
-  sales    SaleRecord[]
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
+  category              ProductCategory?       @relation(fields: [categoryId], references: [id])
+  sales                 SaleRecord[]
   marketingProductPages MarketingProductPage[]
 
   @@unique([tenantId, barcode])
@@ -206,56 +229,56 @@ model Product {
 }
 
 model MarketingProductPage {
-  id           String                     @id @default(cuid())
-  tenantId     String
-  storeId      String
-  productId    String
-  slug         String                     @unique
-  status       MarketingProductPageStatus @default(DRAFT)
-  templateType MarketingProductPageTemplateType?
-  title        String?
-  titleZh      String?
-  titleEn      String?
-  titleKm      String?
-  subtitle     String?
-  heroImageUrl String?
-  heroVideoUrl String?
-  salePrice    Decimal?                   @db.Decimal(12, 2)
-  originalPrice Decimal?                  @db.Decimal(12, 2)
-  soldCount    Int?
-  feature1     String?
-  feature2     String?
-  feature3     String?
-  feature4     String?
-  feature5     String?
-  feature1Zh   String?
-  feature2Zh   String?
-  feature3Zh   String?
-  feature4Zh   String?
-  feature5Zh   String?
-  feature1En   String?
-  feature2En   String?
-  feature3En   String?
-  feature4En   String?
-  feature5En   String?
-  feature1Km   String?
-  feature2Km   String?
-  feature3Km   String?
-  feature4Km   String?
-  feature5Km   String?
-  enableCountdown Boolean                 @default(false)
-  detailImage1 String?
-  detailImage2 String?
-  detailImage3 String?
-  reviewImage1 String?
-  reviewImage2 String?
-  reviewImage3 String?
-  buttonText   String?
-  buttonTextZh String?
-  buttonTextEn String?
-  buttonTextKm String?
-  createdAt    DateTime                   @default(now())
-  updatedAt    DateTime                   @updatedAt
+  id              String                            @id @default(cuid())
+  tenantId        String
+  storeId         String
+  productId       String
+  slug            String                            @unique
+  status          MarketingProductPageStatus        @default(DRAFT)
+  templateType    MarketingProductPageTemplateType?
+  title           String?
+  titleZh         String?
+  titleEn         String?
+  titleKm         String?
+  subtitle        String?
+  heroImageUrl    String?
+  heroVideoUrl    String?
+  salePrice       Decimal?                          @db.Decimal(12, 2)
+  originalPrice   Decimal?                          @db.Decimal(12, 2)
+  soldCount       Int?
+  feature1        String?
+  feature2        String?
+  feature3        String?
+  feature4        String?
+  feature5        String?
+  feature1Zh      String?
+  feature2Zh      String?
+  feature3Zh      String?
+  feature4Zh      String?
+  feature5Zh      String?
+  feature1En      String?
+  feature2En      String?
+  feature3En      String?
+  feature4En      String?
+  feature5En      String?
+  feature1Km      String?
+  feature2Km      String?
+  feature3Km      String?
+  feature4Km      String?
+  feature5Km      String?
+  enableCountdown Boolean                           @default(false)
+  detailImage1    String?
+  detailImage2    String?
+  detailImage3    String?
+  reviewImage1    String?
+  reviewImage2    String?
+  reviewImage3    String?
+  buttonText      String?
+  buttonTextZh    String?
+  buttonTextEn    String?
+  buttonTextKm    String?
+  createdAt       DateTime                          @default(now())
+  updatedAt       DateTime                          @updatedAt
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id])
   store   Store   @relation(fields: [storeId], references: [id])
@@ -284,7 +307,7 @@ model SaleRecord {
   quantity            Decimal @db.Decimal(12, 2)
   lineAmount          Decimal @db.Decimal(12, 2)
 
-  orderNo              String?  // 一次结账所有明细行共享此单号；null = 历史单行记录
+  orderNo String? // 一次结账所有明细行共享此单号；null = 历史单行记录
 
   originalSaleRecordId String?
   refundedQty          Decimal? @db.Decimal(12, 2)
@@ -315,17 +338,17 @@ model SaleRecord {
 model MerchantPaymentConfig {
   id                 String   @id @default(cuid())
   tenantId           String
-  storeId            String?                    // null = tenant 级默认配置
+  storeId            String? // null = tenant 级默认配置
   provider           String   @default("BAKONG_KHQR") // BAKONG_KHQR | ...
-  merchantId         String?                    // null = 纯图片模式
-  merchantName       String?                    // null = 纯图片模式
-  merchantAccountRef String?                    // null = 纯图片模式；Bakong 账户手机号 / ref
-  currency           String   @default("USD")   // USD | KHR
+  merchantId         String? // null = 纯图片模式
+  merchantName       String? // null = 纯图片模式
+  merchantAccountRef String? // null = 纯图片模式；Bakong 账户手机号 / ref
+  currency           String   @default("USD") // USD | KHR
   khqrEnabled        Boolean  @default(true)
   isDefault          Boolean  @default(false)
   isActive           Boolean  @default(true)
-  khqrImageUrl       String?  @db.Text          // base64 data URL (老板通过 Telegram 上传)
-  uploadedByUserId   String?                    // 上传者 User.id
+  khqrImageUrl       String?  @db.Text // base64 data URL (老板通过 Telegram 上传)
+  uploadedByUserId   String? // 上传者 User.id
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -344,9 +367,9 @@ model PaymentIntent {
   paymentMethod    PaymentMethod
   status           PaymentStatus @default(PENDING)
   amount           Decimal       @db.Decimal(12, 2)
-  khqrPayload      String?       // EMV QR string; null for CASH
-  provider         String?       // from MerchantPaymentConfig.provider
-  merchantConfigId String?       // FK to MerchantPaymentConfig
+  khqrPayload      String? // EMV QR string; null for CASH
+  provider         String? // from MerchantPaymentConfig.provider
+  merchantConfigId String? // FK to MerchantPaymentConfig
   paidAt           DateTime?
   cancelledAt      DateTime?
   createdAt        DateTime      @default(now())
@@ -366,7 +389,7 @@ model BindToken {
   tenantId  String
   storeId   String
   role      UserRole
-  label     String?          // 人工备注，如"总店员工邀请"
+  label     String? // 人工备注，如"总店员工邀请"
   expiresAt DateTime
   maxUses   Int      @default(1)
   usedCount Int      @default(0)
@@ -411,7 +434,7 @@ model OperationLog {
 
 model TenantDailySummary {
   id           String   @id @default(cuid())
-  date         String   // YYYY-MM-DD (UTC)
+  date         String // YYYY-MM-DD (UTC)
   tenantId     String
   salesCount   Int      @default(0)
   refundCount  Int      @default(0)
@@ -426,7 +449,7 @@ model TenantDailySummary {
 
 model StoreDailySummary {
   id           String   @id @default(cuid())
-  date         String   // YYYY-MM-DD (UTC)
+  date         String // YYYY-MM-DD (UTC)
   tenantId     String
   storeId      String
   salesCount   Int      @default(0)
@@ -449,8 +472,8 @@ model StoreApplication {
   status           String    @default("PENDING") // PENDING | APPROVED | REJECTED
   createdAt        DateTime  @default(now())
   approvedAt       DateTime?
-  tenantId         String?   // set on approval
-  bindTokenValue   String?   // set on approval, mirrors BindToken.token
+  tenantId         String? // set on approval
+  bindTokenValue   String? // set on approval, mirrors BindToken.token
   note             String?
 
   @@index([status])
@@ -459,9 +482,9 @@ model StoreApplication {
 
 model TelegramMessage {
   id                  String   @id @default(cuid())
-  tenantId            String?           // null = ops/系统级消息
-  recipientTelegramId String            // 发件方(CUSTOMER)或收件方(OPS/SYSTEM)的 TG ID
-  senderName          String?           // 客户名称，CUSTOMER 消息时填入
+  tenantId            String? // null = ops/系统级消息
+  recipientTelegramId String // 发件方(CUSTOMER)或收件方(OPS/SYSTEM)的 TG ID
+  senderName          String? // 客户名称，CUSTOMER 消息时填入
   messageType         String   @default("TEXT") // TEXT | IMAGE | STICKER | VOICE | VIDEO | FILE | OTHER
   content             String
   status              String   @default("SENT") // SENT | FAILED | RECEIVED
@@ -478,41 +501,41 @@ model ProductImportSession {
   telegramId  String   @id
   tenantId    String?
   phase       String   @default("AWAITING_DATA") // AWAITING_DATA | AWAITING_CONFIRM
-  pendingRows String   @default("[]")            // JSON — TgImportRow[]
+  pendingRows String   @default("[]") // JSON — TgImportRow[]
   updatedAt   DateTime @updatedAt
 }
 
 model CustomerOrder {
-  id                 String    @id @default(cuid())
-  tenantId           String
-  storeId            String
-  storeCode          String
-  orderNo            String    @unique
-  customerTelegramId String?           // null = 匿名；可后续由顾客绑定 TG 后回填
-  customerLang       String?           // 顾客下单时的 H5 语言：zh | en | km；通知顾客时使用
-  customerName       String?           // 配送/上门订单：联系人姓名（可选）
-  customerPhone      String?           // 配送/上门订单：联系电话（delivery 必填）
-  deliveryAddress    String?   @db.Text// 配送/上门订单：详细地址（delivery 必填）
-  deliveryNote       String?   @db.Text// 门牌/楼层/备注
-  deliveryLat        Float?            // 定位纬度（可选）
-  deliveryLng        Float?            // 定位经度（可选）
-  deliveryAddressPhotoUrl  String?              // 门牌/位置照片对外可点击的 URL（通常指向内部 GET 端点）
-  deliveryAddressPhotoData String?    @db.Text  // 门牌/位置照片 base64 data URL（与上字段配套；由内部端点读取返回二进制）
-  itemsJson          String    @db.Text // JSON: [{productId,name,spec,price,quantity,lineAmount}]
-  totalAmount        Decimal   @db.Decimal(12, 2)
-  status             String    @default("PENDING") // PENDING | CONFIRMED | COMPLETED | CANCELLED
-  remark             String?
-  paymentStatus      String    @default("UNPAID")  // UNPAID | PAID
-  paymentMethod      String?                        // CASH | QR
-  paidAt             DateTime?
-  paidAmount         Decimal?  @db.Decimal(12, 2)
-  tableNo            String?                        // 餐饮桌号，URL table= 参数传入，null = 外卖/自取
-  sourcePlatform     String?                        // 推广来源平台，如 tiktok
-  campaignCode       String?                        // 短链 code，对应 CampaignLink.code
-  campaignLinkId     String?                        // 关联 CampaignLink.id
-  campaignIntent     String?                        // order | menu
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                       String    @id @default(cuid())
+  tenantId                 String
+  storeId                  String
+  storeCode                String
+  orderNo                  String    @unique
+  customerTelegramId       String? // null = 匿名；可后续由顾客绑定 TG 后回填
+  customerLang             String? // 顾客下单时的 H5 语言：zh | en | km；通知顾客时使用
+  customerName             String? // 配送/上门订单：联系人姓名（可选）
+  customerPhone            String? // 配送/上门订单：联系电话（delivery 必填）
+  deliveryAddress          String?   @db.Text // 配送/上门订单：详细地址（delivery 必填）
+  deliveryNote             String?   @db.Text // 门牌/楼层/备注
+  deliveryLat              Float? // 定位纬度（可选）
+  deliveryLng              Float? // 定位经度（可选）
+  deliveryAddressPhotoUrl  String? // 门牌/位置照片对外可点击的 URL（通常指向内部 GET 端点）
+  deliveryAddressPhotoData String?   @db.Text // 门牌/位置照片 base64 data URL（与上字段配套；由内部端点读取返回二进制）
+  itemsJson                String    @db.Text // JSON: [{productId,name,spec,price,quantity,lineAmount}]
+  totalAmount              Decimal   @db.Decimal(12, 2)
+  status                   String    @default("PENDING") // PENDING | CONFIRMED | COMPLETED | CANCELLED
+  remark                   String?
+  paymentStatus            String    @default("UNPAID") // UNPAID | PAID
+  paymentMethod            String? // CASH | QR
+  paidAt                   DateTime?
+  paidAmount               Decimal?  @db.Decimal(12, 2)
+  tableNo                  String? // 餐饮桌号，URL table= 参数传入，null = 外卖/自取
+  sourcePlatform           String? // 推广来源平台，如 tiktok
+  campaignCode             String? // 短链 code，对应 CampaignLink.code
+  campaignLinkId           String? // 关联 CampaignLink.id
+  campaignIntent           String? // order | menu
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   @@index([tenantId, createdAt])
   @@index([storeId, createdAt])
@@ -524,7 +547,7 @@ model KhqrConfigSession {
   telegramId String   @id
   tenantId   String?
   phase      String   @default("AWAITING_IMAGE") // AWAITING_IMAGE | AWAITING_CONFIRM
-  fileId     String?                              // Telegram file_id，确认时下载转 base64
+  fileId     String? // Telegram file_id，确认时下载转 base64
   updatedAt  DateTime @updatedAt
 }
 
@@ -532,7 +555,7 @@ model SupportSession {
   telegramId   String   @id
   tenantId     String?
   sessionState String   @default("auto_active") // auto_active | awaiting_human | human_active
-  language     String   @default("zh")           // zh | en | km
+  language     String   @default("zh") // zh | en | km
   updatedAt    DateTime @updatedAt
   createdAt    DateTime @default(now())
 
@@ -555,10 +578,10 @@ model AiSupportProviderConfig {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
+  @@unique([tenantId, storeId, provider])
   @@index([tenantId])
   @@index([tenantId, storeId])
   @@index([provider])
-  @@unique([tenantId, storeId, provider])
 }
 
 model AiSupportAuditLog {
@@ -589,18 +612,18 @@ model AiSupportAuditLog {
 }
 
 model OpsAdmin {
-  id           String   @id @default(cuid())
-  name         String
-  username     String   @unique
-  passwordHash String?  // scrypt hash; null = password login disabled
-  telegramId   String?  @unique
-  role         String   @default("OPS_ADMIN") // SUPER_ADMIN | OPS_ADMIN | BD
-  status       String   @default("ACTIVE")    // ACTIVE | DISABLED
-  sessionVersion   Int      @default(0)   // bump 后旧 session 失效（被盗 cookie 强制下线）
-  failedLoginCount Int      @default(0)   // 连续登录失败次数（成功后清零）
-  lockedUntil      DateTime?              // 账号锁定到期时间（5 次失败锁 15 分钟）
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String    @id @default(cuid())
+  name             String
+  username         String    @unique
+  passwordHash     String? // scrypt hash; null = password login disabled
+  telegramId       String?   @unique
+  role             String    @default("OPS_ADMIN") // SUPER_ADMIN | OPS_ADMIN | BD
+  status           String    @default("ACTIVE") // ACTIVE | DISABLED
+  sessionVersion   Int       @default(0) // bump 后旧 session 失效（被盗 cookie 强制下线）
+  failedLoginCount Int       @default(0) // 连续登录失败次数（成功后清零）
+  lockedUntil      DateTime? // 账号锁定到期时间（5 次失败锁 15 分钟）
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 // 顾客下单后通过 /start bind_<storeCode>_<orderNo> 主动绑定 Telegram，沉淀为门店常驻联系人
@@ -616,7 +639,7 @@ model StoreCustomerContact {
   lastOrderId          String?
   source               String   @default("telegram_bind_after_order")
   status               String   @default("active") // active | flagged（OPS 标记异常） | revoked（OPS 解除绑定）
-  opsNote              String?  @db.Text           // OPS 后台维护备注（不对老板端展示）
+  opsNote              String?  @db.Text // OPS 后台维护备注（不对老板端展示）
   firstBoundAt         DateTime @default(now())
   lastSeenAt           DateTime @default(now())
   createdAt            DateTime @default(now())
@@ -637,9 +660,9 @@ model CustomerTouchLog {
   tenantId     String
   storeId      String?
   telegramId   String
-  templateKey  String   // THANK_YOU | PROMO | ORDER_CARE
+  templateKey  String // THANK_YOU | PROMO | ORDER_CARE
   messageText  String   @db.Text
-  status       String   // SENT | FAILED | THROTTLED
+  status       String // SENT | FAILED | THROTTLED
   errorMessage String?
   sentByUserId String
   sentAt       DateTime @default(now())
@@ -674,48 +697,48 @@ enum CustomerCouponStatus {
 }
 
 model CouponTemplate {
-  id            String               @id @default(cuid())
-  tenantId      String
-  storeId       String?              // null 表示全租户通用
-  name          String
-  type          CouponType           @default(AMOUNT_OFF)
-  amountOff     Decimal?             @db.Decimal(10, 2) // AMOUNT_OFF 必填
-  percentOff    Int?                 // PERCENT_OFF 必填，1~99
-  minSpend      Decimal              @default(0) @db.Decimal(10, 2)
-  validDays     Int                  @default(7)        // 自发放起 N 天过期
-  status        CouponTemplateStatus @default(ACTIVE)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  id         String               @id @default(cuid())
+  tenantId   String
+  storeId    String? // null 表示全租户通用
+  name       String
+  type       CouponType           @default(AMOUNT_OFF)
+  amountOff  Decimal?             @db.Decimal(10, 2) // AMOUNT_OFF 必填
+  percentOff Int? // PERCENT_OFF 必填，1~99
+  minSpend   Decimal              @default(0) @db.Decimal(10, 2)
+  validDays  Int                  @default(7) // 自发放起 N 天过期
+  status     CouponTemplateStatus @default(ACTIVE)
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
 
-  coupons       CustomerCoupon[]
-  batches       CouponIssueBatch[]
+  coupons CustomerCoupon[]
+  batches CouponIssueBatch[]
 
   @@index([tenantId, status])
 }
 
 model CustomerCoupon {
-  id           String                @id @default(cuid())
-  tenantId     String
-  storeId      String?               // 仅限该门店使用；null = 全租户通用
-  templateId   String
-  telegramId   String                // 顾客主键（与 StoreCustomerContact 一致）
-  status       CustomerCouponStatus  @default(AVAILABLE)
+  id             String               @id @default(cuid())
+  tenantId       String
+  storeId        String? // 仅限该门店使用；null = 全租户通用
+  templateId     String
+  telegramId     String // 顾客主键（与 StoreCustomerContact 一致）
+  status         CustomerCouponStatus @default(AVAILABLE)
   // 发放时的快照（避免模板后续修改影响已发放券）
-  name         String
-  type         CouponType
-  amountOff    Decimal?              @db.Decimal(10, 2)
-  percentOff   Int?
-  minSpend     Decimal               @default(0) @db.Decimal(10, 2)
-  expiresAt    DateTime
-  usedAt       DateTime?
-  usedOrderNo  String?
-  batchId      String?
+  name           String
+  type           CouponType
+  amountOff      Decimal?             @db.Decimal(10, 2)
+  percentOff     Int?
+  minSpend       Decimal              @default(0) @db.Decimal(10, 2)
+  expiresAt      DateTime
+  usedAt         DateTime?
+  usedOrderNo    String?
+  batchId        String?
   issuedByUserId String?
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
-  template     CouponTemplate        @relation(fields: [templateId], references: [id])
-  redemptions  CouponRedemption[]
+  template    CouponTemplate     @relation(fields: [templateId], references: [id])
+  redemptions CouponRedemption[]
 
   @@index([tenantId, telegramId, status])
   @@index([tenantId, storeId, telegramId, status])
@@ -732,7 +755,7 @@ model CouponRedemption {
   discountAmount Decimal  @db.Decimal(10, 2)
   createdAt      DateTime @default(now())
 
-  coupon         CustomerCoupon @relation(fields: [couponId], references: [id])
+  coupon CustomerCoupon @relation(fields: [couponId], references: [id])
 
   @@unique([orderNo])
   @@index([tenantId, storeId, createdAt])
@@ -740,17 +763,17 @@ model CouponRedemption {
 }
 
 model CouponIssueBatch {
-  id            String   @id @default(cuid())
-  tenantId      String
-  storeId       String?
-  templateId    String
+  id             String   @id @default(cuid())
+  tenantId       String
+  storeId        String?
+  templateId     String
   issuedByUserId String
-  totalCount    Int      @default(0)
-  successCount  Int      @default(0)
-  failedCount   Int      @default(0)
-  createdAt     DateTime @default(now())
+  totalCount     Int      @default(0)
+  successCount   Int      @default(0)
+  failedCount    Int      @default(0)
+  createdAt      DateTime @default(now())
 
-  template      CouponTemplate @relation(fields: [templateId], references: [id])
+  template CouponTemplate @relation(fields: [templateId], references: [id])
 
   @@index([tenantId, createdAt])
 }
@@ -762,12 +785,12 @@ model ConversationLog {
   tenantId     String?
   storeCode    String?
   telegramId   String
-  lang         String?      // zh | en | km
-  direction    String       // IN | OUT
+  lang         String? // zh | en | km
+  direction    String // IN | OUT
   text         String   @db.Text
   intentLayer  Int?
   intentSlot   String?
-  intentSource String?      // RISK | BIZ | CHAT | FALLBACK_SHORT | FALLBACK_UNKNOWN | VOICE | RATE_LIMIT
+  intentSource String? // RISK | BIZ | CHAT | FALLBACK_SHORT | FALLBACK_UNKNOWN | VOICE | RATE_LIMIT
   escalated    Boolean  @default(false)
   createdAt    DateTime @default(now())
 
@@ -782,13 +805,13 @@ model CampaignLink {
   storeId          String
   sourcePlatform   String    @default("tiktok")
   creatorId        String?
-  creatorName      String?                         // 兼容旧数据或临时手填博主名
+  creatorName      String? // 兼容旧数据或临时手填博主名
   videoTitle       String?
   targetUrl        String
-  status           String    @default("ACTIVE")    // ACTIVE | PAUSED
+  status           String    @default("ACTIVE") // ACTIVE | PAUSED
   viewCount        Int       @default(0)
   clickCount       Int       @default(0)
-  commissionType   String?                         // percent | fixed
+  commissionType   String? // percent | fixed
   commissionValue  Decimal?  @db.Decimal(10, 2)
   settlementStatus String    @default("unsettled") // unsettled | settled
   settledAt        DateTime?
@@ -796,8 +819,8 @@ model CampaignLink {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  store            Store     @relation(fields: [storeId], references: [id])
-  creator          Creator?  @relation(fields: [creatorId], references: [id])
+  store   Store    @relation(fields: [storeId], references: [id])
+  creator Creator? @relation(fields: [creatorId], references: [id])
 
   @@index([storeId])
   @@index([status])
@@ -805,25 +828,25 @@ model CampaignLink {
 }
 
 model Creator {
-  id            String   @id @default(cuid())
-  tenantId      String
-  storeId       String
-  name          String
-  displayName   String?
-  phone         String?
-  telegramId    String?
-  tiktokHandle  String?
-  note          String?
+  id                      String    @id @default(cuid())
+  tenantId                String
+  storeId                 String
+  name                    String
+  displayName             String?
+  phone                   String?
+  telegramId              String?
+  tiktokHandle            String?
+  note                    String?
   status                  String    @default("active") // active | inactive
-  preferredLang           String?                      // zh | en | km
+  preferredLang           String? // zh | en | km
   dashboardToken          String?   @unique
   dashboardTokenCreatedAt DateTime?
   dashboardTokenRevokedAt DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  store          Store          @relation(fields: [storeId], references: [id])
-  campaignLinks  CampaignLink[]
+  store         Store          @relation(fields: [storeId], references: [id])
+  campaignLinks CampaignLink[]
 
   @@index([storeId])
   @@index([tenantId])
