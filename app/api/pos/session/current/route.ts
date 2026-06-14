@@ -17,6 +17,9 @@ type PosItem = {
   imageUrl?: string | null
 }
 
+const DRAFT_TIMEOUT_MS = 5 * 60 * 1000
+const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000
+
 type DisplayProduct = {
   id: string
   name: string
@@ -179,6 +182,13 @@ export async function GET(req: NextRequest) {
     ...item,
     imageUrl: cleanDisplayImageUrl(item.imageUrl) ?? productImageMap.get(item.productId) ?? null,
   }))
+  const now = new Date()
+  const ageMs = row ? now.getTime() - row.updatedAt.getTime() : 0
+  const displayStatus = row?.status === 'DRAFT' && displayItems.length > 0 && ageMs > DRAFT_TIMEOUT_MS
+    ? 'EXPIRED_DRAFT'
+    : row?.status === 'AWAITING_PAYMENT' && displayItems.length > 0 && ageMs > CHECKOUT_TIMEOUT_MS
+      ? 'EXPIRED_CHECKOUT'
+      : row?.status ?? null
 
   const khqrConfig = await findKhqrConfig(store.tenantId, store.id)
   const storeKhqrImageUrl = cleanDisplayImageUrl(khqrConfig?.khqrImageUrl)
@@ -191,9 +201,10 @@ export async function GET(req: NextRequest) {
     storeBannerUrl: cleanDisplayImageUrl(store.bannerUrl),
     storeKhqrImageUrl,
     displayProducts,
-    serverNow: new Date().toISOString(),
+    serverNow: now.toISOString(),
     session: row ? {
       status: row.status,
+      displayStatus,
       paymentMethod: row.paymentMethod,
       paymentStatus: row.paymentStatus,
       items: displayItems,

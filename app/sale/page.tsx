@@ -151,6 +151,23 @@ type DeferredOrder = {
   cartSnapshot: CartItem[]
 }
 
+type RestorablePosItem = {
+  productId: string
+  name: string
+  spec: string | null
+  price: number
+  qty: number
+  lineAmount: number
+  imageUrl?: string | null
+}
+
+type RestorePrompt = {
+  items: CartItem[]
+  totalAmount: number
+  itemCount: number
+  status: string
+}
+
 type Status = 'idle' | 'querying' | 'submitting'
 type PayStep = 'none' | 'selecting' | 'khqr_pending'
 
@@ -191,6 +208,10 @@ export default function SalePage() {
   const [photoMultiUsage, setPhotoMultiUsage] = useState<{ usedToday: number; dailyLimit: number } | null>(null)
   const [photoMultiHandled, setPhotoMultiHandled] = useState<Record<number, 'added' | 'ignored'>>({})
   const [photoMultiManualHintIndex, setPhotoMultiManualHintIndex] = useState<number | null>(null)
+  const [storeCode, setStoreCode] = useState<string | null>(null)
+  const [restorePrompt, setRestorePrompt] = useState<RestorePrompt | null>(null)
+  const [restoreBusy, setRestoreBusy] = useState(false)
+  const restoreCheckedRef = useRef(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scanSucceededRef = useRef(false)
@@ -218,7 +239,10 @@ export default function SalePage() {
   useEffect(() => {
     apiFetch('/api/me', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data?.checkoutMode) setCheckoutMode(data.checkoutMode) })
+      .then((data) => {
+        if (data?.checkoutMode) setCheckoutMode(data.checkoutMode)
+        if (data?.storeCode) setStoreCode(data.storeCode)
+      })
       .catch(() => {})
   }, [])
 
@@ -228,6 +252,38 @@ export default function SalePage() {
       .then((list: Product[]) => setAllProducts(list))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!storeCode || allProducts.length === 0 || restoreCheckedRef.current) return
+    restoreCheckedRef.current = true
+    fetch(`/api/pos/session/current?storeCode=${encodeURIComponent(storeCode)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        const session = body?.session
+        if (!session || (session.displayStatus && String(session.displayStatus).startsWith('EXPIRED'))) return
+        if (session.status !== 'DRAFT' && session.status !== 'AWAITING_PAYMENT') return
+        const rawItems = Array.isArray(session.items) ? session.items as RestorablePosItem[] : []
+        if (rawItems.length === 0) return
+        const nextItems: CartItem[] = []
+        for (const item of rawItems) {
+          const p = allProducts.find((product) => product.id === item.productId)
+          if (!p) continue
+          nextItems.push({
+            key: `${p.id}-restore-${nextItems.length}`,
+            product: p,
+            qty: Math.max(1, Number(item.qty) || 1),
+          })
+        }
+        if (nextItems.length === 0) return
+        setRestorePrompt({
+          items: nextItems,
+          totalAmount: Number(session.totalAmount) || nextItems.reduce((sum, item) => sum + item.product.sellPrice * item.qty, 0),
+          itemCount: Number(session.itemCount) || nextItems.reduce((sum, item) => sum + item.qty, 0),
+          status: session.status,
+        })
+      })
+      .catch(() => {})
+  }, [storeCode, allProducts])
 
   useEffect(() => {
     const q = barcodeInput.trim()
@@ -419,6 +475,36 @@ export default function SalePage() {
       method: 'POST',
       body: JSON.stringify(body),
     }).catch((e) => console.warn('[pos-mirror]', path, e))
+  }
+
+  function continueRestoredOrder() {
+    if (!restorePrompt) return
+    setCart(restorePrompt.items)
+    setProduct(null)
+    setBarcodeInput('')
+    setQty(1)
+    setQueryError(null)
+    setSuccess(null)
+    setDeferredOrder(null)
+    setPendingPayment(null)
+    setPayStep('none')
+    setModalError(null)
+    setRestorePrompt(null)
+    posMirrorSigRef.current = ''
+    focusInput()
+  }
+
+  async function cancelRestoredOrder() {
+    setRestoreBusy(true)
+    try {
+      await apiFetch('/api/pos/session/cancel', { method: 'POST' })
+      posMirrorSigRef.current = '__terminal__'
+      setRestorePrompt(null)
+    } catch {
+      setSubmitError(t('common.networkError'))
+    } finally {
+      setRestoreBusy(false)
+    }
   }
 
   const posMirrorSigRef = useRef<string>('')
@@ -1397,6 +1483,23 @@ export default function SalePage() {
       </div>
 
       <div style={s.body}>
+        {restorePrompt && !success && payStep !== 'khqr_pending' && (
+          <div style={s.restoreCard}>
+            <div style={s.restoreTitle}>发现一笔未完成订单</div>
+            <div style={s.restoreMeta}>
+              {restorePrompt.itemCount} 件 · ${restorePrompt.totalAmount.toFixed(2)}
+              {cart.length > 0 ? ' · 当前购物车已有商品，请选择是否覆盖恢复' : ''}
+            </div>
+            <div style={s.restoreActions}>
+              <button type="button" style={s.restorePrimaryBtn} onClick={continueRestoredOrder} disabled={restoreBusy}>
+                继续收银
+              </button>
+              <button type="button" style={s.restoreSecondaryBtn} onClick={cancelRestoredOrder} disabled={restoreBusy}>
+                取消订单
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ══ KHQR 待收款 ══ */}
         {payStep === 'khqr_pending' && pendingPayment && (
@@ -1809,6 +1912,12 @@ const s: Record<string, React.CSSProperties> = {
   successTitle: { fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 14 },
   successGrid: { width: '100%', borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 12, marginBottom: 18 },
   nextBtn: { height: 44, padding: '0 32px', background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)', borderRadius: 'var(--radius-sm)', fontSize: 15, fontWeight: 600 },
+  restoreCard: { background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 10 },
+  restoreTitle: { fontSize: 15, fontWeight: 800, color: '#9a3412', marginBottom: 4 },
+  restoreMeta: { fontSize: 13, color: '#c2410c', lineHeight: 1.5, marginBottom: 10 },
+  restoreActions: { display: 'flex', gap: 8 },
+  restorePrimaryBtn: { flex: 1, height: 38, border: 'none', borderRadius: 8, background: '#ea580c', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer' },
+  restoreSecondaryBtn: { flex: 1, height: 38, border: '1px solid #fdba74', borderRadius: 8, background: '#fff', color: '#9a3412', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
 
 }
 

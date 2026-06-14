@@ -34,6 +34,7 @@ type DisplayProduct = {
 
 type SessionPayload = {
   status: 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED' | string
+  displayStatus?: string | null
   paymentMethod: 'CASH' | 'KHQR' | null
   paymentStatus: 'PENDING' | 'PAID' | null
   items: PosItem[]
@@ -62,6 +63,8 @@ type DisplayCopy = typeof displayCopy.zh
 
 const POLL_MS = 1500
 const COMPLETED_LINGER_MS = 8000  // 完成态展示 8 秒后回到 idle
+const DRAFT_TIMEOUT_MS = 5 * 60 * 1000
+const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000
 
 export default function DesktopMirrorPage() {
   const [storeCode, setStoreCode] = useState<string | null>(null)
@@ -136,10 +139,21 @@ export default function DesktopMirrorPage() {
 
   const session = data?.session ?? null
   const completedAtMs = session?.completedAt ? new Date(session.completedAt).getTime() : 0
+  const updatedAtMs = session?.updatedAt ? new Date(session.updatedAt).getTime() : 0
   const recentlyCompleted = session?.status === 'COMPLETED' && completedAtMs > 0 && (now - completedAtMs) < COMPLETED_LINGER_MS
   const recentlyCancelled = session?.status === 'CANCELLED' && completedAtMs > 0 && (now - completedAtMs) < COMPLETED_LINGER_MS
-  const isLive = !!session && (session.status === 'DRAFT' || session.status === 'AWAITING_PAYMENT') && session.items.length > 0
-  const isIdle = !isLive && !recentlyCompleted && !recentlyCancelled
+  const expiredAtMs = session?.displayStatus === 'EXPIRED_DRAFT'
+    ? updatedAtMs + DRAFT_TIMEOUT_MS
+    : session?.displayStatus === 'EXPIRED_CHECKOUT'
+      ? updatedAtMs + CHECKOUT_TIMEOUT_MS
+      : 0
+  const recentlyExpired = expiredAtMs > 0 && (now - expiredAtMs) < COMPLETED_LINGER_MS
+  const isLive = !!session
+    && (session.status === 'DRAFT' || session.status === 'AWAITING_PAYMENT')
+    && session.displayStatus !== 'EXPIRED_DRAFT'
+    && session.displayStatus !== 'EXPIRED_CHECKOUT'
+    && session.items.length > 0
+  const isIdle = !isLive && !recentlyCompleted && !recentlyCancelled && !recentlyExpired
   const displaySession = isIdle ? null : session
   const displayTotal = displaySession?.totalAmount ?? 0
 
@@ -167,6 +181,8 @@ export default function DesktopMirrorPage() {
             <CompletedCard session={session!} t={t} />
           ) : recentlyCancelled ? (
             <CancelledCard t={t} />
+          ) : recentlyExpired ? (
+            <ExpiredCard checkout={session?.displayStatus === 'EXPIRED_CHECKOUT'} t={t} />
           ) : (
             <IdleCard
               storeName={data?.storeName ?? storeCode ?? ''}
@@ -191,6 +207,7 @@ export default function DesktopMirrorPage() {
                 {isLive && t.itemMeta(session!.itemCount, session!.items.length)}
                 {recentlyCompleted && t.completed}
                 {recentlyCancelled && t.cancelled}
+                {recentlyExpired && (session?.displayStatus === 'EXPIRED_CHECKOUT' ? t.paymentExpired : t.expired)}
               </div>
             </div>
           )}
@@ -308,6 +325,16 @@ function CancelledCard({ t }: { t: DisplayCopy }) {
   )
 }
 
+function ExpiredCard({ checkout, t }: { checkout: boolean; t: DisplayCopy }) {
+  return (
+    <div style={s.bigCard}>
+      <div style={{ ...s.bigIcon, color: '#f59e0b' }}>⌛</div>
+      <div style={s.bigTitle}>{checkout ? t.paymentExpired : t.expired}</div>
+      <div style={s.bigSub}>{t.waitingNext}</div>
+    </div>
+  )
+}
+
 function IdleCard({ storeName, bannerUrl, products, t }: { storeName: string; bannerUrl: string | null; products: DisplayProduct[]; t: DisplayCopy }) {
   const heroImage = displayImageSrc(bannerUrl)
   return (
@@ -413,7 +440,7 @@ function PaymentCard({
         <div style={s.payIdle}>
           {session?.status === 'AWAITING_PAYMENT' && session.paymentMethod === 'KHQR' ? t.payStaff :
            session?.status === 'AWAITING_PAYMENT' ? t.waitingPaymentMethod :
-           session?.status === 'DRAFT' ? t.draftNoPayment :
+           session?.status === 'DRAFT' ? t.checkingOutShort :
            session?.status === 'COMPLETED' ? t.completed :
            !hasOrder ? t.selectItemsFirst :
            '—'}
@@ -428,14 +455,17 @@ function PaymentCard({
 function statusLabel(t: DisplayCopy, s: SessionPayload | null, completed: boolean, cancelled: boolean): string {
   if (completed) return t.completedShort
   if (cancelled) return t.cancelledShort
+  if (s?.displayStatus === 'EXPIRED_DRAFT') return t.expiredShort
+  if (s?.displayStatus === 'EXPIRED_CHECKOUT') return t.paymentExpiredShort
   if (!s || s.items.length === 0) return t.idle
-  if (s.status === 'AWAITING_PAYMENT') return t.collecting
-  return t.draft
+  if (s.status === 'AWAITING_PAYMENT') return t.waitingPaymentShort
+  return t.checkingOutShort
 }
 
 function statusPillStyle(sess: SessionPayload | null, completed: boolean, cancelled: boolean): CSSProperties {
   if (completed) return { background: '#dcfce7', color: '#15803d' }
   if (cancelled) return { background: '#f3f4f6', color: '#6b7280' }
+  if (sess?.displayStatus === 'EXPIRED_DRAFT' || sess?.displayStatus === 'EXPIRED_CHECKOUT') return { background: '#fffbeb', color: '#b45309' }
   if (!sess || sess.items.length === 0) return { background: '#e0f2fe', color: '#0369a1' }
   if (sess.status === 'AWAITING_PAYMENT') return { background: '#fef3c7', color: '#92400e' }
   return { background: '#dbeafe', color: '#1d4ed8' }
@@ -496,6 +526,7 @@ const displayCopy = {
     completed: '本单已完成',
     cancelled: '本单已取消',
     expired: '本单已超时',
+    paymentExpired: '收款超时',
     waitingOrder: '等待新订单',
     readyCheckout: '准备结账',
     waitingNext: '等待下一单',
@@ -521,15 +552,17 @@ const displayCopy = {
     selectItemsFirst: '请先选择商品',
     payStaff: '请向店员付款',
     waitingPaymentMethod: '等待手机端选择收款方式',
-    draftNoPayment: '草稿中 · 尚未发起收款',
+    draftNoPayment: '正在结账',
     connected: (seconds: number) => `已连接 · 每 ${seconds}s 刷新`,
     updated: 'updated',
     itemMeta: (count: number, kinds: number) => `${count} 件 · ${kinds} 种`,
-    completedShort: '已完成',
+    completedShort: '付款完成',
     cancelledShort: '已取消',
+    expiredShort: '本单已超时',
+    paymentExpiredShort: '收款超时',
     idle: '空闲中',
-    collecting: '收款中',
-    draft: '草稿中',
+    waitingPaymentShort: '等待收款',
+    checkingOutShort: '正在结账',
     cash: '现金',
   },
   en: {
@@ -544,6 +577,7 @@ const displayCopy = {
     completed: 'Order completed',
     cancelled: 'Order cancelled',
     expired: 'Order expired',
+    paymentExpired: 'Payment timed out',
     waitingOrder: 'Waiting for next order',
     readyCheckout: 'Ready for checkout',
     waitingNext: 'Waiting for next order',
@@ -569,15 +603,17 @@ const displayCopy = {
     selectItemsFirst: 'Select items first',
     payStaff: 'Please pay the cashier',
     waitingPaymentMethod: 'Waiting for payment method on phone',
-    draftNoPayment: 'Draft · Payment not started',
+    draftNoPayment: 'Checking out',
     connected: (seconds: number) => `Connected · refreshes every ${seconds}s`,
     updated: 'updated',
     itemMeta: (count: number, kinds: number) => `${count} items · ${kinds} kinds`,
-    completedShort: 'Completed',
+    completedShort: 'Payment completed',
     cancelledShort: 'Cancelled',
+    expiredShort: 'Order timed out',
+    paymentExpiredShort: 'Payment timed out',
     idle: 'Idle',
-    collecting: 'Collecting',
-    draft: 'Draft',
+    waitingPaymentShort: 'Waiting for payment',
+    checkingOutShort: 'Checking out',
     cash: 'Cash',
   },
   km: {
@@ -592,6 +628,7 @@ const displayCopy = {
     completed: 'ការបញ្ជាទិញបានបញ្ចប់',
     cancelled: 'ការបញ្ជាទិញបានលុបចោល',
     expired: 'ការបញ្ជាទិញអស់ពេល',
+    paymentExpired: 'ការទូទាត់អស់ពេល',
     waitingOrder: 'រង់ចាំការបញ្ជាទិញថ្មី',
     readyCheckout: 'រួចរាល់សម្រាប់គិតលុយ',
     waitingNext: 'រង់ចាំការបញ្ជាទិញបន្ទាប់',
@@ -617,15 +654,17 @@ const displayCopy = {
     selectItemsFirst: 'សូមជ្រើសទំនិញជាមុន',
     payStaff: 'សូមបង់ប្រាក់ជាមួយបុគ្គលិក',
     waitingPaymentMethod: 'រង់ចាំជ្រើសរើសវិធីបង់ប្រាក់ពីទូរស័ព្ទ',
-    draftNoPayment: 'ព្រាង · មិនទាន់ចាប់ផ្តើមបង់ប្រាក់',
+    draftNoPayment: 'កំពុងគិតលុយ',
     connected: (seconds: number) => `បានភ្ជាប់ · ធ្វើបច្ចុប្បន្នភាពរៀងរាល់ ${seconds}s`,
     updated: 'បានធ្វើបច្ចុប្បន្នភាព',
     itemMeta: (count: number, kinds: number) => `${count} មុខ · ${kinds} ប្រភេទ`,
     completedShort: 'បានបញ្ចប់',
     cancelledShort: 'បានលុប',
+    expiredShort: 'អស់ពេល',
+    paymentExpiredShort: 'ការទូទាត់អស់ពេល',
     idle: 'ទំនេរ',
-    collecting: 'កំពុងទទួលប្រាក់',
-    draft: 'ព្រាង',
+    waitingPaymentShort: 'រង់ចាំបង់ប្រាក់',
+    checkingOutShort: 'កំពុងគិតលុយ',
     cash: 'សាច់ប្រាក់',
   },
 }
