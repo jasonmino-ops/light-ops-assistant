@@ -1834,24 +1834,42 @@ export default function ProductsPage() {
                   <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0 4px' }}>
                     {t('products.aiHint')}
                   </div>
-                  <div style={s.uploadRow}>
+                  <div style={s.aiUploadStack}>
                     <input
                       ref={aiFileRef}
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
-                      style={s.fileInput}
+                      style={s.hiddenFileInput}
                       onChange={(e) => {
                         setAiImageFile(e.target.files?.[0] ?? null)
                         setAiError(null)
                       }}
                     />
                     <button
-                      style={{ ...s.importBtn, opacity: !aiImageFile ? 0.5 : 1 }}
+                      type="button"
+                      style={s.aiUploadCard}
+                      onClick={() => aiFileRef.current?.click()}
+                    >
+                      <span style={s.aiUploadIcon}>📷</span>
+                      <span style={s.aiUploadTitle}>{t('products.aiUploadTitle')}</span>
+                      <span style={s.aiUploadSubtitle}>{t('products.aiUploadSubtitle')}</span>
+                    </button>
+                    {aiImageFile && (
+                      <div style={s.aiSelectedFile}>
+                        {t('products.aiSelectedFile')} {aiImageFile.name}
+                      </div>
+                    )}
+                    <button
+                      style={{
+                        ...s.aiRecognizeBtn,
+                        opacity: !aiImageFile ? 0.5 : 1,
+                        cursor: !aiImageFile ? 'not-allowed' : 'pointer',
+                      }}
                       type="button"
                       disabled={!aiImageFile}
                       onClick={handleAiRecognize}
                     >
-                      {t('products.aiBtn')}
+                      {aiImageFile ? t('products.aiBtn') : t('products.aiSelectFirst')}
                     </button>
                   </div>
                   {aiError && <div style={s.importErrorMsg}>{aiError}</div>}
@@ -1859,8 +1877,11 @@ export default function ProductsPage() {
               )}
 
               {aiStep === 'recognizing' && (
-                <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>
-                  {t('products.aiRecognizing')}
+                <div style={s.aiRecognizingBox}>
+                  <div style={s.aiRecognizingSpinner}>●</div>
+                  <button type="button" style={{ ...s.aiRecognizeBtn, opacity: 0.72 }} disabled>
+                    {t('products.aiRecognizing')}
+                  </button>
                 </div>
               )}
 
@@ -3417,6 +3438,86 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: 'var(--text)',
     minWidth: 0,
+  },
+  hiddenFileInput: {
+    display: 'none',
+  },
+  aiUploadStack: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 10,
+  },
+  aiUploadCard: {
+    minHeight: 116,
+    border: '1.5px dashed #b7cffd',
+    borderRadius: 22,
+    background: 'linear-gradient(180deg, #fbfdff 0%, #f4f8ff 100%)',
+    color: 'var(--text)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    padding: '18px 16px',
+    cursor: 'pointer',
+    textAlign: 'center' as const,
+  },
+  aiUploadIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#eaf2ff',
+    fontSize: 22,
+  },
+  aiUploadTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: 'var(--text)',
+  },
+  aiUploadSubtitle: {
+    fontSize: 12,
+    color: 'var(--muted)',
+  },
+  aiSelectedFile: {
+    borderRadius: 14,
+    background: '#f6f7f9',
+    padding: '10px 12px',
+    fontSize: 13,
+    color: 'var(--text)',
+    lineHeight: 1.45,
+    wordBreak: 'break-all' as const,
+  },
+  aiRecognizeBtn: {
+    minHeight: 52,
+    padding: '0 18px',
+    background: 'var(--blue)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 18,
+    fontSize: 15,
+    fontWeight: 800,
+    whiteSpace: 'nowrap' as const,
+  },
+  aiRecognizingBox: {
+    padding: '20px 0',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    gap: 12,
+  },
+  aiRecognizingSpinner: {
+    width: 34,
+    height: 34,
+    borderRadius: '50%',
+    background: '#eaf2ff',
+    color: 'var(--blue)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
   },
   importBtn: {
     flexShrink: 0,
