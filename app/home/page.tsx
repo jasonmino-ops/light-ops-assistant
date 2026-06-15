@@ -173,6 +173,7 @@ export default function HomePage() {
   const { t, lang, setLang } = useLocale()
   const {
     realRole, effectiveRole, isOwnerInStaffMode, enterStaffMode, exitStaffMode,
+    tier,
     storeName: contextStoreName,
     storeCode: contextStoreCode,
     tenantName: contextTenantName,
@@ -275,6 +276,18 @@ export default function HomePage() {
   const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
   const desktopUrl = storeCode ? publicUrl(`/desktop?storeCode=${storeCode}&lang=${lang}`) : publicUrl(`/desktop?lang=${lang}`)
   const storeAvatarUrl = storeCode && !avatarFailed ? `/api/public/stores/${storeCode}/banner` : null
+  const aiStatus: 'open' | 'configured' | 'waiting' =
+    tier === 'MULTI_STORE' ? 'configured' : tier === 'STANDARD' ? 'waiting' : 'open'
+  const aiCardTitle =
+    aiStatus === 'configured' ? t('home.aiStaffEnabledTitle')
+      : aiStatus === 'waiting' ? t('home.aiStaffWaitingTitle')
+        : t('home.aiStaffOpenTitle')
+  const aiCardSub = aiStatus === 'configured' ? t('home.aiStaffEnabledSub') : t('home.aiStaffSub')
+  const aiActionLabel =
+    aiStatus === 'configured' ? t('home.aiStaffViewDetails')
+      : aiStatus === 'waiting' ? t('home.aiStaffConfigureNow')
+        : t('home.aiStaffOpenNow')
+  const aiActionHref = effectiveRole === 'OWNER' ? '/dashboard' : '/sale'
 
   async function updateOrderStatus(id: string, status: string) {
     setUpdatingOrderId(id)
@@ -427,21 +440,31 @@ export default function HomePage() {
         <div style={s.aiHomeText}>
           <div style={s.aiHomeEyebrow}>Beta</div>
           <div style={s.aiHomeTitle}>{t('home.aiStaffTitle')}</div>
-          <div style={s.aiHomeSub}>{t('home.aiStaffSub')}</div>
+          <div style={s.aiHomeStatus}>{aiCardTitle}</div>
+          <div style={s.aiHomeSub}>{aiCardSub}</div>
+          <div style={s.aiCapabilityRow}>
+            <span style={s.aiCapability}>{t('home.aiProductHelper')}</span>
+            <span style={s.aiCapability}>{t('home.aiSalesHelper')}</span>
+            <span style={s.aiCapability}>{t('home.aiSupportHelper')}</span>
+          </div>
+          <Link href={aiActionHref} style={s.aiHomeBtn}>
+            {aiActionLabel}
+          </Link>
         </div>
-        <Link href={effectiveRole === 'OWNER' ? '/products' : '/sale'} style={s.aiHomeBtn}>
-          {t('home.tryNow')}
-        </Link>
+        <div style={s.aiRobotWrap} aria-hidden="true">
+          <img src="/ai-digital-staff-robot.png" alt="" style={s.aiRobotImg} />
+        </div>
       </div>
 
       {/* ── Quick actions ── */}
       <div style={s.sectionTitle}>{t('home.quickActions')}</div>
       <div style={s.actionGrid}>
-        <ActionBtn href="/sale" icon="💰" label={t('home.sale')} color="#1677ff" />
-        <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
-        <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
+        <ActionBtn href="/sale" iconKind="sale" label={t('home.sale')} subLabel={t('home.quickSaleSub')} color="#1677ff" />
+        <ActionBtn href="/refund" iconKind="refund" label={t('home.refund')} subLabel={t('home.quickRefundSub')} color="#ff4d4f" />
+        <ActionBtn href="/records" iconKind="records" label={t('home.records')} subLabel={t('home.quickRecordsSub')} color="#fa8c16" />
         <CashierAction
           label={t('home.cashier')}
+          subLabel={t('home.quickCashierSub')}
           openLabel={t('home.open')}
           copyLabel={copiedKey === 'cashier' ? '✓' : t('home.copy')}
           color="#722ed1"
@@ -479,13 +502,53 @@ function SummaryCell({ label, value, unit }: { label: string; value: string; uni
   )
 }
 
-function ActionBtn({ href, icon, label, color, onClick }: {
-  href?: string; icon: string; label: string; color: string; onClick?: () => void
+type ActionIconKind = 'sale' | 'refund' | 'records' | 'cashier'
+
+function ActionGlyph({ kind, color }: { kind: ActionIconKind; color: string }) {
+  if (kind === 'sale') {
+    return (
+      <span style={s.glyphBox}>
+        <span style={{ ...s.glyphBag, borderColor: color }} />
+        <span style={{ ...s.glyphBagHandle, borderColor: color }} />
+      </span>
+    )
+  }
+  if (kind === 'records') {
+    return (
+      <span style={s.glyphBox}>
+        <span style={{ ...s.glyphDoc, borderColor: color }}>
+          <span style={{ ...s.glyphDocLine, background: color, width: 17 }} />
+          <span style={{ ...s.glyphDocLine, background: color, width: 13 }} />
+          <span style={{ ...s.glyphDocLine, background: color, width: 15 }} />
+        </span>
+      </span>
+    )
+  }
+  if (kind === 'cashier') {
+    return (
+      <span style={s.glyphBox}>
+        <span style={{ ...s.glyphMonitor, borderColor: color }} />
+        <span style={{ ...s.glyphMonitorStand, background: color }} />
+      </span>
+    )
+  }
+  return (
+    <span style={{ ...s.glyphText, color }} aria-hidden="true">
+      ↩
+    </span>
+  )
+}
+
+function ActionBtn({ href, iconKind, label, subLabel, color, onClick }: {
+  href?: string; iconKind: ActionIconKind; label: string; subLabel: string; color: string; onClick?: () => void
 }) {
   const content = (
     <>
-      <span style={{ ...s.actionIcon, background: color + '15' }}>{icon}</span>
+      <span style={{ ...s.actionIcon, background: color + '13' }}>
+        <ActionGlyph kind={iconKind} color={color} />
+      </span>
       <span style={{ ...s.actionLabel, color }}>{label}</span>
+      <span style={s.actionSubLabel}>{subLabel}</span>
     </>
   )
   if (onClick) {
@@ -502,13 +565,16 @@ function ActionBtn({ href, icon, label, color, onClick }: {
   )
 }
 
-function CashierAction({ label, openLabel, copyLabel, color, onOpen, onCopy }: {
-  label: string; openLabel: string; copyLabel: string; color: string; onOpen: () => void; onCopy: () => void
+function CashierAction({ label, subLabel, openLabel, copyLabel, color, onOpen, onCopy }: {
+  label: string; subLabel: string; openLabel: string; copyLabel: string; color: string; onOpen: () => void; onCopy: () => void
 }) {
   return (
     <div style={{ ...s.actionBtn, borderColor: color + '33' }}>
-      <span style={{ ...s.actionIcon, background: color + '15' }}>🖥️</span>
+      <span style={{ ...s.actionIcon, background: color + '13' }}>
+        <ActionGlyph kind="cashier" color={color} />
+      </span>
       <span style={{ ...s.actionLabel, color }}>{label}</span>
+      <span style={s.actionSubLabel}>{subLabel}</span>
       <div style={s.actionMiniBtns}>
         <button type="button" style={s.actionMiniBtn} onClick={onCopy}>{copyLabel}</button>
         <button type="button" style={s.actionMiniBtnPrimary} onClick={onOpen}>{openLabel}</button>
@@ -1059,7 +1125,7 @@ const s: Record<string, React.CSSProperties> = {
   actionGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 7,
+    gap: 8,
     padding: 0,
     marginBottom: 14,
   },
@@ -1085,20 +1151,20 @@ const s: Record<string, React.CSSProperties> = {
     background: 'linear-gradient(135deg, #f5f3ff 0%, #eef2ff 55%, #ffffff 100%)',
     border: '1px solid rgba(196,181,253,0.7)',
     borderRadius: 22,
-    padding: '15px 16px',
+    padding: '14px 124px 14px 15px',
     marginBottom: 18,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
+    position: 'relative',
+    overflow: 'hidden',
     boxShadow: '0 14px 30px rgba(124,58,237,0.12)',
-    minHeight: 82,
+    minHeight: 132,
   },
   aiHomeText: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 5,
+    gap: 6,
     minWidth: 0,
+    position: 'relative',
+    zIndex: 2,
   },
   aiHomeEyebrow: {
     alignSelf: 'flex-start',
@@ -1116,21 +1182,61 @@ const s: Record<string, React.CSSProperties> = {
     color: '#312e81',
     letterSpacing: '-0.2px',
   },
+  aiHomeStatus: {
+    fontSize: 14,
+    fontWeight: 850,
+    color: '#4338ca',
+    lineHeight: 1.25,
+  },
   aiHomeSub: {
     fontSize: 11,
     color: '#6b7280',
-    lineHeight: 1.5,
+    lineHeight: 1.45,
+  },
+  aiCapabilityRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 5,
+    marginTop: 1,
+  },
+  aiCapability: {
+    borderRadius: 999,
+    background: 'rgba(255,255,255,0.75)',
+    border: '1px solid rgba(167,139,250,0.22)',
+    color: '#4c1d95',
+    fontSize: 10,
+    fontWeight: 800,
+    padding: '3px 7px',
   },
   aiHomeBtn: {
-    flexShrink: 0,
+    alignSelf: 'flex-start',
     borderRadius: 999,
     background: '#4f46e5',
     color: '#fff',
-    padding: '9px 12px',
+    padding: '9px 14px',
     fontSize: 12,
     fontWeight: 800,
     textDecoration: 'none',
     boxShadow: '0 8px 18px rgba(79,70,229,0.18)',
+    marginTop: 2,
+  },
+  aiRobotWrap: {
+    position: 'absolute',
+    right: -12,
+    bottom: -15,
+    width: 138,
+    height: 138,
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+    zIndex: 1,
+  },
+  aiRobotImg: {
+    width: 132,
+    height: 132,
+    objectFit: 'contain',
+    filter: 'drop-shadow(0 16px 20px rgba(67,56,202,0.20))',
   },
   shortcutSection: {
     marginBottom: 16,
@@ -1210,36 +1316,47 @@ const s: Record<string, React.CSSProperties> = {
   actionBtn: {
     background: '#fff',
     border: '1px solid',
-    borderRadius: 18,
-    padding: '10px 5px',
+    borderRadius: 20,
+    padding: '11px 5px 10px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 5,
+    justifyContent: 'center',
+    gap: 4,
     textDecoration: 'none',
     boxShadow: '0 8px 18px rgba(15,23,42,0.04)',
     cursor: 'pointer',
     fontFamily: 'inherit',
+    minHeight: 96,
+    minWidth: 0,
   },
   actionIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+    width: 48,
+    height: 48,
+    borderRadius: 18,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 18,
+    marginBottom: 2,
   },
   actionLabel: {
-    fontSize: 11,
-    fontWeight: 800,
+    fontSize: 13,
+    fontWeight: 900,
     textAlign: 'center',
     lineHeight: 1.15,
   },
+  actionSubLabel: {
+    fontSize: 9,
+    color: '#64748b',
+    fontWeight: 750,
+    lineHeight: 1.15,
+    textAlign: 'center',
+    whiteSpace: 'nowrap' as const,
+  },
   actionMiniBtns: {
     display: 'flex',
-    gap: 3,
-    marginTop: 1,
+    gap: 4,
+    marginTop: 3,
     width: '100%',
   },
   actionMiniBtn: {
@@ -1265,6 +1382,77 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 9,
     fontWeight: 800,
     cursor: 'pointer',
+  },
+  glyphBox: {
+    position: 'relative',
+    width: 30,
+    height: 30,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glyphText: {
+    fontSize: 31,
+    fontWeight: 850,
+    lineHeight: 1,
+    fontFamily: 'Arial, sans-serif',
+    transform: 'translateY(-1px)',
+  },
+  glyphBag: {
+    position: 'absolute',
+    left: 5,
+    bottom: 4,
+    width: 20,
+    height: 18,
+    border: '2.4px solid',
+    borderRadius: '5px 5px 6px 6px',
+  },
+  glyphBagHandle: {
+    position: 'absolute',
+    left: 10,
+    top: 4,
+    width: 10,
+    height: 8,
+    borderTop: '2.4px solid',
+    borderLeft: '2.4px solid',
+    borderRight: '2.4px solid',
+    borderRadius: '8px 8px 0 0',
+  },
+  glyphDoc: {
+    width: 21,
+    height: 25,
+    border: '2.4px solid',
+    borderRadius: 6,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+    justifyContent: 'center',
+    paddingLeft: 4,
+    boxSizing: 'border-box' as const,
+  },
+  glyphDocLine: {
+    height: 2.2,
+    borderRadius: 999,
+    display: 'block',
+    opacity: 0.9,
+  },
+  glyphMonitor: {
+    position: 'absolute',
+    top: 5,
+    left: 3,
+    width: 24,
+    height: 17,
+    border: '2.4px solid',
+    borderRadius: 5,
+  },
+  glyphMonitorStand: {
+    position: 'absolute',
+    bottom: 3,
+    left: 9,
+    width: 12,
+    height: 3,
+    borderRadius: 999,
+    boxShadow: '0 -4px 0 rgba(0,0,0,0.10)',
   },
   recentCard: {
     background: '#fff',
