@@ -447,18 +447,6 @@ export default function HomePage() {
         />
       </div>
 
-      {effectiveRole === 'OWNER' && (
-      <div style={s.ownerEntrySection}>
-        <div style={s.sectionTitle}>{t('home.ownerCenter')}</div>
-        <div style={s.ownerEntryGrid}>
-          <OwnerEntry href="/products" icon="📦" label={t('home.products')} />
-          <OwnerEntry href="/customers" icon="👥" label={t('home.customers')} />
-          <OwnerEntry href="/invite" icon="🔗" label={t('home.inviteStaff')} />
-          <OwnerEntry href="/dashboard" icon="📊" label={t('home.dashboard')} />
-        </div>
-      </div>
-      )}
-
       {customerCheckout && (
         <CheckoutSheet
           orderNo={customerCheckout.orderNo}
@@ -523,15 +511,6 @@ function CashierAction({ label, openLabel, copyLabel, color, onOpen, onCopy }: {
         <button type="button" style={s.actionMiniBtnPrimary} onClick={onOpen}>{openLabel}</button>
       </div>
     </div>
-  )
-}
-
-function OwnerEntry({ href, icon, label }: { href: string; icon: string; label: string }) {
-  return (
-    <Link href={href} style={s.ownerEntry}>
-      <span style={s.ownerEntryIcon}>{icon}</span>
-      <span style={s.ownerEntryLabel}>{label}</span>
-    </Link>
   )
 }
 
@@ -1263,46 +1242,6 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 9,
     fontWeight: 800,
     cursor: 'pointer',
-  },
-  ownerEntrySection: {
-    marginBottom: 16,
-  },
-  ownerEntryGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 10,
-    padding: 0,
-  },
-  ownerEntry: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    background: '#fff',
-    border: '1px solid #edf0f2',
-    borderRadius: 18,
-    padding: '13px 12px',
-    textDecoration: 'none',
-    minWidth: 0,
-    boxShadow: '0 8px 20px rgba(15,23,42,0.04)',
-  },
-  ownerEntryIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    background: '#f6f8fa',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 16,
-    flexShrink: 0,
-  },
-  ownerEntryLabel: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: '#111827',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
   },
   recentCard: {
     background: '#fff',
