@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { apiFetch, STAFF_CTX, OWNER_CTX } from '@/lib/api'
 import { useLocale, type Lang } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
-import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import { publicUrl } from '@/lib/public-url'
 
@@ -179,12 +178,9 @@ export default function HomePage() {
     tenantName: contextTenantName,
   } = useWorkMode()
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [storeName, setStoreName] = useState<string | null>(null)
-  const [selectedOrderNo, setSelectedOrderNo] = useState<string | null>(null)
-  const [checkoutOrder, setCheckoutOrder] = useState<{ orderNo: string; totalAmount: number } | null>(null)
   const [loadKey, setLoadKey] = useState(0)
   const [customerOrders, setCustomerOrders] = useState<CustomerOrderRecord[]>([])
   const [ordersError, setOrdersError] = useState<string | null>(null)
@@ -211,12 +207,10 @@ export default function HomePage() {
       .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
       .then((data) => {
         setSummary(data.summary)
-        setEntries(buildSaleEntries(data.items ?? []).slice(0, 5))
       })
       .catch(() => {
         setLoadError(t('home.homeLoadFailed'))
         setSummary(null)
-        setEntries([])
       })
       .finally(() => setLoading(false))
   }, [loadKey, realRole, lang]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -443,124 +437,26 @@ export default function HomePage() {
         <ActionBtn href="/sale" icon="💰" label={t('home.sale')} color="#1677ff" />
         <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
         <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
-        <ActionBtn
-          icon="🖥️"
+        <CashierAction
           label={t('home.cashier')}
+          openLabel={t('home.open')}
+          copyLabel={copiedKey === 'cashier' ? '✓' : t('home.copy')}
           color="#722ed1"
-          onClick={() => window.open(desktopUrl, '_blank', 'noopener,noreferrer')}
+          onOpen={() => window.open(desktopUrl, '_blank', 'noopener,noreferrer')}
+          onCopy={() => copyLink('cashier', desktopUrl)}
         />
       </div>
 
+      {effectiveRole === 'OWNER' && (
       <div style={s.ownerEntrySection}>
-        <div style={s.sectionTitle}>{effectiveRole === 'OWNER' ? t('home.ownerCenter') : t('home.staffCenter')}</div>
+        <div style={s.sectionTitle}>{t('home.ownerCenter')}</div>
         <div style={s.ownerEntryGrid}>
-          {effectiveRole === 'OWNER' ? (
-            <>
-              <OwnerEntry href="/products" icon="📦" label={t('home.products')} />
-              <OwnerEntry href="/customers" icon="👥" label={t('home.customers')} />
-              <OwnerEntry href="/invite" icon="🔗" label={t('home.inviteStaff')} />
-              <OwnerEntry href="/dashboard" icon="📊" label={t('home.dashboard')} />
-            </>
-          ) : (
-            <>
-              <OwnerEntry href="/products" icon="🔎" label={t('home.productLookup')} />
-              <OwnerEntry href="/sale" icon="💰" label={t('home.sale')} />
-              <OwnerEntry href="/records" icon="📋" label={t('home.records')} />
-              <OwnerEntry href="/refund" icon="↩️" label={t('home.refund')} />
-            </>
-          )}
+          <OwnerEntry href="/products" icon="📦" label={t('home.products')} />
+          <OwnerEntry href="/customers" icon="👥" label={t('home.customers')} />
+          <OwnerEntry href="/invite" icon="🔗" label={t('home.inviteStaff')} />
+          <OwnerEntry href="/dashboard" icon="📊" label={t('home.dashboard')} />
         </div>
       </div>
-
-      {/* ── 常用入口 ── */}
-      {storeCode && (
-        <div style={s.shortcutSection}>
-          <div style={s.sectionTitle}>{t('home.commonEntry')}</div>
-          {([
-            { key: 'cashier', label: t('home.cashier'), icon: '🖥️', url: desktopUrl, hint: t('home.cashierHint') },
-          ] as { key: string; label: string; icon: string; url: string; hint: string }[]).map(({ key, label, icon, url, hint }) => {
-            const isCopied = copiedKey === key
-            return (
-              <div key={key} style={s.shortcutRow}>
-                <div style={s.shortcutLeft}>
-                  <span style={s.shortcutIcon}>{icon}</span>
-                  <div style={s.shortcutTextCol}>
-                    <span style={s.shortcutLabel}>{label}</span>
-                    {hint && <span style={s.shortcutHint}>{hint}</span>}
-                    <span style={s.shortcutUrl}>{url}</span>
-                  </div>
-                </div>
-                <div style={s.shortcutBtns}>
-                  <button
-                    style={isCopied ? s.shortcutBtnOk : s.shortcutBtn}
-                    onClick={() => copyLink(key, url)}
-                  >
-                    {isCopied ? '✓' : t('home.copy')}
-                  </button>
-                  <button
-                    style={s.shortcutBtn}
-                    onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
-                  >
-                    {t('home.open')}
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* ── Recent records ── */}
-      <div style={s.sectionHeader}>
-        <span style={s.sectionTitle}>{t('home.recentRecords')}</span>
-        <Link href="/records" style={s.viewAll}>{t('home.viewAll')}</Link>
-      </div>
-
-      {loading && (
-        <div style={s.recentSkeletonWrap}>
-          {[52, 44, 52].map((h, i) => (
-            <div key={i} style={{ ...s.summarySkeleton, height: h, borderRadius: 10, margin: '0 12px 8px' }} />
-          ))}
-        </div>
-      )}
-
-      {!loading && entries.length === 0 && (
-        <div style={s.emptyHint}>{t('home.noRecordsToday')}</div>
-      )}
-
-      {entries.slice(0, 3).map((entry, i) =>
-        entry.kind === 'order' ? (
-          <OrderCard
-            key={entry.orderNo}
-            group={entry}
-            index={i}
-            tagSale={t('home.tagSale')}
-            itemCountUnit={t('home.itemCountUnit')}
-            checkoutBtn={t('sale.checkoutBtn')}
-            customerOrderTag={t('home.customerOrderTag')}
-            pendingPay={t('home.pendingPay')}
-            onOpen={entry.source === 'CUSTOMER_ORDER' ? undefined : () => setSelectedOrderNo(entry.orderNo)}
-            onCheckout={entry.paymentMethod === null
-              ? () => setCheckoutOrder({ orderNo: entry.orderNo, totalAmount: entry.totalAmount })
-              : undefined}
-          />
-        ) : (
-          <RefundCard key={entry.item.id + '-' + i} item={entry.item} tagRefund={t('home.tagRefund')} />
-        )
-      )}
-
-      <OrderDetailSheet
-        orderNo={selectedOrderNo}
-        onClose={() => setSelectedOrderNo(null)}
-      />
-
-      {checkoutOrder && (
-        <CheckoutSheet
-          orderNo={checkoutOrder.orderNo}
-          totalAmount={checkoutOrder.totalAmount}
-          onSuccess={() => { setCheckoutOrder(null); setLoadKey((k) => k + 1) }}
-          onClose={() => setCheckoutOrder(null)}
-        />
       )}
 
       {customerCheckout && (
@@ -612,6 +508,21 @@ function ActionBtn({ href, icon, label, color, onClick }: {
     <Link href={href ?? '#'} style={{ ...s.actionBtn, borderColor: color + '33' }}>
       {content}
     </Link>
+  )
+}
+
+function CashierAction({ label, openLabel, copyLabel, color, onOpen, onCopy }: {
+  label: string; openLabel: string; copyLabel: string; color: string; onOpen: () => void; onCopy: () => void
+}) {
+  return (
+    <div style={{ ...s.actionBtn, borderColor: color + '33' }}>
+      <span style={{ ...s.actionIcon, background: color + '15' }}>🖥️</span>
+      <span style={{ ...s.actionLabel, color }}>{label}</span>
+      <div style={s.actionMiniBtns}>
+        <button type="button" style={s.actionMiniBtn} onClick={onCopy}>{copyLabel}</button>
+        <button type="button" style={s.actionMiniBtnPrimary} onClick={onOpen}>{openLabel}</button>
+      </div>
+    </div>
   )
 }
 
@@ -1007,13 +918,13 @@ const s: Record<string, React.CSSProperties> = {
     color: '#c2410c',
   },
   summaryCard: {
-    background: '#fff',
+    background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfeff 52%, #ffffff 100%)',
     margin: '0 0 12px',
     borderRadius: 22,
     padding: '15px 16px',
-    boxShadow: '0 12px 28px rgba(15,23,42,0.07)',
+    boxShadow: '0 14px 30px rgba(20,184,166,0.11)',
     marginBottom: 12,
-    border: '1px solid rgba(229,231,235,0.9)',
+    border: '1px solid rgba(153,246,228,0.7)',
   },
   summaryTopRow: {
     display: 'flex',
@@ -1147,10 +1058,10 @@ const s: Record<string, React.CSSProperties> = {
   },
   actionGrid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 10,
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 7,
     padding: 0,
-    marginBottom: 20,
+    marginBottom: 14,
   },
   workSection: {
     background: '#fff7ed',
@@ -1170,7 +1081,8 @@ const s: Record<string, React.CSSProperties> = {
     margin: '4px 0 6px',
   },
   aiHomeCard: {
-    background: 'linear-gradient(135deg, #111827 0%, #334155 100%)',
+    background: 'linear-gradient(135deg, #f5f3ff 0%, #eef2ff 55%, #ffffff 100%)',
+    border: '1px solid rgba(196,181,253,0.7)',
     borderRadius: 22,
     padding: '15px 16px',
     marginBottom: 18,
@@ -1178,7 +1090,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    boxShadow: '0 16px 34px rgba(15,23,42,0.16)',
+    boxShadow: '0 14px 30px rgba(124,58,237,0.12)',
   },
   aiHomeText: {
     display: 'flex',
@@ -1189,9 +1101,9 @@ const s: Record<string, React.CSSProperties> = {
   aiHomeEyebrow: {
     alignSelf: 'flex-start',
     fontSize: 10,
-    color: '#bae6fd',
-    background: 'rgba(14,165,233,0.16)',
-    border: '1px solid rgba(186,230,253,0.28)',
+    color: '#6d28d9',
+    background: 'rgba(124,58,237,0.10)',
+    border: '1px solid rgba(167,139,250,0.32)',
     borderRadius: 999,
     padding: '3px 8px',
     fontWeight: 800,
@@ -1199,24 +1111,24 @@ const s: Record<string, React.CSSProperties> = {
   aiHomeTitle: {
     fontSize: 18,
     fontWeight: 900,
-    color: '#fff',
+    color: '#312e81',
     letterSpacing: '-0.2px',
   },
   aiHomeSub: {
     fontSize: 11,
-    color: '#d1d5db',
+    color: '#6b7280',
     lineHeight: 1.5,
   },
   aiHomeBtn: {
     flexShrink: 0,
     borderRadius: 999,
-    background: '#fff',
-    color: '#111827',
+    background: '#4f46e5',
+    color: '#fff',
     padding: '9px 12px',
     fontSize: 12,
     fontWeight: 800,
     textDecoration: 'none',
-    boxShadow: '0 8px 18px rgba(0,0,0,0.14)',
+    boxShadow: '0 8px 18px rgba(79,70,229,0.18)',
   },
   shortcutSection: {
     marginBottom: 16,
@@ -1296,29 +1208,61 @@ const s: Record<string, React.CSSProperties> = {
   actionBtn: {
     background: '#fff',
     border: '1px solid',
-    borderRadius: 20,
-    padding: '16px 10px',
+    borderRadius: 18,
+    padding: '10px 5px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    gap: 5,
     textDecoration: 'none',
-    boxShadow: '0 10px 24px rgba(15,23,42,0.05)',
+    boxShadow: '0 8px 18px rgba(15,23,42,0.04)',
     cursor: 'pointer',
     fontFamily: 'inherit',
   },
   actionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 22,
+    fontSize: 18,
   },
   actionLabel: {
-    fontSize: 13,
-    fontWeight: 600,
+    fontSize: 11,
+    fontWeight: 800,
+    textAlign: 'center',
+    lineHeight: 1.15,
+  },
+  actionMiniBtns: {
+    display: 'flex',
+    gap: 3,
+    marginTop: 1,
+    width: '100%',
+  },
+  actionMiniBtn: {
+    flex: 1,
+    minWidth: 0,
+    border: '1px solid #e5e7eb',
+    background: '#fff',
+    color: '#4b5563',
+    borderRadius: 999,
+    padding: '3px 0',
+    fontSize: 9,
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  actionMiniBtnPrimary: {
+    flex: 1,
+    minWidth: 0,
+    border: '1px solid #ddd6fe',
+    background: '#f5f3ff',
+    color: '#6d28d9',
+    borderRadius: 999,
+    padding: '3px 0',
+    fontSize: 9,
+    fontWeight: 800,
+    cursor: 'pointer',
   },
   ownerEntrySection: {
     marginBottom: 16,
