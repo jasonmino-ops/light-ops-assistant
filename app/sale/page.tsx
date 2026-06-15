@@ -188,8 +188,6 @@ export default function SalePage() {
     realRole,
     effectiveRole,
     isOwnerInStaffMode,
-    enterStaffMode,
-    exitStaffMode,
     storeName: contextStoreName,
     storeCode: contextStoreCode,
     tenantName: contextTenantName,
@@ -1587,13 +1585,9 @@ export default function SalePage() {
         <div style={s.saleHeaderTools}>
           <LangToggleBtn />
           {realRole === 'OWNER' && (
-            <button
-              type="button"
-              style={s.modeBtn}
-              onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}
-            >
+            <span style={s.modeTag}>
               {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
-            </button>
+            </span>
           )}
         </div>
       </div>
@@ -2143,7 +2137,7 @@ const s: Record<string, React.CSSProperties> = {
   saleStoreName: { fontSize: 16, fontWeight: 900, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   saleStoreSub: { fontSize: 11, fontWeight: 700, color: '#64748b' },
   saleHeaderTools: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
-  modeBtn: {
+  modeTag: {
     height: 32,
     border: '1px solid #e5e7eb',
     borderRadius: 999,
@@ -2154,6 +2148,8 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     whiteSpace: 'nowrap',
     boxShadow: '0 4px 10px rgba(15,23,42,0.04)',
+    display: 'inline-flex',
+    alignItems: 'center',
   },
   headerBar: { background: 'var(--blue)', padding: '16px 16px 18px', display: 'flex', alignItems: 'center', flexShrink: 0 },
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: 700, letterSpacing: '0.02em' },

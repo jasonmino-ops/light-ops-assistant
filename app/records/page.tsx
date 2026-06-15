@@ -190,8 +190,6 @@ export default function RecordsPage() {
   const {
     realRole,
     isOwnerInStaffMode,
-    enterStaffMode,
-    exitStaffMode,
     storeName: contextStoreName,
     storeCode: contextStoreCode,
     tenantName: contextTenantName,
@@ -325,9 +323,9 @@ export default function RecordsPage() {
         <div style={s.headerTools}>
           <LangToggleBtn />
           {realRole === 'OWNER' && (
-            <button type="button" style={s.modeBtn} onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}>
+            <span style={s.modeTag}>
               {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
-            </button>
+            </span>
           )}
         </div>
       </div>
@@ -755,17 +753,17 @@ const s: Record<string, React.CSSProperties> = {
     gap: 6,
     flexShrink: 0,
   },
-  modeBtn: {
+  modeTag: {
     fontSize: 10,
     color: '#111827',
     background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 999,
     padding: '6px 10px',
-    cursor: 'pointer',
     boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
     minWidth: 82,
     whiteSpace: 'nowrap',
+    textAlign: 'center',
   },
   body: {
     flex: 1,

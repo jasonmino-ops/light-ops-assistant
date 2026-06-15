@@ -43,7 +43,7 @@ function fmtExpiry(iso: string, lang: 'zh' | 'km' | 'en') {
 export default function InvitePage() {
   const { lang, t } = useLocale()
   const {
-    realRole, isOwnerInStaffMode, enterStaffMode, exitStaffMode,
+    realRole, isOwnerInStaffMode,
     storeName: contextStoreName, tenantName: contextTenantName,
   } = useWorkMode()
   const [stores, setStores] = useState<Store[]>([])
@@ -183,13 +183,9 @@ export default function InvitePage() {
         <div style={s.headerTools}>
           <LangToggleBtn />
           {realRole === 'OWNER' && (
-            <button
-              type="button"
-              style={isOwnerInStaffMode ? s.modeBtn : { ...s.modeBtn, ...s.modeBtnOwner }}
-              onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}
-            >
-              {isOwnerInStaffMode ? t('home.exitStaffModeBtn') : t('home.enterStaffModeBtn')}
-            </button>
+            <span style={isOwnerInStaffMode ? s.modeTag : { ...s.modeTag, ...s.modeTagOwner }}>
+              {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
+            </span>
           )}
         </div>
       </div>
@@ -546,7 +542,7 @@ const s: Record<string, React.CSSProperties> = {
   headerTitle: { fontSize: 18, fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 },
   headerSub: { fontSize: 11, color: '#6b7280', marginTop: 3, fontWeight: 500 },
   headerTools: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, minWidth: 118 },
-  modeBtn: {
+  modeTag: {
     minHeight: 30,
     borderRadius: 999,
     border: '1px solid #e5e7eb',
@@ -557,9 +553,10 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     whiteSpace: 'nowrap',
     boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
-    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
   },
-  modeBtnOwner: { background: '#fff7ed', color: '#c2410c', borderColor: '#fed7aa' },
+  modeTagOwner: { background: '#fff7ed', color: '#c2410c', borderColor: '#fed7aa' },
 
   body: { flex: 1, padding: '4px 14px 88px', maxWidth: 520, margin: '0 auto', width: '100%', boxSizing: 'border-box' },
   heroCard: {

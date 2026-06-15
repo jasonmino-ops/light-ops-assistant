@@ -369,17 +369,12 @@ export default function HomePage() {
         <div style={s.brandRight}>
           <LangDropdown lang={lang} setLang={setLang} />
           {realRole === 'OWNER' && (
-            <div style={s.modeRow}>
-              <span style={s.modeLabelText}>
-                {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
-              </span>
-              <button
-                style={isOwnerInStaffMode ? s.switchBtn : { ...s.switchBtn, ...s.modeBtnOwner }}
-                onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}
-              >
-                {isOwnerInStaffMode ? t('home.exitStaffModeBtn') : t('home.enterStaffModeBtn')}
-              </button>
-            </div>
+            <ModeDropdown
+              isOwnerInStaffMode={isOwnerInStaffMode}
+              enterStaffMode={enterStaffMode}
+              exitStaffMode={exitStaffMode}
+              t={t}
+            />
           )}
         </div>
       </div>
@@ -754,6 +749,106 @@ function LangDropdown({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => voi
                 </button>
               )
             })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ModeDropdown({
+  isOwnerInStaffMode,
+  enterStaffMode,
+  exitStaffMode,
+  t,
+}: {
+  isOwnerInStaffMode: boolean
+  enterStaffMode: () => void
+  exitStaffMode: () => void
+  t: (key: string) => string
+}) {
+  const [open, setOpen] = useState(false)
+  const currentLabel = isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')
+  const switchLabel = isOwnerInStaffMode ? t('home.exitStaffModeBtn') : t('home.enterStaffModeBtn')
+
+  return (
+    <div style={{ position: 'relative' as const }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          fontSize: 11,
+          color: '#7c2d12',
+          background: isOwnerInStaffMode ? '#eef6ff' : '#fff7ed',
+          border: isOwnerInStaffMode ? '1px solid #bfdbfe' : '1px solid #fed7aa',
+          borderRadius: 999,
+          padding: '7px 10px',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 5,
+          whiteSpace: 'nowrap' as const,
+          boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
+          minWidth: 96,
+          justifyContent: 'center',
+          fontWeight: 800,
+        }}
+      >
+        <span>{currentLabel}</span>
+        <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed' as const, inset: 0, zIndex: 50 }} />
+          <div style={{
+            position: 'absolute' as const,
+            top: 'calc(100% + 4px)',
+            right: 0,
+            zIndex: 60,
+            minWidth: 150,
+            background: '#fff',
+            border: '1px solid #e8e8e8',
+            borderRadius: 10,
+            boxShadow: '0 8px 24px rgba(15,23,42,0.14)',
+            padding: 5,
+          }}>
+            <div style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '7px 10px',
+              borderRadius: 8,
+              background: '#f8fafc',
+              color: '#111827',
+              fontSize: 12,
+              fontWeight: 800,
+            }}>
+              <span style={{ color: '#1677ff' }}>✓</span>
+              <span>{currentLabel}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (isOwnerInStaffMode) exitStaffMode()
+                else enterStaffMode()
+                setOpen(false)
+              }}
+              style={{
+                width: '100%',
+                textAlign: 'left' as const,
+                padding: '8px 10px',
+                borderRadius: 8,
+                background: 'transparent',
+                color: '#334155',
+                fontSize: 12,
+                fontWeight: 800,
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              {switchLabel}
+            </button>
           </div>
         </>
       )}

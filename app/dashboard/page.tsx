@@ -84,8 +84,6 @@ export default function DashboardPage() {
     tier,
     realRole,
     isOwnerInStaffMode,
-    enterStaffMode,
-    exitStaffMode,
     storeName: contextStoreName,
     tenantName: contextTenantName,
   } = useWorkMode()
@@ -255,18 +253,9 @@ export default function DashboardPage() {
         <div style={s.brandRight}>
           <LangToggleBtn />
           {realRole === 'OWNER' && (
-            <div style={s.modeRow}>
-              <span style={s.modeLabelText}>
-                {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
-              </span>
-              <button
-                type="button"
-                style={isOwnerInStaffMode ? s.switchBtn : { ...s.switchBtn, ...s.modeBtnOwner }}
-                onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}
-              >
-                {isOwnerInStaffMode ? t('home.exitStaffModeBtn') : t('home.enterStaffModeBtn')}
-              </button>
-            </div>
+            <span style={isOwnerInStaffMode ? s.modeTag : { ...s.modeTag, ...s.modeTagOwner }}>
+              {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
+            </span>
           )}
         </div>
       </div>
@@ -1554,6 +1543,19 @@ const s: Record<string, React.CSSProperties> = {
   modeRow: { display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' as const },
   modeLabelText: { fontSize: 10, color: '#6b7280', fontWeight: 600 },
   modeBtnOwner: { background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' },
+  modeTag: {
+    fontSize: 10,
+    color: '#111827',
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 999,
+    padding: '6px 9px',
+    boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
+    minWidth: 82,
+    textAlign: 'center',
+    whiteSpace: 'nowrap' as const,
+  },
+  modeTagOwner: { background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' },
   refreshBtn: {
     fontSize: 12,
     color: '#1677ff',
