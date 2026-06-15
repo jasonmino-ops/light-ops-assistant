@@ -4,7 +4,8 @@ import { getContext } from '@/lib/context'
 import { recognizeSingleProduct, type AiProductFeature } from '@/lib/ai-photo-product-recognize'
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
-const MAX_BYTES = 2 * 1024 * 1024
+const UNSUPPORTED_HEIC_MIME = new Set(['image/heic', 'image/heif'])
+const MAX_BYTES = 8 * 1024 * 1024
 const PRODUCT_PRE_LIMIT = 500
 const MATCH_THRESHOLD = 0.55
 const TOPN = 5
@@ -66,15 +67,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_FORM', message: '图片参数无效' }, { status: 400 })
   }
 
+  const formKeys = Array.from(form.keys())
   const file = form.get('file')
   if (!(file instanceof File)) {
+    console.info('[products-photo-recognize-draft] missing file', {
+      stage: 'validation',
+      formDataKeys: formKeys,
+    })
     return NextResponse.json({ error: 'MISSING_IMAGE', message: '请先上传商品图片' }, { status: 400 })
   }
-  if (!ALLOWED_MIME.has(file.type)) {
-    return NextResponse.json({ error: 'INVALID_MIME', message: '仅支持 JPG / PNG / WebP 图片' }, { status: 400 })
+  console.info('[products-photo-recognize-draft] file received', {
+    stage: 'validation',
+    formDataKeys: formKeys,
+    fileName: file.name,
+    fileSize: file.size,
+    mimeType: file.type,
+  })
+  if (UNSUPPORTED_HEIC_MIME.has(file.type)) {
+    return NextResponse.json({ error: 'INVALID_MIME', message: '暂不支持 HEIC，请选择 JPG/PNG/WebP 图片' }, { status: 400 })
   }
-  if (file.size <= 0 || file.size > MAX_BYTES) {
-    return NextResponse.json({ error: 'INVALID_IMAGE', message: '图片无效或过大，请换一张更清晰的商品图' }, { status: 400 })
+  if (!ALLOWED_MIME.has(file.type)) {
+    return NextResponse.json({ error: 'INVALID_MIME', message: '暂不支持该图片格式，请换 JPG/PNG/WebP 图片' }, { status: 400 })
+  }
+  if (file.size <= 0) {
+    return NextResponse.json({ error: 'EMPTY_IMAGE', message: '没有收到图片，请重新选择' }, { status: 400 })
+  }
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json({ error: 'IMAGE_TOO_LARGE', message: '图片太大，请压缩后重试' }, { status: 400 })
   }
 
   const imageBase64 = Buffer.from(await file.arrayBuffer()).toString('base64')
@@ -84,6 +103,13 @@ export async function POST(req: NextRequest) {
     feature = await recognizeSingleProduct(imageBase64, file.type)
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'AI_FAILED'
+    console.info('[products-photo-recognize-draft] ai failed', {
+      stage: 'ai_recognize',
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type,
+      error: msg.slice(0, 160),
+    })
     if (msg === 'AI_NOT_CONFIGURED') {
       return NextResponse.json({ error: 'AI_NOT_CONFIGURED', message: 'AI 识别暂未配置，请稍后再试' }, { status: 200 })
     }
@@ -94,7 +120,13 @@ export async function POST(req: NextRequest) {
   }
 
   if (!feature || (!feature.name && !feature.brand && !feature.barcode && !feature.packageText)) {
-    return NextResponse.json({ error: 'AI_EMPTY', message: '未识别到清晰商品，请拍商品正面', matchedProducts: [], draft: null }, { status: 200 })
+    console.info('[products-photo-recognize-draft] ai empty', {
+      stage: 'ai_recognize',
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type,
+    })
+    return NextResponse.json({ error: 'AI_EMPTY', message: '暂时没有识别出商品信息，请换一张更清晰的商品正面照片', matchedProducts: [], draft: null }, { status: 200 })
   }
 
   const [products, categories] = await Promise.all([
@@ -126,6 +158,15 @@ export async function POST(req: NextRequest) {
   const matchedProducts = candidates.filter((c) => c.confidence >= MATCH_THRESHOLD)
   const category = resolveCategory(feature.category, categories)
   const draft = buildDraft(feature, category)
+
+  console.info('[products-photo-recognize-draft] result', {
+    stage: matchedProducts.length > 0 ? 'product_match' : 'draft_create',
+    fileName: file.name,
+    fileSize: file.size,
+    mimeType: file.type,
+    matchedCount: matchedProducts.length,
+    draftName: draft.name || null,
+  })
 
   return NextResponse.json({
     matchedProducts,

@@ -1176,12 +1176,16 @@ export default function ProductsPage() {
   }
 
   function handlePhotoCreateFileSelect(file: File) {
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setPhotoCreateError(t('products.imageTypeError'))
+    if (['image/heic', 'image/heif'].includes(file.type)) {
+      setPhotoCreateError(t('products.aiCreateHeicUnsupported'))
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setPhotoCreateError(t('products.imageSizeError'))
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setPhotoCreateError(t('products.aiCreateUnsupportedFormat'))
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setPhotoCreateError(t('products.aiCreateImageTooLarge'))
       return
     }
     setPhotoCreateFile(file)
@@ -1209,7 +1213,7 @@ export default function ProductsPage() {
       })
       const body = await res.json().catch(() => null)
       if (!res.ok || body?.error) {
-        setPhotoCreateError(body?.message ?? body?.error ?? t('products.aiCreateFailed'))
+        setPhotoCreateError(messageForPhotoCreateError(body?.error, body?.message))
         setPhotoCreateStep('upload')
         return
       }
@@ -1245,6 +1249,18 @@ export default function ProductsPage() {
       setPhotoCreateError(t('common.networkError'))
       setPhotoCreateStep('upload')
     }
+  }
+
+  function messageForPhotoCreateError(errorCode?: unknown, fallback?: unknown): string {
+    const code = typeof errorCode === 'string' ? errorCode : ''
+    if (code === 'MISSING_IMAGE' || code === 'EMPTY_IMAGE') return t('products.aiCreateMissingImage')
+    if (code === 'IMAGE_TOO_LARGE') return t('products.aiCreateImageTooLarge')
+    if (code === 'INVALID_MIME') return t('products.aiCreateUnsupportedFormat')
+    if (code === 'AI_EMPTY') return t('products.aiCreateAiEmpty')
+    if (code === 'AI_TIMEOUT') return t('products.aiCreateTimeout')
+    if (code === 'AI_NOT_CONFIGURED') return t('products.aiCreateNotConfigured')
+    if (code === 'AI_FAILED') return t('products.aiCreateFailed')
+    return typeof fallback === 'string' && fallback.trim() ? fallback : t('products.aiCreateSystemError')
   }
 
   function openMatchedProduct(match: AiMatchedProduct) {
