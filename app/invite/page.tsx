@@ -177,7 +177,7 @@ export default function InvitePage() {
           <span style={s.brandAvatar}>{storeInitial}</span>
           <div style={s.brandText}>
             <div style={s.headerTitle}>{currentStoreName}</div>
-            <div style={s.headerSub}>{t('invite.headerTitle')}</div>
+            <div style={s.headerSub}>{t('home.brandSub')}</div>
           </div>
         </div>
         <div style={s.headerTools}>
@@ -196,9 +196,11 @@ export default function InvitePage() {
 
       <div style={s.body}>
         <div style={s.heroCard}>
-          <div style={s.heroEyebrow}>{t('invite.heroEyebrow')}</div>
-          <div style={s.heroTitle}>{t('invite.heroTitle')}</div>
-          <div style={s.heroDesc}>{t('invite.heroDesc')}</div>
+          <div>
+            <div style={s.heroEyebrow}>{t('invite.heroEyebrow')}</div>
+            <div style={s.heroTitle}>{t('invite.heroTitle')}</div>
+            <div style={s.heroDesc}>{t('invite.heroDesc')}</div>
+          </div>
           <div style={s.statRow}>
             <StatPill label={t('invite.activeMembers')} value={String(activeMembers.length)} />
             <StatPill label={t('invite.groupOwner')} value={String(owners.length)} />
@@ -209,11 +211,9 @@ export default function InvitePage() {
         {/* ── Generate section ── */}
         {!result ? (
           <div style={s.card}>
-            <div style={s.cardHeader}>
-              <div>
-                <div style={s.cardTitle}>{t('invite.primaryActionsTitle')}</div>
-                <div style={s.cardDesc}>{t('invite.primaryActionsDesc')}</div>
-              </div>
+            <div style={s.cardHeaderCompact}>
+              <div style={s.cardTitle}>{t('invite.primaryActionsTitle')}</div>
+              <div style={s.cardDesc}>{t('invite.primaryActionsDesc')}</div>
             </div>
             {stores.length > 1 && (
               <div style={s.field}>
@@ -516,7 +516,7 @@ const ir: Record<string, React.CSSProperties> = {
 const s: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f7f8fa', display: 'flex', flexDirection: 'column' },
   header: {
-    padding: '14px 14px 10px',
+    padding: '2px 2px 10px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -525,28 +525,29 @@ const s: Record<string, React.CSSProperties> = {
     margin: '0 auto',
     width: '100%',
     boxSizing: 'border-box',
+    minHeight: 56,
   },
-  brandLeft: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 },
+  brandLeft: { display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0, flex: 1 },
   brandAvatar: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: '50%',
-    background: 'linear-gradient(135deg,#e0f2fe,#f5f3ff)',
-    color: '#1677ff',
+    background: 'linear-gradient(135deg, #111827 0%, #4b5563 100%)',
+    color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 18,
     fontWeight: 900,
-    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
+    boxShadow: '0 10px 24px rgba(15,23,42,0.16)',
     flexShrink: 0,
   },
   brandText: { minWidth: 0 },
-  headerTitle: { fontSize: 17, fontWeight: 850, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  headerSub: { fontSize: 12, color: '#6b7280', marginTop: 2, fontWeight: 600 },
-  headerTools: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+  headerTitle: { fontSize: 18, fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 },
+  headerSub: { fontSize: 11, color: '#6b7280', marginTop: 3, fontWeight: 500 },
+  headerTools: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, minWidth: 118 },
   modeBtn: {
-    height: 32,
+    minHeight: 30,
     borderRadius: 999,
     border: '1px solid #e5e7eb',
     background: '#fff',
@@ -562,26 +563,31 @@ const s: Record<string, React.CSSProperties> = {
 
   body: { flex: 1, padding: '4px 14px 88px', maxWidth: 520, margin: '0 auto', width: '100%', boxSizing: 'border-box' },
   heroCard: {
-    background: 'linear-gradient(135deg,#eef6ff 0%,#f5f3ff 52%,#ffffff 100%)',
+    background: 'linear-gradient(135deg,#eff6ff 0%,#fff7ed 58%,#ffffff 100%)',
     borderRadius: 24,
-    padding: '18px 16px',
-    boxShadow: '0 18px 40px rgba(37,99,235,0.08)',
-    marginBottom: 12,
+    padding: '13px 14px',
+    boxShadow: '0 14px 30px rgba(37,99,235,0.08)',
+    marginBottom: 10,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.15fr) minmax(150px, 0.85fr)',
+    gap: 10,
+    alignItems: 'center',
   },
-  heroEyebrow: { fontSize: 11, color: '#2563eb', fontWeight: 800, marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
-  heroTitle: { fontSize: 24, lineHeight: 1.1, fontWeight: 900, color: '#111827' },
-  heroDesc: { fontSize: 13, color: '#4b5563', lineHeight: 1.55, marginTop: 8 },
-  statRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 14 },
-  statPill: { background: 'rgba(255,255,255,0.78)', border: '1px solid rgba(255,255,255,0.88)', borderRadius: 16, padding: '10px 8px', textAlign: 'center' as const },
-  statValue: { display: 'block', fontSize: 18, fontWeight: 900, color: '#111827' },
-  statLabel: { display: 'block', fontSize: 11, color: '#6b7280', marginTop: 2, whiteSpace: 'nowrap' },
+  heroEyebrow: { fontSize: 10, color: '#2563eb', fontWeight: 850, marginBottom: 4, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
+  heroTitle: { fontSize: 22, lineHeight: 1.08, fontWeight: 900, color: '#111827' },
+  heroDesc: { fontSize: 12, color: '#4b5563', lineHeight: 1.38, marginTop: 5 },
+  statRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 },
+  statPill: { background: 'rgba(255,255,255,0.82)', border: '1px solid rgba(255,255,255,0.92)', borderRadius: 14, padding: '8px 5px', textAlign: 'center' as const },
+  statValue: { display: 'block', fontSize: 17, fontWeight: 950, color: '#111827', lineHeight: 1 },
+  statLabel: { display: 'block', fontSize: 10, color: '#6b7280', marginTop: 3, whiteSpace: 'nowrap' },
 
   card: {
-    background: '#fff', borderRadius: 22, padding: '16px 16px',
-    display: 'flex', flexDirection: 'column', gap: 16,
-    boxShadow: '0 10px 28px rgba(15,23,42,0.06)', marginBottom: 12,
+    background: '#fff', borderRadius: 22, padding: '13px 14px',
+    display: 'flex', flexDirection: 'column', gap: 12,
+    boxShadow: '0 10px 28px rgba(15,23,42,0.06)', marginBottom: 10,
   },
   cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  cardHeaderCompact: { display: 'grid', gap: 3 },
   cardTitle: { fontSize: 16, fontWeight: 850, color: '#111827' },
   cardDesc: { fontSize: 12, color: '#6b7280', marginTop: 3, lineHeight: 1.45 },
   field: { display: 'flex', flexDirection: 'column', gap: 8 },
@@ -589,17 +595,17 @@ const s: Record<string, React.CSSProperties> = {
   select: { height: 44, border: '1.5px solid #e8e8e8', borderRadius: 8, padding: '0 12px', fontSize: 15, background: '#fafafa', color: '#1a1a1a' },
   errorMsg: { fontSize: 13, color: '#ff4d4f', textAlign: 'center' },
 
-  actionRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
+  actionRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 },
   ownerBtn: {
     flex: 1, display: 'flex', alignItems: 'center', gap: 10,
     background: 'linear-gradient(135deg,#fff7ed,#ffffff)', border: '1px solid #fed7aa', borderRadius: 18,
-    padding: '16px 12px', cursor: 'pointer', textAlign: 'left' as const,
+    padding: '13px 11px', cursor: 'pointer', textAlign: 'left' as const,
     boxShadow: '0 8px 18px rgba(249,115,22,0.08)',
   },
   staffBtn: {
     flex: 1, display: 'flex', alignItems: 'center', gap: 10,
     background: 'linear-gradient(135deg,#eff6ff,#ffffff)', border: '1px solid #bfdbfe', borderRadius: 18,
-    padding: '16px 12px', cursor: 'pointer', textAlign: 'left' as const,
+    padding: '13px 11px', cursor: 'pointer', textAlign: 'left' as const,
     boxShadow: '0 8px 18px rgba(37,99,235,0.08)',
   },
   btnIcon: { fontSize: 22, lineHeight: 1 },

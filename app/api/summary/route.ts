@@ -226,5 +226,6 @@ export async function GET(req: NextRequest) {
     topProducts,
     cashSaleAmount: breakdown.cashSaleAmount + coCashAmt,
     khqrSaleAmount: breakdown.khqrSaleAmount + coQRAmt,
+    customerOrderAmount: coTotal,
   })
 }

@@ -33,6 +33,7 @@ type SummaryResult = {
   topProducts: TopProduct[]
   cashSaleAmount?: number
   khqrSaleAmount?: number
+  customerOrderAmount?: number
 }
 
 // ─── Dimension dropdown options ───────────────────────────────────────────────
@@ -81,6 +82,10 @@ export default function DashboardPage() {
   const { t } = useLocale()
   const {
     tier,
+    realRole,
+    isOwnerInStaffMode,
+    enterStaffMode,
+    exitStaffMode,
     storeName: contextStoreName,
     tenantName: contextTenantName,
   } = useWorkMode()
@@ -244,22 +249,25 @@ export default function DashboardPage() {
           <span style={s.brandAvatar}>{storeInitial}</span>
           <div style={s.brandText}>
             <div style={s.brandName}>{displayStoreName}</div>
-            <div style={s.brandSub}>{t('dashboard.title')} · {today}</div>
+            <div style={s.brandSub}>{t('home.brandSub')}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={s.brandRight}>
           <LangToggleBtn />
-          <Link href="/system" style={s.switchBtn}>{t('dashboard.system')}</Link>
-          <button
-            style={s.refreshBtn}
-            onClick={() => {
-              load(dimension, storeId, operatorUserId, timePeriod, customFrom, customTo)
-              loadHot(dimension, storeId)
-            }}
-            disabled={loading}
-          >
-            {loading ? '…' : t('dashboard.refresh')}
-          </button>
+          {realRole === 'OWNER' && (
+            <div style={s.modeRow}>
+              <span style={s.modeLabelText}>
+                {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
+              </span>
+              <button
+                type="button"
+                style={isOwnerInStaffMode ? s.switchBtn : { ...s.switchBtn, ...s.modeBtnOwner }}
+                onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}
+              >
+                {isOwnerInStaffMode ? t('home.exitStaffModeBtn') : t('home.enterStaffModeBtn')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -285,16 +293,28 @@ export default function DashboardPage() {
 
         <div style={s.controlCard}>
           {/* Time period tabs */}
-          <div style={s.periodRow}>
-            {(['TODAY', 'WEEK', 'MONTH', 'CUSTOM'] as TimePeriod[]).map((p) => (
-              <button
-                key={p}
-                style={{ ...s.periodBtn, ...(timePeriod === p ? s.periodBtnActive : {}) }}
-                onClick={() => setTimePeriod(p)}
-              >
-                {PERIOD_LABEL[p]}
-              </button>
-            ))}
+          <div style={s.controlTopRow}>
+            <div style={s.periodRow}>
+              {(['TODAY', 'WEEK', 'MONTH', 'CUSTOM'] as TimePeriod[]).map((p) => (
+                <button
+                  key={p}
+                  style={{ ...s.periodBtn, ...(timePeriod === p ? s.periodBtnActive : {}) }}
+                  onClick={() => setTimePeriod(p)}
+                >
+                  {PERIOD_LABEL[p]}
+                </button>
+              ))}
+            </div>
+            <button
+              style={s.refreshBtn}
+              onClick={() => {
+                load(dimension, storeId, operatorUserId, timePeriod, customFrom, customTo)
+                loadHot(dimension, storeId)
+              }}
+              disabled={loading}
+            >
+              {loading ? '…' : t('dashboard.refresh')}
+            </button>
           </div>
 
           {/* Custom date range */}
@@ -490,7 +510,7 @@ function Overview({
       <div style={ov.heroCard}>
         <div style={ov.heroSub}>{subLabel}</div>
         <div style={ov.heroLabel}>{heroLabel}</div>
-        <div style={{ ...ov.heroAmount, color: result.netAmount >= 0 ? '#047857' : '#dc2626' }}>
+        <div style={ov.heroAmount}>
           {fmtAmount(result.netAmount)}
         </div>
       </div>
@@ -508,12 +528,11 @@ function Overview({
       </div>
 
       {/* Payment breakdown */}
-      {((result.cashSaleAmount ?? 0) > 0 || (result.khqrSaleAmount ?? 0) > 0) && (
-        <div style={ov.payGrid}>
-          <PayCell icon="💵" label={t('dashboard.cashSaleLabel')} value={fmtAmount(result.cashSaleAmount ?? 0)} />
-          <PayCell icon="📱" label={t('dashboard.khqrSaleLabel')} value={fmtAmount(result.khqrSaleAmount ?? 0)} />
-        </div>
-      )}
+      <div style={ov.payGrid}>
+        <PayCell icon="💵" label={t('dashboard.cashSaleLabel')} value={fmtAmount(result.cashSaleAmount ?? 0)} />
+        <PayCell icon="📱" label={t('dashboard.khqrSaleLabel')} value={fmtAmount(result.khqrSaleAmount ?? 0)} />
+        <PayCell icon="🛍️" label={t('dashboard.customerOrderAmount')} value={fmtAmount(result.customerOrderAmount ?? 0)} />
+      </div>
     </div>
   )
 }
@@ -1482,7 +1501,7 @@ function PayCell({ icon, label, value }: { icon: string; label: string; value: s
 const s: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f7f8fa', display: 'flex', flexDirection: 'column' },
   header: {
-    padding: '14px 14px 10px',
+    padding: '2px 2px 10px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1491,47 +1510,62 @@ const s: Record<string, React.CSSProperties> = {
     margin: '0 auto',
     width: '100%',
     boxSizing: 'border-box',
+    minHeight: 56,
   },
-  brandLeft: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 },
+  brandLeft: { display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0, flex: 1 },
   brandAvatar: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: '50%',
-    background: 'linear-gradient(135deg,#e0f2fe,#f5f3ff)',
-    color: '#1677ff',
+    background: 'linear-gradient(135deg, #111827 0%, #4b5563 100%)',
+    color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 18,
     fontWeight: 900,
-    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
+    boxShadow: '0 10px 24px rgba(15,23,42,0.16)',
     flexShrink: 0,
   },
   brandText: { minWidth: 0 },
-  brandName: { fontSize: 17, fontWeight: 850, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  brandSub: { fontSize: 12, color: '#6b7280', marginTop: 2, fontWeight: 600 },
+  brandName: { fontSize: 18, fontWeight: 800, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 },
+  brandSub: { fontSize: 11, color: '#6b7280', marginTop: 3, fontWeight: 500 },
+  brandRight: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'flex-end',
+    gap: 4,
+    flexShrink: 0,
+    minWidth: 118,
+  },
   switchBtn: {
-    fontSize: 11,
-    color: '#374151',
+    fontSize: 10,
+    color: '#111827',
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 12,
-    padding: '6px 10px',
+    borderRadius: 999,
+    padding: '6px 9px',
     cursor: 'pointer',
     textDecoration: 'none',
     boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
+    minWidth: 82,
+    whiteSpace: 'nowrap' as const,
   },
+  modeRow: { display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' as const },
+  modeLabelText: { fontSize: 10, color: '#6b7280', fontWeight: 600 },
+  modeBtnOwner: { background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' },
   refreshBtn: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#1677ff',
-    background: '#fff',
+    background: '#eff6ff',
     border: '1px solid #dbeafe',
     borderRadius: 14,
-    padding: '6px 14px',
-    minWidth: 52,
-    boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
+    padding: '0 10px',
+    minWidth: 48,
+    height: 34,
+    fontWeight: 800,
   },
-  body: { flex: 1, padding: '4px 14px 88px', maxWidth: 520, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' as const, gap: 8, boxSizing: 'border-box' },
+  body: { flex: 1, padding: '4px 14px 88px', maxWidth: 520, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' as const, gap: 7, boxSizing: 'border-box' },
 
   // ── KHQR 当前模式提示（第一阶段静态图模式） ──
   khqrNotice: {
@@ -1578,9 +1612,9 @@ const s: Record<string, React.CSSProperties> = {
 
   // ── 门店经营查询单入口 + 抽屉 ──
   dimMenuWrap: {
-    background: '#fff',
+    background: '#f8fafc',
     borderRadius: 16,
-    marginTop: 10,
+    marginTop: 8,
     overflow: 'hidden' as const,
     border: '1px solid #eef2f7',
   },
@@ -1589,7 +1623,7 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '11px 14px',
+    padding: '10px 12px',
     background: 'none',
     border: 'none',
     cursor: 'pointer',
@@ -1622,10 +1656,10 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
   },
   selectorCard: {
-    background: '#fff',
+    background: '#f8fafc',
     borderRadius: 16,
-    padding: '12px 14px',
-    marginTop: 10,
+    padding: '10px 12px',
+    marginTop: 8,
     border: '1px solid #eef2f7',
   },
   selectorLabel: {
@@ -1647,15 +1681,16 @@ const s: Record<string, React.CSSProperties> = {
     width: '100%',
     appearance: 'auto' as const,
   },
-  controlCard: { background: '#fff', borderRadius: 22, padding: '12px 12px', boxShadow: '0 10px 28px rgba(15,23,42,0.06)' },
-  periodRow: { display: 'flex', gap: 6, marginBottom: 0 },
+  controlCard: { background: '#fff', borderRadius: 22, padding: '10px 10px', boxShadow: '0 10px 28px rgba(15,23,42,0.06)' },
+  controlTopRow: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, alignItems: 'center' },
+  periodRow: { display: 'flex', gap: 5, marginBottom: 0 },
   periodBtn: {
     flex: 1,
     height: 34,
-    border: '1.5px solid var(--border)',
-    borderRadius: 16,
+    border: '1px solid var(--border)',
+    borderRadius: 14,
     background: '#f7f8fa',
-    fontSize: 13,
+    fontSize: 12,
     color: 'var(--muted)',
     fontWeight: 500,
     cursor: 'pointer',
@@ -1759,29 +1794,30 @@ const s: Record<string, React.CSSProperties> = {
 
 const ov: Record<string, React.CSSProperties> = {
   heroCard: {
-    background: 'linear-gradient(135deg,#ecfdf5 0%,#ecfeff 50%,#ffffff 100%)',
+    background: 'linear-gradient(135deg,#1677ff 0%,#10b981 100%)',
     borderRadius: 24,
-    padding: '18px 18px 16px',
+    padding: '15px 16px 14px',
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 2,
-    marginBottom: 10,
-    boxShadow: '0 18px 40px rgba(20,184,166,0.09)',
+    marginBottom: 8,
+    color: '#fff',
+    boxShadow: '0 18px 40px rgba(22,119,255,0.18)',
   },
-  heroSub: { fontSize: 11, color: '#0f766e', marginBottom: 2, fontWeight: 700 },
-  heroLabel: { fontSize: 12, color: '#64748b', fontWeight: 700 },
-  heroAmount: { fontSize: 36, fontWeight: 900, lineHeight: 1.05, marginTop: 2 },
+  heroSub: { fontSize: 11, color: 'rgba(255,255,255,0.78)', marginBottom: 2, fontWeight: 800 },
+  heroLabel: { fontSize: 12, color: 'rgba(255,255,255,0.82)', fontWeight: 800 },
+  heroAmount: { fontSize: 34, fontWeight: 950, lineHeight: 1.05, marginTop: 2, color: '#fff' },
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     background: '#fff',
-    borderRadius: 20,
+    borderRadius: 18,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 7,
     boxShadow: '0 10px 28px rgba(15,23,42,0.05)',
   },
-  payGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 },
+  payGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7, marginBottom: 7 },
 }
 
 const hot: Record<string, React.CSSProperties> = {
@@ -1870,18 +1906,18 @@ const hot: Record<string, React.CSSProperties> = {
 }
 
 const mc: Record<string, React.CSSProperties> = {
-  cell: { padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 4, borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' },
-  value: { fontSize: 20, fontWeight: 700, color: 'var(--text)' },
+  cell: { padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px solid var(--border)', borderRight: '1px solid var(--border)' },
+  value: { fontSize: 18, fontWeight: 850, color: 'var(--text)' },
   unit: { fontSize: 12, fontWeight: 400, color: 'var(--muted)', marginLeft: 3 },
   label: { fontSize: 12, color: 'var(--muted)' },
 }
 
 const pc: Record<string, React.CSSProperties> = {
-  cell: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 },
-  icon: { fontSize: 22, flexShrink: 0 },
+  cell: { background: '#fff', borderRadius: 18, padding: '10px 8px', display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-start', gap: 5, boxShadow: '0 8px 22px rgba(15,23,42,0.05)' },
+  icon: { fontSize: 20, flexShrink: 0 },
   text: { display: 'flex', flexDirection: 'column', gap: 2 },
-  val: { fontSize: 17, fontWeight: 700, color: 'var(--text)' },
-  lbl: { fontSize: 11, color: 'var(--muted)' },
+  val: { fontSize: 15, fontWeight: 850, color: 'var(--text)' },
+  lbl: { fontSize: 10, color: 'var(--muted)', lineHeight: 1.2 },
 }
 
 const sc: Record<string, React.CSSProperties> = {
