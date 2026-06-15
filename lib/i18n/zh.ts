@@ -153,6 +153,7 @@ const zh = {
     quickQty: '快速数量',
     subtotal: '小计',
     addToCart: '+ 加入本单',
+    addToCartFloating: '加入本单 →',
     cartHeader: '本单商品',
     cartDrawerTitle: '购物车',
     clearCart: '清空本单',

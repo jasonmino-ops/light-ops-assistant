@@ -1973,48 +1973,50 @@ export default function SalePage() {
                   <CartItemRow key={ci.key} item={ci} itemUnit={t('sale.itemUnit')} onDelete={() => removeFromCart(ci.key)} />
                 ))}
 
-                <div style={s.checkoutBar}>
-                  <div
-                    style={{ ...s.totalCard, ...s.totalCardClickable }}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setCartDrawerOpen(true)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        setCartDrawerOpen(true)
-                      }
-                    }}
-                  >
-                    <span style={s.totalLabel}>{t('sale.total')}</span>
-                    <span style={s.totalAmount}>${cartTotal.toFixed(2)}</span>
+                {!product && (
+                  <div style={s.checkoutBar}>
+                    <div
+                      style={{ ...s.totalCard, ...s.totalCardClickable }}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setCartDrawerOpen(true)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          setCartDrawerOpen(true)
+                        }
+                      }}
+                    >
+                      <span style={s.totalLabel}>{t('sale.total')}</span>
+                      <span style={s.totalAmount}>${cartTotal.toFixed(2)}</span>
+                    </div>
+
+                    {submitError && <div style={s.errorMsg}>{submitError}</div>}
+
+                    <button
+                      style={{ ...s.submitBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
+                      disabled={status === 'submitting'}
+                      onClick={openPayModal}
+                    >
+                      {status === 'submitting' ? t('common.submitting') : t('sale.confirmSale')}
+                    </button>
+                    <button
+                      style={{ ...s.deferBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
+                      disabled={status === 'submitting'}
+                      onClick={handleDeferredSubmit}
+                    >
+                      {t('sale.deferBtn')}
+                    </button>
                   </div>
-
-                  {submitError && <div style={s.errorMsg}>{submitError}</div>}
-
-                  <button
-                    style={{ ...s.submitBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
-                    disabled={status === 'submitting'}
-                    onClick={openPayModal}
-                  >
-                    {status === 'submitting' ? t('common.submitting') : t('sale.confirmSale')}
-                  </button>
-                  <button
-                    style={{ ...s.deferBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
-                    disabled={status === 'submitting'}
-                    onClick={handleDeferredSubmit}
-                  >
-                    {t('sale.deferBtn')}
-                  </button>
-                </div>
+                )}
               </>
             )}
 
-            {product && cart.length === 0 && <div style={s.floatingAddSpacer} />}
+            {product && <div style={s.floatingAddSpacer} />}
           </>
         )}
       </div>
-      {product && cart.length === 0 && (
+      {product && (
         <div style={s.floatingAddBar} aria-live="polite">
           <div style={s.floatingAddProduct}>
             <div style={s.floatingAddThumb}>
@@ -2043,7 +2045,7 @@ export default function SalePage() {
           <div style={s.floatingAddActions}>
             <div style={s.floatingAddSubtotal}>${(product.sellPrice * safeQty).toFixed(2)}</div>
             <button type="button" style={s.floatingAddBtn} onClick={addToCart}>
-              {t('sale.addToCart')}
+              {t('sale.addToCartFloating')}
             </button>
           </div>
         </div>
@@ -2374,7 +2376,7 @@ const s: Record<string, React.CSSProperties> = {
 
   addBtn: { display: 'block', width: '100%', height: 48, background: 'var(--blue)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 16, fontWeight: 700 },
 
-  floatingAddSpacer: { height: 94 },
+  floatingAddSpacer: { height: 96 },
   floatingAddBar: {
     position: 'fixed',
     left: 12,
@@ -2383,31 +2385,32 @@ const s: Record<string, React.CSSProperties> = {
     zIndex: 90,
     maxWidth: 560,
     margin: '0 auto',
-    minHeight: 74,
+    minHeight: 76,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
     padding: '10px 10px 10px 12px',
     borderRadius: 22,
-    background: 'rgba(255,255,255,0.96)',
-    border: '1px solid rgba(226,232,240,0.9)',
-    boxShadow: '0 18px 42px rgba(15,23,42,0.18)',
-    backdropFilter: 'blur(14px)',
+    background: 'linear-gradient(135deg, #1677ff 0%, #2563eb 45%, #4f46e5 100%)',
+    border: '1px solid rgba(255,255,255,0.24)',
+    boxShadow: '0 18px 46px rgba(37,99,235,0.34)',
+    backdropFilter: 'blur(16px)',
   },
   floatingAddProduct: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 },
   floatingAddThumb: {
     width: 48,
     height: 48,
     borderRadius: 16,
-    background: '#f1f5f9',
+    background: 'rgba(255,255,255,0.94)',
     overflow: 'hidden',
     flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: '#94a3b8',
+    color: '#2563eb',
     fontWeight: 800,
+    boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.35)',
   },
   floatingAddImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
   floatingAddPlaceholder: { fontSize: 22, lineHeight: 1 },
@@ -2415,7 +2418,7 @@ const s: Record<string, React.CSSProperties> = {
   floatingAddName: {
     fontSize: 14,
     fontWeight: 900,
-    color: '#111827',
+    color: '#fff',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -2424,23 +2427,23 @@ const s: Record<string, React.CSSProperties> = {
   floatingAddMeta: {
     fontSize: 12,
     fontWeight: 700,
-    color: '#64748b',
+    color: 'rgba(255,255,255,0.82)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
   floatingAddActions: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
-  floatingAddSubtotal: { fontSize: 15, fontWeight: 950, color: '#111827', whiteSpace: 'nowrap' },
+  floatingAddSubtotal: { fontSize: 16, fontWeight: 950, color: '#fff', whiteSpace: 'nowrap' },
   floatingAddBtn: {
-    minWidth: 92,
+    minWidth: 108,
     height: 46,
     border: 'none',
     borderRadius: 16,
-    background: 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)',
-    color: '#fff',
+    background: 'rgba(255,255,255,0.95)',
+    color: '#1d4ed8',
     fontSize: 14,
     fontWeight: 900,
-    boxShadow: '0 10px 22px rgba(37,99,235,0.28)',
+    boxShadow: '0 10px 22px rgba(15,23,42,0.18)',
     cursor: 'pointer',
   },
 

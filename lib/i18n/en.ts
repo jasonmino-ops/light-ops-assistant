@@ -153,6 +153,7 @@ const en = {
     quickQty: 'Quick qty',
     subtotal: 'Subtotal',
     addToCart: '+ Add to order',
+    addToCartFloating: 'Add →',
     cartHeader: 'Order items',
     cartDrawerTitle: 'Cart',
     clearCart: 'Clear order',

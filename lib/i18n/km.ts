@@ -153,6 +153,7 @@ const km = {
     quickQty: 'បរិមាណរហ័ស',
     subtotal: 'សរុបរង',
     addToCart: '+ បន្ថែមក្នុងបន្ទុក',
+    addToCartFloating: 'បន្ថែម →',
     cartHeader: 'ទំនិញក្នុងបន្ទុក',
     cartDrawerTitle: 'រទេះ',
     clearCart: 'លុបបន្ទុក',
