@@ -376,6 +376,12 @@ export default function HomePage() {
               <span style={s.payBreakItem}>💵 CASH ${(summary?.cashSaleAmount ?? 0).toFixed(2)}</span>
               <span style={s.payBreakSep}>·</span>
               <span style={s.payBreakItem}>📱 KHQR ${(summary?.khqrSaleAmount ?? 0).toFixed(2)}</span>
+              {effectiveRole === 'OWNER' && (
+                <>
+                  <span style={s.payBreakSep}>·</span>
+                  <span style={s.payBreakItem}>{t('home.pendingAmount')} ${pendingOrderAmount.toFixed(2)}</span>
+                </>
+              )}
             </div>
             <div style={s.summaryGrid}>
               <SummaryCell label={t('home.sale')} value={String(summary?.saleCount ?? 0)} unit={t('home.unit')} />
@@ -384,9 +390,6 @@ export default function HomePage() {
               <div style={s.summaryDivider} />
               <SummaryCell label={t('home.pendingOrdersShort')} value={String(pendingOrderCount)} unit={t('home.unit')} />
             </div>
-            {effectiveRole === 'OWNER' && (
-              <div style={s.pendingAmountLine}>{t('home.pendingAmount')} ${pendingOrderAmount.toFixed(2)}</div>
-            )}
           </>
         )}
       </div>
@@ -395,7 +398,9 @@ export default function HomePage() {
       <div style={s.workSection}>
         <div style={s.sectionHeader}>
           <span style={s.sectionTitleBare}>{t('home.pendingWork')}</span>
-          {effectiveRole === 'OWNER' && pendingOrderCount > 0 && <span style={s.coBadge}>{pendingOrderCount}</span>}
+          {effectiveRole === 'OWNER' && pendingOrderCount > 0 && (
+            <Link href="/cashier" style={s.viewAll}>{t('home.viewAll')}</Link>
+          )}
         </div>
         {effectiveRole === 'OWNER' ? (
           ordersError ? (
@@ -403,7 +408,7 @@ export default function HomePage() {
           ) : pendingOrderCount === 0 ? (
             <div style={s.workEmpty}>{t('home.noPendingWork')}</div>
           ) : (
-            pendingCustomerOrders.slice(0, 3).map((order) => (
+            pendingCustomerOrders.slice(0, 1).map((order) => (
               <CustomerOrderCard
                 key={order.id}
                 order={order}
@@ -790,7 +795,7 @@ function CustomerOrderCard({
 
   return (
     <div
-      style={{ ...s.recentCard, borderLeft: `3px solid ${color}`, margin: '0 8px 8px', background: '#fff', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', gap: 0, cursor: 'pointer' }}
+      style={{ ...s.recentCard, borderLeft: `3px solid ${color}`, margin: '0 0 4px', padding: '9px 11px', background: '#fff', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', gap: 0, cursor: 'pointer' }}
       onClick={() => setShowDetail((d) => !d)}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -897,13 +902,13 @@ const s: Record<string, React.CSSProperties> = {
   page: {
     maxWidth: 480,
     margin: '0 auto',
-    padding: '14px 12px 18px',
+    padding: '10px 12px 18px',
     background: '#f7f8fa',
     minHeight: '100vh',
   },
   brandBar: {
     background: 'transparent',
-    padding: '4px 2px 14px',
+    padding: '2px 2px 10px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -915,15 +920,15 @@ const s: Record<string, React.CSSProperties> = {
     gap: 12,
   },
   brandAvatar: {
-    width: 50,
-    height: 50,
+    width: 44,
+    height: 44,
     borderRadius: '50%',
     background: 'linear-gradient(135deg, #111827 0%, #4b5563 100%)',
     color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 900,
     boxShadow: '0 10px 24px rgba(15,23,42,0.16)',
     flexShrink: 0,
@@ -941,14 +946,14 @@ const s: Record<string, React.CSSProperties> = {
     gap: 1,
   },
   brandTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 800,
     color: '#111827',
     letterSpacing: '-0.3px',
     lineHeight: 1.2,
   },
   brandSub: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6b7280',
     marginTop: 3,
     letterSpacing: '0.01em',
@@ -957,15 +962,15 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-end',
-    gap: 6,
+    gap: 4,
   },
   switchBtn: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#111827',
     background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 999,
-    padding: '7px 10px',
+    padding: '6px 9px',
     cursor: 'pointer',
     boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
   },
@@ -975,7 +980,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   modeLabelText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#6b7280',
     fontWeight: 600,
   },
@@ -986,11 +991,11 @@ const s: Record<string, React.CSSProperties> = {
   },
   summaryCard: {
     background: '#fff',
-    margin: '0 0 16px',
-    borderRadius: 24,
-    padding: '20px',
-    boxShadow: '0 16px 36px rgba(15,23,42,0.08)',
-    marginBottom: 16,
+    margin: '0 0 12px',
+    borderRadius: 22,
+    padding: '15px 16px',
+    boxShadow: '0 12px 28px rgba(15,23,42,0.07)',
+    marginBottom: 12,
     border: '1px solid rgba(229,231,235,0.9)',
   },
   summaryTopRow: {
@@ -1000,19 +1005,19 @@ const s: Record<string, React.CSSProperties> = {
     gap: 10,
   },
   summaryTitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#8c8c8c',
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   summaryLink: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
     color: '#1677ff',
     textDecoration: 'none',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   summarySkeletonWrap: {
     display: 'flex',
@@ -1034,24 +1039,24 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-start',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   payBreakRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 12,
-    paddingBottom: 12,
+    marginBottom: 9,
+    paddingBottom: 9,
     borderBottom: '1px solid #f0f0f0',
   },
-  payBreakItem: { fontSize: 12, color: '#8c8c8c' },
+  payBreakItem: { fontSize: 11, color: '#8c8c8c' },
   payBreakSep: { fontSize: 12, color: '#d9d9d9' },
   netLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#8c8c8c',
   },
   netAmount: {
-    fontSize: 42,
+    fontSize: 36,
     fontWeight: 900,
     letterSpacing: '-0.02em',
     lineHeight: 1.05,
@@ -1069,7 +1074,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 2,
   },
   summaryCellValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 800,
     color: '#1a1a1a',
   },
@@ -1080,12 +1085,12 @@ const s: Record<string, React.CSSProperties> = {
     marginLeft: 2,
   },
   summaryCellLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#8c8c8c',
   },
   summaryDivider: {
     width: 1,
-    height: 32,
+    height: 28,
     background: '#e8e8e8',
   },
   pendingAmountLine: {
@@ -1133,15 +1138,15 @@ const s: Record<string, React.CSSProperties> = {
   workSection: {
     background: '#fff7ed',
     border: '1px solid #fed7aa',
-    borderRadius: 22,
-    padding: '14px 10px 8px',
-    marginBottom: 16,
-    boxShadow: '0 12px 26px rgba(154,52,18,0.06)',
+    borderRadius: 20,
+    padding: '10px 10px 6px',
+    marginBottom: 10,
+    boxShadow: '0 8px 20px rgba(154,52,18,0.05)',
   },
   workEmpty: {
     background: '#fff',
     borderRadius: 16,
-    padding: '16px 14px',
+    padding: '12px 13px',
     color: '#9a3412',
     fontSize: 13,
     lineHeight: 1.5,
@@ -1149,9 +1154,9 @@ const s: Record<string, React.CSSProperties> = {
   },
   aiHomeCard: {
     background: 'linear-gradient(135deg, #111827 0%, #334155 100%)',
-    borderRadius: 24,
-    padding: '18px 18px',
-    marginBottom: 20,
+    borderRadius: 22,
+    padding: '15px 16px',
+    marginBottom: 18,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1166,7 +1171,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   aiHomeEyebrow: {
     alignSelf: 'flex-start',
-    fontSize: 11,
+    fontSize: 10,
     color: '#bae6fd',
     background: 'rgba(14,165,233,0.16)',
     border: '1px solid rgba(186,230,253,0.28)',
@@ -1175,13 +1180,13 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 800,
   },
   aiHomeTitle: {
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: 900,
     color: '#fff',
     letterSpacing: '-0.2px',
   },
   aiHomeSub: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#d1d5db',
     lineHeight: 1.5,
   },
@@ -1190,8 +1195,8 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     background: '#fff',
     color: '#111827',
-    padding: '10px 13px',
-    fontSize: 13,
+    padding: '9px 12px',
+    fontSize: 12,
     fontWeight: 800,
     textDecoration: 'none',
     boxShadow: '0 8px 18px rgba(0,0,0,0.14)',
@@ -1509,36 +1514,36 @@ const s: Record<string, React.CSSProperties> = {
   coActions: {
     display: 'flex',
     gap: 6,
-    marginTop: 6,
+    marginTop: 4,
   },
   coConfirmBtn: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
     color: '#fff',
     background: '#52c41a',
     border: 'none',
     borderRadius: 6,
-    padding: '4px 12px',
+    padding: '4px 10px',
     cursor: 'pointer',
   },
   coCompleteBtn: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
     color: '#fff',
     background: '#1677ff',
     border: 'none',
     borderRadius: 6,
-    padding: '4px 12px',
+    padding: '4px 10px',
     cursor: 'pointer',
   },
   coCancelBtn: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 600,
     color: '#ff4d4f',
     background: '#fff1f0',
     border: '1px solid #ffccc7',
     borderRadius: 6,
-    padding: '4px 12px',
+    padding: '4px 10px',
     cursor: 'pointer',
   },
   coTgBadge: {
@@ -1556,7 +1561,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     borderRadius: 4,
     padding: '1px 7px',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: 700,
     background: '#fff7ed',
     color: '#c2410c',
@@ -1566,8 +1571,8 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     gap: 8,
     flexWrap: 'wrap' as const,
-    marginTop: 4,
-    fontSize: 12,
+    marginTop: 2,
+    fontSize: 10,
     color: '#c2410c',
   },
   coUpdating: {
