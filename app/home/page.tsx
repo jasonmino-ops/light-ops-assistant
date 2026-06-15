@@ -443,7 +443,12 @@ export default function HomePage() {
         <ActionBtn href="/sale" icon="💰" label={t('home.sale')} color="#1677ff" />
         <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
         <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
-        <ActionBtn href={storeCode ? `/desktop?storeCode=${storeCode}&lang=${lang}` : '/desktop'} icon="🖥️" label={t('home.cashier')} color="#722ed1" />
+        <ActionBtn
+          icon="🖥️"
+          label={t('home.cashier')}
+          color="#722ed1"
+          onClick={() => window.open(desktopUrl, '_blank', 'noopener,noreferrer')}
+        />
       </div>
 
       <div style={s.ownerEntrySection}>
@@ -587,13 +592,25 @@ function SummaryCell({ label, value, unit }: { label: string; value: string; uni
   )
 }
 
-function ActionBtn({ href, icon, label, color }: {
-  href: string; icon: string; label: string; color: string
+function ActionBtn({ href, icon, label, color, onClick }: {
+  href?: string; icon: string; label: string; color: string; onClick?: () => void
 }) {
-  return (
-    <Link href={href} style={{ ...s.actionBtn, borderColor: color + '33' }}>
+  const content = (
+    <>
       <span style={{ ...s.actionIcon, background: color + '15' }}>{icon}</span>
       <span style={{ ...s.actionLabel, color }}>{label}</span>
+    </>
+  )
+  if (onClick) {
+    return (
+      <button type="button" style={{ ...s.actionBtn, borderColor: color + '33' }} onClick={onClick}>
+        {content}
+      </button>
+    )
+  }
+  return (
+    <Link href={href ?? '#'} style={{ ...s.actionBtn, borderColor: color + '33' }}>
+      {content}
     </Link>
   )
 }
@@ -1287,6 +1304,8 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     textDecoration: 'none',
     boxShadow: '0 10px 24px rgba(15,23,42,0.05)',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   actionIcon: {
     width: 40,
