@@ -9,7 +9,11 @@
     "start": "next start",
     "postinstall": "prisma generate",
     "migrate:prod": "DATABASE_URL=$DIRECT_URL prisma migrate deploy",
-    "rollback:freeze": "bash scripts/rollback-to-freeze.sh"
+    "rollback:freeze": "bash scripts/rollback-to-freeze.sh",
+    "vercel:deployments": "vercel ls",
+    "vercel:deployments:json": "vercel ls light-ops-assistant --format=json",
+    "vercel:production": "vercel inspect https://light-ops-assistant.vercel.app",
+    "vercel:current": "node scripts/vercel-current.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -34,6 +38,7 @@
     "@types/react-dom": "^19.0.0",
     "prisma": "^7.6.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vercel": "^54.14.0"
   }
 }
