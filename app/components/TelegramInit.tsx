@@ -27,7 +27,7 @@ import km from '@/lib/i18n/km'
 
 const SESSION_KEY = 'tg-authed-uid'
 const OPS_SESSION_KEY = 'tg-ops-authed-uid'
-const BOOT_DELAY_MS = 420
+const BOOT_DELAY_MS = 180
 const BOOT_COPY = {
   zh: '正在进入店小二',
   en: 'Entering your store workspace',
@@ -101,12 +101,14 @@ export default function TelegramInit({
         return
       }
       setAuthChecking(true)
+      const startedAt = performance.now()
       fetch('/api/auth/status')
         .then((r) => {
           if (r.status === 401) {
             window.location.replace('/relogin')
             return
           }
+          console.info('[auth] status ready', Math.round(performance.now() - startedAt), 'ms')
           setAuthChecking(false)
         })
         .catch(() => {
@@ -181,6 +183,7 @@ export default function TelegramInit({
       const authUrl = isOpsPath ? '/api/auth/telegram-ops' : '/api/auth/telegram'
       const sessionKey = isOpsPath ? OPS_SESSION_KEY : SESSION_KEY
       setAuthChecking(true)
+      const startedAt = performance.now()
 
       fetch(authUrl, {
         method: 'POST',
@@ -189,6 +192,7 @@ export default function TelegramInit({
       })
         .then((r) => r.json())
         .then((body) => {
+          console.info('[auth] telegram ready', Math.round(performance.now() - startedAt), 'ms')
           if (body.ok) {
             sessionStorage.setItem(sessionKey, tgUserId ?? '1')
             if (window.location.pathname.startsWith('/ops')) {

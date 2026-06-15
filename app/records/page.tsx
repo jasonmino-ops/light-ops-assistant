@@ -163,6 +163,27 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
 
 const PAGE_SIZE = 50
 type RangePreset = 'TODAY' | 'YESTERDAY' | 'WEEK' | 'CUSTOM' | 'ALL'
+const RECORDS_CACHE_TTL_MS = 45_000
+
+function readRecordsCache(key: string): ApiResponse | null {
+  try {
+    const raw = window.sessionStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { savedAt?: number; data?: ApiResponse }
+    if (!parsed.savedAt || Date.now() - parsed.savedAt > RECORDS_CACHE_TTL_MS) return null
+    return parsed.data ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeRecordsCache(key: string, data: ApiResponse) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data }))
+  } catch {
+    // sessionStorage may be unavailable in restricted WebViews.
+  }
+}
 
 export default function RecordsPage() {
   const { t } = useLocale()
@@ -198,7 +219,17 @@ export default function RecordsPage() {
 
   const fetchRecords = useCallback(
     async (targetPage: number, append: boolean) => {
-      append ? setLoadingMore(true) : setLoading(true)
+      const cacheKey = `records:${dateFrom}:${dateTo}:${saleTypeFilter}:p${targetPage}`
+      const cached = !append && targetPage === 1 ? readRecordsCache(cacheKey) : null
+      if (cached) {
+        setAllItems(cached.items)
+        setSummary(cached.summary)
+        setTotal(cached.total)
+        setPage(cached.page)
+        setLoading(false)
+      } else {
+        append ? setLoadingMore(true) : setLoading(true)
+      }
       setError(null)
 
       const params = new URLSearchParams({
@@ -210,6 +241,7 @@ export default function RecordsPage() {
       if (saleTypeFilter !== 'ALL') params.set('saleType', saleTypeFilter)
 
       try {
+        const startedAt = performance.now()
         const res = await apiFetch(`/api/records?${params}`)
         if (!res.ok) {
           setError(t('records.loadFailed'))
@@ -220,6 +252,8 @@ export default function RecordsPage() {
         setSummary(data.summary)
         setTotal(data.total)
         setPage(data.page)
+        if (!append && targetPage === 1) writeRecordsCache(cacheKey, data)
+        console.info('[records] fetch', Math.round(performance.now() - startedAt), 'ms')
       } catch {
         setError(t('common.networkError'))
       } finally {

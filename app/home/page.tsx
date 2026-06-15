@@ -80,6 +80,28 @@ type Summary = {
   khqrSaleAmount?: number
 }
 
+const HOME_SUMMARY_CACHE_TTL_MS = 45_000
+
+function readHomeSummaryCache(key: string): Summary | null {
+  try {
+    const raw = window.sessionStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { savedAt?: number; summary?: Summary }
+    if (!parsed.savedAt || Date.now() - parsed.savedAt > HOME_SUMMARY_CACHE_TTL_MS) return null
+    return parsed.summary ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeHomeSummaryCache(key: string, summary: Summary) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), summary }))
+  } catch {
+    // sessionStorage may be unavailable in restricted WebViews.
+  }
+}
+
 type RecordItem = {
   id: string
   recordNo: string
@@ -201,17 +223,27 @@ export default function HomePage() {
   useEffect(() => {
     const today = todayStr()
     const params = new URLSearchParams({ dateFrom: today, dateTo: today, pageSize: '30' })
+    const cacheKey = `home-summary:${today}:${realRole}`
+    const cached = readHomeSummaryCache(cacheKey)
+    if (cached) {
+      setSummary(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
 
-    setLoading(true)
     setLoadError(null)
+    const startedAt = performance.now()
     apiFetch(`/api/records?${params}`, undefined, STAFF_CTX)
       .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
       .then((data) => {
         setSummary(data.summary)
+        if (data.summary) writeHomeSummaryCache(cacheKey, data.summary)
+        console.info('[home] summary fetch', Math.round(performance.now() - startedAt), 'ms')
       })
       .catch(() => {
         setLoadError(t('home.homeLoadFailed'))
-        setSummary(null)
+        if (!cached) setSummary(null)
       })
       .finally(() => setLoading(false))
   }, [loadKey, realRole, lang]) // eslint-disable-line react-hooks/exhaustive-deps

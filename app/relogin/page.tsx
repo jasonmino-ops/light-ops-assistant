@@ -9,7 +9,7 @@ const BOT_USERNAME = normalizeTelegramBotUsername(
 )
 const BOT_URL = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null
 
-const REDIRECT_DELAY = 1500 // ms
+const REDIRECT_DELAY = 800 // ms
 
 export default function ReloginPage() {
   const [countdown, setCountdown] = useState(false)
