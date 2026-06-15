@@ -282,12 +282,11 @@ export default function HomePage() {
     aiStatus === 'configured' ? t('home.aiStaffEnabledTitle')
       : aiStatus === 'waiting' ? t('home.aiStaffWaitingTitle')
         : t('home.aiStaffOpenTitle')
-  const aiCardSub = aiStatus === 'configured' ? t('home.aiStaffEnabledSub') : t('home.aiStaffSub')
   const aiActionLabel =
     aiStatus === 'configured' ? t('home.aiStaffViewDetails')
       : aiStatus === 'waiting' ? t('home.aiStaffConfigureNow')
         : t('home.aiStaffOpenNow')
-  const aiActionHref = effectiveRole === 'OWNER' ? '/dashboard' : '/sale'
+  const aiActionHref = effectiveRole === 'OWNER' ? '/products' : '/sale'
 
   async function updateOrderStatus(id: string, status: string) {
     setUpdatingOrderId(id)
@@ -436,25 +435,22 @@ export default function HomePage() {
       </div>
 
       {/* ── AI assistant ── */}
-      <div style={s.aiHomeCard}>
+      <Link href={aiActionHref} style={s.aiHomeCard}>
         <div style={s.aiHomeText}>
           <div style={s.aiHomeEyebrow}>Beta</div>
           <div style={s.aiHomeTitle}>{t('home.aiStaffTitle')}</div>
           <div style={s.aiHomeStatus}>{aiCardTitle}</div>
-          <div style={s.aiHomeSub}>{aiCardSub}</div>
           <div style={s.aiCapabilityRow}>
             <span style={s.aiCapability}>{t('home.aiProductHelper')}</span>
             <span style={s.aiCapability}>{t('home.aiSalesHelper')}</span>
             <span style={s.aiCapability}>{t('home.aiSupportHelper')}</span>
           </div>
-          <Link href={aiActionHref} style={s.aiHomeBtn}>
-            {aiActionLabel}
-          </Link>
+          <span style={s.aiHomeBtn}>{aiActionLabel}</span>
         </div>
         <div style={s.aiRobotWrap} aria-hidden="true">
           <img src="/ai-digital-staff-robot.png" alt="" style={s.aiRobotImg} />
         </div>
-      </div>
+      </Link>
 
       {/* ── Quick actions ── */}
       <div style={s.sectionTitle}>{t('home.quickActions')}</div>
@@ -1151,17 +1147,20 @@ const s: Record<string, React.CSSProperties> = {
     background: 'linear-gradient(135deg, #f5f3ff 0%, #eef2ff 55%, #ffffff 100%)',
     border: '1px solid rgba(196,181,253,0.7)',
     borderRadius: 22,
-    padding: '14px 124px 14px 15px',
-    marginBottom: 18,
+    padding: '11px 96px 11px 14px',
+    marginBottom: 12,
     position: 'relative',
     overflow: 'hidden',
     boxShadow: '0 14px 30px rgba(124,58,237,0.12)',
-    minHeight: 132,
+    minHeight: 104,
+    display: 'block',
+    textDecoration: 'none',
+    cursor: 'pointer',
   },
   aiHomeText: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
+    gap: 4,
     minWidth: 0,
     position: 'relative',
     zIndex: 2,
@@ -1173,17 +1172,17 @@ const s: Record<string, React.CSSProperties> = {
     background: 'rgba(124,58,237,0.10)',
     border: '1px solid rgba(167,139,250,0.32)',
     borderRadius: 999,
-    padding: '3px 8px',
+    padding: '2px 7px',
     fontWeight: 800,
   },
   aiHomeTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 900,
     color: '#312e81',
     letterSpacing: '-0.2px',
   },
   aiHomeStatus: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: 850,
     color: '#4338ca',
     lineHeight: 1.25,
@@ -1196,7 +1195,7 @@ const s: Record<string, React.CSSProperties> = {
   aiCapabilityRow: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 5,
+    gap: 4,
     marginTop: 1,
   },
   aiCapability: {
@@ -1204,17 +1203,17 @@ const s: Record<string, React.CSSProperties> = {
     background: 'rgba(255,255,255,0.75)',
     border: '1px solid rgba(167,139,250,0.22)',
     color: '#4c1d95',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 800,
-    padding: '3px 7px',
+    padding: '2px 6px',
   },
   aiHomeBtn: {
     alignSelf: 'flex-start',
     borderRadius: 999,
     background: '#4f46e5',
     color: '#fff',
-    padding: '9px 14px',
-    fontSize: 12,
+    padding: '7px 12px',
+    fontSize: 11,
     fontWeight: 800,
     textDecoration: 'none',
     boxShadow: '0 8px 18px rgba(79,70,229,0.18)',
@@ -1222,10 +1221,10 @@ const s: Record<string, React.CSSProperties> = {
   },
   aiRobotWrap: {
     position: 'absolute',
-    right: -12,
-    bottom: -15,
-    width: 138,
-    height: 138,
+    right: -8,
+    bottom: -12,
+    width: 108,
+    height: 108,
     display: 'flex',
     alignItems: 'flex-end',
     justifyContent: 'center',
@@ -1233,8 +1232,8 @@ const s: Record<string, React.CSSProperties> = {
     zIndex: 1,
   },
   aiRobotImg: {
-    width: 132,
-    height: 132,
+    width: 104,
+    height: 104,
     objectFit: 'contain',
     filter: 'drop-shadow(0 16px 20px rgba(67,56,202,0.20))',
   },
