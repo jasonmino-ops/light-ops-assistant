@@ -385,6 +385,7 @@ export default function SalePage() {
 
   const safeQty = Math.max(1, qty)
   const cartTotal = cart.reduce((sum, i) => sum + i.product.sellPrice * i.qty, 0)
+  const selectedProductImageUrl = product ? productImageUrl(product) : null
 
   // ── 按条码查询 ─────────────────────────────────────────────────────────────
 
@@ -1874,9 +1875,45 @@ export default function SalePage() {
                 </div>
               </>
             )}
+
+            {product && cart.length === 0 && <div style={s.floatingAddSpacer} />}
           </>
         )}
       </div>
+      {product && cart.length === 0 && (
+        <div style={s.floatingAddBar} aria-live="polite">
+          <div style={s.floatingAddProduct}>
+            <div style={s.floatingAddThumb}>
+              {selectedProductImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={selectedProductImageUrl}
+                  alt={product.name}
+                  style={s.floatingAddImg}
+                  onError={(event) => {
+                    event.currentTarget.style.display = 'none'
+                  }}
+                />
+              ) : (
+                <span style={s.floatingAddPlaceholder}>□</span>
+              )}
+            </div>
+            <div style={s.floatingAddInfo}>
+              <div style={s.floatingAddName}>{product.name}</div>
+              <div style={s.floatingAddMeta}>
+                {product.spec ? `${product.spec} · ` : ''}
+                {t('sale.qty')} {safeQty}
+              </div>
+            </div>
+          </div>
+          <div style={s.floatingAddActions}>
+            <div style={s.floatingAddSubtotal}>${(product.sellPrice * safeQty).toFixed(2)}</div>
+            <button type="button" style={s.floatingAddBtn} onClick={addToCart}>
+              {t('sale.addToCart')}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2137,6 +2174,76 @@ const s: Record<string, React.CSSProperties> = {
   subtotalValue: { fontSize: 18, fontWeight: 700, color: 'var(--text)' },
 
   addBtn: { display: 'block', width: '100%', height: 48, background: 'var(--blue)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 16, fontWeight: 700 },
+
+  floatingAddSpacer: { height: 94 },
+  floatingAddBar: {
+    position: 'fixed',
+    left: 12,
+    right: 12,
+    bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+    zIndex: 90,
+    maxWidth: 560,
+    margin: '0 auto',
+    minHeight: 74,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    padding: '10px 10px 10px 12px',
+    borderRadius: 22,
+    background: 'rgba(255,255,255,0.96)',
+    border: '1px solid rgba(226,232,240,0.9)',
+    boxShadow: '0 18px 42px rgba(15,23,42,0.18)',
+    backdropFilter: 'blur(14px)',
+  },
+  floatingAddProduct: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 },
+  floatingAddThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    background: '#f1f5f9',
+    overflow: 'hidden',
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#94a3b8',
+    fontWeight: 800,
+  },
+  floatingAddImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
+  floatingAddPlaceholder: { fontSize: 22, lineHeight: 1 },
+  floatingAddInfo: { minWidth: 0, flex: 1 },
+  floatingAddName: {
+    fontSize: 14,
+    fontWeight: 900,
+    color: '#111827',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    marginBottom: 3,
+  },
+  floatingAddMeta: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#64748b',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  floatingAddActions: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+  floatingAddSubtotal: { fontSize: 15, fontWeight: 950, color: '#111827', whiteSpace: 'nowrap' },
+  floatingAddBtn: {
+    minWidth: 92,
+    height: 46,
+    border: 'none',
+    borderRadius: 16,
+    background: 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 900,
+    boxShadow: '0 10px 22px rgba(37,99,235,0.28)',
+    cursor: 'pointer',
+  },
 
   cartHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, padding: '0 2px' },
   cartHeaderText: { fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' },
