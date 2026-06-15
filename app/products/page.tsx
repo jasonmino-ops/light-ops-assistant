@@ -246,6 +246,7 @@ export default function ProductsPage() {
   const [importConfirming, setImportConfirming] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const importPanelRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editNameRef = useRef<HTMLInputElement>(null)
 
@@ -268,6 +269,7 @@ export default function ProductsPage() {
   const [aiPreview, setAiPreview] = useState<AiRow[] | null>(null)
   const [aiResult, setAiResult] = useState<ImportResult | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
+  const aiPanelRef = useRef<HTMLDivElement>(null)
   const aiFileRef = useRef<HTMLInputElement>(null)
 
   // Edit form
@@ -492,16 +494,26 @@ export default function ProductsPage() {
   ]
 
   function openAiImport() {
-    setAiOpen(true)
     aiReset()
+    setImportOpen(false)
+    setAiOpen(true)
+    window.setTimeout(() => {
+      aiPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      aiFileRef.current?.focus()
+    }, 0)
   }
 
   function openBulkImport() {
+    setAiOpen(false)
     setImportOpen(true)
     setImportStep('upload')
     setImportPreview(null)
     setImportResult(null)
     setImportError(null)
+    window.setTimeout(() => {
+      importPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      fileInputRef.current?.focus()
+    }, 0)
   }
 
   function resetListFilters() {
@@ -1625,7 +1637,7 @@ export default function ProductsPage() {
 
         {/* ── 批量导入 ── */}
         {importOpen && (
-        <div style={{ ...s.importSection, order: 3 }}>
+        <div ref={importPanelRef} style={{ ...s.importSection, order: 3 }}>
           <button
             style={s.importToggle}
             onClick={() => setImportOpen((v) => !v)}
@@ -1803,7 +1815,7 @@ export default function ProductsPage() {
 
         {/* ── AI 识别菜单导入 ── */}
         {aiOpen && (
-        <div style={{ ...s.importSection, order: 3 }}>
+        <div ref={aiPanelRef} style={{ ...s.importSection, order: 3 }}>
           <button
             style={s.importToggle}
             onClick={() => {
