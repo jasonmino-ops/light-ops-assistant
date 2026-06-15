@@ -1688,7 +1688,6 @@ export default function ProductsPage() {
         }
         setProduct(created)
         setProductList((prev) => {
-          if (!listOpen && prev.length === 0) return prev
           const exists = prev.some((p) => p.id === created.id)
           return exists
             ? prev.map((p) => (p.id === created.id ? created : p))
@@ -1700,6 +1699,10 @@ export default function ProductsPage() {
         setEditStatus(created.status)
         setEditCategoryId(created.categoryId ?? '')
         clearNewImage()
+        if (photoCreateOpen) {
+          photoCreateReset()
+          setPhotoCreateOpen(false)
+        }
         setMode('saved')
       } else {
         setError(body.message ?? t('products.createFailed'))
