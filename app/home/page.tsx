@@ -193,10 +193,12 @@ export default function HomePage() {
   const [customerCheckout, setCustomerCheckout] = useState<{ id: string; orderNo: string; totalAmount: number } | null>(null)
   const [storeCode, setStoreCode] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [avatarFailed, setAvatarFailed] = useState(false)
 
   useEffect(() => {
     setStoreName(contextStoreName ?? contextTenantName ?? null)
     setStoreCode(contextStoreCode ?? null)
+    setAvatarFailed(false)
   }, [contextStoreName, contextStoreCode, contextTenantName])
 
   useEffect(() => {
@@ -278,6 +280,7 @@ export default function HomePage() {
   const displayStoreName = storeName ?? 'E-Shop'
   const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
   const desktopUrl = storeCode ? publicUrl(`/desktop?storeCode=${storeCode}&lang=${lang}`) : publicUrl(`/desktop?lang=${lang}`)
+  const storeAvatarUrl = storeCode && !avatarFailed ? `/api/public/stores/${storeCode}/banner` : null
 
   async function updateOrderStatus(id: string, status: string) {
     setUpdatingOrderId(id)
@@ -313,7 +316,13 @@ export default function HomePage() {
       {/* ── Brand header ── */}
       <div style={s.brandBar}>
         <div style={s.brandLeft}>
-          <span style={s.brandAvatar}>{storeInitial}</span>
+          <span style={s.brandAvatar}>
+            {storeAvatarUrl ? (
+              <img src={storeAvatarUrl} alt={displayStoreName} style={s.brandAvatarImg} onError={() => setAvatarFailed(true)} />
+            ) : (
+              storeInitial
+            )}
+          </span>
           <div style={s.brandTextBlock}>
             <div style={s.brandTitle}>{displayStoreName}</div>
             <div style={s.brandSub}>{t('home.brandSub')}</div>
@@ -918,6 +927,13 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     boxShadow: '0 10px 24px rgba(15,23,42,0.16)',
     flexShrink: 0,
+    overflow: 'hidden',
+  },
+  brandAvatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
   },
   brandTextBlock: {
     display: 'flex',
