@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
@@ -94,6 +95,12 @@ function sevenDaysAgoStr() {
   return d.toISOString().slice(0, 10)
 }
 
+function yesterdayStr() {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
@@ -155,14 +162,26 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 50
+type RangePreset = 'TODAY' | 'YESTERDAY' | 'WEEK' | 'CUSTOM' | 'ALL'
 
 export default function RecordsPage() {
   const { t } = useLocale()
+  const {
+    realRole,
+    isOwnerInStaffMode,
+    enterStaffMode,
+    exitStaffMode,
+    storeName: contextStoreName,
+    storeCode: contextStoreCode,
+    tenantName: contextTenantName,
+  } = useWorkMode()
   const today = todayStr()
 
-  const [dateFrom, setDateFrom] = useState(() => sevenDaysAgoStr())
+  const [rangePreset, setRangePreset] = useState<RangePreset>('TODAY')
+  const [dateFrom, setDateFrom] = useState(today)
   const [dateTo, setDateTo] = useState(today)
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | SaleType>('ALL')
+  const [avatarFailed, setAvatarFailed] = useState(false)
 
   const [allItems, setAllItems] = useState<RecordItem[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -218,39 +237,139 @@ export default function RecordsPage() {
     fetchRecords(page + 1, true)
   }
 
+  function applyRangePreset(next: RangePreset) {
+    setRangePreset(next)
+    if (next === 'TODAY') {
+      setDateFrom(today)
+      setDateTo(today)
+    } else if (next === 'YESTERDAY') {
+      const y = yesterdayStr()
+      setDateFrom(y)
+      setDateTo(y)
+    } else if (next === 'WEEK') {
+      setDateFrom(sevenDaysAgoStr())
+      setDateTo(today)
+    } else if (next === 'ALL') {
+      setDateFrom('2020-01-01')
+      setDateTo(today)
+    }
+  }
+
   const entries = buildEntries(allItems)
   const hasMore = allItems.length < total
+  const displayStoreName = contextStoreName ?? contextTenantName ?? 'E-Shop'
+  const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
+  const storeAvatarUrl = contextStoreCode && !avatarFailed ? `/api/public/stores/${contextStoreCode}/banner` : null
+  const customerOrderAmount = entries.reduce((sum, entry) => (
+    entry.kind === 'order' && entry.source === 'CUSTOMER_ORDER' ? sum + entry.totalAmount : sum
+  ), 0)
+  const refundAmount = allItems
+    .filter((item) => item.saleType === 'REFUND')
+    .reduce((sum, item) => sum + Math.abs(item.lineAmount), 0)
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div style={s.page}>
+    <main style={s.page}>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
-      <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={s.headerTitle}>{t('records.title')}</span>
-        <LangToggleBtn />
+
+      <div style={s.recordsHeader}>
+        <div style={s.brandLeft}>
+          <span style={s.brandAvatar}>
+            {storeAvatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={storeAvatarUrl} alt={displayStoreName} style={s.brandAvatarImg} onError={() => setAvatarFailed(true)} />
+            ) : (
+              storeInitial
+            )}
+          </span>
+          <div style={s.brandText}>
+            <div style={s.brandTitle}>{displayStoreName}</div>
+            <div style={s.brandSub}>{t('records.workbenchSub')}</div>
+          </div>
+        </div>
+        <div style={s.headerTools}>
+          <LangToggleBtn />
+          {realRole === 'OWNER' && (
+            <button type="button" style={s.modeBtn} onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}>
+              {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={s.body}>
-        {/* ── Filter card ── */}
-        <div style={s.card}>
-          <div style={s.dateRow}>
-            <input
-              type="date"
-              style={s.dateInput}
-              value={dateFrom}
-              max={dateTo}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-            <span style={s.dateSep}>—</span>
-            <input
-              type="date"
-              style={s.dateInput}
-              value={dateTo}
-              min={dateFrom}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
+        {/* ── Summary hero ── */}
+        <div style={s.heroCard}>
+          <div style={s.heroTopRow}>
+            <div>
+              <div style={s.heroEyebrow}>{t('records.todayOverview')}</div>
+              <div style={s.heroTitle}>{t('records.title')}</div>
+            </div>
+            <span style={s.heroDate}>{dateFrom === dateTo ? dateFrom : `${dateFrom} — ${dateTo}`}</span>
           </div>
+
+          {loading && !summary ? (
+            <div style={s.heroSkeletonWrap}>
+              <div style={{ ...s.heroSkeleton, width: '42%', height: 42 }} />
+              <div style={{ ...s.heroSkeleton, width: '88%', height: 14 }} />
+              <div style={{ ...s.heroSkeleton, width: '72%', height: 14 }} />
+            </div>
+          ) : (
+            <>
+              <div style={s.heroAmount}>{fmtAmount(summary?.netAmount ?? 0)}</div>
+              <div style={s.heroMetricGrid}>
+                <Metric label={t('records.saleCount')} value={`${summary?.saleCount ?? 0}${t('records.unit')}`} />
+                <Metric label={t('records.refundAmount')} value={fmtAmount(refundAmount)} tone="red" />
+                <Metric label={t('records.cashSale')} value={fmtAmount(summary?.cashSaleAmount ?? 0)} />
+                <Metric label={t('records.khqrSale')} value={fmtAmount(summary?.khqrSaleAmount ?? 0)} />
+                <Metric label={t('records.customerOrderAmount')} value={fmtAmount(customerOrderAmount)} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── Filter card ── */}
+        <div style={s.filterCard}>
+          <div style={s.rangeRow}>
+            {(['TODAY', 'YESTERDAY', 'WEEK', 'CUSTOM', 'ALL'] as const).map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                style={{ ...s.rangePill, ...(rangePreset === preset ? s.rangePillActive : {}) }}
+                onClick={() => applyRangePreset(preset)}
+              >
+                {t(`records.range${preset}`)}
+              </button>
+            ))}
+          </div>
+
+          {rangePreset === 'CUSTOM' && (
+            <div style={s.dateRow}>
+              <input
+                type="date"
+                style={s.dateInput}
+                value={dateFrom}
+                max={dateTo}
+                onChange={(e) => {
+                  setRangePreset('CUSTOM')
+                  setDateFrom(e.target.value)
+                }}
+              />
+              <span style={s.dateSep}>—</span>
+              <input
+                type="date"
+                style={s.dateInput}
+                value={dateTo}
+                min={dateFrom}
+                onChange={(e) => {
+                  setRangePreset('CUSTOM')
+                  setDateTo(e.target.value)
+                }}
+              />
+            </div>
+          )}
+
           <div style={s.pillRow}>
             {(['ALL', 'SALE', 'REFUND'] as const).map((f) => (
               <button
@@ -264,40 +383,20 @@ export default function RecordsPage() {
           </div>
         </div>
 
-        {/* ── Summary bar ── */}
-        {summary && (
-          <>
-            <div style={s.summaryCard}>
-              <SummaryCell label={t('records.sale')} value={String(summary.saleCount)} unit={t('records.unit')} />
-              <div style={s.summaryDivider} />
-              <SummaryCell label={t('records.refund')} value={String(summary.refundCount)} unit={t('records.unit')} />
-              <div style={s.summaryDivider} />
-              <SummaryCell
-                label={t('records.netIncome')}
-                value={fmtAmount(summary.netAmount)}
-                colored={summary.netAmount >= 0 ? 'green' : 'red'}
-              />
-            </div>
-            <div style={s.payBreakCard}>
-              <span style={s.payBreakItem}>💵 {t('records.cashSale')} {fmtAmount(summary.cashSaleAmount ?? 0)}</span>
-              <span style={s.payBreakSep}>·</span>
-              <span style={s.payBreakItem}>📱 {t('records.khqrSale')} {fmtAmount(summary.khqrSaleAmount ?? 0)}</span>
-            </div>
-            {(summary.deliveryCount ?? 0) > 0 && (
-              <div style={s.deliveryStatCard}>
-                <span style={s.deliveryStatTag}>{t('records.deliveryTag')}</span>
-                <span style={s.deliveryStatNum}>{summary.deliveryCount} {t('records.unit')}</span>
-                <span style={s.payBreakSep}>·</span>
-                <span style={s.deliveryStatAmt}>{fmtAmount(summary.deliveryAmount ?? 0)}</span>
-              </div>
-            )}
-          </>
-        )}
-
         {/* ── List ── */}
+        <div style={s.listTitleRow}>
+          <div>
+            <div style={s.listTitle}>{t('records.listTitle')}</div>
+            <div style={s.listSub}>{total} {t('records.unit')}</div>
+          </div>
+          {(summary?.deliveryCount ?? 0) > 0 && (
+            <span style={s.deliveryStatTag}>{t('records.deliveryTag')} · {summary?.deliveryCount ?? 0}{t('records.unit')}</span>
+          )}
+        </div>
+
         {loading && (
           <div style={s.skeletonWrap}>
-            {[72, 60, 72, 60, 72].map((h, i) => (
+            {[96, 86, 96, 86].map((h, i) => (
               <div key={i} style={{ ...s.skeletonCard, height: h }} />
             ))}
           </div>
@@ -305,9 +404,10 @@ export default function RecordsPage() {
         {error && <div style={s.errorText}>{error}</div>}
 
         {!loading && !error && entries.length === 0 && (
-          <div style={s.emptyState}>
-            <div style={s.emptyIcon}>📋</div>
-            <div style={s.emptyTitle}>{t('records.empty')}</div>
+            <div style={s.emptyState}>
+            <div style={s.emptyIcon}>□</div>
+            <div style={s.emptyTitle}>{rangePreset === 'TODAY' ? t('records.emptyToday') : t('records.empty')}</div>
+            <a href="/sale" style={s.emptyAction}>{t('records.goSale')}</a>
           </div>
         )}
 
@@ -377,7 +477,7 @@ export default function RecordsPage() {
           onClose={() => setCheckoutOrder(null)}
         />
       )}
-    </div>
+    </main>
   )
 }
 
@@ -534,70 +634,212 @@ function RefundCard({ item, tagRefund, refundReasonLabel, itemUnit }: { item: Re
   )
 }
 
-// ─── SummaryCell ──────────────────────────────────────────────────────────────
+// ─── Metric ──────────────────────────────────────────────────────────────────
 
-function SummaryCell({
-  label,
-  value,
-  unit,
-  colored,
-}: {
-  label: string
-  value: string
-  unit?: string
-  colored?: 'green' | 'red'
-}) {
-  const color = colored === 'green' ? 'var(--green)' : colored === 'red' ? 'var(--red)' : 'var(--text)'
+function Metric({ label, value, tone }: { label: string; value: string; tone?: 'green' | 'red' }) {
+  const color = tone === 'green' ? '#059669' : tone === 'red' ? '#dc2626' : '#111827'
   return (
-    <div style={sc.cell}>
-      <div style={{ ...sc.value, color }}>
-        {value}{unit && <span style={sc.unit}>{unit}</span>}
-      </div>
-      <div style={sc.label}>{label}</div>
+    <div style={s.metricCell}>
+      <div style={{ ...s.metricValue, color }}>{value}</div>
+      <div style={s.metricLabel}>{label}</div>
     </div>
   )
-}
-
-const sc: Record<string, React.CSSProperties> = {
-  cell: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 },
-  value: { fontSize: 18, fontWeight: 700, color: 'var(--text)' },
-  unit: { fontSize: 12, fontWeight: 400, color: 'var(--muted)', marginLeft: 2 },
-  label: { fontSize: 12, color: 'var(--muted)' },
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
   page: {
-    minHeight: '100vh',
-    background: 'var(--bg)',
+    minHeight: '100dvh',
+    background: '#f7f8fa',
     display: 'flex',
     flexDirection: 'column',
+    color: '#111827',
   },
-  headerBar: {
-    background: 'var(--blue)',
-    padding: '16px 16px 18px',
+  recordsHeader: {
+    padding: '12px 14px 8px',
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    maxWidth: 520,
+    width: '100%',
+    margin: '0 auto',
+    minHeight: 64,
   },
-  headerTitle: {
+  brandLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+    flex: 1,
+  },
+  brandAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg, #111827 0%, #4b5563 100%)',
     color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     fontSize: 18,
-    fontWeight: 700,
-    letterSpacing: '0.02em',
+    fontWeight: 900,
+    boxShadow: '0 10px 24px rgba(15,23,42,0.16)',
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+  brandAvatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  brandText: {
+    minWidth: 0,
+  },
+  brandTitle: {
+    fontSize: 18,
+    fontWeight: 850,
+    color: '#111827',
+    lineHeight: 1.2,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: 190,
+  },
+  brandSub: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 3,
+    whiteSpace: 'nowrap',
+  },
+  headerTools: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 6,
+    flexShrink: 0,
+  },
+  modeBtn: {
+    fontSize: 10,
+    color: '#111827',
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 999,
+    padding: '6px 10px',
+    cursor: 'pointer',
+    boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
+    minWidth: 82,
+    whiteSpace: 'nowrap',
   },
   body: {
     flex: 1,
-    padding: '12px 12px 0',
-    maxWidth: 480,
+    padding: '6px 12px 0',
+    maxWidth: 520,
     margin: '0 auto',
     width: '100%',
   },
-  card: {
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
-    padding: '14px 16px',
-    marginBottom: 10,
+  heroCard: {
+    background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdfa 50%, #ffffff 100%)',
+    borderRadius: 24,
+    padding: '16px 16px 15px',
+    marginBottom: 12,
+    border: '1px solid rgba(191,219,254,0.72)',
+    boxShadow: '0 14px 34px rgba(37,99,235,0.1)',
+    minHeight: 176,
+  },
+  heroTopRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  heroEyebrow: {
+    fontSize: 11,
+    fontWeight: 800,
+    color: '#2563eb',
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    marginBottom: 4,
+  },
+  heroTitle: {
+    fontSize: 21,
+    fontWeight: 900,
+    color: '#111827',
+    letterSpacing: '-0.4px',
+  },
+  heroDate: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#64748b',
+    background: 'rgba(255,255,255,0.78)',
+    border: '1px solid rgba(226,232,240,0.9)',
+    borderRadius: 999,
+    padding: '6px 9px',
+    whiteSpace: 'nowrap',
+  },
+  heroAmount: {
+    fontSize: 36,
+    lineHeight: 1,
+    fontWeight: 950,
+    color: '#0f172a',
+    margin: '15px 0 12px',
+    letterSpacing: '-1px',
+  },
+  heroMetricGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+    gap: 7,
+  },
+  metricCell: {
+    minHeight: 54,
+    borderRadius: 15,
+    background: 'rgba(255,255,255,0.74)',
+    border: '1px solid rgba(226,232,240,0.76)',
+    padding: '8px 6px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+  metricValue: {
+    fontSize: 13,
+    fontWeight: 900,
+    color: '#111827',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    textAlign: 'center',
+  },
+  metricLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    marginTop: 3,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    textAlign: 'center',
+  },
+  heroSkeletonWrap: {
+    minHeight: 124,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  heroSkeleton: {
+    borderRadius: 999,
+    background: 'rgba(203,213,225,0.65)',
+    animation: 'pulse 1.2s ease-in-out infinite',
+  },
+  filterCard: {
+    background: '#fff',
+    borderRadius: 22,
+    padding: 12,
+    marginBottom: 12,
+    border: '1px solid rgba(226,232,240,0.82)',
+    boxShadow: '0 10px 24px rgba(15,23,42,0.05)',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
@@ -622,50 +864,52 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     fontSize: 14,
   },
+  rangeRow: {
+    display: 'flex',
+    gap: 6,
+    overflowX: 'auto',
+    paddingBottom: 2,
+  },
+  rangePill: {
+    minWidth: 58,
+    height: 34,
+    border: '1px solid #e5e7eb',
+    borderRadius: 999,
+    background: '#f8fafc',
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: 800,
+    padding: '0 12px',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+  },
+  rangePillActive: {
+    background: '#111827',
+    borderColor: '#111827',
+    color: '#fff',
+    boxShadow: '0 8px 18px rgba(15,23,42,0.16)',
+  },
   pillRow: {
     display: 'flex',
-    gap: 8,
+    gap: 7,
   },
   pill: {
     flex: 1,
-    height: 34,
-    border: '1.5px solid var(--border)',
-    borderRadius: 20,
-    background: '#f7f8fa',
+    height: 36,
+    border: '1px solid #e5e7eb',
+    borderRadius: 999,
+    background: '#f8fafc',
     fontSize: 13,
-    color: 'var(--muted)',
-    fontWeight: 500,
+    color: '#64748b',
+    fontWeight: 800,
+    cursor: 'pointer',
   },
   pillActive: {
-    background: 'var(--blue)',
-    borderColor: 'var(--blue)',
+    background: '#1677ff',
+    borderColor: '#1677ff',
     color: '#fff',
-    fontWeight: 700,
+    fontWeight: 900,
   },
-  summaryCard: {
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
-    padding: '12px 16px',
-    marginBottom: 6,
-    display: 'flex',
-    alignItems: 'center',
-  },
-  summaryDivider: {
-    width: 1,
-    height: 30,
-    background: 'var(--border)',
-    flexShrink: 0,
-  },
-  payBreakCard: {
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
-    padding: '8px 16px',
-    marginBottom: 10,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  payBreakItem: { fontSize: 12, color: 'var(--muted)' },
   payBreakSep: { fontSize: 12, color: 'var(--border)' },
   payBadge: {
     fontSize: 10,
@@ -681,21 +925,23 @@ const s: Record<string, React.CSSProperties> = {
     background: '#fff7e6',
   },
   recordCard: {
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
-    padding: '12px 14px',
-    marginBottom: 8,
+    background: '#fff',
+    borderRadius: 20,
+    padding: '13px 14px',
+    marginBottom: 10,
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
+    gap: 8,
+    border: '1px solid rgba(226,232,240,0.86)',
+    boxShadow: '0 10px 24px rgba(15,23,42,0.05)',
   },
   recordCardRefund: {
-    background: '#fff1f0',
-    border: '1px solid #ffccc7',
+    background: 'linear-gradient(135deg, #fff1f2 0%, #ffffff 72%)',
+    border: '1px solid #fecdd3',
   },
   recordCardPending: {
-    background: '#fffbe6',
-    border: '1px solid #ffe58f',
+    background: 'linear-gradient(135deg, #fffbeb 0%, #ffffff 72%)',
+    border: '1px solid #fde68a',
   },
   cardAmountRow: {
     display: 'flex',
@@ -720,19 +966,19 @@ const s: Record<string, React.CSSProperties> = {
   },
   tagSale: {
     fontSize: 11,
-    fontWeight: 600,
+    fontWeight: 800,
     background: '#e6f4ff',
     color: 'var(--blue)',
-    padding: '1px 7px',
-    borderRadius: 10,
+    padding: '3px 8px',
+    borderRadius: 999,
   },
   tagRefund: {
     fontSize: 11,
-    fontWeight: 600,
+    fontWeight: 800,
     background: '#fff1f0',
     color: 'var(--red)',
-    padding: '1px 7px',
-    borderRadius: 10,
+    padding: '3px 8px',
+    borderRadius: 999,
     border: '1px solid #ffccc7',
   },
   tagH5: {
@@ -746,11 +992,11 @@ const s: Record<string, React.CSSProperties> = {
   },
   tagCustomerOrder: {
     fontSize: 11,
-    fontWeight: 700,
+    fontWeight: 800,
     background: '#f9f0ff',
     color: '#722ed1',
-    padding: '1px 7px',
-    borderRadius: 10,
+    padding: '3px 8px',
+    borderRadius: 999,
     border: '1px solid #d3adf7',
   },
   sourceBadgeMpos: {
@@ -810,6 +1056,24 @@ const s: Record<string, React.CSSProperties> = {
   deliveryStatTag: { fontSize: 12, fontWeight: 700, color: '#1677ff' },
   deliveryStatNum: { fontSize: 13, fontWeight: 700, color: 'var(--text)' },
   deliveryStatAmt: { fontSize: 13, fontWeight: 700, color: '#1677ff' },
+  listTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    margin: '4px 2px 10px',
+    minHeight: 38,
+  },
+  listTitle: {
+    fontSize: 18,
+    fontWeight: 900,
+    color: '#111827',
+    letterSpacing: '-0.3px',
+  },
+  listSub: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
   cardTime: {
     fontSize: 13,
     color: 'var(--muted)',
@@ -899,8 +1163,8 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   skeletonCard: {
-    borderRadius: 'var(--radius)',
-    background: '#e8e8e8',
+    borderRadius: 20,
+    background: '#e5e7eb',
     animation: 'pulse 1.2s ease-in-out infinite',
   },
   errorText: {
@@ -913,8 +1177,12 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '40px 20px',
+    padding: '42px 20px',
     gap: 8,
+    background: '#fff',
+    borderRadius: 22,
+    border: '1px solid rgba(226,232,240,0.86)',
+    boxShadow: '0 10px 24px rgba(15,23,42,0.05)',
   },
   emptyIcon: {
     fontSize: 40,
@@ -923,8 +1191,23 @@ const s: Record<string, React.CSSProperties> = {
   },
   emptyTitle: {
     fontSize: 15,
-    fontWeight: 600,
-    color: '#aaa',
+    fontWeight: 800,
+    color: '#64748b',
+  },
+  emptyAction: {
+    marginTop: 8,
+    height: 40,
+    padding: '0 18px',
+    borderRadius: 999,
+    background: '#1677ff',
+    color: '#fff',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textDecoration: 'none',
+    fontSize: 13,
+    fontWeight: 900,
+    boxShadow: '0 10px 22px rgba(37,99,235,0.22)',
   },
   loadMoreBtn: {
     width: '100%',
