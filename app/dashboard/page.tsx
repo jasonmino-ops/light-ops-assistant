@@ -79,7 +79,11 @@ function getPeriodRange(
 
 export default function DashboardPage() {
   const { t } = useLocale()
-  const { tier } = useWorkMode()
+  const {
+    tier,
+    storeName: contextStoreName,
+    tenantName: contextTenantName,
+  } = useWorkMode()
   const [today] = useState(() => new Date().toISOString().slice(0, 10))
 
   const DIM_LABEL: Record<Dimension, string> = {
@@ -227,6 +231,8 @@ export default function DashboardPage() {
       case 'CUSTOM': return t('dashboard.heroLabelRange')
     }
   })()
+  const displayStoreName = contextStoreName ?? contextTenantName ?? t('dashboard.brandName')
+  const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -234,9 +240,12 @@ export default function DashboardPage() {
     <div style={s.page}>
       {/* Brand header */}
       <div style={s.header}>
-        <div>
-          <div style={s.brandName}>{t('dashboard.brandName')}</div>
-          <div style={s.brandSub}>{t('dashboard.title')} · {today}</div>
+        <div style={s.brandLeft}>
+          <span style={s.brandAvatar}>{storeInitial}</span>
+          <div style={s.brandText}>
+            <div style={s.brandName}>{displayStoreName}</div>
+            <div style={s.brandSub}>{t('dashboard.title')} · {today}</div>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <LangToggleBtn />
@@ -255,171 +264,6 @@ export default function DashboardPage() {
       </div>
 
       <div style={s.body}>
-        {/* KHQR 当前模式提示（压缩为一行） */}
-        <div style={s.khqrNoticeSlim}>
-          <span style={s.khqrNoticeIcon}>📱</span>
-          <span style={s.khqrNoticeTitle}>{t('dashboard.khqrModeNoticeTitle')}</span>
-        </div>
-
-        {/* 大入口区：顾客资产 + 门店配置（首屏必见） */}
-        <div style={s.bigEntryRow}>
-          <Link href="/customers" style={s.bigEntryCard}>
-            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#69b1ff,#1677ff)' }}>👥</div>
-            <div style={s.bigEntryBody}>
-              <div style={s.bigEntryTitle}>{t('dashboard.customersCenter')}</div>
-              <div style={s.bigEntryDesc}>{t('dashboard.customersCenterDesc')}</div>
-            </div>
-            <span style={s.bigEntryArrow}>›</span>
-          </Link>
-          <button
-            type="button"
-            style={s.bigEntryCard}
-            onClick={() => setShowStoreConfig((v) => !v)}
-          >
-            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ffc069,#fa8c16)' }}>🏪</div>
-            <div style={s.bigEntryBody}>
-              <div style={s.bigEntryTitle}>{t('dashboard.storeSettings')}</div>
-              <div style={s.bigEntryDesc}>{t('dashboard.storeSettingsDesc')}</div>
-            </div>
-            <span style={s.bigEntryArrow}>{showStoreConfig ? '▴' : '›'}</span>
-          </button>
-        </div>
-        {showStoreConfig && <StoreConfigPanel t={t} />}
-
-        {/* 推广带货入口 */}
-        <Link href="/campaign" style={s.bigEntryCard}>
-          <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ff9a56,#ff6b35)' }}>📱</div>
-          <div style={s.bigEntryBody}>
-            <div style={s.bigEntryTitle}>{t('dashboard.campaignEntryTitle')}</div>
-            <div style={s.bigEntryDesc}>{t('dashboard.campaignEntryDesc')}</div>
-          </div>
-          <span style={s.bigEntryArrow}>›</span>
-        </Link>
-
-        {/* 店铺类型（OWNER only — dashboard 本就 OWNER 才能进） */}
-        <BusinessTypeCard t={t} />
-
-        {/* 首页门头快捷管理（折叠，默认收起） */}
-        <details style={s.collapseCard}>
-          <summary style={s.collapseSummary}>🏷️ {t('dashboard.bannerQuickTitle')}</summary>
-          <div style={{ marginTop: 8 }}>
-            <BannerQuickPanel t={t} />
-          </div>
-        </details>
-
-        {/* 数字员工模块（只读展示，不提供启用开关） */}
-        <AiSupportModulePanel tier={tier} />
-
-        {/* 云打印机面板（高级版） */}
-        <PrinterPanel />
-
-        {/* 门店经营查询入口（合并 GLOBAL / STORE / STAFF） */}
-        <div style={s.dimMenuWrap}>
-          <button
-            type="button"
-            style={s.dimMenuToggle}
-            onClick={() => setDimMenuOpen((v) => !v)}
-          >
-            <span style={s.dimMenuToggleLeft}>
-              <span style={s.dimMenuIcon}>📊</span>
-              <span>
-                <span style={s.dimMenuTitle}>{t('dashboard.dimMenuTitle')}</span>
-                <span style={s.dimMenuCurrent}>· {DIM_LABEL[dimension]}</span>
-              </span>
-            </span>
-            <span style={s.dimMenuArrow}>{dimMenuOpen ? '▴' : '▾'}</span>
-          </button>
-          {dimMenuOpen && (
-            <div style={s.dimMenuPanel}>
-              {([
-                { key: 'GLOBAL', label: t('dashboard.dimAll') },
-                { key: 'STORE',  label: t('dashboard.dimByStore') },
-                { key: 'STAFF',  label: t('dashboard.dimByStaff') },
-              ] as { key: Dimension; label: string }[]).map((d) => (
-                <button
-                  key={d.key}
-                  type="button"
-                  style={{ ...s.dimMenuItem, ...(dimension === d.key ? s.dimMenuItemOn : {}) }}
-                  onClick={() => { handleDimension(d.key); setDimMenuOpen(false) }}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Store selector */}
-        {dimension === 'STORE' && (
-          <div style={s.selectorCard}>
-            <div style={s.selectorLabel}>{t('dashboard.selectStore')}</div>
-            <select
-              style={s.select}
-              value={storeId}
-              disabled={stores.length === 0}
-              onChange={(e) => setStoreId(e.target.value)}
-            >
-              {stores.length === 0 && <option value="">—</option>}
-              {stores.map((st) => (
-                <option key={st.id} value={st.id}>{st.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Staff selector */}
-        {dimension === 'STAFF' && (
-          <div style={s.selectorCard}>
-            <div style={s.selectorLabel}>{t('dashboard.selectStaff')}</div>
-            <select
-              style={s.select}
-              value={operatorUserId}
-              disabled={staffs.length === 0}
-              onChange={(e) => setOperatorUserId(e.target.value)}
-            >
-              {staffs.length === 0 && <option value="">—</option>}
-              {staffs.map((st) => (
-                <option key={st.id} value={st.id}>{st.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Time period tabs */}
-        <div style={s.periodRow}>
-          {(['TODAY', 'WEEK', 'MONTH', 'CUSTOM'] as TimePeriod[]).map((p) => (
-            <button
-              key={p}
-              style={{ ...s.periodBtn, ...(timePeriod === p ? s.periodBtnActive : {}) }}
-              onClick={() => setTimePeriod(p)}
-            >
-              {PERIOD_LABEL[p]}
-            </button>
-          ))}
-        </div>
-
-        {/* Custom date range */}
-        {timePeriod === 'CUSTOM' && (
-          <div style={s.customRow}>
-            <input
-              type="date"
-              style={s.dateInput}
-              value={customFrom}
-              max={customTo || today}
-              onChange={(e) => setCustomFrom(e.target.value)}
-            />
-            <span style={s.dateSep}>—</span>
-            <input
-              type="date"
-              style={s.dateInput}
-              value={customTo}
-              min={customFrom}
-              max={today}
-              onChange={(e) => setCustomTo(e.target.value)}
-            />
-          </div>
-        )}
-
         {/* Loading skeleton */}
         {loading && (
           <div style={s.loadingWrap}>
@@ -439,6 +283,141 @@ export default function DashboardPage() {
           <Overview result={result} t={t} heroLabel={heroLabelText} />
         )}
 
+        <div style={s.controlCard}>
+          {/* Time period tabs */}
+          <div style={s.periodRow}>
+            {(['TODAY', 'WEEK', 'MONTH', 'CUSTOM'] as TimePeriod[]).map((p) => (
+              <button
+                key={p}
+                style={{ ...s.periodBtn, ...(timePeriod === p ? s.periodBtnActive : {}) }}
+                onClick={() => setTimePeriod(p)}
+              >
+                {PERIOD_LABEL[p]}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom date range */}
+          {timePeriod === 'CUSTOM' && (
+            <div style={s.customRow}>
+              <input
+                type="date"
+                style={s.dateInput}
+                value={customFrom}
+                max={customTo || today}
+                onChange={(e) => setCustomFrom(e.target.value)}
+              />
+              <span style={s.dateSep}>—</span>
+              <input
+                type="date"
+                style={s.dateInput}
+                value={customTo}
+                min={customFrom}
+                max={today}
+                onChange={(e) => setCustomTo(e.target.value)}
+              />
+            </div>
+          )}
+
+          {/* 门店经营查询入口（合并 GLOBAL / STORE / STAFF） */}
+          <div style={s.dimMenuWrap}>
+            <button
+              type="button"
+              style={s.dimMenuToggle}
+              onClick={() => setDimMenuOpen((v) => !v)}
+            >
+              <span style={s.dimMenuToggleLeft}>
+                <span style={s.dimMenuIcon}>📊</span>
+                <span>
+                  <span style={s.dimMenuTitle}>{t('dashboard.dimMenuTitle')}</span>
+                  <span style={s.dimMenuCurrent}>· {DIM_LABEL[dimension]}</span>
+                </span>
+              </span>
+              <span style={s.dimMenuArrow}>{dimMenuOpen ? '▴' : '▾'}</span>
+            </button>
+            {dimMenuOpen && (
+              <div style={s.dimMenuPanel}>
+                {([
+                  { key: 'GLOBAL', label: t('dashboard.dimAll') },
+                  { key: 'STORE',  label: t('dashboard.dimByStore') },
+                  { key: 'STAFF',  label: t('dashboard.dimByStaff') },
+                ] as { key: Dimension; label: string }[]).map((d) => (
+                  <button
+                    key={d.key}
+                    type="button"
+                    style={{ ...s.dimMenuItem, ...(dimension === d.key ? s.dimMenuItemOn : {}) }}
+                    onClick={() => { handleDimension(d.key); setDimMenuOpen(false) }}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Store selector */}
+          {dimension === 'STORE' && (
+            <div style={s.selectorCard}>
+              <div style={s.selectorLabel}>{t('dashboard.selectStore')}</div>
+              <select
+                style={s.select}
+                value={storeId}
+                disabled={stores.length === 0}
+                onChange={(e) => setStoreId(e.target.value)}
+              >
+                {stores.length === 0 && <option value="">—</option>}
+                {stores.map((st) => (
+                  <option key={st.id} value={st.id}>{st.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Staff selector */}
+          {dimension === 'STAFF' && (
+            <div style={s.selectorCard}>
+              <div style={s.selectorLabel}>{t('dashboard.selectStaff')}</div>
+              <select
+                style={s.select}
+                value={operatorUserId}
+                disabled={staffs.length === 0}
+                onChange={(e) => setOperatorUserId(e.target.value)}
+              >
+                {staffs.length === 0 && <option value="">—</option>}
+                {staffs.map((st) => (
+                  <option key={st.id} value={st.id}>{st.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div style={s.sectionTitle}>{t('dashboard.businessModulesTitle')}</div>
+        <div style={s.bigEntryRow}>
+          <Link href="/customers" style={s.bigEntryCard}>
+            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#69b1ff,#1677ff)' }}>👥</div>
+            <div style={s.bigEntryBody}>
+              <div style={s.bigEntryTitle}>{t('dashboard.customersCenter')}</div>
+              <div style={s.bigEntryDesc}>{t('dashboard.customersCenterDesc')}</div>
+            </div>
+            <span style={s.bigEntryArrow}>›</span>
+          </Link>
+          <Link href="/campaign" style={s.bigEntryCard}>
+            <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ff9a56,#ff6b35)' }}>📱</div>
+            <div style={s.bigEntryBody}>
+              <div style={s.bigEntryTitle}>{t('dashboard.campaignEntryTitle')}</div>
+              <div style={s.bigEntryDesc}>{t('dashboard.campaignEntryDesc')}</div>
+            </div>
+            <span style={s.bigEntryArrow}>›</span>
+          </Link>
+        </div>
+
+        {/* 数字员工模块（只读展示，不提供启用开关） */}
+        <AiSupportModulePanel tier={tier} />
+
+        {/* 云打印机面板（高级版） */}
+        <PrinterPanel />
+
         {/* Hot products (GLOBAL / STORE only) — 合并为 tab 切换 */}
         {dimension !== 'STAFF' && (
           <HotSection
@@ -448,6 +427,38 @@ export default function DashboardPage() {
             t={t}
           />
         )}
+
+        <div style={s.sectionTitle}>{t('dashboard.configModulesTitle')}</div>
+        <button
+          type="button"
+          style={s.bigEntryCard}
+          onClick={() => setShowStoreConfig((v) => !v)}
+        >
+          <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ffc069,#fa8c16)' }}>🏪</div>
+          <div style={s.bigEntryBody}>
+            <div style={s.bigEntryTitle}>{t('dashboard.storeSettings')}</div>
+            <div style={s.bigEntryDesc}>{t('dashboard.storeSettingsDesc')}</div>
+          </div>
+          <span style={s.bigEntryArrow}>{showStoreConfig ? '▴' : '›'}</span>
+        </button>
+        {showStoreConfig && <StoreConfigPanel t={t} />}
+
+        {/* 店铺类型（OWNER only — dashboard 本就 OWNER 才能进） */}
+        <BusinessTypeCard t={t} />
+
+        {/* KHQR 当前模式提示（压缩为一行） */}
+        <div style={s.khqrNoticeSlim}>
+          <span style={s.khqrNoticeIcon}>📱</span>
+          <span style={s.khqrNoticeTitle}>{t('dashboard.khqrModeNoticeTitle')}</span>
+        </div>
+
+        {/* 首页门头快捷管理（折叠，默认收起） */}
+        <details style={s.collapseCard}>
+          <summary style={s.collapseSummary}>🏷️ {t('dashboard.bannerQuickTitle')}</summary>
+          <div style={{ marginTop: 8 }}>
+            <BannerQuickPanel t={t} />
+          </div>
+        </details>
 
         <div style={{ height: 24 }} />
       </div>
@@ -479,7 +490,7 @@ function Overview({
       <div style={ov.heroCard}>
         <div style={ov.heroSub}>{subLabel}</div>
         <div style={ov.heroLabel}>{heroLabel}</div>
-        <div style={{ ...ov.heroAmount, color: result.netAmount >= 0 ? '#a0f0a0' : '#ffccc7' }}>
+        <div style={{ ...ov.heroAmount, color: result.netAmount >= 0 ? '#047857' : '#dc2626' }}>
           {fmtAmount(result.netAmount)}
         </div>
       </div>
@@ -1469,35 +1480,58 @@ function PayCell({ icon, label, value }: { icon: string; label: string; value: s
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' },
+  page: { minHeight: '100vh', background: '#f7f8fa', display: 'flex', flexDirection: 'column' },
   header: {
-    background: 'var(--blue)',
-    padding: '16px 16px 20px',
+    padding: '14px 14px 10px',
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    gap: 12,
+    maxWidth: 520,
+    margin: '0 auto',
+    width: '100%',
+    boxSizing: 'border-box',
   },
-  brandName: { fontSize: 18, fontWeight: 700, color: '#fff', letterSpacing: '0.02em' },
-  brandSub: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  brandLeft: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 },
+  brandAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg,#e0f2fe,#f5f3ff)',
+    color: '#1677ff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 18,
+    fontWeight: 900,
+    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
+    flexShrink: 0,
+  },
+  brandText: { minWidth: 0 },
+  brandName: { fontSize: 17, fontWeight: 850, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  brandSub: { fontSize: 12, color: '#6b7280', marginTop: 2, fontWeight: 600 },
   switchBtn: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.75)',
-    background: 'transparent',
-    border: '1px solid rgba(255,255,255,0.3)',
+    color: '#374151',
+    background: '#fff',
+    border: '1px solid #e5e7eb',
     borderRadius: 12,
-    padding: '3px 9px',
+    padding: '6px 10px',
     cursor: 'pointer',
+    textDecoration: 'none',
+    boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
   },
   refreshBtn: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.85)',
-    background: 'rgba(255,255,255,0.15)',
-    border: '1px solid rgba(255,255,255,0.3)',
+    color: '#1677ff',
+    background: '#fff',
+    border: '1px solid #dbeafe',
     borderRadius: 14,
-    padding: '4px 14px',
+    padding: '6px 14px',
     minWidth: 52,
+    boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
   },
-  body: { flex: 1, padding: '14px 14px 0', maxWidth: 480, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' as const, gap: 4 },
+  body: { flex: 1, padding: '4px 14px 88px', maxWidth: 520, margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column' as const, gap: 8, boxSizing: 'border-box' },
 
   // ── KHQR 当前模式提示（第一阶段静态图模式） ──
   khqrNotice: {
@@ -1517,11 +1551,12 @@ const s: Record<string, React.CSSProperties> = {
   khqrNoticeSlim: {
     display: 'flex', alignItems: 'center', gap: 8,
     background: '#fffbe6', border: '1px solid #ffe58f',
-    borderRadius: 8, padding: '6px 10px', marginBottom: 10,
+    borderRadius: 14, padding: '8px 10px', marginBottom: 8,
   },
   collapseCard: {
-    background: 'var(--card)', borderRadius: 'var(--radius)',
-    padding: '10px 14px', marginBottom: 10,
+    background: '#fff', borderRadius: 20,
+    padding: '12px 14px', marginBottom: 10,
+    boxShadow: '0 8px 24px rgba(15,23,42,0.05)',
   },
   collapseSummary: {
     fontSize: 13, fontWeight: 600, color: 'var(--text)',
@@ -1543,10 +1578,11 @@ const s: Record<string, React.CSSProperties> = {
 
   // ── 门店经营查询单入口 + 抽屉 ──
   dimMenuWrap: {
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
-    marginBottom: 10,
+    background: '#fff',
+    borderRadius: 16,
+    marginTop: 10,
     overflow: 'hidden' as const,
+    border: '1px solid #eef2f7',
   },
   dimMenuToggle: {
     width: '100%',
@@ -1586,10 +1622,11 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
   },
   selectorCard: {
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
+    background: '#fff',
+    borderRadius: 16,
     padding: '12px 14px',
-    marginBottom: 10,
+    marginTop: 10,
+    border: '1px solid #eef2f7',
   },
   selectorLabel: {
     fontSize: 11,
@@ -1610,7 +1647,8 @@ const s: Record<string, React.CSSProperties> = {
     width: '100%',
     appearance: 'auto' as const,
   },
-  periodRow: { display: 'flex', gap: 6, marginBottom: 10 },
+  controlCard: { background: '#fff', borderRadius: 22, padding: '12px 12px', boxShadow: '0 10px 28px rgba(15,23,42,0.06)' },
+  periodRow: { display: 'flex', gap: 6, marginBottom: 0 },
   periodBtn: {
     flex: 1,
     height: 34,
@@ -1623,8 +1661,8 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
   periodBtnActive: {
-    background: 'var(--blue)',
-    borderColor: 'var(--blue)',
+    background: '#1677ff',
+    borderColor: '#1677ff',
     color: '#fff',
     fontWeight: 700,
   },
@@ -1632,10 +1670,11 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
+    background: '#fff',
+    borderRadius: 16,
     padding: '10px 12px',
-    marginBottom: 10,
+    marginTop: 10,
+    border: '1px solid #eef2f7',
   },
   dateInput: {
     flex: 1,
@@ -1652,8 +1691,8 @@ const s: Record<string, React.CSSProperties> = {
   loadingWrap: { marginTop: 4 },
   skeleton: {
     height: 160,
-    borderRadius: 'var(--radius)',
-    background: 'var(--card)',
+    borderRadius: 22,
+    background: '#fff',
     animation: 'pulse 1.4s ease-in-out infinite',
   },
   errorCard: {
@@ -1679,26 +1718,26 @@ const s: Record<string, React.CSSProperties> = {
   configArrow: { fontSize: 14, color: 'var(--muted)' },
 
   // ── 大入口卡（顾客资产 / 门店配置） ──
+  sectionTitle: { fontSize: 13, fontWeight: 850, color: '#111827', marginTop: 6 },
   bigEntryRow: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: 10,
-    marginTop: 16,
-    marginBottom: 8,
+    marginBottom: 2,
   },
   bigEntryCard: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
+    background: '#fff',
+    borderRadius: 20,
     padding: '14px 12px',
     border: 'none',
     cursor: 'pointer',
     textDecoration: 'none',
     color: 'inherit',
     textAlign: 'left' as const,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    boxShadow: '0 10px 28px rgba(15,23,42,0.06)',
   },
   bigEntryIcon: {
     width: 40,
@@ -1720,25 +1759,27 @@ const s: Record<string, React.CSSProperties> = {
 
 const ov: Record<string, React.CSSProperties> = {
   heroCard: {
-    background: 'var(--blue)',
-    borderRadius: 'var(--radius)',
-    padding: '12px 18px 14px',
+    background: 'linear-gradient(135deg,#ecfdf5 0%,#ecfeff 50%,#ffffff 100%)',
+    borderRadius: 24,
+    padding: '18px 18px 16px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 2,
-    marginBottom: 8,
+    marginBottom: 10,
+    boxShadow: '0 18px 40px rgba(20,184,166,0.09)',
   },
-  heroSub: { fontSize: 11, color: 'rgba(255,255,255,0.72)', marginBottom: 2 },
-  heroLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)' },
-  heroAmount: { fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.1, marginTop: 0 },
+  heroSub: { fontSize: 11, color: '#0f766e', marginBottom: 2, fontWeight: 700 },
+  heroLabel: { fontSize: 12, color: '#64748b', fontWeight: 700 },
+  heroAmount: { fontSize: 36, fontWeight: 900, lineHeight: 1.05, marginTop: 2 },
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    background: 'var(--card)',
-    borderRadius: 'var(--radius)',
+    background: '#fff',
+    borderRadius: 20,
     overflow: 'hidden',
-    marginBottom: 10,
+    marginBottom: 8,
+    boxShadow: '0 10px 28px rgba(15,23,42,0.05)',
   },
   payGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 },
 }

@@ -5,6 +5,8 @@ import QRCode from 'react-qr-code'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { publicUrl } from '@/lib/public-url'
 import { useLocale } from '@/app/components/LangProvider'
+import LangToggleBtn from '@/app/components/LangToggleBtn'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 
 type Store = { id: string; name: string; code: string }
 
@@ -40,6 +42,10 @@ function fmtExpiry(iso: string, lang: 'zh' | 'km' | 'en') {
 
 export default function InvitePage() {
   const { lang, t } = useLocale()
+  const {
+    realRole, isOwnerInStaffMode, enterStaffMode, exitStaffMode,
+    storeName: contextStoreName, tenantName: contextTenantName,
+  } = useWorkMode()
   const [stores, setStores] = useState<Store[]>([])
   const [storeId, setStoreId] = useState('')
   const [storesLoading, setStoresLoading] = useState(true)
@@ -161,17 +167,54 @@ export default function InvitePage() {
   const activeMembers = members.filter((m) => m.status === 'ACTIVE')
   const owners = activeMembers.filter((m) => m.role === 'OWNER')
   const staff = activeMembers.filter((m) => m.role === 'STAFF')
+  const currentStoreName = stores.find((st) => st.id === storeId)?.name ?? contextStoreName ?? contextTenantName ?? 'E-Shop'
+  const storeInitial = currentStoreName.trim().slice(0, 1).toUpperCase() || '店'
 
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <div style={s.headerTitle}>{t('invite.headerTitle')}</div>
+        <div style={s.brandLeft}>
+          <span style={s.brandAvatar}>{storeInitial}</span>
+          <div style={s.brandText}>
+            <div style={s.headerTitle}>{currentStoreName}</div>
+            <div style={s.headerSub}>{t('invite.headerTitle')}</div>
+          </div>
+        </div>
+        <div style={s.headerTools}>
+          <LangToggleBtn />
+          {realRole === 'OWNER' && (
+            <button
+              type="button"
+              style={isOwnerInStaffMode ? s.modeBtn : { ...s.modeBtn, ...s.modeBtnOwner }}
+              onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}
+            >
+              {isOwnerInStaffMode ? t('home.exitStaffModeBtn') : t('home.enterStaffModeBtn')}
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={s.body}>
+        <div style={s.heroCard}>
+          <div style={s.heroEyebrow}>{t('invite.heroEyebrow')}</div>
+          <div style={s.heroTitle}>{t('invite.heroTitle')}</div>
+          <div style={s.heroDesc}>{t('invite.heroDesc')}</div>
+          <div style={s.statRow}>
+            <StatPill label={t('invite.activeMembers')} value={String(activeMembers.length)} />
+            <StatPill label={t('invite.groupOwner')} value={String(owners.length)} />
+            <StatPill label={t('invite.groupStaff')} value={String(staff.length)} />
+          </div>
+        </div>
+
         {/* ── Generate section ── */}
         {!result ? (
           <div style={s.card}>
+            <div style={s.cardHeader}>
+              <div>
+                <div style={s.cardTitle}>{t('invite.primaryActionsTitle')}</div>
+                <div style={s.cardDesc}>{t('invite.primaryActionsDesc')}</div>
+              </div>
+            </div>
             {stores.length > 1 && (
               <div style={s.field}>
                 <label style={s.fieldLabel}>{t('invite.infoStore')}</label>
@@ -247,26 +290,33 @@ export default function InvitePage() {
         )}
 
         {/* ── Customer order code ── */}
-        <CustomerCodeCard
-          stores={stores}
-          customerStoreId={customerStoreId}
-          setCustomerStoreId={setCustomerStoreId}
-          copied={customerCopied}
-          setCopied={setCustomerCopied}
-        />
-
-        {/* ── Table QR codes ── */}
-        <div style={s.sectionLabel}>{t('invite.tableQrTitle')}</div>
-        <div style={{ ...s.customerCard, gap: 10 }}>
-          <div style={s.customerDesc}>
-            {t('invite.tableQrDesc')}
+        <div style={s.sectionCard}>
+          <div style={s.sectionHeader}>
+            <div>
+              <div style={s.sectionTitle}>{t('invite.customerEntrancesTitle')}</div>
+              <div style={s.sectionDesc}>{t('invite.customerEntrancesDesc')}</div>
+            </div>
           </div>
-          <button
-            style={{ height: 44, background: '#f0fdf4', color: '#15803d', border: '1.5px solid #86efac', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-            onClick={() => { window.location.href = '/table-qrcodes' }}
-          >
-            {t('invite.tableQrManage')}
-          </button>
+          <CustomerCodeCard
+            stores={stores}
+            customerStoreId={customerStoreId}
+            setCustomerStoreId={setCustomerStoreId}
+            copied={customerCopied}
+            setCopied={setCustomerCopied}
+          />
+
+          {/* ── Table QR codes ── */}
+          <div style={{ ...s.customerCard, ...s.slimCard, gap: 10 }}>
+            <div style={s.customerDesc}>
+              {t('invite.tableQrDesc')}
+            </div>
+            <button
+              style={s.secondaryActionBtn}
+              onClick={() => { window.location.href = '/table-qrcodes' }}
+            >
+              {t('invite.tableQrManage')}
+            </button>
+          </div>
         </div>
 
         {/* ── Members section ── */}
@@ -392,8 +442,8 @@ function CustomerCodeCard({
 
   return (
     <>
-      <div style={s.sectionLabel}>{t('invite.customerCodeTitle')}</div>
       <div style={s.customerCard}>
+        <div style={s.cardTitle}>{t('invite.customerCodeTitle')}</div>
         <div style={s.customerDesc}>{t('invite.customerCodeDesc')}</div>
 
         {stores.length > 1 && (
@@ -448,6 +498,15 @@ function InfoRow({ label, value }: { label: React.ReactNode; value: React.ReactN
   )
 }
 
+function StatPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={s.statPill}>
+      <span style={s.statValue}>{value}</span>
+      <span style={s.statLabel}>{label}</span>
+    </div>
+  )
+}
+
 const ir: Record<string, React.CSSProperties> = {
   row: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f5f5f5' },
   label: { fontSize: 13, color: '#8c8c8c' },
@@ -455,32 +514,93 @@ const ir: Record<string, React.CSSProperties> = {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#f5f7fa', display: 'flex', flexDirection: 'column' },
-  header: { background: '#1677ff', padding: '18px 16px 22px' },
-  headerTitle: { fontSize: 18, fontWeight: 700, color: '#fff' },
+  page: { minHeight: '100vh', background: '#f7f8fa', display: 'flex', flexDirection: 'column' },
+  header: {
+    padding: '14px 14px 10px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    maxWidth: 520,
+    margin: '0 auto',
+    width: '100%',
+    boxSizing: 'border-box',
+  },
+  brandLeft: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 },
+  brandAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg,#e0f2fe,#f5f3ff)',
+    color: '#1677ff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 18,
+    fontWeight: 900,
+    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
+    flexShrink: 0,
+  },
+  brandText: { minWidth: 0 },
+  headerTitle: { fontSize: 17, fontWeight: 850, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  headerSub: { fontSize: 12, color: '#6b7280', marginTop: 2, fontWeight: 600 },
+  headerTools: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+  modeBtn: {
+    height: 32,
+    borderRadius: 999,
+    border: '1px solid #e5e7eb',
+    background: '#fff',
+    color: '#374151',
+    padding: '0 10px',
+    fontSize: 11,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
+    cursor: 'pointer',
+  },
+  modeBtnOwner: { background: '#fff7ed', color: '#c2410c', borderColor: '#fed7aa' },
 
-  body: { flex: 1, padding: '16px 12px 80px', maxWidth: 480, margin: '0 auto', width: '100%' },
+  body: { flex: 1, padding: '4px 14px 88px', maxWidth: 520, margin: '0 auto', width: '100%', boxSizing: 'border-box' },
+  heroCard: {
+    background: 'linear-gradient(135deg,#eef6ff 0%,#f5f3ff 52%,#ffffff 100%)',
+    borderRadius: 24,
+    padding: '18px 16px',
+    boxShadow: '0 18px 40px rgba(37,99,235,0.08)',
+    marginBottom: 12,
+  },
+  heroEyebrow: { fontSize: 11, color: '#2563eb', fontWeight: 800, marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: '0.04em' },
+  heroTitle: { fontSize: 24, lineHeight: 1.1, fontWeight: 900, color: '#111827' },
+  heroDesc: { fontSize: 13, color: '#4b5563', lineHeight: 1.55, marginTop: 8 },
+  statRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 14 },
+  statPill: { background: 'rgba(255,255,255,0.78)', border: '1px solid rgba(255,255,255,0.88)', borderRadius: 16, padding: '10px 8px', textAlign: 'center' as const },
+  statValue: { display: 'block', fontSize: 18, fontWeight: 900, color: '#111827' },
+  statLabel: { display: 'block', fontSize: 11, color: '#6b7280', marginTop: 2, whiteSpace: 'nowrap' },
 
   card: {
-    background: '#fff', borderRadius: 14, padding: '18px 16px',
+    background: '#fff', borderRadius: 22, padding: '16px 16px',
     display: 'flex', flexDirection: 'column', gap: 16,
-    boxShadow: '0 2px 12px rgba(0,0,0,0.06)', marginBottom: 24,
+    boxShadow: '0 10px 28px rgba(15,23,42,0.06)', marginBottom: 12,
   },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  cardTitle: { fontSize: 16, fontWeight: 850, color: '#111827' },
+  cardDesc: { fontSize: 12, color: '#6b7280', marginTop: 3, lineHeight: 1.45 },
   field: { display: 'flex', flexDirection: 'column', gap: 8 },
   fieldLabel: { fontSize: 12, fontWeight: 600, color: '#8c8c8c' },
   select: { height: 44, border: '1.5px solid #e8e8e8', borderRadius: 8, padding: '0 12px', fontSize: 15, background: '#fafafa', color: '#1a1a1a' },
   errorMsg: { fontSize: 13, color: '#ff4d4f', textAlign: 'center' },
 
-  actionRow: { display: 'flex', gap: 10 },
+  actionRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
   ownerBtn: {
     flex: 1, display: 'flex', alignItems: 'center', gap: 10,
-    background: '#fff7e6', border: '1.5px solid #ffd591', borderRadius: 12,
-    padding: '14px 12px', cursor: 'pointer', textAlign: 'left' as const,
+    background: 'linear-gradient(135deg,#fff7ed,#ffffff)', border: '1px solid #fed7aa', borderRadius: 18,
+    padding: '16px 12px', cursor: 'pointer', textAlign: 'left' as const,
+    boxShadow: '0 8px 18px rgba(249,115,22,0.08)',
   },
   staffBtn: {
     flex: 1, display: 'flex', alignItems: 'center', gap: 10,
-    background: '#e6f4ff', border: '1.5px solid #91caff', borderRadius: 12,
-    padding: '14px 12px', cursor: 'pointer', textAlign: 'left' as const,
+    background: 'linear-gradient(135deg,#eff6ff,#ffffff)', border: '1px solid #bfdbfe', borderRadius: 18,
+    padding: '16px 12px', cursor: 'pointer', textAlign: 'left' as const,
+    boxShadow: '0 8px 18px rgba(37,99,235,0.08)',
   },
   btnIcon: { fontSize: 22, lineHeight: 1 },
   btnText: { display: 'flex', flexDirection: 'column', gap: 2 },
@@ -498,28 +618,34 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     cursor: 'pointer',
   },
-  qrCard: { background: '#fff', borderRadius: 14, padding: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' },
+  qrCard: { background: '#fff', borderRadius: 18, padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 28px rgba(15,23,42,0.06)' },
   noLink: { fontSize: 13, color: '#aaa', textAlign: 'center', padding: '16px 0' },
-  infoCard: { background: '#fff', borderRadius: 14, padding: '4px 16px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' },
-  copyBtn: { height: 48, background: '#1677ff', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: 'pointer' },
+  infoCard: { background: '#fff', borderRadius: 18, padding: '4px 16px', boxShadow: '0 10px 28px rgba(15,23,42,0.06)' },
+  copyBtn: { height: 48, background: '#1677ff', color: '#fff', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 750, cursor: 'pointer' },
   resetBtn: { height: 44, background: 'transparent', color: '#666', border: '1.5px solid #e8e8e8', borderRadius: 10, fontSize: 14, cursor: 'pointer' },
 
   sectionLabel: { fontSize: 12, fontWeight: 700, color: '#8c8c8c', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 10 },
+  sectionCard: { background: '#fff', borderRadius: 22, padding: '16px 16px 4px', boxShadow: '0 10px 28px rgba(15,23,42,0.06)', marginBottom: 12 },
+  sectionHeader: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 },
+  sectionTitle: { fontSize: 16, fontWeight: 850, color: '#111827' },
+  sectionDesc: { fontSize: 12, color: '#6b7280', lineHeight: 1.45, marginTop: 3 },
 
   customerCard: {
-    background: '#fff', borderRadius: 14, padding: '16px 16px',
+    background: '#fff', borderRadius: 18, padding: '16px 16px',
     display: 'flex', flexDirection: 'column', gap: 12,
-    boxShadow: '0 2px 12px rgba(0,0,0,0.06)', marginBottom: 24,
+    boxShadow: '0 10px 28px rgba(15,23,42,0.06)', marginBottom: 12,
   },
+  slimCard: { boxShadow: 'none', border: '1px solid #eef2f7', background: '#fbfdff' },
+  secondaryActionBtn: { height: 44, background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 14, fontSize: 14, fontWeight: 750, cursor: 'pointer' },
   customerDesc: { fontSize: 13, color: '#8c8c8c', lineHeight: 1.5 },
 
   memberGroup: { marginBottom: 16 },
   groupLabel: { fontSize: 11, fontWeight: 700, color: '#bbb', marginBottom: 6, paddingLeft: 2 },
 
   memberCard: {
-    background: '#fff', borderRadius: 12, padding: '12px 14px',
+    background: '#fff', borderRadius: 16, padding: '12px 14px',
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    boxShadow: '0 1px 6px rgba(0,0,0,0.05)', marginBottom: 8,
+    boxShadow: '0 8px 20px rgba(15,23,42,0.05)', marginBottom: 8,
   },
   memberLeft: { display: 'flex', flexDirection: 'column', gap: 5, flex: 1, minWidth: 0 },
   memberName: { fontSize: 15, fontWeight: 600, color: '#1a1a1a' },
