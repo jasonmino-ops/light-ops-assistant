@@ -273,6 +273,11 @@ export default function HomePage() {
   }
 
   const pendingCustomerOrders = customerOrders.filter(isPendingCustomerOrder)
+  const pendingOrderCount = pendingCustomerOrders.length
+  const pendingOrderAmount = pendingCustomerOrders.reduce((sum, order) => sum + order.totalAmount, 0)
+  const displayStoreName = storeName ?? 'E-Shop'
+  const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
+  const desktopUrl = storeCode ? publicUrl(`/desktop?storeCode=${storeCode}&lang=${lang}`) : publicUrl(`/desktop?lang=${lang}`)
 
   async function updateOrderStatus(id: string, status: string) {
     setUpdatingOrderId(id)
@@ -308,9 +313,9 @@ export default function HomePage() {
       {/* ── Brand header ── */}
       <div style={s.brandBar}>
         <div style={s.brandLeft}>
-          <span style={s.brandIcon}>🏪</span>
+          <span style={s.brandAvatar}>{storeInitial}</span>
           <div style={s.brandTextBlock}>
-            <div style={s.brandTitle}>{storeName ?? 'E-Shop'}</div>
+            <div style={s.brandTitle}>{displayStoreName}</div>
             <div style={s.brandSub}>{t('home.brandSub')}</div>
           </div>
         </div>
@@ -332,9 +337,12 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ── Today summary ── */}
+      {/* ── Today operating hero ── */}
       <div style={s.summaryCard}>
-        <div style={s.summaryTitle}>{t('home.todaySummary')}</div>
+        <div style={s.summaryTopRow}>
+          <div style={s.summaryTitle}>{t('home.todaySummary')}</div>
+          <Link href="/dashboard" style={s.summaryLink}>{t('home.viewDashboard')}</Link>
+        </div>
         {loading ? (
           <div style={s.summarySkeletonWrap}>
             <div style={s.summarySkeleton} />
@@ -347,7 +355,7 @@ export default function HomePage() {
           <>
             {loadError && <div style={s.errorHint}>{loadError}</div>}
             <div style={s.netRow}>
-              <span style={s.netLabel}>{t('home.netIncome')}</span>
+              <span style={s.netLabel}>{effectiveRole === 'OWNER' ? t('home.netIncome') : t('home.todaySales')}</span>
               <span style={{
                 ...s.netAmount,
                 color: (summary?.netAmount ?? 0) >= 0 ? '#52c41a' : '#ff4d4f',
@@ -364,9 +372,55 @@ export default function HomePage() {
               <SummaryCell label={t('home.sale')} value={String(summary?.saleCount ?? 0)} unit={t('home.unit')} />
               <div style={s.summaryDivider} />
               <SummaryCell label={t('home.refund')} value={String(summary?.refundCount ?? 0)} unit={t('home.unit')} />
+              <div style={s.summaryDivider} />
+              <SummaryCell label={t('home.pendingOrdersShort')} value={String(pendingOrderCount)} unit={t('home.unit')} />
             </div>
+            {effectiveRole === 'OWNER' && (
+              <div style={s.pendingAmountLine}>{t('home.pendingAmount')} ${pendingOrderAmount.toFixed(2)}</div>
+            )}
           </>
         )}
+      </div>
+
+      {/* ── Pending work ── */}
+      <div style={s.workSection}>
+        <div style={s.sectionHeader}>
+          <span style={s.sectionTitleBare}>{t('home.pendingWork')}</span>
+          {effectiveRole === 'OWNER' && pendingOrderCount > 0 && <span style={s.coBadge}>{pendingOrderCount}</span>}
+        </div>
+        {effectiveRole === 'OWNER' ? (
+          ordersError ? (
+            <div style={s.errorHint}>{ordersError}</div>
+          ) : pendingOrderCount === 0 ? (
+            <div style={s.workEmpty}>{t('home.noPendingWork')}</div>
+          ) : (
+            pendingCustomerOrders.slice(0, 3).map((order) => (
+              <CustomerOrderCard
+                key={order.id}
+                order={order}
+                updating={updatingOrderId === order.id}
+                onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
+                onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
+                onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
+                onCollect={() => setCustomerCheckout({ id: order.id, orderNo: order.orderNo, totalAmount: order.totalAmount })}
+              />
+            ))
+          )
+        ) : (
+          <div style={s.workEmpty}>{t('home.staffWorkHint')}</div>
+        )}
+      </div>
+
+      {/* ── AI assistant ── */}
+      <div style={s.aiHomeCard}>
+        <div style={s.aiHomeText}>
+          <div style={s.aiHomeEyebrow}>Beta</div>
+          <div style={s.aiHomeTitle}>{t('home.aiStaffTitle')}</div>
+          <div style={s.aiHomeSub}>{t('home.aiStaffSub')}</div>
+        </div>
+        <Link href={effectiveRole === 'OWNER' ? '/products' : '/sale'} style={s.aiHomeBtn}>
+          {t('home.tryNow')}
+        </Link>
       </div>
 
       {/* ── Quick actions ── */}
@@ -375,26 +429,36 @@ export default function HomePage() {
         <ActionBtn href="/sale" icon="💰" label={t('home.sale')} color="#1677ff" />
         <ActionBtn href="/refund" icon="↩️" label={t('home.refund')} color="#ff4d4f" />
         <ActionBtn href="/records" icon="📋" label={t('home.records')} color="#fa8c16" />
+        <ActionBtn href={storeCode ? `/desktop?storeCode=${storeCode}&lang=${lang}` : '/desktop'} icon="🖥️" label={t('home.cashier')} color="#722ed1" />
       </div>
 
-      {effectiveRole === 'OWNER' && (
-        <div style={s.ownerEntrySection}>
-          <div style={s.sectionTitle}>{t('home.ownerEntry')}</div>
-          <div style={s.ownerEntryGrid}>
-            <OwnerEntry href="/products" icon="📦" label={t('home.products')} />
-            <OwnerEntry href="/customers" icon="👥" label={t('home.customers')} />
-            <OwnerEntry href="/invite" icon="🔗" label={t('home.inviteStaff')} />
-            <OwnerEntry href="/dashboard" icon="📊" label={t('home.dashboard')} />
-          </div>
+      <div style={s.ownerEntrySection}>
+        <div style={s.sectionTitle}>{effectiveRole === 'OWNER' ? t('home.ownerCenter') : t('home.staffCenter')}</div>
+        <div style={s.ownerEntryGrid}>
+          {effectiveRole === 'OWNER' ? (
+            <>
+              <OwnerEntry href="/products" icon="📦" label={t('home.products')} />
+              <OwnerEntry href="/customers" icon="👥" label={t('home.customers')} />
+              <OwnerEntry href="/invite" icon="🔗" label={t('home.inviteStaff')} />
+              <OwnerEntry href="/dashboard" icon="📊" label={t('home.dashboard')} />
+            </>
+          ) : (
+            <>
+              <OwnerEntry href="/products" icon="🔎" label={t('home.productLookup')} />
+              <OwnerEntry href="/sale" icon="💰" label={t('home.sale')} />
+              <OwnerEntry href="/records" icon="📋" label={t('home.records')} />
+              <OwnerEntry href="/refund" icon="↩️" label={t('home.refund')} />
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {/* ── 常用入口 ── */}
       {storeCode && (
         <div style={s.shortcutSection}>
           <div style={s.sectionTitle}>{t('home.commonEntry')}</div>
           {([
-            { key: 'cashier', label: t('home.cashier'), icon: '🖥️', url: publicUrl(`/desktop?storeCode=${storeCode}&lang=${lang}`), hint: t('home.cashierHint') },
+            { key: 'cashier', label: t('home.cashier'), icon: '🖥️', url: desktopUrl, hint: t('home.cashierHint') },
           ] as { key: string; label: string; icon: string; url: string; hint: string }[]).map(({ key, label, icon, url, hint }) => {
             const isCopied = copiedKey === key
             return (
@@ -445,7 +509,7 @@ export default function HomePage() {
         <div style={s.emptyHint}>{t('home.noRecordsToday')}</div>
       )}
 
-      {entries.map((entry, i) =>
+      {entries.slice(0, 3).map((entry, i) =>
         entry.kind === 'order' ? (
           <OrderCard
             key={entry.orderNo}
@@ -465,38 +529,6 @@ export default function HomePage() {
           <RefundCard key={entry.item.id + '-' + i} item={entry.item} tagRefund={t('home.tagRefund')} />
         )
       )}
-
-      {/* ── 待处理顾客订单区（仅 OWNER 可见） ── */}
-      {effectiveRole === 'OWNER' && (() => {
-        const actionableCount = pendingCustomerOrders.length
-        return (
-          <div style={s.coSection}>
-            <div style={s.coSectionHeader}>
-              <span style={s.coSectionTitle}>{t('home.customerOrders')}</span>
-              {actionableCount > 0 && (
-                <span style={s.coBadge}>{actionableCount}</span>
-              )}
-            </div>
-            {ordersError ? (
-              <div style={s.errorHint}>{ordersError}</div>
-            ) : actionableCount === 0 ? (
-              <div style={s.coEmpty}>{t('home.noPendingOrders')}</div>
-            ) : (
-              pendingCustomerOrders.map((order) => (
-                <CustomerOrderCard
-                  key={order.id}
-                  order={order}
-                  updating={updatingOrderId === order.id}
-                  onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
-                  onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
-                  onCancel={() => updateOrderStatus(order.id, 'CANCELLED')}
-                  onCollect={() => setCustomerCheckout({ id: order.id, orderNo: order.orderNo, totalAmount: order.totalAmount })}
-                />
-              ))
-            )}
-          </div>
-        )
-      })()}
 
       <OrderDetailSheet
         orderNo={selectedOrderNo}
@@ -650,11 +682,12 @@ function LangDropdown({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => voi
         type="button"
         onClick={() => setOpen((v) => !v)}
         style={{
-          fontSize: 11, color: 'rgba(255,255,255,0.95)',
-          background: 'rgba(255,255,255,0.15)',
-          border: '1px solid rgba(255,255,255,0.3)',
-          borderRadius: 12, padding: '4px 10px', cursor: 'pointer',
+          fontSize: 11, color: '#111827',
+          background: '#fff',
+          border: '1px solid #e5e7eb',
+          borderRadius: 999, padding: '7px 10px', cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' as const,
+          boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
         }}
       >
         <span>{current.flag}</span>
@@ -855,24 +888,36 @@ const s: Record<string, React.CSSProperties> = {
   page: {
     maxWidth: 480,
     margin: '0 auto',
-    padding: '0 0 16px',
+    padding: '14px 12px 18px',
+    background: '#f7f8fa',
+    minHeight: '100vh',
   },
   brandBar: {
-    background: '#1677ff',
-    padding: '16px 16px 20px',
+    background: 'transparent',
+    padding: '4px 2px 14px',
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    gap: 12,
   },
   brandLeft: {
     display: 'flex',
     alignItems: 'flex-start',
     gap: 12,
   },
-  brandIcon: {
-    fontSize: 36,
-    lineHeight: 1,
-    marginTop: 2,
+  brandAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg, #111827 0%, #4b5563 100%)',
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 20,
+    fontWeight: 900,
+    boxShadow: '0 10px 24px rgba(15,23,42,0.16)',
+    flexShrink: 0,
   },
   brandTextBlock: {
     display: 'flex',
@@ -880,15 +925,15 @@ const s: Record<string, React.CSSProperties> = {
     gap: 1,
   },
   brandTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 800,
-    color: '#fff',
+    color: '#111827',
     letterSpacing: '-0.3px',
     lineHeight: 1.2,
   },
   brandSub: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.65)',
+    color: '#6b7280',
     marginTop: 3,
     letterSpacing: '0.01em',
   },
@@ -900,12 +945,13 @@ const s: Record<string, React.CSSProperties> = {
   },
   switchBtn: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.8)',
-    background: 'rgba(255,255,255,0.15)',
-    border: '1px solid rgba(255,255,255,0.3)',
-    borderRadius: 12,
-    padding: '4px 10px',
+    color: '#111827',
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 999,
+    padding: '7px 10px',
     cursor: 'pointer',
+    boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
   },
   modeRow: {
     display: 'flex',
@@ -914,22 +960,28 @@ const s: Record<string, React.CSSProperties> = {
   },
   modeLabelText: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.6)',
+    color: '#6b7280',
     fontWeight: 600,
   },
   modeBtnOwner: {
-    background: 'rgba(250,140,22,0.85)',
-    border: '1px solid rgba(250,140,22,0.5)',
-    color: '#fff',
+    background: '#fff7ed',
+    border: '1px solid #fed7aa',
+    color: '#c2410c',
   },
   summaryCard: {
     background: '#fff',
-    margin: '0 12px',
-    marginTop: -10,
-    borderRadius: 14,
-    padding: '16px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+    margin: '0 0 16px',
+    borderRadius: 24,
+    padding: '20px',
+    boxShadow: '0 16px 36px rgba(15,23,42,0.08)',
     marginBottom: 16,
+    border: '1px solid rgba(229,231,235,0.9)',
+  },
+  summaryTopRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   summaryTitle: {
     fontSize: 12,
@@ -937,6 +989,13 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
+    marginBottom: 10,
+  },
+  summaryLink: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#1677ff',
+    textDecoration: 'none',
     marginBottom: 10,
   },
   summarySkeletonWrap: {
@@ -957,8 +1016,8 @@ const s: Record<string, React.CSSProperties> = {
   recentSkeletonWrap: {},
   netRow: {
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     marginBottom: 6,
   },
   payBreakRow: {
@@ -976,9 +1035,11 @@ const s: Record<string, React.CSSProperties> = {
     color: '#8c8c8c',
   },
   netAmount: {
-    fontSize: 28,
-    fontWeight: 700,
+    fontSize: 42,
+    fontWeight: 900,
     letterSpacing: '-0.02em',
+    lineHeight: 1.05,
+    marginTop: 4,
   },
   summaryGrid: {
     display: 'flex',
@@ -992,8 +1053,8 @@ const s: Record<string, React.CSSProperties> = {
     gap: 2,
   },
   summaryCellValue: {
-    fontSize: 20,
-    fontWeight: 600,
+    fontSize: 18,
+    fontWeight: 800,
     color: '#1a1a1a',
   },
   summaryUnit: {
@@ -1011,32 +1072,113 @@ const s: Record<string, React.CSSProperties> = {
     height: 32,
     background: '#e8e8e8',
   },
+  pendingAmountLine: {
+    marginTop: 12,
+    borderRadius: 14,
+    background: '#fff7ed',
+    color: '#9a3412',
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 700,
+  },
   sectionHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '0 16px',
+    padding: '0 4px',
     marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 13,
-    fontWeight: 600,
+    fontWeight: 700,
     color: '#1a1a1a',
-    padding: '0 16px',
+    padding: '0 4px',
     marginBottom: 8,
     display: 'block',
+  },
+  sectionTitleBare: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: '#1a1a1a',
   },
   viewAll: {
     fontSize: 13,
     color: '#1677ff',
     textDecoration: 'none',
+    fontWeight: 700,
   },
   actionGrid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr 1fr',
+    gridTemplateColumns: '1fr 1fr',
     gap: 10,
-    padding: '0 12px',
+    padding: 0,
     marginBottom: 20,
+  },
+  workSection: {
+    background: '#fff7ed',
+    border: '1px solid #fed7aa',
+    borderRadius: 22,
+    padding: '14px 10px 8px',
+    marginBottom: 16,
+    boxShadow: '0 12px 26px rgba(154,52,18,0.06)',
+  },
+  workEmpty: {
+    background: '#fff',
+    borderRadius: 16,
+    padding: '16px 14px',
+    color: '#9a3412',
+    fontSize: 13,
+    lineHeight: 1.5,
+    margin: '4px 0 6px',
+  },
+  aiHomeCard: {
+    background: 'linear-gradient(135deg, #111827 0%, #334155 100%)',
+    borderRadius: 24,
+    padding: '18px 18px',
+    marginBottom: 20,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    boxShadow: '0 16px 34px rgba(15,23,42,0.16)',
+  },
+  aiHomeText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 5,
+    minWidth: 0,
+  },
+  aiHomeEyebrow: {
+    alignSelf: 'flex-start',
+    fontSize: 11,
+    color: '#bae6fd',
+    background: 'rgba(14,165,233,0.16)',
+    border: '1px solid rgba(186,230,253,0.28)',
+    borderRadius: 999,
+    padding: '3px 8px',
+    fontWeight: 800,
+  },
+  aiHomeTitle: {
+    fontSize: 19,
+    fontWeight: 900,
+    color: '#fff',
+    letterSpacing: '-0.2px',
+  },
+  aiHomeSub: {
+    fontSize: 12,
+    color: '#d1d5db',
+    lineHeight: 1.5,
+  },
+  aiHomeBtn: {
+    flexShrink: 0,
+    borderRadius: 999,
+    background: '#fff',
+    color: '#111827',
+    padding: '10px 13px',
+    fontSize: 13,
+    fontWeight: 800,
+    textDecoration: 'none',
+    boxShadow: '0 8px 18px rgba(0,0,0,0.14)',
   },
   shortcutSection: {
     marginBottom: 16,
@@ -1045,9 +1187,11 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '10px 16px',
+    padding: '14px 14px',
     background: '#fff',
-    borderBottom: '1px solid #f0f0f0',
+    border: '1px solid rgba(229,231,235,0.9)',
+    borderRadius: 20,
+    boxShadow: '0 10px 24px rgba(15,23,42,0.06)',
   },
   shortcutLeft: {
     display: 'flex',
@@ -1090,8 +1234,8 @@ const s: Record<string, React.CSSProperties> = {
     marginLeft: 8,
   },
   shortcutBtn: {
-    padding: '5px 10px',
-    borderRadius: 6,
+    padding: '7px 10px',
+    borderRadius: 999,
     border: '1px solid #d1d5db',
     background: '#f9fafb',
     color: '#374151',
@@ -1101,8 +1245,8 @@ const s: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap' as const,
   },
   shortcutBtnOk: {
-    padding: '5px 10px',
-    borderRadius: 6,
+    padding: '7px 10px',
+    borderRadius: 999,
     border: '1px solid #86efac',
     background: '#f0fdf4',
     color: '#15803d',
@@ -1113,14 +1257,15 @@ const s: Record<string, React.CSSProperties> = {
   },
   actionBtn: {
     background: '#fff',
-    border: '1.5px solid',
-    borderRadius: 12,
-    padding: '14px 8px',
+    border: '1px solid',
+    borderRadius: 20,
+    padding: '16px 10px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 8,
     textDecoration: 'none',
+    boxShadow: '0 10px 24px rgba(15,23,42,0.05)',
   },
   actionIcon: {
     width: 40,
@@ -1141,8 +1286,8 @@ const s: Record<string, React.CSSProperties> = {
   ownerEntryGrid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    gap: 8,
-    padding: '0 12px',
+    gap: 10,
+    padding: 0,
   },
   ownerEntry: {
     display: 'flex',
@@ -1150,10 +1295,11 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     background: '#fff',
     border: '1px solid #edf0f2',
-    borderRadius: 10,
-    padding: '10px 12px',
+    borderRadius: 18,
+    padding: '13px 12px',
     textDecoration: 'none',
     minWidth: 0,
+    boxShadow: '0 8px 20px rgba(15,23,42,0.04)',
   },
   ownerEntryIcon: {
     width: 28,
@@ -1176,13 +1322,15 @@ const s: Record<string, React.CSSProperties> = {
   },
   recentCard: {
     background: '#fff',
-    margin: '0 12px 8px',
-    borderRadius: 10,
+    margin: '0 0 10px',
+    borderRadius: 18,
     padding: '12px 14px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
+    border: '1px solid rgba(229,231,235,0.9)',
+    boxShadow: '0 8px 18px rgba(15,23,42,0.04)',
   },
   recentCardRefund: {
     background: '#fff1f0',
