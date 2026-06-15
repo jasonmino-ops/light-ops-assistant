@@ -348,10 +348,13 @@ export default function HomePage() {
         </div>
         {loading ? (
           <div style={s.summarySkeletonWrap}>
-            <div style={s.summarySkeleton} />
+            <div style={{ ...s.summarySkeleton, width: '42%', height: 14 }} />
+            <div style={{ ...s.summarySkeleton, width: '64%', height: 42 }} />
+            <div style={{ ...s.summarySkeleton, width: '88%', height: 12 }} />
             <div style={s.summarySkeletonRow}>
-              <div style={{ ...s.summarySkeleton, flex: 1, height: 32 }} />
-              <div style={{ ...s.summarySkeleton, flex: 1, height: 32 }} />
+              <div style={{ ...s.summarySkeleton, flex: 1, height: 34 }} />
+              <div style={{ ...s.summarySkeleton, flex: 1, height: 34 }} />
+              <div style={{ ...s.summarySkeleton, flex: 1, height: 34 }} />
             </div>
           </div>
         ) : (
@@ -609,6 +612,8 @@ function LangDropdown({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => voi
           borderRadius: 999, padding: '7px 10px', cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' as const,
           boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
+          minWidth: 96,
+          justifyContent: 'center',
         }}
       >
         <span>{current.flag}</span>
@@ -820,11 +825,14 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
+    minHeight: 56,
   },
   brandLeft: {
     display: 'flex',
     alignItems: 'flex-start',
     gap: 12,
+    minWidth: 0,
+    flex: 1,
   },
   brandAvatar: {
     width: 44,
@@ -851,6 +859,7 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: 1,
+    minWidth: 0,
   },
   brandTitle: {
     fontSize: 18,
@@ -858,6 +867,10 @@ const s: Record<string, React.CSSProperties> = {
     color: '#111827',
     letterSpacing: '-0.3px',
     lineHeight: 1.2,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: 190,
   },
   brandSub: {
     fontSize: 11,
@@ -870,6 +883,8 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     alignItems: 'flex-end',
     gap: 4,
+    flexShrink: 0,
+    minWidth: 118,
   },
   switchBtn: {
     fontSize: 10,
@@ -880,11 +895,14 @@ const s: Record<string, React.CSSProperties> = {
     padding: '6px 9px',
     cursor: 'pointer',
     boxShadow: '0 4px 14px rgba(15,23,42,0.06)',
+    minWidth: 82,
+    whiteSpace: 'nowrap',
   },
   modeRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
+    whiteSpace: 'nowrap',
   },
   modeLabelText: {
     fontSize: 10,
@@ -904,6 +922,7 @@ const s: Record<string, React.CSSProperties> = {
     boxShadow: '0 14px 30px rgba(20,184,166,0.11)',
     marginBottom: 12,
     border: '1px solid rgba(153,246,228,0.7)',
+    minHeight: 154,
   },
   summaryTopRow: {
     display: 'flex',
@@ -929,7 +948,9 @@ const s: Record<string, React.CSSProperties> = {
   summarySkeletonWrap: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
+    gap: 9,
+    minHeight: 118,
+    justifyContent: 'center',
   },
   summarySkeletonRow: {
     display: 'flex',
@@ -939,7 +960,7 @@ const s: Record<string, React.CSSProperties> = {
     height: 20,
     borderRadius: 6,
     background: '#e8e8e8',
-    animation: 'pulse 1.2s ease-in-out infinite',
+    animation: 'pulse 1.6s ease-in-out infinite',
   },
   recentSkeletonWrap: {},
   netRow: {
@@ -1049,6 +1070,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: '10px 10px 6px',
     marginBottom: 10,
     boxShadow: '0 8px 20px rgba(154,52,18,0.05)',
+    minHeight: 104,
   },
   workEmpty: {
     background: '#fff',
@@ -1070,6 +1092,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     gap: 12,
     boxShadow: '0 14px 30px rgba(124,58,237,0.12)',
+    minHeight: 82,
   },
   aiHomeText: {
     display: 'flex',
