@@ -196,6 +196,32 @@ type PreviewRow = {
 
 type AiRow = PreviewRow & { include: boolean }
 
+type AiDraftProduct = {
+  name: string
+  brand: string | null
+  spec: string | null
+  categoryName: string | null
+  categoryId: string | null
+  categorySuggestion: string | null
+  sku: string | null
+  barcode: string | null
+  imageUrl: string | null
+  confidence: number
+  warning: string
+}
+
+type AiMatchedProduct = {
+  productId: string
+  name: string
+  spec: string | null
+  price: number
+  imageUrl: string | null
+  categoryId: string | null
+  status: 'ACTIVE' | 'DISABLED'
+  confidence: number
+  reason: string[]
+}
+
 function productImages(p: Product | null): string[] {
   if (!p) return []
   if (Array.isArray(p.imageUrls) && p.imageUrls.length > 0) return p.imageUrls.filter(Boolean).slice(0, 3)
@@ -271,6 +297,17 @@ export default function ProductsPage() {
   const [aiError, setAiError] = useState<string | null>(null)
   const aiPanelRef = useRef<HTMLDivElement>(null)
   const aiFileRef = useRef<HTMLInputElement>(null)
+
+  // AI 单商品拍照建档
+  const [photoCreateOpen, setPhotoCreateOpen] = useState(false)
+  const [photoCreateStep, setPhotoCreateStep] = useState<'upload' | 'recognizing' | 'matched' | 'draft'>('upload')
+  const [photoCreateFile, setPhotoCreateFile] = useState<File | null>(null)
+  const [photoCreatePreview, setPhotoCreatePreview] = useState<string | null>(null)
+  const [photoCreateMatches, setPhotoCreateMatches] = useState<AiMatchedProduct[]>([])
+  const [photoCreateDraft, setPhotoCreateDraft] = useState<AiDraftProduct | null>(null)
+  const [photoCreateError, setPhotoCreateError] = useState<string | null>(null)
+  const photoCreatePanelRef = useRef<HTMLDivElement>(null)
+  const photoCreateFileRef = useRef<HTMLInputElement>(null)
 
   // Edit form
   const [editName, setEditName] = useState('')
@@ -495,6 +532,7 @@ export default function ProductsPage() {
 
   function openAiImport() {
     aiReset()
+    setPhotoCreateOpen(false)
     setImportOpen(false)
     setAiOpen(true)
     window.setTimeout(() => {
@@ -503,8 +541,20 @@ export default function ProductsPage() {
     }, 0)
   }
 
+  function openPhotoCreate() {
+    photoCreateReset()
+    setImportOpen(false)
+    setAiOpen(false)
+    setPhotoCreateOpen(true)
+    window.setTimeout(() => {
+      photoCreatePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      photoCreateFileRef.current?.focus()
+    }, 0)
+  }
+
   function openBulkImport() {
     setAiOpen(false)
+    setPhotoCreateOpen(false)
     setImportOpen(true)
     setImportStep('upload')
     setImportPreview(null)
@@ -1104,6 +1154,122 @@ export default function ProductsPage() {
     if (aiFileRef.current) aiFileRef.current.value = ''
   }
 
+  function photoCreateReset() {
+    setPhotoCreateStep('upload')
+    setPhotoCreateFile(null)
+    setPhotoCreatePreview(null)
+    setPhotoCreateMatches([])
+    setPhotoCreateDraft(null)
+    setPhotoCreateError(null)
+    if (photoCreateFileRef.current) photoCreateFileRef.current.value = ''
+  }
+
+  function cancelPhotoCreateDraft() {
+    photoCreateReset()
+    setNewBarcode('')
+    setNewName('')
+    setNewSpec('')
+    setNewPrice('')
+    setNewCategoryId('')
+    clearNewImage()
+    setMode('idle')
+  }
+
+  function handlePhotoCreateFileSelect(file: File) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setPhotoCreateError(t('products.imageTypeError'))
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoCreateError(t('products.imageSizeError'))
+      return
+    }
+    setPhotoCreateFile(file)
+    setPhotoCreatePreview(URL.createObjectURL(file))
+    setPhotoCreateMatches([])
+    setPhotoCreateDraft(null)
+    setPhotoCreateError(null)
+    setPhotoCreateStep('upload')
+  }
+
+  async function handlePhotoCreateRecognize() {
+    if (!photoCreateFile) return
+    setPhotoCreateStep('recognizing')
+    setPhotoCreateError(null)
+    try {
+      const blob = await compressForUpload(photoCreateFile)
+      const uploadName = blob.type === 'image/webp' ? 'product.webp'
+        : blob.type === 'image/jpeg' ? 'product.jpg' : photoCreateFile.name
+      const form = new FormData()
+      form.append('file', new File([blob], uploadName, { type: blob.type || photoCreateFile.type }))
+      const res = await fetch('/api/products/photo-recognize-draft', {
+        method: 'POST',
+        headers: { ...OWNER_CTX },
+        body: form,
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok || body?.error) {
+        setPhotoCreateError(body?.message ?? body?.error ?? t('products.aiCreateFailed'))
+        setPhotoCreateStep('upload')
+        return
+      }
+      const matches = Array.isArray(body?.matchedProducts) ? body.matchedProducts as AiMatchedProduct[] : []
+      if (matches.length > 0) {
+        setPhotoCreateMatches(matches)
+        setPhotoCreateDraft(null)
+        setPhotoCreateStep('matched')
+        return
+      }
+      if (body?.draft) {
+        const draft = body.draft as AiDraftProduct
+        setPhotoCreateDraft(draft)
+        setPhotoCreateMatches([])
+        setNewBarcode(draft.barcode ?? '')
+        setNewName(draft.name ?? '')
+        setNewSpec(draft.spec ?? '')
+        setNewPrice('')
+        setNewCategoryId(draft.categoryId ?? '')
+        if (photoCreatePreview) {
+          setNewImageFiles([photoCreateFile])
+          setNewImagePreviews([photoCreatePreview])
+          setNewImageFile(photoCreateFile)
+          setNewImagePreview(photoCreatePreview)
+        }
+        setMode('not-found')
+        setPhotoCreateStep('draft')
+        return
+      }
+      setPhotoCreateError(t('products.aiCreateNoDraft'))
+      setPhotoCreateStep('upload')
+    } catch {
+      setPhotoCreateError(t('common.networkError'))
+      setPhotoCreateStep('upload')
+    }
+  }
+
+  function openMatchedProduct(match: AiMatchedProduct) {
+    const existing = productList.find((p) => p.id === match.productId)
+    const next: Product = existing ?? {
+      id: match.productId,
+      barcode: '',
+      name: match.name,
+      spec: match.spec,
+      sellPrice: match.price,
+      status: match.status,
+      categoryId: match.categoryId,
+      imageUrl: match.imageUrl,
+      imageUrls: match.imageUrl ? [match.imageUrl] : [],
+    }
+    setProduct(next)
+    setEditName(next.name)
+    setEditSpec(next.spec ?? '')
+    setEditPrice(String(next.sellPrice))
+    setEditStatus(next.status)
+    setEditCategoryId(next.categoryId ?? '')
+    setMode('found')
+    window.setTimeout(() => editNameRef.current?.focus(), 100)
+  }
+
   // ── 商品主图 ──────────────────────────────────────────────────────────────
 
   async function compressForUpload(file: File): Promise<Blob> {
@@ -1576,7 +1742,7 @@ export default function ProductsPage() {
               <span style={s.aiHeroTag}>{t('products.aiHeroTagAutoFile')}</span>
               <span style={s.aiHeroTag}>{t('products.aiHeroTagEfficient')}</span>
             </div>
-            <button type="button" style={s.aiHeroBtn} onClick={openAiImport}>
+            <button type="button" style={s.aiHeroBtn} onClick={openPhotoCreate}>
               {t('products.aiHeroAction')}
             </button>
           </div>
@@ -1588,6 +1754,9 @@ export default function ProductsPage() {
           </button>
           <button type="button" style={s.secondaryEntryBtn} onClick={openBulkImport}>
             {t('products.bulkImportAction')}
+          </button>
+          <button type="button" style={s.secondaryEntryBtn} onClick={openAiImport}>
+            {t('products.aiMenuImportAction')}
           </button>
         </div>
 
@@ -1634,6 +1803,180 @@ export default function ProductsPage() {
         </div>
 
         {error && <div style={s.errorMsg}>{error}</div>}
+
+        {/* ── AI 单商品拍照建档 ── */}
+        {photoCreateOpen && (
+        <div ref={photoCreatePanelRef} style={{ ...s.importSection, order: 3 }}>
+          <button
+            style={s.importToggle}
+            onClick={() => setPhotoCreateOpen((v) => !v)}
+          >
+            <span style={s.importToggleText}>{t('products.aiCreatePanelTitle')}</span>
+            <span style={s.importToggleArrow}>{photoCreateOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {photoCreateOpen && (
+            <div style={s.importBody}>
+              {photoCreateStep === 'upload' && (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0 4px' }}>
+                    {t('products.aiCreateHint')}
+                  </div>
+                  <div style={s.aiUploadStack}>
+                    <input
+                      ref={photoCreateFileRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      style={s.hiddenFileInput}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handlePhotoCreateFileSelect(file)
+                      }}
+                    />
+                    <button
+                      type="button"
+                      style={s.aiUploadCard}
+                      onClick={() => photoCreateFileRef.current?.click()}
+                    >
+                      <span style={s.aiUploadIcon}>📷</span>
+                      <span style={s.aiUploadTitle}>{t('products.aiUploadTitle')}</span>
+                      <span style={s.aiUploadSubtitle}>{t('products.aiUploadSubtitle')}</span>
+                    </button>
+                    {photoCreatePreview && (
+                      <div style={s.aiDraftImageWrap}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photoCreatePreview} alt={t('products.imageTitle')} style={s.aiDraftImage} />
+                      </div>
+                    )}
+                    {photoCreateFile && (
+                      <div style={s.aiSelectedFile}>
+                        {t('products.aiSelectedFile')} {photoCreateFile.name}
+                      </div>
+                    )}
+                    <button
+                      style={{
+                        ...s.aiRecognizeBtn,
+                        opacity: !photoCreateFile ? 0.5 : 1,
+                        cursor: !photoCreateFile ? 'not-allowed' : 'pointer',
+                      }}
+                      type="button"
+                      disabled={!photoCreateFile}
+                      onClick={handlePhotoCreateRecognize}
+                    >
+                      {photoCreateFile ? t('products.aiBtn') : t('products.aiSelectFirst')}
+                    </button>
+                  </div>
+                  {photoCreateError && <div style={s.importErrorMsg}>{photoCreateError}</div>}
+                </>
+              )}
+
+              {photoCreateStep === 'recognizing' && (
+                <div style={s.aiRecognizingBox}>
+                  <div style={s.aiRecognizingSpinner}>●</div>
+                  <button type="button" style={{ ...s.aiRecognizeBtn, opacity: 0.72 }} disabled>
+                    {t('products.aiRecognizing')}
+                  </button>
+                </div>
+              )}
+
+              {photoCreateStep === 'matched' && (
+                <div style={s.aiDraftStack}>
+                  <div style={s.aiDraftNotice}>
+                    <div style={s.aiDraftNoticeTitle}>{t('products.aiCreateMatchedTitle')}</div>
+                    <div style={s.aiDraftNoticeSub}>{t('products.aiCreateMatchedSub')}</div>
+                  </div>
+                  {photoCreateMatches.map((match) => (
+                    <div key={match.productId} style={s.aiMatchedCard}>
+                      <div style={s.aiMatchedMain}>
+                        {match.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={match.imageUrl} alt={match.name} style={s.aiMatchedImg} />
+                        ) : (
+                          <div style={s.aiMatchedPlaceholder}>IMG</div>
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={s.aiMatchedName}>{match.name}</div>
+                          <div style={s.aiMatchedMeta}>{match.spec || '-'} · ${match.price.toFixed(2)} · {match.status}</div>
+                          <div style={s.aiMatchedReason}>
+                            {t('products.aiCreateConfidence')} {Math.round(match.confidence * 100)}%
+                          </div>
+                        </div>
+                      </div>
+                      <button type="button" style={s.aiSmallPrimaryBtn} onClick={() => openMatchedProduct(match)}>
+                        {t('products.aiCreateViewEdit')}
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" style={s.aiSecondaryBtn} onClick={photoCreateReset}>
+                    {t('products.aiRedo')}
+                  </button>
+                </div>
+              )}
+
+              {photoCreateStep === 'draft' && photoCreateDraft && (
+                <div style={s.aiDraftStack}>
+                  <div style={s.aiDraftNotice}>
+                    <div style={s.aiDraftNoticeTitle}>{t('products.aiCreateDraftTitle')}</div>
+                    <div style={s.aiDraftNoticeSub}>{t('products.aiCreateDraftSub')}</div>
+                  </div>
+                  <div style={s.aiDraftCard}>
+                    {photoCreatePreview && (
+                      <div style={s.aiDraftImageWrap}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photoCreatePreview} alt={newName || t('products.imageTitle')} style={s.aiDraftImage} />
+                      </div>
+                    )}
+                    <div style={s.aiDraftWarning}>
+                      {photoCreateDraft.warning || t('products.aiCreateWarning')}
+                      {photoCreateDraft.confidence ? ` · ${t('products.aiCreateConfidence')} ${Math.round(photoCreateDraft.confidence * 100)}%` : ''}
+                    </div>
+
+                    <Field label={t('products.fieldName')}>
+                      <input style={s.field} value={newName} onChange={(e) => setNewName(e.target.value)} />
+                    </Field>
+                    <Field label={t('products.fieldCategory')}>
+                      <CategorySelect
+                        categories={categories}
+                        value={newCategoryId}
+                        onChange={setNewCategoryId}
+                        noneLabel={photoCreateDraft.categorySuggestion || t('products.noCategory')}
+                      />
+                    </Field>
+                    <Field label={t('products.fieldSpec')}>
+                      <input style={s.field} value={newSpec} onChange={(e) => setNewSpec(e.target.value)} />
+                    </Field>
+                    <Field label={t('products.barcodeLabel')}>
+                      <input style={s.field} value={newBarcode} onChange={(e) => setNewBarcode(e.target.value)} placeholder={t('products.barcodePlaceholder')} />
+                    </Field>
+                    <Field label={t('products.fieldPrice')}>
+                      <input
+                        style={s.field}
+                        type="text"
+                        inputMode="decimal"
+                        value={newPrice}
+                        onChange={(e) => setNewPrice(e.target.value.replace(/[^0-9.]/g, ''))}
+                        placeholder="0.00"
+                      />
+                    </Field>
+                    <div style={s.aiDraftStatusLine}>{t('products.aiCreateStatusHint')}</div>
+                    <button
+                      type="button"
+                      style={{ ...s.saveBtn, opacity: (!newName.trim() || !newPrice.trim() || creating) ? 0.55 : 1 }}
+                      disabled={!newName.trim() || !newPrice.trim() || creating}
+                      onClick={handleCreate}
+                    >
+                      {creating ? t('products.saving') : t('products.aiCreateSave')}
+                    </button>
+                    <button type="button" style={s.aiSecondaryBtn} onClick={cancelPhotoCreateDraft}>
+                      {t('products.deleteBack')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        )}
 
         {/* ── 批量导入 ── */}
         {importOpen && (
@@ -3518,6 +3861,134 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 12,
+  },
+  aiDraftStack: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 12,
+    paddingTop: 12,
+  },
+  aiDraftNotice: {
+    borderRadius: 18,
+    background: '#f6f8fb',
+    padding: '14px 16px',
+  },
+  aiDraftNoticeTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: 'var(--text)',
+  },
+  aiDraftNoticeSub: {
+    marginTop: 4,
+    fontSize: 13,
+    color: 'var(--muted)',
+    lineHeight: 1.5,
+  },
+  aiDraftCard: {
+    borderRadius: 22,
+    background: '#fff',
+    border: '1px solid var(--border)',
+    padding: 14,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 12,
+  },
+  aiDraftImageWrap: {
+    width: '100%',
+    borderRadius: 18,
+    overflow: 'hidden',
+    background: '#f3f4f6',
+    border: '1px solid var(--border)',
+  },
+  aiDraftImage: {
+    display: 'block',
+    width: '100%',
+    maxHeight: 220,
+    objectFit: 'contain' as const,
+    background: '#fff',
+  },
+  aiDraftWarning: {
+    borderRadius: 14,
+    background: '#fff7e6',
+    color: '#8a5a00',
+    padding: '10px 12px',
+    fontSize: 13,
+    lineHeight: 1.45,
+  },
+  aiDraftStatusLine: {
+    borderRadius: 14,
+    background: '#f6f7f9',
+    color: 'var(--muted)',
+    padding: '10px 12px',
+    fontSize: 13,
+  },
+  aiMatchedCard: {
+    borderRadius: 20,
+    background: '#fff',
+    border: '1px solid var(--border)',
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 10,
+  },
+  aiMatchedMain: {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center',
+  },
+  aiMatchedImg: {
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+    objectFit: 'cover' as const,
+    background: '#f3f4f6',
+  },
+  aiMatchedPlaceholder: {
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+    background: '#eef1f5',
+    color: 'var(--muted)',
+    fontSize: 11,
+    fontWeight: 800,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiMatchedName: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: 'var(--text)',
+    lineHeight: 1.35,
+  },
+  aiMatchedMeta: {
+    marginTop: 3,
+    fontSize: 13,
+    color: 'var(--muted)',
+  },
+  aiMatchedReason: {
+    marginTop: 6,
+    fontSize: 12,
+    color: 'var(--blue)',
+    fontWeight: 700,
+  },
+  aiSmallPrimaryBtn: {
+    minHeight: 44,
+    borderRadius: 16,
+    border: 'none',
+    background: 'var(--blue)',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 800,
+  },
+  aiSecondaryBtn: {
+    minHeight: 44,
+    borderRadius: 16,
+    border: '1px solid var(--border)',
+    background: '#fff',
+    color: 'var(--text)',
+    fontSize: 14,
+    fontWeight: 700,
   },
   importBtn: {
     flexShrink: 0,
