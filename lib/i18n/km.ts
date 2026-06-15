@@ -329,6 +329,8 @@ const km = {
     otherReasonRequired: 'សូមបញ្ជាក់មូលហេតុបន្ថែម',
     qtyExceededError: 'ចំនួនលើសសុពលភាព អាចសងបានតែ {n}',
     submitFailed: 'ការដាក់ស្នើបានបរាជ័យ',
+    itemCountSummary: 'សរុប {count} គ្រឿង',
+    orderTotalSummary: 'សរុប ${amount}',
     reasons: {
       wrongItem: 'យកទំនិញខុស',
       noWant: 'អតិថិជនមិនយក',

@@ -441,7 +441,9 @@ export default function RefundPage() {
                 {fmtDateTime(selectedOrder.createdAt)} · {selectedOrder.operatorDisplayName}
               </div>
               <div style={s.orderSummaryTotal}>
-                共 {selectedOrder.items.length} 件商品 · 合计 ${selectedOrder.totalAmount.toFixed(2)}
+                {t('refund.itemCountSummary').replace('{count}', String(selectedOrder.items.length))}
+                {' · '}
+                {t('refund.orderTotalSummary').replace('{amount}', selectedOrder.totalAmount.toFixed(2))}
               </div>
             </div>
 

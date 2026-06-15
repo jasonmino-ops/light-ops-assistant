@@ -329,6 +329,8 @@ const zh = {
     otherReasonRequired: '请补充说明具体原因',
     qtyExceededError: '超出可退数量，当前可退 {n}',
     submitFailed: '提交失败',
+    itemCountSummary: '共 {count} 件商品',
+    orderTotalSummary: '合计 ${amount}',
     reasons: {
       wrongItem: '商品拿错',
       noWant: '顾客不要了',
