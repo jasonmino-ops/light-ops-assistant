@@ -135,6 +135,12 @@ const zh = {
   },
   sale: {
     title: '销售',
+    workbenchSub: '高频收银工作台',
+    todaySalesMini: '今日销售额',
+    currentCart: '当前购物车',
+    selectedItems: '已选商品',
+    aiSaleEntrySub: '拍照识别商品，快速加入购物车',
+    aiStart: '开始识别',
     scanBtn: '扫码查询',
     orInput: '或手动输入条码',
     orFromList: '或从列表选',

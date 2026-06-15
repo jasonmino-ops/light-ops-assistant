@@ -135,6 +135,12 @@ const en = {
   },
   sale: {
     title: 'Sale',
+    workbenchSub: 'High-frequency checkout workspace',
+    todaySalesMini: 'Today sales',
+    currentCart: 'Current cart',
+    selectedItems: 'Selected items',
+    aiSaleEntrySub: 'Recognize products by photo and add them faster',
+    aiStart: 'Start',
     scanBtn: 'Scan barcode',
     orInput: 'Or enter barcode manually',
     orFromList: 'Or select from list',

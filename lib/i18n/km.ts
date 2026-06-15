@@ -135,6 +135,12 @@ const km = {
   },
   sale: {
     title: 'ការលក់',
+    workbenchSub: 'កន្លែងគិតលុយប្រើញឹកញាប់',
+    todaySalesMini: 'ការលក់ថ្ងៃនេះ',
+    currentCart: 'រទេះបច្ចុប្បន្ន',
+    selectedItems: 'ទំនិញបានជ្រើស',
+    aiSaleEntrySub: 'ថតរូបស្គាល់ទំនិញ ហើយបន្ថែមលឿនទៅរទេះ',
+    aiStart: 'ចាប់ផ្តើម',
     scanBtn: 'ស្កែនបន្ទះ',
     orInput: 'ឬបញ្ចូលលេខបន្ទះ',
     orFromList: 'ឬជ្រើសពីបញ្ជី',

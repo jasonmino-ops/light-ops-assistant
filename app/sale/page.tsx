@@ -120,6 +120,14 @@ type CartItem = {
   qty: number
 }
 
+type SaleSummary = {
+  saleCount: number
+  refundCount: number
+  netAmount: number
+  cashSaleAmount?: number
+  khqrSaleAmount?: number
+}
+
 function productImageUrl(product: Product): string | null {
   return product.imageUrl ?? product.imageUrls?.find((url) => typeof url === 'string' && url.trim()) ?? null
 }
@@ -175,7 +183,17 @@ type PayStep = 'none' | 'selecting' | 'khqr_pending'
 
 export default function SalePage() {
   const { t } = useLocale()
-  const { tier } = useWorkMode()
+  const {
+    tier,
+    realRole,
+    effectiveRole,
+    isOwnerInStaffMode,
+    enterStaffMode,
+    exitStaffMode,
+    storeName: contextStoreName,
+    storeCode: contextStoreCode,
+    tenantName: contextTenantName,
+  } = useWorkMode()
   const [barcodeInput, setBarcodeInput] = useState('')
   const [qty, setQty] = useState(1)
   const [product, setProduct] = useState<Product | null>(null)
@@ -209,6 +227,8 @@ export default function SalePage() {
   const [photoMultiHandled, setPhotoMultiHandled] = useState<Record<number, 'added' | 'ignored'>>({})
   const [photoMultiManualHintIndex, setPhotoMultiManualHintIndex] = useState<number | null>(null)
   const [storeCode, setStoreCode] = useState<string | null>(null)
+  const [summary, setSummary] = useState<SaleSummary | null>(null)
+  const [avatarFailed, setAvatarFailed] = useState(false)
   const [restorePrompt, setRestorePrompt] = useState<RestorePrompt | null>(null)
   const [restoreBusy, setRestoreBusy] = useState(false)
   const restoreCheckedRef = useRef(false)
@@ -235,6 +255,11 @@ export default function SalePage() {
   const [dropSearch, setDropSearch] = useState('')
   const suggestWrapRef = useRef<HTMLDivElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
+  const displayStoreName = contextStoreName ?? contextTenantName ?? 'E-Shop'
+  const displayStoreCode = contextStoreCode ?? storeCode
+  const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
+  const storeAvatarUrl = displayStoreCode && !avatarFailed ? `/api/public/stores/${displayStoreCode}/banner` : null
+  const cartItemCount = cart.reduce((sum, item) => sum + item.qty, 0)
 
   useEffect(() => {
     apiFetch('/api/me', { cache: 'no-store' })
@@ -251,6 +276,19 @@ export default function SalePage() {
       .then((r) => (r.ok ? r.json() : []))
       .then((list: Product[]) => setAllProducts(list))
       .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const today = new Date()
+    const yyyy = today.getFullYear()
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
+    const dd = String(today.getDate()).padStart(2, '0')
+    const date = `${yyyy}-${mm}-${dd}`
+    const params = new URLSearchParams({ dateFrom: date, dateTo: date, pageSize: '1' })
+    apiFetch(`/api/records?${params}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setSummary(data?.summary ?? null))
+      .catch(() => setSummary(null))
   }, [])
 
   useEffect(() => {
@@ -1479,12 +1517,53 @@ export default function SalePage() {
         </div>
       )}
 
-      <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={s.headerTitle}>{t('sale.title')}</span>
-        <LangToggleBtn />
+      <div style={s.saleHeader}>
+        <div style={s.saleBrandLeft}>
+          <span style={s.saleAvatar}>
+            {storeAvatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={storeAvatarUrl} alt={displayStoreName} style={s.saleAvatarImg} onError={() => setAvatarFailed(true)} />
+            ) : (
+              storeInitial
+            )}
+          </span>
+          <div style={s.saleBrandText}>
+            <div style={s.saleStoreName}>{displayStoreName}</div>
+            <div style={s.saleStoreSub}>{t('sale.workbenchSub')}</div>
+          </div>
+        </div>
+        <div style={s.saleHeaderTools}>
+          <LangToggleBtn />
+          {realRole === 'OWNER' && (
+            <button
+              type="button"
+              style={s.modeBtn}
+              onClick={isOwnerInStaffMode ? exitStaffMode : enterStaffMode}
+            >
+              {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={s.body}>
+        <div style={s.saleOverview}>
+          <div>
+            <div style={s.overviewLabel}>{t('sale.todaySalesMini')}</div>
+            <div style={s.overviewAmount}>${(summary?.netAmount ?? 0).toFixed(2)}</div>
+          </div>
+          <div style={s.overviewStats}>
+            <div style={s.overviewStat}>
+              <span style={s.overviewStatValue}>${cartTotal.toFixed(2)}</span>
+              <span style={s.overviewStatLabel}>{t('sale.currentCart')}</span>
+            </div>
+            <div style={s.overviewStat}>
+              <span style={s.overviewStatValue}>{cartItemCount}</span>
+              <span style={s.overviewStatLabel}>{t('sale.selectedItems')}</span>
+            </div>
+          </div>
+        </div>
+
         {restorePrompt && !success && payStep !== 'khqr_pending' && (
           <div style={s.restoreCard}>
             <div style={s.restoreTitle}>{t('sale.restoreTitle')}</div>
@@ -1568,14 +1647,72 @@ export default function SalePage() {
         {/* ══ 主流程 ══ */}
         {!success && !deferredOrder && payStep !== 'khqr_pending' && (
           <>
-            {/* 查询卡：下拉选择（主路径）/ 摄像头扫码 / 手动输入（备用） */}
-            <div style={s.card}>
+            {/* 查询卡：搜索 / 摄像头扫码 / 下拉选择 */}
+            <div style={s.searchCard}>
               <div style={s.cardLabel}>{t('sale.selectProduct')}</div>
               {scannerMsg && (
                 <div style={scannerMsg.type === 'ok' ? s.scannerOkMsg : s.scannerFailMsg}>
                   {scannerMsg.text}
                 </div>
               )}
+              <div ref={suggestWrapRef} style={s.suggestWrap}>
+                <div style={s.searchInputRow}>
+                  <input
+                    ref={inputRef}
+                    style={s.searchInput}
+                    type="text"
+                    placeholder={t('products.searchSkuPlaceholder')}
+                    value={barcodeInput}
+                    onChange={(e) => { setBarcodeInput(e.target.value); if (product) setProduct(null) }}
+                    onKeyDown={handleBarcodeKeyDown}
+                    onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
+                  />
+                  <button type="button" style={s.searchScanBtn} onClick={scanBarcode} disabled={status === 'querying' || status === 'submitting'} aria-label={t('products.scanIconLabel')}>
+                    ⊡
+                  </button>
+                </div>
+                {showSuggestions && (
+                  <div style={s.suggestPanel}>
+                    {suggestions.map((p) => (
+                      <div key={p.id} style={s.suggestItem} onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}>
+                        <span style={s.suggestCode}>{p.barcode}</span>
+                        <span style={s.suggestName}>{p.name}</span>
+                        {p.spec && <span style={s.suggestSpec}> · {p.spec}</span>}
+                        <span style={s.suggestPrice}>${p.sellPrice.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {cameraFailCount >= 5 && <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>}
+              {queryError && <div style={s.errorMsg}>{queryError}</div>}
+              {isHidTier && hidFailCount >= 5 && <div style={s.scanHintMsg}>{t('sale.hidFailHint')}</div>}
+
+              <div style={s.aiSaleEntry} onClick={openPhotoModal}>
+                <div style={s.aiSaleEntryText}>
+                  <div style={s.aiSaleTitle}>{t('sale.photoTitle')}</div>
+                  <div style={s.aiSaleSub}>{t('sale.aiSaleEntrySub')}</div>
+                </div>
+                <button
+                  type="button"
+                  style={s.aiSaleBtn}
+                  onClick={(e) => { e.stopPropagation(); openPhotoModal() }}
+                  disabled={status === 'querying' || status === 'submitting'}
+                >
+                  {t('sale.aiStart')}
+                </button>
+              </div>
+              {isPhotoMultiEnabled && (
+                <button
+                  type="button"
+                  style={ph.multiEntryBtn}
+                  onClick={openPhotoMultiModal}
+                  disabled={status === 'querying' || status === 'submitting'}
+                >
+                  📷 {t('sale.photoMultiTitle')}
+                </button>
+              )}
+
               {allProducts.length > 0 ? (
                 <div ref={dropRef} style={s.dropWrap}>
                   <div style={s.dropTrigger} onClick={() => setDropOpen((v) => !v)}>
@@ -1611,35 +1748,6 @@ export default function SalePage() {
                 <div style={s.dropEmpty}>{t('sale.loadingProducts')}</div>
               )}
 
-              <div style={{ ...s.orDivider, marginTop: 14 }}>
-                <div style={s.orLine} /><span style={s.orText}>{t('sale.orCamera')}</span><div style={s.orLine} />
-              </div>
-              <button type="button" style={s.scanRow} onClick={scanBarcode} disabled={status === 'querying' || status === 'submitting'}>
-                <span style={s.scanIcon}>⊡</span>
-                <span style={s.scanLabel}>{t('sale.scanBtn')}</span>
-              </button>
-              {cameraFailCount >= 5 && <div style={s.scanHintMsg}>{t('sale.scanFailHint')}</div>}
-
-              {/* AI 拍照识别（Phase 1 mock-only）：辅助入口，不抢主流程 */}
-              <button
-                type="button"
-                style={ph.entryBtn}
-                onClick={openPhotoModal}
-                disabled={status === 'querying' || status === 'submitting'}
-              >
-                📷 {t('sale.photoTitle')}
-              </button>
-              {isPhotoMultiEnabled && (
-                <button
-                  type="button"
-                  style={ph.multiEntryBtn}
-                  onClick={openPhotoMultiModal}
-                  disabled={status === 'querying' || status === 'submitting'}
-                >
-                  📷 {t('sale.photoMultiTitle')}
-                </button>
-              )}
-
               <div style={s.orDivider}>
                 <div style={s.orLine} />
                 <button type="button" style={s.manualToggle} onClick={() => { setManualOpen((v) => !v); setScannerMsg(null) }}>
@@ -1651,10 +1759,9 @@ export default function SalePage() {
               {manualOpen && (
                 <>
                   <div style={s.scanHintMsg}>{t('sale.manualHint')}</div>
-                  <div ref={suggestWrapRef} style={s.suggestWrap}>
+                  <div style={s.suggestWrap}>
                     <div style={s.inputRow}>
                       <input
-                        ref={inputRef}
                         style={s.textInput}
                         type="text"
                         placeholder={t('sale.inputPlaceholder')}
@@ -1682,8 +1789,6 @@ export default function SalePage() {
                   </div>
                 </>
               )}
-              {queryError && <div style={s.errorMsg}>{queryError}</div>}
-              {isHidTier && hidFailCount >= 5 && <div style={s.scanHintMsg}>{t('sale.hidFailHint')}</div>}
             </div>
 
             {/* 空提示 */}
@@ -1744,27 +1849,29 @@ export default function SalePage() {
                   <CartItemRow key={ci.key} item={ci} itemUnit={t('sale.itemUnit')} onDelete={() => removeFromCart(ci.key)} />
                 ))}
 
-                <div style={s.totalCard}>
-                  <span style={s.totalLabel}>{t('sale.total')}</span>
-                  <span style={s.totalAmount}>${cartTotal.toFixed(2)}</span>
+                <div style={s.checkoutBar}>
+                  <div style={s.totalCard}>
+                    <span style={s.totalLabel}>{t('sale.total')}</span>
+                    <span style={s.totalAmount}>${cartTotal.toFixed(2)}</span>
+                  </div>
+
+                  {submitError && <div style={s.errorMsg}>{submitError}</div>}
+
+                  <button
+                    style={{ ...s.submitBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
+                    disabled={status === 'submitting'}
+                    onClick={openPayModal}
+                  >
+                    {status === 'submitting' ? t('common.submitting') : t('sale.confirmSale')}
+                  </button>
+                  <button
+                    style={{ ...s.deferBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
+                    disabled={status === 'submitting'}
+                    onClick={handleDeferredSubmit}
+                  >
+                    {t('sale.deferBtn')}
+                  </button>
                 </div>
-
-                {submitError && <div style={s.errorMsg}>{submitError}</div>}
-
-                <button
-                  style={{ ...s.submitBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
-                  disabled={status === 'submitting'}
-                  onClick={openPayModal}
-                >
-                  {status === 'submitting' ? t('common.submitting') : t('sale.confirmSale')}
-                </button>
-                <button
-                  style={{ ...s.deferBtn, ...(status === 'submitting' ? s.submitBtnLoading : {}) }}
-                  disabled={status === 'submitting'}
-                  onClick={handleDeferredSubmit}
-                >
-                  {t('sale.deferBtn')}
-                </button>
               </>
             )}
           </>
@@ -1830,12 +1937,82 @@ const ir: Record<string, React.CSSProperties> = {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflowX: 'hidden' },
+  page: { minHeight: '100vh', background: '#f7f8fa', display: 'flex', flexDirection: 'column', overflowX: 'hidden' },
+  saleHeader: {
+    width: '100%',
+    maxWidth: 480,
+    margin: '0 auto',
+    padding: '10px 12px 6px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexShrink: 0,
+  },
+  saleBrandLeft: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 },
+  saleAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg, #e0f2fe, #dcfce7)',
+    color: '#0f766e',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 18,
+    fontWeight: 900,
+    overflow: 'hidden',
+    flexShrink: 0,
+    boxShadow: '0 6px 14px rgba(15,23,42,0.08)',
+  },
+  saleAvatarImg: { width: '100%', height: '100%', objectFit: 'cover' },
+  saleBrandText: { display: 'flex', flexDirection: 'column', minWidth: 0, gap: 1 },
+  saleStoreName: { fontSize: 16, fontWeight: 900, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  saleStoreSub: { fontSize: 11, fontWeight: 700, color: '#64748b' },
+  saleHeaderTools: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
+  modeBtn: {
+    height: 32,
+    border: '1px solid #e5e7eb',
+    borderRadius: 999,
+    background: '#fff',
+    color: '#334155',
+    padding: '0 10px',
+    fontSize: 11,
+    fontWeight: 800,
+    whiteSpace: 'nowrap',
+    boxShadow: '0 4px 10px rgba(15,23,42,0.04)',
+  },
   headerBar: { background: 'var(--blue)', padding: '16px 16px 18px', display: 'flex', alignItems: 'center', flexShrink: 0 },
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: 700, letterSpacing: '0.02em' },
-  body: { flex: 1, width: '100%', maxWidth: 480, margin: '0 auto', padding: '12px 12px 20px' },
+  body: { flex: 1, width: '100%', maxWidth: 480, margin: '0 auto', padding: '8px 12px 20px' },
+  saleOverview: {
+    minHeight: 82,
+    borderRadius: 22,
+    padding: '13px 14px',
+    marginBottom: 10,
+    background: 'linear-gradient(135deg, #ecfeff 0%, #eff6ff 55%, #ffffff 100%)',
+    border: '1px solid rgba(186,230,253,0.72)',
+    boxShadow: '0 12px 26px rgba(14,165,233,0.10)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  overviewLabel: { fontSize: 12, color: '#0369a1', fontWeight: 800, marginBottom: 3 },
+  overviewAmount: { fontSize: 28, color: '#0f172a', fontWeight: 950, letterSpacing: '-0.04em' },
+  overviewStats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, minWidth: 150 },
+  overviewStat: {
+    borderRadius: 15,
+    background: 'rgba(255,255,255,0.75)',
+    border: '1px solid rgba(226,232,240,0.85)',
+    padding: '8px 8px',
+    textAlign: 'center',
+  },
+  overviewStatValue: { display: 'block', fontSize: 15, fontWeight: 900, color: '#111827', lineHeight: 1.1 },
+  overviewStatLabel: { display: 'block', fontSize: 10, fontWeight: 700, color: '#64748b', marginTop: 3 },
 
   card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: 10 },
+  searchCard: { background: '#fff', borderRadius: 22, padding: '13px 14px', marginBottom: 10, boxShadow: '0 10px 24px rgba(15,23,42,0.05)', border: '1px solid rgba(226,232,240,0.85)' },
   cardLabel: { fontSize: 12, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 },
 
   scanRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, width: '100%', height: 48, background: 'var(--blue)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 16, fontWeight: 600, marginBottom: 12 },
@@ -1847,6 +2024,41 @@ const s: Record<string, React.CSSProperties> = {
   orText: { fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' },
 
   suggestWrap: { position: 'relative' },
+  searchInputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 52,
+    borderRadius: 18,
+    background: '#f8fafc',
+    border: '1.5px solid #e5e7eb',
+    padding: '0 8px 0 13px',
+    marginBottom: 10,
+  },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    height: 50,
+    border: 'none',
+    outline: 'none',
+    background: 'transparent',
+    fontSize: 16,
+    color: '#111827',
+  },
+  searchScanBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    border: 'none',
+    background: '#1677ff',
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: 800,
+    lineHeight: 1,
+    cursor: 'pointer',
+    flexShrink: 0,
+    boxShadow: '0 8px 16px rgba(22,119,255,0.18)',
+  },
   inputRow: { display: 'flex', gap: 8 },
   textInput: { flex: 1, height: 44, minWidth: 0, border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '0 12px', fontSize: 16, outline: 'none', background: '#f7f8fa' },
   queryBtn: { flexShrink: 0, height: 44, padding: '0 18px', background: 'var(--blue)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 15, fontWeight: 600 },
@@ -1859,7 +2071,7 @@ const s: Record<string, React.CSSProperties> = {
   suggestPrice: { fontSize: 13, fontWeight: 700, color: 'var(--blue)', flexShrink: 0, marginLeft: 'auto' },
 
   dropWrap: { position: 'relative' },
-  dropTrigger: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 44, border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '0 12px', background: '#f7f8fa', cursor: 'pointer', gap: 8 },
+  dropTrigger: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 42, border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '0 12px', background: '#f7f8fa', cursor: 'pointer', gap: 8, marginTop: 10 },
   dropTriggerText: { flex: 1, fontSize: 14, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   dropArrow: { fontSize: 10, color: 'var(--muted)', flexShrink: 0 },
   dropPanel: { position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', zIndex: 200, overflow: 'hidden' },
@@ -1877,6 +2089,33 @@ const s: Record<string, React.CSSProperties> = {
   scannerOkMsg: { fontSize: 13, color: '#389e0d', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6, padding: '6px 10px', marginBottom: 8 },
   scannerFailMsg: { fontSize: 13, color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 6, padding: '6px 10px', marginBottom: 8 },
   manualToggle: { background: 'none', border: 'none', fontSize: 12, color: 'var(--blue)', padding: '0 8px', whiteSpace: 'nowrap', cursor: 'pointer' },
+  aiSaleEntry: {
+    marginTop: 10,
+    borderRadius: 20,
+    background: 'linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%)',
+    border: '1px solid rgba(196,181,253,0.6)',
+    padding: '12px 12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    cursor: 'pointer',
+  },
+  aiSaleEntryText: { minWidth: 0, flex: 1 },
+  aiSaleTitle: { fontSize: 15, fontWeight: 900, color: '#312e81', marginBottom: 3 },
+  aiSaleSub: { fontSize: 11, fontWeight: 700, color: '#64748b', lineHeight: 1.35 },
+  aiSaleBtn: {
+    flexShrink: 0,
+    border: 'none',
+    borderRadius: 999,
+    background: '#4f46e5',
+    color: '#fff',
+    height: 36,
+    padding: '0 13px',
+    fontSize: 12,
+    fontWeight: 850,
+    boxShadow: '0 8px 16px rgba(79,70,229,0.18)',
+  },
 
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '36px 20px', gap: 8 },
   emptyIcon: { fontSize: 44, color: '#d0d0d0', lineHeight: 1, marginBottom: 4 },
@@ -1903,7 +2142,19 @@ const s: Record<string, React.CSSProperties> = {
   cartHeaderText: { fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' },
   clearCartBtn: { background: 'none', border: 'none', color: '#bbb', fontSize: 12, padding: 0 },
 
-  totalCard: { background: 'var(--blue)', borderRadius: 'var(--radius)', padding: '14px 18px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  checkoutBar: {
+    position: 'sticky',
+    bottom: 8,
+    zIndex: 40,
+    background: 'rgba(247,248,250,0.92)',
+    backdropFilter: 'blur(10px)',
+    borderRadius: 22,
+    padding: '8px',
+    marginTop: 6,
+    boxShadow: '0 -10px 28px rgba(15,23,42,0.08)',
+    border: '1px solid rgba(226,232,240,0.82)',
+  },
+  totalCard: { background: '#111827', borderRadius: 18, padding: '12px 15px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel: { fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: 500 },
   totalAmount: { fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' },
 
