@@ -226,6 +226,8 @@ export default function SalePage() {
   const [photoMultiUsage, setPhotoMultiUsage] = useState<{ usedToday: number; dailyLimit: number } | null>(null)
   const [photoMultiHandled, setPhotoMultiHandled] = useState<Record<number, 'added' | 'ignored'>>({})
   const [photoMultiManualHintIndex, setPhotoMultiManualHintIndex] = useState<number | null>(null)
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false)
+  const [recentProductIds, setRecentProductIds] = useState<string[]>([])
   const [storeCode, setStoreCode] = useState<string | null>(null)
   const [summary, setSummary] = useState<SaleSummary | null>(null)
   const [avatarFailed, setAvatarFailed] = useState(false)
@@ -374,6 +376,7 @@ export default function SalePage() {
     : allProducts
 
   function selectProduct(p: Product) {
+    rememberProduct(p)
     setProduct(p)
     setBarcodeInput(p.barcode)
     setQty(1)
@@ -386,6 +389,17 @@ export default function SalePage() {
   const safeQty = Math.max(1, qty)
   const cartTotal = cart.reduce((sum, i) => sum + i.product.sellPrice * i.qty, 0)
   const selectedProductImageUrl = product ? productImageUrl(product) : null
+  const recentQuickProducts = (
+    recentProductIds.length > 0
+      ? recentProductIds
+          .map((id) => allProducts.find((p) => p.id === id))
+          .filter((p): p is Product => Boolean(p))
+      : allProducts
+  ).slice(0, 4)
+
+  function rememberProduct(p: Product) {
+    setRecentProductIds((prev) => [p.id, ...prev.filter((id) => id !== p.id)].slice(0, 8))
+  }
 
   // ── 按条码查询 ─────────────────────────────────────────────────────────────
 
@@ -481,6 +495,7 @@ export default function SalePage() {
 
   function addProductToCart(p: Product, quantity = 1) {
     const addQty = Math.max(1, quantity)
+    rememberProduct(p)
     setCart((prev) => {
       const existing = prev.find((i) => i.product.id === p.id)
       if (existing) {
@@ -829,6 +844,13 @@ export default function SalePage() {
         })
         return
       }
+      const firstMatch = allProducts.find((p) => p.id === candidates[0]?.productId)
+      if (firstMatch) {
+        selectProduct(firstMatch)
+        setPhotoModalOpen(false)
+        setPhotoCandidates([])
+        return
+      }
       setPhotoCandidates(candidates)
     } catch (e) {
       const code = e instanceof Error ? e.message : 'UNKNOWN_ERROR'
@@ -997,6 +1019,7 @@ export default function SalePage() {
 
   function openPayModal() {
     if (cart.length === 0) return
+    setCartDrawerOpen(false)
     setSubmitError(null)
     setModalError(null)
     setPayStep('selecting')
@@ -1518,6 +1541,34 @@ export default function SalePage() {
         </div>
       )}
 
+      {cartDrawerOpen && cart.length > 0 && (
+        <div style={s.cartDrawerOverlay} onClick={() => setCartDrawerOpen(false)}>
+          <div style={s.cartDrawer} onClick={(event) => event.stopPropagation()}>
+            <div style={s.cartDrawerHeader}>
+              <div>
+                <div style={s.cartDrawerTitle}>{t('sale.cartDrawerTitle')}</div>
+                <div style={s.cartDrawerMeta}>{cartItemCount} {t('sale.itemUnit')} · ${cartTotal.toFixed(2)}</div>
+              </div>
+              <button type="button" style={s.cartDrawerClose} onClick={() => setCartDrawerOpen(false)}>✕</button>
+            </div>
+            <div style={s.cartDrawerList}>
+              {cart.map((ci) => (
+                <CartItemRow key={`drawer-${ci.key}`} item={ci} itemUnit={t('sale.itemUnit')} onDelete={() => removeFromCart(ci.key)} />
+              ))}
+            </div>
+            <div style={s.cartDrawerFooter}>
+              <div style={s.cartDrawerTotalRow}>
+                <span>{t('sale.total')}</span>
+                <strong>${cartTotal.toFixed(2)}</strong>
+              </div>
+              <button type="button" style={s.cartDrawerCheckoutBtn} onClick={openPayModal}>
+                {t('sale.confirmSale')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={s.saleHeader}>
         <div style={s.saleBrandLeft}>
           <span style={s.saleAvatar}>
@@ -1714,6 +1765,47 @@ export default function SalePage() {
                 </button>
               )}
 
+              {recentQuickProducts.length > 0 && (
+                <div style={s.recentProductsBlock}>
+                  <div style={s.recentProductsHeader}>{t('sale.recentProducts')}</div>
+                  <div style={s.recentProductsGrid}>
+                    {recentQuickProducts.map((p) => {
+                      const img = productImageUrl(p)
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          style={s.recentProductCard}
+                          onClick={() => selectProduct(p)}
+                        >
+                          <span style={s.recentProductThumb}>
+                            {img ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={img}
+                                alt={p.name}
+                                style={s.recentProductImg}
+                                onError={(event) => {
+                                  event.currentTarget.style.display = 'none'
+                                }}
+                              />
+                            ) : (
+                              <span style={s.recentProductPlaceholder}>□</span>
+                            )}
+                          </span>
+                          <span style={s.recentProductInfo}>
+                            <span style={s.recentProductName}>{p.name}</span>
+                            <span style={s.recentProductMeta}>
+                              {p.spec ? `${p.spec} · ` : ''}$${p.sellPrice.toFixed(2)}
+                            </span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               {allProducts.length > 0 ? (
                 <div ref={dropRef} style={s.dropWrap}>
                   <div style={s.dropTrigger} onClick={() => setDropOpen((v) => !v)}>
@@ -1804,11 +1896,30 @@ export default function SalePage() {
             {/* 商品已选：步进器 + 加入本单 */}
             {product && (
               <div style={s.card}>
-                <div style={s.productName}>{product.name}</div>
-                {product.spec && <div style={s.productSpec}>{product.spec}</div>}
-                <div style={s.priceRow}>
-                  <span style={s.priceLabel}>{t('sale.unitPrice')}</span>
-                  <span style={s.priceValue}>${product.sellPrice.toFixed(2)}</span>
+                <div style={s.selectedProductTop}>
+                  <div style={s.selectedProductThumb}>
+                    {selectedProductImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={selectedProductImageUrl}
+                        alt={product.name}
+                        style={s.selectedProductImg}
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none'
+                        }}
+                      />
+                    ) : (
+                      <span style={s.selectedProductPlaceholder}>□</span>
+                    )}
+                  </div>
+                  <div style={s.selectedProductInfo}>
+                    <div style={s.productName}>{product.name}</div>
+                    {product.spec && <div style={s.productSpec}>{product.spec}</div>}
+                  </div>
+                  <div style={s.selectedProductPrice}>
+                    <span style={s.priceLabel}>{t('sale.unitPrice')}</span>
+                    <span style={s.priceValue}>${product.sellPrice.toFixed(2)}</span>
+                  </div>
                 </div>
 
                 <div style={{ ...s.cardLabel, marginTop: 12 }}>{t('sale.qty')}</div>
@@ -1827,6 +1938,18 @@ export default function SalePage() {
                     onBlur={() => { if (!qty || qty < 1) setQty(1) }}
                   />
                   <button type="button" style={s.stepperBtn} onClick={() => setQty(safeQty + 1)}>+</button>
+                </div>
+                <div style={s.quickQtyRow} aria-label={t('sale.quickQty')}>
+                  {[1, 2, 5, 10].map((nextQty) => (
+                    <button
+                      key={nextQty}
+                      type="button"
+                      style={{ ...s.quickQtyBtn, ...(safeQty === nextQty ? s.quickQtyBtnActive : {}) }}
+                      onClick={() => setQty(nextQty)}
+                    >
+                      {nextQty}
+                    </button>
+                  ))}
                 </div>
 
                 <div style={s.subtotalRow}>
@@ -1851,7 +1974,18 @@ export default function SalePage() {
                 ))}
 
                 <div style={s.checkoutBar}>
-                  <div style={s.totalCard}>
+                  <div
+                    style={{ ...s.totalCard, ...s.totalCardClickable }}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setCartDrawerOpen(true)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        setCartDrawerOpen(true)
+                      }
+                    }}
+                  >
                     <span style={s.totalLabel}>{t('sale.total')}</span>
                     <span style={s.totalAmount}>${cartTotal.toFixed(2)}</span>
                   </div>
@@ -2153,21 +2287,86 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 850,
     boxShadow: '0 8px 16px rgba(79,70,229,0.18)',
   },
+  recentProductsBlock: { marginTop: 10, marginBottom: 10 },
+  recentProductsHeader: { fontSize: 13, fontWeight: 900, color: '#334155', marginBottom: 8 },
+  recentProductsGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 },
+  recentProductCard: {
+    minWidth: 0,
+    minHeight: 58,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: 8,
+    border: '1px solid #e2e8f0',
+    borderRadius: 18,
+    background: '#fff',
+    textAlign: 'left',
+    boxShadow: '0 8px 18px rgba(15,23,42,0.04)',
+    cursor: 'pointer',
+  },
+  recentProductThumb: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    background: '#f1f5f9',
+    overflow: 'hidden',
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#94a3b8',
+    fontWeight: 900,
+  },
+  recentProductImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
+  recentProductPlaceholder: { fontSize: 18, lineHeight: 1 },
+  recentProductInfo: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 },
+  recentProductName: { fontSize: 12, fontWeight: 850, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  recentProductMeta: { fontSize: 11, fontWeight: 700, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
 
   emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '36px 20px', gap: 8 },
   emptyIcon: { fontSize: 44, color: '#d0d0d0', lineHeight: 1, marginBottom: 4 },
   emptyTitle: { fontSize: 15, fontWeight: 600, color: '#bbb' },
   emptyDesc: { fontSize: 13, color: '#ccc' },
 
-  productName: { fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 4 },
-  productSpec: { fontSize: 13, color: 'var(--muted)', marginBottom: 10 },
+  selectedProductTop: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 },
+  selectedProductThumb: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    background: '#f1f5f9',
+    overflow: 'hidden',
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#94a3b8',
+    fontWeight: 900,
+  },
+  selectedProductImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
+  selectedProductPlaceholder: { fontSize: 24, lineHeight: 1 },
+  selectedProductInfo: { flex: 1, minWidth: 0 },
+  selectedProductPrice: { flexShrink: 0, minWidth: 78, textAlign: 'right' },
+  productName: { fontSize: 17, fontWeight: 850, color: 'var(--text)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  productSpec: { fontSize: 13, fontWeight: 650, color: 'var(--muted)' },
   priceRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTop: '1px solid var(--border)' },
-  priceLabel: { fontSize: 13, color: 'var(--muted)' },
+  priceLabel: { display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 2 },
   priceValue: { fontSize: 20, fontWeight: 700, color: 'var(--text)' },
 
   stepperRow: { display: 'flex', alignItems: 'center', background: '#f7f8fa', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', overflow: 'hidden', width: '100%', marginBottom: 12 },
   stepperBtn: { width: 52, height: 46, flexShrink: 0, background: 'none', border: 'none', fontSize: 24, color: 'var(--blue)', fontWeight: 300, lineHeight: 1 },
   stepperInput: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: 700, color: 'var(--text)', background: 'transparent', border: 'none', outline: 'none', width: '100%' },
+  quickQtyRow: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, margin: '-2px 0 14px' },
+  quickQtyBtn: {
+    height: 38,
+    border: '1px solid #e2e8f0',
+    borderRadius: 14,
+    background: '#fff',
+    color: '#334155',
+    fontSize: 14,
+    fontWeight: 850,
+    cursor: 'pointer',
+  },
+  quickQtyBtnActive: { background: '#eff6ff', borderColor: '#93c5fd', color: '#2563eb', boxShadow: '0 6px 14px rgba(37,99,235,0.1)' },
 
   subtotalRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 14, marginBottom: 12, borderBottom: '1px solid var(--border)' },
   subtotalLabel: { fontSize: 13, color: 'var(--muted)' },
@@ -2262,6 +2461,7 @@ const s: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(226,232,240,0.82)',
   },
   totalCard: { background: '#111827', borderRadius: 18, padding: '12px 15px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  totalCardClickable: { cursor: 'pointer' },
   totalLabel: { fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: 500 },
   totalAmount: { fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' },
 
@@ -2280,6 +2480,44 @@ const s: Record<string, React.CSSProperties> = {
   restoreActions: { display: 'flex', gap: 8 },
   restorePrimaryBtn: { flex: 1, height: 38, border: 'none', borderRadius: 8, background: '#ea580c', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer' },
   restoreSecondaryBtn: { flex: 1, height: 38, border: '1px solid #fdba74', borderRadius: 8, background: '#fff', color: '#9a3412', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
+  cartDrawerOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 480,
+    background: 'rgba(15,23,42,0.28)',
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
+  cartDrawer: {
+    width: 'min(390px, 92vw)',
+    height: '100%',
+    background: '#f8fafc',
+    boxShadow: '-18px 0 44px rgba(15,23,42,0.2)',
+    display: 'flex',
+    flexDirection: 'column',
+    padding: '18px 14px calc(18px + env(safe-area-inset-bottom, 0px))',
+    borderTopLeftRadius: 24,
+    borderBottomLeftRadius: 24,
+  },
+  cartDrawerHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
+  cartDrawerTitle: { fontSize: 20, fontWeight: 950, color: '#0f172a', marginBottom: 4 },
+  cartDrawerMeta: { fontSize: 13, fontWeight: 750, color: '#64748b' },
+  cartDrawerClose: { width: 38, height: 38, border: 'none', borderRadius: 14, background: '#e2e8f0', color: '#334155', fontSize: 16, fontWeight: 900, cursor: 'pointer' },
+  cartDrawerList: { flex: 1, overflowY: 'auto', paddingRight: 2 },
+  cartDrawerFooter: { borderTop: '1px solid #e2e8f0', paddingTop: 12, marginTop: 8 },
+  cartDrawerTotalRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 15, color: '#334155', marginBottom: 10 },
+  cartDrawerCheckoutBtn: {
+    width: '100%',
+    height: 52,
+    border: 'none',
+    borderRadius: 18,
+    background: 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)',
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 900,
+    boxShadow: '0 12px 24px rgba(37,99,235,0.22)',
+    cursor: 'pointer',
+  },
 
 }
 
