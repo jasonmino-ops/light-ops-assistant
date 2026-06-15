@@ -5,6 +5,7 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 import BarcodeScanner from '@/app/components/BarcodeScanner'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { publicUrl } from '@/lib/public-url'
 
 type MarketingLang = 'zh' | 'en' | 'km'
@@ -237,6 +238,8 @@ function withImages(p: Product, imageUrls: string[]): Product {
 
 export default function ProductsPage() {
   const { t } = useLocale()
+  const { effectiveRole } = useWorkMode()
+  const canManageProducts = effectiveRole === 'OWNER'
   const fmt = useCallback((key: string, vars: Record<string, string | number>) => {
     let text = t(key)
     Object.entries(vars).forEach(([name, value]) => {
@@ -1750,34 +1753,43 @@ export default function ProductsPage() {
           ))}
         </div>
 
-        <div style={s.aiHeroCard}>
-          <div style={s.aiHeroGlow} />
-          <div style={s.aiHeroContent}>
-            <div style={s.aiHeroEyebrow}>AI Beta</div>
-            <div style={s.aiHeroTitle}>{t('products.aiHeroTitle')}</div>
-            <div style={s.aiHeroSubtitle}>{t('products.aiHeroSubtitle')}</div>
-            <div style={s.aiHeroTags}>
-              <span style={s.aiHeroTag}>{t('products.aiHeroTagAccuracy')}</span>
-              <span style={s.aiHeroTag}>{t('products.aiHeroTagAutoFile')}</span>
-              <span style={s.aiHeroTag}>{t('products.aiHeroTagEfficient')}</span>
+        {canManageProducts ? (
+          <>
+            <div style={s.aiHeroCard}>
+              <div style={s.aiHeroGlow} />
+              <div style={s.aiHeroContent}>
+                <div style={s.aiHeroEyebrow}>AI Beta</div>
+                <div style={s.aiHeroTitle}>{t('products.aiHeroTitle')}</div>
+                <div style={s.aiHeroSubtitle}>{t('products.aiHeroSubtitle')}</div>
+                <div style={s.aiHeroTags}>
+                  <span style={s.aiHeroTag}>{t('products.aiHeroTagAccuracy')}</span>
+                  <span style={s.aiHeroTag}>{t('products.aiHeroTagAutoFile')}</span>
+                  <span style={s.aiHeroTag}>{t('products.aiHeroTagEfficient')}</span>
+                </div>
+                <button type="button" style={s.aiHeroBtn} onClick={openPhotoCreate}>
+                  {t('products.aiHeroAction')}
+                </button>
+              </div>
             </div>
-            <button type="button" style={s.aiHeroBtn} onClick={openPhotoCreate}>
-              {t('products.aiHeroAction')}
-            </button>
-          </div>
-        </div>
 
-        <div style={s.quickEntryGrid}>
-          <button type="button" style={s.secondaryEntryBtn} onClick={startManualNew}>
-            {t('products.manualEntryAction')}
-          </button>
-          <button type="button" style={s.secondaryEntryBtn} onClick={openBulkImport}>
-            {t('products.bulkImportAction')}
-          </button>
-          <button type="button" style={s.secondaryEntryBtn} onClick={openAiImport}>
-            {t('products.aiMenuImportAction')}
-          </button>
-        </div>
+            <div style={s.quickEntryGrid}>
+              <button type="button" style={s.secondaryEntryBtn} onClick={startManualNew}>
+                {t('products.manualEntryAction')}
+              </button>
+              <button type="button" style={s.secondaryEntryBtn} onClick={openBulkImport}>
+                {t('products.bulkImportAction')}
+              </button>
+              <button type="button" style={s.secondaryEntryBtn} onClick={openAiImport}>
+                {t('products.aiMenuImportAction')}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div style={s.staffLookupCard}>
+            <div style={s.staffLookupTitle}>{t('products.staffLookupTitle')}</div>
+            <div style={s.staffLookupSub}>{t('products.staffLookupSub')}</div>
+          </div>
+        )}
 
         <div style={s.searchCard}>
           {hidMsg && (
@@ -1824,7 +1836,7 @@ export default function ProductsPage() {
         {error && <div style={s.errorMsg}>{error}</div>}
 
         {/* ── AI 单商品拍照建档 ── */}
-        {photoCreateOpen && (
+        {canManageProducts && photoCreateOpen && (
         <div ref={photoCreatePanelRef} style={{ ...s.importSection, order: 3 }}>
           <button
             style={s.importToggle}
@@ -1998,7 +2010,7 @@ export default function ProductsPage() {
         )}
 
         {/* ── 批量导入 ── */}
-        {importOpen && (
+        {canManageProducts && importOpen && (
         <div ref={importPanelRef} style={{ ...s.importSection, order: 3 }}>
           <button
             style={s.importToggle}
@@ -2176,7 +2188,7 @@ export default function ProductsPage() {
         )}
 
         {/* ── AI 识别菜单导入 ── */}
-        {aiOpen && (
+        {canManageProducts && aiOpen && (
         <div ref={aiPanelRef} style={{ ...s.importSection, order: 3 }}>
           <button
             style={s.importToggle}
@@ -2378,6 +2390,7 @@ export default function ProductsPage() {
         )}
 
         {/* ── 分类管理 ── */}
+        {canManageProducts && (
         <div style={{ ...s.importSection, order: 8 }}>
           <button style={s.importToggle} onClick={() => { setCatOpen((v) => !v); setCatError(null) }}>
             <span style={s.importToggleText}>{t('products.categories')}</span>
@@ -2453,6 +2466,7 @@ export default function ProductsPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* ── 商品列表（删除管理） ── */}
         <div style={{ ...s.importSection, order: 4 }}>
@@ -2498,6 +2512,7 @@ export default function ProductsPage() {
                   </div>
 
                   {/* Header row: select-all + batch delete */}
+                  {canManageProducts && (
                   <div style={{ ...ls.headerRow, display: listOpen ? 'flex' : 'none' }}>
                     <label style={ls.checkLabel}>
                       <input
@@ -2519,6 +2534,7 @@ export default function ProductsPage() {
                       </button>
                     )}
                   </div>
+                  )}
 
 	                  {/* Product rows */}
                   {filteredProductList.length === 0 && (
@@ -2533,12 +2549,14 @@ export default function ProductsPage() {
 	                    return (
 	                      <div key={p.id} style={ls.rowWrap}>
                         <div style={ls.row}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(p.id)}
-                            onChange={() => toggleSelect(p.id)}
-                            style={ls.checkbox}
-                          />
+                          {canManageProducts && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(p.id)}
+                              onChange={() => toggleSelect(p.id)}
+                              style={ls.checkbox}
+                            />
+                          )}
                           <div
                             style={{ ...ls.rowInfo, cursor: 'pointer' }}
                             onClick={() => setExpandedId(isExpanded ? null : p.id)}
@@ -2550,7 +2568,7 @@ export default function ProductsPage() {
 	                              {p.barcode}
 	                              {p.status === 'DISABLED' && <span style={ls.disabledTag}>{t('products.disabledInlineTag')}</span>}
 	                              {p.imageUrl && <span style={ls.imgTag}>{t('products.imageInlineTag')}</span>}
-	                              {marketingPage && <span style={ls.imgTag}> · 营销页 {marketingPage.status}</span>}
+	                              {canManageProducts && marketingPage && <span style={ls.imgTag}> · 营销页 {marketingPage.status}</span>}
 	                            </span>
 	                          </div>
                           <button
@@ -2583,33 +2601,36 @@ export default function ProductsPage() {
                               ) : (
                                 <div style={ls.imgEmpty}>—</div>
                               )}
-                              <div style={ls.imgBtns}>
-                                <button
-                                  type="button"
-                                  style={ls.imgBtn}
-                                  disabled={uploading}
-                                  onClick={() => listImageRefs.current[p.id]?.click()}
-                                >
-                                  {uploading
-                                    ? t('products.imageUploading')
-                                    : p.imageUrl
-                                    ? t('products.imageReplace')
-                                    : t('products.imageUpload')}
-                                </button>
-                                {p.imageUrl && (
+                              {canManageProducts && (
+                                <div style={ls.imgBtns}>
                                   <button
                                     type="button"
-                                    style={{ ...ls.imgBtn, ...ls.imgBtnDanger }}
+                                    style={ls.imgBtn}
                                     disabled={uploading}
-                                    onClick={() => listImgDelete(p)}
+                                    onClick={() => listImageRefs.current[p.id]?.click()}
                                   >
-                                    {uploading ? t('products.imageDeleting') : t('products.imageDelete')}
+                                    {uploading
+                                      ? t('products.imageUploading')
+                                      : p.imageUrl
+                                      ? t('products.imageReplace')
+                                      : t('products.imageUpload')}
                                   </button>
-                                )}
-                              </div>
+                                  {p.imageUrl && (
+                                    <button
+                                      type="button"
+                                      style={{ ...ls.imgBtn, ...ls.imgBtnDanger }}
+                                      disabled={uploading}
+                                      onClick={() => listImgDelete(p)}
+                                    >
+                                      {uploading ? t('products.imageDeleting') : t('products.imageDelete')}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
 	                            {listImgError[p.id] && <div style={ls.imgErr}>{listImgError[p.id]}</div>}
 
+                            {canManageProducts && (
 	                            <div style={ls.actionRow}>
 	                              <button
 	                                type="button"
@@ -2641,8 +2662,9 @@ export default function ProductsPage() {
                                 {t('products.deleteBtn')}
                               </button>
 	                            </div>
+                            )}
 
-	                            {marketingEditing?.product.id === p.id && (
+	                            {canManageProducts && marketingEditing?.product.id === p.id && (
 	                              <div style={{ marginTop: 10, padding: 10, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8 }}>
 	                                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>营销商品页</div>
 	                                <input
@@ -2868,7 +2890,7 @@ export default function ProductsPage() {
 	        </div>
 
         {/* ── 删除确认弹框 ── */}
-        {deleteConfirm && (
+        {canManageProducts && deleteConfirm && (
           <div style={dlg.overlay}>
             <div style={dlg.box}>
               <div style={dlg.title}>{t('products.deleteConfirmTitle')}</div>
@@ -2911,7 +2933,28 @@ export default function ProductsPage() {
         {mode !== 'saved' && (
           <>
             {/* ── 商品已存在：编辑表单 ── */}
-            {mode === 'found' && product && (
+            {mode === 'found' && product && !canManageProducts && (
+              <div style={s.card}>
+                <div style={s.sectionLabel}>{t('products.staffLookupResult')}</div>
+                <div style={s.staffProductReadOnly}>
+                  {product.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={product.imageUrl} alt={product.name} style={s.staffProductImage} />
+                  ) : (
+                    <div style={s.staffProductImagePlaceholder}>IMG</div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={s.staffProductName}>{product.name}</div>
+                    <div style={s.staffProductMeta}>{product.spec || '-'} · {product.barcode}</div>
+                    <div style={s.staffProductPrice}>${product.sellPrice.toFixed(2)}</div>
+                    <div style={s.staffProductStatus}>
+                      {product.status === 'ACTIVE' ? t('products.statusActiveBadge') : t('products.statusDisabledBadge')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {mode === 'found' && product && canManageProducts && (
               <div style={s.card}>
                 <div style={s.sectionLabel}>{t('products.editSection')}</div>
 
@@ -3066,7 +3109,18 @@ export default function ProductsPage() {
             )}
 
             {/* ── 商品不存在：快速新增 ── */}
-            {mode === 'not-found' && (
+            {mode === 'not-found' && !canManageProducts && (
+              <div style={s.card}>
+                <div style={s.noticeRow}>
+                  <span style={s.noticeIcon}>⌕</span>
+                  <div>
+                    <div style={s.noticeTitle}>{t('products.noProductMatch')}</div>
+                    <div style={s.noticeSub}>{t('products.staffNotFoundHint')}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {mode === 'not-found' && canManageProducts && (
               <div style={s.card}>
                 <div style={s.noticeRow}>
                     <span style={s.noticeIcon}>＋</span>
@@ -3445,6 +3499,27 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
   },
+  staffLookupCard: {
+    order: 0,
+    background: '#fff',
+    border: '1px solid rgba(15, 23, 42, 0.06)',
+    borderRadius: 20,
+    padding: '14px 16px',
+    marginBottom: 10,
+    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
+  },
+  staffLookupTitle: {
+    fontSize: 18,
+    lineHeight: 1.25,
+    fontWeight: 900,
+    color: 'var(--text)',
+  },
+  staffLookupSub: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 1.45,
+    color: 'var(--muted)',
+  },
   searchCard: {
     order: 0,
     background: '#fff',
@@ -3501,6 +3576,61 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 'var(--radius)',
     padding: '14px 16px',
     marginBottom: 10,
+  },
+  staffProductReadOnly: {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center',
+  },
+  staffProductImage: {
+    width: 76,
+    height: 76,
+    borderRadius: 16,
+    objectFit: 'cover' as const,
+    background: '#f3f4f6',
+    flexShrink: 0,
+  },
+  staffProductImagePlaceholder: {
+    width: 76,
+    height: 76,
+    borderRadius: 16,
+    background: '#f3f4f6',
+    color: 'var(--muted)',
+    fontSize: 12,
+    fontWeight: 900,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  staffProductName: {
+    fontSize: 16,
+    lineHeight: 1.3,
+    fontWeight: 900,
+    color: 'var(--text)',
+  },
+  staffProductMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    color: 'var(--muted)',
+    overflowWrap: 'anywhere' as const,
+  },
+  staffProductPrice: {
+    marginTop: 8,
+    fontSize: 20,
+    lineHeight: 1,
+    fontWeight: 950,
+    color: 'var(--blue)',
+  },
+  staffProductStatus: {
+    marginTop: 8,
+    display: 'inline-flex',
+    borderRadius: 999,
+    padding: '4px 8px',
+    background: '#f0fdf4',
+    color: '#16a34a',
+    fontSize: 11,
+    fontWeight: 850,
   },
   sectionLabel: {
     fontSize: 12,

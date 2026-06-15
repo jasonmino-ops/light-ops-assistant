@@ -387,8 +387,12 @@ export default function HomePage() {
       {/* ── Today operating hero ── */}
       <div style={s.summaryCard}>
         <div style={s.summaryTopRow}>
-          <div style={s.summaryTitle}>{t('home.todaySummary')}</div>
-          <Link href="/dashboard" style={s.summaryLink}>{t('home.viewDashboard')}</Link>
+          <div style={s.summaryTitle}>
+            {effectiveRole === 'OWNER' ? t('home.todaySummary') : t('home.staffTodayWork')}
+          </div>
+          {effectiveRole === 'OWNER' && (
+            <Link href="/dashboard" style={s.summaryLink}>{t('home.viewDashboard')}</Link>
+          )}
         </div>
         {loading ? (
           <div style={s.summarySkeletonWrap}>
@@ -438,7 +442,9 @@ export default function HomePage() {
       {/* ── Pending work ── */}
       <div style={s.workSection}>
         <div style={s.sectionHeader}>
-          <span style={s.sectionTitleBare}>{t('home.pendingWork')}</span>
+          <span style={s.sectionTitleBare}>
+            {effectiveRole === 'OWNER' ? t('home.pendingWork') : t('home.staffPendingWork')}
+          </span>
           {effectiveRole === 'OWNER' && pendingOrderCount > 0 && (
             <Link href="/cashier" style={s.viewAll}>{t('home.viewAll')}</Link>
           )}

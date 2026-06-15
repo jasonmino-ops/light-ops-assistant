@@ -10,6 +10,7 @@ const STAFF_TABS = [
   { href: '/home',    labelKey: 'nav.home', icon: '🏠' },
   { href: '/sale',    labelKey: 'nav.sale', icon: '💰' },
   { href: '/records', labelKey: 'nav.records', icon: '📋' },
+  { href: '/products', labelKey: 'nav.products', icon: '📦' },
 ]
 
 const OWNER_TABS = [
