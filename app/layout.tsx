@@ -34,6 +34,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const role = sessionRole ?? process.env.DEV_ROLE ?? 'STAFF'
   const pathname = headerStore.get('x-current-path') ?? ''
   const initialProtected = isProtectedMerchantPath(pathname)
+  const isCashierPath = pathname === '/cashier' || pathname.startsWith('/cashier/')
+  const manifestHref = isCashierPath ? '/manifest.webmanifest' : '/manifest.json'
+  const themeColor = isCashierPath ? '#111827' : '#1677ff'
 
   return (
     <html lang="zh-CN">
@@ -45,8 +48,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
 
         {/* ── PWA ───────────────────────────────────────────────────────────── */}
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#1677ff" />
+        <link rel="manifest" href={manifestHref} />
+        <meta name="theme-color" content={themeColor} />
         {/* iOS "Add to Home Screen" — SVG icon works on Chrome/Android;
             icon-192.png needed for iOS apple-touch-icon (generate with any
             icon tool at 192×192 and 512×512, place in /public/) */}

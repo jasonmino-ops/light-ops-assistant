@@ -27,6 +27,8 @@ https://elifekh.com/cashier?storeCode=ST169E7000
 
 首次安装必须从带 `storeCode` 的完整链接进入。收银台会在本机浏览器中记住最近一次门店编号；即使 PWA 从 `/cashier` 启动，也会自动恢复到最近门店的收银台链接。
 
+如果此前已经安装过旧版桌面应用，建议先卸载旧版“店小二收银台”，再从带 `storeCode` 的完整链接重新安装，避免浏览器沿用旧 manifest 的启动地址。
+
 如果浏览器没有弹出安装提示：
 
 - 使用 Chrome 或 Edge。

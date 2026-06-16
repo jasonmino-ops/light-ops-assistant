@@ -67,6 +67,19 @@ function sugarZh(sugar: string): string {
 function cartLineKey(line: CartLine) { return line.barcode + (line.sugar ?? '') }
 function cartTotal(cart: CartLine[]) { return cart.reduce((s, c) => s + c.price * c.qty, 0) }
 function cartCount(cart: CartLine[]) { return cart.reduce((s, c) => s + c.qty, 0) }
+function isValidStoreCode(sc: string | null): sc is string {
+  return !!sc && /^[A-Za-z0-9_-]{2,80}$/.test(sc)
+}
+function cashierUrlForStore(sc: string) {
+  return `/cashier?storeCode=${encodeURIComponent(sc)}`
+}
+function rememberCashierStore(sc: string) {
+  if (!isValidStoreCode(sc)) return
+  try {
+    localStorage.setItem('cashier:lastStoreCode', sc)
+    localStorage.setItem('cashier:lastUrl', cashierUrlForStore(sc))
+  } catch {}
+}
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
@@ -246,6 +259,7 @@ export default function CashierPage() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEventLike | null>(null)
   const [isStandalone,  setIsStandalone]  = useState(false)
   const [isFullscreen,  setIsFullscreen]  = useState(false)
+  const [isRestoringCashierStore, setIsRestoringCashierStore] = useState(true)
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const searchRef       = useRef<HTMLInputElement>(null)
@@ -254,26 +268,36 @@ export default function CashierPage() {
   // ── Load store data ────────────────────────────────────────────────────────
   useEffect(() => {
     const sc = new URLSearchParams(window.location.search).get('storeCode')?.trim() || null
-    if (!sc) {
-      let cachedStoreCode: string | null = null
-      try {
-        cachedStoreCode = localStorage.getItem('cashier:lastStoreCode')?.trim() || null
-      } catch {}
+    let cachedStoreCode: string | null = null
+    try {
+      cachedStoreCode = localStorage.getItem('cashier:lastStoreCode')?.trim() || null
+    } catch {}
 
-      if (cachedStoreCode && /^[A-Za-z0-9_-]{2,80}$/.test(cachedStoreCode)) {
-        router.replace(`/cashier?storeCode=${encodeURIComponent(cachedStoreCode)}`)
+    console.info('[cashier:pwa]', {
+      storeCode: sc,
+      savedStoreCode: cachedStoreCode,
+      restoring: !sc && isValidStoreCode(cachedStoreCode),
+    })
+
+    if (!sc) {
+      if (isValidStoreCode(cachedStoreCode)) {
+        const restoredUrl = cashierUrlForStore(cachedStoreCode)
+        router.replace(restoredUrl)
+        window.setTimeout(() => {
+          const currentStoreCode = new URLSearchParams(window.location.search).get('storeCode')?.trim() || null
+          if (!currentStoreCode) window.location.replace(restoredUrl)
+        }, 120)
         return
       }
 
+      setIsRestoringCashierStore(false)
       setNoCodeError(true); setLoading(false); return
     }
 
-    try {
-      localStorage.setItem('cashier:lastStoreCode', sc)
-      localStorage.setItem('cashier:lastUrl', `/cashier?storeCode=${encodeURIComponent(sc)}`)
-    } catch {}
+    rememberCashierStore(sc)
 
     setStoreCode(sc)
+    setIsRestoringCashierStore(false)
     fetch(`/api/cashier/store?storeCode=${encodeURIComponent(sc)}`)
       .then(r => r.json())
       .then(d => {
@@ -360,6 +384,7 @@ export default function CashierPage() {
       showToast('请先从门店收银链接进入后再安装')
       return
     }
+    rememberCashierStore(storeCode)
     if (isStandalone) {
       showToast('已是桌面应用模式')
       return
@@ -482,6 +507,17 @@ export default function CashierPage() {
 
   const total = cartTotal(cart)
   const count = cartCount(cart)
+
+  // ── Restore PWA storeCode before rendering no-code branches ───────────────
+  if (isRestoringCashierStore) {
+    return (
+      <div style={s.errScreen}>
+        <div style={{ fontSize: 36 }}>🖥️</div>
+        <div style={s.errTitle}>正在恢复门店收银台...</div>
+        <div style={s.errSub}>正在读取本机已记住的门店编号，请稍候。</div>
+      </div>
+    )
+  }
 
   // ── No storeCode error ─────────────────────────────────────────────────────
   if (noCodeError) {
