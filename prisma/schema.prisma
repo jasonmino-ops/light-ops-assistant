@@ -383,6 +383,40 @@ model PaymentIntent {
   @@index([merchantConfigId])
 }
 
+model PaymentTransaction {
+  id                String    @id @default(cuid())
+  tenantId          String
+  storeId           String
+  customerOrderId   String?
+  salesRecordId     String?
+  provider          String
+  method            String
+  trxId             String    @unique
+  providerTrxCode   String?
+  amount            Decimal   @db.Decimal(12, 2)
+  currency          String
+  status            String    @default("PENDING")
+  deepLinkUrl       String?   @db.Text
+  callbackUrl       String?   @db.Text
+  requestPayload    Json?
+  responsePayload   Json?
+  callbackPayload   Json?
+  inquiryPayload    Json?
+  errorCode         String?
+  errorMessage      String?
+  signatureVerified Boolean   @default(false)
+  paidAt            DateTime?
+  expiresAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([storeId, createdAt])
+  @@index([customerOrderId])
+  @@index([salesRecordId])
+  @@index([status])
+}
+
 model BindToken {
   id        String   @id @default(cuid())
   token     String   @unique

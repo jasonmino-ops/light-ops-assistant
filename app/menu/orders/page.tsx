@@ -26,6 +26,12 @@ const T: Record<Lang, {
   paid: string
   payMethodCash: string
   payMethodQr: string
+  payWithShinhan: string
+  openShinhan: string
+  refreshPayment: string
+  creatingPayment: string
+  paymentPending: string
+  paymentError: string
 }> = {
   zh: {
     title:        '我的订单',
@@ -42,6 +48,12 @@ const T: Record<Lang, {
     paid:         '已收款',
     payMethodCash:'现金',
     payMethodQr:  '收款码',
+    payWithShinhan: '使用 Shinhan SOL 支付',
+    openShinhan: '打开 Shinhan SOL App',
+    refreshPayment: '刷新支付状态',
+    creatingPayment: '正在创建支付…',
+    paymentPending: '支付创建成功，请打开 Shinhan SOL App 完成付款',
+    paymentError: '支付暂不可用，请联系商家或稍后重试',
   },
   en: {
     title:        'My Orders',
@@ -58,6 +70,12 @@ const T: Record<Lang, {
     paid:         'Paid',
     payMethodCash:'Cash',
     payMethodQr:  'QR Code',
+    payWithShinhan: 'Pay with Shinhan SOL',
+    openShinhan: 'Open Shinhan SOL App',
+    refreshPayment: 'Refresh payment status',
+    creatingPayment: 'Creating payment…',
+    paymentPending: 'Payment created. Open Shinhan SOL App to complete payment.',
+    paymentError: 'Payment is unavailable. Please contact the merchant or try again later.',
   },
   km: {
     title:        'បញ្ជាទិញរបស់ខ្ញុំ',
@@ -74,6 +92,12 @@ const T: Record<Lang, {
     paid:         'បានបង់',
     payMethodCash:'សាច់ប្រាក់',
     payMethodQr:  'QR Code',
+    payWithShinhan: 'បង់ប្រាក់តាម Shinhan SOL',
+    openShinhan: 'បើក Shinhan SOL App',
+    refreshPayment: 'Refresh payment status',
+    creatingPayment: 'កំពុងបង្កើតការទូទាត់…',
+    paymentPending: 'បានបង្កើតការទូទាត់ សូមបើក Shinhan SOL App ដើម្បីបង់ប្រាក់',
+    paymentError: 'មិនអាចបង់ប្រាក់បានទេ សូមទាក់ទងហាង ឬព្យាយាមម្ដងទៀត',
   },
 }
 
@@ -104,6 +128,8 @@ const STATUS_COLOR: Record<string, string> = {
   COMPLETED: '#52c41a',
   CANCELLED: '#bbb',
 }
+
+type OrderCopy = (typeof T)[Lang]
 
 function normalizeLang(value: string | null | undefined): Lang | null {
   const s = (value ?? '').toLowerCase()
@@ -157,6 +183,16 @@ type MyOrder = {
   createdAt: string
 }
 
+type ShinhanPaymentState = {
+  loading?: boolean
+  paymentId?: string
+  trxId?: string
+  deepLinkUrl?: string
+  status?: string
+  message?: string
+  error?: string
+}
+
 // ─── 工具函数 ─────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string, lang: Lang): string {
@@ -191,6 +227,7 @@ export default function MyOrdersPage() {
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [shinhanByOrder, setShinhanByOrder] = useState<Record<string, ShinhanPaymentState>>({})
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
@@ -268,6 +305,68 @@ export default function MyOrdersPage() {
   }, [lang])
 
   const ui = T[lang]
+
+  async function createShinhanPayment(order: MyOrder) {
+    setShinhanByOrder((prev) => ({ ...prev, [order.id]: { ...(prev[order.id] ?? {}), loading: true, error: undefined } }))
+    try {
+      const res = await fetch(`/api/public/orders/${encodeURIComponent(order.id)}/payments/shinhan/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currency: 'USD' }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || body.error) throw new Error(body.error ?? 'PAYMENT_CREATE_FAILED')
+      setShinhanByOrder((prev) => ({
+        ...prev,
+        [order.id]: {
+          loading: false,
+          paymentId: body.paymentId,
+          trxId: body.trxId,
+          deepLinkUrl: body.deepLinkUrl,
+          status: body.status,
+          message: ui.paymentPending,
+        },
+      }))
+    } catch {
+      setShinhanByOrder((prev) => ({
+        ...prev,
+        [order.id]: { ...(prev[order.id] ?? {}), loading: false, error: ui.paymentError },
+      }))
+    }
+  }
+
+  async function refreshShinhanStatus(order: MyOrder) {
+    setShinhanByOrder((prev) => ({ ...prev, [order.id]: { ...(prev[order.id] ?? {}), loading: true, error: undefined } }))
+    try {
+      const res = await fetch(`/api/public/orders/${encodeURIComponent(order.id)}/payments/status`)
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || body.error) throw new Error(body.error ?? 'STATUS_FAILED')
+      const nextOrder = body.order
+      if (nextOrder?.paymentStatus === 'PAID') {
+        setOrders((prev) => prev.map((o) => o.id === order.id ? {
+          ...o,
+          status: nextOrder.status ?? o.status,
+          paymentStatus: 'PAID',
+          paymentMethod: nextOrder.paymentMethod ?? 'SHINHAN',
+          paidAt: nextOrder.paidAt ?? o.paidAt,
+        } : o))
+      }
+      setShinhanByOrder((prev) => ({
+        ...prev,
+        [order.id]: {
+          ...(prev[order.id] ?? {}),
+          loading: false,
+          status: body.payment?.status ?? nextOrder?.paymentStatus,
+          deepLinkUrl: body.payment?.deepLinkUrl ?? prev[order.id]?.deepLinkUrl,
+        },
+      }))
+    } catch {
+      setShinhanByOrder((prev) => ({
+        ...prev,
+        [order.id]: { ...(prev[order.id] ?? {}), loading: false, error: ui.paymentError },
+      }))
+    }
+  }
 
   // ── 加载态 ────────────────────────────────────────────────────────────────
   if (loading) {
@@ -410,6 +509,15 @@ export default function MyOrdersPage() {
                         )}
                       </div>
                     )}
+                    {order.paymentStatus !== 'PAID' && order.status !== 'CANCELLED' && (
+                      <ShinhanPaymentBox
+                        order={order}
+                        state={shinhanByOrder[order.id]}
+                        ui={ui}
+                        onCreate={() => createShinhanPayment(order)}
+                        onRefresh={() => refreshShinhanStatus(order)}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -418,6 +526,44 @@ export default function MyOrdersPage() {
         )}
       </div>
     </main>
+  )
+}
+
+function ShinhanPaymentBox({
+  order,
+  state,
+  ui,
+  onCreate,
+  onRefresh,
+}: {
+  order: MyOrder
+  state: ShinhanPaymentState | undefined
+  ui: OrderCopy
+  onCreate: () => void
+  onRefresh: () => void
+}) {
+  const loading = Boolean(state?.loading)
+  return (
+    <div style={s.shinhanBox}>
+      <div style={s.shinhanTitle}>Shinhan SOL</div>
+      <div style={s.shinhanMeta}>{ui.total} ${order.totalAmount.toFixed(2)}</div>
+      {state?.message && <div style={s.shinhanHint}>{state.message}</div>}
+      {state?.error && <div style={s.shinhanError}>{state.error}</div>}
+      <div style={s.shinhanActions}>
+        {!state?.deepLinkUrl ? (
+          <button type="button" style={s.shinhanPrimaryBtn} disabled={loading} onClick={onCreate}>
+            {loading ? ui.creatingPayment : ui.payWithShinhan}
+          </button>
+        ) : (
+          <a style={s.shinhanPrimaryBtn} href={state.deepLinkUrl}>
+            {ui.openShinhan}
+          </a>
+        )}
+        <button type="button" style={s.shinhanSecondaryBtn} disabled={loading} onClick={onRefresh}>
+          {ui.refreshPayment}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -565,5 +711,41 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 11, fontWeight: 600, color: '#fa8c16',
     background: '#fff7e6', border: '1px solid #ffe58f',
     borderRadius: 4, padding: '2px 8px',
+  },
+  shinhanBox: {
+    marginTop: 12,
+    border: '1px solid #dbeafe',
+    borderRadius: 12,
+    padding: 12,
+    background: 'linear-gradient(135deg,#eff6ff 0%,#ffffff 100%)',
+  },
+  shinhanTitle: { fontSize: 13, fontWeight: 800, color: '#1e3a8a' },
+  shinhanMeta: { fontSize: 12, color: '#64748b', marginTop: 3 },
+  shinhanHint: { fontSize: 11, color: '#2563eb', marginTop: 8, lineHeight: 1.45 },
+  shinhanError: { fontSize: 11, color: '#dc2626', marginTop: 8, lineHeight: 1.45 },
+  shinhanActions: { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 },
+  shinhanPrimaryBtn: {
+    minHeight: 42,
+    borderRadius: 999,
+    border: 'none',
+    background: 'linear-gradient(135deg,#2563eb 0%,#4f46e5 100%)',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 800,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textDecoration: 'none',
+    cursor: 'pointer',
+  },
+  shinhanSecondaryBtn: {
+    minHeight: 38,
+    borderRadius: 999,
+    border: '1px solid #bfdbfe',
+    background: '#fff',
+    color: '#2563eb',
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: 'pointer',
   },
 }
