@@ -487,6 +487,34 @@ storeId + deviceId + offlineOrderId
 - 成功生成正式 SaleRecord。
 - DUPLICATE 返回已有 SaleRecord。
 
+已实现内容：
+
+- 新增 API：`POST /api/cashier/offline-sync`。
+- 仅接受 `paymentMethod=CASH`、`paymentStatus=PAID_OFFLINE` 的离线订单。
+- 每批最多 20 笔订单。
+- 每笔最多 100 行商品。
+- 服务端按数据库 Product 重新计算金额，不信任客户端价格作为唯一依据。
+- 服务端校验 `tenantId / storeId / storeCode`。
+- 服务端校验商品属于当前 tenant 且为 ACTIVE。
+- 每笔订单使用数据库事务。
+- 使用 `OfflineSaleSyncMap(storeId, deviceId, offlineOrderId)` 做幂等。
+- 首次成功同步时创建正式 SaleRecord 和 PAID CASH PaymentIntent。
+- SaleRecord 写入：
+  - `source=CASHIER_OFFLINE`
+  - `offlineOrderId`
+  - `offlineDeviceId`
+  - `offlineCreatedAtLocal`
+  - `offlineCreatedAtClientTimestamp`
+  - `offlineSyncedAt`
+  - `offlineSyncStatus=SYNCED`
+  - `inventoryException`
+- OfflineSaleSyncMap 写入 `saleRecordId / status=SYNCED / syncedAt / rawPayloadHash`。
+- 重复提交同一 `storeId + deviceId + offlineOrderId` 返回 `DUPLICATE` 和已有 `serverSaleRecordId`，不重复创建 SaleRecord。
+- 批量请求允许部分成功、部分失败。
+- 当前客户端尚未接入，不会自动同步 IndexedDB 离线订单。
+- `/records` “离线补同步”标签尚未实现。
+- dashboard 按离线发生时间归属统计尚未调整。
+
 ### Offline-03D：客户端手动同步按钮
 
 - `/cashier` 显示同步按钮。
