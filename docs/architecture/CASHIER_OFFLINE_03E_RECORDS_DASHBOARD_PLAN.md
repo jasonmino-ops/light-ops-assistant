@@ -344,3 +344,28 @@ Offline-03E 建议先做 `/records` 低风险展示增强：
 - 暂不改 dashboard 统计口径。
 
 dashboard 离线补同步统计和日期归属建议放到 Offline-03F 单独处理。
+
+## 十五、Offline-03E-1 实现记录
+
+Offline-03E-1 已按低风险范围实现：
+
+- `/api/records` 对 SaleRecord 透传离线来源字段：
+  - `saleRecordSource`
+  - `offlineOrderId`
+  - `offlineCreatedAtClientTimestamp`
+  - `offlineSyncedAt`
+  - `offlineSyncStatus`
+  - `inventoryException`
+- `/records` 使用以下规则识别离线补同步订单：
+  - `offlineOrderId` 存在；或
+  - `saleRecordSource === CASHIER_OFFLINE`
+- `/records` 订单卡片显示“离线补同步 / Offline synced”标签。
+- `/records` 订单卡片显示：
+  - 离线销售时间：`offlineCreatedAtClientTimestamp`
+  - 同步时间：`offlineSyncedAt`
+- 如果 `inventoryException` 存在，显示“库存异常 / Inventory exception”轻量标签。
+- 本轮没有修改 records 排序。
+- 本轮没有修改 dashboard。
+- 本轮没有修改 `/cashier`。
+- 本轮没有修改 offline-sync API。
+- 本轮没有修改数据库 schema 或 migration。

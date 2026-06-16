@@ -386,6 +386,10 @@ const en = {
     cashierSource: 'Desktop POS',
     mposSource: 'mPOS',
     khqrFallback: 'KHQR fallback',
+    offlineSynced: 'Offline synced',
+    offlineSaleTime: 'Offline sale',
+    offlineSyncedAt: 'Synced at',
+    inventoryException: 'Inventory exception',
     itemUnit: 'items',
   },
   dashboard: {

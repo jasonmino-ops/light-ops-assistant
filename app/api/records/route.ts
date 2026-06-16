@@ -174,6 +174,12 @@ export async function GET(req: NextRequest) {
       paymentMethod: pi?.paymentMethod ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'CASH' : null),
       paymentStatus: pi?.paymentStatus ?? (r.saleType === 'SALE' && r.status === 'COMPLETED' ? 'PAID' : null),
       source: 'SALE_RECORD' as const,
+      saleRecordSource: r.source,
+      offlineOrderId: r.offlineOrderId,
+      offlineCreatedAtClientTimestamp: r.offlineCreatedAtClientTimestamp?.toISOString() ?? null,
+      offlineSyncedAt: r.offlineSyncedAt?.toISOString() ?? null,
+      offlineSyncStatus: r.offlineSyncStatus,
+      inventoryException: r.inventoryException,
     }
   })
 

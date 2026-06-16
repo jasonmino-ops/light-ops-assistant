@@ -386,6 +386,10 @@ const km = {
     cashierSource: 'កាសាកុំព្យូទ័រ',
     mposSource: 'mPOS',
     khqrFallback: 'KHQR បម្រុង',
+    offlineSynced: 'Offline synced',
+    offlineSaleTime: 'Offline sale',
+    offlineSyncedAt: 'Synced at',
+    inventoryException: 'Inventory exception',
     itemUnit: 'គ្រឿង',
   },
   dashboard: {

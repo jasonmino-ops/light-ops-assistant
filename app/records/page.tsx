@@ -30,6 +30,12 @@ type RecordItem = {
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
   source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
+  saleRecordSource?: string | null
+  offlineOrderId?: string | null
+  offlineCreatedAtClientTimestamp?: string | null
+  offlineSyncedAt?: string | null
+  offlineSyncStatus?: string | null
+  inventoryException?: string | null
   // 送货/上门（仅 CUSTOMER_ORDER 行）
   isDelivery?: boolean
   customerPhone?: string | null
@@ -68,6 +74,12 @@ type OrderGroup = {
   paymentMethod?: 'CASH' | 'KHQR' | null
   paymentStatus?: string | null
   source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
+  saleRecordSource?: string | null
+  offlineOrderId?: string | null
+  offlineCreatedAtClientTimestamp?: string | null
+  offlineSyncedAt?: string | null
+  offlineSyncStatus?: string | null
+  inventoryException?: string | null
   remark?: string | null
   // 送货/上门摘要
   isDelivery?: boolean
@@ -105,6 +117,16 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+function fmtDateTime(iso: string) {
+  return new Date(iso).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function fmtAmount(n: number) {
   const abs = Math.abs(n).toFixed(2)
   return n < 0 ? `-$${abs}` : `$${abs}`
@@ -135,6 +157,12 @@ function buildEntries(items: RecordItem[]): DisplayEntry[] {
           paymentMethod: item.paymentMethod ?? null,
           paymentStatus: item.paymentStatus ?? null,
           source: item.source,
+          saleRecordSource: item.saleRecordSource ?? null,
+          offlineOrderId: item.offlineOrderId ?? null,
+          offlineCreatedAtClientTimestamp: item.offlineCreatedAtClientTimestamp ?? null,
+          offlineSyncedAt: item.offlineSyncedAt ?? null,
+          offlineSyncStatus: item.offlineSyncStatus ?? null,
+          inventoryException: item.inventoryException ?? null,
           remark: item.remark ?? null,
           isDelivery:      item.isDelivery ?? false,
           customerPhone:   item.customerPhone   ?? null,
@@ -466,6 +494,10 @@ export default function RecordsPage() {
                 mpos: t('records.mposSource'),
                 delivery: t('records.deliveryTag'),
                 khqrFallback: t('records.khqrFallback'),
+                offlineSynced: t('records.offlineSynced'),
+                offlineSaleTime: t('records.offlineSaleTime'),
+                offlineSyncedAt: t('records.offlineSyncedAt'),
+                inventoryException: t('records.inventoryException'),
                 map: t('records.deliveryMap'),
                 itemUnit: t('records.itemUnit'),
               }}
@@ -529,6 +561,10 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
     mpos: string
     delivery: string
     khqrFallback: string
+    offlineSynced: string
+    offlineSaleTime: string
+    offlineSyncedAt: string
+    inventoryException: string
     map: string
     itemUnit: string
   }
@@ -542,6 +578,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
   const isCustomerOrder = group.source === 'CUSTOMER_ORDER'
   const isCashier = group.remark?.startsWith('电脑收银台') ?? false
   const isKhqrFallback = group.remark === '电脑收银台-KHQR兜底'
+  const isOfflineSynced = !!group.offlineOrderId || group.saleRecordSource === 'CASHIER_OFFLINE'
 
   const pm = group.paymentMethod
   const ps = group.paymentStatus
@@ -571,12 +608,25 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
           <span style={s.tagDelivery}>{sourceLabels.delivery}</span>
         )}
         {isKhqrFallback && <span style={s.tagFallback}>{sourceLabels.khqrFallback}</span>}
+        {isOfflineSynced && <span style={s.tagOffline}>{sourceLabels.offlineSynced}</span>}
+        {isOfflineSynced && group.inventoryException && <span style={s.tagInventoryException}>{sourceLabels.inventoryException}</span>}
         <span style={s.cardTime}>{fmtTime(group.createdAt)}</span>
         <span style={s.cardRecordNo}>{group.orderNo}</span>
         <span style={{ ...s.payBadge, ...(isPending ? s.payBadgePending : {}) }}>
           {payMethodLabel}{payStatusLabel ? ` · ${payStatusLabel}` : ''}
         </span>
       </div>
+
+      {isOfflineSynced && (group.offlineCreatedAtClientTimestamp || group.offlineSyncedAt) && (
+        <div style={s.offlineMetaRow}>
+          {group.offlineCreatedAtClientTimestamp && (
+            <span>{sourceLabels.offlineSaleTime}：{fmtDateTime(group.offlineCreatedAtClientTimestamp)}</span>
+          )}
+          {group.offlineSyncedAt && (
+            <span>{sourceLabels.offlineSyncedAt}：{fmtDateTime(group.offlineSyncedAt)}</span>
+          )}
+        </div>
+      )}
 
       {group.isDelivery && (group.customerPhone || group.deliveryAddress) && (
         <div style={s.deliveryRow}>
@@ -1066,6 +1116,36 @@ const s: Record<string, React.CSSProperties> = {
     padding: '1px 6px',
     borderRadius: 8,
     border: '1px solid #ffd591',
+  },
+  tagOffline: {
+    fontSize: 10,
+    fontWeight: 800,
+    background: '#fff7e6',
+    color: '#b45309',
+    padding: '1px 6px',
+    borderRadius: 8,
+    border: '1px solid #fcd34d',
+  },
+  tagInventoryException: {
+    fontSize: 10,
+    fontWeight: 800,
+    background: '#fff1f0',
+    color: '#b91c1c',
+    padding: '1px 6px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+  },
+  offlineMetaRow: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 8,
+    marginTop: 5,
+    fontSize: 11,
+    color: '#92400e',
+    background: '#fffbeb',
+    border: '1px solid #fde68a',
+    borderRadius: 8,
+    padding: '5px 8px',
   },
   tagDelivery: {
     fontSize: 11, fontWeight: 700,

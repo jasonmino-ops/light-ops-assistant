@@ -386,6 +386,10 @@ const zh = {
     cashierSource: '电脑收银台',
     mposSource: 'mPOS',
     khqrFallback: 'KHQR 兜底',
+    offlineSynced: '离线补同步',
+    offlineSaleTime: '离线销售',
+    offlineSyncedAt: '同步于',
+    inventoryException: '库存异常',
     itemUnit: '件',
   },
   dashboard: {
