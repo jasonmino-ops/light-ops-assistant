@@ -276,3 +276,106 @@ export async function countPendingOfflineOrders(storeCode: string): Promise<numb
     }
   })
 }
+
+export async function getPendingOfflineOrders(storeCode: string, limit = 20): Promise<CashierOfflineOrder[]> {
+  const db = await openCashierDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_ORDER_STORE, 'readonly')
+    const store = tx.objectStore(OFFLINE_ORDER_STORE)
+    const req = store.index('storeCode').getAll(storeCode)
+    req.onsuccess = () => {
+      db.close()
+      const rows = (Array.isArray(req.result) ? req.result : []) as CashierOfflineOrder[]
+      resolve(
+        rows
+          .filter((row) => row.syncStatus === 'PENDING' || row.syncStatus === 'FAILED')
+          .sort((a, b) => a.createdAtClientTimestamp - b.createdAtClientTimestamp)
+          .slice(0, Math.max(1, Math.min(limit, 20))),
+      )
+    }
+    req.onerror = () => {
+      db.close()
+      reject(req.error ?? new Error('INDEXEDDB_READ_OFFLINE_ORDERS_FAILED'))
+    }
+  })
+}
+
+export async function markOfflineOrdersSyncing(offlineOrderIds: string[]): Promise<void> {
+  if (offlineOrderIds.length === 0) return
+  const db = await openCashierDb()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_ORDER_STORE, 'readwrite')
+    const store = tx.objectStore(OFFLINE_ORDER_STORE)
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(tx.error ?? new Error('INDEXEDDB_TX_FAILED'))
+    }
+    tx.onabort = () => {
+      db.close()
+      reject(tx.error ?? new Error('INDEXEDDB_TX_ABORTED'))
+    }
+    for (const offlineOrderId of offlineOrderIds) {
+      const req = store.get(offlineOrderId)
+      req.onsuccess = () => {
+        const existing = (req.result as CashierOfflineOrder | undefined) ?? null
+        if (!existing || existing.syncStatus === 'SYNCED') return
+        store.put({ ...existing, syncStatus: 'SYNCING' })
+      }
+      req.onerror = () => reject(req.error ?? new Error('INDEXEDDB_READ_OFFLINE_ORDER_FAILED'))
+    }
+  })
+}
+
+export async function updateOfflineOrderSyncResult(input: {
+  offlineOrderId: string
+  syncStatus: 'SYNCED' | 'FAILED'
+  serverSaleRecordId?: string | null
+  error?: string | null
+  syncedAt?: string | null
+}): Promise<void> {
+  const db = await openCashierDb()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_ORDER_STORE, 'readwrite')
+    const store = tx.objectStore(OFFLINE_ORDER_STORE)
+    const req = store.get(input.offlineOrderId)
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(tx.error ?? new Error('INDEXEDDB_TX_FAILED'))
+    }
+    tx.onabort = () => {
+      db.close()
+      reject(tx.error ?? new Error('INDEXEDDB_TX_ABORTED'))
+    }
+    req.onsuccess = () => {
+      const existing = (req.result as CashierOfflineOrder | undefined) ?? null
+      if (!existing) return
+      store.put({
+        ...existing,
+        syncStatus: input.syncStatus,
+        syncAttemptCount: existing.syncAttemptCount + 1,
+        lastSyncError: input.syncStatus === 'FAILED' ? input.error ?? 'SYNC_FAILED' : null,
+        serverSaleRecordId: input.serverSaleRecordId ?? existing.serverSaleRecordId,
+        syncedAt: input.syncStatus === 'SYNCED' ? input.syncedAt ?? new Date().toISOString() : existing.syncedAt,
+      })
+    }
+    req.onerror = () => reject(req.error ?? new Error('INDEXEDDB_READ_OFFLINE_ORDER_FAILED'))
+  })
+}
+
+export async function markOfflineOrdersSyncFailed(offlineOrderIds: string[], error: string): Promise<void> {
+  for (const offlineOrderId of offlineOrderIds) {
+    await updateOfflineOrderSyncResult({
+      offlineOrderId,
+      syncStatus: 'FAILED',
+      error,
+    })
+  }
+}

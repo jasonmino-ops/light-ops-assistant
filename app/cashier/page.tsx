@@ -9,7 +9,11 @@ import {
   getCachedCashierProducts,
   getCashierDeviceId,
   getCashierProductCacheMeta,
+  getPendingOfflineOrders,
+  markOfflineOrdersSyncFailed,
+  markOfflineOrdersSyncing,
   saveOfflineCashierOrder,
+  updateOfflineOrderSyncResult,
   type CashierProductCacheMeta,
 } from '@/lib/cashier-offline-db'
 
@@ -176,6 +180,20 @@ const s: Record<string, CSSProperties> = {
   offlineStatusLine: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 },
   statusPill: { borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' as const },
   offlineWarn: { marginTop: 6, color: '#fde68a', fontSize: 10, lineHeight: 1.45 },
+  offlineSyncBtn: {
+    width: '100%',
+    marginTop: 8,
+    minHeight: 30,
+    borderRadius: 8,
+    border: '1px solid rgba(96,165,250,.28)',
+    background: 'rgba(37,99,235,.22)',
+    color: '#dbeafe',
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  offlineSyncBtnDis: { opacity: 0.45, cursor: 'not-allowed' },
+  offlineSyncSummary: { marginTop: 6, color: '#bfdbfe', fontSize: 10, lineHeight: 1.45 },
   sideCats:    { padding: '8px 6px', flex: 1 },
   sideCat:     { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', marginBottom: 2 },
   sideCatOn:   { background: SIDEBAR_ACT, color: '#fff', fontWeight: 600 },
@@ -307,6 +325,8 @@ export default function CashierPage() {
   const [cacheError,    setCacheError]    = useState('')
   const [productsSource,setProductsSource]= useState<'online' | 'cache' | 'none'>('none')
   const [offlinePendingCount, setOfflinePendingCount] = useState(0)
+  const [offlineSyncing, setOfflineSyncing] = useState(false)
+  const [offlineSyncSummary, setOfflineSyncSummary] = useState('')
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -438,7 +458,7 @@ export default function CashierPage() {
       .then((count) => {
         setOfflinePendingCount(count)
         if (isOnline && !wasOnlineRef.current && count > 0) {
-          showToast(`有 ${count} 笔离线订单待同步，下一阶段将支持上传同步`)
+          showToast(`有 ${count} 笔离线订单待同步，请点击同步离线订单`)
         }
         wasOnlineRef.current = isOnline
       })
@@ -548,6 +568,104 @@ export default function CashierPage() {
       }
     } catch {
       showToast('无法切换全屏，请使用浏览器全屏功能')
+    }
+  }
+
+  async function refreshOfflinePendingCount(sc = storeCode) {
+    if (!sc) return 0
+    const count = await countPendingOfflineOrders(sc)
+    setOfflinePendingCount(count)
+    return count
+  }
+
+  async function handleSyncOfflineOrders() {
+    if (!storeCode || offlineSyncing) return
+    if (!isOnline) {
+      showToast('恢复网络后可同步')
+      return
+    }
+    if (offlinePendingCount <= 0) return
+    setOfflineSyncing(true)
+    setOfflineSyncSummary('')
+    let syncingIds: string[] = []
+    try {
+      const orders = await getPendingOfflineOrders(storeCode, 20)
+      if (orders.length === 0) {
+        await refreshOfflinePendingCount()
+        showToast('无待同步订单')
+        return
+      }
+      const first = orders[0]
+      syncingIds = orders.map((order) => order.offlineOrderId)
+      await markOfflineOrdersSyncing(syncingIds)
+      const res = await fetch('/api/cashier/offline-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeId: first.storeId,
+          storeCode,
+          deviceId: first.deviceId,
+          orders,
+        }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body || !Array.isArray(body.results)) {
+        const msg = body?.message ?? body?.error ?? 'SYNC_REQUEST_FAILED'
+        await markOfflineOrdersSyncFailed(syncingIds, msg)
+        setOfflineSyncSummary(`同步失败：${msg}`)
+        showToast('同步失败，请稍后重试')
+        return
+      }
+
+      let synced = 0
+      let duplicate = 0
+      let failed = 0
+      for (const result of body.results as Array<{
+        offlineOrderId?: string
+        status?: 'SYNCED' | 'DUPLICATE' | 'FAILED'
+        serverSaleRecordId?: string | null
+        errorCode?: string | null
+        errorMessage?: string | null
+      }>) {
+        if (!result.offlineOrderId) continue
+        if (result.status === 'SYNCED' || result.status === 'DUPLICATE') {
+          await updateOfflineOrderSyncResult({
+            offlineOrderId: result.offlineOrderId,
+            syncStatus: 'SYNCED',
+            serverSaleRecordId: result.serverSaleRecordId ?? null,
+            syncedAt: new Date().toISOString(),
+          })
+          if (result.status === 'DUPLICATE') duplicate += 1
+          else synced += 1
+        } else {
+          failed += 1
+          const err = [result.errorCode, result.errorMessage].filter(Boolean).join(': ') || 'SYNC_FAILED'
+          await updateOfflineOrderSyncResult({
+            offlineOrderId: result.offlineOrderId,
+            syncStatus: 'FAILED',
+            error: err,
+          })
+        }
+      }
+      const missing = syncingIds.filter((id) => !body.results.some((r: { offlineOrderId?: string }) => r.offlineOrderId === id))
+      if (missing.length > 0) {
+        failed += missing.length
+        await markOfflineOrdersSyncFailed(missing, 'SYNC_RESULT_MISSING')
+      }
+      await refreshOfflinePendingCount()
+      const summary = `同步完成：成功 ${synced} 笔，重复 ${duplicate} 笔，失败 ${failed} 笔`
+      setOfflineSyncSummary(summary)
+      showToast(failed > 0 ? '有订单同步失败，可稍后重试' : summary)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'NETWORK_ERROR'
+      if (syncingIds.length > 0) {
+        await markOfflineOrdersSyncFailed(syncingIds, msg).catch(() => {})
+      }
+      await refreshOfflinePendingCount().catch(() => {})
+      setOfflineSyncSummary(`同步失败：${msg}`)
+      showToast('同步失败，请稍后重试')
+    } finally {
+      setOfflineSyncing(false)
     }
   }
 
@@ -809,6 +927,22 @@ export default function CashierPage() {
               </div>
               <div>{cacheText}</div>
               <div>待同步离线订单：{offlinePendingCount} 笔</div>
+              {offlinePendingCount > 0 && (
+                <button
+                  type="button"
+                  style={{
+                    ...s.offlineSyncBtn,
+                    ...((!isOnline || offlineSyncing) ? s.offlineSyncBtnDis : {}),
+                  }}
+                  disabled={!isOnline || offlineSyncing}
+                  onClick={handleSyncOfflineOrders}
+                >
+                  {offlineSyncing ? '同步中…' : isOnline ? '同步离线订单' : '恢复网络后可同步'}
+                </button>
+              )}
+              {offlineSyncSummary && (
+                <div style={s.offlineSyncSummary}>{offlineSyncSummary}</div>
+              )}
               {!isOnline && (
                 <div style={s.offlineWarn}>
                   {offlineHint}

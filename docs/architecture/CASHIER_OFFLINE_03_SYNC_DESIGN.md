@@ -517,10 +517,30 @@ storeId + deviceId + offlineOrderId
 
 ### Offline-03D：客户端手动同步按钮
 
-- `/cashier` 显示同步按钮。
-- 手动上传 PENDING / FAILED。
-- 写回 IndexedDB 状态。
-- 不自动删除已同步订单。
+- `/cashier` 已接入手动“同步离线订单”按钮。
+- 显示规则：
+  - 仅当当前门店存在 `syncStatus=PENDING / FAILED` 的离线订单时显示。
+  - 在线状态下可点击。
+  - 离线状态下禁用，并提示恢复网络后可同步。
+- 同步行为：
+  - 从 IndexedDB 读取当前 `storeCode` 下最多 20 笔 `PENDING / FAILED` 离线订单。
+  - 调用 `POST /api/cashier/offline-sync`。
+  - 同步期间按钮置灰，防止并发点击。
+- 本地状态处理：
+  - `SYNCED`：写回 `syncStatus=SYNCED`、`serverSaleRecordId`、`syncedAt`，清空 `lastSyncError`。
+  - `DUPLICATE`：同样标记为 `SYNCED`，保存服务端返回的 `serverSaleRecordId`。
+  - `FAILED`：写回 `syncStatus=FAILED`、增加 `syncAttemptCount`、保存 `lastSyncError`。
+  - 整体请求失败：参与同步的订单标记为 `FAILED`，保留本地订单，允许后续重试。
+- 同步完成后显示汇总：
+  - 成功 X 笔
+  - 重复 X 笔
+  - 失败 X 笔
+- 当前边界：
+  - 不自动同步。
+  - 不删除已同步本地订单。
+  - 不修改 `/records` 标签展示。
+  - 不调整 dashboard 统计口径。
+  - 不改变在线 CASH / KHQR 主流程。
 
 ### Offline-03E：`/records` 显示“离线补同步”标签
 
