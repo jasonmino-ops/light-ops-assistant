@@ -57,7 +57,9 @@ const T: Record<Lang, {
   payNowShinhanTitle: string
   payNowShinhanDesc: string
   paymentPending: string
+  paymentPendingHint: string
   paymentPaid: string
+  paidByShinhan: string
   paymentFailed: string
   openShinhan: string
   refreshPayment: string
@@ -148,7 +150,9 @@ const T: Record<Lang, {
     payNowShinhanTitle: '使用 Shinhan SOL 立即支付',
     payNowShinhanDesc: '打开 Shinhan SOL App 完成付款。',
     paymentPending:   '支付待完成',
+    paymentPendingHint: '请打开 Shinhan SOL App 完成付款。付款完成后请点击刷新支付状态。',
     paymentPaid:      '已支付',
+    paidByShinhan:    '已通过 Shinhan SOL 支付',
     paymentFailed:    '支付失败',
     openShinhan:      '打开 Shinhan SOL App',
     refreshPayment:   '刷新支付状态',
@@ -237,7 +241,9 @@ const T: Record<Lang, {
     payNowShinhanTitle: 'Pay now with Shinhan SOL',
     payNowShinhanDesc: 'Open Shinhan SOL App to complete payment.',
     paymentPending:   'Payment pending',
+    paymentPendingHint: 'Open Shinhan SOL App to complete payment. After paying, tap Refresh payment status.',
     paymentPaid:      'Paid',
+    paidByShinhan:    'Paid by Shinhan SOL',
     paymentFailed:    'Payment failed',
     openShinhan:      'Open Shinhan SOL App',
     refreshPayment:   'Refresh payment status',
@@ -326,7 +332,9 @@ const T: Record<Lang, {
     payNowShinhanTitle: 'បង់ឥឡូវតាម Shinhan SOL',
     payNowShinhanDesc: 'បើក Shinhan SOL App ដើម្បីបង់ប្រាក់។',
     paymentPending:   'កំពុងរង់ចាំការបង់ប្រាក់',
+    paymentPendingHint: 'សូមបើក Shinhan SOL App ដើម្បីបង់ប្រាក់។ បន្ទាប់ពីបង់ប្រាក់ សូមចុច Refresh payment status។',
     paymentPaid:      'បានបង់ប្រាក់',
+    paidByShinhan:    'បានបង់តាម Shinhan SOL',
     paymentFailed:    'បង់ប្រាក់បរាជ័យ',
     openShinhan:      'បើក Shinhan SOL App',
     refreshPayment:   'Refresh payment status',
@@ -1061,6 +1069,18 @@ export default function MenuPage() {
       setOrderResult((prev) => prev && prev.orderNo === orderNo
         ? { ...prev, payment: { ...(prev.payment ?? {}), loading: false, error: ui.paymentFailed } }
         : prev)
+    }
+  }
+
+  function openShinhanDeepLink(url: string) {
+    const trimmed = url.trim()
+    if (!trimmed) return
+    if (/^https?:\/\//i.test(trimmed)) {
+      window.open(trimmed, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+      window.location.href = trimmed
     }
   }
 
@@ -1864,9 +1884,19 @@ export default function MenuPage() {
             <div style={s.successModalOrderNo}>{orderResult.orderNo}</div>
             <div style={s.successStatusPill}>
               <span style={{ color: orderResult.paymentStatus === 'PAID' ? '#52c41a' : '#fa8c16', marginRight: 4 }}>●</span>
-              {orderResult.paymentStatus === 'PAID' ? ui.paymentPaid : ui.statusPending}
+              {orderResult.paymentStatus === 'PAID'
+                ? ui.paymentPaid
+                : orderResult.paymentMethod === 'SHINHAN'
+                  ? ui.paymentPending
+                  : ui.statusPending}
             </div>
-            <div style={s.successModalHint}>{ui.orderHint2}</div>
+            <div style={s.successModalHint}>
+              {orderResult.paymentMethod === 'SHINHAN'
+                ? orderResult.paymentStatus === 'PAID'
+                  ? ui.paidByShinhan
+                  : ui.paymentPendingHint
+                : `${ui.orderHint2} · ${ui.payLaterDesc}`}
+            </div>
             <div style={s.successModalAmount}>${orderResult.totalAmount.toFixed(2)}</div>
 
             {orderResult.paymentMethod === 'SHINHAN' && (
@@ -1880,9 +1910,13 @@ export default function MenuPage() {
                 </div>
                 {orderResult.payment?.error && <div style={s.checkoutPaymentError}>{orderResult.payment.error}</div>}
                 {orderResult.payment?.deepLinkUrl && orderResult.paymentStatus !== 'PAID' && (
-                  <a href={orderResult.payment.deepLinkUrl} style={s.checkoutPaymentPrimary}>
+                  <button
+                    type="button"
+                    style={s.checkoutPaymentPrimary}
+                    onClick={() => openShinhanDeepLink(orderResult.payment?.deepLinkUrl ?? '')}
+                  >
                     {ui.openShinhan}
-                  </a>
+                  </button>
                 )}
                 {orderResult.paymentStatus !== 'PAID' && (
                   <button
@@ -2443,11 +2477,13 @@ const s: Record<string, React.CSSProperties> = {
     width: '100%',
     minHeight: 42,
     borderRadius: 999,
+    border: 'none',
     background: 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)',
     color: '#fff',
     fontSize: 14,
     fontWeight: 800,
     textDecoration: 'none',
+    cursor: 'pointer',
   },
   checkoutPaymentSecondary: {
     width: '100%',
