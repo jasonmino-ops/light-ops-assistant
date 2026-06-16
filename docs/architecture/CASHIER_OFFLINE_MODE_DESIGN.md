@@ -293,6 +293,14 @@ storeId + deviceId + offlineOrderId
 - 增加唯一约束：`storeId + deviceId + offlineOrderId`。
 - 不接前端同步按钮。
 
+已实现内容：
+
+- 新增 `OfflineSaleSyncMap` 模型，用于离线订单同步幂等和审计。
+- 新增 migration：`20260617010000_add_cashier_offline_sync_map`。
+- `OfflineSaleSyncMap` 使用唯一约束：`storeId + deviceId + offlineOrderId`。
+- SaleRecord 增加最小 nullable 离线来源字段，用于后续 records 显示和补账追踪。
+- 本阶段不实现 `/api/cashier/offline-sync`，不改 `/cashier` 同步逻辑，不改 records/dashboard。
+
 ### Offline-03C：服务端 offline-sync API
 
 - 新增 `POST /api/cashier/offline-sync`。

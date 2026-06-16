@@ -458,6 +458,28 @@ storeId + deviceId + offlineOrderId
 - 增加唯一约束：`storeId + deviceId + offlineOrderId`。
 - 不接前端同步按钮。
 
+已落地内容：
+
+- 新增 Prisma model：`OfflineSaleSyncMap`。
+- 新增 migration：`20260617010000_add_cashier_offline_sync_map`。
+- `OfflineSaleSyncMap` 字段包含 `tenantId / storeId / deviceId / offlineOrderId / saleRecordId / status / syncedAt / rawPayloadHash / lastErrorCode / lastErrorMessage / createdAt / updatedAt`。
+- 已增加唯一约束：`@@unique([storeId, deviceId, offlineOrderId])`。
+- 已增加索引：`tenantId / storeId / saleRecordId / status / createdAt`。
+- SaleRecord 已增加最小离线来源字段：
+  - `source`
+  - `offlineOrderId`
+  - `offlineDeviceId`
+  - `offlineCreatedAtLocal`
+  - `offlineCreatedAtClientTimestamp`
+  - `offlineSyncedAt`
+  - `offlineSyncStatus`
+  - `inventoryException`
+- SaleRecord 新增字段均为 nullable，不影响历史销售记录和在线销售创建。
+- 本阶段仍未实现 `/api/cashier/offline-sync`。
+- 本阶段仍未改 `/cashier` 同步逻辑。
+- 本阶段仍未改 `/records` 展示。
+- 本阶段仍未改 dashboard 统计。
+
 ### Offline-03C：服务端 offline-sync API
 
 - 新增 `POST /api/cashier/offline-sync`。
