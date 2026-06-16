@@ -289,3 +289,31 @@ Payment-Shinhan-01B 才接真实 UAT：
 - 不替换现有 CASH / KHQR 主流程。
 - 不改变 `/sale` 收银主流程。
 - 不改变 `records` 统计口径。
+
+## 十二、Deeplink 打开方式修复与冻结状态
+
+2026-06-16 真机复测发现，Telegram WebView 中如果用普通 `<a href>` 打开 mock deeplink，可能会被 Open Link 流程按普通 URL 处理，显示为：
+
+```text
+http://shinhan-sol://payment?trxId=...
+```
+
+最终修复方式：
+
+- 后端 mock `deepLinkUrl` 继续保持原始 custom scheme：
+  - `shinhan-sol://payment?trxId=...&amount=...&currency=...`
+- 顾客端所有 Shinhan 打开入口统一改为按钮触发 JS。
+- `http://` / `https://` 链接继续按普通 URL 打开。
+- `shinhan-sol://` 等 custom scheme 使用 `window.location.assign(deepLinkUrl)` 原样打开。
+- `/menu` checkout 支付弹层和 `/menu/orders` 订单详情页都不再使用 `<a href={deepLinkUrl}>` 打开 Shinhan deeplink。
+- 支付区显示 raw deeplink 文本，便于真机核对没有被拼成 `http://`。
+
+当前冻结状态：
+
+- Payment-Shinhan-01A 已冻结。
+- 冻结业务 commit：`6e39b1b`。
+- 当前仅为 Shinhan Deeplink mock 开发测试框架。
+- 真实 Shinhan UAT 未接入。
+- KHQR API 未接入。
+- CASH / 现有 KHQR / records 主流程未改。
+- 下一阶段 Payment-Shinhan-01B：等待 Shinhan UAT 参数后接真实接口。
