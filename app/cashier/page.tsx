@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react'
+import { useRouter } from 'next/navigation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -120,6 +121,7 @@ const s: Record<string, CSSProperties> = {
     fontWeight: 700,
     cursor: 'pointer',
   },
+  kioskHint: { marginTop: 6, fontSize: 10, lineHeight: 1.4, color: '#94a3b8' },
   sideCats:    { padding: '8px 6px', flex: 1 },
   sideCat:     { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', marginBottom: 2 },
   sideCatOn:   { background: SIDEBAR_ACT, color: '#fff', fontWeight: 600 },
@@ -222,6 +224,7 @@ const s: Record<string, CSSProperties> = {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function CashierPage() {
+  const router = useRouter()
   const [storeCode,     setStoreCode]     = useState<string | null>(null)
   const [noCodeError,   setNoCodeError]   = useState(false)
   const [products,      setProducts]      = useState<Product[]>([])
@@ -251,7 +254,25 @@ export default function CashierPage() {
   // ── Load store data ────────────────────────────────────────────────────────
   useEffect(() => {
     const sc = new URLSearchParams(window.location.search).get('storeCode')?.trim() || null
-    if (!sc) { setNoCodeError(true); setLoading(false); return }
+    if (!sc) {
+      let cachedStoreCode: string | null = null
+      try {
+        cachedStoreCode = localStorage.getItem('cashier:lastStoreCode')?.trim() || null
+      } catch {}
+
+      if (cachedStoreCode && /^[A-Za-z0-9_-]{2,80}$/.test(cachedStoreCode)) {
+        router.replace(`/cashier?storeCode=${encodeURIComponent(cachedStoreCode)}`)
+        return
+      }
+
+      setNoCodeError(true); setLoading(false); return
+    }
+
+    try {
+      localStorage.setItem('cashier:lastStoreCode', sc)
+      localStorage.setItem('cashier:lastUrl', `/cashier?storeCode=${encodeURIComponent(sc)}`)
+    } catch {}
+
     setStoreCode(sc)
     fetch(`/api/cashier/store?storeCode=${encodeURIComponent(sc)}`)
       .then(r => r.json())
@@ -262,7 +283,7 @@ export default function CashierPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [router])
 
   // ── Cashier desktop PWA manifest + install/fullscreen state ───────────────
   useEffect(() => {
@@ -335,6 +356,10 @@ export default function CashierPage() {
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   async function handleInstallClick() {
+    if (!storeCode) {
+      showToast('请先从门店收银链接进入后再安装')
+      return
+    }
     if (isStandalone) {
       showToast('已是桌面应用模式')
       return
@@ -518,6 +543,9 @@ export default function CashierPage() {
               <button type="button" style={s.kioskBtn} onClick={handleFullscreenClick}>
                 {isFullscreen ? '退出全屏' : '进入全屏'}
               </button>
+            </div>
+            <div style={s.kioskHint}>
+              {storeCode ? '已记住当前门店，桌面打开会进入本店收银台' : '请先从门店收银链接进入后再安装'}
             </div>
           </div>
           <div style={s.sideCats}>
