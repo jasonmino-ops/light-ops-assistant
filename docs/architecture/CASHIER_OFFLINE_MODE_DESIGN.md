@@ -273,11 +273,52 @@ storeId + deviceId + offlineOrderId
 - 恢复网络后只提示有待同步订单，不自动上传。
 - 本阶段不新增服务端同步接口，不创建 SaleRecord，不进入 `/records`。
 
-### Offline-03：离线订单同步接口与幂等
+### Offline-03A：同步接口与补账口径设计确认
+
+- 新增设计文档：`docs/architecture/CASHIER_OFFLINE_03_SYNC_DESIGN.md`。
+- 明确离线订单同步边界。
+- 明确服务端 `POST /api/cashier/offline-sync` 的接口草案。
+- 明确幂等主键建议：`storeId + deviceId + offlineOrderId`。
+- 对比 SaleRecord 扩字段与 OfflineSaleSyncMap 两种数据库方案。
+- 推荐使用 OfflineSaleSyncMap 做幂等与审计，SaleRecord 仅保留最小来源字段。
+- 明确 `/records` 显示“离线补同步”标签。
+- 明确 dashboard 按销售发生时间归属统计。
+- 明确库存不足时优先保留销售流水并标记库存异常。
+- 本阶段只做设计，不改数据库、不新增 API、不改生产逻辑。
+
+### Offline-03B：数据库字段/表方案落地
+
+- 新增 OfflineSaleSyncMap 或最终确认的同步映射表。
+- SaleRecord 增加最小来源字段，用于 records 显示。
+- 增加唯一约束：`storeId + deviceId + offlineOrderId`。
+- 不接前端同步按钮。
+
+### Offline-03C：服务端 offline-sync API
 
 - 新增 `POST /api/cashier/offline-sync`。
-- 服务端防重复。
+- 实现服务端校验、批量同步、幂等防重复。
 - 成功后生成正式销售记录。
+- DUPLICATE 返回已有 serverSaleRecordId。
+
+### Offline-03D：客户端手动同步按钮
+
+- `/cashier` 显示“同步离线订单”按钮。
+- 手动上传 IndexedDB 中 `PENDING / FAILED` 离线订单。
+- 成功后标记本地订单为 `SYNCED`。
+- 失败订单保留本地并展示错误原因。
+
+### Offline-03E：records 离线补同步标签
+
+- `/records` 列表和详情显示“离线补同步”。
+- 显示销售发生时间和同步时间。
+- 如有库存异常，显示待处理提示。
+
+### Offline-03F：真实门店断网同步试跑与冻结
+
+- 验证断网 CASH 收银。
+- 验证恢复网络后手动同步。
+- 验证重复上传不会重复入账。
+- 验证 records/dashboard 补账口径。
 
 ### Offline-04：待同步订单面板
 
