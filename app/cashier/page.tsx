@@ -32,6 +32,11 @@ type CashierOrder = {
   remark: string | null; createdAt: string
 }
 
+type BeforeInstallPromptEventLike = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const COLORS = ['#fde68a','#bbf7d0','#bfdbfe','#fecaca','#ddd6fe','#fed7aa','#a5f3fc','#fda4af']
@@ -104,6 +109,17 @@ const s: Record<string, CSSProperties> = {
   sideHead:    { padding: '16px 14px 12px', borderBottom: '1px solid rgba(255,255,255,.08)' },
   sideTitle:   { fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 2 },
   sideStore:   { fontSize: 11, color: '#94a3b8', marginTop: 2, lineHeight: 1.4 },
+  kioskActions: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 },
+  kioskBtn: {
+    minHeight: 34,
+    borderRadius: 9,
+    border: '1px solid rgba(255,255,255,.12)',
+    background: 'rgba(255,255,255,.08)',
+    color: '#e5e7eb',
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
   sideCats:    { padding: '8px 6px', flex: 1 },
   sideCat:     { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', marginBottom: 2 },
   sideCatOn:   { background: SIDEBAR_ACT, color: '#fff', fontWeight: 600 },
@@ -224,6 +240,9 @@ export default function CashierPage() {
   const [pendingSugar,  setPendingSugar]  = useState('50')
   const [pendingOrders, setPendingOrders] = useState<CashierOrder[]>([])
   const [updatingId,    setUpdatingId]    = useState<string | null>(null)
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEventLike | null>(null)
+  const [isStandalone,  setIsStandalone]  = useState(false)
+  const [isFullscreen,  setIsFullscreen]  = useState(false)
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const searchRef       = useRef<HTMLInputElement>(null)
@@ -243,6 +262,36 @@ export default function CashierPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+  }, [])
+
+  // ── Cashier desktop PWA manifest + install/fullscreen state ───────────────
+  useEffect(() => {
+    let manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"][data-cashier-manifest="1"]')
+    if (!manifestLink) {
+      manifestLink = document.createElement('link')
+      manifestLink.rel = 'manifest'
+      manifestLink.href = '/manifest.webmanifest'
+      manifestLink.setAttribute('data-cashier-manifest', '1')
+      document.head.appendChild(manifestLink)
+    }
+
+    const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Boolean((window.navigator as any).standalone)
+    setIsStandalone(standalone)
+    setIsFullscreen(Boolean(document.fullscreenElement))
+
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault()
+      setInstallPrompt(event as BeforeInstallPromptEventLike)
+    }
+    const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+      document.removeEventListener('fullscreenchange', onFullscreenChange)
+    }
   }, [])
 
   // ── Poll pending orders every 5s ───────────────────────────────────────────
@@ -284,6 +333,37 @@ export default function CashierPage() {
   }, [])
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  async function handleInstallClick() {
+    if (isStandalone) {
+      showToast('已是桌面应用模式')
+      return
+    }
+    if (!installPrompt) {
+      showToast('请使用 Chrome 或 Edge 打开，并在浏览器菜单中选择安装应用')
+      return
+    }
+    try {
+      await installPrompt.prompt()
+      const choice = await installPrompt.userChoice
+      setInstallPrompt(null)
+      showToast(choice.outcome === 'accepted' ? '已安装，可从桌面打开' : '已取消安装，收银台仍可继续使用')
+    } catch {
+      showToast('安装暂不可用，请使用浏览器菜单安装应用')
+    }
+  }
+
+  async function handleFullscreenClick() {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
+        await document.documentElement.requestFullscreen()
+      }
+    } catch {
+      showToast('无法切换全屏，请使用浏览器全屏功能')
+    }
+  }
 
   // ── Category hierarchy ─────────────────────────────────────────────────────
   const l1Cats = categories.filter(c => !c.parentId)
@@ -431,6 +511,14 @@ export default function CashierPage() {
           <div style={s.sideHead}>
             <div style={s.sideTitle}>🏪 收银台</div>
             <div style={s.sideStore}>{storeName || '加载中…'}</div>
+            <div style={s.kioskActions}>
+              <button type="button" style={s.kioskBtn} onClick={handleInstallClick}>
+                {isStandalone ? '桌面模式' : '安装到电脑'}
+              </button>
+              <button type="button" style={s.kioskBtn} onClick={handleFullscreenClick}>
+                {isFullscreen ? '退出全屏' : '进入全屏'}
+              </button>
+            </div>
           </div>
           <div style={s.sideCats}>
             <button
