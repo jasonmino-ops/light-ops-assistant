@@ -221,6 +221,18 @@ function buildItemSummary(items: OrderItem[], lang: Lang): string {
   return first + suffix
 }
 
+function openShinhanDeepLink(url: string) {
+  const trimmed = url.trim()
+  if (!trimmed) return
+  if (/^https?:\/\//i.test(trimmed)) {
+    window.open(trimmed, '_blank', 'noopener,noreferrer')
+    return
+  }
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    window.location.assign(trimmed)
+  }
+}
+
 // ─── 主页面 ───────────────────────────────────────────────────────────────────
 
 export default function MyOrdersPage() {
@@ -560,14 +572,15 @@ function ShinhanPaymentBox({
             {loading ? ui.creatingPayment : ui.payWithShinhan}
           </button>
         ) : (
-          <a style={s.shinhanPrimaryBtn} href={state.deepLinkUrl}>
+          <button type="button" style={s.shinhanPrimaryBtn} onClick={() => openShinhanDeepLink(state.deepLinkUrl ?? '')}>
             {ui.openShinhan}
-          </a>
+          </button>
         )}
         <button type="button" style={s.shinhanSecondaryBtn} disabled={loading} onClick={onRefresh}>
           {ui.refreshPayment}
         </button>
       </div>
+      {state?.deepLinkUrl && <div style={s.shinhanDeepLinkText}>{state.deepLinkUrl}</div>}
     </div>
   )
 }
@@ -752,5 +765,16 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontWeight: 800,
     cursor: 'pointer',
+  },
+  shinhanDeepLinkText: {
+    marginTop: 8,
+    padding: '7px 9px',
+    borderRadius: 10,
+    background: '#f8fafc',
+    color: '#64748b',
+    fontSize: 10,
+    lineHeight: 1.35,
+    wordBreak: 'break-all' as const,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
   },
 }

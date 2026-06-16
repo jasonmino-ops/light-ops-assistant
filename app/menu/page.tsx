@@ -1080,7 +1080,7 @@ export default function MenuPage() {
       return
     }
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
-      window.location.href = trimmed
+      window.location.assign(trimmed)
     }
   }
 
@@ -1918,6 +1918,9 @@ export default function MenuPage() {
                     {ui.openShinhan}
                   </button>
                 )}
+                {orderResult.payment?.deepLinkUrl && orderResult.paymentStatus !== 'PAID' && (
+                  <div style={s.checkoutDeepLinkText}>{orderResult.payment.deepLinkUrl}</div>
+                )}
                 {orderResult.paymentStatus !== 'PAID' && (
                   <button
                     type="button"
@@ -2495,6 +2498,16 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 700,
     cursor: 'pointer',
+  },
+  checkoutDeepLinkText: {
+    padding: '7px 9px',
+    borderRadius: 10,
+    background: '#f8fafc',
+    color: '#64748b',
+    fontSize: 10,
+    lineHeight: 1.35,
+    wordBreak: 'break-all' as const,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
   },
   chkRemarks: {
     width: '100%',
