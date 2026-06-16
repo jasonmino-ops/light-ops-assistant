@@ -48,7 +48,20 @@ const T: Record<Lang, {
   orderHint2: string
   confirmTitle: string
   confirmSubmit: string
+  placeOrder: string
+  placeOrderAndPay: string
   backToEdit: string
+  paymentMethodTitle: string
+  payLaterTitle: string
+  payLaterDesc: string
+  payNowShinhanTitle: string
+  payNowShinhanDesc: string
+  paymentPending: string
+  paymentPaid: string
+  paymentFailed: string
+  openShinhan: string
+  refreshPayment: string
+  orderCreatedPaymentNotStarted: string
   bindTgBtn: string
   bindTgHint: string
   // ── 我的页相关（v1 私域承接占位） ────────────────────────────────────
@@ -126,7 +139,20 @@ const T: Record<Lang, {
     orderHint2:       '商家确认后将为您备货/处理',
     confirmTitle:     '确认订单',
     confirmSubmit:    '确认提交',
+    placeOrder:        '提交订单',
+    placeOrderAndPay:  '提交订单并支付',
     backToEdit:       '返回修改',
+    paymentMethodTitle: '支付方式',
+    payLaterTitle:    '稍后付款',
+    payLaterDesc:     '到店或送货时使用现金 / KHQR 支付。',
+    payNowShinhanTitle: '使用 Shinhan SOL 立即支付',
+    payNowShinhanDesc: '打开 Shinhan SOL App 完成付款。',
+    paymentPending:   '支付待完成',
+    paymentPaid:      '已支付',
+    paymentFailed:    '支付失败',
+    openShinhan:      '打开 Shinhan SOL App',
+    refreshPayment:   '刷新支付状态',
+    orderCreatedPaymentNotStarted: '订单已创建，但支付未启动。请稍后重试或选择稍后付款。',
     bindTgBtn:        '📲 绑定 Telegram，接收 {store} 订单通知',
     bindTgHint:       '绑定后可在 Telegram 查看订单进度、再次点单',
     profileTitle:     '个人中心',
@@ -202,7 +228,20 @@ const T: Record<Lang, {
     orderHint2:       'Merchant will prepare your order upon confirmation',
     confirmTitle:     'Confirm Order',
     confirmSubmit:    'Submit Order',
+    placeOrder:        'Place Order',
+    placeOrderAndPay:  'Place Order and Pay',
     backToEdit:       'Back',
+    paymentMethodTitle: 'Payment method',
+    payLaterTitle:    'Pay later',
+    payLaterDesc:     'Pay by cash or KHQR at store / on delivery.',
+    payNowShinhanTitle: 'Pay now with Shinhan SOL',
+    payNowShinhanDesc: 'Open Shinhan SOL App to complete payment.',
+    paymentPending:   'Payment pending',
+    paymentPaid:      'Paid',
+    paymentFailed:    'Payment failed',
+    openShinhan:      'Open Shinhan SOL App',
+    refreshPayment:   'Refresh payment status',
+    orderCreatedPaymentNotStarted: 'Order created, but payment was not started. Please try again or pay later.',
     bindTgBtn:        '📲 Bind Telegram for {store} Updates',
     bindTgHint:       'Get order notifications and reorder easily',
     profileTitle:     'Profile',
@@ -278,7 +317,20 @@ const T: Record<Lang, {
     orderHint2:       'ម្ចាស់ហាងនឹងរៀបចំទំនិញបន្ទាប់ពីបញ្ជាក់',
     confirmTitle:     'បញ្ជាក់បញ្ជាទិញ',
     confirmSubmit:    'ដាក់ស្នើ',
+    placeOrder:        'ដាក់បញ្ជាទិញ',
+    placeOrderAndPay:  'ដាក់បញ្ជាទិញ និងបង់ប្រាក់',
     backToEdit:       'ត្រឡប់',
+    paymentMethodTitle: 'វិធីបង់ប្រាក់',
+    payLaterTitle:    'បង់ពេលក្រោយ',
+    payLaterDesc:     'បង់ជាសាច់ប្រាក់ ឬ KHQR នៅហាង / ពេលដឹកជញ្ជូន។',
+    payNowShinhanTitle: 'បង់ឥឡូវតាម Shinhan SOL',
+    payNowShinhanDesc: 'បើក Shinhan SOL App ដើម្បីបង់ប្រាក់។',
+    paymentPending:   'កំពុងរង់ចាំការបង់ប្រាក់',
+    paymentPaid:      'បានបង់ប្រាក់',
+    paymentFailed:    'បង់ប្រាក់បរាជ័យ',
+    openShinhan:      'បើក Shinhan SOL App',
+    refreshPayment:   'Refresh payment status',
+    orderCreatedPaymentNotStarted: 'បានបង្កើតបញ្ជាទិញ ប៉ុន្តែមិនអាចចាប់ផ្តើមការបង់ប្រាក់បានទេ។ សូមព្យាយាមម្ដងទៀត ឬបង់ពេលក្រោយ។',
     bindTgBtn:        '📲 ភ្ជាប់ Telegram ដើម្បីទទួលដំណឹង {store}',
     bindTgHint:       'មើលស្ថានភាព និងបញ្ជាទិញម្តងទៀតបាន',
     profileTitle:     'ប្រវត្តិរូប',
@@ -478,6 +530,22 @@ function productImages(p: ApiProduct): string[] {
 // ─── 购物车 ──────────────────────────────────────────────────────────────────
 
 type CartItem = { id: string; quantity: number; sugar?: string }
+type CheckoutPaymentMethod = 'PAY_LATER' | 'SHINHAN'
+type ShinhanCheckoutPayment = {
+  loading?: boolean
+  paymentId?: string
+  trxId?: string
+  deepLinkUrl?: string
+  status?: string
+  error?: string
+}
+type CheckoutOrderResult = {
+  orderNo: string
+  totalAmount: number
+  paymentMethod?: CheckoutPaymentMethod
+  paymentStatus?: string
+  payment?: ShinhanCheckoutPayment
+}
 type CouponBrief = {
   id: string
   name: string
@@ -502,9 +570,11 @@ export default function MenuPage() {
   const [loading,     setLoading]     = useState(true)
   const [fetchError,  setFetchError]  = useState('')
   const [submitting,   setSubmitting]  = useState(false)
-  const [orderResult,  setOrderResult] = useState<{ orderNo: string; totalAmount: number } | null>(null)
+  const [orderResult,  setOrderResult] = useState<CheckoutOrderResult | null>(null)
   const [submitError,  setSubmitError] = useState('')
   const [showConfirm,  setShowConfirm] = useState(false)
+  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState<CheckoutPaymentMethod>('PAY_LATER')
+  const [shinhanEnabled, setShinhanEnabled] = useState(false)
   const [storeCode,    setStoreCode]   = useState('')
   const [tableNo,      setTableNo]     = useState<string | null>(null)
   const [hasTgId,      setHasTgId]     = useState(false)
@@ -736,6 +806,20 @@ export default function MenuPage() {
     try { localStorage.setItem('menu_lang', lang) } catch { /* ignore */ }
   }, [lang])
 
+  // ── Shinhan SOL 是否作为 checkout 支付方式开放（只读公开配置，不暴露密钥） ──
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/public/payments/shinhan/config')
+      .then((r) => r.ok ? r.json() : null)
+      .then((body) => {
+        if (!cancelled) setShinhanEnabled(Boolean(body?.enabled))
+      })
+      .catch(() => {
+        if (!cancelled) setShinhanEnabled(false)
+      })
+    return () => { cancelled = true }
+  }, [])
+
   // ── 数据加载 ──────────────────────────────────────────────────────────────
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -908,6 +992,78 @@ export default function MenuPage() {
     }
   }
 
+  async function createCheckoutShinhanPayment(orderNo: string) {
+    setOrderResult((prev) => prev && prev.orderNo === orderNo
+      ? { ...prev, paymentMethod: 'SHINHAN', payment: { ...(prev.payment ?? {}), loading: true, error: undefined } }
+      : prev)
+    try {
+      const res = await fetch(`/api/public/orders/${encodeURIComponent(orderNo)}/payments/shinhan/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currency: 'USD' }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || body.error) throw new Error(body.error ?? 'PAYMENT_CREATE_FAILED')
+      setOrderResult((prev) => prev && prev.orderNo === orderNo
+        ? {
+            ...prev,
+            paymentMethod: 'SHINHAN',
+            paymentStatus: 'PENDING',
+            payment: {
+              loading: false,
+              paymentId: body.paymentId,
+              trxId: body.trxId,
+              deepLinkUrl: body.deepLinkUrl,
+              status: body.status ?? 'PENDING',
+            },
+          }
+        : prev)
+    } catch {
+      setOrderResult((prev) => prev && prev.orderNo === orderNo
+        ? {
+            ...prev,
+            paymentMethod: 'SHINHAN',
+            paymentStatus: 'PENDING',
+            payment: {
+              ...(prev.payment ?? {}),
+              loading: false,
+              status: 'FAILED',
+              error: ui.orderCreatedPaymentNotStarted,
+            },
+          }
+        : prev)
+    }
+  }
+
+  async function refreshCheckoutPaymentStatus(orderNo: string) {
+    setOrderResult((prev) => prev && prev.orderNo === orderNo
+      ? { ...prev, payment: { ...(prev.payment ?? {}), loading: true, error: undefined } }
+      : prev)
+    try {
+      const res = await fetch(`/api/public/orders/${encodeURIComponent(orderNo)}/payments/status`)
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || body.error) throw new Error(body.error ?? 'STATUS_FAILED')
+      setOrderResult((prev) => prev && prev.orderNo === orderNo
+        ? {
+            ...prev,
+            paymentStatus: body.order?.paymentStatus ?? prev.paymentStatus,
+            paymentMethod: body.order?.paymentMethod === 'SHINHAN' ? 'SHINHAN' : prev.paymentMethod,
+            payment: {
+              ...(prev.payment ?? {}),
+              loading: false,
+              status: body.payment?.status ?? body.order?.paymentStatus ?? prev.payment?.status,
+              deepLinkUrl: body.payment?.deepLinkUrl ?? prev.payment?.deepLinkUrl,
+              error: undefined,
+            },
+          }
+        : prev)
+    } catch {
+      setOrderResult((prev) => prev && prev.orderNo === orderNo
+        ? { ...prev, payment: { ...(prev.payment ?? {}), loading: false, error: ui.paymentFailed } }
+        : prev)
+    }
+  }
+
   async function handleCheckout() {
     if (!canCheckout || submitting) return
     const code = storeCode || new URLSearchParams(window.location.search).get('code')
@@ -974,7 +1130,14 @@ export default function MenuPage() {
         if (typeof body.error === 'string' && body.error.startsWith('COUPON_')) setSelectedCouponId(null)
         return
       }
-      setOrderResult({ orderNo: body.orderNo, totalAmount: body.totalAmount })
+      const nextOrderResult: CheckoutOrderResult = {
+        orderNo: body.orderNo,
+        totalAmount: body.totalAmount,
+        paymentMethod: checkoutPaymentMethod,
+        paymentStatus: checkoutPaymentMethod === 'SHINHAN' ? 'PENDING' : undefined,
+        payment: checkoutPaymentMethod === 'SHINHAN' ? { loading: true, status: 'PENDING' } : undefined,
+      }
+      setOrderResult(nextOrderResult)
       setCart([])
       setOrderRemark('')
       setPickupMethod('dineIn')
@@ -987,6 +1150,9 @@ export default function MenuPage() {
         const next = [body.orderNo, ...prev.filter((n) => n !== body.orderNo)].slice(0, 30)
         localStorage.setItem(key, JSON.stringify(next))
       } catch { /* localStorage 不可用时静默 */ }
+      if (checkoutPaymentMethod === 'SHINHAN') {
+        await createCheckoutShinhanPayment(body.orderNo)
+      }
     } catch {
       setSubmitError(ui.errSubmitFail)
     } finally {
@@ -1514,6 +1680,43 @@ export default function MenuPage() {
                 </div>
               </div>
 
+              {/* 支付方式 */}
+              <div style={s.chkSection}>
+                <div style={s.chkSectionLabel}>{ui.paymentMethodTitle}</div>
+                <div style={s.paymentChoiceList}>
+                  <button
+                    type="button"
+                    style={{
+                      ...s.paymentChoiceBtn,
+                      ...(checkoutPaymentMethod === 'PAY_LATER' ? s.paymentChoiceBtnOn : {}),
+                    }}
+                    onClick={() => setCheckoutPaymentMethod('PAY_LATER')}
+                  >
+                    <span style={s.paymentChoiceIcon}>💵</span>
+                    <span style={s.paymentChoiceText}>
+                      <strong>{ui.payLaterTitle}</strong>
+                      <small>{ui.payLaterDesc}</small>
+                    </span>
+                  </button>
+                  {shinhanEnabled && (
+                    <button
+                      type="button"
+                      style={{
+                        ...s.paymentChoiceBtn,
+                        ...(checkoutPaymentMethod === 'SHINHAN' ? s.paymentChoiceBtnOn : {}),
+                      }}
+                      onClick={() => setCheckoutPaymentMethod('SHINHAN')}
+                    >
+                      <span style={s.paymentChoiceIcon}>🏦</span>
+                      <span style={s.paymentChoiceText}>
+                        <strong>{ui.payNowShinhanTitle}</strong>
+                        <small>{ui.payNowShinhanDesc}</small>
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* 备注 */}
               <div style={s.chkSection}>
                 <div style={s.chkSectionLabel}>{ui.remarksLabel}</div>
@@ -1575,7 +1778,7 @@ export default function MenuPage() {
                   disabled={submitting}
                   onClick={handleCheckout}
                 >
-                  {submitting ? ui.submitting : ui.confirmSubmit}
+                  {submitting ? ui.submitting : checkoutPaymentMethod === 'SHINHAN' ? ui.placeOrderAndPay : ui.placeOrder}
                 </button>
               </div>
             </div>
@@ -1660,11 +1863,39 @@ export default function MenuPage() {
             <div style={s.successModalTitle}>{ui.orderSubmitted}</div>
             <div style={s.successModalOrderNo}>{orderResult.orderNo}</div>
             <div style={s.successStatusPill}>
-              <span style={{ color: '#fa8c16', marginRight: 4 }}>●</span>
-              {ui.statusPending}
+              <span style={{ color: orderResult.paymentStatus === 'PAID' ? '#52c41a' : '#fa8c16', marginRight: 4 }}>●</span>
+              {orderResult.paymentStatus === 'PAID' ? ui.paymentPaid : ui.statusPending}
             </div>
             <div style={s.successModalHint}>{ui.orderHint2}</div>
             <div style={s.successModalAmount}>${orderResult.totalAmount.toFixed(2)}</div>
+
+            {orderResult.paymentMethod === 'SHINHAN' && (
+              <div style={s.checkoutPaymentBox}>
+                <div style={s.checkoutPaymentTitle}>
+                  {orderResult.paymentStatus === 'PAID'
+                    ? ui.paymentPaid
+                    : orderResult.payment?.status === 'FAILED'
+                      ? ui.paymentFailed
+                      : ui.paymentPending}
+                </div>
+                {orderResult.payment?.error && <div style={s.checkoutPaymentError}>{orderResult.payment.error}</div>}
+                {orderResult.payment?.deepLinkUrl && orderResult.paymentStatus !== 'PAID' && (
+                  <a href={orderResult.payment.deepLinkUrl} style={s.checkoutPaymentPrimary}>
+                    {ui.openShinhan}
+                  </a>
+                )}
+                {orderResult.paymentStatus !== 'PAID' && (
+                  <button
+                    type="button"
+                    style={s.checkoutPaymentSecondary}
+                    disabled={Boolean(orderResult.payment?.loading)}
+                    onClick={() => refreshCheckoutPaymentStatus(orderResult.orderNo)}
+                  >
+                    {orderResult.payment?.loading ? ui.submitting : ui.refreshPayment}
+                  </button>
+                )}
+              </div>
+            )}
 
             {CUSTOMER_BOT && storeCode && !customerBound && (
               <>
@@ -2142,6 +2373,92 @@ const s: Record<string, React.CSSProperties> = {
     background: `${PRIMARY}15`,
     borderColor: PRIMARY,
     color: PRIMARY,
+  },
+  paymentChoiceList: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 8,
+  },
+  paymentChoiceBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    minHeight: 56,
+    background: '#fafafa',
+    border: '1px solid #e5e5e5',
+    borderRadius: 12,
+    padding: '10px 12px',
+    textAlign: 'left' as const,
+    cursor: 'pointer',
+  },
+  paymentChoiceBtnOn: {
+    background: '#eff6ff',
+    borderColor: '#1677ff',
+    boxShadow: '0 6px 16px rgba(22,119,255,0.10)',
+  },
+  paymentChoiceIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    background: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
+  },
+  paymentChoiceText: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 3,
+    minWidth: 0,
+  },
+  checkoutPaymentBox: {
+    width: '100%',
+    background: '#f8fbff',
+    border: '1px solid #dbeafe',
+    borderRadius: 16,
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 8,
+  },
+  checkoutPaymentTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: '#1d4ed8',
+    textAlign: 'center' as const,
+  },
+  checkoutPaymentError: {
+    fontSize: 12,
+    color: '#dc2626',
+    lineHeight: 1.45,
+    textAlign: 'center' as const,
+  },
+  checkoutPaymentPrimary: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    minHeight: 42,
+    borderRadius: 999,
+    background: 'linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 800,
+    textDecoration: 'none',
+  },
+  checkoutPaymentSecondary: {
+    width: '100%',
+    minHeight: 38,
+    borderRadius: 999,
+    border: '1px solid #bfdbfe',
+    background: '#fff',
+    color: '#1d4ed8',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
   },
   chkRemarks: {
     width: '100%',

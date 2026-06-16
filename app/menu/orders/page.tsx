@@ -26,6 +26,7 @@ const T: Record<Lang, {
   paid: string
   payMethodCash: string
   payMethodQr: string
+  payMethodShinhan: string
   payWithShinhan: string
   openShinhan: string
   refreshPayment: string
@@ -48,6 +49,7 @@ const T: Record<Lang, {
     paid:         '已收款',
     payMethodCash:'现金',
     payMethodQr:  '收款码',
+    payMethodShinhan: 'Shinhan SOL',
     payWithShinhan: '使用 Shinhan SOL 支付',
     openShinhan: '打开 Shinhan SOL App',
     refreshPayment: '刷新支付状态',
@@ -70,6 +72,7 @@ const T: Record<Lang, {
     paid:         'Paid',
     payMethodCash:'Cash',
     payMethodQr:  'QR Code',
+    payMethodShinhan: 'Shinhan SOL',
     payWithShinhan: 'Pay with Shinhan SOL',
     openShinhan: 'Open Shinhan SOL App',
     refreshPayment: 'Refresh payment status',
@@ -92,6 +95,7 @@ const T: Record<Lang, {
     paid:         'បានបង់',
     payMethodCash:'សាច់ប្រាក់',
     payMethodQr:  'QR Code',
+    payMethodShinhan: 'Shinhan SOL',
     payWithShinhan: 'បង់ប្រាក់តាម Shinhan SOL',
     openShinhan: 'បើក Shinhan SOL App',
     refreshPayment: 'Refresh payment status',
@@ -503,6 +507,7 @@ export default function MyOrdersPage() {
                             ✓ {ui.paid}
                             {order.paymentMethod === 'CASH' && ` · ${ui.payMethodCash}`}
                             {order.paymentMethod === 'QR'   && ` · ${ui.payMethodQr}`}
+                            {order.paymentMethod === 'SHINHAN' && ` · ${ui.payMethodShinhan}`}
                           </span>
                         ) : (
                           <span style={s.unpaidBadge}>{ui.unpaid}</span>
