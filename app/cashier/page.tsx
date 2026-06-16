@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
+import { cacheCashierProducts, getCachedCashierProducts, getCashierProductCacheMeta, type CashierProductCacheMeta } from '@/lib/cashier-offline-db'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -9,6 +10,7 @@ type Product = {
   id: string; barcode: string; name: string
   spec: string | null; sellPrice: number
   categoryId: string | null; imageUrl: string | null
+  status?: string; updatedAt?: string | null
 }
 
 type Category = { id: string; name: string; parentId: string | null }
@@ -85,6 +87,23 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+function fmtCacheTime(iso: string) {
+  const t = new Date(iso).getTime()
+  const diffMs = Date.now() - t
+  if (Number.isFinite(diffMs) && diffMs >= 0) {
+    const min = Math.floor(diffMs / 60000)
+    if (min < 1) return '刚刚'
+    if (min < 60) return `${min}分钟前`
+  }
+  return new Date(iso).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function shortNo(orderNo: string) {
   const seg = orderNo.split('-').pop() ?? orderNo
   return `#${seg.slice(-6) || seg}`
@@ -135,6 +154,19 @@ const s: Record<string, CSSProperties> = {
     cursor: 'pointer',
   },
   kioskHint: { marginTop: 6, fontSize: 10, lineHeight: 1.4, color: '#94a3b8' },
+  offlineStatusCard: {
+    marginTop: 8,
+    borderRadius: 10,
+    padding: '8px 9px',
+    background: 'rgba(255,255,255,.06)',
+    border: '1px solid rgba(255,255,255,.1)',
+    color: '#cbd5e1',
+    fontSize: 10,
+    lineHeight: 1.45,
+  },
+  offlineStatusLine: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 },
+  statusPill: { borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' as const },
+  offlineWarn: { marginTop: 6, color: '#fde68a', fontSize: 10, lineHeight: 1.45 },
   sideCats:    { padding: '8px 6px', flex: 1 },
   sideCat:     { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', marginBottom: 2 },
   sideCatOn:   { background: SIDEBAR_ACT, color: '#fff', fontWeight: 600 },
@@ -260,6 +292,10 @@ export default function CashierPage() {
   const [isStandalone,  setIsStandalone]  = useState(false)
   const [isFullscreen,  setIsFullscreen]  = useState(false)
   const [isRestoringCashierStore, setIsRestoringCashierStore] = useState(true)
+  const [isOnline,      setIsOnline]      = useState(true)
+  const [cacheMeta,     setCacheMeta]     = useState<CashierProductCacheMeta | null>(null)
+  const [cacheStatus,   setCacheStatus]   = useState<'idle' | 'saving' | 'ready' | 'failed' | 'empty'>('idle')
+  const [cacheError,    setCacheError]    = useState('')
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const searchRef       = useRef<HTMLInputElement>(null)
@@ -298,16 +334,86 @@ export default function CashierPage() {
 
     setStoreCode(sc)
     setIsRestoringCashierStore(false)
+    getCashierProductCacheMeta(sc)
+      .then((meta) => {
+        if (meta) {
+          setCacheMeta(meta)
+          setCacheStatus(meta.productCount > 0 ? 'ready' : 'empty')
+        }
+      })
+      .catch((e) => console.warn('[cashier:offline-cache] read meta failed', e))
+
     fetch(`/api/cashier/store?storeCode=${encodeURIComponent(sc)}`)
       .then(r => r.json())
       .then(d => {
-        setProducts(Array.isArray(d.products) ? d.products : [])
-        setCategories(Array.isArray(d.categories) ? d.categories : [])
+        const nextProducts = Array.isArray(d.products) ? d.products : []
+        const nextCategories = Array.isArray(d.categories) ? d.categories : []
+        setProducts(nextProducts)
+        setCategories(nextCategories)
         setStoreName(d.storeName ?? '')
+        if (d.storeId && d.tenantId) {
+          setCacheStatus('saving')
+          const catNameById = new Map(nextCategories.map((c: Category) => [c.id, c.name]))
+          cacheCashierProducts({
+            tenantId: d.tenantId,
+            storeId: d.storeId,
+            storeCode: sc,
+            products: nextProducts.map((p: Product) => ({
+              ...p,
+              categoryName: p.categoryId ? catNameById.get(p.categoryId) ?? null : null,
+            })),
+          })
+            .then((meta) => {
+              setCacheMeta(meta)
+              setCacheStatus(meta.productCount > 0 ? 'ready' : 'empty')
+              setCacheError('')
+            })
+            .catch((e) => {
+              console.warn('[cashier:offline-cache] product cache failed', e)
+              setCacheStatus('failed')
+              setCacheError('商品缓存失败，断网模式暂不可用')
+            })
+        } else {
+          setCacheStatus('failed')
+          setCacheError('商品缓存失败，缺少门店缓存信息')
+        }
       })
-      .catch(() => {})
+      .catch(async (e) => {
+        console.warn('[cashier:store] load failed', e)
+        try {
+          const cached = await getCachedCashierProducts(sc)
+          if (cached.length > 0) {
+            setProducts(cached.map((p) => ({
+              id: p.productId,
+              barcode: p.barcode,
+              name: p.name,
+              spec: p.spec,
+              sellPrice: p.price,
+              categoryId: p.categoryId,
+              imageUrl: p.imageUrl,
+              status: p.status,
+              updatedAt: p.updatedAt,
+            })))
+            setCategories([])
+          }
+        } catch (cacheReadError) {
+          console.warn('[cashier:offline-cache] read products failed', cacheReadError)
+        }
+      })
       .finally(() => setLoading(false))
   }, [router])
+
+  // ── Browser online/offline signal for Offline-01 status only ──────────────
+  useEffect(() => {
+    const update = () => setIsOnline(navigator.onLine)
+    update()
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [])
 
   // ── Cashier desktop PWA manifest + install/fullscreen state ───────────────
   useEffect(() => {
@@ -433,6 +539,10 @@ export default function CashierPage() {
   }
 
   function handleAddClick(p: Product) {
+    if (!isOnline) {
+      showToast('当前离线：本阶段仅支持查看已缓存商品，暂不支持离线收银')
+      return
+    }
     if (needsSugar(p)) { setPendingSugar('50'); setSugarModal(p) }
     else addToCart(p)
   }
@@ -455,6 +565,10 @@ export default function CashierPage() {
   // ── Submit sale ────────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (cart.length === 0 || submitting || !storeCode) return
+    if (!isOnline) {
+      showToast('当前离线：本阶段暂不支持离线收银')
+      return
+    }
     setSubmitting(true); setSubmitError('')
     const apiPayment = payment === 'OTHER' ? 'CASH' : payment
     try {
@@ -507,6 +621,12 @@ export default function CashierPage() {
 
   const total = cartTotal(cart)
   const count = cartCount(cart)
+  const cacheText =
+    cacheStatus === 'saving' ? '商品缓存：正在更新...' :
+    cacheStatus === 'ready' && cacheMeta ? `商品缓存：已缓存 ${cacheMeta.productCount} 个 · ${fmtCacheTime(cacheMeta.lastProductCacheAt)}` :
+    cacheStatus === 'empty' ? '商品缓存：暂无商品缓存' :
+    cacheStatus === 'failed' ? (cacheError || '商品缓存失败，断网模式暂不可用') :
+    '商品缓存：未缓存'
 
   // ── Restore PWA storeCode before rendering no-code branches ───────────────
   if (isRestoringCashierStore) {
@@ -582,6 +702,26 @@ export default function CashierPage() {
             </div>
             <div style={s.kioskHint}>
               {storeCode ? '已记住当前门店，桌面打开会进入本店收银台' : '请先从门店收银链接进入后再安装'}
+            </div>
+            <div style={s.offlineStatusCard}>
+              <div style={s.offlineStatusLine}>
+                <span>网络状态</span>
+                <span
+                  style={{
+                    ...s.statusPill,
+                    background: isOnline ? 'rgba(22,163,74,.18)' : 'rgba(245,158,11,.2)',
+                    color: isOnline ? '#86efac' : '#fde68a',
+                  }}
+                >
+                  {isOnline ? '在线' : '离线'}
+                </span>
+              </div>
+              <div>{cacheText}</div>
+              {!isOnline && (
+                <div style={s.offlineWarn}>
+                  当前离线：本阶段仅支持查看已缓存商品，暂不支持离线收银。
+                </div>
+              )}
             </div>
           </div>
           <div style={s.sideCats}>

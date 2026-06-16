@@ -18,6 +18,8 @@ const CASHIER_PRODUCT_SELECT = {
   categoryId: true,
   imageUrl: true,
   imageUrls: true,
+  status: true,
+  updatedAt: true,
 } satisfies Prisma.ProductSelect
 
 const CASHIER_PRODUCT_LEGACY_SELECT = {
@@ -28,6 +30,8 @@ const CASHIER_PRODUCT_LEGACY_SELECT = {
   sellPrice: true,
   categoryId: true,
   imageUrl: true,
+  status: true,
+  updatedAt: true,
 } satisfies Prisma.ProductSelect
 
 function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
@@ -85,6 +89,9 @@ export async function GET(req: NextRequest) {
   ])
 
   return NextResponse.json({
+    tenantId: store.tenantId,
+    storeId: store.id,
+    storeCode: storeCode,
     storeName: store.name,
     products: products.map((p) => ({
       id: p.id,
@@ -95,6 +102,8 @@ export async function GET(req: NextRequest) {
       categoryId: p.categoryId,
       imageUrl: p.imageUrl,
       imageUrls: parseImageUrls(p.imageUrls, p.imageUrl),
+      status: p.status,
+      updatedAt: p.updatedAt.toISOString(),
     })),
     categories,
   })

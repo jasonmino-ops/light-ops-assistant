@@ -246,6 +246,16 @@ storeId + deviceId + offlineOrderId
 - 显示当前网络状态。
 - 不创建离线订单。
 
+已实现内容：
+
+- IndexedDB 商品缓存：`cashier_products`。
+- IndexedDB 缓存 meta：`cashier_meta`。
+- `/cashier` 联网加载商品成功后写入商品缓存。
+- 页面显示在线/离线状态。
+- 页面显示商品缓存数量和上次缓存时间。
+- 离线状态只提示“本阶段仅支持查看已缓存商品，暂不支持离线收银”。
+- 本阶段不创建离线订单、不上传同步、不开放离线 CASH 收银。
+
 ### Offline-02：离线 CASH 订单本地保存
 
 - 断网时允许 CASH 收银。
