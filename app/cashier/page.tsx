@@ -2,7 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
-import { cacheCashierProducts, getCachedCashierProducts, getCashierProductCacheMeta, type CashierProductCacheMeta } from '@/lib/cashier-offline-db'
+import {
+  CASHIER_CACHE_VERSION,
+  cacheCashierProducts,
+  countPendingOfflineOrders,
+  getCachedCashierProducts,
+  getCashierDeviceId,
+  getCashierProductCacheMeta,
+  saveOfflineCashierOrder,
+  type CashierProductCacheMeta,
+} from '@/lib/cashier-offline-db'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,7 +25,7 @@ type Product = {
 type Category = { id: string; name: string; parentId: string | null }
 
 type CartLine = {
-  barcode: string; name: string; spec: string | null
+  productId: string | null; barcode: string; name: string; spec: string | null
   price: number; qty: number; imageUrl: string | null
   sugar?: string
 }
@@ -296,8 +305,11 @@ export default function CashierPage() {
   const [cacheMeta,     setCacheMeta]     = useState<CashierProductCacheMeta | null>(null)
   const [cacheStatus,   setCacheStatus]   = useState<'idle' | 'saving' | 'ready' | 'failed' | 'empty'>('idle')
   const [cacheError,    setCacheError]    = useState('')
+  const [productsSource,setProductsSource]= useState<'online' | 'cache' | 'none'>('none')
+  const [offlinePendingCount, setOfflinePendingCount] = useState(0)
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
+  const wasOnlineRef    = useRef(true)
   const searchRef       = useRef<HTMLInputElement>(null)
   const ordersRef       = useRef<HTMLDivElement>(null)
 
@@ -342,6 +354,9 @@ export default function CashierPage() {
         }
       })
       .catch((e) => console.warn('[cashier:offline-cache] read meta failed', e))
+    countPendingOfflineOrders(sc)
+      .then(setOfflinePendingCount)
+      .catch((e) => console.warn('[cashier:offline-order] count failed', e))
 
     fetch(`/api/cashier/store?storeCode=${encodeURIComponent(sc)}`)
       .then(r => r.json())
@@ -350,6 +365,7 @@ export default function CashierPage() {
         const nextCategories = Array.isArray(d.categories) ? d.categories : []
         setProducts(nextProducts)
         setCategories(nextCategories)
+        setProductsSource('online')
         setStoreName(d.storeName ?? '')
         if (d.storeId && d.tenantId) {
           setCacheStatus('saving')
@@ -395,6 +411,7 @@ export default function CashierPage() {
               updatedAt: p.updatedAt,
             })))
             setCategories([])
+            setProductsSource('cache')
           }
         } catch (cacheReadError) {
           console.warn('[cashier:offline-cache] read products failed', cacheReadError)
@@ -403,7 +420,7 @@ export default function CashierPage() {
       .finally(() => setLoading(false))
   }, [router])
 
-  // ── Browser online/offline signal for Offline-01 status only ──────────────
+  // ── Browser online/offline signal for Offline status only ─────────────────
   useEffect(() => {
     const update = () => setIsOnline(navigator.onLine)
     update()
@@ -414,6 +431,19 @@ export default function CashierPage() {
       window.removeEventListener('offline', update)
     }
   }, [])
+
+  useEffect(() => {
+    if (!storeCode) return
+    countPendingOfflineOrders(storeCode)
+      .then((count) => {
+        setOfflinePendingCount(count)
+        if (isOnline && !wasOnlineRef.current && count > 0) {
+          showToast(`有 ${count} 笔离线订单待同步，下一阶段将支持上传同步`)
+        }
+        wasOnlineRef.current = isOnline
+      })
+      .catch((e) => console.warn('[cashier:offline-order] count failed', e))
+  }, [isOnline, storeCode])
 
   // ── Cashier desktop PWA manifest + install/fullscreen state ───────────────
   useEffect(() => {
@@ -539,8 +569,8 @@ export default function CashierPage() {
   }
 
   function handleAddClick(p: Product) {
-    if (!isOnline) {
-      showToast('当前离线：本阶段仅支持查看已缓存商品，暂不支持离线收银')
+    if (!isOnline && productsSource !== 'cache') {
+      showToast('当前无商品缓存，无法离线收银')
       return
     }
     if (needsSugar(p)) { setPendingSugar('50'); setSugarModal(p) }
@@ -552,7 +582,7 @@ export default function CashierPage() {
     setCart(prev => {
       const found = prev.find(c => c.barcode === p.barcode && c.sugar === sugar)
       if (found) return prev.map(c => c.barcode === p.barcode && c.sugar === sugar ? { ...c, qty: c.qty + 1 } : c)
-      return [...prev, { barcode: p.barcode, name: p.name, spec: p.spec, price: p.sellPrice, qty: 1, imageUrl: p.imageUrl, sugar }]
+      return [...prev, { productId: p.id, barcode: p.barcode, name: p.name, spec: p.spec, price: p.sellPrice, qty: 1, imageUrl: p.imageUrl, sugar }]
     })
   }, [])
 
@@ -566,7 +596,62 @@ export default function CashierPage() {
   async function handleSubmit() {
     if (cart.length === 0 || submitting || !storeCode) return
     if (!isOnline) {
-      showToast('当前离线：本阶段暂不支持离线收银')
+      if (payment !== 'CASH') {
+        showToast('离线模式暂不支持 KHQR，请使用 CASH 收款')
+        return
+      }
+      if (!cacheMeta || productsSource !== 'cache') {
+        showToast('当前无商品缓存，无法离线收银')
+        return
+      }
+      setSubmitting(true); setSubmitError('')
+      try {
+        const deviceId = getCashierDeviceId()
+        const now = new Date()
+        await saveOfflineCashierOrder({
+          tenantId: cacheMeta.tenantId,
+          storeId: cacheMeta.storeId,
+          storeCode,
+          operatorUserId: null,
+          operatorName: 'Cashier PWA',
+          deviceId,
+          createdAtLocal: now.toISOString(),
+          createdAtClientTimestamp: now.getTime(),
+          items: cart.map((c) => ({
+            productId: c.productId,
+            productName: c.name,
+            barcode: c.barcode,
+            unitPrice: c.price,
+            quantity: c.qty,
+            lineTotal: c.price * c.qty,
+            snapshotPrice: c.price,
+            snapshotName: c.name,
+            spec: c.spec,
+            sugar: c.sugar ?? null,
+          })),
+          subtotal: cartTotal(cart),
+          discountAmount: 0,
+          totalAmount: cartTotal(cart),
+          paymentMethod: 'CASH',
+          paymentStatus: 'PAID_OFFLINE',
+          syncStatus: 'PENDING',
+          syncAttemptCount: 0,
+          lastSyncError: null,
+          serverSaleRecordId: null,
+          syncedAt: null,
+          appVersion: 'web',
+          cacheVersion: CASHIER_CACHE_VERSION,
+        })
+        const nextCount = await countPendingOfflineOrders(storeCode)
+        setOfflinePendingCount(nextCount)
+        setCart([])
+        showToast('离线订单已保存，网络恢复后请同步')
+      } catch (e) {
+        console.warn('[cashier:offline-order] save failed', e)
+        setSubmitError('离线订单保存失败，请保留购物车并稍后重试')
+      } finally {
+        setSubmitting(false)
+      }
       return
     }
     setSubmitting(true); setSubmitError('')
@@ -627,6 +712,12 @@ export default function CashierPage() {
     cacheStatus === 'empty' ? '商品缓存：暂无商品缓存' :
     cacheStatus === 'failed' ? (cacheError || '商品缓存失败，断网模式暂不可用') :
     '商品缓存：未缓存'
+  const canOfflineCashier = !isOnline && productsSource === 'cache' && products.length > 0 && !!cacheMeta
+  const offlineHint = !isOnline
+    ? canOfflineCashier
+      ? '离线收银模式：仅支持 CASH，本地保存，恢复网络后再同步。'
+      : '当前无商品缓存，无法离线收银。'
+    : ''
 
   // ── Restore PWA storeCode before rendering no-code branches ───────────────
   if (isRestoringCashierStore) {
@@ -717,9 +808,10 @@ export default function CashierPage() {
                 </span>
               </div>
               <div>{cacheText}</div>
+              <div>待同步离线订单：{offlinePendingCount} 笔</div>
               {!isOnline && (
                 <div style={s.offlineWarn}>
-                  当前离线：本阶段仅支持查看已缓存商品，暂不支持离线收银。
+                  {offlineHint}
                 </div>
               )}
             </div>
@@ -926,12 +1018,33 @@ export default function CashierPage() {
           <div style={s.paySec}>
             <div style={s.payLabel}>收款方式</div>
             <div style={s.payRow}>
-              {(['CASH','KHQR','OTHER'] as const).map(m => (
-                <button key={m} style={{ ...s.payBtn, ...(payment === m ? s.payBtnOn : {}) }} onClick={() => setPayment(m)}>
+              {(['CASH','KHQR','OTHER'] as const).map(m => {
+                const disabledOfflinePayment = !isOnline && m !== 'CASH'
+                return (
+                <button
+                  key={m}
+                  style={{
+                    ...s.payBtn,
+                    ...(payment === m ? s.payBtnOn : {}),
+                    ...(disabledOfflinePayment ? { opacity: 0.45, cursor: 'not-allowed' } : {}),
+                  }}
+                  onClick={() => {
+                    if (disabledOfflinePayment) {
+                      showToast('离线模式暂不支持 KHQR，请使用 CASH 收款')
+                      return
+                    }
+                    setPayment(m)
+                  }}
+                >
                   {m === 'CASH' ? '💵 现金' : m === 'KHQR' ? '📱 KHQR' : '🔧 其他'}
                 </button>
-              ))}
+              )})}
             </div>
+            {!isOnline && (
+              <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', borderRadius: 6, padding: '5px 8px', marginBottom: 8, lineHeight: 1.45 }}>
+                离线模式仅支持 CASH，本单会保存到本机，暂不会出现在 /records。
+              </div>
+            )}
             {payment === 'OTHER' && (
               <div style={{ fontSize: 11, color: '#f59e0b', background: '#fffbeb', borderRadius: 6, padding: '4px 8px', marginBottom: 8 }}>
                 「其他」将以现金方式记录。

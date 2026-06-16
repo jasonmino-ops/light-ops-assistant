@@ -1,11 +1,12 @@
 'use client'
 
 export const CASHIER_OFFLINE_DB_NAME = 'light_ops_cashier_offline'
-export const CASHIER_OFFLINE_DB_VERSION = 1
-export const CASHIER_CACHE_VERSION = 'cashier-offline-01'
+export const CASHIER_OFFLINE_DB_VERSION = 2
+export const CASHIER_CACHE_VERSION = 'cashier-offline-02'
 
 const PRODUCT_STORE = 'cashier_products'
 const META_STORE = 'cashier_meta'
+const OFFLINE_ORDER_STORE = 'cashier_offline_orders'
 const DEVICE_ID_KEY = 'cashier:deviceId'
 
 export type CashierCachedProductInput = {
@@ -51,6 +52,44 @@ export type CashierProductCacheMeta = {
   deviceId: string
 }
 
+export type CashierOfflineOrderItem = {
+  productId: string | null
+  productName: string
+  barcode: string
+  unitPrice: number
+  quantity: number
+  lineTotal: number
+  snapshotPrice: number
+  snapshotName: string
+  spec?: string | null
+  sugar?: string | null
+}
+
+export type CashierOfflineOrder = {
+  offlineOrderId: string
+  tenantId: string
+  storeId: string
+  storeCode: string
+  operatorUserId: string | null
+  operatorName: string | null
+  deviceId: string
+  createdAtLocal: string
+  createdAtClientTimestamp: number
+  items: CashierOfflineOrderItem[]
+  subtotal: number
+  discountAmount: number
+  totalAmount: number
+  paymentMethod: 'CASH'
+  paymentStatus: 'PAID_OFFLINE'
+  syncStatus: 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED'
+  syncAttemptCount: number
+  lastSyncError: string | null
+  serverSaleRecordId: string | null
+  syncedAt: string | null
+  appVersion: string
+  cacheVersion: string
+}
+
 function requireIndexedDB() {
   if (typeof window === 'undefined' || !('indexedDB' in window)) {
     throw new Error('INDEXEDDB_NOT_AVAILABLE')
@@ -72,6 +111,12 @@ function openCashierDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(META_STORE)) {
         db.createObjectStore(META_STORE, { keyPath: 'storeCode' })
+      }
+      if (!db.objectStoreNames.contains(OFFLINE_ORDER_STORE)) {
+        const store = db.createObjectStore(OFFLINE_ORDER_STORE, { keyPath: 'offlineOrderId' })
+        store.createIndex('storeCode', 'storeCode', { unique: false })
+        store.createIndex('syncStatus', 'syncStatus', { unique: false })
+        store.createIndex('storeCodeSyncStatus', ['storeCode', 'syncStatus'], { unique: false })
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -98,6 +143,25 @@ export function getCashierDeviceId(): string {
   } catch {
     return `DEV-${Date.now().toString(36).toUpperCase()}`
   }
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0')
+}
+
+export function generateOfflineOrderId(storeCode: string, deviceId: string): string {
+  const now = new Date()
+  const ts = [
+    now.getFullYear(),
+    pad2(now.getMonth() + 1),
+    pad2(now.getDate()),
+    pad2(now.getHours()),
+    pad2(now.getMinutes()),
+    pad2(now.getSeconds()),
+  ].join('')
+  const deviceShort = deviceId.replace(/[^A-Za-z0-9]/g, '').slice(-6).toUpperCase() || 'DEVICE'
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase()
+  return `OFFLINE-${storeCode}-${deviceShort}-${ts}-${rand}`
 }
 
 export async function cacheCashierProducts(input: {
@@ -180,6 +244,35 @@ export async function getCachedCashierProducts(storeCode: string): Promise<Cashi
     req.onerror = () => {
       db.close()
       reject(req.error ?? new Error('INDEXEDDB_READ_PRODUCTS_FAILED'))
+    }
+  })
+}
+
+export async function saveOfflineCashierOrder(order: Omit<CashierOfflineOrder, 'offlineOrderId'> & { offlineOrderId?: string }): Promise<CashierOfflineOrder> {
+  const db = await openCashierDb()
+  const offlineOrderId = order.offlineOrderId ?? generateOfflineOrderId(order.storeCode, order.deviceId)
+  const row: CashierOfflineOrder = { ...order, offlineOrderId }
+  const tx = db.transaction(OFFLINE_ORDER_STORE, 'readwrite')
+  tx.objectStore(OFFLINE_ORDER_STORE).put(row)
+  await txDone(tx)
+  db.close()
+  return row
+}
+
+export async function countPendingOfflineOrders(storeCode: string): Promise<number> {
+  const db = await openCashierDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_ORDER_STORE, 'readonly')
+    const store = tx.objectStore(OFFLINE_ORDER_STORE)
+    const req = store.index('storeCode').getAll(storeCode)
+    req.onsuccess = () => {
+      db.close()
+      const rows = (Array.isArray(req.result) ? req.result : []) as CashierOfflineOrder[]
+      resolve(rows.filter((row) => row.syncStatus === 'PENDING' || row.syncStatus === 'FAILED').length)
+    }
+    req.onerror = () => {
+      db.close()
+      reject(req.error ?? new Error('INDEXEDDB_COUNT_OFFLINE_ORDERS_FAILED'))
     }
   })
 }

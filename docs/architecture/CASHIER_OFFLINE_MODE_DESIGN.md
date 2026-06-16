@@ -263,6 +263,16 @@ storeId + deviceId + offlineOrderId
 - 显示待同步数量。
 - 不自动上传。
 
+已实现内容：
+
+- IndexedDB 新增 `cashier_offline_orders`。
+- 离线且当前门店已有商品缓存时允许从缓存商品加入购物车。
+- 离线模式只允许 CASH，不允许 KHQR。
+- 离线 CASH 完成后生成本地离线订单，`syncStatus=PENDING`。
+- 页面显示待同步离线订单数量。
+- 恢复网络后只提示有待同步订单，不自动上传。
+- 本阶段不新增服务端同步接口，不创建 SaleRecord，不进入 `/records`。
+
 ### Offline-03：离线订单同步接口与幂等
 
 - 新增 `POST /api/cashier/offline-sync`。
