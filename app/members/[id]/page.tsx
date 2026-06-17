@@ -8,6 +8,8 @@ import LangToggleBtn from '@/app/components/LangToggleBtn'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 
+const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
+
 type Member = {
   id: string
   memberCode: string
@@ -185,7 +187,7 @@ export default function MemberDetailPage() {
     setLoading(true)
     setError('')
     try {
-      const res = await apiFetch(`/api/members/${encodeURIComponent(params.id)}`, { cache: 'no-store' }, OWNER_CTX)
+      const res = await apiFetch(`/api/members/${encodeURIComponent(params.id)}`, { cache: 'no-store' }, DEV_OWNER_CTX)
       const body = await res.json()
       if (!res.ok || body?.error) throw new Error(body?.error || c.loadFailed)
       setData(body)
@@ -225,7 +227,7 @@ export default function MemberDetailPage() {
       const res = await apiFetch(`/api/members/${encodeURIComponent(params.id)}/${modal}`, {
         method: 'POST',
         body: JSON.stringify({ amount, note }),
-      }, OWNER_CTX)
+      }, DEV_OWNER_CTX)
       const body = await res.json()
       if (!res.ok || body?.error) throw new Error(body?.error || c.actionFailed)
       setToast(c.actionSuccess)

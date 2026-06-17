@@ -7,6 +7,8 @@ import LangToggleBtn from '@/app/components/LangToggleBtn'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 
+const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
+
 type MemberStatus = 'ACTIVE' | 'INACTIVE'
 
 type Member = {
@@ -96,6 +98,7 @@ type Copy = {
   reason: string
   warnings: string
   noImportPreview: string
+  backHome: string
 }
 
 const copy: Record<'zh' | 'en' | 'km', Copy> = {
@@ -146,6 +149,7 @@ const copy: Record<'zh' | 'en' | 'km', Copy> = {
     reason: '原因',
     warnings: '提示',
     noImportPreview: '请先选择 Excel 并预览',
+    backHome: '返回首页',
   },
   en: {
     title: 'Members',
@@ -194,6 +198,7 @@ const copy: Record<'zh' | 'en' | 'km', Copy> = {
     reason: 'Reason',
     warnings: 'Warnings',
     noImportPreview: 'Choose an Excel file and preview first',
+    backHome: 'Back home',
   },
   km: {
     title: 'សមាជិក',
@@ -242,6 +247,7 @@ const copy: Record<'zh' | 'en' | 'km', Copy> = {
     reason: 'មូលហេតុ',
     warnings: 'ការព្រមាន',
     noImportPreview: 'សូមជ្រើស Excel ហើយមើលមុន',
+    backHome: 'ត្រឡប់ទំព័រដើម',
   },
 }
 
@@ -280,7 +286,7 @@ export default function MembersPage() {
     const params = new URLSearchParams({ status: 'ALL', pageSize: '50' })
     if (nextQuery.trim()) params.set('q', nextQuery.trim())
     try {
-      const res = await apiFetch(`/api/members?${params}`, { cache: 'no-store' }, OWNER_CTX)
+      const res = await apiFetch(`/api/members?${params}`, { cache: 'no-store' }, DEV_OWNER_CTX)
       const body = await res.json()
       if (!res.ok || body?.error) throw new Error(body?.error || c.loadFailed)
       setMembers(body.items ?? [])
@@ -317,7 +323,7 @@ export default function MembersPage() {
       const res = await apiFetch('/api/members', {
         method: 'POST',
         body: JSON.stringify({ name, phone, note }),
-      }, OWNER_CTX)
+      }, DEV_OWNER_CTX)
       const body = await res.json()
       if (!res.ok || body?.error) {
         throw new Error(body?.error === 'MEMBER_PHONE_EXISTS' ? c.duplicatePhone : c.createFailed)
@@ -346,7 +352,7 @@ export default function MembersPage() {
       formData.set('file', importFile)
       const res = await fetch('/api/members/import/dry-run', {
         method: 'POST',
-        headers: OWNER_CTX,
+        headers: DEV_OWNER_CTX,
         body: formData,
       })
       const body = await res.json()
@@ -369,7 +375,7 @@ export default function MembersPage() {
       const res = await apiFetch('/api/members/import/confirm', {
         method: 'POST',
         body: JSON.stringify({ rows: importPreview.rows }),
-      }, OWNER_CTX)
+      }, DEV_OWNER_CTX)
       const body = await res.json()
       if (!res.ok || body?.error) throw new Error(body?.message || body?.error || c.importFailed)
       setToast(`${c.importSuccess}: ${body.importedCount ?? 0}`)
@@ -387,6 +393,7 @@ export default function MembersPage() {
   return (
     <main style={s.page}>
       <header style={s.header}>
+        <Link href="/home" style={s.backHome}>{c.backHome}</Link>
         <div style={s.avatar}>{(storeName || c.title).slice(0, 1).toUpperCase()}</div>
         <div style={s.headerText}>
           <div style={s.storeName}>{storeName || c.title}</div>
@@ -570,6 +577,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 const s: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f7f8fa', padding: '14px 14px 92px', color: '#111827' },
   header: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, minHeight: 48 },
+  backHome: { border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: 999, padding: '8px 10px', fontSize: 12, fontWeight: 850, textDecoration: 'none', whiteSpace: 'nowrap' },
   avatar: { width: 42, height: 42, borderRadius: 21, background: 'linear-gradient(135deg,#1677ff,#4f46e5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 },
   headerText: { flex: 1, minWidth: 0 },
   storeName: { fontSize: 16, fontWeight: 850, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },

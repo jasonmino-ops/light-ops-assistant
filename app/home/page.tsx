@@ -8,6 +8,9 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import { publicUrl } from '@/lib/public-url'
 
+const DEV_STAFF_CTX = process.env.NODE_ENV !== 'production' ? STAFF_CTX : undefined
+const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type CustomerOrderItem = {
@@ -234,7 +237,7 @@ export default function HomePage() {
 
     setLoadError(null)
     const startedAt = performance.now()
-    apiFetch(`/api/records?${params}`, undefined, STAFF_CTX)
+    apiFetch(`/api/records?${params}`, undefined, DEV_STAFF_CTX)
       .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
       .then((data) => {
         setSummary(data.summary)
@@ -256,7 +259,7 @@ export default function HomePage() {
       return
     }
     setOrdersError(null)
-    apiFetch('/api/customer-orders?status=PENDING,CONFIRMED,COMPLETED', undefined, OWNER_CTX)
+    apiFetch('/api/customer-orders?status=PENDING,CONFIRMED,COMPLETED', undefined, DEV_OWNER_CTX)
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data) => setCustomerOrders(Array.isArray(data) ? data : []))
       .catch(() => {
@@ -327,7 +330,7 @@ export default function HomePage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
-      }, OWNER_CTX)
+      }, DEV_OWNER_CTX)
       setOrdersKey((k) => k + 1)
     } catch (e) {
       console.error('更新顾客订单状态失败', e)
@@ -341,7 +344,7 @@ export default function HomePage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ paymentMethod: method === 'KHQR' ? 'QR' : 'CASH' }),
-    }, OWNER_CTX)
+    }, DEV_OWNER_CTX)
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
       throw new Error(body.error ?? t('home.collectFailed'))
@@ -1263,11 +1266,13 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
   },
   actionGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    display: 'flex',
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
     gap: 8,
-    padding: 0,
+    padding: '0 2px 4px',
     marginBottom: 14,
+    scrollbarWidth: 'none',
   },
   workSection: {
     background: '#fff7ed',
@@ -1471,7 +1476,8 @@ const s: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: 'inherit',
     minHeight: 96,
-    minWidth: 0,
+    minWidth: 86,
+    flex: '0 0 86px',
   },
   actionIcon: {
     width: 48,
