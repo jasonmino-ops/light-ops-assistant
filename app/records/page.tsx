@@ -27,7 +27,7 @@ type RecordItem = {
   saleType: SaleType
   refundReason: string | null
   remark?: string | null
-  paymentMethod?: 'CASH' | 'KHQR' | null
+  paymentMethod?: 'CASH' | 'KHQR' | 'MEMBER_BALANCE' | null
   paymentStatus?: string | null
   source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
   saleRecordSource?: string | null
@@ -71,7 +71,7 @@ type OrderGroup = {
   operatorDisplayName: string
   items: RecordItem[]
   totalAmount: number
-  paymentMethod?: 'CASH' | 'KHQR' | null
+  paymentMethod?: 'CASH' | 'KHQR' | 'MEMBER_BALANCE' | null
   paymentStatus?: string | null
   source?: 'SALE_RECORD' | 'CUSTOMER_ORDER'
   saleRecordSource?: string | null
@@ -483,6 +483,7 @@ export default function RecordsPage() {
               payLabels={{
                 cash: t('records.cashSale'),
                 khqr: t('records.khqrSale'),
+                memberBalance: t('records.memberBalanceSale'),
                 pending: t('records.payPending'),
                 paid: t('records.payPaid'),
                 cancelled: t('records.payCancelled'),
@@ -553,7 +554,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
   tagSale: string
   kindItems: string
   checkoutBtn: string
-  payLabels: { cash: string; khqr: string; pending: string; paid: string; cancelled: string }
+  payLabels: { cash: string; khqr: string; memberBalance: string; pending: string; paid: string; cancelled: string }
   sourceLabels: {
     customerOrderTag: string
     customerOrder: string
@@ -584,6 +585,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
   const ps = group.paymentStatus
   const payMethodLabel =
     pm === 'KHQR' ? `📱 ${payLabels.khqr}` :
+    pm === 'MEMBER_BALANCE' ? `👤 ${payLabels.memberBalance}` :
     pm === null   ? `⏳ ${payLabels.pending}` :
     `💵 ${payLabels.cash}`
   const payStatusLabel =

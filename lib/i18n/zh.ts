@@ -373,6 +373,7 @@ const zh = {
     loadFailed: '加载失败，请重试',
     cashSale: '现金',
     khqrSale: 'KHQR',
+    memberBalanceSale: '会员余额',
     payPending: '待收款',
     payPaid: '已付',
     payCancelled: '已取消',

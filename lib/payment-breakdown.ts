@@ -98,7 +98,7 @@ export async function getPaymentBreakdown(params: {
  */
 export async function getOrderPaymentMap(
   orderNos: string[],
-): Promise<Map<string, { paymentMethod: 'CASH' | 'KHQR'; paymentStatus: string }>> {
+): Promise<Map<string, { paymentMethod: 'CASH' | 'KHQR' | 'MEMBER_BALANCE'; paymentStatus: string }>> {
   if (orderNos.length === 0) return new Map()
 
   const pis = await prisma.paymentIntent.findMany({
@@ -110,7 +110,7 @@ export async function getOrderPaymentMap(
     pis.map((pi) => [
       pi.orderNo,
       {
-        paymentMethod: pi.paymentMethod as 'CASH' | 'KHQR',
+        paymentMethod: pi.paymentMethod as 'CASH' | 'KHQR' | 'MEMBER_BALANCE',
         paymentStatus: pi.status,
       },
     ]),

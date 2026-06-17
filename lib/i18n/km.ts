@@ -373,6 +373,7 @@ const km = {
     loadFailed: 'ផ្ទុកបានបរាជ័យ សូមព្យាយាមម្តងទៀត',
     cashSale: 'សាច់ប្រាក់',
     khqrSale: 'KHQR',
+    memberBalanceSale: 'សមតុល្យសមាជិក',
     payPending: 'រង់ចាំទូទាត់',
     payPaid: 'បានទូទាត់',
     payCancelled: 'បានបោះបង់',

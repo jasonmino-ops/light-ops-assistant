@@ -34,7 +34,17 @@ type CartLine = {
   sugar?: string
 }
 
-type SaleResult = { orderNo?: string; totalAmount: number; khqrFallback?: boolean }
+type SaleResult = { orderNo?: string; totalAmount: number; khqrFallback?: boolean; paymentMethod?: string }
+
+type CashierMember = {
+  id: string
+  memberCode: string
+  name: string
+  phone: string | null
+  normalizedPhone: string | null
+  balance: string
+  status: 'ACTIVE' | 'INACTIVE'
+}
 
 type CashierOrderItem = {
   productId: string; name: string; spec: string | null
@@ -304,7 +314,7 @@ export default function CashierPage() {
   const [activeCatId,   setActiveCatId]   = useState<string | null>(null)
   const [searchKw,      setSearchKw]      = useState('')
   const [cart,          setCart]          = useState<CartLine[]>([])
-  const [payment,       setPayment]       = useState<'CASH'|'KHQR'|'OTHER'>('CASH')
+  const [payment,       setPayment]       = useState<'CASH'|'KHQR'|'OTHER'|'MEMBER_BALANCE'>('CASH')
   const [submitting,    setSubmitting]    = useState(false)
   const [submitError,   setSubmitError]   = useState('')
   const [saleResult,    setSaleResult]    = useState<SaleResult | null>(null)
@@ -327,6 +337,12 @@ export default function CashierPage() {
   const [offlinePendingCount, setOfflinePendingCount] = useState(0)
   const [offlineSyncing, setOfflineSyncing] = useState(false)
   const [offlineSyncSummary, setOfflineSyncSummary] = useState('')
+  const [memberPayOpen, setMemberPayOpen] = useState(false)
+  const [memberPhone, setMemberPhone] = useState('')
+  const [memberLookupLoading, setMemberLookupLoading] = useState(false)
+  const [memberPayLoading, setMemberPayLoading] = useState(false)
+  const [memberPayError, setMemberPayError] = useState('')
+  const [memberPayMember, setMemberPayMember] = useState<CashierMember | null>(null)
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -669,6 +685,71 @@ export default function CashierPage() {
     }
   }
 
+  async function lookupCashierMember() {
+    if (!storeCode || !memberPhone.trim()) return
+    setMemberLookupLoading(true)
+    setMemberPayError('')
+    setMemberPayMember(null)
+    try {
+      const res = await fetch(`/api/cashier/member-lookup?storeCode=${encodeURIComponent(storeCode)}&phone=${encodeURIComponent(memberPhone.trim())}`)
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body?.member) {
+        throw new Error(body?.message || body?.error || '会员不存在')
+      }
+      setMemberPayMember(body.member)
+    } catch (err) {
+      setMemberPayError(err instanceof Error ? err.message : '会员查询失败')
+    } finally {
+      setMemberLookupLoading(false)
+    }
+  }
+
+  async function handleMemberBalancePay() {
+    if (!storeCode || !memberPayMember || cart.length === 0 || memberPayLoading) return
+    if (!isOnline) {
+      showToast('离线模式下不支持会员余额支付')
+      return
+    }
+    if (Number(memberPayMember.balance) < total) {
+      setMemberPayError('会员余额不足')
+      return
+    }
+    setMemberPayLoading(true)
+    setMemberPayError('')
+    try {
+      const res = await fetch('/api/cashier/member-balance-pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeCode,
+          memberId: memberPayMember.id,
+          items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
+        }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body) {
+        const message =
+          body?.error === 'INSUFFICIENT_BALANCE' ? '会员余额不足' :
+          body?.error === 'MEMBER_NOT_FOUND' ? '会员不存在或已停用' :
+          body?.message ?? body?.error ?? '会员余额支付失败'
+        throw new Error(message)
+      }
+      setCart([])
+      setMemberPayOpen(false)
+      setMemberPhone('')
+      setMemberPayMember(null)
+      setSaleResult({
+        orderNo: body.orderNo,
+        totalAmount: Number(body.totalAmount ?? total),
+        paymentMethod: 'MEMBER_BALANCE',
+      })
+    } catch (err) {
+      setMemberPayError(err instanceof Error ? err.message : '会员余额支付失败')
+    } finally {
+      setMemberPayLoading(false)
+    }
+  }
+
   // ── Category hierarchy ─────────────────────────────────────────────────────
   const l1Cats = categories.filter(c => !c.parentId)
   const l2ByParent = new Map<string, Category[]>()
@@ -713,6 +794,14 @@ export default function CashierPage() {
   // ── Submit sale ────────────────────────────────────────────────────────────
   async function handleSubmit() {
     if (cart.length === 0 || submitting || !storeCode) return
+    if (payment === 'MEMBER_BALANCE') {
+      if (!isOnline) {
+        showToast('离线模式下不支持会员余额支付')
+        return
+      }
+      setMemberPayOpen(true)
+      return
+    }
     if (!isOnline) {
       if (payment !== 'CASH') {
         showToast('离线模式暂不支持 KHQR，请使用 CASH 收款')
@@ -1152,7 +1241,7 @@ export default function CashierPage() {
           <div style={s.paySec}>
             <div style={s.payLabel}>收款方式</div>
             <div style={s.payRow}>
-              {(['CASH','KHQR','OTHER'] as const).map(m => {
+              {(['CASH','KHQR','MEMBER_BALANCE','OTHER'] as const).map(m => {
                 const disabledOfflinePayment = !isOnline && m !== 'CASH'
                 return (
                 <button
@@ -1164,13 +1253,14 @@ export default function CashierPage() {
                   }}
                   onClick={() => {
                     if (disabledOfflinePayment) {
-                      showToast('离线模式暂不支持 KHQR，请使用 CASH 收款')
+                      showToast(m === 'MEMBER_BALANCE' ? '离线模式下不支持会员余额支付' : '离线模式暂不支持 KHQR，请使用 CASH 收款')
                       return
                     }
                     setPayment(m)
+                    if (m === 'MEMBER_BALANCE') setMemberPayOpen(true)
                   }}
                 >
-                  {m === 'CASH' ? '💵 现金' : m === 'KHQR' ? '📱 KHQR' : '🔧 其他'}
+                  {m === 'CASH' ? '💵 现金' : m === 'KHQR' ? '📱 KHQR' : m === 'MEMBER_BALANCE' ? '👤 会员余额' : '🔧 其他'}
                 </button>
               )})}
             </div>
@@ -1182,6 +1272,11 @@ export default function CashierPage() {
             {payment === 'OTHER' && (
               <div style={{ fontSize: 11, color: '#f59e0b', background: '#fffbeb', borderRadius: 6, padding: '4px 8px', marginBottom: 8 }}>
                 「其他」将以现金方式记录。
+              </div>
+            )}
+            {payment === 'MEMBER_BALANCE' && (
+              <div style={{ fontSize: 11, color: '#1d4ed8', background: '#eff6ff', borderRadius: 6, padding: '4px 8px', marginBottom: 8 }}>
+                会员余额支付需联网查询会员，并实时扣减余额。
               </div>
             )}
             <div style={s.totalRow}>
@@ -1198,7 +1293,7 @@ export default function CashierPage() {
               disabled={cart.length === 0 || submitting}
               onClick={handleSubmit}
             >
-              {submitting ? '处理中…' : '✓ 完成销售'}
+              {submitting ? '处理中…' : payment === 'MEMBER_BALANCE' ? '👤 会员余额支付' : '✓ 完成销售'}
             </button>
             <div style={s.printHint}>🖨️ 打印暂未连接 · 如需打印小票请在 mPOS 手机端操作</div>
           </div>
@@ -1222,6 +1317,92 @@ export default function CashierPage() {
               🖨️ 未自动打印小票 · 如需收据请在 mPOS 手机端打印
             </div>
             <button style={s.modalBtn} onClick={() => { setSaleResult(null); searchRef.current?.focus() }}>继续收银</button>
+          </div>
+        </div>
+      )}
+
+      {memberPayOpen && (
+        <div style={s.overlay} onClick={() => setMemberPayOpen(false)}>
+          <div style={s.modal} onClick={e => e.stopPropagation()}>
+            <div style={s.modalTitle}>会员余额支付</div>
+            <div style={{ marginBottom: 12, fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>
+              输入会员手机号，确认余额足够后完成本单。
+            </div>
+            {!isOnline && (
+              <div style={{ marginBottom: 10, padding: '8px 10px', background: '#fffbeb', color: '#92400e', borderRadius: 8, fontSize: 12 }}>
+                离线模式下不支持会员余额支付
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <input
+                value={memberPhone}
+                onChange={e => {
+                  setMemberPhone(e.target.value)
+                  setMemberPayMember(null)
+                  setMemberPayError('')
+                }}
+                placeholder="输入会员手机号"
+                style={{ flex: 1, height: 40, border: '1px solid #e5e7eb', borderRadius: 9, padding: '0 10px', outline: 'none' }}
+                disabled={!isOnline || memberLookupLoading || memberPayLoading}
+              />
+              <button
+                type="button"
+                style={{ ...s.modalBtn, padding: '0 14px', fontSize: 13, minWidth: 84 }}
+                onClick={lookupCashierMember}
+                disabled={!isOnline || !memberPhone.trim() || memberLookupLoading || memberPayLoading}
+              >
+                {memberLookupLoading ? '查询中…' : '查询'}
+              </button>
+            </div>
+
+            {memberPayMember && (
+              <div style={{ textAlign: 'left', background: '#f8fafc', borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#111827' }}>{memberPayMember.name}</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
+                  {memberPayMember.phone || '-'} · {memberPayMember.memberCode}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>当前余额</div>
+                    <div style={{ fontSize: 15, fontWeight: 900 }}>${Number(memberPayMember.balance).toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>本单金额</div>
+                    <div style={{ fontSize: 15, fontWeight: 900 }}>${total.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>支付后</div>
+                    <div style={{ fontSize: 15, fontWeight: 900, color: Number(memberPayMember.balance) >= total ? '#047857' : '#dc2626' }}>
+                      ${(Number(memberPayMember.balance) - total).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {memberPayError && (
+              <div style={{ marginBottom: 10, padding: '8px 10px', background: '#fef2f2', color: '#b91c1c', borderRadius: 8, fontSize: 12 }}>
+                {memberPayError}
+              </div>
+            )}
+
+            <button
+              style={{
+                ...s.submitBtn,
+                ...(!isOnline || !memberPayMember || Number(memberPayMember.balance) < total || memberPayLoading ? s.submitDis : {}),
+              }}
+              disabled={!isOnline || !memberPayMember || Number(memberPayMember.balance) < total || memberPayLoading}
+              onClick={handleMemberBalancePay}
+            >
+              {memberPayLoading ? '支付中…' : Number(memberPayMember?.balance ?? 0) < total ? '余额不足' : '确认余额支付'}
+            </button>
+            <button
+              style={{ ...s.sugarCancel, marginTop: 8 }}
+              onClick={() => setMemberPayOpen(false)}
+              disabled={memberPayLoading}
+            >
+              取消
+            </button>
           </div>
         </div>
       )}

@@ -373,6 +373,7 @@ const en = {
     loadFailed: 'Failed to load, please try again',
     cashSale: 'Cash',
     khqrSale: 'KHQR',
+    memberBalanceSale: 'Member balance',
     payPending: 'Pending payment',
     payPaid: 'Paid',
     payCancelled: 'Cancelled',
