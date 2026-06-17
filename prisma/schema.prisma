@@ -99,17 +99,18 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stores                Store[]
-  users                 User[]
-  products              Product[]
-  marketingProductPages MarketingProductPage[]
-  sales                 SaleRecord[]
-  logs                  OperationLog[]
-  bindTokens            BindToken[]
-  storeAiFeatureConfigs StoreAiFeatureConfig[]
-  offlineSaleSyncMaps   OfflineSaleSyncMap[]
-  members               Member[]
-  memberBalanceLedgers  MemberBalanceLedger[]
+  stores                   Store[]
+  users                    User[]
+  products                 Product[]
+  marketingProductPages    MarketingProductPage[]
+  sales                    SaleRecord[]
+  logs                     OperationLog[]
+  bindTokens               BindToken[]
+  storeAiFeatureConfigs    StoreAiFeatureConfig[]
+  offlineSaleSyncMaps      OfflineSaleSyncMap[]
+  members                  Member[]
+  memberBalanceLedgers     MemberBalanceLedger[]
+  memberTelegramBindTokens MemberTelegramBindToken[]
 }
 
 model Store {
@@ -129,18 +130,19 @@ model Store {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
-  userRoles             UserStoreRole[]
-  sales                 SaleRecord[]
-  logs                  OperationLog[]
-  bindTokens            BindToken[]
-  campaignLinks         CampaignLink[]
-  creators              Creator[]
-  marketingProductPages MarketingProductPage[]
-  aiFeatureConfigs      StoreAiFeatureConfig[]
-  offlineSaleSyncMaps   OfflineSaleSyncMap[]
-  members               Member[]
-  memberBalanceLedgers  MemberBalanceLedger[]
+  tenant                   Tenant                    @relation(fields: [tenantId], references: [id])
+  userRoles                UserStoreRole[]
+  sales                    SaleRecord[]
+  logs                     OperationLog[]
+  bindTokens               BindToken[]
+  campaignLinks            CampaignLink[]
+  creators                 Creator[]
+  marketingProductPages    MarketingProductPage[]
+  aiFeatureConfigs         StoreAiFeatureConfig[]
+  offlineSaleSyncMaps      OfflineSaleSyncMap[]
+  members                  Member[]
+  memberBalanceLedgers     MemberBalanceLedger[]
+  memberTelegramBindTokens MemberTelegramBindToken[]
 
   @@index([tenantId])
 }
@@ -178,11 +180,12 @@ model User {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  tenant               Tenant                @relation(fields: [tenantId], references: [id])
-  storeRoles           UserStoreRole[]
-  sales                SaleRecord[]
-  logs                 OperationLog[]
-  memberBalanceLedgers MemberBalanceLedger[]
+  tenant                   Tenant                    @relation(fields: [tenantId], references: [id])
+  storeRoles               UserStoreRole[]
+  sales                    SaleRecord[]
+  logs                     OperationLog[]
+  memberBalanceLedgers     MemberBalanceLedger[]
+  memberTelegramBindTokens MemberTelegramBindToken[]
 
   @@unique([tenantId, username])
   @@index([tenantId])
@@ -399,13 +402,15 @@ model Member {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  tenant  Tenant                @relation(fields: [tenantId], references: [id])
-  store   Store                 @relation(fields: [storeId], references: [id])
-  ledgers MemberBalanceLedger[]
-  sales   SaleRecord[]
+  tenant             Tenant                    @relation(fields: [tenantId], references: [id])
+  store              Store                     @relation(fields: [storeId], references: [id])
+  ledgers            MemberBalanceLedger[]
+  sales              SaleRecord[]
+  telegramBindTokens MemberTelegramBindToken[]
 
   @@unique([tenantId, storeId, memberCode])
   @@unique([tenantId, storeId, normalizedPhone])
+  @@unique([tenantId, storeId, telegramId])
   @@index([tenantId])
   @@index([storeId])
   @@index([status])
@@ -439,6 +444,29 @@ model MemberBalanceLedger {
   @@index([sourceId])
   @@index([operatorUserId])
   @@index([createdAt])
+}
+
+model MemberTelegramBindToken {
+  id              String    @id @default(cuid())
+  tenantId        String
+  storeId         String
+  memberId        String
+  tokenHash       String    @unique
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+
+  tenant        Tenant @relation(fields: [tenantId], references: [id])
+  store         Store  @relation(fields: [storeId], references: [id])
+  member        Member @relation(fields: [memberId], references: [id])
+  createdByUser User?  @relation(fields: [createdByUserId], references: [id])
+
+  @@index([tenantId, storeId, memberId])
+  @@index([tenantId, storeId])
+  @@index([expiresAt])
+  @@index([usedAt])
+  @@index([createdByUserId])
 }
 
 model OfflineSaleSyncMap {
