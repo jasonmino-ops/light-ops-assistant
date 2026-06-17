@@ -53,6 +53,7 @@ enum RecordStatus {
 enum PaymentMethod {
   CASH
   KHQR
+  MEMBER_BALANCE
 }
 
 enum PaymentStatus {
@@ -66,6 +67,28 @@ enum PaymentStatus {
 enum LogStatus {
   SUCCESS
   FAILED
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MemberBalanceLedgerType {
+  IMPORT
+  RECHARGE
+  CONSUME
+  REFUND
+  ADJUST
+}
+
+enum MemberBalanceLedgerSourceType {
+  IMPORT
+  SALE_RECORD
+  MANUAL_RECHARGE
+  MANUAL_ADJUST
+  REFUND
+  API
 }
 
 model Tenant {
@@ -85,6 +108,8 @@ model Tenant {
   bindTokens            BindToken[]
   storeAiFeatureConfigs StoreAiFeatureConfig[]
   offlineSaleSyncMaps   OfflineSaleSyncMap[]
+  members               Member[]
+  memberBalanceLedgers  MemberBalanceLedger[]
 }
 
 model Store {
@@ -114,6 +139,8 @@ model Store {
   marketingProductPages MarketingProductPage[]
   aiFeatureConfigs      StoreAiFeatureConfig[]
   offlineSaleSyncMaps   OfflineSaleSyncMap[]
+  members               Member[]
+  memberBalanceLedgers  MemberBalanceLedger[]
 
   @@index([tenantId])
 }
@@ -151,10 +178,11 @@ model User {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  tenant     Tenant          @relation(fields: [tenantId], references: [id])
-  storeRoles UserStoreRole[]
-  sales      SaleRecord[]
-  logs       OperationLog[]
+  tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  storeRoles           UserStoreRole[]
+  sales                SaleRecord[]
+  logs                 OperationLog[]
+  memberBalanceLedgers MemberBalanceLedger[]
 
   @@unique([tenantId, username])
   @@index([tenantId])
@@ -319,6 +347,8 @@ model SaleRecord {
   offlineSyncedAt                 DateTime?
   offlineSyncStatus               String?
   inventoryException              String?
+  memberId                        String?
+  memberBalanceUsed               Decimal   @default(0) @db.Decimal(12, 2)
 
   originalSaleRecordId String?
   refundedQty          Decimal? @db.Decimal(12, 2)
@@ -332,6 +362,7 @@ model SaleRecord {
   store        Store    @relation(fields: [storeId], references: [id])
   operatorUser User     @relation(fields: [operatorUserId], references: [id])
   product      Product? @relation(fields: [productId], references: [id])
+  member       Member?  @relation(fields: [memberId], references: [id])
 
   originalSaleRecord SaleRecord?  @relation("RefundRelation", fields: [originalSaleRecordId], references: [id])
   refundChildren     SaleRecord[] @relation("RefundRelation")
@@ -348,6 +379,66 @@ model SaleRecord {
   @@index([source])
   @@index([offlineOrderId])
   @@index([offlineDeviceId])
+  @@index([memberId])
+}
+
+model Member {
+  id               String       @id @default(cuid())
+  tenantId         String
+  storeId          String
+  memberCode       String
+  name             String
+  phone            String?
+  normalizedPhone  String?
+  telegramId       String?
+  telegramUsername String?
+  balance          Decimal      @default(0) @db.Decimal(12, 2)
+  status           MemberStatus @default(ACTIVE)
+  note             String?      @db.Text
+  importBatchId    String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  tenant  Tenant                @relation(fields: [tenantId], references: [id])
+  store   Store                 @relation(fields: [storeId], references: [id])
+  ledgers MemberBalanceLedger[]
+  sales   SaleRecord[]
+
+  @@unique([tenantId, storeId, memberCode])
+  @@unique([tenantId, storeId, normalizedPhone])
+  @@index([tenantId])
+  @@index([storeId])
+  @@index([status])
+}
+
+model MemberBalanceLedger {
+  id             String                        @id @default(cuid())
+  tenantId       String
+  storeId        String
+  memberId       String
+  type           MemberBalanceLedgerType
+  sourceType     MemberBalanceLedgerSourceType
+  sourceId       String?
+  amount         Decimal                       @db.Decimal(12, 2)
+  balanceBefore  Decimal                       @db.Decimal(12, 2)
+  balanceAfter   Decimal                       @db.Decimal(12, 2)
+  operatorUserId String?
+  note           String?                       @db.Text
+  createdAt      DateTime                      @default(now())
+
+  tenant       Tenant @relation(fields: [tenantId], references: [id])
+  store        Store  @relation(fields: [storeId], references: [id])
+  member       Member @relation(fields: [memberId], references: [id])
+  operatorUser User?  @relation(fields: [operatorUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([storeId])
+  @@index([memberId])
+  @@index([type])
+  @@index([sourceType])
+  @@index([sourceId])
+  @@index([operatorUserId])
+  @@index([createdAt])
 }
 
 model OfflineSaleSyncMap {
