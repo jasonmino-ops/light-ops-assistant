@@ -491,6 +491,9 @@ export default function HomePage() {
         <ActionBtn href="/sale" iconKind="sale" label={t('home.sale')} subLabel={t('home.quickSaleSub')} color="#1677ff" />
         <ActionBtn href="/refund" iconKind="refund" label={t('home.refund')} subLabel={t('home.quickRefundSub')} color="#ff4d4f" />
         <ActionBtn href="/records" iconKind="records" label={t('home.records')} subLabel={t('home.quickRecordsSub')} color="#fa8c16" />
+        {effectiveRole === 'OWNER' && (
+          <ActionBtn href="/members" iconKind="members" label={t('home.members')} subLabel={t('home.quickMembersSub')} color="#13a8a8" />
+        )}
         <CashierAction
           label={t('home.cashier')}
           subLabel={t('home.quickCashierSub')}
@@ -531,7 +534,7 @@ function SummaryCell({ label, value, unit }: { label: string; value: string; uni
   )
 }
 
-type ActionIconKind = 'sale' | 'refund' | 'records' | 'cashier'
+type ActionIconKind = 'sale' | 'refund' | 'records' | 'cashier' | 'members'
 
 function ActionGlyph({ kind, color }: { kind: ActionIconKind; color: string }) {
   if (kind === 'sale') {
@@ -558,6 +561,14 @@ function ActionGlyph({ kind, color }: { kind: ActionIconKind; color: string }) {
       <span style={s.glyphBox}>
         <span style={{ ...s.glyphMonitor, borderColor: color }} />
         <span style={{ ...s.glyphMonitorStand, background: color }} />
+      </span>
+    )
+  }
+  if (kind === 'members') {
+    return (
+      <span style={s.glyphBox}>
+        <span style={{ ...s.glyphMemberHead, borderColor: color }} />
+        <span style={{ ...s.glyphMemberBody, borderColor: color }} />
       </span>
     )
   }
@@ -1585,6 +1596,26 @@ const s: Record<string, React.CSSProperties> = {
     height: 3,
     borderRadius: 999,
     boxShadow: '0 -4px 0 rgba(0,0,0,0.10)',
+  },
+  glyphMemberHead: {
+    position: 'absolute',
+    top: 5,
+    left: 10,
+    width: 10,
+    height: 10,
+    border: '2.4px solid',
+    borderRadius: 999,
+  },
+  glyphMemberBody: {
+    position: 'absolute',
+    left: 5,
+    bottom: 5,
+    width: 20,
+    height: 10,
+    border: '2.4px solid',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    borderBottom: 0,
   },
   recentCard: {
     background: '#fff',
