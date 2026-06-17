@@ -34,6 +34,10 @@ type SummaryResult = {
   cashSaleAmount?: number
   khqrSaleAmount?: number
   customerOrderAmount?: number
+  offlineSyncedSummary?: {
+    count: number
+    amount: number
+  }
 }
 
 // ─── Dimension dropdown options ───────────────────────────────────────────────
@@ -522,6 +526,17 @@ function Overview({
         <PayCell icon="📱" label={t('dashboard.khqrSaleLabel')} value={fmtAmount(result.khqrSaleAmount ?? 0)} />
         <PayCell icon="🛍️" label={t('dashboard.customerOrderAmount')} value={fmtAmount(result.customerOrderAmount ?? 0)} />
       </div>
+
+      {(result.offlineSyncedSummary?.count ?? 0) > 0 && (
+        <div style={ov.offlineNotice}>
+          <span style={ov.offlineIcon}>↻</span>
+          <span>
+            {t('dashboard.offlineSyncedSummary')
+              .replace('{count}', String(result.offlineSyncedSummary?.count ?? 0))
+              .replace('{amount}', fmtAmount(result.offlineSyncedSummary?.amount ?? 0))}
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -1820,6 +1835,31 @@ const ov: Record<string, React.CSSProperties> = {
     boxShadow: '0 10px 28px rgba(15,23,42,0.05)',
   },
   payGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7, marginBottom: 7 },
+  offlineNotice: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 7,
+    padding: '9px 11px',
+    borderRadius: 16,
+    background: 'linear-gradient(135deg,#eff6ff,#f0fdf4)',
+    border: '1px solid rgba(22,119,255,0.12)',
+    color: '#1e3a8a',
+    fontSize: 12,
+    fontWeight: 800,
+    boxShadow: '0 8px 20px rgba(15,23,42,0.04)',
+  },
+  offlineIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#fff',
+    color: '#1677ff',
+    flexShrink: 0,
+  },
 }
 
 const hot: Record<string, React.CSSProperties> = {

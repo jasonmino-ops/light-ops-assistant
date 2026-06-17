@@ -387,3 +387,44 @@ Offline-03F 建议先走低风险路线：
 - 不改数据库。
 
 统计归属口径调整应作为 Offline-03F-2 单独评估和开发。
+
+## 十五、Offline-03F-1 实现记录
+
+Offline-03F-1 已按方案 A 落地：
+
+- `/api/summary` 增加轻量字段 `offlineSyncedSummary`。
+- 字段结构：
+
+```json
+{
+  "offlineSyncedSummary": {
+    "count": 1,
+    "amount": 5.5
+  }
+}
+```
+
+- 识别条件沿用 records 口径：
+  - `SaleRecord.offlineOrderId` 存在；或
+  - `SaleRecord.source = CASHIER_OFFLINE`。
+- 查询范围沿用 dashboard 当前 `dateFrom/dateTo/storeId/operatorUserId` 过滤。
+- 不直接查询 `OfflineSaleSyncMap`，避免增加接口复杂度。
+- dashboard 在经营概览附近显示轻提示：
+  - 中文：`含离线补同步 X 笔，金额 $Y`
+  - English：`Includes X offline-synced orders, $Y`
+  - Khmer：本轮先按英文提示补齐 key，避免空 key。
+
+本轮明确未改：
+
+- 今日销售额计算。
+- 订单数计算。
+- CASH / KHQR / H5 支付结构统计。
+- dashboard 日期归属逻辑。
+- `/records` 展示与排序。
+- `/cashier` 离线收银与同步逻辑。
+- 数据库 schema / migration。
+
+后续 Offline-03F-2 再单独评估是否将 dashboard 主统计改为业务发生时间口径：
+
+- 普通在线订单：`createdAt`。
+- 离线补同步订单：`offlineCreatedAtClientTimestamp || createdAt`。

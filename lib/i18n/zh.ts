@@ -420,6 +420,7 @@ const zh = {
     loadFailed: '加载失败',
     cashSaleLabel: '现金收款',
     khqrSaleLabel: 'KHQR 扫码',
+    offlineSyncedSummary: '含离线补同步 {count} 笔，金额 {amount}',
     periodToday: '今日',
     periodWeek: '本周',
     periodMonth: '本月',

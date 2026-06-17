@@ -110,6 +110,7 @@ export async function GET(req: NextRequest) {
     saleOrderGroups,
     refundOrderGroups,
     topProductGroups,
+    offlineSyncedRows,
     storeInfo,
     staffInfo,
   ] = await Promise.all([
@@ -139,6 +140,22 @@ export async function GET(req: NextRequest) {
       orderBy: { _sum: { quantity: 'desc' } },
       take: 50,
     }),
+    prisma.saleRecord.findMany({
+      where: {
+        ...baseWhere,
+        saleType: 'SALE',
+        status: 'COMPLETED',
+        OR: [
+          { offlineOrderId: { not: null } },
+          { source: 'CASHIER_OFFLINE' },
+        ],
+      },
+      select: {
+        orderNo: true,
+        offlineOrderId: true,
+        lineAmount: true,
+      },
+    }),
     storeId
       ? Promise.resolve(selectedStore)
       : Promise.resolve(null),
@@ -155,6 +172,11 @@ export async function GET(req: NextRequest) {
   const saleOrderCount    = saleOrderGroups.length
   const refundOrderCount  = refundOrderGroups.length
   const avgSaleAmount     = saleCount > 0 ? parseFloat((netAmount / saleCount).toFixed(2)) : 0
+  const offlineOrderKeys = new Set<string>()
+  const offlineSyncedAmount = offlineSyncedRows.reduce((sum, row, index) => {
+    offlineOrderKeys.add(row.offlineOrderId ?? row.orderNo ?? `row-${index}`)
+    return sum + row.lineAmount.toNumber()
+  }, 0)
 
   // 收款拆分 + 顾客订单（并行）
   type CoRow = { itemsJson: string; totalAmount: { toNumber(): number }; paymentMethod: string | null }
@@ -227,5 +249,9 @@ export async function GET(req: NextRequest) {
     cashSaleAmount: breakdown.cashSaleAmount + coCashAmt,
     khqrSaleAmount: breakdown.khqrSaleAmount + coQRAmt,
     customerOrderAmount: coTotal,
+    offlineSyncedSummary: {
+      count: offlineOrderKeys.size,
+      amount: parseFloat(offlineSyncedAmount.toFixed(2)),
+    },
   })
 }

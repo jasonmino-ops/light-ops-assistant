@@ -420,6 +420,7 @@ const en = {
     loadFailed: 'Failed to load',
     cashSaleLabel: 'Cash',
     khqrSaleLabel: 'KHQR',
+    offlineSyncedSummary: 'Includes {count} offline-synced orders, {amount}',
     periodToday: 'Today',
     periodWeek: 'This week',
     periodMonth: 'This month',

@@ -420,6 +420,7 @@ const km = {
     loadFailed: 'ផ្ទុកបានបរាជ័យ',
     cashSaleLabel: 'ទទួលជាសាច់ប្រាក់',
     khqrSaleLabel: 'KHQR ស្កែន',
+    offlineSyncedSummary: 'Includes {count} offline-synced orders, {amount}',
     periodToday: 'ថ្ងៃនេះ',
     periodWeek: 'សប្តាហ៍នេះ',
     periodMonth: 'ខែនេះ',
