@@ -6,6 +6,8 @@ node_modules/
 .env*.bak
 .next/
 /generated/prisma
+test-results/
+playwright-report/
 # local debug / diagnostic scripts
 quick_diagnose*.sh
 quick_diagnose*.txt
