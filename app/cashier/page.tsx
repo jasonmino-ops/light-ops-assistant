@@ -94,6 +94,7 @@ function sugarZh(sugar: string): string {
 function cartLineKey(line: CartLine) { return line.barcode + (line.sugar ?? '') }
 function cartTotal(cart: CartLine[]) { return cart.reduce((s, c) => s + c.price * c.qty, 0) }
 function cartCount(cart: CartLine[]) { return cart.reduce((s, c) => s + c.qty, 0) }
+const CASHIER_DISPLAY_SYNC_DEBOUNCE_MS = 300
 function cashierDisplayItems(cart: CartLine[]) {
   return cart
     .filter((line) => line.productId)
@@ -852,14 +853,16 @@ export default function CashierPage() {
       if (!cashierDisplayActiveRef.current) return
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
-      void postCashierDisplaySession({
-        storeCode,
-        status: 'CANCELLED',
-        paymentMethod: null,
-        paymentStatus: null,
-        items: [],
-      })
-      return
+      const timer = setTimeout(() => {
+        void postCashierDisplaySession({
+          storeCode,
+          status: 'CANCELLED',
+          paymentMethod: null,
+          paymentStatus: null,
+          items: [],
+        })
+      }, CASHIER_DISPLAY_SYNC_DEBOUNCE_MS)
+      return () => clearTimeout(timer)
     }
 
     cashierDisplayActiveRef.current = true
@@ -879,14 +882,17 @@ export default function CashierPage() {
     })
     if (syncKey === lastCashierDisplaySyncKey.current) return
     lastCashierDisplaySyncKey.current = syncKey
-    void postCashierDisplaySession({
-      storeCode,
-      status,
-      paymentMethod: displayPayment,
-      paymentStatus,
-      items,
-      message: displayPayment === 'KHQR' ? '请扫码支付' : null,
-    })
+    const timer = setTimeout(() => {
+      void postCashierDisplaySession({
+        storeCode,
+        status,
+        paymentMethod: displayPayment,
+        paymentStatus,
+        items,
+        message: displayPayment === 'KHQR' ? '请扫码支付' : null,
+      })
+    }, CASHIER_DISPLAY_SYNC_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
   }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore])
 
   // ── Submit sale ────────────────────────────────────────────────────────────

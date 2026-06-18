@@ -3,7 +3,7 @@
 /**
  * /desktop/display?storeCode=XXX — 顾客端收银显示屏（只读）
  *
- * 由手机 /sale 端实时驱动；本页每 1500ms 轮询 /api/pos/session/current。
+ * 由手机 /sale 与电脑 /cashier 端实时驱动；本页每 800ms 轮询 /api/pos/session/current。
  * 仅展示当前销售草稿 / 收款进度 / KHQR 二维码 / 完成提示；不做任何下单 / 收款操作。
  *
  * 与 /cashier 区别：/cashier 是独立桌面 POS（店员直接在电脑下单收款）；
@@ -61,7 +61,7 @@ type ApiResp = {
 type DesktopLang = 'zh' | 'en' | 'km'
 type DisplayCopy = typeof displayCopy.zh
 
-const POLL_MS = 1500
+const POLL_MS = 800
 const COMPLETED_LINGER_MS = 8000  // 完成态展示 8 秒后回到 idle
 const DRAFT_TIMEOUT_MS = 5 * 60 * 1000
 const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000
