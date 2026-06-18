@@ -406,10 +406,11 @@ function PaymentCard({
   storeKhqrImageUrl: string | null
   t: DisplayCopy
 }) {
-  const sessionKhqrImageSrc = displayImageSrc(session?.khqrImageUrl)
+  const isKhqrSession = session?.paymentMethod === 'KHQR'
+  const sessionKhqrImageSrc = isKhqrSession ? displayImageSrc(session?.khqrImageUrl) : null
   const storeKhqrImageSrc = displayImageSrc(storeKhqrImageUrl)
-  const khqrImageSrc = sessionKhqrImageSrc ?? storeKhqrImageSrc
-  const qrValue = session?.khqrPayload || (!khqrImageSrc ? session?.khqrImageUrl : null)
+  const khqrImageSrc = sessionKhqrImageSrc ?? (!session ? storeKhqrImageSrc : null)
+  const qrValue = isKhqrSession ? (session?.khqrPayload || (!khqrImageSrc ? session?.khqrImageUrl : null)) : null
   const hasKhqr = Boolean(khqrImageSrc || qrValue)
   const hasOrder = Boolean(session && session.items.length > 0)
 

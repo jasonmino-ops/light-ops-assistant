@@ -35,6 +35,8 @@ type CartLine = {
 }
 
 type SaleResult = { orderNo?: string; totalAmount: number; khqrFallback?: boolean; paymentMethod?: string }
+type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
+type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 
 type CashierMember = {
   id: string
@@ -92,6 +94,44 @@ function sugarZh(sugar: string): string {
 function cartLineKey(line: CartLine) { return line.barcode + (line.sugar ?? '') }
 function cartTotal(cart: CartLine[]) { return cart.reduce((s, c) => s + c.price * c.qty, 0) }
 function cartCount(cart: CartLine[]) { return cart.reduce((s, c) => s + c.qty, 0) }
+function cashierDisplayItems(cart: CartLine[]) {
+  return cart
+    .filter((line) => line.productId)
+    .map((line) => ({
+      productId: line.productId as string,
+      name: line.name,
+      spec: [line.spec, line.sugar ? sugarZh(line.sugar) : null].filter(Boolean).join(' / ') || null,
+      imageUrl: line.imageUrl,
+      price: line.price,
+      qty: line.qty,
+      lineAmount: +(line.price * line.qty).toFixed(2),
+    }))
+}
+function postCashierDisplaySession(input: {
+  storeCode: string
+  status: CashierDisplayStatus
+  paymentMethod?: CashierDisplayPayment
+  paymentStatus?: 'PENDING' | 'PAID' | null
+  items?: ReturnType<typeof cashierDisplayItems>
+  orderNo?: string | null
+  message?: string | null
+}) {
+  return fetch('/api/cashier/display-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storeCode: input.storeCode,
+      status: input.status,
+      paymentMethod: input.paymentMethod ?? null,
+      paymentStatus: input.paymentStatus ?? null,
+      items: input.items ?? [],
+      orderNo: input.orderNo ?? null,
+      message: input.message ?? null,
+    }),
+  }).catch((e) => {
+    console.warn('[cashier:display-session] sync failed', e)
+  })
+}
 function isValidStoreCode(sc: string | null): sc is string {
   return !!sc && /^[A-Za-z0-9_-]{2,80}$/.test(sc)
 }
@@ -348,6 +388,8 @@ export default function CashierPage() {
   const wasOnlineRef    = useRef(true)
   const searchRef       = useRef<HTMLInputElement>(null)
   const ordersRef       = useRef<HTMLDivElement>(null)
+  const cashierDisplayActiveRef = useRef(false)
+  const lastCashierDisplaySyncKey = useRef('')
 
   // ── Load store data ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -734,7 +776,19 @@ export default function CashierPage() {
           body?.message ?? body?.error ?? '会员余额支付失败'
         throw new Error(message)
       }
+      const completedItems = cashierDisplayItems(cart)
+      cashierDisplayActiveRef.current = false
+      lastCashierDisplaySyncKey.current = ''
+      void postCashierDisplaySession({
+        storeCode,
+        status: 'COMPLETED',
+        paymentMethod: null,
+        paymentStatus: 'PAID',
+        items: completedItems,
+        orderNo: body.orderNo ?? null,
+      })
       setCart([])
+      setPayment('CASH')
       setMemberPayOpen(false)
       setMemberPhone('')
       setMemberPayMember(null)
@@ -790,6 +844,50 @@ export default function CashierPage() {
       prev.map(c => c.barcode === barcode && c.sugar === sugar ? { ...c, qty: c.qty + delta } : c).filter(c => c.qty > 0)
     )
   }, [])
+
+  useEffect(() => {
+    if (!storeCode || noCodeError || isRestoringCashierStore) return
+
+    if (cart.length === 0) {
+      if (!cashierDisplayActiveRef.current) return
+      cashierDisplayActiveRef.current = false
+      lastCashierDisplaySyncKey.current = ''
+      void postCashierDisplaySession({
+        storeCode,
+        status: 'CANCELLED',
+        paymentMethod: null,
+        paymentStatus: null,
+        items: [],
+      })
+      return
+    }
+
+    cashierDisplayActiveRef.current = true
+    const displayPayment: CashierDisplayPayment =
+      payment === 'KHQR' && isOnline ? 'KHQR' :
+      payment === 'CASH' ? 'CASH' :
+      null
+    const status: CashierDisplayStatus = displayPayment === 'KHQR' ? 'AWAITING_PAYMENT' : 'DRAFT'
+    const paymentStatus = displayPayment === 'KHQR' ? 'PENDING' : null
+    const items = cashierDisplayItems(cart)
+    const syncKey = JSON.stringify({
+      storeCode,
+      status,
+      paymentMethod: displayPayment,
+      paymentStatus,
+      items,
+    })
+    if (syncKey === lastCashierDisplaySyncKey.current) return
+    lastCashierDisplaySyncKey.current = syncKey
+    void postCashierDisplaySession({
+      storeCode,
+      status,
+      paymentMethod: displayPayment,
+      paymentStatus,
+      items,
+      message: displayPayment === 'KHQR' ? '请扫码支付' : null,
+    })
+  }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore])
 
   // ── Submit sale ────────────────────────────────────────────────────────────
   async function handleSubmit() {
@@ -851,7 +949,10 @@ export default function CashierPage() {
         })
         const nextCount = await countPendingOfflineOrders(storeCode)
         setOfflinePendingCount(nextCount)
+        cashierDisplayActiveRef.current = false
+        lastCashierDisplaySyncKey.current = ''
         setCart([])
+        setPayment('CASH')
         showToast('离线订单已保存，网络恢复后请同步')
       } catch (e) {
         console.warn('[cashier:offline-order] save failed', e)
@@ -863,6 +964,8 @@ export default function CashierPage() {
     }
     setSubmitting(true); setSubmitError('')
     const apiPayment = payment === 'OTHER' ? 'CASH' : payment
+    const submittedItems = cashierDisplayItems(cart)
+    const submittedTotal = cartTotal(cart)
     try {
       const res = await fetch('/api/cashier/sales', {
         method: 'POST',
@@ -875,8 +978,19 @@ export default function CashierPage() {
       })
       const body = await res.json()
       if (!res.ok) { setSubmitError(body.message ?? body.error ?? '提交失败，请重试'); return }
+      cashierDisplayActiveRef.current = false
+      lastCashierDisplaySyncKey.current = ''
+      void postCashierDisplaySession({
+        storeCode,
+        status: 'COMPLETED',
+        paymentMethod: apiPayment === 'KHQR' ? 'KHQR' : 'CASH',
+        paymentStatus: 'PAID',
+        items: submittedItems,
+        orderNo: body.orderNo ?? null,
+      })
       setCart([])
-      setSaleResult({ orderNo: body.orderNo, totalAmount: cartTotal(cart), khqrFallback: body.khqrFallback ?? false })
+      setPayment('CASH')
+      setSaleResult({ orderNo: body.orderNo, totalAmount: submittedTotal, khqrFallback: body.khqrFallback ?? false })
     } catch { setSubmitError('网络错误，请重试') }
     finally { setSubmitting(false) }
   }
