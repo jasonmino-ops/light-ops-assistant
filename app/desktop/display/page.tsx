@@ -73,6 +73,7 @@ export default function DesktopMirrorPage() {
   const [data, setData] = useState<ApiResp | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -118,6 +119,14 @@ export default function DesktopMirrorPage() {
   }, [])
 
   const t = displayCopy[lang]
+
+  useEffect(() => {
+    const updateFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    updateFullscreen()
+    document.addEventListener('fullscreenchange', updateFullscreen)
+    return () => document.removeEventListener('fullscreenchange', updateFullscreen)
+  }, [])
+
   function changeLang(nextLang: DesktopLang) {
     setLang(nextLang)
     document.documentElement.lang = nextLang === 'km' ? 'km' : nextLang === 'en' ? 'en' : 'zh-CN'
@@ -125,6 +134,18 @@ export default function DesktopMirrorPage() {
     if (storeCode) params.set('storeCode', storeCode)
     params.set('lang', nextLang)
     window.history.replaceState(null, '', `/desktop/display?${params.toString()}`)
+  }
+
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
+        await document.documentElement.requestFullscreen()
+      }
+    } catch (error) {
+      console.warn('[desktop-display] fullscreen toggle failed', error)
+    }
   }
 
   if (noCode) {
@@ -169,6 +190,9 @@ export default function DesktopMirrorPage() {
         <span style={{ ...s.statusPill, ...statusPillStyle(session, recentlyCompleted, recentlyCancelled) }}>
           {statusLabel(t, session, recentlyCompleted, recentlyCancelled)}
         </span>
+        <button type="button" style={s.fullscreenBtn} onClick={toggleFullscreen}>
+          {isFullscreen ? t.exitFullscreen : t.enterFullscreen}
+        </button>
         <LangSwitch lang={lang} onChange={changeLang} />
       </div>
 
@@ -565,6 +589,8 @@ const displayCopy = {
     waitingPaymentShort: '等待收款',
     checkingOutShort: '正在结账',
     cash: '现金',
+    enterFullscreen: '进入全屏',
+    exitFullscreen: '退出全屏',
   },
   en: {
     missingStoreTitle: 'Missing Store',
@@ -616,6 +642,8 @@ const displayCopy = {
     waitingPaymentShort: 'Waiting for payment',
     checkingOutShort: 'Checking out',
     cash: 'Cash',
+    enterFullscreen: 'Full screen',
+    exitFullscreen: 'Exit full screen',
   },
   km: {
     missingStoreTitle: 'ខ្វះព័ត៌មានហាង',
@@ -667,6 +695,8 @@ const displayCopy = {
     waitingPaymentShort: 'រង់ចាំបង់ប្រាក់',
     checkingOutShort: 'កំពុងគិតលុយ',
     cash: 'សាច់ប្រាក់',
+    enterFullscreen: 'ពេញអេក្រង់',
+    exitFullscreen: 'ចាកចេញពេញអេក្រង់',
   },
 }
 
@@ -682,6 +712,7 @@ const s: Record<string, CSSProperties> = {
   storeName: { fontSize: 22, fontWeight: 800, letterSpacing: '-0.3px' },
   storeCode: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
   statusPill: { fontSize: 14, fontWeight: 700, padding: '6px 16px', borderRadius: 999, flexShrink: 0 },
+  fullscreenBtn: { border: '1px solid rgba(255,255,255,.16)', borderRadius: 999, background: 'rgba(255,255,255,.1)', color: '#e2e8f0', fontSize: 12, fontWeight: 800, padding: '8px 12px', cursor: 'pointer', flexShrink: 0 },
   langSwitch: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 3, borderRadius: 999, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.16)', flexShrink: 0 },
   langBtn: { border: 'none', borderRadius: 999, background: 'transparent', color: '#cbd5e1', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
   langBtnOn: { border: 'none', borderRadius: 999, background: '#fff', color: '#0f172a', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
