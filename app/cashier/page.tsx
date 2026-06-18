@@ -143,6 +143,19 @@ function isValidStoreCode(sc: string | null): sc is string {
 function cashierUrlForStore(sc: string) {
   return `/cashier?storeCode=${encodeURIComponent(sc)}`
 }
+function desktopRecordsUrlForStore(sc: string) {
+  const params = new URLSearchParams()
+  params.set('storeCode', sc)
+  params.set('from', 'desktop')
+  const current = new URLSearchParams(window.location.search)
+  const lang = current.get('lang')?.trim()
+  if (lang) params.set('lang', lang)
+  const returnParams = new URLSearchParams()
+  returnParams.set('storeCode', sc)
+  if (lang) returnParams.set('lang', lang)
+  params.set('returnTo', `/desktop/pos?${returnParams.toString()}`)
+  return `/records?${params.toString()}`
+}
 function rememberCashierStore(sc: string) {
   if (!isValidStoreCode(sc)) return
   try {
@@ -1194,7 +1207,18 @@ export default function CashierPage() {
               )}
             </button>
             <button style={s.sideLinkSec} onClick={() => showToast('请在手机商户端管理商品')}>商品管理</button>
-            <button style={s.sideLinkSec} onClick={() => showToast('请在手机商户端查看销售记录')}>销售记录</button>
+            <button
+              style={s.sideLinkSec}
+              onClick={() => {
+                if (!storeCode) {
+                  showToast('请先使用带门店编号的收银链接打开')
+                  return
+                }
+                window.location.href = desktopRecordsUrlForStore(storeCode)
+              }}
+            >
+              销售记录
+            </button>
           </div>
         </div>
 

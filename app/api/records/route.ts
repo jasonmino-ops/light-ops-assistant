@@ -14,12 +14,25 @@ import { getPaymentBreakdown, getOrderPaymentMap } from '@/lib/payment-breakdown
  * summary reflects the current filtered result set, not the full day.
  */
 export async function GET(req: NextRequest) {
+  const p = req.nextUrl.searchParams
   const ctx = await getContext(req)
-  if (!ctx) {
+  const desktopStoreCode = p.get('from') === 'desktop' ? p.get('storeCode')?.trim() : null
+  const desktopStore = !ctx && desktopStoreCode
+    ? await prisma.store.findUnique({
+        where: { code: desktopStoreCode },
+        select: { id: true, tenantId: true, status: true },
+      })
+    : null
+
+  if (!ctx && !desktopStore) {
     return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   }
+  if (desktopStore && desktopStore.status !== 'ACTIVE') {
+    return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  }
 
-  const p = req.nextUrl.searchParams
+  const tenantId = ctx?.tenantId ?? desktopStore!.tenantId
+  const isDesktopPublic = !ctx && !!desktopStore
   const dateFrom = p.get('dateFrom')
   const dateTo = p.get('dateTo')
 
@@ -46,14 +59,16 @@ export async function GET(req: NextRequest) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {
-    tenantId: ctx.tenantId,
+    tenantId,
     createdAt: { gte: from, lte: to },
   }
 
-  if (ctx.role === 'STAFF') {
+  if (isDesktopPublic) {
+    where.storeId = desktopStore!.id
+  } else if (ctx!.role === 'STAFF') {
     // Hard-scope to own identity — query params for storeId/operatorUserId are ignored
-    where.storeId = ctx.storeId
-    where.operatorUserId = ctx.userId
+    where.storeId = ctx!.storeId
+    where.operatorUserId = ctx!.userId
   } else {
     // OWNER: optional narrowing
     const storeId = p.get('storeId')
@@ -74,14 +89,14 @@ export async function GET(req: NextRequest) {
   // 仅首页合并（避免分页重复）；STAFF / REFUND filter / 按员工筛选时不合并
   const operatorUserIdQ = p.get('operatorUserId')
   const shouldIncludeCO =
-    ctx.role !== 'STAFF' &&
+    (isDesktopPublic || ctx!.role !== 'STAFF') &&
     saleTypeParam !== 'REFUND' &&
     !operatorUserIdQ &&
     page === 1
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const coWhere: any = shouldIncludeCO
     ? {
-        tenantId: ctx.tenantId,
+        tenantId,
         status: 'COMPLETED',
         paymentStatus: 'PAID',
         paidAt: { gte: from, lte: to },
@@ -138,12 +153,12 @@ export async function GET(req: NextRequest) {
   const totalRefundAmount = refundAgg._sum.lineAmount?.toNumber() ?? 0
 
   // Payment breakdown (CASH vs KHQR paid) + per-order PI info
-  const storeId = ctx.role === 'STAFF' ? ctx.storeId : (where.storeId as string | undefined)
-  const operatorUserId = ctx.role === 'STAFF' ? ctx.userId : (where.operatorUserId as string | undefined)
+  const storeId = isDesktopPublic ? desktopStore!.id : ctx!.role === 'STAFF' ? ctx!.storeId : (where.storeId as string | undefined)
+  const operatorUserId = isDesktopPublic ? undefined : ctx!.role === 'STAFF' ? ctx!.userId : (where.operatorUserId as string | undefined)
 
   const [breakdown, paymentMap] = await Promise.all([
     saleTypeParam !== 'REFUND'
-      ? getPaymentBreakdown({ tenantId: ctx.tenantId, from, to, storeId, operatorUserId })
+      ? getPaymentBreakdown({ tenantId, from, to, storeId, operatorUserId })
       : { cashSaleAmount: 0, khqrSaleAmount: 0 },
     (() => {
       const saleOrderNos = items

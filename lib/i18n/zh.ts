@@ -346,6 +346,7 @@ const zh = {
   records: {
     title: '记录',
     workbenchSub: '销售记录与经营复盘',
+    backToCashier: '返回收银台',
     todayOverview: '今日记录概览',
     listTitle: '记录列表',
     saleCount: '销售笔数',

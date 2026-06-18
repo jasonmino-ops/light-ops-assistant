@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
@@ -215,6 +216,7 @@ function writeRecordsCache(key: string, data: ApiResponse) {
 
 export default function RecordsPage() {
   const { t } = useLocale()
+  const searchParams = useSearchParams()
   const {
     realRole,
     isOwnerInStaffMode,
@@ -223,6 +225,17 @@ export default function RecordsPage() {
     tenantName: contextTenantName,
   } = useWorkMode()
   const today = todayStr()
+  const desktopStoreCode = searchParams.get('from') === 'desktop' ? searchParams.get('storeCode')?.trim() ?? '' : ''
+  const isDesktopRecords = !!desktopStoreCode
+  const desktopReturnTo = searchParams.get('returnTo')?.trim()
+  const desktopLang = searchParams.get('lang')?.trim()
+  const cashierReturnHref = desktopReturnTo
+    || (desktopStoreCode
+      ? `/desktop/pos?${new URLSearchParams({
+          storeCode: desktopStoreCode,
+          ...(desktopLang ? { lang: desktopLang } : {}),
+        }).toString()}`
+      : '/desktop/pos')
 
   const [rangePreset, setRangePreset] = useState<RangePreset>('TODAY')
   const [dateFrom, setDateFrom] = useState(today)
@@ -245,7 +258,7 @@ export default function RecordsPage() {
 
   const fetchRecords = useCallback(
     async (targetPage: number, append: boolean) => {
-      const cacheKey = `records:${dateFrom}:${dateTo}:${saleTypeFilter}:p${targetPage}`
+      const cacheKey = `records:${isDesktopRecords ? desktopStoreCode : 'session'}:${dateFrom}:${dateTo}:${saleTypeFilter}:p${targetPage}`
       const cached = !append && targetPage === 1 ? readRecordsCache(cacheKey) : null
       if (cached) {
         setAllItems(cached.items)
@@ -265,6 +278,10 @@ export default function RecordsPage() {
         pageSize: String(PAGE_SIZE),
       })
       if (saleTypeFilter !== 'ALL') params.set('saleType', saleTypeFilter)
+      if (isDesktopRecords) {
+        params.set('storeCode', desktopStoreCode)
+        params.set('from', 'desktop')
+      }
 
       try {
         const startedAt = performance.now()
@@ -286,7 +303,7 @@ export default function RecordsPage() {
         append ? setLoadingMore(false) : setLoading(false)
       }
     },
-    [dateFrom, dateTo, saleTypeFilter],
+    [dateFrom, dateTo, saleTypeFilter, isDesktopRecords, desktopStoreCode],
   )
 
   useEffect(() => {
@@ -350,6 +367,11 @@ export default function RecordsPage() {
         </div>
         <div style={s.headerTools}>
           <LangToggleBtn />
+          {isDesktopRecords && (
+            <a href={cashierReturnHref} style={s.desktopBackLink}>
+              {t('records.backToCashier')}
+            </a>
+          )}
           {realRole === 'OWNER' && (
             <span style={s.modeTag}>
               {isOwnerInStaffMode ? t('home.modeLabelStaff') : t('home.modeLabelOwner')}
@@ -816,6 +838,23 @@ const s: Record<string, React.CSSProperties> = {
     minWidth: 82,
     whiteSpace: 'nowrap',
     textAlign: 'center',
+  },
+  desktopBackLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 96,
+    minHeight: 32,
+    padding: '0 12px',
+    borderRadius: 999,
+    border: '1px solid #bfdbfe',
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: 800,
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+    boxShadow: '0 4px 14px rgba(37,99,235,0.08)',
   },
   body: {
     flex: 1,
