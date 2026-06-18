@@ -129,6 +129,10 @@ function postCashierDisplaySession(input: {
       orderNo: input.orderNo ?? null,
       message: input.message ?? null,
     }),
+  }).then((res) => {
+    if (!res.ok) {
+      console.warn('[cashier:display-session] sync failed', res.status)
+    }
   }).catch((e) => {
     console.warn('[cashier:display-session] sync failed', e)
   })
@@ -854,6 +858,7 @@ export default function CashierPage() {
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
       const timer = setTimeout(() => {
+        lastCashierDisplaySyncKey.current = '__terminal__'
         void postCashierDisplaySession({
           storeCode,
           status: 'CANCELLED',
@@ -881,8 +886,8 @@ export default function CashierPage() {
       items,
     })
     if (syncKey === lastCashierDisplaySyncKey.current) return
-    lastCashierDisplaySyncKey.current = syncKey
     const timer = setTimeout(() => {
+      lastCashierDisplaySyncKey.current = syncKey
       void postCashierDisplaySession({
         storeCode,
         status,

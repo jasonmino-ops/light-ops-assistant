@@ -19,6 +19,14 @@ type PosItem = {
 
 const DRAFT_TIMEOUT_MS = 5 * 60 * 1000
 const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store, max-age=0' }
+
+function json(data: object, init?: ResponseInit) {
+  return NextResponse.json(data, {
+    ...init,
+    headers: { ...NO_STORE_HEADERS, ...(init?.headers ?? {}) },
+  })
+}
 
 type DisplayProduct = {
   id: string
@@ -61,7 +69,7 @@ function cleanDisplayImageUrl(raw: string | null | undefined): string | null {
 export async function GET(req: NextRequest) {
   const storeCode = req.nextUrl.searchParams.get('storeCode')?.trim()
   if (!storeCode) {
-    return NextResponse.json({ error: 'MISSING_STORE_CODE' }, { status: 400 })
+    return json({ error: 'MISSING_STORE_CODE' }, { status: 400 })
   }
 
   const store = await prisma.store.findUnique({
@@ -69,7 +77,7 @@ export async function GET(req: NextRequest) {
     select: { id: true, code: true, tenantId: true, name: true, status: true, bannerUrl: true },
   })
   if (!store || store.status !== 'ACTIVE') {
-    return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+    return json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
 
   const row = await prisma.posSession.findUnique({
@@ -195,7 +203,7 @@ export async function GET(req: NextRequest) {
   const khqrImageUrl = cleanDisplayImageUrl(row?.khqrImageUrl)
     ?? storeKhqrImageUrl
 
-  return NextResponse.json({
+  return json({
     storeCode: store.code,
     storeName: store.name,
     storeBannerUrl: cleanDisplayImageUrl(store.bannerUrl),

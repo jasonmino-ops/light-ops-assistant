@@ -74,6 +74,24 @@
 
 - `/cashier` 写 PosSession：300ms debounce。
 - `/desktop/display` 读取 PosSession：800ms polling。
+- `/api/cashier/display-session` 与 `/api/pos/session/current` 响应应带 `Cache-Control: no-store, max-age=0`。
+
+## Network 排查
+
+如果真机或双电脑不同步，先打开浏览器 DevTools：
+
+1. 在员工端 `/cashier` 加商品后，Network 应出现：
+   `POST /api/cashier/display-session`
+2. 该请求 payload 应包含：
+   - `storeCode`
+   - `items`
+   - `paymentMethod`
+3. 响应应为 `200`，并返回 `{ "ok": true }`。
+4. 顾客屏 `/desktop/display` 应持续轮询：
+   `GET /api/pos/session/current?storeCode=...`
+5. current API 返回的 `session.items` 和 `session.totalAmount` 应与员工端购物车一致。
+6. 如果 POST 成功但 current 为空，检查两个页面的 `storeCode` 是否一致。
+7. 如果 current 有数据但页面不显示，问题在顾客屏渲染层。
 
 ## 不应发生
 

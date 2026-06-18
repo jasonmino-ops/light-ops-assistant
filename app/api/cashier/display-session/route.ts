@@ -32,6 +32,14 @@ type CleanItem = {
 const ALLOWED_STATUS = new Set(['DRAFT', 'AWAITING_PAYMENT', 'COMPLETED', 'CANCELLED'])
 const ALLOWED_PAYMENT_METHOD = new Set(['CASH', 'KHQR'])
 const MAX_ITEMS = 100
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store, max-age=0' }
+
+function json(data: object, init?: ResponseInit) {
+  return NextResponse.json(data, {
+    ...init,
+    headers: { ...NO_STORE_HEADERS, ...(init?.headers ?? {}) },
+  })
+}
 
 function cleanItems(raw: unknown): CleanItem[] {
   if (!Array.isArray(raw)) return []
@@ -79,12 +87,12 @@ export async function POST(req: NextRequest) {
     message?: unknown
   }
   try { body = await req.json() } catch {
-    return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
+    return json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
   const storeCode = typeof body.storeCode === 'string' ? body.storeCode.trim() : ''
   if (!storeCode) {
-    return NextResponse.json({ error: 'MISSING_STORE_CODE' }, { status: 400 })
+    return json({ error: 'MISSING_STORE_CODE' }, { status: 400 })
   }
 
   const store = await prisma.store.findUnique({
@@ -92,7 +100,7 @@ export async function POST(req: NextRequest) {
     select: { id: true, code: true, tenantId: true, status: true },
   })
   if (!store || store.status !== 'ACTIVE') {
-    return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+    return json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
 
   const status = typeof body.status === 'string' && ALLOWED_STATUS.has(body.status) ? body.status : 'DRAFT'
@@ -155,9 +163,9 @@ export async function POST(req: NextRequest) {
         completedAt: status === 'COMPLETED' || status === 'CANCELLED' ? new Date() : null,
       },
     })
-    return NextResponse.json({ ok: true })
+    return json({ ok: true })
   } catch (e) {
     console.error('[cashier/display-session] update failed', e)
-    return NextResponse.json({ error: 'INTERNAL' }, { status: 500 })
+    return json({ error: 'INTERNAL' }, { status: 500 })
   }
 }
