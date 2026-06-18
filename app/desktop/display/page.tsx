@@ -10,7 +10,7 @@
  * 本页是"手机操作，电脑展示"的同屏联动小屏 / 大屏镜像。
  */
 
-import { useEffect, useState, useRef, CSSProperties } from 'react'
+import { memo, useEffect, useState, useRef, CSSProperties } from 'react'
 import QRCode from 'react-qr-code'
 
 type PosItem = {
@@ -73,7 +73,7 @@ export default function DesktopMirrorPage() {
   const [noCode, setNoCode] = useState(false)
   const [data, setData] = useState<ApiResp | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [now, setNow] = useState(Date.now())
+  const [lingerNow, setLingerNow] = useState(() => Date.now())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -113,12 +113,6 @@ export default function DesktopMirrorPage() {
     }
   }, [storeCode, lang])
 
-  // 本地时钟用于"完成 N 秒后回到 idle"判断
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 500)
-    return () => clearInterval(t)
-  }, [])
-
   const t = displayCopy[lang]
 
   useEffect(() => {
@@ -149,6 +143,31 @@ export default function DesktopMirrorPage() {
     }
   }
 
+  useEffect(() => {
+    const session = data?.session
+    if (!session) return
+    const completedAtMs = session.completedAt ? new Date(session.completedAt).getTime() : 0
+    const updatedAtMs = session.updatedAt ? new Date(session.updatedAt).getTime() : 0
+    const expiredAtMs = session.displayStatus === 'EXPIRED_DRAFT'
+      ? updatedAtMs + DRAFT_TIMEOUT_MS
+      : session.displayStatus === 'EXPIRED_CHECKOUT'
+        ? updatedAtMs + CHECKOUT_TIMEOUT_MS
+        : 0
+    const lingerUntil = (session.status === 'COMPLETED' || session.status === 'CANCELLED') && completedAtMs > 0
+      ? completedAtMs + COMPLETED_LINGER_MS
+      : expiredAtMs > 0
+        ? expiredAtMs + COMPLETED_LINGER_MS
+        : 0
+    if (!lingerUntil) return
+    const remaining = lingerUntil - Date.now()
+    if (remaining <= 0) {
+      setLingerNow(Date.now())
+      return
+    }
+    const timer = setTimeout(() => setLingerNow(Date.now()), remaining + 50)
+    return () => clearTimeout(timer)
+  }, [data?.session?.status, data?.session?.completedAt, data?.session?.updatedAt, data?.session?.displayStatus])
+
   if (noCode) {
     return (
       <div style={s.errScreen}>
@@ -162,14 +181,14 @@ export default function DesktopMirrorPage() {
   const session = data?.session ?? null
   const completedAtMs = session?.completedAt ? new Date(session.completedAt).getTime() : 0
   const updatedAtMs = session?.updatedAt ? new Date(session.updatedAt).getTime() : 0
-  const recentlyCompleted = session?.status === 'COMPLETED' && completedAtMs > 0 && (now - completedAtMs) < COMPLETED_LINGER_MS
-  const recentlyCancelled = session?.status === 'CANCELLED' && completedAtMs > 0 && (now - completedAtMs) < COMPLETED_LINGER_MS
+  const recentlyCompleted = session?.status === 'COMPLETED' && completedAtMs > 0 && (lingerNow - completedAtMs) < COMPLETED_LINGER_MS
+  const recentlyCancelled = session?.status === 'CANCELLED' && completedAtMs > 0 && (lingerNow - completedAtMs) < COMPLETED_LINGER_MS
   const expiredAtMs = session?.displayStatus === 'EXPIRED_DRAFT'
     ? updatedAtMs + DRAFT_TIMEOUT_MS
     : session?.displayStatus === 'EXPIRED_CHECKOUT'
       ? updatedAtMs + CHECKOUT_TIMEOUT_MS
       : 0
-  const recentlyExpired = expiredAtMs > 0 && (now - expiredAtMs) < COMPLETED_LINGER_MS
+  const recentlyExpired = expiredAtMs > 0 && (lingerNow - expiredAtMs) < COMPLETED_LINGER_MS
   const isLive = !!session
     && (session.status === 'DRAFT' || session.status === 'AWAITING_PAYMENT')
     && session.displayStatus !== 'EXPIRED_DRAFT'
@@ -260,13 +279,13 @@ export default function DesktopMirrorPage() {
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────
 
-function CartList({ items, itemCount, totalAmount, t }: { items: PosItem[]; itemCount: number; totalAmount: number; t: DisplayCopy }) {
+const CartList = memo(function CartList({ items, itemCount, totalAmount, t }: { items: PosItem[]; itemCount: number; totalAmount: number; t: DisplayCopy }) {
   const subtotal = items.reduce((sum, item) => sum + item.lineAmount, 0)
   return (
     <div style={s.cartList}>
       <div style={s.cartTitle}>{t.cartTitle}</div>
       {items.map((it) => (
-        <div key={it.productId + '-' + it.qty} style={s.cartRow}>
+        <div key={it.productId} style={s.cartRow}>
           <ProductThumb item={it} />
           <div style={s.cartName}>
             {it.name}
@@ -297,7 +316,7 @@ function CartList({ items, itemCount, totalAmount, t }: { items: PosItem[]; item
       </div>
     </div>
   )
-}
+})
 
 function ProductThumb({ item }: { item: PosItem }) {
   return <ProductImage src={item.imageUrl} name={item.name} />
@@ -328,7 +347,7 @@ function ProductImage({
   )
 }
 
-function CompletedCard({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
+const CompletedCard = memo(function CompletedCard({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
   return (
     <div style={s.bigCard}>
       <div style={{ ...s.bigIcon, color: '#16a34a' }}>✓</div>
@@ -341,9 +360,9 @@ function CompletedCard({ session, t }: { session: SessionPayload; t: DisplayCopy
       <div style={s.bigSub}>{t.thanks}</div>
     </div>
   )
-}
+})
 
-function CancelledCard({ t }: { t: DisplayCopy }) {
+const CancelledCard = memo(function CancelledCard({ t }: { t: DisplayCopy }) {
   return (
     <div style={s.bigCard}>
       <div style={{ ...s.bigIcon, color: '#9ca3af' }}>—</div>
@@ -351,9 +370,9 @@ function CancelledCard({ t }: { t: DisplayCopy }) {
       <div style={s.bigSub}>{t.waitingNext}</div>
     </div>
   )
-}
+})
 
-function ExpiredCard({ checkout, t }: { checkout: boolean; t: DisplayCopy }) {
+const ExpiredCard = memo(function ExpiredCard({ checkout, t }: { checkout: boolean; t: DisplayCopy }) {
   return (
     <div style={s.bigCard}>
       <div style={{ ...s.bigIcon, color: '#f59e0b' }}>⌛</div>
@@ -361,9 +380,9 @@ function ExpiredCard({ checkout, t }: { checkout: boolean; t: DisplayCopy }) {
       <div style={s.bigSub}>{t.waitingNext}</div>
     </div>
   )
-}
+})
 
-function IdleCard({ storeName, bannerUrl, products, t }: { storeName: string; bannerUrl: string | null; products: DisplayProduct[]; t: DisplayCopy }) {
+const IdleCard = memo(function IdleCard({ storeName, bannerUrl, products, t }: { storeName: string; bannerUrl: string | null; products: DisplayProduct[]; t: DisplayCopy }) {
   const heroImage = displayImageSrc(bannerUrl)
   const carouselProducts = products.filter((product) => Boolean(displayImageSrc(product.imageUrl))).slice(0, 3)
   const [activePickIndex, setActivePickIndex] = useState(0)
@@ -447,9 +466,9 @@ function IdleCard({ storeName, bannerUrl, products, t }: { storeName: string; ba
       </div>
     </div>
   )
-}
+})
 
-function PaymentCard({
+const PaymentCard = memo(function PaymentCard({
   session,
   recentlyCompleted,
   storeKhqrImageUrl,
@@ -503,7 +522,7 @@ function PaymentCard({
       )}
     </div>
   )
-}
+})
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
