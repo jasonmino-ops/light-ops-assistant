@@ -3666,6 +3666,7 @@ const dm: Record<string, React.CSSProperties> = {
   },
   geoBigMain: { fontSize: 16, fontWeight: 700 },
   geoBigSub:  { fontSize: 11, color: 'rgba(255,255,255,0.85)' },
+  geoSettingsBtn: { height: 34, fontSize: 12, fontWeight: 700, color: '#1677ff', background: '#fff', border: '1px solid #91caff', borderRadius: 8, cursor: 'pointer' },
   locPreview: { background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column' as const, gap: 4 },
   locPreviewTitle: { fontSize: 13, fontWeight: 700, color: '#389e0d' },
   locPreviewCoord: { fontSize: 11, color: '#666', fontFamily: 'monospace' as const },
@@ -3843,17 +3844,21 @@ function DeliveryEditModal({
   const [form, setForm] = useState<DeliveryForm>(initial)
   const [geoMsg, setGeoMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [geoBusy, setGeoBusy] = useState(false)
+  const [canOpenLocationSettings, setCanOpenLocationSettings] = useState(false)
 
   const L = lang === 'en' ? {
     title: 'Delivery / on-site address',
     name: 'Contact name', phone: 'Phone number',
     address: 'Address', note: 'Door / floor / note',
-    useLocMain: '📍 Use current location',
-    useLocSub:  'Help the store find you faster',
-    locating: 'Locating…',
+    useLocMain: '📍 Get current coordinates',
+    useLocSub:  'Coordinates help the store find you faster',
+    locating: 'Getting location…',
     save: 'Save address', cancel: 'Cancel',
     needPhoneAddr: 'Phone and address are required',
-    locOk: 'Location captured', locFail: 'Cannot get location. Please type the address.',
+    locOk: 'Location coordinates saved. Please continue filling in the detailed address.',
+    locFail: 'Location is unavailable. Please type the door number, street, area, or nearby landmark.',
+    locPermission: 'Please allow Telegram or the browser to access location, or type the address manually.',
+    locSettings: 'Open location settings',
     phonePh: 'e.g. 855 12 345 678', addrPh: 'Street, building, city',
     locPreviewTitle: '📍 Approximate location saved',
     locPreviewCoord: 'Coordinates',
@@ -3866,12 +3871,15 @@ function DeliveryEditModal({
     title: 'អាសយដ្ឋានដឹក/សេវាដល់ផ្ទះ',
     name: 'ឈ្មោះទំនាក់ទំនង', phone: 'លេខទូរស័ព្ទ',
     address: 'អាសយដ្ឋាន', note: 'ផ្ទះ/ជាន់/សម្គាល់',
-    useLocMain: '📍 ទាញទីតាំងបច្ចុប្បន្ន',
-    useLocSub:  'ជួយឱ្យហាង/អ្នកដឹករកអ្នកបានឆាប់',
-    locating: 'កំពុងកំណត់ទីតាំង…',
+    useLocMain: '📍 ទាញកូអរដោនេបច្ចុប្បន្ន',
+    useLocSub:  'កូអរដោនេជួយឱ្យហាង/អ្នកដឹករកអ្នកបានឆាប់',
+    locating: 'កំពុងទាញទីតាំង…',
     save: 'រក្សាទុក', cancel: 'បោះបង់',
     needPhoneAddr: 'ត្រូវការលេខទូរស័ព្ទ និងអាសយដ្ឋាន',
-    locOk: 'ទទួលបានទីតាំង', locFail: 'មិនអាចទាញទីតាំងបាន សូមវាយជាអក្សរ',
+    locOk: 'បានរក្សាទុកកូអរដោនេ។ សូមបំពេញអាសយដ្ឋានលម្អិតបន្ត។',
+    locFail: 'មិនអាចទាញទីតាំងបាន សូមវាយលេខផ្ទះ ផ្លូវ តំបន់ ឬសញ្ញាសម្គាល់ជិតៗ។',
+    locPermission: 'សូមអនុញ្ញាតឱ្យ Telegram ឬ browser ប្រើទីតាំង ឬវាយអាសយដ្ឋានដោយដៃ។',
+    locSettings: 'បើកការកំណត់ទីតាំង',
     phonePh: 'ឧ. 855 12 345 678', addrPh: 'ផ្លូវ អគារ ទីក្រុង',
     locPreviewTitle: '📍 ទីតាំងប្រហែលត្រូវបានរក្សាទុក',
     locPreviewCoord: 'កូអរដោនេ',
@@ -3884,12 +3892,15 @@ function DeliveryEditModal({
     title: '送货/上门地址',
     name: '联系人', phone: '联系电话',
     address: '详细地址', note: '门牌/楼层/备注',
-    useLocMain: '📍 一键获取当前位置',
-    useLocSub:  '用于帮助商户/配送员更快找到你',
-    locating: '定位中…',
+    useLocMain: '📍 获取当前位置坐标',
+    useLocSub:  '坐标用于帮助商户/配送员更快找到你',
+    locating: '正在获取定位…',
     save: '保存地址', cancel: '取消',
     needPhoneAddr: '请填写联系电话和详细地址',
-    locOk: '已获取大概位置', locFail: '无法获取当前位置，请手动填写地址',
+    locOk: '已获取定位坐标，请继续填写详细地址。',
+    locFail: '暂时无法获取定位，请手动填写门牌号、街道、区域或附近地标。',
+    locPermission: '请允许 Telegram 或浏览器访问位置，或手动填写地址。',
+    locSettings: '打开定位设置',
     phonePh: '例如 855 12 345 678', addrPh: '街道、楼宇、城市',
     locPreviewTitle: '📍 已获取大概位置',
     locPreviewCoord: '经纬度',
@@ -3907,41 +3918,91 @@ function DeliveryEditModal({
   function pickLocation() {
     if (geoBusy) return
     setGeoBusy(true); setGeoMsg(null)
+    setCanOpenLocationSettings(false)
+
+    let finished = false
+    let totalTimer: ReturnType<typeof setTimeout> | null = null
+    let telegramTimer: ReturnType<typeof setTimeout> | null = null
+
+    const clearTimers = () => {
+      if (totalTimer) clearTimeout(totalTimer)
+      if (telegramTimer) clearTimeout(telegramTimer)
+    }
     const done = (lat: number, lng: number) => {
+      if (finished) return
+      finished = true
+      clearTimers()
       setForm((p) => ({ ...p, deliveryLat: lat, deliveryLng: lng }))
       setGeoMsg({ ok: true, text: L.locOk })
       setGeoBusy(false)
     }
-    const fail = () => {
-      setGeoMsg({ ok: false, text: L.locFail })
+    const fail = (reason: 'permission' | 'manual' = 'manual') => {
+      if (finished) return
+      finished = true
+      clearTimers()
+      setGeoMsg({ ok: false, text: reason === 'permission' ? L.locPermission : L.locFail })
       setGeoBusy(false)
     }
+    const tryBrowserLocation = () => {
+      if (finished) return
+      if (navigator?.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => done(pos.coords.latitude, pos.coords.longitude),
+          (err) => fail(err?.code === err?.PERMISSION_DENIED ? 'permission' : 'manual'),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+        )
+      } else {
+        fail()
+      }
+    }
+
+    totalTimer = setTimeout(() => fail(), 12000)
+
     // 优先 Telegram WebApp LocationManager
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
     const lm = tg?.LocationManager
     try {
       if (lm && typeof lm.init === 'function' && typeof lm.getLocation === 'function') {
+        setCanOpenLocationSettings(typeof lm.openLocationSettings === 'function' || typeof lm.openSettings === 'function')
+        let telegramSettled = false
+        const fallbackToBrowser = () => {
+          if (telegramSettled || finished) return
+          telegramSettled = true
+          if (telegramTimer) clearTimeout(telegramTimer)
+          tryBrowserLocation()
+        }
+        telegramTimer = setTimeout(fallbackToBrowser, 6000)
         lm.init(() => {
+          if (telegramSettled || finished) return
           try {
             lm.getLocation((loc: { latitude?: number; longitude?: number } | null) => {
+              if (telegramSettled || finished) return
+              telegramSettled = true
+              if (telegramTimer) clearTimeout(telegramTimer)
               if (loc && typeof loc.latitude === 'number' && typeof loc.longitude === 'number') done(loc.latitude, loc.longitude)
-              else fail()
+              else tryBrowserLocation()
             })
-          } catch { fail() }
+          } catch { fallbackToBrowser() }
         })
         return
       }
     } catch { /* ignore */ }
     // fallback：navigator.geolocation
-    if (navigator?.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => done(pos.coords.latitude, pos.coords.longitude),
-        () => fail(),
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
-      )
-    } else {
-      fail()
+    tryBrowserLocation()
+  }
+
+  function openLocationSettings() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lm = (window as any).Telegram?.WebApp?.LocationManager
+    try {
+      if (typeof lm?.openLocationSettings === 'function') {
+        lm.openLocationSettings()
+      } else if (typeof lm?.openSettings === 'function') {
+        lm.openSettings()
+      }
+    } catch {
+      /* ignore */
     }
   }
 
@@ -3991,6 +4052,11 @@ function DeliveryEditModal({
           </div>
         )}
         {geoMsg && !geoMsg.ok && <div style={dm.err}>{geoMsg.text}</div>}
+        {geoMsg && !geoMsg.ok && canOpenLocationSettings && (
+          <button type="button" style={dm.geoSettingsBtn} onClick={openLocationSettings}>
+            {L.locSettings}
+          </button>
+        )}
 
         {/* 门牌/位置照片 */}
         <div style={dm.label}>{L.photoTitle}</div>
