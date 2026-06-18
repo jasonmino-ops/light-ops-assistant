@@ -63,7 +63,7 @@ type DisplayCopy = typeof displayCopy.zh
 
 const POLL_MS = 800
 const HOT_ITEM_CAROUSEL_MS = 4000
-const COMPLETED_LINGER_MS = 8000  // 完成态展示 8 秒后回到 idle
+const COMPLETED_LINGER_MS = 2500  // 完成/取消态短暂停留后快速回到 idle
 const DRAFT_TIMEOUT_MS = 5 * 60 * 1000
 const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000
 
@@ -316,12 +316,15 @@ function ProductImage({
 }) {
   const [failed, setFailed] = useState(false)
   const imageSrc = displayImageSrc(src)
+  useEffect(() => {
+    setFailed(false)
+  }, [imageSrc])
   if (!imageSrc || failed) {
     return <div style={{ ...s.productPlaceholder, ...placeholderStyle }}>📦</div>
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={imageSrc} alt={name} style={{ ...s.productImage, ...imageStyle }} onError={() => setFailed(true)} />
+    <img src={imageSrc} alt={name} style={{ ...s.productImage, ...imageStyle }} decoding="async" onError={() => setFailed(true)} />
   )
 }
 
@@ -405,7 +408,7 @@ function IdleCard({ storeName, bannerUrl, products, t }: { storeName: string; ba
           <span style={s.pickHint}>{activeProduct ? t.recommendedForYou : t.pickHint}</span>
         </div>
         {activeProduct ? (
-          <div style={s.pickCarousel} key={activeProduct.id}>
+          <div style={s.pickCarousel}>
             <ProductImage
               src={activeProduct.imageUrl}
               name={activeProduct.name}
@@ -414,12 +417,14 @@ function IdleCard({ storeName, bannerUrl, products, t }: { storeName: string; ba
             />
             <div style={s.pickHeroBody}>
               <div style={s.pickHeroKicker}>{t.recommendedForYou}</div>
-              <div style={s.pickHeroName}>{activeProduct.name}</div>
-              {activeProduct.spec && <div style={s.pickHeroSpec}>{activeProduct.spec}</div>}
               <div style={s.pickHeroFooter}>
-                <span style={s.pickHeroPrice}>${activeProduct.sellPrice.toFixed(2)}</span>
-                {activeProduct.totalQty !== undefined && <span style={s.pickSold}>{t.soldThisWeek(activeProduct.totalQty)}</span>}
+                <div style={s.pickHeroText}>
+                  <div style={s.pickHeroName}>{activeProduct.name}</div>
+                  {activeProduct.spec && <div style={s.pickHeroSpec}>{activeProduct.spec}</div>}
+                </div>
+                <div style={s.pickHeroPrice}>${activeProduct.sellPrice.toFixed(2)}</div>
               </div>
+              {activeProduct.totalQty !== undefined && <span style={s.pickSold}>{t.soldThisWeek(activeProduct.totalQty)}</span>}
               {carouselProducts.length > 1 && (
                 <div style={s.pickProgress}>
                   {carouselProducts.map((product, index) => (
@@ -789,16 +794,17 @@ const s: Record<string, CSSProperties> = {
   pickSection: { background: '#fff', borderRadius: 18, padding: 16, border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,.05)', flex: 1, minHeight: 0 },
   pickHeader: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, fontSize: 17, fontWeight: 900, color: '#0f172a', marginBottom: 10 },
   pickHint: { fontSize: 12, fontWeight: 600, color: '#94a3b8' },
-  pickCarousel: { height: 'clamp(280px, 39vh, 330px)', borderRadius: 18, border: '1px solid #e5e7eb', background: '#f8fafc', padding: 12, display: 'grid', gridTemplateColumns: 'minmax(0, 2.2fr) minmax(190px, .8fr)', gap: 12, alignItems: 'stretch' },
+  pickCarousel: { height: 'clamp(300px, 43vh, 360px)', borderRadius: 18, border: '1px solid #e5e7eb', background: '#f8fafc', padding: 12, display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'stretch' },
   pickHeroImage: { width: '100%', height: '100%', minHeight: 0, borderRadius: 16, fontSize: 56, objectFit: 'contain', background: '#fff' },
-  pickHeroBody: { minWidth: 0, borderRadius: 16, background: '#fff', padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 },
+  pickHeroBody: { minWidth: 0, borderRadius: 16, background: '#fff', padding: '10px 14px', display: 'grid', gridTemplateColumns: 'auto 1fr', gridTemplateRows: 'auto auto', columnGap: 12, rowGap: 7, alignItems: 'center' },
   pickHeroKicker: { fontSize: 12, fontWeight: 900, color: ACCENT, textTransform: 'uppercase', letterSpacing: '.06em' },
-  pickHeroName: { minWidth: 0, fontSize: 22, lineHeight: 1.15, fontWeight: 950, color: '#0f172a', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
-  pickHeroSpec: { fontSize: 13, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  pickHeroFooter: { marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
-  pickHeroPrice: { fontSize: 26, fontWeight: 950, color: ACCENT },
-  pickSold: { fontSize: 11, color: '#64748b', fontWeight: 800, background: '#e2e8f0', borderRadius: 999, padding: '3px 8px', whiteSpace: 'nowrap' },
-  pickProgress: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 },
+  pickHeroFooter: { minWidth: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12, alignItems: 'center', gridColumn: '1 / -1' },
+  pickHeroText: { minWidth: 0 },
+  pickHeroName: { minWidth: 0, fontSize: 20, lineHeight: 1.12, fontWeight: 950, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  pickHeroSpec: { marginTop: 3, fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  pickHeroPrice: { fontSize: 24, fontWeight: 950, color: ACCENT, whiteSpace: 'nowrap' },
+  pickSold: { justifySelf: 'start', fontSize: 11, color: '#64748b', fontWeight: 800, background: '#e2e8f0', borderRadius: 999, padding: '3px 8px', whiteSpace: 'nowrap' },
+  pickProgress: { display: 'flex', alignItems: 'center', gap: 6, justifySelf: 'end' },
   pickDot: { width: 18, height: 5, borderRadius: 999, background: '#cbd5e1' },
   pickDotOn: { width: 32, height: 5, borderRadius: 999, background: ACCENT },
   brandFallback: { minHeight: 150, borderRadius: 14, border: '1px dashed #cbd5e1', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20 },
