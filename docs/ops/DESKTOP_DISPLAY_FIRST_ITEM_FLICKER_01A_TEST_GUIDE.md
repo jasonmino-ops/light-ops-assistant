@@ -19,6 +19,16 @@
 4. 观察顾客屏是否直接进入订单态，或在 0.5-1.5 秒内稳定显示商品和金额。
 5. 顾客屏不应先闪回欢迎页再显示订单。
 
+## 请求时序检查
+
+使用 Browser / Playwright 或 DevTools Network 观察点击后 0-2 秒：
+
+1. `/api/cashier/display-session` 应只出现一次有效 active 写入。
+2. active 写入的 `items.length` 应大于 0，`status` 应为 `DRAFT` 或 `AWAITING_PAYMENT`。
+3. 首件商品点击后不应再出现空 `items` 的 `CANCELLED` 写入。
+4. `/api/pos/session/current` 如果返回点击前已在途的旧空态响应，顾客屏不应在已显示 active order 后被旧空态覆盖。
+5. 后续轮询应稳定返回当前商品和金额。
+
 ## 后续同步测试
 
 1. 在员工端继续添加第二个商品。
