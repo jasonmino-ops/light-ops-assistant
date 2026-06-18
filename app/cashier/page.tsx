@@ -429,6 +429,7 @@ export default function CashierPage() {
   const ordersRef       = useRef<HTMLDivElement>(null)
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
+  const previousCashierDisplayCartCountRef = useRef(0)
 
   useEffect(() => {
     setIsDesktopPos(window.location.pathname === '/desktop/pos')
@@ -892,22 +893,23 @@ export default function CashierPage() {
     if (!storeCode || noCodeError || isRestoringCashierStore) return
 
     if (cart.length === 0) {
+      previousCashierDisplayCartCountRef.current = 0
       if (!cashierDisplayActiveRef.current) return
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
-      const timer = setTimeout(() => {
-        lastCashierDisplaySyncKey.current = '__terminal__'
-        void postCashierDisplaySession({
-          storeCode,
-          status: 'CANCELLED',
-          paymentMethod: null,
-          paymentStatus: null,
-          items: [],
-        })
-      }, CASHIER_DISPLAY_SYNC_DEBOUNCE_MS)
-      return () => clearTimeout(timer)
+      lastCashierDisplaySyncKey.current = '__terminal__'
+      void postCashierDisplaySession({
+        storeCode,
+        status: 'CANCELLED',
+        paymentMethod: null,
+        paymentStatus: null,
+        items: [],
+      })
+      return
     }
 
+    const shouldSyncImmediately = previousCashierDisplayCartCountRef.current === 0
+    previousCashierDisplayCartCountRef.current = cart.length
     cashierDisplayActiveRef.current = true
     const displayPayment: CashierDisplayPayment =
       payment === 'KHQR' && isOnline ? 'KHQR' :
@@ -924,6 +926,18 @@ export default function CashierPage() {
       items,
     })
     if (syncKey === lastCashierDisplaySyncKey.current) return
+    if (shouldSyncImmediately) {
+      lastCashierDisplaySyncKey.current = syncKey
+      void postCashierDisplaySession({
+        storeCode,
+        status,
+        paymentMethod: displayPayment,
+        paymentStatus,
+        items,
+        message: displayPayment === 'KHQR' ? '请扫码支付' : null,
+      })
+      return
+    }
     const timer = setTimeout(() => {
       lastCashierDisplaySyncKey.current = syncKey
       void postCashierDisplaySession({
