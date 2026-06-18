@@ -7,6 +7,7 @@ import { getPaymentBreakdown, getOrderPaymentMap } from '@/lib/payment-breakdown
  * GET /api/records?dateFrom=yyyy-MM-dd&dateTo=yyyy-MM-dd[&saleType=SALE|REFUND][&storeId=][&operatorUserId=][&page=1][&pageSize=20]
  *
  * Permission rules (enforced server-side, ignores body):
+ *   from=desktop&storeCode=xxx → read-only scoped to URL storeCode, ignoring session store
  *   STAFF  → always scoped to own userId + storeId from session headers
  *   OWNER  → accepts optional storeId / operatorUserId query params; no filter = global view
  *
@@ -16,14 +17,21 @@ import { getPaymentBreakdown, getOrderPaymentMap } from '@/lib/payment-breakdown
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams
   const ctx = await getContext(req)
-  const desktopStoreCode = p.get('from') === 'desktop' ? p.get('storeCode')?.trim() : null
-  const desktopStore = !ctx && desktopStoreCode
+  const isDesktopRequest = p.get('from') === 'desktop'
+  const desktopStoreCode = isDesktopRequest ? p.get('storeCode')?.trim() : null
+  const desktopStore = desktopStoreCode
     ? await prisma.store.findUnique({
         where: { code: desktopStoreCode },
-        select: { id: true, tenantId: true, status: true },
+        select: { id: true, tenantId: true, status: true, name: true },
       })
     : null
 
+  if (isDesktopRequest && !desktopStoreCode) {
+    return NextResponse.json({ error: 'MISSING_STORE_CODE' }, { status: 400 })
+  }
+  if (isDesktopRequest && !desktopStore) {
+    return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  }
   if (!ctx && !desktopStore) {
     return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
   }
@@ -31,8 +39,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
 
-  const tenantId = ctx?.tenantId ?? desktopStore!.tenantId
-  const isDesktopPublic = !ctx && !!desktopStore
+  const tenantId = desktopStore?.tenantId ?? ctx!.tenantId
+  const isDesktopScoped = isDesktopRequest && !!desktopStore
   const dateFrom = p.get('dateFrom')
   const dateTo = p.get('dateTo')
 
@@ -63,7 +71,7 @@ export async function GET(req: NextRequest) {
     createdAt: { gte: from, lte: to },
   }
 
-  if (isDesktopPublic) {
+  if (isDesktopScoped) {
     where.storeId = desktopStore!.id
   } else if (ctx!.role === 'STAFF') {
     // Hard-scope to own identity — query params for storeId/operatorUserId are ignored
@@ -89,7 +97,7 @@ export async function GET(req: NextRequest) {
   // 仅首页合并（避免分页重复）；STAFF / REFUND filter / 按员工筛选时不合并
   const operatorUserIdQ = p.get('operatorUserId')
   const shouldIncludeCO =
-    (isDesktopPublic || ctx!.role !== 'STAFF') &&
+    (isDesktopScoped || ctx!.role !== 'STAFF') &&
     saleTypeParam !== 'REFUND' &&
     !operatorUserIdQ &&
     page === 1
@@ -153,8 +161,8 @@ export async function GET(req: NextRequest) {
   const totalRefundAmount = refundAgg._sum.lineAmount?.toNumber() ?? 0
 
   // Payment breakdown (CASH vs KHQR paid) + per-order PI info
-  const storeId = isDesktopPublic ? desktopStore!.id : ctx!.role === 'STAFF' ? ctx!.storeId : (where.storeId as string | undefined)
-  const operatorUserId = isDesktopPublic ? undefined : ctx!.role === 'STAFF' ? ctx!.userId : (where.operatorUserId as string | undefined)
+  const storeId = isDesktopScoped ? desktopStore!.id : ctx!.role === 'STAFF' ? ctx!.storeId : (where.storeId as string | undefined)
+  const operatorUserId = isDesktopScoped ? undefined : ctx!.role === 'STAFF' ? ctx!.userId : (where.operatorUserId as string | undefined)
 
   const [breakdown, paymentMap] = await Promise.all([
     saleTypeParam !== 'REFUND'
@@ -264,6 +272,9 @@ export async function GET(req: NextRequest) {
     page,
     pageSize,
     items: merged,
+    desktopStore: isDesktopScoped
+      ? { storeCode: desktopStoreCode, storeName: desktopStore!.name }
+      : null,
     summary: {
       saleCount: saleAgg._count + coCount,
       refundCount: refundAgg._count,

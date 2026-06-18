@@ -62,6 +62,10 @@ type ApiResponse = {
   pageSize: number
   items: RecordItem[]
   summary: Summary
+  desktopStore?: {
+    storeCode: string
+    storeName: string
+  } | null
 }
 
 type OrderGroup = {
@@ -245,6 +249,7 @@ export default function RecordsPage() {
 
   const [allItems, setAllItems] = useState<RecordItem[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [desktopResolvedStoreName, setDesktopResolvedStoreName] = useState<string | null>(null)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
 
@@ -263,6 +268,7 @@ export default function RecordsPage() {
       if (cached) {
         setAllItems(cached.items)
         setSummary(cached.summary)
+        setDesktopResolvedStoreName(cached.desktopStore?.storeName ?? null)
         setTotal(cached.total)
         setPage(cached.page)
         setLoading(false)
@@ -293,6 +299,7 @@ export default function RecordsPage() {
         const data: ApiResponse = await res.json()
         setAllItems((prev) => (append ? [...prev, ...data.items] : data.items))
         setSummary(data.summary)
+        if (!append) setDesktopResolvedStoreName(data.desktopStore?.storeName ?? null)
         setTotal(data.total)
         setPage(data.page)
         if (!append && targetPage === 1) writeRecordsCache(cacheKey, data)
@@ -334,9 +341,12 @@ export default function RecordsPage() {
 
   const entries = buildEntries(allItems)
   const hasMore = allItems.length < total
-  const displayStoreName = contextStoreName ?? contextTenantName ?? 'E-Shop'
+  const displayStoreName = isDesktopRecords
+    ? (desktopResolvedStoreName ?? allItems[0]?.storeName ?? desktopStoreCode)
+    : (contextStoreName ?? contextTenantName ?? 'E-Shop')
   const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
-  const storeAvatarUrl = contextStoreCode && !avatarFailed ? `/api/public/stores/${contextStoreCode}/banner` : null
+  const avatarStoreCode = isDesktopRecords ? desktopStoreCode : contextStoreCode
+  const storeAvatarUrl = avatarStoreCode && !avatarFailed ? `/api/public/stores/${avatarStoreCode}/banner` : null
   const customerOrderAmount = entries.reduce((sum, entry) => (
     entry.kind === 'order' && entry.source === 'CUSTOMER_ORDER' ? sum + entry.totalAmount : sum
   ), 0)
@@ -347,10 +357,10 @@ export default function RecordsPage() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main style={s.page}>
+    <main style={{ ...s.page, ...(isDesktopRecords ? s.pageDesktop : {}) }}>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
 
-      <div style={s.recordsHeader}>
+      <div style={{ ...s.recordsHeader, ...(isDesktopRecords ? s.recordsHeaderDesktop : {}) }}>
         <div style={s.brandLeft}>
           <span style={s.brandAvatar}>
             {storeAvatarUrl ? (
@@ -380,7 +390,7 @@ export default function RecordsPage() {
         </div>
       </div>
 
-      <div style={s.body}>
+      <div style={{ ...s.body, ...(isDesktopRecords ? s.bodyDesktop : {}) }}>
         {/* ── Summary hero ── */}
         <div style={s.heroCard}>
           <div style={s.heroTopRow}>
@@ -762,6 +772,9 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     color: '#111827',
   },
+  pageDesktop: {
+    background: '#eef2f7',
+  },
   recordsHeader: {
     padding: '12px 14px 8px',
     display: 'flex',
@@ -772,6 +785,11 @@ const s: Record<string, React.CSSProperties> = {
     width: '100%',
     margin: '0 auto',
     minHeight: 64,
+  },
+  recordsHeaderDesktop: {
+    maxWidth: 1180,
+    padding: '18px 28px 12px',
+    minHeight: 78,
   },
   brandLeft: {
     display: 'flex',
@@ -862,6 +880,10 @@ const s: Record<string, React.CSSProperties> = {
     maxWidth: 520,
     margin: '0 auto',
     width: '100%',
+  },
+  bodyDesktop: {
+    maxWidth: 1180,
+    padding: '12px 28px 28px',
   },
   heroCard: {
     background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdfa 50%, #ffffff 100%)',

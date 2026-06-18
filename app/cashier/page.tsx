@@ -268,6 +268,26 @@ const s: Record<string, CSSProperties> = {
   sideFooter:  { padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,.08)', display: 'flex', flexDirection: 'column', gap: 6 },
   sideLinkPri: { fontSize: 12, color: '#60a5fa', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, fontWeight: 600 },
   sideLinkSec: { fontSize: 12, color: '#475569', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0 },
+  sideLinkDesktopPri: {
+    minHeight: 44,
+    padding: '0 12px',
+    borderRadius: 12,
+    background: 'rgba(37,99,235,.18)',
+    border: '1px solid rgba(96,165,250,.28)',
+    color: '#dbeafe',
+    fontSize: 15,
+    fontWeight: 850,
+  },
+  sideLinkDesktopSec: {
+    minHeight: 42,
+    padding: '0 12px',
+    borderRadius: 12,
+    background: 'rgba(255,255,255,.08)',
+    border: '1px solid rgba(255,255,255,.12)',
+    color: '#e2e8f0',
+    fontSize: 15,
+    fontWeight: 780,
+  },
 
   // ── Middle: product grid ──────────────────────────────────────────────────
   mid:         { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', minWidth: 0 },
@@ -401,6 +421,7 @@ export default function CashierPage() {
   const [memberPayLoading, setMemberPayLoading] = useState(false)
   const [memberPayError, setMemberPayError] = useState('')
   const [memberPayMember, setMemberPayMember] = useState<CashierMember | null>(null)
+  const [isDesktopPos, setIsDesktopPos] = useState(false)
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -408,6 +429,10 @@ export default function CashierPage() {
   const ordersRef       = useRef<HTMLDivElement>(null)
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
+
+  useEffect(() => {
+    setIsDesktopPos(window.location.pathname === '/desktop/pos')
+  }, [])
 
   // ── Load store data ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1198,7 +1223,10 @@ export default function CashierPage() {
             })}
           </div>
           <div style={s.sideFooter}>
-            <button style={s.sideLinkPri} onClick={() => ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            <button
+              style={{ ...s.sideLinkPri, ...(isDesktopPos ? s.sideLinkDesktopPri : {}) }}
+              onClick={() => ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            >
               📋 接单看板
               {pendingOrders.length > 0 && (
                 <span style={{ marginLeft: 6, background: '#fcd34d', color: '#92400e', borderRadius: 8, padding: '0 5px', fontSize: 11 }}>
@@ -1206,9 +1234,14 @@ export default function CashierPage() {
                 </span>
               )}
             </button>
-            <button style={s.sideLinkSec} onClick={() => showToast('请在手机商户端管理商品')}>商品管理</button>
             <button
-              style={s.sideLinkSec}
+              style={{ ...s.sideLinkSec, ...(isDesktopPos ? s.sideLinkDesktopSec : {}) }}
+              onClick={() => showToast('请在手机商户端管理商品')}
+            >
+              商品管理
+            </button>
+            <button
+              style={{ ...s.sideLinkSec, ...(isDesktopPos ? s.sideLinkDesktopSec : {}) }}
               onClick={() => {
                 if (!storeCode) {
                   showToast('请先使用带门店编号的收银链接打开')
