@@ -91,54 +91,9 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  const weekStart = new Date()
-  weekStart.setHours(0, 0, 0, 0)
-  weekStart.setDate(weekStart.getDate() - 6)
-  const weeklyHotRows = await prisma.saleRecord.groupBy({
-    by: ['productId'],
-    where: {
-      tenantId: store.tenantId,
-      storeId: store.id,
-      saleType: 'SALE',
-      status: 'COMPLETED',
-      createdAt: { gte: weekStart },
-    },
-    _sum: { quantity: true },
-    orderBy: { _sum: { quantity: 'desc' } },
-    take: 6,
-  })
-  const weeklyProductIds = weeklyHotRows
-    .map((row) => row.productId)
-    .filter((id): id is string => !!id)
-  const weeklyQtyMap = new Map(weeklyHotRows.map((row) => [
-    row.productId,
-    row._sum.quantity?.toNumber() ?? 0,
-  ]))
-  const weeklyProductRows = weeklyProductIds.length > 0
-    ? await prisma.product.findMany({
-        where: {
-          tenantId: store.tenantId,
-          id: { in: weeklyProductIds },
-          status: 'ACTIVE',
-        },
-        select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true },
-      })
-    : []
-  const weeklyProductMap = new Map(weeklyProductRows.map((p) => [p.id, p]))
-
-  const fallbackRows = await prisma.product.findMany({
-    where: {
-      tenantId: store.tenantId,
-      status: 'ACTIVE',
-      OR: [
-        { imageUrl: { not: null } },
-        { imageUrls: { not: null } },
-      ],
-    },
-    select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true, updatedAt: true },
-    orderBy: { updatedAt: 'desc' },
-    take: 12,
-  })
+  const items = parseItems(row?.itemsJson)
+  const hasActiveItems = Boolean(row && row.status !== 'CANCELLED' && items.length > 0)
+  let displayProducts: DisplayProduct[] = []
 
   function toDisplayProduct(p: { id: string; name: string; spec: string | null; sellPrice: { toNumber(): number }; imageUrl: string | null; imageUrls: string | null }, totalQty?: number): DisplayProduct | null {
     const imageUrl = cleanDisplayImageUrl(p.imageUrl) ?? cleanDisplayImageUrl(parseImageUrls(p.imageUrls, p.imageUrl)[0])
@@ -153,22 +108,72 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const displayProductMap = new Map<string, DisplayProduct>()
-  for (const id of weeklyProductIds) {
-    const product = weeklyProductMap.get(id)
-    const displayProduct = product ? toDisplayProduct(product, weeklyQtyMap.get(id) ?? 0) : null
-    if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
-    if (displayProductMap.size >= 3) break
-  }
-  for (const product of fallbackRows) {
-    if (displayProductMap.size >= 3) break
-    if (displayProductMap.has(product.id)) continue
-    const displayProduct = toDisplayProduct(product)
-    if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
-  }
-  const displayProducts = Array.from(displayProductMap.values()).slice(0, 3)
+  if (!hasActiveItems) {
+    const weekStart = new Date()
+    weekStart.setHours(0, 0, 0, 0)
+    weekStart.setDate(weekStart.getDate() - 6)
+    const weeklyHotRows = await prisma.saleRecord.groupBy({
+      by: ['productId'],
+      where: {
+        tenantId: store.tenantId,
+        storeId: store.id,
+        saleType: 'SALE',
+        status: 'COMPLETED',
+        createdAt: { gte: weekStart },
+      },
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: 6,
+    })
+    const weeklyProductIds = weeklyHotRows
+      .map((row) => row.productId)
+      .filter((id): id is string => !!id)
+    const weeklyQtyMap = new Map(weeklyHotRows.map((row) => [
+      row.productId,
+      row._sum.quantity?.toNumber() ?? 0,
+    ]))
+    const weeklyProductRows = weeklyProductIds.length > 0
+      ? await prisma.product.findMany({
+          where: {
+            tenantId: store.tenantId,
+            id: { in: weeklyProductIds },
+            status: 'ACTIVE',
+          },
+          select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true },
+        })
+      : []
+    const weeklyProductMap = new Map(weeklyProductRows.map((p) => [p.id, p]))
 
-  const items = parseItems(row?.itemsJson)
+    const fallbackRows = await prisma.product.findMany({
+      where: {
+        tenantId: store.tenantId,
+        status: 'ACTIVE',
+        OR: [
+          { imageUrl: { not: null } },
+          { imageUrls: { not: null } },
+        ],
+      },
+      select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true, updatedAt: true },
+      orderBy: { updatedAt: 'desc' },
+      take: 12,
+    })
+
+    const displayProductMap = new Map<string, DisplayProduct>()
+    for (const id of weeklyProductIds) {
+      const product = weeklyProductMap.get(id)
+      const displayProduct = product ? toDisplayProduct(product, weeklyQtyMap.get(id) ?? 0) : null
+      if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
+      if (displayProductMap.size >= 3) break
+    }
+    for (const product of fallbackRows) {
+      if (displayProductMap.size >= 3) break
+      if (displayProductMap.has(product.id)) continue
+      const displayProduct = toDisplayProduct(product)
+      if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
+    }
+    displayProducts = Array.from(displayProductMap.values()).slice(0, 3)
+  }
+
   const missingImageProductIds = items
     .filter((item) => !cleanDisplayImageUrl(item.imageUrl))
     .map((item) => item.productId)
@@ -198,10 +203,11 @@ export async function GET(req: NextRequest) {
       ? 'EXPIRED_CHECKOUT'
       : row?.status ?? null
 
-  const khqrConfig = await findKhqrConfig(store.tenantId, store.id)
+  const sessionKhqrImageUrl = cleanDisplayImageUrl(row?.khqrImageUrl)
+  const needsStoreKhqr = !hasActiveItems || (row?.paymentMethod === 'KHQR' && !sessionKhqrImageUrl)
+  const khqrConfig = needsStoreKhqr ? await findKhqrConfig(store.tenantId, store.id) : null
   const storeKhqrImageUrl = cleanDisplayImageUrl(khqrConfig?.khqrImageUrl)
-  const khqrImageUrl = cleanDisplayImageUrl(row?.khqrImageUrl)
-    ?? storeKhqrImageUrl
+  const khqrImageUrl = sessionKhqrImageUrl ?? (row?.paymentMethod === 'KHQR' ? storeKhqrImageUrl : null)
 
   return json({
     storeCode: store.code,

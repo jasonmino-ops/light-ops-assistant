@@ -90,8 +90,9 @@
 4. 顾客屏 `/desktop/display` 应持续轮询：
    `GET /api/pos/session/current?storeCode=...`
 5. current API 返回的 `session.items` 和 `session.totalAmount` 应与员工端购物车一致。
-6. 如果 POST 成功但 current 为空，检查两个页面的 `storeCode` 是否一致。
-7. 如果 current 有数据但页面不显示，问题在顾客屏渲染层。
+6. 有当前订单时，current API 不应返回空闲态热销推荐大负载，也不应给 CASH 当前单返回常驻 KHQR 大图。
+7. 如果 POST 成功但 current 为空，检查两个页面的 `storeCode` 是否一致。
+8. 如果 current 有数据但页面不显示，问题在顾客屏渲染层。
 
 ## 不应发生
 
