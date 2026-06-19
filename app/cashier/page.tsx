@@ -953,6 +953,7 @@ export default function CashierPage() {
 
   useEffect(() => {
     if (!storeCode || noCodeError || isRestoringCashierStore) return
+    if (isDesktopPos && checkoutStep === 'SELECT_PAYMENT') return
 
     if (cart.length === 0) {
       previousCashierDisplayCartCountRef.current = 0
@@ -1012,7 +1013,7 @@ export default function CashierPage() {
       })
     }, CASHIER_DISPLAY_SYNC_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore])
+  }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore, isDesktopPos, checkoutStep])
 
   // ── Submit sale ────────────────────────────────────────────────────────────
   async function handleSubmit(paymentOverride?: CashierPaymentMethod) {
@@ -1608,7 +1609,8 @@ export default function CashierPage() {
                       type="button"
                       style={s.secondaryBtn}
                       onClick={() => {
-                        syncCurrentCartToCustomerDisplay('KHQR')
+                        setDesktopSelectedPaymentMethod(null)
+                        syncCurrentCartToCustomerDisplay('CASH')
                         setCheckoutStep('CONFIRM_ORDER')
                       }}
                     >
