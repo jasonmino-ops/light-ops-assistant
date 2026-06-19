@@ -234,6 +234,7 @@ export default function DesktopMirrorPage() {
             storeName={data?.storeName ?? storeCode ?? ''}
             bannerUrl={data?.storeBannerUrl ?? null}
             products={data?.displayProducts ?? []}
+            storeKhqrImageUrl={data?.storeKhqrImageUrl ?? null}
             pollingRef={pollInFlightRef}
             t={t}
           />
@@ -284,19 +285,25 @@ const IdleStage = memo(function IdleStage({
   storeName,
   bannerUrl,
   products,
+  storeKhqrImageUrl,
   pollingRef,
   t,
 }: {
   storeName: string
   bannerUrl: string | null
   products: DisplayProduct[]
+  storeKhqrImageUrl: string | null
   pollingRef: RefObject<boolean>
   t: DisplayCopy
 }) {
   return (
     <div style={s.idleStage}>
       <IdleCard storeName={storeName} bannerUrl={bannerUrl} products={products} pollingRef={pollingRef} t={t} />
-      <div style={s.idlePaymentHint}>{t.idlePaymentHint}</div>
+      <section style={s.idleKhqrPanel}>
+        <div style={s.idleKhqrTitle}>{t.storeKhqrTitle}</div>
+        <PaymentCard session={null} recentlyCompleted={false} storeKhqrImageUrl={storeKhqrImageUrl} t={t} />
+        <div style={s.idlePaymentHint}>{t.idlePaymentHint}</div>
+      </section>
     </div>
   )
 })
@@ -585,7 +592,7 @@ const PaymentCard = memo(function PaymentCard({
            session?.status === 'AWAITING_PAYMENT' ? t.waitingPaymentMethod :
            session?.status === 'DRAFT' ? t.checkingOutShort :
            session?.status === 'COMPLETED' ? t.completed :
-           !hasOrder ? t.selectItemsFirst :
+           !hasOrder ? t.noStoreKhqr :
            '—'}
         </div>
       )}
@@ -695,6 +702,8 @@ const displayCopy = {
     welcome: '欢迎光临',
     waitingCashier: '等待收银 · 支持 CASH / KHQR',
     idlePaymentHint: '支持 CASH / KHQR · 结账时会显示付款二维码',
+    storeKhqrTitle: '门店收款码',
+    noStoreKhqr: '暂未配置 KHQR 收款码',
     customerDisplay: '顾客收银显示屏',
     topSellers: '本周热销',
     pickHint: '店员添加商品后，请核对应付金额',
@@ -750,6 +759,8 @@ const displayCopy = {
     welcome: 'Welcome',
     waitingCashier: 'Waiting for cashier · CASH / KHQR supported',
     idlePaymentHint: 'Supports CASH / KHQR · The payment QR appears at checkout',
+    storeKhqrTitle: 'Store KHQR',
+    noStoreKhqr: 'Store KHQR is not configured',
     customerDisplay: 'Customer checkout display',
     topSellers: 'Top sellers this week',
     pickHint: 'Check the amount after the cashier adds items',
@@ -805,6 +816,8 @@ const displayCopy = {
     welcome: 'សូមស្វាគមន៍',
     waitingCashier: 'រង់ចាំបញ្ជរ · គាំទ្រ CASH / KHQR',
     idlePaymentHint: 'គាំទ្រ CASH / KHQR · QR នឹងបង្ហាញពេលគិតលុយ',
+    storeKhqrTitle: 'Store KHQR',
+    noStoreKhqr: 'Store KHQR is not configured',
     customerDisplay: 'អេក្រង់គិតលុយអតិថិជន',
     topSellers: 'ទំនិញលក់ដាច់សប្តាហ៍នេះ',
     pickHint: 'សូមពិនិត្យចំនួនទឹកប្រាក់បន្ទាប់ពីបុគ្គលិកបន្ថែមទំនិញ',
@@ -859,8 +872,10 @@ const s: Record<string, CSSProperties> = {
 
   stageWrap: { flex: 1, minHeight: 0, overflow: 'hidden', padding: 12, display: 'flex' },
   stateCenter: { flex: 1, minHeight: 0, borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', overflow: 'hidden' },
-  idleStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', gap: 10 },
-  idlePaymentHint: { justifySelf: 'center', borderRadius: 999, border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', fontSize: 13, fontWeight: 800, padding: '8px 16px' },
+  idleStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 360px)', gap: 12 },
+  idleKhqrPanel: { minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10 },
+  idleKhqrTitle: { flexShrink: 0, textAlign: 'center', borderRadius: 999, border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', fontSize: 16, fontWeight: 950, padding: '10px 16px' },
+  idlePaymentHint: { flexShrink: 0, textAlign: 'center', borderRadius: 999, border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', fontSize: 13, fontWeight: 800, padding: '8px 16px' },
   orderStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(360px, .86fr) minmax(0, 1.14fr)', gap: 12 },
   orderFocusCard: { borderRadius: 22, background: 'linear-gradient(135deg, #ffffff 0%, #eff6ff 100%)', border: '1px solid #dbeafe', boxShadow: '0 18px 38px rgba(37,99,235,.12)', padding: 30, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', minHeight: 0 },
   orderAmount: { marginTop: 8, fontSize: 'clamp(68px, 9vw, 132px)', lineHeight: .9, fontWeight: 950, color: ACCENT, letterSpacing: '-3px' },
