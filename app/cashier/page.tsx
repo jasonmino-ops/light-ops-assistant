@@ -37,6 +37,7 @@ type CartLine = {
 type SaleResult = { orderNo?: string; totalAmount: number; khqrFallback?: boolean; paymentMethod?: string }
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
+type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
 type DesktopCheckoutStep = 'SELECT_ITEMS' | 'CONFIRM_ORDER' | 'SELECT_PAYMENT'
 type DesktopPaymentMethod = 'CASH' | 'KHQR' | null
 
@@ -410,7 +411,7 @@ export default function CashierPage() {
   const [activeCatId,   setActiveCatId]   = useState<string | null>(null)
   const [searchKw,      setSearchKw]      = useState('')
   const [cart,          setCart]          = useState<CartLine[]>([])
-  const [payment,       setPayment]       = useState<'CASH'|'KHQR'|'OTHER'|'MEMBER_BALANCE'>('CASH')
+  const [payment,       setPayment]       = useState<CashierPaymentMethod>('CASH')
   const [submitting,    setSubmitting]    = useState(false)
   const [submitError,   setSubmitError]   = useState('')
   const [saleResult,    setSaleResult]    = useState<SaleResult | null>(null)
@@ -980,9 +981,10 @@ export default function CashierPage() {
   }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore])
 
   // ── Submit sale ────────────────────────────────────────────────────────────
-  async function handleSubmit() {
+  async function handleSubmit(paymentOverride?: CashierPaymentMethod) {
     if (cart.length === 0 || submitting || !storeCode) return
-    if (payment === 'MEMBER_BALANCE') {
+    const submitPayment = paymentOverride ?? payment
+    if (submitPayment === 'MEMBER_BALANCE') {
       if (!isOnline) {
         showToast('离线模式下不支持会员余额支付')
         return
@@ -991,7 +993,7 @@ export default function CashierPage() {
       return
     }
     if (!isOnline) {
-      if (payment !== 'CASH') {
+      if (submitPayment !== 'CASH') {
         showToast('离线模式暂不支持 KHQR，请使用 CASH 收款')
         return
       }
@@ -1053,7 +1055,7 @@ export default function CashierPage() {
       return
     }
     setSubmitting(true); setSubmitError('')
-    const apiPayment = payment === 'OTHER' ? 'CASH' : payment
+    const apiPayment = submitPayment === 'OTHER' ? 'CASH' : submitPayment
     const submittedItems = cashierDisplayItems(cart)
     const submittedTotal = cartTotal(cart)
     try {
@@ -1524,9 +1526,32 @@ export default function CashierPage() {
                   </div>
                   {desktopSelectedPaymentMethod && (
                     <div style={s.nextStepBox}>
-                      当前已选择：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。下一步：确认收款（01C 开发）。
+                      当前已选择：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。请确认已收款后完成销售。
                     </div>
                   )}
+                  {submitError && (
+                    <div style={{ fontSize: 12, color: '#ef4444', padding: '5px 8px', background: '#fef2f2', borderRadius: 6 }}>
+                      {submitError}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    style={{ ...s.submitBtn, ...(!desktopSelectedPaymentMethod || submitting ? s.submitDis : {}) }}
+                    disabled={!desktopSelectedPaymentMethod || submitting}
+                    onClick={() => {
+                      if (!desktopSelectedPaymentMethod) return
+                      setPayment(desktopSelectedPaymentMethod)
+                      void handleSubmit(desktopSelectedPaymentMethod)
+                    }}
+                  >
+                    {submitting
+                      ? '处理中…'
+                      : desktopSelectedPaymentMethod === 'KHQR'
+                        ? '确认 KHQR 已收款，完成销售'
+                        : desktopSelectedPaymentMethod === 'CASH'
+                          ? '确认现金已收款，完成销售'
+                          : '确认收款，完成销售'}
+                  </button>
                   <div style={s.totalRow}>
                     <span style={s.totalLbl}>商品种类</span>
                     <span style={s.confirmAmt}>{cart.length} 类</span>
@@ -1539,7 +1564,7 @@ export default function CashierPage() {
                       返回修改商品
                     </button>
                   </div>
-                  <div style={s.printHint}>本轮仅选择收款方式，不调用完成销售接口。</div>
+                  <div style={s.printHint}>复用原 /cashier 完成销售逻辑 · 不新增提交接口</div>
                 </div>
               ) : (
                 <>
@@ -1615,7 +1640,7 @@ export default function CashierPage() {
                 <button
                   style={{ ...s.submitBtn, ...(cart.length === 0 || submitting ? s.submitDis : {}) }}
                   disabled={cart.length === 0 || submitting}
-                  onClick={handleSubmit}
+                  onClick={() => { void handleSubmit() }}
                 >
                   {submitting ? '处理中…' : payment === 'MEMBER_BALANCE' ? '👤 会员余额支付' : '✓ 完成销售'}
                 </button>
