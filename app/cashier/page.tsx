@@ -1510,18 +1510,24 @@ export default function CashierPage() {
                     <button
                       type="button"
                       style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'CASH' ? s.desktopPayOptionOn : {}) }}
-                      onClick={() => setDesktopSelectedPaymentMethod('CASH')}
+                      onClick={() => {
+                        setDesktopSelectedPaymentMethod('CASH')
+                        setPayment('CASH')
+                      }}
                     >
                       <span style={s.desktopPayMain}>💵 现金收款 CASH</span>
-                      <span style={s.desktopPaySub}>仅选择现金收款方式，不创建销售记录。</span>
+                      <span style={s.desktopPaySub}>选择现金收款，并清除本单 KHQR 展示。</span>
                     </button>
                     <button
                       type="button"
                       style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'KHQR' ? s.desktopPayOptionOn : {}) }}
-                      onClick={() => setDesktopSelectedPaymentMethod('KHQR')}
+                      onClick={() => {
+                        setDesktopSelectedPaymentMethod('KHQR')
+                        setPayment('KHQR')
+                      }}
                     >
                       <span style={s.desktopPayMain}>📱 扫码收款 KHQR</span>
-                      <span style={s.desktopPaySub}>仅选择 KHQR，不生成新支付单。</span>
+                      <span style={s.desktopPaySub}>选择 KHQR 后，顾客屏会显示本单二维码。</span>
                     </button>
                   </div>
                   {desktopSelectedPaymentMethod && (
