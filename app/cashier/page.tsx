@@ -40,6 +40,9 @@ type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
 type DesktopCheckoutStep = 'SELECT_ITEMS' | 'CONFIRM_ORDER' | 'SELECT_PAYMENT'
 type DesktopPaymentMethod = 'CASH' | 'KHQR' | null
+type CustomerDisplaySyncOptions = { focusKhqr?: boolean }
+
+const CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE = 'KHQR_FOCUS'
 
 type CashierMember = {
   id: string
@@ -917,7 +920,7 @@ export default function CashierPage() {
     )
   }, [])
 
-  const syncCurrentCartToCustomerDisplay = useCallback((nextPayment: CashierPaymentMethod) => {
+  const syncCurrentCartToCustomerDisplay = useCallback((nextPayment: CashierPaymentMethod, options?: CustomerDisplaySyncOptions) => {
     if (!storeCode || noCodeError || isRestoringCashierStore || cart.length === 0) return
     const displayPayment: CashierDisplayPayment =
       nextPayment === 'KHQR' && isOnline ? 'KHQR' :
@@ -942,7 +945,9 @@ export default function CashierPage() {
       paymentMethod: displayPayment,
       paymentStatus,
       items,
-      message: displayPayment === 'KHQR' ? '请扫码支付' : null,
+      message: displayPayment === 'KHQR'
+        ? (options?.focusKhqr ? CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE : '请扫码支付')
+        : null,
     })
   }, [cart, storeCode, isOnline, noCodeError, isRestoringCashierStore])
 
@@ -1549,6 +1554,7 @@ export default function CashierPage() {
                       style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'CASH' ? s.desktopPayOptionOn : {}) }}
                       onClick={() => {
                         setDesktopSelectedPaymentMethod('CASH')
+                        syncCurrentCartToCustomerDisplay('KHQR')
                       }}
                     >
                       <span style={s.desktopPayMain}>💵 现金收款 CASH</span>
@@ -1559,6 +1565,7 @@ export default function CashierPage() {
                       style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'KHQR' ? s.desktopPayOptionOn : {}) }}
                       onClick={() => {
                         setDesktopSelectedPaymentMethod('KHQR')
+                        syncCurrentCartToCustomerDisplay('KHQR', { focusKhqr: true })
                       }}
                     >
                       <span style={s.desktopPayMain}>📱 扫码收款 KHQR</span>
@@ -1597,7 +1604,14 @@ export default function CashierPage() {
                     <span style={s.confirmAmt}>{cart.length} 类</span>
                   </div>
                   <div style={s.confirmActions}>
-                    <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('CONFIRM_ORDER')}>
+                    <button
+                      type="button"
+                      style={s.secondaryBtn}
+                      onClick={() => {
+                        syncCurrentCartToCustomerDisplay('KHQR')
+                        setCheckoutStep('CONFIRM_ORDER')
+                      }}
+                    >
                       返回本单确认
                     </button>
                     <button

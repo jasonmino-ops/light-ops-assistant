@@ -67,6 +67,7 @@ const HOT_ITEM_CAROUSEL_MS = 4000
 const COMPLETED_LINGER_MS = 2500  // 完成/取消态短暂停留后快速回到 idle
 const DRAFT_TIMEOUT_MS = 5 * 60 * 1000
 const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000
+const CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE = 'KHQR_FOCUS'
 
 export default function DesktopMirrorPage() {
   const [storeCode, setStoreCode] = useState<string | null>(null)
@@ -209,6 +210,9 @@ export default function DesktopMirrorPage() {
     isLive && session?.paymentMethod === 'KHQR' ? 'PAYMENT_KHQR' :
     isLive ? 'ORDER_ACTIVE' :
     'IDLE'
+  const showKhqrFocus = displayMode === 'PAYMENT_KHQR'
+    && session?.message === CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE
+    && hasKhqrDisplaySource(session)
 
   return (
     <div style={s.root}>
@@ -266,6 +270,10 @@ export default function DesktopMirrorPage() {
           </div>
         )}
       </div>
+
+      {showKhqrFocus && session && (
+        <KhqrFocusOverlay session={session} t={t} />
+      )}
 
       {/* Footer */}
       <div style={s.footer}>
@@ -338,6 +346,32 @@ const KhqrPaymentStage = memo(function KhqrPaymentStage({ session, t }: { sessio
       <section style={s.khqrSide}>
         <CartList items={session.items} itemCount={session.itemCount} totalAmount={session.totalAmount} t={t} />
       </section>
+    </div>
+  )
+})
+
+const KhqrFocusOverlay = memo(function KhqrFocusOverlay({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
+  const khqrImageSrc = displayImageSrc(session.khqrImageUrl)
+  const qrValue = session.khqrPayload || (!khqrImageSrc ? session.khqrImageUrl : null)
+
+  if (!khqrImageSrc && !qrValue) return null
+
+  return (
+    <div style={s.khqrFocusBackdrop}>
+      <div style={s.khqrFocusPanel}>
+        <div style={s.khqrFocusTitle}>{t.scanToPay}</div>
+        <div style={s.khqrFocusAmount}>${session.totalAmount.toFixed(2)}</div>
+        <div style={s.khqrFocusQr}>
+          {khqrImageSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={khqrImageSrc} alt="KHQR" style={s.khqrFocusImage} />
+          ) : (
+            <QRCode value={qrValue || ''} size={430} />
+          )}
+        </div>
+        <div style={s.khqrFocusMethod}>KHQR / Scan to Pay</div>
+        <div style={s.khqrFocusSub}>{t.khqrFocusSub}</div>
+      </div>
     </div>
   )
 })
@@ -625,6 +659,11 @@ function sessionHasOrderContent(session: SessionPayload | null): boolean {
   return Boolean(session && (session.items.length > 0 || session.itemCount > 0 || session.totalAmount > 0))
 }
 
+function hasKhqrDisplaySource(session: SessionPayload | null): boolean {
+  if (!session || session.paymentMethod !== 'KHQR') return false
+  return Boolean(displayImageSrc(session.khqrImageUrl) || session.khqrPayload || session.khqrImageUrl)
+}
+
 function shouldIgnoreStaleDisplayResponse(current: SessionPayload | null, next: SessionPayload | null): boolean {
   if (!current) return false
   const currentUpdatedAt = new Date(current.updatedAt).getTime()
@@ -718,6 +757,7 @@ const displayCopy = {
     paymentMethod: '收款方式',
     paid: '已收款',
     scanToPay: '请扫码付款',
+    khqrFocusSub: '付款完成后请告知店员',
     scanSupported: '支持扫码付款 · 请先选择商品',
     selectItemsFirst: '请先选择商品',
     payStaff: '请向店员付款',
@@ -775,6 +815,7 @@ const displayCopy = {
     paymentMethod: 'Payment Method',
     paid: 'Paid',
     scanToPay: 'Please scan to pay',
+    khqrFocusSub: 'Please tell the cashier after payment',
     scanSupported: 'Scan payment supported · Select items first',
     selectItemsFirst: 'Select items first',
     payStaff: 'Please pay the cashier',
@@ -832,6 +873,7 @@ const displayCopy = {
     paymentMethod: 'វិធីបង់ប្រាក់',
     paid: 'បានទទួលប្រាក់',
     scanToPay: 'សូមស្កេនដើម្បីបង់ប្រាក់',
+    khqrFocusSub: 'Please tell the cashier after payment',
     scanSupported: 'គាំទ្រការស្កេនបង់ប្រាក់ · សូមជ្រើសទំនិញជាមុន',
     selectItemsFirst: 'សូមជ្រើសទំនិញជាមុន',
     payStaff: 'សូមបង់ប្រាក់ជាមួយបុគ្គលិក',
@@ -887,6 +929,14 @@ const s: Record<string, CSSProperties> = {
   khqrTitle: { fontSize: 'clamp(28px, 3.2vw, 48px)', lineHeight: 1.05, fontWeight: 950, color: '#0f172a', letterSpacing: '-1px' },
   khqrAmount: { marginTop: 4, fontSize: 'clamp(44px, 6vw, 88px)', lineHeight: 1, fontWeight: 950, color: ACCENT, letterSpacing: '-2px' },
   khqrSide: { minHeight: 0, overflow: 'auto', borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', padding: 16 },
+  khqrFocusBackdrop: { position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(15,23,42,.46)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 28 },
+  khqrFocusPanel: { width: 'min(780px, 90vw)', maxHeight: '92vh', borderRadius: 34, background: '#fff', border: '1px solid rgba(219,234,254,.9)', boxShadow: '0 34px 90px rgba(15,23,42,.32)', padding: '28px 34px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', overflow: 'hidden' },
+  khqrFocusTitle: { fontSize: 'clamp(34px, 4vw, 58px)', lineHeight: 1.02, fontWeight: 950, color: '#0f172a', letterSpacing: '-1px' },
+  khqrFocusAmount: { marginTop: 8, fontSize: 'clamp(56px, 7vw, 108px)', lineHeight: .92, fontWeight: 950, color: ACCENT, letterSpacing: '-3px' },
+  khqrFocusQr: { marginTop: 22, width: 'min(480px, 56vh, 68vw)', aspectRatio: '1 / 1', borderRadius: 26, background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 18px 42px rgba(37,99,235,.14)', padding: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  khqrFocusImage: { width: '100%', height: '100%', objectFit: 'contain', borderRadius: 18 },
+  khqrFocusMethod: { marginTop: 14, fontSize: 18, fontWeight: 950, color: '#1d4ed8' },
+  khqrFocusSub: { marginTop: 6, fontSize: 15, fontWeight: 700, color: '#64748b' },
 
   body: { flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 410px', gap: 12, padding: 10, minHeight: 0, overflow: 'hidden' },
   cartCol: { background: '#fff', borderRadius: 14, padding: 14, overflow: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,.05)', minHeight: 0 },
