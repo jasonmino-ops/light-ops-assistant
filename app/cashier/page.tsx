@@ -38,6 +38,7 @@ type SaleResult = { orderNo?: string; totalAmount: number; khqrFallback?: boolea
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 type DesktopCheckoutStep = 'SELECT_ITEMS' | 'CONFIRM_ORDER' | 'SELECT_PAYMENT'
+type DesktopPaymentMethod = 'CASH' | 'KHQR' | null
 
 type CashierMember = {
   id: string
@@ -384,6 +385,11 @@ const s: Record<string, CSSProperties> = {
   confirmActions: { display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 8 },
   secondaryBtn:{ padding: '11px 10px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
   nextStepBox:{ padding: 12, borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e3a8a', fontSize: 12, lineHeight: 1.55 },
+  desktopPayGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
+  desktopPayOption: { border: '1px solid #cbd5e1', borderRadius: 12, background: '#fff', padding: '13px 12px', textAlign: 'left' as const, cursor: 'pointer', minHeight: 78 },
+  desktopPayOptionOn: { borderColor: ACCENT, background: '#eff6ff', boxShadow: '0 0 0 2px rgba(59,130,246,.12)' },
+  desktopPayMain: { display: 'block', fontSize: 14, fontWeight: 900, color: '#111827', marginBottom: 5 },
+  desktopPaySub: { display: 'block', fontSize: 11, color: '#64748b', lineHeight: 1.45 },
 
   // Toast + error screen
   toast:       { position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: 'rgba(17,24,39,.9)', color: '#fff', borderRadius: 10, padding: '9px 18px', fontSize: 13, zIndex: 200, whiteSpace: 'nowrap' as const, pointerEvents: 'none' },
@@ -435,6 +441,7 @@ export default function CashierPage() {
   const [memberPayMember, setMemberPayMember] = useState<CashierMember | null>(null)
   const [isDesktopPos, setIsDesktopPos] = useState(false)
   const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
+  const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -449,7 +456,10 @@ export default function CashierPage() {
   }, [])
 
   useEffect(() => {
-    if (cart.length === 0) setCheckoutStep('SELECT_ITEMS')
+    if (cart.length === 0) {
+      setCheckoutStep('SELECT_ITEMS')
+      setDesktopSelectedPaymentMethod(null)
+    }
   }, [cart.length])
 
   // ── Load store data ────────────────────────────────────────────────────────
@@ -1488,18 +1498,48 @@ export default function CashierPage() {
                 <div style={s.confirmPanel}>
                   <div>
                     <div style={s.confirmTitle}>选择收款方式</div>
-                    <div style={s.confirmSub}>下一步将选择收款方式。本轮暂不实现完整收款面板。</div>
-                  </div>
-                  <div style={s.nextStepBox}>
-                    下一步将选择收款方式。当前不会创建销售记录，也不会调用完成销售接口。
+                    <div style={s.confirmSub}>请选择本单收款方式。本轮只记录界面选中状态，不完成销售。</div>
                   </div>
                   <div style={s.totalRow}>
-                    <span style={s.totalLbl}>应付总额</span>
+                    <span style={s.totalLbl}>共 {count} 件 · 应付</span>
                     <span style={s.totalAmt}>${total.toFixed(2)}</span>
                   </div>
-                  <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('CONFIRM_ORDER')}>
-                    返回本单确认
-                  </button>
+                  <div style={s.desktopPayGrid}>
+                    <button
+                      type="button"
+                      style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'CASH' ? s.desktopPayOptionOn : {}) }}
+                      onClick={() => setDesktopSelectedPaymentMethod('CASH')}
+                    >
+                      <span style={s.desktopPayMain}>💵 现金收款 CASH</span>
+                      <span style={s.desktopPaySub}>仅选择现金收款方式，不创建销售记录。</span>
+                    </button>
+                    <button
+                      type="button"
+                      style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'KHQR' ? s.desktopPayOptionOn : {}) }}
+                      onClick={() => setDesktopSelectedPaymentMethod('KHQR')}
+                    >
+                      <span style={s.desktopPayMain}>📱 扫码收款 KHQR</span>
+                      <span style={s.desktopPaySub}>仅选择 KHQR，不生成新支付单。</span>
+                    </button>
+                  </div>
+                  {desktopSelectedPaymentMethod && (
+                    <div style={s.nextStepBox}>
+                      当前已选择：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。下一步：确认收款（01C 开发）。
+                    </div>
+                  )}
+                  <div style={s.totalRow}>
+                    <span style={s.totalLbl}>商品种类</span>
+                    <span style={s.confirmAmt}>{cart.length} 类</span>
+                  </div>
+                  <div style={s.confirmActions}>
+                    <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('CONFIRM_ORDER')}>
+                      返回本单确认
+                    </button>
+                    <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('SELECT_ITEMS')}>
+                      返回修改商品
+                    </button>
+                  </div>
+                  <div style={s.printHint}>本轮仅选择收款方式，不调用完成销售接口。</div>
                 </div>
               ) : (
                 <>
