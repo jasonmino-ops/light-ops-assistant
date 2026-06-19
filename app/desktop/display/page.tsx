@@ -186,6 +186,7 @@ export default function DesktopMirrorPage() {
   const session = data?.session ?? null
   const completedAtMs = session?.completedAt ? new Date(session.completedAt).getTime() : 0
   const updatedAtMs = session?.updatedAt ? new Date(session.updatedAt).getTime() : 0
+  const hasOrderContent = !!session && (session.items.length > 0 || session.itemCount > 0 || session.totalAmount > 0)
   const recentlyCompleted = session?.status === 'COMPLETED' && completedAtMs > 0 && (lingerNow - completedAtMs) < COMPLETED_LINGER_MS
   const recentlyCancelled = session?.status === 'CANCELLED' && completedAtMs > 0 && (lingerNow - completedAtMs) < COMPLETED_LINGER_MS
   const expiredAtMs = session?.displayStatus === 'EXPIRED_DRAFT'
@@ -195,10 +196,11 @@ export default function DesktopMirrorPage() {
       : 0
   const recentlyExpired = expiredAtMs > 0 && (lingerNow - expiredAtMs) < COMPLETED_LINGER_MS
   const isLive = !!session
-    && (session.status === 'DRAFT' || session.status === 'AWAITING_PAYMENT')
+    && hasOrderContent
+    && session.status !== 'COMPLETED'
+    && session.status !== 'CANCELLED'
     && session.displayStatus !== 'EXPIRED_DRAFT'
     && session.displayStatus !== 'EXPIRED_CHECKOUT'
-    && session.items.length > 0
   const isIdle = !isLive && !recentlyCompleted && !recentlyCancelled && !recentlyExpired
   const displaySession = isIdle ? null : session
   const displayTotal = displaySession?.totalAmount ?? 0
@@ -551,12 +553,15 @@ function statusPillStyle(sess: SessionPayload | null, completed: boolean, cancel
 }
 
 function shouldIgnoreStaleDisplayResponse(current: SessionPayload | null, next: SessionPayload | null): boolean {
-  if (!current || current.items.length === 0) return false
+  if (!current) return false
   const currentUpdatedAt = new Date(current.updatedAt).getTime()
   const nextUpdatedAt = next?.updatedAt ? new Date(next.updatedAt).getTime() : 0
   if (!Number.isFinite(currentUpdatedAt) || !Number.isFinite(nextUpdatedAt)) return false
+  const currentIsEmpty = current.items.length === 0 && current.itemCount === 0 && current.totalAmount === 0
   const nextIsEmpty = !next || next.items.length === 0 || next.status === 'CANCELLED'
-  return nextIsEmpty && nextUpdatedAt < currentUpdatedAt
+  if (currentIsEmpty && nextIsEmpty) return nextUpdatedAt <= currentUpdatedAt
+  if (!currentIsEmpty && nextIsEmpty) return nextUpdatedAt < currentUpdatedAt
+  return false
 }
 
 function fmtTime(iso: string, lang: DesktopLang): string {

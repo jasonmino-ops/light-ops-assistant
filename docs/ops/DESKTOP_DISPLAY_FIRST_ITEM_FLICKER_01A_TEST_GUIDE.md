@@ -29,6 +29,16 @@
 4. `/api/pos/session/current` 如果返回点击前已在途的旧空态响应，顾客屏不应在已显示 active order 后被旧空态覆盖。
 5. 后续轮询应稳定返回当前商品和金额。
 
+## 前端渲染状态检查
+
+点击第一个商品后的 0-3 秒内，重点观察顾客屏渲染状态：
+
+1. active order 到达前，可以继续保持原空闲态。
+2. 一旦显示 `当前订单` / 商品 / 金额后，不应再回到 `欢迎光临` / `准备结账`。
+3. `DRAFT + CASH + items.length > 0` 必须视为订单态。
+4. `items.length > 0`、`itemCount > 0` 或 `totalAmount > 0` 任一成立时，不应渲染 IdleCard。
+5. 点击前已在途的旧空态/取消态响应，不应触发 IdleCard 重渲染覆盖 active order。
+
 ## 后续同步测试
 
 1. 在员工端继续添加第二个商品。
