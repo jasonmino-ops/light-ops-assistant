@@ -37,6 +37,7 @@ type CartLine = {
 type SaleResult = { orderNo?: string; totalAmount: number; khqrFallback?: boolean; paymentMethod?: string }
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
+type DesktopCheckoutStep = 'SELECT_ITEMS' | 'CONFIRM_ORDER' | 'SELECT_PAYMENT'
 
 type CashierMember = {
   id: string
@@ -372,6 +373,17 @@ const s: Record<string, CSSProperties> = {
   modalAmt:    { fontSize: 32, fontWeight: 800, color: ACCENT, marginBottom: 4 },
   modalSub:    { fontSize: 13, color: '#6b7280', marginBottom: 20 },
   modalBtn:    { padding: '11px 32px', borderRadius: 10, border: 'none', background: ACCENT, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' },
+  confirmPanel:{ display: 'flex', flexDirection: 'column', gap: 10 },
+  confirmTitle:{ fontSize: 14, fontWeight: 800, color: '#111827' },
+  confirmSub:  { fontSize: 11, color: '#64748b', lineHeight: 1.5 },
+  confirmList: { maxHeight: 156, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 10, background: '#f8fafc' },
+  confirmLine: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, padding: '8px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#374151' },
+  confirmLineLast: { borderBottom: 'none' },
+  confirmName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  confirmAmt:  { fontWeight: 800, color: '#111827' },
+  confirmActions: { display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 8 },
+  secondaryBtn:{ padding: '11px 10px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
+  nextStepBox:{ padding: 12, borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e3a8a', fontSize: 12, lineHeight: 1.55 },
 
   // Toast + error screen
   toast:       { position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: 'rgba(17,24,39,.9)', color: '#fff', borderRadius: 10, padding: '9px 18px', fontSize: 13, zIndex: 200, whiteSpace: 'nowrap' as const, pointerEvents: 'none' },
@@ -422,6 +434,7 @@ export default function CashierPage() {
   const [memberPayError, setMemberPayError] = useState('')
   const [memberPayMember, setMemberPayMember] = useState<CashierMember | null>(null)
   const [isDesktopPos, setIsDesktopPos] = useState(false)
+  const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -434,6 +447,10 @@ export default function CashierPage() {
   useEffect(() => {
     setIsDesktopPos(window.location.pathname === '/desktop/pos')
   }, [])
+
+  useEffect(() => {
+    if (cart.length === 0) setCheckoutStep('SELECT_ITEMS')
+  }, [cart.length])
 
   // ── Load store data ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1435,63 +1452,136 @@ export default function CashierPage() {
 
           {/* ── BOTTOM: Payment & checkout (always visible) ───────────────── */}
           <div style={s.paySec}>
-            <div style={s.payLabel}>收款方式</div>
-            <div style={s.payRow}>
-              {(['CASH','KHQR','MEMBER_BALANCE','OTHER'] as const).map(m => {
-                const disabledOfflinePayment = !isOnline && m !== 'CASH'
-                return (
+            {isDesktopPos ? (
+              checkoutStep === 'CONFIRM_ORDER' ? (
+                <div style={s.confirmPanel}>
+                  <div>
+                    <div style={s.confirmTitle}>确认本单</div>
+                    <div style={s.confirmSub}>请核对商品、数量和应付金额。本步骤不会创建销售记录。</div>
+                  </div>
+                  <div style={s.confirmList}>
+                    {cart.map((line, index) => {
+                      const specDisplay = [line.spec, line.sugar ? sugarZh(line.sugar) : null].filter(Boolean).join(' / ')
+                      return (
+                        <div key={cartLineKey(line)} style={{ ...s.confirmLine, ...(index === cart.length - 1 ? s.confirmLineLast : {}) }}>
+                          <span style={s.confirmName}>{line.name}{specDisplay ? ` · ${specDisplay}` : ''} × {line.qty}</span>
+                          <span style={s.confirmAmt}>${(line.price * line.qty).toFixed(2)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div style={s.totalRow}>
+                    <span style={s.totalLbl}>共 {count} 件 · 应付</span>
+                    <span style={s.totalAmt}>${total.toFixed(2)}</span>
+                  </div>
+                  <div style={s.confirmActions}>
+                    <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('SELECT_ITEMS')}>
+                      返回修改商品
+                    </button>
+                    <button type="button" style={s.submitBtn} onClick={() => setCheckoutStep('SELECT_PAYMENT')}>
+                      确认本单，选择收款方式
+                    </button>
+                  </div>
+                  <div style={s.printHint}>本轮仅进入结账占位，不创建 SaleRecord。</div>
+                </div>
+              ) : checkoutStep === 'SELECT_PAYMENT' ? (
+                <div style={s.confirmPanel}>
+                  <div>
+                    <div style={s.confirmTitle}>选择收款方式</div>
+                    <div style={s.confirmSub}>下一步将选择收款方式。本轮暂不实现完整收款面板。</div>
+                  </div>
+                  <div style={s.nextStepBox}>
+                    下一步将选择收款方式。当前不会创建销售记录，也不会调用完成销售接口。
+                  </div>
+                  <div style={s.totalRow}>
+                    <span style={s.totalLbl}>应付总额</span>
+                    <span style={s.totalAmt}>${total.toFixed(2)}</span>
+                  </div>
+                  <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('CONFIRM_ORDER')}>
+                    返回本单确认
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={s.payLabel}>本单</div>
+                  <div style={s.totalRow}>
+                    <span style={s.totalLbl}>合计 {count} 件</span>
+                    <span style={s.totalAmt}>${total.toFixed(2)}</span>
+                  </div>
+                  <button
+                    style={{ ...s.submitBtn, ...(cart.length === 0 ? s.submitDis : {}) }}
+                    disabled={cart.length === 0}
+                    onClick={() => {
+                      if (cart.length === 0) return
+                      setCheckoutStep('CONFIRM_ORDER')
+                    }}
+                  >
+                    ✓ 确认本单
+                  </button>
+                  <div style={s.printHint}>确认后再选择收款方式 · 当前不会直接完成销售</div>
+                </>
+              )
+            ) : (
+              <>
+                <div style={s.payLabel}>收款方式</div>
+                <div style={s.payRow}>
+                  {(['CASH','KHQR','MEMBER_BALANCE','OTHER'] as const).map(m => {
+                    const disabledOfflinePayment = !isOnline && m !== 'CASH'
+                    return (
+                    <button
+                      key={m}
+                      style={{
+                        ...s.payBtn,
+                        ...(payment === m ? s.payBtnOn : {}),
+                        ...(disabledOfflinePayment ? { opacity: 0.45, cursor: 'not-allowed' } : {}),
+                      }}
+                      onClick={() => {
+                        if (disabledOfflinePayment) {
+                          showToast(m === 'MEMBER_BALANCE' ? '离线模式下不支持会员余额支付' : '离线模式暂不支持 KHQR，请使用 CASH 收款')
+                          return
+                        }
+                        setPayment(m)
+                        if (m === 'MEMBER_BALANCE') setMemberPayOpen(true)
+                      }}
+                    >
+                      {m === 'CASH' ? '💵 现金' : m === 'KHQR' ? '📱 KHQR' : m === 'MEMBER_BALANCE' ? '👤 会员余额' : '🔧 其他'}
+                    </button>
+                  )})}
+                </div>
+                {!isOnline && (
+                  <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', borderRadius: 6, padding: '5px 8px', marginBottom: 8, lineHeight: 1.45 }}>
+                    离线模式仅支持 CASH，本单会保存到本机，暂不会出现在 /records。
+                  </div>
+                )}
+                {payment === 'OTHER' && (
+                  <div style={{ fontSize: 11, color: '#f59e0b', background: '#fffbeb', borderRadius: 6, padding: '4px 8px', marginBottom: 8 }}>
+                    「其他」将以现金方式记录。
+                  </div>
+                )}
+                {payment === 'MEMBER_BALANCE' && (
+                  <div style={{ fontSize: 11, color: '#1d4ed8', background: '#eff6ff', borderRadius: 6, padding: '4px 8px', marginBottom: 8 }}>
+                    会员余额支付需联网查询会员，并实时扣减余额。
+                  </div>
+                )}
+                <div style={s.totalRow}>
+                  <span style={s.totalLbl}>合计</span>
+                  <span style={s.totalAmt}>${total.toFixed(2)}</span>
+                </div>
+                {submitError && (
+                  <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8, padding: '5px 8px', background: '#fef2f2', borderRadius: 6 }}>
+                    {submitError}
+                  </div>
+                )}
                 <button
-                  key={m}
-                  style={{
-                    ...s.payBtn,
-                    ...(payment === m ? s.payBtnOn : {}),
-                    ...(disabledOfflinePayment ? { opacity: 0.45, cursor: 'not-allowed' } : {}),
-                  }}
-                  onClick={() => {
-                    if (disabledOfflinePayment) {
-                      showToast(m === 'MEMBER_BALANCE' ? '离线模式下不支持会员余额支付' : '离线模式暂不支持 KHQR，请使用 CASH 收款')
-                      return
-                    }
-                    setPayment(m)
-                    if (m === 'MEMBER_BALANCE') setMemberPayOpen(true)
-                  }}
+                  style={{ ...s.submitBtn, ...(cart.length === 0 || submitting ? s.submitDis : {}) }}
+                  disabled={cart.length === 0 || submitting}
+                  onClick={handleSubmit}
                 >
-                  {m === 'CASH' ? '💵 现金' : m === 'KHQR' ? '📱 KHQR' : m === 'MEMBER_BALANCE' ? '👤 会员余额' : '🔧 其他'}
+                  {submitting ? '处理中…' : payment === 'MEMBER_BALANCE' ? '👤 会员余额支付' : '✓ 完成销售'}
                 </button>
-              )})}
-            </div>
-            {!isOnline && (
-              <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', borderRadius: 6, padding: '5px 8px', marginBottom: 8, lineHeight: 1.45 }}>
-                离线模式仅支持 CASH，本单会保存到本机，暂不会出现在 /records。
-              </div>
+                <div style={s.printHint}>🖨️ 打印暂未连接 · 如需打印小票请在 mPOS 手机端操作</div>
+              </>
             )}
-            {payment === 'OTHER' && (
-              <div style={{ fontSize: 11, color: '#f59e0b', background: '#fffbeb', borderRadius: 6, padding: '4px 8px', marginBottom: 8 }}>
-                「其他」将以现金方式记录。
-              </div>
-            )}
-            {payment === 'MEMBER_BALANCE' && (
-              <div style={{ fontSize: 11, color: '#1d4ed8', background: '#eff6ff', borderRadius: 6, padding: '4px 8px', marginBottom: 8 }}>
-                会员余额支付需联网查询会员，并实时扣减余额。
-              </div>
-            )}
-            <div style={s.totalRow}>
-              <span style={s.totalLbl}>合计</span>
-              <span style={s.totalAmt}>${total.toFixed(2)}</span>
-            </div>
-            {submitError && (
-              <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8, padding: '5px 8px', background: '#fef2f2', borderRadius: 6 }}>
-                {submitError}
-              </div>
-            )}
-            <button
-              style={{ ...s.submitBtn, ...(cart.length === 0 || submitting ? s.submitDis : {}) }}
-              disabled={cart.length === 0 || submitting}
-              onClick={handleSubmit}
-            >
-              {submitting ? '处理中…' : payment === 'MEMBER_BALANCE' ? '👤 会员余额支付' : '✓ 完成销售'}
-            </button>
-            <div style={s.printHint}>🖨️ 打印暂未连接 · 如需打印小票请在 mPOS 手机端操作</div>
           </div>
         </div>
       </div>
