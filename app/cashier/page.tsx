@@ -917,6 +917,35 @@ export default function CashierPage() {
     )
   }, [])
 
+  const syncCurrentCartToCustomerDisplay = useCallback((nextPayment: CashierPaymentMethod) => {
+    if (!storeCode || noCodeError || isRestoringCashierStore || cart.length === 0) return
+    const displayPayment: CashierDisplayPayment =
+      nextPayment === 'KHQR' && isOnline ? 'KHQR' :
+      nextPayment === 'CASH' ? 'CASH' :
+      null
+    const status: CashierDisplayStatus = displayPayment === 'KHQR' ? 'AWAITING_PAYMENT' : 'DRAFT'
+    const paymentStatus = displayPayment === 'KHQR' ? 'PENDING' : null
+    const items = cashierDisplayItems(cart)
+    const syncKey = JSON.stringify({
+      storeCode,
+      status,
+      paymentMethod: displayPayment,
+      paymentStatus,
+      items,
+    })
+    lastCashierDisplaySyncKey.current = syncKey
+    cashierDisplayActiveRef.current = true
+    previousCashierDisplayCartCountRef.current = cart.length
+    void postCashierDisplaySession({
+      storeCode,
+      status,
+      paymentMethod: displayPayment,
+      paymentStatus,
+      items,
+      message: displayPayment === 'KHQR' ? '请扫码支付' : null,
+    })
+  }, [cart, storeCode, isOnline, noCodeError, isRestoringCashierStore])
+
   useEffect(() => {
     if (!storeCode || noCodeError || isRestoringCashierStore) return
 
@@ -1513,6 +1542,7 @@ export default function CashierPage() {
                       onClick={() => {
                         setDesktopSelectedPaymentMethod('CASH')
                         setPayment('CASH')
+                        syncCurrentCartToCustomerDisplay('CASH')
                       }}
                     >
                       <span style={s.desktopPayMain}>💵 现金收款 CASH</span>
@@ -1524,6 +1554,7 @@ export default function CashierPage() {
                       onClick={() => {
                         setDesktopSelectedPaymentMethod('KHQR')
                         setPayment('KHQR')
+                        syncCurrentCartToCustomerDisplay('KHQR')
                       }}
                     >
                       <span style={s.desktopPayMain}>📱 扫码收款 KHQR</span>
