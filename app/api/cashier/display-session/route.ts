@@ -6,8 +6,6 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { findKhqrConfig } from '@/lib/merchant-config'
-import { generateKhqrPayload } from '@/lib/khqr'
 
 type ClientItem = {
   productId?: unknown
@@ -119,6 +117,10 @@ export async function POST(req: NextRequest) {
   let khqrPayload: string | null = null
   let khqrImageUrl: string | null = null
   if (status === 'AWAITING_PAYMENT' && paymentMethod === 'KHQR' && items.length > 0) {
+    const [{ findKhqrConfig }, { generateKhqrPayload }] = await Promise.all([
+      import('@/lib/merchant-config'),
+      import('@/lib/khqr'),
+    ])
     const config = await findKhqrConfig(store.tenantId, store.id)
     if (config) {
       khqrImageUrl = cleanImageUrl(config.khqrImageUrl)

@@ -5,7 +5,6 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { findKhqrConfig } from '@/lib/merchant-config'
 
 type PosItem = {
   productId: string
@@ -205,7 +204,9 @@ export async function GET(req: NextRequest) {
 
   const sessionKhqrImageUrl = cleanDisplayImageUrl(row?.khqrImageUrl)
   const needsStoreKhqr = !hasActiveItems || (row?.paymentMethod === 'KHQR' && !sessionKhqrImageUrl)
-  const khqrConfig = needsStoreKhqr ? await findKhqrConfig(store.tenantId, store.id) : null
+  const khqrConfig = needsStoreKhqr
+    ? await import('@/lib/merchant-config').then((mod) => mod.findKhqrConfig(store.tenantId, store.id))
+    : null
   const storeKhqrImageUrl = cleanDisplayImageUrl(khqrConfig?.khqrImageUrl)
   const khqrImageUrl = sessionKhqrImageUrl ?? (row?.paymentMethod === 'KHQR' ? storeKhqrImageUrl : null)
 
