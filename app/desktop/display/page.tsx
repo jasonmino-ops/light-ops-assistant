@@ -60,6 +60,7 @@ type ApiResp = {
 
 type DesktopLang = 'zh' | 'en' | 'km'
 type DisplayCopy = typeof displayCopy.zh
+type DisplayMode = 'IDLE' | 'ORDER_ACTIVE' | 'PAYMENT_KHQR' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED'
 
 const POLL_MS = 800
 const HOT_ITEM_CAROUSEL_MS = 4000
@@ -186,7 +187,7 @@ export default function DesktopMirrorPage() {
   const session = data?.session ?? null
   const completedAtMs = session?.completedAt ? new Date(session.completedAt).getTime() : 0
   const updatedAtMs = session?.updatedAt ? new Date(session.updatedAt).getTime() : 0
-  const hasOrderContent = !!session && (session.items.length > 0 || session.itemCount > 0 || session.totalAmount > 0)
+  const hasOrderContent = sessionHasOrderContent(session)
   const recentlyCompleted = session?.status === 'COMPLETED' && completedAtMs > 0 && (lingerNow - completedAtMs) < COMPLETED_LINGER_MS
   const recentlyCancelled = session?.status === 'CANCELLED' && completedAtMs > 0 && (lingerNow - completedAtMs) < COMPLETED_LINGER_MS
   const expiredAtMs = session?.displayStatus === 'EXPIRED_DRAFT'
@@ -201,9 +202,13 @@ export default function DesktopMirrorPage() {
     && session.status !== 'CANCELLED'
     && session.displayStatus !== 'EXPIRED_DRAFT'
     && session.displayStatus !== 'EXPIRED_CHECKOUT'
-  const isIdle = !isLive && !recentlyCompleted && !recentlyCancelled && !recentlyExpired
-  const displaySession = isIdle ? null : session
-  const displayTotal = displaySession?.totalAmount ?? 0
+  const displayMode: DisplayMode =
+    recentlyCompleted ? 'COMPLETED' :
+    recentlyCancelled ? 'CANCELLED' :
+    recentlyExpired ? 'EXPIRED' :
+    isLive && session?.paymentMethod === 'KHQR' ? 'PAYMENT_KHQR' :
+    isLive ? 'ORDER_ACTIVE' :
+    'IDLE'
 
   return (
     <div style={s.root}>
@@ -223,53 +228,41 @@ export default function DesktopMirrorPage() {
         <LangSwitch lang={lang} onChange={changeLang} />
       </div>
 
-      {/* Body: 左 = 商品列表，右 = 金额与收款 */}
-      <div style={s.body}>
-        <div style={s.cartCol}>
-          {isLive ? (
-            <CartList items={session!.items} itemCount={session!.itemCount} totalAmount={session!.totalAmount} t={t} />
-          ) : recentlyCompleted ? (
-            <CompletedCard session={session!} t={t} />
-          ) : recentlyCancelled ? (
-            <CancelledCard t={t} />
-          ) : recentlyExpired ? (
-            <ExpiredCard checkout={session?.displayStatus === 'EXPIRED_CHECKOUT'} t={t} />
-          ) : (
-            <IdleCard
-              storeName={data?.storeName ?? storeCode ?? ''}
-              bannerUrl={data?.storeBannerUrl ?? null}
-              products={data?.displayProducts ?? []}
-              t={t}
-            />
-          )}
-        </div>
-
-        <div style={s.payCol}>
-          {isIdle ? (
-            <div style={s.readyCard}>
-              <div style={s.readyTitle}>{t.readyCheckout}</div>
-              <div style={s.readySub}>{t.waitingCashier}</div>
-            </div>
-          ) : (
-            <div style={s.totalCard}>
-              <div style={s.totalLabel}>{t.amountDue}</div>
-              <div style={s.totalAmt}>${displayTotal.toFixed(2)}</div>
-              <div style={s.totalMeta}>
-                {isLive && t.itemMeta(session!.itemCount, session!.items.length)}
-                {recentlyCompleted && t.completed}
-                {recentlyCancelled && t.cancelled}
-                {recentlyExpired && (session?.displayStatus === 'EXPIRED_CHECKOUT' ? t.paymentExpired : t.expired)}
-              </div>
-            </div>
-          )}
-
-          <PaymentCard
-            session={displaySession}
-            recentlyCompleted={recentlyCompleted}
-            storeKhqrImageUrl={data?.storeKhqrImageUrl ?? null}
+      <div style={s.stageWrap}>
+        {displayMode === 'IDLE' && (
+          <IdleStage
+            storeName={data?.storeName ?? storeCode ?? ''}
+            bannerUrl={data?.storeBannerUrl ?? null}
+            products={data?.displayProducts ?? []}
             t={t}
           />
-        </div>
+        )}
+
+        {displayMode === 'ORDER_ACTIVE' && session && (
+          <OrderActiveStage session={session} t={t} />
+        )}
+
+        {displayMode === 'PAYMENT_KHQR' && session && (
+          <KhqrPaymentStage session={session} t={t} />
+        )}
+
+        {displayMode === 'COMPLETED' && session && (
+          <div style={s.stateCenter}>
+            <CompletedCard session={session} t={t} />
+          </div>
+        )}
+
+        {displayMode === 'CANCELLED' && (
+          <div style={s.stateCenter}>
+            <CancelledCard t={t} />
+          </div>
+        )}
+
+        {displayMode === 'EXPIRED' && (
+          <div style={s.stateCenter}>
+            <ExpiredCard checkout={session?.displayStatus === 'EXPIRED_CHECKOUT'} t={t} />
+          </div>
+        )}
       </div>
 
       {/* Footer */}
@@ -285,6 +278,59 @@ export default function DesktopMirrorPage() {
 }
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────
+
+const IdleStage = memo(function IdleStage({
+  storeName,
+  bannerUrl,
+  products,
+  t,
+}: {
+  storeName: string
+  bannerUrl: string | null
+  products: DisplayProduct[]
+  t: DisplayCopy
+}) {
+  return (
+    <div style={s.idleStage}>
+      <IdleCard storeName={storeName} bannerUrl={bannerUrl} products={products} t={t} />
+      <div style={s.idlePaymentHint}>{t.idlePaymentHint}</div>
+    </div>
+  )
+})
+
+const OrderActiveStage = memo(function OrderActiveStage({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
+  return (
+    <div style={s.orderStage}>
+      <section style={s.orderFocusCard}>
+        <div style={s.totalLabel}>{t.amountDue}</div>
+        <div style={s.orderAmount}>${session.totalAmount.toFixed(2)}</div>
+        <div style={s.orderMeta}>{t.itemMeta(session.itemCount, session.items.length)}</div>
+        <div style={s.orderPayMethod}>
+          <span>{t.paymentMethod}</span>
+          <strong>{paymentMethodLabel(session.paymentMethod, t)}</strong>
+        </div>
+      </section>
+      <section style={s.orderItemsCard}>
+        <CartList items={session.items} itemCount={session.itemCount} totalAmount={session.totalAmount} t={t} />
+      </section>
+    </div>
+  )
+})
+
+const KhqrPaymentStage = memo(function KhqrPaymentStage({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
+  return (
+    <div style={s.khqrStage}>
+      <section style={s.khqrMain}>
+        <div style={s.khqrTitle}>{t.scanToPay}</div>
+        <div style={s.khqrAmount}>${session.totalAmount.toFixed(2)}</div>
+        <PaymentCard session={session} recentlyCompleted={false} storeKhqrImageUrl={null} t={t} />
+      </section>
+      <section style={s.khqrSide}>
+        <CartList items={session.items} itemCount={session.itemCount} totalAmount={session.totalAmount} t={t} />
+      </section>
+    </div>
+  )
+})
 
 const CartList = memo(function CartList({ items, itemCount, totalAmount, t }: { items: PosItem[]; itemCount: number; totalAmount: number; t: DisplayCopy }) {
   const subtotal = items.reduce((sum, item) => sum + item.lineAmount, 0)
@@ -492,7 +538,7 @@ const PaymentCard = memo(function PaymentCard({
   const khqrImageSrc = sessionKhqrImageSrc ?? (!session ? storeKhqrImageSrc : null)
   const qrValue = isKhqrSession ? (session?.khqrPayload || (!khqrImageSrc ? session?.khqrImageUrl : null)) : null
   const hasKhqr = Boolean(khqrImageSrc || qrValue)
-  const hasOrder = Boolean(session && session.items.length > 0)
+  const hasOrder = sessionHasOrderContent(session)
 
   return (
     <div style={s.payCard}>
@@ -511,7 +557,7 @@ const PaymentCard = memo(function PaymentCard({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={khqrImageSrc} alt="KHQR" style={s.qrImage} />
           ) : (
-            <QRCode value={qrValue || ''} size={220} />
+            <QRCode value={qrValue || ''} size={300} />
           )}
           <div style={s.qrHint}>
             {hasOrder && !recentlyCompleted ? t.scanToPay : t.scanSupported}
@@ -538,7 +584,7 @@ function statusLabel(t: DisplayCopy, s: SessionPayload | null, completed: boolea
   if (cancelled) return t.cancelledShort
   if (s?.displayStatus === 'EXPIRED_DRAFT') return t.expiredShort
   if (s?.displayStatus === 'EXPIRED_CHECKOUT') return t.paymentExpiredShort
-  if (!s || s.items.length === 0) return t.idle
+  if (!s || !sessionHasOrderContent(s)) return t.idle
   if (s.status === 'AWAITING_PAYMENT') return t.waitingPaymentShort
   return t.checkingOutShort
 }
@@ -547,9 +593,13 @@ function statusPillStyle(sess: SessionPayload | null, completed: boolean, cancel
   if (completed) return { background: '#dcfce7', color: '#15803d' }
   if (cancelled) return { background: '#f3f4f6', color: '#6b7280' }
   if (sess?.displayStatus === 'EXPIRED_DRAFT' || sess?.displayStatus === 'EXPIRED_CHECKOUT') return { background: '#fffbeb', color: '#b45309' }
-  if (!sess || sess.items.length === 0) return { background: '#e0f2fe', color: '#0369a1' }
+  if (!sess || !sessionHasOrderContent(sess)) return { background: '#e0f2fe', color: '#0369a1' }
   if (sess.status === 'AWAITING_PAYMENT') return { background: '#fef3c7', color: '#92400e' }
   return { background: '#dbeafe', color: '#1d4ed8' }
+}
+
+function sessionHasOrderContent(session: SessionPayload | null): boolean {
+  return Boolean(session && (session.items.length > 0 || session.itemCount > 0 || session.totalAmount > 0))
 }
 
 function shouldIgnoreStaleDisplayResponse(current: SessionPayload | null, next: SessionPayload | null): boolean {
@@ -628,6 +678,7 @@ const displayCopy = {
     thanks: '谢谢光临',
     welcome: '欢迎光临',
     waitingCashier: '等待收银 · 支持 CASH / KHQR',
+    idlePaymentHint: '支持 CASH / KHQR · 结账时会显示付款二维码',
     customerDisplay: '顾客收银显示屏',
     topSellers: '本周热销',
     pickHint: '店员添加商品后，请核对应付金额',
@@ -682,6 +733,7 @@ const displayCopy = {
     thanks: 'Thank you',
     welcome: 'Welcome',
     waitingCashier: 'Waiting for cashier · CASH / KHQR supported',
+    idlePaymentHint: 'Supports CASH / KHQR · The payment QR appears at checkout',
     customerDisplay: 'Customer checkout display',
     topSellers: 'Top sellers this week',
     pickHint: 'Check the amount after the cashier adds items',
@@ -736,6 +788,7 @@ const displayCopy = {
     thanks: 'អរគុណ',
     welcome: 'សូមស្វាគមន៍',
     waitingCashier: 'រង់ចាំបញ្ជរ · គាំទ្រ CASH / KHQR',
+    idlePaymentHint: 'គាំទ្រ CASH / KHQR · QR នឹងបង្ហាញពេលគិតលុយ',
     customerDisplay: 'អេក្រង់គិតលុយអតិថិជន',
     topSellers: 'ទំនិញលក់ដាច់សប្តាហ៍នេះ',
     pickHint: 'សូមពិនិត្យចំនួនទឹកប្រាក់បន្ទាប់ពីបុគ្គលិកបន្ថែមទំនិញ',
@@ -787,6 +840,22 @@ const s: Record<string, CSSProperties> = {
   langSwitch: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 3, borderRadius: 999, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.16)', flexShrink: 0 },
   langBtn: { border: 'none', borderRadius: 999, background: 'transparent', color: '#cbd5e1', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
   langBtnOn: { border: 'none', borderRadius: 999, background: '#fff', color: '#0f172a', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
+
+  stageWrap: { flex: 1, minHeight: 0, overflow: 'hidden', padding: 12, display: 'flex' },
+  stateCenter: { flex: 1, minHeight: 0, borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', overflow: 'hidden' },
+  idleStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateRows: 'minmax(0, 1fr) auto', gap: 10 },
+  idlePaymentHint: { justifySelf: 'center', borderRadius: 999, border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', fontSize: 13, fontWeight: 800, padding: '8px 16px' },
+  orderStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(360px, .86fr) minmax(0, 1.14fr)', gap: 12 },
+  orderFocusCard: { borderRadius: 22, background: 'linear-gradient(135deg, #ffffff 0%, #eff6ff 100%)', border: '1px solid #dbeafe', boxShadow: '0 18px 38px rgba(37,99,235,.12)', padding: 30, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', minHeight: 0 },
+  orderAmount: { marginTop: 8, fontSize: 'clamp(68px, 9vw, 132px)', lineHeight: .9, fontWeight: 950, color: ACCENT, letterSpacing: '-3px' },
+  orderMeta: { marginTop: 16, fontSize: 18, fontWeight: 800, color: '#475569' },
+  orderPayMethod: { marginTop: 20, display: 'inline-flex', alignItems: 'center', gap: 10, borderRadius: 999, background: '#fff', border: '1px solid #dbeafe', padding: '10px 16px', color: '#64748b', fontSize: 14, fontWeight: 800 },
+  orderItemsCard: { minHeight: 0, overflow: 'auto', borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', padding: 18 },
+  khqrStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(420px, 1fr) minmax(320px, .72fr)', gap: 12 },
+  khqrMain: { minHeight: 0, borderRadius: 24, background: '#fff', border: '1px solid #dbeafe', boxShadow: '0 18px 42px rgba(37,99,235,.16)', padding: 24, display: 'grid', gridTemplateRows: 'auto auto minmax(0, 1fr)', alignItems: 'center', justifyItems: 'center', textAlign: 'center', overflow: 'hidden' },
+  khqrTitle: { fontSize: 'clamp(28px, 3.2vw, 48px)', lineHeight: 1.05, fontWeight: 950, color: '#0f172a', letterSpacing: '-1px' },
+  khqrAmount: { marginTop: 4, fontSize: 'clamp(44px, 6vw, 88px)', lineHeight: 1, fontWeight: 950, color: ACCENT, letterSpacing: '-2px' },
+  khqrSide: { minHeight: 0, overflow: 'auto', borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', padding: 16 },
 
   body: { flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 410px', gap: 12, padding: 10, minHeight: 0, overflow: 'hidden' },
   cartCol: { background: '#fff', borderRadius: 14, padding: 14, overflow: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,.05)', minHeight: 0 },
@@ -850,8 +919,8 @@ const s: Record<string, CSSProperties> = {
   brandFallbackTitle: { marginTop: 8, fontSize: 18, fontWeight: 900, color: '#0f172a' },
   brandFallbackSub: { marginTop: 6, fontSize: 13, color: '#64748b' },
 
-  qrWrap: { flex: 1, minHeight: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 8 },
-  qrImage: { maxWidth: 260, maxHeight: 260, width: '100%', objectFit: 'contain', borderRadius: 10, border: '1px solid #f0f0f0' },
+  qrWrap: { flex: 1, minHeight: 340, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 8 },
+  qrImage: { maxWidth: 340, maxHeight: 340, width: '100%', objectFit: 'contain', borderRadius: 12, border: '1px solid #f0f0f0' },
   qrHint: { fontSize: 14, color: '#6b7280' },
 
   bigCard: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, textAlign: 'center', padding: 30 },
