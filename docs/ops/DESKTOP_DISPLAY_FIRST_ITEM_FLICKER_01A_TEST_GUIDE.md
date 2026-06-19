@@ -29,6 +29,20 @@
 4. `/api/pos/session/current` 如果返回点击前已在途的旧空态响应，顾客屏不应在已显示 active order 后被旧空态覆盖。
 5. 后续轮询应稳定返回当前商品和金额。
 
+## RootCause Trace 01A 补充结论
+
+线上帧级取证发现，首件商品点击后员工端写入并不慢：
+
+- `/api/cashier/display-session` 在点击后约 36-56ms 已写入 `DRAFT + CASH + 1 item + totalAmount=0.50`。
+- 顾客屏 DOM 没有出现 `ORDER_ACTIVE → IDLE → ORDER_ACTIVE`；真实序列是长时间保持 `IDLE`，随后才进入 `ORDER_ACTIVE`。
+- 线上 `/api/pos/session/current` 在 idle 状态下可能存在较慢响应；若顾客屏因为已有 current 请求在飞而跳过后续轮询，会导致 active session 迟到数秒。
+
+本轮修复后，应重点确认：
+
+1. 点击首件商品后，顾客屏不再因为慢 idle current 请求而等待数秒。
+2. 即使存在旧 idle/CANCELLED current 响应晚回来，也不会覆盖更新后的 active order。
+3. Network 中可以看到点击后仍继续按轮询节奏请求 current，不会因上一请求未完成而完全跳过。
+
 ## 前端渲染状态检查
 
 点击第一个商品后的 0-3 秒内，重点观察顾客屏渲染状态：

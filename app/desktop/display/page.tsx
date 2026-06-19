@@ -77,7 +77,6 @@ export default function DesktopMirrorPage() {
   const [lingerNow, setLingerNow] = useState(() => Date.now())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const pollInFlightRef = useRef(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -93,8 +92,6 @@ export default function DesktopMirrorPage() {
     if (!storeCode) return
     let aborted = false
     async function poll() {
-      if (pollInFlightRef.current) return
-      pollInFlightRef.current = true
       try {
         const res = await fetch(`/api/pos/session/current?storeCode=${encodeURIComponent(storeCode!)}`, { cache: 'no-store' })
         if (!res.ok) {
@@ -107,8 +104,6 @@ export default function DesktopMirrorPage() {
         setLoadError(null)
       } catch {
         if (!aborted) setLoadError(displayCopy[lang].networkRetry)
-      } finally {
-        pollInFlightRef.current = false
       }
     }
     poll()
