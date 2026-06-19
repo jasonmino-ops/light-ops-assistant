@@ -1519,7 +1519,15 @@ export default function CashierPage() {
                     <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('SELECT_ITEMS')}>
                       返回修改商品
                     </button>
-                    <button type="button" style={s.submitBtn} onClick={() => setCheckoutStep('SELECT_PAYMENT')}>
+                    <button
+                      type="button"
+                      style={s.submitBtn}
+                      onClick={() => {
+                        setDesktopSelectedPaymentMethod(null)
+                        syncCurrentCartToCustomerDisplay('KHQR')
+                        setCheckoutStep('SELECT_PAYMENT')
+                      }}
+                    >
                       确认本单，选择收款方式
                     </button>
                   </div>
@@ -1529,7 +1537,7 @@ export default function CashierPage() {
                 <div style={s.confirmPanel}>
                   <div>
                     <div style={s.confirmTitle}>选择收款方式</div>
-                    <div style={s.confirmSub}>请选择本单收款方式。本轮只记录界面选中状态，不完成销售。</div>
+                    <div style={s.confirmSub}>顾客屏已显示 KHQR 收款码。请选择最终收款方式用于记账。</div>
                   </div>
                   <div style={s.totalRow}>
                     <span style={s.totalLbl}>共 {count} 件 · 应付</span>
@@ -1541,29 +1549,25 @@ export default function CashierPage() {
                       style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'CASH' ? s.desktopPayOptionOn : {}) }}
                       onClick={() => {
                         setDesktopSelectedPaymentMethod('CASH')
-                        setPayment('CASH')
-                        syncCurrentCartToCustomerDisplay('CASH')
                       }}
                     >
                       <span style={s.desktopPayMain}>💵 现金收款 CASH</span>
-                      <span style={s.desktopPaySub}>选择现金收款，并清除本单 KHQR 展示。</span>
+                      <span style={s.desktopPaySub}>顾客付现金时选择，最终记录为 CASH。</span>
                     </button>
                     <button
                       type="button"
                       style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'KHQR' ? s.desktopPayOptionOn : {}) }}
                       onClick={() => {
                         setDesktopSelectedPaymentMethod('KHQR')
-                        setPayment('KHQR')
-                        syncCurrentCartToCustomerDisplay('KHQR')
                       }}
                     >
                       <span style={s.desktopPayMain}>📱 扫码收款 KHQR</span>
-                      <span style={s.desktopPaySub}>选择 KHQR 后，顾客屏会显示本单二维码。</span>
+                      <span style={s.desktopPaySub}>顾客扫码付款时选择，最终记录为 KHQR。</span>
                     </button>
                   </div>
                   {desktopSelectedPaymentMethod && (
                     <div style={s.nextStepBox}>
-                      当前已选择：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。请确认已收款后完成销售。
+                      当前最终记账方式：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。顾客屏继续显示本单 KHQR 收款码，确认收款后完成销售。
                     </div>
                   )}
                   {submitError && (
@@ -1577,7 +1581,6 @@ export default function CashierPage() {
                     disabled={!desktopSelectedPaymentMethod || submitting}
                     onClick={() => {
                       if (!desktopSelectedPaymentMethod) return
-                      setPayment(desktopSelectedPaymentMethod)
                       void handleSubmit(desktopSelectedPaymentMethod)
                     }}
                   >
@@ -1597,7 +1600,15 @@ export default function CashierPage() {
                     <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('CONFIRM_ORDER')}>
                       返回本单确认
                     </button>
-                    <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('SELECT_ITEMS')}>
+                    <button
+                      type="button"
+                      style={s.secondaryBtn}
+                      onClick={() => {
+                        setDesktopSelectedPaymentMethod(null)
+                        syncCurrentCartToCustomerDisplay('CASH')
+                        setCheckoutStep('SELECT_ITEMS')
+                      }}
+                    >
                       返回修改商品
                     </button>
                   </div>
