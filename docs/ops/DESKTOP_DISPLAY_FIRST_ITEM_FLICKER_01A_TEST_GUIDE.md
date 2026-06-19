@@ -36,12 +36,15 @@
 - `/api/cashier/display-session` 在点击后约 36-56ms 已写入 `DRAFT + CASH + 1 item + totalAmount=0.50`。
 - 顾客屏 DOM 没有出现 `ORDER_ACTIVE → IDLE → ORDER_ACTIVE`；真实序列是长时间保持 `IDLE`，随后才进入 `ORDER_ACTIVE`。
 - 线上 `/api/pos/session/current` 在 idle 状态下可能存在较慢响应；若顾客屏因为已有 current 请求在飞而跳过后续轮询，会导致 active session 迟到数秒。
+- 进一步取证发现，如果移除轮询防重叠，多个 idle current 请求会并发堆积，反而拖慢首件商品的 `display-session` 写入。
+- 最小修复采用两点：保留 current 轮询防重叠，并对 idle 热销商品查询做 60 秒服务端短缓存，避免空闲态每 800ms 重复执行热销聚合和商品图查询。
 
 本轮修复后，应重点确认：
 
 1. 点击首件商品后，顾客屏不再因为慢 idle current 请求而等待数秒。
 2. 即使存在旧 idle/CANCELLED current 响应晚回来，也不会覆盖更新后的 active order。
-3. Network 中可以看到点击后仍继续按轮询节奏请求 current，不会因上一请求未完成而完全跳过。
+3. Network 中不应出现大量 current 并发堆积。
+4. idle current 响应应受短缓存保护，不再每轮重复跑热销聚合。
 
 ## 前端渲染状态检查
 

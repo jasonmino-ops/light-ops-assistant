@@ -36,6 +36,9 @@ type DisplayProduct = {
   totalQty?: number
 }
 
+const IDLE_PRODUCTS_CACHE_MS = 60_000
+const idleProductsCache = new Map<string, { expiresAt: number; products: DisplayProduct[] }>()
+
 function parseItems(raw: string | null | undefined): PosItem[] {
   if (!raw) return []
   try {
@@ -108,69 +111,79 @@ export async function GET(req: NextRequest) {
   }
 
   if (!hasActiveItems) {
-    const weekStart = new Date()
-    weekStart.setHours(0, 0, 0, 0)
-    weekStart.setDate(weekStart.getDate() - 6)
-    const weeklyHotRows = await prisma.saleRecord.groupBy({
-      by: ['productId'],
-      where: {
-        tenantId: store.tenantId,
-        storeId: store.id,
-        saleType: 'SALE',
-        status: 'COMPLETED',
-        createdAt: { gte: weekStart },
-      },
-      _sum: { quantity: true },
-      orderBy: { _sum: { quantity: 'desc' } },
-      take: 6,
-    })
-    const weeklyProductIds = weeklyHotRows
-      .map((row) => row.productId)
-      .filter((id): id is string => !!id)
-    const weeklyQtyMap = new Map(weeklyHotRows.map((row) => [
-      row.productId,
-      row._sum.quantity?.toNumber() ?? 0,
-    ]))
-    const weeklyProductRows = weeklyProductIds.length > 0
-      ? await prisma.product.findMany({
-          where: {
-            tenantId: store.tenantId,
-            id: { in: weeklyProductIds },
-            status: 'ACTIVE',
-          },
-          select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true },
-        })
-      : []
-    const weeklyProductMap = new Map(weeklyProductRows.map((p) => [p.id, p]))
+    const cacheKey = `${store.tenantId}:${store.id}`
+    const cached = idleProductsCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      displayProducts = cached.products
+    } else {
+      const weekStart = new Date()
+      weekStart.setHours(0, 0, 0, 0)
+      weekStart.setDate(weekStart.getDate() - 6)
+      const weeklyHotRows = await prisma.saleRecord.groupBy({
+        by: ['productId'],
+        where: {
+          tenantId: store.tenantId,
+          storeId: store.id,
+          saleType: 'SALE',
+          status: 'COMPLETED',
+          createdAt: { gte: weekStart },
+        },
+        _sum: { quantity: true },
+        orderBy: { _sum: { quantity: 'desc' } },
+        take: 6,
+      })
+      const weeklyProductIds = weeklyHotRows
+        .map((row) => row.productId)
+        .filter((id): id is string => !!id)
+      const weeklyQtyMap = new Map(weeklyHotRows.map((row) => [
+        row.productId,
+        row._sum.quantity?.toNumber() ?? 0,
+      ]))
+      const weeklyProductRows = weeklyProductIds.length > 0
+        ? await prisma.product.findMany({
+            where: {
+              tenantId: store.tenantId,
+              id: { in: weeklyProductIds },
+              status: 'ACTIVE',
+            },
+            select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true },
+          })
+        : []
+      const weeklyProductMap = new Map(weeklyProductRows.map((p) => [p.id, p]))
 
-    const fallbackRows = await prisma.product.findMany({
-      where: {
-        tenantId: store.tenantId,
-        status: 'ACTIVE',
-        OR: [
-          { imageUrl: { not: null } },
-          { imageUrls: { not: null } },
-        ],
-      },
-      select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true, updatedAt: true },
-      orderBy: { updatedAt: 'desc' },
-      take: 12,
-    })
+      const fallbackRows = await prisma.product.findMany({
+        where: {
+          tenantId: store.tenantId,
+          status: 'ACTIVE',
+          OR: [
+            { imageUrl: { not: null } },
+            { imageUrls: { not: null } },
+          ],
+        },
+        select: { id: true, name: true, spec: true, sellPrice: true, imageUrl: true, imageUrls: true, updatedAt: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 12,
+      })
 
-    const displayProductMap = new Map<string, DisplayProduct>()
-    for (const id of weeklyProductIds) {
-      const product = weeklyProductMap.get(id)
-      const displayProduct = product ? toDisplayProduct(product, weeklyQtyMap.get(id) ?? 0) : null
-      if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
-      if (displayProductMap.size >= 3) break
+      const displayProductMap = new Map<string, DisplayProduct>()
+      for (const id of weeklyProductIds) {
+        const product = weeklyProductMap.get(id)
+        const displayProduct = product ? toDisplayProduct(product, weeklyQtyMap.get(id) ?? 0) : null
+        if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
+        if (displayProductMap.size >= 3) break
+      }
+      for (const product of fallbackRows) {
+        if (displayProductMap.size >= 3) break
+        if (displayProductMap.has(product.id)) continue
+        const displayProduct = toDisplayProduct(product)
+        if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
+      }
+      displayProducts = Array.from(displayProductMap.values()).slice(0, 3)
+      idleProductsCache.set(cacheKey, {
+        expiresAt: Date.now() + IDLE_PRODUCTS_CACHE_MS,
+        products: displayProducts,
+      })
     }
-    for (const product of fallbackRows) {
-      if (displayProductMap.size >= 3) break
-      if (displayProductMap.has(product.id)) continue
-      const displayProduct = toDisplayProduct(product)
-      if (displayProduct) displayProductMap.set(displayProduct.id, displayProduct)
-    }
-    displayProducts = Array.from(displayProductMap.values()).slice(0, 3)
   }
 
   const missingImageProductIds = items
