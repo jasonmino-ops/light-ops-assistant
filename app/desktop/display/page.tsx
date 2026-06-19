@@ -10,7 +10,7 @@
  * 本页是"手机操作，电脑展示"的同屏联动小屏 / 大屏镜像。
  */
 
-import { memo, useEffect, useState, useRef, CSSProperties } from 'react'
+import { memo, useEffect, useState, useRef, CSSProperties, RefObject } from 'react'
 import QRCode from 'react-qr-code'
 
 type PosItem = {
@@ -234,6 +234,7 @@ export default function DesktopMirrorPage() {
             storeName={data?.storeName ?? storeCode ?? ''}
             bannerUrl={data?.storeBannerUrl ?? null}
             products={data?.displayProducts ?? []}
+            pollingRef={pollInFlightRef}
             t={t}
           />
         )}
@@ -283,16 +284,18 @@ const IdleStage = memo(function IdleStage({
   storeName,
   bannerUrl,
   products,
+  pollingRef,
   t,
 }: {
   storeName: string
   bannerUrl: string | null
   products: DisplayProduct[]
+  pollingRef: RefObject<boolean>
   t: DisplayCopy
 }) {
   return (
     <div style={s.idleStage}>
-      <IdleCard storeName={storeName} bannerUrl={bannerUrl} products={products} t={t} />
+      <IdleCard storeName={storeName} bannerUrl={bannerUrl} products={products} pollingRef={pollingRef} t={t} />
       <div style={s.idlePaymentHint}>{t.idlePaymentHint}</div>
     </div>
   )
@@ -435,7 +438,19 @@ const ExpiredCard = memo(function ExpiredCard({ checkout, t }: { checkout: boole
   )
 })
 
-const IdleCard = memo(function IdleCard({ storeName, bannerUrl, products, t }: { storeName: string; bannerUrl: string | null; products: DisplayProduct[]; t: DisplayCopy }) {
+const IdleCard = memo(function IdleCard({
+  storeName,
+  bannerUrl,
+  products,
+  pollingRef,
+  t,
+}: {
+  storeName: string
+  bannerUrl: string | null
+  products: DisplayProduct[]
+  pollingRef: RefObject<boolean>
+  t: DisplayCopy
+}) {
   const heroImage = displayImageSrc(bannerUrl)
   const carouselProducts = products.filter((product) => Boolean(displayImageSrc(product.imageUrl))).slice(0, 3)
   const [activePickIndex, setActivePickIndex] = useState(0)
@@ -447,10 +462,11 @@ const IdleCard = memo(function IdleCard({ storeName, bannerUrl, products, t }: {
   useEffect(() => {
     if (carouselProducts.length <= 1) return
     const timer = setInterval(() => {
+      if (pollingRef.current) return
       setActivePickIndex((current) => (current + 1) % carouselProducts.length)
     }, HOT_ITEM_CAROUSEL_MS)
     return () => clearInterval(timer)
-  }, [carouselProducts.length])
+  }, [carouselProducts.length, pollingRef])
 
   const activeProduct = carouselProducts[activePickIndex] ?? carouselProducts[0] ?? null
 

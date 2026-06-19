@@ -94,7 +94,10 @@ export async function GET(req: NextRequest) {
   })
 
   const items = parseItems(row?.itemsJson)
-  const hasActiveItems = Boolean(row && row.status !== 'CANCELLED' && items.length > 0)
+  const rowTotalAmount = row?.totalAmount.toNumber() ?? 0
+  const hasActiveItems = Boolean(row
+    && row.status !== 'CANCELLED'
+    && (items.length > 0 || row.itemCount > 0 || rowTotalAmount > 0))
   let displayProducts: DisplayProduct[] = []
 
   function toDisplayProduct(p: { id: string; name: string; spec: string | null; sellPrice: { toNumber(): number }; imageUrl: string | null; imageUrls: string | null }, totalQty?: number): DisplayProduct | null {
@@ -108,6 +111,42 @@ export async function GET(req: NextRequest) {
       imageUrl,
       ...(totalQty !== undefined ? { totalQty } : {}),
     }
+  }
+
+  const now = new Date()
+  const ageMs = row ? now.getTime() - row.updatedAt.getTime() : 0
+  const displayStatus = row?.status === 'DRAFT' && hasActiveItems && ageMs > DRAFT_TIMEOUT_MS
+    ? 'EXPIRED_DRAFT'
+    : row?.status === 'AWAITING_PAYMENT' && hasActiveItems && ageMs > CHECKOUT_TIMEOUT_MS
+      ? 'EXPIRED_CHECKOUT'
+      : row?.status ?? null
+
+  if (row && hasActiveItems) {
+    const sessionKhqrImageUrl = cleanDisplayImageUrl(row.khqrImageUrl)
+    const khqrImageUrl = row.paymentMethod === 'KHQR' ? sessionKhqrImageUrl : null
+    return json({
+      storeCode: store.code,
+      storeName: store.name,
+      storeBannerUrl: cleanDisplayImageUrl(store.bannerUrl),
+      storeKhqrImageUrl: null,
+      displayProducts: [],
+      serverNow: now.toISOString(),
+      session: {
+        status: row.status,
+        displayStatus,
+        paymentMethod: row.paymentMethod,
+        paymentStatus: row.paymentStatus,
+        items: items.map((item) => ({ ...item, imageUrl: cleanDisplayImageUrl(item.imageUrl) })),
+        totalAmount: rowTotalAmount,
+        itemCount: row.itemCount,
+        khqrPayload: row.khqrPayload,
+        khqrImageUrl,
+        orderNo: row.orderNo,
+        message: row.message,
+        completedAt: row.completedAt?.toISOString() ?? null,
+        updatedAt: row.updatedAt.toISOString(),
+      },
+    })
   }
 
   if (!hasActiveItems) {
@@ -207,14 +246,6 @@ export async function GET(req: NextRequest) {
     ...item,
     imageUrl: cleanDisplayImageUrl(item.imageUrl) ?? productImageMap.get(item.productId) ?? null,
   }))
-  const now = new Date()
-  const ageMs = row ? now.getTime() - row.updatedAt.getTime() : 0
-  const displayStatus = row?.status === 'DRAFT' && displayItems.length > 0 && ageMs > DRAFT_TIMEOUT_MS
-    ? 'EXPIRED_DRAFT'
-    : row?.status === 'AWAITING_PAYMENT' && displayItems.length > 0 && ageMs > CHECKOUT_TIMEOUT_MS
-      ? 'EXPIRED_CHECKOUT'
-      : row?.status ?? null
-
   const sessionKhqrImageUrl = cleanDisplayImageUrl(row?.khqrImageUrl)
   const needsStoreKhqr = !hasActiveItems || (row?.paymentMethod === 'KHQR' && !sessionKhqrImageUrl)
   const khqrConfig = needsStoreKhqr
