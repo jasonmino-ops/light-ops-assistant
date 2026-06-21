@@ -342,6 +342,11 @@ export default function ProductsPage() {
   const [newCatParentId, setNewCatParentId] = useState('')
   const [catSaving, setCatSaving] = useState(false)
   const [catError, setCatError] = useState<string | null>(null)
+  const [editingCatId, setEditingCatId] = useState('')
+  const [editingCatName, setEditingCatName] = useState('')
+  const [editingCatParentId, setEditingCatParentId] = useState('')
+  const [catEditing, setCatEditing] = useState(false)
+  const [catDeletingId, setCatDeletingId] = useState('')
 
   // Product list + delete
   const [listOpen, setListOpen] = useState(false)
@@ -433,7 +438,7 @@ export default function ProductsPage() {
       )
       const body = await res.json()
       if (res.ok) {
-        setCategories((prev) => [...prev, body].sort((a, b) => a.name.localeCompare(b.name)))
+        setCategories((prev) => sortCategories([...prev, body]))
         setNewCatName('')
         setNewCatParentId('')
       } else {
@@ -443,6 +448,76 @@ export default function ProductsPage() {
       setCatError(t('products.catSaveError'))
     } finally {
       setCatSaving(false)
+    }
+  }
+
+  function sortCategories(list: Category[]) {
+    return [...list].sort((a, b) => {
+      if ((a.parentId || '') !== (b.parentId || '')) return (a.parentId || '').localeCompare(b.parentId || '')
+      return a.name.localeCompare(b.name)
+    })
+  }
+
+  function startEditCategory(cat: Category) {
+    setCatError(null)
+    setEditingCatId(cat.id)
+    setEditingCatName(cat.name)
+    setEditingCatParentId(cat.parentId ?? '')
+  }
+
+  function cancelEditCategory() {
+    setEditingCatId('')
+    setEditingCatName('')
+    setEditingCatParentId('')
+    setCatError(null)
+  }
+
+  async function handleUpdateCategory() {
+    const id = editingCatId
+    const name = editingCatName.trim()
+    if (!id || !name) return
+    setCatEditing(true)
+    setCatError(null)
+    try {
+      const res = await apiFetch(
+        '/api/categories',
+        { method: 'PATCH', body: JSON.stringify({ id, name, parentId: editingCatParentId || null }) },
+        OWNER_CTX,
+      )
+      const body = await res.json()
+      if (res.ok) {
+        setCategories((prev) => sortCategories(prev.map((c) => (c.id === body.id ? body : c))))
+        cancelEditCategory()
+      } else {
+        setCatError(body.message ?? t('products.catUpdateError'))
+      }
+    } catch {
+      setCatError(t('products.catUpdateError'))
+    } finally {
+      setCatEditing(false)
+    }
+  }
+
+  async function handleDeleteCategory(cat: Category) {
+    if (!window.confirm(t('products.catDeleteConfirm').replace('{name}', cat.name))) return
+    setCatDeletingId(cat.id)
+    setCatError(null)
+    try {
+      const res = await apiFetch(`/api/categories?id=${encodeURIComponent(cat.id)}`, { method: 'DELETE' }, OWNER_CTX)
+      const body = await res.json()
+      if (res.ok) {
+        setCategories((prev) => prev.filter((c) => c.id !== cat.id))
+        if (listCategoryId === cat.id) setListCategoryId('')
+        if (newCatParentId === cat.id) setNewCatParentId('')
+        if (editCategoryId === cat.id) setEditCategoryId('')
+        if (newCategoryId === cat.id) setNewCategoryId('')
+      } else {
+        setCatError(body.message ?? t('products.catDeleteError'))
+      }
+    } catch {
+      setCatError(t('products.catDeleteError'))
+    } finally {
+      setCatDeletingId('')
     }
   }
 
@@ -535,6 +610,67 @@ export default function ProductsPage() {
     { label: t('products.statsTodayNew'), value: todayNewCount },
     { label: t('products.statsStockWarning'), value: 0 },
   ]
+
+  function renderCategoryRow(cat: Category, level: 1 | 2) {
+    const isEditing = editingCatId === cat.id
+    const rowStyle = level === 1 ? s.catL1Row : s.catL2Row
+    const topLevelOptions = categories.filter((c) => !c.parentId && c.id !== cat.id)
+
+    if (isEditing) {
+      return (
+        <div key={cat.id} style={level === 1 ? s.catEditWrap : { ...s.catEditWrap, marginLeft: 12 }}>
+          <input
+            style={{ ...s.field, height: 38, marginBottom: 0 }}
+            value={editingCatName}
+            onChange={(e) => setEditingCatName(e.target.value)}
+            placeholder={t('products.catAddPlaceholder')}
+          />
+          <select
+            style={{ ...s.catParentSelect, maxWidth: '100%', width: '100%' }}
+            value={editingCatParentId}
+            onChange={(e) => setEditingCatParentId(e.target.value)}
+          >
+            <option value="">{t('products.catParentNone')}</option>
+            {topLevelOptions.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <div style={s.catActionRow}>
+            <button
+              type="button"
+              style={{ ...s.catMiniBtn, opacity: (!editingCatName.trim() || catEditing) ? 0.5 : 1 }}
+              disabled={!editingCatName.trim() || catEditing}
+              onClick={handleUpdateCategory}
+            >
+              {catEditing ? '…' : t('products.saveBtn')}
+            </button>
+            <button type="button" style={s.catGhostBtn} onClick={cancelEditCategory} disabled={catEditing}>
+              {t('products.deleteBack')}
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div key={cat.id} style={rowStyle}>
+        <span style={s.catNameText}>{level === 2 ? '└ ' : ''}{cat.name}</span>
+        <span style={s.catActions}>
+          <button type="button" style={s.catTextBtn} onClick={() => startEditCategory(cat)}>
+            {t('products.editBtn')}
+          </button>
+          <button
+            type="button"
+            style={{ ...s.catTextBtn, ...s.catDangerBtn, opacity: catDeletingId === cat.id ? 0.5 : 1 }}
+            disabled={catDeletingId === cat.id}
+            onClick={() => handleDeleteCategory(cat)}
+          >
+            {catDeletingId === cat.id ? '…' : t('products.deleteBtn')}
+          </button>
+        </span>
+      </div>
+    )
+  }
 
   function openAiImport() {
     aiReset()
@@ -2452,15 +2588,11 @@ export default function ProductsPage() {
                       <>
                         {l1.map((cat) => (
                           <div key={cat.id}>
-                            <div style={s.catL1Row}>{cat.name}</div>
-                            {(l2Map.get(cat.id) ?? []).map((sub) => (
-                              <div key={sub.id} style={s.catL2Row}>└ {sub.name}</div>
-                            ))}
+                            {renderCategoryRow(cat, 1)}
+                            {(l2Map.get(cat.id) ?? []).map((sub) => renderCategoryRow(sub, 2))}
                           </div>
                         ))}
-                        {orphanL2.map((c) => (
-                          <div key={c.id} style={s.catL2Row}>└ {c.name}</div>
-                        ))}
+                        {orphanL2.map((c) => renderCategoryRow(c, 2))}
                       </>
                     )
                   })()}
@@ -4297,11 +4429,79 @@ const s: Record<string, React.CSSProperties> = {
   },
   catL1Row: {
     fontSize: 13, fontWeight: 700, color: 'var(--text)',
-    padding: '4px 0',
+    padding: '6px 0',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
   },
   catL2Row: {
     fontSize: 13, color: 'var(--muted)',
-    padding: '2px 0 2px 12px',
+    padding: '4px 0 4px 12px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  catNameText: {
+    minWidth: 0,
+    flex: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+  },
+  catActions: {
+    display: 'inline-flex',
+    gap: 6,
+    flexShrink: 0,
+  },
+  catTextBtn: {
+    border: '1px solid var(--border)',
+    background: '#fff',
+    color: 'var(--blue)',
+    borderRadius: 999,
+    padding: '4px 9px',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  catDangerBtn: {
+    color: 'var(--red)',
+  },
+  catEditWrap: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(120px, 0.8fr) auto',
+    gap: 8,
+    alignItems: 'center',
+    padding: '6px 0',
+  },
+  catActionRow: {
+    display: 'inline-flex',
+    gap: 6,
+  },
+  catMiniBtn: {
+    height: 38,
+    padding: '0 12px',
+    border: 'none',
+    borderRadius: 'var(--radius-sm)',
+    background: 'var(--blue)',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  },
+  catGhostBtn: {
+    height: 38,
+    padding: '0 12px',
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    background: '#fff',
+    color: 'var(--muted)',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
   catAddRow: {
     display: 'flex', gap: 8, alignItems: 'center',
