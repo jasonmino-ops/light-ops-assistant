@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
+import { useLocale } from '@/app/components/LangProvider'
+import {
+  DesktopReceiptPreview,
+  printDesktopReceipt,
+  type DesktopReceiptData,
+} from '@/app/components/DesktopReceipt'
 import {
   CASHIER_CACHE_VERSION,
   cacheCashierProducts,
@@ -34,7 +40,13 @@ type CartLine = {
   sugar?: string
 }
 
-type SaleResult = { orderNo?: string; totalAmount: number; khqrFallback?: boolean; paymentMethod?: string }
+type SaleResult = {
+  orderNo?: string
+  totalAmount: number
+  khqrFallback?: boolean
+  paymentMethod?: string
+  receipt?: DesktopReceiptData
+}
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
@@ -407,6 +419,7 @@ const s: Record<string, CSSProperties> = {
 
 export default function CashierPage() {
   const router = useRouter()
+  const { lang } = useLocale()
   const [storeCode,     setStoreCode]     = useState<string | null>(null)
   const [noCodeError,   setNoCodeError]   = useState(false)
   const [products,      setProducts]      = useState<Product[]>([])
@@ -418,6 +431,7 @@ export default function CashierPage() {
   const [submitting,    setSubmitting]    = useState(false)
   const [submitError,   setSubmitError]   = useState('')
   const [saleResult,    setSaleResult]    = useState<SaleResult | null>(null)
+  const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false)
   const [storeName,     setStoreName]     = useState('')
   const [loading,       setLoading]       = useState(true)
   const [toast,         setToast]         = useState('')
@@ -667,6 +681,39 @@ export default function CashierPage() {
   }, [])
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  function buildReceiptSnapshot(input: {
+    items: ReturnType<typeof cashierDisplayItems>
+    totalAmount: number
+    paymentMethod: string
+    orderNo?: string | null
+    createdAt?: string | null
+  }): DesktopReceiptData {
+    return {
+      storeName: storeName || 'Store',
+      orderNo: input.orderNo ?? null,
+      createdAt: input.createdAt ?? new Date().toISOString(),
+      cashierName: 'Desktop POS',
+      paymentMethod: input.paymentMethod,
+      totalAmount: input.totalAmount,
+      items: input.items.map((item) => ({
+        name: item.name,
+        spec: item.spec,
+        qty: item.qty,
+        price: item.price,
+        lineAmount: item.lineAmount,
+      })),
+    }
+  }
+
+  function handlePrintReceipt(receipt: DesktopReceiptData) {
+    try {
+      printDesktopReceipt(receipt, lang)
+    } catch (err) {
+      console.warn('[desktop-receipt] print window failed', err)
+      showToast('无法打开打印预览，请检查浏览器弹窗权限')
+    }
+  }
 
   async function handleInstallClick() {
     if (!storeCode) {
@@ -1117,7 +1164,22 @@ export default function CashierPage() {
       })
       setCart([])
       setPayment('CASH')
-      setSaleResult({ orderNo: body.orderNo, totalAmount: submittedTotal, khqrFallback: body.khqrFallback ?? false })
+      setReceiptPreviewOpen(false)
+      setSaleResult({
+        orderNo: body.orderNo,
+        totalAmount: submittedTotal,
+        khqrFallback: body.khqrFallback ?? false,
+        paymentMethod: apiPayment,
+        receipt: isDesktopPos
+          ? buildReceiptSnapshot({
+              items: submittedItems,
+              totalAmount: submittedTotal,
+              paymentMethod: apiPayment,
+              orderNo: body.orderNo,
+              createdAt: body.createdAt,
+            })
+          : undefined,
+      })
     } catch { setSubmitError('网络错误，请重试') }
     finally { setSubmitting(false) }
   }
@@ -1717,7 +1779,7 @@ export default function CashierPage() {
 
       {/* ── Sale success overlay ───────────────────────────────────────────── */}
       {saleResult && (
-        <div style={s.overlay} onClick={() => setSaleResult(null)}>
+        <div style={s.overlay} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null) }}>
           <div style={s.modal} onClick={e => e.stopPropagation()}>
             <div style={s.modalIcon}>✅</div>
             <div style={s.modalTitle}>销售完成</div>
@@ -1729,11 +1791,40 @@ export default function CashierPage() {
               </div>
             )}
             <div style={{ margin: '6px 0 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
-              🖨️ 未自动打印小票 · 如需收据请在 mPOS 手机端打印
+              {isDesktopPos && saleResult.receipt
+                ? '🖨️ 已生成 80mm 小票，可预览或使用浏览器打印'
+                : '🖨️ 未自动打印小票 · 如需收据请在 mPOS 手机端打印'}
             </div>
-            <button style={s.modalBtn} onClick={() => { setSaleResult(null); searchRef.current?.focus() }}>继续收银</button>
+            {isDesktopPos && saleResult.receipt && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                <button
+                  type="button"
+                  style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12 }}
+                  onClick={() => setReceiptPreviewOpen(true)}
+                >
+                  预览小票
+                </button>
+                <button
+                  type="button"
+                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12 }}
+                  onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
+                >
+                  打印小票
+                </button>
+              </div>
+            )}
+            <button style={s.modalBtn} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null); searchRef.current?.focus() }}>继续收银</button>
           </div>
         </div>
+      )}
+
+      {receiptPreviewOpen && saleResult?.receipt && (
+        <DesktopReceiptPreview
+          data={saleResult.receipt}
+          lang={lang}
+          onClose={() => setReceiptPreviewOpen(false)}
+          onPrint={() => handlePrintReceipt(saleResult.receipt!)}
+        />
       )}
 
       {memberPayOpen && (
