@@ -10,7 +10,7 @@ import { publicUrl } from '@/lib/public-url'
 
 type MarketingLang = 'zh' | 'en' | 'km'
 type MarketingTemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
-type ScannerTarget = 'lookup' | 'editBarcode'
+type ScannerTarget = 'lookup' | 'editBarcode' | 'newBarcode'
 type MarketingImageField =
   | 'heroImageUrl'
   | 'detailImage1'
@@ -1587,6 +1587,9 @@ export default function ProductsPage() {
     if (scannerTarget === 'editBarcode') {
       setEditBarcode(barcode)
       setError(null)
+    } else if (scannerTarget === 'newBarcode') {
+      setNewBarcode(barcode)
+      setError(null)
     } else {
       setBarcodeInput(barcode)
       lookup(barcode)
@@ -1994,7 +1997,22 @@ export default function ProductsPage() {
                       <input style={s.field} value={newSpec} onChange={(e) => setNewSpec(e.target.value)} />
                     </Field>
                     <Field label={t('products.barcodeLabel')}>
-                      <input style={s.field} value={newBarcode} onChange={(e) => setNewBarcode(e.target.value)} placeholder={t('products.barcodePlaceholder')} />
+                      <div style={s.fieldWithAction}>
+                        <input
+                          style={{ ...s.field, ...s.fieldWithActionInput }}
+                          value={newBarcode}
+                          onChange={(e) => setNewBarcode(e.target.value)}
+                          placeholder={t('products.barcodePlaceholder')}
+                        />
+                        <button
+                          type="button"
+                          style={s.fieldActionBtn}
+                          onClick={() => openScanner('newBarcode')}
+                          aria-label={t('products.scanIconLabel')}
+                        >
+                          ⊡
+                        </button>
+                      </div>
                     </Field>
                     <Field label={t('products.fieldPrice')}>
                       <input
@@ -3212,12 +3230,22 @@ export default function ProductsPage() {
                 </div>
 
                 <Field label={t('products.barcodeLabel')}>
-                  <input
-                    style={s.field}
-                    value={newBarcode}
-                    onChange={(e) => setNewBarcode(e.target.value)}
-                    placeholder={t('products.barcodePlaceholder')}
-                  />
+                  <div style={s.fieldWithAction}>
+                    <input
+                      style={{ ...s.field, ...s.fieldWithActionInput }}
+                      value={newBarcode}
+                      onChange={(e) => setNewBarcode(e.target.value)}
+                      placeholder={t('products.barcodePlaceholder')}
+                    />
+                    <button
+                      type="button"
+                      style={s.fieldActionBtn}
+                      onClick={() => openScanner('newBarcode')}
+                      aria-label={t('products.scanIconLabel')}
+                    >
+                      ⊡
+                    </button>
+                  </div>
                 </Field>
 
                 <Field label={t('products.fieldName')}>
