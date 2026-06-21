@@ -406,6 +406,18 @@ const s: Record<string, CSSProperties> = {
   desktopPayOptionOn: { borderColor: ACCENT, background: '#eff6ff', boxShadow: '0 0 0 2px rgba(59,130,246,.12)' },
   desktopPayMain: { display: 'block', fontSize: 14, fontWeight: 900, color: '#111827', marginBottom: 5 },
   desktopPaySub: { display: 'block', fontSize: 11, color: '#64748b', lineHeight: 1.45 },
+  cashReceivedBox: { display: 'grid', gap: 7, padding: 10, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f8fafc' },
+  cashReceivedLabel: { fontSize: 12, fontWeight: 800, color: '#334155' },
+  cashReceivedInput: { width: '100%', height: 40, borderRadius: 9, border: '1.5px solid #cbd5e1', padding: '0 11px', fontSize: 18, fontWeight: 800, outline: 'none', color: '#111827', background: '#fff' },
+  cashChangeRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, fontSize: 12, color: '#64748b' },
+  cashChangeAmt: { fontSize: 20, fontWeight: 900, color: '#047857' },
+  cashWarn: { fontSize: 12, color: '#b91c1c', background: '#fef2f2', borderRadius: 8, padding: '7px 9px', lineHeight: 1.45 },
+  autoPrintToggle: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 10px', borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0' },
+  autoPrintText: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 },
+  autoPrintTitle: { fontSize: 12, fontWeight: 800, color: '#f8fafc' },
+  autoPrintSub: { fontSize: 10, color: '#94a3b8', lineHeight: 1.35 },
+  autoPrintSwitch: { position: 'relative', width: 42, height: 24, borderRadius: 999, border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, transition: 'background .12s' },
+  autoPrintKnob: { position: 'absolute', top: 3, width: 18, height: 18, borderRadius: 999, background: '#fff', transition: 'left .12s' },
 
   // Toast + error screen
   toast:       { position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: 'rgba(17,24,39,.9)', color: '#fff', borderRadius: 10, padding: '9px 18px', fontSize: 13, zIndex: 200, whiteSpace: 'nowrap' as const, pointerEvents: 'none' },
@@ -460,6 +472,8 @@ export default function CashierPage() {
   const [isDesktopPos, setIsDesktopPos] = useState(false)
   const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
+  const [cashReceivedInput, setCashReceivedInput] = useState('')
+  const [autoPrint, setAutoPrint] = useState(false)
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -468,17 +482,29 @@ export default function CashierPage() {
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
   const previousCashierDisplayCartCountRef = useRef(0)
+  const autoPrintedReceiptKeyRef = useRef('')
 
   useEffect(() => {
     setIsDesktopPos(window.location.pathname === '/desktop/pos')
   }, [])
 
   useEffect(() => {
+    try {
+      setAutoPrint(localStorage.getItem('cashier:autoPrint') === '1')
+    } catch {}
+  }, [])
+
+  useEffect(() => {
     if (cart.length === 0) {
       setCheckoutStep('SELECT_ITEMS')
       setDesktopSelectedPaymentMethod(null)
+      setCashReceivedInput('')
     }
   }, [cart.length])
+
+  useEffect(() => {
+    if (desktopSelectedPaymentMethod !== 'CASH') setCashReceivedInput('')
+  }, [desktopSelectedPaymentMethod])
 
   // ── Load store data ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -714,6 +740,35 @@ export default function CashierPage() {
       showToast('无法打开打印预览，请检查浏览器弹窗权限')
     }
   }
+
+  function handleAutoPrintToggle() {
+    const next = !autoPrint
+    setAutoPrint(next)
+    try {
+      localStorage.setItem('cashier:autoPrint', next ? '1' : '0')
+    } catch {}
+    showToast(next ? '已开启自动打印小票' : '已关闭自动打印小票')
+  }
+
+  useEffect(() => {
+    const receiptSnapshot = saleResult?.receipt
+    if (!isDesktopPos || !autoPrint || !receiptSnapshot) return
+
+    const receiptKey = `${receiptSnapshot.orderNo ?? 'no-order'}:${receiptSnapshot.createdAt}:${receiptSnapshot.totalAmount}`
+    if (autoPrintedReceiptKeyRef.current === receiptKey) return
+    autoPrintedReceiptKeyRef.current = receiptKey
+
+    const timer = window.setTimeout(() => {
+      try {
+        printDesktopReceipt(receiptSnapshot, lang)
+      } catch (err) {
+        console.warn('[desktop-receipt] auto print failed', err)
+        showToast('自动打印失败，可手动点击打印小票')
+      }
+    }, 350)
+
+    return () => window.clearTimeout(timer)
+  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang])
 
   async function handleInstallClick() {
     if (!storeCode) {
@@ -1216,6 +1271,11 @@ export default function CashierPage() {
 
   const total = cartTotal(cart)
   const count = cartCount(cart)
+  const cashReceivedAmount = cashReceivedInput.trim() === '' ? NaN : Number(cashReceivedInput)
+  const hasCashReceivedAmount = Number.isFinite(cashReceivedAmount)
+  const cashChangeAmount = hasCashReceivedAmount ? Math.max(0, cashReceivedAmount - total) : 0
+  const isCashPaymentSelected = isDesktopPos && checkoutStep === 'SELECT_PAYMENT' && desktopSelectedPaymentMethod === 'CASH'
+  const isCashReceivedInsufficient = isCashPaymentSelected && (!hasCashReceivedAmount || cashReceivedAmount + 0.0001 < total)
   const cacheText =
     cacheStatus === 'saving' ? '商品缓存：正在更新...' :
     cacheStatus === 'ready' && cacheMeta ? `商品缓存：已缓存 ${cacheMeta.productCount} 个 · ${fmtCacheTime(cacheMeta.lastProductCacheAt)}` :
@@ -1363,6 +1423,23 @@ export default function CashierPage() {
             })}
           </div>
           <div style={s.sideFooter}>
+            {isDesktopPos && (
+              <div style={s.autoPrintToggle}>
+                <div style={s.autoPrintText}>
+                  <span style={s.autoPrintTitle}>自动打印小票</span>
+                  <span style={s.autoPrintSub}>{autoPrint ? '销售完成后自动打开浏览器打印' : '默认关闭，可手动打印'}</span>
+                </div>
+                <button
+                  type="button"
+                  aria-pressed={autoPrint}
+                  aria-label="自动打印小票"
+                  style={{ ...s.autoPrintSwitch, background: autoPrint ? '#2563eb' : 'rgba(148,163,184,.45)' }}
+                  onClick={handleAutoPrintToggle}
+                >
+                  <span style={{ ...s.autoPrintKnob, left: autoPrint ? 21 : 3 }} />
+                </button>
+              </div>
+            )}
             <button
               style={{ ...s.sideLinkPri, ...(isDesktopPos ? s.sideLinkDesktopPri : {}) }}
               onClick={() => ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
@@ -1635,6 +1712,38 @@ export default function CashierPage() {
                       <span style={s.desktopPaySub}>顾客扫码付款时选择，最终记录为 KHQR。</span>
                     </button>
                   </div>
+                  {desktopSelectedPaymentMethod === 'CASH' && (
+                    <div style={s.cashReceivedBox}>
+                      <label style={s.cashReceivedLabel} htmlFor="desktop-cash-received">
+                        顾客实付金额
+                      </label>
+                      <input
+                        id="desktop-cash-received"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={cashReceivedInput}
+                        onChange={e => setCashReceivedInput(e.target.value)}
+                        placeholder="输入实收现金"
+                        style={{
+                          ...s.cashReceivedInput,
+                          borderColor: isCashReceivedInsufficient ? '#fca5a5' : '#cbd5e1',
+                        }}
+                      />
+                      <div style={s.cashChangeRow}>
+                        <span>找零金额</span>
+                        <span style={s.cashChangeAmt}>${cashChangeAmount.toFixed(2)}</span>
+                      </div>
+                      {isCashReceivedInsufficient && (
+                        <div style={s.cashWarn}>
+                          {hasCashReceivedAmount
+                            ? `实付不足，还差 $${(total - cashReceivedAmount).toFixed(2)}`
+                            : '请输入顾客实付金额后再确认现金收款'}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {desktopSelectedPaymentMethod && (
                     <div style={s.nextStepBox}>
                       当前最终记账方式：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。顾客屏继续显示本单 KHQR 收款码，确认收款后完成销售。
@@ -1647,10 +1756,11 @@ export default function CashierPage() {
                   )}
                   <button
                     type="button"
-                    style={{ ...s.submitBtn, ...(!desktopSelectedPaymentMethod || submitting ? s.submitDis : {}) }}
-                    disabled={!desktopSelectedPaymentMethod || submitting}
+                    style={{ ...s.submitBtn, ...(!desktopSelectedPaymentMethod || submitting || isCashReceivedInsufficient ? s.submitDis : {}) }}
+                    disabled={!desktopSelectedPaymentMethod || submitting || isCashReceivedInsufficient}
                     onClick={() => {
                       if (!desktopSelectedPaymentMethod) return
+                      if (isCashReceivedInsufficient) return
                       void handleSubmit(desktopSelectedPaymentMethod)
                     }}
                   >
