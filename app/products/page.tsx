@@ -10,6 +10,7 @@ import { publicUrl } from '@/lib/public-url'
 
 type MarketingLang = 'zh' | 'en' | 'km'
 type MarketingTemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
+type ScannerTarget = 'lookup' | 'editBarcode'
 type MarketingImageField =
   | 'heroImageUrl'
   | 'detailImage1'
@@ -248,6 +249,7 @@ export default function ProductsPage() {
     return text
   }, [t])
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [scannerTarget, setScannerTarget] = useState<ScannerTarget>('lookup')
   const [barcodeInput, setBarcodeInput] = useState('')
   const [cameraFailCount, setCameraFailCount] = useState(0)
   const scanSucceededRef = useRef(false)
@@ -314,6 +316,7 @@ export default function ProductsPage() {
 
   // Edit form
   const [editName, setEditName] = useState('')
+  const [editBarcode, setEditBarcode] = useState('')
   const [editSpec, setEditSpec] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editStatus, setEditStatus] = useState<'ACTIVE' | 'DISABLED'>('ACTIVE')
@@ -1281,6 +1284,7 @@ export default function ProductsPage() {
     }
     setProduct(next)
     setEditName(next.name)
+    setEditBarcode(next.barcode)
     setEditSpec(next.spec ?? '')
     setEditPrice(String(next.sellPrice))
     setEditStatus(next.status)
@@ -1544,6 +1548,7 @@ export default function ProductsPage() {
         const p: Product = await res.json()
         setProduct(p)
         setEditName(p.name)
+        setEditBarcode(p.barcode)
         setEditSpec(p.spec ?? '')
         setEditPrice(String(p.sellPrice))
         setEditStatus(p.status)
@@ -1579,11 +1584,16 @@ export default function ProductsPage() {
     scanSucceededRef.current = true
     setCameraFailCount(0)
     setScannerOpen(false)
-    setBarcodeInput(barcode)
-    lookup(barcode)
+    if (scannerTarget === 'editBarcode') {
+      setEditBarcode(barcode)
+      setError(null)
+    } else {
+      setBarcodeInput(barcode)
+      lookup(barcode)
+    }
     blockHidBriefly()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [scannerTarget])
 
   function handleScannerClose() {
     if (!scanSucceededRef.current) setCameraFailCount((c) => Math.min(c + 1, 5))
@@ -1597,9 +1607,10 @@ export default function ProductsPage() {
     setError(msg)
   }
 
-  function openScanner() {
+  function openScanner(target: ScannerTarget = 'lookup') {
     scanSucceededRef.current = false
     setError(null)
+    setScannerTarget(target)
     setScannerOpen(true)
   }
 
@@ -1612,6 +1623,7 @@ export default function ProductsPage() {
     setProduct(null)
     setMode('idle')
     setError(null)
+    setEditBarcode('')
     setEditCategoryId('')
     setNewCategoryId('')
     clearNewImage()
@@ -1622,7 +1634,9 @@ export default function ProductsPage() {
   async function handleSave() {
     if (!product) return
     const price = parseFloat(editPrice)
+    const cleanBarcode = editBarcode.trim()
     if (!editName.trim()) { setError(t('products.nameRequired')); return }
+    if (!cleanBarcode) { setError(t('products.barcodeRequired')); return }
     if (isNaN(price) || price <= 0) { setError(t('products.priceInvalid')); return }
     setError(null)
 
@@ -1632,6 +1646,7 @@ export default function ProductsPage() {
         {
           method: 'PATCH',
           body: JSON.stringify({
+            barcode: cleanBarcode,
             name: editName.trim(),
             spec: editSpec.trim() || null,
             sellPrice: price,
@@ -1644,6 +1659,7 @@ export default function ProductsPage() {
       const body = await res.json()
       if (res.ok) {
         setProduct(body)
+        setEditBarcode(body.barcode)
         setMode('saved')
       } else {
         setError(body.message ?? t('products.saveFailed'))
@@ -1697,6 +1713,7 @@ export default function ProductsPage() {
             : [created, ...prev]
         })
         setEditName(created.name)
+        setEditBarcode(created.barcode)
         setEditSpec(created.spec ?? '')
         setEditPrice(String(created.sellPrice))
         setEditStatus(created.status)
@@ -1824,7 +1841,7 @@ export default function ProductsPage() {
             <button
               type="button"
               style={s.scanIconBtn}
-              onClick={openScanner}
+              onClick={() => openScanner('lookup')}
               disabled={mode === 'loading'}
               aria-label={t('products.scanIconLabel')}
             >
@@ -3023,10 +3040,24 @@ export default function ProductsPage() {
                   {imageError && <div style={img.err}>{imageError}</div>}
                 </div>
 
-                <div style={s.barcodeRow}>
-                  <span style={s.barcodeLabel}>{t('products.barcodeLabel')}</span>
-                  <span style={s.barcodeValue}>{product.barcode}</span>
-                </div>
+                <Field label={t('products.barcodeLabel')}>
+                  <div style={s.fieldWithAction}>
+                    <input
+                      style={{ ...s.field, ...s.fieldWithActionInput }}
+                      value={editBarcode}
+                      onChange={(e) => setEditBarcode(e.target.value)}
+                      placeholder={t('products.barcodePlaceholder')}
+                    />
+                    <button
+                      type="button"
+                      style={s.fieldActionBtn}
+                      onClick={() => openScanner('editBarcode')}
+                      aria-label={t('products.scanIconLabel')}
+                    >
+                      ⊡
+                    </button>
+                  </div>
+                </Field>
 
                 <Field label={t('products.fieldName')}>
                   <input
@@ -3656,6 +3687,27 @@ const s: Record<string, React.CSSProperties> = {
     marginBottom: 12,
   },
   scanIcon: { fontSize: 22 },
+  fieldWithAction: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+  },
+  fieldWithActionInput: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fieldActionBtn: {
+    width: 42,
+    height: 42,
+    flexShrink: 0,
+    border: 'none',
+    borderRadius: 12,
+    background: 'var(--blue)',
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 900,
+    cursor: 'pointer',
+  },
   entryRow: { display: 'flex', gap: 8, marginBottom: 12 },
   manualNewBtn: {
     flex: 1,

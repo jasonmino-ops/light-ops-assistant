@@ -92,7 +92,7 @@ export async function DELETE(
  * PATCH /api/products/[id]  — OWNER only
  *
  * Updates one or more fields of an existing product.
- * Body (all optional): { name?, spec?, sellPrice?, status? }
+ * Body (all optional): { barcode?, name?, spec?, sellPrice?, status? }
  */
 export async function PATCH(
   req: NextRequest,
@@ -109,15 +109,18 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { name?: string; spec?: string | null; sellPrice?: number; status?: string; categoryId?: string | null }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; status?: string; categoryId?: string | null }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { name, spec, sellPrice, status, categoryId } = body
+  const { barcode, name, spec, sellPrice, status, categoryId } = body
 
+  if (barcode !== undefined && !String(barcode).trim()) {
+    return NextResponse.json({ error: 'INVALID_BARCODE', message: '条码不能为空' }, { status: 400 })
+  }
   if (name !== undefined && !String(name).trim()) {
     return NextResponse.json({ error: 'INVALID_NAME', message: '商品名不能为空' }, { status: 400 })
   }
@@ -128,7 +131,19 @@ export async function PATCH(
     return NextResponse.json({ error: 'INVALID_STATUS' }, { status: 400 })
   }
 
+  const cleanBarcode = barcode !== undefined ? String(barcode).trim() : undefined
+  if (cleanBarcode !== undefined) {
+    const existing = await prisma.product.findFirst({
+      where: { tenantId: ctx.tenantId, barcode: cleanBarcode, id: { not: id } },
+      select: { id: true },
+    })
+    if (existing) {
+      return NextResponse.json({ error: 'DUPLICATE_BARCODE', message: '该条码已存在' }, { status: 409 })
+    }
+  }
+
   const data = {
+    ...(cleanBarcode !== undefined ? { barcode: cleanBarcode } : {}),
     ...(name !== undefined ? { name: String(name).trim() } : {}),
     ...(spec !== undefined ? { spec: spec ? String(spec).trim() || null : null } : {}),
     ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
