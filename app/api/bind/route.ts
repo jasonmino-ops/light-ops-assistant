@@ -106,11 +106,81 @@ export async function POST(req: NextRequest) {
   // Cross-tenant and same-tenant different-user are both blocked.
   const existing = await prisma.user.findFirst({
     where: { telegramId, status: 'ACTIVE' },
-    select: { displayName: true, tenantId: true, tenant: { select: { name: true, status: true } } },
+    select: {
+      id: true,
+      displayName: true,
+      role: true,
+      tenantId: true,
+      tenant: { select: { name: true, status: true } },
+    },
   })
   if (existing) {
     const isSameTenant = existing.tenantId === bt.tenantId
     const tenantArchived = existing.tenant?.status === 'ARCHIVED'
+    if (isSameTenant) {
+      if (existing.role !== bt.role) {
+        return NextResponse.json(
+          {
+            error: 'ROLE_CONFLICT',
+            message: `该 Telegram 账号已绑定为「${existing.role === 'OWNER' ? '老板' : '员工'}」，不能使用「${bt.role === 'OWNER' ? '老板' : '员工'}」邀请码重复绑定`,
+          },
+          { status: 409 },
+        )
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.userStoreRole.upsert({
+          where: { userId_storeId: { userId: existing.id, storeId: bt.storeId } },
+          update: {
+            tenantId: bt.tenantId,
+            role: bt.role,
+            status: 'ACTIVE',
+          },
+          create: {
+            tenantId: bt.tenantId,
+            userId: existing.id,
+            storeId: bt.storeId,
+            role: bt.role,
+            status: 'ACTIVE',
+          },
+        })
+
+        if (bt.role === 'OWNER' && customStoreName?.trim()) {
+          await tx.store.update({
+            where: { id: bt.storeId },
+            data: { name: customStoreName.trim() },
+          })
+        }
+
+        const newCount = bt.usedCount + 1
+        await tx.bindToken.update({
+          where: { id: bt.id },
+          data: {
+            usedCount: newCount,
+            status: newCount >= bt.maxUses ? 'USED' : 'ACTIVE',
+          },
+        })
+      })
+
+      const sessionToken = signSession({
+        tenantId: bt.tenantId,
+        userId: existing.id,
+        storeId: bt.storeId,
+        role: existing.role,
+      })
+
+      const isProd = process.env.NODE_ENV === 'production'
+      const res = NextResponse.json({ ok: true, role: existing.role, displayName: existing.displayName })
+      res.cookies.set('auth-session', sessionToken, {
+        httpOnly: true,
+        sameSite: isProd ? 'none' : 'lax',
+        secure: isProd,
+        maxAge: 60 * 60 * 24 * 7,
+        path: '/',
+      })
+      return res
+    }
+
     const message = isSameTenant
       ? `该 Telegram 账号已绑定本商户账号「${existing.displayName}」，如需重新绑定请联系管理员解绑`
       : tenantArchived
