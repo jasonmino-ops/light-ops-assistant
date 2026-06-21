@@ -360,6 +360,7 @@ const s: Record<string, CSSProperties> = {
 
   // Payment / checkout section (bottom of right panel, always visible)
   paySec:      { flexShrink: 0, borderTop: '2px solid #e5e7eb', padding: '10px 14px 14px', background: '#fff' },
+  desktopPaySec: { maxHeight: '54vh', overflowY: 'auto' },
   payLabel:    { fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 7 },
   payRow:      { display: 'flex', gap: 6, marginBottom: 10 },
   payBtn:      { flex: 1, padding: '7px 0', borderRadius: 8, border: '1.5px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer' },
@@ -1637,7 +1638,7 @@ export default function CashierPage() {
           </div>
 
           {/* ── BOTTOM: Payment & checkout (always visible) ───────────────── */}
-          <div style={s.paySec}>
+          <div style={{ ...s.paySec, ...(isDesktopPos ? s.desktopPaySec : {}) }}>
             {isDesktopPos ? (
               checkoutStep === 'CONFIRM_ORDER' ? (
                 <div style={s.confirmPanel}>
@@ -1712,7 +1713,7 @@ export default function CashierPage() {
                       <span style={s.desktopPaySub}>顾客扫码付款时选择，最终记录为 KHQR。</span>
                     </button>
                   </div>
-                  {desktopSelectedPaymentMethod === 'CASH' && (
+                  {isCashPaymentSelected && (
                     <div style={s.cashReceivedBox}>
                       <label style={s.cashReceivedLabel} htmlFor="desktop-cash-received">
                         顾客实付金额
