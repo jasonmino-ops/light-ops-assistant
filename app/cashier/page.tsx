@@ -473,7 +473,7 @@ export default function CashierPage() {
   const [isDesktopPos, setIsDesktopPos] = useState(false)
   const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
-  const [cashReceivedInput, setCashReceivedInput] = useState('')
+  const [cashTendered, setCashTendered] = useState('')
   const [autoPrint, setAutoPrint] = useState(false)
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
@@ -499,12 +499,12 @@ export default function CashierPage() {
     if (cart.length === 0) {
       setCheckoutStep('SELECT_ITEMS')
       setDesktopSelectedPaymentMethod(null)
-      setCashReceivedInput('')
+      setCashTendered('')
     }
   }, [cart.length])
 
   useEffect(() => {
-    if (desktopSelectedPaymentMethod !== 'CASH') setCashReceivedInput('')
+    if (desktopSelectedPaymentMethod !== 'CASH') setCashTendered('')
   }, [desktopSelectedPaymentMethod])
 
   // ── Load store data ────────────────────────────────────────────────────────
@@ -1272,7 +1272,7 @@ export default function CashierPage() {
 
   const total = cartTotal(cart)
   const count = cartCount(cart)
-  const cashReceivedAmount = cashReceivedInput.trim() === '' ? NaN : Number(cashReceivedInput)
+  const cashReceivedAmount = cashTendered.trim() === '' ? NaN : Number(cashTendered)
   const hasCashReceivedAmount = Number.isFinite(cashReceivedAmount)
   const cashChangeAmount = hasCashReceivedAmount ? Math.max(0, cashReceivedAmount - total) : 0
   const isCashPaymentSelected = isDesktopPos && checkoutStep === 'SELECT_PAYMENT' && desktopSelectedPaymentMethod === 'CASH'
@@ -1689,6 +1689,38 @@ export default function CashierPage() {
                     <span style={s.totalLbl}>共 {count} 件 · 应付</span>
                     <span style={s.totalAmt}>${total.toFixed(2)}</span>
                   </div>
+                  {desktopSelectedPaymentMethod === 'CASH' && (
+                    <div style={s.cashReceivedBox}>
+                      <label style={s.cashReceivedLabel} htmlFor="desktop-cash-tendered">
+                        顾客实付金额
+                      </label>
+                      <input
+                        id="desktop-cash-tendered"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={cashTendered}
+                        onChange={e => setCashTendered(e.target.value)}
+                        placeholder="输入实收现金"
+                        style={{
+                          ...s.cashReceivedInput,
+                          borderColor: isCashReceivedInsufficient ? '#fca5a5' : '#cbd5e1',
+                        }}
+                      />
+                      <div style={s.cashChangeRow}>
+                        <span>找零金额</span>
+                        <span style={s.cashChangeAmt}>${cashChangeAmount.toFixed(2)}</span>
+                      </div>
+                      {isCashReceivedInsufficient && (
+                        <div style={s.cashWarn}>
+                          {hasCashReceivedAmount
+                            ? `实付不足，还差 $${(total - cashReceivedAmount).toFixed(2)}`
+                            : '请输入顾客实付金额后再确认现金收款'}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={s.desktopPayGrid}>
                     <button
                       type="button"
@@ -1713,38 +1745,6 @@ export default function CashierPage() {
                       <span style={s.desktopPaySub}>顾客扫码付款时选择，最终记录为 KHQR。</span>
                     </button>
                   </div>
-                  {isCashPaymentSelected && (
-                    <div style={s.cashReceivedBox}>
-                      <label style={s.cashReceivedLabel} htmlFor="desktop-cash-received">
-                        顾客实付金额
-                      </label>
-                      <input
-                        id="desktop-cash-received"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        inputMode="decimal"
-                        value={cashReceivedInput}
-                        onChange={e => setCashReceivedInput(e.target.value)}
-                        placeholder="输入实收现金"
-                        style={{
-                          ...s.cashReceivedInput,
-                          borderColor: isCashReceivedInsufficient ? '#fca5a5' : '#cbd5e1',
-                        }}
-                      />
-                      <div style={s.cashChangeRow}>
-                        <span>找零金额</span>
-                        <span style={s.cashChangeAmt}>${cashChangeAmount.toFixed(2)}</span>
-                      </div>
-                      {isCashReceivedInsufficient && (
-                        <div style={s.cashWarn}>
-                          {hasCashReceivedAmount
-                            ? `实付不足，还差 $${(total - cashReceivedAmount).toFixed(2)}`
-                            : '请输入顾客实付金额后再确认现金收款'}
-                        </div>
-                      )}
-                    </div>
-                  )}
                   {desktopSelectedPaymentMethod && (
                     <div style={s.nextStepBox}>
                       当前最终记账方式：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。顾客屏继续显示本单 KHQR 收款码，确认收款后完成销售。
