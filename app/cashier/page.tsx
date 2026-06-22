@@ -87,6 +87,8 @@ type BeforeInstallPromptEventLike = Event & {
 
 const COLORS = ['#fde68a','#bbf7d0','#bfdbfe','#fecaca','#ddd6fe','#fed7aa','#a5f3fc','#fda4af']
 const EMOJIS = ['☕','🧋','🍵','🥤','🍰','🥐','🍜','🍱','🥗','🧁']
+const DEFAULT_KHR_RATE = 4100
+const KHR_SYMBOL = '៛'
 
 const SUGAR_SPEC_RE = /no\s*sugar|无糖|微糖|半糖|少糖|正常糖|(?:25|50|75|100)%/i
 
@@ -112,6 +114,10 @@ function sugarZh(sugar: string): string {
 function cartLineKey(line: CartLine) { return line.barcode + (line.sugar ?? '') }
 function cartTotal(cart: CartLine[]) { return cart.reduce((s, c) => s + c.price * c.qty, 0) }
 function cartCount(cart: CartLine[]) { return cart.reduce((s, c) => s + c.qty, 0) }
+function toKhr(usd: number, rate: number) {
+  const amount = Math.round(usd * rate)
+  return `${amount.toLocaleString('en-US')}${KHR_SYMBOL}`
+}
 const CASHIER_DISPLAY_SYNC_DEBOUNCE_MS = 300
 function cashierDisplayItems(cart: CartLine[]) {
   return cart
@@ -368,6 +374,7 @@ const s: Record<string, CSSProperties> = {
   totalRow:    { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 },
   totalLbl:    { fontSize: 14, color: '#6b7280' },
   totalAmt:    { fontSize: 26, fontWeight: 800, color: '#111827' },
+  khrAssist:   { marginTop: -7, marginBottom: 9, textAlign: 'right' as const, fontSize: 13, fontWeight: 800, color: '#64748b' },
   submitBtn:   { width: '100%', padding: '12px 0', borderRadius: 10, border: 'none', background: ACCENT, color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer' },
   submitDis:   { opacity: 0.4, cursor: 'not-allowed' },
   printHint:   { fontSize: 10, color: '#9ca3af', textAlign: 'center' as const, marginTop: 7, lineHeight: 1.4 },
@@ -412,7 +419,13 @@ const s: Record<string, CSSProperties> = {
   cashReceivedInput: { width: '100%', height: 40, borderRadius: 9, border: '1.5px solid #cbd5e1', padding: '0 11px', fontSize: 18, fontWeight: 800, outline: 'none', color: '#111827', background: '#fff' },
   cashChangeRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, fontSize: 12, color: '#64748b' },
   cashChangeAmt: { fontSize: 20, fontWeight: 900, color: '#047857' },
+  cashChangeAmtBox: { textAlign: 'right' as const },
+  cashChangeKhr: { marginTop: 2, fontSize: 12, fontWeight: 800, color: '#64748b' },
   cashWarn: { fontSize: 12, color: '#b91c1c', background: '#fef2f2', borderRadius: 8, padding: '7px 9px', lineHeight: 1.45 },
+  fxCard: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 10px', borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0' },
+  fxLabel: { fontSize: 12, fontWeight: 800, color: '#f8fafc', whiteSpace: 'nowrap' as const },
+  fxInput: { width: 64, height: 28, borderRadius: 8, border: '1px solid rgba(255,255,255,.18)', background: 'rgba(255,255,255,.12)', color: '#fff', padding: '0 7px', fontSize: 12, fontWeight: 800, outline: 'none' },
+  fxBtn: { border: 'none', background: 'transparent', color: '#60a5fa', fontSize: 12, fontWeight: 900, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' as const },
   autoPrintToggle: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 10px', borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0' },
   autoPrintText: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 },
   autoPrintTitle: { fontSize: 12, fontWeight: 800, color: '#f8fafc' },
@@ -475,6 +488,8 @@ export default function CashierPage() {
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const [cashTendered, setCashTendered] = useState('')
   const [autoPrint, setAutoPrint] = useState(false)
+  const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
+  const [usdKhrRateInput, setUsdKhrRateInput] = useState(String(DEFAULT_KHR_RATE))
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -492,6 +507,12 @@ export default function CashierPage() {
   useEffect(() => {
     try {
       setAutoPrint(localStorage.getItem('cashier:autoPrint') === '1')
+      const savedRate = Number(localStorage.getItem('cashier:usdKhrRate'))
+      if (Number.isFinite(savedRate) && savedRate >= 1000 && savedRate <= 10000) {
+        const nextRate = Math.round(savedRate)
+        setUsdKhrRate(nextRate)
+        setUsdKhrRateInput(String(nextRate))
+      }
     } catch {}
   }, [])
 
@@ -749,6 +770,33 @@ export default function CashierPage() {
       localStorage.setItem('cashier:autoPrint', next ? '1' : '0')
     } catch {}
     showToast(next ? '已开启自动打印小票' : '已关闭自动打印小票')
+  }
+
+  function handleUsdKhrRateChange(value: string) {
+    setUsdKhrRateInput(value)
+    const nextRate = Number(value)
+    if (!Number.isFinite(nextRate) || nextRate < 1000 || nextRate > 10000) return
+    const roundedRate = Math.round(nextRate)
+    setUsdKhrRate(roundedRate)
+    try {
+      localStorage.setItem('cashier:usdKhrRate', String(roundedRate))
+    } catch {}
+  }
+
+  function handleUsdKhrRateApply() {
+    const nextRate = Number(usdKhrRateInput)
+    if (!Number.isFinite(nextRate) || nextRate < 1000 || nextRate > 10000) {
+      setUsdKhrRateInput(String(usdKhrRate))
+      showToast('汇率范围需在 1000 到 10000 之间')
+      return
+    }
+    const roundedRate = Math.round(nextRate)
+    setUsdKhrRate(roundedRate)
+    setUsdKhrRateInput(String(roundedRate))
+    try {
+      localStorage.setItem('cashier:usdKhrRate', String(roundedRate))
+    } catch {}
+    showToast(`汇率已更新：$1 = ${roundedRate.toLocaleString('en-US')}${KHR_SYMBOL}`)
   }
 
   useEffect(() => {
@@ -1277,6 +1325,10 @@ export default function CashierPage() {
   const cashChangeAmount = hasCashReceivedAmount ? Math.max(0, cashReceivedAmount - total) : 0
   const isCashPaymentSelected = isDesktopPos && checkoutStep === 'SELECT_PAYMENT' && desktopSelectedPaymentMethod === 'CASH'
   const isCashReceivedInsufficient = isCashPaymentSelected && (!hasCashReceivedAmount || cashReceivedAmount + 0.0001 < total)
+  const desktopKhrAssist = (amount: number) => {
+    if (!isDesktopPos || amount <= 0) return null
+    return <div style={s.khrAssist}>≈ {toKhr(amount, usdKhrRate)}</div>
+  }
   const cacheText =
     cacheStatus === 'saving' ? '商品缓存：正在更新...' :
     cacheStatus === 'ready' && cacheMeta ? `商品缓存：已缓存 ${cacheMeta.productCount} 个 · ${fmtCacheTime(cacheMeta.lastProductCacheAt)}` :
@@ -1425,21 +1477,42 @@ export default function CashierPage() {
           </div>
           <div style={s.sideFooter}>
             {isDesktopPos && (
-              <div style={s.autoPrintToggle}>
-                <div style={s.autoPrintText}>
-                  <span style={s.autoPrintTitle}>自动打印小票</span>
-                  <span style={s.autoPrintSub}>{autoPrint ? '销售完成后自动打开浏览器打印' : '默认关闭，可手动打印'}</span>
+              <>
+                <div style={s.fxCard}>
+                  <span style={s.fxLabel}>$1 =</span>
+                  <input
+                    type="number"
+                    min="1000"
+                    max="10000"
+                    step="1"
+                    inputMode="numeric"
+                    value={usdKhrRateInput}
+                    onChange={e => handleUsdKhrRateChange(e.target.value)}
+                    onBlur={handleUsdKhrRateApply}
+                    style={s.fxInput}
+                    aria-label="USD to KHR rate"
+                  />
+                  <span style={s.fxLabel}>{KHR_SYMBOL}</span>
+                  <button type="button" style={s.fxBtn} onClick={handleUsdKhrRateApply}>
+                    修改
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  aria-pressed={autoPrint}
-                  aria-label="自动打印小票"
-                  style={{ ...s.autoPrintSwitch, background: autoPrint ? '#2563eb' : 'rgba(148,163,184,.45)' }}
-                  onClick={handleAutoPrintToggle}
-                >
-                  <span style={{ ...s.autoPrintKnob, left: autoPrint ? 21 : 3 }} />
-                </button>
-              </div>
+                <div style={s.autoPrintToggle}>
+                  <div style={s.autoPrintText}>
+                    <span style={s.autoPrintTitle}>自动打印小票</span>
+                    <span style={s.autoPrintSub}>{autoPrint ? '销售完成后自动打开浏览器打印' : '默认关闭，可手动打印'}</span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-pressed={autoPrint}
+                    aria-label="自动打印小票"
+                    style={{ ...s.autoPrintSwitch, background: autoPrint ? '#2563eb' : 'rgba(148,163,184,.45)' }}
+                    onClick={handleAutoPrintToggle}
+                  >
+                    <span style={{ ...s.autoPrintKnob, left: autoPrint ? 21 : 3 }} />
+                  </button>
+                </div>
+              </>
             )}
             <button
               style={{ ...s.sideLinkPri, ...(isDesktopPos ? s.sideLinkDesktopPri : {}) }}
@@ -1661,6 +1734,7 @@ export default function CashierPage() {
                     <span style={s.totalLbl}>共 {count} 件 · 应付</span>
                     <span style={s.totalAmt}>${total.toFixed(2)}</span>
                   </div>
+                  {desktopKhrAssist(total)}
                   <div style={s.confirmActions}>
                     <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('SELECT_ITEMS')}>
                       返回修改商品
@@ -1689,6 +1763,7 @@ export default function CashierPage() {
                     <span style={s.totalLbl}>共 {count} 件 · 应付</span>
                     <span style={s.totalAmt}>${total.toFixed(2)}</span>
                   </div>
+                  {desktopKhrAssist(total)}
                   {desktopSelectedPaymentMethod === 'CASH' && (
                     <div style={s.cashReceivedBox}>
                       <label style={s.cashReceivedLabel} htmlFor="desktop-cash-tendered">
@@ -1710,7 +1785,12 @@ export default function CashierPage() {
                       />
                       <div style={s.cashChangeRow}>
                         <span>找零金额</span>
-                        <span style={s.cashChangeAmt}>${cashChangeAmount.toFixed(2)}</span>
+                        <div style={s.cashChangeAmtBox}>
+                          <div style={s.cashChangeAmt}>${cashChangeAmount.toFixed(2)}</div>
+                          {!isCashReceivedInsufficient && cashChangeAmount > 0 && (
+                            <div style={s.cashChangeKhr}>≈ {toKhr(cashChangeAmount, usdKhrRate)}</div>
+                          )}
+                        </div>
                       </div>
                       {isCashReceivedInsufficient && (
                         <div style={s.cashWarn}>
@@ -1810,6 +1890,7 @@ export default function CashierPage() {
                     <span style={s.totalLbl}>合计 {count} 件</span>
                     <span style={s.totalAmt}>${total.toFixed(2)}</span>
                   </div>
+                  {desktopKhrAssist(total)}
                   <button
                     style={{ ...s.submitBtn, ...(cart.length === 0 ? s.submitDis : {}) }}
                     disabled={cart.length === 0}
