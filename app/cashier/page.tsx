@@ -820,6 +820,11 @@ export default function CashierPage() {
     if (autoPrintedReceiptKeyRef.current === receiptKey) return
     autoPrintedReceiptKeyRef.current = receiptKey
 
+    if (document.fullscreenElement) {
+      showToast('全屏模式下已跳过自动打印，可手动打印小票')
+      return
+    }
+
     const timer = window.setTimeout(() => {
       try {
         printDesktopReceipt(receiptSnapshot, lang)
