@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react'
+import { Fragment, useState, useEffect, useCallback, useRef, CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLocale } from '@/app/components/LangProvider'
 import {
@@ -241,6 +241,7 @@ const ACCENT      = '#2563eb'
 const s: Record<string, CSSProperties> = {
   // Root
   root:        { display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: 'system-ui,-apple-system,sans-serif', background: '#f1f5f9' },
+  desktopRoot: { height: '100dvh', maxHeight: '100dvh' },
 
   // ── Left sidebar ──────────────────────────────────────────────────────────
   sidebar:     { width: 200, flexShrink: 0, height: '100vh', display: 'flex', flexDirection: 'column', background: SIDEBAR_BG, overflowY: 'auto' },
@@ -318,8 +319,12 @@ const s: Record<string, CSSProperties> = {
   topbar:      { padding: '10px 14px', background: '#fff', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 },
   search:      { flex: 1, height: 36, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0 12px', fontSize: 14, outline: 'none', background: '#f9fafb' },
   grid:        { flex: 1, overflowY: 'auto', padding: '12px 10px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 10, alignContent: 'start' },
+  desktopGrid: { gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 12, padding: 14 },
+  productGroupTitle: { gridColumn: '1/-1', padding: '12px 2px 2px', fontSize: 14, fontWeight: 900, color: '#334155', borderBottom: '1px solid #e2e8f0' },
   pcard:       { background: '#fff', borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: '1.5px solid transparent', transition: 'all .12s', userSelect: 'none' as const },
+  pcardDesktop:{ minHeight: 184, display: 'flex', flexDirection: 'column' },
   pcardImg:    { height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, overflow: 'hidden' },
+  pcardImgDesktop: { height: 122, flexShrink: 0 },
   pcardBody:   { padding: '7px 10px 10px' },
   pcardName:   { fontSize: 13, fontWeight: 600, color: '#111827', lineHeight: 1.3, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
   pcardSpec:   { fontSize: 11, color: '#9ca3af', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
@@ -502,6 +507,24 @@ export default function CashierPage() {
   useEffect(() => {
     setIsDesktopPos(window.location.pathname === '/desktop/pos')
   }, [])
+
+  useEffect(() => {
+    if (!isDesktopPos) return
+    const previousHtmlOverflow = document.documentElement.style.overflow
+    const previousHtmlHeight = document.documentElement.style.height
+    const previousBodyOverflow = document.body.style.overflow
+    const previousBodyHeight = document.body.style.height
+    document.documentElement.style.overflow = 'hidden'
+    document.documentElement.style.height = '100%'
+    document.body.style.overflow = 'hidden'
+    document.body.style.height = '100%'
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow
+      document.documentElement.style.height = previousHtmlHeight
+      document.body.style.overflow = previousBodyOverflow
+      document.body.style.height = previousBodyHeight
+    }
+  }, [isDesktopPos])
 
   useEffect(() => {
     try {
@@ -1304,6 +1327,59 @@ export default function CashierPage() {
     const l2Ids = new Set((l2ByParent.get(activeCatId) ?? []).map(c => c.id))
     return p.categoryId === activeCatId || (p.categoryId !== null && l2Ids.has(p.categoryId))
   })
+  const categoryById = new Map(categories.map(c => [c.id, c]))
+  const displayProductGroups = (() => {
+    if (!isDesktopPos || activeCatId !== null) return []
+    const groups = new Map<string, { title: string; items: Product[] }>()
+    l1Cats.forEach(cat => groups.set(cat.id, { title: cat.name, items: [] }))
+    for (const p of displayProducts) {
+      const cat = p.categoryId ? categoryById.get(p.categoryId) : null
+      const rootCat = cat?.parentId ? categoryById.get(cat.parentId) : cat
+      const groupId = rootCat?.id ?? '__other__'
+      if (!groups.has(groupId)) groups.set(groupId, { title: rootCat?.name ?? 'Other', items: [] })
+      groups.get(groupId)!.items.push(p)
+    }
+    return Array.from(groups.values()).filter(group => group.items.length > 0)
+  })()
+
+  function renderProductCard(p: Product, idx: number) {
+    const inCart = cart.filter(c => c.barcode === p.barcode).reduce((sum, c) => sum + c.qty, 0)
+    const color  = COLORS[idx % COLORS.length]
+    const emoji  = EMOJIS[idx % EMOJIS.length]
+    return (
+      <div
+        key={p.id}
+        style={{
+          ...s.pcard,
+          ...(isDesktopPos ? s.pcardDesktop : {}),
+          borderColor: inCart ? ACCENT : 'transparent',
+          boxShadow: inCart ? `0 0 0 1px ${ACCENT}` : '0 1px 4px rgba(0,0,0,.07)',
+        }}
+        onClick={() => handleAddClick(p)}
+      >
+        {p.imageUrl ? (
+          <div style={{ ...s.pcardImg, ...(isDesktopPos ? s.pcardImgDesktop : {}) }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+        ) : (
+          <div style={{ ...s.pcardImg, ...(isDesktopPos ? s.pcardImgDesktop : {}), background: color }}>{emoji}</div>
+        )}
+        <div style={s.pcardBody}>
+          <div style={s.pcardName}>{p.name}</div>
+          {p.spec && <div style={s.pcardSpec}>{p.spec}</div>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={s.pcardPrice}>${p.sellPrice.toFixed(2)}</span>
+            {inCart > 0 && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: ACCENT, borderRadius: 10, padding: '1px 7px' }}>
+                ×{inCart}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const total = cartTotal(cart)
   const count = cartCount(cart)
@@ -1386,7 +1462,7 @@ export default function CashierPage() {
       {toast && <div style={s.toast}>{toast}</div>}
 
       {/* ── Main 3-column layout ──────────────────────────────────────────── */}
-      <div style={s.root}>
+      <div style={{ ...s.root, ...(isDesktopPos ? s.desktopRoot : {}) }}>
 
         {/* LEFT SIDEBAR */}
         <div style={s.sidebar}>
@@ -1531,7 +1607,7 @@ export default function CashierPage() {
               onChange={e => setSearchKw(e.target.value)}
             />
           </div>
-          <div style={s.grid}>
+          <div style={{ ...s.grid, ...(isDesktopPos ? s.desktopGrid : {}) }}>
             {loading && (
               <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#9ca3af', padding: 40, fontSize: 14 }}>加载商品中…</div>
             )}
@@ -1540,39 +1616,13 @@ export default function CashierPage() {
                 {kw ? `未找到"${kw}"` : '该分类暂无商品'}
               </div>
             )}
-            {displayProducts.map((p, idx) => {
-              const inCart = cart.filter(c => c.barcode === p.barcode).reduce((s, c) => s + c.qty, 0)
-              const color  = COLORS[idx % COLORS.length]
-              const emoji  = EMOJIS[idx % EMOJIS.length]
-              return (
-                <div
-                  key={p.id}
-                  style={{ ...s.pcard, borderColor: inCart ? ACCENT : 'transparent', boxShadow: inCart ? `0 0 0 1px ${ACCENT}` : '0 1px 4px rgba(0,0,0,.07)' }}
-                  onClick={() => handleAddClick(p)}
-                >
-                  {p.imageUrl ? (
-                    <div style={s.pcardImg}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </div>
-                  ) : (
-                    <div style={{ ...s.pcardImg, background: color }}>{emoji}</div>
-                  )}
-                  <div style={s.pcardBody}>
-                    <div style={s.pcardName}>{p.name}</div>
-                    {p.spec && <div style={s.pcardSpec}>{p.spec}</div>}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={s.pcardPrice}>${p.sellPrice.toFixed(2)}</span>
-                      {inCart > 0 && (
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: ACCENT, borderRadius: 10, padding: '1px 7px' }}>
-                          ×{inCart}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+            {!loading && isDesktopPos && activeCatId === null && displayProductGroups.map((group, groupIndex) => (
+              <Fragment key={group.title}>
+                <div style={s.productGroupTitle}>{group.title}</div>
+                {group.items.map((p, idx) => renderProductCard(p, groupIndex * 1000 + idx))}
+              </Fragment>
+            ))}
+            {!loading && (!isDesktopPos || activeCatId !== null) && displayProducts.map((p, idx) => renderProductCard(p, idx))}
           </div>
         </div>
 
