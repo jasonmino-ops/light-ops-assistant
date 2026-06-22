@@ -407,6 +407,7 @@ const s: Record<string, CSSProperties> = {
   confirmName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
   confirmAmt:  { fontWeight: 800, color: '#111827' },
   confirmActions: { display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 8 },
+  desktopPayStickyActions: { position: 'sticky', bottom: -14, zIndex: 2, display: 'flex', flexDirection: 'column', gap: 10, margin: '0 -14px -14px', padding: '10px 14px 14px', background: '#fff', borderTop: '1px solid #e5e7eb', boxShadow: '0 -8px 18px rgba(15,23,42,.06)' },
   secondaryBtn:{ padding: '11px 10px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
   nextStepBox:{ padding: 12, borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e3a8a', fontSize: 12, lineHeight: 1.55 },
   desktopPayGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
@@ -422,9 +423,8 @@ const s: Record<string, CSSProperties> = {
   cashChangeAmtBox: { textAlign: 'right' as const },
   cashChangeKhr: { marginTop: 2, fontSize: 12, fontWeight: 800, color: '#64748b' },
   cashWarn: { fontSize: 12, color: '#b91c1c', background: '#fef2f2', borderRadius: 8, padding: '7px 9px', lineHeight: 1.45 },
-  fxCard: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 10px', borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0' },
-  fxLabel: { fontSize: 12, fontWeight: 800, color: '#f8fafc', whiteSpace: 'nowrap' as const },
-  fxInput: { width: 64, height: 28, borderRadius: 8, border: '1px solid rgba(255,255,255,.18)', background: 'rgba(255,255,255,.12)', color: '#fff', padding: '0 7px', fontSize: 12, fontWeight: 800, outline: 'none' },
+  fxCard: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 10px', borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0', minWidth: 0 },
+  fxLabel: { fontSize: 12, fontWeight: 800, color: '#f8fafc', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
   fxBtn: { border: 'none', background: 'transparent', color: '#60a5fa', fontSize: 12, fontWeight: 900, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' as const },
   autoPrintToggle: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 10px', borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0' },
   autoPrintText: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 },
@@ -489,7 +489,6 @@ export default function CashierPage() {
   const [cashTendered, setCashTendered] = useState('')
   const [autoPrint, setAutoPrint] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
-  const [usdKhrRateInput, setUsdKhrRateInput] = useState(String(DEFAULT_KHR_RATE))
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -511,7 +510,6 @@ export default function CashierPage() {
       if (Number.isFinite(savedRate) && savedRate >= 1000 && savedRate <= 10000) {
         const nextRate = Math.round(savedRate)
         setUsdKhrRate(nextRate)
-        setUsdKhrRateInput(String(nextRate))
       }
     } catch {}
   }, [])
@@ -772,27 +770,16 @@ export default function CashierPage() {
     showToast(next ? '已开启自动打印小票' : '已关闭自动打印小票')
   }
 
-  function handleUsdKhrRateChange(value: string) {
-    setUsdKhrRateInput(value)
-    const nextRate = Number(value)
-    if (!Number.isFinite(nextRate) || nextRate < 1000 || nextRate > 10000) return
-    const roundedRate = Math.round(nextRate)
-    setUsdKhrRate(roundedRate)
-    try {
-      localStorage.setItem('cashier:usdKhrRate', String(roundedRate))
-    } catch {}
-  }
-
   function handleUsdKhrRateApply() {
-    const nextRate = Number(usdKhrRateInput)
+    const input = window.prompt('输入 USD/KHR 汇率（1000 - 10000）', String(usdKhrRate))
+    if (input === null) return
+    const nextRate = Number(input.trim())
     if (!Number.isFinite(nextRate) || nextRate < 1000 || nextRate > 10000) {
-      setUsdKhrRateInput(String(usdKhrRate))
       showToast('汇率范围需在 1000 到 10000 之间')
       return
     }
     const roundedRate = Math.round(nextRate)
     setUsdKhrRate(roundedRate)
-    setUsdKhrRateInput(String(roundedRate))
     try {
       localStorage.setItem('cashier:usdKhrRate', String(roundedRate))
     } catch {}
@@ -1479,20 +1466,7 @@ export default function CashierPage() {
             {isDesktopPos && (
               <>
                 <div style={s.fxCard}>
-                  <span style={s.fxLabel}>$1 =</span>
-                  <input
-                    type="number"
-                    min="1000"
-                    max="10000"
-                    step="1"
-                    inputMode="numeric"
-                    value={usdKhrRateInput}
-                    onChange={e => handleUsdKhrRateChange(e.target.value)}
-                    onBlur={handleUsdKhrRateApply}
-                    style={s.fxInput}
-                    aria-label="USD to KHR rate"
-                  />
-                  <span style={s.fxLabel}>{KHR_SYMBOL}</span>
+                  <span style={s.fxLabel}>$1 = {usdKhrRate.toLocaleString('en-US')}{KHR_SYMBOL}</span>
                   <button type="button" style={s.fxBtn} onClick={handleUsdKhrRateApply}>
                     修改
                   </button>
@@ -1825,63 +1799,65 @@ export default function CashierPage() {
                       <span style={s.desktopPaySub}>顾客扫码付款时选择，最终记录为 KHQR。</span>
                     </button>
                   </div>
-                  {desktopSelectedPaymentMethod && (
-                    <div style={s.nextStepBox}>
-                      当前最终记账方式：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。顾客屏继续显示本单 KHQR 收款码，确认收款后完成销售。
-                    </div>
-                  )}
-                  {submitError && (
-                    <div style={{ fontSize: 12, color: '#ef4444', padding: '5px 8px', background: '#fef2f2', borderRadius: 6 }}>
-                      {submitError}
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    style={{ ...s.submitBtn, ...(!desktopSelectedPaymentMethod || submitting || isCashReceivedInsufficient ? s.submitDis : {}) }}
-                    disabled={!desktopSelectedPaymentMethod || submitting || isCashReceivedInsufficient}
-                    onClick={() => {
-                      if (!desktopSelectedPaymentMethod) return
-                      if (isCashReceivedInsufficient) return
-                      void handleSubmit(desktopSelectedPaymentMethod)
-                    }}
-                  >
-                    {submitting
-                      ? '处理中…'
-                      : desktopSelectedPaymentMethod === 'KHQR'
-                        ? '确认 KHQR 已收款，完成销售'
-                        : desktopSelectedPaymentMethod === 'CASH'
-                          ? '确认现金已收款，完成销售'
-                          : '确认收款，完成销售'}
-                  </button>
-                  <div style={s.totalRow}>
-                    <span style={s.totalLbl}>商品种类</span>
-                    <span style={s.confirmAmt}>{cart.length} 类</span>
-                  </div>
-                  <div style={s.confirmActions}>
+                  <div style={s.desktopPayStickyActions}>
+                    {desktopSelectedPaymentMethod && (
+                      <div style={s.nextStepBox}>
+                        当前最终记账方式：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。顾客屏继续显示本单 KHQR 收款码，确认收款后完成销售。
+                      </div>
+                    )}
+                    {submitError && (
+                      <div style={{ fontSize: 12, color: '#ef4444', padding: '5px 8px', background: '#fef2f2', borderRadius: 6 }}>
+                        {submitError}
+                      </div>
+                    )}
                     <button
                       type="button"
-                      style={s.secondaryBtn}
+                      style={{ ...s.submitBtn, ...(!desktopSelectedPaymentMethod || submitting || isCashReceivedInsufficient ? s.submitDis : {}) }}
+                      disabled={!desktopSelectedPaymentMethod || submitting || isCashReceivedInsufficient}
                       onClick={() => {
-                        setDesktopSelectedPaymentMethod(null)
-                        syncCurrentCartToCustomerDisplay('CASH')
-                        setCheckoutStep('CONFIRM_ORDER')
+                        if (!desktopSelectedPaymentMethod) return
+                        if (isCashReceivedInsufficient) return
+                        void handleSubmit(desktopSelectedPaymentMethod)
                       }}
                     >
-                      返回本单确认
+                      {submitting
+                        ? '处理中…'
+                        : desktopSelectedPaymentMethod === 'KHQR'
+                          ? '确认 KHQR 已收款，完成销售'
+                          : desktopSelectedPaymentMethod === 'CASH'
+                            ? '确认现金已收款，完成销售'
+                            : '确认收款，完成销售'}
                     </button>
-                    <button
-                      type="button"
-                      style={s.secondaryBtn}
-                      onClick={() => {
-                        setDesktopSelectedPaymentMethod(null)
-                        syncCurrentCartToCustomerDisplay('CASH')
-                        setCheckoutStep('SELECT_ITEMS')
-                      }}
-                    >
-                      返回修改商品
-                    </button>
+                    <div style={{ ...s.totalRow, marginBottom: 0 }}>
+                      <span style={s.totalLbl}>商品种类</span>
+                      <span style={s.confirmAmt}>{cart.length} 类</span>
+                    </div>
+                    <div style={s.confirmActions}>
+                      <button
+                        type="button"
+                        style={s.secondaryBtn}
+                        onClick={() => {
+                          setDesktopSelectedPaymentMethod(null)
+                          syncCurrentCartToCustomerDisplay('CASH')
+                          setCheckoutStep('CONFIRM_ORDER')
+                        }}
+                      >
+                        返回本单确认
+                      </button>
+                      <button
+                        type="button"
+                        style={s.secondaryBtn}
+                        onClick={() => {
+                          setDesktopSelectedPaymentMethod(null)
+                          syncCurrentCartToCustomerDisplay('CASH')
+                          setCheckoutStep('SELECT_ITEMS')
+                        }}
+                      >
+                        返回修改商品
+                      </button>
+                    </div>
+                    <div style={{ ...s.printHint, marginTop: 0 }}>复用原 /cashier 完成销售逻辑 · 不新增提交接口</div>
                   </div>
-                  <div style={s.printHint}>复用原 /cashier 完成销售逻辑 · 不新增提交接口</div>
                 </div>
               ) : (
                 <>
