@@ -372,6 +372,7 @@ const s: Record<string, CSSProperties> = {
   // Payment / checkout section (bottom of right panel, always visible)
   paySec:      { flexShrink: 0, borderTop: '2px solid #e5e7eb', padding: '10px 14px 14px', background: '#fff' },
   desktopPaySec: { maxHeight: '54vh', overflowY: 'auto' },
+  desktopSelectPaySec: { height: 'min(68vh,620px)', maxHeight: 'calc(100dvh - 120px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
   payLabel:    { fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 7 },
   payRow:      { display: 'flex', gap: 6, marginBottom: 10 },
   payBtn:      { flex: 1, padding: '7px 0', borderRadius: 8, border: '1.5px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer' },
@@ -404,6 +405,8 @@ const s: Record<string, CSSProperties> = {
   modalSub:    { fontSize: 13, color: '#6b7280', marginBottom: 20 },
   modalBtn:    { padding: '11px 32px', borderRadius: 10, border: 'none', background: ACCENT, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' },
   confirmPanel:{ display: 'flex', flexDirection: 'column', gap: 10 },
+  desktopSelectPanel: { flex: 1, minHeight: 0 },
+  desktopSelectScroll: { flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 10 },
   confirmTitle:{ fontSize: 14, fontWeight: 800, color: '#111827' },
   confirmSub:  { fontSize: 11, color: '#64748b', lineHeight: 1.5 },
   confirmList: { maxHeight: 156, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 10, background: '#f8fafc' },
@@ -412,7 +415,7 @@ const s: Record<string, CSSProperties> = {
   confirmName: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
   confirmAmt:  { fontWeight: 800, color: '#111827' },
   confirmActions: { display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 8 },
-  desktopPayStickyActions: { position: 'sticky', bottom: -14, zIndex: 2, display: 'flex', flexDirection: 'column', gap: 10, margin: '0 -14px -14px', padding: '10px 14px 14px', background: '#fff', borderTop: '1px solid #e5e7eb', boxShadow: '0 -8px 18px rgba(15,23,42,.06)' },
+  desktopPayStickyActions: { flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, margin: '0 -14px -14px', padding: '9px 14px 12px', background: '#fff', borderTop: '1px solid #e5e7eb', boxShadow: '0 -8px 18px rgba(15,23,42,.06)' },
   secondaryBtn:{ padding: '11px 10px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
   nextStepBox:{ padding: 12, borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e3a8a', fontSize: 12, lineHeight: 1.55 },
   desktopPayGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
@@ -1735,7 +1738,11 @@ export default function CashierPage() {
           </div>
 
           {/* ── BOTTOM: Payment & checkout (always visible) ───────────────── */}
-          <div style={{ ...s.paySec, ...(isDesktopPos ? s.desktopPaySec : {}) }}>
+          <div style={{
+            ...s.paySec,
+            ...(isDesktopPos ? s.desktopPaySec : {}),
+            ...(isDesktopPos && checkoutStep === 'SELECT_PAYMENT' ? s.desktopSelectPaySec : {}),
+          }}>
             {isDesktopPos ? (
               checkoutStep === 'CONFIRM_ORDER' ? (
                 <div style={s.confirmPanel}>
@@ -1778,81 +1785,83 @@ export default function CashierPage() {
                   <div style={s.printHint}>本轮仅进入结账占位，不创建 SaleRecord。</div>
                 </div>
               ) : checkoutStep === 'SELECT_PAYMENT' ? (
-                <div style={s.confirmPanel}>
-                  <div>
-                    <div style={s.confirmTitle}>选择收款方式</div>
-                    <div style={s.confirmSub}>顾客屏已显示 KHQR 收款码。请选择最终收款方式用于记账。</div>
-                  </div>
-                  <div style={s.totalRow}>
-                    <span style={s.totalLbl}>共 {count} 件 · 应付</span>
-                    <span style={s.totalAmt}>${total.toFixed(2)}</span>
-                  </div>
-                  {desktopKhrAssist(total)}
-                  {desktopSelectedPaymentMethod === 'CASH' && (
-                    <div style={s.cashReceivedBox}>
-                      <label style={s.cashReceivedLabel} htmlFor="desktop-cash-tendered">
-                        顾客实付金额
-                      </label>
-                      <input
-                        id="desktop-cash-tendered"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        inputMode="decimal"
-                        value={cashTendered}
-                        onChange={e => setCashTendered(e.target.value)}
-                        placeholder="输入实收现金"
-                        style={{
-                          ...s.cashReceivedInput,
-                          borderColor: isCashReceivedInsufficient ? '#fca5a5' : '#cbd5e1',
-                        }}
-                      />
-                      <div style={s.cashChangeRow}>
-                        <span>找零金额</span>
-                        <div style={s.cashChangeAmtBox}>
-                          <div style={s.cashChangeAmt}>${cashChangeAmount.toFixed(2)}</div>
-                          {!isCashReceivedInsufficient && cashChangeAmount > 0 && (
-                            <div style={s.cashChangeKhr}>≈ {toKhr(cashChangeAmount, usdKhrRate)}</div>
-                          )}
-                        </div>
-                      </div>
-                      {isCashReceivedInsufficient && (
-                        <div style={s.cashWarn}>
-                          {hasCashReceivedAmount
-                            ? `实付不足，还差 $${(total - cashReceivedAmount).toFixed(2)}`
-                            : '请输入顾客实付金额后再确认现金收款'}
-                        </div>
-                      )}
+                <div style={{ ...s.confirmPanel, ...s.desktopSelectPanel }}>
+                  <div style={s.desktopSelectScroll}>
+                    <div>
+                      <div style={s.confirmTitle}>选择收款方式</div>
+                      <div style={s.confirmSub}>顾客屏已显示 KHQR 收款码。请选择最终收款方式用于记账。</div>
                     </div>
-                  )}
-                  <div style={s.desktopPayGrid}>
-                    <button
-                      type="button"
-                      style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'CASH' ? s.desktopPayOptionOn : {}) }}
-                      onClick={() => {
-                        setDesktopSelectedPaymentMethod('CASH')
-                        syncCurrentCartToCustomerDisplay('KHQR')
-                      }}
-                    >
-                      <span style={s.desktopPayMain}>💵 现金收款 CASH</span>
-                      <span style={s.desktopPaySub}>顾客付现金时选择，最终记录为 CASH。</span>
-                    </button>
-                    <button
-                      type="button"
-                      style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'KHQR' ? s.desktopPayOptionOn : {}) }}
-                      onClick={() => {
-                        setDesktopSelectedPaymentMethod('KHQR')
-                        syncCurrentCartToCustomerDisplay('KHQR', { focusKhqr: true })
-                      }}
-                    >
-                      <span style={s.desktopPayMain}>📱 扫码收款 KHQR</span>
-                      <span style={s.desktopPaySub}>顾客扫码付款时选择，最终记录为 KHQR。</span>
-                    </button>
+                    <div style={s.totalRow}>
+                      <span style={s.totalLbl}>共 {count} 件 · 应付</span>
+                      <span style={s.totalAmt}>${total.toFixed(2)}</span>
+                    </div>
+                    {desktopKhrAssist(total)}
+                    {desktopSelectedPaymentMethod === 'CASH' && (
+                      <div style={s.cashReceivedBox}>
+                        <label style={s.cashReceivedLabel} htmlFor="desktop-cash-tendered">
+                          顾客实付金额
+                        </label>
+                        <input
+                          id="desktop-cash-tendered"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          inputMode="decimal"
+                          value={cashTendered}
+                          onChange={e => setCashTendered(e.target.value)}
+                          placeholder="输入实收现金"
+                          style={{
+                            ...s.cashReceivedInput,
+                            borderColor: isCashReceivedInsufficient ? '#fca5a5' : '#cbd5e1',
+                          }}
+                        />
+                        <div style={s.cashChangeRow}>
+                          <span>找零金额</span>
+                          <div style={s.cashChangeAmtBox}>
+                            <div style={s.cashChangeAmt}>${cashChangeAmount.toFixed(2)}</div>
+                            {!isCashReceivedInsufficient && cashChangeAmount > 0 && (
+                              <div style={s.cashChangeKhr}>≈ {toKhr(cashChangeAmount, usdKhrRate)}</div>
+                            )}
+                          </div>
+                        </div>
+                        {isCashReceivedInsufficient && (
+                          <div style={s.cashWarn}>
+                            {hasCashReceivedAmount
+                              ? `实付不足，还差 $${(total - cashReceivedAmount).toFixed(2)}`
+                              : '请输入顾客实付金额后再确认现金收款'}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div style={s.desktopPayGrid}>
+                      <button
+                        type="button"
+                        style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'CASH' ? s.desktopPayOptionOn : {}) }}
+                        onClick={() => {
+                          setDesktopSelectedPaymentMethod('CASH')
+                          syncCurrentCartToCustomerDisplay('KHQR')
+                        }}
+                      >
+                        <span style={s.desktopPayMain}>💵 现金收款 CASH</span>
+                        <span style={s.desktopPaySub}>顾客付现金时选择，最终记录为 CASH。</span>
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'KHQR' ? s.desktopPayOptionOn : {}) }}
+                        onClick={() => {
+                          setDesktopSelectedPaymentMethod('KHQR')
+                          syncCurrentCartToCustomerDisplay('KHQR', { focusKhqr: true })
+                        }}
+                      >
+                        <span style={s.desktopPayMain}>📱 扫码收款 KHQR</span>
+                        <span style={s.desktopPaySub}>顾客扫码付款时选择，最终记录为 KHQR。</span>
+                      </button>
+                    </div>
                   </div>
                   <div style={s.desktopPayStickyActions}>
                     {desktopSelectedPaymentMethod && (
                       <div style={s.nextStepBox}>
-                        当前最终记账方式：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}。顾客屏继续显示本单 KHQR 收款码，确认收款后完成销售。
+                        当前最终记账方式：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}
                       </div>
                     )}
                     {submitError && (
