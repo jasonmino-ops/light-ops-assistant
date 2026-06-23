@@ -9,6 +9,11 @@ import {
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
 import {
+  ShiftReportPrint,
+  printShiftReport,
+  type ShiftReportData,
+} from '@/app/components/ShiftReportPrint'
+import {
   CASHIER_CACHE_VERSION,
   cacheCashierProducts,
   countPendingOfflineOrders,
@@ -28,6 +33,7 @@ import {
   saveHoldOrder,
   type HoldOrder,
 } from '@/lib/cashier-hold-orders'
+import { clearShiftStart, getOrCreateShiftStart } from '@/lib/cashier-shift'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +65,21 @@ type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
 type DesktopCheckoutStep = 'SELECT_ITEMS' | 'CONFIRM_ORDER' | 'SELECT_PAYMENT'
 type DesktopPaymentMethod = 'CASH' | 'KHQR' | null
 type CustomerDisplaySyncOptions = { focusKhqr?: boolean }
+type ShiftRecordItem = {
+  recordNo: string
+  orderNo: string | null
+  createdAt: string
+  lineAmount: number
+  saleType: 'SALE' | 'REFUND'
+  paymentMethod: string | null
+  source?: string
+}
+type ShiftRecordsResponse = {
+  total: number
+  page: number
+  pageSize: number
+  items: ShiftRecordItem[]
+}
 
 const CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE = 'KHQR_FOCUS'
 
@@ -198,6 +219,19 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+function fmtDateTimeShort(iso: string) {
+  return new Date(iso).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function dateParamFromIso(iso: string) {
+  return iso.slice(0, 10)
+}
+
 function fmtCacheTime(iso: string) {
   const t = new Date(iso).getTime()
   const diffMs = Date.now() - t
@@ -332,6 +366,11 @@ const s: Record<string, CSSProperties> = {
   holdActions: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 },
   holdRestoreBtn: { minHeight: 28, borderRadius: 8, border: 'none', background: '#dbeafe', color: '#1d4ed8', fontSize: 11, fontWeight: 900, cursor: 'pointer' },
   holdDeleteBtn: { minHeight: 28, borderRadius: 8, border: '1px solid rgba(248,113,113,.32)', background: 'rgba(127,29,29,.32)', color: '#fecaca', fontSize: 11, fontWeight: 900, cursor: 'pointer', padding: '0 9px' },
+  shiftCard: { padding: 10, borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0' },
+  shiftStart: { marginBottom: 8, fontSize: 12, fontWeight: 900, color: '#f8fafc' },
+  shiftBtn: { width: '100%', minHeight: 32, borderRadius: 9, border: '1px solid rgba(96,165,250,.28)', background: 'rgba(37,99,235,.22)', color: '#dbeafe', fontSize: 12, fontWeight: 900, cursor: 'pointer' },
+  shiftModal: { background: '#fff', borderRadius: 16, padding: 22, width: 'min(420px,92vw)', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 12px 42px rgba(15,23,42,.22)' },
+  shiftActions: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 },
 
   // ── Middle: product grid ──────────────────────────────────────────────────
   mid:         { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', minWidth: 0 },
@@ -517,6 +556,11 @@ export default function CashierPage() {
   const [autoPrint, setAutoPrint] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
   const [holdOrders, setHoldOrders] = useState<HoldOrder<CartLine, DesktopCheckoutStep>[]>([])
+  const [shiftStartIso, setShiftStartIso] = useState<string | null>(null)
+  const [shiftReportOpen, setShiftReportOpen] = useState(false)
+  const [shiftReport, setShiftReport] = useState<ShiftReportData | null>(null)
+  const [shiftReportLoading, setShiftReportLoading] = useState(false)
+  const [shiftReportError, setShiftReportError] = useState('')
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -566,6 +610,19 @@ export default function CashierPage() {
       return
     }
     setHoldOrders(listHoldOrders<CartLine, DesktopCheckoutStep>(storeCode))
+  }, [isDesktopPos, storeCode])
+
+  useEffect(() => {
+    if (!isDesktopPos || !storeCode) {
+      setShiftStartIso(null)
+      return
+    }
+    try {
+      setShiftStartIso(getOrCreateShiftStart(storeCode))
+    } catch (err) {
+      console.warn('[cashier:shift] init failed', err)
+      setShiftStartIso(null)
+    }
   }, [isDesktopPos, storeCode])
 
   useEffect(() => {
@@ -891,6 +948,122 @@ export default function CashierPage() {
     } catch (err) {
       console.warn('[cashier:hold-order] delete failed', err)
       showToast('删除挂单失败')
+    }
+  }
+
+  async function loadShiftReport() {
+    if (!isDesktopPos || !storeCode) return null
+    setShiftReportLoading(true)
+    setShiftReportError('')
+    try {
+      const startIso = shiftStartIso ?? getOrCreateShiftStart(storeCode)
+      if (!shiftStartIso) setShiftStartIso(startIso)
+      const generatedAt = new Date().toISOString()
+      const paramsBase = new URLSearchParams({
+        dateFrom: dateParamFromIso(startIso),
+        dateTo: dateParamFromIso(generatedAt),
+        saleType: 'SALE',
+        pageSize: '50',
+        storeCode,
+        from: 'desktop',
+      })
+
+      const allItems: ShiftRecordItem[] = []
+      let page = 1
+      let total = 0
+      do {
+        const params = new URLSearchParams(paramsBase)
+        params.set('page', String(page))
+        const res = await fetch(`/api/records?${params.toString()}`, { cache: 'no-store' })
+        if (!res.ok) throw new Error('SHIFT_RECORDS_LOAD_FAILED')
+        const data: ShiftRecordsResponse = await res.json()
+        allItems.push(...data.items)
+        total = data.total
+        page += 1
+      } while (allItems.length < total)
+
+      const startMs = new Date(startIso).getTime()
+      const endMs = new Date(generatedAt).getTime()
+      const shiftItems = allItems.filter((item) => {
+        const createdMs = new Date(item.createdAt).getTime()
+        return (
+          item.source === 'SALE_RECORD' &&
+          item.saleType === 'SALE' &&
+          Number.isFinite(createdMs) &&
+          createdMs >= startMs &&
+          createdMs <= endMs
+        )
+      })
+
+      const orderKeys = new Set<string>()
+      let salesAmount = 0
+      let cashAmount = 0
+      let khqrAmount = 0
+      let otherAmount = 0
+
+      shiftItems.forEach((item) => {
+        const amount = Number(item.lineAmount) || 0
+        salesAmount += amount
+        orderKeys.add(item.orderNo || item.recordNo)
+        if (item.paymentMethod === 'CASH') {
+          cashAmount += amount
+        } else if (item.paymentMethod === 'KHQR') {
+          khqrAmount += amount
+        } else {
+          otherAmount += amount
+        }
+      })
+
+      const report: ShiftReportData = {
+        storeName: storeName || storeCode,
+        shiftStart: startIso,
+        generatedAt,
+        salesAmount,
+        orderCount: orderKeys.size,
+        cashAmount,
+        khqrAmount,
+        otherAmount,
+        offlinePendingCount,
+        holdOrderCount: holdOrders.length,
+      }
+      setShiftReport(report)
+      return report
+    } catch (err) {
+      console.warn('[cashier:shift] report load failed', err)
+      setShiftReportError('交班报表加载失败，请稍后重试')
+      return null
+    } finally {
+      setShiftReportLoading(false)
+    }
+  }
+
+  async function handleOpenShiftReport() {
+    setShiftReportOpen(true)
+    await loadShiftReport()
+  }
+
+  async function handlePrintShiftReport() {
+    const report = shiftReport ?? await loadShiftReport()
+    if (!report) return
+    try {
+      printShiftReport(report)
+    } catch (err) {
+      console.warn('[cashier:shift] print failed', err)
+      showToast('无法打开交班单打印窗口，请检查浏览器弹窗权限')
+    }
+  }
+
+  function handleConfirmShiftClose() {
+    if (!storeCode) return
+    try {
+      clearShiftStart(storeCode)
+      setShiftStartIso(null)
+      setShiftReport(null)
+      setShiftReportOpen(false)
+      showToast('已确认交班，下次进入将自动开新班')
+    } catch (err) {
+      console.warn('[cashier:shift] close failed', err)
+      showToast('确认交班失败，请重试')
     }
   }
 
@@ -1631,6 +1804,14 @@ export default function CashierPage() {
           <div style={s.sideFooter}>
             {isDesktopPos && (
               <>
+                <div style={s.shiftCard}>
+                  <div style={s.shiftStart}>
+                    🕐 本班 {shiftStartIso ? fmtTime(shiftStartIso) : '--:--'} 起
+                  </div>
+                  <button type="button" style={s.shiftBtn} onClick={handleOpenShiftReport}>
+                    查看交班报表
+                  </button>
+                </div>
                 <div style={s.holdCard}>
                   <div style={s.holdHead}>
                     <span style={s.holdTitle}>本地挂单</span>
@@ -2130,6 +2311,55 @@ export default function CashierPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Shift report overlay ───────────────────────────────────────────── */}
+      {shiftReportOpen && (
+        <div style={s.overlay} onClick={() => setShiftReportOpen(false)}>
+          <div style={s.shiftModal} onClick={e => e.stopPropagation()}>
+            <div style={s.modalTitle}>本班交班报表</div>
+            <div style={{ ...s.modalSub, marginBottom: 14 }}>
+              {shiftStartIso ? `班次开始：${fmtDateTimeShort(shiftStartIso)}` : '班次开始时间读取中'}
+            </div>
+            {shiftReportLoading && (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+                正在生成报表…
+              </div>
+            )}
+            {!shiftReportLoading && shiftReportError && (
+              <div style={{ padding: 12, borderRadius: 10, background: '#fef2f2', color: '#b91c1c', fontSize: 13, lineHeight: 1.5 }}>
+                {shiftReportError}
+              </div>
+            )}
+            {!shiftReportLoading && !shiftReportError && shiftReport && (
+              <ShiftReportPrint report={shiftReport} />
+            )}
+            <div style={s.shiftActions}>
+              <button
+                type="button"
+                style={s.secondaryBtn}
+                onClick={handlePrintShiftReport}
+                disabled={shiftReportLoading}
+              >
+                打印交班单
+              </button>
+              <button
+                type="button"
+                style={{ ...s.secondaryBtn, borderColor: '#fecaca', color: '#b91c1c' }}
+                onClick={handleConfirmShiftClose}
+              >
+                确认交班
+              </button>
+              <button
+                type="button"
+                style={s.modalBtn}
+                onClick={() => setShiftReportOpen(false)}
+              >
+                继续收银
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Sale success overlay ───────────────────────────────────────────── */}
       {saleResult && (
