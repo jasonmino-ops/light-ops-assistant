@@ -996,6 +996,9 @@ export default function CashierPage() {
       })
 
       const orderKeys = new Set<string>()
+      const cashOrderKeys = new Set<string>()
+      const khqrOrderKeys = new Set<string>()
+      const otherOrderKeys = new Set<string>()
       let salesAmount = 0
       let cashAmount = 0
       let khqrAmount = 0
@@ -1003,14 +1006,18 @@ export default function CashierPage() {
 
       shiftItems.forEach((item) => {
         const amount = Number(item.lineAmount) || 0
+        const orderKey = item.orderNo || item.recordNo
         salesAmount += amount
-        orderKeys.add(item.orderNo || item.recordNo)
+        orderKeys.add(orderKey)
         if (item.paymentMethod === 'CASH') {
           cashAmount += amount
+          cashOrderKeys.add(orderKey)
         } else if (item.paymentMethod === 'KHQR') {
           khqrAmount += amount
+          khqrOrderKeys.add(orderKey)
         } else {
           otherAmount += amount
+          otherOrderKeys.add(orderKey)
         }
       })
 
@@ -1021,8 +1028,11 @@ export default function CashierPage() {
         salesAmount,
         orderCount: orderKeys.size,
         cashAmount,
+        cashCount: cashOrderKeys.size,
         khqrAmount,
+        khqrCount: khqrOrderKeys.size,
         otherAmount,
+        otherCount: otherOrderKeys.size,
         offlinePendingCount,
         holdOrderCount: holdOrders.length,
       }
