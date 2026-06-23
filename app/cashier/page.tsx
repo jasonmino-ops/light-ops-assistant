@@ -22,6 +22,12 @@ import {
   updateOfflineOrderSyncResult,
   type CashierProductCacheMeta,
 } from '@/lib/cashier-offline-db'
+import {
+  listHoldOrders,
+  removeHoldOrder,
+  saveHoldOrder,
+  type HoldOrder,
+} from '@/lib/cashier-hold-orders'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -313,6 +319,19 @@ const s: Record<string, CSSProperties> = {
     fontSize: 15,
     fontWeight: 780,
   },
+  holdCard: { padding: 10, borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0' },
+  holdHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
+  holdTitle: { fontSize: 12, fontWeight: 900, color: '#f8fafc' },
+  holdCount: { fontSize: 10, color: '#93c5fd', fontWeight: 800 },
+  holdBtn: { width: '100%', minHeight: 34, borderRadius: 9, border: 'none', background: '#2563eb', color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer', marginBottom: 8 },
+  holdEmpty: { fontSize: 10, color: '#94a3b8', lineHeight: 1.45 },
+  holdList: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 154, overflowY: 'auto' },
+  holdItem: { padding: 8, borderRadius: 9, background: 'rgba(15,23,42,.38)', border: '1px solid rgba(255,255,255,.08)' },
+  holdMeta: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, fontWeight: 800, color: '#f8fafc', marginBottom: 6 },
+  holdSub: { fontSize: 10, color: '#94a3b8', marginBottom: 7 },
+  holdActions: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 },
+  holdRestoreBtn: { minHeight: 28, borderRadius: 8, border: 'none', background: '#dbeafe', color: '#1d4ed8', fontSize: 11, fontWeight: 900, cursor: 'pointer' },
+  holdDeleteBtn: { minHeight: 28, borderRadius: 8, border: '1px solid rgba(248,113,113,.32)', background: 'rgba(127,29,29,.32)', color: '#fecaca', fontSize: 11, fontWeight: 900, cursor: 'pointer', padding: '0 9px' },
 
   // ── Middle: product grid ──────────────────────────────────────────────────
   mid:         { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', minWidth: 0 },
@@ -497,6 +516,7 @@ export default function CashierPage() {
   const [cashTendered, setCashTendered] = useState('')
   const [autoPrint, setAutoPrint] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
+  const [holdOrders, setHoldOrders] = useState<HoldOrder<CartLine, DesktopCheckoutStep>[]>([])
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -539,6 +559,14 @@ export default function CashierPage() {
       }
     } catch {}
   }, [])
+
+  useEffect(() => {
+    if (!isDesktopPos || !storeCode) {
+      setHoldOrders([])
+      return
+    }
+    setHoldOrders(listHoldOrders<CartLine, DesktopCheckoutStep>(storeCode))
+  }, [isDesktopPos, storeCode])
 
   useEffect(() => {
     if (cart.length === 0) {
@@ -810,6 +838,60 @@ export default function CashierPage() {
       localStorage.setItem('cashier:usdKhrRate', String(roundedRate))
     } catch {}
     showToast(`汇率已更新：$1 = ${roundedRate.toLocaleString('en-US')}${KHR_SYMBOL}`)
+  }
+
+  function resetDesktopTransientCheckoutState() {
+    setDesktopSelectedPaymentMethod(null)
+    setCashTendered('')
+    setSubmitError('')
+    setSaleResult(null)
+    setReceiptPreviewOpen(false)
+  }
+
+  function handleHoldCurrentOrder() {
+    if (!isDesktopPos || !storeCode || cart.length === 0) return
+    try {
+      const nextOrders = saveHoldOrder<CartLine, DesktopCheckoutStep>({
+        storeCode,
+        cart,
+        checkoutStep,
+      })
+      setHoldOrders(nextOrders)
+      setCart([])
+      setCheckoutStep('SELECT_ITEMS')
+      resetDesktopTransientCheckoutState()
+      showToast('已挂起当前单')
+    } catch (err) {
+      console.warn('[cashier:hold-order] save failed', err)
+      showToast('挂单保存失败，请检查浏览器存储权限')
+    }
+  }
+
+  function handleRestoreHoldOrder(order: HoldOrder<CartLine, DesktopCheckoutStep>) {
+    if (!isDesktopPos || !storeCode) return
+    try {
+      setCart(order.cart)
+      setCheckoutStep(order.checkoutStep)
+      resetDesktopTransientCheckoutState()
+      const nextOrders = removeHoldOrder<CartLine, DesktopCheckoutStep>(storeCode, order.id)
+      setHoldOrders(nextOrders)
+      showToast('已恢复挂单')
+    } catch (err) {
+      console.warn('[cashier:hold-order] restore failed', err)
+      showToast('恢复挂单失败')
+    }
+  }
+
+  function handleDeleteHoldOrder(id: string) {
+    if (!isDesktopPos || !storeCode) return
+    try {
+      const nextOrders = removeHoldOrder<CartLine, DesktopCheckoutStep>(storeCode, id)
+      setHoldOrders(nextOrders)
+      showToast('已删除挂单')
+    } catch (err) {
+      console.warn('[cashier:hold-order] delete failed', err)
+      showToast('删除挂单失败')
+    }
   }
 
   useEffect(() => {
@@ -1549,6 +1631,46 @@ export default function CashierPage() {
           <div style={s.sideFooter}>
             {isDesktopPos && (
               <>
+                <div style={s.holdCard}>
+                  <div style={s.holdHead}>
+                    <span style={s.holdTitle}>本地挂单</span>
+                    <span style={s.holdCount}>{holdOrders.length} 单</span>
+                  </div>
+                  {cart.length > 0 && (
+                    <button type="button" style={s.holdBtn} onClick={handleHoldCurrentOrder}>
+                      挂起当前单
+                    </button>
+                  )}
+                  {holdOrders.length > 0 ? (
+                    <div style={s.holdList}>
+                      {holdOrders.map(order => {
+                        const heldCount = cartCount(order.cart)
+                        const heldTotal = cartTotal(order.cart)
+                        return (
+                          <div key={order.id} style={s.holdItem}>
+                            <div style={s.holdMeta}>
+                              <span>{fmtTime(order.createdAt)}</span>
+                              <span>${heldTotal.toFixed(2)}</span>
+                            </div>
+                            <div style={s.holdSub}>
+                              {heldCount} 件 · {order.checkoutStep === 'SELECT_PAYMENT' ? '待收款' : order.checkoutStep === 'CONFIRM_ORDER' ? '待确认' : '选品中'}
+                            </div>
+                            <div style={s.holdActions}>
+                              <button type="button" style={s.holdRestoreBtn} onClick={() => handleRestoreHoldOrder(order)}>
+                                恢复
+                              </button>
+                              <button type="button" style={s.holdDeleteBtn} onClick={() => handleDeleteHoldOrder(order.id)}>
+                                删除
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div style={s.holdEmpty}>暂无本地挂单</div>
+                  )}
+                </div>
                 <div style={s.fxCard}>
                   <span style={s.fxLabel}>$1 = {usdKhrRate.toLocaleString('en-US')}{KHR_SYMBOL}</span>
                   <button type="button" style={s.fxBtn} onClick={handleUsdKhrRateApply}>
