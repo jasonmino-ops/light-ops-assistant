@@ -80,6 +80,11 @@ type ShiftRecordsResponse = {
   pageSize: number
   items: ShiftRecordItem[]
 }
+type DesktopRecordsState = {
+  loading: boolean
+  error: string
+  items: ShiftRecordItem[]
+}
 
 const CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE = 'KHQR_FOCUS'
 
@@ -371,6 +376,22 @@ const s: Record<string, CSSProperties> = {
   shiftBtn: { width: '100%', minHeight: 32, borderRadius: 9, border: '1px solid rgba(96,165,250,.28)', background: 'rgba(37,99,235,.22)', color: '#dbeafe', fontSize: 12, fontWeight: 900, cursor: 'pointer' },
   shiftModal: { background: '#fff', borderRadius: 16, padding: 22, width: 'min(420px,92vw)', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 12px 42px rgba(15,23,42,.22)' },
   shiftActions: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 },
+  recordsOverlay: { position: 'fixed', inset: 0, zIndex: 110, background: 'rgba(15,23,42,.58)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 },
+  recordsModal: { width: 'min(960px, calc(100vw - 36px))', height: 'min(760px, calc(100dvh - 36px))', background: '#fff', borderRadius: 16, boxShadow: '0 20px 60px rgba(15,23,42,.28)', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  recordsHead: { padding: '16px 18px 12px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexShrink: 0 },
+  recordsTitleBox: { minWidth: 0 },
+  recordsTitle: { fontSize: 18, fontWeight: 900, color: '#111827', marginBottom: 3 },
+  recordsSub: { fontSize: 12, color: '#64748b' },
+  recordsCloseBtn: { width: 38, height: 38, borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: 22, lineHeight: 1, fontWeight: 800, cursor: 'pointer', flexShrink: 0 },
+  recordsBody: { flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, background: '#f8fafc' },
+  recordsEmpty: { padding: '44px 16px', textAlign: 'center', color: '#64748b', fontSize: 13 },
+  recordsList: { display: 'flex', flexDirection: 'column', gap: 8 },
+  recordsItem: { display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) 120px 92px 96px', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 12, background: '#fff', border: '1px solid #e2e8f0' },
+  recordsNo: { fontSize: 14, fontWeight: 900, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  recordsMeta: { marginTop: 3, fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  recordsAmt: { fontSize: 16, fontWeight: 900, color: '#111827', textAlign: 'right' as const },
+  recordsPay: { justifySelf: 'start', borderRadius: 999, padding: '4px 9px', background: '#eff6ff', color: '#1d4ed8', fontSize: 11, fontWeight: 900 },
+  recordsTime: { fontSize: 12, color: '#64748b', textAlign: 'right' as const },
 
   // ── Middle: product grid ──────────────────────────────────────────────────
   mid:         { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', minWidth: 0 },
@@ -561,6 +582,8 @@ export default function CashierPage() {
   const [shiftReport, setShiftReport] = useState<ShiftReportData | null>(null)
   const [shiftReportLoading, setShiftReportLoading] = useState(false)
   const [shiftReportError, setShiftReportError] = useState('')
+  const [desktopRecordsOpen, setDesktopRecordsOpen] = useState(false)
+  const [desktopRecords, setDesktopRecords] = useState<DesktopRecordsState>({ loading: false, error: '', items: [] })
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -948,6 +971,40 @@ export default function CashierPage() {
     } catch (err) {
       console.warn('[cashier:hold-order] delete failed', err)
       showToast('删除挂单失败')
+    }
+  }
+
+  async function handleOpenDesktopRecords() {
+    if (!storeCode) {
+      showToast('请先使用带门店编号的收银链接打开')
+      return
+    }
+    if (!isDesktopPos) {
+      window.location.href = desktopRecordsUrlForStore(storeCode)
+      return
+    }
+    setDesktopRecordsOpen(true)
+    setDesktopRecords((prev) => ({ ...prev, loading: true, error: '' }))
+    try {
+      const dateTo = new Date()
+      const dateFrom = new Date(dateTo)
+      dateFrom.setDate(dateFrom.getDate() - 30)
+      const params = new URLSearchParams({
+        storeCode,
+        from: 'desktop',
+        saleType: 'SALE',
+        dateFrom: dateParamFromIso(dateFrom.toISOString()),
+        dateTo: dateParamFromIso(dateTo.toISOString()),
+        pageSize: '30',
+        page: '1',
+      })
+      const res = await fetch(`/api/records?${params.toString()}`, { cache: 'no-store' })
+      if (!res.ok) throw new Error('DESKTOP_RECORDS_LOAD_FAILED')
+      const data: ShiftRecordsResponse = await res.json()
+      setDesktopRecords({ loading: false, error: '', items: data.items })
+    } catch (err) {
+      console.warn('[cashier:desktop-records] load failed', err)
+      setDesktopRecords({ loading: false, error: '销售记录加载失败，请稍后重试', items: [] })
     }
   }
 
@@ -1614,6 +1671,35 @@ export default function CashierPage() {
     }
     return Array.from(groups.values()).filter(group => group.items.length > 0)
   })()
+  const desktopRecordRows = (() => {
+    const rows = new Map<string, {
+      key: string
+      orderNo: string
+      createdAt: string
+      paymentMethod: string | null
+      amount: number
+      itemCount: number
+    }>()
+    desktopRecords.items.forEach((item) => {
+      const key = item.orderNo || item.recordNo
+      const current = rows.get(key)
+      const amount = Number(item.lineAmount) || 0
+      if (current) {
+        current.amount += amount
+        current.itemCount += 1
+        return
+      }
+      rows.set(key, {
+        key,
+        orderNo: item.orderNo || item.recordNo,
+        createdAt: item.createdAt,
+        paymentMethod: item.paymentMethod,
+        amount,
+        itemCount: 1,
+      })
+    })
+    return Array.from(rows.values())
+  })()
 
   function renderProductCard(p: Product, idx: number) {
     const inCart = cart.filter(c => c.barcode === p.barcode).reduce((sum, c) => sum + c.qty, 0)
@@ -1904,13 +1990,7 @@ export default function CashierPage() {
             </button>
             <button
               style={{ ...s.sideLinkSec, ...(isDesktopPos ? s.sideLinkDesktopSec : {}) }}
-              onClick={() => {
-                if (!storeCode) {
-                  showToast('请先使用带门店编号的收银链接打开')
-                  return
-                }
-                window.location.href = desktopRecordsUrlForStore(storeCode)
-              }}
+              onClick={handleOpenDesktopRecords}
             >
               销售记录
             </button>
@@ -2366,6 +2446,50 @@ export default function CashierPage() {
               >
                 继续收银
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDesktopPos && desktopRecordsOpen && (
+        <div style={s.recordsOverlay} onClick={() => setDesktopRecordsOpen(false)}>
+          <div style={s.recordsModal} onClick={e => e.stopPropagation()}>
+            <div style={s.recordsHead}>
+              <div style={s.recordsTitleBox}>
+                <div style={s.recordsTitle}>销售记录</div>
+                <div style={s.recordsSub}>最近销售记录 · {storeName || storeCode || '当前门店'}</div>
+              </div>
+              <button
+                type="button"
+                style={s.recordsCloseBtn}
+                onClick={() => setDesktopRecordsOpen(false)}
+                aria-label="关闭销售记录"
+              >
+                ×
+              </button>
+            </div>
+            <div style={s.recordsBody}>
+              {desktopRecords.loading ? (
+                <div style={s.recordsEmpty}>正在加载销售记录…</div>
+              ) : desktopRecords.error ? (
+                <div style={{ ...s.recordsEmpty, color: '#b91c1c' }}>{desktopRecords.error}</div>
+              ) : desktopRecordRows.length === 0 ? (
+                <div style={s.recordsEmpty}>暂无销售记录</div>
+              ) : (
+                <div style={s.recordsList}>
+                  {desktopRecordRows.map((row) => (
+                    <div key={row.key} style={s.recordsItem}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={s.recordsNo}>{shortNo(row.orderNo)}</div>
+                        <div style={s.recordsMeta}>{row.orderNo} · {row.itemCount} 项</div>
+                      </div>
+                      <div style={s.recordsTime}>{fmtDateTimeShort(row.createdAt)}</div>
+                      <div style={s.recordsPay}>{row.paymentMethod || 'UNKNOWN'}</div>
+                      <div style={s.recordsAmt}>${row.amount.toFixed(2)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
