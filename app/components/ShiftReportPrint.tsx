@@ -2,6 +2,7 @@
 
 export type ShiftReportData = {
   storeName: string
+  operator: string
   shiftStart: string
   generatedAt: string
   salesAmount: number
@@ -41,15 +42,17 @@ function shiftDuration(startIso: string, endIso: string) {
 
 function reportRows(report: ShiftReportData) {
   return [
+    { label: '操作员', value: report.operator || 'Desktop POS' },
+    { label: '开班时间', value: fmtDateTime(report.shiftStart) },
+    { label: '当前时间', value: fmtDateTime(report.generatedAt) },
+    { label: '本班销售额', value: fmtMoney(report.salesAmount) },
     { label: '本班单数', value: `${report.orderCount} 单` },
     { label: 'CASH 金额', value: `${report.cashCount} 单 · ${fmtMoney(report.cashAmount)}` },
     { label: 'KHQR 金额', value: `${report.khqrCount} 单 · ${fmtMoney(report.khqrAmount)}` },
     { label: '其他支付金额', value: `${report.otherCount} 单 · ${fmtMoney(report.otherAmount)}` },
     { label: '离线待同步数量', value: `${report.offlinePendingCount} 笔`, warn: report.offlinePendingCount > 0 },
     { label: '未完成挂单数量', value: `${report.holdOrderCount} 单`, warn: report.holdOrderCount > 0 },
-    { label: '班次开始时间', value: fmtDateTime(report.shiftStart) },
     { label: '本班时长', value: shiftDuration(report.shiftStart, report.generatedAt) },
-    { label: '打印/生成时间', value: fmtDateTime(report.generatedAt) },
   ]
 }
 

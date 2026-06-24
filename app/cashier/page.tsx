@@ -3,6 +3,7 @@
 import { Fragment, useState, useEffect, useCallback, useRef, CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLocale } from '@/app/components/LangProvider'
+import { useWorkMode } from '@/app/components/WorkModeProvider'
 import {
   DesktopReceiptPreview,
   printDesktopReceipt,
@@ -33,7 +34,7 @@ import {
   saveHoldOrder,
   type HoldOrder,
 } from '@/lib/cashier-hold-orders'
-import { clearShiftStart, getOrCreateShiftStart } from '@/lib/cashier-shift'
+import { clearShiftOperator, clearShiftStart, getOrCreateShiftOperator, getOrCreateShiftStart } from '@/lib/cashier-shift'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -533,6 +534,7 @@ const s: Record<string, CSSProperties> = {
 export default function CashierPage() {
   const router = useRouter()
   const { lang } = useLocale()
+  const workMode = useWorkMode()
   const [storeCode,     setStoreCode]     = useState<string | null>(null)
   const [noCodeError,   setNoCodeError]   = useState(false)
   const [products,      setProducts]      = useState<Product[]>([])
@@ -578,6 +580,7 @@ export default function CashierPage() {
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
   const [holdOrders, setHoldOrders] = useState<HoldOrder<CartLine, DesktopCheckoutStep>[]>([])
   const [shiftStartIso, setShiftStartIso] = useState<string | null>(null)
+  const [shiftOperator, setShiftOperator] = useState('')
   const [shiftReportOpen, setShiftReportOpen] = useState(false)
   const [shiftReport, setShiftReport] = useState<ShiftReportData | null>(null)
   const [shiftReportLoading, setShiftReportLoading] = useState(false)
@@ -638,15 +641,18 @@ export default function CashierPage() {
   useEffect(() => {
     if (!isDesktopPos || !storeCode) {
       setShiftStartIso(null)
+      setShiftOperator('')
       return
     }
     try {
       setShiftStartIso(getOrCreateShiftStart(storeCode))
+      setShiftOperator(getOrCreateShiftOperator(storeCode, `Desktop POS · ${workMode.effectiveRole || workMode.realRole || 'STAFF'}`))
     } catch (err) {
       console.warn('[cashier:shift] init failed', err)
       setShiftStartIso(null)
+      setShiftOperator('')
     }
-  }, [isDesktopPos, storeCode])
+  }, [isDesktopPos, storeCode, workMode.effectiveRole, workMode.realRole])
 
   useEffect(() => {
     if (cart.length === 0) {
@@ -1015,6 +1021,8 @@ export default function CashierPage() {
     try {
       const startIso = shiftStartIso ?? getOrCreateShiftStart(storeCode)
       if (!shiftStartIso) setShiftStartIso(startIso)
+      const operator = shiftOperator || getOrCreateShiftOperator(storeCode, `Desktop POS · ${workMode.effectiveRole || workMode.realRole || 'STAFF'}`)
+      if (!shiftOperator) setShiftOperator(operator)
       const generatedAt = new Date().toISOString()
       const paramsBase = new URLSearchParams({
         dateFrom: dateParamFromIso(startIso),
@@ -1080,6 +1088,7 @@ export default function CashierPage() {
 
       const report: ShiftReportData = {
         storeName: storeName || storeCode,
+        operator,
         shiftStart: startIso,
         generatedAt,
         salesAmount,
@@ -1124,13 +1133,15 @@ export default function CashierPage() {
     if (!storeCode) return
     try {
       clearShiftStart(storeCode)
+      clearShiftOperator(storeCode)
       setShiftStartIso(null)
+      setShiftOperator('')
       setShiftReport(null)
       setShiftReportOpen(false)
-      showToast('已确认交班，下次进入将自动开新班')
+      showToast('已结束本班，下次进入将自动开新班')
     } catch (err) {
       console.warn('[cashier:shift] close failed', err)
-      showToast('确认交班失败，请重试')
+      showToast('结束本班失败，请重试')
     }
   }
 
@@ -2437,14 +2448,14 @@ export default function CashierPage() {
                 style={{ ...s.secondaryBtn, borderColor: '#fecaca', color: '#b91c1c' }}
                 onClick={handleConfirmShiftClose}
               >
-                确认交班
+                结束本班
               </button>
               <button
                 type="button"
                 style={s.modalBtn}
                 onClick={() => setShiftReportOpen(false)}
               >
-                继续收银
+                关闭
               </button>
             </div>
           </div>
