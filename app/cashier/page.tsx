@@ -4,11 +4,17 @@ import { Fragment, useState, useEffect, useCallback, useRef, CSSProperties } fro
 import { useRouter } from 'next/navigation'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import { apiFetch, OWNER_CTX } from '@/lib/api'
 import {
   DesktopReceiptPreview,
   printDesktopReceipt,
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
+import {
+  DayCloseReport,
+  printDayCloseReport,
+  type DayCloseReportData,
+} from '@/app/components/DayCloseReport'
 import {
   ShiftReportPrint,
   printShiftReport,
@@ -81,6 +87,18 @@ type ShiftRecordsResponse = {
   pageSize: number
   items: ShiftRecordItem[]
 }
+type DayCloseSummaryResponse = {
+  dateFrom: string
+  dateTo: string
+  storeName: string | null
+  totalSaleAmount: number
+  totalRefundAmount: number
+  netAmount: number
+  saleOrderCount: number
+  topProducts: Array<{ name: string; spec: string | null; totalQty: number }>
+  cashSaleAmount?: number
+  khqrSaleAmount?: number
+}
 type DesktopRecordsState = {
   loading: boolean
   error: string
@@ -122,6 +140,7 @@ const COLORS = ['#fde68a','#bbf7d0','#bfdbfe','#fecaca','#ddd6fe','#fed7aa','#a5
 const EMOJIS = ['☕','🧋','🍵','🥤','🍰','🥐','🍜','🍱','🥗','🧁']
 const DEFAULT_KHR_RATE = 4100
 const KHR_SYMBOL = '៛'
+const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
 
 const SUGAR_SPEC_RE = /no\s*sugar|无糖|微糖|半糖|少糖|正常糖|(?:25|50|75|100)%/i
 
@@ -536,6 +555,7 @@ export default function CashierPage() {
   const { lang } = useLocale()
   const workMode = useWorkMode()
   const [storeCode,     setStoreCode]     = useState<string | null>(null)
+  const [storeId,       setStoreId]       = useState('')
   const [noCodeError,   setNoCodeError]   = useState(false)
   const [products,      setProducts]      = useState<Product[]>([])
   const [categories,    setCategories]    = useState<Category[]>([])
@@ -585,6 +605,10 @@ export default function CashierPage() {
   const [shiftReport, setShiftReport] = useState<ShiftReportData | null>(null)
   const [shiftReportLoading, setShiftReportLoading] = useState(false)
   const [shiftReportError, setShiftReportError] = useState('')
+  const [dayCloseOpen, setDayCloseOpen] = useState(false)
+  const [dayCloseReport, setDayCloseReport] = useState<DayCloseReportData | null>(null)
+  const [dayCloseLoading, setDayCloseLoading] = useState(false)
+  const [dayCloseError, setDayCloseError] = useState('')
   const [desktopRecordsOpen, setDesktopRecordsOpen] = useState(false)
   const [desktopRecords, setDesktopRecords] = useState<DesktopRecordsState>({ loading: false, error: '', items: [] })
   const knownOrderIds   = useRef<Set<string>>(new Set())
@@ -692,6 +716,7 @@ export default function CashierPage() {
       }
 
       setIsRestoringCashierStore(false)
+      setStoreId('')
       setNoCodeError(true); setLoading(false); return
     }
 
@@ -720,6 +745,7 @@ export default function CashierPage() {
         setCategories(nextCategories)
         setProductsSource('online')
         setStoreName(d.storeName ?? '')
+        setStoreId(typeof d.storeId === 'string' ? d.storeId : '')
         if (d.storeId && d.tenantId) {
           setCacheStatus('saving')
           const catNameById = new Map(nextCategories.map((c: Category) => [c.id, c.name]))
@@ -1126,6 +1152,65 @@ export default function CashierPage() {
     } catch (err) {
       console.warn('[cashier:shift] print failed', err)
       showToast('无法打开交班单打印窗口，请检查浏览器弹窗权限')
+    }
+  }
+
+  async function loadDayCloseReport() {
+    if (!isDesktopPos || !storeCode) return null
+    if (!storeId) {
+      setDayCloseError('门店信息尚未加载完成，请稍后重试')
+      return null
+    }
+    setDayCloseLoading(true)
+    setDayCloseError('')
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const params = new URLSearchParams({ dateFrom: today, dateTo: today, storeId })
+      const res = await apiFetch(`/api/summary?${params.toString()}`, undefined, DEV_OWNER_CTX)
+      const data: DayCloseSummaryResponse = await res.json()
+      if (!res.ok) throw new Error('DAY_CLOSE_SUMMARY_LOAD_FAILED')
+
+      const cashAmount = Number(data.cashSaleAmount) || 0
+      const khqrAmount = Number(data.khqrSaleAmount) || 0
+      const totalSaleAmount = Number(data.totalSaleAmount) || 0
+      const otherAmount = Math.max(0, Number((totalSaleAmount - cashAmount - khqrAmount).toFixed(2)))
+      const report: DayCloseReportData = {
+        date: data.dateFrom || today,
+        storeName: data.storeName || storeName || storeCode,
+        netAmount: Number(data.netAmount) || 0,
+        saleOrderCount: Number(data.saleOrderCount) || 0,
+        cashAmount,
+        khqrAmount,
+        otherAmount,
+        topProducts: Array.isArray(data.topProducts) ? data.topProducts.slice(0, 3) : [],
+        holdOrderCount: holdOrders.length,
+        offlinePendingCount,
+        refundAmount: Number(data.totalRefundAmount) || 0,
+      }
+      setDayCloseReport(report)
+      return report
+    } catch (err) {
+      console.warn('[cashier:day-close] report load failed', err)
+      setDayCloseError('日结报表加载失败，请稍后重试')
+      return null
+    } finally {
+      setDayCloseLoading(false)
+    }
+  }
+
+  async function handleOpenDayCloseReport() {
+    setDayCloseOpen(true)
+    await loadDayCloseReport()
+  }
+
+  async function handlePrintDayCloseReport() {
+    const report = dayCloseReport ?? await loadDayCloseReport()
+    if (!report) return
+    try {
+      printDayCloseReport(report)
+    } catch (err) {
+      console.warn('[cashier:day-close] print failed', err)
+      showToast('无法打开日结报表打印窗口，请检查浏览器弹窗权限')
     }
   }
 
@@ -1918,6 +2003,9 @@ export default function CashierPage() {
                   <button type="button" style={s.shiftBtn} onClick={handleOpenShiftReport}>
                     查看交班报表
                   </button>
+                  <button type="button" style={s.shiftBtn} onClick={handleOpenDayCloseReport}>
+                    日结报表
+                  </button>
                 </div>
                 <div style={s.holdCard}>
                   <div style={s.holdHead}>
@@ -2454,6 +2542,48 @@ export default function CashierPage() {
                 type="button"
                 style={s.modalBtn}
                 onClick={() => setShiftReportOpen(false)}
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Day close report overlay ───────────────────────────────────────── */}
+      {dayCloseOpen && (
+        <div style={s.overlay} onClick={() => setDayCloseOpen(false)}>
+          <div style={s.shiftModal} onClick={e => e.stopPropagation()}>
+            <div style={s.modalTitle}>日结报表</div>
+            <div style={{ ...s.modalSub, marginBottom: 14 }}>
+              {storeName || storeCode || '当前门店'} · {new Date().toISOString().slice(0, 10)}
+            </div>
+            {dayCloseLoading && (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+                正在生成报表…
+              </div>
+            )}
+            {!dayCloseLoading && dayCloseError && (
+              <div style={{ padding: 12, borderRadius: 10, background: '#fef2f2', color: '#b91c1c', fontSize: 13, lineHeight: 1.5 }}>
+                {dayCloseError}
+              </div>
+            )}
+            {!dayCloseLoading && !dayCloseError && dayCloseReport && (
+              <DayCloseReport report={dayCloseReport} />
+            )}
+            <div style={s.shiftActions}>
+              <button
+                type="button"
+                style={s.secondaryBtn}
+                onClick={handlePrintDayCloseReport}
+                disabled={dayCloseLoading}
+              >
+                打印日结单
+              </button>
+              <button
+                type="button"
+                style={s.modalBtn}
+                onClick={() => setDayCloseOpen(false)}
               >
                 关闭
               </button>
