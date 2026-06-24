@@ -309,7 +309,9 @@ export default function HomePage() {
   const pendingOrderAmount = pendingCustomerOrders.reduce((sum, order) => sum + order.totalAmount, 0)
   const displayStoreName = storeName ?? 'E-Shop'
   const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
-  const desktopUrl = storeCode ? publicUrl(`/desktop?storeCode=${storeCode}&lang=${lang}`) : publicUrl(`/desktop?lang=${lang}`)
+  const desktopParams = new URLSearchParams({ ...(storeCode ? { storeCode } : {}), lang })
+  const desktopPath = `/desktop/pos?${desktopParams.toString()}`
+  const desktopUrl = publicUrl(desktopPath)
   const storeAvatarUrl = storeCode && !avatarFailed ? `/api/public/stores/${storeCode}/banner` : null
   const aiStatus: 'open' | 'configured' | 'waiting' =
     tier === 'MULTI_STORE' ? 'configured' : tier === 'STANDARD' ? 'waiting' : 'open'
@@ -503,7 +505,7 @@ export default function HomePage() {
           openLabel={t('home.open')}
           copyLabel={copiedKey === 'cashier' ? '✓' : t('home.copy')}
           color="#722ed1"
-          onOpen={() => window.open(desktopUrl, '_blank', 'noopener,noreferrer')}
+          onOpen={() => window.open(desktopPath, '_blank', 'noopener,noreferrer')}
           onCopy={() => copyLink('cashier', desktopUrl)}
         />
       </div>
