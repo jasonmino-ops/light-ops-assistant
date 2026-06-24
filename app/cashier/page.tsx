@@ -969,6 +969,14 @@ const s: Record<string, CSSProperties> = {
   sugarOptOn:  { border: '2px solid #2563eb', background: '#2563eb', color: '#fff', fontWeight: 700 },
   sugarConfirm:{ width: '100%', padding: '13px 0', borderRadius: 10, border: 'none', background: ACCENT, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 8 },
   sugarCancel: { width: '100%', padding: '9px 0', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, cursor: 'pointer' },
+  holdNoteMask: { position: 'fixed', inset: 0, zIndex: 95, background: 'rgba(15,23,42,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 },
+  holdNoteModal: { width: 'min(420px, 100%)', background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 18px 50px rgba(15,23,42,.24)' },
+  holdNoteTitle: { fontSize: 18, fontWeight: 900, color: '#111827', marginBottom: 6, textAlign: 'center' as const },
+  holdNoteSub: { fontSize: 12, color: '#64748b', textAlign: 'center' as const, lineHeight: 1.5, marginBottom: 14 },
+  holdNoteLabel: { fontSize: 12, fontWeight: 800, color: '#334155', marginBottom: 8 },
+  holdNoteInput: { width: '100%', height: 40, borderRadius: 10, border: '1.5px solid #cbd5e1', padding: '0 12px', fontSize: 16, fontWeight: 700, color: '#111827', outline: 'none' },
+  holdNoteCount: { marginTop: 6, fontSize: 11, color: '#94a3b8', textAlign: 'right' as const },
+  holdNoteActions: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 16 },
 
   // Sale success overlay
   overlay:     { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' },
@@ -1074,6 +1082,10 @@ export default function CashierPage() {
   const [autoPrint, setAutoPrint] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
   const [holdOrders, setHoldOrders] = useState<HoldOrder<CartLine, DesktopCheckoutStep>[]>([])
+  const [holdNoteOpen, setHoldNoteOpen] = useState(false)
+  const [holdNoteDraft, setHoldNoteDraft] = useState('')
+  const [holdNoteCart, setHoldNoteCart] = useState<CartLine[] | null>(null)
+  const [holdNoteStep, setHoldNoteStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
   const [shiftStartIso, setShiftStartIso] = useState<string | null>(null)
   const [shiftOperator, setShiftOperator] = useState('')
   const [shiftReportOpen, setShiftReportOpen] = useState(false)
@@ -1439,27 +1451,44 @@ export default function CashierPage() {
 
   function handleHoldCurrentOrder() {
     if (!isDesktopPos || !storeCode || cart.length === 0) return
+    setHoldNoteCart(cart.map((line) => ({ ...line })))
+    setHoldNoteStep(checkoutStep)
+    setHoldNoteDraft('')
+    setHoldNoteOpen(true)
+  }
+
+  function handleConfirmHoldCurrentOrder() {
+    if (!isDesktopPos || !storeCode || !holdNoteCart || holdNoteCart.length === 0) return
     try {
-      const rawNote = window.prompt('顾客备注（可选，最多 8 个字符）', '')
-      if (rawNote === null) return
-      const trimmedNote = rawNote.trim()
+      const trimmedNote = holdNoteDraft.trim()
       const note = trimmedNote.slice(0, 8)
       if (trimmedNote.length > 8) showToast('备注已自动截断为 8 个字符')
       const nextOrders = saveHoldOrder<CartLine, DesktopCheckoutStep>({
         storeCode,
-        cart,
-        checkoutStep,
+        cart: holdNoteCart,
+        checkoutStep: holdNoteStep,
         note,
       })
       setHoldOrders(nextOrders)
       setCart([])
       setCheckoutStep('SELECT_ITEMS')
       resetDesktopTransientCheckoutState()
+      setHoldNoteOpen(false)
+      setHoldNoteCart(null)
+      setHoldNoteStep('SELECT_ITEMS')
+      setHoldNoteDraft('')
       showToast('已挂起当前单')
     } catch (err) {
       console.warn('[cashier:hold-order] save failed', err)
       showToast('挂单保存失败，请检查浏览器存储权限')
     }
+  }
+
+  function handleCancelHoldCurrentOrder() {
+    setHoldNoteOpen(false)
+    setHoldNoteCart(null)
+    setHoldNoteStep('SELECT_ITEMS')
+    setHoldNoteDraft('')
   }
 
   function handleRestoreHoldOrder(order: HoldOrder<CartLine, DesktopCheckoutStep>) {
@@ -1634,7 +1663,7 @@ export default function CashierPage() {
     const report = shiftReport ?? await loadShiftReport()
     if (!report) return
     try {
-      printShiftReport(report)
+      printShiftReport(report, lang as 'zh' | 'en' | 'km')
     } catch (err) {
       console.warn('[cashier:shift] print failed', err)
       showToast('无法打开交班单打印窗口，请检查浏览器弹窗权限')
@@ -2548,6 +2577,33 @@ export default function CashierPage() {
         </div>
       )}
 
+      {holdNoteOpen && holdNoteCart && (
+        <div style={s.holdNoteMask} onClick={handleCancelHoldCurrentOrder}>
+          <div style={s.holdNoteModal} onClick={e => e.stopPropagation()}>
+            <div style={s.holdNoteTitle}>{lang === 'en' ? 'Hold order note' : lang === 'km' ? 'កំណត់សម្គាល់ការផ្អាក' : '挂单备注'}</div>
+            <div style={s.holdNoteSub}>{lang === 'en' ? 'Optional, up to 8 characters. Confirm to save this hold order.' : lang === 'km' ? 'ស្រេចចិត្ត អក្សរបានត្រឹម 8 តួអក្សរ។ បញ្ជាក់ដើម្បីរក្សាទុកការផ្អាកនេះ។' : '可选，最多 8 个字符。确认后才会挂单。'}</div>
+            <div style={s.holdNoteLabel}>{lang === 'en' ? 'Customer note' : lang === 'km' ? 'កំណត់សម្គាល់អតិថិជន' : '顾客备注'}</div>
+            <input
+              autoFocus
+              value={holdNoteDraft}
+              maxLength={8}
+              onChange={(e) => setHoldNoteDraft(e.target.value.slice(0, 8))}
+              placeholder={lang === 'en' ? 'Optional note' : lang === 'km' ? 'កំណត់សម្គាល់ស្រេចចិត្ត' : '可选备注'}
+              style={s.holdNoteInput}
+            />
+            <div style={s.holdNoteCount}>{holdNoteDraft.trim().length}/8</div>
+            <div style={s.holdNoteActions}>
+              <button type="button" style={s.secondaryBtn} onClick={handleCancelHoldCurrentOrder}>
+                {lang === 'en' ? 'Cancel' : lang === 'km' ? 'បោះបង់' : '取消'}
+              </button>
+              <button type="button" style={s.modalBtn} onClick={handleConfirmHoldCurrentOrder}>
+                {lang === 'en' ? 'Save hold' : lang === 'km' ? 'រក្សាទុក' : '确认挂单'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Toast ─────────────────────────────────────────────────────────── */}
       {toast && <div style={s.toast}>{toast}</div>}
 
@@ -3185,7 +3241,7 @@ export default function CashierPage() {
               </div>
             )}
             {!shiftReportLoading && !shiftReportError && shiftReport && (
-              <ShiftReportPrint report={shiftReport} />
+              <ShiftReportPrint report={shiftReport} lang={lang as 'zh' | 'en' | 'km'} />
             )}
             <div style={s.shiftActions}>
               <button
@@ -3224,8 +3280,8 @@ export default function CashierPage() {
               {[
                 [lang === 'en' ? 'Shift sales:' : lang === 'km' ? 'ការលក់ក្នុងវេន៖' : '本班销售额：', `$${shiftReport.salesAmount.toFixed(2)}`],
                 [lang === 'en' ? 'Orders:' : lang === 'km' ? 'បញ្ជាទិញ：' : '本班单数：', `${shiftReport.orderCount}`],
-                ['CASH：', `$${shiftReport.cashAmount.toFixed(2)}`],
-                ['KHQR：', `$${shiftReport.khqrAmount.toFixed(2)}`],
+                [lang === 'en' ? 'CASH' : lang === 'km' ? 'CASH' : 'CASH：', `$${shiftReport.cashAmount.toFixed(2)}`],
+                [lang === 'en' ? 'KHQR' : lang === 'km' ? 'KHQR' : 'KHQR：', `$${shiftReport.khqrAmount.toFixed(2)}`],
                 [lang === 'en' ? 'Open holds:' : lang === 'km' ? 'មាត់ស្នើ៖' : '未完成挂单：', `${shiftReport.holdOrderCount}`],
                 [lang === 'en' ? 'Offline pending:' : lang === 'km' ? 'រង់ចាំ sync៖' : '离线待同步：', `${shiftReport.offlinePendingCount}`],
               ].map(([label, value]) => (
