@@ -331,6 +331,8 @@ type DesktopCopy = {
   otherGroup: string
   loadProducts: string
   noProductsForFilter: (kw: string) => string
+  compactModeBig: string
+  compactModeCompact: string
   autoPrintTitle: string
   autoPrintOn: string
   autoPrintOff: string
@@ -432,6 +434,8 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       otherGroup: 'Other',
       loadProducts: 'Loading products…',
       noProductsForFilter: (kw) => (kw ? `No results for "${kw}"` : 'No products in this category'),
+      compactModeBig: 'Large',
+      compactModeCompact: 'Compact',
       autoPrintTitle: 'Auto print receipt',
       autoPrintOn: 'Open browser print after sale',
       autoPrintOff: 'Off by default, manual print available',
@@ -532,6 +536,8 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       otherGroup: 'ផ្សេងៗ',
       loadProducts: 'កំពុងផ្ទុកទំនិញ…',
       noProductsForFilter: (kw) => (kw ? `មិនមានលទ្ធផលសម្រាប់ "${kw}"` : 'មិនមានទំនិញក្នុងប្រភេទនេះ'),
+      compactModeBig: 'ធំ',
+      compactModeCompact: 'តូច',
       autoPrintTitle: 'បោះពុម្ពបង្កាន់ដៃស្វ័យប្រវត្តិ',
       autoPrintOn: 'បើក print browser បន្ទាប់ពីលក់',
       autoPrintOff: 'បិទតាមលំនាំដើម · អាចបោះពុម្ពដោយដៃ',
@@ -631,6 +637,8 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     otherGroup: 'Other',
     loadProducts: '加载商品中…',
     noProductsForFilter: (kw) => (kw ? `未找到"${kw}"` : '该分类暂无商品'),
+    compactModeBig: '大图',
+    compactModeCompact: '紧凑',
     autoPrintTitle: '自动打印小票',
     autoPrintOn: '销售完成后自动打开浏览器打印',
     autoPrintOff: '默认关闭，可手动打印',
@@ -903,15 +911,23 @@ const s: Record<string, CSSProperties> = {
   search:      { flex: 1, height: 36, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0 12px', fontSize: 14, outline: 'none', background: '#f9fafb' },
   grid:        { flex: 1, overflowY: 'auto', padding: '12px 10px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 10, alignContent: 'start' },
   desktopGrid: { gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 12, padding: 14 },
+  desktopGridCompact: { gridTemplateColumns: 'repeat(auto-fill,minmax(122px,1fr))', gap: 8, padding: 10 },
   productGroupTitle: { gridColumn: '1/-1', padding: '12px 2px 2px', fontSize: 14, fontWeight: 900, color: '#334155', borderBottom: '1px solid #e2e8f0' },
   pcard:       { background: '#fff', borderRadius: 10, overflow: 'hidden', cursor: 'pointer', border: '1.5px solid transparent', transition: 'all .12s', userSelect: 'none' as const },
   pcardDesktop:{ minHeight: 184, display: 'flex', flexDirection: 'column' },
+  pcardDesktopCompact:{ minHeight: 112, display: 'flex', flexDirection: 'column' },
   pcardImg:    { height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, overflow: 'hidden' },
   pcardImgDesktop: { height: 122, flexShrink: 0 },
+  pcardImgDesktopCompact: { height: 56, flexShrink: 0, fontSize: 20 },
   pcardBody:   { padding: '7px 10px 10px' },
+  pcardBodyCompact: { padding: '6px 8px 8px' },
   pcardName:   { fontSize: 13, fontWeight: 600, color: '#111827', lineHeight: 1.3, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  pcardNameCompact: { fontSize: 11, fontWeight: 700, lineHeight: 1.2, marginBottom: 1 },
   pcardSpec:   { fontSize: 11, color: '#9ca3af', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  pcardSpecCompact: { fontSize: 10, marginBottom: 2 },
   pcardPrice:  { fontSize: 15, fontWeight: 700, color: ACCENT },
+  pcardPriceCompact: { fontSize: 13, fontWeight: 800, color: ACCENT },
+  topbarActionBtn: { height: 34, padding: '0 10px', borderRadius: 9, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: 12, fontWeight: 800, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' as const },
 
   // ── Right work area ───────────────────────────────────────────────────────
   right:       { width: 390, flexShrink: 0, height: '100vh', display: 'flex', flexDirection: 'column', background: '#fff', borderLeft: '1px solid #e5e7eb', overflow: 'hidden' },
@@ -1089,6 +1105,7 @@ export default function CashierPage() {
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const [cashTendered, setCashTendered] = useState('')
   const [autoPrint, setAutoPrint] = useState(false)
+  const [compactMode, setCompactMode] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
   const [holdOrders, setHoldOrders] = useState<HoldOrder<CartLine, DesktopCheckoutStep>[]>([])
   const [holdNoteOpen, setHoldNoteOpen] = useState(false)
@@ -1144,6 +1161,7 @@ export default function CashierPage() {
   useEffect(() => {
     try {
       setAutoPrint(localStorage.getItem('cashier:autoPrint') === '1')
+      setCompactMode(localStorage.getItem('cashier:compactMode') === '1')
       const savedRate = Number(localStorage.getItem('cashier:usdKhrRate'))
       if (Number.isFinite(savedRate) && savedRate >= 1000 && savedRate <= 10000) {
         const nextRate = Math.round(savedRate)
@@ -1432,6 +1450,15 @@ export default function CashierPage() {
       localStorage.setItem('cashier:autoPrint', next ? '1' : '0')
     } catch {}
     showToast(next ? '已开启自动打印小票' : '已关闭自动打印小票')
+  }
+
+  function handleCompactModeToggle() {
+    const next = !compactMode
+    setCompactMode(next)
+    try {
+      if (next) localStorage.setItem('cashier:compactMode', '1')
+      else localStorage.removeItem('cashier:compactMode')
+    } catch {}
   }
 
   function handleUsdKhrRateApply() {
@@ -2474,32 +2501,33 @@ export default function CashierPage() {
     const inCart = cart.filter(c => c.barcode === p.barcode).reduce((sum, c) => sum + c.qty, 0)
     const color  = COLORS[idx % COLORS.length]
     const emoji  = EMOJIS[idx % EMOJIS.length]
+    const isCompactCard = isDesktopPos && compactMode
     return (
       <div
         key={p.id}
         style={{
           ...s.pcard,
-          ...(isDesktopPos ? s.pcardDesktop : {}),
+          ...(isDesktopPos ? (isCompactCard ? s.pcardDesktopCompact : s.pcardDesktop) : {}),
           borderColor: inCart ? ACCENT : 'transparent',
           boxShadow: inCart ? `0 0 0 1px ${ACCENT}` : '0 1px 4px rgba(0,0,0,.07)',
         }}
         onClick={() => handleAddClick(p)}
       >
         {p.imageUrl ? (
-          <div style={{ ...s.pcardImg, ...(isDesktopPos ? s.pcardImgDesktop : {}) }}>
+          <div style={{ ...s.pcardImg, ...(isDesktopPos ? (isCompactCard ? s.pcardImgDesktopCompact : s.pcardImgDesktop) : {}) }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={p.imageUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
         ) : (
-          <div style={{ ...s.pcardImg, ...(isDesktopPos ? s.pcardImgDesktop : {}), background: color }}>{emoji}</div>
+          <div style={{ ...s.pcardImg, ...(isDesktopPos ? (isCompactCard ? s.pcardImgDesktopCompact : s.pcardImgDesktop) : {}), background: color }}>{emoji}</div>
         )}
-        <div style={s.pcardBody}>
-          <div style={s.pcardName}>{p.name}</div>
-          {p.spec && <div style={s.pcardSpec}>{p.spec}</div>}
+        <div style={{ ...s.pcardBody, ...(isCompactCard ? s.pcardBodyCompact : {}) }}>
+          <div style={{ ...s.pcardName, ...(isCompactCard ? s.pcardNameCompact : {}) }}>{p.name}</div>
+          {p.spec && <div style={{ ...s.pcardSpec, ...(isCompactCard ? s.pcardSpecCompact : {}) }}>{p.spec}</div>}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={s.pcardPrice}>${p.sellPrice.toFixed(2)}</span>
+            <span style={{ ...s.pcardPrice, ...(isCompactCard ? s.pcardPriceCompact : {}) }}>${p.sellPrice.toFixed(2)}</span>
             {inCart > 0 && (
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: ACCENT, borderRadius: 10, padding: '1px 7px' }}>
+              <span style={{ fontSize: isCompactCard ? 11 : 12, fontWeight: 700, color: '#fff', background: ACCENT, borderRadius: 10, padding: isCompactCard ? '0 6px' : '1px 7px' }}>
                 ×{inCart}
               </span>
             )}
@@ -2828,8 +2856,13 @@ export default function CashierPage() {
               value={searchKw}
               onChange={e => setSearchKw(e.target.value)}
             />
+            {isDesktopPos && (
+              <button type="button" style={s.topbarActionBtn} onClick={handleCompactModeToggle}>
+                {compactMode ? d.compactModeBig : d.compactModeCompact}
+              </button>
+            )}
           </div>
-          <div style={{ ...s.grid, ...(isDesktopPos ? s.desktopGrid : {}) }}>
+          <div style={{ ...s.grid, ...(isDesktopPos ? (compactMode ? s.desktopGridCompact : s.desktopGrid) : {}) }}>
             {loading && (
               <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#9ca3af', padding: 40, fontSize: 14 }}>{d.loadProducts}</div>
             )}
