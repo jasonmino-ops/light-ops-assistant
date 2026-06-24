@@ -618,6 +618,7 @@ export default function CashierPage() {
   const [shiftReport, setShiftReport] = useState<ShiftReportData | null>(null)
   const [shiftReportLoading, setShiftReportLoading] = useState(false)
   const [shiftReportError, setShiftReportError] = useState('')
+  const [shiftCloseConfirmOpen, setShiftCloseConfirmOpen] = useState(false)
   const [dayCloseOpen, setDayCloseOpen] = useState(false)
   const [dayCloseReport, setDayCloseReport] = useState<DayCloseReportData | null>(null)
   const [dayCloseLoading, setDayCloseLoading] = useState(false)
@@ -1318,6 +1319,15 @@ export default function CashierPage() {
     }
   }
 
+  async function handleRequestShiftClose() {
+    const report = shiftReport ?? await loadShiftReport()
+    if (!report) {
+      showToast('交班报表尚未生成，请稍后重试')
+      return
+    }
+    setShiftCloseConfirmOpen(true)
+  }
+
   function handleConfirmShiftClose() {
     if (!storeCode) return
     try {
@@ -1326,6 +1336,7 @@ export default function CashierPage() {
       setShiftStartIso(null)
       setShiftOperator('')
       setShiftReport(null)
+      setShiftCloseConfirmOpen(false)
       setShiftReportOpen(false)
       showToast('已结束本班，下次进入将自动开新班')
     } catch (err) {
@@ -2638,7 +2649,7 @@ export default function CashierPage() {
               <button
                 type="button"
                 style={{ ...s.secondaryBtn, borderColor: '#fecaca', color: '#b91c1c' }}
-                onClick={handleConfirmShiftClose}
+                onClick={handleRequestShiftClose}
               >
                 结束本班
               </button>
@@ -2648,6 +2659,46 @@ export default function CashierPage() {
                 onClick={() => setShiftReportOpen(false)}
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Shift close confirmation ───────────────────────────────────────── */}
+      {shiftCloseConfirmOpen && shiftReport && (
+        <div style={s.overlay} onClick={() => setShiftCloseConfirmOpen(false)}>
+          <div style={s.modal} onClick={e => e.stopPropagation()}>
+            <div style={s.modalTitle}>确认结束本班？</div>
+            <div style={{ display: 'grid', gap: 8, margin: '16px 0 18px', textAlign: 'left' }}>
+              {[
+                ['本班销售额：', `$${shiftReport.salesAmount.toFixed(2)}`],
+                ['本班单数：', `${shiftReport.orderCount}`],
+                ['CASH：', `$${shiftReport.cashAmount.toFixed(2)}`],
+                ['KHQR：', `$${shiftReport.khqrAmount.toFixed(2)}`],
+                ['未完成挂单：', `${shiftReport.holdOrderCount}`],
+                ['离线待同步：', `${shiftReport.offlinePendingCount}`],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 13, color: '#334155' }}>
+                  <span>{label}</span>
+                  <span style={{ fontWeight: 900, color: '#111827' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button
+                type="button"
+                style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 13 }}
+                onClick={() => setShiftCloseConfirmOpen(false)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 13, background: '#b91c1c' }}
+                onClick={handleConfirmShiftClose}
+              >
+                确认结束本班
               </button>
             </div>
           </div>
