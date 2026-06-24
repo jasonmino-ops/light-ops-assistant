@@ -320,12 +320,17 @@ type DesktopCopy = {
   holdTitle: string
   holdButton: string
   holdEmpty: string
+  holdEmptyPrefix: string
   shiftStart: (time: string) => string
   shiftReportBtn: string
   dayCloseBtn: string
   cartTitle: string
   cartClear: string
   cartEmpty: string
+  allProducts: string
+  otherGroup: string
+  loadProducts: string
+  noProductsForFilter: (kw: string) => string
   autoPrintTitle: string
   autoPrintOn: string
   autoPrintOff: string
@@ -368,6 +373,20 @@ type DesktopCopy = {
   continueSale: string
   memberPayTitle: string
   memberPayHint: string
+  pendingOrdersTitle: string
+  pendingOrdersEmpty: string
+  pendingOrdersNone: string
+  tableNo: string
+  pickup: string
+  orderStatusPending: string
+  orderStatusConfirmed: string
+  confirmAction: string
+  completeAction: string
+  cancelAction: string
+  desktopOrdersBtn: string
+  desktopProductsBtn: string
+  desktopRecordsBtn: string
+  searchPlaceholder: string
 }
 
 function desktopCopy(lang: DeskLang): DesktopCopy {
@@ -397,12 +416,17 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       holdTitle: 'Local holds',
       holdButton: 'Hold current order',
       holdEmpty: 'No local holds',
+      holdEmptyPrefix: 'No local holds',
       shiftStart: (time) => `Shift ${time} started`,
       shiftReportBtn: 'Shift report',
       dayCloseBtn: 'Day close',
       cartTitle: 'Cart',
       cartClear: 'Clear',
       cartEmpty: 'Tap product cards to add items',
+      allProducts: 'All items',
+      otherGroup: 'Other',
+      loadProducts: 'Loading products…',
+      noProductsForFilter: (kw) => (kw ? `No results for "${kw}"` : 'No products in this category'),
       autoPrintTitle: 'Auto print receipt',
       autoPrintOn: 'Open browser print after sale',
       autoPrintOff: 'Off by default, manual print available',
@@ -445,6 +469,20 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       continueSale: 'Continue',
       memberPayTitle: 'Member balance payment',
       memberPayHint: 'Member balance needs online lookup and real-time deduction.',
+      pendingOrdersTitle: 'Pending customer orders',
+      pendingOrdersEmpty: 'No pending orders',
+      pendingOrdersNone: 'No pending customer orders',
+      tableNo: 'Table',
+      pickup: 'Pickup / delivery',
+      orderStatusPending: 'Pending',
+      orderStatusConfirmed: 'Confirmed',
+      confirmAction: 'Confirm',
+      completeAction: 'Done',
+      cancelAction: 'Cancel',
+      desktopOrdersBtn: 'Order board',
+      desktopProductsBtn: 'Product management',
+      desktopRecordsBtn: 'Sales records',
+      searchPlaceholder: 'Search products… (press / to focus)',
     }
   }
   if (lang === 'km') {
@@ -473,12 +511,17 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       holdTitle: 'មាត់ស្នើក្នុងเครื่อง',
       holdButton: 'ផ្អាកបញ្ជាទិញបច្ចុប្បន្ន',
       holdEmpty: 'មិនមានមាត់ស្នើ',
+      holdEmptyPrefix: 'មិនមានមាត់ស្នើ',
       shiftStart: (time) => `ប្តូរវេន ${time} ចាប់ផ្តើម`,
       shiftReportBtn: 'របាយការណ៍ប្តូរវេន',
       dayCloseBtn: 'បិទថ្ងៃ',
       cartTitle: 'រទេះទំនិញ',
       cartClear: 'សម្អាត',
       cartEmpty: 'ចុចលើកាតទំនិញដើម្បីបន្ថែម',
+      allProducts: 'ទំនិញទាំងអស់',
+      otherGroup: 'ផ្សេងៗ',
+      loadProducts: 'កំពុងផ្ទុកទំនិញ…',
+      noProductsForFilter: (kw) => (kw ? `មិនមានលទ្ធផលសម្រាប់ "${kw}"` : 'មិនមានទំនិញក្នុងប្រភេទនេះ'),
       autoPrintTitle: 'បោះពុម្ពបង្កាន់ដៃស្វ័យប្រវត្តិ',
       autoPrintOn: 'បើក print browser បន្ទាប់ពីលក់',
       autoPrintOff: 'បិទតាមលំនាំដើម · អាចបោះពុម្ពដោយដៃ',
@@ -521,6 +564,20 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       continueSale: 'បន្តគិតលុយ',
       memberPayTitle: 'បង់ដោយសមតុល្យសមាជិក',
       memberPayHint: 'ការបង់ដោយសមតុល្យសមាជិកត្រូវការតាមដានអនឡាញ និងកាត់បញ្ចុះភ្លាមៗ។',
+      pendingOrdersTitle: 'បញ្ជាទិញអតិថិជនកំពុងរង់ចាំ',
+      pendingOrdersEmpty: 'មិនមានបញ្ជាទិញកំពុងរង់ចាំ',
+      pendingOrdersNone: 'មិនមានបញ្ជាទិញអតិថិជនកំពុងរង់ចាំ',
+      tableNo: 'តុ',
+      pickup: 'យកទៅផ្ទះ / ដឹកជញ្ជូន',
+      orderStatusPending: 'រង់ចាំបញ្ជាក់',
+      orderStatusConfirmed: 'បានបញ្ជាក់',
+      confirmAction: 'បញ្ជាក់',
+      completeAction: 'រួចរាល់',
+      cancelAction: 'បោះបង់',
+      desktopOrdersBtn: 'ក្តារបញ្ជាទិញ',
+      desktopProductsBtn: 'គ្រប់គ្រងទំនិញ',
+      desktopRecordsBtn: 'កំណត់ត្រាលក់',
+      searchPlaceholder: 'ស្វែងរកទំនិញ… (ចុច / ដើម្បីផ្តោត)',
     }
   }
   return {
@@ -548,12 +605,17 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     holdTitle: '本地挂单',
     holdButton: '挂起当前单',
     holdEmpty: '暂无本地挂单',
+    holdEmptyPrefix: '暂无本地挂单',
     shiftStart: (time) => `🕐 本班 ${time} 起`,
     shiftReportBtn: '查看交班报表',
     dayCloseBtn: '日结报表',
     cartTitle: '购物车',
     cartClear: '清空',
     cartEmpty: '点击商品卡片加入购物车',
+    allProducts: '全部商品',
+    otherGroup: 'Other',
+    loadProducts: '加载商品中…',
+    noProductsForFilter: (kw) => (kw ? `未找到"${kw}"` : '该分类暂无商品'),
     autoPrintTitle: '自动打印小票',
     autoPrintOn: '销售完成后自动打开浏览器打印',
     autoPrintOff: '默认关闭，可手动打印',
@@ -596,6 +658,20 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     continueSale: '继续收银',
     memberPayTitle: '👤 会员余额支付',
     memberPayHint: '会员余额支付需联网查询会员，并实时扣减余额。',
+    pendingOrdersTitle: '📋 待处理顾客订单',
+    pendingOrdersEmpty: '暂无待处理顾客订单',
+    pendingOrdersNone: '暂无',
+    tableNo: '桌号',
+    pickup: '自取/外卖',
+    orderStatusPending: '待确认',
+    orderStatusConfirmed: '已确认',
+    confirmAction: '确认',
+    completeAction: '完成',
+    cancelAction: '取消',
+    desktopOrdersBtn: '接单看板',
+    desktopProductsBtn: '商品管理',
+    desktopRecordsBtn: '销售记录',
+    searchPlaceholder: '搜索商品… （按 / 快速聚焦）',
   }
 }
 
@@ -2281,6 +2357,7 @@ export default function CashierPage() {
     const l2Ids = new Set((l2ByParent.get(activeCatId) ?? []).map(c => c.id))
     return p.categoryId === activeCatId || (p.categoryId !== null && l2Ids.has(p.categoryId))
   })
+  const d = desktopCopy(lang as DeskLang)
   const categoryById = new Map(categories.map(c => [c.id, c]))
   const displayProductGroups = (() => {
     if (!isDesktopPos || activeCatId !== null) return []
@@ -2290,7 +2367,7 @@ export default function CashierPage() {
       const cat = p.categoryId ? categoryById.get(p.categoryId) : null
       const rootCat = cat?.parentId ? categoryById.get(cat.parentId) : cat
       const groupId = rootCat?.id ?? '__other__'
-      if (!groups.has(groupId)) groups.set(groupId, { title: rootCat?.name ?? 'Other', items: [] })
+      if (!groups.has(groupId)) groups.set(groupId, { title: rootCat?.name ?? d.otherGroup, items: [] })
       groups.get(groupId)!.items.push(p)
     }
     return Array.from(groups.values()).filter(group => group.items.length > 0)
@@ -2401,7 +2478,6 @@ export default function CashierPage() {
   const cashChangeAmount = hasCashReceivedAmount ? Math.max(0, cashReceivedAmount - total) : 0
   const isCashPaymentSelected = isDesktopPos && checkoutStep === 'SELECT_PAYMENT' && desktopSelectedPaymentMethod === 'CASH'
   const isCashReceivedInsufficient = isCashPaymentSelected && (!hasCashReceivedAmount || cashReceivedAmount + 0.0001 < total)
-  const d = desktopCopy(lang as DeskLang)
   const desktopKhrAssist = (amount: number) => {
     if (!isDesktopPos || amount <= 0) return null
     return <div style={s.khrAssist}>≈ {toKhr(amount, usdKhrRate)}</div>
@@ -2553,7 +2629,7 @@ export default function CashierPage() {
               style={{ ...s.sideCat, ...(activeCatId === null ? s.sideCatOn : {}) }}
               onClick={() => setActiveCatId(null)}
             >
-              全部商品
+              {d.allProducts}
               {activeCatId === null && <span style={{ float: 'right', fontSize: 11, opacity: 0.7 }}>{products.length}</span>}
             </button>
             {l1Cats.map(cat => {
@@ -2619,7 +2695,7 @@ export default function CashierPage() {
                       })}
                     </div>
                   ) : (
-                    <div style={s.holdEmpty}>暂无本地挂单</div>
+                    <div style={s.holdEmpty}>{d.holdEmpty}</div>
                   )}
                 </div>
                 <div style={s.fxCard}>
@@ -2649,7 +2725,7 @@ export default function CashierPage() {
               style={{ ...s.sideLinkPri, ...(isDesktopPos ? s.sideLinkDesktopPri : {}) }}
               onClick={() => ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             >
-              📋 接单看板
+              📋 {d.desktopOrdersBtn}
               {pendingOrders.length > 0 && (
                 <span style={{ marginLeft: 6, background: '#fcd34d', color: '#92400e', borderRadius: 8, padding: '0 5px', fontSize: 11 }}>
                   {pendingOrders.length}
@@ -2660,13 +2736,13 @@ export default function CashierPage() {
               style={{ ...s.sideLinkSec, ...(isDesktopPos ? s.sideLinkDesktopSec : {}) }}
               onClick={() => showToast('请在手机商户端管理商品')}
             >
-              商品管理
+              {d.desktopProductsBtn}
             </button>
             <button
               style={{ ...s.sideLinkSec, ...(isDesktopPos ? s.sideLinkDesktopSec : {}) }}
               onClick={handleOpenDesktopRecords}
             >
-              销售记录
+              {d.desktopRecordsBtn}
             </button>
           </div>
         </div>
@@ -2677,18 +2753,18 @@ export default function CashierPage() {
             <input
               ref={searchRef}
               style={s.search}
-              placeholder="搜索商品… （按 / 快速聚焦）"
+              placeholder={d.searchPlaceholder}
               value={searchKw}
               onChange={e => setSearchKw(e.target.value)}
             />
           </div>
           <div style={{ ...s.grid, ...(isDesktopPos ? s.desktopGrid : {}) }}>
             {loading && (
-              <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#9ca3af', padding: 40, fontSize: 14 }}>加载商品中…</div>
+              <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#9ca3af', padding: 40, fontSize: 14 }}>{d.loadProducts}</div>
             )}
             {!loading && displayProducts.length === 0 && (
               <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#9ca3af', padding: 40, fontSize: 14 }}>
-                {kw ? `未找到"${kw}"` : '该分类暂无商品'}
+                {d.noProductsForFilter(kw)}
               </div>
             )}
             {!loading && isDesktopPos && activeCatId === null && displayProductGroups.map((group, groupIndex) => (
@@ -2707,15 +2783,15 @@ export default function CashierPage() {
           {/* ── TOP: Pending orders section ──────────────────────────────── */}
           <div style={s.ordSec} ref={ordersRef}>
             <div style={s.ordHead}>
-              <span style={s.ordHeadTitle}>📋 待处理顾客订单</span>
+              <span style={s.ordHeadTitle}>{d.pendingOrdersTitle}</span>
               {pendingOrders.length > 0
                 ? <span style={s.ordBadge}>{pendingOrders.length}</span>
-                : <span style={{ fontSize: 11, color: '#9ca3af' }}>暂无</span>
+                : <span style={{ fontSize: 11, color: '#9ca3af' }}>{d.pendingOrdersNone}</span>
               }
             </div>
             <div style={s.ordList}>
               {pendingOrders.length === 0 ? (
-                <div style={s.ordEmpty}>暂无待处理顾客订单</div>
+                <div style={s.ordEmpty}>{d.pendingOrdersEmpty}</div>
               ) : pendingOrders.map(order => {
                 const isPending  = order.status === 'PENDING'
                 const isUpdating = updatingId === order.id
@@ -2740,7 +2816,7 @@ export default function CashierPage() {
                       <span style={s.ocTime}>{fmtTime(order.createdAt)}</span>
                     </div>
                     <div style={s.ocMeta}>
-                      {order.tableNo ? `🪑 桌号 ${order.tableNo}` : '🛍 自取/外卖'}
+                      {order.tableNo ? `🪑 ${d.tableNo} ${order.tableNo}` : `🛍 ${d.pickup}`}
                     </div>
                     <div style={s.ocItems}>{itemsSummary}</div>
                     <div style={s.ocFoot}>
