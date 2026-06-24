@@ -310,7 +310,7 @@ export default function HomePage() {
   const displayStoreName = storeName ?? 'E-Shop'
   const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
   const desktopParams = new URLSearchParams({ ...(storeCode ? { storeCode } : {}), lang })
-  const desktopPath = `/desktop/pos?${desktopParams.toString()}`
+  const desktopPath = `/desktop?${desktopParams.toString()}`
   const desktopUrl = publicUrl(desktopPath)
   const storeAvatarUrl = storeCode && !avatarFailed ? `/api/public/stores/${storeCode}/banner` : null
   const aiStatus: 'open' | 'configured' | 'waiting' =
