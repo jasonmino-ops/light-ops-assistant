@@ -375,6 +375,18 @@ const s: Record<string, CSSProperties> = {
   sideHead:    { padding: '16px 14px 12px', borderBottom: '1px solid rgba(255,255,255,.08)' },
   sideTitle:   { fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 2 },
   sideStore:   { fontSize: 11, color: '#94a3b8', marginTop: 2, lineHeight: 1.4 },
+  langSwitch: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginTop: 10 },
+  langBtn: {
+    minHeight: 28,
+    borderRadius: 8,
+    border: '1px solid rgba(255,255,255,.14)',
+    background: 'rgba(255,255,255,.06)',
+    color: '#cbd5e1',
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  langBtnOn: { background: '#fff', color: SIDEBAR_BG, borderColor: '#fff' },
   kioskActions: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 },
   kioskBtn: {
     minHeight: 34,
@@ -622,7 +634,7 @@ const s: Record<string, CSSProperties> = {
 
 export default function CashierPage() {
   const router = useRouter()
-  const { lang } = useLocale()
+  const { lang, setLang } = useLocale()
   const workMode = useWorkMode()
   const [storeCode,     setStoreCode]     = useState<string | null>(null)
   const [storeId,       setStoreId]       = useState('')
@@ -1397,6 +1409,12 @@ export default function CashierPage() {
     }
   }
 
+  function handleDesktopLangChange(nextLang: 'zh' | 'en' | 'km') {
+    if (lang === nextLang) return
+    setLang(nextLang)
+    showToast(nextLang === 'zh' ? '已切换为中文' : nextLang === 'en' ? 'Switched to English' : 'បានប្ដូរទៅភាសាខ្មែរ')
+  }
+
   async function handleRequestShiftClose() {
     const report = shiftReport ?? await loadShiftReport()
     if (!report) {
@@ -2147,6 +2165,22 @@ export default function CashierPage() {
           <div style={s.sideHead}>
             <div style={s.sideTitle}>🏪 收银台</div>
             <div style={s.sideStore}>{storeName || '加载中…'}</div>
+            <div style={s.langSwitch} aria-label="Desktop POS language switch">
+              {([
+                ['zh', '中'],
+                ['en', 'EN'],
+                ['km', 'ខ្មែរ'],
+              ] as const).map(([code, label]) => (
+                <button
+                  key={code}
+                  type="button"
+                  style={{ ...s.langBtn, ...(lang === code ? s.langBtnOn : {}) }}
+                  onClick={() => handleDesktopLangChange(code)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div style={s.kioskActions}>
               <button type="button" style={s.kioskBtn} onClick={handleInstallClick}>
                 {isStandalone ? '桌面模式' : '安装到电脑'}
