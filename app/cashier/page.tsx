@@ -82,6 +82,7 @@ type ShiftRecordItem = {
   productNameSnapshot?: string
   specSnapshot?: string | null
   quantity?: number
+  unitPrice?: number
   source?: string
 }
 type ShiftRecordsResponse = {
@@ -420,11 +421,19 @@ const s: Record<string, CSSProperties> = {
   recordsEmpty: { padding: '44px 16px', textAlign: 'center', color: '#64748b', fontSize: 13 },
   recordsList: { display: 'flex', flexDirection: 'column', gap: 8 },
   recordsItem: { display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) 120px 92px 96px', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 12, background: '#fff', border: '1px solid #e2e8f0' },
+  recordsItemExpanded: { borderColor: '#93c5fd', boxShadow: '0 0 0 2px rgba(59,130,246,.10)' },
   recordsNo: { fontSize: 14, fontWeight: 900, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
   recordsMeta: { marginTop: 3, fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
   recordsAmt: { fontSize: 16, fontWeight: 900, color: '#111827', textAlign: 'right' as const },
   recordsPay: { justifySelf: 'start', borderRadius: 999, padding: '4px 9px', background: '#eff6ff', color: '#1d4ed8', fontSize: 11, fontWeight: 900 },
   recordsTime: { fontSize: 12, color: '#64748b', textAlign: 'right' as const },
+  recordsDetail: { gridColumn: '1/-1', borderTop: '1px solid #e5e7eb', paddingTop: 10, display: 'grid', gap: 8 },
+  recordsDetailItem: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 54px 82px 82px', gap: 10, alignItems: 'start', fontSize: 12 },
+  recordsDetailName: { fontWeight: 900, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  recordsDetailSpec: { marginTop: 2, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  recordsDetailQty: { color: '#334155', fontWeight: 800, textAlign: 'right' as const },
+  recordsDetailMoney: { color: '#111827', fontWeight: 800, textAlign: 'right' as const },
+  recordsDetailTotal: { borderTop: '1px dashed #cbd5e1', paddingTop: 8, display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, fontWeight: 900, color: '#111827' },
 
   // ── Middle: product grid ──────────────────────────────────────────────────
   mid:         { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', minWidth: 0 },
@@ -625,6 +634,7 @@ export default function CashierPage() {
   const [dayCloseError, setDayCloseError] = useState('')
   const [desktopRecordsOpen, setDesktopRecordsOpen] = useState(false)
   const [desktopRecords, setDesktopRecords] = useState<DesktopRecordsState>({ loading: false, error: '', items: [] })
+  const [expandedDesktopRecordKey, setExpandedDesktopRecordKey] = useState<string | null>(null)
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -1030,6 +1040,7 @@ export default function CashierPage() {
       return
     }
     setDesktopRecordsOpen(true)
+    setExpandedDesktopRecordKey(null)
     setDesktopRecords((prev) => ({ ...prev, loading: true, error: '' }))
     try {
       const dateTo = new Date()
@@ -1890,6 +1901,7 @@ export default function CashierPage() {
       paymentMethod: string | null
       amount: number
       itemCount: number
+      items: ShiftRecordItem[]
     }>()
     desktopRecords.items.forEach((item) => {
       const key = item.orderNo || item.recordNo
@@ -1898,6 +1910,7 @@ export default function CashierPage() {
       if (current) {
         current.amount += amount
         current.itemCount += 1
+        current.items.push(item)
         return
       }
       rows.set(key, {
@@ -1907,10 +1920,38 @@ export default function CashierPage() {
         paymentMethod: item.paymentMethod,
         amount,
         itemCount: 1,
+        items: [item],
       })
     })
     return Array.from(rows.values())
   })()
+
+  function renderDesktopRecordDetails(row: { paymentMethod: string | null; amount: number; items: ShiftRecordItem[] }) {
+    return (
+      <div style={s.recordsDetail}>
+        {row.items.map((item, index) => {
+          const qty = Number(item.quantity) || 0
+          const lineAmount = Number(item.lineAmount) || 0
+          const unitPrice = Number(item.unitPrice) || (qty > 0 ? lineAmount / qty : lineAmount)
+          return (
+            <div key={`${item.recordNo}-${index}`} style={s.recordsDetailItem}>
+              <div style={{ minWidth: 0 }}>
+                <div style={s.recordsDetailName}>{item.productNameSnapshot || '商品'}</div>
+                <div style={s.recordsDetailSpec}>{item.specSnapshot || '无规格'}</div>
+              </div>
+              <div style={s.recordsDetailQty}>x{qty || 1}</div>
+              <div style={s.recordsDetailMoney}>${unitPrice.toFixed(2)}</div>
+              <div style={s.recordsDetailMoney}>${lineAmount.toFixed(2)}</div>
+            </div>
+          )
+        })}
+        <div style={s.recordsDetailTotal}>
+          <span>支付方式：{row.paymentMethod || 'UNKNOWN'}</span>
+          <span>订单金额：${row.amount.toFixed(2)}</span>
+        </div>
+      </div>
+    )
+  }
 
   function renderProductCard(p: Product, idx: number) {
     const inCart = cart.filter(c => c.barcode === p.barcode).reduce((sum, c) => sum + c.qty, 0)
@@ -2773,17 +2814,26 @@ export default function CashierPage() {
                 <div style={s.recordsEmpty}>暂无销售记录</div>
               ) : (
                 <div style={s.recordsList}>
-                  {desktopRecordRows.map((row) => (
-                    <div key={row.key} style={s.recordsItem}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={s.recordsNo}>{shortNo(row.orderNo)}</div>
-                        <div style={s.recordsMeta}>{row.orderNo} · {row.itemCount} 项</div>
-                      </div>
-                      <div style={s.recordsTime}>{fmtDateTimeShort(row.createdAt)}</div>
-                      <div style={s.recordsPay}>{row.paymentMethod || 'UNKNOWN'}</div>
-                      <div style={s.recordsAmt}>${row.amount.toFixed(2)}</div>
-                    </div>
-                  ))}
+                  {desktopRecordRows.map((row) => {
+                    const expanded = expandedDesktopRecordKey === row.key
+                    return (
+                      <button
+                        key={row.key}
+                        type="button"
+                        style={{ ...s.recordsItem, ...(expanded ? s.recordsItemExpanded : {}), cursor: 'pointer', textAlign: 'left' }}
+                        onClick={() => setExpandedDesktopRecordKey(expanded ? null : row.key)}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={s.recordsNo}>{shortNo(row.orderNo)}</div>
+                          <div style={s.recordsMeta}>{row.orderNo} · {row.itemCount} 项</div>
+                        </div>
+                        <div style={s.recordsTime}>{fmtDateTimeShort(row.createdAt)}</div>
+                        <div style={s.recordsPay}>{row.paymentMethod || 'UNKNOWN'}</div>
+                        <div style={s.recordsAmt}>${row.amount.toFixed(2)}</div>
+                        {expanded && renderDesktopRecordDetails(row)}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </div>
