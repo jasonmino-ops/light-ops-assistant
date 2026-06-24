@@ -293,6 +293,322 @@ function shortNo(orderNo: string) {
   return `#${seg.slice(-6) || seg}`
 }
 
+type DeskLang = 'zh' | 'en' | 'km'
+
+type DesktopCopy = {
+  sideTitle: string
+  storeLoading: string
+  installDesktop: string
+  desktopMode: string
+  enterFullscreen: string
+  exitFullscreen: string
+  rememberedStore: string
+  promptStore: string
+  networkStatus: string
+  online: string
+  offline: string
+  cacheReady: (count: number, time: string) => string
+  cacheEmpty: string
+  cacheFailed: string
+  cacheSaving: string
+  pendingOffline: (count: number) => string
+  syncOffline: string
+  syncingOffline: string
+  syncAfterOnline: string
+  offlineHintOnline: string
+  offlineHintOffline: string
+  holdTitle: string
+  holdButton: string
+  holdEmpty: string
+  shiftStart: (time: string) => string
+  shiftReportBtn: string
+  dayCloseBtn: string
+  cartTitle: string
+  cartClear: string
+  cartEmpty: string
+  autoPrintTitle: string
+  autoPrintOn: string
+  autoPrintOff: string
+  confirmTitle: string
+  confirmSub: string
+  returnModify: string
+  confirmToPay: string
+  selectPayTitle: string
+  selectPaySub: string
+  cashTenderedLabel: string
+  cashTenderedPlaceholder: string
+  changeLabel: string
+  insufficientCash: (diff: string) => string
+  insufficientCashInput: string
+  cashPayTitle: string
+  cashPaySub: string
+  khqrPayTitle: string
+  khqrPaySub: string
+  currentFinalPayment: (method: string) => string
+  confirmKhqrReceived: string
+  confirmCashReceived: string
+  confirmPaymentReceived: string
+  goodsCount: (count: number) => string
+  backToConfirm: string
+  backToModifyGoods: string
+  paymentHint: string
+  reportShiftTitle: string
+  reportDayTitle: string
+  printShift: string
+  printDay: string
+  close: string
+  endShift: string
+  closeShiftConfirm: string
+  closeShiftCancel: string
+  saleCompleted: string
+  receiptReady: string
+  receiptNotAuto: string
+  previewReceipt: string
+  printReceipt: string
+  continueSale: string
+  memberPayTitle: string
+  memberPayHint: string
+}
+
+function desktopCopy(lang: DeskLang): DesktopCopy {
+  if (lang === 'en') {
+    return {
+      sideTitle: 'Cashier',
+      storeLoading: 'Loading…',
+      installDesktop: 'Install to PC',
+      desktopMode: 'Desktop mode',
+      enterFullscreen: 'Enter full screen',
+      exitFullscreen: 'Exit full screen',
+      rememberedStore: 'This store is remembered. Desktop open will enter this cashier.',
+      promptStore: 'Open with a store link first, then install.',
+      networkStatus: 'Network',
+      online: 'Online',
+      offline: 'Offline',
+      cacheReady: (count, time) => `Cache: ${count} items · ${time}`,
+      cacheEmpty: 'Cache: no product cache',
+      cacheFailed: 'Cache: failed',
+      cacheSaving: 'Cache: saving…',
+      pendingOffline: (count) => `Pending offline orders: ${count}`,
+      syncOffline: 'Sync offline orders',
+      syncingOffline: 'Syncing…',
+      syncAfterOnline: 'Back online to sync',
+      offlineHintOnline: 'Offline cashier only supports CASH. Stored locally and synced later.',
+      offlineHintOffline: 'No product cache. Offline cashier unavailable.',
+      holdTitle: 'Local holds',
+      holdButton: 'Hold current order',
+      holdEmpty: 'No local holds',
+      shiftStart: (time) => `Shift ${time} started`,
+      shiftReportBtn: 'Shift report',
+      dayCloseBtn: 'Day close',
+      cartTitle: 'Cart',
+      cartClear: 'Clear',
+      cartEmpty: 'Tap product cards to add items',
+      autoPrintTitle: 'Auto print receipt',
+      autoPrintOn: 'Open browser print after sale',
+      autoPrintOff: 'Off by default, manual print available',
+      confirmTitle: 'Confirm order',
+      confirmSub: 'Check items, quantity and payable amount. No sale record is created here.',
+      returnModify: 'Back to edit items',
+      confirmToPay: 'Confirm order, choose payment',
+      selectPayTitle: 'Choose payment method',
+      selectPaySub: 'Customer screen already shows KHQR. Choose the final payment method for bookkeeping.',
+      cashTenderedLabel: 'Customer paid',
+      cashTenderedPlaceholder: 'Enter cash received',
+      changeLabel: 'Change',
+      insufficientCash: (diff) => `Not enough cash, ${diff} more needed`,
+      insufficientCashInput: 'Enter cash received before confirming',
+      cashPayTitle: 'Cash payment',
+      cashPaySub: 'Choose when customer pays cash. Final record will be CASH.',
+      khqrPayTitle: 'KHQR payment',
+      khqrPaySub: 'Choose when customer pays by scan. Final record will be KHQR.',
+      currentFinalPayment: (method) => `Final payment method: ${method}`,
+      confirmKhqrReceived: 'Confirm KHQR received and complete sale',
+      confirmCashReceived: 'Confirm cash received and complete sale',
+      confirmPaymentReceived: 'Confirm payment received and complete sale',
+      goodsCount: (count) => `Items ${count}`,
+      backToConfirm: 'Back to confirm order',
+      backToModifyGoods: 'Back to edit items',
+      paymentHint: 'Reuse existing /cashier sale flow · no new submit API',
+      reportShiftTitle: 'Shift report',
+      reportDayTitle: 'Day close report',
+      printShift: 'Print shift report',
+      printDay: 'Print day close',
+      close: 'Close',
+      endShift: 'End shift',
+      closeShiftConfirm: 'Confirm end shift?',
+      closeShiftCancel: 'Cancel',
+      saleCompleted: 'Sale completed',
+      receiptReady: '80mm receipt ready. Preview or print in browser.',
+      receiptNotAuto: 'Receipt not auto-printed. Use the mPOS phone app if needed.',
+      previewReceipt: 'Preview receipt',
+      printReceipt: 'Print receipt',
+      continueSale: 'Continue',
+      memberPayTitle: 'Member balance payment',
+      memberPayHint: 'Member balance needs online lookup and real-time deduction.',
+    }
+  }
+  if (lang === 'km') {
+    return {
+      sideTitle: 'គិតលុយ',
+      storeLoading: 'កំពុងផ្ទុក…',
+      installDesktop: 'ដំឡើងលើកុំព្យូទ័រ',
+      desktopMode: 'របៀប Desktop',
+      enterFullscreen: 'ចូលពេញអេក្រង់',
+      exitFullscreen: 'ចេញពីពេញអេក្រង់',
+      rememberedStore: 'ហាងនេះត្រូវបានចងចាំ។ បើកលើ Desktop នឹងចូលទៅកាន់ប្រអប់គិតលុយនេះ។',
+      promptStore: 'សូមបើកតាមតំណហាងជាមុន ហើយសឹមដំឡើង។',
+      networkStatus: 'បណ្តាញ',
+      online: 'អនឡាញ',
+      offline: 'អុហ្វឡាញ',
+      cacheReady: (count, time) => `Cache: ${count} មុខ · ${time}`,
+      cacheEmpty: 'Cache: មិនទាន់មានទិន្នន័យទំនិញ',
+      cacheFailed: 'Cache: បរាជ័យ',
+      cacheSaving: 'Cache: កំពុងរក្សាទុក…',
+      pendingOffline: (count) => `ការបញ្ជាទិញរង់ចាំ sync: ${count}`,
+      syncOffline: 'Sync ការបញ្ជាទិញ offline',
+      syncingOffline: 'កំពុង sync…',
+      syncAfterOnline: 'ត្រូវភ្ជាប់អ៊ីនធឺណិតសិន',
+      offlineHintOnline: 'របៀប offline គាំទ្រ CASH ប៉ុណ្ណោះ។ រក្សាទុកក្នុងเครื่อง ហើយ sync ពេលក្រោយ។',
+      offlineHintOffline: 'មិនមាន cache ទំនិញ។ មិនអាចគិតលុយ offline បាន។',
+      holdTitle: 'មាត់ស្នើក្នុងเครื่อง',
+      holdButton: 'ផ្អាកបញ្ជាទិញបច្ចុប្បន្ន',
+      holdEmpty: 'មិនមានមាត់ស្នើ',
+      shiftStart: (time) => `ប្តូរវេន ${time} ចាប់ផ្តើម`,
+      shiftReportBtn: 'របាយការណ៍ប្តូរវេន',
+      dayCloseBtn: 'បិទថ្ងៃ',
+      cartTitle: 'រទេះទំនិញ',
+      cartClear: 'សម្អាត',
+      cartEmpty: 'ចុចលើកាតទំនិញដើម្បីបន្ថែម',
+      autoPrintTitle: 'បោះពុម្ពបង្កាន់ដៃស្វ័យប្រវត្តិ',
+      autoPrintOn: 'បើក print browser បន្ទាប់ពីលក់',
+      autoPrintOff: 'បិទតាមលំនាំដើម · អាចបោះពុម្ពដោយដៃ',
+      confirmTitle: 'បញ្ជាក់បញ្ជាទិញ',
+      confirmSub: 'ពិនិត្យទំនិញ បរិមាណ និងចំនួនត្រូវបង់។ នៅទីនេះមិនបង្កើត SaleRecord ទេ។',
+      returnModify: 'ត្រឡប់ទៅកែទំនិញ',
+      confirmToPay: 'បញ្ជាក់បញ្ជាទិញ បន្តជ្រើសការទូទាត់',
+      selectPayTitle: 'ជ្រើសរបៀបទូទាត់',
+      selectPaySub: 'អេក្រង់អតិថិជនកំពុងបង្ហាញ KHQR រួចហើយ។ សូមជ្រើសរបៀបចុងក្រោយសម្រាប់កំណត់ត្រា។',
+      cashTenderedLabel: 'អតិថិជនបង់',
+      cashTenderedPlaceholder: 'បញ្ចូលប្រាក់ដែលទទួលបាន',
+      changeLabel: 'ប្រាក់អាប់',
+      insufficientCash: (diff) => `ប្រាក់មិនគ្រប់ ត្រូវការបន្ថែម ${diff}`,
+      insufficientCashInput: 'សូមបញ្ចូលប្រាក់ដែលទទួលបានមុនបញ្ជាក់',
+      cashPayTitle: 'បង់ជាសាច់ប្រាក់',
+      cashPaySub: 'ជ្រើសពេលអតិថិជនបង់សាច់ប្រាក់។ កំណត់ត្រាចុងក្រោយនឹងជា CASH។',
+      khqrPayTitle: 'បង់ KHQR',
+      khqrPaySub: 'ជ្រើសពេលអតិថិជនស្កេនបង់។ កំណត់ត្រាចុងក្រោយនឹងជា KHQR។',
+      currentFinalPayment: (method) => `របៀបកត់ត្រាចុងក្រោយ៖ ${method}`,
+      confirmKhqrReceived: 'បញ្ជាក់បានទទួល KHQR ហើយបញ្ចប់លក់',
+      confirmCashReceived: 'បញ្ជាក់បានទទួលសាច់ប្រាក់ ហើយបញ្ចប់លក់',
+      confirmPaymentReceived: 'បញ្ជាក់បានទទួលប្រាក់ ហើយបញ្ចប់លក់',
+      goodsCount: (count) => `មុខទំនិញ ${count}`,
+      backToConfirm: 'ត្រឡប់ទៅបញ្ជាក់បញ្ជាទិញ',
+      backToModifyGoods: 'ត្រឡប់ទៅកែទំនិញ',
+      paymentHint: 'ប្រើលំហូរ /cashier ដើម · មិនបន្ថែម API ថ្មី',
+      reportShiftTitle: 'របាយការណ៍ប្តូរវេន',
+      reportDayTitle: 'របាយការណ៍បិទថ្ងៃ',
+      printShift: 'បោះពុម្ពរបាយការណ៍ប្តូរវេន',
+      printDay: 'បោះពុម្ពរបាយការណ៍បិទថ្ងៃ',
+      close: 'បិទ',
+      endShift: 'បញ្ចប់វេន',
+      closeShiftConfirm: 'បញ្ជាក់បញ្ចប់វេន?',
+      closeShiftCancel: 'បោះបង់',
+      saleCompleted: 'លក់រួចរាល់',
+      receiptReady: 'បង្កាន់ដៃ 80mm រួចហើយ។ អាចមើលមុន ឬបោះពុម្ពតាម browser។',
+      receiptNotAuto: 'មិនបានបោះពុម្ពស្វ័យប្រវត្តិទេ។ សូមប្រើ mPOS ពេលចាំបាច់។',
+      previewReceipt: 'មើលបង្កាន់ដៃ',
+      printReceipt: 'បោះពុម្ពបង្កាន់ដៃ',
+      continueSale: 'បន្តគិតលុយ',
+      memberPayTitle: 'បង់ដោយសមតុល្យសមាជិក',
+      memberPayHint: 'ការបង់ដោយសមតុល្យសមាជិកត្រូវការតាមដានអនឡាញ និងកាត់បញ្ចុះភ្លាមៗ។',
+    }
+  }
+  return {
+    sideTitle: '收银台',
+    storeLoading: '加载中…',
+    installDesktop: '安装到电脑',
+    desktopMode: '桌面模式',
+    enterFullscreen: '进入全屏',
+    exitFullscreen: '退出全屏',
+    rememberedStore: '已记住当前门店，桌面打开会进入本店收银台',
+    promptStore: '请先从门店收银链接进入后再安装',
+    networkStatus: '网络状态',
+    online: '在线',
+    offline: '离线',
+    cacheReady: (count, time) => `商品缓存：已缓存 ${count} 个 · ${time}`,
+    cacheEmpty: '商品缓存：暂无商品缓存',
+    cacheFailed: '商品缓存：失败',
+    cacheSaving: '商品缓存：正在更新...',
+    pendingOffline: (count) => `待同步离线订单：${count} 笔`,
+    syncOffline: '同步离线订单',
+    syncingOffline: '同步中…',
+    syncAfterOnline: '恢复网络后可同步',
+    offlineHintOnline: '离线收银模式：仅支持 CASH，本地保存，恢复网络后再同步。',
+    offlineHintOffline: '当前无商品缓存，无法离线收银。',
+    holdTitle: '本地挂单',
+    holdButton: '挂起当前单',
+    holdEmpty: '暂无本地挂单',
+    shiftStart: (time) => `🕐 本班 ${time} 起`,
+    shiftReportBtn: '查看交班报表',
+    dayCloseBtn: '日结报表',
+    cartTitle: '购物车',
+    cartClear: '清空',
+    cartEmpty: '点击商品卡片加入购物车',
+    autoPrintTitle: '自动打印小票',
+    autoPrintOn: '销售完成后自动打开浏览器打印',
+    autoPrintOff: '默认关闭，可手动打印',
+    confirmTitle: '确认本单',
+    confirmSub: '请核对商品、数量和应付金额。本步骤不会创建销售记录。',
+    returnModify: '返回修改商品',
+    confirmToPay: '确认本单，选择收款方式',
+    selectPayTitle: '选择收款方式',
+    selectPaySub: '顾客屏已显示 KHQR 收款码。请选择最终收款方式用于记账。',
+    cashTenderedLabel: '顾客实付金额',
+    cashTenderedPlaceholder: '输入实收现金',
+    changeLabel: '找零金额',
+    insufficientCash: (diff) => `实付不足，还差 ${diff}`,
+    insufficientCashInput: '请输入顾客实付金额后再确认现金收款',
+    cashPayTitle: '💵 现金收款 CASH',
+    cashPaySub: '顾客付现金时选择，最终记录为 CASH。',
+    khqrPayTitle: '📱 扫码收款 KHQR',
+    khqrPaySub: '顾客扫码付款时选择，最终记录为 KHQR。',
+    currentFinalPayment: (method) => `当前最终记账方式：${method}`,
+    confirmKhqrReceived: '确认 KHQR 已收款，完成销售',
+    confirmCashReceived: '确认现金已收款，完成销售',
+    confirmPaymentReceived: '确认收款，完成销售',
+    goodsCount: (count) => `商品种类 ${count}`,
+    backToConfirm: '返回本单确认',
+    backToModifyGoods: '返回修改商品',
+    paymentHint: '复用原 /cashier 完成销售逻辑 · 不新增提交接口',
+    reportShiftTitle: '本班交班报表',
+    reportDayTitle: '日结报表',
+    printShift: '打印交班单',
+    printDay: '打印日结单',
+    close: '关闭',
+    endShift: '结束本班',
+    closeShiftConfirm: '确认结束本班？',
+    closeShiftCancel: '取消',
+    saleCompleted: '销售完成',
+    receiptReady: '🖨️ 已生成 80mm 小票，可预览或使用浏览器打印',
+    receiptNotAuto: '🖨️ 未自动打印小票 · 如需收据请在 mPOS 手机端打印',
+    previewReceipt: '预览小票',
+    printReceipt: '打印小票',
+    continueSale: '继续收银',
+    memberPayTitle: '👤 会员余额支付',
+    memberPayHint: '会员余额支付需联网查询会员，并实时扣减余额。',
+  }
+}
+
+function holdOrderLabel(lang: DeskLang, createdAt: string, note: string | undefined, total: number) {
+  if (lang === 'en') {
+    return { time: fmtTime(createdAt), note, total: `$${total.toFixed(2)}` }
+  }
+  if (lang === 'km') {
+    return { time: fmtTime(createdAt), note, total: `$${total.toFixed(2)}` }
+  }
+  return { time: fmtTime(createdAt), note, total: `$${total.toFixed(2)}` }
+}
+
 function roundMoney(value: number) {
   return Number(value.toFixed(2))
 }
@@ -375,16 +691,17 @@ const s: Record<string, CSSProperties> = {
   sideHead:    { padding: '16px 14px 12px', borderBottom: '1px solid rgba(255,255,255,.08)' },
   sideTitle:   { fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 2 },
   sideStore:   { fontSize: 11, color: '#94a3b8', marginTop: 2, lineHeight: 1.4 },
-  langSwitch: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginTop: 10 },
+  langSwitch: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 5, marginTop: 10, minHeight: 30 },
   langBtn: {
-    minHeight: 28,
+    height: 30,
     borderRadius: 8,
     border: '1px solid rgba(255,255,255,.14)',
     background: 'rgba(255,255,255,.06)',
     color: '#cbd5e1',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 800,
     cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
   langBtnOn: { background: '#fff', color: SIDEBAR_BG, borderColor: '#fff' },
   kioskActions: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 },
@@ -615,10 +932,10 @@ const s: Record<string, CSSProperties> = {
   fxCard: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 10px', borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0', minWidth: 0 },
   fxLabel: { fontSize: 12, fontWeight: 800, color: '#f8fafc', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
   fxBtn: { border: 'none', background: 'transparent', color: '#60a5fa', fontSize: 12, fontWeight: 900, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' as const },
-  autoPrintToggle: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 10px', borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0' },
-  autoPrintText: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 },
-  autoPrintTitle: { fontSize: 12, fontWeight: 800, color: '#f8fafc' },
-  autoPrintSub: { fontSize: 10, color: '#94a3b8', lineHeight: 1.35 },
+  autoPrintToggle: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: 10, minHeight: 60, padding: '9px 10px', borderRadius: 12, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', color: '#e2e8f0' },
+  autoPrintText: { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2, minWidth: 0, minHeight: 36 },
+  autoPrintTitle: { fontSize: 12, fontWeight: 800, color: '#f8fafc', lineHeight: 1.2 },
+  autoPrintSub: { fontSize: 10, color: '#94a3b8', lineHeight: 1.25, minHeight: 13 },
   autoPrintSwitch: { position: 'relative', width: 42, height: 24, borderRadius: 999, border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, transition: 'background .12s' },
   autoPrintKnob: { position: 'absolute', top: 3, width: 18, height: 18, borderRadius: 999, background: '#fff', transition: 'left .12s' },
 
@@ -2084,21 +2401,22 @@ export default function CashierPage() {
   const cashChangeAmount = hasCashReceivedAmount ? Math.max(0, cashReceivedAmount - total) : 0
   const isCashPaymentSelected = isDesktopPos && checkoutStep === 'SELECT_PAYMENT' && desktopSelectedPaymentMethod === 'CASH'
   const isCashReceivedInsufficient = isCashPaymentSelected && (!hasCashReceivedAmount || cashReceivedAmount + 0.0001 < total)
+  const d = desktopCopy(lang as DeskLang)
   const desktopKhrAssist = (amount: number) => {
     if (!isDesktopPos || amount <= 0) return null
     return <div style={s.khrAssist}>≈ {toKhr(amount, usdKhrRate)}</div>
   }
   const cacheText =
-    cacheStatus === 'saving' ? '商品缓存：正在更新...' :
-    cacheStatus === 'ready' && cacheMeta ? `商品缓存：已缓存 ${cacheMeta.productCount} 个 · ${fmtCacheTime(cacheMeta.lastProductCacheAt)}` :
-    cacheStatus === 'empty' ? '商品缓存：暂无商品缓存' :
-    cacheStatus === 'failed' ? (cacheError || '商品缓存失败，断网模式暂不可用') :
-    '商品缓存：未缓存'
+    cacheStatus === 'saving' ? d.cacheSaving :
+    cacheStatus === 'ready' && cacheMeta ? d.cacheReady(cacheMeta.productCount, fmtCacheTime(cacheMeta.lastProductCacheAt)) :
+    cacheStatus === 'empty' ? d.cacheEmpty :
+    cacheStatus === 'failed' ? (cacheError || d.cacheFailed) :
+    (lang === 'en' ? 'Cache: not cached yet' : lang === 'km' ? 'Cache: មិនទាន់មានទេ' : '商品缓存：未缓存')
   const canOfflineCashier = !isOnline && productsSource === 'cache' && products.length > 0 && !!cacheMeta
   const offlineHint = !isOnline
     ? canOfflineCashier
-      ? '离线收银模式：仅支持 CASH，本地保存，恢复网络后再同步。'
-      : '当前无商品缓存，无法离线收银。'
+      ? d.offlineHintOnline
+      : d.offlineHintOffline
     : ''
 
   // ── Restore PWA storeCode before rendering no-code branches ───────────────
@@ -2163,8 +2481,8 @@ export default function CashierPage() {
         {/* LEFT SIDEBAR */}
         <div style={s.sidebar}>
           <div style={s.sideHead}>
-            <div style={s.sideTitle}>🏪 收银台</div>
-            <div style={s.sideStore}>{storeName || '加载中…'}</div>
+            <div style={s.sideTitle}>🏪 {d.sideTitle}</div>
+            <div style={s.sideStore}>{storeName || d.storeLoading}</div>
             <div style={s.langSwitch} aria-label="Desktop POS language switch">
               {([
                 ['zh', '中'],
@@ -2183,18 +2501,18 @@ export default function CashierPage() {
             </div>
             <div style={s.kioskActions}>
               <button type="button" style={s.kioskBtn} onClick={handleInstallClick}>
-                {isStandalone ? '桌面模式' : '安装到电脑'}
+                {isStandalone ? d.desktopMode : d.installDesktop}
               </button>
               <button type="button" style={s.kioskBtn} onClick={handleFullscreenClick}>
-                {isFullscreen ? '退出全屏' : '进入全屏'}
+                {isFullscreen ? d.exitFullscreen : d.enterFullscreen}
               </button>
             </div>
             <div style={s.kioskHint}>
-              {storeCode ? '已记住当前门店，桌面打开会进入本店收银台' : '请先从门店收银链接进入后再安装'}
+              {storeCode ? d.rememberedStore : d.promptStore}
             </div>
             <div style={s.offlineStatusCard}>
               <div style={s.offlineStatusLine}>
-                <span>网络状态</span>
+                <span>{d.networkStatus}</span>
                 <span
                   style={{
                     ...s.statusPill,
@@ -2202,11 +2520,11 @@ export default function CashierPage() {
                     color: isOnline ? '#86efac' : '#fde68a',
                   }}
                 >
-                  {isOnline ? '在线' : '离线'}
+                  {isOnline ? d.online : d.offline}
                 </span>
               </div>
               <div>{cacheText}</div>
-              <div>待同步离线订单：{offlinePendingCount} 笔</div>
+              <div>{d.pendingOffline(offlinePendingCount)}</div>
               {offlinePendingCount > 0 && (
                 <button
                   type="button"
@@ -2217,7 +2535,7 @@ export default function CashierPage() {
                   disabled={!isOnline || offlineSyncing}
                   onClick={handleSyncOfflineOrders}
                 >
-                  {offlineSyncing ? '同步中…' : isOnline ? '同步离线订单' : '恢复网络后可同步'}
+                  {offlineSyncing ? d.syncingOffline : isOnline ? d.syncOffline : d.syncAfterOnline}
                 </button>
               )}
               {offlineSyncSummary && (
@@ -2254,24 +2572,22 @@ export default function CashierPage() {
             {isDesktopPos && (
               <>
                 <div style={s.shiftCard}>
-                  <div style={s.shiftStart}>
-                    🕐 本班 {shiftStartIso ? fmtTime(shiftStartIso) : '--:--'} 起
-                  </div>
+                  <div style={s.shiftStart}>{d.shiftStart(shiftStartIso ? fmtTime(shiftStartIso) : '--:--')}</div>
                   <button type="button" style={s.shiftBtn} onClick={handleOpenShiftReport}>
-                    查看交班报表
+                    {d.shiftReportBtn}
                   </button>
                   <button type="button" style={s.shiftBtn} onClick={handleOpenDayCloseReport}>
-                    日结报表
+                    {d.dayCloseBtn}
                   </button>
                 </div>
                 <div style={s.holdCard}>
                   <div style={s.holdHead}>
-                    <span style={s.holdTitle}>本地挂单</span>
+                    <span style={s.holdTitle}>{d.holdTitle}</span>
                     <span style={s.holdCount}>{holdOrders.length} 单</span>
                   </div>
                   {cart.length > 0 && (
                     <button type="button" style={s.holdBtn} onClick={handleHoldCurrentOrder}>
-                      挂起当前单
+                      {d.holdButton}
                     </button>
                   )}
                   {holdOrders.length > 0 ? (
@@ -2279,22 +2595,23 @@ export default function CashierPage() {
                       {holdOrders.map(order => {
                         const heldCount = cartCount(order.cart)
                         const heldTotal = cartTotal(order.cart)
+                        const heldLabel = holdOrderLabel(lang as DeskLang, order.createdAt, order.note, heldTotal)
                         return (
                           <div key={order.id} style={s.holdItem}>
                             <div style={s.holdMeta}>
-                              <span>{fmtTime(order.createdAt)}</span>
-                              {order.note && <span>{order.note}</span>}
-                              <span>${heldTotal.toFixed(2)}</span>
+                              <span>{heldLabel.time}</span>
+                              {heldLabel.note && <span>{heldLabel.note}</span>}
+                              <span>{heldLabel.total}</span>
                             </div>
                             <div style={s.holdSub}>
-                              {heldCount} 件 · {order.checkoutStep === 'SELECT_PAYMENT' ? '待收款' : order.checkoutStep === 'CONFIRM_ORDER' ? '待确认' : '选品中'}
+                              {heldCount} 件 · {order.checkoutStep === 'SELECT_PAYMENT' ? (lang === 'en' ? 'Waiting payment' : lang === 'km' ? 'រង់ចាំទូទាត់' : '待收款') : order.checkoutStep === 'CONFIRM_ORDER' ? (lang === 'en' ? 'Waiting confirm' : lang === 'km' ? 'រង់ចាំបញ្ជាក់' : '待确认') : (lang === 'en' ? 'Selecting items' : lang === 'km' ? 'កំពុងជ្រើសទំនិញ' : '选品中')}
                             </div>
                             <div style={s.holdActions}>
                               <button type="button" style={s.holdRestoreBtn} onClick={() => handleRestoreHoldOrder(order)}>
-                                恢复
+                                {lang === 'en' ? 'Restore' : lang === 'km' ? 'យកត្រឡប់' : '恢复'}
                               </button>
                               <button type="button" style={s.holdDeleteBtn} onClick={() => handleDeleteHoldOrder(order.id)}>
-                                删除
+                                {lang === 'en' ? 'Delete' : lang === 'km' ? 'លុប' : '删除'}
                               </button>
                             </div>
                           </div>
@@ -2308,13 +2625,13 @@ export default function CashierPage() {
                 <div style={s.fxCard}>
                   <span style={s.fxLabel}>$1 = {usdKhrRate.toLocaleString('en-US')}{KHR_SYMBOL}</span>
                   <button type="button" style={s.fxBtn} onClick={handleUsdKhrRateApply}>
-                    修改
+                    {lang === 'en' ? 'Edit' : lang === 'km' ? 'កែប្រែ' : '修改'}
                   </button>
                 </div>
                 <div style={s.autoPrintToggle}>
                   <div style={s.autoPrintText}>
-                    <span style={s.autoPrintTitle}>自动打印小票</span>
-                    <span style={s.autoPrintSub}>{autoPrint ? '销售完成后自动打开浏览器打印' : '默认关闭，可手动打印'}</span>
+                    <span style={s.autoPrintTitle}>{d.autoPrintTitle}</span>
+                    <span style={s.autoPrintSub}>{autoPrint ? d.autoPrintOn : d.autoPrintOff}</span>
                   </div>
                   <button
                     type="button"
@@ -2418,7 +2735,7 @@ export default function CashierPage() {
                         background: isPending ? '#fef3c7' : '#dbeafe',
                         color:      isPending ? '#92400e' : '#1d4ed8',
                       }}>
-                        {isPending ? '待确认' : '已确认'}
+                        {isPending ? (lang === 'en' ? 'Pending' : lang === 'km' ? 'រង់ចាំបញ្ជាក់' : '待确认') : (lang === 'en' ? 'Confirmed' : lang === 'km' ? 'បានបញ្ជាក់' : '已确认')}
                       </span>
                       <span style={s.ocTime}>{fmtTime(order.createdAt)}</span>
                     </div>
@@ -2434,7 +2751,7 @@ export default function CashierPage() {
                           disabled={isUpdating}
                           onClick={() => handleOrderAction(order.id, 'CONFIRMED')}
                         >
-                          ✓ 确认
+                          {lang === 'en' ? '✓ Confirm' : lang === 'km' ? '✓ បញ្ជាក់' : '✓ 确认'}
                         </button>
                       )}
                       {!isPending && (
@@ -2443,7 +2760,7 @@ export default function CashierPage() {
                           disabled={isUpdating}
                           onClick={() => handleOrderAction(order.id, 'COMPLETED')}
                         >
-                          ✓ 完成
+                          {lang === 'en' ? '✓ Done' : lang === 'km' ? '✓ រួចរាល់' : '✓ 完成'}
                         </button>
                       )}
                       <button
@@ -2451,7 +2768,7 @@ export default function CashierPage() {
                         disabled={isUpdating}
                         onClick={() => handleOrderAction(order.id, 'CANCELLED')}
                       >
-                        取消
+                        {lang === 'en' ? 'Cancel' : lang === 'km' ? 'បោះបង់' : '取消'}
                       </button>
                     </div>
                   </div>
@@ -2464,14 +2781,14 @@ export default function CashierPage() {
           <div style={s.cartSec}>
             <div style={s.cartHead}>
               <span style={s.cartTitle}>
-                购物车
-                {count > 0 && <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 400, marginLeft: 6 }}>({count} 件)</span>}
+                {d.cartTitle}
+                {count > 0 && <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 400, marginLeft: 6 }}>{`(${count} ${lang === 'en' ? 'items' : lang === 'km' ? 'មុខ' : '件'})`}</span>}
               </span>
-              {cart.length > 0 && <button style={s.cartClear} onClick={() => setCart([])}>清空</button>}
+              {cart.length > 0 && <button style={s.cartClear} onClick={() => setCart([])}>{d.cartClear}</button>}
             </div>
             <div style={s.cartList}>
               {cart.length === 0 ? (
-                <div style={s.cartEmpty}>点击商品卡片加入购物车</div>
+                <div style={s.cartEmpty}>{d.cartEmpty}</div>
               ) : cart.map(line => {
                 const specDisplay = [line.spec, line.sugar ? sugarZh(line.sugar) : null].filter(Boolean).join(' / ')
                 return (
@@ -2502,8 +2819,8 @@ export default function CashierPage() {
               checkoutStep === 'CONFIRM_ORDER' ? (
                 <div style={s.confirmPanel}>
                   <div>
-                    <div style={s.confirmTitle}>确认本单</div>
-                    <div style={s.confirmSub}>请核对商品、数量和应付金额。本步骤不会创建销售记录。</div>
+                    <div style={s.confirmTitle}>{d.confirmTitle}</div>
+                    <div style={s.confirmSub}>{d.confirmSub}</div>
                   </div>
                   <div style={s.confirmList}>
                     {cart.map((line, index) => {
@@ -2517,13 +2834,13 @@ export default function CashierPage() {
                     })}
                   </div>
                   <div style={s.totalRow}>
-                    <span style={s.totalLbl}>共 {count} 件 · 应付</span>
+                    <span style={s.totalLbl}>{lang === 'en' ? `Items ${count} · Payable` : lang === 'km' ? `មុខ ${count} · ត្រូវបង់` : `共 ${count} 件 · 应付`}</span>
                     <span style={s.totalAmt}>${total.toFixed(2)}</span>
                   </div>
                   {desktopKhrAssist(total)}
                   <div style={s.confirmActions}>
                     <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('SELECT_ITEMS')}>
-                      返回修改商品
+                      {d.returnModify}
                     </button>
                     <button
                       type="button"
@@ -2534,27 +2851,27 @@ export default function CashierPage() {
                         setCheckoutStep('SELECT_PAYMENT')
                       }}
                     >
-                      确认本单，选择收款方式
+                      {d.confirmToPay}
                     </button>
                   </div>
-                  <div style={s.printHint}>本轮仅进入结账占位，不创建 SaleRecord。</div>
+                  <div style={s.printHint}>{lang === 'en' ? 'This step only enters checkout. No SaleRecord is created.' : lang === 'km' ? 'ជំហាននេះគ្រាន់តែចូល checkout ប៉ុណ្ណោះ។ មិនបង្កើត SaleRecord ទេ។' : '本轮仅进入结账占位，不创建 SaleRecord。'}</div>
                 </div>
               ) : checkoutStep === 'SELECT_PAYMENT' ? (
                 <div style={{ ...s.confirmPanel, ...s.desktopSelectPanel }}>
                   <div style={s.desktopSelectScroll}>
                     <div>
-                      <div style={s.confirmTitle}>选择收款方式</div>
-                      <div style={s.confirmSub}>顾客屏已显示 KHQR 收款码。请选择最终收款方式用于记账。</div>
+                      <div style={s.confirmTitle}>{d.selectPayTitle}</div>
+                      <div style={s.confirmSub}>{d.selectPaySub}</div>
                     </div>
                     <div style={s.totalRow}>
-                      <span style={s.totalLbl}>共 {count} 件 · 应付</span>
+                      <span style={s.totalLbl}>{lang === 'en' ? `Items ${count} · Payable` : lang === 'km' ? `មុខ ${count} · ត្រូវបង់` : `共 ${count} 件 · 应付`}</span>
                       <span style={s.totalAmt}>${total.toFixed(2)}</span>
                     </div>
                     {desktopKhrAssist(total)}
                     {desktopSelectedPaymentMethod === 'CASH' && (
                       <div style={s.cashReceivedBox}>
                         <label style={s.cashReceivedLabel} htmlFor="desktop-cash-tendered">
-                          顾客实付金额
+                          {d.cashTenderedLabel}
                         </label>
                         <input
                           id="desktop-cash-tendered"
@@ -2564,14 +2881,14 @@ export default function CashierPage() {
                           inputMode="decimal"
                           value={cashTendered}
                           onChange={e => setCashTendered(e.target.value)}
-                          placeholder="输入实收现金"
+                          placeholder={d.cashTenderedPlaceholder}
                           style={{
                             ...s.cashReceivedInput,
                             borderColor: isCashReceivedInsufficient ? '#fca5a5' : '#cbd5e1',
                           }}
                         />
                         <div style={s.cashChangeRow}>
-                          <span>找零金额</span>
+                          <span>{d.changeLabel}</span>
                           <div style={s.cashChangeAmtBox}>
                             <div style={s.cashChangeAmt}>${cashChangeAmount.toFixed(2)}</div>
                             {!isCashReceivedInsufficient && cashChangeAmount > 0 && (
@@ -2582,8 +2899,8 @@ export default function CashierPage() {
                         {isCashReceivedInsufficient && (
                           <div style={s.cashWarn}>
                             {hasCashReceivedAmount
-                              ? `实付不足，还差 $${(total - cashReceivedAmount).toFixed(2)}`
-                              : '请输入顾客实付金额后再确认现金收款'}
+                              ? d.insufficientCash(`$${(total - cashReceivedAmount).toFixed(2)}`)
+                              : d.insufficientCashInput}
                           </div>
                         )}
                       </div>
@@ -2597,8 +2914,8 @@ export default function CashierPage() {
                           syncCurrentCartToCustomerDisplay('KHQR')
                         }}
                       >
-                        <span style={s.desktopPayMain}>💵 现金收款 CASH</span>
-                        <span style={s.desktopPaySub}>顾客付现金时选择，最终记录为 CASH。</span>
+                        <span style={s.desktopPayMain}>{d.cashPayTitle}</span>
+                        <span style={s.desktopPaySub}>{d.cashPaySub}</span>
                       </button>
                       <button
                         type="button"
@@ -2608,15 +2925,15 @@ export default function CashierPage() {
                           syncCurrentCartToCustomerDisplay('KHQR', { focusKhqr: true })
                         }}
                       >
-                        <span style={s.desktopPayMain}>📱 扫码收款 KHQR</span>
-                        <span style={s.desktopPaySub}>顾客扫码付款时选择，最终记录为 KHQR。</span>
+                        <span style={s.desktopPayMain}>{d.khqrPayTitle}</span>
+                        <span style={s.desktopPaySub}>{d.khqrPaySub}</span>
                       </button>
                     </div>
                   </div>
                   <div style={s.desktopPayStickyActions}>
                     {desktopSelectedPaymentMethod && (
                       <div style={s.nextStepBox}>
-                        当前最终记账方式：{desktopSelectedPaymentMethod === 'CASH' ? '现金收款 CASH' : '扫码收款 KHQR'}
+                        {d.currentFinalPayment(desktopSelectedPaymentMethod === 'CASH' ? (lang === 'en' ? 'Cash' : lang === 'km' ? 'សាច់ប្រាក់' : '现金收款 CASH') : (lang === 'en' ? 'KHQR' : lang === 'km' ? 'KHQR' : '扫码收款 KHQR'))}
                       </div>
                     )}
                     {submitError && (
@@ -2635,16 +2952,16 @@ export default function CashierPage() {
                       }}
                     >
                       {submitting
-                        ? '处理中…'
+                        ? (lang === 'en' ? 'Processing…' : lang === 'km' ? 'កំពុងដំណើរការ…' : '处理中…')
                         : desktopSelectedPaymentMethod === 'KHQR'
-                          ? '确认 KHQR 已收款，完成销售'
+                          ? d.confirmKhqrReceived
                           : desktopSelectedPaymentMethod === 'CASH'
-                            ? '确认现金已收款，完成销售'
-                            : '确认收款，完成销售'}
+                            ? d.confirmCashReceived
+                            : d.confirmPaymentReceived}
                     </button>
                     <div style={{ ...s.totalRow, marginBottom: 0 }}>
-                      <span style={s.totalLbl}>商品种类</span>
-                      <span style={s.confirmAmt}>{cart.length} 类</span>
+                      <span style={s.totalLbl}>{lang === 'en' ? 'Item types' : lang === 'km' ? 'ប្រភេទទំនិញ' : '商品种类'}</span>
+                      <span style={s.confirmAmt}>{d.goodsCount(cart.length)}</span>
                     </div>
                     <div style={s.confirmActions}>
                       <button
@@ -2656,7 +2973,7 @@ export default function CashierPage() {
                           setCheckoutStep('CONFIRM_ORDER')
                         }}
                       >
-                        返回本单确认
+                        {d.backToConfirm}
                       </button>
                       <button
                         type="button"
@@ -2667,17 +2984,17 @@ export default function CashierPage() {
                           setCheckoutStep('SELECT_ITEMS')
                         }}
                       >
-                        返回修改商品
+                        {d.backToModifyGoods}
                       </button>
                     </div>
-                    <div style={{ ...s.printHint, marginTop: 0 }}>复用原 /cashier 完成销售逻辑 · 不新增提交接口</div>
+                    <div style={{ ...s.printHint, marginTop: 0 }}>{d.paymentHint}</div>
                   </div>
                 </div>
               ) : (
                 <>
-                  <div style={s.payLabel}>本单</div>
+                  <div style={s.payLabel}>{lang === 'en' ? 'Current order' : lang === 'km' ? 'បញ្ជាទិញបច្ចុប្បន្ន' : '本单'}</div>
                   <div style={s.totalRow}>
-                    <span style={s.totalLbl}>合计 {count} 件</span>
+                    <span style={s.totalLbl}>{lang === 'en' ? `Total ${count} items` : lang === 'km' ? `សរុប ${count} មុខ` : `合计 ${count} 件`}</span>
                     <span style={s.totalAmt}>${total.toFixed(2)}</span>
                   </div>
                   {desktopKhrAssist(total)}
@@ -2689,14 +3006,14 @@ export default function CashierPage() {
                       setCheckoutStep('CONFIRM_ORDER')
                     }}
                   >
-                    ✓ 确认本单
+                    {lang === 'en' ? '✓ Confirm order' : lang === 'km' ? '✓ បញ្ជាក់បញ្ជាទិញ' : '✓ 确认本单'}
                   </button>
-                  <div style={s.printHint}>确认后再选择收款方式 · 当前不会直接完成销售</div>
+                  <div style={s.printHint}>{lang === 'en' ? 'Choose payment method after confirming the order. No sale will be completed yet.' : lang === 'km' ? 'បន្ទាប់ពីបញ្ជាក់បញ្ជាទិញសូមជ្រើសរបៀបទូទាត់។ មិនទាន់បញ្ចប់លក់នៅឡើយ។' : '确认后再选择收款方式 · 当前不会直接完成销售'}</div>
                 </>
               )
             ) : (
               <>
-                <div style={s.payLabel}>收款方式</div>
+                <div style={s.payLabel}>{lang === 'en' ? 'Payment method' : lang === 'km' ? 'របៀបទូទាត់' : '收款方式'}</div>
                 <div style={s.payRow}>
                   {(['CASH','KHQR','MEMBER_BALANCE','OTHER'] as const).map(m => {
                     const disabledOfflinePayment = !isOnline && m !== 'CASH'
@@ -2717,27 +3034,37 @@ export default function CashierPage() {
                         if (m === 'MEMBER_BALANCE') setMemberPayOpen(true)
                       }}
                     >
-                      {m === 'CASH' ? '💵 现金' : m === 'KHQR' ? '📱 KHQR' : m === 'MEMBER_BALANCE' ? '👤 会员余额' : '🔧 其他'}
+                      {m === 'CASH'
+                        ? (lang === 'en' ? 'Cash' : lang === 'km' ? 'សាច់ប្រាក់' : '💵 现金')
+                        : m === 'KHQR'
+                          ? (lang === 'en' ? 'KHQR' : lang === 'km' ? 'KHQR' : '📱 KHQR')
+                          : m === 'MEMBER_BALANCE'
+                            ? (lang === 'en' ? 'Member balance' : lang === 'km' ? 'សមតុល្យសមាជិក' : '👤 会员余额')
+                            : (lang === 'en' ? 'Other' : lang === 'km' ? 'ផ្សេងៗ' : '🔧 其他')}
                     </button>
                   )})}
                 </div>
                 {!isOnline && (
                   <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', borderRadius: 6, padding: '5px 8px', marginBottom: 8, lineHeight: 1.45 }}>
-                    离线模式仅支持 CASH，本单会保存到本机，暂不会出现在 /records。
+                    {lang === 'en'
+                      ? 'Offline mode supports CASH only. This order stays on this device and will not appear in /records yet.'
+                      : lang === 'km'
+                        ? 'របៀប offline គាំទ្រ CASH ប៉ុណ្ណោះ។ បញ្ជាទិញនេះនឹងរក្សាទុកលើឧបករណ៍ ហើយមិនបង្ហាញក្នុង /records ទេ។'
+                        : '离线模式仅支持 CASH，本单会保存到本机，暂不会出现在 /records。'}
                   </div>
                 )}
                 {payment === 'OTHER' && (
                   <div style={{ fontSize: 11, color: '#f59e0b', background: '#fffbeb', borderRadius: 6, padding: '4px 8px', marginBottom: 8 }}>
-                    「其他」将以现金方式记录。
+                    {lang === 'en' ? '"Other" will be recorded as cash.' : lang === 'km' ? '“ផ្សេងៗ” នឹងត្រូវកត់ត្រាជាសាច់ប្រាក់។' : '「其他」将以现金方式记录。'}
                   </div>
                 )}
                 {payment === 'MEMBER_BALANCE' && (
                   <div style={{ fontSize: 11, color: '#1d4ed8', background: '#eff6ff', borderRadius: 6, padding: '4px 8px', marginBottom: 8 }}>
-                    会员余额支付需联网查询会员，并实时扣减余额。
+                    {d.memberPayHint}
                   </div>
                 )}
                 <div style={s.totalRow}>
-                  <span style={s.totalLbl}>合计</span>
+                  <span style={s.totalLbl}>{lang === 'en' ? 'Total' : lang === 'km' ? 'សរុប' : '合计'}</span>
                   <span style={s.totalAmt}>${total.toFixed(2)}</span>
                 </div>
                 {submitError && (
@@ -2750,9 +3077,13 @@ export default function CashierPage() {
                   disabled={cart.length === 0 || submitting}
                   onClick={() => { void handleSubmit() }}
                 >
-                  {submitting ? '处理中…' : payment === 'MEMBER_BALANCE' ? '👤 会员余额支付' : '✓ 完成销售'}
+                  {submitting
+                    ? (lang === 'en' ? 'Processing…' : lang === 'km' ? 'កំពុងដំណើរការ…' : '处理中…')
+                    : payment === 'MEMBER_BALANCE'
+                      ? d.memberPayTitle
+                      : (lang === 'en' ? '✓ Complete sale' : lang === 'km' ? '✓ បញ្ចប់ការលក់' : '✓ 完成销售')}
                 </button>
-                <div style={s.printHint}>🖨️ 打印暂未连接 · 如需打印小票请在 mPOS 手机端操作</div>
+                <div style={s.printHint}>{lang === 'en' ? 'Printing is not connected yet. Use the mPOS phone app for receipts.' : lang === 'km' ? 'ការបោះពុម្ពមិនទាន់ភ្ជាប់នៅឡើយ។ សូមប្រើ mPOS លើទូរស័ព្ទសម្រាប់បង្កាន់ដៃ។' : '🖨️ 打印暂未连接 · 如需打印小票请在 mPOS 手机端操作'}</div>
               </>
             )}
           </div>
@@ -2763,13 +3094,13 @@ export default function CashierPage() {
       {shiftReportOpen && (
         <div style={s.overlay} onClick={() => setShiftReportOpen(false)}>
           <div style={s.shiftModal} onClick={e => e.stopPropagation()}>
-            <div style={s.modalTitle}>本班交班报表</div>
+            <div style={s.modalTitle}>{d.reportShiftTitle}</div>
             <div style={{ ...s.modalSub, marginBottom: 14 }}>
-              {shiftStartIso ? `班次开始：${fmtDateTimeShort(shiftStartIso)}` : '班次开始时间读取中'}
+              {shiftStartIso ? (lang === 'en' ? `Shift start: ${fmtDateTimeShort(shiftStartIso)}` : lang === 'km' ? `ពេលចាប់ផ្តើមវេន៖ ${fmtDateTimeShort(shiftStartIso)}` : `班次开始：${fmtDateTimeShort(shiftStartIso)}`) : (lang === 'en' ? 'Reading shift start time…' : lang === 'km' ? 'កំពុងអានពេលចាប់ផ្តើមវេន…' : '班次开始时间读取中')}
             </div>
             {shiftReportLoading && (
               <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                正在生成报表…
+                {lang === 'en' ? 'Generating report…' : lang === 'km' ? 'កំពុងបង្កើតរបាយការណ៍…' : '正在生成报表…'}
               </div>
             )}
             {!shiftReportLoading && shiftReportError && (
@@ -2787,21 +3118,21 @@ export default function CashierPage() {
                 onClick={handlePrintShiftReport}
                 disabled={shiftReportLoading}
               >
-                打印交班单
+                {d.printShift}
               </button>
               <button
                 type="button"
                 style={{ ...s.secondaryBtn, borderColor: '#fecaca', color: '#b91c1c' }}
                 onClick={handleRequestShiftClose}
               >
-                结束本班
+                {d.endShift}
               </button>
               <button
                 type="button"
                 style={s.modalBtn}
                 onClick={() => setShiftReportOpen(false)}
               >
-                关闭
+                {d.close}
               </button>
             </div>
           </div>
@@ -2812,15 +3143,15 @@ export default function CashierPage() {
       {shiftCloseConfirmOpen && shiftReport && (
         <div style={s.overlay} onClick={() => setShiftCloseConfirmOpen(false)}>
           <div style={s.modal} onClick={e => e.stopPropagation()}>
-            <div style={s.modalTitle}>确认结束本班？</div>
+            <div style={s.modalTitle}>{d.closeShiftConfirm}</div>
             <div style={{ display: 'grid', gap: 8, margin: '16px 0 18px', textAlign: 'left' }}>
               {[
-                ['本班销售额：', `$${shiftReport.salesAmount.toFixed(2)}`],
-                ['本班单数：', `${shiftReport.orderCount}`],
+                [lang === 'en' ? 'Shift sales:' : lang === 'km' ? 'ការលក់ក្នុងវេន៖' : '本班销售额：', `$${shiftReport.salesAmount.toFixed(2)}`],
+                [lang === 'en' ? 'Orders:' : lang === 'km' ? 'បញ្ជាទិញ：' : '本班单数：', `${shiftReport.orderCount}`],
                 ['CASH：', `$${shiftReport.cashAmount.toFixed(2)}`],
                 ['KHQR：', `$${shiftReport.khqrAmount.toFixed(2)}`],
-                ['未完成挂单：', `${shiftReport.holdOrderCount}`],
-                ['离线待同步：', `${shiftReport.offlinePendingCount}`],
+                [lang === 'en' ? 'Open holds:' : lang === 'km' ? 'មាត់ស្នើ៖' : '未完成挂单：', `${shiftReport.holdOrderCount}`],
+                [lang === 'en' ? 'Offline pending:' : lang === 'km' ? 'រង់ចាំ sync៖' : '离线待同步：', `${shiftReport.offlinePendingCount}`],
               ].map(([label, value]) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 13, color: '#334155' }}>
                   <span>{label}</span>
@@ -2834,14 +3165,14 @@ export default function CashierPage() {
                 style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 13 }}
                 onClick={() => setShiftCloseConfirmOpen(false)}
               >
-                取消
+                {d.closeShiftCancel}
               </button>
               <button
                 type="button"
                 style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 13, background: '#b91c1c' }}
                 onClick={handleConfirmShiftClose}
               >
-                确认结束本班
+                {d.endShift}
               </button>
             </div>
           </div>
@@ -2852,13 +3183,13 @@ export default function CashierPage() {
       {dayCloseOpen && (
         <div style={s.overlay} onClick={() => setDayCloseOpen(false)}>
           <div style={s.shiftModal} onClick={e => e.stopPropagation()}>
-            <div style={s.modalTitle}>日结报表</div>
+            <div style={s.modalTitle}>{d.reportDayTitle}</div>
             <div style={{ ...s.modalSub, marginBottom: 14 }}>
-              {storeName || storeCode || '当前门店'} · {new Date().toISOString().slice(0, 10)}
+              {(storeName || storeCode || (lang === 'en' ? 'Current store' : lang === 'km' ? 'ហាងបច្ចុប្បន្ន' : '当前门店'))} · {new Date().toISOString().slice(0, 10)}
             </div>
             {dayCloseLoading && (
               <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                正在生成报表…
+                {lang === 'en' ? 'Generating report…' : lang === 'km' ? 'កំពុងបង្កើតរបាយការណ៍…' : '正在生成报表…'}
               </div>
             )}
             {!dayCloseLoading && dayCloseError && (
@@ -2876,14 +3207,14 @@ export default function CashierPage() {
                 onClick={handlePrintDayCloseReport}
                 disabled={dayCloseLoading}
               >
-                打印日结单
+                {d.printDay}
               </button>
               <button
                 type="button"
                 style={s.modalBtn}
                 onClick={() => setDayCloseOpen(false)}
               >
-                关闭
+                {d.close}
               </button>
             </div>
           </div>
@@ -2895,8 +3226,8 @@ export default function CashierPage() {
           <div style={s.recordsModal} onClick={e => e.stopPropagation()}>
             <div style={s.recordsHead}>
               <div style={s.recordsTitleBox}>
-                <div style={s.recordsTitle}>销售记录</div>
-                <div style={s.recordsSub}>最近销售记录 · {storeName || storeCode || '当前门店'}</div>
+                <div style={s.recordsTitle}>{lang === 'en' ? 'Sales records' : lang === 'km' ? 'កំណត់ត្រាលក់' : '销售记录'}</div>
+                <div style={s.recordsSub}>{lang === 'en' ? 'Recent sales records' : lang === 'km' ? 'កំណត់ត្រាលក់ថ្មីៗ' : '最近销售记录'} · {storeName || storeCode || (lang === 'en' ? 'Current store' : lang === 'km' ? 'ហាងបច្ចុប្បន្ន' : '当前门店')}</div>
               </div>
               <button
                 type="button"
@@ -2909,11 +3240,11 @@ export default function CashierPage() {
             </div>
             <div style={s.recordsBody}>
               {desktopRecords.loading ? (
-                <div style={s.recordsEmpty}>正在加载销售记录…</div>
+                <div style={s.recordsEmpty}>{lang === 'en' ? 'Loading sales records…' : lang === 'km' ? 'កំពុងផ្ទុកកំណត់ត្រាលក់…' : '正在加载销售记录…'}</div>
               ) : desktopRecords.error ? (
                 <div style={{ ...s.recordsEmpty, color: '#b91c1c' }}>{desktopRecords.error}</div>
               ) : desktopRecordRows.length === 0 ? (
-                <div style={s.recordsEmpty}>暂无销售记录</div>
+                <div style={s.recordsEmpty}>{lang === 'en' ? 'No sales records yet' : lang === 'km' ? 'មិនទាន់មានកំណត់ត្រាលក់' : '暂无销售记录'}</div>
               ) : (
                 <div style={s.recordsList}>
                   {desktopRecordRows.map((row) => {
@@ -2948,18 +3279,22 @@ export default function CashierPage() {
         <div style={s.overlay} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null) }}>
           <div style={s.modal} onClick={e => e.stopPropagation()}>
             <div style={s.modalIcon}>✅</div>
-            <div style={s.modalTitle}>销售完成</div>
+            <div style={s.modalTitle}>{d.saleCompleted}</div>
             <div style={s.modalAmt}>${saleResult.totalAmount.toFixed(2)}</div>
-            {saleResult.orderNo && <div style={s.modalSub}>单号：{saleResult.orderNo}</div>}
+            {saleResult.orderNo && <div style={s.modalSub}>{lang === 'en' ? `Order: ${saleResult.orderNo}` : lang === 'km' ? `លេខបញ្ជាទិញ៖ ${saleResult.orderNo}` : `单号：${saleResult.orderNo}`}</div>}
             {saleResult.khqrFallback && (
               <div style={{ margin: '10px 0 4px', padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.5, textAlign: 'left' as const }}>
-                ⚠️ 未配置自动 KHQR，本次已记录为 KHQR 收款，请确认顾客已实际付款。
+                {lang === 'en'
+                  ? '⚠️ Auto KHQR is not configured. This sale was recorded as KHQR. Please confirm the customer has actually paid.'
+                  : lang === 'km'
+                    ? '⚠️ មិនបានកំណត់ KHQR ស្វ័យប្រវត្តិ។ ការលក់នេះត្រូវបានកត់ត្រាជា KHQR។ សូមបញ្ជាក់ថាអតិថិជនបានបង់ពិតប្រាកដ។'
+                    : '⚠️ 未配置自动 KHQR，本次已记录为 KHQR 收款，请确认顾客已实际付款。'}
               </div>
             )}
             <div style={{ margin: '6px 0 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
               {isDesktopPos && saleResult.receipt
-                ? '🖨️ 已生成 80mm 小票，可预览或使用浏览器打印'
-                : '🖨️ 未自动打印小票 · 如需收据请在 mPOS 手机端打印'}
+                ? d.receiptReady
+                : d.receiptNotAuto}
             </div>
             {isDesktopPos && saleResult.receipt && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
@@ -2968,18 +3303,18 @@ export default function CashierPage() {
                   style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12 }}
                   onClick={() => setReceiptPreviewOpen(true)}
                 >
-                  预览小票
+                  {d.previewReceipt}
                 </button>
                 <button
                   type="button"
                   style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12 }}
                   onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
                 >
-                  打印小票
+                  {d.printReceipt}
                 </button>
               </div>
             )}
-            <button style={s.modalBtn} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null); searchRef.current?.focus() }}>继续收银</button>
+            <button style={s.modalBtn} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null); searchRef.current?.focus() }}>{d.continueSale}</button>
           </div>
         </div>
       )}
@@ -2996,13 +3331,13 @@ export default function CashierPage() {
       {memberPayOpen && (
         <div style={s.overlay} onClick={() => setMemberPayOpen(false)}>
           <div style={s.modal} onClick={e => e.stopPropagation()}>
-            <div style={s.modalTitle}>会员余额支付</div>
+            <div style={s.modalTitle}>{d.memberPayTitle}</div>
             <div style={{ marginBottom: 12, fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>
-              输入会员手机号，确认余额足够后完成本单。
+              {lang === 'en' ? 'Enter the member phone number and confirm enough balance before completing this order.' : lang === 'km' ? 'បញ្ចូលលេខទូរស័ព្ទសមាជិក ហើយបញ្ជាក់ថាសមតុល្យគ្រប់គ្រាន់ មុនបញ្ចប់បញ្ជាទិញនេះ។' : '输入会员手机号，确认余额足够后完成本单。'}
             </div>
             {!isOnline && (
               <div style={{ marginBottom: 10, padding: '8px 10px', background: '#fffbeb', color: '#92400e', borderRadius: 8, fontSize: 12 }}>
-                离线模式下不支持会员余额支付
+                {lang === 'en' ? 'Member balance payment is unavailable offline.' : lang === 'km' ? 'របៀប offline មិនគាំទ្រការបង់ដោយសមតុល្យសមាជិកទេ។' : '离线模式下不支持会员余额支付'}
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -3013,7 +3348,7 @@ export default function CashierPage() {
                   setMemberPayMember(null)
                   setMemberPayError('')
                 }}
-                placeholder="输入会员手机号"
+                placeholder={lang === 'en' ? 'Member phone number' : lang === 'km' ? 'លេខទូរស័ព្ទសមាជិក' : '输入会员手机号'}
                 style={{ flex: 1, height: 40, border: '1px solid #e5e7eb', borderRadius: 9, padding: '0 10px', outline: 'none' }}
                 disabled={!isOnline || memberLookupLoading || memberPayLoading}
               />
@@ -3023,7 +3358,7 @@ export default function CashierPage() {
                 onClick={lookupCashierMember}
                 disabled={!isOnline || !memberPhone.trim() || memberLookupLoading || memberPayLoading}
               >
-                {memberLookupLoading ? '查询中…' : '查询'}
+                {memberLookupLoading ? (lang === 'en' ? 'Searching…' : lang === 'km' ? 'កំពុងស្វែងរក…' : '查询中…') : (lang === 'en' ? 'Search' : lang === 'km' ? 'ស្វែងរក' : '查询')}
               </button>
             </div>
 
@@ -3035,15 +3370,15 @@ export default function CashierPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 12 }}>
                   <div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>当前余额</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{lang === 'en' ? 'Balance' : lang === 'km' ? 'សមតុល្យ' : '当前余额'}</div>
                     <div style={{ fontSize: 15, fontWeight: 900 }}>${Number(memberPayMember.balance).toFixed(2)}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>本单金额</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{lang === 'en' ? 'Order total' : lang === 'km' ? 'ចំនួនបញ្ជាទិញ' : '本单金额'}</div>
                     <div style={{ fontSize: 15, fontWeight: 900 }}>${total.toFixed(2)}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>支付后</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{lang === 'en' ? 'After pay' : lang === 'km' ? 'បន្ទាប់ពីបង់' : '支付后'}</div>
                     <div style={{ fontSize: 15, fontWeight: 900, color: Number(memberPayMember.balance) >= total ? '#047857' : '#dc2626' }}>
                       ${(Number(memberPayMember.balance) - total).toFixed(2)}
                     </div>
@@ -3066,14 +3401,14 @@ export default function CashierPage() {
               disabled={!isOnline || !memberPayMember || Number(memberPayMember.balance) < total || memberPayLoading}
               onClick={handleMemberBalancePay}
             >
-              {memberPayLoading ? '支付中…' : Number(memberPayMember?.balance ?? 0) < total ? '余额不足' : '确认余额支付'}
+              {memberPayLoading ? (lang === 'en' ? 'Paying…' : lang === 'km' ? 'កំពុងបង់…' : '支付中…') : Number(memberPayMember?.balance ?? 0) < total ? (lang === 'en' ? 'Insufficient balance' : lang === 'km' ? 'សមតុល្យមិនគ្រប់' : '余额不足') : (lang === 'en' ? 'Confirm balance pay' : lang === 'km' ? 'បញ្ជាក់បង់ដោយសមតុល្យ' : '确认余额支付')}
             </button>
             <button
               style={{ ...s.sugarCancel, marginTop: 8 }}
               onClick={() => setMemberPayOpen(false)}
               disabled={memberPayLoading}
             >
-              取消
+              {d.close}
             </button>
           </div>
         </div>
