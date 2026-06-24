@@ -843,33 +843,32 @@ const s: Record<string, CSSProperties> = {
   sideCats:    { padding: '6px 6px', flex: 1 },
   sideCat:     { display: 'block', width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 8, border: 'none', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer', marginBottom: 2 },
   sideCatOn:   { background: SIDEBAR_ACT, color: '#fff', fontWeight: 600 },
-  sideFooter:  { padding: '8px 10px 10px', borderTop: '1px solid rgba(255,255,255,.08)', display: 'flex', flexDirection: 'column', gap: 6 },
-  sideSection: { display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 13, border: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.03)' },
+  sideFooter:  { padding: '7px 9px 9px', borderTop: '1px solid rgba(255,255,255,.08)', display: 'flex', flexDirection: 'column', gap: 5 },
+  sideSection: { display: 'flex', flexDirection: 'column', gap: 5, padding: 7, borderRadius: 13, border: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.03)' },
   sideGroupCashier: { background: 'rgba(59,130,246,.10)', borderColor: 'rgba(96,165,250,.22)' },
   sideGroupOps: { background: 'rgba(16,185,129,.09)', borderColor: 'rgba(52,211,153,.20)' },
   sideGroupStore: { background: 'rgba(245,158,11,.10)', borderColor: 'rgba(251,191,36,.20)' },
   sideGroupSettings: { background: 'rgba(148,163,184,.08)', borderColor: 'rgba(148,163,184,.18)' },
-  sideSectionTitle: { fontSize: 10, fontWeight: 900, color: '#94a3b8', letterSpacing: 0, lineHeight: 1 },
-  sideSectionBody: { display: 'flex', flexDirection: 'column', gap: 5 },
-  sideFutureTools: { padding: '6px 8px', borderRadius: 10, border: '1px dashed rgba(148,163,184,.20)', color: '#94a3b8', fontSize: 10, lineHeight: 1.3, background: 'rgba(15,23,42,.16)' },
-  sidePrimaryBtn: { minHeight: 44, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(96,165,250,.24)', background: 'rgba(37,99,235,.18)', color: '#eaf2ff', fontSize: 14, fontWeight: 900, cursor: 'pointer', textAlign: 'left' as const },
-  sideSecondaryBtn: { minHeight: 31, padding: '7px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.05)', color: '#dbe2ea', fontSize: 11, fontWeight: 650, cursor: 'pointer', textAlign: 'left' as const },
+  sideSectionTitle: { fontSize: 13, fontWeight: 800, color: '#dbe7f7', letterSpacing: 0.2, lineHeight: 1.1 },
+  sideSectionBody: { display: 'flex', flexDirection: 'column', gap: 4 },
+  sidePrimaryBtn: { minHeight: 42, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(96,165,250,.24)', background: 'rgba(37,99,235,.18)', color: '#eaf2ff', fontSize: 14, fontWeight: 800, cursor: 'pointer', textAlign: 'left' as const },
+  sideSecondaryBtn: { minHeight: 30, padding: '7px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.05)', color: '#dbe2ea', fontSize: 11, fontWeight: 600, cursor: 'pointer', textAlign: 'left' as const },
   sideMutedBtn: { minHeight: 26, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(255,255,255,.08)', background: 'rgba(255,255,255,.02)', color: '#94a3b8', fontSize: 10, fontWeight: 600, cursor: 'pointer', textAlign: 'left' as const },
-  holdCard: { padding: 9, borderRadius: 12, background: 'rgba(239,246,255,.14)', border: '1px solid rgba(96,165,250,.20)', color: '#e2e8f0' },
+  holdCard: { padding: 8, borderRadius: 12, background: 'rgba(239,246,255,.14)', border: '1px solid rgba(96,165,250,.20)', color: '#e2e8f0' },
   holdHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
-  holdTitle: { fontSize: 12, fontWeight: 900, color: '#f8fafc' },
-  holdCount: { fontSize: 10, color: '#93c5fd', fontWeight: 800 },
-  holdBtn: { width: '100%', minHeight: 32, borderRadius: 9, border: '1px solid rgba(96,165,250,.20)', background: 'rgba(37,99,235,.16)', color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer', marginBottom: 6 },
+  holdTitle: { fontSize: 12, fontWeight: 800, color: '#f8fafc' },
+  holdCount: { fontSize: 10, color: '#93c5fd', fontWeight: 700 },
+  holdBtn: { width: '100%', minHeight: 42, borderRadius: 12, border: '1px solid rgba(96,165,250,.24)', background: 'rgba(37,99,235,.18)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', marginBottom: 6 },
   holdEmpty: { fontSize: 9, color: '#94a3b8', lineHeight: 1.35 },
-  holdList: { display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 126, overflowY: 'auto' },
+  holdList: { display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 112, overflowY: 'auto' },
   holdItem: { padding: 7, borderRadius: 9, background: 'rgba(15,23,42,.30)', border: '1px solid rgba(255,255,255,.06)' },
   holdMeta: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 10, fontWeight: 800, color: '#f8fafc', marginBottom: 5 },
   holdSub: { fontSize: 9, color: '#94a3b8', marginBottom: 6 },
   holdActions: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 },
   holdRestoreBtn: { minHeight: 26, borderRadius: 8, border: 'none', background: '#dbeafe', color: '#1d4ed8', fontSize: 10, fontWeight: 900, cursor: 'pointer' },
   holdDeleteBtn: { minHeight: 26, borderRadius: 8, border: '1px solid rgba(248,113,113,.28)', background: 'rgba(127,29,29,.26)', color: '#fecaca', fontSize: 10, fontWeight: 900, cursor: 'pointer', padding: '0 8px' },
-  shiftCard: { padding: 9, borderRadius: 12, background: 'rgba(236,253,245,.14)', border: '1px solid rgba(52,211,153,.20)', color: '#e2e8f0' },
-  shiftStart: { marginBottom: 7, fontSize: 11, fontWeight: 900, color: '#f8fafc' },
+  shiftCard: { padding: 8, borderRadius: 12, background: 'rgba(236,253,245,.14)', border: '1px solid rgba(52,211,153,.20)', color: '#e2e8f0' },
+  shiftStart: { marginBottom: 7, fontSize: 11, fontWeight: 800, color: '#f8fafc' },
   shiftBtn: { width: '100%', minHeight: 42, borderRadius: 12, border: '1px solid rgba(96,165,250,.18)', background: 'rgba(37,99,235,.18)', color: '#eaf2ff', fontSize: 14, fontWeight: 900, cursor: 'pointer' },
   shiftModal: { background: '#fff', borderRadius: 16, padding: 22, width: 'min(420px,92vw)', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 12px 42px rgba(15,23,42,.22)' },
   shiftActions: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 },
@@ -1023,11 +1022,11 @@ const s: Record<string, CSSProperties> = {
   cashChangeAmtBox: { textAlign: 'right' as const },
   cashChangeKhr: { marginTop: 2, fontSize: 12, fontWeight: 800, color: '#64748b' },
   cashWarn: { fontSize: 12, color: '#b91c1c', background: '#fef2f2', borderRadius: 8, padding: '7px 9px', lineHeight: 1.45 },
-  fxCard: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '7px 9px', borderRadius: 12, background: 'rgba(254,243,199,.10)', border: '1px solid rgba(251,191,36,.18)', color: '#e2e8f0', minWidth: 0 },
-  fxLabel: { fontSize: 11, fontWeight: 800, color: '#f8fafc', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
-  fxBtn: { border: 'none', background: 'transparent', color: '#60a5fa', fontSize: 11, fontWeight: 900, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' as const },
-  autoPrintToggle: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: 8, minHeight: 44, padding: '6px 9px', borderRadius: 12, background: 'rgba(148,163,184,.05)', border: '1px solid rgba(148,163,184,.12)', color: '#e2e8f0' },
-  autoPrintText: { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0, minWidth: 0, minHeight: 28 },
+  fxCard: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '6px 8px', borderRadius: 12, background: 'rgba(254,243,199,.10)', border: '1px solid rgba(251,191,36,.18)', color: '#e2e8f0', minWidth: 0 },
+  fxLabel: { fontSize: 11, fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
+  fxBtn: { border: 'none', background: 'transparent', color: '#60a5fa', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' as const },
+  autoPrintToggle: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: 8, minHeight: 42, padding: '6px 8px', borderRadius: 12, background: 'rgba(148,163,184,.05)', border: '1px solid rgba(148,163,184,.12)', color: '#e2e8f0' },
+  autoPrintText: { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0, minWidth: 0, minHeight: 26 },
   autoPrintTitle: { fontSize: 11, fontWeight: 800, color: '#f8fafc', lineHeight: 1.1 },
   autoPrintSub: { fontSize: 9, color: '#94a3b8', lineHeight: 1.15, minHeight: 11 },
   autoPrintSwitch: { position: 'relative', width: 42, height: 24, borderRadius: 999, border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, transition: 'background .12s' },
@@ -2764,17 +2763,6 @@ export default function CashierPage() {
                     >
                       {d.desktopRecordsBtn}
                     </button>
-                    <button
-                      style={{ ...s.sideSecondaryBtn, opacity: 0.92 }}
-                      onClick={() => ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                    >
-                      📋 {d.desktopOrdersBtn}
-                      {pendingOrders.length > 0 && (
-                        <span style={{ marginLeft: 6, background: '#fcd34d', color: '#92400e', borderRadius: 8, padding: '0 5px', fontSize: 11 }}>
-                          {pendingOrders.length}
-                        </span>
-                      )}
-                    </button>
                   </div>
                 </div>
                 <div style={s.sideDivider} />
@@ -2796,12 +2784,6 @@ export default function CashierPage() {
                 <div style={{ ...s.sideSection, ...s.sideGroupStore }}>
                   <div style={{ ...s.sideSectionTitle, color: '#fcd34d' }}>{d.sectionStore}</div>
                   <div style={s.sideSectionBody}>
-                    <button
-                      style={{ ...s.sidePrimaryBtn, marginTop: 2 }}
-                      onClick={() => showToast('请在手机商户端管理商品')}
-                    >
-                      {d.desktopProductsBtn}
-                    </button>
                     <div style={s.fxCard}>
                       <span style={s.fxLabel}>$1 = {usdKhrRate.toLocaleString('en-US')}{KHR_SYMBOL}</span>
                       <button type="button" style={s.fxBtn} onClick={handleUsdKhrRateApply}>
@@ -2829,7 +2811,6 @@ export default function CashierPage() {
                         <span style={{ ...s.autoPrintKnob, left: autoPrint ? 21 : 3 }} />
                       </button>
                     </div>
-                    <div style={s.sideFutureTools}>{d.futureDevices}</div>
                   </div>
                 </div>
               </>
