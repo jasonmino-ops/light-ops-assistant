@@ -79,6 +79,9 @@ type ShiftRecordItem = {
   lineAmount: number
   saleType: 'SALE' | 'REFUND'
   paymentMethod: string | null
+  productNameSnapshot?: string
+  specSnapshot?: string | null
+  quantity?: number
   source?: string
 }
 type ShiftRecordsResponse = {
@@ -98,6 +101,16 @@ type DayCloseSummaryResponse = {
   topProducts: Array<{ name: string; spec: string | null; totalQty: number }>
   cashSaleAmount?: number
   khqrSaleAmount?: number
+}
+type DayCloseRecordsResponse = ShiftRecordsResponse & {
+  desktopStore?: { storeCode: string; storeName: string } | null
+  summary?: {
+    saleCount: number
+    refundCount: number
+    netAmount: number
+    cashSaleAmount: number
+    khqrSaleAmount: number
+  }
 }
 type DesktopRecordsState = {
   loading: boolean
@@ -1155,37 +1168,128 @@ export default function CashierPage() {
     }
   }
 
+  async function fetchDesktopRecordsForDay(date: string, saleType?: 'SALE' | 'REFUND') {
+    if (!storeCode) return { items: [] as ShiftRecordItem[], summary: null as DayCloseRecordsResponse['summary'] | null, storeName: '' }
+    const allItems: ShiftRecordItem[] = []
+    let page = 1
+    let total = 0
+    let summary: DayCloseRecordsResponse['summary'] | null = null
+    let resolvedStoreName = ''
+    do {
+      const params = new URLSearchParams({
+        dateFrom: date,
+        dateTo: date,
+        storeCode,
+        from: 'desktop',
+        pageSize: '50',
+        page: String(page),
+      })
+      if (saleType) params.set('saleType', saleType)
+      const url = `/api/records?${params.toString()}`
+      const res = await fetch(url, { cache: 'no-store' })
+      const data: DayCloseRecordsResponse = await res.json()
+      if (!res.ok) throw new Error(`DAY_CLOSE_RECORDS_LOAD_FAILED_${res.status}`)
+      allItems.push(...data.items)
+      total = data.total
+      summary = summary ?? data.summary ?? null
+      resolvedStoreName = resolvedStoreName || data.desktopStore?.storeName || ''
+      page += 1
+    } while (allItems.length < total)
+    return { items: allItems, summary, storeName: resolvedStoreName }
+  }
+
+  function topProductsFromRecords(items: ShiftRecordItem[]) {
+    const productMap = new Map<string, { name: string; spec: string | null; totalQty: number }>()
+    items
+      .filter((item) => item.saleType === 'SALE')
+      .forEach((item) => {
+        const name = item.productNameSnapshot?.trim() || '商品'
+        const spec = item.specSnapshot ?? null
+        const key = `${name}||${spec ?? ''}`
+        const current = productMap.get(key)
+        const qty = Number(item.quantity) || 0
+        if (current) {
+          current.totalQty += qty
+        } else {
+          productMap.set(key, { name, spec, totalQty: qty })
+        }
+      })
+    return Array.from(productMap.values())
+      .sort((a, b) => b.totalQty - a.totalQty)
+      .slice(0, 3)
+  }
+
+  async function loadDayCloseReportFromRecords(date: string) {
+    const [{ summary, storeName: recordsStoreName }, { items: saleItems }, { items: refundItems }] = await Promise.all([
+      fetchDesktopRecordsForDay(date),
+      fetchDesktopRecordsForDay(date, 'SALE'),
+      fetchDesktopRecordsForDay(date, 'REFUND'),
+    ])
+    const cashAmount = Number(summary?.cashSaleAmount) || 0
+    const khqrAmount = Number(summary?.khqrSaleAmount) || 0
+    const totalSaleAmount = saleItems.reduce((sum, item) => sum + (Number(item.lineAmount) || 0), 0)
+    const refundAmount = refundItems.reduce((sum, item) => sum + (Number(item.lineAmount) || 0), 0)
+    const report: DayCloseReportData = {
+      date,
+      storeName: recordsStoreName || storeName || storeCode || 'Store',
+      netAmount: Number(summary?.netAmount) || 0,
+      saleOrderCount: Number(summary?.saleCount) || 0,
+      cashAmount,
+      khqrAmount,
+      otherAmount: Math.max(0, Number((totalSaleAmount - cashAmount - khqrAmount).toFixed(2))),
+      topProducts: topProductsFromRecords(saleItems),
+      holdOrderCount: holdOrders.length,
+      offlinePendingCount,
+      refundAmount,
+    }
+    return report
+  }
+
   async function loadDayCloseReport() {
     if (!isDesktopPos || !storeCode) return null
-    if (!storeId) {
-      setDayCloseError('门店信息尚未加载完成，请稍后重试')
-      return null
-    }
     setDayCloseLoading(true)
     setDayCloseError('')
     try {
       const today = new Date().toISOString().slice(0, 10)
-      const params = new URLSearchParams({ dateFrom: today, dateTo: today, storeId })
-      const res = await apiFetch(`/api/summary?${params.toString()}`, undefined, DEV_OWNER_CTX)
-      const data: DayCloseSummaryResponse = await res.json()
-      if (!res.ok) throw new Error('DAY_CLOSE_SUMMARY_LOAD_FAILED')
+      const params = new URLSearchParams({
+        dateFrom: today,
+        dateTo: today,
+        storeCode,
+        from: 'desktop',
+      })
+      if (storeId) params.set('storeId', storeId)
+      const summaryUrl = `/api/summary?${params.toString()}`
+      const res = await apiFetch(summaryUrl, undefined, DEV_OWNER_CTX)
+      const data = await res.json()
+      if (!res.ok) {
+        console.warn('[cashier:day-close] summary load failed', {
+          url: summaryUrl,
+          status: res.status,
+          body: data,
+        })
+        const fallbackReport = await loadDayCloseReportFromRecords(today)
+        setDayCloseReport(fallbackReport)
+        return fallbackReport
+      }
 
-      const cashAmount = Number(data.cashSaleAmount) || 0
-      const khqrAmount = Number(data.khqrSaleAmount) || 0
-      const totalSaleAmount = Number(data.totalSaleAmount) || 0
+      const summaryData = data as DayCloseSummaryResponse
+
+      const cashAmount = Number(summaryData.cashSaleAmount) || 0
+      const khqrAmount = Number(summaryData.khqrSaleAmount) || 0
+      const totalSaleAmount = Number(summaryData.totalSaleAmount) || 0
       const otherAmount = Math.max(0, Number((totalSaleAmount - cashAmount - khqrAmount).toFixed(2)))
       const report: DayCloseReportData = {
-        date: data.dateFrom || today,
-        storeName: data.storeName || storeName || storeCode,
-        netAmount: Number(data.netAmount) || 0,
-        saleOrderCount: Number(data.saleOrderCount) || 0,
+        date: summaryData.dateFrom || today,
+        storeName: summaryData.storeName || storeName || storeCode,
+        netAmount: Number(summaryData.netAmount) || 0,
+        saleOrderCount: Number(summaryData.saleOrderCount) || 0,
         cashAmount,
         khqrAmount,
         otherAmount,
-        topProducts: Array.isArray(data.topProducts) ? data.topProducts.slice(0, 3) : [],
+        topProducts: Array.isArray(summaryData.topProducts) ? summaryData.topProducts.slice(0, 3) : [],
         holdOrderCount: holdOrders.length,
         offlinePendingCount,
-        refundAmount: Number(data.totalRefundAmount) || 0,
+        refundAmount: Number(summaryData.totalRefundAmount) || 0,
       }
       setDayCloseReport(report)
       return report
