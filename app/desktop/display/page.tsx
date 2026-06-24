@@ -77,6 +77,7 @@ export default function DesktopMirrorPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [lingerNow, setLingerNow] = useState(() => Date.now())
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [usdKhrRate, setUsdKhrRate] = useState(4100)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollInFlightRef = useRef(false)
 
@@ -127,6 +128,17 @@ export default function DesktopMirrorPage() {
     updateFullscreen()
     document.addEventListener('fullscreenchange', updateFullscreen)
     return () => document.removeEventListener('fullscreenchange', updateFullscreen)
+  }, [])
+
+  useEffect(() => {
+    try {
+      const savedRate = Number(window.localStorage.getItem('cashier:usdKhrRate'))
+      if (Number.isFinite(savedRate) && savedRate >= 1000 && savedRate <= 10000) {
+        setUsdKhrRate(Math.round(savedRate))
+      }
+    } catch {
+      setUsdKhrRate(4100)
+    }
   }, [])
 
   function changeLang(nextLang: DesktopLang) {
@@ -213,6 +225,8 @@ export default function DesktopMirrorPage() {
   const showKhqrFocus = displayMode === 'PAYMENT_KHQR'
     && session?.message === CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE
     && hasKhqrDisplaySource(session)
+  const showCashPrompt = session?.paymentMethod === 'CASH' && hasOrderContent
+  const showReviewPrompt = !session?.paymentMethod && hasOrderContent
 
   return (
     <div style={s.root}>
@@ -245,16 +259,16 @@ export default function DesktopMirrorPage() {
         )}
 
         {displayMode === 'ORDER_ACTIVE' && session && (
-          <OrderActiveStage session={session} t={t} />
+          <OrderActiveStage session={session} t={t} usdKhrRate={usdKhrRate} showCashPrompt={showCashPrompt} showReviewPrompt={showReviewPrompt} />
         )}
 
         {displayMode === 'PAYMENT_KHQR' && session && (
-          <KhqrPaymentStage session={session} t={t} />
+          <KhqrPaymentStage session={session} t={t} usdKhrRate={usdKhrRate} />
         )}
 
         {displayMode === 'COMPLETED' && session && (
           <div style={s.stateCenter}>
-            <CompletedCard session={session} t={t} />
+            <CompletedCard session={session} t={t} usdKhrRate={usdKhrRate} />
           </div>
         )}
 
@@ -316,12 +330,27 @@ const IdleStage = memo(function IdleStage({
   )
 })
 
-const OrderActiveStage = memo(function OrderActiveStage({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
+const OrderActiveStage = memo(function OrderActiveStage({
+  session,
+  t,
+  usdKhrRate,
+  showCashPrompt,
+  showReviewPrompt,
+}: {
+  session: SessionPayload
+  t: DisplayCopy
+  usdKhrRate: number
+  showCashPrompt: boolean
+  showReviewPrompt: boolean
+}) {
   return (
     <div style={s.orderStage}>
       <section style={s.orderFocusCard}>
         <div style={s.totalLabel}>{t.amountDue}</div>
         <div style={s.orderAmount}>${session.totalAmount.toFixed(2)}</div>
+        <div style={s.amountKhr}>{formatKhrFromUsd(session.totalAmount, usdKhrRate)}</div>
+        {showCashPrompt && <div style={s.orderPromptCash}>{t.payCashierPrompt}</div>}
+        {showReviewPrompt && <div style={s.orderPromptReview}>{t.reviewOrderPrompt}</div>}
         <div style={s.orderMeta}>{t.itemMeta(session.itemCount, session.items.length)}</div>
         <div style={s.orderPayMethod}>
           <span>{t.paymentMethod}</span>
@@ -335,12 +364,13 @@ const OrderActiveStage = memo(function OrderActiveStage({ session, t }: { sessio
   )
 })
 
-const KhqrPaymentStage = memo(function KhqrPaymentStage({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
+const KhqrPaymentStage = memo(function KhqrPaymentStage({ session, t, usdKhrRate }: { session: SessionPayload; t: DisplayCopy; usdKhrRate: number }) {
   return (
     <div style={s.khqrStage}>
       <section style={s.khqrMain}>
         <div style={s.khqrTitle}>{t.scanToPay}</div>
         <div style={s.khqrAmount}>${session.totalAmount.toFixed(2)}</div>
+        <div style={s.khqrAmountKhr}>{formatKhrFromUsd(session.totalAmount, usdKhrRate)}</div>
         <PaymentCard session={session} recentlyCompleted={false} storeKhqrImageUrl={null} t={t} />
       </section>
       <section style={s.khqrSide}>
@@ -384,11 +414,11 @@ const CartList = memo(function CartList({ items, itemCount, totalAmount, t }: { 
       {items.map((it) => (
         <div key={it.productId} style={s.cartRow}>
           <ProductThumb item={it} />
-          <div style={s.cartName}>
-            {it.name}
-            {it.spec && <span style={s.cartSpec}> · {it.spec}</span>}
+          <div style={s.cartText}>
+            <div style={s.cartName}>{it.name}</div>
+            {it.spec && <div style={s.cartSpec}>{it.spec}</div>}
+            <div style={s.cartMeta}>{it.qty} × ${it.price.toFixed(2)}</div>
           </div>
-          <div style={s.cartQty}>{it.qty} × ${it.price.toFixed(2)}</div>
           <div style={s.cartLine}>${it.lineAmount.toFixed(2)}</div>
         </div>
       ))}
@@ -444,17 +474,18 @@ function ProductImage({
   )
 }
 
-const CompletedCard = memo(function CompletedCard({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
+const CompletedCard = memo(function CompletedCard({ session, t, usdKhrRate }: { session: SessionPayload; t: DisplayCopy; usdKhrRate: number }) {
   return (
     <div style={s.bigCard}>
-      <div style={{ ...s.bigIcon, color: '#16a34a' }}>✓</div>
+      <div style={{ ...s.bigIcon, color: '#16a34a' }}>✔</div>
       <div style={s.bigTitle}>{t.completed}</div>
       {session.orderNo && <div style={s.bigSub}>{t.orderNo} {session.orderNo}</div>}
       <div style={s.bigAmt}>${session.totalAmount.toFixed(2)}</div>
+      <div style={s.bigAmtKhr}>{formatKhrFromUsd(session.totalAmount, usdKhrRate)}</div>
       <div style={s.bigMeta}>
         {paymentMethodLabel(session.paymentMethod, t)}
       </div>
-      <div style={s.bigSub}>{t.thanks}</div>
+      <div style={s.bigThanks}>{t.thanks}</div>
     </div>
   )
 })
@@ -686,6 +717,11 @@ function resolveDesktopLang(raw: string | null): DesktopLang {
   return 'en'
 }
 
+function formatKhrFromUsd(amount: number, rate: number): string {
+  const khr = Math.round(amount * rate)
+  return `≈ ៛${khr.toLocaleString('en-US')}`
+}
+
 function paymentMethodLabel(method: string | null, t: DisplayCopy) {
   if (method === 'CASH') return `💵 ${t.cash}`
   if (method === 'KHQR') return '📱 KHQR'
@@ -761,6 +797,8 @@ const displayCopy = {
     scanSupported: '支持扫码付款 · 请先选择商品',
     selectItemsFirst: '请先选择商品',
     payStaff: '请向店员付款',
+    payCashierPrompt: '请向收银员付款',
+    reviewOrderPrompt: '请核对商品',
     waitingPaymentMethod: '等待手机端选择收款方式',
     draftNoPayment: '正在结账',
     connected: (seconds: number) => `已连接 · 每 ${seconds}s 刷新`,
@@ -819,6 +857,8 @@ const displayCopy = {
     scanSupported: 'Scan payment supported · Select items first',
     selectItemsFirst: 'Select items first',
     payStaff: 'Please pay the cashier',
+    payCashierPrompt: 'Please pay the cashier',
+    reviewOrderPrompt: 'Please check your order',
     waitingPaymentMethod: 'Waiting for payment method on phone',
     draftNoPayment: 'Checking out',
     connected: (seconds: number) => `Connected · refreshes every ${seconds}s`,
@@ -877,6 +917,8 @@ const displayCopy = {
     scanSupported: 'គាំទ្រការស្កេនបង់ប្រាក់ · សូមជ្រើសទំនិញជាមុន',
     selectItemsFirst: 'សូមជ្រើសទំនិញជាមុន',
     payStaff: 'សូមបង់ប្រាក់ជាមួយបុគ្គលិក',
+    payCashierPrompt: 'សូមបង់ប្រាក់ជាមួយបញ្ជរ',
+    reviewOrderPrompt: 'សូមពិនិត្យទំនិញ',
     waitingPaymentMethod: 'រង់ចាំជ្រើសរើសវិធីបង់ប្រាក់ពីទូរស័ព្ទ',
     draftNoPayment: 'កំពុងគិតលុយ',
     connected: (seconds: number) => `បានភ្ជាប់ · ធ្វើបច្ចុប្បន្នភាពរៀងរាល់ ${seconds}s`,
@@ -921,14 +963,18 @@ const s: Record<string, CSSProperties> = {
   orderStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(360px, .86fr) minmax(0, 1.14fr)', gap: 12 },
   orderFocusCard: { borderRadius: 22, background: 'linear-gradient(135deg, #ffffff 0%, #eff6ff 100%)', border: '1px solid #dbeafe', boxShadow: '0 18px 38px rgba(37,99,235,.12)', padding: 30, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', minHeight: 0 },
   orderAmount: { marginTop: 8, fontSize: 'clamp(68px, 9vw, 132px)', lineHeight: .9, fontWeight: 950, color: ACCENT, letterSpacing: '-3px' },
+  amountKhr: { marginTop: 10, fontSize: 'clamp(20px, 2.4vw, 32px)', lineHeight: 1.1, fontWeight: 900, color: '#475569', letterSpacing: '-.5px' },
+  orderPromptCash: { marginTop: 16, padding: '10px 18px', borderRadius: 999, background: '#dcfce7', color: '#166534', fontSize: 18, fontWeight: 900, boxShadow: '0 8px 18px rgba(22,163,74,.12)' },
+  orderPromptReview: { marginTop: 16, padding: '10px 18px', borderRadius: 999, background: '#f8fafc', color: '#334155', fontSize: 18, fontWeight: 900, border: '1px solid #dbeafe', boxShadow: '0 8px 18px rgba(37,99,235,.08)' },
   orderMeta: { marginTop: 16, fontSize: 18, fontWeight: 800, color: '#475569' },
   orderPayMethod: { marginTop: 20, display: 'inline-flex', alignItems: 'center', gap: 10, borderRadius: 999, background: '#fff', border: '1px solid #dbeafe', padding: '10px 16px', color: '#64748b', fontSize: 14, fontWeight: 800 },
-  orderItemsCard: { minHeight: 0, overflow: 'auto', borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', padding: 18 },
+  orderItemsCard: { minHeight: 0, overflow: 'auto', scrollbarGutter: 'stable', borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', padding: 18 },
   khqrStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(420px, 1fr) minmax(320px, .72fr)', gap: 12 },
-  khqrMain: { minHeight: 0, borderRadius: 24, background: '#fff', border: '1px solid #dbeafe', boxShadow: '0 18px 42px rgba(37,99,235,.16)', padding: 24, display: 'grid', gridTemplateRows: 'auto auto minmax(0, 1fr)', alignItems: 'center', justifyItems: 'center', textAlign: 'center', overflow: 'hidden' },
+  khqrMain: { minHeight: 0, borderRadius: 24, background: '#fff', border: '1px solid #dbeafe', boxShadow: '0 18px 42px rgba(37,99,235,.16)', padding: 24, display: 'grid', gridTemplateRows: 'auto auto auto minmax(0, 1fr)', alignItems: 'center', justifyItems: 'center', textAlign: 'center', overflow: 'hidden' },
   khqrTitle: { fontSize: 'clamp(28px, 3.2vw, 48px)', lineHeight: 1.05, fontWeight: 950, color: '#0f172a', letterSpacing: '-1px' },
   khqrAmount: { marginTop: 4, fontSize: 'clamp(44px, 6vw, 88px)', lineHeight: 1, fontWeight: 950, color: ACCENT, letterSpacing: '-2px' },
-  khqrSide: { minHeight: 0, overflow: 'auto', borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', padding: 16 },
+  khqrAmountKhr: { marginTop: 8, fontSize: 'clamp(20px, 2.3vw, 30px)', lineHeight: 1.1, fontWeight: 900, color: '#475569', letterSpacing: '-.5px' },
+  khqrSide: { minHeight: 0, overflow: 'auto', scrollbarGutter: 'stable', borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', padding: 16 },
   khqrFocusBackdrop: { position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(15,23,42,.46)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 28 },
   khqrFocusPanel: { width: 'min(780px, 90vw)', maxHeight: '92vh', borderRadius: 34, background: '#fff', border: '1px solid rgba(219,234,254,.9)', boxShadow: '0 34px 90px rgba(15,23,42,.32)', padding: '28px 34px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', overflow: 'hidden' },
   khqrFocusTitle: { fontSize: 'clamp(34px, 4vw, 58px)', lineHeight: 1.02, fontWeight: 950, color: '#0f172a', letterSpacing: '-1px' },
@@ -939,18 +985,19 @@ const s: Record<string, CSSProperties> = {
   khqrFocusSub: { marginTop: 6, fontSize: 15, fontWeight: 700, color: '#64748b' },
 
   body: { flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 410px', gap: 12, padding: 10, minHeight: 0, overflow: 'hidden' },
-  cartCol: { background: '#fff', borderRadius: 14, padding: 14, overflow: 'auto', boxShadow: '0 1px 3px rgba(0,0,0,.05)', minHeight: 0 },
+  cartCol: { background: '#fff', borderRadius: 14, padding: 14, overflow: 'auto', scrollbarGutter: 'stable', boxShadow: '0 1px 3px rgba(0,0,0,.05)', minHeight: 0 },
   payCol: { display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0, height: '100%', overflow: 'hidden' },
 
   cartList: { display: 'flex', flexDirection: 'column' },
   cartTitle: { fontSize: 13, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 12 },
-  cartRow: { display: 'grid', gridTemplateColumns: '58px 1fr auto auto', alignItems: 'center', gap: 14, padding: '12px 4px', borderBottom: '1px solid #f1f5f9' },
+  cartRow: { display: 'grid', gridTemplateColumns: '58px minmax(0, 1fr) auto', alignItems: 'center', gap: 14, padding: '14px 4px', borderBottom: '1px solid #f1f5f9' },
   productImage: { width: 52, height: 52, objectFit: 'cover', borderRadius: 10, border: '1px solid #e5e7eb', background: '#f8fafc' },
   productPlaceholder: { width: 52, height: 52, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 },
-  cartName: { fontSize: 18, fontWeight: 600, color: '#111827' },
-  cartSpec: { fontSize: 14, color: '#9ca3af', fontWeight: 400 },
-  cartQty: { fontSize: 14, color: '#6b7280', whiteSpace: 'nowrap' },
-  cartLine: { fontSize: 18, fontWeight: 700, color: '#111827', minWidth: 80, textAlign: 'right' },
+  cartText: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 },
+  cartName: { fontSize: 19, fontWeight: 700, color: '#111827', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  cartSpec: { fontSize: 14, color: '#64748b', fontWeight: 500, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  cartMeta: { fontSize: 14, color: '#64748b', fontWeight: 700, lineHeight: 1.2 },
+  cartLine: { fontSize: 20, fontWeight: 900, color: '#111827', minWidth: 92, textAlign: 'right' },
   summaryCard: { marginTop: 18, marginLeft: 'auto', width: 'min(100%, 360px)', borderRadius: 12, border: '1px solid #e5e7eb', background: '#f8fafc', padding: 16 },
   summaryTitle: { fontSize: 13, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 },
   summaryRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#64748b', padding: '6px 0' },
@@ -1005,11 +1052,13 @@ const s: Record<string, CSSProperties> = {
   qrHint: { fontSize: 14, color: '#6b7280' },
 
   bigCard: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, textAlign: 'center', padding: 30 },
-  bigIcon: { fontSize: 80, lineHeight: 1 },
+  bigIcon: { fontSize: 84, lineHeight: 1 },
   bigTitle: { fontSize: 32, fontWeight: 800, color: '#111827' },
   bigSub: { fontSize: 15, color: '#6b7280', maxWidth: 480 },
-  bigAmt: { fontSize: 36, fontWeight: 800, color: ACCENT },
+  bigAmt: { fontSize: 40, fontWeight: 900, color: ACCENT },
+  bigAmtKhr: { fontSize: 24, fontWeight: 900, color: '#475569', marginTop: -2 },
   bigMeta: { fontSize: 14, color: '#6b7280' },
+  bigThanks: { fontSize: 24, fontWeight: 900, color: '#0f172a' },
 
   footer: { padding: '8px 16px', display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280', borderTop: '1px solid #e5e7eb', background: '#fff', flexShrink: 0 },
   footerOk: { color: '#16a34a' },
