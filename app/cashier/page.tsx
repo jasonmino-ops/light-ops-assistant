@@ -387,6 +387,11 @@ type DesktopCopy = {
   desktopProductsBtn: string
   desktopRecordsBtn: string
   searchPlaceholder: string
+  sectionCashier: string
+  sectionOps: string
+  sectionStore: string
+  sectionSettings: string
+  futureDevices: string
 }
 
 function desktopCopy(lang: DeskLang): DesktopCopy {
@@ -483,6 +488,11 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       desktopProductsBtn: 'Product management',
       desktopRecordsBtn: 'Sales records',
       searchPlaceholder: 'Search products… (press / to focus)',
+      sectionCashier: 'Cashier',
+      sectionOps: 'Operations',
+      sectionStore: 'Store tools',
+      sectionSettings: 'Settings',
+      futureDevices: 'Printer / cash drawer reserved',
     }
   }
   if (lang === 'km') {
@@ -578,6 +588,11 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       desktopProductsBtn: 'គ្រប់គ្រងទំនិញ',
       desktopRecordsBtn: 'កំណត់ត្រាលក់',
       searchPlaceholder: 'ស្វែងរកទំនិញ… (ចុច / ដើម្បីផ្តោត)',
+      sectionCashier: 'គិតលុយ',
+      sectionOps: 'ប្រតិបត្តិការ',
+      sectionStore: 'ឧបករណ៍ហាង',
+      sectionSettings: 'ការកំណត់',
+      futureDevices: 'ម៉ាស៊ីនបោះពុម្ព / ថតលុយ កំពុងបម្រុងទុក',
     }
   }
   return {
@@ -672,6 +687,11 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     desktopProductsBtn: '商品管理',
     desktopRecordsBtn: '销售记录',
     searchPlaceholder: '搜索商品… （按 / 快速聚焦）',
+    sectionCashier: '收银操作',
+    sectionOps: '运营结算',
+    sectionStore: '门店工具',
+    sectionSettings: '设置设备',
+    futureDevices: '打印机 / 钱柜 预留',
   }
 }
 
@@ -819,10 +839,15 @@ const s: Record<string, CSSProperties> = {
   },
   offlineSyncBtnDis: { opacity: 0.45, cursor: 'not-allowed' },
   offlineSyncSummary: { marginTop: 6, color: '#bfdbfe', fontSize: 10, lineHeight: 1.45 },
+  sideDivider: { height: 1, background: 'rgba(255,255,255,.08)', margin: '8px 0' },
   sideCats:    { padding: '8px 6px', flex: 1 },
   sideCat:     { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: '#cbd5e1', fontSize: 13, cursor: 'pointer', marginBottom: 2 },
   sideCatOn:   { background: SIDEBAR_ACT, color: '#fff', fontWeight: 600 },
   sideFooter:  { padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,.08)', display: 'flex', flexDirection: 'column', gap: 6 },
+  sideSection: { display: 'flex', flexDirection: 'column', gap: 8 },
+  sideSectionTitle: { fontSize: 11, fontWeight: 900, color: '#94a3b8', letterSpacing: 0, textTransform: 'uppercase' as const },
+  sideSectionBody: { display: 'flex', flexDirection: 'column', gap: 6 },
+  sideFutureTools: { padding: '8px 10px', borderRadius: 10, border: '1px dashed rgba(148,163,184,.32)', color: '#94a3b8', fontSize: 11, lineHeight: 1.45, background: 'rgba(15,23,42,.22)' },
   sideLinkPri: { fontSize: 12, color: '#60a5fa', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, fontWeight: 600 },
   sideLinkSec: { fontSize: 12, color: '#475569', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0 },
   sideLinkDesktopPri: {
@@ -2703,103 +2728,127 @@ export default function CashierPage() {
           <div style={s.sideFooter}>
             {isDesktopPos && (
               <>
-                <div style={s.shiftCard}>
-                  <div style={s.shiftStart}>{d.shiftStart(shiftStartIso ? fmtTime(shiftStartIso) : '--:--')}</div>
-                  <button type="button" style={s.shiftBtn} onClick={handleOpenShiftReport}>
-                    {d.shiftReportBtn}
-                  </button>
-                  <button type="button" style={s.shiftBtn} onClick={handleOpenDayCloseReport}>
-                    {d.dayCloseBtn}
-                  </button>
-                </div>
-                <div style={s.holdCard}>
-                  <div style={s.holdHead}>
-                    <span style={s.holdTitle}>{d.holdTitle}</span>
-                    <span style={s.holdCount}>{holdOrders.length} 单</span>
-                  </div>
-                  {cart.length > 0 && (
-                    <button type="button" style={s.holdBtn} onClick={handleHoldCurrentOrder}>
-                      {d.holdButton}
-                    </button>
-                  )}
-                  {holdOrders.length > 0 ? (
-                    <div style={s.holdList}>
-                      {holdOrders.map(order => {
-                        const heldCount = cartCount(order.cart)
-                        const heldTotal = cartTotal(order.cart)
-                        const heldLabel = holdOrderLabel(lang as DeskLang, order.createdAt, order.note, heldTotal)
-                        return (
-                          <div key={order.id} style={s.holdItem}>
-                            <div style={s.holdMeta}>
-                              <span>{heldLabel.time}</span>
-                              {heldLabel.note && <span>{heldLabel.note}</span>}
-                              <span>{heldLabel.total}</span>
-                            </div>
-                            <div style={s.holdSub}>
-                              {heldCount} 件 · {order.checkoutStep === 'SELECT_PAYMENT' ? (lang === 'en' ? 'Waiting payment' : lang === 'km' ? 'រង់ចាំទូទាត់' : '待收款') : order.checkoutStep === 'CONFIRM_ORDER' ? (lang === 'en' ? 'Waiting confirm' : lang === 'km' ? 'រង់ចាំបញ្ជាក់' : '待确认') : (lang === 'en' ? 'Selecting items' : lang === 'km' ? 'កំពុងជ្រើសទំនិញ' : '选品中')}
-                            </div>
-                            <div style={s.holdActions}>
-                              <button type="button" style={s.holdRestoreBtn} onClick={() => handleRestoreHoldOrder(order)}>
-                                {lang === 'en' ? 'Restore' : lang === 'km' ? 'យកត្រឡប់' : '恢复'}
-                              </button>
-                              <button type="button" style={s.holdDeleteBtn} onClick={() => handleDeleteHoldOrder(order.id)}>
-                                {lang === 'en' ? 'Delete' : lang === 'km' ? 'លុប' : '删除'}
-                              </button>
-                            </div>
-                          </div>
-                        )
-                      })}
+                <div style={s.sideSection}>
+                  <div style={s.sideSectionTitle}>{d.sectionCashier}</div>
+                  <div style={s.sideSectionBody}>
+                    <div style={s.holdCard}>
+                      <div style={s.holdHead}>
+                        <span style={s.holdTitle}>{d.holdTitle}</span>
+                        <span style={s.holdCount}>{holdOrders.length} 单</span>
+                      </div>
+                      {cart.length > 0 && (
+                        <button type="button" style={s.holdBtn} onClick={handleHoldCurrentOrder}>
+                          {d.holdButton}
+                        </button>
+                      )}
+                      {holdOrders.length > 0 ? (
+                        <div style={s.holdList}>
+                          {holdOrders.map(order => {
+                            const heldCount = cartCount(order.cart)
+                            const heldTotal = cartTotal(order.cart)
+                            const heldLabel = holdOrderLabel(lang as DeskLang, order.createdAt, order.note, heldTotal)
+                            return (
+                              <div key={order.id} style={s.holdItem}>
+                                <div style={s.holdMeta}>
+                                  <span>{heldLabel.time}</span>
+                                  {heldLabel.note && <span>{heldLabel.note}</span>}
+                                  <span>{heldLabel.total}</span>
+                                </div>
+                                <div style={s.holdSub}>
+                                  {heldCount} 件 · {order.checkoutStep === 'SELECT_PAYMENT' ? (lang === 'en' ? 'Waiting payment' : lang === 'km' ? 'រង់ចាំទូទាត់' : '待收款') : order.checkoutStep === 'CONFIRM_ORDER' ? (lang === 'en' ? 'Waiting confirm' : lang === 'km' ? 'រង់ចាំបញ្ជាក់' : '待确认') : (lang === 'en' ? 'Selecting items' : lang === 'km' ? 'កំពុងជ្រើសទំនិញ' : '选品中')}
+                                </div>
+                                <div style={s.holdActions}>
+                                  <button type="button" style={s.holdRestoreBtn} onClick={() => handleRestoreHoldOrder(order)}>
+                                    {lang === 'en' ? 'Restore' : lang === 'km' ? 'យកត្រឡប់' : '恢复'}
+                                  </button>
+                                  <button type="button" style={s.holdDeleteBtn} onClick={() => handleDeleteHoldOrder(order.id)}>
+                                    {lang === 'en' ? 'Delete' : lang === 'km' ? 'លុប' : '删除'}
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div style={s.holdEmpty}>{d.holdEmpty}</div>
+                      )}
                     </div>
-                  ) : (
-                    <div style={s.holdEmpty}>{d.holdEmpty}</div>
-                  )}
-                </div>
-                <div style={s.fxCard}>
-                  <span style={s.fxLabel}>$1 = {usdKhrRate.toLocaleString('en-US')}{KHR_SYMBOL}</span>
-                  <button type="button" style={s.fxBtn} onClick={handleUsdKhrRateApply}>
-                    {lang === 'en' ? 'Edit' : lang === 'km' ? 'កែប្រែ' : '修改'}
-                  </button>
-                </div>
-                <div style={s.autoPrintToggle}>
-                  <div style={s.autoPrintText}>
-                    <span style={s.autoPrintTitle}>{d.autoPrintTitle}</span>
-                    <span style={s.autoPrintSub}>{autoPrint ? d.autoPrintOn : d.autoPrintOff}</span>
+                    <button
+                      style={{ ...s.sideLinkSec, ...s.sideLinkDesktopSec, textAlign: 'left', opacity: 0.9 }}
+                      onClick={handleOpenDesktopRecords}
+                    >
+                      {d.desktopRecordsBtn}
+                    </button>
+                    <button
+                      style={{ ...s.sideLinkSec, ...s.sideLinkDesktopSec, textAlign: 'left', opacity: 0.95 }}
+                      onClick={() => ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                    >
+                      📋 {d.desktopOrdersBtn}
+                      {pendingOrders.length > 0 && (
+                        <span style={{ marginLeft: 6, background: '#fcd34d', color: '#92400e', borderRadius: 8, padding: '0 5px', fontSize: 11 }}>
+                          {pendingOrders.length}
+                        </span>
+                      )}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    aria-pressed={autoPrint}
-                    aria-label="自动打印小票"
-                    style={{ ...s.autoPrintSwitch, background: autoPrint ? '#2563eb' : 'rgba(148,163,184,.45)' }}
-                    onClick={handleAutoPrintToggle}
-                  >
-                    <span style={{ ...s.autoPrintKnob, left: autoPrint ? 21 : 3 }} />
-                  </button>
+                </div>
+                <div style={s.sideDivider} />
+                <div style={s.sideSection}>
+                  <div style={s.sideSectionTitle}>{d.sectionOps}</div>
+                  <div style={s.sideSectionBody}>
+                    <div style={s.shiftCard}>
+                      <div style={s.shiftStart}>{d.shiftStart(shiftStartIso ? fmtTime(shiftStartIso) : '--:--')}</div>
+                      <button type="button" style={s.shiftBtn} onClick={handleOpenShiftReport}>
+                        {d.shiftReportBtn}
+                      </button>
+                      <button type="button" style={s.shiftBtn} onClick={handleOpenDayCloseReport}>
+                        {d.dayCloseBtn}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div style={s.sideDivider} />
+                <div style={s.sideSection}>
+                  <div style={s.sideSectionTitle}>{d.sectionStore}</div>
+                  <div style={s.sideSectionBody}>
+                    <button
+                      style={{ ...s.sideLinkSec, ...s.sideLinkDesktopSec, textAlign: 'left', opacity: 0.95 }}
+                      onClick={() => showToast('请在手机商户端管理商品')}
+                    >
+                      {d.desktopProductsBtn}
+                    </button>
+                    <div style={s.fxCard}>
+                      <span style={s.fxLabel}>$1 = {usdKhrRate.toLocaleString('en-US')}{KHR_SYMBOL}</span>
+                      <button type="button" style={s.fxBtn} onClick={handleUsdKhrRateApply}>
+                        {lang === 'en' ? 'Edit' : lang === 'km' ? 'កែប្រែ' : '修改'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div style={s.sideDivider} />
+                <div style={s.sideSection}>
+                  <div style={s.sideSectionTitle}>{d.sectionSettings}</div>
+                  <div style={s.sideSectionBody}>
+                    <div style={s.autoPrintToggle}>
+                      <div style={s.autoPrintText}>
+                        <span style={s.autoPrintTitle}>{d.autoPrintTitle}</span>
+                        <span style={s.autoPrintSub}>{autoPrint ? d.autoPrintOn : d.autoPrintOff}</span>
+                      </div>
+                      <button
+                        type="button"
+                        aria-pressed={autoPrint}
+                        aria-label="自动打印小票"
+                        style={{ ...s.autoPrintSwitch, background: autoPrint ? '#2563eb' : 'rgba(148,163,184,.45)' }}
+                        onClick={handleAutoPrintToggle}
+                      >
+                        <span style={{ ...s.autoPrintKnob, left: autoPrint ? 21 : 3 }} />
+                      </button>
+                    </div>
+                    <div style={s.sideFutureTools}>{d.futureDevices}</div>
+                  </div>
                 </div>
               </>
             )}
-            <button
-              style={{ ...s.sideLinkPri, ...(isDesktopPos ? s.sideLinkDesktopPri : {}) }}
-              onClick={() => ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            >
-              📋 {d.desktopOrdersBtn}
-              {pendingOrders.length > 0 && (
-                <span style={{ marginLeft: 6, background: '#fcd34d', color: '#92400e', borderRadius: 8, padding: '0 5px', fontSize: 11 }}>
-                  {pendingOrders.length}
-                </span>
-              )}
-            </button>
-            <button
-              style={{ ...s.sideLinkSec, ...(isDesktopPos ? s.sideLinkDesktopSec : {}) }}
-              onClick={() => showToast('请在手机商户端管理商品')}
-            >
-              {d.desktopProductsBtn}
-            </button>
-            <button
-              style={{ ...s.sideLinkSec, ...(isDesktopPos ? s.sideLinkDesktopSec : {}) }}
-              onClick={handleOpenDesktopRecords}
-            >
-              {d.desktopRecordsBtn}
-            </button>
           </div>
         </div>
 
