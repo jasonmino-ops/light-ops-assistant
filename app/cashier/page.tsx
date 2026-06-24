@@ -987,10 +987,16 @@ export default function CashierPage() {
   function handleHoldCurrentOrder() {
     if (!isDesktopPos || !storeCode || cart.length === 0) return
     try {
+      const rawNote = window.prompt('顾客备注（可选，最多 8 个字符）', '')
+      if (rawNote === null) return
+      const trimmedNote = rawNote.trim()
+      const note = trimmedNote.slice(0, 8)
+      if (trimmedNote.length > 8) showToast('备注已自动截断为 8 个字符')
       const nextOrders = saveHoldOrder<CartLine, DesktopCheckoutStep>({
         storeCode,
         cart,
         checkoutStep,
+        note,
       })
       setHoldOrders(nextOrders)
       setCart([])
@@ -2182,6 +2188,7 @@ export default function CashierPage() {
                           <div key={order.id} style={s.holdItem}>
                             <div style={s.holdMeta}>
                               <span>{fmtTime(order.createdAt)}</span>
+                              {order.note && <span>{order.note}</span>}
                               <span>${heldTotal.toFixed(2)}</span>
                             </div>
                             <div style={s.holdSub}>

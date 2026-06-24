@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+
 export type ShiftReportData = {
   storeName: string
   operator: string
@@ -49,7 +51,7 @@ function reportRows(report: ShiftReportData) {
     { label: '本班单数', value: `${report.orderCount} 单` },
     { label: 'CASH 金额', value: `${report.cashCount} 单 · ${fmtMoney(report.cashAmount)}` },
     { label: 'KHQR 金额', value: `${report.khqrCount} 单 · ${fmtMoney(report.khqrAmount)}` },
-    { label: '其他支付金额', value: `${report.otherCount} 单 · ${fmtMoney(report.otherAmount)}` },
+    { label: 'OTHER 金额', value: `${report.otherCount} 单 · ${fmtMoney(report.otherAmount)}`, otherInfo: true },
     { label: '离线待同步数量', value: `${report.offlinePendingCount} 笔`, warn: report.offlinePendingCount > 0 },
     { label: '未完成挂单数量', value: `${report.holdOrderCount} 单`, warn: report.holdOrderCount > 0 },
     { label: '本班时长', value: shiftDuration(report.shiftStart, report.generatedAt) },
@@ -70,6 +72,7 @@ function summaryText(report: ShiftReportData) {
 }
 
 export function ShiftReportPrint({ report }: { report: ShiftReportData }) {
+  const [showOtherInfo, setShowOtherInfo] = useState(false)
   const rows = reportRows(report)
   const summary = summaryText(report)
   return (
@@ -97,11 +100,29 @@ export function ShiftReportPrint({ report }: { report: ShiftReportData }) {
               fontSize: 13,
             }}
           >
-            <span style={{ color: row.warn ? '#92400e' : '#64748b', paddingLeft: row.warn ? 8 : 0 }}>{row.label}</span>
+            <span style={{ color: row.warn ? '#92400e' : '#64748b', paddingLeft: row.warn ? 8 : 0 }}>
+              {row.label}
+              {row.otherInfo && (
+                <button
+                  type="button"
+                  onClick={() => setShowOtherInfo((value) => !value)}
+                  style={{ marginLeft: 5, border: 'none', background: 'transparent', color: '#2563eb', fontWeight: 900, cursor: 'pointer', padding: 0 }}
+                  aria-label="OTHER 金额说明"
+                >
+                  ⓘ
+                </button>
+              )}
+            </span>
             <span style={{ fontWeight: 800, textAlign: 'right', paddingRight: row.warn ? 8 : 0 }}>{row.value}</span>
           </div>
         ))}
       </div>
+      {showOtherInfo && (
+        <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12, lineHeight: 1.6, color: '#1e3a8a' }}>
+          <div style={{ fontWeight: 900 }}>OTHER 金额 = 总销售额 - CASH - KHQR</div>
+          <div>当前主要包含：会员余额、历史记录无法识别支付方式的数据、其他支付方式。</div>
+        </div>
+      )}
       <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: '#f8fafc', border: '1px solid #e5e7eb', fontSize: 12, lineHeight: 1.6, color: '#334155' }}>
         {summary.map(line => <div key={line}>{line}</div>)}
       </div>

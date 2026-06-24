@@ -4,6 +4,7 @@ export type HoldOrder<CartLine = unknown, DesktopCheckoutStep extends string = s
   createdAt: string
   cart: CartLine[]
   checkoutStep: DesktopCheckoutStep
+  note?: string
 }
 
 const HOLD_ORDER_PREFIX = 'cashier:holdOrders:'
@@ -23,7 +24,8 @@ function isHoldOrderRecord(value: unknown, storeCode: string): value is HoldOrde
     value.storeCode === storeCode &&
     typeof value.createdAt === 'string' &&
     Array.isArray(value.cart) &&
-    typeof value.checkoutStep === 'string'
+    typeof value.checkoutStep === 'string' &&
+    (value.note === undefined || typeof value.note === 'string')
   )
 }
 
@@ -53,6 +55,7 @@ export function saveHoldOrder<CartLine, DesktopCheckoutStep extends string>(inpu
   storeCode: string
   cart: CartLine[]
   checkoutStep: DesktopCheckoutStep
+  note?: string
 }) {
   const order: HoldOrder<CartLine, DesktopCheckoutStep> = {
     id: createHoldOrderId(),
@@ -60,6 +63,7 @@ export function saveHoldOrder<CartLine, DesktopCheckoutStep extends string>(inpu
     createdAt: new Date().toISOString(),
     cart: input.cart,
     checkoutStep: input.checkoutStep,
+    ...(input.note ? { note: input.note } : {}),
   }
   const nextOrders = [order, ...listHoldOrders<CartLine, DesktopCheckoutStep>(input.storeCode)]
   localStorage.setItem(storageKey(input.storeCode), JSON.stringify(nextOrders))
