@@ -293,6 +293,54 @@ function shortNo(orderNo: string) {
   return `#${seg.slice(-6) || seg}`
 }
 
+function roundMoney(value: number) {
+  return Number(value.toFixed(2))
+}
+
+function otherSourceLabel(paymentMethod: string | null) {
+  if (paymentMethod === 'MEMBER_BALANCE') return '会员余额'
+  if (!paymentMethod) return '历史支付方式未识别'
+  return '其他支付方式'
+}
+
+function otherDetailsFromRecords(items: ShiftRecordItem[]) {
+  const grouped = new Map<string, { orderNo: string; amount: number; source: string }>()
+  items
+    .filter((item) => item.saleType === 'SALE' && item.paymentMethod !== 'CASH' && item.paymentMethod !== 'KHQR')
+    .forEach((item) => {
+      const orderKey = item.orderNo || item.recordNo
+      const current = grouped.get(orderKey)
+      const amount = Number(item.lineAmount) || 0
+      if (current) {
+        current.amount = roundMoney(current.amount + amount)
+      } else {
+        grouped.set(orderKey, {
+          orderNo: shortNo(orderKey),
+          amount: roundMoney(amount),
+          source: otherSourceLabel(item.paymentMethod),
+        })
+      }
+    })
+
+  return Array.from(grouped.values())
+    .filter((detail) => Math.abs(detail.amount) >= 0.01)
+    .sort((a, b) => b.amount - a.amount)
+}
+
+function reconcileOtherDetails<T extends { orderNo: string; amount: number; source?: string }>(details: T[], targetAmount: number): T[] {
+  const target = roundMoney(Math.max(0, targetAmount))
+  const sum = roundMoney(details.reduce((total, detail) => total + detail.amount, 0))
+  const diff = roundMoney(target - sum)
+  if (target <= 0 || Math.abs(diff) < 0.01) return details
+  if (diff > 0) {
+    return [
+      ...details,
+      { orderNo: '未匹配明细', amount: diff, source: '历史支付方式未识别' } as T,
+    ]
+  }
+  return details
+}
+
 function playAlertSound() {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1121,6 +1169,7 @@ export default function CashierPage() {
       const cashOrderKeys = new Set<string>()
       const khqrOrderKeys = new Set<string>()
       const otherOrderKeys = new Set<string>()
+      const otherDetails = otherDetailsFromRecords(shiftItems)
       let salesAmount = 0
       let cashAmount = 0
       let khqrAmount = 0
@@ -1158,6 +1207,7 @@ export default function CashierPage() {
         otherCount: otherOrderKeys.size,
         offlinePendingCount,
         holdOrderCount: holdOrders.length,
+        otherDetails: reconcileOtherDetails(otherDetails, otherAmount),
       }
       setShiftReport(report)
       return report
@@ -1247,6 +1297,8 @@ export default function CashierPage() {
     const khqrAmount = Number(summary?.khqrSaleAmount) || 0
     const totalSaleAmount = saleItems.reduce((sum, item) => sum + (Number(item.lineAmount) || 0), 0)
     const refundAmount = refundItems.reduce((sum, item) => sum + (Number(item.lineAmount) || 0), 0)
+    const otherAmount = Math.max(0, roundMoney(totalSaleAmount - cashAmount - khqrAmount))
+    const otherDetails = otherDetailsFromRecords(saleItems)
     const report: DayCloseReportData = {
       date,
       storeName: recordsStoreName || storeName || storeCode || 'Store',
@@ -1254,11 +1306,12 @@ export default function CashierPage() {
       saleOrderCount: Number(summary?.saleCount) || 0,
       cashAmount,
       khqrAmount,
-      otherAmount: Math.max(0, Number((totalSaleAmount - cashAmount - khqrAmount).toFixed(2))),
+      otherAmount,
       topProducts: topProductsFromRecords(saleItems),
       holdOrderCount: holdOrders.length,
       offlinePendingCount,
       refundAmount,
+      otherDetails: reconcileOtherDetails(otherDetails, otherAmount),
     }
     return report
   }
@@ -1296,6 +1349,13 @@ export default function CashierPage() {
       const khqrAmount = Number(summaryData.khqrSaleAmount) || 0
       const totalSaleAmount = Number(summaryData.totalSaleAmount) || 0
       const otherAmount = Math.max(0, Number((totalSaleAmount - cashAmount - khqrAmount).toFixed(2)))
+      let otherDetails: ReturnType<typeof otherDetailsFromRecords> = []
+      try {
+        const { items: saleItems } = await fetchDesktopRecordsForDay(today, 'SALE')
+        otherDetails = otherDetailsFromRecords(saleItems)
+      } catch (recordsErr) {
+        console.warn('[cashier:day-close] other details load failed', recordsErr)
+      }
       const report: DayCloseReportData = {
         date: summaryData.dateFrom || today,
         storeName: summaryData.storeName || storeName || storeCode,
@@ -1308,6 +1368,7 @@ export default function CashierPage() {
         holdOrderCount: holdOrders.length,
         offlinePendingCount,
         refundAmount: Number(summaryData.totalRefundAmount) || 0,
+        otherDetails: reconcileOtherDetails(otherDetails, otherAmount),
       }
       setDayCloseReport(report)
       return report

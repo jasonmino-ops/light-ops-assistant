@@ -20,6 +20,13 @@ export type DayCloseReportData = {
   holdOrderCount: number
   offlinePendingCount: number
   refundAmount: number
+  otherDetails?: DayCloseOtherAmountDetail[]
+}
+
+export type DayCloseOtherAmountDetail = {
+  orderNo: string
+  amount: number
+  source?: string
 }
 
 function fmtMoney(value: number) {
@@ -52,7 +59,10 @@ function reportRows(report: DayCloseReportData) {
 
 export function DayCloseReport({ report }: { report: DayCloseReportData }) {
   const [showOtherInfo, setShowOtherInfo] = useState(false)
+  const [showOtherDetails, setShowOtherDetails] = useState(false)
   const rows = reportRows(report)
+  const otherDetails = report.otherDetails ?? []
+  const otherDetailsTotal = otherDetails.reduce((sum, detail) => sum + detail.amount, 0)
   return (
     <div style={{ fontFamily: 'system-ui,-apple-system,sans-serif', color: '#111827' }}>
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
@@ -95,6 +105,39 @@ export function DayCloseReport({ report }: { report: DayCloseReportData }) {
           </div>
         ))}
       </div>
+      {report.otherAmount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowOtherDetails((value) => !value)}
+          style={{ marginTop: 10, width: '100%', border: '1px solid #cbd5e1', borderRadius: 10, background: '#fff', padding: '8px 10px', color: '#1d4ed8', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
+        >
+          {showOtherDetails ? '收起 OTHER 明细 ▲' : '查看 OTHER 明细 ▼'}
+        </button>
+      )}
+      {showOtherDetails && (
+        <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: '#f8fafc', border: '1px solid #e5e7eb', fontSize: 12, color: '#334155' }}>
+          <div style={{ fontWeight: 900, color: '#111827', marginBottom: 6 }}>OTHER 明细</div>
+          {otherDetails.length === 0 ? (
+            <div style={{ color: '#64748b' }}>暂无可展开订单明细</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {otherDetails.map((detail, index) => (
+                <div key={`${detail.orderNo}-${index}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, borderBottom: '1px solid #e5e7eb', paddingBottom: 7 }}>
+                  <div>
+                    <div style={{ fontWeight: 900, color: '#111827' }}>订单 {detail.orderNo}</div>
+                    {detail.source && <div style={{ marginTop: 2, color: '#64748b' }}>来源：{detail.source}</div>}
+                  </div>
+                  <div style={{ fontWeight: 900, color: '#111827' }}>{fmtMoney(detail.amount)}</div>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontWeight: 950, color: '#111827' }}>
+                <span>合计</span>
+                <span>{fmtMoney(otherDetailsTotal)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {showOtherInfo && (
         <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12, lineHeight: 1.6, color: '#1e3a8a' }}>
           <div style={{ fontWeight: 900 }}>OTHER 金额 = 总销售额 - CASH - KHQR</div>
@@ -136,6 +179,8 @@ export function printDayCloseReport(report: DayCloseReportData) {
       .replace(/'/g, '&#39;')
 
   const rows = reportRows(report)
+  const otherDetails = report.otherDetails ?? []
+  const otherDetailsTotal = otherDetails.reduce((sum, detail) => sum + detail.amount, 0)
   win.document.write(`<!doctype html>
 <html>
 <head>
@@ -158,6 +203,10 @@ export function printDayCloseReport(report: DayCloseReportData) {
     .section { margin-top: 14px; font-size: 13px; font-weight: 900; }
     .product { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
     .hint { margin-top: 12px; font-size: 11px; color: #94a3b8; text-align: center; }
+    .details { margin-top: 12px; padding: 10px; border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; font-size: 12px; }
+    .detail-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid #e5e7eb; }
+    .detail-row:last-child { border-bottom: none; font-weight: 900; }
+    .source { color: #64748b; font-size: 11px; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -174,6 +223,11 @@ export function printDayCloseReport(report: DayCloseReportData) {
   ${report.topProducts.length === 0
     ? '<div class="product"><span>暂无销售商品</span><span></span></div>'
     : report.topProducts.map((product, index) => `<div class="product"><span>${index + 1}. ${escapeHtml(productLabel(product))}</span><span>${escapeHtml(String(product.totalQty))}</span></div>`).join('')}
+  ${otherDetails.length > 0 ? `<div class="details">
+    <div style="font-weight:900;margin-bottom:6px;">OTHER 明细</div>
+    ${otherDetails.map(detail => `<div class="detail-row"><div><div>订单 ${escapeHtml(detail.orderNo)}</div>${detail.source ? `<div class="source">来源：${escapeHtml(detail.source)}</div>` : ''}</div><div>${escapeHtml(fmtMoney(detail.amount))}</div></div>`).join('')}
+    <div class="detail-row"><div>合计</div><div>${escapeHtml(fmtMoney(otherDetailsTotal))}</div></div>
+  </div>` : ''}
   <div class="hint">数据来自 /api/summary；挂单和离线待同步只显示数量，不计入销售额。</div>
   <script>
     window.onload = function() {

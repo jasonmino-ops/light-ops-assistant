@@ -17,6 +17,13 @@ export type ShiftReportData = {
   otherCount: number
   offlinePendingCount: number
   holdOrderCount: number
+  otherDetails?: OtherAmountDetail[]
+}
+
+export type OtherAmountDetail = {
+  orderNo: string
+  amount: number
+  source?: string
 }
 
 function fmtMoney(value: number) {
@@ -73,8 +80,11 @@ function summaryText(report: ShiftReportData) {
 
 export function ShiftReportPrint({ report }: { report: ShiftReportData }) {
   const [showOtherInfo, setShowOtherInfo] = useState(false)
+  const [showOtherDetails, setShowOtherDetails] = useState(false)
   const rows = reportRows(report)
   const summary = summaryText(report)
+  const otherDetails = report.otherDetails ?? []
+  const otherDetailsTotal = otherDetails.reduce((sum, detail) => sum + detail.amount, 0)
   return (
     <div style={{ fontFamily: 'system-ui,-apple-system,sans-serif', color: '#111827' }}>
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
@@ -117,6 +127,39 @@ export function ShiftReportPrint({ report }: { report: ShiftReportData }) {
           </div>
         ))}
       </div>
+      {report.otherAmount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowOtherDetails((value) => !value)}
+          style={{ marginTop: 10, width: '100%', border: '1px solid #cbd5e1', borderRadius: 10, background: '#fff', padding: '8px 10px', color: '#1d4ed8', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
+        >
+          {showOtherDetails ? '收起 OTHER 明细 ▲' : '查看 OTHER 明细 ▼'}
+        </button>
+      )}
+      {showOtherDetails && (
+        <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: '#f8fafc', border: '1px solid #e5e7eb', fontSize: 12, color: '#334155' }}>
+          <div style={{ fontWeight: 900, color: '#111827', marginBottom: 6 }}>OTHER 明细</div>
+          {otherDetails.length === 0 ? (
+            <div style={{ color: '#64748b' }}>暂无可展开订单明细</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {otherDetails.map((detail, index) => (
+                <div key={`${detail.orderNo}-${index}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, borderBottom: '1px solid #e5e7eb', paddingBottom: 7 }}>
+                  <div>
+                    <div style={{ fontWeight: 900, color: '#111827' }}>订单 {detail.orderNo}</div>
+                    {detail.source && <div style={{ marginTop: 2, color: '#64748b' }}>来源：{detail.source}</div>}
+                  </div>
+                  <div style={{ fontWeight: 900, color: '#111827' }}>{fmtMoney(detail.amount)}</div>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontWeight: 950, color: '#111827' }}>
+                <span>合计</span>
+                <span>{fmtMoney(otherDetailsTotal)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {showOtherInfo && (
         <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12, lineHeight: 1.6, color: '#1e3a8a' }}>
           <div style={{ fontWeight: 900 }}>OTHER 金额 = 总销售额 - CASH - KHQR</div>
@@ -139,6 +182,8 @@ export function printShiftReport(report: ShiftReportData) {
 
   const rows = reportRows(report)
   const summary = summaryText(report)
+  const otherDetails = report.otherDetails ?? []
+  const otherDetailsTotal = otherDetails.reduce((sum, detail) => sum + detail.amount, 0)
 
   const escapeHtml = (value: string) =>
     value
@@ -169,6 +214,10 @@ export function printShiftReport(report: ShiftReportData) {
     .hero-value { font-size: 34px; line-height: 1.1; font-weight: 950; color: #111827; }
     .warn { background: #fffbeb; color: #92400e; padding-left: 6px; padding-right: 6px; }
     .summary { margin-top: 12px; padding: 10px; border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; font-size: 12px; line-height: 1.6; color: #334155; }
+    .details { margin-top: 12px; padding: 10px; border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 10px; font-size: 12px; }
+    .detail-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid #e5e7eb; }
+    .detail-row:last-child { border-bottom: none; font-weight: 900; }
+    .source { color: #64748b; font-size: 11px; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -184,6 +233,11 @@ export function printShiftReport(report: ShiftReportData) {
   <div class="summary">
     ${summary.map(line => `<div>${escapeHtml(line)}</div>`).join('')}
   </div>
+  ${otherDetails.length > 0 ? `<div class="details">
+    <div style="font-weight:900;margin-bottom:6px;">OTHER 明细</div>
+    ${otherDetails.map(detail => `<div class="detail-row"><div><div>订单 ${escapeHtml(detail.orderNo)}</div>${detail.source ? `<div class="source">来源：${escapeHtml(detail.source)}</div>` : ''}</div><div>${escapeHtml(fmtMoney(detail.amount))}</div></div>`).join('')}
+    <div class="detail-row"><div>合计</div><div>${escapeHtml(fmtMoney(otherDetailsTotal))}</div></div>
+  </div>` : ''}
   <div class="hint">仅统计本设备本地班次；离线待同步和挂单不计入销售额。</div>
   <script>
     window.onload = function() {
