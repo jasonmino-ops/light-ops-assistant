@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "task_id": "Dev-Gate-01A",
+  "description": "Read-only change scope guard for Store Assistant development batches.",
+  "forbidden_paths": {
+    "absolute": [
+      "app/menu",
+      "app/cashier/page.tsx",
+      "app/sale/page.tsx",
+      "app/api/sales",
+      "app/api/cashier",
+      "app/api/members",
+      "app/api/orders",
+      "app/records",
+      "app/dashboard",
+      "app/desktop/display/page.tsx",
+      "lib/cloudPrinter.ts",
+      "lib/session.ts",
+      "lib/context.ts",
+      "middleware.ts",
+      "prisma/schema.prisma"
+    ],
+    "glob_patterns": [
+      "prisma/migrations/",
+      "app/api/auth/",
+      "app/api/print/**"
+    ]
+  },
+  "allowed_paths": [
+    "app/m/[storeCode]",
+    "scripts/guards",
+    "docs/change-gates"
+  ],
+  "notes": [
+    "This config is used by a read-only guard script.",
+    "allowed_paths is informational and does not act as a strict whitelist.",
+    "Any file matching forbidden_paths must be blocked.",
+    "Keyword scanning, git hooks, shell wrappers, and npm script integration are out of scope for Batch 1."
+  ]
+}
