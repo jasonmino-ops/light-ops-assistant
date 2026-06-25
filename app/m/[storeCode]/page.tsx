@@ -55,8 +55,13 @@ export default async function CustomerPrivateLandingPage({ params, searchParams 
     )
   }
 
-  const store = await prisma.store.findUnique({
-    where: { code: storeCode },
+  const store = await prisma.store.findFirst({
+    where: {
+      OR: [
+        { code: storeCode },
+        { code: { equals: storeCode, mode: 'insensitive' } },
+      ],
+    },
     select: {
       code: true,
       name: true,
