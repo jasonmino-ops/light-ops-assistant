@@ -169,6 +169,16 @@ export default function PrivateLandingShell({ storeCode, store, initialLang, err
   const bannerStyle = store?.bannerUrl
     ? { backgroundImage: `url(${store.bannerUrl})` }
     : {}
+  const statusText = store?.status === 'ACTIVE' ? t.open : t.closed
+
+  function selectLang(next: Lang) {
+    setLang(next)
+    try {
+      localStorage.setItem(LS_KEY, next)
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     try {
@@ -201,15 +211,31 @@ export default function PrivateLandingShell({ storeCode, store, initialLang, err
   return (
     <main style={s.page}>
       <section style={s.shell}>
-          <div style={s.topBar}>
-            <div>
-              <div style={s.brand}>{t.brand}</div>
-              <h1 style={s.title}>{t.title} {store.name}</h1>
-              <p style={s.subtitle}>{landing.subtitle}</p>
+        <div style={s.topBar}>
+          <div style={s.topMain}>
+            <div style={s.brand}>{t.brand}</div>
+            <h1 style={s.title}>{t.title} {store.name}</h1>
+            <p style={s.subtitle}>{landing.subtitle}</p>
+          </div>
+
+          <div style={s.topSide}>
+            <div style={s.langSwitcher} aria-label="language switcher">
+              {(['zh', 'en', 'km'] as Lang[]).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  style={{ ...s.langBtn, ...(lang === l ? s.langBtnOn : {}) }}
+                  onClick={() => selectLang(l)}
+                >
+                  {l === 'zh' ? '中' : l === 'en' ? 'EN' : 'ខ្មែរ'}
+                </button>
+              ))}
             </div>
-            <div style={s.statusStack}>
-              <div style={s.statusPill}>{t.statusLabel} · {store.status === 'ACTIVE' ? t.open : t.closed}</div>
-            <div style={s.typePill}>{t.typeLabel} · {t.businessType[businessType]}</div>
+
+            <div style={s.metaRow}>
+              <div style={{ ...s.metaPill, ...s.metaPillStatus }}>{statusText}</div>
+              <div style={s.metaPill}>{t.businessType[businessType]}</div>
+            </div>
           </div>
         </div>
 
@@ -220,7 +246,7 @@ export default function PrivateLandingShell({ storeCode, store, initialLang, err
             <div style={s.bannerLabel}>{store.name}</div>
             <div style={s.bannerName}>{store.name}</div>
             <div style={s.bannerMeta}>
-              <span style={s.bannerBadge}>{store.status === 'ACTIVE' ? t.open : t.closed}</span>
+              <span style={s.bannerBadge}>{statusText}</span>
               <span style={s.bannerBadge}>{t.businessType[businessType]}</span>
             </div>
           </div>
@@ -292,8 +318,20 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: 10,
     flexWrap: 'wrap',
+  },
+  topMain: {
+    flex: '1 1 240px',
+    minWidth: 0,
+  },
+  topSide: {
+    flex: '0 0 auto',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 8,
+    maxWidth: '100%',
   },
   brand: {
     fontSize: 12,
@@ -317,11 +355,64 @@ const s: Record<string, React.CSSProperties> = {
     color: '#475569',
     maxWidth: 620,
   },
-  statusStack: {
+  langSwitcher: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: 4,
+    borderRadius: 999,
+    background: 'rgba(255,255,255,0.68)',
+    border: '1px solid rgba(148,163,184,0.18)',
+    boxShadow: '0 4px 12px rgba(15,23,42,0.04)',
+    backdropFilter: 'blur(10px)',
+    flexWrap: 'wrap',
+    maxWidth: '100%',
+  },
+  langBtn: {
+    minHeight: 28,
+    padding: '0 10px',
+    borderRadius: 999,
+    border: '1px solid transparent',
+    background: 'transparent',
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: 'pointer',
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+  },
+  langBtnOn: {
+    background: 'linear-gradient(135deg, rgba(37,99,235,0.14), rgba(14,165,233,0.12))',
+    color: '#1d4ed8',
+    borderColor: 'rgba(37,99,235,0.18)',
+  },
+  metaRow: {
     display: 'flex',
-    flexDirection: 'column',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-end',
+    maxWidth: '100%',
+  },
+  metaPill: {
+    minHeight: 30,
+    padding: '0 10px',
+    borderRadius: 999,
+    display: 'inline-flex',
+    alignItems: 'center',
     gap: 8,
-    alignItems: 'flex-end',
+    fontSize: 12,
+    fontWeight: 700,
+    lineHeight: 1,
+    color: '#334155',
+    background: 'rgba(15, 23, 42, 0.04)',
+    border: '1px solid rgba(15, 23, 42, 0.07)',
+    maxWidth: '100%',
+    whiteSpace: 'nowrap',
+  },
+  metaPillStatus: {
+    background: 'rgba(37, 99, 235, 0.08)',
+    border: '1px solid rgba(37, 99, 235, 0.14)',
+    color: '#1d4ed8',
   },
   statusPill: {
     padding: '8px 12px',
@@ -395,15 +486,15 @@ const s: Record<string, React.CSSProperties> = {
   bannerMeta: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
     marginTop: 4,
   },
   bannerBadge: {
-    padding: '6px 10px',
+    padding: '5px 9px',
     borderRadius: 999,
     background: 'rgba(255,255,255,0.16)',
     border: '1px solid rgba(255,255,255,0.22)',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
     color: '#fff',
   },
