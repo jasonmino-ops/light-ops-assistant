@@ -90,7 +90,7 @@ export default async function CustomerPrivateLandingPage({ params, searchParams 
       initialLang={initialLang}
       store={normalizedStore}
       storeCode={storeCode}
-      errorKind={store ? 'inactive' : 'missing'}
+      errorKind={store ? null : 'missing'}
     />
   )
 }
