@@ -30,8 +30,10 @@ const LS_KEY = 'menu_lang'
 const copy: Record<Lang, {
   brand: string
   title: string
-  subtitle: string
-  orderNow: string
+  landing: Record<'GENERAL' | 'FOOD' | 'RETAIL' | 'SERVICE', {
+    subtitle: string
+    orderNow: string
+  }>
   myOrders: string
   coupons: string
   contact: string
@@ -49,8 +51,12 @@ const copy: Record<Lang, {
   zh: {
     brand: '店小二 · 商户私域',
     title: '欢迎来到',
-    subtitle: '在这里继续浏览商品、查看活动并快速下单。',
-    orderNow: '立即点单',
+    landing: {
+      GENERAL: { subtitle: '在这里浏览商品并快速下单。', orderNow: '立即下单' },
+      FOOD: { subtitle: '查看菜单，快速点餐。', orderNow: '查看菜单' },
+      RETAIL: { subtitle: '浏览在售商品，快速选购。', orderNow: '浏览商品' },
+      SERVICE: { subtitle: '了解服务内容，选择需要的项目。', orderNow: '查看服务' },
+    },
     myOrders: '我的订单',
     coupons: '优惠券',
     contact: '联系商家',
@@ -73,8 +79,12 @@ const copy: Record<Lang, {
   en: {
     brand: '店小二 · Merchant Hub',
     title: 'Welcome to',
-    subtitle: 'Browse products, check promotions, and start ordering.',
-    orderNow: 'Order Now',
+    landing: {
+      GENERAL: { subtitle: 'Browse products and start ordering.', orderNow: 'Order Now' },
+      FOOD: { subtitle: 'View the menu and order quickly.', orderNow: 'View Menu' },
+      RETAIL: { subtitle: 'Browse available products and shop quickly.', orderNow: 'Browse Products' },
+      SERVICE: { subtitle: 'Explore services and choose what you need.', orderNow: 'View Services' },
+    },
     myOrders: 'My Orders',
     coupons: 'Coupons',
     contact: 'Contact Merchant',
@@ -97,8 +107,12 @@ const copy: Record<Lang, {
   km: {
     brand: '店小二 · មជ្ឈមណ្ឌលហាង',
     title: 'ស្វាគមន៍មកកាន់',
-    subtitle: 'មើលទំនិញ ពិនិត្យប្រូម៉ូសិន និងចាប់ផ្តើមបញ្ជាទិញបានរហ័ស។',
-    orderNow: 'ចូលបញ្ជាទិញ',
+    landing: {
+      GENERAL: { subtitle: 'មើលទំនិញ និងចាប់ផ្តើមបញ្ជាទិញ។', orderNow: 'ចូលបញ្ជាទិញ' },
+      FOOD: { subtitle: 'មើលម៉ឺនុយ ហើយបញ្ជាទិញបានរហ័ស។', orderNow: 'មើលម៉ឺនុយ' },
+      RETAIL: { subtitle: 'រកមើលទំនិញដែលមាន និងទិញបានរហ័ស។', orderNow: 'រកមើលទំនិញ' },
+      SERVICE: { subtitle: 'មើលសេវាកម្ម ហើយជ្រើសរើសអ្វីដែលអ្នកត្រូវការ។', orderNow: 'មើលសេវាកម្ម' },
+    },
     myOrders: 'បញ្ជាទិញរបស់ខ្ញុំ',
     coupons: 'គូប៉ុង',
     contact: 'ទំនាក់ទំនងហាង',
@@ -150,6 +164,7 @@ export default function PrivateLandingShell({ storeCode, store, initialLang, err
 
   const t = copy[lang]
   const businessType = useMemo(() => resolveType(store?.businessType), [store?.businessType])
+  const landing = t.landing[businessType]
   const storeInitial = (store?.name?.trim()?.[0] ?? 'M').toUpperCase()
   const bannerStyle = store?.bannerUrl
     ? { backgroundImage: `url(${store.bannerUrl})` }
@@ -186,14 +201,14 @@ export default function PrivateLandingShell({ storeCode, store, initialLang, err
   return (
     <main style={s.page}>
       <section style={s.shell}>
-        <div style={s.topBar}>
-          <div>
-            <div style={s.brand}>{t.brand}</div>
-            <h1 style={s.title}>{t.title} {store.name}</h1>
-            <p style={s.subtitle}>{t.subtitle}</p>
-          </div>
-          <div style={s.statusStack}>
-            <div style={s.statusPill}>{t.statusLabel} · {store.status === 'ACTIVE' ? t.open : t.closed}</div>
+          <div style={s.topBar}>
+            <div>
+              <div style={s.brand}>{t.brand}</div>
+              <h1 style={s.title}>{t.title} {store.name}</h1>
+              <p style={s.subtitle}>{landing.subtitle}</p>
+            </div>
+            <div style={s.statusStack}>
+              <div style={s.statusPill}>{t.statusLabel} · {store.status === 'ACTIVE' ? t.open : t.closed}</div>
             <div style={s.typePill}>{t.typeLabel} · {t.businessType[businessType]}</div>
           </div>
         </div>
@@ -214,7 +229,7 @@ export default function PrivateLandingShell({ storeCode, store, initialLang, err
         <div style={s.actions}>
           <Link href={`/menu?code=${encodeURIComponent(storeCode)}`} style={{ ...s.primaryBtn }}>
             <span style={s.primaryIcon}>🛒</span>
-            <span style={s.primaryText}>{t.orderNow}</span>
+            <span style={s.primaryText}>{landing.orderNow}</span>
           </Link>
         </div>
 
