@@ -49,7 +49,7 @@ function extractTgUserId(initData: string): string | null {
 // 均跳过商户 Bot auth 流程，由各页面自身处理身份或无需身份。
 // /cashier, /desktop and desktop-scoped /records are standalone PC pages — no Telegram session required
 const PUBLIC_EXACT_PATHS = ['/']
-const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/m', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/desktop', '/records', '/privacy', '/terms', '/contact']
+const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/m', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/desktop', '/records', '/privacy', '/terms', '/contact', '/mino-bos/assets-check']
 
 function isPublicPath(path: string) {
   return PUBLIC_EXACT_PATHS.includes(path) ||

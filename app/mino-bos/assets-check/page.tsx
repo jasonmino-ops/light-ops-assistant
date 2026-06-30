@@ -70,6 +70,7 @@ type StatusObject = {
 type LoadState =
   | { status: 'loading' }
   | { status: 'ok'; data: ApiStatus }
+  | { status: 'unauthorized'; statusCode: number; apiStatus: string; message: string }
   | { status: 'error'; statusCode?: number; message: string }
 
 type CheckTone = 'pass' | 'pending' | 'readonly' | 'fail'
@@ -124,6 +125,12 @@ function getErrorText(data: ApiStatus, statusCode: number) {
   return data.message || data.error || `接口请求失败，HTTP ${statusCode}`
 }
 
+function getApiStatus(data: ApiStatus, statusCode: number) {
+  if (statusCode === 401) return 'unauthorized / login_required'
+  if (statusCode === 403) return 'forbidden'
+  return data.error || `http_${statusCode}`
+}
+
 export default function MinoBosAssetsCheckPage() {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
 
@@ -137,6 +144,15 @@ export default function MinoBosAssetsCheckPage() {
       })
       const data = await response.json().catch(() => ({} as ApiStatus))
       if (!response.ok) {
+        if (response.status === 401) {
+          setState({
+            status: 'unauthorized',
+            statusCode: response.status,
+            apiStatus: getApiStatus(data, response.status),
+            message: getErrorText(data, response.status),
+          })
+          return
+        }
         setState({ status: 'error', statusCode: response.status, message: getErrorText(data, response.status) })
         return
       }
@@ -180,6 +196,31 @@ export default function MinoBosAssetsCheckPage() {
           <h2 style={s.panelTitle}>接口请求失败</h2>
           <p style={s.errorText}>{state.message}</p>
           {state.statusCode ? <p style={s.muted}>HTTP status: {state.statusCode}</p> : null}
+        </section>
+      )}
+
+      {state.status === 'unauthorized' && (
+        <section style={{ ...s.panel, borderColor: '#f59e0b' }}>
+          <StatusBadge tone="pending" label="LOGIN REQUIRED" />
+          <h2 style={s.panelTitle}>未检测到商户登录态</h2>
+          <div style={s.checkGrid}>
+            <CheckRow name="当前状态" detail="未检测到有效 OWNER / STAFF 登录态" tone="pending" />
+            <CheckRow name="API 状态" detail={`${state.apiStatus} (${state.message})`} tone="pending" />
+            <CheckRow name="权限说明" detail="真实业务资产读取必须通过 OWNER / STAFF 登录态" tone="readonly" />
+            <CheckRow name="下一步" detail="请从 Telegram 商户端进入店小二后再访问本页面" tone="readonly" />
+          </div>
+        </section>
+      )}
+
+      {state.status === 'unauthorized' && (
+        <section style={s.panel}>
+          <h2 style={s.panelTitle}>只读静态检查</h2>
+          <div style={s.checkGrid}>
+            <CheckRow name="页面部署" detail="OK" tone="pass" />
+            <CheckRow name="当前路径" detail="/mino-bos/assets-check" tone="pass" />
+            <CheckRow name="API 真实数据读取" detail="需要 OWNER / STAFF 登录态" tone="pending" />
+            <CheckRow name="Device / Printer / POS" detail="pending_real_device_validation" tone="pending" />
+          </div>
         </section>
       )}
 
