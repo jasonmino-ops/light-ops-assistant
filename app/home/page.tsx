@@ -384,6 +384,16 @@ export default function HomePage() {
         </div>
       </div>
 
+      {realRole === 'OWNER' && (
+        <Link href="/mino-bos/assets-check" style={s.minoBosCheckLink}>
+          <span style={s.minoBosCheckMain}>
+            <span style={s.minoBosCheckTitle}>Mino BOS 对接检查</span>
+            <span style={s.minoBosCheckSub}>Batch 3C · 内部验收 · 只读检查</span>
+          </span>
+          <span style={s.minoBosCheckBadge}>READ-ONLY</span>
+        </Link>
+      )}
+
       {/* ── Today operating hero ── */}
       <div style={s.summaryCard}>
         <div style={s.summaryTopRow}>
@@ -1124,6 +1134,44 @@ const s: Record<string, React.CSSProperties> = {
     background: '#fff7ed',
     border: '1px solid #fed7aa',
     color: '#c2410c',
+  },
+  minoBosCheckLink: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    margin: '0 0 10px',
+    padding: '10px 12px',
+    borderRadius: 14,
+    background: '#eff6ff',
+    border: '1px solid #bfdbfe',
+    textDecoration: 'none',
+    boxShadow: '0 8px 18px rgba(37,99,235,0.08)',
+  },
+  minoBosCheckMain: {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  minoBosCheckTitle: {
+    fontSize: 13,
+    fontWeight: 900,
+    color: '#1e3a8a',
+  },
+  minoBosCheckSub: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#64748b',
+  },
+  minoBosCheckBadge: {
+    flexShrink: 0,
+    borderRadius: 999,
+    background: '#dbeafe',
+    color: '#1d4ed8',
+    padding: '4px 8px',
+    fontSize: 10,
+    fontWeight: 900,
   },
   summaryCard: {
     background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfeff 52%, #ffffff 100%)',
