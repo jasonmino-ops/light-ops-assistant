@@ -142,6 +142,23 @@ function latestSaleTime(sales: SaleItem[]) {
   return formatDateTime(latest)
 }
 
+function paymentSummary(groups: PaymentMethodGroup[]) {
+  if (groups.length === 0) return 'no aggregate payment data'
+  return groups
+    .map((group) => `${group.paymentMethod}/${group.paymentStatus}: ${group.count} orders · ${money(Number(group.amount) || 0)}`)
+    .join(' | ')
+}
+
+function countPaymentGroups(groups: PaymentMethodGroup[], status: string, paymentMethod?: string) {
+  return groups
+    .filter((group) => {
+      const matchesStatus = group.paymentStatus === status
+      const matchesMethod = paymentMethod ? group.paymentMethod === paymentMethod : true
+      return matchesStatus && matchesMethod
+    })
+    .reduce((sum, group) => sum + (Number(group.count) || 0), 0)
+}
+
 function statusTone(status?: string): CheckTone {
   if (status === 'pending_real_device_validation') return 'pending'
   if (status === 'placeholder_only') return 'readonly'
@@ -197,6 +214,7 @@ export default function MinoBosAssetsCheckPage() {
   const stores = assets?.stores?.items ?? []
   const sales = assets?.sales?.items ?? []
   const customerOrders = assets?.customerOrders?.items ?? []
+  const paymentGroups = assets?.paymentMethodStats?.groups ?? []
   const primaryStore = stores[0]
 
   const summary = useMemo(() => {
@@ -212,6 +230,62 @@ export default function MinoBosAssetsCheckPage() {
         (assets?.products?.total ?? 0) > 0,
     }
   }, [assets?.customerOrders?.total, assets?.products?.total, assets?.sales?.total, sales, customerOrders])
+
+  const outputPreview = useMemo(() => {
+    const pendingKhqrCount = countPaymentGroups(paymentGroups, 'PENDING', 'KHQR')
+    const cancelledPaymentCount = countPaymentGroups(paymentGroups, 'CANCELLED')
+    const hasCustomerOrders = (assets?.customerOrders?.total ?? 0) > 0
+    const productCount = assets?.products?.total ?? 0
+
+    return {
+      paymentDistributionSummary: paymentSummary(paymentGroups),
+      pendingKhqrCount,
+      cancelledPaymentCount,
+      reminders: [
+        {
+          name: '今日订单数为 0',
+          detail: summary.todayOrderCount === 0 ? 'reminder preview only' : `${summary.todayOrderCount} orders today`,
+          tone: summary.todayOrderCount === 0 ? 'pending' : 'readonly',
+        },
+        {
+          name: '今日销售额为 0',
+          detail: summary.todaySalesAmount === 0 ? 'reminder preview only' : money(summary.todaySalesAmount),
+          tone: summary.todaySalesAmount === 0 ? 'pending' : 'readonly',
+        },
+        {
+          name: 'KHQR PENDING 聚合记录',
+          detail: pendingKhqrCount > 0 ? `${pendingKhqrCount} aggregate records · no auto-confirm` : 'none in aggregate data',
+          tone: pendingKhqrCount > 0 ? 'pending' : 'readonly',
+        },
+        {
+          name: 'CANCELLED 聚合记录',
+          detail: cancelledPaymentCount > 0 ? `${cancelledPaymentCount} aggregate records · not an incident confirmation` : 'none in aggregate data',
+          tone: cancelledPaymentCount > 0 ? 'pending' : 'readonly',
+        },
+        {
+          name: '商品数量是否为 0',
+          detail: productCount === 0 ? '0 products in read-only asset data' : `${productCount} products`,
+          tone: productCount === 0 ? 'pending' : 'readonly',
+        },
+        {
+          name: '顾客订单是否存在',
+          detail: hasCustomerOrders ? `${assets?.customerOrders?.total ?? 0} customer orders` : 'no customer orders in read-only asset data',
+          tone: hasCustomerOrders ? 'readonly' : 'pending',
+        },
+        {
+          name: 'Device / Printer / POS / Offline sync',
+          detail: 'pending_real_device_validation · no recovery action',
+          tone: 'pending',
+        },
+      ] satisfies { name: string; detail: string; tone: CheckTone }[],
+    }
+  }, [
+    assets?.customerOrders?.total,
+    assets?.products?.total,
+    paymentGroups,
+    summary.todayOrderCount,
+    summary.todaySalesAmount,
+  ])
 
   return (
     <main style={s.page}>
@@ -359,13 +433,131 @@ export default function MinoBosAssetsCheckPage() {
       )}
 
       <section style={s.panel}>
-        <h2 style={s.panelTitle}>数字员工摘要预留区</h2>
-        <div style={s.checkGrid}>
-          <CheckRow name="Daily business summary" detail="reserved" tone="reserved" />
-          <CheckRow name="Exception reminder" detail="reserved" tone="reserved" />
-          <CheckRow name="Merchant pilot record" detail="reserved" tone="reserved" />
+        <StatusBadge tone="readonly" label="READ-ONLY" />
+        <h2 style={s.panelTitle}>Business Digital Employee Output Preview</h2>
+        <p style={s.sectionLead}>Batch 3E · Read-only · Founder Decision Support Only</p>
+        <p style={s.noteStrong}>Real Device First &gt; Digital Employee Preview</p>
+
+        <div style={s.subsection}>
+          <h3 style={s.subTitle}>Daily Business Summary Preview</h3>
+          <div style={s.metricGrid}>
+            <Metric label="今日销售额" value={data ? money(summary.todaySalesAmount) : 'read-only login required'} />
+            <Metric label="今日订单数" value={data ? String(summary.todayOrderCount) : 'read-only login required'} />
+            <Metric label="商品数量" value={data ? String(assets?.products?.total ?? 0) : 'read-only login required'} />
+            <Metric label="顾客订单数量" value={data ? String(assets?.customerOrders?.total ?? 0) : 'read-only login required'} />
+            <Metric label="会员数量统计" value={data ? String(assets?.memberStats?.total ?? 0) : 'read-only login required'} />
+            <Metric label="最近销售时间" value={data ? summary.latestSaleAt : 'read-only login required'} />
+            <Metric label="是否已有真实业务数据" value={data ? (summary.hasRealBusinessData ? 'available' : 'unavailable') : 'read-only login required'} />
+            <Metric label="Device / Printer / POS / Offline sync" value="pending_real_device_validation" />
+          </div>
+          <div style={s.subsectionTight}>
+            <CheckRow
+              name="支付方式分布摘要"
+              detail={data ? outputPreview.paymentDistributionSummary : 'read-only login required'}
+              tone="readonly"
+            />
+          </div>
         </div>
-        <p style={s.note}>这些未来只能作为 Founder 决策建议，不能自动执行，不能写回店小二。</p>
+
+        <div style={s.subsection}>
+          <h3 style={s.subTitle}>Exception Reminder Preview</h3>
+          <div style={s.checkGrid}>
+            {(data
+              ? outputPreview.reminders
+              : [
+                  { name: '只读数据状态', detail: '需要 OWNER / STAFF 登录态后展示静态提醒', tone: 'pending' as CheckTone },
+                  { name: 'Device / Printer / POS / Offline sync', detail: 'pending_real_device_validation · no recovery action', tone: 'pending' as CheckTone },
+                ]
+            ).map((item) => (
+              <CheckRow key={item.name} name={item.name} detail={item.detail} tone={item.tone} />
+            ))}
+          </div>
+          <p style={s.note}>以上只是只读提醒预览，不是事故确认，不会自动修复，不会触发 Recovery。</p>
+        </div>
+
+        <div style={s.subsection}>
+          <h3 style={s.subTitle}>Merchant Pilot Record Preview</h3>
+          <div style={s.checkGrid}>
+            <CheckRow name="试点门店名称" detail={data ? primaryStore?.name ?? 'unavailable' : 'read-only login required'} tone="readonly" />
+            <CheckRow name="是否已有真实业务数据" detail={data ? (summary.hasRealBusinessData ? 'available' : 'unavailable') : 'read-only login required'} tone="readonly" />
+            <CheckRow name="最近销售时间" detail={data ? summary.latestSaleAt : 'read-only login required'} tone="readonly" />
+            <CheckRow name="当前只读接入状态" detail="read_only_adapter_connected · no write-back" tone="readonly" />
+            <CheckRow name="设备验证状态" detail="pending_real_device_validation" tone="pending" />
+            <CheckRow name="商户反馈" detail="reserved" tone="reserved" />
+            <CheckRow name="店员反馈" detail="reserved" tone="reserved" />
+            <CheckRow name="收费意愿" detail="reserved" tone="reserved" />
+            <CheckRow name="下一步人工跟进事项" detail="reserved" tone="reserved" />
+          </div>
+        </div>
+
+        <div style={s.subsection}>
+          <h3 style={s.subTitle}>Output Permission Labels</h3>
+          <div style={s.permissionGrid}>
+            <PermissionColumn
+              tone="readonly"
+              title="Allowed Now"
+              items={[
+                '今日经营摘要',
+                '支付方式聚合摘要',
+                '业务资产接入状态摘要',
+                '设备 pending 提醒',
+                '长时间无销售提醒',
+                'KHQR PENDING 较多提醒',
+                '试点门店基础信息',
+              ]}
+            />
+            <PermissionColumn
+              tone="reserved"
+              title="Reserved"
+              items={[
+                '试点复盘建议',
+                '商户反馈总结',
+                '设备更换建议',
+                '付费模式建议',
+                'Recovery 建议',
+                '数字员工主动通知',
+                '商户活跃度评分',
+              ]}
+            />
+            <PermissionColumn
+              tone="fail"
+              title="Forbidden Now"
+              items={[
+                '自动改订单',
+                '自动改支付状态',
+                '自动扣会员余额',
+                '自动确认 KHQR',
+                '自动发券',
+                '自动联系顾客',
+                '自动触发 Recovery',
+                '自动改权限',
+                '自动写回任何业务数据',
+                '读取支付凭证 / MemberBalanceLedger / token',
+              ]}
+            />
+          </div>
+        </div>
+
+        <div style={s.subsection}>
+          <h3 style={s.subTitle}>Real Device Validation Boundary</h3>
+          <div style={s.checkGrid}>
+            {[
+              '打印失败自动判断',
+              'POS 在线状态判断',
+              '扫码枪状态判断',
+              '双屏状态判断',
+              'Offline sync 真实异常判断',
+              'KHQR 自动查询 / 回调确认',
+              '商户活跃度真实判断',
+              '收费模式真实建议',
+              'Recovery action 自动建议',
+              '数字员工主动通知',
+            ].map((item) => (
+              <CheckRow key={item} name={item} detail="requires real device / real merchant validation" tone="pending" />
+            ))}
+          </div>
+        </div>
+        <p style={s.note}>本区域不接 AI、不调用模型 API、不新增任务、cron 或 worker、不写回任何业务数据。</p>
       </section>
 
       <section style={s.panel}>
@@ -421,6 +613,19 @@ function Metric(props: { label: string; value: string }) {
     <div style={s.metric}>
       <div style={s.metricLabel}>{props.label}</div>
       <div style={s.metricValue}>{props.value}</div>
+    </div>
+  )
+}
+
+function PermissionColumn(props: { title: string; tone: CheckTone; items: string[] }) {
+  return (
+    <div style={s.permissionColumn}>
+      <StatusBadge tone={props.tone} label={props.title} />
+      <ul style={s.permissionList}>
+        {props.items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -530,7 +735,9 @@ const s: Record<string, React.CSSProperties> = {
   metricLabel: { color: '#64748b', fontSize: 12, fontWeight: 800 },
   metricValue: { marginTop: 6, fontSize: 20, fontWeight: 900, wordBreak: 'break-word' },
   subsection: { marginTop: 16 },
+  subsectionTight: { marginTop: 10 },
   subTitle: { margin: '0 0 8px', fontSize: 14 },
+  sectionLead: { margin: '-4px 0 0', color: '#475569', fontSize: 13, fontWeight: 800 },
   table: { border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' },
   tableRow: {
     display: 'grid',
@@ -550,6 +757,23 @@ const s: Record<string, React.CSSProperties> = {
   },
   riskGrid: { display: 'grid', gap: 8 },
   riskItem: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 },
+  permissionGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: 10,
+  },
+  permissionColumn: {
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: 12,
+  },
+  permissionList: {
+    margin: '10px 0 0',
+    paddingLeft: 18,
+    color: '#334155',
+    fontSize: 13,
+    lineHeight: 1.65,
+  },
   badge: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -565,6 +789,16 @@ const s: Record<string, React.CSSProperties> = {
     color: '#64748b',
     fontSize: 13,
     lineHeight: 1.55,
+  },
+  noteStrong: {
+    margin: '10px 0 0',
+    color: '#92400e',
+    background: '#fef3c7',
+    border: '1px solid #fde68a',
+    borderRadius: 8,
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 900,
   },
   muted: { color: '#64748b', fontSize: 12, margin: 0, wordBreak: 'break-word' },
   errorText: { color: '#991b1b', fontWeight: 800 },
