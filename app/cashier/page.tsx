@@ -122,6 +122,7 @@ type DesktopRecordsState = {
 type ScannerDebugState = {
   mounted: boolean
   isActive: boolean
+  activeElement: string
   rawValue: string
   barcode: string
   matchCount: number | null
@@ -1171,6 +1172,7 @@ export default function CashierPage() {
   const [scannerDebug, setScannerDebug] = useState<ScannerDebugState>({
     mounted: false,
     isActive: false,
+    activeElement: '-',
     rawValue: '',
     barcode: '',
     matchCount: null,
@@ -1192,16 +1194,29 @@ export default function CashierPage() {
     window.setTimeout(() => searchRef.current?.focus(), 0)
   }, [])
 
+  const getActiveElementName = useCallback(() => {
+    const active = document.activeElement
+    if (!active) return 'NONE'
+    if (active === scannerInputRef.current) return 'ScannerInput'
+    if (active === searchRef.current) return 'SearchInput'
+    return active.tagName || 'UNKNOWN'
+  }, [])
+
+  const updateScannerDebugFocusState = useCallback(() => {
+    setScannerDebug(prev => ({
+      ...prev,
+      mounted: !!scannerInputRef.current,
+      isActive: document.activeElement === scannerInputRef.current,
+      activeElement: getActiveElementName(),
+    }))
+  }, [getActiveElementName])
+
   const focusScannerInput = useCallback(() => {
     window.setTimeout(() => {
       scannerInputRef.current?.focus()
-      setScannerDebug(prev => ({
-        ...prev,
-        mounted: !!scannerInputRef.current,
-        isActive: document.activeElement === scannerInputRef.current,
-      }))
+      updateScannerDebugFocusState()
     }, 0)
-  }, [])
+  }, [updateScannerDebugFocusState])
 
   useEffect(() => {
     setIsDesktopPos(window.location.pathname === '/desktop/pos')
@@ -1214,17 +1229,17 @@ export default function CashierPage() {
 
   useEffect(() => {
     if (!isDesktopPos) return
-    const syncScannerDebugFocus = () => {
-      setScannerDebug(prev => ({
-        ...prev,
-        mounted: !!scannerInputRef.current,
-        isActive: document.activeElement === scannerInputRef.current,
-      }))
+    const maintainScannerFocus = () => {
+      const active = document.activeElement
+      if (scannerInputRef.current && active !== scannerInputRef.current && active !== searchRef.current) {
+        scannerInputRef.current.focus()
+      }
+      updateScannerDebugFocusState()
     }
-    syncScannerDebugFocus()
-    const timer = window.setInterval(syncScannerDebugFocus, 500)
+    maintainScannerFocus()
+    const timer = window.setInterval(maintainScannerFocus, 300)
     return () => window.clearInterval(timer)
-  }, [isDesktopPos])
+  }, [isDesktopPos, updateScannerDebugFocusState])
 
   useEffect(() => {
     if (!isDesktopPos) return
@@ -2255,8 +2270,8 @@ export default function CashierPage() {
       if (found) return prev.map(c => c.barcode === p.barcode && c.sugar === sugar ? { ...c, qty: c.qty + 1 } : c)
       return [...prev, { productId: p.id, barcode: p.barcode, name: p.name, spec: p.spec, price: p.sellPrice, qty: 1, imageUrl: p.imageUrl, sugar }]
     })
-    if (isDesktopPos && options?.focusSearch !== false) focusSearchInput()
-  }, [focusSearchInput, isDesktopPos])
+    if (isDesktopPos && options?.focusSearch !== false) focusScannerInput()
+  }, [focusScannerInput, isDesktopPos])
 
   const updateQty = useCallback((barcode: string, sugar: string | undefined, delta: number) => {
     setCart(prev =>
@@ -2808,6 +2823,7 @@ export default function CashierPage() {
           {[
             ['Mounted', scannerDebug.mounted ? 'YES' : 'NO'],
             ['Active', scannerDebug.isActive ? 'YES' : 'NO'],
+            ['CurrentActiveElement', scannerDebug.activeElement || '-'],
             ['Raw', scannerDebug.rawValue || '-'],
             ['Barcode', scannerDebug.barcode || '-'],
             ['MatchCount', scannerDebug.matchCount === null ? '-' : String(scannerDebug.matchCount)],
@@ -2838,8 +2854,8 @@ export default function CashierPage() {
             autoComplete="off"
             inputMode="none"
             style={s.scannerInput}
-            onFocus={() => setScannerDebug(prev => ({ ...prev, mounted: true, isActive: true }))}
-            onBlur={() => setScannerDebug(prev => ({ ...prev, mounted: true, isActive: false }))}
+            onFocus={() => setScannerDebug(prev => ({ ...prev, mounted: true, isActive: true, activeElement: 'ScannerInput' }))}
+            onBlur={() => updateScannerDebugFocusState()}
             onKeyDown={(e) => {
               if (!isScannerInputTerminator(e.key)) return
               e.preventDefault()
@@ -3183,7 +3199,7 @@ export default function CashierPage() {
                 {d.cartTitle}
                 {count > 0 && <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 400, marginLeft: 6 }}>{`(${count} ${lang === 'en' ? 'items' : lang === 'km' ? 'មុខ' : '件'})`}</span>}
               </span>
-              {cart.length > 0 && <button style={s.cartClear} onClick={() => setCart([])}>{d.cartClear}</button>}
+              {cart.length > 0 && <button style={s.cartClear} onClick={() => { setCart([]); focusScannerInput() }}>{d.cartClear}</button>}
             </div>
             <div style={s.cartList}>
               {cart.length === 0 ? (
@@ -3713,7 +3729,7 @@ export default function CashierPage() {
                 </button>
               </div>
             )}
-            <button style={s.modalBtn} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null); searchRef.current?.focus() }}>{d.continueSale}</button>
+            <button style={s.modalBtn} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null); focusScannerInput() }}>{d.continueSale}</button>
           </div>
         </div>
       )}
