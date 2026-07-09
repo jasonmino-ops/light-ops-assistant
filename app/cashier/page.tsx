@@ -1079,6 +1079,7 @@ export default function CashierPage() {
   const [categories,    setCategories]    = useState<Category[]>([])
   const [activeCatId,   setActiveCatId]   = useState<string | null>(null)
   const [searchKw,      setSearchKw]      = useState('')
+  const [scannerSubmit, setScannerSubmit] = useState<{ id: number; value: string } | null>(null)
   const [cart,          setCart]          = useState<CartLine[]>([])
   const [payment,       setPayment]       = useState<CashierPaymentMethod>('CASH')
   const [submitting,    setSubmitting]    = useState(false)
@@ -1140,6 +1141,8 @@ export default function CashierPage() {
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
   const searchRef       = useRef<HTMLInputElement>(null)
+  const scannerSubmitSeqRef = useRef(0)
+  const handledScannerSubmitIdRef = useRef(0)
   const ordersRef       = useRef<HTMLDivElement>(null)
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
@@ -2456,6 +2459,27 @@ export default function CashierPage() {
     const l2Ids = new Set((l2ByParent.get(activeCatId) ?? []).map(c => c.id))
     return p.categoryId === activeCatId || (p.categoryId !== null && l2Ids.has(p.categoryId))
   })
+  useEffect(() => {
+    if (!scannerSubmit) return
+    if (handledScannerSubmitIdRef.current === scannerSubmit.id) return
+    const submitted = normalizeSearchText(scannerSubmit.value)
+    if (!submitted || normalizeSearchText(searchKw) !== submitted) return
+    if (displayProducts.length !== 1) return
+    const product = displayProducts[0]
+    if (!productMatchesExactCode(product, submitted)) return
+
+    handledScannerSubmitIdRef.current = scannerSubmit.id
+    if (!isOnline && productsSource !== 'cache') {
+      showToast('当前无商品缓存，无法离线收银')
+      setScannerSubmit(null)
+      focusSearchInput()
+      return
+    }
+    addToCart(product)
+    setSearchKw('')
+    setScannerSubmit(null)
+    focusSearchInput()
+  }, [addToCart, displayProducts, focusSearchInput, isOnline, productsSource, scannerSubmit, searchKw])
   const d = desktopCopy(lang as DeskLang)
   const categoryById = new Map(categories.map(c => [c.id, c]))
   const displayProductGroups = (() => {
@@ -2596,6 +2620,7 @@ export default function CashierPage() {
     : ''
 
   function handleSearchChange(value: string) {
+    setScannerSubmit(null)
     setSearchKw(value.replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, ''))
   }
 
@@ -2605,18 +2630,10 @@ export default function CashierPage() {
     if (cleaned !== searchKw) setSearchKw(cleaned)
     const normalized = normalizeSearchText(cleaned)
     if (!normalized) return
-    const exactMatches = products.filter(p => productMatchesExactCode(p, normalized))
-    if (exactMatches.length === 1) {
-      e.preventDefault()
-      if (!isOnline && productsSource !== 'cache') {
-        showToast('当前无商品缓存，无法离线收银')
-        focusSearchInput()
-        return
-      }
-      addToCart(exactMatches[0])
-      setSearchKw('')
-      focusSearchInput()
-    }
+    e.preventDefault()
+    const nextId = scannerSubmitSeqRef.current + 1
+    scannerSubmitSeqRef.current = nextId
+    setScannerSubmit({ id: nextId, value: cleaned })
   }
 
   function handleClearSearch() {
