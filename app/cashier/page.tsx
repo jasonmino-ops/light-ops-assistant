@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { Fragment, useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
@@ -157,6 +157,9 @@ const KHR_SYMBOL = '៛'
 const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
 
 const SUGAR_SPEC_RE = /no\s*sugar|无糖|微糖|半糖|少糖|正常糖|(?:25|50|75|100)%/i
+const SCANNER_MIN_CODE_LENGTH = 5
+const SCANNER_MAX_KEY_GAP_MS = 120
+const SCANNER_MAX_TOTAL_MS = 1500
 
 const SUGAR_OPTIONS = [
   { value: 'no_sugar', label: '无糖' },
@@ -1079,7 +1082,6 @@ export default function CashierPage() {
   const [categories,    setCategories]    = useState<Category[]>([])
   const [activeCatId,   setActiveCatId]   = useState<string | null>(null)
   const [searchKw,      setSearchKw]      = useState('')
-  const [scannerSubmit, setScannerSubmit] = useState<{ id: number; value: string } | null>(null)
   const [cart,          setCart]          = useState<CartLine[]>([])
   const [payment,       setPayment]       = useState<CashierPaymentMethod>('CASH')
   const [submitting,    setSubmitting]    = useState(false)
@@ -1141,8 +1143,10 @@ export default function CashierPage() {
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
   const searchRef       = useRef<HTMLInputElement>(null)
-  const scannerSubmitSeqRef = useRef(0)
-  const handledScannerSubmitIdRef = useRef(0)
+  const scannerBufferRef = useRef('')
+  const scannerFirstKeyAtRef = useRef(0)
+  const scannerLastKeyAtRef = useRef(0)
+  const scannerMaxKeyGapRef = useRef(0)
   const ordersRef       = useRef<HTMLDivElement>(null)
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
@@ -2460,26 +2464,78 @@ export default function CashierPage() {
     return p.categoryId === activeCatId || (p.categoryId !== null && l2Ids.has(p.categoryId))
   })
   useEffect(() => {
-    if (!scannerSubmit) return
-    if (handledScannerSubmitIdRef.current === scannerSubmit.id) return
-    const submitted = normalizeSearchText(scannerSubmit.value)
-    if (!submitted || normalizeSearchText(searchKw) !== submitted) return
-    if (displayProducts.length !== 1) return
-    const product = displayProducts[0]
-    if (!productMatchesExactCode(product, submitted)) return
+    if (!isDesktopPos) return
 
-    handledScannerSubmitIdRef.current = scannerSubmit.id
-    if (!isOnline && productsSource !== 'cache') {
-      showToast('当前无商品缓存，无法离线收银')
-      setScannerSubmit(null)
-      focusSearchInput()
-      return
+    function resetScannerBuffer() {
+      scannerBufferRef.current = ''
+      scannerFirstKeyAtRef.current = 0
+      scannerLastKeyAtRef.current = 0
+      scannerMaxKeyGapRef.current = 0
     }
-    addToCart(product)
-    setSearchKw('')
-    setScannerSubmit(null)
-    focusSearchInput()
-  }, [addToCart, displayProducts, focusSearchInput, isOnline, productsSource, scannerSubmit, searchKw])
+
+    function shouldIgnoreBecauseTypingElsewhere() {
+      const active = document.activeElement
+      if (!active || active === searchRef.current) return false
+      if (active instanceof HTMLInputElement) return true
+      if (active instanceof HTMLTextAreaElement) return true
+      if (active instanceof HTMLSelectElement) return true
+      return active instanceof HTMLElement && active.isContentEditable
+    }
+
+    function onScannerKeyDown(e: KeyboardEvent) {
+      if (shouldIgnoreBecauseTypingElsewhere()) {
+        resetScannerBuffer()
+        return
+      }
+
+      const now = Date.now()
+      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const gap = scannerLastKeyAtRef.current ? now - scannerLastKeyAtRef.current : 0
+        if (gap > SCANNER_MAX_KEY_GAP_MS) {
+          scannerBufferRef.current = ''
+          scannerFirstKeyAtRef.current = now
+          scannerMaxKeyGapRef.current = 0
+        } else if (!scannerFirstKeyAtRef.current) {
+          scannerFirstKeyAtRef.current = now
+        }
+        scannerMaxKeyGapRef.current = Math.max(scannerMaxKeyGapRef.current, gap)
+        scannerLastKeyAtRef.current = now
+        scannerBufferRef.current += e.key
+        return
+      }
+
+      if (e.key !== 'Enter') return
+
+      const rawCode = cleanSearchText(scannerBufferRef.current)
+      const duration = scannerFirstKeyAtRef.current ? now - scannerFirstKeyAtRef.current : 0
+      const isScannerInput =
+        rawCode.length >= SCANNER_MIN_CODE_LENGTH &&
+        duration <= SCANNER_MAX_TOTAL_MS &&
+        scannerMaxKeyGapRef.current <= SCANNER_MAX_KEY_GAP_MS
+      resetScannerBuffer()
+      if (!isScannerInput) return
+
+      const normalized = normalizeSearchText(rawCode)
+      const matches = products.filter(p => productMatchesExactCode(p, normalized))
+      if (matches.length !== 1) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation()
+      if (!isOnline && productsSource !== 'cache') {
+        showToast('当前无商品缓存，无法离线收银')
+        focusSearchInput()
+        return
+      }
+      addToCart(matches[0])
+      setSearchKw('')
+      if (searchRef.current) searchRef.current.value = ''
+      focusSearchInput()
+    }
+
+    window.addEventListener('keydown', onScannerKeyDown, true)
+    return () => window.removeEventListener('keydown', onScannerKeyDown, true)
+  }, [addToCart, focusSearchInput, isDesktopPos, isOnline, products, productsSource])
   const d = desktopCopy(lang as DeskLang)
   const categoryById = new Map(categories.map(c => [c.id, c]))
   const displayProductGroups = (() => {
@@ -2620,20 +2676,7 @@ export default function CashierPage() {
     : ''
 
   function handleSearchChange(value: string) {
-    setScannerSubmit(null)
     setSearchKw(value.replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, ''))
-  }
-
-  function handleSearchKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter') return
-    const cleaned = cleanSearchText(e.currentTarget.value)
-    if (cleaned !== searchKw) setSearchKw(cleaned)
-    const normalized = normalizeSearchText(cleaned)
-    if (!normalized) return
-    e.preventDefault()
-    const nextId = scannerSubmitSeqRef.current + 1
-    scannerSubmitSeqRef.current = nextId
-    setScannerSubmit({ id: nextId, value: cleaned })
   }
 
   function handleClearSearch() {
@@ -2937,7 +2980,6 @@ export default function CashierPage() {
                 value={searchKw}
                 onChange={e => handleSearchChange(e.target.value)}
                 onBlur={() => setSearchKw(cleanSearchText(searchKw))}
-                onKeyDown={handleSearchKeyDown}
               />
               {searchKw.length > 0 && (
                 <button
