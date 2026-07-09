@@ -1,11 +1,13 @@
 /**
  * GET /api/cashier/orders?storeCode=xxx
  *
- * Public (storeCode-authenticated). Returns PENDING + CONFIRMED customer orders
+ * Desktop POS endpoint. Requires storeCode + signed POS device token.
+ * Returns PENDING + CONFIRMED customer orders
  * for the desktop cashier panel. Polling endpoint.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
 
 export async function GET(req: NextRequest) {
   const storeCode = req.nextUrl.searchParams.get('storeCode')?.trim()
@@ -17,6 +19,9 @@ export async function GET(req: NextRequest) {
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  }
+  if (!verifyPosDeviceRequest(req, { tenantId: store.tenantId, storeId: store.id, storeCode })) {
+    return unauthorizedPosResponse()
   }
 
   const orders = await prisma.customerOrder.findMany({

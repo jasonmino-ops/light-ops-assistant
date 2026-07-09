@@ -1,12 +1,14 @@
 /**
  * PATCH /api/cashier/orders/[id]?storeCode=xxx
  *
- * Public (storeCode-authenticated). Advances order status from the desktop cashier.
+ * Desktop POS endpoint. Requires storeCode + signed POS device token.
+ * Advances order status from the desktop cashier.
  * Allowed: PENDING → CONFIRMED | CANCELLED, CONFIRMED → COMPLETED | CANCELLED.
  * No Telegram notification sent in v1; mobile /home sees status via its own poll.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
 
 const ALLOWED: Record<string, string[]> = {
   PENDING:   ['CONFIRMED', 'CANCELLED'],
@@ -23,10 +25,13 @@ export async function PATCH(
 
   const store = await prisma.store.findUnique({
     where: { code: storeCode },
-    select: { tenantId: true, status: true },
+    select: { id: true, tenantId: true, status: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  }
+  if (!verifyPosDeviceRequest(req, { tenantId: store.tenantId, storeId: store.id, storeCode })) {
+    return unauthorizedPosResponse()
   }
 
   let body: { status?: string }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
+import { isPosUnauthorized, posDeviceHeaders } from '@/lib/desktop-pos-client'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
@@ -291,7 +292,14 @@ export default function RecordsPage() {
 
       try {
         const startedAt = performance.now()
-        const res = await apiFetch(`/api/records?${params}`)
+        const res = await apiFetch(`/api/records?${params}`, isDesktopRecords ? {
+          headers: posDeviceHeaders(desktopStoreCode),
+        } : undefined)
+        const unauthorizedBody = !res.ok ? await res.clone().json().catch(() => null) : null
+        if (isPosUnauthorized(unauthorizedBody, res.status)) {
+          setError('本 POS 电脑尚未授权，请回到电脑收银台先授权本机。')
+          return
+        }
         if (!res.ok) {
           setError(t('records.loadFailed'))
           return

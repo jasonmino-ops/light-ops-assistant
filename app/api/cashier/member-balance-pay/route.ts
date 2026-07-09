@@ -1,7 +1,7 @@
 /**
  * POST /api/cashier/member-balance-pay
  *
- * Public cashier endpoint. It identifies the store by storeCode and creates
+ * Desktop POS endpoint. Requires storeCode + signed POS device token, then creates
  * the same SaleRecord/PaymentIntent shape as /api/cashier/sales, but pays by
  * Member.balance in one transaction with a CONSUME ledger.
  */
@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
+import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
 
@@ -55,6 +56,9 @@ export async function POST(req: NextRequest) {
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  }
+  if (!verifyPosDeviceRequest(req, { tenantId: store.tenantId, storeId: store.id, storeCode: store.code })) {
+    return unauthorizedPosResponse()
   }
 
   const ownerRole = await prisma.userStoreRole.findFirst({

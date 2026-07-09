@@ -1,7 +1,7 @@
 /**
  * POST /api/cashier/sales
  *
- * Public endpoint — no Telegram session required.
+ * Desktop POS endpoint. Requires storeCode + signed POS device token.
  * Identifies the store by storeCode, uses the store OWNER as operatorUserId,
  * and records remark = '电脑收银台' on every sale line.
  *
@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
+import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
 
@@ -75,6 +76,9 @@ export async function POST(req: NextRequest) {
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  }
+  if (!verifyPosDeviceRequest(req, { tenantId: store.tenantId, storeId: store.id, storeCode: store.code })) {
+    return unauthorizedPosResponse()
   }
 
   // Use store OWNER as operatorUserId

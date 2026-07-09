@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
 import { createHash } from 'crypto'
 import type { Product } from '@prisma/client'
+import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
 
 const MAX_ORDERS = 20
 const MAX_ITEMS_PER_ORDER = 100
@@ -409,6 +410,18 @@ export async function POST(req: NextRequest) {
   }
   if (orders.length > MAX_ORDERS) {
     return NextResponse.json({ error: 'INVALID_PAYLOAD', message: `orders cannot exceed ${MAX_ORDERS}` }, { status: 400 })
+  }
+  if (!batch.storeId || !batch.storeCode) {
+    return NextResponse.json({ error: 'INVALID_PAYLOAD', message: 'storeId and storeCode are required' }, { status: 400 })
+  }
+
+  const store = await prisma.store.findFirst({
+    where: { id: batch.storeId, code: batch.storeCode, status: 'ACTIVE' },
+    select: { id: true, tenantId: true, code: true },
+  })
+  if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  if (!verifyPosDeviceRequest(req, { tenantId: store.tenantId, storeId: store.id, storeCode: store.code })) {
+    return unauthorizedPosResponse()
   }
 
   const results: SyncResult[] = []

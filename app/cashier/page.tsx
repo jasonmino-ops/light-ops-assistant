@@ -41,6 +41,13 @@ import {
   type HoldOrder,
 } from '@/lib/cashier-hold-orders'
 import { clearShiftOperator, clearShiftStart, getOrCreateShiftOperator, getOrCreateShiftStart } from '@/lib/cashier-shift'
+import {
+  getPosDeviceId,
+  getPosDeviceToken,
+  isPosUnauthorized,
+  posDeviceHeaders,
+  savePosDeviceToken,
+} from '@/lib/desktop-pos-client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -868,6 +875,21 @@ const s: Record<string, CSSProperties> = {
   },
   offlineSyncBtnDis: { opacity: 0.45, cursor: 'not-allowed' },
   offlineSyncSummary: { marginTop: 4, color: '#bfdbfe', fontSize: 9, lineHeight: 1.35 },
+  posAuthCard: {
+    marginTop: 6,
+    borderRadius: 10,
+    padding: '7px 8px',
+    background: 'rgba(30,41,59,.72)',
+    border: '1px solid rgba(148,163,184,.20)',
+    color: '#dbeafe',
+    fontSize: 10,
+    lineHeight: 1.4,
+  },
+  posAuthCardOk: { borderColor: 'rgba(52,211,153,.35)', background: 'rgba(6,78,59,.35)', color: '#d1fae5' },
+  posAuthCardWarn: { borderColor: 'rgba(251,191,36,.36)', background: 'rgba(120,53,15,.30)', color: '#fef3c7' },
+  posAuthTitle: { fontSize: 11, fontWeight: 900, color: '#fff', marginBottom: 3 },
+  posAuthBtn: { width: '100%', marginTop: 6, minHeight: 28, borderRadius: 8, border: '1px solid rgba(96,165,250,.28)', background: 'rgba(37,99,235,.72)', color: '#fff', fontSize: 10, fontWeight: 900, cursor: 'pointer' },
+  posAuthBtnDis: { opacity: 0.55, cursor: 'not-allowed' },
   sideDivider: { height: 1, background: 'rgba(255,255,255,.08)', margin: '6px 0' },
   sideCats:    { padding: '6px 6px', flex: 1 },
   sideCat:     { display: 'block', width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 8, border: 'none', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer', marginBottom: 2 },
@@ -1145,6 +1167,9 @@ export default function CashierPage() {
   const [memberPayError, setMemberPayError] = useState('')
   const [memberPayMember, setMemberPayMember] = useState<CashierMember | null>(null)
   const [isDesktopPos, setIsDesktopPos] = useState(false)
+  const [posDeviceToken, setPosDeviceToken] = useState('')
+  const [posAuthLoading, setPosAuthLoading] = useState(false)
+  const [posAuthError, setPosAuthError] = useState('')
   const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const [cashTendered, setCashTendered] = useState('')
@@ -1361,6 +1386,8 @@ export default function CashierPage() {
     rememberCashierStore(sc)
 
     setStoreCode(sc)
+    setPosDeviceToken(getPosDeviceToken(sc))
+    setPosAuthError('')
     setIsRestoringCashierStore(false)
     getCashierProductCacheMeta(sc)
       .then((meta) => {
@@ -1497,9 +1524,18 @@ export default function CashierPage() {
   useEffect(() => {
     if (!storeCode) return
     function poll() {
-      fetch(`/api/cashier/orders?storeCode=${encodeURIComponent(storeCode!)}`)
-        .then(r => r.json())
-        .then((data: CashierOrder[]) => {
+      fetch(`/api/cashier/orders?storeCode=${encodeURIComponent(storeCode!)}`, {
+        headers: posDeviceHeaders(storeCode),
+      })
+        .then(async (r) => {
+          const data = await r.json().catch(() => null)
+          if (!r.ok && isPosUnauthorized(data, r.status)) {
+            setPosAuthError(posAuthCopy().needAuth)
+            return null
+          }
+          return data as CashierOrder[] | null
+        })
+        .then((data) => {
           if (!Array.isArray(data)) return
           if (!initialPollDone.current) {
             initialPollDone.current = true
@@ -1517,7 +1553,7 @@ export default function CashierPage() {
     poll()
     const timer = setInterval(poll, 5000)
     return () => clearInterval(timer)
-  }, [storeCode])
+  }, [storeCode, posDeviceToken, lang])
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1532,6 +1568,82 @@ export default function CashierPage() {
   }, [focusSearchInput])
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  function posAuthCopy() {
+    if (lang === 'en') {
+      return {
+        okTitle: 'POS device authorized',
+        okBody: 'This computer can create sales and sync records for this store.',
+        warnTitle: 'POS device not authorized',
+        warnBody: 'Local CASH can be saved offline, but real sales, member balance, order status and records need device authorization.',
+        button: 'Authorize this computer',
+        loading: 'Authorizing...',
+        success: 'This POS computer is authorized',
+        failed: 'Authorization failed. Please ask the owner or active staff to sign in and try again.',
+        needAuth: 'This POS computer is not authorized yet. Please bind this device first.',
+      }
+    }
+    if (lang === 'km') {
+      return {
+        okTitle: 'បានអនុញ្ញាតឧបករណ៍ POS',
+        okBody: 'កុំព្យូទ័រនេះអាចលក់ និង sync កំណត់ត្រាសម្រាប់ហាងនេះ។',
+        warnTitle: 'ឧបករណ៍ POS មិនទាន់អនុញ្ញាត',
+        warnBody: 'CASH offline អាចរក្សាទុកក្នុងម៉ាស៊ីន ប៉ុន្តែការលក់ពិត កាត់សមតុល្យ កែស្ថានភាព និងមើលកំណត់ត្រា ត្រូវការអនុញ្ញាត។',
+        button: 'អនុញ្ញាតកុំព្យូទ័រនេះ',
+        loading: 'កំពុងអនុញ្ញាត...',
+        success: 'កុំព្យូទ័រ POS នេះបានអនុញ្ញាត',
+        failed: 'អនុញ្ញាតមិនបាន។ សូមឱ្យម្ចាស់ ឬបុគ្គលិកដែលសកម្ម login ហើយសាកល្បងម្តងទៀត។',
+        needAuth: 'កុំព្យូទ័រ POS នេះមិនទាន់អនុញ្ញាត។ សូមភ្ជាប់ឧបករណ៍ជាមុន។',
+      }
+    }
+    return {
+      okTitle: 'POS 设备已授权',
+      okBody: '本电脑可为当前门店创建销售并同步记录。',
+      warnTitle: 'POS 设备未授权',
+      warnBody: '可离线保存本地 CASH 单，但真实销售、会员扣款、订单状态和销售记录需要先授权本机。',
+      button: '授权本机',
+      loading: '授权中...',
+      success: '本 POS 电脑已授权',
+      failed: '授权失败，请让老板或在职员工先登录后再试。',
+      needAuth: '本 POS 电脑尚未授权，请先绑定本机。',
+    }
+  }
+
+  function handlePosUnauthorized(message?: string) {
+    const copy = posAuthCopy()
+    setPosAuthError(message || copy.needAuth)
+    showToast(message || copy.needAuth)
+  }
+
+  async function handleAuthorizePosDevice() {
+    if (!storeCode || posAuthLoading) return
+    setPosAuthLoading(true)
+    setPosAuthError('')
+    try {
+      const deviceId = getPosDeviceId()
+      const res = await apiFetch('/api/cashier/device-token', {
+        method: 'POST',
+        body: JSON.stringify({ storeCode, deviceId }),
+      }, DEV_OWNER_CTX)
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body?.token) throw new Error(body?.message || body?.error || 'AUTH_FAILED')
+      savePosDeviceToken(storeCode, body.token)
+      setPosDeviceToken(body.token)
+      showToast(posAuthCopy().success)
+    } catch {
+      const msg = posAuthCopy().failed
+      setPosAuthError(msg)
+      showToast(msg)
+    } finally {
+      setPosAuthLoading(false)
+    }
+  }
+
+  function requireOnlinePosAuthorization() {
+    if (posDeviceToken) return true
+    handlePosUnauthorized()
+    return false
+  }
 
   function buildReceiptSnapshot(input: {
     items: ReturnType<typeof cashierDisplayItems>
@@ -1709,8 +1821,15 @@ export default function CashierPage() {
         pageSize: '30',
         page: '1',
       })
-      const res = await fetch(`/api/records?${params.toString()}`, { cache: 'no-store' })
-      if (!res.ok) throw new Error('DESKTOP_RECORDS_LOAD_FAILED')
+      const res = await fetch(`/api/records?${params.toString()}`, { cache: 'no-store', headers: posDeviceHeaders(storeCode) })
+      const maybeBody = await res.clone().json().catch(() => null)
+      if (!res.ok) {
+        if (isPosUnauthorized(maybeBody, res.status)) {
+          handlePosUnauthorized()
+          return
+        }
+        throw new Error('DESKTOP_RECORDS_LOAD_FAILED')
+      }
       const data: ShiftRecordsResponse = await res.json()
       setDesktopRecords({ loading: false, error: '', items: data.items })
     } catch (err) {
@@ -1744,8 +1863,15 @@ export default function CashierPage() {
       do {
         const params = new URLSearchParams(paramsBase)
         params.set('page', String(page))
-        const res = await fetch(`/api/records?${params.toString()}`, { cache: 'no-store' })
-        if (!res.ok) throw new Error('SHIFT_RECORDS_LOAD_FAILED')
+        const res = await fetch(`/api/records?${params.toString()}`, { cache: 'no-store', headers: posDeviceHeaders(storeCode) })
+        const maybeBody = await res.clone().json().catch(() => null)
+        if (!res.ok) {
+          if (isPosUnauthorized(maybeBody, res.status)) {
+            handlePosUnauthorized()
+            throw new Error('POS_DEVICE_UNAUTHORIZED')
+          }
+          throw new Error('SHIFT_RECORDS_LOAD_FAILED')
+        }
         const data: ShiftRecordsResponse = await res.json()
         allItems.push(...data.items)
         total = data.total
@@ -1854,9 +1980,12 @@ export default function CashierPage() {
       })
       if (saleType) params.set('saleType', saleType)
       const url = `/api/records?${params.toString()}`
-      const res = await fetch(url, { cache: 'no-store' })
+      const res = await fetch(url, { cache: 'no-store', headers: posDeviceHeaders(storeCode) })
       const data: DayCloseRecordsResponse = await res.json()
-      if (!res.ok) throw new Error(`DAY_CLOSE_RECORDS_LOAD_FAILED_${res.status}`)
+      if (!res.ok) {
+        if (isPosUnauthorized(data, res.status)) handlePosUnauthorized()
+        throw new Error(`DAY_CLOSE_RECORDS_LOAD_FAILED_${res.status}`)
+      }
       allItems.push(...data.items)
       total = data.total
       summary = summary ?? data.summary ?? null
@@ -2101,6 +2230,7 @@ export default function CashierPage() {
 
   async function handleSyncOfflineOrders() {
     if (!storeCode || offlineSyncing) return
+    if (!requireOnlinePosAuthorization()) return
     if (!isOnline) {
       showToast('恢复网络后可同步')
       return
@@ -2121,7 +2251,7 @@ export default function CashierPage() {
       await markOfflineOrdersSyncing(syncingIds)
       const res = await fetch('/api/cashier/offline-sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
         body: JSON.stringify({
           storeId: first.storeId,
           storeCode,
@@ -2130,6 +2260,11 @@ export default function CashierPage() {
         }),
       })
       const body = await res.json().catch(() => null)
+      if (isPosUnauthorized(body, res.status)) {
+        await markOfflineOrdersSyncFailed(syncingIds, body?.message ?? 'POS_DEVICE_UNAUTHORIZED')
+        handlePosUnauthorized()
+        return
+      }
       if (!res.ok || !body || !Array.isArray(body.results)) {
         const msg = body?.message ?? body?.error ?? 'SYNC_REQUEST_FAILED'
         await markOfflineOrdersSyncFailed(syncingIds, msg)
@@ -2211,6 +2346,7 @@ export default function CashierPage() {
 
   async function handleMemberBalancePay() {
     if (!storeCode || !memberPayMember || cart.length === 0 || memberPayLoading) return
+    if (!requireOnlinePosAuthorization()) return
     if (!isOnline) {
       showToast('离线模式下不支持会员余额支付')
       return
@@ -2224,7 +2360,7 @@ export default function CashierPage() {
     try {
       const res = await fetch('/api/cashier/member-balance-pay', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
         body: JSON.stringify({
           storeCode,
           memberId: memberPayMember.id,
@@ -2232,6 +2368,10 @@ export default function CashierPage() {
         }),
       })
       const body = await res.json().catch(() => null)
+      if (isPosUnauthorized(body, res.status)) {
+        handlePosUnauthorized()
+        return
+      }
       if (!res.ok || !body) {
         const message =
           body?.error === 'INSUFFICIENT_BALANCE' ? '会员余额不足' :
@@ -2483,9 +2623,13 @@ export default function CashierPage() {
     const submittedItems = cashierDisplayItems(cart)
     const submittedTotal = cartTotal(cart)
     try {
+      if (!requireOnlinePosAuthorization()) {
+        setSubmitting(false)
+        return
+      }
       const res = await fetch('/api/cashier/sales', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
         body: JSON.stringify({
           storeCode,
           items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
@@ -2493,6 +2637,10 @@ export default function CashierPage() {
         }),
       })
       const body = await res.json()
+      if (isPosUnauthorized(body, res.status)) {
+        handlePosUnauthorized()
+        return
+      }
       if (!res.ok) { setSubmitError(body.message ?? body.error ?? '提交失败，请重试'); return }
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
@@ -2529,12 +2677,18 @@ export default function CashierPage() {
   // ── Order actions ──────────────────────────────────────────────────────────
   async function handleOrderAction(id: string, newStatus: string) {
     if (!storeCode) return
+    if (!requireOnlinePosAuthorization()) return
     setUpdatingId(id)
     try {
       const res = await fetch(`/api/cashier/orders/${id}?storeCode=${encodeURIComponent(storeCode)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
         body: JSON.stringify({ status: newStatus }),
       })
+      const body = await res.clone().json().catch(() => null)
+      if (isPosUnauthorized(body, res.status)) {
+        handlePosUnauthorized()
+        return
+      }
       if (res.ok) {
         if (newStatus === 'COMPLETED' || newStatus === 'CANCELLED') {
           knownOrderIds.current.delete(id)
@@ -2779,6 +2933,7 @@ export default function CashierPage() {
       ? d.offlineHintOnline
       : d.offlineHintOffline
     : ''
+  const posCopy = posAuthCopy()
 
   function handleSearchChange(value: string) {
     setSearchKw(value.replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, ''))
@@ -2987,6 +3142,28 @@ export default function CashierPage() {
                 </div>
               )}
             </div>
+            {storeCode && (
+              <div style={{
+                ...s.posAuthCard,
+                ...(posDeviceToken ? s.posAuthCardOk : s.posAuthCardWarn),
+              }}>
+                <div style={s.posAuthTitle}>
+                  {posDeviceToken ? posCopy.okTitle : posCopy.warnTitle}
+                </div>
+                <div>{posDeviceToken ? posCopy.okBody : posCopy.warnBody}</div>
+                {posAuthError && <div style={{ marginTop: 4, color: '#fecaca' }}>{posAuthError}</div>}
+                {!posDeviceToken && (
+                  <button
+                    type="button"
+                    style={{ ...s.posAuthBtn, ...(posAuthLoading ? s.posAuthBtnDis : {}) }}
+                    disabled={posAuthLoading}
+                    onClick={handleAuthorizePosDevice}
+                  >
+                    {posAuthLoading ? posCopy.loading : posCopy.button}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div style={s.sideCats}>
             <button
