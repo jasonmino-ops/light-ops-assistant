@@ -1146,9 +1146,18 @@ export default function CashierPage() {
   const previousCashierDisplayCartCountRef = useRef(0)
   const autoPrintedReceiptKeyRef = useRef('')
 
+  const focusSearchInput = useCallback(() => {
+    window.setTimeout(() => searchRef.current?.focus(), 0)
+  }, [])
+
   useEffect(() => {
     setIsDesktopPos(window.location.pathname === '/desktop/pos')
   }, [])
+
+  useEffect(() => {
+    if (!isDesktopPos || loading || noCodeError || isRestoringCashierStore) return
+    focusSearchInput()
+  }, [isDesktopPos, loading, noCodeError, isRestoringCashierStore, focusSearchInput])
 
   useEffect(() => {
     if (!isDesktopPos) return
@@ -1411,13 +1420,13 @@ export default function CashierPage() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === '/' && document.activeElement?.tagName !== 'INPUT') {
-        e.preventDefault(); searchRef.current?.focus()
+        e.preventDefault(); focusSearchInput()
       }
       if (e.key === 'Escape') setSugarModal(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [focusSearchInput])
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
@@ -2179,7 +2188,8 @@ export default function CashierPage() {
       if (found) return prev.map(c => c.barcode === p.barcode && c.sugar === sugar ? { ...c, qty: c.qty + 1 } : c)
       return [...prev, { productId: p.id, barcode: p.barcode, name: p.name, spec: p.spec, price: p.sellPrice, qty: 1, imageUrl: p.imageUrl, sugar }]
     })
-  }, [])
+    if (isDesktopPos) focusSearchInput()
+  }, [focusSearchInput, isDesktopPos])
 
   const updateQty = useCallback((barcode: string, sugar: string | undefined, delta: number) => {
     setCart(prev =>
@@ -2595,16 +2605,18 @@ export default function CashierPage() {
     if (cleaned !== searchKw) setSearchKw(cleaned)
     const normalized = normalizeSearchText(cleaned)
     if (!normalized) return
-    const exactMatch = products.find(p => productMatchesExactCode(p, normalized))
-    if (exactMatch) {
+    const exactMatches = products.filter(p => productMatchesExactCode(p, normalized))
+    if (exactMatches.length === 1) {
       e.preventDefault()
-      handleAddClick(exactMatch)
+      handleAddClick(exactMatches[0])
+      setSearchKw('')
+      focusSearchInput()
     }
   }
 
   function handleClearSearch() {
     setSearchKw('')
-    window.setTimeout(() => searchRef.current?.focus(), 0)
+    focusSearchInput()
   }
 
   // ── Restore PWA storeCode before rendering no-code branches ───────────────
