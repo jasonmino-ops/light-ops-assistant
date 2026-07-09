@@ -158,8 +158,6 @@ const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefi
 
 const SUGAR_SPEC_RE = /no\s*sugar|无糖|微糖|半糖|少糖|正常糖|(?:25|50|75|100)%/i
 const SCANNER_MIN_CODE_LENGTH = 5
-const SCANNER_IDLE_RESET_MS = 1000
-const SCANNER_DEBUG = true
 
 const SUGAR_OPTIONS = [
   { value: 'no_sugar', label: '无糖' },
@@ -919,6 +917,7 @@ const s: Record<string, CSSProperties> = {
   // ── Middle: product grid ──────────────────────────────────────────────────
   mid:         { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', minWidth: 0 },
   topbar:      { padding: '10px 14px', background: '#fff', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 },
+  scannerInput: { position: 'fixed', left: -1000, top: 0, width: 1, height: 1, opacity: 0, border: 0, padding: 0, pointerEvents: 'none' },
   searchWrap:  { flex: 1, position: 'relative', minWidth: 0 },
   search:      { width: '100%', height: 36, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0 42px 0 12px', fontSize: 14, outline: 'none', background: '#f9fafb' },
   searchClear: { position: 'absolute', top: 5, right: 6, width: 26, height: 26, borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#64748b', fontSize: 16, lineHeight: 1, fontWeight: 800, cursor: 'pointer' },
@@ -1143,10 +1142,7 @@ export default function CashierPage() {
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
   const searchRef       = useRef<HTMLInputElement>(null)
-  const scannerBufferRef = useRef('')
-  const scannerFirstKeyAtRef = useRef(0)
-  const scannerLastKeyAtRef = useRef(0)
-  const scannerMaxKeyGapRef = useRef(0)
+  const scannerInputRef = useRef<HTMLInputElement>(null)
   const ordersRef       = useRef<HTMLDivElement>(null)
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
@@ -1157,9 +1153,18 @@ export default function CashierPage() {
     window.setTimeout(() => searchRef.current?.focus(), 0)
   }, [])
 
+  const focusScannerInput = useCallback(() => {
+    window.setTimeout(() => scannerInputRef.current?.focus(), 0)
+  }, [])
+
   useEffect(() => {
     setIsDesktopPos(window.location.pathname === '/desktop/pos')
   }, [])
+
+  useEffect(() => {
+    if (!isDesktopPos || loading || noCodeError || isRestoringCashierStore) return
+    focusScannerInput()
+  }, [isDesktopPos, loading, noCodeError, isRestoringCashierStore, focusScannerInput])
 
   useEffect(() => {
     if (!isDesktopPos) return
@@ -2458,115 +2463,38 @@ export default function CashierPage() {
     const l2Ids = new Set((l2ByParent.get(activeCatId) ?? []).map(c => c.id))
     return p.categoryId === activeCatId || (p.categoryId !== null && l2Ids.has(p.categoryId))
   })
-  useEffect(() => {
-    if (!isDesktopPos) return
 
-    function resetScannerBuffer() {
-      scannerBufferRef.current = ''
-      scannerFirstKeyAtRef.current = 0
-      scannerLastKeyAtRef.current = 0
-      scannerMaxKeyGapRef.current = 0
+  function isScannerInputTerminator(key: string) {
+    return key === 'Enter' || key === 'Tab' || key === '\r' || key === '\n'
+  }
+
+  function clearScannerInput() {
+    if (scannerInputRef.current) scannerInputRef.current.value = ''
+    focusScannerInput()
+  }
+
+  function completeScannerInput(rawValue: string) {
+    const rawCode = cleanSearchText(rawValue)
+    clearScannerInput()
+    if (rawCode.length < SCANNER_MIN_CODE_LENGTH) return
+
+    const normalized = normalizeSearchText(rawCode)
+    const matches = products.filter(p => productMatchesExactCode(p, normalized))
+    if (matches.length === 0) {
+      showToast(`未找到商品：${rawCode}`)
+      return
     }
-
-    function scannerLog(payload: Record<string, unknown>) {
-      if (SCANNER_DEBUG) console.info('[desktop-pos:scanner]', payload)
+    if (matches.length > 1) {
+      showToast(`条码重复：${rawCode}`)
+      return
     }
-
-    function isScannerTerminator(e: KeyboardEvent) {
-      return (
-        e.key === 'Enter' ||
-        e.key === 'Tab' ||
-        e.key === '\r' ||
-        e.key === '\n' ||
-        e.code === 'Enter' ||
-        e.code === 'NumpadEnter' ||
-        e.code === 'Tab'
-      )
+    if (!isOnline && productsSource !== 'cache') {
+      showToast('当前无商品缓存，无法离线收银')
+      return
     }
-
-    function onScannerKeyDown(e: KeyboardEvent) {
-      const now = Date.now()
-      const currentBuffer = scannerBufferRef.current
-      scannerLog({
-        phase: 'key',
-        key: e.key,
-        code: e.code,
-        buffer: currentBuffer,
-        activeTag: document.activeElement?.tagName ?? null,
-      })
-
-      if (isScannerTerminator(e)) {
-        const rawCode = cleanSearchText(currentBuffer)
-        resetScannerBuffer()
-        if (rawCode.length < SCANNER_MIN_CODE_LENGTH) {
-          scannerLog({ phase: 'complete', buffer: rawCode, matchCount: 0, calledAddToCart: false, reason: 'too_short' })
-          return
-        }
-
-        const normalized = normalizeSearchText(rawCode)
-        const matches = products.filter(p => productMatchesExactCode(p, normalized))
-        scannerLog({
-          phase: 'complete',
-          buffer: rawCode,
-          key: e.key,
-          code: e.code,
-          matchCount: matches.length,
-          matchedNames: matches.map(p => p.name),
-          calledAddToCart: false,
-        })
-
-        e.preventDefault()
-        e.stopPropagation()
-        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation()
-        setSearchKw('')
-        if (searchRef.current) searchRef.current.value = ''
-
-        if (matches.length === 0) {
-          showToast(`未找到商品：${rawCode}`)
-          return
-        }
-        if (matches.length > 1) {
-          showToast(`条码重复：${rawCode}`)
-          return
-        }
-        if (!isOnline && productsSource !== 'cache') {
-          showToast('当前无商品缓存，无法离线收银')
-          return
-        }
-        scannerLog({
-          phase: 'addToCart',
-          buffer: rawCode,
-          key: e.key,
-          code: e.code,
-          matchCount: matches.length,
-          productName: matches[0].name,
-          calledAddToCart: true,
-        })
-        addToCart(matches[0], undefined, { focusSearch: false })
-        return
-      }
-
-      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const gap = scannerLastKeyAtRef.current ? now - scannerLastKeyAtRef.current : 0
-        if (gap > SCANNER_IDLE_RESET_MS) {
-          scannerBufferRef.current = ''
-          scannerFirstKeyAtRef.current = now
-          scannerMaxKeyGapRef.current = 0
-        } else if (!scannerFirstKeyAtRef.current) {
-          scannerFirstKeyAtRef.current = now
-        }
-        scannerMaxKeyGapRef.current = Math.max(scannerMaxKeyGapRef.current, gap)
-        scannerLastKeyAtRef.current = now
-        scannerBufferRef.current += e.key
-        if (document.activeElement === searchRef.current && gap > 0 && gap < 80) e.preventDefault()
-        scannerLog({ phase: 'buffer', buffer: scannerBufferRef.current, key: e.key, code: e.code })
-        return
-      }
-    }
-
-    window.addEventListener('keydown', onScannerKeyDown, true)
-    return () => window.removeEventListener('keydown', onScannerKeyDown, true)
-  }, [addToCart, focusSearchInput, isDesktopPos, isOnline, products, productsSource])
+    addToCart(matches[0], undefined, { focusSearch: false })
+    focusScannerInput()
+  }
   const d = desktopCopy(lang as DeskLang)
   const categoryById = new Map(categories.map(c => [c.id, c]))
   const displayProductGroups = (() => {
@@ -2800,6 +2728,24 @@ export default function CashierPage() {
 
       {/* ── Main 3-column layout ──────────────────────────────────────────── */}
       <div style={{ ...s.root, ...(isDesktopPos ? s.desktopRoot : {}) }}>
+        {isDesktopPos && (
+          <input
+            ref={scannerInputRef}
+            aria-label="Scanner input"
+            autoComplete="off"
+            inputMode="none"
+            style={s.scannerInput}
+            onKeyDown={(e) => {
+              if (!isScannerInputTerminator(e.key)) return
+              e.preventDefault()
+              completeScannerInput(e.currentTarget.value)
+            }}
+            onChange={(e) => {
+              const value = e.currentTarget.value
+              if (/[\r\n\t]/.test(value)) completeScannerInput(value)
+            }}
+          />
+        )}
 
         {/* LEFT SIDEBAR */}
         <div style={s.sidebar}>
