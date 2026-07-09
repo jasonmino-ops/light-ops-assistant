@@ -105,7 +105,16 @@ export default function TelegramInit({
       fetch('/api/auth/status')
         .then((r) => {
           if (r.status === 401) {
-            window.location.replace('/relogin')
+            const returnUrl = new URLSearchParams(window.location.search).get('returnUrl')
+            const reloginUrl = returnUrl
+              ? `/relogin?returnUrl=${encodeURIComponent(returnUrl)}`
+              : '/relogin'
+            window.location.replace(reloginUrl)
+            return
+          }
+          const returnUrl = safeReturnUrl()
+          if (returnUrl) {
+            window.location.replace(returnUrl)
             return
           }
           console.info('[auth] status ready', Math.round(performance.now() - startedAt), 'ms')
@@ -198,6 +207,11 @@ export default function TelegramInit({
             if (window.location.pathname.startsWith('/ops')) {
               window.location.href = '/ops'
             } else {
+              const returnUrl = safeReturnUrl()
+              if (returnUrl) {
+                window.location.replace(returnUrl)
+                return
+              }
               // 首次进入（sessionStorage 为空 → 触发了 auth）统一落到 /home，
               // 不管 WebView 上次记住的路径是哪里（避免留在 /dashboard 等非默认页）
               window.location.replace('/home')
@@ -244,6 +258,20 @@ export default function TelegramInit({
           setAuthChecking(false)
           setAuthError('网络错误，请重试')
         })
+    }
+
+    function safeReturnUrl() {
+      const fromQuery = new URLSearchParams(window.location.search).get('returnUrl')
+      let stored = ''
+      try {
+        stored = localStorage.getItem('cashier:pendingAuthorizeUrl') || ''
+      } catch {}
+      const value = fromQuery || stored
+      if (!value?.startsWith('/') || value.startsWith('//')) return ''
+      if (value.startsWith('/cashier/authorize')) {
+        try { localStorage.removeItem('cashier:pendingAuthorizeUrl') } catch {}
+      }
+      return value
     }
   }, [])
 

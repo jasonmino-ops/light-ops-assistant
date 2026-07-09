@@ -2,7 +2,7 @@
  * GET /api/auth/status
  *
  * Lightweight session check used by PWA mode (non-Telegram context).
- * Returns 200 { ok: true } when the auth-session cookie is valid.
+ * Returns 200 { ok: true, role } when the auth-session cookie is valid.
  * Returns 401 { ok: false } when the session is missing or expired.
  *
  * Unlike /api/me, this endpoint never returns 200 for unauthenticated requests,
@@ -16,5 +16,5 @@ export async function GET(req: NextRequest) {
   if (!ctx) {
     return NextResponse.json({ ok: false }, { status: 401 })
   }
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, role: ctx.role })
 }

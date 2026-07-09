@@ -3092,6 +3092,22 @@ export default function CashierPage() {
               {posAuthChecking ? '检查中...' : '我已授权，重新检查'}
             </button>
           </div>
+          {authUrl && (
+            <button
+              type="button"
+              style={{ ...s.authBtn, ...s.authBtnSecondary, width: '100%', marginTop: 10 }}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(authUrl)
+                  showToast('授权链接已复制')
+                } catch {
+                  showToast('复制失败，请手动复制页面中的授权链接')
+                }
+              }}
+            >
+              复制授权链接
+            </button>
+          )}
           {posAuthError && <div style={s.authError}>{posAuthError}</div>}
         </section>
         {toast && <div style={s.toast}>{toast}</div>}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { normalizeTelegramBotUsername } from '@/lib/telegram-link'
 
 const BOT_USERNAME = normalizeTelegramBotUsername(
@@ -12,7 +13,9 @@ const BOT_URL = BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : null
 const REDIRECT_DELAY = 800 // ms
 
 export default function ReloginPage() {
+  const searchParams = useSearchParams()
   const [countdown, setCountdown] = useState(false)
+  const returnUrl = searchParams.get('returnUrl')?.trim() ?? ''
 
   useEffect(() => {
     if (!BOT_URL) return
@@ -53,6 +56,11 @@ export default function ReloginPage() {
           </a>
         ) : (
           <p style={s.noBot}>未配置 Telegram Bot，请联系管理员</p>
+        )}
+        {returnUrl && (
+          <p style={s.returnHint}>
+            登录后如未自动回到原页面，请重新打开授权链接。
+          </p>
         )}
       </div>
     </div>
@@ -128,6 +136,13 @@ const s: Record<string, React.CSSProperties> = {
     textDecoration: 'none',
     lineHeight: 1.5,
     boxSizing: 'border-box',
+  },
+  returnHint: {
+    margin: '6px 0 0',
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: '#666',
+    textAlign: 'center',
   },
   noBot: {
     fontSize: 13,
