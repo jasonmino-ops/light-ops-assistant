@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode: store.code,
-  })
+  }, { allowStoreCodeFallback: true })
   if (!posAuth) {
     return unauthorizedPosResponse()
   }

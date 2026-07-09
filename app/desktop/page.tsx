@@ -25,6 +25,7 @@ export default function DesktopModePage() {
 
   const t = desktopCopy[lang]
   const qs = buildDesktopQuery(storeCode, lang)
+  const posQs = buildDesktopQuery(storeCode, lang, 'pos')
   const entryStyle = (entry: 'pos' | 'display') => activeEntry === entry ? { ...s.card, ...s.cardActive } : s.card
   function changeLang(nextLang: DesktopLang) {
     setLang(nextLang)
@@ -52,7 +53,7 @@ export default function DesktopModePage() {
 
         <div style={s.grid}>
           <a
-            href={`/desktop/pos${qs}`}
+            href={`/desktop/pos${posQs}`}
             style={entryStyle('pos')}
             onMouseEnter={() => setActiveEntry('pos')}
             onMouseLeave={() => setActiveEntry(null)}
@@ -94,10 +95,11 @@ function resolveDesktopLang(raw: string | null): DesktopLang {
   return 'en'
 }
 
-function buildDesktopQuery(storeCode: string, lang: DesktopLang) {
+function buildDesktopQuery(storeCode: string, lang: DesktopLang, mode?: 'pos') {
   const params = new URLSearchParams()
   if (storeCode) params.set('storeCode', storeCode)
   params.set('lang', lang)
+  if (mode) params.set('mode', mode)
   return `?${params.toString()}`
 }
 

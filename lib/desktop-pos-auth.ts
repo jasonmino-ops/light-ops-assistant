@@ -33,7 +33,7 @@ export type DesktopPosAuthorization = {
   storeCode: string
   operatorUserId: string
   role: 'OWNER' | 'STAFF'
-  source: 'ACCOUNT' | 'DEVICE'
+  source: 'ACCOUNT' | 'DEVICE' | 'STORE_CODE'
 }
 
 function secret(): string {
@@ -146,12 +146,13 @@ export async function authorizeDesktopPosAccount(
 export async function authorizeDesktopPosRequest(
   req: NextRequest,
   expected: DesktopPosStoreScope,
+  options?: { allowStoreCodeFallback?: boolean },
 ): Promise<DesktopPosAuthorization | null> {
   const accountAuth = await authorizeDesktopPosAccount(req, expected)
   if (accountAuth) return accountAuth
 
   const deviceAuth = verifyPosDeviceRequest(req, expected)
-  if (!deviceAuth) return null
+  if (!deviceAuth && !options?.allowStoreCodeFallback) return null
 
   const ownerRole = await prisma.userStoreRole.findFirst({
     where: {
@@ -170,6 +171,6 @@ export async function authorizeDesktopPosRequest(
     storeCode: expected.storeCode,
     operatorUserId: ownerRole.userId,
     role: 'OWNER',
-    source: 'DEVICE',
+    source: deviceAuth ? 'DEVICE' : 'STORE_CODE',
   }
 }

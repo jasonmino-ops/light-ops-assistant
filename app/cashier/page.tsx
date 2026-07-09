@@ -269,7 +269,7 @@ function isValidStoreCode(sc: string | null): sc is string {
   return !!sc && /^[A-Za-z0-9_-]{2,80}$/.test(sc)
 }
 function cashierUrlForStore(sc: string) {
-  return `/cashier?storeCode=${encodeURIComponent(sc)}`
+  return `/cashier?from=desktop&storeCode=${encodeURIComponent(sc)}`
 }
 function desktopRecordsUrlForStore(sc: string) {
   const params = new URLSearchParams()
@@ -281,6 +281,7 @@ function desktopRecordsUrlForStore(sc: string) {
   const returnParams = new URLSearchParams()
   returnParams.set('storeCode', sc)
   if (lang) returnParams.set('lang', lang)
+  returnParams.set('mode', 'pos')
   params.set('returnTo', `/desktop/pos?${returnParams.toString()}`)
   return `/records?${params.toString()}`
 }
@@ -1413,28 +1414,33 @@ export default function CashierPage() {
     }
 
     rememberCashierStore(sc)
+    const desktopPublicEntry =
+      window.location.pathname === '/desktop/pos' ||
+      new URLSearchParams(window.location.search).get('from') === 'desktop'
 
     setStoreCode(sc)
     setPosDeviceToken(getPosDeviceToken(sc))
     setPosAuthError('')
-    setPosAccountAccess('checking')
+    setPosAccountAccess(desktopPublicEntry ? 'authorized' : 'checking')
     setPosAccountAccessMessage('')
     setIsRestoringCashierStore(false)
-    apiFetch(`/api/cashier/access?storeCode=${encodeURIComponent(sc)}`)
-      .then(async (r) => {
-        const body = await r.json().catch(() => null)
-        if (r.ok && body?.ok) {
-          setPosAccountAccess('authorized')
-          setPosAccountAccessMessage('')
-          return
-        }
-        setPosAccountAccess(r.status === 401 ? 'login_required' : 'forbidden')
-        setPosAccountAccessMessage(body?.message || body?.error || '请确认你已使用本店老板或员工账号登录。')
-      })
-      .catch(() => {
-        setPosAccountAccess('login_required')
-        setPosAccountAccessMessage('请确认你已使用本店老板或员工账号登录。')
-      })
+    if (!desktopPublicEntry) {
+      apiFetch(`/api/cashier/access?storeCode=${encodeURIComponent(sc)}`)
+        .then(async (r) => {
+          const body = await r.json().catch(() => null)
+          if (r.ok && body?.ok) {
+            setPosAccountAccess('authorized')
+            setPosAccountAccessMessage('')
+            return
+          }
+          setPosAccountAccess(r.status === 401 ? 'login_required' : 'forbidden')
+          setPosAccountAccessMessage(body?.message || body?.error || '请确认你已使用本店老板或员工账号登录。')
+        })
+        .catch(() => {
+          setPosAccountAccess('login_required')
+          setPosAccountAccessMessage('请确认你已使用本店老板或员工账号登录。')
+        })
+    }
     getCashierProductCacheMeta(sc)
       .then((meta) => {
         if (meta) {

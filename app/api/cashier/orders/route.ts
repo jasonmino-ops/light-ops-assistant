@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode,
-  })
+  }, { allowStoreCodeFallback: true })
   if (!posAuth) {
     return unauthorizedPosResponse()
   }
