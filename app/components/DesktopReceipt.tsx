@@ -152,36 +152,56 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
   <meta charset="utf-8" />
   <title>${escapeHtml(labels.title)}</title>
   <style>
-    @page { size: 80mm auto; margin: 4mm; }
+    @page { size: 80mm auto; margin: 3mm; }
     * { box-sizing: border-box; }
+    html {
+      width: 80mm;
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
     body {
       margin: 0;
       background: #fff;
-      color: #111;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Khmer", "Khmer OS Battambang", "PingFang SC", Arial, sans-serif;
-      font-size: 11px;
-      line-height: ${isKhmer ? '1.65' : '1.35'};
+      color: #000;
+      font-family: "Arial", "Segoe UI", "Noto Sans Khmer", "Khmer OS Battambang", "Microsoft YaHei", "PingFang SC", sans-serif;
+      font-size: 12px;
+      line-height: ${isKhmer ? '1.7' : '1.42'};
+      font-weight: 600;
+      -webkit-font-smoothing: none;
+      text-rendering: geometricPrecision;
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
     }
     .receipt {
-      width: 72mm;
+      width: 74mm;
       padding: 0;
       margin: 0 auto;
+      transform: none;
     }
     .center { text-align: center; }
-    .store { font-size: 15px; font-weight: 800; line-height: ${isKhmer ? '1.55' : '1.25'}; overflow-wrap: anywhere; }
-    .title { margin-top: 2mm; font-size: 12px; font-weight: 700; }
-    .meta { margin: 3mm 0; display: grid; gap: 1mm; }
+    .store { font-size: 16px; font-weight: 900; line-height: ${isKhmer ? '1.55' : '1.28'}; overflow-wrap: anywhere; color: #000; }
+    .title { margin-top: 2mm; font-size: 13px; font-weight: 900; color: #000; }
+    .meta { margin: 3mm 0; display: grid; gap: 1.2mm; }
     .row { display: flex; justify-content: space-between; gap: 3mm; }
     .row span:last-child { text-align: right; overflow-wrap: anywhere; }
-    .divider { border-top: 1px dashed #111; margin: 2.5mm 0; }
+    .divider { border-top: 1.2px dashed #000; margin: 2.5mm 0; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    th { font-size: 10px; text-align: left; padding-bottom: 1.5mm; border-bottom: 1px dashed #999; }
+    th { font-size: 11px; font-weight: 900; color: #000; text-align: left; padding-bottom: 1.6mm; border-bottom: 1.2px dashed #000; }
     th.num, td.num { text-align: right; }
-    td { padding: 1.4mm 0; vertical-align: top; border-bottom: 1px dotted #ddd; }
+    td { padding: 1.5mm 0; vertical-align: top; border-bottom: 1px dotted #555; color: #000; }
     .name { width: 42%; word-break: break-word; overflow-wrap: anywhere; }
-    .num { white-space: nowrap; }
-    .total { font-size: 15px; font-weight: 900; }
-    .thanks { margin-top: 4mm; font-weight: 700; }
+    .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    strong { font-weight: 900; color: #000; }
+    .total { font-size: 16px; font-weight: 900; color: #000; margin-top: 1mm; }
+    .thanks { margin-top: 4mm; font-weight: 900; color: #000; }
+    @media print {
+      html, body { width: 80mm; }
+      body { padding: 0; }
+      .receipt { width: 74mm; box-shadow: none; }
+    }
     @media screen {
       body { background: #f3f4f6; padding: 18px; }
       .receipt { background: #fff; padding: 4mm; box-shadow: 0 10px 30px rgba(15, 23, 42, .16); }
@@ -218,18 +238,40 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
 </html>`
 }
 
-export function printDesktopReceipt(data: DesktopReceiptData, lang: Lang) {
+export function printDesktopReceipt(
+  data: DesktopReceiptData,
+  lang: Lang,
+  options?: { onAfterPrint?: () => void },
+) {
   const win = window.open('', '_blank', 'width=420,height=720')
   if (!win) throw new Error('PRINT_WINDOW_BLOCKED')
+  let finished = false
+  let poll: number | null = null
+  const finish = () => {
+    if (finished) return
+    finished = true
+    if (poll !== null) {
+      window.clearInterval(poll)
+      poll = null
+    }
+    options?.onAfterPrint?.()
+  }
   win.document.open()
   win.document.write(receiptHtml(data, lang))
   win.document.close()
+  win.addEventListener('afterprint', finish, { once: true })
+  poll = window.setInterval(() => {
+    if (win.closed) {
+      finish()
+    }
+  }, 500)
   win.focus()
   window.setTimeout(() => {
     try {
       win.print()
     } catch (err) {
       console.warn('[desktop-receipt] print failed', err)
+      finish()
     }
   }, 250)
 }

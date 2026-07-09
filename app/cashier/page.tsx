@@ -1191,6 +1191,7 @@ export default function CashierPage() {
   const lastCashierDisplaySyncKey = useRef('')
   const previousCashierDisplayCartCountRef = useRef(0)
   const autoPrintedReceiptKeyRef = useRef('')
+  const receiptPrintButtonRef = useRef<HTMLButtonElement>(null)
 
   const focusSearchInput = useCallback(() => {
     window.setTimeout(() => searchRef.current?.focus(), 0)
@@ -1556,12 +1557,19 @@ export default function CashierPage() {
     }
   }
 
+  const finishReceiptPrintFlow = useCallback(() => {
+    setReceiptPreviewOpen(false)
+    setSaleResult(null)
+    focusScannerInput()
+  }, [focusScannerInput])
+
   function handlePrintReceipt(receipt: DesktopReceiptData) {
     try {
-      printDesktopReceipt(receipt, lang)
+      printDesktopReceipt(receipt, lang, { onAfterPrint: finishReceiptPrintFlow })
     } catch (err) {
       console.warn('[desktop-receipt] print window failed', err)
       showToast('无法打开打印预览，请检查浏览器弹窗权限')
+      finishReceiptPrintFlow()
     }
   }
 
@@ -2029,22 +2037,24 @@ export default function CashierPage() {
     if (autoPrintedReceiptKeyRef.current === receiptKey) return
     autoPrintedReceiptKeyRef.current = receiptKey
 
-    if (document.fullscreenElement) {
-      showToast('全屏模式下已跳过自动打印，可手动打印小票')
-      return
-    }
-
     const timer = window.setTimeout(() => {
       try {
-        printDesktopReceipt(receiptSnapshot, lang)
+        printDesktopReceipt(receiptSnapshot, lang, { onAfterPrint: finishReceiptPrintFlow })
       } catch (err) {
         console.warn('[desktop-receipt] auto print failed', err)
-        showToast('自动打印失败，可手动点击打印小票')
+        showToast('自动打印失败，已返回新订单')
+        finishReceiptPrintFlow()
       }
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang])
+  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang, finishReceiptPrintFlow])
+
+  useEffect(() => {
+    if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return
+    const timer = window.setTimeout(() => receiptPrintButtonRef.current?.focus(), 80)
+    return () => window.clearTimeout(timer)
+  }, [isDesktopPos, autoPrint, saleResult?.receipt, receiptPreviewOpen])
 
   async function handleInstallClick() {
     if (!storeCode) {
@@ -3761,6 +3771,7 @@ export default function CashierPage() {
                   {d.previewReceipt}
                 </button>
                 <button
+                  ref={receiptPrintButtonRef}
                   type="button"
                   style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12 }}
                   onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
