@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback, useRef, CSSProperties } from 'react'
+import { Fragment, useState, useEffect, useCallback, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
@@ -45,7 +45,7 @@ import { clearShiftOperator, clearShiftStart, getOrCreateShiftOperator, getOrCre
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Product = {
-  id: string; barcode: string; name: string
+  id: string; barcode: string; sku?: string | null; name: string
   spec: string | null; sellPrice: number
   categoryId: string | null; imageUrl: string | null
   status?: string; updatedAt?: string | null
@@ -183,6 +183,14 @@ function cartCount(cart: CartLine[]) { return cart.reduce((s, c) => s + c.qty, 0
 function toKhr(usd: number, rate: number) {
   const amount = Math.round(usd * rate)
   return `${amount.toLocaleString('en-US')}${KHR_SYMBOL}`
+}
+function cleanSearchText(value: string) {
+  return value
+    .replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+}
+function normalizeSearchText(value: string | null | undefined) {
+  return cleanSearchText(String(value ?? '')).toLowerCase()
 }
 const CASHIER_DISPLAY_SYNC_DEBOUNCE_MS = 300
 function cashierDisplayItems(cart: CartLine[]) {
@@ -908,7 +916,9 @@ const s: Record<string, CSSProperties> = {
   // ── Middle: product grid ──────────────────────────────────────────────────
   mid:         { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', minWidth: 0 },
   topbar:      { padding: '10px 14px', background: '#fff', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 },
-  search:      { flex: 1, height: 36, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0 12px', fontSize: 14, outline: 'none', background: '#f9fafb' },
+  searchWrap:  { flex: 1, position: 'relative', minWidth: 0 },
+  search:      { width: '100%', height: 36, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0 42px 0 12px', fontSize: 14, outline: 'none', background: '#f9fafb' },
+  searchClear: { position: 'absolute', top: 5, right: 6, width: 26, height: 26, borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#64748b', fontSize: 16, lineHeight: 1, fontWeight: 800, cursor: 'pointer' },
   grid:        { flex: 1, overflowY: 'auto', padding: '12px 10px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 10, alignContent: 'start' },
   desktopGrid: { gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 12, padding: 14 },
   desktopGridCompact: { gridTemplateColumns: 'repeat(auto-fill,minmax(122px,1fr))', gap: 8, padding: 10 },
@@ -1297,6 +1307,7 @@ export default function CashierPage() {
             setProducts(cached.map((p) => ({
               id: p.productId,
               barcode: p.barcode,
+              sku: p.sku,
               name: p.name,
               spec: p.spec,
               sellPrice: p.price,
@@ -2415,9 +2426,22 @@ export default function CashierPage() {
   }
 
   // ── Filtered products ──────────────────────────────────────────────────────
-  const kw = searchKw.trim().toLowerCase()
+  const kw = normalizeSearchText(searchKw)
+  function productMatchesKeyword(p: Product, keyword: string) {
+    if (!keyword) return true
+    return [
+      p.name,
+      p.barcode,
+      p.sku,
+      p.spec,
+    ].some(value => normalizeSearchText(value).includes(keyword))
+  }
+  function productMatchesExactCode(p: Product, keyword: string) {
+    if (!keyword) return false
+    return [p.barcode, p.sku].some(value => normalizeSearchText(value) === keyword)
+  }
   const displayProducts = products.filter(p => {
-    if (kw && !p.name.toLowerCase().includes(kw) && !(p.spec ?? '').toLowerCase().includes(kw)) return false
+    if (!productMatchesKeyword(p, kw)) return false
     if (!activeCatId) return true
     const l2Ids = new Set((l2ByParent.get(activeCatId) ?? []).map(c => c.id))
     return p.categoryId === activeCatId || (p.categoryId !== null && l2Ids.has(p.categoryId))
@@ -2560,6 +2584,28 @@ export default function CashierPage() {
       ? d.offlineHintOnline
       : d.offlineHintOffline
     : ''
+
+  function handleSearchChange(value: string) {
+    setSearchKw(value.replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, ''))
+  }
+
+  function handleSearchKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    const cleaned = cleanSearchText(searchKw)
+    if (cleaned !== searchKw) setSearchKw(cleaned)
+    const normalized = normalizeSearchText(cleaned)
+    if (!normalized) return
+    const exactMatch = products.find(p => productMatchesExactCode(p, normalized))
+    if (exactMatch) {
+      e.preventDefault()
+      handleAddClick(exactMatch)
+    }
+  }
+
+  function handleClearSearch() {
+    setSearchKw('')
+    window.setTimeout(() => searchRef.current?.focus(), 0)
+  }
 
   // ── Restore PWA storeCode before rendering no-code branches ───────────────
   if (isRestoringCashierStore) {
@@ -2849,13 +2895,28 @@ export default function CashierPage() {
         {/* MIDDLE: product grid */}
         <div style={s.mid}>
           <div style={s.topbar}>
-            <input
-              ref={searchRef}
-              style={s.search}
-              placeholder={d.searchPlaceholder}
-              value={searchKw}
-              onChange={e => setSearchKw(e.target.value)}
-            />
+            <div style={s.searchWrap}>
+              <input
+                ref={searchRef}
+                style={s.search}
+                placeholder={d.searchPlaceholder}
+                value={searchKw}
+                onChange={e => handleSearchChange(e.target.value)}
+                onBlur={() => setSearchKw(cleanSearchText(searchKw))}
+                onKeyDown={handleSearchKeyDown}
+              />
+              {searchKw.length > 0 && (
+                <button
+                  type="button"
+                  aria-label="清空搜索"
+                  title="清空搜索"
+                  style={s.searchClear}
+                  onClick={handleClearSearch}
+                >
+                  ×
+                </button>
+              )}
+            </div>
             {isDesktopPos && (
               <button type="button" style={s.topbarActionBtn} onClick={handleCompactModeToggle}>
                 {compactMode ? d.compactModeBig : d.compactModeCompact}

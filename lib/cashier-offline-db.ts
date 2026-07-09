@@ -12,6 +12,7 @@ const DEVICE_ID_KEY = 'cashier:deviceId'
 export type CashierCachedProductInput = {
   id: string
   barcode: string
+  sku?: string | null
   name: string
   spec: string | null
   sellPrice: number
@@ -31,6 +32,7 @@ export type CashierCachedProduct = {
   name: string
   spec: string | null
   barcode: string
+  sku?: string | null
   price: number
   category: string | null
   categoryId: string | null
@@ -188,6 +190,7 @@ export async function cacheCashierProducts(input: {
       name: product.name,
       spec: product.spec,
       barcode: product.barcode,
+      sku: product.sku ?? null,
       price: product.sellPrice,
       category: product.categoryName ?? null,
       categoryId: product.categoryId,

@@ -12,24 +12,13 @@ import { prisma } from '@/lib/prisma'
 const CASHIER_PRODUCT_SELECT = {
   id: true,
   barcode: true,
+  sku: true,
   name: true,
   spec: true,
   sellPrice: true,
   categoryId: true,
   imageUrl: true,
   imageUrls: true,
-  status: true,
-  updatedAt: true,
-} satisfies Prisma.ProductSelect
-
-const CASHIER_PRODUCT_LEGACY_SELECT = {
-  id: true,
-  barcode: true,
-  name: true,
-  spec: true,
-  sellPrice: true,
-  categoryId: true,
-  imageUrl: true,
   status: true,
   updatedAt: true,
 } satisfies Prisma.ProductSelect
@@ -42,10 +31,10 @@ function parseImageUrls(imageUrls: string | null, imageUrl: string | null): stri
   return imageUrl ? [imageUrl] : []
 }
 
-function isMissingImageGalleryColumn(e: unknown): boolean {
+function isMissingCashierProductColumn(e: unknown): boolean {
   if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2022') return false
   const text = String(e.message)
-  return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('column') || text.includes('does not exist')
+  return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('sku') || text.includes('column') || text.includes('does not exist')
 }
 
 export async function GET(req: NextRequest) {
@@ -69,14 +58,24 @@ export async function GET(req: NextRequest) {
     orderBy: { name: 'asc' },
     take: 500,
   }).catch(async (e) => {
-    if (!isMissingImageGalleryColumn(e)) throw e
+    if (!isMissingCashierProductColumn(e)) throw e
     const legacyProducts = await prisma.product.findMany({
       where: productWhere,
-      select: CASHIER_PRODUCT_LEGACY_SELECT,
+      select: {
+        id: true,
+        barcode: true,
+        name: true,
+        spec: true,
+        sellPrice: true,
+        categoryId: true,
+        imageUrl: true,
+        status: true,
+        updatedAt: true,
+      },
       orderBy: { name: 'asc' },
       take: 500,
     })
-    return legacyProducts.map((p) => ({ ...p, imageUrls: null }))
+    return legacyProducts.map((p) => ({ ...p, sku: null, imageUrls: null }))
   })
 
   const [products, categories] = await Promise.all([
@@ -96,6 +95,7 @@ export async function GET(req: NextRequest) {
     products: products.map((p) => ({
       id: p.id,
       barcode: p.barcode,
+      sku: p.sku,
       name: p.name,
       spec: p.spec,
       sellPrice: p.sellPrice.toNumber(),
