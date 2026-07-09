@@ -101,6 +101,10 @@ export function verifyPosDeviceRequest(
   return payload
 }
 
+function hasDesktopPosMarker(req: NextRequest) {
+  return req.headers.get('x-lightops-client') === 'desktop-pos'
+}
+
 export async function authorizeDesktopPosAccount(
   req: NextRequest,
   expected: DesktopPosStoreScope,
@@ -152,7 +156,7 @@ export async function authorizeDesktopPosRequest(
   if (accountAuth) return accountAuth
 
   const deviceAuth = verifyPosDeviceRequest(req, expected)
-  if (!deviceAuth && !options?.allowStoreCodeFallback) return null
+  if (!deviceAuth && (!options?.allowStoreCodeFallback || !hasDesktopPosMarker(req))) return null
 
   const ownerRole = await prisma.userStoreRole.findFirst({
     where: {

@@ -42,8 +42,17 @@ export function posDeviceHeaders(storeCode: string | null | undefined): Record<s
   const token = getPosDeviceToken(storeCode)
   return {
     'x-pos-device-id': deviceId,
+    ...(isDesktopPosRequestContext() ? { 'x-lightops-client': 'desktop-pos' } : {}),
     ...(token ? { 'x-pos-device-token': token } : {}),
   }
+}
+
+function isDesktopPosRequestContext() {
+  if (typeof window === 'undefined') return false
+  const params = new URLSearchParams(window.location.search)
+  return window.location.pathname === '/desktop/pos' ||
+    params.get('from') === 'desktop' ||
+    params.get('mode') === 'pos'
 }
 
 export function isPosUnauthorized(body: unknown, status?: number) {
