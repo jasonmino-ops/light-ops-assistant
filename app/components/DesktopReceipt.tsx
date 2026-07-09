@@ -276,6 +276,7 @@ export function printDesktopReceipt(
   if (!win) throw new Error('PRINT_WINDOW_BLOCKED')
   let finished = false
   let poll: number | null = null
+  let printRequested = false
   const finish = () => {
     if (finished) return
     finished = true
@@ -285,10 +286,23 @@ export function printDesktopReceipt(
     }
     options?.onAfterPrint?.()
   }
+  const closePreviewAndFinish = () => {
+    try {
+      if (!win.closed) win.close()
+    } catch {
+      /* Ignore close failures; POS should still continue. */
+    }
+    finish()
+  }
+  const handlePreviewFocus = () => {
+    if (!printRequested || finished) return
+    window.setTimeout(closePreviewAndFinish, 120)
+  }
   win.document.open()
   win.document.write(receiptHtml(data, lang))
   win.document.close()
-  win.addEventListener('afterprint', finish, { once: true })
+  win.addEventListener('afterprint', () => window.setTimeout(closePreviewAndFinish, 80), { once: true })
+  win.addEventListener('focus', handlePreviewFocus)
   poll = window.setInterval(() => {
     if (win.closed) {
       finish()
@@ -297,10 +311,11 @@ export function printDesktopReceipt(
   win.focus()
   window.setTimeout(() => {
     try {
+      printRequested = true
       win.print()
     } catch (err) {
       console.warn('[desktop-receipt] print failed', err)
-      finish()
+      closePreviewAndFinish()
     }
   }, 250)
 }
