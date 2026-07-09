@@ -2601,14 +2601,19 @@ export default function CashierPage() {
 
   function handleSearchKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') return
-    const cleaned = cleanSearchText(searchKw)
+    const cleaned = cleanSearchText(e.currentTarget.value)
     if (cleaned !== searchKw) setSearchKw(cleaned)
     const normalized = normalizeSearchText(cleaned)
     if (!normalized) return
     const exactMatches = products.filter(p => productMatchesExactCode(p, normalized))
     if (exactMatches.length === 1) {
       e.preventDefault()
-      handleAddClick(exactMatches[0])
+      if (!isOnline && productsSource !== 'cache') {
+        showToast('当前无商品缓存，无法离线收银')
+        focusSearchInput()
+        return
+      }
+      addToCart(exactMatches[0])
       setSearchKw('')
       focusSearchInput()
     }
