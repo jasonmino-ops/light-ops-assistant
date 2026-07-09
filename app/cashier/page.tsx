@@ -948,7 +948,7 @@ const s: Record<string, CSSProperties> = {
   // ── Middle: product grid ──────────────────────────────────────────────────
   mid:         { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', minWidth: 0 },
   topbar:      { padding: '10px 14px', background: '#fff', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 },
-  scannerInput: { position: 'fixed', left: -1000, top: 0, width: 1, height: 1, opacity: 0, border: 0, padding: 0, pointerEvents: 'none' },
+  scannerInput: { position: 'fixed', left: 0, bottom: 0, width: 1, height: 1, opacity: 0.01, border: 0, padding: 0, pointerEvents: 'none', background: 'transparent', color: 'transparent', caretColor: 'transparent' },
   searchWrap:  { flex: 1, position: 'relative', minWidth: 0 },
   search:      { width: '100%', height: 36, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0 42px 0 12px', fontSize: 14, outline: 'none', background: '#f9fafb' },
   searchClear: { position: 'absolute', top: 5, right: 6, width: 26, height: 26, borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: '#64748b', fontSize: 16, lineHeight: 1, fontWeight: 800, cursor: 'pointer' },
@@ -2850,9 +2850,13 @@ export default function CashierPage() {
         {isDesktopPos && (
           <input
             ref={scannerInputRef}
+            type="text"
             aria-label="Scanner input"
             autoComplete="off"
-            inputMode="none"
+            autoCapitalize="off"
+            inputMode="text"
+            spellCheck={false}
+            tabIndex={0}
             style={s.scannerInput}
             onFocus={() => setScannerDebug(prev => ({ ...prev, mounted: true, isActive: true, activeElement: 'ScannerInput' }))}
             onBlur={() => updateScannerDebugFocusState()}
