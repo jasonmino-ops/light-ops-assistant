@@ -1196,6 +1196,12 @@ export default function CashierPage() {
     window.setTimeout(() => searchRef.current?.focus(), 0)
   }, [])
 
+  const isUserInputElement = useCallback((element: Element | null) => {
+    if (!(element instanceof HTMLElement)) return false
+    if (element === scannerInputRef.current) return false
+    return element.matches('input, textarea, select, [contenteditable="true"], [contenteditable=""]')
+  }, [])
+
   const getActiveElementName = useCallback(() => {
     const active = document.activeElement
     if (!active) return 'NONE'
@@ -1215,10 +1221,14 @@ export default function CashierPage() {
 
   const focusScannerInput = useCallback(() => {
     window.setTimeout(() => {
+      if (isUserInputElement(document.activeElement)) {
+        updateScannerDebugFocusState()
+        return
+      }
       scannerInputRef.current?.focus()
       updateScannerDebugFocusState()
     }, 0)
-  }, [updateScannerDebugFocusState])
+  }, [isUserInputElement, updateScannerDebugFocusState])
 
   useEffect(() => {
     setIsDesktopPos(window.location.pathname === '/desktop/pos')
@@ -1233,7 +1243,7 @@ export default function CashierPage() {
     if (!isDesktopPos) return
     const maintainScannerFocus = () => {
       const active = document.activeElement
-      if (scannerInputRef.current && active !== scannerInputRef.current && active !== searchRef.current) {
+      if (scannerInputRef.current && active !== scannerInputRef.current && !isUserInputElement(active)) {
         scannerInputRef.current.focus()
       }
       updateScannerDebugFocusState()
@@ -1241,7 +1251,7 @@ export default function CashierPage() {
     maintainScannerFocus()
     const timer = window.setInterval(maintainScannerFocus, 300)
     return () => window.clearInterval(timer)
-  }, [isDesktopPos, updateScannerDebugFocusState])
+  }, [isDesktopPos, isUserInputElement, updateScannerDebugFocusState])
 
   useEffect(() => {
     return () => {
