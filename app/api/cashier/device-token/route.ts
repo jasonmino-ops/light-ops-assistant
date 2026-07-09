@@ -2,7 +2,7 @@
  * POST /api/cashier/device-token
  *
  * Minimal desktop POS authorization boundary.
- * Requires the normal OWNER/STAFF context, then returns a signed device token
+ * Requires the normal OWNER context, then returns a signed device token
  * that the same browser stores locally and sends to desktop cashier APIs.
  */
 import { NextRequest, NextResponse } from 'next/server'
@@ -17,6 +17,9 @@ export async function POST(req: NextRequest) {
       error: 'LOGIN_REQUIRED',
       message: 'Please sign in as the owner or an active staff member before authorizing this POS computer.',
     }, { status: 401 })
+  }
+  if (ctx.role !== 'OWNER') {
+    return NextResponse.json({ error: 'OWNER_REQUIRED', message: 'Only the owner can authorize a POS computer.' }, { status: 403 })
   }
 
   let body: { storeCode?: string; deviceId?: string }
@@ -37,21 +40,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
 
-  if (ctx.role === 'STAFF' && ctx.storeId !== store.id) {
-    return NextResponse.json({ error: 'FORBIDDEN', message: 'This account cannot authorize another store.' }, { status: 403 })
-  }
   if (ctx.tenantId !== store.tenantId) {
     return NextResponse.json({ error: 'FORBIDDEN', message: 'This account cannot authorize this store.' }, { status: 403 })
-  }
-
-  if (ctx.role === 'STAFF') {
-    const activeRole = await prisma.userStoreRole.findFirst({
-      where: { tenantId: store.tenantId, storeId: store.id, userId: ctx.userId, status: 'ACTIVE' },
-      select: { id: true },
-    })
-    if (!activeRole) {
-      return NextResponse.json({ error: 'FORBIDDEN', message: 'This account is not active in this store.' }, { status: 403 })
-    }
   }
 
   const token = signPosDeviceToken({

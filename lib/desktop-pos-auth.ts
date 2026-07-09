@@ -6,7 +6,7 @@ const TOKEN_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000
 
 export const POS_AUTH_ERROR = {
   error: 'POS_DEVICE_UNAUTHORIZED',
-  message: 'This POS computer is not authorized yet. Please ask the owner or an active staff member to bind this device first.',
+  message: 'This POS computer is not authorized yet. Please ask the owner to authorize this computer first.',
 }
 
 export type PosDeviceTokenPayload = {

@@ -2,6 +2,7 @@
 
 import { Fragment, useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
+import QRCode from 'react-qr-code'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
@@ -42,6 +43,7 @@ import {
 } from '@/lib/cashier-hold-orders'
 import { clearShiftOperator, clearShiftStart, getOrCreateShiftOperator, getOrCreateShiftStart } from '@/lib/cashier-shift'
 import {
+  clearPosDeviceToken,
   getPosDeviceId,
   getPosDeviceToken,
   isPosUnauthorized,
@@ -124,6 +126,13 @@ type DesktopRecordsState = {
   loading: boolean
   error: string
   items: ShiftRecordItem[]
+}
+type PosAuthChallenge = {
+  requestId: string
+  authorizeUrl: string
+  expiresAt: string
+  storeName: string
+  deviceName: string
 }
 
 type ScannerDebugState = {
@@ -1120,6 +1129,21 @@ const s: Record<string, CSSProperties> = {
   errTitle:    { fontSize: 18, fontWeight: 700, color: '#111827' },
   errSub:      { fontSize: 13, color: '#6b7280', textAlign: 'center' as const, maxWidth: 380, lineHeight: 1.6 },
   errCode:     { fontSize: 12, color: '#9ca3af', fontFamily: 'monospace', background: '#fff', padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb' },
+  authPage: { minHeight: '100dvh', background: '#f1f5f9', display: 'grid', gridTemplateColumns: 'minmax(420px, .9fr) minmax(420px, 1.1fr)', gap: 28, alignItems: 'center', padding: 36, fontFamily: 'system-ui,-apple-system,sans-serif' },
+  authIntro: { maxWidth: 560 },
+  authBadge: { display: 'inline-flex', alignItems: 'center', minHeight: 30, borderRadius: 999, padding: '0 12px', background: '#dbeafe', color: '#1d4ed8', fontSize: 13, fontWeight: 900, marginBottom: 16 },
+  authTitle: { fontSize: 42, lineHeight: 1.08, fontWeight: 950, color: '#0f172a', marginBottom: 14 },
+  authSub: { fontSize: 17, lineHeight: 1.65, color: '#475569', marginBottom: 18 },
+  authWarn: { borderRadius: 14, background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', padding: '12px 14px', fontSize: 14, lineHeight: 1.55 },
+  authCard: { justifySelf: 'center', width: 'min(460px, 100%)', background: '#fff', borderRadius: 18, padding: 24, boxShadow: '0 20px 60px rgba(15,23,42,.16)', border: '1px solid #e2e8f0', textAlign: 'center' as const },
+  authQrBox: { width: 260, height: 260, margin: '0 auto 18px', padding: 16, borderRadius: 18, background: '#fff', border: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  authCardTitle: { fontSize: 20, fontWeight: 950, color: '#111827', marginBottom: 7 },
+  authCardSub: { fontSize: 14, color: '#64748b', lineHeight: 1.55, marginBottom: 14 },
+  authLink: { display: 'block', borderRadius: 10, padding: '9px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#334155', fontSize: 12, lineHeight: 1.45, wordBreak: 'break-all' as const, textAlign: 'left' as const, marginBottom: 12 },
+  authActions: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 },
+  authBtn: { minHeight: 42, borderRadius: 11, border: 'none', background: '#2563eb', color: '#fff', fontSize: 14, fontWeight: 900, cursor: 'pointer' },
+  authBtnSecondary: { background: '#fff', color: '#334155', border: '1px solid #cbd5e1' },
+  authError: { marginTop: 12, borderRadius: 10, padding: '10px 12px', background: '#fef2f2', color: '#b91c1c', fontSize: 13, lineHeight: 1.45 },
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -1170,6 +1194,8 @@ export default function CashierPage() {
   const [posDeviceToken, setPosDeviceToken] = useState('')
   const [posAuthLoading, setPosAuthLoading] = useState(false)
   const [posAuthError, setPosAuthError] = useState('')
+  const [posAuthChallenge, setPosAuthChallenge] = useState<PosAuthChallenge | null>(null)
+  const [posAuthChecking, setPosAuthChecking] = useState(false)
   const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const [cashTendered, setCashTendered] = useState('')
@@ -1611,25 +1637,31 @@ export default function CashierPage() {
 
   function handlePosUnauthorized(message?: string) {
     const copy = posAuthCopy()
+    if (storeCode) clearPosDeviceToken(storeCode)
+    setPosDeviceToken('')
+    setPosAuthChallenge(null)
     setPosAuthError(message || copy.needAuth)
     showToast(message || copy.needAuth)
   }
 
   async function handleAuthorizePosDevice() {
+    await startPosAuthorization()
+  }
+
+  async function startPosAuthorization() {
     if (!storeCode || posAuthLoading) return
     setPosAuthLoading(true)
     setPosAuthError('')
     try {
       const deviceId = getPosDeviceId()
-      const res = await apiFetch('/api/cashier/device-token', {
+      const res = await fetch('/api/cashier/device-authorization/start', {
         method: 'POST',
-        body: JSON.stringify({ storeCode, deviceId }),
-      }, DEV_OWNER_CTX)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeCode, deviceId, deviceName: '前台收银机' }),
+      })
       const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.token) throw new Error(body?.message || body?.error || 'AUTH_FAILED')
-      savePosDeviceToken(storeCode, body.token)
-      setPosDeviceToken(body.token)
-      showToast(posAuthCopy().success)
+      if (!res.ok || !body?.requestId || !body?.authorizeUrl) throw new Error(body?.message || body?.error || 'AUTH_START_FAILED')
+      setPosAuthChallenge(body)
     } catch {
       const msg = posAuthCopy().failed
       setPosAuthError(msg)
@@ -1639,11 +1671,57 @@ export default function CashierPage() {
     }
   }
 
+  const checkPosAuthorization = useCallback(async (options?: { toast?: boolean }) => {
+    if (!storeCode || !posAuthChallenge || posAuthChecking) return
+    setPosAuthChecking(true)
+    setPosAuthError('')
+    try {
+      const deviceId = getPosDeviceId()
+      const params = new URLSearchParams({
+        requestId: posAuthChallenge.requestId,
+        deviceId,
+      })
+      const res = await fetch(`/api/cashier/device-authorization/status?${params.toString()}`, { cache: 'no-store' })
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body) throw new Error(body?.message || body?.error || 'AUTH_CHECK_FAILED')
+      if (body.status === 'APPROVED' && body.token) {
+        savePosDeviceToken(storeCode, body.token)
+        setPosDeviceToken(body.token)
+        setPosAuthChallenge(null)
+        setPosAuthError('')
+        showToast(posAuthCopy().success)
+        return
+      }
+      if (body.status === 'EXPIRED') {
+        setPosAuthError('授权二维码已过期，请刷新二维码后让老板重新扫码。')
+        return
+      }
+      if (options?.toast) showToast('还没有收到老板确认，请确认手机上已点“确认授权”。')
+    } catch {
+      setPosAuthError('暂时无法检查授权结果，请稍后重试。')
+    } finally {
+      setPosAuthChecking(false)
+    }
+  }, [storeCode, posAuthChallenge, posAuthChecking, lang])
+
   function requireOnlinePosAuthorization() {
     if (posDeviceToken) return true
     handlePosUnauthorized()
     return false
   }
+
+  useEffect(() => {
+    if (!storeCode || posDeviceToken || posAuthChallenge || posAuthLoading) return
+    void startPosAuthorization()
+  }, [storeCode, posDeviceToken, posAuthChallenge, posAuthLoading])
+
+  useEffect(() => {
+    if (!storeCode || posDeviceToken || !posAuthChallenge) return
+    const timer = window.setInterval(() => {
+      void checkPosAuthorization()
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [storeCode, posDeviceToken, posAuthChallenge, checkPosAuthorization])
 
   function buildReceiptSnapshot(input: {
     items: ReturnType<typeof cashierDisplayItems>
@@ -2967,6 +3045,57 @@ export default function CashierPage() {
         </div>
         <div style={s.errCode}>链接格式：/cashier?storeCode=你的门店编号</div>
       </div>
+    )
+  }
+
+  if (storeCode && !posDeviceToken) {
+    const authUrl = posAuthChallenge?.authorizeUrl ?? ''
+    return (
+      <main style={s.authPage}>
+        <section style={s.authIntro}>
+          <div style={s.authBadge}>电脑收银机授权</div>
+          <h1 style={s.authTitle}>本机尚未授权为收银机</h1>
+          <div style={s.authSub}>
+            请老板用手机扫码确认一次。授权成功后，这台电脑以后打开就能进入收银台。
+          </div>
+          <div style={s.authWarn}>
+            未授权前可以查看此授权页；未授权订单不会同步到账本。清除浏览器缓存或换电脑后，需要重新扫码授权。
+          </div>
+        </section>
+
+        <section style={s.authCard}>
+          <div style={s.authCardTitle}>{storeName || posAuthChallenge?.storeName || storeCode}</div>
+          <div style={s.authCardSub}>老板扫码后，在手机上点击“确认授权”。</div>
+          <div style={s.authQrBox}>
+            {authUrl ? (
+              <QRCode value={authUrl} size={220} />
+            ) : (
+              <div style={s.authCardSub}>正在生成授权二维码...</div>
+            )}
+          </div>
+          {authUrl && <a href={authUrl} target="_blank" rel="noreferrer" style={s.authLink}>{authUrl}</a>}
+          <div style={s.authActions}>
+            <button
+              type="button"
+              style={{ ...s.authBtn, ...s.authBtnSecondary }}
+              onClick={() => void startPosAuthorization()}
+              disabled={posAuthLoading}
+            >
+              {posAuthLoading ? '刷新中...' : '刷新二维码'}
+            </button>
+            <button
+              type="button"
+              style={s.authBtn}
+              onClick={() => void checkPosAuthorization({ toast: true })}
+              disabled={!posAuthChallenge || posAuthChecking}
+            >
+              {posAuthChecking ? '检查中...' : '我已授权，重新检查'}
+            </button>
+          </div>
+          {posAuthError && <div style={s.authError}>{posAuthError}</div>}
+        </section>
+        {toast && <div style={s.toast}>{toast}</div>}
+      </main>
     )
   }
 
