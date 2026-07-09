@@ -1184,6 +1184,7 @@ export default function CashierPage() {
   const wasOnlineRef    = useRef(true)
   const searchRef       = useRef<HTMLInputElement>(null)
   const scannerInputRef = useRef<HTMLInputElement>(null)
+  const scannerInputDebounceRef = useRef<number | null>(null)
   const ordersRef       = useRef<HTMLDivElement>(null)
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
@@ -1240,6 +1241,14 @@ export default function CashierPage() {
     const timer = window.setInterval(maintainScannerFocus, 300)
     return () => window.clearInterval(timer)
   }, [isDesktopPos, updateScannerDebugFocusState])
+
+  useEffect(() => {
+    return () => {
+      if (scannerInputDebounceRef.current !== null) {
+        window.clearTimeout(scannerInputDebounceRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!isDesktopPos) return
@@ -2539,16 +2548,40 @@ export default function CashierPage() {
     return p.categoryId === activeCatId || (p.categoryId !== null && l2Ids.has(p.categoryId))
   })
 
-  function isScannerInputTerminator(key: string) {
-    return key === 'Enter' || key === 'Tab' || key === '\r' || key === '\n'
-  }
-
   function clearScannerInput() {
     if (scannerInputRef.current) scannerInputRef.current.value = ''
     focusScannerInput()
   }
 
+  function scheduleScannerInputCompletion(rawValue: string) {
+    if (scannerInputDebounceRef.current !== null) {
+      window.clearTimeout(scannerInputDebounceRef.current)
+    }
+    const previewCode = cleanSearchText(rawValue)
+    setScannerDebug(prev => ({
+      ...prev,
+      mounted: !!scannerInputRef.current,
+      isActive: document.activeElement === scannerInputRef.current,
+      activeElement: getActiveElementName(),
+      rawValue,
+      barcode: previewCode,
+      addToCartCalled: false,
+      lastError: previewCode.length >= SCANNER_MIN_CODE_LENGTH ? '等待扫码完成' : '条码输入中',
+    }))
+    scannerInputDebounceRef.current = window.setTimeout(() => {
+      scannerInputDebounceRef.current = null
+      const currentValue = scannerInputRef.current?.value ?? rawValue
+      if (cleanSearchText(currentValue).length >= SCANNER_MIN_CODE_LENGTH) {
+        completeScannerInput(currentValue)
+      }
+    }, 220)
+  }
+
   function completeScannerInput(rawValue: string) {
+    if (scannerInputDebounceRef.current !== null) {
+      window.clearTimeout(scannerInputDebounceRef.current)
+      scannerInputDebounceRef.current = null
+    }
     const rawCode = cleanSearchText(rawValue)
     const setDebugResult = (input: Partial<ScannerDebugState>) => {
       setScannerDebug(prev => ({
@@ -2860,15 +2893,7 @@ export default function CashierPage() {
             style={s.scannerInput}
             onFocus={() => setScannerDebug(prev => ({ ...prev, mounted: true, isActive: true, activeElement: 'ScannerInput' }))}
             onBlur={() => updateScannerDebugFocusState()}
-            onKeyDown={(e) => {
-              if (!isScannerInputTerminator(e.key)) return
-              e.preventDefault()
-              completeScannerInput(e.currentTarget.value)
-            }}
-            onChange={(e) => {
-              const value = e.currentTarget.value
-              if (/[\r\n\t]/.test(value)) completeScannerInput(value)
-            }}
+            onInput={(e) => scheduleScannerInputCompletion(e.currentTarget.value)}
           />
         )}
 
