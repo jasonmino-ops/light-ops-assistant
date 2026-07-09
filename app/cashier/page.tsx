@@ -119,6 +119,16 @@ type DesktopRecordsState = {
   items: ShiftRecordItem[]
 }
 
+type ScannerDebugState = {
+  mounted: boolean
+  isActive: boolean
+  rawValue: string
+  barcode: string
+  matchCount: number | null
+  addToCartCalled: boolean
+  lastError: string
+}
+
 const CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE = 'KHQR_FOCUS'
 
 type CashierMember = {
@@ -913,6 +923,26 @@ const s: Record<string, CSSProperties> = {
   recordsDetailQty: { color: '#334155', fontWeight: 800, textAlign: 'right' as const },
   recordsDetailMoney: { color: '#111827', fontWeight: 800, textAlign: 'right' as const },
   recordsDetailTotal: { borderTop: '1px dashed #cbd5e1', paddingTop: 8, display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, fontWeight: 900, color: '#111827' },
+  scannerDebugPanel: {
+    position: 'fixed',
+    left: 10,
+    bottom: 10,
+    zIndex: 220,
+    width: 260,
+    padding: 10,
+    borderRadius: 10,
+    border: '1px solid rgba(148,163,184,.45)',
+    background: 'rgba(15,23,42,.92)',
+    color: '#e5e7eb',
+    fontSize: 10,
+    lineHeight: 1.35,
+    boxShadow: '0 12px 30px rgba(15,23,42,.28)',
+  },
+  scannerDebugTitle: { fontSize: 11, fontWeight: 900, color: '#bfdbfe', marginBottom: 6 },
+  scannerDebugRow: { display: 'grid', gridTemplateColumns: '92px minmax(0,1fr)', gap: 6, marginTop: 3 },
+  scannerDebugLabel: { color: '#94a3b8' },
+  scannerDebugValue: { color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  scannerDebugBtn: { width: '100%', marginTop: 8, height: 28, borderRadius: 8, border: '1px solid rgba(96,165,250,.45)', background: 'rgba(37,99,235,.42)', color: '#dbeafe', fontSize: 11, fontWeight: 900, cursor: 'pointer' },
 
   // ── Middle: product grid ──────────────────────────────────────────────────
   mid:         { flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', minWidth: 0 },
@@ -1138,6 +1168,15 @@ export default function CashierPage() {
   const [desktopRecordsOpen, setDesktopRecordsOpen] = useState(false)
   const [desktopRecords, setDesktopRecords] = useState<DesktopRecordsState>({ loading: false, error: '', items: [] })
   const [expandedDesktopRecordKey, setExpandedDesktopRecordKey] = useState<string | null>(null)
+  const [scannerDebug, setScannerDebug] = useState<ScannerDebugState>({
+    mounted: false,
+    isActive: false,
+    rawValue: '',
+    barcode: '',
+    matchCount: null,
+    addToCartCalled: false,
+    lastError: '尚未扫码',
+  })
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
   const wasOnlineRef    = useRef(true)
@@ -1154,7 +1193,14 @@ export default function CashierPage() {
   }, [])
 
   const focusScannerInput = useCallback(() => {
-    window.setTimeout(() => scannerInputRef.current?.focus(), 0)
+    window.setTimeout(() => {
+      scannerInputRef.current?.focus()
+      setScannerDebug(prev => ({
+        ...prev,
+        mounted: !!scannerInputRef.current,
+        isActive: document.activeElement === scannerInputRef.current,
+      }))
+    }, 0)
   }, [])
 
   useEffect(() => {
@@ -1165,6 +1211,20 @@ export default function CashierPage() {
     if (!isDesktopPos || loading || noCodeError || isRestoringCashierStore) return
     focusScannerInput()
   }, [isDesktopPos, loading, noCodeError, isRestoringCashierStore, focusScannerInput])
+
+  useEffect(() => {
+    if (!isDesktopPos) return
+    const syncScannerDebugFocus = () => {
+      setScannerDebug(prev => ({
+        ...prev,
+        mounted: !!scannerInputRef.current,
+        isActive: document.activeElement === scannerInputRef.current,
+      }))
+    }
+    syncScannerDebugFocus()
+    const timer = window.setInterval(syncScannerDebugFocus, 500)
+    return () => window.clearInterval(timer)
+  }, [isDesktopPos])
 
   useEffect(() => {
     if (!isDesktopPos) return
@@ -2475,24 +2535,41 @@ export default function CashierPage() {
 
   function completeScannerInput(rawValue: string) {
     const rawCode = cleanSearchText(rawValue)
+    const setDebugResult = (input: Partial<ScannerDebugState>) => {
+      setScannerDebug(prev => ({
+        ...prev,
+        mounted: !!scannerInputRef.current,
+        isActive: document.activeElement === scannerInputRef.current,
+        rawValue,
+        barcode: rawCode,
+        ...input,
+      }))
+    }
     clearScannerInput()
-    if (rawCode.length < SCANNER_MIN_CODE_LENGTH) return
+    if (rawCode.length < SCANNER_MIN_CODE_LENGTH) {
+      setDebugResult({ matchCount: 0, addToCartCalled: false, lastError: '条码过短' })
+      return
+    }
 
     const normalized = normalizeSearchText(rawCode)
     const matches = products.filter(p => productMatchesExactCode(p, normalized))
     if (matches.length === 0) {
+      setDebugResult({ matchCount: 0, addToCartCalled: false, lastError: '未找到商品' })
       showToast(`未找到商品：${rawCode}`)
       return
     }
     if (matches.length > 1) {
+      setDebugResult({ matchCount: matches.length, addToCartCalled: false, lastError: '条码重复' })
       showToast(`条码重复：${rawCode}`)
       return
     }
     if (!isOnline && productsSource !== 'cache') {
+      setDebugResult({ matchCount: matches.length, addToCartCalled: false, lastError: '离线无商品缓存' })
       showToast('当前无商品缓存，无法离线收银')
       return
     }
     addToCart(matches[0], undefined, { focusSearch: false })
+    setDebugResult({ matchCount: matches.length, addToCartCalled: true, lastError: '' })
     focusScannerInput()
   }
   const d = desktopCopy(lang as DeskLang)
@@ -2725,6 +2802,32 @@ export default function CashierPage() {
 
       {/* ── Toast ─────────────────────────────────────────────────────────── */}
       {toast && <div style={s.toast}>{toast}</div>}
+      {isDesktopPos && (
+        <div style={s.scannerDebugPanel}>
+          <div style={s.scannerDebugTitle}>Scanner Debug</div>
+          {[
+            ['Mounted', scannerDebug.mounted ? 'YES' : 'NO'],
+            ['Active', scannerDebug.isActive ? 'YES' : 'NO'],
+            ['Raw', scannerDebug.rawValue || '-'],
+            ['Barcode', scannerDebug.barcode || '-'],
+            ['MatchCount', scannerDebug.matchCount === null ? '-' : String(scannerDebug.matchCount)],
+            ['addToCart', scannerDebug.addToCartCalled ? 'YES' : 'NO'],
+            ['Error', scannerDebug.lastError || '-'],
+          ].map(([label, value]) => (
+            <div key={label} style={s.scannerDebugRow}>
+              <span style={s.scannerDebugLabel}>{label}</span>
+              <span style={s.scannerDebugValue} title={value}>{value}</span>
+            </div>
+          ))}
+          <button
+            type="button"
+            style={s.scannerDebugBtn}
+            onClick={focusScannerInput}
+          >
+            重新聚焦扫码器
+          </button>
+        </div>
+      )}
 
       {/* ── Main 3-column layout ──────────────────────────────────────────── */}
       <div style={{ ...s.root, ...(isDesktopPos ? s.desktopRoot : {}) }}>
@@ -2735,6 +2838,8 @@ export default function CashierPage() {
             autoComplete="off"
             inputMode="none"
             style={s.scannerInput}
+            onFocus={() => setScannerDebug(prev => ({ ...prev, mounted: true, isActive: true }))}
+            onBlur={() => setScannerDebug(prev => ({ ...prev, mounted: true, isActive: false }))}
             onKeyDown={(e) => {
               if (!isScannerInputTerminator(e.key)) return
               e.preventDefault()
