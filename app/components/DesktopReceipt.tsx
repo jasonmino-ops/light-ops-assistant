@@ -137,12 +137,13 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
   const itemsHtml = data.items.map((item) => {
     const name = [item.name, item.spec ? `(${item.spec})` : ''].filter(Boolean).join(' ')
     return `
-      <tr>
-        <td class="name">${escapeHtml(name)}</td>
-        <td class="num qty">${item.qty}</td>
-        <td class="num unit">${money(item.price)}</td>
-        <td class="num amount">${money(item.lineAmount)}</td>
-      </tr>
+      <div class="item">
+        <div class="item-name">${escapeHtml(name)}</div>
+        <div class="item-line">
+          <span class="item-calc">${item.qty} × ${money(item.price)}</span>
+          <span class="item-amount">${money(item.lineAmount)}</span>
+        </div>
+      </div>
     `
   }).join('')
 
@@ -188,27 +189,48 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
     .row { display: flex; justify-content: space-between; gap: 3mm; }
     .row span:last-child { text-align: right; overflow-wrap: anywhere; }
     .divider { border-top: 1.2px dashed #000; margin: 2.5mm 0; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    th { font-size: 10.5px; font-weight: 900; color: #000; text-align: left; padding-bottom: 1mm; border-bottom: 1px dashed #000; }
-    th.num, td.num { text-align: right; }
-    td { padding: .8mm 0 .7mm; vertical-align: top; border-bottom: .7px dotted #777; color: #000; }
-    .name {
-      width: 49mm;
-      padding-right: 1.4mm;
-      font-size: 11.5px;
-      line-height: ${isKhmer ? '1.48' : '1.22'};
-      font-weight: 700;
+    .items {
+      display: grid;
+      gap: 0;
+      border-top: 1px dashed #000;
+    }
+    .item {
+      padding: 1mm 0 .9mm;
+      border-bottom: .7px dotted #777;
+    }
+    .item-name {
+      width: 100%;
+      font-size: 11.8px;
+      line-height: ${isKhmer ? '1.45' : '1.2'};
+      font-weight: 750;
+      color: #000;
       word-break: normal;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
       hyphens: auto;
     }
-    .qty { width: 5mm; }
-    .unit { width: 9.5mm; }
-    .amount { width: 10.5mm; }
-    .num {
+    .item-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: baseline;
+      gap: 4mm;
+      margin-top: .45mm;
+      padding-left: 18mm;
+      font-size: 11.5px;
+      line-height: 1.15;
+      color: #000;
+      font-variant-numeric: tabular-nums;
+    }
+    .item-calc {
+      text-align: left;
       white-space: nowrap;
-      font-size: 11px;
-      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: clip;
+    }
+    .item-amount {
+      min-width: 14mm;
+      text-align: right;
+      white-space: nowrap;
+      font-weight: 900;
       font-variant-numeric: tabular-nums;
     }
     strong { font-weight: 900; color: #000; }
@@ -235,17 +257,7 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
       <div class="row"><span>${escapeHtml(labels.time)}</span><span>${escapeHtml(formatReceiptTime(data.createdAt, lang))}</span></div>
       <div class="row"><span>${escapeHtml(labels.cashier)}</span><span>${escapeHtml(data.cashierName || 'Desktop POS')}</span></div>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th>${escapeHtml(labels.item)}</th>
-          <th class="num qty">${escapeHtml(labels.qty)}</th>
-          <th class="num unit">${escapeHtml(labels.unit)}</th>
-          <th class="num amount">${escapeHtml(labels.amount)}</th>
-        </tr>
-      </thead>
-      <tbody>${itemsHtml}</tbody>
-    </table>
+    <div class="items">${itemsHtml}</div>
     <div class="divider"></div>
     <div class="row"><span>${escapeHtml(labels.payment)}</span><strong>${escapeHtml(paymentLabel(data.paymentMethod, lang))}</strong></div>
     <div class="row total"><span>${escapeHtml(labels.total)}</span><span>${money(data.totalAmount)}</span></div>
