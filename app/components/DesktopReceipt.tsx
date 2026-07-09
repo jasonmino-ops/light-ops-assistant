@@ -139,9 +139,9 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
     return `
       <tr>
         <td class="name">${escapeHtml(name)}</td>
-        <td class="num">${item.qty}</td>
-        <td class="num">${money(item.price)}</td>
-        <td class="num">${money(item.lineAmount)}</td>
+        <td class="num qty">${item.qty}</td>
+        <td class="num unit">${money(item.price)}</td>
+        <td class="num amount">${money(item.lineAmount)}</td>
       </tr>
     `
   }).join('')
@@ -189,11 +189,28 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
     .row span:last-child { text-align: right; overflow-wrap: anywhere; }
     .divider { border-top: 1.2px dashed #000; margin: 2.5mm 0; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    th { font-size: 11px; font-weight: 900; color: #000; text-align: left; padding-bottom: 1.6mm; border-bottom: 1.2px dashed #000; }
+    th { font-size: 10.5px; font-weight: 900; color: #000; text-align: left; padding-bottom: 1mm; border-bottom: 1px dashed #000; }
     th.num, td.num { text-align: right; }
-    td { padding: 1.5mm 0; vertical-align: top; border-bottom: 1px dotted #555; color: #000; }
-    .name { width: 42%; word-break: break-word; overflow-wrap: anywhere; }
-    .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    td { padding: .8mm 0 .7mm; vertical-align: top; border-bottom: .7px dotted #777; color: #000; }
+    .name {
+      width: 49mm;
+      padding-right: 1.4mm;
+      font-size: 11.5px;
+      line-height: ${isKhmer ? '1.48' : '1.22'};
+      font-weight: 700;
+      word-break: normal;
+      overflow-wrap: anywhere;
+      hyphens: auto;
+    }
+    .qty { width: 5mm; }
+    .unit { width: 9.5mm; }
+    .amount { width: 10.5mm; }
+    .num {
+      white-space: nowrap;
+      font-size: 11px;
+      line-height: 1.2;
+      font-variant-numeric: tabular-nums;
+    }
     strong { font-weight: 900; color: #000; }
     .total { font-size: 16px; font-weight: 900; color: #000; margin-top: 1mm; }
     .thanks { margin-top: 4mm; font-weight: 900; color: #000; }
@@ -222,9 +239,9 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
       <thead>
         <tr>
           <th>${escapeHtml(labels.item)}</th>
-          <th class="num">${escapeHtml(labels.qty)}</th>
-          <th class="num">${escapeHtml(labels.unit)}</th>
-          <th class="num">${escapeHtml(labels.amount)}</th>
+          <th class="num qty">${escapeHtml(labels.qty)}</th>
+          <th class="num unit">${escapeHtml(labels.unit)}</th>
+          <th class="num amount">${escapeHtml(labels.amount)}</th>
         </tr>
       </thead>
       <tbody>${itemsHtml}</tbody>
