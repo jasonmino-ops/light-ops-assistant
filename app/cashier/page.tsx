@@ -169,6 +169,7 @@ const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefi
 
 const SUGAR_SPEC_RE = /no\s*sugar|无糖|微糖|半糖|少糖|正常糖|(?:25|50|75|100)%/i
 const SCANNER_MIN_CODE_LENGTH = 5
+const DEBUG_SCANNER = false
 
 const SUGAR_OPTIONS = [
   { value: 'no_sugar', label: '无糖' },
@@ -2850,7 +2851,7 @@ export default function CashierPage() {
 
       {/* ── Toast ─────────────────────────────────────────────────────────── */}
       {toast && <div style={s.toast}>{toast}</div>}
-      {isDesktopPos && (
+      {isDesktopPos && DEBUG_SCANNER && (
         <div style={s.scannerDebugPanel}>
           <div style={s.scannerDebugTitle}>Scanner Debug</div>
           {[
