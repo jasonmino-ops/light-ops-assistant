@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>店员操作说明</title>
+  <style>
+    body { font-family: Arial, "Microsoft YaHei", sans-serif; margin: 28px; color: #111827; line-height: 1.65; }
+    h1 { font-size: 24px; }
+    h2 { font-size: 18px; margin-top: 24px; border-bottom: 1px solid #d1d5db; padding-bottom: 5px; }
+    .important { border: 1px solid #dc2626; padding: 12px; background: #fff7f7; }
+    li { margin: 6px 0; }
+    @media print {
+      body { margin: 12mm; font-size: 13px; }
+      .important { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <h1>店小二 POS 店员操作说明</h1>
+
+  <div class="important">
+    正常收银时，打印窗口出来后按 Enter 或点击打印，小票才会出来。小票没出来时，不要重复收银。已完成的销售不会因为刷新页面丢失。扫码失败时可以手动搜索商品继续营业。
+  </div>
+
+  <h2>每天开机怎么做</h2>
+  <ol>
+    <li>打开电脑，确认网络正常。</li>
+    <li>打开 Chrome。</li>
+    <li>进入 https://elifekh.com。</li>
+    <li>确认页面可以正常进入收银台。</li>
+  </ol>
+
+  <h2>怎么确认打印机正常</h2>
+  <ul>
+    <li>确认打印机有纸、通电、USB 线接好。</li>
+    <li>确认打印机没有显示离线或报错。</li>
+    <li>如果刚开机，请等打印机启动完成后再收银。</li>
+  </ul>
+
+  <h2>怎么确认扫码枪正常</h2>
+  <ul>
+    <li>扫码枪接到电脑后，扫商品条码应能听到正常提示音。</li>
+    <li>如果扫不出来，可以先拔下 USB 再插回。</li>
+    <li>如果商品没有识别，可以在店小二里手动搜索商品继续收银。</li>
+  </ul>
+
+  <h2>正常收银怎么做</h2>
+  <ol>
+    <li>扫码或搜索商品。</li>
+    <li>确认商品和金额。</li>
+    <li>完成收款。</li>
+    <li>看到 Chrome 打印窗口后，按 Enter 或点击打印。</li>
+    <li>小票出来后，页面应自动回到新订单。</li>
+  </ol>
+
+  <h2>小票没出来怎么办</h2>
+  <ul>
+    <li>不要重复收银。</li>
+    <li>先看有没有 Chrome 打印窗口被挡住或最小化。</li>
+    <li>确认打印窗口里的打印机是 Xprinter。</li>
+    <li>确认打印机有纸、在线、没有卡纸。</li>
+    <li>如果仍然不出纸，请联系老板或技术人员。</li>
+  </ul>
+
+  <h2>扫码扫不出来怎么办</h2>
+  <ul>
+    <li>确认扫码枪 USB 插好。</li>
+    <li>换一个商品条码再试。</li>
+    <li>可以手动搜索商品继续营业。</li>
+    <li>如果很多商品都无法识别，请联系老板检查商品资料。</li>
+  </ul>
+
+  <h2>打印窗口被 Chrome 拦截怎么办</h2>
+  <ul>
+    <li>看 Chrome 地址栏附近是否有弹窗拦截提示。</li>
+    <li>选择允许 elifekh.com 的弹出式窗口和重定向。</li>
+    <li>再进行一笔测试销售，确认打印窗口能出现。</li>
+  </ul>
+
+  <h2>收银完成后没有回到新订单怎么办</h2>
+  <ul>
+    <li>先确认销售是否已经完成，不要重复收银。</li>
+    <li>如果只是打印窗口还开着，请先完成打印确认。</li>
+    <li>如果每次都不能回到新订单，请记录订单号并联系技术人员。</li>
+  </ul>
+</body>
+</html>

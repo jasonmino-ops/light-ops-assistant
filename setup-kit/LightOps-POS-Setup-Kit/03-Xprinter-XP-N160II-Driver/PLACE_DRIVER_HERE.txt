@@ -1,0 +1,1 @@
+请将已验证的 Xprinter XP-N160II Windows 驱动安装包放在此目录。驱动二进制文件不进入 git。

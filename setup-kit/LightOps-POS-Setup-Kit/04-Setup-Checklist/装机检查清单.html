@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>装机检查清单</title>
+  <style>
+    body { font-family: Arial, "Microsoft YaHei", sans-serif; margin: 28px; color: #111827; line-height: 1.45; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    h2 { font-size: 18px; margin: 22px 0 10px; border-bottom: 1px solid #9ca3af; padding-bottom: 5px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+    th, td { border: 1px solid #9ca3af; padding: 8px; vertical-align: top; }
+    th { background: #f3f4f6; text-align: left; }
+    .field { height: 28px; }
+    .check { width: 42px; text-align: center; }
+    .note { border: 1px solid #f59e0b; padding: 10px; margin: 12px 0; }
+    @media print {
+      body { margin: 12mm; font-size: 12px; }
+      h2 { break-after: avoid; }
+      .note { border-color: #111827; }
+    }
+  </style>
+</head>
+<body>
+  <h1>店小二 POS 装机检查清单</h1>
+  <p>状态：SV-04A Candidate</p>
+
+  <div class="note">
+    店小二测试小票通过“可作废最小真实销售 + 销售完成弹窗里的预览小票 / 打印小票”触发。自动打印 = 自动弹出打印流程，店员仍需在 Chrome 打印对话框确认一次。完整闭环 = 除打印对话框确认外，不需要手动关窗、不需要手动切换打印机、不需要刷新页面、不需要手动清空订单。连续第二单必须不刷新页面完成。
+  </div>
+
+  <h2>环境记录</h2>
+  <table>
+    <tr><th>门店</th><td class="field"></td><th>日期</th><td class="field"></td></tr>
+    <tr><th>装机人</th><td class="field"></td><th>店员</th><td class="field"></td></tr>
+    <tr><th>Windows 版本</th><td class="field"></td><th>Chrome 版本</th><td class="field"></td></tr>
+    <tr><th>打印机型号</th><td>Xprinter XP-N160II</td><th>打印机连接方式</th><td>USB</td></tr>
+    <tr><th>扫码枪型号</th><td class="field"></td><th>店小二访问域名</th><td>elifekh.com</td></tr>
+    <tr><th>装机设备编号 / 备注</th><td class="field"></td><th>驱动来源</th><td class="field"></td></tr>
+    <tr><th>驱动版本</th><td class="field"></td><th>驱动文件哈希</th><td class="field"></td></tr>
+  </table>
+
+  <h2>检查项</h2>
+  <table>
+    <tr><th class="check">通过</th><th>项目</th><th>检查内容</th><th>备注</th></tr>
+    <tr><td class="check">□</td><td>A. 设备检查</td><td>Windows PC、Xprinter、USB 扫码枪齐全，线材连接稳定。</td><td></td></tr>
+    <tr><td class="check">□</td><td>B. 网络检查</td><td>电脑可以稳定访问 https://elifekh.com。</td><td></td></tr>
+    <tr><td class="check">□</td><td>C. Chrome 检查</td><td>使用 Chrome 打开店小二，不使用不明浏览器。</td><td></td></tr>
+    <tr><td class="check">□</td><td>D. 浏览器弹窗权限检查</td><td>elifekh.com 已允许弹出式窗口和重定向。</td><td></td></tr>
+    <tr><td class="check">□</td><td>E. 打印机检查</td><td>驱动型号确认为 Xprinter XP-N160II，打印机状态在线。</td><td></td></tr>
+    <tr><td class="check">□</td><td>F. Windows 默认打印机检查</td><td>Windows 默认打印机为 Xprinter XP-N160II。</td><td></td></tr>
+    <tr><td class="check">□</td><td>G. Windows 测试页检查</td><td>Windows 测试页正常打印。若失败，不继续测试店小二小票。</td><td></td></tr>
+    <tr><td class="check">□</td><td>H. 店小二测试小票检查</td><td>使用可作废最小真实销售触发预览小票 / 打印小票，小票可正常出纸。</td><td></td></tr>
+    <tr><td class="check">□</td><td>I. 扫码枪检查</td><td>扫码枪可连续输入条码，店小二能识别商品。</td><td></td></tr>
+    <tr><td class="check">□</td><td>J. 自动打印检查</td><td>销售完成后自动弹出 Chrome 打印流程，店员确认后出纸。</td><td></td></tr>
+    <tr><td class="check">□</td><td>K. 销售闭环检查</td><td>除打印对话框确认外，不需要手动关窗、切换打印机、刷新页面或清空订单。</td><td></td></tr>
+    <tr><td class="check">□</td><td>L. 连续第二单检查</td><td>不刷新页面连续完成第二单，打印与回到新订单均正常。</td><td></td></tr>
+  </table>
+
+  <h2>签字栏</h2>
+  <table>
+    <tr><th>装机人签字</th><td class="field"></td><th>店员签字</th><td class="field"></td></tr>
+    <tr><th>装机结论</th><td colspan="3">□ 通过　　□ 不通过</td></tr>
+  </table>
+</body>
+</html>

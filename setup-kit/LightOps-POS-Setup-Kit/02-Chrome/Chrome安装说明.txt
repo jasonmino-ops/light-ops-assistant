@@ -1,0 +1,17 @@
+Chrome 安装说明
+
+适用目标：Windows PC + 店小二 Desktop POS（https://elifekh.com）
+
+1. 如果电脑已经安装 Chrome，请直接使用 Chrome 打开：
+   https://elifekh.com
+
+2. 如果电脑没有安装 Chrome，请从官方入口下载安装。
+   不建议从不明来源下载 Chrome，避免安装到被篡改的软件或捆绑软件。
+
+3. 安装完成后，请使用 Chrome 打开店小二，并允许 elifekh.com 的弹出式窗口和重定向。
+
+4. Chrome 可能拦截 about:blank / 打印窗口。
+   如果销售完成后没有弹出打印窗口，或地址栏附近出现弹窗拦截提示，请将 elifekh.com 设置为允许弹出式窗口和重定向。
+
+5. 自动打印不是静默打印。
+   店小二销售完成后会自动弹出 Chrome 浏览器打印流程，店员仍需在 Chrome 打印对话框中按 Enter 或点击打印确认出纸。

@@ -1,0 +1,8 @@
+LightOps-POS-Setup-Kit
+Version: v0.1-candidate
+SV Task: SV-04A
+Status: Candidate
+Source: SV-03 POS Device Setup Architecture Pack Candidate
+Date: 2026-07-09
+Environment: Windows + Chrome + Xprinter XP-N160II 80mm USB + USB Scanner + elifekh.com
+Final Freeze: No

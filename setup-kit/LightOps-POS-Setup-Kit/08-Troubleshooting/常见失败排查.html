@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>常见失败排查</title>
+  <style>
+    body { font-family: Arial, "Microsoft YaHei", sans-serif; margin: 28px; color: #111827; line-height: 1.55; }
+    h1 { font-size: 24px; }
+    h2 { font-size: 17px; margin-top: 22px; border-bottom: 1px solid #d1d5db; padding-bottom: 5px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #9ca3af; padding: 8px; vertical-align: top; }
+    th { width: 18%; background: #f3f4f6; text-align: left; }
+    .alert { border: 1px solid #dc2626; padding: 10px; margin: 12px 0; }
+    @media print {
+      body { margin: 12mm; font-size: 12px; }
+      h2 { break-after: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <h1>店小二 POS 常见失败排查</h1>
+  <div class="alert">关键规则：Windows 测试页失败时，不继续测试店小二小票。默认打印机必须是 Xprinter。第一单正常、第二单异常 = 装机验收不通过。打印后不回新订单若稳定复现，必须升级技术。</div>
+
+  <h2>1. Chrome 不弹打印窗口</h2>
+  <table><tr><th>可能原因</th><td>Chrome 拦截弹窗；销售未真正完成；打印窗口被其他窗口挡住。</td></tr><tr><th>检查步骤</th><td>查看地址栏弹窗提示；检查是否有被最小化的打印窗口；确认订单已完成。</td></tr><tr><th>处理方式</th><td>允许 elifekh.com 弹出式窗口和重定向；重新做一笔可作废最小真实销售测试。</td></tr><tr><th>是否升级</th><td>允许弹窗后仍稳定不弹，升级技术排查。</td></tr></table>
+
+  <h2>2. Chrome 拦截 about:blank / 弹窗</h2>
+  <table><tr><th>可能原因</th><td>Chrome 默认阻止新窗口或重定向。</td></tr><tr><th>检查步骤</th><td>查看地址栏右侧是否有拦截图标；打开 Chrome 网站设置。</td></tr><tr><th>处理方式</th><td>将 elifekh.com 设置为允许弹出式窗口和重定向。</td></tr><tr><th>是否升级</th><td>设置后仍被拦截，升级技术排查浏览器策略。</td></tr></table>
+
+  <h2>3. 打印窗口弹出但不打印</h2>
+  <table><tr><th>可能原因</th><td>未按 Enter 或点击打印；打印机选错；Xprinter 离线、缺纸或卡纸。</td></tr><tr><th>检查步骤</th><td>确认打印对话框中打印机是 Xprinter；检查打印机灯号、纸卷和 USB 线。</td></tr><tr><th>处理方式</th><td>选择 Xprinter，按 Enter 或点击打印；恢复打印机在线状态。</td></tr><tr><th>是否升级</th><td>Windows 测试页也不能打印时，先处理 Windows / 驱动问题。</td></tr></table>
+
+  <h2>4. Windows 测试页能打，店小二小票不能打</h2>
+  <table><tr><th>可能原因</th><td>Chrome 弹窗权限、打印窗口选择、页面打印预览异常。</td></tr><tr><th>检查步骤</th><td>确认弹窗出现；确认打印机选择；记录测试销售订单号。</td></tr><tr><th>处理方式</th><td>允许弹窗并选择默认 Xprinter，再做最小真实销售测试。</td></tr><tr><th>是否升级</th><td>Windows 正常但店小二稳定失败，升级技术排查。</td></tr></table>
+
+  <h2>5. 小票能弹窗，但排版异常</h2>
+  <table><tr><th>可能原因</th><td>纸张宽度、缩放比例、浏览器打印设置或驱动设置不正确。</td></tr><tr><th>检查步骤</th><td>检查是否为 80mm 小票纸；查看打印预览缩放和边距。</td></tr><tr><th>处理方式</th><td>选择正确纸张规格，使用默认缩放，避免手动改成不合适纸型。</td></tr><tr><th>是否升级</th><td>设置正确仍异常，升级技术排查。</td></tr></table>
+
+  <h2>6. 默认打印机不是 Xprinter</h2>
+  <table><tr><th>可能原因</th><td>Windows 自动切换默认打印机；安装了多台打印机。</td></tr><tr><th>检查步骤</th><td>打开 Windows 打印机设置，查看默认打印机。</td></tr><tr><th>处理方式</th><td>将 Xprinter XP-N160II 设置为默认打印机。</td></tr><tr><th>是否升级</th><td>无法设置默认打印机时，升级现场 IT 或技术排查。</td></tr></table>
+
+  <h2>7. Xprinter 离线</h2>
+  <table><tr><th>可能原因</th><td>USB 松动、打印机未开机、驱动异常、卡纸或缺纸。</td></tr><tr><th>检查步骤</th><td>检查电源、USB、纸卷、Windows 打印队列。</td></tr><tr><th>处理方式</th><td>重新插拔 USB，重启打印机，清理打印队列后再打印 Windows 测试页。</td></tr><tr><th>是否升级</th><td>Windows 仍显示离线，升级驱动或硬件排查。</td></tr></table>
+
+  <h2>8. 扫码枪不能输入</h2>
+  <table><tr><th>可能原因</th><td>USB 未连接、扫码枪未上电、焦点不在输入区域。</td></tr><tr><th>检查步骤</th><td>插拔 USB；打开记事本扫码测试是否有数字输入。</td></tr><tr><th>处理方式</th><td>恢复 USB 连接，将光标点回店小二输入区域。</td></tr><tr><th>是否升级</th><td>记事本也无输入时，升级硬件排查。</td></tr></table>
+
+  <h2>9. 扫码枪能输入但系统不识别商品</h2>
+  <table><tr><th>可能原因</th><td>商品条码未录入；条码输入多了前后缀；扫错商品码。</td></tr><tr><th>检查步骤</th><td>核对屏幕输入的条码；换已知商品测试。</td></tr><tr><th>处理方式</th><td>手动搜索商品继续营业，并通知老板补充商品条码。</td></tr><tr><th>是否升级</th><td>大量已录入商品都不识别时，升级技术排查。</td></tr></table>
+
+  <h2>10. 自动打印没有触发</h2>
+  <table><tr><th>可能原因</th><td>销售未完成；弹窗被拦截；浏览器窗口被遮挡。</td></tr><tr><th>检查步骤</th><td>确认销售完成状态；查看 Chrome 弹窗权限；检查是否有打印窗口。</td></tr><tr><th>处理方式</th><td>允许弹窗后重新做最小真实销售测试。自动打印只代表自动弹出打印流程，仍需店员在 Chrome 打印对话框确认一次。</td></tr><tr><th>是否升级</th><td>稳定不触发，升级技术排查。</td></tr></table>
+
+  <h2>11. 打印后没有回到新订单</h2>
+  <table><tr><th>可能原因</th><td>打印对话框未完成；浏览器未返回焦点；页面流程异常。</td></tr><tr><th>检查步骤</th><td>确认已按 Enter 或点击打印；查看订单是否还停留在上一单。</td></tr><tr><th>处理方式</th><td>完成打印确认后等待页面回到新订单。不要重复收银。</td></tr><tr><th>是否升级</th><td>若稳定复现，必须升级技术排查。</td></tr></table>
+
+  <h2>12. 第一单正常，第二单异常</h2>
+  <table><tr><th>可能原因</th><td>页面未正确清空订单；打印流程未闭环；浏览器状态残留。</td></tr><tr><th>检查步骤</th><td>不刷新页面连续做第二单，记录第二单失败点和订单号。</td></tr><tr><th>处理方式</th><td>停止装机验收，保留现场记录和设备信息。</td></tr><tr><th>是否升级</th><td>第一单正常、第二单异常 = 装机验收不通过，必须升级技术。</td></tr></table>
+</body>
+</html>

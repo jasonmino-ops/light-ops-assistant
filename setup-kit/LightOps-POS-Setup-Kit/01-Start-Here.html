@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>店小二 POS 设备装机包 / LightOps POS Setup Kit</title>
+  <style>
+    body { font-family: Arial, "Microsoft YaHei", sans-serif; margin: 32px; color: #1f2937; line-height: 1.6; }
+    h1 { font-size: 28px; margin: 0 0 8px; }
+    h2 { font-size: 20px; margin-top: 28px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; }
+    .status { display: inline-block; padding: 4px 10px; border: 1px solid #2563eb; color: #1d4ed8; font-weight: 700; }
+    .notice { border: 1px solid #f59e0b; background: #fffbeb; padding: 14px 16px; margin: 18px 0; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; }
+    a { color: #075985; }
+    li { margin: 6px 0; }
+    @media print {
+      body { margin: 18mm; }
+      a { color: #111827; text-decoration: none; }
+      .notice { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <h1>店小二 POS 设备装机包 / LightOps POS Setup Kit</h1>
+  <p><span class="status">SV-04A Candidate</span></p>
+
+  <h2>适用环境</h2>
+  <div class="grid">
+    <div>Windows PC</div>
+    <div>Chrome 浏览器</div>
+    <div>Xprinter XP-N160II 80mm USB 打印机</div>
+    <div>USB 扫码枪</div>
+    <div>店小二 Desktop POS：elifekh.com</div>
+  </div>
+
+  <div class="notice">
+    <strong>重要说明：</strong>本包是静态装机引导包，不会自动修改系统，不会自动安装驱动，不会自动修改 Chrome，不会绕过打印窗口。所有关键设置仍需装机人员人工确认。自动打印不是静默打印，销售完成后会自动弹出 Chrome 浏览器打印流程，店员仍需在 Chrome 打印对话框中按 Enter 或点击打印确认出纸。
+  </div>
+
+  <h2>装机步骤</h2>
+  <ol>
+    <li>确认 Windows 与网络。</li>
+    <li>确认或安装 Chrome。</li>
+    <li>安装 Xprinter XP-N160II 驱动。</li>
+    <li>设置 Xprinter 为默认打印机。</li>
+    <li>允许 elifekh.com 弹窗。</li>
+    <li>打印 Windows 测试页。</li>
+    <li>用最小真实销售触发店小二小票打印。</li>
+    <li>测试扫码枪连续扫码。</li>
+    <li>连续完成两单。</li>
+    <li>填写设备信息记录表。</li>
+    <li>给店员演示操作说明。</li>
+    <li>签字交付。</li>
+  </ol>
+
+  <h2>打开资料</h2>
+  <ul>
+    <li><a href="02-Chrome/Chrome安装说明.txt">Chrome 安装说明</a></li>
+    <li><a href="03-Xprinter-XP-N160II-Driver/驱动版本说明.txt">驱动版本说明</a></li>
+    <li><a href="04-Setup-Checklist/装机检查清单.html">装机检查清单</a></li>
+    <li><a href="05-Staff-Guide/店员操作说明.html">店员操作说明</a></li>
+    <li><a href="07-Device-Info-Form/设备信息记录表.html">设备信息记录表</a></li>
+    <li><a href="08-Troubleshooting/常见失败排查.html">常见失败排查</a></li>
+    <li><a href="06-Open-LightOps-POS.url">店小二入口 .url</a></li>
+  </ul>
+</body>
+</html>
