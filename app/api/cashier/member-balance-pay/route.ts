@@ -1,7 +1,7 @@
 /**
  * POST /api/cashier/member-balance-pay
  *
- * Desktop POS endpoint. Requires storeCode + signed POS device token, then creates
+ * Desktop POS endpoint. Requires logged-in store OWNER/STAFF or signed POS device token, then creates
  * the same SaleRecord/PaymentIntent shape as /api/cashier/sales, but pays by
  * Member.balance in one transaction with a CONSUME ledger.
  */
@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
-import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
+import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
 
@@ -57,15 +57,14 @@ export async function POST(req: NextRequest) {
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
-  if (!verifyPosDeviceRequest(req, { tenantId: store.tenantId, storeId: store.id, storeCode: store.code })) {
+  const posAuth = await authorizeDesktopPosRequest(req, {
+    tenantId: store.tenantId,
+    storeId: store.id,
+    storeCode: store.code,
+  })
+  if (!posAuth) {
     return unauthorizedPosResponse()
   }
-
-  const ownerRole = await prisma.userStoreRole.findFirst({
-    where: { storeId: store.id, role: 'OWNER', status: 'ACTIVE' },
-    select: { userId: true },
-  })
-  if (!ownerRole) return NextResponse.json({ error: 'STORE_NO_OWNER' }, { status: 500 })
 
   const member = await prisma.member.findFirst({
     where: {
@@ -149,7 +148,7 @@ export async function POST(req: NextRequest) {
           data: {
             tenantId: store.tenantId,
             storeId: store.id,
-            operatorUserId: ownerRole.userId,
+            operatorUserId: posAuth.operatorUserId,
             recordNo,
             orderNo,
             saleType: 'SALE',
@@ -181,7 +180,7 @@ export async function POST(req: NextRequest) {
           amount: totalAmount.negated(),
           balanceBefore,
           balanceAfter,
-          operatorUserId: ownerRole.userId,
+          operatorUserId: posAuth.operatorUserId,
           note: '/cashier 会员余额支付',
         },
       })
@@ -190,7 +189,7 @@ export async function POST(req: NextRequest) {
         data: {
           tenantId: store.tenantId,
           storeId: store.id,
-          operatorUserId: ownerRole.userId,
+          operatorUserId: posAuth.operatorUserId,
           orderNo,
           paymentMethod: 'MEMBER_BALANCE',
           status: 'PAID',

@@ -1,8 +1,8 @@
 /**
  * POST /api/cashier/sales
  *
- * Desktop POS endpoint. Requires storeCode + signed POS device token.
- * Identifies the store by storeCode, uses the store OWNER as operatorUserId,
+ * Desktop POS endpoint. Requires logged-in store OWNER/STAFF or signed POS device token.
+ * Identifies the store by storeCode, uses the authorized operatorUserId,
  * and records remark = '电脑收银台' on every sale line.
  *
  * Body: { storeCode, items: [{barcode, quantity}], paymentMethod: 'CASH'|'KHQR' }
@@ -12,7 +12,7 @@ import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
-import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
+import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
 
@@ -77,17 +77,13 @@ export async function POST(req: NextRequest) {
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
-  if (!verifyPosDeviceRequest(req, { tenantId: store.tenantId, storeId: store.id, storeCode: store.code })) {
-    return unauthorizedPosResponse()
-  }
-
-  // Use store OWNER as operatorUserId
-  const ownerRole = await prisma.userStoreRole.findFirst({
-    where: { storeId: store.id, role: 'OWNER', status: 'ACTIVE' },
-    select: { userId: true },
+  const posAuth = await authorizeDesktopPosRequest(req, {
+    tenantId: store.tenantId,
+    storeId: store.id,
+    storeCode: store.code,
   })
-  if (!ownerRole) {
-    return NextResponse.json({ error: 'STORE_NO_OWNER' }, { status: 500 })
+  if (!posAuth) {
+    return unauthorizedPosResponse()
   }
 
   // Validate products
@@ -139,7 +135,7 @@ export async function POST(req: NextRequest) {
           data: {
             tenantId: store.tenantId,
             storeId: store.id,
-            operatorUserId: ownerRole.userId,
+            operatorUserId: posAuth.operatorUserId,
             recordNo,
             orderNo,
             saleType: 'SALE',
@@ -167,7 +163,7 @@ export async function POST(req: NextRequest) {
         data: {
           tenantId: store.tenantId,
           storeId: store.id,
-          operatorUserId: ownerRole.userId,
+          operatorUserId: posAuth.operatorUserId,
           orderNo,
           paymentMethod: paymentMethod as 'CASH' | 'KHQR',
           status: isPaid ? 'PAID' : 'PENDING',

@@ -134,6 +134,7 @@ type PosAuthChallenge = {
   storeName: string
   deviceName: string
 }
+type PosAccountAccessState = 'checking' | 'authorized' | 'login_required' | 'forbidden'
 
 type ScannerDebugState = {
   mounted: boolean
@@ -1196,6 +1197,8 @@ export default function CashierPage() {
   const [posAuthError, setPosAuthError] = useState('')
   const [posAuthChallenge, setPosAuthChallenge] = useState<PosAuthChallenge | null>(null)
   const [posAuthChecking, setPosAuthChecking] = useState(false)
+  const [posAccountAccess, setPosAccountAccess] = useState<PosAccountAccessState>('checking')
+  const [posAccountAccessMessage, setPosAccountAccessMessage] = useState('')
   const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const [cashTendered, setCashTendered] = useState('')
@@ -1414,7 +1417,24 @@ export default function CashierPage() {
     setStoreCode(sc)
     setPosDeviceToken(getPosDeviceToken(sc))
     setPosAuthError('')
+    setPosAccountAccess('checking')
+    setPosAccountAccessMessage('')
     setIsRestoringCashierStore(false)
+    apiFetch(`/api/cashier/access?storeCode=${encodeURIComponent(sc)}`)
+      .then(async (r) => {
+        const body = await r.json().catch(() => null)
+        if (r.ok && body?.ok) {
+          setPosAccountAccess('authorized')
+          setPosAccountAccessMessage('')
+          return
+        }
+        setPosAccountAccess(r.status === 401 ? 'login_required' : 'forbidden')
+        setPosAccountAccessMessage(body?.message || body?.error || '请确认你已使用本店老板或员工账号登录。')
+      })
+      .catch(() => {
+        setPosAccountAccess('login_required')
+        setPosAccountAccessMessage('请确认你已使用本店老板或员工账号登录。')
+      })
     getCashierProductCacheMeta(sc)
       .then((meta) => {
         if (meta) {
@@ -1549,6 +1569,7 @@ export default function CashierPage() {
   // ── Poll pending orders every 5s ───────────────────────────────────────────
   useEffect(() => {
     if (!storeCode) return
+    if (!posDeviceToken && posAccountAccess !== 'authorized') return
     function poll() {
       fetch(`/api/cashier/orders?storeCode=${encodeURIComponent(storeCode!)}`, {
         headers: posDeviceHeaders(storeCode),
@@ -1579,7 +1600,7 @@ export default function CashierPage() {
     poll()
     const timer = setInterval(poll, 5000)
     return () => clearInterval(timer)
-  }, [storeCode, posDeviceToken, lang])
+  }, [storeCode, posDeviceToken, posAccountAccess, lang])
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1705,23 +1726,25 @@ export default function CashierPage() {
   }, [storeCode, posAuthChallenge, posAuthChecking, lang])
 
   function requireOnlinePosAuthorization() {
+    if (posAccountAccess === 'authorized') return true
     if (posDeviceToken) return true
     handlePosUnauthorized()
     return false
   }
 
   useEffect(() => {
-    if (!storeCode || posDeviceToken || posAuthChallenge || posAuthLoading) return
+    if (!storeCode || posAccountAccess === 'authorized' || posDeviceToken || posAuthChallenge || posAuthLoading) return
+    if (new URLSearchParams(window.location.search).get('deviceAuth') !== '1') return
     void startPosAuthorization()
-  }, [storeCode, posDeviceToken, posAuthChallenge, posAuthLoading])
+  }, [storeCode, posAccountAccess, posDeviceToken, posAuthChallenge, posAuthLoading])
 
   useEffect(() => {
-    if (!storeCode || posDeviceToken || !posAuthChallenge) return
+    if (!storeCode || posAccountAccess === 'authorized' || posDeviceToken || !posAuthChallenge) return
     const timer = window.setInterval(() => {
       void checkPosAuthorization()
     }, 3000)
     return () => window.clearInterval(timer)
-  }, [storeCode, posDeviceToken, posAuthChallenge, checkPosAuthorization])
+  }, [storeCode, posAccountAccess, posDeviceToken, posAuthChallenge, checkPosAuthorization])
 
   function buildReceiptSnapshot(input: {
     items: ReturnType<typeof cashierDisplayItems>
@@ -3048,7 +3071,60 @@ export default function CashierPage() {
     )
   }
 
-  if (storeCode && !posDeviceToken) {
+  if (storeCode && !posDeviceToken && posAccountAccess !== 'authorized') {
+    const currentReturnUrl = typeof window !== 'undefined'
+      ? `${window.location.pathname}${window.location.search}`
+      : `/cashier?storeCode=${encodeURIComponent(storeCode)}`
+    const loginUrl = `/relogin?returnUrl=${encodeURIComponent(currentReturnUrl)}`
+    const legacyDeviceAuth = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('deviceAuth') === '1'
+
+    if (!legacyDeviceAuth) {
+      const isCheckingAccess = posAccountAccess === 'checking'
+      const title =
+        isCheckingAccess ? '正在检查收银权限' :
+        posAccountAccess === 'login_required' ? '请先登录本店账号' :
+        '当前账号无权进入本店收银台'
+      const sub =
+        isCheckingAccess ? '正在确认你是否已使用本店老板或员工账号登录，请稍候。' :
+        posAccountAccess === 'login_required'
+          ? '请使用该门店老板或员工账号登录后，再打开这条电脑收银台链接。'
+          : '请确认当前登录账号属于这家门店，或让老板重新分享正确的收银台链接。'
+      return (
+        <main style={s.authPage}>
+          <section style={s.authIntro}>
+            <div style={s.authBadge}>电脑收银台</div>
+            <h1 style={s.authTitle}>{title}</h1>
+            <div style={s.authSub}>{sub}</div>
+            <div style={s.authWarn}>
+              只有本店 OWNER 或 STAFF 可以进入收银台。无法进入时，请确认你已使用该门店老板或员工账号登录。
+            </div>
+          </section>
+
+          <section style={s.authCard}>
+            <div style={s.authCardTitle}>{storeName || storeCode}</div>
+            <div style={s.authCardSub}>{posAccountAccessMessage || '请先完成登录或切换到本店账号。'}</div>
+            <div style={s.authActions}>
+              <a href={loginUrl} style={{ ...s.authBtn, textDecoration: 'none', textAlign: 'center' }}>
+                打开登录
+              </a>
+              <button
+                type="button"
+                style={{ ...s.authBtn, ...s.authBtnSecondary }}
+                onClick={() => window.location.reload()}
+                disabled={isCheckingAccess}
+              >
+                重新检查
+              </button>
+            </div>
+            <div style={{ ...s.authCardSub, marginTop: 12 }}>
+              如果登录后没有自动回到收银台，请重新打开老板分享的电脑收银台链接。
+            </div>
+          </section>
+          {toast && <div style={s.toast}>{toast}</div>}
+        </main>
+      )
+    }
+
     const authUrl = posAuthChallenge?.authorizeUrl ?? ''
     return (
       <main style={s.authPage}>
@@ -3290,14 +3366,18 @@ export default function CashierPage() {
             {storeCode && (
               <div style={{
                 ...s.posAuthCard,
-                ...(posDeviceToken ? s.posAuthCardOk : s.posAuthCardWarn),
+                ...(posAccountAccess === 'authorized' || posDeviceToken ? s.posAuthCardOk : s.posAuthCardWarn),
               }}>
                 <div style={s.posAuthTitle}>
-                  {posDeviceToken ? posCopy.okTitle : posCopy.warnTitle}
+                  {posAccountAccess === 'authorized' && !posDeviceToken ? '账号已授权收银' : posDeviceToken ? posCopy.okTitle : posCopy.warnTitle}
                 </div>
-                <div>{posDeviceToken ? posCopy.okBody : posCopy.warnBody}</div>
+                <div>
+                  {posAccountAccess === 'authorized' && !posDeviceToken
+                    ? '当前登录账号可为本店进行电脑收银。'
+                    : posDeviceToken ? posCopy.okBody : posCopy.warnBody}
+                </div>
                 {posAuthError && <div style={{ marginTop: 4, color: '#fecaca' }}>{posAuthError}</div>}
-                {!posDeviceToken && (
+                {posAccountAccess !== 'authorized' && !posDeviceToken && (
                   <button
                     type="button"
                     style={{ ...s.posAuthBtn, ...(posAuthLoading ? s.posAuthBtnDis : {}) }}

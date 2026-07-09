@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { getPaymentBreakdown, getOrderPaymentMap } from '@/lib/payment-breakdown'
-import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
+import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
 
 /**
  * GET /api/records?dateFrom=yyyy-MM-dd&dateTo=yyyy-MM-dd[&saleType=SALE|REFUND][&storeId=][&operatorUserId=][&page=1][&pageSize=20]
@@ -39,12 +39,13 @@ export async function GET(req: NextRequest) {
   if (desktopStore && desktopStore.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
-  if (
-    isDesktopRequest &&
-    desktopStore &&
-    !verifyPosDeviceRequest(req, { tenantId: desktopStore.tenantId, storeId: desktopStore.id, storeCode: desktopStoreCode! })
-  ) {
-    return unauthorizedPosResponse()
+  if (isDesktopRequest && desktopStore) {
+    const posAuth = await authorizeDesktopPosRequest(req, {
+      tenantId: desktopStore.tenantId,
+      storeId: desktopStore.id,
+      storeCode: desktopStoreCode!,
+    })
+    if (!posAuth) return unauthorizedPosResponse()
   }
 
   const tenantId = desktopStore?.tenantId ?? ctx!.tenantId

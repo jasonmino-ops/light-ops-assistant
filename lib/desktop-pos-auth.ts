@@ -1,12 +1,14 @@
 import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
+import { getContext } from '@/lib/context'
+import { prisma } from '@/lib/prisma'
 
 const TOKEN_VERSION = 'pos-device-v1'
 const TOKEN_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000
 
 export const POS_AUTH_ERROR = {
   error: 'POS_DEVICE_UNAUTHORIZED',
-  message: 'This POS computer is not authorized yet. Please ask the owner to authorize this computer first.',
+  message: '请先登录本店老板或员工账号，或完成 POS 设备授权后再操作。',
 }
 
 export type PosDeviceTokenPayload = {
@@ -17,6 +19,21 @@ export type PosDeviceTokenPayload = {
   deviceId: string
   issuedBy: string
   iat: number
+}
+
+export type DesktopPosStoreScope = {
+  tenantId: string
+  storeId: string
+  storeCode: string
+}
+
+export type DesktopPosAuthorization = {
+  tenantId: string
+  storeId: string
+  storeCode: string
+  operatorUserId: string
+  role: 'OWNER' | 'STAFF'
+  source: 'ACCOUNT' | 'DEVICE'
 }
 
 function secret(): string {
@@ -82,4 +99,77 @@ export function verifyPosDeviceRequest(
     return null
   }
   return payload
+}
+
+export async function authorizeDesktopPosAccount(
+  req: NextRequest,
+  expected: DesktopPosStoreScope,
+): Promise<DesktopPosAuthorization | null> {
+  const ctx = await getContext(req)
+  if (!ctx || ctx.tenantId !== expected.tenantId) return null
+
+  if (ctx.role === 'OWNER') {
+    return {
+      tenantId: expected.tenantId,
+      storeId: expected.storeId,
+      storeCode: expected.storeCode,
+      operatorUserId: ctx.userId,
+      role: 'OWNER',
+      source: 'ACCOUNT',
+    }
+  }
+
+  if (ctx.role === 'STAFF' && ctx.storeId === expected.storeId) {
+    const activeRole = await prisma.userStoreRole.findFirst({
+      where: {
+        tenantId: expected.tenantId,
+        storeId: expected.storeId,
+        userId: ctx.userId,
+        status: 'ACTIVE',
+      },
+      select: { role: true },
+    })
+    if (!activeRole) return null
+    return {
+      tenantId: expected.tenantId,
+      storeId: expected.storeId,
+      storeCode: expected.storeCode,
+      operatorUserId: ctx.userId,
+      role: activeRole.role,
+      source: 'ACCOUNT',
+    }
+  }
+
+  return null
+}
+
+export async function authorizeDesktopPosRequest(
+  req: NextRequest,
+  expected: DesktopPosStoreScope,
+): Promise<DesktopPosAuthorization | null> {
+  const accountAuth = await authorizeDesktopPosAccount(req, expected)
+  if (accountAuth) return accountAuth
+
+  const deviceAuth = verifyPosDeviceRequest(req, expected)
+  if (!deviceAuth) return null
+
+  const ownerRole = await prisma.userStoreRole.findFirst({
+    where: {
+      tenantId: expected.tenantId,
+      storeId: expected.storeId,
+      role: 'OWNER',
+      status: 'ACTIVE',
+    },
+    select: { userId: true },
+  })
+  if (!ownerRole) return null
+
+  return {
+    tenantId: expected.tenantId,
+    storeId: expected.storeId,
+    storeCode: expected.storeCode,
+    operatorUserId: ownerRole.userId,
+    role: 'OWNER',
+    source: 'DEVICE',
+  }
 }

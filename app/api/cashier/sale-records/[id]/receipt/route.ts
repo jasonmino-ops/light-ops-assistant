@@ -1,13 +1,13 @@
 /**
  * GET /api/cashier/sale-records/[id]/receipt?storeCode=xxx
  *
- * Desktop POS endpoint. Requires storeCode + signed POS device token.
+ * Desktop POS endpoint. Requires logged-in store OWNER/STAFF or signed POS device token.
  * Reconstructs a browser-printable 80mm SaleRecord receipt without changing
  * the SaleRecord write path or schema.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
+import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
 
 export async function GET(
   req: NextRequest,
@@ -24,7 +24,12 @@ export async function GET(
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
-  if (!verifyPosDeviceRequest(req, { tenantId: store.tenantId, storeId: store.id, storeCode: store.code })) {
+  const posAuth = await authorizeDesktopPosRequest(req, {
+    tenantId: store.tenantId,
+    storeId: store.id,
+    storeCode: store.code,
+  })
+  if (!posAuth) {
     return unauthorizedPosResponse()
   }
 

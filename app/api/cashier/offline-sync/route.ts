@@ -11,7 +11,7 @@ import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
 import { createHash } from 'crypto'
 import type { Product } from '@prisma/client'
-import { unauthorizedPosResponse, verifyPosDeviceRequest } from '@/lib/desktop-pos-auth'
+import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
 
 const MAX_ORDERS = 20
 const MAX_ITEMS_PER_ORDER = 100
@@ -125,7 +125,10 @@ async function markFailedIfPossible(params: {
   }
 }
 
-async function syncOne(order: OfflineSyncOrder, batch: { storeId: string | null; storeCode: string | null; deviceId: string | null }): Promise<SyncResult> {
+async function syncOne(
+  order: OfflineSyncOrder,
+  batch: { storeId: string | null; storeCode: string | null; deviceId: string | null; operatorUserIdOverride?: string | null },
+): Promise<SyncResult> {
   const offlineOrderId = asNonEmptyString(order.offlineOrderId)
   if (!offlineOrderId) return fail(null, 'INVALID_PAYLOAD', 'offlineOrderId is required')
 
@@ -192,7 +195,7 @@ async function syncOne(order: OfflineSyncOrder, batch: { storeId: string | null;
     return fail(offlineOrderId, 'TENANT_MISMATCH', 'tenantId does not match store')
   }
 
-  const requestedOperatorUserId = asNonEmptyString(order.operatorUserId)
+  const requestedOperatorUserId = batch.operatorUserIdOverride ?? asNonEmptyString(order.operatorUserId)
   let operatorUserId = requestedOperatorUserId
   if (operatorUserId) {
     const operatorRole = await prisma.userStoreRole.findFirst({
@@ -404,6 +407,7 @@ export async function POST(req: NextRequest) {
     storeId: asNonEmptyString(body?.storeId),
     storeCode: asNonEmptyString(body?.storeCode),
     deviceId: asNonEmptyString(body?.deviceId),
+    operatorUserIdOverride: null as string | null,
   }
   if (orders.length === 0) {
     return NextResponse.json({ error: 'INVALID_PAYLOAD', message: 'orders must be a non-empty array' }, { status: 400 })
@@ -420,9 +424,15 @@ export async function POST(req: NextRequest) {
     select: { id: true, tenantId: true, code: true },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
-  if (!verifyPosDeviceRequest(req, { tenantId: store.tenantId, storeId: store.id, storeCode: store.code })) {
+  const posAuth = await authorizeDesktopPosRequest(req, {
+    tenantId: store.tenantId,
+    storeId: store.id,
+    storeCode: store.code,
+  })
+  if (!posAuth) {
     return unauthorizedPosResponse()
   }
+  batch.operatorUserIdOverride = posAuth.source === 'ACCOUNT' ? posAuth.operatorUserId : null
 
   const results: SyncResult[] = []
   for (const order of orders) {
