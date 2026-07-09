@@ -18,6 +18,7 @@ export type DesktopReceiptData = {
   cashierName?: string | null
   paymentMethod: string
   totalAmount: number
+  extraLines?: { label: string; value: string }[]
   items: DesktopReceiptItem[]
 }
 
@@ -134,6 +135,9 @@ function paymentLabel(method: string, lang: Lang) {
 function receiptHtml(data: DesktopReceiptData, lang: Lang) {
   const labels = LABELS[lang]
   const isKhmer = lang === 'km'
+  const extraLinesHtml = (data.extraLines ?? []).map((line) => `
+      <div class="row"><span>${escapeHtml(line.label)}</span><span>${escapeHtml(line.value)}</span></div>
+  `).join('')
   const itemsHtml = data.items.map((item) => {
     const name = [item.name, item.spec ? `(${item.spec})` : ''].filter(Boolean).join(' ')
     return `
@@ -256,6 +260,7 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
       <div class="row"><span>${escapeHtml(labels.orderNo)}</span><span>${escapeHtml(data.orderNo || '-')}</span></div>
       <div class="row"><span>${escapeHtml(labels.time)}</span><span>${escapeHtml(formatReceiptTime(data.createdAt, lang))}</span></div>
       <div class="row"><span>${escapeHtml(labels.cashier)}</span><span>${escapeHtml(data.cashierName || 'Desktop POS')}</span></div>
+      ${extraLinesHtml}
     </div>
     <div class="items">${itemsHtml}</div>
     <div class="divider"></div>

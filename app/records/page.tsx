@@ -9,6 +9,11 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
+import {
+  DesktopReceiptPreview,
+  printDesktopReceipt,
+  type DesktopReceiptData,
+} from '@/app/components/DesktopReceipt'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -220,7 +225,7 @@ function writeRecordsCache(key: string, data: ApiResponse) {
 }
 
 export default function RecordsPage() {
-  const { t } = useLocale()
+  const { t, lang } = useLocale()
   const searchParams = useSearchParams()
   const {
     realRole,
@@ -259,6 +264,8 @@ export default function RecordsPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedOrderNo, setSelectedOrderNo] = useState<string | null>(null)
   const [checkoutOrder, setCheckoutOrder] = useState<{ orderNo: string; totalAmount: number } | null>(null)
+  const [reprintReceipt, setReprintReceipt] = useState<DesktopReceiptData | null>(null)
+  const [reprintLoadingKey, setReprintLoadingKey] = useState<string | null>(null)
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -344,6 +351,43 @@ export default function RecordsPage() {
     } else if (next === 'ALL') {
       setDateFrom('2020-01-01')
       setDateTo(today)
+    }
+  }
+
+  async function handleSaleRecordReprint(group: OrderGroup) {
+    const firstSaleRecordId = group.items[0]?.id
+    if (!isDesktopRecords || !desktopStoreCode || !firstSaleRecordId || group.source !== 'SALE_RECORD') return
+    setReprintLoadingKey(group.orderNo)
+    setError(null)
+    try {
+      const params = new URLSearchParams({ storeCode: desktopStoreCode })
+      const res = await apiFetch(`/api/cashier/sale-records/${encodeURIComponent(firstSaleRecordId)}/receipt?${params}`, {
+        headers: posDeviceHeaders(desktopStoreCode),
+      })
+      const unauthorizedBody = !res.ok ? await res.clone().json().catch(() => null) : null
+      if (isPosUnauthorized(unauthorizedBody, res.status)) {
+        setError('本 POS 电脑尚未授权，请回到电脑收银台先授权本机。')
+        return
+      }
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body?.receipt) {
+        setError(body?.message ?? body?.error ?? '小票重建失败，请稍后重试')
+        return
+      }
+      setReprintReceipt(body.receipt)
+    } catch {
+      setError(t('common.networkError'))
+    } finally {
+      setReprintLoadingKey(null)
+    }
+  }
+
+  function handlePrintReprintReceipt() {
+    if (!reprintReceipt) return
+    try {
+      printDesktopReceipt(reprintReceipt, lang)
+    } catch {
+      setError('无法打开打印预览，请检查浏览器弹窗权限')
     }
   }
 
@@ -542,7 +586,12 @@ export default function RecordsPage() {
                 map: t('records.deliveryMap'),
                 itemUnit: t('records.itemUnit'),
               }}
+              reprintLabel={reprintLoadingKey === entry.orderNo ? '读取中…' : '补打小票'}
+              reprintDisabled={reprintLoadingKey === entry.orderNo}
               onOpen={() => setSelectedOrderNo(entry.orderNo)}
+              onReprint={isDesktopRecords && entry.source === 'SALE_RECORD'
+                ? () => handleSaleRecordReprint(entry)
+                : undefined}
               onCheckout={entry.paymentMethod === null
                 ? () => setCheckoutOrder({ orderNo: entry.orderNo, totalAmount: entry.totalAmount })
                 : undefined}
@@ -582,13 +631,22 @@ export default function RecordsPage() {
           onClose={() => setCheckoutOrder(null)}
         />
       )}
+
+      {reprintReceipt && (
+        <DesktopReceiptPreview
+          data={reprintReceipt}
+          lang={lang}
+          onClose={() => setReprintReceipt(null)}
+          onPrint={handlePrintReprintReceipt}
+        />
+      )}
     </main>
   )
 }
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, sourceLabels, onOpen, onCheckout }: {
+function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, sourceLabels, reprintLabel, reprintDisabled, onOpen, onReprint, onCheckout }: {
   group: OrderGroup
   index: number
   tagSale: string
@@ -609,7 +667,10 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
     map: string
     itemUnit: string
   }
+  reprintLabel?: string
+  reprintDisabled?: boolean
   onOpen?: () => void
+  onReprint?: () => void
   onCheckout?: () => void
 }) {
   const isPending = group.paymentMethod === null
@@ -707,6 +768,16 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
               onClick={(e) => { e.stopPropagation(); onCheckout() }}
             >
               {checkoutBtn}
+            </button>
+          )}
+          {onReprint && (
+            <button
+              type="button"
+              style={{ ...s.checkoutBtn, ...s.reprintBtn }}
+              disabled={reprintDisabled}
+              onClick={(e) => { e.stopPropagation(); onReprint() }}
+            >
+              {reprintLabel ?? '补打小票'}
             </button>
           )}
         </div>
@@ -1111,6 +1182,9 @@ const s: Record<string, React.CSSProperties> = {
     padding: '4px 10px',
     cursor: 'pointer',
     flexShrink: 0,
+  },
+  reprintBtn: {
+    background: '#1677ff',
   },
   cardHeader: {
     display: 'flex',
