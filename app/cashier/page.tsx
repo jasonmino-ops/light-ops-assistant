@@ -45,7 +45,7 @@ import { clearShiftOperator, clearShiftStart, getOrCreateShiftOperator, getOrCre
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Product = {
-  id: string; barcode: string; sku?: string | null; name: string
+  id: string; barcode: string; sku?: string | null; code?: string | null; name: string
   spec: string | null; sellPrice: number
   categoryId: string | null; imageUrl: string | null
   status?: string; updatedAt?: string | null
@@ -158,8 +158,8 @@ const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefi
 
 const SUGAR_SPEC_RE = /no\s*sugar|无糖|微糖|半糖|少糖|正常糖|(?:25|50|75|100)%/i
 const SCANNER_MIN_CODE_LENGTH = 5
-const SCANNER_MAX_KEY_GAP_MS = 120
-const SCANNER_MAX_TOTAL_MS = 1500
+const SCANNER_IDLE_RESET_MS = 1000
+const SCANNER_DEBUG = true
 
 const SUGAR_OPTIONS = [
   { value: 'no_sugar', label: '无糖' },
@@ -1160,11 +1160,6 @@ export default function CashierPage() {
   useEffect(() => {
     setIsDesktopPos(window.location.pathname === '/desktop/pos')
   }, [])
-
-  useEffect(() => {
-    if (!isDesktopPos || loading || noCodeError || isRestoringCashierStore) return
-    focusSearchInput()
-  }, [isDesktopPos, loading, noCodeError, isRestoringCashierStore, focusSearchInput])
 
   useEffect(() => {
     if (!isDesktopPos) return
@@ -2189,13 +2184,13 @@ export default function CashierPage() {
   }
 
   // ── Cart ops ───────────────────────────────────────────────────────────────
-  const addToCart = useCallback((p: Product, sugar?: string) => {
+  const addToCart = useCallback((p: Product, sugar?: string, options?: { focusSearch?: boolean }) => {
     setCart(prev => {
       const found = prev.find(c => c.barcode === p.barcode && c.sugar === sugar)
       if (found) return prev.map(c => c.barcode === p.barcode && c.sugar === sugar ? { ...c, qty: c.qty + 1 } : c)
       return [...prev, { productId: p.id, barcode: p.barcode, name: p.name, spec: p.spec, price: p.sellPrice, qty: 1, imageUrl: p.imageUrl, sugar }]
     })
-    if (isDesktopPos) focusSearchInput()
+    if (isDesktopPos && options?.focusSearch !== false) focusSearchInput()
   }, [focusSearchInput, isDesktopPos])
 
   const updateQty = useCallback((barcode: string, sugar: string | undefined, delta: number) => {
@@ -2455,7 +2450,7 @@ export default function CashierPage() {
   }
   function productMatchesExactCode(p: Product, keyword: string) {
     if (!keyword) return false
-    return [p.barcode, p.sku].some(value => normalizeSearchText(value) === keyword)
+    return [p.barcode, p.sku, p.code].some(value => normalizeSearchText(value) === keyword)
   }
   const displayProducts = products.filter(p => {
     if (!productMatchesKeyword(p, kw)) return false
@@ -2473,25 +2468,87 @@ export default function CashierPage() {
       scannerMaxKeyGapRef.current = 0
     }
 
-    function shouldIgnoreBecauseTypingElsewhere() {
-      const active = document.activeElement
-      if (!active || active === searchRef.current) return false
-      if (active instanceof HTMLInputElement) return true
-      if (active instanceof HTMLTextAreaElement) return true
-      if (active instanceof HTMLSelectElement) return true
-      return active instanceof HTMLElement && active.isContentEditable
+    function scannerLog(payload: Record<string, unknown>) {
+      if (SCANNER_DEBUG) console.info('[desktop-pos:scanner]', payload)
+    }
+
+    function isScannerTerminator(e: KeyboardEvent) {
+      return (
+        e.key === 'Enter' ||
+        e.key === 'Tab' ||
+        e.key === '\r' ||
+        e.key === '\n' ||
+        e.code === 'Enter' ||
+        e.code === 'NumpadEnter' ||
+        e.code === 'Tab'
+      )
     }
 
     function onScannerKeyDown(e: KeyboardEvent) {
-      if (shouldIgnoreBecauseTypingElsewhere()) {
+      const now = Date.now()
+      const currentBuffer = scannerBufferRef.current
+      scannerLog({
+        phase: 'key',
+        key: e.key,
+        code: e.code,
+        buffer: currentBuffer,
+        activeTag: document.activeElement?.tagName ?? null,
+      })
+
+      if (isScannerTerminator(e)) {
+        const rawCode = cleanSearchText(currentBuffer)
         resetScannerBuffer()
+        if (rawCode.length < SCANNER_MIN_CODE_LENGTH) {
+          scannerLog({ phase: 'complete', buffer: rawCode, matchCount: 0, calledAddToCart: false, reason: 'too_short' })
+          return
+        }
+
+        const normalized = normalizeSearchText(rawCode)
+        const matches = products.filter(p => productMatchesExactCode(p, normalized))
+        scannerLog({
+          phase: 'complete',
+          buffer: rawCode,
+          key: e.key,
+          code: e.code,
+          matchCount: matches.length,
+          matchedNames: matches.map(p => p.name),
+          calledAddToCart: false,
+        })
+
+        e.preventDefault()
+        e.stopPropagation()
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation()
+        setSearchKw('')
+        if (searchRef.current) searchRef.current.value = ''
+
+        if (matches.length === 0) {
+          showToast(`未找到商品：${rawCode}`)
+          return
+        }
+        if (matches.length > 1) {
+          showToast(`条码重复：${rawCode}`)
+          return
+        }
+        if (!isOnline && productsSource !== 'cache') {
+          showToast('当前无商品缓存，无法离线收银')
+          return
+        }
+        scannerLog({
+          phase: 'addToCart',
+          buffer: rawCode,
+          key: e.key,
+          code: e.code,
+          matchCount: matches.length,
+          productName: matches[0].name,
+          calledAddToCart: true,
+        })
+        addToCart(matches[0], undefined, { focusSearch: false })
         return
       }
 
-      const now = Date.now()
       if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const gap = scannerLastKeyAtRef.current ? now - scannerLastKeyAtRef.current : 0
-        if (gap > SCANNER_MAX_KEY_GAP_MS) {
+        if (gap > SCANNER_IDLE_RESET_MS) {
           scannerBufferRef.current = ''
           scannerFirstKeyAtRef.current = now
           scannerMaxKeyGapRef.current = 0
@@ -2501,36 +2558,10 @@ export default function CashierPage() {
         scannerMaxKeyGapRef.current = Math.max(scannerMaxKeyGapRef.current, gap)
         scannerLastKeyAtRef.current = now
         scannerBufferRef.current += e.key
+        if (document.activeElement === searchRef.current && gap > 0 && gap < 80) e.preventDefault()
+        scannerLog({ phase: 'buffer', buffer: scannerBufferRef.current, key: e.key, code: e.code })
         return
       }
-
-      if (e.key !== 'Enter') return
-
-      const rawCode = cleanSearchText(scannerBufferRef.current)
-      const duration = scannerFirstKeyAtRef.current ? now - scannerFirstKeyAtRef.current : 0
-      const isScannerInput =
-        rawCode.length >= SCANNER_MIN_CODE_LENGTH &&
-        duration <= SCANNER_MAX_TOTAL_MS &&
-        scannerMaxKeyGapRef.current <= SCANNER_MAX_KEY_GAP_MS
-      resetScannerBuffer()
-      if (!isScannerInput) return
-
-      const normalized = normalizeSearchText(rawCode)
-      const matches = products.filter(p => productMatchesExactCode(p, normalized))
-      if (matches.length !== 1) return
-
-      e.preventDefault()
-      e.stopPropagation()
-      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation()
-      if (!isOnline && productsSource !== 'cache') {
-        showToast('当前无商品缓存，无法离线收银')
-        focusSearchInput()
-        return
-      }
-      addToCart(matches[0])
-      setSearchKw('')
-      if (searchRef.current) searchRef.current.value = ''
-      focusSearchInput()
     }
 
     window.addEventListener('keydown', onScannerKeyDown, true)
