@@ -16,11 +16,47 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { signSession } from '@/lib/session'
 import { sendAndLogMessage, WELCOME_TEXT } from '@/lib/telegram'
 
 const MERCHANT_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
+
+class BindTokenConsumeError extends Error {
+  constructor() {
+    super('BIND_TOKEN_CONSUME_FAILED')
+  }
+}
+
+function tokenHash(token: string | null | undefined) {
+  if (!token) return null
+  return crypto.createHash('sha256').update(token).digest('hex').slice(0, 12)
+}
+
+function redactedTelegramId(telegramId: string | null | undefined) {
+  if (!telegramId) return null
+  return `***${telegramId.slice(-4)}`
+}
+
+function logBind(stage: string, details: Record<string, unknown>) {
+  console.info('[bind]', { stage, ...details })
+}
+
+async function consumeBindToken(tx: Prisma.TransactionClient, tokenId: string) {
+  const updated = await tx.$executeRaw`
+    UPDATE "BindToken"
+    SET
+      "usedCount" = "usedCount" + 1,
+      "status" = CASE WHEN "usedCount" + 1 >= "maxUses" THEN 'USED' ELSE 'ACTIVE' END,
+      "updatedAt" = NOW()
+    WHERE "id" = ${tokenId}
+      AND "status" = 'ACTIVE'
+      AND "expiresAt" > NOW()
+      AND "usedCount" < "maxUses"
+  `
+  if (updated !== 1) throw new BindTokenConsumeError()
+}
 
 function verifyWithToken(initData: string, botToken: string): URLSearchParams | null {
   const params = new URLSearchParams(initData)
@@ -51,6 +87,7 @@ export async function POST(req: NextRequest) {
 
   const { token, initData, displayName: customDisplayName, storeName: customStoreName } = body
   if (!token || !initData) {
+    logBind('missing_fields', { hasToken: !!token, hasInitData: !!initData })
     return NextResponse.json({ error: 'MISSING_FIELDS', message: '链接参数不完整，请重新扫码' }, { status: 400 })
   }
 
@@ -65,22 +102,23 @@ export async function POST(req: NextRequest) {
 
   const INVALID_MSG = '邀请码无效或已失效 / លេខអញ្ជើញមិនត្រឹមត្រូវ ឬផុតកំណត់'
 
-  if (!bt || bt.status !== 'ACTIVE') {
+  if (!bt) {
+    logBind('token_not_found', { token: tokenHash(token) })
     return NextResponse.json({ error: 'INVALID_TOKEN', message: INVALID_MSG }, { status: 400 })
   }
   if (bt.tenant.status !== 'ACTIVE' || bt.store.status !== 'ACTIVE') {
+    logBind('token_store_inactive', { token: tokenHash(token), role: bt.role, storeId: bt.storeId })
     return NextResponse.json({ error: 'TOKEN_STORE_INACTIVE', message: INVALID_MSG }, { status: 400 })
   }
   if (bt.expiresAt < new Date()) {
+    logBind('token_expired', { token: tokenHash(token), role: bt.role, storeId: bt.storeId })
     return NextResponse.json({ error: 'TOKEN_EXPIRED', message: INVALID_MSG }, { status: 400 })
-  }
-  if (bt.usedCount >= bt.maxUses) {
-    return NextResponse.json({ error: 'TOKEN_EXHAUSTED', message: INVALID_MSG }, { status: 400 })
   }
 
   // ── 2. Verify Telegram initData ───────────────────────────────────────────
   const verified = verifyInitData(initData)
   if (!verified) {
+    logBind('invalid_signature', { token: tokenHash(token), role: bt.role, storeId: bt.storeId })
     return NextResponse.json(
       { error: 'INVALID_SIGNATURE', message: 'Telegram 签名验证失败' },
       { status: 401 },
@@ -90,12 +128,14 @@ export async function POST(req: NextRequest) {
 
   const userStr = params.get('user')
   if (!userStr) {
+    logBind('missing_user', { token: tokenHash(token), role: bt.role, storeId: bt.storeId })
     return NextResponse.json({ error: 'MISSING_USER', message: '无法获取 Telegram 用户信息，请重新打开链接' }, { status: 400 })
   }
   let tgUser: { id: number; first_name?: string; last_name?: string; username?: string }
   try {
     tgUser = JSON.parse(userStr)
   } catch {
+    logBind('invalid_user_payload', { token: tokenHash(token), role: bt.role, storeId: bt.storeId })
     return NextResponse.json({ error: 'INVALID_USER_PAYLOAD', message: 'Telegram 用户信息格式错误，请重试' }, { status: 400 })
   }
   const telegramId = String(tgUser.id)
@@ -112,8 +152,54 @@ export async function POST(req: NextRequest) {
       role: true,
       tenantId: true,
       tenant: { select: { name: true, status: true } },
+      storeRoles: {
+        where: { storeId: bt.storeId, status: 'ACTIVE' },
+        select: { storeId: true },
+        take: 1,
+      },
     },
   })
+
+  if (bt.status !== 'ACTIVE' || bt.usedCount >= bt.maxUses) {
+    const alreadyBoundToThisStore =
+      existing?.tenantId === bt.tenantId &&
+      existing.role === bt.role &&
+      existing.storeRoles.some((r) => r.storeId === bt.storeId)
+
+    if (alreadyBoundToThisStore) {
+      logBind('token_reopen_idempotent', {
+        token: tokenHash(token),
+        role: bt.role,
+        storeId: bt.storeId,
+        telegramId: redactedTelegramId(telegramId),
+      })
+      const sessionToken = signSession({
+        tenantId: bt.tenantId,
+        userId: existing.id,
+        storeId: bt.storeId,
+        role: existing.role,
+      })
+
+      const isProd = process.env.NODE_ENV === 'production'
+      const res = NextResponse.json({ ok: true, role: existing.role, displayName: existing.displayName })
+      res.cookies.set('auth-session', sessionToken, {
+        httpOnly: true,
+        sameSite: isProd ? 'none' : 'lax',
+        secure: isProd,
+        maxAge: 60 * 60 * 24 * 7,
+        path: '/',
+      })
+      return res
+    }
+
+    logBind('token_exhausted', {
+      token: tokenHash(token),
+      role: bt.role,
+      storeId: bt.storeId,
+      telegramId: redactedTelegramId(telegramId),
+    })
+    return NextResponse.json({ error: 'TOKEN_EXHAUSTED', message: INVALID_MSG }, { status: 400 })
+  }
   if (existing) {
     const isSameTenant = existing.tenantId === bt.tenantId
     const tenantArchived = existing.tenant?.status === 'ARCHIVED'
@@ -128,39 +214,46 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      await prisma.$transaction(async (tx) => {
-        await tx.userStoreRole.upsert({
-          where: { userId_storeId: { userId: existing.id, storeId: bt.storeId } },
-          update: {
-            tenantId: bt.tenantId,
-            role: bt.role,
-            status: 'ACTIVE',
-          },
-          create: {
-            tenantId: bt.tenantId,
-            userId: existing.id,
-            storeId: bt.storeId,
-            role: bt.role,
-            status: 'ACTIVE',
-          },
-        })
+      try {
+        await prisma.$transaction(async (tx) => {
+          await consumeBindToken(tx, bt.id)
 
-        if (bt.role === 'OWNER' && customStoreName?.trim()) {
-          await tx.store.update({
-            where: { id: bt.storeId },
-            data: { name: customStoreName.trim() },
+          await tx.userStoreRole.upsert({
+            where: { userId_storeId: { userId: existing.id, storeId: bt.storeId } },
+            update: {
+              tenantId: bt.tenantId,
+              role: bt.role,
+              status: 'ACTIVE',
+            },
+            create: {
+              tenantId: bt.tenantId,
+              userId: existing.id,
+              storeId: bt.storeId,
+              role: bt.role,
+              status: 'ACTIVE',
+            },
           })
-        }
 
-        const newCount = bt.usedCount + 1
-        await tx.bindToken.update({
-          where: { id: bt.id },
-          data: {
-            usedCount: newCount,
-            status: newCount >= bt.maxUses ? 'USED' : 'ACTIVE',
-          },
+          if (bt.role === 'OWNER' && customStoreName?.trim()) {
+            await tx.store.update({
+              where: { id: bt.storeId },
+              data: { name: customStoreName.trim() },
+            })
+          }
+
         })
-      })
+      } catch (e) {
+        if (e instanceof BindTokenConsumeError) {
+          logBind('token_consume_race_lost', {
+            token: tokenHash(token),
+            role: bt.role,
+            storeId: bt.storeId,
+            telegramId: redactedTelegramId(telegramId),
+          })
+          return NextResponse.json({ error: 'TOKEN_EXHAUSTED', message: INVALID_MSG }, { status: 409 })
+        }
+        throw e
+      }
 
       const sessionToken = signSession({
         tenantId: bt.tenantId,
@@ -198,67 +291,73 @@ export async function POST(req: NextRequest) {
   const displayName = customDisplayName?.trim() || autoDisplayName
 
   // Use a transaction to create user, store role, and update token atomically
-  const newUser = await prisma.$transaction(async (tx) => {
-    // Count existing users of the same role in this tenant to generate sequential identifiers.
-    // Race condition risk is negligible for small-store simultaneous onboarding.
-    const roleCount = await tx.user.count({
-      where: { tenantId: bt.tenantId, role: bt.role },
-    })
+  let newUser
+  try {
+    newUser = await prisma.$transaction(async (tx) => {
+      await consumeBindToken(tx, bt.id)
 
-    let username: string
-    let staffNumber: number | null = null
-
-    if (bt.role === 'OWNER') {
-      // OWNER username: "owner" for the first, "owner_2" for subsequent
-      username = roleCount === 0 ? 'owner' : `owner_${roleCount + 1}`
-    } else {
-      // STAFF username: sequential "staff_001", "staff_002", …
-      staffNumber = roleCount + 1
-      username = `staff_${String(staffNumber).padStart(3, '0')}`
-    }
-
-    const user = await tx.user.create({
-      data: {
-        tenantId: bt.tenantId,
-        username,
-        displayName,
-        role: bt.role,
-        status: 'ACTIVE',
-        telegramId,
-        staffNumber,
-      },
-    })
-
-    await tx.userStoreRole.create({
-      data: {
-        tenantId: bt.tenantId,
-        userId: user.id,
-        storeId: bt.storeId,
-        role: bt.role,
-        status: 'ACTIVE',
-      },
-    })
-
-    // Update store display name when OWNER provides one during first bind
-    if (bt.role === 'OWNER' && customStoreName?.trim()) {
-      await tx.store.update({
-        where: { id: bt.storeId },
-        data: { name: customStoreName.trim() },
+      // Count existing users of the same role in this tenant to generate sequential identifiers.
+      // Race condition risk is negligible for small-store simultaneous onboarding.
+      const roleCount = await tx.user.count({
+        where: { tenantId: bt.tenantId, role: bt.role },
       })
-    }
 
-    // ── 5. Consume token ──────────────────────────────────────────────────
-    const newCount = bt.usedCount + 1
-    await tx.bindToken.update({
-      where: { id: bt.id },
-      data: {
-        usedCount: newCount,
-        status: newCount >= bt.maxUses ? 'USED' : 'ACTIVE',
-      },
+      let username: string
+      let staffNumber: number | null = null
+
+      if (bt.role === 'OWNER') {
+        // OWNER username: "owner" for the first, "owner_2" for subsequent
+        username = roleCount === 0 ? 'owner' : `owner_${roleCount + 1}`
+      } else {
+        // STAFF username: sequential "staff_001", "staff_002", …
+        staffNumber = roleCount + 1
+        username = `staff_${String(staffNumber).padStart(3, '0')}`
+      }
+
+      const user = await tx.user.create({
+        data: {
+          tenantId: bt.tenantId,
+          username,
+          displayName,
+          role: bt.role,
+          status: 'ACTIVE',
+          telegramId,
+          staffNumber,
+        },
+      })
+
+      await tx.userStoreRole.create({
+        data: {
+          tenantId: bt.tenantId,
+          userId: user.id,
+          storeId: bt.storeId,
+          role: bt.role,
+          status: 'ACTIVE',
+        },
+      })
+
+      // Update store display name when OWNER provides one during first bind
+      if (bt.role === 'OWNER' && customStoreName?.trim()) {
+        await tx.store.update({
+          where: { id: bt.storeId },
+          data: { name: customStoreName.trim() },
+        })
+      }
+
+      return user
     })
-
-    return user
-  })
+  } catch (e) {
+    if (e instanceof BindTokenConsumeError) {
+      logBind('token_consume_race_lost', {
+        token: tokenHash(token),
+        role: bt.role,
+        storeId: bt.storeId,
+        telegramId: redactedTelegramId(telegramId),
+      })
+      return NextResponse.json({ error: 'TOKEN_EXHAUSTED', message: INVALID_MSG }, { status: 409 })
+    }
+    throw e
+  }
 
   // ── 6. 发送首次欢迎消息（非事务，失败不影响绑定结果）──────────────────────
   sendAndLogMessage({

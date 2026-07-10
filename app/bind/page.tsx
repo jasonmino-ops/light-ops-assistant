@@ -4,6 +4,11 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
+import {
+  getBindTokenFromStartParam,
+  redactStartParam,
+  resolveTelegramStartParam,
+} from '@/lib/telegram-start-param'
 
 /**
  * /bind?token=<token>
@@ -24,9 +29,10 @@ const SESSION_KEY = 'tg-authed-uid'
 function BindFlow() {
   const { t } = useLocale()
   const searchParams = useSearchParams()
-  const token = searchParams.get('token') ?? ''
+  const queryToken = searchParams.get('token') ?? ''
 
   const [state, setState] = useState<BindState>('loading')
+  const [token, setToken] = useState(queryToken)
   const [errorMsg, setErrorMsg] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [storeName, setStoreName] = useState('')
@@ -41,7 +47,14 @@ function BindFlow() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tg = (window as any).Telegram?.WebApp
     const initData: string = tg?.initData ?? ''
-    const startParam: string | undefined = tg?.initDataUnsafe?.start_param
+    const startParam = resolveTelegramStartParam({
+      initDataUnsafeStartParam: tg?.initDataUnsafe?.start_param,
+      initData,
+      search: window.location.search,
+      hash: window.location.hash,
+    })
+    const resolvedToken = queryToken || getBindTokenFromStartParam(startParam?.value)
+    setToken(resolvedToken)
 
     // 安卓真机日志辅助（不暴露任何 token / secret）
     if (typeof window !== 'undefined') {
@@ -50,13 +63,15 @@ function BindFlow() {
         userAgent: navigator.userAgent,
         hasTelegramWebApp: !!tg,
         hasInitData: !!initData,
-        startParam: startParam ?? null,
-        urlToken: token ? '<present>' : '<missing>',
+        startParamSource: startParam?.source ?? null,
+        startParam: redactStartParam(startParam?.value),
+        urlToken: queryToken ? '<present>' : '<missing>',
+        resolvedToken: resolvedToken ? '<present>' : '<missing>',
         href: window.location.href.split('?')[0],
       })
     }
 
-    if (!token) {
+    if (!resolvedToken) {
       setErrorMsg(t('bind.invalidToken'))
       setState('error')
       return
@@ -64,7 +79,7 @@ function BindFlow() {
 
     if (!initData) {
       // 安卓 / 外部浏览器场景：拉 tgLink 提供继续路径，避免白屏
-      fetch(`/api/bind/info?token=${encodeURIComponent(token)}`)
+      fetch(`/api/bind/info?token=${encodeURIComponent(resolvedToken)}`)
         .then((r) => r.json())
         .then((data) => {
           if (!data?.error) {
@@ -102,7 +117,7 @@ function BindFlow() {
 
     setInitDataRef(initData)
 
-    fetch(`/api/bind/info?token=${encodeURIComponent(token)}`)
+    fetch(`/api/bind/info?token=${encodeURIComponent(resolvedToken)}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) {
@@ -125,7 +140,7 @@ function BindFlow() {
         setState('error')
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+  }, [queryToken])
 
   function copyBindLink() {
     if (!tgLink) return

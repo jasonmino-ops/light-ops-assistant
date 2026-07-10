@@ -3,6 +3,11 @@
 import { ReactNode, useEffect, useState } from 'react'
 import zh from '@/lib/i18n/zh'
 import km from '@/lib/i18n/km'
+import {
+  getBindTokenFromStartParam,
+  redactStartParam,
+  resolveTelegramStartParam,
+} from '@/lib/telegram-start-param'
 
 /**
  * TelegramInit — mounts once per layout.
@@ -82,16 +87,35 @@ export default function TelegramInit({
   }, [authChecking, authError, tenantInactive])
 
   useEffect(() => {
+    // Telegram deep links usually enter a public path first. Resolve startapp
+    // before public-path short-circuiting so bind links do not stall on /start.
     // Skip auth entirely on onboarding pages — they handle their own flow.
     // This applies in BOTH Telegram and PWA modes to prevent TENANT_INACTIVE loops.
     const path = window.location.pathname
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    const preAuthStartParam = resolveTelegramStartParam({
+      initDataUnsafeStartParam: tg?.initDataUnsafe?.start_param,
+      initData: tg?.initData ?? '',
+      search: window.location.search,
+      hash: window.location.hash,
+    })
+    const preAuthBindToken = getBindTokenFromStartParam(preAuthStartParam?.value)
+    if (preAuthBindToken && !path.startsWith('/bind')) {
+      console.info('[bind:start-param]', {
+        stage: 'redirect_to_bind',
+        source: preAuthStartParam?.source,
+        token: redactStartParam(preAuthStartParam?.value),
+      })
+      window.location.replace(`/bind?token=${encodeURIComponent(preAuthBindToken)}`)
+      return
+    }
+
     if (isPublicPath(path)) {
       setAuthChecking(false)
       return
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tg = (window as any).Telegram?.WebApp
     const isOpsRoute = path.startsWith('/ops')
     if (!tg?.initData) {
       // PWA mode (opened from home screen or browser, no Telegram context).
@@ -142,16 +166,16 @@ export default function TelegramInit({
     //  3. raw initData query string   — fallback for SDK parse timing issues
     //
     // IMPORTANT: skip this redirect when already on /bind to avoid infinite replace loop.
-    const hashParams = new URLSearchParams(window.location.hash.slice(1))
-    const startParam: string =
-      hashParams.get('tgWebAppStartParam') ||
-      tg.initDataUnsafe?.start_param ||
-      new URLSearchParams(initData).get('start_param') ||
-      ''
-    if (startParam.startsWith('bind_')) {
+    const startParam = resolveTelegramStartParam({
+      initDataUnsafeStartParam: tg.initDataUnsafe?.start_param,
+      initData,
+      search: window.location.search,
+      hash: window.location.hash,
+    })
+    const bindToken = getBindTokenFromStartParam(startParam?.value)
+    if (bindToken) {
       if (!window.location.pathname.startsWith('/bind')) {
-        const token = startParam.slice(5)
-        window.location.replace(`/bind?token=${encodeURIComponent(token)}`)
+        window.location.replace(`/bind?token=${encodeURIComponent(bindToken)}`)
       }
       // Already on /bind — let BindFlow handle it; skip normal auth flow entirely.
       return
@@ -218,15 +242,18 @@ export default function TelegramInit({
             }
           } else if (body.error === 'USER_NOT_FOUND') {
             // Use same three-source priority for start_param.
-            const sp =
-              new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam') ||
-              tg.initDataUnsafe?.start_param ||
-              new URLSearchParams(initData).get('start_param') ||
-              ''
+            const resolvedStartParam = resolveTelegramStartParam({
+              initDataUnsafeStartParam: tg.initDataUnsafe?.start_param,
+              initData,
+              search: window.location.search,
+              hash: window.location.hash,
+            })
+            const sp = resolvedStartParam?.value ?? ''
 
             // Employee/owner bind token: e.g. bind_<token>
-            if (sp.startsWith('bind_') && !window.location.pathname.startsWith('/bind')) {
-              window.location.replace(`/bind?token=${encodeURIComponent(sp.slice(5))}`)
+            const userNotFoundBindToken = getBindTokenFromStartParam(sp)
+            if (userNotFoundBindToken && !window.location.pathname.startsWith('/bind')) {
+              window.location.replace(`/bind?token=${encodeURIComponent(userNotFoundBindToken)}`)
               return
             }
 
