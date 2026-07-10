@@ -996,14 +996,16 @@ const s: Record<string, CSSProperties> = {
   pcardImg:    { height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, overflow: 'hidden' },
   pcardImgDesktop: { height: 122, flexShrink: 0 },
   pcardImgDesktopCompact: { height: 56, flexShrink: 0, fontSize: 20 },
-  pcardBody:   { padding: '7px 10px 10px' },
+  pcardBody:   { padding: '7px 10px 10px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
   pcardBodyCompact: { padding: '6px 8px 8px' },
-  pcardName:   { fontSize: 13, fontWeight: 600, color: '#111827', lineHeight: 1.3, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  pcardName:   { fontSize: 13, fontWeight: 600, color: '#111827', lineHeight: 1.3, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, flexShrink: 0 },
   pcardNameCompact: { fontSize: 11, fontWeight: 700, lineHeight: 1.2, marginBottom: 1 },
-  pcardSpec:   { fontSize: 11, color: '#9ca3af', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  pcardSpec:   { fontSize: 11, color: '#9ca3af', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, flexShrink: 0 },
   pcardSpecCompact: { fontSize: 10, marginBottom: 2 },
-  pcardPrice:  { fontSize: 15, fontWeight: 700, color: ACCENT },
-  pcardPriceCompact: { fontSize: 13, fontWeight: 800, color: ACCENT },
+  pcardPriceRow: { marginTop: 'auto', minHeight: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexShrink: 0, overflow: 'visible' },
+  pcardPriceRowCompact: { minHeight: 18 },
+  pcardPrice:  { fontSize: 15, lineHeight: '20px', fontWeight: 700, color: ACCENT, flexShrink: 0 },
+  pcardPriceCompact: { fontSize: 13, lineHeight: '17px', fontWeight: 800, color: ACCENT },
   topbarActionBtn: { height: 34, padding: '0 10px', borderRadius: 9, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: 12, fontWeight: 800, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' as const },
 
   // ── Right work area ───────────────────────────────────────────────────────
@@ -3004,7 +3006,7 @@ export default function CashierPage() {
         <div style={{ ...s.pcardBody, ...(isCompactCard ? s.pcardBodyCompact : {}) }}>
           <div style={{ ...s.pcardName, ...(isCompactCard ? s.pcardNameCompact : {}) }}>{p.name}</div>
           {p.spec && <div style={{ ...s.pcardSpec, ...(isCompactCard ? s.pcardSpecCompact : {}) }}>{p.spec}</div>}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ ...s.pcardPriceRow, ...(isCompactCard ? s.pcardPriceRowCompact : {}) }}>
             <span style={{ ...s.pcardPrice, ...(isCompactCard ? s.pcardPriceCompact : {}) }}>${p.sellPrice.toFixed(2)}</span>
             {inCart > 0 && (
               <span style={{ fontSize: isCompactCard ? 11 : 12, fontWeight: 700, color: '#fff', background: ACCENT, borderRadius: 10, padding: isCompactCard ? '0 6px' : '1px 7px' }}>
@@ -3040,8 +3042,6 @@ export default function CashierPage() {
       ? d.offlineHintOnline
       : d.offlineHintOffline
     : ''
-  const posCopy = posAuthCopy()
-
   function handleSearchChange(value: string) {
     setSearchKw(value.replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, ''))
   }
@@ -3369,32 +3369,6 @@ export default function CashierPage() {
                 </div>
               )}
             </div>
-            {storeCode && (
-              <div style={{
-                ...s.posAuthCard,
-                ...(posAccountAccess === 'authorized' || posDeviceToken ? s.posAuthCardOk : s.posAuthCardWarn),
-              }}>
-                <div style={s.posAuthTitle}>
-                  {posAccountAccess === 'authorized' && !posDeviceToken ? '账号已授权收银' : posDeviceToken ? posCopy.okTitle : posCopy.warnTitle}
-                </div>
-                <div>
-                  {posAccountAccess === 'authorized' && !posDeviceToken
-                    ? '当前登录账号可为本店进行电脑收银。'
-                    : posDeviceToken ? posCopy.okBody : posCopy.warnBody}
-                </div>
-                {posAuthError && <div style={{ marginTop: 4, color: '#fecaca' }}>{posAuthError}</div>}
-                {posAccountAccess !== 'authorized' && !posDeviceToken && (
-                  <button
-                    type="button"
-                    style={{ ...s.posAuthBtn, ...(posAuthLoading ? s.posAuthBtnDis : {}) }}
-                    disabled={posAuthLoading}
-                    onClick={handleAuthorizePosDevice}
-                  >
-                    {posAuthLoading ? posCopy.loading : posCopy.button}
-                  </button>
-                )}
-              </div>
-            )}
           </div>
           <div style={s.sideCats}>
             <button
