@@ -189,6 +189,7 @@ const SUGAR_SPEC_RE = /no\s*sugar|无糖|微糖|半糖|少糖|正常糖|(?:25|50
 const SCANNER_MIN_CODE_LENGTH = 5
 const DEBUG_SCANNER = false
 const DESKTOP_PAYMENT_METHODS: Exclude<DesktopPaymentMethod, null>[] = ['CASH', 'KHQR', 'MEMBER_BALANCE']
+const DEFAULT_DESKTOP_PAYMENT_METHOD: Exclude<DesktopPaymentMethod, null> = 'KHQR'
 
 const SUGAR_OPTIONS = [
   { value: 'no_sugar', label: '无糖' },
@@ -3068,6 +3069,9 @@ export default function CashierPage() {
   const money = (value: number) => formatMoney(value, currencyCode)
   const khqrSupported = isKhqrSupportedCurrency(currencyCode)
   const desktopPaymentMethods = DESKTOP_PAYMENT_METHODS.filter((method) => method !== 'KHQR' || khqrSupported)
+  const initialDesktopPaymentMethod = desktopPaymentMethods.includes(DEFAULT_DESKTOP_PAYMENT_METHOD)
+    ? DEFAULT_DESKTOP_PAYMENT_METHOD
+    : desktopPaymentMethods[0] ?? 'CASH'
   const mobilePaymentMethods = (['CASH','KHQR','MEMBER_BALANCE','OTHER'] as const).filter((method) => method !== 'KHQR' || khqrSupported)
   const cashReceivedAmount = cashTendered.trim() === '' ? NaN : Number(cashTendered)
   const hasCashReceivedAmount = Number.isFinite(cashReceivedAmount)
@@ -3091,7 +3095,7 @@ export default function CashierPage() {
   function openDesktopPaymentSelection() {
     if (!isDesktopPos || cart.length === 0 || total <= 0) return
     setSubmitError('')
-    selectDesktopPaymentMethod(khqrSupported ? 'KHQR' : 'CASH')
+    selectDesktopPaymentMethod(initialDesktopPaymentMethod)
     setCheckoutStep('SELECT_PAYMENT')
   }
 
@@ -3104,10 +3108,12 @@ export default function CashierPage() {
   }
 
   function moveDesktopPaymentSelection(delta: -1 | 1) {
-    const currentIndex = DESKTOP_PAYMENT_METHODS.indexOf(desktopSelectedPaymentMethod ?? 'CASH')
+    const currentIndex = desktopPaymentMethods.indexOf(desktopSelectedPaymentMethod ?? initialDesktopPaymentMethod)
     const safeIndex = currentIndex >= 0 ? currentIndex : 0
-    const nextIndex = (safeIndex + delta + DESKTOP_PAYMENT_METHODS.length) % DESKTOP_PAYMENT_METHODS.length
-    selectDesktopPaymentMethod(DESKTOP_PAYMENT_METHODS[nextIndex])
+    const nextIndex = (safeIndex + delta + desktopPaymentMethods.length) % desktopPaymentMethods.length
+    const nextMethod = desktopPaymentMethods[nextIndex]
+    if (!nextMethod) return
+    selectDesktopPaymentMethod(nextMethod)
   }
 
   function confirmDesktopPaymentSelection() {
