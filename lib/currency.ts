@@ -25,7 +25,7 @@ export function formatMoney(value: number, currencyCode?: string | null): string
       minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
       maximumFractionDigits: 2,
     })
-    return `${formatted} FCFA`
+    return `${formatted} F`
   }
   return `$${amount.toFixed(2)}`
 }

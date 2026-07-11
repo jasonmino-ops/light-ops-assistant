@@ -7,6 +7,7 @@ import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import KhqrSheet from '@/app/components/KhqrSheet'
+import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
 
 // ─── HID Scanner Hook ─────────────────────────────────────────────────────────
 
@@ -191,6 +192,7 @@ export default function SalePage() {
     storeName: contextStoreName,
     storeCode: contextStoreCode,
     tenantName: contextTenantName,
+    currencyCode,
   } = useWorkMode()
   const [barcodeInput, setBarcodeInput] = useState('')
   const [qty, setQty] = useState(1)
@@ -386,6 +388,8 @@ export default function SalePage() {
 
   const safeQty = Math.max(1, qty)
   const cartTotal = cart.reduce((sum, i) => sum + i.product.sellPrice * i.qty, 0)
+  const money = (value: number) => formatMoney(value, currencyCode)
+  const khqrSupported = isKhqrSupportedCurrency(currencyCode)
   const selectedProductImageUrl = product ? productImageUrl(product) : null
   const recentQuickProducts = (
     recentProductIds.length > 0
@@ -1024,7 +1028,7 @@ export default function SalePage() {
   }
 
   async function handlePayWithMethod(method: 'CASH' | 'KHQR') {
-    if (method === 'KHQR' && khqrUnavailable) {
+    if (method === 'KHQR' && (!khqrSupported || khqrUnavailable)) {
       setModalError(t('sale.khqrUnavailableHint'))
       return
     }
@@ -1109,7 +1113,7 @@ export default function SalePage() {
 
   async function handleCheckoutDeferred(method: 'CASH' | 'KHQR') {
     if (!deferredOrder) return
-    if (method === 'KHQR' && khqrUnavailable) {
+    if (method === 'KHQR' && (!khqrSupported || khqrUnavailable)) {
       setModalError(t('sale.khqrUnavailableHint'))
       return
     }
@@ -1285,7 +1289,7 @@ export default function SalePage() {
                       <div style={ph.candName}>{c.name}</div>
                       {c.spec && <div style={ph.candSpec}>{c.spec}</div>}
                       <div style={ph.candFoot}>
-                        <span style={ph.candPrice}>${c.price.toFixed(2)}</span>
+                        <span style={ph.candPrice}>{money(c.price)}</span>
                         <span style={ph.candConf}>{Math.round(c.confidence * 100)}%</span>
                       </div>
                       {c.reason.length > 0 && (
@@ -1444,7 +1448,7 @@ export default function SalePage() {
                             <div style={ph.candName}>{c.name}</div>
                             {c.spec && <div style={ph.candSpec}>{c.spec}</div>}
                             <div style={ph.candFoot}>
-                              <span style={ph.candPrice}>${c.price.toFixed(2)}</span>
+                              <span style={ph.candPrice}>{money(c.price)}</span>
                               <span style={ph.candConf}>{Math.round(c.confidence * 100)}%</span>
                             </div>
                             {c.reason.length > 0 && (
@@ -1510,28 +1514,30 @@ export default function SalePage() {
                 <span style={pm.optionDesc}>{t('sale.paymentCashDesc')}</span>
               </div>
             </button>
-            <button
-              style={{ ...pm.option, ...(khqrUnavailable ? pm.optionDisabled : {}) }}
-              onClick={() => {
-                if (khqrUnavailable) {
-                  setModalError(t('sale.khqrUnavailableHint'))
-                  return
-                }
-                deferredOrder ? handleCheckoutDeferred('KHQR') : handlePayWithMethod('KHQR')
-              }}
-              disabled={status === 'submitting'}
-            >
-              <span style={pm.optionIcon}>📱</span>
-              <div style={pm.optionText}>
-                <span style={pm.optionLabel}>
-                  {t('sale.paymentKhqr')}
-                  {khqrUnavailable && <span style={pm.unavailableBadge}>{t('sale.khqrUnavailableBadge')}</span>}
-                </span>
-                <span style={pm.optionDesc}>
-                  {khqrUnavailable ? t('sale.khqrUnavailableDesc') : t('sale.paymentKhqrDesc')}
-                </span>
-              </div>
-            </button>
+            {khqrSupported && (
+              <button
+                style={{ ...pm.option, ...(khqrUnavailable ? pm.optionDisabled : {}) }}
+                onClick={() => {
+                  if (khqrUnavailable) {
+                    setModalError(t('sale.khqrUnavailableHint'))
+                    return
+                  }
+                  deferredOrder ? handleCheckoutDeferred('KHQR') : handlePayWithMethod('KHQR')
+                }}
+                disabled={status === 'submitting'}
+              >
+                <span style={pm.optionIcon}>📱</span>
+                <div style={pm.optionText}>
+                  <span style={pm.optionLabel}>
+                    {t('sale.paymentKhqr')}
+                    {khqrUnavailable && <span style={pm.unavailableBadge}>{t('sale.khqrUnavailableBadge')}</span>}
+                  </span>
+                  <span style={pm.optionDesc}>
+                    {khqrUnavailable ? t('sale.khqrUnavailableDesc') : t('sale.paymentKhqrDesc')}
+                  </span>
+                </div>
+              </button>
+            )}
             {modalError && (
               <div style={pm.modalErrorMsg}>{modalError}</div>
             )}
@@ -1545,19 +1551,19 @@ export default function SalePage() {
             <div style={s.cartDrawerHeader}>
               <div>
                 <div style={s.cartDrawerTitle}>{t('sale.cartDrawerTitle')}</div>
-                <div style={s.cartDrawerMeta}>{cartItemCount} {t('sale.itemUnit')} · ${cartTotal.toFixed(2)}</div>
+                <div style={s.cartDrawerMeta}>{cartItemCount} {t('sale.itemUnit')} · {money(cartTotal)}</div>
               </div>
               <button type="button" style={s.cartDrawerClose} onClick={() => setCartDrawerOpen(false)}>✕</button>
             </div>
             <div style={s.cartDrawerList}>
               {cart.map((ci) => (
-                <CartItemRow key={`drawer-${ci.key}`} item={ci} itemUnit={t('sale.itemUnit')} onDelete={() => removeFromCart(ci.key)} />
+                <CartItemRow key={`drawer-${ci.key}`} item={ci} itemUnit={t('sale.itemUnit')} currencyCode={currencyCode} onDelete={() => removeFromCart(ci.key)} />
               ))}
             </div>
             <div style={s.cartDrawerFooter}>
               <div style={s.cartDrawerTotalRow}>
                 <span>{t('sale.total')}</span>
-                <strong>${cartTotal.toFixed(2)}</strong>
+                <strong>{money(cartTotal)}</strong>
               </div>
               <button type="button" style={s.cartDrawerCheckoutBtn} onClick={openPayModal}>
                 {t('sale.confirmSale')}
@@ -1596,11 +1602,11 @@ export default function SalePage() {
         <div style={s.saleOverview}>
           <div>
             <div style={s.overviewLabel}>{t('sale.todaySalesMini')}</div>
-            <div style={s.overviewAmount}>${(summary?.netAmount ?? 0).toFixed(2)}</div>
+            <div style={s.overviewAmount}>{money(summary?.netAmount ?? 0)}</div>
           </div>
           <div style={s.overviewStats}>
             <div style={s.overviewStat}>
-              <span style={s.overviewStatValue}>${cartTotal.toFixed(2)}</span>
+              <span style={s.overviewStatValue}>{money(cartTotal)}</span>
               <span style={s.overviewStatLabel}>{t('sale.currentCart')}</span>
             </div>
             <div style={s.overviewStat}>
@@ -1616,7 +1622,7 @@ export default function SalePage() {
             <div style={s.restoreMeta}>
               {t('sale.restoreSummary')
                 .replace('{count}', String(restorePrompt.itemCount))
-                .replace('{amount}', `$${restorePrompt.totalAmount.toFixed(2)}`)}
+                .replace('{amount}', money(restorePrompt.totalAmount))}
               {cart.length > 0 ? ` · ${t('sale.restoreCartHasItems')}` : ''}
             </div>
             <div style={s.restoreActions}>
@@ -1635,6 +1641,7 @@ export default function SalePage() {
           <KhqrSheet
             orderNo={pendingPayment.orderNo}
             totalAmount={pendingPayment.amount}
+            currencyCode={currencyCode}
             paymentIntentId={pendingPayment.id}
             khqrPayload={pendingPayment.khqrPayload}
             khqrImageUrl={pendingPayment.khqrImageUrl}
@@ -1665,7 +1672,7 @@ export default function SalePage() {
             <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12, textAlign: 'center' }}>{t('sale.deferredHint')}</div>
             <div style={s.successGrid}>
               <InfoRow label={t('sale.orderNo')} value={deferredOrder.orderNo} mono />
-              <InfoRow label={t('sale.totalAmount')} value={`$${deferredOrder.totalAmount.toFixed(2)}`} bold />
+              <InfoRow label={t('sale.totalAmount')} value={money(deferredOrder.totalAmount)} bold />
               <InfoRow label={t('sale.product')} value={buildCartSummary(deferredOrder.cartSnapshot)} />
               <InfoRow label={t('sale.time')} value={new Date(deferredOrder.createdAt).toLocaleTimeString('zh-CN')} />
             </div>
@@ -1682,7 +1689,7 @@ export default function SalePage() {
             <div style={s.successTitle}>{t('sale.saleSuccess')}</div>
             <div style={s.successGrid}>
               <InfoRow label={t('sale.orderNo')} value={success.orderNo} mono />
-              <InfoRow label={t('sale.totalAmount')} value={`$${success.totalAmount.toFixed(2)}`} bold />
+              <InfoRow label={t('sale.totalAmount')} value={money(success.totalAmount)} bold />
               <InfoRow label={t('sale.product')} value={buildCartSummary(success.cartSnapshot)} />
               <InfoRow label={t('sale.time')} value={new Date(success.createdAt).toLocaleTimeString('zh-CN')} />
             </div>
@@ -1724,7 +1731,7 @@ export default function SalePage() {
                         <span style={s.suggestCode}>{p.barcode}</span>
                         <span style={s.suggestName}>{p.name}</span>
                         {p.spec && <span style={s.suggestSpec}> · {p.spec}</span>}
-                        <span style={s.suggestPrice}>${p.sellPrice.toFixed(2)}</span>
+                        <span style={s.suggestPrice}>{money(p.sellPrice)}</span>
                       </div>
                     ))}
                   </div>
@@ -1790,7 +1797,7 @@ export default function SalePage() {
                           <span style={s.recentProductInfo}>
                             <span style={s.recentProductName}>{p.name}</span>
                             <span style={s.recentProductMeta}>
-                              {p.spec ? `${p.spec} · ` : ''}$${p.sellPrice.toFixed(2)}
+                              {p.spec ? `${p.spec} · ` : ''}{money(p.sellPrice)}
                             </span>
                           </span>
                         </button>
@@ -1824,7 +1831,7 @@ export default function SalePage() {
                             <span style={s.dropCode}>{p.barcode}</span>
                             <span style={s.dropName}>{p.name}</span>
                             {p.spec && <span style={s.dropSpec}>{p.spec}</span>}
-                            <span style={s.dropPrice}>${p.sellPrice.toFixed(2)}</span>
+                            <span style={s.dropPrice}>{money(p.sellPrice)}</span>
                           </div>
                         ))}
                       </div>
@@ -1868,7 +1875,7 @@ export default function SalePage() {
                             <span style={s.suggestCode}>{p.barcode}</span>
                             <span style={s.suggestName}>{p.name}</span>
                             {p.spec && <span style={s.suggestSpec}> · {p.spec}</span>}
-                            <span style={s.suggestPrice}>${p.sellPrice.toFixed(2)}</span>
+                            <span style={s.suggestPrice}>{money(p.sellPrice)}</span>
                           </div>
                         ))}
                       </div>
@@ -1912,7 +1919,7 @@ export default function SalePage() {
                   </div>
                   <div style={s.selectedProductPrice}>
                     <span style={s.priceLabel}>{t('sale.unitPrice')}</span>
-                    <span style={s.priceValue}>${product.sellPrice.toFixed(2)}</span>
+                    <span style={s.priceValue}>{money(product.sellPrice)}</span>
                   </div>
                 </div>
 
@@ -1948,7 +1955,7 @@ export default function SalePage() {
 
                 <div style={s.subtotalRow}>
                   <span style={s.subtotalLabel}>{t('sale.subtotal')}</span>
-                  <span style={s.subtotalValue}>${(product.sellPrice * safeQty).toFixed(2)}</span>
+                  <span style={s.subtotalValue}>{money(product.sellPrice * safeQty)}</span>
                 </div>
 
                 <button style={s.addBtn} onClick={addToCart}>{t('sale.addToCart')}</button>
@@ -1964,7 +1971,7 @@ export default function SalePage() {
                 </div>
 
                 {cart.map((ci) => (
-                  <CartItemRow key={ci.key} item={ci} itemUnit={t('sale.itemUnit')} onDelete={() => removeFromCart(ci.key)} />
+                  <CartItemRow key={ci.key} item={ci} itemUnit={t('sale.itemUnit')} currencyCode={currencyCode} onDelete={() => removeFromCart(ci.key)} />
                 ))}
 
                 {!product && (
@@ -1982,7 +1989,7 @@ export default function SalePage() {
                       }}
                     >
                       <span style={s.totalLabel}>{t('sale.total')}</span>
-                      <span style={s.totalAmount}>${cartTotal.toFixed(2)}</span>
+                      <span style={s.totalAmount}>{money(cartTotal)}</span>
                     </div>
 
                     {submitError && <div style={s.errorMsg}>{submitError}</div>}
@@ -2037,7 +2044,7 @@ export default function SalePage() {
             </div>
           </div>
           <div style={s.floatingAddActions}>
-            <div style={s.floatingAddSubtotal}>${(product.sellPrice * safeQty).toFixed(2)}</div>
+            <div style={s.floatingAddSubtotal}>{money(product.sellPrice * safeQty)}</div>
             <button type="button" style={s.floatingAddBtn} onClick={addToCart}>
               {t('sale.addToCartFloating')}
             </button>
@@ -2050,7 +2057,19 @@ export default function SalePage() {
 
 // ─── CartItemRow ──────────────────────────────────────────────────────────────
 
-function CartItemRow({ item, itemUnit, onDelete }: { item: CartItem; itemUnit: string; onDelete: () => void }) {
+function CartItemRow({
+  item,
+  itemUnit,
+  currencyCode,
+  onDelete,
+}: {
+  item: CartItem
+  itemUnit: string
+  currencyCode?: string | null
+  onDelete: () => void
+}) {
+  const unitPrice = formatMoney(item.product.sellPrice, currencyCode)
+  const subtotal = formatMoney(item.qty * item.product.sellPrice, currencyCode)
   return (
     <div style={ci.card}>
       <div style={ci.top}>
@@ -2061,8 +2080,8 @@ function CartItemRow({ item, itemUnit, onDelete }: { item: CartItem; itemUnit: s
         <button style={ci.del} onClick={onDelete}>✕</button>
       </div>
       <div style={ci.bottom}>
-        <span style={ci.meta}>{item.qty} {itemUnit} × ${item.product.sellPrice.toFixed(2)}</span>
-        <span style={ci.subtotal}>${(item.qty * item.product.sellPrice).toFixed(2)}</span>
+        <span style={ci.meta}>{item.qty} {itemUnit} × {unitPrice}</span>
+        <span style={ci.subtotal}>{subtotal}</span>
       </div>
     </div>
   )
