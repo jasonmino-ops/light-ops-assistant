@@ -380,7 +380,7 @@ curl -i -X POST https://elifekh.com/api/public/landing-events \
 
 本轮仅新增此 Acceptance Record。
 
-## 17. 最终结论
+## 17. 初次验收结论
 
 `ACCEPTANCE BLOCKED`
 
@@ -401,3 +401,36 @@ curl -i -X POST https://elifekh.com/api/public/landing-events \
 5. 创建一笔明确标记的测试订单，确认 `CustomerOrder.sourcePlatform = landing` 和 `order_conversion.orderId`。
 6. 分别验证桌号码、E-Life 店铺卡、Bot 再次点单、直接菜单不会误记为 landing。
 
+## 19. 最终验收补充记录
+
+补充日期：2026-07-11
+
+初次验收阻塞解除后，已通过生产环境和真实生产数据确认以下事实：
+
+- production migration `20260711090000_add_customer_journey_event` 已成功执行。
+- `_prisma_migrations` 已存在该 migration，`finished_at` 有值，`rolled_back_at` 为 `null`。
+- 生产数据库已存在 `public."CustomerJourneyEvent"`。
+- 预期索引已存在：
+  - `CustomerJourneyEvent_pkey`
+  - `CustomerJourneyEvent_eventKey_key`
+  - `CustomerJourneyEvent_storeId_eventType_createdAt_idx`
+  - `CustomerJourneyEvent_storeCode_createdAt_idx`
+  - `CustomerJourneyEvent_visitorId_createdAt_idx`
+  - `CustomerJourneyEvent_orderId_idx`
+- 四类事件均已通过真实生产数据确认可落库：
+  - `landing_view`
+  - `landing_cta_click`
+  - `menu_arrival`
+  - `order_conversion`
+- 同一顾客旅程可通过 `visitorId` 串联。
+- `order_conversion` 可关联真实 `orderId`。
+- 已有多组真实生产链路成功写入。
+- `source`、`campaign` 在未带参数时为 `null`，属于当前 V1 设计行为。
+
+最终验收状态：
+
+`ACCEPTED WITH KNOWN LIMITATIONS`
+
+最终冻结状态：
+
+`FINAL FROZEN`
