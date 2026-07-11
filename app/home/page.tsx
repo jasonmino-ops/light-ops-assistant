@@ -7,6 +7,7 @@ import { useLocale, type Lang } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import { publicUrl } from '@/lib/public-url'
+import { formatMoney } from '@/lib/currency'
 
 const DEV_STAFF_CTX = process.env.NODE_ENV !== 'production' ? STAFF_CTX : undefined
 const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
@@ -202,6 +203,7 @@ export default function HomePage() {
     storeName: contextStoreName,
     storeCode: contextStoreCode,
     tenantName: contextTenantName,
+    currencyCode,
   } = useWorkMode()
   const [summary, setSummary] = useState<Summary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -424,17 +426,17 @@ export default function HomePage() {
                 ...s.netAmount,
                 color: (summary?.netAmount ?? 0) >= 0 ? '#52c41a' : '#ff4d4f',
               }}>
-                ${(summary?.netAmount ?? 0).toFixed(2)}
+                {formatMoney(summary?.netAmount ?? 0, currencyCode)}
               </span>
             </div>
             <div style={s.payBreakRow}>
-              <span style={s.payBreakItem}>💵 CASH ${(summary?.cashSaleAmount ?? 0).toFixed(2)}</span>
+              <span style={s.payBreakItem}>💵 CASH {formatMoney(summary?.cashSaleAmount ?? 0, currencyCode)}</span>
               <span style={s.payBreakSep}>·</span>
-              <span style={s.payBreakItem}>📱 KHQR ${(summary?.khqrSaleAmount ?? 0).toFixed(2)}</span>
+              <span style={s.payBreakItem}>📱 KHQR {formatMoney(summary?.khqrSaleAmount ?? 0, currencyCode)}</span>
               {effectiveRole === 'OWNER' && (
                 <>
                   <span style={s.payBreakSep}>·</span>
-                  <span style={s.payBreakItem}>{t('home.pendingAmount')} ${pendingOrderAmount.toFixed(2)}</span>
+                  <span style={s.payBreakItem}>{t('home.pendingAmount')} {formatMoney(pendingOrderAmount, currencyCode)}</span>
                 </>
               )}
             </div>
@@ -469,6 +471,7 @@ export default function HomePage() {
               <CustomerOrderCard
                 key={order.id}
                 order={order}
+                currencyCode={currencyCode}
                 updating={updatingOrderId === order.id}
                 onConfirm={() => updateOrderStatus(order.id, 'CONFIRMED')}
                 onComplete={() => updateOrderStatus(order.id, 'COMPLETED')}
@@ -524,6 +527,7 @@ export default function HomePage() {
         <CheckoutSheet
           orderNo={customerCheckout.orderNo}
           totalAmount={customerCheckout.totalAmount}
+          currencyCode={currencyCode}
           onSuccess={() => {
             setCustomerCheckout(null)
             setOrdersKey((k) => k + 1)
@@ -908,9 +912,10 @@ function sourcePlatformLabel(source: string | null): string {
 }
 
 function CustomerOrderCard({
-  order, updating, onConfirm, onComplete, onCancel, onCollect,
+  order, currencyCode, updating, onConfirm, onComplete, onCancel, onCollect,
 }: {
   order: CustomerOrderRecord
+  currencyCode: string
   updating: boolean
   onConfirm: () => void
   onComplete: () => void
@@ -979,7 +984,7 @@ function CustomerOrderCard({
         </div>
         <div style={s.recentRight}>
           <div style={{ ...s.recentAmount, color: '#1a1a1a' }}>
-            ${order.totalAmount.toFixed(2)}
+            {formatMoney(order.totalAmount, currencyCode)}
           </div>
           {needsPay && !updating && (
             <button style={s.checkoutBtn} onClick={(e) => { e.stopPropagation(); onCollect() }}>{t('home.collect')}</button>
@@ -1003,14 +1008,14 @@ function CustomerOrderCard({
                 {item.sugar && <span style={s.coDetailItemSpec}> · {sugarLabel(item.sugar, lang)}</span>}
               </div>
               <div style={s.coDetailItemRight}>
-                <span style={s.coDetailItemUnit}>${item.price.toFixed(2)}×{item.quantity}</span>
-                <span style={s.coDetailItemLine}>${item.lineAmount.toFixed(2)}</span>
+                <span style={s.coDetailItemUnit}>{formatMoney(item.price, currencyCode)}×{item.quantity}</span>
+                <span style={s.coDetailItemLine}>{formatMoney(item.lineAmount, currencyCode)}</span>
               </div>
             </div>
           ))}
           <div style={s.coDetailFooter}>
             <span style={s.coDetailTotalLabel}>{t('home.totalLabel')}</span>
-            <span style={s.coDetailTotalAmt}>${order.totalAmount.toFixed(2)}</span>
+            <span style={s.coDetailTotalAmt}>{formatMoney(order.totalAmount, currencyCode)}</span>
           </div>
           {order.customerTelegramId && (
             <div style={s.coDetailTg}>{t('home.customerTgId')}：{order.customerTelegramId}</div>

@@ -14,6 +14,7 @@ import { useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import KhqrSheet from '@/app/components/KhqrSheet'
+import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
 
 type Step = 'selecting' | 'khqr_pending'
 type Status = 'idle' | 'loading'
@@ -21,6 +22,7 @@ type Status = 'idle' | 'loading'
 export default function CheckoutSheet({
   orderNo,
   totalAmount,
+  currencyCode,
   onSuccess,
   onClose,
   onOverridePay,
@@ -28,6 +30,7 @@ export default function CheckoutSheet({
 }: {
   orderNo: string
   totalAmount: number
+  currencyCode?: string | null
   onSuccess: () => void
   onClose: () => void
   /** 传入后完全接管付款逻辑（用于顾客订单等非主链场景），成功后由组件内部调用 onSuccess */
@@ -47,6 +50,7 @@ export default function CheckoutSheet({
   const [khqrImageUrl, setKhqrImageUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [overrideConfirmOnly, setOverrideConfirmOnly] = useState(false)
+  const khqrSupported = isKhqrSupportedCurrency(currencyCode)
 
   async function handleOverridePay(method: 'CASH' | 'KHQR') {
     setError(null)
@@ -116,6 +120,7 @@ export default function CheckoutSheet({
       <KhqrSheet
         orderNo={orderNo}
         totalAmount={totalAmount}
+        currencyCode={currencyCode}
         paymentIntentId={khqrId}
         khqrPayload={khqrPayload}
         khqrImageUrl={khqrImageUrl}
@@ -135,7 +140,7 @@ export default function CheckoutSheet({
         <div style={cs.title}>{t('sale.paymentTitle')}</div>
         <div style={cs.amtRow}>
           <span style={cs.amtLabel}>{t('sale.total')}</span>
-          <span style={cs.amtValue}>${totalAmount.toFixed(2)}</span>
+          <span style={cs.amtValue}>{formatMoney(totalAmount, currencyCode)}</span>
         </div>
 
         <button style={cs.option} onClick={() => onOverridePay ? handleOverridePay('CASH') : handlePay('CASH')} disabled={busy}>
@@ -146,17 +151,19 @@ export default function CheckoutSheet({
           </div>
         </button>
 
-        <button
-          style={{ ...cs.option, ...((!onOverridePay && error) ? cs.optDisabled : {}) }}
-          onClick={() => onOverridePay ? handleOverridePay('KHQR') : handlePay('KHQR')}
-          disabled={busy || (!onOverridePay && !!error)}
-        >
-          <span style={cs.optIcon}>📱</span>
-          <div style={cs.optText}>
-            <div style={cs.optLabel}>{onOverridePay ? t('sale.checkoutQrLabel') : t('sale.paymentKhqr')}</div>
-            <div style={cs.optDesc}>{onOverridePay ? t('sale.checkoutQrDesc') : t('sale.paymentKhqrDesc')}</div>
-          </div>
-        </button>
+        {khqrSupported && (
+          <button
+            style={{ ...cs.option, ...((!onOverridePay && error) ? cs.optDisabled : {}) }}
+            onClick={() => onOverridePay ? handleOverridePay('KHQR') : handlePay('KHQR')}
+            disabled={busy || (!onOverridePay && !!error)}
+          >
+            <span style={cs.optIcon}>📱</span>
+            <div style={cs.optText}>
+              <div style={cs.optLabel}>{onOverridePay ? t('sale.checkoutQrLabel') : t('sale.paymentKhqr')}</div>
+              <div style={cs.optDesc}>{onOverridePay ? t('sale.checkoutQrDesc') : t('sale.paymentKhqrDesc')}</div>
+            </div>
+          </button>
+        )}
 
         {error && <div style={cs.errorMsg}>{error}</div>}
       </div>

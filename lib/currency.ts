@@ -21,7 +21,11 @@ export function formatMoney(value: number, currencyCode?: string | null): string
   const code = normalizeCurrencyCode(currencyCode)
   const amount = Number(value || 0)
   if (code === 'XAF') {
-    return `FCFA ${Math.round(amount).toLocaleString('en-US')}`
+    const formatted = amount.toLocaleString('en-US', {
+      minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+      maximumFractionDigits: 2,
+    })
+    return `${formatted} FCFA`
   }
   return `$${amount.toFixed(2)}`
 }

@@ -7,6 +7,7 @@ import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { publicUrl } from '@/lib/public-url'
+import { formatMoney } from '@/lib/currency'
 
 type MarketingLang = 'zh' | 'en' | 'km'
 type MarketingTemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
@@ -239,7 +240,7 @@ function withImages(p: Product, imageUrls: string[]): Product {
 
 export default function ProductsPage() {
   const { t } = useLocale()
-  const { effectiveRole } = useWorkMode()
+  const { effectiveRole, currencyCode } = useWorkMode()
   const canManageProducts = effectiveRole === 'OWNER'
   const fmt = useCallback((key: string, vars: Record<string, string | number>) => {
     let text = t(key)
@@ -2083,7 +2084,7 @@ export default function ProductsPage() {
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={s.aiMatchedName}>{match.name}</div>
-                          <div style={s.aiMatchedMeta}>{match.spec || '-'} · ${match.price.toFixed(2)} · {match.status}</div>
+                          <div style={s.aiMatchedMeta}>{match.spec || '-'} · {formatMoney(match.price, currencyCode)} · {match.status}</div>
                           <div style={s.aiMatchedReason}>
                             {t('products.aiCreateConfidence')} {Math.round(match.confidence * 100)}%
                           </div>
@@ -2270,7 +2271,7 @@ export default function ProductsPage() {
                               {row.nameEn && <div style={{ color: '#6b7280', fontSize: 11 }}>{row.nameEn}</div>}
                               {row.spec && <div style={{ color: '#aaa', fontSize: 11 }}>{row.spec}</div>}
                             </td>
-                            <td style={pr.td}>${row.sellPrice.toFixed(2)}</td>
+                            <td style={pr.td}>{formatMoney(row.sellPrice, currencyCode)}</td>
                             <td style={pr.td}>
                               {row.resolvedL1
                                 ? <span>{row.resolvedL1}{row.resolvedL2 ? ` › ${row.resolvedL2}` : ''} <CatSourceBadge source={row.catSource} /></span>
@@ -3086,7 +3087,7 @@ export default function ProductsPage() {
             <div style={s.savedCheck}>✓</div>
             <div style={s.savedTitle}>{t('products.saved')}</div>
             <div style={s.savedName}>{product.name}{product.spec ? ` · ${product.spec}` : ''}</div>
-            <div style={s.savedPrice}>${product.sellPrice.toFixed(2)}</div>
+            <div style={s.savedPrice}>{formatMoney(product.sellPrice, currencyCode)}</div>
             <div style={{
               ...s.savedBadge,
               background: product.status === 'ACTIVE' ? 'rgba(255,255,255,0.2)' : 'rgba(255,100,100,0.3)',
@@ -3113,7 +3114,7 @@ export default function ProductsPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={s.staffProductName}>{product.name}</div>
                     <div style={s.staffProductMeta}>{product.spec || '-'} · {product.barcode}</div>
-                    <div style={s.staffProductPrice}>${product.sellPrice.toFixed(2)}</div>
+                    <div style={s.staffProductPrice}>{formatMoney(product.sellPrice, currencyCode)}</div>
                     <div style={s.staffProductStatus}>
                       {product.status === 'ACTIVE' ? t('products.statusActiveBadge') : t('products.statusDisabledBadge')}
                     </div>

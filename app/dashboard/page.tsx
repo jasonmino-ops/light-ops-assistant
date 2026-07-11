@@ -7,6 +7,7 @@ import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { getAiSupportModuleStatus } from '@/lib/tier'
+import { formatMoney } from '@/lib/currency'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,9 +50,8 @@ type StaffOption = { id: string; name: string }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
-function fmtAmount(n: number) {
-  const abs = Math.abs(n).toFixed(2)
-  return n < 0 ? `-$${abs}` : `$${abs}`
+function fmtAmount(n: number, currencyCode?: string | null) {
+  return formatMoney(n, currencyCode)
 }
 
 function getWeekStart(today: string): string {
@@ -90,6 +90,7 @@ export default function DashboardPage() {
     isOwnerInStaffMode,
     storeName: contextStoreName,
     tenantName: contextTenantName,
+    currencyCode,
   } = useWorkMode()
   const [today] = useState(() => new Date().toISOString().slice(0, 10))
 
@@ -281,7 +282,7 @@ export default function DashboardPage() {
 
         {/* Overview */}
         {!loading && result && (
-          <Overview result={result} t={t} heroLabel={heroLabelText} />
+          <Overview result={result} t={t} heroLabel={heroLabelText} currencyCode={currencyCode} />
         )}
 
         <div style={s.controlCard}>
@@ -485,10 +486,12 @@ function Overview({
   result,
   t,
   heroLabel,
+  currencyCode,
 }: {
   result: SummaryResult
   t: (k: string) => string
   heroLabel: string
+  currencyCode: string
 }) {
   const subLabel =
     result.dimension === 'STORE'
@@ -504,16 +507,16 @@ function Overview({
         <div style={ov.heroSub}>{subLabel}</div>
         <div style={ov.heroLabel}>{heroLabel}</div>
         <div style={ov.heroAmount}>
-          {fmtAmount(result.netAmount)}
+          {fmtAmount(result.netAmount, currencyCode)}
         </div>
       </div>
 
       {/* Metrics 2×2 */}
       <div style={ov.grid}>
-        <MetricCell label={t('dashboard.saleStat')} value={fmtAmount(result.totalSaleAmount)} />
+        <MetricCell label={t('dashboard.saleStat')} value={fmtAmount(result.totalSaleAmount, currencyCode)} />
         <MetricCell
           label={t('dashboard.refundStat')}
-          value={fmtAmount(result.totalRefundAmount)}
+          value={fmtAmount(result.totalRefundAmount, currencyCode)}
           red={result.totalRefundAmount < 0}
         />
         <MetricCell label={t('dashboard.saleCount')} value={String(result.saleOrderCount)} unit={t('dashboard.orderUnit')} />
@@ -522,9 +525,9 @@ function Overview({
 
       {/* Payment breakdown */}
       <div style={ov.payGrid}>
-        <PayCell icon="💵" label={t('dashboard.cashSaleLabel')} value={fmtAmount(result.cashSaleAmount ?? 0)} />
-        <PayCell icon="📱" label={t('dashboard.khqrSaleLabel')} value={fmtAmount(result.khqrSaleAmount ?? 0)} />
-        <PayCell icon="🛍️" label={t('dashboard.customerOrderAmount')} value={fmtAmount(result.customerOrderAmount ?? 0)} />
+        <PayCell icon="💵" label={t('dashboard.cashSaleLabel')} value={fmtAmount(result.cashSaleAmount ?? 0, currencyCode)} />
+        <PayCell icon="📱" label={t('dashboard.khqrSaleLabel')} value={fmtAmount(result.khqrSaleAmount ?? 0, currencyCode)} />
+        <PayCell icon="🛍️" label={t('dashboard.customerOrderAmount')} value={fmtAmount(result.customerOrderAmount ?? 0, currencyCode)} />
       </div>
 
       {(result.offlineSyncedSummary?.count ?? 0) > 0 && (
@@ -533,7 +536,7 @@ function Overview({
           <span>
             {t('dashboard.offlineSyncedSummary')
               .replace('{count}', String(result.offlineSyncedSummary?.count ?? 0))
-              .replace('{amount}', fmtAmount(result.offlineSyncedSummary?.amount ?? 0))}
+              .replace('{amount}', fmtAmount(result.offlineSyncedSummary?.amount ?? 0, currencyCode))}
           </span>
         </div>
       )}
@@ -662,7 +665,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         const initPromo: Record<string, string> = {}
         list.forEach((s) => {
           initMode[s.id]   = s.checkoutMode
-          initCurrency[s.id] = s.currencyCode ?? 'USD'
+          initCurrency[s.id] = s.currencyCode
           initBanner[s.id] = s.bannerUrl ?? null
           initAnn[s.id]    = s.announcement ?? ''
           initPromo[s.id]  = s.promoText ?? ''
@@ -704,13 +707,18 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   }
 
   async function handleSaveCurrency(sid: string) {
+    const nextCurrency = currencyPending[sid]
+    if (!nextCurrency) {
+      setCurrencyError((v) => ({ ...v, [sid]: t('dashboard.saveFailed') }))
+      return
+    }
     setCurrencySaving((v) => ({ ...v, [sid]: true }))
     setCurrencySaved((v) => ({ ...v, [sid]: false }))
     setCurrencyError((v) => ({ ...v, [sid]: '' }))
     try {
       const res = await apiFetch(`/api/stores/${sid}/currency`, {
         method: 'PATCH',
-        body: JSON.stringify({ currencyCode: currencyPending[sid] ?? 'USD' }),
+        body: JSON.stringify({ currencyCode: nextCurrency }),
       }, OWNER_CTX)
       const body = await res.json().catch(() => null)
       if (res.ok) {
@@ -842,7 +850,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
           <div style={sc.controls}>
             <select
               style={sc.select}
-              value={currencyPending[store.id] ?? store.currencyCode ?? 'USD'}
+              value={currencyPending[store.id] ?? store.currencyCode}
               onChange={(e) => {
                 setCurrencyPending((v) => ({ ...v, [store.id]: e.target.value }))
                 setCurrencyError((v) => ({ ...v, [store.id]: '' }))
@@ -854,7 +862,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
             <button
               style={sc.saveBtn}
               onClick={() => handleSaveCurrency(store.id)}
-              disabled={currencySaving[store.id]}
+              disabled={currencySaving[store.id] || !currencyPending[store.id]}
             >
               {currencySaved[store.id] ? t('dashboard.modeSaved') : currencySaving[store.id] ? '…' : t('dashboard.saveMode')}
             </button>

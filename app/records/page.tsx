@@ -641,6 +641,7 @@ export default function RecordsPage() {
         <CheckoutSheet
           orderNo={checkoutOrder.orderNo}
           totalAmount={checkoutOrder.totalAmount}
+          currencyCode={currencyCode}
           onSuccess={() => { setCheckoutOrder(null); fetchRecords(1, false) }}
           onClose={() => setCheckoutOrder(null)}
         />

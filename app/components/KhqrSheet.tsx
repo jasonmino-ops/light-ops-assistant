@@ -22,12 +22,14 @@ import { useState } from 'react'
 import QRCode from 'react-qr-code'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
+import { formatMoney } from '@/lib/currency'
 
 type Status = 'idle' | 'confirming' | 'cancelling'
 
 export default function KhqrSheet({
   orderNo,
   totalAmount,
+  currencyCode,
   paymentIntentId,
   khqrPayload,
   khqrImageUrl,
@@ -38,6 +40,7 @@ export default function KhqrSheet({
 }: {
   orderNo: string
   totalAmount: number
+  currencyCode?: string | null
   paymentIntentId?: string | null
   khqrPayload: string | null
   khqrImageUrl: string | null
@@ -116,7 +119,7 @@ export default function KhqrSheet({
         <div style={cs.infoGrid}>
           <div style={cs.infoRow}>
             <span style={cs.infoLabel}>{t('sale.khqrAmountLabel')}</span>
-            <span style={cs.infoValue}>${totalAmount.toFixed(2)}</span>
+            <span style={cs.infoValue}>{formatMoney(totalAmount, currencyCode)}</span>
           </div>
           <div style={cs.infoRow}>
             <span style={cs.infoLabel}>{t('sale.khqrOrderLabel')}</span>
