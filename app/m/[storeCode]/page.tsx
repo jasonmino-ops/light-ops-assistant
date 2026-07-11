@@ -4,7 +4,7 @@ import PrivateLandingShell from './PrivateLandingShell'
 
 type PageParams = {
   params: Promise<{ storeCode: string }>
-  searchParams: Promise<{ lang?: string }>
+  searchParams: Promise<{ lang?: string; source?: string; campaign?: string }>
 }
 
 type StoreRow = {
@@ -38,11 +38,18 @@ function detectLang(urlLang: string | null | undefined, acceptLanguage: string |
   return 'zh'
 }
 
+function cleanParam(raw: string | null | undefined, max = 80): string | null {
+  const cleaned = (raw ?? '').trim().replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, max)
+  return cleaned || null
+}
+
 export default async function CustomerPrivateLandingPage({ params, searchParams }: PageParams) {
-  const [{ storeCode: rawStoreCode }, { lang: urlLang }] = await Promise.all([params, searchParams])
+  const [{ storeCode: rawStoreCode }, { lang: urlLang, source, campaign }] = await Promise.all([params, searchParams])
   const storeCode = rawStoreCode?.trim() ?? ''
   const requestHeaders = await headers()
   const initialLang = detectLang(urlLang, requestHeaders.get('accept-language'))
+  const initialSource = cleanParam(source)
+  const initialCampaign = cleanParam(campaign, 120)
 
   if (!storeCode) {
     return (
@@ -51,6 +58,8 @@ export default async function CustomerPrivateLandingPage({ params, searchParams 
         store={null}
         storeCode=""
         errorKind="missing"
+        initialSource={initialSource}
+        initialCampaign={initialCampaign}
       />
     )
   }
@@ -91,6 +100,8 @@ export default async function CustomerPrivateLandingPage({ params, searchParams 
       store={normalizedStore}
       storeCode={storeCode}
       errorKind={store ? null : 'missing'}
+      initialSource={initialSource}
+      initialCampaign={initialCampaign}
     />
   )
 }

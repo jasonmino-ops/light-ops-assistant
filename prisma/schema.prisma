@@ -143,6 +143,7 @@ model Store {
   members                  Member[]
   memberBalanceLedgers     MemberBalanceLedger[]
   memberTelegramBindTokens MemberTelegramBindToken[]
+  customerJourneyEvents    CustomerJourneyEvent[]
 
   @@index([tenantId])
 }
@@ -736,6 +737,29 @@ model CustomerOrder {
   @@index([storeId, createdAt])
   @@index([orderNo])
   @@index([campaignLinkId])
+}
+
+model CustomerJourneyEvent {
+  id        String   @id @default(cuid())
+  eventType String
+  storeId   String
+  storeCode String
+  visitorId String?
+  source    String?
+  campaign  String?
+  referrer  String?
+  language  String?
+  orderId   String?
+  eventKey  String?
+  createdAt DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([eventKey])
+  @@index([storeId, eventType, createdAt])
+  @@index([storeCode, createdAt])
+  @@index([visitorId, createdAt])
+  @@index([orderId])
 }
 
 model KhqrConfigSession {

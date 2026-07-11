@@ -565,6 +565,40 @@ type CouponBrief = {
   reason?: 'MIN_NOT_MET' | 'EXPIRED' | 'NOT_FOUND' | 'OTHER'
 }
 
+type LandingTracking = {
+  fromLanding: boolean
+  source: string
+  campaign: string
+  visitorId: string
+}
+
+function cleanTrackingParam(value: string | null, max = 80): string {
+  return (value ?? '').trim().replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, max)
+}
+
+function markOnce(key: string): boolean {
+  try {
+    if (sessionStorage.getItem(key)) return false
+    sessionStorage.setItem(key, '1')
+  } catch {
+    // Storage only prevents duplicates. If unavailable, keep the journey flowing.
+  }
+  return true
+}
+
+function postLandingEvent(body: Record<string, unknown>) {
+  try {
+    fetch('/api/public/landing-events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    // Non-blocking by design.
+  }
+}
+
 // ─── 主页面 ───────────────────────────────────────────────────────────────────
 
 export default function MenuPage() {
@@ -607,6 +641,12 @@ export default function MenuPage() {
   // 优惠券
   const [campaignCode,   setCampaignCode]   = useState('')
   const [campaignIntent, setCampaignIntent] = useState('')
+  const [landingTracking, setLandingTracking] = useState<LandingTracking>({
+    fromLanding: false,
+    source: '',
+    campaign: '',
+    visitorId: '',
+  })
   const [tgId, setTgId]                         = useState<string>('')
   const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null)
   const [couponPickerOpen, setCouponPickerOpen] = useState(false)
@@ -840,6 +880,16 @@ export default function MenuPage() {
     const urlRef    = urlParams.get('ref')    || ''
     const urlIntent = urlParams.get('intent') || ''
     const urlTable  = urlParams.get('table')
+    const fromLanding = urlParams.get('from') === 'landing'
+    const landingSource = cleanTrackingParam(urlParams.get('source'))
+    const landingCampaign = cleanTrackingParam(urlParams.get('campaign'), 120)
+    const landingVisitorId = cleanTrackingParam(urlParams.get('visitorId'))
+    setLandingTracking({
+      fromLanding,
+      source: landingSource,
+      campaign: landingCampaign,
+      visitorId: landingVisitorId,
+    })
     if (urlRef)    setCampaignCode(urlRef)
     if (urlIntent) setCampaignIntent(urlIntent)
     if (urlTable)  setTableNo(urlTable.slice(0, 20))
@@ -887,6 +937,21 @@ export default function MenuPage() {
           setApiProducts(body.products ?? [])
           setCategories(body.categories ?? [])
           setCustomerBound(!!body.customerBound)
+          if (fromLanding) {
+            const eventKey = `menu_arrival:${code}:${landingVisitorId || 'anon'}:${new Date().toISOString().slice(0, 10)}`
+            if (markOnce(`customer_landing_event:${eventKey}`)) {
+              postLandingEvent({
+                eventType: 'menu_arrival',
+                storeCode: code,
+                visitorId: landingVisitorId || null,
+                source: landingSource || null,
+                campaign: landingCampaign || null,
+                referrer: document.referrer || null,
+                language: lang,
+                eventKey,
+              })
+            }
+          }
           // 记录到 E-Life 最近访问店铺（localStorage + 后端双写）
           try {
             const entry = { code, name: body.store.name as string, lastVisitedAt: new Date().toISOString() }
@@ -1132,6 +1197,12 @@ export default function MenuPage() {
           } : {}),
           remark,
           lang,
+          ...(landingTracking.fromLanding ? {
+            orderSource: 'landing',
+            source: landingTracking.source || undefined,
+            campaign: landingTracking.campaign || undefined,
+            visitorId: landingTracking.visitorId || undefined,
+          } : {}),
           ...(campaignCode ? { campaignCode, campaignIntent } : {}),
         }),
       })

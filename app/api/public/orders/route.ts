@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendAndLogMessage } from '@/lib/telegram'
+import {
+  cleanTrackingText,
+  cleanVisitorId,
+  createCustomerJourneyEvent,
+} from '@/lib/customer-journey'
 
 /**
  * POST /api/public/orders
@@ -67,6 +72,7 @@ export async function POST(req: NextRequest) {
     deliveryLat?: number; deliveryLng?: number
     deliveryAddressPhotoUrl?: string  // 可为 data URL 或外部 URL
     campaignCode?: string; campaignIntent?: string
+    orderSource?: string; source?: string; campaign?: string; visitorId?: string
   }
   try {
     body = await req.json()
@@ -78,6 +84,10 @@ export async function POST(req: NextRequest) {
   const tableNo = typeof body.tableNo === 'string' ? body.tableNo.trim().slice(0, 20) || null : null
   const rawCampaignCode   = typeof body.campaignCode   === 'string' ? body.campaignCode.trim()   : ''
   const rawCampaignIntent = typeof body.campaignIntent === 'string' ? body.campaignIntent.trim() : ''
+  const orderSource = cleanTrackingText(body.orderSource)
+  const landingSource = cleanTrackingText(body.source)
+  const landingCampaign = cleanTrackingText(body.campaign, 120)
+  const landingVisitorId = cleanVisitorId(body.visitorId)
   const couponId = typeof body.couponId === 'string' ? body.couponId.trim() : ''
 
   // 配送/上门字段（可选；当 pickupMethod=delivery 时强制电话+地址非空）
@@ -198,7 +208,7 @@ export async function POST(req: NextRequest) {
   // ── 推广归因（非阻断，CampaignLink 不存在时静默忽略） ────────────────────
   let campaignAttribution: {
     sourcePlatform: string; campaignCode: string
-    campaignLinkId: string; campaignIntent: string
+    campaignLinkId: string | null; campaignIntent: string
   } | null = null
   if (rawCampaignCode) {
     try {
@@ -215,6 +225,14 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch { /* 查询失败不阻断下单 */ }
+  }
+  if (!campaignAttribution && orderSource === 'landing') {
+    campaignAttribution = {
+      sourcePlatform: 'landing',
+      campaignCode: landingCampaign ?? '',
+      campaignLinkId: null,
+      campaignIntent: landingSource ? `landing:${landingSource}` : 'landing',
+    }
   }
 
   // ── 生成 orderNo：格式 C-yyyyMMdd-STORECODE-seq ─────────────────────────
@@ -293,6 +311,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'COUPON_ALREADY_USED', message: '该优惠券已被使用' }, { status: 409 })
     }
     throw e
+  }
+
+  if (orderSource === 'landing') {
+    await createCustomerJourneyEvent({
+      eventType: 'order_conversion',
+      storeId: store.id,
+      storeCode: store.code,
+      visitorId: landingVisitorId,
+      source: landingSource,
+      campaign: landingCampaign,
+      language: lang,
+      orderId: order.id,
+      eventKey: `order_conversion:${order.id}`,
+    })
   }
 
   // ── 通知 OWNER ────────────────────────────────────────────────────────────

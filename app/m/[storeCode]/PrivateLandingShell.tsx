@@ -22,10 +22,14 @@ type Props = {
   store: Store | null
   initialLang: Lang
   errorKind: ErrorKind
+  initialSource: string | null
+  initialCampaign: string | null
 }
 
 const LANGS: Lang[] = ['zh', 'en', 'km']
 const LS_KEY = 'menu_lang'
+const VISITOR_ID_KEY = 'customer_landing_visitor_id'
+const EVENT_PREFIX = 'customer_landing_event:'
 
 const copy: Record<Lang, {
   brand: string
@@ -158,8 +162,34 @@ function resolveType(type: string | null | undefined): keyof typeof copy.zh.busi
   return 'GENERAL'
 }
 
-export default function PrivateLandingShell({ storeCode, store, initialLang, errorKind }: Props) {
+function readOrCreateVisitorId(): string | null {
+  try {
+    const existing = localStorage.getItem(VISITOR_ID_KEY)
+    if (existing && /^[a-zA-Z0-9_-]{8,80}$/.test(existing)) return existing
+    const generated = `v_${crypto.randomUUID().replace(/-/g, '')}`
+    localStorage.setItem(VISITOR_ID_KEY, generated)
+    return generated
+  } catch {
+    return null
+  }
+}
+
+function buildEventKey(eventType: string, storeCode: string, visitorId: string | null) {
+  const today = new Date().toISOString().slice(0, 10)
+  return `${eventType}:${storeCode}:${visitorId ?? 'anon'}:${today}`
+}
+
+export default function PrivateLandingShell({
+  storeCode,
+  store,
+  initialLang,
+  errorKind,
+  initialSource,
+  initialCampaign,
+}: Props) {
   const [lang, setLang] = useState<Lang>(initialLang)
+  const [visitorId, setVisitorId] = useState<string | null>(null)
+  const [visitorReady, setVisitorReady] = useState(false)
   useDocumentLang(lang)
 
   const t = copy[lang]
@@ -170,6 +200,49 @@ export default function PrivateLandingShell({ storeCode, store, initialLang, err
     ? { backgroundImage: `url(${store.bannerUrl})` }
     : {}
   const statusText = store?.status === 'ACTIVE' ? t.open : t.closed
+  const menuParams = new URLSearchParams()
+  menuParams.set('code', storeCode)
+  menuParams.set('from', 'landing')
+  if (initialSource) menuParams.set('source', initialSource)
+  if (initialCampaign) menuParams.set('campaign', initialCampaign)
+  if (visitorId) menuParams.set('visitorId', visitorId)
+  const menuHref = `/menu?${menuParams.toString()}`
+
+  function recordEvent(eventType: 'landing_view' | 'landing_cta_click', keyOverride?: string) {
+    if (!store) return
+    const eventKey = keyOverride ?? buildEventKey(eventType, store.code, visitorId)
+    try {
+      const storageKey = `${EVENT_PREFIX}${eventKey}`
+      if (sessionStorage.getItem(storageKey)) return
+      sessionStorage.setItem(storageKey, '1')
+    } catch {
+      // sessionStorage is only a duplicate guard; event reporting may still proceed.
+    }
+    const body = JSON.stringify({
+      eventType,
+      storeCode: store.code,
+      visitorId,
+      source: initialSource,
+      campaign: initialCampaign,
+      referrer: document.referrer || null,
+      language: lang,
+      eventKey,
+    })
+    try {
+      if (navigator.sendBeacon) {
+        const blob = new Blob([body], { type: 'application/json' })
+        if (navigator.sendBeacon('/api/public/landing-events', blob)) return
+      }
+      fetch('/api/public/landing-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: true,
+      }).catch(() => {})
+    } catch {
+      // Non-blocking by design.
+    }
+  }
 
   function selectLang(next: Lang) {
     setLang(next)
@@ -192,6 +265,17 @@ export default function PrivateLandingShell({ storeCode, store, initialLang, err
       setLang(initialLang)
     }
   }, [initialLang])
+
+  useEffect(() => {
+    setVisitorId(readOrCreateVisitorId())
+    setVisitorReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!store || !visitorReady) return
+    recordEvent('landing_view')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store?.code, visitorReady])
 
   if (errorKind || !store) {
     return (
@@ -253,7 +337,11 @@ export default function PrivateLandingShell({ storeCode, store, initialLang, err
         </section>
 
         <div style={s.actions}>
-          <Link href={`/menu?code=${encodeURIComponent(storeCode)}`} style={{ ...s.primaryBtn }}>
+          <Link
+            href={menuHref}
+            style={{ ...s.primaryBtn }}
+            onClick={() => recordEvent('landing_cta_click', `${buildEventKey('landing_cta_click', store.code, visitorId)}:${Date.now()}`)}
+          >
             <span style={s.primaryIcon}>🛒</span>
             <span style={s.primaryText}>{landing.orderNow}</span>
           </Link>
