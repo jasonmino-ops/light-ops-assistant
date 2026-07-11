@@ -79,7 +79,7 @@ type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCEL
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
 type DesktopCheckoutStep = 'SELECT_ITEMS' | 'CONFIRM_ORDER' | 'SELECT_PAYMENT'
-type DesktopPaymentMethod = 'CASH' | 'KHQR' | null
+type DesktopPaymentMethod = 'CASH' | 'KHQR' | 'MEMBER_BALANCE' | null
 type CustomerDisplaySyncOptions = { focusKhqr?: boolean }
 type ShiftRecordItem = {
   recordNo: string
@@ -187,6 +187,7 @@ const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefi
 const SUGAR_SPEC_RE = /no\s*sugar|无糖|微糖|半糖|少糖|正常糖|(?:25|50|75|100)%/i
 const SCANNER_MIN_CODE_LENGTH = 5
 const DEBUG_SCANNER = false
+const DESKTOP_PAYMENT_METHODS: Exclude<DesktopPaymentMethod, null>[] = ['CASH', 'KHQR', 'MEMBER_BALANCE']
 
 const SUGAR_OPTIONS = [
   { value: 'no_sugar', label: '无糖' },
@@ -1288,8 +1289,16 @@ export default function CashierPage() {
     }, 0)
   }, [isUserInputElement, updateScannerDebugFocusState])
 
+  const isEditableShortcutTarget = useCallback((element: Element | null) => {
+    if (!(element instanceof HTMLElement)) return false
+    if (element === scannerInputRef.current) {
+      return (scannerInputRef.current.value ?? '').length > 0 || scannerInputDebounceRef.current !== null
+    }
+    return isUserInputElement(element)
+  }, [isUserInputElement])
+
   useEffect(() => {
-    setIsDesktopPos(window.location.pathname === '/desktop/pos')
+    setIsDesktopPos(window.location.pathname === '/desktop/pos' || window.location.pathname === '/cashier')
   }, [])
 
   useEffect(() => {
@@ -3030,6 +3039,110 @@ export default function CashierPage() {
     if (!isDesktopPos || amount <= 0) return null
     return <div style={s.khrAssist}>≈ {toKhr(amount, usdKhrRate)}</div>
   }
+
+  function selectDesktopPaymentMethod(method: Exclude<DesktopPaymentMethod, null>) {
+    setDesktopSelectedPaymentMethod(method)
+    if (method === 'KHQR') {
+      syncCurrentCartToCustomerDisplay('KHQR', { focusKhqr: true })
+      return
+    }
+    syncCurrentCartToCustomerDisplay('KHQR')
+  }
+
+  function openDesktopPaymentSelection() {
+    if (!isDesktopPos || cart.length === 0 || total <= 0) return
+    setSubmitError('')
+    selectDesktopPaymentMethod('CASH')
+    setCheckoutStep('SELECT_PAYMENT')
+  }
+
+  function closeDesktopPaymentSelection() {
+    setDesktopSelectedPaymentMethod(null)
+    setSubmitError('')
+    syncCurrentCartToCustomerDisplay('CASH')
+    setCheckoutStep('SELECT_ITEMS')
+    focusScannerInput()
+  }
+
+  function moveDesktopPaymentSelection(delta: -1 | 1) {
+    const currentIndex = DESKTOP_PAYMENT_METHODS.indexOf(desktopSelectedPaymentMethod ?? 'CASH')
+    const safeIndex = currentIndex >= 0 ? currentIndex : 0
+    const nextIndex = (safeIndex + delta + DESKTOP_PAYMENT_METHODS.length) % DESKTOP_PAYMENT_METHODS.length
+    selectDesktopPaymentMethod(DESKTOP_PAYMENT_METHODS[nextIndex])
+  }
+
+  function confirmDesktopPaymentSelection() {
+    if (!desktopSelectedPaymentMethod || submitting) return
+    if (desktopSelectedPaymentMethod === 'CASH' && isCashReceivedInsufficient) {
+      showToast(d.insufficientCashInput)
+      return
+    }
+    void handleSubmit(desktopSelectedPaymentMethod)
+  }
+
+  function desktopPaymentDisplayLabel(method: Exclude<DesktopPaymentMethod, null>) {
+    if (method === 'CASH') return lang === 'en' ? 'Cash' : lang === 'km' ? 'សាច់ប្រាក់' : '现金收款 CASH'
+    if (method === 'KHQR') return 'KHQR'
+    return lang === 'en' ? 'Member balance' : lang === 'km' ? 'សមតុល្យសមាជិក' : '会员余额'
+  }
+
+  useEffect(() => {
+    if (!isDesktopPos) return
+    function onDesktopPaymentKey(e: KeyboardEvent) {
+      if (isEditableShortcutTarget(document.activeElement)) return
+      if (saleResult || receiptPreviewOpen || sugarModal || holdNoteOpen || memberPayOpen || shiftReportOpen || shiftCloseConfirmOpen || dayCloseOpen || desktopRecordsOpen) return
+
+      if (checkoutStep === 'SELECT_PAYMENT') {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault()
+          moveDesktopPaymentSelection(-1)
+          return
+        }
+        if (e.key === 'ArrowRight') {
+          e.preventDefault()
+          moveDesktopPaymentSelection(1)
+          return
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          confirmDesktopPaymentSelection()
+          return
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          closeDesktopPaymentSelection()
+        }
+        return
+      }
+
+      if (e.key === 'Enter' && cart.length > 0 && total > 0) {
+        e.preventDefault()
+        openDesktopPaymentSelection()
+      }
+    }
+    window.addEventListener('keydown', onDesktopPaymentKey)
+    return () => window.removeEventListener('keydown', onDesktopPaymentKey)
+  }, [
+    isDesktopPos,
+    isEditableShortcutTarget,
+    saleResult,
+    receiptPreviewOpen,
+    sugarModal,
+    holdNoteOpen,
+    memberPayOpen,
+    shiftReportOpen,
+    shiftCloseConfirmOpen,
+    dayCloseOpen,
+    desktopRecordsOpen,
+    checkoutStep,
+    cart,
+    total,
+    desktopSelectedPaymentMethod,
+    submitting,
+    isCashReceivedInsufficient,
+    d,
+  ])
+
   const cacheText =
     cacheStatus === 'saving' ? d.cacheSaving :
     cacheStatus === 'ready' && cacheMeta ? d.cacheReady(cacheMeta.productCount, fmtCacheTime(cacheMeta.lastProductCacheAt)) :
@@ -3692,11 +3805,7 @@ export default function CashierPage() {
                     <button
                       type="button"
                       style={s.submitBtn}
-                      onClick={() => {
-                        setDesktopSelectedPaymentMethod(null)
-                        syncCurrentCartToCustomerDisplay('KHQR')
-                        setCheckoutStep('SELECT_PAYMENT')
-                      }}
+                      onClick={openDesktopPaymentSelection}
                     >
                       {d.confirmToPay}
                     </button>
@@ -3753,34 +3862,38 @@ export default function CashierPage() {
                       </div>
                     )}
                     <div style={s.desktopPayGrid}>
-                      <button
-                        type="button"
-                        style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'CASH' ? s.desktopPayOptionOn : {}) }}
-                        onClick={() => {
-                          setDesktopSelectedPaymentMethod('CASH')
-                          syncCurrentCartToCustomerDisplay('KHQR')
-                        }}
-                      >
-                        <span style={s.desktopPayMain}>{d.cashPayTitle}</span>
-                        <span style={s.desktopPaySub}>{d.cashPaySub}</span>
-                      </button>
-                      <button
-                        type="button"
-                        style={{ ...s.desktopPayOption, ...(desktopSelectedPaymentMethod === 'KHQR' ? s.desktopPayOptionOn : {}) }}
-                        onClick={() => {
-                          setDesktopSelectedPaymentMethod('KHQR')
-                          syncCurrentCartToCustomerDisplay('KHQR', { focusKhqr: true })
-                        }}
-                      >
-                        <span style={s.desktopPayMain}>{d.khqrPayTitle}</span>
-                        <span style={s.desktopPaySub}>{d.khqrPaySub}</span>
-                      </button>
+                      {DESKTOP_PAYMENT_METHODS.map((method) => {
+                        const selected = desktopSelectedPaymentMethod === method
+                        const title =
+                          method === 'CASH' ? d.cashPayTitle :
+                          method === 'KHQR' ? d.khqrPayTitle :
+                          d.memberPayTitle
+                        const sub =
+                          method === 'CASH' ? d.cashPaySub :
+                          method === 'KHQR' ? d.khqrPaySub :
+                          d.memberPayHint
+                        return (
+                          <button
+                            key={method}
+                            type="button"
+                            aria-pressed={selected}
+                            style={{ ...s.desktopPayOption, ...(selected ? s.desktopPayOptionOn : {}) }}
+                            onClick={() => selectDesktopPaymentMethod(method)}
+                          >
+                            <span style={s.desktopPayMain}>{title}</span>
+                            <span style={s.desktopPaySub}>{sub}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div style={{ ...s.printHint, marginTop: 0 }}>
+                      ← → 选择付款方式 · Enter 确认 · Esc 返回
                     </div>
                   </div>
                   <div style={s.desktopPayStickyActions}>
                     {desktopSelectedPaymentMethod && (
                       <div style={s.nextStepBox}>
-                        {d.currentFinalPayment(desktopSelectedPaymentMethod === 'CASH' ? (lang === 'en' ? 'Cash' : lang === 'km' ? 'សាច់ប្រាក់' : '现金收款 CASH') : (lang === 'en' ? 'KHQR' : lang === 'km' ? 'KHQR' : '扫码收款 KHQR'))}
+                        {d.currentFinalPayment(desktopPaymentDisplayLabel(desktopSelectedPaymentMethod))}
                       </div>
                     )}
                     {submitError && (
@@ -3792,11 +3905,7 @@ export default function CashierPage() {
                       type="button"
                       style={{ ...s.submitBtn, ...(!desktopSelectedPaymentMethod || submitting || isCashReceivedInsufficient ? s.submitDis : {}) }}
                       disabled={!desktopSelectedPaymentMethod || submitting || isCashReceivedInsufficient}
-                      onClick={() => {
-                        if (!desktopSelectedPaymentMethod) return
-                        if (isCashReceivedInsufficient) return
-                        void handleSubmit(desktopSelectedPaymentMethod)
-                      }}
+                      onClick={confirmDesktopPaymentSelection}
                     >
                       {submitting
                         ? (lang === 'en' ? 'Processing…' : lang === 'km' ? 'កំពុងដំណើរការ…' : '处理中…')
@@ -3804,7 +3913,7 @@ export default function CashierPage() {
                           ? d.confirmKhqrReceived
                           : desktopSelectedPaymentMethod === 'CASH'
                             ? d.confirmCashReceived
-                            : d.confirmPaymentReceived}
+                            : d.memberPayTitle}
                     </button>
                     <div style={{ ...s.totalRow, marginBottom: 0 }}>
                       <span style={s.totalLbl}>{lang === 'en' ? 'Item types' : lang === 'km' ? 'ប្រភេទទំនិញ' : '商品种类'}</span>
@@ -3825,11 +3934,7 @@ export default function CashierPage() {
                       <button
                         type="button"
                         style={s.secondaryBtn}
-                        onClick={() => {
-                          setDesktopSelectedPaymentMethod(null)
-                          syncCurrentCartToCustomerDisplay('CASH')
-                          setCheckoutStep('SELECT_ITEMS')
-                        }}
+                        onClick={closeDesktopPaymentSelection}
                       >
                         {d.backToModifyGoods}
                       </button>
