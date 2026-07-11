@@ -17,6 +17,7 @@ type Ctx = {
   storeCode: string | null
   tenantName: string | null
   checkoutMode: string
+  currencyCode: string
   enterStaffMode: () => void
   exitStaffMode: () => void
 }
@@ -30,6 +31,7 @@ const WorkModeContext = createContext<Ctx>({
   storeCode: null,
   tenantName: null,
   checkoutMode: 'DIRECT_PAYMENT',
+  currencyCode: 'USD',
   enterStaffMode() {},
   exitStaffMode() {},
 })
@@ -47,6 +49,7 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   const [storeCode, setStoreCode] = useState<string | null>(null)
   const [tenantName, setTenantName] = useState<string | null>(null)
   const [checkoutMode, setCheckoutMode] = useState('DIRECT_PAYMENT')
+  const [currencyCode, setCurrencyCode] = useState('USD')
 
   useEffect(() => {
     if (role === 'OWNER' && localStorage.getItem(STORAGE_KEY) === 'staff') {
@@ -63,6 +66,7 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
         setStoreCode(d.storeCode ?? null)
         setTenantName(d.tenantName ?? null)
         setCheckoutMode(d.checkoutMode ?? 'DIRECT_PAYMENT')
+        setCurrencyCode(d.currencyCode ?? 'USD')
       })
       .catch(() => {})
   }, [])
@@ -85,7 +89,7 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   return (
     <WorkModeContext.Provider value={{
       realRole: role, effectiveRole, isOwnerInStaffMode, tier,
-      storeName, storeCode, tenantName, checkoutMode,
+      storeName, storeCode, tenantName, checkoutMode, currencyCode,
       enterStaffMode, exitStaffMode,
     }}>
       {isOwnerInStaffMode && (

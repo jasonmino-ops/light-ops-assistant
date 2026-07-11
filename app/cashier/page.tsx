@@ -50,6 +50,7 @@ import {
   posDeviceHeaders,
   savePosDeviceToken,
 } from '@/lib/desktop-pos-client'
+import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1158,6 +1159,7 @@ export default function CashierPage() {
   const { lang, setLang } = useLocale()
   const workMode = useWorkMode()
   const [storeCode,     setStoreCode]     = useState<string | null>(null)
+  const [currencyCode,  setCurrencyCode]  = useState('USD')
   const [storeId,       setStoreId]       = useState('')
   const [noCodeError,   setNoCodeError]   = useState(false)
   const [products,      setProducts]      = useState<Product[]>([])
@@ -1170,6 +1172,7 @@ export default function CashierPage() {
   const [submitError,   setSubmitError]   = useState('')
   const [saleResult,    setSaleResult]    = useState<SaleResult | null>(null)
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false)
+  const [receiptPrinting, setReceiptPrinting] = useState(false)
   const [storeName,     setStoreName]     = useState('')
   const [loading,       setLoading]       = useState(true)
   const [toast,         setToast]         = useState('')
@@ -1250,6 +1253,7 @@ export default function CashierPage() {
   const previousCashierDisplayCartCountRef = useRef(0)
   const autoPrintedReceiptKeyRef = useRef('')
   const receiptPrintButtonRef = useRef<HTMLButtonElement>(null)
+  const receiptPrintLockedRef = useRef(false)
 
   const focusSearchInput = useCallback(() => {
     window.setTimeout(() => searchRef.current?.focus(), 0)
@@ -1474,6 +1478,7 @@ export default function CashierPage() {
         setProductsSource('online')
         setStoreName(d.storeName ?? '')
         setStoreId(typeof d.storeId === 'string' ? d.storeId : '')
+        setCurrencyCode(typeof d.currencyCode === 'string' ? d.currencyCode : 'USD')
         if (d.storeId && d.tenantId) {
           setCacheStatus('saving')
           const catNameById = new Map(nextCategories.map((c: Category) => [c.id, c.name]))
@@ -1777,6 +1782,7 @@ export default function CashierPage() {
       cashierName: 'Desktop POS',
       paymentMethod: input.paymentMethod,
       totalAmount: input.totalAmount,
+      currencyCode,
       items: input.items.map((item) => ({
         name: item.name,
         spec: item.spec,
@@ -1790,10 +1796,15 @@ export default function CashierPage() {
   const finishReceiptPrintFlow = useCallback(() => {
     setReceiptPreviewOpen(false)
     setSaleResult(null)
+    setReceiptPrinting(false)
+    receiptPrintLockedRef.current = false
     focusScannerInput()
   }, [focusScannerInput])
 
-  function handlePrintReceipt(receipt: DesktopReceiptData) {
+  const handlePrintReceipt = useCallback((receipt: DesktopReceiptData) => {
+    if (receiptPrintLockedRef.current) return
+    receiptPrintLockedRef.current = true
+    setReceiptPrinting(true)
     try {
       printDesktopReceipt(receipt, lang, { onAfterPrint: finishReceiptPrintFlow })
     } catch (err) {
@@ -1801,7 +1812,7 @@ export default function CashierPage() {
       showToast('无法打开打印预览，请检查浏览器弹窗权限')
       finishReceiptPrintFlow()
     }
-  }
+  }, [finishReceiptPrintFlow, lang])
 
   function handleAutoPrintToggle() {
     const next = !autoPrint
@@ -2277,6 +2288,11 @@ export default function CashierPage() {
   }
 
   useEffect(() => {
+    receiptPrintLockedRef.current = false
+    setReceiptPrinting(false)
+  }, [saleResult?.receipt])
+
+  useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
     if (!isDesktopPos || !autoPrint || !receiptSnapshot) return
 
@@ -2302,6 +2318,21 @@ export default function CashierPage() {
     const timer = window.setTimeout(() => receiptPrintButtonRef.current?.focus(), 80)
     return () => window.clearTimeout(timer)
   }, [isDesktopPos, autoPrint, saleResult?.receipt, receiptPreviewOpen])
+
+  useEffect(() => {
+    const receiptSnapshot = saleResult?.receipt
+    if (!isDesktopPos || autoPrint || !receiptSnapshot || receiptPreviewOpen) return
+    const printableReceipt = receiptSnapshot
+    function onReceiptKey(e: KeyboardEvent) {
+      if (e.key !== 'Enter' || e.repeat) return
+      if (isEditableShortcutTarget(document.activeElement)) return
+      if (receiptPrintLockedRef.current) return
+      e.preventDefault()
+      handlePrintReceipt(printableReceipt)
+    }
+    window.addEventListener('keydown', onReceiptKey)
+    return () => window.removeEventListener('keydown', onReceiptKey)
+  }, [isDesktopPos, autoPrint, saleResult?.receipt, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
 
   async function handleInstallClick() {
     if (!storeCode) {
@@ -2570,7 +2601,7 @@ export default function CashierPage() {
   const syncCurrentCartToCustomerDisplay = useCallback((nextPayment: CashierPaymentMethod, options?: CustomerDisplaySyncOptions) => {
     if (!storeCode || noCodeError || isRestoringCashierStore || cart.length === 0) return
     const displayPayment: CashierDisplayPayment =
-      nextPayment === 'KHQR' && isOnline ? 'KHQR' :
+      nextPayment === 'KHQR' && isOnline && isKhqrSupportedCurrency(currencyCode) ? 'KHQR' :
       nextPayment === 'CASH' ? 'CASH' :
       null
     const status: CashierDisplayStatus = displayPayment === 'KHQR' ? 'AWAITING_PAYMENT' : 'DRAFT'
@@ -2596,7 +2627,7 @@ export default function CashierPage() {
         ? (options?.focusKhqr ? CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE : '请扫码支付')
         : null,
     })
-  }, [cart, storeCode, isOnline, noCodeError, isRestoringCashierStore])
+  }, [cart, storeCode, isOnline, noCodeError, isRestoringCashierStore, currencyCode])
 
   useEffect(() => {
     if (!storeCode || noCodeError || isRestoringCashierStore) return
@@ -2622,7 +2653,7 @@ export default function CashierPage() {
     previousCashierDisplayCartCountRef.current = cart.length
     cashierDisplayActiveRef.current = true
     const displayPayment: CashierDisplayPayment =
-      payment === 'KHQR' && isOnline ? 'KHQR' :
+      payment === 'KHQR' && isOnline && isKhqrSupportedCurrency(currencyCode) ? 'KHQR' :
       payment === 'CASH' ? 'CASH' :
       null
     const status: CashierDisplayStatus = displayPayment === 'KHQR' ? 'AWAITING_PAYMENT' : 'DRAFT'
@@ -2660,12 +2691,16 @@ export default function CashierPage() {
       })
     }, CASHIER_DISPLAY_SYNC_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore, isDesktopPos, checkoutStep])
+  }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore, isDesktopPos, checkoutStep, currencyCode])
 
   // ── Submit sale ────────────────────────────────────────────────────────────
   async function handleSubmit(paymentOverride?: CashierPaymentMethod) {
     if (cart.length === 0 || submitting || !storeCode) return
     const submitPayment = paymentOverride ?? payment
+    if (submitPayment === 'KHQR' && !khqrSupported) {
+      showToast('当前门店货币不支持 KHQR，请使用 CASH 收款')
+      return
+    }
     if (submitPayment === 'MEMBER_BALANCE') {
       if (!isOnline) {
         showToast('离线模式下不支持会员余额支付')
@@ -2975,14 +3010,14 @@ export default function CashierPage() {
                 <div style={s.recordsDetailSpec}>{item.specSnapshot || '无规格'}</div>
               </div>
               <div style={s.recordsDetailQty}>x{qty || 1}</div>
-              <div style={s.recordsDetailMoney}>${unitPrice.toFixed(2)}</div>
-              <div style={s.recordsDetailMoney}>${lineAmount.toFixed(2)}</div>
+              <div style={s.recordsDetailMoney}>{formatMoney(unitPrice, currencyCode)}</div>
+              <div style={s.recordsDetailMoney}>{formatMoney(lineAmount, currencyCode)}</div>
             </div>
           )
         })}
         <div style={s.recordsDetailTotal}>
           <span>支付方式：{row.paymentMethod || 'UNKNOWN'}</span>
-          <span>订单金额：${row.amount.toFixed(2)}</span>
+          <span>订单金额：{formatMoney(row.amount, currencyCode)}</span>
         </div>
       </div>
     )
@@ -3016,7 +3051,7 @@ export default function CashierPage() {
           <div style={{ ...s.pcardName, ...(isCompactCard ? s.pcardNameCompact : {}) }}>{p.name}</div>
           {p.spec && <div style={{ ...s.pcardSpec, ...(isCompactCard ? s.pcardSpecCompact : {}) }}>{p.spec}</div>}
           <div style={{ ...s.pcardPriceRow, ...(isCompactCard ? s.pcardPriceRowCompact : {}) }}>
-            <span style={{ ...s.pcardPrice, ...(isCompactCard ? s.pcardPriceCompact : {}) }}>${p.sellPrice.toFixed(2)}</span>
+            <span style={{ ...s.pcardPrice, ...(isCompactCard ? s.pcardPriceCompact : {}) }}>{formatMoney(p.sellPrice, currencyCode)}</span>
             {inCart > 0 && (
               <span style={{ fontSize: isCompactCard ? 11 : 12, fontWeight: 700, color: '#fff', background: ACCENT, borderRadius: 10, padding: isCompactCard ? '0 6px' : '1px 7px' }}>
                 ×{inCart}
@@ -3030,6 +3065,10 @@ export default function CashierPage() {
 
   const total = cartTotal(cart)
   const count = cartCount(cart)
+  const money = (value: number) => formatMoney(value, currencyCode)
+  const khqrSupported = isKhqrSupportedCurrency(currencyCode)
+  const desktopPaymentMethods = DESKTOP_PAYMENT_METHODS.filter((method) => method !== 'KHQR' || khqrSupported)
+  const mobilePaymentMethods = (['CASH','KHQR','MEMBER_BALANCE','OTHER'] as const).filter((method) => method !== 'KHQR' || khqrSupported)
   const cashReceivedAmount = cashTendered.trim() === '' ? NaN : Number(cashTendered)
   const hasCashReceivedAmount = Number.isFinite(cashReceivedAmount)
   const cashChangeAmount = hasCashReceivedAmount ? Math.max(0, cashReceivedAmount - total) : 0
@@ -3052,7 +3091,7 @@ export default function CashierPage() {
   function openDesktopPaymentSelection() {
     if (!isDesktopPos || cart.length === 0 || total <= 0) return
     setSubmitError('')
-    selectDesktopPaymentMethod('CASH')
+    selectDesktopPaymentMethod(khqrSupported ? 'KHQR' : 'CASH')
     setCheckoutStep('SELECT_PAYMENT')
   }
 
@@ -3104,6 +3143,7 @@ export default function CashierPage() {
           return
         }
         if (e.key === 'Enter') {
+          if (e.repeat) return
           e.preventDefault()
           confirmDesktopPaymentSelection()
           return
@@ -3116,6 +3156,7 @@ export default function CashierPage() {
       }
 
       if (e.key === 'Enter' && cart.length > 0 && total > 0) {
+        if (e.repeat) return
         e.preventDefault()
         openDesktopPaymentSelection()
       }
@@ -3574,18 +3615,22 @@ export default function CashierPage() {
                     </div>
                   </div>
                 </div>
-                <div style={s.sideDivider} />
-                <div style={{ ...s.sideSection, ...s.sideGroupStore }}>
-                  <div style={{ ...s.sideSectionTitle, color: '#fcd34d' }}>{d.sectionStore}</div>
-                  <div style={s.sideSectionBody}>
-                    <div style={s.fxCard}>
-                      <span style={s.fxLabel}>$1 = {usdKhrRate.toLocaleString('en-US')}{KHR_SYMBOL}</span>
-                      <button type="button" style={s.fxBtn} onClick={handleUsdKhrRateApply}>
-                        {lang === 'en' ? 'Edit' : lang === 'km' ? 'កែប្រែ' : '修改'}
-                      </button>
+                {khqrSupported && (
+                  <>
+                    <div style={s.sideDivider} />
+                    <div style={{ ...s.sideSection, ...s.sideGroupStore }}>
+                      <div style={{ ...s.sideSectionTitle, color: '#fcd34d' }}>{d.sectionStore}</div>
+                      <div style={s.sideSectionBody}>
+                        <div style={s.fxCard}>
+                          <span style={s.fxLabel}>$1 = {usdKhrRate.toLocaleString('en-US')}{KHR_SYMBOL}</span>
+                          <button type="button" style={s.fxBtn} onClick={handleUsdKhrRateApply}>
+                            {lang === 'en' ? 'Edit' : lang === 'km' ? 'កែប្រែ' : '修改'}
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </>
+                )}
                 <div style={s.sideDivider} />
                 <div style={{ ...s.sideSection, ...s.sideGroupSettings }}>
                   <div style={{ ...s.sideSectionTitle, color: '#cbd5e1' }}>{d.sectionSettings}</div>
@@ -3704,7 +3749,7 @@ export default function CashierPage() {
                     </div>
                     <div style={s.ocItems}>{itemsSummary}</div>
                     <div style={s.ocFoot}>
-                      <span style={s.ocTotal}>${order.totalAmount.toFixed(2)}</span>
+                      <span style={s.ocTotal}>{money(order.totalAmount)}</span>
                       {isPending && (
                         <button
                           style={{ ...s.ocBtn, background: ACCENT, color: '#fff', opacity: isUpdating ? 0.5 : 1 }}
@@ -3762,7 +3807,7 @@ export default function CashierPage() {
                       <span style={s.qNum}>{line.qty}</span>
                       <button style={s.qBtn} onClick={() => updateQty(line.barcode, line.sugar, +1)}>+</button>
                     </div>
-                    <span style={s.clineAmt}>${(line.price * line.qty).toFixed(2)}</span>
+                    <span style={s.clineAmt}>{money(line.price * line.qty)}</span>
                   </div>
                 )
               })}
@@ -3788,16 +3833,16 @@ export default function CashierPage() {
                       return (
                         <div key={cartLineKey(line)} style={{ ...s.confirmLine, ...(index === cart.length - 1 ? s.confirmLineLast : {}) }}>
                           <span style={s.confirmName}>{line.name}{specDisplay ? ` · ${specDisplay}` : ''} × {line.qty}</span>
-                          <span style={s.confirmAmt}>${(line.price * line.qty).toFixed(2)}</span>
+                          <span style={s.confirmAmt}>{money(line.price * line.qty)}</span>
                         </div>
                       )
                     })}
                   </div>
                   <div style={s.totalRow}>
                     <span style={s.totalLbl}>{lang === 'en' ? `Items ${count} · Payable` : lang === 'km' ? `មុខ ${count} · ត្រូវបង់` : `共 ${count} 件 · 应付`}</span>
-                    <span style={s.totalAmt}>${total.toFixed(2)}</span>
+                    <span style={s.totalAmt}>{money(total)}</span>
                   </div>
-                  {desktopKhrAssist(total)}
+                  {khqrSupported && desktopKhrAssist(total)}
                   <div style={s.confirmActions}>
                     <button type="button" style={s.secondaryBtn} onClick={() => setCheckoutStep('SELECT_ITEMS')}>
                       {d.returnModify}
@@ -3821,9 +3866,9 @@ export default function CashierPage() {
                     </div>
                     <div style={s.totalRow}>
                       <span style={s.totalLbl}>{lang === 'en' ? `Items ${count} · Payable` : lang === 'km' ? `មុខ ${count} · ត្រូវបង់` : `共 ${count} 件 · 应付`}</span>
-                      <span style={s.totalAmt}>${total.toFixed(2)}</span>
+                      <span style={s.totalAmt}>{money(total)}</span>
                     </div>
-                    {desktopKhrAssist(total)}
+                    {khqrSupported && desktopKhrAssist(total)}
                     {desktopSelectedPaymentMethod === 'CASH' && (
                       <div style={s.cashReceivedBox}>
                         <label style={s.cashReceivedLabel} htmlFor="desktop-cash-tendered">
@@ -3846,8 +3891,8 @@ export default function CashierPage() {
                         <div style={s.cashChangeRow}>
                           <span>{d.changeLabel}</span>
                           <div style={s.cashChangeAmtBox}>
-                            <div style={s.cashChangeAmt}>${cashChangeAmount.toFixed(2)}</div>
-                            {!isCashReceivedInsufficient && cashChangeAmount > 0 && (
+                            <div style={s.cashChangeAmt}>{money(cashChangeAmount)}</div>
+                            {khqrSupported && !isCashReceivedInsufficient && cashChangeAmount > 0 && (
                               <div style={s.cashChangeKhr}>≈ {toKhr(cashChangeAmount, usdKhrRate)}</div>
                             )}
                           </div>
@@ -3855,14 +3900,14 @@ export default function CashierPage() {
                         {isCashReceivedInsufficient && (
                           <div style={s.cashWarn}>
                             {hasCashReceivedAmount
-                              ? d.insufficientCash(`$${(total - cashReceivedAmount).toFixed(2)}`)
+                              ? d.insufficientCash(money(total - cashReceivedAmount))
                               : d.insufficientCashInput}
                           </div>
                         )}
                       </div>
                     )}
                     <div style={s.desktopPayGrid}>
-                      {DESKTOP_PAYMENT_METHODS.map((method) => {
+                      {desktopPaymentMethods.map((method) => {
                         const selected = desktopSelectedPaymentMethod === method
                         const title =
                           method === 'CASH' ? d.cashPayTitle :
@@ -3947,9 +3992,9 @@ export default function CashierPage() {
                   <div style={s.payLabel}>{lang === 'en' ? 'Current order' : lang === 'km' ? 'បញ្ជាទិញបច្ចុប្បន្ន' : '本单'}</div>
                   <div style={s.totalRow}>
                     <span style={s.totalLbl}>{lang === 'en' ? `Total ${count} items` : lang === 'km' ? `សរុប ${count} មុខ` : `合计 ${count} 件`}</span>
-                    <span style={s.totalAmt}>${total.toFixed(2)}</span>
+                    <span style={s.totalAmt}>{money(total)}</span>
                   </div>
-                  {desktopKhrAssist(total)}
+                  {khqrSupported && desktopKhrAssist(total)}
                   <button
                     style={{ ...s.submitBtn, ...(cart.length === 0 ? s.submitDis : {}) }}
                     disabled={cart.length === 0}
@@ -3967,7 +4012,7 @@ export default function CashierPage() {
               <>
                 <div style={s.payLabel}>{lang === 'en' ? 'Payment method' : lang === 'km' ? 'របៀបទូទាត់' : '收款方式'}</div>
                 <div style={s.payRow}>
-                  {(['CASH','KHQR','MEMBER_BALANCE','OTHER'] as const).map(m => {
+                  {mobilePaymentMethods.map(m => {
                     const disabledOfflinePayment = !isOnline && m !== 'CASH'
                     return (
                     <button
@@ -4017,7 +4062,7 @@ export default function CashierPage() {
                 )}
                 <div style={s.totalRow}>
                   <span style={s.totalLbl}>{lang === 'en' ? 'Total' : lang === 'km' ? 'សរុប' : '合计'}</span>
-                  <span style={s.totalAmt}>${total.toFixed(2)}</span>
+                  <span style={s.totalAmt}>{money(total)}</span>
                 </div>
                 {submitError && (
                   <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8, padding: '5px 8px', background: '#fef2f2', borderRadius: 6 }}>
@@ -4098,10 +4143,10 @@ export default function CashierPage() {
             <div style={s.modalTitle}>{d.closeShiftConfirm}</div>
             <div style={{ display: 'grid', gap: 8, margin: '16px 0 18px', textAlign: 'left' }}>
               {[
-                [lang === 'en' ? 'Shift sales:' : lang === 'km' ? 'ការលក់ក្នុងវេន៖' : '本班销售额：', `$${shiftReport.salesAmount.toFixed(2)}`],
+                [lang === 'en' ? 'Shift sales:' : lang === 'km' ? 'ការលក់ក្នុងវេន៖' : '本班销售额：', money(shiftReport.salesAmount)],
                 [lang === 'en' ? 'Orders:' : lang === 'km' ? 'បញ្ជាទិញ：' : '本班单数：', `${shiftReport.orderCount}`],
-                [lang === 'en' ? 'CASH' : lang === 'km' ? 'CASH' : 'CASH：', `$${shiftReport.cashAmount.toFixed(2)}`],
-                [lang === 'en' ? 'KHQR' : lang === 'km' ? 'KHQR' : 'KHQR：', `$${shiftReport.khqrAmount.toFixed(2)}`],
+                [lang === 'en' ? 'CASH' : lang === 'km' ? 'CASH' : 'CASH：', money(shiftReport.cashAmount)],
+                [lang === 'en' ? 'KHQR' : lang === 'km' ? 'KHQR' : 'KHQR：', money(shiftReport.khqrAmount)],
                 [lang === 'en' ? 'Open holds:' : lang === 'km' ? 'មាត់ស្នើ៖' : '未完成挂单：', `${shiftReport.holdOrderCount}`],
                 [lang === 'en' ? 'Offline pending:' : lang === 'km' ? 'រង់ចាំ sync៖' : '离线待同步：', `${shiftReport.offlinePendingCount}`],
               ].map(([label, value]) => (
@@ -4214,7 +4259,7 @@ export default function CashierPage() {
                         </div>
                         <div style={s.recordsTime}>{fmtDateTimeShort(row.createdAt)}</div>
                         <div style={s.recordsPay}>{row.paymentMethod || 'UNKNOWN'}</div>
-                        <div style={s.recordsAmt}>${row.amount.toFixed(2)}</div>
+                        <div style={s.recordsAmt}>{money(row.amount)}</div>
                         {expanded && renderDesktopRecordDetails(row)}
                       </button>
                     )
@@ -4232,7 +4277,7 @@ export default function CashierPage() {
           <div style={s.modal} onClick={e => e.stopPropagation()}>
             <div style={s.modalIcon}>✅</div>
             <div style={s.modalTitle}>{d.saleCompleted}</div>
-            <div style={s.modalAmt}>${saleResult.totalAmount.toFixed(2)}</div>
+            <div style={s.modalAmt}>{money(saleResult.totalAmount)}</div>
             {saleResult.orderNo && <div style={s.modalSub}>{lang === 'en' ? `Order: ${saleResult.orderNo}` : lang === 'km' ? `លេខបញ្ជាទិញ៖ ${saleResult.orderNo}` : `单号：${saleResult.orderNo}`}</div>}
             {saleResult.khqrFallback && (
               <div style={{ margin: '10px 0 4px', padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.5, textAlign: 'left' as const }}>
@@ -4260,10 +4305,11 @@ export default function CashierPage() {
                 <button
                   ref={receiptPrintButtonRef}
                   type="button"
-                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12 }}
+                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(receiptPrinting ? s.submitDis : {}) }}
+                  disabled={receiptPrinting}
                   onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
                 >
-                  {d.printReceipt}
+                  {receiptPrinting ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
                 </button>
               </div>
             )}
@@ -4324,16 +4370,16 @@ export default function CashierPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 12 }}>
                   <div>
                     <div style={{ fontSize: 11, color: '#94a3b8' }}>{lang === 'en' ? 'Balance' : lang === 'km' ? 'សមតុល្យ' : '当前余额'}</div>
-                    <div style={{ fontSize: 15, fontWeight: 900 }}>${Number(memberPayMember.balance).toFixed(2)}</div>
+                    <div style={{ fontSize: 15, fontWeight: 900 }}>{money(Number(memberPayMember.balance))}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: '#94a3b8' }}>{lang === 'en' ? 'Order total' : lang === 'km' ? 'ចំនួនបញ្ជាទិញ' : '本单金额'}</div>
-                    <div style={{ fontSize: 15, fontWeight: 900 }}>${total.toFixed(2)}</div>
+                    <div style={{ fontSize: 15, fontWeight: 900 }}>{money(total)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 11, color: '#94a3b8' }}>{lang === 'en' ? 'After pay' : lang === 'km' ? 'បន្ទាប់ពីបង់' : '支付后'}</div>
                     <div style={{ fontSize: 15, fontWeight: 900, color: Number(memberPayMember.balance) >= total ? '#047857' : '#dc2626' }}>
-                      ${(Number(memberPayMember.balance) - total).toFixed(2)}
+                      {money(Number(memberPayMember.balance) - total)}
                     </div>
                   </div>
                 </div>

@@ -14,6 +14,7 @@ import {
   printDesktopReceipt,
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
+import { formatMoney } from '@/lib/currency'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ type ApiResponse = {
   desktopStore?: {
     storeCode: string
     storeName: string
+    currencyCode?: string | null
   } | null
 }
 
@@ -139,8 +141,11 @@ function fmtDateTime(iso: string) {
 }
 
 function fmtAmount(n: number) {
-  const abs = Math.abs(n).toFixed(2)
-  return n < 0 ? `-$${abs}` : `$${abs}`
+  return n < 0 ? `-${formatMoney(Math.abs(n))}` : formatMoney(n)
+}
+
+function fmtCurrencyAmount(n: number, currencyCode?: string | null) {
+  return n < 0 ? `-${formatMoney(Math.abs(n), currencyCode)}` : formatMoney(n, currencyCode)
 }
 
 const ORDER_COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#722ed1']
@@ -233,6 +238,7 @@ export default function RecordsPage() {
     storeName: contextStoreName,
     storeCode: contextStoreCode,
     tenantName: contextTenantName,
+    currencyCode: contextCurrencyCode,
   } = useWorkMode()
   const today = todayStr()
   const desktopStoreCode = searchParams.get('from') === 'desktop' ? searchParams.get('storeCode')?.trim() ?? '' : ''
@@ -252,6 +258,8 @@ export default function RecordsPage() {
   const [dateTo, setDateTo] = useState(today)
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | SaleType>('ALL')
   const [avatarFailed, setAvatarFailed] = useState(false)
+  const [desktopCurrencyCode, setDesktopCurrencyCode] = useState<string | null>(null)
+  const currencyCode = isDesktopRecords ? desktopCurrencyCode : contextCurrencyCode
 
   const [allItems, setAllItems] = useState<RecordItem[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -277,6 +285,7 @@ export default function RecordsPage() {
         setAllItems(cached.items)
         setSummary(cached.summary)
         setDesktopResolvedStoreName(cached.desktopStore?.storeName ?? null)
+        setDesktopCurrencyCode(cached.desktopStore?.currencyCode ?? null)
         setTotal(cached.total)
         setPage(cached.page)
         setLoading(false)
@@ -314,7 +323,10 @@ export default function RecordsPage() {
         const data: ApiResponse = await res.json()
         setAllItems((prev) => (append ? [...prev, ...data.items] : data.items))
         setSummary(data.summary)
-        if (!append) setDesktopResolvedStoreName(data.desktopStore?.storeName ?? null)
+        if (!append) {
+          setDesktopResolvedStoreName(data.desktopStore?.storeName ?? null)
+          setDesktopCurrencyCode(data.desktopStore?.currencyCode ?? null)
+        }
         setTotal(data.total)
         setPage(data.page)
         if (!append && targetPage === 1) writeRecordsCache(cacheKey, data)
@@ -461,13 +473,13 @@ export default function RecordsPage() {
             </div>
           ) : (
             <>
-              <div style={s.heroAmount}>{fmtAmount(summary?.netAmount ?? 0)}</div>
+              <div style={s.heroAmount}>{fmtCurrencyAmount(summary?.netAmount ?? 0, currencyCode)}</div>
               <div style={s.heroMetricGrid}>
                 <Metric label={t('records.saleCount')} value={`${summary?.saleCount ?? 0}${t('records.unit')}`} />
-                <Metric label={t('records.refundAmount')} value={fmtAmount(refundAmount)} tone="red" />
-                <Metric label={t('records.cashSale')} value={fmtAmount(summary?.cashSaleAmount ?? 0)} />
-                <Metric label={t('records.khqrSale')} value={fmtAmount(summary?.khqrSaleAmount ?? 0)} />
-                <Metric label={t('records.customerOrderAmount')} value={fmtAmount(customerOrderAmount)} />
+                <Metric label={t('records.refundAmount')} value={fmtCurrencyAmount(refundAmount, currencyCode)} tone="red" />
+                <Metric label={t('records.cashSale')} value={fmtCurrencyAmount(summary?.cashSaleAmount ?? 0, currencyCode)} />
+                <Metric label={t('records.khqrSale')} value={fmtCurrencyAmount(summary?.khqrSaleAmount ?? 0, currencyCode)} />
+                <Metric label={t('records.customerOrderAmount')} value={fmtCurrencyAmount(customerOrderAmount, currencyCode)} />
               </div>
             </>
           )}
@@ -586,6 +598,7 @@ export default function RecordsPage() {
                 map: t('records.deliveryMap'),
                 itemUnit: t('records.itemUnit'),
               }}
+              currencyCode={currencyCode}
               reprintLabel={reprintLoadingKey === entry.orderNo ? '读取中…' : '补打小票'}
               reprintDisabled={reprintLoadingKey === entry.orderNo}
               onOpen={() => setSelectedOrderNo(entry.orderNo)}
@@ -603,6 +616,7 @@ export default function RecordsPage() {
               tagRefund={t('records.tagRefund')}
               refundReasonLabel={t('records.refundReason')}
               itemUnit={t('records.itemUnit')}
+              currencyCode={currencyCode}
             />
           )
         )}
@@ -646,7 +660,7 @@ export default function RecordsPage() {
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, sourceLabels, reprintLabel, reprintDisabled, onOpen, onReprint, onCheckout }: {
+function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, sourceLabels, reprintLabel, reprintDisabled, onOpen, onReprint, onCheckout, currencyCode }: {
   group: OrderGroup
   index: number
   tagSale: string
@@ -672,6 +686,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
   onOpen?: () => void
   onReprint?: () => void
   onCheckout?: () => void
+  currencyCode?: string | null
 }) {
   const isPending = group.paymentMethod === null
   const accent = isPending ? '#fa8c16' : ORDER_COLORS[index % ORDER_COLORS.length]
@@ -753,14 +768,14 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
       <div style={s.cardFooter}>
         {isSingle ? (
           <span style={s.cardQtyPrice}>
-            {Math.abs(item.quantity)}{sourceLabels.itemUnit} × ${item.unitPrice.toFixed(2)}
+            {Math.abs(item.quantity)}{sourceLabels.itemUnit} × {fmtCurrencyAmount(item.unitPrice, currencyCode)}
           </span>
         ) : (
           <span style={s.cardQtyPrice}>{group.items.length} {kindItems}</span>
         )}
         <div style={s.cardAmountRow}>
           <span style={{ ...s.cardAmount, color: 'var(--text)' }}>
-            ${group.totalAmount.toFixed(2)}
+            {fmtCurrencyAmount(group.totalAmount, currencyCode)}
           </span>
           {isPending && onCheckout && (
             <button
@@ -791,7 +806,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
                 {it.productNameSnapshot}
                 {it.specSnapshot && <span style={s.itemSpec}> · {it.specSnapshot}</span>}
               </span>
-              <span style={s.itemAmt}>${it.lineAmount.toFixed(2)}</span>
+              <span style={s.itemAmt}>{fmtCurrencyAmount(it.lineAmount, currencyCode)}</span>
             </div>
           ))}
         </div>
@@ -802,7 +817,7 @@ function OrderCard({ group, index, tagSale, kindItems, checkoutBtn, payLabels, s
 
 // ─── RefundCard ───────────────────────────────────────────────────────────────
 
-function RefundCard({ item, tagRefund, refundReasonLabel, itemUnit }: { item: RecordItem; tagRefund: string; refundReasonLabel: string; itemUnit: string }) {
+function RefundCard({ item, tagRefund, refundReasonLabel, itemUnit, currencyCode }: { item: RecordItem; tagRefund: string; refundReasonLabel: string; itemUnit: string; currencyCode?: string | null }) {
   return (
     <div style={{ ...s.recordCard, ...s.recordCardRefund }}>
       <div style={s.cardHeader}>
@@ -816,10 +831,10 @@ function RefundCard({ item, tagRefund, refundReasonLabel, itemUnit }: { item: Re
       </div>
       <div style={s.cardFooter}>
         <span style={s.cardQtyPrice}>
-          {Math.abs(item.quantity)}{itemUnit} × ${item.unitPrice.toFixed(2)}
+          {Math.abs(item.quantity)}{itemUnit} × {fmtCurrencyAmount(item.unitPrice, currencyCode)}
         </span>
         <span style={{ ...s.cardAmount, color: 'var(--red)' }}>
-          {fmtAmount(item.lineAmount)}
+          {fmtCurrencyAmount(item.lineAmount, currencyCode)}
         </span>
       </div>
       {item.refundReason && (

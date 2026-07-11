@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import { formatMoney } from '@/lib/currency'
 
 export async function GET(
   req: NextRequest,
@@ -19,7 +20,7 @@ export async function GET(
 
   const store = await prisma.store.findUnique({
     where: { code: storeCode },
-    select: { id: true, code: true, tenantId: true, status: true, name: true },
+    select: { id: true, code: true, tenantId: true, status: true, name: true, currencyCode: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -84,7 +85,7 @@ export async function GET(
     paymentIntent?.status ? { label: '支付状态', value: paymentIntent.status } : null,
     offlineDeviceId ? { label: '设备', value: offlineDeviceId } : null,
     member ? { label: '会员', value: [member.name, member.memberCode, member.phone].filter(Boolean).join(' / ') } : null,
-    memberBalanceUsed > 0 ? { label: '会员支付', value: `$${memberBalanceUsed.toFixed(2)}` } : null,
+    memberBalanceUsed > 0 ? { label: '会员支付', value: formatMoney(memberBalanceUsed, store.currencyCode) } : null,
   ].filter((line): line is { label: string; value: string } => !!line && !!line.value)
 
   return NextResponse.json({
@@ -95,6 +96,7 @@ export async function GET(
       cashierName: first.operatorUser.displayName || 'Desktop POS',
       paymentMethod: paymentIntent?.paymentMethod ?? 'CASH',
       totalAmount,
+      currencyCode: store.currencyCode,
       extraLines,
       items: lines.map((line) => ({
         name: line.productNameSnapshot,

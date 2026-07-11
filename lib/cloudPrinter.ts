@@ -10,6 +10,7 @@
 import crypto from 'crypto'
 import { prisma } from './prisma'
 import { isPrintingTier as _isPrintingTier } from './tier'
+import { formatMoney } from './currency'
 
 const USERNAME = process.env.SW_PRINTER_USERNAME ?? ''
 const SECRET   = process.env.SW_PRINTER_SECRET   ?? ''
@@ -131,6 +132,7 @@ export type ReceiptInput = {
   tableNo?: string | null
   items: ReceiptItem[]
   totalAmount: number
+  currencyCode?: string | null
   remark?: string | null
   /** 可选二维码内容（顾客订单查询短链等） */
   qrPayload?: string | null
@@ -177,11 +179,11 @@ function buildReceiptMessage(input: ReceiptInput): { print: PrintLine[] } {
     const opts = [it.spec, sugarText].filter(Boolean).join('/')
     const nameLine = opts ? `${it.name} (${opts})` : it.name
     print.push({ cont: nameLine })
-    print.push({ cont: `  x${it.quantity}   $${it.lineAmount.toFixed(2)}` })
+    print.push({ cont: `  x${it.quantity}   ${formatMoney(it.lineAmount, input.currencyCode)}` })
   }
 
   print.push({ cont: '--------------------------------' })
-  print.push({ cont: `合计: $${input.totalAmount.toFixed(2)}`, bold: true })
+  print.push({ cont: `合计: ${formatMoney(input.totalAmount, input.currencyCode)}`, bold: true })
 
   if (input.remark) {
     print.push({ cont: '--------------------------------' })

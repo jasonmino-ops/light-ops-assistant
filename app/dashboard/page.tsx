@@ -624,13 +624,17 @@ function HotColumn({
 // ─── StoreConfigPanel ─────────────────────────────────────────────────────────
 
 type StoreConfig = {
-  id: string; name: string; checkoutMode: string
+  id: string; name: string; checkoutMode: string; currencyCode: string
   bannerUrl: string | null; announcement: string | null; promoText: string | null
 }
 
 function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   const [stores, setStores]           = useState<StoreConfig[]>([])
   const [pending, setPending]         = useState<Record<string, string>>({})
+  const [currencyPending, setCurrencyPending] = useState<Record<string, string>>({})
+  const [currencySaving, setCurrencySaving] = useState<Record<string, boolean>>({})
+  const [currencySaved, setCurrencySaved] = useState<Record<string, boolean>>({})
+  const [currencyError, setCurrencyError] = useState<Record<string, string>>({})
   const [saving, setSaving]           = useState<Record<string, boolean>>({})
   const [saved, setSaved]             = useState<Record<string, boolean>>({})
   const [saveError, setSaveError]     = useState<Record<string, string>>({})
@@ -652,16 +656,19 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
       .then((list: StoreConfig[]) => {
         setStores(list)
         const initMode: Record<string, string> = {}
+        const initCurrency: Record<string, string> = {}
         const initBanner: Record<string, string | null> = {}
         const initAnn: Record<string, string> = {}
         const initPromo: Record<string, string> = {}
         list.forEach((s) => {
           initMode[s.id]   = s.checkoutMode
+          initCurrency[s.id] = s.currencyCode ?? 'USD'
           initBanner[s.id] = s.bannerUrl ?? null
           initAnn[s.id]    = s.announcement ?? ''
           initPromo[s.id]  = s.promoText ?? ''
         })
         setPending(initMode)
+        setCurrencyPending(initCurrency)
         setBannerUrls(initBanner)
         setAnnDraft(initAnn)
         setPromoDraft(initPromo)
@@ -693,6 +700,30 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
       setSaveError((v) => ({ ...v, [sid]: t('common.networkError') }))
     } finally {
       setSaving((v) => ({ ...v, [sid]: false }))
+    }
+  }
+
+  async function handleSaveCurrency(sid: string) {
+    setCurrencySaving((v) => ({ ...v, [sid]: true }))
+    setCurrencySaved((v) => ({ ...v, [sid]: false }))
+    setCurrencyError((v) => ({ ...v, [sid]: '' }))
+    try {
+      const res = await apiFetch(`/api/stores/${sid}/currency`, {
+        method: 'PATCH',
+        body: JSON.stringify({ currencyCode: currencyPending[sid] ?? 'USD' }),
+      }, OWNER_CTX)
+      const body = await res.json().catch(() => null)
+      if (res.ok) {
+        if (body?.currencyCode) setCurrencyPending((v) => ({ ...v, [sid]: body.currencyCode }))
+        setCurrencySaved((v) => ({ ...v, [sid]: true }))
+        setTimeout(() => setCurrencySaved((v) => ({ ...v, [sid]: false })), 2000)
+      } else {
+        setCurrencyError((v) => ({ ...v, [sid]: body?.message ?? body?.error ?? t('dashboard.saveFailed') }))
+      }
+    } catch {
+      setCurrencyError((v) => ({ ...v, [sid]: t('common.networkError') }))
+    } finally {
+      setCurrencySaving((v) => ({ ...v, [sid]: false }))
     }
   }
 
@@ -806,6 +837,29 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
             </button>
           </div>
           {saveError[store.id] ? <div style={sc.errMsg}>{saveError[store.id]}</div> : null}
+
+          <div style={sc.label}>{t('dashboard.currencyCode')}</div>
+          <div style={sc.controls}>
+            <select
+              style={sc.select}
+              value={currencyPending[store.id] ?? store.currencyCode ?? 'USD'}
+              onChange={(e) => {
+                setCurrencyPending((v) => ({ ...v, [store.id]: e.target.value }))
+                setCurrencyError((v) => ({ ...v, [store.id]: '' }))
+              }}
+            >
+              <option value="USD">{t('dashboard.currencyUsd')}</option>
+              <option value="XAF">{t('dashboard.currencyXaf')}</option>
+            </select>
+            <button
+              style={sc.saveBtn}
+              onClick={() => handleSaveCurrency(store.id)}
+              disabled={currencySaving[store.id]}
+            >
+              {currencySaved[store.id] ? t('dashboard.modeSaved') : currencySaving[store.id] ? '…' : t('dashboard.saveMode')}
+            </button>
+          </div>
+          {currencyError[store.id] ? <div style={sc.errMsg}>{currencyError[store.id]}</div> : null}
 
           {/* 顾客页展示配置 */}
           <div style={sc.menuSection}>

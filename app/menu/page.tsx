@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import CustomerBottomNav from '@/app/components/CustomerBottomNav'
 import { useDocumentLang } from '@/app/components/useDocumentLang'
+import { formatMoney } from '@/lib/currency'
 
 // ─── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -490,6 +491,7 @@ type ApiStore = {
   announcement: string | null
   promoText:    string | null
   businessType?: 'FOOD' | 'RETAIL' | 'SERVICE' | 'GENERAL'
+  currencyCode?: string | null
 }
 
 type BizType = 'FOOD' | 'RETAIL' | 'SERVICE' | 'GENERAL'
@@ -709,6 +711,7 @@ export default function MenuPage() {
     return () => { aborted = true }
   }, [showConfirm, storeCode, tgId, cartTotal, selectedCouponId])
   const cartCount  = activeCart.reduce((s, c) => s + c.quantity, 0)
+  const money = (value: number) => formatMoney(value, storeData?.currencyCode)
   const canCheckout = cartCount > 0
   const confirmItems = activeCart.flatMap((c) => {
     const p = apiProducts.find((ap) => ap.id === c.id)
@@ -1506,9 +1509,7 @@ export default function MenuPage() {
                           {product.spec && <div style={s.productSpec}>{product.spec}</div>}
                           {pDesc(product, lang) && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, lineHeight: 1.4 }}>{pDesc(product, lang)}</div>}
                           <div style={s.productFoot}>
-                            <span style={s.productPrice}>
-                              <span style={s.priceSign}>$</span>{product.price.toFixed(2)}
-                            </span>
+                            <span style={s.productPrice}>{money(product.price)}</span>
                             {qty === 0 ? (
                               <button style={s.addBtn} onClick={() => handleAddClick(product.id)}>
                                 <span style={s.plus}>+</span>
@@ -1722,7 +1723,7 @@ export default function MenuPage() {
                     </div>
                     <div style={s.confirmItemRight}>
                       <span style={s.confirmItemQty}>×{item.quantity}</span>
-                      <span style={s.confirmItemAmt}>${item.lineAmount.toFixed(2)}</span>
+                      <span style={s.confirmItemAmt}>{money(item.lineAmount)}</span>
                     </div>
                   </div>
                 ))}
@@ -1839,18 +1840,18 @@ export default function MenuPage() {
               {/* 商品金额 */}
               <div style={s.chkRow}>
                 <span style={s.chkRowKey}>{ui.itemCount(cartCount)}</span>
-                <span style={s.chkRowMuted}>${cartTotal.toFixed(2)}</span>
+                <span style={s.chkRowMuted}>{money(cartTotal)}</span>
               </div>
 
               {/* 优惠合计 */}
               <div style={s.chkRow}>
                 <span style={s.chkRowKey}>{ui.discountLabel}</span>
-                <span style={s.chkRowMuted}>-${(couponState?.discountAmount ?? 0).toFixed(2)}</span>
+                <span style={s.chkRowMuted}>-{money(couponState?.discountAmount ?? 0)}</span>
               </div>
 
               <div style={s.confirmTotal}>
                 <span style={s.confirmTotalLabel}>{payableLabel}</span>
-                <span style={s.confirmTotalAmount}>${(couponState?.payableAmount ?? cartTotal).toFixed(2)}</span>
+                <span style={s.confirmTotalAmount}>{money(couponState?.payableAmount ?? cartTotal)}</span>
               </div>
               {submitError && <div style={s.confirmErr}>{submitError}</div>}
             </div>
@@ -1968,7 +1969,7 @@ export default function MenuPage() {
                   : ui.paymentPendingHint
                 : `${ui.orderHint2} · ${ui.payLaterDesc}`}
             </div>
-            <div style={s.successModalAmount}>${orderResult.totalAmount.toFixed(2)}</div>
+            <div style={s.successModalAmount}>{money(orderResult.totalAmount)}</div>
 
             {orderResult.paymentMethod === 'SHINHAN' && (
               <div style={s.checkoutPaymentBox}>
@@ -2059,7 +2060,7 @@ export default function MenuPage() {
                       {specParts.length > 0 && <div style={s.cartItemSpec}>{specParts.join(' · ')}</div>}
                     </div>
                     <div style={s.cartItemRight}>
-                      <span style={s.cartItemPrice}>${(p.price * c.quantity).toFixed(2)}</span>
+                      <span style={s.cartItemPrice}>{money(p.price * c.quantity)}</span>
                       <div style={s.cartItemQtyRow}>
                         <button style={s.qtyMinus} onClick={() => removeFromCart(c.id, c.sugar)}>−</button>
                         <span style={s.qtyNum}>{c.quantity}</span>
@@ -2089,12 +2090,12 @@ export default function MenuPage() {
           </div>
           <div>
             <div style={{ ...s.cartAmount, color: cartCount > 0 ? PRIMARY : '#bbb' }}>
-              ${cartTotal.toFixed(2)}
+              {money(cartTotal)}
             </div>
             <div style={{ ...s.cartHint, color: submitError ? '#ff4d4f' : '#c0c0c0' }}>
               {submitError || (cartCount === 0 ? ui.notSelected : ui.itemCount(cartCount))}
               {cartCount > 0 && !submitError && (
-                <span style={s.discountInline}> · {ui.discountLabel} $0.00</span>
+                <span style={s.discountInline}> · {ui.discountLabel} {money(0)}</span>
               )}
             </div>
           </div>

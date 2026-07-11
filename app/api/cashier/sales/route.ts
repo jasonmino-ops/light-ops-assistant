@@ -13,6 +13,7 @@ import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import { isKhqrSupportedCurrency } from '@/lib/currency'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
 
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
   // Resolve store
   const store = await prisma.store.findUnique({
     where: { code: storeCode.trim() },
-    select: { id: true, code: true, tenantId: true, status: true },
+    select: { id: true, code: true, tenantId: true, status: true, currencyCode: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -84,6 +85,12 @@ export async function POST(req: NextRequest) {
   }, { allowStoreCodeFallback: true })
   if (!posAuth) {
     return unauthorizedPosResponse()
+  }
+  if (paymentMethod === 'KHQR' && !isKhqrSupportedCurrency(store.currencyCode)) {
+    return NextResponse.json(
+      { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },
+      { status: 422 },
+    )
   }
 
   // Validate products

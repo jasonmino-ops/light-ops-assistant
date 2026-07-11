@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import type { Lang } from '@/app/components/LangProvider'
+import { formatMoney } from '@/lib/currency'
 
 export type DesktopReceiptItem = {
   name: string
@@ -18,6 +19,7 @@ export type DesktopReceiptData = {
   cashierName?: string | null
   paymentMethod: string
   totalAmount: number
+  currencyCode?: string | null
   extraLines?: { label: string; value: string }[]
   items: DesktopReceiptItem[]
 }
@@ -90,8 +92,8 @@ const LABELS: Record<Lang, ReceiptLabels> = {
   },
 }
 
-function money(value: number) {
-  return `$${Number(value || 0).toFixed(2)}`
+function money(value: number, currencyCode?: string | null) {
+  return formatMoney(value, currencyCode)
 }
 
 function escapeHtml(value: string) {
@@ -144,8 +146,8 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
       <div class="item">
         <div class="item-name">${escapeHtml(name)}</div>
         <div class="item-line">
-          <span class="item-calc">${item.qty} × ${money(item.price)}</span>
-          <span class="item-amount">${money(item.lineAmount)}</span>
+          <span class="item-calc">${item.qty} × ${money(item.price, data.currencyCode)}</span>
+          <span class="item-amount">${money(item.lineAmount, data.currencyCode)}</span>
         </div>
       </div>
     `
@@ -265,7 +267,7 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
     <div class="items">${itemsHtml}</div>
     <div class="divider"></div>
     <div class="row"><span>${escapeHtml(labels.payment)}</span><strong>${escapeHtml(paymentLabel(data.paymentMethod, lang))}</strong></div>
-    <div class="row total"><span>${escapeHtml(labels.total)}</span><span>${money(data.totalAmount)}</span></div>
+    <div class="row total"><span>${escapeHtml(labels.total)}</span><span>${money(data.totalAmount, data.currencyCode)}</span></div>
     <div class="center thanks">${escapeHtml(labels.thanks)}</div>
   </div>
 </body>

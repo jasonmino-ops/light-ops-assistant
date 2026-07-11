@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
+import { isKhqrSupportedCurrency } from '@/lib/currency'
 
 /**
  * POST /api/orders/:orderNo/checkout
@@ -68,6 +69,17 @@ export async function POST(
   // KHQR config pre-check
   let khqrConfig: MerchantKhqrConfig | null = null
   if (paymentMethod === 'KHQR') {
+    const store = await prisma.store.findFirst({
+      where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
+      select: { currencyCode: true },
+    })
+    if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+    if (!isKhqrSupportedCurrency(store.currencyCode)) {
+      return NextResponse.json(
+        { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },
+        { status: 422 },
+      )
+    }
     khqrConfig = await findKhqrConfig(ctx.tenantId, ctx.storeId)
     if (!khqrConfig) {
       return NextResponse.json(

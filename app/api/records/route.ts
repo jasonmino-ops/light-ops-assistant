@@ -21,9 +21,9 @@ export async function GET(req: NextRequest) {
   const isDesktopRequest = p.get('from') === 'desktop'
   const desktopStoreCode = isDesktopRequest ? p.get('storeCode')?.trim() : null
   const desktopStore = desktopStoreCode
-    ? await prisma.store.findUnique({
+      ? await prisma.store.findUnique({
         where: { code: desktopStoreCode },
-        select: { id: true, tenantId: true, status: true, name: true },
+        select: { id: true, tenantId: true, status: true, name: true, currencyCode: true },
       })
     : null
 
@@ -282,7 +282,7 @@ export async function GET(req: NextRequest) {
     pageSize,
     items: merged,
     desktopStore: isDesktopScoped
-      ? { storeCode: desktopStoreCode, storeName: desktopStore!.name }
+      ? { storeCode: desktopStoreCode, storeName: desktopStore!.name, currencyCode: desktopStore!.currencyCode }
       : null,
     summary: {
       saleCount: saleAgg._count + coCount,

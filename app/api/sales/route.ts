@@ -4,6 +4,7 @@ import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
+import { isKhqrSupportedCurrency } from '@/lib/currency'
 
 /**
  * POST /api/sales
@@ -96,10 +97,16 @@ async function handleSale(
   // 获取门店信息
   const store = await prisma.store.findFirst({
     where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
-    select: { code: true },
+    select: { code: true, currencyCode: true },
   })
   if (!store) {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
+  }
+  if (paymentMethod === 'KHQR' && !isKhqrSupportedCurrency(store.currencyCode)) {
+    return NextResponse.json(
+      { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },
+      { status: 422 },
+    )
   }
 
   // 批量获取商品（价格以数据库为权威）

@@ -45,7 +45,7 @@ export async function POST(
   }
   const store = await prisma.store.findUnique({
     where: { id: order.storeId },
-    select: { name: true },
+    select: { name: true, currencyCode: true },
   })
 
   // 解析 itemsJson → ReceiptItem[]
@@ -72,6 +72,7 @@ export async function POST(
     tableNo:     order.tableNo,
     items,
     totalAmount: order.totalAmount.toNumber(),
+    currencyCode: store?.currencyCode ?? 'USD',
     remark:      order.remark,
   })
 
