@@ -21,7 +21,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuthContext } from '@/lib/ops-auth'
+import { createTrialSubscriptionForTenant } from '@/lib/subscription'
 import { sendAndLogMessage, WELCOME_TEXT } from '@/lib/telegram'
 
 // 审批通过通知 + 欢迎消息合并成一条，减少打扰
@@ -34,8 +35,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  const ops = await checkOpsAuthContext(req)
+  if (!ops) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
 
   const { id } = await params
 
@@ -85,6 +86,8 @@ export async function POST(
         tenantId: tenant.id,
       },
     })
+
+    await createTrialSubscriptionForTenant(tx, tenant, ops.userId)
 
     return { tenant, store, user }
   })

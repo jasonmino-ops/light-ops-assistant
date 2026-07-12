@@ -105,6 +105,35 @@ type BizProduct  = { name: string; spec: string | null; qty: number; amount: num
 type BizRecord   = { id: string; createdAt: string; saleType: string; productName: string; spec: string | null; qty: number; lineAmount: number; storeName: string; operator: string; orderNo: string | null }
 type BizStaff    = { displayName: string; saleCount: number; saleAmount: number }
 type BizData     = { days: number; overview: BizOverview; topProducts: BizProduct[]; recentRecords: BizRecord[]; staffStats: BizStaff[]; productCount: number }
+type SubscriptionView = {
+  id: string
+  tenantId: string
+  status: string
+  trialStartedAt: string | null
+  trialEndsAt: string | null
+  currentPeriodStartedAt: string | null
+  currentPeriodEndsAt: string | null
+}
+type SubscriptionEventView = {
+  id: string
+  eventType: string
+  previousStatus: string | null
+  nextStatus: string | null
+  previousPeriodEndsAt: string | null
+  nextPeriodEndsAt: string | null
+  monthsAdded: number | null
+  amount: string | null
+  currency: string | null
+  paymentReference: string | null
+  note: string | null
+  operatorId: string
+  idempotencyKey: string
+  createdAt: string
+}
+type SubscriptionResponse = {
+  subscription: SubscriptionView
+  recentEvents: SubscriptionEventView[]
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -174,6 +203,11 @@ export default function TenantDetailPage() {
         {/* Tier */}
         <Section title="产品档次">
           <TierPanel tenantId={detail.id} currentTier={detail.tier} onChanged={load} />
+        </Section>
+
+        {/* Subscription sidecar */}
+        <Section title="订阅">
+          <SubscriptionPanel tenantId={detail.id} />
         </Section>
 
         {/* AI Support provider config — read-only ops view */}
@@ -376,6 +410,156 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
     <div style={s.statBox}>
       <div style={{ ...s.statBoxValue, color: color ?? '#333' }}>{value}</div>
       <div style={s.statBoxLabel}>{label}</div>
+    </div>
+  )
+}
+
+// ─── SubscriptionPanel ───────────────────────────────────────────────────────
+
+function SubscriptionPanel({ tenantId }: { tenantId: string }) {
+  const [data, setData] = useState<SubscriptionResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [form, setForm] = useState({
+    months: '1',
+    amount: '',
+    currency: 'USD',
+    paymentReference: '',
+    note: '',
+  })
+
+  async function loadSubscription() {
+    setLoading(true)
+    setMsg(null)
+    try {
+      const r = await apiFetch(`/api/ops/tenants/${tenantId}/subscription`, undefined, OWNER_CTX)
+      if (r.ok) setData(await r.json())
+      else setMsg('订阅信息加载失败')
+    } catch {
+      setMsg('网络错误')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadSubscription() }, [tenantId])
+
+  function setField(key: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  async function renew() {
+    const months = Number(form.months)
+    if (!Number.isInteger(months) || months < 1 || months > 12) {
+      setMsg('续费月数需为 1–12')
+      return
+    }
+    if (!confirm(`确认已收款，并为该商户续费 ${months} 个月？`)) return
+    setSaving(true)
+    setMsg(null)
+    try {
+      const idempotencyKey = `ops-renew:${tenantId}:${Date.now()}:${crypto.randomUUID()}`
+      const r = await apiFetch(`/api/ops/tenants/${tenantId}/subscription/renew`, {
+        method: 'POST',
+        body: JSON.stringify({
+          months,
+          amount: form.amount.trim() || null,
+          currency: form.currency.trim() || null,
+          paymentReference: form.paymentReference.trim() || null,
+          note: form.note.trim() || null,
+          idempotencyKey,
+        }),
+      }, OWNER_CTX)
+      const body = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        setMsg(body.message ?? body.error ?? '续费失败')
+        return
+      }
+      setMsg(body.duplicate ? '重复请求已忽略' : '续费已记录')
+      setForm((current) => ({ ...current, paymentReference: '', note: '' }))
+      await loadSubscription()
+    } catch {
+      setMsg('网络错误')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading && !data) return <div style={s.aiEmpty}>订阅信息加载中…</div>
+  if (!data) return <div style={s.aiEmpty}>{msg ?? '暂无订阅信息'}</div>
+
+  const subscription = data.subscription
+  const lastRenewal = data.recentEvents.find((event) => event.eventType === 'RENEWED' || event.eventType === 'ACTIVATED')
+  const latestEvent = data.recentEvents[0] ?? null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={s.aiSummaryGrid}>
+        <div style={s.aiSummaryBox}>
+          <div style={s.aiSummaryLabel}>当前状态</div>
+          <div style={s.aiSummaryValue}>{subscription.status}</div>
+          <div style={s.aiSummaryHint}>旁挂数据，不限制业务流程</div>
+        </div>
+        <div style={s.aiSummaryBox}>
+          <div style={s.aiSummaryLabel}>最近续费</div>
+          <div style={s.aiSummaryValue}>{lastRenewal ? formatOpsTime(lastRenewal.createdAt) : '—'}</div>
+          <div style={s.aiSummaryHint}>操作人：{lastRenewal?.operatorId ?? latestEvent?.operatorId ?? '—'}</div>
+        </div>
+      </div>
+
+      <InfoGrid rows={[
+        ['试用开始', formatOptionalTime(subscription.trialStartedAt)],
+        ['试用结束', formatOptionalTime(subscription.trialEndsAt)],
+        ['正式订阅开始', formatOptionalTime(subscription.currentPeriodStartedAt)],
+        ['当前订阅结束', formatOptionalTime(subscription.currentPeriodEndsAt)],
+      ]} />
+
+      <div style={s.subscriptionForm}>
+        <div style={s.aiGroupTitle}>确认收款并续费</div>
+        <div style={s.subscriptionGrid}>
+          <label style={s.subscriptionField}>
+            <span style={s.aiPhotoFormLabel}>月数</span>
+            <input style={s.aiPhotoInput} type="number" min={1} max={12} value={form.months} onChange={(e) => setField('months', e.target.value)} />
+          </label>
+          <label style={s.subscriptionField}>
+            <span style={s.aiPhotoFormLabel}>金额</span>
+            <input style={s.aiPhotoInput} inputMode="decimal" placeholder="可选" value={form.amount} onChange={(e) => setField('amount', e.target.value)} />
+          </label>
+          <label style={s.subscriptionField}>
+            <span style={s.aiPhotoFormLabel}>币种</span>
+            <input style={s.aiPhotoInput} maxLength={3} value={form.currency} onChange={(e) => setField('currency', e.target.value.toUpperCase())} />
+          </label>
+          <label style={s.subscriptionField}>
+            <span style={s.aiPhotoFormLabel}>付款参考号</span>
+            <input style={s.aiPhotoInput} maxLength={120} placeholder="可选" value={form.paymentReference} onChange={(e) => setField('paymentReference', e.target.value)} />
+          </label>
+        </div>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span style={s.aiPhotoFormLabel}>备注</span>
+          <textarea style={{ ...s.aiPhotoInput, minHeight: 56, resize: 'vertical' }} maxLength={500} placeholder="可选" value={form.note} onChange={(e) => setField('note', e.target.value)} />
+        </label>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
+          {msg && <span style={{ fontSize: 12, color: msg.includes('失败') || msg.includes('错误') ? '#ff4d4f' : '#52c41a' }}>{msg}</span>}
+          <button type="button" disabled={saving} onClick={renew} style={{ ...s.actionBtn, background: '#1677ff', color: '#fff', borderColor: '#1677ff', opacity: saving ? 0.6 : 1 }}>
+            {saving ? '记录中…' : '确认收款并续费'}
+          </button>
+        </div>
+      </div>
+
+      <details style={s.aiDetails}>
+        <summary style={s.aiDetailsSummary}>最近事件</summary>
+        {data.recentEvents.length === 0 ? (
+          <div style={s.aiEmpty}>暂无事件。</div>
+        ) : data.recentEvents.slice(0, 5).map((event) => (
+          <div key={event.id} style={s.subscriptionEventRow}>
+            <span>{event.eventType}</span>
+            <span>{formatOpsTime(event.createdAt)}</span>
+            <span>{event.monthsAdded ? `${event.monthsAdded} 月` : '—'}</span>
+            <span>{event.operatorId}</span>
+          </div>
+        ))}
+      </details>
     </div>
   )
 }
@@ -689,6 +873,10 @@ function formatOpsTime(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatOptionalTime(iso: string | null): string {
+  return iso ? formatOpsTime(iso) : '—'
 }
 
 function toDateInputValue(iso: string | null): string {
@@ -1475,6 +1663,14 @@ const s: Record<string, React.CSSProperties> = {
     width: '100%', boxSizing: 'border-box' as const,
     border: '1px solid #d9d9d9', borderRadius: 6,
     padding: '6px 8px', fontSize: 13, background: '#fff',
+  },
+  subscriptionForm: { background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 },
+  subscriptionGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  subscriptionField: { display: 'grid', gap: 6 },
+  subscriptionEventRow: {
+    display: 'grid', gridTemplateColumns: '1.2fr 1fr 56px 1fr', gap: 8,
+    padding: '6px 0', borderBottom: '1px solid #f5f5f5',
+    fontSize: 12, color: '#555',
   },
   actionBtn: {
     height: 34, padding: '0 16px', border: '1.5px solid #e8e8e8',

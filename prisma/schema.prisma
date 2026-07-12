@@ -111,6 +111,48 @@ model Tenant {
   members                  Member[]
   memberBalanceLedgers     MemberBalanceLedger[]
   memberTelegramBindTokens MemberTelegramBindToken[]
+  subscription             TenantSubscription?
+  subscriptionEvents       SubscriptionEvent[]
+}
+
+model TenantSubscription {
+  id                     String   @id @default(cuid())
+  tenantId               String   @unique
+  status                 String
+  trialStartedAt         DateTime?
+  trialEndsAt            DateTime?
+  currentPeriodStartedAt DateTime?
+  currentPeriodEndsAt    DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  events SubscriptionEvent[]
+}
+
+model SubscriptionEvent {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  subscriptionId       String
+  eventType            String
+  previousStatus       String?
+  nextStatus           String?
+  previousPeriodEndsAt DateTime?
+  nextPeriodEndsAt     DateTime?
+  monthsAdded          Int?
+  amount               Decimal?
+  currency             String?
+  paymentReference     String?
+  note                 String?
+  operatorId           String
+  idempotencyKey       String   @unique
+  createdAt            DateTime @default(now())
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([subscriptionId, createdAt])
 }
 
 model Store {

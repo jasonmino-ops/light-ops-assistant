@@ -28,13 +28,14 @@ import { prisma } from './prisma'
  * 时作为兜底来源，避免生产被绕过。
  */
 export type OpsRole = 'SUPER_ADMIN' | 'OPS_ADMIN' | 'BD'
+export type OpsAuthContext = { role: OpsRole; userId: string }
 
 /**
  * 异步 OPS 鉴权（必须 await）。在通过 session/whitelist 初步识别 ops 角色后，
  * 额外查 OpsAdmin 表校验 sessionVersion / status / lockedUntil，
  * 任何被踢出 / 禁用 / 锁定的旧 cookie 均返回 false。
  */
-export async function checkOpsAuth(req: NextRequest): Promise<OpsRole | false> {
+export async function checkOpsAuthContext(req: NextRequest): Promise<OpsAuthContext | false> {
   const sessionToken = req.cookies.get('auth-session')?.value
   let userId: string | null = null
   let role: string | null = null
@@ -79,7 +80,7 @@ export async function checkOpsAuth(req: NextRequest): Promise<OpsRole | false> {
   // 仅对 OpsAdmin 表登录链路（candidate 来自 session.opsRole 且 userId 是 OpsAdmin.id）做强校验。
   // legacy 路径（_ops_admin / OPS_USER_IDS 白名单）无 sessionVersion 概念，沿用 candidate。
   const isOpsAdminSession = !!opsRole && !!userId && userId !== '_ops_admin'
-  if (!isOpsAdminSession) return candidate
+  if (!isOpsAdminSession) return { role: candidate, userId: userId ?? '_ops_admin' }
 
   try {
     const admin = await prisma.opsAdmin.findUnique({
@@ -92,10 +93,15 @@ export async function checkOpsAuth(req: NextRequest): Promise<OpsRole | false> {
     if (opsSessionVersion == null) return false
     if (opsSessionVersion !== admin.sessionVersion) return false
     if (admin.role !== candidate) return false
-    return candidate
+    return { role: candidate, userId: userId! }
   } catch {
     return false
   }
+}
+
+export async function checkOpsAuth(req: NextRequest): Promise<OpsRole | false> {
+  const ctx = await checkOpsAuthContext(req)
+  return ctx ? ctx.role : false
 }
 
 /**
