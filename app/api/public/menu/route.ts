@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getStoreContactById } from '@/lib/store-contact-db'
+import { getStoreLocationById } from '@/lib/store-location-db'
 
 function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
   try {
@@ -65,7 +66,8 @@ export async function GET(req: NextRequest) {
     customerBound = !!contact && contact.status === 'active'
   }
 
-  const [products, categories, contact] = await Promise.all([
+  const storeIdPromise = prisma.store.findUnique({ where: { code }, select: { id: true } })
+  const [products, categories, contact, location] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId: store.tenantId, status: 'ACTIVE' },
       select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, categoryId: true, imageUrl: true, imageUrls: true },
@@ -77,7 +79,8 @@ export async function GET(req: NextRequest) {
       select: { id: true, name: true, parentId: true, sortOrder: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     }),
-    prisma.store.findUnique({ where: { code }, select: { id: true } }).then((row) => row ? getStoreContactById(row.id) : { contactPhone: null, contactTelegram: null, contactWhatsApp: null }),
+    storeIdPromise.then((row) => row ? getStoreContactById(row.id) : { contactPhone: null, contactTelegram: null, contactWhatsApp: null }),
+    storeIdPromise.then((row) => row ? getStoreLocationById(row.id) : { storeAddress: null, storeLat: null, storeLng: null, mapUrl: null }),
   ])
 
   const productIds = products.map((p) => p.id)
@@ -128,6 +131,7 @@ export async function GET(req: NextRequest) {
       businessType: store.businessType ?? 'GENERAL',
       currencyCode: store.currencyCode ?? 'USD',
       ...contact,
+      ...location,
     },
     customerBound,
     categories: categories.map((c) => ({

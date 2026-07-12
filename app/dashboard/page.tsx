@@ -630,6 +630,7 @@ type StoreConfig = {
   id: string; name: string; checkoutMode: string; currencyCode: string
   bannerUrl: string | null; announcement: string | null; promoText: string | null
   contactPhone: string | null; contactTelegram: string | null; contactWhatsApp: string | null
+  storeAddress: string | null; storeLat: number | null; storeLng: number | null
 }
 
 function StoreConfigPanel({ t }: { t: (k: string) => string }) {
@@ -655,6 +656,14 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   const [telegramOrig, setTelegramOrig] = useState<Record<string, string>>({})
   const [whatsAppDraft, setWhatsAppDraft] = useState<Record<string, string>>({})
   const [whatsAppOrig, setWhatsAppOrig] = useState<Record<string, string>>({})
+  const [addressDraft, setAddressDraft] = useState<Record<string, string>>({})
+  const [addressOrig, setAddressOrig] = useState<Record<string, string>>({})
+  const [latDraft, setLatDraft] = useState<Record<string, number | null>>({})
+  const [latOrig, setLatOrig] = useState<Record<string, number | null>>({})
+  const [lngDraft, setLngDraft] = useState<Record<string, number | null>>({})
+  const [lngOrig, setLngOrig] = useState<Record<string, number | null>>({})
+  const [locating, setLocating] = useState<Record<string, boolean>>({})
+  const [locationMsg, setLocationMsg] = useState<Record<string, { ok: boolean; text: string } | null>>({})
   const [configSaving, setConfigSaving] = useState<Record<string, boolean>>({})
   const [configSaved, setConfigSaved] = useState<Record<string, boolean>>({})
   const [configErr, setConfigErr] = useState<Record<string, string>>({})
@@ -673,6 +682,9 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         const initPhone: Record<string, string> = {}
         const initTelegram: Record<string, string> = {}
         const initWhatsApp: Record<string, string> = {}
+        const initAddress: Record<string, string> = {}
+        const initLat: Record<string, number | null> = {}
+        const initLng: Record<string, number | null> = {}
         list.forEach((s) => {
           initMode[s.id]   = s.checkoutMode
           initCurrency[s.id] = s.currencyCode
@@ -682,6 +694,9 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
           initPhone[s.id]  = s.contactPhone ?? ''
           initTelegram[s.id] = s.contactTelegram ?? ''
           initWhatsApp[s.id] = s.contactWhatsApp ?? ''
+          initAddress[s.id] = s.storeAddress ?? ''
+          initLat[s.id] = typeof s.storeLat === 'number' ? s.storeLat : null
+          initLng[s.id] = typeof s.storeLng === 'number' ? s.storeLng : null
         })
         setPending(initMode)
         setCurrencyPending(initCurrency)
@@ -691,11 +706,17 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         setPhoneDraft(initPhone)
         setTelegramDraft(initTelegram)
         setWhatsAppDraft(initWhatsApp)
+        setAddressDraft(initAddress)
+        setLatDraft(initLat)
+        setLngDraft(initLng)
         setAnnOrig(initAnn)
         setPromoOrig(initPromo)
         setPhoneOrig(initPhone)
         setTelegramOrig(initTelegram)
         setWhatsAppOrig(initWhatsApp)
+        setAddressOrig(initAddress)
+        setLatOrig(initLat)
+        setLngOrig(initLng)
       })
       .catch(() => {})
   }, [])
@@ -809,6 +830,9 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
           contactPhone: phoneDraft[sid] ?? '',
           contactTelegram: telegramDraft[sid] ?? '',
           contactWhatsApp: whatsAppDraft[sid] ?? '',
+          storeAddress: addressDraft[sid] ?? '',
+          storeLat: latDraft[sid] ?? null,
+          storeLng: lngDraft[sid] ?? null,
         }),
       }, OWNER_CTX)
       const body = await res.json().catch(() => null)
@@ -818,16 +842,25 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         const nextPhone = body?.contactPhone ?? ''
         const nextTelegram = body?.contactTelegram ?? ''
         const nextWhatsApp = body?.contactWhatsApp ?? ''
+        const nextAddress = body?.storeAddress ?? ''
+        const nextLat = typeof body?.storeLat === 'number' ? body.storeLat : null
+        const nextLng = typeof body?.storeLng === 'number' ? body.storeLng : null
         setAnnDraft((v) => ({ ...v, [sid]: nextAnn }))
         setPromoDraft((v) => ({ ...v, [sid]: nextPromo }))
         setPhoneDraft((v) => ({ ...v, [sid]: nextPhone }))
         setTelegramDraft((v) => ({ ...v, [sid]: nextTelegram }))
         setWhatsAppDraft((v) => ({ ...v, [sid]: nextWhatsApp }))
+        setAddressDraft((v) => ({ ...v, [sid]: nextAddress }))
+        setLatDraft((v) => ({ ...v, [sid]: nextLat }))
+        setLngDraft((v) => ({ ...v, [sid]: nextLng }))
         setAnnOrig((v) => ({ ...v, [sid]: nextAnn }))
         setPromoOrig((v) => ({ ...v, [sid]: nextPromo }))
         setPhoneOrig((v) => ({ ...v, [sid]: nextPhone }))
         setTelegramOrig((v) => ({ ...v, [sid]: nextTelegram }))
         setWhatsAppOrig((v) => ({ ...v, [sid]: nextWhatsApp }))
+        setAddressOrig((v) => ({ ...v, [sid]: nextAddress }))
+        setLatOrig((v) => ({ ...v, [sid]: nextLat }))
+        setLngOrig((v) => ({ ...v, [sid]: nextLng }))
         setConfigSaved((v) => ({ ...v, [sid]: true }))
         setTimeout(() => setConfigSaved((v) => ({ ...v, [sid]: false })), 2000)
       } else {
@@ -848,7 +881,10 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
       (promoDraft[sid] ?? '') !== (promoOrig[sid] ?? '') ||
       (phoneDraft[sid] ?? '') !== (phoneOrig[sid] ?? '') ||
       (telegramDraft[sid] ?? '') !== (telegramOrig[sid] ?? '') ||
-      (whatsAppDraft[sid] ?? '') !== (whatsAppOrig[sid] ?? '')
+      (whatsAppDraft[sid] ?? '') !== (whatsAppOrig[sid] ?? '') ||
+      (addressDraft[sid] ?? '') !== (addressOrig[sid] ?? '') ||
+      (latDraft[sid] ?? null) !== (latOrig[sid] ?? null) ||
+      (lngDraft[sid] ?? null) !== (lngOrig[sid] ?? null)
   }
 
   function updateContactDraft(
@@ -859,6 +895,88 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
     setter((v) => ({ ...v, [sid]: value }))
     setConfigErr((v) => ({ ...v, [sid]: '' }))
     setConfigSaved((v) => ({ ...v, [sid]: false }))
+  }
+
+  function updateAddressDraft(sid: string, value: string) {
+    setAddressDraft((v) => ({ ...v, [sid]: value }))
+    setConfigErr((v) => ({ ...v, [sid]: '' }))
+    setConfigSaved((v) => ({ ...v, [sid]: false }))
+    setLocationMsg((v) => ({ ...v, [sid]: null }))
+  }
+
+  function pickStoreLocation(sid: string) {
+    if (locating[sid]) return
+    setLocating((v) => ({ ...v, [sid]: true }))
+    setLocationMsg((v) => ({ ...v, [sid]: { ok: true, text: t('dashboard.locationGetting') } }))
+    setConfigErr((v) => ({ ...v, [sid]: '' }))
+    setConfigSaved((v) => ({ ...v, [sid]: false }))
+
+    let finished = false
+    let totalTimer: ReturnType<typeof setTimeout> | null = null
+    let telegramTimer: ReturnType<typeof setTimeout> | null = null
+    const clearTimers = () => {
+      if (totalTimer) clearTimeout(totalTimer)
+      if (telegramTimer) clearTimeout(telegramTimer)
+    }
+    const done = (lat: number, lng: number) => {
+      if (finished) return
+      finished = true
+      clearTimers()
+      setLatDraft((v) => ({ ...v, [sid]: lat }))
+      setLngDraft((v) => ({ ...v, [sid]: lng }))
+      setLocationMsg((v) => ({ ...v, [sid]: { ok: true, text: t('dashboard.locationSuccess') } }))
+      setLocating((v) => ({ ...v, [sid]: false }))
+    }
+    const fail = (permission = false) => {
+      if (finished) return
+      finished = true
+      clearTimers()
+      setLocationMsg((v) => ({ ...v, [sid]: { ok: false, text: permission ? t('dashboard.locationPermission') : t('dashboard.locationFailed') } }))
+      setLocating((v) => ({ ...v, [sid]: false }))
+    }
+    const tryBrowserLocation = () => {
+      if (finished) return
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => done(pos.coords.latitude, pos.coords.longitude),
+          (err) => fail(err?.code === err?.PERMISSION_DENIED),
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+        )
+      } else {
+        fail()
+      }
+    }
+
+    totalTimer = setTimeout(() => fail(), 12000)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tg = (window as any).Telegram?.WebApp
+    const lm = tg?.LocationManager
+    try {
+      if (lm && typeof lm.init === 'function' && typeof lm.getLocation === 'function') {
+        let telegramSettled = false
+        const fallbackToBrowser = () => {
+          if (telegramSettled || finished) return
+          telegramSettled = true
+          if (telegramTimer) clearTimeout(telegramTimer)
+          tryBrowserLocation()
+        }
+        telegramTimer = setTimeout(fallbackToBrowser, 6000)
+        lm.init(() => {
+          if (telegramSettled || finished) return
+          try {
+            lm.getLocation((loc: { latitude?: number; longitude?: number } | null) => {
+              if (telegramSettled || finished) return
+              telegramSettled = true
+              if (telegramTimer) clearTimeout(telegramTimer)
+              if (loc && typeof loc.latitude === 'number' && typeof loc.longitude === 'number') done(loc.latitude, loc.longitude)
+              else tryBrowserLocation()
+            })
+          } catch { fallbackToBrowser() }
+        })
+        return
+      }
+    } catch { /* ignore */ }
+    tryBrowserLocation()
   }
 
   if (stores.length === 0) return null
@@ -1039,6 +1157,35 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
                   {t('dashboard.clearContact')}
                 </button>
               </div>
+
+              <div style={sc.fieldLabel}>{t('dashboard.storeAddress')}</div>
+              <textarea
+                style={sc.textarea}
+                rows={2}
+                value={addressDraft[store.id] ?? ''}
+                placeholder={t('dashboard.storeAddressPh')}
+                onChange={(e) => updateAddressDraft(store.id, e.target.value)}
+              />
+              <div style={sc.inputRow}>
+                <button
+                  type="button"
+                  style={sc.bannerBtn}
+                  disabled={locating[store.id]}
+                  onClick={() => pickStoreLocation(store.id)}
+                >
+                  {locating[store.id] ? t('dashboard.locationGetting') : t('dashboard.getCurrentLocation')}
+                </button>
+                {typeof latDraft[store.id] === 'number' && typeof lngDraft[store.id] === 'number' ? (
+                  <span style={sc.coordText}>
+                    {latDraft[store.id]?.toFixed(6)}, {lngDraft[store.id]?.toFixed(6)}
+                  </span>
+                ) : null}
+              </div>
+              {locationMsg[store.id] ? (
+                <div style={locationMsg[store.id]?.ok ? sc.locationMsgOk : sc.locationMsgFail}>
+                  {locationMsg[store.id]?.text}
+                </div>
+              ) : null}
             </div>
             <div style={sc.configFooter}>
               <div style={sc.configStatus}>
@@ -2142,6 +2289,9 @@ const sc: Record<string, React.CSSProperties> = {
   inputRow: { display: 'flex', alignItems: 'center', gap: 8 },
   input: { flex: 1, minWidth: 0, height: 34, fontSize: 13, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', outline: 'none', boxSizing: 'border-box' as const },
   clearBtn: { flexShrink: 0, height: 34, fontSize: 12, fontWeight: 600, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--muted)', cursor: 'pointer' },
+  coordText: { fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' as const },
+  locationMsgOk: { marginTop: 6, fontSize: 12, lineHeight: 1.4, color: '#16a34a', fontWeight: 600 },
+  locationMsgFail: { marginTop: 6, fontSize: 12, lineHeight: 1.4, color: '#dc2626', fontWeight: 600 },
   bannerPreviewWrap: { borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 4 },
   bannerPreview: { width: '100%', height: 120, objectFit: 'cover' as const, display: 'block' },
   bannerBtns: { display: 'flex', gap: 8, padding: '8px 8px' },

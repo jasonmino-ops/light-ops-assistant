@@ -11,16 +11,23 @@ const PRIMARY = '#ff6b00'
 const CUSTOMER_BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
 
 type Lang = 'zh' | 'en' | 'km'
-type ContactMethod = { type: 'phone' | 'telegram' | 'whatsApp'; label: string; value: string; href: string }
+type ContactMethod = { type: 'phone' | 'telegram' | 'whatsApp' | 'address' | 'directions'; label: string; value: string; href: string }
 type ContactText = {
   contactPhone: string
   contactTelegram: string
   contactWhatsApp: string
+  storeAddress: string
+  storeDirections: string
+  viewStoreLocation: string
 }
 type StoreContactInfo = {
   contactPhone: string | null
   contactTelegram: string | null
   contactWhatsApp: string | null
+  storeAddress: string | null
+  storeLat: number | null
+  storeLng: number | null
+  mapUrl: string | null
 }
 
 const LANG_LABELS: Record<Lang, string> = { zh: '中', en: 'EN', km: 'ខ្មែរ' }
@@ -54,6 +61,8 @@ function buildContactMethods(store: {
   contactPhone?: string | null
   contactTelegram?: string | null
   contactWhatsApp?: string | null
+  storeAddress?: string | null
+  mapUrl?: string | null
 }, uiText: ContactText): ContactMethod[] {
   const methods: ContactMethod[] = []
   const phone = store.contactPhone?.trim()
@@ -69,6 +78,14 @@ function buildContactMethods(store: {
   if (whatsApp) {
     const href = /^https?:\/\//.test(whatsApp) ? whatsApp : `https://wa.me/${whatsApp.replace(/\D/g, '')}`
     methods.push({ type: 'whatsApp', label: uiText.contactWhatsApp, value: whatsApp, href })
+  }
+  const address = store.storeAddress?.trim()
+  const mapUrl = store.mapUrl?.trim()
+  if (address && mapUrl) {
+    methods.push({ type: 'address', label: uiText.storeAddress, value: address, href: mapUrl })
+  }
+  if (mapUrl) {
+    methods.push({ type: 'directions', label: uiText.storeDirections, value: uiText.viewStoreLocation, href: mapUrl })
   }
   return methods
 }
@@ -91,6 +108,9 @@ const T: Record<Lang, {
   contactPhone: string
   contactTelegram: string
   contactWhatsApp: string
+  storeAddress: string
+  storeDirections: string
+  viewStoreLocation: string
   chooseContact: string
   noMerchantContact: string
   langSwitch: string
@@ -126,6 +146,9 @@ const T: Record<Lang, {
     contactPhone:      '联系电话',
     contactTelegram:   'Telegram',
     contactWhatsApp:   'WhatsApp',
+    storeAddress:      '店铺地址',
+    storeDirections:   '导航到门店',
+    viewStoreLocation: '查看店铺位置',
     chooseContact:     '选择联系方式',
     noMerchantContact: '商家暂未设置联系方式',
     langSwitch:        '语言',
@@ -161,6 +184,9 @@ const T: Record<Lang, {
     contactPhone:      'Phone',
     contactTelegram:   'Telegram',
     contactWhatsApp:   'WhatsApp',
+    storeAddress:      'Store address',
+    storeDirections:   'Navigate to store',
+    viewStoreLocation: 'View store location',
     chooseContact:     'Choose contact method',
     noMerchantContact: 'The merchant has not set contact information',
     langSwitch:        'Language',
@@ -196,6 +222,9 @@ const T: Record<Lang, {
     contactPhone:      'លេខទូរស័ព្ទ',
     contactTelegram:   'Telegram',
     contactWhatsApp:   'WhatsApp',
+    storeAddress:      'អាសយដ្ឋានហាង',
+    storeDirections:   'នាំផ្លូវទៅហាង',
+    viewStoreLocation: 'មើលទីតាំងហាង',
     chooseContact:     'ជ្រើសរើសវិធីទំនាក់ទំនង',
     noMerchantContact: 'ហាងមិនទាន់កំណត់ព័ត៌មានទំនាក់ទំនង',
     langSwitch:        'ភាសា',
@@ -229,7 +258,15 @@ export default function MePage() {
   const [hasTgId,      setHasTgId]       = useState(false)
   const [tgId,         setTgId]          = useState('')
   const [availableCouponCount, setAvailableCouponCount] = useState(0)
-  const [contactInfo, setContactInfo] = useState<StoreContactInfo>({ contactPhone: null, contactTelegram: null, contactWhatsApp: null })
+  const [contactInfo, setContactInfo] = useState<StoreContactInfo>({
+    contactPhone: null,
+    contactTelegram: null,
+    contactWhatsApp: null,
+    storeAddress: null,
+    storeLat: null,
+    storeLng: null,
+    mapUrl: null,
+  })
   const [contactLoaded, setContactLoaded] = useState(false)
   const [showContactSheet, setShowContactSheet] = useState(false)
 
@@ -282,6 +319,10 @@ export default function MePage() {
             contactPhone: body.store?.contactPhone ?? null,
             contactTelegram: body.store?.contactTelegram ?? null,
             contactWhatsApp: body.store?.contactWhatsApp ?? null,
+            storeAddress: body.store?.storeAddress ?? null,
+            storeLat: typeof body.store?.storeLat === 'number' ? body.store.storeLat : null,
+            storeLng: typeof body.store?.storeLng === 'number' ? body.store.storeLng : null,
+            mapUrl: body.store?.mapUrl ?? null,
           })
         }
       })

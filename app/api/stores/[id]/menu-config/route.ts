@@ -2,16 +2,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { cleanContactValue, isValidContactPhone, isValidContactTelegram, isValidContactWhatsApp } from '@/lib/store-contact'
+import { cleanStoreAddress, cleanStoreCoordinate, isValidStoreLat, isValidStoreLng } from '@/lib/store-location'
 import {
   STORE_CONTACT_SCHEMA_UPGRADE_MESSAGE,
   getStoreContactById,
   isStoreContactSchemaUpgradeRequiredError,
   updateStoreContactById,
 } from '@/lib/store-contact-db'
+import {
+  STORE_LOCATION_SCHEMA_UPGRADE_MESSAGE,
+  getStoreLocationById,
+  isStoreLocationSchemaUpgradeRequiredError,
+  updateStoreLocationById,
+} from '@/lib/store-location-db'
 
 /**
  * PATCH /api/stores/:id/menu-config
- * body: { bannerUrl?, announcement?, promoText?, contactPhone?, contactTelegram?, contactWhatsApp? }
+ * body: { bannerUrl?, announcement?, promoText?, contactPhone?, contactTelegram?, contactWhatsApp?, storeAddress?, storeLat?, storeLng? }
  *
  * 保存门店顾客页展示配置，仅 OWNER 可操作。
  */
@@ -57,6 +64,29 @@ export async function PATCH(
     contactData.contactWhatsApp = next
   }
 
+  const locationData: { storeAddress?: string | null; storeLat?: number | null; storeLng?: number | null } = {}
+  if (body.storeAddress !== undefined) {
+    const next = cleanStoreAddress(body.storeAddress)
+    if (next === undefined) {
+      return NextResponse.json({ error: 'INVALID_LOCATION_FIELD', field: 'storeAddress' }, { status: 400 })
+    }
+    locationData.storeAddress = next
+  }
+  if (body.storeLat !== undefined) {
+    const next = cleanStoreCoordinate(body.storeLat)
+    if (next === undefined || !isValidStoreLat(next)) {
+      return NextResponse.json({ error: 'INVALID_LOCATION_FIELD', field: 'storeLat' }, { status: 400 })
+    }
+    locationData.storeLat = next
+  }
+  if (body.storeLng !== undefined) {
+    const next = cleanStoreCoordinate(body.storeLng)
+    if (next === undefined || !isValidStoreLng(next)) {
+      return NextResponse.json({ error: 'INVALID_LOCATION_FIELD', field: 'storeLng' }, { status: 400 })
+    }
+    locationData.storeLng = next
+  }
+
   const displayData = {
     bannerUrl:    typeof body.bannerUrl    === 'string' ? body.bannerUrl.trim()    || null : undefined,
     announcement: typeof body.announcement === 'string' ? body.announcement.trim() || null : undefined,
@@ -66,16 +96,29 @@ export async function PATCH(
   const hasContactData = contactData.contactPhone !== undefined ||
     contactData.contactTelegram !== undefined ||
     contactData.contactWhatsApp !== undefined
+  const hasLocationData = locationData.storeAddress !== undefined ||
+    locationData.storeLat !== undefined ||
+    locationData.storeLng !== undefined
   let contact
+  let location
   try {
     contact = hasContactData
       ? await updateStoreContactById(storeId, contactData)
       : await getStoreContactById(storeId)
+    location = hasLocationData
+      ? await updateStoreLocationById(storeId, locationData)
+      : await getStoreLocationById(storeId)
   } catch (error) {
     if (isStoreContactSchemaUpgradeRequiredError(error)) {
       return NextResponse.json({
         error: 'STORE_CONTACT_SCHEMA_UPGRADE_REQUIRED',
         message: STORE_CONTACT_SCHEMA_UPGRADE_MESSAGE,
+      }, { status: 503 })
+    }
+    if (isStoreLocationSchemaUpgradeRequiredError(error)) {
+      return NextResponse.json({
+        error: 'STORE_LOCATION_SCHEMA_UPGRADE_REQUIRED',
+        message: STORE_LOCATION_SCHEMA_UPGRADE_MESSAGE,
       }, { status: 503 })
     }
     throw error
@@ -102,5 +145,5 @@ export async function PATCH(
       },
     })
 
-  return NextResponse.json({ ...updated, ...contact })
+  return NextResponse.json({ ...updated, ...contact, ...location })
 }
