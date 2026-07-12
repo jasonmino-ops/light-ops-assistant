@@ -158,6 +158,7 @@ export default function OpsPage() {
           {opsRole === 'SUPER_ADMIN' && (
             <Link href="/ops/admins" style={s.sysLink}>管理员</Link>
           )}
+          <Link href="/ops/overview" style={s.sysLink} title="查看全部商户运行状态">运行概览</Link>
           <Link href="/system" style={s.sysLink}>系统自检</Link>
           <button style={s.createBtn} onClick={() => setShowCreate((v) => !v)}>
             {showCreate ? '取消' : '+ 新增商户'}
