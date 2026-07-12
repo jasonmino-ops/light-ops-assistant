@@ -11,6 +11,55 @@ import {
   type RenewalInput,
 } from '@/lib/subscription'
 
+type RenewalReplayLookup =
+  | { kind: 'miss' }
+  | { kind: 'conflict' }
+  | { kind: 'replay'; subscription: NonNullable<Awaited<ReturnType<typeof prisma.tenantSubscription.findUnique>>>; event: NonNullable<Awaited<ReturnType<typeof prisma.subscriptionEvent.findUnique>>> }
+
+type RenewalDb = Prisma.TransactionClient | typeof prisma
+
+function isIdempotencyKeyP2002(error: unknown): error is Prisma.PrismaClientKnownRequestError {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') return false
+  const target = error.meta?.target
+  if (Array.isArray(target)) return target.includes('idempotencyKey')
+  return typeof target === 'string' && target.includes('idempotencyKey')
+}
+
+async function findIdempotentReplay(
+  db: RenewalDb,
+  tenantId: string,
+  idempotencyKey: string,
+): Promise<RenewalReplayLookup> {
+  const event = await db.subscriptionEvent.findUnique({
+    where: { idempotencyKey },
+  })
+  if (!event) return { kind: 'miss' }
+  if (event.tenantId !== tenantId) return { kind: 'conflict' }
+
+  const subscription = await db.tenantSubscription.findUnique({
+    where: { id: event.subscriptionId },
+  })
+  if (!subscription || subscription.tenantId !== tenantId) return { kind: 'conflict' }
+
+  return { kind: 'replay', subscription, event }
+}
+
+function renewalSuccessResponse(
+  result: {
+    subscription: NonNullable<Awaited<ReturnType<typeof prisma.tenantSubscription.findUnique>>>
+    event: NonNullable<Awaited<ReturnType<typeof prisma.subscriptionEvent.findUnique>>>
+    idempotentReplay: boolean
+  },
+) {
+  return NextResponse.json({
+    success: true,
+    subscription: serializeSubscription(result.subscription),
+    event: serializeSubscriptionEvent(result.event),
+    duplicate: result.idempotentReplay,
+    idempotentReplay: result.idempotentReplay,
+  })
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ tenantId: string }> },
@@ -46,19 +95,17 @@ export async function POST(
       })
       if (!tenant) return { error: 'NOT_FOUND' as const }
 
-      const previousEvent = await tx.subscriptionEvent.findUnique({
-        where: { idempotencyKey: body.idempotencyKey },
-      })
-      if (previousEvent) {
-        const subscription = await tx.tenantSubscription.findUnique({
-          where: { id: previousEvent.subscriptionId },
-        })
-        if (!subscription || subscription.tenantId !== tenantId) return { error: 'IDEMPOTENCY_KEY_CONFLICT' as const }
-        return { subscription, event: previousEvent, duplicate: true }
-      }
+      const initialReplay = await findIdempotentReplay(tx, tenantId, body.idempotencyKey)
+      if (initialReplay.kind === 'conflict') return { error: 'IDEMPOTENCY_KEY_CONFLICT' as const }
+      if (initialReplay.kind === 'replay') return { ...initialReplay, idempotentReplay: true }
 
       await ensureMigratedSubscriptionForTenant(tx, tenantId)
       await tx.$queryRaw`SELECT "id" FROM "TenantSubscription" WHERE "tenantId" = ${tenantId} FOR UPDATE`
+
+      const lockedReplay = await findIdempotentReplay(tx, tenantId, body.idempotencyKey)
+      if (lockedReplay.kind === 'conflict') return { error: 'IDEMPOTENCY_KEY_CONFLICT' as const }
+      if (lockedReplay.kind === 'replay') return { ...lockedReplay, idempotentReplay: true }
+
       const subscription = await tx.tenantSubscription.findUniqueOrThrow({ where: { tenantId } })
       const now = new Date()
       const renewal = computeRenewal(subscription, body.months, now)
@@ -91,7 +138,7 @@ export async function POST(
         },
       })
 
-      return { subscription: updated, event, duplicate: false }
+      return { subscription: updated, event, idempotentReplay: false }
     })
 
     if ('error' in result) {
@@ -99,14 +146,18 @@ export async function POST(
       return NextResponse.json({ error: result.error }, { status })
     }
 
-    return NextResponse.json({
-      subscription: serializeSubscription(result.subscription),
-      event: serializeSubscriptionEvent(result.event),
-      duplicate: result.duplicate,
-    })
+    return renewalSuccessResponse(result)
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    if (isIdempotencyKeyP2002(error)) {
+      const replay = await findIdempotentReplay(prisma, tenantId, body.idempotencyKey)
+      if (replay.kind === 'replay') {
+        return renewalSuccessResponse({ ...replay, idempotentReplay: true })
+      }
       return NextResponse.json({ error: 'IDEMPOTENCY_KEY_CONFLICT' }, { status: 409 })
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      console.error('[subscription renew] unique constraint failed:', error)
+      return NextResponse.json({ error: 'UNIQUE_CONSTRAINT_FAILED' }, { status: 409 })
     }
     console.error('[subscription renew] failed:', error)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })

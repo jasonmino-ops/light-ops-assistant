@@ -96,6 +96,31 @@ assert.match(renewRoute, /idempotencyKey/, 'renew API should require idempotency
 assert.match(renewRoute, /findUnique\(\{\s*where: \{\s*idempotencyKey/s, 'renew API should check prior idempotency key')
 assert.match(renewRoute, /FOR UPDATE/, 'renew API should lock the subscription row')
 assert.match(renewRoute, /tx\.tenant\.findUnique/, 'renew API should verify tenant existence server-side')
+assert.match(renewRoute, /idempotentReplay/, 'renew API should explicitly mark idempotent replay responses')
+assert.match(renewRoute, /success:\s*true/, 'renew API should return success for first and replay responses')
+assert.match(renewRoute, /duplicate:\s*result\.idempotentReplay/, 'renew API should preserve duplicate field compatibility')
+assert.match(renewRoute, /function isIdempotencyKeyP2002/, 'renew API should only treat idempotencyKey P2002 as replayable')
+assert.match(renewRoute, /target\.includes\('idempotencyKey'\)/, 'P2002 replay handling should inspect the conflicting field')
+assert.match(renewRoute, /function findIdempotentReplay/, 'renew API should centralize safe replay lookup')
+assert.match(renewRoute, /event\.tenantId !== tenantId/, 'same key from a different tenant should not replay successfully')
+assert.match(renewRoute, /subscription\.tenantId !== tenantId/, 'replay subscription should belong to the same tenant')
+assert.match(renewRoute, /const initialReplay = await findIdempotentReplay/, 'renew API should check idempotency before locking')
+assert.match(renewRoute, /const lockedReplay = await findIdempotentReplay/, 'renew API should check idempotency again after locking')
+assert.match(
+  renewRoute,
+  /FOR UPDATE[\s\S]*const lockedReplay = await findIdempotentReplay[\s\S]*const subscription = await tx\.tenantSubscription\.findUniqueOrThrow/,
+  'renew API should perform lock-time replay check before computing renewal',
+)
+assert.match(
+  renewRoute,
+  /catch \(error\)[\s\S]*isIdempotencyKeyP2002\(error\)[\s\S]*findIdempotentReplay\(prisma, tenantId, body\.idempotencyKey\)[\s\S]*idempotentReplay: true/,
+  'P2002 idempotencyKey conflict should be replayed after the failed transaction rolls back',
+)
+assert.match(
+  renewRoute,
+  /error\.code === 'P2002'[\s\S]*UNIQUE_CONSTRAINT_FAILED/,
+  'non-idempotency P2002 should remain a real conflict',
+)
 
 const schema = fs.readFileSync('prisma/schema.prisma', 'utf8')
 assert.match(schema, /model TenantSubscription/, 'schema should include TenantSubscription')
