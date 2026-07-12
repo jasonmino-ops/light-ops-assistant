@@ -318,13 +318,11 @@ export default function MePage() {
     setShowContactSheet(true)
   }
 
-  function handleContactOptionClick(e: MouseEvent<HTMLAnchorElement>, method: ContactMethod) {
+  function handleContactOptionClick(_e: MouseEvent<HTMLAnchorElement>, method: ContactMethod) {
     if (method.type !== 'phone') {
       setShowContactSheet(false)
       return
     }
-    e.preventDefault()
-    window.location.href = method.href
     window.setTimeout(() => setShowContactSheet(false), 300)
   }
 
