@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 
 type RunStatus =
   | 'NORMAL'
@@ -139,6 +140,7 @@ export default function OpsOverviewPage() {
     <div style={s.page}>
       <div style={s.header}>
         <div>
+          <Link href="/ops" style={s.backLink}>← 返回运营后台</Link>
           <div style={s.kicker}>Ops Visibility Foundation V1</div>
           <h1 style={s.title}>运营观察台</h1>
           <div style={s.subtitle}>只读查看商户基础运行状态，不进入商户身份，不触发任何写操作。</div>
@@ -288,6 +290,20 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 16,
+  },
+  backLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: 36,
+    padding: '0 10px',
+    marginBottom: 10,
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    color: '#374151',
+    background: '#f9fafb',
+    fontSize: 13,
+    fontWeight: 800,
+    textDecoration: 'none',
   },
   kicker: { fontSize: 12, fontWeight: 800, color: '#2563eb', marginBottom: 6 },
   title: { fontSize: 24, lineHeight: 1.2, margin: 0, letterSpacing: 0 },
