@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { getStoreContactsByIds } from '@/lib/store-contact-db'
 
 export async function GET(req: NextRequest) {
   const ctx = await getContext(req)
@@ -25,11 +26,9 @@ export async function GET(req: NextRequest) {
       bannerUrl: true,
       announcement: true,
       promoText: true,
-      contactPhone: true,
-      contactTelegram: true,
-      contactWhatsApp: true,
     },
   })
 
-  return NextResponse.json(stores)
+  const contacts = await getStoreContactsByIds(stores.map((store) => store.id))
+  return NextResponse.json(stores.map((store) => ({ ...store, ...contacts.get(store.id) })))
 }

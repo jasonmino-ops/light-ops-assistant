@@ -10,6 +10,10 @@ export type StoreContactFields = {
   contactWhatsApp: string | null
 }
 
+export type StoreContactRow = StoreContactFields & {
+  id: string
+}
+
 export function cleanContactValue(value: unknown): string | null | undefined {
   if (value === undefined) return undefined
   if (typeof value !== 'string') return null
@@ -47,4 +51,17 @@ export function validateStoreContactFields(fields: StoreContactFields): 'contact
   if (!isValidContactTelegram(fields.contactTelegram)) return 'contactTelegram'
   if (!isValidContactWhatsApp(fields.contactWhatsApp)) return 'contactWhatsApp'
   return null
+}
+
+export function emptyStoreContact(): StoreContactFields {
+  return { contactPhone: null, contactTelegram: null, contactWhatsApp: null }
+}
+
+export function isMissingStoreContactColumnError(error: unknown): boolean {
+  const e = error as { code?: unknown; message?: unknown; meta?: { column?: unknown } } | null
+  const text = `${String(e?.code ?? '')} ${String(e?.message ?? '')} ${String(e?.meta?.column ?? '')}`
+  return text.includes('P2022') ||
+    text.includes('contactPhone') ||
+    text.includes('contactTelegram') ||
+    text.includes('contactWhatsApp')
 }

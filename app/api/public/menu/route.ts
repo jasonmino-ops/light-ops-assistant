@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getStoreContactById } from '@/lib/store-contact-db'
 
 function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
   try {
@@ -46,9 +47,6 @@ export async function GET(req: NextRequest) {
       promoText: true,
       businessType: true,
       currencyCode: true,
-      contactPhone: true,
-      contactTelegram: true,
-      contactWhatsApp: true,
     },
   })
 
@@ -67,7 +65,7 @@ export async function GET(req: NextRequest) {
     customerBound = !!contact && contact.status === 'active'
   }
 
-  const [products, categories] = await Promise.all([
+  const [products, categories, contact] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId: store.tenantId, status: 'ACTIVE' },
       select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, categoryId: true, imageUrl: true, imageUrls: true },
@@ -79,6 +77,7 @@ export async function GET(req: NextRequest) {
       select: { id: true, name: true, parentId: true, sortOrder: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     }),
+    prisma.store.findUnique({ where: { code }, select: { id: true } }).then((row) => row ? getStoreContactById(row.id) : { contactPhone: null, contactTelegram: null, contactWhatsApp: null }),
   ])
 
   const productIds = products.map((p) => p.id)
@@ -128,9 +127,7 @@ export async function GET(req: NextRequest) {
       promoText:    store.promoText    ?? null,
       businessType: store.businessType ?? 'GENERAL',
       currencyCode: store.currencyCode ?? 'USD',
-      contactPhone: store.contactPhone ?? null,
-      contactTelegram: store.contactTelegram ?? null,
-      contactWhatsApp: store.contactWhatsApp ?? null,
+      ...contact,
     },
     customerBound,
     categories: categories.map((c) => ({

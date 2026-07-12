@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { cleanContactValue, isValidContactPhone, isValidContactTelegram, isValidContactWhatsApp } from '@/lib/store-contact'
+import { getStoreContactById, updateStoreContactById } from '@/lib/store-contact-db'
 
 /**
  * PATCH /api/stores/:id/menu-config
@@ -51,24 +52,43 @@ export async function PATCH(
     contactData.contactWhatsApp = next
   }
 
-  const updated = await prisma.store.update({
-    where: { id: storeId },
-    data: {
-      bannerUrl:    typeof body.bannerUrl    === 'string' ? body.bannerUrl.trim()    || null : undefined,
-      announcement: typeof body.announcement === 'string' ? body.announcement.trim() || null : undefined,
-      promoText:    typeof body.promoText    === 'string' ? body.promoText.trim()    || null : undefined,
-      ...contactData,
-    },
-    select: {
-      id: true,
-      bannerUrl: true,
-      announcement: true,
-      promoText: true,
-      contactPhone: true,
-      contactTelegram: true,
-      contactWhatsApp: true,
-    },
-  })
+  const displayData = {
+    bannerUrl:    typeof body.bannerUrl    === 'string' ? body.bannerUrl.trim()    || null : undefined,
+    announcement: typeof body.announcement === 'string' ? body.announcement.trim() || null : undefined,
+    promoText:    typeof body.promoText    === 'string' ? body.promoText.trim()    || null : undefined,
+  }
+  const hasDisplayData = Object.values(displayData).some((value) => value !== undefined)
+  const updated = hasDisplayData
+    ? await prisma.store.update({
+      where: { id: storeId },
+      data: displayData,
+      select: {
+        id: true,
+        bannerUrl: true,
+        announcement: true,
+        promoText: true,
+      },
+    })
+    : await prisma.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: {
+        id: true,
+        bannerUrl: true,
+        announcement: true,
+        promoText: true,
+      },
+    })
+  const contact = (
+    contactData.contactPhone !== undefined ||
+    contactData.contactTelegram !== undefined ||
+    contactData.contactWhatsApp !== undefined
+  )
+    ? await updateStoreContactById(storeId, {
+      contactPhone: contactData.contactPhone ?? null,
+      contactTelegram: contactData.contactTelegram ?? null,
+      contactWhatsApp: contactData.contactWhatsApp ?? null,
+    })
+    : await getStoreContactById(storeId)
 
-  return NextResponse.json(updated)
+  return NextResponse.json({ ...updated, ...contact })
 }

@@ -15,6 +15,7 @@ import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { isSupportedCurrencyCode, normalizeCurrencyCode } from '@/lib/currency'
 import { cleanContactValue, isValidContactPhone, isValidContactTelegram, isValidContactWhatsApp } from '@/lib/store-contact'
+import { getStoreContactById, updateStoreContactById } from '@/lib/store-contact-db'
 
 const VALID_TYPES = ['FOOD', 'RETAIL', 'SERVICE', 'GENERAL'] as const
 type BizType = typeof VALID_TYPES[number]
@@ -32,12 +33,10 @@ export async function GET(req: NextRequest) {
       businessType: true,
       checkoutMode: true,
       currencyCode: true,
-      contactPhone: true,
-      contactTelegram: true,
-      contactWhatsApp: true,
     },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  const contact = await getStoreContactById(store.id)
 
   return NextResponse.json({
     storeId:      store.id,
@@ -46,9 +45,7 @@ export async function GET(req: NextRequest) {
     businessType: store.businessType,
     checkoutMode: store.checkoutMode,
     currencyCode: store.currencyCode,
-    contactPhone: store.contactPhone,
-    contactTelegram: store.contactTelegram,
-    contactWhatsApp: store.contactWhatsApp,
+    ...contact,
   })
 }
 
@@ -62,7 +59,8 @@ export async function PATCH(req: NextRequest) {
   let body: { businessType?: string; currencyCode?: string; contactPhone?: string; contactTelegram?: string; contactWhatsApp?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }
 
-  const data: { businessType?: BizType; currencyCode?: string; contactPhone?: string | null; contactTelegram?: string | null; contactWhatsApp?: string | null } = {}
+  const data: { businessType?: BizType; currencyCode?: string } = {}
+  const contactData: { contactPhone?: string | null; contactTelegram?: string | null; contactWhatsApp?: string | null } = {}
   if (body.businessType !== undefined) {
     const bt = body.businessType.trim()
     if (!VALID_TYPES.includes(bt as BizType)) {
@@ -81,50 +79,61 @@ export async function PATCH(req: NextRequest) {
     if (next === undefined || !isValidContactPhone(next)) {
       return NextResponse.json({ error: 'INVALID_CONTACT_FIELD', field: 'contactPhone' }, { status: 400 })
     }
-    data.contactPhone = next
+    contactData.contactPhone = next
   }
   if (body.contactTelegram !== undefined) {
     const next = cleanContactValue(body.contactTelegram)
     if (next === undefined || !isValidContactTelegram(next)) {
       return NextResponse.json({ error: 'INVALID_CONTACT_FIELD', field: 'contactTelegram' }, { status: 400 })
     }
-    data.contactTelegram = next
+    contactData.contactTelegram = next
   }
   if (body.contactWhatsApp !== undefined) {
     const next = cleanContactValue(body.contactWhatsApp)
     if (next === undefined || !isValidContactWhatsApp(next)) {
       return NextResponse.json({ error: 'INVALID_CONTACT_FIELD', field: 'contactWhatsApp' }, { status: 400 })
     }
-    data.contactWhatsApp = next
+    contactData.contactWhatsApp = next
   }
   if (
     !data.businessType &&
     !data.currencyCode &&
-    data.contactPhone === undefined &&
-    data.contactTelegram === undefined &&
-    data.contactWhatsApp === undefined
+    contactData.contactPhone === undefined &&
+    contactData.contactTelegram === undefined &&
+    contactData.contactWhatsApp === undefined
   ) {
     return NextResponse.json({ error: 'NO_CHANGES' }, { status: 400 })
   }
 
   const store = await prisma.store.findFirst({
     where:  { id: ctx.storeId, tenantId: ctx.tenantId },
-    select: { id: true },
+    select: { id: true, businessType: true, currencyCode: true },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
 
-  const updated = await prisma.store.update({
-    where: { id: store.id },
-    data,
-    select: { id: true, businessType: true, currencyCode: true, contactPhone: true, contactTelegram: true, contactWhatsApp: true },
-  })
+  const updated = Object.keys(data).length > 0
+    ? await prisma.store.update({
+      where: { id: store.id },
+      data,
+      select: { id: true, businessType: true, currencyCode: true },
+    })
+    : store
+  const contact = (
+    contactData.contactPhone !== undefined ||
+    contactData.contactTelegram !== undefined ||
+    contactData.contactWhatsApp !== undefined
+  )
+    ? await updateStoreContactById(updated.id, {
+      contactPhone: contactData.contactPhone ?? null,
+      contactTelegram: contactData.contactTelegram ?? null,
+      contactWhatsApp: contactData.contactWhatsApp ?? null,
+    })
+    : await getStoreContactById(updated.id)
 
   return NextResponse.json({
     ok: true,
     businessType: updated.businessType,
     currencyCode: updated.currencyCode,
-    contactPhone: updated.contactPhone,
-    contactTelegram: updated.contactTelegram,
-    contactWhatsApp: updated.contactWhatsApp,
+    ...contact,
   })
 }
