@@ -429,9 +429,6 @@ export default function DashboardPage() {
         {/* 数字员工模块（只读展示，不提供启用开关） */}
         <AiSupportModulePanel tier={tier} />
 
-        {/* 云打印机面板（高级版） */}
-        <PrinterPanel />
-
         {/* Hot products (GLOBAL / STORE only) — 合并为 tab 切换 */}
         {dimension !== 'STAFF' && (
           <HotSection
