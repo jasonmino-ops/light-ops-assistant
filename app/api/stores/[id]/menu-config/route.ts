@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { cleanContactValue, isValidContactPhone, isValidContactTelegram, isValidContactWhatsApp } from '@/lib/store-contact'
-import { getStoreContactById, updateStoreContactById } from '@/lib/store-contact-db'
+import {
+  STORE_CONTACT_SCHEMA_UPGRADE_MESSAGE,
+  getStoreContactById,
+  isStoreContactSchemaUpgradeRequiredError,
+  updateStoreContactById,
+} from '@/lib/store-contact-db'
 
 /**
  * PATCH /api/stores/:id/menu-config
@@ -58,6 +63,24 @@ export async function PATCH(
     promoText:    typeof body.promoText    === 'string' ? body.promoText.trim()    || null : undefined,
   }
   const hasDisplayData = Object.values(displayData).some((value) => value !== undefined)
+  const hasContactData = contactData.contactPhone !== undefined ||
+    contactData.contactTelegram !== undefined ||
+    contactData.contactWhatsApp !== undefined
+  let contact
+  try {
+    contact = hasContactData
+      ? await updateStoreContactById(storeId, contactData)
+      : await getStoreContactById(storeId)
+  } catch (error) {
+    if (isStoreContactSchemaUpgradeRequiredError(error)) {
+      return NextResponse.json({
+        error: 'STORE_CONTACT_SCHEMA_UPGRADE_REQUIRED',
+        message: STORE_CONTACT_SCHEMA_UPGRADE_MESSAGE,
+      }, { status: 503 })
+    }
+    throw error
+  }
+
   const updated = hasDisplayData
     ? await prisma.store.update({
       where: { id: storeId },
@@ -78,17 +101,6 @@ export async function PATCH(
         promoText: true,
       },
     })
-  const contact = (
-    contactData.contactPhone !== undefined ||
-    contactData.contactTelegram !== undefined ||
-    contactData.contactWhatsApp !== undefined
-  )
-    ? await updateStoreContactById(storeId, {
-      contactPhone: contactData.contactPhone ?? null,
-      contactTelegram: contactData.contactTelegram ?? null,
-      contactWhatsApp: contactData.contactWhatsApp ?? null,
-    })
-    : await getStoreContactById(storeId)
 
   return NextResponse.json({ ...updated, ...contact })
 }

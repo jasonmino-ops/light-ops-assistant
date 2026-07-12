@@ -7,6 +7,19 @@ import {
   isMissingStoreContactColumnError,
 } from '@/lib/store-contact'
 
+export const STORE_CONTACT_SCHEMA_UPGRADE_MESSAGE = '门店联系方式尚未完成数据库升级，请联系管理员。'
+
+export class StoreContactSchemaUpgradeRequiredError extends Error {
+  constructor() {
+    super(STORE_CONTACT_SCHEMA_UPGRADE_MESSAGE)
+    this.name = 'StoreContactSchemaUpgradeRequiredError'
+  }
+}
+
+export function isStoreContactSchemaUpgradeRequiredError(error: unknown): error is StoreContactSchemaUpgradeRequiredError {
+  return error instanceof StoreContactSchemaUpgradeRequiredError
+}
+
 export async function getStoreContactsByIds(ids: string[]): Promise<Map<string, StoreContactFields>> {
   if (ids.length === 0) return new Map()
   try {
@@ -30,14 +43,23 @@ export async function getStoreContactById(id: string): Promise<StoreContactField
   return (await getStoreContactsByIds([id])).get(id) ?? emptyStoreContact()
 }
 
-export async function updateStoreContactById(id: string, contact: StoreContactFields): Promise<StoreContactFields> {
+export async function updateStoreContactById(id: string, contact: Partial<StoreContactFields>): Promise<StoreContactFields> {
+  const assignments = []
+  if (contact.contactPhone !== undefined) {
+    assignments.push(Prisma.sql`"contactPhone" = ${contact.contactPhone}`)
+  }
+  if (contact.contactTelegram !== undefined) {
+    assignments.push(Prisma.sql`"contactTelegram" = ${contact.contactTelegram}`)
+  }
+  if (contact.contactWhatsApp !== undefined) {
+    assignments.push(Prisma.sql`"contactWhatsApp" = ${contact.contactWhatsApp}`)
+  }
+  if (assignments.length === 0) return getStoreContactById(id)
+
   try {
     const rows = await prisma.$queryRaw<StoreContactRow[]>(Prisma.sql`
       UPDATE "Store"
-      SET
-        "contactPhone" = ${contact.contactPhone},
-        "contactTelegram" = ${contact.contactTelegram},
-        "contactWhatsApp" = ${contact.contactWhatsApp}
+      SET ${Prisma.join(assignments)}
       WHERE "id" = ${id}
       RETURNING "id", "contactPhone", "contactTelegram", "contactWhatsApp"
     `)
@@ -48,7 +70,7 @@ export async function updateStoreContactById(id: string, contact: StoreContactFi
       contactWhatsApp: row.contactWhatsApp ?? null,
     } : emptyStoreContact()
   } catch (error) {
-    if (isMissingStoreContactColumnError(error)) return emptyStoreContact()
+    if (isMissingStoreContactColumnError(error)) throw new StoreContactSchemaUpgradeRequiredError()
     throw error
   }
 }

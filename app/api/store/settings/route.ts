@@ -15,7 +15,12 @@ import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { isSupportedCurrencyCode, normalizeCurrencyCode } from '@/lib/currency'
 import { cleanContactValue, isValidContactPhone, isValidContactTelegram, isValidContactWhatsApp } from '@/lib/store-contact'
-import { getStoreContactById, updateStoreContactById } from '@/lib/store-contact-db'
+import {
+  STORE_CONTACT_SCHEMA_UPGRADE_MESSAGE,
+  getStoreContactById,
+  isStoreContactSchemaUpgradeRequiredError,
+  updateStoreContactById,
+} from '@/lib/store-contact-db'
 
 const VALID_TYPES = ['FOOD', 'RETAIL', 'SERVICE', 'GENERAL'] as const
 type BizType = typeof VALID_TYPES[number]
@@ -111,6 +116,24 @@ export async function PATCH(req: NextRequest) {
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
 
+  const hasContactData = contactData.contactPhone !== undefined ||
+    contactData.contactTelegram !== undefined ||
+    contactData.contactWhatsApp !== undefined
+  let contact
+  try {
+    contact = hasContactData
+      ? await updateStoreContactById(store.id, contactData)
+      : await getStoreContactById(store.id)
+  } catch (error) {
+    if (isStoreContactSchemaUpgradeRequiredError(error)) {
+      return NextResponse.json({
+        error: 'STORE_CONTACT_SCHEMA_UPGRADE_REQUIRED',
+        message: STORE_CONTACT_SCHEMA_UPGRADE_MESSAGE,
+      }, { status: 503 })
+    }
+    throw error
+  }
+
   const updated = Object.keys(data).length > 0
     ? await prisma.store.update({
       where: { id: store.id },
@@ -118,17 +141,6 @@ export async function PATCH(req: NextRequest) {
       select: { id: true, businessType: true, currencyCode: true },
     })
     : store
-  const contact = (
-    contactData.contactPhone !== undefined ||
-    contactData.contactTelegram !== undefined ||
-    contactData.contactWhatsApp !== undefined
-  )
-    ? await updateStoreContactById(updated.id, {
-      contactPhone: contactData.contactPhone ?? null,
-      contactTelegram: contactData.contactTelegram ?? null,
-      contactWhatsApp: contactData.contactWhatsApp ?? null,
-    })
-    : await getStoreContactById(updated.id)
 
   return NextResponse.json({
     ok: true,
