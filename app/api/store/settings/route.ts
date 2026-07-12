@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { isSupportedCurrencyCode, normalizeCurrencyCode } from '@/lib/currency'
+import { cleanContactValue, isValidContactPhone, isValidContactTelegram, isValidContactWhatsApp } from '@/lib/store-contact'
 
 const VALID_TYPES = ['FOOD', 'RETAIL', 'SERVICE', 'GENERAL'] as const
 type BizType = typeof VALID_TYPES[number]
@@ -24,7 +25,17 @@ export async function GET(req: NextRequest) {
 
   const store = await prisma.store.findFirst({
     where:  { id: ctx.storeId, tenantId: ctx.tenantId },
-    select: { id: true, code: true, name: true, businessType: true, checkoutMode: true, currencyCode: true },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      businessType: true,
+      checkoutMode: true,
+      currencyCode: true,
+      contactPhone: true,
+      contactTelegram: true,
+      contactWhatsApp: true,
+    },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
 
@@ -35,6 +46,9 @@ export async function GET(req: NextRequest) {
     businessType: store.businessType,
     checkoutMode: store.checkoutMode,
     currencyCode: store.currencyCode,
+    contactPhone: store.contactPhone,
+    contactTelegram: store.contactTelegram,
+    contactWhatsApp: store.contactWhatsApp,
   })
 }
 
@@ -45,10 +59,10 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'FORBIDDEN', message: '只有老板可以修改店铺类型' }, { status: 403 })
   }
 
-  let body: { businessType?: string; currencyCode?: string }
+  let body: { businessType?: string; currencyCode?: string; contactPhone?: string; contactTelegram?: string; contactWhatsApp?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }
 
-  const data: { businessType?: BizType; currencyCode?: string } = {}
+  const data: { businessType?: BizType; currencyCode?: string; contactPhone?: string | null; contactTelegram?: string | null; contactWhatsApp?: string | null } = {}
   if (body.businessType !== undefined) {
     const bt = body.businessType.trim()
     if (!VALID_TYPES.includes(bt as BizType)) {
@@ -62,7 +76,34 @@ export async function PATCH(req: NextRequest) {
     }
     data.currencyCode = normalizeCurrencyCode(body.currencyCode)
   }
-  if (!data.businessType && !data.currencyCode) {
+  if (body.contactPhone !== undefined) {
+    const next = cleanContactValue(body.contactPhone)
+    if (next === undefined || !isValidContactPhone(next)) {
+      return NextResponse.json({ error: 'INVALID_CONTACT_FIELD', field: 'contactPhone' }, { status: 400 })
+    }
+    data.contactPhone = next
+  }
+  if (body.contactTelegram !== undefined) {
+    const next = cleanContactValue(body.contactTelegram)
+    if (next === undefined || !isValidContactTelegram(next)) {
+      return NextResponse.json({ error: 'INVALID_CONTACT_FIELD', field: 'contactTelegram' }, { status: 400 })
+    }
+    data.contactTelegram = next
+  }
+  if (body.contactWhatsApp !== undefined) {
+    const next = cleanContactValue(body.contactWhatsApp)
+    if (next === undefined || !isValidContactWhatsApp(next)) {
+      return NextResponse.json({ error: 'INVALID_CONTACT_FIELD', field: 'contactWhatsApp' }, { status: 400 })
+    }
+    data.contactWhatsApp = next
+  }
+  if (
+    !data.businessType &&
+    !data.currencyCode &&
+    data.contactPhone === undefined &&
+    data.contactTelegram === undefined &&
+    data.contactWhatsApp === undefined
+  ) {
     return NextResponse.json({ error: 'NO_CHANGES' }, { status: 400 })
   }
 
@@ -75,8 +116,15 @@ export async function PATCH(req: NextRequest) {
   const updated = await prisma.store.update({
     where: { id: store.id },
     data,
-    select: { id: true, businessType: true, currencyCode: true },
+    select: { id: true, businessType: true, currencyCode: true, contactPhone: true, contactTelegram: true, contactWhatsApp: true },
   })
 
-  return NextResponse.json({ ok: true, businessType: updated.businessType, currencyCode: updated.currencyCode })
+  return NextResponse.json({
+    ok: true,
+    businessType: updated.businessType,
+    currencyCode: updated.currencyCode,
+    contactPhone: updated.contactPhone,
+    contactTelegram: updated.contactTelegram,
+    contactWhatsApp: updated.contactWhatsApp,
+  })
 }

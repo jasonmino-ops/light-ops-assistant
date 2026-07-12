@@ -37,7 +37,19 @@ export async function GET(req: NextRequest) {
 
   const store = await prisma.store.findUnique({
     where: { code },
-    select: { name: true, status: true, tenantId: true, bannerUrl: true, announcement: true, promoText: true, businessType: true, currencyCode: true },
+    select: {
+      name: true,
+      status: true,
+      tenantId: true,
+      bannerUrl: true,
+      announcement: true,
+      promoText: true,
+      businessType: true,
+      currencyCode: true,
+      contactPhone: true,
+      contactTelegram: true,
+      contactWhatsApp: true,
+    },
   })
 
   if (!store || store.status !== 'ACTIVE') {
@@ -116,6 +128,9 @@ export async function GET(req: NextRequest) {
       promoText:    store.promoText    ?? null,
       businessType: store.businessType ?? 'GENERAL',
       currencyCode: store.currencyCode ?? 'USD',
+      contactPhone: store.contactPhone ?? null,
+      contactTelegram: store.contactTelegram ?? null,
+      contactWhatsApp: store.contactWhatsApp ?? null,
     },
     customerBound,
     categories: categories.map((c) => ({

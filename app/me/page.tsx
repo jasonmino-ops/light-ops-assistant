@@ -11,6 +11,17 @@ const PRIMARY = '#ff6b00'
 const CUSTOMER_BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
 
 type Lang = 'zh' | 'en' | 'km'
+type ContactMethod = { type: 'phone' | 'telegram' | 'whatsApp'; label: string; value: string; href: string }
+type ContactText = {
+  contactPhone: string
+  contactTelegram: string
+  contactWhatsApp: string
+}
+type StoreContactInfo = {
+  contactPhone: string | null
+  contactTelegram: string | null
+  contactWhatsApp: string | null
+}
 
 const LANG_LABELS: Record<Lang, string> = { zh: '中', en: 'EN', km: 'ខ្មែរ' }
 
@@ -39,6 +50,29 @@ function pickInitialLang(params: URLSearchParams, tgLang?: string | null): Lang 
   return normalizeLang(navigator.language) ?? 'km'
 }
 
+function buildContactMethods(store: {
+  contactPhone?: string | null
+  contactTelegram?: string | null
+  contactWhatsApp?: string | null
+}, uiText: ContactText): ContactMethod[] {
+  const methods: ContactMethod[] = []
+  const phone = store.contactPhone?.trim()
+  if (phone) {
+    methods.push({ type: 'phone', label: uiText.contactPhone, value: phone, href: `tel:${phone.replace(/[^\d+]/g, '')}` })
+  }
+  const telegram = store.contactTelegram?.trim()
+  if (telegram) {
+    const href = /^https?:\/\//.test(telegram) ? telegram : `https://t.me/${telegram.replace(/^@/, '')}`
+    methods.push({ type: 'telegram', label: uiText.contactTelegram, value: telegram, href })
+  }
+  const whatsApp = store.contactWhatsApp?.trim()
+  if (whatsApp) {
+    const href = /^https?:\/\//.test(whatsApp) ? whatsApp : `https://wa.me/${whatsApp.replace(/\D/g, '')}`
+    methods.push({ type: 'whatsApp', label: uiText.contactWhatsApp, value: whatsApp, href })
+  }
+  return methods
+}
+
 // ─── i18n ────────────────────────────────────────────────────────────────────
 
 const T: Record<Lang, {
@@ -54,6 +88,11 @@ const T: Record<Lang, {
   myAddress: string
   myFavorites: string
   contactService: string
+  contactPhone: string
+  contactTelegram: string
+  contactWhatsApp: string
+  chooseContact: string
+  noMerchantContact: string
   langSwitch: string
   bindTgTitle: string
   bindTgSub: string
@@ -84,6 +123,11 @@ const T: Record<Lang, {
     myAddress:         '我的地址',
     myFavorites:       '收藏店铺',
     contactService:    '联系商家',
+    contactPhone:      '联系电话',
+    contactTelegram:   'Telegram',
+    contactWhatsApp:   'WhatsApp',
+    chooseContact:     '选择联系方式',
+    noMerchantContact: '商家暂未设置联系方式',
     langSwitch:        '语言',
     bindTgTitle:       '关注本店，接收订单通知',
     bindTgSub:         '绑定 Telegram 获取订单进度和优惠提醒',
@@ -114,6 +158,11 @@ const T: Record<Lang, {
     myAddress:         'My Address',
     myFavorites:       'Favorite Stores',
     contactService:    'Contact Merchant',
+    contactPhone:      'Phone',
+    contactTelegram:   'Telegram',
+    contactWhatsApp:   'WhatsApp',
+    chooseContact:     'Choose contact method',
+    noMerchantContact: 'The merchant has not set contact information',
     langSwitch:        'Language',
     bindTgTitle:       'Follow this store on Telegram',
     bindTgSub:         'Bind Telegram for order updates and promos',
@@ -144,6 +193,11 @@ const T: Record<Lang, {
     myAddress:         'អាសយដ្ឋាន',
     myFavorites:       'ហាងចំណូលចិត្ត',
     contactService:    'ទំនាក់ទំនងហាង',
+    contactPhone:      'លេខទូរស័ព្ទ',
+    contactTelegram:   'Telegram',
+    contactWhatsApp:   'WhatsApp',
+    chooseContact:     'ជ្រើសរើសវិធីទំនាក់ទំនង',
+    noMerchantContact: 'ហាងមិនទាន់កំណត់ព័ត៌មានទំនាក់ទំនង',
     langSwitch:        'ភាសា',
     bindTgTitle:       'តាមដានហាងនេះតាម Telegram',
     bindTgSub:         'ភ្ជាប់ Telegram ដើម្បីទទួលដំណឹង',
@@ -175,6 +229,8 @@ export default function MePage() {
   const [hasTgId,      setHasTgId]       = useState(false)
   const [tgId,         setTgId]          = useState('')
   const [availableCouponCount, setAvailableCouponCount] = useState(0)
+  const [contactInfo, setContactInfo] = useState<StoreContactInfo>({ contactPhone: null, contactTelegram: null, contactWhatsApp: null })
+  const [showContactSheet, setShowContactSheet] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -203,7 +259,8 @@ export default function MePage() {
       } catch { /* ignore */ }
     }
 
-    setLang(pickInitialLang(params, tgLang))
+    const initialLang = pickInitialLang(params, tgLang)
+    setLang(initialLang)
 
     if (!code) return
 
@@ -217,6 +274,11 @@ export default function MePage() {
           const nm = body.store?.name?.trim?.() || ''
           if (nm) setStoreName(nm)
           setCustomerBound(!!body.customerBound)
+          setContactInfo({
+            contactPhone: body.store?.contactPhone ?? null,
+            contactTelegram: body.store?.contactTelegram ?? null,
+            contactWhatsApp: body.store?.contactWhatsApp ?? null,
+          })
         }
       })
       .catch(() => { /* silent */ })
@@ -240,6 +302,19 @@ export default function MePage() {
 
   const ui = T[lang]
   const qs = storeCode ? `?code=${encodeURIComponent(storeCode)}` : ''
+  const contactMethods = buildContactMethods(contactInfo, ui)
+
+  function handleContactMerchant() {
+    if (contactMethods.length === 0) {
+      alert(ui.noMerchantContact)
+      return
+    }
+    if (contactMethods.length === 1) {
+      window.location.href = contactMethods[0].href
+      return
+    }
+    setShowContactSheet(true)
+  }
 
   return (
     <main style={s.page}>
@@ -344,7 +419,7 @@ export default function MePage() {
                 <span style={s.listLabel}>{ui.myFavorites}</span>
                 <span style={s.listArrow}>›</span>
               </button>
-              <button type="button" style={s.listItem} onClick={() => alert(ui.comingSoon)}>
+              <button type="button" style={s.listItem} onClick={handleContactMerchant}>
                 <span style={s.listIcon}>💬</span>
                 <span style={s.listLabel}>{ui.contactService}</span>
                 <span style={s.listArrow}>›</span>
@@ -363,6 +438,29 @@ export default function MePage() {
             )}
         </>
       </div>
+
+      {showContactSheet && (
+        <>
+          <button type="button" aria-label={ui.back} style={s.overlay} onClick={() => setShowContactSheet(false)} />
+          <div style={s.sheet}>
+            <div style={s.sheetTitle}>{ui.chooseContact}</div>
+            {contactMethods.map((method) => (
+              <a
+                key={method.type}
+                href={method.href}
+                target={method.type === 'phone' ? undefined : '_blank'}
+                rel={method.type === 'phone' ? undefined : 'noreferrer'}
+                style={s.contactOption}
+                onClick={() => setShowContactSheet(false)}
+              >
+                <span style={s.contactOptionLabel}>{method.label}</span>
+                <span style={s.contactOptionValue}>{method.value}</span>
+                <span style={s.listArrow}>›</span>
+              </a>
+            ))}
+          </div>
+        </>
+      )}
 
       <CustomerBottomNav code={storeCode} lang={lang} />
     </main>
@@ -608,6 +706,50 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 600,
     textDecoration: 'none',
+  },
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    border: 'none',
+    background: 'rgba(0,0,0,0.28)',
+    zIndex: 50,
+    cursor: 'pointer',
+  },
+  sheet: {
+    position: 'fixed',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 51,
+    background: '#fff',
+    borderRadius: '16px 16px 0 0',
+    padding: '16px 14px max(18px, env(safe-area-inset-bottom))',
+  },
+  sheetTitle: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: '#1a1a1a',
+    textAlign: 'center' as const,
+    marginBottom: 10,
+  },
+  contactOption: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '13px 12px',
+    borderBottom: '1px solid #f2f2f2',
+    textDecoration: 'none',
+    color: 'inherit',
+  },
+  contactOptionLabel: { width: 92, fontSize: 14, fontWeight: 700, color: '#1a1a1a', flexShrink: 0 },
+  contactOptionValue: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    color: '#666',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
   },
 }
 

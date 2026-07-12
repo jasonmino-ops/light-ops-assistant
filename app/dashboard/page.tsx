@@ -629,6 +629,7 @@ function HotColumn({
 type StoreConfig = {
   id: string; name: string; checkoutMode: string; currencyCode: string
   bannerUrl: string | null; announcement: string | null; promoText: string | null
+  contactPhone: string | null; contactTelegram: string | null; contactWhatsApp: string | null
 }
 
 function StoreConfigPanel({ t }: { t: (k: string) => string }) {
@@ -648,6 +649,12 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   const [annOrig, setAnnOrig]         = useState<Record<string, string>>({})
   const [promoDraft, setPromoDraft]   = useState<Record<string, string>>({})
   const [promoOrig, setPromoOrig]     = useState<Record<string, string>>({})
+  const [phoneDraft, setPhoneDraft]   = useState<Record<string, string>>({})
+  const [phoneOrig, setPhoneOrig]     = useState<Record<string, string>>({})
+  const [telegramDraft, setTelegramDraft] = useState<Record<string, string>>({})
+  const [telegramOrig, setTelegramOrig] = useState<Record<string, string>>({})
+  const [whatsAppDraft, setWhatsAppDraft] = useState<Record<string, string>>({})
+  const [whatsAppOrig, setWhatsAppOrig] = useState<Record<string, string>>({})
   const [configSaving, setConfigSaving] = useState<Record<string, boolean>>({})
   const [configSaved, setConfigSaved] = useState<Record<string, boolean>>({})
   const [configErr, setConfigErr] = useState<Record<string, string>>({})
@@ -663,20 +670,32 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         const initBanner: Record<string, string | null> = {}
         const initAnn: Record<string, string> = {}
         const initPromo: Record<string, string> = {}
+        const initPhone: Record<string, string> = {}
+        const initTelegram: Record<string, string> = {}
+        const initWhatsApp: Record<string, string> = {}
         list.forEach((s) => {
           initMode[s.id]   = s.checkoutMode
           initCurrency[s.id] = s.currencyCode
           initBanner[s.id] = s.bannerUrl ?? null
           initAnn[s.id]    = s.announcement ?? ''
           initPromo[s.id]  = s.promoText ?? ''
+          initPhone[s.id]  = s.contactPhone ?? ''
+          initTelegram[s.id] = s.contactTelegram ?? ''
+          initWhatsApp[s.id] = s.contactWhatsApp ?? ''
         })
         setPending(initMode)
         setCurrencyPending(initCurrency)
         setBannerUrls(initBanner)
         setAnnDraft(initAnn)
         setPromoDraft(initPromo)
+        setPhoneDraft(initPhone)
+        setTelegramDraft(initTelegram)
+        setWhatsAppDraft(initWhatsApp)
         setAnnOrig(initAnn)
         setPromoOrig(initPromo)
+        setPhoneOrig(initPhone)
+        setTelegramOrig(initTelegram)
+        setWhatsAppOrig(initWhatsApp)
       })
       .catch(() => {})
   }, [])
@@ -787,20 +806,35 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         body: JSON.stringify({
           announcement: annDraft[sid] ?? '',
           promoText: promoDraft[sid] ?? '',
+          contactPhone: phoneDraft[sid] ?? '',
+          contactTelegram: telegramDraft[sid] ?? '',
+          contactWhatsApp: whatsAppDraft[sid] ?? '',
         }),
       }, OWNER_CTX)
       const body = await res.json().catch(() => null)
       if (res.ok) {
         const nextAnn = body?.announcement ?? ''
         const nextPromo = body?.promoText ?? ''
+        const nextPhone = body?.contactPhone ?? ''
+        const nextTelegram = body?.contactTelegram ?? ''
+        const nextWhatsApp = body?.contactWhatsApp ?? ''
         setAnnDraft((v) => ({ ...v, [sid]: nextAnn }))
         setPromoDraft((v) => ({ ...v, [sid]: nextPromo }))
+        setPhoneDraft((v) => ({ ...v, [sid]: nextPhone }))
+        setTelegramDraft((v) => ({ ...v, [sid]: nextTelegram }))
+        setWhatsAppDraft((v) => ({ ...v, [sid]: nextWhatsApp }))
         setAnnOrig((v) => ({ ...v, [sid]: nextAnn }))
         setPromoOrig((v) => ({ ...v, [sid]: nextPromo }))
+        setPhoneOrig((v) => ({ ...v, [sid]: nextPhone }))
+        setTelegramOrig((v) => ({ ...v, [sid]: nextTelegram }))
+        setWhatsAppOrig((v) => ({ ...v, [sid]: nextWhatsApp }))
         setConfigSaved((v) => ({ ...v, [sid]: true }))
         setTimeout(() => setConfigSaved((v) => ({ ...v, [sid]: false })), 2000)
       } else {
-        setConfigErr((v) => ({ ...v, [sid]: body?.message ?? body?.error ?? t('dashboard.saveFailed') }))
+        const msg = body?.error === 'INVALID_CONTACT_FIELD'
+          ? t('dashboard.contactFormatInvalid')
+          : body?.message ?? body?.error ?? t('dashboard.saveFailed')
+        setConfigErr((v) => ({ ...v, [sid]: msg }))
       }
     } catch {
       setConfigErr((v) => ({ ...v, [sid]: t('common.networkError') }))
@@ -811,7 +845,20 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
 
   function menuConfigChanged(sid: string) {
     return (annDraft[sid] ?? '') !== (annOrig[sid] ?? '') ||
-      (promoDraft[sid] ?? '') !== (promoOrig[sid] ?? '')
+      (promoDraft[sid] ?? '') !== (promoOrig[sid] ?? '') ||
+      (phoneDraft[sid] ?? '') !== (phoneOrig[sid] ?? '') ||
+      (telegramDraft[sid] ?? '') !== (telegramOrig[sid] ?? '') ||
+      (whatsAppDraft[sid] ?? '') !== (whatsAppOrig[sid] ?? '')
+  }
+
+  function updateContactDraft(
+    setter: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+    sid: string,
+    value: string,
+  ) {
+    setter((v) => ({ ...v, [sid]: value }))
+    setConfigErr((v) => ({ ...v, [sid]: '' }))
+    setConfigSaved((v) => ({ ...v, [sid]: false }))
   }
 
   if (stores.length === 0) return null
@@ -951,6 +998,48 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
                 setConfigSaved((v) => ({ ...v, [store.id]: false }))
               }}
             />
+
+            <div style={sc.contactBox}>
+              <div style={sc.menuSectionTitle}>{t('dashboard.customerContactTitle')}</div>
+              <div style={sc.fieldLabel}>{t('dashboard.contactPhone')}</div>
+              <div style={sc.inputRow}>
+                <input
+                  style={sc.input}
+                  value={phoneDraft[store.id] ?? ''}
+                  placeholder={t('dashboard.contactPhonePh')}
+                  onChange={(e) => updateContactDraft(setPhoneDraft, store.id, e.target.value)}
+                />
+                <button type="button" style={sc.clearBtn} onClick={() => updateContactDraft(setPhoneDraft, store.id, '')}>
+                  {t('dashboard.clearContact')}
+                </button>
+              </div>
+
+              <div style={sc.fieldLabel}>{t('dashboard.contactTelegram')}</div>
+              <div style={sc.inputRow}>
+                <input
+                  style={sc.input}
+                  value={telegramDraft[store.id] ?? ''}
+                  placeholder={t('dashboard.contactTelegramPh')}
+                  onChange={(e) => updateContactDraft(setTelegramDraft, store.id, e.target.value)}
+                />
+                <button type="button" style={sc.clearBtn} onClick={() => updateContactDraft(setTelegramDraft, store.id, '')}>
+                  {t('dashboard.clearContact')}
+                </button>
+              </div>
+
+              <div style={sc.fieldLabel}>{t('dashboard.contactWhatsApp')}</div>
+              <div style={sc.inputRow}>
+                <input
+                  style={sc.input}
+                  value={whatsAppDraft[store.id] ?? ''}
+                  placeholder={t('dashboard.contactWhatsAppPh')}
+                  onChange={(e) => updateContactDraft(setWhatsAppDraft, store.id, e.target.value)}
+                />
+                <button type="button" style={sc.clearBtn} onClick={() => updateContactDraft(setWhatsAppDraft, store.id, '')}>
+                  {t('dashboard.clearContact')}
+                </button>
+              </div>
+            </div>
             <div style={sc.configFooter}>
               <div style={sc.configStatus}>
                 {configErr[store.id]
@@ -2049,6 +2138,10 @@ const sc: Record<string, React.CSSProperties> = {
   configFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 8 },
   configStatus: { flex: 1, minWidth: 0 },
   textarea: { width: '100%', fontSize: 13, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical' as const, outline: 'none', lineHeight: 1.5, boxSizing: 'border-box' as const },
+  contactBox: { marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--border)' },
+  inputRow: { display: 'flex', alignItems: 'center', gap: 8 },
+  input: { flex: 1, minWidth: 0, height: 34, fontSize: 13, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', outline: 'none', boxSizing: 'border-box' as const },
+  clearBtn: { flexShrink: 0, height: 34, fontSize: 12, fontWeight: 600, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--muted)', cursor: 'pointer' },
   bannerPreviewWrap: { borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 4 },
   bannerPreview: { width: '100%', height: 120, objectFit: 'cover' as const, display: 'block' },
   bannerBtns: { display: 'flex', gap: 8, padding: '8px 8px' },
