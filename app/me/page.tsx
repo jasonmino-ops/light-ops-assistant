@@ -309,10 +309,6 @@ export default function MePage() {
       alert(ui.noMerchantContact)
       return
     }
-    if (contactMethods.length === 1) {
-      window.location.href = contactMethods[0].href
-      return
-    }
     setShowContactSheet(true)
   }
 
