@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 
-type Status = 'PASS' | 'WARN' | 'FAIL'
+type Status = 'PASS' | 'WARN' | 'FAIL' | 'INFO'
 
 type Check = {
   key: string
@@ -50,11 +50,11 @@ export async function GET(req: NextRequest) {
   // ── 3. ENV: TENANT_ID ─────────────────────────────────────────────────────
   const tenantId = process.env.TENANT_ID ?? ''
   if (!tenantId) {
-    checks.push({ key: 'tenant_id', name: 'TENANT_ID', status: 'WARN', detail: '未配置，使用默认 seed-tenant-001' })
+    checks.push({ key: 'tenant_id', name: 'TENANT_ID 历史兼容配置', status: 'INFO', detail: '当前仅用于旧用户名绑定流程，不影响现有商户主业务。' })
   } else if (tenantId === 'seed-tenant-001') {
-    checks.push({ key: 'tenant_id', name: 'TENANT_ID', status: 'WARN', detail: `当前值 ${tenantId}（种子租户，生产环境应使用正式 ID）` })
+    checks.push({ key: 'tenant_id', name: 'TENANT_ID 历史兼容配置', status: 'INFO', detail: '当前仅用于旧用户名绑定流程，不影响现有商户主业务。' })
   } else {
-    checks.push({ key: 'tenant_id', name: 'TENANT_ID', status: 'PASS', detail: tenantId })
+    checks.push({ key: 'tenant_id', name: 'TENANT_ID 历史兼容配置', status: 'INFO', detail: '当前仅用于旧用户名绑定流程，不影响现有商户主业务。' })
   }
 
   // ── 4. ENV: TELEGRAM_BOT_USERNAME (merchant bot) ──────────────────────────
@@ -93,13 +93,11 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 4c. ENV: STORE_OPEN_CODE — fixed "open store" QR entry code ──────────
-  const botUsername = (process.env.TELEGRAM_BOT_USERNAME ?? '').replace(/^@/, '').replace(/[^a-zA-Z0-9_]/g, '')
   const storeOpenCode = process.env.STORE_OPEN_CODE?.trim() ?? ''
   if (!storeOpenCode) {
-    checks.push({ key: 'store_open_code', name: 'STORE_OPEN_CODE（开店验证码）', status: 'WARN', detail: '未配置，新商户自助开店功能不可用' })
+    checks.push({ key: 'store_open_code', name: 'STORE_OPEN_CODE 可选功能配置', status: 'INFO', detail: '当前未接入真实开店验证码校验，不影响已有商户运行。' })
   } else {
-    const openLink = botUsername ? `https://t.me/${botUsername}?startapp=open` : '（需先配置 TELEGRAM_BOT_USERNAME）'
-    checks.push({ key: 'store_open_code', name: 'STORE_OPEN_CODE（开店验证码）', status: 'PASS', detail: `已配置 · 固定开店码：${openLink}` })
+    checks.push({ key: 'store_open_code', name: 'STORE_OPEN_CODE 可选功能配置', status: 'INFO', detail: '当前未接入真实开店验证码校验，不影响已有商户运行。' })
   }
 
   // ── 5. Auth context ────────────────────────────────────────────────────────

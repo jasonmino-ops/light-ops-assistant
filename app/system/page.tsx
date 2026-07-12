@@ -1,9 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 
-type Status = 'PASS' | 'WARN' | 'FAIL'
+type Status = 'PASS' | 'WARN' | 'FAIL' | 'INFO'
 
 type Check = {
   key: string
@@ -21,24 +22,28 @@ const STATUS_COLOR: Record<Status, string> = {
   PASS: '#52c41a',
   WARN: '#fa8c16',
   FAIL: '#ff4d4f',
+  INFO: '#1677ff',
 }
 
 const STATUS_BG: Record<Status, string> = {
   PASS: '#f6ffed',
   WARN: '#fff7e6',
   FAIL: '#fff1f0',
+  INFO: '#e6f4ff',
 }
 
 const STATUS_ICON: Record<Status, string> = {
   PASS: '✓',
   WARN: '⚠',
   FAIL: '✕',
+  INFO: 'i',
 }
 
 const OVERALL_LABEL: Record<Status, string> = {
   PASS: '系统正常',
   WARN: '存在警告',
   FAIL: '存在故障',
+  INFO: '配置提示',
 }
 
 export default function SystemPage() {
@@ -62,6 +67,8 @@ export default function SystemPage() {
   useEffect(() => { load() }, [])
 
   const overall = health?.status ?? 'WARN'
+  const runtimeChecks = health?.checks.filter((check) => check.status !== 'INFO') ?? []
+  const configNotices = health?.checks.filter((check) => check.status === 'INFO') ?? []
 
   return (
     <div style={s.page}>
@@ -69,6 +76,7 @@ export default function SystemPage() {
       {/* Header */}
       <div style={{ ...s.header, background: STATUS_COLOR[overall] }}>
         <div>
+          <Link href="/ops" style={s.backLink}>← 返回运营后台</Link>
           <div style={s.headerTitle}>系统自检</div>
           <div style={s.headerSub}>
             {loading ? '检测中…' : OVERALL_LABEL[overall]}
@@ -90,9 +98,10 @@ export default function SystemPage() {
               {OVERALL_LABEL[overall]}
             </span>
             <span style={s.overallCount}>
-              {health.checks.filter((c) => c.status === 'PASS').length} PASS ·{' '}
-              {health.checks.filter((c) => c.status === 'WARN').length} WARN ·{' '}
-              {health.checks.filter((c) => c.status === 'FAIL').length} FAIL
+              {runtimeChecks.filter((c) => c.status === 'PASS').length} PASS ·{' '}
+              {runtimeChecks.filter((c) => c.status === 'WARN').length} WARN ·{' '}
+              {runtimeChecks.filter((c) => c.status === 'FAIL').length} FAIL ·{' '}
+              {configNotices.length} 配置提示
             </span>
           </div>
         )}
@@ -102,26 +111,42 @@ export default function SystemPage() {
           <div key={i} style={s.skeletonCard} />
         ))}
 
-        {/* Check list */}
-        {!loading && health?.checks.map((check) => (
-          <div key={check.key} style={s.checkCard}>
-            <div
-              style={{
-                ...s.statusDot,
-                background: STATUS_COLOR[check.status],
-              }}
-            >
-              <span style={s.statusIcon}>{STATUS_ICON[check.status]}</span>
-            </div>
-            <div style={s.checkBody}>
-              <div style={s.checkName}>{check.name}</div>
-              <div style={s.checkDetail}>{check.detail}</div>
-            </div>
-            <div style={{ ...s.badge, color: STATUS_COLOR[check.status], background: STATUS_BG[check.status] }}>
-              {check.status}
-            </div>
-          </div>
-        ))}
+        {/* Runtime checks */}
+        {!loading && health && (
+          <>
+            <div style={s.sectionTitle}>系统运行检查</div>
+            {runtimeChecks.map((check) => (
+              <CheckCard key={check.key} check={check} />
+            ))}
+
+            <div style={s.sectionTitle}>配置提示</div>
+            {configNotices.map((check) => (
+              <CheckCard key={check.key} check={check} />
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CheckCard({ check }: { check: Check }) {
+  return (
+    <div style={s.checkCard}>
+      <div
+        style={{
+          ...s.statusDot,
+          background: STATUS_COLOR[check.status],
+        }}
+      >
+        <span style={s.statusIcon}>{STATUS_ICON[check.status]}</span>
+      </div>
+      <div style={s.checkBody}>
+        <div style={s.checkName}>{check.name}</div>
+        <div style={s.checkDetail}>{check.detail}</div>
+      </div>
+      <div style={{ ...s.badge, color: STATUS_COLOR[check.status], background: STATUS_BG[check.status] }}>
+        {check.status}
       </div>
     </div>
   )
@@ -131,6 +156,11 @@ const s: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f5f7fa', display: 'flex', flexDirection: 'column' },
 
   header: { padding: '18px 16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
+  backLink: {
+    display: 'inline-flex', alignItems: 'center', minHeight: 34, marginBottom: 8,
+    color: 'rgba(255,255,255,0.95)', fontSize: 14, fontWeight: 700,
+    textDecoration: 'none',
+  },
   headerTitle: { fontSize: 18, fontWeight: 700, color: '#fff' },
   headerSub: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
   refreshBtn: {
@@ -159,6 +189,7 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex', alignItems: 'center', gap: 12,
     boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
   },
+  sectionTitle: { fontSize: 13, fontWeight: 700, color: '#555', margin: '10px 4px 2px' },
   statusDot: {
     width: 32, height: 32, borderRadius: '50%',
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
