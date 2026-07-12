@@ -2120,7 +2120,7 @@ const sc: Record<string, React.CSSProperties> = {
   label: { fontSize: 12, color: 'var(--muted)', marginBottom: 6 },
   controls: { display: 'flex', gap: 8, alignItems: 'center' },
   select: { flex: 1, fontSize: 14, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' },
-  saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' as const },
+  saveBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--blue)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' as const },
   saveBtnDisabled: { opacity: 0.55, cursor: 'not-allowed' },
   cancelBtn: { fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--muted)', cursor: 'pointer', whiteSpace: 'nowrap' as const },
   editBtn: { fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 6, border: '1px solid var(--blue)', background: '#fff', color: 'var(--blue)', cursor: 'pointer', whiteSpace: 'nowrap' as const, flexShrink: 0 },
