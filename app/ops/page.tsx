@@ -18,12 +18,25 @@ type StoreApplicationRow = {
 
 type ConversationRow = {
   telegramId: string
+  displayName?: string | null
   senderName: string | null
   tenantId: string | null
+  tenantName?: string | null
   lastMessage: string
   lastAt: string
   messageCount: number
   sessionState: string | null  // auto_active | awaiting_human | human_active | null
+}
+
+type ConversationsResponse = {
+  activeConversations: ConversationRow[]
+  archivedConversations: ConversationRow[]
+  counts: {
+    active: number
+    archived: number
+    awaitingHuman: number
+    humanActive: number
+  }
 }
 
 type ThreadMessage = {
@@ -71,6 +84,8 @@ export default function OpsPage() {
   const [opsRole, setOpsRole] = useState<string>('')
   const [applications, setApplications] = useState<StoreApplicationRow[]>([])
   const [conversations, setConversations] = useState<ConversationRow[]>([])
+  const [archivedConversations, setArchivedConversations] = useState<ConversationRow[]>([])
+  const [conversationCounts, setConversationCounts] = useState<ConversationsResponse['counts'] | null>(null)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [showAllConversations, setShowAllConversations] = useState(false)
   const [showAllTenants, setShowAllTenants] = useState(false)
@@ -117,8 +132,18 @@ export default function OpsPage() {
 
   function loadConversations() {
     apiFetch('/api/ops/conversations', undefined, OWNER_CTX)
-      .then((r) => (r.ok ? r.json() : []))
-      .then(setConversations)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: ConversationsResponse | ConversationRow[] | null) => {
+        if (Array.isArray(body)) {
+          setConversations(body)
+          setArchivedConversations([])
+          setConversationCounts(null)
+          return
+        }
+        setConversations(body?.activeConversations ?? [])
+        setArchivedConversations(body?.archivedConversations ?? [])
+        setConversationCounts(body?.counts ?? null)
+      })
       .catch(() => {})
   }
 
@@ -218,7 +243,7 @@ export default function OpsPage() {
         <div className="ops-summary-grid" style={s.summaryGrid}>
           <SummaryTile label="运营中商户" value={String(activeTenantCount)} />
           <SummaryTile label="当前筛选" value={String(tenants.length)} />
-          <SummaryTile label="客户会话" value={String(conversations.length)} />
+          <SummaryTile label="当前会话" value={String(conversationCounts?.active ?? conversations.length)} />
           <SummaryTile label="待处理申请" value={String(applications.length)} />
         </div>
 
@@ -243,6 +268,7 @@ export default function OpsPage() {
         {/* ── Customer conversations ── */}
         <ConversationsSection
           conversations={conversations}
+          archivedConversations={archivedConversations}
           onRefresh={loadConversations}
           showAll={showAllConversations}
           onToggleAll={() => setShowAllConversations((value) => !value)}
@@ -526,16 +552,19 @@ function BroadcastSection({ tenants }: { tenants: TenantRow[] }) {
 
 function ConversationsSection({
   conversations,
+  archivedConversations,
   onRefresh,
   showAll,
   onToggleAll,
 }: {
   conversations: ConversationRow[]
+  archivedConversations: ConversationRow[]
   onRefresh: () => void
   showAll: boolean
   onToggleAll: () => void
 }) {
   const [selected, setSelected] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
   const [thread, setThread] = useState<ThreadMessage[]>([])
   const [loadingThread, setLoadingThread] = useState(false)
   const [replyText, setReplyText] = useState('')
@@ -600,8 +629,56 @@ function ConversationsSection({
     }
   }
 
-  const selectedConv = conversations.find((c) => c.telegramId === selected) ?? null
+  const allConversations = [...conversations, ...archivedConversations]
+  const selectedConv = allConversations.find((c) => c.telegramId === selected) ?? null
   const visibleConversations = showAll ? conversations : conversations.slice(0, 5)
+
+  function conversationName(conv: ConversationRow) {
+    return conv.displayName ?? conv.senderName ?? conv.telegramId
+  }
+
+  function statusLabel(sessionState: string | null) {
+    if (sessionState === 'awaiting_human') return '等待人工'
+    if (sessionState === 'human_active') return '人工处理中'
+    if (sessionState === 'auto_active') return '自动服务'
+    return null
+  }
+
+  function statusStyle(sessionState: string | null) {
+    if (sessionState === 'awaiting_human') return s.stateAwaiting
+    if (sessionState === 'human_active') return s.stateHuman
+    if (sessionState === 'auto_active') return s.stateAuto
+    return null
+  }
+
+  function renderConversationRow(conv: ConversationRow) {
+    const label = statusLabel(conv.sessionState)
+    const labelStyle = statusStyle(conv.sessionState)
+    return (
+      <div
+        key={conv.telegramId}
+        onClick={() => openConversation(conv.telegramId)}
+        style={s.convRow}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <span style={s.convName}>{conversationName(conv)}</span>
+            <span style={s.convTime}>{fmtTime(conv.lastAt)}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <div style={s.convPreview}>
+              {conv.lastMessage.length > 40 ? conv.lastMessage.slice(0, 40) + '…' : conv.lastMessage}
+            </div>
+            {label && labelStyle && <span style={labelStyle}>{label}</span>}
+          </div>
+          {conv.tenantName && (
+            <div style={s.convSource}>{conv.tenantName}</div>
+          )}
+        </div>
+        <div style={s.convCount}>客户消息数 {conv.messageCount}</div>
+      </div>
+    )
+  }
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleString('zh-CN', {
@@ -614,7 +691,7 @@ function ConversationsSection({
       {/* 区块标题 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ ...s.appSectionTitle, color: '#1677ff', margin: 0 }}>
-          💬 客户会话
+          💬 当前会话
           {conversations.length > 0 && (
             <span style={{ ...s.appBadge, background: '#1677ff' }}>{conversations.length}</span>
           )}
@@ -645,38 +722,28 @@ function ConversationsSection({
               暂无客户消息
             </div>
           ) : (
-            visibleConversations.map((conv) => (
-              <div
-                key={conv.telegramId}
-                onClick={() => openConversation(conv.telegramId)}
-                style={s.convRow}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={s.convName}>{conv.senderName ?? conv.telegramId}</span>
-                    <span style={s.convTime}>{fmtTime(conv.lastAt)}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                    <div style={s.convPreview}>
-                      {conv.lastMessage.length > 40 ? conv.lastMessage.slice(0, 40) + '…' : conv.lastMessage}
-                    </div>
-                    {conv.sessionState === 'awaiting_human' && (
-                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#fff7e6', color: '#fa8c16', border: '1px solid #ffd591', whiteSpace: 'nowrap' }}>等待接管</span>
-                    )}
-                    {conv.sessionState === 'human_active' && (
-                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#f6ffed', color: '#52c41a', border: '1px solid #b7eb8f', whiteSpace: 'nowrap' }}>人工中</span>
-                    )}
-                  </div>
-                </div>
-                <div style={s.convCount}>{conv.messageCount}</div>
-              </div>
-            ))
+            visibleConversations.map(renderConversationRow)
           )}
           {conversations.length > 5 && (
             <button type="button" style={s.fullWidthGhostBtn} onClick={onToggleAll}>
               {showAll ? '收起会话' : '查看全部会话'}
             </button>
           )}
+          <div style={s.archiveBox}>
+            <button type="button" style={s.archiveToggle} onClick={() => setShowArchived((value) => !value)}>
+              {showArchived ? '收起历史会话' : `查看历史会话（${archivedConversations.length}）`}
+            </button>
+            <div style={s.archiveHint}>超过 30 天无新客户消息，且不处于人工处理状态</div>
+            {showArchived && (
+              <div style={{ marginTop: 8 }}>
+                {archivedConversations.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#bbb', textAlign: 'center', padding: '8px 0' }}>暂无历史会话</div>
+                ) : (
+                  archivedConversations.map(renderConversationRow)
+                )}
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -686,7 +753,7 @@ function ConversationsSection({
           {/* 客户名称 + 接管按钮 */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a' }}>
-              {selectedConv.senderName ?? selectedConv.telegramId}
+              {conversationName(selectedConv)}
               <span style={{ fontSize: 11, color: '#bbb', marginLeft: 8, fontWeight: 400 }}>
                 TG: {selectedConv.telegramId}
               </span>
@@ -1187,11 +1254,39 @@ const s: Record<string, React.CSSProperties> = {
   convName: { fontSize: 13, fontWeight: 600, color: '#1a1a1a' },
   convTime: { fontSize: 11, color: '#bbb' },
   convPreview: { fontSize: 12, color: '#888', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  convSource: { fontSize: 10, color: '#b7b7b7', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   convCount: {
-    minWidth: 20, height: 20, borderRadius: 10, background: '#1677ff', color: '#fff',
-    fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: '0 5px', flexShrink: 0,
+    minWidth: 66, height: 22, borderRadius: 12, background: '#eef6ff', color: '#1677ff',
+    fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '0 7px', flexShrink: 0, whiteSpace: 'nowrap',
   },
+  stateAwaiting: {
+    fontSize: 10, padding: '1px 6px', borderRadius: 10,
+    background: '#fff7e6', color: '#fa8c16', border: '1px solid #ffd591', whiteSpace: 'nowrap',
+  },
+  stateHuman: {
+    fontSize: 10, padding: '1px 6px', borderRadius: 10,
+    background: '#f6ffed', color: '#52c41a', border: '1px solid #b7eb8f', whiteSpace: 'nowrap',
+  },
+  stateAuto: {
+    fontSize: 10, padding: '1px 6px', borderRadius: 10,
+    background: '#f5f5f5', color: '#8c8c8c', border: '1px solid #e5e7eb', whiteSpace: 'nowrap',
+  },
+  archiveBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTop: '1px dashed #e5e7eb',
+  },
+  archiveToggle: {
+    border: 'none',
+    background: 'transparent',
+    color: '#1677ff',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+    padding: 0,
+  },
+  archiveHint: { fontSize: 11, color: '#b7b7b7', marginTop: 4 },
 
   // thread
   threadBox: {

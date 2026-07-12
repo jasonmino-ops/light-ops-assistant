@@ -1,12 +1,44 @@
 /**
  * GET /api/ops/conversations
  *
- * 返回客户会话列表（按最近消息时间倒序）。
+ * 返回客户会话列表（按运营优先级排序）。
  * 每个会话代表一个与 bot 交互过的客户，包含最新消息预览。
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { checkOpsAuth } from '@/lib/ops-auth'
 import { prisma } from '@/lib/prisma'
+
+const CUSTOMER_MESSAGE_LIMIT = 300
+const ACTIVE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+
+type ConversationRow = {
+  telegramId: string
+  displayName: string | null
+  senderName: string | null
+  tenantId: string | null
+  tenantName: string | null
+  lastMessage: string
+  lastAt: string
+  messageCount: number
+  sessionState: string | null
+}
+
+function statePriority(sessionState: string | null) {
+  if (sessionState === 'awaiting_human') return 0
+  if (sessionState === 'human_active') return 1
+  return 2
+}
+
+function sortActive(a: ConversationRow, b: ConversationRow) {
+  const pa = statePriority(a.sessionState)
+  const pb = statePriority(b.sessionState)
+  if (pa !== pb) return pa - pb
+  return new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()
+}
+
+function sortByLastAtDesc(a: ConversationRow, b: ConversationRow) {
+  return new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()
+}
 
 export async function GET(req: NextRequest) {
   const opsRole = await checkOpsAuth(req)
@@ -17,7 +49,7 @@ export async function GET(req: NextRequest) {
     prisma.telegramMessage.findMany({
       where: { sentBy: 'CUSTOMER' },
       orderBy: { createdAt: 'desc' },
-      take: 300,
+      take: CUSTOMER_MESSAGE_LIMIT,
       select: {
         recipientTelegramId: true,
         senderName: true,
@@ -32,25 +64,28 @@ export async function GET(req: NextRequest) {
   ])
 
   const sessionStateMap = new Map(supportSessions.map((s) => [s.telegramId, s.sessionState]))
+  const tenantIds = Array.from(new Set(messages.map((m) => m.tenantId).filter(Boolean) as string[]))
+  const tenants = tenantIds.length > 0
+    ? await prisma.tenant.findMany({
+        where: { id: { in: tenantIds } },
+        select: { id: true, name: true },
+      })
+    : []
+  const tenantNameMap = new Map(tenants.map((tenant) => [tenant.id, tenant.name]))
 
   // 按 telegramId 聚合，保留最新消息作为预览
-  const map = new Map<string, {
-    telegramId: string
-    senderName: string | null
-    tenantId: string | null
-    lastMessage: string
-    lastAt: string
-    messageCount: number
-    sessionState: string | null
-  }>()
+  const map = new Map<string, ConversationRow>()
 
   for (const m of messages) {
     const tid = m.recipientTelegramId
+    const senderName = m.senderName ?? null
     if (!map.has(tid)) {
       map.set(tid, {
         telegramId: tid,
-        senderName: m.senderName ?? null,
+        displayName: senderName,
+        senderName,
         tenantId: m.tenantId ?? null,
+        tenantName: m.tenantId ? tenantNameMap.get(m.tenantId) ?? null : null,
         lastMessage: m.content,
         lastAt: m.createdAt.toISOString(),
         messageCount: 1,
@@ -63,5 +98,34 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json(Array.from(map.values()))
+  const cutoff = new Date(Date.now() - ACTIVE_WINDOW_MS)
+  const activeConversations: ConversationRow[] = []
+  const archivedConversations: ConversationRow[] = []
+
+  for (const conversation of map.values()) {
+    const lastAt = new Date(conversation.lastAt)
+    const protectedByHumanState =
+      conversation.sessionState === 'awaiting_human' ||
+      conversation.sessionState === 'human_active'
+    // 新客户消息会更新 TelegramMessage.createdAt；超过 30 天的普通会话会自然重新进入当前会话。
+    if (protectedByHumanState || lastAt >= cutoff) {
+      activeConversations.push(conversation)
+    } else {
+      archivedConversations.push(conversation)
+    }
+  }
+
+  activeConversations.sort(sortActive)
+  archivedConversations.sort(sortByLastAtDesc)
+
+  return NextResponse.json({
+    activeConversations,
+    archivedConversations,
+    counts: {
+      active: activeConversations.length,
+      archived: archivedConversations.length,
+      awaitingHuman: activeConversations.filter((row) => row.sessionState === 'awaiting_human').length,
+      humanActive: activeConversations.filter((row) => row.sessionState === 'human_active').length,
+    },
+  })
 }
