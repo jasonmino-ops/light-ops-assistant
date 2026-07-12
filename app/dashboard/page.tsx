@@ -633,6 +633,12 @@ type StoreConfig = {
   storeAddress: string | null; storeLat: number | null; storeLng: number | null
 }
 
+type ContactField = 'contactPhone' | 'contactTelegram' | 'contactWhatsApp'
+
+function isContactField(field: unknown): field is ContactField {
+  return field === 'contactPhone' || field === 'contactTelegram' || field === 'contactWhatsApp'
+}
+
 function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   const [stores, setStores]           = useState<StoreConfig[]>([])
   const [pending, setPending]         = useState<Record<string, string>>({})
@@ -667,6 +673,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   const [configSaving, setConfigSaving] = useState<Record<string, boolean>>({})
   const [configSaved, setConfigSaved] = useState<Record<string, boolean>>({})
   const [configErr, setConfigErr] = useState<Record<string, string>>({})
+  const [contactFieldErrors, setContactFieldErrors] = useState<Record<string, Partial<Record<ContactField, string>>>>({})
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   useEffect(() => {
@@ -821,6 +828,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
     setConfigSaving((v) => ({ ...v, [sid]: true }))
     setConfigSaved((v) => ({ ...v, [sid]: false }))
     setConfigErr((v) => ({ ...v, [sid]: '' }))
+    setContactFieldErrors((v) => ({ ...v, [sid]: {} }))
     try {
       const res = await apiFetch(`/api/stores/${sid}/menu-config`, {
         method: 'PATCH',
@@ -864,10 +872,14 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
         setConfigSaved((v) => ({ ...v, [sid]: true }))
         setTimeout(() => setConfigSaved((v) => ({ ...v, [sid]: false })), 2000)
       } else {
-        const msg = body?.error === 'INVALID_CONTACT_FIELD'
-          ? t('dashboard.contactFormatInvalid')
-          : body?.message ?? body?.error ?? t('dashboard.saveFailed')
-        setConfigErr((v) => ({ ...v, [sid]: msg }))
+        if (body?.error === 'INVALID_CONTACT_FIELD' && isContactField(body?.field)) {
+          setContactFieldErrors((v) => ({
+            ...v,
+            [sid]: { ...(v[sid] ?? {}), [body.field]: t('dashboard.contactFormatInvalid') },
+          }))
+        } else {
+          setConfigErr((v) => ({ ...v, [sid]: body?.message ?? body?.error ?? t('dashboard.saveFailed') }))
+        }
       }
     } catch {
       setConfigErr((v) => ({ ...v, [sid]: t('common.networkError') }))
@@ -890,11 +902,16 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
   function updateContactDraft(
     setter: React.Dispatch<React.SetStateAction<Record<string, string>>>,
     sid: string,
+    field: ContactField,
     value: string,
   ) {
     setter((v) => ({ ...v, [sid]: value }))
     setConfigErr((v) => ({ ...v, [sid]: '' }))
     setConfigSaved((v) => ({ ...v, [sid]: false }))
+    setContactFieldErrors((v) => ({
+      ...v,
+      [sid]: { ...(v[sid] ?? {}), [field]: '' },
+    }))
   }
 
   function updateAddressDraft(sid: string, value: string) {
@@ -1125,12 +1142,15 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
                   style={sc.input}
                   value={phoneDraft[store.id] ?? ''}
                   placeholder={t('dashboard.contactPhonePh')}
-                  onChange={(e) => updateContactDraft(setPhoneDraft, store.id, e.target.value)}
+                  onChange={(e) => updateContactDraft(setPhoneDraft, store.id, 'contactPhone', e.target.value)}
                 />
-                <button type="button" style={sc.clearBtn} onClick={() => updateContactDraft(setPhoneDraft, store.id, '')}>
+                <button type="button" style={sc.clearBtn} onClick={() => updateContactDraft(setPhoneDraft, store.id, 'contactPhone', '')}>
                   {t('dashboard.clearContact')}
                 </button>
               </div>
+              {contactFieldErrors[store.id]?.contactPhone ? (
+                <div style={sc.fieldError}>{contactFieldErrors[store.id]?.contactPhone}</div>
+              ) : null}
 
               <div style={sc.fieldLabel}>{t('dashboard.contactTelegram')}</div>
               <div style={sc.inputRow}>
@@ -1138,12 +1158,15 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
                   style={sc.input}
                   value={telegramDraft[store.id] ?? ''}
                   placeholder={t('dashboard.contactTelegramPh')}
-                  onChange={(e) => updateContactDraft(setTelegramDraft, store.id, e.target.value)}
+                  onChange={(e) => updateContactDraft(setTelegramDraft, store.id, 'contactTelegram', e.target.value)}
                 />
-                <button type="button" style={sc.clearBtn} onClick={() => updateContactDraft(setTelegramDraft, store.id, '')}>
+                <button type="button" style={sc.clearBtn} onClick={() => updateContactDraft(setTelegramDraft, store.id, 'contactTelegram', '')}>
                   {t('dashboard.clearContact')}
                 </button>
               </div>
+              {contactFieldErrors[store.id]?.contactTelegram ? (
+                <div style={sc.fieldError}>{contactFieldErrors[store.id]?.contactTelegram}</div>
+              ) : null}
 
               <div style={sc.fieldLabel}>{t('dashboard.contactWhatsApp')}</div>
               <div style={sc.inputRow}>
@@ -1151,12 +1174,15 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
                   style={sc.input}
                   value={whatsAppDraft[store.id] ?? ''}
                   placeholder={t('dashboard.contactWhatsAppPh')}
-                  onChange={(e) => updateContactDraft(setWhatsAppDraft, store.id, e.target.value)}
+                  onChange={(e) => updateContactDraft(setWhatsAppDraft, store.id, 'contactWhatsApp', e.target.value)}
                 />
-                <button type="button" style={sc.clearBtn} onClick={() => updateContactDraft(setWhatsAppDraft, store.id, '')}>
+                <button type="button" style={sc.clearBtn} onClick={() => updateContactDraft(setWhatsAppDraft, store.id, 'contactWhatsApp', '')}>
                   {t('dashboard.clearContact')}
                 </button>
               </div>
+              {contactFieldErrors[store.id]?.contactWhatsApp ? (
+                <div style={sc.fieldError}>{contactFieldErrors[store.id]?.contactWhatsApp}</div>
+              ) : null}
 
               <div style={sc.fieldLabel}>{t('dashboard.storeAddress')}</div>
               <textarea
@@ -2278,6 +2304,7 @@ const sc: Record<string, React.CSSProperties> = {
   menuSection: { marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--border)' },
   menuSectionTitle: { fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' as const, letterSpacing: '0.04em', marginBottom: 10 },
   fieldLabel: { fontSize: 12, color: 'var(--muted)', marginBottom: 4, marginTop: 8 },
+  fieldError: { fontSize: 12, color: '#dc2626', fontWeight: 600, marginTop: 4 },
   fieldAction: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 6 },
   savedHint: { fontSize: 12, color: '#16a34a', fontWeight: 600 },
   unsavedHint: { fontSize: 12, color: '#d97706', fontWeight: 600 },
