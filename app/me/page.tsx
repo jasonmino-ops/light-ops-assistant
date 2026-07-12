@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import Link from 'next/link'
 import CustomerBottomNav from '@/app/components/CustomerBottomNav'
 import { useDocumentLang } from '@/app/components/useDocumentLang'
@@ -230,6 +230,7 @@ export default function MePage() {
   const [tgId,         setTgId]          = useState('')
   const [availableCouponCount, setAvailableCouponCount] = useState(0)
   const [contactInfo, setContactInfo] = useState<StoreContactInfo>({ contactPhone: null, contactTelegram: null, contactWhatsApp: null })
+  const [contactLoaded, setContactLoaded] = useState(false)
   const [showContactSheet, setShowContactSheet] = useState(false)
 
   useEffect(() => {
@@ -262,7 +263,10 @@ export default function MePage() {
     const initialLang = pickInitialLang(params, tgLang)
     setLang(initialLang)
 
-    if (!code) return
+    if (!code) {
+      setContactLoaded(true)
+      return
+    }
 
     // 拉门店名 + 绑定状态
     const url = `/api/public/menu?code=${encodeURIComponent(code)}` +
@@ -282,6 +286,7 @@ export default function MePage() {
         }
       })
       .catch(() => { /* silent */ })
+      .finally(() => setContactLoaded(true))
 
     // 优惠券可用数量（仅在有 tgId 时拉取）
     if (tgIdLocal) {
@@ -305,11 +310,22 @@ export default function MePage() {
   const contactMethods = buildContactMethods(contactInfo, ui)
 
   function handleContactMerchant() {
+    if (!contactLoaded) return
     if (contactMethods.length === 0) {
       alert(ui.noMerchantContact)
       return
     }
     setShowContactSheet(true)
+  }
+
+  function handleContactOptionClick(e: MouseEvent<HTMLAnchorElement>, method: ContactMethod) {
+    if (method.type !== 'phone') {
+      setShowContactSheet(false)
+      return
+    }
+    e.preventDefault()
+    window.location.href = method.href
+    window.setTimeout(() => setShowContactSheet(false), 300)
   }
 
   return (
@@ -447,7 +463,7 @@ export default function MePage() {
                 target={method.type === 'phone' ? undefined : '_blank'}
                 rel={method.type === 'phone' ? undefined : 'noreferrer'}
                 style={s.contactOption}
-                onClick={() => setShowContactSheet(false)}
+                onClick={(e) => handleContactOptionClick(e, method)}
               >
                 <span style={s.contactOptionLabel}>{method.label}</span>
                 <span style={s.contactOptionValue}>{method.value}</span>
