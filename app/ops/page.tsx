@@ -71,6 +71,9 @@ export default function OpsPage() {
   const [opsRole, setOpsRole] = useState<string>('')
   const [applications, setApplications] = useState<StoreApplicationRow[]>([])
   const [conversations, setConversations] = useState<ConversationRow[]>([])
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const [showAllConversations, setShowAllConversations] = useState(false)
+  const [showAllTenants, setShowAllTenants] = useState(false)
 
   // ── Auth check ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -101,6 +104,7 @@ export default function OpsPage() {
 
   function applyFilter(f: StatusFilter) {
     setStatusFilter(f)
+    setShowAllTenants(false)
     loadTenants(f)
   }
 
@@ -146,28 +150,112 @@ export default function OpsPage() {
     )
   }
 
+  const visibleTenants = showAllTenants ? tenants : tenants.slice(0, 5)
+  const activeTenantCount = tenants.filter((tenant) => tenant.status === 'ACTIVE').length
+  const opsLinks = (
+    <>
+      {opsRole === 'SUPER_ADMIN' && (
+        <Link href="/ops/admins" style={s.sysLink}>管理员</Link>
+      )}
+      <Link href="/ops/overview" style={s.sysLink} title="查看全部商户运行状态">运行概览</Link>
+      <Link href="/ops/health" style={s.sysLink} title="查看平台核心业务链路和当前可识别异常">运行健康</Link>
+      <Link href="/system" style={s.sysLink}>系统自检</Link>
+    </>
+  )
+
   // ─── Render: main ──────────────────────────────────────────────────────────
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <div>
-          <div style={s.headerTitle}>🔧 内部运营后台</div>
-          <div style={s.headerSub}>{tenants.length} 个商户</div>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {opsRole === 'SUPER_ADMIN' && (
-            <Link href="/ops/admins" style={s.sysLink}>管理员</Link>
-          )}
-          <Link href="/ops/overview" style={s.sysLink} title="查看全部商户运行状态">运行概览</Link>
-          <Link href="/ops/health" style={s.sysLink} title="查看平台核心业务链路和当前可识别异常">运行健康</Link>
-          <Link href="/system" style={s.sysLink}>系统自检</Link>
+        <div style={s.headerMain}>
+          <div>
+            <div style={s.headerTitle}>🔧 内部运营后台</div>
+            <div style={s.headerSub}>{tenants.length} 个商户</div>
+          </div>
           <button style={s.createBtn} onClick={() => setShowCreate((v) => !v)}>
             {showCreate ? '取消' : '+ 新增商户'}
           </button>
         </div>
+
+        <div className="ops-desktop-nav" style={s.desktopNav}>
+          {opsLinks}
+        </div>
+
+        <div className="ops-mobile-nav" style={s.mobileNav}>
+          <Link href="/ops" style={{ ...s.mobileNavItem, ...s.mobileNavActive }}>首页</Link>
+          <Link href="/ops/overview" style={s.mobileNavItem}>运行概览</Link>
+          <Link href="/ops/health" style={s.mobileNavItem}>运行健康</Link>
+          <button
+            type="button"
+            style={s.mobileNavItem}
+            onClick={() => setShowMoreMenu((value) => !value)}
+          >
+            更多
+          </button>
+          {showMoreMenu && (
+            <div style={s.moreMenu}>
+              {opsRole === 'SUPER_ADMIN' && <Link href="/ops/admins" style={s.moreMenuItem}>管理员</Link>}
+              <Link href="/system" style={s.moreMenuItem}>系统自检</Link>
+              <a href="#ops-broadcast" style={s.moreMenuItem} onClick={() => setShowMoreMenu(false)}>广播发送</a>
+              <a href="#ops-applications" style={s.moreMenuItem} onClick={() => setShowMoreMenu(false)}>开店申请</a>
+              <a href="#ops-tenants" style={s.moreMenuItem} onClick={() => { setShowAllTenants(true); setShowMoreMenu(false) }}>全部商户</a>
+            </div>
+          )}
+        </div>
+
+        <style>{`
+          .ops-mobile-nav { display: none !important; }
+          @media (max-width: 640px) {
+            .ops-desktop-nav { display: none !important; }
+            .ops-mobile-nav { display: grid !important; }
+            .ops-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          }
+        `}</style>
       </div>
 
       <div style={s.body}>
+
+        <div className="ops-summary-grid" style={s.summaryGrid}>
+          <SummaryTile label="运营中商户" value={String(activeTenantCount)} />
+          <SummaryTile label="当前筛选" value={String(tenants.length)} />
+          <SummaryTile label="客户会话" value={String(conversations.length)} />
+          <SummaryTile label="待处理申请" value={String(applications.length)} />
+        </div>
+
+        {/* ── Create form ── */}
+        {showCreate && (
+          <CreateForm
+            onCreated={(id) => { setShowCreate(false); loadTenants(); window.location.href = `/ops/${id}` }}
+            onCancel={() => setShowCreate(false)}
+          />
+        )}
+
+        {/* ── Store applications ── */}
+        {applications.length > 0 && (
+          <div id="ops-applications">
+            <ApplicationsSection
+              applications={applications}
+              onApproved={() => { loadApplications(); loadTenants() }}
+            />
+          </div>
+        )}
+
+        {/* ── Customer conversations ── */}
+        <ConversationsSection
+          conversations={conversations}
+          onRefresh={loadConversations}
+          showAll={showAllConversations}
+          onToggleAll={() => setShowAllConversations((value) => !value)}
+        />
+
+        <div id="ops-tenants" style={s.sectionHead}>
+          <div style={s.sectionTitle}>商户列表</div>
+          {tenants.length > 5 && (
+            <button type="button" style={s.textBtn} onClick={() => setShowAllTenants((value) => !value)}>
+              {showAllTenants ? '收起' : '查看全部商户'}
+            </button>
+          )}
+        </div>
 
         {/* ── Status filter tabs ── */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
@@ -190,38 +278,35 @@ export default function OpsPage() {
           ))}
         </div>
 
-        {/* ── Store applications ── */}
-        {applications.length > 0 && (
-          <ApplicationsSection
-            applications={applications}
-            onApproved={() => { loadApplications(); loadTenants() }}
-          />
-        )}
-
-        {/* ── Broadcast ── */}
-        <BroadcastSection tenants={tenants} />
-
-        {/* ── Customer conversations ── */}
-        <ConversationsSection conversations={conversations} onRefresh={loadConversations} />
-
-        {/* ── Create form ── */}
-        {showCreate && (
-          <CreateForm
-            onCreated={(id) => { setShowCreate(false); loadTenants(); window.location.href = `/ops/${id}` }}
-            onCancel={() => setShowCreate(false)}
-          />
-        )}
-
         {/* ── Tenant list ── */}
         {loading && tenants.length === 0 ? (
           <div style={s.emptyHint}>加载中…</div>
         ) : tenants.length === 0 ? (
           <div style={s.emptyHint}>暂无商户，点击「新增商户」创建第一个。</div>
         ) : (
-          tenants.map((t) => <TenantCard key={t.id} tenant={t} />)
+          visibleTenants.map((t) => <TenantCard key={t.id} tenant={t} />)
+        )}
+        {tenants.length > 5 && !showAllTenants && (
+          <button type="button" style={s.fullWidthGhostBtn} onClick={() => setShowAllTenants(true)}>
+            查看全部商户
+          </button>
         )}
 
+        {/* ── Broadcast ── */}
+        <div id="ops-broadcast">
+          <BroadcastSection tenants={tenants} />
+        </div>
+
       </div>
+    </div>
+  )
+}
+
+function SummaryTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={s.summaryTile}>
+      <div style={s.summaryValue}>{value}</div>
+      <div style={s.summaryLabel}>{label}</div>
     </div>
   )
 }
@@ -442,9 +527,13 @@ function BroadcastSection({ tenants }: { tenants: TenantRow[] }) {
 function ConversationsSection({
   conversations,
   onRefresh,
+  showAll,
+  onToggleAll,
 }: {
   conversations: ConversationRow[]
   onRefresh: () => void
+  showAll: boolean
+  onToggleAll: () => void
 }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [thread, setThread] = useState<ThreadMessage[]>([])
@@ -512,6 +601,7 @@ function ConversationsSection({
   }
 
   const selectedConv = conversations.find((c) => c.telegramId === selected) ?? null
+  const visibleConversations = showAll ? conversations : conversations.slice(0, 5)
 
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleString('zh-CN', {
@@ -555,15 +645,12 @@ function ConversationsSection({
               暂无客户消息
             </div>
           ) : (
-            conversations.map((conv) => (
+            visibleConversations.map((conv) => (
               <div
                 key={conv.telegramId}
                 onClick={() => openConversation(conv.telegramId)}
                 style={s.convRow}
               >
-                <div style={s.convAvatar}>
-                  {(conv.senderName ?? conv.telegramId).slice(0, 1).toUpperCase()}
-                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={s.convName}>{conv.senderName ?? conv.telegramId}</span>
@@ -580,15 +667,15 @@ function ConversationsSection({
                       <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#f6ffed', color: '#52c41a', border: '1px solid #b7eb8f', whiteSpace: 'nowrap' }}>人工中</span>
                     )}
                   </div>
-                  {conv.tenantId && (
-                    <div style={{ fontSize: 10, color: '#ccc', marginTop: 1 }}>
-                      商户 {conv.tenantId.slice(0, 10)}…
-                    </div>
-                  )}
                 </div>
                 <div style={s.convCount}>{conv.messageCount}</div>
               </div>
             ))
+          )}
+          {conversations.length > 5 && (
+            <button type="button" style={s.fullWidthGhostBtn} onClick={onToggleAll}>
+              {showAll ? '收起会话' : '查看全部会话'}
+            </button>
           )}
         </>
       )}
@@ -893,16 +980,110 @@ const s: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', background: '#f0f2f5', paddingBottom: 40 },
   header: {
     background: '#1a1a2e', padding: '18px 20px',
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    display: 'flex', flexDirection: 'column', gap: 12,
+  },
+  headerMain: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
   },
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: 700 },
   headerSub: { color: 'rgba(255,255,255,0.45)', fontSize: 12, marginTop: 2 },
   sysLink: { color: 'rgba(255,255,255,0.6)', fontSize: 13, textDecoration: 'none' },
+  desktopNav: { display: 'flex', gap: 14, alignItems: 'center' },
+  mobileNav: {
+    position: 'relative',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 6,
+  },
+  mobileNavItem: {
+    minWidth: 0,
+    height: 34,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 6px',
+    borderRadius: 8,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.07)',
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontWeight: 600,
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+  },
+  mobileNavActive: {
+    background: 'rgba(22,119,255,0.24)',
+    color: '#fff',
+    borderColor: 'rgba(145,202,255,0.45)',
+  },
+  moreMenu: {
+    position: 'absolute',
+    right: 0,
+    top: 40,
+    zIndex: 20,
+    minWidth: 148,
+    padding: 6,
+    background: '#fff',
+    borderRadius: 10,
+    boxShadow: '0 12px 30px rgba(15,23,42,0.2)',
+    border: '1px solid #e5e7eb',
+  },
+  moreMenuItem: {
+    display: 'block',
+    padding: '10px 12px',
+    borderRadius: 8,
+    color: '#1f2937',
+    fontSize: 13,
+    fontWeight: 600,
+    textDecoration: 'none',
+  },
   createBtn: {
     height: 34, padding: '0 16px', background: '#1677ff', color: '#fff',
-    border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
   },
   body: { maxWidth: 680, margin: '0 auto', padding: '14px 12px' },
+  summaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 8,
+    marginBottom: 12,
+  },
+  summaryTile: {
+    background: '#fff',
+    borderRadius: 10,
+    padding: '10px 8px',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    border: '1px solid #eef2f7',
+  },
+  summaryValue: { fontSize: 18, fontWeight: 800, color: '#111827', lineHeight: 1.1 },
+  summaryLabel: { fontSize: 11, color: '#8c8c8c', marginTop: 4, whiteSpace: 'nowrap' },
+  sectionHead: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    margin: '4px 0 10px',
+  },
+  sectionTitle: { fontSize: 14, fontWeight: 800, color: '#1f2937' },
+  textBtn: {
+    border: 'none',
+    background: 'transparent',
+    color: '#1677ff',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  fullWidthGhostBtn: {
+    width: '100%',
+    height: 36,
+    margin: '2px 0 12px',
+    border: '1px solid #dbeafe',
+    borderRadius: 8,
+    background: '#eff6ff',
+    color: '#1677ff',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
 
   card: {
     display: 'block', background: '#fff', borderRadius: 12, padding: '14px 16px',
@@ -995,7 +1176,7 @@ const s: Record<string, React.CSSProperties> = {
 
   // conversations
   convRow: {
-    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0',
+    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0',
     borderTop: '1px solid #f5f5f5', cursor: 'pointer',
   },
   convAvatar: {
