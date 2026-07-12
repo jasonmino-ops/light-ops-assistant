@@ -33,6 +33,13 @@ type HealthResponse = {
     activeSince: string
     khqrStaleThresholdMinutes: number
   }
+  agingPolicy: {
+    currentHours: number
+    historicalDays: number
+    archivedDays: number
+    cloudPrintPausedAt: string
+    note: string
+  }
   queryDurationMs: number
   system: {
     database: {
@@ -105,6 +112,20 @@ type HealthResponse = {
     partial: Capability[]
     unavailable: Capability[]
   }
+  issueBuckets: {
+    current: AttentionItem[]
+    recent: AttentionItem[]
+    persistent: AttentionItem[]
+    historical: AttentionItem[]
+    archived: AttentionItem[]
+  }
+  issueCounts: {
+    current: number
+    recent: number
+    persistent: number
+    historical: number
+    archived: number
+  }
   attentionItems: AttentionItem[]
 }
 
@@ -149,6 +170,8 @@ export default function OpsHealthPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [showHistorical, setShowHistorical] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
 
   function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true)
@@ -174,12 +197,7 @@ export default function OpsHealthPage() {
 
   const hasIssue = useMemo(() => {
     if (!data) return false
-    return data.business.khqr.stalePendingCount > 0 ||
-      data.business.offlineSync.pendingCount > 0 ||
-      data.business.offlineSync.failedCount > 0 ||
-      data.business.cloudPrint.triggerFailedCount > 0 ||
-      data.business.posAuthorization.pendingCount > 0 ||
-      data.business.posAuthorization.expiredCount > 0
+    return data.issueCounts.current > 0 || data.issueCounts.persistent > 0
   }, [data])
 
   return (
@@ -250,38 +268,74 @@ export default function OpsHealthPage() {
             <div style={s.note}>{data.merchantImpact.coverageNote}</div>
           </Section>
 
+          <Section title="当前需要关注">
+            {data.attentionItems.length === 0 ? (
+              <div style={s.empty}>当前没有基于已有日志和状态记录识别出的关注项</div>
+            ) : (
+              <IssueList items={data.attentionItems} />
+            )}
+            <div style={s.note}>当前区只包含 current + persistent；历史异常和封存噪音不再长期占用当前运营注意力。</div>
+          </Section>
+
+          <Section title={`最近 24 小时新异常（${data.issueCounts.recent}）`}>
+            <IssueList items={data.issueBuckets.recent} emptyText="最近 24 小时没有新的可识别异常" />
+          </Section>
+
+          <Section title={`历史异常（${data.issueCounts.historical}）`}>
+            <button type="button" style={s.toggleBtn} onClick={() => setShowHistorical((value) => !value)}>
+              {showHistorical ? '收起历史异常' : '查看历史异常'}
+            </button>
+            <div style={s.archiveHint}>超过 {data.agingPolicy.historicalDays} 天且最近没有复发；保留审计价值，不代表已自动修复。</div>
+            {showHistorical && <IssueList items={data.issueBuckets.historical} emptyText="暂无历史异常" />}
+          </Section>
+
+          <Section title={`已封存噪音（${data.issueCounts.archived}）`}>
+            <button type="button" style={s.toggleBtn} onClick={() => setShowArchived((value) => !value)}>
+              {showArchived ? '收起封存噪音' : '查看封存噪音'}
+            </button>
+            <div style={s.archiveHint}>不删除原始记录。云打印暂停前的旧失败、超过 {data.agingPolicy.archivedDays} 天且未复发的问题默认封存。</div>
+            {showArchived && (
+              <>
+                <div style={s.note}>历史离线失败未被删除，只是不再长期占用当前运营注意力。</div>
+                <IssueList items={data.issueBuckets.archived} emptyText="暂无已封存噪音" />
+              </>
+            )}
+          </Section>
+
           <Section title="统计能力说明">
+            <div style={s.note}>{data.agingPolicy.note}</div>
             <CapabilityGroup title="可直接统计" items={data.capabilityNotes.available} />
             <CapabilityGroup title="部分覆盖" items={data.capabilityNotes.partial} />
             <CapabilityGroup title="暂不可可靠统计" items={data.capabilityNotes.unavailable} />
           </Section>
-
-          <Section title="需要关注列表">
-            {data.attentionItems.length === 0 ? (
-              <div style={s.empty}>当前没有基于已有日志和状态记录识别出的关注项</div>
-            ) : (
-              <div style={s.issueList}>
-                {data.attentionItems.map((item) => (
-                  <article key={`${item.issueType}-${item.tenantId}-${item.storeId ?? 'tenant'}`} style={s.issueCard}>
-                    <div style={s.issueTop}>
-                      <div>
-                        <div style={s.issueTitle}>{item.issueLabel}</div>
-                        <div style={s.issueMeta}>{item.tenantName} · {item.storeName ?? '租户级'} · {item.storeCode ?? '无 storeCode'}</div>
-                      </div>
-                      <span style={{ ...s.statusPill, ...statusStyle(item.coverageLevel) }}>{STATUS_LABEL[item.coverageLevel]}</span>
-                    </div>
-                    <div style={s.issueStats}>
-                      <span>数量 {item.count}</span>
-                      <span>首次 {fmtTime(item.firstSeenAt)}</span>
-                      <span>最近 {fmtTime(item.lastSeenAt)}</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </Section>
         </main>
       )}
+    </div>
+  )
+}
+
+function IssueList({ items, emptyText = '暂无记录' }: { items: AttentionItem[]; emptyText?: string }) {
+  if (items.length === 0) {
+    return <div style={s.empty}>{emptyText}</div>
+  }
+  return (
+    <div style={s.issueList}>
+      {items.map((item) => (
+        <article key={`${item.issueType}-${item.tenantId}-${item.storeId ?? 'tenant'}-${item.firstSeenAt ?? 'first'}-${item.lastSeenAt ?? 'last'}`} style={s.issueCard}>
+          <div style={s.issueTop}>
+            <div>
+              <div style={s.issueTitle}>{item.issueLabel}</div>
+              <div style={s.issueMeta}>{item.tenantName} · {item.storeName ?? '租户级'} · {item.storeCode ?? '无 storeCode'}</div>
+            </div>
+            <span style={{ ...s.statusPill, ...statusStyle(item.coverageLevel) }}>{STATUS_LABEL[item.coverageLevel]}</span>
+          </div>
+          <div style={s.issueStats}>
+            <span>数量 {item.count}</span>
+            <span>首次 {fmtTime(item.firstSeenAt)}</span>
+            <span>最近 {fmtTime(item.lastSeenAt)}</span>
+          </div>
+        </article>
+      ))}
     </div>
   )
 }
@@ -478,4 +532,21 @@ const s: Record<string, React.CSSProperties> = {
   issueTitle: { fontSize: 14, fontWeight: 900 },
   issueMeta: { fontSize: 12, color: '#6b7280', marginTop: 5 },
   issueStats: { display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12, color: '#374151', marginTop: 12 },
+  toggleBtn: {
+    border: '1px solid #dbeafe',
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    borderRadius: 8,
+    minHeight: 34,
+    padding: '0 12px',
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: 'pointer',
+  },
+  archiveHint: {
+    margin: '8px 0 10px',
+    fontSize: 12,
+    color: '#6b7280',
+    lineHeight: 1.5,
+  },
 }

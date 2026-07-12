@@ -11,11 +11,16 @@ type IssueType =
   | 'PRINT_TRIGGER_FAILED'
   | 'POS_AUTH_PENDING'
   | 'POS_AUTH_EXPIRED'
+  | 'OWNER_BINDING_INCOMPLETE'
+
+type IssueBucket = 'current' | 'recent' | 'persistent' | 'historical' | 'archived'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const SEVEN_DAYS_MS = 7 * DAY_MS
+const THIRTY_DAYS_MS = 30 * DAY_MS
 const KHQR_STALE_MS = 30 * 60 * 1000
 const MAX_ATTENTION_ITEMS = 20
+const CLOUD_PRINT_PAUSED_AT = new Date('2026-07-13T01:05:08+07:00')
 
 type StoreRef = {
   tenantId: string
@@ -73,6 +78,10 @@ function groupKey(tenantId: string, storeId: string | null, issueType: IssueType
   return `${issueType}::${tenantId}::${storeId ?? '_tenant'}`
 }
 
+function bucketGroupKey(tenantId: string, issueType: IssueType) {
+  return `${issueType}::${tenantId}`
+}
+
 function pushIssue(map: Map<string, AttentionDraft>, input: AttentionDraft) {
   const key = groupKey(input.tenantId, input.storeId, input.issueType)
   const current = map.get(key)
@@ -83,6 +92,23 @@ function pushIssue(map: Map<string, AttentionDraft>, input: AttentionDraft) {
   current.count += input.count
   current.firstSeenAt = minDate([current.firstSeenAt, input.firstSeenAt])
   current.lastSeenAt = maxDate([current.lastSeenAt, input.lastSeenAt])
+}
+
+function pushBucketIssue(map: Map<string, AttentionDraft>, input: AttentionDraft) {
+  const key = bucketGroupKey(input.tenantId, input.issueType)
+  const current = map.get(key)
+  if (!current) {
+    map.set(key, input)
+    return
+  }
+  current.count += input.count
+  current.firstSeenAt = minDate([current.firstSeenAt, input.firstSeenAt])
+  current.lastSeenAt = maxDate([current.lastSeenAt, input.lastSeenAt])
+  if (current.storeId !== input.storeId) {
+    current.storeId = null
+    current.storeName = '多门店'
+    current.storeCode = null
+  }
 }
 
 function attentionItem(issue: AttentionDraft) {
@@ -99,6 +125,14 @@ function attentionItem(issue: AttentionDraft) {
     lastSeenAt: iso(issue.lastSeenAt),
     coverageLevel: issue.coverageLevel,
   }
+}
+
+function sortIssues(values: AttentionDraft[]) {
+  return values.sort((a, b) => (b.lastSeenAt?.getTime() ?? 0) - (a.lastSeenAt?.getTime() ?? 0))
+}
+
+function pushToBucket(buckets: Record<IssueBucket, Map<string, AttentionDraft>>, bucket: IssueBucket, issue: AttentionDraft) {
+  pushBucketIssue(buckets[bucket], issue)
 }
 
 function refForStore(storeMap: Map<string, StoreRef>, tenantMap: Map<string, string>, tenantId: string, storeId: string | null): StoreRef {
@@ -122,6 +156,7 @@ export async function GET(req: NextRequest) {
   const generatedAt = new Date()
   const since24h = new Date(generatedAt.getTime() - DAY_MS)
   const since7d = new Date(generatedAt.getTime() - SEVEN_DAYS_MS)
+  const since30d = new Date(generatedAt.getTime() - THIRTY_DAYS_MS)
   const staleKhqrBefore = new Date(generatedAt.getTime() - KHQR_STALE_MS)
 
   const dbStartedAt = Date.now()
@@ -144,8 +179,8 @@ export async function GET(req: NextRequest) {
     paidCustomerOrders24h,
     khqrPending,
     offlineRows,
-    printLogs24h,
-    posAuthRows24h,
+    printLogs,
+    posAuthRows,
     recentSaleTenants,
     recentCustomerOrderTenants,
   ] = await Promise.all([
@@ -188,15 +223,14 @@ export async function GET(req: NextRequest) {
         paymentMethod: 'KHQR',
         status: 'PENDING',
       },
-      select: { tenantId: true, storeId: true, createdAt: true },
+      select: { tenantId: true, storeId: true, orderNo: true, createdAt: true },
     }),
     prisma.offlineSaleSyncMap.findMany({
       where: {
-        OR: [
-          { status: { in: ['PENDING', 'FAILED'] } },
-          { status: 'SYNCED', syncedAt: { gte: since24h } },
-        ],
+        status: { in: ['PENDING', 'FAILED', 'SYNCED'] },
       },
+      orderBy: { updatedAt: 'desc' },
+      take: 500,
       select: {
         tenantId: true,
         storeId: true,
@@ -210,16 +244,18 @@ export async function GET(req: NextRequest) {
     prisma.operationLog.findMany({
       where: {
         actionType: 'PRINT_RECEIPT',
-        createdAt: { gte: since24h },
       },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
       select: { tenantId: true, storeId: true, status: true, createdAt: true, message: true },
     }),
     prisma.operationLog.findMany({
       where: {
         actionType: 'POS_DEVICE_AUTH_REQUEST',
         targetType: 'POS_DEVICE',
-        createdAt: { gte: since24h },
       },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
       select: { tenantId: true, storeId: true, status: true, createdAt: true, payloadSnapshot: true },
     }),
     prisma.saleRecord.groupBy({
@@ -231,6 +267,12 @@ export async function GET(req: NextRequest) {
       where: { createdAt: { gte: since7d } },
     }),
   ])
+
+  const khqrSaleRecords = await prisma.saleRecord.findMany({
+    where: { orderNo: { in: khqrPending.map((row) => row.orderNo) } },
+    select: { orderNo: true, status: true },
+  })
+  const completedKhqrOrderNos = new Set(khqrSaleRecords.filter((row) => row.status === 'COMPLETED' && row.orderNo).map((row) => row.orderNo as string))
 
   const tenantMap = new Map(tenants.map((tenant) => [tenant.id, tenant.name]))
   const storeMap = new Map<string, StoreRef>()
@@ -260,17 +302,33 @@ export async function GET(req: NextRequest) {
 
   const khqrPending24h = khqrPending.filter((row) => row.createdAt >= since24h)
   const khqrStale = khqrPending.filter((row) => row.createdAt <= staleKhqrBefore)
+  const khqrStale24h = khqrStale.filter((row) => row.createdAt >= since24h)
+  const khqrStale7d = khqrStale.filter((row) => row.createdAt >= since7d)
+  const khqrStaleHistorical = khqrStale.filter((row) => row.createdAt < since7d)
+  const khqrStaleArchived = khqrStaleHistorical.filter((row) => row.createdAt < since30d && completedKhqrOrderNos.has(row.orderNo))
 
   const offlinePending = offlineRows.filter((row) => row.status === 'PENDING')
   const offlineFailed = offlineRows.filter((row) => row.status === 'FAILED')
-  const offlineSynced24h = offlineRows.filter((row) => row.status === 'SYNCED')
+  const offlineSynced24h = offlineRows.filter((row) => row.status === 'SYNCED' && row.syncedAt && row.syncedAt >= since24h)
+  const offlinePending24h = offlinePending.filter((row) => row.createdAt >= since24h || row.updatedAt >= since24h)
+  const offlinePendingStale = offlinePending.filter((row) => row.createdAt <= staleKhqrBefore)
+  const offlineFailed24h = offlineFailed.filter((row) => row.updatedAt >= since24h)
+  const offlineFailed7d = offlineFailed.filter((row) => row.updatedAt >= since7d)
+  const offlineFailedHistorical = offlineFailed.filter((row) => row.updatedAt < since7d)
+  const offlineFailedArchived = offlineFailedHistorical.filter((row) => row.updatedAt < since30d)
 
+  const printLogs24h = printLogs.filter((row) => row.createdAt >= since24h)
   const printSuccess = printLogs24h.filter((row) => row.status === 'SUCCESS')
   const printFailed = printLogs24h.filter((row) => row.status === 'FAILED')
   const printSkipped = printLogs24h.filter((row) => row.status === 'FAILED' && row.message?.startsWith('tier_'))
+  const printFailedAfterPause = printLogs.filter((row) => row.status === 'FAILED' && row.createdAt >= CLOUD_PRINT_PAUSED_AT)
+  const printFailedBeforePause = printLogs.filter((row) => row.status === 'FAILED' && row.createdAt < CLOUD_PRINT_PAUSED_AT)
+  const printFailed24hAfterPause = printFailedAfterPause.filter((row) => row.createdAt >= since24h)
+  const printFailedArchived = printFailedBeforePause
 
+  const posAuthRows24h = posAuthRows.filter((row) => row.createdAt >= since24h)
   const posAuthSuccess = posAuthRows24h.filter((row) => row.status === 'SUCCESS')
-  const posAuthOpen = posAuthRows24h.filter((row) => row.status !== 'SUCCESS')
+  const posAuthOpen = posAuthRows.filter((row) => row.status !== 'SUCCESS')
   const posAuthPending = posAuthOpen.filter((row) => {
     const expiresAt = readExpiresAt(row.payloadSnapshot)
     return expiresAt ? expiresAt > generatedAt : false
@@ -279,6 +337,10 @@ export async function GET(req: NextRequest) {
     const expiresAt = readExpiresAt(row.payloadSnapshot)
     return expiresAt ? expiresAt <= generatedAt : false
   })
+  const posAuthPending24h = posAuthPending.filter((row) => row.createdAt >= since24h)
+  const posAuthExpired24h = posAuthExpired.filter((row) => row.createdAt >= since24h)
+  const posAuthOpen7d = posAuthOpen.filter((row) => row.createdAt >= since7d)
+  const posAuthHistorical = posAuthOpen.filter((row) => row.createdAt < since7d)
 
   const activeTenantIds7d = new Set([
     ...recentSaleTenants.map((row) => row.tenantId),
@@ -288,90 +350,126 @@ export async function GET(req: NextRequest) {
   const noEffectiveOwnerTenants = tenants.filter((tenant) => tenant.status === 'ACTIVE' && !effectiveOwnerTenantIds.has(tenant.id))
 
   const issues = new Map<string, AttentionDraft>()
-  for (const row of khqrStale) {
-    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
-    pushIssue(issues, {
-      ...ref,
-      issueType: 'KHQR_STALE_PENDING',
-      issueLabel: 'KHQR 超过 30 分钟仍 PENDING',
-      count: 1,
-      firstSeenAt: row.createdAt,
-      lastSeenAt: row.createdAt,
-      coverageLevel: 'AVAILABLE',
-    })
-  }
-  for (const row of offlinePending) {
-    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
-    pushIssue(issues, {
-      ...ref,
-      issueType: 'OFFLINE_PENDING',
-      issueLabel: '离线订单待同步',
-      count: 1,
-      firstSeenAt: row.createdAt,
-      lastSeenAt: row.updatedAt,
-      coverageLevel: 'AVAILABLE',
-    })
-  }
-  for (const row of offlineFailed) {
-    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
-    pushIssue(issues, {
-      ...ref,
-      issueType: 'OFFLINE_FAILED',
-      issueLabel: row.lastErrorCode ? `离线同步失败：${row.lastErrorCode}` : '离线同步失败',
-      count: 1,
-      firstSeenAt: row.createdAt,
-      lastSeenAt: row.updatedAt,
-      coverageLevel: 'AVAILABLE',
-    })
-  }
-  for (const row of printFailed) {
-    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
-    pushIssue(issues, {
-      ...ref,
-      issueType: 'PRINT_TRIGGER_FAILED',
-      issueLabel: '云打印触发失败',
-      count: 1,
-      firstSeenAt: row.createdAt,
-      lastSeenAt: row.createdAt,
-      coverageLevel: 'PARTIAL',
-    })
-  }
-  for (const row of posAuthPending) {
-    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
-    pushIssue(issues, {
-      ...ref,
-      issueType: 'POS_AUTH_PENDING',
-      issueLabel: 'POS 设备授权待确认',
-      count: 1,
-      firstSeenAt: row.createdAt,
-      lastSeenAt: row.createdAt,
-      coverageLevel: 'PARTIAL',
-    })
-  }
-  for (const row of posAuthExpired) {
-    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
-    pushIssue(issues, {
-      ...ref,
-      issueType: 'POS_AUTH_EXPIRED',
-      issueLabel: 'POS 设备授权已过期',
-      count: 1,
-      firstSeenAt: row.createdAt,
-      lastSeenAt: row.createdAt,
-      coverageLevel: 'PARTIAL',
-    })
+  const issueBuckets: Record<IssueBucket, Map<string, AttentionDraft>> = {
+    current: new Map(),
+    recent: new Map(),
+    persistent: new Map(),
+    historical: new Map(),
+    archived: new Map(),
   }
 
-  const attentionItems = Array.from(issues.values())
-    .sort((a, b) => (b.lastSeenAt?.getTime() ?? 0) - (a.lastSeenAt?.getTime() ?? 0))
+  function issueFor(ref: StoreRef, issueType: IssueType, issueLabel: string, count: number, firstSeenAt: Date | null, lastSeenAt: Date | null, coverageLevel: CapabilityStatus): AttentionDraft {
+    return { ...ref, issueType, issueLabel, count, firstSeenAt, lastSeenAt, coverageLevel }
+  }
+
+  for (const row of khqrStale24h) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    const issue = issueFor(ref, 'KHQR_STALE_PENDING', 'KHQR 超过 30 分钟仍 PENDING', 1, row.createdAt, row.createdAt, 'AVAILABLE')
+    pushIssue(issues, issue)
+    pushToBucket(issueBuckets, 'current', issue)
+    pushToBucket(issueBuckets, 'recent', issue)
+  }
+  for (const row of khqrStale7d) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    pushToBucket(issueBuckets, 'persistent', issueFor(ref, 'KHQR_STALE_PENDING', 'KHQR 最近 7 天仍有 PENDING', 1, row.createdAt, row.createdAt, 'AVAILABLE'))
+  }
+  for (const row of khqrStaleHistorical) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    const label = completedKhqrOrderNos.has(row.orderNo) ? '历史支付状态待核对' : '历史 KHQR PENDING'
+    pushToBucket(issueBuckets, khqrStaleArchived.includes(row) ? 'archived' : 'historical', issueFor(ref, 'KHQR_STALE_PENDING', label, 1, row.createdAt, row.createdAt, 'AVAILABLE'))
+  }
+
+  for (const row of offlinePending) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    const issue = issueFor(ref, 'OFFLINE_PENDING', '离线订单待同步', 1, row.createdAt, row.updatedAt, 'AVAILABLE')
+    if (offlinePending24h.includes(row)) {
+      pushIssue(issues, issue)
+      pushToBucket(issueBuckets, 'current', issue)
+      pushToBucket(issueBuckets, 'recent', issue)
+    }
+    if (offlinePendingStale.includes(row)) {
+      pushIssue(issues, issue)
+      pushToBucket(issueBuckets, 'persistent', issue)
+    }
+  }
+  for (const row of offlineFailed24h) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    const issue = issueFor(ref, 'OFFLINE_FAILED', row.lastErrorCode ? `离线同步失败：${row.lastErrorCode}` : '离线同步失败', 1, row.createdAt, row.updatedAt, 'AVAILABLE')
+    pushIssue(issues, issue)
+    pushToBucket(issueBuckets, 'current', issue)
+    pushToBucket(issueBuckets, 'recent', issue)
+  }
+  for (const row of offlineFailed7d) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    pushToBucket(issueBuckets, 'persistent', issueFor(ref, 'OFFLINE_FAILED', row.lastErrorCode ? `离线同步失败：${row.lastErrorCode}` : '离线同步失败', 1, row.createdAt, row.updatedAt, 'AVAILABLE'))
+  }
+  for (const row of offlineFailedHistorical) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    pushToBucket(issueBuckets, offlineFailedArchived.includes(row) ? 'archived' : 'historical', issueFor(ref, 'OFFLINE_FAILED', row.lastErrorCode ? `历史离线同步失败：${row.lastErrorCode}` : '历史离线同步失败', 1, row.createdAt, row.updatedAt, 'AVAILABLE'))
+  }
+  for (const row of printFailed24hAfterPause) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    const issue = issueFor(ref, 'PRINT_TRIGGER_FAILED', '云打印暂停后仍有触发失败', 1, row.createdAt, row.createdAt, 'PARTIAL')
+    pushIssue(issues, issue)
+    pushToBucket(issueBuckets, 'current', issue)
+    pushToBucket(issueBuckets, 'recent', issue)
+    pushToBucket(issueBuckets, 'persistent', issue)
+  }
+  for (const row of printFailedArchived) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    pushToBucket(issueBuckets, 'archived', issueFor(ref, 'PRINT_TRIGGER_FAILED', '已暂停云打印历史失败', 1, row.createdAt, row.createdAt, 'PARTIAL'))
+  }
+  for (const row of posAuthPending24h) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    const issue = issueFor(ref, 'POS_AUTH_PENDING', 'POS 设备授权待确认', 1, row.createdAt, row.createdAt, 'PARTIAL')
+    pushIssue(issues, issue)
+    pushToBucket(issueBuckets, 'current', issue)
+    pushToBucket(issueBuckets, 'recent', issue)
+  }
+  for (const row of posAuthExpired24h) {
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    const issue = issueFor(ref, 'POS_AUTH_EXPIRED', 'POS 设备授权已过期', 1, row.createdAt, row.createdAt, 'PARTIAL')
+    pushIssue(issues, issue)
+    pushToBucket(issueBuckets, 'current', issue)
+    pushToBucket(issueBuckets, 'recent', issue)
+  }
+  for (const row of posAuthOpen7d) {
+    const expiresAt = readExpiresAt(row.payloadSnapshot)
+    const type: IssueType = expiresAt && expiresAt > generatedAt ? 'POS_AUTH_PENDING' : 'POS_AUTH_EXPIRED'
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    pushToBucket(issueBuckets, 'persistent', issueFor(ref, type, type === 'POS_AUTH_PENDING' ? 'POS 授权最近 7 天仍待确认' : 'POS 授权最近 7 天有过期', 1, row.createdAt, row.createdAt, 'PARTIAL'))
+  }
+  for (const row of posAuthHistorical) {
+    const expiresAt = readExpiresAt(row.payloadSnapshot)
+    const type: IssueType = expiresAt && expiresAt > generatedAt ? 'POS_AUTH_PENDING' : 'POS_AUTH_EXPIRED'
+    const ref = refForStore(storeMap, tenantMap, row.tenantId, row.storeId)
+    pushToBucket(issueBuckets, 'historical', issueFor(ref, type, type === 'POS_AUTH_PENDING' ? '历史 POS 授权待确认' : '历史 POS 授权过期', 1, row.createdAt, row.createdAt, 'PARTIAL'))
+  }
+  for (const tenant of noEffectiveOwnerTenants) {
+    const ref = refForStore(storeMap, tenantMap, tenant.id, null)
+    const issue = issueFor(ref, 'OWNER_BINDING_INCOMPLETE', 'ACTIVE 商户无有效 OWNER', 1, generatedAt, generatedAt, 'AVAILABLE')
+    pushIssue(issues, issue)
+    pushToBucket(issueBuckets, 'current', issue)
+  }
+
+  const currentIssues = sortIssues(Array.from(issueBuckets.current.values()))
+  const recentIssues = sortIssues(Array.from(issueBuckets.recent.values()))
+  const persistentIssues = sortIssues(Array.from(issueBuckets.persistent.values()))
+  const historicalIssues = sortIssues(Array.from(issueBuckets.historical.values()))
+  const archivedNoise = sortIssues(Array.from(issueBuckets.archived.values()))
+
+  const attentionIssueMap = new Map<string, AttentionDraft>()
+  for (const issue of [...currentIssues, ...persistentIssues]) {
+    pushBucketIssue(attentionIssueMap, issue)
+  }
+  const attentionIssueValues = sortIssues(Array.from(attentionIssueMap.values()))
+  const attentionItems = attentionIssueValues
     .slice(0, MAX_ATTENTION_ITEMS)
     .map(attentionItem)
 
-  const affectedTenantIds = new Set(Array.from(issues.values()).map((issue) => issue.tenantId))
-  const affectedStoreIds = new Set(Array.from(issues.values()).map((issue) => issue.storeId).filter(Boolean) as string[])
-  const needsAttentionTenantIds = new Set([
-    ...affectedTenantIds,
-    ...noEffectiveOwnerTenants.map((tenant) => tenant.id),
-  ])
+  const affectedTenantIds = new Set(attentionIssueValues.map((issue) => issue.tenantId))
+  const affectedStoreIds = new Set(attentionIssueValues.map((issue) => issue.storeId).filter(Boolean) as string[])
+  const needsAttentionTenantIds = new Set(attentionIssueValues.map((issue) => issue.tenantId))
 
   return NextResponse.json({
     generatedAt: generatedAt.toISOString(),
@@ -379,6 +477,13 @@ export async function GET(req: NextRequest) {
       businessSince: since24h.toISOString(),
       activeSince: since7d.toISOString(),
       khqrStaleThresholdMinutes: KHQR_STALE_MS / 60000,
+    },
+    agingPolicy: {
+      currentHours: 24,
+      historicalDays: 7,
+      archivedDays: 30,
+      cloudPrintPausedAt: CLOUD_PRINT_PAUSED_AT.toISOString(),
+      note: '分类仅在查询层完成，不写入数据库；历史和封存记录保留原始审计数据。',
     },
     queryDurationMs: Date.now() - dbStartedAt,
     system: {
@@ -483,6 +588,20 @@ export async function GET(req: NextRequest) {
         capability('UNAVAILABLE', '浏览器打印真实成功', 'window.print 不产生服务端可验证日志。'),
         capability('UNAVAILABLE', '打印机物理成功', '现有数据无法确认真实出纸。'),
       ],
+    },
+    issueBuckets: {
+      current: currentIssues.slice(0, MAX_ATTENTION_ITEMS).map(attentionItem),
+      recent: recentIssues.slice(0, MAX_ATTENTION_ITEMS).map(attentionItem),
+      persistent: persistentIssues.slice(0, MAX_ATTENTION_ITEMS).map(attentionItem),
+      historical: historicalIssues.slice(0, MAX_ATTENTION_ITEMS).map(attentionItem),
+      archived: archivedNoise.slice(0, MAX_ATTENTION_ITEMS).map(attentionItem),
+    },
+    issueCounts: {
+      current: currentIssues.length,
+      recent: recentIssues.length,
+      persistent: persistentIssues.length,
+      historical: historicalIssues.length,
+      archived: archivedNoise.length,
     },
     attentionItems,
   })
