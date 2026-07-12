@@ -65,6 +65,64 @@ type TenantRow = {
   lastActiveAt: string | null
 }
 
+type OverviewTenantRow = {
+  tenantId: string
+  tenantName: string
+  tenantStatus: string
+  createdAt: string
+  storeCount: number
+  storeNames: string[]
+  storeCodes: string[]
+  ownerBound: boolean
+  hasEffectiveOwner: boolean
+  staffCount: number
+  lastSaleAt: string | null
+  lastCustomerOrderAt: string | null
+  lastActivityAt: string | null
+  offlinePendingCount: number
+  currencies: string[]
+  runStatus: 'NORMAL' | 'BINDING_INCOMPLETE' | 'OPENED_UNUSED' | 'INACTIVE_RECENTLY' | 'NEEDS_ATTENTION'
+}
+
+type OpsOverviewResponse = {
+  tenants: OverviewTenantRow[]
+}
+
+type HealthAttentionItem = {
+  tenantId: string
+  tenantName: string
+  storeId: string | null
+  storeName: string | null
+  storeCode: string | null
+  issueType: string
+  issueLabel: string
+  count: number
+  firstSeenAt: string | null
+  lastSeenAt: string | null
+  coverageLevel: string
+}
+
+type OpsHealthResponse = {
+  attentionItems: HealthAttentionItem[]
+}
+
+type MerchantIssue = {
+  label: string
+  count: number
+  lastSeenAt: string | null
+}
+
+type AttentionMerchant = {
+  tenantId: string
+  tenantName: string
+  storeNames: string[]
+  storeCodes: string[]
+  issues: MerchantIssue[]
+  issueCount: number
+  totalCount: number
+  lastSeenAt: string | null
+}
+
 const TIER_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
   LITE:        { label: '轻试用版',     color: '#389e0d', bg: '#f6ffed', border: '#b7eb8f' },
   STANDARD:    { label: '标准收银版',   color: '#1677ff', bg: '#e6f4ff', border: '#91caff' },
@@ -86,6 +144,9 @@ export default function OpsPage() {
   const [conversations, setConversations] = useState<ConversationRow[]>([])
   const [archivedConversations, setArchivedConversations] = useState<ConversationRow[]>([])
   const [conversationCounts, setConversationCounts] = useState<ConversationsResponse['counts'] | null>(null)
+  const [overviewTenants, setOverviewTenants] = useState<OverviewTenantRow[]>([])
+  const [healthAttentionItems, setHealthAttentionItems] = useState<HealthAttentionItem[]>([])
+  const [merchantWorkError, setMerchantWorkError] = useState('')
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [showAllConversations, setShowAllConversations] = useState(false)
   const [showAllTenants, setShowAllTenants] = useState(false)
@@ -119,7 +180,6 @@ export default function OpsPage() {
 
   function applyFilter(f: StatusFilter) {
     setStatusFilter(f)
-    setShowAllTenants(false)
     loadTenants(f)
   }
 
@@ -147,11 +207,36 @@ export default function OpsPage() {
       .catch(() => {})
   }
 
+  async function loadMerchantWorkQueues() {
+    setMerchantWorkError('')
+    const [overviewResult, healthResult] = await Promise.allSettled([
+      apiFetch('/api/ops/overview', undefined, OWNER_CTX),
+      apiFetch('/api/ops/health', undefined, OWNER_CTX),
+    ])
+
+    if (overviewResult.status === 'fulfilled' && overviewResult.value.ok) {
+      const body = await overviewResult.value.json() as OpsOverviewResponse
+      setOverviewTenants(body.tenants ?? [])
+    } else {
+      setOverviewTenants([])
+      setMerchantWorkError('商户运行概览暂时不可用')
+    }
+
+    if (healthResult.status === 'fulfilled' && healthResult.value.ok) {
+      const body = await healthResult.value.json() as OpsHealthResponse
+      setHealthAttentionItems(body.attentionItems ?? [])
+    } else {
+      setHealthAttentionItems([])
+      setMerchantWorkError((current) => current || '运行健康关注项暂时不可用')
+    }
+  }
+
   useEffect(() => {
     if (authState === 'ok') {
       loadTenants()
       loadApplications()
       loadConversations()
+      loadMerchantWorkQueues()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authState])
@@ -175,8 +260,12 @@ export default function OpsPage() {
     )
   }
 
-  const visibleTenants = showAllTenants ? tenants : tenants.slice(0, 5)
   const activeTenantCount = tenants.filter((tenant) => tenant.status === 'ACTIVE').length
+  const attentionMerchants = buildAttentionMerchants(overviewTenants, healthAttentionItems).slice(0, 5)
+  const recentActiveMerchants = [...overviewTenants]
+    .filter((tenant) => tenant.lastActivityAt)
+    .sort((a, b) => new Date(b.lastActivityAt ?? 0).getTime() - new Date(a.lastActivityAt ?? 0).getTime())
+    .slice(0, 5)
   const opsLinks = (
     <>
       {opsRole === 'SUPER_ADMIN' && (
@@ -234,6 +323,7 @@ export default function OpsPage() {
             .ops-desktop-nav { display: none !important; }
             .ops-mobile-nav { display: grid !important; }
             .ops-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+            .ops-work-grid { grid-template-columns: 1fr !important; }
           }
         `}</style>
       </div>
@@ -274,48 +364,73 @@ export default function OpsPage() {
           onToggleAll={() => setShowAllConversations((value) => !value)}
         />
 
+        <div className="ops-work-grid" style={s.workGrid}>
+          <MerchantQueueSection
+            title="需要关注商户"
+            count={attentionMerchants.length}
+            emptyText={merchantWorkError || '当前没有明确需要关注的商户'}
+          >
+            {attentionMerchants.map((merchant) => (
+              <AttentionMerchantCard key={merchant.tenantId} merchant={merchant} />
+            ))}
+          </MerchantQueueSection>
+
+          <MerchantQueueSection
+            title="最近活跃商户"
+            count={recentActiveMerchants.length}
+            emptyText={merchantWorkError || '暂无最近业务活动'}
+          >
+            {recentActiveMerchants.map((tenant) => (
+              <RecentMerchantCard key={tenant.tenantId} tenant={tenant} />
+            ))}
+          </MerchantQueueSection>
+        </div>
+
         <div id="ops-tenants" style={s.sectionHead}>
-          <div style={s.sectionTitle}>商户列表</div>
-          {tenants.length > 5 && (
-            <button type="button" style={s.textBtn} onClick={() => setShowAllTenants((value) => !value)}>
-              {showAllTenants ? '收起' : '查看全部商户'}
-            </button>
-          )}
+          <div style={s.sectionTitle}>全部商户</div>
+          <button type="button" style={s.textBtn} onClick={() => setShowAllTenants((value) => !value)}>
+            {showAllTenants ? '收起' : '查看全部商户'}
+          </button>
         </div>
 
-        {/* ── Status filter tabs ── */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-          {([
-            { key: 'ACTIVE',   label: '运营中' },
-            { key: 'ARCHIVED', label: '已归档' },
-            { key: 'all',      label: '全部' },
-          ] as { key: StatusFilter; label: string }[]).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => applyFilter(key)}
-              style={{
-                height: 30, padding: '0 14px', fontSize: 12, fontWeight: statusFilter === key ? 700 : 400,
-                border: `1.5px solid ${statusFilter === key ? '#1677ff' : '#e8e8e8'}`,
-                borderRadius: 20, cursor: 'pointer',
-                background: statusFilter === key ? '#e6f4ff' : '#fff',
-                color: statusFilter === key ? '#1677ff' : '#888',
-              }}
-            >{label}</button>
-          ))}
-        </div>
-
-        {/* ── Tenant list ── */}
-        {loading && tenants.length === 0 ? (
-          <div style={s.emptyHint}>加载中…</div>
-        ) : tenants.length === 0 ? (
-          <div style={s.emptyHint}>暂无商户，点击「新增商户」创建第一个。</div>
-        ) : (
-          visibleTenants.map((t) => <TenantCard key={t.id} tenant={t} />)
-        )}
-        {tenants.length > 5 && !showAllTenants && (
+        {!showAllTenants && (
           <button type="button" style={s.fullWidthGhostBtn} onClick={() => setShowAllTenants(true)}>
             查看全部商户
           </button>
+        )}
+
+        {showAllTenants && (
+          <>
+            {/* ── Status filter tabs ── */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              {([
+                { key: 'ACTIVE',   label: '运营中' },
+                { key: 'ARCHIVED', label: '已归档' },
+                { key: 'all',      label: '全部' },
+              ] as { key: StatusFilter; label: string }[]).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => applyFilter(key)}
+                  style={{
+                    height: 30, padding: '0 14px', fontSize: 12, fontWeight: statusFilter === key ? 700 : 400,
+                    border: `1.5px solid ${statusFilter === key ? '#1677ff' : '#e8e8e8'}`,
+                    borderRadius: 20, cursor: 'pointer',
+                    background: statusFilter === key ? '#e6f4ff' : '#fff',
+                    color: statusFilter === key ? '#1677ff' : '#888',
+                  }}
+                >{label}</button>
+              ))}
+            </div>
+
+            {/* ── Tenant list ── */}
+            {loading && tenants.length === 0 ? (
+              <div style={s.emptyHint}>加载中…</div>
+            ) : tenants.length === 0 ? (
+              <div style={s.emptyHint}>暂无商户，点击「新增商户」创建第一个。</div>
+            ) : (
+              tenants.map((t) => <TenantCard key={t.id} tenant={t} />)
+            )}
+          </>
         )}
 
         {/* ── Broadcast ── */}
@@ -333,6 +448,197 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
     <div style={s.summaryTile}>
       <div style={s.summaryValue}>{value}</div>
       <div style={s.summaryLabel}>{label}</div>
+    </div>
+  )
+}
+
+function compactList(values: (string | null | undefined)[], max = 2) {
+  const cleaned = Array.from(new Set(values.filter(Boolean) as string[]))
+  if (cleaned.length === 0) return '无'
+  const head = cleaned.slice(0, max).join('、')
+  return cleaned.length > max ? `${head} 等 ${cleaned.length} 个` : head
+}
+
+function fmtOpsTime(value: string | null) {
+  if (!value) return '无记录'
+  return new Date(value).toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function laterIso(a: string | null, b: string | null) {
+  if (!a) return b
+  if (!b) return a
+  return new Date(a).getTime() >= new Date(b).getTime() ? a : b
+}
+
+function buildAttentionMerchants(
+  overviewTenants: OverviewTenantRow[],
+  healthItems: HealthAttentionItem[],
+) {
+  const overviewByTenant = new Map(overviewTenants.map((tenant) => [tenant.tenantId, tenant]))
+  const rows = new Map<string, AttentionMerchant>()
+
+  function ensure(tenantId: string, fallbackName: string, storeNames: string[], storeCodes: string[]) {
+    const overview = overviewByTenant.get(tenantId)
+    const current = rows.get(tenantId)
+    if (current) {
+      if (overview) {
+        current.tenantName = overview.tenantName
+        current.storeNames = overview.storeNames
+        current.storeCodes = overview.storeCodes
+      }
+      return current
+    }
+
+    const row: AttentionMerchant = {
+      tenantId,
+      tenantName: overview?.tenantName ?? fallbackName,
+      storeNames: overview?.storeNames?.length ? overview.storeNames : storeNames,
+      storeCodes: overview?.storeCodes?.length ? overview.storeCodes : storeCodes,
+      issues: [],
+      issueCount: 0,
+      totalCount: 0,
+      lastSeenAt: null,
+    }
+    rows.set(tenantId, row)
+    return row
+  }
+
+  function addIssue(row: AttentionMerchant, issue: MerchantIssue) {
+    const existing = row.issues.find((item) => item.label === issue.label)
+    if (existing) {
+      existing.count += issue.count
+      existing.lastSeenAt = laterIso(existing.lastSeenAt, issue.lastSeenAt)
+    } else {
+      row.issues.push(issue)
+    }
+    row.issueCount = row.issues.length
+    row.totalCount += issue.count
+    row.lastSeenAt = laterIso(row.lastSeenAt, issue.lastSeenAt)
+  }
+
+  for (const item of healthItems) {
+    const row = ensure(
+      item.tenantId,
+      item.tenantName,
+      item.storeName ? [item.storeName] : [],
+      item.storeCode ? [item.storeCode] : [],
+    )
+    addIssue(row, {
+      label: item.issueLabel,
+      count: item.count,
+      lastSeenAt: item.lastSeenAt,
+    })
+  }
+
+  for (const tenant of overviewTenants) {
+    const row = ensure(tenant.tenantId, tenant.tenantName, tenant.storeNames, tenant.storeCodes)
+    if (!tenant.hasEffectiveOwner || tenant.runStatus === 'BINDING_INCOMPLETE') {
+      addIssue(row, { label: '未完成 OWNER 绑定', count: 1, lastSeenAt: tenant.createdAt })
+    }
+    if (tenant.offlinePendingCount > 0) {
+      addIssue(row, {
+        label: '存在离线待同步',
+        count: tenant.offlinePendingCount,
+        lastSeenAt: tenant.lastActivityAt ?? tenant.createdAt,
+      })
+    }
+    if (tenant.runStatus === 'NEEDS_ATTENTION' && tenant.offlinePendingCount === 0) {
+      addIssue(row, { label: '运行状态需要关注', count: 1, lastSeenAt: tenant.lastActivityAt ?? tenant.createdAt })
+    }
+  }
+
+  return Array.from(rows.values())
+    .filter((row) => row.issues.length > 0)
+    .sort((a, b) => {
+      const timeDiff = new Date(b.lastSeenAt ?? 0).getTime() - new Date(a.lastSeenAt ?? 0).getTime()
+      if (timeDiff !== 0) return timeDiff
+      return b.totalCount - a.totalCount
+    })
+}
+
+function MerchantQueueSection({
+  title,
+  count,
+  emptyText,
+  children,
+}: {
+  title: string
+  count: number
+  emptyText: string
+  children: React.ReactNode
+}) {
+  return (
+    <div style={s.queueSection}>
+      <div style={s.queueHeader}>
+        <div style={s.queueTitle}>{title}</div>
+        <span style={s.queueCount}>{count}</span>
+      </div>
+      {count === 0 ? (
+        <div style={s.queueEmpty}>{emptyText}</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>{children}</div>
+      )}
+    </div>
+  )
+}
+
+function AttentionMerchantCard({ merchant }: { merchant: AttentionMerchant }) {
+  const primaryIssue = merchant.issues[0]
+  return (
+    <div style={s.queueCard}>
+      <div style={s.queueCardTop}>
+        <div style={s.queueMerchantName}>{merchant.tenantName}</div>
+        <span style={s.issueBadge}>{merchant.issueCount} 类问题</span>
+      </div>
+      <div style={s.queueMeta}>门店：{compactList(merchant.storeNames)}</div>
+      <div style={s.queueMeta}>编码：{compactList(merchant.storeCodes)}</div>
+      <div style={s.issueLine}>
+        <span style={s.issueDot} />
+        <span style={s.issueText}>{primaryIssue?.label ?? '需要关注'}</span>
+        {merchant.issues.length > 1 && <span style={s.issueMore}>+{merchant.issues.length - 1}</span>}
+      </div>
+      <div style={s.queueFooter}>
+        <span style={s.queueMeta}>最近：{fmtOpsTime(merchant.lastSeenAt)}</span>
+        <Link href="/ops/health" style={s.healthLink}>查看运行健康</Link>
+      </div>
+    </div>
+  )
+}
+
+function RecentMerchantCard({ tenant }: { tenant: OverviewTenantRow }) {
+  return (
+    <div style={s.queueCard}>
+      <div style={s.queueCardTop}>
+        <div style={s.queueMerchantName}>{tenant.tenantName}</div>
+        <span style={tenant.hasEffectiveOwner ? s.ownerOk : s.ownerWarn}>
+          {tenant.hasEffectiveOwner ? 'OWNER 已绑定' : 'OWNER 未完成'}
+        </span>
+      </div>
+      <div style={s.queueMeta}>门店：{compactList(tenant.storeNames)}</div>
+      <div style={s.activityGrid}>
+        <div>
+          <div style={s.activityLabel}>最近业务</div>
+          <div style={s.activityValue}>{fmtOpsTime(tenant.lastActivityAt)}</div>
+        </div>
+        <div>
+          <div style={s.activityLabel}>销售</div>
+          <div style={s.activityValue}>{fmtOpsTime(tenant.lastSaleAt)}</div>
+        </div>
+        <div>
+          <div style={s.activityLabel}>顾客订单</div>
+          <div style={s.activityValue}>{fmtOpsTime(tenant.lastCustomerOrderAt)}</div>
+        </div>
+      </div>
+      <div style={s.queueFooter}>
+        <span style={s.queueMeta}>STAFF {tenant.staffCount} 人</span>
+        <span style={s.queueMeta}>编码：{compactList(tenant.storeCodes)}</span>
+      </div>
     </div>
   )
 }
@@ -1124,6 +1430,168 @@ const s: Record<string, React.CSSProperties> = {
   },
   summaryValue: { fontSize: 18, fontWeight: 800, color: '#111827', lineHeight: 1.1 },
   summaryLabel: { fontSize: 11, color: '#8c8c8c', marginTop: 4, whiteSpace: 'nowrap' },
+  workGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 10,
+    marginBottom: 12,
+  },
+  queueSection: {
+    background: '#fff',
+    borderRadius: 12,
+    padding: '14px 14px',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    border: '1px solid #eef2f7',
+    minWidth: 0,
+  },
+  queueHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  queueTitle: { fontSize: 14, fontWeight: 800, color: '#1f2937' },
+  queueCount: {
+    minWidth: 22,
+    height: 22,
+    padding: '0 7px',
+    borderRadius: 12,
+    background: '#eff6ff',
+    color: '#1677ff',
+    fontSize: 12,
+    fontWeight: 800,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  queueEmpty: {
+    minHeight: 74,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    background: '#f9fafb',
+    color: '#9ca3af',
+    fontSize: 13,
+    textAlign: 'center',
+    padding: '0 12px',
+  },
+  queueCard: {
+    border: '1px solid #eef2f7',
+    borderRadius: 10,
+    padding: '10px 12px',
+    background: '#fff',
+    minWidth: 0,
+  },
+  queueCardTop: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
+  queueMerchantName: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: '#111827',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  queueMeta: {
+    fontSize: 11,
+    color: '#8c8c8c',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  issueBadge: {
+    flexShrink: 0,
+    borderRadius: 12,
+    padding: '2px 8px',
+    background: '#fff7e6',
+    color: '#fa8c16',
+    border: '1px solid #ffd591',
+    fontSize: 11,
+    fontWeight: 800,
+  },
+  issueLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    minWidth: 0,
+  },
+  issueDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    background: '#fa8c16',
+    flexShrink: 0,
+  },
+  issueText: {
+    fontSize: 12,
+    color: '#1f2937',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  issueMore: {
+    flexShrink: 0,
+    fontSize: 11,
+    color: '#fa8c16',
+    fontWeight: 800,
+  },
+  queueFooter: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 8,
+  },
+  healthLink: {
+    flexShrink: 0,
+    color: '#1677ff',
+    fontSize: 12,
+    fontWeight: 800,
+    textDecoration: 'none',
+  },
+  ownerOk: {
+    flexShrink: 0,
+    borderRadius: 12,
+    padding: '2px 8px',
+    background: '#f6ffed',
+    color: '#389e0d',
+    border: '1px solid #b7eb8f',
+    fontSize: 11,
+    fontWeight: 800,
+  },
+  ownerWarn: {
+    flexShrink: 0,
+    borderRadius: 12,
+    padding: '2px 8px',
+    background: '#fff7e6',
+    color: '#fa8c16',
+    border: '1px solid #ffd591',
+    fontSize: 11,
+    fontWeight: 800,
+  },
+  activityGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 6,
+    marginTop: 8,
+  },
+  activityLabel: { fontSize: 10, color: '#9ca3af', marginBottom: 2 },
+  activityValue: {
+    fontSize: 11,
+    color: '#374151',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
   sectionHead: {
     display: 'flex',
     alignItems: 'center',
