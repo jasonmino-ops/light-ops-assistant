@@ -129,6 +129,9 @@ export default function UsbCustomerDisplayBridge() {
   const cartDisplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const displaySequenceRef = useRef(0)
   const pendingAmountRef = useRef<string | null>(null)
+  const hasActiveCartRef = useRef(false)
+  const latestCartAmountRef = useRef<number | null>(null)
+  const lastCartEventAtRef = useRef(0)
 
   useEffect(() => {
     statusRef.current = status.status
@@ -171,9 +174,13 @@ export default function UsbCustomerDisplayBridge() {
         const detail = (event as CustomEvent<CashierCartTotalChangedDetail>).detail
         if (!detail || !storeCode || detail.storeCode !== storeCode) return
         if (detail.reason === 'clear' || detail.itemCount <= 0 || detail.totalAmount <= 0) {
+          markNoActiveCart()
           scheduleCartClear()
           return
         }
+        hasActiveCartRef.current = true
+        latestCartAmountRef.current = detail.totalAmount
+        lastCartEventAtRef.current = Date.parse(detail.updatedAt) || Date.now()
         scheduleCartAmount(detail.totalAmount, detail.reason === 'final')
       } catch (error) {
         console.warn('[usb-customer-display] cart event failed', error)
@@ -217,6 +224,7 @@ export default function UsbCustomerDisplayBridge() {
 
   async function applySessionToCustomerDisplay(session: SessionPayload | null) {
     if (!session) {
+      if (hasActiveCartRef.current) return
       await clearOnce()
       return
     }
@@ -228,6 +236,7 @@ export default function UsbCustomerDisplayBridge() {
         lastSuccessfulSignatureRef.current,
         lastSuccessfulAmountRef.current,
       )
+      if (isStaleAgainstActiveCart(next.amount, session.updatedAt)) return
       if (next.signature === lastSuccessfulSignatureRef.current) return
       const nextStatus = await scheduleCartAmount(next.amount, true)
       if (nextStatus?.status === 'connected') {
@@ -238,6 +247,7 @@ export default function UsbCustomerDisplayBridge() {
     }
 
     if (session.status === 'COMPLETED') {
+      markNoActiveCart()
       if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
       clearTimerRef.current = setTimeout(() => {
         clearOnce().catch((error) => console.warn('[usb-customer-display] delayed clear failed', error))
@@ -245,9 +255,30 @@ export default function UsbCustomerDisplayBridge() {
       return
     }
 
-    if (session.status === 'CANCELLED' || session.status === 'DRAFT') {
+    if (session.status === 'CANCELLED') {
+      markNoActiveCart()
+      await clearOnce()
+      return
+    }
+
+    if (session.status === 'DRAFT') {
+      if (hasActiveCartRef.current) return
       await clearOnce()
     }
+  }
+
+  function markNoActiveCart() {
+    hasActiveCartRef.current = false
+    latestCartAmountRef.current = null
+    lastCartEventAtRef.current = 0
+  }
+
+  function isStaleAgainstActiveCart(amount: number, sessionUpdatedAt: string) {
+    if (!hasActiveCartRef.current || latestCartAmountRef.current === null) return false
+    const sessionUpdatedAtMs = Date.parse(sessionUpdatedAt) || 0
+    const cartAmountKey = latestCartAmountRef.current.toFixed(2)
+    const sessionAmountKey = Number.isFinite(amount) ? amount.toFixed(2) : ''
+    return sessionAmountKey !== cartAmountKey && sessionUpdatedAtMs <= lastCartEventAtRef.current
   }
 
   function scheduleCartClear() {
@@ -304,6 +335,19 @@ export default function UsbCustomerDisplayBridge() {
     lastSuccessfulSignatureRef.current = null
     lastSuccessfulAmountRef.current = null
     pendingAmountRef.current = null
+  }
+
+  async function handleManualClear() {
+    displaySequenceRef.current += 1
+    markNoActiveCart()
+    pendingAmountRef.current = null
+    if (cartDisplayTimerRef.current) {
+      clearTimeout(cartDisplayTimerRef.current)
+      cartDisplayTimerRef.current = null
+    }
+    lastSuccessfulSignatureRef.current = null
+    lastSuccessfulAmountRef.current = null
+    await clearCustomerDisplay()
   }
 
   async function handleConnect() {
@@ -366,7 +410,7 @@ export default function UsbCustomerDisplayBridge() {
               连接设备
             </button>
             <button type="button" style={styles.button} disabled={status.status !== 'connected'} onClick={() => testCustomerDisplay()}>测试显示</button>
-            <button type="button" style={styles.button} disabled={status.status !== 'connected'} onClick={() => clearCustomerDisplay()}>清屏</button>
+            <button type="button" style={styles.button} disabled={status.status !== 'connected'} onClick={handleManualClear}>清屏</button>
             <button type="button" style={styles.button} disabled={status.status !== 'connected'} onClick={handleDisconnect}>断开</button>
           </div>
           <div style={styles.hint}>
