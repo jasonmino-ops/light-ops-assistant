@@ -51,6 +51,7 @@ import {
   savePosDeviceToken,
 } from '@/lib/desktop-pos-client'
 import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
+import { dispatchCashierCartTotalChanged } from '@/lib/customer-display-cart-event'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1200,6 +1201,7 @@ export default function CashierPage() {
   const [memberPayError, setMemberPayError] = useState('')
   const [memberPayMember, setMemberPayMember] = useState<CashierMember | null>(null)
   const [isDesktopPos, setIsDesktopPos] = useState(false)
+  const [isUsbCustomerDisplayEventSource, setIsUsbCustomerDisplayEventSource] = useState(false)
   const [posDeviceToken, setPosDeviceToken] = useState('')
   const [posAuthLoading, setPosAuthLoading] = useState(false)
   const [posAuthError, setPosAuthError] = useState('')
@@ -1303,7 +1305,9 @@ export default function CashierPage() {
   }, [isUserInputElement])
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
     setIsDesktopPos(window.location.pathname === '/desktop/pos' || window.location.pathname === '/cashier')
+    setIsUsbCustomerDisplayEventSource(window.location.pathname === '/desktop/pos' && params.get('mode') === 'pos')
   }, [])
 
   useEffect(() => {
@@ -2599,6 +2603,19 @@ export default function CashierPage() {
     )
   }, [])
 
+  useEffect(() => {
+    if (!isUsbCustomerDisplayEventSource || !storeCode || noCodeError || isRestoringCashierStore || saleResult) return
+    const totalAmount = cart.length > 0 ? cartTotal(cart) : 0
+    if (cart.length === 0 && checkoutStep !== 'SELECT_ITEMS') return
+    dispatchCashierCartTotalChanged({
+      storeCode,
+      totalAmount,
+      itemCount: cartCount(cart),
+      updatedAt: new Date().toISOString(),
+      reason: cart.length > 0 ? 'cart' : 'clear',
+    })
+  }, [cart, checkoutStep, isUsbCustomerDisplayEventSource, storeCode, noCodeError, isRestoringCashierStore, saleResult])
+
   const syncCurrentCartToCustomerDisplay = useCallback((nextPayment: CashierPaymentMethod, options?: CustomerDisplaySyncOptions) => {
     if (!storeCode || noCodeError || isRestoringCashierStore || cart.length === 0) return
     const displayPayment: CashierDisplayPayment =
@@ -3095,6 +3112,15 @@ export default function CashierPage() {
   function openDesktopPaymentSelection() {
     if (!isDesktopPos || cart.length === 0 || total <= 0) return
     setSubmitError('')
+    if (isUsbCustomerDisplayEventSource && storeCode) {
+      dispatchCashierCartTotalChanged({
+        storeCode,
+        totalAmount: cartTotal(cart),
+        itemCount: cartCount(cart),
+        updatedAt: new Date().toISOString(),
+        reason: 'final',
+      })
+    }
     selectDesktopPaymentMethod(initialDesktopPaymentMethod)
     setCheckoutStep('SELECT_PAYMENT')
   }

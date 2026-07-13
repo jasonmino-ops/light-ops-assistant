@@ -2,6 +2,10 @@
 
 import { CSSProperties, useEffect, useRef, useState } from 'react'
 import {
+  CASHIER_CART_TOTAL_CHANGED_EVENT,
+  type CashierCartTotalChangedDetail,
+} from '@/lib/customer-display-cart-event'
+import {
   clearCustomerDisplay,
   connectCustomerDisplay,
   CUSTOMER_DISPLAY_DEFAULT_BAUD_RATE,
@@ -35,6 +39,7 @@ type CustomerDisplayConfig = {
 export const USB_CUSTOMER_DISPLAY_POLL_MS = 800
 export const USB_CUSTOMER_DISPLAY_COMPLETED_LINGER_MS = 2500
 export const USB_CUSTOMER_DISPLAY_CONFIG_KEY = 'cashier:customerDisplay:config'
+export const USB_CUSTOMER_DISPLAY_CART_DEBOUNCE_MS = 75
 
 function defaultConfig(): CustomerDisplayConfig {
   return { enabled: false, baudRate: CUSTOMER_DISPLAY_DEFAULT_BAUD_RATE }
@@ -120,6 +125,14 @@ export default function UsbCustomerDisplayBridge() {
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollInFlightRef = useRef(false)
   const consecutiveFailureRef = useRef(0)
+  const statusRef = useRef(status.status)
+  const cartDisplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const displaySequenceRef = useRef(0)
+  const pendingAmountRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    statusRef.current = status.status
+  }, [status.status])
 
   useEffect(() => {
     setStoreCode(resolveStoreCode())
@@ -145,11 +158,30 @@ export default function UsbCustomerDisplayBridge() {
     return () => {
       unsubscribe()
       if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
+      if (cartDisplayTimerRef.current) clearTimeout(cartDisplayTimerRef.current)
       disconnectCustomerDisplay().catch((error) => {
         console.warn('[usb-customer-display] unload disconnect failed', error)
       })
     }
   }, [])
+
+  useEffect(() => {
+    function onCartTotalChanged(event: Event) {
+      try {
+        const detail = (event as CustomEvent<CashierCartTotalChangedDetail>).detail
+        if (!detail || !storeCode || detail.storeCode !== storeCode) return
+        if (detail.reason === 'clear' || detail.itemCount <= 0 || detail.totalAmount <= 0) {
+          scheduleCartClear()
+          return
+        }
+        scheduleCartAmount(detail.totalAmount, detail.reason === 'final')
+      } catch (error) {
+        console.warn('[usb-customer-display] cart event failed', error)
+      }
+    }
+    window.addEventListener(CASHIER_CART_TOTAL_CHANGED_EVENT, onCartTotalChanged)
+    return () => window.removeEventListener(CASHIER_CART_TOTAL_CHANGED_EVENT, onCartTotalChanged)
+  }, [storeCode])
 
   useEffect(() => {
     if (!storeCode || status.status !== 'connected') return
@@ -196,9 +228,9 @@ export default function UsbCustomerDisplayBridge() {
         lastSuccessfulSignatureRef.current,
         lastSuccessfulAmountRef.current,
       )
-      if (!next.shouldSend) return
-      const nextStatus = await showCustomerDisplayAmount(next.amount)
-      if (nextStatus.status === 'connected') {
+      if (next.signature === lastSuccessfulSignatureRef.current) return
+      const nextStatus = await scheduleCartAmount(next.amount, true)
+      if (nextStatus?.status === 'connected') {
         lastSuccessfulSignatureRef.current = next.signature
         lastSuccessfulAmountRef.current = next.amountKey
       }
@@ -218,6 +250,49 @@ export default function UsbCustomerDisplayBridge() {
     }
   }
 
+  function scheduleCartClear() {
+    displaySequenceRef.current += 1
+    pendingAmountRef.current = null
+    if (cartDisplayTimerRef.current) {
+      clearTimeout(cartDisplayTimerRef.current)
+      cartDisplayTimerRef.current = null
+    }
+    clearOnce().catch((error) => console.warn('[usb-customer-display] cart clear failed', error))
+  }
+
+  function scheduleCartAmount(amount: number, force = false) {
+    if (!Number.isFinite(amount) || amount <= 0) return Promise.resolve(getCustomerDisplayStatus())
+    if (statusRef.current !== 'connected') return Promise.resolve(getCustomerDisplayStatus())
+    const amountKey = amount.toFixed(2)
+    if (!force && (amountKey === lastSuccessfulAmountRef.current || amountKey === pendingAmountRef.current)) {
+      return Promise.resolve(getCustomerDisplayStatus())
+    }
+    displaySequenceRef.current += 1
+    const sequence = displaySequenceRef.current
+    pendingAmountRef.current = amountKey
+    if (cartDisplayTimerRef.current) clearTimeout(cartDisplayTimerRef.current)
+    if (force) {
+      cartDisplayTimerRef.current = null
+      return writeLatestAmount(amount, amountKey, sequence)
+    }
+    return new Promise<CustomerDisplayStatus>((resolve) => {
+      cartDisplayTimerRef.current = setTimeout(() => {
+        cartDisplayTimerRef.current = null
+        writeLatestAmount(amount, amountKey, sequence).then(resolve)
+      }, USB_CUSTOMER_DISPLAY_CART_DEBOUNCE_MS)
+    })
+  }
+
+  async function writeLatestAmount(amount: number, amountKey: string, sequence: number) {
+    if (sequence !== displaySequenceRef.current) return getCustomerDisplayStatus()
+    const nextStatus = await showCustomerDisplayAmount(amount)
+    if (sequence === displaySequenceRef.current && nextStatus.status === 'connected') {
+      lastSuccessfulAmountRef.current = amountKey
+      if (pendingAmountRef.current === amountKey) pendingAmountRef.current = null
+    }
+    return nextStatus
+  }
+
   async function clearOnce() {
     if (clearTimerRef.current) {
       clearTimeout(clearTimerRef.current)
@@ -228,6 +303,7 @@ export default function UsbCustomerDisplayBridge() {
     await clearCustomerDisplay()
     lastSuccessfulSignatureRef.current = null
     lastSuccessfulAmountRef.current = null
+    pendingAmountRef.current = null
   }
 
   async function handleConnect() {
