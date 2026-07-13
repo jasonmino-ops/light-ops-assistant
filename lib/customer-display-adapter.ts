@@ -4,6 +4,7 @@ export type CustomerDisplayStatusKind =
   | 'unsupported'
   | 'disconnected'
   | 'connecting'
+  | 'disconnecting'
   | 'connected'
   | 'error'
 
@@ -34,6 +35,7 @@ let port: SerialPort | null = null
 let baudRate = CUSTOMER_DISPLAY_DEFAULT_BAUD_RATE
 let status: CustomerDisplayStatus = makeStatus(isWebSerialSupported() ? 'disconnected' : 'unsupported')
 let writeQueue: Promise<void> = Promise.resolve()
+let connectionPromise: Promise<CustomerDisplayStatus> | null = null
 const listeners = new Set<CustomerDisplayStatusListener>()
 
 function isWebSerialSupported() {
@@ -88,19 +90,73 @@ function bindDisconnect(nextPort: SerialPort) {
   } catch {}
 }
 
+function isPortWritable(nextPort: SerialPort | null) {
+  return !!nextPort?.writable
+}
+
+function isAlreadyOpenError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return /already open|port is already open/i.test(message)
+}
+
 async function openPort(nextPort: SerialPort, nextBaudRate: number) {
   baudRate = normalizeBaudRate(nextBaudRate)
+  if (port === nextPort && isPortWritable(nextPort)) {
+    emitStatus('connected')
+    return
+  }
   emitStatus('connecting')
-  await nextPort.open({
-    baudRate,
-    dataBits: 8,
-    stopBits: 1,
-    parity: 'none',
-    flowControl: 'none',
-  })
+  try {
+    await nextPort.open({
+      baudRate,
+      dataBits: 8,
+      stopBits: 1,
+      parity: 'none',
+      flowControl: 'none',
+    })
+  } catch (error) {
+    if (!isAlreadyOpenError(error) || !isPortWritable(nextPort)) throw error
+  }
   port = nextPort
   bindDisconnect(nextPort)
   emitStatus('connected')
+}
+
+async function connectWithMutex(nextBaudRate: number, selectPort: () => Promise<SerialPort | null>) {
+  if (!isWebSerialSupported()) {
+    emitStatus('unsupported', 'Web Serial is not supported')
+    return status
+  }
+  if (isPortWritable(port)) {
+    baudRate = normalizeBaudRate(nextBaudRate)
+    emitStatus('connected')
+    return status
+  }
+  if (connectionPromise) return connectionPromise
+
+  connectionPromise = (async () => {
+    try {
+      const nextPort = await selectPort()
+      if (!nextPort) {
+        emitStatus('disconnected')
+        return status
+      }
+      await openPort(nextPort, nextBaudRate)
+      await enqueueWrite(buildCustomerDisplayInitBytes())
+      return status
+    } catch (error) {
+      if (isAlreadyOpenError(error) && isPortWritable(port)) {
+        emitStatus('connected')
+        return status
+      }
+      emitStatus('error', error instanceof Error ? error.message : 'Serial connection failed')
+      return status
+    } finally {
+      connectionPromise = null
+    }
+  })()
+
+  return connectionPromise
 }
 
 async function enqueueWrite(bytes: Uint8Array) {
@@ -116,6 +172,7 @@ async function enqueueWrite(bytes: Uint8Array) {
       const writer = currentPort.writable.getWriter()
       try {
         await writer.write(bytes)
+        if (status.status === 'error' && port === currentPort) emitStatus('connected')
       } catch (error) {
         emitStatus('error', error instanceof Error ? error.message : 'Serial write failed')
       } finally {
@@ -161,48 +218,29 @@ export function buildCustomerDisplayClearBytes(): Uint8Array {
 }
 
 export async function connectCustomerDisplay(nextBaudRate = CUSTOMER_DISPLAY_DEFAULT_BAUD_RATE): Promise<CustomerDisplayStatus> {
-  try {
-    if (!isWebSerialSupported()) {
-      emitStatus('unsupported', 'Web Serial is not supported')
-      return status
-    }
-    const nextPort = await navigator.serial!.requestPort()
-    await openPort(nextPort, nextBaudRate)
-    await enqueueWrite(buildCustomerDisplayInitBytes())
-    return status
-  } catch (error) {
-    emitStatus('error', error instanceof Error ? error.message : 'Serial connection failed')
-    return status
-  }
+  return connectWithMutex(nextBaudRate, () => navigator.serial!.requestPort())
 }
 
 export async function reconnectAuthorizedCustomerDisplay(nextBaudRate = CUSTOMER_DISPLAY_DEFAULT_BAUD_RATE): Promise<CustomerDisplayStatus> {
-  try {
-    if (!isWebSerialSupported()) {
-      emitStatus('unsupported', 'Web Serial is not supported')
-      return status
-    }
+  return connectWithMutex(nextBaudRate, async () => {
     const ports = await navigator.serial!.getPorts()
-    if (ports.length === 0) {
-      emitStatus('disconnected')
-      return status
-    }
-    await openPort(ports[0], nextBaudRate)
-    await enqueueWrite(buildCustomerDisplayInitBytes())
-    return status
-  } catch (error) {
-    emitStatus('error', error instanceof Error ? error.message : 'Serial reconnect failed')
-    return status
-  }
+    return ports[0] ?? null
+  })
 }
 
 export async function disconnectCustomerDisplay(): Promise<CustomerDisplayStatus> {
-  const currentPort = port
-  port = null
+  if (!isWebSerialSupported()) {
+    emitStatus('unsupported')
+    return status
+  }
   try {
+    emitStatus('disconnecting')
+    if (connectionPromise) await connectionPromise.catch(() => undefined)
+    const currentPort = port
     await writeQueue.catch(() => undefined)
     await currentPort?.close?.()
-    emitStatus(isWebSerialSupported() ? 'disconnected' : 'unsupported')
+    if (port === currentPort) port = null
+    emitStatus('disconnected')
   } catch (error) {
     emitStatus('error', error instanceof Error ? error.message : 'Serial disconnect failed')
   }

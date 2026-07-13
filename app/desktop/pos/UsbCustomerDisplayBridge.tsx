@@ -281,7 +281,14 @@ export default function UsbCustomerDisplayBridge() {
             </select>
           </div>
           <div style={styles.buttons}>
-            <button type="button" style={styles.primaryButton} disabled={status.status === 'connecting'} onClick={handleConnect}>连接设备</button>
+            <button
+              type="button"
+              style={styles.primaryButton}
+              disabled={status.status === 'connecting' || status.status === 'disconnecting' || status.status === 'connected'}
+              onClick={handleConnect}
+            >
+              连接设备
+            </button>
             <button type="button" style={styles.button} disabled={status.status !== 'connected'} onClick={() => testCustomerDisplay()}>测试显示</button>
             <button type="button" style={styles.button} disabled={status.status !== 'connected'} onClick={() => clearCustomerDisplay()}>清屏</button>
             <button type="button" style={styles.button} disabled={status.status !== 'connected'} onClick={handleDisconnect}>断开</button>
@@ -299,6 +306,7 @@ export default function UsbCustomerDisplayBridge() {
 function statusLabel(status: CustomerDisplayStatus['status'], syncState: 'idle' | 'ok' | 'error') {
   if (status === 'unsupported') return '浏览器不支持'
   if (status === 'connecting') return '连接中'
+  if (status === 'disconnecting') return '断开中'
   if (status === 'connected') return syncState === 'error' ? '数据同步异常' : '已连接'
   if (status === 'error') return '异常'
   return '未连接'

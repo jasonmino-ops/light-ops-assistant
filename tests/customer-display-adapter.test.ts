@@ -3,10 +3,14 @@ import {
   buildCustomerDisplayAmountBytes,
   buildCustomerDisplayClearBytes,
   buildCustomerDisplayInitBytes,
+  clearCustomerDisplay,
   connectCustomerDisplay,
   disconnectCustomerDisplay,
   formatCustomerDisplayAmount,
+  getCustomerDisplayStatus,
+  reconnectAuthorizedCustomerDisplay,
   showCustomerDisplayAmount,
+  testCustomerDisplay,
 } from '../lib/customer-display-adapter'
 import { shouldSendCustomerDisplayAmount } from '../app/desktop/pos/UsbCustomerDisplayBridge'
 
@@ -49,6 +53,8 @@ async function main() {
   const written: number[][] = []
   let activeWriters = 0
   let maxActiveWriters = 0
+  let openCount = 0
+  let closeCount = 0
   const fakePort = {
     writable: {
       getWriter() {
@@ -65,8 +71,13 @@ async function main() {
         }
       },
     },
-    async open() {},
-    async close() {},
+    async open() {
+      openCount += 1
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    },
+    async close() {
+      closeCount += 1
+    },
     getInfo() {
       return { usbVendorId: 1, usbProductId: 2 }
     },
@@ -88,6 +99,9 @@ async function main() {
   })
 
   assert.equal((await connectCustomerDisplay(9600)).status, 'connected')
+  assert.equal(openCount, 1)
+  assert.equal((await connectCustomerDisplay(9600)).status, 'connected')
+  assert.equal(openCount, 1, 'already connected connect should not call open again')
   await Promise.all([
     showCustomerDisplayAmount(1),
     showCustomerDisplayAmount(2),
@@ -100,6 +114,53 @@ async function main() {
     [0x1b, 0x51, 0x41, 0x32, 0x2e, 0x30, 0x30, 0x0d],
     [0x1b, 0x51, 0x41, 0x33, 0x2e, 0x30, 0x30, 0x0d],
   ])
+  await clearCustomerDisplay()
+  assert.equal(openCount, 1, 'clear should not call open')
+  assert.equal(getCustomerDisplayStatus().status, 'connected', 'clear should keep connected status')
+  assert.deepEqual(written.at(-1), [0x0c])
+  await testCustomerDisplay()
+  assert.deepEqual(written.slice(-2), [
+    [0x1b, 0x40],
+    [0x1b, 0x51, 0x41, 0x38, 0x38, 0x38, 0x38, 0x2e, 0x38, 0x38, 0x0d],
+  ])
+  assert.equal((await disconnectCustomerDisplay()).status, 'disconnected')
+  assert.equal(closeCount, 1)
+
+  written.length = 0
+  const concurrentConnect = await Promise.all([
+    connectCustomerDisplay(2400),
+    connectCustomerDisplay(2400),
+  ])
+  assert.equal(concurrentConnect[0].status, 'connected')
+  assert.equal(concurrentConnect[1].status, 'connected')
+  assert.equal(openCount, 2, 'two concurrent connects after disconnect should share one open')
+  assert.equal(written.length, 1, 'concurrent connect should initialize once')
+  assert.equal((await disconnectCustomerDisplay()).status, 'disconnected')
+
+  const alreadyOpenPort = {
+    ...fakePort,
+    async open() {
+      openCount += 1
+      throw new Error("Failed to execute 'open' on 'SerialPort': The port is already open.")
+    },
+  }
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      serial: {
+        async requestPort() {
+          return alreadyOpenPort
+        },
+        async getPorts() {
+          return [alreadyOpenPort]
+        },
+      },
+    },
+  })
+  assert.equal((await reconnectAuthorizedCustomerDisplay(2400)).status, 'connected')
+  assert.equal(getCustomerDisplayStatus().status, 'connected', 'already-open writable port should recover as connected')
+  assert.equal((await disconnectCustomerDisplay()).status, 'disconnected')
+  assert.equal((await connectCustomerDisplay(2400)).status, 'connected', 'disconnect should allow reconnect')
   assert.equal((await disconnectCustomerDisplay()).status, 'disconnected')
 
   Object.defineProperty(globalThis, 'navigator', {
