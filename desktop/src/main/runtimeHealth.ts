@@ -1,0 +1,66 @@
+/**
+ * E-Shop Desktop — Runtime Health 基础版
+ *
+ * 内存态健康模型；变更即写日志。Milestone A 通过日志与 Tray「查看运行状态」
+ * 查看，不做完整运营 UI。
+ */
+
+import { logger } from './logger'
+
+export type ComponentStatus = 'unknown' | 'starting' | 'ok' | 'degraded' | 'error' | 'closed'
+
+export type RuntimeHealthSnapshot = {
+  app: ComponentStatus
+  employeeWindow: ComponentStatus
+  customerWindow: ComponentStatus
+  ipc: ComponentStatus
+  displays: { count: number; primaryId: number | null; externalIds: number[] }
+  network: ComponentStatus
+  cloudReachability: ComponentStatus
+  hardwareRuntime: ComponentStatus
+  version: string
+  uptimeSeconds: number
+  lastError: { at: string; scope: string; message: string } | null
+  lastCartSequence: number | null
+  customerRecovery: { attempts: number; exhausted: boolean }
+  updatedAt: string
+}
+
+const startedAtMs = Date.now()
+
+const state: RuntimeHealthSnapshot = {
+  app: 'starting',
+  employeeWindow: 'unknown',
+  customerWindow: 'unknown',
+  ipc: 'unknown',
+  displays: { count: 0, primaryId: null, externalIds: [] },
+  network: 'unknown',
+  cloudReachability: 'unknown',
+  hardwareRuntime: 'unknown',
+  version: '0.0.0',
+  uptimeSeconds: 0,
+  lastError: null,
+  lastCartSequence: null,
+  customerRecovery: { attempts: 0, exhausted: false },
+  updatedAt: new Date().toISOString(),
+}
+
+export function updateHealth(patch: Partial<RuntimeHealthSnapshot>, logEvent = 'health.updated') {
+  Object.assign(state, patch)
+  state.updatedAt = new Date().toISOString()
+  logger.info(logEvent, patch)
+}
+
+export function recordHealthError(scope: string, message: string) {
+  state.lastError = { at: new Date().toISOString(), scope, message: message.slice(0, 500) }
+  state.updatedAt = new Date().toISOString()
+  logger.error('health.error', { scope, message: message.slice(0, 500) })
+}
+
+export function getHealthSnapshot(): RuntimeHealthSnapshot {
+  return {
+    ...state,
+    displays: { ...state.displays, externalIds: [...state.displays.externalIds] },
+    uptimeSeconds: Math.round((Date.now() - startedAtMs) / 1000),
+  }
+}
