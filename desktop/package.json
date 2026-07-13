@@ -1,0 +1,25 @@
+{
+  "name": "eshop-desktop",
+  "productName": "E-Shop Desktop",
+  "version": "0.1.0",
+  "description": "E-Shop Desktop — Windows 一体机门店收银客户端（Milestone A: Desktop Shell）",
+  "private": true,
+  "main": "dist/main/main.js",
+  "author": "E-Shop (店小二)",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "compile": "tsc -p tsconfig.build.json",
+    "dev": "npm run compile && electron .",
+    "start": "npm run compile && electron .",
+    "test": "vitest run",
+    "pack:dir": "npm run compile && electron-builder --dir",
+    "dist:win": "npm run compile && electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^33.3.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.8.0",
+    "vitest": "^2.1.9"
+  }
+}
