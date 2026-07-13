@@ -1,0 +1,52 @@
+/**
+ * E-Shop Desktop — IPC 通道白名单（唯一事实来源）
+ *
+ * 任何 IPC 通道必须在此声明。Preload 是 sandboxed 自包含文件，
+ * 无法 import 本模块；tests/static-security.test.ts 会静态校验
+ * preload 源码中的通道字符串与本文件保持一致。
+ */
+
+export const IPC_CHANNELS = {
+  /** Renderer(员工窗口) → Main：转发从 BroadcastChannel 捕获的购物车快照 */
+  CART_PUBLISH: 'eshop:cart:publish',
+  /** Renderer(顾客窗口) → Main：顾客显示页加载完成（触发最新快照重推） */
+  DISPLAY_READY: 'eshop:display:ready',
+  /** Renderer(员工窗口) → Main (invoke)：只读 Runtime Health 快照 */
+  HEALTH_GET: 'eshop:runtime:health',
+  /** Main → Renderer(顾客窗口)：下发最新购物车快照 */
+  CART_APPLY: 'eshop:cart:apply',
+} as const
+
+export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
+
+export type WindowRole = 'employee' | 'customer'
+
+/** 各窗口角色允许发送（send）的通道 */
+export const SENDABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
+  employee: [IPC_CHANNELS.CART_PUBLISH],
+  customer: [IPC_CHANNELS.DISPLAY_READY],
+}
+
+/** 各窗口角色允许调用（invoke）的通道 */
+export const INVOKABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
+  employee: [IPC_CHANNELS.HEALTH_GET],
+  customer: [],
+}
+
+/** 各窗口角色允许接收（Main → Renderer）的通道 */
+export const RECEIVABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
+  employee: [],
+  customer: [IPC_CHANNELS.CART_APPLY],
+}
+
+/**
+ * 与现有 Web 层（lib/customer-display-realtime-channel.ts）约定的
+ * BroadcastChannel 名称。Desktop 不修改 Web 层，仅旁路读取/回放。
+ */
+export const WEB_REALTIME_BROADCAST_CHANNEL = 'light-ops:customer-display:realtime:v1'
+
+/**
+ * Desktop 回放到顾客窗口 BroadcastChannel 的消息标记，
+ * 员工窗口 preload 据此忽略回放消息，防止消息回环。
+ */
+export const DESKTOP_RELAY_FLAG = 'relayedByDesktop'
