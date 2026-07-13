@@ -4,14 +4,19 @@ import { dispatchCashierCartTotalChanged, CASHIER_CART_TOTAL_CHANGED_EVENT } fro
 
 const cashier = fs.readFileSync('app/cashier/page.tsx', 'utf8')
 const bridge = fs.readFileSync('app/desktop/pos/UsbCustomerDisplayBridge.tsx', 'utf8')
+const display = fs.readFileSync('app/desktop/display/page.tsx', 'utf8')
 const eventHelper = fs.readFileSync('lib/customer-display-cart-event.ts', 'utf8')
+const realtimeHelper = fs.readFileSync('lib/customer-display-realtime-channel.ts', 'utf8')
 
 assert.match(cashier, /dispatchCashierCartTotalChanged/, 'CashierPage should publish cart total events')
+assert.match(cashier, /publishCustomerDisplayRealtimeMessage/, 'CashierPage should publish local realtime display snapshots')
 assert.match(cashier, /window\.location\.pathname === '\/desktop\/pos' && params\.get\('mode'\) === 'pos'/, 'cart events should only publish from Desktop POS mode=pos')
 assert.match(cashier, /totalAmount = cart\.length > 0 \? cartTotal\(cart\) : 0/, 'cart event amount should come from cartTotal(cart)')
 assert.match(cashier, /itemCount: cartCount\(cart\)/, 'cart event item count should come from cartCount(cart)')
 assert.match(cashier, /reason: cart\.length > 0 \? 'cart' : 'clear'/, 'empty cart should publish clear reason')
 assert.match(cashier, /reason: 'final'/, 'checkout confirmation should publish final reason')
+assert.match(cashier, /items,\s*[\r\n\s]*totalAmount,\s*[\r\n\s]*itemCount: cartCount\(input\.cartSnapshot\),\s*[\r\n\s]*currencyCode/, 'realtime channel should send a full cart snapshot')
+assert.match(cashier, /customerDisplayRealtimeChannelRef\.current = null[\s\S]*channel\?\.close\(\)/, 'cashier realtime channel should close on unmount')
 assert.doesNotMatch(cashier, /customer-display-adapter/, 'CashierPage must not import serial adapter')
 
 assert.match(bridge, /CASHIER_CART_TOTAL_CHANGED_EVENT/, 'USB bridge should listen to cart total event')
@@ -32,9 +37,21 @@ assert.match(bridge, /function isStaleAgainstActiveCart/, 'AWAITING_PAYMENT fall
 assert.match(bridge, /sessionAmountKey !== cartAmountKey && sessionUpdatedAtMs <= lastCartEventAtRef\.current/, 'old PosSession amount should not overwrite latest cart amount')
 assert.match(bridge, /function handleManualClear\(\)/, 'manual clear should remain available')
 assert.match(bridge, /next\.signature === lastSuccessfulSignatureRef\.current/, 'final PosSession fallback should dedupe by signature')
+assert.doesNotMatch(bridge, /customer-display-realtime-channel/, 'USB bridge should not depend on web display realtime channel')
+
+assert.match(display, /createCustomerDisplayRealtimeChannel/, 'Desktop display should subscribe to local realtime channel')
+assert.match(display, /shouldApplyCustomerDisplayRealtimeMessage\(realtimeGuardRef\.current, message, storeCode\)/, 'Desktop display should isolate realtime messages by storeCode and sequence')
+assert.match(display, /shouldIgnoreStaleDisplayResponse\(current\?\.session \?\? null, body\.session, realtimeGuardRef\.current\)/, 'Desktop display should guard poll results after realtime messages')
+assert.match(display, /channel\.onmessage = null[\s\S]*channel\.close\(\)/, 'Desktop display realtime channel should close on unmount')
+assert.match(display, /message\.type === 'CLEAR'[\s\S]*session: null/, 'Desktop display should accept explicit CLEAR messages')
 
 assert.match(eventHelper, /window\.dispatchEvent/, 'event helper should dispatch a browser CustomEvent')
 assert.match(eventHelper, /console\.warn\('\[cashier:cart-total\] event dispatch failed'/, 'event helper should isolate dispatch failures')
+assert.match(realtimeHelper, /BroadcastChannel/, 'realtime helper should use BroadcastChannel')
+assert.match(realtimeHelper, /typeof window === 'undefined' \|\| typeof BroadcastChannel === 'undefined'/, 'realtime helper should degrade when BroadcastChannel is unavailable')
+assert.match(realtimeHelper, /message\.storeCode !== storeCode/, 'realtime helper should reject cross-store messages')
+assert.match(realtimeHelper, /message\.sequence < current\.sequence/, 'realtime helper should reject old sequence messages')
+assert.match(realtimeHelper, /next\.status === 'DRAFT'/, 'realtime helper should prevent old DRAFT poll results from overriding local cart snapshots')
 
 const originalWindow = globalThis.window
 let dispatchedType = ''

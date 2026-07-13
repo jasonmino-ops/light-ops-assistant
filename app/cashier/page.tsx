@@ -52,6 +52,13 @@ import {
 } from '@/lib/desktop-pos-client'
 import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
 import { dispatchCashierCartTotalChanged } from '@/lib/customer-display-cart-event'
+import {
+  createCustomerDisplayRealtimeChannel,
+  publishCustomerDisplayRealtimeMessage,
+  type CustomerDisplayRealtimePaymentMethod,
+  type CustomerDisplayRealtimePaymentStatus,
+  type CustomerDisplayRealtimeStatus,
+} from '@/lib/customer-display-realtime-channel'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1254,6 +1261,8 @@ export default function CashierPage() {
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
   const previousCashierDisplayCartCountRef = useRef(0)
+  const customerDisplayRealtimeChannelRef = useRef<BroadcastChannel | null>(null)
+  const customerDisplayRealtimeSequenceRef = useRef(0)
   const autoPrintedReceiptKeyRef = useRef('')
   const receiptPrintButtonRef = useRef<HTMLButtonElement>(null)
   const receiptPrintLockedRef = useRef(false)
@@ -1309,6 +1318,16 @@ export default function CashierPage() {
     setIsDesktopPos(window.location.pathname === '/desktop/pos' || window.location.pathname === '/cashier')
     setIsUsbCustomerDisplayEventSource(window.location.pathname === '/desktop/pos' && params.get('mode') === 'pos')
   }, [])
+
+  useEffect(() => {
+    if (!isUsbCustomerDisplayEventSource) return
+    const channel = createCustomerDisplayRealtimeChannel()
+    customerDisplayRealtimeChannelRef.current = channel
+    return () => {
+      customerDisplayRealtimeChannelRef.current = null
+      channel?.close()
+    }
+  }, [isUsbCustomerDisplayEventSource])
 
   useEffect(() => {
     if (!isDesktopPos || loading || noCodeError || isRestoringCashierStore) return
@@ -2603,6 +2622,32 @@ export default function CashierPage() {
     )
   }, [])
 
+  const publishCustomerDisplayRealtimeSnapshot = useCallback((input: {
+    reason: 'cart' | 'clear' | 'final'
+    cartSnapshot: CartLine[]
+    paymentMethod: CustomerDisplayRealtimePaymentMethod
+    paymentStatus: CustomerDisplayRealtimePaymentStatus
+    status: CustomerDisplayRealtimeStatus
+  }) => {
+    if (!isUsbCustomerDisplayEventSource || !storeCode || noCodeError || isRestoringCashierStore) return
+    const items = cashierDisplayItems(input.cartSnapshot)
+    const totalAmount = input.cartSnapshot.length > 0 ? cartTotal(input.cartSnapshot) : 0
+    customerDisplayRealtimeSequenceRef.current += 1
+    publishCustomerDisplayRealtimeMessage(customerDisplayRealtimeChannelRef.current, {
+      type: input.reason === 'clear' ? 'CLEAR' : 'CART_SNAPSHOT',
+      storeCode,
+      sentAt: new Date().toISOString(),
+      sequence: customerDisplayRealtimeSequenceRef.current,
+      items,
+      totalAmount,
+      itemCount: cartCount(input.cartSnapshot),
+      currencyCode,
+      status: input.status,
+      paymentMethod: input.paymentMethod,
+      paymentStatus: input.paymentStatus,
+    })
+  }, [currencyCode, isRestoringCashierStore, isUsbCustomerDisplayEventSource, noCodeError, storeCode])
+
   useEffect(() => {
     if (!isUsbCustomerDisplayEventSource || !storeCode || noCodeError || isRestoringCashierStore || saleResult) return
     const totalAmount = cart.length > 0 ? cartTotal(cart) : 0
@@ -2614,7 +2659,28 @@ export default function CashierPage() {
       updatedAt: new Date().toISOString(),
       reason: cart.length > 0 ? 'cart' : 'clear',
     })
-  }, [cart, checkoutStep, isUsbCustomerDisplayEventSource, storeCode, noCodeError, isRestoringCashierStore, saleResult])
+    const paymentMethod: CustomerDisplayRealtimePaymentMethod =
+      checkoutStep === 'SELECT_PAYMENT' && desktopSelectedPaymentMethod === 'KHQR' ? 'KHQR' :
+      checkoutStep === 'SELECT_PAYMENT' && desktopSelectedPaymentMethod === 'CASH' ? 'CASH' :
+      null
+    publishCustomerDisplayRealtimeSnapshot({
+      reason: cart.length > 0 ? 'cart' : 'clear',
+      cartSnapshot: cart,
+      paymentMethod,
+      paymentStatus: paymentMethod === 'KHQR' ? 'PENDING' : null,
+      status: cart.length > 0 && paymentMethod === 'KHQR' ? 'AWAITING_PAYMENT' : 'DRAFT',
+    })
+  }, [
+    cart,
+    checkoutStep,
+    desktopSelectedPaymentMethod,
+    isUsbCustomerDisplayEventSource,
+    storeCode,
+    noCodeError,
+    isRestoringCashierStore,
+    saleResult,
+    publishCustomerDisplayRealtimeSnapshot,
+  ])
 
   const syncCurrentCartToCustomerDisplay = useCallback((nextPayment: CashierPaymentMethod, options?: CustomerDisplaySyncOptions) => {
     if (!storeCode || noCodeError || isRestoringCashierStore || cart.length === 0) return
@@ -3119,6 +3185,13 @@ export default function CashierPage() {
         itemCount: cartCount(cart),
         updatedAt: new Date().toISOString(),
         reason: 'final',
+      })
+      publishCustomerDisplayRealtimeSnapshot({
+        reason: 'final',
+        cartSnapshot: cart,
+        paymentMethod: initialDesktopPaymentMethod === 'KHQR' ? 'KHQR' : initialDesktopPaymentMethod === 'CASH' ? 'CASH' : null,
+        paymentStatus: initialDesktopPaymentMethod === 'KHQR' ? 'PENDING' : null,
+        status: initialDesktopPaymentMethod === 'KHQR' ? 'AWAITING_PAYMENT' : 'DRAFT',
       })
     }
     selectDesktopPaymentMethod(initialDesktopPaymentMethod)

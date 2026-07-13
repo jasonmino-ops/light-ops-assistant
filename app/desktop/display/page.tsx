@@ -12,6 +12,15 @@
 
 import { memo, useEffect, useState, useRef, CSSProperties, RefObject } from 'react'
 import QRCode from 'react-qr-code'
+import {
+  buildCustomerDisplayRealtimeGuard,
+  createCustomerDisplayRealtimeChannel,
+  isCustomerDisplayRealtimeMessage,
+  shouldApplyCustomerDisplayRealtimeMessage,
+  shouldIgnoreServerSessionAfterRealtime,
+  type CustomerDisplayRealtimeGuard,
+  type CustomerDisplayRealtimeMessage,
+} from '@/lib/customer-display-realtime-channel'
 
 type PosItem = {
   productId: string
@@ -80,6 +89,7 @@ export default function DesktopMirrorPage() {
   const [usdKhrRate, setUsdKhrRate] = useState(4100)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollInFlightRef = useRef(false)
+  const realtimeGuardRef = useRef<CustomerDisplayRealtimeGuard | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -105,7 +115,11 @@ export default function DesktopMirrorPage() {
         }
         const body = await res.json() as ApiResp
         if (aborted) return
-        setData((current) => shouldIgnoreStaleDisplayResponse(current?.session ?? null, body.session) ? current : body)
+        setData((current) => (
+          shouldIgnoreStaleDisplayResponse(current?.session ?? null, body.session, realtimeGuardRef.current)
+            ? current
+            : body
+        ))
         setLoadError(null)
       } catch {
         if (!aborted) setLoadError(displayCopy[lang].networkRetry)
@@ -120,6 +134,24 @@ export default function DesktopMirrorPage() {
       if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [storeCode, lang])
+
+  useEffect(() => {
+    if (!storeCode) return
+    const channel = createCustomerDisplayRealtimeChannel()
+    if (!channel) return
+    channel.onmessage = (event) => {
+      const message = event.data
+      if (!isCustomerDisplayRealtimeMessage(message)) return
+      if (!shouldApplyCustomerDisplayRealtimeMessage(realtimeGuardRef.current, message, storeCode)) return
+      realtimeGuardRef.current = buildCustomerDisplayRealtimeGuard(message)
+      setData((current) => applyRealtimeMessageToDisplayData(current, message))
+      setLoadError(null)
+    }
+    return () => {
+      channel.onmessage = null
+      channel.close()
+    }
+  }, [storeCode])
 
   const t = displayCopy[lang]
 
@@ -697,7 +729,52 @@ function hasKhqrDisplaySource(session: SessionPayload | null): boolean {
   return Boolean(displayImageSrc(session.khqrImageUrl) || session.khqrPayload || session.khqrImageUrl)
 }
 
-function shouldIgnoreStaleDisplayResponse(current: SessionPayload | null, next: SessionPayload | null): boolean {
+function applyRealtimeMessageToDisplayData(current: ApiResp | null, message: CustomerDisplayRealtimeMessage): ApiResp {
+  const base: ApiResp = current ?? {
+    storeCode: message.storeCode,
+    storeName: message.storeCode,
+    storeBannerUrl: null,
+    storeKhqrImageUrl: null,
+    displayProducts: [],
+    serverNow: message.sentAt,
+    session: null,
+  }
+  if (message.type === 'CLEAR') {
+    return {
+      ...base,
+      storeCode: base.storeCode || message.storeCode,
+      serverNow: message.sentAt,
+      session: null,
+    }
+  }
+  return {
+    ...base,
+    storeCode: base.storeCode || message.storeCode,
+    serverNow: message.sentAt,
+    session: {
+      status: message.status,
+      displayStatus: message.status,
+      paymentMethod: message.paymentMethod,
+      paymentStatus: message.paymentStatus,
+      items: message.items,
+      totalAmount: message.totalAmount,
+      itemCount: message.itemCount,
+      khqrPayload: null,
+      khqrImageUrl: null,
+      orderNo: null,
+      message: null,
+      completedAt: null,
+      updatedAt: message.sentAt,
+    },
+  }
+}
+
+function shouldIgnoreStaleDisplayResponse(
+  current: SessionPayload | null,
+  next: SessionPayload | null,
+  realtimeGuard: CustomerDisplayRealtimeGuard | null = null,
+): boolean {
+  if (shouldIgnoreServerSessionAfterRealtime(current, next, realtimeGuard)) return true
   if (!current) return false
   const currentUpdatedAt = new Date(current.updatedAt).getTime()
   const nextUpdatedAt = next?.updatedAt ? new Date(next.updatedAt).getTime() : 0
