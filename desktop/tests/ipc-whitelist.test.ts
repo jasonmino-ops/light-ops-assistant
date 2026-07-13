@@ -7,16 +7,21 @@ import {
 } from '../src/shared/ipcChannels'
 
 describe('IPC 通道白名单（A6）', () => {
-  it('通道全集固定为 4 个，且全部带 eshop: 前缀', () => {
+  it('通道全集固定为 7 个，且全部带 eshop: 前缀', () => {
     const all = Object.values(IPC_CHANNELS)
-    expect(all).toHaveLength(4)
+    expect(all).toHaveLength(7)
     for (const ch of all) expect(ch.startsWith('eshop:')).toBe(true)
     expect(new Set(all).size).toBe(all.length)
   })
 
-  it('员工窗口只能发送 cart:publish，只能 invoke health', () => {
+  it('员工窗口只能发送 cart:publish，只能 invoke health 与受控原生全屏', () => {
     expect(SENDABLE_BY_ROLE.employee).toEqual([IPC_CHANNELS.CART_PUBLISH])
-    expect(INVOKABLE_BY_ROLE.employee).toEqual([IPC_CHANNELS.HEALTH_GET])
+    expect(INVOKABLE_BY_ROLE.employee).toEqual([
+      IPC_CHANNELS.HEALTH_GET,
+      IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER,
+      IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT,
+      IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
+    ])
   })
 
   it('顾客窗口只能发送 display:ready，禁止 invoke（无法反向控制 POS）', () => {
@@ -24,6 +29,9 @@ describe('IPC 通道白名单（A6）', () => {
     expect(INVOKABLE_BY_ROLE.customer).toEqual([])
     // 顾客窗口不允许发送购物车数据
     expect(SENDABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.CART_PUBLISH)
+    expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER)
+    expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT)
+    expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE)
   })
 
   it('只有顾客窗口接收 cart:apply', () => {

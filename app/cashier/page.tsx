@@ -88,6 +88,31 @@ type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCEL
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
 type DesktopCheckoutStep = 'SELECT_ITEMS' | 'CONFIRM_ORDER' | 'SELECT_PAYMENT'
+
+type EmployeeFullscreenBridge = {
+  enterEmployeeFullscreen: () => Promise<boolean>
+  exitEmployeeFullscreen: () => Promise<boolean>
+  getEmployeeFullscreenState: () => Promise<boolean>
+}
+
+declare global {
+  interface Window {
+    eshopDesktopRuntime?: {
+      isDesktop?: boolean
+      runtime?: string
+      windowRole?: string
+      version?: string
+      desktopEpoch?: string
+    }
+    eshopDesktopEmployeeFullscreen?: EmployeeFullscreenBridge
+  }
+}
+
+function getElectronEmployeeFullscreenBridge(): EmployeeFullscreenBridge | null {
+  if (typeof window === 'undefined') return null
+  if (!window.eshopDesktopRuntime?.isDesktop || window.eshopDesktopRuntime.windowRole !== 'employee') return null
+  return window.eshopDesktopEmployeeFullscreen ?? null
+}
 type DesktopPaymentMethod = 'CASH' | 'KHQR' | 'MEMBER_BALANCE' | null
 type CustomerDisplaySyncOptions = { focusKhqr?: boolean }
 type ShiftRecordItem = {
@@ -1597,7 +1622,14 @@ export default function CashierPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       Boolean((window.navigator as any).standalone)
     setIsStandalone(standalone)
-    setIsFullscreen(Boolean(document.fullscreenElement))
+    const electronFullscreen = getElectronEmployeeFullscreenBridge()
+    if (electronFullscreen) {
+      electronFullscreen.getEmployeeFullscreenState()
+        .then((fullscreen) => setIsFullscreen(Boolean(fullscreen)))
+        .catch(() => setIsFullscreen(false))
+    } else {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
 
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault()
@@ -2384,7 +2416,14 @@ export default function CashierPage() {
 
   async function handleFullscreenClick() {
     try {
-      if (document.fullscreenElement) {
+      const electronFullscreen = getElectronEmployeeFullscreenBridge()
+      if (electronFullscreen) {
+        const current = await electronFullscreen.getEmployeeFullscreenState()
+        const next = current
+          ? await electronFullscreen.exitEmployeeFullscreen()
+          : await electronFullscreen.enterEmployeeFullscreen()
+        setIsFullscreen(Boolean(next))
+      } else if (document.fullscreenElement) {
         await document.exitFullscreen()
       } else {
         await document.documentElement.requestFullscreen()

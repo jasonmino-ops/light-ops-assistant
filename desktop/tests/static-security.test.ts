@@ -52,6 +52,9 @@ describe('Electron 安全基线（静态）', () => {
 describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含约束）', () => {
   it('员工 preload 使用且仅使用 CART_PUBLISH 发送', () => {
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.CART_PUBLISH}'`)
+    expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER}'`)
+    expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT}'`)
+    expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE}'`)
     expect(employeePreloadSrc).toContain(`'${WEB_REALTIME_BROADCAST_CHANNEL}'`)
     expect(employeePreloadSrc).toContain(`'${DESKTOP_RELAY_FLAG}'`)
     expect(employeePreloadSrc).not.toContain(IPC_CHANNELS.CART_APPLY)
@@ -63,6 +66,9 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(customerPreloadSrc).toContain(`'${IPC_CHANNELS.DISPLAY_READY}'`)
     expect(customerPreloadSrc).toContain(`'${WEB_REALTIME_BROADCAST_CHANNEL}'`)
     expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.CART_PUBLISH}'`)
+    expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER}'`)
+    expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT}'`)
+    expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE}'`)
   })
 
   it('preload 不 require 本地模块、不暴露 ipcRenderer/Node 能力给页面', () => {
@@ -90,6 +96,15 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
 
   it('顾客 preload 回放消息带 relay 标记', () => {
     expect(customerPreloadSrc).toMatch(/\[DESKTOP_RELAY_FLAG\]:\s*true/)
+  })
+
+  it('员工 preload 仅暴露受控原生全屏方法，不暴露通用窗口控制', () => {
+    expect(employeePreloadSrc).toMatch(/exposeInMainWorld\('eshopDesktopEmployeeFullscreen'/)
+    expect(employeePreloadSrc).toMatch(/enterEmployeeFullscreen/)
+    expect(employeePreloadSrc).toMatch(/exitEmployeeFullscreen/)
+    expect(employeePreloadSrc).toMatch(/getEmployeeFullscreenState/)
+    expect(employeePreloadSrc).not.toMatch(/setFullScreen|BrowserWindow|windowControl/)
+    expect(customerPreloadSrc).not.toMatch(/eshopDesktopEmployeeFullscreen/)
   })
 })
 

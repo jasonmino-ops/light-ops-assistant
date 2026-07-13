@@ -56,5 +56,33 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     return getHealthSnapshot()
   })
 
+  ipcMain.handle(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER, (event) => {
+    return setEmployeeFullscreen(windowManager, event, IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER, true)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT, (event) => {
+    return setEmployeeFullscreen(windowManager, event, IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT, false)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE, (event) => {
+    if (!authorize(windowManager, event, IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE, 'invoke')) return false
+    const win = windowManager.getEmployeeWindow()
+    if (!win || win.isDestroyed() || win.webContents.id !== event.sender.id) return false
+    return win.isFullScreen()
+  })
+
   updateHealth({ ipc: 'ok' }, 'ipc.registered')
+}
+
+export function setEmployeeFullscreen(
+  windowManager: WindowManager,
+  event: IpcMainInvokeEvent,
+  channel: string,
+  fullscreen: boolean,
+): boolean {
+  if (!authorize(windowManager, event, channel, 'invoke')) return false
+  const win = windowManager.getEmployeeWindow()
+  if (!win || win.isDestroyed() || win.webContents.id !== event.sender.id) return false
+  win.setFullScreen(fullscreen)
+  return win.isFullScreen()
 }

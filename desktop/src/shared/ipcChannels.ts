@@ -13,6 +13,12 @@ export const IPC_CHANNELS = {
   DISPLAY_READY: 'eshop:display:ready',
   /** Renderer(员工窗口) → Main (invoke)：只读 Runtime Health 快照 */
   HEALTH_GET: 'eshop:runtime:health',
+  /** Renderer(员工窗口) → Main (invoke)：进入员工窗口原生全屏 */
+  EMPLOYEE_FULLSCREEN_ENTER: 'eshop:employee-fullscreen:enter',
+  /** Renderer(员工窗口) → Main (invoke)：退出员工窗口原生全屏 */
+  EMPLOYEE_FULLSCREEN_EXIT: 'eshop:employee-fullscreen:exit',
+  /** Renderer(员工窗口) → Main (invoke)：读取员工窗口原生全屏状态 */
+  EMPLOYEE_FULLSCREEN_STATE: 'eshop:employee-fullscreen:state',
   /** Main → Renderer(顾客窗口)：下发最新购物车快照 */
   CART_APPLY: 'eshop:cart:apply',
 } as const
@@ -29,7 +35,12 @@ export const SENDABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
 
 /** 各窗口角色允许调用（invoke）的通道 */
 export const INVOKABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
-  employee: [IPC_CHANNELS.HEALTH_GET],
+  employee: [
+    IPC_CHANNELS.HEALTH_GET,
+    IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER,
+    IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT,
+    IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
+  ],
   customer: [],
 }
 
