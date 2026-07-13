@@ -11,6 +11,7 @@ import {
 const snapshot: CustomerDisplayRealtimeMessage = {
   type: 'CART_SNAPSHOT',
   storeCode: 'STORE-A',
+  desktopEpoch: 'epoch-a',
   sentAt: '2026-07-13T01:00:01.000Z',
   sequence: 2,
   items: [{
@@ -45,6 +46,32 @@ assert.equal(shouldApplyCustomerDisplayRealtimeMessage(guard, { ...snapshot, sto
 assert.equal(shouldApplyCustomerDisplayRealtimeMessage(guard, { ...snapshot, sequence: 1 }, 'STORE-A'), false)
 assert.equal(shouldApplyCustomerDisplayRealtimeMessage(guard, { ...snapshot, sequence: 2, sentAt: '2026-07-13T01:00:00.000Z' }, 'STORE-A'), false)
 assert.equal(shouldApplyCustomerDisplayRealtimeMessage(guard, { ...snapshot, sequence: 3 }, 'STORE-A'), true)
+assert.equal(
+  shouldApplyCustomerDisplayRealtimeMessage(guard, {
+    ...snapshot,
+    desktopEpoch: 'epoch-b',
+    sequence: 1,
+    sentAt: '2026-07-13T01:00:02.000Z',
+  }, 'STORE-A'),
+  true,
+  'customer display should accept a new Desktop page epoch even when sequence restarts',
+)
+const epochGuard = buildCustomerDisplayRealtimeGuard({
+  ...snapshot,
+  desktopEpoch: 'epoch-b',
+  sequence: 1,
+  sentAt: '2026-07-13T01:00:02.000Z',
+})
+assert.equal(
+  shouldApplyCustomerDisplayRealtimeMessage(epochGuard, {
+    ...snapshot,
+    desktopEpoch: undefined,
+    sequence: 9,
+    sentAt: '2026-07-13T01:00:03.000Z',
+  }, 'STORE-A'),
+  false,
+  'direct untagged BroadcastChannel copies must not overwrite the active Desktop epoch',
+)
 
 const currentSession = {
   status: 'DRAFT',

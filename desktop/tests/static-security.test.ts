@@ -82,6 +82,12 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(employeePreloadSrc).toMatch(/DESKTOP_RELAY_FLAG\]\)\s*return/)
   })
 
+  it('员工 preload 为每个页面生命周期注入 Desktop epoch', () => {
+    expect(employeePreloadSrc).toMatch(/desktopEpoch/)
+    expect(employeePreloadSrc).toMatch(/randomUUID|Math\.random/)
+    expect(employeePreloadSrc).toMatch(/ipcRenderer\.send\(CART_PUBLISH_CHANNEL,\s*\{\s*\.\.\.message,\s*desktopEpoch\s*\}/)
+  })
+
   it('顾客 preload 回放消息带 relay 标记', () => {
     expect(customerPreloadSrc).toMatch(/\[DESKTOP_RELAY_FLAG\]:\s*true/)
   })

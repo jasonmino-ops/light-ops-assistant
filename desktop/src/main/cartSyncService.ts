@@ -26,6 +26,7 @@ export type CartApplySender = (message: CartSnapshotMessage) => void
 export class CartSyncService {
   private latest: CartSnapshotMessage | null = null
   private guard: SnapshotGuard | null = null
+  private retiredEpochsByStore = new Map<string, Set<string>>()
   private sendToCustomer: CartApplySender | null = null
 
   /** WindowManager 在顾客窗口可用/重建后注入发送器 */
@@ -42,13 +43,27 @@ export class CartSyncService {
       return { accepted: false, reason: result.reason }
     }
     const message = result.message
+    if (this.isRetiredEpoch(message)) {
+      logger.debug('cart-sync.rejected-retired-epoch', {
+        storeCode: message.storeCode,
+        desktopEpoch: message.desktopEpoch,
+        sequence: message.sequence,
+      })
+      return { accepted: false, reason: 'retired-epoch' }
+    }
     if (!isNewerSnapshot(this.guard, message)) {
       logger.debug('cart-sync.rejected-stale', {
-        incoming: { sequence: message.sequence, sentAt: message.sentAt },
+        incoming: {
+          storeCode: message.storeCode,
+          desktopEpoch: message.desktopEpoch,
+          sequence: message.sequence,
+          sentAt: message.sentAt,
+        },
         current: this.guard,
       })
       return { accepted: false, reason: 'stale' }
     }
+    this.retirePreviousEpoch(message)
     this.latest = message
     this.guard = buildSnapshotGuard(message)
     updateHealth({ lastCartSequence: message.sequence }, 'cart-sync.accepted')
@@ -76,6 +91,20 @@ export class CartSyncService {
 
   getLatest(): CartSnapshotMessage | null {
     return this.latest
+  }
+
+  private isRetiredEpoch(message: CartSnapshotMessage): boolean {
+    if (!message.desktopEpoch) return false
+    return this.retiredEpochsByStore.get(message.storeCode)?.has(message.desktopEpoch) ?? false
+  }
+
+  private retirePreviousEpoch(message: CartSnapshotMessage) {
+    if (!this.guard?.desktopEpoch || !message.desktopEpoch) return
+    if (this.guard.storeCode !== message.storeCode) return
+    if (this.guard.desktopEpoch === message.desktopEpoch) return
+    const retired = this.retiredEpochsByStore.get(message.storeCode) ?? new Set<string>()
+    retired.add(this.guard.desktopEpoch)
+    this.retiredEpochsByStore.set(message.storeCode, retired)
   }
 }
 

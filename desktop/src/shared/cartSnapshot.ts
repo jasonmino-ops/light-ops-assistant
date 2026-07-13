@@ -21,6 +21,7 @@ export type CartSnapshotStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'C
 export type CartSnapshotMessage = {
   type: 'CART_SNAPSHOT' | 'CLEAR'
   storeCode: string
+  desktopEpoch?: string
   sentAt: string
   sequence: number
   items: CartSnapshotItem[]
@@ -64,6 +65,9 @@ export function validateCartSnapshotMessage(value: unknown): ValidationResult {
   if (typeof m.storeCode !== 'string' || m.storeCode.length === 0 || m.storeCode.length > 64) {
     return { ok: false, reason: 'bad-storeCode' }
   }
+  if (m.desktopEpoch !== undefined && (typeof m.desktopEpoch !== 'string' || m.desktopEpoch.length === 0 || m.desktopEpoch.length > 128)) {
+    return { ok: false, reason: 'bad-desktopEpoch' }
+  }
   if (typeof m.sentAt !== 'string' || !Number.isFinite(Date.parse(m.sentAt))) {
     return { ok: false, reason: 'bad-sentAt' }
   }
@@ -85,6 +89,7 @@ export function validateCartSnapshotMessage(value: unknown): ValidationResult {
     message: {
       type: m.type,
       storeCode: m.storeCode,
+      desktopEpoch: m.desktopEpoch,
       sentAt: m.sentAt,
       sequence: m.sequence,
       items: m.items as CartSnapshotItem[],
@@ -99,6 +104,8 @@ export function validateCartSnapshotMessage(value: unknown): ValidationResult {
 }
 
 export type SnapshotGuard = {
+  storeCode: string
+  desktopEpoch?: string
   sequence: number
   sentAtMs: number
 }
@@ -112,11 +119,19 @@ export function isNewerSnapshot(current: SnapshotGuard | null, message: CartSnap
   const sentAtMs = Date.parse(message.sentAt)
   if (!Number.isFinite(sentAtMs)) return false
   if (!current) return true
+  if (message.storeCode !== current.storeCode) return true
+  if (message.desktopEpoch && current.desktopEpoch && message.desktopEpoch !== current.desktopEpoch) return true
+  if (current.desktopEpoch && message.desktopEpoch && message.desktopEpoch !== current.desktopEpoch) return true
   if (message.sequence < current.sequence) return false
   if (message.sequence === current.sequence && sentAtMs <= current.sentAtMs) return false
   return true
 }
 
 export function buildSnapshotGuard(message: CartSnapshotMessage): SnapshotGuard {
-  return { sequence: message.sequence, sentAtMs: Date.parse(message.sentAt) || Date.now() }
+  return {
+    storeCode: message.storeCode,
+    desktopEpoch: message.desktopEpoch,
+    sequence: message.sequence,
+    sentAtMs: Date.parse(message.sentAt) || Date.now(),
+  }
 }

@@ -20,6 +20,7 @@ export type CustomerDisplayRealtimePaymentStatus = 'PENDING' | 'PAID' | null
 export type CustomerDisplayRealtimeMessage = {
   type: 'CART_SNAPSHOT' | 'CLEAR'
   storeCode: string
+  desktopEpoch?: string
   sentAt: string
   sequence: number
   items: CustomerDisplayRealtimeItem[]
@@ -33,6 +34,7 @@ export type CustomerDisplayRealtimeMessage = {
 
 export type CustomerDisplayRealtimeGuard = {
   storeCode: string
+  desktopEpoch?: string
   sequence: number
   sentAtMs: number
   receivedAtMs: number
@@ -62,6 +64,7 @@ export function isCustomerDisplayRealtimeMessage(value: unknown): value is Custo
   const message = value as Partial<CustomerDisplayRealtimeMessage>
   return (message.type === 'CART_SNAPSHOT' || message.type === 'CLEAR')
     && typeof message.storeCode === 'string'
+    && (message.desktopEpoch === undefined || typeof message.desktopEpoch === 'string')
     && typeof message.sentAt === 'string'
     && typeof message.sequence === 'number'
     && Array.isArray(message.items)
@@ -79,6 +82,9 @@ export function shouldApplyCustomerDisplayRealtimeMessage(
   const sentAtMs = Date.parse(message.sentAt)
   if (!Number.isFinite(sentAtMs)) return false
   if (!current) return true
+  if (message.desktopEpoch && current.desktopEpoch && message.desktopEpoch !== current.desktopEpoch) return true
+  if (message.desktopEpoch && !current.desktopEpoch) return true
+  if (!message.desktopEpoch && current.desktopEpoch) return false
   if (message.sequence < current.sequence) return false
   if (message.sequence === current.sequence && sentAtMs <= current.sentAtMs) return false
   return true
@@ -90,6 +96,7 @@ export function buildCustomerDisplayRealtimeGuard(
 ): CustomerDisplayRealtimeGuard {
   return {
     storeCode: message.storeCode,
+    desktopEpoch: message.desktopEpoch,
     sequence: message.sequence,
     sentAtMs: Date.parse(message.sentAt) || receivedAtMs,
     receivedAtMs,

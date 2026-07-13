@@ -20,6 +20,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 const CART_PUBLISH_CHANNEL = 'eshop:cart:publish'
 const WEB_REALTIME_BROADCAST_CHANNEL = 'light-ops:customer-display:realtime:v1'
 const DESKTOP_RELAY_FLAG = 'relayedByDesktop'
+const desktopEpoch = (() => {
+  try {
+    return globalThis.crypto?.randomUUID?.() ?? `epoch-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  } catch {
+    return `epoch-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
+})()
 
 const versionArg = process.argv.find((arg) => arg.startsWith('--eshop-desktop-version='))
 const desktopVersion = versionArg ? versionArg.split('=')[1] : 'unknown'
@@ -30,6 +37,7 @@ contextBridge.exposeInMainWorld('eshopDesktopRuntime', Object.freeze({
   runtime: 'electron',
   windowRole: 'employee',
   version: desktopVersion,
+  desktopEpoch,
 }))
 
 // 旁路捕获现有 Web 实时通道（零侵入：不修改任何冻结页面）
@@ -40,7 +48,7 @@ try {
     if (!message || typeof message !== 'object') return
     if (message[DESKTOP_RELAY_FLAG]) return // 回放消息，忽略，防回环
     if (message.type !== 'CART_SNAPSHOT' && message.type !== 'CLEAR') return
-    ipcRenderer.send(CART_PUBLISH_CHANNEL, message)
+    ipcRenderer.send(CART_PUBLISH_CHANNEL, { ...message, desktopEpoch })
   }
 } catch (error) {
   console.warn('[eshop-desktop] employee preload: BroadcastChannel unavailable', error)

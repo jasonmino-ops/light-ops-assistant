@@ -9,6 +9,7 @@ import {
 const valid: CartSnapshotMessage = {
   type: 'CART_SNAPSHOT',
   storeCode: 'STORE-A',
+  desktopEpoch: 'epoch-a',
   sentAt: '2026-07-13T01:00:01.000Z',
   sequence: 2,
   items: [{ productId: 'p1', name: 'Iced Coffee', spec: null, imageUrl: null, price: 2.5, qty: 2, lineAmount: 5 }],
@@ -38,6 +39,7 @@ describe('validateCartSnapshotMessage（A6 payload 运行时校验）', () => {
     if (r.ok) {
       expect('relayedByDesktop' in r.message).toBe(false)
       expect('evil' in r.message).toBe(false)
+      expect(r.message.desktopEpoch).toBe('epoch-a')
     }
   })
 
@@ -48,6 +50,8 @@ describe('validateCartSnapshotMessage（A6 payload 运行时校验）', () => {
     ['非法 type', { ...valid, type: 'EXEC' }],
     ['空 storeCode', { ...valid, storeCode: '' }],
     ['storeCode 超长', { ...valid, storeCode: 'x'.repeat(65) }],
+    ['desktopEpoch 非字符串', { ...valid, desktopEpoch: 123 }],
+    ['desktopEpoch 超长', { ...valid, desktopEpoch: 'x'.repeat(129) }],
     ['非法 sentAt', { ...valid, sentAt: 'not-a-date' }],
     ['负 sequence', { ...valid, sequence: -1 }],
     ['sequence 非数字', { ...valid, sequence: '5' }],
@@ -76,6 +80,14 @@ describe('isNewerSnapshot（A5 sequence 防倒序）', () => {
 
   it('拒绝更小 sequence（旧消息不能覆盖新消息）', () => {
     expect(isNewerSnapshot(guard, { ...valid, sequence: 1 })).toBe(false)
+  })
+
+  it('同一 store 的新 desktopEpoch 允许从较小 sequence 重新开始', () => {
+    expect(isNewerSnapshot(guard, { ...valid, desktopEpoch: 'epoch-b', sequence: 1 })).toBe(true)
+  })
+
+  it('storeCode 变化时使用独立 sequence 生命周期', () => {
+    expect(isNewerSnapshot(guard, { ...valid, storeCode: 'STORE-B', desktopEpoch: 'epoch-b', sequence: 0 })).toBe(true)
   })
 
   it('相同 sequence：sentAt 更新才接受', () => {

@@ -10,7 +10,7 @@
 
 ## Preload 暴露面（最小 API）
 
-页面唯一可见对象：`window.eshopDesktopRuntime = Object.freeze({ isDesktop, runtime:'electron', windowRole, version })`——只读标识，无任何方法。
+页面唯一可见对象：`window.eshopDesktopRuntime = Object.freeze({ isDesktop, runtime:'electron', windowRole, version, desktopEpoch? })`——只读标识，无任何方法。`desktopEpoch` 仅用于员工窗口页面生命周期识别，避免 reload 后 Web sequence 从低位重启时被 Main 误判为旧消息。
 不暴露 `ipcRenderer`、不暴露任何 Electron/Node API、无通用 invoke/send 透传。
 
 ## IPC
