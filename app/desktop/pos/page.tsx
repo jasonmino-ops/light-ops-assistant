@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 import CashierPage from '@/app/cashier/page'
 import DesktopModePage from '@/app/desktop/page'
+import UsbCustomerDisplayBridge from './UsbCustomerDisplayBridge'
 
 type DesktopLang = 'zh' | 'en' | 'km'
 
@@ -30,5 +31,10 @@ export default function DesktopPosPage() {
   }, [])
 
   if (mode === 'checking') return null
-  return mode === 'pos' ? <CashierPage /> : <DesktopModePage />
+  return mode === 'pos' ? (
+    <>
+      <CashierPage />
+      <UsbCustomerDisplayBridge />
+    </>
+  ) : <DesktopModePage />
 }
