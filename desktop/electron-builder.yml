@@ -1,0 +1,39 @@
+# E-Shop Desktop — Windows 打包配置（Milestone A）
+#
+# 说明：
+# - NSIS 安装包（非一键安装，允许用户选择安装目录）
+# - 按用户安装（perMachine: false），无需管理员权限
+# - 用户数据目录：%APPDATA%/eshop-desktop（config.json / logs / window-state.json）
+# - 未配置代码签名：安装时可能出现 Windows SmartScreen 提示，
+#   正式商用前必须购买代码签名证书（见 docs/desktop/known-limitations）
+# - publish: null 预留自动升级接口（Milestone D 接入 Auto Update 时改为真实 provider）
+
+appId: com.eshop.desktop
+productName: E-Shop Desktop
+copyright: "Copyright © 2026 E-Shop (店小二)"
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: "E-Shop-Desktop-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "E-Shop Desktop"
+  deleteAppDataOnUninstall: false
+
+publish: null
