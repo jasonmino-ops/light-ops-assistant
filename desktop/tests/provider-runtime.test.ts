@@ -113,6 +113,19 @@ describe("Provider Runtime MB-2A", () => {
     ]);
   });
 
+  it("records illegal lifecycle transitions in runtime diagnostics", () => {
+    const core = new HrtLogicCore(new RuntimeTestProvider("windows-provider-simulator", "provider-sim-001"));
+
+    expect(() => core.lifecycle.transitionTo("READY", "HANDSHAKE_ACCEPTED")).toThrow("Illegal provider lifecycle transition");
+    expect(core.diagnostics.list()[0]).toMatchObject({
+      eventCode: "HRT_PROVIDER_ILLEGAL_TRANSITION",
+      severity: "ERROR",
+      previousState: "NEW",
+      newState: "READY",
+      reason: "HANDSHAKE_ACCEPTED",
+    });
+  });
+
   it("registers the first provider and creates a complete provider session", () => {
     const core = new HrtLogicCore(new RuntimeTestProvider("windows-provider-simulator", "provider-sim-001"));
 

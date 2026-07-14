@@ -19,7 +19,16 @@ import { HrtRuntimeDiagnostics, HrtRuntimeHealthSummary } from "./runtimeDiagnos
 export class HrtLogicCore {
   readonly audit = new HrtAuditEmitter();
   readonly diagnostics = new HrtRuntimeDiagnostics();
-  readonly lifecycle = new HrtProviderLifecycle();
+  readonly lifecycle = new HrtProviderLifecycle((transition) => {
+    this.diagnostics.emit({
+      eventCode: "HRT_PROVIDER_ILLEGAL_TRANSITION",
+      severity: "ERROR",
+      previousState: transition.previousState,
+      newState: transition.newState,
+      lifecycleState: transition.previousState,
+      reason: transition.reason,
+    });
+  });
   readonly registry = new HrtDeviceRegistry();
   readonly providerRegistry = new HrtProviderRegistry(this.lifecycle, this.diagnostics);
   readonly ownership = new HrtProviderOwnership(this.diagnostics);

@@ -52,15 +52,25 @@ export class HrtProviderLifecycle {
   private currentState: HrtProviderLifecycleState = "NEW";
   private readonly transitions: HrtLifecycleTransition[] = [];
 
+  constructor(
+    private readonly onIllegalTransition?: (transition: {
+      previousState: HrtProviderLifecycleState;
+      newState: HrtProviderLifecycleState;
+      reason: HrtLifecycleTransitionReason;
+    }) => void,
+  ) {}
+
   state(): HrtProviderLifecycleState {
     return this.currentState;
   }
 
   transitionTo(newState: HrtProviderLifecycleState, reason: HrtLifecycleTransitionReason): HrtLifecycleTransition {
     if (newState === this.currentState) {
+      this.onIllegalTransition?.({ previousState: this.currentState, newState, reason });
       throw new Error(`Illegal provider lifecycle transition: ${this.currentState} -> ${newState}`);
     }
     if (!allowedTransitions[this.currentState].has(newState)) {
+      this.onIllegalTransition?.({ previousState: this.currentState, newState, reason });
       throw new Error(`Illegal provider lifecycle transition: ${this.currentState} -> ${newState}`);
     }
     const transition: HrtLifecycleTransition = {
