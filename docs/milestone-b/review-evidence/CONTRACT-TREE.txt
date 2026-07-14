@@ -1,0 +1,22 @@
+packages/hrt-contract/
+├── package-lock.json
+├── package.json
+├── src/
+│   ├── fixtures/
+│   │   └── frames.ts
+│   ├── index.ts
+│   ├── schemas/
+│   │   ├── command-request.schema.json
+│   │   ├── command-result.schema.json
+│   │   ├── compatibility.schema.json
+│   │   ├── customer-display-snapshot.schema.json
+│   │   ├── diagnostics.schema.json
+│   │   ├── frame.schema.json
+│   │   ├── handshake.schema.json
+│   │   ├── health-snapshot.schema.json
+│   │   ├── provider-registration.schema.json
+│   │   └── scanner-event.schema.json
+│   ├── types.ts
+│   └── validators/
+│       └── frameValidator.ts
+└── tsconfig.json

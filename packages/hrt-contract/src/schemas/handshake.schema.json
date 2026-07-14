@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eshop.local/hrt-contract/handshake.schema.json",
+  "title": "HRT Handshake Payloads",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtimeInstanceId",
+        "requiredContractVersion",
+        "requiredCapabilities",
+        "compatibilityMatrix",
+        "initiatedBy"
+      ],
+      "properties": {
+        "runtimeInstanceId": { "type": "string", "minLength": 1 },
+        "requiredContractVersion": { "type": "string", "minLength": 1 },
+        "requiredCapabilities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capability" }
+        },
+        "compatibilityMatrix": { "$ref": "#/$defs/matrix" },
+        "initiatedBy": { "const": "RUNTIME" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "compatibility", "readyTransition"],
+      "properties": {
+        "provider": { "type": "object" },
+        "compatibility": { "$ref": "#/$defs/compatibility" },
+        "readyTransition": { "enum": ["RUNTIME_AUTHORIZED", "REJECTED"] },
+        "rejectionReason": {
+          "enum": [
+            "CONTRACT_VERSION_MISMATCH",
+            "UNSUPPORTED_PROVIDER_VERSION",
+            "MISSING_REQUIRED_CAPABILITY",
+            "DUPLICATE_REGISTRATION",
+            "STALE_PROVIDER_INSTANCE",
+            "MALFORMED_FRAME",
+            "MISSING_CORRELATION_ID"
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "capability": {
+      "enum": [
+        "printer.receipt",
+        "printer.cash_drawer_pulse",
+        "scanner.barcode_event",
+        "customer_display.snapshot"
+      ]
+    },
+    "matrix": {
+      "type": "object",
+      "required": [
+        "providerId",
+        "minProviderVersion",
+        "maxProviderVersionExclusive",
+        "requiredCapabilities"
+      ],
+      "properties": {
+        "providerId": { "type": "string", "minLength": 1 },
+        "minProviderVersion": { "type": "string", "minLength": 1 },
+        "maxProviderVersionExclusive": { "type": "string", "minLength": 1 },
+        "requiredCapabilities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capability" }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason",
+        "providerId",
+        "providerInstanceId",
+        "providerVersion",
+        "contractVersion",
+        "missingCapabilities",
+        "matrix"
+      ],
+      "properties": {
+        "status": { "enum": ["COMPATIBLE", "INCOMPATIBLE"] },
+        "reason": {
+          "enum": [
+            "OK",
+            "INCOMPATIBLE_CONTRACT_VERSION",
+            "UNSUPPORTED_PROVIDER_VERSION",
+            "MISSING_REQUIRED_CAPABILITY"
+          ]
+        },
+        "providerId": { "type": "string", "minLength": 1 },
+        "providerInstanceId": { "type": "string", "minLength": 1 },
+        "providerVersion": { "type": "string", "minLength": 1 },
+        "contractVersion": { "type": "string", "minLength": 1 },
+        "missingCapabilities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capability" }
+        },
+        "matrix": { "$ref": "#/$defs/matrix" }
+      }
+    }
+  }
+}

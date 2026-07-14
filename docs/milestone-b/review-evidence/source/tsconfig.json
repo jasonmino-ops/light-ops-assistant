@@ -27,8 +27,6 @@
     "packages/hrt-contract/**",
     "packages/hrt-provider-simulator",
     "packages/hrt-provider-simulator/**",
-    "docs/milestone-b/review-evidence/source",
-    "docs/milestone-b/review-evidence/source/**",
     "tests/hrt-contract.test.ts"
   ]
 }
