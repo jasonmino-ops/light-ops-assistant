@@ -4,4 +4,10 @@ export * from "./deviceRegistry";
 export * from "./healthEngine";
 export * from "./hrtLogicCore";
 export * from "./providerClient";
-
+export * from "./providerHealth";
+export * from "./providerLifecycle";
+export * from "./providerOwnership";
+export * from "./providerRegistry";
+export * from "./providerSession";
+export * from "./providerSupervision";
+export * from "./runtimeDiagnostics";
