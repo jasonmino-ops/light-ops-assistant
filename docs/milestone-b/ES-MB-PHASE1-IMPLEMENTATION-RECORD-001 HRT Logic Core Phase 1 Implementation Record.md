@@ -75,7 +75,9 @@ The Windows Provider private repository was not created in this phase execution.
 
 Risk level: Low.
 
-No production business code, database schema, migration, CI, package manifest, lockfile, or existing runtime flow was modified.
+No production business logic, Legacy hardware flow, database schema, Prisma migration, cashier flow, sales flow, or real hardware executor was modified.
+
+Milestone B engineering configuration was modified in a controlled scope, including Contract package manifests, lockfiles, Desktop package dependency, Windows CI build sequence, root Web typecheck boundary, and Evidence source typecheck exclusion.
 
 ## MB-1 Contract Completion Addendum
 
@@ -106,3 +108,28 @@ No production business code, database schema, migration, CI, package manifest, l
 ### Boundary Confirmation
 
 The HRT Logic Core remains dormant. No Legacy print, Legacy scan, Web Serial customer display, cloud print, cashier, sales flow, database, Prisma, migration, real hardware executor, VID/PID, COM, printer queue, or Windows Provider repository was modified.
+
+## Final Acceptance Addendum
+
+| Item | Value |
+| --- | --- |
+| Date | 2026-07-15 |
+| MB-1 Independent Review | PASS |
+| Risk | LOW |
+| Score | 94/100 |
+| Reviewed Implementation HEAD | c86d54f175ec0f060ccb42fb6744c3d1e058f6cc |
+| Evidence Finalization HEAD | f0b2bbe7759ffdf4386ed70530d54daef80ce1aa |
+| Evidence Pack | docs/milestone-b/MB1-Review-Evidence-Pack-c86d54f-final.zip |
+| Evidence MD5 | cff64b66049d960ababd18716ab83f53 |
+| Evidence SHA-256 | dc06918af22f1c2687207097b3c1987fee52540812b470f82496a4022e2e2508 |
+| Acceptance Record | docs/milestone-b/ES-MB-ACCEPTANCE-001 MB-1 Contract Ready Acceptance Record V1.0.md |
+| Windows CI | run 29355948063 / PASS |
+| Vercel Preview | READY |
+| MB-1 | PASS |
+| MB-2 | IN PROGRESS |
+| MB-3 | BLOCKED |
+| Merge Authorization | Authorized to merge mb/ws1-hrt-logic-core into main |
+
+No production business logic, Legacy hardware flow, database schema, Prisma migration, cashier flow, sales flow, or real hardware executor was modified.
+
+Milestone B engineering configuration was modified in a controlled scope, including Contract package manifests, lockfiles, Desktop package dependency, Windows CI build sequence, root Web typecheck boundary, and Evidence source typecheck exclusion.
