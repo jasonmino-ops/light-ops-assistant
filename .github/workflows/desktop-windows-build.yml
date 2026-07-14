@@ -32,7 +32,8 @@ jobs:
         run: npm ci
 
       - name: Build Contract
-        run: npx tsc -p ../packages/hrt-contract/tsconfig.json
+        run: npm --prefix desktop exec tsc -- -p packages/hrt-contract/tsconfig.json
+        working-directory: .
 
       - name: Type check
         run: npm run typecheck
