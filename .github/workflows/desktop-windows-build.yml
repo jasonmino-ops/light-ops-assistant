@@ -28,12 +28,16 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
-      - name: Install Desktop dependencies
+      - name: Install Contract dependencies
         run: npm ci
+        working-directory: packages/hrt-contract
 
       - name: Build Contract
-        run: .\desktop\node_modules\.bin\tsc.cmd -p packages\hrt-contract\tsconfig.json
-        working-directory: .
+        run: npm run build
+        working-directory: packages/hrt-contract
+
+      - name: Install Desktop dependencies
+        run: npm ci
 
       - name: Type check
         run: npm run typecheck
