@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eshop.local/hrt-contract/command-result.schema.json",
+  "title": "HRT Command Result Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commandId", "outcome", "effectBoundary", "providerInstanceId"],
+  "properties": {
+    "commandId": { "type": "string", "minLength": 1 },
+    "outcome": {
+      "type": "string",
+      "enum": ["SUCCEEDED", "FAILED", "REJECTED", "TIMEOUT", "CANCELLED", "UNKNOWN"]
+    },
+    "effectBoundary": {
+      "type": "string",
+      "enum": ["NOT_CROSSED", "MAY_HAVE_CROSSED", "CROSSED"]
+    },
+    "providerInstanceId": { "type": "string", "minLength": 1 },
+    "errorCode": { "type": "string" },
+    "message": { "type": "string" }
+  }
+}
+
