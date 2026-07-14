@@ -32,8 +32,7 @@ jobs:
         run: npm ci
 
       - name: Build Contract
-        shell: bash
-        run: ./desktop/node_modules/.bin/tsc -p packages/hrt-contract/tsconfig.json
+        run: .\desktop\node_modules\.bin\tsc.cmd -p packages\hrt-contract\tsconfig.json
         working-directory: .
 
       - name: Type check
