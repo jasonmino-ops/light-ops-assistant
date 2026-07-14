@@ -123,7 +123,7 @@ describe("HrtLogicCore", () => {
     core.registerProvider();
 
     expect(() => core.registerProvider()).toThrow("Duplicate provider registration");
-    expect(core.state()).toBe("REJECTED");
+    expect(core.state()).toBe("READY");
   });
 
   it("rejects incompatible providers and missing required capabilities", () => {
@@ -148,6 +148,8 @@ describe("HrtLogicCore", () => {
 
     expect(registration.providerInstanceId).toBe("provider-sim-after-restart");
     expect(core.audit.list().map((event) => event.type)).toContain("hrt.provider.restart");
+    expect(core.providerRegistry.staleSessions()).toHaveLength(1);
+    expect(core.runtimeHealth().staleInstanceCount).toBe(1);
 
     const staleProvider = new TestProvider("provider-sim-after-restart", {
       commandResultProviderInstanceId: "provider-sim-stale-result",
