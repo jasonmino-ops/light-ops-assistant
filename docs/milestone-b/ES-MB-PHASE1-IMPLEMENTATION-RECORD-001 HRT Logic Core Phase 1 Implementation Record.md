@@ -76,3 +76,33 @@ The Windows Provider private repository was not created in this phase execution.
 Risk level: Low.
 
 No production business code, database schema, migration, CI, package manifest, lockfile, or existing runtime flow was modified.
+
+## MB-1 Contract Completion Addendum
+
+| Item | Value |
+| --- | --- |
+| Date | 2026-07-15 |
+| Starting HEAD | 1464a0dc712a5bc19564afb52f90964e8bac1c93 |
+| Status | IMPLEMENTED FOR MB-1 GATE REVIEW |
+
+### Completed Gaps
+
+- Closed cross-package imports of `packages/hrt-contract/src/*` by moving consumers to `@eshop/hrt-contract`.
+- Expanded the public contract export surface for lifecycle, handshake, compatibility, capability, identity, scanner event, customer display snapshot, health, diagnostics, validators, fixtures, and constants.
+- Added schema files for provider registration, handshake, compatibility, scanner event, customer display snapshot, health snapshot, and diagnostics.
+- Added validators and fixtures for the newly covered contract families.
+- Extended Provider Simulator coverage for incompatible contract, missing capability, duplicate registration, restart, stale instance, disconnect, timeout uncertainty, `UNKNOWN`, `MAY_HAVE_CROSSED`, scanner duplicate/stale/wrong-scope events, customer display scope/expiry/last-snapshot-wins, provider health, device health, malformed frame, and missing correlation ID.
+- Extended Desktop HRT Logic Core skeleton to use contract compatibility evaluation, reject duplicate registration, clear device registry on provider restart, and reject stale provider instance command results.
+
+### Verification Commands
+
+- `npm --prefix packages/hrt-contract ci`
+- `npm --prefix packages/hrt-contract run build`
+- `npx tsx tests/hrt-contract.test.ts`
+- `npm --prefix desktop run typecheck`
+- `npm --prefix desktop test`
+- `npm --prefix desktop run compile`
+
+### Boundary Confirmation
+
+The HRT Logic Core remains dormant. No Legacy print, Legacy scan, Web Serial customer display, cloud print, cashier, sales flow, database, Prisma, migration, real hardware executor, VID/PID, COM, printer queue, or Windows Provider repository was modified.

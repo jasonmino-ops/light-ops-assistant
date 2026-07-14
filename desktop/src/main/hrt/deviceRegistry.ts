@@ -20,4 +20,8 @@ export class HrtDeviceRegistry {
   list(): RegisteredHrtDevice[] {
     return [...this.devices.values()];
   }
+
+  clear(): void {
+    this.devices.clear();
+  }
 }

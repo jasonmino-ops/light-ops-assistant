@@ -18,13 +18,20 @@
     "messageType": {
       "type": "string",
       "enum": [
+        "runtime.handshake.request",
+        "provider.handshake.response",
         "provider.register",
         "provider.ready",
         "provider.rejected",
+        "provider.disconnect",
+        "provider.restart",
+        "provider.shutdown",
         "command.request",
         "command.result",
         "device.event",
-        "health.snapshot"
+        "display.snapshot",
+        "health.snapshot",
+        "diagnostic.report"
       ]
     },
     "correlationId": { "type": "string", "minLength": 1 },
@@ -34,4 +41,3 @@
     "payload": {}
   }
 }
-
