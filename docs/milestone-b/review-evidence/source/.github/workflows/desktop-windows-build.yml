@@ -1,0 +1,63 @@
+# E-Shop Desktop — Windows 构建链（Milestone A / A11）
+#
+# 在 windows-latest 上执行 Type Check、单元测试、Electron 编译与
+# electron-builder NSIS 打包，并上传安装包构建物。
+# 说明：安装包未做代码签名，首次安装可能出现 SmartScreen 提示（已知限制）。
+
+name: desktop-windows-build
+
+on:
+  push:
+    paths:
+      - "packages/hrt-contract/**"
+      - "desktop/**"
+      - ".github/workflows/desktop-windows-build.yml"
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install Contract dependencies
+        run: npm ci
+        working-directory: packages/hrt-contract
+
+      - name: Build Contract
+        run: npm run build
+        working-directory: packages/hrt-contract
+
+      - name: Install Desktop dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Compile main & preload
+        run: npm run compile
+
+      - name: Build Windows installer (NSIS, unsigned)
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eshop-desktop-windows-installer
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/latest.yml
+          if-no-files-found: error

@@ -1,0 +1,8 @@
+desktop/src/main/hrt/
+├── auditEmitter.ts
+├── commandRouter.ts
+├── deviceRegistry.ts
+├── healthEngine.ts
+├── hrtLogicCore.ts
+├── index.ts
+└── providerClient.ts

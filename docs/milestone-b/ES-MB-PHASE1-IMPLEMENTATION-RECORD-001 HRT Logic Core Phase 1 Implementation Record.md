@@ -91,7 +91,7 @@ No production business code, database schema, migration, CI, package manifest, l
 - Expanded the public contract export surface for lifecycle, handshake, compatibility, capability, identity, scanner event, customer display snapshot, health, diagnostics, validators, fixtures, and constants.
 - Added schema files for provider registration, handshake, compatibility, scanner event, customer display snapshot, health snapshot, and diagnostics.
 - Added validators and fixtures for the newly covered contract families.
-- Extended Provider Simulator coverage for incompatible contract, missing capability, duplicate registration, restart, stale instance, disconnect, timeout uncertainty, `UNKNOWN`, `MAY_HAVE_CROSSED`, scanner duplicate/stale/wrong-scope events, customer display scope/expiry/last-snapshot-wins, provider health, device health, malformed frame, and missing correlation ID.
+- Extended Provider Simulator coverage for incompatible contract, missing capability, duplicate registration, restart, stale instance, disconnect, timeout uncertainty, `UNKNOWN`, `CROSSING_UNKNOWN`, scanner duplicate/stale/wrong-scope events, customer display scope/expiry/last-snapshot-wins, provider health, device health, malformed frame, and missing correlation ID.
 - Extended Desktop HRT Logic Core skeleton to use contract compatibility evaluation, reject duplicate registration, clear device registry on provider restart, and reject stale provider instance command results.
 
 ### Verification Commands
