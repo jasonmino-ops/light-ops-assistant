@@ -28,7 +28,15 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
-      - name: Install dependencies
+      - name: Install root dependencies
+        run: npm ci
+        working-directory: .
+
+      - name: Build Contract
+        run: npm run build
+        working-directory: packages/hrt-contract
+
+      - name: Install Desktop dependencies
         run: npm ci
 
       - name: Type check

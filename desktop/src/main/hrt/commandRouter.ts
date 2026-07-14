@@ -3,7 +3,7 @@ import {
   HrtCommandResultPayload,
   assertValidCommandRequest,
   assertValidCommandResult,
-} from "../../../../packages/hrt-contract/src";
+} from "@eshop/hrt-contract";
 import { HrtAuditEmitter } from "./auditEmitter";
 import { HrtProviderClient } from "./providerClient";
 
@@ -30,4 +30,3 @@ export class HrtCommandRouter {
     return result;
   }
 }
-

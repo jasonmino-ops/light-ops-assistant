@@ -1,4 +1,4 @@
-import { HrtCapability, HrtDeviceHealth, HrtDeviceRef } from "../../../../packages/hrt-contract/src";
+import { HrtCapability, HrtDeviceHealth, HrtDeviceRef } from "@eshop/hrt-contract";
 
 export interface RegisteredHrtDevice {
   device: HrtDeviceRef;
@@ -21,4 +21,3 @@ export class HrtDeviceRegistry {
     return [...this.devices.values()];
   }
 }
-

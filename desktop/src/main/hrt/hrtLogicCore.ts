@@ -4,7 +4,7 @@ import {
   HrtCommandResultPayload,
   HrtProviderRegistrationPayload,
   HrtProviderState,
-} from "../../../../packages/hrt-contract/src";
+} from "@eshop/hrt-contract";
 import { HrtAuditEmitter } from "./auditEmitter";
 import { HrtCommandRouter } from "./commandRouter";
 import { HrtDeviceRegistry } from "./deviceRegistry";

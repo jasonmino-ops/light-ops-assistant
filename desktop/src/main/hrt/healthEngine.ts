@@ -1,4 +1,4 @@
-import { HrtHealthSnapshotPayload } from "../../../../packages/hrt-contract/src";
+import { HrtHealthSnapshotPayload } from "@eshop/hrt-contract";
 import { HrtDeviceRegistry } from "./deviceRegistry";
 import { HrtProviderClient } from "./providerClient";
 
@@ -16,4 +16,3 @@ export class HrtHealthEngine {
     return snapshot;
   }
 }
-

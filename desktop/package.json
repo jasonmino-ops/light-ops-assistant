@@ -15,6 +15,9 @@
     "pack:dir": "npm run compile && electron-builder --dir",
     "dist:win": "npm run compile && electron-builder --win --x64"
   },
+  "dependencies": {
+    "@eshop/hrt-contract": "file:../packages/hrt-contract"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "electron": "^33.3.0",

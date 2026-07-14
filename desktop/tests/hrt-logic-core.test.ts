@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { printReceiptCommandFixture } from "../../packages/hrt-contract/src";
+import { printReceiptCommandFixture } from "@eshop/hrt-contract";
 import { ProviderSimulator } from "../../packages/hrt-provider-simulator/src";
 import { HrtLogicCore } from "../src/main/hrt";
 
@@ -30,4 +30,3 @@ describe("HrtLogicCore", () => {
     await expect(core.execute(printReceiptCommandFixture.payload)).rejects.toThrow("Provider is not READY");
   });
 });
-
