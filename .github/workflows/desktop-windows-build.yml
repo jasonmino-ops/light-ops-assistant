@@ -9,6 +9,7 @@ name: desktop-windows-build
 on:
   push:
     paths:
+      - "packages/hrt-contract/**"
       - "desktop/**"
       - ".github/workflows/desktop-windows-build.yml"
   workflow_dispatch:
