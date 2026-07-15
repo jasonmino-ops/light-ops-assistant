@@ -18,6 +18,15 @@ export type RuntimeHealthSnapshot = {
   network: ComponentStatus
   cloudReachability: ComponentStatus
   hardwareRuntime: ComponentStatus
+  providerRuntime: {
+    state: ComponentStatus
+    pid: number | null
+    providerId?: string
+    providerInstanceId?: string
+    pipeNameHash?: string
+    lastError: string | null
+    restartAttempts?: number
+  }
   version: string
   uptimeSeconds: number
   lastError: { at: string; scope: string; message: string } | null
@@ -37,6 +46,7 @@ const state: RuntimeHealthSnapshot = {
   network: 'unknown',
   cloudReachability: 'unknown',
   hardwareRuntime: 'unknown',
+  providerRuntime: { state: 'unknown', pid: null, lastError: null },
   version: '0.0.0',
   uptimeSeconds: 0,
   lastError: null,
@@ -61,6 +71,7 @@ export function getHealthSnapshot(): RuntimeHealthSnapshot {
   return {
     ...state,
     displays: { ...state.displays, externalIds: [...state.displays.externalIds] },
+    providerRuntime: { ...state.providerRuntime },
     uptimeSeconds: Math.round((Date.now() - startedAtMs) / 1000),
   }
 }
