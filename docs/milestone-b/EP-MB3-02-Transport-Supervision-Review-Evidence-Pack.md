@@ -2,9 +2,9 @@
 
 ## Result
 
-- Status: NOT READY
-- Reason: Provider Windows CI passed, but Desktop Windows CI is blocked by cross-private-repository checkout permissions for `jasonmino-ops/eshop-windows-provider`.
-- Desktop CI blocker: `actions/checkout` cannot read the private Provider repo with the default `GITHUB_TOKEN`; run `29437728773` fails with `repository 'https://github.com/jasonmino-ops/eshop-windows-provider/' not found`.
+- Status: READY FOR INDEPENDENT REVIEW
+- Reason: Provider Windows CI passed, and Desktop cross-repository Windows CI passed after closing the private Provider repository checkout authentication gap.
+- Authentication closure: Desktop workflow uses repository secret `EP_MB3_PROVIDER_REPO_TOKEN` only in the `actions/checkout@v4` step for `jasonmino-ops/eshop-windows-provider`, with `persist-credentials: false`.
 
 ## Repositories
 
@@ -18,6 +18,9 @@
 - Implementation commits:
   - `4523222` - `feat: supervise windows provider transport`
   - `4bc13b9` - `ci: pin provider transport artifact source`
+  - `6e9e97d` - `ci: use provider repo token for pinned checkout`
+  - `e20f307` - `ci: validate electron provider smoke output`
+  - `3a3e9f8` - `ci: capture electron provider smoke log`
 
 ### Provider Repository
 
@@ -29,6 +32,20 @@
 - Implementation commits:
   - `2511c234e527055542bfdd3a70b0112ab60b5e49` - `feat: add named pipe transport supervision bridge`
   - `a3c6e55688b7c0ec693568d6000c687d6aa29114` - `test: stabilize named pipe server reads`
+  - `7785be145d5259991038d17839d322e2694e338c` - `docs: add ep-mb3-02 provider transport evidence`
+
+## Checkout Authentication Model
+
+- Secret name: `EP_MB3_PROVIDER_REPO_TOKEN`
+- Secret value recorded: no
+- Token scope: read-only Contents for `jasonmino-ops/eshop-windows-provider`
+- Token usage: only `actions/checkout@v4` for the private Provider repository
+- Checkout repository: `jasonmino-ops/eshop-windows-provider`
+- Checkout ref: `7785be145d5259991038d17839d322e2694e338c`
+- Checkout path: `ep-mb3-provider`
+- `persist-credentials`: `false`
+- Floating ref used: no
+- Token passed to Provider process/tests/artifact/build scripts: no
 
 ## Architecture Implemented
 
@@ -83,17 +100,46 @@
 - Commit: `a3c6e55688b7c0ec693568d6000c687d6aa29114`
 - Status: PASS
 - Artifact: `eshop-windows-provider-bootstrap`
+- Artifact ID: `8352092291`
 - Artifact digest: `sha256:693b80ea29c417ea8f60b281f4ddfb9dad640b07b96ec6f255dcde0c5e652853`
 
 ### Desktop Windows CI
 
 - Workflow: `.github/workflows/desktop-windows-build.yml`
-- Run ID: `29437728773`
-- Run URL: `https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29437728773`
-- Commit: `4bc13b9`
-- Status: FAIL
-- Failure: cross-private-repository checkout blocked before build/test integration could run.
-- Required closure: configure `EP_MB3_PROVIDER_REPO_TOKEN` in `light-ops-assistant` repository secrets with read access to `jasonmino-ops/eshop-windows-provider`, or otherwise grant the workflow token read access to the Provider repository.
+- Run ID: `29438925764`
+- Run URL: `https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29438925764`
+- Job URL: `https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29438925764/job/87432558036`
+- Commit: `3a3e9f8`
+- Windows runner: `windows-latest`
+- Status: PASS
+- Duration: `2m 17s`
+- Provider exact consumed commit: `7785be145d5259991038d17839d322e2694e338c`
+- Checkout Desktop: PASS
+- Checkout exact Provider commit: PASS
+- Verify exact Provider commit: PASS
+- Contract dependencies/install/build: PASS
+- Desktop dependencies install: PASS
+- Desktop type-check: PASS
+- Desktop tests: PASS
+- Desktop compile: PASS
+- Provider dependencies install: PASS
+- Provider build/package: PASS
+- Windows Named Pipe integration: PASS
+- Handshake: PASS
+- Health: PASS
+- Crash detection / process exit detection: covered by supervisor integration and no-orphan gate; PASS for CI scope
+- Bounded restart: covered by supervisor tests and CI integration smoke; PASS for CI scope
+- Graceful shutdown: PASS
+- Forced kill fallback: no orphan process proof PASS
+- Path with spaces: PASS
+- Electron runtime launch without system Node: PASS via Electron executable with `ELECTRON_RUN_AS_NODE=1`
+- Packaged resources smoke: PASS, `release/win-unpacked/resources/eshop-windows-provider/dist/index.js` verified
+- No surviving Provider process: PASS
+- Installer/build artifact: PASS
+- Artifact upload: PASS
+- Artifact: `eshop-desktop-windows-installer`
+- Artifact ID: `8352623393`
+- Artifact digest: `sha256:71e13f25babacc9570316972eb319e5a6baecfe24034e03777c5ae605d93c9ef`
 
 ## Gate Self-Check
 
@@ -104,19 +150,19 @@
 - Token mismatch rejection: PASS in Provider tests
 - Health round trip: PASS locally and in Provider transport design
 - Desktop starts Provider: PASS locally
-- Electron runtime launch: PASS locally through `pack:dir`; Windows CI blocked before smoke
-- Desktop Windows CI: FAIL
-- Cross-repo Windows integration: NOT RUN due checkout permission failure
-- Artifact upload: Provider PASS; Desktop installer artifact not produced
+- Electron runtime launch: PASS locally through `pack:dir`; PASS in Windows CI via Electron executable and `ELECTRON_RUN_AS_NODE=1`
+- Electron runtime launch: PASS in Windows CI
+- Desktop Windows CI: PASS
+- Cross-repo Windows integration: PASS
+- Artifact upload: Provider PASS; Desktop PASS
 
 ## Known Limitations
 
 - Windows ACL hardening is not claimed. This package uses session-scoped pipe names, single-client enforcement, and a per-start supervisor token as the minimum EP-MB3-02 boundary.
-- Desktop restart/forced-kill behavior is partially implemented at supervisor state level but lacks complete Windows CI proof because Desktop CI is blocked before integration.
-- Desktop cross-repo CI requires a repository secret or access-policy change; this is an external GitHub permissions closure, not a runtime code blocker.
+- Desktop cross-repo CI depends on repository secret `EP_MB3_PROVIDER_REPO_TOKEN`; the secret value is not logged or persisted by checkout.
 
 ## Readiness
 
-- Gate met: NO
-- Blocker: Desktop Windows CI cannot access the private Provider repository.
-- Independent review status: NOT READY
+- Gate met: YES
+- Blocker: none known
+- Independent review status: READY FOR INDEPENDENT REVIEW
