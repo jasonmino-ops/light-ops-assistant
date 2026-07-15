@@ -7,6 +7,7 @@ import {
 import { HrtAuditEmitter } from "./auditEmitter";
 import { HrtCommandRouter } from "./commandRouter";
 import { HrtDeviceRegistry } from "./deviceRegistry";
+import { HrtDeviceRuntime } from "./deviceRuntime";
 import { HrtHealthEngine } from "./healthEngine";
 import { HrtProviderHealthModel } from "./providerHealth";
 import { HrtProviderLifecycle } from "./providerLifecycle";
@@ -30,6 +31,7 @@ export class HrtLogicCore {
     });
   });
   readonly registry = new HrtDeviceRegistry();
+  readonly deviceRuntime = new HrtDeviceRuntime(this.diagnostics, this.registry);
   readonly providerRegistry = new HrtProviderRegistry(this.lifecycle, this.diagnostics);
   readonly ownership = new HrtProviderOwnership(this.diagnostics);
   readonly supervision: HrtProviderSupervision;
@@ -76,12 +78,13 @@ export class HrtLogicCore {
     if (result.staleSession) {
       this.ownership.invalidate("PROVIDER_RESTARTED", result.staleSession.providerInstanceId);
       this.providerHealth.markProviderStale(result.staleSession.providerInstanceId);
-      this.registry.clear();
+      this.deviceRuntime.invalidateProviderInstance(result.staleSession.providerInstanceId, "PROVIDER_RESTARTED");
       this.audit.emit("hrt.provider.restart", {
         previousProviderInstanceId: result.staleSession.providerInstanceId,
         providerInstanceId: registration.providerInstanceId,
       });
     }
+    this.deviceRuntime.authorizeProvider(registration);
     this.ownership.authorize(result.session.providerInstanceId);
     this.supervision.markHealthy();
     this.audit.emit("hrt.provider.ready", {
@@ -136,9 +139,7 @@ export class HrtLogicCore {
     }
     this.providerHealth.accept(snapshot);
     this.providerRegistry.acceptHealth(snapshot);
-    for (const device of snapshot.devices) {
-      this.registry.upsert(device);
-    }
+    this.deviceRuntime.acceptHealthSnapshot(snapshot);
     return snapshot;
   }
 
@@ -200,6 +201,18 @@ export class HrtLogicCore {
     const activeSession = this.providerRegistry.activeSession();
     if (!activeSession) {
       throw new Error("Provider registration is missing");
+    }
+    const eligibility = this.deviceRuntime.evaluateCommand(command);
+    if (!eligibility.accepted) {
+      this.audit.emit("hrt.command.rejected", {
+        reason: eligibility.reason,
+        commandId: command.commandId,
+        commandType: command.commandType,
+        deviceId: command.device.deviceId,
+        requiredKind: eligibility.requiredKind,
+        requiredCapability: eligibility.requiredCapability,
+      });
+      throw new Error(`Device command rejected: ${eligibility.reason}`);
     }
     this.inFlightCommandIds.add(command.commandId);
     let result: HrtCommandResultPayload;

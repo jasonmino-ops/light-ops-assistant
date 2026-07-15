@@ -10,6 +10,7 @@ import {
   printReceiptCommandFixture,
 } from "@eshop/hrt-contract";
 import { HrtLogicCore } from "../src/main/hrt";
+import { createDeviceSlotReference } from "../src/main/hrt/deviceSlot";
 import { HrtProviderClient } from "../src/main/hrt/providerClient";
 
 class TestProvider implements HrtProviderClient {
@@ -92,6 +93,26 @@ class TestProvider implements HrtProviderClient {
 }
 
 describe("HrtLogicCore", () => {
+  function assignReceiptPrinter(core: HrtLogicCore) {
+    const printer = core.registry.getByProviderLocalDeviceId("printer-sim-001");
+    if (!printer) {
+      throw new Error("missing test printer");
+    }
+    core.deviceRuntime.registerSlot(createDeviceSlotReference({
+      slotId: "receipt-printer",
+      storeId: "STORE-A",
+      terminalId: "terminal-001",
+      expectedDeviceKind: "PRINTER",
+      requiredCapabilities: ["printer.receipt"],
+      revision: "test",
+    }));
+    const assignment = core.deviceRuntime.assign({
+      slotId: "receipt-printer",
+      physicalDeviceId: printer.physicalDeviceId,
+    });
+    expect(assignment.accepted).toBe(true);
+  }
+
   it("registers a provider, refreshes device health, and executes a command", async () => {
     const provider = new TestProvider("provider-sim-vitest");
     const core = new HrtLogicCore(provider);
@@ -103,6 +124,7 @@ describe("HrtLogicCore", () => {
     expect(registration.capabilityDescriptors.length).toBeGreaterThan(0);
     expect(core.registry.list()).toHaveLength(3);
     expect(core.registry.list()[0].health).toBe("UNKNOWN");
+    assignReceiptPrinter(core);
 
     const result = await core.execute(printReceiptCommandFixture.payload);
 
@@ -156,7 +178,19 @@ describe("HrtLogicCore", () => {
     });
     const staleCore = new HrtLogicCore(staleProvider);
     staleCore.registerProvider();
+    assignReceiptPrinter(staleCore);
 
     await expect(staleCore.execute(printReceiptCommandFixture.payload)).rejects.toThrow("Stale provider instance");
+  });
+
+  it("rejects unassigned commands before dispatch", async () => {
+    const provider = new TestProvider("provider-sim-vitest");
+    const core = new HrtLogicCore(provider);
+
+    core.registerProvider();
+
+    await expect(core.execute(printReceiptCommandFixture.payload)).rejects.toThrow(
+      "Device command rejected: UNASSIGNED_DEVICE",
+    );
   });
 });

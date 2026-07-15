@@ -15,6 +15,7 @@ import {
   HrtProviderSupervision,
   HrtRuntimeDiagnostics,
 } from "../src/main/hrt";
+import { createDeviceSlotReference } from "../src/main/hrt/deviceSlot";
 import { HrtProviderClient } from "../src/main/hrt/providerClient";
 import providerRuntimeVectors from "../../packages/hrt-provider-simulator/fixtures/provider-runtime-vectors.json";
 
@@ -91,6 +92,26 @@ class RuntimeTestProvider implements HrtProviderClient {
 }
 
 describe("Provider Runtime MB-2A", () => {
+  function assignReceiptPrinter(core: HrtLogicCore) {
+    const printer = core.registry.getByProviderLocalDeviceId("printer-sim-001");
+    if (!printer) {
+      throw new Error("missing test printer");
+    }
+    core.deviceRuntime.registerSlot(createDeviceSlotReference({
+      slotId: "receipt-printer",
+      storeId: "STORE-A",
+      terminalId: "terminal-001",
+      expectedDeviceKind: "PRINTER",
+      requiredCapabilities: ["printer.receipt"],
+      revision: "test",
+    }));
+    const assignment = core.deviceRuntime.assign({
+      slotId: "receipt-printer",
+      physicalDeviceId: printer.physicalDeviceId,
+    });
+    expect(assignment.accepted).toBe(true);
+  }
+
   it("enforces lifecycle transitions and rejects provider self-ready", () => {
     const lifecycle = new HrtProviderLifecycle();
 
@@ -185,6 +206,7 @@ describe("Provider Runtime MB-2A", () => {
       reason: "STALE_PROVIDER_INSTANCE",
     });
 
+    assignReceiptPrinter(core);
     provider.commandResultProviderInstanceId = "provider-sim-001";
     await expect(core.execute(printReceiptCommandFixture.payload)).rejects.toThrow("Stale provider instance");
   });
@@ -266,6 +288,12 @@ describe("Provider Runtime MB-2A", () => {
       "max-restart",
       "illegal-transition",
       "shutdown",
+      "device-assignment-accepted",
+      "device-unassigned-command-rejected",
+      "device-kind-mismatch-rejected",
+      "device-capability-mismatch-rejected",
+      "stale-provider-device-invalidated",
+      "cash-drawer-attached-printer-action",
     ]);
   });
 

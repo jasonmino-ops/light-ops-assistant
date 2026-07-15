@@ -56,6 +56,36 @@
       "id": "shutdown",
       "input": { "providerInstanceId": "provider-sim-001" },
       "expected": { "lifecycleState": "STOPPED", "diagnosticCode": "HRT_PROVIDER_STOPPED" }
+    },
+    {
+      "id": "device-assignment-accepted",
+      "input": { "slotId": "receipt-printer", "deviceId": "printer-sim-001", "requiredCapabilities": ["printer.receipt"] },
+      "expected": { "accepted": true, "assignmentState": "ASSIGNED", "ownershipState": "VALID" }
+    },
+    {
+      "id": "device-unassigned-command-rejected",
+      "input": { "commandType": "PRINT_RECEIPT", "deviceId": "printer-sim-001" },
+      "expected": { "accepted": false, "rejectionReason": "UNASSIGNED_DEVICE" }
+    },
+    {
+      "id": "device-kind-mismatch-rejected",
+      "input": { "slotKind": "SCANNER", "deviceKind": "PRINTER" },
+      "expected": { "accepted": false, "rejectionReason": "KIND_MISMATCH" }
+    },
+    {
+      "id": "device-capability-mismatch-rejected",
+      "input": { "requiredCapabilities": ["customer_display.snapshot"], "deviceCapabilities": ["printer.receipt"] },
+      "expected": { "accepted": false, "rejectionReason": "CAPABILITY_MISMATCH" }
+    },
+    {
+      "id": "stale-provider-device-invalidated",
+      "input": { "providerInstanceId": "provider-sim-001", "reason": "PROVIDER_RESTARTED" },
+      "expected": { "registrationState": "STALE", "assignmentState": "AWAITING_REBIND", "ownershipState": "STALE_PROVIDER" }
+    },
+    {
+      "id": "cash-drawer-attached-printer-action",
+      "input": { "commandType": "OPEN_ATTACHED_CASH_DRAWER", "deviceKind": "PRINTER" },
+      "expected": { "accepted": true, "requiredCapability": "printer.cash_drawer_pulse" }
     }
   ]
 }
