@@ -16,6 +16,7 @@ import { windowManager } from './windowManager'
 import { createTray, destroyTray } from './tray'
 import { updateHealth, recordHealthError, getHealthSnapshot } from './runtimeHealth'
 import { createDefaultHardwareManager } from './hardware/hardwareManager'
+import { WindowsProviderSupervisor } from './provider/providerSupervisor'
 
 // ── 单实例（A4）────────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -29,10 +30,14 @@ if (!gotLock) {
   })
 
   let quitting = false
-  function quitApp() {
+  let providerSupervisor: WindowsProviderSupervisor | null = null
+  async function quitApp() {
     if (quitting) return
     quitting = true
     windowManager.setQuitting()
+    try { await providerSupervisor?.stop() } catch (error) {
+      recordHealthError('provider', `provider stop failed: ${String(error)}`)
+    }
     destroyTray()
     logger.info('app.quit', { uptimeSeconds: getHealthSnapshot().uptimeSeconds })
     for (const win of BrowserWindow.getAllWindows()) {
@@ -73,7 +78,12 @@ if (!gotLock) {
     windowManager.ensureCustomerWindow('startup')
     windowManager.watchDisplays()
 
-    createTray(windowManager, quitApp)
+    providerSupervisor = new WindowsProviderSupervisor()
+    providerSupervisor.start().catch((error) => {
+      recordHealthError('provider', `provider start failed: ${String(error)}`)
+    })
+
+    createTray(windowManager, () => { void quitApp() })
   }).catch((error) => {
     recordHealthError('app', `whenReady failed: ${String(error)}`)
   })

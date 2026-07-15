@@ -20,6 +20,13 @@ files:
   - dist/**
   - package.json
 
+extraResources:
+  - from: ../../eshop-windows-provider/artifacts/eshop-windows-provider
+    to: eshop-windows-provider
+    filter:
+      - dist/**
+      - package.json
+
 win:
   target:
     - target: nsis

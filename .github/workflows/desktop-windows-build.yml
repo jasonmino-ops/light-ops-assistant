@@ -8,6 +8,7 @@ name: desktop-windows-build
 
 on:
   push:
+    branches: [main, "feat/**"]
     paths:
       - "packages/hrt-contract/**"
       - "desktop/**"
@@ -22,6 +23,15 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout Windows Provider artifact source
+        uses: actions/checkout@v4
+        with:
+          repository: jasonmino-ops/eshop-windows-provider
+          ref: 7785be145d5259991038d17839d322e2694e338c
+          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
+          path: ep-mb3-provider
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -40,6 +50,30 @@ jobs:
       - name: Install Desktop dependencies
         run: npm ci
 
+      - name: Install Provider dependencies
+        run: npm ci
+        working-directory: ep-mb3-provider
+
+      - name: Verify exact Provider commit
+        shell: pwsh
+        working-directory: ep-mb3-provider
+        run: |
+          $actual = git rev-parse HEAD
+          if ($actual -ne "7785be145d5259991038d17839d322e2694e338c") {
+            throw "Unexpected Provider commit: $actual"
+          }
+
+      - name: Build Provider artifact
+        run: npm run package
+        working-directory: ep-mb3-provider
+
+      - name: Stage Provider artifact for Desktop packaging
+        shell: pwsh
+        working-directory: .
+        run: |
+          New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
+          Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
+
       - name: Type check
         run: npm run typecheck
 
@@ -49,8 +83,49 @@ jobs:
       - name: Compile main & preload
         run: npm run compile
 
+      - name: Provider supervision pipe integration
+        shell: pwsh
+        run: |
+          $providerEntry = (Resolve-Path ..\ep-mb3-provider\artifacts\eshop-windows-provider\dist\index.js).Path
+          $env:ESHOP_WINDOWS_PROVIDER_ENTRY = $providerEntry
+          node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); const {getHealthSnapshot}=require('./dist/main/runtimeHealth'); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'ci-'+process.pid,connectDelayMs:500}); await s.start(); await new Promise(r=>setTimeout(r,1500)); const h=getHealthSnapshot().providerRuntime; console.log(JSON.stringify(h)); if(h.state!=='ok') throw new Error('Provider did not reach ok state'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
+
+      - name: Electron runtime Provider smoke with spaces
+        shell: pwsh
+        run: |
+          $spaceDir = Join-Path $env:RUNNER_TEMP "Provider Artifact With Spaces"
+          New-Item -ItemType Directory -Force -Path $spaceDir | Out-Null
+          Copy-Item -Recurse -Force ..\ep-mb3-provider\artifacts\eshop-windows-provider $spaceDir\
+          $providerEntry = Join-Path $spaceDir "eshop-windows-provider\dist\index.js"
+          $electron = (Resolve-Path .\node_modules\electron\dist\electron.exe).Path
+          $smokePath = Join-Path $env:RUNNER_TEMP "electron-provider-smoke.json"
+          $env:ELECTRON_RUN_AS_NODE = "1"
+          & $electron $providerEntry --smoke *> $smokePath
+          $smokeText = Get-Content -Raw $smokePath
+          Write-Output $smokeText
+          if ($smokeText -notmatch '"ok"\s*:\s*true') { throw "Electron runtime Provider smoke failed" }
+          Remove-Item Env:\ELECTRON_RUN_AS_NODE
+
+      - name: Verify no surviving Provider process
+        shell: pwsh
+        working-directory: .
+        run: |
+          $orphans = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*eshop-windows-provider*dist*index.js*' }
+          if ($orphans) {
+            $orphans | Format-Table ProcessId,CommandLine -AutoSize
+            throw "Surviving Provider process detected"
+          }
+
       - name: Build Windows installer (NSIS, unsigned)
         run: npx electron-builder --win --x64 --publish never
+
+      - name: Verify packaged Provider resource
+        shell: pwsh
+        run: |
+          $resourceEntry = ".\release\win-unpacked\resources\eshop-windows-provider\dist\index.js"
+          if (!(Test-Path $resourceEntry)) {
+            throw "Packaged Provider resource missing: $resourceEntry"
+          }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
