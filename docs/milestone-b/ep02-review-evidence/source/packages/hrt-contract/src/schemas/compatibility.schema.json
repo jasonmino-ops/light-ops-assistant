@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eshop.local/hrt-contract/compatibility.schema.json",
+  "title": "HRT Compatibility Result Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "reason",
+    "providerId",
+    "providerInstanceId",
+    "providerVersion",
+    "contractVersion",
+    "missingCapabilities",
+    "matrix"
+  ],
+  "properties": {
+    "status": { "enum": ["COMPATIBLE", "INCOMPATIBLE"] },
+    "reason": {
+      "enum": [
+        "OK",
+        "INCOMPATIBLE_CONTRACT_VERSION",
+        "UNSUPPORTED_PROVIDER_VERSION",
+        "MISSING_REQUIRED_CAPABILITY"
+      ]
+    },
+    "providerId": { "type": "string", "minLength": 1 },
+    "providerInstanceId": { "type": "string", "minLength": 1 },
+    "providerVersion": { "type": "string", "minLength": 1 },
+    "contractVersion": { "type": "string", "minLength": 1 },
+    "missingCapabilities": { "type": "array" },
+    "matrix": { "type": "object" }
+  }
+}

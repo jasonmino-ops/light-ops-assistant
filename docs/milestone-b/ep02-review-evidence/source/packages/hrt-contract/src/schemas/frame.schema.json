@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eshop.local/hrt-contract/frame.schema.json",
+  "title": "HRT Versioned JSON Schema Frame",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "messageType",
+    "correlationId",
+    "instanceId",
+    "sequence",
+    "timestamp",
+    "payload"
+  ],
+  "properties": {
+    "contractVersion": { "type": "string", "minLength": 1 },
+    "messageType": {
+      "type": "string",
+      "enum": [
+        "runtime.handshake.request",
+        "provider.handshake.response",
+        "provider.register",
+        "provider.ready",
+        "provider.rejected",
+        "provider.disconnect",
+        "provider.restart",
+        "provider.shutdown",
+        "command.request",
+        "command.result",
+        "device.event",
+        "display.snapshot",
+        "health.snapshot",
+        "diagnostic.report"
+      ]
+    },
+    "correlationId": { "type": "string", "minLength": 1 },
+    "instanceId": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "payload": {}
+  }
+}
