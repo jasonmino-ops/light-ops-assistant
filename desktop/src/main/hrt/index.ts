@@ -1,5 +1,8 @@
 export * from "./auditEmitter";
 export * from "./commandRouter";
+export * from "./commandLifecycle";
+export * from "./commandRuntime";
+export * from "./commandRuntimeTypes";
 export * from "./deviceAssignment";
 export * from "./deviceCommandGate";
 export * from "./deviceHealth";
@@ -10,6 +13,7 @@ export * from "./deviceRuntime";
 export * from "./deviceSlot";
 export * from "./healthEngine";
 export * from "./hrtLogicCore";
+export * from "./fakeCommandExecutor";
 export * from "./providerClient";
 export * from "./providerHealth";
 export * from "./providerLifecycle";
