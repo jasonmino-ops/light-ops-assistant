@@ -219,34 +219,6 @@ This package does not modify:
 - Windows Provider repository
 - Real hardware executors
 
-## Acceptance Addendum
-
-| Item | Value |
-| --- | --- |
-| Addendum Type | Acceptance Addendum |
-| Acceptance Record | ES-MB2-ACCEPTANCE-001 Provider Runtime Acceptance Record V1.0 |
-| Accepted Implementation HEAD | 57e8d21a11a1cc517b9989c4107c01cea1c94a16 |
-| Acceptance Date | 2026-07-15 |
-| Architecture Review | PASS |
-| MB-2A | PASS |
-| Windows CI | PASS |
-| Desktop | PASS |
-| Vercel Preview | READY |
-| Production | READY |
-| Risk | LOW |
-| Final Implementation Status | ACCEPTED / READY FOR MERGE / READY FOR FREEZE |
-
-Acceptance result:
-
-EP-MB2-01 Provider Runtime is formally accepted for MB-2A. This addendum does not expand implementation scope and does not start EP-02.
-
-Boundary reaffirmed:
-
-- No Provider Runtime source changes are made by the acceptance addendum.
-- No Windows Provider is initialized.
-- No Assignment Runtime, Command Runtime, Scanner Runtime, or Display Runtime is extended.
-- No database schema, production feature flag, Cashier, POS, Telegram Mini App, or customer H5 flow is modified by this acceptance addendum.
-
 ## Verification
 
 Required verification commands:

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eshop.local/hrt-contract/customer-display-snapshot.schema.json",
+  "title": "HRT Customer Display Snapshot Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "snapshotId",
+    "providerInstanceId",
+    "device",
+    "scope",
+    "sequence",
+    "timestamp",
+    "expiresAt",
+    "state",
+    "payload"
+  ],
+  "properties": {
+    "snapshotId": { "type": "string", "minLength": 1 },
+    "providerInstanceId": { "type": "string", "minLength": 1 },
+    "device": { "type": "object" },
+    "scope": {
+      "type": "object",
+      "required": ["storeId", "terminalId"],
+      "properties": {
+        "storeId": { "type": "string", "minLength": 1 },
+        "terminalId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "state": { "enum": ["DISPLAY", "CLEAR"] },
+    "payload": { "type": "object" }
+  }
+}

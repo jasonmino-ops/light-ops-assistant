@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eshop.local/hrt-contract/command-request.schema.json",
+  "title": "HRT Command Request Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commandId", "idempotencyKey", "device", "commandType", "params"],
+  "properties": {
+    "commandId": { "type": "string", "minLength": 1 },
+    "idempotencyKey": { "type": "string", "minLength": 1 },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deviceId", "deviceKind"],
+      "properties": {
+        "deviceId": { "type": "string", "minLength": 1 },
+        "deviceKind": { "type": "string", "enum": ["PRINTER", "SCANNER", "CUSTOMER_DISPLAY"] },
+        "slotId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "commandType": {
+      "type": "string",
+      "enum": [
+        "PRINT_RECEIPT",
+        "OPEN_ATTACHED_CASH_DRAWER",
+        "SET_SCANNER_ENABLED",
+        "DISPLAY_SNAPSHOT",
+        "CLEAR_DISPLAY"
+      ]
+    },
+    "params": { "type": "object" }
+  }
+}
+
