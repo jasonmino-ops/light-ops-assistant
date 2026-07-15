@@ -19,7 +19,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     env:
-      EP_MB3_02_PROVIDER_REF: 2511c234e527055542bfdd3a70b0112ab60b5e49
+      EP_MB3_02_PROVIDER_REF: a3c6e55688b7c0ec693568d6000c687d6aa29114
     defaults:
       run:
         working-directory: desktop
@@ -32,6 +32,7 @@ jobs:
           repository: jasonmino-ops/eshop-windows-provider
           ref: ${{ env.EP_MB3_02_PROVIDER_REF }}
           path: provider-source
+          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN || github.token }}
 
       - uses: actions/setup-node@v4
         with:
