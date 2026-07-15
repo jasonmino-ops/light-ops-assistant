@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eshop.local/hrt-contract/scanner-event.schema.json",
+  "title": "HRT Scanner Event Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventId",
+    "device",
+    "eventType",
+    "monotonicSequence",
+    "providerInstanceId",
+    "scope",
+    "data"
+  ],
+  "properties": {
+    "eventId": { "type": "string", "minLength": 1 },
+    "device": { "type": "object" },
+    "eventType": { "const": "BARCODE_SCANNED" },
+    "monotonicSequence": { "type": "integer", "minimum": 0 },
+    "providerInstanceId": { "type": "string", "minLength": 1 },
+    "scope": {
+      "type": "object",
+      "required": ["storeId", "terminalId"],
+      "properties": {
+        "storeId": { "type": "string", "minLength": 1 },
+        "terminalId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "data": { "type": "object" }
+  }
+}

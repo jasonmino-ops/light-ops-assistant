@@ -1,0 +1,7 @@
+fixtures/
+  provider-runtime-vectors.json
+package-lock.json
+package.json
+src/
+  index.ts
+tsconfig.json
