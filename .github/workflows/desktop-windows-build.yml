@@ -98,9 +98,10 @@ jobs:
           Copy-Item -Recurse -Force ..\ep-mb3-provider\artifacts\eshop-windows-provider $spaceDir\
           $providerEntry = Join-Path $spaceDir "eshop-windows-provider\dist\index.js"
           $electron = (Resolve-Path .\node_modules\electron\dist\electron.exe).Path
+          $smokePath = Join-Path $env:RUNNER_TEMP "electron-provider-smoke.json"
           $env:ELECTRON_RUN_AS_NODE = "1"
-          $smokeOutput = & $electron $providerEntry --smoke 2>&1
-          $smokeText = $smokeOutput | Out-String
+          & $electron $providerEntry --smoke *> $smokePath
+          $smokeText = Get-Content -Raw $smokePath
           Write-Output $smokeText
           if ($smokeText -notmatch '"ok"\s*:\s*true') { throw "Electron runtime Provider smoke failed" }
           Remove-Item Env:\ELECTRON_RUN_AS_NODE
