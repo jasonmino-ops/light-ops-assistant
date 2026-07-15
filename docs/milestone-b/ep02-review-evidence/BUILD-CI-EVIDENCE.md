@@ -59,23 +59,29 @@ Workflow:
 .github/workflows/desktop-windows-build.yml
 ```
 
-Run ID: PENDING_PUSH_VERIFICATION
+Run ID: 29410891681
 
-Status: PENDING_PUSH_VERIFICATION
+Status: PASS
 
 Required checks:
 
-- Contract dependencies: PENDING
-- Contract build: PENDING
-- Desktop dependencies: PENDING
-- Typecheck: PENDING
-- Unit tests: PENDING
-- Compile main & preload: PENDING
-- Electron Builder: PENDING
-- Artifact Upload: PENDING
+- Contract dependencies: PASS
+- Contract build: PASS
+- Desktop dependencies: PASS
+- Typecheck: PASS
+- Unit tests: PASS
+- Compile main & preload: PASS
+- Electron Builder: PASS
+- Artifact Upload: PASS
 
 ## Vercel Preview
 
-Status: PENDING_PUSH_VERIFICATION
+Status: READY
 
-Preview URL: PENDING_PUSH_VERIFICATION
+Preview URL: `https://light-ops-assistant-bzyp8s4r7-sunxiaojian0910-2556s-projects.vercel.app`
+
+Preview commit:
+
+```text
+08bd792deff3e6f83719cbad9a1da2ab81815a18
+```
