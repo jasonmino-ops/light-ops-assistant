@@ -1,0 +1,143 @@
+{
+  "fixtureFamily": "device-runtime",
+  "contractVersion": "1.0.0",
+  "vectors": [
+    {
+      "id": "physical-identity-valid",
+      "category": "physical-identity",
+      "input": { "deviceId": "printer-sim-001", "deviceKind": "PRINTER", "capabilities": ["printer.receipt"] },
+      "expectedDecision": "ACCEPTED",
+      "expectedCode": "REGISTERED",
+      "expectedStateChange": { "registrationState": "REGISTERED", "ownershipState": "VALID", "healthState": "ONLINE" }
+    },
+    {
+      "id": "physical-identity-invalid",
+      "category": "physical-identity",
+      "input": { "deviceId": "", "deviceKind": "PRINTER", "capabilities": ["printer.receipt"] },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "INVALID_PHYSICAL_IDENTITY"
+    },
+    {
+      "id": "slot-reference-valid",
+      "category": "slot-reference",
+      "input": { "slotId": "receipt-printer", "expectedDeviceKind": "PRINTER", "requiredCapabilities": ["printer.receipt"] },
+      "expectedDecision": "ACCEPTED",
+      "expectedCode": "SLOT_REFERENCE_REGISTERED"
+    },
+    {
+      "id": "assignment-accepted",
+      "category": "assignment",
+      "input": { "slotId": "receipt-printer", "deviceId": "printer-sim-001", "expectedDeviceKind": "PRINTER", "requiredCapabilities": ["printer.receipt"] },
+      "expectedDecision": "ACCEPTED",
+      "expectedCode": "ASSIGNED",
+      "expectedStateChange": { "assignmentState": "ASSIGNED", "ownershipState": "VALID" }
+    },
+    {
+      "id": "assignment-unknown-slot",
+      "category": "assignment",
+      "input": { "slotId": "missing-slot", "deviceId": "printer-sim-001" },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "UNKNOWN_SLOT"
+    },
+    {
+      "id": "assignment-unknown-device",
+      "category": "assignment",
+      "input": { "slotId": "receipt-printer", "deviceId": "missing-device" },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "UNKNOWN_DEVICE"
+    },
+    {
+      "id": "kind-mismatch",
+      "category": "assignment",
+      "input": { "slotId": "scanner-slot", "deviceId": "printer-sim-001", "expectedDeviceKind": "SCANNER", "requiredCapabilities": ["scanner.barcode_event"] },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "KIND_MISMATCH"
+    },
+    {
+      "id": "capability-mismatch",
+      "category": "assignment",
+      "input": { "slotId": "display-cap-slot", "deviceId": "printer-sim-001", "expectedDeviceKind": "PRINTER", "requiredCapabilities": ["customer_display.snapshot"] },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "CAPABILITY_MISMATCH"
+    },
+    {
+      "id": "conflicting-slot-assignment",
+      "category": "assignment",
+      "input": { "slotId": "receipt-printer", "firstDeviceId": "printer-sim-001", "secondDeviceId": "printer-sim-002", "expectedDeviceKind": "PRINTER", "requiredCapabilities": ["printer.receipt"] },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "CONFLICTING_ASSIGNMENT"
+    },
+    {
+      "id": "conflicting-device-assignment",
+      "category": "assignment",
+      "input": { "firstSlotId": "receipt-printer", "secondSlotId": "backup-printer", "deviceId": "printer-sim-001", "expectedDeviceKind": "PRINTER", "requiredCapabilities": ["printer.receipt"] },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "CONFLICTING_ASSIGNMENT"
+    },
+    {
+      "id": "stale-provider-ownership",
+      "category": "ownership",
+      "input": { "slotId": "receipt-printer", "deviceId": "printer-sim-001", "providerInstanceId": "provider-sim-001", "reason": "PROVIDER_RESTARTED" },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "STALE_PROVIDER_INSTANCE",
+      "expectedStateChange": { "registrationState": "STALE", "assignmentState": "AWAITING_REBIND", "ownershipState": "STALE_PROVIDER" }
+    },
+    {
+      "id": "unassigned-command-rejection",
+      "category": "command-eligibility",
+      "input": { "commandType": "PRINT_RECEIPT", "deviceId": "printer-sim-001" },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "UNASSIGNED_DEVICE"
+    },
+    {
+      "id": "eligible-printer-command",
+      "category": "command-eligibility",
+      "input": { "slotId": "receipt-printer", "deviceId": "printer-sim-001", "commandType": "PRINT_RECEIPT", "requiredCapabilities": ["printer.receipt"] },
+      "expectedDecision": "ACCEPTED",
+      "expectedCode": "ELIGIBLE"
+    },
+    {
+      "id": "scanner-source-ownership",
+      "category": "scanner-source",
+      "input": { "slotId": "barcode-scanner", "deviceId": "scanner-sim-001", "scope": { "storeId": "STORE-A", "terminalId": "terminal-001" } },
+      "expectedDecision": "ACCEPTED",
+      "expectedCode": "SOURCE_ELIGIBLE"
+    },
+    {
+      "id": "scanner-wrong-scope",
+      "category": "scanner-source",
+      "input": { "slotId": "barcode-scanner", "deviceId": "scanner-sim-001", "scope": { "storeId": "STORE-A", "terminalId": "terminal-999" } },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "INVALID_SCOPE"
+    },
+    {
+      "id": "display-target-valid",
+      "category": "display-target",
+      "input": { "slotId": "customer-display", "deviceId": "display-sim-001", "scope": { "storeId": "STORE-A", "terminalId": "terminal-001" } },
+      "expectedDecision": "ACCEPTED",
+      "expectedCode": "TARGET_ELIGIBLE"
+    },
+    {
+      "id": "display-wrong-scope",
+      "category": "display-target",
+      "input": { "slotId": "customer-display", "deviceId": "display-sim-001", "scope": { "storeId": "STORE-B", "terminalId": "terminal-001" } },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "INVALID_SCOPE"
+    },
+    {
+      "id": "attached-cash-drawer-action",
+      "category": "command-eligibility",
+      "input": { "slotId": "receipt-printer", "deviceId": "printer-sim-001", "commandType": "OPEN_ATTACHED_CASH_DRAWER", "requiredCapabilities": ["printer.cash_drawer_pulse"] },
+      "expectedDecision": "ACCEPTED",
+      "expectedCode": "ELIGIBLE",
+      "expectedStateChange": { "requiredKind": "PRINTER", "requiredCapability": "printer.cash_drawer_pulse" }
+    },
+    {
+      "id": "unsupported-scale",
+      "category": "unsupported-device",
+      "input": { "slotId": "scale-slot", "deviceId": "scale-sim-001", "deviceKind": "SCALE" },
+      "expectedDecision": "REJECTED",
+      "expectedCode": "UNSUPPORTED_DEVICE_KIND"
+    }
+  ]
+}

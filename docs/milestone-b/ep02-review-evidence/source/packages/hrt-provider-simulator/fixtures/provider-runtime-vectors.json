@@ -1,0 +1,61 @@
+{
+  "fixtureFamily": "provider-runtime",
+  "contractVersion": "1.0.0",
+  "vectors": [
+    {
+      "id": "valid-registration",
+      "input": { "providerId": "windows-provider-simulator", "providerInstanceId": "provider-sim-001" },
+      "expected": { "decision": "ACCEPTED_FIRST_REGISTRATION", "diagnosticCode": "HRT_PROVIDER_REGISTRATION_ACCEPTED" }
+    },
+    {
+      "id": "incompatible-contract",
+      "input": { "contractVersion": "0.0.0" },
+      "expected": { "decision": "REJECTED_INCOMPATIBLE", "rejectionReason": "CONTRACT_VERSION_MISMATCH" }
+    },
+    {
+      "id": "missing-capability",
+      "input": { "capabilities": ["printer.receipt", "scanner.barcode_event"] },
+      "expected": { "decision": "REJECTED_INCOMPATIBLE", "rejectionReason": "MISSING_REQUIRED_CAPABILITY" }
+    },
+    {
+      "id": "duplicate-registration",
+      "input": { "providerInstanceId": "provider-sim-001", "repeatSameInstance": true },
+      "expected": { "decision": "REJECTED_DUPLICATE_SAME_INSTANCE", "diagnosticCode": "HRT_PROVIDER_REGISTRATION_REJECTED" }
+    },
+    {
+      "id": "restart-with-new-instance",
+      "input": { "previousProviderInstanceId": "provider-sim-001", "providerInstanceId": "provider-sim-002" },
+      "expected": { "decision": "ACCEPTED_RESTART_NEW_INSTANCE", "diagnosticCode": "HRT_PROVIDER_STALE_INSTANCE_MARKED" }
+    },
+    {
+      "id": "stale-instance-result",
+      "input": { "activeProviderInstanceId": "provider-sim-002", "resultProviderInstanceId": "provider-sim-001" },
+      "expected": { "accepted": false, "rejectionReason": "STALE_PROVIDER_INSTANCE" }
+    },
+    {
+      "id": "disconnect",
+      "input": { "providerInstanceId": "provider-sim-001" },
+      "expected": { "lifecycleState": "DISCONNECTED", "diagnosticCode": "HRT_PROVIDER_DISCONNECTED" }
+    },
+    {
+      "id": "supervision-backoff",
+      "input": { "restartAttempt": 1 },
+      "expected": { "restartAllowed": true, "backoffMs": 500, "diagnosticCode": "HRT_PROVIDER_RESTART_BACKOFF" }
+    },
+    {
+      "id": "max-restart",
+      "input": { "restartAttempt": 4 },
+      "expected": { "restartAllowed": false, "supervisionState": "STOPPED", "diagnosticCode": "HRT_PROVIDER_MAX_RESTART_REACHED" }
+    },
+    {
+      "id": "illegal-transition",
+      "input": { "from": "NEW", "to": "READY" },
+      "expected": { "throws": true, "diagnosticCode": "HRT_PROVIDER_ILLEGAL_TRANSITION" }
+    },
+    {
+      "id": "shutdown",
+      "input": { "providerInstanceId": "provider-sim-001" },
+      "expected": { "lifecycleState": "STOPPED", "diagnosticCode": "HRT_PROVIDER_STOPPED" }
+    }
+  ]
+}

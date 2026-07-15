@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eshop.local/hrt-contract/provider-registration.schema.json",
+  "title": "HRT Provider Registration Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "providerId",
+    "providerInstanceId",
+    "providerVersion",
+    "contractVersion",
+    "supportedCapabilities",
+    "capabilityDescriptors",
+    "platform",
+    "process"
+  ],
+  "properties": {
+    "providerId": { "type": "string", "minLength": 1 },
+    "providerInstanceId": { "type": "string", "minLength": 1 },
+    "providerVersion": { "type": "string", "minLength": 1 },
+    "contractVersion": { "type": "string", "minLength": 1 },
+    "supportedCapabilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "capabilityDescriptors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "capabilityId",
+          "capabilityVersion",
+          "supportedCommandFamilies",
+          "supportedEventFamilies"
+        ],
+        "properties": {
+          "capabilityId": { "$ref": "#/$defs/capability" },
+          "capabilityVersion": { "type": "string", "minLength": 1 },
+          "supportedCommandFamilies": {
+            "type": "array",
+            "items": { "enum": ["printer", "scanner", "customer_display"] }
+          },
+          "supportedEventFamilies": {
+            "type": "array",
+            "items": { "enum": ["scanner", "health", "diagnostics"] }
+          }
+        }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "arch"],
+      "properties": {
+        "os": { "enum": ["windows", "macos", "linux", "simulator"] },
+        "arch": { "type": "string", "minLength": 1 },
+        "runtime": { "enum": ["electron", "node", "simulator"] }
+      }
+    },
+    "process": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pid", "startedAt"],
+      "properties": {
+        "pid": { "type": "integer" },
+        "startedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "$defs": {
+    "capability": {
+      "enum": [
+        "printer.receipt",
+        "printer.cash_drawer_pulse",
+        "scanner.barcode_event",
+        "customer_display.snapshot"
+      ]
+    }
+  }
+}
