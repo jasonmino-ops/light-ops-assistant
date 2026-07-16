@@ -136,6 +136,17 @@ Verification result:
 - PublisherName: not configured
 - Microsoft Verified Publisher: not claimed
 
+Actual packaged EXE `StringFileInfo`:
+
+- ProductName: `E-Shop Store OS`
+- FileDescription: `E-Shop Store OS Desktop Runtime for Windows POS field deployment`
+- CompanyName: `E-Shop`
+- LegalCopyright: `Copyright © 2026 E-Shop (店小二)`
+- FileVersion: `1.0.0`
+- ProductVersion: `1.0.0`
+
+Independent review observation: electron-builder writes `E-Shop` as the final EXE CompanyName. The non-ASCII `(店小二)` does not enter CompanyName, but remains fully preserved in LegalCopyright.
+
 ## 15. BrowserWindow Modification
 
 - `desktop/src/main/windowManager.ts`: not modified
@@ -172,6 +183,13 @@ Local verification on macOS:
 - `npm run release:windows`: PASS on macOS cross-build, output isolated to `desktop/release-ep-mb3-05a`
 - `npm run verify:installer`: PASS locally with non-Windows Provider helper check skipped; Windows CI still enforces helper presence
 - Root `npm run build`: PASS
+
+Source SHA test observation:
+
+- The current branding unit test verifies that the source checksum is a valid SHA-256 format.
+- `verify-branding` outputs the actual source SHA-256: `24f3af20f4c0556d782963db9983c10faff20d4758d57d8014bd5ea13704a70e`.
+- The unit test does not pin the fixed SHA value.
+- This is a non-blocking follow-up observation and no test code was changed during this documentation closeout.
 
 ## 20. CI Run ID
 
@@ -240,6 +258,13 @@ CI artifact SHA-256:
 - GitHub artifact archive digest: `sha256:60402119049d98f702a37d3781d087b02fd74ae25fe72b4360090ba3d74301d5`
 - The CI-uploaded artifact includes `SHA256SUMS.txt`; unauthenticated GitHub API access exposes artifact metadata but not the artifact zip download.
 
+Artifact integrity check required before Windows real-machine verification:
+
+- The local `build-manifest.json` shown below is from the pre-commit local workspace build, so its `desktopCommit` is the baseline commit.
+- The CI artifact corresponds to implementation commit `164694be38a8ee05ae3f76f64a3722b8ef8a6bea`.
+- After downloading the CI artifact, independently verify that its included `build-manifest.json` has `desktopCommit` equal to `164694be38a8ee05ae3f76f64a3722b8ef8a6bea`.
+- This is an artifact integrity check that must happen before Windows real-machine verification.
+
 ## 25. Manifest Result
 
 Local `build-manifest.json`:
@@ -259,6 +284,15 @@ Local `build-manifest.json`:
 ```
 
 After commit, CI manifest must reflect the final pushed implementation commit.
+
+Independent review clarification: the local manifest above is retained as local build evidence only. It is expected to show the baseline because it was generated before the implementation commit existed.
+
+## 25A. Print Helper Verification Behavior
+
+- `desktop/scripts/verify-installer-artifacts.cjs` skips print-helper executable verification when run outside Windows.
+- Windows CI still runs and enforces the print-helper executable and packaged Provider resource verification.
+- This compatibility change only supports cross-platform local verification.
+- It does not modify print-helper, the printing protocol, the printer executor, print payloads, or printing runtime behavior.
 
 ## 26. Old Release Directory Non-write Evidence
 
