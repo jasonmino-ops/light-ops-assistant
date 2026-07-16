@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "test:smoke:prod": "playwright test tests/smoke/production-smoke.spec.ts",
+    "release:windows": "npm --prefix desktop run release:windows",
     "postinstall": "prisma generate",
     "migrate:prod": "DATABASE_URL=$DIRECT_URL prisma migrate deploy",
     "rollback:freeze": "bash scripts/rollback-to-freeze.sh",

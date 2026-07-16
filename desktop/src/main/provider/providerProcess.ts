@@ -30,7 +30,7 @@ export function generateSupervisorToken(): string {
 export function resolveWindowsProviderEntry(options: ProviderEntryResolutionOptions = {}): ProviderEntryResolution {
   const env = options.env ?? process.env
   const cwd = options.cwd ?? process.cwd()
-  const resourcesPath = options.resourcesPath ?? process.resourcesPath
+  const resourcesPath = options.resourcesPath ?? process.resourcesPath ?? ''
   const explicitEntry = env.ESHOP_WINDOWS_PROVIDER_ENTRY
   if (explicitEntry) return existsSync(explicitEntry) ? { entryPath: explicitEntry, source: 'env-entry' } : { entryPath: null, source: 'missing' }
 
@@ -40,8 +40,10 @@ export function resolveWindowsProviderEntry(options: ProviderEntryResolutionOpti
     return existsSync(entryPath) ? { entryPath, source: 'env-dir' } : { entryPath: null, source: 'missing' }
   }
 
-  const resourceEntry = join(resourcesPath, 'eshop-windows-provider', 'dist', 'index.js')
-  if (existsSync(resourceEntry)) return { entryPath: resourceEntry, source: 'resources' }
+  if (resourcesPath) {
+    const resourceEntry = join(resourcesPath, 'eshop-windows-provider', 'dist', 'index.js')
+    if (existsSync(resourceEntry)) return { entryPath: resourceEntry, source: 'resources' }
+  }
 
   const devEntry = resolve(cwd, '..', 'eshop-windows-provider', 'artifacts', 'eshop-windows-provider', 'dist', 'index.js')
   if (existsSync(devEntry)) return { entryPath: devEntry, source: 'dev-artifact' }

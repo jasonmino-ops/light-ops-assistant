@@ -1,8 +1,8 @@
 {
   "name": "eshop-desktop",
-  "productName": "E-Shop Desktop",
-  "version": "0.1.0",
-  "description": "E-Shop Desktop — Windows 一体机门店收银客户端（Milestone A: Desktop Shell）",
+  "productName": "E-Shop Store OS",
+  "version": "1.0.0",
+  "description": "E-Shop Store OS Desktop Runtime for Windows POS field deployment",
   "private": true,
   "main": "dist/main/main.js",
   "author": "E-Shop (店小二)",
@@ -12,8 +12,12 @@
     "dev": "npm run compile && electron .",
     "start": "npm run compile && electron .",
     "test": "vitest run",
-    "pack:dir": "npm run compile && electron-builder --dir",
-    "dist:win": "npm run compile && electron-builder --win --x64"
+    "prepare:provider": "node scripts/prepare-provider.cjs",
+    "generate:icon": "node scripts/generate-icon.cjs",
+    "pack:dir": "npm run generate:icon && npm run prepare:provider && npm run compile && electron-builder --dir",
+    "dist:win": "node scripts/release-windows.cjs",
+    "release:windows": "node scripts/release-windows.cjs",
+    "verify:installer": "node scripts/verify-installer-artifacts.cjs"
   },
   "dependencies": {
     "@eshop/hrt-contract": "file:../packages/hrt-contract"

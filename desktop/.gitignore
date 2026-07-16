@@ -1,4 +1,6 @@
 node_modules/
 dist/
 release/
+build/icon.ico
+build/provider/
 *.tsbuildinfo

@@ -17,6 +17,9 @@ import { createTray, destroyTray } from './tray'
 import { updateHealth, recordHealthError, getHealthSnapshot } from './runtimeHealth'
 import { createDefaultHardwareManager } from './hardware/hardwareManager'
 import { WindowsProviderSupervisor } from './provider/providerSupervisor'
+import { stableUserDataPath } from './appPaths'
+
+app.setPath('userData', stableUserDataPath(app.getPath('appData')))
 
 // ── 单实例（A4）────────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()

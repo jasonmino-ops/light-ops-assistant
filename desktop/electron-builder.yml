@@ -1,15 +1,15 @@
-# E-Shop Desktop — Windows 打包配置（Milestone A）
+# E-Shop Store OS — Windows installer packaging
 #
 # 说明：
 # - NSIS 安装包（非一键安装，允许用户选择安装目录）
 # - 按用户安装（perMachine: false），无需管理员权限
-# - 用户数据目录：%APPDATA%/eshop-desktop（config.json / logs / window-state.json）
+# - 用户数据目录固定为 %APPDATA%/eshop-desktop，覆盖升级保留配置
 # - 未配置代码签名：安装时可能出现 Windows SmartScreen 提示，
 #   正式商用前必须购买代码签名证书（见 docs/desktop/known-limitations）
 # - publish: null 预留自动升级接口（Milestone D 接入 Auto Update 时改为真实 provider）
 
 appId: com.eshop.desktop
-productName: E-Shop Desktop
+productName: E-Shop Store OS
 copyright: "Copyright © 2026 E-Shop (店小二)"
 
 directories:
@@ -21,7 +21,7 @@ files:
   - package.json
 
 extraResources:
-  - from: ../../eshop-windows-provider/artifacts/eshop-windows-provider
+  - from: build/provider/eshop-windows-provider
     to: eshop-windows-provider
     filter:
       - dist/**
@@ -31,13 +31,19 @@ extraResources:
       - vendor/**
       - node_modules/@eshop/hrt-contract/**
       - helper/**
+  - from: release/build-manifest.json
+    to: build-manifest.json
+
+extraMetadata:
+  name: eshop-desktop
 
 win:
   target:
     - target: nsis
       arch:
         - x64
-  artifactName: "E-Shop-Desktop-Setup-${version}.${ext}"
+  artifactName: "E-Shop-Store-OS-Setup-${version}-${arch}.${ext}"
+  icon: build/icon.ico
 
 nsis:
   oneClick: false
@@ -45,7 +51,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: "E-Shop Desktop"
+  shortcutName: "E-Shop Store OS"
   deleteAppDataOnUninstall: false
 
 publish: null

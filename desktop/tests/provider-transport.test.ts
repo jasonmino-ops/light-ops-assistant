@@ -57,5 +57,4 @@ describe('Windows Provider transport adapter', () => {
     expect(resolveWindowsProviderEntry({ env: { ESHOP_WINDOWS_PROVIDER_ENTRY: __filename } }).source).toBe('env-entry')
     expect(resolveWindowsProviderEntry({ env: {}, resourcesPath: __dirname, cwd: __dirname })).toMatchObject({ entryPath: null, source: 'missing' })
   })
-
 })
