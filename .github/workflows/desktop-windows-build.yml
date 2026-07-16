@@ -81,7 +81,16 @@ jobs:
         run: npm run compile
 
       - name: Build Windows installer (NSIS, unsigned)
-        run: npm run release:windows
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "release-windows.log"
+          npm run release:windows *>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $tail = (Get-Content $log -Tail 80) -join "`n"
+            $escaped = $tail.Replace("%", "%25").Replace("`r", "%0D").Replace("`n", "%0A")
+            Write-Host "::error title=Windows release build failed::$escaped"
+            exit $LASTEXITCODE
+          }
         env:
           ESHOP_PROVIDER_SOURCE: ${{ github.workspace }}\ep-mb3-provider
 
