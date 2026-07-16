@@ -9,8 +9,11 @@ const stagedRoot = join(desktopRoot, "build", "provider");
 const stagedProvider = join(stagedRoot, "eshop-windows-provider");
 
 function run(command, args, cwd) {
+  const executable = process.platform === "win32" && (command === "npm" || command === "npx")
+    ? `${command}.cmd`
+    : command;
   console.log(`> ${command} ${args.join(" ")} (${cwd})`);
-  execFileSync(command, args, { cwd, stdio: "inherit" });
+  execFileSync(executable, args, { cwd, stdio: "inherit" });
 }
 
 if (!existsSync(join(providerRoot, "package.json"))) {

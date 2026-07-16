@@ -8,8 +8,11 @@ const root = resolve(__dirname, "..");
 const releaseDir = join(root, "release");
 
 function run(command, args, cwd = root) {
+  const executable = process.platform === "win32" && (command === "npm" || command === "npx")
+    ? `${command}.cmd`
+    : command;
   console.log(`> ${command} ${args.join(" ")}`);
-  execFileSync(command, args, { cwd, stdio: "inherit" });
+  execFileSync(executable, args, { cwd, stdio: "inherit" });
 }
 
 function git(args, cwd = root) {
