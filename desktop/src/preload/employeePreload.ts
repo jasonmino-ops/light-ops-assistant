@@ -22,6 +22,9 @@ const EMPLOYEE_FULLSCREEN_ENTER_CHANNEL = 'eshop:employee-fullscreen:enter'
 const EMPLOYEE_FULLSCREEN_EXIT_CHANNEL = 'eshop:employee-fullscreen:exit'
 const EMPLOYEE_FULLSCREEN_STATE_CHANNEL = 'eshop:employee-fullscreen:state'
 const PRINTER_PRINT_RECEIPT_CHANNEL = 'desktop:printer:print-receipt'
+const DISPLAY_GET_STATE_CHANNEL = 'desktop:display:get-state'
+const DISPLAY_SET_MODE_CHANNEL = 'desktop:display:set-mode'
+const DISPLAY_SWAP_CHANNEL = 'desktop:display:swap'
 const WEB_REALTIME_BROADCAST_CHANNEL = 'light-ops:customer-display:realtime:v1'
 const DESKTOP_RELAY_FLAG = 'relayedByDesktop'
 const MAX_PRINT_PAYLOAD_BYTES = 24 * 1024
@@ -56,6 +59,15 @@ contextBridge.exposeInMainWorld('eshopDesktopPrinter', Object.freeze({
     validatePrintPayload(payload)
     return ipcRenderer.invoke(PRINTER_PRINT_RECEIPT_CHANNEL, payload)
   },
+}))
+
+contextBridge.exposeInMainWorld('eshopDesktopDisplay', Object.freeze({
+  getState: () => ipcRenderer.invoke(DISPLAY_GET_STATE_CHANNEL),
+  setMode: (mode: unknown) => {
+    if (mode !== 'single' && mode !== 'dual') throw new Error('INVALID_DISPLAY_MODE')
+    return ipcRenderer.invoke(DISPLAY_SET_MODE_CHANNEL, mode)
+  },
+  swap: () => ipcRenderer.invoke(DISPLAY_SWAP_CHANNEL),
 }))
 
 // 旁路捕获现有 Web 实时通道（零侵入：不修改任何冻结页面）

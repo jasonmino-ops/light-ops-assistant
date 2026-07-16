@@ -7,10 +7,10 @@ import {
 } from '../src/shared/ipcChannels'
 
 describe('IPC 通道白名单（A6）', () => {
-  it('通道全集固定为 8 个，且没有任意通道', () => {
+  it('通道全集固定为 11 个，且没有任意通道', () => {
     const all = Object.values(IPC_CHANNELS)
-    expect(all).toHaveLength(8)
-    for (const ch of all) expect(ch.startsWith('eshop:') || ch === 'desktop:printer:print-receipt').toBe(true)
+    expect(all).toHaveLength(11)
+    for (const ch of all) expect(ch.startsWith('eshop:') || ch.startsWith('desktop:')).toBe(true)
     expect(new Set(all).size).toBe(all.length)
   })
 
@@ -22,6 +22,9 @@ describe('IPC 通道白名单（A6）', () => {
       IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT,
       IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
       IPC_CHANNELS.PRINTER_PRINT_RECEIPT,
+      IPC_CHANNELS.DISPLAY_GET_STATE,
+      IPC_CHANNELS.DISPLAY_SET_MODE,
+      IPC_CHANNELS.DISPLAY_SWAP,
     ])
   })
 
@@ -34,6 +37,9 @@ describe('IPC 通道白名单（A6）', () => {
     expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT)
     expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE)
     expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.PRINTER_PRINT_RECEIPT)
+    expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.DISPLAY_GET_STATE)
+    expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.DISPLAY_SET_MODE)
+    expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.DISPLAY_SWAP)
   })
 
   it('只有顾客窗口接收 cart:apply', () => {

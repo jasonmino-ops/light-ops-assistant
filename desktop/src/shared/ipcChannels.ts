@@ -21,6 +21,12 @@ export const IPC_CHANNELS = {
   EMPLOYEE_FULLSCREEN_STATE: 'eshop:employee-fullscreen:state',
   /** Renderer(员工窗口) → Main (invoke)：提交收银小票到本地打印 Runtime */
   PRINTER_PRINT_RECEIPT: 'desktop:printer:print-receipt',
+  /** Renderer(员工窗口) → Main (invoke)：读取本地双屏分配状态 */
+  DISPLAY_GET_STATE: 'desktop:display:get-state',
+  /** Renderer(员工窗口) → Main (invoke)：设置 single / dual 显示模式 */
+  DISPLAY_SET_MODE: 'desktop:display:set-mode',
+  /** Renderer(员工窗口) → Main (invoke)：交换员工屏与顾客屏 */
+  DISPLAY_SWAP: 'desktop:display:swap',
   /** Main → Renderer(顾客窗口)：下发最新购物车快照 */
   CART_APPLY: 'eshop:cart:apply',
 } as const
@@ -43,6 +49,9 @@ export const INVOKABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT,
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
     IPC_CHANNELS.PRINTER_PRINT_RECEIPT,
+    IPC_CHANNELS.DISPLAY_GET_STATE,
+    IPC_CHANNELS.DISPLAY_SET_MODE,
+    IPC_CHANNELS.DISPLAY_SWAP,
   ],
   customer: [],
 }

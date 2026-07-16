@@ -17,6 +17,7 @@ import { cartSyncService } from './cartSyncService'
 import { getHealthSnapshot, updateHealth } from './runtimeHealth'
 import { logger } from './logger'
 import type { WindowManager } from './windowManager'
+import type { DisplayMode } from './displayAssignment'
 
 export type DesktopPrintResult = {
   ok: boolean
@@ -35,6 +36,12 @@ export interface DesktopPrinterBridge {
     errorCode?: string
     message?: string
   }>
+}
+
+export type DesktopDisplayResult = {
+  ok: boolean
+  state: ReturnType<WindowManager['getDisplayState']>
+  errorCode?: string
 }
 
 function senderRole(
@@ -112,6 +119,30 @@ export function registerIpcHandlers(windowManager: WindowManager, printerBridge?
     } catch (error) {
       return mapPrintError(error)
     }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DISPLAY_GET_STATE, (event): DesktopDisplayResult => {
+    if (!authorize(windowManager, event, IPC_CHANNELS.DISPLAY_GET_STATE, 'invoke')) {
+      return { ok: false, state: windowManager.getDisplayState(), errorCode: 'UNAUTHORIZED' }
+    }
+    return { ok: true, state: windowManager.getDisplayState() }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DISPLAY_SET_MODE, (event, mode: unknown): DesktopDisplayResult => {
+    if (!authorize(windowManager, event, IPC_CHANNELS.DISPLAY_SET_MODE, 'invoke')) {
+      return { ok: false, state: windowManager.getDisplayState(), errorCode: 'UNAUTHORIZED' }
+    }
+    if (mode !== 'single' && mode !== 'dual') {
+      return { ok: false, state: windowManager.getDisplayState(), errorCode: 'INVALID_DISPLAY_MODE' }
+    }
+    return windowManager.setDisplayMode(mode as DisplayMode)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DISPLAY_SWAP, (event): DesktopDisplayResult => {
+    if (!authorize(windowManager, event, IPC_CHANNELS.DISPLAY_SWAP, 'invoke')) {
+      return { ok: false, state: windowManager.getDisplayState(), errorCode: 'UNAUTHORIZED' }
+    }
+    return windowManager.swapDisplays()
   })
 
   updateHealth({ ipc: 'ok' }, 'ipc.registered')

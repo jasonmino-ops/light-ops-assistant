@@ -65,7 +65,9 @@ if (!gotLock) {
     })
     updateHealth({ app: 'ok', version: app.getVersion() }, 'app.ready')
 
-    loadConfig(app.getPath('userData'))
+    const userDataDir = app.getPath('userData')
+    loadConfig(userDataDir)
+    windowManager.initDisplaySettings(userDataDir)
 
     // Hardware Runtime 基础框架（A9）：仅注册占位设备
     const hardware = createDefaultHardwareManager()
@@ -76,7 +78,7 @@ if (!gotLock) {
     registerIpcHandlers(windowManager, providerSupervisor)
 
     windowManager.createEmployeeWindow()
-    windowManager.ensureCustomerWindow('startup')
+    windowManager.applyDisplayLayout('startup')
     windowManager.watchDisplays()
 
     providerSupervisor.start().catch((error) => {

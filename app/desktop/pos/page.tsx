@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import CashierPage from '@/app/cashier/page'
 import DesktopModePage from '@/app/desktop/page'
 import UsbCustomerDisplayBridge from './UsbCustomerDisplayBridge'
+import DesktopDisplayControls from './DesktopDisplayControls'
 
 type DesktopLang = 'zh' | 'en' | 'km'
 
@@ -35,6 +36,7 @@ export default function DesktopPosPage() {
     <>
       <CashierPage />
       <UsbCustomerDisplayBridge />
+      <DesktopDisplayControls />
     </>
   ) : <DesktopModePage />
 }
