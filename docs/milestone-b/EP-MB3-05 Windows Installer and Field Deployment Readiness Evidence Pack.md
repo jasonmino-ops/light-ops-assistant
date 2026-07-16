@@ -8,7 +8,7 @@ This pack records implementation evidence only. It does not claim Founder Accept
 
 Architecture Review status: CONDITIONAL PASS.
 
-Founder Verification status: READY FOR CLEAN WINDOWS FIELD VERIFICATION. Windows CI produced and verified an unsigned installer artifact with bundled `eshop-print-helper.exe`; clean Windows installation and hardware verification are still not executed.
+Founder Verification status: BLOCKED — ARTIFACT CONTENT NOT VERIFIED. GitHub Actions run metadata and artifact metadata are visible, but this environment cannot download artifact `8383458452` without GitHub authentication; internal files, installer SHA-256, build manifest contents, packaged Provider resources, and secret scan are not independently verified.
 
 ## 17.2 Git Integrity
 
@@ -145,8 +145,61 @@ Windows CI artifact generated after final blocking fix:
 - Artifact name: `eshop-store-os-windows-installer`
 - Artifact id: `8383458452`
 - Artifact archive size reported by GitHub: `131786466` bytes
-- Uploaded file set configured and verified: `E-Shop-Store-OS-Setup-1.0.0-x64.exe`, `*.blockmap`, `SHA256SUMS.txt`, `build-manifest.json`, `artifact-list.json`
-- Local download note: GitHub artifact archive download returned `401 Requires authentication` from this environment, so this pack records API metadata and successful workflow hard checks rather than independently extracting `artifact-list.json`.
+- Uploaded file set configured by workflow: `E-Shop-Store-OS-Setup-1.0.0-x64.exe`, `*.blockmap`, `SHA256SUMS.txt`, `build-manifest.json`, `artifact-list.json`
+- Local download result: FAIL, GitHub artifact archive download returned `401 Requires authentication` from this environment.
+- Independent content verification result: BLOCKED — ARTIFACT CONTENT NOT VERIFIED.
+- Required access condition to complete verification: a GitHub-authenticated artifact download token/session with permission to download Actions artifact `8383458452`, or a locally supplied copy of the exact artifact archive from run `29517656371`.
+
+## 17.5B CI Artifact Integrity Verification
+
+Verification date: 2026-07-17
+
+Requested target:
+
+- Workflow: `desktop-windows-build`
+- Run id: `29517656371`
+- Artifact name: `eshop-store-os-windows-installer`
+- Artifact id: `8383458452`
+
+Metadata verification:
+
+- CI run result: PASS, completed successfully.
+- Run commit: `135d8364209ec0513ef2c4bd61ff91db18cf3f3d`.
+- Current Desktop HEAD at verification time: `22ec4ca9e2e24599659d4702c7818a40a6198bae`.
+- Run commit equals current Desktop HEAD: FAIL.
+- Provider pinned commit: PASS by workflow checkout pin and `Verify exact Provider commit` step, `c5cc86b35fa185aac795d0e141de549858b81f8b`.
+- Artifact exists: PASS.
+- Artifact archive size reported by GitHub: `131786466` bytes.
+- Artifact download: FAIL, `401 Requires authentication`.
+
+Content verification:
+
+- `E-Shop-Store-OS-Setup-1.0.0-x64.exe`: NOT VERIFIED.
+- `SHA256SUMS.txt`: NOT VERIFIED.
+- `build-manifest.json`: NOT VERIFIED.
+- `artifact-list.json`: NOT VERIFIED.
+- Installer SHA-256 recomputation: NOT VERIFIED.
+- SHA-256 comparison against `SHA256SUMS.txt`: NOT VERIFIED.
+- Build manifest desktop version: NOT VERIFIED.
+- Build manifest desktop commit: NOT VERIFIED.
+- Build manifest provider version: NOT VERIFIED.
+- Build manifest provider commit: NOT VERIFIED.
+- Build manifest release channel: NOT VERIFIED.
+- Packaged `resources/eshop-windows-provider/dist/index.js`: NOT VERIFIED.
+- Packaged `resources/eshop-windows-provider/helper/win-x64/eshop-print-helper.exe`: NOT VERIFIED.
+- `verify:installer` run step: PASS.
+- `.env` scan: NOT VERIFIED.
+- token scan: NOT VERIFIED.
+- secret scan: NOT VERIFIED.
+- private key scan: NOT VERIFIED.
+- test credential scan: NOT VERIFIED.
+- Old local artifact hash `9ad7a0ab80474bdb7285158043b5486667ec6dc53bf2d07d3175d2dd3d164815` marked `LOCAL INCOMPLETE BUILD — NOT RELEASE CANDIDATE`: PASS.
+
+Verification conclusion:
+
+BLOCKED — ARTIFACT CONTENT NOT VERIFIED.
+
+This artifact cannot be advanced to `READY FOR FOUNDER VERIFICATION` from this environment because the artifact archive could not be downloaded and independently inspected.
 
 ## 17.5A Windows CI Step Ordering Fix
 
