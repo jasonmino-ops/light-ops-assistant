@@ -7,6 +7,7 @@
 - Provider baseline: `10145c61e6b878daf0b7eb85064787147f73abc5`
 - Provider branch: `feat/ep-mb3-03b-real-receipt-payload`
 - Provider pinned commit: `8b95380481da66d897b34b63f1987a443d53aa5d`
+- Desktop final reviewed commit: `2d81931e55c691b5dd9d4c7e040c794972d403cf`
 - Frozen Contract: `1.0.0`
 - Contract modified: No
 
@@ -113,13 +114,48 @@ Provider local:
 
 ## Windows CI
 
-Required but not yet verified in this local pass:
+Run:
 
-- Windows helper build/publish
-- Provider package with helper
-- Desktop installer build
-- Provider command.request real receipt dry-run
-- Installer artifact upload and digest
+- Workflow: `desktop-windows-build`
+- Run ID: `29497425563`
+- Run URL: `https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29497425563`
+- Runner: `GitHub Actions 1000000267` / `windows-latest`
+- Trigger commit: `2d81931e55c691b5dd9d4c7e040c794972d403cf`
+- Final status: PASS
+
+Verified steps:
+
+- Node setup: PASS
+- .NET setup: PASS
+- Contract install/build: PASS
+- Desktop install: PASS
+- Provider install: PASS
+- Exact Provider commit `8b95380481da66d897b34b63f1987a443d53aa5d`: PASS
+- Provider tests: PASS
+- Provider print helper publish: PASS
+- Provider artifact build: PASS
+- Provider artifact staged into Desktop packaging: PASS
+- Desktop type check: PASS
+- Desktop unit tests: PASS
+- Main/preload compile: PASS
+- Provider supervision pipe integration: PASS
+- Provider `command.request` real receipt dry-run: PASS
+- Electron runtime Provider smoke with spaces: PASS
+- Provider process cleanup: PASS
+- Windows installer build: PASS
+- Packaged Provider resource verification: PASS
+- Installer artifact upload: PASS
+
+Installer artifact:
+
+- Name: `eshop-desktop-windows-installer`
+- Artifact ID: `8375049359`
+- Digest: `sha256:59b13013f7116b80d9e8c3f0cb198b3b05b6cf88cf5bd488f91f5fcc3e2261eb`
+- Size: `131779089` bytes
+- Commit correspondence: `2d81931e55c691b5dd9d4c7e040c794972d403cf`
+- Expires: `2026-10-14T12:15:05Z`
+
+CI physical printer test: NOT RUN.
 
 ## Real Device Checklist
 
@@ -152,6 +188,6 @@ Not included:
 
 ## Known Limitations
 
-- Local macOS cannot validate the .NET helper build.
+- Local macOS cannot validate the .NET helper build because `dotnet` is not installed.
 - CI does not prove physical paper output.
 - Runtime result confirms command/spooler submission only, not physical completion.
