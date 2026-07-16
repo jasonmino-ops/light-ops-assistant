@@ -74,6 +74,11 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Generate and verify branding icons
+        run: |
+          npm run generate:icon
+          npm run verify:branding
+
       - name: Unit tests
         run: npm test
 
@@ -167,42 +172,45 @@ jobs:
       - name: Verify packaged Provider resource
         shell: pwsh
         run: |
-          $resourceEntry = ".\release\win-unpacked\resources\eshop-windows-provider\dist\index.js"
+          $resourceEntry = ".\release-ep-mb3-05a\win-unpacked\resources\eshop-windows-provider\dist\index.js"
           if (!(Test-Path $resourceEntry)) {
             throw "Packaged Provider resource missing: $resourceEntry"
           }
-          $manifest = ".\release\win-unpacked\resources\eshop-windows-provider\provider-manifest.json"
+          $manifest = ".\release-ep-mb3-05a\win-unpacked\resources\eshop-windows-provider\provider-manifest.json"
           if (!(Test-Path $manifest)) {
             throw "Packaged Provider manifest missing: $manifest"
           }
-          $helper = ".\release\win-unpacked\resources\eshop-windows-provider\helper\win-x64\eshop-print-helper.exe"
+          $helper = ".\release-ep-mb3-05a\win-unpacked\resources\eshop-windows-provider\helper\win-x64\eshop-print-helper.exe"
           if (!(Test-Path $helper)) {
             throw "Packaged print helper missing: $helper"
           }
-          $buildManifest = ".\release\win-unpacked\resources\build-manifest.json"
+          $buildManifest = ".\release-ep-mb3-05a\win-unpacked\resources\build-manifest.json"
           if (!(Test-Path $buildManifest)) {
             throw "Packaged build manifest missing: $buildManifest"
           }
-          $installer = ".\release\E-Shop-Store-OS-Setup-1.0.0-x64.exe"
+          $installer = ".\release-ep-mb3-05a\E-Shop-Store-OS-Setup-1.0.0-EP-MB3-05A-x64.exe"
           if (!(Test-Path $installer)) {
             throw "Installer missing: $installer"
           }
-          $sha = ".\release\SHA256SUMS.txt"
+          $sha = ".\release-ep-mb3-05a\SHA256SUMS.txt"
           if (!(Test-Path $sha)) {
             throw "SHA256SUMS missing: $sha"
           }
 
       - name: Verify installer artifacts
-        run: npm run verify:installer
+        run: |
+          npm run verify:installer
+          npm run verify:branding
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: eshop-store-os-windows-installer
+          name: eshop-store-os-windows-installer-ep-mb3-05a
           path: |
-            desktop/release/E-Shop-Store-OS-Setup-1.0.0-x64.exe
-            desktop/release/*.blockmap
-            desktop/release/SHA256SUMS.txt
-            desktop/release/build-manifest.json
-            desktop/release/artifact-list.json
+            desktop/release-ep-mb3-05a/E-Shop-Store-OS-Setup-1.0.0-EP-MB3-05A-x64.exe
+            desktop/release-ep-mb3-05a/*.blockmap
+            desktop/release-ep-mb3-05a/SHA256SUMS.txt
+            desktop/release-ep-mb3-05a/build-manifest.json
+            desktop/release-ep-mb3-05a/artifact-list.json
+            desktop/release-ep-mb3-05a/branding-verification.json
           if-no-files-found: error

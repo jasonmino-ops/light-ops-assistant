@@ -13,7 +13,7 @@ productName: E-Shop Store OS
 copyright: "Copyright © 2026 E-Shop (店小二)"
 
 directories:
-  output: release
+  output: release-ep-mb3-05a
   buildResources: build
 
 files:
@@ -31,7 +31,7 @@ extraResources:
       - vendor/**
       - node_modules/@eshop/hrt-contract/**
       - helper/**
-  - from: release/build-manifest.json
+  - from: release-ep-mb3-05a/build-manifest.json
     to: build-manifest.json
 
 extraMetadata:
@@ -42,7 +42,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: "E-Shop-Store-OS-Setup-${version}-${arch}.${ext}"
+  artifactName: "E-Shop-Store-OS-Setup-${version}-EP-MB3-05A-${arch}.${ext}"
   icon: build/icon.ico
 
 nsis:
@@ -52,6 +52,8 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: "E-Shop Store OS"
+  installerIcon: build/installer-icon.ico
+  uninstallerIcon: build/uninstaller-icon.ico
   deleteAppDataOnUninstall: false
 
 publish: null

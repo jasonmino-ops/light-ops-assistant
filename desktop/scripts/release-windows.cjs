@@ -5,7 +5,10 @@ const { join, resolve } = require("node:path");
 const pkg = require("../package.json");
 
 const root = resolve(__dirname, "..");
-const releaseDir = join(root, "release");
+const releaseDir = join(root, "release-ep-mb3-05a");
+const releasePackage = "EP-MB3-05A";
+const expectedInstaller = `E-Shop-Store-OS-Setup-${pkg.version}-${releasePackage}-x64.exe`;
+const expectedBlockmap = `${expectedInstaller}.blockmap`;
 
 function run(command, args, cwd = root) {
   console.log(`> ${command} ${args.join(" ")}`);
@@ -38,6 +41,7 @@ const providerMetadata = existsSync(providerMetadataPath)
 
 const manifest = {
   product: "E-Shop Store OS",
+  releasePackage,
   desktopVersion: pkg.version,
   providerVersion: null,
   desktopCommit: git(["rev-parse", "HEAD"], join(root, "..")),
@@ -58,8 +62,8 @@ run("npx", ["electron-builder", "--win", "--x64", "--publish", "never"]);
 
 const artifacts = readdirSync(releaseDir)
   .filter((name) => (
-    name === `E-Shop-Store-OS-Setup-${pkg.version}-x64.exe`
-    || name === `E-Shop-Store-OS-Setup-${pkg.version}-x64.exe.blockmap`
+    name === expectedInstaller
+    || name === expectedBlockmap
     || name === "latest.yml"
     || name === "build-manifest.json"
   ))

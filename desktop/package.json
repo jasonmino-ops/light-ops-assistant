@@ -14,6 +14,7 @@
     "test": "vitest run",
     "prepare:provider": "node scripts/prepare-provider.cjs",
     "generate:icon": "node scripts/generate-icon.cjs",
+    "verify:branding": "node scripts/verify-branding.cjs",
     "pack:dir": "npm run generate:icon && npm run prepare:provider && npm run compile && electron-builder --dir",
     "dist:win": "node scripts/release-windows.cjs",
     "release:windows": "node scripts/release-windows.cjs",

@@ -1,6 +1,9 @@
 node_modules/
 dist/
 release/
+release-ep-mb3-05a/
 build/icon.ico
+build/installer-icon.ico
+build/uninstaller-icon.ico
 build/provider/
 *.tsbuildinfo
