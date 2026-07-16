@@ -8,7 +8,7 @@ This pack records implementation evidence only. It does not claim Founder Accept
 
 Architecture Review status: CONDITIONAL PASS.
 
-Founder Verification status: NOT READY until a Windows CI artifact with bundled `eshop-print-helper.exe` is produced and verified.
+Founder Verification status: READY FOR CLEAN WINDOWS FIELD VERIFICATION. Windows CI produced and verified an unsigned installer artifact with bundled `eshop-print-helper.exe`; clean Windows installation and hardware verification are still not executed.
 
 ## 17.2 Git Integrity
 
@@ -97,6 +97,27 @@ Installer:
 - `npm run release:windows`: PASS locally on macOS cross-build.
 - `npm run verify:installer`: FAIL locally because `helper/win-x64/eshop-print-helper.exe` is missing from the staged Provider artifact. This is expected on this macOS machine because .NET SDK is not installed and helper publish is skipped outside Windows. Windows CI is configured to run `helper:publish` before packaging.
 
+Windows CI:
+
+- Workflow: `desktop-windows-build`
+- Run: `#38`, `29517656371`
+- Head commit: `135d8364209ec0513ef2c4bd61ff91db18cf3f3d`
+- Result: PASS
+- Provider pinned commit check: PASS, `c5cc86b35fa185aac795d0e141de549858b81f8b`
+- Provider tests: PASS
+- Desktop typecheck: PASS
+- Desktop unit tests: PASS
+- Desktop compile: PASS
+- Windows installer build: PASS
+- Staged Provider artifact check: PASS
+- Provider supervision pipe integration: PASS
+- Provider `command.request` real receipt dry-run: PASS
+- Electron runtime Provider smoke with spaces: PASS
+- No surviving Provider process check: PASS
+- Packaged Provider resource check: PASS
+- Installer artifact verification: PASS
+- Artifact upload: PASS
+
 ## 17.5 Artifact Evidence
 
 Local artifact generated after implementation commit:
@@ -110,17 +131,33 @@ Local artifact generated after implementation commit:
 - Build manifest: `desktop/release/build-manifest.json`
 - SHA file: `desktop/release/SHA256SUMS.txt`
 - CI artifact name configured: `eshop-store-os-windows-installer`
-- CI run: NOT EXECUTED in this local evidence pass
+- CI run: PASS, `#38` / `29517656371`
 
 LOCAL INCOMPLETE BUILD — NOT RELEASE CANDIDATE.
 
 Important limitation: this local macOS-built installer is not field-ready because the static verifier found the Provider print helper missing. Do not reuse this local hash as the formal release candidate hash.
 
+Windows CI artifact generated after final blocking fix:
+
+- Workflow: `desktop-windows-build`
+- Run: `#38`, `29517656371`
+- Head commit: `135d8364209ec0513ef2c4bd61ff91db18cf3f3d`
+- Artifact name: `eshop-store-os-windows-installer`
+- Artifact id: `8383458452`
+- Artifact archive size reported by GitHub: `131786466` bytes
+- Uploaded file set configured and verified: `E-Shop-Store-OS-Setup-1.0.0-x64.exe`, `*.blockmap`, `SHA256SUMS.txt`, `build-manifest.json`, `artifact-list.json`
+- Local download note: GitHub artifact archive download returned `401 Requires authentication` from this environment, so this pack records API metadata and successful workflow hard checks rather than independently extracting `artifact-list.json`.
+
 ## 17.5A Windows CI Step Ordering Fix
 
 Independent review found blocker B2: Provider integration steps were resolving `ep-mb3-provider/artifacts/eshop-windows-provider/dist/index.js` before the workflow had generated `artifacts/`.
 
-Fix commit: this Evidence Pack update commit.
+Fix commits:
+
+- `c64f8cf7cb627cd2cf8c412518b5e9507b1a2009`: CI ordering fix, staged/packaged artifact hard checks, upload list cleanup.
+- `86fac1bc3578794c7cfddee5d304b6c314fe0552`: cross-platform installer readiness unit test path fix.
+- `ad04de864b1e350cff87fe0a12b22650d9ad2fdc`: CI diagnostic output for release build failures.
+- `135d8364209ec0513ef2c4bd61ff91db18cf3f3d`: Windows `npm`/`npx` child process shell fix.
 
 Chosen approach: Scheme B. `npm run release:windows` remains the single Provider prepare flow. The workflow now runs the release build before Provider supervision, command dry-run, and Electron smoke. Those checks reuse the staged artifact at `desktop/build/provider/eshop-windows-provider`.
 
@@ -162,7 +199,7 @@ Artifact upload now includes:
 | Version correct | PASS |
 | SHA-256 generated | PASS |
 | Provider JS bundled | PASS |
-| Provider print helper bundled | FAIL locally |
+| Provider print helper bundled | FAIL locally, PASS in Windows CI |
 | `app.asar` generated | PASS |
 | Icon generated before packaging | PASS |
 | Uninstall metadata configured | PASS |
@@ -195,11 +232,11 @@ Artifact upload now includes:
 - Windows code signing certificate is not configured; SmartScreen warning is expected.
 - Local machine does not have `dotnet`; local Provider helper publish failed.
 - Local macOS static installer verification failed because `eshop-print-helper.exe` is absent.
+- Windows CI artifact exists and passed static checks, but this environment could not download the artifact archive without GitHub authentication.
 - Clean Windows machine installation has not been executed.
 - Cover upgrade has not been executed.
 - Uninstall verification has not been executed.
 - Physical scanner, printer, cash drawer, dual display, KHQR, and USB customer display hardware verification has not been executed.
-- CI artifact is configured but not recorded in this local evidence pass.
 - Auto-update is not implemented.
 - Employee login, PIN, shift, handover, and lock screen remain future independent Engineering Packages.
 
