@@ -134,15 +134,29 @@ True-machine acceptance still required on Windows with actual dual monitors:
 
 ## H. Windows CI And Installer Artifact
 
-Status before first push: pending.
-
-Expected workflow:
+Windows CI evidence:
 
 - Workflow: `desktop-windows-build`
 - Runner: `windows-latest`
-- Expected artifact name: `eshop-desktop-windows-installer`
+- Run id: `29502600015`
+- Run number: `32`
+- Run URL: `https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29502600015`
+- Source commit: `14e962cc1cc3a37d6d6753d0b6b2fdc217d31203`
+- Status: `completed`
+- Conclusion: `success`
+- Created at: `2026-07-16T13:32:12Z`
+- Updated at: `2026-07-16T13:35:49Z`
 
-This section must be updated after pushing the feature branch and collecting the GitHub Actions run and artifact evidence.
+Installer artifact evidence:
+
+- Artifact id: `8377166728`
+- Artifact name: `eshop-desktop-windows-installer`
+- Size: `131785303` bytes
+- Digest: `sha256:7dce44451f442d4293bbf3071bd01b42d7d1dd4b3ddfc464d619269f225c7f2a`
+- Expired: `false`
+- Created at: `2026-07-16T13:35:41Z`
+- Expires at: `2026-10-14T13:32:12Z`
+- Download API URL: `https://api.github.com/repos/jasonmino-ops/light-ops-assistant/actions/artifacts/8377166728/zip`
 
 ## I. Integrity Notes
 
@@ -151,5 +165,6 @@ This section must be updated after pushing the feature branch and collecting the
 - Runtime Core / HRT files changed: no.
 - Printer payload files changed: no.
 - Installer workflow changed: no.
-- Commit created before this evidence file: no.
-- Push created before this evidence file: no.
+- Implementation commit: `14e962cc1cc3a37d6d6753d0b6b2fdc217d31203`
+- Evidence update commit: current evidence-only commit.
+- Branch pushed: yes.
