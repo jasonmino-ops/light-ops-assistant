@@ -70,6 +70,11 @@ type ApiResp = {
 type DesktopLang = 'zh' | 'en' | 'km'
 type DisplayCopy = typeof displayCopy.zh
 type DisplayMode = 'IDLE' | 'ORDER_ACTIVE' | 'PAYMENT_KHQR' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED'
+type PreloadedKhqrImage = {
+  storeCode: string
+  url: string
+  ready: boolean
+}
 
 const POLL_MS = 800
 const HOT_ITEM_CAROUSEL_MS = 4000
@@ -87,6 +92,7 @@ export default function DesktopMirrorPage() {
   const [lingerNow, setLingerNow] = useState(() => Date.now())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(4100)
+  const [preloadedStoreKhqr, setPreloadedStoreKhqr] = useState<PreloadedKhqrImage | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollInFlightRef = useRef(false)
   const realtimeGuardRef = useRef<CustomerDisplayRealtimeGuard | null>(null)
@@ -154,6 +160,34 @@ export default function DesktopMirrorPage() {
   }, [storeCode])
 
   const t = displayCopy[lang]
+  const storeKhqrImageSrc = displayImageSrc(data?.storeKhqrImageUrl)
+  const readyStoreKhqrImageSrc = preloadedStoreKhqr?.storeCode === storeCode
+    && preloadedStoreKhqr.url === storeKhqrImageSrc
+    && preloadedStoreKhqr.ready
+    ? preloadedStoreKhqr.url
+    : null
+
+  useEffect(() => {
+    if (!storeCode || !storeKhqrImageSrc) {
+      setPreloadedStoreKhqr(null)
+      return
+    }
+
+    let cancelled = false
+    setPreloadedStoreKhqr({ storeCode, url: storeKhqrImageSrc, ready: false })
+    const image = new Image()
+    image.onload = () => {
+      if (!cancelled) setPreloadedStoreKhqr({ storeCode, url: storeKhqrImageSrc, ready: true })
+    }
+    image.onerror = () => {
+      if (!cancelled) setPreloadedStoreKhqr(null)
+    }
+    image.src = storeKhqrImageSrc
+
+    return () => {
+      cancelled = true
+    }
+  }, [storeCode, storeKhqrImageSrc])
 
   useEffect(() => {
     const updateFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement))
@@ -256,7 +290,7 @@ export default function DesktopMirrorPage() {
     'IDLE'
   const showKhqrFocus = displayMode === 'PAYMENT_KHQR'
     && session?.message === CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE
-    && hasKhqrDisplaySource(session)
+    && hasKhqrDisplaySource(session, readyStoreKhqrImageSrc)
   const showCashPrompt = session?.paymentMethod === 'CASH' && hasOrderContent
   const showReviewPrompt = !session?.paymentMethod && hasOrderContent
 
@@ -295,7 +329,7 @@ export default function DesktopMirrorPage() {
         )}
 
         {displayMode === 'PAYMENT_KHQR' && session && (
-          <KhqrPaymentStage session={session} t={t} usdKhrRate={usdKhrRate} />
+          <KhqrPaymentStage session={session} storeKhqrImageUrl={readyStoreKhqrImageSrc} t={t} usdKhrRate={usdKhrRate} />
         )}
 
         {displayMode === 'COMPLETED' && session && (
@@ -318,7 +352,7 @@ export default function DesktopMirrorPage() {
       </div>
 
       {showKhqrFocus && session && (
-        <KhqrFocusOverlay session={session} t={t} />
+        <KhqrFocusOverlay session={session} storeKhqrImageUrl={readyStoreKhqrImageSrc} t={t} />
       )}
 
       {/* Footer */}
@@ -398,14 +432,24 @@ const OrderActiveStage = memo(function OrderActiveStage({
   )
 })
 
-const KhqrPaymentStage = memo(function KhqrPaymentStage({ session, t, usdKhrRate }: { session: SessionPayload; t: DisplayCopy; usdKhrRate: number }) {
+const KhqrPaymentStage = memo(function KhqrPaymentStage({
+  session,
+  storeKhqrImageUrl,
+  t,
+  usdKhrRate,
+}: {
+  session: SessionPayload
+  storeKhqrImageUrl: string | null
+  t: DisplayCopy
+  usdKhrRate: number
+}) {
   return (
     <div style={s.khqrStage}>
       <section style={s.khqrMain}>
         <div style={s.khqrTitle}>{t.scanToPay}</div>
         <div style={s.khqrAmount}>${session.totalAmount.toFixed(2)}</div>
         <div style={s.khqrAmountKhr}>{formatKhrFromUsd(session.totalAmount, usdKhrRate)}</div>
-        <PaymentCard session={session} recentlyCompleted={false} storeKhqrImageUrl={null} t={t} />
+        <PaymentCard session={session} recentlyCompleted={false} storeKhqrImageUrl={storeKhqrImageUrl} t={t} />
       </section>
       <section style={s.khqrSide}>
         <CartList items={session.items} itemCount={session.itemCount} totalAmount={session.totalAmount} t={t} />
@@ -414,8 +458,16 @@ const KhqrPaymentStage = memo(function KhqrPaymentStage({ session, t, usdKhrRate
   )
 })
 
-const KhqrFocusOverlay = memo(function KhqrFocusOverlay({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
-  const khqrImageSrc = displayImageSrc(session.khqrImageUrl)
+const KhqrFocusOverlay = memo(function KhqrFocusOverlay({
+  session,
+  storeKhqrImageUrl,
+  t,
+}: {
+  session: SessionPayload
+  storeKhqrImageUrl: string | null
+  t: DisplayCopy
+}) {
+  const khqrImageSrc = displayImageSrc(session.khqrImageUrl) ?? displayImageSrc(storeKhqrImageUrl)
   const qrValue = session.khqrPayload || (!khqrImageSrc ? session.khqrImageUrl : null)
 
   if (!khqrImageSrc && !qrValue) return null
@@ -657,7 +709,7 @@ const PaymentCard = memo(function PaymentCard({
   const isKhqrSession = session?.paymentMethod === 'KHQR'
   const sessionKhqrImageSrc = isKhqrSession ? displayImageSrc(session?.khqrImageUrl) : null
   const storeKhqrImageSrc = displayImageSrc(storeKhqrImageUrl)
-  const khqrImageSrc = sessionKhqrImageSrc ?? (!session ? storeKhqrImageSrc : null)
+  const khqrImageSrc = sessionKhqrImageSrc ?? (isKhqrSession || !session ? storeKhqrImageSrc : null)
   const qrValue = isKhqrSession ? (session?.khqrPayload || (!khqrImageSrc ? session?.khqrImageUrl : null)) : null
   const hasKhqr = Boolean(khqrImageSrc || qrValue)
   const hasOrder = sessionHasOrderContent(session)
@@ -724,9 +776,9 @@ function sessionHasOrderContent(session: SessionPayload | null): boolean {
   return Boolean(session && (session.items.length > 0 || session.itemCount > 0 || session.totalAmount > 0))
 }
 
-function hasKhqrDisplaySource(session: SessionPayload | null): boolean {
+function hasKhqrDisplaySource(session: SessionPayload | null, storeKhqrImageUrl: string | null = null): boolean {
   if (!session || session.paymentMethod !== 'KHQR') return false
-  return Boolean(displayImageSrc(session.khqrImageUrl) || session.khqrPayload || session.khqrImageUrl)
+  return Boolean(displayImageSrc(session.khqrImageUrl) || displayImageSrc(storeKhqrImageUrl) || session.khqrPayload || session.khqrImageUrl)
 }
 
 function applyRealtimeMessageToDisplayData(current: ApiResp | null, message: CustomerDisplayRealtimeMessage): ApiResp {

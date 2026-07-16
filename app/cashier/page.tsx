@@ -2768,7 +2768,11 @@ export default function CashierPage() {
       paymentMethod: displayPayment,
       paymentStatus,
       items,
+      message: displayPayment === 'KHQR'
+        ? (options?.focusKhqr ? CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE : '请扫码支付')
+        : null,
     })
+    if (syncKey === lastCashierDisplaySyncKey.current) return
     lastCashierDisplaySyncKey.current = syncKey
     cashierDisplayActiveRef.current = true
     previousCashierDisplayCartCountRef.current = cart.length
@@ -3243,7 +3247,7 @@ export default function CashierPage() {
       syncCurrentCartToCustomerDisplay('KHQR', { focusKhqr: true })
       return
     }
-    syncCurrentCartToCustomerDisplay('KHQR')
+    syncCurrentCartToCustomerDisplay(method)
   }
 
   function openDesktopPaymentSelection() {

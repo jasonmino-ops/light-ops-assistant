@@ -44,6 +44,13 @@ assert.match(display, /shouldApplyCustomerDisplayRealtimeMessage\(realtimeGuardR
 assert.match(display, /shouldIgnoreStaleDisplayResponse\(current\?\.session \?\? null, body\.session, realtimeGuardRef\.current\)/, 'Desktop display should guard poll results after realtime messages')
 assert.match(display, /channel\.onmessage = null[\s\S]*channel\.close\(\)/, 'Desktop display realtime channel should close on unmount')
 assert.match(display, /message\.type === 'CLEAR'[\s\S]*session: null/, 'Desktop display should accept explicit CLEAR messages')
+assert.match(display, /const image = new Image\(\)[\s\S]*setPreloadedStoreKhqr\(\{ storeCode, url: storeKhqrImageSrc, ready: true \}\)/, 'Desktop display should preload the current store KHQR image before instant fallback display')
+assert.match(display, /preloadedStoreKhqr\?\.storeCode === storeCode[\s\S]*preloadedStoreKhqr\.url === storeKhqrImageSrc/, 'Desktop display should bind preloaded KHQR readiness to the current storeCode and URL')
+assert.match(display, /sessionKhqrImageSrc \?\? \(isKhqrSession \|\| !session \? storeKhqrImageSrc : null\)/, 'KHQR payment sessions should fall back to the ready current-store static KHQR image')
+
+assert.match(cashier, /if \(syncKey === lastCashierDisplaySyncKey\.current\) return/, 'manual cashier display sync should suppress duplicate POSTs by syncKey')
+assert.match(cashier, /syncCurrentCartToCustomerDisplay\(method\)/, 'selecting CASH should sync CASH state instead of forcing KHQR display-session sync')
+assert.doesNotMatch(cashier, /if \(method === 'KHQR'\)[\s\S]{0,180}syncCurrentCartToCustomerDisplay\('KHQR'\)\s*\n\s*\}/, 'non-KHQR desktop payment selection must not force KHQR sync')
 
 assert.match(eventHelper, /window\.dispatchEvent/, 'event helper should dispatch a browser CustomEvent')
 assert.match(eventHelper, /console\.warn\('\[cashier:cart-total\] event dispatch failed'/, 'event helper should isolate dispatch failures')
