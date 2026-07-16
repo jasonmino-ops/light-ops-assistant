@@ -21,8 +21,10 @@ const CART_PUBLISH_CHANNEL = 'eshop:cart:publish'
 const EMPLOYEE_FULLSCREEN_ENTER_CHANNEL = 'eshop:employee-fullscreen:enter'
 const EMPLOYEE_FULLSCREEN_EXIT_CHANNEL = 'eshop:employee-fullscreen:exit'
 const EMPLOYEE_FULLSCREEN_STATE_CHANNEL = 'eshop:employee-fullscreen:state'
+const PRINTER_PRINT_RECEIPT_CHANNEL = 'desktop:printer:print-receipt'
 const WEB_REALTIME_BROADCAST_CHANNEL = 'light-ops:customer-display:realtime:v1'
 const DESKTOP_RELAY_FLAG = 'relayedByDesktop'
+const MAX_PRINT_PAYLOAD_BYTES = 24 * 1024
 const desktopEpoch = (() => {
   try {
     return globalThis.crypto?.randomUUID?.() ?? `epoch-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -49,6 +51,13 @@ contextBridge.exposeInMainWorld('eshopDesktopEmployeeFullscreen', Object.freeze(
   getEmployeeFullscreenState: () => ipcRenderer.invoke(EMPLOYEE_FULLSCREEN_STATE_CHANNEL),
 }))
 
+contextBridge.exposeInMainWorld('eshopDesktopPrinter', Object.freeze({
+  printReceipt: (payload: unknown) => {
+    validatePrintPayload(payload)
+    return ipcRenderer.invoke(PRINTER_PRINT_RECEIPT_CHANNEL, payload)
+  },
+}))
+
 // 旁路捕获现有 Web 实时通道（零侵入：不修改任何冻结页面）
 try {
   const channel = new BroadcastChannel(WEB_REALTIME_BROADCAST_CHANNEL)
@@ -61,4 +70,20 @@ try {
   }
 } catch (error) {
   console.warn('[eshop-desktop] employee preload: BroadcastChannel unavailable', error)
+}
+
+function validatePrintPayload(payload: unknown): void {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('INVALID_PRINT_RECEIPT')
+  const receipt = payload as { schemaVersion?: unknown; receiptId?: unknown; storeName?: unknown; storeCode?: unknown; timestamp?: unknown; currencyCode?: unknown; total?: unknown; items?: unknown }
+  if (receipt.schemaVersion !== '1') throw new Error('INVALID_PRINT_RECEIPT')
+  if (!isText(receipt.receiptId, 80) || !isText(receipt.storeName, 120) || !isText(receipt.storeCode, 80)) throw new Error('INVALID_PRINT_RECEIPT')
+  if (!isText(receipt.timestamp, 80) || !isText(receipt.currencyCode, 12)) throw new Error('INVALID_PRINT_RECEIPT')
+  if (typeof receipt.total !== 'number' || !Number.isFinite(receipt.total)) throw new Error('INVALID_PRINT_RECEIPT')
+  if (!Array.isArray(receipt.items) || receipt.items.length < 1 || receipt.items.length > 200) throw new Error('INVALID_PRINT_RECEIPT')
+  const bytes = new TextEncoder().encode(JSON.stringify(payload)).byteLength
+  if (bytes > MAX_PRINT_PAYLOAD_BYTES) throw new Error('INVALID_PRINT_RECEIPT_OVERSIZED')
+}
+
+function isText(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= maxLength
 }

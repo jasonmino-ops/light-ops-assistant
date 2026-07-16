@@ -55,6 +55,7 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER}'`)
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT}'`)
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE}'`)
+    expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.PRINTER_PRINT_RECEIPT}'`)
     expect(employeePreloadSrc).toContain(`'${WEB_REALTIME_BROADCAST_CHANNEL}'`)
     expect(employeePreloadSrc).toContain(`'${DESKTOP_RELAY_FLAG}'`)
     expect(employeePreloadSrc).not.toContain(IPC_CHANNELS.CART_APPLY)
@@ -69,6 +70,7 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER}'`)
     expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT}'`)
     expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE}'`)
+    expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.PRINTER_PRINT_RECEIPT}'`)
   })
 
   it('preload 不 require 本地模块、不暴露 ipcRenderer/Node 能力给页面', () => {
@@ -105,6 +107,14 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(employeePreloadSrc).toMatch(/getEmployeeFullscreenState/)
     expect(employeePreloadSrc).not.toMatch(/setFullScreen|BrowserWindow|windowControl/)
     expect(customerPreloadSrc).not.toMatch(/eshopDesktopEmployeeFullscreen/)
+    expect(customerPreloadSrc).not.toMatch(/eshopDesktopPrinter/)
+  })
+
+  it('员工 preload 仅暴露专用打印 API，不暴露 ipcRenderer', () => {
+    expect(employeePreloadSrc).toMatch(/exposeInMainWorld\('eshopDesktopPrinter'/)
+    expect(employeePreloadSrc).toMatch(/printReceipt/)
+    expect(employeePreloadSrc).toMatch(/ipcRenderer\.invoke\(PRINTER_PRINT_RECEIPT_CHANNEL/)
+    expect(employeePreloadSrc).not.toMatch(/exposeInMainWorld\((?:'|")eshopDesktopPrinter(?:'|"),\s*ipcRenderer/)
   })
 })
 

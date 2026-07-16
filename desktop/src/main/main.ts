@@ -72,13 +72,13 @@ if (!gotLock) {
     updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
     logger.info('hardware.status', hardware.getStatusSummary())
 
-    registerIpcHandlers(windowManager)
+    providerSupervisor = new WindowsProviderSupervisor()
+    registerIpcHandlers(windowManager, providerSupervisor)
 
     windowManager.createEmployeeWindow()
     windowManager.ensureCustomerWindow('startup')
     windowManager.watchDisplays()
 
-    providerSupervisor = new WindowsProviderSupervisor()
     providerSupervisor.start().catch((error) => {
       recordHealthError('provider', `provider start failed: ${String(error)}`)
     })

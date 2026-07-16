@@ -27,6 +27,16 @@ export type RuntimeHealthSnapshot = {
     lastError: string | null
     restartAttempts?: number
   }
+  printerRuntime: {
+    providerConnected: boolean
+    printerCapabilityAvailable: boolean
+    configuredPrinterName?: string
+    printHelperPresent: boolean
+    printerExecutorAvailable: boolean
+    lastPrintCommandAt?: string
+    lastPrintOutcome?: string
+    lastPrintError?: string | null
+  }
   version: string
   uptimeSeconds: number
   lastError: { at: string; scope: string; message: string } | null
@@ -47,6 +57,13 @@ const state: RuntimeHealthSnapshot = {
   cloudReachability: 'unknown',
   hardwareRuntime: 'unknown',
   providerRuntime: { state: 'unknown', pid: null, lastError: null },
+  printerRuntime: {
+    providerConnected: false,
+    printerCapabilityAvailable: false,
+    printHelperPresent: false,
+    printerExecutorAvailable: false,
+    lastPrintError: null,
+  },
   version: '0.0.0',
   uptimeSeconds: 0,
   lastError: null,
@@ -72,6 +89,7 @@ export function getHealthSnapshot(): RuntimeHealthSnapshot {
     ...state,
     displays: { ...state.displays, externalIds: [...state.displays.externalIds] },
     providerRuntime: { ...state.providerRuntime },
+    printerRuntime: { ...state.printerRuntime },
     uptimeSeconds: Math.round((Date.now() - startedAtMs) / 1000),
   }
 }

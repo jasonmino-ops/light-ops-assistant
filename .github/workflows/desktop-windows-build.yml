@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: jasonmino-ops/eshop-windows-provider
-          ref: 7785be145d5259991038d17839d322e2694e338c
+          ref: 8b95380481da66d897b34b63f1987a443d53aa5d
           token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
           path: ep-mb3-provider
           persist-credentials: false
@@ -38,6 +38,10 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: desktop/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
 
       - name: Install Contract dependencies
         run: npm ci
@@ -59,9 +63,17 @@ jobs:
         working-directory: ep-mb3-provider
         run: |
           $actual = git rev-parse HEAD
-          if ($actual -ne "7785be145d5259991038d17839d322e2694e338c") {
+          if ($actual -ne "8b95380481da66d897b34b63f1987a443d53aa5d") {
             throw "Unexpected Provider commit: $actual"
           }
+
+      - name: Provider tests
+        run: npm test
+        working-directory: ep-mb3-provider
+
+      - name: Publish Provider print helper
+        run: npm run helper:publish
+        working-directory: ep-mb3-provider
 
       - name: Build Provider artifact
         run: npm run package
@@ -89,6 +101,13 @@ jobs:
           $providerEntry = (Resolve-Path ..\ep-mb3-provider\artifacts\eshop-windows-provider\dist\index.js).Path
           $env:ESHOP_WINDOWS_PROVIDER_ENTRY = $providerEntry
           node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); const {getHealthSnapshot}=require('./dist/main/runtimeHealth'); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'ci-'+process.pid,connectDelayMs:500}); await s.start(); await new Promise(r=>setTimeout(r,1500)); const h=getHealthSnapshot().providerRuntime; console.log(JSON.stringify(h)); if(h.state!=='ok') throw new Error('Provider did not reach ok state'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
+
+      - name: Provider command.request real receipt dry-run
+        shell: pwsh
+        run: |
+          $providerEntry = (Resolve-Path ..\ep-mb3-provider\artifacts\eshop-windows-provider\dist\index.js).Path
+          $env:ESHOP_WINDOWS_PROVIDER_ENTRY = $providerEntry
+          node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'cmd-'+process.pid,connectDelayMs:500}); await s.start(); await new Promise(r=>setTimeout(r,1500)); const result=await s.executeCommand({commandId:'ci-real-receipt',idempotencyKey:'ci-real-receipt',device:{deviceId:'receipt-printer',deviceKind:'PRINTER',slotId:'receipt-printer'},commandType:'PRINT_RECEIPT',params:{dryRun:true,receipt:{schemaVersion:'1',receiptId:'ci-real-receipt',saleId:'ci-sale-001',orderNumber:'CI-ORDER-001',storeName:'店小二 CI Store',storeCode:'CI',cashierName:'Windows CI',timestamp:'2026-07-16T00:00:00.000Z',currencyCode:'USD',items:[{name:'店小二 Windows 打印测试',quantity:1,unitPrice:12.34,lineTotal:12.34},{name:'តេស្តបោះពុម្ព Windows',quantity:1,unitPrice:1,lineTotal:1}],subtotal:13.34,total:13.34,paymentMethod:'CASH',footer:'Thank you',language:'mixed'}}}); console.log(JSON.stringify(result)); if(result.outcome!=='SUCCEEDED'||result.effectBoundary!=='CROSSED') throw new Error('command.request dry-run failed'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
 
       - name: Electron runtime Provider smoke with spaces
         shell: pwsh
@@ -125,6 +144,14 @@ jobs:
           $resourceEntry = ".\release\win-unpacked\resources\eshop-windows-provider\dist\index.js"
           if (!(Test-Path $resourceEntry)) {
             throw "Packaged Provider resource missing: $resourceEntry"
+          }
+          $manifest = ".\release\win-unpacked\resources\eshop-windows-provider\provider-manifest.json"
+          if (!(Test-Path $manifest)) {
+            throw "Packaged Provider manifest missing: $manifest"
+          }
+          $helper = ".\release\win-unpacked\resources\eshop-windows-provider\helper\win-x64\eshop-print-helper.exe"
+          if (!(Test-Path $helper)) {
+            throw "Packaged print helper missing: $helper"
           }
 
       - name: Upload installer artifact

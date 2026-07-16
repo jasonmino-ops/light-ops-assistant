@@ -8,12 +8,34 @@
  * - payload 由 validateCartSnapshotMessage 做运行时校验
  */
 
+import { randomUUID } from 'node:crypto'
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { HrtCommandRequestPayload, HrtJsonValue } from '@eshop/hrt-contract'
 import { IPC_CHANNELS, SENDABLE_BY_ROLE, INVOKABLE_BY_ROLE, type WindowRole } from '../shared/ipcChannels'
+import { RuntimeReceiptPayload, validateRuntimeReceiptPayload } from '../shared/printerPayload'
 import { cartSyncService } from './cartSyncService'
 import { getHealthSnapshot, updateHealth } from './runtimeHealth'
 import { logger } from './logger'
 import type { WindowManager } from './windowManager'
+
+export type DesktopPrintResult = {
+  ok: boolean
+  status: 'SUBMITTED' | 'FAILED' | 'TIMED_OUT' | 'PROVIDER_UNAVAILABLE' | 'PRINTER_NOT_CONFIGURED' | 'PRINTER_NOT_FOUND' | 'UNKNOWN'
+  commandId?: string
+  errorCode?: string
+  message?: string
+  effectBoundary?: string
+}
+
+export interface DesktopPrinterBridge {
+  executeCommand(command: HrtCommandRequestPayload, timeoutMs?: number): Promise<{
+    commandId: string
+    outcome: string
+    effectBoundary: string
+    errorCode?: string
+    message?: string
+  }>
+}
 
 function senderRole(
   windowManager: WindowManager,
@@ -39,7 +61,7 @@ function authorize(
   return role
 }
 
-export function registerIpcHandlers(windowManager: WindowManager) {
+export function registerIpcHandlers(windowManager: WindowManager, printerBridge?: DesktopPrinterBridge) {
   ipcMain.on(IPC_CHANNELS.CART_PUBLISH, (event, payload: unknown) => {
     if (!authorize(windowManager, event, IPC_CHANNELS.CART_PUBLISH, 'send')) return
     cartSyncService.ingest(payload)
@@ -71,7 +93,69 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     return win.isFullScreen()
   })
 
+  ipcMain.handle(IPC_CHANNELS.PRINTER_PRINT_RECEIPT, async (event, payload: unknown): Promise<DesktopPrintResult> => {
+    if (!authorize(windowManager, event, IPC_CHANNELS.PRINTER_PRINT_RECEIPT, 'invoke')) {
+      return { ok: false, status: 'PROVIDER_UNAVAILABLE', errorCode: 'UNAUTHORIZED' }
+    }
+    if (!printerBridge) return { ok: false, status: 'PROVIDER_UNAVAILABLE', errorCode: 'PROVIDER_UNAVAILABLE' }
+    let receipt: RuntimeReceiptPayload
+    try {
+      validateRuntimeReceiptPayload(payload)
+      receipt = payload
+    } catch (error) {
+      return { ok: false, status: 'FAILED', errorCode: error instanceof Error ? error.message : 'INVALID_PRINT_RECEIPT' }
+    }
+    const command = createPrintCommand(receipt)
+    try {
+      const result = await printerBridge.executeCommand(command, 30000)
+      return mapPrintResult(result)
+    } catch (error) {
+      return mapPrintError(error)
+    }
+  })
+
   updateHealth({ ipc: 'ok' }, 'ipc.registered')
+}
+
+function createPrintCommand(receipt: RuntimeReceiptPayload): HrtCommandRequestPayload {
+  const commandId = `desktop-print-${randomUUID()}`
+  return {
+    commandId,
+    idempotencyKey: `receipt:${receipt.saleId ?? receipt.receiptId}:runtime:v1`,
+    device: { deviceId: 'receipt-printer', deviceKind: 'PRINTER', slotId: 'receipt-printer' },
+    commandType: 'PRINT_RECEIPT',
+    params: { receipt: receipt as unknown as HrtJsonValue },
+  }
+}
+
+function mapPrintResult(result: Awaited<ReturnType<DesktopPrinterBridge['executeCommand']>>): DesktopPrintResult {
+  if (result.outcome === 'SUCCEEDED' && result.effectBoundary === 'CROSSED') {
+    return { ok: true, status: 'SUBMITTED', commandId: result.commandId, effectBoundary: result.effectBoundary }
+  }
+  if (result.outcome === 'TIMED_OUT') return { ok: false, status: 'TIMED_OUT', commandId: result.commandId, errorCode: result.errorCode, message: result.message, effectBoundary: result.effectBoundary }
+  const status = result.errorCode === 'PRINTER_NOT_CONFIGURED'
+    ? 'PRINTER_NOT_CONFIGURED'
+    : result.errorCode === 'PRINTER_NOT_FOUND'
+      ? 'PRINTER_NOT_FOUND'
+      : result.errorCode === 'PROVIDER_UNAVAILABLE'
+        ? 'PROVIDER_UNAVAILABLE'
+        : 'FAILED'
+  return { ok: false, status, commandId: result.commandId, errorCode: result.errorCode, message: result.message, effectBoundary: result.effectBoundary }
+}
+
+function mapPrintError(error: unknown): DesktopPrintResult {
+  const code = error instanceof Error ? error.message : 'UNKNOWN'
+  const status: DesktopPrintResult['status'] = code === 'PRINT_TIMEOUT'
+    ? 'TIMED_OUT'
+    : code === 'PRINTER_NOT_CONFIGURED'
+      ? 'PRINTER_NOT_CONFIGURED'
+      : code === 'PRINTER_NOT_FOUND'
+        ? 'PRINTER_NOT_FOUND'
+        : code === 'PROVIDER_UNAVAILABLE' || code === 'CAPABILITY_UNSUPPORTED'
+          ? 'PROVIDER_UNAVAILABLE'
+          : 'UNKNOWN'
+  logger.warn('printer.ipc.failed', { errorCode: code, status })
+  return { ok: false, status, errorCode: code }
 }
 
 export function setEmployeeFullscreen(

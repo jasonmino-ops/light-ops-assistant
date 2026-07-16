@@ -21,7 +21,7 @@ describe('Windows Provider transport adapter', () => {
   it('uses the formal provider compatibility matrix without mutating the frozen contract package', () => {
     expect(WINDOWS_PROVIDER_ID).toBe('windows-provider')
     expect(WINDOWS_PROVIDER_COMPATIBILITY_MATRIX.providerId).toBe('windows-provider')
-    expect(WINDOWS_PROVIDER_COMPATIBILITY_MATRIX.requiredCapabilities).toEqual([])
+    expect(WINDOWS_PROVIDER_COMPATIBILITY_MATRIX.requiredCapabilities).toEqual(['printer.receipt'])
   })
 
   it('builds a scoped pipe name with no business data', () => {
@@ -57,4 +57,5 @@ describe('Windows Provider transport adapter', () => {
     expect(resolveWindowsProviderEntry({ env: { ESHOP_WINDOWS_PROVIDER_ENTRY: __filename } }).source).toBe('env-entry')
     expect(resolveWindowsProviderEntry({ env: {}, resourcesPath: __dirname, cwd: __dirname })).toMatchObject({ entryPath: null, source: 'missing' })
   })
+
 })

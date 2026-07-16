@@ -1,6 +1,8 @@
 import net from 'node:net'
 import {
   HRT_CONTRACT_VERSION,
+  HrtCommandRequestPayload,
+  HrtCommandResultPayload,
   HrtFrame,
   HrtHandshakeRequestPayload,
   HrtHandshakeResponsePayload,
@@ -27,6 +29,11 @@ export class WindowsProviderPipeClient {
   private socket: net.Socket | null = null
   private readonly decoder = new ProviderFrameDecoder()
   private sequence = 0
+  private readonly pendingCommands = new Map<string, {
+    timer: NodeJS.Timeout
+    resolve: (result: HrtCommandResultPayload) => void
+    reject: (error: Error) => void
+  }>()
   readonly pipeName: string
 
   constructor(private readonly options: WindowsProviderPipeClientOptions) {
@@ -43,7 +50,33 @@ export class WindowsProviderPipeClient {
       })
       socket.once('error', reject)
       socket.on('data', (chunk) => this.handleData(chunk))
-      socket.on('close', () => this.options.onClose?.('pipe_closed'))
+      socket.on('close', () => {
+        this.rejectPendingCommands('PIPE_CLOSED')
+        this.options.onClose?.('pipe_closed')
+      })
+    })
+  }
+
+  executeCommand(command: HrtCommandRequestPayload, timeoutMs = 30000): Promise<HrtCommandResultPayload> {
+    if (!this.socket || this.socket.destroyed) return Promise.reject(new Error('PROVIDER_UNAVAILABLE'))
+    if (this.pendingCommands.size >= 64) return Promise.reject(new Error('PROVIDER_COMMAND_BACKPRESSURE'))
+    const correlationId = `desktop-command-${this.nextSequence()}`
+    if (this.pendingCommands.has(correlationId)) return Promise.reject(new Error('DUPLICATE_CORRELATION'))
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingCommands.delete(correlationId)
+        reject(new Error('PRINT_TIMEOUT'))
+      }, timeoutMs)
+      this.pendingCommands.set(correlationId, { timer, resolve, reject })
+      this.write({
+        contractVersion: HRT_CONTRACT_VERSION,
+        messageType: 'command.request',
+        correlationId,
+        instanceId: this.options.runtimeInstanceId,
+        sequence: this.sequence,
+        timestamp: new Date().toISOString(),
+        payload: command,
+      })
     })
   }
 
@@ -61,6 +94,7 @@ export class WindowsProviderPipeClient {
 
   shutdown(): void {
     if (!this.socket || this.socket.destroyed) return
+    this.rejectPendingCommands('PROVIDER_SHUTDOWN')
     this.write({
       contractVersion: HRT_CONTRACT_VERSION,
       messageType: 'provider.shutdown',
@@ -73,6 +107,7 @@ export class WindowsProviderPipeClient {
   }
 
   destroy(): void {
+    this.rejectPendingCommands('PIPE_DESTROYED')
     this.socket?.destroy()
     this.socket = null
   }
@@ -120,6 +155,10 @@ export class WindowsProviderPipeClient {
       this.options.onHealth?.(frame.payload as HrtHealthSnapshotPayload)
       return
     }
+    if (frame.messageType === 'command.result') {
+      this.resolveCommand(frame.correlationId, frame.payload as HrtCommandResultPayload)
+      return
+    }
     if (frame.messageType === 'provider.shutdown') return
     this.options.onProtocolError?.('UNSUPPORTED_PROVIDER_FRAME')
   }
@@ -131,5 +170,24 @@ export class WindowsProviderPipeClient {
   private nextSequence(): number {
     this.sequence += 1
     return this.sequence
+  }
+
+  private resolveCommand(correlationId: string, payload: HrtCommandResultPayload): void {
+    const pending = this.pendingCommands.get(correlationId)
+    if (!pending) {
+      logger.warn('provider.command.unknown-correlation', { correlationId })
+      return
+    }
+    clearTimeout(pending.timer)
+    this.pendingCommands.delete(correlationId)
+    pending.resolve(payload)
+  }
+
+  private rejectPendingCommands(code: string): void {
+    for (const [correlationId, pending] of this.pendingCommands) {
+      clearTimeout(pending.timer)
+      pending.reject(new Error(code))
+      this.pendingCommands.delete(correlationId)
+    }
   }
 }

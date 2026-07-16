@@ -56,6 +56,7 @@ export function spawnWindowsProvider(options: SpawnWindowsProviderOptions): Chil
     windowsHide: true,
     env: {
       ...process.env,
+      ESHOP_PRINTER_NAME: process.env.ESHOP_PRINTER_NAME ?? 'XP-80C',
       ...options.env,
       ELECTRON_RUN_AS_NODE: '1',
       ESHOP_PROVIDER_PIPE_NAME: options.pipeName,

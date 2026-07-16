@@ -8,9 +8,9 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import {
   DesktopReceiptPreview,
-  printDesktopReceipt,
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
+import { printReceipt } from '@/app/lib/desktop-print-adapter'
 import {
   DayCloseReport,
   printDayCloseReport,
@@ -1857,18 +1857,28 @@ export default function CashierPage() {
     focusScannerInput()
   }, [focusScannerInput])
 
-  const handlePrintReceipt = useCallback((receipt: DesktopReceiptData) => {
+  const handlePrintReceipt = useCallback(async (receipt: DesktopReceiptData) => {
     if (receiptPrintLockedRef.current) return
     receiptPrintLockedRef.current = true
     setReceiptPrinting(true)
     try {
-      printDesktopReceipt(receipt, lang, { onAfterPrint: finishReceiptPrintFlow })
+      const result = await printReceipt(receipt, {
+        storeCode: storeCode ?? 'UNKNOWN',
+        lang,
+        trigger: 'manual',
+        onAfterPrint: finishReceiptPrintFlow,
+      })
+      if (result.transport === 'runtime') {
+        if (result.ok) showToast('已提交打印')
+        else showToast(printFailureMessage(result.status))
+        finishReceiptPrintFlow()
+      }
     } catch (err) {
-      console.warn('[desktop-receipt] print window failed', err)
-      showToast('无法打开打印预览，请检查浏览器弹窗权限')
+      console.warn('[desktop-receipt] print failed', err)
+      showToast('打印提交失败，销售已完成')
       finishReceiptPrintFlow()
     }
-  }, [finishReceiptPrintFlow, lang])
+  }, [finishReceiptPrintFlow, lang, storeCode])
 
   function handleAutoPrintToggle() {
     const next = !autoPrint
@@ -1877,6 +1887,14 @@ export default function CashierPage() {
       localStorage.setItem('cashier:autoPrint', next ? '1' : '0')
     } catch {}
     showToast(next ? '已开启自动打印小票' : '已关闭自动打印小票')
+  }
+
+  function printFailureMessage(status: string) {
+    if (status === 'TIMED_OUT' || status === 'UNKNOWN') return '打印状态未知，请勿重复点击'
+    if (status === 'PROVIDER_UNAVAILABLE') return '打印服务不可用，销售已完成'
+    if (status === 'PRINTER_NOT_CONFIGURED') return '打印机未配置，销售已完成'
+    if (status === 'PRINTER_NOT_FOUND') return '未找到打印机 XP-80C，销售已完成'
+    return '打印提交失败，销售已完成'
   }
 
   function handleCompactModeToggle() {
@@ -2355,19 +2373,33 @@ export default function CashierPage() {
     const receiptKey = `${receiptSnapshot.orderNo ?? 'no-order'}:${receiptSnapshot.createdAt}:${receiptSnapshot.totalAmount}`
     if (autoPrintedReceiptKeyRef.current === receiptKey) return
     autoPrintedReceiptKeyRef.current = receiptKey
+    receiptPrintLockedRef.current = true
+    setReceiptPrinting(true)
 
     const timer = window.setTimeout(() => {
-      try {
-        printDesktopReceipt(receiptSnapshot, lang, { onAfterPrint: finishReceiptPrintFlow })
-      } catch (err) {
-        console.warn('[desktop-receipt] auto print failed', err)
-        showToast('自动打印失败，已返回新订单')
-        finishReceiptPrintFlow()
-      }
+      void (async () => {
+        try {
+          const result = await printReceipt(receiptSnapshot, {
+            storeCode: storeCode ?? 'UNKNOWN',
+            lang,
+            trigger: 'auto',
+            onAfterPrint: finishReceiptPrintFlow,
+          })
+          if (result.transport === 'runtime') {
+            if (result.ok) showToast('已提交打印')
+            else showToast(printFailureMessage(result.status))
+            finishReceiptPrintFlow()
+          }
+        } catch (err) {
+          console.warn('[desktop-receipt] auto print failed', err)
+          showToast('自动打印失败，已返回新订单')
+          finishReceiptPrintFlow()
+        }
+      })()
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang, finishReceiptPrintFlow])
+  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang, finishReceiptPrintFlow, storeCode])
 
   useEffect(() => {
     if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return
