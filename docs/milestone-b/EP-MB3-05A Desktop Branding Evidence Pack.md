@@ -17,8 +17,8 @@ It does not declare a release, merge, or freeze.
 
 ## 3. Final HEAD
 
-- Initial implementation HEAD before commit: `135d8364209ec0513ef2c4bd61ff91db18cf3f3d`
-- Final committed HEAD: pending first implementation commit
+- Implementation commit: `164694be38a8ee05ae3f76f64a3722b8ef8a6bea`
+- Evidence closeout commit: this document update commit
 
 ## 4. origin/main
 
@@ -175,11 +175,40 @@ Local verification on macOS:
 
 ## 20. CI Run ID
 
-- Pending after first push.
+- Run ID: `29523115399`
+- Run number: `39`
+- Workflow: `desktop-windows-build`
+- URL: `https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29523115399`
 
 ## 21. CI Result
 
-- Pending after first push.
+- Result: PASS
+- Job: `build-windows`
+- Job ID: `87704716503`
+- Runner: `windows-latest`
+- Completed at: `2026-07-16T18:17:34Z`
+
+Successful CI steps included:
+
+- Contract `npm ci`
+- Contract build
+- Desktop `npm ci`
+- Provider `npm ci`
+- Exact Provider commit verification
+- Provider tests
+- Desktop typecheck
+- Branding icon generation and verification
+- Desktop unit tests
+- Desktop compile
+- Windows NSIS installer build
+- Staged Provider artifact verification
+- Provider supervision pipe integration
+- Provider command.request real receipt dry-run
+- Electron runtime Provider smoke with spaces
+- No surviving Provider process verification
+- Packaged Provider resource verification
+- Installer artifact verification
+- Artifact upload
 
 ## 22. Artifact Name
 
@@ -194,7 +223,9 @@ Local macOS cross-build:
 
 CI artifact size:
 
-- Pending after Windows CI.
+- Artifact ID: `8385581608`
+- Artifact name: `eshop-store-os-windows-installer-ep-mb3-05a`
+- Artifact archive size: `132476841` bytes
 
 ## 24. Artifact SHA-256
 
@@ -206,7 +237,8 @@ Local macOS cross-build:
 
 CI artifact SHA-256:
 
-- Pending after Windows CI.
+- GitHub artifact archive digest: `sha256:60402119049d98f702a37d3781d087b02fd74ae25fe72b4360090ba3d74301d5`
+- The CI-uploaded artifact includes `SHA256SUMS.txt`; unauthenticated GitHub API access exposes artifact metadata but not the artifact zip download.
 
 ## 25. Manifest Result
 
