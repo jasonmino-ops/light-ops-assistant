@@ -20,7 +20,7 @@ describe('Windows installer readiness', () => {
 
   it('keeps user data in the legacy eshop-desktop directory for upgrade preservation', () => {
     const path = stableUserDataPath('/Users/store/AppData/Roaming')
-    expect(path).toBe('/Users/store/AppData/Roaming/eshop-desktop')
+    expect(path.replaceAll('\\', '/')).toBe('/Users/store/AppData/Roaming/eshop-desktop')
     expect(path).not.toContain('E-Shop Store OS')
   })
 })
