@@ -174,7 +174,7 @@ For Windows true-machine acceptance after Claude re-review:
 
 ## M. Fix Commit
 
-- Fix commit: `545e92e96cd5842af6056ef93756e44cf4ab2509`
+- Fix commit: `17cff7e70fc2c1032dcd328f2a74992bdde14709`
 
 ## N. Gate Handoff
 
