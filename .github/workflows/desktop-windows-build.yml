@@ -80,17 +80,52 @@ jobs:
       - name: Compile main & preload
         run: npm run compile
 
+      - name: Build Windows installer (NSIS, unsigned)
+        run: npm run release:windows
+        env:
+          ESHOP_PROVIDER_SOURCE: ${{ github.workspace }}\ep-mb3-provider
+
+      - name: Verify staged Provider artifact
+        shell: pwsh
+        working-directory: .
+        run: |
+          $expectedProviderCommit = "c5cc86b35fa185aac795d0e141de549858b81f8b"
+          $actualProviderCommit = git -C ep-mb3-provider rev-parse HEAD
+          if ($actualProviderCommit -ne $expectedProviderCommit) {
+            throw "Unexpected Provider commit after release build: $actualProviderCommit"
+          }
+          $staged = "desktop\build\provider\eshop-windows-provider"
+          $required = @(
+            "$staged\dist\index.js",
+            "$staged\package.json",
+            "$staged\provider-manifest.json",
+            "$staged\helper\win-x64\eshop-print-helper.exe"
+          )
+          foreach ($path in $required) {
+            if (!(Test-Path $path)) {
+              throw "Staged Provider required file missing: $path"
+            }
+          }
+          $metadata = "desktop\build\provider\provider-build-metadata.json"
+          if (!(Test-Path $metadata)) {
+            throw "Staged Provider build metadata missing: $metadata"
+          }
+          $metadataJson = Get-Content $metadata | ConvertFrom-Json
+          if ($metadataJson.providerCommit -ne $expectedProviderCommit) {
+            throw "Unexpected staged Provider metadata commit: $($metadataJson.providerCommit)"
+          }
+
       - name: Provider supervision pipe integration
         shell: pwsh
         run: |
-          $providerEntry = (Resolve-Path ..\ep-mb3-provider\artifacts\eshop-windows-provider\dist\index.js).Path
+          $providerEntry = (Resolve-Path .\build\provider\eshop-windows-provider\dist\index.js).Path
           $env:ESHOP_WINDOWS_PROVIDER_ENTRY = $providerEntry
           node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); const {getHealthSnapshot}=require('./dist/main/runtimeHealth'); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'ci-'+process.pid,connectDelayMs:500}); await s.start(); await new Promise(r=>setTimeout(r,1500)); const h=getHealthSnapshot().providerRuntime; console.log(JSON.stringify(h)); if(h.state!=='ok') throw new Error('Provider did not reach ok state'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
 
       - name: Provider command.request real receipt dry-run
         shell: pwsh
         run: |
-          $providerEntry = (Resolve-Path ..\ep-mb3-provider\artifacts\eshop-windows-provider\dist\index.js).Path
+          $providerEntry = (Resolve-Path .\build\provider\eshop-windows-provider\dist\index.js).Path
           $env:ESHOP_WINDOWS_PROVIDER_ENTRY = $providerEntry
           node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'cmd-'+process.pid,connectDelayMs:500}); await s.start(); await new Promise(r=>setTimeout(r,1500)); const result=await s.executeCommand({commandId:'ci-real-receipt',idempotencyKey:'ci-real-receipt',device:{deviceId:'receipt-printer',deviceKind:'PRINTER',slotId:'receipt-printer'},commandType:'PRINT_RECEIPT',params:{dryRun:true,receipt:{schemaVersion:'1',receiptId:'ci-real-receipt',saleId:'ci-sale-001',orderNumber:'CI-ORDER-001',storeName:'店小二 CI Store',storeCode:'CI',cashierName:'Windows CI',timestamp:'2026-07-16T00:00:00.000Z',currencyCode:'USD',items:[{name:'店小二 Windows 打印测试',quantity:1,unitPrice:12.34,lineTotal:12.34},{name:'តេស្តបោះពុម្ព Windows',quantity:1,unitPrice:1,lineTotal:1}],subtotal:13.34,total:13.34,paymentMethod:'CASH',footer:'Thank you',language:'mixed'}}}); console.log(JSON.stringify(result)); if(result.outcome!=='SUCCEEDED'||result.effectBoundary!=='CROSSED') throw new Error('command.request dry-run failed'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
 
@@ -99,7 +134,7 @@ jobs:
         run: |
           $spaceDir = Join-Path $env:RUNNER_TEMP "Provider Artifact With Spaces"
           New-Item -ItemType Directory -Force -Path $spaceDir | Out-Null
-          Copy-Item -Recurse -Force ..\ep-mb3-provider\artifacts\eshop-windows-provider $spaceDir\
+          Copy-Item -Recurse -Force .\build\provider\eshop-windows-provider $spaceDir\
           $providerEntry = Join-Path $spaceDir "eshop-windows-provider\dist\index.js"
           $electron = (Resolve-Path .\node_modules\electron\dist\electron.exe).Path
           $smokePath = Join-Path $env:RUNNER_TEMP "electron-provider-smoke.json"
@@ -120,11 +155,6 @@ jobs:
             throw "Surviving Provider process detected"
           }
 
-      - name: Build Windows installer (NSIS, unsigned)
-        run: npm run release:windows
-        env:
-          ESHOP_PROVIDER_SOURCE: ${{ github.workspace }}\ep-mb3-provider
-
       - name: Verify packaged Provider resource
         shell: pwsh
         run: |
@@ -140,6 +170,18 @@ jobs:
           if (!(Test-Path $helper)) {
             throw "Packaged print helper missing: $helper"
           }
+          $buildManifest = ".\release\win-unpacked\resources\build-manifest.json"
+          if (!(Test-Path $buildManifest)) {
+            throw "Packaged build manifest missing: $buildManifest"
+          }
+          $installer = ".\release\E-Shop-Store-OS-Setup-1.0.0-x64.exe"
+          if (!(Test-Path $installer)) {
+            throw "Installer missing: $installer"
+          }
+          $sha = ".\release\SHA256SUMS.txt"
+          if (!(Test-Path $sha)) {
+            throw "SHA256SUMS missing: $sha"
+          }
 
       - name: Verify installer artifacts
         run: npm run verify:installer
@@ -151,7 +193,6 @@ jobs:
           path: |
             desktop/release/E-Shop-Store-OS-Setup-1.0.0-x64.exe
             desktop/release/*.blockmap
-            desktop/release/latest.yml
             desktop/release/SHA256SUMS.txt
             desktop/release/build-manifest.json
             desktop/release/artifact-list.json

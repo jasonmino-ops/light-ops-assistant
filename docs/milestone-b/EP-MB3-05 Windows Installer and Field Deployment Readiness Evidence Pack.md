@@ -6,6 +6,10 @@ READY FOR INDEPENDENT REVIEW
 
 This pack records implementation evidence only. It does not claim Founder Acceptance, final freeze, or real-store installation acceptance.
 
+Architecture Review status: CONDITIONAL PASS.
+
+Founder Verification status: NOT READY until a Windows CI artifact with bundled `eshop-print-helper.exe` is produced and verified.
+
 ## 17.2 Git Integrity
 
 Desktop repository: `/Users/jason/light-ops-assistant`
@@ -108,7 +112,46 @@ Local artifact generated after implementation commit:
 - CI artifact name configured: `eshop-store-os-windows-installer`
 - CI run: NOT EXECUTED in this local evidence pass
 
-Important limitation: this local macOS-built installer is not field-ready because the static verifier found the Provider print helper missing.
+LOCAL INCOMPLETE BUILD — NOT RELEASE CANDIDATE.
+
+Important limitation: this local macOS-built installer is not field-ready because the static verifier found the Provider print helper missing. Do not reuse this local hash as the formal release candidate hash.
+
+## 17.5A Windows CI Step Ordering Fix
+
+Independent review found blocker B2: Provider integration steps were resolving `ep-mb3-provider/artifacts/eshop-windows-provider/dist/index.js` before the workflow had generated `artifacts/`.
+
+Fix commit: this Evidence Pack update commit.
+
+Chosen approach: Scheme B. `npm run release:windows` remains the single Provider prepare flow. The workflow now runs the release build before Provider supervision, command dry-run, and Electron smoke. Those checks reuse the staged artifact at `desktop/build/provider/eshop-windows-provider`.
+
+Hard checks before integration:
+
+- Provider checkout commit equals `c5cc86b35fa185aac795d0e141de549858b81f8b`
+- `desktop/build/provider/eshop-windows-provider/dist/index.js` exists
+- `desktop/build/provider/eshop-windows-provider/package.json` exists
+- `desktop/build/provider/eshop-windows-provider/provider-manifest.json` exists
+- `desktop/build/provider/eshop-windows-provider/helper/win-x64/eshop-print-helper.exe` exists
+- `desktop/build/provider/provider-build-metadata.json` exists and records the expected Provider commit
+
+Hard checks after installer build:
+
+- `release/win-unpacked/resources/eshop-windows-provider/dist/index.js` exists
+- `release/win-unpacked/resources/eshop-windows-provider/provider-manifest.json` exists
+- `release/win-unpacked/resources/eshop-windows-provider/helper/win-x64/eshop-print-helper.exe` exists
+- `release/win-unpacked/resources/build-manifest.json` exists
+- `release/E-Shop-Store-OS-Setup-1.0.0-x64.exe` exists
+- `release/SHA256SUMS.txt` exists
+- `npm run verify:installer` must PASS
+
+Artifact upload now includes:
+
+- `E-Shop-Store-OS-Setup-1.0.0-x64.exe`
+- `*.blockmap`
+- `SHA256SUMS.txt`
+- `build-manifest.json`
+- `artifact-list.json`
+
+`latest.yml` is no longer listed as a required upload because the current local build evidence did not prove it is generated.
 
 ## 17.6 Installation Verification
 
