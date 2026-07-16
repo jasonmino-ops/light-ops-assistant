@@ -49,6 +49,14 @@ assert.match(display, /preloadedStoreKhqr\?\.storeCode === storeCode[\s\S]*prelo
 assert.match(display, /sessionKhqrImageSrc \?\? \(isKhqrSession \|\| !session \? storeKhqrImageSrc : null\)/, 'KHQR payment sessions should fall back to the ready current-store static KHQR image')
 
 assert.match(cashier, /if \(syncKey === lastCashierDisplaySyncKey\.current\) return/, 'manual cashier display sync should suppress duplicate POSTs by syncKey')
+assert.match(cashier, /const inFlightCashierDisplaySyncKey = useRef\(''\)/, 'cashier display sync should track in-flight keys separately from successful keys')
+assert.match(cashier, /if \(syncKey === inFlightCashierDisplaySyncKey\.current\) return/, 'same cashier display sync key should be deduped while a request is in flight')
+assert.match(cashier, /return false[\s\S]*return true[\s\S]*catch\(\(e\) => \{[\s\S]*return false/, 'display-session POST helper should report 2xx success and non-2xx/network failure')
+assert.match(cashier, /postCashierDisplaySession\(input\)\.then\(\(ok\) => \{[\s\S]*if \(inFlightCashierDisplaySyncKey\.current !== syncKey\) return[\s\S]*inFlightCashierDisplaySyncKey\.current = ''[\s\S]*if \(ok\) lastCashierDisplaySyncKey\.current = syncKey/, 'successful sync key should only be recorded after the matching POST succeeds')
+assert.match(cashier, /\.catch\(\(\) => \{[\s\S]*if \(inFlightCashierDisplaySyncKey\.current === syncKey\) \{[\s\S]*inFlightCashierDisplaySyncKey\.current = ''/, 'thrown sync failures should release the in-flight key for retry')
+assert.doesNotMatch(cashier, /const syncCurrentCartToCustomerDisplay[\s\S]*lastCashierDisplaySyncKey\.current = syncKey[\s\S]*postCashierDisplaySession\(/, 'manual sync must not record the successful key before issuing the POST')
+assert.match(cashier, /message: displayPayment === 'KHQR'[\s\S]*CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE[\s\S]*: '请扫码支付'[\s\S]*: null/, 'KHQR focus message should remain part of the sync key')
+assert.match(cashier, /inFlightCashierDisplaySyncKey\.current = ''[\s\S]*setCart\(\[\]\)/, 'new order reset should clear in-flight sync state before clearing the cart')
 assert.match(cashier, /syncCurrentCartToCustomerDisplay\(method\)/, 'selecting CASH should sync CASH state instead of forcing KHQR display-session sync')
 assert.doesNotMatch(cashier, /if \(method === 'KHQR'\)[\s\S]{0,180}syncCurrentCartToCustomerDisplay\('KHQR'\)\s*\n\s*\}/, 'non-KHQR desktop payment selection must not force KHQR sync')
 
