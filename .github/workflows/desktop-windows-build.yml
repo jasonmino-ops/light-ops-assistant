@@ -74,14 +74,67 @@ jobs:
           New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
           Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
 
+      - name: Clean Desktop build outputs
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force dist,release -ErrorAction SilentlyContinue
+
       - name: Type check
         run: npm run typecheck
+
+      - name: Activation focused tests
+        run: |
+          npx vitest run `
+            tests/activation-api-client.test.ts `
+            tests/activation-credential-store.test.ts `
+            tests/activation-gate.test.ts `
+            tests/activation-ipc.test.ts `
+            tests/activation-state-machine.test.ts `
+            tests/activation-static-security.test.ts `
+            --reporter=verbose
 
       - name: Unit tests
         run: npm test
 
       - name: Compile main & preload
         run: npm run compile
+
+      - name: Verify activation dist assets
+        run: node scripts/verify-activation-assets.mjs dist
+
+      - name: Static security scans
+        run: npx vitest run tests/activation-static-security.test.ts tests/static-security.test.ts
+
+      - name: Electron safeStorage smoke
+        shell: pwsh
+        run: |
+          $electron = (Resolve-Path .\node_modules\electron\dist\electron.exe).Path
+          $stdout = Join-Path $env:RUNNER_TEMP "safestorage-smoke.out"
+          $stderr = Join-Path $env:RUNNER_TEMP "safestorage-smoke.err"
+          $proc = Start-Process `
+            -FilePath $electron `
+            -ArgumentList '.\tests\smoke\safeStorage-smoke.cjs' `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr `
+            -NoNewWindow `
+            -PassThru `
+            -Wait
+          Write-Output "Electron exit code: $($proc.ExitCode)"
+          Write-Output "--- safeStorage stdout ---"
+          if (Test-Path $stdout) {
+            Get-Content $stdout
+          }
+          Write-Output "--- safeStorage stderr ---"
+          if (Test-Path $stderr) {
+            Get-Content $stderr
+          }
+          $stdoutText = ""
+          if (Test-Path $stdout) {
+            $stdoutText = (Get-Content -Raw $stdout).Trim()
+          }
+          if ($proc.ExitCode -ne 0 -or $stdoutText -notmatch '(?m)^RESULT=PASS$') {
+            throw "Electron safeStorage smoke failed (exit=$($proc.ExitCode))"
+          }
 
       - name: Provider supervision pipe integration
         shell: pwsh
@@ -119,6 +172,9 @@ jobs:
       - name: Build Windows installer (NSIS, unsigned)
         run: npx electron-builder --win --x64 --publish never
 
+      - name: Verify packaged activation assets
+        run: node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar
+
       - name: Verify packaged Provider resource
         shell: pwsh
         run: |
@@ -126,6 +182,15 @@ jobs:
           if (!(Test-Path $resourceEntry)) {
             throw "Packaged Provider resource missing: $resourceEntry"
           }
+
+      - name: Generate artifact SHA-256 manifest
+        shell: pwsh
+        run: |
+          $manifest = ".\release\SHA256SUMS.txt"
+          Get-ChildItem .\release -File | ForEach-Object {
+            $hash = Get-FileHash $_.FullName -Algorithm SHA256
+            "$($hash.Hash)  $($_.Name)"
+          } | Set-Content -Encoding UTF8 $manifest
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -135,4 +200,5 @@ jobs:
             desktop/release/*.exe
             desktop/release/*.blockmap
             desktop/release/latest.yml
+            desktop/release/SHA256SUMS.txt
           if-no-files-found: error
