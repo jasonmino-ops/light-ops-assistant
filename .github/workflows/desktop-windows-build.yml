@@ -83,7 +83,15 @@ jobs:
         run: npm run typecheck
 
       - name: Activation focused tests
-        run: npx vitest run tests/activation-*.test.ts
+        run: |
+          npx vitest run `
+            tests/activation-api-client.test.ts `
+            tests/activation-credential-store.test.ts `
+            tests/activation-gate.test.ts `
+            tests/activation-ipc.test.ts `
+            tests/activation-state-machine.test.ts `
+            tests/activation-static-security.test.ts `
+            --reporter=verbose
 
       - name: Unit tests
         run: npm test
