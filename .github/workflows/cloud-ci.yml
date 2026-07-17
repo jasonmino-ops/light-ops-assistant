@@ -1,0 +1,107 @@
+name: cloud-ci
+
+on:
+  push:
+    branches: [main, "feat/**"]
+    paths:
+      - "app/api/desktop/**"
+      - "lib/desktop-activation/**"
+      - "prisma/**"
+      - "tests/desktop-activation-*.test.ts"
+      - "tests/subscription-lifecycle.test.ts"
+      - "tests/telegram-start-param.test.ts"
+      - "tests/customer-display-cart-sync-static.test.ts"
+      - "tests/customer-landing-journey-static.test.ts"
+      - "tests/customer-display-adapter.test.ts"
+      - "tests/customer-display-realtime-channel.test.ts"
+      - "tests/hrt-contract.test.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/cloud-ci.yml"
+  pull_request:
+    paths:
+      - "app/api/desktop/**"
+      - "lib/desktop-activation/**"
+      - "prisma/**"
+      - "tests/desktop-activation-*.test.ts"
+      - "tests/subscription-lifecycle.test.ts"
+      - "tests/telegram-start-param.test.ts"
+      - "tests/customer-display-cart-sync-static.test.ts"
+      - "tests/customer-landing-journey-static.test.ts"
+      - "tests/customer-display-adapter.test.ts"
+      - "tests/customer-display-realtime-channel.test.ts"
+      - "tests/hrt-contract.test.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/cloud-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  cloud:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: light_ops_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d light_ops_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/light_ops_test?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/light_ops_test?schema=public
+      DESKTOP_DEVICE_TOKEN_SECRET: ci-desktop-device-token-secret-ep-mb3-06a
+      DESKTOP_ACTIVATION_PIN_SECRET: ci-desktop-activation-pin-secret-ep-mb3-06a
+      DESKTOP_ACTIVATION_TEST_DATABASE: "1"
+      AUTH_SECRET: ci-auth-secret-not-used-for-desktop-activation
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma validate
+        run: npx prisma validate
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Apply current schema to temporary PostgreSQL
+        run: npx prisma db push --force-reset
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: EP-MB3-06A unit and static tests
+        run: |
+          npx tsx tests/desktop-activation-crypto.test.ts
+          npx tsx tests/desktop-activation-subscription.test.ts
+          npx tsx tests/desktop-activation-security-static.test.ts
+          npx tsx tests/desktop-activation-concurrency-static.test.ts
+
+      - name: EP-MB3-06A real database activation and concurrency tests
+        run: npx tsx tests/desktop-activation-runtime.test.ts
+
+      - name: Relevant regression tests
+        run: |
+          npx tsx tests/subscription-lifecycle.test.ts
+          npx tsx tests/telegram-start-param.test.ts
+          npx tsx tests/customer-display-cart-sync-static.test.ts
+          npx tsx tests/customer-landing-journey-static.test.ts
+          npx tsx tests/customer-display-adapter.test.ts
+          npx tsx tests/customer-display-realtime-channel.test.ts
+          npx tsx tests/hrt-contract.test.ts
+
+      - name: Build
+        run: npm run build

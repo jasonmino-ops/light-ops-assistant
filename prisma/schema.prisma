@@ -1180,6 +1180,7 @@ model DesktopDevice {
   activeSlot         String?             @default("ACTIVE")
   tokenHash          String              @unique
   tokenHashVersion   Int                 @default(1)
+  tokenVersion       Int                 @default(1)
   tokenIssuedAt      DateTime
   tokenExpiresAt     DateTime
   tokenLastUsedAt    DateTime?

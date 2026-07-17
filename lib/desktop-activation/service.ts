@@ -33,6 +33,7 @@ export type DesktopActivationSuccess = {
     storeId: string
     status: string
     tokenHashVersion: number
+    tokenVersion: number
   }
   subscription: DesktopSubscriptionAccess
 }
@@ -224,7 +225,8 @@ export async function activateDesktopDevice(input: ActivationInput): Promise<Des
             where: { id: activeDevice.id },
             data: {
               tokenHash: tokenBundle.tokenHash,
-              tokenHashVersion: { increment: 1 },
+              tokenHashVersion: tokenBundle.tokenHashVersion,
+              tokenVersion: { increment: 1 },
               tokenIssuedAt: tokenBundle.tokenIssuedAt,
               tokenExpiresAt: tokenBundle.tokenExpiresAt,
               tokenLastUsedAt: null,
@@ -241,6 +243,7 @@ export async function activateDesktopDevice(input: ActivationInput): Promise<Des
               activeSlot: 'ACTIVE',
               tokenHash: tokenBundle.tokenHash,
               tokenHashVersion: tokenBundle.tokenHashVersion,
+              tokenVersion: 1,
               tokenIssuedAt: tokenBundle.tokenIssuedAt,
               tokenExpiresAt: tokenBundle.tokenExpiresAt,
               activatedAt: now,
@@ -267,7 +270,7 @@ export async function activateDesktopDevice(input: ActivationInput): Promise<Des
         result: 'SUCCESS',
         ...requestHashes,
         metadata: {
-          tokenHashVersion: device.tokenHashVersion,
+          credentialVersion: device.tokenVersion,
           reusedDevice: Boolean(activeDevice),
           replacesDeviceId: latestRevokedDevice?.id ?? null,
         },
@@ -281,7 +284,7 @@ export async function activateDesktopDevice(input: ActivationInput): Promise<Des
           eventType: 'TOKEN_ROTATED',
           result: 'SUCCESS',
           ...requestHashes,
-          metadata: { tokenHashVersion: device.tokenHashVersion },
+          metadata: { credentialVersion: device.tokenVersion },
         })
       }
       await writeDesktopActivationAudit(tx, {
@@ -305,6 +308,7 @@ export async function activateDesktopDevice(input: ActivationInput): Promise<Des
           storeId: serialized.storeId,
           status: serialized.status,
           tokenHashVersion: serialized.tokenHashVersion,
+          tokenVersion: serialized.tokenVersion,
         },
         subscription,
       }

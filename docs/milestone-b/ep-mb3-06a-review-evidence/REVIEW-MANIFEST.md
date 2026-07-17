@@ -11,6 +11,7 @@ Branch: `feat/ep-mb3-06a-cloud-desktop-activation`
 - `SECURITY-EVIDENCE.md` - token, PIN, audit, and legacy-auth isolation evidence.
 - `CONCURRENCY-EVIDENCE.md` - transaction locks, uniqueness, token rotation, and revoke behavior.
 - `TEST-RESULTS.md` - local validation commands and results.
+- `BLOCKING-FIXES.md` - Claude review fail result, root cause, and targeted blocker fixes.
 
 ## Reviewer Instructions
 

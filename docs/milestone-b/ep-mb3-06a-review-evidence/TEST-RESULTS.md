@@ -17,6 +17,15 @@ Date: 2026-07-17
 - `npx tsx tests/desktop-activation-subscription.test.ts` - passed
 - `npx tsx tests/desktop-activation-security-static.test.ts` - passed
 - `npx tsx tests/desktop-activation-concurrency-static.test.ts` - passed
+- `npx tsx tests/desktop-activation-runtime.test.ts` against temporary local PostgreSQL - passed
+
+## Runtime Database
+
+- `initdb` temporary PostgreSQL under `/private/tmp` - passed
+- `prisma migrate deploy` against temporary PostgreSQL - blocked by known historical migration drift at `20260531000000_customer_order_campaign` referencing missing `CustomerOrder`.
+- `npx prisma db push --force-reset` against temporary PostgreSQL - passed
+- REAL DATABASE ACTIVATION: PASS
+- REAL DATABASE CONCURRENCY: PASS
 
 ## Existing Regression Tests
 
@@ -34,4 +43,7 @@ Date: 2026-07-17
 
 ## CI
 
-Cloud CI was not separately triggered from the local environment before this commit. The local evidence above is the reproducible verification set for independent review.
+- Workflow added: `.github/workflows/cloud-ci.yml`
+- CI uses GitHub Actions PostgreSQL service and test-only desktop activation secrets.
+- CI applies the current Prisma schema to temporary PostgreSQL with `npx prisma db push --force-reset` because full historical migration deploy is blocked by known pre-existing migration drift.
+- CI run ID/result: to be reported after push for the new fix commit.

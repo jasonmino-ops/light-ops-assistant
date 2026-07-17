@@ -17,6 +17,7 @@ export type DesktopDeviceContext = {
   storeId: string
   deviceId: string
   tokenHashVersion: number
+  tokenVersion: number
   subscription: DesktopSubscriptionAccess
 }
 
@@ -44,6 +45,7 @@ export type SerializedDesktopDevice = {
   storeId: string
   status: string
   tokenHashVersion: number
+  tokenVersion: number
   tokenIssuedAt: string
   tokenExpiresAt: string
   tokenLastUsedAt: string | null
@@ -56,8 +58,19 @@ export type SerializedDesktopDevice = {
 
 export type SerializedDesktopStore = {
   id: string
+  code: string
   name: string
   status: string
+}
+
+export type PublicDesktopDeviceIdentity = {
+  deviceId: string
+  tenantId: string
+  storeId: string
+  storeCode: string
+  status: string
+  tokenExpiresAt: string
+  credentialVersion: number
 }
 
 function bearerToken(req: NextRequest) {
@@ -72,6 +85,7 @@ export function serializeDesktopDevice(device: {
   storeId: string
   status: string
   tokenHashVersion: number
+  tokenVersion: number
   tokenIssuedAt: Date
   tokenExpiresAt: Date
   tokenLastUsedAt: Date | null
@@ -87,6 +101,7 @@ export function serializeDesktopDevice(device: {
     storeId: device.storeId,
     status: device.status,
     tokenHashVersion: device.tokenHashVersion,
+    tokenVersion: device.tokenVersion,
     tokenIssuedAt: device.tokenIssuedAt.toISOString(),
     tokenExpiresAt: device.tokenExpiresAt.toISOString(),
     tokenLastUsedAt: device.tokenLastUsedAt?.toISOString() ?? null,
@@ -95,6 +110,21 @@ export function serializeDesktopDevice(device: {
     revokedAt: device.revokedAt?.toISOString() ?? null,
     revocationReason: device.revocationReason,
     replacesDeviceId: device.replacesDeviceId,
+  }
+}
+
+export function serializePublicDesktopDeviceIdentity(
+  device: Pick<SerializedDesktopDevice, 'id' | 'tenantId' | 'storeId' | 'status' | 'tokenExpiresAt' | 'tokenVersion'>,
+  store: Pick<SerializedDesktopStore, 'code'>,
+): PublicDesktopDeviceIdentity {
+  return {
+    deviceId: device.id,
+    tenantId: device.tenantId,
+    storeId: device.storeId,
+    storeCode: store.code,
+    status: device.status,
+    tokenExpiresAt: device.tokenExpiresAt,
+    credentialVersion: device.tokenVersion,
   }
 }
 
@@ -122,13 +152,13 @@ export async function getDesktopDeviceContext(
     where: { tokenHash },
     include: {
       tenant: { select: { status: true } },
-      store: { select: { id: true, name: true, status: true } },
+      store: { select: { id: true, code: true, name: true, status: true } },
     },
   })
   if (!device) return { ok: false, status: 401, error: 'DESKTOP_DEVICE_UNAUTHORIZED' }
 
   const serializedDevice = serializeDesktopDevice(device)
-  const serializedStore = { id: device.store.id, name: device.store.name, status: device.store.status }
+  const serializedStore = { id: device.store.id, code: device.store.code, name: device.store.name, status: device.store.status }
 
   if (device.status !== 'ACTIVE') {
     return { ok: false, status: 403, error: 'DESKTOP_DEVICE_REVOKED', device: serializedDevice, store: serializedStore }
@@ -172,6 +202,7 @@ export async function getDesktopDeviceContext(
       storeId: device.storeId,
       deviceId: device.id,
       tokenHashVersion: device.tokenHashVersion,
+      tokenVersion: device.tokenVersion,
       subscription,
     },
     device: serializedDevice,

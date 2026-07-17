@@ -29,6 +29,7 @@ for (const file of desktopApiFiles) {
   const source = read(file)
   assert.doesNotMatch(source, /NextResponse\.json/, `${file} must use noStoreJson/apiError`)
   assert.match(source, /noStoreJson|apiError/, `${file} must produce Cache-Control: no-store responses`)
+  assert.match(source, /withDesktopApiError/, `${file} must map unexpected exceptions to INTERNAL_ERROR`)
 }
 
 const cryptoSource = read('lib/desktop-activation/crypto.ts')
@@ -36,6 +37,7 @@ assert.doesNotMatch(cryptoSource, /AUTH_SECRET/, 'desktop activation secrets mus
 assert.match(cryptoSource, /DESKTOP_DEVICE_TOKEN_SECRET/, 'desktop tokens must use their own secret')
 assert.match(cryptoSource, /DESKTOP_ACTIVATION_PIN_SECRET/, 'activation PINs must use their own secret')
 assert.match(cryptoSource, /assertDesktopActivationSecretsConfigured/, 'desktop activation should expose a dual-secret fail-closed check')
+assert.match(cryptoSource, /\{40,128\}/, 'desktop token format should enforce a maximum token length')
 assert.match(cryptoSource, /crypto\.randomBytes\(DESKTOP_DEVICE_TOKEN_BYTES\)/, 'desktop tokens must use CSPRNG bytes')
 assert.match(cryptoSource, /crypto\.randomInt\(0, 1_000_000\)/, 'activation PINs must use CSPRNG randomInt')
 
@@ -45,24 +47,28 @@ assert.match(authSource, /Authorization: Bearer|Bearer\\s\+\(\.\+\)/, 'device au
 assert.match(authSource, /hashDesktopDeviceToken\(token\)/, 'device auth must hash bearer token before lookup')
 assert.match(authSource, /findUnique\(\{[\s\S]*where: \{[\s\S]*tokenHash\s*\}/, 'device auth must look up by tokenHash')
 assert.match(authSource, /device\.status !== 'ACTIVE'/, 'revoked devices must fail verification')
-assert.doesNotMatch(authSource, /storeCode/, 'post-activation device auth must not use storeCode fallback')
+assert.doesNotMatch(authSource, /nextUrl\.searchParams|get\('storeCode'\)|where:\s*\{\s*code/, 'post-activation device auth must not use storeCode fallback')
 
 const activateRoute = read('app/api/desktop/activate/route.ts')
 assert.match(activateRoute, /storeCode/, 'only the public activation route accepts storeCode')
 assert.match(activateRoute, /activateDesktopDevice/, 'public activation route should delegate to activation service')
 
 for (const file of desktopApiFiles.filter((file) => file !== 'app/api/desktop/activate/route.ts')) {
-  assert.doesNotMatch(read(file), /storeCode/, `${file} must not authorize by storeCode`)
+  assert.doesNotMatch(read(file), /get\('storeCode'\)|where:\s*\{\s*code/, `${file} must not authorize by storeCode`)
 }
 
 const auditSource = read('lib/desktop-activation/audit.ts')
 assert.match(auditSource, /SENSITIVE_KEY_PATTERN/, 'audit helper must reject sensitive metadata keys')
 assert.match(auditSource, /token\|pin\|authorization\|secret\|hash\|installation\|payload\|request\|response/, 'audit metadata must block sensitive key names')
 assert.match(auditSource, /ALLOWED_METADATA_KEYS/, 'audit metadata must use an allowlist')
+assert.match(auditSource, /credentialVersion/, 'audit metadata should use credentialVersion rather than tokenHashVersion')
+assert.doesNotMatch(auditSource, /'tokenHashVersion'/, 'audit metadata allowlist must not include token/hash key names')
 
 const schema = read('prisma/schema.prisma')
 assert.match(schema, /model DesktopDevice/, 'schema should define DesktopDevice')
 assert.match(schema, /tokenHash\s+String\s+@unique/, 'DesktopDevice should store only tokenHash')
+assert.match(schema, /tokenHashVersion\s+Int\s+@default\(1\)/, 'DesktopDevice should keep token hash algorithm version')
+assert.match(schema, /tokenVersion\s+Int\s+@default\(1\)/, 'DesktopDevice should keep credential rotation version separately')
 assert.match(schema, /installationIdHash\s+String/, 'DesktopDevice should store only installationIdHash')
 assert.match(schema, /@@unique\(\[installationIdHash, activeSlot\]\)/, 'active installation identity must be unique')
 assert.match(schema, /model DesktopActivationPin/, 'schema should define DesktopActivationPin')
@@ -74,5 +80,19 @@ const migration = read('prisma/migrations/20260717090000_add_desktop_activation_
 assert.match(migration, /"tokenHash" TEXT NOT NULL/, 'migration must create tokenHash column')
 assert.match(migration, /"pinHash" TEXT NOT NULL/, 'migration must create pinHash column')
 assert.doesNotMatch(migration, /"deviceToken"|"rawToken"|"rawPin"/, 'migration must not create raw secret columns')
+
+const tokenVersionMigration = read('prisma/migrations/20260717110000_add_desktop_device_token_version/migration.sql')
+assert.match(tokenVersionMigration, /ADD COLUMN "tokenVersion" INTEGER NOT NULL DEFAULT 1/, 'incremental migration should add tokenVersion')
+
+const pinCreateRoute = read('app/api/desktop/activation-pins/route.ts')
+assert.match(pinCreateRoute, /CONFLICT_RETRY_REQUIRED/, 'PIN create should map concurrent active-slot conflicts to a stable business error')
+
+const verifyRoute = read('app/api/desktop/auth/verify/route.ts')
+const statusRoute = read('app/api/desktop/device/status/route.ts')
+for (const [label, source] of [['verify', verifyRoute], ['status', statusRoute]] as const) {
+  assert.match(source, /serializePublicDesktopDeviceIdentity/, `${label} should return the public device identity shape`)
+  assert.doesNotMatch(source, /device:\s*auth\.device|store:\s*auth\.store/, `${label} must not return full serialized device/store objects directly`)
+  assert.doesNotMatch(source, /revocationReason|replacesDeviceId|revokedByUserId|installationIdHash|tokenHash/, `${label} must not expose internal device fields`)
+}
 
 console.log('desktop activation security static tests passed')

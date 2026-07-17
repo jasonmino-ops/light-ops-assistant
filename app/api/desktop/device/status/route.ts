@@ -1,22 +1,21 @@
 import { NextRequest } from 'next/server'
-import { getDesktopDeviceContext } from '@/lib/desktop-activation/auth'
-import { noStoreJson } from '@/lib/desktop-activation/http'
+import { getDesktopDeviceContext, serializePublicDesktopDeviceIdentity } from '@/lib/desktop-activation/auth'
+import { minimalDesktopSubscription, noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
 
 export async function GET(req: NextRequest) {
-  const auth = await getDesktopDeviceContext(req, { updateLastSeen: true })
-  if (!auth.ok) {
-    return noStoreJson({
-      ok: false,
-      error: auth.error,
-      ...(auth.device ? { device: auth.device } : {}),
-      ...(auth.store ? { store: auth.store } : {}),
-      ...(auth.subscription ? { subscription: auth.subscription } : {}),
-    }, { status: auth.status })
-  }
+  return withDesktopApiError(async () => {
+    const auth = await getDesktopDeviceContext(req, { updateLastSeen: true })
+    if (!auth.ok) {
+      return noStoreJson({
+        ok: false,
+        error: auth.error,
+        ...(auth.subscription ? { subscription: minimalDesktopSubscription(auth.subscription) } : {}),
+      }, { status: auth.status })
+    }
 
-  return noStoreJson({
-    device: auth.device,
-    store: auth.store,
-    subscription: auth.context.subscription,
+    return noStoreJson({
+      device: serializePublicDesktopDeviceIdentity(auth.device, auth.store),
+      subscription: minimalDesktopSubscription(auth.context.subscription),
+    })
   })
 }

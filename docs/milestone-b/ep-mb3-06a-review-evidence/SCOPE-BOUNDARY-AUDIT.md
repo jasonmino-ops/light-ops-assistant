@@ -9,7 +9,8 @@
   - `DesktopActivationAudit`
 - HMAC hashing helpers for device token, installation id, activation PIN, and audit request fingerprints.
 - Subscription access helper for current subscription status strings.
-- Static and unit tests for token/PIN security, subscription mapping, no legacy POS auth import, and concurrency invariants.
+- Static, unit, and real PostgreSQL runtime tests for token/PIN security, subscription mapping, no legacy POS auth import, activation, audit regression, and concurrency invariants.
+- GitHub Actions Cloud CI for the 06A API, desktop activation helpers, Prisma schema, and 06A tests.
 
 ## Explicit Non-Goals
 
@@ -17,8 +18,11 @@ No Electron, Desktop UI, Runtime Core, Provider, local SQLite, safeStorage, scan
 
 ## Files Modified Outside 06A Namespace
 
-- `prisma/schema.prisma` - required to add the new identity data model.
-- `tests/subscription-lifecycle.test.ts` - changed one regex from dotAll `s` flag to `[\s\S]` so `npx tsc --noEmit` passes under the repository ES2017 target. Runtime subscription logic was not changed.
+- `.github/workflows/cloud-ci.yml` - required so 06A paths run cloud CI with a temporary PostgreSQL service.
+- `prisma/schema.prisma` - required to add `DesktopDevice.tokenVersion`.
+- `prisma/migrations/20260717110000_add_desktop_device_token_version/migration.sql` - incremental migration only; the original 06A migration was not rewritten.
+- `docs/milestone-b/**` - updated the original 06A evidence pack and API contract.
+- `tests/desktop-activation-*.test.ts` - 06A-only tests updated/added for the blocking fixes.
 
 ## Forbidden Boundary Checks
 
@@ -26,3 +30,5 @@ No Electron, Desktop UI, Runtime Core, Provider, local SQLite, safeStorage, scan
 - No changes to `app/cashier`, `app/desktop`, `/menu`, `/m/[storeCode]`, `/invite`, `/table-qrcodes`, `/records`, `/products`, Telegram auth, or order-state routes.
 - New `/api/desktop/*` code does not import `lib/desktop-pos-auth.ts`.
 - New `/api/desktop/*` code does not call `authorizeDesktopPosRequest` or `allowStoreCodeFallback`.
+- No merge from `main` was performed.
+- Historical migration drift was documented but not repaired in this scope.

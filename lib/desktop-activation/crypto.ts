@@ -57,7 +57,7 @@ export function hashDesktopDeviceToken(token: string) {
 
 export function isValidDesktopDeviceTokenFormat(token: string | null | undefined): token is string {
   if (typeof token !== 'string') return false
-  return new RegExp(`^${DESKTOP_DEVICE_TOKEN_PREFIX}[A-Za-z0-9_-]{40,}$`).test(token.trim())
+  return new RegExp(`^${DESKTOP_DEVICE_TOKEN_PREFIX}[A-Za-z0-9_-]{40,128}$`).test(token.trim())
 }
 
 export function hashInstallationId(installationId: string) {

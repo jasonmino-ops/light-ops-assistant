@@ -7,7 +7,7 @@ type DesktopAuditDb = Prisma.TransactionClient | PrismaClient
 const ALLOWED_METADATA_KEYS = new Set([
   'accessState',
   'status',
-  'tokenHashVersion',
+  'credentialVersion',
   'expiresAt',
   'lockedUntil',
   'failedAttempts',

@@ -14,6 +14,9 @@ Scope: Cloud API and database identity only
 - New Desktop APIs never call legacy POS authorization helpers and never authorize by `storeCode` fallback after activation.
 - Activation audit metadata is built from an allowlist and never contains raw request or response payloads.
 - All activation/token responses use `Cache-Control: no-store`.
+- `tokenHashVersion` is the token hash algorithm/key-format version and remains fixed at V1.
+- `tokenVersion` is the device credential rotation version and is exposed externally only as `credentialVersion`.
+- Unexpected route exceptions return `INTERNAL_ERROR` without stack, Prisma details, request body, token, PIN, or raw payload data.
 
 ## Subscription Access State
 
@@ -58,7 +61,7 @@ Success `201`:
 }
 ```
 
-Errors: `LOGIN_REQUIRED`, `OWNER_REQUIRED`, `INVALID_JSON`, `MISSING_STORE_ID`, `STORE_NOT_FOUND`, `TENANT_INACTIVE`, `STORE_INACTIVE`, `SUBSCRIPTION_BLOCKED`, `INTERNAL_ERROR`.
+Errors: `LOGIN_REQUIRED`, `OWNER_REQUIRED`, `INVALID_JSON`, `MISSING_STORE_ID`, `STORE_NOT_FOUND`, `TENANT_INACTIVE`, `STORE_INACTIVE`, `SUBSCRIPTION_BLOCKED`, `TOKEN_SECRET_NOT_CONFIGURED`, `PIN_SECRET_NOT_CONFIGURED`, `CONFLICT_RETRY_REQUIRED`, `INTERNAL_ERROR`.
 
 ### `POST /api/desktop/activation-pins/[id]/revoke`
 
@@ -98,11 +101,13 @@ Success `201`:
   "deviceToken": "edt_v1_...",
   "tokenExpiresAt": "2027-07-17T00:00:00.000Z",
   "device": {
-    "id": "device_id",
+    "deviceId": "device_id",
     "tenantId": "tenant_id",
     "storeId": "store_id",
+    "storeCode": "STORE-A",
     "status": "ACTIVE",
-    "tokenHashVersion": 1
+    "tokenExpiresAt": "2027-07-17T00:00:00.000Z",
+    "credentialVersion": 1
   },
   "subscription": {
     "accessState": "ALLOWED",
@@ -126,11 +131,13 @@ Success `200`:
 {
   "ok": true,
   "device": {
-    "id": "device_id",
+    "deviceId": "device_id",
     "tenantId": "tenant_id",
     "storeId": "store_id",
+    "storeCode": "STORE-A",
     "status": "ACTIVE",
-    "tokenExpiresAt": "2027-07-17T00:00:00.000Z"
+    "tokenExpiresAt": "2027-07-17T00:00:00.000Z",
+    "credentialVersion": 1
   },
   "subscription": {
     "accessState": "ALLOWED",
@@ -154,7 +161,7 @@ Blocked subscription `403`:
 }
 ```
 
-Errors: `DESKTOP_DEVICE_UNAUTHORIZED`, `DESKTOP_DEVICE_REVOKED`, `DESKTOP_TOKEN_EXPIRED`, `TENANT_INACTIVE`, `STORE_INACTIVE`, `SUBSCRIPTION_BLOCKED`.
+Errors: `DESKTOP_DEVICE_UNAUTHORIZED`, `DESKTOP_DEVICE_REVOKED`, `DESKTOP_TOKEN_EXPIRED`, `TENANT_INACTIVE`, `STORE_INACTIVE`, `SUBSCRIPTION_BLOCKED`, `TOKEN_SECRET_NOT_CONFIGURED`, `PIN_SECRET_NOT_CONFIGURED`, `INTERNAL_ERROR`.
 
 ### `GET /api/desktop/device/status`
 
@@ -165,18 +172,13 @@ Success `200`:
 ```json
 {
   "device": {
-    "id": "device_id",
+    "deviceId": "device_id",
     "tenantId": "tenant_id",
     "storeId": "store_id",
+    "storeCode": "STORE-A",
     "status": "ACTIVE",
-    "tokenIssuedAt": "2026-07-17T00:00:00.000Z",
     "tokenExpiresAt": "2027-07-17T00:00:00.000Z",
-    "lastSeenAt": "2026-07-17T00:00:00.000Z"
-  },
-  "store": {
-    "id": "store_id",
-    "name": "Store",
-    "status": "ACTIVE"
+    "credentialVersion": 1
   },
   "subscription": {
     "accessState": "ALLOWED",
@@ -202,24 +204,22 @@ Success `200`:
 {
   "devices": [
     {
-      "id": "device_id",
+      "deviceId": "device_id",
       "tenantId": "tenant_id",
       "storeId": "store_id",
+      "storeCode": "STORE-A",
       "status": "ACTIVE",
-      "tokenHashVersion": 1,
-      "tokenIssuedAt": "2026-07-17T00:00:00.000Z",
       "tokenExpiresAt": "2027-07-17T00:00:00.000Z",
+      "credentialVersion": 1,
       "lastSeenAt": null,
       "activatedAt": "2026-07-17T00:00:00.000Z",
-      "revokedAt": null,
-      "revocationReason": null,
-      "replacesDeviceId": null
+      "revokedAt": null
     }
   ]
 }
 ```
 
-Errors: `LOGIN_REQUIRED`, `OWNER_REQUIRED`, `STORE_NOT_FOUND`.
+Errors: `LOGIN_REQUIRED`, `OWNER_REQUIRED`, `STORE_NOT_FOUND`, `INTERNAL_ERROR`.
 
 ### `POST /api/desktop/devices/[id]/revoke`
 

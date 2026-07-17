@@ -28,9 +28,11 @@ assert.match(service, /activeDevice && activeDevice\.storeId !== input\.store\.i
 assert.match(service, /INSTALLATION_BOUND_TO_OTHER_STORE/, 'cross-store duplicate installation should return a conflict')
 assert.match(service, /status:\s*'USED'[\s\S]*activeSlot:\s*null[\s\S]*usedByDeviceId:\s*device\.id/, 'successful activation should atomically consume PIN')
 
-assert.match(service, /tokenHash:\s*tokenBundle\.tokenHash[\s\S]*tokenHashVersion:\s*\{ increment: 1 \}/, 'same-store reactivation should rotate token and increment version')
+assert.match(service, /tokenHash:\s*tokenBundle\.tokenHash[\s\S]*tokenHashVersion:\s*tokenBundle\.tokenHashVersion[\s\S]*tokenVersion:\s*\{ increment: 1 \}/, 'same-store reactivation should rotate token and increment credential version')
+assert.doesNotMatch(service, /tokenHashVersion:\s*\{ increment: 1 \}/, 'tokenHashVersion must remain an algorithm version, not a rotation counter')
 assert.match(service, /eventType: activeDevice \? 'DEVICE_REACTIVATED' : 'DEVICE_ACTIVATED'/, 'reactivation should be audited')
 assert.match(service, /eventType:\s*'TOKEN_ROTATED'/, 'token rotation should be audited')
+assert.match(service, /credentialVersion:\s*device\.tokenVersion/, 'audit metadata should expose credentialVersion')
 
 assert.match(service, /latestRevokedDevice[\s\S]*replacesDeviceId: latestRevokedDevice\?\.id \?\? null/, 'new activation after revoked device should link replacement identity')
 assert.match(revokeDeviceRoute, /status:\s*'REVOKED'[\s\S]*activeSlot:\s*null/, 'device revoke should make the active installation slot reusable')
