@@ -93,7 +93,7 @@ const renewRoute = fs.readFileSync('app/api/ops/tenants/[tenantId]/subscription/
 assert.match(renewRoute, /checkOpsAuthContext/, 'renew API should use server-side Ops auth')
 assert.match(renewRoute, /ops\.role === 'BD'/, 'BD should not be allowed to renew subscriptions')
 assert.match(renewRoute, /idempotencyKey/, 'renew API should require idempotencyKey')
-assert.match(renewRoute, /findUnique\(\{\s*where: \{\s*idempotencyKey/s, 'renew API should check prior idempotency key')
+assert.match(renewRoute, /findUnique\(\{[\s\S]*where: \{[\s\S]*idempotencyKey/, 'renew API should check prior idempotency key')
 assert.match(renewRoute, /FOR UPDATE/, 'renew API should lock the subscription row')
 assert.match(renewRoute, /tx\.tenant\.findUnique/, 'renew API should verify tenant existence server-side')
 assert.match(renewRoute, /idempotentReplay/, 'renew API should explicitly mark idempotent replay responses')
