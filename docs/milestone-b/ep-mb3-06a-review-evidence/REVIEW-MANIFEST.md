@@ -1,8 +1,10 @@
 # EP-MB3-06A Review Manifest
 
-Status: accepted / ready for merge
+Status: accepted / merged / final frozen
 Baseline: `cf9b44faa172769ef46945d24a8208bdbb003713`
 Branch: `feat/ep-mb3-06a-cloud-desktop-activation`
+Main merge: `add0f85da4e057bd3865e8344580e56bc25052f2`
+Freeze tag: `ep-mb3-06a-cloud-desktop-activation-v1.0-final`
 
 ## Contents
 
@@ -12,7 +14,9 @@ Branch: `feat/ep-mb3-06a-cloud-desktop-activation`
 - `CONCURRENCY-EVIDENCE.md` - transaction locks, uniqueness, token rotation, and revoke behavior.
 - `TEST-RESULTS.md` - local validation commands and results.
 - `BLOCKING-FIXES.md` - Claude review fail result, root cause, and targeted blocker fixes.
+- `FINAL-ACCEPTANCE-FREEZE.md` - final acceptance, merge, main CI, freeze, and tag evidence.
 - `../EP-MB3-06A Cloud Desktop Activation Identity Acceptance Record V1.0.md` - accepted scope, review closure, CI evidence, and compatibility boundary.
+- `../EP-MB3-06A Cloud Desktop Activation Identity Final Freeze Record V1.0.md` - frozen 06A identity contract, change-control boundary, and next-package gate.
 
 ## Reviewer Instructions
 
@@ -21,3 +25,11 @@ Branch: `feat/ep-mb3-06a-cloud-desktop-activation`
 3. Verify raw device tokens and raw activation PINs are returned only in one-time responses and are never persisted.
 4. Verify all new API responses use the no-store JSON helper.
 5. Re-run the test matrix in `TEST-RESULTS.md`.
+
+## Final Status
+
+- Acceptance: ACCEPTED
+- Merge to `main`: complete
+- Main CI: SUCCESS, run `29582806072`
+- Final freeze: complete after `ep-mb3-06a-cloud-desktop-activation-v1.0-final` is pushed
+- Next package: EP-MB3-06B Desktop Activation Runtime

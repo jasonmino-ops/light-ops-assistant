@@ -46,4 +46,8 @@ Date: 2026-07-17
 - Workflow added: `.github/workflows/cloud-ci.yml`
 - CI uses GitHub Actions PostgreSQL service and test-only desktop activation secrets.
 - CI applies the current Prisma schema to temporary PostgreSQL with `npx prisma db push --force-reset` because full historical migration deploy is blocked by known pre-existing migration drift.
-- CI run ID/result: to be reported after push for the new fix commit.
+- Feature branch fix CI: run `29580968329`, commit `f6e27b037035b95f5ca39f0fda94426fc84392cd`, result SUCCESS.
+- Main merge CI: run `29582806072`, commit `add0f85da4e057bd3865e8344580e56bc25052f2`, result SUCCESS.
+- Main merge CI job `cloud`: SUCCESS.
+- Main merge CI successful steps: dependency install, Prisma validate, Prisma generate, current schema apply to temporary PostgreSQL, type check, EP-MB3-06A unit/static tests, EP-MB3-06A real database activation/concurrency tests, relevant regression tests, and build.
+- Final freeze documentation commit changes only milestone docs and is outside the `cloud-ci` path trigger set.
