@@ -195,3 +195,19 @@ Accepted V1 limitations:
 - Remaining Technical Blockers: `NONE`
 - Ready to Merge: `YES`
 - Ready for Final Freeze after Merge: `YES`
+
+## Final Freeze Status
+
+- Merge Status: `MERGED`
+- Merge Commit: `ef3357f1b9bdafe1e541a37bd6fb1f1ce708801a`
+- Main CI: `PASS`
+- Main Artifact Integrity: `PASS`
+- Main Artifact ID: `8416362274`
+- Main Artifact Archive Size: `81888256` bytes
+- Main Installer: `E-Shop-Desktop-Setup-0.1.0.exe`
+- Main Installer Size: `81808712` bytes
+- Main Installer SHA-256: `90786ded16df6228af7407aad7dd58635be27060bc68afb83cf95fe708a104fc`
+- Main Manifest: `SHA256SUMS.txt`
+- Main Manifest Size: `290` bytes
+- Final Freeze Status: `FINAL FROZEN`
+- Final Freeze Record: `docs/milestone-b/EP-MB3-06B Desktop Activation Runtime Final Freeze Record.md`
