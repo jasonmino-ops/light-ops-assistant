@@ -2,6 +2,11 @@ name: EP-MB3-06B Windows Diagnostic
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - diag/ep-mb3-06b-windows-focused-tests
+    paths:
+      - ".github/workflows/ep-mb3-06b-windows-diagnostic.yml"
 
 permissions:
   contents: read
