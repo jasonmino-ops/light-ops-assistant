@@ -1,6 +1,6 @@
 # EP-MB3-06A Review Manifest
 
-Status: ready for independent review
+Status: accepted / ready for merge
 Baseline: `cf9b44faa172769ef46945d24a8208bdbb003713`
 Branch: `feat/ep-mb3-06a-cloud-desktop-activation`
 
@@ -12,6 +12,7 @@ Branch: `feat/ep-mb3-06a-cloud-desktop-activation`
 - `CONCURRENCY-EVIDENCE.md` - transaction locks, uniqueness, token rotation, and revoke behavior.
 - `TEST-RESULTS.md` - local validation commands and results.
 - `BLOCKING-FIXES.md` - Claude review fail result, root cause, and targeted blocker fixes.
+- `../EP-MB3-06A Cloud Desktop Activation Identity Acceptance Record V1.0.md` - accepted scope, review closure, CI evidence, and compatibility boundary.
 
 ## Reviewer Instructions
 
