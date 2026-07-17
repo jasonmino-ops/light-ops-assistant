@@ -11,9 +11,32 @@
 
 ## Commits
 
-- `6153ba5` - `feat(desktop): add activation runtime domain`
-- `e729076` - `feat(desktop): gate formal runtime behind activation`
-- CI/evidence commit: generated after this Evidence Pack is staged.
+Final implementation commit chain:
+
+- `6153ba5ee27f313ee8c37b7b7368afb2320e97f7` - `feat(desktop): add activation runtime domain`
+- `e729076b21e531750f1ec246d1f3fb11cf0b6e33` - `feat(desktop): gate formal runtime behind activation`
+- `4a56a2eb6691fd38f6908939278b1a07a394776f` - `ci(desktop): verify activation packaging security`
+- `a4e4a3452423f2236241d54fbc2b517463e1df4b` - `ci(desktop): fix Windows activation test file selection`
+- `ee5eef4670c6e96697e6db0ab5e7898c41fb3d14` - `ci(desktop): harden Windows safeStorage smoke diagnostics`
+- `97c9e2118f54b1d07ebeee3aa9cde7968aabb8c8` - `fix(desktop): correct packaged activation asset paths`
+
+## Independent Review Condition Closure
+
+- Independent Review Result: `CONDITIONAL PASS`
+- Blocking findings: `NONE`
+- Architecture gates: `PASS`
+- Security gates: `PASS`
+- Windows Release Integrity condition: `CLOSED`
+
+Review gate status:
+
+- Activation Gate: `PASS`
+- Main-only token boundary: `PASS`
+- safeStorage credential integrity: `PASS`
+- Cloud Contract: `PASS`
+- Recovery paths: `PASS`
+- Frozen Boundary: `PASS`
+- Windows Release Gate: `PASS`
 
 ## Changed Files
 
@@ -187,39 +210,95 @@ Cloud 06A regression completed:
 - `npx tsx tests/desktop-activation-concurrency-static.test.ts`
 - `npx tsx tests/desktop-activation-subscription.test.ts`
 
-Cloud 06A real database regression not run locally:
+Cloud 06A real database regression:
 
 - `npx tsx tests/desktop-activation-runtime.test.ts`
-- Reason: test requires `DESKTOP_ACTIVATION_TEST_DATABASE=1`.
+- Gate: `DESKTOP_ACTIVATION_TEST_DATABASE=1`
+- Result: `PASS`
+- Environment: embedded PostgreSQL independent review environment.
 
 ## Windows CI Run
 
-Status: pending branch push.
+Workflow: `desktop-windows-build`
 
-Local machine does not have `gh` installed, so CI run ID/result/artifact metadata cannot be queried locally from this session before push. The workflow has been updated to run:
+- Run ID: `29602321675`
+- URL: `https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29602321675`
+- Branch: `feat/ep-mb3-06b-desktop-activation-runtime`
+- Head SHA: `97c9e2118f54b1d07ebeee3aa9cde7968aabb8c8`
+- Conclusion: `success`
 
-- clean `dist`/`release`
-- activation focused tests
-- full desktop tests
-- compile
-- activation dist asset verification
-- static security scans
-- real Electron safeStorage smoke on Windows
-- existing Provider build/smoke/no-survivor checks
-- Windows electron-builder package
-- packaged activation asset verification inside `app.asar`
-- packaged Provider verification
-- SHA-256 manifest generation
+Critical steps:
 
-## Local Package Artifact
+- Activation focused tests: `PASS`
+- Full desktop tests: `PASS`
+- Compile: `PASS`
+- Static security scan: `PASS`
+- Windows real Electron safeStorage smoke: `PASS`
+- Provider supervision: `PASS`
+- Provider named-pipe smoke: `PASS`
+- Provider no-survivor: `PASS`
+- NSIS package: `PASS`
+- Packaged activation assets: `PASS`
+- Packaged activation preload: `PASS`
+- Provider packaged resources: `PASS`
+- Manifest generation: `PASS`
+- Artifact upload: `PASS`
 
-Local package type: macOS dir package, not Windows installer.
+## Windows safeStorage Smoke
 
-- Artifact: `/Users/jason/light-ops-assistant/desktop/release/mac-arm64/E-Shop Desktop.app`
-- Size: `234M`
-- app.asar SHA-256: `bf8c7066541027989bca7cacefd18a1f49735e20ef0c2382ff19e7072698f39c`
+Real Electron `safeStorage` smoke evidence from the Windows hosted runner:
 
-Windows installer artifact and SHA-256 are expected from GitHub Windows CI.
+- `PHASE=SCRIPT_START`
+- `PHASE=APP_READY`
+- `ENCRYPTION_AVAILABLE=true`
+- `PHASE=ENCRYPT_OK`
+- `PHASE=DECRYPT_OK`
+- `PHASE=ROUNDTRIP_OK`
+- `RESULT=PASS`
+- `Electron exit code=0`
+
+The Windows smoke validates a real Electron safeStorage encrypt/decrypt round-trip. No Node crypto fallback, plaintext fallback, sensitive token output, PIN output, Authorization output, raw request output, raw response output, or ciphertext output is accepted by this gate.
+
+## Windows Installer Artifact
+
+- Artifact ID: `8415529883`
+- Artifact name: `eshop-desktop-windows-installer`
+- Artifact URL: `https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29602321675/artifacts/8415529883`
+- Archive size: `81888239` bytes
+- Installer: `E-Shop-Desktop-Setup-0.1.0.exe`
+- Installer size: `81808710` bytes
+- Installer SHA-256: `75833819cfb9f0e593fc7d2e22aa6ece273e6e1fc5f510fc673f745497c93698`
+- Manifest: `SHA256SUMS.txt`
+- Manifest verification: `PASS`
+
+Local artifact validation note:
+
+- GitHub REST artifact download returned `401` in the local session.
+- The artifact was downloaded from the logged-in GitHub Actions artifact page.
+- Downloaded archive: `/Users/jason/Downloads/eshop-desktop-windows-installer.zip`
+- Local extraction path: `/private/tmp/ep-mb3-06b-packaging-fix-artifact-8415529883`
+- Extracted installer SHA-256 matched `SHA256SUMS.txt`.
+
+Extracted artifact contents:
+
+- `E-Shop-Desktop-Setup-0.1.0.exe.blockmap` - `85932` bytes
+- `E-Shop-Desktop-Setup-0.1.0.exe` - `81808710` bytes
+- `SHA256SUMS.txt` - `290` bytes
+
+## Packaged Activation Asset Path Fix
+
+Root cause closed:
+
+- Original runtime lookup incorrectly resolved activation assets under `dist/main/preload` and `dist/main/renderer`.
+- Actual compiled/package assets are under `dist/preload` and `dist/renderer`.
+
+Final fix evidence:
+
+- Runtime asset path corrected.
+- Packaged `app.asar` path normalization added.
+- Local `dist` activation asset verification: `PASS`
+- Local `app.asar` activation asset verification: `PASS`
+- Windows packaged activation asset verification: `PASS`
 
 ## Packaged Activation Assets
 
@@ -230,22 +309,55 @@ Verified in local `dist` and local packaged `app.asar`:
 - `dist/renderer/activation/activation.css`
 - `dist/renderer/activation/activationRenderer.js`
 
-## Known Limitations
+Windows packaged activation asset verification additionally confirms:
 
-- Local environment cannot run the 06A real database activation runtime regression without `DESKTOP_ACTIVATION_TEST_DATABASE=1`.
-- Local environment does not have `gh`, so Windows CI run ID/result and Windows installer SHA must be confirmed after branch push in GitHub Actions.
-- Local `pack:dir` validates macOS dir packaging only; Windows installer packaging is delegated to `.github/workflows/desktop-windows-build.yml`.
+- Packaged activation preload exists in `app.asar`.
+- Packaged activation renderer HTML exists in `app.asar`.
+- Packaged activation renderer CSS exists in `app.asar`.
+- Packaged activation renderer JavaScript exists in `app.asar`.
+
+## Database Runtime Regression
+
+- Test gate: `DESKTOP_ACTIVATION_TEST_DATABASE=1`
+- Result: `PASS`
+- Environment: embedded PostgreSQL
+- Scope: independent review environment only.
+
+This confirms the 06A activation runtime regression path in an embedded PostgreSQL review environment. It is not a production database validation and does not imply any production data migration or production database access.
+
+## Upgrade And Uninstall Identity Behavior
+
+- `electron-builder` NSIS keeps `deleteAppDataOnUninstall: false`.
+- Normal upgrade preserves `installationId`.
+- Normal upgrade preserves encrypted activation credential.
+- Default uninstall plus reinstall may keep local activation identity because application data is retained.
+- Manual application data removal generates a new `installationId`.
+- 06B V1 accepts this compatibility strategy.
+- Local reset clears local activation credential and local activation state only.
+- Local reset does not call Cloud revoke.
+- OWNER Cloud Device revoke remains a Cloud management action.
 
 ## Frozen Boundary Proof
 
-Diff is zero for:
+- 06A API Contract diff: `0`
+- Cloud activation routes diff: `0`
+- Prisma diff: `0`
+- Runtime Core diff: `0`
+- Provider diff: `0`
+- Provider Contract diff: `0`
+- Printer diff: `0`
+- Scanner diff: `0`
+- Payment diff: `0`
+- Legacy POS auth diff: `0`
 
-- 06A API Contract
-- 06A Cloud activation routes
-- Prisma schema
-- Runtime Core
-- legacy POS authorization
-- Provider repository
-- printer/scanner/payment modules
+`WindowManager` modification is limited to the activation guard for formal runtime entry/recovery paths. No existing dual-screen business semantic change is introduced.
 
 No SQLite, offline startup, offline cashier, cached authorization, grace startup, Cloud Device auto revoke, merchant signup, or OWNER login was implemented.
+
+## Final Condition Status
+
+- Windows CI evidence: `CLOSED`
+- Artifact SHA evidence: `CLOSED`
+- Database runtime regression: `CLOSED`
+- Uninstall identity documentation: `CLOSED`
+- All Independent Review conditions: `CLOSED`
