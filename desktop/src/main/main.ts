@@ -17,6 +17,12 @@ import { createTray, destroyTray } from './tray'
 import { updateHealth, recordHealthError, getHealthSnapshot } from './runtimeHealth'
 import { createDefaultHardwareManager } from './hardware/hardwareManager'
 import { WindowsProviderSupervisor } from './provider/providerSupervisor'
+import { ActivationApiClient } from './activation/activationApiClient'
+import { CredentialStore } from './activation/credentialStore'
+import { ActivationRuntime } from './activation/activationRuntime'
+import { ActivationWindowController } from './activation/activationWindowController'
+import { registerActivationIpcHandlers } from './activation/activationIpc'
+import type { AuthorizedDesktopContext } from './activation/activationTypes'
 
 // ── 单实例（A4）────────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -25,20 +31,28 @@ if (!gotLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    logger.warn('single-instance.conflict', { note: 'second launch detected, focusing employee window' })
-    windowManager.focusEmployeeWindow()
+    logger.warn('single-instance.conflict', { note: 'second launch detected' })
+    if (activationRuntime?.isAuthorized()) windowManager.focusEmployeeWindow()
+    else activationWindowController?.focus()
   })
 
   let quitting = false
   let providerSupervisor: WindowsProviderSupervisor | null = null
+  let activationRuntime: ActivationRuntime | null = null
+  let activationWindowController: ActivationWindowController | null = null
+  let authorizedRuntimeStarted = false
+  let authorizedRuntimeStartPromise: Promise<void> | null = null
+
   async function quitApp() {
     if (quitting) return
     quitting = true
+    activationRuntime?.markQuitting()
     windowManager.setQuitting()
     try { await providerSupervisor?.stop() } catch (error) {
       recordHealthError('provider', `provider stop failed: ${String(error)}`)
     }
     destroyTray()
+    activationWindowController?.destroy()
     logger.info('app.quit', { uptimeSeconds: getHealthSnapshot().uptimeSeconds })
     for (const win of BrowserWindow.getAllWindows()) {
       try { win.destroy() } catch { /* 已销毁 */ }
@@ -54,7 +68,38 @@ if (!gotLock) {
     recordHealthError('process', `unhandledRejection: ${String(reason)}`)
   })
 
-  app.whenReady().then(() => {
+  async function startAuthorizedDesktopRuntime(_context: AuthorizedDesktopContext): Promise<void> {
+    if (authorizedRuntimeStarted) return
+    if (authorizedRuntimeStartPromise) return authorizedRuntimeStartPromise
+    authorizedRuntimeStartPromise = (async () => {
+      windowManager.setFormalRuntimeGuard(() => activationRuntime?.isAuthorized() === true)
+
+      // Hardware Runtime 基础框架（A9）：仅注册占位设备
+      const hardware = createDefaultHardwareManager()
+      updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
+      logger.info('hardware.status', hardware.getStatusSummary())
+
+      registerIpcHandlers(windowManager)
+
+      windowManager.createEmployeeWindow()
+      windowManager.ensureCustomerWindow('startup')
+      windowManager.watchDisplays()
+
+      providerSupervisor = new WindowsProviderSupervisor()
+      providerSupervisor.start().catch((error) => {
+        recordHealthError('provider', `provider start failed: ${String(error)}`)
+      })
+
+      createTray(windowManager, () => { void quitApp() })
+      authorizedRuntimeStarted = true
+    })().catch((error) => {
+      authorizedRuntimeStartPromise = null
+      throw error
+    })
+    return authorizedRuntimeStartPromise
+  }
+
+  async function initializeApplication(): Promise<void> {
     initLogger(app.getPath('userData'))
     logger.info('app.start', {
       version: app.getVersion(),
@@ -65,26 +110,37 @@ if (!gotLock) {
     })
     updateHealth({ app: 'ok', version: app.getVersion() }, 'app.ready')
 
-    loadConfig(app.getPath('userData'))
+    const config = loadConfig(app.getPath('userData'))
+    windowManager.setFormalRuntimeGuard(() => activationRuntime?.isAuthorized() === true)
 
-    // Hardware Runtime 基础框架（A9）：仅注册占位设备
-    const hardware = createDefaultHardwareManager()
-    updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
-    logger.info('hardware.status', hardware.getStatusSummary())
-
-    registerIpcHandlers(windowManager)
-
-    windowManager.createEmployeeWindow()
-    windowManager.ensureCustomerWindow('startup')
-    windowManager.watchDisplays()
-
-    providerSupervisor = new WindowsProviderSupervisor()
-    providerSupervisor.start().catch((error) => {
-      recordHealthError('provider', `provider start failed: ${String(error)}`)
+    activationWindowController = new ActivationWindowController({
+      isAuthorized: () => activationRuntime?.isAuthorized() === true,
+      onClosedBeforeAuthorization: () => { void quitApp() },
     })
 
-    createTray(windowManager, () => { void quitApp() })
-  }).catch((error) => {
+    activationRuntime = new ActivationRuntime({
+      credentialStore: new CredentialStore(app.getPath('userData')),
+      apiClient: new ActivationApiClient({ baseUrl: config.baseUrl }),
+      initialStoreCodeHint: config.storeCode || undefined,
+      startAuthorizedRuntime: startAuthorizedDesktopRuntime,
+    })
+
+    registerActivationIpcHandlers({
+      runtime: activationRuntime,
+      windowController: activationWindowController,
+      onQuit: () => { void quitApp() },
+    })
+
+    activationRuntime.onStateChanged((state) => {
+      activationWindowController?.sendState(state)
+      if (state.kind === 'AUTHORIZED_RUNNING') activationWindowController?.closeAfterAuthorization()
+    })
+
+    await activationRuntime.initialize()
+    if (!activationRuntime.isAuthorized()) activationWindowController.show()
+  }
+
+  app.whenReady().then(() => initializeApplication()).catch((error) => {
     recordHealthError('app', `whenReady failed: ${String(error)}`)
   })
 
@@ -104,6 +160,7 @@ if (!gotLock) {
   })
 
   app.on('before-quit', () => {
+    activationRuntime?.markQuitting()
     windowManager.setQuitting()
   })
 }

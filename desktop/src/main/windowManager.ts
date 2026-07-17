@@ -35,6 +35,8 @@ export class WindowManager {
   private replayTimers: NodeJS.Timeout[] = []
   private quitting = false
   private customerEnabled = true
+  private displayWatchRegistered = false
+  private formalRuntimeGuard: () => boolean = () => true
   private readonly roleByWebContentsId = new Map<number, WindowRole>()
 
   /** IPC 层用于校验发送者身份 */
@@ -56,6 +58,17 @@ export class WindowManager {
     return this.customerWindow
   }
 
+  setFormalRuntimeGuard(guard: () => boolean) {
+    this.formalRuntimeGuard = guard
+  }
+
+  private isFormalRuntimeAllowed(action: string, reason?: string): boolean {
+    if (this.quitting) return false
+    const allowed = this.formalRuntimeGuard()
+    if (!allowed) logger.warn('formal-runtime.denied-before-activation', { action, reason })
+    return allowed
+  }
+
   // ── 屏幕识别 ───────────────────────────────────────────────────────────────
 
   private describeDisplays() {
@@ -73,14 +86,19 @@ export class WindowManager {
   }
 
   watchDisplays() {
+    if (!this.isFormalRuntimeAllowed('displays.watch')) return
+    if (this.displayWatchRegistered) return
+    this.displayWatchRegistered = true
     this.publishDisplayHealth()
     screen.on('display-added', () => {
+      if (!this.isFormalRuntimeAllowed('displays.display-added')) return
       logger.info('displays.added')
       this.publishDisplayHealth()
       // 副屏重新接入：恢复顾客窗口并移到副屏
       this.ensureCustomerWindow('display-added')
     })
     screen.on('display-removed', () => {
+      if (!this.isFormalRuntimeAllowed('displays.display-removed')) return
       logger.info('displays.removed')
       this.publishDisplayHealth()
       // 副屏断开：把顾客窗口挪回主屏窗口化，避免不可见/崩溃，不销毁
@@ -101,7 +119,10 @@ export class WindowManager {
         }
       }
     })
-    screen.on('display-metrics-changed', () => this.publishDisplayHealth())
+    screen.on('display-metrics-changed', () => {
+      if (!this.isFormalRuntimeAllowed('displays.metrics-changed')) return
+      this.publishDisplayHealth()
+    })
   }
 
   // ── 员工窗口 ───────────────────────────────────────────────────────────────
@@ -130,6 +151,9 @@ export class WindowManager {
   }
 
   createEmployeeWindow(): BrowserWindow {
+    if (!this.isFormalRuntimeAllowed('employee-window.create')) {
+      throw new Error('formal runtime is not authorized')
+    }
     if (this.employeeWindow && !this.employeeWindow.isDestroyed()) {
       this.employeeWindow.show()
       this.employeeWindow.focus()
@@ -184,6 +208,7 @@ export class WindowManager {
   }
 
   focusEmployeeWindow() {
+    if (!this.isFormalRuntimeAllowed('employee-window.focus')) return
     if (this.employeeWindow && !this.employeeWindow.isDestroyed()) {
       if (this.employeeWindow.isMinimized()) this.employeeWindow.restore()
       this.employeeWindow.show()
@@ -208,6 +233,7 @@ export class WindowManager {
 
   /** 保证顾客窗口存在（存在副屏或强制模式时）；不会重复创建 */
   ensureCustomerWindow(reason: string): BrowserWindow | null {
+    if (!this.isFormalRuntimeAllowed('customer-window.ensure', reason)) return null
     if (this.quitting || !this.customerEnabled) return null
     if (this.customerWindow && !this.customerWindow.isDestroyed()) return this.customerWindow
     const target = this.pickCustomerDisplay()
@@ -220,6 +246,9 @@ export class WindowManager {
   }
 
   private createCustomerWindow(display: Display, isExternal: boolean, reason: string): BrowserWindow {
+    if (!this.isFormalRuntimeAllowed('customer-window.create', reason)) {
+      throw new Error('formal runtime is not authorized')
+    }
     const win = new BrowserWindow({
       title: 'E-Shop Desktop — Customer Display',
       x: display.bounds.x,
@@ -308,12 +337,14 @@ export class WindowManager {
     })
     this.customerRetryTimer = setTimeout(() => {
       this.customerRetryTimer = null
+      if (!this.isFormalRuntimeAllowed('customer-window.recovery', reason)) return
       this.ensureCustomerWindow(`recovery:${reason}`)
     }, decision.delayMs)
   }
 
   /** Tray 手动开关顾客窗口 */
   toggleCustomerWindow() {
+    if (!this.isFormalRuntimeAllowed('customer-window.toggle')) return
     if (this.customerWindow && !this.customerWindow.isDestroyed()) {
       this.customerEnabled = false
       this.customerWindow.close()
