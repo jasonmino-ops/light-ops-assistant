@@ -1,0 +1,209 @@
+name: EP-MB3-06B Windows Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-focused-tests:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Git identity
+        working-directory: .
+        run: |
+          git rev-parse HEAD
+          git rev-parse HEAD^
+          git status --short --branch
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Environment
+        run: |
+          node --version
+          npm --version
+          $PSVersionTable
+          Get-Location
+
+      - name: Install Contract dependencies
+        working-directory: packages/hrt-contract
+        run: npm ci
+
+      - name: Build Contract
+        working-directory: packages/hrt-contract
+        run: npm run build
+
+      - name: Install Desktop dependencies
+        run: npm ci
+
+      - name: Windows focused test diagnostic matrix
+        run: |
+          if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+            $PSNativeCommandUseErrorActionPreference = $false
+          }
+
+          function Invoke-DiagnosticCommand {
+            param(
+              [string]$Name,
+              [scriptblock]$Command
+            )
+            Write-Host "===== BEGIN $Name ====="
+            & $Command
+            $code = $LASTEXITCODE
+            if ($null -eq $code) { $code = 0 }
+            Write-Host "===== END $Name / EXIT $code ====="
+            return [int]$code
+          }
+
+          Write-Host "===== ELECTRON INSTALLATION EVIDENCE ====="
+          $electronVersion = (& node -p "require('electron/package.json').version")
+          $electronModule = (& node -p "require('electron')")
+          $ignoreScripts = (& npm config get ignore-scripts)
+          $electronExeExists = Test-Path node_modules\electron\dist\electron.exe
+          Write-Host "electron.version=$electronVersion"
+          Write-Host "electron.module=$electronModule"
+          Write-Host "npm.ignore-scripts=$ignoreScripts"
+          Write-Host "ELECTRON_SKIP_BINARY_DOWNLOAD=$env:ELECTRON_SKIP_BINARY_DOWNLOAD"
+          Write-Host "npm_config_ignore_scripts=$env:npm_config_ignore_scripts"
+          Write-Host "electron.exe.exists=$electronExeExists"
+          Get-ChildItem node_modules\electron\dist
+
+          Write-Host "===== TEST FILE DISCOVERY ====="
+          $testFiles = @(Get-ChildItem tests\activation-*.test.ts | Sort-Object Name)
+          $testFiles | Select-Object Name, FullName | Format-Table -AutoSize
+          Resolve-Path tests\activation-*.test.ts
+          $expectedNames = @(
+            'activation-api-client.test.ts',
+            'activation-credential-store.test.ts',
+            'activation-gate.test.ts',
+            'activation-ipc.test.ts',
+            'activation-state-machine.test.ts',
+            'activation-static-security.test.ts'
+          )
+          $actualNames = @($testFiles | ForEach-Object { $_.Name })
+          $missingNames = @($expectedNames | Where-Object { $actualNames -notcontains $_ })
+          $filesValid = ($testFiles.Count -eq 6 -and $missingNames.Count -eq 0)
+          Write-Host "TEST_FILE_COUNT=$($testFiles.Count)"
+          Write-Host "TEST_FILES_VALID=$filesValid"
+          if ($missingNames.Count -gt 0) {
+            Write-Host "MISSING_TEST_FILES=$($missingNames -join ',')"
+          }
+
+          Write-Host "===== POWERSHELL ARGV EVIDENCE ====="
+          $argvUnquoted = (& node -e "console.log(JSON.stringify(process.argv.slice(1)))" tests/activation-*.test.ts)
+          $argvQuoted = (& node -e "console.log(JSON.stringify(process.argv.slice(1)))" "tests/activation-*.test.ts")
+          $files = @(Get-ChildItem tests\activation-*.test.ts | ForEach-Object { $_.FullName })
+          Write-Host "Expanded files:"
+          $files | ForEach-Object { Write-Host $_ }
+          $argvExpanded = (& node -e "console.log(JSON.stringify(process.argv.slice(1)))" $files)
+          Write-Host "ARGV_UNQUOTED=$argvUnquoted"
+          Write-Host "ARGV_QUOTED=$argvQuoted"
+          Write-Host "ARGV_EXPANDED=$argvExpanded"
+
+          $originalExit = Invoke-DiagnosticCommand "original unquoted glob" {
+            npx vitest run tests/activation-*.test.ts --reporter=verbose
+          }
+          $quotedExit = Invoke-DiagnosticCommand "quoted literal glob" {
+            npx vitest run "tests/activation-*.test.ts" --reporter=verbose
+          }
+          $expandedExit = Invoke-DiagnosticCommand "PowerShell expanded list" {
+            $expandedFiles = @(Get-ChildItem tests\activation-*.test.ts | ForEach-Object { $_.FullName })
+            npx vitest run $expandedFiles --reporter=verbose
+          }
+          $explicitExit = Invoke-DiagnosticCommand "explicit relative file list" {
+            npx vitest run `
+              tests/activation-api-client.test.ts `
+              tests/activation-credential-store.test.ts `
+              tests/activation-gate.test.ts `
+              tests/activation-ipc.test.ts `
+              tests/activation-state-machine.test.ts `
+              tests/activation-static-security.test.ts `
+              --reporter=verbose
+          }
+
+          $individual = [ordered]@{}
+          if ($expandedExit -ne 0 -or $explicitExit -ne 0) {
+            $individual['activation-api-client'] = Invoke-DiagnosticCommand "individual activation-api-client" {
+              npx vitest run tests/activation-api-client.test.ts --reporter=verbose
+            }
+            $individual['activation-credential-store'] = Invoke-DiagnosticCommand "individual activation-credential-store" {
+              npx vitest run tests/activation-credential-store.test.ts --reporter=verbose
+            }
+            $individual['activation-gate'] = Invoke-DiagnosticCommand "individual activation-gate" {
+              npx vitest run tests/activation-gate.test.ts --reporter=verbose
+            }
+            $individual['activation-ipc'] = Invoke-DiagnosticCommand "individual activation-ipc" {
+              npx vitest run tests/activation-ipc.test.ts --reporter=verbose
+            }
+            $individual['activation-state-machine'] = Invoke-DiagnosticCommand "individual activation-state-machine" {
+              npx vitest run tests/activation-state-machine.test.ts --reporter=verbose
+            }
+            $individual['activation-static-security'] = Invoke-DiagnosticCommand "individual activation-static-security" {
+              npx vitest run tests/activation-static-security.test.ts --reporter=verbose
+            }
+          } else {
+            foreach ($name in @('activation-api-client','activation-credential-store','activation-gate','activation-ipc','activation-state-machine','activation-static-security')) {
+              $individual[$name] = 'covered-by-explicit-list'
+            }
+          }
+
+          $globConfirmed = (
+            $originalExit -ne 0 -and
+            $argvUnquoted -eq '["tests/activation-*.test.ts"]' -and
+            $expandedExit -eq 0 -and
+            $explicitExit -eq 0
+          )
+          $productionEvidence = if ($expandedExit -eq 0 -and $explicitExit -eq 0) { 'NO KNOWN PRODUCTION DEFECT' } else { 'POSSIBLE PRODUCTION DEFECT' }
+          $rootCause = if ($globConfirmed) {
+            'Windows PowerShell did not expand the glob before invoking Vitest.'
+          } elseif ($expandedExit -ne 0 -or $explicitExit -ne 0) {
+            'Expanded or explicit Windows focused tests failed; root cause is not shell glob only.'
+          } else {
+            'Root cause not confirmed.'
+          }
+          $recommendedScope = if ($globConfirmed) { 'workflow only' } elseif ($expandedExit -ne 0 -or $explicitExit -ne 0) { 'tests or production code investigation required' } else { 'not ready' }
+
+          Write-Host "===== DIAGNOSTIC SUMMARY ====="
+          Write-Host "ORIGINAL_GLOB_EXIT=$originalExit"
+          Write-Host "QUOTED_GLOB_EXIT=$quotedExit"
+          Write-Host "EXPANDED_LIST_EXIT=$expandedExit"
+          Write-Host "EXPLICIT_LIST_EXIT=$explicitExit"
+          Write-Host "ROOT_CAUSE=$rootCause"
+          Write-Host "PRODUCTION_DEFECT_EVIDENCE=$productionEvidence"
+          Write-Host "RECOMMENDED_MINIMAL_SCOPE=$recommendedScope"
+          foreach ($entry in $individual.GetEnumerator()) {
+            Write-Host "INDIVIDUAL_$($entry.Key)=$($entry.Value)"
+          }
+
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "# EP-MB3-06B Windows Diagnostic"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Commit: $env:GITHUB_SHA"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Parent reviewed commit: $(git rev-parse HEAD^)"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Electron: $electronVersion"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Electron binary exists: $electronExeExists"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Original glob: exit $originalExit"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Quoted glob: exit $quotedExit"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- PowerShell-expanded list: exit $expandedExit"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Explicit file list: exit $explicitExit"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Root cause: $rootCause"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Production defect evidence: $productionEvidence"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Recommended minimal scope: $recommendedScope"
+
+          if (-not $filesValid -or -not $electronExeExists -or $expandedExit -ne 0 -or $explicitExit -ne 0) {
+            exit 1
+          }
+          exit 0
