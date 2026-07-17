@@ -81,7 +81,7 @@ export class ActivationWindowController {
       backgroundColor: '#f7f7f4',
       show: false,
       webPreferences: {
-        preload: join(__dirname, '../preload/activationPreload.js'),
+        preload: join(__dirname, '../../preload/activationPreload.js'),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -92,7 +92,7 @@ export class ActivationWindowController {
     this.win = win
     this.harden(win)
 
-    const rendererPath = join(__dirname, '../renderer/activation/index.html')
+    const rendererPath = join(__dirname, '../../renderer/activation/index.html')
     win.loadFile(rendererPath).catch((error) => {
       logger.error('activation-window.load-failed', { message: String(error).slice(0, 200) })
     })
@@ -111,7 +111,7 @@ export class ActivationWindowController {
   }
 
   private harden(win: BrowserWindow) {
-    const allowed = pathToFileURL(join(__dirname, '../renderer/activation/index.html')).toString()
+    const allowed = pathToFileURL(join(__dirname, '../../renderer/activation/index.html')).toString()
     win.webContents.setWindowOpenHandler(({ url }) => {
       logger.warn('activation-window.window-open-denied', { url })
       return { action: 'deny' }
