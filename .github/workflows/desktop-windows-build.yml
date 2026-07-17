@@ -109,9 +109,32 @@ jobs:
         shell: pwsh
         run: |
           $electron = (Resolve-Path .\node_modules\electron\dist\electron.exe).Path
-          $output = & $electron .\tests\smoke\safeStorage-smoke.cjs
-          Write-Output $output
-          if ($LASTEXITCODE -ne 0 -or $output -notmatch '^PASS$') { throw "Electron safeStorage smoke failed" }
+          $stdout = Join-Path $env:RUNNER_TEMP "safestorage-smoke.out"
+          $stderr = Join-Path $env:RUNNER_TEMP "safestorage-smoke.err"
+          $proc = Start-Process `
+            -FilePath $electron `
+            -ArgumentList '.\tests\smoke\safeStorage-smoke.cjs' `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr `
+            -NoNewWindow `
+            -PassThru `
+            -Wait
+          Write-Output "Electron exit code: $($proc.ExitCode)"
+          Write-Output "--- safeStorage stdout ---"
+          if (Test-Path $stdout) {
+            Get-Content $stdout
+          }
+          Write-Output "--- safeStorage stderr ---"
+          if (Test-Path $stderr) {
+            Get-Content $stderr
+          }
+          $stdoutText = ""
+          if (Test-Path $stdout) {
+            $stdoutText = (Get-Content -Raw $stdout).Trim()
+          }
+          if ($proc.ExitCode -ne 0 -or $stdoutText -notmatch '(?m)^RESULT=PASS$') {
+            throw "Electron safeStorage smoke failed (exit=$($proc.ExitCode))"
+          }
 
       - name: Provider supervision pipe integration
         shell: pwsh
