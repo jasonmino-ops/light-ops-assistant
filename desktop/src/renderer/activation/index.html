@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>E-Shop Desktop Activation</title>
+    <link rel="stylesheet" href="./activation.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="brand">
+        <div class="mark">E</div>
+        <div>
+          <div class="name">E-Shop Desktop</div>
+          <div class="sub">店小二电脑收银台</div>
+        </div>
+      </section>
+
+      <section class="status" aria-live="polite">
+        <div id="busy" class="spinner" hidden></div>
+        <h1 id="state-title">正在启动</h1>
+        <p id="state-detail"></p>
+        <p id="status-code" class="code"></p>
+      </section>
+
+      <form id="activation-form" class="form" hidden>
+        <label>
+          <span>门店码</span>
+          <input id="store-code" autocomplete="off" spellcheck="false" maxlength="64" />
+        </label>
+        <label>
+          <span>6 位 PIN</span>
+          <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+        </label>
+        <button id="activate-button" class="primary" type="submit">激活</button>
+      </form>
+
+      <section class="actions">
+        <button id="retry-button" type="button" hidden>重试验证</button>
+        <button id="reset-button" type="button" hidden>清除本机激活</button>
+        <button id="quit-button" type="button">退出</button>
+      </section>
+    </main>
+    <script src="./activationRenderer.js"></script>
+  </body>
+</html>
