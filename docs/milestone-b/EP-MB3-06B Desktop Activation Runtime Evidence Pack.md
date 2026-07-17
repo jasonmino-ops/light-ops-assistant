@@ -361,3 +361,11 @@ No SQLite, offline startup, offline cashier, cached authorization, grace startup
 - Database runtime regression: `CLOSED`
 - Uninstall identity documentation: `CLOSED`
 - All Independent Review conditions: `CLOSED`
+
+## Final Acceptance
+
+- Final Acceptance Readiness Review: `PASS`
+- Acceptance Decision: `ACCEPTED`
+- Acceptance Reviewed HEAD: `7c27503a26a0c70fde820049c925bc5eedf56e7f`
+- Remaining Blockers: `NONE`
+- Acceptance Record: `docs/milestone-b/EP-MB3-06B Desktop Activation Runtime Acceptance Record.md`
