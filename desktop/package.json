@@ -1,7 +1,7 @@
 {
   "name": "eshop-desktop",
   "productName": "E-Shop Desktop",
-  "version": "0.2.0-pilot.1",
+  "version": "0.2.0-pilot.2",
   "description": "E-Shop Desktop — Windows 一体机门店收银客户端（Milestone A: Desktop Shell）",
   "private": true,
   "main": "dist/main/main.js",

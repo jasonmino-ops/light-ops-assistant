@@ -20,6 +20,9 @@ const repoRoot = resolve(desktopDir, '..')
 const BASELINE_FREEZE_TAG = 'ep-mb3-06b-desktop-activation-runtime-v1.0-final'
 const DEFAULT_PROVIDER_COMMIT = '7785be145d5259991038d17839d322e2694e338c'
 const PROVENANCE_SCHEMA = 'ep-mb3-07a.release-provenance.v1'
+const PHASE1_DESKTOP_VERSION = '0.2.0-pilot.2'
+const PHASE1_UPDATE_METADATA_NAME = 'latest.yml'
+const SHA_MANIFEST_NAME = 'SHA256SUMS.txt'
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
 const HASH_LINE_PATTERN = /^([a-fA-F0-9]{64})  (.+)$/
 const SECRET_PATTERN =
@@ -125,7 +128,7 @@ function inferReleaseChannel(version) {
 }
 
 function expectedUpdateMetadataName(channel) {
-  if (channel === 'pilot') return 'pilot.yml'
+  if (channel === 'pilot') return PHASE1_UPDATE_METADATA_NAME
   if (channel === 'stable') return 'latest.yml'
   throw new Error(`unsupported release channel: ${channel}`)
 }
@@ -136,6 +139,76 @@ function expectedTag(version) {
 
 function expectedInstallerName(version) {
   return `E-Shop-Desktop-Setup-${version}.exe`
+}
+
+function expectedReleaseNotesName(version) {
+  return `release-notes-${version}.md`
+}
+
+function expectedProvenanceName(version) {
+  return `release-provenance-${version}.json`
+}
+
+function expectedReleaseAssetNames(facts) {
+  return [
+    facts.installerName,
+    `${facts.installerName}.blockmap`,
+    facts.updateMetadataName,
+    SHA_MANIFEST_NAME,
+    expectedProvenanceName(facts.version),
+    expectedReleaseNotesName(facts.version),
+  ].sort()
+}
+
+function expectedShaAssetNames(facts) {
+  return expectedReleaseAssetNames(facts).filter((fileName) => fileName !== SHA_MANIFEST_NAME)
+}
+
+function expectedProvenanceArtifactNames(facts) {
+  return [
+    facts.installerName,
+    `${facts.installerName}.blockmap`,
+    facts.updateMetadataName,
+    expectedReleaseNotesName(facts.version),
+  ].sort()
+}
+
+function isGitHubGeneratedSourceArchive(fileName, facts) {
+  const normalized = fileName.toLowerCase()
+  const tag = facts.tag.toLowerCase()
+  return (
+    normalized === `${tag}.zip` ||
+    normalized === `${tag}.tar.gz` ||
+    normalized === 'source-code.zip' ||
+    normalized === 'source-code.tar.gz'
+  )
+}
+
+function assertSameNames(actualNames, expectedNames, label) {
+  const actual = [...actualNames].sort()
+  const expected = [...expectedNames].sort()
+  assertNoDuplicateNames(actual)
+  assertNoDuplicateNames(expected)
+  const actualSet = new Set(actual)
+  const expectedSet = new Set(expected)
+  const missing = expected.filter((fileName) => !actualSet.has(fileName))
+  const unexpected = actual.filter((fileName) => !expectedSet.has(fileName))
+  if (missing.length > 0 || unexpected.length > 0) {
+    throw new Error(
+      `${label} mismatch; missing: ${missing.join(', ') || '(none)'}; unexpected: ${
+        unexpected.join(', ') || '(none)'
+      }`,
+    )
+  }
+}
+
+function assertContainsNames(actualNames, expectedNames, label) {
+  assertNoDuplicateNames(actualNames)
+  const actual = new Set(actualNames)
+  const missing = [...expectedNames].sort().filter((fileName) => !actual.has(fileName))
+  if (missing.length > 0) {
+    throw new Error(`${label} missing release asset: ${missing.join(', ')}`)
+  }
 }
 
 async function sha256(path) {
@@ -233,8 +306,8 @@ async function runPolicy(options) {
   if (facts.rootPackageName === facts.packageName) {
     throw new Error('root package cannot be the Desktop version source')
   }
-  if (facts.channel !== 'pilot' || facts.version !== '0.2.0-pilot.1') {
-    throw new Error(`Phase 1 must use 0.2.0-pilot.1, got ${facts.version}`)
+  if (facts.channel !== 'pilot' || facts.version !== PHASE1_DESKTOP_VERSION) {
+    throw new Error(`Phase 1 must use ${PHASE1_DESKTOP_VERSION}, got ${facts.version}`)
   }
   validateBuilderConfig(facts)
 
@@ -268,11 +341,17 @@ async function runPolicy(options) {
     if (!/--prerelease/.test(pilotWorkflow)) {
       throw new Error('pilot release must create a GitHub prerelease')
     }
-    if (/pilot-release\/pilot\.yml|desktop\/release\/pilot\.yml/.test(pilotWorkflow)) {
-      throw new Error('pilot workflow must publish the actual builder *.yml metadata asset, not hard-code pilot.yml')
+    if (/builder-debug\.yml/.test(pilotWorkflow)) {
+      throw new Error('pilot workflow must not publish builder-debug.yml')
     }
-    if (!/pilot-release\/\*\.yml/.test(pilotWorkflow) || !/desktop\/release\/\*\.yml/.test(pilotWorkflow)) {
-      throw new Error('pilot workflow must upload and publish the actual builder *.yml metadata asset')
+    if (/pilot-release\/\*\.yml|desktop\/release\/\*\.yml|desktop\/release\/\*/.test(pilotWorkflow)) {
+      throw new Error('pilot workflow must not publish broad release directory globs')
+    }
+    if (!/Stage allowlisted pilot release assets/.test(pilotWorkflow)) {
+      throw new Error('pilot workflow must stage an explicit release asset allowlist')
+    }
+    if (!/pilot-release-bundle\/latest\.yml/.test(pilotWorkflow) || !/pilot-release\/latest\.yml/.test(pilotWorkflow)) {
+      throw new Error('pilot workflow must upload and publish latest.yml through the explicit allowlist')
     }
   }
 
@@ -310,31 +389,21 @@ async function runPolicy(options) {
 async function listReleaseFiles(releaseDir, facts) {
   const installer = join(releaseDir, facts.installerName)
   const blockmap = `${installer}.blockmap`
-  const metadataName = expectedUpdateMetadataName(facts.channel)
+  const metadata = join(releaseDir, facts.updateMetadataName)
 
   await assertExists(installer, 'versioned installer')
   await assertExists(blockmap, 'installer blockmap')
-
-  const allEntries = await readdir(releaseDir)
-  const ymlFiles = allEntries.filter((entry) => entry.endsWith('.yml') && entry !== 'builder-debug.yml')
-  if (!ymlFiles.includes(metadataName)) {
-    if (ymlFiles.length !== 1) {
-      throw new Error(
-        `expected update metadata ${metadataName}; actual metadata files: ${ymlFiles.join(', ') || '(none)'}`,
-      )
-    }
-    console.warn(`using actual update metadata ${ymlFiles[0]} instead of inferred ${metadataName}`)
-  }
+  await assertExists(metadata, `update metadata ${facts.updateMetadataName}`)
 
   return {
     installer,
     blockmap,
-    metadataFiles: ymlFiles.map((entry) => join(releaseDir, entry)).sort(),
+    metadataFiles: [metadata],
   }
 }
 
 async function writeReleaseNotes(releaseDir, facts) {
-  const fileName = `release-notes-${facts.version}.md`
+  const fileName = expectedReleaseNotesName(facts.version)
   const filePath = join(releaseDir, fileName)
   const content = [
     `# E-Shop Desktop ${facts.version}`,
@@ -383,7 +452,7 @@ async function writeManifests(options) {
   const artifacts = []
   for (const file of baseAssetFiles) artifacts.push(await fileDescriptor(file))
 
-  const provenanceFileName = `release-provenance-${facts.version}.json`
+  const provenanceFileName = expectedProvenanceName(facts.version)
   const provenancePath = join(releaseDir, provenanceFileName)
   const provenance = {
     schemaVersion: PROVENANCE_SCHEMA,
@@ -417,10 +486,10 @@ async function writeManifests(options) {
   for (const file of shaFiles.sort((a, b) => basename(a).localeCompare(basename(b)))) {
     shaLines.push(`${await sha256(file)}  ${basename(file)}`)
   }
-  const shaManifestPath = join(releaseDir, 'SHA256SUMS.txt')
+  const shaManifestPath = join(releaseDir, SHA_MANIFEST_NAME)
   await writeFile(shaManifestPath, `${shaLines.join('\n')}\n`, 'utf8')
 
-  return verifyManifests({ ...options, 'release-dir': releaseDir })
+  return verifyManifests({ ...options, 'release-dir': releaseDir, 'allow-build-output-extras': true })
 }
 
 async function parseShaManifest(path) {
@@ -437,16 +506,38 @@ async function parseShaManifest(path) {
   return entries
 }
 
+async function listPublishedReleaseAssetNames(releaseDir, facts) {
+  const entries = await readdir(releaseDir, { withFileTypes: true })
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((fileName) => !isGitHubGeneratedSourceArchive(fileName, facts))
+    .sort()
+}
+
 async function verifyManifests(options) {
   const facts = await loadReleaseFacts()
   const releaseDir = resolve(desktopDir, options['release-dir'] ?? 'release')
-  const shaManifestPath = join(releaseDir, 'SHA256SUMS.txt')
-  const provenancePath = join(releaseDir, `release-provenance-${facts.version}.json`)
+  const shaManifestPath = join(releaseDir, SHA_MANIFEST_NAME)
+  const provenancePath = join(releaseDir, expectedProvenanceName(facts.version))
 
   await assertExists(shaManifestPath, 'SHA256SUMS.txt')
   await assertExists(provenancePath, 'release provenance manifest')
 
+  const expectedAssetNames = expectedReleaseAssetNames(facts)
+  const publishedAssetNames = await listPublishedReleaseAssetNames(releaseDir, facts)
+  if (options['allow-build-output-extras'] === true) {
+    assertContainsNames(publishedAssetNames, expectedAssetNames, 'release directory')
+  } else {
+    assertSameNames(publishedAssetNames, expectedAssetNames, 'release asset allowlist')
+  }
+
   const entries = await parseShaManifest(shaManifestPath)
+  assertSameNames(
+    entries.map((entry) => entry.fileName),
+    expectedShaAssetNames(facts),
+    'SHA manifest assets',
+  )
   for (const entry of entries) {
     const filePath = join(releaseDir, entry.fileName)
     await assertExists(filePath, `SHA asset ${entry.fileName}`)
@@ -494,32 +585,12 @@ async function verifyManifests(options) {
     throw new Error(`Phase 1 signingStatus must be unsigned-internal, got ${provenance.signingStatus}`)
   }
 
-  const entryNames = new Set(entries.map((entry) => entry.fileName))
-  const metadataArtifactNames = provenance.artifacts
-    .map((artifact) => artifact.fileName)
-    .filter((fileName) => fileName.endsWith('.yml') && fileName !== 'builder-debug.yml')
-  if (metadataArtifactNames.length === 0) {
-    throw new Error('provenance missing update metadata artifact')
-  }
-  for (const expected of [
-    facts.installerName,
-    `${facts.installerName}.blockmap`,
-    `release-notes-${facts.version}.md`,
-    `release-provenance-${facts.version}.json`,
-    ...metadataArtifactNames,
-  ]) {
-    if (!entryNames.has(expected)) throw new Error(`SHA manifest missing release asset: ${expected}`)
-  }
-
-  const provenanceArtifactNames = new Set(provenance.artifacts.map((artifact) => artifact.fileName))
-  for (const expected of [
-    facts.installerName,
-    `${facts.installerName}.blockmap`,
-    `release-notes-${facts.version}.md`,
-    ...metadataArtifactNames,
-  ]) {
-    if (!provenanceArtifactNames.has(expected)) throw new Error(`provenance missing artifact: ${expected}`)
-  }
+  assertSameNames(provenance.artifactFilenames, expectedProvenanceArtifactNames(facts), 'provenance artifactFilenames')
+  assertSameNames(
+    provenance.artifacts.map((artifact) => artifact.fileName),
+    expectedProvenanceArtifactNames(facts),
+    'provenance artifacts',
+  )
 
   return {
     version: facts.version,
@@ -527,7 +598,7 @@ async function verifyManifests(options) {
     distributionClass: provenance.distributionClass,
     tag: facts.tag,
     installerName: facts.installerName,
-    updateMetadataName: metadataArtifactNames.join(','),
+    updateMetadataName: facts.updateMetadataName,
     shaManifest: basename(shaManifestPath),
     provenance: basename(provenancePath),
     shaEntries: entries.length,

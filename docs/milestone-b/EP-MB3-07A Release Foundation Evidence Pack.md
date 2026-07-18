@@ -29,12 +29,13 @@ Implementation commits:
 - `660155f250278d09d018bb051790aada9c573660` — `build(desktop): establish versioned release foundation`
 - `a3c70eba9e3112ab018d30b7daf0e96ab33d9c43` — `fix(desktop): verify actual release metadata asset`
 - `f26643db834118542d299e1d78d79cd0c8983956` — `fix(desktop): publish actual update metadata asset`
+- pilot.2 remediation change set — strict release asset allowlist after pilot.1 Release QA failure
 
 ## 2. Phase 1 Scope
 
 Implemented:
 
-- Desktop version advanced from `0.1.0` to `0.2.0-pilot.1`
+- Desktop version advanced from `0.1.0` to `0.2.0-pilot.2`
 - `desktop/package.json` remains the Desktop version source
 - NSIS installer filename remains versioned as `E-Shop-Desktop-Setup-${version}.${ext}`
 - GitHub publish provider metadata added for update metadata generation
@@ -45,7 +46,8 @@ Implemented:
 - unsigned internal pilot distribution classification enforced
 - provenance manifest and SHA manifest generation defined
 - GitHub Release upload path includes remote asset re-verification in the pilot workflow
-- workflows publish the actual builder `*.yml` metadata asset instead of hard-coding `pilot.yml`
+- pilot workflow stages and publishes only the explicit formal asset allowlist
+- `builder-debug.yml` and arbitrary extra files are rejected as published release assets
 
 Not implemented in Phase 1:
 
@@ -66,7 +68,7 @@ Not implemented in Phase 1:
 
 Version source: `desktop/package.json`
 
-Desktop version: `0.2.0-pilot.1`
+Desktop version: `0.2.0-pilot.2`
 
 Release channel: `pilot`
 
@@ -78,33 +80,36 @@ Signing status: `unsigned-internal`
 
 Pilot tag format: `desktop-v${version}`
 
-Pilot tag for this phase: `desktop-v0.2.0-pilot.1`
+Pilot remediation tag for the next dry run: `desktop-v0.2.0-pilot.2`
 
 Stable tag format: `desktop-v0.2.0`
 
-Installer filename: `E-Shop-Desktop-Setup-0.2.0-pilot.1.exe`
+Installer filename: `E-Shop-Desktop-Setup-0.2.0-pilot.2.exe`
 
-Policy-inferred pilot metadata name: `pilot.yml`
+Pilot update metadata name: `latest.yml`
 
-Actual update metadata rule: hash, upload, and publish the single actual builder `*.yml` file produced in the release directory. This protects the workflow from electron-builder metadata filename differences when `--publish never` is used.
+Release asset rule: publish exactly the six formal allowlisted project assets. The electron-builder diagnostic file `builder-debug.yml` is not a formal release asset and must not be uploaded to GitHub Release, included in `SHA256SUMS.txt`, or included in provenance.
 
 ## 4. Release Assets
 
 The Windows build workflow produces and uploads:
 
-- `E-Shop-Desktop-Setup-0.2.0-pilot.1.exe`
-- `E-Shop-Desktop-Setup-0.2.0-pilot.1.exe.blockmap`
-- one actual builder `*.yml` update metadata file
+- `E-Shop-Desktop-Setup-0.2.0-pilot.2.exe`
+- `E-Shop-Desktop-Setup-0.2.0-pilot.2.exe.blockmap`
+- `latest.yml`
 - `SHA256SUMS.txt`
-- `release-provenance-0.2.0-pilot.1.json`
-- `release-notes-0.2.0-pilot.1.md`
+- `release-provenance-0.2.0-pilot.2.json`
+- `release-notes-0.2.0-pilot.2.md`
 
 Release asset rules:
 
 - installer name must include the Desktop version
-- metadata is selected from actual release output, not guessed by workflow asset paths
+- update metadata is the allowlisted `latest.yml` asset currently produced by electron-builder
 - provenance and SHA manifest must include the installer, blockmap, metadata, notes, and provenance file
 - duplicate release asset filenames are rejected
+- published project assets must exactly equal the explicit allowlist
+- GitHub-generated source archives are ignored by the project asset verifier
+- `builder-debug.yml` is diagnostic build output only and is rejected if present in published project assets
 
 ## 5. GitHub Workflow
 
@@ -115,7 +120,7 @@ Existing workflow preserved:
 - Release behavior: no GitHub Release creation
 - Publishing behavior: `npx electron-builder --win --x64 --publish never`
 - Added evidence generation: release foundation policy, provenance, SHA manifest
-- Artifact upload: installer, blockmap, actual `*.yml`, SHA manifest, provenance, release notes
+- Artifact upload: installer, blockmap, `latest.yml`, SHA manifest, provenance, release notes
 
 New pilot workflow:
 
@@ -128,12 +133,23 @@ New pilot workflow:
 - Stable protection: no push trigger; no stable release automation
 - Signing behavior: unsigned internal only; no commercial signing claim
 - Remote verification: downloads created release assets and re-runs `release-foundation.mjs verify`
+- Asset upload behavior: stages `pilot-release-bundle` from explicit filenames, then uploads only the allowlisted files
+- GitHub Release creation behavior: passes exact file paths to `gh release create`; no broad `*.yml` release upload is permitted
 
-Default branch workflow visibility at implementation time:
+Default branch workflow visibility at initial implementation time:
 
 - GitHub API listed active default-branch workflows: `cloud-ci`, `desktop-windows-build`, `EP-MB3-06B Windows Diagnostic`
 - `desktop-release-pilot.yml` is new on the feature branch and is not active on default branch until merged
-- Result: real `workflow_dispatch` pilot prerelease dry run cannot be claimed complete before workflow activation on default branch
+- Result at that time: real `workflow_dispatch` pilot prerelease dry run could not be claimed complete before workflow activation on default branch
+- Follow-up state: workflow-only main enablement occurred and pilot.1 protected dry run executed
+
+Pilot.1 Release QA result:
+
+- Tag: `desktop-v0.2.0-pilot.1`
+- Commit: `ba3160b7215a34b89c7dbe177ed29e3098d9a9e0`
+- Result: FAIL
+- Reason: GitHub Release contained unexpected `builder-debug.yml`
+- Decision: keep pilot.1 Release and tag untouched as failed QA evidence; do not add `builder-debug.yml` to SHA manifest or provenance
 
 ## 6. Artifact Integrity
 
@@ -152,16 +168,20 @@ Integrity behavior:
 - provenance rejects secret-like fields and values
 - tampered assets fail verification
 - duplicate SHA entries fail verification
+- missing allowlisted assets fail verification
+- unexpected published assets fail verification
+- `builder-debug.yml` fails verification if present in published project assets
 - signed-commercial claims are rejected in Phase 1
 
 Remote Release verification:
 
 - The pilot workflow downloads the created GitHub Release assets after upload and re-runs `release-foundation.mjs verify`
-- This remote verification has not yet run because the pilot workflow has not yet been activated on default branch
+- pilot.1 remote verification failed due unexpected `builder-debug.yml`
+- pilot.2 remote verification is pending the next protected pilot dry run
 
 ## 7. Local Validation
 
-Local validation completed on 2026-07-18:
+Local validation completed on 2026-07-18 before pilot.2 remediation:
 
 - root `npm run build`: PASS
 - desktop `npm run typecheck`: PASS
@@ -172,6 +192,15 @@ Local validation completed on 2026-07-18:
 - local mac-arm64 `npm run pack:dir`: PASS during Phase 1 implementation
 - `node scripts/verify-activation-assets.mjs dist`: PASS during Phase 1 implementation
 
+Pilot.2 remediation validation:
+
+- desktop `npm run release:foundation:policy`: PASS
+- desktop `npx vitest run tests/release-foundation.test.ts --reporter=verbose`: PASS, 8 tests
+- desktop `npm run typecheck`: PASS
+- desktop `npm test`: PASS, 19 files / 145 tests
+- desktop `npm run compile`: PASS
+- root `npm run build`: PASS
+
 Local limitations:
 
 - Local machine can validate mac-arm64 dir packaging only
@@ -179,7 +208,7 @@ Local limitations:
 
 ## 8. Windows CI
 
-Final branch CI run:
+Final branch CI run before pilot.2 remediation:
 
 - Workflow: `desktop-windows-build`
 - Run ID: `29629191977`
@@ -233,30 +262,36 @@ Earlier CI attempts:
 
 ## 9. GitHub Release Dry Run
 
-Release URL: not created
+Release URL: `https://github.com/jasonmino-ops/light-ops-assistant/releases/tag/desktop-v0.2.0-pilot.1`
 
 Tag: `desktop-v0.2.0-pilot.1`
 
-Prerelease: intended, not created
+Prerelease: yes
 
-Workflow run: not executed
+Workflow run: protected pilot prerelease dry run executed
 
-Assets: not uploaded to GitHub Release
+Assets: uploaded to GitHub Release
 
-Result: BLOCKED BY EXTERNAL GITHUB CONFIGURATION / WORKFLOW ACTIVATION
+Result: FAIL
 
-Blockers:
+Failure:
 
-- `desktop-release-pilot.yml` is new on feature branch and not active on default branch yet
-- `pilot-release` GitHub Environment protection has not been verified
-- local `gh` CLI is not installed
-- no authenticated local GitHub write token was available for safe manual release dispatch
+- Required assets, SHA manifest, and provenance passed
+- GitHub Release contained unexpected `builder-debug.yml`
+- `builder-debug.yml` was not listed in `SHA256SUMS.txt`
+- `builder-debug.yml` was not listed in provenance
+- `builder-debug.yml` contained CI runner paths and was classified as diagnostic build output, not formal distribution asset
+
+Remediation:
+
+- Existing pilot.1 Release and tag remain untouched as historical failed QA evidence
+- Next dry run version: `0.2.0-pilot.2`
+- Next dry run tag: `desktop-v0.2.0-pilot.2`
+- Publish path now uses a strict allowlisted bundle and exact `gh release create` file arguments
 
 No stable release was created.
 
-No GitHub Release was created.
-
-No tag was created.
+No commercial-ready Release was created.
 
 ## 10. Frozen Boundary
 
@@ -299,9 +334,10 @@ Signed Distribution Gate remains required before:
 
 Required before Phase 1 full acceptance:
 
-- pilot workflow becomes active on default branch
-- GitHub Environment `pilot-release` exists and protection rules are verified
-- unsigned internal pilot prerelease dry run executes through the protected workflow
+- feature branch pilot.2 remediation is committed and pushed
+- main workflow-only pilot release file is updated with the strict allowlist before the next dry run
+- unsigned internal `0.2.0-pilot.2` prerelease dry run executes through the protected workflow
+- GitHub Release remote asset allowlist verification passes
 - GitHub Release remote asset SHA verification passes
 
 Required before signed/store/commercial readiness:
@@ -314,8 +350,8 @@ Required before signed/store/commercial readiness:
 
 ## 13. Recommendation
 
-Phase 1 implementation is ready for engineering review with conditions.
+Phase 1 pilot.2 remediation is ready for engineering review with conditions once local validation, commit, and push complete.
 
-It is not ready for EP-MB3-07A Final Acceptance or Final Freeze until the protected pilot release dry run and Signed Distribution Gate conditions are completed.
+It is not ready for EP-MB3-07A Phase 1 condition closure until the protected pilot.2 dry run and remote Release QA pass.
 
 READY FOR EP-MB3-07A PHASE 1 REVIEW: YES

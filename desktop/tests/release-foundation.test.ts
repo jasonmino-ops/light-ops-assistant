@@ -1,11 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 
 const script = join(__dirname, '..', 'scripts', 'release-foundation.mjs')
 const desktopRoot = join(__dirname, '..')
+const desktopVersion = '0.2.0-pilot.2'
+const installer = `E-Shop-Desktop-Setup-${desktopVersion}.exe`
 
 function runReleaseFoundation(args: string[], options: { cwd?: string } = {}) {
   return execFileSync(process.execPath, [script, ...args], {
@@ -21,15 +23,14 @@ function runReleaseFoundation(args: string[], options: { cwd?: string } = {}) {
   })
 }
 
-function makeReleaseDir(metadataName = 'pilot.yml') {
+function makeReleaseDir(metadataName = 'latest.yml') {
   const dir = mkdtempSync(join(tmpdir(), 'ep-mb3-07a-release-'))
-  const installer = 'E-Shop-Desktop-Setup-0.2.0-pilot.1.exe'
   writeFileSync(join(dir, installer), 'installer-bytes')
   writeFileSync(join(dir, `${installer}.blockmap`), 'blockmap-bytes')
   writeFileSync(
     join(dir, metadataName),
     [
-      'version: 0.2.0-pilot.1',
+      `version: ${desktopVersion}`,
       'files:',
       `  - url: ${installer}`,
       '    sha512: test-sha512',
@@ -46,13 +47,13 @@ describe('EP-MB3-07A release foundation policy', () => {
     const output = runReleaseFoundation(['policy'])
     const result = JSON.parse(output)
     expect(result.versionSource).toBe('desktop/package.json')
-    expect(result.desktopVersion).toBe('0.2.0-pilot.1')
+    expect(result.desktopVersion).toBe(desktopVersion)
     expect(result.releaseChannel).toBe('pilot')
     expect(result.defaultRuntimeChannel).toBe('stable')
     expect(result.distributionClass).toBe('unsigned-internal')
-    expect(result.tag).toBe('desktop-v0.2.0-pilot.1')
-    expect(result.installerName).toBe('E-Shop-Desktop-Setup-0.2.0-pilot.1.exe')
-    expect(result.updateMetadataName).toBe('pilot.yml')
+    expect(result.tag).toBe(`desktop-v${desktopVersion}`)
+    expect(result.installerName).toBe(installer)
+    expect(result.updateMetadataName).toBe('latest.yml')
     expect(result.frozenBoundary.every((group: { status: string }) => group.status === 'PASS')).toBe(true)
   })
 
@@ -62,6 +63,14 @@ describe('EP-MB3-07A release foundation policy', () => {
     const result = JSON.parse(output)
     expect(result.result).toBe('PASS')
     expect(result.shaEntries).toBe(5)
+    expect(readdirSync(releaseDir).sort()).toEqual([
+      'SHA256SUMS.txt',
+      `${installer}.blockmap`,
+      installer,
+      'latest.yml',
+      `release-notes-${desktopVersion}.md`,
+      `release-provenance-${desktopVersion}.json`,
+    ].sort())
 
     const provenance = JSON.parse(readFileSync(join(releaseDir, result.provenance), 'utf8'))
     expect(provenance.schemaVersion).toBe('ep-mb3-07a.release-provenance.v1')
@@ -83,18 +92,35 @@ describe('EP-MB3-07A release foundation policy', () => {
   it('rejects tampered assets when SHA manifest no longer matches', () => {
     const releaseDir = makeReleaseDir()
     runReleaseFoundation(['write', '--release-dir', releaseDir])
-    writeFileSync(join(releaseDir, 'pilot.yml'), 'tampered')
+    writeFileSync(join(releaseDir, 'latest.yml'), 'tampered')
     expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(/SHA mismatch/)
   })
 
-  it('records the actual builder metadata filename when it differs from inferred pilot.yml', () => {
-    const releaseDir = makeReleaseDir('latest.yml')
-    const output = runReleaseFoundation(['write', '--release-dir', releaseDir])
-    const result = JSON.parse(output)
-    expect(result.result).toBe('PASS')
-    expect(result.updateMetadataName).toBe('latest.yml')
-    const provenance = JSON.parse(readFileSync(join(releaseDir, result.provenance), 'utf8'))
-    expect(provenance.artifactFilenames).toContain('latest.yml')
+  it('rejects builder-debug.yml as an unexpected published asset', () => {
+    const releaseDir = makeReleaseDir()
+    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    writeFileSync(join(releaseDir, 'builder-debug.yml'), 'diagnostic output')
+    expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(
+      /release asset allowlist mismatch.*builder-debug\.yml/,
+    )
+  })
+
+  it('rejects arbitrary extra files as unexpected published assets', () => {
+    const releaseDir = makeReleaseDir()
+    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    writeFileSync(join(releaseDir, 'operator-note.txt'), 'not a formal release asset')
+    expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(
+      /release asset allowlist mismatch.*operator-note\.txt/,
+    )
+  })
+
+  it('rejects missing allowlisted published assets', () => {
+    const releaseDir = makeReleaseDir()
+    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    unlinkSync(join(releaseDir, 'latest.yml'))
+    expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(
+      /release asset allowlist mismatch.*latest\.yml/,
+    )
   })
 
   it('rejects duplicate asset filenames in release directories', () => {
