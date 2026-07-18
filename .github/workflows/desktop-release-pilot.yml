@@ -6,7 +6,7 @@ on:
       version:
         description: "Desktop pilot version from desktop/package.json"
         required: true
-        default: "0.2.0-pilot.1"
+        default: "0.2.0-pilot.2"
 
 permissions:
   contents: read
@@ -218,19 +218,51 @@ jobs:
             --workflow-run-id $env:GITHUB_RUN_ID `
             --build-timestamp $env:BUILD_TIMESTAMP `
             --provider-commit 7785be145d5259991038d17839d322e2694e338c
-          node scripts/release-foundation.mjs verify --release-dir release
+
+      - name: Stage allowlisted pilot release assets
+        shell: pwsh
+        run: |
+          $version = (Get-Content .\package.json | ConvertFrom-Json).version
+          $installer = "E-Shop-Desktop-Setup-$version.exe"
+          $assetNames = @(
+            $installer,
+            "$installer.blockmap",
+            "latest.yml",
+            "SHA256SUMS.txt",
+            "release-provenance-$version.json",
+            "release-notes-$version.md"
+          )
+          $bundle = "pilot-release-bundle"
+          Remove-Item -Recurse -Force $bundle -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          foreach ($assetName in $assetNames) {
+            $source = Join-Path "release" $assetName
+            if (!(Test-Path $source -PathType Leaf)) {
+              throw "Missing allowlisted release asset: $source"
+            }
+            Copy-Item -LiteralPath $source -Destination (Join-Path $bundle $assetName)
+          }
+          $expected = $assetNames | Sort-Object
+          $actual = Get-ChildItem $bundle -File | ForEach-Object { $_.Name } | Sort-Object
+          if (($actual -join "`n") -ne ($expected -join "`n")) {
+            throw "Pilot release bundle does not match allowlist. Expected: $($expected -join ', '); actual: $($actual -join ', ')"
+          }
+          Get-ChildItem $bundle -File | Select-Object Name,Length | Format-Table -AutoSize
+
+      - name: Verify allowlisted pilot release bundle
+        run: node scripts/release-foundation.mjs verify --release-dir pilot-release-bundle
 
       - name: Upload pilot release bundle
         uses: actions/upload-artifact@v4
         with:
           name: eshop-desktop-pilot-release-${{ inputs.version }}
           path: |
-            desktop/release/*.exe
-            desktop/release/*.blockmap
-            desktop/release/*.yml
-            desktop/release/SHA256SUMS.txt
-            desktop/release/release-provenance-*.json
-            desktop/release/release-notes-*.md
+            desktop/pilot-release-bundle/E-Shop-Desktop-Setup-${{ inputs.version }}.exe
+            desktop/pilot-release-bundle/E-Shop-Desktop-Setup-${{ inputs.version }}.exe.blockmap
+            desktop/pilot-release-bundle/latest.yml
+            desktop/pilot-release-bundle/SHA256SUMS.txt
+            desktop/pilot-release-bundle/release-provenance-${{ inputs.version }}.json
+            desktop/pilot-release-bundle/release-notes-${{ inputs.version }}.md
           if-no-files-found: error
 
   publish-prerelease:
@@ -275,17 +307,29 @@ jobs:
             echo "Release already exists: $RELEASE_TAG" >&2
             exit 1
           fi
+          INSTALLER="$GITHUB_WORKSPACE/pilot-release/E-Shop-Desktop-Setup-$VERSION.exe"
+          BLOCKMAP="$GITHUB_WORKSPACE/pilot-release/E-Shop-Desktop-Setup-$VERSION.exe.blockmap"
+          METADATA="$GITHUB_WORKSPACE/pilot-release/latest.yml"
+          SHA_MANIFEST="$GITHUB_WORKSPACE/pilot-release/SHA256SUMS.txt"
+          PROVENANCE="$GITHUB_WORKSPACE/pilot-release/release-provenance-$VERSION.json"
+          NOTES="$GITHUB_WORKSPACE/pilot-release/release-notes-$VERSION.md"
+          for asset in "$INSTALLER" "$BLOCKMAP" "$METADATA" "$SHA_MANIFEST" "$PROVENANCE" "$NOTES"; do
+            if [ ! -f "$asset" ]; then
+              echo "Missing allowlisted release asset: $asset" >&2
+              exit 1
+            fi
+          done
           gh release create "$RELEASE_TAG" \
-            "$GITHUB_WORKSPACE"/pilot-release/*.exe \
-            "$GITHUB_WORKSPACE"/pilot-release/*.blockmap \
-            "$GITHUB_WORKSPACE"/pilot-release/*.yml \
-            "$GITHUB_WORKSPACE"/pilot-release/SHA256SUMS.txt \
-            "$GITHUB_WORKSPACE"/pilot-release/release-provenance-*.json \
-            "$GITHUB_WORKSPACE"/pilot-release/release-notes-*.md \
+            "$INSTALLER" \
+            "$BLOCKMAP" \
+            "$METADATA" \
+            "$SHA_MANIFEST" \
+            "$PROVENANCE" \
+            "$NOTES" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "E-Shop Desktop $VERSION unsigned internal pilot" \
-            --notes-file "$GITHUB_WORKSPACE/pilot-release/release-notes-$VERSION.md" \
+            --notes-file "$NOTES" \
             --prerelease
 
       - name: Verify remote GitHub Release assets
