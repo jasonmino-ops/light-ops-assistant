@@ -26,13 +26,19 @@ jobs:
 
       - name: Validate pilot version input
         shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          $version = (Get-Content .\package.json | ConvertFrom-Json).version
-          if ($version -ne "${{ inputs.version }}") {
-            throw "Input version ${{ inputs.version }} does not match desktop/package.json version $version"
+          $inputVersion = $env:INPUT_VERSION
+          if ([string]::IsNullOrWhiteSpace($inputVersion)) {
+            throw "Input version is required"
           }
-          if ($version -notmatch '-pilot\.') {
-            throw "Pilot release requires a -pilot prerelease version, got $version"
+          $version = (Get-Content .\package.json | ConvertFrom-Json).version
+          if ($version -ne $inputVersion) {
+            throw "Input version $inputVersion does not match desktop/package.json version $version"
+          }
+          if ($inputVersion -notmatch '-pilot\.') {
+            throw "Pilot release requires a -pilot prerelease version, got $inputVersion"
           }
           $tag = "desktop-v$version"
           "DESKTOP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
