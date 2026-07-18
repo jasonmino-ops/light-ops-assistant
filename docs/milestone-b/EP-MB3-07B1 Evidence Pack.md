@@ -19,7 +19,10 @@ Implementation evidence for Deployment Diagnostics & Failure UX. This is not an 
 - `d51bddb` feat(desktop): add bounded deployment recovery
 - `a7e1698` feat(desktop): add redacted diagnostics export
 - `bd5f7e3` test(desktop): cover deployment diagnostics and failure UX
-- Documentation and Windows CI update: this evidence document commit
+- `4c0b615` ci(desktop): add deployment diagnostics verification
+- `058332b` docs(desktop): add EP-MB3-07B1 evidence
+- `0e69636` fix(ci): repair Windows release manifest generation
+- Windows CI evidence closure: this evidence document commit
 
 ## Architecture Evidence
 
@@ -106,4 +109,149 @@ No intended changes to:
 
 ## Windows CI
 
-Pending until branch push triggers `desktop-windows-build`.
+## Windows CI History
+
+### Initial Run
+
+- Run ID: `29653657578`
+- Commit: `058332b9e827f8ff715c0407c43f052cbb010f65`
+- Workflow: `desktop-windows-build`
+- Result: FAIL
+- Failed step: `Generate release foundation manifests`
+- Root cause: strict publish-mode verification rejected `builder-debug.yml` in the local electron-builder output directory.
+- Historical result retained: YES
+
+### Remediation
+
+- Fix commit: `0e6963600ff8490083bc885ffec5a105024d289d`
+- Fix: build-output verification explicitly allows non-published builder extras with `--allow-build-output-extras`, while strict publish verification and the explicit upload allowlist remain unchanged.
+- Governance semantics weakened: NO
+- Regression test: PASS
+
+Regression coverage:
+
+- Strict `verify --release-dir` still rejects `builder-debug.yml` as an unexpected published asset.
+- `verify --release-dir --allow-build-output-extras` passes when `builder-debug.yml` is present only as non-published build output.
+- SHA manifest entries remain limited to the five publishable assets hashed by the project manifest.
+
+### Successful Re-run
+
+- Run ID: `29654102737`
+- Commit: `0e6963600ff8490083bc885ffec5a105024d289d`
+- Workflow: `desktop-windows-build`
+- Job: `build-windows`
+- Runner label: `windows-latest`
+- Result: PASS
+- Status: completed
+- Conclusion: success
+- URL: `https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29654102737`
+- Started: `2026-07-18T17:32:14Z`
+- Completed: `2026-07-18T17:34:51Z`
+
+## Windows CI Job Results
+
+- `npm ci`: PASS (`Install Contract dependencies`, `Install Desktop dependencies`, `Install Provider dependencies`)
+- Typecheck: PASS
+- Full desktop tests: PASS (`Unit tests`)
+- B1 focused tests: PASS (`Activation focused tests`, `Deployment diagnostics focused tests`)
+- Compile: PASS (`Compile main & preload`)
+- Static security: PASS
+- safeStorage smoke: PASS
+- Activation regression: PASS
+- Provider integration: PASS (`Provider supervision pipe integration`)
+- Provider no-survivor: PASS
+- Display/cart sync regression: PASS via full desktop unit test suite
+- NSIS packaging: PASS (`Build Windows installer (NSIS, unsigned)`)
+- Packaged deployment error renderer: PASS (`Verify packaged local renderer assets`)
+- Packaged employee preload: PASS (`Verify packaged local renderer assets`)
+- Packaged customer fallback renderer: PASS (`Verify packaged local renderer assets`)
+- Packaged customer preload: PASS (`Verify packaged local renderer assets`)
+- Packaged system information assets: PASS via packaged employee preload plus deployment IPC focused tests
+- Packaged diagnostics code/assets: PASS via packaged deployment renderer, deployment IPC tests, and diagnostics focused tests
+- Packaged Provider resource: PASS
+- Generate release foundation manifests: PASS
+- Verify release foundation manifests with build-output extras: PASS
+- Upload installer artifact: PASS
+- No updater dependency: PASS
+- No signing workflow: PASS; build remains unsigned internal only
+- No Cloud Contract drift: PASS via release foundation policy
+- No Runtime Core drift: PASS via release foundation policy
+
+## Manifest Generation
+
+- Manifest write: PASS
+- Build-output verify: PASS with `--allow-build-output-extras`
+- Strict publish semantics: PRESERVED
+- `builder-debug.yml` handling:
+  - May remain in the local CI build-output directory.
+  - Must not be treated as a project publish asset.
+  - Must not be in `SHA256SUMS.txt`.
+  - Must not be in release provenance project asset lists.
+  - Must not be uploaded by the workflow allowlist.
+
+## Packaged Asset Verification
+
+The Windows CI re-run verified packaged renderer/preload assets inside `release/win-unpacked/resources/app.asar` using `desktop/scripts/verify-activation-assets.mjs asar`.
+
+Required packaged assets:
+
+- `dist/preload/activationPreload.js`
+- `dist/preload/employeePreload.js`
+- `dist/preload/customerPreload.js`
+- `dist/renderer/activation/index.html`
+- `dist/renderer/activation/activation.css`
+- `dist/renderer/activation/activationRenderer.js`
+- `dist/renderer/deployment-error/index.html`
+- `dist/renderer/deployment-error/deployment.css`
+- `dist/renderer/deployment-error/deploymentErrorRenderer.js`
+- `dist/renderer/customer-fallback/index.html`
+- `dist/renderer/customer-fallback/customerFallback.css`
+- `dist/renderer/customer-fallback/customerFallbackRenderer.js`
+
+Result: PASS
+
+## Artifact Evidence
+
+- Artifact name: `eshop-desktop-windows-installer`
+- Artifact ID: `8432358432`
+- Size: `81915811` bytes
+- Digest: `sha256:87c59af8d329af0c8b09ed8fb5acdbcef2ec1985ff060f68b3a7cda627f0853f`
+- Source run: `29654102737`
+- Source commit: `0e6963600ff8490083bc885ffec5a105024d289d`
+- Retention: expires `2026-10-16T17:32:14Z`
+- Expired: false
+
+Artifact download:
+
+- ARTIFACT DOWNLOAD NOT PERFORMED.
+- Reason: unauthenticated GitHub artifact archive endpoint returned `401 Requires authentication`.
+
+Workflow upload allowlist:
+
+- `desktop/release/*.exe`
+- `desktop/release/*.blockmap`
+- `desktop/release/*.yml`
+- `desktop/release/SHA256SUMS.txt`
+- `desktop/release/release-provenance-*.json`
+- `desktop/release/release-notes-*.md`
+
+Minimum artifact expectations from workflow and manifest generation:
+
+- Installer exists: PASS by artifact upload and manifest generation.
+- Blockmap exists: PASS by artifact upload and manifest generation.
+- `latest.yml` exists: PASS by artifact upload and manifest generation.
+- `SHA256SUMS.txt` exists: PASS by manifest verification and artifact upload allowlist.
+- Release provenance exists: PASS by manifest verification and artifact upload allowlist.
+- Release notes exist: PASS by manifest generation and artifact upload allowlist.
+- `builder-debug.yml` absent from project manifest/provenance: PASS by release foundation verification semantics.
+- Raw diagnostic fixtures not uploaded: PASS by explicit upload allowlist.
+- Token/PIN/secret files not uploaded: PASS by explicit upload allowlist and manifest/provenance secret scan.
+- Unexpected wildcard project assets: guarded by manifest verification and the explicit artifact upload allowlist.
+
+## Review State
+
+- Independent Architecture Review: NOT YET PERFORMED
+- Minimal Windows B1 Field Verification: NOT YET PERFORMED
+- Formal Acceptance: NOT YET PERFORMED
+- Merge: NOT YET PERFORMED
+- Freeze: NOT YET PERFORMED
