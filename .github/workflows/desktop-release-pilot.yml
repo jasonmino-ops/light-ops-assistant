@@ -221,7 +221,7 @@ jobs:
           path: |
             desktop/release/*.exe
             desktop/release/*.blockmap
-            desktop/release/pilot.yml
+            desktop/release/*.yml
             desktop/release/SHA256SUMS.txt
             desktop/release/release-provenance-*.json
             desktop/release/release-notes-*.md
@@ -272,7 +272,7 @@ jobs:
           gh release create "$RELEASE_TAG" \
             "$GITHUB_WORKSPACE"/pilot-release/*.exe \
             "$GITHUB_WORKSPACE"/pilot-release/*.blockmap \
-            "$GITHUB_WORKSPACE"/pilot-release/pilot.yml \
+            "$GITHUB_WORKSPACE"/pilot-release/*.yml \
             "$GITHUB_WORKSPACE"/pilot-release/SHA256SUMS.txt \
             "$GITHUB_WORKSPACE"/pilot-release/release-provenance-*.json \
             "$GITHUB_WORKSPACE"/pilot-release/release-notes-*.md \

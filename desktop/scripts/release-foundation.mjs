@@ -268,6 +268,12 @@ async function runPolicy(options) {
     if (!/--prerelease/.test(pilotWorkflow)) {
       throw new Error('pilot release must create a GitHub prerelease')
     }
+    if (/pilot-release\/pilot\.yml|desktop\/release\/pilot\.yml/.test(pilotWorkflow)) {
+      throw new Error('pilot workflow must publish the actual builder *.yml metadata asset, not hard-code pilot.yml')
+    }
+    if (!/pilot-release\/\*\.yml/.test(pilotWorkflow) || !/desktop\/release\/\*\.yml/.test(pilotWorkflow)) {
+      throw new Error('pilot workflow must upload and publish the actual builder *.yml metadata asset')
+    }
   }
 
   const baseline = options.baseline ?? BASELINE_FREEZE_TAG

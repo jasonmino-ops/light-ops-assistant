@@ -211,8 +211,7 @@ jobs:
           path: |
             desktop/release/*.exe
             desktop/release/*.blockmap
-            desktop/release/pilot.yml
-            desktop/release/latest.yml
+            desktop/release/*.yml
             desktop/release/SHA256SUMS.txt
             desktop/release/release-provenance-*.json
             desktop/release/release-notes-*.md
