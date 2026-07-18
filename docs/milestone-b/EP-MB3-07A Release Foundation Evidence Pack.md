@@ -592,3 +592,25 @@ Acceptance consistency:
 - Distribution: `unsigned-internal`
 - Commercial Ready: NO
 - Store Pilot Ready: NO
+
+## 16. Final Merge / Freeze
+
+Formal Acceptance: ACCEPTED
+
+Merge Result: PASS
+
+Merge Commit: `1cbd5ece702790a920ebfe926feca28b09cbe475`
+
+Post-Merge Regression: PASS
+
+Final Freeze Decision: APPROVED
+
+Final Freeze Tag: `ep-mb3-07a-phase1-release-foundation-v1.0-final`
+
+Final Freeze Commit: TO BE RECORDED AFTER COMMIT
+
+Final Frozen Main HEAD: TO BE RECORDED AFTER METADATA COMMIT
+
+Final Status: FINAL FROZEN
+
+Remaining Phase 1 Conditions: NONE
