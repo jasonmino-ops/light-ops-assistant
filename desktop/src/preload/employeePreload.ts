@@ -21,6 +21,16 @@ const CART_PUBLISH_CHANNEL = 'eshop:cart:publish'
 const EMPLOYEE_FULLSCREEN_ENTER_CHANNEL = 'eshop:employee-fullscreen:enter'
 const EMPLOYEE_FULLSCREEN_EXIT_CHANNEL = 'eshop:employee-fullscreen:exit'
 const EMPLOYEE_FULLSCREEN_STATE_CHANNEL = 'eshop:employee-fullscreen:state'
+const DEPLOYMENT_GET_HEALTH_CHANNEL = 'eshop:deployment:get-health'
+const DEPLOYMENT_GET_SYSTEM_INFO_CHANNEL = 'eshop:deployment:get-system-info'
+const DEPLOYMENT_RETRY_CLOUD_CHANNEL = 'eshop:deployment:retry-cloud'
+const DEPLOYMENT_RELOAD_BUSINESS_CHANNEL = 'eshop:deployment:reload-business'
+const DEPLOYMENT_RECHECK_PROVIDER_CHANNEL = 'eshop:deployment:recheck-provider'
+const DEPLOYMENT_RECHECK_DISPLAYS_CHANNEL = 'eshop:deployment:recheck-displays'
+const DEPLOYMENT_OPEN_LOGS_CHANNEL = 'eshop:deployment:open-logs'
+const DEPLOYMENT_EXPORT_DIAGNOSTICS_CHANNEL = 'eshop:deployment:export-diagnostics'
+const DEPLOYMENT_QUIT_CHANNEL = 'eshop:deployment:quit'
+const DEPLOYMENT_RETURN_TO_ACTIVATION_CHANNEL = 'eshop:deployment:return-to-activation'
 const WEB_REALTIME_BROADCAST_CHANNEL = 'light-ops:customer-display:realtime:v1'
 const DESKTOP_RELAY_FLAG = 'relayedByDesktop'
 const desktopEpoch = (() => {
@@ -47,6 +57,19 @@ contextBridge.exposeInMainWorld('eshopDesktopEmployeeFullscreen', Object.freeze(
   enterEmployeeFullscreen: () => ipcRenderer.invoke(EMPLOYEE_FULLSCREEN_ENTER_CHANNEL),
   exitEmployeeFullscreen: () => ipcRenderer.invoke(EMPLOYEE_FULLSCREEN_EXIT_CHANNEL),
   getEmployeeFullscreenState: () => ipcRenderer.invoke(EMPLOYEE_FULLSCREEN_STATE_CHANNEL),
+}))
+
+contextBridge.exposeInMainWorld('eshopDesktopDeployment', Object.freeze({
+  getHealth: () => ipcRenderer.invoke(DEPLOYMENT_GET_HEALTH_CHANNEL),
+  getSystemInfo: () => ipcRenderer.invoke(DEPLOYMENT_GET_SYSTEM_INFO_CHANNEL),
+  retryCloud: () => ipcRenderer.invoke(DEPLOYMENT_RETRY_CLOUD_CHANNEL),
+  reloadBusiness: () => ipcRenderer.invoke(DEPLOYMENT_RELOAD_BUSINESS_CHANNEL),
+  recheckProvider: () => ipcRenderer.invoke(DEPLOYMENT_RECHECK_PROVIDER_CHANNEL),
+  recheckDisplays: () => ipcRenderer.invoke(DEPLOYMENT_RECHECK_DISPLAYS_CHANNEL),
+  openLogs: () => ipcRenderer.invoke(DEPLOYMENT_OPEN_LOGS_CHANNEL),
+  exportDiagnostics: () => ipcRenderer.invoke(DEPLOYMENT_EXPORT_DIAGNOSTICS_CHANNEL),
+  quit: () => ipcRenderer.invoke(DEPLOYMENT_QUIT_CHANNEL),
+  returnToActivation: () => ipcRenderer.invoke(DEPLOYMENT_RETURN_TO_ACTIVATION_CHANNEL),
 }))
 
 // 旁路捕获现有 Web 实时通道（零侵入：不修改任何冻结页面）

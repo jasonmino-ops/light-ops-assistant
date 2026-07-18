@@ -14,6 +14,7 @@ import { cartSyncService } from './cartSyncService'
 import { getHealthSnapshot, updateHealth } from './runtimeHealth'
 import { logger } from './logger'
 import type { WindowManager } from './windowManager'
+import type { DeploymentSystemInfo, DiagnosticsExportResult } from '../shared/deploymentDiagnostics'
 
 function senderRole(
   windowManager: WindowManager,
@@ -39,7 +40,73 @@ function authorize(
   return role
 }
 
-export function registerIpcHandlers(windowManager: WindowManager) {
+export type DeploymentIpcResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string }
+
+export type DeploymentIpcOptions = {
+  getSystemInfo: () => DeploymentSystemInfo
+  openLogs: () => Promise<{ ok: true } | { ok: false; error: string }>
+  exportDiagnostics: () => Promise<DiagnosticsExportResult>
+  onQuit: () => void
+  returnToActivation: () => { ok: true } | { ok: false; error: string }
+  recheckProvider: () => unknown
+}
+
+const deploymentRateLimit = new Map<string, number>()
+
+function authorizeDeploymentRenderer(
+  windowManager: WindowManager,
+  event: IpcMainInvokeEvent,
+  channel: string,
+): boolean {
+  const role = authorize(windowManager, event, channel, 'invoke')
+  if (role !== 'employee') return false
+  if (!windowManager.isEmployeeDeploymentRendererActive(event.sender.id)) {
+    logger.warn('deployment-ipc.denied-outside-local-renderer', { channel, webContentsId: event.sender.id })
+    return false
+  }
+  return true
+}
+
+function rateLimitDeployment(event: IpcMainInvokeEvent, channel: string, minIntervalMs: number): boolean {
+  const key = `${event.sender.id}:${channel}`
+  const now = Date.now()
+  const last = deploymentRateLimit.get(key) ?? 0
+  if (now - last < minIntervalMs) return false
+  deploymentRateLimit.set(key, now)
+  return true
+}
+
+function sanitizeIpcError(error: unknown): string {
+  if (!(error instanceof Error)) return 'DEPLOYMENT_IPC_ERROR'
+  if (/token|authorization|bearer|cookie|pin|ciphertext|khqr|payment|phone|address/i.test(error.message)) {
+    return 'DEPLOYMENT_IPC_ERROR'
+  }
+  return error.message.slice(0, 120) || 'DEPLOYMENT_IPC_ERROR'
+}
+
+async function deploymentInvoke<T>(
+  windowManager: WindowManager,
+  event: IpcMainInvokeEvent,
+  channel: string,
+  args: unknown[],
+  action: () => Promise<T> | T,
+  minIntervalMs = 250,
+): Promise<DeploymentIpcResult<T>> {
+  if (!authorizeDeploymentRenderer(windowManager, event, channel)) return { ok: false, error: 'UNAUTHORIZED' }
+  if (args.length > 0) return { ok: false, error: 'INVALID_PAYLOAD' }
+  if (!rateLimitDeployment(event, channel, minIntervalMs)) return { ok: false, error: 'RATE_LIMITED' }
+  try {
+    logger.info('deployment-ipc.invoke', { channel, webContentsId: event.sender.id })
+    return { ok: true, data: await action() }
+  } catch (error) {
+    logger.warn('deployment-ipc.error', { channel, message: sanitizeIpcError(error) })
+    return { ok: false, error: sanitizeIpcError(error) }
+  }
+}
+
+export function registerIpcHandlers(windowManager: WindowManager, deploymentOptions?: DeploymentIpcOptions) {
   ipcMain.on(IPC_CHANNELS.CART_PUBLISH, (event, payload: unknown) => {
     if (!authorize(windowManager, event, IPC_CHANNELS.CART_PUBLISH, 'send')) return
     cartSyncService.ingest(payload)
@@ -70,6 +137,110 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     if (!win || win.isDestroyed() || win.webContents.id !== event.sender.id) return false
     return win.isFullScreen()
   })
+
+  if (deploymentOptions) {
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_GET_HEALTH, (event, ...args: unknown[]) => deploymentInvoke(
+      windowManager,
+      event,
+      IPC_CHANNELS.DEPLOYMENT_GET_HEALTH,
+      args,
+      () => getHealthSnapshot().deployment,
+    ))
+
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_GET_SYSTEM_INFO, (event, ...args: unknown[]) => deploymentInvoke(
+      windowManager,
+      event,
+      IPC_CHANNELS.DEPLOYMENT_GET_SYSTEM_INFO,
+      args,
+      deploymentOptions.getSystemInfo,
+    ))
+
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_RETRY_CLOUD, (event, ...args: unknown[]) => deploymentInvoke(
+      windowManager,
+      event,
+      IPC_CHANNELS.DEPLOYMENT_RETRY_CLOUD,
+      args,
+      () => windowManager.retryEmployeeBusinessLoad('manual'),
+    ))
+
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_RELOAD_BUSINESS, (event, ...args: unknown[]) => deploymentInvoke(
+      windowManager,
+      event,
+      IPC_CHANNELS.DEPLOYMENT_RELOAD_BUSINESS,
+      args,
+      () => windowManager.retryEmployeeBusinessLoad('reload'),
+    ))
+
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_RECHECK_PROVIDER, (event, ...args: unknown[]) => deploymentInvoke(
+      windowManager,
+      event,
+      IPC_CHANNELS.DEPLOYMENT_RECHECK_PROVIDER,
+      args,
+      deploymentOptions.recheckProvider,
+      1000,
+    ))
+
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_RECHECK_DISPLAYS, (event, ...args: unknown[]) => deploymentInvoke(
+      windowManager,
+      event,
+      IPC_CHANNELS.DEPLOYMENT_RECHECK_DISPLAYS,
+      args,
+      () => windowManager.recheckDisplays(),
+      1000,
+    ))
+
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_OPEN_LOGS, (event, ...args: unknown[]) => deploymentInvoke(
+      windowManager,
+      event,
+      IPC_CHANNELS.DEPLOYMENT_OPEN_LOGS,
+      args,
+      async () => {
+        const result = await deploymentOptions.openLogs()
+        if (!result.ok) throw new Error(result.error)
+        return result
+      },
+      1000,
+    ))
+
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_EXPORT_DIAGNOSTICS, async (event, ...args: unknown[]) => {
+      const result = await deploymentInvoke(
+        windowManager,
+        event,
+        IPC_CHANNELS.DEPLOYMENT_EXPORT_DIAGNOSTICS,
+        args,
+        deploymentOptions.exportDiagnostics,
+        3000,
+      )
+      if (!result.ok) return result
+      if (!result.data.ok) return { ok: false, error: result.data.error }
+      return { ok: true, data: { filePath: result.data.filePath, manifest: result.data.manifest } }
+    })
+
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_QUIT, (event, ...args: unknown[]) => deploymentInvoke(
+      windowManager,
+      event,
+      IPC_CHANNELS.DEPLOYMENT_QUIT,
+      args,
+      () => {
+        deploymentOptions.onQuit()
+        return { ok: true }
+      },
+      1000,
+    ))
+
+    ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_RETURN_TO_ACTIVATION, (event, ...args: unknown[]) => deploymentInvoke(
+      windowManager,
+      event,
+      IPC_CHANNELS.DEPLOYMENT_RETURN_TO_ACTIVATION,
+      args,
+      () => {
+        const result = deploymentOptions.returnToActivation()
+        if (!result.ok) throw new Error(result.error)
+        return result
+      },
+      1000,
+    ))
+  }
 
   updateHealth({ ipc: 'ok' }, 'ipc.registered')
 }

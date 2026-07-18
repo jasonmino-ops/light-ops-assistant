@@ -63,6 +63,24 @@ export class WindowsProviderSupervisor {
     updateHealth({ providerRuntime: { state: 'closed', pid: null, pipeNameHash: safePipeIdentifier(this.pipeName), lastError: null } }, 'provider.stopped')
   }
 
+  recheckStatus() {
+    logger.info('provider.recheck', {
+      pid: this.child?.pid ?? null,
+      pipeNameHash: safePipeIdentifier(this.pipeName),
+      connected: Boolean(this.client),
+    })
+    try {
+      this.client?.requestHealth()
+    } catch (error) {
+      recordHealthError('provider', `recheck failed: ${String(error)}`)
+    }
+    return {
+      pid: this.child?.pid ?? null,
+      pipeNameHash: safePipeIdentifier(this.pipeName),
+      connected: Boolean(this.client),
+    }
+  }
+
   private async connectAfterDelay(supervisorToken: string): Promise<void> {
     const delayMs = this.options.connectDelayMs ?? 250
     await new Promise((resolve) => setTimeout(resolve, delayMs))

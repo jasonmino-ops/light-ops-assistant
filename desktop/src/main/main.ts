@@ -14,7 +14,13 @@ import { loadConfig } from './config'
 import { registerIpcHandlers } from './ipcRouter'
 import { windowManager } from './windowManager'
 import { createTray, destroyTray } from './tray'
-import { updateHealth, recordHealthError, getHealthSnapshot } from './runtimeHealth'
+import {
+  recordDeploymentFailure,
+  updateDeploymentComponent,
+  updateHealth,
+  recordHealthError,
+  getHealthSnapshot,
+} from './runtimeHealth'
 import { createDefaultHardwareManager } from './hardware/hardwareManager'
 import { WindowsProviderSupervisor } from './provider/providerSupervisor'
 import { ActivationApiClient } from './activation/activationApiClient'
@@ -22,7 +28,13 @@ import { CredentialStore } from './activation/credentialStore'
 import { ActivationRuntime } from './activation/activationRuntime'
 import { ActivationWindowController } from './activation/activationWindowController'
 import { registerActivationIpcHandlers } from './activation/activationIpc'
-import type { AuthorizedDesktopContext } from './activation/activationTypes'
+import type { ActivationPublicState, AuthorizedDesktopContext } from './activation/activationTypes'
+import {
+  buildDeploymentSystemInfo,
+  exportDiagnosticsBundle,
+  openDeploymentLogDirectory,
+} from './deploymentSupport'
+import { classifyDeploymentFailure } from '../shared/deploymentDiagnostics'
 
 // ── 单实例（A4）────────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -79,7 +91,23 @@ if (!gotLock) {
       updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
       logger.info('hardware.status', hardware.getStatusSummary())
 
-      registerIpcHandlers(windowManager)
+      registerIpcHandlers(windowManager, {
+        getSystemInfo: () => buildDeploymentSystemInfo(activationRuntime?.getDeploymentSummary() ?? null),
+        openLogs: openDeploymentLogDirectory,
+        exportDiagnostics: () => exportDiagnosticsBundle({
+          activation: activationRuntime?.getDeploymentSummary() ?? null,
+          provider: getHealthSnapshot().providerRuntime,
+        }),
+        onQuit: () => { void quitApp() },
+        returnToActivation: () => {
+          if (!activationRuntime || activationRuntime.isAuthorized()) {
+            return { ok: false, error: 'RETURN_TO_ACTIVATION_NOT_ALLOWED' }
+          }
+          activationWindowController?.show()
+          return { ok: true }
+        },
+        recheckProvider: () => providerSupervisor?.recheckStatus() ?? getHealthSnapshot().providerRuntime,
+      })
 
       windowManager.createEmployeeWindow()
       windowManager.ensureCustomerWindow('startup')
@@ -109,6 +137,9 @@ if (!gotLock) {
       logFile: getLogPaths().logFile,
     })
     updateHealth({ app: 'ok', version: app.getVersion() }, 'app.ready')
+    updateDeploymentComponent('application', { level: 'HEALTHY', state: 'ready' }, 'deployment.application.ready')
+    updateDeploymentComponent('logs', { level: 'HEALTHY', state: 'available', message: 'log directory available' }, 'deployment.logs.available')
+    updateDeploymentComponent('system', { level: 'HEALTHY', state: 'ready' }, 'deployment.system.ready')
 
     const config = loadConfig(app.getPath('userData'))
     windowManager.setFormalRuntimeGuard(() => activationRuntime?.isAuthorized() === true)
@@ -133,6 +164,7 @@ if (!gotLock) {
 
     activationRuntime.onStateChanged((state) => {
       activationWindowController?.sendState(state)
+      applyActivationDeploymentHealth(state)
       if (state.kind === 'AUTHORIZED_RUNNING') activationWindowController?.closeAfterAuthorization()
     })
 
@@ -163,4 +195,49 @@ if (!gotLock) {
     activationRuntime?.markQuitting()
     windowManager.setQuitting()
   })
+
+  function applyActivationDeploymentHealth(state: ActivationPublicState) {
+    if (state.kind === 'AUTHORIZED_RUNNING') {
+      updateDeploymentComponent('activation', {
+        level: 'HEALTHY',
+        state: state.kind,
+        message: 'activation authorized',
+      }, 'deployment.activation.authorized')
+      return
+    }
+    if (state.kind === 'BOOTING' || state.kind === 'ACTIVATING' || state.kind === 'VERIFYING' || state.kind === 'AUTHORIZED_STARTING') {
+      updateDeploymentComponent('activation', {
+        level: 'UNKNOWN',
+        state: state.kind,
+        message: 'activation in progress',
+      }, 'deployment.activation.progress')
+      return
+    }
+    if (state.kind === 'UNACTIVATED') {
+      updateDeploymentComponent('activation', {
+        level: 'FAILED',
+        state: state.kind,
+        message: 'activation required',
+      }, 'deployment.activation.required')
+      return
+    }
+    if (state.kind === 'QUITTING') {
+      updateDeploymentComponent('activation', {
+        level: 'UNKNOWN',
+        state: state.kind,
+        message: 'application quitting',
+      }, 'deployment.activation.quitting')
+      return
+    }
+    const failure = classifyDeploymentFailure({
+      component: 'ACTIVATION',
+      activationKind: state.kind,
+      metadata: {
+        activationState: state.kind,
+        retryAfterSeconds: state.retryAfterSeconds,
+        subscriptionState: state.subscription?.accessState,
+      },
+    })
+    recordDeploymentFailure(failure)
+  }
 }

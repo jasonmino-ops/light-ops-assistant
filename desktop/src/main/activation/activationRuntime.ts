@@ -159,6 +159,14 @@ export class ActivationRuntime {
     return { ...this.currentState }
   }
 
+  getDeploymentSummary() {
+    return {
+      state: this.currentState.kind,
+      storeCodeHint: this.currentState.storeCodeHint,
+      installationId: this.installationId,
+    }
+  }
+
   isAuthorized(): boolean {
     return this.currentState.kind === 'AUTHORIZED_RUNNING' || this.currentState.kind === 'AUTHORIZED_STARTING'
   }

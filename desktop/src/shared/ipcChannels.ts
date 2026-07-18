@@ -19,6 +19,26 @@ export const IPC_CHANNELS = {
   EMPLOYEE_FULLSCREEN_EXIT: 'eshop:employee-fullscreen:exit',
   /** Renderer(员工窗口) → Main (invoke)：读取员工窗口原生全屏状态 */
   EMPLOYEE_FULLSCREEN_STATE: 'eshop:employee-fullscreen:state',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：读取部署健康快照 */
+  DEPLOYMENT_GET_HEALTH: 'eshop:deployment:get-health',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：读取支持可读系统信息 */
+  DEPLOYMENT_GET_SYSTEM_INFO: 'eshop:deployment:get-system-info',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：重试云端收银页 */
+  DEPLOYMENT_RETRY_CLOUD: 'eshop:deployment:retry-cloud',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：重新加载云端业务页 */
+  DEPLOYMENT_RELOAD_BUSINESS: 'eshop:deployment:reload-business',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：重新读取 Provider 状态，不启动 Provider */
+  DEPLOYMENT_RECHECK_PROVIDER: 'eshop:deployment:recheck-provider',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：重新读取显示器状态 */
+  DEPLOYMENT_RECHECK_DISPLAYS: 'eshop:deployment:recheck-displays',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：打开日志目录 */
+  DEPLOYMENT_OPEN_LOGS: 'eshop:deployment:open-logs',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：导出经过脱敏检查的诊断包 */
+  DEPLOYMENT_EXPORT_DIAGNOSTICS: 'eshop:deployment:export-diagnostics',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：退出桌面端 */
+  DEPLOYMENT_QUIT: 'eshop:deployment:quit',
+  /** Renderer(员工本地部署故障页) → Main (invoke)：请求回到激活窗口，由 Main 决策 */
+  DEPLOYMENT_RETURN_TO_ACTIVATION: 'eshop:deployment:return-to-activation',
   /** Main → Renderer(顾客窗口)：下发最新购物车快照 */
   CART_APPLY: 'eshop:cart:apply',
 } as const
@@ -40,6 +60,16 @@ export const INVOKABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER,
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT,
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
+    IPC_CHANNELS.DEPLOYMENT_GET_HEALTH,
+    IPC_CHANNELS.DEPLOYMENT_GET_SYSTEM_INFO,
+    IPC_CHANNELS.DEPLOYMENT_RETRY_CLOUD,
+    IPC_CHANNELS.DEPLOYMENT_RELOAD_BUSINESS,
+    IPC_CHANNELS.DEPLOYMENT_RECHECK_PROVIDER,
+    IPC_CHANNELS.DEPLOYMENT_RECHECK_DISPLAYS,
+    IPC_CHANNELS.DEPLOYMENT_OPEN_LOGS,
+    IPC_CHANNELS.DEPLOYMENT_EXPORT_DIAGNOSTICS,
+    IPC_CHANNELS.DEPLOYMENT_QUIT,
+    IPC_CHANNELS.DEPLOYMENT_RETURN_TO_ACTIVATION,
   ],
   customer: [],
 }
