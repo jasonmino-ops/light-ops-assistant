@@ -50,7 +50,7 @@ export function markRetryFailure(
   nowMs = Date.now(),
   policy = DEFAULT_DEPLOYMENT_RETRY_POLICY,
 ): RetryTransitionResult {
-  const attempt = current.state === 'RETRYING' ? current.attempt : current.attempt + 1
+  const attempt = current.attempt + 1
   const timestamp = new Date(nowMs).toISOString()
   if (!failure.retryable) {
     return {

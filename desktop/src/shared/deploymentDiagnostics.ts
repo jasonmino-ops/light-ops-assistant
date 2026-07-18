@@ -616,7 +616,7 @@ const ACTIVATION_CODE_BY_STATE: Record<string, DeploymentFailureCode> = {
 }
 
 const SECRET_PATTERN =
-  /deviceToken|authorization|bearer|cookie|session|pin|ciphertext|khqr|payment|receipt|phone|address|DATABASE_URL|DIRECT_URL|GITHUB_TOKEN|CSC_|APPLE_|TOKEN=|SECRET=|PASSWORD=/i
+  /deviceToken|authorization|bearer|cookie|session|\bpin\b|ciphertext|khqr|payment|receipt|phone|address|DATABASE_URL|DIRECT_URL|GITHUB_TOKEN|CSC_|APPLE_|TOKEN=|SECRET=|PASSWORD=/i
 
 export function getDeploymentFailureDescriptor(code: DeploymentFailureCode): DeploymentFailureDescriptor {
   return DESCRIPTORS[code]
