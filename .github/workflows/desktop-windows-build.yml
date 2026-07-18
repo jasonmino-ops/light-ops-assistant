@@ -213,15 +213,47 @@ jobs:
             --provider-commit 7785be145d5259991038d17839d322e2694e338c
           node scripts/release-foundation.mjs verify --release-dir release --allow-build-output-extras
 
+      - name: Verify artifact upload allowlist
+        id: upload_allowlist
+        shell: pwsh
+        run: |
+          $allowlistJson = node scripts/release-foundation.mjs upload-allowlist --release-dir release
+          $allowlist = $allowlistJson | ConvertFrom-Json
+          if ($allowlist.result -ne "PASS" -or $allowlist.uploadAssetCount -ne 6) {
+            throw "Artifact upload allowlist verification failed"
+          }
+
+          $outputs = @{}
+          foreach ($asset in $allowlist.assets) {
+            Write-Output "$($asset.fileName) $($asset.byteSize) $($asset.sha256)"
+            $relativePath = "desktop/release/$($asset.fileName)"
+            switch ($asset.kind) {
+              "installer" { $outputs["installer"] = $relativePath }
+              "blockmap" { $outputs["blockmap"] = $relativePath }
+              "updateMetadata" { $outputs["update_metadata"] = $relativePath }
+              "shaManifest" { $outputs["sha_manifest"] = $relativePath }
+              "provenance" { $outputs["provenance"] = $relativePath }
+              "releaseNotes" { $outputs["release_notes"] = $relativePath }
+              default { throw "Unexpected upload asset kind: $($asset.kind)" }
+            }
+          }
+
+          foreach ($required in @("installer", "blockmap", "update_metadata", "sha_manifest", "provenance", "release_notes")) {
+            if (!$outputs.ContainsKey($required)) {
+              throw "Missing upload output: $required"
+            }
+            "$required=$($outputs[$required])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: eshop-desktop-windows-installer
           path: |
-            desktop/release/*.exe
-            desktop/release/*.blockmap
-            desktop/release/*.yml
-            desktop/release/SHA256SUMS.txt
-            desktop/release/release-provenance-*.json
-            desktop/release/release-notes-*.md
+            ${{ steps.upload_allowlist.outputs.installer }}
+            ${{ steps.upload_allowlist.outputs.blockmap }}
+            ${{ steps.upload_allowlist.outputs.update_metadata }}
+            ${{ steps.upload_allowlist.outputs.sha_manifest }}
+            ${{ steps.upload_allowlist.outputs.provenance }}
+            ${{ steps.upload_allowlist.outputs.release_notes }}
           if-no-files-found: error

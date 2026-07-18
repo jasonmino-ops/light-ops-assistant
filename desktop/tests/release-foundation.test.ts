@@ -115,6 +115,51 @@ describe('EP-MB3-07A release foundation policy', () => {
     expect(result.shaEntries).toBe(5)
   })
 
+  it('resolves artifact upload allowlist to only the six formal release assets', () => {
+    const releaseDir = makeReleaseDir()
+    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    writeFileSync(join(releaseDir, 'builder-debug.yml'), 'diagnostic output')
+    writeFileSync(join(releaseDir, 'builder-effective-config.yaml'), 'diagnostic output')
+
+    const output = runReleaseFoundation(['upload-allowlist', '--release-dir', releaseDir])
+    const result = JSON.parse(output)
+    const fileNames = result.assets.map((asset: { fileName: string }) => asset.fileName).sort()
+
+    expect(result.result).toBe('PASS')
+    expect(result.uploadAssetCount).toBe(6)
+    expect(fileNames).toEqual([
+      'SHA256SUMS.txt',
+      `${installer}.blockmap`,
+      installer,
+      'latest.yml',
+      `release-notes-${desktopVersion}.md`,
+      `release-provenance-${desktopVersion}.json`,
+    ].sort())
+    expect(fileNames).not.toContain('builder-debug.yml')
+    expect(fileNames).not.toContain('builder-effective-config.yaml')
+
+    const shaManifest = readFileSync(join(releaseDir, 'SHA256SUMS.txt'), 'utf8')
+    expect(shaManifest).not.toMatch(/builder-debug|builder-effective-config/)
+    const provenance = readFileSync(join(releaseDir, `release-provenance-${desktopVersion}.json`), 'utf8')
+    expect(provenance).not.toMatch(/builder-debug|builder-effective-config/)
+  })
+
+  it('keeps the Windows CI artifact upload step on script-resolved explicit files', () => {
+    const output = runReleaseFoundation(['policy'])
+    expect(JSON.parse(output).desktopVersion).toBe(desktopVersion)
+
+    const workflow = readFileSync(join(__dirname, '..', '..', '.github', 'workflows', 'desktop-windows-build.yml'), 'utf8')
+    const uploadStep = workflow.match(/- name:\s*Upload installer artifact[\s\S]*?(?=\n\s+- name:|\n\S|$)/)?.[0] ?? ''
+    expect(uploadStep).toContain('actions/upload-artifact@v4')
+    expect(uploadStep).toContain('steps.upload_allowlist.outputs.installer')
+    expect(uploadStep).toContain('steps.upload_allowlist.outputs.blockmap')
+    expect(uploadStep).toContain('steps.upload_allowlist.outputs.update_metadata')
+    expect(uploadStep).toContain('steps.upload_allowlist.outputs.sha_manifest')
+    expect(uploadStep).toContain('steps.upload_allowlist.outputs.provenance')
+    expect(uploadStep).toContain('steps.upload_allowlist.outputs.release_notes')
+    expect(uploadStep).not.toMatch(/desktop\/release\/\*|release\/\*\*|builder-debug\.yml/)
+  })
+
   it('rejects arbitrary extra files as unexpected published assets', () => {
     const releaseDir = makeReleaseDir()
     runReleaseFoundation(['write', '--release-dir', releaseDir])

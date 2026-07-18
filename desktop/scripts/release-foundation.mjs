@@ -27,6 +27,8 @@ const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z
 const HASH_LINE_PATTERN = /^([a-fA-F0-9]{64})  (.+)$/
 const SECRET_PATTERN =
   /(GH_TOKEN|GITHUB_TOKEN|SECRET|PASSWORD|Authorization|Bearer|deviceToken|activation credential|certificate password|WIN_CSC|CSC_KEY)/i
+const FORBIDDEN_UPLOAD_ASSET_PATTERN =
+  /(builder-debug|builder-effective-config|diagnostics?|fixture|credential|test-secret|token|pin|raw[-_ ]?logs?|\.log$)/i
 
 const FROZEN_BOUNDARY_GROUPS = [
   {
@@ -184,6 +186,17 @@ function expectedReleaseAssetNames(facts) {
   ].sort()
 }
 
+function expectedUploadAssets(facts) {
+  return [
+    { kind: 'installer', fileName: facts.installerName },
+    { kind: 'blockmap', fileName: `${facts.installerName}.blockmap` },
+    { kind: 'updateMetadata', fileName: facts.updateMetadataName },
+    { kind: 'shaManifest', fileName: SHA_MANIFEST_NAME },
+    { kind: 'provenance', fileName: expectedProvenanceName(facts.version) },
+    { kind: 'releaseNotes', fileName: expectedReleaseNotesName(facts.version) },
+  ]
+}
+
 function expectedShaAssetNames(facts) {
   return expectedReleaseAssetNames(facts).filter((fileName) => fileName !== SHA_MANIFEST_NAME)
 }
@@ -273,6 +286,52 @@ function assertNoSecrets(text, label) {
   }
 }
 
+function assertNoForbiddenUploadAssetNames(assetNames, label) {
+  const forbidden = assetNames.filter((fileName) => FORBIDDEN_UPLOAD_ASSET_PATTERN.test(fileName))
+  if (forbidden.length > 0) {
+    throw new Error(`${label} contains forbidden upload asset: ${forbidden.join(', ')}`)
+  }
+}
+
+function assertDesktopBuildWorkflowArtifactUploadPolicy(workflowText) {
+  if (!/actions\/upload-artifact@v4/.test(workflowText)) {
+    throw new Error('desktop Windows workflow must upload artifacts through actions/upload-artifact@v4')
+  }
+  if (!/name:\s*Verify artifact upload allowlist/.test(workflowText)) {
+    throw new Error('desktop Windows workflow must verify the artifact upload allowlist before upload')
+  }
+  if (!/id:\s*upload_allowlist/.test(workflowText)) {
+    throw new Error('desktop Windows workflow must expose upload allowlist step outputs')
+  }
+  if (/desktop\/release\/(?:\*\*|\*|\*\.yml|\*\.json|\*\.md|$)/m.test(workflowText)) {
+    throw new Error('desktop Windows workflow must not upload broad desktop/release globs or directories')
+  }
+  if (/release\/\*\*|release\/\*/.test(workflowText)) {
+    throw new Error('desktop Windows workflow must not upload broad release globs')
+  }
+  const requiredOutputs = [
+    'installer',
+    'blockmap',
+    'update_metadata',
+    'sha_manifest',
+    'provenance',
+    'release_notes',
+  ]
+  for (const output of requiredOutputs) {
+    const token = `steps.upload_allowlist.outputs.${output}`
+    if (!workflowText.includes(token)) {
+      throw new Error(`desktop Windows workflow upload path missing explicit output: ${output}`)
+    }
+  }
+  const uploadStep = workflowText.match(/- name:\s*Upload installer artifact[\s\S]*?(?=\n\s+- name:|\n\S|$)/)?.[0] ?? ''
+  if (/builder-debug\.yml|builder-effective-config\.yaml|\*/.test(uploadStep)) {
+    throw new Error('desktop Windows workflow upload step must not include builder extras or globs')
+  }
+  if (!/if-no-files-found:\s*error/.test(uploadStep)) {
+    throw new Error('desktop Windows workflow upload step must fail when any upload file is missing')
+  }
+}
+
 async function loadReleaseFacts() {
   const desktopPackage = await readJson(join(desktopDir, 'package.json'))
   const rootPackage = await readJson(join(repoRoot, 'package.json'))
@@ -339,6 +398,7 @@ async function runPolicy(options) {
   if (/gh\s+release\s+create|gh\s+release\s+upload|contents:\s*write/.test(desktopBuildWorkflow)) {
     throw new Error('ordinary desktop-windows-build workflow must not publish GitHub Releases')
   }
+  assertDesktopBuildWorkflowArtifactUploadPolicy(desktopBuildWorkflow)
 
   const pilotWorkflowPath = join(repoRoot, '.github/workflows/desktop-release-pilot.yml')
   let pilotWorkflow = ''
@@ -637,6 +697,51 @@ async function verifyManifests(options) {
   }
 }
 
+async function resolveUploadAllowlist(options) {
+  const facts = await loadReleaseFacts()
+  const releaseDir = resolve(desktopDir, options['release-dir'] ?? 'release')
+  const verification = await verifyManifests({ ...options, 'release-dir': releaseDir, 'allow-build-output-extras': true })
+  const uploadAssets = expectedUploadAssets(facts)
+  const uploadNames = uploadAssets.map((asset) => asset.fileName)
+  assertSameNames(uploadNames, expectedReleaseAssetNames(facts), 'artifact upload allowlist')
+  assertNoForbiddenUploadAssetNames(uploadNames, 'artifact upload allowlist')
+
+  const entries = await parseShaManifest(join(releaseDir, SHA_MANIFEST_NAME))
+  assertNoForbiddenUploadAssetNames(
+    entries.map((entry) => entry.fileName),
+    'SHA manifest assets',
+  )
+
+  const provenanceText = await readFile(join(releaseDir, expectedProvenanceName(facts.version)), 'utf8')
+  assertNoSecrets(provenanceText, expectedProvenanceName(facts.version))
+  const provenance = JSON.parse(provenanceText)
+  assertNoForbiddenUploadAssetNames(provenance.artifactFilenames ?? [], 'provenance artifactFilenames')
+  assertNoForbiddenUploadAssetNames(
+    (provenance.artifacts ?? []).map((artifact) => artifact.fileName),
+    'provenance artifacts',
+  )
+
+  const assets = []
+  for (const asset of uploadAssets) {
+    const filePath = join(releaseDir, asset.fileName)
+    await assertExists(filePath, `upload asset ${asset.fileName}`)
+    assets.push({
+      kind: asset.kind,
+      ...await fileDescriptor(filePath),
+    })
+  }
+  assertNoDuplicateNames(assets.map((asset) => asset.fileName))
+
+  return {
+    version: facts.version,
+    releaseChannel: facts.channel,
+    distributionClass: verification.distributionClass,
+    uploadAssetCount: assets.length,
+    assets,
+    result: 'PASS',
+  }
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2)
   const options = parseArgs(rest)
@@ -647,8 +752,10 @@ async function main() {
     result = await writeManifests(options)
   } else if (command === 'verify') {
     result = await verifyManifests(options)
+  } else if (command === 'upload-allowlist') {
+    result = await resolveUploadAllowlist(options)
   } else {
-    throw new Error(`usage: release-foundation.mjs <policy|write|verify> [--release-dir dir]`)
+    throw new Error(`usage: release-foundation.mjs <policy|write|verify|upload-allowlist> [--release-dir dir]`)
   }
   console.log(JSON.stringify(result, null, 2))
 }
