@@ -22,6 +22,7 @@ Implementation evidence for Deployment Diagnostics & Failure UX. This is not an 
 - `4c0b615` ci(desktop): add deployment diagnostics verification
 - `058332b` docs(desktop): add EP-MB3-07B1 evidence
 - `0e69636` fix(ci): repair Windows release manifest generation
+- `f4bd0df` fix(desktop): make diagnostics export fail closed
 - Windows CI evidence closure: this evidence document commit
 
 ## Architecture Evidence
@@ -250,8 +251,205 @@ Minimum artifact expectations from workflow and manifest generation:
 
 ## Review State
 
-- Independent Architecture Review: NOT YET PERFORMED
+- Independent Architecture Review: FAIL
+- Independent Architecture Re-review: NOT YET PERFORMED
 - Minimal Windows B1 Field Verification: NOT YET PERFORMED
 - Formal Acceptance: NOT YET PERFORMED
 - Merge: NOT YET PERFORMED
 - Freeze: NOT YET PERFORMED
+
+## Independent Review History
+
+Initial Independent Review Result:
+FAIL
+
+Reason:
+P1 diagnostics security blockers
+
+Reviewed HEAD:
+8fe82cbad839d2f0d099330fc28a57b35425f59f
+
+### Findings
+
+P1-1:
+raw/full storeCode, URLs/query strings and stack traces could enter diagnostics logs
+
+P1-2:
+timeout could return failure while background assembly later wrote final ZIP
+
+P2-1:
+full local save path returned to renderer
+
+P2-2:
+hostile log and timeout regression coverage missing
+
+### Security Remediation
+
+Fix commit:
+f4bd0dfe7bf64719ca699fe88738d7bd7238179b
+
+Local status:
+
+P1-1:
+CLOSED
+
+P1-2:
+CLOSED
+
+P2-1:
+CLOSED
+
+P2-2:
+CLOSED
+
+Remediation summary:
+
+- allowlist reconstruction for log export
+- no raw log lines
+- no raw stack/URL/query/storeCode/identity/customer/order/payment data
+- structured safe lastError
+- fail-closed final scan
+- abort-aware temp-file assembly
+- atomic final rename
+- no final output after timeout
+- basename-only renderer result
+- hostile fixture and timeout regression tests
+
+### Security Fix Windows CI
+
+Run:
+29655002095
+
+Commit:
+f4bd0dfe7bf64719ca699fe88738d7bd7238179b
+
+Result:
+PASS
+
+Security tests:
+PASS
+
+Packaging:
+PASS
+
+Manifest generation:
+PASS
+
+Artifact upload:
+PASS
+
+Workflow:
+desktop-windows-build
+
+Job:
+build-windows
+
+Status:
+completed
+
+Conclusion:
+success
+
+URL:
+https://github.com/jasonmino-ops/light-ops-assistant/actions/runs/29655002095
+
+Started:
+2026-07-18T18:00:15Z
+
+Completed:
+2026-07-18T18:02:41Z
+
+### Security Test Evidence
+
+- raw storeCode does not enter diagnostics bundle: PASS
+- raw installation identity does not enter diagnostics bundle: PASS
+- full URL does not enter diagnostics bundle: PASS
+- query string does not enter diagnostics bundle: PASS
+- stack trace does not enter diagnostics bundle: PASS
+- Bearer/token/PIN does not enter diagnostics bundle: PASS
+- customer phone/address does not enter diagnostics bundle: PASS
+- order/payment/receipt data does not enter diagnostics bundle: PASS
+- home path does not enter diagnostics bundle: PASS
+- arbitrary unknown metadata does not enter diagnostics bundle: PASS
+- lastError is a structured safe object: PASS
+- IPC returns basename only: PASS
+- timeout leaves final target file absent: PASS
+- scan failure leaves final target file absent: PASS
+- temp output is not reported as success: PASS
+- final rename happens only after scan PASS and not aborted: PASS
+- no unhandled rejection in timeout path: PASS
+
+### Security Fix Windows CI Job Evidence
+
+- npm ci: PASS (`Install Contract dependencies`, `Install Desktop dependencies`, `Install Provider dependencies`)
+- typecheck: PASS (`Type check`)
+- full desktop tests: PASS (`Unit tests`)
+- diagnostics security tests: PASS (`Unit tests`; `tests/diagnostics-security.test.ts` included by `npm test`)
+- timeout fail-closed tests: PASS (`Unit tests`; `tests/diagnostics-security.test.ts` included by `npm test`)
+- atomic write tests: PASS (`Unit tests`; `tests/diagnostics-security.test.ts` included by `npm test`)
+- IPC path privacy tests: PASS (`Deployment diagnostics focused tests`, `Unit tests`)
+- lastError safety tests: PASS (`Unit tests`; `tests/diagnostics-security.test.ts` included by `npm test`)
+- static security tests: PASS (`Static security scans`)
+- B1 focused tests: PASS (`Activation focused tests`, `Deployment diagnostics focused tests`)
+- compile: PASS (`Compile main & preload`)
+- safeStorage smoke: PASS (`Electron safeStorage smoke`)
+- Activation regression: PASS (`Activation focused tests`)
+- Provider integration: PASS (`Provider supervision pipe integration`, `Electron runtime Provider smoke with spaces`)
+- Provider no-survivor: PASS (`Verify no surviving Provider process`)
+- WindowManager regression: PASS (`Unit tests`)
+- customer fallback regression: PASS (`Verify local renderer dist assets`, `Verify packaged local renderer assets`)
+- NSIS packaging: PASS (`Build Windows installer (NSIS, unsigned)`)
+- packaged deployment error renderer: PASS (`Verify packaged local renderer assets`)
+- packaged customer fallback renderer: PASS (`Verify packaged local renderer assets`)
+- packaged preloads: PASS (`Verify local renderer dist assets`, `Verify packaged local renderer assets`)
+- packaged diagnostics code/assets: PASS (`Deployment diagnostics focused tests`, `Verify packaged local renderer assets`)
+- packaged Provider resource: PASS (`Verify packaged Provider resource`)
+- release foundation manifests: PASS (`Generate release foundation manifests`)
+- artifact upload: PASS (`Upload installer artifact`)
+- no updater dependency: PASS (`Release foundation policy`)
+- no signing workflow: PASS (`Release foundation policy`; unsigned internal build only)
+- no Cloud Contract drift: PASS (`Release foundation policy`)
+- no Runtime Core drift: PASS (`Release foundation policy`)
+
+### Security Fix Artifact Evidence
+
+- Artifact name: `eshop-desktop-windows-installer`
+- Artifact ID: `8432616036`
+- Size: `81919722` bytes
+- Digest: `sha256:0ffad1bf6160d8583be8896df69b9a0b538aee011c9b02d856aa5507d4411545`
+- Source run: `29655002095`
+- Source commit: `f4bd0dfe7bf64719ca699fe88738d7bd7238179b`
+- Retention: expires `2026-10-16T18:00:10Z`
+- Expired: false
+
+Artifact Download:
+ARTIFACT DOWNLOAD NOT PERFORMED
+
+Reason:
+Unauthenticated GitHub artifact archive endpoint returned `401 Requires authentication`.
+
+Minimum artifact expectations from workflow and manifest generation:
+
+- installer exists: PASS by artifact upload and manifest generation
+- blockmap exists: PASS by artifact upload and manifest generation
+- `latest.yml` exists: PASS by artifact upload and manifest generation
+- `SHA256SUMS.txt` exists: PASS by manifest verification and artifact upload allowlist
+- provenance exists: PASS by manifest verification and artifact upload allowlist
+- release notes exist: PASS by manifest generation and artifact upload allowlist
+- no builder-debug upload: PASS by explicit upload allowlist and release foundation verification semantics
+- no diagnostics fixture upload: PASS by explicit upload allowlist
+- no raw logs upload: PASS by explicit upload allowlist
+- no test secret upload: PASS by explicit upload allowlist and manifest/provenance secret scan
+- no unexpected asset upload: PASS by manifest verification and explicit artifact upload allowlist
+
+Independent Architecture Re-review:
+NOT YET PERFORMED
+
+Minimal Windows B1 Field Verification:
+NOT YET PERFORMED
+
+Artifact Download:
+ARTIFACT DOWNLOAD NOT PERFORMED
+
+Formal Acceptance:
+NOT YET PERFORMED
