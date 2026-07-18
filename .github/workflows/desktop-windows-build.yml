@@ -95,13 +95,22 @@ jobs:
             tests/activation-static-security.test.ts `
             --reporter=verbose
 
+      - name: Deployment diagnostics focused tests
+        run: |
+          npx vitest run `
+            tests/deployment-diagnostics.test.ts `
+            tests/deployment-recovery.test.ts `
+            tests/deployment-ipc.test.ts `
+            tests/static-security.test.ts `
+            --reporter=verbose
+
       - name: Unit tests
         run: npm test
 
       - name: Compile main & preload
         run: npm run compile
 
-      - name: Verify activation dist assets
+      - name: Verify local renderer dist assets
         run: node scripts/verify-activation-assets.mjs dist
 
       - name: Static security scans
@@ -177,7 +186,7 @@ jobs:
       - name: Build Windows installer (NSIS, unsigned)
         run: npx electron-builder --win --x64 --publish never
 
-      - name: Verify packaged activation assets
+      - name: Verify packaged local renderer assets
         run: node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar
 
       - name: Verify packaged Provider resource

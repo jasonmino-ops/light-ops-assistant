@@ -79,6 +79,30 @@ const FROZEN_BOUNDARY_GROUPS = [
   },
 ]
 
+const EP_MB3_07B1_ALLOWED_BOUNDARY_CHANGES = new Map([
+  [
+    'ActivationRuntime',
+    {
+      reason: 'EP-MB3-07B1 exposes sanitized deployment summary only',
+      paths: ['desktop/src/main/activation/activationRuntime.ts'],
+    },
+  ],
+  [
+    'main startup gate',
+    {
+      reason: 'EP-MB3-07B1 registers deployment diagnostics IPC behind the authorized runtime gate',
+      paths: ['desktop/src/main/main.ts'],
+    },
+  ],
+  [
+    'WindowManager',
+    {
+      reason: 'EP-MB3-07B1 adds same-window deployment error renderer and customer fallback modes',
+      paths: ['desktop/src/main/windowManager.ts'],
+    },
+  ],
+])
+
 function parseArgs(argv) {
   const args = {}
   for (let index = 0; index < argv.length; index += 1) {
@@ -361,10 +385,17 @@ async function runPolicy(options) {
     const changed = git(['diff', '--name-only', baseline, '--', ...group.paths])
       .split('\n')
       .filter(Boolean)
+    const allowed = EP_MB3_07B1_ALLOWED_BOUNDARY_CHANGES.get(group.label)
+    const allowedChanged = Boolean(
+      allowed &&
+      changed.length > 0 &&
+      changed.every((path) => allowed.paths.includes(path)),
+    )
     frozenBoundary.push({
       label: group.label,
-      status: changed.length === 0 ? 'PASS' : 'FAIL',
+      status: changed.length === 0 || allowedChanged ? 'PASS' : 'FAIL',
       changed,
+      ...(allowedChanged ? { allowedReason: allowed?.reason } : {}),
     })
   }
   const failed = frozenBoundary.filter((group) => group.status !== 'PASS')

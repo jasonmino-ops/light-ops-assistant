@@ -26,7 +26,7 @@ describe('activation runtime gate', () => {
 
     for (const formalCall of [
       'createDefaultHardwareManager()',
-      'registerIpcHandlers(windowManager)',
+      'registerIpcHandlers(windowManager',
       'windowManager.createEmployeeWindow()',
       "windowManager.ensureCustomerWindow('startup')",
       'windowManager.watchDisplays()',
@@ -36,6 +36,8 @@ describe('activation runtime gate', () => {
       expect(initialize).not.toContain(formalCall)
       expect(authorized).toContain(formalCall)
     }
+    expect(initialize).not.toContain('registerIpcHandlers(windowManager')
+    expect(authorized).toContain('registerIpcHandlers(windowManager')
   })
 
   it('routes second-instance to activation before authorization and employee after authorization', () => {
@@ -65,6 +67,6 @@ describe('activation runtime gate', () => {
     const main = read('src/main/main.ts')
     const initialize = bodyOf(main, 'initializeApplication')
     expect(initialize).toContain('registerActivationIpcHandlers')
-    expect(initialize).not.toContain('registerIpcHandlers(windowManager)')
+    expect(initialize).not.toContain('registerIpcHandlers(windowManager')
   })
 })
