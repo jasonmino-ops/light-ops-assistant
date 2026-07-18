@@ -21,13 +21,13 @@ function runReleaseFoundation(args: string[], options: { cwd?: string } = {}) {
   })
 }
 
-function makeReleaseDir() {
+function makeReleaseDir(metadataName = 'pilot.yml') {
   const dir = mkdtempSync(join(tmpdir(), 'ep-mb3-07a-release-'))
   const installer = 'E-Shop-Desktop-Setup-0.2.0-pilot.1.exe'
   writeFileSync(join(dir, installer), 'installer-bytes')
   writeFileSync(join(dir, `${installer}.blockmap`), 'blockmap-bytes')
   writeFileSync(
-    join(dir, 'pilot.yml'),
+    join(dir, metadataName),
     [
       'version: 0.2.0-pilot.1',
       'files:',
@@ -85,6 +85,16 @@ describe('EP-MB3-07A release foundation policy', () => {
     runReleaseFoundation(['write', '--release-dir', releaseDir])
     writeFileSync(join(releaseDir, 'pilot.yml'), 'tampered')
     expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(/SHA mismatch/)
+  })
+
+  it('records the actual builder metadata filename when it differs from inferred pilot.yml', () => {
+    const releaseDir = makeReleaseDir('latest.yml')
+    const output = runReleaseFoundation(['write', '--release-dir', releaseDir])
+    const result = JSON.parse(output)
+    expect(result.result).toBe('PASS')
+    expect(result.updateMetadataName).toBe('latest.yml')
+    const provenance = JSON.parse(readFileSync(join(releaseDir, result.provenance), 'utf8'))
+    expect(provenance.artifactFilenames).toContain('latest.yml')
   })
 
   it('rejects duplicate asset filenames in release directories', () => {

@@ -204,6 +204,7 @@ jobs:
       - name: Generate release foundation manifests
         shell: pwsh
         run: |
+          Get-ChildItem .\release -File | Select-Object Name,Length | Format-Table -AutoSize
           node scripts/release-foundation.mjs write `
             --release-dir release `
             --tag $env:RELEASE_TAG `

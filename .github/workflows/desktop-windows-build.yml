@@ -191,6 +191,7 @@ jobs:
       - name: Generate release foundation manifests
         shell: pwsh
         run: |
+          Get-ChildItem .\release -File | Select-Object Name,Length | Format-Table -AutoSize
           $version = (Get-Content .\package.json | ConvertFrom-Json).version
           $tag = "desktop-v$version"
           $timestamp = (Get-Date).ToUniversalTime().ToString("o")

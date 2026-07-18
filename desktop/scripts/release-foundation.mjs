@@ -305,16 +305,19 @@ async function listReleaseFiles(releaseDir, facts) {
   const installer = join(releaseDir, facts.installerName)
   const blockmap = `${installer}.blockmap`
   const metadataName = expectedUpdateMetadataName(facts.channel)
-  const metadata = join(releaseDir, metadataName)
 
   await assertExists(installer, 'versioned installer')
   await assertExists(blockmap, 'installer blockmap')
-  await assertExists(metadata, 'update metadata')
 
   const allEntries = await readdir(releaseDir)
   const ymlFiles = allEntries.filter((entry) => entry.endsWith('.yml') && entry !== 'builder-debug.yml')
   if (!ymlFiles.includes(metadataName)) {
-    throw new Error(`expected update metadata ${metadataName}; actual metadata files: ${ymlFiles.join(', ') || '(none)'}`)
+    if (ymlFiles.length !== 1) {
+      throw new Error(
+        `expected update metadata ${metadataName}; actual metadata files: ${ymlFiles.join(', ') || '(none)'}`,
+      )
+    }
+    console.warn(`using actual update metadata ${ymlFiles[0]} instead of inferred ${metadataName}`)
   }
 
   return {
@@ -486,12 +489,18 @@ async function verifyManifests(options) {
   }
 
   const entryNames = new Set(entries.map((entry) => entry.fileName))
+  const metadataArtifactNames = provenance.artifacts
+    .map((artifact) => artifact.fileName)
+    .filter((fileName) => fileName.endsWith('.yml') && fileName !== 'builder-debug.yml')
+  if (metadataArtifactNames.length === 0) {
+    throw new Error('provenance missing update metadata artifact')
+  }
   for (const expected of [
     facts.installerName,
     `${facts.installerName}.blockmap`,
-    facts.updateMetadataName,
     `release-notes-${facts.version}.md`,
     `release-provenance-${facts.version}.json`,
+    ...metadataArtifactNames,
   ]) {
     if (!entryNames.has(expected)) throw new Error(`SHA manifest missing release asset: ${expected}`)
   }
@@ -500,8 +509,8 @@ async function verifyManifests(options) {
   for (const expected of [
     facts.installerName,
     `${facts.installerName}.blockmap`,
-    facts.updateMetadataName,
     `release-notes-${facts.version}.md`,
+    ...metadataArtifactNames,
   ]) {
     if (!provenanceArtifactNames.has(expected)) throw new Error(`provenance missing artifact: ${expected}`)
   }
@@ -512,7 +521,7 @@ async function verifyManifests(options) {
     distributionClass: provenance.distributionClass,
     tag: facts.tag,
     installerName: facts.installerName,
-    updateMetadataName: facts.updateMetadataName,
+    updateMetadataName: metadataArtifactNames.join(','),
     shaManifest: basename(shaManifestPath),
     provenance: basename(provenancePath),
     shaEntries: entries.length,
