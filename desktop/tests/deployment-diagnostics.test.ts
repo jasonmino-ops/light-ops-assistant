@@ -76,6 +76,7 @@ describe('deployment failure taxonomy', () => {
     expect(containsSecretPattern({ Authorization: 'Bearer abc' })).toBe(true)
     expect(containsSecretPattern({ safe: 'network timeout' })).toBe(false)
     expect(maskStoreCode('STORE-A')).toBe('ST***-A')
-    expect(shortenInstallationId('installation-1234567890')).toBe('inst-7890')
+    expect(shortenInstallationId('installation-1234567890')).toMatch(/^inst-[a-f0-9]{12}$/)
+    expect(shortenInstallationId('installation-1234567890')).not.toContain('1234567890')
   })
 })

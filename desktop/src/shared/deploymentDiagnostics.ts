@@ -136,7 +136,7 @@ export type DeploymentSystemInfo = {
   providerState: string
   displayState: string
   logsState: string
-  lastError: string | null
+  lastError: DeploymentSafeLastError | null
   lastFailureCode: DeploymentFailureCode | null
   lastSuccessfulCloudLoadAt: string | null
   windowsVersion: string
@@ -144,6 +144,13 @@ export type DeploymentSystemInfo = {
   locale: string
   uptimeSeconds: number
   runtimeHealth: DeploymentHealthSnapshot
+}
+
+export type DeploymentSafeLastError = {
+  code: string
+  component: string
+  occurredAt: string
+  safeMessage: string
 }
 
 export type DiagnosticsManifest = {
@@ -162,7 +169,7 @@ export type DiagnosticsManifest = {
 }
 
 export type DiagnosticsExportResult =
-  | { ok: true; filePath: string; manifest: DiagnosticsManifest }
+  | { ok: true; fileName: string; manifest: DiagnosticsManifest }
   | { ok: false; error: DeploymentFailureCode; message: string }
 
 export type DeploymentFailureInput = {
@@ -616,7 +623,18 @@ const ACTIVATION_CODE_BY_STATE: Record<string, DeploymentFailureCode> = {
 }
 
 const SECRET_PATTERN =
-  /deviceToken|authorization|bearer|cookie|session|\bpin\b|ciphertext|khqr|payment|receipt|phone|address|DATABASE_URL|DIRECT_URL|GITHUB_TOKEN|CSC_|APPLE_|TOKEN=|SECRET=|PASSWORD=/i
+  /deviceToken|authorization|bearer|cookie|\bsession\b|activationPin|pinCode|"pin"\s*:|\bPIN[:=]\s*\d{4,8}\b|ciphertext|khqr|payment|receipt|phone|address|DATABASE_URL|DIRECT_URL|GITHUB_TOKEN|CSC_|APPLE_|TOKEN=|SECRET=|PASSWORD=/i
+
+const RAW_URL_PATTERN = /https?:\/\/[^\s"'<>\\]+/gi
+const QUERY_STRING_PATTERN = /[?&][A-Za-z0-9_.~-]+=[^"'<>\\\s]+/
+const STACK_TRACE_PATTERN = /(^|\n|\r)\s*at\s+|(?:Error|TypeError|ReferenceError|SyntaxError):|[A-Za-z0-9_.-]+\.(?:js|ts):\d+:\d+/
+const HOME_PATH_PATTERN = /(?:\/Users\/[^/\s"']+|\/home\/[^/\s"']+|[A-Za-z]:\\Users\\[^\\\s"']+)/i
+const WINDOWS_ABSOLUTE_PATH_PATTERN = /[A-Za-z]:\\(?:Program Files|Users|Windows|Temp|[^\\\s"']+)\\/i
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
+const PHONE_CONTEXT_PATTERN = /(?:phone|tel|telegram|customer).{0,40}\+?\d[\d\s().-]{7,}/i
+const BUSINESS_DATA_MARKER_PATTERN = /address|order|payment|receipt|khqr/i
+const ENV_DUMP_PATTERN = /process\.env|\b(?:DATABASE_URL|DIRECT_URL|PATH|HOME|USERPROFILE|APPDATA|TEMP)=/i
+const GENERIC_STORE_CODE_PATTERN = /\bSTORE-[A-Z0-9_-]+\b/
 
 export function getDeploymentFailureDescriptor(code: DeploymentFailureCode): DeploymentFailureDescriptor {
   return DESCRIPTORS[code]
@@ -633,6 +651,40 @@ export function containsSecretPattern(value: unknown): boolean {
   return SECRET_PATTERN.test(JSON.stringify(value))
 }
 
+export type DiagnosticsContentScanContext = {
+  fullStoreCode?: string | null
+  fullInstallationId?: string | null
+}
+
+export function diagnosticsContentUnsafeReason(
+  text: string,
+  context: DiagnosticsContentScanContext = {},
+): string | null {
+  if (SECRET_PATTERN.test(text)) return 'SECRET_PATTERN'
+  RAW_URL_PATTERN.lastIndex = 0
+  if (RAW_URL_PATTERN.test(text)) {
+    RAW_URL_PATTERN.lastIndex = 0
+    return 'RAW_URL'
+  }
+  RAW_URL_PATTERN.lastIndex = 0
+  if (QUERY_STRING_PATTERN.test(text)) return 'QUERY_STRING'
+  if (STACK_TRACE_PATTERN.test(text)) return 'STACK_TRACE'
+  if (HOME_PATH_PATTERN.test(text)) return 'HOME_PATH'
+  if (WINDOWS_ABSOLUTE_PATH_PATTERN.test(text)) return 'WINDOWS_PATH'
+  if (EMAIL_PATTERN.test(text)) return 'EMAIL'
+  if (PHONE_CONTEXT_PATTERN.test(text)) return 'PHONE_CONTEXT'
+  if (BUSINESS_DATA_MARKER_PATTERN.test(text)) return 'BUSINESS_DATA_MARKER'
+  if (ENV_DUMP_PATTERN.test(text)) return 'ENV_DUMP'
+  if (GENERIC_STORE_CODE_PATTERN.test(text)) return 'STORE_CODE_PATTERN'
+  if (context.fullStoreCode && text.includes(context.fullStoreCode)) return 'FULL_STORE_CODE'
+  if (context.fullInstallationId && text.includes(context.fullInstallationId)) return 'FULL_INSTALLATION_ID'
+  return null
+}
+
+export function hashDiagnosticIdentifier(value: string, prefix = 'id'): string {
+  return `${prefix}-${createHash('sha256').update(value).digest('hex').slice(0, 12)}`
+}
+
 export function maskStoreCode(value?: string | null): string {
   if (!value) return '未设置'
   const trimmed = value.trim()
@@ -643,9 +695,60 @@ export function maskStoreCode(value?: string | null): string {
 
 export function shortenInstallationId(value?: string | null): string {
   if (!value) return 'unknown'
-  const cleaned = value.replace(/[^a-zA-Z0-9_-]/g, '')
-  if (cleaned.length <= 8) return cleaned || 'unknown'
-  return cleaned.slice(0, 4) + '-' + cleaned.slice(-4)
+  return hashDiagnosticIdentifier(value, 'inst')
+}
+
+export type DiagnosticsUrlCategory = 'BUSINESS_PAGE' | 'CUSTOMER_PAGE' | 'ACTIVATION_API' | 'UNKNOWN'
+
+export function categorizeDiagnosticsUrl(value?: string | null): DiagnosticsUrlCategory {
+  if (!value) return 'UNKNOWN'
+  try {
+    const parsed = new URL(value)
+    const path = parsed.pathname.toLowerCase()
+    if (path.includes('/api/desktop') || path.includes('/activate') || path.includes('/activation')) return 'ACTIVATION_API'
+    if (path.includes('/desktop/display')) return 'CUSTOMER_PAGE'
+    if (path.includes('/desktop')) return 'BUSINESS_PAGE'
+    return 'UNKNOWN'
+  } catch {
+    return 'UNKNOWN'
+  }
+}
+
+export function originHostHash(value?: string | null): string | null {
+  if (!value) return null
+  try {
+    return hashDiagnosticIdentifier(new URL(value).host.toLowerCase(), 'host')
+  } catch {
+    return null
+  }
+}
+
+export function sanitizeDiagnosticMessage(
+  value: unknown,
+  context: DiagnosticsContentScanContext = {},
+): string {
+  if (value == null) return 'none'
+  let text = value instanceof Error ? value.message : String(value)
+  text = text.replace(RAW_URL_PATTERN, (url) => {
+    const hostHash = originHostHash(url)
+    return `[url:${categorizeDiagnosticsUrl(url)}${hostHash ? `:${hostHash}` : ''}]`
+  })
+  RAW_URL_PATTERN.lastIndex = 0
+  text = text
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*at\s+/.test(line) && !STACK_TRACE_PATTERN.test(line))
+    .join(' ')
+    .replace(HOME_PATH_PATTERN, '[path-redacted]')
+    .replace(WINDOWS_ABSOLUTE_PATH_PATTERN, '[path-redacted]')
+  if (context.fullStoreCode) text = text.replaceAll(context.fullStoreCode, maskStoreCode(context.fullStoreCode))
+  if (context.fullInstallationId) {
+    text = text.replaceAll(context.fullInstallationId, shortenInstallationId(context.fullInstallationId))
+  }
+  text = text.replace(/\s+/g, ' ').trim()
+  if (!text) return 'diagnostic message redacted'
+  const reason = diagnosticsContentUnsafeReason(text, context)
+  if (reason) return `diagnostic message redacted (${reason})`
+  return text.length > 160 ? `${text.slice(0, 160)}...[truncated]` : text
 }
 
 function toSafeMetadataValue(value: unknown): DeploymentMetadataValue | undefined {
@@ -744,3 +847,4 @@ function resolveFailureCode(input: DeploymentFailureInput): DeploymentFailureCod
   }
   return 'UNKNOWN_FAILURE'
 }
+import { createHash } from 'node:crypto'

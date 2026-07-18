@@ -11,7 +11,9 @@ import type {
   DeploymentHealthComponent,
   DeploymentHealthLevel,
   DeploymentHealthSnapshot,
+  DeploymentSafeLastError,
 } from '../shared/deploymentDiagnostics'
+import { sanitizeDiagnosticMessage } from '../shared/deploymentDiagnostics'
 import { initialRetryState } from '../shared/deploymentRecovery'
 
 export type ComponentStatus = 'unknown' | 'starting' | 'ok' | 'degraded' | 'error' | 'closed'
@@ -36,7 +38,7 @@ export type RuntimeHealthSnapshot = {
   }
   version: string
   uptimeSeconds: number
-  lastError: { at: string; scope: string; message: string } | null
+  lastError: DeploymentSafeLastError | null
   lastCartSequence: number | null
   customerRecovery: { attempts: number; exhausted: boolean }
   deployment: DeploymentHealthSnapshot
@@ -111,9 +113,17 @@ export function updateHealth(patch: Partial<RuntimeHealthSnapshot>, logEvent = '
 }
 
 export function recordHealthError(scope: string, message: string) {
-  state.lastError = { at: new Date().toISOString(), scope, message: message.slice(0, 500) }
+  const occurredAt = new Date().toISOString()
+  const component = normalizeErrorComponent(scope)
+  const safeMessage = sanitizeDiagnosticMessage(message)
+  state.lastError = {
+    code: makeErrorCode(component, safeMessage),
+    component,
+    occurredAt,
+    safeMessage,
+  }
   state.updatedAt = new Date().toISOString()
-  logger.error('health.error', { scope, message: message.slice(0, 500) })
+  logger.error('health.error', state.lastError)
 }
 
 export function updateDeploymentComponent(
@@ -133,6 +143,22 @@ export function updateDeploymentComponent(
   })
   state.updatedAt = new Date().toISOString()
   logger.info(logEvent, { component, level: state.deployment[component].level, state: state.deployment[component].state })
+}
+
+function normalizeErrorComponent(scope: string): string {
+  const normalized = scope
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalized || 'runtime'
+}
+
+function makeErrorCode(component: string, safeMessage: string): string {
+  const basis = `${component}:${safeMessage}`
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return basis.slice(0, 72) || 'RUNTIME_ERROR'
 }
 
 export function updateDeploymentRetry(retry: DeploymentHealthSnapshot['retry'], logEvent = 'deployment.retry-state') {

@@ -213,7 +213,7 @@ export function registerIpcHandlers(windowManager: WindowManager, deploymentOpti
       )
       if (!result.ok) return result
       if (!result.data.ok) return { ok: false, error: result.data.error }
-      return { ok: true, data: { filePath: result.data.filePath, manifest: result.data.manifest } }
+      return { ok: true, data: { fileName: result.data.fileName, manifest: result.data.manifest } }
     })
 
     ipcMain.handle(IPC_CHANNELS.DEPLOYMENT_QUIT, (event, ...args: unknown[]) => deploymentInvoke(

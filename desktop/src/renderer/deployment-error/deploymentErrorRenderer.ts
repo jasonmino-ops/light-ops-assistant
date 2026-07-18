@@ -40,7 +40,12 @@ type DeploymentSystemInfo = {
   providerState: string
   displayState: string
   logsState: string
-  lastError: string | null
+  lastError: {
+    code: string
+    component: string
+    occurredAt: string
+    safeMessage: string
+  } | null
   lastFailureCode: string | null
   lastSuccessfulCloudLoadAt: string | null
   windowsVersion: string
@@ -58,7 +63,7 @@ type DeploymentApi = {
   recheckProvider(): Promise<DeploymentApiResult<unknown>>
   recheckDisplays(): Promise<DeploymentApiResult<unknown>>
   openLogs(): Promise<DeploymentApiResult<unknown>>
-  exportDiagnostics(): Promise<DeploymentApiResult<{ filePath: string }>>
+  exportDiagnostics(): Promise<DeploymentApiResult<{ fileName: string }>>
   quit(): Promise<DeploymentApiResult<unknown>>
   returnToActivation(): Promise<DeploymentApiResult<unknown>>
 }
@@ -195,7 +200,7 @@ $('#logs-button').addEventListener('click', () => {
 $('#diagnostics-button').addEventListener('click', async () => {
   setStatus('正在导出诊断包...')
   const result = await window.eshopDesktopDeployment.exportDiagnostics()
-  if (result.ok) setStatus(`诊断包已导出: ${result.data.filePath}`)
+  if (result.ok) setStatus(`诊断包已导出: ${result.data.fileName}`)
   else setStatus(`诊断包导出失败: ${result.error}`)
   await refresh()
 })

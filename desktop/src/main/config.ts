@@ -12,6 +12,11 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from './logger'
+import {
+  categorizeDiagnosticsUrl,
+  maskStoreCode,
+  originHostHash,
+} from '../shared/deploymentDiagnostics'
 
 export type DesktopConfig = {
   baseUrl: string
@@ -66,7 +71,13 @@ export function loadConfig(userDataDir: string): DesktopConfig {
       : fromFile.lang || 'zh',
     forceCustomerWindow: env.ESHOP_DESKTOP_FORCE_CUSTOMER === '1',
   }
-  logger.info('config.loaded', { baseUrl: cached.baseUrl, storeCode: cached.storeCode, lang: cached.lang, path: configPath })
+  logger.info('config.loaded', {
+    baseUrlCategory: categorizeDiagnosticsUrl(cached.baseUrl),
+    originHostHash: originHostHash(cached.baseUrl),
+    maskedStoreCode: maskStoreCode(cached.storeCode),
+    lang: cached.lang,
+    configLocation: configPath ? 'userData/config.json' : 'unknown',
+  })
   return cached
 }
 

@@ -26,8 +26,10 @@ import {
 import { cartSyncService } from './cartSyncService'
 import { IPC_CHANNELS, type WindowRole } from '../shared/ipcChannels'
 import {
+  categorizeDiagnosticsUrl,
   classifyDeploymentFailure,
   getDeploymentFailureDescriptor,
+  sanitizeDiagnosticMessage,
   type DeploymentFailure,
 } from '../shared/deploymentDiagnostics'
 import {
@@ -249,7 +251,7 @@ export class WindowManager {
     updateHealth({ employeeWindow: 'starting' }, 'employee-window.creating')
 
     win.loadURL(employeeUrl()).catch((error) => {
-      recordHealthError('employee-window', `loadURL failed: ${String(error)}`)
+      recordHealthError('employee-window', `loadURL failed: ${sanitizeDiagnosticMessage(error)}`)
       this.handleEmployeeCloudFailure(classifyDeploymentFailure({
         component: 'BUSINESS_CLOUD',
         description: String(error),
@@ -278,7 +280,7 @@ export class WindowManager {
     win.webContents.on('did-fail-load', (_e, code, desc, url) => {
       if (code === -3) return
       if (this.employeeContentMode !== 'cloud') {
-        recordHealthError('employee-window', `local renderer did-fail-load ${code} ${desc}`)
+        recordHealthError('employee-window', `local renderer did-fail-load code=${code} message=${sanitizeDiagnosticMessage(desc)}`)
         return
       }
       const failure = classifyDeploymentFailure({
@@ -288,7 +290,7 @@ export class WindowManager {
         metadata: { phase: 'employee-load', attempt: this.employeeRetryState.attempt },
       })
       updateHealth({ employeeWindow: 'error', cloudReachability: 'error' }, 'employee-window.load-failed')
-      recordHealthError('employee-window', `did-fail-load ${code} ${desc} ${url}`)
+      recordHealthError('employee-window', safeLoadFailureMessage('did-fail-load', code, desc, url))
       this.handleEmployeeCloudFailure(failure)
     })
     win.webContents.on('render-process-gone', (_e, details) => {
@@ -327,7 +329,7 @@ export class WindowManager {
       correlationId: failure.correlationId,
     })
     win.loadURL(this.localRendererUrl('deployment-error')).catch((error) => {
-      recordHealthError('deployment-error-renderer', `load failed: ${String(error)}`)
+      recordHealthError('deployment-error-renderer', `load failed: ${sanitizeDiagnosticMessage(error)}`)
     })
     win.show()
     win.focus()
@@ -505,7 +507,7 @@ export class WindowManager {
     })
 
     win.loadURL(customerUrl()).catch((error) => {
-      recordHealthError('customer-window', `loadURL failed: ${String(error)}`)
+      recordHealthError('customer-window', `loadURL failed: ${sanitizeDiagnosticMessage(error)}`)
       this.showCustomerFallback('customer-load-promise-rejected')
     })
 
@@ -531,7 +533,7 @@ export class WindowManager {
     })
     win.webContents.on('did-fail-load', (_e, code, desc, url) => {
       if (code === -3) return
-      recordHealthError('customer-window', `did-fail-load ${code} ${desc} ${url}`)
+      recordHealthError('customer-window', safeLoadFailureMessage('did-fail-load', code, desc, url))
       if (this.customerContentMode === 'cloud') {
         const failure = classifyDeploymentFailure({
           component: 'DISPLAY',
@@ -570,7 +572,7 @@ export class WindowManager {
     }, 'deployment.customer-fallback.show')
     logger.warn('deployment.customer-fallback.show', { reason })
     this.customerWindow.loadURL(this.localRendererUrl('customer-fallback')).catch((error) => {
-      recordHealthError('customer-fallback', `load failed: ${String(error)}`)
+      recordHealthError('customer-fallback', `load failed: ${sanitizeDiagnosticMessage(error)}`)
     })
     this.scheduleCustomerCloudRestore(reason)
   }
@@ -581,7 +583,7 @@ export class WindowManager {
     this.customerContentMode = 'cloud'
     logger.info('deployment.customer-cloud.restore-started', { reason })
     this.customerWindow.loadURL(customerUrl()).catch((error) => {
-      recordHealthError('customer-window', `restore loadURL failed: ${String(error)}`)
+      recordHealthError('customer-window', `restore loadURL failed: ${sanitizeDiagnosticMessage(error)}`)
       this.showCustomerFallback('customer-restore-rejected')
     })
   }
@@ -692,4 +694,13 @@ function allDisplayCount() {
   } catch {
     return 0
   }
+}
+
+function safeLoadFailureMessage(prefix: string, code: number, description: string, url: string): string {
+  return [
+    prefix,
+    `code=${code}`,
+    `urlCategory=${categorizeDiagnosticsUrl(url)}`,
+    `message=${sanitizeDiagnosticMessage(description)}`,
+  ].join(' ')
 }

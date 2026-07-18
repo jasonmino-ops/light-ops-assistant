@@ -74,10 +74,11 @@ if (!gotLock) {
 
   // ── 全局异常（A8）──────────────────────────────────────────────────────────
   process.on('uncaughtException', (error) => {
-    recordHealthError('process', `uncaughtException: ${error.stack ?? error.message}`)
+    recordHealthError('process', `uncaughtException: ${error.name || 'Error'}`)
   })
   process.on('unhandledRejection', (reason) => {
-    recordHealthError('process', `unhandledRejection: ${String(reason)}`)
+    const label = reason instanceof Error ? reason.name : typeof reason
+    recordHealthError('process', `unhandledRejection: ${label}`)
   })
 
   async function startAuthorizedDesktopRuntime(_context: AuthorizedDesktopContext): Promise<void> {

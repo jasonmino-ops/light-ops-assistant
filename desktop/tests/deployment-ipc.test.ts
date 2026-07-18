@@ -115,7 +115,7 @@ describe('deployment IPC', () => {
     const windowManager = makeWindowManager(true)
     const exportDiagnostics = vi.fn(async () => ({
       ok: true,
-      filePath: '/chosen/by/native/dialog.zip',
+      fileName: 'dialog.zip',
       manifest: { schemaVersion: 1 },
     }))
     registerIpcHandlers(windowManager as never, {
@@ -131,10 +131,12 @@ describe('deployment IPC', () => {
     await expect(handler?.(event(12))).resolves.toEqual({
       ok: true,
       data: {
-        filePath: '/chosen/by/native/dialog.zip',
+        fileName: 'dialog.zip',
         manifest: { schemaVersion: 1 },
       },
     })
+    const result = await handler?.(event(13))
+    expect(JSON.stringify(result)).not.toMatch(/\/Users\/|C:\\Users\\|\/chosen\/by\/native/)
     expect(exportDiagnostics).toHaveBeenCalledWith()
   })
 })
