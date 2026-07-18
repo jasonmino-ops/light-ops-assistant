@@ -23,6 +23,8 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Checkout Windows Provider artifact source
         uses: actions/checkout@v4
@@ -105,6 +107,9 @@ jobs:
       - name: Static security scans
         run: npx vitest run tests/activation-static-security.test.ts tests/static-security.test.ts
 
+      - name: Release foundation policy
+        run: npm run release:foundation:policy
+
       - name: Electron safeStorage smoke
         shell: pwsh
         run: |
@@ -183,14 +188,21 @@ jobs:
             throw "Packaged Provider resource missing: $resourceEntry"
           }
 
-      - name: Generate artifact SHA-256 manifest
+      - name: Generate release foundation manifests
         shell: pwsh
         run: |
-          $manifest = ".\release\SHA256SUMS.txt"
-          Get-ChildItem .\release -File | ForEach-Object {
-            $hash = Get-FileHash $_.FullName -Algorithm SHA256
-            "$($hash.Hash)  $($_.Name)"
-          } | Set-Content -Encoding UTF8 $manifest
+          Get-ChildItem .\release -File | Select-Object Name,Length | Format-Table -AutoSize
+          $version = (Get-Content .\package.json | ConvertFrom-Json).version
+          $tag = "desktop-v$version"
+          $timestamp = (Get-Date).ToUniversalTime().ToString("o")
+          node scripts/release-foundation.mjs write `
+            --release-dir release `
+            --tag $tag `
+            --workflow-name $env:GITHUB_WORKFLOW `
+            --workflow-run-id $env:GITHUB_RUN_ID `
+            --build-timestamp $timestamp `
+            --provider-commit 7785be145d5259991038d17839d322e2694e338c
+          node scripts/release-foundation.mjs verify --release-dir release
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -199,6 +211,8 @@ jobs:
           path: |
             desktop/release/*.exe
             desktop/release/*.blockmap
-            desktop/release/latest.yml
+            desktop/release/*.yml
             desktop/release/SHA256SUMS.txt
+            desktop/release/release-provenance-*.json
+            desktop/release/release-notes-*.md
           if-no-files-found: error

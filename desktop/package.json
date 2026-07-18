@@ -1,7 +1,7 @@
 {
   "name": "eshop-desktop",
   "productName": "E-Shop Desktop",
-  "version": "0.1.0",
+  "version": "0.2.0-pilot.2",
   "description": "E-Shop Desktop — Windows 一体机门店收银客户端（Milestone A: Desktop Shell）",
   "private": true,
   "main": "dist/main/main.js",
@@ -13,7 +13,10 @@
     "start": "npm run compile && electron .",
     "test": "vitest run",
     "pack:dir": "npm run compile && electron-builder --dir",
-    "dist:win": "npm run compile && electron-builder --win --x64"
+    "dist:win": "npm run compile && electron-builder --win --x64 --publish never",
+    "release:foundation": "node scripts/release-foundation.mjs write",
+    "release:foundation:verify": "node scripts/release-foundation.mjs verify",
+    "release:foundation:policy": "node scripts/release-foundation.mjs policy"
   },
   "dependencies": {
     "@eshop/hrt-contract": "file:../packages/hrt-contract"

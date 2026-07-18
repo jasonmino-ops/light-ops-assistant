@@ -4,9 +4,11 @@
 # - NSIS 安装包（非一键安装，允许用户选择安装目录）
 # - 按用户安装（perMachine: false），无需管理员权限
 # - 用户数据目录：%APPDATA%/eshop-desktop（config.json / logs / window-state.json）
-# - 未配置代码签名：安装时可能出现 Windows SmartScreen 提示，
-#   正式商用前必须购买代码签名证书（见 docs/desktop/known-limitations）
-# - publish: null 预留自动升级接口（Milestone D 接入 Auto Update 时改为真实 provider）
+# - Phase 1 只建立 GitHub Releases / update metadata 基础；
+#   updater runtime、quitAndInstall 与商业签名 Gate 不在本阶段实现。
+# - 未配置代码签名：本阶段只能生成 unsigned-internal pilot build，
+#   不得标记为 signed-commercial 或 store pilot / commercial-ready。
+# - 普通 CI 必须使用 --publish never；正式 Release 由受控 workflow 上传。
 
 appId: com.eshop.desktop
 productName: E-Shop Desktop
@@ -43,4 +45,7 @@ nsis:
   shortcutName: "E-Shop Desktop"
   deleteAppDataOnUninstall: false
 
-publish: null
+publish:
+  provider: github
+  owner: jasonmino-ops
+  repo: light-ops-assistant
