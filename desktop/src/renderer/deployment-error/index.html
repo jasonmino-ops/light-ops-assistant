@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>E-Shop Desktop Deployment Diagnostics</title>
+    <link rel="stylesheet" href="./deployment.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">E-Shop Desktop</p>
+        <h1 id="failure-title">收银台页面暂时打不开</h1>
+        <p id="failure-detail" class="detail">正在读取本机诊断状态。</p>
+      </section>
+
+      <section class="actions" aria-label="deployment actions">
+        <button id="retry-button" class="primary">重试</button>
+        <button id="reload-button">重新加载</button>
+        <button id="system-info-button">系统信息</button>
+        <button id="logs-button">打开日志</button>
+        <button id="diagnostics-button">导出诊断包</button>
+        <button id="activation-button">返回激活</button>
+        <button id="quit-button" class="danger">退出</button>
+      </section>
+
+      <section class="grid" aria-label="deployment status">
+        <article>
+          <span>版本</span>
+          <strong id="version">-</strong>
+        </article>
+        <article>
+          <span>发行类型</span>
+          <strong id="distribution">-</strong>
+        </article>
+        <article>
+          <span>门店</span>
+          <strong id="store-code">-</strong>
+        </article>
+        <article>
+          <span>安装 ID</span>
+          <strong id="installation-id">-</strong>
+        </article>
+        <article>
+          <span>激活</span>
+          <strong id="activation-state">-</strong>
+        </article>
+        <article>
+          <span>云端收银</span>
+          <strong id="cloud-state">-</strong>
+        </article>
+        <article>
+          <span>Provider</span>
+          <strong id="provider-state">-</strong>
+        </article>
+        <article>
+          <span>显示器</span>
+          <strong id="display-state">-</strong>
+        </article>
+        <article>
+          <span>打印运行时</span>
+          <strong id="printer-state">BROWSER_PRINT / NATIVE_NOT_AVAILABLE</strong>
+        </article>
+        <article>
+          <span>扫码运行时</span>
+          <strong id="scanner-state">KEYBOARD_MODE / NATIVE_NOT_AVAILABLE</strong>
+        </article>
+        <article>
+          <span>重试状态</span>
+          <strong id="retry-state">-</strong>
+        </article>
+        <article>
+          <span>最近失败</span>
+          <strong id="last-failure">-</strong>
+        </article>
+      </section>
+
+      <section class="panel" id="system-panel" hidden>
+        <div class="panel-head">
+          <h2>系统信息</h2>
+          <button id="copy-summary-button">复制摘要</button>
+        </div>
+        <pre id="system-summary"></pre>
+      </section>
+
+      <p id="status-line" class="status-line" role="status"></p>
+    </main>
+    <script src="./deploymentErrorRenderer.js"></script>
+  </body>
+</html>

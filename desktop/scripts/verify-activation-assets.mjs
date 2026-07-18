@@ -4,9 +4,17 @@ import { resolve } from 'node:path'
 
 const required = [
   'dist/preload/activationPreload.js',
+  'dist/preload/employeePreload.js',
+  'dist/preload/customerPreload.js',
   'dist/renderer/activation/index.html',
   'dist/renderer/activation/activation.css',
   'dist/renderer/activation/activationRenderer.js',
+  'dist/renderer/deployment-error/index.html',
+  'dist/renderer/deployment-error/deployment.css',
+  'dist/renderer/deployment-error/deploymentErrorRenderer.js',
+  'dist/renderer/customer-fallback/index.html',
+  'dist/renderer/customer-fallback/customerFallback.css',
+  'dist/renderer/customer-fallback/customerFallbackRenderer.js',
 ]
 
 function normalizeAsarPath(value) {
@@ -17,7 +25,7 @@ const mode = process.argv[2] ?? 'dist'
 
 if (mode === 'dist') {
   await Promise.all(required.map((file) => access(resolve(file))))
-  console.log('activation assets: PASS')
+  console.log('desktop local renderer assets: PASS')
 } else if (mode === 'asar' || mode.endsWith('.asar')) {
   const archive = mode === 'asar' ? process.argv[3] : mode
   if (!archive) throw new Error('missing asar path')
@@ -27,7 +35,7 @@ if (mode === 'dist') {
   for (const file of required) {
     if (!files.has(normalizeAsarPath(file))) throw new Error(`missing packaged activation asset: ${file}`)
   }
-  console.log('packaged activation assets: PASS')
+  console.log('packaged desktop local renderer assets: PASS')
 } else {
   throw new Error(`unknown mode: ${mode}`)
 }
