@@ -6,7 +6,7 @@ Package: EP-MB3-07A — Release Channel & Update Safety
 
 Phase: Phase 1 — Versioned Release Foundation
 
-Status: IMPLEMENTED WITH CONDITIONS
+Status: PHASE 1 CONDITION CLOSURE PASS
 
 This evidence pack records the Phase 1 implementation only. It does not claim EP-MB3-07A Acceptance, Final Freeze, store pilot readiness, signed distribution readiness, or commercial release readiness.
 
@@ -177,7 +177,7 @@ Remote Release verification:
 
 - The pilot workflow downloads the created GitHub Release assets after upload and re-runs `release-foundation.mjs verify`
 - pilot.1 remote verification failed due unexpected `builder-debug.yml`
-- pilot.2 remote verification is pending the next protected pilot dry run
+- pilot.2 remote verification passed with the strict six-asset allowlist
 
 ## 7. Local Validation
 
@@ -332,13 +332,18 @@ Signed Distribution Gate remains required before:
 
 ## 12. Remaining Conditions
 
-Required before Phase 1 full acceptance:
+Phase 1 review conditions:
 
-- feature branch pilot.2 remediation is committed and pushed
-- main workflow-only pilot release file is updated with the strict allowlist before the next dry run
-- unsigned internal `0.2.0-pilot.2` prerelease dry run executes through the protected workflow
-- GitHub Release remote asset allowlist verification passes
-- GitHub Release remote asset SHA verification passes
+- NONE
+
+Closed Phase 1 conditions:
+
+- feature branch pilot.2 remediation committed and pushed
+- main workflow-only pilot release file updated with the strict allowlist
+- unsigned internal `0.2.0-pilot.2` prerelease dry run executed through the protected workflow
+- GitHub Release remote asset allowlist verification passed
+- GitHub Release remote asset SHA verification passed
+- GitHub Release provenance verification passed
 
 Required before signed/store/commercial readiness:
 
@@ -350,8 +355,214 @@ Required before signed/store/commercial readiness:
 
 ## 13. Recommendation
 
-Phase 1 pilot.2 remediation is ready for engineering review with conditions once local validation, commit, and push complete.
+Phase 1 pilot.2 condition closure is ready for Phase 1 Acceptance Review.
 
-It is not ready for EP-MB3-07A Phase 1 condition closure until the protected pilot.2 dry run and remote Release QA pass.
+It does not claim store pilot readiness, commercial readiness, signed distribution readiness, or Phase 2 readiness.
 
 READY FOR EP-MB3-07A PHASE 1 REVIEW: YES
+
+## 14. Final Condition Closure
+
+Independent Review Result: CONDITIONAL PASS
+
+Phase 1 Condition Closure: PASS
+
+Remaining Phase 1 Review Conditions: NONE
+
+Ready for Phase 1 Acceptance Review: YES
+
+This section closes EP-MB3-07A Phase 1 review conditions only. It does not claim store pilot readiness, commercial readiness, signed distribution readiness, or any Phase 2 work.
+
+### M1 Closure
+
+Original issue:
+
+- The pilot workflow originally allowed direct GitHub expression interpolation in PowerShell context for the version input.
+- M1 replaced that with `INPUT_VERSION` environment-variable indirection before PowerShell reads the value.
+
+Security fix commit: `ba3160b7215a34b89c7dbe177ed29e3098d9a9e0`
+
+Status: CLOSED
+
+### GitHub Environment Evidence
+
+Environment: `pilot-release`
+
+Required reviewer: `jasonmino-ops`
+
+Prevent self-review: OFF
+
+Administrator bypass: OFF
+
+Deployment branches/tags: No restriction
+
+Secrets: NONE
+
+Variables: NONE
+
+Status: CLOSED
+
+### Workflow-Only Main Enablement
+
+Initial enablement commit: `7d12efbe15a8e10155b33a3b2ce005864528a77f`
+
+Pilot.2 allowlist workflow update commit: `9d7e13e34a4df14f4cc4cdf6b969a16a3c42bce1`
+
+Governance notes:
+
+- Full Phase 1 implementation was not merged by these commits.
+- Only `.github/workflows/desktop-release-pilot.yml` entered `main`.
+- No production runtime behavior changed.
+
+### pilot.1 History
+
+Tag: `desktop-v0.2.0-pilot.1`
+
+Commit: `ba3160b7215a34b89c7dbe177ed29e3098d9a9e0`
+
+Workflow run: `29638879620`
+
+Pipeline: PASS
+
+Release QA: FAIL
+
+Reason: unexpected `builder-debug.yml` was present in the GitHub Release and was not covered by `SHA256SUMS.txt` or release provenance.
+
+Historical Release retained: YES
+
+### pilot.2 Final Release Evidence
+
+Tag: `desktop-v0.2.0-pilot.2`
+
+Commit: `833917a8c4e51f37b5893bb911d23d9ac2a056e8`
+
+Workflow: `desktop-release-pilot`
+
+Workflow run: `29640800444`
+
+Pipeline: PASS
+
+Environment approval: PASS
+
+Prerelease: YES
+
+Latest: NO
+
+Distribution: `unsigned-internal`
+
+Channel: `pilot`
+
+Commercial Ready: NO
+
+Store Pilot Ready: NO
+
+Release asset allowlist: PASS
+
+Unexpected assets: NONE
+
+`builder-debug.yml`: ABSENT
+
+Remote SHA verification: PASS
+
+Provenance verification: PASS
+
+### Release Assets
+
+| Asset | Byte size | SHA-256 |
+| --- | ---: | --- |
+| `E-Shop-Desktop-Setup-0.2.0-pilot.2.exe` | 81808981 | `84219b0da0b80f925878c5b9b9542e8e07db0c55f790f616e653c1395938be19` |
+| `E-Shop-Desktop-Setup-0.2.0-pilot.2.exe.blockmap` | 86096 | `9bf18ce12fa1f0e8ec29103a9ab1e3e67930e77502500ffcb7edbdf5d548183e` |
+| `latest.yml` | 380 | `7634b9f333f0b3325203fc42c27f3984be40e2626aed6aadd5be6223fb03167b` |
+| `SHA256SUMS.txt` | 497 | not self-hashed by project manifest |
+| `release-provenance-0.2.0-pilot.2.json` | 1655 | `e08d88d47281b49ba364b10aefe1a54411e00809e0c5c34da445f333e590ba0c` |
+| `release-notes-0.2.0-pilot.2.md` | 237 | `f3feea7ae280f183dc33ced9ce2889346c51c3d1409de45b6c023d7e21eb21ea` |
+
+Installer SHA cross-check:
+
+- `shasum -a 256`: `84219b0da0b80f925878c5b9b9542e8e07db0c55f790f616e653c1395938be19`
+- `SHA256SUMS.txt`: `84219b0da0b80f925878c5b9b9542e8e07db0c55f790f616e653c1395938be19`
+- `openssl dgst -sha256`: `84219b0da0b80f925878c5b9b9542e8e07db0c55f790f616e653c1395938be19`
+
+All installer SHA values match.
+
+### Provenance QA
+
+Required fields present:
+
+- `schemaVersion`
+- `packageName`
+- `desktopVersion`
+- `releaseChannel`
+- `defaultRuntimeChannel`
+- `distributionClass`
+- `signingStatus`
+- `gitCommitSha`
+- `gitTag`
+- `workflowName`
+- `workflowRunId`
+- `buildTimestamp`
+- `nodeVersion`
+- `electronVersion`
+- `electronBuilderVersion`
+- `artifactFilenames`
+- `artifacts`
+- `providerPinnedCommit`
+- `baselineFreezeTag`
+
+Verified values:
+
+- `schemaVersion`: `ep-mb3-07a.release-provenance.v1`
+- `packageName`: `eshop-desktop`
+- `desktopVersion`: `0.2.0-pilot.2`
+- `releaseChannel`: `pilot`
+- `defaultRuntimeChannel`: `stable`
+- `distributionClass`: `unsigned-internal`
+- `signingStatus`: `unsigned-internal`
+- `gitCommitSha`: `833917a8c4e51f37b5893bb911d23d9ac2a056e8`
+- `gitTag`: `desktop-v0.2.0-pilot.2`
+- `workflowName`: `desktop-release-pilot`
+- `workflowRunId`: `29640800444`
+- `buildTimestamp`: `2026-07-18T10:25:13.2941827Z`
+- `nodeVersion`: `v22.23.1`
+- `electronVersion`: `33.4.11`
+- `electronBuilderVersion`: `25.1.8`
+- `providerPinnedCommit`: `7785be145d5259991038d17839d322e2694e338c`
+- `baselineFreezeTag`: `ep-mb3-06b-desktop-activation-runtime-v1.0-final`
+
+Sensitive data scan:
+
+- token: ABSENT
+- GitHub secret: ABSENT
+- certificate password: ABSENT
+- activation credential: ABSENT
+- signed-commercial claim: ABSENT
+- store-pilot-ready claim: ABSENT
+
+Path scan:
+
+- local absolute path: ABSENT
+- CI runner private path: ABSENT
+
+Result: PASS
+
+### Condition Closure Matrix
+
+| Condition | Result |
+| --- | --- |
+| Version Identity Gate | CLOSED |
+| Release Channel Gate | CLOSED |
+| Workflow Permission Gate | CLOSED |
+| Distribution Classification Gate | CLOSED |
+| Provenance Gate | CLOSED |
+| Local Artifact Integrity Gate | CLOSED |
+| Remote Release Artifact Integrity Gate | CLOSED |
+| Existing Windows CI Regression Gate | CLOSED |
+| Frozen Boundary Gate | CLOSED |
+| GitHub Environment Gate | CLOSED |
+| Pilot Prerelease Dry Run Gate | CLOSED |
+| M1 workflow expression injection | CLOSED |
+| pilot.1 unexpected `builder-debug.yml` | CLOSED BY pilot.2 strict allowlist |
+
+Final pilot.1 classification: Historical Release QA FAIL
+
+Final pilot.2 classification: Final Phase 1 Release QA PASS
