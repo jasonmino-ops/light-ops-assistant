@@ -273,8 +273,12 @@ Final Freeze Decision: APPROVED
 
 Final Freeze Tag: `ep-mb3-07a-phase1-release-foundation-v1.0-final`
 
-Final Freeze Commit: TO BE RECORDED AFTER COMMIT
+Final Freeze Commit: `e0190e893ae5742b76143a0abb0f7804ec4b826e`
 
-Final Frozen Main HEAD: TO BE RECORDED AFTER METADATA COMMIT
+Final Frozen Main HEAD: ESTABLISHED BY ANNOTATED FREEZE TAG AND REMOTE VERIFICATION
+
+Final Frozen Main HEAD Evidence: See final freeze execution result and annotated tag `ep-mb3-07a-phase1-release-foundation-v1.0-final`
+
+Freeze Tag Target Policy: The annotated freeze tag must point to the metadata commit created after the freeze documentation commit.
 
 Final Status: FINAL FROZEN

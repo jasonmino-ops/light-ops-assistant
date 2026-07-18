@@ -24,9 +24,21 @@ Previous Freeze Tag: `ep-mb3-06b-desktop-activation-runtime-v1.0-final`
 
 Planned Freeze Tag: `ep-mb3-07a-phase1-release-foundation-v1.0-final`
 
-Freeze Documentation Commit: TO BE RECORDED AFTER COMMIT
+Freeze Documentation Commit: `e0190e893ae5742b76143a0abb0f7804ec4b826e`
 
-Final Frozen Main HEAD: TO BE RECORDED AFTER METADATA COMMIT
+Final Frozen Main HEAD: ESTABLISHED BY ANNOTATED FREEZE TAG AND REMOTE VERIFICATION
+
+Final Frozen Main HEAD Evidence: See final freeze execution result and annotated tag `ep-mb3-07a-phase1-release-foundation-v1.0-final`
+
+Freeze Tag Target Policy: The annotated freeze tag must point to the metadata commit created after the freeze documentation commit.
+
+The metadata commit SHA cannot be embedded in its own committed tree. The authoritative final frozen main HEAD is therefore established by:
+
+1. local HEAD after metadata commit;
+2. origin/main after push;
+3. annotated freeze tag peeled commit;
+4. remote tag peeled commit;
+5. final freeze execution evidence.
 
 ## 2. Frozen Scope
 
