@@ -105,6 +105,16 @@ describe('EP-MB3-07A release foundation policy', () => {
     )
   })
 
+  it('allows non-published electron-builder extras only for build-output verification', () => {
+    const releaseDir = makeReleaseDir()
+    runReleaseFoundation(['write', '--release-dir', releaseDir])
+    writeFileSync(join(releaseDir, 'builder-debug.yml'), 'diagnostic output')
+    const output = runReleaseFoundation(['verify', '--release-dir', releaseDir, '--allow-build-output-extras'])
+    const result = JSON.parse(output)
+    expect(result.result).toBe('PASS')
+    expect(result.shaEntries).toBe(5)
+  })
+
   it('rejects arbitrary extra files as unexpected published assets', () => {
     const releaseDir = makeReleaseDir()
     runReleaseFoundation(['write', '--release-dir', releaseDir])
