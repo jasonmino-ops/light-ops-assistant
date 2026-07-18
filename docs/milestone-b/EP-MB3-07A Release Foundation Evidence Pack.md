@@ -566,3 +566,29 @@ Result: PASS
 Final pilot.1 classification: Historical Release QA FAIL
 
 Final pilot.2 classification: Final Phase 1 Release QA PASS
+
+## 15. Formal Acceptance
+
+Final Acceptance Readiness Review: PASS
+
+Acceptance Decision: ACCEPTED
+
+Acceptance Reviewed HEAD: `4522ed5566853261bd4df11142c87a7afa2a79e2`
+
+Remaining Blockers: NONE
+
+Acceptance Record: `docs/milestone-b/EP-MB3-07A Phase 1 Release Foundation Acceptance Record.md`
+
+Acceptance consistency:
+
+- Baseline: `38cd64bef7665be3e2b47f04216e20f7d5e136f4`
+- Branch: `feat/ep-mb3-07a-release-foundation`
+- pilot.1 historical evidence: consistent
+- pilot.2 final evidence: consistent
+- Workflow runs: consistent
+- Asset hashes: consistent
+- Provenance values: consistent
+- Acceptance gates: PASS
+- Distribution: `unsigned-internal`
+- Commercial Ready: NO
+- Store Pilot Ready: NO
