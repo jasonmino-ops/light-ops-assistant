@@ -1,0 +1,306 @@
+name: desktop-release-pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Desktop pilot version from desktop/package.json"
+        required: true
+        default: "0.2.0-pilot.1"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate pilot version input
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $inputVersion = $env:INPUT_VERSION
+          if ([string]::IsNullOrWhiteSpace($inputVersion)) {
+            throw "Input version is required"
+          }
+          $version = (Get-Content .\package.json | ConvertFrom-Json).version
+          if ($version -ne $inputVersion) {
+            throw "Input version $inputVersion does not match desktop/package.json version $version"
+          }
+          if ($inputVersion -notmatch '-pilot\.') {
+            throw "Pilot release requires a -pilot prerelease version, got $inputVersion"
+          }
+          $tag = "desktop-v$version"
+          "DESKTOP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "BUILD_TIMESTAMP=$((Get-Date).ToUniversalTime().ToString("o"))" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Checkout Windows Provider artifact source
+        uses: actions/checkout@v4
+        with:
+          repository: jasonmino-ops/eshop-windows-provider
+          ref: 7785be145d5259991038d17839d322e2694e338c
+          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
+          path: ep-mb3-provider
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install Contract dependencies
+        run: npm ci
+        working-directory: packages/hrt-contract
+
+      - name: Build Contract
+        run: npm run build
+        working-directory: packages/hrt-contract
+
+      - name: Install Desktop dependencies
+        run: npm ci
+
+      - name: Install Provider dependencies
+        run: npm ci
+        working-directory: ep-mb3-provider
+
+      - name: Verify exact Provider commit
+        shell: pwsh
+        working-directory: ep-mb3-provider
+        run: |
+          $actual = git rev-parse HEAD
+          if ($actual -ne "7785be145d5259991038d17839d322e2694e338c") {
+            throw "Unexpected Provider commit: $actual"
+          }
+
+      - name: Build Provider artifact
+        run: npm run package
+        working-directory: ep-mb3-provider
+
+      - name: Stage Provider artifact for Desktop packaging
+        shell: pwsh
+        working-directory: .
+        run: |
+          New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
+          Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
+
+      - name: Clean Desktop build outputs
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force dist,release -ErrorAction SilentlyContinue
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Activation focused tests
+        run: |
+          npx vitest run `
+            tests/activation-api-client.test.ts `
+            tests/activation-credential-store.test.ts `
+            tests/activation-gate.test.ts `
+            tests/activation-ipc.test.ts `
+            tests/activation-state-machine.test.ts `
+            tests/activation-static-security.test.ts `
+            --reporter=verbose
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Compile main & preload
+        run: npm run compile
+
+      - name: Verify activation dist assets
+        run: node scripts/verify-activation-assets.mjs dist
+
+      - name: Static security scans
+        run: npx vitest run tests/activation-static-security.test.ts tests/static-security.test.ts
+
+      - name: Release foundation policy
+        run: npm run release:foundation:policy
+
+      - name: Electron safeStorage smoke
+        shell: pwsh
+        run: |
+          $electron = (Resolve-Path .\node_modules\electron\dist\electron.exe).Path
+          $stdout = Join-Path $env:RUNNER_TEMP "safestorage-smoke.out"
+          $stderr = Join-Path $env:RUNNER_TEMP "safestorage-smoke.err"
+          $proc = Start-Process `
+            -FilePath $electron `
+            -ArgumentList '.\tests\smoke\safeStorage-smoke.cjs' `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr `
+            -NoNewWindow `
+            -PassThru `
+            -Wait
+          Write-Output "Electron exit code: $($proc.ExitCode)"
+          Write-Output "--- safeStorage stdout ---"
+          if (Test-Path $stdout) {
+            Get-Content $stdout
+          }
+          Write-Output "--- safeStorage stderr ---"
+          if (Test-Path $stderr) {
+            Get-Content $stderr
+          }
+          $stdoutText = ""
+          if (Test-Path $stdout) {
+            $stdoutText = (Get-Content -Raw $stdout).Trim()
+          }
+          if ($proc.ExitCode -ne 0 -or $stdoutText -notmatch '(?m)^RESULT=PASS$') {
+            throw "Electron safeStorage smoke failed (exit=$($proc.ExitCode))"
+          }
+
+      - name: Provider supervision pipe integration
+        shell: pwsh
+        run: |
+          $providerEntry = (Resolve-Path ..\ep-mb3-provider\artifacts\eshop-windows-provider\dist\index.js).Path
+          $env:ESHOP_WINDOWS_PROVIDER_ENTRY = $providerEntry
+          node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); const {getHealthSnapshot}=require('./dist/main/runtimeHealth'); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'ci-'+process.pid,connectDelayMs:500}); await s.start(); await new Promise(r=>setTimeout(r,1500)); const h=getHealthSnapshot().providerRuntime; console.log(JSON.stringify(h)); if(h.state!=='ok') throw new Error('Provider did not reach ok state'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
+
+      - name: Electron runtime Provider smoke with spaces
+        shell: pwsh
+        run: |
+          $spaceDir = Join-Path $env:RUNNER_TEMP "Provider Artifact With Spaces"
+          New-Item -ItemType Directory -Force -Path $spaceDir | Out-Null
+          Copy-Item -Recurse -Force ..\ep-mb3-provider\artifacts\eshop-windows-provider $spaceDir\
+          $providerEntry = Join-Path $spaceDir "eshop-windows-provider\dist\index.js"
+          $electron = (Resolve-Path .\node_modules\electron\dist\electron.exe).Path
+          $smokePath = Join-Path $env:RUNNER_TEMP "electron-provider-smoke.json"
+          $env:ELECTRON_RUN_AS_NODE = "1"
+          & $electron $providerEntry --smoke *> $smokePath
+          $smokeText = Get-Content -Raw $smokePath
+          Write-Output $smokeText
+          if ($smokeText -notmatch '"ok"\s*:\s*true') { throw "Electron runtime Provider smoke failed" }
+          Remove-Item Env:\ELECTRON_RUN_AS_NODE
+
+      - name: Verify no surviving Provider process
+        shell: pwsh
+        working-directory: .
+        run: |
+          $orphans = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*eshop-windows-provider*dist*index.js*' }
+          if ($orphans) {
+            $orphans | Format-Table ProcessId,CommandLine -AutoSize
+            throw "Surviving Provider process detected"
+          }
+
+      - name: Build Windows installer (NSIS, unsigned)
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Verify packaged activation assets
+        run: node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar
+
+      - name: Verify packaged Provider resource
+        shell: pwsh
+        run: |
+          $resourceEntry = ".\release\win-unpacked\resources\eshop-windows-provider\dist\index.js"
+          if (!(Test-Path $resourceEntry)) {
+            throw "Packaged Provider resource missing: $resourceEntry"
+          }
+
+      - name: Generate release foundation manifests
+        shell: pwsh
+        run: |
+          Get-ChildItem .\release -File | Select-Object Name,Length | Format-Table -AutoSize
+          node scripts/release-foundation.mjs write `
+            --release-dir release `
+            --tag $env:RELEASE_TAG `
+            --workflow-name $env:GITHUB_WORKFLOW `
+            --workflow-run-id $env:GITHUB_RUN_ID `
+            --build-timestamp $env:BUILD_TIMESTAMP `
+            --provider-commit 7785be145d5259991038d17839d322e2694e338c
+          node scripts/release-foundation.mjs verify --release-dir release
+
+      - name: Upload pilot release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: eshop-desktop-pilot-release-${{ inputs.version }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/*.yml
+            desktop/release/SHA256SUMS.txt
+            desktop/release/release-provenance-*.json
+            desktop/release/release-notes-*.md
+          if-no-files-found: error
+
+  publish-prerelease:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pilot-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install Desktop dependencies for verification scripts
+        run: npm ci
+        working-directory: desktop
+
+      - name: Download pilot release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: eshop-desktop-pilot-release-${{ inputs.version }}
+          path: pilot-release
+
+      - name: Validate release bundle before upload
+        run: node scripts/release-foundation.mjs verify --release-dir "$GITHUB_WORKSPACE/pilot-release"
+        working-directory: desktop
+
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: desktop-v${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            "$GITHUB_WORKSPACE"/pilot-release/*.exe \
+            "$GITHUB_WORKSPACE"/pilot-release/*.blockmap \
+            "$GITHUB_WORKSPACE"/pilot-release/*.yml \
+            "$GITHUB_WORKSPACE"/pilot-release/SHA256SUMS.txt \
+            "$GITHUB_WORKSPACE"/pilot-release/release-provenance-*.json \
+            "$GITHUB_WORKSPACE"/pilot-release/release-notes-*.md \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "E-Shop Desktop $VERSION unsigned internal pilot" \
+            --notes-file "$GITHUB_WORKSPACE/pilot-release/release-notes-$VERSION.md" \
+            --prerelease
+
+      - name: Verify remote GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: desktop-v${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isPrerelease,targetCommitish,url
+          mkdir -p "$GITHUB_WORKSPACE/remote-release"
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir "$GITHUB_WORKSPACE/remote-release" \
+            --clobber
+          node scripts/release-foundation.mjs verify --release-dir "$GITHUB_WORKSPACE/remote-release"
+        working-directory: desktop
