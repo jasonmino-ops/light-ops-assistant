@@ -251,6 +251,47 @@ describe('activation window startup diagnostics', () => {
     expect(stringify(warn.mock.calls)).not.toMatch(/raw-token|123456|https:\/\/elifekh\.com|STORE-A|C:\\Users\\Jason|activationRenderer\.js\?token/i)
   })
 
+  it('preserves safe renderer error names and messages for bootstrap diagnosis', () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    const { controller } = makeController()
+
+    controller.show()
+    latestWindow().webContents.emit(
+      'console-message',
+      {},
+      3,
+      'Uncaught ReferenceError: exports is not defined',
+      2,
+      'activationRenderer.js',
+    )
+
+    expect(warn).toHaveBeenCalledWith('activation-window.console-error', {
+      level: 'error',
+      message: 'ReferenceError: exports is not defined',
+      source: 'activationRenderer.js',
+      line: 2,
+    })
+  })
+
+  it('redacts renderer error messages that contain secrets or local paths', () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    const { controller } = makeController()
+
+    controller.show()
+    latestWindow().webContents.emit(
+      'console-message',
+      {},
+      3,
+      'Uncaught TypeError: failed for STORE-A with PIN=123456 token raw-token at C:\\Users\\Jason\\app.js:1:2',
+      2,
+      'C:\\Users\\Jason\\app\\activationRenderer.js?token=raw-token',
+    )
+
+    const serialized = stringify(warn.mock.calls)
+    expect(serialized).toContain('diagnostic message redacted')
+    expect(serialized).not.toMatch(/STORE-A|123456|raw-token|C:\\Users\\Jason|activationRenderer\.js\?token/i)
+  })
+
   it('does not log raw external URLs from activation window hardening', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     const { controller } = makeController()

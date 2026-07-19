@@ -121,6 +121,7 @@ function element(elements: Map<string, FakeElement>, selector: string): FakeElem
 
 async function importRenderer() {
   vi.resetModules()
+  // @ts-expect-error activationRenderer.ts intentionally compiles as a classic browser script.
   await import('../src/renderer/activation/activationRenderer')
   await Promise.resolve()
   await Promise.resolve()

@@ -30,10 +30,8 @@ type StartupCheckpointStage =
   | 'rendered'
   | 'startup-error'
 
-declare global {
-  interface Window {
-    eshopDesktopActivation: ActivationApi
-  }
+type ActivationWindow = Window & {
+  eshopDesktopActivation?: Partial<ActivationApi>
 }
 
 const titleByState: Record<string, string> = {
@@ -84,17 +82,19 @@ const detailByState: Record<string, string> = {
   STARTUP_ERROR: '激活界面未能正确加载。请重新启动应用；如问题持续，请联系技术支持。',
 }
 
-const form = document.querySelector<HTMLFormElement>('#activation-form')
-const storeCodeInput = document.querySelector<HTMLInputElement>('#store-code')
-const pinInput = document.querySelector<HTMLInputElement>('#pin')
-const title = document.querySelector<HTMLElement>('#state-title')
-const detail = document.querySelector<HTMLElement>('#state-detail')
-const statusCode = document.querySelector<HTMLElement>('#status-code')
-const activateButton = document.querySelector<HTMLButtonElement>('#activate-button')
-const retryButton = document.querySelector<HTMLButtonElement>('#retry-button')
-const resetButton = document.querySelector<HTMLButtonElement>('#reset-button')
-const quitButton = document.querySelector<HTMLButtonElement>('#quit-button')
-const busy = document.querySelector<HTMLElement>('#busy')
+type ActivationElements = {
+  form: HTMLFormElement | null
+  storeCodeInput: HTMLInputElement | null
+  pinInput: HTMLInputElement | null
+  title: HTMLElement | null
+  detail: HTMLElement | null
+  statusCode: HTMLElement | null
+  activateButton: HTMLButtonElement | null
+  retryButton: HTMLButtonElement | null
+  resetButton: HTMLButtonElement | null
+  quitButton: HTMLButtonElement | null
+  busy: HTMLElement | null
+}
 
 let currentState: ActivationState | null = null
 let firstRenderCompleted = false
@@ -118,6 +118,22 @@ function optional<T extends HTMLElement>(selector: string): T | null {
   return document.querySelector<T>(selector)
 }
 
+function queryActivationElements(): ActivationElements {
+  return {
+    form: document.querySelector<HTMLFormElement>('#activation-form'),
+    storeCodeInput: document.querySelector<HTMLInputElement>('#store-code'),
+    pinInput: document.querySelector<HTMLInputElement>('#pin'),
+    title: document.querySelector<HTMLElement>('#state-title'),
+    detail: document.querySelector<HTMLElement>('#state-detail'),
+    statusCode: document.querySelector<HTMLElement>('#status-code'),
+    activateButton: document.querySelector<HTMLButtonElement>('#activate-button'),
+    retryButton: document.querySelector<HTMLButtonElement>('#retry-button'),
+    resetButton: document.querySelector<HTMLButtonElement>('#reset-button'),
+    quitButton: document.querySelector<HTMLButtonElement>('#quit-button'),
+    busy: document.querySelector<HTMLElement>('#busy'),
+  }
+}
+
 function isActivationState(value: unknown): value is ActivationState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const record = value as Record<string, unknown>
@@ -131,19 +147,34 @@ function isActivationState(value: unknown): value is ActivationState {
   )
 }
 
-function getActivationBridge(): ActivationApi | null {
+function readActivationBridge(): Partial<ActivationApi> | null {
   try {
-    const bridge = window.eshopDesktopActivation
-    if (!bridge || typeof bridge.getState !== 'function' || typeof bridge.onStateChanged !== 'function') return null
-    if (typeof bridge.reportStartupCheckpoint !== 'function') return null
-    return bridge
+    return (window as ActivationWindow).eshopDesktopActivation ?? null
   } catch {
     return null
   }
 }
 
-function report(api: ActivationApi | null, stage: StartupCheckpointStage, extra: { stateKind?: string; reasonCode?: string } = {}) {
-  if (!api) return
+function isActivationApi(bridge: Partial<ActivationApi> | null): bridge is ActivationApi {
+  return Boolean(
+    bridge &&
+      typeof bridge.getState === 'function' &&
+      typeof bridge.activate === 'function' &&
+      typeof bridge.retryVerification === 'function' &&
+      typeof bridge.resetLocalActivation === 'function' &&
+      typeof bridge.quit === 'function' &&
+      typeof bridge.onStateChanged === 'function' &&
+      typeof bridge.reportStartupCheckpoint === 'function',
+  )
+}
+
+function getActivationBridge(): ActivationApi | null {
+  const bridge = readActivationBridge()
+  return isActivationApi(bridge) ? bridge : null
+}
+
+function report(api: Partial<ActivationApi> | null, stage: StartupCheckpointStage, extra: { stateKind?: string; reasonCode?: string } = {}) {
+  if (!api || typeof api.reportStartupCheckpoint !== 'function') return
   void api.reportStartupCheckpoint({ stage, ...extra }).catch(() => undefined)
 }
 
@@ -199,27 +230,27 @@ function startStartupWatchdog(api: ActivationApi) {
   }, 8_000)
 }
 
-function applyState(state: ActivationState) {
+function applyState(elements: ActivationElements, state: ActivationState) {
   if (!isActivationState(state)) throw new Error('invalid activation state payload')
   currentState = state
   const stateTitle = titleByState[state.kind] ?? titleByState.SERVER_ERROR
-  must(title).textContent = stateTitle
+  must(elements.title).textContent = stateTitle
   const retryAfter = state.retryAfterSeconds ? ` 请约 ${state.retryAfterSeconds} 秒后重试。` : ''
-  must(detail).textContent = `${detailByState[state.kind] ?? ''}${retryAfter}`
-  must(statusCode).textContent = state.errorCode ? `状态: ${state.errorCode}` : ''
-  must(busy).hidden = !state.isBusy
+  must(elements.detail).textContent = `${detailByState[state.kind] ?? ''}${retryAfter}`
+  must(elements.statusCode).textContent = state.errorCode ? `状态: ${state.errorCode}` : ''
+  must(elements.busy).hidden = !state.isBusy
 
   const showForm = state.canActivate || state.kind === 'UNACTIVATED'
-  must(form).hidden = !showForm
-  must(storeCodeInput).disabled = state.isBusy || !showForm
-  must(pinInput).disabled = state.isBusy || !showForm
-  must(activateButton).disabled = state.isBusy || !showForm
-  must(retryButton).hidden = !state.canRetryVerify
-  must(resetButton).hidden = !state.canResetLocal
-  must(quitButton).hidden = !state.canQuit
+  must(elements.form).hidden = !showForm
+  must(elements.storeCodeInput).disabled = state.isBusy || !showForm
+  must(elements.pinInput).disabled = state.isBusy || !showForm
+  must(elements.activateButton).disabled = state.isBusy || !showForm
+  must(elements.retryButton).hidden = !state.canRetryVerify
+  must(elements.resetButton).hidden = !state.canResetLocal
+  must(elements.quitButton).hidden = !state.canQuit
 
-  if (state.storeCodeHint && !must(storeCodeInput).value) {
-    must(storeCodeInput).value = state.storeCodeHint
+  if (state.storeCodeHint && !must(elements.storeCodeInput).value) {
+    must(elements.storeCodeInput).value = state.storeCodeHint
   }
   if (state.kind !== 'BOOTING') {
     firstRenderCompleted = true
@@ -227,15 +258,15 @@ function applyState(state: ActivationState) {
   }
 }
 
-async function invokeAndApply(action: () => Promise<{ ok: boolean; error?: string; state?: ActivationState }>) {
+async function invokeAndApply(elements: ActivationElements, action: () => Promise<{ ok: boolean; error?: string; state?: ActivationState }>) {
   const result = await action()
-  if (result.state) applyState(result.state)
+  if (result.state) applyState(elements, result.state)
   if (!result.ok && result.error) {
-    must(statusCode).textContent = `状态: ${result.error}`
+    must(elements.statusCode).textContent = `状态: ${result.error}`
   }
 }
 
-async function loadInitialState(api: ActivationApi) {
+async function loadInitialState(api: ActivationApi, elements: ActivationElements) {
   report(api, 'get-state-started')
   try {
     const result = await api.getState()
@@ -247,7 +278,7 @@ async function loadInitialState(api: ActivationApi) {
       return
     }
     if (result.state) {
-      applyState(result.state)
+      applyState(elements, result.state)
       report(api, 'rendered', { stateKind: result.state.kind })
     }
   } catch {
@@ -258,40 +289,43 @@ async function loadInitialState(api: ActivationApi) {
 }
 
 function initializeActivationRenderer() {
-  const api = getActivationBridge()
+  const bridge = readActivationBridge()
+  report(bridge, 'script-started')
+  const api = isActivationApi(bridge) ? bridge : null
   if (!api) {
     console.error('activation renderer bridge missing')
     showStartupFailure('ACTIVATION_BRIDGE_MISSING', { bridgeMissing: true })
     return
   }
-  report(api, 'script-started')
   report(api, 'bridge-detected')
   startStartupWatchdog(api)
 
   try {
-    must(form).addEventListener('submit', (event) => {
+    const elements = queryActivationElements()
+
+    must(elements.form).addEventListener('submit', (event) => {
       event.preventDefault()
-      const storeCode = must(storeCodeInput).value
-      const pin = must(pinInput).value
-      void invokeAndApply(() => api.activate({ storeCode, pin }))
+      const storeCode = must(elements.storeCodeInput).value
+      const pin = must(elements.pinInput).value
+      void invokeAndApply(elements, () => api.activate({ storeCode, pin }))
     })
 
-    must(retryButton).addEventListener('click', () => {
-      void invokeAndApply(() => api.retryVerification())
+    must(elements.retryButton).addEventListener('click', () => {
+      void invokeAndApply(elements, () => api.retryVerification())
     })
 
-    must(resetButton).addEventListener('click', () => {
+    must(elements.resetButton).addEventListener('click', () => {
       const confirmed = window.confirm('清除本机激活后需要重新输入新的 PIN。确认清除？')
-      if (confirmed) void invokeAndApply(() => api.resetLocalActivation())
+      if (confirmed) void invokeAndApply(elements, () => api.resetLocalActivation())
     })
 
-    must(quitButton).addEventListener('click', () => {
+    must(elements.quitButton).addEventListener('click', () => {
       void api.quit()
     })
 
     api.onStateChanged((state) => {
       try {
-        applyState(state)
+        applyState(elements, state)
         report(api, 'rendered', { stateKind: state.kind })
       } catch {
         showStartupFailure('ACTIVATION_RENDER_FAILED')
@@ -299,22 +333,22 @@ function initializeActivationRenderer() {
       }
     })
     report(api, 'subscribed')
+
+    void loadInitialState(api, elements)
+
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        if (currentState?.storeCodeHint) must(elements.pinInput).focus()
+        else must(elements.storeCodeInput).focus()
+      } catch {
+        // Focus is cosmetic; startup state has already been rendered or will fail visibly.
+      }
+    })
   } catch {
     showStartupFailure('ACTIVATION_RENDERER_INIT_FAILED')
     report(api, 'startup-error', { reasonCode: 'ACTIVATION_RENDERER_INIT_FAILED' })
     return
   }
-
-  void loadInitialState(api)
-
-  window.addEventListener('DOMContentLoaded', () => {
-    try {
-      if (currentState?.storeCodeHint) must(pinInput).focus()
-      else must(storeCodeInput).focus()
-    } catch {
-      // Focus is cosmetic; startup state has already been rendered or will fail visibly.
-    }
-  })
 }
 
 window.addEventListener('error', () => {
@@ -338,5 +372,3 @@ try {
   showStartupFailure('ACTIVATION_RENDERER_TOP_LEVEL_ERROR')
   report(api, 'startup-error', { reasonCode: 'ACTIVATION_RENDERER_TOP_LEVEL_ERROR' })
 }
-
-export {}

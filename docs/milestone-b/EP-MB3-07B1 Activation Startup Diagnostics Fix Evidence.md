@@ -6,6 +6,7 @@
 - Scope: Activation Startup Diagnostics & Fallback Fix
 - Branch: `feat/ep-mb3-07b1-deployment-diagnostics`
 - Baseline HEAD before implementation: `fbd993cbb3458dcf21140435c6bfa2905bc00542`
+- Source-level bootstrap fix baseline: `1b0e5be4df42bb774ea51ad84ad36528b20702c0`
 
 ## Field Symptom
 
@@ -18,6 +19,51 @@ Field logs already showed:
 - `activation-window.created`
 
 This made a Cloud verify hang, safeStorage hang, credential initialization hang, or ordinary ActivationRuntime state-machine hang unlikely. The highest-risk gap was between the Activation Window loading local assets and the renderer successfully reading/rendering the current state.
+
+Follow-up Windows evidence from commit `1b0e5be4df42bb774ea51ad84ad36528b20702c0`, CI run `29679639325`, artifact `8440144897` narrowed the failure:
+
+- `BOOTING`
+- `UNACTIVATED`
+- `activation-window.create.started`
+- `activation-window.did-start-loading`
+- `activation-preload.ready`
+- `activation-window.console-error` with `source=activationRenderer.js`, `line=2`
+- `activation-window.dom-ready`
+- `activation-window.did-finish-load`
+- startup watchdog after 8 seconds
+- `STARTUP_ERROR`
+
+No renderer checkpoint was emitted before the console error. Missing checkpoints were `activation-renderer.script-started`, `activation-renderer.bridge-detected`, `activation-renderer.subscribed`, `activation-renderer.get-state.started`, `activation-renderer.get-state.succeeded`, and `activation-renderer.rendered`.
+
+## Source-Level Root Cause
+
+The compiled renderer loaded by the Activation HTML was generated as a CommonJS module but executed as a classic browser script.
+
+- Source entry: `desktop/src/renderer/activation/activationRenderer.ts`
+- HTML script tag: `<script src="./activationRenderer.js"></script>`
+- Script type: classic browser script, no `type="module"`
+- Compile path: `npm run compile` -> `tsc -p tsconfig.build.json`
+- Module format before fix: CommonJS, from `desktop/tsconfig.json`
+- Dist output: `desktop/dist/renderer/activation/activationRenderer.js`
+- Sourcemap: `desktop/dist/renderer/activation/activationRenderer.js.map`
+
+Before the fix, compiled line 2 was:
+
+```js
+Object.defineProperty(exports, "__esModule", { value: true });
+```
+
+The exact runtime error is `ReferenceError: exports is not defined`.
+
+The generated CommonJS prologue itself has no source-map segment. It was caused by `activationRenderer.ts` being forced into module mode by the trailing `export {}` that existed only to support the `declare global` window typing. In a sandboxed renderer, the classic script has no CommonJS `exports` global, so the bundle failed before the first renderer checkpoint.
+
+After the fix, compiled line 2 is:
+
+```js
+const titleByState = {
+```
+
+The rebuilt renderer SHA-256 is `19531d928b466a702e5d760d03c9a675960f23757f9fdd4190d35057581a4d76`, and the compiled renderer contains no `exports`, `module.exports`, `require(...)`, or ESM `import`.
 
 ## Root Cause Scope
 
@@ -47,8 +93,10 @@ Changed only Activation startup/diagnostics files and focused tests:
 - `desktop/src/renderer/activation/activationRenderer.ts`
 - `desktop/tests/activation-ipc.test.ts`
 - `desktop/tests/activation-state-machine.test.ts`
+- `desktop/tests/activation-compiled-renderer.test.ts`
 - `desktop/tests/activation-renderer-startup.test.ts`
 - `desktop/tests/activation-window-controller.test.ts`
+- `desktop/tests/smoke/activation-window-smoke.cjs`
 
 No Cloud API contract, endpoint, credential schema, Provider, WindowManager business window logic, updater, release manifest, installer config, frozen contract, or database files were changed.
 
@@ -95,6 +143,7 @@ IPC checkpoints:
 - Console source is reduced to basename only.
 - URL logging was changed to URL category plus origin host hash.
 - Diagnostic messages are passed through existing sanitizer.
+- Renderer console sanitizer now preserves safe error names and core messages such as `ReferenceError: exports is not defined`.
 - PIN, token-shaped values, credential-shaped values, raw query strings, full `STORE-*` codes, and absolute paths are not accepted in new startup diagnostics.
 
 ## Fallback UX
@@ -147,8 +196,14 @@ Added focused coverage for:
 - did-fail-load main-frame visible fallback
 - render-process-gone visible fallback
 - warning/error console sanitation
+- preservation of safe renderer error names and messages
+- redaction of renderer console messages containing token, PIN, store code, local path, or URL query material
 - hardening URL sanitation
 - activation IPC checkpoint allowlist and sanitized reason code
+- compiled activation renderer classic-script compatibility
+- compiled renderer execution without Node/CommonJS globals
+- formal Electron Activation Window smoke with `sandbox=true`, `contextIsolation=true`, and `nodeIntegration=false`
+- packaged `app.asar` activation smoke
 - existing activation normal flows remain covered
 
 ## Verification Results
@@ -157,9 +212,26 @@ Commands executed from `desktop/`:
 
 - `npm ci`: PASS on rerun with elevated sandbox permission for npm home cache/log writes. No tracked dependency files changed.
 - `npm run typecheck`: PASS.
-- `npm test`: PASS, 25 test files, 190 tests.
+- `npm test`: PASS, 26 test files, 195 tests.
 - `npm run compile`: PASS.
-- Focused activation tests: PASS, 8 test files, 54 tests.
+- Focused activation tests: PASS, 9 test files, 59 tests.
+- `node scripts/verify-activation-assets.mjs dist`: PASS.
+- `npx electron tests/smoke/activation-window-smoke.cjs`: PASS.
+- `npm run pack:dir`: PASS; local unsigned macOS directory package only, no installer created.
+- `node scripts/verify-activation-assets.mjs asar 'release/mac-arm64/E-Shop Desktop.app/Contents/Resources/app.asar'`: PASS.
+- `npx electron tests/smoke/activation-window-smoke.cjs 'release/mac-arm64/E-Shop Desktop.app/Contents/Resources/app.asar'`: PASS.
+
+Electron smoke checkpoint sequence:
+
+- `preload-ready`
+- `script-started`
+- `bridge-detected`
+- `subscribed`
+- `get-state-started`
+- `get-state-succeeded` with `UNACTIVATED`
+- `rendered` with `UNACTIVATED`
+
+Smoke DOM result: title `激活此收银台`, activation form visible, store code hint `STORE-A`, and no console errors.
 
 No flaky test was observed in this local run.
 
@@ -168,18 +240,22 @@ NPM reported 15 dependency advisories during `npm ci` (`3 moderate`, `11 high`, 
 ## Not Completed
 
 - No Windows installed-artifact reverification was performed in this local environment.
-- No new Windows installer was created in this step.
+- No new Windows CI artifact has been verified after this source-level fix.
 - No GitHub Release, tag, merge, or main branch operation was performed as part of implementation.
+- Acceptance remains blocked until Windows CI and Windows field reverification pass.
 
 ## Windows Reverification Requirement
 
 Windows field/CI verification must use a new CI artifact built from this commit:
 
-1. Install the new Windows artifact on the affected Windows machine.
-2. Launch E-Shop Desktop.
-3. First activation screen must enter the store code + PIN flow when no credential exists.
-4. The UI must not permanently show `正在启动`.
-5. Logs should show the startup checkpoint chain:
+1. Run Windows CI from the feature branch commit that contains this source-level bootstrap fix.
+2. Download the exact CI artifact, not a local build.
+3. Verify release/artifact allowlist, SHA-256, and provenance before installation.
+4. Install the new Windows artifact on the affected Windows machine.
+5. Launch E-Shop Desktop.
+6. First activation screen must enter the store code + PIN flow when no credential exists.
+7. The UI must not permanently show `正在启动`.
+8. Logs should show the startup checkpoint chain:
    - `activation-preload.ready`
    - `activation-renderer.script-started`
    - `activation-renderer.bridge-detected`
@@ -189,10 +265,12 @@ Windows field/CI verification must use a new CI artifact built from this commit:
    - `activation-ipc.get-state.completed`
    - `activation-renderer.get-state.succeeded`
    - `activation-renderer.rendered`
-6. If the issue persists, logs must identify the failing domain as preload, renderer, IPC, snapshot render, local resource loading, or render process failure.
+9. Logs must not show `activation-window.console-error` from `activationRenderer.js` line 2.
+10. Startup watchdog must not trigger.
+11. If the issue persists, logs must identify the failing domain as preload, renderer, IPC, snapshot render, local resource loading, or render process failure.
 
 ## Outcome
 
-Local engineering implementation and verification are ready for Windows CI artifact build and Windows field reverification.
+Local engineering implementation and verification are ready for Windows CI artifact build.
 
 Acceptance remains blocked until the new Windows artifact is installed and verified on a real Windows machine.
