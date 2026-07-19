@@ -76,7 +76,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
           Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
 
-      - name: Clean Desktop build outputs
+      - name: Clean Desktop build outputs before tests
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force dist,release -ErrorAction SilentlyContinue
@@ -107,20 +107,20 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      - name: Compile main & preload
+      - name: Clean compiled output
+        run: node scripts/clean-dist.mjs
+
+      - name: Compile main, preload & renderers once
         run: npm run compile
 
       - name: Verify local renderer dist assets
         run: node scripts/verify-activation-assets.mjs dist
 
+      - name: Compiled activation renderer verification
+        run: npm run verify:activation:compiled
+
       - name: Activation Electron smoke — dist
         run: npm run smoke:activation:dist
-
-      - name: Static security scans
-        run: npx vitest run tests/activation-static-security.test.ts tests/static-security.test.ts
-
-      - name: Release foundation policy
-        run: npm run release:foundation:policy
 
       - name: Electron safeStorage smoke
         shell: pwsh
@@ -202,6 +202,12 @@ jobs:
           if (!(Test-Path $resourceEntry)) {
             throw "Packaged Provider resource missing: $resourceEntry"
           }
+
+      - name: Static security scans
+        run: npx vitest run tests/activation-static-security.test.ts tests/static-security.test.ts
+
+      - name: Release foundation policy
+        run: npm run release:foundation:policy
 
       - name: Generate release foundation manifests
         shell: pwsh

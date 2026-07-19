@@ -5,6 +5,7 @@
 - Engineering Package: EP-MB3-07B1
 - Scope: Activation Startup Diagnostics & Fallback Fix
 - Branch: `feat/ep-mb3-07b1-deployment-diagnostics`
+- Build Once / Test Many refactor baseline: `034affd84ecc340b0b9f96a6abc82f591c0c68e8`
 - Baseline HEAD before implementation: `fbd993cbb3458dcf21140435c6bfa2905bc00542`
 - Source-level bootstrap fix baseline: `1b0e5be4df42bb774ea51ad84ad36528b20702c0`
 - Independent Review result after source fix: `CONDITIONAL PASS`
@@ -97,6 +98,7 @@ Changed only Activation startup/diagnostics files, CI smoke gate wiring, and foc
 
 - `.github/workflows/desktop-windows-build.yml`
 - `desktop/package.json`
+- `desktop/scripts/verify-activation-compiled-renderer.cjs`
 - `desktop/src/main/activation/activationTypes.ts`
 - `desktop/src/main/activation/activationRuntime.ts`
 - `desktop/src/main/activation/activationIpc.ts`
@@ -168,6 +170,8 @@ Two non-interactive npm smoke scripts are now available:
 - `npm run smoke:activation:asar`
 
 Windows CI runs the dist smoke after `npm run compile` and `node scripts/verify-activation-assets.mjs dist`.
+
+Windows CI runs `npm run verify:activation:compiled` after `npm run compile` and before the dist Electron smoke. This verifier consumes only the existing `dist/renderer/activation/activationRenderer.js`, Activation HTML, and activation preload artifact.
 
 Windows CI runs the packaged `app.asar` smoke after `npx electron-builder --win --x64 --publish never` and `node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar`.
 
@@ -245,7 +249,96 @@ CI status after run `29686965635`:
 - packaged `app.asar` smoke: NOT EXECUTED.
 - artifact upload: NOT EXECUTED.
 
-This indicates that `npm.cmd` with `execFileSync` and `shell: false` is still not a valid Windows runner strategy. A follow-up fix should avoid shell string execution while using a Windows-safe Node/npm entrypoint strategy, such as `process.execPath` with the local npm CLI entry, before rerunning Windows CI.
+This indicates that the unit test-side compile invocation is the wrong ownership boundary. The follow-up fix should remove build-tool invocation from the compiled renderer test instead of continuing with command-resolution patches.
+
+## Build Once, Test Many Refactor
+
+The follow-up decision is not to keep patching command resolution from `npm` to `npm.cmd` to `shell:true` or a Node/npm CLI shim. That path still leaves unit tests responsible for producing their own compiled input and keeps CI exposed to platform-specific process lookup behavior.
+
+Old flow:
+
+```text
+Unit test
+-> spawn npm/npm.cmd
+-> npm run compile
+-> read dist
+-> verify renderer
+```
+
+New flow:
+
+```text
+Install
+-> source-focused tests
+-> full source unit tests
+-> clean dist
+-> compile once
+-> verify dist assets
+-> verify compiled activation renderer
+-> Activation Electron smoke, dist mode
+-> build packaged app.asar
+-> verify packaged assets
+-> Activation Electron smoke, packaged app.asar mode
+-> Provider/static/release/upload gates
+```
+
+Stage ownership:
+
+- `npm test` owns source-level unit coverage and does not require `dist`.
+- `npm run compile` is the only Desktop CI command that creates `desktop/dist`.
+- `npm run verify:activation:compiled` owns compiled renderer verification and does not create or modify `dist`.
+- `npm run smoke:activation:dist` consumes the compiled `dist` activation page.
+- `npm run pack:dir` and `npm run dist:win` now run `electron-builder` only; callers must compile first.
+- `npm run smoke:activation:asar` consumes the packaged `app.asar`.
+
+The compiled verifier fails fast when `dist/renderer/activation/activationRenderer.js` is missing:
+
+```text
+Compiled activation renderer artifact is missing.
+Run `npm run compile` before compiled verification.
+```
+
+The compiled verifier checks:
+
+- the formal compiled renderer file exists and is non-empty
+- Activation HTML loads `./activationRenderer.js` as a classic script, not a module
+- no `Object.defineProperty(exports...)`, `exports`, `module.exports`, or `require(...)`
+- no top-level ESM `import` or `export`
+- activation preload exposes the bridge via `contextBridge.exposeInMainWorld`
+- the compiled renderer executes in a `vm` context without Node/CommonJS globals
+- the bridge mock is injectable
+- checkpoint order is `script-started`, `bridge-detected`, `subscribed`, `get-state-started`, `get-state-succeeded`, `rendered`
+- `UNACTIVATED` renders the store code and PIN form
+- console errors are empty
+- watchdog/startup error is not triggered
+
+Stale dist protection:
+
+- Windows CI removes `dist` and `release` before source tests.
+- Windows CI runs `node scripts/clean-dist.mjs` immediately before compile.
+- `npm run compile` itself starts with `node scripts/clean-dist.mjs`.
+- The compiled verifier runs only after compile and does not restore or generate build output.
+- Packaged smoke runs only after `electron-builder` creates the current run's `app.asar`.
+
+Local commands:
+
+```bash
+npm test
+npm run compile
+npm run verify:activation:compiled
+npm run smoke:activation:dist
+npm run pack:dir
+npm run smoke:activation:asar
+```
+
+Similar risk scan:
+
+- `desktop/tests/activation-compiled-renderer.test.ts` no longer imports `node:child_process` and no longer invokes `npm`, `npm.cmd`, `npx`, `tsc`, or `electron-builder`.
+- `desktop/scripts/verify-activation-compiled-renderer.cjs` does not import `node:child_process`.
+- `desktop/tests/release-foundation.test.ts` still uses `execFileSync(process.execPath, ...)` to execute `release-foundation.mjs`; this is a Node script policy test, not a compiled renderer build.
+- `desktop/scripts/release-foundation.mjs` still uses `execFileSync('git', ...)` to read release provenance metadata; this is deferred because it is outside the compiled renderer CI blocker.
+
+Windows CI status for this refactor is pending. Windows field reverification remains pending. This document does not mark the package `ACCEPTED`, `CLOSED`, or `Windows Field PASS`.
 
 ## Fallback UX
 
@@ -303,6 +396,10 @@ Added focused coverage for:
 - activation IPC checkpoint allowlist and sanitized reason code
 - compiled activation renderer classic-script compatibility
 - compiled renderer execution without Node/CommonJS globals
+- compiled renderer verifier fail-fast behavior when `dist` is missing
+- compiled renderer verifier rejection of CommonJS and ESM runtime traces
+- compiled renderer verifier independence from npm, npx, tsc, and electron-builder
+- source unit tests running successfully after `dist` is removed
 - formal Electron Activation Window smoke with `sandbox=true`, `contextIsolation=true`, and `nodeIntegration=false`
 - packaged `app.asar` activation smoke
 - smoke failure if the Electron default welcome page is loaded
@@ -312,19 +409,20 @@ Added focused coverage for:
 
 ## Verification Results
 
-Commands executed from `desktop/`:
+Commands executed from `desktop/` on 2026-07-19:
 
 - `npm ci`: PASS on rerun with elevated sandbox permission for npm home cache/log writes. No tracked dependency files changed.
+- `node scripts/clean-dist.mjs`: PASS.
 - `npm run typecheck`: PASS.
-- `npm test`: PASS, 26 test files, 199 tests.
-- `npm run compile`: PASS.
-- Focused activation tests: PASS, 9 test files, 63 tests.
-- `npm test -- tests/activation-compiled-renderer.test.ts --reporter=verbose`: PASS, 1 test file, 5 tests.
+- `npm test`: PASS after `dist` was removed, 26 test files, 203 tests.
+- `npm run verify:activation:compiled` with missing `dist`: expected FAIL, exit code 1, exact fail-fast message shown.
+- `npm run compile`: PASS. The compile command begins with `node scripts/clean-dist.mjs`.
 - `node scripts/verify-activation-assets.mjs dist`: PASS.
-- `npm run smoke:activation:dist`: PASS.
-- `npm run pack:dir`: PASS; local unsigned macOS directory package only, no installer created.
+- `npm run verify:activation:compiled`: PASS against the real compiled renderer.
+- `npm run smoke:activation:dist`: PASS with local Electron run outside the Codex sandbox. The same command aborts inside the sandbox with `SIGABRT`, which is a local GUI execution boundary.
+- `npm run pack:dir`: PASS; local unsigned macOS directory package only, no installer created. This script now consumes existing `dist` and does not invoke compile.
 - `node scripts/verify-activation-assets.mjs asar 'release/mac-arm64/E-Shop Desktop.app/Contents/Resources/app.asar'`: PASS.
-- `npm run smoke:activation:asar`: PASS.
+- `npm run smoke:activation:asar`: PASS with local Electron run outside the Codex sandbox.
 
 Dist smoke result:
 

@@ -1,241 +1,207 @@
-import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import vm from 'node:vm'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
-type CompileRunner = (
-  command: string,
-  args: string[],
-  options: {
-    cwd: string
-    stdio: 'pipe'
-    encoding: 'utf8'
-    timeout: number
-    shell: false
-  },
-) => string | Buffer
-
-type FakeElement = {
-  textContent: string
-  hidden: boolean
-  disabled: boolean
-  value: string
-  onclick: (() => void) | null
-  focus: ReturnType<typeof vi.fn>
-  addEventListener: ReturnType<typeof vi.fn>
+const verifier = require('../scripts/verify-activation-compiled-renderer.cjs') as {
+  MISSING_ARTIFACT_MESSAGE: string
+  assertNoCommonJsOrEsmRuntime(source: string): void
+  requiredCheckpointStages: string[]
+  runCli(options: {
+    desktopRoot?: string
+    argv?: string[]
+    stdout?: { write(input: string): void }
+    stderr?: { write(input: string): void }
+  }): Promise<number>
+  toPosixPath(value: string): string
+  verifyCompiledActivationRenderer(options: { desktopRoot: string }): Promise<{
+    result: 'PASS'
+    checkpointStages: string[]
+    consoleErrors: string[]
+    watchdogTriggered: boolean
+    dom: {
+      title: string
+      formHidden: boolean
+      storeCode: string
+      pinInputPresent: boolean
+      pinDisabled: boolean
+    }
+  }>
 }
 
 const desktopRoot = join(__dirname, '..')
-const rendererJsPath = join(desktopRoot, 'dist/renderer/activation/activationRenderer.js')
-const rendererHtmlPath = join(desktopRoot, 'dist/renderer/activation/index.html')
-const preloadJsPath = join(desktopRoot, 'dist/preload/activationPreload.js')
+const verifierScript = join(desktopRoot, 'scripts', 'verify-activation-compiled-renderer.cjs')
+const smokeScript = join(desktopRoot, 'tests', 'smoke', 'activation-window-smoke.cjs')
+const tempRoots: string[] = []
 
-function resolveNpmCommand(platform: NodeJS.Platform) {
-  return platform === 'win32' ? 'npm.cmd' : 'npm'
+const htmlFixture = [
+  '<!doctype html>',
+  '<html>',
+  '<body>',
+  '<form id="activation-form" hidden>',
+  '<input id="store-code" />',
+  '<input id="pin" />',
+  '</form>',
+  '<script src="./activationRenderer.js"></script>',
+  '</body>',
+  '</html>',
+].join('\n')
+
+const preloadFixture = [
+  "const { contextBridge } = require('electron')",
+  "contextBridge.exposeInMainWorld('eshopDesktopActivation', {})",
+].join('\n')
+
+const browserCompatibleRendererFixture = `
+(function () {
+  const api = window.eshopDesktopActivation
+  void api.reportStartupCheckpoint({ stage: 'script-started' })
+  void api.reportStartupCheckpoint({ stage: 'bridge-detected' })
+  api.onStateChanged(function () {})
+  void api.reportStartupCheckpoint({ stage: 'subscribed' })
+
+  const form = document.querySelector('#activation-form')
+  const storeCode = document.querySelector('#store-code')
+  const pin = document.querySelector('#pin')
+  const title = document.querySelector('#state-title')
+  document.querySelector('#state-detail')
+  document.querySelector('#status-code')
+  document.querySelector('#activate-button')
+  document.querySelector('#retry-button')
+  document.querySelector('#reset-button')
+  document.querySelector('#quit-button')
+  document.querySelector('#busy')
+
+  void (async function () {
+    void api.reportStartupCheckpoint({ stage: 'get-state-started' })
+    const result = await api.getState()
+    void api.reportStartupCheckpoint({ stage: 'get-state-succeeded', stateKind: result.state.kind })
+    title.textContent = '激活此收银台'
+    form.hidden = false
+    storeCode.value = result.state.storeCodeHint
+    pin.disabled = false
+    void api.reportStartupCheckpoint({ stage: 'rendered', stateKind: result.state.kind })
+  })()
+})()
+`
+
+function makeTempDesktopRoot() {
+  const root = mkdtempSync(join(tmpdir(), 'activation-compiled-verifier-'))
+  tempRoots.push(root)
+  return root
 }
 
-function runDesktopCompile(runner: CompileRunner = execFileSync, platform: NodeJS.Platform = process.platform) {
-  runner(resolveNpmCommand(platform), ['run', 'compile'], {
-    cwd: desktopRoot,
-    stdio: 'pipe',
-    encoding: 'utf8',
-    timeout: 120_000,
-    shell: false,
-  })
+function writeArtifactTree(root: string, rendererSource = browserCompatibleRendererFixture) {
+  const activationDir = join(root, 'dist', 'renderer', 'activation')
+  const preloadDir = join(root, 'dist', 'preload')
+  mkdirSync(activationDir, { recursive: true })
+  mkdirSync(preloadDir, { recursive: true })
+  writeFileSync(join(activationDir, 'activationRenderer.js'), rendererSource)
+  writeFileSync(join(activationDir, 'index.html'), htmlFixture)
+  writeFileSync(join(preloadDir, 'activationPreload.js'), preloadFixture)
 }
 
-function makeElement(): FakeElement {
-  return {
-    textContent: '',
-    hidden: false,
-    disabled: false,
-    value: '',
-    onclick: null,
-    focus: vi.fn(),
-    addEventListener: vi.fn(),
-  }
-}
-
-function makeDom() {
-  const elements = new Map<string, FakeElement>()
-  for (const selector of [
-    '#activation-form',
-    '#store-code',
-    '#pin',
-    '#state-title',
-    '#state-detail',
-    '#status-code',
-    '#activate-button',
-    '#retry-button',
-    '#reset-button',
-    '#quit-button',
-    '#busy',
-  ]) {
-    elements.set(selector, makeElement())
-  }
-  return {
-    elements,
-    document: {
-      querySelector: vi.fn((selector: string) => elements.get(selector) ?? null),
-    },
-  }
-}
-
-function activationState(kind = 'UNACTIVATED') {
-  return {
-    kind,
-    isBusy: kind === 'BOOTING',
-    canActivate: kind === 'UNACTIVATED',
-    canRetryVerify: false,
-    canResetLocal: false,
-    canQuit: true,
-    storeCodeHint: 'STORE-A',
-  }
-}
-
-async function flushAsyncRendererWork() {
-  await Promise.resolve()
-  await new Promise((resolve) => setImmediate(resolve))
-}
-
-function checkpointStages(checkpoints: unknown[]) {
-  return checkpoints.map((checkpoint) => (checkpoint as { stage?: string }).stage)
-}
-
-describe('compiled activation renderer bootstrap', () => {
-  beforeAll(() => {
-    runDesktopCompile()
+describe('compiled activation renderer verifier', () => {
+  afterEach(() => {
+    while (tempRoots.length) {
+      rmSync(tempRoots.pop()!, { recursive: true, force: true })
+    }
   })
 
-  it('resolves npm command portably without shell execution', () => {
-    expect(resolveNpmCommand('win32')).toBe('npm.cmd')
-    expect(resolveNpmCommand('darwin')).toBe('npm')
-    expect(resolveNpmCommand('linux')).toBe('npm')
+  it('passes browser classic-script compatible renderer artifacts without building dist', async () => {
+    const root = makeTempDesktopRoot()
+    writeArtifactTree(root)
 
-    const runner = vi.fn<CompileRunner>(() => '')
-    runDesktopCompile(runner, 'win32')
+    const result = await verifier.verifyCompiledActivationRenderer({ desktopRoot: root })
 
-    expect(runner).toHaveBeenCalledWith('npm.cmd', ['run', 'compile'], {
-      cwd: desktopRoot,
-      stdio: 'pipe',
-      encoding: 'utf8',
-      timeout: 120_000,
-      shell: false,
+    expect(result.result).toBe('PASS')
+    expect(result.checkpointStages).toEqual(verifier.requiredCheckpointStages)
+    expect(result.consoleErrors).toEqual([])
+    expect(result.watchdogTriggered).toBe(false)
+    expect(result.dom).toMatchObject({
+      title: '激活此收银台',
+      formHidden: false,
+      storeCode: 'STORE-A',
+      pinInputPresent: true,
+      pinDisabled: false,
     })
   })
 
-  it('propagates npm compile failures instead of hiding status or ENOENT', () => {
-    const nonZero = new Error('compile failed with exit code 1')
-    const enoent = Object.assign(new Error('spawnSync npm ENOENT'), { code: 'ENOENT' })
+  it('fails fast when the compiled renderer artifact is missing', async () => {
+    const root = makeTempDesktopRoot()
 
-    expect(() => runDesktopCompile(() => {
-      throw nonZero
-    }, 'linux')).toThrow(nonZero)
-    expect(() => runDesktopCompile(() => {
-      throw enoent
-    }, 'win32')).toThrow(enoent)
+    await expect(verifier.verifyCompiledActivationRenderer({ desktopRoot: root })).rejects.toThrow(
+      verifier.MISSING_ARTIFACT_MESSAGE,
+    )
   })
 
-  it('emits browser-compatible classic script output for activationRenderer.js', () => {
-    const html = readFileSync(rendererHtmlPath, 'utf8')
-    const source = readFileSync(rendererJsPath, 'utf8')
-    const preload = readFileSync(preloadJsPath, 'utf8')
+  it('returns a non-zero CLI result for missing dist instead of swallowing failures', async () => {
+    const root = makeTempDesktopRoot()
+    const stdout: string[] = []
+    const stderr: string[] = []
 
-    expect(html).toContain('<script src="./activationRenderer.js"></script>')
-    expect(html).not.toMatch(/<script[^>]+type=["']module["']/i)
-    expect(source).not.toMatch(/Object\.defineProperty\(exports|exports\.__esModule|\bexports\b|\brequire\s*\(|module\.exports/)
-    expect(source).not.toMatch(/import\s+[\w{*]/)
-    expect(preload).toContain('contextBridge.exposeInMainWorld')
-  })
-
-  it('executes the compiled renderer without Node globals and renders UNACTIVATED', async () => {
-    const source = readFileSync(rendererJsPath, 'utf8')
-    const { elements, document } = makeDom()
-    const checkpoints: unknown[] = []
-    const consoleError = vi.fn()
-    const windowListeners = new Map<string, ((event?: unknown) => void)[]>()
-    const context = vm.createContext({
-      document,
-      console: { error: consoleError },
-      setTimeout,
-      clearTimeout,
-      window: {
-        confirm: vi.fn(() => true),
-        location: { reload: vi.fn() },
-        addEventListener: vi.fn((event: string, listener: (event?: unknown) => void) => {
-          windowListeners.set(event, [...(windowListeners.get(event) ?? []), listener])
-        }),
-        eshopDesktopActivation: {
-          getState: vi.fn(async () => ({ ok: true, state: activationState() })),
-          activate: vi.fn(),
-          retryVerification: vi.fn(),
-          resetLocalActivation: vi.fn(),
-          quit: vi.fn(),
-          onStateChanged: vi.fn(() => vi.fn()),
-          reportStartupCheckpoint: vi.fn(async (checkpoint: unknown) => {
-            checkpoints.push(checkpoint)
-            return { ok: true }
-          }),
-        },
-      },
+    const exitCode = await verifier.runCli({
+      desktopRoot: root,
+      argv: [],
+      stdout: { write: (input: string) => stdout.push(input) },
+      stderr: { write: (input: string) => stderr.push(input) },
     })
 
-    expect(() => vm.runInContext(source, context, { filename: 'activationRenderer.js' })).not.toThrow()
-    await flushAsyncRendererWork()
-
-    expect(consoleError).not.toHaveBeenCalled()
-    expect(checkpointStages(checkpoints)).toEqual([
-      'script-started',
-      'bridge-detected',
-      'subscribed',
-      'get-state-started',
-      'get-state-succeeded',
-      'rendered',
-    ])
-    expect(elements.get('#state-title')?.textContent).toBe('激活此收银台')
-    expect(elements.get('#activation-form')?.hidden).toBe(false)
-    expect(elements.get('#store-code')?.value).toBe('STORE-A')
+    expect(exitCode).toBe(1)
+    expect(stdout.join('')).toBe('')
+    expect(stderr.join('')).toContain(verifier.MISSING_ARTIFACT_MESSAGE)
   })
 
-  it('keeps compiled bootstrap fallback visible when DOM initialization fails', async () => {
-    const source = readFileSync(rendererJsPath, 'utf8')
-    const { elements, document } = makeDom()
-    elements.delete('#activation-form')
-    const checkpoints: unknown[] = []
-    const context = vm.createContext({
-      document,
-      console: { error: vi.fn() },
-      setTimeout,
-      clearTimeout,
-      window: {
-        confirm: vi.fn(() => true),
-        location: { reload: vi.fn() },
-        addEventListener: vi.fn(),
-        eshopDesktopActivation: {
-          getState: vi.fn(),
-          activate: vi.fn(),
-          retryVerification: vi.fn(),
-          resetLocalActivation: vi.fn(),
-          quit: vi.fn(),
-          onStateChanged: vi.fn(),
-          reportStartupCheckpoint: vi.fn(async (checkpoint: unknown) => {
-            checkpoints.push(checkpoint)
-            return { ok: true }
-          }),
-        },
-      },
-    })
+  it('rejects empty compiled renderer artifacts', async () => {
+    const root = makeTempDesktopRoot()
+    writeArtifactTree(root, '   \n')
 
-    expect(() => vm.runInContext(source, context, { filename: 'activationRenderer.js' })).not.toThrow()
-    await flushAsyncRendererWork()
+    await expect(verifier.verifyCompiledActivationRenderer({ desktopRoot: root })).rejects.toThrow(
+      /Compiled activation renderer artifact is empty/,
+    )
+  })
 
-    expect(checkpointStages(checkpoints)).toEqual([
-      'script-started',
-      'bridge-detected',
-      'startup-error',
-    ])
-    expect(elements.get('#state-title')?.textContent).toBe('启动失败')
-    expect(elements.get('#status-code')?.textContent).toBe('状态: ACTIVATION_RENDERER_INIT_FAILED')
+  it('rejects CommonJS runtime traces in the compiled renderer', async () => {
+    const root = makeTempDesktopRoot()
+    writeArtifactTree(
+      root,
+      [
+        'Object.defineProperty(exports, "__esModule", { value: true });',
+        'module.exports = {}',
+        "const dependency = require('./x')",
+        browserCompatibleRendererFixture,
+      ].join('\n'),
+    )
+
+    await expect(verifier.verifyCompiledActivationRenderer({ desktopRoot: root })).rejects.toThrow(
+      /CommonJS exports prologue/,
+    )
+  })
+
+  it('rejects ESM import and export syntax that cannot run as a classic script', () => {
+    expect(() => verifier.assertNoCommonJsOrEsmRuntime("import x from './x.js'\n")).toThrow(/ESM import/)
+    expect(() => verifier.assertNoCommonJsOrEsmRuntime('export {}\n')).toThrow(/ESM export/)
+  })
+
+  it('keeps the verifier independent from npm, npx, tsc, and electron-builder', () => {
+    const script = readFileSync(verifierScript, 'utf8')
+
+    expect(script).not.toMatch(/require\(['"]node:child_process['"]\)/)
+    expect(script).not.toMatch(/\bspawn(?:Sync)?\b|\bexecFile(?:Sync)?\b/)
+    expect(script).not.toMatch(/\bnpm\.cmd\b|\bnpx\b|\btsc\b|\belectron-builder\b/)
+  })
+
+  it('normalizes Windows-style path separators for stable verifier output', () => {
+    expect(verifier.toPosixPath('dist\\renderer\\activation\\activationRenderer.js')).toBe(
+      'dist/renderer/activation/activationRenderer.js',
+    )
+  })
+
+  it('keeps default Electron page detection in the Activation smoke gate', () => {
+    const smoke = readFileSync(smokeScript, 'utf8')
+
+    expect(smoke).toContain("document.title === 'Electron'")
+    expect(smoke).toMatch(/welcome to electron\|electron quick start\|electron fiddle\|electron default/i)
+    expect(smoke).toContain('Electron default page detected')
   })
 })
