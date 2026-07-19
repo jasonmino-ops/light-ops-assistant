@@ -198,6 +198,74 @@ async function assertCatalogObjects() {
   )
 }
 
+async function seedHistoricalFixture() {
+  await prisma.tenant.upsert({
+    where: { id: 'hist-tenant-06c' },
+    update: { name: 'Historical 06C Tenant', status: 'ACTIVE', tier: 'STANDARD' },
+    create: { id: 'hist-tenant-06c', name: 'Historical 06C Tenant', status: 'ACTIVE', tier: 'STANDARD' },
+  })
+  await prisma.store.upsert({
+    where: { id: 'hist-store-06c' },
+    update: { tenantId: 'hist-tenant-06c', code: 'HIST06C', name: 'Historical 06C Store', status: 'ACTIVE' },
+    create: {
+      id: 'hist-store-06c',
+      tenantId: 'hist-tenant-06c',
+      code: 'HIST06C',
+      name: 'Historical 06C Store',
+      status: 'ACTIVE',
+    },
+  })
+  await prisma.user.upsert({
+    where: { id: 'hist-owner-06c' },
+    update: {
+      tenantId: 'hist-tenant-06c',
+      username: 'hist-owner-06c',
+      displayName: 'Historical Owner',
+      role: 'OWNER',
+      status: 'ACTIVE',
+    },
+    create: {
+      id: 'hist-owner-06c',
+      tenantId: 'hist-tenant-06c',
+      username: 'hist-owner-06c',
+      displayName: 'Historical Owner',
+      role: 'OWNER',
+      status: 'ACTIVE',
+    },
+  })
+  await prisma.tenantSubscription.upsert({
+    where: { tenantId: 'hist-tenant-06c' },
+    update: { status: 'ACTIVE' },
+    create: { tenantId: 'hist-tenant-06c', status: 'ACTIVE' },
+  })
+  await prisma.desktopActivationPin.upsert({
+    where: { id: 'hist-pin-06c' },
+    update: {
+      tenantId: 'hist-tenant-06c',
+      storeId: 'hist-store-06c',
+      pinHash: 'historical-merchant-pin-hash-06c',
+      pinHashVersion: 1,
+      status: 'ACTIVE',
+      activeSlot: 'ACTIVE',
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      createdByUserId: 'hist-owner-06c',
+      createdByOpsAdminId: null,
+    },
+    create: {
+      id: 'hist-pin-06c',
+      tenantId: 'hist-tenant-06c',
+      storeId: 'hist-store-06c',
+      pinHash: 'historical-merchant-pin-hash-06c',
+      pinHashVersion: 1,
+      status: 'ACTIVE',
+      activeSlot: 'ACTIVE',
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      createdByUserId: 'hist-owner-06c',
+      createdByOpsAdminId: null,
+    },
+  })
+}
+
 async function assertHistoricalFixtureCompatible() {
   const row = await prisma.desktopActivationPin.findUniqueOrThrow({ where: { id: 'hist-pin-06c' } })
   assert.equal(row.createdByUserId, 'hist-owner-06c', 'historical merchant PIN must keep merchant creator')
@@ -527,6 +595,7 @@ async function cleanup() {
 
 async function main() {
   await assertCatalogObjects()
+  await seedHistoricalFixture()
   await assertHistoricalFixtureCompatible()
   await testAuthorizationLookupAndNoStore()
   await testOpsIssuanceAttributionAndPinLifecycle()

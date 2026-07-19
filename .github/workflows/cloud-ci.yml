@@ -59,6 +59,7 @@ jobs:
       DESKTOP_DEVICE_TOKEN_SECRET: ci-desktop-device-token-secret-ep-mb3-06a
       DESKTOP_ACTIVATION_PIN_SECRET: ci-desktop-activation-pin-secret-ep-mb3-06a
       DESKTOP_ACTIVATION_TEST_DATABASE: "1"
+      MIGRATION_CHAIN_TEST_DATABASE: "1"
       AUTH_SECRET: ci-auth-secret-not-used-for-desktop-activation
     steps:
       - uses: actions/checkout@v4
@@ -77,8 +78,20 @@ jobs:
       - name: Prisma generate
         run: npx prisma generate
 
-      - name: Apply current schema to temporary PostgreSQL
-        run: npx prisma db push --force-reset
+      - name: Migration chain deploy to temporary PostgreSQL
+        run: npx prisma migrate deploy
+
+      - name: Migration status
+        run: npx prisma migrate status
+
+      - name: Migration drift check
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+
+      - name: Repeated migration deploy is no-op
+        run: npx prisma migrate deploy
+
+      - name: Migration chain smoke test
+        run: npx tsx tests/migration-chain-smoke.test.ts
 
       - name: Type check
         run: npx tsc --noEmit
@@ -91,7 +104,9 @@ jobs:
           npx tsx tests/desktop-activation-concurrency-static.test.ts
 
       - name: EP-MB3-06A real database activation and concurrency tests
-        run: npx tsx tests/desktop-activation-runtime.test.ts
+        run: |
+          npx tsx tests/desktop-activation-runtime.test.ts
+          npx tsx tests/desktop-activation-pin-console-api.test.ts
 
       - name: Relevant regression tests
         run: |
