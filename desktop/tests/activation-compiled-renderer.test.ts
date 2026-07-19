@@ -4,6 +4,18 @@ import { join } from 'node:path'
 import vm from 'node:vm'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
+type CompileRunner = (
+  command: string,
+  args: string[],
+  options: {
+    cwd: string
+    stdio: 'pipe'
+    encoding: 'utf8'
+    timeout: number
+    shell: false
+  },
+) => string | Buffer
+
 type FakeElement = {
   textContent: string
   hidden: boolean
@@ -18,6 +30,20 @@ const desktopRoot = join(__dirname, '..')
 const rendererJsPath = join(desktopRoot, 'dist/renderer/activation/activationRenderer.js')
 const rendererHtmlPath = join(desktopRoot, 'dist/renderer/activation/index.html')
 const preloadJsPath = join(desktopRoot, 'dist/preload/activationPreload.js')
+
+function resolveNpmCommand(platform: NodeJS.Platform) {
+  return platform === 'win32' ? 'npm.cmd' : 'npm'
+}
+
+function runDesktopCompile(runner: CompileRunner = execFileSync, platform: NodeJS.Platform = process.platform) {
+  runner(resolveNpmCommand(platform), ['run', 'compile'], {
+    cwd: desktopRoot,
+    stdio: 'pipe',
+    encoding: 'utf8',
+    timeout: 120_000,
+    shell: false,
+  })
+}
 
 function makeElement(): FakeElement {
   return {
@@ -79,10 +105,36 @@ function checkpointStages(checkpoints: unknown[]) {
 
 describe('compiled activation renderer bootstrap', () => {
   beforeAll(() => {
-    execFileSync('npm', ['run', 'compile'], {
+    runDesktopCompile()
+  })
+
+  it('resolves npm command portably without shell execution', () => {
+    expect(resolveNpmCommand('win32')).toBe('npm.cmd')
+    expect(resolveNpmCommand('darwin')).toBe('npm')
+    expect(resolveNpmCommand('linux')).toBe('npm')
+
+    const runner = vi.fn<CompileRunner>(() => '')
+    runDesktopCompile(runner, 'win32')
+
+    expect(runner).toHaveBeenCalledWith('npm.cmd', ['run', 'compile'], {
       cwd: desktopRoot,
       stdio: 'pipe',
+      encoding: 'utf8',
+      timeout: 120_000,
+      shell: false,
     })
+  })
+
+  it('propagates npm compile failures instead of hiding status or ENOENT', () => {
+    const nonZero = new Error('compile failed with exit code 1')
+    const enoent = Object.assign(new Error('spawnSync npm ENOENT'), { code: 'ENOENT' })
+
+    expect(() => runDesktopCompile(() => {
+      throw nonZero
+    }, 'linux')).toThrow(nonZero)
+    expect(() => runDesktopCompile(() => {
+      throw enoent
+    }, 'win32')).toThrow(enoent)
   })
 
   it('emits browser-compatible classic script output for activationRenderer.js', () => {
