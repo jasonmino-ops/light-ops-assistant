@@ -17,6 +17,8 @@ if (!process.env.DESKTOP_DEVICE_TOKEN_SECRET || !process.env.DESKTOP_ACTIVATION_
   throw new Error('Desktop activation test secrets are required')
 }
 
+const createdTenantIds = new Set<string>()
+
 function activationRequest() {
   return new NextRequest('http://localhost/api/desktop/activate', {
     headers: {
@@ -58,6 +60,7 @@ async function seedTenant(prefix: string) {
       tier: 'STANDARD',
     },
   })
+  createdTenantIds.add(tenant.id)
   const store = await prisma.store.create({
     data: {
       tenantId: tenant.id,
@@ -248,6 +251,28 @@ async function testConcurrentActivation() {
   assert.equal(new Set(tokens).size, 1, 'only one token should be issued')
 }
 
+async function cleanupRuntimeFixtures() {
+  const tenantIds = Array.from(createdTenantIds)
+  if (tenantIds.length === 0) return
+
+  await prisma.$transaction(async (tx) => {
+    await tx.desktopActivationAudit.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.desktopActivationPin.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.desktopDevice.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.subscriptionEvent.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.tenantSubscription.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.userStoreRole.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.customerOrder.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.product.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.store.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.user.deleteMany({ where: { tenantId: { in: tenantIds } } })
+    await tx.tenant.deleteMany({ where: { id: { in: tenantIds } } })
+  })
+
+  const residualCount = await prisma.tenant.count({ where: { id: { in: tenantIds } } })
+  assert.equal(residualCount, 0, 'runtime test cleanup must remove every tracked tenant')
+}
+
 async function main() {
   await testSuccessfulActivationAndRotation()
   await testConcurrentActivation()
@@ -260,5 +285,9 @@ main()
     process.exitCode = 1
   })
   .finally(async () => {
-    await prisma.$disconnect()
+    try {
+      await cleanupRuntimeFixtures()
+    } finally {
+      await prisma.$disconnect()
+    }
   })

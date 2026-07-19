@@ -10,6 +10,8 @@
     "test:smoke:prod": "playwright test tests/smoke/production-smoke.spec.ts",
     "postinstall": "prisma generate",
     "migrate:prod": "DATABASE_URL=$DIRECT_URL prisma migrate deploy",
+    "staging:cleanup-runtime": "tsx scripts/cleanup-staging-runtime-fixtures.ts",
+    "staging:bootstrap-preview": "tsx scripts/bootstrap-staging-preview.ts",
     "rollback:freeze": "bash scripts/rollback-to-freeze.sh",
     "vercel:deployments": "vercel ls",
     "vercel:deployments:json": "vercel ls light-ops-assistant --format=json",
