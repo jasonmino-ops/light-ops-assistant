@@ -1,27 +1,10 @@
 import { NextRequest } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
-import { auditRequestHashes, writeDesktopActivationAudit } from '@/lib/desktop-activation/audit'
-import {
-  DesktopSecretError,
-  DESKTOP_ACTIVATION_PIN_HASH_VERSION,
-  assertDesktopActivationSecretsConfigured,
-  createActivationPin,
-  getActivationPinExpiresAt,
-  hashActivationPin,
-} from '@/lib/desktop-activation/crypto'
 import { apiError, minimalDesktopSubscription, noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
-import {
-  isDesktopSubscriptionAllowed,
-  resolveDesktopSubscriptionAccess,
-} from '@/lib/desktop-activation/subscription-access'
+import { issueDesktopActivationPin } from '@/lib/desktop-activation/pin-issuance'
 
 type PinCreateBody = { storeId?: unknown }
-
-function isP2002(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
-}
 
 export async function POST(req: NextRequest) {
   return withDesktopApiError(async () => {
@@ -47,85 +30,24 @@ export async function POST(req: NextRequest) {
     if (store.tenant.status !== 'ACTIVE') return apiError('TENANT_INACTIVE', 403)
     if (store.status !== 'ACTIVE') return apiError('STORE_INACTIVE', 403)
 
-    const pin = createActivationPin()
-    const now = new Date()
-    const expiresAt = getActivationPinExpiresAt(now)
-    let pinHash: string
-    try {
-      assertDesktopActivationSecretsConfigured()
-      pinHash = hashActivationPin({ tenantId: store.tenantId, storeId: store.id, pin })
-    } catch (error) {
-      if (error instanceof DesktopSecretError) return apiError(error.code, 503)
-      throw error
-    }
-
-    const requestHashes = auditRequestHashes(req)
-    const result = await prisma.$transaction(async (tx) => {
-      const subscription = await resolveDesktopSubscriptionAccess(tx, store.tenantId)
-      if (!isDesktopSubscriptionAllowed(subscription)) {
-        await writeDesktopActivationAudit(tx, {
-          tenantId: store.tenantId,
-          storeId: store.id,
-          actorUserId: ctx.userId,
-          eventType: 'PIN_CREATE_DENIED',
-          result: 'DENIED',
-          reasonCode: 'SUBSCRIPTION_BLOCKED',
-          ...requestHashes,
-          metadata: { accessState: subscription.accessState, status: subscription.status },
-        })
-        return { ok: false as const, subscription }
-      }
-
-      await tx.desktopActivationPin.updateMany({
-        where: { storeId: store.id, activeSlot: 'ACTIVE' },
-        data: { status: 'REVOKED', activeSlot: null, revokedAt: now },
-      })
-
-      const row = await tx.desktopActivationPin.create({
-        data: {
-          tenantId: store.tenantId,
-          storeId: store.id,
-          pinHash,
-          pinHashVersion: DESKTOP_ACTIVATION_PIN_HASH_VERSION,
-          status: 'ACTIVE',
-          activeSlot: 'ACTIVE',
-          expiresAt,
-          createdByUserId: ctx.userId,
-        },
-      })
-
-      await writeDesktopActivationAudit(tx, {
-        tenantId: store.tenantId,
-        storeId: store.id,
-        pinId: row.id,
-        actorUserId: ctx.userId,
-        eventType: 'PIN_CREATED',
-        result: 'SUCCESS',
-        ...requestHashes,
-        metadata: {
-          expiresAt: row.expiresAt.toISOString(),
-          accessState: subscription.accessState,
-          status: subscription.status,
-        },
-      })
-
-      return { ok: true as const, row, subscription }
-    }).catch((error) => {
-      if (isP2002(error)) return { ok: 'conflict' as const }
-      throw error
+    const result = await issueDesktopActivationPin({
+      req,
+      store: { id: store.id, tenantId: store.tenantId },
+      createdByUserId: ctx.userId,
     })
 
-    if (result.ok === 'conflict') return apiError('CONFLICT_RETRY_REQUIRED', 409)
-
     if (!result.ok) {
-      return apiError('SUBSCRIPTION_BLOCKED', 403, { subscription: minimalDesktopSubscription(result.subscription) })
+      if (result.error === 'CONFLICT_RETRY_REQUIRED') return apiError('CONFLICT_RETRY_REQUIRED', 409)
+      return apiError(result.error, result.status, {
+        ...(result.subscription ? { subscription: minimalDesktopSubscription(result.subscription) } : {}),
+      })
     }
 
     return noStoreJson({
-      pinId: result.row.id,
-      pin,
+      pinId: result.pinId,
+      pin: result.pin,
       storeId: store.id,
-      expiresAt: result.row.expiresAt.toISOString(),
+      expiresAt: result.expiresAt,
       subscription: minimalDesktopSubscription(result.subscription),
     }, { status: 201 })
   })

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import {
   DESKTOP_ACTIVATION_PIN_HASH_VERSION,
   DESKTOP_DEVICE_TOKEN_BYTES,
@@ -50,6 +51,11 @@ try {
   const pin = createActivationPin()
   assert.equal(DESKTOP_ACTIVATION_PIN_HASH_VERSION, 1)
   assert.match(pin, /^\d{6}$/)
+  assert.match(
+    fs.readFileSync('lib/desktop-activation/crypto.ts', 'utf8'),
+    /padStart\(6,\s*'0'\)/,
+    'activation PIN creation must preserve leading zeroes',
+  )
   assert.equal(isValidActivationPinFormat(pin), true)
   assert.equal(isValidActivationPinFormat('12345'), false)
   assert.equal(isValidActivationPinFormat('12345a'), false)

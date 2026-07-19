@@ -273,6 +273,7 @@ export default function OpsPage() {
       )}
       <Link href="/ops/overview" style={s.sysLink} title="查看全部商户运行状态">运行概览</Link>
       <Link href="/ops/health" style={s.sysLink} title="查看平台核心业务链路和当前可识别异常">运行健康</Link>
+      <Link href="/ops/desktop-activation" style={s.sysLink}>设备 PIN</Link>
       <Link href="/system" style={s.sysLink}>系统自检</Link>
     </>
   )
@@ -309,6 +310,7 @@ export default function OpsPage() {
           {showMoreMenu && (
             <div style={s.moreMenu}>
               {opsRole === 'SUPER_ADMIN' && <Link href="/ops/admins" style={s.moreMenuItem}>管理员</Link>}
+              <Link href="/ops/desktop-activation" style={s.moreMenuItem}>设备 PIN</Link>
               <Link href="/system" style={s.moreMenuItem}>系统自检</Link>
               <a href="#ops-broadcast" style={s.moreMenuItem} onClick={() => setShowMoreMenu(false)}>广播发送</a>
               <a href="#ops-applications" style={s.moreMenuItem} onClick={() => setShowMoreMenu(false)}>开店申请</a>

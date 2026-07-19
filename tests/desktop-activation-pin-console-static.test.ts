@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+function read(file: string) {
+  return fs.readFileSync(file, 'utf8')
+}
+
+const opsRoute = read('app/api/ops/desktop-activation/route.ts')
+const opsPage = read('app/ops/desktop-activation/page.tsx')
+const opsHome = read('app/ops/page.tsx')
+const desktopPinRoute = read('app/api/desktop/activation-pins/route.ts')
+const pinIssuance = read('lib/desktop-activation/pin-issuance.ts')
+
+assert.match(opsRoute, /checkOpsAuthContext/, 'ops PIN API must use server-side ops auth')
+assert.match(opsRoute, /hasOpsRole\(ops\.role,\s*'OPS_ADMIN'\)/, 'ops PIN API must require OPS_ADMIN or higher')
+assert.doesNotMatch(opsRoute, /getContext\(/, 'ops PIN API must not authorize as a merchant OWNER')
+assert.doesNotMatch(opsRoute, /NextResponse\.json/, 'ops PIN API must use noStoreJson/apiError')
+assert.match(opsRoute, /noStoreJson|apiError/, 'ops PIN API responses must be no-store')
+assert.match(opsRoute, /issueDesktopActivationPin/, 'ops PIN API must delegate issuance to the shared 06A service')
+assert.match(opsRoute, /STORE_CODE_PATTERN/, 'ops PIN API must reject malformed storeCode values')
+assert.match(opsRoute, /role:\s*'OWNER'[\s\S]*storeRoles/, 'ops PIN API must bind createdByUserId to an active owner for the target store')
+assert.match(opsRoute, /auditReasonCode:\s*'OPS_ISSUED'/, 'ops-issued PINs should be marked in desktop activation audit reasonCode')
+assert.doesNotMatch(opsRoute, /deviceToken|tokenHash|pinHash|installationIdHash/, 'ops PIN API must not return device tokens or internal hashes')
+
+assert.match(pinIssuance, /createActivationPin\(\)/, 'shared issuance service must own PIN creation')
+assert.match(pinIssuance, /hashActivationPin/, 'shared issuance service must hash PINs before persistence')
+assert.match(pinIssuance, /updateMany\(\{[\s\S]*status:\s*'REVOKED'[\s\S]*activeSlot:\s*null/, 'new PIN issuance must revoke any existing active PIN')
+assert.match(pinIssuance, /writeDesktopActivationAudit[\s\S]*eventType:\s*'PIN_CREATED'/, 'new PIN issuance must write PIN_CREATED audit')
+assert.match(pinIssuance, /writeDesktopActivationAudit[\s\S]*eventType:\s*'PIN_CREATE_DENIED'/, 'subscription-denied issuance must be audited')
+assert.doesNotMatch(pinIssuance, /console\.|OperationLog|payloadSnapshot/, 'shared issuance service must not log PIN material')
+
+assert.match(desktopPinRoute, /issueDesktopActivationPin/, 'existing merchant PIN route should reuse shared issuance service')
+assert.doesNotMatch(desktopPinRoute, /createActivationPin|hashActivationPin|DESKTOP_ACTIVATION_PIN_HASH_VERSION/, 'existing merchant PIN route must not duplicate PIN issuance internals')
+
+assert.match(opsPage, /\/api\/ops\/desktop-activation/, 'ops page must call the ops PIN API')
+assert.match(opsPage, /navigator\.clipboard\.writeText\(issued\.pin\)/, 'copy must be an explicit user-triggered action')
+assert.doesNotMatch(opsPage, /localStorage|sessionStorage|console\./, 'ops page must not persist or log PINs')
+assert.doesNotMatch(opsPage, /URLSearchParams|router\.push|window\.location/, 'ops page must not put PIN state in the URL')
+assert.match(opsPage, /setIssued\(null\)/, 'ops page must clear one-time PIN state when changing context')
+assert.match(opsPage, /Reference:/, 'ops page may show a safe reference code after user-friendly text')
+
+assert.match(opsHome, /href="\/ops\/desktop-activation"/, 'ops home should link to the activation PIN console')
+
+console.log('desktop activation PIN console static tests passed')
