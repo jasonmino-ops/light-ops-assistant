@@ -255,8 +255,8 @@ model User {
   memberBalanceLedgers     MemberBalanceLedger[]
   memberTelegramBindTokens MemberTelegramBindToken[]
   revokedDesktopDevices    DesktopDevice[]          @relation("DesktopDeviceRevokedBy")
-  createdActivationPins    DesktopActivationPin[]   @relation("DesktopActivationPinCreatedBy")
-  desktopActivationAudits  DesktopActivationAudit[] @relation("DesktopActivationAuditActor")
+  createdActivationPins    DesktopActivationPin[]   @relation("DesktopActivationPinCreatedByUser")
+  desktopActivationAudits  DesktopActivationAudit[] @relation("DesktopActivationAuditUserActor")
 
   @@unique([tenantId, username])
   @@index([tenantId])
@@ -913,6 +913,9 @@ model OpsAdmin {
   lockedUntil      DateTime? // 账号锁定到期时间（5 次失败锁 15 分钟）
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+
+  createdActivationPins   DesktopActivationPin[]   @relation("DesktopActivationPinCreatedByOpsAdmin")
+  desktopActivationAudits DesktopActivationAudit[] @relation("DesktopActivationAuditOpsActor")
 }
 
 // 顾客下单后通过 /start bind_<storeCode>_<orderNo> 主动绑定 Telegram，沉淀为门店常驻联系人
@@ -1223,22 +1226,25 @@ model DesktopActivationPin {
   usedByDeviceId  String?
   failedAttempts  Int                        @default(0)
   lockedUntil     DateTime?
-  createdByUserId String
+  createdByUserId     String?
+  createdByOpsAdminId String?
   revokedAt       DateTime?
   createdAt       DateTime                   @default(now())
   updatedAt       DateTime                   @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  createdByUser User          @relation("DesktopActivationPinCreatedBy", fields: [createdByUserId], references: [id])
-  usedByDevice  DesktopDevice? @relation("DesktopActivationPinUsedByDevice", fields: [usedByDeviceId], references: [id], onDelete: SetNull)
-  audits        DesktopActivationAudit[]
+  tenant            Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store             Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdByUser     User?          @relation("DesktopActivationPinCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByOpsAdmin OpsAdmin?      @relation("DesktopActivationPinCreatedByOpsAdmin", fields: [createdByOpsAdminId], references: [id], onDelete: SetNull)
+  usedByDevice      DesktopDevice? @relation("DesktopActivationPinUsedByDevice", fields: [usedByDeviceId], references: [id], onDelete: SetNull)
+  audits            DesktopActivationAudit[]
 
   @@unique([storeId, activeSlot])
   @@index([tenantId, storeId])
   @@index([expiresAt])
   @@index([usedByDeviceId])
   @@index([createdByUserId])
+  @@index([createdByOpsAdminId])
   @@index([status])
 }
 
@@ -1249,6 +1255,7 @@ model DesktopActivationAudit {
   deviceId     String?
   pinId        String?
   actorUserId  String?
+  actorOpsAdminId String?
   eventType    String
   result       String
   reasonCode   String?
@@ -1257,17 +1264,19 @@ model DesktopActivationAudit {
   metadata     Json?
   createdAt    DateTime @default(now())
 
-  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store     Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  device    DesktopDevice?        @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  pin       DesktopActivationPin? @relation(fields: [pinId], references: [id], onDelete: SetNull)
-  actorUser User?                 @relation("DesktopActivationAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store         Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  device        DesktopDevice?        @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  pin           DesktopActivationPin? @relation(fields: [pinId], references: [id], onDelete: SetNull)
+  actorUser     User?                 @relation("DesktopActivationAuditUserActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorOpsAdmin OpsAdmin?             @relation("DesktopActivationAuditOpsActor", fields: [actorOpsAdminId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
   @@index([storeId, createdAt])
   @@index([deviceId, createdAt])
   @@index([pinId, createdAt])
   @@index([actorUserId, createdAt])
+  @@index([actorOpsAdminId])
   @@index([eventType, createdAt])
   @@index([result, createdAt])
 }

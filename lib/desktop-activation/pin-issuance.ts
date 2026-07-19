@@ -45,12 +45,16 @@ export type DesktopActivationPinIssueResult =
 export type DesktopActivationPinIssueInput = {
   req: NextRequest
   store: DesktopActivationPinIssueStore
-  createdByUserId: string
-  auditActorUserId?: string | null
+  createdByUserId: string | null
+  createdByOpsAdminId: string | null
+  actorUserId: string | null
+  actorOpsAdminId: string | null
   auditReasonCode?: string | null
   auditMetadata?: {
     reason?: string
     eventVersion?: string
+    operatorRole?: string
+    issuanceSource?: string
   }
 }
 
@@ -66,9 +70,36 @@ function failure(
   return { ok: false, status, error, ...(extra ?? {}) }
 }
 
+function exactlyOne(valueA: string | null, valueB: string | null) {
+  return Boolean(valueA) !== Boolean(valueB)
+}
+
+function auditMetadata(input: {
+  expiresAt?: string
+  accessState?: string
+  status?: string
+  reason?: string
+  eventVersion?: string
+  operatorRole?: string
+  issuanceSource?: string
+}) {
+  const metadata: Record<string, string> = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (value != null && value !== '') metadata[key] = value
+  }
+  return metadata
+}
+
 export async function issueDesktopActivationPin(
   input: DesktopActivationPinIssueInput,
 ): Promise<DesktopActivationPinIssueResult> {
+  if (!exactlyOne(input.createdByUserId, input.createdByOpsAdminId)) {
+    return failure(400, 'INVALID_ISSUER')
+  }
+  if (!exactlyOne(input.actorUserId, input.actorOpsAdminId)) {
+    return failure(400, 'INVALID_ACTOR')
+  }
+
   const pin = createActivationPin()
   const now = new Date()
   const expiresAt = getActivationPinExpiresAt(now)
@@ -83,7 +114,6 @@ export async function issueDesktopActivationPin(
   }
 
   const requestHashes = auditRequestHashes(input.req)
-  const actorUserId = input.auditActorUserId === undefined ? input.createdByUserId : input.auditActorUserId
 
   const result = await prisma.$transaction(async (tx) => {
     const subscription = await resolveDesktopSubscriptionAccess(tx, input.store.tenantId)
@@ -91,12 +121,18 @@ export async function issueDesktopActivationPin(
       await writeDesktopActivationAudit(tx, {
         tenantId: input.store.tenantId,
         storeId: input.store.id,
-        actorUserId,
+        actorUserId: input.actorUserId,
+        actorOpsAdminId: input.actorOpsAdminId,
         eventType: 'PIN_CREATE_DENIED',
         result: 'DENIED',
         reasonCode: 'SUBSCRIPTION_BLOCKED',
         ...requestHashes,
-        metadata: { accessState: subscription.accessState, status: subscription.status },
+        metadata: auditMetadata({
+          accessState: subscription.accessState,
+          status: subscription.status,
+          operatorRole: input.auditMetadata?.operatorRole,
+          issuanceSource: input.auditMetadata?.issuanceSource,
+        }),
       })
       return { ok: false as const, subscription }
     }
@@ -121,6 +157,7 @@ export async function issueDesktopActivationPin(
         activeSlot: 'ACTIVE',
         expiresAt,
         createdByUserId: input.createdByUserId,
+        createdByOpsAdminId: input.createdByOpsAdminId,
       },
     })
 
@@ -128,18 +165,21 @@ export async function issueDesktopActivationPin(
       tenantId: input.store.tenantId,
       storeId: input.store.id,
       pinId: row.id,
-      actorUserId,
+      actorUserId: input.actorUserId,
+      actorOpsAdminId: input.actorOpsAdminId,
       eventType: 'PIN_CREATED',
       result: 'SUCCESS',
       reasonCode: input.auditReasonCode ?? null,
       ...requestHashes,
-      metadata: {
+      metadata: auditMetadata({
         expiresAt: row.expiresAt.toISOString(),
         accessState: subscription.accessState,
         status: subscription.status,
         reason: input.auditMetadata?.reason,
         eventVersion: input.auditMetadata?.eventVersion,
-      },
+        operatorRole: input.auditMetadata?.operatorRole,
+        issuanceSource: input.auditMetadata?.issuanceSource,
+      }),
     })
 
     return {

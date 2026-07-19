@@ -15,6 +15,8 @@ const ALLOWED_METADATA_KEYS = new Set([
   'replacesDeviceId',
   'reason',
   'eventVersion',
+  'operatorRole',
+  'issuanceSource',
 ])
 
 const SENSITIVE_KEY_PATTERN = /(token|pin|authorization|secret|hash|installation|payload|request|response)/i
@@ -27,6 +29,7 @@ export type DesktopActivationAuditInput = {
   deviceId?: string | null
   pinId?: string | null
   actorUserId?: string | null
+  actorOpsAdminId?: string | null
   eventType: string
   result: 'SUCCESS' | 'FAILED' | 'DENIED' | 'INFO'
   reasonCode?: string | null
@@ -61,6 +64,7 @@ export async function writeDesktopActivationAudit(
       deviceId: input.deviceId ?? null,
       pinId: input.pinId ?? null,
       actorUserId: input.actorUserId ?? null,
+      actorOpsAdminId: input.actorOpsAdminId ?? null,
       eventType: input.eventType,
       result: input.result,
       reasonCode: input.reasonCode ?? null,

@@ -108,11 +108,13 @@ export default function OpsDesktopActivationPage() {
   const [issuing, setIssuing] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [showReplaceConfirm, setShowReplaceConfirm] = useState(false)
 
   function updateStoreCode(value: string) {
     setStoreCode(value)
     setIssued(null)
     setCopied(false)
+    setShowReplaceConfirm(false)
     setError('')
   }
 
@@ -126,6 +128,7 @@ export default function OpsDesktopActivationPage() {
     const code = storeCode.trim()
     setIssued(null)
     setCopied(false)
+    setShowReplaceConfirm(false)
     setError('')
     if (!code) {
       setError(errorText('MISSING_STORE_CODE'))
@@ -147,6 +150,15 @@ export default function OpsDesktopActivationPage() {
     }
   }
 
+  function requestIssuePin() {
+    if (issuing) return
+    if (status?.activePin?.hasValidPin) {
+      setShowReplaceConfirm(true)
+      return
+    }
+    issuePin()
+  }
+
   async function issuePin() {
     const code = status?.store.code ?? storeCode.trim()
     if (!code || issuing) return
@@ -154,6 +166,7 @@ export default function OpsDesktopActivationPage() {
     setIssuing(true)
     setIssued(null)
     setCopied(false)
+    setShowReplaceConfirm(false)
     setError('')
     try {
       const res = await fetch('/api/ops/desktop-activation', {
@@ -275,7 +288,32 @@ export default function OpsDesktopActivationPage() {
 
             <div style={s.warningBox}>生成新的激活 PIN 会使旧 PIN 立即失效。PIN 只在生成成功后显示一次。</div>
 
-            <button type="button" style={{ ...s.issueBtn, opacity: canIssue ? 1 : 0.55 }} disabled={!canIssue} onClick={issuePin}>
+            {showReplaceConfirm && status.activePin?.hasValidPin && (
+              <div style={s.confirmBox}>
+                <div style={s.confirmTitle}>确认生成新的激活 PIN？</div>
+                <div style={s.confirmText}>当前门店已有有效 PIN。继续后，旧 PIN 将立即失效。</div>
+                <div style={s.confirmActions}>
+                  <button
+                    type="button"
+                    style={s.cancelConfirmBtn}
+                    disabled={issuing}
+                    onClick={() => setShowReplaceConfirm(false)}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...s.confirmBtn, opacity: issuing ? 0.65 : 1 }}
+                    disabled={issuing}
+                    onClick={issuePin}
+                  >
+                    {issuing ? '生成中' : '确认生成'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <button type="button" style={{ ...s.issueBtn, opacity: canIssue ? 1 : 0.55 }} disabled={!canIssue} onClick={requestIssuePin}>
               {issuing ? '生成中' : '生成新的激活 PIN'}
             </button>
           </section>
@@ -550,6 +588,53 @@ const s: Record<string, CSSProperties> = {
     color: '#92400e',
     fontSize: 13,
     fontWeight: 800,
+  },
+  confirmBox: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    background: '#fff7ed',
+    border: '1px solid #fed7aa',
+  },
+  confirmTitle: {
+    color: '#9a3412',
+    fontSize: 14,
+    fontWeight: 900,
+  },
+  confirmText: {
+    marginTop: 6,
+    color: '#7c2d12',
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1.45,
+  },
+  confirmActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 10,
+  },
+  cancelConfirmBtn: {
+    height: 34,
+    padding: '0 13px',
+    borderRadius: 6,
+    border: '1px solid #fdba74',
+    background: '#fff',
+    color: '#9a3412',
+    fontSize: 13,
+    fontWeight: 900,
+    cursor: 'pointer',
+  },
+  confirmBtn: {
+    height: 34,
+    padding: '0 13px',
+    borderRadius: 6,
+    border: 'none',
+    background: '#c2410c',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 900,
+    cursor: 'pointer',
   },
   successText: {
     color: '#166534',

@@ -150,33 +150,17 @@ export async function POST(req: NextRequest) {
     if (store.tenant.status !== 'ACTIVE') return apiError('TENANT_INACTIVE', 403)
     if (store.status !== 'ACTIVE') return apiError('STORE_INACTIVE', 403)
 
-    const owner = await prisma.user.findFirst({
-      where: {
-        tenantId: store.tenantId,
-        role: 'OWNER',
-        status: 'ACTIVE',
-        storeRoles: {
-          some: {
-            storeId: store.id,
-            role: 'OWNER',
-            status: 'ACTIVE',
-          },
-        },
-      },
-      select: { id: true },
-      orderBy: { createdAt: 'asc' },
-    })
-    if (!owner) return apiError('STORE_OWNER_NOT_FOUND', 409)
-
     const result = await issueDesktopActivationPin({
       req,
       store: { id: store.id, tenantId: store.tenantId },
-      createdByUserId: owner.id,
-      auditActorUserId: null,
+      createdByUserId: null,
+      createdByOpsAdminId: auth.ops.userId,
+      actorUserId: null,
+      actorOpsAdminId: auth.ops.userId,
       auditReasonCode: 'OPS_ISSUED',
       auditMetadata: {
-        reason: 'OPS_CONSOLE',
-        eventVersion: 'EP-MB3-06C',
+        operatorRole: auth.ops.role,
+        issuanceSource: 'OPS_CONSOLE',
       },
     })
 

@@ -34,6 +34,9 @@ export async function POST(req: NextRequest) {
       req,
       store: { id: store.id, tenantId: store.tenantId },
       createdByUserId: ctx.userId,
+      createdByOpsAdminId: null,
+      actorUserId: ctx.userId,
+      actorOpsAdminId: null,
     })
 
     if (!result.ok) {

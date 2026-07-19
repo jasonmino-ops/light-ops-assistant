@@ -2,178 +2,239 @@
 
 Date: 2026-07-19
 
-Status: READY WITH CONDITIONS
+Status: CONDITION CLOSURE COMPLETE
 
 ## Readiness Review
 
 Repository baseline:
 
-- Current package branch before implementation: `feat/ep-mb3-07b1-deployment-diagnostics`
-- `origin/main`: `15dad1aae9972046258857985469ce13e51349e6`
-- Implementation branch: `feat/ep-mb3-06c-activation-pin-console`
-- Branch baseline and merge-base: `15dad1aae9972046258857985469ce13e51349e6`
-- Workspace before implementation: clean
+- Reviewed branch: `feat/ep-mb3-06c-activation-pin-console`
+- Required starting HEAD: `d9e3a77a74d29f0f2fd88f122cb19f421eadfb3c`
+- Required origin: `d9e3a77a74d29f0f2fd88f122cb19f421eadfb3c`
+- Sync before closure: `0 / 0`
+- Workspace before closure: clean
 
-Search scope covered:
+Independent Chief Architect result:
 
-- `DesktopActivationPin`
-- `DesktopActivationAudit`
-- `DesktopDevice`
-- `generate activation pin`
-- `issue activation pin`
-- `create activation pin`
-- `activation PIN`
-- `desktop activation`
-- `admin activation`
-- `ops activation`
-- `storeCode`
-- `/api/desktop`
-- `activate`
-- `verify`
-- `revoke`
+- `CONDITIONAL PASS`
 
-## Existing EP-MB3-06A Capability
+Conditions closed in this package:
 
-Existing models:
+- P1-1 operator audit attribution
+- P2-1 merchant audit metadata regression
+- P2-3 replacement confirmation
+- DB runtime verification on isolated local test DB
 
-- `DesktopDevice`
-- `DesktopActivationPin`
-- `DesktopActivationAudit`
+Deferred:
 
-Existing Cloud APIs:
+- Ops CSRF / Origin hardening is deferred to an independent security package because it is an existing ops API global pattern, not a regression introduced by this package.
 
-- `POST /api/desktop/activation-pins`
-- `POST /api/desktop/activation-pins/[id]/revoke`
-- `POST /api/desktop/activate`
-- `POST /api/desktop/auth/verify`
-- `GET /api/desktop/device/status`
-- `GET /api/desktop/devices`
-- `POST /api/desktop/devices/[id]/revoke`
+## Founder Schema Decision
 
-Existing security semantics confirmed:
+Founder / CTO approved a minimal database migration.
 
-- PINs are 6 digit numeric strings.
-- PIN creation uses CSPRNG `crypto.randomInt(0, 1_000_000)` and `padStart(6, '0')`.
-- PINs are stored as HMAC only in `DesktopActivationPin.pinHash`.
-- Device tokens are stored as HMAC only in `DesktopDevice.tokenHash`.
-- PIN and device token secrets are separate.
-- Activation consumes a PIN and returns a raw device token once.
-- Device verify/status do not authorize by `storeCode`.
-- All `/api/desktop/*` responses use `Cache-Control: no-store, max-age=0`.
-- Subscription policy allows `TRIAL` and `ACTIVE`, blocks `EXPIRED` and `CANCELLED`.
-- Existing activation tests cover lockout, expiry, single-use, token rotation, revoke, and cross-store installation conflicts.
+The metadata-only workaround was rejected because operator identity must be a typed, queryable source of truth instead of being stored only in JSON.
 
-## Gap Confirmed
+Formal model:
 
-The repository already had a merchant OWNER PIN creation API, but no ops/admin console where internal operators can select a store by `storeCode`, inspect store/subscription state, generate a new one-time PIN, and copy it for Windows Desktop field activation.
+- Merchant-issued PIN:
+  - `DesktopActivationPin.createdByUserId = merchant User.id`
+  - `DesktopActivationPin.createdByOpsAdminId = null`
+  - `DesktopActivationAudit.actorUserId = merchant User.id`
+  - `DesktopActivationAudit.actorOpsAdminId = null`
+- Ops-issued PIN:
+  - `DesktopActivationPin.createdByUserId = null`
+  - `DesktopActivationPin.createdByOpsAdminId = OpsAdmin.id`
+  - `DesktopActivationAudit.actorUserId = null`
+  - `DesktopActivationAudit.actorOpsAdminId = OpsAdmin.id`
 
-The existing merchant API was not sufficient for this field run because the requested operational path requires an ops/admin-only entry point and must not rely on ordinary merchant users.
+## Existing Schema Findings
 
-## Implementation
+Confirmed from current repository schema before migration:
 
-Added a minimal internal console:
+- `DesktopActivationPin.createdByUserId` used the merchant User relation.
+- Prior relation name was `DesktopActivationPinCreatedBy`.
+- `DesktopActivationPin.createdByUserId` was non-nullable.
+- `DesktopActivationAudit.actorUserId` was already nullable.
+- Nullable `actorUserId` is the existing system actor semantic for system/unauthenticated activation audit events.
+- `OpsAdmin.id` is `String @id @default(cuid())`.
+- `OpsAdmin` and merchant `User` are independent models.
+- Existing historical PIN rows have merchant `createdByUserId` and remain compatible.
 
-- Page: `/ops/desktop-activation`
-- API: `GET /api/ops/desktop-activation?storeCode=<STORE_CODE>`
-- API: `POST /api/ops/desktop-activation`
+## Explicit Actor Model Migration
 
-Refactored the existing 06A PIN issuance logic into:
+Migration:
 
-- `lib/desktop-activation/pin-issuance.ts`
+- `20260719090000_model_activation_pin_ops_attribution`
 
-Both the existing merchant route and the new ops route call this shared service. The service owns:
+Migration SQL summary:
 
-- CSPRNG PIN creation
-- HMAC hash creation
-- 24 hour expiry
-- single active PIN invalidation
-- subscription enforcement
-- `PIN_CREATED` audit writes
-- `PIN_CREATE_DENIED` audit writes
-- conflict mapping to `CONFLICT_RETRY_REQUIRED`
+- Add nullable `DesktopActivationPin.createdByOpsAdminId`.
+- Add nullable `DesktopActivationAudit.actorOpsAdminId`.
+- Drop `NOT NULL` from `DesktopActivationPin.createdByUserId`.
+- Add `DesktopActivationPin_createdByOpsAdminId_idx`.
+- Add `DesktopActivationAudit_actorOpsAdminId_idx`.
+- Add FK `DesktopActivationPin.createdByOpsAdminId -> OpsAdmin.id ON DELETE SET NULL ON UPDATE CASCADE`.
+- Add FK `DesktopActivationAudit.actorOpsAdminId -> OpsAdmin.id ON DELETE SET NULL ON UPDATE CASCADE`.
+- Add `DesktopActivationPin_exactly_one_creator_check`:
+  - exactly one of `createdByUserId` or `createdByOpsAdminId` must be present.
 
-## Authorization Boundary
+Data compatibility:
 
-The ops API requires:
+- Existing merchant PIN rows keep `createdByUserId`.
+- New ops column defaults to null.
+- Existing rows satisfy the new CHECK.
+- No PIN data, PIN hash, device token, HMAC, TTL, activeSlot, or subscription policy is changed.
 
-- a valid ops session from `checkOpsAuthContext(req)`
-- role rank `OPS_ADMIN` or higher via `hasOpsRole(ops.role, 'OPS_ADMIN')`
+Rollback strategy:
 
-Rejected:
+- Stop writes to PIN issuance endpoints.
+- Drop CHECK, FKs, and indexes.
+- Drop `actorOpsAdminId` and `createdByOpsAdminId`.
+- Restore `createdByUserId NOT NULL` only after confirming no ops-issued rows remain or after remapping by an approved business decision.
 
-- unauthenticated callers
-- merchant OWNER callers
-- STAFF callers
-- `BD` ops role callers
-- malformed `storeCode`
-- nonexistent stores
-- inactive tenants
-- inactive stores
-- stores without an active OWNER user for the required `DesktopActivationPin.createdByUserId` foreign key
+Lock risk:
 
-No public anonymous PIN-generation endpoint was added.
+- Low to medium. The migration alters `DesktopActivationPin` and `DesktopActivationAudit`, adds two nullable columns, two indexes, two FKs, and one CHECK.
+- Existing table size is expected small for the pilot phase.
 
-## PIN Security Semantics
+Production estimated impact:
 
-The console:
+- Short DDL lock on activation tables.
+- No row rewrite for nullable column add.
+- CHECK validation scans existing `DesktopActivationPin` rows.
 
-- returns the raw PIN only in the successful POST response
-- does not return PIN from GET
-- does not write PIN to URL
-- does not write PIN to `localStorage`
-- does not write PIN to `sessionStorage`
-- does not log PIN with `console`
-- does not return device token, token hash, PIN hash, installation hash, or internal stack
-- clears the displayed PIN when store context changes
-- loses displayed PIN on refresh by relying only on in-memory React state
-- performs copy only on explicit button click
+## P1-1 Operator Attribution Closure
 
-Database behavior:
+Closed.
 
-- `DesktopActivationPin.pinHash` stores HMAC only.
-- New PIN issuance revokes any existing active PIN for the target store.
-- The unique active slot remains `@@unique([storeId, activeSlot])`.
+Shared issuance input now explicitly carries:
 
-## Subscription Enforcement
+- `createdByUserId`
+- `createdByOpsAdminId`
+- `actorUserId`
+- `actorOpsAdminId`
 
-The shared issue service calls `resolveDesktopSubscriptionAccess`.
+Merchant route passes only merchant User fields.
 
-Allowed:
+Ops route passes only verified server-side ops session fields:
 
-- `TRIAL`
-- `ACTIVE`
+- `createdByOpsAdminId = auth.ops.userId`
+- `actorOpsAdminId = auth.ops.userId`
+- `operatorRole = auth.ops.role`
+- `issuanceSource = OPS_CONSOLE`
 
-Blocked:
+The client body accepts only business input (`storeCode`). Client-supplied actor/operator fields are ignored.
 
-- `EXPIRED`
-- `CANCELLED`
-- unknown states
+## P2-1 Frozen Metadata Regression Closure
 
-The GET status route reads subscription state without lazy-migration side effects. PIN generation still uses the frozen 06A subscription access helper.
+Closed.
 
-## Audit Evidence
+Shared issuance service now only includes optional metadata keys when actual values exist.
 
-Successful ops issuance writes:
+Merchant `PIN_CREATED` metadata remains:
 
-- `DesktopActivationAudit.eventType = PIN_CREATED`
-- `result = SUCCESS`
-- `reasonCode = OPS_ISSUED`
-- metadata allowlist only:
-  - `expiresAt`
-  - `accessState`
-  - `status`
-  - `reason = OPS_CONSOLE`
-  - `eventVersion = EP-MB3-06C`
+- `expiresAt`
+- `accessState`
+- `status`
 
-Blocked subscription writes:
+Merchant audit metadata no longer gains null `reason`, `eventVersion`, `operatorRole`, or `issuanceSource`.
 
-- `DesktopActivationAudit.eventType = PIN_CREATE_DENIED`
-- `result = DENIED`
-- `reasonCode = SUBSCRIPTION_BLOCKED`
+## P2-3 Replacement Confirmation Closure
 
-No raw PIN is written to audit metadata.
+Closed.
 
-Note: the frozen schema requires `DesktopActivationPin.createdByUserId` to reference a merchant `User`, while ops sessions use `OpsAdmin`. To avoid a database schema change, ops issuance uses the target store's active OWNER user as the required PIN creator foreign key and marks the action with `OPS_ISSUED` / `OPS_CONSOLE` in activation audit.
+When `GET /api/ops/desktop-activation` reports `activePin.hasValidPin = true`, the page shows an inline confirmation before POST:
+
+- Title: `确认生成新的激活 PIN？`
+- Body: `当前门店已有有效 PIN。继续后，旧 PIN 将立即失效。`
+- Actions: `取消`, `确认生成`
+
+Behavior verified statically:
+
+- No native browser `confirm`.
+- No POST before confirmation.
+- Cancel hides confirmation without changing state.
+- Confirmation uses existing `issuing` guard to prevent duplicate submit.
+- No valid active PIN keeps direct generation behavior.
+
+## DB Runtime Test Environment
+
+Category:
+
+- Local ephemeral PostgreSQL cluster under `/private/tmp`
+- Dedicated isolated local database
+- Test-only desktop activation secrets
+- `DESKTOP_ACTIVATION_TEST_DATABASE=1`
+
+Not used:
+
+- Production database
+- Production secrets
+- Production tenant/store
+- Real production PIN
+
+## Migration Verification
+
+Full historical `prisma migrate deploy` from an empty DB failed before this package at old migration `20260531000000_customer_order_campaign` because that historical migration references `CustomerOrder` before it exists in the replay chain.
+
+Safe equivalent migration verification was completed:
+
+1. Exported the reviewed `d9e3a77` schema to a temp file.
+2. Applied that schema to a fresh isolated local DB with `prisma db push`.
+3. Inserted a pre-migration merchant PIN fixture with non-null `createdByUserId`.
+4. Applied `20260719090000_model_activation_pin_ops_attribution/migration.sql`.
+5. Verified historical PIN compatibility.
+6. Ran DB runtime tests against the migrated DB.
+
+Results:
+
+- Migration SQL: PASS
+- Historical merchant PIN compatibility: PASS
+- CHECK constraint exists: PASS
+- FKs exist: PASS
+- Indexes exist: PASS
+- Cleanup result: PASS, active PIN count `0`
+
+## DB Runtime Tests
+
+`tests/desktop-activation-pin-console-api.test.ts`: PASS
+
+Covered:
+
+- Migration catalog objects.
+- Historical merchant PIN row remains valid.
+- Merchant issuance writes `createdByUserId` and `actorUserId`.
+- Merchant issuance leaves `createdByOpsAdminId` and `actorOpsAdminId` null.
+- Ops issuance writes `createdByOpsAdminId` and `actorOpsAdminId`.
+- Ops issuance leaves merchant actor fields null.
+- CHECK rejects both creators null.
+- CHECK rejects both creators present.
+- Disabled OpsAdmin session rejected.
+- TRIAL issuance succeeds.
+- ACTIVE issuance succeeds.
+- EXPIRED issuance blocked.
+- CANCELLED issuance blocked.
+- DB stores no raw PIN.
+- New PIN revokes old PIN.
+- Concurrent issuance leaves exactly one active PIN.
+- `PIN_CREATED` audit.
+- `PIN_CREATE_DENIED` audit.
+- Unauthenticated rejected.
+- Merchant OWNER rejected from ops API.
+- STAFF rejected from ops API.
+- BD rejected.
+- no-store on success, 403, 404, and 503 paths.
+- Ops-issued PIN can be consumed by `/api/desktop/activate`.
+- Used PIN cannot be reused.
+- Merchant API regression.
+- Controlled rollback path leaves no audit or PIN rows.
+- Audit metadata has no null regression fields.
+- Audit metadata contains no PIN, PIN hash, token, secret, session token, or request body.
+
+`tests/desktop-activation-runtime.test.ts`: PASS on the same isolated DB.
+
+This confirms existing activate/verify/revoke runtime flow still works after the actor schema change.
 
 ## No-Store / Logging Review
 
@@ -186,41 +247,46 @@ Confirmed:
 - frontend does not call `console`
 - frontend does not use browser persistent storage
 
-## Tests
+## Commands
 
 Passed:
 
+- `npm ci`
+- `npx prisma validate`
+- `npx prisma generate`
 - `npx tsc --noEmit`
 - `npx tsx tests/desktop-activation-pin-console-static.test.ts`
 - `npx tsx tests/desktop-activation-security-static.test.ts`
 - `npx tsx tests/desktop-activation-crypto.test.ts`
 - `npx tsx tests/desktop-activation-subscription.test.ts`
 - `npx tsx tests/desktop-activation-concurrency-static.test.ts`
-- `npm run build`
-
-Added:
-
-- `tests/desktop-activation-pin-console-static.test.ts`
-- `tests/desktop-activation-pin-console-api.test.ts`
-
-Not executed in this environment:
-
 - `npx tsx tests/desktop-activation-pin-console-api.test.ts`
 - `npx tsx tests/desktop-activation-runtime.test.ts`
+- `npx tsx tests/customer-display-adapter.test.ts`
+- `npx tsx tests/customer-display-cart-sync-static.test.ts`
+- `npx tsx tests/customer-display-realtime-channel.test.ts`
+- `npx tsx tests/customer-landing-journey-static.test.ts`
+- `npx tsx tests/hrt-contract.test.ts`
+- `npx tsx tests/subscription-lifecycle.test.ts`
+- `npx tsx tests/telegram-start-param.test.ts`
+- `npm run build`
 
-Reason:
+Not run:
 
-- current shell does not set `DESKTOP_ACTIVATION_TEST_DATABASE=1`
-- database tests intentionally fail closed without an explicit test database switch
+- Playwright production smoke, because this package does not deploy production and must not use production DB/secrets.
 
-## Build
+## Preview Readiness
 
-`npm run build`: PASS
+Preview deployment readiness: YES, with conditions.
 
-Next.js route table includes:
+Required preview settings:
 
-- `/ops/desktop-activation`
-- `/api/ops/desktop-activation`
+- Apply migration to a non-production preview DB.
+- Configure test-only `DESKTOP_ACTIVATION_PIN_SECRET`.
+- Configure test-only `DESKTOP_DEVICE_TOKEN_SECRET`.
+- Configure preview ops login with a test `OPS_ADMIN` or `SUPER_ADMIN`.
+- Confirm preview does not connect to production DB.
+- Confirm `NODE_ENV=production` disables dev header fallback.
 
 ## Windows Field Activation
 
@@ -243,26 +309,27 @@ Still pending:
 
 ## Risk
 
-Risk level: medium-low
+Risk level: medium.
 
 Reason:
 
-- Changes are limited to Desktop activation issuance and ops UI.
-- No database schema change.
+- This package includes a minimal schema migration.
 - No Windows Desktop runtime change.
-- No cashier, customer H5, invite, QR code, records, products, auth, order status, or sale write-flow changes.
+- No cashier, customer H5, invite, QR code, records, products, Telegram auth, order status, sale write-flow, PIN HMAC, token format, TTL, activeSlot, or subscription policy change.
 
 Residual risks:
 
-- Database-level API test was added but not executed because no explicit test database switch is present.
-- Ops audit actor cannot directly reference `OpsAdmin` without changing the frozen schema.
+- Old full migration chain still cannot replay from empty DB due to a historical pre-existing migration ordering issue unrelated to this package.
+- Ops CSRF / Origin hardening remains deferred.
 - Full Windows activation remains pending.
 
 ## Recommendation
 
-READY TO GENERATE A REAL TEST PIN: YES
+READY FOR PREVIEW DEPLOYMENT: YES
 
-READY FOR WINDOWS FULL ACTIVATION TEST: NO
+READY TO GENERATE REAL TEST PIN: YES
+
+READY FOR WINDOWS FULL ACTIVATION: NO
 
 READY FOR EP-MB3-06C ACCEPTANCE: NO
 
