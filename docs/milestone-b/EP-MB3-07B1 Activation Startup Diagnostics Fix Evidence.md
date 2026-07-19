@@ -185,6 +185,68 @@ Smoke integrity assertions now verify:
 - No console errors are captured.
 - No startup/watchdog error checkpoint is emitted.
 
+## Windows Unit Test Portability Follow-up
+
+Windows CI run `29686430111` for commit `a370cd6e27fe2ddc004df7d1b8ceb9e03307db01` failed before compile and before both Activation Electron smoke gates.
+
+Failure:
+
+- Step: `Unit tests`
+- File: `desktop/tests/activation-compiled-renderer.test.ts`
+- Line: `82`
+- Error: `Error: spawnSync npm ENOENT`
+
+Root cause confirmed: the compiled renderer regression test directly spawned `npm`, which resolved on macOS but was not portable to the Windows runner process lookup.
+
+Portability fix commit `96dbfeb7965132be5278a832829c850e220f7b97` introduced:
+
+- `resolveNpmCommand(platform)`
+- `win32 -> npm.cmd`
+- non-Windows -> `npm`
+- preserved argument array `['run', 'compile']`
+- preserved `cwd`
+- added `encoding: 'utf8'`
+- added `timeout: 120_000`
+- explicitly kept `shell: false`
+- tests proving non-zero exits and ENOENT are not swallowed
+- tests proving compiled renderer test still runs the formal compile output
+
+Local verification for the portability fix:
+
+- `npm ci`: PASS on rerun with elevated sandbox permission for npm home cache/log writes.
+- `npm run typecheck`: PASS.
+- `npm test -- tests/activation-compiled-renderer.test.ts --reporter=verbose`: PASS, 1 test file, 5 tests.
+- `npm test`: PASS, 26 test files, 199 tests.
+- `npm run compile`: PASS.
+- Focused activation tests: PASS, 9 test files, 63 tests.
+- `npm run smoke:activation:dist`: PASS.
+- `npm run pack:dir`: PASS; local unsigned macOS directory package only.
+- `npm run smoke:activation:asar`: PASS against local macOS `app.asar`.
+
+New Windows CI run `29686965635` for commit `96dbfeb7965132be5278a832829c850e220f7b97` still failed in `Unit tests`.
+
+New failure:
+
+- Step: `Unit tests`
+- File: `desktop/tests/activation-compiled-renderer.test.ts`
+- Line: `39`
+- Error: `Error: spawnSync npm.cmd EINVAL`
+
+CI status after run `29686965635`:
+
+- `npm ci`: PASS.
+- `typecheck`: PASS.
+- focused activation tests: PASS.
+- deployment diagnostics focused tests: PASS.
+- full unit tests: FAIL.
+- compile: NOT EXECUTED.
+- dist Activation Electron smoke: NOT EXECUTED.
+- Windows installer build: NOT EXECUTED.
+- packaged `app.asar` smoke: NOT EXECUTED.
+- artifact upload: NOT EXECUTED.
+
+This indicates that `npm.cmd` with `execFileSync` and `shell: false` is still not a valid Windows runner strategy. A follow-up fix should avoid shell string execution while using a Windows-safe Node/npm entrypoint strategy, such as `process.execPath` with the local npm CLI entry, before rerunning Windows CI.
+
 ## Fallback UX
 
 If the preload bridge is missing, the renderer stops normal initialization and shows:
@@ -254,9 +316,10 @@ Commands executed from `desktop/`:
 
 - `npm ci`: PASS on rerun with elevated sandbox permission for npm home cache/log writes. No tracked dependency files changed.
 - `npm run typecheck`: PASS.
-- `npm test`: PASS, 26 test files, 197 tests.
+- `npm test`: PASS, 26 test files, 199 tests.
 - `npm run compile`: PASS.
-- Focused activation tests: PASS, 9 test files, 61 tests.
+- Focused activation tests: PASS, 9 test files, 63 tests.
+- `npm test -- tests/activation-compiled-renderer.test.ts --reporter=verbose`: PASS, 1 test file, 5 tests.
 - `node scripts/verify-activation-assets.mjs dist`: PASS.
 - `npm run smoke:activation:dist`: PASS.
 - `npm run pack:dir`: PASS; local unsigned macOS directory package only, no installer created.
@@ -309,7 +372,8 @@ NPM reported 15 dependency advisories during `npm ci` (`3 moderate`, `11 high`, 
 ## Not Completed
 
 - No Windows installed-artifact reverification was performed in this local environment.
-- No new Windows CI artifact has been verified after CI smoke gate wiring.
+- No new Windows CI artifact has been verified after the unit test portability follow-up.
+- Windows CI run `29686965635` failed before compile and before both Activation Electron smoke gates.
 - No GitHub Release, tag, merge, or main branch operation was performed as part of implementation.
 - Acceptance remains blocked until Windows CI and Windows field reverification pass.
 
