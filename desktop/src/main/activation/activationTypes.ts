@@ -26,6 +26,7 @@ export type ActivationPublicStateKind =
   | 'VERIFYING'
   | 'AUTHORIZED_STARTING'
   | 'AUTHORIZED_RUNNING'
+  | 'STARTUP_ERROR'
   | 'NETWORK_ERROR'
   | 'INVALID_PIN'
   | 'PIN_LOCKED'

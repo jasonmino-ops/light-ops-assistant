@@ -29,6 +29,15 @@ function normalizePin(value: string): string {
   return value.trim()
 }
 
+function safeReasonCode(value: string): string {
+  if (/token|authorization|bearer|pin|ciphertext|\b\d{6}\b|\bSTORE[-_][A-Z0-9_-]+\b/i.test(value)) return 'ACTIVATION_STARTUP_ERROR'
+  const normalized = value
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return normalized.slice(0, 72) || 'ACTIVATION_STARTUP_ERROR'
+}
+
 function state(
   kind: ActivationPublicState['kind'],
   extra: Partial<ActivationPublicState> = {},
@@ -176,34 +185,46 @@ export class ActivationRuntime {
     this.setState(state('QUITTING'))
   }
 
+  markStartupError(reasonCode = 'ACTIVATION_STARTUP_ERROR') {
+    this.setState(state('STARTUP_ERROR', {
+      errorCode: safeReasonCode(reasonCode),
+      message: 'Activation startup failed',
+    }))
+  }
+
   async initialize(): Promise<ActivationPublicState> {
-    this.setState(state('BOOTING', { storeCodeHint: this.options.initialStoreCodeHint || undefined }))
-    const installation = await this.options.credentialStore.ensureInstallation()
-    this.installationId = installation.installationId
-    const metadata = await this.options.credentialStore.readMetadata()
-    const storeCodeHint = metadata?.storeCodeHint ?? this.options.initialStoreCodeHint
+    try {
+      this.setState(state('BOOTING', { storeCodeHint: this.options.initialStoreCodeHint || undefined }))
+      const installation = await this.options.credentialStore.ensureInstallation()
+      this.installationId = installation.installationId
+      const metadata = await this.options.credentialStore.readMetadata()
+      const storeCodeHint = metadata?.storeCodeHint ?? this.options.initialStoreCodeHint
 
-    if (!this.options.credentialStore.isEncryptionAvailable()) {
-      this.setState(state('SAFE_STORAGE_UNAVAILABLE', { storeCodeHint, errorCode: 'SAFE_STORAGE_UNAVAILABLE' }))
-      return this.getPublicState()
-    }
-
-    const credential = await this.options.credentialStore.readCredential()
-    if (!credential.ok) {
-      if (credential.reason === 'missing') {
-        this.setState(state('UNACTIVATED', { storeCodeHint }))
-      } else {
-        this.setState(state('CREDENTIAL_CORRUPTED', { storeCodeHint, errorCode: credential.reason }))
+      if (!this.options.credentialStore.isEncryptionAvailable()) {
+        this.setState(state('SAFE_STORAGE_UNAVAILABLE', { storeCodeHint, errorCode: 'SAFE_STORAGE_UNAVAILABLE' }))
+        return this.getPublicState()
       }
-      return this.getPublicState()
-    }
-    if (!metadata) {
-      await this.options.credentialStore.quarantineCredential('missing-metadata')
-      this.setState(state('CREDENTIAL_CORRUPTED', { storeCodeHint, errorCode: 'missing-metadata' }))
-      return this.getPublicState()
-    }
 
-    return this.verifyCredential(credential.credential.deviceToken, storeCodeHint)
+      const credential = await this.options.credentialStore.readCredential()
+      if (!credential.ok) {
+        if (credential.reason === 'missing') {
+          this.setState(state('UNACTIVATED', { storeCodeHint }))
+        } else {
+          this.setState(state('CREDENTIAL_CORRUPTED', { storeCodeHint, errorCode: credential.reason }))
+        }
+        return this.getPublicState()
+      }
+      if (!metadata) {
+        await this.options.credentialStore.quarantineCredential('missing-metadata')
+        this.setState(state('CREDENTIAL_CORRUPTED', { storeCodeHint, errorCode: 'missing-metadata' }))
+        return this.getPublicState()
+      }
+
+      return await this.verifyCredential(credential.credential.deviceToken, storeCodeHint)
+    } catch {
+      this.markStartupError('ACTIVATION_INITIALIZE_FAILED')
+      return this.getPublicState()
+    }
   }
 
   async activate(input: ActivationInput): Promise<ActivationPublicState> {

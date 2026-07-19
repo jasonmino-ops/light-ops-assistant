@@ -6,6 +6,7 @@ const RETRY_VERIFY_CHANNEL = 'eshop:activation:retry-verify'
 const RESET_LOCAL_CHANNEL = 'eshop:activation:reset-local'
 const QUIT_CHANNEL = 'eshop:activation:quit'
 const STATE_CHANGED_CHANNEL = 'eshop:activation:state-changed'
+const RENDERER_CHECKPOINT_CHANNEL = 'eshop:activation:renderer-checkpoint'
 
 type ActivationInput = {
   storeCode: string
@@ -18,11 +19,34 @@ type ActivationResult = {
   state?: unknown
 }
 
+type StartupCheckpointStage =
+  | 'preload-ready'
+  | 'script-started'
+  | 'bridge-detected'
+  | 'subscribed'
+  | 'get-state-started'
+  | 'get-state-succeeded'
+  | 'get-state-failed'
+  | 'rendered'
+  | 'startup-error'
+
 function cleanActivationInput(input: ActivationInput): ActivationInput {
   return {
     storeCode: String(input.storeCode ?? '').trim().toUpperCase(),
     pin: String(input.pin ?? '').trim(),
   }
+}
+
+function cleanCheckpoint(input: { stage: StartupCheckpointStage; stateKind?: string; reasonCode?: string }) {
+  return {
+    stage: input.stage,
+    ...(typeof input.stateKind === 'string' ? { stateKind: input.stateKind } : {}),
+    ...(typeof input.reasonCode === 'string' ? { reasonCode: input.reasonCode } : {}),
+  }
+}
+
+function reportStartupCheckpoint(input: { stage: StartupCheckpointStage; stateKind?: string; reasonCode?: string }): Promise<{ ok: boolean; error?: string }> {
+  return ipcRenderer.invoke(RENDERER_CHECKPOINT_CHANNEL, cleanCheckpoint(input))
 }
 
 contextBridge.exposeInMainWorld('eshopDesktopActivation', Object.freeze({
@@ -39,4 +63,7 @@ contextBridge.exposeInMainWorld('eshopDesktopActivation', Object.freeze({
     ipcRenderer.on(STATE_CHANGED_CHANNEL, listener)
     return () => ipcRenderer.removeListener(STATE_CHANGED_CHANNEL, listener)
   },
+  reportStartupCheckpoint,
 }))
+
+void reportStartupCheckpoint({ stage: 'preload-ready' }).catch(() => undefined)

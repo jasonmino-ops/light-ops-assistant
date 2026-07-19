@@ -34,7 +34,7 @@ import {
   exportDiagnosticsBundle,
   openDeploymentLogDirectory,
 } from './deploymentSupport'
-import { classifyDeploymentFailure } from '../shared/deploymentDiagnostics'
+import { classifyDeploymentFailure, sanitizeDiagnosticMessage } from '../shared/deploymentDiagnostics'
 
 // ── 单实例（A4）────────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -148,6 +148,14 @@ if (!gotLock) {
     activationWindowController = new ActivationWindowController({
       isAuthorized: () => activationRuntime?.isAuthorized() === true,
       onClosedBeforeAuthorization: () => { void quitApp() },
+      onStartupFailure: (reasonCode) => {
+        activationRuntime?.markStartupError(reasonCode)
+        updateDeploymentComponent('activation', {
+          level: 'FAILED',
+          state: 'STARTUP_ERROR',
+          message: 'activation startup failed',
+        }, 'deployment.activation.startup-error')
+      },
     })
 
     activationRuntime = new ActivationRuntime({
@@ -161,6 +169,7 @@ if (!gotLock) {
       runtime: activationRuntime,
       windowController: activationWindowController,
       onQuit: () => { void quitApp() },
+      onRendererCheckpoint: (checkpoint) => activationWindowController?.handleRendererCheckpoint(checkpoint),
     })
 
     activationRuntime.onStateChanged((state) => {
@@ -169,7 +178,12 @@ if (!gotLock) {
       if (state.kind === 'AUTHORIZED_RUNNING') activationWindowController?.closeAfterAuthorization()
     })
 
-    await activationRuntime.initialize()
+    try {
+      await activationRuntime.initialize()
+    } catch (error) {
+      recordHealthError('activation', `initialize failed: ${sanitizeDiagnosticMessage(error)}`)
+      activationRuntime.markStartupError('ACTIVATION_INITIALIZE_REJECTED')
+    }
     if (!activationRuntime.isAuthorized()) activationWindowController.show()
   }
 
@@ -228,6 +242,14 @@ if (!gotLock) {
         state: state.kind,
         message: 'application quitting',
       }, 'deployment.activation.quitting')
+      return
+    }
+    if (state.kind === 'STARTUP_ERROR') {
+      updateDeploymentComponent('activation', {
+        level: 'FAILED',
+        state: state.kind,
+        message: 'activation startup failed',
+      }, 'deployment.activation.startup-error')
       return
     }
     const failure = classifyDeploymentFailure({

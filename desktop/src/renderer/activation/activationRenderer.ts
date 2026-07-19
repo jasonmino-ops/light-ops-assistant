@@ -17,7 +17,18 @@ type ActivationApi = {
   resetLocalActivation(): Promise<{ ok: boolean; error?: string; state?: ActivationState }>
   quit(): Promise<{ ok: boolean; error?: string; state?: ActivationState }>
   onStateChanged(callback: (state: ActivationState) => void): () => void
+  reportStartupCheckpoint(input: { stage: StartupCheckpointStage; stateKind?: string; reasonCode?: string }): Promise<{ ok: boolean; error?: string }>
 }
+
+type StartupCheckpointStage =
+  | 'script-started'
+  | 'bridge-detected'
+  | 'subscribed'
+  | 'get-state-started'
+  | 'get-state-succeeded'
+  | 'get-state-failed'
+  | 'rendered'
+  | 'startup-error'
 
 declare global {
   interface Window {
@@ -32,6 +43,7 @@ const titleByState: Record<string, string> = {
   VERIFYING: '正在验证设备',
   AUTHORIZED_STARTING: '正在打开收银台',
   AUTHORIZED_RUNNING: '已激活',
+  STARTUP_ERROR: '启动失败',
   NETWORK_ERROR: '网络暂时不可用',
   INVALID_PIN: 'PIN 不正确',
   PIN_LOCKED: 'PIN 已锁定',
@@ -69,6 +81,7 @@ const detailByState: Record<string, string> = {
   TOKEN_EXPIRED: '此设备凭据已过期，请重新输入新的 PIN 激活。',
   REACTIVATION_REQUIRED: '请重新输入门店码和新的 6 位 PIN。',
   SERVER_ERROR: '请稍后重试；如果持续失败，请联系 OWNER。',
+  STARTUP_ERROR: '激活界面未能正确加载。请重新启动应用；如问题持续，请联系技术支持。',
 }
 
 const form = document.querySelector<HTMLFormElement>('#activation-form')
@@ -84,13 +97,110 @@ const quitButton = document.querySelector<HTMLButtonElement>('#quit-button')
 const busy = document.querySelector<HTMLElement>('#busy')
 
 let currentState: ActivationState | null = null
+let firstRenderCompleted = false
+let startupWatchdog: ReturnType<typeof setTimeout> | null = null
+
+function safeReasonCode(value: string): string {
+  if (/token|authorization|bearer|pin|cipher[-_\s]?text|\b\d{6}\b|\bSTORE[-_][A-Z0-9_-]+\b/i.test(value)) return 'ACTIVATION_RENDERER_STARTUP_ERROR'
+  const normalized = value
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return normalized.slice(0, 72) || 'ACTIVATION_RENDERER_STARTUP_ERROR'
+}
 
 function must<T>(value: T | null): T {
   if (!value) throw new Error('activation renderer missing element')
   return value
 }
 
+function optional<T extends HTMLElement>(selector: string): T | null {
+  return document.querySelector<T>(selector)
+}
+
+function isActivationState(value: unknown): value is ActivationState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.kind === 'string' &&
+    typeof record.isBusy === 'boolean' &&
+    typeof record.canActivate === 'boolean' &&
+    typeof record.canRetryVerify === 'boolean' &&
+    typeof record.canResetLocal === 'boolean' &&
+    typeof record.canQuit === 'boolean'
+  )
+}
+
+function getActivationBridge(): ActivationApi | null {
+  try {
+    const bridge = window.eshopDesktopActivation
+    if (!bridge || typeof bridge.getState !== 'function' || typeof bridge.onStateChanged !== 'function') return null
+    if (typeof bridge.reportStartupCheckpoint !== 'function') return null
+    return bridge
+  } catch {
+    return null
+  }
+}
+
+function report(api: ActivationApi | null, stage: StartupCheckpointStage, extra: { stateKind?: string; reasonCode?: string } = {}) {
+  if (!api) return
+  void api.reportStartupCheckpoint({ stage, ...extra }).catch(() => undefined)
+}
+
+function showStartupFailure(reasonCode: string, options: { bridgeMissing?: boolean } = {}) {
+  clearStartupWatchdog()
+  const safeCode = safeReasonCode(reasonCode)
+  currentState = {
+    kind: 'STARTUP_ERROR',
+    isBusy: false,
+    canActivate: false,
+    canRetryVerify: false,
+    canResetLocal: false,
+    canQuit: false,
+    errorCode: safeCode,
+  }
+  const titleText = options.bridgeMissing ? '启动组件加载失败' : titleByState.STARTUP_ERROR
+  const detailText = options.bridgeMissing
+    ? '请重新启动应用；若问题持续，请联系技术支持并提供日志。'
+    : detailByState.STARTUP_ERROR
+  const titleNode = optional<HTMLElement>('#state-title')
+  const detailNode = optional<HTMLElement>('#state-detail')
+  const statusNode = optional<HTMLElement>('#status-code')
+  const busyNode = optional<HTMLElement>('#busy')
+  const formNode = optional<HTMLFormElement>('#activation-form')
+  const retryNode = optional<HTMLButtonElement>('#retry-button')
+  const resetNode = optional<HTMLButtonElement>('#reset-button')
+  const quitNode = optional<HTMLButtonElement>('#quit-button')
+  if (titleNode) titleNode.textContent = titleText
+  if (detailNode) detailNode.textContent = detailText
+  if (statusNode) statusNode.textContent = `状态: ${safeCode}`
+  if (busyNode) busyNode.hidden = true
+  if (formNode) formNode.hidden = true
+  if (resetNode) resetNode.hidden = true
+  if (quitNode) quitNode.hidden = true
+  if (retryNode) {
+    retryNode.hidden = false
+    retryNode.textContent = '重新加载'
+    retryNode.onclick = () => window.location.reload()
+  }
+}
+
+function clearStartupWatchdog() {
+  if (startupWatchdog) clearTimeout(startupWatchdog)
+  startupWatchdog = null
+}
+
+function startStartupWatchdog(api: ActivationApi) {
+  clearStartupWatchdog()
+  startupWatchdog = setTimeout(() => {
+    if (firstRenderCompleted) return
+    showStartupFailure('ACTIVATION_RENDERER_WATCHDOG_TIMEOUT')
+    report(api, 'startup-error', { reasonCode: 'ACTIVATION_RENDERER_WATCHDOG_TIMEOUT' })
+  }, 8_000)
+}
+
 function applyState(state: ActivationState) {
+  if (!isActivationState(state)) throw new Error('invalid activation state payload')
   currentState = state
   const stateTitle = titleByState[state.kind] ?? titleByState.SERVER_ERROR
   must(title).textContent = stateTitle
@@ -111,6 +221,10 @@ function applyState(state: ActivationState) {
   if (state.storeCodeHint && !must(storeCodeInput).value) {
     must(storeCodeInput).value = state.storeCodeHint
   }
+  if (state.kind !== 'BOOTING') {
+    firstRenderCompleted = true
+    clearStartupWatchdog()
+  }
 }
 
 async function invokeAndApply(action: () => Promise<{ ok: boolean; error?: string; state?: ActivationState }>) {
@@ -121,32 +235,108 @@ async function invokeAndApply(action: () => Promise<{ ok: boolean; error?: strin
   }
 }
 
-must(form).addEventListener('submit', (event) => {
-  event.preventDefault()
-  const storeCode = must(storeCodeInput).value
-  const pin = must(pinInput).value
-  void invokeAndApply(() => window.eshopDesktopActivation.activate({ storeCode, pin }))
+async function loadInitialState(api: ActivationApi) {
+  report(api, 'get-state-started')
+  try {
+    const result = await api.getState()
+    report(api, 'get-state-succeeded', { stateKind: result.state?.kind })
+    if (!result.ok) {
+      showStartupFailure('ACTIVATION_GET_STATE_FAILED')
+      report(api, 'get-state-failed', { reasonCode: 'ACTIVATION_GET_STATE_FAILED' })
+      report(api, 'startup-error', { reasonCode: 'ACTIVATION_GET_STATE_FAILED' })
+      return
+    }
+    if (result.state) {
+      applyState(result.state)
+      report(api, 'rendered', { stateKind: result.state.kind })
+    }
+  } catch {
+    showStartupFailure('ACTIVATION_GET_STATE_FAILED')
+    report(api, 'get-state-failed', { reasonCode: 'ACTIVATION_GET_STATE_FAILED' })
+    report(api, 'startup-error', { reasonCode: 'ACTIVATION_GET_STATE_FAILED' })
+  }
+}
+
+function initializeActivationRenderer() {
+  const api = getActivationBridge()
+  if (!api) {
+    console.error('activation renderer bridge missing')
+    showStartupFailure('ACTIVATION_BRIDGE_MISSING', { bridgeMissing: true })
+    return
+  }
+  report(api, 'script-started')
+  report(api, 'bridge-detected')
+  startStartupWatchdog(api)
+
+  try {
+    must(form).addEventListener('submit', (event) => {
+      event.preventDefault()
+      const storeCode = must(storeCodeInput).value
+      const pin = must(pinInput).value
+      void invokeAndApply(() => api.activate({ storeCode, pin }))
+    })
+
+    must(retryButton).addEventListener('click', () => {
+      void invokeAndApply(() => api.retryVerification())
+    })
+
+    must(resetButton).addEventListener('click', () => {
+      const confirmed = window.confirm('清除本机激活后需要重新输入新的 PIN。确认清除？')
+      if (confirmed) void invokeAndApply(() => api.resetLocalActivation())
+    })
+
+    must(quitButton).addEventListener('click', () => {
+      void api.quit()
+    })
+
+    api.onStateChanged((state) => {
+      try {
+        applyState(state)
+        report(api, 'rendered', { stateKind: state.kind })
+      } catch {
+        showStartupFailure('ACTIVATION_RENDER_FAILED')
+        report(api, 'startup-error', { reasonCode: 'ACTIVATION_RENDER_FAILED' })
+      }
+    })
+    report(api, 'subscribed')
+  } catch {
+    showStartupFailure('ACTIVATION_RENDERER_INIT_FAILED')
+    report(api, 'startup-error', { reasonCode: 'ACTIVATION_RENDERER_INIT_FAILED' })
+    return
+  }
+
+  void loadInitialState(api)
+
+  window.addEventListener('DOMContentLoaded', () => {
+    try {
+      if (currentState?.storeCodeHint) must(pinInput).focus()
+      else must(storeCodeInput).focus()
+    } catch {
+      // Focus is cosmetic; startup state has already been rendered or will fail visibly.
+    }
+  })
+}
+
+window.addEventListener('error', () => {
+  if (firstRenderCompleted) return
+  const api = getActivationBridge()
+  showStartupFailure('ACTIVATION_RENDERER_UNCAUGHT_ERROR')
+  report(api, 'startup-error', { reasonCode: 'ACTIVATION_RENDERER_UNCAUGHT_ERROR' })
 })
 
-must(retryButton).addEventListener('click', () => {
-  void invokeAndApply(() => window.eshopDesktopActivation.retryVerification())
+window.addEventListener('unhandledrejection', () => {
+  if (firstRenderCompleted) return
+  const api = getActivationBridge()
+  showStartupFailure('ACTIVATION_RENDERER_UNHANDLED_REJECTION')
+  report(api, 'startup-error', { reasonCode: 'ACTIVATION_RENDERER_UNHANDLED_REJECTION' })
 })
 
-must(resetButton).addEventListener('click', () => {
-  const confirmed = window.confirm('清除本机激活后需要重新输入新的 PIN。确认清除？')
-  if (confirmed) void invokeAndApply(() => window.eshopDesktopActivation.resetLocalActivation())
-})
-
-must(quitButton).addEventListener('click', () => {
-  void window.eshopDesktopActivation.quit()
-})
-
-window.eshopDesktopActivation.onStateChanged((state) => applyState(state))
-void invokeAndApply(() => window.eshopDesktopActivation.getState())
-
-window.addEventListener('DOMContentLoaded', () => {
-  if (currentState?.storeCodeHint) must(pinInput).focus()
-  else must(storeCodeInput).focus()
-})
+try {
+  initializeActivationRenderer()
+} catch {
+  const api = getActivationBridge()
+  showStartupFailure('ACTIVATION_RENDERER_TOP_LEVEL_ERROR')
+  report(api, 'startup-error', { reasonCode: 'ACTIVATION_RENDERER_TOP_LEVEL_ERROR' })
+}
 
 export {}

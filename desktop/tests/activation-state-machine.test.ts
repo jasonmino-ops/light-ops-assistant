@@ -34,14 +34,18 @@ function makeRuntime(options: {
   verifyResult?: CloudVerifyResult
   activateResult?: CloudActivateResult
   encryptionAvailable?: boolean
+  ensureInstallationReject?: boolean
 } = {}) {
   let storedCredential = options.storedCredential
   const store = {
-    ensureInstallation: vi.fn(async () => ({
-      schemaVersion: 1 as const,
-      installationId: '11111111-1111-4111-8111-111111111111',
-      createdAt: '2026-01-01T00:00:00.000Z',
-    })),
+    ensureInstallation: vi.fn(async () => {
+      if (options.ensureInstallationReject) throw new Error('installation fs failed')
+      return {
+        schemaVersion: 1 as const,
+        installationId: '11111111-1111-4111-8111-111111111111',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }
+    }),
     readMetadata: vi.fn(async (): Promise<ActivationMetadataV1 | null> => ({
       schemaVersion: 1,
       storeCodeHint: 'STORE-A',
@@ -168,5 +172,16 @@ describe('activation runtime state machine', () => {
     await runtime.resetLocalActivation()
     expect(store.resetLocalActivation).toHaveBeenCalledTimes(1)
     expect(runtime.getPublicState()).toMatchObject({ kind: 'UNACTIVATED' })
+  })
+
+  it('converts unexpected initialize rejection into STARTUP_ERROR', async () => {
+    const { runtime, startAuthorizedRuntime } = makeRuntime({ ensureInstallationReject: true })
+    await expect(runtime.initialize()).resolves.toMatchObject({
+      kind: 'STARTUP_ERROR',
+      errorCode: 'ACTIVATION_INITIALIZE_FAILED',
+      isBusy: false,
+    })
+    expect(runtime.getPublicState()).toMatchObject({ kind: 'STARTUP_ERROR' })
+    expect(startAuthorizedRuntime).not.toHaveBeenCalled()
   })
 })

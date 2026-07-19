@@ -4,7 +4,9 @@ import {
   ACTIVATION_IPC_CHANNELS,
   registerActivationIpcHandlers,
   validateActivationInput,
+  validateRendererCheckpoint,
 } from '../src/main/activation/activationIpc'
+import { logger } from '../src/main/logger'
 
 const mockState = vi.hoisted(() => ({
   handles: new Map<string, (...args: unknown[]) => unknown>(),
@@ -97,5 +99,52 @@ describe('activation IPC', () => {
     const getState = mockState.handles.get(ACTIVATION_IPC_CHANNELS.GET_STATE)
     const result = await getState?.(event(11))
     expect(JSON.stringify(result)).not.toMatch(/deviceToken|authorization|bearer|ciphertext/i)
+  })
+
+  it('allowlists renderer startup checkpoints and rejects arbitrary payloads', () => {
+    expect(validateRendererCheckpoint({ stage: 'rendered', stateKind: 'UNACTIVATED' })).toEqual({
+      stage: 'rendered',
+      stateKind: 'UNACTIVATED',
+    })
+    expect(validateRendererCheckpoint({ stage: 'rendered', stateKind: 'MADE_UP' })).toBeNull()
+    expect(validateRendererCheckpoint({ stage: 'eval-this', reasonCode: 'x' })).toBeNull()
+    expect(validateRendererCheckpoint({ stage: 'startup-error', reasonCode: 'token=abc&pin=123456&storeCode=STORE-A' })).toEqual({
+      stage: 'startup-error',
+      reasonCode: 'ACTIVATION_RENDERER_ERROR',
+    })
+  })
+
+  it('logs get-state invocation/completion and forwards renderer checkpoints', async () => {
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined)
+    const runtime = {
+      getPublicState: vi.fn(() => ({
+        kind: 'UNACTIVATED',
+        isBusy: false,
+        canActivate: true,
+        canRetryVerify: false,
+        canResetLocal: false,
+        canQuit: true,
+      })),
+      activate: vi.fn(),
+      retryVerification: vi.fn(),
+      resetLocalActivation: vi.fn(),
+      markQuitting: vi.fn(),
+    }
+    const onRendererCheckpoint = vi.fn()
+    registerActivationIpcHandlers({
+      runtime: runtime as never,
+      windowController: { isActivationSender: () => true } as never,
+      onQuit: vi.fn(),
+      onRendererCheckpoint,
+    })
+    await mockState.handles.get(ACTIVATION_IPC_CHANNELS.GET_STATE)?.(event(11))
+    await mockState.handles.get(ACTIVATION_IPC_CHANNELS.RENDERER_CHECKPOINT)?.(event(11), {
+      stage: 'rendered',
+      stateKind: 'UNACTIVATED',
+    })
+    expect(info).toHaveBeenCalledWith('activation-ipc.get-state.invoked', expect.any(Object))
+    expect(info).toHaveBeenCalledWith('activation-ipc.get-state.completed', { state: 'UNACTIVATED' })
+    expect(onRendererCheckpoint).toHaveBeenCalledWith({ stage: 'rendered', stateKind: 'UNACTIVATED' })
+    info.mockRestore()
   })
 })
