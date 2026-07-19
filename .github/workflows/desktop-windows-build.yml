@@ -113,6 +113,9 @@ jobs:
       - name: Verify local renderer dist assets
         run: node scripts/verify-activation-assets.mjs dist
 
+      - name: Activation Electron smoke — dist
+        run: npm run smoke:activation:dist
+
       - name: Static security scans
         run: npx vitest run tests/activation-static-security.test.ts tests/static-security.test.ts
 
@@ -188,6 +191,9 @@ jobs:
 
       - name: Verify packaged local renderer assets
         run: node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar
+
+      - name: Activation Electron smoke — packaged app.asar
+        run: npm run smoke:activation:asar
 
       - name: Verify packaged Provider resource
         shell: pwsh

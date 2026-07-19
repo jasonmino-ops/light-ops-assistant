@@ -273,6 +273,43 @@ describe('activation window startup diagnostics', () => {
     })
   })
 
+  it('does not redact safe renderer words containing pin as a substring', () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    const { controller } = makeController()
+
+    controller.show()
+    const win = latestWindow()
+    win.webContents.emit('console-message', {}, 3, 'Uncaught TypeError: spinner failed', 9, 'activationRenderer.js')
+    win.webContents.emit('console-message', {}, 3, 'Uncaught Error: mapping error', 10, 'activationRenderer.js')
+
+    expect(warn).toHaveBeenNthCalledWith(1, 'activation-window.console-error', {
+      level: 'error',
+      message: 'TypeError: spinner failed',
+      source: 'activationRenderer.js',
+      line: 9,
+    })
+    expect(warn).toHaveBeenNthCalledWith(2, 'activation-window.console-error', {
+      level: 'error',
+      message: 'Error: mapping error',
+      source: 'activationRenderer.js',
+      line: 10,
+    })
+  })
+
+  it('redacts renderer error messages with standalone PIN fields', () => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    const { controller } = makeController()
+
+    controller.show()
+    const win = latestWindow()
+    win.webContents.emit('console-message', {}, 3, 'Uncaught TypeError: PIN: 123456', 11, 'activationRenderer.js')
+    win.webContents.emit('console-message', {}, 3, 'Uncaught TypeError: {"pin":"123456"}', 12, 'activationRenderer.js')
+
+    const serialized = stringify(warn.mock.calls)
+    expect(serialized).toContain('diagnostic message redacted')
+    expect(serialized).not.toMatch(/123456|"pin"|PIN:/)
+  })
+
   it('redacts renderer error messages that contain secrets or local paths', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     const { controller } = makeController()
@@ -286,10 +323,18 @@ describe('activation window startup diagnostics', () => {
       2,
       'C:\\Users\\Jason\\app\\activationRenderer.js?token=raw-token',
     )
+    latestWindow().webContents.emit(
+      'console-message',
+      {},
+      3,
+      'Uncaught Error: bearer raw-token failed at https://elifekh.com/desktop/pos?storeCode=STORE-A',
+      3,
+      'activationRenderer.js',
+    )
 
     const serialized = stringify(warn.mock.calls)
     expect(serialized).toContain('diagnostic message redacted')
-    expect(serialized).not.toMatch(/STORE-A|123456|raw-token|C:\\Users\\Jason|activationRenderer\.js\?token/i)
+    expect(serialized).not.toMatch(/STORE-A|123456|raw-token|bearer|https:\/\/elifekh\.com|C:\\Users\\Jason|activationRenderer\.js\?token/i)
   })
 
   it('does not log raw external URLs from activation window hardening', () => {

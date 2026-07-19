@@ -7,6 +7,7 @@
 - Branch: `feat/ep-mb3-07b1-deployment-diagnostics`
 - Baseline HEAD before implementation: `fbd993cbb3458dcf21140435c6bfa2905bc00542`
 - Source-level bootstrap fix baseline: `1b0e5be4df42bb774ea51ad84ad36528b20702c0`
+- Independent Review result after source fix: `CONDITIONAL PASS`
 
 ## Field Symptom
 
@@ -65,6 +66,16 @@ const titleByState = {
 
 The rebuilt renderer SHA-256 is `19531d928b466a702e5d760d03c9a675960f23757f9fdd4190d35057581a4d76`, and the compiled renderer contains no `exports`, `module.exports`, `require(...)`, or ESM `import`.
 
+## Independent Review Closure Conditions
+
+Independent review confirmed the root cause and source-level renderer fix, then identified three final closure conditions:
+
+- Activation Electron smoke existed but was not wired into `package.json` or Windows CI.
+- Dist smoke and packaged `app.asar` smoke were not automatic Windows CI gates before artifact upload.
+- Renderer console sanitizer matched bare `pin` without word boundaries, which could redact safe words such as `spinner` or `mapping`.
+
+This follow-up wires both smoke modes into explicit npm scripts and Windows CI gates, strengthens smoke integrity checks against the Electron default welcome page, and changes the unsafe renderer console pattern to match standalone `pin` only.
+
 ## Root Cause Scope
 
 This fix treats the probable fault domain as:
@@ -82,8 +93,10 @@ This evidence does not claim the Windows field issue is fully closed until a new
 
 ## Change Boundary
 
-Changed only Activation startup/diagnostics files and focused tests:
+Changed only Activation startup/diagnostics files, CI smoke gate wiring, and focused tests:
 
+- `.github/workflows/desktop-windows-build.yml`
+- `desktop/package.json`
 - `desktop/src/main/activation/activationTypes.ts`
 - `desktop/src/main/activation/activationRuntime.ts`
 - `desktop/src/main/activation/activationIpc.ts`
@@ -144,7 +157,33 @@ IPC checkpoints:
 - URL logging was changed to URL category plus origin host hash.
 - Diagnostic messages are passed through existing sanitizer.
 - Renderer console sanitizer now preserves safe error names and core messages such as `ReferenceError: exports is not defined`.
+- Renderer console sanitizer treats `pin` as sensitive only as a standalone field/word, so safe words such as `spinner`, `mapping`, and `pinning` do not force full redaction.
 - PIN, token-shaped values, credential-shaped values, raw query strings, full `STORE-*` codes, and absolute paths are not accepted in new startup diagnostics.
+
+## CI Smoke Gates
+
+Two non-interactive npm smoke scripts are now available:
+
+- `npm run smoke:activation:dist`
+- `npm run smoke:activation:asar`
+
+Windows CI runs the dist smoke after `npm run compile` and `node scripts/verify-activation-assets.mjs dist`.
+
+Windows CI runs the packaged `app.asar` smoke after `npx electron-builder --win --x64 --publish never` and `node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar`.
+
+Both gates run before release foundation manifests, artifact allowlist verification, and artifact upload. Neither gate uses `continue-on-error`; a failed smoke exits non-zero and fails the workflow.
+
+Smoke integrity assertions now verify:
+
+- BrowserWindow title is `E-Shop Desktop Activation`.
+- Loaded URL is the formal activation `index.html`.
+- Page is not the Electron default welcome page.
+- Activation brand is present.
+- Store code and PIN inputs are present.
+- Renderer reaches `UNACTIVATED` and shows the store code + PIN form.
+- Required checkpoints are emitted.
+- No console errors are captured.
+- No startup/watchdog error checkpoint is emitted.
 
 ## Fallback UX
 
@@ -204,6 +243,9 @@ Added focused coverage for:
 - compiled renderer execution without Node/CommonJS globals
 - formal Electron Activation Window smoke with `sandbox=true`, `contextIsolation=true`, and `nodeIntegration=false`
 - packaged `app.asar` activation smoke
+- smoke failure if the Electron default welcome page is loaded
+- smoke validation of BrowserWindow title, loaded activation URL category, activation brand, store code input, and PIN input
+- sanitizer boundary tests for standalone `PIN` / JSON `pin` redaction and safe `spinner` / `mapping` preservation
 - existing activation normal flows remain covered
 
 ## Verification Results
@@ -212,16 +254,43 @@ Commands executed from `desktop/`:
 
 - `npm ci`: PASS on rerun with elevated sandbox permission for npm home cache/log writes. No tracked dependency files changed.
 - `npm run typecheck`: PASS.
-- `npm test`: PASS, 26 test files, 195 tests.
+- `npm test`: PASS, 26 test files, 197 tests.
 - `npm run compile`: PASS.
-- Focused activation tests: PASS, 9 test files, 59 tests.
+- Focused activation tests: PASS, 9 test files, 61 tests.
 - `node scripts/verify-activation-assets.mjs dist`: PASS.
-- `npx electron tests/smoke/activation-window-smoke.cjs`: PASS.
+- `npm run smoke:activation:dist`: PASS.
 - `npm run pack:dir`: PASS; local unsigned macOS directory package only, no installer created.
 - `node scripts/verify-activation-assets.mjs asar 'release/mac-arm64/E-Shop Desktop.app/Contents/Resources/app.asar'`: PASS.
-- `npx electron tests/smoke/activation-window-smoke.cjs 'release/mac-arm64/E-Shop Desktop.app/Contents/Resources/app.asar'`: PASS.
+- `npm run smoke:activation:asar`: PASS.
 
-Electron smoke checkpoint sequence:
+Dist smoke result:
+
+- BrowserWindow title: `E-Shop Desktop Activation`
+- Loaded URL category: `DIST_ACTIVATION_INDEX_HTML`
+- Default Electron page detected: `false`
+- Watchdog/startup error triggered: `false`
+- Console errors: `[]`
+
+Dist smoke checkpoint sequence:
+
+- `preload-ready`
+- `script-started`
+- `bridge-detected`
+- `subscribed`
+- `get-state-started`
+- `get-state-succeeded` with `UNACTIVATED`
+- `rendered` with `UNACTIVATED`
+
+Packaged `app.asar` smoke result:
+
+- Local package tested: `/Users/jason/light-ops-assistant/desktop/release/mac-arm64/E-Shop Desktop.app/Contents/Resources/app.asar`
+- BrowserWindow title: `E-Shop Desktop Activation`
+- Loaded URL category: `PACKAGED_ASAR_ACTIVATION_INDEX_HTML`
+- Default Electron page detected: `false`
+- Watchdog/startup error triggered: `false`
+- Console errors: `[]`
+
+Packaged smoke checkpoint sequence:
 
 - `preload-ready`
 - `script-started`
@@ -240,7 +309,7 @@ NPM reported 15 dependency advisories during `npm ci` (`3 moderate`, `11 high`, 
 ## Not Completed
 
 - No Windows installed-artifact reverification was performed in this local environment.
-- No new Windows CI artifact has been verified after this source-level fix.
+- No new Windows CI artifact has been verified after CI smoke gate wiring.
 - No GitHub Release, tag, merge, or main branch operation was performed as part of implementation.
 - Acceptance remains blocked until Windows CI and Windows field reverification pass.
 
@@ -249,13 +318,17 @@ NPM reported 15 dependency advisories during `npm ci` (`3 moderate`, `11 high`, 
 Windows field/CI verification must use a new CI artifact built from this commit:
 
 1. Run Windows CI from the feature branch commit that contains this source-level bootstrap fix.
-2. Download the exact CI artifact, not a local build.
-3. Verify release/artifact allowlist, SHA-256, and provenance before installation.
-4. Install the new Windows artifact on the affected Windows machine.
-5. Launch E-Shop Desktop.
-6. First activation screen must enter the store code + PIN flow when no credential exists.
-7. The UI must not permanently show `正在启动`.
-8. Logs should show the startup checkpoint chain:
+2. Confirm the Windows workflow log shows both Activation Electron smoke gates:
+   - `Activation Electron smoke — dist`
+   - `Activation Electron smoke — packaged app.asar`
+3. Confirm both smoke outputs show BrowserWindow title `E-Shop Desktop Activation`, loaded activation URL category, default Electron page detected `false`, watchdog triggered `false`, and console errors `[]`.
+4. Download the exact CI artifact, not a local build.
+5. Verify release/artifact allowlist, SHA-256, and provenance before installation.
+6. Install the new Windows artifact on the affected Windows machine.
+7. Launch E-Shop Desktop.
+8. First activation screen must enter the store code + PIN flow when no credential exists.
+9. The UI must not permanently show `正在启动`.
+10. Logs should show the startup checkpoint chain:
    - `activation-preload.ready`
    - `activation-renderer.script-started`
    - `activation-renderer.bridge-detected`
@@ -265,9 +338,9 @@ Windows field/CI verification must use a new CI artifact built from this commit:
    - `activation-ipc.get-state.completed`
    - `activation-renderer.get-state.succeeded`
    - `activation-renderer.rendered`
-9. Logs must not show `activation-window.console-error` from `activationRenderer.js` line 2.
-10. Startup watchdog must not trigger.
-11. If the issue persists, logs must identify the failing domain as preload, renderer, IPC, snapshot render, local resource loading, or render process failure.
+11. Logs must not show `activation-window.console-error` from `activationRenderer.js` line 2.
+12. Startup watchdog must not trigger.
+13. If the issue persists, logs must identify the failing domain as preload, renderer, IPC, snapshot render, local resource loading, or render process failure.
 
 ## Outcome
 

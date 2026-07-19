@@ -300,14 +300,15 @@ const SAFE_RENDERER_ERROR_PATTERN =
   /\b(?:Uncaught\s+)?(ReferenceError|SyntaxError|TypeError|RangeError|EvalError|URIError|Error):\s*([^"'<>]{1,160})/i
 
 const RENDERER_CONSOLE_UNSAFE_PATTERN =
-  /token|authorization|bearer|cookie|pin|ciphertext|\b\d{6}\b|\bSTORE[-_][A-Z0-9_-]+\b|https?:\/\/|\?[A-Za-z0-9_.~-]+=|\/Users\/|\/home\/|[A-Za-z]:\\Users\\/i
+  /token|authorization|bearer|cookie|\bpin\b|ciphertext|\b\d{6}\b|\bSTORE[-_][A-Z0-9_-]+\b|https?:\/\/|\?[A-Za-z0-9_.~-]+=|\/Users\/|\/home\/|[A-Za-z]:\\Users\\/i
 
 function sanitizeRendererConsoleMessage(value: unknown): string {
   const text = value == null ? '' : String(value).replace(/\s+/g, ' ').trim()
+  if (RENDERER_CONSOLE_UNSAFE_PATTERN.test(text)) return sanitizeDiagnosticMessage(value)
   const match = text.match(SAFE_RENDERER_ERROR_PATTERN)
   if (match) {
     const candidate = `${match[1]}: ${match[2].trim()}`.slice(0, 180)
-    if (!RENDERER_CONSOLE_UNSAFE_PATTERN.test(candidate)) return candidate
+    return candidate
   }
   return sanitizeDiagnosticMessage(value)
 }
