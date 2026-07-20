@@ -30,6 +30,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   SUBSCRIPTION_BLOCKED: 'Subscription blocked，无法生成激活 PIN。',
   TENANT_INACTIVE: '商户已停用，无法生成激活 PIN。',
   STORE_INACTIVE: '门店已停用，无法生成激活 PIN。',
+  OPS_ADMIN_IDENTITY_REQUIRED: '当前登录身份不是有效运营管理员，请重新登录。',
   CONFLICT_RETRY_REQUIRED: '生成请求发生冲突，请刷新后重试。',
   INTERNAL_ERROR: '服务端暂时无法完成请求。',
 }
@@ -187,6 +188,15 @@ function StoreActivationRow({ store, onGenerate }: { store: DesktopStore; onGene
   const canGenerate = store.storeStatus === 'ACTIVE'
     && store.tenantStatus === 'ACTIVE'
     && store.subscription.accessState === 'ALLOWED'
+  const blockedReason = store.tenantStatus !== 'ACTIVE'
+    ? 'Tenant disabled'
+    : store.storeStatus !== 'ACTIVE'
+      ? 'Store disabled'
+      : store.subscription.status === 'EXPIRED'
+        ? 'Subscription expired'
+        : store.subscription.status === 'CANCELLED'
+          ? 'Subscription cancelled'
+          : 'Not eligible'
   return (
     <article style={s.storeRow}>
       <div style={s.storeHeader}>
@@ -219,7 +229,7 @@ function StoreActivationRow({ store, onGenerate }: { store: DesktopStore; onGene
       )}
 
       <div style={s.rowActions}>
-        {!canGenerate && <span style={s.blockedText}>Subscription blocked</span>}
+        {!canGenerate && <span style={s.blockedText}>{blockedReason}</span>}
         {!canGenerate && <Link href={`/ops/${store.tenantId}`} style={s.subscriptionLink}>Go To Subscription</Link>}
         <button
           type="button"

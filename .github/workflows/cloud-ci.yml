@@ -5,9 +5,16 @@ on:
     branches: [main, "feat/**"]
     paths:
       - "app/api/desktop/**"
+      - "app/api/ops/desktop-activation/**"
+      - "app/api/ops/desktop-management/**"
+      - "app/ops/desktop/**"
       - "lib/desktop-activation/**"
+      - "lib/ops-auth.ts"
+      - "lib/ops-desktop-management.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
+      - "tests/ops-desktop-management-*.test.ts"
+      - "tests/ops-desktop-management-ui.spec.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
       - "tests/customer-display-cart-sync-static.test.ts"
@@ -21,9 +28,16 @@ on:
   pull_request:
     paths:
       - "app/api/desktop/**"
+      - "app/api/ops/desktop-activation/**"
+      - "app/api/ops/desktop-management/**"
+      - "app/ops/desktop/**"
       - "lib/desktop-activation/**"
+      - "lib/ops-auth.ts"
+      - "lib/ops-desktop-management.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
+      - "tests/ops-desktop-management-*.test.ts"
+      - "tests/ops-desktop-management-ui.spec.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
       - "tests/customer-display-cart-sync-static.test.ts"
@@ -103,10 +117,16 @@ jobs:
           npx tsx tests/desktop-activation-security-static.test.ts
           npx tsx tests/desktop-activation-concurrency-static.test.ts
 
-      - name: EP-MB3-06A real database activation and concurrency tests
+      - name: EP-MB3-06A and 06D real database activation identity tests
         run: |
           npx tsx tests/desktop-activation-runtime.test.ts
           npx tsx tests/desktop-activation-pin-console-api.test.ts
+
+      - name: EP-MB3-06D Desktop management database gate
+        run: |
+          npx tsx tests/ops-desktop-management-domain.test.ts
+          npx tsx tests/ops-desktop-management-static.test.ts
+          npx tsx tests/ops-desktop-management-api.test.ts
 
       - name: Relevant regression tests
         run: |

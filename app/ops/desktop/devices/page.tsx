@@ -16,6 +16,13 @@ import {
 
 const STATUS_OPTIONS = ['ALL', 'ACTIVE', 'OFFLINE', 'BLOCKED', 'REVOKED']
 
+const REVOKE_ERROR_MESSAGES: Record<string, string> = {
+  DEVICE_NOT_FOUND: '设备不存在或已被删除。',
+  DEVICE_REFERENCE_AMBIGUOUS: '设备短 ID 不唯一，请刷新列表后联系管理员。',
+  OPS_ADMIN_IDENTITY_REQUIRED: '当前登录身份不是有效运营管理员，请重新登录。',
+  REVOCATION_REASON_REQUIRED: '请输入至少 3 个字符的撤销原因。',
+}
+
 export default function DesktopDevicesPage() {
   const [input, setInput] = useState('')
   const [query, setQuery] = useState('')
@@ -69,7 +76,8 @@ export default function DesktopDevicesPage() {
       })
       if (!response.ok) {
         const body = await response.json().catch(() => ({}))
-        throw new Error(body?.error === 'REVOCATION_REASON_REQUIRED' ? '请输入撤销原因。' : '设备撤销失败。')
+        const code = typeof body?.error === 'string' ? body.error : `HTTP_${response.status}`
+        throw new Error(`${REVOKE_ERROR_MESSAGES[code] ?? '设备撤销失败。'} Reference: ${code}`)
       }
       setRevokeDevice(null)
       setReason('')
@@ -157,11 +165,10 @@ function DeviceRow({ device, onRevoke }: { device: DesktopDevice; onRevoke: () =
         <Info label="Tenant" value={device.tenantName} />
         <Info label="Subscription" value={device.subscriptionStatus} />
         <Info label="Activated At" value={fmtDateTime(device.activatedAt)} />
-        <Info label="Last Heartbeat" value={fmtDateTime(device.lastHeartbeat)} />
         <Info label="Last Verification" value={fmtDateTime(device.lastVerification)} />
         <Info label="Desktop Version" value={device.desktopVersion ?? '未上报'} />
         <Info label="Windows Version" value={device.windowsVersion ?? '未上报'} />
-        <Info label="Revoked At" value={device.revokedAt ? fmtDateTime(device.revokedAt) : '—'} />
+        <Info label="Revoked At" value={device.revokedAt ? fmtDateTime(device.revokedAt) : '—'} wide />
       </div>
       <div style={s.rowActions}>
         <button
@@ -177,8 +184,8 @@ function DeviceRow({ device, onRevoke }: { device: DesktopDevice; onRevoke: () =
   )
 }
 
-function Info({ label, value }: { label: string; value: React.ReactNode }) {
-  return <div style={s.info}><div style={s.infoLabel}>{label}</div><div style={s.infoValue}>{value}</div></div>
+function Info({ label, value, wide = false }: { label: string; value: React.ReactNode; wide?: boolean }) {
+  return <div style={{ ...s.info, ...(wide ? { gridColumn: 'span 2' } : {}) }}><div style={s.infoLabel}>{label}</div><div style={s.infoValue}>{value}</div></div>
 }
 
 function DesktopEmptyState() {

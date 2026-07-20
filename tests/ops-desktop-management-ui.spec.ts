@@ -76,7 +76,6 @@ test.beforeEach(async ({ page }) => {
             subscriptionStatus: 'ACTIVE',
             status: revoked ? 'REVOKED' : 'ACTIVE',
             activatedAt: '2026-07-20T03:40:00.000Z',
-            lastHeartbeat: '2026-07-20T03:50:00.000Z',
             lastVerification: '2026-07-20T03:50:00.000Z',
             desktopVersion: null,
             windowsVersion: null,
@@ -97,8 +96,8 @@ test.beforeEach(async ({ page }) => {
         contentType: 'application/json',
         body: JSON.stringify({
           events: [{
-            eventKey: 'event-1', eventType: 'DEVICE_ACTIVATED', category: 'ACTIVATION', label: 'Activation Success', result: 'SUCCESS', reasonCode: null,
-            createdAt: '2026-07-20T03:40:00.000Z', storeCode: 'PREV06C', storeName: 'Preview Desktop Store', tenantName: 'Preview Tenant', deviceRef: 'ABC12345', actor: 'Desktop Runtime',
+            eventKey: 'event-1', eventType: 'DESKTOP_VERIFIED', category: 'VERIFICATION', label: 'Verification', result: 'SUCCESS', reasonCode: null,
+            createdAt: '2026-07-20T03:40:00.000Z', storeCode: 'PREV06C', storeName: 'Preview Desktop Store', tenantName: 'Preview Tenant', deviceRef: 'ABC12345', actor: 'Desktop Runtime', derived: true,
           }],
           page: 1, pageSize: 20, total: 1, totalPages: 1,
         }),
@@ -147,7 +146,8 @@ test('device revocation requires a reason and refreshes status', async ({ page }
 test('audit and runtime views remain readable on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/ops/desktop/audit')
-  await expect(page.getByText('Activation Success')).toBeVisible()
+  await expect(page.getByLabel('Desktop audit timeline').getByText('Verification', { exact: true })).toBeVisible()
+  await expect(page.getByText('Derived from latest verification')).toBeVisible()
   await page.getByRole('link', { name: 'Runtime' }).click()
   await expect(page.getByText('0.2.0-pilot.2')).toBeVisible()
   await capture(page, 'runtime-mobile')

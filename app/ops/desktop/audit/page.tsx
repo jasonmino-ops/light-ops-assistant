@@ -94,6 +94,7 @@ function AuditRow({ event }: { event: DesktopAuditEvent }) {
         <div style={s.eventHeader}>
           <div>
             <div style={s.eventTitle}>{event.label}</div>
+            {event.derived && <div style={s.derived}>Derived from latest verification</div>}
             <div style={s.eventStore}>{event.storeName} · {event.storeCode}</div>
           </div>
           <StatusBadge value={event.result} />
@@ -119,6 +120,7 @@ const s: Record<string, CSSProperties> = {
   eventBody: { minWidth: 0, padding: '14px 14px 13px' },
   eventHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   eventTitle: { color: '#111827', fontSize: 14, fontWeight: 900 },
+  derived: { marginTop: 3, color: '#64748b', fontSize: 10, fontWeight: 800 },
   eventStore: { marginTop: 3, color: '#475569', fontSize: 12, fontWeight: 800, overflowWrap: 'anywhere' },
   eventDetails: { display: 'flex', flexWrap: 'wrap', gap: '5px 14px', marginTop: 9, color: '#64748b', fontSize: 11, fontWeight: 700 },
   empty: { padding: 42, color: '#64748b', textAlign: 'center', fontSize: 13, fontWeight: 700 },

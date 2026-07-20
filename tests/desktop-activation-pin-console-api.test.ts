@@ -85,6 +85,23 @@ function staffOpsApiRequest(input: { tenantId: string; storeId: string; userId: 
   })
 }
 
+function syntheticOpsIssueRequest(storeCode: string, userId: string) {
+  const token = signSession({
+    tenantId: '_ops',
+    userId,
+    storeId: '',
+    role: 'OWNER',
+  })
+  return request('http://localhost/api/ops/desktop-activation', {
+    method: 'POST',
+    headers: {
+      cookie: `auth-session=${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ storeCode }),
+  })
+}
+
 async function seedStore(subscriptionStatus: SubscriptionStatus) {
   const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`
   const tenant = await prisma.tenant.create({
@@ -451,6 +468,35 @@ async function testOpsIssuanceAttributionAndPinLifecycle() {
   )
 }
 
+async function testOpsIdentityGuardHasNoSideEffects() {
+  const { tenant, store } = await seedStore('ACTIVE')
+  const countPins = () => prisma.desktopActivationPin.count({ where: { tenantId: tenant.id } })
+  const countAudits = () => prisma.desktopActivationAudit.count({ where: { tenantId: tenant.id } })
+  const pinsBefore = await countPins()
+  const auditsBefore = await countAudits()
+
+  const legacy = await POST(syntheticOpsIssueRequest(store.code, '_ops_admin'))
+  assert.equal(legacy.status, 403)
+  assert.equal(legacy.headers.get('cache-control'), 'no-store, max-age=0')
+  assert.equal((await legacy.json()).error, 'OPS_ADMIN_IDENTITY_REQUIRED')
+
+  const syntheticUserId = `ops-whitelist-${randomUUID()}`
+  const previousAllowlist = process.env.OPS_USER_IDS
+  try {
+    process.env.OPS_USER_IDS = syntheticUserId
+    const allowlisted = await POST(syntheticOpsIssueRequest(store.code, syntheticUserId))
+    assert.equal(allowlisted.status, 403)
+    assert.equal(allowlisted.headers.get('cache-control'), 'no-store, max-age=0')
+    assert.equal((await allowlisted.json()).error, 'OPS_ADMIN_IDENTITY_REQUIRED')
+  } finally {
+    if (previousAllowlist === undefined) delete process.env.OPS_USER_IDS
+    else process.env.OPS_USER_IDS = previousAllowlist
+  }
+
+  assert.equal(await countPins(), pinsBefore, 'synthetic identities must not create PIN rows')
+  assert.equal(await countAudits(), auditsBefore, 'synthetic identities must not create audit rows')
+}
+
 async function testSubscriptionBlocksAndDeniedAudit() {
   for (const subscriptionStatus of ['EXPIRED', 'CANCELLED'] as const) {
     const { tenant, store } = await seedStore(subscriptionStatus)
@@ -598,6 +644,7 @@ async function main() {
   await seedHistoricalFixture()
   await assertHistoricalFixtureCompatible()
   await testAuthorizationLookupAndNoStore()
+  await testOpsIdentityGuardHasNoSideEffects()
   await testOpsIssuanceAttributionAndPinLifecycle()
   await testSubscriptionBlocksAndDeniedAudit()
   await testActiveAndMerchantRegression()

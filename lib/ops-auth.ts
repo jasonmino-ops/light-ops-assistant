@@ -29,6 +29,7 @@ import { prisma } from './prisma'
  */
 export type OpsRole = 'SUPER_ADMIN' | 'OPS_ADMIN' | 'BD'
 export type OpsAuthContext = { role: OpsRole; userId: string }
+export type FkBackedOpsAdminIdentity = { id: string; role: OpsRole }
 
 /**
  * 异步 OPS 鉴权（必须 await）。在通过 session/whitelist 初步识别 ops 角色后，
@@ -102,6 +103,33 @@ export async function checkOpsAuthContext(req: NextRequest): Promise<OpsAuthCont
 export async function checkOpsAuth(req: NextRequest): Promise<OpsRole | false> {
   const ctx = await checkOpsAuthContext(req)
   return ctx ? ctx.role : false
+}
+
+/**
+ * Write operations that persist an OpsAdmin FK must reject legacy synthetic
+ * identities even when those identities retain read-only Ops access.
+ */
+export async function getFkBackedOpsAdminIdentity(
+  req: NextRequest,
+  ops: OpsAuthContext,
+): Promise<FkBackedOpsAdminIdentity | false> {
+  const sessionToken = req.cookies.get('auth-session')?.value
+  const session = sessionToken ? verifySession(sessionToken) : null
+  if (!session?.opsRole || session.opsSessionVersion == null) return false
+  if (session.userId !== ops.userId || session.opsRole !== ops.role) return false
+
+  try {
+    const admin = await prisma.opsAdmin.findUnique({
+      where: { id: ops.userId },
+      select: { id: true, role: true, status: true, sessionVersion: true, lockedUntil: true },
+    })
+    if (!admin || admin.status !== 'ACTIVE') return false
+    if (admin.role !== ops.role || admin.sessionVersion !== session.opsSessionVersion) return false
+    if (admin.lockedUntil && admin.lockedUntil.getTime() > Date.now()) return false
+    return { id: admin.id, role: admin.role }
+  } catch {
+    return false
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuthContext, hasOpsRole } from '@/lib/ops-auth'
+import { checkOpsAuthContext, getFkBackedOpsAdminIdentity, hasOpsRole } from '@/lib/ops-auth'
 import { DESKTOP_ACTIVATION_PIN_TTL_HOURS } from '@/lib/desktop-activation/crypto'
 import { apiError, minimalDesktopSubscription, noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
 import { issueDesktopActivationPin } from '@/lib/desktop-activation/pin-issuance'
@@ -133,6 +133,8 @@ export async function POST(req: NextRequest) {
   return withDesktopApiError(async () => {
     const auth = await requireOpsAdmin(req)
     if (!auth.ok) return auth.response
+    const actor = await getFkBackedOpsAdminIdentity(req, auth.ops)
+    if (!actor) return apiError('OPS_ADMIN_IDENTITY_REQUIRED', 403)
 
     let body: IssueBody
     try {
@@ -154,12 +156,12 @@ export async function POST(req: NextRequest) {
       req,
       store: { id: store.id, tenantId: store.tenantId },
       createdByUserId: null,
-      createdByOpsAdminId: auth.ops.userId,
+      createdByOpsAdminId: actor.id,
       actorUserId: null,
-      actorOpsAdminId: auth.ops.userId,
+      actorOpsAdminId: actor.id,
       auditReasonCode: 'OPS_ISSUED',
       auditMetadata: {
-        operatorRole: auth.ops.role,
+        operatorRole: actor.role,
         issuanceSource: 'OPS_CONSOLE',
       },
     })

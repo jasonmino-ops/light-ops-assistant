@@ -212,7 +212,6 @@ async function devicesView(req: NextRequest) {
       subscriptionStatus: subscription.status,
       status,
       activatedAt: device.activatedAt.toISOString(),
-      lastHeartbeat: device.lastSeenAt?.toISOString() ?? null,
       lastVerification: device.lastSeenAt?.toISOString() ?? null,
       desktopVersion: null,
       windowsVersion: null,
@@ -286,6 +285,7 @@ async function auditView(req: NextRequest) {
       : audit.actorUser
         ? `${audit.actorUser.displayName || audit.actorUser.username} · ${audit.actorUser.role}`
         : 'System',
+    derived: false,
   }))
   const derivedVerifications = verifiedDevices.map((device) => ({
     eventKey: `${device.lastSeenAt?.toISOString()}:DESKTOP_VERIFIED:${device.store.code}:${shortDeviceReference(device.id)}`,
@@ -300,6 +300,7 @@ async function auditView(req: NextRequest) {
     tenantName: device.tenant.name,
     deviceRef: shortDeviceReference(device.id),
     actor: 'Desktop Runtime',
+    derived: true,
   }))
   const events = [...persisted, ...derivedVerifications]
     .filter((event) => !requestedCategory || requestedCategory === 'ALL' || event.category === requestedCategory)
@@ -375,7 +376,7 @@ export async function GET(req: NextRequest) {
     if (!auth.ok) return auth.response
 
     const view = cleanQuery(req.nextUrl.searchParams.get('view')).toLowerCase() || 'stores'
-    if (view === 'stores') return storesView(req)
+    if (view === 'stores' || view === 'activation') return storesView(req)
     if (view === 'devices') return devicesView(req)
     if (view === 'audit') return auditView(req)
     if (view === 'runtime') return runtimeView(req)

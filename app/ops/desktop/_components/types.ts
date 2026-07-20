@@ -38,7 +38,6 @@ export type DesktopDevice = {
   subscriptionStatus: string
   status: 'ACTIVE' | 'OFFLINE' | 'BLOCKED' | 'REVOKED'
   activatedAt: string
-  lastHeartbeat: string | null
   lastVerification: string | null
   desktopVersion: string | null
   windowsVersion: string | null
@@ -67,6 +66,7 @@ export type DesktopAuditEvent = {
   tenantName: string
   deviceRef: string | null
   actor: string
+  derived: boolean
 }
 
 export type AuditResponse = {

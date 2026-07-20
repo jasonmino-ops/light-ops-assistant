@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuthContext, hasOpsRole } from '@/lib/ops-auth'
+import { checkOpsAuthContext, getFkBackedOpsAdminIdentity, hasOpsRole } from '@/lib/ops-auth'
 import { auditRequestHashes, writeDesktopActivationAudit } from '@/lib/desktop-activation/audit'
 import { apiError, noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
 import { shortDeviceReference } from '@/lib/ops-desktop-management'
@@ -16,10 +16,7 @@ export async function POST(
     if (!ops) return apiError('FORBIDDEN', 403)
     if (!hasOpsRole(ops.role, 'OPS_ADMIN')) return apiError('OPS_ADMIN_REQUIRED', 403)
 
-    const actor = await prisma.opsAdmin.findUnique({
-      where: { id: ops.userId },
-      select: { id: true },
-    })
+    const actor = await getFkBackedOpsAdminIdentity(req, ops)
     if (!actor) return apiError('OPS_ADMIN_IDENTITY_REQUIRED', 403)
 
     const { id: rawDeviceRef } = await params
@@ -74,7 +71,7 @@ export async function POST(
         eventType: 'DEVICE_REVOKED',
         result: 'SUCCESS',
         reasonCode: 'OPS_REVOKED',
-        metadata: { operatorRole: ops.role },
+        metadata: { operatorRole: actor.role },
         ...requestHashes,
       })
       return revoked
