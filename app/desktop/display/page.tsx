@@ -1,16 +1,13 @@
 'use client'
 
 /**
- * /desktop/display?storeCode=XXX — 顾客端收银显示屏（只读）
+ * /desktop/display?storeCode=XXX — 浏览器顾客屏（只读）
  *
- * 由手机 /sale 与电脑 /cashier 端实时驱动；本页每 800ms 轮询 /api/pos/session/current。
- * 仅展示当前销售草稿 / 收款进度 / KHQR 二维码 / 完成提示；不做任何下单 / 收款操作。
- *
- * 与 /cashier 区别：/cashier 是独立桌面 POS（店员直接在电脑下单收款）；
- * 本页是"手机操作，电脑展示"的同屏联动小屏 / 大屏镜像。
+ * 复用既有轮询与 BroadcastChannel 数据层。页面始终维持三栏，付款状态仅改变
+ * 栅格比例与右侧强调程度；门店静态 KHQR 不随订单支付方式切换而重新请求或生成。
  */
 
-import { memo, useEffect, useState, useRef, CSSProperties, RefObject } from 'react'
+import { CSSProperties, memo, useEffect, useRef, useState } from 'react'
 import QRCode from 'react-qr-code'
 import {
   buildCustomerDisplayRealtimeGuard,
@@ -21,6 +18,14 @@ import {
   type CustomerDisplayRealtimeGuard,
   type CustomerDisplayRealtimeMessage,
 } from '@/lib/customer-display-realtime-channel'
+import {
+  customerDisplayEntryPath,
+  customerDisplayPanelLingerUntil,
+  deriveCustomerDisplayPanelState,
+  sessionHasCustomerDisplayOrder,
+  type CustomerDisplayPanelSession,
+  type CustomerDisplayPanelState,
+} from '@/lib/customer-display-panel-state'
 
 type PosItem = {
   productId: string
@@ -41,20 +46,13 @@ type DisplayProduct = {
   totalQty?: number
 }
 
-type SessionPayload = {
-  status: 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED' | string
-  displayStatus?: string | null
-  paymentMethod: 'CASH' | 'KHQR' | null
+type SessionPayload = Omit<CustomerDisplayPanelSession, 'items'> & {
   paymentStatus: 'PENDING' | 'PAID' | null
   items: PosItem[]
-  totalAmount: number
-  itemCount: number
   khqrPayload: string | null
   khqrImageUrl: string | null
   orderNo: string | null
   message: string | null
-  completedAt: string | null
-  updatedAt: string
 }
 
 type ApiResp = {
@@ -69,37 +67,42 @@ type ApiResp = {
 
 type DesktopLang = 'zh' | 'en' | 'km'
 type DisplayCopy = typeof displayCopy.zh
-type DisplayMode = 'IDLE' | 'ORDER_ACTIVE' | 'PAYMENT_KHQR' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED'
 
 const POLL_MS = 800
-const HOT_ITEM_CAROUSEL_MS = 4000
-const COMPLETED_LINGER_MS = 2500  // 完成/取消态短暂停留后快速回到 idle
-const DRAFT_TIMEOUT_MS = 5 * 60 * 1000
-const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000
-const CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE = 'KHQR_FOCUS'
+const KHQR_FOCUS_MESSAGE = 'KHQR_FOCUS'
 
-export default function DesktopMirrorPage() {
+export default function DesktopCustomerDisplayPage() {
   const [storeCode, setStoreCode] = useState<string | null>(null)
   const [lang, setLang] = useState<DesktopLang>('zh')
   const [noCode, setNoCode] = useState(false)
   const [data, setData] = useState<ApiResp | null>(null)
+  const [storeKhqrImageUrl, setStoreKhqrImageUrl] = useState<string | null>(null)
+  const [pageOrigin, setPageOrigin] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [lingerNow, setLingerNow] = useState(() => Date.now())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(4100)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollInFlightRef = useRef(false)
   const realtimeGuardRef = useRef<CustomerDisplayRealtimeGuard | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const nextLang = resolveDesktopLang(params.get('lang'))
-    const sc = params.get('storeCode')?.trim() || null
+    const nextStoreCode = params.get('storeCode')?.trim() || null
     setLang(nextLang)
+    setPageOrigin(window.location.origin)
     document.documentElement.lang = nextLang === 'km' ? 'km' : nextLang === 'en' ? 'en' : 'zh-CN'
-    if (!sc) { setNoCode(true); return }
-    setStoreCode(sc)
+    if (!nextStoreCode) {
+      setNoCode(true)
+      return
+    }
+    setStoreCode(nextStoreCode)
   }, [])
+
+  useEffect(() => {
+    setStoreKhqrImageUrl(null)
+    realtimeGuardRef.current = null
+  }, [storeCode])
 
   useEffect(() => {
     if (!storeCode) return
@@ -115,6 +118,8 @@ export default function DesktopMirrorPage() {
         }
         const body = await res.json() as ApiResp
         if (aborted) return
+        // 静态码是门店级显示资料；即使 session 因 realtime guard 暂不覆盖，也要立即更新。
+        setStoreKhqrImageUrl(body.storeKhqrImageUrl ?? null)
         setData((current) => (
           shouldIgnoreStaleDisplayResponse(current?.session ?? null, body.session, realtimeGuardRef.current)
             ? current
@@ -128,10 +133,10 @@ export default function DesktopMirrorPage() {
       }
     }
     poll()
-    timerRef.current = setInterval(poll, POLL_MS)
+    const timer = window.setInterval(poll, POLL_MS)
     return () => {
       aborted = true
-      if (timerRef.current) clearInterval(timerRef.current)
+      window.clearInterval(timer)
     }
   }, [storeCode, lang])
 
@@ -153,8 +158,6 @@ export default function DesktopMirrorPage() {
     }
   }, [storeCode])
 
-  const t = displayCopy[lang]
-
   useEffect(() => {
     const updateFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement))
     updateFullscreen()
@@ -165,13 +168,44 @@ export default function DesktopMirrorPage() {
   useEffect(() => {
     try {
       const savedRate = Number(window.localStorage.getItem('cashier:usdKhrRate'))
-      if (Number.isFinite(savedRate) && savedRate >= 1000 && savedRate <= 10000) {
-        setUsdKhrRate(Math.round(savedRate))
-      }
+      if (Number.isFinite(savedRate) && savedRate >= 1000 && savedRate <= 10000) setUsdKhrRate(Math.round(savedRate))
     } catch {
       setUsdKhrRate(4100)
     }
   }, [])
+
+  const session = data?.session ?? null
+  const panelState = deriveCustomerDisplayPanelState(session, lingerNow)
+  const lingerUntil = customerDisplayPanelLingerUntil(session)
+  useEffect(() => {
+    if (!lingerUntil) return
+    const remaining = lingerUntil - Date.now()
+    if (remaining <= 0) {
+      setLingerNow(Date.now())
+      return
+    }
+    const timer = window.setTimeout(() => setLingerNow(Date.now()), remaining + 25)
+    return () => window.clearTimeout(timer)
+  }, [lingerUntil])
+
+  if (noCode) {
+    return (
+      <div style={s.errScreen}>
+        <div style={s.errIcon}>🖥️</div>
+        <div style={s.errTitle}>{displayCopy[lang].missingStoreTitle}</div>
+        <div style={s.errSub}>{displayCopy[lang].missingStoreSub}</div>
+      </div>
+    )
+  }
+
+  const t = displayCopy[lang]
+  const displayStoreCode = data?.storeCode ?? storeCode ?? ''
+  const customerEntryPath = customerDisplayEntryPath(displayStoreCode)
+  // 服务端和浏览器首屏都先输出相同的相对路径；挂载后再补齐当前 origin，避免二维码 SVG hydration mismatch。
+  const customerEntryUrl = pageOrigin && displayStoreCode ? `${pageOrigin}${customerEntryPath}` : customerEntryPath
+  const showOrder = panelState === 'ORDER' || panelState === 'CASH' || panelState === 'KHQR'
+  const visibleOrder = showOrder ? session : null
+  const khqrFocused = panelState === 'KHQR' && session?.message === KHQR_FOCUS_MESSAGE
 
   function changeLang(nextLang: DesktopLang) {
     setLang(nextLang)
@@ -184,549 +218,250 @@ export default function DesktopMirrorPage() {
 
   async function toggleFullscreen() {
     try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen()
-      } else {
-        await document.documentElement.requestFullscreen()
-      }
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await document.documentElement.requestFullscreen()
     } catch (error) {
       console.warn('[desktop-display] fullscreen toggle failed', error)
     }
   }
 
-  useEffect(() => {
-    const session = data?.session
-    if (!session) return
-    const completedAtMs = session.completedAt ? new Date(session.completedAt).getTime() : 0
-    const updatedAtMs = session.updatedAt ? new Date(session.updatedAt).getTime() : 0
-    const expiredAtMs = session.displayStatus === 'EXPIRED_DRAFT'
-      ? updatedAtMs + DRAFT_TIMEOUT_MS
-      : session.displayStatus === 'EXPIRED_CHECKOUT'
-        ? updatedAtMs + CHECKOUT_TIMEOUT_MS
-        : 0
-    const lingerUntil = (session.status === 'COMPLETED' || session.status === 'CANCELLED') && completedAtMs > 0
-      ? completedAtMs + COMPLETED_LINGER_MS
-      : expiredAtMs > 0
-        ? expiredAtMs + COMPLETED_LINGER_MS
-        : 0
-    if (!lingerUntil) return
-    const remaining = lingerUntil - Date.now()
-    if (remaining <= 0) {
-      setLingerNow(Date.now())
-      return
-    }
-    const timer = setTimeout(() => setLingerNow(Date.now()), remaining + 50)
-    return () => clearTimeout(timer)
-  }, [data?.session?.status, data?.session?.completedAt, data?.session?.updatedAt, data?.session?.displayStatus])
+  return (
+    <main style={s.root}>
+      <header style={s.header}>
+        <div style={s.brandBlock}>
+          <span style={s.brandIcon}>🖥️</span>
+          <div style={s.brandText}>
+            <div style={s.storeName}>{data?.storeName ?? t.loading}</div>
+            <div style={s.storeMeta}>{t.storeCode} {displayStoreCode || '—'} · {t.displayName}</div>
+          </div>
+        </div>
+        <div style={s.headerActions}>
+          <span style={{ ...s.statusPill, ...statusStyle(panelState) }}>{statusLabel(panelState, t)}</span>
+          <button type="button" style={s.headerButton} onClick={toggleFullscreen}>{isFullscreen ? t.exitFullscreen : t.enterFullscreen}</button>
+          <LangSwitch lang={lang} onChange={changeLang} />
+        </div>
+      </header>
 
-  if (noCode) {
+      <section style={{ ...s.panelGrid, ...(panelState === 'KHQR' ? s.panelGridKhqr : {}) }}>
+        <CustomerEntryPanel
+          storeName={data?.storeName ?? displayStoreCode}
+          bannerUrl={data?.storeBannerUrl ?? null}
+          products={data?.displayProducts ?? []}
+          entryPath={customerEntryPath}
+          entryUrl={customerEntryUrl}
+          promoted={panelState === 'COMPLETED'}
+          t={t}
+        />
+
+        <section style={s.orderPanel} aria-label={t.orderPanel}>
+          <OrderPanel session={session} state={panelState} usdKhrRate={usdKhrRate} t={t} />
+        </section>
+
+        <section style={{ ...s.paymentPanel, ...(panelState === 'KHQR' ? s.paymentPanelKhqr : {}) }} aria-label={t.paymentPanel}>
+          <StaticKhqrPaymentPanel
+            storeName={data?.storeName ?? displayStoreCode}
+            storeKhqrImageUrl={storeKhqrImageUrl}
+            session={visibleOrder}
+            state={panelState}
+            khqrFocused={khqrFocused}
+            t={t}
+          />
+        </section>
+      </section>
+
+      <footer style={s.footer}>
+        {loadError ? <span style={s.footerError}>⚠ {loadError}</span> : <span style={s.footerOk}>● {t.connected(POLL_MS / 1000)}</span>}
+        {data?.session && <span style={s.footerMeta}>{t.updated} {formatTime(data.session.updatedAt, lang)}</span>}
+      </footer>
+    </main>
+  )
+}
+
+const CustomerEntryPanel = memo(function CustomerEntryPanel({
+  storeName,
+  bannerUrl,
+  products,
+  entryPath,
+  entryUrl,
+  promoted,
+  t,
+}: {
+  storeName: string
+  bannerUrl: string | null
+  products: DisplayProduct[]
+  entryPath: string
+  entryUrl: string
+  promoted: boolean
+  t: DisplayCopy
+}) {
+  const featured = products[0] ?? null
+  const bannerSrc = displayImageSrc(bannerUrl)
+  return (
+    <aside style={{ ...s.entryPanel, ...(promoted ? s.entryPanelPromoted : {}) }} aria-label={t.customerEntryPanel}>
+      <div style={s.entryHeading}>{promoted ? t.completedInviteTitle : t.customerEntryTitle}</div>
+      <div style={s.entryStore}>{storeName || t.welcome}</div>
+      <div style={s.promoCard}>
+        {bannerSrc ? <img src={bannerSrc} alt="" style={s.promoImage} /> : <div style={s.promoFallback}>✨</div>}
+        <div style={s.promoBody}>
+          <div style={s.promoLabel}>{t.promotion}</div>
+          <div style={s.promoTitle}>{featured?.name ?? t.promoFallbackTitle}</div>
+          <div style={s.promoSub}>{featured?.spec ?? (featured ? money(featured.sellPrice) : t.promoFallbackSub)}</div>
+        </div>
+      </div>
+      <a href={entryPath} style={s.customerQrCard} aria-label={t.customerEntryTitle}>
+        <QRCode value={entryUrl} size={168} style={s.customerQr} />
+      </a>
+      <div style={s.customerEntryActions}>
+        <span>{t.joinMember}</span>
+        <span>{t.viewCatalog}</span>
+        <span>{t.mobileOrder}</span>
+      </div>
+      <div style={s.customerEntryHint}>{t.scanCustomerEntry}</div>
+    </aside>
+  )
+})
+
+const OrderPanel = memo(function OrderPanel({ session, state, usdKhrRate, t }: {
+  session: SessionPayload | null
+  state: CustomerDisplayPanelState
+  usdKhrRate: number
+  t: DisplayCopy
+}) {
+  if (state === 'COMPLETED' && session) {
     return (
-      <div style={s.errScreen}>
-        <div style={{ fontSize: 48 }}>🖥️</div>
-        <div style={s.errTitle}>{t.missingStoreTitle}</div>
-        <div style={s.errSub}>{t.missingStoreSub}</div>
+      <div style={s.terminalPanel}>
+        <div style={{ ...s.terminalIcon, color: '#15803d' }}>✓</div>
+        <div style={s.terminalTitle}>{t.completed}</div>
+        <div style={s.terminalAmount}>{money(session.totalAmount)}</div>
+        <div style={s.terminalCurrency}>{formatKhr(session.totalAmount, usdKhrRate)}</div>
+        <div style={s.terminalSub}>{t.thanks}</div>
       </div>
     )
   }
-
-  const session = data?.session ?? null
-  const completedAtMs = session?.completedAt ? new Date(session.completedAt).getTime() : 0
-  const updatedAtMs = session?.updatedAt ? new Date(session.updatedAt).getTime() : 0
-  const hasOrderContent = sessionHasOrderContent(session)
-  const recentlyCompleted = session?.status === 'COMPLETED' && completedAtMs > 0 && (lingerNow - completedAtMs) < COMPLETED_LINGER_MS
-  const recentlyCancelled = session?.status === 'CANCELLED' && completedAtMs > 0 && (lingerNow - completedAtMs) < COMPLETED_LINGER_MS
-  const expiredAtMs = session?.displayStatus === 'EXPIRED_DRAFT'
-    ? updatedAtMs + DRAFT_TIMEOUT_MS
-    : session?.displayStatus === 'EXPIRED_CHECKOUT'
-      ? updatedAtMs + CHECKOUT_TIMEOUT_MS
-      : 0
-  const recentlyExpired = expiredAtMs > 0 && (lingerNow - expiredAtMs) < COMPLETED_LINGER_MS
-  const isLive = !!session
-    && hasOrderContent
-    && session.status !== 'COMPLETED'
-    && session.status !== 'CANCELLED'
-    && session.displayStatus !== 'EXPIRED_DRAFT'
-    && session.displayStatus !== 'EXPIRED_CHECKOUT'
-  const displayMode: DisplayMode =
-    recentlyCompleted ? 'COMPLETED' :
-    recentlyCancelled ? 'CANCELLED' :
-    recentlyExpired ? 'EXPIRED' :
-    isLive && session?.paymentMethod === 'KHQR' ? 'PAYMENT_KHQR' :
-    isLive ? 'ORDER_ACTIVE' :
-    'IDLE'
-  const showKhqrFocus = displayMode === 'PAYMENT_KHQR'
-    && session?.message === CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE
-    && hasKhqrDisplaySource(session)
-  const showCashPrompt = session?.paymentMethod === 'CASH' && hasOrderContent
-  const showReviewPrompt = !session?.paymentMethod && hasOrderContent
-
-  return (
-    <div style={s.root}>
-      {/* Header */}
-      <div style={s.header}>
-        <span style={s.brandIcon}>🖥️</span>
-        <div style={s.headerCenter}>
-          <div style={s.storeName}>{data?.storeName ?? t.loading}</div>
-          <div style={s.storeCode}>{t.storeCode} {data?.storeCode ?? storeCode ?? '—'} · {t.displayName}</div>
-        </div>
-        <span style={{ ...s.statusPill, ...statusPillStyle(session, recentlyCompleted, recentlyCancelled) }}>
-          {statusLabel(t, session, recentlyCompleted, recentlyCancelled)}
-        </span>
-        <button type="button" style={s.fullscreenBtn} onClick={toggleFullscreen}>
-          {isFullscreen ? t.exitFullscreen : t.enterFullscreen}
-        </button>
-        <LangSwitch lang={lang} onChange={changeLang} />
+  if (state === 'CANCELLED') return <TerminalNotice icon="—" title={t.cancelled} sub={t.waitingNext} color="#64748b" />
+  if (state === 'EXPIRED') return <TerminalNotice icon="⌛" title={session?.displayStatus === 'EXPIRED_CHECKOUT' ? t.paymentExpired : t.expired} sub={t.waitingNext} color="#b45309" />
+  if (!session || !sessionHasCustomerDisplayOrder(session)) {
+    return (
+      <div style={s.emptyOrder}>
+        <div style={s.emptyOrderIcon}>🛒</div>
+        <div style={s.emptyOrderTitle}>{t.waitingOrder}</div>
+        <div style={s.emptyOrderSub}>{t.waitingOrderSub}</div>
       </div>
-
-      <div style={s.stageWrap}>
-        {displayMode === 'IDLE' && (
-          <IdleStage
-            storeName={data?.storeName ?? storeCode ?? ''}
-            bannerUrl={data?.storeBannerUrl ?? null}
-            products={data?.displayProducts ?? []}
-            storeKhqrImageUrl={data?.storeKhqrImageUrl ?? null}
-            pollingRef={pollInFlightRef}
-            t={t}
-          />
-        )}
-
-        {displayMode === 'ORDER_ACTIVE' && session && (
-          <OrderActiveStage session={session} t={t} usdKhrRate={usdKhrRate} showCashPrompt={showCashPrompt} showReviewPrompt={showReviewPrompt} />
-        )}
-
-        {displayMode === 'PAYMENT_KHQR' && session && (
-          <KhqrPaymentStage session={session} t={t} usdKhrRate={usdKhrRate} />
-        )}
-
-        {displayMode === 'COMPLETED' && session && (
-          <div style={s.stateCenter}>
-            <CompletedCard session={session} t={t} usdKhrRate={usdKhrRate} />
-          </div>
-        )}
-
-        {displayMode === 'CANCELLED' && (
-          <div style={s.stateCenter}>
-            <CancelledCard t={t} />
-          </div>
-        )}
-
-        {displayMode === 'EXPIRED' && (
-          <div style={s.stateCenter}>
-            <ExpiredCard checkout={session?.displayStatus === 'EXPIRED_CHECKOUT'} t={t} />
-          </div>
-        )}
-      </div>
-
-      {showKhqrFocus && session && (
-        <KhqrFocusOverlay session={session} t={t} />
-      )}
-
-      {/* Footer */}
-      <div style={s.footer}>
-        {loadError ? <span style={s.footerErr}>⚠ {loadError}</span>
-          : <span style={s.footerOk}>● {t.connected(POLL_MS / 1000)}</span>}
-        {data?.session && (
-          <span style={s.footerMeta}>{t.updated} {fmtTime(data.session.updatedAt, lang)}</span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── 子组件 ──────────────────────────────────────────────────────────────────
-
-const IdleStage = memo(function IdleStage({
-  storeName,
-  bannerUrl,
-  products,
-  storeKhqrImageUrl,
-  pollingRef,
-  t,
-}: {
-  storeName: string
-  bannerUrl: string | null
-  products: DisplayProduct[]
-  storeKhqrImageUrl: string | null
-  pollingRef: RefObject<boolean>
-  t: DisplayCopy
-}) {
-  return (
-    <div style={s.idleStage}>
-      <IdleCard storeName={storeName} bannerUrl={bannerUrl} products={products} pollingRef={pollingRef} t={t} />
-      <section style={s.idleKhqrPanel}>
-        <div style={s.idleKhqrTitle}>{t.storeKhqrTitle}</div>
-        <div style={s.idleKhqrCardWrap}>
-          <PaymentCard session={null} recentlyCompleted={false} storeKhqrImageUrl={storeKhqrImageUrl} t={t} />
-        </div>
-        <div style={s.idlePaymentHint}>{t.idlePaymentHint}</div>
-      </section>
-    </div>
-  )
-})
-
-const OrderActiveStage = memo(function OrderActiveStage({
-  session,
-  t,
-  usdKhrRate,
-  showCashPrompt,
-  showReviewPrompt,
-}: {
-  session: SessionPayload
-  t: DisplayCopy
-  usdKhrRate: number
-  showCashPrompt: boolean
-  showReviewPrompt: boolean
-}) {
-  return (
-    <div style={s.orderStage}>
-      <section style={s.orderFocusCard}>
-        <div style={s.totalLabel}>{t.amountDue}</div>
-        <div style={s.orderAmount}>${session.totalAmount.toFixed(2)}</div>
-        <div style={s.amountKhr}>{formatKhrFromUsd(session.totalAmount, usdKhrRate)}</div>
-        {showCashPrompt && <div style={s.orderPromptCash}>{t.payCashierPrompt}</div>}
-        {showReviewPrompt && <div style={s.orderPromptReview}>{t.reviewOrderPrompt}</div>}
-        <div style={s.orderMeta}>{t.itemMeta(session.itemCount, session.items.length)}</div>
-        <div style={s.orderPayMethod}>
-          <span>{t.paymentMethod}</span>
-          <strong>{paymentMethodLabel(session.paymentMethod, t)}</strong>
-        </div>
-      </section>
-      <section style={s.orderItemsCard}>
-        <CartList items={session.items} itemCount={session.itemCount} totalAmount={session.totalAmount} t={t} />
-      </section>
-    </div>
-  )
-})
-
-const KhqrPaymentStage = memo(function KhqrPaymentStage({ session, t, usdKhrRate }: { session: SessionPayload; t: DisplayCopy; usdKhrRate: number }) {
-  return (
-    <div style={s.khqrStage}>
-      <section style={s.khqrMain}>
-        <div style={s.khqrTitle}>{t.scanToPay}</div>
-        <div style={s.khqrAmount}>${session.totalAmount.toFixed(2)}</div>
-        <div style={s.khqrAmountKhr}>{formatKhrFromUsd(session.totalAmount, usdKhrRate)}</div>
-        <PaymentCard session={session} recentlyCompleted={false} storeKhqrImageUrl={null} t={t} />
-      </section>
-      <section style={s.khqrSide}>
-        <CartList items={session.items} itemCount={session.itemCount} totalAmount={session.totalAmount} t={t} />
-      </section>
-    </div>
-  )
-})
-
-const KhqrFocusOverlay = memo(function KhqrFocusOverlay({ session, t }: { session: SessionPayload; t: DisplayCopy }) {
-  const khqrImageSrc = displayImageSrc(session.khqrImageUrl)
-  const qrValue = session.khqrPayload || (!khqrImageSrc ? session.khqrImageUrl : null)
-
-  if (!khqrImageSrc && !qrValue) return null
-
-  return (
-    <div style={s.khqrFocusBackdrop}>
-      <div style={s.khqrFocusPanel}>
-        <div style={s.khqrFocusTitle}>{t.scanToPay}</div>
-        <div style={s.khqrFocusAmount}>${session.totalAmount.toFixed(2)}</div>
-        <div style={s.khqrFocusQr}>
-          {khqrImageSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={khqrImageSrc} alt="KHQR" style={s.khqrFocusImage} />
-          ) : (
-            <QRCode value={qrValue || ''} size={430} />
-          )}
-        </div>
-        <div style={s.khqrFocusMethod}>KHQR / Scan to Pay</div>
-        <div style={s.khqrFocusSub}>{t.khqrFocusSub}</div>
-      </div>
-    </div>
-  )
-})
-
-const CartList = memo(function CartList({ items, itemCount, totalAmount, t }: { items: PosItem[]; itemCount: number; totalAmount: number; t: DisplayCopy }) {
-  const subtotal = items.reduce((sum, item) => sum + item.lineAmount, 0)
-  return (
-    <div style={s.cartList}>
-      <div style={s.cartTitle}>{t.cartTitle}</div>
-      {items.map((it) => (
-        <div key={it.productId} style={s.cartRow}>
-          <ProductThumb item={it} />
-          <div style={s.cartText}>
-            <div style={s.cartName}>{it.name}</div>
-            {it.spec && <div style={s.cartSpec}>{it.spec}</div>}
-            <div style={s.cartMeta}>{it.qty} × ${it.price.toFixed(2)}</div>
-          </div>
-          <div style={s.cartLine}>${it.lineAmount.toFixed(2)}</div>
-        </div>
-      ))}
-      <div style={s.summaryCard}>
-        <div style={s.summaryTitle}>{t.summaryTitle}</div>
-        <div style={s.summaryRow}>
-          <span style={s.summaryLabel}>{t.productKinds}</span>
-          <span style={s.summaryValue}>{items.length}</span>
-        </div>
-        <div style={s.summaryRow}>
-          <span style={s.summaryLabel}>{t.productCount}</span>
-          <span style={s.summaryValue}>{itemCount}</span>
-        </div>
-        <div style={s.summaryRow}>
-          <span style={s.summaryLabel}>{t.subtotal}</span>
-          <span style={s.summaryValue}>${subtotal.toFixed(2)}</span>
-        </div>
-        <div style={s.summaryDueRow}>
-          <span>{t.amountDue}</span>
-          <span>${totalAmount.toFixed(2)}</span>
-        </div>
-      </div>
-    </div>
-  )
-})
-
-function ProductThumb({ item }: { item: PosItem }) {
-  return <ProductImage src={item.imageUrl} name={item.name} />
-}
-
-function ProductImage({
-  src,
-  name,
-  imageStyle,
-  placeholderStyle,
-}: {
-  src: string | null | undefined
-  name: string
-  imageStyle?: CSSProperties
-  placeholderStyle?: CSSProperties
-}) {
-  const [failed, setFailed] = useState(false)
-  const imageSrc = displayImageSrc(src)
-  useEffect(() => {
-    setFailed(false)
-  }, [imageSrc])
-  if (!imageSrc || failed) {
-    return <div style={{ ...s.productPlaceholder, ...placeholderStyle }}>📦</div>
+    )
   }
+  return <CartList session={session} usdKhrRate={usdKhrRate} t={t} />
+})
+
+function TerminalNotice({ icon, title, sub, color }: { icon: string; title: string; sub: string; color: string }) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={imageSrc} alt={name} style={{ ...s.productImage, ...imageStyle }} decoding="async" onError={() => setFailed(true)} />
+    <div style={s.terminalPanel}>
+      <div style={{ ...s.terminalIcon, color }}>{icon}</div>
+      <div style={s.terminalTitle}>{title}</div>
+      <div style={s.terminalSub}>{sub}</div>
+    </div>
   )
 }
 
-const CompletedCard = memo(function CompletedCard({ session, t, usdKhrRate }: { session: SessionPayload; t: DisplayCopy; usdKhrRate: number }) {
+const CartList = memo(function CartList({ session, usdKhrRate, t }: { session: SessionPayload; usdKhrRate: number; t: DisplayCopy }) {
+  const subtotal = session.items.reduce((sum, item) => sum + item.lineAmount, 0)
   return (
-    <div style={s.bigCard}>
-      <div style={{ ...s.bigIcon, color: '#16a34a' }}>✔</div>
-      <div style={s.bigTitle}>{t.completed}</div>
-      {session.orderNo && <div style={s.bigSub}>{t.orderNo} {session.orderNo}</div>}
-      <div style={s.bigAmt}>${session.totalAmount.toFixed(2)}</div>
-      <div style={s.bigAmtKhr}>{formatKhrFromUsd(session.totalAmount, usdKhrRate)}</div>
-      <div style={s.bigMeta}>
-        {paymentMethodLabel(session.paymentMethod, t)}
+    <div style={s.cartLayout}>
+      <div style={s.cartHeading}>
+        <div>
+          <div style={s.cartTitle}>{t.cartTitle}</div>
+          <div style={s.cartMeta}>{t.itemMeta(session.itemCount, session.items.length)}</div>
+        </div>
+        <span style={s.methodBadge}>{paymentMethodLabel(session.paymentMethod, t)}</span>
       </div>
-      <div style={s.bigThanks}>{t.thanks}</div>
+      <div style={s.cartColumns}>
+        <span>{t.product}</span><span>{t.quantity}</span><span>{t.unitPrice}</span><span>{t.lineTotal}</span>
+      </div>
+      <div style={s.cartRows}>
+        {session.items.map((item, index) => (
+          <div key={`${item.productId}-${index}`} style={s.cartRow}>
+            <div style={s.productCell}>
+              <ProductThumbnail src={item.imageUrl} name={item.name} />
+              <div style={s.productText}>
+                <div style={s.productName}>{item.name}</div>
+                {item.spec && <div style={s.productSpec}>{item.spec}</div>}
+              </div>
+            </div>
+            <span style={s.numericCell}>{item.qty}</span>
+            <span style={s.numericCell}>{money(item.price)}</span>
+            <strong style={s.lineAmount}>{money(item.lineAmount)}</strong>
+          </div>
+        ))}
+      </div>
+      <div style={s.orderSummary}>
+        <div style={s.summaryLine}><span>{t.subtotal}</span><span>{money(subtotal)}</span></div>
+        <div style={s.summaryLine}><span>{t.productCount}</span><span>{session.itemCount}</span></div>
+        <div style={s.dueLine}><span>{t.amountDue}</span><strong>{money(session.totalAmount)}</strong></div>
+        <div style={s.dueCurrency}>{formatKhr(session.totalAmount, usdKhrRate)}</div>
+      </div>
     </div>
   )
 })
 
-const CancelledCard = memo(function CancelledCard({ t }: { t: DisplayCopy }) {
-  return (
-    <div style={s.bigCard}>
-      <div style={{ ...s.bigIcon, color: '#9ca3af' }}>—</div>
-      <div style={s.bigTitle}>{t.cancelled}</div>
-      <div style={s.bigSub}>{t.waitingNext}</div>
-    </div>
-  )
-})
+function ProductThumbnail({ src, name }: { src: string | null | undefined; name: string }) {
+  const imageSrc = displayImageSrc(src)
+  if (!imageSrc) return <span style={s.productPlaceholder}>📦</span>
+  return <img src={imageSrc} alt={name} style={s.productImage} />
+}
 
-const ExpiredCard = memo(function ExpiredCard({ checkout, t }: { checkout: boolean; t: DisplayCopy }) {
-  return (
-    <div style={s.bigCard}>
-      <div style={{ ...s.bigIcon, color: '#f59e0b' }}>⌛</div>
-      <div style={s.bigTitle}>{checkout ? t.paymentExpired : t.expired}</div>
-      <div style={s.bigSub}>{t.waitingNext}</div>
-    </div>
-  )
-})
-
-const IdleCard = memo(function IdleCard({
+const StaticKhqrPaymentPanel = memo(function StaticKhqrPaymentPanel({
   storeName,
-  bannerUrl,
-  products,
-  pollingRef,
+  storeKhqrImageUrl,
+  session,
+  state,
+  khqrFocused,
   t,
 }: {
   storeName: string
-  bannerUrl: string | null
-  products: DisplayProduct[]
-  pollingRef: RefObject<boolean>
-  t: DisplayCopy
-}) {
-  const heroImage = displayImageSrc(bannerUrl)
-  const carouselProducts = products.filter((product) => Boolean(displayImageSrc(product.imageUrl))).slice(0, 3)
-  const [activePickIndex, setActivePickIndex] = useState(0)
-
-  useEffect(() => {
-    setActivePickIndex(0)
-  }, [carouselProducts.length])
-
-  useEffect(() => {
-    if (carouselProducts.length <= 1) return
-    const timer = setInterval(() => {
-      if (pollingRef.current) return
-      setActivePickIndex((current) => (current + 1) % carouselProducts.length)
-    }, HOT_ITEM_CAROUSEL_MS)
-    return () => clearInterval(timer)
-  }, [carouselProducts.length, pollingRef])
-
-  const activeProduct = carouselProducts[activePickIndex] ?? carouselProducts[0] ?? null
-
-  return (
-    <div style={s.idleShowcase}>
-      <div
-        style={{
-          ...s.idleHero,
-          ...(heroImage ? {
-            backgroundImage: `linear-gradient(90deg, rgba(15,23,42,.84), rgba(15,23,42,.42)), url("${heroImage}")`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          } : {}),
-        }}
-      >
-        <div style={s.idleHeroContent}>
-          <div style={s.idleBadge}>{t.customerDisplay}</div>
-          <div style={s.idleStore}>{storeName || t.welcome}</div>
-          <div style={s.idleWelcome}>{t.welcome}</div>
-          <div style={s.idleSub}>{t.waitingCashier}</div>
-        </div>
-      </div>
-
-      <div style={s.pickSection}>
-        <div style={s.pickHeader}>
-          <span>{t.topSellers}</span>
-          <span style={s.pickHint}>{activeProduct ? t.recommendedForYou : t.pickHint}</span>
-        </div>
-        {activeProduct ? (
-          <div style={s.pickCarousel}>
-            <ProductImage
-              src={activeProduct.imageUrl}
-              name={activeProduct.name}
-              imageStyle={s.pickHeroImage}
-              placeholderStyle={s.pickHeroImage}
-            />
-            <div style={s.pickHeroBody}>
-              <div style={s.pickHeroKicker}>{t.recommendedForYou}</div>
-              <div style={s.pickHeroFooter}>
-                <div style={s.pickHeroText}>
-                  <div style={s.pickHeroName}>{activeProduct.name}</div>
-                  {activeProduct.spec && <div style={s.pickHeroSpec}>{activeProduct.spec}</div>}
-                </div>
-                <div style={s.pickHeroPrice}>${activeProduct.sellPrice.toFixed(2)}</div>
-              </div>
-              {activeProduct.totalQty !== undefined && <span style={s.pickSold}>{t.soldThisWeek(activeProduct.totalQty)}</span>}
-              {carouselProducts.length > 1 && (
-                <div style={s.pickProgress}>
-                  {carouselProducts.map((product, index) => (
-                    <span
-                      key={product.id}
-                      style={index === activePickIndex ? s.pickDotOn : s.pickDot}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div style={s.brandFallback}>
-            <div style={s.brandFallbackIcon}>✨</div>
-            <div style={s.brandFallbackTitle}>{t.brandFallbackTitle}</div>
-            <div style={s.brandFallbackSub}>{t.brandFallbackSub}</div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-})
-
-const PaymentCard = memo(function PaymentCard({
-  session,
-  recentlyCompleted,
-  storeKhqrImageUrl,
-  t,
-}: {
-  session: SessionPayload | null
-  recentlyCompleted: boolean
   storeKhqrImageUrl: string | null
+  session: SessionPayload | null
+  state: CustomerDisplayPanelState
+  khqrFocused: boolean
   t: DisplayCopy
 }) {
-  const isKhqrSession = session?.paymentMethod === 'KHQR'
-  const sessionKhqrImageSrc = isKhqrSession ? displayImageSrc(session?.khqrImageUrl) : null
-  const storeKhqrImageSrc = displayImageSrc(storeKhqrImageUrl)
-  const khqrImageSrc = sessionKhqrImageSrc ?? (!session ? storeKhqrImageSrc : null)
-  const qrValue = isKhqrSession ? (session?.khqrPayload || (!khqrImageSrc ? session?.khqrImageUrl : null)) : null
-  const hasKhqr = Boolean(khqrImageSrc || qrValue)
-  const hasOrder = sessionHasOrderContent(session)
+  const staticKhqrImageSrc = displayImageSrc(storeKhqrImageUrl)
+  const dueAmount = session ? money(session.totalAmount) : null
+  const paymentHint = state === 'KHQR'
+    ? (khqrFocused ? t.khqrFocusHint : t.khqrHint)
+    : state === 'CASH'
+      ? t.cashHint
+      : t.staticKhqrHint
 
   return (
-    <div style={s.payCard}>
-      <div style={s.payLabel}>
-        {t.paymentMethod}
-        {(session?.paymentMethod || hasKhqr) && (
-          <span style={s.payTag}>
-            {session?.paymentMethod ? paymentMethodLabel(session.paymentMethod, t) : '📱 KHQR'}
-          </span>
-        )}
-        {session?.paymentStatus === 'PAID' && <span style={s.paidTag}>{t.paid}</span>}
+    <div style={s.paymentLayout}>
+      <div style={s.paymentKicker}>{t.khqrPayment}</div>
+      <div style={s.merchantName}>{storeName || t.merchantFallback}</div>
+      <div style={{ ...s.paymentAmount, ...(state === 'KHQR' ? s.paymentAmountKhqr : {}) }}>
+        {dueAmount ?? t.staticKhqrAmount}
       </div>
-      {hasKhqr ? (
-        <div style={s.qrWrap}>
-          {khqrImageSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={khqrImageSrc} alt="KHQR" style={s.qrImage} />
-          ) : (
-            <QRCode value={qrValue || ''} size={300} />
-          )}
-          <div style={s.qrHint}>
-            {hasOrder && !recentlyCompleted ? t.scanToPay : t.scanSupported}
-          </div>
-        </div>
-      ) : (
-        <div style={s.payIdle}>
-          {session?.status === 'AWAITING_PAYMENT' && session.paymentMethod === 'KHQR' ? t.payStaff :
-           session?.status === 'AWAITING_PAYMENT' ? t.waitingPaymentMethod :
-           session?.status === 'DRAFT' ? t.checkingOutShort :
-           session?.status === 'COMPLETED' ? t.completed :
-           !hasOrder ? t.noStoreKhqr :
-           '—'}
-        </div>
-      )}
+      {dueAmount && <div style={s.paymentDueLabel}>{t.amountDue}</div>}
+      <div style={{ ...s.staticKhqrFrame, ...(state === 'KHQR' ? s.staticKhqrFrameKhqr : {}) }}>
+        {staticKhqrImageSrc ? (
+          <img src={staticKhqrImageSrc} alt="KHQR" style={s.staticKhqrImage} />
+        ) : (
+          <div style={s.noKhqr}>{t.noStoreKhqr}</div>
+        )}
+      </div>
+      <div style={s.paymentHint}>{paymentHint}</div>
+      {state === 'KHQR' && <div style={s.paymentInstruction}>{t.khqrInstruction}</div>}
     </div>
   )
 })
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-function statusLabel(t: DisplayCopy, s: SessionPayload | null, completed: boolean, cancelled: boolean): string {
-  if (completed) return t.completedShort
-  if (cancelled) return t.cancelledShort
-  if (s?.displayStatus === 'EXPIRED_DRAFT') return t.expiredShort
-  if (s?.displayStatus === 'EXPIRED_CHECKOUT') return t.paymentExpiredShort
-  if (!s || !sessionHasOrderContent(s)) return t.idle
-  if (s.status === 'AWAITING_PAYMENT') return t.waitingPaymentShort
-  return t.checkingOutShort
-}
-
-function statusPillStyle(sess: SessionPayload | null, completed: boolean, cancelled: boolean): CSSProperties {
-  if (completed) return { background: '#dcfce7', color: '#15803d' }
-  if (cancelled) return { background: '#f3f4f6', color: '#6b7280' }
-  if (sess?.displayStatus === 'EXPIRED_DRAFT' || sess?.displayStatus === 'EXPIRED_CHECKOUT') return { background: '#fffbeb', color: '#b45309' }
-  if (!sess || !sessionHasOrderContent(sess)) return { background: '#e0f2fe', color: '#0369a1' }
-  if (sess.status === 'AWAITING_PAYMENT') return { background: '#fef3c7', color: '#92400e' }
-  return { background: '#dbeafe', color: '#1d4ed8' }
-}
-
-function sessionHasOrderContent(session: SessionPayload | null): boolean {
-  return Boolean(session && (session.items.length > 0 || session.itemCount > 0 || session.totalAmount > 0))
-}
-
-function hasKhqrDisplaySource(session: SessionPayload | null): boolean {
-  if (!session || session.paymentMethod !== 'KHQR') return false
-  return Boolean(displayImageSrc(session.khqrImageUrl) || session.khqrPayload || session.khqrImageUrl)
+function LangSwitch({ lang, onChange }: { lang: DesktopLang; onChange: (lang: DesktopLang) => void }) {
+  return (
+    <div style={s.langSwitch} aria-label="language">
+      {(['zh', 'en', 'km'] as const).map((option) => (
+        <button key={option} type="button" onClick={() => onChange(option)} style={{ ...s.langButton, ...(lang === option ? s.langButtonActive : {}) }}>
+          {option === 'zh' ? '中' : option === 'en' ? 'EN' : 'ខ្មែរ'}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function applyRealtimeMessageToDisplayData(current: ApiResp | null, message: CustomerDisplayRealtimeMessage): ApiResp {
@@ -786,366 +521,107 @@ function shouldIgnoreStaleDisplayResponse(
   return false
 }
 
-function fmtTime(iso: string, lang: DesktopLang): string {
+function resolveDesktopLang(value: string | null): DesktopLang {
+  return value === 'en' || value === 'km' ? value : 'zh'
+}
+
+function displayImageSrc(raw: string | null | undefined) {
+  if (!raw) return null
+  const value = raw.trim()
+  if (!value) return null
+  return value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/') || (value.startsWith('data:image/') && value.includes(','))
+    ? value
+    : null
+}
+
+function money(amount: number) {
+  return `$${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`
+}
+
+function formatKhr(amount: number, rate: number) {
+  return `៛${Math.round(Math.max(0, amount) * rate).toLocaleString('en-US')}`
+}
+
+function formatTime(iso: string, lang: DesktopLang) {
   const locale = lang === 'km' ? 'km-KH' : lang === 'en' ? 'en-US' : 'zh-CN'
   return new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-function resolveDesktopLang(raw: string | null): DesktopLang {
-  if (raw === 'en' || raw === 'km' || raw === 'zh') return raw
-  return 'en'
+function paymentMethodLabel(method: SessionPayload['paymentMethod'], t: DisplayCopy) {
+  if (method === 'KHQR') return 'KHQR'
+  if (method === 'CASH') return t.cash
+  return t.pendingPayment
 }
 
-function formatKhrFromUsd(amount: number, rate: number): string {
-  const khr = Math.round(amount * rate)
-  return `≈ ៛${khr.toLocaleString('en-US')}`
+function statusLabel(state: CustomerDisplayPanelState, t: DisplayCopy) {
+  if (state === 'KHQR') return t.khqrStatus
+  if (state === 'CASH') return t.cashStatus
+  if (state === 'ORDER') return t.orderStatus
+  if (state === 'COMPLETED') return t.completedStatus
+  if (state === 'CANCELLED') return t.cancelledStatus
+  if (state === 'EXPIRED') return t.expiredStatus
+  return t.idleStatus
 }
 
-function paymentMethodLabel(method: string | null, t: DisplayCopy) {
-  if (method === 'CASH') return `💵 ${t.cash}`
-  if (method === 'KHQR') return '📱 KHQR'
-  return '—'
-}
-
-function displayImageSrc(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const value = raw.trim()
-  if (value.startsWith('http://') || value.startsWith('https://')) return value
-  if (value.startsWith('/')) return value
-  if (value.startsWith('data:image/') && value.includes(',')) return value
-  return null
-}
-
-function LangSwitch({ lang, onChange }: { lang: DesktopLang; onChange: (lang: DesktopLang) => void }) {
-  return (
-    <div style={s.langSwitch} aria-label="Language">
-      {(['zh', 'en', 'km'] as DesktopLang[]).map((item) => (
-        <button
-          key={item}
-          type="button"
-          onClick={() => onChange(item)}
-          style={item === lang ? s.langBtnOn : s.langBtn}
-        >
-          {item}
-        </button>
-      ))}
-    </div>
-  )
+function statusStyle(state: CustomerDisplayPanelState): CSSProperties {
+  if (state === 'KHQR') return { background: '#fef3c7', color: '#92400e' }
+  if (state === 'CASH') return { background: '#dbeafe', color: '#1d4ed8' }
+  if (state === 'COMPLETED') return { background: '#dcfce7', color: '#15803d' }
+  if (state === 'CANCELLED') return { background: '#f3f4f6', color: '#475569' }
+  if (state === 'EXPIRED') return { background: '#fffbeb', color: '#b45309' }
+  if (state === 'ORDER') return { background: '#e0f2fe', color: '#0369a1' }
+  return { background: '#eff6ff', color: '#1d4ed8' }
 }
 
 const displayCopy = {
   zh: {
-    missingStoreTitle: '缺少门店信息',
-    missingStoreSub: '请使用 /desktop/display?storeCode=<门店编号> 打开本页。',
-    storeNotFound: '门店不存在或已停用',
-    networkRetry: '网络错误，自动重试中…',
-    loading: '加载中…',
-    storeCode: '门店编号',
-    displayName: '顾客端收银显示屏',
-    amountDue: '应付金额',
-    completed: '本单已完成',
-    cancelled: '本单已取消',
-    expired: '本单已超时',
-    paymentExpired: '收款超时',
-    waitingOrder: '等待新订单',
-    readyCheckout: '准备结账',
-    waitingNext: '等待下一单',
-    cartTitle: '当前订单',
-    orderNo: '单号',
-    thanks: '谢谢光临',
-    welcome: '欢迎光临',
-    waitingCashier: '等待收银 · 支持 CASH / KHQR',
-    idlePaymentHint: '支持 CASH / KHQR · 结账时会显示付款二维码',
-    storeKhqrTitle: '门店收款码',
-    noStoreKhqr: '暂未配置 KHQR 收款码',
-    customerDisplay: '顾客收银显示屏',
-    topSellers: '本周热销',
-    pickHint: '店员添加商品后，请核对应付金额',
-    recommendedForYou: '为您推荐',
-    soldThisWeek: (qty: number) => `本周 ${qty} 件`,
-    brandFallbackTitle: '请等待店员添加商品',
-    brandFallbackSub: '本屏将实时显示商品、金额和付款方式。',
-    summaryTitle: '订单汇总',
-    productKinds: '商品种类',
-    productCount: '商品件数',
-    subtotal: '小计',
-    paymentMethod: '收款方式',
-    paid: '已收款',
-    scanToPay: '请扫码付款',
-    khqrFocusSub: '付款完成后请告知店员',
-    scanSupported: '支持扫码付款 · 请先选择商品',
-    selectItemsFirst: '请先选择商品',
-    payStaff: '请向店员付款',
-    payCashierPrompt: '请向收银员付款',
-    reviewOrderPrompt: '请核对商品',
-    waitingPaymentMethod: '等待手机端选择收款方式',
-    draftNoPayment: '正在结账',
-    connected: (seconds: number) => `已连接 · 每 ${seconds}s 刷新`,
-    updated: 'updated',
-    itemMeta: (count: number, kinds: number) => `${count} 件 · ${kinds} 种`,
-    completedShort: '付款完成',
-    cancelledShort: '已取消',
-    expiredShort: '本单已超时',
-    paymentExpiredShort: '收款超时',
-    idle: '空闲中',
-    waitingPaymentShort: '等待收款',
-    checkingOutShort: '正在结账',
-    cash: '现金',
-    enterFullscreen: '进入全屏',
-    exitFullscreen: '退出全屏',
+    displayName: '顾客屏', storeCode: '门店', loading: '正在连接门店', missingStoreTitle: '缺少门店参数', missingStoreSub: '请从收银台打开带有 storeCode 的顾客屏链接。',
+    enterFullscreen: '全屏', exitFullscreen: '退出全屏', connected: (seconds: number) => `已连接 · ${seconds.toFixed(1)} 秒同步`, updated: '更新于', storeNotFound: '门店不存在或未启用', networkRetry: '网络连接中，正在重试',
+    customerEntryPanel: '顾客入口', customerEntryTitle: '顾客服务入口', completedInviteTitle: '谢谢惠顾 · 欢迎再次光临', promotion: '门店推荐', promoFallbackTitle: '精选商品', promoFallbackSub: '欢迎浏览门店商品', welcome: '欢迎光临',
+    joinMember: '加入会员', viewCatalog: '查看商品', mobileOrder: '手机下单', scanCustomerEntry: '扫码进入顾客服务',
+    orderPanel: '订单商品清单', paymentPanel: 'KHQR 付款区', cartTitle: '本单商品', itemMeta: (count: number, kinds: number) => `${count} 件 · ${kinds} 种商品`, product: '商品', quantity: '数量', unitPrice: '单价', lineTotal: '小计', subtotal: '商品小计', productCount: '商品件数', amountDue: '应付金额',
+    waitingOrder: '等待店员录入商品', waitingOrderSub: '商品会实时显示在这里', completed: '交易完成', thanks: '谢谢惠顾，欢迎再次光临', cancelled: '本单已取消', expired: '订单已超时', paymentExpired: '付款已超时', waitingNext: '等待下一笔订单',
+    khqrPayment: 'KHQR 收款', merchantFallback: '门店收款', staticKhqrAmount: 'KHQR', noStoreKhqr: '门店暂未配置 KHQR 收款码', staticKhqrHint: '请使用银行应用扫码付款', khqrHint: '请在银行应用中输入并核对以上金额', khqrFocusHint: '请在银行应用中输入并核对以上金额', khqrInstruction: '付款完成后请告知店员', cashHint: '本单使用现金付款',
+    cash: '现金', pendingPayment: '待选择', idleStatus: '等待订单', orderStatus: '订单处理中', cashStatus: '现金付款', khqrStatus: 'KHQR 付款', completedStatus: '已完成', cancelledStatus: '已取消', expiredStatus: '已超时',
   },
   en: {
-    missingStoreTitle: 'Missing Store',
-    missingStoreSub: 'Open this page with /desktop/display?storeCode=STORE_CODE.',
-    storeNotFound: 'Store not found or inactive',
-    networkRetry: 'Network error. Retrying automatically...',
-    loading: 'Loading...',
-    storeCode: 'Store code',
-    displayName: 'Customer Display',
-    amountDue: 'Amount Due',
-    completed: 'Order completed',
-    cancelled: 'Order cancelled',
-    expired: 'Order expired',
-    paymentExpired: 'Payment timed out',
-    waitingOrder: 'Waiting for next order',
-    readyCheckout: 'Ready for checkout',
-    waitingNext: 'Waiting for next order',
-    cartTitle: 'Current Order',
-    orderNo: 'Order',
-    thanks: 'Thank you',
-    welcome: 'Welcome',
-    waitingCashier: 'Waiting for cashier · CASH / KHQR supported',
-    idlePaymentHint: 'Supports CASH / KHQR · The payment QR appears at checkout',
-    storeKhqrTitle: 'Store KHQR',
-    noStoreKhqr: 'Store KHQR is not configured',
-    customerDisplay: 'Customer checkout display',
-    topSellers: 'Top sellers this week',
-    pickHint: 'Check the amount after the cashier adds items',
-    recommendedForYou: 'Recommended for you',
-    soldThisWeek: (qty: number) => `${qty} sold`,
-    brandFallbackTitle: 'Please wait for the cashier',
-    brandFallbackSub: 'This screen will show items, total, and payment method.',
-    summaryTitle: 'Order Summary',
-    productKinds: 'Product kinds',
-    productCount: 'Items',
-    subtotal: 'Subtotal',
-    paymentMethod: 'Payment Method',
-    paid: 'Paid',
-    scanToPay: 'Please scan to pay',
-    khqrFocusSub: 'Please tell the cashier after payment',
-    scanSupported: 'Scan payment supported · Select items first',
-    selectItemsFirst: 'Select items first',
-    payStaff: 'Please pay the cashier',
-    payCashierPrompt: 'Please pay the cashier',
-    reviewOrderPrompt: 'Please check your order',
-    waitingPaymentMethod: 'Waiting for payment method on phone',
-    draftNoPayment: 'Checking out',
-    connected: (seconds: number) => `Connected · refreshes every ${seconds}s`,
-    updated: 'updated',
-    itemMeta: (count: number, kinds: number) => `${count} items · ${kinds} kinds`,
-    completedShort: 'Payment completed',
-    cancelledShort: 'Cancelled',
-    expiredShort: 'Order timed out',
-    paymentExpiredShort: 'Payment timed out',
-    idle: 'Idle',
-    waitingPaymentShort: 'Waiting for payment',
-    checkingOutShort: 'Checking out',
-    cash: 'Cash',
-    enterFullscreen: 'Full screen',
-    exitFullscreen: 'Exit full screen',
+    displayName: 'Customer Display', storeCode: 'Store', loading: 'Connecting store', missingStoreTitle: 'Store code is required', missingStoreSub: 'Open the customer display link with a storeCode from the cashier.',
+    enterFullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', connected: (seconds: number) => `Connected · sync ${seconds.toFixed(1)}s`, updated: 'Updated', storeNotFound: 'Store not found or inactive', networkRetry: 'Reconnecting, please wait',
+    customerEntryPanel: 'Customer entry', customerEntryTitle: 'Customer services', completedInviteTitle: 'Thank you · See you again', promotion: 'Store pick', promoFallbackTitle: 'Featured products', promoFallbackSub: 'Browse products from this store', welcome: 'Welcome',
+    joinMember: 'Join membership', viewCatalog: 'Browse products', mobileOrder: 'Order by phone', scanCustomerEntry: 'Scan for customer services',
+    orderPanel: 'Order items', paymentPanel: 'KHQR payment', cartTitle: 'Your items', itemMeta: (count: number, kinds: number) => `${count} item${count === 1 ? '' : 's'} · ${kinds} product type${kinds === 1 ? '' : 's'}`, product: 'Item', quantity: 'Qty', unitPrice: 'Unit price', lineTotal: 'Subtotal', subtotal: 'Items subtotal', productCount: 'Items', amountDue: 'Amount due',
+    waitingOrder: 'Waiting for items', waitingOrderSub: 'Selected products will appear here', completed: 'Payment complete', thanks: 'Thank you. Please visit again.', cancelled: 'Order cancelled', expired: 'Order timed out', paymentExpired: 'Payment timed out', waitingNext: 'Waiting for the next order',
+    khqrPayment: 'KHQR payment', merchantFallback: 'Store payment', staticKhqrAmount: 'KHQR', noStoreKhqr: 'This store has not configured a KHQR code', staticKhqrHint: 'Use your bank app to scan and pay', khqrHint: 'Enter and verify the amount above in your bank app', khqrFocusHint: 'Enter and verify the amount above in your bank app', khqrInstruction: 'Please tell the cashier after payment', cashHint: 'This order will be paid in cash',
+    cash: 'Cash', pendingPayment: 'Select payment', idleStatus: 'Waiting', orderStatus: 'Order in progress', cashStatus: 'Cash payment', khqrStatus: 'KHQR payment', completedStatus: 'Completed', cancelledStatus: 'Cancelled', expiredStatus: 'Timed out',
   },
   km: {
-    missingStoreTitle: 'ខ្វះព័ត៌មានហាង',
-    missingStoreSub: 'សូមបើក /desktop/display?storeCode=STORE_CODE។',
-    storeNotFound: 'រកមិនឃើញហាង ឬហាងត្រូវបានបិទ',
-    networkRetry: 'បញ្ហាបណ្តាញ កំពុងព្យាយាមម្តងទៀត…',
-    loading: 'កំពុងផ្ទុក…',
-    storeCode: 'លេខកូដហាង',
-    displayName: 'អេក្រង់អតិថិជន',
-    amountDue: 'ចំនួនត្រូវបង់',
-    completed: 'ការបញ្ជាទិញបានបញ្ចប់',
-    cancelled: 'ការបញ្ជាទិញបានលុបចោល',
-    expired: 'ការបញ្ជាទិញអស់ពេល',
-    paymentExpired: 'ការទូទាត់អស់ពេល',
-    waitingOrder: 'រង់ចាំការបញ្ជាទិញថ្មី',
-    readyCheckout: 'រួចរាល់សម្រាប់គិតលុយ',
-    waitingNext: 'រង់ចាំការបញ្ជាទិញបន្ទាប់',
-    cartTitle: 'ការបញ្ជាទិញបច្ចុប្បន្ន',
-    orderNo: 'លេខវិក្កយបត្រ',
-    thanks: 'អរគុណ',
-    welcome: 'សូមស្វាគមន៍',
-    waitingCashier: 'រង់ចាំបញ្ជរ · គាំទ្រ CASH / KHQR',
-    idlePaymentHint: 'គាំទ្រ CASH / KHQR · QR នឹងបង្ហាញពេលគិតលុយ',
-    storeKhqrTitle: 'Store KHQR',
-    noStoreKhqr: 'Store KHQR is not configured',
-    customerDisplay: 'អេក្រង់គិតលុយអតិថិជន',
-    topSellers: 'ទំនិញលក់ដាច់សប្តាហ៍នេះ',
-    pickHint: 'សូមពិនិត្យចំនួនទឹកប្រាក់បន្ទាប់ពីបុគ្គលិកបន្ថែមទំនិញ',
-    recommendedForYou: 'ណែនាំសម្រាប់អ្នក',
-    soldThisWeek: (qty: number) => `សប្តាហ៍នេះ ${qty}`,
-    brandFallbackTitle: 'សូមរង់ចាំបុគ្គលិកបន្ថែមទំនិញ',
-    brandFallbackSub: 'អេក្រង់នេះនឹងបង្ហាញទំនិញ ចំនួនសរុប និងវិធីបង់ប្រាក់។',
-    summaryTitle: 'សរុបការបញ្ជាទិញ',
-    productKinds: 'ប្រភេទទំនិញ',
-    productCount: 'ចំនួនទំនិញ',
-    subtotal: 'សរុបរង',
-    paymentMethod: 'វិធីបង់ប្រាក់',
-    paid: 'បានទទួលប្រាក់',
-    scanToPay: 'សូមស្កេនដើម្បីបង់ប្រាក់',
-    khqrFocusSub: 'Please tell the cashier after payment',
-    scanSupported: 'គាំទ្រការស្កេនបង់ប្រាក់ · សូមជ្រើសទំនិញជាមុន',
-    selectItemsFirst: 'សូមជ្រើសទំនិញជាមុន',
-    payStaff: 'សូមបង់ប្រាក់ជាមួយបុគ្គលិក',
-    payCashierPrompt: 'សូមបង់ប្រាក់ជាមួយបញ្ជរ',
-    reviewOrderPrompt: 'សូមពិនិត្យទំនិញ',
-    waitingPaymentMethod: 'រង់ចាំជ្រើសរើសវិធីបង់ប្រាក់ពីទូរស័ព្ទ',
-    draftNoPayment: 'កំពុងគិតលុយ',
-    connected: (seconds: number) => `បានភ្ជាប់ · ធ្វើបច្ចុប្បន្នភាពរៀងរាល់ ${seconds}s`,
-    updated: 'បានធ្វើបច្ចុប្បន្នភាព',
-    itemMeta: (count: number, kinds: number) => `${count} មុខ · ${kinds} ប្រភេទ`,
-    completedShort: 'បានបញ្ចប់',
-    cancelledShort: 'បានលុប',
-    expiredShort: 'អស់ពេល',
-    paymentExpiredShort: 'ការទូទាត់អស់ពេល',
-    idle: 'ទំនេរ',
-    waitingPaymentShort: 'រង់ចាំបង់ប្រាក់',
-    checkingOutShort: 'កំពុងគិតលុយ',
-    cash: 'សាច់ប្រាក់',
-    enterFullscreen: 'ពេញអេក្រង់',
-    exitFullscreen: 'ចាកចេញពេញអេក្រង់',
+    displayName: 'អេក្រង់អតិថិជន', storeCode: 'ហាង', loading: 'កំពុងភ្ជាប់ហាង', missingStoreTitle: 'ត្រូវការលេខកូដហាង', missingStoreSub: 'សូមបើកតំណអេក្រង់អតិថិជនដែលមាន storeCode ពីកន្លែងគិតលុយ។',
+    enterFullscreen: 'ពេញអេក្រង់', exitFullscreen: 'ចាកចេញពេញអេក្រង់', connected: (seconds: number) => `បានភ្ជាប់ · ធ្វើសមកាលកម្ម ${seconds.toFixed(1)} វិ.`, updated: 'បានធ្វើបច្ចុប្បន្នភាព', storeNotFound: 'រកមិនឃើញហាង ឬហាងមិនដំណើរការ', networkRetry: 'កំពុងភ្ជាប់ឡើងវិញ សូមរង់ចាំ',
+    customerEntryPanel: 'ច្រកចូលអតិថិជន', customerEntryTitle: 'សេវាកម្មអតិថិជន', completedInviteTitle: 'សូមអរគុណ · សូមមកម្តងទៀត', promotion: 'ការណែនាំពីហាង', promoFallbackTitle: 'ទំនិញពិសេស', promoFallbackSub: 'មើលទំនិញរបស់ហាងនេះ', welcome: 'សូមស្វាគមន៍',
+    joinMember: 'ចូលជាសមាជិក', viewCatalog: 'មើលទំនិញ', mobileOrder: 'បញ្ជាទិញតាមទូរស័ព្ទ', scanCustomerEntry: 'ស្កេនសម្រាប់សេវាកម្មអតិថិជន',
+    orderPanel: 'បញ្ជីទំនិញ', paymentPanel: 'ការទូទាត់ KHQR', cartTitle: 'ទំនិញក្នុងបង្កាន់ដៃ', itemMeta: (count: number, kinds: number) => `${count} មុខ · ${kinds} ប្រភេទ`, product: 'ទំនិញ', quantity: 'ចំនួន', unitPrice: 'តម្លៃឯកតា', lineTotal: 'សរុបរង', subtotal: 'សរុបទំនិញ', productCount: 'ចំនួនទំនិញ', amountDue: 'ចំនួនត្រូវបង់',
+    waitingOrder: 'កំពុងរង់ចាំបញ្ចូលទំនិញ', waitingOrderSub: 'ទំនិញដែលបានជ្រើសនឹងបង្ហាញនៅទីនេះ', completed: 'ការទូទាត់បានសម្រេច', thanks: 'សូមអរគុណ សូមមកម្តងទៀត', cancelled: 'បានបោះបង់បង្កាន់ដៃ', expired: 'បង្កាន់ដៃផុតពេល', paymentExpired: 'ការទូទាត់ផុតពេល', waitingNext: 'កំពុងរង់ចាំបង្កាន់ដៃបន្ទាប់',
+    khqrPayment: 'ការទូទាត់ KHQR', merchantFallback: 'ការទូទាត់ហាង', staticKhqrAmount: 'KHQR', noStoreKhqr: 'ហាងនេះមិនទាន់កំណត់លេខកូដ KHQR', staticKhqrHint: 'ប្រើកម្មវិធីធនាគារដើម្បីស្កេន និងបង់ប្រាក់', khqrHint: 'សូមបញ្ចូល និងផ្ទៀងផ្ទាត់ចំនួនខាងលើក្នុងកម្មវិធីធនាគារ', khqrFocusHint: 'សូមបញ្ចូល និងផ្ទៀងផ្ទាត់ចំនួនខាងលើក្នុងកម្មវិធីធនាគារ', khqrInstruction: 'បន្ទាប់ពីបង់ប្រាក់ សូមជូនដំណឹងដល់បុគ្គលិក', cashHint: 'បង្កាន់ដៃនេះបង់ជាសាច់ប្រាក់',
+    cash: 'សាច់ប្រាក់', pendingPayment: 'រង់ចាំជ្រើសការទូទាត់', idleStatus: 'កំពុងរង់ចាំ', orderStatus: 'កំពុងដំណើរការ', cashStatus: 'បង់ជាសាច់ប្រាក់', khqrStatus: 'បង់តាម KHQR', completedStatus: 'បានបញ្ចប់', cancelledStatus: 'បានបោះបង់', expiredStatus: 'ផុតពេល',
   },
 }
 
-// ─── styles ──────────────────────────────────────────────────────────────────
-
-const ACCENT = '#2563eb'
-
 const s: Record<string, CSSProperties> = {
-  root: { height: '100vh', minHeight: 0, overflow: 'hidden', background: 'var(--bg, #f1f5f9)', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-sans, system-ui, -apple-system, sans-serif)' },
-  header: { background: '#0f172a', color: '#fff', padding: '12px 22px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 },
-  brandIcon: { fontSize: 28 },
-  headerCenter: { flex: 1, minWidth: 0 },
-  storeName: { fontSize: 20, fontWeight: 800, letterSpacing: '-0.3px' },
-  storeCode: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
-  statusPill: { fontSize: 14, fontWeight: 700, padding: '6px 16px', borderRadius: 999, flexShrink: 0 },
-  fullscreenBtn: { border: '1px solid rgba(255,255,255,.16)', borderRadius: 999, background: 'rgba(255,255,255,.1)', color: '#e2e8f0', fontSize: 12, fontWeight: 800, padding: '8px 12px', cursor: 'pointer', flexShrink: 0 },
-  langSwitch: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 3, borderRadius: 999, background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.16)', flexShrink: 0 },
-  langBtn: { border: 'none', borderRadius: 999, background: 'transparent', color: '#cbd5e1', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
-  langBtnOn: { border: 'none', borderRadius: 999, background: '#fff', color: '#0f172a', fontSize: 12, fontWeight: 800, padding: '5px 8px', cursor: 'pointer' },
-
-  stageWrap: { flex: 1, minHeight: 0, overflow: 'hidden', padding: 12, display: 'flex' },
-  stateCenter: { flex: 1, minHeight: 0, borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', overflow: 'hidden' },
-  idleStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 360px)', gap: 12 },
-  idleKhqrPanel: { minHeight: 0, display: 'flex', flexDirection: 'column', gap: 12 },
-  idleKhqrTitle: { flexShrink: 0, textAlign: 'center', borderRadius: 999, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: 16, fontWeight: 950, padding: '10px 16px', boxShadow: '0 8px 18px rgba(37,99,235,.06)' },
-  idleKhqrCardWrap: { flex: 1, minHeight: 0, display: 'flex', alignItems: 'stretch' },
-  idlePaymentHint: { flexShrink: 0, textAlign: 'center', borderRadius: 999, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: 13, fontWeight: 800, padding: '8px 16px' },
-  orderStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(360px, .86fr) minmax(0, 1.14fr)', gap: 12 },
-  orderFocusCard: { borderRadius: 22, background: 'linear-gradient(135deg, #ffffff 0%, #eff6ff 100%)', border: '1px solid #dbeafe', boxShadow: '0 18px 38px rgba(37,99,235,.12)', padding: 30, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', minHeight: 0 },
-  orderAmount: { marginTop: 8, fontSize: 'clamp(68px, 9vw, 132px)', lineHeight: .9, fontWeight: 950, color: ACCENT, letterSpacing: '-3px' },
-  amountKhr: { marginTop: 10, fontSize: 'clamp(20px, 2.4vw, 32px)', lineHeight: 1.1, fontWeight: 900, color: '#475569', letterSpacing: '-.5px' },
-  orderPromptCash: { marginTop: 16, padding: '10px 18px', borderRadius: 999, background: '#dcfce7', color: '#166534', fontSize: 18, fontWeight: 900, boxShadow: '0 8px 18px rgba(22,163,74,.12)' },
-  orderPromptReview: { marginTop: 16, padding: '10px 18px', borderRadius: 999, background: '#f8fafc', color: '#334155', fontSize: 18, fontWeight: 900, border: '1px solid #dbeafe', boxShadow: '0 8px 18px rgba(37,99,235,.08)' },
-  orderMeta: { marginTop: 16, fontSize: 18, fontWeight: 800, color: '#475569' },
-  orderPayMethod: { marginTop: 20, display: 'inline-flex', alignItems: 'center', gap: 10, borderRadius: 999, background: '#fff', border: '1px solid #dbeafe', padding: '10px 16px', color: '#64748b', fontSize: 14, fontWeight: 800 },
-  orderItemsCard: { minHeight: 0, overflow: 'auto', scrollbarGutter: 'stable', borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', padding: 18 },
-  khqrStage: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(420px, 1fr) minmax(320px, .72fr)', gap: 12 },
-  khqrMain: { minHeight: 0, borderRadius: 24, background: '#fff', border: '1px solid #dbeafe', boxShadow: '0 18px 42px rgba(37,99,235,.16)', padding: 24, display: 'grid', gridTemplateRows: 'auto auto auto minmax(0, 1fr)', alignItems: 'center', justifyItems: 'center', textAlign: 'center', overflow: 'hidden' },
-  khqrTitle: { fontSize: 'clamp(28px, 3.2vw, 48px)', lineHeight: 1.05, fontWeight: 950, color: '#0f172a', letterSpacing: '-1px' },
-  khqrAmount: { marginTop: 4, fontSize: 'clamp(44px, 6vw, 88px)', lineHeight: 1, fontWeight: 950, color: ACCENT, letterSpacing: '-2px' },
-  khqrAmountKhr: { marginTop: 8, fontSize: 'clamp(20px, 2.3vw, 30px)', lineHeight: 1.1, fontWeight: 900, color: '#475569', letterSpacing: '-.5px' },
-  khqrSide: { minHeight: 0, overflow: 'auto', scrollbarGutter: 'stable', borderRadius: 22, background: '#fff', boxShadow: '0 1px 3px rgba(15,23,42,.08)', padding: 16 },
-  khqrFocusBackdrop: { position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(15,23,42,.46)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 28 },
-  khqrFocusPanel: { width: 'min(780px, 90vw)', maxHeight: '92vh', borderRadius: 34, background: '#fff', border: '1px solid rgba(219,234,254,.9)', boxShadow: '0 34px 90px rgba(15,23,42,.32)', padding: '28px 34px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', overflow: 'hidden' },
-  khqrFocusTitle: { fontSize: 'clamp(34px, 4vw, 58px)', lineHeight: 1.02, fontWeight: 950, color: '#0f172a', letterSpacing: '-1px' },
-  khqrFocusAmount: { marginTop: 8, fontSize: 'clamp(56px, 7vw, 108px)', lineHeight: .92, fontWeight: 950, color: ACCENT, letterSpacing: '-3px' },
-  khqrFocusQr: { marginTop: 22, width: 'min(480px, 56vh, 68vw)', aspectRatio: '1 / 1', borderRadius: 26, background: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 18px 42px rgba(37,99,235,.14)', padding: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  khqrFocusImage: { width: '100%', height: '100%', objectFit: 'contain', borderRadius: 18 },
-  khqrFocusMethod: { marginTop: 14, fontSize: 18, fontWeight: 950, color: '#1d4ed8' },
-  khqrFocusSub: { marginTop: 6, fontSize: 15, fontWeight: 700, color: '#64748b' },
-
-  body: { flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 410px', gap: 12, padding: 10, minHeight: 0, overflow: 'hidden' },
-  cartCol: { background: '#fff', borderRadius: 14, padding: 14, overflow: 'auto', scrollbarGutter: 'stable', boxShadow: '0 1px 3px rgba(0,0,0,.05)', minHeight: 0 },
-  payCol: { display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0, height: '100%', overflow: 'hidden' },
-
-  cartList: { display: 'flex', flexDirection: 'column' },
-  cartTitle: { fontSize: 13, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 12 },
-  cartRow: { display: 'grid', gridTemplateColumns: '58px minmax(0, 1fr) auto', alignItems: 'center', gap: 14, padding: '14px 4px', borderBottom: '1px solid #f1f5f9' },
-  productImage: { width: 52, height: 52, objectFit: 'cover', borderRadius: 10, border: '1px solid #e5e7eb', background: '#f8fafc' },
-  productPlaceholder: { width: 52, height: 52, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 },
-  cartText: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 },
-  cartName: { fontSize: 19, fontWeight: 700, color: '#111827', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
-  cartSpec: { fontSize: 14, color: '#64748b', fontWeight: 500, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
-  cartMeta: { fontSize: 14, color: '#64748b', fontWeight: 700, lineHeight: 1.2 },
-  cartLine: { fontSize: 20, fontWeight: 900, color: '#111827', minWidth: 92, textAlign: 'right' },
-  summaryCard: { marginTop: 18, marginLeft: 'auto', width: 'min(100%, 360px)', borderRadius: 12, border: '1px solid #e5e7eb', background: '#f8fafc', padding: 16 },
-  summaryTitle: { fontSize: 13, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 },
-  summaryRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#64748b', padding: '6px 0' },
-  summaryLabel: { color: '#64748b' },
-  summaryValue: { color: '#0f172a', fontWeight: 800 },
-  summaryDueRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10, paddingTop: 12, borderTop: '1px solid #e2e8f0', fontSize: 20, fontWeight: 900, color: '#0f172a' },
-
-  totalCard: { background: '#fff', borderRadius: 14, padding: 18, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.05)', flexShrink: 0 },
-  totalLabel: { fontSize: 12, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' },
-  totalAmt: { fontSize: 48, fontWeight: 800, color: ACCENT, marginTop: 6, letterSpacing: '-1px' },
-  totalMeta: { fontSize: 13, color: '#9ca3af', marginTop: 6 },
-  readyCard: { background: '#fff', borderRadius: 14, padding: 18, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.05)', flexShrink: 0 },
-  readyTitle: { fontSize: 26, lineHeight: 1.15, fontWeight: 900, color: '#0f172a', letterSpacing: '-.4px' },
-  readySub: { marginTop: 6, fontSize: 13, color: '#64748b', lineHeight: 1.45 },
-
-  payCard: { flex: 1, background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', borderRadius: 22, padding: 20, display: 'flex', flexDirection: 'column', boxShadow: '0 16px 34px rgba(37,99,235,.08)', minHeight: 0, border: '1px solid #dbeafe' },
-  payLabel: { fontSize: 13, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  payTag: { padding: '2px 10px', background: '#dbeafe', color: '#1d4ed8', borderRadius: 999, fontSize: 12, fontWeight: 700 },
-  paidTag: { padding: '2px 10px', background: '#dcfce7', color: '#15803d', borderRadius: 999, fontSize: 12, fontWeight: 700 },
-  payIdle: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 14, marginTop: 10 },
-
-  idleShowcase: { minHeight: '100%', display: 'grid', gridTemplateRows: 'auto 1fr', gap: 14 },
-  idleHero: { borderRadius: 20, padding: '26px 28px', minHeight: 210, background: 'linear-gradient(135deg, #08142a 0%, #14346d 52%, #2563eb 100%)', color: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 22px 46px rgba(15,23,42,.18)', overflow: 'hidden', flexShrink: 0, position: 'relative' },
-  idleHeroContent: { maxWidth: 760, position: 'relative', zIndex: 1 },
-  idleBadge: { alignSelf: 'flex-start', padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,.14)', color: '#dbeafe', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em' },
-  idleStore: { marginTop: 14, fontSize: 42, lineHeight: 1.04, fontWeight: 950, letterSpacing: '-1px' },
-  idleWelcome: { marginTop: 8, fontSize: 22, fontWeight: 900, color: '#bfdbfe' },
-  idleSub: { marginTop: 8, fontSize: 15, color: '#dbeafe', fontWeight: 600 },
-  pickSection: { background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', borderRadius: 22, padding: 18, border: '1px solid #dbeafe', boxShadow: '0 12px 28px rgba(15,23,42,.06)', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
-  pickHeader: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, fontSize: 18, fontWeight: 950, color: '#0f172a', marginBottom: 12 },
-  pickHint: { fontSize: 12, fontWeight: 700, color: '#64748b' },
-  pickCarousel: { minHeight: 'clamp(430px, 56vh, 640px)', borderRadius: 22, border: '1px solid #dbeafe', background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', padding: 16, display: 'grid', gridTemplateRows: 'minmax(260px, 1fr) auto', gap: 12, alignItems: 'stretch', boxShadow: '0 18px 36px rgba(37,99,235,.08)' },
-  pickHeroImage: { width: '100%', height: '100%', minHeight: 260, borderRadius: 18, fontSize: 72, objectFit: 'contain', background: 'linear-gradient(180deg, #fff 0%, #f8fafc 100%)' },
-  pickHeroBody: { minWidth: 0, borderRadius: 18, background: 'linear-gradient(135deg, #ffffff 0%, #eff6ff 100%)', border: '1px solid #dbeafe', padding: '14px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr', gridTemplateRows: 'auto auto', columnGap: 12, rowGap: 7, alignItems: 'center' },
-  pickHeroKicker: { fontSize: 12, fontWeight: 950, color: ACCENT, textTransform: 'uppercase', letterSpacing: '.06em' },
-  pickHeroFooter: { minWidth: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12, alignItems: 'center', gridColumn: '1 / -1' },
-  pickHeroText: { minWidth: 0 },
-  pickHeroName: { minWidth: 0, fontSize: 24, lineHeight: 1.1, fontWeight: 950, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  pickHeroSpec: { marginTop: 4, fontSize: 13, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  pickHeroPrice: { fontSize: 30, fontWeight: 950, color: ACCENT, whiteSpace: 'nowrap', letterSpacing: '-.6px' },
-  pickSold: { justifySelf: 'start', fontSize: 11, color: '#64748b', fontWeight: 800, background: '#e2e8f0', borderRadius: 999, padding: '3px 8px', whiteSpace: 'nowrap' },
-  pickProgress: { display: 'flex', alignItems: 'center', gap: 6, justifySelf: 'end' },
-  pickDot: { width: 18, height: 5, borderRadius: 999, background: '#cbd5e1' },
-  pickDotOn: { width: 32, height: 5, borderRadius: 999, background: ACCENT },
-  brandFallback: { minHeight: 280, borderRadius: 18, border: '1px dashed #cbd5e1', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 28, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.7)' },
-  brandFallbackIcon: { fontSize: 52 },
-  brandFallbackTitle: { marginTop: 12, fontSize: 22, fontWeight: 950, color: '#0f172a' },
-  brandFallbackSub: { marginTop: 8, fontSize: 15, color: '#64748b', maxWidth: 360, lineHeight: 1.55 },
-
-  qrWrap: { flex: 1, minHeight: 420, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 12, width: '100%' },
-  qrImage: { maxWidth: 420, maxHeight: 420, width: '100%', objectFit: 'contain', borderRadius: 16, border: '1px solid #dbeafe', boxShadow: '0 16px 34px rgba(37,99,235,.08)', background: '#fff' },
-  qrHint: { fontSize: 15, color: '#64748b', fontWeight: 700 },
-
-  bigCard: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, textAlign: 'center', padding: 30 },
-  bigIcon: { fontSize: 84, lineHeight: 1 },
-  bigTitle: { fontSize: 32, fontWeight: 800, color: '#111827' },
-  bigSub: { fontSize: 15, color: '#6b7280', maxWidth: 480 },
-  bigAmt: { fontSize: 40, fontWeight: 900, color: ACCENT },
-  bigAmtKhr: { fontSize: 24, fontWeight: 900, color: '#475569', marginTop: -2 },
-  bigMeta: { fontSize: 14, color: '#6b7280' },
-  bigThanks: { fontSize: 24, fontWeight: 900, color: '#0f172a' },
-
-  footer: { padding: '8px 16px', display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280', borderTop: '1px solid #e5e7eb', background: '#fff', flexShrink: 0 },
-  footerOk: { color: '#16a34a' },
-  footerErr: { color: '#dc2626' },
-  footerMeta: { color: '#9ca3af' },
-
-  errScreen: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f1f5f9', flexDirection: 'column', gap: 12, padding: 32 },
-  errTitle: { fontSize: 22, fontWeight: 700, color: '#111827' },
-  errSub: { fontSize: 14, color: '#6b7280', textAlign: 'center', maxWidth: 480, lineHeight: 1.6 },
+  root: { height: '100vh', minHeight: '560px', overflow: 'hidden', display: 'flex', flexDirection: 'column', color: '#0f172a', background: '#eef4fb', fontFamily: 'Inter, "Noto Sans Khmer", system-ui, sans-serif' },
+  header: { minHeight: 68, padding: '10px clamp(12px, 2vw, 28px)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, background: '#fff', borderBottom: '1px solid #dbe7f3', flexShrink: 0 },
+  brandBlock: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }, brandIcon: { fontSize: 27 }, brandText: { minWidth: 0 }, storeName: { fontSize: 'clamp(17px, 2vw, 24px)', lineHeight: 1.15, fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, storeMeta: { marginTop: 3, fontSize: 12, color: '#64748b' },
+  headerActions: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }, statusPill: { borderRadius: 999, padding: '6px 10px', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }, headerButton: { border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 9px', background: '#fff', color: '#334155', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
+  langSwitch: { display: 'flex', padding: 2, borderRadius: 8, background: '#e2e8f0' }, langButton: { border: 0, borderRadius: 6, padding: '5px 7px', background: 'transparent', color: '#475569', fontSize: 11, fontWeight: 800, cursor: 'pointer' }, langButtonActive: { background: '#fff', color: '#1d4ed8', boxShadow: '0 1px 3px rgba(15,23,42,.14)' },
+  panelGrid: { flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '22fr minmax(0, 52fr) 26fr', gap: 'clamp(7px, 1vw, 14px)', padding: 'clamp(7px, 1vw, 14px)', overflow: 'hidden', transition: 'grid-template-columns 180ms ease' }, panelGridKhqr: { gridTemplateColumns: '18fr minmax(0, 42fr) 40fr' },
+  entryPanel: { minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 'clamp(6px, .8vw, 10px)', padding: 'clamp(9px, 1.15vw, 16px)', borderRadius: 16, background: 'linear-gradient(160deg, #123a70, #0b5ba6)', color: '#fff', boxShadow: '0 10px 24px rgba(30,64,175,.16)' }, entryPanelPromoted: { background: 'linear-gradient(160deg, #0f766e, #0e7490)', boxShadow: '0 12px 28px rgba(13,148,136,.28)' }, entryHeading: { fontSize: 'clamp(14px, 1.45vw, 20px)', fontWeight: 950, lineHeight: 1.2 }, entryStore: { fontSize: 'clamp(11px, 1.15vw, 14px)', opacity: .82, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  promoCard: { minHeight: 0, display: 'flex', gap: 8, alignItems: 'center', padding: 8, borderRadius: 12, background: 'rgba(255,255,255,.14)', overflow: 'hidden' }, promoImage: { width: 'clamp(44px, 5vw, 70px)', aspectRatio: '1', objectFit: 'cover', borderRadius: 9, flexShrink: 0, background: '#dbeafe' }, promoFallback: { width: 'clamp(44px, 5vw, 70px)', aspectRatio: '1', display: 'grid', placeItems: 'center', borderRadius: 9, background: 'rgba(255,255,255,.18)', fontSize: 24, flexShrink: 0 }, promoBody: { minWidth: 0 }, promoLabel: { fontSize: 10, fontWeight: 800, opacity: .76 }, promoTitle: { marginTop: 2, fontSize: 'clamp(12px, 1.25vw, 16px)', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, promoSub: { marginTop: 2, fontSize: 11, opacity: .82, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  customerQrCard: { display: 'flex', width: 'min(100%, 178px)', alignSelf: 'center', padding: 6, borderRadius: 12, background: '#fff', boxShadow: '0 8px 20px rgba(15,23,42,.22)' }, customerQr: { width: '100%', height: 'auto', display: 'block' }, customerEntryActions: { display: 'grid', gap: 4, textAlign: 'center', fontSize: 'clamp(10px, 1.05vw, 13px)', fontWeight: 900, lineHeight: 1.25 }, customerEntryHint: { marginTop: 'auto', paddingTop: 3, textAlign: 'center', fontSize: 'clamp(9px, .9vw, 12px)', opacity: .86 },
+  orderPanel: { minWidth: 0, minHeight: 0, overflow: 'hidden', borderRadius: 16, background: '#fff', boxShadow: '0 10px 24px rgba(15,23,42,.08)' }, cartLayout: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', padding: 'clamp(10px, 1.2vw, 18px)' }, cartHeading: { display: 'flex', justifyContent: 'space-between', gap: 10, paddingBottom: 10, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }, cartTitle: { fontSize: 'clamp(18px, 2vw, 28px)', fontWeight: 950 }, cartMeta: { marginTop: 3, fontSize: 12, color: '#64748b' }, methodBadge: { alignSelf: 'start', borderRadius: 999, padding: '5px 8px', background: '#eff6ff', color: '#1d4ed8', fontSize: 11, fontWeight: 900, whiteSpace: 'nowrap' },
+  cartColumns: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 48px 76px 84px', gap: 8, padding: '9px 0 6px', color: '#64748b', fontSize: 'clamp(10px, 1vw, 12px)', fontWeight: 900, borderBottom: '1px solid #eef2f7', flexShrink: 0 }, cartRows: { minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain' }, cartRow: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 48px 76px 84px', gap: 8, alignItems: 'center', minHeight: 58, padding: '7px 0', borderBottom: '1px solid #f1f5f9', fontSize: 'clamp(11px, 1.05vw, 14px)' }, productCell: { minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }, productImage: { width: 38, height: 38, flexShrink: 0, borderRadius: 8, objectFit: 'cover', background: '#f1f5f9' }, productPlaceholder: { width: 38, height: 38, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: 8, background: '#f1f5f9', fontSize: 18 }, productText: { minWidth: 0 }, productName: { fontWeight: 850, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, productSpec: { marginTop: 2, color: '#64748b', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, numericCell: { textAlign: 'right', whiteSpace: 'nowrap' }, lineAmount: { textAlign: 'right', whiteSpace: 'nowrap', color: '#0f172a' },
+  orderSummary: { marginTop: 'auto', paddingTop: 9, borderTop: '1px solid #cbd5e1', flexShrink: 0 }, summaryLine: { display: 'flex', justifyContent: 'space-between', gap: 10, color: '#475569', fontSize: 12, lineHeight: 1.6 }, dueLine: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginTop: 4, color: '#0f172a', fontSize: 'clamp(17px, 2.1vw, 28px)', fontWeight: 900 }, dueCurrency: { textAlign: 'right', color: '#0369a1', fontSize: 'clamp(13px, 1.5vw, 18px)', fontWeight: 850 },
+  emptyOrder: { height: '100%', display: 'grid', placeContent: 'center', gap: 8, padding: 24, textAlign: 'center', color: '#64748b' }, emptyOrderIcon: { fontSize: 52 }, emptyOrderTitle: { color: '#334155', fontSize: 'clamp(20px, 2.5vw, 32px)', fontWeight: 900 }, emptyOrderSub: { fontSize: 14 }, terminalPanel: { height: '100%', display: 'grid', placeContent: 'center', gap: 10, padding: 24, textAlign: 'center' }, terminalIcon: { fontSize: 68, lineHeight: 1, fontWeight: 900 }, terminalTitle: { fontSize: 'clamp(24px, 3vw, 40px)', fontWeight: 950 }, terminalAmount: { color: '#0f766e', fontSize: 'clamp(34px, 4.8vw, 64px)', lineHeight: 1, fontWeight: 950 }, terminalCurrency: { color: '#0369a1', fontSize: 'clamp(17px, 2vw, 27px)', fontWeight: 900 }, terminalSub: { color: '#64748b', fontSize: 'clamp(14px, 1.5vw, 20px)', fontWeight: 700 },
+  paymentPanel: { minWidth: 0, minHeight: 0, overflow: 'hidden', borderRadius: 16, background: 'linear-gradient(160deg, #eff6ff, #fff)', border: '1px solid #bfdbfe', boxShadow: '0 10px 24px rgba(30,64,175,.12)', transition: 'all 180ms ease' }, paymentPanelKhqr: { border: '2px solid #2563eb', boxShadow: '0 16px 32px rgba(37,99,235,.25)' }, paymentLayout: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 'clamp(10px, 1.35vw, 20px)', textAlign: 'center' }, paymentKicker: { color: '#1d4ed8', fontSize: 'clamp(13px, 1.3vw, 18px)', fontWeight: 950, letterSpacing: '.03em' }, merchantName: { maxWidth: '100%', marginTop: 4, fontSize: 'clamp(12px, 1.25vw, 17px)', color: '#475569', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, paymentAmount: { marginTop: 9, color: '#0f172a', fontSize: 'clamp(24px, 3vw, 42px)', fontWeight: 950, lineHeight: 1.05, whiteSpace: 'nowrap' }, paymentAmountKhqr: { color: '#b45309', fontSize: 'clamp(38px, 5.2vw, 76px)' }, paymentDueLabel: { marginTop: 3, color: '#64748b', fontSize: 12, fontWeight: 800 },
+  staticKhqrFrame: { flex: 1, minHeight: 0, width: '100%', display: 'grid', placeItems: 'center', margin: 'clamp(8px, 1vw, 14px) 0', padding: 7, borderRadius: 14, background: '#fff', border: '1px solid #dbeafe' }, staticKhqrFrameKhqr: { border: '2px solid #60a5fa', boxShadow: '0 10px 22px rgba(37,99,235,.15)' }, staticKhqrImage: { display: 'block', width: '100%', maxWidth: 340, maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }, noKhqr: { maxWidth: 180, color: '#64748b', fontSize: 'clamp(12px, 1.1vw, 15px)', fontWeight: 700, lineHeight: 1.5 }, paymentHint: { color: '#334155', fontSize: 'clamp(11px, 1.15vw, 15px)', fontWeight: 850, lineHeight: 1.4 }, paymentInstruction: { marginTop: 7, color: '#1d4ed8', fontSize: 'clamp(11px, 1.15vw, 15px)', fontWeight: 950, lineHeight: 1.4 },
+  footer: { minHeight: 32, padding: '7px clamp(12px, 2vw, 28px)', display: 'flex', justifyContent: 'space-between', gap: 12, background: '#fff', borderTop: '1px solid #dbe7f3', color: '#64748b', fontSize: 11, flexShrink: 0 }, footerOk: { color: '#15803d' }, footerError: { color: '#dc2626' }, footerMeta: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  errScreen: { minHeight: '100vh', display: 'grid', placeContent: 'center', gap: 12, padding: 28, textAlign: 'center', background: '#eef4fb' }, errIcon: { fontSize: 52 }, errTitle: { fontSize: 24, fontWeight: 900 }, errSub: { maxWidth: 480, color: '#64748b', lineHeight: 1.6 },
 }
