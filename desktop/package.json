@@ -14,6 +14,7 @@
     "test": "vitest run",
     "pack:dir": "npm run compile && electron-builder --dir",
     "dist:win": "npm run compile && electron-builder --win --x64 --publish never",
+    "dist:win:staging": "npm run compile && node scripts/prepare-staging-dist.mjs && electron-builder --config electron-builder.staging.yml --win --x64 --publish never",
     "release:foundation": "node scripts/release-foundation.mjs write",
     "release:foundation:verify": "node scripts/release-foundation.mjs verify",
     "release:foundation:policy": "node scripts/release-foundation.mjs policy"

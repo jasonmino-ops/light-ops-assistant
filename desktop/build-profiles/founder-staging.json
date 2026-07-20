@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "channel": "STAGING",
+  "buildLabel": "STAGING TEST ONLY",
+  "baseUrl": "https://light-ops-assistant-git-f-6973ab-sunxiaojian0910-2556s-projects.vercel.app",
+  "storeCode": "PREV06C",
+  "deploymentCommit": "c95d6eda12027ce4bc29cfac8f99f60a69d81525"
+}

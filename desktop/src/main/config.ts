@@ -1,7 +1,7 @@
 /**
  * E-Shop Desktop — 本地配置
  *
- * 配置文件：%APPDATA%/eshop-desktop/config.json
+ * 配置文件：Electron app.getPath('userData')/config.json
  * 环境变量覆盖（优先级更高，便于开发调试）：
  *   ESHOP_DESKTOP_BASE_URL    如 http://localhost:3000
  *   ESHOP_DESKTOP_STORE_CODE  门店编码
@@ -12,15 +12,23 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { logger } from './logger'
+import {
+  loadDesktopBuildProfile,
+  PRODUCTION_BUILD_PROFILE,
+  type DesktopBuildProfile,
+  type DesktopBuildChannel,
+} from './buildProfile'
 
 export type DesktopConfig = {
   baseUrl: string
   storeCode: string
   lang: 'zh' | 'en' | 'km'
   forceCustomerWindow: boolean
+  buildChannel: DesktopBuildChannel
+  buildLabel: string
 }
 
-export const DEFAULT_BASE_URL = 'https://elifekh.com'
+export const DEFAULT_BASE_URL = PRODUCTION_BUILD_PROFILE.baseUrl
 
 export function parseConfigFile(raw: string): Partial<DesktopConfig> {
   try {
@@ -40,8 +48,37 @@ export function parseConfigFile(raw: string): Partial<DesktopConfig> {
 let cached: DesktopConfig | null = null
 let configPath: string | null = null
 
-export function loadConfig(userDataDir: string): DesktopConfig {
+export function resolveDesktopConfig(input: {
+  buildProfile: DesktopBuildProfile
+  fromFile: Partial<DesktopConfig>
+  env: NodeJS.ProcessEnv
+}): DesktopConfig {
+  const { buildProfile, fromFile, env } = input
+  const locked = buildProfile.locked
+  return {
+    baseUrl: locked
+      ? buildProfile.baseUrl
+      : env.ESHOP_DESKTOP_BASE_URL?.replace(/\/+$/, '') || fromFile.baseUrl || buildProfile.baseUrl,
+    storeCode: locked
+      ? buildProfile.storeCode
+      : env.ESHOP_DESKTOP_STORE_CODE?.trim() || fromFile.storeCode || buildProfile.storeCode,
+    lang: (env.ESHOP_DESKTOP_LANG === 'en' || env.ESHOP_DESKTOP_LANG === 'km' || env.ESHOP_DESKTOP_LANG === 'zh')
+      ? env.ESHOP_DESKTOP_LANG
+      : fromFile.lang || 'zh',
+    forceCustomerWindow: env.ESHOP_DESKTOP_FORCE_CUSTOMER === '1',
+    buildChannel: buildProfile.channel,
+    buildLabel: buildProfile.buildLabel,
+  }
+}
+
+export function loadConfig(
+  userDataDir: string,
+  runtime: { resourcesPath?: string; appName?: string } = {},
+): DesktopConfig {
   configPath = join(userDataDir, 'config.json')
+  const buildProfile = runtime.resourcesPath && runtime.appName
+    ? loadDesktopBuildProfile({ resourcesPath: runtime.resourcesPath, appName: runtime.appName })
+    : PRODUCTION_BUILD_PROFILE
   let fromFile: Partial<DesktopConfig> = {}
   if (existsSync(configPath)) {
     fromFile = parseConfigFile(readFileSync(configPath, 'utf8'))
@@ -50,23 +87,21 @@ export function loadConfig(userDataDir: string): DesktopConfig {
     try {
       writeFileSync(
         configPath,
-        JSON.stringify({ baseUrl: DEFAULT_BASE_URL, storeCode: '', lang: 'zh' }, null, 2),
+        JSON.stringify({ baseUrl: buildProfile.baseUrl, storeCode: buildProfile.storeCode, lang: 'zh' }, null, 2),
         'utf8',
       )
     } catch (error) {
       logger.warn('config.write-template-failed', { error: String(error) })
     }
   }
-  const env = process.env
-  cached = {
-    baseUrl: (env.ESHOP_DESKTOP_BASE_URL?.replace(/\/+$/, '') || fromFile.baseUrl || DEFAULT_BASE_URL),
-    storeCode: env.ESHOP_DESKTOP_STORE_CODE?.trim() || fromFile.storeCode || '',
-    lang: (env.ESHOP_DESKTOP_LANG === 'en' || env.ESHOP_DESKTOP_LANG === 'km' || env.ESHOP_DESKTOP_LANG === 'zh')
-      ? env.ESHOP_DESKTOP_LANG
-      : fromFile.lang || 'zh',
-    forceCustomerWindow: env.ESHOP_DESKTOP_FORCE_CUSTOMER === '1',
-  }
-  logger.info('config.loaded', { baseUrl: cached.baseUrl, storeCode: cached.storeCode, lang: cached.lang, path: configPath })
+  cached = resolveDesktopConfig({ buildProfile, fromFile, env: process.env })
+  logger.info('config.loaded', {
+    buildChannel: cached.buildChannel,
+    buildLabel: cached.buildLabel,
+    storeCode: cached.storeCode,
+    lang: cached.lang,
+    configLocation: 'userData/config.json',
+  })
   return cached
 }
 

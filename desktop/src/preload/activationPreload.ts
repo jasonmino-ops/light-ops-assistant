@@ -7,6 +7,9 @@ const RESET_LOCAL_CHANNEL = 'eshop:activation:reset-local'
 const QUIT_CHANNEL = 'eshop:activation:quit'
 const STATE_CHANGED_CHANNEL = 'eshop:activation:state-changed'
 
+const buildChannelArg = process.argv.find((arg) => arg.startsWith('--eshop-desktop-channel='))
+const buildChannel = buildChannelArg?.split('=', 2)[1] === 'STAGING' ? 'STAGING' : 'PRODUCTION'
+
 type ActivationInput = {
   storeCode: string
   pin: string
@@ -40,3 +43,5 @@ contextBridge.exposeInMainWorld('eshopDesktopActivation', Object.freeze({
     return () => ipcRenderer.removeListener(STATE_CHANGED_CHANNEL, listener)
   },
 }))
+
+contextBridge.exposeInMainWorld('eshopDesktopBuild', Object.freeze({ channel: buildChannel }))

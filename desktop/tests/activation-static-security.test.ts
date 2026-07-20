@@ -29,6 +29,16 @@ describe('activation static security', () => {
     }
   })
 
+  it('shows an explicit STAGING marker without exposing an origin to the renderer', () => {
+    const preload = src('preload/activationPreload.ts')
+    const renderer = src('renderer/activation/activationRenderer.ts')
+    const html = src('renderer/activation/index.html')
+    expect(preload).toMatch(/eshop-desktop-channel/)
+    expect(renderer).toMatch(/E-Shop Desktop STAGING/)
+    expect(html).toMatch(/environment-badge/)
+    expect(`${preload}\n${renderer}\n${html}`).not.toMatch(/https?:\/\//)
+  })
+
   it('does not log token, PIN, Authorization, raw request, or raw response', () => {
     for (const file of activationMainFiles) {
       const source = src(file)

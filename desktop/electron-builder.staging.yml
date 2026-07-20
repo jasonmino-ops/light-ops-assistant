@@ -1,0 +1,45 @@
+appId: com.eshop.desktop.staging
+productName: E-Shop Desktop STAGING
+copyright: "Copyright © 2026 E-Shop (店小二)"
+
+extraMetadata:
+  name: eshop-desktop-staging
+  productName: E-Shop Desktop STAGING
+  version: 0.2.0-staging.1
+
+directories:
+  output: release-staging
+  buildResources: build
+
+files:
+  - dist/**
+  - package.json
+
+extraResources:
+  - from: ../../eshop-windows-provider/artifacts/eshop-windows-provider
+    to: eshop-windows-provider
+    filter:
+      - dist/**
+      - package.json
+  - from: build-profiles/founder-staging.json
+    to: desktop-build-profile.json
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  executableName: E-Shop Desktop STAGING
+  artifactName: "E-Shop-Desktop-STAGING-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "E-Shop Desktop STAGING"
+  uninstallDisplayName: "E-Shop Desktop STAGING ${version}"
+  deleteAppDataOnUninstall: true
+
+publish: null

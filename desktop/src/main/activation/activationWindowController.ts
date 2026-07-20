@@ -3,10 +3,12 @@ import { pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import type { ActivationPublicState } from './activationTypes'
 import { logger } from '../logger'
+import type { DesktopBuildChannel } from '../buildProfile'
 
 export type ActivationWindowControllerOptions = {
   onClosedBeforeAuthorization: () => void
   isAuthorized: () => boolean
+  buildChannel?: DesktopBuildChannel
 }
 
 export class ActivationWindowController {
@@ -69,7 +71,9 @@ export class ActivationWindowController {
     if (this.win && !this.win.isDestroyed()) return this.win
     this.allowClose = false
     const win = new BrowserWindow({
-      title: 'E-Shop Desktop Activation',
+      title: this.options.buildChannel === 'STAGING'
+        ? 'E-Shop Desktop STAGING Activation'
+        : 'E-Shop Desktop Activation',
       width: 480,
       height: 620,
       minWidth: 420,
@@ -86,7 +90,10 @@ export class ActivationWindowController {
         nodeIntegration: false,
         sandbox: true,
         webSecurity: true,
-        additionalArguments: [`--eshop-desktop-version=${app.getVersion()}`],
+        additionalArguments: [
+          `--eshop-desktop-version=${app.getVersion()}`,
+          `--eshop-desktop-channel=${this.options.buildChannel}`,
+        ],
       },
     })
     this.win = win

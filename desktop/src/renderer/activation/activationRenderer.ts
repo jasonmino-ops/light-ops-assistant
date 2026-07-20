@@ -19,9 +19,14 @@ type ActivationApi = {
   onStateChanged(callback: (state: ActivationState) => void): () => void
 }
 
+type DesktopBuildInfo = {
+  channel: 'PRODUCTION' | 'STAGING'
+}
+
 declare global {
   interface Window {
     eshopDesktopActivation: ActivationApi
+    eshopDesktopBuild: DesktopBuildInfo
   }
 }
 
@@ -82,8 +87,16 @@ const retryButton = document.querySelector<HTMLButtonElement>('#retry-button')
 const resetButton = document.querySelector<HTMLButtonElement>('#reset-button')
 const quitButton = document.querySelector<HTMLButtonElement>('#quit-button')
 const busy = document.querySelector<HTMLElement>('#busy')
+const productName = document.querySelector<HTMLElement>('#product-name')
+const environmentBadge = document.querySelector<HTMLElement>('#environment-badge')
 
 let currentState: ActivationState | null = null
+
+if (window.eshopDesktopBuild.channel === 'STAGING') {
+  document.title = 'E-Shop Desktop STAGING Activation'
+  must(productName).textContent = 'E-Shop Desktop STAGING'
+  must(environmentBadge).hidden = false
+}
 
 function must<T>(value: T | null): T {
   if (!value) throw new Error('activation renderer missing element')

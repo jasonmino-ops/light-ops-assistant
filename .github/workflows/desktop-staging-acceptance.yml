@@ -1,0 +1,76 @@
+name: desktop-staging-acceptance
+
+on:
+  push:
+    branches:
+      - feat/ep-mb3-06c-activation-pin-console
+    paths:
+      - desktop/**
+      - .github/workflows/desktop-staging-acceptance.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-staging:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Windows Provider artifact source
+        uses: actions/checkout@v4
+        with:
+          repository: jasonmino-ops/eshop-windows-provider
+          ref: 7785be145d5259991038d17839d322e2694e338c
+          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
+          path: ep-mb3-provider
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Build Contract
+        working-directory: packages/hrt-contract
+        run: npm ci && npm run build
+
+      - name: Install Desktop dependencies
+        run: npm ci
+
+      - name: Build Provider artifact
+        working-directory: ep-mb3-provider
+        run: npm ci && npm run package
+
+      - name: Stage Provider artifact
+        shell: pwsh
+        working-directory: .
+        run: |
+          New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
+          Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
+
+      - name: Typecheck and tests
+        run: npm run typecheck && npm test -- --exclude tests/release-foundation.test.ts
+
+      - name: Build isolated STAGING installer
+        run: npm run dist:win:staging
+
+      - name: Verify packaged STAGING identity and locked origin
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: node scripts/verify-staging-package.mjs release-staging $env:SOURCE_COMMIT
+
+      - name: Upload temporary Founder STAGING artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eshop-desktop-staging-0.2.0-staging.1
+          path: |
+            desktop/release-staging/E-Shop-Desktop-STAGING-Setup-0.2.0-staging.1.exe
+            desktop/release-staging/STAGING-BUILD-MANIFEST.json
+          if-no-files-found: error
+          retention-days: 3
