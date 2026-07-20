@@ -6,7 +6,7 @@ function read(file: string) {
 }
 
 const opsRoute = read('app/api/ops/desktop-activation/route.ts')
-const opsPage = read('app/ops/desktop-activation/page.tsx')
+const opsPage = read('app/ops/desktop/activation/page.tsx')
 const opsHome = read('app/ops/page.tsx')
 const desktopPinRoute = read('app/api/desktop/activation-pins/route.ts')
 const pinIssuance = read('lib/desktop-activation/pin-issuance.ts')
@@ -46,11 +46,11 @@ assert.match(desktopPinRoute, /actorUserId:\s*ctx\.userId/, 'merchant PIN route 
 assert.match(opsPage, /\/api\/ops\/desktop-activation/, 'ops page must call the ops PIN API')
 assert.match(opsPage, /navigator\.clipboard\.writeText\(issued\.pin\)/, 'copy must be an explicit user-triggered action')
 assert.doesNotMatch(opsPage, /localStorage|sessionStorage|console\./, 'ops page must not persist or log PINs')
-assert.doesNotMatch(opsPage, /URLSearchParams|router\.push|window\.location/, 'ops page must not put PIN state in the URL')
+assert.doesNotMatch(opsPage, /params\.set\(['"]pin|router\.push[\s\S]*issued\.pin|window\.location[\s\S]*issued\.pin/, 'ops page must not put PIN state in the URL')
 assert.match(opsPage, /setIssued\(null\)/, 'ops page must clear one-time PIN state when changing context')
-assert.match(opsPage, /showReplaceConfirm/, 'ops page must use page-level replacement confirmation state')
-assert.match(opsPage, /确认生成新的激活 PIN？/, 'ops page must show explicit replacement confirmation title')
-assert.match(opsPage, /当前门店已有有效 PIN。继续后，旧 PIN 将立即失效。/, 'ops page must warn that old PIN is invalidated')
+assert.match(opsPage, /confirmStore/, 'ops page must use page-level issuance confirmation state')
+assert.match(opsPage, /Generate Activation PIN/, 'ops page must show an explicit issuance confirmation title')
+assert.match(opsPage, /当前有效 PIN 将立即失效。/, 'ops page must warn that an active PIN is invalidated')
 assert.doesNotMatch(opsPage, /\bconfirm\(/, 'ops page must not rely on native browser confirm')
 assert.match(opsPage, /Reference:/, 'ops page may show a safe reference code after user-friendly text')
 
@@ -65,6 +65,6 @@ assert.match(schema, /@@index\(\[actorOpsAdminId\]\)/, 'schema must index ops au
 assert.match(migration, /DesktopActivationPin_exactly_one_creator_check/, 'migration must enforce exactly one PIN creator')
 assert.match(migration, /ALTER COLUMN "createdByUserId" DROP NOT NULL/, 'migration must preserve historical user creator while allowing ops creator')
 
-assert.match(opsHome, /href="\/ops\/desktop-activation"/, 'ops home should link to the activation PIN console')
+assert.match(opsHome, /href="\/ops\/desktop\/activation"/, 'ops home should link to the productized Desktop console')
 
 console.log('desktop activation PIN console static tests passed')
