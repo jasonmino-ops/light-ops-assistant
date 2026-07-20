@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { basename, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 
 const require = createRequire(import.meta.url)
 const asar = require('@electron/asar')
@@ -33,10 +33,13 @@ if (
   throw new Error('packaged staging identity mismatch')
 }
 
-const configSource = asar.extractFile(asarPath, 'dist/main/config.js').toString('utf8')
-const mainSource = asar.extractFile(asarPath, 'dist/main/main.js').toString('utf8')
-const rendererSource = asar.extractFile(asarPath, 'dist/renderer/activation/activationRenderer.js').toString('utf8')
-const rendererHtml = asar.extractFile(asarPath, 'dist/renderer/activation/index.html').toString('utf8')
+const configSource = asar.extractFile(asarPath, join('dist', 'main', 'config.js')).toString('utf8')
+const mainSource = asar.extractFile(asarPath, join('dist', 'main', 'main.js')).toString('utf8')
+const rendererSource = asar.extractFile(
+  asarPath,
+  join('dist', 'renderer', 'activation', 'activationRenderer.js'),
+).toString('utf8')
+const rendererHtml = asar.extractFile(asarPath, join('dist', 'renderer', 'activation', 'index.html')).toString('utf8')
 if (!configSource.includes('buildProfile.locked')) throw new Error('staging origin lock missing from packaged config')
 if (!mainSource.includes('resourcesPath: process.resourcesPath') || !mainSource.includes('buildChannel: config.buildChannel')) {
   throw new Error('staging dist overlay missing from packaged main process')

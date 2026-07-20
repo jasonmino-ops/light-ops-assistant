@@ -42,4 +42,10 @@ describe('temporary Founder STAGING build', () => {
     expect(workflow).toContain('--exclude tests/release-foundation.test.ts')
     expect(workflow).not.toMatch(/gh release|create-release|contents:\s*write/)
   })
+
+  it('uses platform-native paths while inspecting the packaged asar', () => {
+    const verifier = readDesktop('scripts/verify-staging-package.mjs')
+    expect(verifier).toContain("join('dist', 'main', 'config.js')")
+    expect(verifier).not.toContain("extractFile(asarPath, 'dist/main/config.js')")
+  })
 })
