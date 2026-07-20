@@ -4,6 +4,7 @@ import { checkOpsAuthContext, getFkBackedOpsAdminIdentity, hasOpsRole } from '@/
 import { auditRequestHashes, writeDesktopActivationAudit } from '@/lib/desktop-activation/audit'
 import { apiError, noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
 import { shortDeviceReference } from '@/lib/ops-desktop-management'
+import { enforceOpsWriteOrigin } from '@/lib/ops-write-origin'
 
 type RevokeBody = { reason?: unknown }
 
@@ -12,6 +13,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   return withDesktopApiError(async () => {
+    const originError = enforceOpsWriteOrigin(req)
+    if (originError) return originError
+
     const ops = await checkOpsAuthContext(req)
     if (!ops) return apiError('FORBIDDEN', 403)
     if (!hasOpsRole(ops.role, 'OPS_ADMIN')) return apiError('OPS_ADMIN_REQUIRED', 403)

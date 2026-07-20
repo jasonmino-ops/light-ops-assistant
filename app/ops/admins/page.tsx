@@ -10,7 +10,7 @@ type Admin = {
   username: string
   role: string
   status: string
-  telegramId: string | null
+  telegramBound: boolean
   createdAt: string
 }
 
@@ -257,8 +257,8 @@ export default function OpsAdminsPage() {
                     <div style={s.rowMeta}>
                       <span style={{ ...s.badge, background: rm.bg, color: rm.color, borderColor: rm.border }}>{rm.label}</span>
                       <span style={s.metaText}>{a.username}</span>
-                      <span style={{ fontSize: 11, color: a.telegramId ? '#52c41a' : '#bbb' }}>
-                        {a.telegramId ? `✓ TG:${a.telegramId}` : 'TG未绑'}
+                      <span style={{ fontSize: 11, color: a.telegramBound ? '#52c41a' : '#bbb' }}>
+                        {a.telegramBound ? '✓ TG已绑' : 'TG未绑'}
                       </span>
                       {isDisabled && <span style={s.disabledTag}>已停用</span>}
                     </div>
@@ -269,7 +269,7 @@ export default function OpsAdminsPage() {
                       navigator.clipboard.writeText(info).catch(() => {})
                     }}>复制账号</button>
                     <button style={s.actBtn} onClick={() => { setTgAdmin(a); setTgInput(''); setTgError('') }}>
-                      {a.telegramId ? '换绑 TG' : '绑定 TG'}
+                      {a.telegramBound ? '换绑 TG' : '绑定 TG'}
                     </button>
                     <button style={s.actBtn} onClick={() => resetPassword(a)}>重置密码</button>
                     <button

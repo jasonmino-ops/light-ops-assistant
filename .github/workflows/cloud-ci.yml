@@ -7,14 +7,22 @@ on:
       - "app/api/desktop/**"
       - "app/api/ops/desktop-activation/**"
       - "app/api/ops/desktop-management/**"
+      - "app/api/auth/telegram-ops/**"
+      - "app/api/ops/admins/**"
+      - "app/ops/admins/**"
       - "app/ops/desktop/**"
+      - "app/ops/device-center/**"
+      - "app/ops/_components/**"
       - "lib/desktop-activation/**"
       - "lib/ops-auth.ts"
       - "lib/ops-desktop-management.ts"
+      - "lib/ops-write-origin.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
       - "tests/ops-desktop-management-*.test.ts"
       - "tests/ops-desktop-management-ui.spec.ts"
+      - "tests/ops-write-origin.test.ts"
+      - "tests/telegram-ops-auth.test.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
       - "tests/customer-display-cart-sync-static.test.ts"
@@ -30,14 +38,22 @@ on:
       - "app/api/desktop/**"
       - "app/api/ops/desktop-activation/**"
       - "app/api/ops/desktop-management/**"
+      - "app/api/auth/telegram-ops/**"
+      - "app/api/ops/admins/**"
+      - "app/ops/admins/**"
       - "app/ops/desktop/**"
+      - "app/ops/device-center/**"
+      - "app/ops/_components/**"
       - "lib/desktop-activation/**"
       - "lib/ops-auth.ts"
       - "lib/ops-desktop-management.ts"
+      - "lib/ops-write-origin.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
       - "tests/ops-desktop-management-*.test.ts"
       - "tests/ops-desktop-management-ui.spec.ts"
+      - "tests/ops-write-origin.test.ts"
+      - "tests/telegram-ops-auth.test.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
       - "tests/customer-display-cart-sync-static.test.ts"
@@ -127,6 +143,11 @@ jobs:
           npx tsx tests/ops-desktop-management-domain.test.ts
           npx tsx tests/ops-desktop-management-static.test.ts
           npx tsx tests/ops-desktop-management-api.test.ts
+
+      - name: EP-MB3-06E-C0 Ops identity and write security gate
+        run: |
+          npx tsx tests/ops-write-origin.test.ts
+          npx tsx tests/telegram-ops-auth.test.ts
 
       - name: Relevant regression tests
         run: |

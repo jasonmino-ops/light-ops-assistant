@@ -30,17 +30,18 @@ export async function PATCH(
 
   if (Object.keys(data).length === 0) return NextResponse.json({ error: 'NO_CHANGE' }, { status: 400 })
 
-  // 任一高风险字段变更同时 bump sessionVersion 强制旧 cookie 失效
-  const needBump = data.passwordHash !== undefined
-    || data.telegramId !== undefined
-    || data.status === 'DISABLED'
-
   try {
     const before = await prisma.opsAdmin.findUnique({
       where: { id },
       select: { telegramId: true, status: true, role: true },
     })
     if (!before) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+
+    // Repeating the same Telegram binding is a no-op and must not invalidate sessions.
+    const telegramChanged = data.telegramId !== undefined && before.telegramId !== data.telegramId
+    const needBump = data.passwordHash !== undefined
+      || telegramChanged
+      || (data.status === 'DISABLED' && before.status !== 'DISABLED')
 
     const updated = await prisma.opsAdmin.update({
       where: { id },
@@ -49,8 +50,10 @@ export async function PATCH(
 
     const audits: { type: string; message: string }[] = []
     if (data.passwordHash !== undefined) audits.push({ type: 'OPS_PWD_CHANGED', message: 'password updated' })
-    if (data.telegramId !== undefined && before.telegramId !== updated.telegramId) {
-      audits.push({ type: 'OPS_TG_REBIND', message: `from ${before.telegramId ?? 'null'} to ${updated.telegramId ?? 'null'}` })
+    if (telegramChanged) {
+      const beforeState = before.telegramId ? 'bound' : 'unbound'
+      const afterState = updated.telegramId ? 'bound' : 'unbound'
+      audits.push({ type: 'OPS_TG_REBIND', message: `telegram binding changed: ${beforeState} to ${afterState}` })
     }
     if (data.role !== undefined && before.role !== updated.role) {
       audits.push({ type: 'OPS_ROLE_CHANGED', message: `from ${before.role} to ${updated.role}` })

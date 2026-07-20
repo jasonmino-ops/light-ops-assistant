@@ -63,6 +63,8 @@ function revokeRequest(deviceRef: string, token?: string, body: unknown = { reas
     method: 'POST',
     headers: {
       'content-type': 'application/json',
+      origin: 'http://localhost',
+      'sec-fetch-site': 'same-origin',
       ...(token ? cookie(token) : {}),
     },
     body: JSON.stringify(body),
@@ -352,6 +354,36 @@ async function testRevoke() {
   const otherDevice = await createDevice({ tenantId: other.tenant.id, storeId: otherStore.id })
   const targetRef = target.device.id.slice(-8).toUpperCase()
   const reason = 'Founder review closure'
+
+  const crossOriginDevice = await createDevice({ tenantId: primary.tenant.id, storeId: primaryStore.id })
+  const crossOriginRef = crossOriginDevice.device.id.slice(-8)
+  const crossOriginAuditsBefore = await prisma.desktopActivationAudit.count({
+    where: { deviceId: crossOriginDevice.device.id, eventType: 'DEVICE_REVOKED' },
+  })
+  const crossOrigin = await managementRevoke(
+    request(`http://localhost/api/ops/desktop-management/devices/${crossOriginRef}/revoke`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://foreign.example',
+        'sec-fetch-site': 'cross-site',
+        ...cookie(token),
+      },
+      body: JSON.stringify({ reason: 'Cross-origin request must fail' }),
+    }),
+    { params: Promise.resolve({ id: crossOriginRef }) },
+  )
+  assert.equal(crossOrigin.status, 403)
+  assert.equal((await crossOrigin.json()).error, 'OPS_WRITE_ORIGIN_FORBIDDEN')
+  assertNoStore(crossOrigin)
+  const unchangedCrossOriginDevice = await prisma.desktopDevice.findUniqueOrThrow({
+    where: { id: crossOriginDevice.device.id },
+  })
+  assert.equal(unchangedCrossOriginDevice.status, 'ACTIVE')
+  assert.equal(unchangedCrossOriginDevice.revocationReason, null)
+  assert.equal(await prisma.desktopActivationAudit.count({
+    where: { deviceId: crossOriginDevice.device.id, eventType: 'DEVICE_REVOKED' },
+  }), crossOriginAuditsBefore)
 
   const response = await managementRevoke(
     revokeRequest(targetRef, token, { reason, tenantId: other.tenant.id }),

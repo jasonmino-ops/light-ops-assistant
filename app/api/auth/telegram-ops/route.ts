@@ -60,7 +60,7 @@ function issueOpsSession(opsRole: string, opts?: { adminId?: string; sessionVers
   return res
 }
 
-async function auditTg(action: string, adminId: string | null, telegramId: string, message: string, ok: boolean) {
+async function auditTg(action: string, adminId: string | null, message: string, ok: boolean) {
   try {
     await prisma.operationLog.create({
       data: {
@@ -71,7 +71,7 @@ async function auditTg(action: string, adminId: string | null, telegramId: strin
         targetId:   adminId,
         status:     ok ? 'SUCCESS' : 'FAILED',
         message,
-        payloadSnapshot: { telegramId },
+        payloadSnapshot: { identitySource: 'TELEGRAM', binding: 'FK_BACKED' },
       },
     })
   } catch { /* swallow */ }
@@ -129,10 +129,10 @@ export async function POST(req: NextRequest) {
 
     if (admin) {
       if (admin.lockedUntil && admin.lockedUntil.getTime() > Date.now()) {
-        await auditTg('OPS_TG_LOGIN_LOCKED', admin.id, telegramId, `locked until ${admin.lockedUntil.toISOString()}`, false)
+        await auditTg('OPS_TG_LOGIN_LOCKED', admin.id, `locked until ${admin.lockedUntil.toISOString()}`, false)
         return NextResponse.json({ ok: false, error: 'ACCOUNT_LOCKED', message: '账号已锁定' }, { status: 423 })
       }
-      await auditTg('OPS_TG_LOGIN_OK', admin.id, telegramId, `role=${admin.role}, ver=${admin.sessionVersion ?? 0}`, true)
+      await auditTg('OPS_TG_LOGIN_OK', admin.id, `role=${admin.role}, ver=${admin.sessionVersion ?? 0}`, true)
       return issueOpsSession(admin.role, { adminId: admin.id, sessionVersion: admin.sessionVersion ?? 0 })
     }
 
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
     if (!user || user.status !== 'ACTIVE') {
       return NextResponse.json({
         ok: false, error: 'OPS_USER_NOT_FOUND',
-        message: `Telegram ID ${telegramId} 未绑定任何 ops 管理员账号，请在 /ops/admins 中绑定`,
+        message: '该 Telegram 账号未绑定任何 ops 管理员账号，请在 /ops/admins 中绑定',
       }, { status: 403 })
     }
 
@@ -200,8 +200,8 @@ export async function POST(req: NextRequest) {
       maxAge: 60 * 60 * 24 * 14,
     })
     return res
-  } catch (err) {
-    console.error('telegram-ops auth error:', err)
+  } catch {
+    console.error('telegram-ops auth error')
     return NextResponse.json({ ok: false, error: 'OPS_AUTH_INTERNAL_ERROR' }, { status: 500 })
   }
 }

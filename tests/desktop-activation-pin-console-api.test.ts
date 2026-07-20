@@ -54,6 +54,8 @@ async function makeOpsSession(role: OpsRole, init?: NextRequestInit) {
     headers: {
       cookie: `auth-session=${token}`,
       'content-type': 'application/json',
+      origin: 'http://localhost',
+      'sec-fetch-site': 'same-origin',
       ...(init?.headers ?? {}),
     },
   })
@@ -97,6 +99,8 @@ function syntheticOpsIssueRequest(storeCode: string, userId: string) {
     headers: {
       cookie: `auth-session=${token}`,
       'content-type': 'application/json',
+      origin: 'http://localhost',
+      'sec-fetch-site': 'same-origin',
     },
     body: JSON.stringify({ storeCode }),
   })
@@ -497,6 +501,27 @@ async function testOpsIdentityGuardHasNoSideEffects() {
   assert.equal(await countAudits(), auditsBefore, 'synthetic identities must not create audit rows')
 }
 
+async function testCrossOriginIssuanceHasNoSideEffects() {
+  const { tenant, store } = await seedStore('ACTIVE')
+  const pinsBefore = await prisma.desktopActivationPin.count({ where: { tenantId: tenant.id } })
+  const auditsBefore = await prisma.desktopActivationAudit.count({ where: { tenantId: tenant.id } })
+  const { req } = await makeOpsSession('SUPER_ADMIN', {
+    method: 'POST',
+    headers: {
+      origin: 'https://foreign.example',
+      'sec-fetch-site': 'cross-site',
+    },
+    body: JSON.stringify({ storeCode: store.code }),
+  })
+
+  const response = await POST(req)
+  assert.equal(response.status, 403)
+  assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0')
+  assert.equal((await response.json()).error, 'OPS_WRITE_ORIGIN_FORBIDDEN')
+  assert.equal(await prisma.desktopActivationPin.count({ where: { tenantId: tenant.id } }), pinsBefore)
+  assert.equal(await prisma.desktopActivationAudit.count({ where: { tenantId: tenant.id } }), auditsBefore)
+}
+
 async function testSubscriptionBlocksAndDeniedAudit() {
   for (const subscriptionStatus of ['EXPIRED', 'CANCELLED'] as const) {
     const { tenant, store } = await seedStore(subscriptionStatus)
@@ -645,6 +670,7 @@ async function main() {
   await assertHistoricalFixtureCompatible()
   await testAuthorizationLookupAndNoStore()
   await testOpsIdentityGuardHasNoSideEffects()
+  await testCrossOriginIssuanceHasNoSideEffects()
   await testOpsIssuanceAttributionAndPinLifecycle()
   await testSubscriptionBlocksAndDeniedAudit()
   await testActiveAndMerchantRegression()

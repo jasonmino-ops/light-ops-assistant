@@ -5,6 +5,7 @@ import { DESKTOP_ACTIVATION_PIN_TTL_HOURS } from '@/lib/desktop-activation/crypt
 import { apiError, minimalDesktopSubscription, noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
 import { issueDesktopActivationPin } from '@/lib/desktop-activation/pin-issuance'
 import { computeDesktopSubscriptionAccess } from '@/lib/desktop-activation/subscription-access'
+import { enforceOpsWriteOrigin } from '@/lib/ops-write-origin'
 
 type IssueBody = { storeCode?: unknown }
 
@@ -131,6 +132,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   return withDesktopApiError(async () => {
+    const originError = enforceOpsWriteOrigin(req)
+    if (originError) return originError
+
     const auth = await requireOpsAdmin(req)
     if (!auth.ok) return auth.response
     const actor = await getFkBackedOpsAdminIdentity(req, auth.ops)

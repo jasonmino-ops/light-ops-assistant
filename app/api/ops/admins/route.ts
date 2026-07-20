@@ -22,7 +22,12 @@ export async function GET(req: NextRequest) {
   })
 
   return NextResponse.json(admins.map((a) => ({
-    ...a,
+    id: a.id,
+    name: a.name,
+    username: a.username,
+    role: a.role,
+    status: a.status,
+    telegramBound: Boolean(a.telegramId),
     createdAt: a.createdAt.toISOString(),
   })))
 }
