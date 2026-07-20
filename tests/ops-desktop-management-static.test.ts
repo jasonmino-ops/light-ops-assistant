@@ -9,6 +9,7 @@ const managementRoute = read('app/api/ops/desktop-management/route.ts')
 const revokeRoute = read('app/api/ops/desktop-management/devices/[id]/revoke/route.ts')
 const activationRoute = read('app/api/ops/desktop-activation/route.ts')
 const opsHome = read('app/ops/page.tsx')
+const desktopIndex = read('app/ops/desktop/page.tsx')
 const shell = read('app/ops/desktop/_components/DesktopShell.tsx')
 const activationPage = read('app/ops/desktop/activation/page.tsx')
 const devicesPage = read('app/ops/desktop/devices/page.tsx')
@@ -51,10 +52,22 @@ assert.match(opsAuth, /admin\.sessionVersion !== session\.opsSessionVersion/, 'F
 assert.match(writeOriginGuard, /OPS_WRITE_ORIGIN_FORBIDDEN/)
 assert.doesNotMatch(writeOriginGuard, /allowlist|cors|telegram/i, 'origin guard must not use broad host, CORS, or Telegram exceptions')
 assert.match(opsHome, /href="\/ops\/desktop\/activation"[^>]*>Desktop</)
+assert.ok(
+  opsHome.indexOf('<Link href="/ops/desktop/activation" style={s.moreMenuItem}>Desktop</Link>') <
+    opsHome.indexOf('<Link href="/ops/admins" style={s.moreMenuItem}>管理员</Link>'),
+  'Desktop must be the first item in the Mini App More menu',
+)
 assert.match(shell, /\/ops\/desktop\/activation/)
 assert.match(shell, /\/ops\/desktop\/devices/)
 assert.match(shell, /\/ops\/desktop\/audit/)
 assert.match(shell, /\/ops\/desktop\/runtime/)
+assert.ok(
+  shell.indexOf("href: '/ops/desktop/activation'") < shell.indexOf("href: '/ops/desktop/devices'") &&
+    shell.indexOf("href: '/ops/desktop/devices'") < shell.indexOf("href: '/ops/desktop/runtime'") &&
+    shell.indexOf("href: '/ops/desktop/runtime'") < shell.indexOf("href: '/ops/desktop/audit'"),
+  'Desktop tabs must remain Activation, Devices, Runtime, Audit',
+)
+assert.match(desktopIndex, /redirect\('\/ops\/desktop\/activation'\)/, 'Desktop root must open Activation directly')
 assert.match(legacyPage, /redirect\('\/ops\/desktop\/activation'\)/, 'legacy hidden route must redirect to the normal menu route')
 
 assert.match(activationPage, /Store Code、Store Name 或 Tenant/)

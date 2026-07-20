@@ -309,8 +309,8 @@ export default function OpsPage() {
           </button>
           {showMoreMenu && (
             <div style={s.moreMenu}>
-              {opsRole === 'SUPER_ADMIN' && <Link href="/ops/admins" style={s.moreMenuItem}>管理员</Link>}
               <Link href="/ops/desktop/activation" style={s.moreMenuItem}>Desktop</Link>
+              {opsRole === 'SUPER_ADMIN' && <Link href="/ops/admins" style={s.moreMenuItem}>管理员</Link>}
               <Link href="/system" style={s.moreMenuItem}>系统自检</Link>
               <a href="#ops-broadcast" style={s.moreMenuItem} onClick={() => setShowMoreMenu(false)}>广播发送</a>
               <a href="#ops-applications" style={s.moreMenuItem} onClick={() => setShowMoreMenu(false)}>开店申请</a>

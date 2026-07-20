@@ -38,6 +38,21 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/ops/check', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, opsRole: 'SUPER_ADMIN' }) })
   })
+  await page.route('**/api/ops/tenants', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+  })
+  await page.route('**/api/ops/applications', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
+  })
+  await page.route('**/api/ops/conversations', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ conversations: [], counts: { active: 0 } }) })
+  })
+  await page.route('**/api/ops/overview', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+  })
+  await page.route('**/api/ops/health', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ attentionItems: [] }) })
+  })
   await page.route('**/api/ops/desktop-activation', async (route) => {
     await route.fulfill({
       status: 201,
@@ -114,6 +129,33 @@ test.beforeEach(async ({ page }) => {
       }),
     })
   })
+})
+
+test('Telegram Mini App More opens Desktop directly on Activation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.addInitScript(() => {
+    const userId = '900000001'
+    const initData = new URLSearchParams({ user: JSON.stringify({ id: Number(userId) }) }).toString()
+    Object.defineProperty(window, 'Telegram', {
+      configurable: true,
+      value: { WebApp: { initData, initDataUnsafe: { user: { id: Number(userId) } }, expand: () => {} } },
+    })
+    sessionStorage.setItem('tg-ops-authed-uid', userId)
+  })
+  await page.goto('/ops')
+
+  await page.getByRole('button', { name: '更多' }).click()
+  const moreMenu = page.locator('.ops-mobile-nav > div')
+  await expect(moreMenu).toBeVisible()
+  await expect(moreMenu.locator('a').first()).toHaveText('Desktop')
+
+  await moreMenu.getByRole('link', { name: 'Desktop', exact: true }).click()
+  await expect(page).toHaveURL(/\/ops\/desktop\/activation$/)
+  await expect(page.getByRole('heading', { name: 'Desktop Activation' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Generate Activation PIN' })).toBeVisible()
+
+  const tabs = page.getByRole('navigation', { name: 'Desktop management' }).getByRole('link')
+  await expect(tabs).toHaveText(['Activation', 'Devices', 'Runtime', 'Audit'])
 })
 
 test('activation is discoverable and clears the one-time PIN', async ({ page }) => {

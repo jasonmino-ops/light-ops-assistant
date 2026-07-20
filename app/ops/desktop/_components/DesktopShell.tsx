@@ -8,8 +8,8 @@ import { usePathname } from 'next/navigation'
 const TABS = [
   { href: '/ops/desktop/activation', label: 'Activation' },
   { href: '/ops/desktop/devices', label: 'Devices' },
-  { href: '/ops/desktop/audit', label: 'Audit' },
   { href: '/ops/desktop/runtime', label: 'Runtime' },
+  { href: '/ops/desktop/audit', label: 'Audit' },
 ]
 
 export default function DesktopShell({ children }: { children: ReactNode }) {
