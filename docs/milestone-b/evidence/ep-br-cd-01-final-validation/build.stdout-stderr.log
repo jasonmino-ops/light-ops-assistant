@@ -1,0 +1,28 @@
+COMMAND START: 2026-07-21T21:00:00+07:00
+WORKTREE: /Users/jason/worktrees/ep-br-cd-01
+COMMAND: npm run build
+
+> light-ops-assistant@1.0.0 build
+> next build
+
+   ▲ Next.js 15.5.14
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 2.4s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/138) ...
+   Generating static pages (34/138)
+   Generating static pages (68/138)
+   Generating static pages (103/138)
+ ✓ Generating static pages (138/138)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route summary includes `/desktop/display`, `/desktop/pos`, `/invite`, `/m/[storeCode]`, and `/cashier`; all were emitted as dynamic routes by Next.js without errors.
+
+ƒ Middleware 34.2 kB
+ƒ (Dynamic) server-rendered on demand
+
+COMMAND EXIT: 0
