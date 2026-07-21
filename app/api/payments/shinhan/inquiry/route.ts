@@ -7,8 +7,13 @@ import {
   markPaymentPaidIfValid,
   normalizeShinhanCallback,
 } from '@/lib/payments/shinhan'
+import { isShinhanPaymentFrozen, SHINHAN_PAYMENT_FROZEN_ERROR } from '@/lib/payments/shinhan-config'
 
 export async function POST(req: NextRequest) {
+  if (isShinhanPaymentFrozen()) {
+    return NextResponse.json({ error: SHINHAN_PAYMENT_FROZEN_ERROR }, { status: 503 })
+  }
+
   const ctx = await getContext(req)
   if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
 

@@ -9,6 +9,13 @@ export type ShinhanPaymentConfig = {
   callbackBaseUrl: string
 }
 
+export type ShinhanPaymentAvailability = {
+  enabled: boolean
+  frozen: boolean
+}
+
+export const SHINHAN_PAYMENT_FROZEN_ERROR = 'SHINHAN_PAYMENT_FROZEN'
+
 function flag(value: string | undefined, defaultValue = false): boolean {
   if (value == null || value === '') return defaultValue
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase())
@@ -28,7 +35,19 @@ export function getShinhanPaymentConfig(): ShinhanPaymentConfig {
 }
 
 export function isShinhanConfigured(cfg = getShinhanPaymentConfig()): boolean {
-  if (!cfg.enabled) return false
-  if (cfg.mockMode) return true
+  // Shinhan is frozen until an approved, non-mock commercial configuration exists.
+  // This is server configuration only; no request value can enable the capability.
+  if (!cfg.enabled || cfg.mockMode) return false
   return Boolean(cfg.baseUrl && cfg.apiKey && cfg.secretKey && cfg.merchantId && cfg.merchantName && cfg.callbackBaseUrl)
+}
+
+export function getShinhanPaymentAvailability(
+  cfg = getShinhanPaymentConfig(),
+): ShinhanPaymentAvailability {
+  const enabled = isShinhanConfigured(cfg)
+  return { enabled, frozen: !enabled }
+}
+
+export function isShinhanPaymentFrozen(cfg = getShinhanPaymentConfig()): boolean {
+  return getShinhanPaymentAvailability(cfg).frozen
 }

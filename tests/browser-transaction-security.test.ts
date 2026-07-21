@@ -7,10 +7,22 @@ import {
   requiresCashierManualPaymentConfirmation,
   resolveCashierPaymentIntentStatus,
 } from '../lib/cashier-payment-confirmation'
-import { GET as shinhanCallbackGet } from '../app/api/payments/shinhan/callback/route'
+import {
+  getShinhanPaymentAvailability,
+  SHINHAN_PAYMENT_FROZEN_ERROR,
+} from '../lib/payments/shinhan-config'
+import { GET as shinhanConfigGet } from '../app/api/public/payments/shinhan/config/route'
+import { POST as createShinhanPayment } from '../app/api/public/orders/[orderId]/payments/shinhan/create/route'
+import {
+  GET as shinhanCallbackGet,
+  POST as shinhanCallbackPost,
+} from '../app/api/payments/shinhan/callback/route'
+import { POST as shinhanInquiryPost } from '../app/api/payments/shinhan/inquiry/route'
 
 const mutableEnv = process.env as unknown as Record<string, string | undefined>
 const originalNodeEnv = mutableEnv.NODE_ENV
+const originalShinhanEnabled = mutableEnv.SHINHAN_PAYMENT_ENABLED
+const originalShinhanMockMode = mutableEnv.SHINHAN_PAYMENT_MOCK_MODE
 
 async function main() {
   const forgedDevHeaders = {
@@ -55,6 +67,71 @@ async function main() {
   const getResponse = shinhanCallbackGet()
   assert.equal(getResponse.status, 405, 'GET callback must never mutate payment state')
   assert.equal(getResponse.headers.get('allow'), 'POST')
+
+  delete mutableEnv.SHINHAN_PAYMENT_ENABLED
+  delete mutableEnv.SHINHAN_PAYMENT_MOCK_MODE
+  assert.deepEqual(getShinhanPaymentAvailability(), { enabled: false, frozen: true },
+    'the server-owned default must keep Shinhan frozen')
+  assert.deepEqual(getShinhanPaymentAvailability({
+    enabled: true,
+    mockMode: true,
+    baseUrl: 'https://uat.example.test',
+    apiKey: 'test-key',
+    secretKey: 'test-secret',
+    merchantId: 'merchant',
+    merchantName: 'merchant',
+    callbackBaseUrl: 'https://app.example.test',
+  }), { enabled: false, frozen: true },
+  'mock configuration must not reopen the frozen payment capability')
+
+  const configResponse = shinhanConfigGet(new NextRequest(
+    'https://example.test/api/public/payments/shinhan/config?enabled=true&frozen=false',
+  ))
+  assert.equal(configResponse.status, 200)
+  assert.deepEqual(await configResponse.json(), { enabled: false, frozen: true },
+    'the public config endpoint must ignore client query values and keep the entry hidden')
+
+  const createResponse = await createShinhanPayment(
+    new NextRequest('https://example.test/api/public/orders/forged/payments/shinhan/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ currency: 'USD' }),
+    }),
+    { params: Promise.resolve({ orderId: 'forged' }) },
+  )
+  assert.equal(createResponse.status, 503, 'frozen Shinhan must reject creation before any order or payment lookup')
+  assert.equal((await createResponse.json()).error, SHINHAN_PAYMENT_FROZEN_ERROR)
+
+  const callbackResponse = await shinhanCallbackPost(
+    new NextRequest('https://example.test/api/payments/shinhan/callback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ trxId: 'forged', respondCode: '200', paymentAmount: '1.00' }),
+    }),
+  )
+  assert.equal(callbackResponse.status, 503, 'frozen callback must not advance a forged payment to PAID')
+  assert.equal((await callbackResponse.json()).error, SHINHAN_PAYMENT_FROZEN_ERROR)
+
+  const inquiryResponse = await shinhanInquiryPost(
+    new NextRequest('https://example.test/api/payments/shinhan/inquiry', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ trxId: 'forged' }),
+    }),
+  )
+  assert.equal(inquiryResponse.status, 503, 'frozen inquiry must not trigger a payment-status transition')
+  assert.equal((await inquiryResponse.json()).error, SHINHAN_PAYMENT_FROZEN_ERROR)
+
+  const menuSource = readFileSync(resolve(process.cwd(), 'app/menu/page.tsx'), 'utf8')
+  const ordersSource = readFileSync(resolve(process.cwd(), 'app/menu/orders/page.tsx'), 'utf8')
+  assert.match(menuSource, /const \[shinhanEnabled, setShinhanEnabled\] = useState\(false\)/,
+    'checkout must default to no Shinhan payment entry')
+  assert.match(menuSource, /\{shinhanEnabled && \(/,
+    'checkout Shinhan button must be structurally gated rather than CSS-hidden')
+  assert.match(ordersSource, /const \[shinhanEnabled, setShinhanEnabled\] = useState\(false\)/,
+    'order history must default to no Shinhan action entry')
+  assert.match(ordersSource, /\{shinhanEnabled && order\.paymentStatus !== 'PAID'/,
+    'order-history Shinhan actions must be structurally gated while paid history remains readable')
 }
 
 main()
@@ -68,4 +145,8 @@ main()
   .finally(() => {
   if (originalNodeEnv === undefined) delete mutableEnv.NODE_ENV
   else mutableEnv.NODE_ENV = originalNodeEnv
+  if (originalShinhanEnabled === undefined) delete mutableEnv.SHINHAN_PAYMENT_ENABLED
+  else mutableEnv.SHINHAN_PAYMENT_ENABLED = originalShinhanEnabled
+  if (originalShinhanMockMode === undefined) delete mutableEnv.SHINHAN_PAYMENT_MOCK_MODE
+  else mutableEnv.SHINHAN_PAYMENT_MOCK_MODE = originalShinhanMockMode
   })

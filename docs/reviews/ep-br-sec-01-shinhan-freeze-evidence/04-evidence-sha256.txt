@@ -1,0 +1,13 @@
+# EP-BR-SEC-01 Shinhan Freeze — Evidence SHA-256
+
+以下校验值覆盖本增量 Evidence Pack 的其他原始文件；本清单自身不自引用。
+
+```text
+9920a22cd1ee9049e80490f4b2a67d390e06c782a41c1c991f9f5b58e72ad632  docs/reviews/EP-BR-SEC-01 Shinhan Freeze Increment Evidence Pack.md
+747208b4e0aa1784f6b0e13799a8f5040cc8bafc636dc72194aeaf74dc4bc0d6  docs/reviews/ep-br-sec-01-shinhan-freeze-evidence/01-tests-and-typescript-output.txt
+dbc9b40e94f199a9c49080ee66c9aa2fb7617d16c679de4f03af42dc0fedec70  docs/reviews/ep-br-sec-01-shinhan-freeze-evidence/02-build-output.txt
+5f4bd67127dcfe9f26f24dc7cdacf438777770cec7a3ca6b315e7a787f9255e7  docs/reviews/ep-br-sec-01-shinhan-freeze-evidence/03-incremental-source-diff.patch
+01fa07ff63b87cff7166cd089ea97965749249a0e220fe10571532d953ca1986  docs/reviews/ep-br-sec-01-shinhan-freeze-evidence/05-final-tests-and-typescript-output.txt
+1c020b805154a1eb9df2e08d9614f32f51c5ca4775e578743f6bb9c6bc9127bb  docs/reviews/ep-br-sec-01-shinhan-freeze-evidence/06-final-build-output.txt
+```
+

@@ -1,11 +1,11 @@
-import { NextResponse } from 'next/server'
-import { getShinhanPaymentConfig, isShinhanConfigured } from '@/lib/payments/shinhan-config'
+import { NextRequest, NextResponse } from 'next/server'
+import { getShinhanPaymentAvailability } from '@/lib/payments/shinhan-config'
 
-export function GET() {
-  const cfg = getShinhanPaymentConfig()
+export function GET(_req: NextRequest) {
+  const availability = getShinhanPaymentAvailability()
 
   return NextResponse.json({
-    enabled: isShinhanConfigured(cfg),
-    mockMode: cfg.mockMode,
+    enabled: availability.enabled,
+    frozen: availability.frozen,
   })
 }
