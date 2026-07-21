@@ -244,6 +244,20 @@ export default function MyOrdersPage() {
   const [error,     setError]     = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [shinhanByOrder, setShinhanByOrder] = useState<Record<string, ShinhanPaymentState>>({})
+  const [shinhanEnabled, setShinhanEnabled] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/public/payments/shinhan/config')
+      .then((response) => response.ok ? response.json() : null)
+      .then((body) => {
+        if (!cancelled) setShinhanEnabled(Boolean(body?.enabled) && !body?.frozen)
+      })
+      .catch(() => {
+        if (!cancelled) setShinhanEnabled(false)
+      })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
@@ -526,7 +540,7 @@ export default function MyOrdersPage() {
                         )}
                       </div>
                     )}
-                    {order.paymentStatus !== 'PAID' && order.status !== 'CANCELLED' && (
+                    {shinhanEnabled && order.paymentStatus !== 'PAID' && order.status !== 'CANCELLED' && (
                       <ShinhanPaymentBox
                         order={order}
                         state={shinhanByOrder[order.id]}

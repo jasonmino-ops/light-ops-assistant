@@ -2910,6 +2910,7 @@ export default function CashierPage() {
           storeCode,
           items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
           paymentMethod: apiPayment,
+          manualPaymentConfirmed: apiPayment === 'KHQR',
         }),
       })
       const body = await res.json()

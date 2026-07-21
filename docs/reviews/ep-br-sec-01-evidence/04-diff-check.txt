@@ -1,0 +1,14 @@
+EP-BR-SEC-01 原始验证输出
+命令：git diff --check && git diff --stat && git diff --name-status origin/main...HEAD
+开始时间：2026-07-21T16:33:52.133Z
+结束时间：2026-07-21T16:33:52.309Z
+退出码：0
+
+完整合并 stdout/stderr：
+ app/api/cashier/sales/route.ts             | 26 ++++++++++++++++++++------
+ app/api/payments/shinhan/callback/route.ts |  7 +++++--
+ app/cashier/page.tsx                       |  1 +
+ lib/context.ts                             |  7 ++++---
+ 4 files changed, 30 insertions(+), 11 deletions(-)
+
+

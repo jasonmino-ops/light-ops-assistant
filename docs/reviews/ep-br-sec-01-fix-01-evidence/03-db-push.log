@@ -1,0 +1,9 @@
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+Datasource "db": PostgreSQL database "light_ops_sec_fix_01_runtime", schema "public" at "127.0.0.1:55433"
+
+🚀  Your database is now in sync with your Prisma schema. Done in 104ms
+
+UTC_STARTED=2026-07-21T17:37:17Z
+EXIT_CODE=0

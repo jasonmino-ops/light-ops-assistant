@@ -34,7 +34,7 @@ export async function PATCH(
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode,
-  }, { allowStoreCodeFallback: true })
+  }, { allowStoreCodeFallback: false })
   if (!posAuth) {
     return unauthorizedPosResponse()
   }

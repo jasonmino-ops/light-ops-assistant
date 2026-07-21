@@ -5,6 +5,7 @@ import {
   createShinhanDeeplinkPayment,
   formatShinhanAmount,
 } from '@/lib/payments/shinhan'
+import { isShinhanPaymentFrozen, SHINHAN_PAYMENT_FROZEN_ERROR } from '@/lib/payments/shinhan-config'
 
 function makeTrxId(orderNo: string): string {
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase()
@@ -15,6 +16,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ orderId: string }> },
 ) {
+  if (isShinhanPaymentFrozen()) {
+    return NextResponse.json({ error: SHINHAN_PAYMENT_FROZEN_ERROR }, { status: 503 })
+  }
+
   const { orderId } = await params
   let body: { currency?: string } = {}
   try {

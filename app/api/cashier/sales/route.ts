@@ -14,6 +14,10 @@ import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
 import { isKhqrSupportedCurrency } from '@/lib/currency'
+import {
+  requiresCashierManualPaymentConfirmation,
+  resolveCashierPaymentIntentStatus,
+} from '@/lib/cashier-payment-confirmation'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
 
@@ -33,10 +37,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_BODY' }, { status: 400 })
   }
 
-  const { storeCode, items, paymentMethod = 'CASH' } = body as {
+  const { storeCode, items, paymentMethod = 'CASH', manualPaymentConfirmed = false } = body as {
     storeCode?: string
     items?: CartItem[]
     paymentMethod?: string
+    manualPaymentConfirmed?: boolean
   }
 
   if (!storeCode?.trim()) {
@@ -46,6 +51,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: 'VALIDATION_ERROR', message: 'paymentMethod must be CASH or KHQR' },
       { status: 400 },
+    )
+  }
+  if (requiresCashierManualPaymentConfirmation(paymentMethod, manualPaymentConfirmed === true)) {
+    return NextResponse.json(
+      { error: 'MANUAL_PAYMENT_CONFIRMATION_REQUIRED' },
+      { status: 409 },
     )
   }
   if (!Array.isArray(items) || items.length === 0) {
@@ -82,7 +93,7 @@ export async function POST(req: NextRequest) {
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode: store.code,
-  }, { allowStoreCodeFallback: true })
+  }, { allowStoreCodeFallback: false })
   if (!posAuth) {
     return unauthorizedPosResponse()
   }
@@ -105,7 +116,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // KHQR config pre-check — no hard error; fall back gracefully if unconfigured
+  // 门店未配置系统内图片时仍可使用柜台实体码，但不改变人工确认语义。
   let khqrConfig: MerchantKhqrConfig | null = null
   let khqrFallback = false
   if (paymentMethod === 'KHQR') {
@@ -113,7 +124,7 @@ export async function POST(req: NextRequest) {
     if (cfg) {
       khqrConfig = cfg
     } else {
-      khqrFallback = true // record as KHQR but treat as manually confirmed
+      khqrFallback = true
     }
   }
 
@@ -164,8 +175,11 @@ export async function POST(req: NextRequest) {
         ? generateKhqrPayload({ amount: totalAmount, orderNo, config: khqrConfig })
         : null
 
-      // Fallback KHQR treated as manually confirmed — mark PAID immediately
-      const isPaid = paymentMethod === 'CASH' || khqrFallback
+      const paymentIntentStatus = resolveCashierPaymentIntentStatus(
+        paymentMethod,
+        manualPaymentConfirmed === true,
+      )
+      const isPaid = paymentIntentStatus === 'PAID'
       const pi = await tx.paymentIntent.create({
         data: {
           tenantId: store.tenantId,
@@ -173,7 +187,7 @@ export async function POST(req: NextRequest) {
           operatorUserId: posAuth.operatorUserId,
           orderNo,
           paymentMethod: paymentMethod as 'CASH' | 'KHQR',
-          status: isPaid ? 'PAID' : 'PENDING',
+          status: paymentIntentStatus,
           amount: totalAmount,
           khqrPayload,
           provider: khqrConfig?.provider ?? null,

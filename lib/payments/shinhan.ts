@@ -1,7 +1,12 @@
 import crypto from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { getShinhanPaymentConfig, isShinhanConfigured, type ShinhanPaymentConfig } from './shinhan-config'
+import {
+  getShinhanPaymentConfig,
+  isShinhanPaymentFrozen,
+  SHINHAN_PAYMENT_FROZEN_ERROR,
+  type ShinhanPaymentConfig,
+} from './shinhan-config'
 
 export type ShinhanCurrency = 'USD' | 'KHR'
 
@@ -99,8 +104,8 @@ export function isShinhanPaidCallback(cb: ShinhanCallback): boolean {
 
 export async function createShinhanDeeplinkPayment(input: DeeplinkInput) {
   const cfg = getShinhanPaymentConfig()
-  if (!isShinhanConfigured(cfg)) {
-    throw new Error(cfg.enabled ? 'SHINHAN_NOT_CONFIGURED' : 'SHINHAN_DISABLED')
+  if (isShinhanPaymentFrozen(cfg)) {
+    throw new Error(SHINHAN_PAYMENT_FROZEN_ERROR)
   }
 
   const timestamp = new Date().toISOString()
@@ -171,8 +176,8 @@ export async function createShinhanDeeplinkPayment(input: DeeplinkInput) {
 
 export async function inquireShinhanTransaction(input: InquiryInput) {
   const cfg = getShinhanPaymentConfig()
-  if (!isShinhanConfigured(cfg)) {
-    throw new Error(cfg.enabled ? 'SHINHAN_NOT_CONFIGURED' : 'SHINHAN_DISABLED')
+  if (isShinhanPaymentFrozen(cfg)) {
+    throw new Error(SHINHAN_PAYMENT_FROZEN_ERROR)
   }
 
   if (cfg.mockMode) {

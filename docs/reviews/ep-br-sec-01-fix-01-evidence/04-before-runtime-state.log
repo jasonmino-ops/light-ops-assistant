@@ -1,0 +1,19 @@
+ listen_addresses | server_address | server_port |        database_name         
+------------------+----------------+-------------+------------------------------
+ 127.0.0.1        | 127.0.0.1/32   |       55433 | light_ops_sec_fix_01_runtime
+(1 row)
+
+     table_name      | row_count 
+---------------------+-----------
+ CustomerOrder       |         0
+ Member              |         0
+ MemberBalanceLedger |         0
+ OfflineSaleSyncMap  |         0
+ PaymentIntent       |         0
+ SaleRecord          |         0
+ Store               |         0
+ Tenant              |         0
+(8 rows)
+
+UTC_STARTED=2026-07-21T17:37:35Z
+EXIT_CODE=0

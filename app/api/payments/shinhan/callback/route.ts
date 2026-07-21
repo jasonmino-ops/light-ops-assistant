@@ -6,6 +6,7 @@ import {
   markPaymentPaidIfValid,
   normalizeShinhanCallback,
 } from '@/lib/payments/shinhan'
+import { isShinhanPaymentFrozen, SHINHAN_PAYMENT_FROZEN_ERROR } from '@/lib/payments/shinhan-config'
 
 async function readCallbackPayload(req: NextRequest): Promise<Record<string, unknown>> {
   const payload: Record<string, unknown> = {}
@@ -23,6 +24,10 @@ async function readCallbackPayload(req: NextRequest): Promise<Record<string, unk
 }
 
 export async function POST(req: NextRequest) {
+  if (isShinhanPaymentFrozen()) {
+    return NextResponse.json({ success: false, error: SHINHAN_PAYMENT_FROZEN_ERROR }, { status: 503 })
+  }
+
   const payload = await readCallbackPayload(req)
   const cb = normalizeShinhanCallback(payload)
   if (!cb.trxId) {
@@ -60,6 +65,9 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true, status: 'PAID' })
 }
 
-export async function GET(req: NextRequest) {
-  return POST(req)
+export function GET() {
+  return NextResponse.json(
+    { success: false, error: 'METHOD_NOT_ALLOWED' },
+    { status: 405, headers: { Allow: 'POST' } },
+  )
 }

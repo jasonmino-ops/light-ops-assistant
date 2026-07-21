@@ -1,0 +1,14 @@
+     table_name      | row_count 
+---------------------+-----------
+ CustomerOrder       |         0
+ Member              |         0
+ MemberBalanceLedger |         0
+ OfflineSaleSyncMap  |         0
+ PaymentIntent       |         0
+ SaleRecord          |         0
+ Store               |         0
+ Tenant              |         0
+(8 rows)
+
+UTC_STARTED=2026-07-21T17:38:11Z
+EXIT_CODE=0

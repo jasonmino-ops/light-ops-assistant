@@ -19,7 +19,7 @@ export type RequestContext = {
  *    checked against the DB: ARCHIVED tenants are blocked immediately.
  *
  * 2. x-* dev headers — local development fallback (injected by lib/api.ts).
- *    Never present in production Telegram WebApp traffic.
+ *    Production explicitly rejects them even if a caller forges the headers.
  *    Tenant status is NOT checked for dev headers (local seed data may vary).
  */
 export async function getContext(req: NextRequest): Promise<RequestContext | null> {
@@ -79,12 +79,13 @@ export async function getContext(req: NextRequest): Promise<RequestContext | nul
       }
       // Tenant or user is inactive (e.g. user was unbound/disabled).
       // Fall through to x-* dev header fallback so local dev tools (OWNER_CTX)
-      // still work. In production these headers are absent so the request still
-      // returns null — no security regression.
+      // still work. Production rejects that fallback below.
     }
   }
 
   // ── 2. Dev x-* header fallback ────────────────────────────────────────────
+  if (process.env.NODE_ENV === 'production') return null
+
   const tenantId = req.headers.get('x-tenant-id')
   const userId = req.headers.get('x-user-id')
   const storeId = req.headers.get('x-store-id')

@@ -1,0 +1,244 @@
+# EP-BR-SEC-01 Shinhan Freeze — Production Build Output
+
+开始时间（UTC）：2026-07-21T16:47:13.179Z
+结束时间（UTC）：2026-07-21T16:47:27.841Z
+退出码：0
+
+```text
+$ npm run build
+
+
+> light-ops-assistant@1.0.0 build
+> next build
+
+   ▲ Next.js 15.5.14
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 2.4s
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/138) ...
+   Generating static pages (34/138) 
+   Generating static pages (68/138) 
+   Generating static pages (103/138) 
+ ✓ Generating static pages (138/138)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                          Size  First Load JS
+┌ ƒ /                                                               512 B         103 kB
+├ ƒ /_not-found                                                     996 B         103 kB
+├ ƒ /api/admin/bind-tokens                                          512 B         103 kB
+├ ƒ /api/admin/users                                                512 B         103 kB
+├ ƒ /api/admin/users/[id]/resign                                    512 B         103 kB
+├ ƒ /api/admin/users/[id]/unbind                                    512 B         103 kB
+├ ƒ /api/auth/bind                                                  512 B         103 kB
+├ ƒ /api/auth/logout                                                512 B         103 kB
+├ ƒ /api/auth/status                                                512 B         103 kB
+├ ƒ /api/auth/telegram                                              512 B         103 kB
+├ ƒ /api/auth/telegram-ops                                          512 B         103 kB
+├ ƒ /api/bind                                                       512 B         103 kB
+├ ƒ /api/bind/info                                                  512 B         103 kB
+├ ƒ /api/campaign-links                                             512 B         103 kB
+├ ƒ /api/campaign-links/[id]                                        512 B         103 kB
+├ ƒ /api/campaign-links/[id]/settle                                 512 B         103 kB
+├ ƒ /api/cashier/access                                             512 B         103 kB
+├ ƒ /api/cashier/device-authorization/[requestId]                   512 B         103 kB
+├ ƒ /api/cashier/device-authorization/start                         512 B         103 kB
+├ ƒ /api/cashier/device-authorization/status                        512 B         103 kB
+├ ƒ /api/cashier/device-token                                       512 B         103 kB
+├ ƒ /api/cashier/display-session                                    512 B         103 kB
+├ ƒ /api/cashier/member-balance-pay                                 512 B         103 kB
+├ ƒ /api/cashier/member-lookup                                      512 B         103 kB
+├ ƒ /api/cashier/offline-sync                                       512 B         103 kB
+├ ƒ /api/cashier/orders                                             512 B         103 kB
+├ ƒ /api/cashier/orders/[id]                                        512 B         103 kB
+├ ƒ /api/cashier/sale-records/[id]/receipt                          512 B         103 kB
+├ ƒ /api/cashier/sales                                              512 B         103 kB
+├ ƒ /api/cashier/store                                              512 B         103 kB
+├ ƒ /api/categories                                                 512 B         103 kB
+├ ƒ /api/coupons/templates                                          512 B         103 kB
+├ ƒ /api/creator-public/[token]                                     512 B         103 kB
+├ ƒ /api/creators                                                   512 B         103 kB
+├ ƒ /api/creators/[id]                                              512 B         103 kB
+├ ƒ /api/creators/[id]/dashboard-token                              512 B         103 kB
+├ ƒ /api/customer-orders                                            512 B         103 kB
+├ ƒ /api/customer-orders/[id]                                       512 B         103 kB
+├ ƒ /api/customer-orders/[id]/khqr                                  512 B         103 kB
+├ ƒ /api/customer/coupons                                           512 B         103 kB
+├ ƒ /api/customers                                                  512 B         103 kB
+├ ƒ /api/customers/[id]/coupons/issue                               512 B         103 kB
+├ ƒ /api/customers/coupons/batch-issue                              512 B         103 kB
+├ ƒ /api/customers/touch                                            512 B         103 kB
+├ ƒ /api/customers/touch/batch                                      512 B         103 kB
+├ ƒ /api/desktop/activate                                           512 B         103 kB
+├ ƒ /api/desktop/activation-pins                                    512 B         103 kB
+├ ƒ /api/desktop/activation-pins/[id]/revoke                        512 B         103 kB
+├ ƒ /api/desktop/auth/verify                                        512 B         103 kB
+├ ƒ /api/desktop/device/status                                      512 B         103 kB
+├ ƒ /api/desktop/devices                                            512 B         103 kB
+├ ƒ /api/desktop/devices/[id]/revoke                                512 B         103 kB
+├ ƒ /api/e-life/featured-stores                                     512 B         103 kB
+├ ƒ /api/e-life/orders                                              512 B         103 kB
+├ ƒ /api/e-life/recent-stores                                       512 B         103 kB
+├ ƒ /api/e-life/recent-stores/visit                                 512 B         103 kB
+├ ƒ /api/e-life/stores-by-category                                  512 B         103 kB
+├ ƒ /api/health                                                     512 B         103 kB
+├ ƒ /api/marketing-product-pages                                    512 B         103 kB
+├ ƒ /api/marketing-product-pages/[id]                               512 B         103 kB
+├ ƒ /api/marketing-product-pages/[id]/image                         512 B         103 kB
+├ ƒ /api/marketing-product-pages/[id]/video                         512 B         103 kB
+├ ƒ /api/me                                                         512 B         103 kB
+├ ƒ /api/members                                                    512 B         103 kB
+├ ƒ /api/members/[id]                                               512 B         103 kB
+├ ƒ /api/members/[id]/adjust                                        512 B         103 kB
+├ ƒ /api/members/[id]/recharge                                      512 B         103 kB
+├ ƒ /api/members/[id]/telegram-bind-token                           512 B         103 kB
+├ ƒ /api/members/import/confirm                                     512 B         103 kB
+├ ƒ /api/members/import/dry-run                                     512 B         103 kB
+├ ƒ /api/members/lookup                                             512 B         103 kB
+├ ƒ /api/mino-bos/business-assets                                   512 B         103 kB
+├ ƒ /api/open                                                       512 B         103 kB
+├ ƒ /api/ops/admins                                                 512 B         103 kB
+├ ƒ /api/ops/admins/[id]                                            512 B         103 kB
+├ ƒ /api/ops/admins/[id]/reset-password                             512 B         103 kB
+├ ƒ /api/ops/applications                                           512 B         103 kB
+├ ƒ /api/ops/applications/[id]/approve                              512 B         103 kB
+├ ƒ /api/ops/applications/[id]/notify                               512 B         103 kB
+├ ƒ /api/ops/broadcast                                              512 B         103 kB
+├ ƒ /api/ops/check                                                  512 B         103 kB
+├ ƒ /api/ops/cleanup/stats                                          512 B         103 kB
+├ ƒ /api/ops/conversations                                          512 B         103 kB
+├ ƒ /api/ops/conversations/[telegramId]                             512 B         103 kB
+├ ƒ /api/ops/health                                                 512 B         103 kB
+├ ƒ /api/ops/login                                                  512 B         103 kB
+├ ƒ /api/ops/messages                                               512 B         103 kB
+├ ƒ /api/ops/overview                                               512 B         103 kB
+├ ƒ /api/ops/stores/[storeId]/customers                             512 B         103 kB
+├ ƒ /api/ops/stores/[storeId]/customers/[telegramId]                512 B         103 kB
+├ ƒ /api/ops/stores/[storeId]/e-life-featured                       512 B         103 kB
+├ ƒ /api/ops/summaries/refresh                                      512 B         103 kB
+├ ƒ /api/ops/support/[telegramId]/takeover                          512 B         103 kB
+├ ƒ /api/ops/tenants                                                512 B         103 kB
+├ ƒ /api/ops/tenants/[tenantId]                                     512 B         103 kB
+├ ƒ /api/ops/tenants/[tenantId]/bizview                             512 B         103 kB
+├ ƒ /api/ops/tenants/[tenantId]/export                              512 B         103 kB
+├ ƒ /api/ops/tenants/[tenantId]/members/[userId]/unbind             512 B         103 kB
+├ ƒ /api/ops/tenants/[tenantId]/stores/[storeId]/ai-photo-config    512 B         103 kB
+├ ƒ /api/ops/tenants/[tenantId]/subscription                        512 B         103 kB
+├ ƒ /api/ops/tenants/[tenantId]/subscription/renew                  512 B         103 kB
+├ ƒ /api/ops/tenants/[tenantId]/tokens                              512 B         103 kB
+├ ƒ /api/orders/[orderNo]                                           512 B         103 kB
+├ ƒ /api/orders/[orderNo]/cancel                                    512 B         103 kB
+├ ƒ /api/orders/[orderNo]/checkout                                  512 B         103 kB
+├ ƒ /api/orders/[orderNo]/delivery-photo                            512 B         103 kB
+├ ƒ /api/payments/[paymentId]/cancel                                512 B         103 kB
+├ ƒ /api/payments/[paymentId]/confirm                               512 B         103 kB
+├ ƒ /api/payments/shinhan/callback                                  512 B         103 kB
+├ ƒ /api/payments/shinhan/inquiry                                   512 B         103 kB
+├ ƒ /api/pos/session/cancel                                         512 B         103 kB
+├ ƒ /api/pos/session/complete                                       512 B         103 kB
+├ ƒ /api/pos/session/current                                        512 B         103 kB
+├ ƒ /api/pos/session/update                                         512 B         103 kB
+├ ƒ /api/print/bind                                                 512 B         103 kB
+├ ƒ /api/print/reprint/[orderNo]                                    512 B         103 kB
+├ ƒ /api/print/status                                               512 B         103 kB
+├ ƒ /api/print/test                                                 512 B         103 kB
+├ ƒ /api/products                                                   512 B         103 kB
+├ ƒ /api/products/[id]                                              512 B         103 kB
+├ ƒ /api/products/[id]/image                                        512 B         103 kB
+├ ƒ /api/products/batch-delete                                      512 B         103 kB
+├ ƒ /api/products/import                                            512 B         103 kB
+├ ƒ /api/products/import-ai/recognize                               512 B         103 kB
+├ ƒ /api/products/import/confirm                                    512 B         103 kB
+├ ƒ /api/products/photo-recognize-draft                             512 B         103 kB
+├ ƒ /api/public/coupons/available                                   512 B         103 kB
+├ ƒ /api/public/landing-events                                      512 B         103 kB
+├ ƒ /api/public/menu                                                512 B         103 kB
+├ ƒ /api/public/my-orders                                           512 B         103 kB
+├ ƒ /api/public/orders                                              512 B         103 kB
+├ ƒ /api/public/orders/[orderId]/payments/shinhan/create            512 B         103 kB
+├ ƒ /api/public/orders/[orderId]/payments/status                    512 B         103 kB
+├ ƒ /api/public/payments/shinhan/config                             512 B         103 kB
+├ ƒ /api/public/product-pages/[slug]                                512 B         103 kB
+├ ƒ /api/public/stores/[code]/banner                                512 B         103 kB
+├ ƒ /api/records                                                    512 B         103 kB
+├ ƒ /api/sales                                                      512 B         103 kB
+├ ƒ /api/sales/lookup                                               512 B         103 kB
+├ ƒ /api/sales/photo-recognize                                      512 B         103 kB
+├ ƒ /api/sales/photo-recognize-multi                                512 B         103 kB
+├ ƒ /api/store/settings                                             512 B         103 kB
+├ ƒ /api/stores                                                     512 B         103 kB
+├ ƒ /api/stores/[id]/banner                                         512 B         103 kB
+├ ƒ /api/stores/[id]/checkout-mode                                  512 B         103 kB
+├ ƒ /api/stores/[id]/currency                                       512 B         103 kB
+├ ƒ /api/stores/[id]/menu-config                                    512 B         103 kB
+├ ƒ /api/summary                                                    512 B         103 kB
+├ ƒ /api/telegram/member-bind                                       512 B         103 kB
+├ ƒ /api/tg-admin                                                   512 B         103 kB
+├ ƒ /api/uploads/delivery-photo                                     512 B         103 kB
+├ ƒ /api/v/[code]                                                   512 B         103 kB
+├ ƒ /api/v/[code]/click                                             512 B         103 kB
+├ ƒ /api/webhook/customer                                           512 B         103 kB
+├ ƒ /api/webhook/merchant                                           512 B         103 kB
+├ ƒ /bind                                                         3.54 kB         141 kB
+├ ƒ /campaign                                                       10 kB         112 kB
+├ ƒ /cashier                                                        175 B         191 kB
+├ ƒ /cashier/authorize                                            2.93 kB         105 kB
+├ ƒ /contact                                                        512 B         103 kB
+├ ƒ /creator/p/[token]                                            3.24 kB         105 kB
+├ ƒ /customers                                                    9.97 kB         151 kB
+├ ƒ /dashboard                                                    12.5 kB         154 kB
+├ ƒ /desktop                                                      2.84 kB         105 kB
+├ ƒ /desktop/display                                              9.98 kB         118 kB
+├ ƒ /desktop/pos                                                  6.74 kB         198 kB
+├ ƒ /e-life                                                       11.1 kB         117 kB
+├ ƒ /e-life/category                                              4.35 kB         110 kB
+├ ƒ /e-life/me                                                    6.22 kB         112 kB
+├ ƒ /e-life/membership                                            3.55 kB         109 kB
+├ ƒ /e-life/orders                                                6.14 kB         112 kB
+├ ƒ /home                                                         12.2 kB         159 kB
+├ ƒ /invite                                                       6.06 kB         150 kB
+├ ƒ /m/[storeCode]                                                5.18 kB         111 kB
+├ ƒ /me                                                           6.06 kB         111 kB
+├ ƒ /me/coupons                                                   4.07 kB         109 kB
+├ ƒ /members                                                      6.99 kB         148 kB
+├ ƒ /members/[id]                                                 5.02 kB         146 kB
+├ ƒ /menu                                                         25.3 kB         131 kB
+├ ƒ /menu/orders                                                  6.38 kB         108 kB
+├ ƒ /mino-bos/assets-check                                        6.68 kB         109 kB
+├ ƒ /open                                                         2.14 kB         128 kB
+├ ƒ /ops                                                          10.7 kB         116 kB
+├ ƒ /ops/[tenantId]                                               13.3 kB         124 kB
+├ ƒ /ops/admins                                                   3.77 kB         109 kB
+├ ƒ /ops/health                                                   4.65 kB         110 kB
+├ ƒ /ops/login                                                    1.51 kB         104 kB
+├ ƒ /ops/overview                                                 3.76 kB         109 kB
+├ ƒ /ops/stores/[storeId]/customers                               2.64 kB         108 kB
+├ ƒ /ops/stores/[storeId]/delegate                                  512 B         103 kB
+├ ƒ /ops/stores/[storeId]/delegate/clear                            512 B         103 kB
+├ ƒ /p/[slug]                                                     16.9 kB         119 kB
+├ ƒ /privacy                                                        512 B         103 kB
+├ ƒ /products                                                     21.4 kB         163 kB
+├ ƒ /records                                                      15.1 kB         164 kB
+├ ƒ /refund                                                       6.13 kB         144 kB
+├ ƒ /relogin                                                      1.75 kB         104 kB
+├ ƒ /sale                                                         15.7 kB         163 kB
+├ ƒ /start                                                          991 B         127 kB
+├ ƒ /system                                                       2.15 kB         108 kB
+├ ƒ /table-qrcodes                                                3.62 kB         111 kB
+├ ƒ /terms                                                          512 B         103 kB
+└ ƒ /v/[code]                                                     3.56 kB         106 kB
++ First Load JS shared by all                                      102 kB
+  ├ chunks/1307-65c28892a51e6b7d.js                               45.8 kB
+  ├ chunks/22c0fa55-64c6221067d02a1c.js                           54.2 kB
+  └ other shared chunks (total)                                   2.05 kB
+
+
+ƒ Middleware                                                      33.8 kB
+
+ƒ  (Dynamic)  server-rendered on demand
+
+
+```
+
