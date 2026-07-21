@@ -1,0 +1,20 @@
+On branch feat/ep-br-sec-01-transaction-security
+Your branch is up to date with 'origin/feat/ep-br-sec-01-transaction-security'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   app/api/cashier/member-balance-pay/route.ts
+	modified:   app/api/cashier/offline-sync/route.ts
+	modified:   app/api/cashier/orders/[id]/route.ts
+	modified:   app/api/cashier/sales/route.ts
+	modified:   docs/reviews/EP-BR-SEC-01 Browser Transaction Security Evidence Pack.md
+	modified:   tsconfig.tsbuildinfo
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	docs/reviews/ep-br-sec-01-fix-01-evidence/
+	tests/desktop-pos-write-fallback-runtime.test.ts
+
+no changes added to commit (use "git add" and/or "git commit -a")
+GIT_STATUS_EXIT_CODE=0

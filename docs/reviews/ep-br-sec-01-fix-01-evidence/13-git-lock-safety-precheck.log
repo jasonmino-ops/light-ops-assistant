@@ -1,0 +1,31 @@
+$ stat index
+16777232 18007033 -rw-r--r-- 1 jason staff 0 130886 "Jul 22 00:53:48 2026" "Jul 22 00:05:19 2026" "Jul 22 00:05:19 2026" "Jul 22 00:05:18 2026" 4096 256 0 /Users/jason/light-ops-assistant/.git/worktrees/ep-br-sec-01/index
+$ stat index.lock
+16777232 18009893 -rw-r--r-- 1 jason staff 0 0 "Jul 22 00:08:05 2026" "Jul 22 00:08:05 2026" "Jul 22 00:08:05 2026" "Jul 22 00:08:05 2026" 4096 0 0 /Users/jason/light-ops-assistant/.git/worktrees/ep-br-sec-01/index.lock
+$ active operation markers
+ABSENT MERGE_HEAD
+ABSENT CHERRY_PICK_HEAD
+ABSENT REVERT_HEAD
+ABSENT REBASE_HEAD
+ABSENT BISECT_LOG
+ABSENT APPLY_MAILBOX
+ABSENT rebase-apply
+ABSENT rebase-merge
+ABSENT sequencer
+$ git update-index --really-refresh
+fatal: Unable to create '/Users/jason/light-ops-assistant/.git/worktrees/ep-br-sec-01/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.
+app/api/cashier/member-balance-pay/route.ts: needs update
+app/api/cashier/offline-sync/route.ts: needs update
+app/api/cashier/orders/[id]/route.ts: needs update
+app/api/cashier/sales/route.ts: needs update
+docs/reviews/EP-BR-SEC-01 Browser Transaction Security Evidence Pack.md: needs update
+tsconfig.tsbuildinfo: needs update
+UPDATE_INDEX_EXIT_CODE=128
+PATCH_EXIT_CODE=0
+SHA_EXIT_CODE=0

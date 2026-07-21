@@ -1,0 +1,16 @@
+EVIDENCE.md: OK
+00-prisma-version.log: OK
+01-migrate-deploy.log: OK
+02-db-push.log: OK
+03-db-push.log: OK
+04-before-runtime-state.log: OK
+05-route-db-security-runtime.log: OK
+06-after-runtime-state.log: OK
+07-browser-transaction-security.log: OK
+08-typescript.log: OK
+09-build.log: OK
+10-temporary-postgres-teardown.log: OK
+11-diff-check.log: OK
+CHECKSUM_EXIT_CODE=0
+TEMP_DB_ABSENT_EXIT_CODE=0
+NODE_MODULES_NOT_SYMLINK_EXIT_CODE=0

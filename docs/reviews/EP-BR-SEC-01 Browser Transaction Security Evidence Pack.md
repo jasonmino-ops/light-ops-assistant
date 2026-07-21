@@ -21,11 +21,11 @@
 
 `GET /api/payments/shinhan/callback` 曾直接委托给 `POST`，所以 URL 查询参数可以触发支付状态写入。
 
-### 已识别但未跨边界修改的 Desktop 授权缺陷
+### StoreCode 写入 fallback
 
-`lib/desktop-pos-auth.ts` 仍有 `allowStoreCodeFallback` 与 `x-lightops-client: desktop-pos` 组合的降级路径，影响 `/api/cashier/sales`、`member-balance-pay`、`offline-sync` 和订单状态写入等接口。
+`lib/desktop-pos-auth.ts` 的 `allowStoreCodeFallback` 与 `x-lightops-client: desktop-pos` 组合，曾把公开 `storeCode` 升格为 OWNER 写入权限，影响 `/api/cashier/sales`、`member-balance-pay`、`offline-sync` 和订单状态写入。
 
-不能安全地在本包删除该路径：当前已激活 Desktop 的 `edt_v1` 凭据只由 `desktop/src/main/activation/credentialStore.ts` 保存；`desktop/src/main/windowManager.ts` 只以 `loadURL()` 加载 `/desktop/pos`，没有请求头注入或受控 token 转发。浏览器渲染页也不能读取该凭据。删除回退会使已激活的 Desktop 浏览器收银请求失去全部服务端身份；补齐 token 转发需要修改被本包明确冻结的 Desktop Runtime。该项保留给经批准的 Runtime/云端授权协同设计。
+本轮已在这四条写路径关闭 fallback。`/cashier` 已有的 `posDeviceHeaders()` 会携带 `pos-device-v1` 与 deviceId，且设备未授权时已有授权/重新授权 UI；因此不需要读取或暴露 Desktop Runtime 的 `edt_v1`，也不需要新增 Desktop credential bridge。没有 `pos-device-v1` 的旧浏览器收银端需要完成一次既有的设备授权迁移，这是一次性迁移问题，不是架构阻塞。
 
 ### 已识别但未猜测实现的 Shinhan 签名验证
 
@@ -53,19 +53,19 @@
 - [diff 检查原始输出](ep-br-sec-01-evidence/04-diff-check.txt)
 - [最终定向测试、TypeScript 与 diff 原始输出](ep-br-sec-01-evidence/05-final-focused-types-and-diff.txt)
 
-定向测试覆盖：生产语义下伪造开发身份头无效、非生产受控 fallback、KHQR 人工确认状态判定和页面/路由接线、GET callback 的 405 行为。Desktop 有效/撤销 token、storeCode 伪造写入、以及 Shinhan 缺签名/错误签名的完整运行时用例在本包阻塞项解决前不能诚实宣称通过。
+定向测试覆盖：生产语义下伪造开发身份头无效、非生产受控 fallback、KHQR 人工确认状态判定和页面/路由接线、GET callback 的 405 行为。FIX-01 的真实运行时测试补充覆盖四条 storeCode 伪造写入拒绝、有效/篡改/设备不匹配/门店不匹配/过期 `pos-device-v1` 与正常交易回归。`pos-device-v1` 是无状态 HMAC，仓库没有服务端撤销表或撤销校验；不得把已撤销 token 覆盖宣称为已通过。
 
 ## 边界检查
 
 - 未修改 `prisma/**`、migration、顾客屏、邀请页、商品/价格/购物车、打印链、Desktop Runtime、Windows Provider、BroadcastChannel 或支付 Provider。
-- 未修改 `lib/desktop-pos-auth.ts` 或任何 storeCode fallback 调用点，以避免在没有 Runtime token 传递设计的情况下破坏已激活 Desktop。
+- 未修改 Desktop Runtime，也没有暴露或转发 `edt_v1`；四条写入路由仅关闭 `allowStoreCodeFallback`，三个只读 fallback 保持不变。
 - 未输出或写入环境变量、token、secret、私钥、数据库连接串、cookie 或个人数据。
 
 ## Security Gate 待决项
 
-1. 批准 Desktop Runtime 以受控方式向员工窗口请求提供已激活设备凭据，或批准等价的服务端会话交换设计；完成后才能移除 storeCode fallback 并测试有效/撤销设备令牌。
+1. 旧浏览器收银端如未持有 `pos-device-v1`，需要完成现有的一次性设备授权；这不是 Desktop Runtime 或架构设计阻塞。
 2. 提供 Shinhan callback 的正式签名协议（字段、canonicalization、编码、hash 算法、时间窗和重放语义）；完成后才能验证 POST callback 并将 `signatureVerified` 置为真实结果。
 
 ## 结论
 
-本分支只完成了不依赖上述冻结边界的安全收口。它不能作为完整 Browser Transaction Security Gate 的通过依据。
+本分支已关闭四条写路径的 StoreCode fallback；Shinhan callback 签名验证仍不在本轮范围内，因此不得将本分支表述为完整支付安全 Gate 的通过依据。

@@ -1,0 +1,40 @@
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+Datasource "db": PostgreSQL database "light_ops_sec_fix_01_runtime", schema "public" at "127.0.0.1:55433"
+
+43 migrations found in prisma/migrations
+
+Applying migration `20260331071511_init`
+Applying migration `20260405000000_add_ops_admin`
+Applying migration `20260406000000_add_daily_summaries`
+Applying migration `20260407000000_add_store_application`
+Applying migration `20260407000000_add_telegram_messages`
+Applying migration `20260407150000_add_telegram_message_sender_name`
+Applying migration `20260407170000_add_product_import_session`
+Applying migration `20260408000000_add_support_session`
+Applying migration `20260409000000_add_payment_intent`
+Applying migration `20260410000000_add_merchant_payment_config`
+Applying migration `20260413000000_add_pending_payment_status`
+Applying migration `20260413020000_store_checkout_mode`
+Applying migration `20260413030000_add_khqr_image_config`
+Applying migration `20260419000000_add_product_category`
+Applying migration `20260527000000_store_e_life_featured`
+Applying migration `20260529000000_campaign_link`
+Applying migration `20260531000000_customer_order_campaign`
+Error: P3018
+
+A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve
+
+Migration name: 20260531000000_customer_order_campaign
+
+Database error code: 42P01
+
+Database error:
+ERROR: relation "CustomerOrder" does not exist
+
+DbError { severity: "ERROR", parsed_severity: Some(Error), code: SqlState(E42P01), message: "relation \"CustomerOrder\" does not exist", detail: None, hint: None, position: None, where_: None, schema: None, table: None, column: None, datatype: None, constraint: None, file: Some("namespace.c"), line: Some(639), routine: Some("RangeVarGetRelidExtended") }
+
+
+UTC_STARTED=2026-07-21T17:36:50Z
+EXIT_CODE=1

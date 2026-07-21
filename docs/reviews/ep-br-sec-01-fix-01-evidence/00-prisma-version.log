@@ -1,0 +1,16 @@
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+prisma               : 7.6.0
+@prisma/client       : 7.6.0
+Operating System     : darwin
+Architecture         : arm64
+Node.js              : v24.14.0
+TypeScript           : 5.9.3
+Query Compiler       : enabled
+PSL                  : @prisma/prisma-schema-wasm 7.6.0-1.75cbdc1eb7150937890ad5465d861175c6624711
+Schema Engine        : schema-engine-cli 75cbdc1eb7150937890ad5465d861175c6624711 (at node_modules/@prisma/engines/schema-engine-darwin-arm64)
+Default Engines Hash : 75cbdc1eb7150937890ad5465d861175c6624711
+Studio               : 0.27.3
+UTC_STARTED=2026-07-21T17:36:42Z
+EXIT_CODE=0
