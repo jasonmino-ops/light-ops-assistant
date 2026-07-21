@@ -5,7 +5,10 @@ on:
     branches: [main, "feat/**"]
     paths:
       - "app/api/desktop/**"
+      - "app/api/products/**"
+      - "app/products/**"
       - "lib/desktop-activation/**"
+      - "lib/product-*.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
       - "tests/subscription-lifecycle.test.ts"
@@ -15,13 +18,17 @@ on:
       - "tests/customer-display-adapter.test.ts"
       - "tests/customer-display-realtime-channel.test.ts"
       - "tests/hrt-contract.test.ts"
+      - "tests/product-tools.test.ts"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/cloud-ci.yml"
   pull_request:
     paths:
       - "app/api/desktop/**"
+      - "app/api/products/**"
+      - "app/products/**"
       - "lib/desktop-activation/**"
+      - "lib/product-*.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
       - "tests/subscription-lifecycle.test.ts"
@@ -31,6 +38,7 @@ on:
       - "tests/customer-display-adapter.test.ts"
       - "tests/customer-display-realtime-channel.test.ts"
       - "tests/hrt-contract.test.ts"
+      - "tests/product-tools.test.ts"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/cloud-ci.yml"
@@ -95,6 +103,7 @@ jobs:
 
       - name: Relevant regression tests
         run: |
+          npx tsx tests/product-tools.test.ts
           npx tsx tests/subscription-lifecycle.test.ts
           npx tsx tests/telegram-start-param.test.ts
           npx tsx tests/customer-display-cart-sync-static.test.ts

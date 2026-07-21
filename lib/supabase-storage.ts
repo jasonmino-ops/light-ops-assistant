@@ -74,3 +74,23 @@ export async function deleteObject(bucket: string, path: string): Promise<boolea
     return false
   }
 }
+
+/**
+ * 下载一个受控 Storage 对象，用于服务端备份。
+ * 只接受数据库内保存的 object key；调用方不得传入用户提供的 URL。
+ */
+export async function downloadObject(bucket: string, path: string): Promise<Buffer> {
+  if (!SUPABASE_URL || !SUPABASE_KEY) throw new StorageNotConfiguredError()
+  const url = `${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      apikey: SUPABASE_KEY,
+    },
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`STORAGE_DOWNLOAD_${res.status}:${text.slice(0, 240)}`)
+  }
+  return Buffer.from(await res.arrayBuffer())
+}
