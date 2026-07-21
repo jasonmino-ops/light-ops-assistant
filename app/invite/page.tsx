@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import QRCode from 'react-qr-code'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
-import { publicUrl } from '@/lib/public-url'
+import { publicCustomerEntryUrl } from '@/lib/public-url'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
@@ -406,7 +406,7 @@ function CustomerCodeCard({
 }) {
   const { t } = useLocale()
   const current = stores.find((st) => st.id === customerStoreId)
-  const url = current ? publicUrl(`/m/${current.code}`) : ''
+  const url = current ? publicCustomerEntryUrl(current.code) : ''
 
   function copy() {
     if (!url) return
