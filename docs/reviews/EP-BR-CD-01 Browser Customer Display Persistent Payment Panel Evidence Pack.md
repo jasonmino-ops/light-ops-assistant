@@ -53,8 +53,20 @@ storeKhqrImageUrl: null
 - KHQR：18 / 42 / 40 三栏比例，右栏与金额放大；不换页、不遮罩。
 - 现金：恢复常态比例，右栏继续展示静态 KHQR，并标识现金付款。
 - 完成：左侧促活、中央完成金额，保持 5 秒；新订单状态会立即覆盖该状态。
-- 取消/超时：仅短暂提示，过期后回 idle，不保留旧订单金额或促活。
+- 取消/超时：仅短暂提示，过期后回 idle，不进入会员促活。
 - `KHQR_FOCUS` 仍被识别，但只增强既有右栏；没有全屏覆盖。
+
+### B1 审查修复：终态 linger 到期后的旧订单清理
+
+独立审查发现，原页面在 `COMPLETED`、`CANCELLED`、`EXPIRED_DRAFT` 或 `EXPIRED_CHECKOUT` 的提示/促活到期后，虽然 `deriveCustomerDisplayPanelState()` 已返回 `IDLE`，但 `OrderPanel` 仍会仅因原始 session 包含 items 而渲染 `CartList`。因此，本 Evidence Pack 原先“取消/超时后不保留旧订单金额”的描述在修复前并不成立。
+
+修复在 `lib/customer-display-panel-state.ts` 增加最小纯函数 `deriveCustomerDisplayOrderPanelView(state, session)`，作为中栏唯一视图决策：
+
+- `COMPLETED`、`CANCELLED`、`EXPIRED` 分别显示对应终态面板；
+- 仅 `ORDER`、`CASH`、`KHQR` 且 session 确有订单内容时返回 `CART`；
+- `IDLE` 与任何非活动订单状态均返回 `EMPTY`。
+
+`OrderPanel` 已改为按该视图决策渲染。因此完成促活仍会展示本单金额；促活或提示结束后立即回空态，不再显示上一单商品或金额；新订单的 `ORDER`/`CASH`/`KHQR` 状态仍直接展示新购物清单。此修复未修改 API、轮询、stale-response guard 或 BroadcastChannel。
 
 ## 4. KHQR 无新请求证据
 
@@ -78,16 +90,33 @@ npx tsc --noEmit --incremental false
 npm run build
 ```
 
-新增测试验证普通、KHQR、现金、完成 5 秒、新订单打断、取消/超时、空购物车、H5 目标、三栏比例、二维码隔离和三语文案。既有轮询、stale guard、BroadcastChannel 与 USB 顾客屏回归测试同样通过。
+新增 B1 回归测试直接覆盖 `deriveCustomerDisplayOrderPanelView()` 的中栏渲染决策：IDLE 即使携带旧 session 仍为 `EMPTY`；完成窗口内为 `COMPLETED`，到期后为 `EMPTY`；取消、草稿超时、收款超时提示到期后均为 `EMPTY`；`ORDER`/`CASH`/`KHQR` 为 `CART`；新订单可立即打断完成态并显示新清单。既有轮询、stale guard、BroadcastChannel 与 USB 顾客屏回归测试保持执行。
 
 ## 6. 浏览器自验
 
-使用本地 mock 的静态门店 KHQR、现金订单和订单级 KHQR 字段进行验证：
+使用本地 mock 的静态门店 KHQR、现金订单和订单级 KHQR 字段进行验证。此前 runtime mock 中的 BroadcastChannel 示例将数据错误地嵌套在 `session` 内；真实 schema 的最小 KHQR 快照应为顶层字段：
+
+```ts
+channel.postMessage({
+  type: 'CART_SNAPSHOT',
+  storeCode: 'STORE-A',
+  desktopEpoch: 'mock-epoch',
+  sentAt: '2026-07-21T05:00:01.000Z',
+  sequence: 2,
+  items: [{ productId: 'p1', name: 'Iced Coffee', spec: null, imageUrl: null, price: 2.5, qty: 2, lineAmount: 5 }],
+  totalAmount: 5,
+  itemCount: 2,
+  currencyCode: 'USD',
+  status: 'DRAFT',
+  paymentMethod: 'KHQR',
+  paymentStatus: 'PENDING',
+})
+```
 
 | 验证项 | 结果 |
 | --- | --- |
 | 1366×768 现金态 | 三栏为约 289 / 682 / 341px，右栏含一个静态 KHQR 图像 |
-| 1366×768 KHQR 态 | 三栏为约 256 / 600 / 455px，右栏扩大且金额放大 |
+| 1366×768 KHQR 态 | 先前记录的约 256 / 600 / 455px 取自 CSS transition 过程中的中间帧，不能作为稳态尺寸；稳态仅以 CSS 的 18 / 42 / 40 栏比例为代码证据，像素实测留待后续真机/浏览器验收 |
 | 右栏二维码隔离 | `img[alt=KHQR] = 1`，右栏 SVG/H5 码数 = 0 |
 | 顾客入口 | 左侧链接为 `/m/STORE-A` |
 | 800×600 | 无横向溢出；金额、二维码和商品清单仍可读 |
@@ -115,6 +144,10 @@ npm run build
 
 - 门店未配置静态 KHQR 时，右栏明确显示未配置提示，不能替代为订单级二维码。
 - 本工程不实现动态 KHQR、支付确认或二维码持久化缓存。
+- 当前未实现专门的响应式 media query 断点。
+- `completedAt` 缺失时，完成促活可能不显示。
+- 完成态顾客 H5 当前主要通过文案和背景强化，并未明显放大。
+- 广告轮播当前未实现，只显示首个推荐内容。
 - 回滚方式：对本工程提交执行 `git revert <commit>`，即可同时恢复页面与唯一的读模型例外；不需数据库迁移或数据回滚。
 
 ## 10. 冻结边界检查

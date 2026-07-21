@@ -21,8 +21,8 @@ import {
 import {
   customerDisplayEntryPath,
   customerDisplayPanelLingerUntil,
+  deriveCustomerDisplayOrderPanelView,
   deriveCustomerDisplayPanelState,
-  sessionHasCustomerDisplayOrder,
   type CustomerDisplayPanelSession,
   type CustomerDisplayPanelState,
 } from '@/lib/customer-display-panel-state'
@@ -327,7 +327,8 @@ const OrderPanel = memo(function OrderPanel({ session, state, usdKhrRate, t }: {
   usdKhrRate: number
   t: DisplayCopy
 }) {
-  if (state === 'COMPLETED' && session) {
+  const view = deriveCustomerDisplayOrderPanelView(state, session)
+  if (view === 'COMPLETED' && session) {
     return (
       <div style={s.terminalPanel}>
         <div style={{ ...s.terminalIcon, color: '#15803d' }}>✓</div>
@@ -338,18 +339,16 @@ const OrderPanel = memo(function OrderPanel({ session, state, usdKhrRate, t }: {
       </div>
     )
   }
-  if (state === 'CANCELLED') return <TerminalNotice icon="—" title={t.cancelled} sub={t.waitingNext} color="#64748b" />
-  if (state === 'EXPIRED') return <TerminalNotice icon="⌛" title={session?.displayStatus === 'EXPIRED_CHECKOUT' ? t.paymentExpired : t.expired} sub={t.waitingNext} color="#b45309" />
-  if (!session || !sessionHasCustomerDisplayOrder(session)) {
-    return (
-      <div style={s.emptyOrder}>
-        <div style={s.emptyOrderIcon}>🛒</div>
-        <div style={s.emptyOrderTitle}>{t.waitingOrder}</div>
-        <div style={s.emptyOrderSub}>{t.waitingOrderSub}</div>
-      </div>
-    )
-  }
-  return <CartList session={session} usdKhrRate={usdKhrRate} t={t} />
+  if (view === 'CANCELLED') return <TerminalNotice icon="—" title={t.cancelled} sub={t.waitingNext} color="#64748b" />
+  if (view === 'EXPIRED') return <TerminalNotice icon="⌛" title={session?.displayStatus === 'EXPIRED_CHECKOUT' ? t.paymentExpired : t.expired} sub={t.waitingNext} color="#b45309" />
+  if (view === 'CART' && session) return <CartList session={session} usdKhrRate={usdKhrRate} t={t} />
+  return (
+    <div style={s.emptyOrder}>
+      <div style={s.emptyOrderIcon}>🛒</div>
+      <div style={s.emptyOrderTitle}>{t.waitingOrder}</div>
+      <div style={s.emptyOrderSub}>{t.waitingOrderSub}</div>
+    </div>
+  )
 })
 
 function TerminalNotice({ icon, title, sub, color }: { icon: string; title: string; sub: string; color: string }) {

@@ -14,6 +14,7 @@ export type CustomerDisplayPanelSession = {
 }
 
 export type CustomerDisplayPanelState = 'IDLE' | 'ORDER' | 'CASH' | 'KHQR' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED'
+export type CustomerDisplayOrderPanelView = 'EMPTY' | 'CART' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED'
 
 function validTime(value: string | null | undefined) {
   const time = value ? Date.parse(value) : Number.NaN
@@ -51,6 +52,17 @@ export function deriveCustomerDisplayPanelState(session: CustomerDisplayPanelSes
   if (session?.paymentMethod === 'KHQR') return 'KHQR'
   if (session?.paymentMethod === 'CASH') return 'CASH'
   return 'ORDER'
+}
+
+export function deriveCustomerDisplayOrderPanelView(
+  state: CustomerDisplayPanelState,
+  session: CustomerDisplayPanelSession | null,
+): CustomerDisplayOrderPanelView {
+  if (state === 'COMPLETED') return session ? 'COMPLETED' : 'EMPTY'
+  if (state === 'CANCELLED') return 'CANCELLED'
+  if (state === 'EXPIRED') return 'EXPIRED'
+  if ((state === 'ORDER' || state === 'CASH' || state === 'KHQR') && sessionHasCustomerDisplayOrder(session)) return 'CART'
+  return 'EMPTY'
 }
 
 export function customerDisplayEntryPath(storeCode: string) {
