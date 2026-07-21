@@ -1,0 +1,12 @@
+EP-BR-SEC-01 原始验证输出
+命令：npx tsx tests/browser-transaction-security.test.ts && npx tsx tests/desktop-activation-security-static.test.ts && npx tsx tests/desktop-activation-crypto.test.ts
+开始时间：2026-07-21T16:33:26.801Z
+结束时间：2026-07-21T16:33:27.978Z
+退出码：0
+
+完整合并 stdout/stderr：
+browser transaction security focused checks passed
+desktop activation security static tests passed
+desktop activation crypto tests passed
+
+

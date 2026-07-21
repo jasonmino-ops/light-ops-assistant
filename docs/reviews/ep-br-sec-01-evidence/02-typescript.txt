@@ -1,0 +1,9 @@
+EP-BR-SEC-01 原始验证输出
+命令：npx tsc --noEmit --incremental false
+开始时间：2026-07-21T16:33:27.978Z
+结束时间：2026-07-21T16:33:37.831Z
+退出码：0
+
+完整合并 stdout/stderr：
+(无输出)
+

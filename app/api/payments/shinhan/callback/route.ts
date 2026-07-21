@@ -60,6 +60,9 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true, status: 'PAID' })
 }
 
-export async function GET(req: NextRequest) {
-  return POST(req)
+export function GET() {
+  return NextResponse.json(
+    { success: false, error: 'METHOD_NOT_ALLOWED' },
+    { status: 405, headers: { Allow: 'POST' } },
+  )
 }
