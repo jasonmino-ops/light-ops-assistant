@@ -13,7 +13,7 @@ const eventApi = read('app/api/public/landing-events/route.ts')
 const ordersApi = read('app/api/public/orders/route.ts')
 const schema = read('prisma/schema.prisma')
 
-assert.match(invite, /publicUrl\(`\/m\/\$\{current\.code\}`\)/, 'invite customer link should still target /m/[storeCode]')
+assert.match(invite, /publicCustomerEntryUrl\(current\.code\)/, 'invite customer link should use the shared public /m/[storeCode] URL helper')
 
 assert.match(landingPage, /store\.status === 'ACTIVE'/, '/m should only pass ACTIVE stores to the shell')
 assert.match(landingShell, /eventType: 'landing_view'/, '/m should record landing_view')

@@ -1085,8 +1085,8 @@ const s: Record<string, CSSProperties> = {
 
   // Payment / checkout section (bottom of right panel, always visible)
   paySec:      { flexShrink: 0, borderTop: '2px solid #e5e7eb', padding: '10px 14px 14px', background: '#fff' },
-  desktopPaySec: { maxHeight: '54vh', overflowY: 'auto' },
-  desktopSelectPaySec: { height: 'min(68vh,620px)', maxHeight: 'calc(100dvh - 120px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+  desktopPaySec: { maxHeight: '54vh', overflowX: 'hidden', overflowY: 'auto' },
+  desktopSelectPaySec: { height: 'min(68vh,620px)', maxHeight: 'calc(100dvh - 120px)', overflowX: 'hidden', overflowY: 'hidden', display: 'flex', flexDirection: 'column' },
   payLabel:    { fontSize: 11, color: '#9ca3af', fontWeight: 600, marginBottom: 7 },
   payRow:      { display: 'flex', gap: 6, marginBottom: 10 },
   payBtn:      { flex: 1, padding: '7px 0', borderRadius: 8, border: '1.5px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer' },
@@ -1141,7 +1141,7 @@ const s: Record<string, CSSProperties> = {
   secondaryBtn:{ padding: '11px 10px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
   nextStepBox:{ padding: 12, borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e3a8a', fontSize: 12, lineHeight: 1.55 },
   desktopPayGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
-  desktopPayOption: { border: '1px solid #cbd5e1', borderRadius: 12, background: '#fff', padding: '13px 12px', textAlign: 'left' as const, cursor: 'pointer', minHeight: 78 },
+  desktopPayOption: { borderWidth: 1, borderStyle: 'solid', borderColor: '#cbd5e1', borderRadius: 12, background: '#fff', padding: '13px 12px', textAlign: 'left' as const, cursor: 'pointer', minHeight: 78 },
   desktopPayOptionOn: { borderColor: ACCENT, background: '#eff6ff', boxShadow: '0 0 0 2px rgba(59,130,246,.12)' },
   desktopPayMain: { display: 'block', fontSize: 14, fontWeight: 900, color: '#111827', marginBottom: 5 },
   desktopPaySub: { display: 'block', fontSize: 11, color: '#64748b', lineHeight: 1.45 },

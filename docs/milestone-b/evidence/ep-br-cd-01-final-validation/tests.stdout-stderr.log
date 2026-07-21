@@ -1,0 +1,32 @@
+COMMAND START: 2026-07-21T21:00:00+07:00
+WORKTREE: /Users/jason/worktrees/ep-br-cd-01
+
+=== COMMAND: npx tsx tests/customer-display-adapter.test.ts ===
+customer display adapter tests passed
+=== EXIT CODE: 0 ===
+=== COMMAND: npx tsx tests/customer-display-cart-sync-static.test.ts ===
+customer display cart sync static tests passed
+=== EXIT CODE: 0 ===
+=== COMMAND: npx tsx tests/customer-display-panel-state.test.ts ===
+customer display panel state tests passed
+=== EXIT CODE: 0 ===
+=== COMMAND: npx tsx tests/customer-display-persistent-panel-static.test.ts ===
+customer display persistent panel static tests passed
+=== EXIT CODE: 0 ===
+=== COMMAND: npx tsx tests/customer-display-realtime-channel.test.ts ===
+customer display realtime channel tests passed
+=== EXIT CODE: 0 ===
+=== COMMAND: npx tsx tests/customer-display-session-current-static.test.ts ===
+customer display session/current static KHQR tests passed
+=== EXIT CODE: 0 ===
+=== COMMAND: npx tsx tests/customer-display-public-entry-url.test.ts ===
+customer display public entry URL tests passed
+=== EXIT CODE: 0 ===
+=== COMMAND: npx tsx tests/customer-landing-journey-static.test.ts ===
+customer landing journey static tests passed
+=== EXIT CODE: 0 ===
+=== COMMAND: npx tsx tests/cashier-inline-style-conflicts-static.test.ts ===
+cashier inline-style conflict tests passed
+=== EXIT CODE: 0 ===
+
+COMMAND EXIT: 0

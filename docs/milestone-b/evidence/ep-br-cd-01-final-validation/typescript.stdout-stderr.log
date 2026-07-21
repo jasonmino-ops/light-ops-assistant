@@ -1,0 +1,7 @@
+COMMAND START: 2026-07-21T21:00:00+07:00
+WORKTREE: /Users/jason/worktrees/ep-br-cd-01
+COMMAND: npx tsc --noEmit --incremental false
+
+STDOUT/STDERR: <empty>
+
+COMMAND EXIT: 0

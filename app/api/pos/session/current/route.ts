@@ -120,6 +120,10 @@ export async function GET(req: NextRequest) {
     : row?.status === 'AWAITING_PAYMENT' && hasActiveItems && ageMs > CHECKOUT_TIMEOUT_MS
       ? 'EXPIRED_CHECKOUT'
       : row?.status ?? null
+  // 门店静态 KHQR 与订单级二维码严格分离。顾客屏无论在空闲、现金或
+  // KHQR 收款状态下都需要同一门店收款码，因此必须在活跃订单的早期返回前读取。
+  const khqrConfig = await import('@/lib/merchant-config').then((mod) => mod.findKhqrConfig(store.tenantId, store.id))
+  const storeKhqrImageUrl = cleanDisplayImageUrl(khqrConfig?.khqrImageUrl)
 
   if (row && hasActiveItems) {
     const sessionKhqrImageUrl = cleanDisplayImageUrl(row.khqrImageUrl)
@@ -128,7 +132,7 @@ export async function GET(req: NextRequest) {
       storeCode: store.code,
       storeName: store.name,
       storeBannerUrl: cleanDisplayImageUrl(store.bannerUrl),
-      storeKhqrImageUrl: null,
+      storeKhqrImageUrl,
       displayProducts: [],
       serverNow: now.toISOString(),
       session: {
@@ -247,11 +251,6 @@ export async function GET(req: NextRequest) {
     imageUrl: cleanDisplayImageUrl(item.imageUrl) ?? productImageMap.get(item.productId) ?? null,
   }))
   const sessionKhqrImageUrl = cleanDisplayImageUrl(row?.khqrImageUrl)
-  const needsStoreKhqr = !hasActiveItems || (row?.paymentMethod === 'KHQR' && !sessionKhqrImageUrl)
-  const khqrConfig = needsStoreKhqr
-    ? await import('@/lib/merchant-config').then((mod) => mod.findKhqrConfig(store.tenantId, store.id))
-    : null
-  const storeKhqrImageUrl = cleanDisplayImageUrl(khqrConfig?.khqrImageUrl)
   const khqrImageUrl = sessionKhqrImageUrl ?? (row?.paymentMethod === 'KHQR' ? storeKhqrImageUrl : null)
 
   return json({

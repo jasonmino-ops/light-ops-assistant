@@ -26,3 +26,11 @@ export function publicUrl(path: string, origin?: string | null): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return `${getPublicSiteUrl(origin)}${normalizedPath}`
 }
+
+/**
+ * Customer-facing QR codes must always lead to the canonical public site,
+ * never to the host currently rendering an internal display.
+ */
+export function publicCustomerEntryUrl(storeCode: string): string {
+  return publicUrl(`/m/${encodeURIComponent(storeCode)}`, DEFAULT_PUBLIC_SITE_URL)
+}
