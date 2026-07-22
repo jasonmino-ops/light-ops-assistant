@@ -8,6 +8,11 @@ export const PRODUCT_IMPORT_FIELDS = [
 
 export type ProductImportField = typeof PRODUCT_IMPORT_FIELDS[number]
 export type ProductImportColumnMapping = Partial<Record<ProductImportField, number | null>>
+/**
+ * 预览和确认共用的显式上限。超过时返回可见错误，绝不截断后继续导入。
+ * 2,000 行在 5MB 上传限制和单事务写入窗口内仍保持可预测的资源消耗。
+ */
+export const MAX_PRODUCT_IMPORT_ROWS = 2_000
 
 export type ProductImportPreviewRow = {
   rowNum: number
@@ -24,6 +29,8 @@ export type ProductImportPreviewRow = {
   sellPrice: number
   status: 'ACTIVE' | 'DISABLED'
   statusProvided: boolean
+  /** 本次表格实际映射到的字段；更新已有商品时仅允许写入这些字段。 */
+  providedFields: ProductImportField[]
   imageUrl: string | null
   imageUrls: string[]
   category1Raw: string
@@ -49,7 +56,7 @@ export type ProductSpreadsheetPreview = {
 
 export type ProductSpreadsheetParseResult =
   | { ok: true; value: ProductSpreadsheetPreview }
-  | { ok: false; error: 'PARSE_ERROR' | 'EMPTY_FILE' | 'INVALID_HEADER'; message: string }
+  | { ok: false; error: 'PARSE_ERROR' | 'EMPTY_FILE' | 'INVALID_HEADER' | 'TOO_MANY_ROWS'; message: string }
 
 const FIELD_ALIASES: Record<ProductImportField, string[]> = {
   barcode: ['barcode', 'ean', 'upc', '条码', '商品条码', '条形码', '商品编号', '产品编码', '货号', '编码', 'បាកូដ'],
@@ -182,9 +189,7 @@ function findWorksheet(workbook: XLSX.WorkBook): { sheetName: string; rows: unkn
 
 function invalidHeaderMessage(mapping: ProductImportColumnMapping): string {
   const missing: string[] = []
-  if (mapping.nameZh === null && mapping.nameEn === null && mapping.nameKm === null) missing.push('商品名称')
   if (mapping.barcode === null && mapping.sku === null) missing.push('条码或 SKU')
-  if (mapping.sellPrice === null) missing.push('售价')
   return `请映射必填字段：${missing.join('、')}`
 }
 
@@ -202,13 +207,24 @@ export function parseProductSpreadsheet(
   if (!found) return { ok: false, error: 'EMPTY_FILE', message: '文件中没有可识别的表头或数据' }
 
   const mapping = sanitizeProductColumnMapping(requestedMapping, found.headers)
-  const hasName = mapping.nameZh !== null || mapping.nameEn !== null || mapping.nameKm !== null
   const hasCode = mapping.barcode !== null || mapping.sku !== null
-  const incompleteMappingMessage = !hasName || !hasCode || mapping.sellPrice === null ? invalidHeaderMessage(mapping) : null
+  const incompleteMappingMessage = !hasCode ? invalidHeaderMessage(mapping) : null
+  const invalidCategoryMappingMessage = mapping.category2 !== null && mapping.category1 === null
+    ? '二级分类需要同时映射一级分类'
+    : null
+  const providedFields = PRODUCT_IMPORT_FIELDS.filter((field) => typeof mapping[field] === 'number')
 
   const preview: ProductImportPreviewRow[] = []
   const seenBarcodes = new Map<string, number>()
-  const dataRows = found.rows.slice(found.headerRowIndex + 1, found.headerRowIndex + 501)
+  const dataRows = found.rows.slice(found.headerRowIndex + 1)
+  const importableRowCount = dataRows.filter((row) => rowHasContent(row as unknown[])).length
+  if (importableRowCount > MAX_PRODUCT_IMPORT_ROWS) {
+    return {
+      ok: false,
+      error: 'TOO_MANY_ROWS',
+      message: `文件包含 ${importableRowCount} 行商品数据；单次最多 ${MAX_PRODUCT_IMPORT_ROWS} 行。请拆分后重新上传。`,
+    }
+  }
   for (let offset = 0; offset < dataRows.length; offset++) {
     const row = dataRows[offset] as unknown[]
     if (!rowHasContent(row)) continue
@@ -228,9 +244,9 @@ export function parseProductSpreadsheet(
     const warnings: string[] = []
     let error: string | null = null
     if (incompleteMappingMessage) error = incompleteMappingMessage
+    else if (invalidCategoryMappingMessage) error = invalidCategoryMappingMessage
     else if (!barcode) error = '条码或 SKU 不能为空'
-    else if (!name) error = '商品名不能为空'
-    else if (!Number.isFinite(sellPrice) || sellPrice <= 0) error = `售价无效：${rawPrice ?? ''}`
+    else if (providedFields.includes('sellPrice') && (!Number.isFinite(sellPrice) || sellPrice <= 0)) error = `售价无效：${rawPrice ?? ''}`
     else if (seenBarcodes.has(barcode)) error = `文件内条码重复（第 ${seenBarcodes.get(barcode)} 行）`
     if (barcode && !seenBarcodes.has(barcode)) seenBarcodes.set(barcode, rowNum)
     if (imageUrls.length === 3 && (valueAt(row, mapping, 'imageUrls') || '').split(/[|;；\n]/g).filter(Boolean).length > 2) {
@@ -251,6 +267,7 @@ export function parseProductSpreadsheet(
       sellPrice: Number.isFinite(sellPrice) ? sellPrice : 0,
       status: parsedStatus.status,
       statusProvided: parsedStatus.provided,
+      providedFields,
       imageUrl: imageUrls[0] ?? null,
       imageUrls,
       category1Raw,

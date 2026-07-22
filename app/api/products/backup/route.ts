@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import {
   createProductExportWorkbook,
   createZip,
+  PRODUCT_BACKUP_LIMITS,
+  productBackupLimitError,
   productBackupImages,
   type ProductBackupManifestImage,
 } from '@/lib/product-backup'
@@ -25,9 +27,17 @@ export async function GET(req: NextRequest) {
     where: { tenantId: ctx.tenantId },
     include: { category: { include: { parent: true } } },
     orderBy: [{ categoryId: 'asc' }, { name: 'asc' }, { barcode: 'asc' }],
+    take: PRODUCT_BACKUP_LIMITS.maxProducts + 1,
   })
   const imageRefs = products.flatMap((product) => productBackupImages(product))
   const controlledImageCount = imageRefs.filter((image) => !!image.storageKey).length
+  const initialLimitError = productBackupLimitError({ productCount: products.length, controlledImageCount, totalImageBytes: 0 })
+  if (initialLimitError) {
+    return NextResponse.json(
+      { error: initialLimitError, message: '完整备份超出安全资源限制；请联系支持人员按批次归档商品图片。' },
+      { status: 413 },
+    )
+  }
   if (controlledImageCount > 0 && !isStorageConfigured()) {
     return NextResponse.json(
       { error: 'STORAGE_NOT_CONFIGURED', message: '图片存储未配置，无法生成可恢复的完整商品备份' },
@@ -39,6 +49,7 @@ export async function GET(req: NextRequest) {
     { path: 'products.xlsx', data: createProductExportWorkbook(products) },
   ]
   const images: ProductBackupManifestImage[] = []
+  let totalImageBytes = 0
   try {
     for (const product of products) {
       for (const image of productBackupImages(product)) {
@@ -55,6 +66,19 @@ export async function GET(req: NextRequest) {
         }
         const archivePath = `images/${product.id}/image-${image.slot}.${safeExtension(image.storageKey)}`
         const data = await downloadObject(PRODUCT_IMAGE_BUCKET, image.storageKey)
+        const sizeLimitError = productBackupLimitError({
+          productCount: products.length,
+          controlledImageCount,
+          totalImageBytes,
+          nextImageBytes: data.byteLength,
+        })
+        if (sizeLimitError) {
+          return NextResponse.json(
+            { error: sizeLimitError, message: '完整备份超出安全资源限制；请联系支持人员按批次归档商品图片。' },
+            { status: 413 },
+          )
+        }
+        totalImageBytes += data.byteLength
         files.push({ path: archivePath, data })
         images.push({
           productId: product.id,
@@ -83,6 +107,11 @@ export async function GET(req: NextRequest) {
     imageCount: images.length,
     controlledImageCount,
     externalReferenceCount: images.filter((image) => image.source === 'EXTERNAL_REFERENCE').length,
+    resourceLimits: {
+      maxProducts: PRODUCT_BACKUP_LIMITS.maxProducts,
+      maxControlledImages: PRODUCT_BACKUP_LIMITS.maxControlledImages,
+      maxTotalImageBytes: PRODUCT_BACKUP_LIMITS.maxTotalImageBytes,
+    },
     restore: {
       productFile: 'products.xlsx',
       note: 'products.xlsx 可用于重新导入；images/ 保存当前由本系统 Supabase Storage 管理的图片对象。外部图片仅保留原始 URL，以避免服务端抓取不受控地址。',

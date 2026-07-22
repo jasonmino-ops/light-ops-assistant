@@ -87,6 +87,8 @@ export async function POST(req: NextRequest) {
     sellPrice: it.price ?? 0,
     status: 'ACTIVE',
     statusProvided: false,
+    // 菜单 AI 只生成预览；若未来出现同条码，确认端也只会使用这些明确产出的字段。
+    providedFields: ['barcode', 'nameZh', 'spec', 'sellPrice', 'category1'],
     imageUrl: null,
     imageUrls: [],
     category1Raw: it.category ?? '',

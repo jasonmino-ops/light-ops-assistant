@@ -4,9 +4,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import type { PreviewRow } from '../route'
+import { MAX_PRODUCT_IMPORT_ROWS, type ProductImportField } from '@/lib/product-spreadsheet'
+import { buildProductImportUpdate, hasImportedField } from '@/lib/product-import-update'
 
 type ErrorRow = { row: number; barcode: string; reason: string }
 type ImportAction = 'CREATE' | 'UPDATE' | 'SKIP'
+
+function hasAnyMappedField(row: PreviewRow, fields: ProductImportField[]): boolean {
+  return hasImportedField(row, ...fields)
+}
 
 function actionFor(row: PreviewRow): ImportAction {
   return row.duplicateAction === 'UPDATE' || row.duplicateAction === 'SKIP' ? row.duplicateAction : 'CREATE'
@@ -47,7 +53,9 @@ export async function POST(req: NextRequest) {
   }
   const rows = body.rows
   if (!Array.isArray(rows) || rows.length === 0) return NextResponse.json({ error: 'MISSING_ROWS', message: '无可导入的行' }, { status: 400 })
-  if (rows.length > 500) return NextResponse.json({ error: 'TOO_MANY_ROWS', message: '单次最多导入 500 行' }, { status: 400 })
+  if (rows.length > MAX_PRODUCT_IMPORT_ROWS) {
+    return NextResponse.json({ error: 'TOO_MANY_ROWS', message: `单次最多导入 ${MAX_PRODUCT_IMPORT_ROWS} 行` }, { status: 400 })
+  }
 
   const errors: ErrorRow[] = []
   const rowByBarcode = new Map<string, PreviewRow>()
@@ -58,8 +66,12 @@ export async function POST(req: NextRequest) {
     if (!barcode) errors.push({ row: rowNum, barcode: '—', reason: '条码或 SKU 不能为空' })
     else if (rowByBarcode.has(barcode)) errors.push({ row: rowNum, barcode, reason: '确认数据中存在重复条码' })
     else rowByBarcode.set(barcode, row)
-    if (!String(row.name ?? '').trim()) errors.push({ row: rowNum, barcode: barcode || '—', reason: '商品名不能为空' })
-    if (!Number.isFinite(row.sellPrice) || row.sellPrice <= 0) errors.push({ row: rowNum, barcode: barcode || '—', reason: '售价无效' })
+    if (hasAnyMappedField(row, ['nameZh', 'nameEn', 'nameKm']) && !String(row.name ?? '').trim()) {
+      errors.push({ row: rowNum, barcode: barcode || '—', reason: '商品名不能为空' })
+    }
+    if (hasAnyMappedField(row, ['sellPrice']) && (!Number.isFinite(row.sellPrice) || row.sellPrice <= 0)) {
+      errors.push({ row: rowNum, barcode: barcode || '—', reason: '售价无效' })
+    }
     const imageUrls = normalizedImageUrls(row)
     if (!imageUrls) errors.push({ row: rowNum, barcode: barcode || '—', reason: '图片链接必须是 http 或 https URL' })
     else if (barcode) imageUrlsByBarcode.set(barcode, imageUrls)
@@ -88,9 +100,15 @@ export async function POST(req: NextRequest) {
     } else if (!exists && action === 'UPDATE') {
       errors.push({ row: row.rowNum, barcode: row.barcode, reason: '商品已不存在；请重新预览后按新增导入' })
     } else if (exists) {
-      toUpdate.push(row)
+      if (!hasAnyMappedField(row, ['sku', 'nameZh', 'nameEn', 'nameKm', 'descZh', 'descEn', 'descKm', 'spec', 'sellPrice', 'status', 'imageUrl', 'imageUrls', 'category1'])) {
+        errors.push({ row: row.rowNum, barcode: row.barcode, reason: '更新已有商品至少需要映射一个可更新字段' })
+      } else {
+        toUpdate.push(row)
+      }
     } else {
-      toCreate.push(row)
+      if (!String(row.name ?? '').trim()) errors.push({ row: row.rowNum, barcode: row.barcode, reason: '新增商品必须提供商品名' })
+      else if (!Number.isFinite(row.sellPrice) || row.sellPrice <= 0) errors.push({ row: row.rowNum, barcode: row.barcode, reason: '新增商品必须提供有效售价' })
+      else toCreate.push(row)
     }
   }
   if (errors.length > 0) {
@@ -102,7 +120,7 @@ export async function POST(req: NextRequest) {
     if (row.resolvedL1?.trim()) neededPairs.set(`${row.resolvedL1}__${row.resolvedL2 ?? ''}`, { l1: row.resolvedL1, l2: row.resolvedL2 ?? null })
   }
   for (const row of toUpdate) {
-    if (row.category1Raw?.trim() && row.resolvedL1?.trim()) {
+    if (hasAnyMappedField(row, ['category1']) && row.category1Raw?.trim() && row.resolvedL1?.trim()) {
       neededPairs.set(`${row.resolvedL1}__${row.resolvedL2 ?? ''}`, { l1: row.resolvedL1, l2: row.resolvedL2 ?? null })
     }
   }
@@ -160,33 +178,20 @@ export async function POST(req: NextRequest) {
       }
       for (const row of toUpdate) {
         const imageUrls = imagesFor(row)
-        const categoryKey = row.category1Raw?.trim() && row.resolvedL1 ? `${row.resolvedL1}__${row.resolvedL2 ?? ''}` : null
+        const categoryKey = hasAnyMappedField(row, ['category1']) && row.category1Raw?.trim() && row.resolvedL1
+          ? `${row.resolvedL1}__${row.resolvedL2 ?? ''}`
+          : null
         await tx.product.update({
           where: { id: existingByBarcode.get(row.barcode)!.id },
-          data: {
-            sku: row.sku ?? null,
-            name: row.name.trim(),
-            nameZh: row.nameZh ?? null,
-            nameEn: row.nameEn ?? null,
-            nameKm: row.nameKm ?? null,
-            descZh: row.descZh ?? null,
-            descEn: row.descEn ?? null,
-            descKm: row.descKm ?? null,
-            spec: row.spec ?? null,
-            sellPrice: String(row.sellPrice),
-            status: row.status,
-            ...(categoryKey ? { categoryId: categoryIds.get(categoryKey) ?? null } : {}),
-            ...(imageUrls.length > 0 ? {
-              imageUrl: imageUrls[0],
-              imageUrls: JSON.stringify(imageUrls),
-              imageStorageKey: null,
-              imageStorageKeys: null,
-            } : {}),
-          },
+          data: buildProductImportUpdate(
+            row,
+            imageUrls,
+            hasAnyMappedField(row, ['category1']) ? (categoryKey ? categoryIds.get(categoryKey) ?? null : null) : null,
+          ),
         })
       }
       return { created: toCreate.length, updated: toUpdate.length, catCreated }
-    }, { timeout: 20_000 })
+    }, { timeout: 60_000 })
     return NextResponse.json({
       imported: result.created + result.updated,
       created: result.created,

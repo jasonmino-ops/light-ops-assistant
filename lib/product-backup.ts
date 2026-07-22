@@ -34,6 +34,29 @@ export type ProductBackupManifestImage = {
   error?: string
 }
 
+/** 完整 ZIP 在无流式对象存储 API 的当前部署模型下使用确定性资源边界。 */
+export const PRODUCT_BACKUP_LIMITS = {
+  maxProducts: 5_000,
+  maxControlledImages: 2_000,
+  maxSingleImageBytes: 5 * 1024 * 1024,
+  maxTotalImageBytes: 100 * 1024 * 1024,
+} as const
+
+export type ProductBackupLimitInput = {
+  productCount: number
+  controlledImageCount: number
+  totalImageBytes: number
+  nextImageBytes?: number
+}
+
+export function productBackupLimitError(input: ProductBackupLimitInput): string | null {
+  if (input.productCount > PRODUCT_BACKUP_LIMITS.maxProducts) return 'BACKUP_PRODUCT_LIMIT'
+  if (input.controlledImageCount > PRODUCT_BACKUP_LIMITS.maxControlledImages) return 'BACKUP_IMAGE_COUNT_LIMIT'
+  if (typeof input.nextImageBytes === 'number' && input.nextImageBytes > PRODUCT_BACKUP_LIMITS.maxSingleImageBytes) return 'BACKUP_SINGLE_IMAGE_LIMIT'
+  if (input.totalImageBytes + (input.nextImageBytes ?? 0) > PRODUCT_BACKUP_LIMITS.maxTotalImageBytes) return 'BACKUP_TOTAL_SIZE_LIMIT'
+  return null
+}
+
 function parseStringArray(value: string | null): string[] {
   if (!value) return []
   try {

@@ -87,6 +87,12 @@ export async function POST(req: NextRequest) {
       }
     }
   }
+  // 新增必须完整；已有商品则允许仅映射需更新的字段，确认端会再次服务端复核。
+  for (const row of preview) {
+    if (row.error || row.isDuplicate) continue
+    if (!row.name.trim()) row.error = '新增商品必须映射商品名称'
+    else if (!Number.isFinite(row.sellPrice) || row.sellPrice <= 0) row.error = '新增商品必须映射有效售价'
+  }
   return NextResponse.json({
     preview,
     headers: parsed.value.headers,
