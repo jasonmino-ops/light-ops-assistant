@@ -115,6 +115,15 @@ function getElectronEmployeeFullscreenBridge(): EmployeeFullscreenBridge | null 
 }
 type DesktopPaymentMethod = 'CASH' | 'KHQR' | 'MEMBER_BALANCE' | null
 type CustomerDisplaySyncOptions = { focusKhqr?: boolean }
+type PosAccountRecoverySnapshot = {
+  storeCode: string
+  cart: CartLine[]
+  payment: CashierPaymentMethod
+  checkoutStep: DesktopCheckoutStep
+  desktopSelectedPaymentMethod: DesktopPaymentMethod
+  cashTendered: string
+  createdAt: number
+}
 type ShiftRecordItem = {
   recordNo: string
   orderNo: string | null
@@ -285,6 +294,8 @@ function normalizeSearchText(value: string | null | undefined) {
   return cleanSearchText(String(value ?? '')).toLowerCase()
 }
 const CASHIER_DISPLAY_SYNC_DEBOUNCE_MS = 300
+const POS_ACCOUNT_RECOVERY_SNAPSHOT_PREFIX = 'cashier:posAccountRecovery:'
+const POS_ACCOUNT_RECOVERY_SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000
 function cashierDisplayItems(cart: CartLine[]) {
   return cart
     .filter((line) => line.productId)
@@ -332,6 +343,22 @@ function isValidStoreCode(sc: string | null): sc is string {
 }
 function cashierUrlForStore(sc: string) {
   return `/cashier?from=desktop&storeCode=${encodeURIComponent(sc)}`
+}
+function posAccountRecoverySnapshotKey(storeCode: string) {
+  return `${POS_ACCOUNT_RECOVERY_SNAPSHOT_PREFIX}${storeCode}`
+}
+function isPosAccountRecoverySnapshot(value: unknown, storeCode: string): value is PosAccountRecoverySnapshot {
+  if (!value || typeof value !== 'object') return false
+  const snapshot = value as Partial<PosAccountRecoverySnapshot>
+  return snapshot.storeCode === storeCode &&
+    Array.isArray(snapshot.cart) &&
+    (snapshot.payment === 'CASH' || snapshot.payment === 'KHQR' || snapshot.payment === 'OTHER' || snapshot.payment === 'MEMBER_BALANCE') &&
+    (snapshot.checkoutStep === 'SELECT_ITEMS' || snapshot.checkoutStep === 'CONFIRM_ORDER' || snapshot.checkoutStep === 'SELECT_PAYMENT') &&
+    (snapshot.desktopSelectedPaymentMethod === null || snapshot.desktopSelectedPaymentMethod === 'CASH' || snapshot.desktopSelectedPaymentMethod === 'KHQR' || snapshot.desktopSelectedPaymentMethod === 'MEMBER_BALANCE') &&
+    typeof snapshot.cashTendered === 'string' &&
+    typeof snapshot.createdAt === 'number' &&
+    Date.now() - snapshot.createdAt >= 0 &&
+    Date.now() - snapshot.createdAt <= POS_ACCOUNT_RECOVERY_SNAPSHOT_MAX_AGE_MS
 }
 function desktopRecordsUrlForStore(sc: string) {
   const params = new URLSearchParams()
@@ -1623,6 +1650,23 @@ export default function CashierPage() {
       .finally(() => setLoading(false))
   }, [router])
 
+  useEffect(() => {
+    if (!storeCode) return
+    try {
+      const raw = localStorage.getItem(posAccountRecoverySnapshotKey(storeCode))
+      if (!raw) return
+      const snapshot = JSON.parse(raw) as unknown
+      localStorage.removeItem(posAccountRecoverySnapshotKey(storeCode))
+      if (!isPosAccountRecoverySnapshot(snapshot, storeCode)) return
+      setCart(snapshot.cart)
+      setPayment(snapshot.payment)
+      setCheckoutStep(snapshot.checkoutStep)
+      setDesktopSelectedPaymentMethod(snapshot.desktopSelectedPaymentMethod)
+      setCashTendered(snapshot.cashTendered)
+      showToast(posAuthCopy().accountRevalidatedRetry)
+    } catch {}
+  }, [storeCode])
+
   // ── Browser online/offline signal for Offline status only ─────────────────
   useEffect(() => {
     const update = () => setIsOnline(navigator.onLine)
@@ -1749,6 +1793,9 @@ export default function CashierPage() {
         needAuth: 'This POS computer is not authorized yet. Please bind this device first.',
         recoveryTitle: 'This computer is not authorized as a cashier',
         recoveryBody: 'This computer has not been bound as a cashier for this store. Bind it once to continue cashiering.',
+        revalidateAccount: 'Revalidate account',
+        revalidateAccountBody: 'If this browser account has expired, revalidate it in Telegram first. Your current transaction will be kept locally.',
+        accountRevalidatedRetry: 'Account revalidated. Please manually confirm the current transaction again.',
         bindThisDevice: 'Bind this device',
         notNow: 'Not now',
         generating: 'Generating...',
@@ -1780,8 +1827,11 @@ export default function CashierPage() {
         needAuth: 'កុំព្យូទ័រ POS នេះមិនទាន់អនុញ្ញាត។ សូមភ្ជាប់ឧបករណ៍ជាមុន។',
         recoveryTitle: 'កុំព្យូទ័រនេះមិនទាន់បានអនុញ្ញាតជាម៉ាស៊ីនគិតលុយ',
         recoveryBody: 'កុំព្យូទ័រនេះមិនទាន់បានភ្ជាប់ជាម៉ាស៊ីនគិតលុយសម្រាប់ហាងនេះទេ។ ភ្ជាប់ម្តង ដើម្បីបន្តគិតលុយ។',
+        revalidateAccount: 'ផ្ទៀងផ្ទាត់គណនីឡើងវិញ',
+        revalidateAccountBody: 'បើគណនីក្នុង browser នេះផុតកំណត់ សូមផ្ទៀងផ្ទាត់ឡើងវិញក្នុង Telegram ជាមុន។ ប្រតិបត្តិការបច្ចុប្បន្ននឹងត្រូវរក្សាទុកក្នុងម៉ាស៊ីន។',
+        accountRevalidatedRetry: 'បានផ្ទៀងផ្ទាត់គណនីឡើងវិញ។ សូមបញ្ជាក់ប្រតិបត្តិការបច្ចុប្បន្នដោយដៃម្តងទៀត។',
         bindThisDevice: 'ភ្ជាប់កុំព្យូទ័រនេះ',
-        notNow: 'មិនទាន់ភ្ជាប់',
+        notNow: 'មិនទាន់ធ្វើ',
         generating: 'កំពុងបង្កើត...',
         waitingForOwner: 'សូមឱ្យម្ចាស់ស្កេនកូដ ហើយបញ្ជាក់ការអនុញ្ញាតនៅលើទូរស័ព្ទ។',
         refreshQr: 'បង្កើត QR ថ្មី',
@@ -1810,8 +1860,11 @@ export default function CashierPage() {
       needAuth: '本 POS 电脑尚未授权，请先绑定本机。',
       recoveryTitle: '本机尚未授权为收银机',
       recoveryBody: '本电脑还没有绑定为本店收银机，绑定一次即可继续收银。',
+      revalidateAccount: '重新验证账号',
+      revalidateAccountBody: '如果本浏览器的老板或员工账号已过期，请先在 Telegram 中重新验证。当前交易会保留在本机。',
+      accountRevalidatedRetry: '账号已重新验证，请重新确认当前交易。',
       bindThisDevice: '绑定本机',
-      notNow: '暂不绑定',
+      notNow: '暂不处理',
       generating: '生成中…',
       waitingForOwner: '老板扫码后，在手机上点“确认授权”。',
       refreshQr: '刷新二维码',
@@ -1846,6 +1899,24 @@ export default function CashierPage() {
     }
     setPosDeviceRecoveryOpen(true)
     showToast(message || copy.needAuth)
+  }
+
+  function handleRevalidatePosAccount() {
+    if (!storeCode || typeof window === 'undefined') return
+    const returnUrl = `${window.location.pathname}${window.location.search}`
+    const snapshot: PosAccountRecoverySnapshot = {
+      storeCode,
+      cart,
+      payment,
+      checkoutStep,
+      desktopSelectedPaymentMethod,
+      cashTendered,
+      createdAt: Date.now(),
+    }
+    try {
+      localStorage.setItem(posAccountRecoverySnapshotKey(storeCode), JSON.stringify(snapshot))
+    } catch {}
+    window.location.assign(`/relogin?returnUrl=${encodeURIComponent(returnUrl)}`)
   }
 
   async function handleAuthorizePosDevice() {
@@ -3706,10 +3777,18 @@ export default function CashierPage() {
               <>
                 <h2 id="pos-device-recovery-title" style={s.posDeviceRecoveryTitle}>{posAuthCopy().recoveryTitle}</h2>
                 <div style={s.posDeviceRecoveryBody}>{posAuthCopy().recoveryBody}</div>
+                <div style={s.posDeviceRecoveryNotice}>{posAuthCopy().revalidateAccountBody}</div>
+                <button
+                  type="button"
+                  style={{ ...s.posDeviceRecoveryPrimary, width: '100%', marginTop: 14 }}
+                  onClick={handleRevalidatePosAccount}
+                >
+                  {posAuthCopy().revalidateAccount}
+                </button>
                 <div style={s.posDeviceRecoveryActions}>
                   <button
                     type="button"
-                    style={{ ...s.posDeviceRecoveryPrimary, ...(posAuthLoading ? s.posDeviceRecoveryDisabled : {}) }}
+                    style={{ ...s.posDeviceRecoverySecondary, ...(posAuthLoading ? s.posDeviceRecoveryDisabled : {}) }}
                     onClick={() => void startPosAuthorization()}
                     disabled={posAuthLoading}
                   >

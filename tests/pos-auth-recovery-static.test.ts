@@ -16,6 +16,25 @@ assert.match(unauthorizedHandler, /setPosDeviceRecoveryOpen\(true\)/, '403 POS d
 assert.match(unauthorizedHandler, /isReusablePosAuthChallenge\([\s\S]*posAuthChallenge[\s\S]*storeCode[\s\S]*getPosDeviceId\(\)[\s\S]*posAuthExpired[\s\S]*posAuthError/, 'challenge reuse must validate current store, device, expiry state, and terminal errors')
 assert.match(unauthorizedHandler, /if \(!canReuseChallenge\) \{\s*setPosAuthChallenge\(null\)/, 'an eligible challenge must not be unconditionally cleared')
 
+const accountRevalidation = section('function handleRevalidatePosAccount', 'async function handleAuthorizePosDevice')
+assert.match(accountRevalidation, /localStorage\.setItem\(posAccountRecoverySnapshotKey\(storeCode\), JSON\.stringify\(snapshot\)\)/, 'account revalidation must preserve the current cashier snapshot locally')
+assert.match(accountRevalidation, /window\.location\.assign\(`\/relogin\?returnUrl=\$\{encodeURIComponent\(returnUrl\)\}`\)/, 'account revalidation must use the existing relogin route with a return URL')
+for (const forbiddenAutoWrite of [
+  '/api/cashier/sales',
+  '/api/cashier/member-balance-pay',
+  '/api/cashier/offline-sync',
+  '/api/cashier/orders/',
+]) {
+  assert.doesNotMatch(accountRevalidation, new RegExp(forbiddenAutoWrite.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `account revalidation must not automatically call ${forbiddenAutoWrite}`)
+}
+
+const accountSnapshotRestore = section('useEffect(() => {\n    if (!storeCode) return\n    try {\n      const raw = localStorage.getItem(posAccountRecoverySnapshotKey(storeCode))', '// ── Browser online/offline signal')
+assert.match(accountSnapshotRestore, /setCart\(snapshot\.cart\)/, 'returning from account revalidation must restore the cart')
+assert.match(accountSnapshotRestore, /setPayment\(snapshot\.payment\)/, 'returning from account revalidation must restore the payment choice')
+assert.match(accountSnapshotRestore, /setCheckoutStep\(snapshot\.checkoutStep\)/, 'returning from account revalidation must restore the checkout step')
+assert.match(accountSnapshotRestore, /accountRevalidatedRetry/, 'returning from account revalidation must require a manual retry')
+assert.match(source, /revalidateAccount: '重新验证账号'/, 'recovery UI must offer account revalidation in Chinese')
+
 const reusableChallenge = section('function isReusablePosAuthChallenge', 'type ScannerDebugState')
 assert.match(reusableChallenge, /challenge\.storeCode === storeCode/, 'challenge reuse must be scoped to the store')
 assert.match(reusableChallenge, /challenge\.deviceId === deviceId/, 'challenge reuse must be scoped to the browser device')
