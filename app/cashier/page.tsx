@@ -167,8 +167,34 @@ type PosAuthChallenge = {
   expiresAt: string
   storeName: string
   deviceName: string
+  storeCode?: string
+  deviceId?: string
 }
 type PosAccountAccessState = 'checking' | 'authorized' | 'login_required' | 'forbidden'
+
+function isReusablePosAuthChallenge(
+  challenge: PosAuthChallenge | null,
+  storeCode: string | null,
+  deviceId: string,
+  hasTerminalError: boolean,
+) {
+  if (!challenge || !storeCode || !deviceId || hasTerminalError) return false
+  const expiresAt = Date.parse(challenge.expiresAt)
+  const hasCompleteChallenge = Boolean(
+    challenge.requestId &&
+    challenge.authorizeUrl &&
+    challenge.expiresAt &&
+    challenge.storeName &&
+    challenge.deviceName &&
+    challenge.storeCode &&
+    challenge.deviceId,
+  )
+  return hasCompleteChallenge &&
+    challenge.storeCode === storeCode &&
+    challenge.deviceId === deviceId &&
+    Number.isFinite(expiresAt) &&
+    expiresAt > Date.now()
+}
 
 type ScannerDebugState = {
   mounted: boolean
@@ -937,6 +963,18 @@ const s: Record<string, CSSProperties> = {
   posAuthTitle: { fontSize: 11, fontWeight: 900, color: '#fff', marginBottom: 3 },
   posAuthBtn: { width: '100%', marginTop: 6, minHeight: 28, borderRadius: 8, border: '1px solid rgba(96,165,250,.28)', background: 'rgba(37,99,235,.72)', color: '#fff', fontSize: 10, fontWeight: 900, cursor: 'pointer' },
   posAuthBtnDis: { opacity: 0.55, cursor: 'not-allowed' },
+  posDeviceRecoveryOverlay: { position: 'fixed', inset: 0, zIndex: 230, background: 'rgba(15,23,42,.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 },
+  posDeviceRecoveryModal: { width: 'min(460px, 100%)', maxHeight: 'calc(100dvh - 36px)', overflowY: 'auto', background: '#fff', borderRadius: 18, padding: 24, boxShadow: '0 20px 60px rgba(15,23,42,.30)', textAlign: 'center' },
+  posDeviceRecoveryTitle: { fontSize: 21, lineHeight: 1.3, fontWeight: 950, color: '#111827', marginBottom: 9 },
+  posDeviceRecoveryBody: { fontSize: 14, lineHeight: 1.6, color: '#475569', marginBottom: 16 },
+  posDeviceRecoveryStore: { borderRadius: 10, padding: '8px 10px', background: '#f8fafc', color: '#334155', fontSize: 13, fontWeight: 900, marginBottom: 14 },
+  posDeviceRecoveryQr: { width: 252, minHeight: 252, margin: '0 auto 14px', padding: 16, borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  posDeviceRecoveryActions: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 },
+  posDeviceRecoveryPrimary: { minHeight: 44, borderRadius: 11, border: 'none', background: '#2563eb', color: '#fff', fontSize: 14, fontWeight: 900, cursor: 'pointer' },
+  posDeviceRecoverySecondary: { minHeight: 44, borderRadius: 11, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontSize: 14, fontWeight: 800, cursor: 'pointer' },
+  posDeviceRecoveryDisabled: { opacity: 0.55, cursor: 'not-allowed' },
+  posDeviceRecoveryNotice: { marginTop: 14, borderRadius: 10, padding: '10px 12px', background: '#eff6ff', color: '#1d4ed8', fontSize: 13, lineHeight: 1.5 },
+  posDeviceRecoveryError: { marginTop: 14, borderRadius: 10, padding: '10px 12px', background: '#fef2f2', color: '#b91c1c', fontSize: 13, lineHeight: 1.5 },
   sideDivider: { height: 1, background: 'rgba(255,255,255,.08)', margin: '6px 0' },
   sideCats:    { padding: '6px 6px', flex: 1 },
   sideCat:     { display: 'block', width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 8, border: 'none', background: 'transparent', color: '#cbd5e1', fontSize: 12, cursor: 'pointer', marginBottom: 2 },
@@ -1239,6 +1277,9 @@ export default function CashierPage() {
   const [posAuthError, setPosAuthError] = useState('')
   const [posAuthChallenge, setPosAuthChallenge] = useState<PosAuthChallenge | null>(null)
   const [posAuthChecking, setPosAuthChecking] = useState(false)
+  const [posDeviceRecoveryOpen, setPosDeviceRecoveryOpen] = useState(false)
+  const [posAuthExpired, setPosAuthExpired] = useState(false)
+  const posAuthStartInFlight = useRef(false)
   const [posAccountAccess, setPosAccountAccess] = useState<PosAccountAccessState>('checking')
   const [posAccountAccessMessage, setPosAccountAccessMessage] = useState('')
   const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
@@ -1706,6 +1747,24 @@ export default function CashierPage() {
         success: 'This POS computer is authorized',
         failed: 'Authorization failed. Please ask the owner or active staff to sign in and try again.',
         needAuth: 'This POS computer is not authorized yet. Please bind this device first.',
+        recoveryTitle: 'This computer is not authorized as a cashier',
+        recoveryBody: 'This computer has not been bound as a cashier for this store. Bind it once to continue cashiering.',
+        bindThisDevice: 'Bind this device',
+        notNow: 'Not now',
+        generating: 'Generating...',
+        waitingForOwner: 'Ask the owner to scan the code and confirm authorization on their phone.',
+        refreshQr: 'Refresh QR code',
+        checking: 'Checking...',
+        recheck: 'I have authorized, check again',
+        copyLink: 'Copy authorization link',
+        close: 'Close',
+        expired: 'The authorization QR code has expired.',
+        regenerate: 'Generate a new QR code',
+        authorizedRetry: 'This device is authorized. Please manually confirm the current transaction again.',
+        copied: 'Authorization link copied',
+        copyFailed: 'Could not copy. Please copy the authorization link manually.',
+        waiting: 'The owner has not confirmed yet. Please confirm authorization on the phone.',
+        checkFailed: 'Unable to check authorization now. Please try again later.',
       }
     }
     if (lang === 'km') {
@@ -1719,6 +1778,24 @@ export default function CashierPage() {
         success: 'កុំព្យូទ័រ POS នេះបានអនុញ្ញាត',
         failed: 'អនុញ្ញាតមិនបាន។ សូមឱ្យម្ចាស់ ឬបុគ្គលិកដែលសកម្ម login ហើយសាកល្បងម្តងទៀត។',
         needAuth: 'កុំព្យូទ័រ POS នេះមិនទាន់អនុញ្ញាត។ សូមភ្ជាប់ឧបករណ៍ជាមុន។',
+        recoveryTitle: 'កុំព្យូទ័រនេះមិនទាន់បានអនុញ្ញាតជាម៉ាស៊ីនគិតលុយ',
+        recoveryBody: 'កុំព្យូទ័រនេះមិនទាន់បានភ្ជាប់ជាម៉ាស៊ីនគិតលុយសម្រាប់ហាងនេះទេ។ ភ្ជាប់ម្តង ដើម្បីបន្តគិតលុយ។',
+        bindThisDevice: 'ភ្ជាប់កុំព្យូទ័រនេះ',
+        notNow: 'មិនទាន់ភ្ជាប់',
+        generating: 'កំពុងបង្កើត...',
+        waitingForOwner: 'សូមឱ្យម្ចាស់ស្កេនកូដ ហើយបញ្ជាក់ការអនុញ្ញាតនៅលើទូរស័ព្ទ។',
+        refreshQr: 'បង្កើត QR ថ្មី',
+        checking: 'កំពុងពិនិត្យ...',
+        recheck: 'ខ្ញុំបានអនុញ្ញាតហើយ ពិនិត្យម្តងទៀត',
+        copyLink: 'ចម្លងតំណអនុញ្ញាត',
+        close: 'បិទ',
+        expired: 'QR ការអនុញ្ញាតបានផុតកំណត់។',
+        regenerate: 'បង្កើត QR ថ្មី',
+        authorizedRetry: 'កុំព្យូទ័រនេះបានអនុញ្ញាត។ សូមបញ្ជាក់ប្រតិបត្តិការបច្ចុប្បន្នដោយដៃម្តងទៀត។',
+        copied: 'បានចម្លងតំណអនុញ្ញាត',
+        copyFailed: 'មិនអាចចម្លងបានទេ។ សូមចម្លងតំណអនុញ្ញាតដោយដៃ។',
+        waiting: 'ម្ចាស់មិនទាន់បញ្ជាក់ទេ។ សូមបញ្ជាក់ការអនុញ្ញាតនៅលើទូរស័ព្ទ។',
+        checkFailed: 'មិនអាចពិនិត្យការអនុញ្ញាតឥឡូវនេះទេ។ សូមសាកល្បងម្ដងទៀតពេលក្រោយ។',
       }
     }
     return {
@@ -1731,15 +1808,43 @@ export default function CashierPage() {
       success: '本 POS 电脑已授权',
       failed: '授权失败，请让老板或在职员工先登录后再试。',
       needAuth: '本 POS 电脑尚未授权，请先绑定本机。',
+      recoveryTitle: '本机尚未授权为收银机',
+      recoveryBody: '本电脑还没有绑定为本店收银机，绑定一次即可继续收银。',
+      bindThisDevice: '绑定本机',
+      notNow: '暂不绑定',
+      generating: '生成中…',
+      waitingForOwner: '老板扫码后，在手机上点“确认授权”。',
+      refreshQr: '刷新二维码',
+      checking: '检查中…',
+      recheck: '我已授权，重新检查',
+      copyLink: '复制授权链接',
+      close: '关闭',
+      expired: '授权二维码已过期',
+      regenerate: '重新生成二维码',
+      authorizedRetry: '本机授权成功，请重新确认当前交易',
+      copied: '授权链接已复制',
+      copyFailed: '复制失败，请手动复制授权链接',
+      waiting: '还没有收到老板确认，请确认手机上已点“确认授权”。',
+      checkFailed: '暂时无法检查授权结果，请稍后重试。',
     }
   }
 
   function handlePosUnauthorized(message?: string) {
     const copy = posAuthCopy()
+    const canReuseChallenge = isReusablePosAuthChallenge(
+      posAuthChallenge,
+      storeCode,
+      getPosDeviceId(),
+      posAuthExpired || Boolean(posAuthError),
+    )
     if (storeCode) clearPosDeviceToken(storeCode)
     setPosDeviceToken('')
-    setPosAuthChallenge(null)
-    setPosAuthError(message || copy.needAuth)
+    if (!canReuseChallenge) {
+      setPosAuthChallenge(null)
+      setPosAuthExpired(false)
+      setPosAuthError('')
+    }
+    setPosDeviceRecoveryOpen(true)
     showToast(message || copy.needAuth)
   }
 
@@ -1748,8 +1853,11 @@ export default function CashierPage() {
   }
 
   async function startPosAuthorization() {
-    if (!storeCode || posAuthLoading) return
+    if (!storeCode || posAuthLoading || posAuthStartInFlight.current) return
+    posAuthStartInFlight.current = true
     setPosAuthLoading(true)
+    setPosAuthChallenge(null)
+    setPosAuthExpired(false)
     setPosAuthError('')
     try {
       const deviceId = getPosDeviceId()
@@ -1760,12 +1868,13 @@ export default function CashierPage() {
       })
       const body = await res.json().catch(() => null)
       if (!res.ok || !body?.requestId || !body?.authorizeUrl) throw new Error(body?.message || body?.error || 'AUTH_START_FAILED')
-      setPosAuthChallenge(body)
+      setPosAuthChallenge({ ...body, storeCode, deviceId })
     } catch {
       const msg = posAuthCopy().failed
       setPosAuthError(msg)
       showToast(msg)
     } finally {
+      posAuthStartInFlight.current = false
       setPosAuthLoading(false)
     }
   }
@@ -1787,17 +1896,20 @@ export default function CashierPage() {
         savePosDeviceToken(storeCode, body.token)
         setPosDeviceToken(body.token)
         setPosAuthChallenge(null)
+        setPosAuthExpired(false)
         setPosAuthError('')
         showToast(posAuthCopy().success)
         return
       }
       if (body.status === 'EXPIRED') {
-        setPosAuthError('授权二维码已过期，请刷新二维码后让老板重新扫码。')
+        setPosAuthChallenge(null)
+        setPosAuthExpired(true)
+        setPosAuthError(posAuthCopy().expired)
         return
       }
-      if (options?.toast) showToast('还没有收到老板确认，请确认手机上已点“确认授权”。')
+      if (options?.toast) showToast(posAuthCopy().waiting)
     } catch {
-      setPosAuthError('暂时无法检查授权结果，请稍后重试。')
+      setPosAuthError(posAuthCopy().checkFailed)
     } finally {
       setPosAuthChecking(false)
     }
@@ -1806,7 +1918,6 @@ export default function CashierPage() {
   function requireOnlinePosAuthorization() {
     if (posAccountAccess === 'authorized') return true
     if (posDeviceToken) return true
-    handlePosUnauthorized()
     return false
   }
 
@@ -1817,12 +1928,18 @@ export default function CashierPage() {
   }, [storeCode, posAccountAccess, posDeviceToken, posAuthChallenge, posAuthLoading])
 
   useEffect(() => {
-    if (!storeCode || posAccountAccess === 'authorized' || posDeviceToken || !posAuthChallenge) return
+    const canPollRecovery = isReusablePosAuthChallenge(
+      posAuthChallenge,
+      storeCode,
+      getPosDeviceId(),
+      posAuthExpired || Boolean(posAuthError),
+    )
+    if (!posDeviceRecoveryOpen || posDeviceToken || !canPollRecovery) return
     const timer = window.setInterval(() => {
       void checkPosAuthorization()
     }, 3000)
     return () => window.clearInterval(timer)
-  }, [storeCode, posAccountAccess, posDeviceToken, posAuthChallenge, checkPosAuthorization])
+  }, [storeCode, posDeviceRecoveryOpen, posDeviceToken, posAuthChallenge, posAuthExpired, posAuthError, checkPosAuthorization])
 
   function buildReceiptSnapshot(input: {
     items: ReturnType<typeof cashierDisplayItems>
@@ -3498,6 +3615,117 @@ export default function CashierPage() {
 
   return (
     <div>
+      {posDeviceRecoveryOpen && (
+        <div
+          style={s.posDeviceRecoveryOverlay}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pos-device-recovery-title"
+        >
+          <section style={s.posDeviceRecoveryModal}>
+            {posDeviceToken ? (
+              <>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>✓</div>
+                <h2 id="pos-device-recovery-title" style={s.posDeviceRecoveryTitle}>{posAuthCopy().success}</h2>
+                <div style={s.posDeviceRecoveryNotice}>{posAuthCopy().authorizedRetry}</div>
+                <button
+                  type="button"
+                  style={{ ...s.posDeviceRecoveryPrimary, width: '100%', marginTop: 16 }}
+                  onClick={() => setPosDeviceRecoveryOpen(false)}
+                >
+                  {lang === 'en' ? 'Got it, return to cashier' : lang === 'km' ? 'យល់ហើយ ត្រឡប់ទៅគិតលុយ' : '知道了，返回收银'}
+                </button>
+              </>
+            ) : posAuthExpired ? (
+              <>
+                <h2 id="pos-device-recovery-title" style={s.posDeviceRecoveryTitle}>{posAuthCopy().expired}</h2>
+                <div style={s.posDeviceRecoveryBody}>{posAuthCopy().waitingForOwner}</div>
+                <div style={s.posDeviceRecoveryActions}>
+                  <button
+                    type="button"
+                    style={{ ...s.posDeviceRecoveryPrimary, ...(posAuthLoading ? s.posDeviceRecoveryDisabled : {}) }}
+                    onClick={() => void startPosAuthorization()}
+                    disabled={posAuthLoading}
+                  >
+                    {posAuthLoading ? posAuthCopy().generating : posAuthCopy().regenerate}
+                  </button>
+                  <button type="button" style={s.posDeviceRecoverySecondary} onClick={() => setPosDeviceRecoveryOpen(false)}>
+                    {posAuthCopy().close}
+                  </button>
+                </div>
+              </>
+            ) : posAuthChallenge ? (
+              <>
+                <h2 id="pos-device-recovery-title" style={s.posDeviceRecoveryTitle}>{posAuthCopy().recoveryTitle}</h2>
+                <div style={s.posDeviceRecoveryStore}>{storeName || posAuthChallenge.storeName || storeCode}</div>
+                <div style={s.posDeviceRecoveryQr}>
+                  <QRCode value={posAuthChallenge.authorizeUrl} size={220} />
+                </div>
+                <div style={s.posDeviceRecoveryBody}>{posAuthCopy().waitingForOwner}</div>
+                <div style={s.posDeviceRecoveryActions}>
+                  <button
+                    type="button"
+                    style={{ ...s.posDeviceRecoverySecondary, ...(posAuthLoading ? s.posDeviceRecoveryDisabled : {}) }}
+                    onClick={() => void startPosAuthorization()}
+                    disabled={posAuthLoading}
+                  >
+                    {posAuthLoading ? posAuthCopy().generating : posAuthCopy().refreshQr}
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...s.posDeviceRecoveryPrimary, ...(posAuthChecking ? s.posDeviceRecoveryDisabled : {}) }}
+                    onClick={() => void checkPosAuthorization({ toast: true })}
+                    disabled={posAuthChecking}
+                  >
+                    {posAuthChecking ? posAuthCopy().checking : posAuthCopy().recheck}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  style={{ ...s.posDeviceRecoverySecondary, width: '100%', marginTop: 10 }}
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(posAuthChallenge.authorizeUrl)
+                      showToast(posAuthCopy().copied)
+                    } catch {
+                      showToast(posAuthCopy().copyFailed)
+                    }
+                  }}
+                >
+                  {posAuthCopy().copyLink}
+                </button>
+                <button
+                  type="button"
+                  style={{ ...s.posDeviceRecoverySecondary, width: '100%', marginTop: 10 }}
+                  onClick={() => setPosDeviceRecoveryOpen(false)}
+                >
+                  {posAuthCopy().close}
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 id="pos-device-recovery-title" style={s.posDeviceRecoveryTitle}>{posAuthCopy().recoveryTitle}</h2>
+                <div style={s.posDeviceRecoveryBody}>{posAuthCopy().recoveryBody}</div>
+                <div style={s.posDeviceRecoveryActions}>
+                  <button
+                    type="button"
+                    style={{ ...s.posDeviceRecoveryPrimary, ...(posAuthLoading ? s.posDeviceRecoveryDisabled : {}) }}
+                    onClick={() => void startPosAuthorization()}
+                    disabled={posAuthLoading}
+                  >
+                    {posAuthLoading ? posAuthCopy().generating : posAuthCopy().bindThisDevice}
+                  </button>
+                  <button type="button" style={s.posDeviceRecoverySecondary} onClick={() => setPosDeviceRecoveryOpen(false)} disabled={posAuthLoading}>
+                    {posAuthCopy().notNow}
+                  </button>
+                </div>
+              </>
+            )}
+            {!posDeviceToken && posAuthError && <div style={s.posDeviceRecoveryError}>{posAuthError}</div>}
+          </section>
+        </div>
+      )}
+
       {/* ── Sugar modal — centered ─────────────────────────────────────────── */}
       {sugarModal && (
         <div style={s.sugarMask} onClick={() => setSugarModal(null)}>
