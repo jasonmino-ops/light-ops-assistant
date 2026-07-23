@@ -256,6 +256,7 @@ async function cleanupFixture() {
   await prisma.customerOrder.deleteMany({ where: { id: order.id } })
   await prisma.member.deleteMany({ where: { id: member.id } })
   await prisma.product.deleteMany({ where: { id: product.id } })
+  await prisma.operationLog.deleteMany({ where: { tenantId: tenant.id } })
   await prisma.userStoreRole.deleteMany({ where: { tenantId: tenant.id } })
   await prisma.user.deleteMany({ where: { id: { in: [owner.id, staff.id] } } })
   await prisma.store.deleteMany({ where: { id: store.id } })
