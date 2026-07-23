@@ -64,6 +64,9 @@ export function isPosUnauthorized(body: unknown, status?: number) {
     error === 'BROWSER_DEVICE_EXPIRED' ||
     error === 'BROWSER_DEVICE_REVOKED' ||
     error === 'BROWSER_DEVICE_OPERATOR_UNAVAILABLE' ||
+    error === 'SUBSCRIPTION_BLOCKED' ||
+    error === 'TENANT_INACTIVE' ||
+    error === 'STORE_INACTIVE' ||
     error === 'DEVICE_STORE_MISMATCH' ||
     error === 'TRANSACTION_SCOPE_FORBIDDEN'
 }

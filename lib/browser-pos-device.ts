@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { POS_DEVICE_OPERATIONS, type PosDeviceOperation } from '@/lib/transaction-policy-types'
+import { isDesktopSubscriptionAllowed, resolveDesktopSubscriptionAccess } from '@/lib/desktop-activation/subscription-access'
 
 const TOKEN_VERSION = 'pos-device-v1'
 const TOKEN_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000
@@ -46,6 +47,9 @@ export type BrowserPosDeviceFailure = {
     | 'BROWSER_DEVICE_NOT_FOUND'
     | 'BROWSER_DEVICE_EXPIRED'
     | 'BROWSER_DEVICE_REVOKED'
+    | 'TENANT_INACTIVE'
+    | 'STORE_INACTIVE'
+    | 'SUBSCRIPTION_BLOCKED'
     | 'DEVICE_STORE_MISMATCH'
     | 'TRANSACTION_SCOPE_FORBIDDEN'
 }
@@ -66,11 +70,14 @@ export function hashPosDeviceToken(token: string): string {
   return crypto.createHmac('sha256', secret()).update(`browser-pos-device-token:v1:${token}`).digest('hex')
 }
 
-export function signPosDeviceToken(input: Omit<PosDeviceTokenPayload, 'v' | 'iat'>): string {
+export function signPosDeviceToken(
+  input: Omit<PosDeviceTokenPayload, 'v' | 'iat'>,
+  issuedAtMs = Date.now(),
+): string {
   const payload: PosDeviceTokenPayload = {
     v: TOKEN_VERSION,
     ...input,
-    iat: Date.now(),
+    iat: issuedAtMs,
   }
   const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url')
   return `${encoded}.${signPayload(encoded)}`
@@ -156,54 +163,76 @@ async function writeAuthorizationFailure(
   })
 }
 
-export async function issueBrowserPosDevice(input: BrowserPosStoreScope & {
+export type BrowserPosDeviceIssueInput = BrowserPosStoreScope & {
   deviceId: string
   issuedByUserId: string
   scopes?: readonly PosDeviceOperation[]
-}) {
+  displayName?: string | null
+  browserInfo?: string | null
+}
+
+function normalizedDeviceMetadata(value: string | null | undefined, maxLength: number) {
+  return value?.trim().slice(0, maxLength) || null
+}
+
+/**
+ * Issues a Browser POS credential within an existing database transaction.
+ *
+ * Shared-link redemption calls this directly so challenge consumption, device
+ * activation and credential issuance are one all-or-nothing unit. The raw
+ * credential is returned to the caller only and is never written to storage.
+ */
+export async function issueBrowserPosDeviceInTransaction(
+  tx: Prisma.TransactionClient,
+  input: BrowserPosDeviceIssueInput,
+) {
   const scopes = input.scopes ? [...input.scopes] : DEFAULT_BROWSER_POS_SCOPES
+  const issuedAt = new Date()
   const token = signPosDeviceToken({
     tenantId: input.tenantId,
     storeId: input.storeId,
     storeCode: input.storeCode,
     deviceId: input.deviceId,
     issuedBy: input.issuedByUserId,
-  })
+  }, issuedAt.getTime())
   const tokenHash = hashPosDeviceToken(token)
-  const issuedAt = new Date()
   const expiresAt = new Date(issuedAt.getTime() + TOKEN_MAX_AGE_MS)
+  const displayName = normalizedDeviceMetadata(input.displayName, 80)
+  const browserInfo = normalizedDeviceMetadata(input.browserInfo, 1_000)
 
-  const device = await prisma.$transaction(async (tx) => {
-    const existing = await tx.browserPosDevice.findFirst({
-      where: { storeId: input.storeId, browserDeviceId: input.deviceId, activeSlot: 'ACTIVE' },
-      select: { id: true },
+  const existing = await tx.browserPosDevice.findFirst({
+    where: { storeId: input.storeId, browserDeviceId: input.deviceId, activeSlot: 'ACTIVE' },
+    select: { id: true },
+  })
+  const device = existing
+    ? await tx.browserPosDevice.update({
+      where: { id: existing.id },
+      data: {
+        tenantId: input.tenantId,
+        status: 'ACTIVE',
+        tokenHash,
+        tokenHashVersion: 1,
+        tokenIssuedAt: issuedAt,
+        tokenExpiresAt: expiresAt,
+        scopes,
+        issuedByUserId: input.issuedByUserId,
+        displayName,
+        browserInfo,
+        activatedAt: issuedAt,
+        lastSeenAt: issuedAt,
+        revokedAt: null,
+        revokedByUserId: null,
+        revocationReason: null,
+        legacyMigratedAt: null,
+      },
     })
-    if (existing) {
-      return tx.browserPosDevice.update({
-        where: { id: existing.id },
-        data: {
-          tenantId: input.tenantId,
-          status: 'ACTIVE',
-          tokenHash,
-          tokenHashVersion: 1,
-          tokenIssuedAt: issuedAt,
-          tokenExpiresAt: expiresAt,
-          scopes,
-          issuedByUserId: input.issuedByUserId,
-          activatedAt: issuedAt,
-          lastSeenAt: issuedAt,
-          revokedAt: null,
-          revokedByUserId: null,
-          revocationReason: null,
-          legacyMigratedAt: null,
-        },
-      })
-    }
-    return tx.browserPosDevice.create({
+    : await tx.browserPosDevice.create({
       data: {
         tenantId: input.tenantId,
         storeId: input.storeId,
         browserDeviceId: input.deviceId,
+        displayName,
+        browserInfo,
         status: 'ACTIVE',
         activeSlot: 'ACTIVE',
         tokenHash,
@@ -216,18 +245,32 @@ export async function issueBrowserPosDevice(input: BrowserPosStoreScope & {
         lastSeenAt: issuedAt,
       },
     })
-  })
 
-  await writeAudit({
-    tenantId: input.tenantId,
-    storeId: input.storeId,
-    userId: input.issuedByUserId,
-    actionType: 'BROWSER_POS_DEVICE_ISSUED',
-    targetId: device.id,
-    status: 'SUCCESS',
-    payload: { browserDeviceId: input.deviceId, scopes, tokenExpiresAt: expiresAt.toISOString() },
+  // Keep issuance audit in the same transaction. If this fails, neither the
+  // active device nor a consumed shared link can survive on its own.
+  await tx.operationLog.create({
+    data: {
+      tenantId: input.tenantId,
+      storeId: input.storeId,
+      userId: input.issuedByUserId,
+      actionType: 'BROWSER_POS_DEVICE_ISSUED',
+      targetType: 'BROWSER_POS_DEVICE',
+      targetId: device.id,
+      status: 'SUCCESS',
+      payloadSnapshot: {
+        browserDeviceId: input.deviceId,
+        displayName,
+        browserInfo,
+        scopes,
+        tokenExpiresAt: expiresAt.toISOString(),
+      },
+    },
   })
   return { token, device, expiresAt }
+}
+
+export async function issueBrowserPosDevice(input: BrowserPosDeviceIssueInput) {
+  return prisma.$transaction((tx) => issueBrowserPosDeviceInTransaction(tx, input))
 }
 
 async function registerLegacyBrowserPosDevice(
@@ -325,6 +368,26 @@ export async function authorizeBrowserPosDevice(
   if (device.status === 'REVOKED') {
     await writeAuthorizationFailure(expected, 'BROWSER_DEVICE_REVOKED', device.browserDeviceId)
     return { ok: false, status: 403, error: 'BROWSER_DEVICE_REVOKED' }
+  }
+  const lifecycle = await prisma.browserPosDevice.findUnique({
+    where: { id: device.id },
+    include: {
+      tenant: { select: { status: true } },
+      store: { select: { status: true } },
+    },
+  })
+  if (!lifecycle || lifecycle.tenant.status !== 'ACTIVE') {
+    await writeAuthorizationFailure(expected, 'TENANT_INACTIVE', device.browserDeviceId)
+    return { ok: false, status: 403, error: 'TENANT_INACTIVE' }
+  }
+  if (lifecycle.store.status !== 'ACTIVE') {
+    await writeAuthorizationFailure(expected, 'STORE_INACTIVE', device.browserDeviceId)
+    return { ok: false, status: 403, error: 'STORE_INACTIVE' }
+  }
+  const subscription = await resolveDesktopSubscriptionAccess(prisma, device.tenantId)
+  if (!isDesktopSubscriptionAllowed(subscription)) {
+    await writeAuthorizationFailure(expected, 'SUBSCRIPTION_BLOCKED', device.browserDeviceId)
+    return { ok: false, status: 403, error: 'SUBSCRIPTION_BLOCKED' }
   }
   if (device.status === 'EXPIRED' || device.tokenExpiresAt.getTime() <= Date.now()) {
     if (device.status === 'ACTIVE') {

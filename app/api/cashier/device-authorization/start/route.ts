@@ -8,8 +8,12 @@
 import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-
-const REQUEST_TTL_MS = 10 * 60 * 1000
+import {
+  POS_DEVICE_AUTH_ACTION,
+  POS_DEVICE_AUTH_QR,
+  POS_DEVICE_AUTH_TARGET,
+  POS_DEVICE_AUTH_TTL_MS,
+} from '@/lib/browser-pos-authorization'
 
 function originFrom(req: NextRequest) {
   return req.headers.get('origin') || req.nextUrl.origin
@@ -36,18 +40,19 @@ export async function POST(req: NextRequest) {
   }
 
   const requestId = randomUUID()
-  const expiresAt = new Date(Date.now() + REQUEST_TTL_MS).toISOString()
+  const expiresAt = new Date(Date.now() + POS_DEVICE_AUTH_TTL_MS).toISOString()
   await prisma.operationLog.create({
     data: {
       tenantId: store.tenantId,
       storeId: store.id,
-      actionType: 'POS_DEVICE_AUTH_REQUEST',
-      targetType: 'POS_DEVICE',
+      actionType: POS_DEVICE_AUTH_ACTION,
+      targetType: POS_DEVICE_AUTH_TARGET,
       targetId: deviceId,
       requestId,
       status: 'FAILED',
       message: 'Desktop POS device authorization request',
       payloadSnapshot: {
+        challengeType: POS_DEVICE_AUTH_QR,
         storeCode: store.code,
         storeName: store.name,
         deviceName,

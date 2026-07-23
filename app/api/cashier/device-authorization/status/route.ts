@@ -6,19 +6,13 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { issueBrowserPosDevice } from '@/lib/browser-pos-device'
-
-type AuthPayload = {
-  expiresAt?: string
-  storeCode?: string
-  storeName?: string
-  deviceName?: string
-  deliveredAt?: string
-}
-
-function readPayload(value: unknown): AuthPayload {
-  return (typeof value === 'object' && value !== null ? value : {}) as AuthPayload
-}
+import {
+  getPosAuthorizationPayload,
+  isPosAuthorizationExpired,
+  POS_DEVICE_AUTH_SHARED_LINK,
+  redeemBrowserPosAuthorization,
+  getPosAuthorizationChallengeType,
+} from '@/lib/browser-pos-authorization'
 
 export async function GET(req: NextRequest) {
   const requestId = req.nextUrl.searchParams.get('requestId')?.trim()
@@ -38,37 +32,43 @@ export async function GET(req: NextRequest) {
   })
   if (!row) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
 
-  const payload = readPayload(row.payloadSnapshot)
-  const expiresAt = payload.expiresAt ? new Date(payload.expiresAt).getTime() : 0
-  if (!expiresAt || Date.now() > expiresAt) {
+  const payload = getPosAuthorizationPayload(row.payloadSnapshot)
+  if (isPosAuthorizationExpired(row.payloadSnapshot)) {
     return NextResponse.json({ status: 'EXPIRED' })
   }
-  if (row.status === 'SUCCESS' && row.storeId && row.targetId && row.userId && payload.storeCode && !payload.deliveredAt) {
-    const issued = await issueBrowserPosDevice({
-      tenantId: row.tenantId,
-      storeId: row.storeId,
-      storeCode: payload.storeCode,
-      deviceId: row.targetId,
-      issuedByUserId: row.userId,
+  const isSharedLink = getPosAuthorizationChallengeType(row.payloadSnapshot) === POS_DEVICE_AUTH_SHARED_LINK
+  const hasApproval = Boolean(payload.approvedAt || (row.status === 'SUCCESS' && row.userId && !payload.deliveredAt))
+  if (!isSharedLink && hasApproval && !payload.browserPosDeviceId && !payload.deliveredAt) {
+    const redeemed = await redeemBrowserPosAuthorization({
+      requestId,
+      deviceId,
+      deviceName: payload.deviceName,
+      browserInfo: req.headers.get('user-agent'),
     })
-    await prisma.operationLog.update({
-      where: { id: row.id },
-      data: {
-        payloadSnapshot: {
-          ...payload,
-          deliveredAt: new Date().toISOString(),
-          tokenExpiresAt: issued.expiresAt.toISOString(),
-        },
-      },
-    })
+    if (redeemed.ok) {
+      return NextResponse.json({
+        status: 'APPROVED',
+        token: redeemed.token,
+        storeCode: redeemed.storeCode,
+        storeName: redeemed.storeName,
+        deviceName: redeemed.deviceName,
+      })
+    }
+    if (redeemed.error === 'CHALLENGE_EXPIRED') return NextResponse.json({ status: 'EXPIRED' })
+    if (redeemed.error !== 'CHALLENGE_USED') {
+      return NextResponse.json({ error: redeemed.error }, { status: redeemed.status })
+    }
+  }
+  if (row.status === 'SUCCESS' || payload.browserPosDeviceId || payload.deliveredAt) {
+    return NextResponse.json({ status: 'APPROVED' })
+  }
+  if (hasApproval) {
     return NextResponse.json({
       status: 'APPROVED',
-      token: issued.token,
       storeCode: payload.storeCode,
       storeName: payload.storeName,
       deviceName: payload.deviceName,
     })
   }
-  if (row.status === 'SUCCESS') return NextResponse.json({ status: 'APPROVED' })
   return NextResponse.json({ status: 'PENDING' })
 }

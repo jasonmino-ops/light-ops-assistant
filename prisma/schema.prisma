@@ -1241,6 +1241,8 @@ model BrowserPosDevice {
   tenantId           String
   storeId            String
   browserDeviceId    String
+  displayName        String?
+  browserInfo        String?                @db.Text
   status             BrowserPosDeviceStatus @default(ACTIVE)
   activeSlot         String?                @default("ACTIVE")
   tokenHash          String                 @unique

@@ -6,18 +6,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
-
-type AuthPayload = {
-  storeCode?: string
-  storeName?: string
-  deviceName?: string
-  expiresAt?: string
-  deliveredAt?: string
-}
-
-function readPayload(value: unknown): AuthPayload {
-  return (typeof value === 'object' && value !== null ? value : {}) as AuthPayload
-}
+import {
+  approveBrowserPosAuthorization,
+  getPosAuthorizationChallengeType,
+  getPosAuthorizationPayload,
+  isPosAuthorizationExpired,
+  POS_DEVICE_AUTH_SHARED_LINK,
+} from '@/lib/browser-pos-authorization'
 
 async function findRequest(requestId: string) {
   return prisma.operationLog.findFirst({
@@ -32,6 +27,7 @@ async function findRequest(requestId: string) {
       tenantId: true,
       storeId: true,
       targetId: true,
+      userId: true,
       status: true,
       payloadSnapshot: true,
     },
@@ -45,11 +41,15 @@ export async function GET(
   const { requestId } = await params
   const row = await findRequest(requestId)
   if (!row) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
-  const payload = readPayload(row.payloadSnapshot)
-  const expiresAt = payload.expiresAt ? new Date(payload.expiresAt).getTime() : 0
+  const payload = getPosAuthorizationPayload(row.payloadSnapshot)
+  const sharedLink = getPosAuthorizationChallengeType(row.payloadSnapshot) === POS_DEVICE_AUTH_SHARED_LINK
+  const expired = isPosAuthorizationExpired(row.payloadSnapshot)
+  const bound = Boolean(payload.browserPosDeviceId || (row.status === 'SUCCESS' && payload.deliveredAt))
+  const approved = !sharedLink && Boolean(payload.approvedAt || (row.status === 'SUCCESS' && row.userId && !bound))
   return NextResponse.json({
     requestId,
-    status: !expiresAt || Date.now() > expiresAt ? 'EXPIRED' : row.status === 'SUCCESS' ? 'APPROVED' : 'PENDING',
+    status: expired ? 'EXPIRED' : bound ? 'USED' : approved ? 'APPROVED' : 'PENDING',
+    flow: sharedLink ? 'SHARED_LINK' : 'OWNER_QR',
     storeName: payload.storeName ?? '',
     storeCode: payload.storeCode ?? '',
     deviceName: payload.deviceName ?? '前台收银机',
@@ -69,45 +69,26 @@ export async function POST(
   }
 
   const { requestId } = await params
-  const row = await findRequest(requestId)
-  if (!row || !row.targetId) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
-  if (!row.storeId) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
-  if (row.tenantId !== ctx.tenantId) {
-    return NextResponse.json({ error: 'FORBIDDEN', message: '不能授权其他商户的收银机。' }, { status: 403 })
-  }
-
-  const payload = readPayload(row.payloadSnapshot)
-  const expiresAt = payload.expiresAt ? new Date(payload.expiresAt).getTime() : 0
-  if (!expiresAt || Date.now() > expiresAt) {
-    return NextResponse.json({ error: 'EXPIRED', message: '授权二维码已过期，请在电脑上刷新后重新扫码。' }, { status: 410 })
-  }
-
   let body: { deviceName?: string }
   try { body = await req.json() } catch { body = {} }
-  const deviceName = body.deviceName?.trim() || payload.deviceName || '前台收银机'
-  const store = await prisma.store.findFirst({
-    where: { id: row.storeId, tenantId: row.tenantId, status: 'ACTIVE' },
-    select: { id: true, code: true, tenantId: true, name: true },
+  const result = await approveBrowserPosAuthorization({
+    requestId,
+    tenantId: ctx.tenantId,
+    userId: ctx.userId,
+    deviceName: typeof body.deviceName === 'string' ? body.deviceName : null,
   })
-  if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
-
-  await prisma.operationLog.update({
-    where: { id: row.id },
-    data: {
-      userId: ctx.userId,
-      status: 'SUCCESS',
-      message: 'Browser POS device authorized by owner',
-      payloadSnapshot: {
-        ...payload,
-        storeCode: store.code,
-        storeName: store.name,
-        deviceName,
-        approvedAt: new Date().toISOString(),
-      },
-    },
-  })
+  if (!result.ok) {
+    const message = result.error === 'CHALLENGE_EXPIRED'
+      ? '授权二维码已过期，请在电脑上刷新后重新扫码。'
+      : result.error === 'CHALLENGE_TYPE_INVALID'
+        ? '该链接由老板直接分享，请在收银电脑上打开后绑定。'
+        : result.error === 'ISSUER_UNAVAILABLE'
+          ? '老板账号或门店权限已失效，无法完成授权。'
+          : '授权请求无效或已使用，请在电脑上重新发起。'
+    return NextResponse.json({ error: result.error, message }, { status: result.status })
+  }
 
   // The raw token is deliberately not persisted. The original requesting browser
-  // receives it once through the deviceId-bound status endpoint.
-  return NextResponse.json({ status: 'APPROVED', storeName: store.name, deviceName })
+  // consumes this approved challenge atomically with its BrowserPosDevice bind.
+  return NextResponse.json({ status: 'APPROVED', storeName: result.storeName, deviceName: result.deviceName })
 }
