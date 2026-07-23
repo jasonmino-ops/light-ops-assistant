@@ -26,6 +26,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Report exact CI source
+        shell: pwsh
+        run: |
+          Write-Output "GITHUB_SHA=$env:GITHUB_SHA"
+          Write-Output "GITHUB_REF=$env:GITHUB_REF"
+
       - name: Checkout Windows Provider artifact source
         uses: actions/checkout@v4
         with:

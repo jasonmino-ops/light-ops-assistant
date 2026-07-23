@@ -5,8 +5,19 @@ on:
     branches: [main, "feat/**"]
     paths:
       - "app/api/desktop/**"
+      - "app/api/cashier/**"
+      - "app/cashier/authorize/**"
       - "lib/desktop-activation/**"
+      - "lib/browser-pos-authorization.ts"
+      - "lib/browser-pos-binding-delivery.ts"
+      - "lib/browser-pos-device.ts"
+      - "lib/auth-secret.ts"
+      - "lib/session.ts"
       - "prisma/**"
+      - "tests/auth-secret-fail-closed.test.ts"
+      - "tests/browser-pos-*.test.ts"
+      - "tests/browser-transaction-security.test.ts"
+      - "tests/desktop-pos-write-fallback-runtime.test.ts"
       - "tests/desktop-activation-*.test.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
@@ -21,8 +32,19 @@ on:
   pull_request:
     paths:
       - "app/api/desktop/**"
+      - "app/api/cashier/**"
+      - "app/cashier/authorize/**"
       - "lib/desktop-activation/**"
+      - "lib/browser-pos-authorization.ts"
+      - "lib/browser-pos-binding-delivery.ts"
+      - "lib/browser-pos-device.ts"
+      - "lib/auth-secret.ts"
+      - "lib/session.ts"
       - "prisma/**"
+      - "tests/auth-secret-fail-closed.test.ts"
+      - "tests/browser-pos-*.test.ts"
+      - "tests/browser-transaction-security.test.ts"
+      - "tests/desktop-pos-write-fallback-runtime.test.ts"
       - "tests/desktop-activation-*.test.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
@@ -59,9 +81,16 @@ jobs:
       DESKTOP_DEVICE_TOKEN_SECRET: ci-desktop-device-token-secret-ep-mb3-06a
       DESKTOP_ACTIVATION_PIN_SECRET: ci-desktop-activation-pin-secret-ep-mb3-06a
       DESKTOP_ACTIVATION_TEST_DATABASE: "1"
-      AUTH_SECRET: ci-auth-secret-not-used-for-desktop-activation
+      BROWSER_POS_LINK_AUTH_TEST_DATABASE: "1"
+      CASHIER_SECURITY_TEST_DATABASE: "1"
+      AUTH_SECRET: ci-auth-secret-for-browser-pos-link-tests-0123456789
     steps:
       - uses: actions/checkout@v4
+
+      - name: Report exact CI source
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "GITHUB_REF=$GITHUB_REF"
 
       - uses: actions/setup-node@v4
         with:
@@ -92,6 +121,16 @@ jobs:
 
       - name: EP-MB3-06A real database activation and concurrency tests
         run: npx tsx tests/desktop-activation-runtime.test.ts
+
+      - name: Browser POS shared-link and cashier security tests
+        run: |
+          npx tsx tests/auth-secret-fail-closed.test.ts
+          npx tsx tests/browser-pos-binding-delivery-crypto.test.ts
+          npx tsx tests/browser-pos-shared-link-static.test.ts
+          npx tsx tests/browser-pos-shared-link-migration-static.test.ts
+          npx tsx tests/browser-pos-shared-link-runtime.test.ts
+          npx tsx tests/browser-transaction-security.test.ts
+          npx tsx tests/desktop-pos-write-fallback-runtime.test.ts
 
       - name: Relevant regression tests
         run: |
