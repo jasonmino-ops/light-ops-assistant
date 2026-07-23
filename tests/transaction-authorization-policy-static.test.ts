@@ -25,7 +25,7 @@ const transactionWrites = [
 for (const file of transactionWrites) {
   const source = read(file)
   assert.match(source, /authorizeTransaction\(/, `${file} must use the unified transaction policy`)
-  assert.doesNotMatch(source, /allowStoreCodeFallback|authorizeDesktopPosRequest/, `${file} must not retain legacy POS fallback`) 
+  assert.doesNotMatch(source, /allowStoreCodeFallback|authorizeDesktopPosRequest/, `${file} must not retain legacy POS fallback`)
 }
 
 for (const readRoute of [
