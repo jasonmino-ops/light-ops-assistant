@@ -165,6 +165,29 @@ async function bind(requestId: string, deviceId: string, attemptId: string, devi
   )
 }
 
+async function testDeliverySecretConfigurationFailsBeforeIssuance() {
+  assert.ok(fixture)
+  const link = await createLink()
+  const deviceId = `missing-delivery-secret-${randomUUID()}`
+  const originalAuthSecret = process.env.AUTH_SECRET
+  delete process.env.AUTH_SECRET
+  try {
+    const response = await bind(link.requestId, deviceId, bindingAttemptId())
+    assert.equal(response.status, 503, 'missing AUTH_SECRET must reject binding before token issuance')
+    assert.equal((await response.json()).error, 'DELIVERY_NOT_CONFIGURED')
+    assert.equal(
+      await prisma.browserPosDevice.count({ where: { tenantId: fixture.tenantId, browserDeviceId: deviceId } }),
+      0,
+      'missing delivery configuration must not create or activate a BrowserPosDevice',
+    )
+    const challenge = await prisma.operationLog.findFirstOrThrow({ where: { requestId: link.requestId } })
+    assert.equal(challenge.status, 'FAILED', 'missing delivery configuration must not consume the challenge')
+  } finally {
+    if (originalAuthSecret === undefined) delete process.env.AUTH_SECRET
+    else process.env.AUTH_SECRET = originalAuthSecret
+  }
+}
+
 async function testIdempotentBindingAndDeliveryReplay() {
   assert.ok(fixture)
   const link = await createLink()
@@ -277,6 +300,13 @@ async function testIdempotentBindingAndDeliveryReplay() {
   const clearedDelivery = await prisma.browserPosBindingDelivery.findUniqueOrThrow({ where: { id: delivery.id } })
   assert.equal(clearedDelivery.status, 'EXPIRED')
   assert.equal(clearedDelivery.encryptedResult, '', 'expired delivery clears its ciphertext on access')
+  assert.equal(openBrowserPosBindingDelivery(clearedDelivery.encryptedResult, {
+    requestId: link.requestId,
+    tenantId: fixture.tenantId,
+    storeId: fixture.storeAId,
+    browserDeviceId: deviceId,
+    bindingAttemptId: attemptId,
+  }), null, 'cleared delivery ciphertext cannot be decrypted or replayed')
 
   const revoked = await revokeBrowserDevice(
     request(`/api/cashier/browser-devices/${devices[0].id}/revoke`, { reason: 'shared-link test' }, ownerAHeaders()),
@@ -342,6 +372,60 @@ async function testExpiredAndRepeatedLinksDoNotBind() {
   assert.equal(first.status, 200)
   const second = await bind(used.requestId, usedDeviceId, bindingAttemptId())
   assert.equal(second.status, 409, 'a consumed link cannot be claimed by a second binding operation')
+}
+
+async function testChallengeExpiryDeterministicallyClearsDelivery() {
+  assert.ok(fixture)
+
+  const challengeExpired = await createLink()
+  const challengeExpiredDeviceId = `expired-challenge-${randomUUID()}`
+  const challengeExpiredAttemptId = bindingAttemptId()
+  assert.equal((await bind(challengeExpired.requestId, challengeExpiredDeviceId, challengeExpiredAttemptId)).status, 200)
+  const readyDelivery = await prisma.browserPosBindingDelivery.findUniqueOrThrow({ where: { requestId: challengeExpired.requestId } })
+  assert.equal(readyDelivery.status, 'READY')
+  assert.notEqual(readyDelivery.encryptedResult, '', 'unexpired delivery must remain replayable')
+  assert.ok(readyDelivery.expiresAt > new Date(), 'test starts with a delivery TTL that has not expired')
+  const challengeRow = await prisma.operationLog.findFirstOrThrow({ where: { requestId: challengeExpired.requestId } })
+  await prisma.operationLog.update({
+    where: { id: challengeRow.id },
+    data: {
+      payloadSnapshot: {
+        ...(challengeRow.payloadSnapshot as Record<string, unknown>),
+        expiresAt: new Date(Date.now() - 1_000).toISOString(),
+      },
+    },
+  })
+  const challengeExpiredReplay = await bind(challengeExpired.requestId, challengeExpiredDeviceId, challengeExpiredAttemptId)
+  assert.equal(challengeExpiredReplay.status, 410, 'expired challenge must reject a replay')
+  assert.equal((await challengeExpiredReplay.json()).error, 'CHALLENGE_EXPIRED')
+  const clearedForChallengeExpiry = await prisma.browserPosBindingDelivery.findUniqueOrThrow({ where: { id: readyDelivery.id } })
+  assert.equal(clearedForChallengeExpiry.status, 'EXPIRED')
+  assert.equal(clearedForChallengeExpiry.encryptedResult, '', 'challenge expiry must clear an otherwise READY delivery')
+
+  const bothExpired = await createLink()
+  const bothExpiredDeviceId = `expired-both-${randomUUID()}`
+  const bothExpiredAttemptId = bindingAttemptId()
+  assert.equal((await bind(bothExpired.requestId, bothExpiredDeviceId, bothExpiredAttemptId)).status, 200)
+  const bothDelivery = await prisma.browserPosBindingDelivery.findUniqueOrThrow({ where: { requestId: bothExpired.requestId } })
+  const bothChallenge = await prisma.operationLog.findFirstOrThrow({ where: { requestId: bothExpired.requestId } })
+  await prisma.browserPosBindingDelivery.update({
+    where: { id: bothDelivery.id },
+    data: { expiresAt: new Date(Date.now() - 1_000) },
+  })
+  await prisma.operationLog.update({
+    where: { id: bothChallenge.id },
+    data: {
+      payloadSnapshot: {
+        ...(bothChallenge.payloadSnapshot as Record<string, unknown>),
+        expiresAt: new Date(Date.now() - 1_000).toISOString(),
+      },
+    },
+  })
+  const bothExpiredReplay = await bind(bothExpired.requestId, bothExpiredDeviceId, bothExpiredAttemptId)
+  assert.equal(bothExpiredReplay.status, 410, 'expired challenge and delivery must reject a replay')
+  const clearedBothExpired = await prisma.browserPosBindingDelivery.findUniqueOrThrow({ where: { id: bothDelivery.id } })
+  assert.equal(clearedBothExpired.status, 'EXPIRED')
+  assert.equal(clearedBothExpired.encryptedResult, '', 'expired challenge and delivery must clear ciphertext deterministically')
 }
 
 async function testExistingQrChallengeRemainsAvailable() {
@@ -448,9 +532,11 @@ async function main() {
   mutableEnv.NODE_ENV = 'production'
   fixture = await seedFixture()
   try {
+    await testDeliverySecretConfigurationFailsBeforeIssuance()
     await testIdempotentBindingAndDeliveryReplay()
     await testDifferentAttemptConcurrentSingleWinner()
     await testExpiredAndRepeatedLinksDoNotBind()
+    await testChallengeExpiryDeterministicallyClearsDelivery()
     await testExistingQrChallengeRemainsAvailable()
     await testStoreScopedOwnerDeviceManagement()
     console.log('Browser POS shared-link runtime database tests passed')

@@ -42,6 +42,8 @@ export async function POST(
       ? '分享链接已过期，请让老板重新生成。'
       : result.error === 'DELIVERY_EXPIRED'
         ? '本次绑定交付已过期，请让老板重新生成链接。'
+      : result.error === 'DELIVERY_NOT_CONFIGURED'
+        ? '绑定服务配置不可用，请联系管理员。'
       : result.error === 'CHALLENGE_USED'
         ? '分享链接已被使用，请让老板重新生成。'
         : result.error === 'ISSUER_UNAVAILABLE'

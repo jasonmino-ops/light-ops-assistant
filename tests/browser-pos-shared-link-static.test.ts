@@ -16,6 +16,9 @@ assert.match(
   'challenge consumption and BrowserPosDevice issuance must share one transaction',
 )
 assert.doesNotMatch(sharedAuthorization, /POS_DEVICE_TOKEN_RECOVERY_GRACE_MS|deliveryRecovery/, 'delivery must not infer retry safety from a time window')
+assert.match(sharedAuthorization, /assertBrowserPosBindingDeliverySecretConfigured\(\)/, 'binding must fail before BrowserPosDevice issuance when the delivery secret is absent')
+assert.match(sharedAuthorization, /findAndExpireBindingDelivery[\s\S]*challengeExpired/, 'every terminal bind path must inspect the exact delivery before challenge expiry returns')
+assert.doesNotMatch(sharedAuthorization, /browserPosBindingDelivery\.deleteMany/, 'delivery cleanup must be deterministic for the current request, not opportunistic deletion')
 assert.match(sharedAuthorization, /bindingAttemptId: string/, 'redemption must require a stable bindingAttemptId')
 assert.match(sharedAuthorization, /browserPosBindingDelivery\.findUnique/, 'same operation must replay a dedicated delivery record')
 assert.match(sharedAuthorization, /browserPosBindingDelivery\.create/, 'initial binding must persist delivery atomically with issuance')
@@ -44,6 +47,8 @@ assert.match(browserDeviceRevoke, /storeId: ctx\.storeId[\s\S]*role: 'OWNER'[\s\
 assert.match(browserDevice, /where: \{ id: input\.id, tenantId: input\.tenantId, storeId: input\.storeId \}/, 'revocation must scope the target device to the current store')
 
 assert.match(bindingDelivery, /aes-256-gcm/, 'delivery result must be encrypted with an authenticated envelope')
+assert.match(bindingDelivery, /AUTH_SECRET_NOT_CONFIGURED/, 'delivery encryption must expose a non-secret configuration failure')
+assert.doesNotMatch(bindingDelivery, /dev-secret-change-in-production/, 'delivery encryption must not fall back to a public default secret')
 assert.match(bindingDelivery, /cipher\.setAAD/, 'delivery ciphertext must be bound to its request/device/attempt context')
 assert.match(bindingDelivery, /decipher\.setAuthTag/, 'delivery replay must authenticate ciphertext before release')
 assert.doesNotMatch(bindingDelivery, /OperationLog/, 'encrypted delivery result must not use ordinary audit logs')

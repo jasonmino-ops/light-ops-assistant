@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import {
+  assertBrowserPosBindingDeliverySecretConfigured,
+  BrowserPosBindingDeliverySecretError,
   openBrowserPosBindingDelivery,
   sealBrowserPosBindingDelivery,
   type BrowserPosBindingDeliveryContext,
@@ -34,8 +36,8 @@ export type PosAuthorizationPayload = {
 
 type ChallengeFailure = {
   ok: false
-  status: 403 | 404 | 409 | 410
-  error: 'NOT_FOUND' | 'CHALLENGE_EXPIRED' | 'CHALLENGE_USED' | 'CHALLENGE_NOT_APPROVED' | 'CHALLENGE_TYPE_INVALID' | 'STORE_UNAVAILABLE' | 'ISSUER_UNAVAILABLE' | 'DELIVERY_EXPIRED' | 'DELIVERY_UNAVAILABLE'
+  status: 403 | 404 | 409 | 410 | 503
+  error: 'NOT_FOUND' | 'CHALLENGE_EXPIRED' | 'CHALLENGE_USED' | 'CHALLENGE_NOT_APPROVED' | 'CHALLENGE_TYPE_INVALID' | 'STORE_UNAVAILABLE' | 'ISSUER_UNAVAILABLE' | 'DELIVERY_EXPIRED' | 'DELIVERY_UNAVAILABLE' | 'DELIVERY_NOT_CONFIGURED'
 }
 
 type ChallengeSuccess<T> = { ok: true } & T
@@ -60,6 +62,26 @@ function isExpired(payload: PosAuthorizationPayload) {
 function deliveryExpiresAt(payload: PosAuthorizationPayload, now = Date.now()) {
   const challengeExpiry = payload.expiresAt ? new Date(payload.expiresAt).getTime() : 0
   return new Date(Math.min(challengeExpiry, now + POS_DEVICE_DELIVERY_TTL_MS))
+}
+
+async function findAndExpireBindingDelivery(
+  tx: Prisma.TransactionClient,
+  requestId: string,
+  now: Date,
+  challengeExpired: boolean,
+) {
+  const delivery = await tx.browserPosBindingDelivery.findUnique({ where: { requestId } })
+  if (!delivery) return null
+
+  const mustClearCiphertext =
+    (delivery.status === 'READY' && (challengeExpired || delivery.expiresAt <= now))
+    || (delivery.status === 'EXPIRED' && delivery.encryptedResult !== '')
+  if (!mustClearCiphertext) return delivery
+
+  return tx.browserPosBindingDelivery.update({
+    where: { id: delivery.id },
+    data: { status: 'EXPIRED', encryptedResult: '' },
+  })
 }
 
 export function qrBindingAttemptId(requestId: string, deviceId: string) {
@@ -207,6 +229,15 @@ export async function redeemBrowserPosAuthorization(input: {
   deviceName?: string | null
   browserInfo?: string | null
 }) {
+  try {
+    // Reject before BrowserPosDevice signing or any challenge state transition.
+    assertBrowserPosBindingDeliverySecretConfigured()
+  } catch (error) {
+    if (error instanceof BrowserPosBindingDeliverySecretError) {
+      return { ok: false as const, status: 503 as const, error: 'DELIVERY_NOT_CONFIGURED' as const }
+    }
+    throw error
+  }
   return prisma.$transaction(async (tx): Promise<ChallengeSuccess<{
     token: string
     storeCode: string
@@ -218,19 +249,19 @@ export async function redeemBrowserPosAuthorization(input: {
     const row = await lockChallenge(tx, input.requestId)
     if (!row) return { ok: false, status: 404, error: 'NOT_FOUND' }
 
+    const now = new Date()
     const payload = readPayload(row.payloadSnapshot)
     const type = challengeType(payload)
-    if (isExpired(payload)) return { ok: false, status: 410, error: 'CHALLENGE_EXPIRED' }
-
-    // Opportunistically remove expired ciphertext from other operations. The
-    // current row is retained and marked EXPIRED below so retries fail closed.
-    const now = new Date()
-    await tx.browserPosBindingDelivery.deleteMany({
-      where: { expiresAt: { lt: now }, requestId: { not: input.requestId } },
-    })
-    const existingDelivery = await tx.browserPosBindingDelivery.findUnique({
-      where: { requestId: input.requestId },
-    })
+    const challengeExpired = isExpired(payload)
+    // The exact challenge is locked above. Inspect and clear only its delivery
+    // record before every terminal response; never rely on background cleanup.
+    const existingDelivery = await findAndExpireBindingDelivery(
+      tx,
+      input.requestId,
+      now,
+      challengeExpired,
+    )
+    if (challengeExpired) return { ok: false, status: 410, error: 'CHALLENGE_EXPIRED' }
     if (existingDelivery) {
       const matchesOperation =
         existingDelivery.tenantId === row.tenantId
@@ -239,12 +270,6 @@ export async function redeemBrowserPosAuthorization(input: {
         && existingDelivery.bindingAttemptId === input.bindingAttemptId
       if (!matchesOperation) return { ok: false, status: 409, error: 'CHALLENGE_USED' }
       if (existingDelivery.status !== 'READY' || existingDelivery.expiresAt <= now) {
-        if (existingDelivery.status === 'READY') {
-          await tx.browserPosBindingDelivery.update({
-            where: { id: existingDelivery.id },
-            data: { status: 'EXPIRED', encryptedResult: '' },
-          })
-        }
         return { ok: false, status: 409, error: 'DELIVERY_EXPIRED' }
       }
       const context: BrowserPosBindingDeliveryContext = {
