@@ -33,6 +33,8 @@ export async function POST(
   if (!result.ok) {
     const message = result.error === 'CHALLENGE_EXPIRED'
       ? '分享链接已过期，请让老板重新生成。'
+      : result.error === 'CHALLENGE_RECOVERY_NOT_READY'
+        ? '绑定已完成，正在确认授权交付；请数秒后在本机重试本链接。'
       : result.error === 'CHALLENGE_USED'
         ? '分享链接已被使用，请让老板重新生成。'
         : result.error === 'ISSUER_UNAVAILABLE'

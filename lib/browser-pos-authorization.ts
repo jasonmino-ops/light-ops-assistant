@@ -11,6 +11,10 @@ export const POS_DEVICE_AUTH_TARGET = 'POS_DEVICE'
 export const POS_DEVICE_AUTH_SHARED_LINK = 'OWNER_SHARED_LINK'
 export const POS_DEVICE_AUTH_QR = 'QR_OWNER_CONFIRMATION'
 export const POS_DEVICE_AUTH_TTL_MS = 10 * 60 * 1000
+// A short delay separates a real delivery retry from a second in-flight
+// redemption request. It keeps concurrent requests single-winner while still
+// allowing the bound browser to recover when the first HTTP response is lost.
+export const POS_DEVICE_TOKEN_RECOVERY_GRACE_MS = 3_000
 
 export type PosAuthorizationPayload = {
   challengeType?: typeof POS_DEVICE_AUTH_SHARED_LINK | typeof POS_DEVICE_AUTH_QR
@@ -24,12 +28,15 @@ export type PosAuthorizationPayload = {
   browserPosDeviceId?: string
   tokenExpiresAt?: string
   browserInfo?: string
+  deliveryRecoveryAvailableAt?: string
+  deliveryRecoveryCount?: number
+  deliveryRecoveredAt?: string
 }
 
 type ChallengeFailure = {
   ok: false
   status: 403 | 404 | 409 | 410
-  error: 'NOT_FOUND' | 'CHALLENGE_EXPIRED' | 'CHALLENGE_USED' | 'CHALLENGE_NOT_APPROVED' | 'CHALLENGE_TYPE_INVALID' | 'STORE_UNAVAILABLE' | 'ISSUER_UNAVAILABLE'
+  error: 'NOT_FOUND' | 'CHALLENGE_EXPIRED' | 'CHALLENGE_USED' | 'CHALLENGE_NOT_APPROVED' | 'CHALLENGE_TYPE_INVALID' | 'STORE_UNAVAILABLE' | 'ISSUER_UNAVAILABLE' | 'CHALLENGE_RECOVERY_NOT_READY' | 'RECOVERY_DEVICE_UNAVAILABLE'
 }
 
 type ChallengeSuccess<T> = { ok: true } & T
@@ -49,6 +56,19 @@ function challengeType(payload: PosAuthorizationPayload) {
 function isExpired(payload: PosAuthorizationPayload) {
   const expiresAt = payload.expiresAt ? new Date(payload.expiresAt).getTime() : 0
   return !expiresAt || Date.now() > expiresAt
+}
+
+function deliveryRecoveryAvailableAt(payload: PosAuthorizationPayload) {
+  const explicit = payload.deliveryRecoveryAvailableAt ? new Date(payload.deliveryRecoveryAvailableAt).getTime() : NaN
+  if (Number.isFinite(explicit)) return explicit
+  const deliveredAt = payload.deliveredAt ? new Date(payload.deliveredAt).getTime() : NaN
+  return Number.isFinite(deliveredAt) ? deliveredAt + POS_DEVICE_TOKEN_RECOVERY_GRACE_MS : NaN
+}
+
+function deliveryRecoveryCount(payload: PosAuthorizationPayload) {
+  return typeof payload.deliveryRecoveryCount === 'number' && Number.isInteger(payload.deliveryRecoveryCount) && payload.deliveryRecoveryCount >= 0
+    ? payload.deliveryRecoveryCount
+    : 0
 }
 
 async function lockChallenge(tx: Prisma.TransactionClient, requestId: string) {
@@ -204,8 +224,104 @@ export async function redeemBrowserPosAuthorization(input: {
     const payload = readPayload(row.payloadSnapshot)
     const type = challengeType(payload)
     if (isExpired(payload)) return { ok: false, status: 410, error: 'CHALLENGE_EXPIRED' }
+
+    // The first bind response can be lost after this transaction commits. A
+    // single, delayed retry is safe only for the exact browser already bound
+    // to this challenge. It rotates that device's credential in this same
+    // transaction; no raw token is retained in the challenge or database.
     if (payload.browserPosDeviceId || (row.status === 'SUCCESS' && payload.deliveredAt)) {
-      return { ok: false, status: 409, error: 'CHALLENGE_USED' }
+      if (
+        row.status !== 'SUCCESS'
+        || !payload.browserPosDeviceId
+        || !payload.deliveredAt
+        || !row.targetId
+        || row.targetId !== input.deviceId
+        || deliveryRecoveryCount(payload) >= 1
+      ) {
+        return { ok: false, status: 409, error: 'CHALLENGE_USED' }
+      }
+      const recoveryAt = deliveryRecoveryAvailableAt(payload)
+      if (!Number.isFinite(recoveryAt) || Date.now() < recoveryAt) {
+        return { ok: false, status: 409, error: 'CHALLENGE_RECOVERY_NOT_READY' }
+      }
+
+      const active = await resolveActiveStoreAndIssuer(tx, {
+        tenantId: row.tenantId,
+        storeId: row.storeId,
+        issuerUserId: row.userId,
+      })
+      if (!active.ok) return { ok: false, status: 403, error: active.error }
+
+      const lockedDevice = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "BrowserPosDevice"
+        WHERE "id" = ${payload.browserPosDeviceId}
+          AND "tenantId" = ${active.store.tenantId}
+          AND "storeId" = ${active.store.id}
+          AND "browserDeviceId" = ${input.deviceId}
+          AND "status" = 'ACTIVE'
+          AND "activeSlot" = 'ACTIVE'
+        FOR UPDATE
+      `
+      if (!lockedDevice[0]) return { ok: false, status: 409, error: 'RECOVERY_DEVICE_UNAVAILABLE' }
+
+      const deviceName = cleanText(input.deviceName, 80) ?? payload.deviceName ?? '前台收银机'
+      const browserInfo = cleanText(input.browserInfo, 1_000) ?? payload.browserInfo ?? null
+      const issued = await issueBrowserPosDeviceInTransaction(tx, {
+        tenantId: active.store.tenantId,
+        storeId: active.store.id,
+        storeCode: active.store.code,
+        deviceId: input.deviceId,
+        issuedByUserId: active.issuerUserId,
+        displayName: deviceName,
+        browserInfo,
+      })
+      // Defensive fail-closed guard: the recovery path may only rotate the
+      // credential of the device created by this challenge, never create one.
+      if (issued.device.id !== payload.browserPosDeviceId) {
+        throw new Error('Browser POS token recovery changed device identity')
+      }
+
+      const recoveredAt = new Date().toISOString()
+      await tx.operationLog.update({
+        where: { id: row.id },
+        data: {
+          payloadSnapshot: {
+            ...payload,
+            deviceName,
+            browserInfo,
+            tokenExpiresAt: issued.expiresAt.toISOString(),
+            deliveryRecoveryCount: deliveryRecoveryCount(payload) + 1,
+            deliveryRecoveredAt: recoveredAt,
+          } as Prisma.InputJsonValue,
+        },
+      })
+      await tx.operationLog.create({
+        data: {
+          tenantId: active.store.tenantId,
+          storeId: active.store.id,
+          userId: active.issuerUserId,
+          actionType: 'BROWSER_POS_DEVICE_TOKEN_RECOVERED',
+          targetType: 'BROWSER_POS_DEVICE',
+          targetId: issued.device.id,
+          requestId: row.requestId,
+          status: 'SUCCESS',
+          payloadSnapshot: {
+            browserDeviceId: input.deviceId,
+            deviceName,
+            tokenExpiresAt: issued.expiresAt.toISOString(),
+          },
+        },
+      })
+      return {
+        ok: true,
+        token: issued.token,
+        storeCode: active.store.code,
+        storeName: active.store.name,
+        deviceName,
+        browserDeviceId: issued.device.id,
+        expiresAt: issued.expiresAt,
+      }
     }
 
     if (type === POS_DEVICE_AUTH_QR) {
@@ -244,6 +360,7 @@ export async function redeemBrowserPosAuthorization(input: {
       browserInfo,
     })
     const deliveredAt = new Date().toISOString()
+    const recoveryAvailableAt = new Date(Date.now() + POS_DEVICE_TOKEN_RECOVERY_GRACE_MS).toISOString()
     await tx.operationLog.update({
       where: { id: row.id },
       data: {
@@ -264,6 +381,8 @@ export async function redeemBrowserPosAuthorization(input: {
           boundAt: deliveredAt,
           browserPosDeviceId: issued.device.id,
           tokenExpiresAt: issued.expiresAt.toISOString(),
+          deliveryRecoveryAvailableAt: recoveryAvailableAt,
+          deliveryRecoveryCount: 0,
         } as Prisma.InputJsonValue,
       },
     })

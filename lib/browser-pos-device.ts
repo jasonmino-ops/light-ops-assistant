@@ -443,12 +443,13 @@ export async function authorizeBrowserPosDevice(
 export async function revokeBrowserPosDevice(input: {
   id: string
   tenantId: string
+  storeId: string
   revokedByUserId: string
   reason?: string | null
 }) {
   const now = new Date()
   const device = await prisma.browserPosDevice.findFirst({
-    where: { id: input.id, tenantId: input.tenantId },
+    where: { id: input.id, tenantId: input.tenantId, storeId: input.storeId },
     select: { id: true, storeId: true, status: true },
   })
   if (!device) return null
