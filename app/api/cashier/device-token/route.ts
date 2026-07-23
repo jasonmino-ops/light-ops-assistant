@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
-import { signPosDeviceToken } from '@/lib/desktop-pos-auth'
+import { issueBrowserPosDevice } from '@/lib/browser-pos-device'
 
 export async function POST(req: NextRequest) {
   const ctx = await getContext(req)
@@ -44,13 +44,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'FORBIDDEN', message: 'This account cannot authorize this store.' }, { status: 403 })
   }
 
-  const token = signPosDeviceToken({
+  const issued = await issueBrowserPosDevice({
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode: store.code,
     deviceId,
-    issuedBy: ctx.userId,
+    issuedByUserId: ctx.userId,
   })
 
-  return NextResponse.json({ token, storeCode: store.code, deviceId })
+  return NextResponse.json({ token: issued.token, storeCode: store.code, deviceId })
 }

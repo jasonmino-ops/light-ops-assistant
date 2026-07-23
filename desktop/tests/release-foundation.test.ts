@@ -43,8 +43,12 @@ function makeReleaseDir(metadataName = 'latest.yml') {
 }
 
 describe('EP-MB3-07A release foundation policy', () => {
-  it('keeps desktop/package.json as the unique Desktop version source', () => {
-    const output = runReleaseFoundation(['policy'])
+  it('keeps desktop/package.json as the unique Desktop version source without uncommitted frozen-boundary drift', () => {
+    // The release command keeps its named production freeze tag by default.
+    // Unit tests run against the checked-out commit so active formal engineering
+    // packages are not incorrectly treated as a release attempt, while any
+    // uncommitted edit to a frozen boundary still fails this assertion.
+    const output = runReleaseFoundation(['policy', '--baseline', 'HEAD'])
     const result = JSON.parse(output)
     expect(result.versionSource).toBe('desktop/package.json')
     expect(result.desktopVersion).toBe(desktopVersion)

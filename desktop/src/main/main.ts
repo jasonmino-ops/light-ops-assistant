@@ -11,6 +11,7 @@
 import { app, BrowserWindow } from 'electron'
 import { initLogger, logger, getLogPaths } from './logger'
 import { loadConfig } from './config'
+import type { DesktopConfig } from './config'
 import { registerIpcHandlers } from './ipcRouter'
 import { windowManager } from './windowManager'
 import { createTray, destroyTray } from './tray'
@@ -23,6 +24,7 @@ import { ActivationRuntime } from './activation/activationRuntime'
 import { ActivationWindowController } from './activation/activationWindowController'
 import { registerActivationIpcHandlers } from './activation/activationIpc'
 import type { AuthorizedDesktopContext } from './activation/activationTypes'
+import { DesktopTransactionProxy } from './desktopTransactionProxy'
 
 // ── 单实例（A4）────────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -39,6 +41,8 @@ if (!gotLock) {
   let quitting = false
   let providerSupervisor: WindowsProviderSupervisor | null = null
   let activationRuntime: ActivationRuntime | null = null
+  let credentialStore: CredentialStore | null = null
+  let desktopConfig: DesktopConfig | null = null
   let activationWindowController: ActivationWindowController | null = null
   let authorizedRuntimeStarted = false
   let authorizedRuntimeStartPromise: Promise<void> | null = null
@@ -79,7 +83,18 @@ if (!gotLock) {
       updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
       logger.info('hardware.status', hardware.getStatusSummary())
 
-      registerIpcHandlers(windowManager)
+      if (!credentialStore || !desktopConfig) throw new Error('desktop credential store is unavailable')
+      registerIpcHandlers(windowManager, {
+        transactionProxy: new DesktopTransactionProxy({
+          credentialStore,
+          baseUrl: desktopConfig.baseUrl,
+          onDesktopAuthorizationFailure: () => {
+            void activationRuntime?.retryVerification().then(() => {
+              if (!activationRuntime?.isAuthorized()) activationWindowController?.show()
+            }).catch(() => activationWindowController?.show())
+          },
+        }),
+      })
 
       windowManager.createEmployeeWindow()
       windowManager.ensureCustomerWindow('startup')
@@ -110,7 +125,7 @@ if (!gotLock) {
     })
     updateHealth({ app: 'ok', version: app.getVersion() }, 'app.ready')
 
-    const config = loadConfig(app.getPath('userData'))
+    desktopConfig = loadConfig(app.getPath('userData'))
     windowManager.setFormalRuntimeGuard(() => activationRuntime?.isAuthorized() === true)
 
     activationWindowController = new ActivationWindowController({
@@ -118,10 +133,11 @@ if (!gotLock) {
       onClosedBeforeAuthorization: () => { void quitApp() },
     })
 
+    credentialStore = new CredentialStore(app.getPath('userData'))
     activationRuntime = new ActivationRuntime({
-      credentialStore: new CredentialStore(app.getPath('userData')),
-      apiClient: new ActivationApiClient({ baseUrl: config.baseUrl }),
-      initialStoreCodeHint: config.storeCode || undefined,
+      credentialStore,
+      apiClient: new ActivationApiClient({ baseUrl: desktopConfig.baseUrl }),
+      initialStoreCodeHint: desktopConfig.storeCode || undefined,
       startAuthorizedRuntime: startAuthorizedDesktopRuntime,
     })
 

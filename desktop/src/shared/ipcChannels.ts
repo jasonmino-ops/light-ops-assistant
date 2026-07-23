@@ -19,6 +19,8 @@ export const IPC_CHANNELS = {
   EMPLOYEE_FULLSCREEN_EXIT: 'eshop:employee-fullscreen:exit',
   /** Renderer(员工窗口) → Main (invoke)：读取员工窗口原生全屏状态 */
   EMPLOYEE_FULLSCREEN_STATE: 'eshop:employee-fullscreen:state',
+  /** Renderer(employee) → Main: fixed Desktop POS operation, never a generic proxy. */
+  TRANSACTION_REQUEST: 'eshop:transaction:request',
   /** Main → Renderer(顾客窗口)：下发最新购物车快照 */
   CART_APPLY: 'eshop:cart:apply',
 } as const
@@ -40,6 +42,7 @@ export const INVOKABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER,
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT,
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
+    IPC_CHANNELS.TRANSACTION_REQUEST,
   ],
   customer: [],
 }

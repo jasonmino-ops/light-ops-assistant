@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getContext } from '@/lib/context'
+import { authorizeTransaction, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
@@ -27,10 +27,9 @@ import { isKhqrSupportedCurrency } from '@/lib/currency'
  * 本路径当前不激活，只预留枚举值和注释。
  */
 export async function POST(req: NextRequest) {
-  const ctx = await getContext(req)
-  if (!ctx) {
-    return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
-  }
+  const authorization = await authorizeTransaction(req, { operation: 'SALE_WRITE' })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
+  const ctx = authorization.authorization
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let body: any

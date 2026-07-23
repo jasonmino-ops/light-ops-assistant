@@ -14,6 +14,9 @@ import { cartSyncService } from './cartSyncService'
 import { getHealthSnapshot, updateHealth } from './runtimeHealth'
 import { logger } from './logger'
 import type { WindowManager } from './windowManager'
+import { isAllowedNavigation } from './config'
+import { isDesktopTransactionOperation, type DesktopTransactionRequest } from '../shared/transactionBridge'
+import type { DesktopTransactionProxy } from './desktopTransactionProxy'
 
 function senderRole(
   windowManager: WindowManager,
@@ -39,7 +42,10 @@ function authorize(
   return role
 }
 
-export function registerIpcHandlers(windowManager: WindowManager) {
+export function registerIpcHandlers(
+  windowManager: WindowManager,
+  options: { transactionProxy?: DesktopTransactionProxy } = {},
+) {
   ipcMain.on(IPC_CHANNELS.CART_PUBLISH, (event, payload: unknown) => {
     if (!authorize(windowManager, event, IPC_CHANNELS.CART_PUBLISH, 'send')) return
     cartSyncService.ingest(payload)
@@ -69,6 +75,25 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     const win = windowManager.getEmployeeWindow()
     if (!win || win.isDestroyed() || win.webContents.id !== event.sender.id) return false
     return win.isFullScreen()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.TRANSACTION_REQUEST, async (event, payload: unknown) => {
+    if (!authorize(windowManager, event, IPC_CHANNELS.TRANSACTION_REQUEST, 'invoke')) {
+      return { ok: false, status: 403, body: { error: 'DESKTOP_IPC_UNAUTHORIZED' }, error: 'DESKTOP_IPC_UNAUTHORIZED' }
+    }
+    if (!event.senderFrame || !isAllowedNavigation(event.senderFrame.url)) {
+      return { ok: false, status: 403, body: { error: 'DESKTOP_IPC_ORIGIN_REJECTED' }, error: 'DESKTOP_IPC_ORIGIN_REJECTED' }
+    }
+    if (
+      !payload || typeof payload !== 'object' || Array.isArray(payload) ||
+      !isDesktopTransactionOperation((payload as { operation?: unknown }).operation)
+    ) {
+      return { ok: false, status: 400, body: { error: 'DESKTOP_PROXY_OPERATION_REJECTED' }, error: 'DESKTOP_PROXY_OPERATION_REJECTED' }
+    }
+    if (!options.transactionProxy) {
+      return { ok: false, status: 503, body: { error: 'DESKTOP_TRANSACTION_UNAVAILABLE' }, error: 'DESKTOP_TRANSACTION_UNAVAILABLE' }
+    }
+    return options.transactionProxy.request(payload as DesktopTransactionRequest)
   })
 
   updateHealth({ ipc: 'ok' }, 'ipc.registered')

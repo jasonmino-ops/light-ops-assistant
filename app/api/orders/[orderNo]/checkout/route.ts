@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getContext } from '@/lib/context'
+import { authorizeTransaction, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 import { isKhqrSupportedCurrency } from '@/lib/currency'
@@ -19,8 +19,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ orderNo: string }> },
 ) {
-  const ctx = await getContext(req)
-  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
+  const initialAuthorization = await authorizeTransaction(req, { operation: 'ORDER_CHECKOUT' })
+  if (!initialAuthorization.ok) return transactionAuthorizationErrorResponse(initialAuthorization)
+  const initialCtx = initialAuthorization.authorization
 
   const { orderNo } = await params
 
@@ -43,7 +44,7 @@ export async function POST(
 
   // Verify PENDING_PAYMENT records exist for this order
   const records = await prisma.saleRecord.findMany({
-    where: { orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
+    where: { orderNo, tenantId: initialCtx.tenantId, status: 'PENDING_PAYMENT' },
   })
 
   if (records.length === 0) {
@@ -52,6 +53,20 @@ export async function POST(
       { status: 404 },
     )
   }
+  const storeId = records[0].storeId
+  if (!records.every((record) => record.storeId === storeId)) {
+    return NextResponse.json({ error: 'ORDER_STORE_MISMATCH' }, { status: 409 })
+  }
+  const store = await prisma.store.findFirst({
+    where: { id: storeId, tenantId: initialCtx.tenantId, status: 'ACTIVE' },
+    select: { id: true, code: true, tenantId: true, currencyCode: true },
+  })
+  if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  const authorization = await authorizeTransaction(req, { operation: 'ORDER_CHECKOUT', store: {
+    tenantId: store.tenantId, storeId: store.id, storeCode: store.code,
+  } })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
+  const ctx = authorization.authorization
 
   // Check PaymentIntent doesn't already exist (idempotency guard)
   const existingPi = await prisma.paymentIntent.findFirst({
@@ -69,11 +84,6 @@ export async function POST(
   // KHQR config pre-check
   let khqrConfig: MerchantKhqrConfig | null = null
   if (paymentMethod === 'KHQR') {
-    const store = await prisma.store.findFirst({
-      where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
-      select: { currencyCode: true },
-    })
-    if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
     if (!isKhqrSupportedCurrency(store.currencyCode)) {
       return NextResponse.json(
         { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },

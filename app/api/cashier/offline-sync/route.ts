@@ -11,7 +11,7 @@ import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
 import { createHash } from 'crypto'
 import type { Product } from '@prisma/client'
-import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import { authorizeTransaction, transactionActorAuditData, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 
 const MAX_ORDERS = 20
 const MAX_ITEMS_PER_ORDER = 100
@@ -127,7 +127,15 @@ async function markFailedIfPossible(params: {
 
 async function syncOne(
   order: OfflineSyncOrder,
-  batch: { storeId: string | null; storeCode: string | null; deviceId: string | null; operatorUserIdOverride?: string | null },
+  batch: {
+    storeId: string | null
+    storeCode: string | null
+    deviceId: string | null
+    operatorUserIdOverride?: string | null
+    transactionActorType?: string | null
+    transactionActorId?: string | null
+    authorizedByUserId?: string | null
+  },
 ): Promise<SyncResult> {
   const offlineOrderId = asNonEmptyString(order.offlineOrderId)
   if (!offlineOrderId) return fail(null, 'INVALID_PAYLOAD', 'offlineOrderId is required')
@@ -207,15 +215,8 @@ async function syncOne(
       return fail(offlineOrderId, 'OPERATOR_NOT_FOUND', 'operatorUserId is not active in this store')
     }
   } else {
-    const ownerRole = await prisma.userStoreRole.findFirst({
-      where: { tenantId, storeId, role: 'OWNER', status: 'ACTIVE' },
-      select: { userId: true },
-    })
-    if (!ownerRole) {
-      await markFailedIfPossible({ tenantId, storeId, deviceId, offlineOrderId, errorCode: 'OPERATOR_NOT_FOUND', errorMessage: 'No active owner operator for this store' })
-      return fail(offlineOrderId, 'OPERATOR_NOT_FOUND', 'No active owner operator for this store')
-    }
-    operatorUserId = ownerRole.userId
+    await markFailedIfPossible({ tenantId, storeId, deviceId, offlineOrderId, errorCode: 'OPERATOR_REQUIRED', errorMessage: 'authorized transaction actor is required' })
+    return fail(offlineOrderId, 'OPERATOR_REQUIRED', 'authorized transaction actor is required')
   }
 
   const existing = await prisma.offlineSaleSyncMap.findUnique({
@@ -328,6 +329,9 @@ async function syncOne(
             tenantId,
             storeId,
             operatorUserId,
+            transactionActorType: batch.transactionActorType,
+            transactionActorId: batch.transactionActorId,
+            authorizedByUserId: batch.authorizedByUserId,
             recordNo,
             orderNo,
             saleType: 'SALE',
@@ -358,6 +362,9 @@ async function syncOne(
           tenantId,
           storeId,
           operatorUserId,
+          transactionActorType: batch.transactionActorType,
+          transactionActorId: batch.transactionActorId,
+          authorizedByUserId: batch.authorizedByUserId,
           orderNo,
           paymentMethod: 'CASH',
           status: 'PAID',
@@ -408,6 +415,9 @@ export async function POST(req: NextRequest) {
     storeCode: asNonEmptyString(body?.storeCode),
     deviceId: asNonEmptyString(body?.deviceId),
     operatorUserIdOverride: null as string | null,
+    transactionActorType: null as string | null,
+    transactionActorId: null as string | null,
+    authorizedByUserId: null as string | null,
   }
   if (orders.length === 0) {
     return NextResponse.json({ error: 'INVALID_PAYLOAD', message: 'orders must be a non-empty array' }, { status: 400 })
@@ -424,15 +434,15 @@ export async function POST(req: NextRequest) {
     select: { id: true, tenantId: true, code: true },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
-  const posAuth = await authorizeDesktopPosRequest(req, {
+  const authorization = await authorizeTransaction(req, { operation: 'POS_OFFLINE_SYNC', store: {
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode: store.code,
-  }, { allowStoreCodeFallback: false })
-  if (!posAuth) {
-    return unauthorizedPosResponse()
-  }
-  batch.operatorUserIdOverride = posAuth.source === 'ACCOUNT' ? posAuth.operatorUserId : null
+  } })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
+  const posAuth = authorization.authorization
+  batch.operatorUserIdOverride = posAuth.legacyOperatorUserId
+  Object.assign(batch, transactionActorAuditData(posAuth))
 
   const results: SyncResult[] = []
   for (const order of orders) {

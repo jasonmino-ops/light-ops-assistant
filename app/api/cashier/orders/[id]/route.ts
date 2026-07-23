@@ -8,7 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import { authorizeTransaction, transactionActorAuditData, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 
 const ALLOWED: Record<string, string[]> = {
   PENDING:   ['CONFIRMED', 'CANCELLED'],
@@ -30,14 +30,13 @@ export async function PATCH(
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
-  const posAuth = await authorizeDesktopPosRequest(req, {
+  const authorization = await authorizeTransaction(req, { operation: 'POS_ORDER_UPDATE', store: {
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode,
-  }, { allowStoreCodeFallback: false })
-  if (!posAuth) {
-    return unauthorizedPosResponse()
-  }
+  } })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
+  const posAuth = authorization.authorization
 
   let body: { status?: string }
   try { body = await req.json() } catch {
@@ -58,7 +57,7 @@ export async function PATCH(
 
   const updated = await prisma.customerOrder.update({
     where: { id },
-    data: { status: newStatus },
+    data: { status: newStatus, ...transactionActorAuditData(posAuth) },
     select: { id: true, status: true },
   })
   return NextResponse.json(updated)

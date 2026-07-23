@@ -6,14 +6,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
-import { signPosDeviceToken } from '@/lib/desktop-pos-auth'
 
 type AuthPayload = {
   storeCode?: string
   storeName?: string
   deviceName?: string
   expiresAt?: string
-  token?: string
+  deliveredAt?: string
 }
 
 function readPayload(value: unknown): AuthPayload {
@@ -92,30 +91,23 @@ export async function POST(
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
 
-  const token = signPosDeviceToken({
-    tenantId: store.tenantId,
-    storeId: store.id,
-    storeCode: store.code,
-    deviceId: row.targetId,
-    issuedBy: ctx.userId,
-  })
-
   await prisma.operationLog.update({
     where: { id: row.id },
     data: {
       userId: ctx.userId,
       status: 'SUCCESS',
-      message: 'Desktop POS device authorized by owner',
+      message: 'Browser POS device authorized by owner',
       payloadSnapshot: {
         ...payload,
         storeCode: store.code,
         storeName: store.name,
         deviceName,
-        token,
         approvedAt: new Date().toISOString(),
       },
     },
   })
 
+  // The raw token is deliberately not persisted. The original requesting browser
+  // receives it once through the deviceId-bound status endpoint.
   return NextResponse.json({ status: 'APPROVED', storeName: store.name, deviceName })
 }

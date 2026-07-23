@@ -6,13 +6,14 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { issueBrowserPosDevice } from '@/lib/browser-pos-device'
 
 type AuthPayload = {
   expiresAt?: string
-  token?: string
   storeCode?: string
   storeName?: string
   deviceName?: string
+  deliveredAt?: string
 }
 
 function readPayload(value: unknown): AuthPayload {
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
       targetId: deviceId,
     },
     orderBy: { createdAt: 'desc' },
-    select: { status: true, payloadSnapshot: true },
+    select: { id: true, tenantId: true, storeId: true, targetId: true, userId: true, status: true, payloadSnapshot: true },
   })
   if (!row) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
 
@@ -42,14 +43,32 @@ export async function GET(req: NextRequest) {
   if (!expiresAt || Date.now() > expiresAt) {
     return NextResponse.json({ status: 'EXPIRED' })
   }
-  if (row.status === 'SUCCESS' && payload.token) {
+  if (row.status === 'SUCCESS' && row.storeId && row.targetId && row.userId && payload.storeCode && !payload.deliveredAt) {
+    const issued = await issueBrowserPosDevice({
+      tenantId: row.tenantId,
+      storeId: row.storeId,
+      storeCode: payload.storeCode,
+      deviceId: row.targetId,
+      issuedByUserId: row.userId,
+    })
+    await prisma.operationLog.update({
+      where: { id: row.id },
+      data: {
+        payloadSnapshot: {
+          ...payload,
+          deliveredAt: new Date().toISOString(),
+          tokenExpiresAt: issued.expiresAt.toISOString(),
+        },
+      },
+    })
     return NextResponse.json({
       status: 'APPROVED',
-      token: payload.token,
+      token: issued.token,
       storeCode: payload.storeCode,
       storeName: payload.storeName,
       deviceName: payload.deviceName,
     })
   }
+  if (row.status === 'SUCCESS') return NextResponse.json({ status: 'APPROVED' })
   return NextResponse.json({ status: 'PENDING' })
 }

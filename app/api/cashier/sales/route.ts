@@ -12,7 +12,7 @@ import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
-import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import { authorizeTransaction, transactionActorAuditData, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 import { isKhqrSupportedCurrency } from '@/lib/currency'
 import {
   requiresCashierManualPaymentConfirmation,
@@ -89,14 +89,13 @@ export async function POST(req: NextRequest) {
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
-  const posAuth = await authorizeDesktopPosRequest(req, {
+  const authorization = await authorizeTransaction(req, { operation: 'POS_SALE_CREATE', store: {
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode: store.code,
-  }, { allowStoreCodeFallback: false })
-  if (!posAuth) {
-    return unauthorizedPosResponse()
-  }
+  } })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
+  const posAuth = authorization.authorization
   if (paymentMethod === 'KHQR' && !isKhqrSupportedCurrency(store.currencyCode)) {
     return NextResponse.json(
       { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },
@@ -153,7 +152,8 @@ export async function POST(req: NextRequest) {
           data: {
             tenantId: store.tenantId,
             storeId: store.id,
-            operatorUserId: posAuth.operatorUserId,
+            operatorUserId: posAuth.legacyOperatorUserId,
+            ...transactionActorAuditData(posAuth),
             recordNo,
             orderNo,
             saleType: 'SALE',
@@ -184,7 +184,8 @@ export async function POST(req: NextRequest) {
         data: {
           tenantId: store.tenantId,
           storeId: store.id,
-          operatorUserId: posAuth.operatorUserId,
+          operatorUserId: posAuth.legacyOperatorUserId,
+          ...transactionActorAuditData(posAuth),
           orderNo,
           paymentMethod: paymentMethod as 'CASH' | 'KHQR',
           status: paymentIntentStatus,

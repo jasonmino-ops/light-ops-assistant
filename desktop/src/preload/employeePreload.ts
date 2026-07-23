@@ -21,6 +21,7 @@ const CART_PUBLISH_CHANNEL = 'eshop:cart:publish'
 const EMPLOYEE_FULLSCREEN_ENTER_CHANNEL = 'eshop:employee-fullscreen:enter'
 const EMPLOYEE_FULLSCREEN_EXIT_CHANNEL = 'eshop:employee-fullscreen:exit'
 const EMPLOYEE_FULLSCREEN_STATE_CHANNEL = 'eshop:employee-fullscreen:state'
+const TRANSACTION_REQUEST_CHANNEL = 'eshop:transaction:request'
 const WEB_REALTIME_BROADCAST_CHANNEL = 'light-ops:customer-display:realtime:v1'
 const DESKTOP_RELAY_FLAG = 'relayedByDesktop'
 const desktopEpoch = (() => {
@@ -47,6 +48,27 @@ contextBridge.exposeInMainWorld('eshopDesktopEmployeeFullscreen', Object.freeze(
   enterEmployeeFullscreen: () => ipcRenderer.invoke(EMPLOYEE_FULLSCREEN_ENTER_CHANNEL),
   exitEmployeeFullscreen: () => ipcRenderer.invoke(EMPLOYEE_FULLSCREEN_EXIT_CHANNEL),
   getEmployeeFullscreenState: () => ipcRenderer.invoke(EMPLOYEE_FULLSCREEN_STATE_CHANNEL),
+}))
+
+const allowedTransactionOperations = new Set([
+  'POS_SALE_CREATE',
+  'POS_MEMBER_BALANCE_PAY',
+  'POS_OFFLINE_SYNC',
+  'POS_ORDER_UPDATE',
+  'POS_ORDERS_READ',
+  'POS_RECORDS_READ',
+  'POS_RECEIPT_READ',
+])
+
+// A narrow operation bridge. It intentionally exposes neither an EDT token nor
+// URL/method/header controls, so the renderer cannot become a general proxy.
+contextBridge.exposeInMainWorld('eshopDesktopTransactions', Object.freeze({
+  request: (operation: unknown, payload: unknown) => {
+    if (typeof operation !== 'string' || !allowedTransactionOperations.has(operation)) {
+      return Promise.resolve({ ok: false, status: 400, body: { error: 'DESKTOP_PROXY_OPERATION_REJECTED' }, error: 'DESKTOP_PROXY_OPERATION_REJECTED' })
+    }
+    return ipcRenderer.invoke(TRANSACTION_REQUEST_CHANNEL, { operation, payload })
+  },
 }))
 
 // 旁路捕获现有 Web 实时通道（零侵入：不修改任何冻结页面）

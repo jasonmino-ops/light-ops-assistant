@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import { authorizeTransaction, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 import { formatMoney } from '@/lib/currency'
 
 export async function GET(
@@ -25,14 +25,12 @@ export async function GET(
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
-  const posAuth = await authorizeDesktopPosRequest(req, {
+  const authorization = await authorizeTransaction(req, { operation: 'POS_RECEIPT_READ', store: {
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode: store.code,
-  }, { allowStoreCodeFallback: true })
-  if (!posAuth) {
-    return unauthorizedPosResponse()
-  }
+  } })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
 
   const anchor = await prisma.saleRecord.findFirst({
     where: {

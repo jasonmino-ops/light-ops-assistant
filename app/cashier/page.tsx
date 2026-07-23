@@ -46,6 +46,7 @@ import {
   clearPosDeviceToken,
   getPosDeviceId,
   getPosDeviceToken,
+  isDesktopDeviceUnauthorized,
   isPosUnauthorized,
   posDeviceHeaders,
   savePosDeviceToken,
@@ -95,6 +96,26 @@ type EmployeeFullscreenBridge = {
   getEmployeeFullscreenState: () => Promise<boolean>
 }
 
+type DesktopTransactionOperation =
+  | 'POS_SALE_CREATE'
+  | 'POS_MEMBER_BALANCE_PAY'
+  | 'POS_OFFLINE_SYNC'
+  | 'POS_ORDER_UPDATE'
+  | 'POS_ORDERS_READ'
+  | 'POS_RECORDS_READ'
+  | 'POS_RECEIPT_READ'
+
+type DesktopTransactionBridge = {
+  request: (operation: DesktopTransactionOperation, payload: unknown) => Promise<{
+    ok: boolean
+    status: number
+    body: unknown
+    error?: string
+  }>
+}
+
+type PosOperationResponse = { ok: boolean; status: number; body: unknown }
+
 declare global {
   interface Window {
     eshopDesktopRuntime?: {
@@ -105,6 +126,7 @@ declare global {
       desktopEpoch?: string
     }
     eshopDesktopEmployeeFullscreen?: EmployeeFullscreenBridge
+    eshopDesktopTransactions?: DesktopTransactionBridge
   }
 }
 
@@ -112,6 +134,27 @@ function getElectronEmployeeFullscreenBridge(): EmployeeFullscreenBridge | null 
   if (typeof window === 'undefined') return null
   if (!window.eshopDesktopRuntime?.isDesktop || window.eshopDesktopRuntime.windowRole !== 'employee') return null
   return window.eshopDesktopEmployeeFullscreen ?? null
+}
+
+function getElectronDesktopTransactionBridge(): DesktopTransactionBridge | null {
+  if (typeof window === 'undefined') return null
+  if (!window.eshopDesktopRuntime?.isDesktop || window.eshopDesktopRuntime.windowRole !== 'employee') return null
+  return window.eshopDesktopTransactions ?? null
+}
+
+async function requestPosOperation(
+  operation: DesktopTransactionOperation,
+  payload: unknown,
+  browserRequest: () => Promise<Response>,
+): Promise<PosOperationResponse> {
+  const desktopBridge = getElectronDesktopTransactionBridge()
+  if (desktopBridge) return desktopBridge.request(operation, payload)
+  const response = await browserRequest()
+  return {
+    ok: response.ok,
+    status: response.status,
+    body: await response.json().catch(() => null),
+  }
 }
 type DesktopPaymentMethod = 'CASH' | 'KHQR' | 'MEMBER_BALANCE' | null
 type CustomerDisplaySyncOptions = { focusKhqr?: boolean }
@@ -1733,34 +1776,32 @@ export default function CashierPage() {
   useEffect(() => {
     if (!storeCode) return
     if (!posDeviceToken && posAccountAccess !== 'authorized') return
-    function poll() {
-      fetch(`/api/cashier/orders?storeCode=${encodeURIComponent(storeCode!)}`, {
-        headers: posDeviceHeaders(storeCode),
-      })
-        .then(async (r) => {
-          const data = await r.json().catch(() => null)
-          if (!r.ok && isPosUnauthorized(data, r.status)) {
-            setPosAuthError(posAuthCopy().needAuth)
-            return null
-          }
-          return data as CashierOrder[] | null
-        })
-        .then((data) => {
-          if (!Array.isArray(data)) return
-          if (!initialPollDone.current) {
-            initialPollDone.current = true
-            data.forEach(o => knownOrderIds.current.add(o.id))
-            setPendingOrders(data)
-            return
-          }
-          const newOnes = data.filter(o => !knownOrderIds.current.has(o.id))
-          data.forEach(o => knownOrderIds.current.add(o.id))
-          setPendingOrders(data)
-          if (newOnes.length > 0) playAlertSound()
-        })
-        .catch(() => {})
+    async function poll() {
+      try {
+        const response = await requestPosOperation('POS_ORDERS_READ', { storeCode }, () => fetch(
+          `/api/cashier/orders?storeCode=${encodeURIComponent(storeCode!)}`,
+          { headers: posDeviceHeaders(storeCode) },
+        ))
+        const data = response.body
+        if (!response.ok && handleTransactionAuthorizationFailure(data, response.status)) {
+          if (!isDesktopDeviceUnauthorized(data, response.status)) setPosAuthError(posAuthCopy().needAuth)
+          return
+        }
+        if (!Array.isArray(data)) return
+        const orders = data as CashierOrder[]
+        if (!initialPollDone.current) {
+          initialPollDone.current = true
+          orders.forEach(o => knownOrderIds.current.add(o.id))
+          setPendingOrders(orders)
+          return
+        }
+        const newOnes = orders.filter(o => !knownOrderIds.current.has(o.id))
+        orders.forEach(o => knownOrderIds.current.add(o.id))
+        setPendingOrders(orders)
+        if (newOnes.length > 0) playAlertSound()
+      } catch {}
     }
-    poll()
+    void poll()
     const timer = setInterval(poll, 5000)
     return () => clearInterval(timer)
   }, [storeCode, posDeviceToken, posAccountAccess, lang])
@@ -1899,6 +1940,18 @@ export default function CashierPage() {
     }
     setPosDeviceRecoveryOpen(true)
     showToast(message || copy.needAuth)
+  }
+
+  function handleTransactionAuthorizationFailure(body: unknown, status?: number) {
+    if (isDesktopDeviceUnauthorized(body, status)) {
+      showToast('桌面设备授权已失效，正在打开重新激活窗口')
+      return true
+    }
+    if (isPosUnauthorized(body, status)) {
+      handlePosUnauthorized()
+      return true
+    }
+    return false
   }
 
   function handleRevalidatePosAccount() {
@@ -2194,16 +2247,17 @@ export default function CashierPage() {
         pageSize: '30',
         page: '1',
       })
-      const res = await fetch(`/api/records?${params.toString()}`, { cache: 'no-store', headers: posDeviceHeaders(storeCode) })
-      const maybeBody = await res.clone().json().catch(() => null)
-      if (!res.ok) {
-        if (isPosUnauthorized(maybeBody, res.status)) {
-          handlePosUnauthorized()
+      const response = await requestPosOperation('POS_RECORDS_READ', Object.fromEntries(params.entries()), () => fetch(
+        `/api/records?${params.toString()}`, { cache: 'no-store', headers: posDeviceHeaders(storeCode) },
+      ))
+      const maybeBody = response.body
+      if (!response.ok) {
+        if (handleTransactionAuthorizationFailure(maybeBody, response.status)) {
           return
         }
         throw new Error('DESKTOP_RECORDS_LOAD_FAILED')
       }
-      const data: ShiftRecordsResponse = await res.json()
+      const data = maybeBody as ShiftRecordsResponse
       setDesktopRecords({ loading: false, error: '', items: data.items })
     } catch (err) {
       console.warn('[cashier:desktop-records] load failed', err)
@@ -2236,16 +2290,17 @@ export default function CashierPage() {
       do {
         const params = new URLSearchParams(paramsBase)
         params.set('page', String(page))
-        const res = await fetch(`/api/records?${params.toString()}`, { cache: 'no-store', headers: posDeviceHeaders(storeCode) })
-        const maybeBody = await res.clone().json().catch(() => null)
-        if (!res.ok) {
-          if (isPosUnauthorized(maybeBody, res.status)) {
-            handlePosUnauthorized()
+        const response = await requestPosOperation('POS_RECORDS_READ', Object.fromEntries(params.entries()), () => fetch(
+          `/api/records?${params.toString()}`, { cache: 'no-store', headers: posDeviceHeaders(storeCode) },
+        ))
+        const maybeBody = response.body
+        if (!response.ok) {
+          if (handleTransactionAuthorizationFailure(maybeBody, response.status)) {
             throw new Error('POS_DEVICE_UNAUTHORIZED')
           }
           throw new Error('SHIFT_RECORDS_LOAD_FAILED')
         }
-        const data: ShiftRecordsResponse = await res.json()
+        const data = maybeBody as ShiftRecordsResponse
         allItems.push(...data.items)
         total = data.total
         page += 1
@@ -2353,11 +2408,13 @@ export default function CashierPage() {
       })
       if (saleType) params.set('saleType', saleType)
       const url = `/api/records?${params.toString()}`
-      const res = await fetch(url, { cache: 'no-store', headers: posDeviceHeaders(storeCode) })
-      const data: DayCloseRecordsResponse = await res.json()
-      if (!res.ok) {
-        if (isPosUnauthorized(data, res.status)) handlePosUnauthorized()
-        throw new Error(`DAY_CLOSE_RECORDS_LOAD_FAILED_${res.status}`)
+      const response = await requestPosOperation('POS_RECORDS_READ', Object.fromEntries(params.entries()), () => fetch(
+        url, { cache: 'no-store', headers: posDeviceHeaders(storeCode) },
+      ))
+      const data = response.body as DayCloseRecordsResponse
+      if (!response.ok) {
+        handleTransactionAuthorizationFailure(data, response.status)
+        throw new Error(`DAY_CLOSE_RECORDS_LOAD_FAILED_${response.status}`)
       }
       allItems.push(...data.items)
       total = data.total
@@ -2649,23 +2706,19 @@ export default function CashierPage() {
       const first = orders[0]
       syncingIds = orders.map((order) => order.offlineOrderId)
       await markOfflineOrdersSyncing(syncingIds)
-      const res = await fetch('/api/cashier/offline-sync', {
+      const response = await requestPosOperation('POS_OFFLINE_SYNC', {
+        storeId: first.storeId, storeCode, deviceId: first.deviceId, orders,
+      }, () => fetch('/api/cashier/offline-sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
-        body: JSON.stringify({
-          storeId: first.storeId,
-          storeCode,
-          deviceId: first.deviceId,
-          orders,
-        }),
-      })
-      const body = await res.json().catch(() => null)
-      if (isPosUnauthorized(body, res.status)) {
+        body: JSON.stringify({ storeId: first.storeId, storeCode, deviceId: first.deviceId, orders }),
+      }))
+      const body = response.body as { message?: string; error?: string; results?: unknown[] } | null
+      if (handleTransactionAuthorizationFailure(body, response.status)) {
         await markOfflineOrdersSyncFailed(syncingIds, body?.message ?? 'POS_DEVICE_UNAUTHORIZED')
-        handlePosUnauthorized()
         return
       }
-      if (!res.ok || !body || !Array.isArray(body.results)) {
+      if (!response.ok || !body || !Array.isArray(body.results)) {
         const msg = body?.message ?? body?.error ?? 'SYNC_REQUEST_FAILED'
         await markOfflineOrdersSyncFailed(syncingIds, msg)
         setOfflineSyncSummary(`同步失败：${msg}`)
@@ -2676,13 +2729,14 @@ export default function CashierPage() {
       let synced = 0
       let duplicate = 0
       let failed = 0
-      for (const result of body.results as Array<{
+      const syncResults = body.results as Array<{
         offlineOrderId?: string
         status?: 'SYNCED' | 'DUPLICATE' | 'FAILED'
         serverSaleRecordId?: string | null
         errorCode?: string | null
         errorMessage?: string | null
-      }>) {
+      }>
+      for (const result of syncResults) {
         if (!result.offlineOrderId) continue
         if (result.status === 'SYNCED' || result.status === 'DUPLICATE') {
           await updateOfflineOrderSyncResult({
@@ -2703,7 +2757,7 @@ export default function CashierPage() {
           })
         }
       }
-      const missing = syncingIds.filter((id) => !body.results.some((r: { offlineOrderId?: string }) => r.offlineOrderId === id))
+      const missing = syncingIds.filter((id) => !syncResults.some((r) => r.offlineOrderId === id))
       if (missing.length > 0) {
         failed += missing.length
         await markOfflineOrdersSyncFailed(missing, 'SYNC_RESULT_MISSING')
@@ -2758,21 +2812,23 @@ export default function CashierPage() {
     setMemberPayLoading(true)
     setMemberPayError('')
     try {
-      const res = await fetch('/api/cashier/member-balance-pay', {
+      const response = await requestPosOperation('POS_MEMBER_BALANCE_PAY', {
+        storeCode,
+        memberId: memberPayMember.id,
+        items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
+      }, () => fetch('/api/cashier/member-balance-pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
         body: JSON.stringify({
-          storeCode,
-          memberId: memberPayMember.id,
+          storeCode, memberId: memberPayMember.id,
           items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
         }),
-      })
-      const body = await res.json().catch(() => null)
-      if (isPosUnauthorized(body, res.status)) {
-        handlePosUnauthorized()
+      }))
+      const body = response.body as { message?: string; error?: string; orderNo?: string; totalAmount?: string | number } | null
+      if (handleTransactionAuthorizationFailure(body, response.status)) {
         return
       }
-      if (!res.ok || !body) {
+      if (!response.ok || !body) {
         const message =
           body?.error === 'INSUFFICIENT_BALANCE' ? '会员余额不足' :
           body?.error === 'MEMBER_NOT_FOUND' ? '会员不存在或已停用' :
@@ -3091,7 +3147,12 @@ export default function CashierPage() {
         setSubmitting(false)
         return
       }
-      const res = await fetch('/api/cashier/sales', {
+      const response = await requestPosOperation('POS_SALE_CREATE', {
+        storeCode,
+        items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
+        paymentMethod: apiPayment,
+        manualPaymentConfirmed: apiPayment === 'KHQR',
+      }, () => fetch('/api/cashier/sales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
         body: JSON.stringify({
@@ -3100,13 +3161,12 @@ export default function CashierPage() {
           paymentMethod: apiPayment,
           manualPaymentConfirmed: apiPayment === 'KHQR',
         }),
-      })
-      const body = await res.json()
-      if (isPosUnauthorized(body, res.status)) {
-        handlePosUnauthorized()
+      }))
+      const body = response.body as { message?: string; error?: string; orderNo?: string; khqrFallback?: boolean; createdAt?: string } | null
+      if (handleTransactionAuthorizationFailure(body, response.status)) {
         return
       }
-      if (!res.ok) { setSubmitError(body.message ?? body.error ?? '提交失败，请重试'); return }
+      if (!response.ok || !body) { setSubmitError(body?.message ?? body?.error ?? '提交失败，请重试'); return }
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
       void postCashierDisplaySession({
@@ -3145,16 +3205,15 @@ export default function CashierPage() {
     if (!requireOnlinePosAuthorization()) return
     setUpdatingId(id)
     try {
-      const res = await fetch(`/api/cashier/orders/${id}?storeCode=${encodeURIComponent(storeCode)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
-        body: JSON.stringify({ status: newStatus }),
-      })
-      const body = await res.clone().json().catch(() => null)
-      if (isPosUnauthorized(body, res.status)) {
-        handlePosUnauthorized()
+      const response = await requestPosOperation('POS_ORDER_UPDATE', { id, storeCode, status: newStatus }, () => fetch(
+        `/api/cashier/orders/${id}?storeCode=${encodeURIComponent(storeCode)}`,
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) }, body: JSON.stringify({ status: newStatus }) },
+      ))
+      const body = response.body
+      if (handleTransactionAuthorizationFailure(body, response.status)) {
         return
       }
-      if (res.ok) {
+      if (response.ok) {
         if (newStatus === 'COMPLETED' || newStatus === 'CANCELLED') {
           knownOrderIds.current.delete(id)
           setPendingOrders(prev => prev.filter(o => o.id !== id))

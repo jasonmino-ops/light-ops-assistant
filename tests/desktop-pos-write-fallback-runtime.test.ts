@@ -8,6 +8,7 @@ import { POST as postCashierSale } from '../app/api/cashier/sales/route'
 import { POST as postMemberBalancePay } from '../app/api/cashier/member-balance-pay/route'
 import { POST as postOfflineSync } from '../app/api/cashier/offline-sync/route'
 import { PATCH as patchCashierOrder } from '../app/api/cashier/orders/[id]/route'
+import { POST as revokeBrowserDevice } from '../app/api/cashier/browser-devices/[id]/revoke/route'
 
 if (process.env.CASHIER_SECURITY_TEST_DATABASE !== '1') {
   throw new Error('CASHIER_SECURITY_TEST_DATABASE=1 is required for real cashier security database tests')
@@ -300,8 +301,34 @@ async function testKhqrConfirmationRejectsWithoutWrites() {
 async function testPosDeviceTokenValidation() {
   const current = fixture
   assert.ok(current)
-  const valid = await postCashierSale(makeRequest('/api/cashier/sales', salePayload(), validDeviceHeaders()))
+  const runtimeHeaders = validDeviceHeaders('runtime-device')
+  const valid = await postCashierSale(makeRequest('/api/cashier/sales', salePayload(), runtimeHeaders))
   assert.equal(valid.status, 201, 'valid pos-device-v1 token must be accepted')
+  const device = await prisma.browserPosDevice.findFirstOrThrow({
+    where: { tenantId: current.tenant.id, storeId: current.store.id, browserDeviceId: 'runtime-device' },
+    select: { id: true, status: true, tokenHash: true, legacyMigratedAt: true },
+  })
+  assert.equal(device.status, 'ACTIVE', 'first valid legacy token must create an ACTIVE server device')
+  assert.ok(device.tokenHash.length >= 32, 'server device must retain a token hash rather than raw token')
+  assert.ok(device.legacyMigratedAt, 'first valid legacy token must record its compatibility migration')
+  const deviceSale = await prisma.saleRecord.findFirstOrThrow({
+    where: { tenantId: current.tenant.id, transactionActorId: device.id },
+    select: { transactionActorType: true, transactionActorId: true, authorizedByUserId: true },
+  })
+  assert.deepEqual(deviceSale, {
+    transactionActorType: 'BROWSER_POS_DEVICE',
+    transactionActorId: device.id,
+    authorizedByUserId: current.owner.id,
+  }, 'Browser POS sales must retain the true device actor rather than synthetic OWNER')
+
+  const revoked = await revokeBrowserDevice(
+    makeRequest(`/api/cashier/browser-devices/${device.id}/revoke`, { reason: 'runtime test' }, sessionHeaders(current.owner.id, 'OWNER')),
+    { params: Promise.resolve({ id: device.id }) },
+  )
+  assert.equal(revoked.status, 200, 'owner must be able to revoke a Browser POS device')
+  await expectForbiddenWithoutWrites('revoked Browser POS device', async () => postCashierSale(
+    makeRequest('/api/cashier/sales', salePayload(), runtimeHeaders),
+  ))
 
   const validToken = validDeviceHeaders('tamper-device')['x-pos-device-token']
   const tampered = `${validToken.slice(0, -1)}${validToken.endsWith('A') ? 'B' : 'A'}`

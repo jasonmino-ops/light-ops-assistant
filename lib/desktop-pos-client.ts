@@ -56,9 +56,24 @@ function isDesktopPosRequestContext() {
 }
 
 export function isPosUnauthorized(body: unknown, status?: number) {
-  return status === 403 &&
-    typeof body === 'object' &&
-    body !== null &&
-    'error' in body &&
-    body.error === 'POS_DEVICE_UNAUTHORIZED'
+  if ((status !== 401 && status !== 403) || typeof body !== 'object' || body === null || !('error' in body)) return false
+  const error = body.error
+  return error === 'TRANSACTION_AUTH_REQUIRED' ||
+    error === 'BROWSER_DEVICE_UNAUTHORIZED' ||
+    error === 'BROWSER_DEVICE_NOT_FOUND' ||
+    error === 'BROWSER_DEVICE_EXPIRED' ||
+    error === 'BROWSER_DEVICE_REVOKED' ||
+    error === 'BROWSER_DEVICE_OPERATOR_UNAVAILABLE' ||
+    error === 'DEVICE_STORE_MISMATCH' ||
+    error === 'TRANSACTION_SCOPE_FORBIDDEN'
+}
+
+export function isDesktopDeviceUnauthorized(body: unknown, status?: number) {
+  if ((status !== 401 && status !== 403) || typeof body !== 'object' || body === null || !('error' in body)) return false
+  return typeof body.error === 'string' && (
+    body.error.startsWith('DESKTOP_') ||
+    body.error === 'SUBSCRIPTION_BLOCKED' ||
+    body.error === 'TENANT_INACTIVE' ||
+    body.error === 'STORE_INACTIVE'
+  )
 }

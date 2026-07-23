@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getContext } from '@/lib/context'
+import { authorizeTransaction, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 
 /**
  * POST /api/payments/:paymentId/confirm
@@ -10,18 +10,29 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ paymentId: string }> },
 ) {
-  const ctx = await getContext(req)
-  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
+  const initialAuthorization = await authorizeTransaction(req, { operation: 'PAYMENT_CONFIRM' })
+  if (!initialAuthorization.ok) return transactionAuthorizationErrorResponse(initialAuthorization)
+  const initialCtx = initialAuthorization.authorization
 
   const { paymentId } = await params
 
   const pi = await prisma.paymentIntent.findFirst({
-    where: { id: paymentId, tenantId: ctx.tenantId },
+    where: { id: paymentId, tenantId: initialCtx.tenantId },
   })
 
   if (!pi) {
     return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
   }
+  const store = await prisma.store.findFirst({
+    where: { id: pi.storeId, tenantId: initialCtx.tenantId, status: 'ACTIVE' },
+    select: { id: true, code: true, tenantId: true },
+  })
+  if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  const authorization = await authorizeTransaction(req, { operation: 'PAYMENT_CONFIRM', store: {
+    tenantId: store.tenantId, storeId: store.id, storeCode: store.code,
+  } })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
+  const ctx = authorization.authorization
 
   if (pi.status !== 'PENDING') {
     return NextResponse.json(

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getContext } from '@/lib/context'
+import { authorizeTransaction, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 
 /**
  * POST /api/orders/:orderNo/cancel
@@ -15,20 +15,33 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ orderNo: string }> },
 ) {
-  const ctx = await getContext(req)
-  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
+  const initialAuthorization = await authorizeTransaction(req, { operation: 'ORDER_CANCEL' })
+  if (!initialAuthorization.ok) return transactionAuthorizationErrorResponse(initialAuthorization)
+  const initialCtx = initialAuthorization.authorization
 
   const { orderNo } = await params
 
   // Check records exist and are cancellable
   const records = await prisma.saleRecord.findMany({
-    where: { orderNo, tenantId: ctx.tenantId },
-    select: { id: true, status: true },
+    where: { orderNo, tenantId: initialCtx.tenantId },
+    select: { id: true, status: true, storeId: true },
   })
 
   if (records.length === 0) {
     return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
   }
+  const storeId = records[0].storeId
+  if (!records.every((record) => record.storeId === storeId)) return NextResponse.json({ error: 'ORDER_STORE_MISMATCH' }, { status: 409 })
+  const store = await prisma.store.findFirst({
+    where: { id: storeId, tenantId: initialCtx.tenantId, status: 'ACTIVE' },
+    select: { id: true, code: true, tenantId: true },
+  })
+  if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  const authorization = await authorizeTransaction(req, { operation: 'ORDER_CANCEL', store: {
+    tenantId: store.tenantId, storeId: store.id, storeCode: store.code,
+  } })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
+  const ctx = authorization.authorization
 
   const alreadyCancelled = records.every((r) => r.status === 'CANCELLED')
   if (alreadyCancelled) {

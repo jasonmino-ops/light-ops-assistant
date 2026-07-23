@@ -7,20 +7,21 @@ import {
 } from '../src/shared/ipcChannels'
 
 describe('IPC 通道白名单（A6）', () => {
-  it('通道全集固定为 7 个，且全部带 eshop: 前缀', () => {
+  it('通道全集固定为 8 个，且全部带 eshop: 前缀', () => {
     const all = Object.values(IPC_CHANNELS)
-    expect(all).toHaveLength(7)
+    expect(all).toHaveLength(8)
     for (const ch of all) expect(ch.startsWith('eshop:')).toBe(true)
     expect(new Set(all).size).toBe(all.length)
   })
 
-  it('员工窗口只能发送 cart:publish，只能 invoke health 与受控原生全屏', () => {
+  it('员工窗口只能发送 cart:publish，只能 invoke health、受控全屏与固定交易操作', () => {
     expect(SENDABLE_BY_ROLE.employee).toEqual([IPC_CHANNELS.CART_PUBLISH])
     expect(INVOKABLE_BY_ROLE.employee).toEqual([
       IPC_CHANNELS.HEALTH_GET,
       IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER,
       IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT,
       IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
+      IPC_CHANNELS.TRANSACTION_REQUEST,
     ])
   })
 
@@ -44,5 +45,10 @@ describe('IPC 通道白名单（A6）', () => {
     for (const ch of all) {
       expect(ch).not.toMatch(/exec|eval|shell|fs|file|spawn|command/i)
     }
+  })
+
+  it('交易 IPC 是固定语义通道，不是通用网络或命令代理', () => {
+    expect(IPC_CHANNELS.TRANSACTION_REQUEST).toBe('eshop:transaction:request')
+    expect(IPC_CHANNELS.TRANSACTION_REQUEST).not.toMatch(/proxy|request-url|fetch|http/i)
   })
 })

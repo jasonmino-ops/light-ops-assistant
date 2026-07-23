@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { generateRecordNo } from '@/lib/record-no'
-import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import { authorizeTransaction, transactionActorAuditData, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 
 type CartItem = { barcode: string; quantity: number; sugar?: string }
 
@@ -57,14 +57,13 @@ export async function POST(req: NextRequest) {
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
-  const posAuth = await authorizeDesktopPosRequest(req, {
+  const authorization = await authorizeTransaction(req, { operation: 'POS_MEMBER_BALANCE_PAY', store: {
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode: store.code,
-  }, { allowStoreCodeFallback: false })
-  if (!posAuth) {
-    return unauthorizedPosResponse()
-  }
+  } })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
+  const posAuth = authorization.authorization
 
   const member = await prisma.member.findFirst({
     where: {
@@ -148,7 +147,8 @@ export async function POST(req: NextRequest) {
           data: {
             tenantId: store.tenantId,
             storeId: store.id,
-            operatorUserId: posAuth.operatorUserId,
+            operatorUserId: posAuth.legacyOperatorUserId,
+            ...transactionActorAuditData(posAuth),
             recordNo,
             orderNo,
             saleType: 'SALE',
@@ -180,7 +180,8 @@ export async function POST(req: NextRequest) {
           amount: totalAmount.negated(),
           balanceBefore,
           balanceAfter,
-          operatorUserId: posAuth.operatorUserId,
+          operatorUserId: posAuth.legacyOperatorUserId,
+          ...transactionActorAuditData(posAuth),
           note: '/cashier 会员余额支付',
         },
       })
@@ -189,7 +190,8 @@ export async function POST(req: NextRequest) {
         data: {
           tenantId: store.tenantId,
           storeId: store.id,
-          operatorUserId: posAuth.operatorUserId,
+          operatorUserId: posAuth.legacyOperatorUserId,
+          ...transactionActorAuditData(posAuth),
           orderNo,
           paymentMethod: 'MEMBER_BALANCE',
           status: 'PAID',

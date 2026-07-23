@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getContext } from '@/lib/context'
+import { authorizeTransaction, transactionActorAuditData, transactionAuthorizationErrorResponse } from '@/lib/transaction-authorization'
 import { sendAndLogMessage } from '@/lib/telegram'
 
 /**
@@ -83,8 +83,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const ctx = await getContext(req)
-  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
+  const initialAuthorization = await authorizeTransaction(req, { operation: 'CUSTOMER_ORDER_UPDATE' })
+  if (!initialAuthorization.ok) return transactionAuthorizationErrorResponse(initialAuthorization)
+  const initialCtx = initialAuthorization.authorization
 
   const { id } = await params
 
@@ -94,9 +95,16 @@ export async function PATCH(
   }
 
   const order = await prisma.customerOrder.findFirst({
-    where: { id, tenantId: ctx.tenantId },
+    where: { id, tenantId: initialCtx.tenantId },
   })
   if (!order) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+  const authorization = await authorizeTransaction(req, { operation: 'CUSTOMER_ORDER_UPDATE', store: {
+    tenantId: order.tenantId,
+    storeId: order.storeId,
+    storeCode: order.storeCode,
+  } })
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization)
+  const ctx = authorization.authorization
 
   // ── 分支 A：收款登记 ────────────────────────────────────────────────────────
   if (body.paymentMethod) {
@@ -118,6 +126,7 @@ export async function PATCH(
         paymentMethod,
         paidAt: new Date(),
         paidAmount: order.totalAmount,
+        ...transactionActorAuditData(ctx),
       },
       select: { id: true, orderNo: true, status: true, paymentStatus: true, paymentMethod: true },
     })
@@ -145,7 +154,7 @@ export async function PATCH(
 
   const updated = await prisma.customerOrder.update({
     where: { id },
-    data: { status: newStatus },
+    data: { status: newStatus, ...transactionActorAuditData(ctx) },
     select: { id: true, orderNo: true, status: true, customerTelegramId: true, totalAmount: true, customerLang: true, storeCode: true },
   })
 

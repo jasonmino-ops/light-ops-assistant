@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getContext } from "@/lib/context";
+import { authorizeTransaction, transactionAuthorizationErrorResponse } from "@/lib/transaction-authorization";
 import { MEMBER_LEDGER_SELECT, MEMBER_SELECT, parseDecimalAmount, serializeLedger, serializeMember } from "@/lib/member-api";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await getContext(req);
-  if (!ctx) return NextResponse.json({ error: "MISSING_CONTEXT" }, { status: 401 });
+  const authorization = await authorizeTransaction(req, { operation: 'MEMBER_BALANCE_ADJUST' });
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization);
+  const ctx = authorization.authorization;
   if (ctx.role !== "OWNER") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
 
   const { id } = await params;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getContext } from "@/lib/context";
+import { authorizeTransaction, transactionAuthorizationErrorResponse } from "@/lib/transaction-authorization";
 import { generateMemberCode, MEMBER_LEDGER_SELECT, MEMBER_SELECT, serializeLedger, serializeMember } from "@/lib/member-api";
 import {
   buildImportNote,
@@ -19,8 +19,9 @@ type ConfirmBody = {
 };
 
 export async function POST(req: NextRequest) {
-  const ctx = await getContext(req);
-  if (!ctx) return NextResponse.json({ error: "MISSING_CONTEXT" }, { status: 401 });
+  const authorization = await authorizeTransaction(req, { operation: 'MEMBER_IMPORT_CONFIRM' });
+  if (!authorization.ok) return transactionAuthorizationErrorResponse(authorization);
+  const ctx = authorization.authorization;
   if (ctx.role !== "OWNER") return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
 
   let body: ConfirmBody;

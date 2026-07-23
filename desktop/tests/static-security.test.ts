@@ -55,6 +55,7 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER}'`)
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT}'`)
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE}'`)
+    expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.TRANSACTION_REQUEST}'`)
     expect(employeePreloadSrc).toContain(`'${WEB_REALTIME_BROADCAST_CHANNEL}'`)
     expect(employeePreloadSrc).toContain(`'${DESKTOP_RELAY_FLAG}'`)
     expect(employeePreloadSrc).not.toContain(IPC_CHANNELS.CART_APPLY)
@@ -105,6 +106,12 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(employeePreloadSrc).toMatch(/getEmployeeFullscreenState/)
     expect(employeePreloadSrc).not.toMatch(/setFullScreen|BrowserWindow|windowControl/)
     expect(customerPreloadSrc).not.toMatch(/eshopDesktopEmployeeFullscreen/)
+  })
+
+  it('员工 preload 仅暴露固定交易操作，不暴露 EDT 或通用网络代理', () => {
+    expect(employeePreloadSrc).toMatch(/exposeInMainWorld\('eshopDesktopTransactions'/)
+    expect(employeePreloadSrc).toMatch(/allowedTransactionOperations/)
+    expect(employeePreloadSrc).not.toMatch(/deviceToken|Authorization|Bearer|proxyRequest|requestUrl/)
   })
 })
 

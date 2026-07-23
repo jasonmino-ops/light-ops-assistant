@@ -74,6 +74,12 @@ enum DesktopDeviceStatus {
   REVOKED
 }
 
+enum BrowserPosDeviceStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
 enum DesktopActivationPinStatus {
   ACTIVE
   USED
@@ -126,6 +132,7 @@ model Tenant {
   subscription             TenantSubscription?
   subscriptionEvents       SubscriptionEvent[]
   desktopDevices           DesktopDevice[]
+  browserPosDevices        BrowserPosDevice[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
 }
@@ -209,6 +216,7 @@ model Store {
   memberTelegramBindTokens MemberTelegramBindToken[]
   customerJourneyEvents    CustomerJourneyEvent[]
   desktopDevices           DesktopDevice[]
+  browserPosDevices        BrowserPosDevice[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
 
@@ -255,6 +263,8 @@ model User {
   memberBalanceLedgers     MemberBalanceLedger[]
   memberTelegramBindTokens MemberTelegramBindToken[]
   revokedDesktopDevices    DesktopDevice[]          @relation("DesktopDeviceRevokedBy")
+  issuedBrowserPosDevices  BrowserPosDevice[]       @relation("BrowserPosDeviceIssuedBy")
+  revokedBrowserPosDevices BrowserPosDevice[]       @relation("BrowserPosDeviceRevokedBy")
   createdActivationPins    DesktopActivationPin[]   @relation("DesktopActivationPinCreatedBy")
   desktopActivationAudits  DesktopActivationAudit[] @relation("DesktopActivationAuditActor")
 
@@ -398,6 +408,9 @@ model SaleRecord {
   tenantId       String
   storeId        String
   operatorUserId String
+  transactionActorType String?
+  transactionActorId   String?
+  authorizedByUserId   String?
 
   recordNo String       @unique
   saleType SaleType
@@ -447,6 +460,7 @@ model SaleRecord {
   @@index([tenantId, createdAt])
   @@index([storeId, createdAt])
   @@index([operatorUserId, createdAt])
+  @@index([transactionActorType, transactionActorId])
   @@index([saleType, createdAt])
   @@index([originalSaleRecordId])
   @@index([barcode])
@@ -499,6 +513,9 @@ model MemberBalanceLedger {
   balanceBefore  Decimal                       @db.Decimal(12, 2)
   balanceAfter   Decimal                       @db.Decimal(12, 2)
   operatorUserId String?
+  transactionActorType String?
+  transactionActorId   String?
+  authorizedByUserId   String?
   note           String?                       @db.Text
   createdAt      DateTime                      @default(now())
 
@@ -514,6 +531,7 @@ model MemberBalanceLedger {
   @@index([sourceType])
   @@index([sourceId])
   @@index([operatorUserId])
+  @@index([transactionActorType, transactionActorId])
   @@index([createdAt])
 }
 
@@ -595,6 +613,9 @@ model PaymentIntent {
   tenantId         String
   storeId          String
   operatorUserId   String
+  transactionActorType String?
+  transactionActorId   String?
+  authorizedByUserId   String?
   orderNo          String        @unique
   paymentMethod    PaymentMethod
   status           PaymentStatus @default(PENDING)
@@ -613,6 +634,7 @@ model PaymentIntent {
   @@index([orderNo])
   @@index([status])
   @@index([merchantConfigId])
+  @@index([transactionActorType, transactionActorId])
 }
 
 model PaymentTransaction {
@@ -793,6 +815,9 @@ model CustomerOrder {
   remark                   String?
   paymentStatus            String    @default("UNPAID") // UNPAID | PAID
   paymentMethod            String? // CASH | QR
+  transactionActorType     String?
+  transactionActorId       String?
+  authorizedByUserId       String?
   paidAt                   DateTime?
   paidAmount               Decimal?  @db.Decimal(12, 2)
   tableNo                  String? // 餐饮桌号，URL table= 参数传入，null = 外卖/自取
@@ -807,6 +832,7 @@ model CustomerOrder {
   @@index([storeId, createdAt])
   @@index([orderNo])
   @@index([campaignLinkId])
+  @@index([transactionActorType, transactionActorId])
 }
 
 model CustomerJourneyEvent {
@@ -1208,6 +1234,42 @@ model DesktopDevice {
   @@index([tokenExpiresAt])
   @@index([revokedByUserId])
   @@index([replacesDeviceId])
+}
+
+model BrowserPosDevice {
+  id                 String                 @id @default(cuid())
+  tenantId           String
+  storeId            String
+  browserDeviceId    String
+  status             BrowserPosDeviceStatus @default(ACTIVE)
+  activeSlot         String?                @default("ACTIVE")
+  tokenHash          String                 @unique
+  tokenHashVersion   Int                    @default(1)
+  tokenIssuedAt      DateTime
+  tokenExpiresAt     DateTime
+  scopes             Json
+  issuedByUserId     String?
+  activatedAt        DateTime               @default(now())
+  lastSeenAt         DateTime?
+  revokedAt          DateTime?
+  revokedByUserId    String?
+  revocationReason   String?                @db.Text
+  legacyMigratedAt   DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store          Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  issuedByUser   User?  @relation("BrowserPosDeviceIssuedBy", fields: [issuedByUserId], references: [id], onDelete: SetNull)
+  revokedByUser  User?  @relation("BrowserPosDeviceRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, browserDeviceId, activeSlot])
+  @@index([tenantId, storeId])
+  @@index([storeId, status])
+  @@index([browserDeviceId])
+  @@index([tokenExpiresAt])
+  @@index([issuedByUserId])
+  @@index([revokedByUserId])
 }
 
 model DesktopActivationPin {
