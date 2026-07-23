@@ -21,6 +21,7 @@ export type DesktopTransactionResponse = {
   status: number
   body: unknown
   error?: string
+  idempotencyReplayed?: boolean
 }
 
 export function isDesktopTransactionOperation(value: unknown): value is DesktopTransactionOperation {

@@ -67,8 +67,28 @@ async function main() {
     'cashier retry state must keep one stable idempotency key for a checkout attempt')
   assert.match(cashierSource, /'Idempotency-Key': idempotencyKey/,
     'browser cashier sales must send the stable idempotency key to the server')
-  assert.match(cashierSource, /autoPrintedReceiptKeyRef\.current === receiptKey/,
-    'a replayed order response must not trigger a second automatic receipt print')
+  assert.match(cashierSource, /claimCashierAutoPrint\(window\.localStorage/,
+    'automatic receipt printing must use a persistent local POS claim rather than a React ref')
+  assert.match(cashierSource, /saleResult\?\.autoPrintEligible === false/,
+    'an idempotency replay must not be eligible for automatic receipt printing')
+  assert.match(cashierSource, /autoPrintEligible: !response\.idempotencyReplayed/,
+    'the sale response replay signal must control automatic receipt printing')
+  assert.doesNotMatch(cashierSource, /autoPrintedReceiptKeyRef/,
+    'automatic receipt printing must not depend on a mount-local receipt ref')
+  const saleCompletionSegment = cashierSource.slice(
+    cashierSource.indexOf("const response = await requestPosOperation('POS_SALE_CREATE'"),
+    cashierSource.indexOf('  // ── Order actions'),
+  )
+  assert.doesNotMatch(saleCompletionSegment, /postCashierDisplaySession\(/,
+    'the server-side sale transaction must be the only COMPLETED customer-display write for a cashier sale')
+  const manualPrintSegment = cashierSource.slice(
+    cashierSource.indexOf('const handlePrintReceipt = useCallback'),
+    cashierSource.indexOf('function handleAutoPrintToggle'),
+  )
+  assert.match(manualPrintSegment, /printDesktopReceipt\(/,
+    'the explicit receipt print action must remain available')
+  assert.doesNotMatch(manualPrintSegment, /claimCashierAutoPrint/,
+    'a persistent automatic-print claim must not suppress an explicit manual reprint')
   assert.match(salesRouteSource, /CashierSaleIdempotency/,
     'cashier sales must use a dedicated idempotency record rather than an audit log')
   assert.match(salesRouteSource, /ON CONFLICT \("tenantId", "storeId", "actorType", "actorId", "operation", "idempotencyKey"\)/,

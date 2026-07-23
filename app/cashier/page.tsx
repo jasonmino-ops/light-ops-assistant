@@ -52,6 +52,7 @@ import {
   savePosDeviceToken,
 } from '@/lib/desktop-pos-client'
 import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
+import { claimCashierAutoPrint } from '@/lib/cashier-auto-print'
 import { dispatchCashierCartTotalChanged } from '@/lib/customer-display-cart-event'
 import {
   createCustomerDisplayRealtimeChannel,
@@ -84,6 +85,7 @@ type SaleResult = {
   khqrFallback?: boolean
   paymentMethod?: string
   receipt?: DesktopReceiptData
+  autoPrintEligible?: boolean
 }
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
@@ -111,10 +113,11 @@ type DesktopTransactionBridge = {
     status: number
     body: unknown
     error?: string
+    idempotencyReplayed?: boolean
   }>
 }
 
-type PosOperationResponse = { ok: boolean; status: number; body: unknown }
+type PosOperationResponse = { ok: boolean; status: number; body: unknown; idempotencyReplayed?: boolean }
 
 declare global {
   interface Window {
@@ -154,6 +157,7 @@ async function requestPosOperation(
     ok: response.ok,
     status: response.status,
     body: await response.json().catch(() => null),
+    idempotencyReplayed: response.headers.get('Idempotency-Replayed') === 'true',
   }
 }
 type DesktopPaymentMethod = 'CASH' | 'KHQR' | 'MEMBER_BALANCE' | null
@@ -1417,7 +1421,6 @@ export default function CashierPage() {
   const previousCashierDisplayCartCountRef = useRef(0)
   const customerDisplayRealtimeChannelRef = useRef<BroadcastChannel | null>(null)
   const customerDisplayRealtimeSequenceRef = useRef(0)
-  const autoPrintedReceiptKeyRef = useRef('')
   const receiptPrintButtonRef = useRef<HTMLButtonElement>(null)
   const receiptPrintLockedRef = useRef(false)
   const cashierSaleIdempotencyRef = useRef<{ key: string; fingerprint: string } | null>(null)
@@ -2646,13 +2649,17 @@ export default function CashierPage() {
 
   useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
-    if (!isDesktopPos || !autoPrint || !receiptSnapshot) return
-
-    const receiptKey = `${receiptSnapshot.orderNo ?? 'no-order'}:${receiptSnapshot.createdAt}:${receiptSnapshot.totalAmount}`
-    if (autoPrintedReceiptKeyRef.current === receiptKey) return
-    autoPrintedReceiptKeyRef.current = receiptKey
+    if (!isDesktopPos || !autoPrint || !receiptSnapshot || saleResult?.autoPrintEligible === false || !storeCode) return
 
     const timer = window.setTimeout(() => {
+      try {
+        if (!receiptSnapshot.orderNo || !claimCashierAutoPrint(window.localStorage, {
+          storeCode,
+          orderNo: receiptSnapshot.orderNo,
+        })) return
+      } catch {
+        return
+      }
       try {
         printDesktopReceipt(receiptSnapshot, lang, { onAfterPrint: finishReceiptPrintFlow })
       } catch (err) {
@@ -2663,7 +2670,7 @@ export default function CashierPage() {
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang, finishReceiptPrintFlow])
+  }, [saleResult?.receipt, saleResult?.autoPrintEligible, isDesktopPos, autoPrint, storeCode, lang, finishReceiptPrintFlow])
 
   useEffect(() => {
     if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return
@@ -3233,14 +3240,6 @@ export default function CashierPage() {
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
       cashierSaleIdempotencyRef.current = null
-      void postCashierDisplaySession({
-        storeCode,
-        status: 'COMPLETED',
-        paymentMethod: apiPayment === 'KHQR' ? 'KHQR' : 'CASH',
-        paymentStatus: 'PAID',
-        items: submittedItems,
-        orderNo: body.orderNo ?? null,
-      })
       setCart([])
       setPayment('CASH')
       setReceiptPreviewOpen(false)
@@ -3258,6 +3257,9 @@ export default function CashierPage() {
               createdAt: body.createdAt,
             })
           : undefined,
+        // A server replay still shows a receipt for explicit manual reprint,
+        // but it must never initiate a new automatic print.
+        autoPrintEligible: !response.idempotencyReplayed,
       })
     } catch { setSubmitError('网络错误，请重试') }
     finally { setSubmitting(false) }

@@ -169,7 +169,13 @@ export class DesktopTransactionProxy {
       if (!response.ok && /^(DESKTOP_|SUBSCRIPTION_BLOCKED|TENANT_INACTIVE|STORE_INACTIVE|DEVICE_STORE_MISMATCH)/.test(error)) {
         this.options.onDesktopAuthorizationFailure?.(error)
       }
-      return { ok: response.ok, status: response.status, body, ...(response.ok ? {} : { error }) }
+      return {
+        ok: response.ok,
+        status: response.status,
+        body,
+        ...(response.headers.get('Idempotency-Replayed') === 'true' ? { idempotencyReplayed: true } : {}),
+        ...(response.ok ? {} : { error }),
+      }
     } catch (error) {
       const isTimeout = error instanceof Error && error.name === 'AbortError'
       return {

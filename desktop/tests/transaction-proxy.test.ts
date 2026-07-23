@@ -17,14 +17,17 @@ describe('Desktop transaction proxy', () => {
       fetchImpl: async (url, init) => {
         seenUrl = String(url)
         seenHeaders = init?.headers
-        return new Response(JSON.stringify({ orderNo: 'S-1' }), { status: 201, headers: { 'content-type': 'application/json' } })
+        return new Response(JSON.stringify({ orderNo: 'S-1' }), {
+          status: 201,
+          headers: { 'content-type': 'application/json', 'Idempotency-Replayed': 'true' },
+        })
       },
     })
     const result = await proxy.request({
       operation: 'POS_SALE_CREATE',
       payload: { storeCode: 'STORE-A', items: [{ barcode: 'A', quantity: 1 }], paymentMethod: 'CASH', idempotencyKey: 'desktop-sale-test-key-001' },
     })
-    expect(result).toEqual({ ok: true, status: 201, body: { orderNo: 'S-1' } })
+    expect(result).toEqual({ ok: true, status: 201, body: { orderNo: 'S-1' }, idempotencyReplayed: true })
     expect(seenUrl).toBe('https://example.test/api/cashier/sales')
     expect(new Headers(seenHeaders).get('authorization')).toBe('Bearer edt_v1_secret_not_for_renderer')
     expect(new Headers(seenHeaders).get('idempotency-key')).toBe('desktop-sale-test-key-001')
