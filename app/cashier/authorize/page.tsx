@@ -2,9 +2,11 @@
 
 import { useEffect, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { getPosDeviceId, savePosDeviceToken } from '@/lib/desktop-pos-client'
 
 type RequestInfo = {
-  status: 'PENDING' | 'APPROVED' | 'EXPIRED'
+  status: 'PENDING' | 'APPROVED' | 'EXPIRED' | 'USED'
+  flow: 'OWNER_QR' | 'SHARED_LINK'
   storeName: string
   storeCode: string
   deviceName: string
@@ -135,9 +137,39 @@ export default function CashierAuthorizePage() {
     }
   }
 
+  async function bindSharedLink() {
+    if (!requestId || submitting) return
+    setSubmitting(true)
+    setMessage('')
+    setError('')
+    try {
+      const res = await fetch(`/api/cashier/device-authorization/${encodeURIComponent(requestId)}/bind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: getPosDeviceId(), deviceName }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body?.token || !body?.storeCode) {
+        throw new Error(body?.message || '绑定失败，请让老板重新分享链接。')
+      }
+      savePosDeviceToken(body.storeCode, body.token)
+      setInfo((prev) => prev ? { ...prev, status: 'USED', deviceName: body.deviceName || deviceName } : prev)
+      setMessage('本机已绑定，正在进入收银台。')
+      window.setTimeout(() => {
+        window.location.replace(`/cashier?storeCode=${encodeURIComponent(body.storeCode)}`)
+      }, 500)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '绑定失败，请稍后重试。')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const expired = info?.status === 'EXPIRED'
   const approved = info?.status === 'APPROVED'
-  const showLoginPrompt = authChecked && authRole !== 'OWNER'
+  const used = info?.status === 'USED'
+  const sharedLink = info?.flow === 'SHARED_LINK'
+  const showLoginPrompt = !sharedLink && authChecked && authRole !== 'OWNER'
 
   return (
     <main style={s.page}>
@@ -172,9 +204,11 @@ export default function CashierAuthorizePage() {
           </>
         ) : (
           <>
-            <h1 style={s.title}>授权这台电脑为收银机</h1>
+            <h1 style={s.title}>{sharedLink ? '绑定这台收银电脑' : '授权这台电脑为收银机'}</h1>
             <p style={s.sub}>
-              确认后，这台电脑以后可以为本门店收银。清除浏览器缓存或换电脑后，需要重新扫码授权。
+              {sharedLink
+                ? '老板已分享本门店收银链接。确认后，本浏览器将获得独立的收银设备授权。'
+                : '确认后，这台电脑以后可以为本门店收银。清除浏览器缓存或换电脑后，需要重新扫码授权。'}
             </p>
 
             {loading ? (
@@ -191,17 +225,17 @@ export default function CashierAuthorizePage() {
                       onChange={(e) => setDeviceName(e.target.value.slice(0, 20))}
                       style={s.input}
                       placeholder="前台收银机"
-                      disabled={approved || expired}
+                      disabled={approved || expired || used}
                     />
                   </div>
                 </div>
                 <button
                   type="button"
-                  style={{ ...s.btn, ...((submitting || approved || expired) ? s.btnDis : {}) }}
-                  disabled={submitting || approved || expired}
-                  onClick={confirm}
+                  style={{ ...s.btn, ...((submitting || approved || expired || used) ? s.btnDis : {}) }}
+                  disabled={submitting || approved || expired || used}
+                  onClick={sharedLink ? bindSharedLink : confirm}
                 >
-                  {approved ? '已授权' : expired ? '二维码已过期' : submitting ? '正在授权...' : '确认授权'}
+                  {used ? '本机已绑定' : approved ? '已授权' : expired ? '链接已过期' : submitting ? (sharedLink ? '正在绑定...' : '正在授权...') : sharedLink ? '确认绑定本机' : '确认授权'}
                 </button>
                 <button type="button" style={s.secondaryBtn} onClick={copyAuthorizeLink}>
                   复制授权链接

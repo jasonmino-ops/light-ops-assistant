@@ -521,6 +521,9 @@ export default function HomePage() {
           onOpen={() => window.open(desktopPath, '_blank', 'noopener,noreferrer')}
           onCopy={() => copyLink('cashier', desktopUrl)}
         />
+        {realRole === 'OWNER' && (
+          <ActionBtn href="/cashier/devices" iconKind="cashier" label="我的收银电脑" subLabel="生成电脑绑定链接并撤销设备" color="#0f766e" />
+        )}
       </div>
 
       {customerCheckout && (
