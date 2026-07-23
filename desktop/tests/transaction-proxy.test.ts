@@ -22,11 +22,12 @@ describe('Desktop transaction proxy', () => {
     })
     const result = await proxy.request({
       operation: 'POS_SALE_CREATE',
-      payload: { storeCode: 'STORE-A', items: [{ barcode: 'A', quantity: 1 }], paymentMethod: 'CASH' },
+      payload: { storeCode: 'STORE-A', items: [{ barcode: 'A', quantity: 1 }], paymentMethod: 'CASH', idempotencyKey: 'desktop-sale-test-key-001' },
     })
     expect(result).toEqual({ ok: true, status: 201, body: { orderNo: 'S-1' } })
     expect(seenUrl).toBe('https://example.test/api/cashier/sales')
     expect(new Headers(seenHeaders).get('authorization')).toBe('Bearer edt_v1_secret_not_for_renderer')
+    expect(new Headers(seenHeaders).get('idempotency-key')).toBe('desktop-sale-test-key-001')
     expect(JSON.stringify(result)).not.toContain('edt_v1_secret_not_for_renderer')
   })
 
@@ -54,7 +55,7 @@ describe('Desktop transaction proxy', () => {
     })
     const result = await proxy.request({
       operation: 'POS_SALE_CREATE',
-      payload: { storeCode: 'STORE-A', items: [{ barcode: 'A', quantity: 1 }], paymentMethod: 'CASH' },
+      payload: { storeCode: 'STORE-A', items: [{ barcode: 'A', quantity: 1 }], paymentMethod: 'CASH', idempotencyKey: 'desktop-sale-test-key-002' },
     })
     expect(result.error).toBe('DESKTOP_DEVICE_UNAUTHORIZED')
     expect(recoveryError).toBe('DESKTOP_DEVICE_UNAUTHORIZED')

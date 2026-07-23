@@ -324,6 +324,24 @@ function sugarZh(sugar: string): string {
 function cartLineKey(line: CartLine) { return line.barcode + (line.sugar ?? '') }
 function cartTotal(cart: CartLine[]) { return cart.reduce((s, c) => s + c.price * c.qty, 0) }
 function cartCount(cart: CartLine[]) { return cart.reduce((s, c) => s + c.qty, 0) }
+function cashierSaleAttemptFingerprint(input: {
+  storeCode: string
+  paymentMethod: 'CASH' | 'KHQR'
+  items: Array<{ barcode: string; quantity: number; sugar?: string }>
+}) {
+  return JSON.stringify({
+    storeCode: input.storeCode,
+    paymentMethod: input.paymentMethod,
+    items: input.items.map((item) => ({ barcode: item.barcode, quantity: item.quantity, sugar: item.sugar ?? null })),
+  })
+}
+function createCashierSaleIdempotencyKey() {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `cashier-sale-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
+}
 function toKhr(usd: number, rate: number) {
   const amount = Math.round(usd * rate)
   return `${amount.toLocaleString('en-US')}${KHR_SYMBOL}`
@@ -1402,6 +1420,39 @@ export default function CashierPage() {
   const autoPrintedReceiptKeyRef = useRef('')
   const receiptPrintButtonRef = useRef<HTMLButtonElement>(null)
   const receiptPrintLockedRef = useRef(false)
+  const cashierSaleIdempotencyRef = useRef<{ key: string; fingerprint: string } | null>(null)
+
+  useEffect(() => {
+    // Clearing a cart ends its checkout attempt. Re-adding the same products
+    // later is a new manual sale and must receive a new idempotency key.
+    if (cart.length === 0) cashierSaleIdempotencyRef.current = null
+  }, [cart.length])
+
+  useEffect(() => {
+    const attempt = cashierSaleIdempotencyRef.current
+    if (!attempt || cart.length === 0) return
+    if (!storeCode) {
+      cashierSaleIdempotencyRef.current = null
+      return
+    }
+    const apiPayment = payment === 'OTHER' ? 'CASH' : payment
+    if (apiPayment !== 'CASH' && apiPayment !== 'KHQR') {
+      cashierSaleIdempotencyRef.current = null
+      return
+    }
+    const fingerprint = cashierSaleAttemptFingerprint({
+      storeCode,
+      paymentMethod: apiPayment,
+      items: cart.map((line) => ({
+        barcode: line.barcode,
+        quantity: line.qty,
+        ...(line.sugar ? { sugar: line.sugar } : {}),
+      })),
+    })
+    // Any user edit abandons the prior checkout attempt. This remains true if
+    // the user later happens to restore the earlier cart contents.
+    if (attempt.fingerprint !== fingerprint) cashierSaleIdempotencyRef.current = null
+  }, [cart, payment, storeCode])
 
   const focusSearchInput = useCallback(() => {
     window.setTimeout(() => searchRef.current?.focus(), 0)
@@ -3142,6 +3193,17 @@ export default function CashierPage() {
     const apiPayment = submitPayment === 'OTHER' ? 'CASH' : submitPayment
     const submittedItems = cashierDisplayItems(cart)
     const submittedTotal = cartTotal(cart)
+    const saleItems = cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) }))
+    const saleAttemptFingerprint = cashierSaleAttemptFingerprint({
+      storeCode,
+      paymentMethod: apiPayment,
+      items: saleItems,
+    })
+    const existingSaleAttempt = cashierSaleIdempotencyRef.current
+    const idempotencyKey = existingSaleAttempt?.fingerprint === saleAttemptFingerprint
+      ? existingSaleAttempt.key
+      : createCashierSaleIdempotencyKey()
+    cashierSaleIdempotencyRef.current = { key: idempotencyKey, fingerprint: saleAttemptFingerprint }
     try {
       if (!requireOnlinePosAuthorization()) {
         setSubmitting(false)
@@ -3149,15 +3211,16 @@ export default function CashierPage() {
       }
       const response = await requestPosOperation('POS_SALE_CREATE', {
         storeCode,
-        items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
+        items: saleItems,
         paymentMethod: apiPayment,
         manualPaymentConfirmed: apiPayment === 'KHQR',
+        idempotencyKey,
       }, () => fetch('/api/cashier/sales', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey, ...posDeviceHeaders(storeCode) },
         body: JSON.stringify({
           storeCode,
-          items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
+          items: saleItems,
           paymentMethod: apiPayment,
           manualPaymentConfirmed: apiPayment === 'KHQR',
         }),
@@ -3169,6 +3232,7 @@ export default function CashierPage() {
       if (!response.ok || !body) { setSubmitError(body?.message ?? body?.error ?? '提交失败，请重试'); return }
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
+      cashierSaleIdempotencyRef.current = null
       void postCashierDisplaySession({
         storeCode,
         status: 'COMPLETED',

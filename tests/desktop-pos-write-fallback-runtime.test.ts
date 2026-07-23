@@ -31,11 +31,14 @@ type Fixture = {
 type WriteState = {
   saleCount: number
   paymentIntentCount: number
+  idempotencyCount: number
   offlineSyncMapCount: number
   ledgerCount: number
   memberBalance: string
   orderStatus: string
   productUpdatedAt: string
+  posSessionOrderNo: string | null
+  posSessionUpdatedAt: string | null
 }
 
 let fixture: Fixture | null = null
@@ -46,9 +49,13 @@ function makeRequest(
   headers: Record<string, string> = {},
   method: 'POST' | 'PATCH' = 'POST',
 ) {
+  const requestHeaders: Record<string, string> = { 'content-type': 'application/json', ...headers }
+  if (path === '/api/cashier/sales' && !requestHeaders['idempotency-key']) {
+    requestHeaders['idempotency-key'] = `cashier-runtime-${randomUUID()}`
+  }
   return new NextRequest(`http://localhost${path}`, {
     method,
-    headers: { 'content-type': 'application/json', ...headers },
+    headers: requestHeaders,
     body: JSON.stringify(body),
   })
 }
@@ -141,23 +148,31 @@ function offlinePayload(offlineOrderId = `offline-${randomUUID()}`) {
 
 async function captureWriteState(): Promise<WriteState> {
   assert.ok(fixture)
-  const [saleCount, paymentIntentCount, offlineSyncMapCount, ledgerCount, member, order, product] = await Promise.all([
+  const [saleCount, paymentIntentCount, idempotencyCount, offlineSyncMapCount, ledgerCount, member, order, product, posSession] = await Promise.all([
     prisma.saleRecord.count({ where: { tenantId: fixture.tenant.id } }),
     prisma.paymentIntent.count({ where: { tenantId: fixture.tenant.id } }),
+    prisma.cashierSaleIdempotency.count({ where: { tenantId: fixture.tenant.id } }),
     prisma.offlineSaleSyncMap.count({ where: { tenantId: fixture.tenant.id } }),
     prisma.memberBalanceLedger.count({ where: { tenantId: fixture.tenant.id } }),
     prisma.member.findUniqueOrThrow({ where: { id: fixture.member.id }, select: { balance: true } }),
     prisma.customerOrder.findUniqueOrThrow({ where: { id: fixture.order.id }, select: { status: true } }),
     prisma.product.findUniqueOrThrow({ where: { id: fixture.product.id }, select: { updatedAt: true } }),
+    prisma.posSession.findUnique({
+      where: { tenantId_storeId: { tenantId: fixture.tenant.id, storeId: fixture.store.id } },
+      select: { orderNo: true, updatedAt: true },
+    }),
   ])
   return {
     saleCount,
     paymentIntentCount,
+    idempotencyCount,
     offlineSyncMapCount,
     ledgerCount,
     memberBalance: member.balance.toString(),
     orderStatus: order.status,
     productUpdatedAt: product.updatedAt.toISOString(),
+    posSessionOrderNo: posSession?.orderNo ?? null,
+    posSessionUpdatedAt: posSession?.updatedAt.toISOString() ?? null,
   }
 }
 
@@ -251,7 +266,9 @@ async function cleanupFixture() {
   if (!fixture) return
   const { tenant, store, member, product, owner, staff, order } = fixture
   await prisma.paymentIntent.deleteMany({ where: { tenantId: tenant.id } })
+  await prisma.cashierSaleIdempotency.deleteMany({ where: { tenantId: tenant.id } })
   await prisma.memberBalanceLedger.deleteMany({ where: { tenantId: tenant.id } })
+  await prisma.posSession.deleteMany({ where: { tenantId: tenant.id } })
   await prisma.offlineSaleSyncMap.deleteMany({ where: { tenantId: tenant.id } })
   await prisma.saleRecord.deleteMany({ where: { tenantId: tenant.id } })
   await prisma.customerOrder.deleteMany({ where: { id: order.id } })
@@ -298,6 +315,144 @@ async function testKhqrConfirmationRejectsWithoutWrites() {
     assert.equal((await response.json()).error, 'MANUAL_PAYMENT_CONFIRMATION_REQUIRED')
     assert.deepEqual(await captureWriteState(), before, 'unconfirmed KHQR must not create sales, payments, or state changes')
   }
+}
+
+function withIdempotencyKey(headers: Record<string, string>, key: string) {
+  return { ...headers, 'idempotency-key': key }
+}
+
+type SaleResponse = { orderNo?: string; paymentIntentId?: string }
+
+async function saleJson(response: Response): Promise<SaleResponse> {
+  return await response.json() as SaleResponse
+}
+
+async function testCashierSaleServerSideIdempotency() {
+  const current = fixture
+  assert.ok(current)
+  const deviceHeaders = validDeviceHeaders('cashier-idempotency-device')
+  const before = await captureWriteState()
+
+  const missingKey = await postCashierSale(new NextRequest('http://localhost/api/cashier/sales', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...deviceHeaders },
+    body: JSON.stringify(salePayload()),
+  }))
+  assert.equal(missingKey.status, 400, 'online cashier sale must fail closed without an idempotency key')
+  assert.equal((await missingKey.json()).error, 'IDEMPOTENCY_KEY_REQUIRED')
+  assert.deepEqual(await captureWriteState(), before)
+
+  const sequentialKey = `cashier-sequential-${randomUUID()}`
+  const first = await postCashierSale(makeRequest(
+    '/api/cashier/sales', salePayload(), withIdempotencyKey(deviceHeaders, sequentialKey),
+  ))
+  assert.equal(first.status, 201)
+  assert.equal(first.headers.get('Idempotency-Replayed'), 'false')
+  const firstBody = await saleJson(first)
+  assert.ok(firstBody.orderNo && firstBody.paymentIntentId)
+  const afterFirst = await captureWriteState()
+
+  const replay = await postCashierSale(makeRequest(
+    '/api/cashier/sales', salePayload(), withIdempotencyKey(deviceHeaders, sequentialKey),
+  ))
+  assert.equal(replay.status, 201, 'lost-response retry must replay a committed cashier sale')
+  assert.equal(replay.headers.get('Idempotency-Replayed'), 'true')
+  assert.deepEqual(await saleJson(replay), firstBody, 'replay must return the original safe result snapshot')
+  const afterSequential = await captureWriteState()
+  assert.deepEqual(afterSequential, afterFirst, 'replay must not repeat sales, payment, member, inventory, or customer-display writes')
+  assert.equal(afterSequential.saleCount, before.saleCount + 1)
+  assert.equal(afterSequential.paymentIntentCount, before.paymentIntentCount + 1)
+  assert.equal(afterSequential.idempotencyCount, before.idempotencyCount + 1)
+  assert.equal(afterSequential.ledgerCount, before.ledgerCount, 'cashier CASH sale must not duplicate member ledger effects')
+  assert.equal(afterSequential.memberBalance, before.memberBalance, 'cashier CASH sale must not alter member balance')
+  assert.equal(afterSequential.productUpdatedAt, before.productUpdatedAt, 'current cashier sale path has no inventory write to repeat')
+  assert.equal(afterSequential.posSessionOrderNo, firstBody.orderNo, 'customer display completion state must be written with the first sale')
+
+  const mismatched = await postCashierSale(makeRequest(
+    '/api/cashier/sales', {
+      ...salePayload(),
+      items: [{ barcode: current.product.barcode, quantity: 2 }],
+    }, withIdempotencyKey(deviceHeaders, sequentialKey),
+  ))
+  assert.equal(mismatched.status, 409)
+  assert.equal((await mismatched.json()).error, 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH')
+  assert.deepEqual(await captureWriteState(), afterSequential, 'payload conflict must not modify the original sale')
+
+  const concurrentKey = `cashier-concurrent-${randomUUID()}`
+  const [concurrentA, concurrentB] = await Promise.all([
+    postCashierSale(makeRequest('/api/cashier/sales', salePayload(), withIdempotencyKey(deviceHeaders, concurrentKey))),
+    postCashierSale(makeRequest('/api/cashier/sales', salePayload(), withIdempotencyKey(deviceHeaders, concurrentKey))),
+  ])
+  assert.equal(concurrentA.status, 201, 'same-key concurrent sale must not return a transient 500')
+  assert.equal(concurrentB.status, 201, 'same-key concurrent sale must replay safely')
+  assert.deepEqual(await saleJson(concurrentA), await saleJson(concurrentB), 'same-key concurrent calls must receive the same order')
+  const afterConcurrent = await captureWriteState()
+  assert.equal(afterConcurrent.saleCount, afterSequential.saleCount + 1)
+  assert.equal(afterConcurrent.paymentIntentCount, afterSequential.paymentIntentCount + 1)
+  assert.equal(afterConcurrent.idempotencyCount, afterSequential.idempotencyCount + 1)
+
+  const independentA = await postCashierSale(makeRequest(
+    '/api/cashier/sales', salePayload(), withIdempotencyKey(deviceHeaders, `cashier-independent-a-${randomUUID()}`),
+  ))
+  const independentB = await postCashierSale(makeRequest(
+    '/api/cashier/sales', salePayload(), withIdempotencyKey(deviceHeaders, `cashier-independent-b-${randomUUID()}`),
+  ))
+  assert.equal(independentA.status, 201)
+  assert.equal(independentB.status, 201)
+  assert.notEqual((await saleJson(independentA)).orderNo, (await saleJson(independentB)).orderNo, 'different checkout keys must remain independent sales')
+  const afterIndependent = await captureWriteState()
+  assert.equal(afterIndependent.saleCount, afterConcurrent.saleCount + 2)
+  assert.equal(afterIndependent.paymentIntentCount, afterConcurrent.paymentIntentCount + 2)
+
+  const khqrKey = `cashier-khqr-${randomUUID()}`
+  const unconfirmed = await postCashierSale(makeRequest(
+    '/api/cashier/sales', salePayload('KHQR', false), withIdempotencyKey(deviceHeaders, khqrKey),
+  ))
+  assert.equal(unconfirmed.status, 409)
+  assert.equal((await unconfirmed.json()).error, 'MANUAL_PAYMENT_CONFIRMATION_REQUIRED')
+  assert.deepEqual(await captureWriteState(), afterIndependent, 'unconfirmed KHQR must not reserve an idempotency record or write sales')
+
+  const confirmedKhqr = await postCashierSale(makeRequest(
+    '/api/cashier/sales', salePayload('KHQR', true), withIdempotencyKey(deviceHeaders, khqrKey),
+  ))
+  const confirmedKhqrReplay = await postCashierSale(makeRequest(
+    '/api/cashier/sales', salePayload('KHQR', true), withIdempotencyKey(deviceHeaders, khqrKey),
+  ))
+  assert.equal(confirmedKhqr.status, 201)
+  assert.equal(confirmedKhqrReplay.status, 201)
+  const khqrBody = await saleJson(confirmedKhqr)
+  assert.deepEqual(await saleJson(confirmedKhqrReplay), khqrBody)
+  const khqrIntent = await prisma.paymentIntent.findUniqueOrThrow({
+    where: { id: khqrBody.paymentIntentId },
+    select: { status: true, paymentMethod: true },
+  })
+  assert.deepEqual(khqrIntent, { status: 'PAID', paymentMethod: 'KHQR' })
+  const afterKhqr = await captureWriteState()
+  assert.equal(afterKhqr.saleCount, afterIndependent.saleCount + 1)
+  assert.equal(afterKhqr.paymentIntentCount, afterIndependent.paymentIntentCount + 1)
+  assert.equal(afterKhqr.idempotencyCount, afterIndependent.idempotencyCount + 1)
+
+  const completedKey = `cashier-revoked-${randomUUID()}`
+  const completed = await postCashierSale(makeRequest(
+    '/api/cashier/sales', salePayload(), withIdempotencyKey(deviceHeaders, completedKey),
+  ))
+  assert.equal(completed.status, 201)
+  const device = await prisma.browserPosDevice.findFirstOrThrow({
+    where: { tenantId: current.tenant.id, storeId: current.store.id, browserDeviceId: 'cashier-idempotency-device', status: 'ACTIVE' },
+    select: { id: true },
+  })
+  const revoked = await revokeBrowserDevice(
+    makeRequest(`/api/cashier/browser-devices/${device.id}/revoke`, { reason: 'idempotency runtime test' }, sessionHeaders(current.owner.id, 'OWNER')),
+    { params: Promise.resolve({ id: device.id }) },
+  )
+  assert.equal(revoked.status, 200)
+  const afterRevoke = await captureWriteState()
+  const revokedReplay = await postCashierSale(makeRequest(
+    '/api/cashier/sales', salePayload(), withIdempotencyKey(deviceHeaders, completedKey),
+  ))
+  assert.equal(revokedReplay.status, 403, 'revoked device must not replay historical sale data or create a new write')
+  assert.equal((await revokedReplay.json()).error, 'BROWSER_DEVICE_REVOKED')
+  assert.deepEqual(await captureWriteState(), afterRevoke)
 }
 
 async function testPosDeviceTokenValidation() {
@@ -426,6 +581,7 @@ async function main() {
   try {
     await testPublicStoreCodeWritesFailClosed()
     await testKhqrConfirmationRejectsWithoutWrites()
+    await testCashierSaleServerSideIdempotency()
     await testPosDeviceTokenValidation()
     await testAuthorizedRegressionPaths()
     console.log('desktop POS write fallback runtime tests passed')

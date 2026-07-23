@@ -9,7 +9,12 @@ const MAX_REQUEST_BYTES = 256 * 1024
 const MAX_RESPONSE_BYTES = 512 * 1024
 const REQUEST_TIMEOUT_MS = 15_000
 
-type SanitizedRequest = { path: string; method: 'GET' | 'POST' | 'PATCH'; body?: unknown }
+type SanitizedRequest = {
+  path: string
+  method: 'GET' | 'POST' | 'PATCH'
+  body?: unknown
+  headers?: Record<string, string>
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -24,6 +29,11 @@ function string(value: unknown, max = 160): string | null {
 function storeCode(value: unknown): string | null {
   const code = string(value, 80)
   return code && /^[A-Za-z0-9_-]+$/.test(code) ? code : null
+}
+
+function idempotencyKey(value: unknown): string | null {
+  const key = string(value, 200)
+  return key && /^[A-Za-z0-9._:-]{16,200}$/.test(key) ? key : null
 }
 
 function itemList(value: unknown): Array<Record<string, unknown>> | null {
@@ -63,12 +73,14 @@ function sanitize(operation: DesktopTransactionOperation, payload: unknown): San
     case 'POS_SALE_CREATE': {
       const items = itemList(payload.items)
       const paymentMethod = payload.paymentMethod === 'CASH' || payload.paymentMethod === 'KHQR' ? payload.paymentMethod : null
-      if (!code || !items || !paymentMethod) return null
+      const key = idempotencyKey(payload.idempotencyKey)
+      if (!code || !items || !paymentMethod || !key) return null
       return {
         path: '/api/cashier/sales', method: 'POST', body: {
           storeCode: code, items, paymentMethod,
           ...(payload.manualPaymentConfirmed === true ? { manualPaymentConfirmed: true } : {}),
         },
+        headers: { 'Idempotency-Key': key },
       }
     }
     case 'POS_MEMBER_BALANCE_PAY': {
@@ -146,6 +158,7 @@ export class DesktopTransactionProxy {
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${credential.credential.deviceToken}`,
+          ...route.headers,
           ...(route.body === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
         body: route.body === undefined ? undefined : JSON.stringify(route.body),

@@ -134,6 +134,7 @@ model Tenant {
   desktopDevices           DesktopDevice[]
   browserPosDevices        BrowserPosDevice[]
   browserPosBindingDeliveries BrowserPosBindingDelivery[]
+  cashierSaleIdempotencies CashierSaleIdempotency[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
 }
@@ -219,6 +220,7 @@ model Store {
   desktopDevices           DesktopDevice[]
   browserPosDevices        BrowserPosDevice[]
   browserPosBindingDeliveries BrowserPosBindingDelivery[]
+  cashierSaleIdempotencies CashierSaleIdempotency[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
 
@@ -637,6 +639,37 @@ model PaymentIntent {
   @@index([status])
   @@index([merchantConfigId])
   @@index([transactionActorType, transactionActorId])
+}
+
+/**
+ * One server-side cashier sale operation. The row is written in the same
+ * transaction as SaleRecord and PaymentIntent, then replays its safe result
+ * to a legitimate retry without running the business write again.
+ */
+model CashierSaleIdempotency {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  storeId            String
+  actorType          String
+  actorId            String
+  operation          String
+  idempotencyKey     String
+  payloadFingerprint String
+  status             String   @default("PROCESSING") // PROCESSING | COMPLETED
+  resultSnapshot     Json?
+  orderNo            String?
+  paymentIntentId    String?
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, storeId, actorType, actorId, operation, idempotencyKey])
+  @@index([tenantId, storeId, expiresAt])
+  @@index([orderNo])
+  @@index([paymentIntentId])
 }
 
 model PaymentTransaction {

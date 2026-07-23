@@ -59,10 +59,30 @@ async function main() {
   const salesRouteSource = readFileSync(resolve(process.cwd(), 'app/api/cashier/sales/route.ts'), 'utf8')
   assert.match(cashierSource, /manualPaymentConfirmed:\s*apiPayment === 'KHQR'/,
     'the existing final confirmation action must explicitly declare manual KHQR confirmation')
-  assert.match(salesRouteSource, /requiresCashierManualPaymentConfirmation\(paymentMethod, manualPaymentConfirmed === true\)/,
+  assert.match(salesRouteSource, /requiresCashierManualPaymentConfirmation\(paymentMethod, manualPaymentConfirmed\)/,
     'the cashier write route must reject KHQR without that explicit confirmation')
-  assert.match(salesRouteSource, /resolveCashierPaymentIntentStatus\([\s\S]*manualPaymentConfirmed === true/,
+  assert.match(salesRouteSource, /resolveCashierPaymentIntentStatus\(paymentMethod, manualPaymentConfirmed\)/,
     'the persisted PaymentIntent status must use the explicit confirmation decision')
+  assert.match(cashierSource, /cashierSaleIdempotencyRef/,
+    'cashier retry state must keep one stable idempotency key for a checkout attempt')
+  assert.match(cashierSource, /'Idempotency-Key': idempotencyKey/,
+    'browser cashier sales must send the stable idempotency key to the server')
+  assert.match(cashierSource, /autoPrintedReceiptKeyRef\.current === receiptKey/,
+    'a replayed order response must not trigger a second automatic receipt print')
+  assert.match(salesRouteSource, /CashierSaleIdempotency/,
+    'cashier sales must use a dedicated idempotency record rather than an audit log')
+  assert.match(salesRouteSource, /ON CONFLICT \("tenantId", "storeId", "actorType", "actorId", "operation", "idempotencyKey"\)/,
+    'same-key concurrent requests must have a database uniqueness gate')
+  assert.match(salesRouteSource, /IDEMPOTENCY_KEY_PAYLOAD_MISMATCH/,
+    'same-key payload changes must fail closed')
+  const schemaSource = readFileSync(resolve(process.cwd(), 'prisma/schema.prisma'), 'utf8')
+  const idempotencyMigration = readFileSync(resolve(process.cwd(), 'prisma/migrations/20260724100000_ep_txn_idemp_01_cashier_sale_idempotency/migration.sql'), 'utf8')
+  assert.match(schemaSource, /model CashierSaleIdempotency/,
+    'cashier idempotency must have a dedicated persisted model')
+  assert.match(schemaSource, /@@unique\(\[tenantId, storeId, actorType, actorId, operation, idempotencyKey\]\)/,
+    'the idempotency model must make an actor-scoped operation unique')
+  assert.match(idempotencyMigration, /CREATE TABLE "CashierSaleIdempotency"/,
+    'the idempotency migration must be additive')
 
   const getResponse = shinhanCallbackGet()
   assert.equal(getResponse.status, 405, 'GET callback must never mutate payment state')
