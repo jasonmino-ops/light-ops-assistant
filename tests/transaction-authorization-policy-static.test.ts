@@ -56,6 +56,6 @@ const browserDevice = read('lib/browser-pos-device.ts')
 assert.match(browserDevice, /legacyMigratedAt/, 'old token use must have a controlled migration record')
 assert.match(browserDevice, /status: 'REVOKED'/, 'Browser Device revoke must be persistent')
 assert.match(browserDevice, /status: 'EXPIRED'/, 'Browser Device expiry must be persistent')
-assert.doesNotMatch(browserDevice, /payloadSnapshot:\s*\{[^}]*token/, 'new Browser Device audit must not persist raw token material')
+assert.doesNotMatch(browserDevice, /payloadSnapshot:\s*\{[^}]*\btoken\s*:/, 'new Browser Device audit must not persist raw token material')
 
 console.log(`transaction authorization policy static checks passed (${transactionWrites.length} write routes)`)

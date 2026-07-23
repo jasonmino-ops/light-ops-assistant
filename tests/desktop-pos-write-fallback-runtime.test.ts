@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '../lib/prisma'
 import { signSession } from '../lib/session'
 import { signPosDeviceToken } from '../lib/desktop-pos-auth'
+import { requireAuthSecret } from '../lib/auth-secret'
 import { POST as postCashierSale } from '../app/api/cashier/sales/route'
 import { POST as postMemberBalancePay } from '../app/api/cashier/member-balance-pay/route'
 import { POST as postOfflineSync } from '../app/api/cashier/offline-sync/route'
@@ -91,7 +92,7 @@ function expiredDeviceToken(deviceId: string) {
     issuedBy: fixture.owner.id,
     iat: Date.now() - 181 * 24 * 60 * 60 * 1000,
   })).toString('base64url')
-  const secret = process.env.AUTH_SECRET ?? 'dev-secret-change-in-production'
+  const secret = requireAuthSecret()
   const signature = createHmac('sha256', secret).update(payload).digest('base64url')
   return `${payload}.${signature}`
 }

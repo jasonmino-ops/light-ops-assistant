@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { isAuthSecretConfigured } from '@/lib/auth-secret'
 
 type Status = 'PASS' | 'WARN' | 'FAIL' | 'INFO'
 
@@ -31,11 +32,8 @@ export async function GET(req: NextRequest) {
   const checks: Check[] = []
 
   // ── 1. ENV: AUTH_SECRET ────────────────────────────────────────────────────
-  const authSecret = process.env.AUTH_SECRET ?? ''
-  if (!authSecret) {
-    checks.push({ key: 'auth_secret', name: 'AUTH_SECRET', status: 'FAIL', detail: '未配置，Session 签名不安全' })
-  } else if (authSecret === 'dev-secret-change-in-production' || authSecret.length < 16) {
-    checks.push({ key: 'auth_secret', name: 'AUTH_SECRET', status: 'WARN', detail: '正在使用默认弱密钥，请在生产环境替换' })
+  if (!isAuthSecretConfigured()) {
+    checks.push({ key: 'auth_secret', name: 'AUTH_SECRET', status: 'FAIL', detail: '未配置、为空或长度不足，认证签名已拒绝' })
   } else {
     checks.push({ key: 'auth_secret', name: 'AUTH_SECRET', status: 'PASS', detail: '已配置' })
   }

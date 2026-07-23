@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { Prisma } from '@prisma/client'
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireAuthSecret } from '@/lib/auth-secret'
 import { POS_DEVICE_OPERATIONS, type PosDeviceOperation } from '@/lib/transaction-policy-types'
 import { isDesktopSubscriptionAllowed, resolveDesktopSubscriptionAccess } from '@/lib/desktop-activation/subscription-access'
 
@@ -58,16 +59,12 @@ export type BrowserPosDeviceResult =
   | { ok: true; authorization: BrowserPosDeviceAuthorization }
   | BrowserPosDeviceFailure
 
-function secret(): string {
-  return process.env.AUTH_SECRET ?? 'dev-secret-change-in-production'
-}
-
 function signPayload(payload: string): string {
-  return crypto.createHmac('sha256', secret()).update(payload).digest('base64url')
+  return crypto.createHmac('sha256', requireAuthSecret()).update(payload).digest('base64url')
 }
 
 export function hashPosDeviceToken(token: string): string {
-  return crypto.createHmac('sha256', secret()).update(`browser-pos-device-token:v1:${token}`).digest('hex')
+  return crypto.createHmac('sha256', requireAuthSecret()).update(`browser-pos-device-token:v1:${token}`).digest('hex')
 }
 
 export function signPosDeviceToken(
@@ -84,12 +81,16 @@ export function signPosDeviceToken(
 }
 
 export function verifyPosDeviceToken(token: string): PosDeviceTokenPayload | null {
+  // Missing configuration is operationally distinct from an invalid credential.
+  // Resolve before the catch so it fails closed rather than becoming a replay miss.
+  const authSecret = requireAuthSecret()
   try {
     const dot = token.lastIndexOf('.')
     if (dot < 0) return null
     const encoded = token.slice(0, dot)
     const signature = token.slice(dot + 1)
-    if (!crypto.timingSafeEqual(Buffer.from(signPayload(encoded)), Buffer.from(signature))) return null
+    const expected = crypto.createHmac('sha256', authSecret).update(encoded).digest('base64url')
+    if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) return null
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString()) as PosDeviceTokenPayload
     if (payload.v !== TOKEN_VERSION) return null
     if (!payload.tenantId || !payload.storeId || !payload.storeCode || !payload.deviceId || !payload.issuedBy) return null

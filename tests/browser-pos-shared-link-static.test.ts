@@ -8,6 +8,7 @@ const cashierAuthorizePage = readFileSync('app/cashier/authorize/page.tsx', 'utf
 const browserDeviceManagement = readFileSync('app/api/cashier/browser-devices/route.ts', 'utf8')
 const browserDeviceRevoke = readFileSync('app/api/cashier/browser-devices/[id]/revoke/route.ts', 'utf8')
 const bindingDelivery = readFileSync('lib/browser-pos-binding-delivery.ts', 'utf8')
+const authSecret = readFileSync('lib/auth-secret.ts', 'utf8')
 
 assert.match(sharedAuthorization, /lockChallenge[\s\S]*SELECT "id"[\s\S]*FOR UPDATE/, 'challenge redemption must lock the exact OperationLog row')
 assert.match(
@@ -47,8 +48,10 @@ assert.match(browserDeviceRevoke, /storeId: ctx\.storeId[\s\S]*role: 'OWNER'[\s\
 assert.match(browserDevice, /where: \{ id: input\.id, tenantId: input\.tenantId, storeId: input\.storeId \}/, 'revocation must scope the target device to the current store')
 
 assert.match(bindingDelivery, /aes-256-gcm/, 'delivery result must be encrypted with an authenticated envelope')
-assert.match(bindingDelivery, /AUTH_SECRET_NOT_CONFIGURED/, 'delivery encryption must expose a non-secret configuration failure')
-assert.doesNotMatch(bindingDelivery, /dev-secret-change-in-production/, 'delivery encryption must not fall back to a public default secret')
+assert.match(authSecret, /AUTH_SECRET_NOT_CONFIGURED/, 'delivery encryption must expose a non-secret configuration failure')
+assert.equal(bindingDelivery.includes(['dev', 'secret', 'change', 'in', 'production'].join('-')), false, 'delivery encryption must not fall back to a public default secret')
+assert.match(authSecret, /requireAuthSecret/, 'all auth credentials must resolve AUTH_SECRET through one fail-closed helper')
+assert.match(authSecret, /MIN_AUTH_SECRET_LENGTH = 32/, 'AUTH_SECRET must reject undersized values')
 assert.match(bindingDelivery, /cipher\.setAAD/, 'delivery ciphertext must be bound to its request/device/attempt context')
 assert.match(bindingDelivery, /decipher\.setAuthTag/, 'delivery replay must authenticate ciphertext before release')
 assert.doesNotMatch(bindingDelivery, /OperationLog/, 'encrypted delivery result must not use ordinary audit logs')

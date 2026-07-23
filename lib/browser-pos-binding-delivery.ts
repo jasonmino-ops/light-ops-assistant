@@ -1,16 +1,11 @@
 import crypto from 'crypto'
+import { requireAuthSecret } from './auth-secret'
 
 const DELIVERY_VERSION = 'v1'
 const DELIVERY_ALGORITHM = 'aes-256-gcm'
 const DELIVERY_IV_BYTES = 12
 
-export class BrowserPosBindingDeliverySecretError extends Error {
-  code = 'AUTH_SECRET_NOT_CONFIGURED' as const
-
-  constructor() {
-    super('AUTH_SECRET_NOT_CONFIGURED')
-  }
-}
+export { AuthSecretConfigurationError as BrowserPosBindingDeliverySecretError } from './auth-secret'
 
 export type BrowserPosBindingDeliveryContext = {
   requestId: string
@@ -29,21 +24,15 @@ export type BrowserPosBindingDeliveryResult = BrowserPosBindingDeliveryContext &
   tokenExpiresAt: string
 }
 
-function requiredAuthSecret() {
-  const secret = process.env.AUTH_SECRET?.trim()
-  if (!secret) throw new BrowserPosBindingDeliverySecretError()
-  return secret
-}
-
 export function assertBrowserPosBindingDeliverySecretConfigured() {
-  requiredAuthSecret()
+  requireAuthSecret()
 }
 
 function deliveryKey() {
   // Browser POS credentials already use AUTH_SECRET for signing and hashing.
   // Derive a domain-separated AES key so a delivery envelope cannot be used as
   // a session or a BrowserPosDevice token primitive.
-  const secret = requiredAuthSecret()
+  const secret = requireAuthSecret()
   return crypto
     .createHash('sha256')
     .update('browser-pos-binding-delivery:v1\0')
