@@ -12,29 +12,36 @@ function validDeviceId(value: string) {
   return value.length >= 8 && value.length <= 200
 }
 
+function validBindingAttemptId(value: string) {
+  return value.length >= 16 && value.length <= 200
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ requestId: string }> },
 ) {
   const { requestId } = await params
-  let body: { deviceId?: unknown; deviceName?: unknown }
+  let body: { deviceId?: unknown; deviceName?: unknown; bindingAttemptId?: unknown }
   try { body = await req.json() } catch {
     return NextResponse.json({ error: 'INVALID_BODY' }, { status: 400 })
   }
   const deviceId = typeof body.deviceId === 'string' ? body.deviceId.trim() : ''
   if (!validDeviceId(deviceId)) return NextResponse.json({ error: 'INVALID_DEVICE_ID' }, { status: 400 })
+  const bindingAttemptId = typeof body.bindingAttemptId === 'string' ? body.bindingAttemptId.trim() : ''
+  if (!validBindingAttemptId(bindingAttemptId)) return NextResponse.json({ error: 'INVALID_BINDING_ATTEMPT' }, { status: 400 })
 
   const result = await redeemBrowserPosAuthorization({
     requestId,
     deviceId,
+    bindingAttemptId,
     deviceName: typeof body.deviceName === 'string' ? body.deviceName : null,
     browserInfo: req.headers.get('user-agent'),
   })
   if (!result.ok) {
     const message = result.error === 'CHALLENGE_EXPIRED'
       ? '分享链接已过期，请让老板重新生成。'
-      : result.error === 'CHALLENGE_RECOVERY_NOT_READY'
-        ? '绑定已完成，正在确认授权交付；请数秒后在本机重试本链接。'
+      : result.error === 'DELIVERY_EXPIRED'
+        ? '本次绑定交付已过期，请让老板重新生成链接。'
       : result.error === 'CHALLENGE_USED'
         ? '分享链接已被使用，请让老板重新生成。'
         : result.error === 'ISSUER_UNAVAILABLE'

@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '../lib/prisma'
 import { signSession } from '../lib/session'
 import { authorizeBrowserPosDevice } from '../lib/browser-pos-device'
+import { openBrowserPosBindingDelivery } from '../lib/browser-pos-binding-delivery'
 import { POST as createSharedLink, GET as listBrowserDevices } from '../app/api/cashier/browser-devices/route'
 import { POST as bindSharedLink } from '../app/api/cashier/device-authorization/[requestId]/bind/route'
 import { POST as startQrAuthorization } from '../app/api/cashier/device-authorization/start/route'
@@ -129,6 +130,7 @@ async function seedFixture(): Promise<Fixture> {
 async function cleanupFixture() {
   if (!fixture) return
   await prisma.operationLog.deleteMany({ where: { tenantId: fixture.tenantId } })
+  await prisma.browserPosBindingDelivery.deleteMany({ where: { tenantId: fixture.tenantId } })
   await prisma.browserPosDevice.deleteMany({ where: { tenantId: fixture.tenantId } })
   await prisma.userStoreRole.deleteMany({ where: { tenantId: fixture.tenantId } })
   await prisma.tenantSubscription.deleteMany({ where: { tenantId: fixture.tenantId } })
@@ -152,71 +154,97 @@ async function createLink(input?: { storeCode: string; headers: Record<string, s
   return body as { requestId: string; shareUrl: string; expiresAt: string }
 }
 
-async function bind(requestId: string, deviceId: string, deviceName = '收银台 A') {
+function bindingAttemptId() {
+  return `attempt-${randomUUID()}`
+}
+
+async function bind(requestId: string, deviceId: string, attemptId: string, deviceName = '收银台 A') {
   return bindSharedLink(
-    request(`/api/cashier/device-authorization/${requestId}/bind`, { deviceId, deviceName }),
+    request(`/api/cashier/device-authorization/${requestId}/bind`, { deviceId, deviceName, bindingAttemptId: attemptId }),
     { params: Promise.resolve({ requestId }) },
   )
 }
 
-async function testOneTimeAtomicBindingAndDeliveryRecovery() {
+async function testIdempotentBindingAndDeliveryReplay() {
   assert.ok(fixture)
   const link = await createLink()
   const deviceId = `browser-${randomUUID()}`
-  const [first, second] = await Promise.all([bind(link.requestId, deviceId), bind(link.requestId, deviceId)])
-  const responses = [first, second]
-  const successful = responses.filter((response) => response.status === 200)
-  const rejected = responses.filter((response) => response.status === 409)
-  assert.equal(successful.length, 1, 'only one concurrent shared-link redemption may succeed')
-  assert.equal(rejected.length, 1, 'the second concurrent redemption must be rejected as used')
-
-  // Deliberately do not save the first response token: this simulates a lost
-  // HTTP response after the atomic bind transaction has committed.
-  const initiallyBound = await successful[0].json()
+  const attemptId = bindingAttemptId()
+  const [first, second] = await Promise.all([
+    bind(link.requestId, deviceId, attemptId),
+    bind(link.requestId, deviceId, attemptId),
+  ])
+  assert.equal(first.status, 200, 'first idempotent request must bind')
+  const secondFailure = second.status === 200 ? null : await second.clone().json()
+  assert.equal(second.status, 200, `same attemptId concurrent retry must replay: ${JSON.stringify(secondFailure)}`)
+  const initiallyBound = await first.json()
+  const bound = await second.json()
   assert.equal(initiallyBound.status, 'BOUND')
-  assert.match(initiallyBound.token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
-  assert.equal(successful[0].headers.get('set-cookie'), null, 'shared binding must not establish an OWNER session')
-
-  const initialChallenge = await prisma.operationLog.findFirstOrThrow({
-    where: { requestId: link.requestId, actionType: 'POS_DEVICE_AUTH_REQUEST' },
-  })
-  assert.equal(initialChallenge.status, 'SUCCESS', 'consumed challenge must be persisted as successful only with the bind')
-  assert.equal(initialChallenge.targetId, deviceId)
-  // A retry is only admitted after the server-side concurrency grace. The
-  // original response is intentionally discarded above, so this is the real
-  // lost-delivery path rather than a fixture mutation.
-  await new Promise((resolve) => setTimeout(resolve, 3_100))
-
-  const wrongDevice = await bind(link.requestId, `other-browser-${randomUUID()}`)
-  assert.equal(wrongDevice.status, 409, 'a different browserDeviceId must never recover a lost delivery')
-
-  const recovery = await bind(link.requestId, deviceId)
-  assert.equal(recovery.status, 200, 'the same bound browser must recover a lost token delivery once')
-  const bound = await recovery.json()
   assert.equal(bound.status, 'BOUND')
   assert.match(bound.token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
-  assert.notEqual(bound.token, initiallyBound.token, 'recovery must rotate the browser credential')
-  assert.equal(recovery.headers.get('set-cookie'), null, 'token recovery must not establish an OWNER session')
+  assert.equal(bound.token, initiallyBound.token, 'same attemptId must return the exact original credential')
+  assert.equal(first.headers.get('set-cookie'), null, 'shared binding must not establish an OWNER session')
+  assert.equal(second.headers.get('set-cookie'), null, 'delivery replay must not establish an OWNER session')
 
-  const third = await bind(link.requestId, deviceId)
-  assert.equal(third.status, 409, 'the controlled recovery path may only be used once')
+  // Deliberately discard the initial response result, then retry with the same
+  // attemptId: this is the actual lost-response recovery contract.
+  const replay = await bind(link.requestId, deviceId, attemptId)
+  assert.equal(replay.status, 200)
+  const replayed = await replay.json()
+  assert.equal(replayed.token, initiallyBound.token, 'lost-response retry must not rotate or invalidate the first token')
 
-  const challenge = await prisma.operationLog.findFirstOrThrow({ where: { id: initialChallenge.id } })
+  const wrongDevice = await bind(link.requestId, `other-browser-${randomUUID()}`, attemptId)
+  assert.equal(wrongDevice.status, 409, 'a different browserDeviceId must never replay delivery')
+  const wrongAttempt = await bind(link.requestId, deviceId, bindingAttemptId())
+  assert.equal(wrongAttempt.status, 409, 'a different bindingAttemptId cannot claim the challenge')
+
+  const challenge = await prisma.operationLog.findFirstOrThrow({
+    where: { requestId: link.requestId, actionType: 'POS_DEVICE_AUTH_REQUEST' },
+  })
+  assert.equal(challenge.status, 'SUCCESS', 'consumed challenge must be persisted as successful only with the bind')
+  assert.equal(challenge.targetId, deviceId)
   const payloadText = JSON.stringify(challenge.payloadSnapshot)
-  assert.equal((challenge.payloadSnapshot as { deliveryRecoveryCount?: number }).deliveryRecoveryCount, 1)
   assert.doesNotMatch(payloadText, new RegExp(initiallyBound.token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'initial raw token must never be persisted in challenge audit data')
-  assert.doesNotMatch(payloadText, new RegExp(bound.token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'recovered raw token must never be persisted in challenge audit data')
   assert.doesNotMatch(payloadText, /tokenHash/i, 'challenge audit data must not expose a token hash')
 
   const devices = await prisma.browserPosDevice.findMany({
     where: { tenantId: fixture.tenantId, storeId: fixture.storeAId, browserDeviceId: deviceId },
   })
-  assert.equal(devices.length, 1, 'initial bind and recovery must leave exactly one BrowserPosDevice')
+  assert.equal(devices.length, 1, 'idempotent bind and replay must leave exactly one BrowserPosDevice')
   assert.equal(devices[0].status, 'ACTIVE')
   assert.equal(devices[0].displayName, '收银台 A')
   assert.ok(devices[0].browserInfo, 'server should retain minimal browser information for owner device management')
   assert.notEqual(devices[0].tokenHash, bound.token, 'only a token hash may be stored')
   assert.ok(devices[0].tokenHash.length >= 32)
+  const delivery = await prisma.browserPosBindingDelivery.findUniqueOrThrow({ where: { requestId: link.requestId } })
+  assert.equal(delivery.browserDeviceId, deviceId)
+  assert.equal(delivery.bindingAttemptId, attemptId)
+  assert.equal(delivery.browserPosDeviceId, devices[0].id)
+  assert.equal(delivery.status, 'READY')
+  assert.doesNotMatch(delivery.encryptedResult, new RegExp(bound.token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'raw token must be encrypted at rest')
+  assert.doesNotMatch(delivery.encryptedResult, /tokenHash/i, 'delivery record must not contain token hashes')
+  const decrypted = openBrowserPosBindingDelivery(delivery.encryptedResult, {
+    requestId: link.requestId,
+    tenantId: fixture.tenantId,
+    storeId: fixture.storeAId,
+    browserDeviceId: deviceId,
+    bindingAttemptId: attemptId,
+  })
+  assert.equal(decrypted?.token, bound.token)
+  assert.equal(openBrowserPosBindingDelivery(delivery.encryptedResult, {
+    requestId: `${link.requestId}-other`,
+    tenantId: fixture.tenantId,
+    storeId: fixture.storeAId,
+    browserDeviceId: deviceId,
+    bindingAttemptId: attemptId,
+  }), null, 'delivery ciphertext must be bound to its original challenge')
+  assert.equal(openBrowserPosBindingDelivery(delivery.encryptedResult, {
+    requestId: link.requestId,
+    tenantId: fixture.tenantId,
+    storeId: fixture.storeBId,
+    browserDeviceId: deviceId,
+    bindingAttemptId: attemptId,
+  }), null, 'delivery ciphertext must not replay across stores')
 
   const transactionAuth = await authorizeBrowserPosDevice(
     request('/api/cashier/sales', undefined, {
@@ -233,21 +261,22 @@ async function testOneTimeAtomicBindingAndDeliveryRecovery() {
     assert.equal('role' in transactionAuth.authorization, false, 'Browser device authorization must not synthesize an OWNER role')
   }
 
-  const staleTokenAuth = await authorizeBrowserPosDevice(
-    request('/api/cashier/sales', undefined, {
-      'x-pos-device-id': deviceId,
-      'x-pos-device-token': initiallyBound.token,
-    }),
-    { tenantId: fixture.tenantId, storeId: fixture.storeAId, storeCode: fixture.storeACode },
-    'POS_SALE_CREATE',
-  )
-  assert.equal(staleTokenAuth.ok, false, 'recovery rotates the lost-response credential')
-
   const listed = await listBrowserDevices(request('/api/cashier/browser-devices', undefined, ownerAHeaders()))
   assert.equal(listed.status, 200)
   const listText = JSON.stringify(await listed.json())
   assert.doesNotMatch(listText, new RegExp(bound.token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'device management must not expose raw device tokens')
   assert.match(listText, /收银台 A/)
+
+  await prisma.browserPosBindingDelivery.update({
+    where: { id: delivery.id },
+    data: { expiresAt: new Date(Date.now() - 1_000) },
+  })
+  const expiredDelivery = await bind(link.requestId, deviceId, attemptId)
+  assert.equal(expiredDelivery.status, 409, 'expired delivery cannot be replayed indefinitely')
+  assert.equal((await expiredDelivery.json()).error, 'DELIVERY_EXPIRED')
+  const clearedDelivery = await prisma.browserPosBindingDelivery.findUniqueOrThrow({ where: { id: delivery.id } })
+  assert.equal(clearedDelivery.status, 'EXPIRED')
+  assert.equal(clearedDelivery.encryptedResult, '', 'expired delivery clears its ciphertext on access')
 
   const revoked = await revokeBrowserDevice(
     request(`/api/cashier/browser-devices/${devices[0].id}/revoke`, { reason: 'shared-link test' }, ownerAHeaders()),
@@ -266,6 +295,29 @@ async function testOneTimeAtomicBindingAndDeliveryRecovery() {
   if (!afterRevoke.ok) assert.equal(afterRevoke.error, 'BROWSER_DEVICE_REVOKED')
 }
 
+async function testDifferentAttemptConcurrentSingleWinner() {
+  assert.ok(fixture)
+  const link = await createLink()
+  const deviceId = `concurrent-${randomUUID()}`
+  const [first, second] = await Promise.all([
+    bind(link.requestId, deviceId, bindingAttemptId()),
+    bind(link.requestId, deviceId, bindingAttemptId()),
+  ])
+  const responses = [first, second]
+  const successful = responses.filter((response) => response.status === 200)
+  const rejected = responses.filter((response) => response.status === 409)
+  assert.equal(successful.length, 1, 'different binding attempts must have exactly one challenge winner')
+  assert.equal(rejected.length, 1, 'losing binding attempt must be rejected without token rotation')
+  const winner = await successful[0].json() as { token: string }
+  const delivery = await prisma.browserPosBindingDelivery.findUniqueOrThrow({ where: { requestId: link.requestId } })
+  assert.ok(delivery.bindingAttemptId, 'winning binding attempt must be recorded')
+  assert.doesNotMatch(delivery.encryptedResult, new RegExp(winner.token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  const devices = await prisma.browserPosDevice.findMany({
+    where: { tenantId: fixture.tenantId, storeId: fixture.storeAId, browserDeviceId: deviceId },
+  })
+  assert.equal(devices.length, 1, 'different attempts must not create a second BrowserPosDevice')
+}
+
 async function testExpiredAndRepeatedLinksDoNotBind() {
   assert.ok(fixture)
   const expired = await createLink()
@@ -280,15 +332,16 @@ async function testExpiredAndRepeatedLinksDoNotBind() {
     },
   })
   const expiredDeviceId = `expired-${randomUUID()}`
-  const expiredResponse = await bind(expired.requestId, expiredDeviceId)
+  const expiredResponse = await bind(expired.requestId, expiredDeviceId, bindingAttemptId())
   assert.equal(expiredResponse.status, 410, 'expired link must not bind a device')
   assert.equal(await prisma.browserPosDevice.count({ where: { tenantId: fixture.tenantId, browserDeviceId: expiredDeviceId } }), 0)
 
   const used = await createLink()
-  const first = await bind(used.requestId, `used-${randomUUID()}`)
+  const usedDeviceId = `used-${randomUUID()}`
+  const first = await bind(used.requestId, usedDeviceId, bindingAttemptId())
   assert.equal(first.status, 200)
-  const second = await bind(used.requestId, `used-again-${randomUUID()}`)
-  assert.equal(second.status, 409, 'a consumed link cannot bind a second browser')
+  const second = await bind(used.requestId, usedDeviceId, bindingAttemptId())
+  assert.equal(second.status, 409, 'a consumed link cannot be claimed by a second binding operation')
 }
 
 async function testExistingQrChallengeRemainsAvailable() {
@@ -315,6 +368,12 @@ async function testExistingQrChallengeRemainsAvailable() {
   const body = await polled.json()
   assert.equal(body.status, 'APPROVED')
   assert.ok(body.token, 'the requesting browser alone should receive the raw QR credential')
+  const replayed = await pollQrAuthorization(request(
+    `/api/cashier/device-authorization/status?requestId=${encodeURIComponent(startBody.requestId)}&deviceId=${encodeURIComponent(deviceId)}`,
+  ))
+  assert.equal(replayed.status, 200)
+  const replayedBody = await replayed.json()
+  assert.equal(replayedBody.token, body.token, 'QR polling must reuse the same idempotent delivery result')
   const challenge = await prisma.operationLog.findFirstOrThrow({
     where: { requestId: startBody.requestId, actionType: 'POS_DEVICE_AUTH_REQUEST' },
   })
@@ -327,7 +386,7 @@ async function testStoreScopedOwnerDeviceManagement() {
   assert.ok(fixture)
   const linkB = await createLink({ storeCode: fixture.storeBCode, headers: ownerBHeaders() })
   const deviceBId = `browser-b-${randomUUID()}`
-  const boundB = await bind(linkB.requestId, deviceBId, '收银台 B')
+  const boundB = await bind(linkB.requestId, deviceBId, bindingAttemptId(), '收银台 B')
   assert.equal(boundB.status, 200)
   const boundBBody = await boundB.json() as { token: string }
   const deviceB = await prisma.browserPosDevice.findFirstOrThrow({
@@ -389,7 +448,8 @@ async function main() {
   mutableEnv.NODE_ENV = 'production'
   fixture = await seedFixture()
   try {
-    await testOneTimeAtomicBindingAndDeliveryRecovery()
+    await testIdempotentBindingAndDeliveryReplay()
+    await testDifferentAttemptConcurrentSingleWinner()
     await testExpiredAndRepeatedLinksDoNotBind()
     await testExistingQrChallengeRemainsAvailable()
     await testStoreScopedOwnerDeviceManagement()

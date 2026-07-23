@@ -133,6 +133,7 @@ model Tenant {
   subscriptionEvents       SubscriptionEvent[]
   desktopDevices           DesktopDevice[]
   browserPosDevices        BrowserPosDevice[]
+  browserPosBindingDeliveries BrowserPosBindingDelivery[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
 }
@@ -217,6 +218,7 @@ model Store {
   customerJourneyEvents    CustomerJourneyEvent[]
   desktopDevices           DesktopDevice[]
   browserPosDevices        BrowserPosDevice[]
+  browserPosBindingDeliveries BrowserPosBindingDelivery[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
 
@@ -1264,6 +1266,7 @@ model BrowserPosDevice {
   store          Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
   issuedByUser   User?  @relation("BrowserPosDeviceIssuedBy", fields: [issuedByUserId], references: [id], onDelete: SetNull)
   revokedByUser  User?  @relation("BrowserPosDeviceRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  bindingDeliveries BrowserPosBindingDelivery[]
 
   @@unique([storeId, browserDeviceId, activeSlot])
   @@index([tenantId, storeId])
@@ -1272,6 +1275,29 @@ model BrowserPosDevice {
   @@index([tokenExpiresAt])
   @@index([issuedByUserId])
   @@index([revokedByUserId])
+}
+
+model BrowserPosBindingDelivery {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  storeId            String
+  requestId          String   @unique
+  browserDeviceId    String
+  bindingAttemptId   String
+  browserPosDeviceId String
+  status             String   @default("READY") // READY | EXPIRED
+  encryptedResult    String   @db.Text
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  browserPosDevice BrowserPosDevice @relation(fields: [browserPosDeviceId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, browserDeviceId, bindingAttemptId])
+  @@index([tenantId, storeId])
+  @@index([expiresAt])
 }
 
 model DesktopActivationPin {

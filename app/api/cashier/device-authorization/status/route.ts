@@ -12,6 +12,7 @@ import {
   POS_DEVICE_AUTH_SHARED_LINK,
   redeemBrowserPosAuthorization,
   getPosAuthorizationChallengeType,
+  qrBindingAttemptId,
 } from '@/lib/browser-pos-authorization'
 
 export async function GET(req: NextRequest) {
@@ -38,10 +39,11 @@ export async function GET(req: NextRequest) {
   }
   const isSharedLink = getPosAuthorizationChallengeType(row.payloadSnapshot) === POS_DEVICE_AUTH_SHARED_LINK
   const hasApproval = Boolean(payload.approvedAt || (row.status === 'SUCCESS' && row.userId && !payload.deliveredAt))
-  if (!isSharedLink && hasApproval && !payload.browserPosDeviceId && !payload.deliveredAt) {
+  if (!isSharedLink && hasApproval) {
     const redeemed = await redeemBrowserPosAuthorization({
       requestId,
       deviceId,
+      bindingAttemptId: qrBindingAttemptId(requestId, deviceId),
       deviceName: payload.deviceName,
       browserInfo: req.headers.get('user-agent'),
     })

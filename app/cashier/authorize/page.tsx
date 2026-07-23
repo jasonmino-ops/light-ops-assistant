@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { getPosDeviceId, savePosDeviceToken } from '@/lib/desktop-pos-client'
 
@@ -45,8 +45,10 @@ export default function CashierAuthorizePage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [copyMessage, setCopyMessage] = useState('')
+  const bindingAttemptIdRef = useRef<string | null>(null)
 
   useEffect(() => {
+    bindingAttemptIdRef.current = null
     if (!requestId) {
       setError('授权链接无效，请回到电脑收银台重新扫码。')
       setLoading(false)
@@ -143,10 +145,12 @@ export default function CashierAuthorizePage() {
     setMessage('')
     setError('')
     try {
+      const bindingAttemptId = bindingAttemptIdRef.current ?? crypto.randomUUID()
+      bindingAttemptIdRef.current = bindingAttemptId
       const res = await fetch(`/api/cashier/device-authorization/${encodeURIComponent(requestId)}/bind`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId: getPosDeviceId(), deviceName }),
+        body: JSON.stringify({ deviceId: getPosDeviceId(), deviceName, bindingAttemptId }),
       })
       const body = await res.json().catch(() => null)
       if (!res.ok || !body?.token || !body?.storeCode) {
