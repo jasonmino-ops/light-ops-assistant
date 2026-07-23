@@ -6,8 +6,8 @@ import { apiFetch, STAFF_CTX, OWNER_CTX } from '@/lib/api'
 import { useLocale, type Lang } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
-import { publicUrl } from '@/lib/public-url'
 import { formatMoney } from '@/lib/currency'
+import { browserPosSharedLinkUrl } from '@/lib/browser-pos-entry'
 
 const DEV_STAFF_CTX = process.env.NODE_ENV !== 'production' ? STAFF_CTX : undefined
 const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
@@ -218,6 +218,7 @@ export default function HomePage() {
   const [storeCode, setStoreCode] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [avatarFailed, setAvatarFailed] = useState(false)
+  const [cashierLinkBusy, setCashierLinkBusy] = useState(false)
 
   useEffect(() => {
     setStoreName(contextStoreName ?? contextTenantName ?? null)
@@ -311,9 +312,6 @@ export default function HomePage() {
   const pendingOrderAmount = pendingCustomerOrders.reduce((sum, order) => sum + order.totalAmount, 0)
   const displayStoreName = storeName ?? 'E-Shop'
   const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
-  const desktopParams = new URLSearchParams({ ...(storeCode ? { storeCode } : {}), lang })
-  const desktopPath = `/desktop?${desktopParams.toString()}`
-  const desktopUrl = publicUrl(desktopPath)
   const storeAvatarUrl = storeCode && !avatarFailed ? `/api/public/stores/${storeCode}/banner` : null
   const aiStatus: 'open' | 'configured' | 'waiting' =
     tier === 'MULTI_STORE' ? 'configured' : tier === 'STANDARD' ? 'waiting' : 'open'
@@ -340,6 +338,57 @@ export default function HomePage() {
       console.error('更新顾客订单状态失败', e)
     } finally {
       setUpdatingOrderId(null)
+    }
+  }
+
+  async function createDesktopBindingLink() {
+    if (realRole !== 'OWNER') throw new Error('请让本店老板从 Telegram 老板端生成电脑绑定链接。')
+    if (!storeCode) throw new Error('当前未识别门店，无法生成电脑绑定链接。')
+    const response = await apiFetch('/api/cashier/browser-devices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeCode }),
+    }, DEV_OWNER_CTX)
+    const body = await response.json().catch(() => null)
+    if (!response.ok || typeof body?.shareUrl !== 'string') {
+      throw new Error(body?.message || body?.error || '生成电脑绑定链接失败，请稍后重试。')
+    }
+    return browserPosSharedLinkUrl(body.shareUrl, {
+      storeCode,
+      lang,
+      origin: window.location.origin,
+    })
+  }
+
+  async function openDesktopBindingLink() {
+    if (cashierLinkBusy) return
+    // Open synchronously so normal browsers do not block the user-initiated
+    // desktop binding tab while the owner capability is being created.
+    const target = window.open('about:blank', '_blank')
+    if (target) target.opener = null
+    setCashierLinkBusy(true)
+    try {
+      const shareUrl = await createDesktopBindingLink()
+      if (target && !target.closed) target.location.replace(shareUrl)
+      else window.open(shareUrl, '_blank', 'noopener,noreferrer')
+    } catch (error) {
+      target?.close()
+      window.alert(error instanceof Error ? error.message : '生成电脑绑定链接失败，请稍后重试。')
+    } finally {
+      setCashierLinkBusy(false)
+    }
+  }
+
+  async function copyDesktopBindingLink() {
+    if (cashierLinkBusy) return
+    setCashierLinkBusy(true)
+    try {
+      const shareUrl = await createDesktopBindingLink()
+      copyLink('cashier', shareUrl)
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : '生成电脑绑定链接失败，请稍后重试。')
+    } finally {
+      setCashierLinkBusy(false)
     }
   }
 
@@ -516,10 +565,10 @@ export default function HomePage() {
           label={t('home.cashier')}
           subLabel={t('home.quickCashierSub')}
           openLabel={t('home.open')}
-          copyLabel={copiedKey === 'cashier' ? '✓' : t('home.copy')}
+          copyLabel={cashierLinkBusy ? '…' : copiedKey === 'cashier' ? '✓' : t('home.copy')}
           color="#722ed1"
-          onOpen={() => window.open(desktopPath, '_blank', 'noopener,noreferrer')}
-          onCopy={() => copyLink('cashier', desktopUrl)}
+          onOpen={() => { void openDesktopBindingLink() }}
+          onCopy={() => { void copyDesktopBindingLink() }}
         />
         {realRole === 'OWNER' && (
           <ActionBtn href="/cashier/devices" iconKind="cashier" label="我的收银电脑" subLabel="生成电脑绑定链接并撤销设备" color="#0f766e" />

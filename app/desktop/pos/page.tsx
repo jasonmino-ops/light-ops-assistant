@@ -10,8 +10,13 @@ import { useEffect, useState } from 'react'
 import CashierPage from '@/app/cashier/page'
 import DesktopModePage from '@/app/desktop/page'
 import UsbCustomerDisplayBridge from './UsbCustomerDisplayBridge'
+import { getPosDeviceToken } from '@/lib/desktop-pos-client'
 
 type DesktopLang = 'zh' | 'en' | 'km'
+
+function isNativeDesktopRuntime() {
+  return Boolean((window as Window & { eshopDesktopRuntime?: { isDesktop?: boolean } }).eshopDesktopRuntime?.isDesktop)
+}
 
 function resolveDesktopLang(raw: string | null): DesktopLang {
   if (raw === 'en' || raw === 'km' || raw === 'zh') return raw
@@ -27,7 +32,11 @@ export default function DesktopPosPage() {
     document.documentElement.lang = lang === 'km' ? 'km' : lang === 'en' ? 'en' : 'zh-CN'
     document.documentElement.dataset.lang = lang
     document.body.dataset.lang = lang
-    setMode(params.get('mode') === 'pos' ? 'pos' : 'select')
+    const storeCode = params.get('storeCode')?.trim() ?? ''
+    // Store identity is never Browser POS authorization. An unbound direct
+    // /desktop/pos legacy URL must render the existing binding guidance rather
+    // than a product/checkout screen that fails only at payment time.
+    setMode(params.get('mode') === 'pos' && storeCode && (isNativeDesktopRuntime() || getPosDeviceToken(storeCode)) ? 'pos' : 'select')
   }, [])
 
   if (mode === 'checking') return null

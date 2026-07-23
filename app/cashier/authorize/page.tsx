@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { getPosDeviceId, savePosDeviceToken } from '@/lib/desktop-pos-client'
+import { getPosDeviceId, getPosDeviceToken, savePosDeviceToken } from '@/lib/desktop-pos-client'
+import { resolveBrowserPosReturnTo } from '@/lib/browser-pos-entry'
 
 type RequestInfo = {
   status: 'PENDING' | 'APPROVED' | 'EXPIRED' | 'USED'
@@ -58,6 +59,13 @@ export default function CashierAuthorizePage() {
       .then(async (res) => {
         const body = await res.json().catch(() => null)
         if (!res.ok || !body) throw new Error(body?.message || '授权链接无效，请重新扫码。')
+        if (body.flow === 'SHARED_LINK' && typeof body.storeCode === 'string' && getPosDeviceToken(body.storeCode)) {
+          // A new owner link is not an instruction to rotate a healthy local
+          // BrowserPosDevice. Keep the one-time capability unused and reopen
+          // the already-authorized browser directly.
+          window.location.replace(boundDesktopReturnTo(body.storeCode))
+          return
+        }
         setInfo(body)
         setDeviceName(body.deviceName || '前台收银机')
       })
@@ -85,6 +93,13 @@ export default function CashierAuthorizePage() {
   function currentAuthorizeUrl() {
     if (typeof window === 'undefined') return ''
     return window.location.href
+  }
+
+  function boundDesktopReturnTo(storeCode: string) {
+    return resolveBrowserPosReturnTo(searchParams.get('returnTo'), {
+      storeCode,
+      origin: window.location.origin,
+    })
   }
 
   function ownerLoginUrl() {
@@ -160,7 +175,7 @@ export default function CashierAuthorizePage() {
       setInfo((prev) => prev ? { ...prev, status: 'USED', deviceName: body.deviceName || deviceName } : prev)
       setMessage('本机已绑定，正在进入收银台。')
       window.setTimeout(() => {
-        window.location.replace(`/cashier?storeCode=${encodeURIComponent(body.storeCode)}`)
+        window.location.replace(boundDesktopReturnTo(body.storeCode))
       }, 500)
     } catch (err) {
       setError(err instanceof Error ? err.message : '绑定失败，请稍后重试。')
@@ -174,6 +189,19 @@ export default function CashierAuthorizePage() {
   const used = info?.status === 'USED'
   const sharedLink = info?.flow === 'SHARED_LINK'
   const showLoginPrompt = !sharedLink && authChecked && authRole !== 'OWNER'
+
+  if (!requestId) {
+    return (
+      <main style={s.page}>
+        <section style={s.panel}>
+          <div style={s.icon}>🖥️</div>
+          <h1 style={s.title}>绑定当前电脑</h1>
+          <p style={s.sub}>这条旧门店链接只能定位门店，不能授予收银权限。请从 Telegram 老板端重新生成 10 分钟一次性电脑链接，并在这台电脑浏览器打开。</p>
+          <div style={s.err}>未提供有效的一次性绑定链接，无法绑定本机。</div>
+        </section>
+      </main>
+    )
+  }
 
   return (
     <main style={s.page}>
