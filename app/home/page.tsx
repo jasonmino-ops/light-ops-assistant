@@ -569,6 +569,8 @@ export default function HomePage() {
           color="#722ed1"
           onOpen={() => { void openDesktopBindingLink() }}
           onCopy={() => { void copyDesktopBindingLink() }}
+          deviceManagementHref={realRole === 'OWNER' ? '/cashier/devices' : undefined}
+          deviceManagementLabel="设备管理"
         />
         {realRole === 'OWNER' && (
           <ActionBtn href="/cashier/devices" iconKind="cashier" label="我的收银电脑" subLabel="生成电脑绑定链接并撤销设备" color="#0f766e" />
@@ -676,8 +678,9 @@ function ActionBtn({ href, iconKind, label, subLabel, color, onClick }: {
   )
 }
 
-function CashierAction({ label, subLabel, openLabel, copyLabel, color, onOpen, onCopy }: {
+function CashierAction({ label, subLabel, openLabel, copyLabel, color, onOpen, onCopy, deviceManagementHref, deviceManagementLabel }: {
   label: string; subLabel: string; openLabel: string; copyLabel: string; color: string; onOpen: () => void; onCopy: () => void
+  deviceManagementHref?: string; deviceManagementLabel: string
 }) {
   return (
     <div style={{ ...s.actionBtn, borderColor: color + '33' }}>
@@ -686,6 +689,9 @@ function CashierAction({ label, subLabel, openLabel, copyLabel, color, onOpen, o
       </span>
       <span style={{ ...s.actionLabel, color }}>{label}</span>
       <span style={s.actionSubLabel}>{subLabel}</span>
+      {deviceManagementHref && (
+        <Link href={deviceManagementHref} style={s.actionMiniBtnManagement}>{deviceManagementLabel}</Link>
+      )}
       <div style={s.actionMiniBtns}>
         <button type="button" style={s.actionMiniBtn} onClick={onCopy}>{copyLabel}</button>
         <button type="button" style={s.actionMiniBtnPrimary} onClick={onOpen}>{openLabel}</button>
@@ -1638,6 +1644,20 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 9,
     fontWeight: 800,
     cursor: 'pointer',
+  },
+  actionMiniBtnManagement: {
+    display: 'block',
+    width: '100%',
+    border: '1px solid #99f6e4',
+    background: '#f0fdfa',
+    color: '#0f766e',
+    borderRadius: 999,
+    padding: '4px 0',
+    fontSize: 9,
+    fontWeight: 800,
+    cursor: 'pointer',
+    textAlign: 'center',
+    textDecoration: 'none',
   },
   glyphBox: {
     position: 'relative',
