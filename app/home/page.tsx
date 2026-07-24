@@ -8,6 +8,7 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import { formatMoney } from '@/lib/currency'
 import { browserPosSharedLinkUrl } from '@/lib/browser-pos-entry'
+import { canShowBrowserPosHomeEntry } from '@/lib/browser-pos-home-entry'
 
 const DEV_STAFF_CTX = process.env.NODE_ENV !== 'production' ? STAFF_CTX : undefined
 const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
@@ -218,6 +219,7 @@ export default function HomePage() {
   const [storeCode, setStoreCode] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [avatarFailed, setAvatarFailed] = useState(false)
+  const showBrowserPosHomeEntry = canShowBrowserPosHomeEntry(realRole, isOwnerInStaffMode)
   const [cashierLinkBusy, setCashierLinkBusy] = useState(false)
 
   useEffect(() => {
@@ -561,19 +563,18 @@ export default function HomePage() {
         {effectiveRole === 'OWNER' && (
           <ActionBtn href="/members" iconKind="members" label={t('home.members')} subLabel={t('home.quickMembersSub')} color="#13a8a8" />
         )}
-        <CashierAction
-          label={t('home.cashier')}
-          subLabel={t('home.quickCashierSub')}
-          openLabel={t('home.open')}
-          copyLabel={cashierLinkBusy ? '…' : copiedKey === 'cashier' ? '✓' : t('home.copy')}
-          color="#722ed1"
-          onOpen={() => { void openDesktopBindingLink() }}
-          onCopy={() => { void copyDesktopBindingLink() }}
-          deviceManagementHref={realRole === 'OWNER' ? '/cashier/devices' : undefined}
-          deviceManagementLabel="设备管理"
-        />
-        {realRole === 'OWNER' && (
-          <ActionBtn href="/cashier/devices" iconKind="cashier" label="我的收银电脑" subLabel="生成电脑绑定链接并撤销设备" color="#0f766e" />
+        {showBrowserPosHomeEntry && (
+          <CashierAction
+            label={t('home.cashier')}
+            subLabel={t('home.quickCashierSub')}
+            openLabel={t('home.open')}
+            copyLabel={cashierLinkBusy ? '…' : copiedKey === 'cashier' ? '✓' : t('home.copy')}
+            color="#722ed1"
+            onOpen={() => { void openDesktopBindingLink() }}
+            onCopy={() => { void copyDesktopBindingLink() }}
+            deviceManagementHref="/cashier/devices"
+            deviceManagementLabel="设备管理"
+          />
         )}
       </div>
 

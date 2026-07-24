@@ -141,6 +141,7 @@ jobs:
           npx tsx tests/customer-display-adapter.test.ts
           npx tsx tests/customer-display-realtime-channel.test.ts
           npx tsx tests/hrt-contract.test.ts
+          npx tsx tests/browser-pos-device-management-home-entry.test.ts
 
       - name: Build
         run: npm run build
