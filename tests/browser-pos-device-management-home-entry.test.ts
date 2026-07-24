@@ -15,6 +15,10 @@ assert.equal(canShowBrowserPosHomeEntry(undefined, false), false,
 
 assert.match(home, /const showBrowserPosHomeEntry = canShowBrowserPosHomeEntry\(realRole, isOwnerInStaffMode\)/,
   'the home page must combine real role and current authority mode before rendering Browser POS controls')
+assert.match(home, /const quickActionGridStyle(?:\s*:\s*React\.CSSProperties)? = showBrowserPosHomeEntry\s*\? s\.actionGrid\s*:\s*\{[\s\S]*display: 'grid',[\s\S]*gridTemplateColumns: 'repeat\(3, minmax\(0, 1fr\)\)',[\s\S]*overflowX: 'visible'/,
+  'staff contexts must use a three-column grid while the owner cashier context keeps the existing four-card layout')
+assert.match(home, /<div style=\{quickActionGridStyle\}>/,
+  'the quick-action container must use the role-aware layout style')
 assert.match(home, /\{showBrowserPosHomeEntry && \(\s*<CashierAction/,
   'the entire cashier card must be gated by the Browser POS authority check')
 assert.equal((home.match(/<CashierAction\b/g) ?? []).length, 1,

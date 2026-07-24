@@ -220,6 +220,14 @@ export default function HomePage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [avatarFailed, setAvatarFailed] = useState(false)
   const showBrowserPosHomeEntry = canShowBrowserPosHomeEntry(realRole, isOwnerInStaffMode)
+  const quickActionGridStyle: React.CSSProperties = showBrowserPosHomeEntry
+    ? s.actionGrid
+    : {
+        ...s.actionGrid,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        overflowX: 'visible',
+      }
   const [cashierLinkBusy, setCashierLinkBusy] = useState(false)
 
   useEffect(() => {
@@ -556,7 +564,7 @@ export default function HomePage() {
 
       {/* ── Quick actions ── */}
       <div style={s.sectionTitle}>{t('home.quickActions')}</div>
-      <div style={s.actionGrid}>
+      <div style={quickActionGridStyle}>
         <ActionBtn href="/sale" iconKind="sale" label={t('home.sale')} subLabel={t('home.quickSaleSub')} color="#1677ff" />
         <ActionBtn href="/refund" iconKind="refund" label={t('home.refund')} subLabel={t('home.quickRefundSub')} color="#ff4d4f" />
         <ActionBtn href="/records" iconKind="records" label={t('home.records')} subLabel={t('home.quickRecordsSub')} color="#fa8c16" />
