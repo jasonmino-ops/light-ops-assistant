@@ -3,15 +3,20 @@
  *
  * Desktop POS endpoint. Requires logged-in store OWNER/STAFF or signed POS device token.
  *
- * 返回本门店"待收款挂单"——即 SaleRecord.status = PENDING_PAYMENT 的整单（按 orderNo 聚合）。
- * 这些单可能来自：
+ * 返回本门店"待收款挂单"——即仍有 SaleRecord.status = PENDING_PAYMENT 明细的整单
+ * （按 orderNo 聚合）。这些单可能来自：
  *   - 手机商户端（Telegram Mini App）先挂单、后结账（POST /api/sales, paymentMethod=DEFER）
  *   - 浏览器收银端后续挂单（同一 PENDING_PAYMENT 模型）
  *
- * 只返回"尚未进入收款"的挂单：已存在 PaymentIntent 的 orderNo（例如 KHQR 收款中）会被排除，
- * 避免与结账流程重复。浏览器凭此实现门店级待处理订单同步。
+ * 以明细行状态为唯一权威：
+ *   - CASH 完成 / KHQR 确认后明细转 COMPLETED → 自然不再出现；
+ *   - 取消后明细转 CANCELLED → 自然不再出现；
+ *   - KHQR 收款中（PaymentIntent=PENDING）明细仍为 PENDING_PAYMENT → 继续可见、可恢复；
+ *   - 支付 FAILED / EXPIRED 明细仍为 PENDING_PAYMENT → 不被永久隐藏。
+ * 不再按"存在任意 PaymentIntent"排除，避免把待收款订单永久隐藏。
  *
- * 仅读取现有 SaleRecord / PaymentIntent，不引入新模型、不改支付流程。
+ * 授权：正式浏览器员工端边界（账号 / 正式设备身份），不接受 storeCode 弱回退。
+ * 仅读取现有 SaleRecord，不引入新模型、不改支付流程。
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -32,7 +37,7 @@ export async function GET(req: NextRequest) {
     tenantId: store.tenantId,
     storeId: store.id,
     storeCode,
-  }, { allowStoreCodeFallback: true })
+  }, { allowStoreCodeFallback: false })
   if (!posAuth) {
     return unauthorizedPosResponse()
   }
@@ -56,14 +61,6 @@ export async function GET(req: NextRequest) {
 
   if (rows.length === 0) return NextResponse.json([])
 
-  // 排除已进入收款流程（已建 PaymentIntent）的 orderNo，避免与结账重复
-  const orderNos = [...new Set(rows.map((r) => r.orderNo as string))]
-  const paidOrders = await prisma.paymentIntent.findMany({
-    where: { tenantId: store.tenantId, orderNo: { in: orderNos } },
-    select: { orderNo: true },
-  })
-  const checkedOut = new Set(paidOrders.map((p) => p.orderNo))
-
   const grouped = new Map<string, {
     orderNo: string
     createdAt: Date
@@ -76,7 +73,6 @@ export async function GET(req: NextRequest) {
 
   for (const r of rows) {
     const orderNo = r.orderNo as string
-    if (checkedOut.has(orderNo)) continue
     const entry = grouped.get(orderNo) ?? {
       orderNo,
       createdAt: r.createdAt,

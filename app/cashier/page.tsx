@@ -3046,7 +3046,17 @@ export default function CashierPage() {
     finally { setSubmitting(false) }
   }
 
-  // 结算门店级待收款挂单：将既有 PENDING_PAYMENT 记录转 COMPLETED，不新建销售记录。
+  // 结算门店级待收款挂单：把既有 PENDING_PAYMENT 记录转收款完成，不新建销售记录。
+  // CASH 由服务端原子完成；KHQR 只创建 PENDING 支付意图，随后走既有受控确认链
+  // /api/payments/:id/confirm 完成——客户端不能直接把 KHQR 置 PAID。
+  function clearRestoredPendingOrder(orderNo: string) {
+    setActivePendingOrderNo(null)
+    setCart([])
+    setPayment('CASH')
+    setCheckoutStep('SELECT_ITEMS')
+    setServerPendingOrders(prev => prev.filter(o => o.orderNo !== orderNo))
+  }
+
   async function handleCheckoutPendingOrder(orderNo: string, submitPayment: 'CASH' | 'KHQR') {
     if (!storeCode || submitting) return
     setSubmitting(true); setSubmitError('')
@@ -3054,34 +3064,48 @@ export default function CashierPage() {
     const submittedTotal = cartTotal(cart)
     try {
       if (!requireOnlinePosAuthorization()) return
+
+      // 1) 结账：CASH 完成 / KHQR 创建 PENDING 意图（或恢复既有意图）
       const res = await fetch('/api/cashier/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
-        body: JSON.stringify({
-          storeCode,
-          orderNo,
-          paymentMethod: submitPayment,
-          manualPaymentConfirmed: submitPayment === 'KHQR',
-        }),
+        body: JSON.stringify({ storeCode, orderNo, paymentMethod: submitPayment }),
       })
       const body = await res.json().catch(() => null)
-      if (isPosUnauthorized(body, res.status)) {
-        handlePosUnauthorized()
-        return
-      }
+      if (isPosUnauthorized(body, res.status)) { handlePosUnauthorized(); return }
       if (!res.ok || !body) {
-        // 挂单可能已被其他端结算：清理本地状态并刷新
-        if (body?.error === 'ALREADY_CHECKED_OUT') {
-          setActivePendingOrderNo(null)
-          setCart([])
-          setCheckoutStep('SELECT_ITEMS')
-          setServerPendingOrders(prev => prev.filter(o => o.orderNo !== orderNo))
-          showToast('该挂单已被结算')
+        if (body?.error === 'ALREADY_COMPLETED') {
+          clearRestoredPendingOrder(orderNo)
+          showToast('该挂单已完成')
+          return
+        }
+        if (body?.error === 'ORDER_CANCELLED') {
+          clearRestoredPendingOrder(orderNo)
+          showToast('该挂单已取消')
           return
         }
         setSubmitError(body?.message ?? body?.error ?? '结算失败，请重试')
         return
       }
+
+      let completed = body.completed === true // CASH 或已恢复的 PAID
+      // 2) KHQR：经受控确认链完成（PENDING → PAID），完成语义在服务端
+      if (!completed && body.paymentIntentId) {
+        const cres = await fetch(
+          `/api/payments/${encodeURIComponent(body.paymentIntentId)}/confirm?storeCode=${encodeURIComponent(storeCode)}`,
+          { method: 'POST', headers: posDeviceHeaders(storeCode) },
+        )
+        const cbody = await cres.json().catch(() => null)
+        if (isPosUnauthorized(cbody, cres.status)) { handlePosUnauthorized(); return }
+        if (!cres.ok) {
+          // PENDING 意图已建但未确认：订单仍为待收款、保持可见，可重试
+          setSubmitError(cbody?.message ?? cbody?.error ?? 'KHQR 确认失败，请重试')
+          return
+        }
+        completed = true
+      }
+      if (!completed) { setSubmitError('结算未完成，请重试'); return }
+
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
       void postCashierDisplaySession({
@@ -3092,11 +3116,7 @@ export default function CashierPage() {
         items: submittedItems,
         orderNo,
       })
-      setServerPendingOrders(prev => prev.filter(o => o.orderNo !== orderNo))
-      setActivePendingOrderNo(null)
-      setCart([])
-      setPayment('CASH')
-      setCheckoutStep('SELECT_ITEMS')
+      clearRestoredPendingOrder(orderNo)
       setReceiptPreviewOpen(false)
       setSaleResult({
         orderNo,
@@ -3109,7 +3129,6 @@ export default function CashierPage() {
               totalAmount: submittedTotal,
               paymentMethod: submitPayment,
               orderNo,
-              createdAt: body.createdAt,
             })
           : undefined,
       })
