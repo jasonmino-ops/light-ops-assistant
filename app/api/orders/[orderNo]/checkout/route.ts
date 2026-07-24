@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
-import { checkoutDeferredOrder } from '@/lib/order-checkout'
+import { generateKhqrPayload } from '@/lib/khqr'
+import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
+import { isKhqrSupportedCurrency } from '@/lib/currency'
 
 /**
  * POST /api/orders/:orderNo/checkout
@@ -11,8 +13,7 @@ import { checkoutDeferredOrder } from '@/lib/order-checkout'
  *  - KHQR  → 创建 PaymentIntent(PENDING)，SaleRecord 保持 PENDING_PAYMENT 直到
  *            /api/payments/:id/confirm 调用后才更新为 COMPLETED
  *
- * 适用：DEFERRED_PAYMENT 门店，店员先挂单、后结账场景（手机商户端）。
- * 状态机与并发/幂等保护统一在 lib/order-checkout.ts，浏览器端复用同一逻辑。
+ * 适用：DEFERRED_PAYMENT 门店，店员先挂单、后结账场景。
  */
 export async function POST(
   req: NextRequest,
@@ -40,68 +41,103 @@ export async function POST(
     )
   }
 
-  const store = await prisma.store.findFirst({
-    where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
-    select: { currencyCode: true },
-  })
-  if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
-
-  const result = await checkoutDeferredOrder(prisma, {
-    tenantId: ctx.tenantId,
-    storeId: ctx.storeId,
-    operatorUserId: ctx.userId,
-    orderNo,
-    paymentMethod,
-    currencyCode: store.currencyCode,
+  // Verify PENDING_PAYMENT records exist for this order
+  const records = await prisma.saleRecord.findMany({
+    where: { orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
   })
 
-  if (!result.ok) {
-    switch (result.error) {
-      case 'NOT_FOUND':
-        return NextResponse.json(
-          { error: 'NOT_FOUND', message: 'No pending payment records found for this order' },
-          { status: 404 },
-        )
-      case 'KHQR_UNSUPPORTED_CURRENCY':
-        return NextResponse.json(
-          { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },
-          { status: 422 },
-        )
-      case 'KHQR_NOT_CONFIGURED':
-        return NextResponse.json(
-          { error: 'KHQR_NOT_CONFIGURED', message: '当前门店未配置 KHQR 收款，请联系老板' },
-          { status: 422 },
-        )
-      case 'ORDER_CANCELLED':
-        return NextResponse.json({ error: 'ORDER_CANCELLED' }, { status: 422 })
-      case 'ALREADY_COMPLETED':
-        return NextResponse.json({ error: 'ALREADY_COMPLETED' }, { status: 409 })
-      case 'PAYMENT_NOT_RESUMABLE':
-        return NextResponse.json({ error: 'PAYMENT_NOT_RESUMABLE', status: result.piStatus }, { status: 409 })
-      case 'STATE_INCONSISTENT':
-      default:
-        return NextResponse.json({ error: 'ORDER_STATE_INCONSISTENT' }, { status: 409 })
-    }
+  if (records.length === 0) {
+    return NextResponse.json(
+      { error: 'NOT_FOUND', message: 'No pending payment records found for this order' },
+      { status: 404 },
+    )
   }
 
-  // 已存在支付意图（既有 / 并发回收）→ 保持原有幂等语义：ALREADY_CHECKED_OUT
-  if (!result.created) {
+  // Check PaymentIntent doesn't already exist (idempotency guard)
+  const existingPi = await prisma.paymentIntent.findFirst({
+    where: { orderNo, tenantId: ctx.tenantId },
+  })
+  if (existingPi) {
     return NextResponse.json(
-      { error: 'ALREADY_CHECKED_OUT', paymentIntentId: result.pi.id, status: result.pi.status },
+      { error: 'ALREADY_CHECKED_OUT', paymentIntentId: existingPi.id, status: existingPi.status },
       { status: 409 },
     )
   }
 
-  return NextResponse.json(
-    {
-      orderNo,
-      totalAmount: result.totalAmount,
-      paymentMethod,
-      paymentIntentId: result.pi.id,
-      khqrPayload: result.pi.khqrPayload,
-      khqrImageUrl: result.khqrImageUrl,
-      status: result.pi.status,
-    },
-    { status: 201 },
-  )
+  const totalAmount = records.reduce((sum, r) => sum + r.lineAmount.toNumber(), 0)
+
+  // KHQR config pre-check
+  let khqrConfig: MerchantKhqrConfig | null = null
+  if (paymentMethod === 'KHQR') {
+    const store = await prisma.store.findFirst({
+      where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
+      select: { currencyCode: true },
+    })
+    if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+    if (!isKhqrSupportedCurrency(store.currencyCode)) {
+      return NextResponse.json(
+        { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },
+        { status: 422 },
+      )
+    }
+    khqrConfig = await findKhqrConfig(ctx.tenantId, ctx.storeId)
+    if (!khqrConfig) {
+      return NextResponse.json(
+        { error: 'KHQR_NOT_CONFIGURED', message: '当前门店未配置 KHQR 收款，请联系老板' },
+        { status: 422 },
+      )
+    }
+  }
+
+  try {
+    const pi = await prisma.$transaction(async (tx) => {
+      const khqrPayload =
+        paymentMethod === 'KHQR' && khqrConfig
+          ? generateKhqrPayload({ amount: totalAmount, orderNo, config: khqrConfig })
+          : null
+
+      const intent = await tx.paymentIntent.create({
+        data: {
+          tenantId: ctx.tenantId,
+          storeId: ctx.storeId,
+          operatorUserId: ctx.userId,
+          orderNo,
+          paymentMethod: paymentMethod as 'CASH' | 'KHQR',
+          status: paymentMethod === 'CASH' ? 'PAID' : 'PENDING',
+          amount: totalAmount,
+          khqrPayload,
+          provider: khqrConfig?.provider ?? null,
+          merchantConfigId: khqrConfig?.id ?? null,
+          paidAt: paymentMethod === 'CASH' ? new Date() : null,
+        },
+      })
+
+      // CASH: immediately mark records as COMPLETED
+      if (paymentMethod === 'CASH') {
+        await tx.saleRecord.updateMany({
+          where: { orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
+          data: { status: 'COMPLETED' },
+        })
+      }
+      // KHQR: records remain PENDING_PAYMENT until /api/payments/:id/confirm
+
+      return intent
+    })
+
+    return NextResponse.json(
+      {
+        orderNo,
+        totalAmount,
+        paymentMethod,
+        paymentIntentId: pi.id,
+        khqrPayload: pi.khqrPayload,
+        khqrImageUrl: khqrConfig?.khqrImageUrl ?? null,
+        status: pi.status,
+      },
+      { status: 201 },
+    )
+  } catch (err) {
+    console.error('[POST /api/orders/checkout]', err)
+    return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
+  }
 }
