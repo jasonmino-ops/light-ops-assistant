@@ -18,10 +18,22 @@ type BrowserDevice = {
   tokenExpiresAt: string
 }
 
+type BrowserDeviceApiError = {
+  error?: string
+  message?: string
+}
+
 function formatTime(value: string | null) {
   if (!value) return '尚未在线'
   const time = new Date(value)
   return Number.isNaN(time.getTime()) ? '—' : time.toLocaleString('zh-CN', { hour12: false })
+}
+
+function deviceManagementError(body: BrowserDeviceApiError | null, fallback: string) {
+  if (body?.error === 'LOGIN_REQUIRED') return '登录状态已失效，请重新进入 Telegram 老板端后再试。'
+  if (body?.error === 'OWNER_REQUIRED' || body?.error === 'FORBIDDEN') return '仅当前门店的老板可以管理收银电脑。'
+  if (body?.error === 'BROWSER_DEVICE_NOT_FOUND') return '这台收银电脑不存在，可能已被撤销或不属于当前门店。'
+  return body?.message || fallback
 }
 
 export default function BrowserPosDevicesPage() {
@@ -29,19 +41,22 @@ export default function BrowserPosDevicesPage() {
   const [devices, setDevices] = useState<BrowserDevice[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [listError, setListError] = useState('')
   const [shareUrl, setShareUrl] = useState('')
   const [expiresAt, setExpiresAt] = useState('')
   const [working, setWorking] = useState(false)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (clearOnError = true) => {
     setLoading(true)
+    setListError('')
     try {
       const response = await apiFetch('/api/cashier/browser-devices', { cache: 'no-store' }, OWNER_CTX)
       const body = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(body?.error === 'OWNER_REQUIRED' ? '仅老板可管理收银电脑。' : '无法读取收银电脑。')
+      if (!response.ok) throw new Error(deviceManagementError(body, '无法读取收银电脑。'))
       setDevices(Array.isArray(body?.devices) ? body.devices : [])
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '无法读取收银电脑。')
+      if (clearOnError) setDevices([])
+      setListError(error instanceof Error ? error.message : '无法读取收银电脑。')
     } finally {
       setLoading(false)
     }
@@ -59,7 +74,7 @@ export default function BrowserPosDevicesPage() {
         body: JSON.stringify({ storeCode }),
       }, OWNER_CTX)
       const body = await response.json().catch(() => null)
-      if (!response.ok || !body?.shareUrl) throw new Error(body?.error || '生成分享链接失败。')
+      if (!response.ok || !body?.shareUrl) throw new Error(deviceManagementError(body, '生成分享链接失败。'))
       setShareUrl(body.shareUrl)
       setExpiresAt(body.expiresAt || '')
       setMessage('分享链接已生成。请发送给要绑定的收银电脑；链接仅可使用一次。')
@@ -90,9 +105,14 @@ export default function BrowserPosDevicesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: 'OWNER_DEVICE_MANAGEMENT' }),
       }, OWNER_CTX)
-      if (!response.ok) throw new Error('撤销失败，请稍后重试。')
+      const body = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(deviceManagementError(body, '撤销失败，请稍后重试。'))
+      setDevices((current) => current.map((item) => item.id === device.id
+        ? { ...item, status: 'REVOKED', revokedAt: new Date().toISOString() }
+        : item,
+      ))
       setMessage('已撤销这台收银电脑。')
-      await load()
+      await load(false)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '撤销失败，请稍后重试。')
     } finally {
@@ -128,6 +148,7 @@ export default function BrowserPosDevicesPage() {
 
         {message && <div style={s.message}>{message}</div>}
         <h2 style={s.listTitle}>已绑定设备</h2>
+        {listError && <div style={s.error}>{listError}</div>}
         {loading ? <div style={s.muted}>正在读取…</div> : devices.length === 0 ? (
           <div style={s.empty}>暂未绑定收银电脑。</div>
         ) : (
@@ -171,6 +192,7 @@ const s: Record<string, CSSProperties> = {
   link: { marginTop: 10, padding: 10, borderRadius: 9, background: '#fff', border: '1px solid #dbeafe', color: '#334155', wordBreak: 'break-all', fontSize: 12, lineHeight: 1.5 },
   expire: { marginTop: 8, color: '#64748b', fontSize: 12 },
   message: { marginTop: 14, padding: '10px 12px', borderRadius: 10, background: '#f8fafc', color: '#334155', fontSize: 13, lineHeight: 1.5 },
+  error: { marginBottom: 10, padding: '10px 12px', borderRadius: 10, background: '#fef2f2', color: '#b91c1c', fontSize: 13, lineHeight: 1.5 },
   listTitle: { margin: '24px 0 10px', fontSize: 17 },
   muted: { color: '#64748b', fontSize: 14 },
   empty: { padding: 18, borderRadius: 12, background: '#f8fafc', color: '#64748b', fontSize: 14 },
