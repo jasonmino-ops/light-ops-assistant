@@ -12,6 +12,10 @@ import {
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
 import {
+  printKitchenTicket,
+  type KitchenTicketData,
+} from '@/app/components/KitchenTicket'
+import {
   DayCloseReport,
   printDayCloseReport,
   type DayCloseReportData,
@@ -83,6 +87,7 @@ type SaleResult = {
   khqrFallback?: boolean
   paymentMethod?: string
   receipt?: DesktopReceiptData
+  kitchenTicket?: KitchenTicketData
 }
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
@@ -1857,12 +1862,25 @@ export default function CashierPage() {
     focusScannerInput()
   }, [focusScannerInput])
 
-  const handlePrintReceipt = useCallback((receipt: DesktopReceiptData) => {
+  const handlePrintReceipt = useCallback((receipt: DesktopReceiptData, kitchenTicket?: KitchenTicketData) => {
     if (receiptPrintLockedRef.current) return
     receiptPrintLockedRef.current = true
     setReceiptPrinting(true)
+    const printKitchenTicketAfterReceipt = () => {
+      if (!kitchenTicket) {
+        finishReceiptPrintFlow()
+        return
+      }
+      try {
+        printKitchenTicket(kitchenTicket, lang, { onAfterPrint: finishReceiptPrintFlow })
+      } catch (err) {
+        console.warn('[kitchen-ticket] print window failed', err)
+        showToast('厨房单打印窗口未打开，交易已完成')
+        finishReceiptPrintFlow()
+      }
+    }
     try {
-      printDesktopReceipt(receipt, lang, { onAfterPrint: finishReceiptPrintFlow })
+      printDesktopReceipt(receipt, lang, { onAfterPrint: printKitchenTicketAfterReceipt })
     } catch (err) {
       console.warn('[desktop-receipt] print window failed', err)
       showToast('无法打开打印预览，请检查浏览器弹窗权限')
@@ -2351,23 +2369,18 @@ export default function CashierPage() {
   useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
     if (!isDesktopPos || !autoPrint || !receiptSnapshot) return
+    const kitchenTicket = saleResult?.kitchenTicket
 
     const receiptKey = `${receiptSnapshot.orderNo ?? 'no-order'}:${receiptSnapshot.createdAt}:${receiptSnapshot.totalAmount}`
     if (autoPrintedReceiptKeyRef.current === receiptKey) return
     autoPrintedReceiptKeyRef.current = receiptKey
 
     const timer = window.setTimeout(() => {
-      try {
-        printDesktopReceipt(receiptSnapshot, lang, { onAfterPrint: finishReceiptPrintFlow })
-      } catch (err) {
-        console.warn('[desktop-receipt] auto print failed', err)
-        showToast('自动打印失败，已返回新订单')
-        finishReceiptPrintFlow()
-      }
+      handlePrintReceipt(receiptSnapshot, kitchenTicket)
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang, finishReceiptPrintFlow])
+  }, [saleResult?.receipt, saleResult?.kitchenTicket, isDesktopPos, autoPrint, handlePrintReceipt])
 
   useEffect(() => {
     if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return
@@ -2379,16 +2392,17 @@ export default function CashierPage() {
     const receiptSnapshot = saleResult?.receipt
     if (!isDesktopPos || autoPrint || !receiptSnapshot || receiptPreviewOpen) return
     const printableReceipt = receiptSnapshot
+    const kitchenTicket = saleResult?.kitchenTicket
     function onReceiptKey(e: KeyboardEvent) {
       if (e.key !== 'Enter' || e.repeat) return
       if (isEditableShortcutTarget(document.activeElement)) return
       if (receiptPrintLockedRef.current) return
       e.preventDefault()
-      handlePrintReceipt(printableReceipt)
+      handlePrintReceipt(printableReceipt, kitchenTicket)
     }
     window.addEventListener('keydown', onReceiptKey)
     return () => window.removeEventListener('keydown', onReceiptKey)
-  }, [isDesktopPos, autoPrint, saleResult?.receipt, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
+  }, [isDesktopPos, autoPrint, saleResult?.receipt, saleResult?.kitchenTicket, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
 
   async function handleInstallClick() {
     if (!storeCode) {
@@ -2932,19 +2946,28 @@ export default function CashierPage() {
       setCart([])
       setPayment('CASH')
       setReceiptPreviewOpen(false)
+      const receipt = isDesktopPos
+        ? buildReceiptSnapshot({
+            items: submittedItems,
+            totalAmount: submittedTotal,
+            paymentMethod: apiPayment,
+            orderNo: body.orderNo,
+            createdAt: body.createdAt,
+          })
+        : undefined
       setSaleResult({
         orderNo: body.orderNo,
         totalAmount: submittedTotal,
         khqrFallback: body.khqrFallback ?? false,
         paymentMethod: apiPayment,
-        receipt: isDesktopPos
-          ? buildReceiptSnapshot({
-              items: submittedItems,
-              totalAmount: submittedTotal,
-              paymentMethod: apiPayment,
-              orderNo: body.orderNo,
-              createdAt: body.createdAt,
-            })
+        receipt,
+        kitchenTicket: receipt
+          ? {
+              storeName: receipt.storeName,
+              orderNo: receipt.orderNo,
+              createdAt: receipt.createdAt,
+              items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
+            }
           : undefined,
       })
     } catch { setSubmitError('网络错误，请重试') }
@@ -4452,7 +4475,7 @@ export default function CashierPage() {
                   type="button"
                   style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(receiptPrinting ? s.submitDis : {}) }}
                   disabled={receiptPrinting}
-                  onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
+                  onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt, saleResult.kitchenTicket)}
                 >
                   {receiptPrinting ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
                 </button>
@@ -4468,7 +4491,7 @@ export default function CashierPage() {
           data={saleResult.receipt}
           lang={lang}
           onClose={() => setReceiptPreviewOpen(false)}
-          onPrint={() => handlePrintReceipt(saleResult.receipt!)}
+          onPrint={() => handlePrintReceipt(saleResult.receipt!, saleResult.kitchenTicket)}
         />
       )}
 
