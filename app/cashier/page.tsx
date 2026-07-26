@@ -12,6 +12,10 @@ import {
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
 import {
+  printKitchenTicket,
+  type KitchenTicketData,
+} from '@/app/components/KitchenTicket'
+import {
   DayCloseReport,
   printDayCloseReport,
   type DayCloseReportData,
@@ -83,6 +87,7 @@ type SaleResult = {
   khqrFallback?: boolean
   paymentMethod?: string
   receipt?: DesktopReceiptData
+  kitchenTicket?: KitchenTicketData
 }
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
@@ -1206,7 +1211,7 @@ export default function CashierPage() {
   const [submitError,   setSubmitError]   = useState('')
   const [saleResult,    setSaleResult]    = useState<SaleResult | null>(null)
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false)
-  const [receiptPrinting, setReceiptPrinting] = useState(false)
+  const [isReceiptPrintChainActive, setIsReceiptPrintChainActive] = useState(false)
   const [storeName,     setStoreName]     = useState('')
   const [loading,       setLoading]       = useState(true)
   const [toast,         setToast]         = useState('')
@@ -1852,23 +1857,49 @@ export default function CashierPage() {
   const finishReceiptPrintFlow = useCallback(() => {
     setReceiptPreviewOpen(false)
     setSaleResult(null)
-    setReceiptPrinting(false)
+    setIsReceiptPrintChainActive(false)
     receiptPrintLockedRef.current = false
     focusScannerInput()
   }, [focusScannerInput])
 
-  const handlePrintReceipt = useCallback((receipt: DesktopReceiptData) => {
+  const handlePrintReceipt = useCallback((receipt: DesktopReceiptData, kitchenTicket?: KitchenTicketData) => {
     if (receiptPrintLockedRef.current) return
     receiptPrintLockedRef.current = true
-    setReceiptPrinting(true)
+    setIsReceiptPrintChainActive(true)
+    const printKitchenTicketAfterReceipt = () => {
+      if (!kitchenTicket) {
+        finishReceiptPrintFlow()
+        return
+      }
+      try {
+        printKitchenTicket(kitchenTicket, lang, { onAfterPrint: finishReceiptPrintFlow })
+      } catch (err) {
+        console.warn('[kitchen-ticket] print window failed', err)
+        showToast('厨房单打印窗口未打开，交易已完成')
+        finishReceiptPrintFlow()
+      }
+    }
     try {
-      printDesktopReceipt(receipt, lang, { onAfterPrint: finishReceiptPrintFlow })
+      printDesktopReceipt(receipt, lang, { onAfterPrint: printKitchenTicketAfterReceipt })
     } catch (err) {
       console.warn('[desktop-receipt] print window failed', err)
       showToast('无法打开打印预览，请检查浏览器弹窗权限')
       finishReceiptPrintFlow()
     }
   }, [finishReceiptPrintFlow, lang])
+
+  function closeSaleResultOverlay() {
+    if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
+    setReceiptPreviewOpen(false)
+    setSaleResult(null)
+  }
+
+  function handleContinueSale() {
+    if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
+    setReceiptPreviewOpen(false)
+    setSaleResult(null)
+    focusScannerInput()
+  }
 
   function handleAutoPrintToggle() {
     const next = !autoPrint
@@ -2344,30 +2375,20 @@ export default function CashierPage() {
   }
 
   useEffect(() => {
-    receiptPrintLockedRef.current = false
-    setReceiptPrinting(false)
-  }, [saleResult?.receipt])
-
-  useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
     if (!isDesktopPos || !autoPrint || !receiptSnapshot) return
+    const kitchenTicket = saleResult?.kitchenTicket
 
     const receiptKey = `${receiptSnapshot.orderNo ?? 'no-order'}:${receiptSnapshot.createdAt}:${receiptSnapshot.totalAmount}`
     if (autoPrintedReceiptKeyRef.current === receiptKey) return
     autoPrintedReceiptKeyRef.current = receiptKey
 
     const timer = window.setTimeout(() => {
-      try {
-        printDesktopReceipt(receiptSnapshot, lang, { onAfterPrint: finishReceiptPrintFlow })
-      } catch (err) {
-        console.warn('[desktop-receipt] auto print failed', err)
-        showToast('自动打印失败，已返回新订单')
-        finishReceiptPrintFlow()
-      }
+      handlePrintReceipt(receiptSnapshot, kitchenTicket)
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang, finishReceiptPrintFlow])
+  }, [saleResult?.receipt, saleResult?.kitchenTicket, isDesktopPos, autoPrint, handlePrintReceipt])
 
   useEffect(() => {
     if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return
@@ -2379,16 +2400,17 @@ export default function CashierPage() {
     const receiptSnapshot = saleResult?.receipt
     if (!isDesktopPos || autoPrint || !receiptSnapshot || receiptPreviewOpen) return
     const printableReceipt = receiptSnapshot
+    const kitchenTicket = saleResult?.kitchenTicket
     function onReceiptKey(e: KeyboardEvent) {
       if (e.key !== 'Enter' || e.repeat) return
       if (isEditableShortcutTarget(document.activeElement)) return
       if (receiptPrintLockedRef.current) return
       e.preventDefault()
-      handlePrintReceipt(printableReceipt)
+      handlePrintReceipt(printableReceipt, kitchenTicket)
     }
     window.addEventListener('keydown', onReceiptKey)
     return () => window.removeEventListener('keydown', onReceiptKey)
-  }, [isDesktopPos, autoPrint, saleResult?.receipt, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
+  }, [isDesktopPos, autoPrint, saleResult?.receipt, saleResult?.kitchenTicket, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
 
   async function handleInstallClick() {
     if (!storeCode) {
@@ -2932,19 +2954,28 @@ export default function CashierPage() {
       setCart([])
       setPayment('CASH')
       setReceiptPreviewOpen(false)
+      const receipt = isDesktopPos
+        ? buildReceiptSnapshot({
+            items: submittedItems,
+            totalAmount: submittedTotal,
+            paymentMethod: apiPayment,
+            orderNo: body.orderNo,
+            createdAt: body.createdAt,
+          })
+        : undefined
       setSaleResult({
         orderNo: body.orderNo,
         totalAmount: submittedTotal,
         khqrFallback: body.khqrFallback ?? false,
         paymentMethod: apiPayment,
-        receipt: isDesktopPos
-          ? buildReceiptSnapshot({
-              items: submittedItems,
-              totalAmount: submittedTotal,
-              paymentMethod: apiPayment,
-              orderNo: body.orderNo,
-              createdAt: body.createdAt,
-            })
+        receipt,
+        kitchenTicket: receipt
+          ? {
+              storeName: receipt.storeName,
+              orderNo: receipt.orderNo,
+              createdAt: receipt.createdAt,
+              items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
+            }
           : undefined,
       })
     } catch { setSubmitError('网络错误，请重试') }
@@ -4418,7 +4449,7 @@ export default function CashierPage() {
 
       {/* ── Sale success overlay ───────────────────────────────────────────── */}
       {saleResult && (
-        <div style={s.overlay} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null) }}>
+        <div style={s.overlay} onClick={closeSaleResultOverlay}>
           <div style={s.modal} onClick={e => e.stopPropagation()}>
             <div style={s.modalIcon}>✅</div>
             <div style={s.modalTitle}>{d.saleCompleted}</div>
@@ -4442,23 +4473,35 @@ export default function CashierPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                 <button
                   type="button"
-                  style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12 }}
-                  onClick={() => setReceiptPreviewOpen(true)}
+                  style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12, ...(isReceiptPrintChainActive ? s.submitDis : {}) }}
+                  disabled={isReceiptPrintChainActive}
+                  onClick={() => {
+                    if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
+                    setReceiptPreviewOpen(true)
+                  }}
                 >
                   {d.previewReceipt}
                 </button>
                 <button
                   ref={receiptPrintButtonRef}
                   type="button"
-                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(receiptPrinting ? s.submitDis : {}) }}
-                  disabled={receiptPrinting}
-                  onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
+                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(isReceiptPrintChainActive ? s.submitDis : {}) }}
+                  disabled={isReceiptPrintChainActive}
+                  onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt, saleResult.kitchenTicket)}
                 >
-                  {receiptPrinting ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
+                  {isReceiptPrintChainActive ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
                 </button>
               </div>
             )}
-            <button style={s.modalBtn} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null); focusScannerInput() }}>{d.continueSale}</button>
+            <button
+              style={{ ...s.modalBtn, ...(isReceiptPrintChainActive ? s.submitDis : {}) }}
+              disabled={isReceiptPrintChainActive}
+              onClick={handleContinueSale}
+            >
+              {isReceiptPrintChainActive
+                ? (lang === 'en' ? 'Finishing print…' : lang === 'km' ? 'កំពុងបញ្ចប់ការបោះពុម្ព…' : '正在完成打印…')
+                : d.continueSale}
+            </button>
           </div>
         </div>
       )}
@@ -4468,7 +4511,7 @@ export default function CashierPage() {
           data={saleResult.receipt}
           lang={lang}
           onClose={() => setReceiptPreviewOpen(false)}
-          onPrint={() => handlePrintReceipt(saleResult.receipt!)}
+          onPrint={() => handlePrintReceipt(saleResult.receipt!, saleResult.kitchenTicket)}
         />
       )}
 
