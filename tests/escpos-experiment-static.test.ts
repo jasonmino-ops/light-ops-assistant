@@ -4,6 +4,7 @@ import fs from 'node:fs'
 const cashier = fs.readFileSync('app/cashier/page.tsx', 'utf8')
 const qzAdapter = fs.readFileSync('lib/qzPrinterAdapter.ts', 'utf8')
 const desktopReceipt = fs.readFileSync('app/components/DesktopReceipt.tsx', 'utf8')
+const escposEncoder = fs.readFileSync('lib/receipt/escpos-encoder.ts', 'utf8')
 const escposRenderer = fs.readFileSync('lib/receipt/render-desktop-receipt-escpos.ts', 'utf8')
 const canvasRasterizer = fs.readFileSync('lib/receipt/rasterize-receipt-line-canvas.ts', 'utf8')
 
@@ -90,5 +91,16 @@ assert.match(
 assert.match(canvasRasterizer, /splitReceiptTextByMeasuredWidth/, 'canvas rasterizer must measure and split long text')
 assert.match(canvasRasterizer, /measureCtx\.measureText\(value\)\.width/, 'wrapping must use Canvas measureText')
 assert.doesNotMatch(canvasRasterizer, /fillText\([^\n]*style\.widthPx/, 'canvas must not use fillText maxWidth compression')
+
+// --- All RAW tickets must share the five-line physical tail ---
+
+assert.match(escposEncoder, /export const DEFAULT_TAIL_FEED_LINES = 5/, 'the shared tail default must be five lines')
+assert.match(
+  escposEncoder,
+  /return builder\.feed\(DEFAULT_TAIL_FEED_LINES\)\.cut\(\)/,
+  'the shared tail must feed immediately before cutting',
+)
+assert.doesNotMatch(escposEncoder, /\.feed\(3\)/, 'the encoder must not retain a hard-coded three-line tail')
+assert.doesNotMatch(escposRenderer, /\.feed\(3\)/, 'the receipt renderer must not retain a separate hard-coded three-line tail')
 
 console.log('escpos experiment static wiring tests passed')

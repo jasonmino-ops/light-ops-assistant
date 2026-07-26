@@ -10,7 +10,7 @@
 
 export const ESC = 0x1b
 export const GS = 0x1d
-export const ESC_POS_RECEIPT_TAIL_FEED_LINES = 3
+export const DEFAULT_TAIL_FEED_LINES = 5
 
 export type EscPosAlign = 'left' | 'center' | 'right'
 
@@ -128,7 +128,7 @@ export class EscPosBuilder {
  * cannot drift into different paper margins.
  */
 export function appendEscPosReceiptTail(builder: EscPosBuilder): EscPosBuilder {
-  return builder.feed(ESC_POS_RECEIPT_TAIL_FEED_LINES).cut()
+  return builder.feed(DEFAULT_TAIL_FEED_LINES).cut()
 }
 
 /**

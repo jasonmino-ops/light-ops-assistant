@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import {
+  DEFAULT_TAIL_FEED_LINES,
   EscPosBuilder,
-  ESC_POS_RECEIPT_TAIL_FEED_LINES,
   buildEscPosAsciiTestTicketBase64,
   bytesToBase64,
   ESC,
@@ -35,7 +35,10 @@ function testNewlineIsLineFeed() {
 }
 
 function testFeedClampsToByteRange() {
-  assert.deepEqual(Array.from(new EscPosBuilder().feed(3).toBytes()), [ESC, 0x64, 3])
+  assert.deepEqual(
+    Array.from(new EscPosBuilder().feed(DEFAULT_TAIL_FEED_LINES).toBytes()),
+    [ESC, 0x64, DEFAULT_TAIL_FEED_LINES],
+  )
   assert.deepEqual(Array.from(new EscPosBuilder().feed(999).toBytes()), [ESC, 0x64, 255])
   assert.deepEqual(Array.from(new EscPosBuilder().feed(-5).toBytes()), [ESC, 0x64, 0])
 }
@@ -103,10 +106,11 @@ function testAsciiTestTicketIsFixedAndSelfContained() {
   assert.match(text, /ORDER: TEST-001/)
   assert.match(text, /ITEM: COFFEE x1/)
   assert.match(text, /TOTAL: 2\.00/)
+  assert.equal(DEFAULT_TAIL_FEED_LINES, 5, 'the default receipt tail must feed five lines')
   assert.deepEqual(
     Array.from(bytes.slice(-6)),
-    [ESC, 0x64, ESC_POS_RECEIPT_TAIL_FEED_LINES, GS, 0x56, 0x00],
-    'the shared receipt tail must feed three lines immediately before cutting',
+    [ESC, 0x64, DEFAULT_TAIL_FEED_LINES, GS, 0x56, 0x00],
+    'the shared receipt tail must feed five lines immediately before cutting',
   )
   let cutCount = 0
   for (let i = 0; i < bytes.length - 2; i++) {

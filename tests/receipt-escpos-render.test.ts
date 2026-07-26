@@ -8,10 +8,10 @@ import {
   type LineRasterizer,
 } from '../lib/receipt/render-desktop-receipt-escpos'
 import {
+  DEFAULT_TAIL_FEED_LINES,
   buildEscPosAsciiTestTicketBase64,
   bytesToBase64,
   ESC,
-  ESC_POS_RECEIPT_TAIL_FEED_LINES,
   GS,
   type MonoBitmap,
 } from '../lib/receipt/escpos-encoder'
@@ -153,8 +153,8 @@ function testRenderBytesStartsWithInitAndEndsWithCut() {
   assert.deepEqual(Array.from(bytes.slice(0, 2)), [ESC, 0x40])
   assert.deepEqual(
     Array.from(bytes.slice(-6)),
-    [ESC, 0x64, ESC_POS_RECEIPT_TAIL_FEED_LINES, GS, 0x56, 0x00],
-    'the receipt tail must feed three lines immediately before cutting',
+    [ESC, 0x64, DEFAULT_TAIL_FEED_LINES, GS, 0x56, 0x00],
+    'the receipt tail must feed five lines immediately before cutting',
   )
 }
 
@@ -191,7 +191,7 @@ function testExactlyOneCutAndNoTrailingBoldLeftOn() {
 function testAsciiAndReceiptUseTheSameReceiptTail() {
   const asciiBytes = Array.from(new Uint8Array(Buffer.from(buildEscPosAsciiTestTicketBase64(), 'base64')))
   const receiptBytes = Array.from(renderEscPosReceiptBytes(buildEscPosReceiptPlan(sampleReceipt(), 'en'), fakeRasterizer()))
-  const expectedTail = [ESC, 0x64, ESC_POS_RECEIPT_TAIL_FEED_LINES, GS, 0x56, 0x00]
+  const expectedTail = [ESC, 0x64, DEFAULT_TAIL_FEED_LINES, GS, 0x56, 0x00]
   assert.deepEqual(asciiBytes.slice(-expectedTail.length), expectedTail)
   assert.deepEqual(receiptBytes.slice(-expectedTail.length), expectedTail)
 }
