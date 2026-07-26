@@ -27,5 +27,11 @@ assert.match(cashier, /printDesktopReceipt\(receipt, lang, \{ onAfterPrint: prin
 assert.match(cashier, /printKitchenTicket\(kitchenTicket, lang, \{ onAfterPrint: finishReceiptPrintFlow \}\)/)
 assert.match(cashier, /autoPrintedReceiptKeyRef\.current === receiptKey/, 'existing page-lifecycle duplicate guard must remain')
 assert.match(cashier, /items: receipt\.items\.map\(\(\{ name, spec, qty \}\) => \(\{ name, spec, qty \}\)\)/, 'kitchen ticket must use the submitted receipt snapshot')
+assert.match(cashier, /const \[isReceiptPrintChainActive, setIsReceiptPrintChainActive\] = useState\(false\)/, 'the sequence must expose an active print-chain state')
+assert.match(cashier, /receiptPrintLockedRef\.current = true\s*\n\s*setIsReceiptPrintChainActive\(true\)/, 'manual and automatic starts must synchronously lock then mark the chain active')
+assert.match(cashier, /setIsReceiptPrintChainActive\(false\)\s*\n\s*receiptPrintLockedRef\.current = false/, 'normal and failure cleanup must release both locks')
+assert.match(cashier, /function closeSaleResultOverlay\(\) \{\s*if \(isReceiptPrintChainActive \|\| receiptPrintLockedRef\.current\) return/s, 'background dismissal must be blocked while the chain is active')
+assert.match(cashier, /function handleContinueSale\(\) \{\s*if \(isReceiptPrintChainActive \|\| receiptPrintLockedRef\.current\) return/s, 'continue sale must be blocked while the chain is active')
+assert.match(cashier, /disabled=\{isReceiptPrintChainActive\}[\s\S]*正在完成打印…/, 'the continue control must visibly remain disabled during printing')
 
 console.log('kitchen ticket content and sequence tests passed')

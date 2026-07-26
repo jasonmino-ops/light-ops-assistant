@@ -1211,7 +1211,7 @@ export default function CashierPage() {
   const [submitError,   setSubmitError]   = useState('')
   const [saleResult,    setSaleResult]    = useState<SaleResult | null>(null)
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false)
-  const [receiptPrinting, setReceiptPrinting] = useState(false)
+  const [isReceiptPrintChainActive, setIsReceiptPrintChainActive] = useState(false)
   const [storeName,     setStoreName]     = useState('')
   const [loading,       setLoading]       = useState(true)
   const [toast,         setToast]         = useState('')
@@ -1857,7 +1857,7 @@ export default function CashierPage() {
   const finishReceiptPrintFlow = useCallback(() => {
     setReceiptPreviewOpen(false)
     setSaleResult(null)
-    setReceiptPrinting(false)
+    setIsReceiptPrintChainActive(false)
     receiptPrintLockedRef.current = false
     focusScannerInput()
   }, [focusScannerInput])
@@ -1865,7 +1865,7 @@ export default function CashierPage() {
   const handlePrintReceipt = useCallback((receipt: DesktopReceiptData, kitchenTicket?: KitchenTicketData) => {
     if (receiptPrintLockedRef.current) return
     receiptPrintLockedRef.current = true
-    setReceiptPrinting(true)
+    setIsReceiptPrintChainActive(true)
     const printKitchenTicketAfterReceipt = () => {
       if (!kitchenTicket) {
         finishReceiptPrintFlow()
@@ -1887,6 +1887,19 @@ export default function CashierPage() {
       finishReceiptPrintFlow()
     }
   }, [finishReceiptPrintFlow, lang])
+
+  function closeSaleResultOverlay() {
+    if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
+    setReceiptPreviewOpen(false)
+    setSaleResult(null)
+  }
+
+  function handleContinueSale() {
+    if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
+    setReceiptPreviewOpen(false)
+    setSaleResult(null)
+    focusScannerInput()
+  }
 
   function handleAutoPrintToggle() {
     const next = !autoPrint
@@ -2360,11 +2373,6 @@ export default function CashierPage() {
       showToast('结束本班失败，请重试')
     }
   }
-
-  useEffect(() => {
-    receiptPrintLockedRef.current = false
-    setReceiptPrinting(false)
-  }, [saleResult?.receipt])
 
   useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
@@ -4441,7 +4449,7 @@ export default function CashierPage() {
 
       {/* ── Sale success overlay ───────────────────────────────────────────── */}
       {saleResult && (
-        <div style={s.overlay} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null) }}>
+        <div style={s.overlay} onClick={closeSaleResultOverlay}>
           <div style={s.modal} onClick={e => e.stopPropagation()}>
             <div style={s.modalIcon}>✅</div>
             <div style={s.modalTitle}>{d.saleCompleted}</div>
@@ -4465,23 +4473,35 @@ export default function CashierPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                 <button
                   type="button"
-                  style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12 }}
-                  onClick={() => setReceiptPreviewOpen(true)}
+                  style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12, ...(isReceiptPrintChainActive ? s.submitDis : {}) }}
+                  disabled={isReceiptPrintChainActive}
+                  onClick={() => {
+                    if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
+                    setReceiptPreviewOpen(true)
+                  }}
                 >
                   {d.previewReceipt}
                 </button>
                 <button
                   ref={receiptPrintButtonRef}
                   type="button"
-                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(receiptPrinting ? s.submitDis : {}) }}
-                  disabled={receiptPrinting}
+                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(isReceiptPrintChainActive ? s.submitDis : {}) }}
+                  disabled={isReceiptPrintChainActive}
                   onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt, saleResult.kitchenTicket)}
                 >
-                  {receiptPrinting ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
+                  {isReceiptPrintChainActive ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
                 </button>
               </div>
             )}
-            <button style={s.modalBtn} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null); focusScannerInput() }}>{d.continueSale}</button>
+            <button
+              style={{ ...s.modalBtn, ...(isReceiptPrintChainActive ? s.submitDis : {}) }}
+              disabled={isReceiptPrintChainActive}
+              onClick={handleContinueSale}
+            >
+              {isReceiptPrintChainActive
+                ? (lang === 'en' ? 'Finishing print…' : lang === 'km' ? 'កំពុងបញ្ចប់ការបោះពុម្ព…' : '正在完成打印…')
+                : d.continueSale}
+            </button>
           </div>
         </div>
       )}
