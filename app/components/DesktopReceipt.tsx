@@ -282,7 +282,10 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
 export function printDesktopReceipt(
   data: DesktopReceiptData,
   lang: Lang,
-  options?: { onAfterPrint?: () => void },
+  options?: {
+    onAfterPrint?: () => void
+    onAfterPrintWithWindow?: (printWindow: Window) => void
+  },
 ) {
   const win = window.open('', '_blank', 'width=420,height=720')
   if (!win) throw new Error('PRINT_WINDOW_BLOCKED')
@@ -306,14 +309,37 @@ export function printDesktopReceipt(
     }
     finish()
   }
+  const continuePrintInSameWindow = () => {
+    if (finished) return
+    if (!options?.onAfterPrintWithWindow) {
+      closePreviewAndFinish()
+      return
+    }
+    finished = true
+    if (poll !== null) {
+      window.clearInterval(poll)
+      poll = null
+    }
+    try {
+      options.onAfterPrintWithWindow(win)
+    } catch (err) {
+      console.warn('[desktop-receipt] next print failed', err)
+      try {
+        if (!win.closed) win.close()
+      } catch {
+        /* Ignore close failures; POS should still return to its completed state. */
+      }
+      options.onAfterPrint?.()
+    }
+  }
   const handlePreviewFocus = () => {
     if (!printRequested || finished) return
-    window.setTimeout(closePreviewAndFinish, 120)
+    window.setTimeout(continuePrintInSameWindow, 120)
   }
   win.document.open()
   win.document.write(receiptHtml(data, lang))
   win.document.close()
-  win.addEventListener('afterprint', () => window.setTimeout(closePreviewAndFinish, 80), { once: true })
+  win.addEventListener('afterprint', () => window.setTimeout(continuePrintInSameWindow, 80), { once: true })
   win.addEventListener('focus', handlePreviewFocus)
   poll = window.setInterval(() => {
     if (win.closed) {

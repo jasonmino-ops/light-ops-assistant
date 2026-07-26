@@ -116,9 +116,9 @@ export function getKitchenTicketHtmlForTest(data: KitchenTicketData, lang: Lang)
 export function printKitchenTicket(
   data: KitchenTicketData,
   lang: Lang,
-  options?: { onAfterPrint?: () => void },
+  options?: { onAfterPrint?: () => void; printWindow?: Window },
 ) {
-  const win = window.open('', '_blank', 'width=420,height=720')
+  const win = options?.printWindow ?? window.open('', '_blank', 'width=420,height=720')
   if (!win) throw new Error('PRINT_WINDOW_BLOCKED')
   let finished = false
   let poll: number | null = null

@@ -1869,13 +1869,16 @@ export default function CashierPage() {
     if (receiptPrintLockedRef.current) return
     receiptPrintLockedRef.current = true
     setIsReceiptPrintChainActive(true)
-    const printKitchenTicketAfterReceipt = () => {
+    const printKitchenTicketAfterReceipt = (printWindow: Window) => {
       if (!kitchenTicket) {
         finishReceiptPrintFlow()
         return
       }
       try {
-        printKitchenTicket(kitchenTicket, lang, { onAfterPrint: finishReceiptPrintFlow })
+        printKitchenTicket(kitchenTicket, lang, {
+          printWindow,
+          onAfterPrint: finishReceiptPrintFlow,
+        })
       } catch (err) {
         console.warn('[kitchen-ticket] print window failed', err)
         showToast('厨房单打印窗口未打开，交易已完成')
@@ -1883,7 +1886,13 @@ export default function CashierPage() {
       }
     }
     try {
-      printDesktopReceipt(receipt, lang, { onAfterPrint: printKitchenTicketAfterReceipt })
+      printDesktopReceipt(receipt, lang, kitchenTicket
+        ? {
+            onAfterPrint: finishReceiptPrintFlow,
+            onAfterPrintWithWindow: printKitchenTicketAfterReceipt,
+          }
+        : { onAfterPrint: finishReceiptPrintFlow },
+      )
     } catch (err) {
       console.warn('[desktop-receipt] print window failed', err)
       showToast('无法打开打印预览，请检查浏览器弹窗权限')
