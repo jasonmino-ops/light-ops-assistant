@@ -9,8 +9,25 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 import {
   DesktopReceiptPreview,
   printDesktopReceipt,
+  renderDesktopReceiptHtml,
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
+import {
+  detectQzOnline,
+  listQzPrinters,
+  printHelloWorldViaQz,
+  shouldUseQzPrint,
+  submitDesktopReceiptPrint,
+  type QzStatus,
+} from '@/lib/qzPrinterAdapter'
+import {
+  clearLegacyGlobalQzConfig,
+  readQzPrintEnabled,
+  readQzSelectedPrinter,
+  writeQzPrintEnabled,
+  writeQzSelectedPrinter,
+} from '@/lib/cashier-qz-config'
+import { invalidateQzRequests, startQzRequest } from '@/lib/qzRequestGuard'
 import {
   printKitchenTicket,
   type KitchenTicketData,
@@ -1167,6 +1184,9 @@ const s: Record<string, CSSProperties> = {
   autoPrintSub: { fontSize: 9, color: '#94a3b8', lineHeight: 1.15, minHeight: 11 },
   autoPrintSwitch: { position: 'relative', width: 42, height: 24, borderRadius: 999, border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, transition: 'background .12s' },
   autoPrintKnob: { position: 'absolute', top: 3, width: 18, height: 18, borderRadius: 999, background: '#fff', transition: 'left .12s' },
+  qzPanel: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 },
+  qzSelect: { minHeight: 30, borderRadius: 10, border: '1px solid rgba(148,163,184,.18)', background: 'rgba(15,23,42,.35)', color: '#e2e8f0', fontSize: 11, padding: '4px 8px' },
+  qzButtonRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 },
 
   // Toast + error screen
   toast:       { position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: 'rgba(17,24,39,.9)', color: '#fff', borderRadius: 10, padding: '9px 18px', fontSize: 13, zIndex: 200, whiteSpace: 'nowrap' as const, pointerEvents: 'none' },
@@ -1251,6 +1271,13 @@ export default function CashierPage() {
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const [cashTendered, setCashTendered] = useState('')
   const [autoPrint, setAutoPrint] = useState(false)
+  const [qzPrintEnabled, setQzPrintEnabled] = useState(false)
+  const [qzStatus, setQzStatus] = useState<QzStatus>('idle')
+  const [qzPrinters, setQzPrinters] = useState<string[]>([])
+  const [qzSelectedPrinter, setQzSelectedPrinter] = useState<string | null>(null)
+  const [qzChecking, setQzChecking] = useState(false)
+  const qzRequestVersionRef = useRef(0)
+  const qzActiveStoreCodeRef = useRef<string | null>(null)
   const [compactMode, setCompactMode] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
   const [holdOrders, setHoldOrders] = useState<HoldOrder<CartLine, DesktopCheckoutStep>[]>([])
@@ -1440,6 +1467,39 @@ export default function CashierPage() {
       setShiftOperator('')
     }
   }, [isDesktopPos, storeCode, workMode.effectiveRole, workMode.realRole])
+
+  useEffect(() => {
+    // One-time cleanup of the pre-scoping global QZ keys from the first
+    // POC cut. Their values are never applied to any store.
+    try {
+      clearLegacyGlobalQzConfig()
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    // Invalidate any in-flight QZ refresh request (started for the
+    // previous store, or for no store yet) before anything else, so its
+    // eventual result can never write state or storage for this store.
+    invalidateQzRequests(qzRequestVersionRef, qzActiveStoreCodeRef, storeCode)
+
+    // Reset in-memory QZ state before (re)loading a store's own config, so
+    // a previous store's enabled flag / selected printer / online status
+    // can never be read by handlePrintReceipt while the active store is
+    // changing or not yet known.
+    setQzPrintEnabled(false)
+    setQzStatus('idle')
+    setQzPrinters([])
+    setQzSelectedPrinter(null)
+    setQzChecking(false)
+
+    if (!storeCode) return
+    try {
+      setQzPrintEnabled(readQzPrintEnabled(storeCode))
+      setQzSelectedPrinter(readQzSelectedPrinter(storeCode))
+    } catch (err) {
+      console.warn('[cashier:qz] config load failed', err)
+    }
+  }, [storeCode])
 
   useEffect(() => {
     if (cart.length === 0) {
@@ -1890,24 +1950,52 @@ export default function CashierPage() {
         ? '顾客票打印状态无法确认，厨房票未自动打印，请检查打印机。'
         : '顾客票打印状态无法确认，请检查打印机。')
     }
-    try {
-      printDesktopReceipt(receipt, lang, kitchenTicket
-        ? {
-            onAfterPrint: finishReceiptPrintFlow,
-            onAfterPrintWithWindow: printKitchenTicketAfterReceipt,
-            onFirstPrintTimeout: handleFirstPrintTimeout,
-          }
-        : {
-            onAfterPrint: finishReceiptPrintFlow,
-            onFirstPrintTimeout: handleFirstPrintTimeout,
-          },
-      )
-    } catch (err) {
-      console.warn('[desktop-receipt] print window failed', err)
-      showToast('无法打开打印预览，请检查浏览器弹窗权限')
-      finishReceiptPrintFlow()
+    const runLegacyPrint = () => {
+      try {
+        printDesktopReceipt(receipt, lang, kitchenTicket
+          ? {
+              onAfterPrint: finishReceiptPrintFlow,
+              onAfterPrintWithWindow: printKitchenTicketAfterReceipt,
+              onFirstPrintTimeout: handleFirstPrintTimeout,
+            }
+          : {
+              onAfterPrint: finishReceiptPrintFlow,
+              onFirstPrintTimeout: handleFirstPrintTimeout,
+            },
+        )
+      } catch (err) {
+        console.warn('[desktop-receipt] print window failed', err)
+        showToast('无法打开打印预览，请检查浏览器弹窗权限')
+        finishReceiptPrintFlow()
+      }
     }
-  }, [finishReceiptPrintFlow, lang])
+
+    // QZ Tray POC: only ever taken for a plain customer receipt (no kitchen
+    // ticket) with QZ online and a printer selected. Once this submission
+    // starts, it never falls back to runLegacyPrint — success or failure,
+    // the operator uses the existing "打印小票" button to retry manually.
+    const useQz = shouldUseQzPrint({
+      qzPrintEnabled,
+      hasKitchenTicket: !!kitchenTicket,
+      qzStatus,
+      selectedPrinter: qzSelectedPrinter,
+    })
+    void submitDesktopReceiptPrint({
+      useQz,
+      printerName: qzSelectedPrinter,
+      html: useQz ? renderDesktopReceiptHtml(receipt, lang) : '',
+      legacyPrint: runLegacyPrint,
+    }).then((result) => {
+      if (result.route !== 'qz') return
+      if (result.qzError) {
+        console.warn('[qz-printer] receipt print failed', result.qzError)
+        showToast('QZ 打印失败，本单未自动切换到浏览器打印，请检查 QZ Tray 后手动打印')
+      } else {
+        showToast('已通过 QZ Tray 提交打印')
+      }
+      finishReceiptPrintFlow()
+    })
+  }, [finishReceiptPrintFlow, lang, qzPrintEnabled, qzStatus, qzSelectedPrinter])
 
   function closeSaleResultOverlay() {
     if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
@@ -1929,6 +2017,77 @@ export default function CashierPage() {
       localStorage.setItem('cashier:autoPrint', next ? '1' : '0')
     } catch {}
     showToast(next ? '已开启自动打印小票' : '已关闭自动打印小票')
+  }
+
+  const handleRefreshQzStatus = useCallback(async () => {
+    if (qzChecking) return
+    const requestStoreCode = storeCode
+    const request = startQzRequest(qzRequestVersionRef, qzActiveStoreCodeRef, requestStoreCode)
+    // A request only ever starts for the store that's active right now, so
+    // this is only false when storeCode is null (nothing to refresh yet).
+    if (!requestStoreCode || !request.isCurrent()) return
+
+    setQzChecking(true)
+    setQzStatus('checking')
+    try {
+      const online = await detectQzOnline()
+      if (!request.isCurrent()) return
+      if (!online) {
+        setQzStatus('offline')
+        setQzPrinters([])
+        return
+      }
+      setQzStatus('online')
+      const printers = await listQzPrinters()
+      if (!request.isCurrent()) return
+      setQzPrinters(printers)
+      if (qzSelectedPrinter && !printers.includes(qzSelectedPrinter)) {
+        setQzSelectedPrinter(null)
+        try { writeQzSelectedPrinter(requestStoreCode, null) } catch {}
+      }
+    } catch (err) {
+      if (!request.isCurrent()) return
+      console.warn('[qz-printer] status check failed', err)
+      setQzStatus('offline')
+      setQzPrinters([])
+    } finally {
+      if (request.isCurrent()) setQzChecking(false)
+    }
+  }, [qzChecking, qzSelectedPrinter, storeCode])
+
+  function handleQzPrintToggle() {
+    const next = !qzPrintEnabled
+    setQzPrintEnabled(next)
+    if (storeCode) {
+      try { writeQzPrintEnabled(storeCode, next) } catch {}
+    }
+    if (next) {
+      void handleRefreshQzStatus()
+    } else {
+      setQzStatus('idle')
+    }
+  }
+
+  function handleSelectQzPrinter(printerName: string) {
+    const next = printerName || null
+    setQzSelectedPrinter(next)
+    if (storeCode) {
+      try { writeQzSelectedPrinter(storeCode, next) } catch {}
+    }
+  }
+
+  async function handleQzHelloWorldTest() {
+    if (!qzSelectedPrinter) {
+      showToast('请先选择 QZ 打印机')
+      return
+    }
+    try {
+      await printHelloWorldViaQz(qzSelectedPrinter)
+      showToast('Hello World 测试已提交到 QZ Tray')
+    } catch (err) {
+      console.warn('[qz-printer] hello world failed', err)
+      showToast('QZ 测试打印失败，请检查 QZ Tray 是否运行')
+    }
   }
 
   function handleCompactModeToggle() {
@@ -3847,6 +4006,53 @@ export default function CashierPage() {
                         <span style={{ ...s.autoPrintKnob, left: autoPrint ? 21 : 3 }} />
                       </button>
                     </div>
+                    <div style={{ ...s.autoPrintToggle, marginTop: 8 }}>
+                      <div style={s.autoPrintText}>
+                        <span style={s.autoPrintTitle}>
+                          {lang === 'en' ? 'QZ Tray print (POC)' : lang === 'km' ? 'បោះពុម្ព QZ Tray (សាកល្បង)' : 'QZ Tray 打印（POC）'}
+                        </span>
+                        <span style={s.autoPrintSub}>
+                          {qzStatus === 'online'
+                            ? (lang === 'en' ? 'Online' : lang === 'km' ? 'អនឡាញ' : '在线')
+                            : qzStatus === 'checking'
+                              ? (lang === 'en' ? 'Checking…' : lang === 'km' ? 'កំពុងពិនិត្យ…' : '检测中…')
+                              : (lang === 'en' ? 'Offline / not checked' : lang === 'km' ? 'គ្មានអនឡាញ' : '离线/未检测')}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        aria-pressed={qzPrintEnabled}
+                        aria-label="QZ Tray 打印"
+                        style={{ ...s.autoPrintSwitch, background: qzPrintEnabled ? '#2563eb' : 'rgba(148,163,184,.45)' }}
+                        onClick={handleQzPrintToggle}
+                      >
+                        <span style={{ ...s.autoPrintKnob, left: qzPrintEnabled ? 21 : 3 }} />
+                      </button>
+                    </div>
+                    {qzPrintEnabled && (
+                      <div style={s.qzPanel}>
+                        <select
+                          value={qzSelectedPrinter ?? ''}
+                          onChange={(event) => handleSelectQzPrinter(event.target.value)}
+                          style={s.qzSelect}
+                        >
+                          <option value="">
+                            {lang === 'en' ? 'Select a printer' : lang === 'km' ? 'ជ្រើសរើសម៉ាស៊ីនបោះពុម្ព' : '选择打印机'}
+                          </option>
+                          {qzPrinters.map((printerName) => (
+                            <option key={printerName} value={printerName}>{printerName}</option>
+                          ))}
+                        </select>
+                        <div style={s.qzButtonRow}>
+                          <button type="button" style={s.sideMutedBtn} onClick={() => void handleRefreshQzStatus()} disabled={qzChecking}>
+                            {lang === 'en' ? 'Refresh' : lang === 'km' ? 'ធ្វើឱ្យស្រស់' : '刷新状态'}
+                          </button>
+                          <button type="button" style={s.sideMutedBtn} onClick={() => void handleQzHelloWorldTest()} disabled={!qzSelectedPrinter}>
+                            {lang === 'en' ? 'Hello World test' : lang === 'km' ? 'សាកល្បង Hello World' : 'Hello World 测试'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
