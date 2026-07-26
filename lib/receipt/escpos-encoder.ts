@@ -10,6 +10,7 @@
 
 export const ESC = 0x1b
 export const GS = 0x1d
+export const ESC_POS_RECEIPT_TAIL_FEED_LINES = 3
 
 export type EscPosAlign = 'left' | 'center' | 'right'
 
@@ -122,13 +123,22 @@ export class EscPosBuilder {
 }
 
 /**
+ * The shared physical ticket tail for every ESC/POS RAW receipt in this
+ * experiment. Keep the feed and cut together so individual entry points
+ * cannot drift into different paper margins.
+ */
+export function appendEscPosReceiptTail(builder: EscPosBuilder): EscPosBuilder {
+  return builder.feed(ESC_POS_RECEIPT_TAIL_FEED_LINES).cut()
+}
+
+/**
  * Fixed, database-free RAW smoke-test ticket for EP-BR-ESCPOS-01.
  *
  * This stays entirely within the experiment layer so operators can verify
  * the QZ RAW channel without creating a sale or requiring a receipt snapshot.
  */
 export function buildEscPosAsciiTestTicketBase64(): string {
-  return new EscPosBuilder()
+  const builder = new EscPosBuilder()
     .init()
     .align('center')
     .bold(true)
@@ -142,7 +152,6 @@ export function buildEscPosAsciiTestTicketBase64(): string {
     .newline()
     .text('TOTAL: 2.00')
     .newline()
-    .feed(3)
-    .cut()
-    .toBase64()
+
+  return appendEscPosReceiptTail(builder).toBase64()
 }

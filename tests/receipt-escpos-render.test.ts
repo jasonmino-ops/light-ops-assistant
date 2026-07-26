@@ -7,7 +7,14 @@ import {
   ESC_POS_DEFAULT_CHAR_WIDTH,
   type LineRasterizer,
 } from '../lib/receipt/render-desktop-receipt-escpos'
-import { bytesToBase64, ESC, GS, type MonoBitmap } from '../lib/receipt/escpos-encoder'
+import {
+  buildEscPosAsciiTestTicketBase64,
+  bytesToBase64,
+  ESC,
+  ESC_POS_RECEIPT_TAIL_FEED_LINES,
+  GS,
+  type MonoBitmap,
+} from '../lib/receipt/escpos-encoder'
 import { splitReceiptTextByMeasuredWidth } from '../lib/receipt/rasterize-receipt-line-canvas'
 import type { DesktopReceiptData } from '../app/components/DesktopReceipt'
 
@@ -144,7 +151,11 @@ function testRenderBytesStartsWithInitAndEndsWithCut() {
   const plan = buildEscPosReceiptPlan(receipt, 'en')
   const bytes = renderEscPosReceiptBytes(plan, fakeRasterizer())
   assert.deepEqual(Array.from(bytes.slice(0, 2)), [ESC, 0x40])
-  assert.deepEqual(Array.from(bytes.slice(-3)), [GS, 0x56, 0x00])
+  assert.deepEqual(
+    Array.from(bytes.slice(-6)),
+    [ESC, 0x64, ESC_POS_RECEIPT_TAIL_FEED_LINES, GS, 0x56, 0x00],
+    'the receipt tail must feed three lines immediately before cutting',
+  )
 }
 
 function testRenderBytesInvokesRasterizerOnlyForNonAsciiLines() {
@@ -174,8 +185,15 @@ function testExactlyOneCutAndNoTrailingBoldLeftOn() {
     if (bytes[i] === GS && bytes[i + 1] === 0x56 && bytes[i + 2] === 0x00) cutCount++
   }
   assert.equal(cutCount, 1, 'exactly one cut command must be emitted')
-  // Last three bytes are the cut itself; bold state before that should be off.
   assert.deepEqual(bytes.slice(-3), [GS, 0x56, 0x00])
+}
+
+function testAsciiAndReceiptUseTheSameReceiptTail() {
+  const asciiBytes = Array.from(new Uint8Array(Buffer.from(buildEscPosAsciiTestTicketBase64(), 'base64')))
+  const receiptBytes = Array.from(renderEscPosReceiptBytes(buildEscPosReceiptPlan(sampleReceipt(), 'en'), fakeRasterizer()))
+  const expectedTail = [ESC, 0x64, ESC_POS_RECEIPT_TAIL_FEED_LINES, GS, 0x56, 0x00]
+  assert.deepEqual(asciiBytes.slice(-expectedTail.length), expectedTail)
+  assert.deepEqual(receiptBytes.slice(-expectedTail.length), expectedTail)
 }
 
 function testDefaultCharWidthIsExported() {
@@ -197,6 +215,7 @@ function run() {
   testRenderBytesInvokesRasterizerOnlyForNonAsciiLines()
   testBuildBase64MatchesManualPipeline()
   testExactlyOneCutAndNoTrailingBoldLeftOn()
+  testAsciiAndReceiptUseTheSameReceiptTail()
   testDefaultCharWidthIsExported()
   console.log('receipt escpos render tests passed')
 }

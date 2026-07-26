@@ -27,7 +27,13 @@ import {
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
 import { formatMoney } from '@/lib/currency'
-import { EscPosBuilder, bytesToBase64, type EscPosAlign, type MonoBitmap } from './escpos-encoder'
+import {
+  appendEscPosReceiptTail,
+  EscPosBuilder,
+  bytesToBase64,
+  type EscPosAlign,
+  type MonoBitmap,
+} from './escpos-encoder'
 import { isAsciiPrintableLine } from './receipt-text-charset'
 
 // Assumption pending real POS-80 hardware confirmation (see the field
@@ -118,7 +124,6 @@ export function buildEscPosReceiptPlan(
   ops.push(...rowOps(labels.total, formatMoney(data.totalAmount, data.currencyCode), charWidth, true))
   ops.push(centeredOp(labels.thanks, true))
 
-  ops.push({ kind: 'feed', lines: 3 })
   ops.push({ kind: 'cut' })
   return ops
 }
@@ -163,7 +168,7 @@ export function renderEscPosReceiptBytes(
         builder.feed(op.lines)
         break
       case 'cut':
-        builder.cut()
+        appendEscPosReceiptTail(builder)
         break
     }
   }

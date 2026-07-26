@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   EscPosBuilder,
+  ESC_POS_RECEIPT_TAIL_FEED_LINES,
   buildEscPosAsciiTestTicketBase64,
   bytesToBase64,
   ESC,
@@ -102,8 +103,16 @@ function testAsciiTestTicketIsFixedAndSelfContained() {
   assert.match(text, /ORDER: TEST-001/)
   assert.match(text, /ITEM: COFFEE x1/)
   assert.match(text, /TOTAL: 2\.00/)
-  assert.deepEqual(Array.from(bytes.slice(-3)), [GS, 0x56, 0x00])
-  assert.ok(bytes.includes(ESC) && bytes.includes(0x64), 'test ticket must feed before cutting')
+  assert.deepEqual(
+    Array.from(bytes.slice(-6)),
+    [ESC, 0x64, ESC_POS_RECEIPT_TAIL_FEED_LINES, GS, 0x56, 0x00],
+    'the shared receipt tail must feed three lines immediately before cutting',
+  )
+  let cutCount = 0
+  for (let i = 0; i < bytes.length - 2; i++) {
+    if (bytes[i] === GS && bytes[i + 1] === 0x56 && bytes[i + 2] === 0x00) cutCount++
+  }
+  assert.equal(cutCount, 1, 'the ASCII test ticket must have exactly one final cut')
 }
 
 function run() {
