@@ -33,6 +33,11 @@ export type QzClient = {
 
 let qzModulePromise: Promise<QzClient> | null = null
 
+// QZ Tray's HTML renderer falls back to the printer/default page when no
+// explicit width is supplied. A POS-80 driver can therefore receive an A4
+// raster job even though the receipt HTML itself is 80mm wide.
+export const QZ_RECEIPT_WIDTH_INCHES = 80 / 25.4
+
 async function loadQz(): Promise<QzClient> {
   if (typeof window === 'undefined') {
     throw new Error('QZ_BROWSER_ONLY')
@@ -82,8 +87,22 @@ export async function printReceiptHtmlViaQz(printerName: string, html: string, c
   if (!printerName) throw new Error('QZ_NO_PRINTER_SELECTED')
   const qz = client ?? (await loadQz())
   await ensureConnected(qz)
-  const config = qz.configs.create(printerName)
-  await qz.print(config, [{ type: 'pixel', format: 'html', flavor: 'plain', data: html }])
+  const config = qz.configs.create(printerName, {
+    units: 'in',
+    size: { width: QZ_RECEIPT_WIDTH_INCHES },
+    margins: 0,
+    orientation: 'portrait',
+    scaleContent: false,
+  })
+  await qz.print(config, [{
+    type: 'pixel',
+    format: 'html',
+    flavor: 'plain',
+    data: html,
+    // QZ auto-sizes HTML height when pageHeight is omitted. Supplying only
+    // the 80mm width prevents the default A4 canvas from clipping this roll.
+    options: { pageWidth: QZ_RECEIPT_WIDTH_INCHES },
+  }])
 }
 
 export type QzStatus = 'idle' | 'checking' | 'online' | 'offline'

@@ -377,7 +377,7 @@ export function printDesktopReceipt(
   }
 
   win.document.open()
-  win.document.write(receiptHtml(data, lang))
+  win.document.write(renderDesktopReceiptHtml(data, lang))
   win.document.close()
   win.addEventListener('afterprint', handleAfterPrint, { once: true })
   win.addEventListener('focus', handlePreviewFocus)

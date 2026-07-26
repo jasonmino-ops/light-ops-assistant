@@ -4,6 +4,7 @@ import {
   listQzPrinters,
   printHelloWorldViaQz,
   printReceiptHtmlViaQz,
+  QZ_RECEIPT_WIDTH_INCHES,
   shouldUseQzPrint,
   submitDesktopReceiptPrint,
   type QzClient,
@@ -20,7 +21,7 @@ function makeClient(overrides: Partial<QzClient> = {}): QzClient {
       find: async () => ['POS-80'],
     },
     configs: {
-      create: (printer) => ({ printer }),
+      create: (printer, options) => options === undefined ? { printer } : { printer, options },
     },
     print: async (config, data) => {
       printCalls.push({ config, data })
@@ -99,10 +100,28 @@ async function testPrintReceiptHtmlSubmitsHtmlPayload() {
   const client = makeClient() as QzClient & { __printCalls: { config: unknown; data: unknown[] }[] }
   await printReceiptHtmlViaQz('POS-80', '<html>receipt</html>', client)
   assert.equal(client.__printCalls.length, 1)
-  const [job] = client.__printCalls[0].data as { type: string; format: string; data: string }[]
+  assert.deepEqual(client.__printCalls[0].config, {
+    printer: 'POS-80',
+    options: {
+      units: 'in',
+      size: { width: QZ_RECEIPT_WIDTH_INCHES },
+      margins: 0,
+      orientation: 'portrait',
+      scaleContent: false,
+    },
+  })
+  const [job] = client.__printCalls[0].data as {
+    type: string
+    format: string
+    flavor: string
+    data: string
+    options: { pageWidth: number }
+  }[]
   assert.equal(job.type, 'pixel')
   assert.equal(job.format, 'html')
+  assert.equal(job.flavor, 'plain')
   assert.equal(job.data, '<html>receipt</html>')
+  assert.equal(job.options.pageWidth, QZ_RECEIPT_WIDTH_INCHES)
 }
 
 async function testSubmitUsesLegacyWhenNotUsingQz() {
