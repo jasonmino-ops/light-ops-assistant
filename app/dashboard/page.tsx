@@ -452,7 +452,12 @@ export default function DashboardPage() {
           </div>
           <span style={s.bigEntryArrow}>{showStoreConfig ? '▴' : '›'}</span>
         </button>
-        {showStoreConfig && <StoreConfigPanel t={t} />}
+        {showStoreConfig && (
+          <>
+            <StoreConfigPanel t={t} />
+            <PrintSettingsCard t={t} />
+          </>
+        )}
 
         {/* 店铺类型（OWNER only — dashboard 本就 OWNER 才能进） */}
         <BusinessTypeCard t={t} />
@@ -1242,6 +1247,95 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
 // ─── 首页门头快捷管理（OWNER 可见，dashboard 顶部直达） ────────────────────
 
 // ─── 店铺类型卡片（OWNER） ────────────────────────────────────────────────
+function PrintSettingsCard({ t }: { t: (k: string) => string }) {
+  const [printKitchenTicket, setPrintKitchenTicket] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    apiFetch('/api/store/settings', { cache: 'no-store' }, OWNER_CTX)
+      .then((r) => r.json())
+      .then((body) => {
+        if (body && !body.error) setPrintKitchenTicket(body.printKitchenTicket === true)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function save(next: boolean) {
+    if (saving || next === printKitchenTicket) return
+    const previous = printKitchenTicket
+    setPrintKitchenTicket(next)
+    setSaving(true)
+    setMsg(null)
+    try {
+      const res = await apiFetch('/api/store/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ printKitchenTicket: next }),
+      }, OWNER_CTX)
+      const body = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setPrintKitchenTicket(body.printKitchenTicket === true)
+        setMsg({ ok: true, text: t('dashboard.printSettingsSaved') })
+      } else {
+        setPrintKitchenTicket(previous)
+        setMsg({ ok: false, text: body.message ?? t('dashboard.printSettingsSaveFail') })
+      }
+    } catch {
+      setPrintKitchenTicket(previous)
+      setMsg({ ok: false, text: t('dashboard.printSettingsSaveFail') })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={ps.card}>
+      <div style={ps.title}>🖨️ {t('dashboard.printSettingsTitle')}</div>
+      <div style={ps.desc}>{t('dashboard.printSettingsDesc')}</div>
+      <div style={ps.row}>
+        <div>
+          <div style={ps.label}>{t('dashboard.printCustomerReceipt')}</div>
+          <div style={ps.hint}>{t('dashboard.printCustomerReceiptHint')}</div>
+        </div>
+        <span style={ps.statusOn}>{t('dashboard.printSettingOn')}</span>
+      </div>
+      <div style={{ ...ps.row, ...ps.rowDivider }}>
+        <div>
+          <div style={ps.label}>{t('dashboard.printKitchenTicket')}</div>
+          <div style={ps.hint}>{t('dashboard.printKitchenTicketHint')}</div>
+        </div>
+        <button
+          type="button"
+          aria-pressed={printKitchenTicket}
+          disabled={loading || saving}
+          onClick={() => void save(!printKitchenTicket)}
+          style={{ ...ps.toggle, ...(printKitchenTicket ? ps.toggleOn : {}) }}
+        >
+          {saving ? t('dashboard.printSettingsSaving') : printKitchenTicket ? t('dashboard.printSettingOn') : t('dashboard.printSettingOff')}
+        </button>
+      </div>
+      {msg && <div style={msg.ok ? ps.saved : ps.err}>{msg.text}</div>}
+    </div>
+  )
+}
+
+const ps: Record<string, React.CSSProperties> = {
+  card: { background: 'var(--card)', borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 10 },
+  title: { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
+  desc: { fontSize: 12, color: 'var(--muted)', marginTop: 4, marginBottom: 10 },
+  row: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0' },
+  rowDivider: { borderTop: '1px solid var(--border)' },
+  label: { fontSize: 13, fontWeight: 700, color: 'var(--text)' },
+  hint: { fontSize: 11, color: 'var(--muted)', marginTop: 3 },
+  statusOn: { fontSize: 12, fontWeight: 800, color: '#16a34a' },
+  toggle: { minWidth: 54, border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 10px', background: '#fff', color: 'var(--muted)', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
+  toggleOn: { borderColor: '#16a34a', background: '#f0fdf4', color: '#15803d' },
+  saved: { fontSize: 11, color: '#16a34a', marginTop: 2 },
+  err: { fontSize: 11, color: '#cf1322', marginTop: 2 },
+}
+
 function BusinessTypeCard({ t }: { t: (k: string) => string }) {
   const [value, setValue]     = useState<string>('GENERAL')
   const [loading, setLoading] = useState(true)

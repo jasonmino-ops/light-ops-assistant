@@ -2,7 +2,8 @@
  * GET /api/store/settings
  * PATCH /api/store/settings
  *
- * 商户端轻量门店设置接口。本期暴露 businessType（店铺类型）和 currencyCode（门店货币）。
+ * 商户端轻量门店设置接口。本期暴露 businessType（店铺类型）、currencyCode（门店货币）
+ * 和 printKitchenTicket（浏览器厨房小票）。
  *
  * 鉴权：
  *   - GET:   登录即可（OWNER / STAFF）
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
       businessType: true,
       checkoutMode: true,
       currencyCode: true,
+      printKitchenTicket: true,
     },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -50,6 +52,7 @@ export async function GET(req: NextRequest) {
     businessType: store.businessType,
     checkoutMode: store.checkoutMode,
     currencyCode: store.currencyCode,
+    printKitchenTicket: store.printKitchenTicket,
     ...contact,
   })
 }
@@ -61,10 +64,10 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'FORBIDDEN', message: '只有老板可以修改店铺类型' }, { status: 403 })
   }
 
-  let body: { businessType?: string; currencyCode?: string; contactPhone?: string; contactTelegram?: string; contactWhatsApp?: string }
+  let body: { businessType?: string; currencyCode?: string; printKitchenTicket?: boolean; contactPhone?: string; contactTelegram?: string; contactWhatsApp?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }
 
-  const data: { businessType?: BizType; currencyCode?: string } = {}
+  const data: { businessType?: BizType; currencyCode?: string; printKitchenTicket?: boolean } = {}
   const contactData: { contactPhone?: string | null; contactTelegram?: string | null; contactWhatsApp?: string | null } = {}
   if (body.businessType !== undefined) {
     const bt = body.businessType.trim()
@@ -78,6 +81,12 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'INVALID_CURRENCY_CODE' }, { status: 400 })
     }
     data.currencyCode = normalizeCurrencyCode(body.currencyCode)
+  }
+  if (body.printKitchenTicket !== undefined) {
+    if (typeof body.printKitchenTicket !== 'boolean') {
+      return NextResponse.json({ error: 'INVALID_PRINT_KITCHEN_TICKET' }, { status: 400 })
+    }
+    data.printKitchenTicket = body.printKitchenTicket
   }
   if (body.contactPhone !== undefined) {
     const next = cleanContactValue(body.contactPhone)
@@ -103,6 +112,7 @@ export async function PATCH(req: NextRequest) {
   if (
     !data.businessType &&
     !data.currencyCode &&
+    data.printKitchenTicket === undefined &&
     contactData.contactPhone === undefined &&
     contactData.contactTelegram === undefined &&
     contactData.contactWhatsApp === undefined
@@ -112,7 +122,7 @@ export async function PATCH(req: NextRequest) {
 
   const store = await prisma.store.findFirst({
     where:  { id: ctx.storeId, tenantId: ctx.tenantId },
-    select: { id: true, businessType: true, currencyCode: true },
+    select: { id: true, businessType: true, currencyCode: true, printKitchenTicket: true },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
 
@@ -138,7 +148,7 @@ export async function PATCH(req: NextRequest) {
     ? await prisma.store.update({
       where: { id: store.id },
       data,
-      select: { id: true, businessType: true, currencyCode: true },
+      select: { id: true, businessType: true, currencyCode: true, printKitchenTicket: true },
     })
     : store
 
@@ -146,6 +156,7 @@ export async function PATCH(req: NextRequest) {
     ok: true,
     businessType: updated.businessType,
     currencyCode: updated.currencyCode,
+    printKitchenTicket: updated.printKitchenTicket,
     ...contact,
   })
 }
