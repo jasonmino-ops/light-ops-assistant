@@ -8,6 +8,7 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import { publicUrl } from '@/lib/public-url'
 import { formatMoney } from '@/lib/currency'
+import ComputerConsoleModal from './ComputerConsoleModal'
 
 const DEV_STAFF_CTX = process.env.NODE_ENV !== 'production' ? STAFF_CTX : undefined
 const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
@@ -216,7 +217,7 @@ export default function HomePage() {
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   const [customerCheckout, setCustomerCheckout] = useState<{ id: string; orderNo: string; totalAmount: number } | null>(null)
   const [storeCode, setStoreCode] = useState<string | null>(null)
-  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [computerConsoleOpen, setComputerConsoleOpen] = useState(false)
   const [avatarFailed, setAvatarFailed] = useState(false)
 
   useEffect(() => {
@@ -283,28 +284,6 @@ export default function HomePage() {
       clearInterval(timer)
     }
   }, [effectiveRole])
-
-  function copyLink(key: string, url: string) {
-    const doFallback = () => {
-      const ta = document.createElement('textarea')
-      ta.value = url
-      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
-      document.body.appendChild(ta)
-      ta.focus(); ta.select()
-      try { document.execCommand('copy') } catch {}
-      document.body.removeChild(ta)
-      setCopiedKey(key)
-      setTimeout(() => setCopiedKey(null), 2000)
-    }
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(url).then(() => {
-        setCopiedKey(key)
-        setTimeout(() => setCopiedKey(null), 2000)
-      }).catch(doFallback)
-    } else {
-      doFallback()
-    }
-  }
 
   const pendingCustomerOrders = customerOrders.filter(isPendingCustomerOrder)
   const pendingOrderCount = pendingCustomerOrders.length
@@ -515,13 +494,20 @@ export default function HomePage() {
         <CashierAction
           label={t('home.cashier')}
           subLabel={t('home.quickCashierSub')}
-          openLabel={t('home.open')}
-          copyLabel={copiedKey === 'cashier' ? '✓' : t('home.copy')}
           color="#722ed1"
-          onOpen={() => window.open(desktopPath, '_blank', 'noopener,noreferrer')}
-          onCopy={() => copyLink('cashier', desktopUrl)}
+          onClick={() => setComputerConsoleOpen(true)}
         />
       </div>
+
+      {computerConsoleOpen && (
+        <ComputerConsoleModal
+          desktopPath={desktopPath}
+          desktopUrl={desktopUrl}
+          storeCode={storeCode}
+          canManagePin={realRole === 'OWNER'}
+          onClose={() => setComputerConsoleOpen(false)}
+        />
+      )}
 
       {customerCheckout && (
         <CheckoutSheet
@@ -624,21 +610,18 @@ function ActionBtn({ href, iconKind, label, subLabel, color, onClick }: {
   )
 }
 
-function CashierAction({ label, subLabel, openLabel, copyLabel, color, onOpen, onCopy }: {
-  label: string; subLabel: string; openLabel: string; copyLabel: string; color: string; onOpen: () => void; onCopy: () => void
+function CashierAction({ label, subLabel, color, onClick }: {
+  label: string; subLabel: string; color: string; onClick: () => void
 }) {
   return (
-    <div style={{ ...s.actionBtn, borderColor: color + '33' }}>
+    <button type="button" style={{ ...s.actionBtn, borderColor: color + '33' }} onClick={onClick}>
       <span style={{ ...s.actionIcon, background: color + '13' }}>
         <ActionGlyph kind="cashier" color={color} />
       </span>
       <span style={{ ...s.actionLabel, color }}>{label}</span>
       <span style={s.actionSubLabel}>{subLabel}</span>
-      <div style={s.actionMiniBtns}>
-        <button type="button" style={s.actionMiniBtn} onClick={onCopy}>{copyLabel}</button>
-        <button type="button" style={s.actionMiniBtnPrimary} onClick={onOpen}>{openLabel}</button>
-      </div>
-    </div>
+      <span style={{ ...s.actionCardArrow, color }}>›</span>
+    </button>
   )
 }
 
@@ -1557,35 +1540,11 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: 'center',
     whiteSpace: 'nowrap' as const,
   },
-  actionMiniBtns: {
-    display: 'flex',
-    gap: 4,
-    marginTop: 3,
-    width: '100%',
-  },
-  actionMiniBtn: {
-    flex: 1,
-    minWidth: 0,
-    border: '1px solid #e5e7eb',
-    background: '#fff',
-    color: '#4b5563',
-    borderRadius: 999,
-    padding: '3px 0',
-    fontSize: 9,
+  actionCardArrow: {
+    marginTop: 1,
+    fontSize: 18,
     fontWeight: 800,
-    cursor: 'pointer',
-  },
-  actionMiniBtnPrimary: {
-    flex: 1,
-    minWidth: 0,
-    border: '1px solid #ddd6fe',
-    background: '#f5f3ff',
-    color: '#6d28d9',
-    borderRadius: 999,
-    padding: '3px 0',
-    fontSize: 9,
-    fontWeight: 800,
-    cursor: 'pointer',
+    lineHeight: 0.8,
   },
   glyphBox: {
     position: 'relative',
