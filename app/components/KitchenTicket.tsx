@@ -78,7 +78,12 @@ function kitchenTicketHtml(data: KitchenTicketData, lang: Lang) {
     .item-spec { margin-top: .5mm; color: #333; overflow-wrap: break-word; }
     .item-qty { margin-top: .8mm; font-size: 13px; font-weight: 900; }
     @media print {
-      html, body { width: 80mm; }
+      html, body {
+        width: 80mm;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+      }
       body { padding: 0; }
       .ticket { width: 74mm; }
     }

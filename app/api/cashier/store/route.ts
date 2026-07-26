@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 
   const store = await prisma.store.findUnique({
     where: { code: storeCode },
-    select: { id: true, name: true, tenantId: true, status: true, currencyCode: true },
+    select: { id: true, name: true, tenantId: true, status: true, currencyCode: true, printKitchenTicket: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -93,6 +93,7 @@ export async function GET(req: NextRequest) {
     storeCode: storeCode,
     storeName: store.name,
     currencyCode: store.currencyCode,
+    printKitchenTicket: store.printKitchenTicket,
     products: products.map((p) => ({
       id: p.id,
       barcode: p.barcode,

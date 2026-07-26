@@ -1213,6 +1213,7 @@ export default function CashierPage() {
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false)
   const [isReceiptPrintChainActive, setIsReceiptPrintChainActive] = useState(false)
   const [storeName,     setStoreName]     = useState('')
+  const [isKitchenTicketEnabled, setIsKitchenTicketEnabled] = useState(false)
   const [loading,       setLoading]       = useState(true)
   const [toast,         setToast]         = useState('')
   const [sugarModal,    setSugarModal]    = useState<Product | null>(null)
@@ -1488,6 +1489,7 @@ export default function CashierPage() {
       new URLSearchParams(window.location.search).get('from') === 'desktop'
 
     setStoreCode(sc)
+    setIsKitchenTicketEnabled(false)
     setPosDeviceToken(getPosDeviceToken(sc))
     setPosAuthError('')
     setPosAccountAccess(desktopPublicEntry ? 'authorized' : 'checking')
@@ -1533,6 +1535,7 @@ export default function CashierPage() {
         setStoreName(d.storeName ?? '')
         setStoreId(typeof d.storeId === 'string' ? d.storeId : '')
         setCurrencyCode(typeof d.currencyCode === 'string' ? d.currencyCode : 'USD')
+        setIsKitchenTicketEnabled(d.printKitchenTicket === true)
         if (d.storeId && d.tenantId) {
           setCacheStatus('saving')
           const catNameById = new Map(nextCategories.map((c: Category) => [c.id, c.name]))
@@ -2969,7 +2972,7 @@ export default function CashierPage() {
         khqrFallback: body.khqrFallback ?? false,
         paymentMethod: apiPayment,
         receipt,
-        kitchenTicket: receipt
+        kitchenTicket: receipt && isKitchenTicketEnabled
           ? {
               storeName: receipt.storeName,
               orderNo: receipt.orderNo,
