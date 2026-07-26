@@ -290,9 +290,9 @@ export default function HomePage() {
   const pendingOrderAmount = pendingCustomerOrders.reduce((sum, order) => sum + order.totalAmount, 0)
   const displayStoreName = storeName ?? 'E-Shop'
   const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
-  const desktopParams = new URLSearchParams({ ...(storeCode ? { storeCode } : {}), lang })
-  const desktopPath = `/desktop?${desktopParams.toString()}`
-  const desktopUrl = publicUrl(desktopPath)
+  const cashierParams = new URLSearchParams({ ...(storeCode ? { storeCode } : {}), lang })
+  const cashierPath = `/cashier?${cashierParams.toString()}`
+  const cashierUrl = publicUrl(cashierPath)
   const storeAvatarUrl = storeCode && !avatarFailed ? `/api/public/stores/${storeCode}/banner` : null
   const aiStatus: 'open' | 'configured' | 'waiting' =
     tier === 'MULTI_STORE' ? 'configured' : tier === 'STANDARD' ? 'waiting' : 'open'
@@ -501,8 +501,7 @@ export default function HomePage() {
 
       {computerConsoleOpen && (
         <ComputerConsoleModal
-          desktopPath={desktopPath}
-          desktopUrl={desktopUrl}
+          cashierUrl={cashierUrl}
           storeCode={storeCode}
           canManagePin={realRole === 'OWNER'}
           onClose={() => setComputerConsoleOpen(false)}

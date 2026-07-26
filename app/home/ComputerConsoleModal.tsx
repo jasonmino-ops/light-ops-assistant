@@ -18,8 +18,7 @@ type StoreIdentity = {
 }
 
 type Props = {
-  desktopPath: string
-  desktopUrl: string
+  cashierUrl: string
   storeCode: string | null
   canManagePin: boolean
   onClose: () => void
@@ -51,8 +50,7 @@ async function copyText(value: string): Promise<boolean> {
 }
 
 export default function ComputerConsoleModal({
-  desktopPath,
-  desktopUrl,
+  cashierUrl,
   storeCode,
   canManagePin,
   onClose,
@@ -71,6 +69,9 @@ export default function ComputerConsoleModal({
     let active = true
     setStoreLoading(true)
     setStoreId(null)
+    setIssuedPin(null)
+    setMessageKey(null)
+    setCopiedKey(null)
     setErrorKey(null)
 
     apiFetch('/api/stores', { cache: 'no-store' }, DEV_OWNER_CTX)
@@ -202,13 +203,13 @@ export default function ComputerConsoleModal({
               <div style={s.sectionDesc}>{t('home.browserCashierDesc')}</div>
             </div>
           </div>
-          <div style={s.link}>{desktopUrl}</div>
+          <div style={s.link}>{cashierUrl}</div>
           <div style={s.actions}>
-            <button type="button" style={s.secondaryBtn} onClick={() => handleCopy(desktopUrl, 'browser')}>
+            <button type="button" style={s.secondaryBtn} onClick={() => handleCopy(cashierUrl, 'browser')}>
               {copiedKey === 'browser' ? t('home.copied') : t('home.copyCashierLink')}
             </button>
             <a
-              href={desktopPath}
+              href={cashierUrl}
               target="_blank"
               rel="noopener noreferrer"
               style={{ ...s.primaryBtn, textAlign: 'center', textDecoration: 'none' }}

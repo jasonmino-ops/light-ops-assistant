@@ -7,10 +7,19 @@ const zh = fs.readFileSync('lib/i18n/zh.ts', 'utf8')
 const en = fs.readFileSync('lib/i18n/en.ts', 'utf8')
 const km = fs.readFileSync('lib/i18n/km.ts', 'utf8')
 
+const sampleCashierPath = `/cashier?${new URLSearchParams({ storeCode: 'STORE-A', lang: 'zh' }).toString()}`
+assert.equal(sampleCashierPath, '/cashier?storeCode=STORE-A&lang=zh', 'cashier URL should contain the expected storeCode and lang')
+assert.equal(sampleCashierPath.startsWith('/desktop'), false, 'cashier URL must not use the legacy desktop route')
+
 assert.match(home, /<ComputerConsoleModal/, 'home should expose the computer console as a lightweight modal')
-assert.match(home, /desktopPath=\{desktopPath\}/, 'browser POS should reuse the existing desktop entry path')
-assert.match(modal, /handleCopy\(desktopUrl,\s*'browser'\)/, 'browser POS link copy should remain available')
-assert.match(modal, /href=\{desktopPath\}[\s\S]*target="_blank"[\s\S]*rel="noopener noreferrer"/, 'browser POS should use a stable safe link from the modal')
+assert.match(home, /const cashierParams = new URLSearchParams\(\{ \.\.\.\(storeCode \? \{ storeCode \} : \{\}\), lang \}\)/, 'cashier URL should preserve current storeCode and lang')
+assert.match(home, /const cashierPath = `\/cashier\?\$\{cashierParams\.toString\(\)\}`/, 'browser POS must use the formal cashier route')
+assert.match(home, /const cashierUrl = publicUrl\(cashierPath\)/, 'browser POS should resolve one final public URL')
+assert.match(home, /cashierUrl=\{cashierUrl\}/, 'home should pass the final cashier URL into the modal')
+assert.doesNotMatch(home, /const (?:cashier|desktop)Path = `\/desktop/, 'browser POS must not fall back to the legacy desktop mode selector')
+assert.match(modal, /handleCopy\(cashierUrl,\s*'browser'\)/, 'browser POS link copy should use the final cashier URL')
+assert.match(modal, /href=\{cashierUrl\}[\s\S]*target="_blank"[\s\S]*rel="noopener noreferrer"/, 'browser POS open should use the same final cashier URL')
+assert.doesNotMatch(modal, /desktopPath|desktopUrl/, 'the modal should not retain ambiguous legacy desktop URL names')
 
 assert.match(modal, /apiFetch\('\/api\/stores'/, 'the modal should resolve the current store through the existing stores API')
 assert.match(modal, /apiFetch\('\/api\/desktop\/activation-pins'/, 'PIN generation should reuse the existing merchant activation API')
