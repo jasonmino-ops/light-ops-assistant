@@ -11,6 +11,7 @@ const PRODUCT_SELECT = {
   sellPrice: true,
   status: true,
   categoryId: true,
+  printToKitchen: true,
   imageUrl: true,
   imageUrls: true,
 } satisfies Prisma.ProductSelect
@@ -37,7 +38,7 @@ function parseImageUrls(imageUrls: string | null, imageUrl: string | null): stri
 function isMissingImageGalleryColumn(e: unknown): boolean {
   if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2022') return false
   const text = String(e.message)
-  return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('column') || text.includes('does not exist')
+  return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('printToKitchen') || text.includes('column') || text.includes('does not exist')
 }
 
 /**
@@ -90,7 +91,7 @@ export async function GET(req: NextRequest) {
         orderBy: { name: 'asc' },
         take: 500,
       })
-      products = legacyProducts.map((p) => ({ ...p, imageUrls: null }))
+      products = legacyProducts.map((p) => ({ ...p, imageUrls: null, printToKitchen: false }))
     }
     return NextResponse.json(
       products.map((p) => ({
@@ -101,6 +102,7 @@ export async function GET(req: NextRequest) {
         sellPrice: p.sellPrice.toNumber(),
         status: p.status,
         categoryId: p.categoryId,
+        printToKitchen: p.printToKitchen,
         imageUrl: p.imageUrl,
         imageUrls: parseImageUrls(p.imageUrls, p.imageUrl),
       })),
@@ -121,7 +123,7 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     if (!isMissingImageGalleryColumn(e)) throw e
     const legacyProduct = await prisma.product.findFirst({ where, select: PRODUCT_LEGACY_SELECT })
-    product = legacyProduct ? { ...legacyProduct, imageUrls: null } : null
+    product = legacyProduct ? { ...legacyProduct, imageUrls: null, printToKitchen: false } : null
   }
 
   if (!product) {
@@ -135,6 +137,7 @@ export async function GET(req: NextRequest) {
     spec: product.spec,
     sellPrice: product.sellPrice.toNumber(),
     categoryId: product.categoryId,
+    printToKitchen: product.printToKitchen,
     imageUrl: product.imageUrl,
     imageUrls: parseImageUrls(product.imageUrls, product.imageUrl),
     // status only exposed to OWNER (staff doesn't need to see it)
@@ -154,20 +157,23 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; categoryId?: string | null }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; categoryId?: string | null; printToKitchen?: boolean }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { barcode, name, spec, sellPrice, categoryId } = body
+  const { barcode, name, spec, sellPrice, categoryId, printToKitchen } = body
 
   if (!name?.trim()) {
     return NextResponse.json({ error: 'MISSING_NAME', message: '商品名不能为空' }, { status: 400 })
   }
   if (sellPrice === undefined || isNaN(Number(sellPrice)) || Number(sellPrice) <= 0) {
     return NextResponse.json({ error: 'INVALID_PRICE', message: '售价必须大于 0' }, { status: 400 })
+  }
+  if (printToKitchen !== undefined && typeof printToKitchen !== 'boolean') {
+    return NextResponse.json({ error: 'INVALID_PRINT_TO_KITCHEN' }, { status: 400 })
   }
 
   const cleanBarcode = barcode?.trim() || `MANUAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
@@ -192,8 +198,9 @@ export async function POST(req: NextRequest) {
       sellPrice: String(sellPrice),
       status: 'ACTIVE',
       categoryId: categoryId ?? null,
+      printToKitchen: printToKitchen === true,
     },
-    select: PRODUCT_LEGACY_SELECT,
+    select: PRODUCT_SELECT,
   })
 
   return NextResponse.json(
@@ -205,6 +212,7 @@ export async function POST(req: NextRequest) {
       sellPrice: created.sellPrice.toNumber(),
       status: created.status,
       categoryId: created.categoryId,
+      printToKitchen: created.printToKitchen,
       imageUrl: created.imageUrl,
       imageUrls: [],
     },

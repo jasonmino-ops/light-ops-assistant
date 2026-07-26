@@ -1244,6 +1244,7 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
 // ─── 店铺类型卡片（OWNER） ────────────────────────────────────────────────
 function BusinessTypeCard({ t }: { t: (k: string) => string }) {
   const [value, setValue]     = useState<string>('GENERAL')
+  const [kitchenTicketEnabled, setKitchenTicketEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving]   = useState(false)
   const [msg, setMsg]         = useState<{ ok: boolean; text: string } | null>(null)
@@ -1251,7 +1252,10 @@ function BusinessTypeCard({ t }: { t: (k: string) => string }) {
   useEffect(() => {
     apiFetch('/api/store/settings', { cache: 'no-store' }, OWNER_CTX)
       .then((r) => r.json())
-      .then((b) => { if (b && !b.error && b.businessType) setValue(b.businessType) })
+      .then((b) => {
+        if (b && !b.error && b.businessType) setValue(b.businessType)
+        if (b && !b.error) setKitchenTicketEnabled(b.kitchenTicketEnabled === true)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -1268,6 +1272,7 @@ function BusinessTypeCard({ t }: { t: (k: string) => string }) {
       }, OWNER_CTX)
       const b = await r.json().catch(() => ({}))
       if (r.ok) {
+        if (next !== 'FOOD') setKitchenTicketEnabled(false)
         setMsg({ ok: true, text: t('dashboard.bizTypeSaved') })
       } else {
         setValue(prev)
@@ -1276,6 +1281,31 @@ function BusinessTypeCard({ t }: { t: (k: string) => string }) {
     } catch {
       setValue(prev)
       setMsg({ ok: false, text: t('dashboard.bizTypeSaveFail') })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function setKitchenEnabled(next: boolean) {
+    if (saving || value !== 'FOOD' || next === kitchenTicketEnabled) return
+    const previous = kitchenTicketEnabled
+    setSaving(true); setMsg(null); setKitchenTicketEnabled(next)
+    try {
+      const r = await apiFetch('/api/store/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ kitchenTicketEnabled: next }),
+      }, OWNER_CTX)
+      const b = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        setKitchenTicketEnabled(previous)
+        setMsg({ ok: false, text: b.message ?? '厨房票设置保存失败' })
+      } else {
+        setKitchenTicketEnabled(b.kitchenTicketEnabled === true)
+        setMsg({ ok: true, text: next ? '厨房票已启用' : '厨房票已关闭' })
+      }
+    } catch {
+      setKitchenTicketEnabled(previous)
+      setMsg({ ok: false, text: '厨房票设置保存失败' })
     } finally {
       setSaving(false)
     }
@@ -1308,6 +1338,20 @@ function BusinessTypeCard({ t }: { t: (k: string) => string }) {
           )
         })}
       </div>
+      {value === 'FOOD' && (
+        <label style={bt.kitchenRow}>
+          <input
+            type="checkbox"
+            checked={kitchenTicketEnabled}
+            disabled={saving || loading}
+            onChange={(event) => setKitchenEnabled(event.target.checked)}
+          />
+          <span>
+            <strong>启用厨房票</strong>
+            <small>成交后仅对已标记商品连续打印无金额厨房单</small>
+          </span>
+        </label>
+      )}
       {(saving || msg) && (
         <div style={msg?.ok === false ? bt.err : bt.muted}>
           {saving ? t('dashboard.bizTypeSaving') : msg?.text}
@@ -1326,6 +1370,7 @@ const bt: Record<string, React.CSSProperties> = {
   btnOn: { background: '#e6f4ff', borderColor: '#1677ff', color: '#1677ff' },
   muted: { fontSize: 11, color: 'var(--muted)', marginTop: 8 },
   err:   { fontSize: 11, color: '#cf1322', marginTop: 8 },
+  kitchenRow: { display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 12, padding: '10px 11px', borderRadius: 8, background: '#fff7ed', color: '#7c2d12', fontSize: 13, cursor: 'pointer' },
 }
 
 function BannerQuickPanel({ t }: { t: (k: string) => string }) {

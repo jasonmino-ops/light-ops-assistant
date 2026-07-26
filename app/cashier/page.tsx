@@ -11,6 +11,8 @@ import {
   printDesktopReceipt,
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
+import { printKitchenTicket, type KitchenTicketData } from '@/app/components/KitchenTicket'
+import KhqrSheet from '@/app/components/KhqrSheet'
 import {
   DayCloseReport,
   printDayCloseReport,
@@ -80,9 +82,21 @@ type CartLine = {
 type SaleResult = {
   orderNo?: string
   totalAmount: number
-  khqrFallback?: boolean
   paymentMethod?: string
   receipt?: DesktopReceiptData
+  firstSaleRecordId?: string | null
+  kitchenTicket?: KitchenTicketData | null
+  ticketPlanLoadFailed?: boolean
+}
+type PendingKhqrSale = {
+  paymentIntentId: string
+  orderNo: string
+  totalAmount: number
+  createdAt: string
+  firstSaleRecordId: string | null
+  khqrPayload: string | null
+  khqrImageUrl: string | null
+  items: ReturnType<typeof cashierDisplayItems>
 }
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
@@ -1205,6 +1219,7 @@ export default function CashierPage() {
   const [submitting,    setSubmitting]    = useState(false)
   const [submitError,   setSubmitError]   = useState('')
   const [saleResult,    setSaleResult]    = useState<SaleResult | null>(null)
+  const [pendingKhqrSale, setPendingKhqrSale] = useState<PendingKhqrSale | null>(null)
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false)
   const [receiptPrinting, setReceiptPrinting] = useState(false)
   const [storeName,     setStoreName]     = useState('')
@@ -1291,6 +1306,7 @@ export default function CashierPage() {
   const autoPrintedReceiptKeyRef = useRef('')
   const receiptPrintButtonRef = useRef<HTMLButtonElement>(null)
   const receiptPrintLockedRef = useRef(false)
+  const clientSubmissionKeyRef = useRef<string | null>(null)
 
   const focusSearchInput = useCallback(() => {
     window.setTimeout(() => searchRef.current?.focus(), 0)
@@ -1857,18 +1873,106 @@ export default function CashierPage() {
     focusScannerInput()
   }, [focusScannerInput])
 
-  const handlePrintReceipt = useCallback((receipt: DesktopReceiptData) => {
+  const claimTicketDispatch = useCallback(async (
+    saleRecordId: string,
+    ticketType: 'CUSTOMER_RECEIPT' | 'KITCHEN_TICKET',
+    trigger: 'ORIGINAL' | 'REPRINT' = 'ORIGINAL',
+  ): Promise<{ id: string; duplicate: boolean } | null> => {
+    if (!storeCode) return null
+    try {
+      const res = await fetch(
+        `/api/cashier/sale-records/${encodeURIComponent(saleRecordId)}/ticket-dispatches?storeCode=${encodeURIComponent(storeCode)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
+          body: JSON.stringify({ ticketType, trigger }),
+        },
+      )
+      const body = await res.json().catch(() => null)
+      if (isPosUnauthorized(body, res.status)) {
+        handlePosUnauthorized()
+        return null
+      }
+      if (!res.ok || !body?.dispatch?.id) {
+        showToast(ticketType === 'KITCHEN_TICKET' ? '厨房票无法派发，请在销售记录中补打' : '顾客票无法派发，请在销售记录中补打')
+        return null
+      }
+      return { id: body.dispatch.id, duplicate: body.duplicate === true }
+    } catch {
+      showToast('打印派发记录失败，请在销售记录中补打')
+      return null
+    }
+  }, [storeCode])
+
+  const updateTicketDispatch = useCallback(async (
+    saleRecordId: string,
+    dispatchId: string,
+    status: 'OPENED' | 'FAILED' | 'UNKNOWN',
+    error?: string,
+  ) => {
+    if (!storeCode) return
+    try {
+      await fetch(
+        `/api/cashier/sale-records/${encodeURIComponent(saleRecordId)}/ticket-dispatches?storeCode=${encodeURIComponent(storeCode)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
+          body: JSON.stringify({ dispatchId, status, ...(error ? { error } : {}) }),
+        },
+      )
+    } catch {
+      // Dispatch audit must never block an already completed transaction.
+    }
+  }, [storeCode])
+
+  const handlePrintReceipt = useCallback((result: SaleResult) => {
+    const receipt = result.receipt
+    if (!receipt || !result.firstSaleRecordId) return
     if (receiptPrintLockedRef.current) return
     receiptPrintLockedRef.current = true
     setReceiptPrinting(true)
-    try {
-      printDesktopReceipt(receipt, lang, { onAfterPrint: finishReceiptPrintFlow })
-    } catch (err) {
-      console.warn('[desktop-receipt] print window failed', err)
-      showToast('无法打开打印预览，请检查浏览器弹窗权限')
-      finishReceiptPrintFlow()
+    const finish = () => finishReceiptPrintFlow()
+    const openKitchen = async () => {
+      if (!result.kitchenTicket) {
+        finish()
+        return
+      }
+      const dispatch = await claimTicketDispatch(result.firstSaleRecordId!, 'KITCHEN_TICKET')
+      if (!dispatch || dispatch.duplicate) {
+        if (dispatch?.duplicate) showToast('厨房单原始打印已派发；如需再次出单，请在销售记录中选择补打厨房单')
+        finish()
+        return
+      }
+      try {
+        printKitchenTicket(result.kitchenTicket, lang, {
+          onAfterPrint: finish,
+        })
+        void updateTicketDispatch(result.firstSaleRecordId!, dispatch.id, 'OPENED')
+      } catch (error) {
+        console.warn('[kitchen-ticket] print window failed', error)
+        void updateTicketDispatch(result.firstSaleRecordId!, dispatch.id, 'FAILED', 'PRINT_WINDOW_BLOCKED')
+        showToast('厨房票打印窗口无法打开；交易已完成，请在销售记录中补打厨房单')
+        finish()
+      }
     }
-  }, [finishReceiptPrintFlow, lang])
+    void (async () => {
+      const dispatch = await claimTicketDispatch(result.firstSaleRecordId!, 'CUSTOMER_RECEIPT')
+      if (!dispatch || dispatch.duplicate) {
+        if (dispatch?.duplicate) showToast('顾客票原始打印已派发；如需再次出单，请在销售记录中补打')
+        await openKitchen()
+        return
+      }
+      try {
+        printDesktopReceipt(receipt, lang, { onAfterPrint: () => { void openKitchen() } })
+        void updateTicketDispatch(result.firstSaleRecordId!, dispatch.id, 'OPENED')
+      } catch (error) {
+        console.warn('[desktop-receipt] print window failed', error)
+        void updateTicketDispatch(result.firstSaleRecordId!, dispatch.id, 'FAILED', 'PRINT_WINDOW_BLOCKED')
+        showToast('顾客票打印窗口无法打开；交易已完成，请在销售记录中补打')
+        await openKitchen()
+      }
+    })()
+  }, [claimTicketDispatch, finishReceiptPrintFlow, lang, updateTicketDispatch])
 
   function handleAutoPrintToggle() {
     const next = !autoPrint
@@ -1909,6 +2013,7 @@ export default function CashierPage() {
     setCashTendered('')
     setSubmitError('')
     setSaleResult(null)
+    setPendingKhqrSale(null)
     setReceiptPreviewOpen(false)
   }
 
@@ -2350,24 +2455,18 @@ export default function CashierPage() {
 
   useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
-    if (!isDesktopPos || !autoPrint || !receiptSnapshot) return
+    if (!isDesktopPos || !autoPrint || !receiptSnapshot || !saleResult) return
 
     const receiptKey = `${receiptSnapshot.orderNo ?? 'no-order'}:${receiptSnapshot.createdAt}:${receiptSnapshot.totalAmount}`
     if (autoPrintedReceiptKeyRef.current === receiptKey) return
     autoPrintedReceiptKeyRef.current = receiptKey
 
     const timer = window.setTimeout(() => {
-      try {
-        printDesktopReceipt(receiptSnapshot, lang, { onAfterPrint: finishReceiptPrintFlow })
-      } catch (err) {
-        console.warn('[desktop-receipt] auto print failed', err)
-        showToast('自动打印失败，已返回新订单')
-        finishReceiptPrintFlow()
-      }
+      handlePrintReceipt(saleResult)
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang, finishReceiptPrintFlow])
+  }, [saleResult, isDesktopPos, autoPrint, handlePrintReceipt])
 
   useEffect(() => {
     if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return
@@ -2378,17 +2477,17 @@ export default function CashierPage() {
   useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
     if (!isDesktopPos || autoPrint || !receiptSnapshot || receiptPreviewOpen) return
-    const printableReceipt = receiptSnapshot
+    const printableResult = saleResult
     function onReceiptKey(e: KeyboardEvent) {
       if (e.key !== 'Enter' || e.repeat) return
       if (isEditableShortcutTarget(document.activeElement)) return
       if (receiptPrintLockedRef.current) return
       e.preventDefault()
-      handlePrintReceipt(printableReceipt)
+      handlePrintReceipt(printableResult)
     }
     window.addEventListener('keydown', onReceiptKey)
     return () => window.removeEventListener('keydown', onReceiptKey)
-  }, [isDesktopPos, autoPrint, saleResult?.receipt, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
+  }, [isDesktopPos, autoPrint, saleResult, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
 
   async function handleInstallClick() {
     if (!storeCode) {
@@ -2816,6 +2915,141 @@ export default function CashierPage() {
     return () => clearTimeout(timer)
   }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore, isDesktopPos, checkoutStep, currencyCode])
 
+  function newClientSubmissionKey() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+    return `cashier-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+  }
+
+  async function completePaidSale(input: {
+    orderNo: string
+    totalAmount: number
+    paymentMethod: 'CASH' | 'KHQR'
+    createdAt: string
+    firstSaleRecordId: string | null
+    items: ReturnType<typeof cashierDisplayItems>
+  }) {
+    let kitchenTicket: KitchenTicketData | null = null
+    let ticketPlanLoadFailed = false
+    if (isDesktopPos && input.firstSaleRecordId && storeCode) {
+      try {
+        const res = await fetch(
+          `/api/cashier/sale-records/${encodeURIComponent(input.firstSaleRecordId)}/tickets?storeCode=${encodeURIComponent(storeCode)}`,
+          { headers: posDeviceHeaders(storeCode) },
+        )
+        const body = await res.json().catch(() => null)
+        if (isPosUnauthorized(body, res.status)) {
+          handlePosUnauthorized()
+          ticketPlanLoadFailed = true
+        } else if (res.ok) {
+          kitchenTicket = body?.kitchenTicket ?? null
+        } else {
+          ticketPlanLoadFailed = true
+        }
+      } catch {
+        ticketPlanLoadFailed = true
+      }
+    }
+
+    cashierDisplayActiveRef.current = false
+    lastCashierDisplaySyncKey.current = ''
+    void postCashierDisplaySession({
+      storeCode: storeCode!,
+      status: 'COMPLETED',
+      paymentMethod: input.paymentMethod,
+      paymentStatus: 'PAID',
+      items: input.items,
+      orderNo: input.orderNo,
+    })
+    setCart([])
+    setPayment('CASH')
+    setCheckoutStep('SELECT_ITEMS')
+    setDesktopSelectedPaymentMethod(null)
+    setCashTendered('')
+    setPendingKhqrSale(null)
+    setReceiptPreviewOpen(false)
+    setSaleResult({
+      orderNo: input.orderNo,
+      totalAmount: input.totalAmount,
+      paymentMethod: input.paymentMethod,
+      firstSaleRecordId: input.firstSaleRecordId,
+      kitchenTicket,
+      ticketPlanLoadFailed,
+      receipt: isDesktopPos
+        ? buildReceiptSnapshot({
+            items: input.items,
+            totalAmount: input.totalAmount,
+            paymentMethod: input.paymentMethod,
+            orderNo: input.orderNo,
+            createdAt: input.createdAt,
+          })
+        : undefined,
+    })
+    clientSubmissionKeyRef.current = null
+  }
+
+  async function confirmPendingKhqrSale() {
+    if (!pendingKhqrSale || !storeCode) return
+    const pending = pendingKhqrSale
+    const res = await fetch(`/api/payments/${encodeURIComponent(pending.paymentIntentId)}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
+    })
+    const body = await res.json().catch(() => null)
+    if (isPosUnauthorized(body, res.status)) {
+      handlePosUnauthorized()
+      throw new Error('POS_DEVICE_UNAUTHORIZED')
+    }
+    if (!res.ok || body?.status !== 'PAID') {
+      throw new Error(body?.message ?? body?.error ?? 'KHQR_CONFIRM_FAILED')
+    }
+    await completePaidSale({
+      orderNo: pending.orderNo,
+      totalAmount: pending.totalAmount,
+      paymentMethod: 'KHQR',
+      createdAt: pending.createdAt,
+      firstSaleRecordId: pending.firstSaleRecordId,
+      items: pending.items,
+    })
+  }
+
+  async function cancelPendingKhqrSale() {
+    if (!pendingKhqrSale || !storeCode) return
+    const pending = pendingKhqrSale
+    try {
+      const res = await fetch(`/api/payments/${encodeURIComponent(pending.paymentIntentId)}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(storeCode) },
+      })
+      const body = await res.json().catch(() => null)
+      if (isPosUnauthorized(body, res.status)) {
+        handlePosUnauthorized()
+        throw new Error('POS_DEVICE_UNAUTHORIZED')
+      }
+      const terminalWithoutPrint = body?.status === 'CANCELLED' || body?.status === 'EXPIRED' || body?.status === 'FAILED'
+      if (!res.ok && !terminalWithoutPrint) {
+        throw new Error(body?.message ?? body?.error ?? '取消 KHQR 待支付失败')
+      }
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : '取消 KHQR 待支付失败，请稍后在记录中处理')
+    }
+    cashierDisplayActiveRef.current = false
+    lastCashierDisplaySyncKey.current = ''
+    void postCashierDisplaySession({
+      storeCode,
+      status: 'CANCELLED',
+      paymentMethod: 'KHQR',
+      paymentStatus: null,
+      items: pending.items,
+      orderNo: pending.orderNo,
+    })
+    setPendingKhqrSale(null)
+    setCheckoutStep('SELECT_ITEMS')
+    setDesktopSelectedPaymentMethod(null)
+    setCashTendered('')
+    clientSubmissionKeyRef.current = null
+    showToast('KHQR 待支付已取消，未成交且未打印')
+  }
+
   // ── Submit sale ────────────────────────────────────────────────────────────
   async function handleSubmit(paymentOverride?: CashierPaymentMethod) {
     if (cart.length === 0 || submitting || !storeCode) return
@@ -2895,9 +3129,11 @@ export default function CashierPage() {
       return
     }
     setSubmitting(true); setSubmitError('')
-    const apiPayment = submitPayment === 'OTHER' ? 'CASH' : submitPayment
+    const apiPayment: 'CASH' | 'KHQR' = submitPayment === 'KHQR' ? 'KHQR' : 'CASH'
     const submittedItems = cashierDisplayItems(cart)
     const submittedTotal = cartTotal(cart)
+    const clientSubmissionKey = clientSubmissionKeyRef.current ?? newClientSubmissionKey()
+    clientSubmissionKeyRef.current = clientSubmissionKey
     try {
       if (!requireOnlinePosAuthorization()) {
         setSubmitting(false)
@@ -2910,6 +3146,7 @@ export default function CashierPage() {
           storeCode,
           items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
           paymentMethod: apiPayment,
+          clientSubmissionKey,
         }),
       })
       const body = await res.json()
@@ -2918,33 +3155,42 @@ export default function CashierPage() {
         return
       }
       if (!res.ok) { setSubmitError(body.message ?? body.error ?? '提交失败，请重试'); return }
-      cashierDisplayActiveRef.current = false
-      lastCashierDisplaySyncKey.current = ''
-      void postCashierDisplaySession({
-        storeCode,
-        status: 'COMPLETED',
-        paymentMethod: apiPayment === 'KHQR' ? 'KHQR' : 'CASH',
-        paymentStatus: 'PAID',
-        items: submittedItems,
-        orderNo: body.orderNo ?? null,
-      })
-      setCart([])
-      setPayment('CASH')
-      setReceiptPreviewOpen(false)
-      setSaleResult({
+      if (apiPayment === 'KHQR' && body.paymentStatus === 'PENDING') {
+        setPendingKhqrSale({
+          paymentIntentId: body.paymentIntentId,
+          orderNo: body.orderNo,
+          totalAmount: Number(body.totalAmount ?? submittedTotal),
+          createdAt: body.createdAt,
+          firstSaleRecordId: body.firstSaleRecordId ?? null,
+          khqrPayload: body.khqrPayload ?? null,
+          khqrImageUrl: body.khqrImageUrl ?? null,
+          items: submittedItems,
+        })
+        setCart([])
+        setPayment('CASH')
+        setReceiptPreviewOpen(false)
+        void postCashierDisplaySession({
+          storeCode,
+          status: 'AWAITING_PAYMENT',
+          paymentMethod: 'KHQR',
+          paymentStatus: 'PENDING',
+          items: submittedItems,
+          orderNo: body.orderNo ?? null,
+          message: CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE,
+        })
+        return
+      }
+      if (body.paymentStatus !== 'PAID') {
+        setSubmitError('交易尚未确认收款，请勿打印或重复提交')
+        return
+      }
+      await completePaidSale({
         orderNo: body.orderNo,
-        totalAmount: submittedTotal,
-        khqrFallback: body.khqrFallback ?? false,
+        totalAmount: Number(body.totalAmount ?? submittedTotal),
         paymentMethod: apiPayment,
-        receipt: isDesktopPos
-          ? buildReceiptSnapshot({
-              items: submittedItems,
-              totalAmount: submittedTotal,
-              paymentMethod: apiPayment,
-              orderNo: body.orderNo,
-              createdAt: body.createdAt,
-            })
-          : undefined,
+        createdAt: body.createdAt,
+        firstSaleRecordId: body.firstSaleRecordId ?? null,
+        items: submittedItems,
       })
     } catch { setSubmitError('网络错误，请重试') }
     finally { setSubmitting(false) }
@@ -3273,7 +3519,7 @@ export default function CashierPage() {
     if (!isDesktopPos) return
     function onDesktopPaymentKey(e: KeyboardEvent) {
       if (isEditableShortcutTarget(document.activeElement)) return
-      if (saleResult || receiptPreviewOpen || sugarModal || holdNoteOpen || memberPayOpen || shiftReportOpen || shiftCloseConfirmOpen || dayCloseOpen || desktopRecordsOpen) return
+      if (saleResult || pendingKhqrSale || receiptPreviewOpen || sugarModal || holdNoteOpen || memberPayOpen || shiftReportOpen || shiftCloseConfirmOpen || dayCloseOpen || desktopRecordsOpen) return
 
       if (checkoutStep === 'SELECT_PAYMENT') {
         if (e.key === 'ArrowLeft') {
@@ -3311,6 +3557,7 @@ export default function CashierPage() {
     isDesktopPos,
     isEditableShortcutTarget,
     saleResult,
+    pendingKhqrSale,
     receiptPreviewOpen,
     sugarModal,
     holdNoteOpen,
@@ -4423,20 +4670,16 @@ export default function CashierPage() {
             <div style={s.modalTitle}>{d.saleCompleted}</div>
             <div style={s.modalAmt}>{money(saleResult.totalAmount)}</div>
             {saleResult.orderNo && <div style={s.modalSub}>{lang === 'en' ? `Order: ${saleResult.orderNo}` : lang === 'km' ? `លេខបញ្ជាទិញ៖ ${saleResult.orderNo}` : `单号：${saleResult.orderNo}`}</div>}
-            {saleResult.khqrFallback && (
-              <div style={{ margin: '10px 0 4px', padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.5, textAlign: 'left' as const }}>
-                {lang === 'en'
-                  ? '⚠️ Auto KHQR is not configured. This sale was recorded as KHQR. Please confirm the customer has actually paid.'
-                  : lang === 'km'
-                    ? '⚠️ មិនបានកំណត់ KHQR ស្វ័យប្រវត្តិ។ ការលក់នេះត្រូវបានកត់ត្រាជា KHQR។ សូមបញ្ជាក់ថាអតិថិជនបានបង់ពិតប្រាកដ។'
-                    : '⚠️ 未配置自动 KHQR，本次已记录为 KHQR 收款，请确认顾客已实际付款。'}
-              </div>
-            )}
             <div style={{ margin: '6px 0 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
               {isDesktopPos && saleResult.receipt
                 ? d.receiptReady
                 : d.receiptNotAuto}
             </div>
+            {saleResult.ticketPlanLoadFailed && (
+              <div style={{ margin: '-6px 0 12px', padding: '8px 10px', borderRadius: 8, background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', fontSize: 12, lineHeight: 1.45, textAlign: 'left' as const }}>
+                交易已完成，但厨房票计划暂未读取成功；请在销售记录中明确选择“补打厨房单”。
+              </div>
+            )}
             {isDesktopPos && saleResult.receipt && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                 <button
@@ -4451,9 +4694,13 @@ export default function CashierPage() {
                   type="button"
                   style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(receiptPrinting ? s.submitDis : {}) }}
                   disabled={receiptPrinting}
-                  onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
+                  onClick={() => handlePrintReceipt(saleResult)}
                 >
-                  {receiptPrinting ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
+                  {receiptPrinting
+                    ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…')
+                    : saleResult.kitchenTicket
+                      ? (lang === 'en' ? 'Print receipt + kitchen ticket' : lang === 'km' ? 'បោះពុម្ពវិក្កយបត្រ + បង្កាន់ដៃផ្ទះបាយ' : '打印顾客票和厨房单')
+                      : d.printReceipt}
                 </button>
               </div>
             )}
@@ -4462,12 +4709,27 @@ export default function CashierPage() {
         </div>
       )}
 
+      {pendingKhqrSale && (
+        <KhqrSheet
+          orderNo={pendingKhqrSale.orderNo}
+          totalAmount={pendingKhqrSale.totalAmount}
+          currencyCode={currencyCode}
+          paymentIntentId={pendingKhqrSale.paymentIntentId}
+          khqrPayload={pendingKhqrSale.khqrPayload}
+          khqrImageUrl={pendingKhqrSale.khqrImageUrl}
+          confirmOnly
+          onConfirm={confirmPendingKhqrSale}
+          onSuccess={() => { /* completePaidSale has already advanced the UI */ }}
+          onCancel={cancelPendingKhqrSale}
+        />
+      )}
+
       {receiptPreviewOpen && saleResult?.receipt && (
         <DesktopReceiptPreview
           data={saleResult.receipt}
           lang={lang}
           onClose={() => setReceiptPreviewOpen(false)}
-          onPrint={() => handlePrintReceipt(saleResult.receipt!)}
+          onPrint={() => handlePrintReceipt(saleResult)}
         />
       )}
 

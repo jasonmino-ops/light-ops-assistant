@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
 
 /**
  * POST /api/payments/:paymentId/cancel
@@ -11,17 +12,29 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ paymentId: string }> },
 ) {
-  const ctx = await getContext(req)
-  if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
-
   const { paymentId } = await params
-
   const pi = await prisma.paymentIntent.findFirst({
-    where: { id: paymentId, tenantId: ctx.tenantId },
+    where: { id: paymentId },
   })
 
   if (!pi) {
     return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+  }
+
+  const ctx = await getContext(req)
+  const accountAuthorized = !!ctx && ctx.tenantId === pi.tenantId
+  if (!accountAuthorized) {
+    const store = await prisma.store.findUnique({
+      where: { id: pi.storeId },
+      select: { code: true, status: true },
+    })
+    if (!store || store.status !== 'ACTIVE') return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+    const posAuth = await authorizeDesktopPosRequest(req, {
+      tenantId: pi.tenantId,
+      storeId: pi.storeId,
+      storeCode: store.code,
+    }, { allowStoreCodeFallback: false })
+    if (!posAuth) return unauthorizedPosResponse()
   }
 
   if (pi.status !== 'PENDING') {
@@ -37,7 +50,7 @@ export async function POST(
       data: { status: 'CANCELLED', cancelledAt: new Date() },
     }),
     prisma.saleRecord.updateMany({
-      where: { orderNo: pi.orderNo, tenantId: ctx.tenantId },
+      where: { orderNo: pi.orderNo, tenantId: pi.tenantId },
       data: { status: 'CANCELLED' },
     }),
   ])

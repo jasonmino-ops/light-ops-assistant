@@ -11,6 +11,7 @@ const PRODUCT_PATCH_SELECT = {
   sellPrice: true,
   status: true,
   categoryId: true,
+  printToKitchen: true,
   imageUrl: true,
   imageUrls: true,
 } satisfies Prisma.ProductSelect
@@ -37,7 +38,7 @@ function parseImageUrls(imageUrls: string | null, imageUrl: string | null): stri
 function isMissingImageGalleryColumn(e: unknown): boolean {
   if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2022') return false
   const text = String(e.message)
-  return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('column') || text.includes('does not exist')
+  return text.includes('imageUrls') || text.includes('imageStorageKeys') || text.includes('printToKitchen') || text.includes('column') || text.includes('does not exist')
 }
 
 /**
@@ -109,14 +110,14 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; status?: string; categoryId?: string | null }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; status?: string; categoryId?: string | null; printToKitchen?: boolean }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { barcode, name, spec, sellPrice, status, categoryId } = body
+  const { barcode, name, spec, sellPrice, status, categoryId, printToKitchen } = body
 
   if (barcode !== undefined && !String(barcode).trim()) {
     return NextResponse.json({ error: 'INVALID_BARCODE', message: '条码不能为空' }, { status: 400 })
@@ -129,6 +130,9 @@ export async function PATCH(
   }
   if (status !== undefined && !['ACTIVE', 'DISABLED'].includes(status)) {
     return NextResponse.json({ error: 'INVALID_STATUS' }, { status: 400 })
+  }
+  if (printToKitchen !== undefined && typeof printToKitchen !== 'boolean') {
+    return NextResponse.json({ error: 'INVALID_PRINT_TO_KITCHEN' }, { status: 400 })
   }
 
   const cleanBarcode = barcode !== undefined ? String(barcode).trim() : undefined
@@ -149,6 +153,7 @@ export async function PATCH(
     ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
     ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
     ...(categoryId !== undefined ? { categoryId: categoryId ?? null } : {}),
+    ...(printToKitchen !== undefined ? { printToKitchen } : {}),
   }
 
   let updated: Prisma.ProductGetPayload<{ select: typeof PRODUCT_PATCH_SELECT }>
@@ -168,7 +173,7 @@ export async function PATCH(
       data,
       select: PRODUCT_PATCH_LEGACY_SELECT,
     })
-    updated = { ...legacyUpdated, imageUrls: null }
+    updated = { ...legacyUpdated, imageUrls: null, printToKitchen: false }
   }
 
   return NextResponse.json({
@@ -179,6 +184,7 @@ export async function PATCH(
     sellPrice: updated.sellPrice.toNumber(),
     status: updated.status,
     categoryId: updated.categoryId,
+    printToKitchen: updated.printToKitchen,
     imageUrl: updated.imageUrl,
     imageUrls: parseImageUrls(updated.imageUrls, updated.imageUrl),
   })

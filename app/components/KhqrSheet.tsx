@@ -45,12 +45,12 @@ export default function KhqrSheet({
   khqrPayload: string | null
   khqrImageUrl: string | null
   onSuccess: () => void
-  onCancel: () => void
+  onCancel: () => void | Promise<void>
   /**
    * confirmOnly = true 时：
    *   - 不调用 /api/payments/[id]/confirm | /cancel
    *   - 点「已收款」走 onConfirm()，点「取消」直接 onCancel()
-   *   - 用于无 PaymentIntent 的场景（如 /home 顾客订单）
+   *   - 用于调用方需要自行走正式确认/取消授权路径的场景
    */
   confirmOnly?: boolean
   onConfirm?: () => Promise<void>
@@ -89,12 +89,15 @@ export default function KhqrSheet({
 
   async function handleCancel() {
     setStatus('cancelling')
-    if (!confirmOnly && paymentIntentId) {
-      try {
+    try {
+      if (!confirmOnly && paymentIntentId) {
         await apiFetch(`/api/payments/${paymentIntentId}/cancel`, { method: 'POST' })
-      } catch { /* ignore */ }
+      }
+      await onCancel()
+    } catch (e) {
+      setError((e as Error)?.message ?? t('common.networkError'))
+      setStatus('idle')
     }
-    onCancel()
   }
 
   const busy = status !== 'idle'

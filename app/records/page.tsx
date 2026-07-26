@@ -10,10 +10,10 @@ import LangToggleBtn from '@/app/components/LangToggleBtn'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import {
-  DesktopReceiptPreview,
   printDesktopReceipt,
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
+import { printKitchenTicket, type KitchenTicketData } from '@/app/components/KitchenTicket'
 import { formatMoney } from '@/lib/currency'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -107,6 +107,11 @@ type RefundEntry = {
 }
 
 type DisplayEntry = OrderGroup | RefundEntry
+type ReprintPlan = {
+  saleRecordId: string
+  receipt: DesktopReceiptData
+  kitchenTicket: KitchenTicketData | null
+}
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
@@ -272,8 +277,9 @@ export default function RecordsPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedOrderNo, setSelectedOrderNo] = useState<string | null>(null)
   const [checkoutOrder, setCheckoutOrder] = useState<{ orderNo: string; totalAmount: number } | null>(null)
-  const [reprintReceipt, setReprintReceipt] = useState<DesktopReceiptData | null>(null)
+  const [reprintPlan, setReprintPlan] = useState<ReprintPlan | null>(null)
   const [reprintLoadingKey, setReprintLoadingKey] = useState<string | null>(null)
+  const [reprintPrinting, setReprintPrinting] = useState(false)
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -373,20 +379,37 @@ export default function RecordsPage() {
     setError(null)
     try {
       const params = new URLSearchParams({ storeCode: desktopStoreCode })
-      const res = await apiFetch(`/api/cashier/sale-records/${encodeURIComponent(firstSaleRecordId)}/receipt?${params}`, {
+      // Ticket data first proves the order is PAID and determines whether this
+      // sale has any immutable kitchen-line snapshots. The existing receipt
+      // endpoint remains the source of the unchanged customer receipt layout.
+      const ticketRes = await apiFetch(`/api/cashier/sale-records/${encodeURIComponent(firstSaleRecordId)}/tickets?${params}`, {
         headers: posDeviceHeaders(desktopStoreCode),
       })
-      const unauthorizedBody = !res.ok ? await res.clone().json().catch(() => null) : null
-      if (isPosUnauthorized(unauthorizedBody, res.status)) {
+      const unauthorizedBody = !ticketRes.ok ? await ticketRes.clone().json().catch(() => null) : null
+      if (isPosUnauthorized(unauthorizedBody, ticketRes.status)) {
         setError('本 POS 电脑尚未授权，请回到电脑收银台先授权本机。')
         return
       }
-      const body = await res.json().catch(() => null)
-      if (!res.ok || !body?.receipt) {
-        setError(body?.message ?? body?.error ?? '小票重建失败，请稍后重试')
+      const ticketBody = await ticketRes.json().catch(() => null)
+      if (!ticketRes.ok) {
+        setError(ticketBody?.error === 'PAYMENT_NOT_CONFIRMED'
+          ? '订单尚未确认收款，不能补打票据'
+          : ticketBody?.message ?? ticketBody?.error ?? '票据重建失败，请稍后重试')
         return
       }
-      setReprintReceipt(body.receipt)
+      const res = await apiFetch(`/api/cashier/sale-records/${encodeURIComponent(firstSaleRecordId)}/receipt?${params}`, {
+        headers: posDeviceHeaders(desktopStoreCode),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok || !body?.receipt) {
+        setError(body?.message ?? body?.error ?? '顾客小票重建失败，请稍后重试')
+        return
+      }
+      setReprintPlan({
+        saleRecordId: firstSaleRecordId,
+        receipt: body.receipt,
+        kitchenTicket: ticketBody?.kitchenTicket ?? null,
+      })
     } catch {
       setError(t('common.networkError'))
     } finally {
@@ -394,13 +417,88 @@ export default function RecordsPage() {
     }
   }
 
-  function handlePrintReprintReceipt() {
-    if (!reprintReceipt) return
-    try {
-      printDesktopReceipt(reprintReceipt, lang)
-    } catch {
-      setError('无法打开打印预览，请检查浏览器弹窗权限')
+  async function claimReprintDispatch(plan: ReprintPlan, ticketType: 'CUSTOMER_RECEIPT' | 'KITCHEN_TICKET') {
+    if (!desktopStoreCode) return null
+    const params = new URLSearchParams({ storeCode: desktopStoreCode })
+    const res = await apiFetch(`/api/cashier/sale-records/${encodeURIComponent(plan.saleRecordId)}/ticket-dispatches?${params}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(desktopStoreCode) },
+      body: JSON.stringify({ ticketType, trigger: 'REPRINT' }),
+    })
+    const body = await res.json().catch(() => null)
+    if (!res.ok || !body?.dispatch?.id) {
+      throw new Error(body?.message ?? body?.error ?? 'PRINT_DISPATCH_FAILED')
     }
+    return body.dispatch.id as string
+  }
+
+  async function markReprintDispatch(plan: ReprintPlan, dispatchId: string, status: 'OPENED' | 'FAILED', message?: string) {
+    if (!desktopStoreCode) return
+    const params = new URLSearchParams({ storeCode: desktopStoreCode })
+    try {
+      await apiFetch(`/api/cashier/sale-records/${encodeURIComponent(plan.saleRecordId)}/ticket-dispatches?${params}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...posDeviceHeaders(desktopStoreCode) },
+        body: JSON.stringify({ dispatchId, status, ...(message ? { error: message } : {}) }),
+      })
+    } catch {
+      // The completed order and explicitly requested reprint remain unaffected.
+    }
+  }
+
+  function handlePrintReprint(choice: 'CUSTOMER_RECEIPT' | 'KITCHEN_TICKET' | 'BOTH') {
+    if (!reprintPlan || reprintPrinting) return
+    if ((choice === 'KITCHEN_TICKET' || choice === 'BOTH') && !reprintPlan.kitchenTicket) {
+      setError('本订单没有可补打的厨房商品')
+      return
+    }
+    const plan = reprintPlan
+    setReprintPrinting(true)
+    const finish = () => {
+      setReprintPrinting(false)
+      setReprintPlan(null)
+    }
+    const printKitchen = async () => {
+      if (choice === 'CUSTOMER_RECEIPT' || !plan.kitchenTicket) {
+        finish()
+        return
+      }
+      try {
+        const dispatchId = await claimReprintDispatch(plan, 'KITCHEN_TICKET')
+        if (!dispatchId) throw new Error('PRINT_DISPATCH_FAILED')
+        try {
+          printKitchenTicket({ ...plan.kitchenTicket, isReprint: true }, lang, { onAfterPrint: finish })
+          void markReprintDispatch(plan, dispatchId, 'OPENED')
+        } catch (error) {
+          void markReprintDispatch(plan, dispatchId, 'FAILED', 'PRINT_WINDOW_BLOCKED')
+          throw error
+        }
+      } catch (error) {
+        setError(error instanceof Error ? error.message : '厨房单补打失败')
+        finish()
+      }
+    }
+    if (choice === 'KITCHEN_TICKET') {
+      void printKitchen()
+      return
+    }
+    void (async () => {
+      try {
+        const dispatchId = await claimReprintDispatch(plan, 'CUSTOMER_RECEIPT')
+        if (!dispatchId) throw new Error('PRINT_DISPATCH_FAILED')
+        try {
+          printDesktopReceipt(plan.receipt, lang, { onAfterPrint: () => { void printKitchen() } })
+          void markReprintDispatch(plan, dispatchId, 'OPENED')
+        } catch (error) {
+          void markReprintDispatch(plan, dispatchId, 'FAILED', 'PRINT_WINDOW_BLOCKED')
+          throw error
+        }
+      } catch (error) {
+        setError(error instanceof Error ? error.message : '顾客小票补打失败')
+        if (choice === 'BOTH') await printKitchen()
+        else finish()
+      }
+    })()
   }
 
   const entries = buildEntries(allItems)
@@ -647,13 +745,40 @@ export default function RecordsPage() {
         />
       )}
 
-      {reprintReceipt && (
-        <DesktopReceiptPreview
-          data={reprintReceipt}
-          lang={lang}
-          onClose={() => setReprintReceipt(null)}
-          onPrint={handlePrintReprintReceipt}
-        />
+      {reprintPlan && (
+        <div style={s.reprintMask} onClick={() => !reprintPrinting && setReprintPlan(null)}>
+          <div style={s.reprintChoicePanel} onClick={(event) => event.stopPropagation()}>
+            <div style={s.reprintChoiceTitle}>选择补打票据</div>
+            <div style={s.reprintChoiceSub}>每次补打都会单独记录；浏览器只能记录已打开打印窗口，无法确认纸张是否实际输出。</div>
+            <button
+              type="button"
+              style={s.reprintChoiceBtn}
+              disabled={reprintPrinting}
+              onClick={() => handlePrintReprint('CUSTOMER_RECEIPT')}
+            >
+              补打顾客票
+            </button>
+            <button
+              type="button"
+              style={{ ...s.reprintChoiceBtn, ...(reprintPlan.kitchenTicket ? s.reprintKitchenBtn : s.reprintChoiceDisabled) }}
+              disabled={reprintPrinting || !reprintPlan.kitchenTicket}
+              onClick={() => handlePrintReprint('KITCHEN_TICKET')}
+            >
+              补打厨房单
+            </button>
+            <button
+              type="button"
+              style={{ ...s.reprintChoiceBtn, ...(reprintPlan.kitchenTicket ? s.reprintBothBtn : s.reprintChoiceDisabled) }}
+              disabled={reprintPrinting || !reprintPlan.kitchenTicket}
+              onClick={() => handlePrintReprint('BOTH')}
+            >
+              两者都补打
+            </button>
+            <button type="button" style={s.reprintCancelBtn} disabled={reprintPrinting} onClick={() => setReprintPlan(null)}>
+              取消
+            </button>
+          </div>
+        </div>
       )}
     </main>
   )
@@ -1492,4 +1617,17 @@ const s: Record<string, React.CSSProperties> = {
     color: 'var(--muted)',
     marginBottom: 12,
   },
+  reprintMask: {
+    position: 'fixed', inset: 0, zIndex: 180, background: 'rgba(15,23,42,.52)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+  },
+  reprintChoicePanel: {
+    width: 'min(390px, 94vw)', background: '#fff', borderRadius: 16, padding: 18, boxShadow: '0 18px 60px rgba(15,23,42,.28)', display: 'grid', gap: 10,
+  },
+  reprintChoiceTitle: { fontSize: 17, fontWeight: 900, color: '#111827' },
+  reprintChoiceSub: { fontSize: 12, lineHeight: 1.5, color: '#64748b', marginBottom: 2 },
+  reprintChoiceBtn: { width: '100%', minHeight: 44, border: 'none', borderRadius: 10, background: '#1677ff', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer' },
+  reprintKitchenBtn: { background: '#d97706' },
+  reprintBothBtn: { background: '#475569' },
+  reprintChoiceDisabled: { background: '#cbd5e1', color: '#64748b', cursor: 'not-allowed' },
+  reprintCancelBtn: { width: '100%', minHeight: 40, border: '1px solid #cbd5e1', borderRadius: 10, background: '#fff', color: '#475569', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
 }

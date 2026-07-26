@@ -64,6 +64,23 @@ enum PaymentStatus {
   CANCELLED
 }
 
+enum TicketType {
+  CUSTOMER_RECEIPT
+  KITCHEN_TICKET
+}
+
+enum TicketPrintTrigger {
+  ORIGINAL
+  REPRINT
+}
+
+enum TicketPrintDispatchStatus {
+  CLAIMED
+  OPENED
+  FAILED
+  UNKNOWN
+}
+
 enum LogStatus {
   SUCCESS
   FAILED
@@ -179,6 +196,7 @@ model Store {
   checkoutMode      String      @default("DIRECT_PAYMENT") // DIRECT_PAYMENT | DEFERRED_PAYMENT
   currencyCode      String      @default("USD") // USD | XAF
   businessType      String      @default("GENERAL") // FOOD | RETAIL | SERVICE | GENERAL
+  kitchenTicketEnabled Boolean  @default(false) // FOOD 门店显式启用厨房票
   bannerUrl         String? // 顾客页头图访问 URL（指向内部图片端点）
   bannerData        String?     @db.Text // 头图 base64 数据（data:image/...;base64,...）
   announcement      String? // 公告文本
@@ -202,6 +220,7 @@ model Store {
   campaignLinks            CampaignLink[]
   creators                 Creator[]
   marketingProductPages    MarketingProductPage[]
+  ticketPrintDispatches    TicketPrintDispatch[]
   aiFeatureConfigs         StoreAiFeatureConfig[]
   offlineSaleSyncMaps      OfflineSaleSyncMap[]
   members                  Member[]
@@ -307,6 +326,7 @@ model Product {
   sellPrice        Decimal       @db.Decimal(12, 2)
   status           ProductStatus @default(ACTIVE)
   categoryId       String?
+  printToKitchen   Boolean       @default(false) // 显式标记；旧商品安全默认不出厨房票
   nameZh           String?
   nameEn           String?
   nameKm           String?
@@ -428,6 +448,7 @@ model SaleRecord {
   refundedQty          Decimal? @db.Decimal(12, 2)
   refundReason         String?
   remark               String?
+  printToKitchenSnapshot Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -598,6 +619,7 @@ model PaymentIntent {
   orderNo          String        @unique
   paymentMethod    PaymentMethod
   status           PaymentStatus @default(PENDING)
+  clientSubmissionKey String?
   amount           Decimal       @db.Decimal(12, 2)
   khqrPayload      String? // EMV QR string; null for CASH
   provider         String? // from MerchantPaymentConfig.provider
@@ -609,10 +631,31 @@ model PaymentIntent {
 
   merchantConfig MerchantPaymentConfig? @relation(fields: [merchantConfigId], references: [id])
 
+  @@unique([tenantId, storeId, clientSubmissionKey])
   @@index([tenantId, createdAt])
   @@index([orderNo])
   @@index([status])
   @@index([merchantConfigId])
+}
+
+model TicketPrintDispatch {
+  id             String                    @id @default(cuid())
+  tenantId       String
+  storeId        String
+  orderNo        String
+  ticketType     TicketType
+  trigger        TicketPrintTrigger
+  idempotencyKey String                    @unique
+  status         TicketPrintDispatchStatus @default(CLAIMED)
+  error          String?                   @db.Text
+  openedAt       DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@index([tenantId, storeId, orderNo])
+  @@index([orderNo, ticketType, trigger])
 }
 
 model PaymentTransaction {

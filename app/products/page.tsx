@@ -100,6 +100,7 @@ type Product = {
   sellPrice: number
   status: 'ACTIVE' | 'DISABLED'
   categoryId: string | null
+  printToKitchen: boolean
   imageUrl: string | null
   imageUrls?: string[]
   createdAt?: string
@@ -322,6 +323,7 @@ export default function ProductsPage() {
   const [editPrice, setEditPrice] = useState('')
   const [editStatus, setEditStatus] = useState<'ACTIVE' | 'DISABLED'>('ACTIVE')
   const [editCategoryId, setEditCategoryId] = useState<string>('')
+  const [editPrintToKitchen, setEditPrintToKitchen] = useState(false)
 
   // Create form
   const [newBarcode, setNewBarcode] = useState('')
@@ -329,6 +331,7 @@ export default function ProductsPage() {
   const [newSpec, setNewSpec] = useState('')
   const [newPrice, setNewPrice] = useState('')
   const [newCategoryId, setNewCategoryId] = useState<string>('')
+  const [newPrintToKitchen, setNewPrintToKitchen] = useState(false)
   const [newImageFile, setNewImageFile] = useState<File | null>(null)
   const [newImagePreview, setNewImagePreview] = useState<string | null>(null)
   const [newImageFiles, setNewImageFiles] = useState<File[]>([])
@@ -1314,6 +1317,7 @@ export default function ProductsPage() {
     setNewSpec('')
     setNewPrice('')
     setNewCategoryId('')
+    setNewPrintToKitchen(false)
     clearNewImage()
     setMode('idle')
   }
@@ -1376,6 +1380,7 @@ export default function ProductsPage() {
         setNewSpec(draft.spec ?? '')
         setNewPrice('')
         setNewCategoryId(draft.categoryId ?? '')
+        setNewPrintToKitchen(false)
         if (photoCreatePreview) {
           setNewImageFiles([photoCreateFile])
           setNewImagePreviews([photoCreatePreview])
@@ -1416,6 +1421,7 @@ export default function ProductsPage() {
       sellPrice: match.price,
       status: match.status,
       categoryId: match.categoryId,
+      printToKitchen: false,
       imageUrl: match.imageUrl,
       imageUrls: match.imageUrl ? [match.imageUrl] : [],
     }
@@ -1426,6 +1432,7 @@ export default function ProductsPage() {
     setEditPrice(String(next.sellPrice))
     setEditStatus(next.status)
     setEditCategoryId(next.categoryId ?? '')
+    setEditPrintToKitchen(next.printToKitchen)
     setMode('found')
     window.setTimeout(() => editNameRef.current?.focus(), 100)
   }
@@ -1546,6 +1553,7 @@ export default function ProductsPage() {
     setNewSpec('')
     setNewPrice('')
     setNewCategoryId('')
+    setNewPrintToKitchen(false)
     clearNewImage()
     setProduct(null)
     setMode('not-found')
@@ -1690,6 +1698,7 @@ export default function ProductsPage() {
         setEditPrice(String(p.sellPrice))
         setEditStatus(p.status)
         setEditCategoryId(p.categoryId ?? '')
+        setEditPrintToKitchen(p.printToKitchen)
         setMode('found')
         setTimeout(() => editNameRef.current?.focus(), 100)
         blockHidBriefly()
@@ -1702,6 +1711,7 @@ export default function ProductsPage() {
           setNewName('')
           setNewSpec('')
           setNewPrice('')
+          setNewPrintToKitchen(false)
           setMode('not-found')
           blockHidBriefly()
           setHidMsg({ type: 'fail', text: fmt('products.hidNotFound', { barcode: b }) })
@@ -1765,7 +1775,9 @@ export default function ProductsPage() {
     setError(null)
     setEditBarcode('')
     setEditCategoryId('')
+    setEditPrintToKitchen(false)
     setNewCategoryId('')
+    setNewPrintToKitchen(false)
     clearNewImage()
   }
 
@@ -1792,6 +1804,7 @@ export default function ProductsPage() {
             sellPrice: price,
             status: editStatus,
             categoryId: editCategoryId || null,
+            printToKitchen: editPrintToKitchen,
           }),
         },
         OWNER_CTX,
@@ -1800,6 +1813,7 @@ export default function ProductsPage() {
       if (res.ok) {
         setProduct(body)
         setEditBarcode(body.barcode)
+        setEditPrintToKitchen(body.printToKitchen === true)
         setMode('saved')
       } else {
         setError(body.message ?? t('products.saveFailed'))
@@ -1831,6 +1845,7 @@ export default function ProductsPage() {
             spec: newSpec.trim() || null,
             sellPrice: price,
             categoryId: newCategoryId || null,
+            printToKitchen: newPrintToKitchen,
           }),
         },
         OWNER_CTX,
@@ -1858,6 +1873,7 @@ export default function ProductsPage() {
         setEditPrice(String(created.sellPrice))
         setEditStatus(created.status)
         setEditCategoryId(created.categoryId ?? '')
+        setEditPrintToKitchen(created.printToKitchen === true)
         clearNewImage()
         if (photoCreateOpen) {
           photoCreateReset()
@@ -3262,6 +3278,17 @@ export default function ProductsPage() {
                   />
                 </Field>
 
+                <Field label="厨房票">
+                  <label style={s.kitchenCheck}>
+                    <input
+                      type="checkbox"
+                      checked={editPrintToKitchen}
+                      onChange={(event) => setEditPrintToKitchen(event.target.checked)}
+                    />
+                    <span>成交后在厨房单中打印此商品</span>
+                  </label>
+                </Field>
+
                 <Field label={t('products.fieldStatus')}>
                   <div style={s.statusRow}>
                     {(['ACTIVE', 'DISABLED'] as const).map((st) => (
@@ -3418,6 +3445,17 @@ export default function ProductsPage() {
                     onChange={setNewCategoryId}
                     noneLabel={t('products.noCategory')}
                   />
+                </Field>
+
+                <Field label="厨房票">
+                  <label style={s.kitchenCheck}>
+                    <input
+                      type="checkbox"
+                      checked={newPrintToKitchen}
+                      onChange={(event) => setNewPrintToKitchen(event.target.checked)}
+                    />
+                    <span>成交后在厨房单中打印此商品</span>
+                  </label>
                 </Field>
 
                 <button
@@ -3952,6 +3990,7 @@ const s: Record<string, React.CSSProperties> = {
   barcodeLabel: { fontSize: 12, color: 'var(--muted)' },
   barcodeValue: { fontSize: 15, fontWeight: 700, fontFamily: 'monospace', color: 'var(--text)' },
   statusRow: { display: 'flex', gap: 8 },
+  kitchenCheck: { display: 'flex', alignItems: 'center', gap: 9, minHeight: 40, padding: '0 12px', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', background: '#fff7ed', color: '#7c2d12', fontSize: 14, cursor: 'pointer' },
   statusBtn: {
     flex: 1,
     height: 40,

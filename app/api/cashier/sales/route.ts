@@ -5,7 +5,7 @@
  * Identifies the store by storeCode, uses the authorized operatorUserId,
  * and records remark = '电脑收银台' on every sale line.
  *
- * Body: { storeCode, items: [{barcode, quantity}], paymentMethod: 'CASH'|'KHQR' }
+ * Body: { storeCode, items: [{barcode, quantity}], paymentMethod: 'CASH'|'KHQR', clientSubmissionKey }
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -33,10 +33,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'INVALID_BODY' }, { status: 400 })
   }
 
-  const { storeCode, items, paymentMethod = 'CASH' } = body as {
+  const { storeCode, items, paymentMethod = 'CASH', clientSubmissionKey } = body as {
     storeCode?: string
     items?: CartItem[]
     paymentMethod?: string
+    clientSubmissionKey?: string
   }
 
   if (!storeCode?.trim()) {
@@ -51,6 +52,16 @@ export async function POST(req: NextRequest) {
   if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json(
       { error: 'VALIDATION_ERROR', message: 'items must be a non-empty array' },
+      { status: 400 },
+    )
+  }
+  if (
+    typeof clientSubmissionKey !== 'string' ||
+    clientSubmissionKey.trim().length < 12 ||
+    clientSubmissionKey.trim().length > 160
+  ) {
+    return NextResponse.json(
+      { error: 'VALIDATION_ERROR', message: 'clientSubmissionKey is required' },
       { status: 400 },
     )
   }
@@ -73,25 +84,81 @@ export async function POST(req: NextRequest) {
   // Resolve store
   const store = await prisma.store.findUnique({
     where: { code: storeCode.trim() },
-    select: { id: true, code: true, tenantId: true, status: true, currencyCode: true },
+    select: {
+      id: true,
+      code: true,
+      tenantId: true,
+      status: true,
+      currencyCode: true,
+      businessType: true,
+      kitchenTicketEnabled: true,
+    },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
+  const activeStore = store
   const posAuth = await authorizeDesktopPosRequest(req, {
-    tenantId: store.tenantId,
-    storeId: store.id,
-    storeCode: store.code,
+    tenantId: activeStore.tenantId,
+    storeId: activeStore.id,
+    storeCode: activeStore.code,
   }, { allowStoreCodeFallback: true })
   if (!posAuth) {
     return unauthorizedPosResponse()
   }
-  if (paymentMethod === 'KHQR' && !isKhqrSupportedCurrency(store.currencyCode)) {
+  if (paymentMethod === 'KHQR' && !isKhqrSupportedCurrency(activeStore.currencyCode)) {
     return NextResponse.json(
       { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },
       { status: 422 },
     )
   }
+
+  const submissionKey = clientSubmissionKey.trim()
+  async function replayExistingSubmission() {
+    const existingPayment = await prisma.paymentIntent.findUnique({
+      where: {
+        tenantId_storeId_clientSubmissionKey: {
+          tenantId: activeStore.tenantId,
+          storeId: activeStore.id,
+          clientSubmissionKey: submissionKey,
+        },
+      },
+      select: {
+        id: true,
+        orderNo: true,
+        amount: true,
+        paymentMethod: true,
+        status: true,
+        khqrPayload: true,
+        createdAt: true,
+        merchantConfig: { select: { khqrImageUrl: true } },
+      },
+    })
+    if (!existingPayment) return null
+    const firstRecord = await prisma.saleRecord.findFirst({
+      where: { tenantId: activeStore.tenantId, storeId: activeStore.id, orderNo: existingPayment.orderNo, saleType: 'SALE' },
+      select: { id: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    const itemCount = await prisma.saleRecord.count({
+      where: { tenantId: activeStore.tenantId, storeId: activeStore.id, orderNo: existingPayment.orderNo, saleType: 'SALE' },
+    })
+    return NextResponse.json({
+      orderNo: existingPayment.orderNo,
+      totalAmount: existingPayment.amount.toNumber(),
+      itemCount,
+      createdAt: firstRecord?.createdAt.toISOString() ?? existingPayment.createdAt.toISOString(),
+      firstSaleRecordId: firstRecord?.id ?? null,
+      paymentMethod: existingPayment.paymentMethod,
+      paymentIntentId: existingPayment.id,
+      paymentStatus: existingPayment.status,
+      khqrPayload: existingPayment.khqrPayload,
+      khqrImageUrl: existingPayment.merchantConfig?.khqrImageUrl ?? null,
+      replayed: true,
+    })
+  }
+  const existingResponse = await replayExistingSubmission()
+  if (existingResponse) return existingResponse
 
   // Validate products
   const barcodes = [...new Set(items.map((i) => i.barcode))]
@@ -105,15 +172,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // KHQR config pre-check — no hard error; fall back gracefully if unconfigured
+  // A KHQR sale must remain PENDING until the existing confirm endpoint succeeds.
   let khqrConfig: MerchantKhqrConfig | null = null
-  let khqrFallback = false
   if (paymentMethod === 'KHQR') {
     const cfg = await findKhqrConfig(store.tenantId, store.id)
     if (cfg) {
       khqrConfig = cfg
     } else {
-      khqrFallback = true // record as KHQR but treat as manually confirmed
+      return NextResponse.json(
+        { error: 'KHQR_NOT_CONFIGURED', message: '当前门店未配置 KHQR 收款码' },
+        { status: 422 },
+      )
     }
   }
 
@@ -122,7 +191,9 @@ export async function POST(req: NextRequest) {
       const orderNo = await generateRecordNo(tx, 'S', store.tenantId, store.id, store.code)
       let totalAmount = 0
       let firstCreatedAt: Date | null = null
+      let firstSaleRecordId: string | null = null
       let isFirst = true
+      const isPaid = paymentMethod === 'CASH'
 
       for (const it of items) {
         const product = productMap.get(it.barcode)!
@@ -146,7 +217,7 @@ export async function POST(req: NextRequest) {
             recordNo,
             orderNo,
             saleType: 'SALE',
-            status: 'COMPLETED',
+            status: isPaid ? 'COMPLETED' : 'PENDING_PAYMENT',
             productId: product.id,
             barcode: product.barcode,
             productNameSnapshot: product.name,
@@ -154,18 +225,22 @@ export async function POST(req: NextRequest) {
             unitPrice: product.sellPrice,
             quantity: qty,
             lineAmount,
-            remark: khqrFallback ? '电脑收银台-KHQR兜底' : '电脑收银台',
+            remark: '电脑收银台',
+            printToKitchenSnapshot: (
+              store.businessType === 'FOOD' &&
+              store.kitchenTicketEnabled &&
+              product.printToKitchen
+            ),
           },
         })
         if (!firstCreatedAt) firstCreatedAt = record.createdAt
+        if (!firstSaleRecordId) firstSaleRecordId = record.id
       }
 
       const khqrPayload = paymentMethod === 'KHQR' && khqrConfig
         ? generateKhqrPayload({ amount: totalAmount, orderNo, config: khqrConfig })
         : null
 
-      // Fallback KHQR treated as manually confirmed — mark PAID immediately
-      const isPaid = paymentMethod === 'CASH' || khqrFallback
       const pi = await tx.paymentIntent.create({
         data: {
           tenantId: store.tenantId,
@@ -174,6 +249,7 @@ export async function POST(req: NextRequest) {
           orderNo,
           paymentMethod: paymentMethod as 'CASH' | 'KHQR',
           status: isPaid ? 'PAID' : 'PENDING',
+          clientSubmissionKey: submissionKey,
           amount: totalAmount,
           khqrPayload,
           provider: khqrConfig?.provider ?? null,
@@ -187,14 +263,25 @@ export async function POST(req: NextRequest) {
         totalAmount,
         itemCount: items.length,
         createdAt: firstCreatedAt!.toISOString(),
+        firstSaleRecordId,
         paymentMethod,
         paymentIntentId: pi.id,
-        khqrFallback,
+        paymentStatus: pi.status,
+        khqrPayload: pi.khqrPayload,
+        khqrImageUrl: khqrConfig?.khqrImageUrl ?? null,
+        replayed: false,
       }
     })
 
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
+    // A simultaneous retry can race the pre-read. The database key protects the
+    // write, and this response reuses the winner instead of reporting a false
+    // transaction failure to the POS.
+    if ((err as { code?: string }).code === 'P2002') {
+      const replay = await replayExistingSubmission()
+      if (replay) return replay
+    }
     console.error('[POST /api/cashier/sales]', err)
     return NextResponse.json({ error: 'INTERNAL_ERROR' }, { status: 500 })
   }
