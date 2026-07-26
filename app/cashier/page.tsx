@@ -21,6 +21,13 @@ import {
   type QzStatus,
 } from '@/lib/qzPrinterAdapter'
 import {
+  clearLegacyGlobalQzConfig,
+  readQzPrintEnabled,
+  readQzSelectedPrinter,
+  writeQzPrintEnabled,
+  writeQzSelectedPrinter,
+} from '@/lib/cashier-qz-config'
+import {
   printKitchenTicket,
   type KitchenTicketData,
 } from '@/app/components/KitchenTicket'
@@ -1425,8 +1432,6 @@ export default function CashierPage() {
   useEffect(() => {
     try {
       setAutoPrint(localStorage.getItem('cashier:autoPrint') === '1')
-      setQzPrintEnabled(localStorage.getItem('cashier:qzPrintEnabled') === '1')
-      setQzSelectedPrinter(localStorage.getItem('cashier:qzPrintPrinter') || null)
       setCompactMode(localStorage.getItem('cashier:compactMode') === '1')
       const savedRate = Number(localStorage.getItem('cashier:usdKhrRate'))
       if (Number.isFinite(savedRate) && savedRate >= 1000 && savedRate <= 10000) {
@@ -1459,6 +1464,34 @@ export default function CashierPage() {
       setShiftOperator('')
     }
   }, [isDesktopPos, storeCode, workMode.effectiveRole, workMode.realRole])
+
+  useEffect(() => {
+    // One-time cleanup of the pre-scoping global QZ keys from the first
+    // POC cut. Their values are never applied to any store.
+    try {
+      clearLegacyGlobalQzConfig()
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    // Reset in-memory QZ state before (re)loading a store's own config, so
+    // a previous store's enabled flag / selected printer / online status
+    // can never be read by handlePrintReceipt while the active store is
+    // changing or not yet known.
+    setQzPrintEnabled(false)
+    setQzStatus('idle')
+    setQzPrinters([])
+    setQzSelectedPrinter(null)
+    setQzChecking(false)
+
+    if (!storeCode) return
+    try {
+      setQzPrintEnabled(readQzPrintEnabled(storeCode))
+      setQzSelectedPrinter(readQzSelectedPrinter(storeCode))
+    } catch (err) {
+      console.warn('[cashier:qz] config load failed', err)
+    }
+  }, [storeCode])
 
   useEffect(() => {
     if (cart.length === 0) {
@@ -1994,7 +2027,9 @@ export default function CashierPage() {
       setQzPrinters(printers)
       if (qzSelectedPrinter && !printers.includes(qzSelectedPrinter)) {
         setQzSelectedPrinter(null)
-        try { localStorage.removeItem('cashier:qzPrintPrinter') } catch {}
+        if (storeCode) {
+          try { writeQzSelectedPrinter(storeCode, null) } catch {}
+        }
       }
     } catch (err) {
       console.warn('[qz-printer] status check failed', err)
@@ -2003,14 +2038,14 @@ export default function CashierPage() {
     } finally {
       setQzChecking(false)
     }
-  }, [qzChecking, qzSelectedPrinter])
+  }, [qzChecking, qzSelectedPrinter, storeCode])
 
   function handleQzPrintToggle() {
     const next = !qzPrintEnabled
     setQzPrintEnabled(next)
-    try {
-      localStorage.setItem('cashier:qzPrintEnabled', next ? '1' : '0')
-    } catch {}
+    if (storeCode) {
+      try { writeQzPrintEnabled(storeCode, next) } catch {}
+    }
     if (next) {
       void handleRefreshQzStatus()
     } else {
@@ -2021,10 +2056,9 @@ export default function CashierPage() {
   function handleSelectQzPrinter(printerName: string) {
     const next = printerName || null
     setQzSelectedPrinter(next)
-    try {
-      if (next) localStorage.setItem('cashier:qzPrintPrinter', next)
-      else localStorage.removeItem('cashier:qzPrintPrinter')
-    } catch {}
+    if (storeCode) {
+      try { writeQzSelectedPrinter(storeCode, next) } catch {}
+    }
   }
 
   async function handleQzHelloWorldTest() {
