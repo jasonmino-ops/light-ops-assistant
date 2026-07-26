@@ -18,7 +18,7 @@ type StoreIdentity = {
 }
 
 type Props = {
-  cashierUrl: string
+  cashierUrl: string | null
   storeCode: string | null
   canManagePin: boolean
   onClose: () => void
@@ -203,19 +203,36 @@ export default function ComputerConsoleModal({
               <div style={s.sectionDesc}>{t('home.browserCashierDesc')}</div>
             </div>
           </div>
-          <div style={s.link}>{cashierUrl}</div>
+          <div style={cashierUrl ? s.link : { ...s.link, ...s.disabledLink }}>
+            {cashierUrl ?? t('home.desktopStoreLoading')}
+          </div>
           <div style={s.actions}>
-            <button type="button" style={s.secondaryBtn} onClick={() => handleCopy(cashierUrl, 'browser')}>
+            <button
+              type="button"
+              style={cashierUrl ? s.secondaryBtn : { ...s.secondaryBtn, ...s.disabledBtn }}
+              onClick={() => { if (cashierUrl) void handleCopy(cashierUrl, 'browser') }}
+              disabled={!cashierUrl}
+            >
               {copiedKey === 'browser' ? t('home.copied') : t('home.copyCashierLink')}
             </button>
-            <a
-              href={cashierUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ ...s.primaryBtn, textAlign: 'center', textDecoration: 'none' }}
-            >
-              {t('home.openCashier')}
-            </a>
+            {cashierUrl ? (
+              <a
+                href={cashierUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ ...s.primaryBtn, textAlign: 'center', textDecoration: 'none' }}
+              >
+                {t('home.openCashier')}
+              </a>
+            ) : (
+              <button
+                type="button"
+                style={{ ...s.primaryBtn, ...s.disabledBtn }}
+                disabled
+              >
+                {t('home.openCashier')}
+              </button>
+            )}
           </div>
         </div>
 
@@ -386,6 +403,10 @@ const s: Record<string, CSSProperties> = {
     lineHeight: 1.45,
     overflowWrap: 'anywhere',
   },
+  disabledLink: {
+    color: '#94a3b8',
+    fontStyle: 'italic',
+  },
   actions: {
     display: 'flex',
     gap: 8,
@@ -426,6 +447,10 @@ const s: Record<string, CSSProperties> = {
     fontSize: 12,
     fontWeight: 900,
     cursor: 'pointer',
+  },
+  disabledBtn: {
+    cursor: 'not-allowed',
+    opacity: 0.5,
   },
   warning: {
     borderRadius: 10,

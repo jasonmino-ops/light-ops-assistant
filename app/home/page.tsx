@@ -6,9 +6,9 @@ import { apiFetch, STAFF_CTX, OWNER_CTX } from '@/lib/api'
 import { useLocale, type Lang } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
-import { publicUrl } from '@/lib/public-url'
 import { formatMoney } from '@/lib/currency'
 import ComputerConsoleModal from './ComputerConsoleModal'
+import { buildComputerConsoleCashierUrl } from './computer-console-url'
 
 const DEV_STAFF_CTX = process.env.NODE_ENV !== 'production' ? STAFF_CTX : undefined
 const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
@@ -290,9 +290,7 @@ export default function HomePage() {
   const pendingOrderAmount = pendingCustomerOrders.reduce((sum, order) => sum + order.totalAmount, 0)
   const displayStoreName = storeName ?? 'E-Shop'
   const storeInitial = displayStoreName.trim().slice(0, 1).toUpperCase() || '店'
-  const cashierParams = new URLSearchParams({ ...(storeCode ? { storeCode } : {}), lang })
-  const cashierPath = `/cashier?${cashierParams.toString()}`
-  const cashierUrl = publicUrl(cashierPath)
+  const cashierUrl = buildComputerConsoleCashierUrl(storeCode, lang)
   const storeAvatarUrl = storeCode && !avatarFailed ? `/api/public/stores/${storeCode}/banner` : null
   const aiStatus: 'open' | 'configured' | 'waiting' =
     tier === 'MULTI_STORE' ? 'configured' : tier === 'STANDARD' ? 'waiting' : 'open'
