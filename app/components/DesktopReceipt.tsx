@@ -279,6 +279,15 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
 </html>`
 }
 
+/**
+ * Exposes the same receipt markup `printDesktopReceipt` uses, for
+ * callers that submit through a different print channel (e.g. the QZ
+ * Tray adapter) instead of opening a browser print window.
+ */
+export function renderDesktopReceiptHtml(data: DesktopReceiptData, lang: Lang): string {
+  return receiptHtml(data, lang)
+}
+
 export function printDesktopReceipt(
   data: DesktopReceiptData,
   lang: Lang,
