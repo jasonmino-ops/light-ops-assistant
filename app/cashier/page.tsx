@@ -190,7 +190,7 @@ type PosAuthChallenge = {
   storeName: string
   deviceName: string
 }
-type PosAccountAccessState = 'checking' | 'authorized' | 'login_required' | 'forbidden'
+type PosAccountAccessState = 'checking' | 'authorized' | 'login_required' | 'forbidden' | 'device_unbound'
 
 type ScannerDebugState = {
   mounted: boolean
@@ -1264,6 +1264,7 @@ export default function CashierPage() {
   const [posAuthLoading, setPosAuthLoading] = useState(false)
   const [posAuthError, setPosAuthError] = useState('')
   const [posAuthChallenge, setPosAuthChallenge] = useState<PosAuthChallenge | null>(null)
+  const [posBindingEntryRequested, setPosBindingEntryRequested] = useState(false)
   const [posAuthChecking, setPosAuthChecking] = useState(false)
   const [posAccountAccess, setPosAccountAccess] = useState<PosAccountAccessState>('checking')
   const [posAccountAccessMessage, setPosAccountAccessMessage] = useState('')
@@ -1552,6 +1553,7 @@ export default function CashierPage() {
     setIsKitchenTicketEnabled(false)
     setPosDeviceToken(getPosDeviceToken(sc))
     setPosAuthError('')
+    setPosBindingEntryRequested(false)
     setPosAccountAccess(desktopPublicEntry ? 'authorized' : 'checking')
     setPosAccountAccessMessage('')
     setIsRestoringCashierStore(false)
@@ -1770,6 +1772,8 @@ export default function CashierPage() {
         warnTitle: 'POS device not authorized',
         warnBody: 'Local CASH can be saved offline, but real sales, member balance, order status and records need device authorization.',
         button: 'Authorize this computer',
+        unboundTitle: 'This POS computer is not bound',
+        unboundBody: 'Bind it before completing sales or printing. The store owner must confirm this computer.',
         loading: 'Authorizing...',
         success: 'This POS computer is authorized',
         failed: 'Authorization failed. Please ask the owner or active staff to sign in and try again.',
@@ -1783,6 +1787,8 @@ export default function CashierPage() {
         warnTitle: 'ឧបករណ៍ POS មិនទាន់អនុញ្ញាត',
         warnBody: 'CASH offline អាចរក្សាទុកក្នុងម៉ាស៊ីន ប៉ុន្តែការលក់ពិត កាត់សមតុល្យ កែស្ថានភាព និងមើលកំណត់ត្រា ត្រូវការអនុញ្ញាត។',
         button: 'អនុញ្ញាតកុំព្យូទ័រនេះ',
+        unboundTitle: 'កុំព្យូទ័រ POS នេះមិនទាន់បានភ្ជាប់',
+        unboundBody: 'ត្រូវភ្ជាប់មុនពេលបញ្ចប់ការលក់ ឬបោះពុម្ព។ ម្ចាស់ហាងត្រូវបញ្ជាក់កុំព្យូទ័រនេះ។',
         loading: 'កំពុងអនុញ្ញាត...',
         success: 'កុំព្យូទ័រ POS នេះបានអនុញ្ញាត',
         failed: 'អនុញ្ញាតមិនបាន។ សូមឱ្យម្ចាស់ ឬបុគ្គលិកដែលសកម្ម login ហើយសាកល្បងម្តងទៀត។',
@@ -1794,7 +1800,9 @@ export default function CashierPage() {
       okBody: '本电脑可为当前门店创建销售并同步记录。',
       warnTitle: 'POS 设备未授权',
       warnBody: '可离线保存本地 CASH 单，但真实销售、会员扣款、订单状态和销售记录需要先授权本机。',
-      button: '授权本机',
+      button: '绑定本机 POS',
+      unboundTitle: '本 POS 电脑尚未绑定',
+      unboundBody: '绑定后才能完成销售和打印，请由门店老板确认本机授权。',
       loading: '授权中...',
       success: '本 POS 电脑已授权',
       failed: '授权失败，请让老板或在职员工先登录后再试。',
@@ -1807,12 +1815,15 @@ export default function CashierPage() {
     if (storeCode) clearPosDeviceToken(storeCode)
     setPosDeviceToken('')
     setPosAuthChallenge(null)
+    setPosBindingEntryRequested(false)
+    setPosAccountAccess('device_unbound')
     setPosAuthError(message || copy.needAuth)
     showToast(message || copy.needAuth)
   }
 
-  async function handleAuthorizePosDevice() {
-    await startPosAuthorization()
+  function handleAuthorizePosDevice() {
+    setPosBindingEntryRequested(true)
+    void startPosAuthorization()
   }
 
   async function startPosAuthorization() {
@@ -1855,6 +1866,7 @@ export default function CashierPage() {
         savePosDeviceToken(storeCode, body.token)
         setPosDeviceToken(body.token)
         setPosAuthChallenge(null)
+        setPosBindingEntryRequested(false)
         setPosAuthError('')
         showToast(posAuthCopy().success)
         return
@@ -1885,12 +1897,12 @@ export default function CashierPage() {
   }, [storeCode, posAccountAccess, posDeviceToken, posAuthChallenge, posAuthLoading])
 
   useEffect(() => {
-    if (!storeCode || posAccountAccess === 'authorized' || posDeviceToken || !posAuthChallenge) return
+    if (!storeCode || posDeviceToken || !posAuthChallenge) return
     const timer = window.setInterval(() => {
       void checkPosAuthorization()
     }, 3000)
     return () => window.clearInterval(timer)
-  }, [storeCode, posAccountAccess, posDeviceToken, posAuthChallenge, checkPosAuthorization])
+  }, [storeCode, posDeviceToken, posAuthChallenge, checkPosAuthorization])
 
   function buildReceiptSnapshot(input: {
     items: ReturnType<typeof cashierDisplayItems>
@@ -3587,21 +3599,27 @@ export default function CashierPage() {
     )
   }
 
-  if (storeCode && !posDeviceToken && posAccountAccess !== 'authorized') {
+  const legacyDeviceAuth = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('deviceAuth') === '1'
+  const showPosBindingFlow = legacyDeviceAuth || posBindingEntryRequested
+
+  if (storeCode && !posDeviceToken && (posAccountAccess !== 'authorized' || showPosBindingFlow)) {
     const currentReturnUrl = typeof window !== 'undefined'
       ? `${window.location.pathname}${window.location.search}`
       : `/cashier?storeCode=${encodeURIComponent(storeCode)}`
     const loginUrl = `/relogin?returnUrl=${encodeURIComponent(currentReturnUrl)}`
-    const legacyDeviceAuth = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('deviceAuth') === '1'
 
-    if (!legacyDeviceAuth) {
+    if (!showPosBindingFlow) {
       const isCheckingAccess = posAccountAccess === 'checking'
+      const authCopy = posAuthCopy()
       const title =
         isCheckingAccess ? '正在检查收银权限' :
+        posAccountAccess === 'device_unbound' ? '本 POS 电脑尚未绑定' :
         posAccountAccess === 'login_required' ? '请先登录本店账号' :
         '当前账号无权进入本店收银台'
       const sub =
         isCheckingAccess ? '正在确认你是否已使用本店老板或员工账号登录，请稍候。' :
+        posAccountAccess === 'device_unbound'
+          ? '绑定后才能完成销售和打印，请由门店老板确认本机授权。' :
         posAccountAccess === 'login_required'
           ? '请使用该门店老板或员工账号登录后，再打开这条电脑收银台链接。'
           : '请确认当前登录账号属于这家门店，或让老板重新分享正确的收银台链接。'
@@ -3635,6 +3653,19 @@ export default function CashierPage() {
             <div style={{ ...s.authCardSub, marginTop: 12 }}>
               如果登录后没有自动回到收银台，请重新打开老板分享的电脑收银台链接。
             </div>
+            <div style={{ ...s.posAuthCard, ...s.posAuthCardWarn, marginTop: 16, textAlign: 'left' }}>
+              <div style={s.posAuthTitle}>{authCopy.unboundTitle}</div>
+              <div>{authCopy.unboundBody}</div>
+              <button
+                type="button"
+                aria-label="绑定本机 POS"
+                style={{ ...s.posAuthBtn, ...(posAuthLoading ? s.posAuthBtnDis : {}) }}
+                onClick={handleAuthorizePosDevice}
+                disabled={posAuthLoading}
+              >
+                {posAuthLoading ? authCopy.loading : authCopy.button}
+              </button>
+            </div>
           </section>
           {toast && <div style={s.toast}>{toast}</div>}
         </main>
@@ -3646,9 +3677,9 @@ export default function CashierPage() {
       <main style={s.authPage}>
         <section style={s.authIntro}>
           <div style={s.authBadge}>电脑收银机授权</div>
-          <h1 style={s.authTitle}>本机尚未授权为收银机</h1>
+          <h1 style={s.authTitle}>本 POS 电脑尚未绑定</h1>
           <div style={s.authSub}>
-            请老板用手机扫码确认一次。授权成功后，这台电脑以后打开就能进入收银台。
+            绑定后才能完成销售和打印，请由门店老板扫码确认本机授权。
           </div>
           <div style={s.authWarn}>
             未授权前可以查看此授权页；未授权订单不会同步到账本。清除浏览器缓存或换电脑后，需要重新扫码授权。
@@ -3991,6 +4022,20 @@ export default function CashierPage() {
                 <div style={{ ...s.sideSection, ...s.sideGroupSettings }}>
                   <div style={{ ...s.sideSectionTitle, color: '#cbd5e1' }}>{d.sectionSettings}</div>
                   <div style={s.sideSectionBody}>
+                    {!posDeviceToken && (
+                      <div style={{ ...s.posAuthCard, ...s.posAuthCardWarn, marginTop: 0 }}>
+                        <div style={s.posAuthTitle}>{posAuthCopy().unboundTitle}</div>
+                        <div>{posAuthCopy().unboundBody}</div>
+                        <button
+                          type="button"
+                          aria-label="绑定本机 POS"
+                          style={s.posAuthBtn}
+                          onClick={handleAuthorizePosDevice}
+                        >
+                          {posAuthCopy().button}
+                        </button>
+                      </div>
+                    )}
                     <div style={s.autoPrintToggle}>
                       <div style={s.autoPrintText}>
                         <span style={s.autoPrintTitle}>{d.autoPrintTitle}</span>
