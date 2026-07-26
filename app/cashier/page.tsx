@@ -27,6 +27,7 @@ import {
   writeQzPrintEnabled,
   writeQzSelectedPrinter,
 } from '@/lib/cashier-qz-config'
+import { invalidateQzRequests, startQzRequest } from '@/lib/qzRequestGuard'
 import {
   printKitchenTicket,
   type KitchenTicketData,
@@ -1275,6 +1276,8 @@ export default function CashierPage() {
   const [qzPrinters, setQzPrinters] = useState<string[]>([])
   const [qzSelectedPrinter, setQzSelectedPrinter] = useState<string | null>(null)
   const [qzChecking, setQzChecking] = useState(false)
+  const qzRequestVersionRef = useRef(0)
+  const qzActiveStoreCodeRef = useRef<string | null>(null)
   const [compactMode, setCompactMode] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
   const [holdOrders, setHoldOrders] = useState<HoldOrder<CartLine, DesktopCheckoutStep>[]>([])
@@ -1474,6 +1477,11 @@ export default function CashierPage() {
   }, [])
 
   useEffect(() => {
+    // Invalidate any in-flight QZ refresh request (started for the
+    // previous store, or for no store yet) before anything else, so its
+    // eventual result can never write state or storage for this store.
+    invalidateQzRequests(qzRequestVersionRef, qzActiveStoreCodeRef, storeCode)
+
     // Reset in-memory QZ state before (re)loading a store's own config, so
     // a previous store's enabled flag / selected printer / online status
     // can never be read by handlePrintReceipt while the active store is
@@ -2013,10 +2021,17 @@ export default function CashierPage() {
 
   const handleRefreshQzStatus = useCallback(async () => {
     if (qzChecking) return
+    const requestStoreCode = storeCode
+    const request = startQzRequest(qzRequestVersionRef, qzActiveStoreCodeRef, requestStoreCode)
+    // A request only ever starts for the store that's active right now, so
+    // this is only false when storeCode is null (nothing to refresh yet).
+    if (!requestStoreCode || !request.isCurrent()) return
+
     setQzChecking(true)
     setQzStatus('checking')
     try {
       const online = await detectQzOnline()
+      if (!request.isCurrent()) return
       if (!online) {
         setQzStatus('offline')
         setQzPrinters([])
@@ -2024,19 +2039,19 @@ export default function CashierPage() {
       }
       setQzStatus('online')
       const printers = await listQzPrinters()
+      if (!request.isCurrent()) return
       setQzPrinters(printers)
       if (qzSelectedPrinter && !printers.includes(qzSelectedPrinter)) {
         setQzSelectedPrinter(null)
-        if (storeCode) {
-          try { writeQzSelectedPrinter(storeCode, null) } catch {}
-        }
+        try { writeQzSelectedPrinter(requestStoreCode, null) } catch {}
       }
     } catch (err) {
+      if (!request.isCurrent()) return
       console.warn('[qz-printer] status check failed', err)
       setQzStatus('offline')
       setQzPrinters([])
     } finally {
-      setQzChecking(false)
+      if (request.isCurrent()) setQzChecking(false)
     }
   }, [qzChecking, qzSelectedPrinter, storeCode])
 
