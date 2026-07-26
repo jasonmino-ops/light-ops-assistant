@@ -33,5 +33,3 @@ assert.match(cashier, /setIsReceiptPrintChainActive\(false\)\s*\n\s*receiptPrint
 assert.match(cashier, /function closeSaleResultOverlay\(\) \{\s*if \(isReceiptPrintChainActive \|\| receiptPrintLockedRef\.current\) return/s, 'background dismissal must be blocked while the chain is active')
 assert.match(cashier, /function handleContinueSale\(\) \{\s*if \(isReceiptPrintChainActive \|\| receiptPrintLockedRef\.current\) return/s, 'continue sale must be blocked while the chain is active')
 assert.match(cashier, /disabled=\{isReceiptPrintChainActive\}[\s\S]*正在完成打印…/, 'the continue control must visibly remain disabled during printing')
-
-console.log('kitchen ticket content and sequence tests passed')
