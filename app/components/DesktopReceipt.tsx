@@ -285,22 +285,43 @@ export function printDesktopReceipt(
   options?: {
     onAfterPrint?: () => void
     onAfterPrintWithWindow?: (printWindow: Window) => void
+    onFirstPrintTimeout?: () => void
+    firstPrintCompletionTimeoutMs?: number
   },
 ) {
+  // Native print dialogs can occasionally fail to emit every completion signal.
+  // Keep the completed sale recoverable without shortening normal dialog use.
+  const firstPrintCompletionTimeoutMs = options?.firstPrintCompletionTimeoutMs ?? 90_000
   const win = window.open('', '_blank', 'width=420,height=720')
   if (!win) throw new Error('PRINT_WINDOW_BLOCKED')
   let finished = false
   let poll: number | null = null
+  let firstPrintTimeout: number | null = null
+  let completionSignalTimers: number[] = []
   let printRequested = false
-  const finish = () => {
-    if (finished) return
-    finished = true
+
+  const clearCompletionWatchers = () => {
     if (poll !== null) {
       window.clearInterval(poll)
       poll = null
     }
+    if (firstPrintTimeout !== null) {
+      window.clearTimeout(firstPrintTimeout)
+      firstPrintTimeout = null
+    }
+    completionSignalTimers.forEach((timer) => window.clearTimeout(timer))
+    completionSignalTimers = []
+    win.removeEventListener('afterprint', handleAfterPrint)
+    win.removeEventListener('focus', handlePreviewFocus)
+  }
+
+  const finish = () => {
+    if (finished) return
+    finished = true
+    clearCompletionWatchers()
     options?.onAfterPrint?.()
   }
+
   const closePreviewAndFinish = () => {
     try {
       if (!win.closed) win.close()
@@ -309,6 +330,7 @@ export function printDesktopReceipt(
     }
     finish()
   }
+
   const continuePrintInSameWindow = () => {
     if (finished) return
     if (!options?.onAfterPrintWithWindow) {
@@ -316,10 +338,7 @@ export function printDesktopReceipt(
       return
     }
     finished = true
-    if (poll !== null) {
-      window.clearInterval(poll)
-      poll = null
-    }
+    clearCompletionWatchers()
     try {
       options.onAfterPrintWithWindow(win)
     } catch (err) {
@@ -329,27 +348,53 @@ export function printDesktopReceipt(
       } catch {
         /* Ignore close failures; POS should still return to its completed state. */
       }
-      options.onAfterPrint?.()
+      options?.onAfterPrint?.()
     }
   }
-  const handlePreviewFocus = () => {
-    if (!printRequested || finished) return
-    window.setTimeout(continuePrintInSameWindow, 120)
+
+  const scheduleCompletion = (delay: number) => {
+    const timer = window.setTimeout(() => {
+      completionSignalTimers = completionSignalTimers.filter((entry) => entry !== timer)
+      continuePrintInSameWindow()
+    }, delay)
+    completionSignalTimers.push(timer)
   }
+  function handleAfterPrint() {
+    scheduleCompletion(80)
+  }
+  function handlePreviewFocus() {
+    if (!printRequested || finished) return
+    scheduleCompletion(120)
+  }
+
   win.document.open()
   win.document.write(receiptHtml(data, lang))
   win.document.close()
-  win.addEventListener('afterprint', () => window.setTimeout(continuePrintInSameWindow, 80), { once: true })
+  win.addEventListener('afterprint', handleAfterPrint, { once: true })
   win.addEventListener('focus', handlePreviewFocus)
   poll = window.setInterval(() => {
-    if (win.closed) {
-      finish()
-    }
+    if (win.closed) finish()
   }, 500)
   win.focus()
   window.setTimeout(() => {
     try {
       printRequested = true
+      firstPrintTimeout = window.setTimeout(() => {
+        if (finished) return
+        finished = true
+        clearCompletionWatchers()
+        try {
+          if (!win.closed) win.close()
+        } catch {
+          /* Ignore close failures; the completed sale must remain recoverable. */
+        }
+        try {
+          options?.onFirstPrintTimeout?.()
+        } catch (err) {
+          console.warn('[desktop-receipt] timeout notification failed', err)
+        }
+        options?.onAfterPrint?.()
+      }, firstPrintCompletionTimeoutMs)
       win.print()
     } catch (err) {
       console.warn('[desktop-receipt] print failed', err)

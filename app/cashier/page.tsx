@@ -1885,13 +1885,22 @@ export default function CashierPage() {
         finishReceiptPrintFlow()
       }
     }
+    const handleFirstPrintTimeout = () => {
+      showToast(kitchenTicket
+        ? '顾客票打印状态无法确认，厨房票未自动打印，请检查打印机。'
+        : '顾客票打印状态无法确认，请检查打印机。')
+    }
     try {
       printDesktopReceipt(receipt, lang, kitchenTicket
         ? {
             onAfterPrint: finishReceiptPrintFlow,
             onAfterPrintWithWindow: printKitchenTicketAfterReceipt,
+            onFirstPrintTimeout: handleFirstPrintTimeout,
           }
-        : { onAfterPrint: finishReceiptPrintFlow },
+        : {
+            onAfterPrint: finishReceiptPrintFlow,
+            onFirstPrintTimeout: handleFirstPrintTimeout,
+          },
       )
     } catch (err) {
       console.warn('[desktop-receipt] print window failed', err)
