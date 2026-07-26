@@ -21,5 +21,5 @@ assert.match(cashier, /kitchenTicket: receipt && isKitchenTicketEnabled/, 'custo
 assert.match(dashboard, /printSettingsTitle/, 'dashboard store settings must expose a print settings section')
 
 for (const [name, source] of [['customer receipt', customerReceipt], ['kitchen ticket', kitchenTicket]]) {
-  assert.match(source, /@media print \{\s*html, body \{\s*width: 80mm;\s*height: auto !important;\s*min-height: 0 !important;\s*overflow: visible !important;/s, `${name} must use content-driven print height`)
+  assert.match(source, /@media print \{\s*html, body \{\s*width: 80mm;\s*height: auto !important;\s*min-height: 0 !important;\s*overflow: visible !important;/, `${name} must use content-driven print height`)
 }

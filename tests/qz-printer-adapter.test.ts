@@ -27,7 +27,7 @@ function makeClient(overrides: Partial<QzClient> = {}): QzClient {
     },
     security: {
       setCertificatePromise: () => {},
-      setSignaturePromise: () => (resolve) => resolve(''),
+      setSignaturePromise: () => (resolve: (value: string) => void) => resolve(''),
     },
   }
   const client = { ...base, ...overrides } as QzClient & { __printCalls: typeof printCalls }
