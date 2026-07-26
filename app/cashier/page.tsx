@@ -16,10 +16,14 @@ import {
   detectQzOnline,
   listQzPrinters,
   printHelloWorldViaQz,
+  printReceiptEscPosBytesViaQz,
   shouldUseQzPrint,
   submitDesktopReceiptPrint,
   type QzStatus,
 } from '@/lib/qzPrinterAdapter'
+import { buildEscPosAsciiTestTicketBase64 } from '@/lib/receipt/escpos-encoder'
+import { buildEscPosReceiptBase64 } from '@/lib/receipt/render-desktop-receipt-escpos'
+import { canvasLineRasterizer } from '@/lib/receipt/rasterize-receipt-line-canvas'
 import {
   clearLegacyGlobalQzConfig,
   readQzPrintEnabled,
@@ -2090,6 +2094,46 @@ export default function CashierPage() {
     }
   }
 
+  // EP-BR-ESCPOS-01: database-free RAW smoke test. It is only visible inside
+  // the existing QZ experiment panel and does not read or change sale state.
+  async function handleQzEscPosAsciiTest() {
+    if (!qzSelectedPrinter) {
+      showToast('请先选择 QZ 打印机')
+      return
+    }
+    try {
+      await printReceiptEscPosBytesViaQz(qzSelectedPrinter, buildEscPosAsciiTestTicketBase64())
+      showToast('ESC/POS ASCII 通道测试已提交到 QZ Tray（实验路径，不影响收银）')
+    } catch (err) {
+      console.warn('[qz-printer] escpos ascii test failed', err)
+      showToast('ESC/POS ASCII 通道测试失败，请检查 QZ Tray 是否运行')
+    }
+  }
+
+  // EP-BR-ESCPOS-01: manual, additive comparison test only. Reuses the same
+  // real receipt snapshot as the HTML print path; never wired into
+  // shouldUseQzPrint/submitDesktopReceiptPrint, so it cannot change the
+  // production auto/manual print route.
+  async function handleQzEscPosRawTest() {
+    if (!qzSelectedPrinter) {
+      showToast('请先选择 QZ 打印机')
+      return
+    }
+    const receipt = saleResult?.receipt
+    if (!receipt) {
+      showToast('请先完成一笔销售，再用真实小票数据测试 ESC/POS RAW')
+      return
+    }
+    try {
+      const base64 = buildEscPosReceiptBase64(receipt, lang, canvasLineRasterizer)
+      await printReceiptEscPosBytesViaQz(qzSelectedPrinter, base64)
+      showToast('ESC/POS RAW 测试已提交到 QZ Tray（实验路径，不影响本单收银）')
+    } catch (err) {
+      console.warn('[qz-printer] escpos raw test failed', err)
+      showToast('ESC/POS RAW 测试打印失败，请检查 QZ Tray 是否运行')
+    }
+  }
+
   function handleCompactModeToggle() {
     const next = !compactMode
     setCompactMode(next)
@@ -4050,7 +4094,33 @@ export default function CashierPage() {
                           <button type="button" style={s.sideMutedBtn} onClick={() => void handleQzHelloWorldTest()} disabled={!qzSelectedPrinter}>
                             {lang === 'en' ? 'Hello World test' : lang === 'km' ? 'សាកល្បង Hello World' : 'Hello World 测试'}
                           </button>
+                          <button
+                            type="button"
+                            style={s.sideMutedBtn}
+                            onClick={() => void handleQzEscPosAsciiTest()}
+                            disabled={!qzSelectedPrinter}
+                            title={lang === 'en'
+                              ? 'Experimental: prints a fixed ASCII-only ESC/POS test ticket without reading any sale data'
+                              : lang === 'km'
+                                ? 'ការសាកល្បង៖ បោះពុម្ពសំបុត្រ ESC/POS អក្សរ ASCII ថេរ ដោយមិនអានទិន្នន័យការលក់'
+                                : '实验：打印固定 ASCII ESC/POS 测试票，不读取任何销售数据'}
+                          >
+                            {lang === 'en' ? 'ESC/POS ASCII channel test' : lang === 'km' ? 'សាកល្បងឆានែល ESC/POS ASCII' : 'ESC/POS ASCII 通道测试'}
+                          </button>
                         </div>
+                        <button
+                          type="button"
+                          style={{ ...s.sideMutedBtn, marginTop: 6 }}
+                          onClick={() => void handleQzEscPosRawTest()}
+                          disabled={!qzSelectedPrinter || !saleResult?.receipt}
+                          title={lang === 'en'
+                            ? 'Experimental: prints the last completed sale receipt as ESC/POS RAW for side-by-side comparison with the HTML print path'
+                            : lang === 'km'
+                              ? 'ការសាកល្បង៖ បោះពុម្ពវិក្កយបត្រចុងក្រោយជា ESC/POS RAW'
+                              : '实验：将最近一笔完成销售的小票以 ESC/POS RAW 打印，供与 HTML 打印对比'}
+                        >
+                          {lang === 'en' ? 'ESC/POS RAW test (experimental)' : lang === 'km' ? 'សាកល្បង ESC/POS RAW (សាកល្បង)' : 'ESC/POS RAW 测试（实验）'}
+                        </button>
                       </div>
                     )}
                   </div>

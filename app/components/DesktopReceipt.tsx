@@ -24,7 +24,7 @@ export type DesktopReceiptData = {
   items: DesktopReceiptItem[]
 }
 
-type ReceiptLabels = {
+export type ReceiptLabels = {
   title: string
   orderNo: string
   time: string
@@ -41,7 +41,7 @@ type ReceiptLabels = {
   previewTitle: string
 }
 
-const LABELS: Record<Lang, ReceiptLabels> = {
+export const LABELS: Record<Lang, ReceiptLabels> = {
   zh: {
     title: '销售小票',
     orderNo: '订单号',
@@ -105,7 +105,7 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#039;')
 }
 
-function formatReceiptTime(iso: string, lang: Lang) {
+export function formatReceiptTime(iso: string, lang: Lang) {
   const locale = lang === 'zh' ? 'zh-CN' : lang === 'km' ? 'km-KH' : 'en-US'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
@@ -118,7 +118,7 @@ function formatReceiptTime(iso: string, lang: Lang) {
   })
 }
 
-function paymentLabel(method: string, lang: Lang) {
+export function paymentLabel(method: string, lang: Lang) {
   const normalized = method.toUpperCase()
   if (normalized === 'KHQR') return 'KHQR'
   if (normalized === 'MEMBER_BALANCE') {

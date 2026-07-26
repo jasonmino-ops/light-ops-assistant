@@ -105,6 +105,30 @@ export async function printReceiptHtmlViaQz(printerName: string, html: string, c
   }])
 }
 
+/**
+ * ESC/POS RAW submission (EP-BR-ESCPOS-01). Separate, additive path
+ * alongside `printReceiptHtmlViaQz` — a manual side-by-side comparison
+ * button only, never wired into `shouldUseQzPrint` / `submitDesktopReceiptPrint`.
+ * Sends pre-built ESC/POS bytes (base64-encoded) as a QZ Tray RAW job, so
+ * the printer's own text engine and cutter handle the command stream
+ * instead of QZ's HTML pixel renderer.
+ */
+export async function printReceiptEscPosBytesViaQz(
+  printerName: string,
+  escPosBase64: string,
+  client?: QzClient,
+): Promise<void> {
+  if (!printerName) throw new Error('QZ_NO_PRINTER_SELECTED')
+  const qz = client ?? (await loadQz())
+  await ensureConnected(qz)
+  const config = qz.configs.create(printerName)
+  await qz.print(config, [{
+    type: 'raw',
+    format: 'base64',
+    data: escPosBase64,
+  }])
+}
+
 export type QzStatus = 'idle' | 'checking' | 'online' | 'offline'
 
 /**
