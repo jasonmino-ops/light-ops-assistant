@@ -64,6 +64,17 @@ assert.ok(
   !handlerBody.includes('finishReceiptPrintFlow'),
   'the experimental handler must not participate in the sale-completion print flow state machine',
 )
+assert.match(handlerBody, /const receipt = saleResult\?\.receipt/, 'the RAW receipt test must reuse the completed-sale receipt snapshot')
+assert.match(
+  handlerBody,
+  /buildEscPosReceiptBase64\(receipt, lang, canvasLineRasterizer\)/,
+  'the RAW receipt test must render the same receipt data with the local line rasterizer',
+)
+assert.match(
+  handlerBody,
+  /printReceiptEscPosBytesViaQz\(qzSelectedPrinter, base64\)/,
+  'the manual RAW receipt test must submit only the rendered snapshot bytes',
+)
 
 // --- The database-free ASCII smoke test must stay outside the business flow ---
 

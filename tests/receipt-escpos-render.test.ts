@@ -109,6 +109,32 @@ function testLongItemNameIsPassedWholeToRasterizerForWrapping() {
   assert.ok(rasterOps.some((text) => text === longName), 'the rasterizer receives the full name and owns wrapping/measurement')
 }
 
+function testLongAsciiItemNameWrapsAsNativeText() {
+  const name = 'Premium dog food for active adult dogs with chicken and rice recipe'
+  const receipt = sampleReceipt({ items: [{ name, qty: 1, price: 8, lineAmount: 8 }] })
+  const plan = buildEscPosReceiptPlan(receipt, 'en')
+  const itemNameLines = plan
+    .filter((op) => op.kind === 'text')
+    .map((op) => (op as { text: string }).text)
+    .filter((text) => name.includes(text) && !text.includes('$'))
+
+  assert.ok(itemNameLines.length > 1, 'a long ASCII item name must use multiple native text lines')
+  assert.equal(itemNameLines.join(''), name, 'native text wrapping must preserve the whole item name')
+  assert.ok(itemNameLines.every((text) => text.length <= ESC_POS_DEFAULT_CHAR_WIDTH))
+  const rasterTexts = plan.filter((op) => op.kind === 'raster').map((op) => (op as { text: string }).text)
+  assert.ok(!rasterTexts.includes(name), 'ASCII item names must not become raster images')
+}
+
+function testItemAmountsStayRightAlignedNativeText() {
+  const receipt = sampleReceipt({ items: [{ name: 'Dog Food', qty: 3, price: 1.25, lineAmount: 3.75 }] })
+  const plan = buildEscPosReceiptPlan(receipt, 'en')
+  const textOps = plan.filter((op) => op.kind === 'text').map((op) => (op as { text: string }).text)
+  const amountLine = textOps.find((text) => text.includes('3 x $1.25') && text.includes('$3.75'))
+  assert.ok(amountLine, 'quantity, unit price, and subtotal must stay in a native text line')
+  assert.equal(amountLine.length, ESC_POS_DEFAULT_CHAR_WIDTH)
+  assert.ok(amountLine.endsWith('$3.75'), 'subtotal must be right-aligned at the end of its text row')
+}
+
 function testChineseAndKhmerLongTextWrapWithoutLossOrOverflow() {
   const measure = (value: string) => Array.from(value).length * 10
   for (const text of [
@@ -208,6 +234,8 @@ function run() {
   testKhmerLabelsUseBitmapFallbackForLabelOnly()
   testMoneyAndQuantityLinesAreAlwaysAsciiText()
   testLongItemNameIsPassedWholeToRasterizerForWrapping()
+  testLongAsciiItemNameWrapsAsNativeText()
+  testItemAmountsStayRightAlignedNativeText()
   testChineseAndKhmerLongTextWrapWithoutLossOrOverflow()
   testRendererWritesEachWrappedBitmapLine()
   testDividerWidthMatchesConfiguredCharWidth()

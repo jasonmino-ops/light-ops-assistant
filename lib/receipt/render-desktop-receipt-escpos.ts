@@ -73,6 +73,27 @@ function leftOp(text: string, bold = false): EscPosLineOp {
 }
 
 /**
+ * Native printer text has a fixed column width, so long ASCII product names
+ * must be split before they reach the device. Prefer a word boundary when it
+ * fits; include the delimiter on the preceding line to preserve the source
+ * text exactly. Non-ASCII names keep going through the measured raster path.
+ */
+function asciiItemNameOps(text: string, charWidth: number): EscPosLineOp[] {
+  if (!isAsciiPrintableLine(text) || text.length <= charWidth) return [leftOp(text)]
+
+  const ops: EscPosLineOp[] = []
+  let remainder = text
+  while (remainder.length > charWidth) {
+    const lastSpace = remainder.lastIndexOf(' ', charWidth - 1)
+    const splitAt = lastSpace > 0 ? lastSpace + 1 : charWidth
+    ops.push({ kind: 'text', align: 'left', text: remainder.slice(0, splitAt) })
+    remainder = remainder.slice(splitAt)
+  }
+  ops.push({ kind: 'text', align: 'left', text: remainder })
+  return ops
+}
+
+/**
  * A "label ... value" row. When both sides are ASCII-safe it becomes one
  * padded text line (fast, crisp printer font). When either side needs a
  * bitmap, keep each side independent: this avoids turning an ASCII order
@@ -111,7 +132,7 @@ export function buildEscPosReceiptPlan(
 
   for (const item of data.items) {
     const name = [item.name, item.spec ? `(${item.spec})` : ''].filter(Boolean).join(' ')
-    ops.push(leftOp(name))
+    ops.push(...asciiItemNameOps(name, charWidth))
     const calc = `${item.qty} x ${formatMoney(item.price, data.currencyCode)}`
     const amount = formatMoney(item.lineAmount, data.currencyCode)
     // qty/price/amount formatting is always plain ASCII (see lib/currency.ts),
