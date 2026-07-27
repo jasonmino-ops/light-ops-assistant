@@ -19,11 +19,12 @@ type ActivationApi = {
   onStateChanged(callback: (state: ActivationState) => void): () => void
 }
 
-declare global {
-  interface Window {
-    eshopDesktopActivation: ActivationApi
-  }
+type ActivationWindow = Window & {
+  eshopDesktopActivation?: ActivationApi
 }
+
+const activationApi = (window as ActivationWindow).eshopDesktopActivation
+if (!activationApi) throw new Error('activation preload bridge unavailable')
 
 const titleByState: Record<string, string> = {
   BOOTING: '正在启动',
@@ -125,28 +126,26 @@ must(form).addEventListener('submit', (event) => {
   event.preventDefault()
   const storeCode = must(storeCodeInput).value
   const pin = must(pinInput).value
-  void invokeAndApply(() => window.eshopDesktopActivation.activate({ storeCode, pin }))
+  void invokeAndApply(() => activationApi.activate({ storeCode, pin }))
 })
 
 must(retryButton).addEventListener('click', () => {
-  void invokeAndApply(() => window.eshopDesktopActivation.retryVerification())
+  void invokeAndApply(() => activationApi.retryVerification())
 })
 
 must(resetButton).addEventListener('click', () => {
   const confirmed = window.confirm('清除本机激活后需要重新输入新的 PIN。确认清除？')
-  if (confirmed) void invokeAndApply(() => window.eshopDesktopActivation.resetLocalActivation())
+  if (confirmed) void invokeAndApply(() => activationApi.resetLocalActivation())
 })
 
 must(quitButton).addEventListener('click', () => {
-  void window.eshopDesktopActivation.quit()
+  void activationApi.quit()
 })
 
-window.eshopDesktopActivation.onStateChanged((state) => applyState(state))
-void invokeAndApply(() => window.eshopDesktopActivation.getState())
+activationApi.onStateChanged((state) => applyState(state))
+void invokeAndApply(() => activationApi.getState())
 
 window.addEventListener('DOMContentLoaded', () => {
   if (currentState?.storeCodeHint) must(pinInput).focus()
   else must(storeCodeInput).focus()
 })
-
-export {}

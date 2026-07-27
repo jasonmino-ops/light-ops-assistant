@@ -123,6 +123,12 @@ jobs:
       - name: Verify activation dist assets
         run: node scripts/verify-activation-assets.mjs dist
 
+      - name: Verify compiled Activation Renderer
+        run: npm run verify:activation:compiled
+
+      - name: Activation Window smoke — dist
+        run: npm run smoke:activation:dist
+
       - name: Static security scans
         run: npx vitest run tests/activation-static-security.test.ts tests/static-security.test.ts
 
@@ -198,6 +204,9 @@ jobs:
 
       - name: Verify packaged activation assets
         run: node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar
+
+      - name: Activation Window smoke — packaged app.asar
+        run: npm run smoke:activation:asar
 
       - name: Verify packaged Provider resource
         shell: pwsh
