@@ -1,26 +1,12 @@
 'use client'
 
 import { useEffect, useState, type CSSProperties } from 'react'
+import Link from 'next/link'
 import { useLocale } from '@/app/components/LangProvider'
-import { apiFetch, OWNER_CTX } from '@/lib/api'
-
-const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
-
-type DesktopActivationPinResult = {
-  pinId: string
-  pin: string
-  expiresAt: string
-}
-
-type StoreIdentity = {
-  id: string
-  code: string
-}
 
 type Props = {
   cashierUrl: string | null
-  storeCode: string | null
-  canManagePin: boolean
+  canManageComputerClient: boolean
   onClose: () => void
 }
 
@@ -51,67 +37,22 @@ async function copyText(value: string): Promise<boolean> {
 
 export default function ComputerConsoleModal({
   cashierUrl,
-  storeCode,
-  canManagePin,
+  canManageComputerClient,
   onClose,
 }: Props) {
   const { t } = useLocale()
-  const [storeId, setStoreId] = useState<string | null>(null)
-  const [storeLoading, setStoreLoading] = useState(canManagePin)
-  const [issuedPin, setIssuedPin] = useState<DesktopActivationPinResult | null>(null)
-  const [busyAction, setBusyAction] = useState<'generate' | 'revoke' | null>(null)
-  const [messageKey, setMessageKey] = useState<string | null>(null)
   const [errorKey, setErrorKey] = useState<string | null>(null)
-  const [copiedKey, setCopiedKey] = useState<'browser' | 'pin' | null>(null)
-
-  useEffect(() => {
-    if (!canManagePin) return
-    let active = true
-    setStoreLoading(true)
-    setStoreId(null)
-    setIssuedPin(null)
-    setMessageKey(null)
-    setCopiedKey(null)
-    setErrorKey(null)
-
-    apiFetch('/api/stores', { cache: 'no-store' }, DEV_OWNER_CTX)
-      .then(async (response) => {
-        if (!response.ok) throw new Error('STORE_LOOKUP_FAILED')
-        const body = await response.json()
-        if (!Array.isArray(body)) throw new Error('STORE_LOOKUP_FAILED')
-        const stores = body.filter((item): item is StoreIdentity => (
-          typeof item?.id === 'string' && typeof item?.code === 'string'
-        ))
-        const currentStore = storeCode
-          ? stores.find((item) => item.code === storeCode)
-          : stores.length === 1 ? stores[0] : null
-        if (!currentStore) throw new Error('STORE_LOOKUP_FAILED')
-        return currentStore.id
-      })
-      .then((id) => {
-        if (active) setStoreId(id)
-      })
-      .catch(() => {
-        if (active) setErrorKey('home.desktopStoreUnavailable')
-      })
-      .finally(() => {
-        if (active) setStoreLoading(false)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [canManagePin, storeCode])
+  const [copiedKey, setCopiedKey] = useState<'browser' | null>(null)
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape' && !busyAction) onClose()
+      if (event.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [busyAction, onClose])
+  }, [onClose])
 
-  async function handleCopy(value: string, key: 'browser' | 'pin') {
+  async function handleCopy(value: string, key: 'browser') {
     setErrorKey(null)
     const copied = await copyText(value)
     if (!copied) {
@@ -122,56 +63,8 @@ export default function ComputerConsoleModal({
     window.setTimeout(() => setCopiedKey((current) => current === key ? null : current), 2000)
   }
 
-  async function generatePin() {
-    if (!storeId || busyAction) return
-    setBusyAction('generate')
-    setErrorKey(null)
-    setMessageKey(null)
-    try {
-      const response = await apiFetch('/api/desktop/activation-pins', {
-        method: 'POST',
-        body: JSON.stringify({ storeId }),
-      }, DEV_OWNER_CTX)
-      const body = await response.json().catch(() => ({}))
-      if (
-        !response.ok ||
-        typeof body.pinId !== 'string' ||
-        typeof body.pin !== 'string' ||
-        typeof body.expiresAt !== 'string'
-      ) {
-        throw new Error(typeof body.error === 'string' ? body.error : 'PIN_GENERATE_FAILED')
-      }
-      setIssuedPin({ pinId: body.pinId, pin: body.pin, expiresAt: body.expiresAt })
-      setCopiedKey(null)
-    } catch {
-      setErrorKey('home.desktopPinGenerateFailed')
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  async function revokePin() {
-    if (!issuedPin || busyAction) return
-    setBusyAction('revoke')
-    setErrorKey(null)
-    setMessageKey(null)
-    try {
-      const response = await apiFetch(`/api/desktop/activation-pins/${issuedPin.pinId}/revoke`, {
-        method: 'POST',
-      }, DEV_OWNER_CTX)
-      if (!response.ok) throw new Error('PIN_REVOKE_FAILED')
-      setIssuedPin(null)
-      setCopiedKey(null)
-      setMessageKey('home.desktopPinRevoked')
-    } catch {
-      setErrorKey('home.desktopPinRevokeFailed')
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
   return (
-    <div style={s.backdrop} role="presentation" onMouseDown={() => { if (!busyAction) onClose() }}>
+    <div style={s.backdrop} role="presentation" onMouseDown={onClose}>
       <section
         role="dialog"
         aria-modal="true"
@@ -189,7 +82,6 @@ export default function ComputerConsoleModal({
             aria-label={t('common.close')}
             style={s.close}
             onClick={onClose}
-            disabled={busyAction !== null}
           >
             ×
           </button>
@@ -236,66 +128,24 @@ export default function ComputerConsoleModal({
           </div>
         </div>
 
-        {canManagePin && (
+        {canManageComputerClient && (
           <div style={s.section}>
             <div style={s.sectionHeading}>
               <span style={s.sectionIcon}>🖥️</span>
               <div>
-                <div style={s.sectionTitle}>{t('home.desktopClientTitle')}</div>
-                <div style={s.sectionDesc}>{t('home.desktopClientDesc')}</div>
+                <div style={s.sectionTitle}>{t('home.computerClientTitle')}</div>
+                <div style={s.sectionDesc}>{t('home.computerClientDesc')}</div>
               </div>
             </div>
-
-            {issuedPin ? (
-              <>
-                <div style={s.pinPanel}>
-                  <div style={s.pinLabel}>{t('home.desktopPinLabel')}</div>
-                  <div style={s.pinValue}>{issuedPin.pin}</div>
-                  <div style={s.pinExpiry}>
-                    {t('home.desktopPinExpires')} {new Date(issuedPin.expiresAt).toLocaleString()}
-                  </div>
-                </div>
-                <div style={s.warning}>{t('home.desktopPinOneTimeHint')}</div>
-                <div style={s.actions}>
-                  <button
-                    type="button"
-                    style={s.dangerBtn}
-                    onClick={revokePin}
-                    disabled={busyAction !== null}
-                  >
-                    {busyAction === 'revoke' ? t('home.revokingDesktopPin') : t('home.revokeDesktopPin')}
-                  </button>
-                  <button
-                    type="button"
-                    style={s.primaryBtn}
-                    onClick={() => handleCopy(issuedPin.pin, 'pin')}
-                    disabled={busyAction !== null}
-                  >
-                    {copiedKey === 'pin' ? t('home.copied') : t('home.copyDesktopPin')}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={s.warning}>{t('home.desktopPinReplaceHint')}</div>
-                <button
-                  type="button"
-                  style={{ ...s.primaryBtn, width: '100%' }}
-                  onClick={generatePin}
-                  disabled={storeLoading || !storeId || busyAction !== null}
-                >
-                  {storeLoading
-                    ? t('home.desktopStoreLoading')
-                    : busyAction === 'generate'
-                      ? t('home.generatingDesktopPin')
-                      : t('home.generateDesktopPin')}
-                </button>
-              </>
-            )}
+            <Link
+              href="/home/computer-client"
+              style={{ ...s.primaryBtn, display: 'block', textAlign: 'center', textDecoration: 'none' }}
+            >
+              {t('home.manageComputers')}
+            </Link>
           </div>
         )}
 
-        {messageKey && <div style={s.success}>{t(messageKey)}</div>}
         {errorKey && <div style={s.error}>{t(errorKey)}</div>}
       </section>
     </div>
@@ -436,41 +286,9 @@ const s: Record<string, CSSProperties> = {
     fontWeight: 900,
     cursor: 'pointer',
   },
-  dangerBtn: {
-    flex: 1,
-    border: '1px solid #fecaca',
-    borderRadius: 12,
-    background: '#fff1f2',
-    color: '#be123c',
-    padding: '10px 12px',
-    fontFamily: 'inherit',
-    fontSize: 12,
-    fontWeight: 900,
-    cursor: 'pointer',
-  },
   disabledBtn: {
     cursor: 'not-allowed',
     opacity: 0.5,
-  },
-  warning: {
-    borderRadius: 10,
-    background: '#fffbeb',
-    border: '1px solid #fde68a',
-    color: '#92400e',
-    padding: '8px 10px',
-    fontSize: 11,
-    lineHeight: 1.5,
-    margin: '9px 0',
-  },
-  success: {
-    borderRadius: 10,
-    background: '#f0fdf4',
-    border: '1px solid #bbf7d0',
-    color: '#15803d',
-    padding: '9px 10px',
-    fontSize: 12,
-    fontWeight: 700,
-    marginTop: 10,
   },
   error: {
     borderRadius: 10,
@@ -481,33 +299,5 @@ const s: Record<string, CSSProperties> = {
     fontSize: 12,
     fontWeight: 700,
     marginTop: 10,
-  },
-  pinPanel: {
-    borderRadius: 14,
-    background: '#f5f3ff',
-    border: '1px solid #ddd6fe',
-    padding: '12px',
-    textAlign: 'center',
-  },
-  pinLabel: {
-    color: '#6d28d9',
-    fontSize: 10,
-    fontWeight: 800,
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-  },
-  pinValue: {
-    color: '#3b0764',
-    fontSize: 30,
-    fontWeight: 950,
-    letterSpacing: '0.18em',
-    lineHeight: 1.3,
-    margin: '3px 0',
-    paddingLeft: '0.18em',
-  },
-  pinExpiry: {
-    color: '#7c3aed',
-    fontSize: 10,
-    lineHeight: 1.4,
   },
 }

@@ -9,6 +9,7 @@ import { buildComputerConsoleCashierUrl } from '../app/home/computer-console-url
 
 const home = fs.readFileSync('app/home/page.tsx', 'utf8')
 const modal = fs.readFileSync('app/home/ComputerConsoleModal.tsx', 'utf8')
+const computerClientPage = fs.readFileSync('app/home/computer-client/page.tsx', 'utf8')
 const zh = fs.readFileSync('lib/i18n/zh.ts', 'utf8')
 const en = fs.readFileSync('lib/i18n/en.ts', 'utf8')
 const km = fs.readFileSync('lib/i18n/km.ts', 'utf8')
@@ -27,8 +28,7 @@ assert.notEqual(parsedCashierUrl.pathname, '/desktop', 'cashier URL must not use
 
 const unavailableMarkup = renderToStaticMarkup(createElement(ComputerConsoleModal, {
   cashierUrl: null,
-  storeCode: null,
-  canManagePin: false,
+  canManageComputerClient: false,
   onClose() {},
 }))
 assert.doesNotMatch(unavailableMarkup, /<a\b/, 'missing storeCode must not render an executable cashier link')
@@ -37,40 +37,54 @@ assert.equal((unavailableMarkup.match(/\sdisabled=""/g) ?? []).length, 2, 'missi
 
 const availableMarkup = renderToStaticMarkup(createElement(ComputerConsoleModal, {
   cashierUrl: sampleCashierUrl,
-  storeCode: 'STORE-A',
-  canManagePin: false,
+  canManageComputerClient: false,
   onClose() {},
 }))
 assert.match(availableMarkup, /href="[^"]*\/cashier\?storeCode=STORE-A&amp;lang=zh"/, 'valid storeCode should render the formal cashier link')
 assert.equal((availableMarkup.match(/\sdisabled=""/g) ?? []).length, 0, 'valid storeCode should enable both browser actions')
 
+const ownerMarkup = renderToStaticMarkup(createElement(ComputerConsoleModal, {
+  cashierUrl: sampleCashierUrl,
+  canManageComputerClient: true,
+  onClose() {},
+}))
+assert.match(ownerMarkup, /href="\/home\/computer-client"/, 'real owners should see the computer client management entry')
+assert.doesNotMatch(availableMarkup, /href="\/home\/computer-client"/, 'staff should not see the computer client management entry')
+
 assert.match(home, /<ComputerConsoleModal/, 'home should expose the computer console as a lightweight modal')
 assert.match(home, /const cashierUrl = buildComputerConsoleCashierUrl\(storeCode, lang\)/, 'home should only build the cashier URL through the guarded helper')
 assert.match(home, /cashierUrl=\{cashierUrl\}/, 'home should pass the final cashier URL into the modal')
+assert.match(home, /canManageComputerClient=\{realRole === 'OWNER'\}/, 'computer client management should follow real owner identity')
 assert.match(modal, /disabled=\{!cashierUrl\}/, 'copy must be disabled until the current store is ready')
 assert.match(modal, /if \(cashierUrl\) void handleCopy\(cashierUrl,\s*'browser'\)/, 'copy must guard the final cashier URL')
 assert.match(modal, /\{cashierUrl \? \([\s\S]*href=\{cashierUrl\}[\s\S]*\) : \([\s\S]*<button[\s\S]*disabled/, 'open must render as a disabled button until the current store is ready')
 assert.match(modal, /href=\{cashierUrl\}[\s\S]*target="_blank"[\s\S]*rel="noopener noreferrer"/, 'browser POS open should use the same final cashier URL')
 assert.doesNotMatch(modal, /desktopPath|desktopUrl/, 'the modal should not retain ambiguous legacy desktop URL names')
 
-assert.match(modal, /apiFetch\('\/api\/stores'/, 'the modal should resolve the current store through the existing stores API')
-assert.match(modal, /apiFetch\('\/api\/desktop\/activation-pins'/, 'PIN generation should reuse the existing merchant activation API')
-assert.match(modal, /apiFetch\(`\/api\/desktop\/activation-pins\/\$\{issuedPin\.pinId\}\/revoke`/, 'PIN revocation should reuse the existing revoke API')
-assert.match(modal, /handleCopy\(issuedPin\.pin,\s*'pin'\)/, 'PIN copy must be an explicit user action')
-assert.doesNotMatch(modal, /localStorage|sessionStorage/, 'activation PINs must not be persisted in browser storage')
-assert.doesNotMatch(modal, /searchParams\.(?:set|append)\([^)]*pin/i, 'activation PINs must not be placed in the URL')
+assert.doesNotMatch(modal, /apiFetch|\/api\/stores|\/api\/desktop\/activation-pins/, 'the product shell must not request merchant PIN APIs')
+assert.doesNotMatch(modal, /issuedPin|generatePin|revokePin|copyDesktopPin|generateDesktopPin/, 'the product shell must not retain merchant PIN state or actions')
+assert.match(computerClientPage, /realRole !== 'OWNER'[\s\S]*router\.replace\('\/home'\)/, 'the placeholder page should redirect non-owners')
+assert.match(computerClientPage, /computerClientCloudUnavailable/, 'the placeholder page should state that cloud approval is unavailable')
+assert.doesNotMatch(computerClientPage, /mock|待审批数量|approve|reject|批准|拒绝/i, 'the placeholder page must not expose fake approval data or actions')
 
 for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) {
   for (const key of [
     'computerConsoleTitle',
     'browserCashierTitle',
-    'desktopClientTitle',
-    'generateDesktopPin',
-    'copyDesktopPin',
-    'revokeDesktopPin',
+    'computerClientTitle',
+    'computerClientDesc',
+    'manageComputers',
+    'computerClientManagementTitle',
+    'computerClientManagementDesc',
+    'computerClientCloudUnavailable',
   ]) {
     assert.match(source, new RegExp(`\\b${key}:`), `${language} should translate ${key}`)
   }
+  assert.doesNotMatch(
+    source,
+    /\b(?:desktopClientTitle|desktopClientDesc|desktopPin\w*|copyDesktopPin|revokeDesktopPin|generateDesktopPin|generatingDesktopPin):/,
+    `${language} should not retain the merchant PIN product copy`,
+  )
 }
 
 console.log('computer console static tests passed')

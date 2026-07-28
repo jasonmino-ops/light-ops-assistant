@@ -500,8 +500,7 @@ export default function HomePage() {
       {computerConsoleOpen && (
         <ComputerConsoleModal
           cashierUrl={cashierUrl}
-          storeCode={storeCode}
-          canManagePin={realRole === 'OWNER'}
+          canManageComputerClient={realRole === 'OWNER'}
           onClose={() => setComputerConsoleOpen(false)}
         />
       )}
