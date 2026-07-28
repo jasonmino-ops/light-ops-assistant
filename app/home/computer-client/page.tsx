@@ -1,19 +1,95 @@
 'use client'
 
-import { useEffect, type CSSProperties } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+
+type PendingRequest = {
+  requestId: string
+  computerName: string
+  agentVersion: string | null
+  osVersion: string | null
+  status: string
+  requestedAt: string
+}
+
+function formatTime(iso: string) {
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
 
 export default function ComputerClientPage() {
   const router = useRouter()
   const { t } = useLocale()
   const { effectiveRole } = useWorkMode()
 
+  const [requests, setRequests] = useState<PendingRequest[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setLoadFailed(false)
+    try {
+      const res = await apiFetch('/api/computer-client/requests', { cache: 'no-store' })
+      if (!res.ok) throw new Error('LOAD_FAILED')
+      const data = await res.json()
+      setRequests(Array.isArray(data.requests) ? data.requests : [])
+    } catch {
+      setLoadFailed(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (effectiveRole !== 'OWNER') router.replace('/home')
   }, [effectiveRole, router])
+
+  useEffect(() => {
+    if (effectiveRole === 'OWNER') void load()
+  }, [effectiveRole, load])
+
+  const decide = useCallback(
+    async (requestId: string, action: 'approve' | 'reject') => {
+      if (action === 'reject' && !window.confirm(t('home.computerClientConfirmReject'))) return
+      setBusyId(requestId)
+      setNotice(null)
+      try {
+        const res = await apiFetch(`/api/computer-client/requests/${requestId}/${action}`, {
+          method: 'POST',
+        })
+        if (res.ok) {
+          setRequests((list) => list.filter((item) => item.requestId !== requestId))
+          setNotice({
+            kind: 'ok',
+            text: t(
+              action === 'approve' ? 'home.computerClientApproved' : 'home.computerClientRejected',
+            ),
+          })
+          return
+        }
+        // 状态已被其它端改变（超时、已处理）→ 刷新列表，避免界面与云端不一致
+        if (res.status === 409 || res.status === 404) {
+          setNotice({ kind: 'err', text: t('home.computerClientStateChanged') })
+          void load()
+          return
+        }
+        setNotice({ kind: 'err', text: t('home.computerClientActionFailed') })
+      } catch {
+        setNotice({ kind: 'err', text: t('home.computerClientActionFailed') })
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [load, t],
+  )
 
   if (effectiveRole !== 'OWNER') return null
 
@@ -49,16 +125,76 @@ export default function ComputerClientPage() {
             data-computer-request-region="loading-error-list"
             aria-live="polite"
           >
-            {/*
-              Future API boundary: loading and error states, followed by real request cards,
-              render inside this region. Each real card owns the Computer ID, computer name,
-              system version, request time, and decision action area.
-            */}
-            <div style={s.emptyState}>
-              <div style={s.emptyIcon} aria-hidden="true">🖥️</div>
-              <h3 style={s.emptyTitle}>{t('home.computerClientEmptyTitle')}</h3>
-              <p style={s.emptyDescription}>{t('home.computerClientCloudUnavailable')}</p>
-            </div>
+            {notice && (
+              <div style={notice.kind === 'ok' ? s.noticeOk : s.noticeErr}>{notice.text}</div>
+            )}
+
+            {loading ? (
+              <div style={s.emptyState}>
+                <div style={s.emptyIcon} aria-hidden="true">⏳</div>
+                <h3 style={s.emptyTitle}>{t('home.computerClientLoading')}</h3>
+              </div>
+            ) : loadFailed ? (
+              <div style={s.emptyState}>
+                <div style={s.emptyIcon} aria-hidden="true">⚠️</div>
+                <h3 style={s.emptyTitle}>{t('home.computerClientLoadFailed')}</h3>
+                <button type="button" style={s.retryBtn} onClick={() => void load()}>
+                  {t('home.computerClientRetry')}
+                </button>
+              </div>
+            ) : requests.length === 0 ? (
+              <div style={s.emptyState}>
+                <div style={s.emptyIcon} aria-hidden="true">🖥️</div>
+                <h3 style={s.emptyTitle}>{t('home.computerClientEmptyTitle')}</h3>
+                <p style={s.emptyDescription}>{t('home.computerClientEmptyDesc')}</p>
+              </div>
+            ) : (
+              <div style={s.cardList}>
+                {requests.map((item) => (
+                  <div key={item.requestId} style={s.card}>
+                    <div style={s.cardName}>{item.computerName}</div>
+                    <dl style={s.metaList}>
+                      <div style={s.metaRow}>
+                        <dt style={s.metaKey}>{t('home.computerClientRequestedAt')}</dt>
+                        <dd style={s.metaValue}>{formatTime(item.requestedAt)}</dd>
+                      </div>
+                      {item.osVersion && (
+                        <div style={s.metaRow}>
+                          <dt style={s.metaKey}>{t('home.computerClientSystem')}</dt>
+                          <dd style={s.metaValue}>{item.osVersion}</dd>
+                        </div>
+                      )}
+                      {item.agentVersion && (
+                        <div style={s.metaRow}>
+                          <dt style={s.metaKey}>{t('home.computerClientAgentVersion')}</dt>
+                          <dd style={s.metaValue}>{item.agentVersion}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    <div style={s.actionRow}>
+                      <button
+                        type="button"
+                        style={busyId === item.requestId ? s.approveBtnBusy : s.approveBtn}
+                        disabled={busyId !== null}
+                        onClick={() => void decide(item.requestId, 'approve')}
+                      >
+                        {busyId === item.requestId
+                          ? t('home.computerClientApproving')
+                          : t('home.computerClientApprove')}
+                      </button>
+                      <button
+                        type="button"
+                        style={s.rejectBtn}
+                        disabled={busyId !== null}
+                        onClick={() => void decide(item.requestId, 'reject')}
+                      >
+                        {t('home.computerClientReject')}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -197,5 +333,120 @@ const s: Record<string, CSSProperties> = {
     fontSize: 12.5,
     fontWeight: 700,
     lineHeight: 1.65,
+  },
+  noticeOk: {
+    marginBottom: 12,
+    padding: '10px 12px',
+    border: '1px solid #bbf7d0',
+    borderRadius: 12,
+    background: '#f0fdf4',
+    color: '#15803d',
+    fontSize: 12.5,
+    fontWeight: 800,
+    lineHeight: 1.6,
+  },
+  noticeErr: {
+    marginBottom: 12,
+    padding: '10px 12px',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    background: '#fef2f2',
+    color: '#b91c1c',
+    fontSize: 12.5,
+    fontWeight: 800,
+    lineHeight: 1.6,
+  },
+  retryBtn: {
+    marginTop: 14,
+    minHeight: 40,
+    padding: '0 20px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 12,
+    background: 'var(--card)',
+    color: 'var(--text)',
+    fontSize: 13.5,
+    fontWeight: 800,
+    cursor: 'pointer',
+  },
+  cardList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  card: {
+    padding: '14px 14px 13px',
+    border: '1px solid #e2e8f0',
+    borderRadius: 16,
+    background: '#f8fafc',
+  },
+  cardName: {
+    color: 'var(--text)',
+    fontSize: 15.5,
+    fontWeight: 900,
+    lineHeight: 1.35,
+    wordBreak: 'break-word',
+  },
+  metaList: {
+    margin: '10px 0 0',
+  },
+  metaRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: '5px 0',
+  },
+  metaKey: {
+    margin: 0,
+    color: 'var(--muted)',
+    fontSize: 12.5,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+  metaValue: {
+    margin: 0,
+    color: 'var(--text)',
+    fontSize: 12.5,
+    fontWeight: 800,
+    textAlign: 'right',
+    wordBreak: 'break-word',
+  },
+  actionRow: {
+    display: 'flex',
+    gap: 10,
+    marginTop: 13,
+  },
+  approveBtn: {
+    flex: 1,
+    minHeight: 44,
+    border: 'none',
+    borderRadius: 12,
+    background: 'var(--blue)',
+    color: '#fff',
+    fontSize: 14.5,
+    fontWeight: 900,
+    cursor: 'pointer',
+  },
+  approveBtnBusy: {
+    flex: 1,
+    minHeight: 44,
+    border: 'none',
+    borderRadius: 12,
+    background: '#94a3b8',
+    color: '#fff',
+    fontSize: 14.5,
+    fontWeight: 900,
+    cursor: 'default',
+  },
+  rejectBtn: {
+    minHeight: 44,
+    padding: '0 18px',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    background: 'var(--card)',
+    color: '#b91c1c',
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: 'pointer',
   },
 }
