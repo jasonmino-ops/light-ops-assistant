@@ -75,26 +75,52 @@ assert.doesNotMatch(modal, /apiFetch|\/api\/stores|\/api\/desktop\/activation-pi
 assert.doesNotMatch(modal, /issuedPin|generatePin|revokePin|copyDesktopPin|generateDesktopPin/, 'the product shell must not retain merchant PIN state or actions')
 assert.match(computerClientPage, /effectiveRole !== 'OWNER'[\s\S]*router\.replace\('\/home'\)/, 'the management shell should redirect outside owner work mode')
 assert.doesNotMatch(computerClientPage, /realRole/, 'the management shell must not bypass staff work mode through real owner identity')
-assert.match(computerClientPage, /computerClientManagementTitle/, 'the management shell should render its product title')
-assert.match(computerClientPage, /computerClientManagementDesc/, 'the management shell should explain its purpose')
-assert.match(computerClientPage, /computerClientPendingTitle/, 'the management shell should expose the pending-computers section')
-assert.match(computerClientPage, /computerClientEmptyTitle/, 'the management shell should expose the truthful empty state')
-assert.match(computerClientPage, /computerClientCloudUnavailable/, 'the empty state should disclose that cloud approval is unavailable')
+assert.match(computerClientPage, /computerClientManagementTitle/, 'the management page should render its product title')
+assert.match(computerClientPage, /computerClientManagementDesc/, 'the management page should explain its purpose')
+assert.match(computerClientPage, /computerClientPendingTitle/, 'the management page should expose the pending-computers section')
+assert.match(computerClientPage, /computerClientEmptyTitle/, 'the management page should expose the empty state')
 assert.match(
   computerClientPage,
   /data-computer-request-region="loading-error-list"/,
-  'the shell should reserve one stable region for future loading, error, and real request states',
+  'the page should keep one stable region for loading, error, and real request states',
 )
-for (const futureSlot of ['Computer ID', 'computer name', 'system version', 'request time', 'decision action area']) {
-  assert.match(computerClientPage, new RegExp(futureSlot), `the future request region should reserve the ${futureSlot} slot`)
-}
-assert.doesNotMatch(computerClientPage, /apiFetch|fetch\s*\(|\/api\//, 'the UI-only shell must not call an API')
-assert.doesNotMatch(computerClientPage, /localhost|127\.0\.0\.1|iframe/i, 'the UI-only shell must not embed or reference local services')
-assert.doesNotMatch(computerClientPage, /mock|fixture|sample|requests\s*=|requests\.map/i, 'the UI-only shell must not provide fake requests')
-assert.doesNotMatch(computerClientPage, /pendingCount|requestCount|requests\.length|待审批数量/i, 'the UI-only shell must not expose a fake pending count')
-assert.doesNotMatch(computerClientPage, /<button|approve|reject|批准|拒绝/i, 'the UI-only shell must not expose approval actions')
-assert.doesNotMatch(computerClientPage, /\bPIN\b|activation-pins|desktopPin|generateDesktopPin/i, 'the UI-only shell must not retain legacy PIN copy or actions')
-assert.doesNotMatch(computerClientPage, /\/desktop\b|DesktopActivation|desktop activation/i, 'the UI-only shell must not expose the legacy Desktop activation entry')
+
+// ── 真实审批页（云端审批已接通）─────────────────────────────────────────────
+assert.match(
+  computerClientPage,
+  /apiFetch\('\/api\/computer-client\/requests'/,
+  'the approval page must read pending requests from the Computer Client OWNER API',
+)
+assert.match(
+  computerClientPage,
+  /apiFetch\(\s*`\/api\/computer-client\/requests\/\$\{requestId\}\/\$\{action\}`/,
+  'the approval page must call the OWNER approve/reject API',
+)
+assert.match(computerClientPage, /computerClientLoading/, 'the approval page must expose a loading state')
+assert.match(computerClientPage, /computerClientLoadFailed/, 'the approval page must expose an error state')
+assert.match(computerClientPage, /computerClientRetry/, 'the error state must offer a retry action')
+assert.match(computerClientPage, /computerClientEmptyDesc/, 'the empty state must tell the owner what to do next')
+assert.match(computerClientPage, /requests\.map\(/, 'the approval page must render the real request list')
+assert.match(computerClientPage, /computerClientApprove/, 'the approval page must expose an approve action')
+assert.match(computerClientPage, /computerClientReject/, 'the approval page must expose a reject action')
+assert.match(computerClientPage, /computerClientConfirmReject/, 'reject must ask for confirmation')
+assert.match(computerClientPage, /decide\(item\.requestId,\s*'approve'\)/, 'approve must be wired to the request id')
+assert.match(computerClientPage, /decide\(item\.requestId,\s*'reject'\)/, 'reject must be wired to the request id')
+
+// ── 身份与边界 ──────────────────────────────────────────────────────────────
+assert.match(computerClientPage, /effectiveRole !== 'OWNER'[\s\S]*router\.replace\('\/home'\)/, 'the approval page should redirect outside owner work mode')
+assert.doesNotMatch(computerClientPage, /realRole/, 'the approval page must not bypass staff work mode through real owner identity')
+assert.doesNotMatch(
+  computerClientPage,
+  /OWNER_CTX|STAFF_CTX|x-tenant-id|x-role/,
+  'the approval page must not inject development identity headers',
+)
+assert.doesNotMatch(computerClientPage, /computerClientCloudUnavailable/, 'the stale "cloud unavailable" copy must no longer be rendered')
+assert.doesNotMatch(computerClientPage, /localhost|127\.0\.0\.1|iframe/i, 'the approval page must not embed or reference local services')
+assert.doesNotMatch(computerClientPage, /mock|fixture|sampleRequests/i, 'the approval page must not provide fake requests')
+assert.doesNotMatch(computerClientPage, /\bPIN\b|activation-pins|desktopPin|generateDesktopPin/i, 'the approval page must not retain legacy PIN copy or actions')
+assert.doesNotMatch(computerClientPage, /\/desktop\b|DesktopActivation|desktop activation/i, 'the approval page must not expose the legacy Desktop activation entry')
+assert.doesNotMatch(computerClientPage, /tenantId|storeId/, 'the approval page must not surface internal tenant or store identifiers')
 
 for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) {
   for (const key of [
@@ -107,7 +133,21 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
     'computerClientManagementDesc',
     'computerClientPendingTitle',
     'computerClientEmptyTitle',
-    'computerClientCloudUnavailable',
+    'computerClientEmptyDesc',
+    'computerClientLoading',
+    'computerClientLoadFailed',
+    'computerClientRetry',
+    'computerClientApprove',
+    'computerClientReject',
+    'computerClientApproving',
+    'computerClientApproved',
+    'computerClientRejected',
+    'computerClientActionFailed',
+    'computerClientStateChanged',
+    'computerClientRequestedAt',
+    'computerClientAgentVersion',
+    'computerClientSystem',
+    'computerClientConfirmReject',
   ]) {
     assert.match(source, new RegExp(`\\b${key}:`), `${language} should translate ${key}`)
   }
@@ -119,8 +159,8 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
 }
 
 assert.match(zh, /暂无待审批电脑/, 'Chinese should state the truthful empty result')
-assert.match(zh, /云端设备审批尚未启用。启用后，请先在新电脑提交绑定申请，申请会显示在这里。/, 'Chinese should explain the unavailable cloud boundary and next step')
-assert.match(en, /Cloud device approval is not enabled yet\./, 'English should explain the unavailable cloud boundary')
-assert.match(km, /Cloud/, 'Khmer should explain the unavailable cloud boundary')
+assert.match(zh, /请先在新电脑上填写门店码提交绑定申请/, 'Chinese should tell the owner what to do next')
+assert.match(en, /submit a binding request/i, 'English should tell the owner what to do next')
+assert.match(km, /\u1781\u17d2\u1798\u17c2\u179a|\u179f\u17c6\u178e\u17be/, 'Khmer should provide translated approval copy')
 
 console.log('computer console static tests passed')

@@ -30,17 +30,27 @@ export async function POST(req: NextRequest) {
     if (!store || store.status !== 'ACTIVE') return apiError('STORE_NOT_AVAILABLE', 409)
 
     const now = new Date()
-    const alreadyBound = Boolean(binding.boundAt)
 
-    const bound = await prisma.computerBinding.update({
-      where: { id: binding.id },
-      data: {
-        boundAt: binding.boundAt ?? now,
-        lastSeenAt: now,
-      },
+    // 首次确认必须是原子的：只有 boundAt 仍为 NULL 的那一次能写入。
+    // 并发 bind 时其余请求 count === 0，直接幂等返回同一结果，
+    // 既不刷新 boundAt，也不会重复写成功审计。
+    const firstConfirm = await prisma.computerBinding.updateMany({
+      where: { id: binding.id, status: 'APPROVED', boundAt: null },
+      data: { boundAt: now, lastSeenAt: now },
     })
 
-    if (!alreadyBound) {
+    if (firstConfirm.count === 0) {
+      // 已经绑定过（或并发中输给了另一个请求）：只更新最后可见时间，不动 boundAt
+      await prisma.computerBinding.updateMany({
+        where: { id: binding.id, boundAt: { not: null } },
+        data: { lastSeenAt: now },
+      })
+    }
+
+    const bound = await prisma.computerBinding.findUnique({ where: { id: binding.id } })
+    if (!bound || !bound.boundAt) return apiError('INVALID_STATE', 409, { status: bound?.status ?? 'UNKNOWN' })
+
+    if (firstConfirm.count === 1) {
       await writeComputerBindingAudit(prisma, {
         tenantId: bound.tenantId,
         storeId: bound.storeId,

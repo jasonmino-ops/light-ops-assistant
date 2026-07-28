@@ -81,19 +81,29 @@ export async function POST(req: NextRequest) {
       const current = await persistExpiryIfNeeded(existing)
 
       if (current.status === 'PENDING') {
-        // 幂等重提：刷新非安全字段（客户端版本 / 电脑名 / 系统信息），
-        // 不新建申请、不延长 expiresAt、不改 claim 凭证。
-        // deviceSecretHash 仅在 PENDING 期间允许刷新，批准后冻结。
-        const refreshed = await prisma.computerBinding.update({
-          where: { id: current.id },
-          data: { computerName, agentVersion, deviceInfo, deviceSecretHash },
+        // 幂等重提：只在数据库中「仍然是 PENDING」时才允许刷新申请字段与凭证材料。
+        //
+        // 必须用条件更新，不能先读后无条件 update：否则 OWNER 的 approve 若先落库，
+        // 这里较晚到达的重提会把已经激活的 deviceSecretHash 覆盖掉，
+        // 导致已批准的设备凭证被悄悄替换。
+        const refresh = await prisma.computerBinding.updateMany({
+          where: { id: current.id, status: 'PENDING' },
+          data: { computerName, agentVersion, deviceInfo, claimSecretHash, deviceSecretHash },
         })
-        return noStoreJson({ ...serializeRequestState(refreshed), idempotent: true })
+        // 竞态输了（approve/reject/cancel/expire 已经先落库）：
+        // 只回读最终状态，绝不修改任何凭证材料。
+        const latest = await prisma.computerBinding.findUnique({ where: { id: current.id } })
+        if (!latest) return apiError('REQUEST_NOT_FOUND', 404)
+        return noStoreJson({
+          ...serializeRequestState(latest),
+          idempotent: true,
+          ...(refresh.count === 0 ? { credentialsFrozen: true } : {}),
+        })
       }
       if (current.status === 'APPROVED') {
         // 已批准：不再新建申请，也绝不替换凭证材料；
         // Agent 应改用本机 deviceSecret 调 /bind 完成绑定确认。
-        return noStoreJson({ ...serializeRequestState(current), idempotent: true })
+        return noStoreJson({ ...serializeRequestState(current), idempotent: true, credentialsFrozen: true })
       }
 
       // REJECTED / CANCELLED / EXPIRED → 允许重新申请
@@ -103,8 +113,9 @@ export async function POST(req: NextRequest) {
       })
       if (!store) return apiError('STORE_NOT_FOUND', 404)
 
-      const reopened = await prisma.computerBinding.update({
-        where: { id: current.id },
+      // 同样使用条件更新：只有仍处于终止态才允许重新开启并刷新凭证材料
+      const reopen = await prisma.computerBinding.updateMany({
+        where: { id: current.id, status: { in: ['REJECTED', 'CANCELLED', 'EXPIRED'] } },
         data: {
           tenantId: store.tenantId,
           storeId: store.id,
@@ -114,7 +125,7 @@ export async function POST(req: NextRequest) {
           status: 'PENDING',
           requestedAt: new Date(),
           expiresAt: getBindingRequestExpiresAt(),
-          // PENDING 期间允许刷新设备凭证哈希（批准后冻结）
+          claimSecretHash,
           deviceSecretHash,
           credentialStatus: 'PENDING',
           credentialActivatedAt: null,
@@ -124,6 +135,12 @@ export async function POST(req: NextRequest) {
           boundAt: null,
         },
       })
+      const reopened = await prisma.computerBinding.findUnique({ where: { id: current.id } })
+      if (!reopened) return apiError('REQUEST_NOT_FOUND', 404)
+      if (reopen.count === 0) {
+        // 竞态输了：状态已被其它请求改变，不动凭证，直接回读
+        return noStoreJson({ ...serializeRequestState(reopened), idempotent: true, credentialsFrozen: true })
+      }
       await writeComputerBindingAudit(prisma, {
         tenantId: reopened.tenantId,
         storeId: reopened.storeId,

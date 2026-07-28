@@ -451,6 +451,129 @@ test('绑定记录的 store 必须属于同一 tenant（数据库级约束）', 
   )
 })
 
+
+// ── 9. 凭证覆盖竞态（第二次 Gate 阻断项）────────────────────────────────────
+test('approve 后延迟 resubmit 不得覆盖已激活的 deviceSecretHash', async () => {
+  const inst = newInstallation()
+  const body = { storeCode: T1.storeCode, computerName: '竞态机', agentVersion: '0.4.0',
+                 claimSecret: inst.claimSecret, deviceSecret: inst.deviceSecret }
+  const submit = await api('/api/computer-client/bindings', {
+    method: 'POST', headers: { 'x-installation-id': inst.installationId }, body })
+  const id = submit.data.requestId
+
+  // OWNER 先批准
+  assert.equal((await api(`/api/computer-client/requests/${id}/approve`, {
+    method: 'POST', headers: ownerCookie(ownerSession(T1)) })).status, 200)
+  const afterApprove = await prisma.computerBinding.findUnique({ where: { id } })
+
+  // 迟到的重提，带一枚**替换用**的新 deviceSecret
+  const replacement = `ecc_v1_${rnd(32)}`
+  const late = await api('/api/computer-client/bindings', {
+    method: 'POST', headers: { 'x-installation-id': inst.installationId },
+    body: { ...body, deviceSecret: replacement, computerName: '被拒绝的改名' } })
+  assert.equal(late.status, 200)
+  assert.equal(late.data.credentialsFrozen, true, '批准后重提必须标记凭证已冻结')
+
+  const afterLate = await prisma.computerBinding.findUnique({ where: { id } })
+  assert.equal(afterLate.deviceSecretHash, afterApprove.deviceSecretHash, 'deviceSecretHash 不得被覆盖')
+  assert.equal(afterLate.credentialStatus, 'ACTIVE')
+  assert.equal(afterLate.status, 'APPROVED')
+  assert.equal(afterLate.computerName, afterApprove.computerName, '终止态下不得修改申请字段')
+
+  // 原 deviceSecret 仍可 bind
+  const okBind = await api('/api/computer-client/bindings/self/bind', {
+    method: 'POST', headers: agentHeaders(inst.installationId, inst.deviceSecret) })
+  assert.equal(okBind.status, 200, '原 deviceSecret 必须仍然可用')
+
+  // 新提交的替换 deviceSecret 不可 bind
+  const badBind = await api('/api/computer-client/bindings/self/bind', {
+    method: 'POST', headers: agentHeaders(inst.installationId, replacement) })
+  assert.equal(badBind.status, 401, '替换用的 deviceSecret 不得可用')
+})
+
+test('resubmit 获胜时 approve 基于更新后的凭证原子完成', async () => {
+  const inst = newInstallation()
+  const body = { storeCode: T1.storeCode, computerName: '先重提', claimSecret: inst.claimSecret, deviceSecret: inst.deviceSecret }
+  const submit = await api('/api/computer-client/bindings', {
+    method: 'POST', headers: { 'x-installation-id': inst.installationId }, body })
+  const id = submit.data.requestId
+
+  // PENDING 期间重提，换一枚新的 deviceSecret（此时允许）
+  const rotated = `ecc_v1_${rnd(32)}`
+  const again = await api('/api/computer-client/bindings', {
+    method: 'POST', headers: { 'x-installation-id': inst.installationId },
+    body: { ...body, deviceSecret: rotated, computerName: '重提后改名' } })
+  assert.equal(again.data.credentialsFrozen, undefined, 'PENDING 期间重提应允许更新')
+
+  await api(`/api/computer-client/requests/${id}/approve`, {
+    method: 'POST', headers: ownerCookie(ownerSession(T1)) })
+
+  // 批准后应以「更新后的凭证」为准
+  const oldSecretBind = await api('/api/computer-client/bindings/self/bind', {
+    method: 'POST', headers: agentHeaders(inst.installationId, inst.deviceSecret) })
+  assert.equal(oldSecretBind.status, 401, '被替换掉的旧 deviceSecret 不应可用')
+  const newSecretBind = await api('/api/computer-client/bindings/self/bind', {
+    method: 'POST', headers: agentHeaders(inst.installationId, rotated) })
+  assert.equal(newSecretBind.status, 200, '更新后的 deviceSecret 应可用')
+  const row = await prisma.computerBinding.findUnique({ where: { id } })
+  assert.equal(row.computerName, '重提后改名')
+})
+
+test('approve 与 resubmit 真并发：凭证要么全旧要么全新，不出现半更新', async () => {
+  for (let round = 0; round < 5; round++) {
+    const inst = newInstallation()
+    const body = { storeCode: T1.storeCode, computerName: `并发-${round}`, claimSecret: inst.claimSecret, deviceSecret: inst.deviceSecret }
+    const submit = await api('/api/computer-client/bindings', {
+      method: 'POST', headers: { 'x-installation-id': inst.installationId }, body })
+    const id = submit.data.requestId
+    const rotated = `ecc_v1_${rnd(32)}`
+
+    await Promise.all([
+      api(`/api/computer-client/requests/${id}/approve`, { method: 'POST', headers: ownerCookie(ownerSession(T1)) }),
+      api('/api/computer-client/bindings', {
+        method: 'POST', headers: { 'x-installation-id': inst.installationId },
+        body: { ...body, deviceSecret: rotated } }),
+    ])
+
+    const row = await prisma.computerBinding.findUnique({ where: { id } })
+    if (row.status !== 'APPROVED') continue
+    // 已批准：能 bind 的那枚 secret 必须与库里的哈希一致，且只有一枚可用
+    const withOld = await api('/api/computer-client/bindings/self/bind', {
+      method: 'POST', headers: agentHeaders(inst.installationId, inst.deviceSecret) })
+    const withNew = await api('/api/computer-client/bindings/self/bind', {
+      method: 'POST', headers: agentHeaders(inst.installationId, rotated) })
+    const usable = [withOld.status, withNew.status].filter((x) => x === 200).length
+    assert.equal(usable, 1, `第 ${round} 轮：应恰好一枚 deviceSecret 可用，实际 ${usable}`)
+  }
+})
+
+// ── 10. 并发 bind ───────────────────────────────────────────────────────────
+test('并发 bind：boundAt 不刷新，成功审计只有一条', async () => {
+  const inst = newInstallation()
+  const submit = await api('/api/computer-client/bindings', {
+    method: 'POST', headers: { 'x-installation-id': inst.installationId },
+    body: { storeCode: T1.storeCode, computerName: '并发绑定', claimSecret: inst.claimSecret, deviceSecret: inst.deviceSecret } })
+  const id = submit.data.requestId
+  await api(`/api/computer-client/requests/${id}/approve`, {
+    method: 'POST', headers: ownerCookie(ownerSession(T1)) })
+
+  const h = agentHeaders(inst.installationId, inst.deviceSecret)
+  const results = await Promise.all([
+    api('/api/computer-client/bindings/self/bind', { method: 'POST', headers: h }),
+    api('/api/computer-client/bindings/self/bind', { method: 'POST', headers: h }),
+    api('/api/computer-client/bindings/self/bind', { method: 'POST', headers: h }),
+    api('/api/computer-client/bindings/self/bind', { method: 'POST', headers: h }),
+  ])
+  const ok = results.filter((r) => r.status === 200)
+  assert.equal(ok.length, 4, '并发 bind 应全部幂等成功')
+  const boundAts = new Set(ok.map((r) => r.data.boundAt))
+  assert.equal(boundAts.size, 1, `boundAt 必须唯一，实际 ${[...boundAts].join(',')}`)
+
+  const audits = await prisma.computerBindingAudit.count({
+    where: { bindingId: id, eventType: 'COMPUTER_BINDING_CONFIRMED' } })
+  assert.equal(audits, 1, `成功确认审计只能一条，实际 ${audits}`)
+})
+
 test.after(async () => {
   await prisma.$disconnect()
   await pool.end()
