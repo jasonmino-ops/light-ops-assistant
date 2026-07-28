@@ -63,9 +63,28 @@ assert.doesNotMatch(modal, /desktopPath|desktopUrl/, 'the modal should not retai
 
 assert.doesNotMatch(modal, /apiFetch|\/api\/stores|\/api\/desktop\/activation-pins/, 'the product shell must not request merchant PIN APIs')
 assert.doesNotMatch(modal, /issuedPin|generatePin|revokePin|copyDesktopPin|generateDesktopPin/, 'the product shell must not retain merchant PIN state or actions')
-assert.match(computerClientPage, /realRole !== 'OWNER'[\s\S]*router\.replace\('\/home'\)/, 'the placeholder page should redirect non-owners')
-assert.match(computerClientPage, /computerClientCloudUnavailable/, 'the placeholder page should state that cloud approval is unavailable')
-assert.doesNotMatch(computerClientPage, /mock|待审批数量|approve|reject|批准|拒绝/i, 'the placeholder page must not expose fake approval data or actions')
+assert.match(computerClientPage, /realRole !== 'OWNER'[\s\S]*router\.replace\('\/home'\)/, 'the management shell should redirect non-owners')
+assert.doesNotMatch(computerClientPage, /effectiveRole/, 'owner access must continue to follow real identity in staff work mode')
+assert.match(computerClientPage, /computerClientManagementTitle/, 'the management shell should render its product title')
+assert.match(computerClientPage, /computerClientManagementDesc/, 'the management shell should explain its purpose')
+assert.match(computerClientPage, /computerClientPendingTitle/, 'the management shell should expose the pending-computers section')
+assert.match(computerClientPage, /computerClientEmptyTitle/, 'the management shell should expose the truthful empty state')
+assert.match(computerClientPage, /computerClientCloudUnavailable/, 'the empty state should disclose that cloud approval is unavailable')
+assert.match(
+  computerClientPage,
+  /data-computer-request-region="loading-error-list"/,
+  'the shell should reserve one stable region for future loading, error, and real request states',
+)
+for (const futureSlot of ['Computer ID', 'computer name', 'system version', 'request time', 'decision action area']) {
+  assert.match(computerClientPage, new RegExp(futureSlot), `the future request region should reserve the ${futureSlot} slot`)
+}
+assert.doesNotMatch(computerClientPage, /apiFetch|fetch\s*\(|\/api\//, 'the UI-only shell must not call an API')
+assert.doesNotMatch(computerClientPage, /localhost|127\.0\.0\.1|iframe/i, 'the UI-only shell must not embed or reference local services')
+assert.doesNotMatch(computerClientPage, /mock|fixture|sample|requests\s*=|requests\.map/i, 'the UI-only shell must not provide fake requests')
+assert.doesNotMatch(computerClientPage, /pendingCount|requestCount|requests\.length|待审批数量/i, 'the UI-only shell must not expose a fake pending count')
+assert.doesNotMatch(computerClientPage, /<button|approve|reject|批准|拒绝/i, 'the UI-only shell must not expose approval actions')
+assert.doesNotMatch(computerClientPage, /\bPIN\b|activation-pins|desktopPin|generateDesktopPin/i, 'the UI-only shell must not retain legacy PIN copy or actions')
+assert.doesNotMatch(computerClientPage, /\/desktop\b|DesktopActivation|desktop activation/i, 'the UI-only shell must not expose the legacy Desktop activation entry')
 
 for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) {
   for (const key of [
@@ -76,6 +95,8 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
     'manageComputers',
     'computerClientManagementTitle',
     'computerClientManagementDesc',
+    'computerClientPendingTitle',
+    'computerClientEmptyTitle',
     'computerClientCloudUnavailable',
   ]) {
     assert.match(source, new RegExp(`\\b${key}:`), `${language} should translate ${key}`)
@@ -86,5 +107,10 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
     `${language} should not retain the merchant PIN product copy`,
   )
 }
+
+assert.match(zh, /暂无待审批电脑/, 'Chinese should state the truthful empty result')
+assert.match(zh, /云端设备审批尚未启用。启用后，请先在新电脑提交绑定申请，申请会显示在这里。/, 'Chinese should explain the unavailable cloud boundary and next step')
+assert.match(en, /Cloud device approval is not enabled yet\./, 'English should explain the unavailable cloud boundary')
+assert.match(km, /Cloud/, 'Khmer should explain the unavailable cloud boundary')
 
 console.log('computer console static tests passed')
