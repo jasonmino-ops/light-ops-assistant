@@ -9,13 +9,13 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 export default function ComputerClientPage() {
   const router = useRouter()
   const { t } = useLocale()
-  const { realRole } = useWorkMode()
+  const { effectiveRole } = useWorkMode()
 
   useEffect(() => {
-    if (realRole !== 'OWNER') router.replace('/home')
-  }, [realRole, router])
+    if (effectiveRole !== 'OWNER') router.replace('/home')
+  }, [effectiveRole, router])
 
-  if (realRole !== 'OWNER') return null
+  if (effectiveRole !== 'OWNER') return null
 
   return (
     <main style={s.page}>

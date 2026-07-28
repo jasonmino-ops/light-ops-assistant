@@ -54,7 +54,17 @@ assert.doesNotMatch(availableMarkup, /href="\/home\/computer-client"/, 'staff sh
 assert.match(home, /<ComputerConsoleModal/, 'home should expose the computer console as a lightweight modal')
 assert.match(home, /const cashierUrl = buildComputerConsoleCashierUrl\(storeCode, lang\)/, 'home should only build the cashier URL through the guarded helper')
 assert.match(home, /cashierUrl=\{cashierUrl\}/, 'home should pass the final cashier URL into the modal')
-assert.match(home, /canManageComputerClient=\{realRole === 'OWNER'\}/, 'computer client management should follow real owner identity')
+assert.match(
+  home,
+  /\{effectiveRole === 'OWNER' && \(\s*<CashierAction[\s\S]*?label=\{t\('home\.cashier'\)\}/,
+  'the computer console quick action should only render in the current owner work mode',
+)
+assert.match(
+  home,
+  /\{effectiveRole === 'OWNER' && computerConsoleOpen && \([\s\S]*?<ComputerConsoleModal/,
+  'an open computer console should close with current owner work-mode access',
+)
+assert.match(home, /canManageComputerClient=\{effectiveRole === 'OWNER'\}/, 'computer client management should follow the current work mode')
 assert.match(modal, /disabled=\{!cashierUrl\}/, 'copy must be disabled until the current store is ready')
 assert.match(modal, /if \(cashierUrl\) void handleCopy\(cashierUrl,\s*'browser'\)/, 'copy must guard the final cashier URL')
 assert.match(modal, /\{cashierUrl \? \([\s\S]*href=\{cashierUrl\}[\s\S]*\) : \([\s\S]*<button[\s\S]*disabled/, 'open must render as a disabled button until the current store is ready')
@@ -63,8 +73,8 @@ assert.doesNotMatch(modal, /desktopPath|desktopUrl/, 'the modal should not retai
 
 assert.doesNotMatch(modal, /apiFetch|\/api\/stores|\/api\/desktop\/activation-pins/, 'the product shell must not request merchant PIN APIs')
 assert.doesNotMatch(modal, /issuedPin|generatePin|revokePin|copyDesktopPin|generateDesktopPin/, 'the product shell must not retain merchant PIN state or actions')
-assert.match(computerClientPage, /realRole !== 'OWNER'[\s\S]*router\.replace\('\/home'\)/, 'the management shell should redirect non-owners')
-assert.doesNotMatch(computerClientPage, /effectiveRole/, 'owner access must continue to follow real identity in staff work mode')
+assert.match(computerClientPage, /effectiveRole !== 'OWNER'[\s\S]*router\.replace\('\/home'\)/, 'the management shell should redirect outside owner work mode')
+assert.doesNotMatch(computerClientPage, /realRole/, 'the management shell must not bypass staff work mode through real owner identity')
 assert.match(computerClientPage, /computerClientManagementTitle/, 'the management shell should render its product title')
 assert.match(computerClientPage, /computerClientManagementDesc/, 'the management shell should explain its purpose')
 assert.match(computerClientPage, /computerClientPendingTitle/, 'the management shell should expose the pending-computers section')

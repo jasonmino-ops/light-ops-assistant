@@ -489,18 +489,20 @@ export default function HomePage() {
         {effectiveRole === 'OWNER' && (
           <ActionBtn href="/members" iconKind="members" label={t('home.members')} subLabel={t('home.quickMembersSub')} color="#13a8a8" />
         )}
-        <CashierAction
-          label={t('home.cashier')}
-          subLabel={t('home.quickCashierSub')}
-          color="#722ed1"
-          onClick={() => setComputerConsoleOpen(true)}
-        />
+        {effectiveRole === 'OWNER' && (
+          <CashierAction
+            label={t('home.cashier')}
+            subLabel={t('home.quickCashierSub')}
+            color="#722ed1"
+            onClick={() => setComputerConsoleOpen(true)}
+          />
+        )}
       </div>
 
-      {computerConsoleOpen && (
+      {effectiveRole === 'OWNER' && computerConsoleOpen && (
         <ComputerConsoleModal
           cashierUrl={cashierUrl}
-          canManageComputerClient={realRole === 'OWNER'}
+          canManageComputerClient={effectiveRole === 'OWNER'}
           onClose={() => setComputerConsoleOpen(false)}
         />
       )}
