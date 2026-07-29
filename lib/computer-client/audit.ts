@@ -70,22 +70,27 @@ export function auditRequestFingerprint(req: NextRequest) {
 }
 
 /** 审计失败绝不影响主流程 */
+/** 必须与业务变更同一事务成功的审计（例如 OWNER 停用电脑）。 */
+export async function createComputerBindingAudit(db: AuditDb, input: ComputerBindingAuditInput) {
+  await db.computerBindingAudit.create({
+    data: {
+      tenantId: input.tenantId,
+      storeId: input.storeId,
+      bindingId: input.bindingId ?? null,
+      actorUserId: input.actorUserId ?? null,
+      eventType: input.eventType,
+      result: input.result,
+      reasonCode: input.reasonCode ?? null,
+      ipHash: input.ipHash ?? null,
+      userAgentHash: input.userAgentHash ?? null,
+      metadata: sanitizeMetadata(input.metadata),
+    },
+  })
+}
+
 export async function writeComputerBindingAudit(db: AuditDb, input: ComputerBindingAuditInput) {
   try {
-    await db.computerBindingAudit.create({
-      data: {
-        tenantId: input.tenantId,
-        storeId: input.storeId,
-        bindingId: input.bindingId ?? null,
-        actorUserId: input.actorUserId ?? null,
-        eventType: input.eventType,
-        result: input.result,
-        reasonCode: input.reasonCode ?? null,
-        ipHash: input.ipHash ?? null,
-        userAgentHash: input.userAgentHash ?? null,
-        metadata: sanitizeMetadata(input.metadata),
-      },
-    })
+    await createComputerBindingAudit(db, input)
   } catch (err) {
     console.error('[computer-client] 审计写入失败', err)
   }

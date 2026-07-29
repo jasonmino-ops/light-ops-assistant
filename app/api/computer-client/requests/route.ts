@@ -2,7 +2,11 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { apiError, noStoreJson, withComputerClientApiError } from '@/lib/computer-client/http'
-import { persistExpiryIfNeeded, serializeOwnerRequest } from '@/lib/computer-client/service'
+import {
+  persistExpiryIfNeeded,
+  serializeManagedComputer,
+  serializeOwnerRequest,
+} from '@/lib/computer-client/service'
 
 /**
  * OWNER 查看本门店待审批电脑（会话鉴权）。
@@ -30,6 +34,33 @@ export async function GET(req: NextRequest) {
       if (settled.status === 'PENDING') alive.push(settled)
     }
 
-    return noStoreJson({ requests: alive.map(serializeOwnerRequest) })
+    const [boundComputers, disabledComputers] = await Promise.all([
+      prisma.computerBinding.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          storeId: ctx.storeId,
+          status: 'APPROVED',
+          boundAt: { not: null },
+          disabledAt: null,
+        },
+        orderBy: { boundAt: 'desc' },
+        take: 100,
+      }),
+      prisma.computerBinding.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          storeId: ctx.storeId,
+          disabledAt: { not: null },
+        },
+        orderBy: { disabledAt: 'desc' },
+        take: 100,
+      }),
+    ])
+
+    return noStoreJson({
+      requests: alive.map(serializeOwnerRequest),
+      boundComputers: boundComputers.map(serializeManagedComputer),
+      disabledComputers: disabledComputers.map(serializeManagedComputer),
+    })
   })
 }

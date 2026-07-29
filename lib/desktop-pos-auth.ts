@@ -18,6 +18,8 @@ export type PosDeviceTokenPayload = {
   storeCode: string
   deviceId: string
   issuedBy: string
+  /** 仅 Agent 一键启动签发；旧 Browser POS token 不含此字段。 */
+  computerBindingId?: string
   iat: number
 }
 
@@ -64,6 +66,10 @@ export function verifyPosDeviceToken(token: string): PosDeviceTokenPayload | nul
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString()) as PosDeviceTokenPayload
     if (payload.v !== TOKEN_VERSION) return null
     if (!payload.tenantId || !payload.storeId || !payload.storeCode || !payload.deviceId) return null
+    if (
+      payload.computerBindingId !== undefined &&
+      (typeof payload.computerBindingId !== 'string' || !payload.computerBindingId)
+    ) return null
     if (!Number.isFinite(payload.iat) || Date.now() - payload.iat > TOKEN_MAX_AGE_MS) return null
     return payload
   } catch {
@@ -82,7 +88,7 @@ export function unauthorizedPosResponse() {
   return NextResponse.json(POS_AUTH_ERROR, { status: 403 })
 }
 
-export function verifyPosDeviceRequest(
+export async function verifyPosDeviceRequest(
   req: NextRequest,
   expected: { tenantId: string; storeId: string; storeCode: string },
 ) {
@@ -97,6 +103,28 @@ export function verifyPosDeviceRequest(
     payload.deviceId !== deviceId
   ) {
     return null
+  }
+
+  // Agent 启动的现有 POS session 必须持续受 Computer Binding 状态约束。
+  // 老的 Browser POS token 没有 computerBindingId，行为完全不变。
+  if (payload.computerBindingId) {
+    const binding = await prisma.computerBinding.findFirst({
+      where: {
+        id: payload.computerBindingId,
+        tenantId: expected.tenantId,
+        storeId: expected.storeId,
+        status: 'APPROVED',
+        boundAt: { not: null },
+        disabledAt: null,
+        credentialStatus: 'ACTIVE',
+        OR: [
+          { credentialExpiresAt: null },
+          { credentialExpiresAt: { gt: new Date() } },
+        ],
+      },
+      select: { id: true },
+    })
+    if (!binding) return null
   }
   return payload
 }
@@ -152,11 +180,24 @@ export async function authorizeDesktopPosRequest(
   expected: DesktopPosStoreScope,
   options?: { allowStoreCodeFallback?: boolean },
 ): Promise<DesktopPosAuthorization | null> {
+  const presentedToken = getPosAuthHeaders(req).token
+  const presentedPayload = presentedToken ? verifyPosDeviceToken(presentedToken) : null
+
+  // 已绑定电脑的 session 一旦停用必须立即失效，即使同一浏览器碰巧还保留
+  // Telegram OWNER/STAFF cookie，也不能用 account fallback 绕过停用状态。
+  if (presentedPayload?.computerBindingId) {
+    const linkedDeviceAuth = await verifyPosDeviceRequest(req, expected)
+    if (!linkedDeviceAuth) return null
+    return authorizationForDevice(expected, linkedDeviceAuth)
+  }
+
   const accountAuth = await authorizeDesktopPosAccount(req, expected)
   if (accountAuth) return accountAuth
 
-  const deviceAuth = verifyPosDeviceRequest(req, expected)
+  const deviceAuth = await verifyPosDeviceRequest(req, expected)
   if (!deviceAuth && (!options?.allowStoreCodeFallback || !hasDesktopPosMarker(req))) return null
+
+  if (deviceAuth) return authorizationForDevice(expected, deviceAuth)
 
   const ownerRole = await prisma.userStoreRole.findFirst({
     where: {
@@ -175,6 +216,30 @@ export async function authorizeDesktopPosRequest(
     storeCode: expected.storeCode,
     operatorUserId: ownerRole.userId,
     role: 'OWNER',
-    source: deviceAuth ? 'DEVICE' : 'STORE_CODE',
+    source: 'STORE_CODE',
+  }
+}
+
+async function authorizationForDevice(
+  expected: DesktopPosStoreScope,
+  _deviceAuth: PosDeviceTokenPayload,
+): Promise<DesktopPosAuthorization | null> {
+  const ownerRole = await prisma.userStoreRole.findFirst({
+    where: {
+      tenantId: expected.tenantId,
+      storeId: expected.storeId,
+      role: 'OWNER',
+      status: 'ACTIVE',
+    },
+    select: { userId: true },
+  })
+  if (!ownerRole) return null
+  return {
+    tenantId: expected.tenantId,
+    storeId: expected.storeId,
+    storeCode: expected.storeCode,
+    operatorUserId: ownerRole.userId,
+    role: 'OWNER',
+    source: 'DEVICE',
   }
 }

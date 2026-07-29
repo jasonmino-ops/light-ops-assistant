@@ -40,6 +40,7 @@ export function isExpiredPending(binding: ComputerBinding, now = new Date()) {
 }
 
 export function effectiveStatus(binding: ComputerBinding, now = new Date()) {
+  if (binding.disabledAt) return 'DISABLED'
   return isExpiredPending(binding, now) ? 'EXPIRED' : binding.status
 }
 
@@ -119,6 +120,9 @@ export async function authenticateAgent(
 
   // 设备通道：批准前不可用，且凭证过期即失效（credentialExpiresAt 真实参与鉴权）
   if (channel === 'device') {
+    if (binding.disabledAt) {
+      return { ok: false, status: 403, error: 'COMPUTER_DISABLED' }
+    }
     if (binding.credentialStatus !== 'ACTIVE') {
       return { ok: false, status: 403, error: 'CREDENTIAL_NOT_ACTIVE' }
     }
@@ -177,6 +181,18 @@ export function serializeOwnerRequest(binding: ComputerBinding) {
     status: binding.status,
     requestedAt: binding.requestedAt.toISOString(),
     expiresAt: binding.expiresAt.toISOString(),
+  }
+}
+
+/** OWNER 已绑定 / 已停用列表项：只含管理页面所需字段。 */
+export function serializeManagedComputer(binding: ComputerBinding) {
+  return {
+    computerId: binding.id,
+    computerName: binding.computerName,
+    agentVersion: binding.agentVersion,
+    boundAt: binding.boundAt?.toISOString() ?? null,
+    disabledAt: binding.disabledAt?.toISOString() ?? null,
+    status: binding.disabledAt ? 'DISABLED' : 'ACTIVE',
   }
 }
 

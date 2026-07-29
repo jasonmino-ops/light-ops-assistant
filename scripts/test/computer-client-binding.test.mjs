@@ -66,6 +66,24 @@ const agentHeaders = (id, secret) => ({
 
 const ownerCookie = (s) => ({ Cookie: `auth-session=${signSession(s)}` })
 
+function signLegacyPosDeviceToken({ tenantId, storeId, storeCode, deviceId, issuedBy }) {
+  const payload = {
+    v: 'pos-device-v1',
+    tenantId,
+    storeId,
+    storeCode,
+    deviceId,
+    issuedBy,
+    iat: Date.now(),
+  }
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url')
+  const sig = crypto
+    .createHmac('sha256', process.env.AUTH_SECRET ?? 'dev-secret-change-in-production')
+    .update(encoded)
+    .digest('base64url')
+  return `${encoded}.${sig}`
+}
+
 // ── 固定测试数据 ────────────────────────────────────────────────────────────
 const T1 = { tenantId: 'cc-t1', storeId: 'cc-s1', storeCode: 'CCTEST1', ownerId: 'cc-owner1', staffId: 'cc-staff1' }
 const T2 = { tenantId: 'cc-t2', storeId: 'cc-s2', storeCode: 'CCTEST2', ownerId: 'cc-owner2' }
@@ -90,11 +108,47 @@ test('准备测试租户与门店', async () => {
       update: { status: 'ACTIVE' },
       create: { id: t.ownerId, tenantId: t.tenantId, username: t.ownerId, displayName: 'Owner', role: 'OWNER', status: 'ACTIVE' },
     })
+    await prisma.userStoreRole.upsert({
+      where: { userId_storeId: { userId: t.ownerId, storeId: t.storeId } },
+      update: { tenantId: t.tenantId, role: 'OWNER', status: 'ACTIVE' },
+      create: {
+        id: `${t.ownerId}-role`,
+        tenantId: t.tenantId,
+        userId: t.ownerId,
+        storeId: t.storeId,
+        role: 'OWNER',
+        status: 'ACTIVE',
+      },
+    })
   }
   await prisma.user.upsert({
     where: { id: T1.staffId },
     update: { status: 'ACTIVE' },
     create: { id: T1.staffId, tenantId: T1.tenantId, username: T1.staffId, displayName: 'Staff', role: 'STAFF', status: 'ACTIVE' },
+  })
+  await prisma.userStoreRole.upsert({
+    where: { userId_storeId: { userId: T1.staffId, storeId: T1.storeId } },
+    update: { tenantId: T1.tenantId, role: 'STAFF', status: 'ACTIVE' },
+    create: {
+      id: `${T1.staffId}-role`,
+      tenantId: T1.tenantId,
+      userId: T1.staffId,
+      storeId: T1.storeId,
+      role: 'STAFF',
+      status: 'ACTIVE',
+    },
+  })
+  await prisma.product.upsert({
+    where: { tenantId_barcode: { tenantId: T1.tenantId, barcode: 'CC-CASH-001' } },
+    update: { status: 'ACTIVE', sellPrice: '1.25' },
+    create: {
+      id: 'cc-product-1',
+      tenantId: T1.tenantId,
+      barcode: 'CC-CASH-001',
+      name: 'Computer Console Test Item',
+      sellPrice: '1.25',
+      status: 'ACTIVE',
+    },
   })
   assert.ok(true)
 })
@@ -395,7 +449,7 @@ test('过期后允许重新申请（复用同一安装实例）', async () => {
 })
 
 // ── 7. 密钥缺失 fail-closed ─────────────────────────────────────────────────
-test('缺少 COMPUTER_CLIENT_TOKEN_SECRET 时 7 个接口全部 fail-closed', async () => {
+test('缺少 COMPUTER_CLIENT_TOKEN_SECRET 时 10 个接口全部 fail-closed', async () => {
   const inst = newInstallation()
   const cases = [
     ['POST', '/api/computer-client/bindings', { 'x-installation-id': inst.installationId }],
@@ -405,12 +459,17 @@ test('缺少 COMPUTER_CLIENT_TOKEN_SECRET 时 7 个接口全部 fail-closed', as
     ['GET', '/api/computer-client/requests', ownerCookie(ownerSession(T1))],
     ['POST', '/api/computer-client/requests/anyid/approve', ownerCookie(ownerSession(T1))],
     ['POST', '/api/computer-client/requests/anyid/reject', ownerCookie(ownerSession(T1))],
+    ['POST', '/api/computer-client/bindings/self/launch-ticket', agentHeaders(inst.installationId, inst.deviceSecret)],
+    ['POST', '/api/computer-client/browser-launch/consume', {}],
+    ['POST', '/api/computer-client/computers/anyid/disable', ownerCookie(ownerSession(T1))],
   ]
   for (const [method, path, headers] of cases) {
     const r = await api(path, {
       method, headers, base: BASE_NOSECRET,
       body: method === 'POST' && path.endsWith('/bindings')
         ? { storeCode: T1.storeCode, computerName: 'x', claimSecret: inst.claimSecret, deviceSecret: inst.deviceSecret }
+        : path.endsWith('/consume')
+          ? { ticket: `ecl_v1_${rnd(32)}`, browserDeviceId: rnd(16) }
         : undefined,
     })
     assert.equal(r.status, 500, `${method} ${path} 应 fail-closed`)
@@ -572,6 +631,268 @@ test('并发 bind：boundAt 不刷新，成功审计只有一条', async () => {
   const audits = await prisma.computerBindingAudit.count({
     where: { bindingId: id, eventType: 'COMPUTER_BINDING_CONFIRMED' } })
   assert.equal(audits, 1, `成功确认审计只能一条，实际 ${audits}`)
+})
+
+// ── 11. Computer Console 管理与 Browser Launch ─────────────────────────────
+async function createBoundComputer(name) {
+  const inst = newInstallation()
+  const submit = await api('/api/computer-client/bindings', {
+    method: 'POST',
+    headers: { 'x-installation-id': inst.installationId },
+    body: {
+      storeCode: T1.storeCode,
+      computerName: name,
+      agentVersion: '0.4.4',
+      claimSecret: inst.claimSecret,
+      deviceSecret: inst.deviceSecret,
+    },
+  })
+  assert.equal(submit.status, 201)
+  assert.equal((await api(`/api/computer-client/requests/${submit.data.requestId}/approve`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T1)),
+  })).status, 200)
+  assert.equal((await api('/api/computer-client/bindings/self/bind', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+  })).status, 200)
+  return { inst, id: submit.data.requestId }
+}
+
+test('OWNER 列表包含真实已绑定电脑字段，不泄露凭证', async () => {
+  const { id } = await createBoundComputer('管理列表电脑')
+  const list = await api('/api/computer-client/requests', {
+    headers: ownerCookie(ownerSession(T1)),
+  })
+  assert.equal(list.status, 200)
+  const item = list.data.boundComputers.find((row) => row.computerId === id)
+  assert.ok(item)
+  assert.equal(item.computerName, '管理列表电脑')
+  assert.equal(item.agentVersion, '0.4.4')
+  assert.equal(item.status, 'ACTIVE')
+  assert.ok(item.boundAt)
+  assert.ok(!/secret|installation/i.test(JSON.stringify(item)))
+})
+
+test('既有 OWNER、STAFF 与 legacy POS token 营业授权保持兼容', async () => {
+  const path = `/api/cashier/orders?storeCode=${T1.storeCode}`
+  assert.equal((await api(path, { headers: ownerCookie(ownerSession(T1)) })).status, 200)
+  assert.equal((await api(path, { headers: ownerCookie(staffSession) })).status, 200)
+
+  const deviceId = `legacy-${rnd(12)}`
+  const token = signLegacyPosDeviceToken({
+    tenantId: T1.tenantId,
+    storeId: T1.storeId,
+    storeCode: T1.storeCode,
+    deviceId,
+    issuedBy: T1.ownerId,
+  })
+  const legacy = await api(path, {
+    headers: {
+      'x-pos-device-id': deviceId,
+      'x-pos-device-token': token,
+    },
+  })
+  assert.equal(legacy.status, 200, '旧 Browser POS token 不含 computerBindingId，行为必须不变')
+})
+
+test('Browser Launch Ticket 一次性兑换，并复用现有 POS device session', async () => {
+  const { inst, id } = await createBoundComputer('一键营业电脑')
+  const launch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+    body: { agentVersion: '0.4.5' },
+  })
+  assert.equal(launch.status, 200)
+  assert.match(launch.data.ticket, /^ecl_v1_[A-Za-z0-9_-]{32,128}$/)
+  assert.ok(new Date(launch.data.expiresAt).getTime() - Date.now() <= 60_000)
+  assert.equal(
+    (await prisma.computerBinding.findUnique({ where: { id } })).agentVersion,
+    '0.4.5',
+    '已绑定 Agent 启动时应刷新自身版本，不需要心跳',
+  )
+
+  const ticketRow = await prisma.computerBrowserLaunchTicket.findFirst({
+    where: { bindingId: id },
+    orderBy: { createdAt: 'desc' },
+  })
+  assert.ok(ticketRow)
+  assert.ok(!JSON.stringify(ticketRow).includes(launch.data.ticket), '票据明文不得入库')
+
+  const browserDeviceId = rnd(18)
+  const consumed = await api('/api/computer-client/browser-launch/consume', {
+    method: 'POST',
+    body: { ticket: launch.data.ticket, browserDeviceId },
+  })
+  assert.equal(consumed.status, 200)
+  assert.equal(consumed.data.storeCode, T1.storeCode)
+  assert.equal(typeof consumed.data.posDeviceToken, 'string')
+  assert.ok(!consumed.data.posDeviceToken.includes(launch.data.ticket))
+
+  const orders = await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
+    headers: {
+      'x-pos-device-id': browserDeviceId,
+      'x-pos-device-token': consumed.data.posDeviceToken,
+    },
+  })
+  assert.equal(orders.status, 200, '兑换后的现有 POS session 应可进入营业 API')
+
+  const cash = await api('/api/cashier/sales', {
+    method: 'POST',
+    headers: {
+      'x-pos-device-id': browserDeviceId,
+      'x-pos-device-token': consumed.data.posDeviceToken,
+    },
+    body: {
+      storeCode: T1.storeCode,
+      items: [{ barcode: 'CC-CASH-001', quantity: 1 }],
+      paymentMethod: 'CASH',
+    },
+  })
+  assert.equal(cash.status, 201, 'Agent 启动后的既有 CASH 主线应正常成交')
+  const sale = await prisma.saleRecord.findFirst({ where: { orderNo: cash.data.orderNo } })
+  const payment = await prisma.paymentIntent.findUnique({ where: { orderNo: cash.data.orderNo } })
+  assert.equal(sale.status, 'COMPLETED')
+  assert.equal(payment.paymentMethod, 'CASH')
+  assert.equal(payment.status, 'PAID')
+
+  const replay = await api('/api/computer-client/browser-launch/consume', {
+    method: 'POST',
+    body: { ticket: launch.data.ticket, browserDeviceId },
+  })
+  assert.equal(replay.status, 409, '同一票据只能兑换一次')
+
+  const used = await prisma.computerBrowserLaunchTicket.findUnique({
+    where: { id: ticketRow.id },
+  })
+  assert.ok(used.usedAt)
+  assert.ok(used.browserDeviceIdHash)
+})
+
+test('过期 Browser Launch Ticket 不能兑换', async () => {
+  const { inst, id } = await createBoundComputer('过期票据电脑')
+  const launch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+  })
+  const row = await prisma.computerBrowserLaunchTicket.findFirst({
+    where: { bindingId: id },
+    orderBy: { createdAt: 'desc' },
+  })
+  await prisma.computerBrowserLaunchTicket.update({
+    where: { id: row.id },
+    data: { expiresAt: new Date(Date.now() - 1_000) },
+  })
+  const consume = await api('/api/computer-client/browser-launch/consume', {
+    method: 'POST',
+    body: { ticket: launch.data.ticket, browserDeviceId: rnd(18) },
+  })
+  assert.equal(consume.status, 409)
+})
+
+test('OWNER 软停用保留历史并即时阻断 Agent 与已签发 POS session', async () => {
+  const { inst, id } = await createBoundComputer('待停用电脑')
+  const launch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+  })
+  const browserDeviceId = rnd(18)
+  const consumed = await api('/api/computer-client/browser-launch/consume', {
+    method: 'POST',
+    body: { ticket: launch.data.ticket, browserDeviceId },
+  })
+  assert.equal(consumed.status, 200)
+
+  const crossTenant = await api(`/api/computer-client/computers/${id}/disable`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T2)),
+  })
+  assert.equal(crossTenant.status, 404)
+  const staff = await api(`/api/computer-client/computers/${id}/disable`, {
+    method: 'POST',
+    headers: ownerCookie(staffSession),
+  })
+  assert.equal(staff.status, 403)
+
+  const disabled = await api(`/api/computer-client/computers/${id}/disable`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T1)),
+  })
+  assert.equal(disabled.status, 200)
+  assert.equal(disabled.data.computer.status, 'DISABLED')
+
+  const row = await prisma.computerBinding.findUnique({ where: { id } })
+  assert.ok(row)
+  assert.ok(row.disabledAt)
+  assert.equal(row.disabledByUserId, T1.ownerId)
+  assert.equal(row.credentialStatus, 'VOID')
+  assert.equal(row.status, 'APPROVED', '软停用不得删除或篡改审批历史')
+  assert.ok(row.boundAt)
+
+  const duplicate = await api(`/api/computer-client/computers/${id}/disable`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T1)),
+  })
+  assert.equal(duplicate.status, 200)
+  assert.equal(duplicate.data.idempotent, true)
+  assert.equal(await prisma.computerBindingAudit.count({
+    where: { bindingId: id, eventType: 'COMPUTER_BINDING_DISABLED' },
+  }), 1)
+
+  const list = await api('/api/computer-client/requests', {
+    headers: ownerCookie(ownerSession(T1)),
+  })
+  assert.ok(!list.data.boundComputers.some((item) => item.computerId === id))
+  assert.ok(list.data.disabledComputers.some((item) => item.computerId === id))
+
+  const newLaunch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+  })
+  assert.equal(newLaunch.status, 403)
+  assert.equal(newLaunch.data.error, 'COMPUTER_DISABLED')
+
+  const ordersAfterDisable = await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
+    headers: {
+      ...ownerCookie(ownerSession(T1)),
+      'x-pos-device-id': browserDeviceId,
+      'x-pos-device-token': consumed.data.posDeviceToken,
+    },
+  })
+  assert.equal(ordersAfterDisable.status, 403, '停用后不能靠现有 OWNER cookie 绕过绑定状态')
+})
+
+test('停用与兑换竞态不会产生可营业的有效 session', async () => {
+  const { inst, id } = await createBoundComputer('停用兑换竞态')
+  const launch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+  })
+  const browserDeviceId = rnd(18)
+
+  const [disable, consume] = await Promise.all([
+    api(`/api/computer-client/computers/${id}/disable`, {
+      method: 'POST',
+      headers: ownerCookie(ownerSession(T1)),
+    }),
+    api('/api/computer-client/browser-launch/consume', {
+      method: 'POST',
+      body: { ticket: launch.data.ticket, browserDeviceId },
+    }),
+  ])
+  assert.equal(disable.status, 200)
+
+  if (consume.status === 200) {
+    const protectedCall = await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
+      headers: {
+        'x-pos-device-id': browserDeviceId,
+        'x-pos-device-token': consume.data.posDeviceToken,
+      },
+    })
+    assert.equal(protectedCall.status, 403, '竞态中即使兑换先返回，停用后 session 也必须失效')
+  } else {
+    assert.ok([409, 500].includes(consume.status), `非赢家应安全失败，实际 ${consume.status}`)
+  }
 })
 
 test.after(async () => {

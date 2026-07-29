@@ -16,7 +16,17 @@ type PendingRequest = {
   requestedAt: string
 }
 
-function formatTime(iso: string) {
+type ManagedComputer = {
+  computerId: string
+  computerName: string
+  agentVersion: string | null
+  boundAt: string | null
+  disabledAt: string | null
+  status: 'ACTIVE' | 'DISABLED'
+}
+
+function formatTime(iso: string | null) {
+  if (!iso) return '—'
   const d = new Date(iso)
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
@@ -28,6 +38,8 @@ export default function ComputerClientPage() {
   const { effectiveRole } = useWorkMode()
 
   const [requests, setRequests] = useState<PendingRequest[]>([])
+  const [boundComputers, setBoundComputers] = useState<ManagedComputer[]>([])
+  const [disabledComputers, setDisabledComputers] = useState<ManagedComputer[]>([])
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -41,6 +53,8 @@ export default function ComputerClientPage() {
       if (!res.ok) throw new Error('LOAD_FAILED')
       const data = await res.json()
       setRequests(Array.isArray(data.requests) ? data.requests : [])
+      setBoundComputers(Array.isArray(data.boundComputers) ? data.boundComputers : [])
+      setDisabledComputers(Array.isArray(data.disabledComputers) ? data.disabledComputers : [])
     } catch {
       setLoadFailed(true)
     } finally {
@@ -84,6 +98,32 @@ export default function ComputerClientPage() {
         setNotice({ kind: 'err', text: t('home.computerClientActionFailed') })
       } catch {
         setNotice({ kind: 'err', text: t('home.computerClientActionFailed') })
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [load, t],
+  )
+
+  const disableComputer = useCallback(
+    async (computerId: string) => {
+      if (!window.confirm(t('home.computerClientConfirmDisable'))) return
+      setBusyId(computerId)
+      setNotice(null)
+      try {
+        const res = await apiFetch(
+          `/api/computer-client/computers/${computerId}/disable`,
+          { method: 'POST' },
+        )
+        if (!res.ok) {
+          setNotice({ kind: 'err', text: t('home.computerClientDisableFailed') })
+          if (res.status === 404 || res.status === 409) void load()
+          return
+        }
+        setNotice({ kind: 'ok', text: t('home.computerClientDisabled') })
+        await load()
+      } catch {
+        setNotice({ kind: 'err', text: t('home.computerClientDisableFailed') })
       } finally {
         setBusyId(null)
       }
@@ -197,6 +237,112 @@ export default function ComputerClientPage() {
             )}
           </div>
         </section>
+
+        <section style={s.pendingSection} aria-labelledby="bound-computers-title">
+          <div style={s.sectionHeading}>
+            <span style={s.sectionIconActive} aria-hidden="true">✓</span>
+            <h2 id="bound-computers-title" style={s.sectionTitle}>
+              {t('home.computerClientBoundTitle')}
+            </h2>
+          </div>
+          {loading ? (
+            <div style={s.compactEmpty}>{t('home.computerClientLoading')}</div>
+          ) : loadFailed ? (
+            <div style={s.compactEmpty}>{t('home.computerClientLoadFailed')}</div>
+          ) : boundComputers.length === 0 ? (
+            <div style={s.compactEmpty}>{t('home.computerClientBoundEmpty')}</div>
+          ) : (
+            <div style={s.cardList}>
+              {boundComputers.map((item) => (
+                <div key={item.computerId} style={s.card}>
+                  <div style={s.cardHeader}>
+                    <div style={s.cardName}>{item.computerName}</div>
+                    <span style={s.statusActive}>{t('home.computerClientStatusActive')}</span>
+                  </div>
+                  <dl style={s.metaList}>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientComputerId')}</dt>
+                      <dd style={s.metaValue}>{item.computerId}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientAgentVersion')}</dt>
+                      <dd style={s.metaValue}>{item.agentVersion || '—'}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientBoundAt')}</dt>
+                      <dd style={s.metaValue}>{formatTime(item.boundAt)}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientCurrentStatus')}</dt>
+                      <dd style={s.metaValue}>{t('home.computerClientStatusActive')}</dd>
+                    </div>
+                  </dl>
+                  <button
+                    type="button"
+                    style={s.disableBtn}
+                    disabled={busyId !== null}
+                    onClick={() => void disableComputer(item.computerId)}
+                  >
+                    {busyId === item.computerId
+                      ? t('home.computerClientDisabling')
+                      : t('home.computerClientDisable')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section style={s.pendingSection} aria-labelledby="disabled-computers-title">
+          <div style={s.sectionHeading}>
+            <span style={s.sectionIconDisabled} aria-hidden="true">⛔</span>
+            <h2 id="disabled-computers-title" style={s.sectionTitle}>
+              {t('home.computerClientDisabledTitle')}
+            </h2>
+          </div>
+          {loading ? (
+            <div style={s.compactEmpty}>{t('home.computerClientLoading')}</div>
+          ) : loadFailed ? (
+            <div style={s.compactEmpty}>{t('home.computerClientLoadFailed')}</div>
+          ) : disabledComputers.length === 0 ? (
+            <div style={s.compactEmpty}>{t('home.computerClientDisabledEmpty')}</div>
+          ) : (
+            <div style={s.cardList}>
+              {disabledComputers.map((item) => (
+                <div key={item.computerId} style={s.cardDisabled}>
+                  <div style={s.cardHeader}>
+                    <div style={s.cardName}>{item.computerName}</div>
+                    <span style={s.statusDisabled}>
+                      {t('home.computerClientStatusDisabled')}
+                    </span>
+                  </div>
+                  <dl style={s.metaList}>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientComputerId')}</dt>
+                      <dd style={s.metaValue}>{item.computerId}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientAgentVersion')}</dt>
+                      <dd style={s.metaValue}>{item.agentVersion || '—'}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientBoundAt')}</dt>
+                      <dd style={s.metaValue}>{formatTime(item.boundAt)}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientDisabledAt')}</dt>
+                      <dd style={s.metaValue}>{formatTime(item.disabledAt)}</dd>
+                    </div>
+                    <div style={s.metaRow}>
+                      <dt style={s.metaKey}>{t('home.computerClientCurrentStatus')}</dt>
+                      <dd style={s.metaValue}>{t('home.computerClientStatusDisabled')}</dd>
+                    </div>
+                  </dl>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </main>
   )
@@ -280,6 +426,26 @@ const s: Record<string, CSSProperties> = {
     placeItems: 'center',
     borderRadius: 10,
     background: '#fff7ed',
+    fontSize: 16,
+  },
+  sectionIconActive: {
+    width: 32,
+    height: 32,
+    display: 'grid',
+    placeItems: 'center',
+    borderRadius: 10,
+    background: '#dcfce7',
+    color: '#15803d',
+    fontSize: 16,
+    fontWeight: 900,
+  },
+  sectionIconDisabled: {
+    width: 32,
+    height: 32,
+    display: 'grid',
+    placeItems: 'center',
+    borderRadius: 10,
+    background: '#fee2e2',
     fontSize: 16,
   },
   sectionTitle: {
@@ -379,6 +545,18 @@ const s: Record<string, CSSProperties> = {
     borderRadius: 16,
     background: '#f8fafc',
   },
+  cardDisabled: {
+    padding: '14px 14px 13px',
+    border: '1px solid #fecaca',
+    borderRadius: 16,
+    background: '#fff7f7',
+  },
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   cardName: {
     color: 'var(--text)',
     fontSize: 15.5,
@@ -415,6 +593,46 @@ const s: Record<string, CSSProperties> = {
     display: 'flex',
     gap: 10,
     marginTop: 13,
+  },
+  compactEmpty: {
+    padding: '22px 16px',
+    border: '1px dashed #cbd5e1',
+    borderRadius: 14,
+    background: '#f8fafc',
+    color: 'var(--muted)',
+    fontSize: 13,
+    fontWeight: 700,
+    textAlign: 'center',
+  },
+  statusActive: {
+    flex: '0 0 auto',
+    padding: '4px 8px',
+    borderRadius: 999,
+    background: '#dcfce7',
+    color: '#15803d',
+    fontSize: 11,
+    fontWeight: 900,
+  },
+  statusDisabled: {
+    flex: '0 0 auto',
+    padding: '4px 8px',
+    borderRadius: 999,
+    background: '#fee2e2',
+    color: '#b91c1c',
+    fontSize: 11,
+    fontWeight: 900,
+  },
+  disableBtn: {
+    width: '100%',
+    minHeight: 42,
+    marginTop: 13,
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    background: 'var(--card)',
+    color: '#b91c1c',
+    fontSize: 14,
+    fontWeight: 900,
+    cursor: 'pointer',
   },
   approveBtn: {
     flex: 1,

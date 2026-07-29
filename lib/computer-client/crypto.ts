@@ -16,6 +16,8 @@ import crypto from 'crypto'
 export const CLAIM_SECRET_PREFIX = 'ecr_v1_'
 /** 设备通道凭证前缀：批准后确认绑定 */
 export const DEVICE_SECRET_PREFIX = 'ecc_v1_'
+/** 一次性 Browser POS 启动票据前缀。 */
+export const BROWSER_LAUNCH_TICKET_PREFIX = 'ecl_v1_'
 
 export const CLAIM_SECRET_HASH_VERSION = 1
 export const DEVICE_SECRET_HASH_VERSION = 1
@@ -24,6 +26,8 @@ export const DEVICE_SECRET_HASH_VERSION = 1
 export const BINDING_REQUEST_TTL_HOURS = 24
 /** 设备凭证有效期（天）。第一阶段不做轮换，仅作为到期兜底。 */
 export const DEVICE_CREDENTIAL_TTL_DAYS = 365
+/** 启动票据只用于默认浏览器接力，60 秒内未兑换即失效。 */
+export const BROWSER_LAUNCH_TICKET_TTL_SECONDS = 60
 
 export class ComputerClientSecretError extends Error {
   code: 'COMPUTER_CLIENT_SECRET_NOT_CONFIGURED'
@@ -61,6 +65,18 @@ export function hashDeviceSecret(secret: string) {
   return hmacSha256Hex(`computer-client-device-secret:v1:${secret}`)
 }
 
+export function createBrowserLaunchTicket() {
+  return `${BROWSER_LAUNCH_TICKET_PREFIX}${crypto.randomBytes(32).toString('base64url')}`
+}
+
+export function hashBrowserLaunchTicket(ticket: string) {
+  return hmacSha256Hex(`computer-browser-launch-ticket:v1:${ticket}`)
+}
+
+export function hashBrowserDeviceId(deviceId: string) {
+  return hmacSha256Hex(`computer-browser-device-id:v1:${deviceId}`)
+}
+
 /** 审计里出现的 IP / UA 一律哈希后存储 */
 export function hashAuditValue(value: string | null | undefined): string | null {
   const normalized = value?.trim()
@@ -85,6 +101,16 @@ export function isValidDeviceSecretFormat(value: unknown): value is string {
   return isValidSecretFormat(DEVICE_SECRET_PREFIX, value)
 }
 
+export function isValidBrowserLaunchTicketFormat(value: unknown): value is string {
+  return isValidSecretFormat(BROWSER_LAUNCH_TICKET_PREFIX, value)
+}
+
+export function isValidBrowserDeviceId(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  return trimmed.length >= 8 && trimmed.length <= 128 && /^[A-Za-z0-9_-]+$/.test(trimmed)
+}
+
 export function isValidInstallationId(value: unknown): value is string {
   if (typeof value !== 'string') return false
   const trimmed = value.trim()
@@ -105,4 +131,8 @@ export function getBindingRequestExpiresAt(now = new Date()) {
 
 export function getDeviceCredentialExpiresAt(now = new Date()) {
   return new Date(now.getTime() + DEVICE_CREDENTIAL_TTL_DAYS * 24 * 60 * 60 * 1000)
+}
+
+export function getBrowserLaunchTicketExpiresAt(now = new Date()) {
+  return new Date(now.getTime() + BROWSER_LAUNCH_TICKET_TTL_SECONDS * 1000)
 }

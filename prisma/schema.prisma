@@ -281,6 +281,7 @@ model User {
   createdActivationPins    DesktopActivationPin[]    @relation("DesktopActivationPinCreatedByUser")
   desktopActivationAudits  DesktopActivationAudit[]  @relation("DesktopActivationAuditUserActor")
   decidedComputerBindings  ComputerBinding[]         @relation("ComputerBindingDecidedBy")
+  disabledComputerBindings ComputerBinding[]         @relation("ComputerBindingDisabledBy")
   computerBindingAudits    ComputerBindingAudit[]    @relation("ComputerBindingAuditUserActor")
 
   @@unique([tenantId, username])
@@ -1349,6 +1350,8 @@ model ComputerBinding {
   decidedAt       DateTime?
   boundAt         DateTime? // 设备用 deviceSecret 确认绑定的时间
   lastSeenAt      DateTime?
+  disabledByUserId String?
+  disabledAt       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1358,12 +1361,33 @@ model ComputerBinding {
   // 杜绝「绑定记录的门店不属于该租户」这类非法组合。
   store         Store                  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
   decidedByUser User?                  @relation("ComputerBindingDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  disabledByUser User?                 @relation("ComputerBindingDisabledBy", fields: [disabledByUserId], references: [id], onDelete: SetNull)
   audits        ComputerBindingAudit[]
+  browserLaunchTickets ComputerBrowserLaunchTicket[]
 
   @@index([tenantId, storeId, status])
+  @@index([tenantId, storeId, disabledAt])
   @@index([storeId, status, requestedAt])
   @@index([status, expiresAt])
   @@index([decidedByUserId])
+  @@index([disabledByUserId])
+}
+
+// Agent 进入 Browser POS 使用的一次性短票据。
+// 浏览器只提交明文一次；数据库仅保存 HMAC 哈希，兑换后 usedAt 原子落库。
+model ComputerBrowserLaunchTicket {
+  id                  String   @id @default(cuid())
+  bindingId           String
+  ticketHash          String   @unique
+  expiresAt           DateTime
+  usedAt              DateTime?
+  browserDeviceIdHash String?
+  createdAt           DateTime @default(now())
+
+  binding ComputerBinding @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+
+  @@index([bindingId, createdAt])
+  @@index([expiresAt])
 }
 
 model ComputerBindingAudit {

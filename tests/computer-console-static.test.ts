@@ -10,6 +10,26 @@ import { buildComputerConsoleCashierUrl } from '../app/home/computer-console-url
 const home = fs.readFileSync('app/home/page.tsx', 'utf8')
 const modal = fs.readFileSync('app/home/ComputerConsoleModal.tsx', 'utf8')
 const computerClientPage = fs.readFileSync('app/home/computer-client/page.tsx', 'utf8')
+const requestListRoute = fs.readFileSync('app/api/computer-client/requests/route.ts', 'utf8')
+const disableRoute = fs.readFileSync(
+  'app/api/computer-client/computers/[computerId]/disable/route.ts',
+  'utf8',
+)
+const launchTicketRoute = fs.readFileSync(
+  'app/api/computer-client/bindings/self/launch-ticket/route.ts',
+  'utf8',
+)
+const consumeRoute = fs.readFileSync(
+  'app/api/computer-client/browser-launch/consume/route.ts',
+  'utf8',
+)
+const cashierLaunchPage = fs.readFileSync('app/cashier/launch/page.tsx', 'utf8')
+const cashierPage = fs.readFileSync('app/cashier/page.tsx', 'utf8')
+const posAuth = fs.readFileSync('lib/desktop-pos-auth.ts', 'utf8')
+const closeoutMigration = fs.readFileSync(
+  'prisma/migrations/20260730120000_add_computer_console_closeout/migration.sql',
+  'utf8',
+)
 const zh = fs.readFileSync('lib/i18n/zh.ts', 'utf8')
 const en = fs.readFileSync('lib/i18n/en.ts', 'utf8')
 const km = fs.readFileSync('lib/i18n/km.ts', 'utf8')
@@ -107,6 +127,51 @@ assert.match(computerClientPage, /computerClientConfirmReject/, 'reject must ask
 assert.match(computerClientPage, /decide\(item\.requestId,\s*'approve'\)/, 'approve must be wired to the request id')
 assert.match(computerClientPage, /decide\(item\.requestId,\s*'reject'\)/, 'reject must be wired to the request id')
 
+// ── 已绑定 / 已停用管理闭环 ────────────────────────────────────────────────
+assert.match(computerClientPage, /computerClientBoundTitle/, 'the page must expose bound computers')
+assert.match(computerClientPage, /computerClientDisabledTitle/, 'the page must expose disabled computers')
+assert.match(computerClientPage, /boundComputers\.map\(/, 'bound computers must come from the API')
+assert.match(computerClientPage, /disabledComputers\.map\(/, 'disabled computers must come from the API')
+assert.match(computerClientPage, /computerClientComputerId/, 'management cards must show Computer ID')
+assert.match(computerClientPage, /computerClientBoundAt/, 'management cards must show binding time')
+assert.match(computerClientPage, /computerClientCurrentStatus/, 'management cards must show current status')
+assert.match(
+  computerClientPage,
+  /apiFetch\(\s*`\/api\/computer-client\/computers\/\$\{computerId\}\/disable`/,
+  'disable must call the scoped OWNER API',
+)
+assert.doesNotMatch(
+  computerClientPage,
+  /enableComputer|reenable|resumeComputer|重新启用/,
+  'this release must not expose re-enable',
+)
+assert.match(requestListRoute, /tenantId:\s*ctx\.tenantId[\s\S]*storeId:\s*ctx\.storeId/, 'all management lists must be tenant/store scoped')
+assert.match(disableRoute, /ctx\.role !== 'OWNER'/, 'disable must require an OWNER session')
+assert.match(disableRoute, /disabledAt:\s*now/, 'disable must be a soft state change')
+assert.match(disableRoute, /credentialStatus:\s*'VOID'/, 'disable must invalidate the Agent credential')
+assert.match(disableRoute, /COMPUTER_BINDING_DISABLED/, 'disable must preserve an audit event')
+assert.doesNotMatch(disableRoute, /\.delete(?:Many)?\(/, 'disable must never delete the binding')
+assert.doesNotMatch(closeoutMigration, /DROP TABLE|DELETE FROM/i, 'forward migration must not delete business data')
+
+// ── 一次性 Browser Launch Ticket + 现有 POS Session ──────────────────────
+assert.match(launchTicketRoute, /authenticateAgent\(req,\s*'device'\)/, 'launch ticket issuance must use Computer Identity device auth')
+assert.match(launchTicketRoute, /computerBrowserLaunchTicket\.create/, 'the server must persist only a launch-ticket record')
+assert.doesNotMatch(launchTicketRoute, /signPosDeviceToken/, 'the Agent endpoint must not receive a long-lived POS token')
+assert.match(consumeRoute, /usedAt:\s*null[\s\S]*expiresAt:\s*\{\s*gt:\s*now\s*\}/, 'ticket consumption must atomically require unused and unexpired state')
+assert.match(consumeRoute, /TransactionIsolationLevel\.Serializable/, 'consume must serialize against concurrent disable')
+assert.match(consumeRoute, /signPosDeviceToken\(/, 'consume must reuse the existing Browser POS session token')
+assert.match(consumeRoute, /computerBindingId:\s*consumed\.bindingId/, 'the existing POS session must remain linked to binding status')
+assert.doesNotMatch(consumeRoute, /claimSecret|deviceSecret/, 'browser ticket consumption must not accept Agent credentials')
+assert.match(cashierLaunchPage, /window\.history\.replaceState\(null,\s*'',\s*'\/cashier\/launch'\)/, 'the launch page must immediately remove its fragment')
+assert.match(cashierLaunchPage, /window\.location\.replace\('\/cashier'\)/, 'the final URL must be plain /cashier')
+assert.match(cashierLaunchPage, /savePosDeviceToken/, 'the launch page must save the existing POS session format')
+assert.doesNotMatch(cashierLaunchPage, /Telegram|storeCode=.*ticket|posDeviceToken=.*location/i, 'the launch page must not restart Telegram auth or put long tokens in URLs')
+assert.match(cashierPage, /takeComputerLaunchStoreCode\(\)/, 'cashier must accept the one-time same-tab store bootstrap')
+assert.match(cashierPage, /if \(getPosDeviceToken\(cachedStoreCode\)\)[\s\S]*sc = cachedStoreCode/, 'an existing POS session must keep the final URL at plain /cashier')
+assert.match(posAuth, /payload\.computerBindingId/, 'linked POS sessions must carry a binding reference')
+assert.match(posAuth, /disabledAt:\s*null/, 'linked POS sessions must fail after computer disable')
+assert.match(posAuth, /credentialStatus:\s*'ACTIVE'/, 'linked POS sessions must require an active device credential')
+
 // ── 身份与边界 ──────────────────────────────────────────────────────────────
 assert.match(computerClientPage, /effectiveRole !== 'OWNER'[\s\S]*router\.replace\('\/home'\)/, 'the approval page should redirect outside owner work mode')
 assert.doesNotMatch(computerClientPage, /realRole/, 'the approval page must not bypass staff work mode through real owner identity')
@@ -148,6 +213,25 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
     'computerClientAgentVersion',
     'computerClientSystem',
     'computerClientConfirmReject',
+    'computerClientBoundTitle',
+    'computerClientBoundEmpty',
+    'computerClientDisabledTitle',
+    'computerClientDisabledEmpty',
+    'computerClientComputerId',
+    'computerClientBoundAt',
+    'computerClientDisabledAt',
+    'computerClientCurrentStatus',
+    'computerClientStatusActive',
+    'computerClientStatusDisabled',
+    'computerClientDisable',
+    'computerClientDisabling',
+    'computerClientConfirmDisable',
+    'computerClientDisabled',
+    'computerClientDisableFailed',
+    'computerClientLaunchWorking',
+    'computerClientLaunchWorkingDesc',
+    'computerClientLaunchFailed',
+    'computerClientLaunchFailedDesc',
   ]) {
     assert.match(source, new RegExp(`\\b${key}:`), `${language} should translate ${key}`)
   }
