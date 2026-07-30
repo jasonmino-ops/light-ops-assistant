@@ -13,6 +13,7 @@ CREATE TABLE "ComputerBrowserLaunchTicket" (
     "expiresAt" TIMESTAMP(3) NOT NULL,
     "usedAt" TIMESTAMP(3),
     "browserDeviceIdHash" TEXT,
+    "browserPosDeviceId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "ComputerBrowserLaunchTicket_pkey" PRIMARY KEY ("id")

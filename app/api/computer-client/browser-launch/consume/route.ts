@@ -9,7 +9,7 @@ import {
   isValidBrowserDeviceId,
   isValidBrowserLaunchTicketFormat,
 } from '@/lib/computer-client/crypto'
-import { signPosDeviceToken } from '@/lib/desktop-pos-auth'
+import { issuePosDeviceSession } from '@/lib/desktop-pos-auth'
 
 /** 浏览器把 fragment 中的一次性票据兑换为现有 Browser POS device session。 */
 export async function POST(req: NextRequest) {
@@ -59,6 +59,20 @@ export async function POST(req: NextRequest) {
         })
         if (changed.count !== 1) return null
 
+        const browserSession = await issuePosDeviceSession(tx, {
+          tenantId: binding.tenantId,
+          storeId: binding.storeId,
+          storeCode: binding.store.code,
+          browserDeviceId,
+          issuedBy: binding.decidedByUserId ?? 'computer-binding',
+          issuedByUserId: binding.decidedByUserId,
+          displayName: binding.computerName,
+        })
+        await tx.computerBrowserLaunchTicket.update({
+          where: { id: row.id },
+          data: { browserPosDeviceId: browserSession.sessionId },
+        })
+
         await createComputerBindingAudit(tx, {
           tenantId: binding.tenantId,
           storeId: binding.storeId,
@@ -74,7 +88,7 @@ export async function POST(req: NextRequest) {
           tenantId: binding.tenantId,
           storeId: binding.storeId,
           storeCode: binding.store.code,
-          issuedBy: binding.decidedByUserId ?? 'computer-binding',
+          posDeviceToken: browserSession.token,
         }
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -82,15 +96,9 @@ export async function POST(req: NextRequest) {
 
     if (!consumed) return apiError('LAUNCH_TICKET_INVALID_OR_EXPIRED', 409)
 
-    const posDeviceToken = signPosDeviceToken({
-      tenantId: consumed.tenantId,
-      storeId: consumed.storeId,
+    return noStoreJson({
       storeCode: consumed.storeCode,
-      deviceId: browserDeviceId,
-      issuedBy: consumed.issuedBy,
-      computerBindingId: consumed.bindingId,
+      posDeviceToken: consumed.posDeviceToken,
     })
-
-    return noStoreJson({ storeCode: consumed.storeCode, posDeviceToken })
   })
 }

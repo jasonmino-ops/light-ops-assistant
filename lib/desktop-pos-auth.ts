@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { getContext } from '@/lib/context'
 import { prisma } from '@/lib/prisma'
@@ -18,8 +19,8 @@ export type PosDeviceTokenPayload = {
   storeCode: string
   deviceId: string
   issuedBy: string
-  /** 仅 Agent 一键启动签发；旧 Browser POS token 不含此字段。 */
-  computerBindingId?: string
+  /** 仅服务端托管的 Browser POS Session 签发；旧 token 不含此字段。 */
+  browserPosSessionId?: string
   iat: number
 }
 
@@ -56,6 +57,85 @@ export function signPosDeviceToken(input: Omit<PosDeviceTokenPayload, 'v' | 'iat
   return `${encoded}.${signPayload(encoded)}`
 }
 
+export function hashPosDeviceToken(token: string) {
+  return crypto
+    .createHmac('sha256', secret())
+    .update(`browser-pos-device-token:v1:${token}`)
+    .digest('hex')
+}
+
+/** 在既有 BrowserPosDevice 生命周期中创建或替换当前浏览器的 POS Session。 */
+export async function issuePosDeviceSession(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string
+    storeId: string
+    storeCode: string
+    browserDeviceId: string
+    issuedBy: string
+    issuedByUserId: string | null
+    displayName: string
+  },
+) {
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + TOKEN_MAX_AGE_MS)
+  const existing = await tx.browserPosDevice.findFirst({
+    where: {
+      storeId: input.storeId,
+      browserDeviceId: input.browserDeviceId,
+      activeSlot: 'ACTIVE',
+    },
+    select: { id: true },
+  })
+  const sessionId = crypto.randomUUID()
+  const token = signPosDeviceToken({
+    tenantId: input.tenantId,
+    storeId: input.storeId,
+    storeCode: input.storeCode,
+    deviceId: input.browserDeviceId,
+    issuedBy: input.issuedBy,
+    browserPosSessionId: sessionId,
+  })
+  const data = {
+    tenantId: input.tenantId,
+    status: 'ACTIVE' as const,
+    activeSlot: 'ACTIVE',
+    tokenHash: hashPosDeviceToken(token),
+    tokenHashVersion: 1,
+    tokenIssuedAt: now,
+    tokenExpiresAt: expiresAt,
+    scopes: ['BROWSER_POS'],
+    issuedByUserId: input.issuedByUserId,
+    displayName: input.displayName.trim().slice(0, 80) || null,
+    activatedAt: now,
+    lastSeenAt: null,
+    revokedAt: null,
+    revokedByUserId: null,
+    revocationReason: null,
+    legacyMigratedAt: null,
+  }
+  if (existing) {
+    await tx.browserPosDevice.update({
+      where: { id: existing.id },
+      data: {
+        status: 'REVOKED',
+        activeSlot: null,
+        revokedAt: now,
+        revocationReason: 'SESSION_REPLACED',
+      },
+    })
+  }
+  await tx.browserPosDevice.create({
+    data: {
+      id: sessionId,
+      storeId: input.storeId,
+      browserDeviceId: input.browserDeviceId,
+      ...data,
+    },
+  })
+  return { token, sessionId, expiresAt }
+}
+
 export function verifyPosDeviceToken(token: string): PosDeviceTokenPayload | null {
   try {
     const dot = token.lastIndexOf('.')
@@ -66,10 +146,8 @@ export function verifyPosDeviceToken(token: string): PosDeviceTokenPayload | nul
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString()) as PosDeviceTokenPayload
     if (payload.v !== TOKEN_VERSION) return null
     if (!payload.tenantId || !payload.storeId || !payload.storeCode || !payload.deviceId) return null
-    if (
-      payload.computerBindingId !== undefined &&
-      (typeof payload.computerBindingId !== 'string' || !payload.computerBindingId)
-    ) return null
+    if (payload.browserPosSessionId !== undefined &&
+      (typeof payload.browserPosSessionId !== 'string' || !payload.browserPosSessionId)) return null
     if (!Number.isFinite(payload.iat) || Date.now() - payload.iat > TOKEN_MAX_AGE_MS) return null
     return payload
   } catch {
@@ -105,26 +183,23 @@ export async function verifyPosDeviceRequest(
     return null
   }
 
-  // Agent 启动的现有 POS session 必须持续受 Computer Binding 状态约束。
-  // 老的 Browser POS token 没有 computerBindingId，行为完全不变。
-  if (payload.computerBindingId) {
-    const binding = await prisma.computerBinding.findFirst({
+  // Cloud 托管 Session 只校验自己的生命周期，不再读取 Computer Binding。
+  // 老的 Browser POS token 没有 browserPosSessionId，行为完全不变。
+  if (payload.browserPosSessionId) {
+    const session = await prisma.browserPosDevice.findFirst({
       where: {
-        id: payload.computerBindingId,
+        id: payload.browserPosSessionId,
         tenantId: expected.tenantId,
         storeId: expected.storeId,
-        status: 'APPROVED',
-        boundAt: { not: null },
-        disabledAt: null,
-        credentialStatus: 'ACTIVE',
-        OR: [
-          { credentialExpiresAt: null },
-          { credentialExpiresAt: { gt: new Date() } },
-        ],
+        browserDeviceId: deviceId,
+        tokenHash: hashPosDeviceToken(token),
+        status: 'ACTIVE',
+        activeSlot: 'ACTIVE',
+        tokenExpiresAt: { gt: new Date() },
       },
       select: { id: true },
     })
-    if (!binding) return null
+    if (!session) return null
   }
   return payload
 }
@@ -180,17 +255,6 @@ export async function authorizeDesktopPosRequest(
   expected: DesktopPosStoreScope,
   options?: { allowStoreCodeFallback?: boolean },
 ): Promise<DesktopPosAuthorization | null> {
-  const presentedToken = getPosAuthHeaders(req).token
-  const presentedPayload = presentedToken ? verifyPosDeviceToken(presentedToken) : null
-
-  // 已绑定电脑的 session 一旦停用必须立即失效，即使同一浏览器碰巧还保留
-  // Telegram OWNER/STAFF cookie，也不能用 account fallback 绕过停用状态。
-  if (presentedPayload?.computerBindingId) {
-    const linkedDeviceAuth = await verifyPosDeviceRequest(req, expected)
-    if (!linkedDeviceAuth) return null
-    return authorizationForDevice(expected, linkedDeviceAuth)
-  }
-
   const accountAuth = await authorizeDesktopPosAccount(req, expected)
   if (accountAuth) return accountAuth
 

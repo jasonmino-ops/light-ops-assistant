@@ -50,6 +50,40 @@ export async function POST(
       })
       if (changed.count !== 1) return null
 
+      // 电脑停用是 Browser Session 生命周期结束事件。
+      // 仅在此处解除由该电脑创建的 Session；日常营业请求不再读取 Computer Binding。
+      const sessionLinks = await tx.computerBrowserLaunchTicket.findMany({
+        where: {
+          bindingId: current.id,
+          browserPosDeviceId: { not: null },
+        },
+        select: { browserPosDeviceId: true },
+      })
+      const sessionIds = [
+        ...new Set(
+          sessionLinks
+            .map((item) => item.browserPosDeviceId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ]
+      if (sessionIds.length > 0) {
+        await tx.browserPosDevice.updateMany({
+          where: {
+            id: { in: sessionIds },
+            tenantId: ctx.tenantId,
+            storeId: ctx.storeId,
+            status: 'ACTIVE',
+          },
+          data: {
+            status: 'REVOKED',
+            activeSlot: null,
+            revokedAt: now,
+            revokedByUserId: ctx.userId,
+            revocationReason: 'COMPUTER_BINDING_DISABLED',
+          },
+        })
+      }
+
       await createComputerBindingAudit(tx, {
         tenantId: ctx.tenantId,
         storeId: ctx.storeId,

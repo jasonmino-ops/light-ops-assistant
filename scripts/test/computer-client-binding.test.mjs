@@ -84,6 +84,11 @@ function signLegacyPosDeviceToken({ tenantId, storeId, storeCode, deviceId, issu
   return `${encoded}.${sig}`
 }
 
+function decodePosDeviceToken(token) {
+  const encoded = token.slice(0, token.lastIndexOf('.'))
+  return JSON.parse(Buffer.from(encoded, 'base64url').toString())
+}
+
 // ── 固定测试数据 ────────────────────────────────────────────────────────────
 const T1 = { tenantId: 'cc-t1', storeId: 'cc-s1', storeCode: 'CCTEST1', ownerId: 'cc-owner1', staffId: 'cc-staff1' }
 const T2 = { tenantId: 'cc-t2', storeId: 'cc-s2', storeCode: 'CCTEST2', ownerId: 'cc-owner2' }
@@ -693,7 +698,7 @@ test('既有 OWNER、STAFF 与 legacy POS token 营业授权保持兼容', async
       'x-pos-device-token': token,
     },
   })
-  assert.equal(legacy.status, 200, '旧 Browser POS token 不含 computerBindingId，行为必须不变')
+  assert.equal(legacy.status, 200, '旧 Browser POS token 不含托管 Session ID，行为必须不变')
 })
 
 test('Browser Launch Ticket 一次性兑换，并复用现有 POS device session', async () => {
@@ -728,6 +733,15 @@ test('Browser Launch Ticket 一次性兑换，并复用现有 POS device session
   assert.equal(consumed.data.storeCode, T1.storeCode)
   assert.equal(typeof consumed.data.posDeviceToken, 'string')
   assert.ok(!consumed.data.posDeviceToken.includes(launch.data.ticket))
+  const sessionPayload = decodePosDeviceToken(consumed.data.posDeviceToken)
+  assert.equal(typeof sessionPayload.browserPosSessionId, 'string')
+  assert.equal(sessionPayload.computerBindingId, undefined, '营业 Session 不得携带 Computer Binding 身份')
+  const browserSession = await prisma.browserPosDevice.findUnique({
+    where: { id: sessionPayload.browserPosSessionId },
+  })
+  assert.ok(browserSession)
+  assert.equal(browserSession.status, 'ACTIVE')
+  assert.equal(browserSession.browserDeviceId, browserDeviceId)
 
   const orders = await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
     headers: {
@@ -767,6 +781,44 @@ test('Browser Launch Ticket 一次性兑换，并复用现有 POS device session
   })
   assert.ok(used.usedAt)
   assert.ok(used.browserDeviceIdHash)
+  assert.equal(used.browserPosDeviceId, sessionPayload.browserPosSessionId)
+
+  const nextLaunch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+  })
+  const nextConsumed = await api('/api/computer-client/browser-launch/consume', {
+    method: 'POST',
+    body: { ticket: nextLaunch.data.ticket, browserDeviceId },
+  })
+  assert.equal(nextConsumed.status, 200)
+  const nextSessionPayload = decodePosDeviceToken(nextConsumed.data.posDeviceToken)
+  assert.notEqual(nextSessionPayload.browserPosSessionId, sessionPayload.browserPosSessionId)
+  assert.equal(
+    (await prisma.browserPosDevice.findUnique({
+      where: { id: sessionPayload.browserPosSessionId },
+    })).status,
+    'REVOKED',
+    '同一浏览器建立新 Session 后旧 Session 必须结束',
+  )
+  assert.equal(
+    (await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
+      headers: {
+        'x-pos-device-id': browserDeviceId,
+        'x-pos-device-token': consumed.data.posDeviceToken,
+      },
+    })).status,
+    403,
+  )
+  assert.equal(
+    (await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
+      headers: {
+        'x-pos-device-id': browserDeviceId,
+        'x-pos-device-token': nextConsumed.data.posDeviceToken,
+      },
+    })).status,
+    200,
+  )
 })
 
 test('过期 Browser Launch Ticket 不能兑换', async () => {
@@ -802,6 +854,7 @@ test('OWNER 软停用保留历史并即时阻断 Agent 与已签发 POS session'
     body: { ticket: launch.data.ticket, browserDeviceId },
   })
   assert.equal(consumed.status, 200)
+  const sessionPayload = decodePosDeviceToken(consumed.data.posDeviceToken)
 
   const crossTenant = await api(`/api/computer-client/computers/${id}/disable`, {
     method: 'POST',
@@ -838,6 +891,13 @@ test('OWNER 软停用保留历史并即时阻断 Agent 与已签发 POS session'
   assert.equal(await prisma.computerBindingAudit.count({
     where: { bindingId: id, eventType: 'COMPUTER_BINDING_DISABLED' },
   }), 1)
+  const revokedSession = await prisma.browserPosDevice.findUnique({
+    where: { id: sessionPayload.browserPosSessionId },
+  })
+  assert.equal(revokedSession.status, 'REVOKED')
+  assert.equal(revokedSession.activeSlot, null)
+  assert.ok(revokedSession.revokedAt)
+  assert.equal(revokedSession.revokedByUserId, T1.ownerId)
 
   const list = await api('/api/computer-client/requests', {
     headers: ownerCookie(ownerSession(T1)),
@@ -854,12 +914,20 @@ test('OWNER 软停用保留历史并即时阻断 Agent 与已签发 POS session'
 
   const ordersAfterDisable = await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
     headers: {
+      'x-pos-device-id': browserDeviceId,
+      'x-pos-device-token': consumed.data.posDeviceToken,
+    },
+  })
+  assert.equal(ordersAfterDisable.status, 403, '停用后对应 Browser Session 必须失效')
+
+  const independentOwnerSession = await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
+    headers: {
       ...ownerCookie(ownerSession(T1)),
       'x-pos-device-id': browserDeviceId,
       'x-pos-device-token': consumed.data.posDeviceToken,
     },
   })
-  assert.equal(ordersAfterDisable.status, 403, '停用后不能靠现有 OWNER cookie 绕过绑定状态')
+  assert.equal(independentOwnerSession.status, 200, '电脑停用不得破坏独立的既有 OWNER Browser Session')
 })
 
 test('停用与兑换竞态不会产生可营业的有效 session', async () => {

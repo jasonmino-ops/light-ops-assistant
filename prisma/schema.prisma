@@ -74,6 +74,13 @@ enum DesktopDeviceStatus {
   REVOKED
 }
 
+// Production 已有的 Browser POS Session 生命周期状态。
+enum BrowserPosDeviceStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
 enum DesktopActivationPinStatus {
   ACTIVE
   USED
@@ -144,6 +151,7 @@ model Tenant {
   subscription             TenantSubscription?
   subscriptionEvents       SubscriptionEvent[]
   desktopDevices           DesktopDevice[]
+  browserPosDevices        BrowserPosDevice[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
   computerBindings         ComputerBinding[]
@@ -229,6 +237,7 @@ model Store {
   memberTelegramBindTokens MemberTelegramBindToken[]
   customerJourneyEvents    CustomerJourneyEvent[]
   desktopDevices           DesktopDevice[]
+  browserPosDevices        BrowserPosDevice[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
   computerBindings         ComputerBinding[]
@@ -278,6 +287,8 @@ model User {
   memberBalanceLedgers     MemberBalanceLedger[]
   memberTelegramBindTokens MemberTelegramBindToken[]
   revokedDesktopDevices    DesktopDevice[]           @relation("DesktopDeviceRevokedBy")
+  issuedBrowserPosDevices  BrowserPosDevice[]         @relation("BrowserPosDeviceIssuedBy")
+  revokedBrowserPosDevices BrowserPosDevice[]         @relation("BrowserPosDeviceRevokedBy")
   createdActivationPins    DesktopActivationPin[]    @relation("DesktopActivationPinCreatedByUser")
   desktopActivationAudits  DesktopActivationAudit[]  @relation("DesktopActivationAuditUserActor")
   decidedComputerBindings  ComputerBinding[]         @relation("ComputerBindingDecidedBy")
@@ -1317,6 +1328,46 @@ model DesktopActivationAudit {
 // 云端只保存 HMAC 哈希，任何时候都不落库、不写日志。
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Production 已有的 Browser POS Session。
+// Computer Binding 只在 Session 创建/停用节点关联它；营业请求只校验本 Session。
+model BrowserPosDevice {
+  id                 String                 @id @default(cuid())
+  tenantId           String
+  storeId            String
+  browserDeviceId    String
+  displayName        String?
+  browserInfo        String?                @db.Text
+  status             BrowserPosDeviceStatus @default(ACTIVE)
+  activeSlot         String?                @default("ACTIVE")
+  tokenHash          String                 @unique
+  tokenHashVersion   Int                    @default(1)
+  tokenIssuedAt      DateTime
+  tokenExpiresAt     DateTime
+  scopes             Json
+  issuedByUserId     String?
+  activatedAt        DateTime               @default(now())
+  lastSeenAt         DateTime?
+  revokedAt          DateTime?
+  revokedByUserId    String?
+  revocationReason   String?                @db.Text
+  legacyMigratedAt   DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store         Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  issuedByUser  User?  @relation("BrowserPosDeviceIssuedBy", fields: [issuedByUserId], references: [id], onDelete: SetNull)
+  revokedByUser User?  @relation("BrowserPosDeviceRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, browserDeviceId, activeSlot])
+  @@index([tenantId, storeId])
+  @@index([storeId, status])
+  @@index([browserDeviceId])
+  @@index([tokenExpiresAt])
+  @@index([issuedByUserId])
+  @@index([revokedByUserId])
+}
+
 model ComputerBinding {
   id       String @id @default(cuid())
   tenantId String
@@ -1382,6 +1433,7 @@ model ComputerBrowserLaunchTicket {
   expiresAt           DateTime
   usedAt              DateTime?
   browserDeviceIdHash String?
+  browserPosDeviceId  String?
   createdAt           DateTime @default(now())
 
   binding ComputerBinding @relation(fields: [bindingId], references: [id], onDelete: Cascade)
