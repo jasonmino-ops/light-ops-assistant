@@ -24,6 +24,7 @@ type ManagedComputer = {
   disabledAt: string | null
   status: 'ACTIVE' | 'DISABLED'
   reapplyAllowed?: boolean
+  reapplyConsumed?: boolean
 }
 
 function formatTime(iso: string | null) {
@@ -148,7 +149,9 @@ export default function ComputerClientPage() {
         }
         setDisabledComputers((list) =>
           list.map((item) =>
-            item.computerId === computerId ? { ...item, reapplyAllowed: true } : item,
+            item.computerId === computerId
+              ? { ...item, reapplyAllowed: true, reapplyConsumed: false }
+              : item,
           ),
         )
         setNotice({ kind: 'ok', text: t('home.computerClientRestoreUseAllowed') })
@@ -370,13 +373,21 @@ export default function ComputerClientPage() {
                   </dl>
                   <button
                     type="button"
-                    style={item.reapplyAllowed ? s.restoreUseBtnWaiting : s.restoreUseBtn}
-                    disabled={busyId !== null || item.reapplyAllowed === true}
+                    style={
+                      item.reapplyAllowed || item.reapplyConsumed
+                        ? s.restoreUseBtnWaiting
+                        : s.restoreUseBtn
+                    }
+                    disabled={
+                      busyId !== null || item.reapplyAllowed === true || item.reapplyConsumed === true
+                    }
                     onClick={() => void allowReapply(item.computerId)}
                   >
                     {busyId === item.computerId
                       ? t('home.computerClientRestoringUse')
-                      : item.reapplyAllowed
+                      : item.reapplyConsumed
+                        ? t('home.computerClientReapplyConsumed')
+                        : item.reapplyAllowed
                         ? t('home.computerClientWaitingReapply')
                         : t('home.computerClientRestoreUse')}
                   </button>

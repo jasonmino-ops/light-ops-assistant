@@ -33,10 +33,16 @@ export type AgentAuthResult = AgentAuthFailure | AgentAuthSuccess
  * 旧 ComputerBinding 本身保持停用；该事件只是一枚一次性恢复许可。
  */
 export const COMPUTER_REAPPLY_ALLOWED_EVENT = 'COMPUTER_BINDING_REAPPLY_ALLOWED'
+export const COMPUTER_REAPPLY_CONSUMED_EVENT = 'COMPUTER_BINDING_REAPPLY_CONSUMED'
 
 /** 每个旧绑定最多一条恢复许可审计，使用确定性主键保证重复点击幂等。 */
 export function computerReapplyAuditId(bindingId: string) {
   return `computer-reapply-${bindingId}`
+}
+
+/** 对同一旧绑定，消费记录主键唯一；数据库唯一约束保证许可只成功消费一次。 */
+export function computerReapplyConsumeAuditId(bindingId: string) {
+  return `computer-reapply-consumed-${bindingId}`
 }
 
 function readBearer(req: NextRequest) {

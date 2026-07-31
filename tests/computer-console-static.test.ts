@@ -20,6 +20,10 @@ const reapplyRoute = fs.readFileSync(
   'utf8',
 )
 const selfRoute = fs.readFileSync('app/api/computer-client/bindings/self/route.ts', 'utf8')
+const consumeReapplyRoute = fs.readFileSync(
+  'app/api/computer-client/bindings/self/reapply/route.ts',
+  'utf8',
+)
 const launchTicketRoute = fs.readFileSync(
   'app/api/computer-client/bindings/self/launch-ticket/route.ts',
   'utf8',
@@ -170,13 +174,34 @@ assert.match(
 )
 assert.match(reapplyRoute, /COMPUTER_REAPPLY_ALLOWED_EVENT/, 'restore use must leave an audit trail')
 assert.match(reapplyRoute, /computerBindingAudit\.upsert/, 'repeated restore use clicks must be idempotent')
+assert.match(reapplyRoute, /computerReapplyConsumeAuditId/, 'a consumed permission must not be issued again')
 assert.doesNotMatch(
   reapplyRoute,
   /computerBinding\.(?:update|delete)|status:\s*'APPROVED'/,
   'restore use must never reactivate or delete the old binding',
 )
-assert.match(selfRoute, /reapplyAllowed/, 'the Agent self channel must expose the restore permission')
+assert.doesNotMatch(
+  selfRoute,
+  /reapplyAllowed|COMPUTER_REAPPLY_ALLOWED_EVENT/,
+  'ordinary Agent status checks must not poll the restore permission',
+)
 assert.match(requestListRoute, /reapplyAllowed/, 'the OWNER list must expose restore permission state')
+assert.match(requestListRoute, /reapplyConsumed/, 'the OWNER list must expose consumed restore permission state')
+assert.match(
+  consumeReapplyRoute,
+  /authenticateAgent\(req,\s*'claim'\)/,
+  'manual rebind must authenticate the exact disabled installation through its claim channel',
+)
+assert.match(consumeReapplyRoute, /if \(!binding\.disabledAt\)/, 'only a disabled binding may consume recovery permission')
+assert.match(consumeReapplyRoute, /computerReapplyAuditId\(binding\.id\)/, 'permission must belong to the old disabled binding')
+assert.match(consumeReapplyRoute, /computerReapplyConsumeAuditId\(binding\.id\)/, 'consumption must use one deterministic id per old binding')
+assert.match(consumeReapplyRoute, /createMany\([\s\S]*skipDuplicates:\s*true/, 'concurrent consumption must have exactly one database winner')
+assert.match(consumeReapplyRoute, /consumed\.count === 1/, 'only the unique insert winner may proceed')
+assert.doesNotMatch(
+  consumeReapplyRoute,
+  /computerBinding\.(?:update|delete)|status:\s*'APPROVED'/,
+  'permission consumption must leave the disabled binding immutable',
+)
 assert.doesNotMatch(closeoutMigration, /DROP TABLE|DELETE FROM/i, 'forward migration must not delete business data')
 
 // ── 一次性 Browser Launch Ticket + 现有 POS Session ──────────────────────
@@ -258,6 +283,7 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
     'computerClientRestoreUse',
     'computerClientRestoringUse',
     'computerClientWaitingReapply',
+    'computerClientReapplyConsumed',
     'computerClientConfirmRestoreUse',
     'computerClientRestoreUseAllowed',
     'computerClientRestoreUseFailed',

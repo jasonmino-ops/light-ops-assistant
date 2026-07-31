@@ -4,6 +4,7 @@ import { getContext } from '@/lib/context'
 import { apiError, noStoreJson, withComputerClientApiError } from '@/lib/computer-client/http'
 import {
   COMPUTER_REAPPLY_ALLOWED_EVENT,
+  COMPUTER_REAPPLY_CONSUMED_EVENT,
   persistExpiryIfNeeded,
   serializeManagedComputer,
   serializeOwnerRequest,
@@ -55,9 +56,14 @@ export async function GET(req: NextRequest) {
         },
         include: {
           audits: {
-            where: { eventType: COMPUTER_REAPPLY_ALLOWED_EVENT, result: 'SUCCESS' },
-            select: { id: true },
-            take: 1,
+            where: {
+              eventType: {
+                in: [COMPUTER_REAPPLY_ALLOWED_EVENT, COMPUTER_REAPPLY_CONSUMED_EVENT],
+              },
+              result: 'SUCCESS',
+            },
+            select: { eventType: true },
+            take: 2,
           },
         },
         orderBy: { disabledAt: 'desc' },
@@ -70,7 +76,12 @@ export async function GET(req: NextRequest) {
       boundComputers: boundComputers.map(serializeManagedComputer),
       disabledComputers: disabledComputers.map((binding) => ({
         ...serializeManagedComputer(binding),
-        reapplyAllowed: binding.audits.length > 0,
+        reapplyAllowed:
+          binding.audits.some((audit) => audit.eventType === COMPUTER_REAPPLY_ALLOWED_EVENT) &&
+          !binding.audits.some((audit) => audit.eventType === COMPUTER_REAPPLY_CONSUMED_EVENT),
+        reapplyConsumed: binding.audits.some(
+          (audit) => audit.eventType === COMPUTER_REAPPLY_CONSUMED_EVENT,
+        ),
       })),
     })
   })
