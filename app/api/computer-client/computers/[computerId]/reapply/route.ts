@@ -13,7 +13,8 @@ import {
 /**
  * OWNER 允许一台已停用电脑重新提交绑定申请。
  *
- * 这里只写一条幂等审计许可：不恢复旧状态、不刷新旧凭证，也不创建新绑定。
+ * 只写一条独立审计许可：不恢复旧状态、不刷新旧凭证，也不创建新绑定。
+ * 当前许可未消费时重复点击保持幂等；消费后 OWNER 可明确签发下一枚许可。
  * 新 ComputerBinding 仍由 Agent 生成全新 installationId 后走既有 submit 流程创建。
  */
 export async function POST(
@@ -36,27 +37,48 @@ export async function POST(
     })
     if (!binding) return apiError('DISABLED_COMPUTER_NOT_FOUND', 404)
 
-    const consumed = await prisma.computerBindingAudit.findUnique({
-      where: { id: computerReapplyConsumeAuditId(binding.id) },
-      select: { id: true },
-    })
-    if (consumed) return apiError('REAPPLY_PERMISSION_ALREADY_CONSUMED', 409)
-
     const fingerprint = auditRequestFingerprint(req)
-    await prisma.computerBindingAudit.upsert({
-      where: { id: computerReapplyAuditId(binding.id) },
-      update: {},
-      create: {
-        id: computerReapplyAuditId(binding.id),
-        tenantId: binding.tenantId,
-        storeId: binding.storeId,
-        bindingId: binding.id,
-        actorUserId: ctx.userId,
-        eventType: COMPUTER_REAPPLY_ALLOWED_EVENT,
-        result: 'SUCCESS',
-        ipHash: fingerprint.ipHash,
-        userAgentHash: fingerprint.userAgentHash,
-      },
+    const permit = await prisma.$transaction(async (tx) => {
+      const latest = await tx.computerBindingAudit.findFirst({
+        where: {
+          bindingId: binding.id,
+          eventType: COMPUTER_REAPPLY_ALLOWED_EVENT,
+          result: 'SUCCESS',
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true },
+      })
+      if (latest) {
+        const consumed = await tx.computerBindingAudit.findUnique({
+          where: { id: computerReapplyConsumeAuditId(binding.id, latest.id) },
+          select: { id: true },
+        })
+        if (!consumed) return { id: latest.id, created: false }
+      }
+
+      const issuedCount = await tx.computerBindingAudit.count({
+        where: {
+          bindingId: binding.id,
+          eventType: COMPUTER_REAPPLY_ALLOWED_EVENT,
+          result: 'SUCCESS',
+        },
+      })
+      const permitId = computerReapplyAuditId(binding.id, issuedCount + 1)
+      const created = await tx.computerBindingAudit.createMany({
+        data: [{
+          id: permitId,
+          tenantId: binding.tenantId,
+          storeId: binding.storeId,
+          bindingId: binding.id,
+          actorUserId: ctx.userId,
+          eventType: COMPUTER_REAPPLY_ALLOWED_EVENT,
+          result: 'SUCCESS',
+          ipHash: fingerprint.ipHash,
+          userAgentHash: fingerprint.userAgentHash,
+        }],
+        skipDuplicates: true,
+      })
+      return { id: permitId, created: created.count === 1 }
     })
 
     return noStoreJson({
@@ -65,6 +87,7 @@ export async function POST(
         reapplyAllowed: true,
         reapplyConsumed: false,
       },
+      idempotent: !permit.created,
     })
   })
 }

@@ -173,12 +173,15 @@ assert.match(
   'restore use must be scoped to a disabled computer in the current tenant and store',
 )
 assert.match(reapplyRoute, /COMPUTER_REAPPLY_ALLOWED_EVENT/, 'restore use must leave an audit trail')
-assert.match(reapplyRoute, /computerBindingAudit\.upsert/, 'repeated restore use clicks must be idempotent')
-assert.match(reapplyRoute, /computerReapplyConsumeAuditId/, 'a consumed permission must not be issued again')
+assert.match(reapplyRoute, /computerBindingAudit\.findFirst/, 'OWNER issuance must inspect the latest permit instance')
+assert.match(reapplyRoute, /computerReapplyConsumeAuditId\(binding\.id,\s*latest\.id\)/, 'an unconsumed latest permit must make repeated OWNER clicks idempotent')
+assert.match(reapplyRoute, /issuedCount \+ 1/, 'a consumed permit must allow an independent next permit instance')
+assert.match(reapplyRoute, /computerBindingAudit\.createMany\([\s\S]*skipDuplicates:\s*true/, 'concurrent OWNER issuance must converge on one permit instance')
+assert.doesNotMatch(reapplyRoute, /REAPPLY_PERMISSION_ALREADY_CONSUMED/, 'a consumed permit must not permanently block explicit OWNER reissuance')
 assert.doesNotMatch(
   reapplyRoute,
-  /computerBinding\.(?:update|delete)|status:\s*'APPROVED'/,
-  'restore use must never reactivate or delete the old binding',
+  /computerBinding\.(?:update|delete)|computerBindingAudit\.delete|status:\s*'APPROVED'/,
+  'restore use must never reactivate/delete the old binding or delete old permit history',
 )
 assert.doesNotMatch(
   selfRoute,
@@ -187,20 +190,23 @@ assert.doesNotMatch(
 )
 assert.match(requestListRoute, /reapplyAllowed/, 'the OWNER list must expose restore permission state')
 assert.match(requestListRoute, /reapplyConsumed/, 'the OWNER list must expose consumed restore permission state')
+assert.match(computerClientPage, /computerClientRestoreUseAgain/, 'a consumed permit must expose explicit OWNER reissuance')
+assert.doesNotMatch(computerClientPage, /item\.reapplyConsumed === true/, 'a consumed permit must not permanently disable the OWNER action')
 assert.match(
   consumeReapplyRoute,
   /authenticateAgent\(req,\s*'claim'\)/,
   'manual rebind must authenticate the exact disabled installation through its claim channel',
 )
 assert.match(consumeReapplyRoute, /if \(!binding\.disabledAt\)/, 'only a disabled binding may consume recovery permission')
-assert.match(consumeReapplyRoute, /computerReapplyAuditId\(binding\.id\)/, 'permission must belong to the old disabled binding')
-assert.match(consumeReapplyRoute, /computerReapplyConsumeAuditId\(binding\.id\)/, 'consumption must use one deterministic id per old binding')
+assert.match(consumeReapplyRoute, /bindingId:\s*binding\.id[\s\S]*COMPUTER_REAPPLY_ALLOWED_EVENT/, 'permission must belong to the old disabled binding')
+assert.match(consumeReapplyRoute, /orderBy:\s*\[\{ createdAt:\s*'desc' \},\s*\{ id:\s*'desc' \}\]/, 'manual rebind must select the latest permit instance')
+assert.match(consumeReapplyRoute, /computerReapplyConsumeAuditId\(binding\.id,\s*allowed\.id\)/, 'consumption must be unique per permit instance')
 assert.match(consumeReapplyRoute, /createMany\([\s\S]*skipDuplicates:\s*true/, 'concurrent consumption must have exactly one database winner')
 assert.match(consumeReapplyRoute, /consumed\.count === 1/, 'only the unique insert winner may proceed')
 assert.doesNotMatch(
   consumeReapplyRoute,
-  /computerBinding\.(?:update|delete)|status:\s*'APPROVED'/,
-  'permission consumption must leave the disabled binding immutable',
+  /computerBinding\.(?:update|delete)|computerBindingAudit\.delete|status:\s*'APPROVED'/,
+  'permission consumption must leave the disabled binding and prior audit history immutable',
 )
 assert.doesNotMatch(closeoutMigration, /DROP TABLE|DELETE FROM/i, 'forward migration must not delete business data')
 
@@ -283,7 +289,7 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
     'computerClientRestoreUse',
     'computerClientRestoringUse',
     'computerClientWaitingReapply',
-    'computerClientReapplyConsumed',
+    'computerClientRestoreUseAgain',
     'computerClientConfirmRestoreUse',
     'computerClientRestoreUseAllowed',
     'computerClientRestoreUseFailed',

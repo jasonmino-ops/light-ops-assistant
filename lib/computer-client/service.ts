@@ -35,14 +35,21 @@ export type AgentAuthResult = AgentAuthFailure | AgentAuthSuccess
 export const COMPUTER_REAPPLY_ALLOWED_EVENT = 'COMPUTER_BINDING_REAPPLY_ALLOWED'
 export const COMPUTER_REAPPLY_CONSUMED_EVENT = 'COMPUTER_BINDING_REAPPLY_CONSUMED'
 
-/** 每个旧绑定最多一条恢复许可审计，使用确定性主键保证重复点击幂等。 */
-export function computerReapplyAuditId(bindingId: string) {
-  return `computer-reapply-${bindingId}`
+/** 每次 OWNER 明确签发一个独立许可实例；序号只在同一旧 binding 内递增。 */
+export function computerReapplyAuditId(bindingId: string, issueNumber: number) {
+  const sequence = String(issueNumber).padStart(8, '0')
+  return `computer-reapply-${bindingId}-${sequence}`
 }
 
-/** 对同一旧绑定，消费记录主键唯一；数据库唯一约束保证许可只成功消费一次。 */
-export function computerReapplyConsumeAuditId(bindingId: string) {
-  return `computer-reapply-consumed-${bindingId}`
+/**
+ * 每个许可实例对应唯一消费记录；数据库主键保证该许可只成功消费一次。
+ * 同时识别 71bc3ac 产生的首枚 legacy 许可/消费 ID，保留已有审计的可追踪性。
+ */
+export function computerReapplyConsumeAuditId(bindingId: string, permitAuditId: string) {
+  if (permitAuditId === `computer-reapply-${bindingId}`) {
+    return `computer-reapply-consumed-${bindingId}`
+  }
+  return `computer-reapply-consumed-${permitAuditId}`
 }
 
 function readBearer(req: NextRequest) {

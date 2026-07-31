@@ -136,7 +136,7 @@ const km = {
     computerClientRestoreUse: 'ស្ដារការប្រើប្រាស់',
     computerClientRestoringUse: 'កំពុងដំណើរការ…',
     computerClientWaitingReapply: 'កំពុងរង់ចាំការចងភ្ជាប់ឡើងវិញដោយដៃ',
-    computerClientReapplyConsumed: 'បានប្រើសិទ្ធិស្ដាររួចហើយ',
+    computerClientRestoreUseAgain: 'អនុញ្ញាតឱ្យស្ដារម្តងទៀត',
     computerClientConfirmRestoreUse: 'វាមិនបើកការភ្ជាប់ចាស់ឡើងវិញទេ។ បន្ទាប់ពីអនុញ្ញាត សូមចុច “ចងភ្ជាប់ឡើងវិញ” នៅលើកុំព្យូទ័រ។ សំណើថ្មីនៅតែត្រូវការការអនុម័តម្ដងទៀត។ បន្តឬ?',
     computerClientRestoreUseAllowed: 'បានអនុញ្ញាតឱ្យកុំព្យូទ័រដាក់សំណើថ្មី ហើយប្រវត្តិបិទប្រើចាស់ត្រូវបានរក្សាទុក',
     computerClientRestoreUseFailed: 'មិនអាចអនុញ្ញាតសំណើថ្មីបានទេ សូមព្យាយាមម្ដងទៀត',

@@ -5,6 +5,7 @@ import { apiError, noStoreJson, withComputerClientApiError } from '@/lib/compute
 import {
   COMPUTER_REAPPLY_ALLOWED_EVENT,
   COMPUTER_REAPPLY_CONSUMED_EVENT,
+  computerReapplyConsumeAuditId,
   persistExpiryIfNeeded,
   serializeManagedComputer,
   serializeOwnerRequest,
@@ -62,7 +63,8 @@ export async function GET(req: NextRequest) {
               },
               result: 'SUCCESS',
             },
-            select: { eventType: true },
+            select: { id: true, eventType: true },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take: 2,
           },
         },
@@ -74,15 +76,22 @@ export async function GET(req: NextRequest) {
     return noStoreJson({
       requests: alive.map(serializeOwnerRequest),
       boundComputers: boundComputers.map(serializeManagedComputer),
-      disabledComputers: disabledComputers.map((binding) => ({
-        ...serializeManagedComputer(binding),
-        reapplyAllowed:
-          binding.audits.some((audit) => audit.eventType === COMPUTER_REAPPLY_ALLOWED_EVENT) &&
-          !binding.audits.some((audit) => audit.eventType === COMPUTER_REAPPLY_CONSUMED_EVENT),
-        reapplyConsumed: binding.audits.some(
-          (audit) => audit.eventType === COMPUTER_REAPPLY_CONSUMED_EVENT,
-        ),
-      })),
+      disabledComputers: disabledComputers.map((binding) => {
+        const latestPermit = binding.audits.find(
+          (audit) => audit.eventType === COMPUTER_REAPPLY_ALLOWED_EVENT,
+        )
+        const reapplyConsumed = latestPermit
+          ? binding.audits.some(
+              (audit) =>
+                audit.id === computerReapplyConsumeAuditId(binding.id, latestPermit.id),
+            )
+          : false
+        return {
+          ...serializeManagedComputer(binding),
+          reapplyAllowed: Boolean(latestPermit) && !reapplyConsumed,
+          reapplyConsumed,
+        }
+      }),
     })
   })
 }

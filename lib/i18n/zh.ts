@@ -136,7 +136,7 @@ const zh = {
     computerClientRestoreUse: '恢复使用',
     computerClientRestoringUse: '正在处理…',
     computerClientWaitingReapply: '等待电脑手工重新绑定',
-    computerClientReapplyConsumed: '恢复许可已使用',
+    computerClientRestoreUseAgain: '再次恢复使用',
     computerClientConfirmRestoreUse: '这不会恢复旧绑定。允许后，请在电脑上手工点击“重新绑定”，新申请仍需重新批准。继续？',
     computerClientRestoreUseAllowed: '已允许电脑重新申请，旧停用记录继续保留',
     computerClientRestoreUseFailed: '恢复申请失败，请重试',
