@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { apiError, noStoreJson, withComputerClientApiError } from '@/lib/computer-client/http'
 import {
+  COMPUTER_REAPPLY_ALLOWED_EVENT,
   persistExpiryIfNeeded,
   serializeManagedComputer,
   serializeOwnerRequest,
@@ -52,6 +53,13 @@ export async function GET(req: NextRequest) {
           storeId: ctx.storeId,
           disabledAt: { not: null },
         },
+        include: {
+          audits: {
+            where: { eventType: COMPUTER_REAPPLY_ALLOWED_EVENT, result: 'SUCCESS' },
+            select: { id: true },
+            take: 1,
+          },
+        },
         orderBy: { disabledAt: 'desc' },
         take: 100,
       }),
@@ -60,7 +68,10 @@ export async function GET(req: NextRequest) {
     return noStoreJson({
       requests: alive.map(serializeOwnerRequest),
       boundComputers: boundComputers.map(serializeManagedComputer),
-      disabledComputers: disabledComputers.map(serializeManagedComputer),
+      disabledComputers: disabledComputers.map((binding) => ({
+        ...serializeManagedComputer(binding),
+        reapplyAllowed: binding.audits.length > 0,
+      })),
     })
   })
 }
