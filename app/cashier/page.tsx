@@ -52,6 +52,7 @@ import {
   savePosDeviceToken,
 } from '@/lib/desktop-pos-client'
 import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
+import { browserPosCustomerDisplayPath } from '@/lib/browser-pos-customer-display'
 import { dispatchCashierCartTotalChanged } from '@/lib/customer-display-cart-event'
 import {
   createCustomerDisplayRealtimeChannel,
@@ -376,6 +377,7 @@ type DesktopCopy = {
   storeLoading: string
   installDesktop: string
   desktopMode: string
+  openCustomerDisplay: string
   enterFullscreen: string
   exitFullscreen: string
   rememberedStore: string
@@ -479,6 +481,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       storeLoading: 'Loading…',
       installDesktop: 'Install to PC',
       desktopMode: 'Desktop mode',
+      openCustomerDisplay: 'Open Customer Display',
       enterFullscreen: 'Enter full screen',
       exitFullscreen: 'Exit full screen',
       rememberedStore: 'This store is remembered. Desktop open will enter this cashier.',
@@ -581,6 +584,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       storeLoading: 'កំពុងផ្ទុក…',
       installDesktop: 'ដំឡើងលើកុំព្យូទ័រ',
       desktopMode: 'របៀប Desktop',
+      openCustomerDisplay: 'បើកអេក្រង់អតិថិជន',
       enterFullscreen: 'ចូលពេញអេក្រង់',
       exitFullscreen: 'ចេញពីពេញអេក្រង់',
       rememberedStore: 'ហាងនេះត្រូវបានចងចាំ។ បើកលើ Desktop នឹងចូលទៅកាន់ប្រអប់គិតលុយនេះ។',
@@ -682,6 +686,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     storeLoading: '加载中…',
     installDesktop: '安装到电脑',
     desktopMode: '桌面模式',
+    openCustomerDisplay: '打开顾客屏',
     enterFullscreen: '进入全屏',
     exitFullscreen: '退出全屏',
     rememberedStore: '已记住当前门店，桌面打开会进入本店收银台',
@@ -2427,6 +2432,12 @@ export default function CashierPage() {
     }
   }
 
+  function handleOpenCustomerDisplay() {
+    const target = browserPosCustomerDisplayPath(storeCode, lang as DeskLang)
+    if (!target) return
+    window.open(target, '_blank', 'noopener,noreferrer')
+  }
+
   async function handleFullscreenClick() {
     try {
       const electronFullscreen = getElectronEmployeeFullscreenBridge()
@@ -3633,6 +3644,14 @@ export default function CashierPage() {
               ))}
             </div>
             <div style={s.kioskActions}>
+              <button
+                type="button"
+                style={{ ...s.kioskBtn, gridColumn: '1 / -1', ...(!storeCode ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
+                disabled={!storeCode}
+                onClick={handleOpenCustomerDisplay}
+              >
+                {d.openCustomerDisplay}
+              </button>
               <button type="button" style={s.kioskBtn} onClick={handleInstallClick}>
                 {isStandalone ? d.desktopMode : d.installDesktop}
               </button>
