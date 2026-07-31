@@ -28,6 +28,17 @@ export type AgentAuthFailure = { ok: false; status: number; error: string }
 export type AgentAuthSuccess = { ok: true; binding: ComputerBinding }
 export type AgentAuthResult = AgentAuthFailure | AgentAuthSuccess
 
+/**
+ * 老板允许一台已停用电脑重新走绑定申请链时写入的不可变审计事件。
+ * 旧 ComputerBinding 本身保持停用；该事件只是一枚一次性恢复许可。
+ */
+export const COMPUTER_REAPPLY_ALLOWED_EVENT = 'COMPUTER_BINDING_REAPPLY_ALLOWED'
+
+/** 每个旧绑定最多一条恢复许可审计，使用确定性主键保证重复点击幂等。 */
+export function computerReapplyAuditId(bindingId: string) {
+  return `computer-reapply-${bindingId}`
+}
+
 function readBearer(req: NextRequest) {
   const raw = req.headers.get('authorization') ?? ''
   const match = /^Bearer\s+(.+)$/i.exec(raw.trim())
