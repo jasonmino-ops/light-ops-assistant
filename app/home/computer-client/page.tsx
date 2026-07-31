@@ -374,19 +374,15 @@ export default function ComputerClientPage() {
                   <button
                     type="button"
                     style={
-                      item.reapplyAllowed || item.reapplyConsumed
-                        ? s.restoreUseBtnWaiting
-                        : s.restoreUseBtn
+                      item.reapplyAllowed ? s.restoreUseBtnWaiting : s.restoreUseBtn
                     }
-                    disabled={
-                      busyId !== null || item.reapplyAllowed === true || item.reapplyConsumed === true
-                    }
+                    disabled={busyId !== null || item.reapplyAllowed === true}
                     onClick={() => void allowReapply(item.computerId)}
                   >
                     {busyId === item.computerId
                       ? t('home.computerClientRestoringUse')
                       : item.reapplyConsumed
-                        ? t('home.computerClientReapplyConsumed')
+                        ? t('home.computerClientRestoreUseAgain')
                         : item.reapplyAllowed
                         ? t('home.computerClientWaitingReapply')
                         : t('home.computerClientRestoreUse')}

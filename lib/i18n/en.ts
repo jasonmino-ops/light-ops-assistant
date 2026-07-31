@@ -136,7 +136,7 @@ const en = {
     computerClientRestoreUse: 'Restore use',
     computerClientRestoringUse: 'Working…',
     computerClientWaitingReapply: 'Waiting for manual rebind',
-    computerClientReapplyConsumed: 'Recovery permission used',
+    computerClientRestoreUseAgain: 'Allow recovery again',
     computerClientConfirmRestoreUse: 'This will not reactivate the old binding. After allowing it, click “Rebind” on the computer. The new request still requires approval. Continue?',
     computerClientRestoreUseAllowed: 'The computer may submit a new request. The disabled history is preserved.',
     computerClientRestoreUseFailed: 'Failed to allow a new request. Please try again.',
