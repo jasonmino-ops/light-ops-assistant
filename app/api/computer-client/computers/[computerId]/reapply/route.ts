@@ -6,6 +6,7 @@ import { auditRequestFingerprint } from '@/lib/computer-client/audit'
 import {
   COMPUTER_REAPPLY_ALLOWED_EVENT,
   computerReapplyAuditId,
+  computerReapplyConsumeAuditId,
   serializeManagedComputer,
 } from '@/lib/computer-client/service'
 
@@ -35,6 +36,12 @@ export async function POST(
     })
     if (!binding) return apiError('DISABLED_COMPUTER_NOT_FOUND', 404)
 
+    const consumed = await prisma.computerBindingAudit.findUnique({
+      where: { id: computerReapplyConsumeAuditId(binding.id) },
+      select: { id: true },
+    })
+    if (consumed) return apiError('REAPPLY_PERMISSION_ALREADY_CONSUMED', 409)
+
     const fingerprint = auditRequestFingerprint(req)
     await prisma.computerBindingAudit.upsert({
       where: { id: computerReapplyAuditId(binding.id) },
@@ -53,7 +60,11 @@ export async function POST(
     })
 
     return noStoreJson({
-      computer: { ...serializeManagedComputer(binding), reapplyAllowed: true },
+      computer: {
+        ...serializeManagedComputer(binding),
+        reapplyAllowed: true,
+        reapplyConsumed: false,
+      },
     })
   })
 }

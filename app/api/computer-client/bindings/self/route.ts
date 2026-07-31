@@ -1,9 +1,7 @@
 import { NextRequest } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { apiError, noStoreJson, withComputerClientApiError } from '@/lib/computer-client/http'
 import {
   authenticateAgent,
-  computerReapplyAuditId,
   persistExpiryIfNeeded,
   serializeRequestState,
 } from '@/lib/computer-client/service'
@@ -20,15 +18,6 @@ export async function GET(req: NextRequest) {
     if (!auth.ok) return apiError(auth.error, auth.status)
 
     const binding = await persistExpiryIfNeeded(auth.binding)
-    const reapplyAllowed = binding.disabledAt
-      ? Boolean(
-          await prisma.computerBindingAudit.findUnique({
-            where: { id: computerReapplyAuditId(binding.id) },
-            select: { id: true },
-          }),
-        )
-      : false
-
-    return noStoreJson({ ...serializeRequestState(binding), reapplyAllowed })
+    return noStoreJson(serializeRequestState(binding))
   })
 }
