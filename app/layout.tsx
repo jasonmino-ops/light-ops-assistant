@@ -33,6 +33,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const sessionRole = sessionToken ? verifySession(sessionToken)?.role : undefined
   const role = sessionRole ?? process.env.DEV_ROLE ?? 'STAFF'
   const pathname = headerStore.get('x-current-path') ?? ''
+  const isQzPrintTestPath = pathname === '/qz-print-test'
   const initialProtected = isProtectedMerchantPath(pathname)
   const isCashierPath = pathname === '/cashier' || pathname.startsWith('/cashier/')
   const manifestHref = isCashierPath ? '/manifest.webmanifest' : '/manifest.json'
@@ -94,15 +95,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             }}
           />
         )}
-        <TelegramInit initialProtected={initialProtected}>
-          <DelegateBanner />
-          <LangProvider>
-            <WorkModeProvider role={role}>
-              {children}
-              <BottomNav />
-            </WorkModeProvider>
-          </LangProvider>
-        </TelegramInit>
+        {isQzPrintTestPath ? children : (
+          <TelegramInit initialProtected={initialProtected}>
+            <DelegateBanner />
+            <LangProvider>
+              <WorkModeProvider role={role}>
+                {children}
+                <BottomNav />
+              </WorkModeProvider>
+            </LangProvider>
+          </TelegramInit>
+        )}
       </body>
     </html>
   )
