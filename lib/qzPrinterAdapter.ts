@@ -10,6 +10,7 @@ export const QZ_PRINT_QUEUES = {
 } as const
 
 export type QzPrintKind = keyof typeof QZ_PRINT_QUEUES
+export type QzStatus = 'idle' | 'checking' | 'online' | 'offline'
 
 export type QzClient = {
   websocket: {
@@ -91,6 +92,38 @@ async function assertQueueExists(qz: QzClient, queueName: string): Promise<void>
   }
   if (!printers.includes(queueName)) {
     throw new QzPrintError('QZ_QUEUE_NOT_FOUND', queueName)
+  }
+}
+
+export async function detectQzOnline(client?: QzClient): Promise<boolean> {
+  try {
+    const qz = client ?? (await loadQz())
+    await ensureConnected(qz, '')
+    return qz.websocket.isActive()
+  } catch {
+    return false
+  }
+}
+
+export async function listQzPrinters(client?: QzClient): Promise<string[]> {
+  const qz = client ?? (await loadQz())
+  await ensureConnected(qz, '')
+  try {
+    return normalizePrinters(await qz.printers.find())
+  } catch (cause) {
+    throw new QzPrintError('QZ_UNAVAILABLE', '', { cause })
+  }
+}
+
+export async function printHelloWorldViaQz(printerName: string, client?: QzClient): Promise<void> {
+  if (!printerName) throw new QzPrintError('QZ_QUEUE_NOT_FOUND', '')
+  const qz = client ?? (await loadQz())
+  await ensureConnected(qz, printerName)
+  const config = qz.configs.create(printerName)
+  try {
+    await qz.print(config, ['Hello World\n', 'E-Shop QZ Tray POC\n', '\n\n\n'])
+  } catch (cause) {
+    throw new QzPrintError('QZ_PRINT_FAILED', printerName, { cause })
   }
 }
 
