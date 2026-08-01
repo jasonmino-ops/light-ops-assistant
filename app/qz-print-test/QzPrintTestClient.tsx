@@ -20,6 +20,16 @@ type PrintState = {
 }
 
 const INITIAL_PRINT_STATE: PrintState = { status: 'idle', message: '' }
+const QZ_STATUS_TIMEOUT_MS = 8_000
+
+async function withStatusTimeout<T>(operation: Promise<T>): Promise<T> {
+  return Promise.race([
+    operation,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error('QZ_STATUS_TIMEOUT')), QZ_STATUS_TIMEOUT_MS)
+    }),
+  ])
+}
 
 function customerTestReceipt(): DesktopReceiptData {
   return {
@@ -72,14 +82,14 @@ export default function QzPrintTestClient() {
     setQzStatus('checking')
     setStatusMessage('正在检测 QZ Tray…')
     try {
-      const online = await detectQzOnline()
+      const online = await withStatusTimeout(detectQzOnline())
       if (!online) {
         setQzStatus('offline')
         setPrinters([])
         setStatusMessage('QZ Tray 不可用，请确认 QZ Tray 2.2.6 正在运行')
         return
       }
-      const nextPrinters = await listQzPrinters()
+      const nextPrinters = await withStatusTimeout(listQzPrinters())
       setQzStatus('online')
       setPrinters(nextPrinters)
       setStatusMessage(`QZ Tray 在线，检测到 ${nextPrinters.length} 个 Windows 打印队列`)
@@ -98,6 +108,15 @@ export default function QzPrintTestClient() {
     const current = kind === 'receipt' ? receiptState : kitchenState
     if (current.status === 'printing') return
     const setState = kind === 'receipt' ? setReceiptState : setKitchenState
+    const queueName = QZ_PRINT_QUEUES[kind]
+    if (qzStatus !== 'online') {
+      setState({ status: 'error', message: 'QZ Tray 不可用，请先确认 QZ Tray 在线并刷新状态' })
+      return
+    }
+    if (!printers.includes(queueName)) {
+      setState({ status: 'error', message: `未找到 Windows 打印队列“${queueName}”` })
+      return
+    }
     setState({ status: 'printing', message: '' })
     try {
       if (kind === 'receipt') {
