@@ -274,6 +274,14 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
 </html>`
 }
 
+/**
+ * Returns the exact receipt document used by the existing Desktop receipt.
+ * QZ Tray consumes this pure HTML string without opening a browser print window.
+ */
+export function renderDesktopReceiptHtml(data: DesktopReceiptData, lang: Lang): string {
+  return receiptHtml(data, lang)
+}
+
 export function printDesktopReceipt(
   data: DesktopReceiptData,
   lang: Lang,

@@ -9,8 +9,10 @@ import { apiFetch, OWNER_CTX } from '@/lib/api'
 import {
   DesktopReceiptPreview,
   printDesktopReceipt,
+  renderDesktopReceiptHtml,
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
+import { renderKitchenTicketHtml } from '@/app/components/KitchenTicket'
 import {
   DayCloseReport,
   printDayCloseReport,
@@ -61,6 +63,13 @@ import {
   type CustomerDisplayRealtimePaymentStatus,
   type CustomerDisplayRealtimeStatus,
 } from '@/lib/customer-display-realtime-channel'
+import {
+  QZ_PRINT_QUEUES,
+  QzPrintError,
+  printCustomerReceiptViaQz,
+  printKitchenTicketViaQz,
+  type QzPrintKind,
+} from '@/lib/qzPrinterAdapter'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,6 +94,10 @@ type SaleResult = {
   khqrFallback?: boolean
   paymentMethod?: string
   receipt?: DesktopReceiptData
+}
+type QzControlledPrintState = {
+  status: 'idle' | 'printing' | 'success' | 'error'
+  message: string
 }
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
@@ -1213,6 +1226,8 @@ export default function CashierPage() {
   const [saleResult,    setSaleResult]    = useState<SaleResult | null>(null)
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false)
   const [receiptPrinting, setReceiptPrinting] = useState(false)
+  const [qzReceiptTest, setQzReceiptTest] = useState<QzControlledPrintState>({ status: 'idle', message: '' })
+  const [qzKitchenTest, setQzKitchenTest] = useState<QzControlledPrintState>({ status: 'idle', message: '' })
   const [storeName,     setStoreName]     = useState('')
   const [loading,       setLoading]       = useState(true)
   const [toast,         setToast]         = useState('')
@@ -1887,6 +1902,52 @@ export default function CashierPage() {
       finishReceiptPrintFlow()
     }
   }, [finishReceiptPrintFlow, lang])
+
+  function qzTestMessage(kind: QzPrintKind, error?: unknown) {
+    const queueName = QZ_PRINT_QUEUES[kind]
+    if (!error) {
+      if (lang === 'en') return `Submitted to “${queueName}”`
+      if (lang === 'km') return `បានបញ្ជូនទៅ “${queueName}”`
+      return `已提交到“${queueName}”`
+    }
+    const code = error instanceof QzPrintError ? error.code : 'QZ_PRINT_FAILED'
+    if (code === 'QZ_UNAVAILABLE') {
+      if (lang === 'en') return 'QZ Tray is unavailable. Confirm QZ Tray 2.2.6 is running.'
+      if (lang === 'km') return 'QZ Tray មិនអាចប្រើបាន។ សូមបញ្ជាក់ថា QZ Tray 2.2.6 កំពុងដំណើរការ។'
+      return 'QZ Tray 不可用，请确认 QZ Tray 2.2.6 正在运行'
+    }
+    if (code === 'QZ_QUEUE_NOT_FOUND') {
+      if (lang === 'en') return `Windows print queue “${queueName}” was not found.`
+      if (lang === 'km') return `រកមិនឃើញជួរបោះពុម្ព Windows “${queueName}” ទេ។`
+      return `未找到 Windows 打印队列“${queueName}”`
+    }
+    if (lang === 'en') return `Submission to “${queueName}” failed. Check that queue and retry.`
+    if (lang === 'km') return `ការបញ្ជូនទៅ “${queueName}” បរាជ័យ។ សូមពិនិត្យជួរនោះ ហើយសាកល្បងម្ដងទៀត។`
+    return `提交到“${queueName}”失败，请检查该队列后重试`
+  }
+
+  async function handleControlledQzPrint(kind: QzPrintKind, receipt: DesktopReceiptData) {
+    const current = kind === 'receipt' ? qzReceiptTest : qzKitchenTest
+    if (current.status === 'printing') return
+    const setState = kind === 'receipt' ? setQzReceiptTest : setQzKitchenTest
+    setState({ status: 'printing', message: '' })
+    try {
+      if (kind === 'receipt') {
+        await printCustomerReceiptViaQz(renderDesktopReceiptHtml(receipt, lang))
+      } else {
+        await printKitchenTicketViaQz(renderKitchenTicketHtml({
+          storeName: receipt.storeName,
+          orderNo: receipt.orderNo,
+          createdAt: receipt.createdAt,
+          items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
+        }, lang))
+      }
+      setState({ status: 'success', message: qzTestMessage(kind) })
+    } catch (error) {
+      console.warn(`[qz-printer] controlled ${kind} print failed`, error)
+      setState({ status: 'error', message: qzTestMessage(kind, error) })
+    }
+  }
 
   function handleAutoPrintToggle() {
     const next = !autoPrint
@@ -4470,23 +4531,67 @@ export default function CashierPage() {
                 : d.receiptNotAuto}
             </div>
             {isDesktopPos && saleResult.receipt && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-                <button
-                  type="button"
-                  style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12 }}
-                  onClick={() => setReceiptPreviewOpen(true)}
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12 }}
+                    onClick={() => setReceiptPreviewOpen(true)}
+                  >
+                    {d.previewReceipt}
+                  </button>
+                  <button
+                    ref={receiptPrintButtonRef}
+                    type="button"
+                    style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(receiptPrinting ? s.submitDis : {}) }}
+                    disabled={receiptPrinting}
+                    onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
+                  >
+                    {receiptPrinting ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
+                  </button>
+                </div>
+                <div
+                  data-qz-dual-queue-test="controlled"
+                  style={{ marginBottom: 10, padding: 10, borderRadius: 10, border: '1px dashed #93c5fd', background: '#eff6ff' }}
                 >
-                  {d.previewReceipt}
-                </button>
-                <button
-                  ref={receiptPrintButtonRef}
-                  type="button"
-                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(receiptPrinting ? s.submitDis : {}) }}
-                  disabled={receiptPrinting}
-                  onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
-                >
-                  {receiptPrinting ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
-                </button>
+                  <div style={{ marginBottom: 7, color: '#1e3a8a', fontSize: 11, fontWeight: 900 }}>
+                    {lang === 'en' ? 'QZ dual-queue field test (manual)' : lang === 'km' ? 'សាកល្បងជួរ QZ ពីរ (ដោយដៃ)' : 'QZ 双队列现场测试（手动）'}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button
+                      type="button"
+                      data-qz-print-kind="receipt"
+                      style={{ ...s.secondaryBtn, padding: '9px 7px', fontSize: 11, ...(qzReceiptTest.status === 'printing' ? s.submitDis : {}) }}
+                      disabled={qzReceiptTest.status === 'printing'}
+                      onClick={() => saleResult.receipt && void handleControlledQzPrint('receipt', saleResult.receipt)}
+                    >
+                      {qzReceiptTest.status === 'printing'
+                        ? (lang === 'en' ? 'Submitting…' : lang === 'km' ? 'កំពុងបញ្ជូន…' : '提交中…')
+                        : (lang === 'en' ? 'Customer → 前台' : lang === 'km' ? 'អតិថិជន → 前台' : '顾客票 → 前台')}
+                    </button>
+                    <button
+                      type="button"
+                      data-qz-print-kind="kitchen"
+                      style={{ ...s.secondaryBtn, padding: '9px 7px', fontSize: 11, ...(qzKitchenTest.status === 'printing' ? s.submitDis : {}) }}
+                      disabled={qzKitchenTest.status === 'printing'}
+                      onClick={() => saleResult.receipt && void handleControlledQzPrint('kitchen', saleResult.receipt)}
+                    >
+                      {qzKitchenTest.status === 'printing'
+                        ? (lang === 'en' ? 'Submitting…' : lang === 'km' ? 'កំពុងបញ្ជូន…' : '提交中…')
+                        : (lang === 'en' ? 'Kitchen → 厨房' : lang === 'km' ? 'ផ្ទះបាយ → 厨房' : '厨房票 → 厨房')}
+                    </button>
+                  </div>
+                  {qzReceiptTest.message && (
+                    <div data-qz-result="receipt" style={{ marginTop: 7, fontSize: 10, lineHeight: 1.4, color: qzReceiptTest.status === 'error' ? '#b91c1c' : '#166534' }}>
+                      {qzReceiptTest.message}
+                    </div>
+                  )}
+                  {qzKitchenTest.message && (
+                    <div data-qz-result="kitchen" style={{ marginTop: 5, fontSize: 10, lineHeight: 1.4, color: qzKitchenTest.status === 'error' ? '#b91c1c' : '#166534' }}>
+                      {qzKitchenTest.message}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             <button style={s.modalBtn} onClick={() => { setReceiptPreviewOpen(false); setSaleResult(null); focusScannerInput() }}>{d.continueSale}</button>
