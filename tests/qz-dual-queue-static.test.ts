@@ -17,6 +17,8 @@ assert.match(kitchen, /export function renderKitchenTicketHtml/)
 assert.doesNotMatch(kitchen, /window\.print|window\.open/, 'the QZ KitchenTicket renderer must remain pure HTML')
 
 assert.match(cashier, /data-qz-dual-queue-test="controlled"/)
+assert.match(cashier, /QZ_PREVIEW_LABEL === 'QZ-PRINT-01B' && QZ_PREVIEW_COMMIT === 'ba9e599'/)
+assert.match(cashier, /data-qz-preview-version="QZ-PRINT-01B"/)
 assert.match(cashier, /data-qz-print-kind="receipt"/)
 assert.match(cashier, /data-qz-print-kind="kitchen"/)
 assert.match(cashier, /handleControlledQzPrint\('receipt', saleResult\.receipt\)/)

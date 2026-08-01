@@ -99,6 +99,9 @@ type QzControlledPrintState = {
   status: 'idle' | 'printing' | 'success' | 'error'
   message: string
 }
+
+const QZ_PREVIEW_LABEL = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_LABEL
+const QZ_PREVIEW_COMMIT = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_COMMIT
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
@@ -4554,6 +4557,12 @@ export default function CashierPage() {
                   data-qz-dual-queue-test="controlled"
                   style={{ marginBottom: 10, padding: 10, borderRadius: 10, border: '1px dashed #93c5fd', background: '#eff6ff' }}
                 >
+                  {QZ_PREVIEW_LABEL === 'QZ-PRINT-01B' && QZ_PREVIEW_COMMIT === 'ba9e599' && (
+                    <div data-qz-preview-version="QZ-PRINT-01B" style={{ marginBottom: 7, color: '#475569', fontSize: 9, lineHeight: 1.35 }}>
+                      <div>QZ-PRINT-01B</div>
+                      <div>ba9e599</div>
+                    </div>
+                  )}
                   <div style={{ marginBottom: 7, color: '#1e3a8a', fontSize: 11, fontWeight: 900 }}>
                     {lang === 'en' ? 'QZ dual-queue field test (manual)' : lang === 'km' ? 'សាកល្បងជួរ QZ ពីរ (ដោយដៃ)' : 'QZ 双队列现场测试（手动）'}
                   </div>
