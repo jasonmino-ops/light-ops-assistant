@@ -102,6 +102,36 @@ type QzControlledPrintState = {
 
 const QZ_PREVIEW_LABEL = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_LABEL
 const QZ_PREVIEW_COMMIT = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_COMMIT
+const QZ_PREVIEW_BASE_COMMIT = 'ba9e59991cfefad6f96c906cabe73e1f1468e66f'
+
+function QzPreviewVersionBanner() {
+  if (QZ_PREVIEW_LABEL !== 'QZ-PRINT-01B' || QZ_PREVIEW_COMMIT !== QZ_PREVIEW_BASE_COMMIT) return null
+
+  return (
+    <div
+      data-qz-preview-version="QZ-PRINT-01B"
+      style={{
+        position: 'fixed',
+        zIndex: 10000,
+        top: 0,
+        left: 0,
+        right: 0,
+        padding: '6px 12px',
+        background: '#0f172a',
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: 800,
+        lineHeight: 1.35,
+        textAlign: 'center',
+        boxShadow: '0 2px 8px rgba(15, 23, 42, .24)',
+      }}
+    >
+      <div>QZ-PRINT-01B</div>
+      <div>Commit: {QZ_PREVIEW_BASE_COMMIT}</div>
+      <div>Environment: Preview</div>
+    </div>
+  )
+}
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
@@ -3441,6 +3471,7 @@ export default function CashierPage() {
   if (isRestoringCashierStore) {
     return (
       <div style={s.errScreen}>
+        <QzPreviewVersionBanner />
         <div style={{ fontSize: 36 }}>🖥️</div>
         <div style={s.errTitle}>正在恢复门店收银台...</div>
         <div style={s.errSub}>正在读取本机已记住的门店编号，请稍候。</div>
@@ -3452,6 +3483,7 @@ export default function CashierPage() {
   if (noCodeError) {
     return (
       <div style={s.errScreen}>
+        <QzPreviewVersionBanner />
         <div style={{ fontSize: 36 }}>🖥️</div>
         <div style={s.errTitle}>缺少门店信息</div>
         <div style={s.errSub}>
@@ -3483,6 +3515,7 @@ export default function CashierPage() {
           : '请确认当前登录账号属于这家门店，或让老板重新分享正确的收银台链接。'
       return (
         <main style={s.authPage}>
+          <QzPreviewVersionBanner />
           <section style={s.authIntro}>
             <div style={s.authBadge}>电脑收银台</div>
             <h1 style={s.authTitle}>{title}</h1>
@@ -3520,6 +3553,7 @@ export default function CashierPage() {
     const authUrl = posAuthChallenge?.authorizeUrl ?? ''
     return (
       <main style={s.authPage}>
+        <QzPreviewVersionBanner />
         <section style={s.authIntro}>
           <div style={s.authBadge}>电脑收银机授权</div>
           <h1 style={s.authTitle}>本机尚未授权为收银机</h1>
@@ -3585,6 +3619,7 @@ export default function CashierPage() {
 
   return (
     <div>
+      <QzPreviewVersionBanner />
       {/* ── Sugar modal — centered ─────────────────────────────────────────── */}
       {sugarModal && (
         <div style={s.sugarMask} onClick={() => setSugarModal(null)}>
@@ -4557,12 +4592,6 @@ export default function CashierPage() {
                   data-qz-dual-queue-test="controlled"
                   style={{ marginBottom: 10, padding: 10, borderRadius: 10, border: '1px dashed #93c5fd', background: '#eff6ff' }}
                 >
-                  {QZ_PREVIEW_LABEL === 'QZ-PRINT-01B' && QZ_PREVIEW_COMMIT === 'ba9e599' && (
-                    <div data-qz-preview-version="QZ-PRINT-01B" style={{ marginBottom: 7, color: '#475569', fontSize: 9, lineHeight: 1.35 }}>
-                      <div>QZ-PRINT-01B</div>
-                      <div>ba9e599</div>
-                    </div>
-                  )}
                   <div style={{ marginBottom: 7, color: '#1e3a8a', fontSize: 11, fontWeight: 900 }}>
                     {lang === 'en' ? 'QZ dual-queue field test (manual)' : lang === 'km' ? 'សាកល្បងជួរ QZ ពីរ (ដោយដៃ)' : 'QZ 双队列现场测试（手动）'}
                   </div>
