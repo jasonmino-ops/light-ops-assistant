@@ -14,7 +14,6 @@ import {
   assertQzSignOrigin,
   finishQzSignAudit,
   qzRequestIpHash,
-  recordQzSignDenied,
   reserveQzSignRateLimit,
   signQzDigestWithKms,
   verifyQzSigningSession,
@@ -48,12 +47,6 @@ export type QzSignRouteDependencies = {
     certificateVersion: string,
     ipHash: string,
   ) => Promise<string>
-  recordDenied: (
-    session: QzSigningSession,
-    certificateVersion: string,
-    ipHash: string,
-    errorCode: 'QZ_SIGN_STORE_FORBIDDEN',
-  ) => Promise<void>
   sign: (
     config: QzActiveSigningConfig,
     pair: QzCertificateKeyPair,
@@ -62,7 +55,7 @@ export type QzSignRouteDependencies = {
   finishAudit: (
     attemptId: string,
     result: 'SUCCESS' | 'FAILED',
-    errorCode?: 'QZ_SIGN_KMS_FAILED',
+    errorCode?: 'QZ_SIGN_KMS_FAILED' | 'QZ_SIGN_STORE_FORBIDDEN',
   ) => Promise<void>
 }
 
@@ -70,7 +63,6 @@ const DEFAULT_DEPENDENCIES: QzSignRouteDependencies = {
   readConfig: readQzActiveSigningConfig,
   verifySession: verifyQzSigningSession,
   reserveAttempt: reserveQzSignRateLimit,
-  recordDenied: recordQzSignDenied,
   sign: signQzDigestWithKms,
   finishAudit: finishQzSignAudit,
 }
@@ -97,17 +89,12 @@ export async function handleQzSignRequest(
     const session = await dependencies.verifySession(req)
     if (!session) throw new QzSigningRequestError('QZ_SIGN_SESSION_UNAUTHORIZED')
     const ipHash = qzRequestIpHash(req)
+    const attemptId = await dependencies.reserveAttempt(session, pair.certificateVersion, ipHash)
     if (!isQzSigningStoreAllowed(config, session.storeCode)) {
-      await dependencies.recordDenied(
-        session,
-        pair.certificateVersion,
-        ipHash,
-        'QZ_SIGN_STORE_FORBIDDEN',
-      )
+      await dependencies.finishAudit(attemptId, 'FAILED', 'QZ_SIGN_STORE_FORBIDDEN')
       throw new QzSigningRequestError('QZ_SIGN_STORE_FORBIDDEN')
     }
 
-    const attemptId = await dependencies.reserveAttempt(session, pair.certificateVersion, ipHash)
     let signature: string
     try {
       signature = await dependencies.sign(config, pair, digestText)

@@ -117,8 +117,7 @@ function parseCertificate(value: unknown, expectedSha256: string, now: Date): {
     leaf.ca ||
     leaf.subject === leaf.issuer ||
     leaf.publicKey.asymmetricKeyType !== 'rsa' ||
-    typeof keyDetails?.modulusLength !== 'number' ||
-    keyDetails.modulusLength < 2048
+    keyDetails?.modulusLength !== 2048
   ) {
     invalidConfig()
   }

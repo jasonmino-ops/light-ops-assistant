@@ -65,8 +65,33 @@ ZHtlQphLkyOKaYwo4KnxMdDd1Dyg4rdgai7wknI9aBIDpwOj4vBc48JGFC50LNUZ
 r4mHTx8EwL1JyJFbhCXyzIOK/epA3mh9ZCLBbpJqpfJ1q4Wbx/MgEvxefoUjKbMj
 yM/YsxURMU1CqlsBewBuS8hFz+Erl8OfLH9b0MOHDze5AdU=
 -----END CERTIFICATE-----`
+const RSA_3072_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIID+DCCAuCgAwIBAgIUfHmE66Se2HHXdQa2t5MY+esj47UwDQYJKoZIhvcNAQEL
+BQAwNzEaMBgGA1UEAwwRRS1TaG9wIFFaIFRlc3QgQ0ExGTAXBgNVBAoMEEUtU2hv
+cCBUZXN0IE9ubHkwHhcNMjYwODAyMTcwMTIyWhcNMzYwNzMwMTcwMTIyWjA+MSEw
+HwYDVQQDDBhFLVNob3AgUVogUlNBMzA3MiBSZWplY3QxGTAXBgNVBAoMEEUtU2hv
+cCBUZXN0IE9ubHkwggGiMA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQCqWnom
+oGrAkmFyXSfjmKy6HgFDaUE1lm9S4gPX4to9yzrVI1CawcXqNur928leUAanoE3L
+fZdM4VHFaJ7/aGpvwaqELjNMldDxXi0WyfoDkCqZzNd6vP7g6EgFb0IEWNkVbbyn
+nSIpqCQ3VL2FogJn6UHzv7Ziktss83dCyrCFnljqdOO9RizvcN/SDnBDXwZ3D55i
+8lw0XEDSeCd/1FbmEyduXAiEtvMBeqDOGIZko49hSz+qh11bWLk42ingY3NjRQ2R
+hs9E6uevudMAy5PUHBkbW2/WcZan3azpKc7e81Jk+aIttq2dBIP5ZtiuOULNindD
+BlFlYpTNlu8M/vluY76J73frNMZeOg2MKK1/IWS6RbUXxheEAkMZvy2FkzHnE8gW
+pXPCHm51a6tNvlybtp164xaxn7V0iLELNpM3ZKmNJnKqZjU6GCYNDxgtobtOisHe
+TC1oFdoQD/dYXK16Q+ciKyyI5LjIofd/SxoURbxcIUxnO8+YvHCcIioGiGkCAwEA
+AaN1MHMwDAYDVR0TAQH/BAIwADAOBgNVHQ8BAf8EBAMCB4AwEwYDVR0lBAwwCgYI
+KwYBBQUHAwMwHQYDVR0OBBYEFOZ2ehpq4jM6a1tsiR9Gk40wtqEyMB8GA1UdIwQY
+MBaAFIsnKxvKquVFaTdipFWQOH9P762tMA0GCSqGSIb3DQEBCwUAA4IBAQBCa9MP
++v94gMocvjZOUUAeo3EiSrp/gHa3GUPhxw2XGry2koohAElGhz6P5WNY7ktkhPg1
+0kZv5Gn6Ob7tKoNfgLOYnvU/t/D9UMJGi4ulsNO0fKfXm5HqiS1Xr1ATf2TKmvro
+oGrTWzdfxQpNhAEKd2uaANeCLRX6gIE1E9W1hCrRMZ0w5XUJiLsLaKyiEoHWvlMO
+ZmMbxFe4ziHqdz+70baQV6EWH8YoStat9l19FoDsgn0ukmSXy6kDl9FYK9ug2/jr
+F44vZgOS2bLVX+9MWSXtDdcyw7E5nbnZLcxupoLicLToLSyIS6xMk2RA+t777T7e
+13SRyhsVmCUY+2H1
+-----END CERTIFICATE-----`
 const CERTIFICATE_SHA256 = 'fcbf2715b030b26cdcaf51ac6c047bfa35fb323e5a32326f8369e0a6f135b2e2'
 const SELF_SIGNED_SHA256 = '876aad5c43fed2c1c6b9caa9b32c05bddd1ae28b285333483310265aabc1e81f'
+const RSA_3072_SHA256 = 'a02b47af3a8745eb0e5374377fa6a89feee34aaeae5af8252b59f937e262da9f'
 const VALID_SIGNATURE = 'QV6VkZPGPxSS6DrirMforggxmRVshd9/cKjanOwFiXHajuyfFBOhCcc9dR9Xjc6xjEeznOXWfoK/M6jt2GbEIzPahA1oRKgSOFLJNIVJakkWZVtrQlCVXzvot7sd4Fg0EQcawqgA+5UxAy/YHh/PnesXGI6IgsX2Ynwiiqep8uxjAQOoiZN7R144Wf1dXb/GKFH9C10uf5u0ov11ymrZPfbKXeOzn0CGpmkJoCHZsHqQmuF0o/0wXSTXZF1GAGrmVb1D9//HeS+rf7dv97C40SUt4gPsavjO5CuQqVVPszF87r5+t5Vq3LolADCZw5QPt4RBmROpIOWBwFAYZfXmbg=='
 const VERSION = 'qz-test-2026-01'
 const REGION = 'us-east-1'
@@ -159,6 +184,13 @@ async function testCertificateAndVersionPairsFailClosed() {
     QZ_SIGNING_VERSION_PAIRS_JSON: versionPairs({
       certificate: SELF_SIGNED_CA_CERTIFICATE,
       certificateSha256: SELF_SIGNED_SHA256,
+    }),
+  })
+  assertInvalidConfig({
+    ...env(),
+    QZ_SIGNING_VERSION_PAIRS_JSON: versionPairs({
+      certificate: RSA_3072_CERTIFICATE,
+      certificateSha256: RSA_3072_SHA256,
     }),
   })
   assertInvalidConfig(env(), new Date('2040-01-01T00:00:00.000Z'))
@@ -275,9 +307,10 @@ function routeDependencies(overrides: Partial<QzSignRouteDependencies> = {}) {
     readConfig: () => readQzActiveSigningConfig(env()),
     verifySession: async () => VALID_SESSION,
     reserveAttempt: async () => { calls.push('reserve'); return 'audit-1' },
-    recordDenied: async () => { calls.push('denied') },
     sign: async () => { calls.push('sign'); return VALID_SIGNATURE },
-    finishAudit: async (_id, result) => { calls.push(`audit:${result}`) },
+    finishAudit: async (_id, result, errorCode) => {
+      calls.push(`audit:${result}${errorCode ? `:${errorCode}` : ''}`)
+    },
     ...overrides,
   }
   return { calls, dependencies }
@@ -306,7 +339,7 @@ async function testRuntimeSuccessAndSecurityFailures() {
   })
   const forbiddenResponse = await handleQzSignRequest(request(), forbidden.dependencies)
   assert.equal(forbiddenResponse.status, 403)
-  assert.deepEqual(forbidden.calls, ['denied'])
+  assert.deepEqual(forbidden.calls, ['reserve', 'audit:FAILED:QZ_SIGN_STORE_FORBIDDEN'])
 
   const wrongVersion = routeDependencies()
   const versionResponse = await handleQzSignRequest(
@@ -323,7 +356,7 @@ async function testRuntimeSuccessAndSecurityFailures() {
   const kmsFailureResponse = await handleQzSignRequest(request(), kmsFailure.dependencies)
   assert.equal(kmsFailureResponse.status, 503)
   assert.equal((await kmsFailureResponse.json()).error, 'QZ_SIGN_KMS_FAILED')
-  assert.deepEqual(kmsFailure.calls, ['reserve', 'audit:FAILED'])
+  assert.deepEqual(kmsFailure.calls, ['reserve', 'audit:FAILED:QZ_SIGN_KMS_FAILED'])
 
   const rateLimited = routeDependencies({
     reserveAttempt: async () => { throw new QzSigningRequestError('QZ_SIGN_RATE_LIMITED') },

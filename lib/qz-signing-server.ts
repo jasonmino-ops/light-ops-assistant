@@ -114,6 +114,7 @@ function hashAuditValue(value: string): string {
 
 function auditDimensions(session: QzSigningSession, ipHash: string) {
   return {
+    storeHash: hashAuditValue(`store:${session.tenantId}:${session.storeId}`),
     sessionHash: hashAuditValue(`session:${session.tenantId}:${session.storeId}:${session.browserPosSessionId}`),
     deviceHash: hashAuditValue(`device:${session.tenantId}:${session.storeId}:${session.deviceId}`),
     ipHash,
@@ -124,37 +125,6 @@ function auditEnvironment(): 'production' | 'preview' | 'development' | 'unknown
   const value = process.env.VERCEL_ENV ?? process.env.NODE_ENV
   if (value === 'production' || value === 'preview' || value === 'development') return value
   return 'unknown'
-}
-
-export async function recordQzSignDenied(
-  session: QzSigningSession,
-  certificateVersion: string,
-  ipHash: string,
-  errorCode: 'QZ_SIGN_STORE_FORBIDDEN',
-): Promise<void> {
-  const dimensions = auditDimensions(session, ipHash)
-  try {
-    await prisma.operationLog.create({
-      data: {
-        tenantId: session.tenantId,
-        storeId: session.storeId,
-        userId: null,
-        actionType: 'QZ_SIGN_DENIED',
-        targetType: 'BrowserPosDevice',
-        targetId: `qz-session:${dimensions.sessionHash.slice(0, 32)}`,
-        status: 'FAILED',
-        message: errorCode,
-        payloadSnapshot: {
-          certificateVersion,
-          environment: auditEnvironment(),
-          deviceHash: dimensions.deviceHash,
-          ipHash: dimensions.ipHash,
-        },
-      },
-    })
-  } catch {
-    throw new QzSigningRequestError('QZ_SIGN_AUDIT_FAILED')
-  }
 }
 
 export async function reserveQzSignRateLimit(
@@ -170,18 +140,21 @@ export async function reserveQzSignRateLimit(
     return await prisma.$transaction(async (tx) => {
       const common = { actionType: 'QZ_SIGN', createdAt: { gte: since } }
       const [sessionAttempts, deviceAttempts, ipAttempts, storeAttempts] = await Promise.all([
-        tx.operationLog.count({ where: { ...common, tenantId: session.tenantId, storeId: session.storeId, targetId } }),
+        tx.operationLog.count({ where: { ...common, tenantId: session.tenantId, targetId } }),
         tx.operationLog.count({ where: {
           ...common,
           tenantId: session.tenantId,
-          storeId: session.storeId,
           payloadSnapshot: { path: ['deviceHash'], equals: dimensions.deviceHash },
         } }),
         tx.operationLog.count({ where: {
           ...common,
           payloadSnapshot: { path: ['ipHash'], equals: dimensions.ipHash },
         } }),
-        tx.operationLog.count({ where: { ...common, tenantId: session.tenantId, storeId: session.storeId } }),
+        tx.operationLog.count({ where: {
+          ...common,
+          tenantId: session.tenantId,
+          payloadSnapshot: { path: ['storeHash'], equals: dimensions.storeHash },
+        } }),
       ])
       if (
         sessionAttempts >= QZ_SIGN_RATE_LIMIT_MAX ||
@@ -194,7 +167,7 @@ export async function reserveQzSignRateLimit(
       const attempt = await tx.operationLog.create({
         data: {
           tenantId: session.tenantId,
-          storeId: session.storeId,
+          storeId: null,
           userId: null,
           actionType: 'QZ_SIGN',
           targetType: 'BrowserPosDevice',
@@ -204,6 +177,7 @@ export async function reserveQzSignRateLimit(
           payloadSnapshot: {
             certificateVersion,
             environment: auditEnvironment(),
+            storeHash: dimensions.storeHash,
             deviceHash: dimensions.deviceHash,
             ipHash: dimensions.ipHash,
           },
@@ -221,7 +195,7 @@ export async function reserveQzSignRateLimit(
 export async function finishQzSignAudit(
   attemptId: string,
   result: 'SUCCESS' | 'FAILED',
-  errorCode?: 'QZ_SIGN_KMS_FAILED',
+  errorCode?: 'QZ_SIGN_KMS_FAILED' | 'QZ_SIGN_STORE_FORBIDDEN',
 ): Promise<void> {
   try {
     await prisma.operationLog.update({
