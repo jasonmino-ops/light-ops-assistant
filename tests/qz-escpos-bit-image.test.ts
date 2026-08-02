@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   ESC_POS_BIT_IMAGE_BAND_HEIGHT,
   ESC_POS_BIT_IMAGE_MODE_24_DOUBLE_DENSITY,
+  ESC_POS_FULL_CUT,
   encodeRgbaToEscPosEscStar24,
   qzRawBytesToBase64,
 } from '../lib/qzEscPosBitImage'
@@ -33,7 +34,9 @@ function testOneBlackColumnUsesEscStar24() {
     0x0a,
     0x1b, 0x32,
     0x1b, 0x64, 0x03,
+    0x1d, 0x56, 0x00,
   ])
+  assert.deepEqual(ESC_POS_FULL_CUT, [0x1d, 0x56, 0x00])
 }
 
 function testMsbFirstPackingAndBandPadding() {
@@ -56,7 +59,25 @@ function testBase64AndValidation() {
   )
 }
 
+function testFeedsThenCutsExactlyOnceAtPayloadEnd() {
+  const result = encodeRgbaToEscPosEscStar24(rgbaBitmap(2, 48, (x, y) => x === y % 2))
+  const cutOffsets: number[] = []
+  for (let index = 0; index <= result.length - 3; index += 1) {
+    if (result[index] === 0x1d && result[index + 1] === 0x56 && result[index + 2] === 0x00) {
+      cutOffsets.push(index)
+    }
+  }
+
+  assert.deepEqual(Array.from(result.slice(-8)), [
+    0x1b, 0x32,
+    0x1b, 0x64, 0x03,
+    0x1d, 0x56, 0x00,
+  ])
+  assert.deepEqual(cutOffsets, [result.length - 3], 'the payload must contain one cutter command at its end')
+}
+
 testOneBlackColumnUsesEscStar24()
 testMsbFirstPackingAndBandPadding()
 testBase64AndValidation()
+testFeedsThenCutsExactlyOnceAtPayloadEnd()
 console.log('QZ ESC/POS ESC * 0x21 bit-image tests passed')

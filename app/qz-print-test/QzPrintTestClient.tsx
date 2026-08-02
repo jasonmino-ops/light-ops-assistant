@@ -241,13 +241,13 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
 
   return (
     <main style={styles.page}>
-      <section style={styles.card} data-qz-print-test-page="QZ-PRINT-02A">
+      <section style={styles.card} data-qz-print-test-page="QZ-PRINT-02B">
         <header style={styles.header}>
-          <div style={styles.eyebrow}>QZ-PRINT-02A</div>
-          <h1 style={styles.title}>ESC/POS RAW 位图最小验证</h1>
+          <div style={styles.eyebrow}>QZ-PRINT-02B</div>
+          <h1 style={styles.title}>ESC/POS RAW 自动切纸验证</h1>
           <div style={styles.meta}>Commit: {previewCommit}</div>
           <div style={styles.meta}>Environment: Preview</div>
-          <div style={styles.meta}>Mode: ESC * 0x21 / QZ RAW / Fixed Bitmap</div>
+          <div style={styles.meta}>Mode: ESC * 0x21 / ESC d 3 / GS V 0 / QZ RAW</div>
         </header>
 
         <section style={styles.section}>
@@ -281,7 +281,7 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
         <section style={styles.section}>
           <div style={styles.sectionTitle}>ESC/POS RAW 固定黑白图</div>
           <div style={styles.message}>
-            同一张 {RAW_TEST_IMAGE_WIDTH}×{RAW_TEST_IMAGE_HEIGHT} 黑白测试图，经浏览器单色化后编码为 ESC * 0x21；不经过 QZ Pixel，不调用浏览器打印。
+            同一张 {RAW_TEST_IMAGE_WIDTH}×{RAW_TEST_IMAGE_HEIGHT} 黑白测试图编码为 ESC * 0x21；完整位图后走纸三行并执行一次 GS V 0 全切，不经过 QZ Pixel 或浏览器打印。
           </div>
           <div style={styles.actionGrid}>
             {RAW_TEST_ACTIONS.map((action) => {

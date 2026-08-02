@@ -5,8 +5,10 @@
 // the two receipt printers. It has no QZ, DOM, order, or payment dependency.
 
 export const ESC_POS_ESC = 0x1b
+export const ESC_POS_GS = 0x1d
 export const ESC_POS_BIT_IMAGE_MODE_24_DOUBLE_DENSITY = 0x21
 export const ESC_POS_BIT_IMAGE_BAND_HEIGHT = 24
+export const ESC_POS_FULL_CUT = [ESC_POS_GS, 0x56, 0x00] as const
 
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
@@ -89,7 +91,8 @@ export function encodeRgbaToEscPosEscStar24(
 
   bytes.push(
     ESC_POS_ESC, 0x32, // ESC 2 — restore default line spacing
-    ESC_POS_ESC, 0x64, 0x03, // ESC d 3 — feed three lines, no cutter command
+    ESC_POS_ESC, 0x64, 0x03, // ESC d 3 — feed three lines before the cutter
+    ...ESC_POS_FULL_CUT, // GS V 0 — one full cut, after the complete bitmap
   )
   return Uint8Array.from(bytes)
 }
