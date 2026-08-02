@@ -4,6 +4,8 @@
 // fallback. Each button submits one job to its fixed Windows queue, so a
 // customer-receipt failure and a kitchen-ticket failure remain independent.
 
+import { qzRawBytesToBase64 } from './qzEscPosBitImage'
+
 export const QZ_PRINT_QUEUES = {
   receipt: '前台',
   kitchen: '厨房',
@@ -157,6 +159,35 @@ export async function printHtmlViaFixedQzQueue(
       flavor: 'plain',
       data: html,
       options: { pageWidth: QZ_RECEIPT_WIDTH_INCHES },
+    }])
+  } catch (cause) {
+    throw new QzPrintError('QZ_PRINT_FAILED', queueName, { cause })
+  }
+
+  return { kind, queueName }
+}
+
+/**
+ * Controlled QZ-PRINT-02A transport only: submits pre-built ESC/POS bytes as
+ * base64 RAW data to one of the two exact queues. It deliberately has no
+ * Pixel options, default-printer lookup, browser-print fallback, or retry.
+ */
+export async function printEscPosBitImageViaFixedQzQueue(
+  kind: QzPrintKind,
+  bytes: Uint8Array,
+  client?: QzClient,
+): Promise<{ kind: QzPrintKind; queueName: string }> {
+  const queueName = QZ_PRINT_QUEUES[kind]
+  const qz = client ?? (await loadQz())
+  await ensureConnected(qz, queueName)
+  await assertQueueExists(qz, queueName)
+
+  const config = qz.configs.create(queueName)
+  try {
+    await qz.print(config, [{
+      type: 'raw',
+      format: 'base64',
+      data: qzRawBytesToBase64(bytes),
     }])
   } catch (cause) {
     throw new QzPrintError('QZ_PRINT_FAILED', queueName, { cause })

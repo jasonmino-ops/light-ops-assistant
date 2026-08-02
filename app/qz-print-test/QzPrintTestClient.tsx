@@ -1,17 +1,19 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { renderDesktopReceiptHtml, type DesktopReceiptData } from '@/app/components/DesktopReceipt'
 import { renderKitchenTicketHtml, type KitchenTicketData } from '@/app/components/KitchenTicket'
 import {
   detectQzOnline,
   listQzPrinters,
+  printEscPosBitImageViaFixedQzQueue,
   printHtmlViaFixedQzQueue,
   QZ_PRINT_QUEUES,
   QzPrintError,
   type QzPrintKind,
   type QzStatus,
 } from '@/lib/qzPrinterAdapter'
+import { encodeRgbaToEscPosEscStar24 } from '@/lib/qzEscPosBitImage'
 
 type PrintState = {
   status: 'idle' | 'printing' | 'success' | 'error'
@@ -30,8 +32,18 @@ type FixedTestCase = {
 }
 
 const INITIAL_PRINT_STATE: PrintState = { status: 'idle', message: '' }
+const INITIAL_RAW_STATES: Record<QzPrintKind, PrintState> = {
+  receipt: INITIAL_PRINT_STATE,
+  kitchen: INITIAL_PRINT_STATE,
+}
 const QZ_STATUS_TIMEOUT_MS = 8_000
 const FIXED_CREATED_AT = '2026-08-02T00:00:00.000Z'
+const RAW_TEST_IMAGE_WIDTH = 576
+const RAW_TEST_IMAGE_HEIGHT = 288
+const RAW_TEST_ACTIONS: ReadonlyArray<{ kind: QzPrintKind; label: string; color: string }> = [
+  { kind: 'receipt', label: '前台 RAW 位图测试', color: '#111827' },
+  { kind: 'kitchen', label: '厨房 RAW 位图测试', color: '#374151' },
+]
 const FIXED_TEST_CASES: readonly FixedTestCase[] = [
   { id: 'customer-front', label: 'A｜顾客票 → 前台', documentKind: 'customer', queueKind: 'receipt', color: '#2563eb' },
   { id: 'customer-kitchen', label: 'B｜顾客票 → 厨房', documentKind: 'customer', queueKind: 'kitchen', color: '#0f766e' },
@@ -87,6 +99,39 @@ function kitchenTestTicket(): KitchenTicketData {
   }
 }
 
+async function buildFixedEscPosRawTestImage(): Promise<Uint8Array> {
+  await document.fonts?.ready
+  const canvas = document.createElement('canvas')
+  canvas.width = RAW_TEST_IMAGE_WIDTH
+  canvas.height = RAW_TEST_IMAGE_HEIGHT
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) throw new Error('RAW_TEST_CANVAS_UNAVAILABLE')
+
+  context.fillStyle = '#fff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillStyle = '#000'
+  context.font = '900 30px Arial, "Microsoft YaHei", "SimHei", sans-serif'
+  context.fillText('E-Shop ESC/POS IMAGE TEST', canvas.width / 2, 36)
+  context.font = '900 34px "Courier New", monospace'
+  context.fillText('1234567890', canvas.width / 2, 82)
+  context.font = '900 34px "Microsoft YaHei", "SimHei", sans-serif'
+  context.fillText('中文测试', canvas.width / 2, 130)
+  context.fillRect(24, 164, canvas.width - 48, 5)
+  context.fillRect(74, 190, canvas.width - 148, 70)
+  context.fillStyle = '#fff'
+  context.font = '900 30px Arial, "Microsoft YaHei", "SimHei", sans-serif'
+  context.fillText('BOLD  粗体区域', canvas.width / 2, 225)
+
+  const image = context.getImageData(0, 0, canvas.width, canvas.height)
+  return encodeRgbaToEscPosEscStar24({
+    width: canvas.width,
+    height: canvas.height,
+    rgba: image.data,
+  })
+}
+
 function errorMessage(kind: QzPrintKind, error: unknown) {
   const queueName = QZ_PRINT_QUEUES[kind]
   const code = error instanceof QzPrintError ? error.code : 'QZ_PRINT_FAILED'
@@ -100,6 +145,9 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
   const [printers, setPrinters] = useState<string[]>([])
   const [statusMessage, setStatusMessage] = useState('正在检测 QZ Tray…')
   const [testStates, setTestStates] = useState<Record<TestCaseId, PrintState>>(INITIAL_TEST_STATES)
+  const [rawStates, setRawStates] = useState<Record<QzPrintKind, PrintState>>(INITIAL_RAW_STATES)
+  const rawInFlight = useRef<Set<QzPrintKind>>(new Set())
+  const rawBitmapBytes = useRef<Promise<Uint8Array> | null>(null)
 
   const refreshStatus = useCallback(async () => {
     setQzStatus('checking')
@@ -154,16 +202,52 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
     }
   }
 
+  async function submitRawBitmapTest(kind: QzPrintKind) {
+    if (rawInFlight.current.has(kind)) return
+    const queueName = QZ_PRINT_QUEUES[kind]
+    const setState = (next: PrintState) => {
+      setRawStates((previous) => ({ ...previous, [kind]: next }))
+    }
+    if (qzStatus !== 'online') {
+      setState({ status: 'error', message: `“${queueName}”：QZ Tray 不可用，请先确认 QZ Tray 在线并刷新状态` })
+      return
+    }
+    if (!printers.includes(queueName)) {
+      setState({ status: 'error', message: `未找到 Windows 打印队列“${queueName}”` })
+      return
+    }
+
+    rawInFlight.current.add(kind)
+    setState({ status: 'printing', message: '' })
+    try {
+      if (!rawBitmapBytes.current) rawBitmapBytes.current = buildFixedEscPosRawTestImage()
+      let bytes: Uint8Array
+      try {
+        bytes = await rawBitmapBytes.current
+      } catch (error) {
+        rawBitmapBytes.current = null
+        throw error
+      }
+      await printEscPosBitImageViaFixedQzQueue(kind, bytes)
+      setState({ status: 'success', message: `ESC * 0x21 RAW 已提交到“${queueName}”（${bytes.length} bytes）` })
+    } catch (error) {
+      setState({ status: 'error', message: errorMessage(kind, error) })
+    } finally {
+      rawInFlight.current.delete(kind)
+    }
+  }
+
   const statusLabel = qzStatus === 'online' ? '在线' : qzStatus === 'checking' ? '检测中' : '离线'
 
   return (
     <main style={styles.page}>
-      <section style={styles.card} data-qz-print-test-page="QZ-PRINT-01D">
+      <section style={styles.card} data-qz-print-test-page="QZ-PRINT-02A">
         <header style={styles.header}>
-          <div style={styles.eyebrow}>QZ-PRINT-01D</div>
-          <h1 style={styles.title}>票据渲染与双队列对照</h1>
+          <div style={styles.eyebrow}>QZ-PRINT-02A</div>
+          <h1 style={styles.title}>ESC/POS RAW 位图最小验证</h1>
           <div style={styles.meta}>Commit: {previewCommit}</div>
           <div style={styles.meta}>Environment: Preview</div>
+          <div style={styles.meta}>Mode: ESC * 0x21 / QZ RAW / Fixed Bitmap</div>
         </header>
 
         <section style={styles.section}>
@@ -195,7 +279,38 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
         </section>
 
         <section style={styles.section}>
+          <div style={styles.sectionTitle}>ESC/POS RAW 固定黑白图</div>
+          <div style={styles.message}>
+            同一张 {RAW_TEST_IMAGE_WIDTH}×{RAW_TEST_IMAGE_HEIGHT} 黑白测试图，经浏览器单色化后编码为 ESC * 0x21；不经过 QZ Pixel，不调用浏览器打印。
+          </div>
+          <div style={styles.actionGrid}>
+            {RAW_TEST_ACTIONS.map((action) => {
+              const state = rawStates[action.kind]
+              return (
+                <div key={action.kind}>
+                  <button
+                    type="button"
+                    data-qz-raw-action={action.kind}
+                    style={{ ...styles.primaryButton, width: '100%', background: action.color }}
+                    disabled={state.status === 'printing'}
+                    onClick={() => void submitRawBitmapTest(action.kind)}
+                  >
+                    {state.status === 'printing' ? '提交中…' : action.label}
+                  </button>
+                  {state.message && (
+                    <div data-qz-raw-result={action.kind} style={{ ...styles.result, color: state.status === 'error' ? '#b91c1c' : '#166534' }}>
+                      {state.message}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        <section style={styles.section}>
           <div style={styles.sectionTitle}>固定队列测试</div>
+          <div style={styles.message}>保留的 QZ Pixel 四票对照入口（QZ-PRINT-01D），本轮未删除或替换。</div>
           <div style={styles.actionGrid}>
             {FIXED_TEST_CASES.map((testCase) => {
               const state = testStates[testCase.id]
@@ -222,7 +337,7 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
         </section>
 
         <footer style={styles.footer}>
-          本页面不读取或创建真实订单、支付、商品、库存、顾客或 Computer Binding 数据；固定队列失败时不会回退浏览器打印。
+          本页面不读取或创建真实订单、支付、商品、库存、顾客或 Computer Binding 数据；RAW 与 Pixel 均只允许固定队列，失败时不会回退浏览器打印。
         </footer>
       </section>
     </main>

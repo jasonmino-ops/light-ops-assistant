@@ -4,6 +4,7 @@ import {
   QZ_PIXEL_DENSITY_DPI,
   QZ_RECEIPT_WIDTH_INCHES,
   QzPrintError,
+  printEscPosBitImageViaFixedQzQueue,
   printCustomerReceiptViaQz,
   printKitchenTicketViaQz,
   type QzClient,
@@ -122,11 +123,35 @@ async function testFailuresAndRetriesAreIndependent() {
   assert.equal(client.printCalls.length, 3)
 }
 
+async function testEscPosRawUsesExactQueueAndBase64Bytes() {
+  const client = makeClient()
+  const bytes = Uint8Array.from([0x1b, 0x2a, 0x21, 0x01, 0x00, 0xff, 0x00, 0x81])
+
+  const receipt = await printEscPosBitImageViaFixedQzQueue('receipt', bytes, client)
+  const kitchen = await printEscPosBitImageViaFixedQzQueue('kitchen', bytes, client)
+
+  assert.deepEqual(receipt, { kind: 'receipt', queueName: '前台' })
+  assert.deepEqual(kitchen, { kind: 'kitchen', queueName: '厨房' })
+  assert.deepEqual(client.configCalls, [
+    { printer: '前台', options: undefined },
+    { printer: '厨房', options: undefined },
+  ])
+  assert.equal(client.printCalls.length, 2)
+  for (const call of client.printCalls) {
+    assert.deepEqual(call.data, [{
+      type: 'raw',
+      format: 'base64',
+      data: 'GyohAQD/AIE=',
+    }])
+  }
+}
+
 async function run() {
   await testFixedQueueRouting()
   await testQzUnavailableIsExplicit()
   await testMissingQueueIsExplicitAndNeverUsesDefault()
   await testFailuresAndRetriesAreIndependent()
+  await testEscPosRawUsesExactQueueAndBase64Bytes()
   console.log('QZ dual-queue adapter tests passed')
 }
 
