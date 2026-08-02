@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   QZ_PRINT_QUEUES,
+  QZ_PIXEL_DENSITY_DPI,
   QZ_RECEIPT_WIDTH_INCHES,
   QzPrintError,
   printCustomerReceiptViaQz,
@@ -70,6 +71,10 @@ async function testFixedQueueRouting() {
       margins: 0,
       orientation: 'portrait',
       scaleContent: false,
+      density: QZ_PIXEL_DENSITY_DPI,
+      fallbackDensity: QZ_PIXEL_DENSITY_DPI,
+      colorType: 'blackwhite',
+      interpolation: 'nearest-neighbor',
     })
   }
 }

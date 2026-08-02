@@ -6,8 +6,7 @@ import { renderKitchenTicketHtml, type KitchenTicketData } from '@/app/component
 import {
   detectQzOnline,
   listQzPrinters,
-  printCustomerReceiptViaQz,
-  printKitchenTicketViaQz,
+  printHtmlViaFixedQzQueue,
   QZ_PRINT_QUEUES,
   QzPrintError,
   type QzPrintKind,
@@ -19,8 +18,33 @@ type PrintState = {
   message: string
 }
 
+type TestCaseId = 'customer-front' | 'customer-kitchen' | 'kitchen-front' | 'kitchen-kitchen'
+type DocumentKind = 'customer' | 'kitchen'
+
+type FixedTestCase = {
+  id: TestCaseId
+  label: string
+  documentKind: DocumentKind
+  queueKind: QzPrintKind
+  color: string
+}
+
 const INITIAL_PRINT_STATE: PrintState = { status: 'idle', message: '' }
 const QZ_STATUS_TIMEOUT_MS = 8_000
+const FIXED_CREATED_AT = '2026-08-02T00:00:00.000Z'
+const FIXED_TEST_CASES: readonly FixedTestCase[] = [
+  { id: 'customer-front', label: 'A｜顾客票 → 前台', documentKind: 'customer', queueKind: 'receipt', color: '#2563eb' },
+  { id: 'customer-kitchen', label: 'B｜顾客票 → 厨房', documentKind: 'customer', queueKind: 'kitchen', color: '#0f766e' },
+  { id: 'kitchen-front', label: 'C｜厨房票 → 前台', documentKind: 'kitchen', queueKind: 'receipt', color: '#7c3aed' },
+  { id: 'kitchen-kitchen', label: 'D｜厨房票 → 厨房', documentKind: 'kitchen', queueKind: 'kitchen', color: '#ea580c' },
+]
+
+const INITIAL_TEST_STATES: Record<TestCaseId, PrintState> = {
+  'customer-front': INITIAL_PRINT_STATE,
+  'customer-kitchen': INITIAL_PRINT_STATE,
+  'kitchen-front': INITIAL_PRINT_STATE,
+  'kitchen-kitchen': INITIAL_PRINT_STATE,
+}
 
 async function withStatusTimeout<T>(operation: Promise<T>): Promise<T> {
   return Promise.race([
@@ -34,15 +58,15 @@ async function withStatusTimeout<T>(operation: Promise<T>): Promise<T> {
 function customerTestReceipt(): DesktopReceiptData {
   return {
     storeName: 'E-Shop QZ 安全测试',
-    orderNo: 'QZ-PRINT-01C-CUSTOMER',
-    createdAt: new Date().toISOString(),
+    orderNo: 'QZ-PRINT-01D-CUSTOMER',
+    createdAt: FIXED_CREATED_AT,
     cashierName: 'Preview Test',
     paymentMethod: 'TEST ONLY',
     totalAmount: 0,
     currencyCode: 'USD',
     items: [{
       name: '顾客测试票',
-      spec: '固定队列：前台 · 不创建交易',
+      spec: 'QZ-PRINT-01D 固定对照样本 · 不创建交易',
       qty: 1,
       price: 0,
       lineAmount: 0,
@@ -53,11 +77,11 @@ function customerTestReceipt(): DesktopReceiptData {
 function kitchenTestTicket(): KitchenTicketData {
   return {
     storeName: 'E-Shop QZ 安全测试',
-    orderNo: 'QZ-PRINT-01C-KITCHEN',
-    createdAt: new Date().toISOString(),
+    orderNo: 'QZ-PRINT-01D-KITCHEN',
+    createdAt: FIXED_CREATED_AT,
     items: [{
       name: '厨房测试票',
-      spec: '固定队列：厨房 · 不含金额、价格或支付信息',
+      spec: 'QZ-PRINT-01D 固定对照样本 · 不含金额、价格或支付信息',
       qty: 1,
     }],
   }
@@ -71,12 +95,11 @@ function errorMessage(kind: QzPrintKind, error: unknown) {
   return `提交到“${queueName}”失败，请检查该队列后重试`
 }
 
-export default function QzPrintTestClient() {
+export default function QzPrintTestClient({ previewCommit }: { previewCommit: string }) {
   const [qzStatus, setQzStatus] = useState<QzStatus>('checking')
   const [printers, setPrinters] = useState<string[]>([])
   const [statusMessage, setStatusMessage] = useState('正在检测 QZ Tray…')
-  const [receiptState, setReceiptState] = useState<PrintState>(INITIAL_PRINT_STATE)
-  const [kitchenState, setKitchenState] = useState<PrintState>(INITIAL_PRINT_STATE)
+  const [testStates, setTestStates] = useState<Record<TestCaseId, PrintState>>(INITIAL_TEST_STATES)
 
   const refreshStatus = useCallback(async () => {
     setQzStatus('checking')
@@ -104,11 +127,13 @@ export default function QzPrintTestClient() {
     void refreshStatus()
   }, [refreshStatus])
 
-  async function submitFixedTest(kind: QzPrintKind) {
-    const current = kind === 'receipt' ? receiptState : kitchenState
+  async function submitFixedTest(testCase: FixedTestCase) {
+    const current = testStates[testCase.id]
     if (current.status === 'printing') return
-    const setState = kind === 'receipt' ? setReceiptState : setKitchenState
-    const queueName = QZ_PRINT_QUEUES[kind]
+    const setState = (next: PrintState) => {
+      setTestStates((previous) => ({ ...previous, [testCase.id]: next }))
+    }
+    const queueName = QZ_PRINT_QUEUES[testCase.queueKind]
     if (qzStatus !== 'online') {
       setState({ status: 'error', message: 'QZ Tray 不可用，请先确认 QZ Tray 在线并刷新状态' })
       return
@@ -119,14 +144,13 @@ export default function QzPrintTestClient() {
     }
     setState({ status: 'printing', message: '' })
     try {
-      if (kind === 'receipt') {
-        await printCustomerReceiptViaQz(renderDesktopReceiptHtml(customerTestReceipt(), 'zh'))
-      } else {
-        await printKitchenTicketViaQz(renderKitchenTicketHtml(kitchenTestTicket(), 'zh'))
-      }
-      setState({ status: 'success', message: `已提交到“${QZ_PRINT_QUEUES[kind]}”` })
+      const html = testCase.documentKind === 'customer'
+        ? renderDesktopReceiptHtml(customerTestReceipt(), 'zh')
+        : renderKitchenTicketHtml(kitchenTestTicket(), 'zh')
+      await printHtmlViaFixedQzQueue(testCase.queueKind, html)
+      setState({ status: 'success', message: `已提交到“${queueName}”` })
     } catch (error) {
-      setState({ status: 'error', message: errorMessage(kind, error) })
+      setState({ status: 'error', message: errorMessage(testCase.queueKind, error) })
     }
   }
 
@@ -134,11 +158,11 @@ export default function QzPrintTestClient() {
 
   return (
     <main style={styles.page}>
-      <section style={styles.card} data-qz-print-test-page="QZ-PRINT-01C">
+      <section style={styles.card} data-qz-print-test-page="QZ-PRINT-01D">
         <header style={styles.header}>
-          <div style={styles.eyebrow}>QZ-PRINT-01C</div>
-          <h1 style={styles.title}>Windows 双打印机受控测试</h1>
-          <div style={styles.meta}>Commit: ba9e599</div>
+          <div style={styles.eyebrow}>QZ-PRINT-01D</div>
+          <h1 style={styles.title}>票据渲染与双队列对照</h1>
+          <div style={styles.meta}>Commit: {previewCommit}</div>
           <div style={styles.meta}>Environment: Preview</div>
         </header>
 
@@ -173,27 +197,28 @@ export default function QzPrintTestClient() {
         <section style={styles.section}>
           <div style={styles.sectionTitle}>固定队列测试</div>
           <div style={styles.actionGrid}>
-            <button
-              type="button"
-              data-qz-test-action="receipt"
-              style={{ ...styles.primaryButton, background: '#2563eb' }}
-              disabled={receiptState.status === 'printing'}
-              onClick={() => void submitFixedTest('receipt')}
-            >
-              {receiptState.status === 'printing' ? '提交中…' : '顾客测试票 → 前台'}
-            </button>
-            <button
-              type="button"
-              data-qz-test-action="kitchen"
-              style={{ ...styles.primaryButton, background: '#ea580c' }}
-              disabled={kitchenState.status === 'printing'}
-              onClick={() => void submitFixedTest('kitchen')}
-            >
-              {kitchenState.status === 'printing' ? '提交中…' : '厨房测试票 → 厨房'}
-            </button>
+            {FIXED_TEST_CASES.map((testCase) => {
+              const state = testStates[testCase.id]
+              return (
+                <div key={testCase.id}>
+                  <button
+                    type="button"
+                    data-qz-test-action={testCase.id}
+                    style={{ ...styles.primaryButton, width: '100%', background: testCase.color }}
+                    disabled={state.status === 'printing'}
+                    onClick={() => void submitFixedTest(testCase)}
+                  >
+                    {state.status === 'printing' ? '提交中…' : testCase.label}
+                  </button>
+                  {state.message && (
+                    <div data-qz-test-result={testCase.id} style={{ ...styles.result, color: state.status === 'error' ? '#b91c1c' : '#166534' }}>
+                      {state.message}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
-          {receiptState.message && <div data-qz-test-result="receipt" style={{ ...styles.result, color: receiptState.status === 'error' ? '#b91c1c' : '#166534' }}>{receiptState.message}</div>}
-          {kitchenState.message && <div data-qz-test-result="kitchen" style={{ ...styles.result, color: kitchenState.status === 'error' ? '#b91c1c' : '#166534' }}>{kitchenState.message}</div>}
         </section>
 
         <footer style={styles.footer}>

@@ -243,7 +243,12 @@ function receiptHtml(data: DesktopReceiptData, lang: Lang) {
     .total { font-size: 16px; font-weight: 900; color: #000; margin-top: 1mm; }
     .thanks { margin-top: 4mm; font-weight: 900; color: #000; }
     @media print {
-      html, body { width: 80mm; }
+      html, body {
+        width: 80mm;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+      }
       body { padding: 0; }
       .receipt { width: 74mm; box-shadow: none; }
     }

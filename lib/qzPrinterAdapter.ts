@@ -50,6 +50,7 @@ let qzModulePromise: Promise<QzClient> | null = null
 // QZ's HTML renderer otherwise inherits the printer/default page size and can
 // create an A4 raster job even when the HTML itself is 80mm wide.
 export const QZ_RECEIPT_WIDTH_INCHES = 80 / 25.4
+export const QZ_PIXEL_DENSITY_DPI = 203
 
 async function loadQz(): Promise<QzClient> {
   if (typeof window === 'undefined') {
@@ -143,6 +144,10 @@ export async function printHtmlViaFixedQzQueue(
     margins: 0,
     orientation: 'portrait',
     scaleContent: false,
+    density: QZ_PIXEL_DENSITY_DPI,
+    fallbackDensity: QZ_PIXEL_DENSITY_DPI,
+    colorType: 'blackwhite',
+    interpolation: 'nearest-neighbor',
   })
 
   try {
