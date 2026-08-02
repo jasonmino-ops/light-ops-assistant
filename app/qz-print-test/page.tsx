@@ -8,9 +8,10 @@ export const metadata = {
 
 export default function QzPrintTestPage() {
   const previewCommit = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_COMMIT ?? ''
+  const previewLabel = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_LABEL
   const isControlledPreview =
     process.env.VERCEL_ENV === 'preview' &&
-    process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_LABEL === 'QZ-PRINT-02C' &&
+    (previewLabel === 'QZ-PRINT-02C' || previewLabel === 'QZ-PRINT-02D') &&
     /^[0-9a-f]{40}$/.test(previewCommit)
 
   if (!isControlledPreview) notFound()

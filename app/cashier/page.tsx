@@ -8,7 +8,6 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import {
   DesktopReceiptPreview,
-  printDesktopReceipt,
   renderDesktopReceiptHtml,
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
@@ -107,6 +106,9 @@ type QzControlledPrintState = {
 const QZ_PREVIEW_LABEL = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_LABEL
 const QZ_PREVIEW_COMMIT = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_COMMIT
 const QZ_PREVIEW_ACTIVE = QZ_PREVIEW_LABEL === 'QZ-PRINT-01C' && QZ_PREVIEW_COMMIT === 'ba9e599'
+const QZ_BUSINESS_RAW_PREVIEW_ACTIVE =
+  QZ_PREVIEW_LABEL === 'QZ-PRINT-02D' &&
+  /^[0-9a-f]{40}$/.test(QZ_PREVIEW_COMMIT ?? '')
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
@@ -537,7 +539,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       compactModeBig: 'Large',
       compactModeCompact: 'Compact',
       autoPrintTitle: 'Auto print receipt',
-      autoPrintOn: 'Open browser print after sale',
+      autoPrintOn: 'Submit customer receipt to “前台” via QZ RAW after sale',
       autoPrintOff: 'Off by default, manual print available',
       confirmTitle: 'Confirm order',
       confirmSub: 'Check items, quantity and payable amount. No sale record is created here.',
@@ -571,7 +573,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       closeShiftConfirm: 'Confirm end shift?',
       closeShiftCancel: 'Cancel',
       saleCompleted: 'Sale completed',
-      receiptReady: '80mm receipt ready. Preview or print in browser.',
+      receiptReady: '80mm tickets ready. Customer → 前台; Kitchen → 厨房 via QZ RAW.',
       receiptNotAuto: 'Receipt not auto-printed. Use the mPOS phone app if needed.',
       previewReceipt: 'Preview receipt',
       printReceipt: 'Print receipt',
@@ -640,7 +642,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       compactModeBig: 'ធំ',
       compactModeCompact: 'តូច',
       autoPrintTitle: 'បោះពុម្ពបង្កាន់ដៃស្វ័យប្រវត្តិ',
-      autoPrintOn: 'បើក print browser បន្ទាប់ពីលក់',
+      autoPrintOn: 'បញ្ជូនវិក្កយបត្រអតិថិជនទៅ “前台” តាម QZ RAW បន្ទាប់ពីលក់',
       autoPrintOff: 'បិទតាមលំនាំដើម · អាចបោះពុម្ពដោយដៃ',
       confirmTitle: 'បញ្ជាក់បញ្ជាទិញ',
       confirmSub: 'ពិនិត្យទំនិញ បរិមាណ និងចំនួនត្រូវបង់។ នៅទីនេះមិនបង្កើត SaleRecord ទេ។',
@@ -674,7 +676,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       closeShiftConfirm: 'បញ្ជាក់បញ្ចប់វេន?',
       closeShiftCancel: 'បោះបង់',
       saleCompleted: 'លក់រួចរាល់',
-      receiptReady: 'បង្កាន់ដៃ 80mm រួចហើយ។ អាចមើលមុន ឬបោះពុម្ពតាម browser។',
+      receiptReady: 'សំបុត្រ 80mm រួចរាល់។ អតិថិជន → 前台; ផ្ទះបាយ → 厨房 តាម QZ RAW។',
       receiptNotAuto: 'មិនបានបោះពុម្ពស្វ័យប្រវត្តិទេ។ សូមប្រើ mPOS ពេលចាំបាច់។',
       previewReceipt: 'មើលបង្កាន់ដៃ',
       printReceipt: 'បោះពុម្ពបង្កាន់ដៃ',
@@ -742,7 +744,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     compactModeBig: '大图',
     compactModeCompact: '紧凑',
     autoPrintTitle: '自动打印小票',
-    autoPrintOn: '销售完成后自动打开浏览器打印',
+    autoPrintOn: '销售完成后通过 QZ RAW 提交顾客票到“前台”',
     autoPrintOff: '默认关闭，可手动打印',
     confirmTitle: '确认本单',
     confirmSub: '请核对商品、数量和应付金额。本步骤不会创建销售记录。',
@@ -776,7 +778,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     closeShiftConfirm: '确认结束本班？',
     closeShiftCancel: '取消',
     saleCompleted: '销售完成',
-    receiptReady: '🖨️ 已生成 80mm 小票，可预览或使用浏览器打印',
+    receiptReady: '🖨️ 已生成 80mm 票据：顾客票 → 前台，厨房票 → 厨房（QZ RAW）',
     receiptNotAuto: '🖨️ 未自动打印小票 · 如需收据请在 mPOS 手机端打印',
     previewReceipt: '预览小票',
     printReceipt: '打印小票',
@@ -1233,7 +1235,6 @@ export default function CashierPage() {
   const [submitError,   setSubmitError]   = useState('')
   const [saleResult,    setSaleResult]    = useState<SaleResult | null>(null)
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false)
-  const [receiptPrinting, setReceiptPrinting] = useState(false)
   const [qzReceiptTest, setQzReceiptTest] = useState<QzControlledPrintState>({ status: 'idle', message: '' })
   const [qzKitchenTest, setQzKitchenTest] = useState<QzControlledPrintState>({ status: 'idle', message: '' })
   const [qzPrintEnabled, setQzPrintEnabled] = useState(false)
@@ -1325,7 +1326,7 @@ export default function CashierPage() {
   const customerDisplayRealtimeSequenceRef = useRef(0)
   const autoPrintedReceiptKeyRef = useRef('')
   const receiptPrintButtonRef = useRef<HTMLButtonElement>(null)
-  const receiptPrintLockedRef = useRef(false)
+  const qzPrintInFlightRef = useRef<Set<QzPrintKind>>(new Set())
 
   const focusSearchInput = useCallback(() => {
     window.setTimeout(() => searchRef.current?.focus(), 0)
@@ -1900,28 +1901,7 @@ export default function CashierPage() {
     }
   }
 
-  const finishReceiptPrintFlow = useCallback(() => {
-    setReceiptPreviewOpen(false)
-    setSaleResult(null)
-    setReceiptPrinting(false)
-    receiptPrintLockedRef.current = false
-    focusScannerInput()
-  }, [focusScannerInput])
-
-  const handlePrintReceipt = useCallback((receipt: DesktopReceiptData) => {
-    if (receiptPrintLockedRef.current) return
-    receiptPrintLockedRef.current = true
-    setReceiptPrinting(true)
-    try {
-      printDesktopReceipt(receipt, lang, { onAfterPrint: finishReceiptPrintFlow })
-    } catch (err) {
-      console.warn('[desktop-receipt] print window failed', err)
-      showToast('无法打开打印预览，请检查浏览器弹窗权限')
-      finishReceiptPrintFlow()
-    }
-  }, [finishReceiptPrintFlow, lang])
-
-  function qzTestMessage(kind: QzPrintKind, error?: unknown) {
+  const qzTestMessage = useCallback((kind: QzPrintKind, error?: unknown) => {
     const queueName = QZ_PRINT_QUEUES[kind]
     if (!error) {
       if (lang === 'en') return `Submitted to “${queueName}”`
@@ -1942,30 +1922,36 @@ export default function CashierPage() {
     if (lang === 'en') return `Submission to “${queueName}” failed. Check that queue and retry.`
     if (lang === 'km') return `ការបញ្ជូនទៅ “${queueName}” បរាជ័យ។ សូមពិនិត្យជួរនោះ ហើយសាកល្បងម្ដងទៀត។`
     return `提交到“${queueName}”失败，请检查该队列后重试`
-  }
+  }, [lang])
 
-  async function handleControlledQzPrint(kind: QzPrintKind, receipt: DesktopReceiptData) {
-    const current = kind === 'receipt' ? qzReceiptTest : qzKitchenTest
-    if (current.status === 'printing') return
+  const submitRawTicket = useCallback(async (kind: QzPrintKind, receipt: DesktopReceiptData) => {
+    if (kind === 'receipt') {
+      await printCustomerReceiptViaQz(renderDesktopReceiptHtml(receipt, lang))
+      return
+    }
+    await printKitchenTicketViaQz(renderKitchenTicketHtml({
+      storeName: receipt.storeName,
+      orderNo: receipt.orderNo,
+      createdAt: receipt.createdAt,
+      items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
+    }, lang))
+  }, [lang])
+
+  const handleControlledQzPrint = useCallback(async (kind: QzPrintKind, receipt: DesktopReceiptData) => {
+    if (qzPrintInFlightRef.current.has(kind)) return
     const setState = kind === 'receipt' ? setQzReceiptTest : setQzKitchenTest
+    qzPrintInFlightRef.current.add(kind)
     setState({ status: 'printing', message: '' })
     try {
-      if (kind === 'receipt') {
-        await printCustomerReceiptViaQz(renderDesktopReceiptHtml(receipt, lang))
-      } else {
-        await printKitchenTicketViaQz(renderKitchenTicketHtml({
-          storeName: receipt.storeName,
-          orderNo: receipt.orderNo,
-          createdAt: receipt.createdAt,
-          items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
-        }, lang))
-      }
+      await submitRawTicket(kind, receipt)
       setState({ status: 'success', message: qzTestMessage(kind) })
     } catch (error) {
-      console.warn(`[qz-printer] controlled ${kind} print failed`, error)
+      console.warn(`[qz-printer] business ${kind} RAW print failed`, error)
       setState({ status: 'error', message: qzTestMessage(kind, error) })
+    } finally {
+      qzPrintInFlightRef.current.delete(kind)
     }
-  }
+  }, [qzTestMessage, submitRawTicket])
 
   function createQzPreviewTestReceipt(): DesktopReceiptData {
     const createdAt = new Date().toISOString()
@@ -2527,8 +2513,8 @@ export default function CashierPage() {
   }
 
   useEffect(() => {
-    receiptPrintLockedRef.current = false
-    setReceiptPrinting(false)
+    setQzReceiptTest({ status: 'idle', message: '' })
+    setQzKitchenTest({ status: 'idle', message: '' })
   }, [saleResult?.receipt])
 
   useEffect(() => {
@@ -2538,19 +2524,27 @@ export default function CashierPage() {
     const receiptKey = `${receiptSnapshot.orderNo ?? 'no-order'}:${receiptSnapshot.createdAt}:${receiptSnapshot.totalAmount}`
     if (autoPrintedReceiptKeyRef.current === receiptKey) return
     autoPrintedReceiptKeyRef.current = receiptKey
+    qzPrintInFlightRef.current.add('receipt')
+    setQzReceiptTest({ status: 'printing', message: '' })
 
     const timer = window.setTimeout(() => {
-      try {
-        printDesktopReceipt(receiptSnapshot, lang, { onAfterPrint: finishReceiptPrintFlow })
-      } catch (err) {
-        console.warn('[desktop-receipt] auto print failed', err)
-        showToast('自动打印失败，已返回新订单')
-        finishReceiptPrintFlow()
-      }
+      void submitRawTicket('receipt', receiptSnapshot).then(() => {
+        setQzReceiptTest({ status: 'success', message: qzTestMessage('receipt') })
+      }).catch((error) => {
+        console.warn('[qz-printer] automatic customer RAW print failed', error)
+        const message = qzTestMessage('receipt', error)
+        setQzReceiptTest({ status: 'error', message })
+        showToast(message)
+      }).finally(() => {
+        qzPrintInFlightRef.current.delete('receipt')
+      })
     }, 350)
 
-    return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, isDesktopPos, autoPrint, lang, finishReceiptPrintFlow])
+    return () => {
+      window.clearTimeout(timer)
+      qzPrintInFlightRef.current.delete('receipt')
+    }
+  }, [saleResult?.receipt, isDesktopPos, autoPrint, qzTestMessage, submitRawTicket])
 
   useEffect(() => {
     if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return
@@ -2565,13 +2559,13 @@ export default function CashierPage() {
     function onReceiptKey(e: KeyboardEvent) {
       if (e.key !== 'Enter' || e.repeat) return
       if (isEditableShortcutTarget(document.activeElement)) return
-      if (receiptPrintLockedRef.current) return
+      if (qzReceiptTest.status === 'printing') return
       e.preventDefault()
-      handlePrintReceipt(printableReceipt)
+      void handleControlledQzPrint('receipt', printableReceipt)
     }
     window.addEventListener('keydown', onReceiptKey)
     return () => window.removeEventListener('keydown', onReceiptKey)
-  }, [isDesktopPos, autoPrint, saleResult?.receipt, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
+  }, [isDesktopPos, autoPrint, saleResult?.receipt, receiptPreviewOpen, isEditableShortcutTarget, handleControlledQzPrint, qzReceiptTest.status])
 
   async function handleInstallClick() {
     if (!storeCode) {
@@ -3644,6 +3638,36 @@ export default function CashierPage() {
     )
   }
 
+  function renderQzBusinessRawPreviewBadge() {
+    if (!QZ_BUSINESS_RAW_PREVIEW_ACTIVE) return null
+    return (
+      <aside
+        data-qz-business-preview="QZ-PRINT-02D"
+        style={{
+          position: 'fixed',
+          zIndex: 10001,
+          top: 10,
+          left: 10,
+          padding: '9px 12px',
+          borderRadius: 10,
+          border: '2px solid #0f766e',
+          background: '#ecfdf5',
+          color: '#064e3b',
+          boxShadow: '0 8px 24px rgba(6,78,59,.2)',
+          fontFamily: 'monospace',
+          fontSize: 11,
+          lineHeight: 1.45,
+          pointerEvents: 'none',
+        }}
+      >
+        <div style={{ fontFamily: 'system-ui,-apple-system,sans-serif', fontSize: 14, fontWeight: 950 }}>QZ-PRINT-02D</div>
+        <div>Commit: {QZ_PREVIEW_COMMIT}</div>
+        <div>Environment: Preview</div>
+        <div>Print Mode: ESC/POS RAW</div>
+      </aside>
+    )
+  }
+
   // ── Restore PWA storeCode before rendering no-code branches ───────────────
   if (isRestoringCashierStore) {
     return (
@@ -3797,6 +3821,7 @@ export default function CashierPage() {
   return (
     <div>
       {renderQzPreviewPanel()}
+      {renderQzBusinessRawPreviewBadge()}
       {/* ── Sugar modal — centered ─────────────────────────────────────────── */}
       {sugarModal && (
         <div style={s.sugarMask} onClick={() => setSugarModal(null)}>
@@ -4747,22 +4772,13 @@ export default function CashierPage() {
             </div>
             {isDesktopPos && saleResult.receipt && (
               <div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                <div style={{ marginBottom: 10 }}>
                   <button
                     type="button"
-                    style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12 }}
+                    style={{ ...s.secondaryBtn, width: '100%', padding: '10px 8px', fontSize: 12 }}
                     onClick={() => setReceiptPreviewOpen(true)}
                   >
                     {d.previewReceipt}
-                  </button>
-                  <button
-                    ref={receiptPrintButtonRef}
-                    type="button"
-                    style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(receiptPrinting ? s.submitDis : {}) }}
-                    disabled={receiptPrinting}
-                    onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt)}
-                  >
-                    {receiptPrinting ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
                   </button>
                 </div>
                 <div
@@ -4774,6 +4790,7 @@ export default function CashierPage() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <button
+                      ref={receiptPrintButtonRef}
                       type="button"
                       data-qz-print-kind="receipt"
                       style={{ ...s.secondaryBtn, padding: '9px 7px', fontSize: 11, ...(qzReceiptTest.status === 'printing' ? s.submitDis : {}) }}
@@ -4819,7 +4836,7 @@ export default function CashierPage() {
           data={saleResult.receipt}
           lang={lang}
           onClose={() => setReceiptPreviewOpen(false)}
-          onPrint={() => handlePrintReceipt(saleResult.receipt!)}
+          onPrint={() => void handleControlledQzPrint('receipt', saleResult.receipt!)}
         />
       )}
 

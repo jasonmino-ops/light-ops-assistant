@@ -7,6 +7,7 @@ const layout = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8
 
 assert.match(page, /process\.env\.VERCEL_ENV === 'preview'/)
 assert.match(page, /QZ-PRINT-02C/)
+assert.match(page, /QZ-PRINT-02D/)
 assert.match(page, /NEXT_PUBLIC_QZ_PRINT_PREVIEW_COMMIT/)
 assert.match(page, /\^\[0-9a-f\]\{40\}\$/)
 assert.match(page, /notFound\(\)/)
