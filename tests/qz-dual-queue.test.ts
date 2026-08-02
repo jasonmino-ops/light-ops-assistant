@@ -6,11 +6,17 @@ import {
   QzPrintError,
   printEscPosBitImageViaFixedQzQueue,
   printCustomerReceiptViaQz,
+  printHtmlViaFixedQzQueue,
   printKitchenTicketViaQz,
   type QzClient,
 } from '../lib/qzPrinterAdapter'
 
 type PrintCall = { config: unknown; data: unknown[] }
+const FORMAL_RAW_BYTES = Uint8Array.from([0x1b, 0x2a, 0x21, 0x01, 0x00, 0xff, 0x00, 0x81])
+
+async function fakeRasterize() {
+  return FORMAL_RAW_BYTES
+}
 
 function makeClient(options?: {
   active?: boolean
@@ -55,18 +61,34 @@ function makeClient(options?: {
 async function testFixedQueueRouting() {
   assert.deepEqual(QZ_PRINT_QUEUES, { receipt: '前台', kitchen: '厨房' })
   const client = makeClient()
+  const rasterizedHtml: string[] = []
+  const rasterize = async (html: string) => {
+    rasterizedHtml.push(html)
+    return FORMAL_RAW_BYTES
+  }
 
-  const receipt = await printCustomerReceiptViaQz('<html>receipt</html>', client)
-  const kitchen = await printKitchenTicketViaQz('<html>kitchen</html>', client)
+  const receipt = await printCustomerReceiptViaQz('<html>receipt</html>', client, rasterize)
+  const kitchen = await printKitchenTicketViaQz('<html>kitchen</html>', client, rasterize)
 
   assert.deepEqual(receipt, { kind: 'receipt', queueName: '前台' })
   assert.deepEqual(kitchen, { kind: 'kitchen', queueName: '厨房' })
+  assert.deepEqual(rasterizedHtml, ['<html>receipt</html>', '<html>kitchen</html>'])
   assert.deepEqual(client.configCalls.map(({ printer }) => printer), ['前台', '厨房'])
   assert.equal(client.printCalls.length, 2)
-  assert.equal((client.printCalls[0].data[0] as { data: string }).data, '<html>receipt</html>')
-  assert.equal((client.printCalls[1].data[0] as { data: string }).data, '<html>kitchen</html>')
   for (const call of client.configCalls) {
-    assert.deepEqual(call.options, {
+    assert.equal(call.options, undefined)
+  }
+  for (const call of client.printCalls) {
+    assert.deepEqual(call.data, [{ type: 'raw', format: 'base64', data: 'GyohAQD/AIE=' }])
+  }
+}
+
+async function testPixelComparisonPathIsPreserved() {
+  const client = makeClient()
+  await printHtmlViaFixedQzQueue('receipt', '<html>pixel comparison</html>', client)
+  assert.deepEqual(client.configCalls, [{
+    printer: '前台',
+    options: {
       units: 'in',
       size: { width: QZ_RECEIPT_WIDTH_INCHES },
       margins: 0,
@@ -76,14 +98,21 @@ async function testFixedQueueRouting() {
       fallbackDensity: QZ_PIXEL_DENSITY_DPI,
       colorType: 'blackwhite',
       interpolation: 'nearest-neighbor',
-    })
-  }
+    },
+  }])
+  assert.deepEqual(client.printCalls[0].data, [{
+    type: 'pixel',
+    format: 'html',
+    flavor: 'plain',
+    data: '<html>pixel comparison</html>',
+    options: { pageWidth: QZ_RECEIPT_WIDTH_INCHES },
+  }])
 }
 
 async function testQzUnavailableIsExplicit() {
   const client = makeClient({ active: false, connectError: new Error('ECONNREFUSED') })
   await assert.rejects(
-    () => printCustomerReceiptViaQz('<html />', client),
+    () => printCustomerReceiptViaQz('<html />', client, fakeRasterize),
     (error: unknown) => error instanceof QzPrintError && error.code === 'QZ_UNAVAILABLE' && error.queueName === '前台',
   )
   assert.equal(client.printCalls.length, 0)
@@ -92,7 +121,7 @@ async function testQzUnavailableIsExplicit() {
 async function testMissingQueueIsExplicitAndNeverUsesDefault() {
   const client = makeClient({ printers: ['前台'] })
   await assert.rejects(
-    () => printKitchenTicketViaQz('<html />', client),
+    () => printKitchenTicketViaQz('<html />', client, fakeRasterize),
     (error: unknown) => error instanceof QzPrintError && error.code === 'QZ_QUEUE_NOT_FOUND' && error.queueName === '厨房',
   )
   assert.equal(client.configCalls.length, 0)
@@ -109,11 +138,11 @@ async function testFailuresAndRetriesAreIndependent() {
   })
 
   await assert.rejects(
-    () => printCustomerReceiptViaQz('<html>receipt attempt 1</html>', client),
+    () => printCustomerReceiptViaQz('<html>receipt attempt 1</html>', client, fakeRasterize),
     (error: unknown) => error instanceof QzPrintError && error.code === 'QZ_PRINT_FAILED',
   )
-  await printKitchenTicketViaQz('<html>kitchen succeeds independently</html>', client)
-  await printCustomerReceiptViaQz('<html>receipt manual retry</html>', client)
+  await printKitchenTicketViaQz('<html>kitchen succeeds independently</html>', client, fakeRasterize)
+  await printCustomerReceiptViaQz('<html>receipt manual retry</html>', client, fakeRasterize)
 
   assert.deepEqual(
     client.configCalls.map(({ printer }) => printer),
@@ -148,6 +177,7 @@ async function testEscPosRawUsesExactQueueAndBase64Bytes() {
 
 async function run() {
   await testFixedQueueRouting()
+  await testPixelComparisonPathIsPreserved()
   await testQzUnavailableIsExplicit()
   await testMissingQueueIsExplicitAndNeverUsesDefault()
   await testFailuresAndRetriesAreIndependent()

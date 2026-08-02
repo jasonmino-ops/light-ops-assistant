@@ -6,8 +6,10 @@ import { renderKitchenTicketHtml, type KitchenTicketData } from '@/app/component
 import {
   detectQzOnline,
   listQzPrinters,
+  printCustomerReceiptViaQz,
   printEscPosBitImageViaFixedQzQueue,
   printHtmlViaFixedQzQueue,
+  printKitchenTicketViaQz,
   QZ_PRINT_QUEUES,
   QzPrintError,
   type QzPrintKind,
@@ -33,6 +35,10 @@ type FixedTestCase = {
 
 const INITIAL_PRINT_STATE: PrintState = { status: 'idle', message: '' }
 const INITIAL_RAW_STATES: Record<QzPrintKind, PrintState> = {
+  receipt: INITIAL_PRINT_STATE,
+  kitchen: INITIAL_PRINT_STATE,
+}
+const INITIAL_FORMAL_RAW_STATES: Record<QzPrintKind, PrintState> = {
   receipt: INITIAL_PRINT_STATE,
   kitchen: INITIAL_PRINT_STATE,
 }
@@ -146,7 +152,9 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
   const [statusMessage, setStatusMessage] = useState('正在检测 QZ Tray…')
   const [testStates, setTestStates] = useState<Record<TestCaseId, PrintState>>(INITIAL_TEST_STATES)
   const [rawStates, setRawStates] = useState<Record<QzPrintKind, PrintState>>(INITIAL_RAW_STATES)
+  const [formalRawStates, setFormalRawStates] = useState<Record<QzPrintKind, PrintState>>(INITIAL_FORMAL_RAW_STATES)
   const rawInFlight = useRef<Set<QzPrintKind>>(new Set())
+  const formalRawInFlight = useRef<Set<QzPrintKind>>(new Set())
   const rawBitmapBytes = useRef<Promise<Uint8Array> | null>(null)
 
   const refreshStatus = useCallback(async () => {
@@ -237,14 +245,45 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
     }
   }
 
+  async function submitFormalRawTest(kind: QzPrintKind) {
+    if (formalRawInFlight.current.has(kind)) return
+    const queueName = QZ_PRINT_QUEUES[kind]
+    const setState = (next: PrintState) => {
+      setFormalRawStates((previous) => ({ ...previous, [kind]: next }))
+    }
+    if (qzStatus !== 'online') {
+      setState({ status: 'error', message: `“${queueName}”：QZ Tray 不可用，请先确认 QZ Tray 在线并刷新状态` })
+      return
+    }
+    if (!printers.includes(queueName)) {
+      setState({ status: 'error', message: `未找到 Windows 打印队列“${queueName}”` })
+      return
+    }
+
+    formalRawInFlight.current.add(kind)
+    setState({ status: 'printing', message: '' })
+    try {
+      if (kind === 'receipt') {
+        await printCustomerReceiptViaQz(renderDesktopReceiptHtml(customerTestReceipt(), 'zh'))
+      } else {
+        await printKitchenTicketViaQz(renderKitchenTicketHtml(kitchenTestTicket(), 'zh'))
+      }
+      setState({ status: 'success', message: `正式 HTML → RAW 已提交到“${queueName}”` })
+    } catch (error) {
+      setState({ status: 'error', message: errorMessage(kind, error) })
+    } finally {
+      formalRawInFlight.current.delete(kind)
+    }
+  }
+
   const statusLabel = qzStatus === 'online' ? '在线' : qzStatus === 'checking' ? '检测中' : '离线'
 
   return (
     <main style={styles.page}>
-      <section style={styles.card} data-qz-print-test-page="QZ-PRINT-02B">
+      <section style={styles.card} data-qz-print-test-page="QZ-PRINT-02C">
         <header style={styles.header}>
-          <div style={styles.eyebrow}>QZ-PRINT-02B</div>
-          <h1 style={styles.title}>ESC/POS RAW 自动切纸验证</h1>
+          <div style={styles.eyebrow}>QZ-PRINT-02C</div>
+          <h1 style={styles.title}>正式票据 RAW 位图验证</h1>
           <div style={styles.meta}>Commit: {previewCommit}</div>
           <div style={styles.meta}>Environment: Preview</div>
           <div style={styles.meta}>Mode: ESC * 0x21 / ESC d 3 / GS V 0 / QZ RAW</div>
@@ -279,9 +318,42 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
         </section>
 
         <section style={styles.section}>
+          <div style={styles.sectionTitle}>正式 HTML 票据 → ESC/POS RAW</div>
+          <div style={styles.message}>
+            直接复用 DesktopReceipt 与 KitchenTicket 的现有完整 HTML，经共享 Bitmap Renderer 和已验证的 ESC * 0x21 / ESC d 3 / GS V 0 路径提交；不创建真实交易。
+          </div>
+          <div style={styles.actionGrid}>
+            {([
+              { kind: 'receipt' as const, label: '正式顾客票 RAW → 前台', color: '#1d4ed8' },
+              { kind: 'kitchen' as const, label: '正式厨房票 RAW → 厨房', color: '#c2410c' },
+            ]).map((action) => {
+              const state = formalRawStates[action.kind]
+              return (
+                <div key={action.kind}>
+                  <button
+                    type="button"
+                    data-qz-formal-raw-action={action.kind}
+                    style={{ ...styles.primaryButton, width: '100%', background: action.color }}
+                    disabled={state.status === 'printing'}
+                    onClick={() => void submitFormalRawTest(action.kind)}
+                  >
+                    {state.status === 'printing' ? '渲染并提交中…' : action.label}
+                  </button>
+                  {state.message && (
+                    <div data-qz-formal-raw-result={action.kind} style={{ ...styles.result, color: state.status === 'error' ? '#b91c1c' : '#166534' }}>
+                      {state.message}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        <section style={styles.section}>
           <div style={styles.sectionTitle}>ESC/POS RAW 固定黑白图</div>
           <div style={styles.message}>
-            同一张 {RAW_TEST_IMAGE_WIDTH}×{RAW_TEST_IMAGE_HEIGHT} 黑白测试图编码为 ESC * 0x21；完整位图后走纸三行并执行一次 GS V 0 全切，不经过 QZ Pixel 或浏览器打印。
+            保留的 QZ-PRINT-02B 调试入口：同一张 {RAW_TEST_IMAGE_WIDTH}×{RAW_TEST_IMAGE_HEIGHT} 黑白测试图编码为 ESC * 0x21；完整位图后走纸三行并执行一次 GS V 0 全切，不经过 QZ Pixel 或浏览器打印。
           </div>
           <div style={styles.actionGrid}>
             {RAW_TEST_ACTIONS.map((action) => {
@@ -337,7 +409,7 @@ export default function QzPrintTestClient({ previewCommit }: { previewCommit: st
         </section>
 
         <footer style={styles.footer}>
-          本页面不读取或创建真实订单、支付、商品、库存、顾客或 Computer Binding 数据；RAW 与 Pixel 均只允许固定队列，失败时不会回退浏览器打印。
+          本页面不读取或创建真实订单、支付、商品、库存、顾客或 Computer Binding 数据；正式 RAW、02B 固定图与保留的 Pixel 对照均只允许固定队列，失败时不会回退浏览器打印。
         </footer>
       </section>
     </main>

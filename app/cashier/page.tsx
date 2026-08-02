@@ -4766,11 +4766,11 @@ export default function CashierPage() {
                   </button>
                 </div>
                 <div
-                  data-qz-dual-queue-test="controlled"
+                  data-qz-dual-queue-print="raw"
                   style={{ marginBottom: 10, padding: 10, borderRadius: 10, border: '1px dashed #93c5fd', background: '#eff6ff' }}
                 >
                   <div style={{ marginBottom: 7, color: '#1e3a8a', fontSize: 11, fontWeight: 900 }}>
-                    {lang === 'en' ? 'QZ dual-queue field test (manual)' : lang === 'km' ? 'សាកល្បងជួរ QZ ពីរ (ដោយដៃ)' : 'QZ 双队列现场测试（手动）'}
+                    {lang === 'en' ? 'QZ RAW ticket printing (manual)' : lang === 'km' ? 'ការបោះពុម្ពសំបុត្រ QZ RAW (ដោយដៃ)' : 'QZ RAW 正式票据（手动）'}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <button

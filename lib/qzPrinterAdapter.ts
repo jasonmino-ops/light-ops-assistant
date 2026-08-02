@@ -1,10 +1,11 @@
-// QZ Tray adapter for the controlled QZ-PRINT-01B dual-queue field test.
+// QZ Tray adapter for the fixed front/kitchen queues.
 //
 // This deliberately has no default-printer lookup and no browser-print
-// fallback. Each button submits one job to its fixed Windows queue, so a
-// customer-receipt failure and a kitchen-ticket failure remain independent.
+// fallback. Formal tickets default to the field-verified RAW bitmap path;
+// the earlier Pixel path remains available only for controlled comparison.
 
 import { qzRawBytesToBase64 } from './qzEscPosBitImage'
+import { renderTicketHtmlToEscPosRaw } from './qzHtmlBitmapRenderer'
 
 export const QZ_PRINT_QUEUES = {
   receipt: '前台',
@@ -196,10 +197,41 @@ export async function printEscPosBitImageViaFixedQzQueue(
   return { kind, queueName }
 }
 
-export function printCustomerReceiptViaQz(html: string, client?: QzClient) {
-  return printHtmlViaFixedQzQueue('receipt', html, client)
+export type QzHtmlRasterizer = (html: string) => Promise<Uint8Array>
+
+/**
+ * Default formal-ticket path. Pixel remains available through
+ * printHtmlViaFixedQzQueue for the controlled comparison page, while formal
+ * customer and kitchen tickets use the field-verified RAW bitmap transport.
+ */
+export async function printHtmlAsEscPosBitImageViaFixedQzQueue(
+  kind: QzPrintKind,
+  html: string,
+  client?: QzClient,
+  rasterize: QzHtmlRasterizer = renderTicketHtmlToEscPosRaw,
+) {
+  const queueName = QZ_PRINT_QUEUES[kind]
+  let bytes: Uint8Array
+  try {
+    bytes = await rasterize(html)
+  } catch (cause) {
+    throw new QzPrintError('QZ_PRINT_FAILED', queueName, { cause })
+  }
+  return printEscPosBitImageViaFixedQzQueue(kind, bytes, client)
 }
 
-export function printKitchenTicketViaQz(html: string, client?: QzClient) {
-  return printHtmlViaFixedQzQueue('kitchen', html, client)
+export function printCustomerReceiptViaQz(
+  html: string,
+  client?: QzClient,
+  rasterize?: QzHtmlRasterizer,
+) {
+  return printHtmlAsEscPosBitImageViaFixedQzQueue('receipt', html, client, rasterize)
+}
+
+export function printKitchenTicketViaQz(
+  html: string,
+  client?: QzClient,
+  rasterize?: QzHtmlRasterizer,
+) {
+  return printHtmlAsEscPosBitImageViaFixedQzQueue('kitchen', html, client, rasterize)
 }
