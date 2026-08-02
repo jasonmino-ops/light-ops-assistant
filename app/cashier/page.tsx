@@ -1944,6 +1944,11 @@ export default function CashierPage() {
       return `已提交到“${queueName}”`
     }
     const code = error instanceof QzPrintError ? error.code : 'QZ_PRINT_FAILED'
+    if (code === 'QZ_SECURITY_UNAVAILABLE') {
+      if (lang === 'en') return 'The secure signing service is unavailable. The ticket was not sent.'
+      if (lang === 'km') return 'សេវាចុះហត្ថលេខាសុវត្ថិភាពមិនអាចប្រើបាន។ សំបុត្រមិនត្រូវបានផ្ញើទេ។'
+      return '安全签名服务不可用，票据未发送'
+    }
     if (code === 'QZ_UNAVAILABLE') {
       if (lang === 'en') return 'QZ Tray is unavailable. Confirm QZ Tray 2.2.6 is running.'
       if (lang === 'km') return 'QZ Tray មិនអាចប្រើបាន។ សូមបញ្ជាក់ថា QZ Tray 2.2.6 កំពុងដំណើរការ។'

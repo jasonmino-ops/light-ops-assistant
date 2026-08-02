@@ -34,6 +34,7 @@ function makeClient(options?: {
         if (options?.connectError) throw options.connectError
         active = true
       },
+      disconnect: async () => { active = false },
     },
     printers: {
       find: async () => options?.printers ?? ['前台', '厨房'],

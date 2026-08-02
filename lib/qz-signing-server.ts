@@ -1,3 +1,4 @@
+import { createHash, verify as verifySignature } from 'node:crypto'
 import { KMSClient, SignCommand, type SignCommandOutput } from '@aws-sdk/client-kms'
 import { awsCredentialsProvider } from '@vercel/oidc-aws-credentials-provider'
 import { Prisma } from '@prisma/client'
@@ -9,12 +10,17 @@ import {
 } from '@/lib/desktop-pos-auth'
 import { prisma } from '@/lib/prisma'
 import {
-  QZ_CERTIFICATE_VERSION_HEADER,
+  QZ_SIGN_DEVICE_RATE_LIMIT_MAX,
   QZ_KMS_MESSAGE_TYPE,
   QZ_KMS_SIGNING_ALGORITHM,
+  QZ_SIGN_IP_RATE_LIMIT_MAX,
   QZ_SIGN_RATE_LIMIT_MAX,
   QZ_SIGN_RATE_LIMIT_WINDOW_MS,
+  QZ_SIGN_STORE_RATE_LIMIT_MAX,
+  QZ_CERTIFICATE_VERSION_HEADER,
+  getQzSigningPair,
   type QzActiveSigningConfig,
+  type QzCertificateKeyPair,
 } from '@/lib/qz-signing-config'
 
 export type QzSigningSession = {
@@ -22,6 +28,7 @@ export type QzSigningSession = {
   storeId: string
   storeCode: string
   browserPosSessionId: string
+  deviceId: string
 }
 
 export class QzSigningRequestError extends Error {
@@ -32,6 +39,7 @@ export class QzSigningRequestError extends Error {
     | 'QZ_SIGN_VERSION_MISMATCH'
     | 'QZ_SIGN_SESSION_UNAUTHORIZED'
     | 'QZ_SIGN_STORE_FORBIDDEN'
+    | 'QZ_SIGN_REQUEST_METADATA_INVALID'
     | 'QZ_SIGN_RATE_LIMITED'
     | 'QZ_SIGN_AUDIT_FAILED'
     | 'QZ_SIGN_KMS_FAILED') {
@@ -55,11 +63,14 @@ export function assertQzSignContentType(req: NextRequest): void {
   }
 }
 
-export function assertQzCertificateVersion(req: NextRequest, config: QzActiveSigningConfig): void {
+export function assertQzCertificateVersion(
+  req: NextRequest,
+  config: QzActiveSigningConfig,
+): QzCertificateKeyPair {
   const version = req.headers.get(QZ_CERTIFICATE_VERSION_HEADER)?.trim() ?? ''
-  if (version !== config.certificateVersion) {
-    throw new QzSigningRequestError('QZ_SIGN_VERSION_MISMATCH')
-  }
+  const pair = getQzSigningPair(config, version)
+  if (!pair) throw new QzSigningRequestError('QZ_SIGN_VERSION_MISMATCH')
+  return pair
 }
 
 export function assertQzDigestText(value: string): string {
@@ -67,6 +78,14 @@ export function assertQzDigestText(value: string): string {
     throw new QzSigningRequestError('QZ_SIGN_INPUT_INVALID')
   }
   return value
+}
+
+export function qzRequestIpHash(req: NextRequest): string {
+  const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? ''
+  if (!forwarded || forwarded.length > 64 || !/^[0-9a-fA-F:.]+$/.test(forwarded)) {
+    throw new QzSigningRequestError('QZ_SIGN_REQUEST_METADATA_INVALID')
+  }
+  return hashAuditValue(`ip:${forwarded}`)
 }
 
 export async function verifyQzSigningSession(req: NextRequest): Promise<QzSigningSession | null> {
@@ -85,27 +104,91 @@ export async function verifyQzSigningSession(req: NextRequest): Promise<QzSignin
     storeId: verified.storeId,
     storeCode: verified.storeCode,
     browserPosSessionId: verified.browserPosSessionId,
+    deviceId,
+  }
+}
+
+function hashAuditValue(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex')
+}
+
+function auditDimensions(session: QzSigningSession, ipHash: string) {
+  return {
+    sessionHash: hashAuditValue(`session:${session.tenantId}:${session.storeId}:${session.browserPosSessionId}`),
+    deviceHash: hashAuditValue(`device:${session.tenantId}:${session.storeId}:${session.deviceId}`),
+    ipHash,
+  }
+}
+
+function auditEnvironment(): 'production' | 'preview' | 'development' | 'unknown' {
+  const value = process.env.VERCEL_ENV ?? process.env.NODE_ENV
+  if (value === 'production' || value === 'preview' || value === 'development') return value
+  return 'unknown'
+}
+
+export async function recordQzSignDenied(
+  session: QzSigningSession,
+  certificateVersion: string,
+  ipHash: string,
+  errorCode: 'QZ_SIGN_STORE_FORBIDDEN',
+): Promise<void> {
+  const dimensions = auditDimensions(session, ipHash)
+  try {
+    await prisma.operationLog.create({
+      data: {
+        tenantId: session.tenantId,
+        storeId: session.storeId,
+        userId: null,
+        actionType: 'QZ_SIGN_DENIED',
+        targetType: 'BrowserPosDevice',
+        targetId: `qz-session:${dimensions.sessionHash.slice(0, 32)}`,
+        status: 'FAILED',
+        message: errorCode,
+        payloadSnapshot: {
+          certificateVersion,
+          environment: auditEnvironment(),
+          deviceHash: dimensions.deviceHash,
+          ipHash: dimensions.ipHash,
+        },
+      },
+    })
+  } catch {
+    throw new QzSigningRequestError('QZ_SIGN_AUDIT_FAILED')
   }
 }
 
 export async function reserveQzSignRateLimit(
   session: QzSigningSession,
   certificateVersion: string,
+  ipHash: string,
   now = new Date(),
 ): Promise<string> {
+  const dimensions = auditDimensions(session, ipHash)
+  const targetId = `qz-session:${dimensions.sessionHash.slice(0, 32)}`
+  const since = new Date(now.getTime() - QZ_SIGN_RATE_LIMIT_WINDOW_MS)
   try {
     return await prisma.$transaction(async (tx) => {
-      const recentAttempts = await tx.operationLog.count({
-        where: {
+      const common = { actionType: 'QZ_SIGN', createdAt: { gte: since } }
+      const [sessionAttempts, deviceAttempts, ipAttempts, storeAttempts] = await Promise.all([
+        tx.operationLog.count({ where: { ...common, tenantId: session.tenantId, storeId: session.storeId, targetId } }),
+        tx.operationLog.count({ where: {
+          ...common,
           tenantId: session.tenantId,
           storeId: session.storeId,
-          actionType: 'QZ_SIGN',
-          targetType: 'BrowserPosDevice',
-          targetId: session.browserPosSessionId,
-          createdAt: { gte: new Date(now.getTime() - QZ_SIGN_RATE_LIMIT_WINDOW_MS) },
-        },
-      })
-      if (recentAttempts >= QZ_SIGN_RATE_LIMIT_MAX) {
+          payloadSnapshot: { path: ['deviceHash'], equals: dimensions.deviceHash },
+        } }),
+        tx.operationLog.count({ where: {
+          ...common,
+          payloadSnapshot: { path: ['ipHash'], equals: dimensions.ipHash },
+        } }),
+        tx.operationLog.count({ where: { ...common, tenantId: session.tenantId, storeId: session.storeId } }),
+      ])
+      if (
+        sessionAttempts >= QZ_SIGN_RATE_LIMIT_MAX ||
+        deviceAttempts >= QZ_SIGN_DEVICE_RATE_LIMIT_MAX ||
+        ipAttempts >= QZ_SIGN_IP_RATE_LIMIT_MAX ||
+        storeAttempts >= QZ_SIGN_STORE_RATE_LIMIT_MAX
+      ) {
         throw new QzSigningRequestError('QZ_SIGN_RATE_LIMITED')
       }
       const attempt = await tx.operationLog.create({
@@ -115,10 +198,15 @@ export async function reserveQzSignRateLimit(
           userId: null,
           actionType: 'QZ_SIGN',
           targetType: 'BrowserPosDevice',
-          targetId: session.browserPosSessionId,
+          targetId,
           status: 'FAILED',
           message: 'QZ_SIGN_STARTED',
-          payloadSnapshot: { certificateVersion },
+          payloadSnapshot: {
+            certificateVersion,
+            environment: auditEnvironment(),
+            deviceHash: dimensions.deviceHash,
+            ipHash: dimensions.ipHash,
+          },
         },
         select: { id: true },
       })
@@ -169,9 +257,9 @@ function getKmsClient(config: QzActiveSigningConfig): KMSClient {
   return client
 }
 
-export function qzKmsSignCommand(config: QzActiveSigningConfig, digestText: string): SignCommand {
+export function qzKmsSignCommand(pair: QzCertificateKeyPair, digestText: string): SignCommand {
   return new SignCommand({
-    KeyId: config.kmsKeyArn,
+    KeyId: pair.kmsKeyArn,
     Message: Buffer.from(assertQzDigestText(digestText), 'utf8'),
     MessageType: QZ_KMS_MESSAGE_TYPE,
     SigningAlgorithm: QZ_KMS_SIGNING_ALGORITHM,
@@ -180,22 +268,25 @@ export function qzKmsSignCommand(config: QzActiveSigningConfig, digestText: stri
 
 export async function signQzDigestWithKms(
   config: QzActiveSigningConfig,
+  pair: QzCertificateKeyPair,
   digestText: string,
   client: QzKmsClient = getKmsClient(config),
 ): Promise<string> {
   let output: SignCommandOutput
   try {
-    output = await client.send(qzKmsSignCommand(config, digestText))
+    output = await client.send(qzKmsSignCommand(pair, digestText))
   } catch {
     throw new QzSigningRequestError('QZ_SIGN_KMS_FAILED')
   }
+  const signature = output.Signature ? Buffer.from(output.Signature) : null
   if (
-    output.KeyId !== config.kmsKeyArn ||
+    output.KeyId !== pair.kmsKeyArn ||
     output.SigningAlgorithm !== QZ_KMS_SIGNING_ALGORITHM ||
-    !output.Signature ||
-    output.Signature.byteLength === 0
+    !signature ||
+    signature.byteLength === 0 ||
+    !verifySignature('RSA-SHA512', Buffer.from(digestText, 'utf8'), pair.certificatePublicKey, signature)
   ) {
     throw new QzSigningRequestError('QZ_SIGN_KMS_FAILED')
   }
-  return Buffer.from(output.Signature).toString('base64')
+  return signature.toString('base64')
 }
