@@ -6,6 +6,7 @@
 
 import { qzRawBytesToBase64 } from './qzEscPosBitImage'
 import { renderTicketHtmlToEscPosRaw } from './qzHtmlBitmapRenderer'
+import { posDeviceHeaders } from './desktop-pos-client'
 
 export const QZ_PRINT_QUEUES = {
   receipt: '前台',
@@ -30,7 +31,9 @@ export type QzClient = {
   security: {
     setCertificatePromise: (
       promiseHandler: (resolve: (value: string) => void, reject: (error: unknown) => void) => void,
+      options?: { rejectOnFailure?: boolean },
     ) => void
+    setSignatureAlgorithm: (algorithm: 'SHA512') => void
     setSignaturePromise: (
       promiseFactory: (toSign: string) => (resolve: (value: string) => void, reject: (error: unknown) => void) => void,
     ) => void
@@ -49,6 +52,72 @@ export class QzPrintError extends Error {
 }
 
 let qzModulePromise: Promise<QzClient> | null = null
+let qzSecurityConfigPromise: Promise<QzSecurityConfig> | null = null
+
+type QzSecurityConfig = {
+  certificate: string
+  signatureAlgorithm: 'SHA512'
+  certificateVersion: string
+  enabled: true
+}
+
+function currentCashierStoreCode(): string {
+  if (typeof window === 'undefined') return ''
+  return new URLSearchParams(window.location.search).get('storeCode')?.trim() ?? ''
+}
+
+async function fetchQzSecurityConfig(): Promise<QzSecurityConfig> {
+  const response = await fetch('/api/qz/config', {
+    method: 'GET',
+    cache: 'no-store',
+    credentials: 'same-origin',
+    headers: { Accept: 'application/json' },
+  })
+  if (!response.ok) throw new Error('QZ_SIGNING_CONFIG_UNAVAILABLE')
+  const value = await response.json() as Partial<QzSecurityConfig>
+  if (
+    value.enabled !== true ||
+    value.signatureAlgorithm !== 'SHA512' ||
+    typeof value.certificate !== 'string' ||
+    !value.certificate.includes('-----BEGIN CERTIFICATE-----') ||
+    typeof value.certificateVersion !== 'string' ||
+    !/^[A-Za-z0-9._-]{1,64}$/.test(value.certificateVersion)
+  ) {
+    throw new Error('QZ_SIGNING_CONFIG_UNAVAILABLE')
+  }
+  return value as QzSecurityConfig
+}
+
+function getQzSecurityConfig(): Promise<QzSecurityConfig> {
+  if (!qzSecurityConfigPromise) qzSecurityConfigPromise = fetchQzSecurityConfig()
+  return qzSecurityConfigPromise
+}
+
+async function fetchQzSignature(toSign: string): Promise<string> {
+  if (!/^[0-9a-fA-F]{64}$/.test(toSign)) throw new Error('QZ_SIGNING_INPUT_INVALID')
+  const securityConfig = await getQzSecurityConfig()
+  const response = await fetch('/api/qz/sign', {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'X-QZ-Certificate-Version': securityConfig.certificateVersion,
+      ...posDeviceHeaders(currentCashierStoreCode()),
+    },
+    body: toSign,
+  })
+  if (!response.ok) throw new Error('QZ_SIGNING_UNAVAILABLE')
+  const signature = (await response.text()).trim()
+  const responseVersion = response.headers.get('x-qz-certificate-version')?.trim() ?? ''
+  if (
+    responseVersion !== securityConfig.certificateVersion ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(signature)
+  ) {
+    throw new Error('QZ_SIGNING_UNAVAILABLE')
+  }
+  return signature
+}
 
 // QZ's HTML renderer otherwise inherits the printer/default page size and can
 // create an A4 raster job even when the HTML itself is 80mm wide.
@@ -62,8 +131,13 @@ async function loadQz(): Promise<QzClient> {
   if (!qzModulePromise) {
     qzModulePromise = import('qz-tray').then((mod) => {
       const qz = ((mod as { default?: QzClient }).default ?? mod) as QzClient
-      qz.security.setCertificatePromise((resolve) => resolve(''))
-      qz.security.setSignaturePromise(() => (resolve) => resolve(''))
+      qz.security.setSignatureAlgorithm('SHA512')
+      qz.security.setCertificatePromise((resolve, reject) => {
+        getQzSecurityConfig().then(({ certificate }) => resolve(certificate), reject)
+      }, { rejectOnFailure: true })
+      qz.security.setSignaturePromise((toSign) => (resolve, reject) => {
+        fetchQzSignature(toSign).then(resolve, reject)
+      })
       return qz
     })
   }

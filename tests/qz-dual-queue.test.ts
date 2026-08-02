@@ -50,6 +50,7 @@ function makeClient(options?: {
     },
     security: {
       setCertificatePromise: () => {},
+      setSignatureAlgorithm: () => {},
       setSignaturePromise: () => () => {},
     },
     printCalls,
