@@ -1,6 +1,6 @@
 # E-Shop Certificate Manager v1 技术设计
 
-状态：待 Windows 真机验收
+状态：待 Windows TEST Root 真机验收（已完成一轮独立审查阻断修复）
 分支：`claude/certificate-manager-01`
 范围：`tools/certificate-manager/` 新增目录，**不改动任何现有文件**
 
@@ -39,11 +39,53 @@
    若安装目录下该文件缺失，我们造一个只含 `authcert.override` 的文件，
    反而可能改变 QZ 的属性来源解析。因此该文件缺失一律判为「配置异常」并拒绝操作。
 
-### 1.3 权限
+### 1.3 QZ Tray 2.2.6 的实际安装结构与版本探测
+
+Windows 上 QZ Tray 2.2.6 的安装目录只有：
+
+```
+qz-tray.exe
+qz-tray.jar
+libs\
+qz-tray.properties
+```
+
+**没有** jpackage 的 `app\*.cfg`，也没有 `version.txt`。
+因此本机版本的唯一可靠来源是 `qz-tray.exe` 的 ProductVersion（PowerShell 读取）。
+
+`detectQzVersion()` 返回判别式联合类型：
+
+- `{ status: 'OK', version }`
+- `{ status: 'UNCONFIRMED', version: null, reason }`
+
+取不到时**绝不猜测、绝不回退到不存在的路径**。UNCONFIRMED 一律：
+
+1. 状态显示「配置异常 / 版本无法确认」，并带上具体原因；
+2. 安装 / 更新 / 修复一律拒绝写入，错误信息里给出可直接执行的人工核对命令
+   （`(Get-Item '<dir>\qz-tray.exe').VersionInfo.ProductVersion`）。
+
+同时用 `hasQzInstallAssets()`（要求 `qz-tray.exe` 与 `qz-tray.jar` 同时存在）
+区分"根本没装"与"装了但读不到版本"。
+
+### 1.4 权限与 portable 外壳
 
 写 `C:\Program Files\QZ Tray\qz-tray.properties` 必须提权。
-采用 `requestedExecutionLevel: requireAdministrator`：启动时由 Windows 弹一次 UAC，人工确认。
-同时代码层用"对 QZ 目录做写探针"判定权限，非管理员时状态直接显示「配置异常 / 管理员权限不足」。
+代码层用"对 QZ 目录做写探针"判定权限，非管理员时状态直接显示「配置异常 / 管理员权限不足」。
+
+打包上必须**同时**设置两处，缺一不可：
+
+| 配置 | 作用对象 |
+|---|---|
+| `win.requestedExecutionLevel: requireAdministrator` | `win-unpacked` 里的内层 exe |
+| `portable.requestExecutionLevel: admin` | portable 目标生成的 NSIS 自解压**外壳** |
+
+只设前者时，最终交付的 portable exe 外壳是 `asInvoker`：双击不弹 UAC，
+外壳以标准权限运行、内层 requireAdministrator 的 exe 无法通过 ExecWait 启动，
+现场表现为"点了没反应"。
+
+因此构建后必须**直接核验最终 portable exe 的 manifest**，
+由 `scripts/verify-portable-manifest.mjs` 作为闸门接在 `pack:win` 之后，
+不通过即 exit 1。只检查 `win-unpacked` 内层 exe 是无效的。
 
 ---
 
@@ -138,7 +180,10 @@ certificate-package/
   → 写临时文件 → 原子 rename
   → 回读校验：确实包含我们的路径；且除 authcert.override 外其余内容逐字节不变
   → 写 state.json
-  → 若 QZ 原本在运行则重启（原本没运行就不拉起）
+  → 若 QZ 原本在运行则重启：taskkill 后轮询确认进程确实退出，
+     start 后轮询确认进程确实重新出现（最多约 6s）；
+     任一步确认不了即抛错进入回滚，绝不在 QZ 状态未知时报告成功
+  （QZ 原本没运行则完全不拉起）
 ```
 
 - **安装**：已是同版本且状态正常 → 直接返回「无需重复安装」（幂等，配置文件不被改写）。
@@ -153,8 +198,12 @@ certificate-package/
 
 每步操作前把要改的文件复制到 `backups\<ISO 时间戳>\`，同时压入一个撤销动作。
 任一步抛错 → 逆序执行撤销（还原 `qz-tray.properties`、还原或删除 Root、还原 `state.json`），
-再尽力恢复 QZ 运行状态，最后在界面上明确显示「已回滚到操作前状态」或
-「⚠ 回滚未完全成功，请检查备份」。
+再把 QZ **恢复成操作前的运行状态**：
+
+- 操作前在运行 → 尽力拉起；拉不起来则标记「回滚未完全成功」；
+- 操作前未运行 → 保持未运行；若中途被拉起则停回去。
+
+最后在界面上明确显示「已回滚到操作前状态」或「⚠ 回滚未完全成功，请检查备份」。
 
 日志：`%PROGRAMDATA%\E-Shop\CertificateManager\certificate-manager.log`，追加写，界面可查看最近 200 行。
 
@@ -172,10 +221,29 @@ certificate-package/
 
 ---
 
-## 7. 明确不做
+## 7. 后续 Gate（本轮不做，发版前必须关闭）
+
+1. **QZ Tray 重装或升级会清除 `authcert.override`。**
+   QZ 的安装器会重写安装目录下的 `qz-tray.properties`，我们写的那一行会随之消失，
+   本机 Root 文件还在但 QZ 已不再信任。
+   现场 SOP 必须写明：**任何一次 QZ Tray 重装或升级之后，都要重新打开
+   Certificate Manager 检查状态，若显示「配置异常」则点【修复】。**
+
+2. **Certificate Package 真实性与路径边界。**
+   TEST Root 的真机验证可以继续使用当前的包完整性方案
+   （schema + 指纹 + 有效期 + CA 标志 + 私钥扫描）。
+   但**生产 Root 发版前必须补**：
+   - Certificate Package 的真实性验证（对 manifest 本身签名并校验，
+     而不只是校验"证书和 manifest 自洽"）；
+   - `rootFile` 的路径边界校验（当前直接 `join(dir, rootFile)`，
+     未拒绝 `..` 与绝对路径）。
+
+## 8. 明确不做
 
 多门店云端管理平台、门店账号、中央控制台、远程下发、在线设备管理、
 自动证书签发、自动 Root 轮换、后台常驻服务、数据库、云端 API、自动更新、遥测；
 不写 Windows Trusted Root Store；不接 USB 打印 / mPOS；
+不做 Certificate Package 正式签名、生产 Root、路径遍历加固、Authenticode 代码签名、
+QZ 多用户会话、CRLF / ISO-8859-1 全面重写、自定义 QZ 安装目录；
 不改 Browser / Signing API / AWS / KMS / OIDC / IAM / ESC-POS / Bitmap Renderer /
 Print Adapter / QZ Transport / Windows Printer Queue / Desktop Activation / POS / CASH / KHQR / 订单系统。

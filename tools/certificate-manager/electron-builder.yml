@@ -39,6 +39,10 @@ win:
   artifactName: "E-Shop-Certificate-Manager-${version}-${arch}.${ext}"
 
 portable:
+  # 关键：portable 目标会生成一个 NSIS 自解压外壳，它有自己的 manifest。
+  # 不设这一项时外壳是 asInvoker —— 双击不弹 UAC，内层 requireAdministrator 的
+  # exe 无法通过 ExecWait 启动，现场表现为"点了没反应"。
+  requestExecutionLevel: admin
   artifactName: "E-Shop-Certificate-Manager-${version}.${ext}"
 
 publish: null

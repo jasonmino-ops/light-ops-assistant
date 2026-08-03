@@ -11,7 +11,9 @@ import { addToOverride, overrideContains, removeFromOverride, splitOverride } fr
 import { loadCertificatePackage } from './certPackage'
 import { compareVersions, fingerprintsEqual, parseCertificate } from './certificate'
 import { clearState, readState, writeState } from './state'
-import { detectQzVersion, isQzRunning, restartQzIfRunning, startQz } from './qz'
+import {
+  detectQzVersion, hasQzInstallAssets, isQzRunning, restartQzIfRunning, restoreQzRunState,
+} from './qz'
 import { computeStatus } from './status'
 import type { ActionName, ActionResult, ActionStep, CertificatePackage, InstallState } from './types'
 import { STATE_SCHEMA } from './state'
@@ -113,12 +115,19 @@ export function uninstall(env: Env): ActionResult {
       step(txn, `已删除 Root 证书：${certPath}`)
     }
     if (!state) step(txn, '无安装记录，仅按已知路径清理 E-Shop 自己添加的内容')
+    if (state) {
+      // 后面还有可能失败的步骤（重启确认），安装记录必须可还原，
+      // 否则回滚回来的证书和配置会因为丢了记录而被判成异常。
+      const snapshot = `${JSON.stringify(state, null, 2)}\n`
+      txn.undo.push({ label: '还原安装记录', run: () => atomicWrite(eshopStatePath(env), snapshot) })
+    }
     clearState(env)
     step(txn, '已清除安装记录')
 
     if (qzWasRunning) {
       const restarted = restartQzIfRunning(env)
-      step(txn, restarted.ok ? 'QZ Tray 已重启' : 'QZ Tray 未能自动启动，请手动启动')
+      if (!restarted.ok) throw new ActionError(`QZ Tray 重启未能确认：${restarted.detail}`)
+      step(txn, restarted.detail)
     }
     step(txn, 'QZ Tray 本体与 QZ 官方证书未被改动')
   })
@@ -196,10 +205,12 @@ function deploy(env: Env, pkg: CertificatePackage, txn: Txn): void {
   writeState(env, state)
   step(txn, `已记录安装状态 v${state.version}`)
 
-  // 5) 重启 QZ（仅当它本来在运行）
+  // 5) 重启 QZ（仅当它本来在运行）。停/起都要确认进程状态，
+  //    确认不了就抛错走回滚 —— 不能在 QZ 状态未知的情况下报告成功。
   if (qzWasRunning) {
     const restarted = restartQzIfRunning(env)
-    step(txn, restarted.ok ? 'QZ Tray 已重启，新 Root 生效' : 'QZ Tray 未能自动启动，请手动启动后生效')
+    if (!restarted.ok) throw new ActionError(`QZ Tray 重启未能确认：${restarted.detail}`)
+    step(txn, `${restarted.detail}，新 Root 生效`)
   } else {
     step(txn, 'QZ Tray 当前未运行，下次启动即生效')
   }
@@ -221,19 +232,33 @@ function requireReadyEnvironment(env: Env, txn: Txn): CertificatePackage {
     throw new ActionError(`证书包不可用：${(e as Error).message}`)
   }
   if (!env.qzInstallDir) throw new ActionError('未检测到 QZ Tray，请先安装 QZ Tray')
+  if (!hasQzInstallAssets(env)) {
+    throw new ActionError(
+      `${env.qzInstallDir} 下缺少 qz-tray.exe / qz-tray.jar，不是完整的 QZ Tray 安装，拒绝继续`,
+    )
+  }
   const propsPath = qzPropertiesPath(env) as string
   if (!existsSync(propsPath)) {
     throw new ActionError(`QZ 配置文件缺失：${propsPath}。请先修复或重装 QZ Tray，本工具不会凭空创建该文件`)
   }
-  const qzVersion = detectQzVersion(env)
-  if (!qzVersion) throw new ActionError('无法识别 QZ Tray 版本，拒绝继续')
-  if (compareVersions(qzVersion, pkg.manifest.minimumQzVersion) < 0) {
-    throw new ActionError(`QZ Tray ${qzVersion} 低于要求的 ${pkg.manifest.minimumQzVersion}，不支持自定义 Root`)
+  // 版本读不到就一定不写。宁可停在这里让工程师手工确认，也不能在
+  // "可能低于 2.2.5、根本不支持 authcert.override"的机器上改配置。
+  const version = detectQzVersion(env)
+  if (version.status !== 'OK') {
+    throw new ActionError(
+      `QZ Tray 版本无法确认，拒绝写入：${version.reason}。` +
+      `可在管理员 PowerShell 中执行 (Get-Item '${env.qzInstallDir}\\qz-tray.exe').VersionInfo.ProductVersion 手工核对后反馈`,
+    )
+  }
+  if (compareVersions(version.version, pkg.manifest.minimumQzVersion) < 0) {
+    throw new ActionError(
+      `QZ Tray ${version.version} 低于要求的 ${pkg.manifest.minimumQzVersion}，不支持自定义 Root`,
+    )
   }
   if (!canWriteQzDir(env)) {
     throw new ActionError('没有管理员权限：无法写入 QZ Tray 目录。请右键以管理员身份运行本程序')
   }
-  step(txn, `环境检查通过（QZ Tray ${qzVersion}）`)
+  step(txn, `环境检查通过（QZ Tray ${version.version}）`)
   return pkg
 }
 
@@ -248,6 +273,9 @@ function compareVersionsNum(a: number, b: number): number {
 function run(env: Env, action: ActionName, body: (txn: Txn) => void): ActionResult {
   const txn: Txn = { steps: [], undo: [] }
   const logPath = eshopLogPath(env)
+  // 记录操作前 QZ 是否在运行，失败回滚时要恢复成同样的状态：
+  // 本来在跑就拉起来，本来没跑就绝不拉起。
+  const qzRunningAtStart = env.qzInstallDir ? isQzRunning(env) : false
   appendLog(logPath, `[${action}] start`, env.now())
 
   try {
@@ -271,11 +299,14 @@ function run(env: Env, action: ActionName, body: (txn: Txn) => void): ActionResu
     if (txn.undo.length === 0) {
       txn.steps.push({ message: '未产生任何改动，无需回滚', ok: true })
     }
-    // 尽力恢复 QZ 运行状态
+    // 恢复 QZ 的原始运行状态
     try {
-      if (env.qzInstallDir && !isQzRunning(env)) startQz(env)
-    } catch {
-      // 忽略：QZ 启动失败不改变回滚结论
+      const restored = restoreQzRunState(env, qzRunningAtStart)
+      txn.steps.push({ message: restored.detail, ok: restored.ok })
+      if (!restored.ok) rolledBack = false
+    } catch (e) {
+      rolledBack = false
+      txn.steps.push({ message: `QZ 运行状态恢复失败：${(e as Error).message}`, ok: false })
     }
 
     appendLog(logPath, `[${action}] failed — ${message} — rolledBack=${rolledBack}`, env.now())

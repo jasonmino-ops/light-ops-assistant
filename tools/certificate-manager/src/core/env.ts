@@ -15,6 +15,8 @@ export type Env = {
   packageDir: string
   /** 结束/启动 QZ Tray 用的执行器；测试中可注入假实现。 */
   runProcess: ProcessRunner
+  /** 同步等待，用于轮询确认进程起停；测试中注入空实现以免拖慢用例。 */
+  sleep: (ms: number) => void
   now: () => Date
 }
 

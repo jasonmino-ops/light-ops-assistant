@@ -17,6 +17,7 @@ export type Fake = {
   cleanup: () => void
   processCalls: Array<{ command: string; args: string[] }>
   setQzRunning: (running: boolean) => void
+  isQzRunning: () => boolean
 }
 
 export type FakeOptions = {
@@ -28,6 +29,19 @@ export type FakeOptions = {
   /** 复用已有的 CA PEM，用于"更新到不同证书"这类场景。 */
   pem?: string
   now?: Date
+  /** 模拟 qz-tray.jar 缺失（安装资产不完整）。 */
+  omitJar?: boolean
+  /**
+   * 模拟 PowerShell 读 ProductVersion 的结果：
+   * ok      —— 正常返回 qzVersion
+   * fail    —— 命令返回非 0（PowerShell 被策略禁用等）
+   * garbage —— 命令成功但输出里没有版本号
+   */
+  qzVersionQuery?: 'ok' | 'fail' | 'garbage'
+  /** taskkill 后进程仍然不退出。 */
+  failStop?: boolean
+  /** start 之后进程始终不出现。 */
+  failStart?: boolean
 }
 
 let cachedCa: { pem: string; fingerprint: string } | null = null
@@ -101,6 +115,10 @@ export function makeFake(options: FakeOptions = {}): Fake {
     packageVersion = 1,
     withPackage = true,
     now = new Date('2026-08-03T10:00:00.000Z'),
+    omitJar = false,
+    qzVersionQuery = 'ok',
+    failStop = false,
+    failStart = false,
   } = options
 
   const root = mkdtempSync(join(tmpdir(), 'eshop-cm-'))
@@ -110,10 +128,14 @@ export function makeFake(options: FakeOptions = {}): Fake {
   const processCalls: Array<{ command: string; args: string[] }> = []
   let qzRunning = false
 
+  // 真实 QZ Tray 2.2.6 的 Windows 安装结构：
+  //   qz-tray.exe / qz-tray.jar / libs\ / qz-tray.properties
+  // 没有 jpackage 的 app\*.cfg，也没有 version.txt。
   if (qzInstalled) {
-    mkdirSync(join(qzDir, 'app'), { recursive: true })
+    mkdirSync(join(qzDir, 'libs'), { recursive: true })
     writeFileSync(join(qzDir, 'qz-tray.exe'), 'stub')
-    writeFileSync(join(qzDir, 'app', 'qz-tray.cfg'), `[Application]\napp.version=${qzVersion}\n`)
+    if (!omitJar) writeFileSync(join(qzDir, 'qz-tray.jar'), 'stub')
+    writeFileSync(join(qzDir, 'libs', 'jetty-server.jar'), 'stub')
     if (qzPropertiesContent !== null) writeFileSync(propsPath, qzPropertiesContent)
   }
 
@@ -126,11 +148,25 @@ export function makeFake(options: FakeOptions = {}): Fake {
 
   const runProcess: ProcessRunner = (command, args) => {
     processCalls.push({ command, args })
+    if (command === 'powershell') {
+      if (qzVersionQuery === 'fail') {
+        return { ok: false, output: '无法加载文件，因为在此系统上禁止运行脚本。' }
+      }
+      if (qzVersionQuery === 'garbage') return { ok: true, output: '\r\n' }
+      return { ok: true, output: `${qzVersion}\r\n` }
+    }
     if (command === 'tasklist') {
       return { ok: true, output: qzRunning ? 'qz-tray.exe  1234 Console' : 'INFO: No tasks are running.' }
     }
-    if (command === 'taskkill') { qzRunning = false; return { ok: true, output: 'SUCCESS' } }
-    if (command === 'cmd') { qzRunning = true; return { ok: true, output: '' } }
+    if (command === 'taskkill') {
+      // taskkill 几乎总是返回 0；失败场景下进程照样活着，正是要被确认捕获的情况
+      if (!failStop) qzRunning = false
+      return { ok: true, output: 'SUCCESS' }
+    }
+    if (command === 'cmd') {
+      if (!failStart) qzRunning = true
+      return { ok: true, output: '' }
+    }
     return { ok: false, output: '' }
   }
 
@@ -140,12 +176,14 @@ export function makeFake(options: FakeOptions = {}): Fake {
     propsPath,
     processCalls,
     setQzRunning: (running: boolean) => { qzRunning = running },
+    isQzRunning: () => qzRunning,
     cleanup: () => rmSync(root, { recursive: true, force: true }),
     env: {
       qzInstallDir: qzInstalled ? qzDir : null,
       eshopDir: join(root, 'ProgramData', 'E-Shop', 'CertificateManager'),
       packageDir,
       runProcess,
+      sleep: () => { /* 测试里不真的等待 */ },
       now: () => now,
     },
   }

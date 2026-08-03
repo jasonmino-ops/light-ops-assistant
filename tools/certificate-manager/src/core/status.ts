@@ -10,7 +10,7 @@ import {
   compareVersions, fingerprintsEqual, isCurrentlyValid, parseCertificate,
 } from './certificate'
 import { readState } from './state'
-import { detectQzVersion } from './qz'
+import { detectQzVersion, hasQzInstallAssets } from './qz'
 import type { CertificatePackage, CheckResult, Status, StatusCode } from './types'
 
 export function computeStatus(env: Env): Status {
@@ -29,22 +29,30 @@ export function computeStatus(env: Env): Status {
   }
 
   // ---- QZ Tray ----
-  const qzVersion = env.qzInstallDir ? detectQzVersion(env) : null
+  const versionResult = detectQzVersion(env)
+  const qzVersion = versionResult.status === 'OK' ? versionResult.version : null
   const propsPath = qzPropertiesPath(env)
   if (env.qzInstallDir) {
-    checks.push(ok('QZ_INSTALLED', 'QZ Tray 已安装', env.qzInstallDir))
+    const assets = hasQzInstallAssets(env)
+    checks.push(assets
+      ? ok('QZ_INSTALLED', 'QZ Tray 已安装', env.qzInstallDir)
+      : bad('QZ_INSTALLED', 'QZ Tray 已安装',
+          `${env.qzInstallDir} 下缺少 qz-tray.exe / qz-tray.jar，不是完整的 QZ Tray 安装`, false))
   } else {
     checks.push(bad('QZ_INSTALLED', 'QZ Tray 已安装', '未检测到 QZ Tray，请先安装 QZ Tray 再运行本工具', false))
   }
 
   const minQz = pkg?.manifest.minimumQzVersion ?? null
   if (env.qzInstallDir) {
-    if (!qzVersion) {
-      checks.push(bad('QZ_VERSION', 'QZ Tray 版本', '无法识别版本，无法确认是否支持 authcert.override', false))
-    } else if (minQz && compareVersions(qzVersion, minQz) < 0) {
-      checks.push(bad('QZ_VERSION', 'QZ Tray 版本', `${qzVersion} 低于要求的 ${minQz}，不支持自定义 Root`, false))
+    if (versionResult.status !== 'OK') {
+      checks.push(bad('QZ_VERSION', 'QZ Tray 版本',
+        `版本无法确认，不能判断是否支持 authcert.override：${versionResult.reason}`, false))
+    } else if (minQz && compareVersions(versionResult.version, minQz) < 0) {
+      checks.push(bad('QZ_VERSION', 'QZ Tray 版本',
+        `${versionResult.version} 低于要求的 ${minQz}，不支持自定义 Root`, false))
     } else {
-      checks.push(ok('QZ_VERSION', 'QZ Tray 版本', qzVersion + (minQz ? `（要求 ≥ ${minQz}）` : '')))
+      checks.push(ok('QZ_VERSION', 'QZ Tray 版本',
+        versionResult.version + (minQz ? `（要求 ≥ ${minQz}）` : '')))
     }
   }
 

@@ -12,7 +12,8 @@
     "start": "npm run compile && electron .",
     "test": "npm run compile && vitest run",
     "make:test-package": "node scripts/make-test-package.mjs",
-    "pack:win": "npm run compile && electron-builder --win --x64 --publish never"
+    "pack:win": "npm run compile && electron-builder --win --x64 --publish never && node scripts/verify-portable-manifest.mjs",
+    "verify:portable": "node scripts/verify-portable-manifest.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

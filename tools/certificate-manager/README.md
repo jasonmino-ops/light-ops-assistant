@@ -30,6 +30,12 @@ src/renderer/   单窗口 UI
 | 信任自定义 Root 的属性 | `authcert.override` |
 | 属性值格式 | `;` 分隔的**绝对路径**列表 |
 | 最低 QZ 版本 | 2.2.5（`ca` provisioning 起始版本） |
+| 版本读取方式 | `qz-tray.exe` 的 ProductVersion（PowerShell） |
+
+QZ Tray 2.2.6 的 Windows 安装目录只有 `qz-tray.exe` / `qz-tray.jar` / `libs\` /
+`qz-tray.properties`，**没有** jpackage 的 `app\*.cfg`，也没有 `version.txt`。
+版本唯一可靠来源是 exe 的 ProductVersion；读不到时显示「版本无法确认」并**拒绝写入**，
+不猜测、不回退到不存在的路径。
 
 这正是 QZ 官方 `provision.json` 里 `"type": "ca"` 在安装期所做的事情，
 本工具只是在**已安装**的 QZ Tray 上完成同样的最终状态。
@@ -52,12 +58,26 @@ Windows 根证书存储只与 QZ 自己生成的 localhost SSL 证书有关，�
 ## 命令
 
 ```bash
-npm install
+npm ci
 npm run make:test-package   # 生成验收用 TEST Root（私钥不落盘）
-npm test                    # 编译 + 63 项自动测试
+npm test                    # 编译 + 91 项自动测试
 npm run start               # 本机启动窗口
-npm run pack:win            # 产出 Windows zip + portable exe
+npm run pack:win            # 产出 Windows zip + portable exe，并自动核验 exe manifest
+npm run verify:portable     # 单独核验已有产物的 manifest
 ```
+
+## Windows 上的运行方式
+
+- **双击 portable exe 应当直接弹出 UAC 提权确认框。** 这是正常且必须的：
+  写 `C:\Program Files\QZ Tray\qz-tray.properties` 需要管理员权限。
+  如果双击后没有任何反应，说明产物的 manifest 不对，不要继续验收 ——
+  跑 `npm run verify:portable` 复核。
+- 当前**未做 Authenticode 代码签名**，UAC 框里会显示「未知发布者」，
+  SmartScreen 也可能提示。**这不是本阶段的阻断问题**，
+  正式对外发版前再补商业签名。
+- `portable.requestExecutionLevel: admin` 与构建后的 manifest 闸门
+  （`scripts/verify-portable-manifest.mjs`）保证外壳与内层 exe 都是
+  `requireAdministrator`，只检查 `win-unpacked` 里的内层 exe 是不够的。
 
 ## 安全边界
 

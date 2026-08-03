@@ -3,6 +3,11 @@ import { join } from 'node:path'
 import type { Env, ProcessRunner } from '../core/env'
 import { detectQzInstallDir } from '../core/env'
 
+/** 同步睡眠。主进程在执行安装/卸载时本来就是阻塞的，这里不引入异步复杂度。 */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
 const runProcess: ProcessRunner = (command, args) => {
   try {
     const res = spawnSync(command, args, { encoding: 'utf8', windowsHide: true, timeout: 20_000 })
@@ -33,6 +38,7 @@ export function resolveWindowsEnv(options: {
     eshopDir: join(programData, 'E-Shop', 'CertificateManager'),
     packageDir: options.packageDir,
     runProcess,
+    sleep: sleepSync,
     now: () => new Date(),
   }
 }
