@@ -44,6 +44,7 @@ export function resolveWindowsEnv(options: {
     packageDir: options.packageDir,
     runProcess,
     sleep: sleepSync,
+    selfPid: process.pid,
     now: () => new Date(),
   }
 }

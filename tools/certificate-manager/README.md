@@ -41,6 +41,19 @@ src/renderer/   单窗口 UI
   进程名是 `javaw.exe` 而不是 `qz-tray.exe`。
 - 因此 **`qz-tray.exe` 不能作为「QZ 已安装」的判断依据**，
   也不能按镜像名 `/IM` 结束进程（会误杀门店里其它 Java 程序，一律按 PID）。
+
+### QZ 进程身份规则
+
+枚举时先在 CIM 查询里按镜像名过滤，只看 `java.exe` / `javaw.exe` / `qz-tray.exe`，
+**查询语句本身不含 `qz-tray.jar` 字面量**，从结构上杜绝"检测进程把自己数进去"。
+随后在 TypeScript 里做严格判定：
+
+- `java.exe` / `javaw.exe`：命令行有独立 `-jar` 参数 → 路径 basename 恰为 `qz-tray.jar`
+  → 绝对路径 → jar 文件真实存在 → jar 所在目录 == 已发现的 QZ 安装目录；
+- `qz-tray.exe`：可执行文件路径 == `<安装目录>\qz-tray.exe`；
+- 一律排除 `powershell.exe` / `pwsh.exe` / `cmd.exe` / `conhost.exe` / `wmic.exe` 与本进程自身。
+
+「命令行里出现过 `qz-tray.jar`」**不是**判据。停止确认与启动确认共用这一个解析器。
 - QZ Tray 2.2.6 的安装目录里**没有** jpackage 的 `app\*.cfg`，也没有 `version.txt`。
 
 ### 安装目录发现顺序
@@ -71,12 +84,16 @@ Windows 根证书存储只与 QZ 自己生成的 localhost SSL 证书有关，�
 
 刻意**不往 QZ 安装目录写任何文件**，只在 `qz-tray.properties` 里增删 `authcert.override` 一行。
 
+`certificate-manager.log` 里带 `[qz]` 前缀的行是重启诊断：安装目录、目标 PID 与命令行、
+`taskkill` 返回、每一轮停止/启动确认看到的 PID 与被排除的候选及原因、
+`entering start phase` 与实际启动命令。只记录候选进程，不输出整套系统进程列表。
+
 ## 命令
 
 ```bash
 npm ci
 npm run make:test-package   # 生成验收用 TEST Root（私钥不落盘）
-npm test                    # 编译 + 124 项自动测试
+npm test                    # 编译 + 144 项自动测试
 npm run start               # 本机启动窗口
 npm run pack:win            # 产出 Windows zip + portable exe，并自动核验 exe manifest
 npm run verify:portable     # 单独核验已有产物的 manifest

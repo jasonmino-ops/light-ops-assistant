@@ -68,6 +68,33 @@ QZ 的 NSIS 安装器带 `MUI_PAGE_DIRECTORY`（见 `ant/windows/windows-install
 进程起停一律**按 PID**，不用 `/IM` —— 现场镜像名是 `javaw.exe`，
 按镜像名结束会误杀门店里其它 Java 程序。
 
+### 1.3.2 QZ 进程身份（第二次真机测试后收紧）
+
+第二次真机测试：QZ（PID 8376）已被成功结束，进程确实不存在了，
+程序却报「无法确认 QZ Tray 进程已退出」，随后完整回滚，start 阶段从未执行。
+
+根因：旧检测语句是
+
+```
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*qz-tray.jar*' }
+```
+
+枚举范围是全部进程，而这条命令**自己的命令行里就含有 `qz-tray.jar`**，
+于是执行查询的 `powershell.exe` 每一轮都把自己算成 QZ，`isQzRunning()` 恒为 true。
+
+现在的规则（`identifyQzProcesses`，停止与启动共用）：
+
+1. CIM 查询里就按镜像名过滤，只取 `java.exe` / `javaw.exe` / `qz-tray.exe`；
+   **查询语句不含 `qz-tray.jar` 字面量**，结构上无法自匹配；
+2. TS 侧再排除 `powershell.exe` / `pwsh.exe` / `cmd.exe` / `conhost.exe` / `wmic.exe` 与本进程 PID；
+3. java/javaw 必须：独立 `-jar` 参数 → basename 恰为 `qz-tray.jar` → 绝对路径 →
+   jar 文件存在 → jar 目录 == 已发现的安装目录；
+4. `qz-tray.exe` 必须：可执行文件路径 == `<安装目录>\qz-tray.exe`。
+
+退出确认 = 目标旧 PID 全部消失 **且** 当前无任何通过严格判定的 QZ；
+启动确认 = 出现通过严格判定、且 PID 不在旧 PID 集合里的进程。
+无关 Java 程序不参与任何一侧判定。
+
 ### 1.3.1 版本探测
 
 两个真实来源，都取不到就 UNCONFIRMED，绝不猜测：
@@ -220,8 +247,8 @@ certificate-package/
   → 写临时文件 → 原子 rename
   → 回读校验：确实包含我们的路径；且除 authcert.override 外其余内容逐字节不变
   → 写 state.json
-  → 若 QZ 原本在运行则重启：taskkill 后轮询确认进程确实退出，
-     start 后轮询确认进程确实重新出现（最多约 6s）；
+  → 若 QZ 原本在运行则重启：按 PID taskkill 后轮询确认（严格身份判定）进程确实退出，
+     再 entering start phase，轮询确认出现 PID 不同的新 QZ 进程（各最多约 6s）；
      任一步确认不了即抛错进入回滚，绝不在 QZ 状态未知时报告成功
   （QZ 原本没运行则完全不拉起）
 ```

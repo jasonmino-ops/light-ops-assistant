@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_QZ_CANDIDATES, QZ_REG_INSTALL_KEY, QZ_REG_UNINSTALL_KEY,
-  discoverQzInstallDir, findQzProcesses, looksLikeQzInstallDir,
+  discoverQzInstallDir, listCandidateProcesses, looksLikeQzInstallDir,
   parseJarPathFromCommandLine, readQzVersionFromRegistry, readRegistryValue,
 } from '../src/core/discovery'
 import type { ProcessRunner } from '../src/core/env'
@@ -40,7 +40,7 @@ function processRunner(commandLines: string[]): ProcessRunner {
   return runner({
     powershell: () => ({
       ok: true,
-      output: commandLines.map((c, i) => `${1000 + i}|${c}`).join('\r\n'),
+      output: commandLines.map((c, i) => `${1000 + i}|javaw.exe|1|${c}`).join('\r\n'),
     }),
   })
 }
@@ -85,14 +85,28 @@ describe('从进程命令行解析 QZ 安装目录', () => {
   })
 })
 
-describe('QZ 进程枚举', () => {
-  it('按命令行匹配，解析出 PID 与命令行', () => {
-    const found = findQzProcesses(processRunner([FIELD_COMMAND_LINE]))
-    expect(found).toEqual([{ pid: 1000, commandLine: FIELD_COMMAND_LINE }])
+describe('候选进程枚举', () => {
+  it('解析出 PID / 镜像名 / SessionId / 命令行', () => {
+    const { list, ok } = listCandidateProcesses(processRunner([FIELD_COMMAND_LINE]))
+    expect(ok).toBe(true)
+    expect(list).toEqual([
+      { pid: 1000, name: 'javaw.exe', sessionId: 1, commandLine: FIELD_COMMAND_LINE },
+    ])
   })
 
-  it('PowerShell 失败时返回空，不抛错', () => {
-    expect(findQzProcesses(runner({}))).toEqual([])
+  it('查询语句本身不含 qz-tray.jar 字面量 —— 从结构上杜绝自匹配', () => {
+    let script = ''
+    listCandidateProcesses(runner({
+      powershell: (args) => { script = args.join(' '); return { ok: true, output: '' } },
+    }))
+    expect(script).not.toContain('qz-tray.jar')
+    expect(script).toContain("Name='javaw.exe'")
+    expect(script).toContain("Name='java.exe'")
+    expect(script).toContain("Name='qz-tray.exe'")
+  })
+
+  it('PowerShell 失败时返回空并标记 ok=false', () => {
+    expect(listCandidateProcesses(runner({}))).toEqual({ list: [], ok: false })
   })
 })
 

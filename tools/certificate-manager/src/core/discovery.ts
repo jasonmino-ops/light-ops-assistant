@@ -41,13 +41,12 @@ export type QzDiscovery = {
   detail: string
 }
 
-export type QzProcess = { pid: number; commandLine: string }
-
 /**
- * 从进程命令行里取出 -jar 的路径。纯函数，是这次现场问题的核心。
+ * 从进程命令行里取出 -jar 的路径所在目录。纯函数，是进程身份判定的核心。
  *
- * 只接受：绝对路径、文件名恰好是 qz-tray.jar。
- * 其余一律返回 null —— 畸形或伪造的命令行不能让我们去改任意目录的配置。
+ * 只接受：独立的 -jar 参数、绝对路径、文件名恰好是 qz-tray.jar。
+ * 其余一律返回 null —— 畸形或伪造的命令行不能让我们去改任意目录的配置，
+ * 命令行里只是"提到"过 qz-tray.jar 也不算。
  */
 export function parseJarPathFromCommandLine(commandLine: string): string | null {
   if (!commandLine || /[\r\n\0]/.test(commandLine)) return null
@@ -77,28 +76,157 @@ export function looksLikeQzInstallDir(dir: string): boolean {
   return existsSync(join(dir, QZ_JAR_NAME)) && existsSync(join(dir, QZ_PROPERTIES_NAME))
 }
 
+/** 只有这三个镜像名可能是 QZ：exe 启动器，或 bundled runtime 的 java/javaw。 */
+export const QZ_PROCESS_IMAGE_NAMES = ['java.exe', 'javaw.exe', 'qz-tray.exe'] as const
+
 /**
- * 找出所有跑着 qz-tray.jar 的进程。
- * 不按镜像名匹配 —— 现场进程名是 javaw.exe，按 /IM javaw.exe 结束会误杀门店里
- * 其它 Java 程序，所以后续起停一律按 PID。
+ * 即使镜像名过滤失效也要挡住的进程。
+ * powershell.exe 是这次现场故障的元凶：旧查询语句里含有字符串 "qz-tray.jar"，
+ * 而查询范围又是全部进程，于是执行查询的 powershell 每次都把自己算成 QZ，
+ * isQzRunning() 恒为 true，QZ 明明已经退出也确认不了。
  */
-export function findQzProcesses(run: ProcessRunner): QzProcess[] {
+export const EXCLUDED_IMAGE_NAMES = ['powershell.exe', 'pwsh.exe', 'cmd.exe', 'conhost.exe', 'wmic.exe']
+
+export type CandidateProcess = {
+  pid: number
+  name: string
+  sessionId: number | null
+  commandLine: string
+}
+
+/** 通过严格身份校验的 QZ 进程。 */
+export type QzProcess = CandidateProcess & { installDir: string }
+
+export type RejectedProcess = { pid: number; name: string; reason: string }
+
+export type QzIdentifyResult = {
+  accepted: QzProcess[]
+  rejected: RejectedProcess[]
+  /** 查询本身是否成功；失败时 accepted 为空但不代表 QZ 真的没在跑。 */
+  queried: boolean
+}
+
+/**
+ * 枚举候选进程。
+ *
+ * 两条关键约束：
+ * 1) 在 CIM 查询里就按镜像名过滤，powershell.exe 根本不会出现在结果里；
+ * 2) 查询语句本身**不含** "qz-tray.jar" 字面量，从结构上杜绝自匹配。
+ *    匹配逻辑全部放到 TypeScript 里做。
+ */
+export function listCandidateProcesses(run: ProcessRunner): { list: CandidateProcess[]; ok: boolean } {
+  const filter = QZ_PROCESS_IMAGE_NAMES.map((n) => `Name='${n}'`).join(' or ')
   const res = run('powershell', [
     '-NoProfile', '-NonInteractive', '-Command',
-    "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*qz-tray.jar*' } " +
-    "| ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }",
+    `Get-CimInstance Win32_Process -Filter "${filter}" ` +
+    '| ForEach-Object { "$($_.ProcessId)|$($_.Name)|$($_.SessionId)|$($_.CommandLine)" }',
   ])
-  if (!res.ok) return []
+  if (!res.ok) return { list: [], ok: false }
 
-  const found: QzProcess[] = []
+  const list: CandidateProcess[] = []
   for (const line of res.output.split(/\r?\n/)) {
-    const at = line.indexOf('|')
-    if (at <= 0) continue
-    const pid = Number(line.slice(0, at).trim())
-    const commandLine = line.slice(at + 1).trim()
-    if (Number.isInteger(pid) && pid > 0 && commandLine) found.push({ pid, commandLine })
+    const parts = line.split('|')
+    if (parts.length < 4) continue
+    const pid = Number(parts[0].trim())
+    const name = parts[1].trim()
+    const sessionId = Number(parts[2].trim())
+    const commandLine = parts.slice(3).join('|').trim()
+    if (!Number.isInteger(pid) || pid <= 0 || !name) continue
+    list.push({
+      pid,
+      name,
+      sessionId: Number.isInteger(sessionId) ? sessionId : null,
+      commandLine,
+    })
   }
-  return found
+  return { list, ok: true }
+}
+
+/** Windows 路径比较：忽略大小写与斜杠方向。 */
+export function samePath(a: string, b: string): boolean {
+  const norm = (s: string) => s.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
+  return norm(a) === norm(b) && norm(a).length > 0
+}
+
+/** 取命令行里的可执行文件路径（第一个 token，带引号则取引号内）。 */
+export function parseExecutablePathFromCommandLine(commandLine: string): string | null {
+  const trimmed = commandLine.trim()
+  if (!trimmed) return null
+  const quoted = trimmed.match(/^"([^"]+)"/)
+  if (quoted) return quoted[1]
+  const bare = trimmed.match(/^(\S+)/)
+  return bare ? bare[1] : null
+}
+
+/**
+ * 严格 QZ 身份判定。停止确认与启动确认共用这一个解析器，不允许各写一套。
+ *
+ * java.exe / javaw.exe：
+ *   - 命令行里有独立的 -jar 参数；
+ *   - -jar 后的路径 basename 精确等于 qz-tray.jar；
+ *   - 该路径是绝对路径；
+ *   - 该 jar 文件真实存在；
+ *   - jar 所在目录 == 已发现的 QZ 安装目录。
+ * qz-tray.exe：
+ *   - 可执行文件路径 == <QZ 安装目录>\qz-tray.exe。
+ *
+ * "命令行里出现过 qz-tray.jar" 本身**不是**判据。
+ */
+export function identifyQzProcesses(
+  run: ProcessRunner,
+  qzInstallDir: string | null,
+  selfPid: number,
+): QzIdentifyResult {
+  const { list, ok } = listCandidateProcesses(run)
+  const accepted: QzProcess[] = []
+  const rejected: RejectedProcess[] = []
+
+  for (const proc of list) {
+    const name = proc.name.toLowerCase()
+    if (proc.pid === selfPid) {
+      rejected.push({ pid: proc.pid, name: proc.name, reason: 'self' })
+      continue
+    }
+    if (EXCLUDED_IMAGE_NAMES.includes(name)) {
+      rejected.push({ pid: proc.pid, name: proc.name, reason: 'excluded-image' })
+      continue
+    }
+    if (!(QZ_PROCESS_IMAGE_NAMES as readonly string[]).includes(name)) {
+      rejected.push({ pid: proc.pid, name: proc.name, reason: 'image-not-qz' })
+      continue
+    }
+    if (!qzInstallDir) {
+      rejected.push({ pid: proc.pid, name: proc.name, reason: 'no-install-dir' })
+      continue
+    }
+
+    if (name === 'qz-tray.exe') {
+      const exePath = parseExecutablePathFromCommandLine(proc.commandLine)
+      if (exePath && samePath(exePath, join(qzInstallDir, QZ_EXE_NAME))) {
+        accepted.push({ ...proc, installDir: qzInstallDir })
+      } else {
+        rejected.push({ pid: proc.pid, name: proc.name, reason: 'exe-outside-install-dir' })
+      }
+      continue
+    }
+
+    const jarDir = parseJarPathFromCommandLine(proc.commandLine)
+    if (!jarDir) {
+      rejected.push({ pid: proc.pid, name: proc.name, reason: 'no-qz-tray-jar-arg' })
+      continue
+    }
+    if (!samePath(jarDir, qzInstallDir)) {
+      rejected.push({ pid: proc.pid, name: proc.name, reason: 'jar-outside-install-dir' })
+      continue
+    }
+    if (!existsSync(join(jarDir, QZ_JAR_NAME))) {
+      rejected.push({ pid: proc.pid, name: proc.name, reason: 'jar-file-missing' })
+      continue
+    }
+    accepted.push({ ...proc, installDir: jarDir })
+  }
+
+  return { accepted, rejected, queried: ok }
 }
 
 /** 读一个注册表值；读不到返回 null。用 reg query，输出格式稳定且不依赖 PowerShell 策略。 */
@@ -121,8 +249,10 @@ export function discoverQzInstallDir(
   run: ProcessRunner,
   candidates: string[] = DEFAULT_QZ_CANDIDATES,
 ): QzDiscovery {
-  // 1) 正在运行的 QZ 进程
-  for (const proc of findQzProcesses(run)) {
+  // 1) 正在运行的 QZ 进程。此时安装目录还不知道，无法做"目录一致"这一条，
+  //    但镜像名过滤 + -jar 严格解析 + 目录内容校验已经足够，且不会自匹配。
+  for (const proc of listCandidateProcesses(run).list) {
+    if (EXCLUDED_IMAGE_NAMES.includes(proc.name.toLowerCase())) continue
     const dir = parseJarPathFromCommandLine(proc.commandLine)
     if (dir && looksLikeQzInstallDir(dir)) {
       return { dir, source: 'running-process', detail: `由正在运行的 QZ 进程（PID ${proc.pid}）确定` }

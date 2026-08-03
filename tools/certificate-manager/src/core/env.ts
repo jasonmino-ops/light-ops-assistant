@@ -19,6 +19,8 @@ export type Env = {
   runProcess: ProcessRunner
   /** 同步等待，用于轮询确认进程起停；测试中注入空实现以免拖慢用例。 */
   sleep: (ms: number) => void
+  /** 本进程 PID。进程身份判定时用来排除自己，防止自匹配。 */
+  selfPid: number
   now: () => Date
 }
 

@@ -1,9 +1,12 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Env } from './env'
+import { eshopLogPath } from './env'
+import { appendLog } from './fsAtomic'
 import {
   QZ_EXE_NAME, QZ_JAR_NAME, QZ_PROPERTIES_NAME,
-  findQzProcesses, readQzVersionFromRegistry,
+  identifyQzProcesses, readQzVersionFromRegistry,
+  type QzIdentifyResult, type QzProcess,
 } from './discovery'
 
 export { QZ_EXE_NAME, QZ_JAR_NAME, QZ_PROPERTIES_NAME }
@@ -11,6 +14,21 @@ export { QZ_EXE_NAME, QZ_JAR_NAME, QZ_PROPERTIES_NAME }
 /** 进程状态确认的轮询参数：最多等 ~6s，足够 QZ Tray 起停，又不会把界面卡死。 */
 const CONFIRM_ATTEMPTS = 12
 const CONFIRM_INTERVAL_MS = 500
+
+function diag(env: Env, line: string): void {
+  appendLog(eshopLogPath(env), `[qz] ${line}`, env.now())
+}
+
+/** 排除原因汇总成一行，避免把整套进程列表写进日志。 */
+function summarizeRejected(result: QzIdentifyResult): string {
+  if (result.rejected.length === 0) return '无'
+  return result.rejected.map((r) => `${r.name}#${r.pid}:${r.reason}`).join(', ')
+}
+
+/** 停止与启动共用的严格身份判定入口，绝不各写一套。 */
+function identify(env: Env): QzIdentifyResult {
+  return identifyQzProcesses(env.runProcess, env.qzInstallDir, env.selfPid)
+}
 
 export type QzVersionResult =
   | { status: 'OK'; version: string; source: 'exe-product-version' | 'registry-display-version' }
@@ -76,53 +94,104 @@ export function hasQzInstallAssets(env: Env): boolean {
   return existsSync(join(dir, QZ_JAR_NAME)) && existsSync(join(dir, QZ_PROPERTIES_NAME))
 }
 
-/** QZ 是否在运行：按"命令行里跑着 qz-tray.jar"判断，不按镜像名。 */
+/** QZ 是否在运行：以严格身份判定为准。 */
 export function isQzRunning(env: Env): boolean {
-  return findQzProcesses(env.runProcess).length > 0
+  return identify(env).accepted.length > 0
 }
 
-/** 轮询直到进程状态达到期望值；超时返回 false。 */
-function waitForRunningState(env: Env, expected: boolean): boolean {
-  for (let i = 0; i < CONFIRM_ATTEMPTS; i++) {
-    if (isQzRunning(env) === expected) return true
-    env.sleep(CONFIRM_INTERVAL_MS)
-  }
-  return isQzRunning(env) === expected
+export function listRunningQz(env: Env): QzProcess[] {
+  return identify(env).accepted
 }
 
 /**
- * 结束 QZ 并确认进程真的退出了。
- * 按 PID 结束，不用 /IM —— 现场镜像名是 javaw.exe，按镜像名会误杀门店里其它 Java 程序。
+ * 结束 QZ 并确认真的退出了。
+ *
+ * 确认条件（两条同时满足）：
+ *   1. 每个目标旧 PID 都已不存在；
+ *   2. 当前没有任何通过严格身份判定的 QZ 进程。
+ * 无关的 java/javaw 进程不参与判定，不会把 QZ 判成没退出。
  */
-export function stopQzAndConfirm(env: Env): boolean {
-  for (const proc of findQzProcesses(env.runProcess)) {
-    env.runProcess('taskkill', ['/F', '/PID', String(proc.pid)])
+export function stopQzAndConfirm(env: Env, targets: QzProcess[]): boolean {
+  for (const proc of targets) {
+    const res = env.runProcess('taskkill', ['/F', '/PID', String(proc.pid)])
+    diag(env, `taskkill /PID ${proc.pid} exitOk=${res.ok} output=${firstLine(res.output)}`)
   }
-  return waitForRunningState(env, false)
+
+  const targetPids = new Set(targets.map((p) => p.pid))
+  for (let attempt = 1; attempt <= CONFIRM_ATTEMPTS; attempt++) {
+    const result = identify(env)
+    const stillAlive = [...targetPids].filter((pid) => result.accepted.some((p) => p.pid === pid))
+    diag(env, `stop-confirm #${attempt} targetsAlive=[${stillAlive.join(',')}] ` +
+      `qzPids=[${result.accepted.map((p) => p.pid).join(',')}] rejected=${summarizeRejected(result)}`)
+
+    if (stillAlive.length === 0 && result.accepted.length === 0) {
+      diag(env, `stop-confirm ok after #${attempt}`)
+      return true
+    }
+    if (attempt < CONFIRM_ATTEMPTS) env.sleep(CONFIRM_INTERVAL_MS)
+  }
+  diag(env, 'stop-confirm timeout')
+  return false
 }
 
-/** 启动 QZ 并确认进程真的出现了 —— `cmd /c start` 几乎总是返回 0。 */
-export function startQzAndConfirm(env: Env): boolean {
+/**
+ * 启动 QZ 并确认真的起来了。
+ * `cmd /c start` 几乎总是返回 0，所以必须轮询严格身份判定，
+ * 并且要求新 PID 不在旧 PID 集合里。
+ */
+export function startQzAndConfirm(env: Env, previousPids: number[] = []): boolean {
   if (!env.qzInstallDir) return false
   const exe = join(env.qzInstallDir, QZ_EXE_NAME)
-  if (!existsSync(exe)) return false
-  env.runProcess('cmd', ['/c', 'start', '""', exe])
-  return waitForRunningState(env, true)
+  if (!existsSync(exe)) {
+    diag(env, `start skipped: ${exe} 不存在`)
+    return false
+  }
+
+  diag(env, `entering start phase: ${exe}`)
+  const res = env.runProcess('cmd', ['/c', 'start', '""', exe])
+  diag(env, `start invoke exitOk=${res.ok} output=${firstLine(res.output)}`)
+
+  const old = new Set(previousPids)
+  for (let attempt = 1; attempt <= CONFIRM_ATTEMPTS; attempt++) {
+    const result = identify(env)
+    const fresh = result.accepted.filter((p) => !old.has(p.pid))
+    diag(env, `start-confirm #${attempt} newPids=[${fresh.map((p) => `${p.pid}/session${p.sessionId ?? '?'}`).join(',')}] ` +
+      `rejected=${summarizeRejected(result)}`)
+
+    if (fresh.length > 0) {
+      diag(env, `start-confirm ok after #${attempt}`)
+      return true
+    }
+    if (attempt < CONFIRM_ATTEMPTS) env.sleep(CONFIRM_INTERVAL_MS)
+  }
+  diag(env, 'start-confirm timeout')
+  return false
 }
 
 export type RestartOutcome = { attempted: boolean; ok: boolean; detail: string }
 
 /**
  * 只在 QZ 原本就在运行时才重启，避免"本来没开，操作完却被我们拉起来"。
- * 停和起都必须经过进程状态确认，任一步确认不了就返回 ok:false，
+ * 停和起都必须经过严格身份确认，任一步确认不了就返回 ok:false，
  * 由调用方按失败处理（不得报告完全成功）。
  */
 export function restartQzIfRunning(env: Env): RestartOutcome {
-  if (!isQzRunning(env)) return { attempted: false, ok: true, detail: 'QZ Tray 当前未运行，无需重启' }
-  if (!stopQzAndConfirm(env)) {
+  const before = identify(env)
+  if (before.accepted.length === 0) {
+    diag(env, `restart skipped: 无运行中的 QZ（rejected=${summarizeRejected(before)}）`)
+    return { attempted: false, ok: true, detail: 'QZ Tray 当前未运行，无需重启' }
+  }
+
+  diag(env, `restart begin installDir=${env.qzInstallDir}`)
+  for (const proc of before.accepted) {
+    diag(env, `target pid=${proc.pid} name=${proc.name} session=${proc.sessionId ?? '?'} cmd=${proc.commandLine}`)
+  }
+
+  if (!stopQzAndConfirm(env, before.accepted)) {
     return { attempted: true, ok: false, detail: '无法确认 QZ Tray 进程已退出' }
   }
-  if (!startQzAndConfirm(env)) {
+
+  if (!startQzAndConfirm(env, before.accepted.map((p) => p.pid))) {
     const exeMissing = env.qzInstallDir && !existsSync(join(env.qzInstallDir, QZ_EXE_NAME))
     return {
       attempted: true,
@@ -141,7 +210,10 @@ export function restartQzIfRunning(env: Env): RestartOutcome {
  */
 export function restoreQzRunState(env: Env, wasRunning: boolean): { ok: boolean; detail: string } {
   if (!env.qzInstallDir) return { ok: true, detail: '无 QZ 安装目录，跳过运行状态恢复' }
-  const running = isQzRunning(env)
+  const current = identify(env)
+  const running = current.accepted.length > 0
+  diag(env, `restore-run-state wasRunning=${wasRunning} nowRunning=${running}`)
+
   if (running === wasRunning) {
     return { ok: true, detail: `QZ Tray 运行状态与操作前一致（${wasRunning ? '运行中' : '未运行'}）` }
   }
@@ -150,7 +222,7 @@ export function restoreQzRunState(env: Env, wasRunning: boolean): { ok: boolean;
       ? { ok: true, detail: 'QZ Tray 已恢复运行' }
       : { ok: false, detail: 'QZ Tray 操作前在运行，但未能恢复，请手动启动' }
   }
-  return stopQzAndConfirm(env)
+  return stopQzAndConfirm(env, current.accepted)
     ? { ok: true, detail: 'QZ Tray 操作前未运行，已恢复为未运行' }
     : { ok: false, detail: 'QZ Tray 操作前未运行，但未能将其停止，请手动确认' }
 }

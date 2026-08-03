@@ -18,6 +18,7 @@ export type Fake = {
   processCalls: Array<{ command: string; args: string[] }>
   setQzRunning: (running: boolean) => void
   isQzRunning: () => boolean
+  qzPid: () => number
 }
 
 export type FakeOptions = {
@@ -52,6 +53,8 @@ export type FakeOptions = {
   adminQuery?: 'ok' | 'fail'
   /** 注册表卸载项里的 DisplayVersion；null 表示不存在。 */
   registryDisplayVersion?: string | null
+  /** 额外的候选进程行（pid|name|sessionId|commandLine），用于干扰项测试。 */
+  extraProcesses?: string[]
 }
 
 let cachedCa: { pem: string; fingerprint: string } | null = null
@@ -138,6 +141,7 @@ export function makeFake(options: FakeOptions = {}): Fake {
     inAdminGroup = true,
     adminQuery = 'ok',
     registryDisplayVersion = null,
+    extraProcesses = [],
   } = options
 
   const root = mkdtempSync(join(tmpdir(), 'eshop-cm-'))
@@ -168,7 +172,8 @@ export function makeFake(options: FakeOptions = {}): Fake {
     writePackage(packageDir, ca.pem, packageVersion)
   }
 
-  const QZ_PID = 4321
+  // 每次"启动"都用一个新 PID，才能验证 start 确认要求新 PID 与旧 PID 不同
+  let qzPid = 4321
   const qzCommandLine =
     `"${join(qzDir, 'runtime', 'bin', 'javaw.exe')}" -Xms512m -jar "${join(qzDir, 'qz-tray.jar')}"`
 
@@ -182,9 +187,12 @@ export function makeFake(options: FakeOptions = {}): Fake {
         if (adminQuery === 'fail') return { ok: false, output: '拒绝访问' }
         return { ok: true, output: `ELEVATED=${elevated ? 'True' : 'False'}\r\nINGROUP=${inAdminGroup ? 'True' : 'False'}\r\n` }
       }
-      // QZ 进程枚举（按命令行含 qz-tray.jar 匹配，不按镜像名）
+      // 候选进程枚举：真机上 CIM 已按镜像名过滤，这里返回同样形状的数据
+      // pid|name|sessionId|commandLine
       if (script.includes('Win32_Process')) {
-        return { ok: true, output: qzRunning ? `${QZ_PID}|${qzCommandLine}\r\n` : '' }
+        const rows = [...extraProcesses]
+        if (qzRunning) rows.unshift(`${qzPid}|javaw.exe|1|${qzCommandLine}`)
+        return { ok: true, output: rows.join('\r\n') }
       }
       // qz-tray.exe 的 ProductVersion
       if (script.includes('VersionInfo.ProductVersion')) {
@@ -210,7 +218,7 @@ export function makeFake(options: FakeOptions = {}): Fake {
       return { ok: true, output: 'SUCCESS' }
     }
     if (command === 'cmd') {
-      if (!failStart) qzRunning = true
+      if (!failStart) { qzPid += 1; qzRunning = true }
       return { ok: true, output: '' }
     }
     return { ok: false, output: '' }
@@ -223,6 +231,7 @@ export function makeFake(options: FakeOptions = {}): Fake {
     processCalls,
     setQzRunning: (running: boolean) => { qzRunning = running },
     isQzRunning: () => qzRunning,
+    qzPid: () => qzPid,
     cleanup: () => rmSync(root, { recursive: true, force: true }),
     env: {
       qzInstallDir: qzInstalled ? qzDir : null,
@@ -231,6 +240,7 @@ export function makeFake(options: FakeOptions = {}): Fake {
       packageDir,
       runProcess,
       sleep: () => { /* 测试里不真的等待 */ },
+      selfPid: 999_999,
       now: () => now,
     },
   }
