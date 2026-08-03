@@ -1,0 +1,7 @@
+node_modules/
+dist/
+release/
+# 证书包内容由运维在部署前放入，或由 scripts/make-test-package.mjs 生成，均不入库。
+certificate-package/*
+!certificate-package/README.md
+!certificate-package/manifest.example.json

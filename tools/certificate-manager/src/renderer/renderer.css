@@ -1,0 +1,80 @@
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --line: #dfe4ea;
+  --text: #1b2733;
+  --muted: #6b7885;
+  --blue: #1f6feb;
+  --green: #1a7f4b;
+  --amber: #b26a00;
+  --red: #c02a2a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.55 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+}
+
+.shell { padding: 20px 24px 32px; max-width: 720px; margin: 0 auto; }
+
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+h1 { margin: 0; font-size: 19px; }
+h2 { margin: 0 0 8px; font-size: 14px; color: var(--muted); font-weight: 600; }
+.sub { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+.status-card {
+  display: flex; align-items: center; gap: 14px;
+  margin: 18px 0; padding: 16px 18px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+}
+.status-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+.status-text { font-size: 20px; font-weight: 700; }
+.status-note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+.state-OK .status-dot { background: var(--green); }
+.state-OK .status-text { color: var(--green); }
+.state-NEEDS_UPDATE .status-dot { background: var(--amber); }
+.state-NEEDS_UPDATE .status-text { color: var(--amber); }
+.state-MISCONFIGURED .status-dot { background: var(--red); }
+.state-MISCONFIGURED .status-text { color: var(--red); }
+.state-NOT_INSTALLED .status-dot { background: var(--muted); }
+.state-NOT_INSTALLED .status-text { color: var(--muted); }
+
+.info, .checks, .log {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 18px; margin-bottom: 16px;
+}
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 5px 0; vertical-align: top; font-weight: 400; }
+th { width: 42%; color: var(--muted); }
+td { word-break: break-all; }
+.mono { font-family: Consolas, "SF Mono", monospace; font-size: 12px; }
+
+.checks ul { list-style: none; margin: 0; padding: 0; }
+.checks li { padding: 6px 0; border-top: 1px solid var(--line); display: flex; gap: 8px; }
+.checks li:first-child { border-top: none; }
+.checks .mark { flex: 0 0 auto; font-weight: 700; }
+.checks .pass .mark { color: var(--green); }
+.checks .fail .mark { color: var(--red); }
+.checks .label { font-weight: 600; flex: 0 0 auto; }
+.checks .detail { color: var(--muted); word-break: break-all; }
+
+.actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+button {
+  padding: 11px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font-size: 14px; cursor: pointer;
+}
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.danger { background: #fff; border-color: var(--red); color: var(--red); }
+.ghost { font-size: 12px; padding: 6px 10px; }
+
+.log-head { display: flex; align-items: center; justify-content: space-between; }
+pre {
+  margin: 0; max-height: 190px; overflow: auto; white-space: pre-wrap;
+  font-family: Consolas, "SF Mono", monospace; font-size: 12px; color: var(--muted);
+}

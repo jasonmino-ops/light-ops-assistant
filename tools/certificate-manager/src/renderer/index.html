@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>E-Shop Certificate Manager</title>
+    <link rel="stylesheet" href="./renderer.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="head">
+        <div>
+          <h1>E-Shop Certificate Manager</h1>
+          <p class="sub">E-Shop Root Certificate 本机部署 · QZ Tray 信任配置</p>
+        </div>
+        <button id="refresh" class="ghost" type="button">重新检查</button>
+      </header>
+
+      <section id="status-card" class="status-card" aria-live="polite">
+        <div class="status-dot" id="status-dot"></div>
+        <div>
+          <div class="status-text" id="status-text">正在检查…</div>
+          <div class="status-note" id="status-note"></div>
+        </div>
+      </section>
+
+      <section class="info">
+        <table>
+          <tbody>
+            <tr><th>QZ Tray 是否安装</th><td id="i-qz-installed">—</td></tr>
+            <tr><th>QZ Tray 版本</th><td id="i-qz-version">—</td></tr>
+            <tr><th>QZ 安装目录</th><td id="i-qz-dir" class="mono">—</td></tr>
+            <tr><th>当前 E-Shop Root 版本</th><td id="i-installed-version">—</td></tr>
+            <tr><th>程序携带 Root 版本</th><td id="i-package-version">—</td></tr>
+            <tr><th>Root SHA-256 指纹</th><td id="i-fingerprint" class="mono">—</td></tr>
+            <tr><th>Root 有效期</th><td id="i-validity">—</td></tr>
+            <tr><th>管理员权限</th><td id="i-admin">—</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="checks">
+        <h2>配置检查结果</h2>
+        <ul id="check-list"></ul>
+      </section>
+
+      <section class="actions">
+        <button id="btn-install" class="primary" type="button">安装</button>
+        <button id="btn-update" class="primary" type="button">更新</button>
+        <button id="btn-repair" class="primary" type="button">修复</button>
+        <button id="btn-uninstall" class="danger" type="button">卸载</button>
+      </section>
+
+      <section class="log">
+        <div class="log-head">
+          <h2>操作记录</h2>
+          <button id="open-folder" class="ghost" type="button">打开数据目录</button>
+        </div>
+        <pre id="log-output"></pre>
+      </section>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
