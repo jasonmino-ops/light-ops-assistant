@@ -42,10 +42,6 @@ function normalizeName(name: string): string {
   return name.split('\n').map((s) => s.trim()).filter(Boolean).join(', ')
 }
 
-export function fingerprintOf(pem: string): string {
-  return parseCertificate(pem).fingerprint
-}
-
 /** 指纹比较：忽略大小写、冒号和空格，避免因为书写风格判为不匹配。 */
 export function fingerprintsEqual(a: string, b: string): boolean {
   const norm = (s: string) => s.replace(/[\s:]/g, '').toUpperCase()

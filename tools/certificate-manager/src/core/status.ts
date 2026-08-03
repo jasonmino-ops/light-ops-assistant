@@ -135,7 +135,7 @@ export function computeStatus(env: Env): Status {
     }
   }
 
-  const code = deriveCode({ checks, everInstalled, hasPackage: Boolean(pkg) })
+  const code = deriveCode({ checks, everInstalled })
 
   return {
     code,
@@ -179,7 +179,6 @@ const HEADLINES: Record<StatusCode, string> = {
 function deriveCode(input: {
   checks: CheckResult[]
   everInstalled: boolean
-  hasPackage: boolean
 }): StatusCode {
   const failed = (id: CheckResult['id']) =>
     input.checks.some((c) => c.id === id && !c.ok)

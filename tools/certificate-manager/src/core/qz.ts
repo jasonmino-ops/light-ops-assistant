@@ -99,10 +99,6 @@ export function isQzRunning(env: Env): boolean {
   return identify(env).accepted.length > 0
 }
 
-export function listRunningQz(env: Env): QzProcess[] {
-  return identify(env).accepted
-}
-
 /**
  * 结束 QZ 并确认真的退出了。
  *

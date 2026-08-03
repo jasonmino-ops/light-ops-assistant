@@ -1,6 +1,6 @@
 # E-Shop Certificate Manager v1 技术设计
 
-状态：待 Windows TEST Root 真机验收（已完成一轮独立审查阻断修复）
+状态：**FINAL FROZEN**（Windows 真机验收通过）
 分支：`claude/certificate-manager-01`
 范围：`tools/certificate-manager/` 新增目录，**不改动任何现有文件**
 
@@ -305,7 +305,81 @@ certificate-package/
    - `rootFile` 的路径边界校验（当前直接 `join(dir, rootFile)`，
      未拒绝 `..` 与绝对路径）。
 
-## 8. 明确不做
+## 8. FINAL FROZEN 声明
+
+### 状态
+
+**E-Shop Certificate Manager V1 = FINAL FROZEN。**
+
+Windows 真机已验收通过：Portable EXE、UAC 提权、QZ 2.2.6 自动识别、
+非标准安装目录 `D:\qz tray`、Java Runtime 启动方式、管理员权限判定、
+TEST Root 安装、`authcert.override` 写入、Root 指纹校验、安装幂等、
+自动回滚、卸载、恢复、卸载后 QZ 正常运行。
+
+### 后续原则
+
+**除阻断性 BUG 外，禁止继续开发。**
+
+任何非阻断性的改进、优化、重构、UI 调整、功能扩展一律不做。
+阻断性 BUG 指：导致现场无法完成证书部署或修复、或造成本机配置损坏且无法回滚的缺陷。
+修复阻断性 BUG 时，只允许改动导致该缺陷的最小范围，不得顺带优化。
+
+### 冻结范围（以下内容禁止修改）
+
+**代码**
+
+```
+tools/certificate-manager/
+├── src/core/       types env properties override certificate certPackage
+│                   fsAtomic state discovery admin qz status actions
+├── src/main/       main.ts env.win.ts
+├── src/preload/    preload.ts
+├── src/renderer/   index.html renderer.css renderer.ts
+├── scripts/        clean-dist copy-renderer make-test-package
+│                   verify-portable-manifest lib/pe-manifest
+├── tests/          properties certPackage status actions renderer
+│                   qz discovery admin qzIdentity portable-manifest + helpers/fakeEnv
+├── package.json / tsconfig*.json / electron-builder.yml / .gitignore
+└── certificate-package/  README.md manifest.example.json
+```
+
+**行为契约**
+
+| 契约 | 冻结内容 |
+|---|---|
+| 状态机 | 四种状态（未安装 / 正常 / 需要更新 / 配置异常）及其推导优先级 |
+| 四个按钮 | 安装 / 更新 / 修复 / 卸载 的语义与流程 |
+| Certificate Package | `eshop.certificate-package/v1` 格式与六道加载校验 |
+| 安装记录 | `eshop.certificate-manager.state/v1` 格式 |
+| QZ 对接 | `authcert.override`，`;` 分隔的绝对路径列表，只做行级增删 |
+| 安装目录发现 | 运行进程 → 注册表安装项 → 卸载项 DisplayIcon → 默认路径 |
+| 版本探测 | `qz-tray.exe` ProductVersion → 注册表 DisplayVersion，读不到即拒绝写入 |
+| 进程身份 | 镜像名过滤 + 严格 `-jar` 判定 + 目录一致；停止与启动共用同一解析器 |
+| 权限判定 | 进程令牌 `IsInRole(Administrator)`，与目录发现解耦 |
+| 事务模型 | 备份 → 临时文件 → 原子替换 → 回读校验 → 失败逆序回滚 + 恢复 QZ 运行状态 |
+| 本机改动边界 | 只动 `%PROGRAMDATA%\E-Shop\CertificateManager\` 与 `qz-tray.properties` 的 `authcert.override` 一行 |
+| 打包 | `win.requestedExecutionLevel=requireAdministrator` + `portable.requestExecutionLevel=admin` + 构建后 manifest 闸门 |
+
+**安全边界**
+
+程序内不存在、不生成、不使用任何私钥；不联网；无后台服务；无数据库；
+不写 Windows Trusted Root Store；不自动更新；所有本机变更由人工点击触发。
+
+### 不属于冻结范围（下一阶段新任务）
+
+TEST Leaf 签发、QZ Verify、第一张真实小票、Signing API、AWS、KMS、
+Browser、Desktop、打印架构 —— 这些从未纳入 Certificate Manager V1，
+本冻结不对其作出任何承诺。
+
+### 遗留 Gate（见第 7 节）
+
+第 7 节的两个 Gate 属于**下一阶段**的前置条件，不是 V1 的阻断项：
+QZ 重装/升级后需重新【修复】（现场 SOP）；生产 Root 发版前需补
+Certificate Package 真实性验证与 `rootFile` 路径边界校验。
+
+---
+
+## 9. 明确不做
 
 多门店云端管理平台、门店账号、中央控制台、远程下发、在线设备管理、
 自动证书签发、自动 Root 轮换、后台常驻服务、数据库、云端 API、自动更新、遥测；

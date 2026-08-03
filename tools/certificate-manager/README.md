@@ -1,5 +1,9 @@
 # E-Shop Certificate Manager
 
+> **状态：V1 FINAL FROZEN**（Windows 真机验收通过，version 0.1.0）
+> 除阻断性 BUG 外禁止继续开发。冻结范围见
+> [docs/architecture/eshop-certificate-manager-v1.md](../../docs/architecture/eshop-certificate-manager-v1.md) 第 8 节。
+
 把 **E-Shop 自签名 Root Certificate** 部署到门店 Windows 电脑，并让本机 QZ Tray 信任它。
 一个窗口、四个按钮，现场工程师一分钟内可完成部署或修复。
 
