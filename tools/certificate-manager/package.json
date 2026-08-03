@@ -1,7 +1,7 @@
 {
   "name": "eshop-certificate-manager",
   "productName": "E-Shop Certificate Manager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "E-Shop 自签名 Root Certificate 本机部署工具（QZ Tray 信任配置）",
   "private": true,
   "main": "dist/main/main.js",

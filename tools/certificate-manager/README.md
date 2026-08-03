@@ -1,6 +1,8 @@
 # E-Shop Certificate Manager
 
-> **状态：V1 FINAL FROZEN**（Windows 真机验收通过，version 0.1.0）
+> **状态：V1 FINAL FROZEN**（Windows 真机验收通过，version 0.1.0，commit `70d42cd`）
+> 当前 version **0.1.1**：仅更换内置证书包为 TEST Root v2（manifest v2），
+> `src/`、`scripts/`、`tsconfig*`、`electron-builder.yml` 与 0.1.0 零差异，功能与行为不变。
 > 除阻断性 BUG 外禁止继续开发。冻结范围见
 > [docs/architecture/eshop-certificate-manager-v1.md](../../docs/architecture/eshop-certificate-manager-v1.md) 第 8 节。
 
