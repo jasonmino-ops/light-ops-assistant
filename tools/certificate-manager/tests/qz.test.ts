@@ -17,14 +17,18 @@ describe('QZ Tray 2.2.6 版本探测', () => {
   it('测试夹具就是真实的 2.2.6 安装结构：无 app\\*.cfg、无 version.txt', () => {
     fake = makeFake()
     const entries = readdirSync(fake.qzDir).sort()
-    expect(entries).toEqual(['libs', 'qz-tray.exe', 'qz-tray.jar', 'qz-tray.properties'])
+    expect(entries).toEqual(['libs', 'qz-tray.exe', 'qz-tray.jar', 'qz-tray.properties', 'runtime'])
     expect(existsSync(join(fake.qzDir, 'app'))).toBe(false)
     expect(existsSync(join(fake.qzDir, 'version.txt'))).toBe(false)
+    // 现场那台机器就是用 runtime\bin\javaw.exe 启动的
+    expect(existsSync(join(fake.qzDir, 'runtime', 'bin', 'javaw.exe'))).toBe(true)
   })
 
   it('从 qz-tray.exe 的 ProductVersion 读出版本', () => {
     fake = makeFake({ qzVersion: '2.2.6' })
-    expect(detectQzVersion(fake.env)).toEqual({ status: 'OK', version: '2.2.6' })
+    expect(detectQzVersion(fake.env)).toEqual({
+      status: 'OK', version: '2.2.6', source: 'exe-product-version',
+    })
     const call = fake.processCalls.find((c) => c.command === 'powershell')
     expect(call?.args.join(' ')).toContain('VersionInfo.ProductVersion')
     expect(call?.args.join(' ')).toContain('qz-tray.exe')
@@ -43,12 +47,24 @@ describe('QZ Tray 2.2.6 版本探测', () => {
     expect(detectQzVersion(fake.env).status).toBe('UNCONFIRMED')
   })
 
-  it('qz-tray.exe 缺失 → 版本无法确认，且不去起进程', () => {
-    fake = makeFake()
-    rmSync(join(fake.qzDir, 'qz-tray.exe'))
+  it('qz-tray.exe 缺失且注册表也没有 → 版本无法确认', () => {
+    fake = makeFake({ omitExe: true })
     const result = detectQzVersion(fake.env)
     expect(result.status).toBe('UNCONFIRMED')
-    expect(fake.processCalls.some((c) => c.command === 'powershell')).toBe(false)
+    expect(result.status === 'UNCONFIRMED' && result.reason).toContain('javaw.exe')
+    expect(fake.processCalls.some((c) => c.command === 'powershell' && c.args.join(' ').includes('ProductVersion'))).toBe(false)
+  })
+
+  it('qz-tray.exe 缺失时回退注册表 DisplayVersion —— 现场的启动方式', () => {
+    fake = makeFake({ omitExe: true, registryDisplayVersion: '2.2.6' })
+    expect(detectQzVersion(fake.env)).toEqual({
+      status: 'OK', version: '2.2.6', source: 'registry-display-version',
+    })
+  })
+
+  it('ProductVersion 读失败时也回退注册表', () => {
+    fake = makeFake({ qzVersionQuery: 'fail', registryDisplayVersion: '2.2.6' })
+    expect(detectQzVersion(fake.env).version).toBe('2.2.6')
   })
 
   it('绝不读取 app\\*.cfg —— 即使存在也不能成为版本来源', () => {
@@ -66,9 +82,14 @@ describe('QZ Tray 2.2.6 版本探测', () => {
     expect(detectQzVersion(fake.env).version).toBeNull()
   })
 
-  it('安装资产判定要求 exe 与 jar 同时存在', () => {
+  it('安装资产判定要 jar + properties，且不要求 qz-tray.exe', () => {
     fake = makeFake()
     expect(hasQzInstallAssets(fake.env)).toBe(true)
+
+    // 现场：没有 qz-tray.exe 也必须算"已安装"
+    const noExe = makeFake({ omitExe: true })
+    expect(hasQzInstallAssets(noExe.env)).toBe(true)
+    noExe.cleanup()
 
     const noJar = makeFake({ omitJar: true })
     expect(hasQzInstallAssets(noJar.env)).toBe(false)
@@ -112,6 +133,13 @@ describe('版本无法确认时的最小安全行为', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toContain('不是完整的 QZ Tray 安装')
     expect(readFileSync(fake.propsPath, 'utf8')).toBe(DEFAULT_QZ_PROPERTIES)
+  })
+
+  it('只有 jar、没有 qz-tray.exe 时仍可正常安装（现场启动方式）', () => {
+    fake = makeFake({ omitExe: true, registryDisplayVersion: '2.2.6' })
+    const result = install(fake.env)
+    expect(result.ok).toBe(true)
+    expect(result.status.code).toBe('OK')
   })
 })
 

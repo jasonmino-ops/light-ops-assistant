@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { computeStatus } from '../src/core/status'
 import { install } from '../src/core/actions'
@@ -8,10 +8,7 @@ import { makeCa, makeExpiredCa, makeFake, writePackage, type Fake } from './help
 
 let fake: Fake | null = null
 afterEach(() => {
-  if (fake) {
-    if (existsSync(fake.qzDir)) chmodSync(fake.qzDir, 0o755)
-    fake.cleanup()
-  }
+  fake?.cleanup()
   fake = null
 })
 
@@ -111,12 +108,24 @@ describe('状态判断', () => {
     expect(check(fake, 'ROOT_VALIDITY')).toMatchObject({ ok: false, repairable: false })
   })
 
-  it('非管理员运行 → 配置异常并给出明确提示', () => {
-    fake = makeFake()
-    chmodSync(fake.qzDir, 0o555)
+  it('管理员组成员但进程未提升 → 配置异常并提示以管理员身份运行', () => {
+    fake = makeFake({ elevated: false, inAdminGroup: true })
     const status = computeStatus(fake.env)
     expect(status.isAdmin).toBe(false)
     expect(status.code).toBe('MISCONFIGURED')
-    expect(check(fake, 'ADMIN_RIGHTS')?.detail).toContain('管理员身份')
+    expect(check(fake, 'ADMIN_RIGHTS')?.detail).toContain('以管理员身份运行')
+  })
+
+  it('根本不是管理员 → 提示换管理员账户，不提示右键提权', () => {
+    fake = makeFake({ elevated: false, inAdminGroup: false })
+    expect(check(fake, 'ADMIN_RIGHTS')?.detail).toContain('不是管理员')
+  })
+
+  it('QZ 未安装时权限判定不受影响 —— 现场那次误判的正解', () => {
+    fake = makeFake({ qzInstalled: false, elevated: true })
+    const status = computeStatus(fake.env)
+    expect(status.qz.installed).toBe(false)
+    expect(status.isAdmin).toBe(true)
+    expect(check(fake, 'ADMIN_RIGHTS')?.ok).toBe(true)
   })
 })

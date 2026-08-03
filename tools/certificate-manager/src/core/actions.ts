@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Env } from './env'
 import {
-  AUTHCERT_OVERRIDE_KEY, canWriteQzDir, ensureEshopDirs, eshopBackupDir,
+  AUTHCERT_OVERRIDE_KEY, ensureEshopDirs, eshopBackupDir,
   eshopCertPath, eshopLogPath, eshopStatePath, qzPropertiesPath,
 } from './env'
+import { checkAdmin } from './admin'
 import { appendLog, atomicWrite, backupFile, restoreFile, timestamp } from './fsAtomic'
 import { getProperty, removeProperty, setProperty } from './properties'
 import { addToOverride, overrideContains, removeFromOverride, splitOverride } from './override'
@@ -12,7 +13,7 @@ import { loadCertificatePackage } from './certPackage'
 import { compareVersions, fingerprintsEqual, parseCertificate } from './certificate'
 import { clearState, readState, writeState } from './state'
 import {
-  detectQzVersion, hasQzInstallAssets, isQzRunning, restartQzIfRunning, restoreQzRunState,
+  QZ_JAR_NAME, detectQzVersion, isQzRunning, restartQzIfRunning, restoreQzRunState,
 } from './qz'
 import { computeStatus } from './status'
 import type { ActionName, ActionResult, ActionStep, CertificatePackage, InstallState } from './types'
@@ -232,9 +233,9 @@ function requireReadyEnvironment(env: Env, txn: Txn): CertificatePackage {
     throw new ActionError(`证书包不可用：${(e as Error).message}`)
   }
   if (!env.qzInstallDir) throw new ActionError('未检测到 QZ Tray，请先安装 QZ Tray')
-  if (!hasQzInstallAssets(env)) {
+  if (!existsSync(join(env.qzInstallDir, QZ_JAR_NAME))) {
     throw new ActionError(
-      `${env.qzInstallDir} 下缺少 qz-tray.exe / qz-tray.jar，不是完整的 QZ Tray 安装，拒绝继续`,
+      `${env.qzInstallDir} 下缺少 ${QZ_JAR_NAME}，不是完整的 QZ Tray 安装，拒绝继续`,
     )
   }
   const propsPath = qzPropertiesPath(env) as string
@@ -255,8 +256,9 @@ function requireReadyEnvironment(env: Env, txn: Txn): CertificatePackage {
       `QZ Tray ${version.version} 低于要求的 ${pkg.manifest.minimumQzVersion}，不支持自定义 Root`,
     )
   }
-  if (!canWriteQzDir(env)) {
-    throw new ActionError('没有管理员权限：无法写入 QZ Tray 目录。请右键以管理员身份运行本程序')
+  const admin = checkAdmin(env)
+  if (!admin.elevated) {
+    throw new ActionError(`没有管理员权限：${admin.detail}`)
   }
   step(txn, `环境检查通过（QZ Tray ${version.version}）`)
   return pkg

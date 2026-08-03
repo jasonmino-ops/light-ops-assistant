@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import type { Env, ProcessRunner } from '../core/env'
-import { detectQzInstallDir } from '../core/env'
+import { discoverQzInstallDir } from '../core/discovery'
 
 /** 同步睡眠。主进程在执行安装/卸载时本来就是阻塞的，这里不引入异步复杂度。 */
 function sleepSync(ms: number): void {
@@ -22,9 +22,9 @@ const runProcess: ProcessRunner = (command, args) => {
 
 /**
  * 真机环境。
- * - QZ 目录：C:\Program Files\QZ Tray（qzind/tray APP_DIR）
+ * - QZ 目录：由 discoverQzInstallDir() 动态发现（运行进程 → 注册表 → 默认路径），
+ *   不写死任何路径。现场 CarGarden 装在 D:\qz tray。
  * - E-Shop 自有目录：%PROGRAMDATA%\E-Shop\CertificateManager
- *   刻意不放进 QZ 安装目录，卸载时整目录可清，且不会和 QZ 自己的文件混淆。
  * - 证书包：打包后位于 resources/certificate-package，开发时位于仓库目录。
  */
 export function resolveWindowsEnv(options: {
@@ -33,8 +33,13 @@ export function resolveWindowsEnv(options: {
   programData?: string
 }): Env {
   const programData = options.programData ?? process.env.PROGRAMDATA ?? 'C:\\ProgramData'
+  const discovery = options.qzInstallDir === undefined
+    ? discoverQzInstallDir(runProcess)
+    : { dir: options.qzInstallDir, source: null, detail: '由调用方指定' }
+
   return {
-    qzInstallDir: options.qzInstallDir ?? detectQzInstallDir(),
+    qzInstallDir: discovery.dir,
+    qzInstallSource: discovery.detail,
     eshopDir: join(programData, 'E-Shop', 'CertificateManager'),
     packageDir: options.packageDir,
     runProcess,

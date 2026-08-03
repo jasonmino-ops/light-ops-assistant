@@ -9,7 +9,10 @@
     code: StatusCode
     headline: string
     checks: CheckResult[]
-    qz: { installed: boolean; version: string | null; installDir: string | null; propertiesPath: string | null }
+    qz: {
+      installed: boolean; version: string | null; versionSource: string | null
+      installDir: string | null; installSource: string | null; propertiesPath: string | null
+    }
     installed: {
       certificateId: string | null; version: number | null; fingerprint: string | null
       validFrom: string | null; validTo: string | null
@@ -43,6 +46,11 @@
   const bridge = (window as unknown as { certManager: Bridge }).certManager
   const $ = (id: string) => document.getElementById(id) as HTMLElement
 
+  const VERSION_SOURCES: Record<string, string> = {
+    'exe-product-version': 'qz-tray.exe 版本信息',
+    'registry-display-version': '注册表 DisplayVersion',
+  }
+
   const NOTES: Record<StatusCode, string> = {
     NOT_INSTALLED: '本机尚未部署 E-Shop Root Certificate，点击【安装】。',
     OK: 'E-Shop Root 已部署，QZ Tray 信任配置正确。',
@@ -64,8 +72,11 @@
     setText('status-note', status.package.error ? `证书包不可用：${status.package.error}` : NOTES[status.code])
 
     setText('i-qz-installed', status.qz.installed ? '是' : '否')
-    setText('i-qz-version', status.qz.version ?? '未识别')
+    setText('i-qz-version', status.qz.version
+      ? `${status.qz.version}${status.qz.versionSource ? `（${VERSION_SOURCES[status.qz.versionSource] ?? status.qz.versionSource}）` : ''}`
+      : '未识别')
     setText('i-qz-dir', status.qz.installDir ?? '—')
+    setText('i-qz-source', status.qz.installSource ?? '—')
     setText('i-installed-version', status.installed.version === null ? '未安装' : `v${status.installed.version}`)
     setText('i-package-version', status.package.version === null ? '不可用' : `v${status.package.version}`)
     setText('i-fingerprint', status.installed.fingerprint ?? status.package.fingerprint ?? '—')

@@ -42,6 +42,16 @@ export type FakeOptions = {
   failStop?: boolean
   /** start 之后进程始终不出现。 */
   failStart?: boolean
+  /** 模拟现场：QZ 由 runtime\bin\javaw.exe 启动，安装目录下没有 qz-tray.exe。 */
+  omitExe?: boolean
+  /** 当前进程是否已提升（管理员令牌）。 */
+  elevated?: boolean
+  /** 当前账户是否属于 Administrators 组。 */
+  inAdminGroup?: boolean
+  /** 令牌探测是否可用；fail 时 admin.ts 会退回目录写探针。 */
+  adminQuery?: 'ok' | 'fail'
+  /** 注册表卸载项里的 DisplayVersion；null 表示不存在。 */
+  registryDisplayVersion?: string | null
 }
 
 let cachedCa: { pem: string; fingerprint: string } | null = null
@@ -60,10 +70,14 @@ export function makeCa(seed = 1): { pem: string; fingerprint: string } {
       '[dn]', 'C = KH', 'O = E-Shop Test', `CN = E-Shop Test Root CA ${seed}`,
       '[v3_ca]', 'basicConstraints = critical,CA:TRUE', 'keyUsage = critical,keyCertSign,cRLSign',
     ].join('\n'))
+    // 有效期写死在过去→未来，不用 -days。
+    // 否则 notBefore 是"生成的此刻"，而夹具的 now 固定在 10:00 UTC，
+    // 一旦在当天 10:00 UTC 之后跑测试，证书就会被判成"尚未生效"。
     execFileSync('openssl', [
       'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
       '-keyout', join(work, 'ca.key'), '-out', join(work, 'ca.crt'),
-      '-days', '3650', '-sha256', '-config', cnf,
+      '-not_before', '20200101000000Z', '-not_after', '20360101000000Z',
+      '-sha256', '-config', cnf,
     ], { stdio: 'pipe' })
     const pem = readFileSync(join(work, 'ca.crt'), 'utf8')
     const result = { pem, fingerprint: new X509Certificate(pem).fingerprint256.toUpperCase() }
@@ -119,6 +133,11 @@ export function makeFake(options: FakeOptions = {}): Fake {
     qzVersionQuery = 'ok',
     failStop = false,
     failStart = false,
+    omitExe = false,
+    elevated = true,
+    inAdminGroup = true,
+    adminQuery = 'ok',
+    registryDisplayVersion = null,
   } = options
 
   const root = mkdtempSync(join(tmpdir(), 'eshop-cm-'))
@@ -133,7 +152,10 @@ export function makeFake(options: FakeOptions = {}): Fake {
   // 没有 jpackage 的 app\*.cfg，也没有 version.txt。
   if (qzInstalled) {
     mkdirSync(join(qzDir, 'libs'), { recursive: true })
-    writeFileSync(join(qzDir, 'qz-tray.exe'), 'stub')
+    // 现场 QZ 以 bundled runtime 启动，qz-tray.exe 未必存在
+    mkdirSync(join(qzDir, 'runtime', 'bin'), { recursive: true })
+    writeFileSync(join(qzDir, 'runtime', 'bin', 'javaw.exe'), 'stub')
+    if (!omitExe) writeFileSync(join(qzDir, 'qz-tray.exe'), 'stub')
     if (!omitJar) writeFileSync(join(qzDir, 'qz-tray.jar'), 'stub')
     writeFileSync(join(qzDir, 'libs', 'jetty-server.jar'), 'stub')
     if (qzPropertiesContent !== null) writeFileSync(propsPath, qzPropertiesContent)
@@ -146,18 +168,42 @@ export function makeFake(options: FakeOptions = {}): Fake {
     writePackage(packageDir, ca.pem, packageVersion)
   }
 
+  const QZ_PID = 4321
+  const qzCommandLine =
+    `"${join(qzDir, 'runtime', 'bin', 'javaw.exe')}" -Xms512m -jar "${join(qzDir, 'qz-tray.jar')}"`
+
   const runProcess: ProcessRunner = (command, args) => {
     processCalls.push({ command, args })
+    const script = args.join(' ')
+
     if (command === 'powershell') {
-      if (qzVersionQuery === 'fail') {
-        return { ok: false, output: '无法加载文件，因为在此系统上禁止运行脚本。' }
+      // 管理员令牌探测
+      if (script.includes('WindowsIdentity')) {
+        if (adminQuery === 'fail') return { ok: false, output: '拒绝访问' }
+        return { ok: true, output: `ELEVATED=${elevated ? 'True' : 'False'}\r\nINGROUP=${inAdminGroup ? 'True' : 'False'}\r\n` }
       }
-      if (qzVersionQuery === 'garbage') return { ok: true, output: '\r\n' }
-      return { ok: true, output: `${qzVersion}\r\n` }
+      // QZ 进程枚举（按命令行含 qz-tray.jar 匹配，不按镜像名）
+      if (script.includes('Win32_Process')) {
+        return { ok: true, output: qzRunning ? `${QZ_PID}|${qzCommandLine}\r\n` : '' }
+      }
+      // qz-tray.exe 的 ProductVersion
+      if (script.includes('VersionInfo.ProductVersion')) {
+        if (qzVersionQuery === 'fail') {
+          return { ok: false, output: '无法加载文件，因为在此系统上禁止运行脚本。' }
+        }
+        if (qzVersionQuery === 'garbage') return { ok: true, output: '\r\n' }
+        return { ok: true, output: `${qzVersion}\r\n` }
+      }
+      return { ok: false, output: '' }
     }
-    if (command === 'tasklist') {
-      return { ok: true, output: qzRunning ? 'qz-tray.exe  1234 Console' : 'INFO: No tasks are running.' }
+
+    if (command === 'reg') {
+      if (args.includes('DisplayVersion') && registryDisplayVersion) {
+        return { ok: true, output: `\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\...\\QZ Tray\r\n    DisplayVersion    REG_SZ    ${registryDisplayVersion}\r\n\r\n` }
+      }
+      return { ok: false, output: '错误: 系统找不到指定的注册表项或值。' }
     }
+
     if (command === 'taskkill') {
       // taskkill 几乎总是返回 0；失败场景下进程照样活着，正是要被确认捕获的情况
       if (!failStop) qzRunning = false
@@ -180,6 +226,7 @@ export function makeFake(options: FakeOptions = {}): Fake {
     cleanup: () => rmSync(root, { recursive: true, force: true }),
     env: {
       qzInstallDir: qzInstalled ? qzDir : null,
+      qzInstallSource: qzInstalled ? '测试直接注入' : '测试：未安装',
       eshopDir: join(root, 'ProgramData', 'E-Shop', 'CertificateManager'),
       packageDir,
       runProcess,

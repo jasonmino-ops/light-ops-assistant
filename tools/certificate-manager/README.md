@@ -25,17 +25,33 @@ src/renderer/   单窗口 UI
 
 | 项 | 值 |
 |---|---|
-| QZ 安装目录 | `C:\Program Files\QZ Tray` |
+| QZ 安装目录 | **动态发现**，不写死（现场 CarGarden 是 `D:\qz tray`） |
 | QZ 配置文件 | `<安装目录>\qz-tray.properties` |
 | 信任自定义 Root 的属性 | `authcert.override` |
 | 属性值格式 | `;` 分隔的**绝对路径**列表 |
 | 最低 QZ 版本 | 2.2.5（`ca` provisioning 起始版本） |
-| 版本读取方式 | `qz-tray.exe` 的 ProductVersion（PowerShell） |
+| 版本读取方式 | `qz-tray.exe` 的 ProductVersion → 注册表 `DisplayVersion` |
 
-QZ Tray 2.2.6 的 Windows 安装目录只有 `qz-tray.exe` / `qz-tray.jar` / `libs\` /
-`qz-tray.properties`，**没有** jpackage 的 `app\*.cfg`，也没有 `version.txt`。
-版本唯一可靠来源是 exe 的 ProductVersion；读不到时显示「版本无法确认」并**拒绝写入**，
-不猜测、不回退到不存在的路径。
+### 现场事实（必须遵守）
+
+- **QZ 可以装在任何目录。** QZ 的 NSIS 安装器带 `MUI_PAGE_DIRECTORY`，
+  `C:\Program Files\QZ Tray` 只是默认值。现场实际是 `D:\qz tray`。
+- **QZ 可能由 bundled runtime 启动**：
+  `"D:\qz tray\runtime\bin\javaw.exe" ... -jar "D:\qz tray/qz-tray.jar"`，
+  进程名是 `javaw.exe` 而不是 `qz-tray.exe`。
+- 因此 **`qz-tray.exe` 不能作为「QZ 已安装」的判断依据**，
+  也不能按镜像名 `/IM` 结束进程（会误杀门店里其它 Java 程序，一律按 PID）。
+- QZ Tray 2.2.6 的安装目录里**没有** jpackage 的 `app\*.cfg`，也没有 `version.txt`。
+
+### 安装目录发现顺序
+
+1. 正在运行的 QZ 进程命令行里的 `-jar` 路径（只接受绝对路径且文件名恰为 `qz-tray.jar`）；
+2. 注册表 `HKLM\SOFTWARE\QZ Tray` 默认值（`qz.installer.WindowsInstaller` 写入的安装目录）；
+3. 注册表卸载项 `DisplayIcon`（指向 `<安装目录>\qz-tray.exe`）；
+4. 默认候选目录。
+
+每一条候选都必须通过校验：目录下**同时**存在 `qz-tray.jar` 与 `qz-tray.properties`。
+不做全盘扫描，不联网。版本读不到时显示「版本无法确认」并**拒绝写入**，不猜测。
 
 这正是 QZ 官方 `provision.json` 里 `"type": "ca"` 在安装期所做的事情，
 本工具只是在**已安装**的 QZ Tray 上完成同样的最终状态。
@@ -60,7 +76,7 @@ Windows 根证书存储只与 QZ 自己生成的 localhost SSL 证书有关，�
 ```bash
 npm ci
 npm run make:test-package   # 生成验收用 TEST Root（私钥不落盘）
-npm test                    # 编译 + 91 项自动测试
+npm test                    # 编译 + 124 项自动测试
 npm run start               # 本机启动窗口
 npm run pack:win            # 产出 Windows zip + portable exe，并自动核验 exe manifest
 npm run verify:portable     # 单独核验已有产物的 manifest
@@ -78,6 +94,10 @@ npm run verify:portable     # 单独核验已有产物的 manifest
 - `portable.requestExecutionLevel: admin` 与构建后的 manifest 闸门
   （`scripts/verify-portable-manifest.mjs`）保证外壳与内层 exe 都是
   `requireAdministrator`，只检查 `win-unpacked` 里的内层 exe 是不够的。
+- **管理员权限判定的是进程令牌是否已提升**
+  （`WindowsPrincipal.IsInRole(BuiltInRole::Administrator)`），
+  与 QZ 目录是否被发现完全无关。点了 UAC「是」之后界面必须显示「已获得」；
+  若显示「不足」，看提示区分是"没提权"还是"账户不是管理员"。
 
 ## 安全边界
 

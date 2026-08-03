@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { install, repair, uninstall, update } from '../src/core/actions'
 import { computeStatus } from '../src/core/status'
@@ -9,10 +9,7 @@ import { DEFAULT_QZ_PROPERTIES, makeCa, makeFake, writePackage, type Fake } from
 
 let fake: Fake | null = null
 afterEach(() => {
-  if (fake) {
-    if (existsSync(fake.qzDir)) chmodSync(fake.qzDir, 0o755)
-    fake.cleanup()
-  }
+  fake?.cleanup()
   fake = null
 })
 
@@ -71,12 +68,12 @@ describe('安装', () => {
     expect(existsSync(eshopCertPath(fake.env))).toBe(false)
   })
 
-  it('非管理员时拒绝安装并给出明确提示', () => {
-    fake = makeFake()
-    chmodSync(fake.qzDir, 0o555)
+  it('进程未提升时拒绝安装并给出明确提示', () => {
+    fake = makeFake({ elevated: false, inAdminGroup: true })
     const result = install(fake.env)
     expect(result.ok).toBe(false)
-    expect(result.error).toContain('管理员')
+    expect(result.error).toContain('没有管理员权限')
+    expect(result.error).toContain('以管理员身份运行')
     expect(existsSync(eshopCertPath(fake.env))).toBe(false)
   })
 

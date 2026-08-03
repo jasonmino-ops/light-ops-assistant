@@ -7,8 +7,10 @@ import { join } from 'node:path'
  * 不触碰任何真实系统路径。
  */
 export type Env = {
-  /** QZ Tray 安装目录，例如 C:\Program Files\QZ Tray。null 表示未检出。 */
+  /** QZ Tray 安装目录（可能是 D:\qz tray 这类自定义路径）。null 表示未检出。 */
   qzInstallDir: string | null
+  /** 该目录是怎么找到的，用于界面显示与排障。 */
+  qzInstallSource: string | null
   /** E-Shop 自有数据根目录，例如 C:\ProgramData\E-Shop\CertificateManager。 */
   eshopDir: string
   /** 随程序携带的 Certificate Package 目录。 */
@@ -53,8 +55,9 @@ export function eshopLogPath(env: Env): string {
 }
 
 /**
- * 管理员判定：直接对 QZ 安装目录做一次写探针。
- * 比解析 whoami/net session 更贴近实际需要的权限，且跨平台可测。
+ * 目录写探针。**不再作为管理员判定的主判据** ——
+ * 见 admin.ts：QZ 目录没被发现时探针必然失败，会把权限误报成不足。
+ * 这里只在读不到进程令牌时充当兜底。
  */
 export function canWriteQzDir(env: Env): boolean {
   if (!env.qzInstallDir || !existsSync(env.qzInstallDir)) return false
@@ -71,20 +74,4 @@ export function canWriteQzDir(env: Env): boolean {
 export function ensureEshopDirs(env: Env): void {
   mkdirSync(join(env.eshopDir, 'certs'), { recursive: true })
   mkdirSync(eshopBackupDir(env), { recursive: true })
-}
-
-/** Windows 上 QZ Tray 的标准安装位置（qzind/tray：APP_DIR）。 */
-const WINDOWS_QZ_CANDIDATES = [
-  'C:\\Program Files\\QZ Tray',
-  'C:\\Program Files (x86)\\QZ Tray',
-]
-
-export function detectQzInstallDir(
-  candidates: string[] = WINDOWS_QZ_CANDIDATES,
-): string | null {
-  for (const dir of candidates) {
-    if (existsSync(join(dir, QZ_PROPERTIES_FILE))) return dir
-    if (existsSync(join(dir, 'qz-tray.exe'))) return dir
-  }
-  return null
 }

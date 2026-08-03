@@ -1,8 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import type { Env } from './env'
-import {
-  AUTHCERT_OVERRIDE_KEY, canWriteQzDir, eshopCertPath, qzPropertiesPath,
-} from './env'
+import { AUTHCERT_OVERRIDE_KEY, eshopCertPath, qzPropertiesPath } from './env'
+import { checkAdmin } from './admin'
 import { getProperty } from './properties'
 import { overrideContains } from './override'
 import { loadCertificatePackage } from './certPackage'
@@ -35,11 +34,12 @@ export function computeStatus(env: Env): Status {
   if (env.qzInstallDir) {
     const assets = hasQzInstallAssets(env)
     checks.push(assets
-      ? ok('QZ_INSTALLED', 'QZ Tray 已安装', env.qzInstallDir)
+      ? ok('QZ_INSTALLED', 'QZ Tray 已安装', `${env.qzInstallDir}（${env.qzInstallSource ?? '来源未知'}）`)
       : bad('QZ_INSTALLED', 'QZ Tray 已安装',
-          `${env.qzInstallDir} 下缺少 qz-tray.exe / qz-tray.jar，不是完整的 QZ Tray 安装`, false))
+          `${env.qzInstallDir} 下缺少 qz-tray.jar / qz-tray.properties，不是完整的 QZ Tray 安装`, false))
   } else {
-    checks.push(bad('QZ_INSTALLED', 'QZ Tray 已安装', '未检测到 QZ Tray，请先安装 QZ Tray 再运行本工具', false))
+    checks.push(bad('QZ_INSTALLED', 'QZ Tray 已安装',
+      `未找到 QZ Tray：${env.qzInstallSource ?? '进程、注册表、默认路径均未命中'}`, false))
   }
 
   const minQz = pkg?.manifest.minimumQzVersion ?? null
@@ -57,14 +57,13 @@ export function computeStatus(env: Env): Status {
   }
 
   // ---- 管理员权限 ----
-  const isAdmin = canWriteQzDir(env)
-  if (env.qzInstallDir) {
-    if (isAdmin) {
-      checks.push(ok('ADMIN_RIGHTS', '管理员权限', '可写入 QZ Tray 配置'))
-    } else {
-      checks.push(bad('ADMIN_RIGHTS', '管理员权限', '当前进程无法写入 QZ Tray 目录，请以管理员身份重新运行本程序', false))
-    }
-  }
+  // 与 QZ 目录发现完全解耦：判的是进程令牌是否已提升，
+  // 不能因为 QZ 没找到就顺带把权限报成不足（这正是现场那次误判）。
+  const admin = checkAdmin(env)
+  const isAdmin = admin.elevated
+  checks.push(admin.elevated
+    ? ok('ADMIN_RIGHTS', '管理员权限', admin.detail)
+    : bad('ADMIN_RIGHTS', '管理员权限', admin.detail, false))
 
   // ---- 已部署的 Root ----
   const state = readState(env)
@@ -145,7 +144,9 @@ export function computeStatus(env: Env): Status {
     qz: {
       installed: Boolean(env.qzInstallDir),
       version: qzVersion,
+      versionSource: versionResult.status === 'OK' ? versionResult.source : null,
       installDir: env.qzInstallDir,
+      installSource: env.qzInstallSource,
       propertiesPath: propsPath,
     },
     installed: {

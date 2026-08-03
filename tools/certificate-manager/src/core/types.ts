@@ -90,7 +90,11 @@ export type Status = {
   qz: {
     installed: boolean
     version: string | null
+    /** 版本是从哪读到的：qz-tray.exe 的 ProductVersion 还是注册表 DisplayVersion。 */
+    versionSource: string | null
     installDir: string | null
+    /** 安装目录是怎么发现的：运行进程 / 注册表 / 默认路径。 */
+    installSource: string | null
     propertiesPath: string | null
   }
   installed: {

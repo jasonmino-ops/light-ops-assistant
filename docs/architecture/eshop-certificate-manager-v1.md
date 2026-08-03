@@ -39,19 +39,44 @@
    若安装目录下该文件缺失，我们造一个只含 `authcert.override` 的文件，
    反而可能改变 QZ 的属性来源解析。因此该文件缺失一律判为「配置异常」并拒绝操作。
 
-### 1.3 QZ Tray 2.2.6 的实际安装结构与版本探测
+### 1.3 现场事实（CarGarden，Windows 10 Pro 19045，第一次真机启动）
 
-Windows 上 QZ Tray 2.2.6 的安装目录只有：
+| 现场事实 | 影响 |
+|---|---|
+| QZ 装在 `D:\qz tray`，不在 Program Files | 安装目录不能写死，必须动态发现 |
+| QZ 由 `D:\qz tray\runtime\bin\javaw.exe` + `-jar "D:\qz tray/qz-tray.jar"` 启动 | 进程名是 `javaw.exe`，按 `qz-tray.exe` 找进程一定落空 |
+| 安装目录里可能没有 `qz-tray.exe` | 不能把 exe 当作"已安装"的唯一依据，也不能当唯一版本来源 |
+| 路径含空格、命令行里 `\` 与 `/` 混用 | 解析必须两种分隔符都认 |
 
-```
-qz-tray.exe
-qz-tray.jar
-libs\
-qz-tray.properties
-```
+QZ 的 NSIS 安装器带 `MUI_PAGE_DIRECTORY`（见 `ant/windows/windows-installer.nsi.in`），
+`C:\Program Files\QZ Tray` 只是默认值，用户可以任选目录 —— 现场这种情况是设计内的，
+不是异常，也不应要求门店把 QZ 挪回 Program Files。
 
-**没有** jpackage 的 `app\*.cfg`，也没有 `version.txt`。
-因此本机版本的唯一可靠来源是 `qz-tray.exe` 的 ProductVersion（PowerShell 读取）。
+**安装目录发现顺序**（`src/core/discovery.ts`，不全盘扫描、不联网）：
+
+1. 正在运行的 QZ 进程命令行里的 `-jar` 路径；
+2. `HKLM\SOFTWARE\QZ Tray` 默认值（`WindowsInstaller.java:132` 写入 destination）；
+3. 卸载项 `DisplayIcon`（`WindowsInstaller.java:136`，指向 `<安装目录>\qz-tray.exe`）；
+4. 默认候选目录。
+
+> QZ 并**不**写 `InstallLocation`（源码里没有），所以第 2、3 条用的是它真正写入的两个值。
+
+命令行解析的安全边界：只接受**绝对路径**、文件名**恰为** `qz-tray.jar`、
+不含换行/空字符；且候选目录必须**同时**存在 `qz-tray.jar` 与 `qz-tray.properties`。
+畸形或伪造的命令行不会让工具去改任意目录的配置。
+
+进程起停一律**按 PID**，不用 `/IM` —— 现场镜像名是 `javaw.exe`，
+按镜像名结束会误杀门店里其它 Java 程序。
+
+### 1.3.1 版本探测
+
+两个真实来源，都取不到就 UNCONFIRMED，绝不猜测：
+
+1. `<安装目录>\qz-tray.exe` 的 ProductVersion（exe 存在时）；
+2. 注册表卸载项 `DisplayVersion`（`WindowsInstaller.java:140`）。
+
+不读 `qz-tray.jar` 的 MANIFEST —— QZ 的 `build.xml` 只写了
+`Application-Name` / `Main-Class` / `Permissions` / `Multi-Release`，里面没有版本号。
 
 `detectQzVersion()` 返回判别式联合类型：
 
@@ -64,13 +89,28 @@ qz-tray.properties
 2. 安装 / 更新 / 修复一律拒绝写入，错误信息里给出可直接执行的人工核对命令
    （`(Get-Item '<dir>\qz-tray.exe').VersionInfo.ProductVersion`）。
 
-同时用 `hasQzInstallAssets()`（要求 `qz-tray.exe` 与 `qz-tray.jar` 同时存在）
-区分"根本没装"与"装了但读不到版本"。
+同时用 `hasQzInstallAssets()`（要求 `qz-tray.jar` 与 `qz-tray.properties` 同时存在，
+**不要求** `qz-tray.exe`）区分"根本没装"与"装了但读不到版本"。
 
 ### 1.4 权限与 portable 外壳
 
-写 `C:\Program Files\QZ Tray\qz-tray.properties` 必须提权。
-代码层用"对 QZ 目录做写探针"判定权限，非管理员时状态直接显示「配置异常 / 管理员权限不足」。
+写 QZ 安装目录下的 `qz-tray.properties` 必须提权。
+
+**权限判定用的是进程令牌是否已提升**（`src/core/admin.ts`）：
+
+```
+WindowsPrincipal.IsInRole([WindowsBuiltInRole]::Administrator)
+```
+
+这个调用只在令牌里的 Administrators 组处于 enabled 状态时才为 true；
+未提升的管理员用户该组是 deny-only，返回 false —— 正是"是否已提升"。
+另外单独查 `S-1-5-32-544` 是否出现在令牌里，用来区分
+"根本不是管理员"和"是管理员但没提权"，给出不同提示。
+
+> 现场第一次启动时界面误报"管理员权限不足"，根因是旧实现拿
+> **"能否写 QZ 安装目录"** 当权限判据：QZ 目录没被发现（`qzInstallDir` 为 null）时
+> 探针必然失败，权限就被连带误报。现在权限判定与目录发现完全解耦。
+> 写探针只在读不到进程令牌时充当兜底，且提示里会说明是兜底结论。
 
 打包上必须**同时**设置两处，缺一不可：
 
