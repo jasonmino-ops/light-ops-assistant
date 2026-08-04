@@ -9,9 +9,14 @@ on:
       - "lib/desktop-activation/**"
       - "lib/desktop-pos-auth.ts"
       - "lib/qz-signing-*.ts"
+      - "lib/qzPrinterAdapter.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
       - "tests/qz-signing*.test.ts"
+      - "tests/qz-printer-adapter.test.ts"
+      - "tests/qz-store-isolation.test.ts"
+      - "tests/qz-async-store-transition.test.ts"
+      - "tests/qz-receipt-content.test.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
       - "tests/customer-display-cart-sync-static.test.ts"
@@ -29,9 +34,14 @@ on:
       - "lib/desktop-activation/**"
       - "lib/desktop-pos-auth.ts"
       - "lib/qz-signing-*.ts"
+      - "lib/qzPrinterAdapter.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
       - "tests/qz-signing*.test.ts"
+      - "tests/qz-printer-adapter.test.ts"
+      - "tests/qz-store-isolation.test.ts"
+      - "tests/qz-async-store-transition.test.ts"
+      - "tests/qz-receipt-content.test.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
       - "tests/customer-display-cart-sync-static.test.ts"
@@ -106,6 +116,13 @@ jobs:
           npx tsx tests/qz-signing.test.ts
           npx tsx tests/qz-signing-runtime-boundaries.test.ts
           npx tsx tests/qz-signing-static.test.ts
+
+      - name: QZ Print Adapter tests
+        run: |
+          npx tsx tests/qz-printer-adapter.test.ts
+          npx tsx tests/qz-store-isolation.test.ts
+          npx tsx tests/qz-async-store-transition.test.ts
+          npx tsx tests/qz-receipt-content.test.ts
 
       - name: Relevant regression tests
         run: |

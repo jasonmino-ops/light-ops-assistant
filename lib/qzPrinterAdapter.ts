@@ -1,13 +1,29 @@
-// Browser Print Adapter for the QZ Tray POC (EP-BR-QZ-01).
-//
-// Scope: development/staging POC only. QZ Tray is run in "unsigned" mode
-// (empty certificate/signature promises), which makes QZ Tray show a
-// one-time "Blocked Request" prompt the operator must click Allow on.
-// Formal certificate + signature management is a later production
-// requirement and is intentionally not built here.
+// Browser Print Adapter for QZ Tray.
 //
 // This module owns all qz-tray SDK calls so business pages only need to
 // call these functions and never touch the qz-tray library directly.
+
+import { posDeviceHeaders } from './desktop-pos-client'
+
+const QZ_CONFIG_ENDPOINT = '/api/qz/config'
+const QZ_SIGN_ENDPOINT = '/api/qz/sign'
+const QZ_CERTIFICATE_VERSION_HEADER = 'x-qz-certificate-version'
+const QZ_SIGNATURE_ALGORITHM = 'SHA512' as const
+const STORE_CODE_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+const DIGEST_PATTERN = /^[0-9a-fA-F]{64}$/
+
+type QzRemoteSigningConfig = {
+  certificate: string
+  certificateVersion: string
+  signatureAlgorithm: typeof QZ_SIGNATURE_ALGORITHM
+  enabled: true
+}
+
+export type QzSigningAdapterDependencies = {
+  fetchImpl: (input: string, init?: RequestInit) => Promise<Response>
+  readLocationSearch: () => string
+  getPosHeaders: (storeCode: string) => Record<string, string>
+}
 
 export type QzClient = {
   websocket: {
@@ -23,15 +39,156 @@ export type QzClient = {
   print: (config: unknown, data: unknown[]) => Promise<void>
   security: {
     setCertificatePromise: (
-      promiseHandler: (resolve: (value: string) => void, reject: (error: unknown) => void) => void,
+      promiseHandler: () => Promise<string>,
+      options?: { rejectOnFailure?: boolean },
     ) => void
     setSignaturePromise: (
-      promiseFactory: (toSign: string) => (resolve: (value: string) => void, reject: (error: unknown) => void) => void,
+      promiseFactory: (toSign: string) => Promise<string>,
     ) => void
+    setSignatureAlgorithm: (algorithm: typeof QZ_SIGNATURE_ALGORITHM) => void
   }
 }
 
 let qzModulePromise: Promise<QzClient> | null = null
+
+const DEFAULT_SIGNING_DEPENDENCIES: QzSigningAdapterDependencies = {
+  fetchImpl: (input, init) => fetch(input, init),
+  readLocationSearch: () => {
+    if (typeof window === 'undefined') throw new Error('QZ_BROWSER_ONLY')
+    return window.location.search
+  },
+  getPosHeaders: posDeviceHeaders,
+}
+
+function assertCertificate(value: unknown): string {
+  if (typeof value !== 'string') throw new Error('QZ_SIGNING_CONFIG_INVALID')
+  const certificate = value.trim()
+  if (
+    certificate.length === 0 ||
+    certificate.length > 32_768 ||
+    !/^-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----$/.test(certificate)
+  ) {
+    throw new Error('QZ_SIGNING_CONFIG_INVALID')
+  }
+  return certificate
+}
+
+function assertCertificateVersion(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9._-]{1,64}$/.test(value)) {
+    throw new Error('QZ_SIGNING_CONFIG_INVALID')
+  }
+  return value
+}
+
+async function readSigningConfig(
+  dependencies: QzSigningAdapterDependencies,
+): Promise<QzRemoteSigningConfig> {
+  const response = await dependencies.fetchImpl(QZ_CONFIG_ENDPOINT, {
+    method: 'GET',
+    cache: 'no-store',
+    credentials: 'same-origin',
+  })
+  if (response.status !== 200) throw new Error('QZ_SIGNING_CONFIG_UNAVAILABLE')
+
+  let value: unknown
+  try {
+    value = await response.json()
+  } catch {
+    throw new Error('QZ_SIGNING_CONFIG_INVALID')
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('QZ_SIGNING_CONFIG_INVALID')
+  }
+  const config = value as Record<string, unknown>
+  if (config.enabled !== true) throw new Error('QZ_SIGNING_DISABLED')
+  if (config.signatureAlgorithm !== QZ_SIGNATURE_ALGORITHM) {
+    throw new Error('QZ_SIGNING_CONFIG_INVALID')
+  }
+  return {
+    certificate: assertCertificate(config.certificate),
+    certificateVersion: assertCertificateVersion(config.certificateVersion),
+    signatureAlgorithm: QZ_SIGNATURE_ALGORITHM,
+    enabled: true,
+  }
+}
+
+function readStoreCode(dependencies: QzSigningAdapterDependencies): string {
+  const values = new URLSearchParams(dependencies.readLocationSearch())
+    .getAll('storeCode')
+    .map((value) => value.trim())
+  if (values.length !== 1 || !STORE_CODE_PATTERN.test(values[0])) {
+    throw new Error('QZ_SIGNING_STORE_CONTEXT_INVALID')
+  }
+  return values[0]
+}
+
+function isValidBase64Signature(value: string): boolean {
+  if (
+    value.length === 0 ||
+    value.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+  ) {
+    return false
+  }
+  try {
+    return atob(value).length > 0
+  } catch {
+    return false
+  }
+}
+
+async function requestSignature(
+  config: QzRemoteSigningConfig,
+  digest: string,
+  dependencies: QzSigningAdapterDependencies,
+): Promise<string> {
+  if (!DIGEST_PATTERN.test(digest)) throw new Error('QZ_SIGNING_DIGEST_INVALID')
+  const storeCode = readStoreCode(dependencies)
+  const posHeaders = dependencies.getPosHeaders(storeCode)
+  const token = posHeaders['x-pos-device-token']?.trim() ?? ''
+  const deviceId = posHeaders['x-pos-device-id']?.trim() ?? ''
+  if (!token || !deviceId) throw new Error('QZ_SIGNING_POS_AUTH_MISSING')
+
+  const response = await dependencies.fetchImpl(QZ_SIGN_ENDPOINT, {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'same-origin',
+    headers: {
+      ...posHeaders,
+      'Content-Type': 'text/plain',
+      [QZ_CERTIFICATE_VERSION_HEADER]: config.certificateVersion,
+      'x-pos-device-token': token,
+      'x-pos-device-id': deviceId,
+    },
+    body: digest,
+  })
+  if (response.status !== 200) throw new Error('QZ_SIGNING_REQUEST_FAILED')
+  const signature = await response.text()
+  if (signature !== signature.trim() || !isValidBase64Signature(signature)) {
+    throw new Error('QZ_SIGNING_RESPONSE_INVALID')
+  }
+  return signature
+}
+
+export function configureQzSigningSecurity(
+  qz: QzClient,
+  dependencies: QzSigningAdapterDependencies = DEFAULT_SIGNING_DEPENDENCIES,
+): void {
+  let activeConfig: QzRemoteSigningConfig | null = null
+
+  qz.security.setCertificatePromise(async () => {
+    activeConfig = null
+    const config = await readSigningConfig(dependencies)
+    qz.security.setSignatureAlgorithm(config.signatureAlgorithm)
+    activeConfig = config
+    return config.certificate
+  }, { rejectOnFailure: true })
+
+  qz.security.setSignaturePromise(async (digest) => {
+    if (!activeConfig) throw new Error('QZ_SIGNING_CONFIG_UNAVAILABLE')
+    return requestSignature(activeConfig, digest, dependencies)
+  })
+}
 
 // QZ Tray's HTML renderer falls back to the printer/default page when no
 // explicit width is supplied. A POS-80 driver can therefore receive an A4
@@ -45,8 +202,7 @@ async function loadQz(): Promise<QzClient> {
   if (!qzModulePromise) {
     qzModulePromise = import('qz-tray').then((mod) => {
       const qz = ((mod as { default?: QzClient }).default ?? mod) as QzClient
-      qz.security.setCertificatePromise((resolve) => resolve(''))
-      qz.security.setSignaturePromise(() => (resolve) => resolve(''))
+      configureQzSigningSecurity(qz)
       return qz
     })
   }
