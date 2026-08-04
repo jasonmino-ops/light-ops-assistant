@@ -2,7 +2,7 @@ name: cloud-ci
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, "feat/**", "codex/**"]
     paths:
       - "app/api/desktop/**"
       - "app/api/qz/**"
