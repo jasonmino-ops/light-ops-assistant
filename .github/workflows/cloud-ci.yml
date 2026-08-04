@@ -5,9 +5,13 @@ on:
     branches: [main, "feat/**"]
     paths:
       - "app/api/desktop/**"
+      - "app/api/qz/**"
       - "lib/desktop-activation/**"
+      - "lib/desktop-pos-auth.ts"
+      - "lib/qz-signing-*.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
+      - "tests/qz-signing*.test.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
       - "tests/customer-display-cart-sync-static.test.ts"
@@ -21,9 +25,13 @@ on:
   pull_request:
     paths:
       - "app/api/desktop/**"
+      - "app/api/qz/**"
       - "lib/desktop-activation/**"
+      - "lib/desktop-pos-auth.ts"
+      - "lib/qz-signing-*.ts"
       - "prisma/**"
       - "tests/desktop-activation-*.test.ts"
+      - "tests/qz-signing*.test.ts"
       - "tests/subscription-lifecycle.test.ts"
       - "tests/telegram-start-param.test.ts"
       - "tests/customer-display-cart-sync-static.test.ts"
@@ -92,6 +100,12 @@ jobs:
 
       - name: EP-MB3-06A real database activation and concurrency tests
         run: npx tsx tests/desktop-activation-runtime.test.ts
+
+      - name: Signing API unit and boundary tests
+        run: |
+          npx tsx tests/qz-signing.test.ts
+          npx tsx tests/qz-signing-runtime-boundaries.test.ts
+          npx tsx tests/qz-signing-static.test.ts
 
       - name: Relevant regression tests
         run: |
