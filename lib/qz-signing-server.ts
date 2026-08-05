@@ -93,7 +93,7 @@ export async function verifyQzSigningSession(req: NextRequest): Promise<QzSignin
   if (!token || !deviceId) return null
   const payload = verifyPosDeviceToken(token)
   if (!payload || payload.deviceId !== deviceId) return null
-  const verified = verifyPosDeviceRequest(req, {
+  const verified = await verifyPosDeviceRequest(req, {
     tenantId: payload.tenantId,
     storeId: payload.storeId,
     storeCode: payload.storeCode,

@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { getContext } from '@/lib/context'
 import { prisma } from '@/lib/prisma'
@@ -18,6 +19,8 @@ export type PosDeviceTokenPayload = {
   storeCode: string
   deviceId: string
   issuedBy: string
+  /** 仅服务端托管的 Browser POS Session 签发；旧 token 不含此字段。 */
+  browserPosSessionId?: string
   iat: number
 }
 
@@ -54,6 +57,85 @@ export function signPosDeviceToken(input: Omit<PosDeviceTokenPayload, 'v' | 'iat
   return `${encoded}.${signPayload(encoded)}`
 }
 
+export function hashPosDeviceToken(token: string) {
+  return crypto
+    .createHmac('sha256', secret())
+    .update(`browser-pos-device-token:v1:${token}`)
+    .digest('hex')
+}
+
+/** 在既有 BrowserPosDevice 生命周期中创建或替换当前浏览器的 POS Session。 */
+export async function issuePosDeviceSession(
+  tx: Prisma.TransactionClient,
+  input: {
+    tenantId: string
+    storeId: string
+    storeCode: string
+    browserDeviceId: string
+    issuedBy: string
+    issuedByUserId: string | null
+    displayName: string
+  },
+) {
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + TOKEN_MAX_AGE_MS)
+  const existing = await tx.browserPosDevice.findFirst({
+    where: {
+      storeId: input.storeId,
+      browserDeviceId: input.browserDeviceId,
+      activeSlot: 'ACTIVE',
+    },
+    select: { id: true },
+  })
+  const sessionId = crypto.randomUUID()
+  const token = signPosDeviceToken({
+    tenantId: input.tenantId,
+    storeId: input.storeId,
+    storeCode: input.storeCode,
+    deviceId: input.browserDeviceId,
+    issuedBy: input.issuedBy,
+    browserPosSessionId: sessionId,
+  })
+  const data = {
+    tenantId: input.tenantId,
+    status: 'ACTIVE' as const,
+    activeSlot: 'ACTIVE',
+    tokenHash: hashPosDeviceToken(token),
+    tokenHashVersion: 1,
+    tokenIssuedAt: now,
+    tokenExpiresAt: expiresAt,
+    scopes: ['BROWSER_POS'],
+    issuedByUserId: input.issuedByUserId,
+    displayName: input.displayName.trim().slice(0, 80) || null,
+    activatedAt: now,
+    lastSeenAt: null,
+    revokedAt: null,
+    revokedByUserId: null,
+    revocationReason: null,
+    legacyMigratedAt: null,
+  }
+  if (existing) {
+    await tx.browserPosDevice.update({
+      where: { id: existing.id },
+      data: {
+        status: 'REVOKED',
+        activeSlot: null,
+        revokedAt: now,
+        revocationReason: 'SESSION_REPLACED',
+      },
+    })
+  }
+  await tx.browserPosDevice.create({
+    data: {
+      id: sessionId,
+      storeId: input.storeId,
+      browserDeviceId: input.browserDeviceId,
+      ...data,
+    },
+  })
+  return { token, sessionId, expiresAt }
+}
+
 export function verifyPosDeviceToken(token: string): PosDeviceTokenPayload | null {
   try {
     const dot = token.lastIndexOf('.')
@@ -64,6 +146,8 @@ export function verifyPosDeviceToken(token: string): PosDeviceTokenPayload | nul
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString()) as PosDeviceTokenPayload
     if (payload.v !== TOKEN_VERSION) return null
     if (!payload.tenantId || !payload.storeId || !payload.storeCode || !payload.deviceId) return null
+    if (payload.browserPosSessionId !== undefined &&
+      (typeof payload.browserPosSessionId !== 'string' || !payload.browserPosSessionId)) return null
     if (!Number.isFinite(payload.iat) || Date.now() - payload.iat > TOKEN_MAX_AGE_MS) return null
     return payload
   } catch {
@@ -82,7 +166,7 @@ export function unauthorizedPosResponse() {
   return NextResponse.json(POS_AUTH_ERROR, { status: 403 })
 }
 
-export function verifyPosDeviceRequest(
+export async function verifyPosDeviceRequest(
   req: NextRequest,
   expected: { tenantId: string; storeId: string; storeCode: string },
 ) {
@@ -97,6 +181,25 @@ export function verifyPosDeviceRequest(
     payload.deviceId !== deviceId
   ) {
     return null
+  }
+
+  // Cloud 托管 Session 只校验自己的生命周期，不再读取 Computer Binding。
+  // 老的 Browser POS token 没有 browserPosSessionId，行为完全不变。
+  if (payload.browserPosSessionId) {
+    const session = await prisma.browserPosDevice.findFirst({
+      where: {
+        id: payload.browserPosSessionId,
+        tenantId: expected.tenantId,
+        storeId: expected.storeId,
+        browserDeviceId: deviceId,
+        tokenHash: hashPosDeviceToken(token),
+        status: 'ACTIVE',
+        activeSlot: 'ACTIVE',
+        tokenExpiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    })
+    if (!session) return null
   }
   return payload
 }
@@ -155,8 +258,10 @@ export async function authorizeDesktopPosRequest(
   const accountAuth = await authorizeDesktopPosAccount(req, expected)
   if (accountAuth) return accountAuth
 
-  const deviceAuth = verifyPosDeviceRequest(req, expected)
+  const deviceAuth = await verifyPosDeviceRequest(req, expected)
   if (!deviceAuth && (!options?.allowStoreCodeFallback || !hasDesktopPosMarker(req))) return null
+
+  if (deviceAuth) return authorizationForDevice(expected, deviceAuth)
 
   const ownerRole = await prisma.userStoreRole.findFirst({
     where: {
@@ -175,6 +280,30 @@ export async function authorizeDesktopPosRequest(
     storeCode: expected.storeCode,
     operatorUserId: ownerRole.userId,
     role: 'OWNER',
-    source: deviceAuth ? 'DEVICE' : 'STORE_CODE',
+    source: 'STORE_CODE',
+  }
+}
+
+async function authorizationForDevice(
+  expected: DesktopPosStoreScope,
+  _deviceAuth: PosDeviceTokenPayload,
+): Promise<DesktopPosAuthorization | null> {
+  const ownerRole = await prisma.userStoreRole.findFirst({
+    where: {
+      tenantId: expected.tenantId,
+      storeId: expected.storeId,
+      role: 'OWNER',
+      status: 'ACTIVE',
+    },
+    select: { userId: true },
+  })
+  if (!ownerRole) return null
+  return {
+    tenantId: expected.tenantId,
+    storeId: expected.storeId,
+    storeCode: expected.storeCode,
+    operatorUserId: ownerRole.userId,
+    role: 'OWNER',
+    source: 'DEVICE',
   }
 }

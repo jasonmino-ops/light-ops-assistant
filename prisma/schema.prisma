@@ -74,11 +74,35 @@ enum DesktopDeviceStatus {
   REVOKED
 }
 
+enum BrowserPosDeviceStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
 enum DesktopActivationPinStatus {
   ACTIVE
   USED
   REVOKED
   EXPIRED
+}
+
+// EP-CC-01 电脑客户端（Windows Agent V0.4）绑定申请状态。
+// 与旧 Desktop PIN 激活链路完全独立：不同表、不同密钥、不同 token 前缀。
+enum ComputerBindingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+// 设备凭证状态。凭证明文由 Agent 本地生成，云端只存哈希。
+// PENDING：已登记未激活，禁止使用；ACTIVE：OWNER 批准后可用于确认绑定。
+enum ComputerCredentialStatus {
+  PENDING
+  ACTIVE
+  VOID
 }
 
 enum MemberStatus {
@@ -126,27 +150,32 @@ model Tenant {
   subscription             TenantSubscription?
   subscriptionEvents       SubscriptionEvent[]
   desktopDevices           DesktopDevice[]
+  browserPosDevices        BrowserPosDevice[]
+  browserPosBindingDeliveries BrowserPosBindingDelivery[]
+  cashierSaleIdempotencies CashierSaleIdempotency[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
+  computerBindings         ComputerBinding[]
+  computerBindingAudits    ComputerBindingAudit[]
 }
 
 model TenantSubscription {
-  id                     String   @id @default(cuid())
-  tenantId               String   @unique
+  id                     String    @id @default(cuid())
+  tenantId               String    @unique
   status                 String
   trialStartedAt         DateTime?
   trialEndsAt            DateTime?
   currentPeriodStartedAt DateTime?
   currentPeriodEndsAt    DateTime?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   tenant Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   events SubscriptionEvent[]
 }
 
 model SubscriptionEvent {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   tenantId             String
   subscriptionId       String
   eventType            String
@@ -160,8 +189,8 @@ model SubscriptionEvent {
   paymentReference     String?
   note                 String?
   operatorId           String
-  idempotencyKey       String   @unique
-  createdAt            DateTime @default(now())
+  idempotencyKey       String    @unique
+  createdAt            DateTime  @default(now())
 
   tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   subscription TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
@@ -210,9 +239,15 @@ model Store {
   memberTelegramBindTokens MemberTelegramBindToken[]
   customerJourneyEvents    CustomerJourneyEvent[]
   desktopDevices           DesktopDevice[]
+  browserPosDevices        BrowserPosDevice[]
+  browserPosBindingDeliveries BrowserPosBindingDelivery[]
+  cashierSaleIdempotencies CashierSaleIdempotency[]
   desktopActivationPins    DesktopActivationPin[]
   desktopActivationAudits  DesktopActivationAudit[]
+  computerBindings         ComputerBinding[]
+  computerBindingAudits    ComputerBindingAudit[]
 
+  @@unique([id, tenantId])
   @@index([tenantId])
 }
 
@@ -255,9 +290,14 @@ model User {
   logs                     OperationLog[]
   memberBalanceLedgers     MemberBalanceLedger[]
   memberTelegramBindTokens MemberTelegramBindToken[]
-  revokedDesktopDevices    DesktopDevice[]          @relation("DesktopDeviceRevokedBy")
-  createdActivationPins    DesktopActivationPin[]   @relation("DesktopActivationPinCreatedBy")
-  desktopActivationAudits  DesktopActivationAudit[] @relation("DesktopActivationAuditActor")
+  revokedDesktopDevices    DesktopDevice[]           @relation("DesktopDeviceRevokedBy")
+  issuedBrowserPosDevices  BrowserPosDevice[]         @relation("BrowserPosDeviceIssuedBy")
+  revokedBrowserPosDevices BrowserPosDevice[]         @relation("BrowserPosDeviceRevokedBy")
+  createdActivationPins    DesktopActivationPin[]    @relation("DesktopActivationPinCreatedByUser")
+  desktopActivationAudits  DesktopActivationAudit[]  @relation("DesktopActivationAuditUserActor")
+  decidedComputerBindings  ComputerBinding[]         @relation("ComputerBindingDecidedBy")
+  disabledComputerBindings ComputerBinding[]         @relation("ComputerBindingDisabledBy")
+  computerBindingAudits    ComputerBindingAudit[]    @relation("ComputerBindingAuditUserActor")
 
   @@unique([tenantId, username])
   @@index([tenantId])
@@ -288,7 +328,7 @@ model ProductCategory {
   parentId  String? // null = 一级分类；non-null = 二级分类
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   parent   ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children ProductCategory[] @relation("CategoryHierarchy")
@@ -399,6 +439,9 @@ model SaleRecord {
   tenantId       String
   storeId        String
   operatorUserId String
+  transactionActorType String?
+  transactionActorId   String?
+  authorizedByUserId   String?
 
   recordNo String       @unique
   saleType SaleType
@@ -448,6 +491,7 @@ model SaleRecord {
   @@index([tenantId, createdAt])
   @@index([storeId, createdAt])
   @@index([operatorUserId, createdAt])
+  @@index([transactionActorType, transactionActorId])
   @@index([saleType, createdAt])
   @@index([originalSaleRecordId])
   @@index([barcode])
@@ -500,6 +544,9 @@ model MemberBalanceLedger {
   balanceBefore  Decimal                       @db.Decimal(12, 2)
   balanceAfter   Decimal                       @db.Decimal(12, 2)
   operatorUserId String?
+  transactionActorType String?
+  transactionActorId   String?
+  authorizedByUserId   String?
   note           String?                       @db.Text
   createdAt      DateTime                      @default(now())
 
@@ -515,6 +562,7 @@ model MemberBalanceLedger {
   @@index([sourceType])
   @@index([sourceId])
   @@index([operatorUserId])
+  @@index([transactionActorType, transactionActorId])
   @@index([createdAt])
 }
 
@@ -596,6 +644,9 @@ model PaymentIntent {
   tenantId         String
   storeId          String
   operatorUserId   String
+  transactionActorType String?
+  transactionActorId   String?
+  authorizedByUserId   String?
   orderNo          String        @unique
   paymentMethod    PaymentMethod
   status           PaymentStatus @default(PENDING)
@@ -614,6 +665,33 @@ model PaymentIntent {
   @@index([orderNo])
   @@index([status])
   @@index([merchantConfigId])
+  @@index([transactionActorType, transactionActorId])
+}
+
+model CashierSaleIdempotency {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  storeId            String
+  actorType          String
+  actorId            String
+  operation          String
+  idempotencyKey     String
+  payloadFingerprint String
+  status             String   @default("PROCESSING")
+  resultSnapshot     Json?
+  orderNo            String?
+  paymentIntentId    String?
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, storeId, actorType, actorId, operation, idempotencyKey], map: "CashierSaleIdempotency_operation_key")
+  @@index([tenantId, storeId, expiresAt], map: "CashierSaleIdempotency_tenant_store_expiresAt_idx")
+  @@index([orderNo])
+  @@index([paymentIntentId])
 }
 
 model PaymentTransaction {
@@ -769,7 +847,7 @@ model ProductImportSession {
   tenantId    String?
   phase       String   @default("AWAITING_DATA") // AWAITING_DATA | AWAITING_CONFIRM
   pendingRows String   @default("[]") // JSON — TgImportRow[]
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime @default(now()) @updatedAt
 }
 
 model CustomerOrder {
@@ -792,8 +870,11 @@ model CustomerOrder {
   totalAmount              Decimal   @db.Decimal(12, 2)
   status                   String    @default("PENDING") // PENDING | CONFIRMED | COMPLETED | CANCELLED
   remark                   String?
-  paymentStatus            String    @default("UNPAID") // UNPAID | PAID
-  paymentMethod            String? // CASH | QR
+  paymentStatus            String    @default("UNPAID") @db.VarChar(20) // UNPAID | PAID
+  paymentMethod            String?   @db.VarChar(20) // CASH | QR
+  transactionActorType     String?
+  transactionActorId       String?
+  authorizedByUserId       String?
   paidAt                   DateTime?
   paidAmount               Decimal?  @db.Decimal(12, 2)
   tableNo                  String? // 餐饮桌号，URL table= 参数传入，null = 外卖/自取
@@ -802,12 +883,13 @@ model CustomerOrder {
   campaignLinkId           String? // 关联 CampaignLink.id
   campaignIntent           String? // order | menu
   createdAt                DateTime  @default(now())
-  updatedAt                DateTime  @updatedAt
+  updatedAt                DateTime  @default(now()) @updatedAt
 
   @@index([tenantId, createdAt])
   @@index([storeId, createdAt])
   @@index([orderNo])
   @@index([campaignLinkId])
+  @@index([transactionActorType, transactionActorId])
 }
 
 model CustomerJourneyEvent {
@@ -846,7 +928,7 @@ model SupportSession {
   tenantId     String?
   sessionState String   @default("auto_active") // auto_active | awaiting_human | human_active
   language     String   @default("zh") // zh | en | km
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime @default(now()) @updatedAt
   createdAt    DateTime @default(now())
 
   @@index([tenantId])
@@ -911,9 +993,10 @@ model OpsAdmin {
   status           String    @default("ACTIVE") // ACTIVE | DISABLED
   sessionVersion   Int       @default(0) // bump 后旧 session 失效（被盗 cookie 强制下线）
   failedLoginCount Int       @default(0) // 连续登录失败次数（成功后清零）
-  lockedUntil      DateTime? // 账号锁定到期时间（5 次失败锁 15 分钟）
+  lockedUntil      DateTime? @db.Timestamptz(6) // 账号锁定到期时间（5 次失败锁 15 分钟）
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+
 }
 
 // 顾客下单后通过 /start bind_<storeCode>_<orderNo> 主动绑定 Telegram，沉淀为门店常驻联系人
@@ -933,7 +1016,7 @@ model StoreCustomerContact {
   firstBoundAt         DateTime @default(now())
   lastSeenAt           DateTime @default(now())
   createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  updatedAt            DateTime @default(now()) @updatedAt
 
   @@unique([storeCode, telegramId])
   @@index([tenantId])
@@ -997,8 +1080,8 @@ model CouponTemplate {
   minSpend   Decimal              @default(0) @db.Decimal(10, 2)
   validDays  Int                  @default(7) // 自发放起 N 天过期
   status     CouponTemplateStatus @default(ACTIVE)
-  createdAt  DateTime             @default(now())
-  updatedAt  DateTime             @updatedAt
+  createdAt  DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime             @default(now()) @updatedAt @db.Timestamptz(6)
 
   coupons CustomerCoupon[]
   batches CouponIssueBatch[]
@@ -1019,19 +1102,19 @@ model CustomerCoupon {
   amountOff      Decimal?             @db.Decimal(10, 2)
   percentOff     Int?
   minSpend       Decimal              @default(0) @db.Decimal(10, 2)
-  expiresAt      DateTime
-  usedAt         DateTime?
+  expiresAt      DateTime             @db.Timestamptz(6)
+  usedAt         DateTime?            @db.Timestamptz(6)
   usedOrderNo    String?
   batchId        String?
   issuedByUserId String?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  createdAt      DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime             @default(now()) @updatedAt @db.Timestamptz(6)
 
-  template    CouponTemplate     @relation(fields: [templateId], references: [id])
+  template    CouponTemplate     @relation(fields: [templateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   redemptions CouponRedemption[]
 
-  @@index([tenantId, telegramId, status])
-  @@index([tenantId, storeId, telegramId, status])
+  @@index([tenantId, telegramId, status], map: "CustomerCoupon_tenant_tg_status_idx")
+  @@index([tenantId, storeId, telegramId, status], map: "CustomerCoupon_tenant_store_tg_status_idx")
   @@index([batchId])
 }
 
@@ -1043,12 +1126,12 @@ model CouponRedemption {
   telegramId     String
   orderNo        String
   discountAmount Decimal  @db.Decimal(10, 2)
-  createdAt      DateTime @default(now())
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
 
-  coupon CustomerCoupon @relation(fields: [couponId], references: [id])
+  coupon CustomerCoupon @relation(fields: [couponId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([orderNo])
-  @@index([tenantId, storeId, createdAt])
+  @@index([tenantId, storeId, createdAt], map: "CouponRedemption_tenant_store_createdAt_idx")
   @@index([couponId])
 }
 
@@ -1061,11 +1144,11 @@ model CouponIssueBatch {
   totalCount     Int      @default(0)
   successCount   Int      @default(0)
   failedCount    Int      @default(0)
-  createdAt      DateTime @default(now())
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
 
-  template CouponTemplate @relation(fields: [templateId], references: [id])
+  template CouponTemplate @relation(fields: [templateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([tenantId, createdAt])
+  @@index([tenantId, createdAt], map: "CouponIssueBatch_tenant_createdAt_idx")
 }
 
 // ─── 顾客 bot 三层对话日志（阶段一） ─────────────────────────────────────
@@ -1082,10 +1165,10 @@ model ConversationLog {
   intentSlot   String?
   intentSource String? // RISK | BIZ | CHAT | FALLBACK_SHORT | FALLBACK_UNKNOWN | VOICE | RATE_LIMIT
   escalated    Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
 
-  @@index([telegramId, createdAt])
-  @@index([tenantId, createdAt])
+  @@index([telegramId, createdAt], map: "ConversationLog_tg_createdAt_idx")
+  @@index([tenantId, createdAt], map: "ConversationLog_tenant_createdAt_idx")
 }
 
 // ─── TikTok / 社交媒体推广短链 ────────────────────────────────────────────
@@ -1133,7 +1216,7 @@ model Creator {
   dashboardTokenCreatedAt DateTime?
   dashboardTokenRevokedAt DateTime?
   createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  updatedAt               DateTime  @default(now()) @updatedAt
 
   store         Store          @relation(fields: [storeId], references: [id])
   campaignLinks CampaignLink[]
@@ -1211,29 +1294,91 @@ model DesktopDevice {
   @@index([replacesDeviceId])
 }
 
-model DesktopActivationPin {
-  id              String                     @id @default(cuid())
-  tenantId        String
-  storeId         String
-  pinHash         String
-  pinHashVersion  Int                        @default(1)
-  status          DesktopActivationPinStatus @default(ACTIVE)
-  activeSlot      String?                    @default("ACTIVE")
-  expiresAt       DateTime
-  usedAt          DateTime?
-  usedByDeviceId  String?
-  failedAttempts  Int                        @default(0)
-  lockedUntil     DateTime?
-  createdByUserId String
-  revokedAt       DateTime?
-  createdAt       DateTime                   @default(now())
-  updatedAt       DateTime                   @updatedAt
+model BrowserPosDevice {
+  id                 String                 @id @default(cuid())
+  tenantId           String
+  storeId            String
+  browserDeviceId    String
+  displayName        String?
+  browserInfo        String?                @db.Text
+  status             BrowserPosDeviceStatus @default(ACTIVE)
+  activeSlot         String?                @default("ACTIVE")
+  tokenHash          String                 @unique
+  tokenHashVersion   Int                    @default(1)
+  tokenIssuedAt      DateTime
+  tokenExpiresAt     DateTime
+  scopes             Json
+  issuedByUserId     String?
+  activatedAt        DateTime               @default(now())
+  lastSeenAt         DateTime?
+  revokedAt          DateTime?
+  revokedByUserId    String?
+  revocationReason   String?                @db.Text
+  legacyMigratedAt   DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  createdByUser User          @relation("DesktopActivationPinCreatedBy", fields: [createdByUserId], references: [id])
-  usedByDevice  DesktopDevice? @relation("DesktopActivationPinUsedByDevice", fields: [usedByDeviceId], references: [id], onDelete: SetNull)
-  audits        DesktopActivationAudit[]
+  tenant            Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store             Store                       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  issuedByUser      User?                       @relation("BrowserPosDeviceIssuedBy", fields: [issuedByUserId], references: [id], onDelete: SetNull)
+  revokedByUser     User?                       @relation("BrowserPosDeviceRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  bindingDeliveries BrowserPosBindingDelivery[]
+
+  @@unique([storeId, browserDeviceId, activeSlot])
+  @@index([tenantId, storeId])
+  @@index([storeId, status])
+  @@index([browserDeviceId])
+  @@index([tokenExpiresAt])
+  @@index([issuedByUserId])
+  @@index([revokedByUserId])
+}
+
+model BrowserPosBindingDelivery {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  storeId            String
+  requestId          String   @unique
+  browserDeviceId    String
+  bindingAttemptId   String
+  browserPosDeviceId String
+  status             String   @default("READY")
+  encryptedResult    String   @db.Text
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store            Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  browserPosDevice BrowserPosDevice @relation(fields: [browserPosDeviceId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, browserDeviceId, bindingAttemptId], map: "BrowserPosBindingDelivery_request_device_attempt_key")
+  @@index([tenantId, storeId])
+  @@index([expiresAt])
+}
+
+model DesktopActivationPin {
+  id                  String                     @id @default(cuid())
+  tenantId            String
+  storeId             String
+  pinHash             String
+  pinHashVersion      Int                        @default(1)
+  status              DesktopActivationPinStatus @default(ACTIVE)
+  activeSlot          String?                    @default("ACTIVE")
+  expiresAt           DateTime
+  usedAt              DateTime?
+  usedByDeviceId      String?
+  failedAttempts      Int                        @default(0)
+  lockedUntil         DateTime?
+  createdByUserId     String
+  revokedAt           DateTime?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  tenant            Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store             Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdByUser     User                     @relation("DesktopActivationPinCreatedByUser", fields: [createdByUserId], references: [id])
+  usedByDevice      DesktopDevice?           @relation("DesktopActivationPinUsedByDevice", fields: [usedByDeviceId], references: [id], onDelete: SetNull)
+  audits            DesktopActivationAudit[]
 
   @@unique([storeId, activeSlot])
   @@index([tenantId, storeId])
@@ -1244,31 +1389,141 @@ model DesktopActivationPin {
 }
 
 model DesktopActivationAudit {
-  id           String   @id @default(cuid())
-  tenantId     String
-  storeId      String
-  deviceId     String?
-  pinId        String?
-  actorUserId  String?
-  eventType    String
-  result       String
-  reasonCode   String?
-  ipHash       String?
-  userAgentHash String?
-  metadata     Json?
-  createdAt    DateTime @default(now())
+  id              String   @id @default(cuid())
+  tenantId        String
+  storeId         String
+  deviceId        String?
+  pinId           String?
+  actorUserId     String?
+  eventType       String
+  result          String
+  reasonCode      String?
+  ipHash          String?
+  userAgentHash   String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
 
-  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store     Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  device    DesktopDevice?        @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  pin       DesktopActivationPin? @relation(fields: [pinId], references: [id], onDelete: SetNull)
-  actorUser User?                 @relation("DesktopActivationAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store         Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  device        DesktopDevice?        @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  pin           DesktopActivationPin? @relation(fields: [pinId], references: [id], onDelete: SetNull)
+  actorUser     User?                 @relation("DesktopActivationAuditUserActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
   @@index([storeId, createdAt])
   @@index([deviceId, createdAt])
   @@index([pinId, createdAt])
   @@index([actorUserId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([result, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EP-CC-01 电脑客户端绑定（Windows Agent V0.4 ↔ E-Shop Cloud）
+//
+// 与旧 Desktop PIN 激活链路、Browser POS Device Token 完全隔离：
+// 独立表、独立密钥（COMPUTER_CLIENT_TOKEN_SECRET）、独立凭证前缀。
+//
+// 凭证明文（claimSecret / deviceSecret）由 Agent 本地生成并保存，
+// 云端只保存 HMAC 哈希，任何时候都不落库、不写日志。
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ComputerBinding {
+  id       String @id @default(cuid())
+  tenantId String
+  storeId  String
+
+  // 安装实例身份（哈希存储）。一个安装实例一行，作为幂等键。
+  installationIdHash String @unique
+
+  // 申请信息（客户端上报，仅作展示与投递线索，不构成授权）
+  computerName String
+  agentVersion String?
+  deviceInfo   Json?
+
+  status      ComputerBindingStatus @default(PENDING)
+  requestedAt DateTime              @default(now())
+  expiresAt   DateTime // PENDING 超时后惰性判定为 EXPIRED
+
+  // 申请通道凭证（claimSecret）哈希：提交 / 查询 / 取消
+  claimSecretHash    String
+  claimSecretVersion Int    @default(1)
+
+  // 设备通道凭证（deviceSecret）哈希：批准后用于确认绑定
+  deviceSecretHash      String
+  deviceSecretVersion   Int                      @default(1)
+  credentialStatus      ComputerCredentialStatus @default(PENDING)
+  credentialActivatedAt DateTime?
+  credentialExpiresAt   DateTime?
+
+  // 审批与绑定结果
+  decidedByUserId String?
+  decidedAt       DateTime?
+  boundAt         DateTime? // 设备用 deviceSecret 确认绑定的时间
+  lastSeenAt      DateTime?
+  disabledByUserId String?
+  disabledAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // 复合外键：数据库层面保证 storeId 必须属于 tenantId，
+  // 杜绝「绑定记录的门店不属于该租户」这类非法组合。
+  store         Store                  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  decidedByUser User?                  @relation("ComputerBindingDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  disabledByUser User?                 @relation("ComputerBindingDisabledBy", fields: [disabledByUserId], references: [id], onDelete: SetNull)
+  audits        ComputerBindingAudit[]
+  browserLaunchTickets ComputerBrowserLaunchTicket[]
+
+  @@index([tenantId, storeId, status])
+  @@index([tenantId, storeId, disabledAt])
+  @@index([storeId, status, requestedAt])
+  @@index([status, expiresAt])
+  @@index([decidedByUserId])
+  @@index([disabledByUserId])
+}
+
+// Agent 进入 Browser POS 使用的一次性短票据。
+// 浏览器只提交明文一次；数据库仅保存 HMAC 哈希，兑换后 usedAt 原子落库。
+model ComputerBrowserLaunchTicket {
+  id                  String   @id @default(cuid())
+  bindingId           String
+  ticketHash          String   @unique
+  expiresAt           DateTime
+  usedAt              DateTime?
+  browserDeviceIdHash String?
+  browserPosDeviceId  String?
+  createdAt           DateTime @default(now())
+
+  binding ComputerBinding @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+
+  @@index([bindingId, createdAt])
+  @@index([expiresAt])
+}
+
+model ComputerBindingAudit {
+  id            String   @id @default(cuid())
+  tenantId      String
+  storeId       String
+  bindingId     String?
+  actorUserId   String?
+  eventType     String
+  result        String // SUCCESS | FAILED | DENIED | INFO
+  reasonCode    String?
+  ipHash        String?
+  userAgentHash String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store     Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  binding   ComputerBinding? @relation(fields: [bindingId], references: [id], onDelete: SetNull)
+  actorUser User?            @relation("ComputerBindingAuditUserActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([storeId, createdAt])
+  @@index([bindingId, createdAt])
   @@index([eventType, createdAt])
   @@index([result, createdAt])
 }

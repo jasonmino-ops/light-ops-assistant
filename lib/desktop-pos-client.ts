@@ -1,5 +1,6 @@
 const POS_DEVICE_TOKEN_PREFIX = 'cashier:posDeviceToken:'
 const POS_DEVICE_ID_KEY = 'cashier:deviceId'
+const COMPUTER_LAUNCH_STORE_KEY = 'cashier:computerLaunchStoreCode'
 
 function randomId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
@@ -35,6 +36,21 @@ export function clearPosDeviceToken(storeCode: string) {
   try {
     localStorage.removeItem(`${POS_DEVICE_TOKEN_PREFIX}${storeCode}`)
   } catch {}
+}
+
+/** Launch Ticket 兑换页与最终 /cashier 之间的一次性同标签页接力。 */
+export function setComputerLaunchStoreCode(storeCode: string) {
+  sessionStorage.setItem(COMPUTER_LAUNCH_STORE_KEY, storeCode)
+}
+
+export function takeComputerLaunchStoreCode(): string {
+  try {
+    const storeCode = sessionStorage.getItem(COMPUTER_LAUNCH_STORE_KEY)?.trim() ?? ''
+    sessionStorage.removeItem(COMPUTER_LAUNCH_STORE_KEY)
+    return storeCode
+  } catch {
+    return ''
+  }
 }
 
 export function posDeviceHeaders(storeCode: string | null | undefined): Record<string, string> {

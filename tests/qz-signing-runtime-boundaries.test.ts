@@ -118,8 +118,8 @@ async function testCurrentMainPosTokenContractDirectly() {
     assert.equal(await verifyQzSigningSession(posRequest(tampered)), null, 'tampered token must fail')
     assert.equal(await verifyQzSigningSession(posRequest(expiredPosToken(authSecret))), null, 'expired token must fail')
     assert.equal(await verifyQzSigningSession(posRequest(token, 'wrong-device')), null, 'device mismatch must fail')
-    assert.equal(verifyPosDeviceRequest(posRequest(token), { ...expected, storeId: 'wrong-store' }), null)
-    assert.equal(verifyPosDeviceRequest(posRequest(token), { ...expected, storeCode: 'WRONG-CODE' }), null)
+    assert.equal(await verifyPosDeviceRequest(posRequest(token), { ...expected, storeId: 'wrong-store' }), null)
+    assert.equal(await verifyPosDeviceRequest(posRequest(token), { ...expected, storeCode: 'WRONG-CODE' }), null)
   } finally {
     if (previousSecret === undefined) delete process.env.AUTH_SECRET
     else process.env.AUTH_SECRET = previousSecret

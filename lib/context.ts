@@ -12,6 +12,25 @@ export type RequestContext = {
 }
 
 /**
+ * x-* 开发身份头门禁。
+ *
+ * 这些头可以直接伪造出任意 tenant/store/OWNER 身份，只允许在明确的本地开发环境使用。
+ * 任一条件成立即关闭：
+ *   - NODE_ENV === 'production'
+ *   - VERCEL_ENV 为 production / preview（线上环境一律不认）
+ *   - 显式开关 ESHOP_DISABLE_DEV_HEADERS=1
+ */
+export function devHeadersAllowed() {
+  if (process.env.ESHOP_DISABLE_DEV_HEADERS === '1') return false
+  if (process.env.NODE_ENV === 'production') return false
+  const vercelEnv = process.env.VERCEL_ENV
+  if (vercelEnv === 'production' || vercelEnv === 'preview') return false
+  return true
+}
+
+let devHeaderRejectionLogged = false
+
+/**
  * Extracts the request context in priority order:
  *
  * 1. auth-session cookie — set by /api/auth/telegram after HMAC-verified
@@ -19,7 +38,7 @@ export type RequestContext = {
  *    checked against the DB: ARCHIVED tenants are blocked immediately.
  *
  * 2. x-* dev headers — local development fallback (injected by lib/api.ts).
- *    Production explicitly rejects them even if a caller forges the headers.
+ *    Never present in production Telegram WebApp traffic.
  *    Tenant status is NOT checked for dev headers (local seed data may vary).
  */
 export async function getContext(req: NextRequest): Promise<RequestContext | null> {
@@ -79,17 +98,25 @@ export async function getContext(req: NextRequest): Promise<RequestContext | nul
       }
       // Tenant or user is inactive (e.g. user was unbound/disabled).
       // Fall through to x-* dev header fallback so local dev tools (OWNER_CTX)
-      // still work. Production rejects that fallback below.
+      // still work. In production these headers are absent so the request still
+      // returns null — no security regression.
     }
   }
 
-  // ── 2. Dev x-* header fallback ────────────────────────────────────────────
-  if (process.env.NODE_ENV === 'production') return null
-
+  // ── 2. Dev x-* header fallback（仅本地开发环境）─────────────────────────────
   const tenantId = req.headers.get('x-tenant-id')
   const userId = req.headers.get('x-user-id')
   const storeId = req.headers.get('x-store-id')
   const role = req.headers.get('x-role')
+
+  if (!devHeadersAllowed()) {
+    // 线上收到 x-* 身份头一律忽略并告警（可能是伪造尝试），只记事件不记内容
+    if ((tenantId || userId || storeId || role) && !devHeaderRejectionLogged) {
+      devHeaderRejectionLogged = true
+      console.warn('[security] 已拒绝生产环境中的 x-* 开发身份头')
+    }
+    return null
+  }
 
   if (!tenantId || !userId || !storeId || !role) return null
   if (role !== 'OWNER' && role !== 'STAFF') return null

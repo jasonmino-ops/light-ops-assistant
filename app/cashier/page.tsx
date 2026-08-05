@@ -67,6 +67,7 @@ import {
   clearPosDeviceToken,
   getPosDeviceId,
   getPosDeviceToken,
+  takeComputerLaunchStoreCode,
   isPosUnauthorized,
   posDeviceHeaders,
   savePosDeviceToken,
@@ -1515,7 +1516,10 @@ export default function CashierPage() {
 
   // ── Load store data ────────────────────────────────────────────────────────
   useEffect(() => {
-    const sc = new URLSearchParams(window.location.search).get('storeCode')?.trim() || null
+    const queryStoreCode =
+      new URLSearchParams(window.location.search).get('storeCode')?.trim() || null
+    const launchStoreCode = takeComputerLaunchStoreCode()
+    let sc = queryStoreCode || launchStoreCode || null
     let cachedStoreCode: string | null = null
     try {
       cachedStoreCode = localStorage.getItem('cashier:lastStoreCode')?.trim() || null
@@ -1529,18 +1533,26 @@ export default function CashierPage() {
 
     if (!sc) {
       if (isValidStoreCode(cachedStoreCode)) {
-        const restoredUrl = cashierUrlForStore(cachedStoreCode)
-        router.replace(restoredUrl)
-        window.setTimeout(() => {
-          const currentStoreCode = new URLSearchParams(window.location.search).get('storeCode')?.trim() || null
-          if (!currentStoreCode) window.location.replace(restoredUrl)
-        }, 120)
-        return
+        // 已有 POS device session 时直接恢复门店，保持最终地址为纯 /cashier。
+        // 没有 device session 的旧 Browser 入口仍沿用原来的带 storeCode 恢复逻辑。
+        if (getPosDeviceToken(cachedStoreCode)) {
+          sc = cachedStoreCode
+        } else {
+          const restoredUrl = cashierUrlForStore(cachedStoreCode)
+          router.replace(restoredUrl)
+          window.setTimeout(() => {
+            const currentStoreCode = new URLSearchParams(window.location.search).get('storeCode')?.trim() || null
+            if (!currentStoreCode) window.location.replace(restoredUrl)
+          }, 120)
+          return
+        }
       }
 
-      setIsRestoringCashierStore(false)
-      setStoreId('')
-      setNoCodeError(true); setLoading(false); return
+      if (!sc) {
+        setIsRestoringCashierStore(false)
+        setStoreId('')
+        setNoCodeError(true); setLoading(false); return
+      }
     }
 
     rememberCashierStore(sc)
@@ -1548,14 +1560,15 @@ export default function CashierPage() {
       window.location.pathname === '/desktop/pos' ||
       new URLSearchParams(window.location.search).get('from') === 'desktop'
 
+    const existingDeviceToken = getPosDeviceToken(sc)
     setStoreCode(sc)
     setIsKitchenTicketEnabled(false)
-    setPosDeviceToken(getPosDeviceToken(sc))
+    setPosDeviceToken(existingDeviceToken)
     setPosAuthError('')
-    setPosAccountAccess(desktopPublicEntry ? 'authorized' : 'checking')
+    setPosAccountAccess(desktopPublicEntry || existingDeviceToken ? 'authorized' : 'checking')
     setPosAccountAccessMessage('')
     setIsRestoringCashierStore(false)
-    if (!desktopPublicEntry) {
+    if (!desktopPublicEntry && !existingDeviceToken) {
       apiFetch(`/api/cashier/access?storeCode=${encodeURIComponent(sc)}`)
         .then(async (r) => {
           const body = await r.json().catch(() => null)
