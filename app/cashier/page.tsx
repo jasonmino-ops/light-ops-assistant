@@ -144,6 +144,7 @@ type ShiftRecordItem = {
   createdAt: string
   lineAmount: number
   saleType: 'SALE' | 'REFUND'
+  status?: string
   paymentMethod: string | null
   productNameSnapshot?: string
   specSnapshot?: string | null
@@ -226,6 +227,17 @@ type CashierOrder = {
   items: CashierOrderItem[]; totalAmount: number
   status: 'PENDING' | 'CONFIRMED'
   remark: string | null; createdAt: string
+}
+
+// 门店级"待收款挂单"（SaleRecord.status=PENDING_PAYMENT，按 orderNo 聚合）。
+// 来源可能是手机商户端挂单或浏览器挂单，浏览器凭此实现门店级同步。
+type ServerPendingOrderItem = {
+  productId: string | null; barcode: string; name: string; spec: string | null
+  unitPrice: number; quantity: number; lineAmount: number
+}
+type ServerPendingOrder = {
+  orderNo: string; createdAt: string; totalAmount: number
+  itemCount: number; items: ServerPendingOrderItem[]
 }
 
 type BeforeInstallPromptEventLike = Event & {
@@ -419,6 +431,11 @@ type DesktopCopy = {
   holdButton: string
   holdEmpty: string
   holdEmptyPrefix: string
+  serverPendingTitle: string
+  serverPendingEmpty: string
+  serverPendingView: string
+  serverPendingHint: string
+  recordPendingPayment: string
   shiftStart: (time: string) => string
   shiftReportBtn: string
   dayCloseBtn: string
@@ -522,6 +539,11 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       holdButton: 'Hold current order',
       holdEmpty: 'No local holds',
       holdEmptyPrefix: 'No local holds',
+      serverPendingTitle: 'Pending payment holds',
+      serverPendingEmpty: 'No pending payment holds',
+      serverPendingView: 'View details',
+      serverPendingHint: 'Synced across phone & desktop',
+      recordPendingPayment: 'Awaiting payment',
       shiftStart: (time) => `Shift ${time} started`,
       shiftReportBtn: 'Shift report',
       dayCloseBtn: 'Day close',
@@ -624,6 +646,11 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       holdButton: 'ផ្អាកបញ្ជាទិញបច្ចុប្បន្ន',
       holdEmpty: 'មិនមានមាត់ស្នើ',
       holdEmptyPrefix: 'មិនមានមាត់ស្នើ',
+      serverPendingTitle: 'ការផ្អាករង់ចាំទូទាត់',
+      serverPendingEmpty: 'មិនមានការផ្អាករង់ចាំទូទាត់',
+      serverPendingView: 'មើលព័ត៌មាន',
+      serverPendingHint: 'ធ្វើសមកាលកម្មទូរស័ព្ទ & កុំព្យូទ័រ',
+      recordPendingPayment: 'រង់ចាំទូទាត់',
       shiftStart: (time) => `ប្តូរវេន ${time} ចាប់ផ្តើម`,
       shiftReportBtn: 'របាយការណ៍ប្តូរវេន',
       dayCloseBtn: 'បិទថ្ងៃ',
@@ -725,6 +752,11 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     holdButton: '挂起当前单',
     holdEmpty: '暂无本地挂单',
     holdEmptyPrefix: '暂无本地挂单',
+    serverPendingTitle: '门店待收款挂单',
+    serverPendingEmpty: '暂无门店待收款挂单',
+    serverPendingView: '查看明细',
+    serverPendingHint: '手机 / 电脑收银台同步',
+    recordPendingPayment: '待收款',
     shiftStart: (time) => `🕐 本班 ${time} 起`,
     shiftReportBtn: '查看交班报表',
     dayCloseBtn: '日结报表',
@@ -1240,6 +1272,8 @@ export default function CashierPage() {
   const [sugarModal,    setSugarModal]    = useState<Product | null>(null)
   const [pendingSugar,  setPendingSugar]  = useState('50')
   const [pendingOrders, setPendingOrders] = useState<CashierOrder[]>([])
+  const [serverPendingOrders, setServerPendingOrders] = useState<ServerPendingOrder[]>([])
+  const [viewPendingOrder, setViewPendingOrder] = useState<ServerPendingOrder | null>(null)
   const [updatingId,    setUpdatingId]    = useState<string | null>(null)
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEventLike | null>(null)
   const [isStandalone,  setIsStandalone]  = useState(false)
@@ -1760,6 +1794,32 @@ export default function CashierPage() {
     const timer = setInterval(poll, 5000)
     return () => clearInterval(timer)
   }, [storeCode, posDeviceToken, posAccountAccess, lang])
+
+  // ── Poll store-level pending-payment holds every 5s ─────────────────────────
+  // 门店级待收款挂单（手机端 / 浏览器端挂单统一来源），实现跨端同步。
+  useEffect(() => {
+    if (!storeCode) return
+    if (!posDeviceToken && posAccountAccess !== 'authorized') return
+    let cancelled = false
+    function poll() {
+      fetch(`/api/cashier/pending-orders?storeCode=${encodeURIComponent(storeCode!)}`, {
+        headers: posDeviceHeaders(storeCode),
+      })
+        .then(async (r) => {
+          const data = await r.json().catch(() => null)
+          if (!r.ok) return null
+          return data as ServerPendingOrder[] | null
+        })
+        .then((data) => {
+          if (cancelled || !Array.isArray(data)) return
+          setServerPendingOrders(data)
+        })
+        .catch(() => {})
+    }
+    poll()
+    const timer = setInterval(poll, 5000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [storeCode, posDeviceToken, posAccountAccess])
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -3317,6 +3377,7 @@ export default function CashierPage() {
       orderNo: string
       createdAt: string
       paymentMethod: string | null
+      pending: boolean
       amount: number
       itemCount: number
       items: ShiftRecordItem[]
@@ -3325,9 +3386,11 @@ export default function CashierPage() {
       const key = item.orderNo || item.recordNo
       const current = rows.get(key)
       const amount = Number(item.lineAmount) || 0
+      const isPending = item.status === 'PENDING_PAYMENT'
       if (current) {
         current.amount += amount
         current.itemCount += 1
+        current.pending = current.pending || isPending
         current.items.push(item)
         return
       }
@@ -3336,6 +3399,7 @@ export default function CashierPage() {
         orderNo: item.orderNo || item.recordNo,
         createdAt: item.createdAt,
         paymentMethod: item.paymentMethod,
+        pending: isPending,
         amount,
         itemCount: 1,
         items: [item],
@@ -3344,7 +3408,13 @@ export default function CashierPage() {
     return Array.from(rows.values())
   })()
 
-  function renderDesktopRecordDetails(row: { paymentMethod: string | null; amount: number; items: ShiftRecordItem[] }) {
+  // 待收款挂单尚无收款方式，展示为"待收款"而非 UNKNOWN，与手机端一致。
+  function desktopRecordPayLabel(row: { paymentMethod: string | null; pending?: boolean }): string {
+    if (row.pending) return d.recordPendingPayment
+    return row.paymentMethod || 'UNKNOWN'
+  }
+
+  function renderDesktopRecordDetails(row: { paymentMethod: string | null; pending?: boolean; amount: number; items: ShiftRecordItem[] }) {
     return (
       <div style={s.recordsDetail}>
         {row.items.map((item, index) => {
@@ -3364,7 +3434,7 @@ export default function CashierPage() {
           )
         })}
         <div style={s.recordsDetailTotal}>
-          <span>支付方式：{row.paymentMethod || 'UNKNOWN'}</span>
+          <span>支付方式：{desktopRecordPayLabel(row)}</span>
           <span>订单金额：{formatMoney(row.amount, currencyCode)}</span>
         </div>
       </div>
@@ -3919,6 +3989,39 @@ export default function CashierPage() {
                 <div style={{ ...s.sideSection, ...s.sideGroupCashier }}>
                   <div style={{ ...s.sideSectionTitle, color: '#93c5fd' }}>{d.sectionCashier}</div>
                   <div style={s.sideSectionBody}>
+                    <div style={s.holdCard}>
+                      <div style={s.holdHead}>
+                        <span style={s.holdTitle}>{d.serverPendingTitle}</span>
+                        <span style={s.holdCount}>{serverPendingOrders.length} 单</span>
+                      </div>
+                      <div style={{ ...s.holdSub, marginBottom: 6 }}>{d.serverPendingHint}</div>
+                      {serverPendingOrders.length > 0 ? (
+                        <div style={s.holdList}>
+                          {serverPendingOrders.map(order => {
+                            const heldLabel = holdOrderLabel(lang as DeskLang, order.createdAt, undefined, order.totalAmount)
+                            return (
+                              <div key={order.orderNo} style={s.holdItem}>
+                                <div style={s.holdMeta}>
+                                  <span>{shortNo(order.orderNo)}</span>
+                                  <span>{heldLabel.time}</span>
+                                  <span>{heldLabel.total}</span>
+                                </div>
+                                <div style={s.holdSub}>
+                                  {order.itemCount} 件 · {d.recordPendingPayment}
+                                </div>
+                                <div style={s.holdActions}>
+                                  <button type="button" style={s.holdRestoreBtn} onClick={() => setViewPendingOrder(order)}>
+                                    {d.serverPendingView}
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div style={s.holdEmpty}>{d.serverPendingEmpty}</div>
+                      )}
+                    </div>
                     <div style={s.holdCard}>
                       <div style={s.holdHead}>
                         <span style={s.holdTitle}>{d.holdTitle}</span>
@@ -4592,6 +4695,43 @@ export default function CashierPage() {
         </div>
       )}
 
+      {/* ── Store pending-payment hold detail (view only) ──────────────────── */}
+      {viewPendingOrder && (
+        <div style={s.overlay} onClick={() => setViewPendingOrder(null)}>
+          <div style={s.modal} onClick={e => e.stopPropagation()}>
+            <div style={s.modalTitle}>{d.serverPendingTitle}</div>
+            <div style={{ ...s.modalSub, marginBottom: 6 }}>
+              {shortNo(viewPendingOrder.orderNo)} · {fmtDateTimeShort(viewPendingOrder.createdAt)}
+            </div>
+            <div style={{
+              display: 'inline-block', alignSelf: 'center', fontSize: 12, fontWeight: 800,
+              color: '#92400e', background: '#fef3c7', borderRadius: 999, padding: '2px 12px', marginBottom: 8,
+            }}>
+              {d.recordPendingPayment}
+            </div>
+            <div style={{ display: 'grid', gap: 8, margin: '10px 0 14px', textAlign: 'left', maxHeight: 320, overflowY: 'auto' }}>
+              {viewPendingOrder.items.map((it, i) => (
+                <div key={`${it.barcode}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: '#111827' }}>{it.name}</div>
+                    {it.spec && <div style={{ fontSize: 11, color: '#6b7280' }}>{it.spec}</div>}
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>{money(it.unitPrice)} × {it.quantity}</div>
+                  </div>
+                  <span style={{ fontWeight: 800, color: '#111827', whiteSpace: 'nowrap' }}>{money(it.lineAmount)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, borderTop: '1px solid #e5e7eb', paddingTop: 10, fontSize: 14 }}>
+              <span>{lang === 'en' ? 'Total' : lang === 'km' ? 'សរុប' : '合计'}</span>
+              <span style={{ fontWeight: 900, color: '#111827' }}>{money(viewPendingOrder.totalAmount)}</span>
+            </div>
+            <button type="button" style={{ ...s.secondaryBtn, marginTop: 14 }} onClick={() => setViewPendingOrder(null)}>
+              {d.close}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Day close report overlay ───────────────────────────────────────── */}
       {dayCloseOpen && (
         <div style={s.overlay} onClick={() => setDayCloseOpen(false)}>
@@ -4674,7 +4814,7 @@ export default function CashierPage() {
                           <div style={s.recordsMeta}>{row.orderNo} · {row.itemCount} 项</div>
                         </div>
                         <div style={s.recordsTime}>{fmtDateTimeShort(row.createdAt)}</div>
-                        <div style={s.recordsPay}>{row.paymentMethod || 'UNKNOWN'}</div>
+                        <div style={s.recordsPay}>{desktopRecordPayLabel(row)}</div>
                         <div style={s.recordsAmt}>{money(row.amount)}</div>
                         {expanded && renderDesktopRecordDetails(row)}
                       </button>
