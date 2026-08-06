@@ -23,6 +23,8 @@ type ManagedComputer = {
   boundAt: string | null
   disabledAt: string | null
   status: 'ACTIVE' | 'DISABLED'
+  reapplyAllowed?: boolean
+  reapplyConsumed?: boolean
 }
 
 function formatTime(iso: string | null) {
@@ -129,6 +131,37 @@ export default function ComputerClientPage() {
       }
     },
     [load, t],
+  )
+
+  const allowReapply = useCallback(
+    async (computerId: string) => {
+      if (!window.confirm(t('home.computerClientConfirmRestoreUse'))) return
+      setBusyId(computerId)
+      setNotice(null)
+      try {
+        const res = await apiFetch(
+          `/api/computer-client/computers/${computerId}/reapply`,
+          { method: 'POST' },
+        )
+        if (!res.ok) {
+          setNotice({ kind: 'err', text: t('home.computerClientRestoreUseFailed') })
+          return
+        }
+        setDisabledComputers((list) =>
+          list.map((item) =>
+            item.computerId === computerId
+              ? { ...item, reapplyAllowed: true, reapplyConsumed: false }
+              : item,
+          ),
+        )
+        setNotice({ kind: 'ok', text: t('home.computerClientRestoreUseAllowed') })
+      } catch {
+        setNotice({ kind: 'err', text: t('home.computerClientRestoreUseFailed') })
+      } finally {
+        setBusyId(null)
+      }
+    },
+    [t],
   )
 
   if (effectiveRole !== 'OWNER') return null
@@ -338,6 +371,22 @@ export default function ComputerClientPage() {
                       <dd style={s.metaValue}>{t('home.computerClientStatusDisabled')}</dd>
                     </div>
                   </dl>
+                  <button
+                    type="button"
+                    style={
+                      item.reapplyAllowed ? s.restoreUseBtnWaiting : s.restoreUseBtn
+                    }
+                    disabled={busyId !== null || item.reapplyAllowed === true}
+                    onClick={() => void allowReapply(item.computerId)}
+                  >
+                    {busyId === item.computerId
+                      ? t('home.computerClientRestoringUse')
+                      : item.reapplyConsumed
+                        ? t('home.computerClientRestoreUseAgain')
+                        : item.reapplyAllowed
+                        ? t('home.computerClientWaitingReapply')
+                        : t('home.computerClientRestoreUse')}
+                  </button>
                 </div>
               ))}
             </div>
@@ -633,6 +682,30 @@ const s: Record<string, CSSProperties> = {
     fontSize: 14,
     fontWeight: 900,
     cursor: 'pointer',
+  },
+  restoreUseBtn: {
+    width: '100%',
+    minHeight: 42,
+    marginTop: 13,
+    border: '1px solid #bfdbfe',
+    borderRadius: 12,
+    background: 'var(--card)',
+    color: 'var(--blue)',
+    fontSize: 14,
+    fontWeight: 900,
+    cursor: 'pointer',
+  },
+  restoreUseBtnWaiting: {
+    width: '100%',
+    minHeight: 42,
+    marginTop: 13,
+    border: '1px solid #e2e8f0',
+    borderRadius: 12,
+    background: '#f8fafc',
+    color: '#64748b',
+    fontSize: 14,
+    fontWeight: 900,
+    cursor: 'default',
   },
   approveBtn: {
     flex: 1,

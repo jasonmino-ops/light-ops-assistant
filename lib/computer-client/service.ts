@@ -28,6 +28,30 @@ export type AgentAuthFailure = { ok: false; status: number; error: string }
 export type AgentAuthSuccess = { ok: true; binding: ComputerBinding }
 export type AgentAuthResult = AgentAuthFailure | AgentAuthSuccess
 
+/**
+ * 老板允许一台已停用电脑重新走绑定申请链时写入的不可变审计事件。
+ * 旧 ComputerBinding 本身保持停用；该事件只是一枚一次性恢复许可。
+ */
+export const COMPUTER_REAPPLY_ALLOWED_EVENT = 'COMPUTER_BINDING_REAPPLY_ALLOWED'
+export const COMPUTER_REAPPLY_CONSUMED_EVENT = 'COMPUTER_BINDING_REAPPLY_CONSUMED'
+
+/** 每次 OWNER 明确签发一个独立许可实例；序号只在同一旧 binding 内递增。 */
+export function computerReapplyAuditId(bindingId: string, issueNumber: number) {
+  const sequence = String(issueNumber).padStart(8, '0')
+  return `computer-reapply-${bindingId}-${sequence}`
+}
+
+/**
+ * 每个许可实例对应唯一消费记录；数据库主键保证该许可只成功消费一次。
+ * 同时识别 71bc3ac 产生的首枚 legacy 许可/消费 ID，保留已有审计的可追踪性。
+ */
+export function computerReapplyConsumeAuditId(bindingId: string, permitAuditId: string) {
+  if (permitAuditId === `computer-reapply-${bindingId}`) {
+    return `computer-reapply-consumed-${bindingId}`
+  }
+  return `computer-reapply-consumed-${permitAuditId}`
+}
+
 function readBearer(req: NextRequest) {
   const raw = req.headers.get('authorization') ?? ''
   const match = /^Bearer\s+(.+)$/i.exec(raw.trim())
