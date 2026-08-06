@@ -930,6 +930,126 @@ test('OWNER 软停用保留历史并即时阻断 Agent 与已签发 POS session'
   assert.equal(independentOwnerSession.status, 200, '电脑停用不得破坏独立的既有 OWNER Browser Session')
 })
 
+test('人工恢复许可可重签、一次性消费，并创建独立新绑定', async () => {
+  const { inst: oldIdentity, id: oldBindingId } = await createBoundComputer('人工恢复电脑')
+  assert.equal((await api(`/api/computer-client/computers/${oldBindingId}/disable`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T1)),
+  })).status, 200)
+
+  const withoutPermit = await api('/api/computer-client/bindings/self/reapply', {
+    method: 'POST',
+    headers: agentHeaders(oldIdentity.installationId, oldIdentity.claimSecret),
+  })
+  assert.equal(withoutPermit.status, 403)
+  assert.equal(withoutPermit.data.error, 'REAPPLY_NOT_ALLOWED')
+
+  const firstPermit = await api(`/api/computer-client/computers/${oldBindingId}/reapply`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T1)),
+  })
+  assert.equal(firstPermit.status, 200)
+  assert.equal(firstPermit.data.idempotent, false)
+  const firstPermitAgain = await api(`/api/computer-client/computers/${oldBindingId}/reapply`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T1)),
+  })
+  assert.equal(firstPermitAgain.status, 200)
+  assert.equal(firstPermitAgain.data.idempotent, true)
+
+  const firstConsumers = await Promise.all([
+    api('/api/computer-client/bindings/self/reapply', {
+      method: 'POST',
+      headers: agentHeaders(oldIdentity.installationId, oldIdentity.claimSecret),
+    }),
+    api('/api/computer-client/bindings/self/reapply', {
+      method: 'POST',
+      headers: agentHeaders(oldIdentity.installationId, oldIdentity.claimSecret),
+    }),
+  ])
+  assert.deepEqual(
+    firstConsumers.map((result) => result.status).sort(),
+    [200, 409],
+    '同一恢复许可并发消费时必须只有一个成功',
+  )
+
+  // 模拟许可已消费、但 Windows 尚未成功切换身份：OWNER 必须能明确重签一枚新许可。
+  const secondPermit = await api(`/api/computer-client/computers/${oldBindingId}/reapply`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T1)),
+  })
+  assert.equal(secondPermit.status, 200)
+  assert.equal(secondPermit.data.idempotent, false)
+  const secondPermitAgain = await api(`/api/computer-client/computers/${oldBindingId}/reapply`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T1)),
+  })
+  assert.equal(secondPermitAgain.status, 200)
+  assert.equal(secondPermitAgain.data.idempotent, true)
+  const secondConsume = await api('/api/computer-client/bindings/self/reapply', {
+    method: 'POST',
+    headers: agentHeaders(oldIdentity.installationId, oldIdentity.claimSecret),
+  })
+  assert.equal(secondConsume.status, 200)
+  assert.equal(secondConsume.data.consumed, true)
+
+  const newIdentity = newInstallation()
+  const submit = await api('/api/computer-client/bindings', {
+    method: 'POST',
+    headers: { 'x-installation-id': newIdentity.installationId },
+    body: {
+      storeCode: T1.storeCode,
+      computerName: '人工恢复电脑',
+      agentVersion: '0.4.6',
+      claimSecret: newIdentity.claimSecret,
+      deviceSecret: newIdentity.deviceSecret,
+    },
+  })
+  assert.equal(submit.status, 201)
+  assert.notEqual(submit.data.requestId, oldBindingId)
+  assert.equal((await api(`/api/computer-client/requests/${submit.data.requestId}/approve`, {
+    method: 'POST',
+    headers: ownerCookie(ownerSession(T1)),
+  })).status, 200)
+  assert.equal((await api('/api/computer-client/bindings/self/bind', {
+    method: 'POST',
+    headers: agentHeaders(newIdentity.installationId, newIdentity.deviceSecret),
+  })).status, 200)
+
+  const launch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(newIdentity.installationId, newIdentity.deviceSecret),
+  })
+  assert.equal(launch.status, 200)
+  const browserDeviceId = rnd(18)
+  const consumeLaunch = await api('/api/computer-client/browser-launch/consume', {
+    method: 'POST',
+    body: { ticket: launch.data.ticket, browserDeviceId },
+  })
+  assert.equal(consumeLaunch.status, 200)
+  assert.equal((await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
+    headers: {
+      'x-pos-device-id': browserDeviceId,
+      'x-pos-device-token': consumeLaunch.data.posDeviceToken,
+    },
+  })).status, 200)
+
+  const oldBinding = await prisma.computerBinding.findUnique({ where: { id: oldBindingId } })
+  const newBinding = await prisma.computerBinding.findUnique({ where: { id: submit.data.requestId } })
+  assert.equal(oldBinding.status, 'APPROVED')
+  assert.ok(oldBinding.disabledAt)
+  assert.equal(oldBinding.credentialStatus, 'VOID')
+  assert.equal(newBinding.status, 'APPROVED')
+  assert.equal(newBinding.disabledAt, null)
+  assert.ok(newBinding.boundAt)
+  assert.equal(await prisma.computerBindingAudit.count({
+    where: { bindingId: oldBindingId, eventType: 'COMPUTER_BINDING_REAPPLY_ALLOWED' },
+  }), 2)
+  assert.equal(await prisma.computerBindingAudit.count({
+    where: { bindingId: oldBindingId, eventType: 'COMPUTER_BINDING_REAPPLY_CONSUMED' },
+  }), 2)
+})
+
 test('停用与兑换竞态不会产生可营业的有效 session', async () => {
   const { inst, id } = await createBoundComputer('停用兑换竞态')
   const launch = await api('/api/computer-client/bindings/self/launch-ticket', {
