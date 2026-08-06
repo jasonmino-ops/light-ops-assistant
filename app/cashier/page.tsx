@@ -73,6 +73,7 @@ import {
   savePosDeviceToken,
 } from '@/lib/desktop-pos-client'
 import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
+import { browserPosCustomerDisplayPath } from '@/lib/browser-pos-customer-display'
 import { dispatchCashierCartTotalChanged } from '@/lib/customer-display-cart-event'
 import {
   createCustomerDisplayRealtimeChannel,
@@ -331,9 +332,12 @@ function postCashierDisplaySession(input: {
   }).then((res) => {
     if (!res.ok) {
       console.warn('[cashier:display-session] sync failed', res.status)
+      return false
     }
+    return true
   }).catch((e) => {
     console.warn('[cashier:display-session] sync failed', e)
+    return false
   })
 }
 function isValidStoreCode(sc: string | null): sc is string {
@@ -410,6 +414,7 @@ type DesktopCopy = {
   storeLoading: string
   installDesktop: string
   desktopMode: string
+  openCustomerDisplay: string
   enterFullscreen: string
   exitFullscreen: string
   rememberedStore: string
@@ -518,6 +523,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       storeLoading: 'Loading…',
       installDesktop: 'Install to PC',
       desktopMode: 'Desktop mode',
+      openCustomerDisplay: 'Open Customer Display',
       enterFullscreen: 'Enter full screen',
       exitFullscreen: 'Exit full screen',
       rememberedStore: 'This store is remembered. Desktop open will enter this cashier.',
@@ -625,6 +631,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       storeLoading: 'កំពុងផ្ទុក…',
       installDesktop: 'ដំឡើងលើកុំព្យូទ័រ',
       desktopMode: 'របៀប Desktop',
+      openCustomerDisplay: 'បើកអេក្រង់អតិថិជន',
       enterFullscreen: 'ចូលពេញអេក្រង់',
       exitFullscreen: 'ចេញពីពេញអេក្រង់',
       rememberedStore: 'ហាងនេះត្រូវបានចងចាំ។ បើកលើ Desktop នឹងចូលទៅកាន់ប្រអប់គិតលុយនេះ។',
@@ -731,6 +738,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     storeLoading: '加载中…',
     installDesktop: '安装到电脑',
     desktopMode: '桌面模式',
+    openCustomerDisplay: '打开顾客屏',
     enterFullscreen: '进入全屏',
     exitFullscreen: '退出全屏',
     rememberedStore: '已记住当前门店，桌面打开会进入本店收银台',
@@ -1353,6 +1361,7 @@ export default function CashierPage() {
   const ordersRef       = useRef<HTMLDivElement>(null)
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
+  const inFlightCashierDisplaySyncKey = useRef('')
   const previousCashierDisplayCartCountRef = useRef(0)
   const customerDisplayRealtimeChannelRef = useRef<BroadcastChannel | null>(null)
   const customerDisplayRealtimeSequenceRef = useRef(0)
@@ -2665,6 +2674,12 @@ export default function CashierPage() {
     return () => window.removeEventListener('keydown', onReceiptKey)
   }, [isDesktopPos, autoPrint, saleResult?.receipt, saleResult?.kitchenTicket, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
 
+  function handleOpenCustomerDisplay() {
+    const target = browserPosCustomerDisplayPath(storeCode, lang as DeskLang)
+    if (!target) return
+    window.open(target, '_blank', 'noopener,noreferrer')
+  }
+
   async function handleInstallClick() {
     if (!storeCode) {
       showToast('请先从门店收银链接进入后再安装')
@@ -2869,6 +2884,7 @@ export default function CashierPage() {
       const completedItems = cashierDisplayItems(cart)
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
+      inFlightCashierDisplaySyncKey.current = ''
       void postCashierDisplaySession({
         storeCode,
         status: 'COMPLETED',
@@ -2996,6 +3012,24 @@ export default function CashierPage() {
     publishCustomerDisplayRealtimeSnapshot,
   ])
 
+  const postCashierDisplaySessionOnce = useCallback((
+    syncKey: string,
+    input: Parameters<typeof postCashierDisplaySession>[0],
+  ) => {
+    if (syncKey === lastCashierDisplaySyncKey.current) return
+    if (syncKey === inFlightCashierDisplaySyncKey.current) return
+    inFlightCashierDisplaySyncKey.current = syncKey
+    void postCashierDisplaySession(input).then((ok) => {
+      if (inFlightCashierDisplaySyncKey.current !== syncKey) return
+      inFlightCashierDisplaySyncKey.current = ''
+      if (ok) lastCashierDisplaySyncKey.current = syncKey
+    }).catch(() => {
+      if (inFlightCashierDisplaySyncKey.current === syncKey) {
+        inFlightCashierDisplaySyncKey.current = ''
+      }
+    })
+  }, [])
+
   const syncCurrentCartToCustomerDisplay = useCallback((nextPayment: CashierPaymentMethod, options?: CustomerDisplaySyncOptions) => {
     if (!storeCode || noCodeError || isRestoringCashierStore || cart.length === 0) return
     const displayPayment: CashierDisplayPayment =
@@ -3005,27 +3039,28 @@ export default function CashierPage() {
     const status: CashierDisplayStatus = displayPayment === 'KHQR' ? 'AWAITING_PAYMENT' : 'DRAFT'
     const paymentStatus = displayPayment === 'KHQR' ? 'PENDING' : null
     const items = cashierDisplayItems(cart)
+    const message = displayPayment === 'KHQR'
+      ? (options?.focusKhqr ? CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE : '请扫码支付')
+      : null
     const syncKey = JSON.stringify({
       storeCode,
       status,
       paymentMethod: displayPayment,
       paymentStatus,
       items,
+      message,
     })
-    lastCashierDisplaySyncKey.current = syncKey
     cashierDisplayActiveRef.current = true
     previousCashierDisplayCartCountRef.current = cart.length
-    void postCashierDisplaySession({
+    postCashierDisplaySessionOnce(syncKey, {
       storeCode,
       status,
       paymentMethod: displayPayment,
       paymentStatus,
       items,
-      message: displayPayment === 'KHQR'
-        ? (options?.focusKhqr ? CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE : '请扫码支付')
-        : null,
+      message,
     })
-  }, [cart, storeCode, isOnline, noCodeError, isRestoringCashierStore, currencyCode])
+  }, [cart, storeCode, isOnline, noCodeError, isRestoringCashierStore, currencyCode, postCashierDisplaySessionOnce])
 
   useEffect(() => {
     if (!storeCode || noCodeError || isRestoringCashierStore) return
@@ -3036,6 +3071,7 @@ export default function CashierPage() {
       if (!cashierDisplayActiveRef.current) return
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
+      inFlightCashierDisplaySyncKey.current = ''
       lastCashierDisplaySyncKey.current = '__terminal__'
       void postCashierDisplaySession({
         storeCode,
@@ -3066,8 +3102,7 @@ export default function CashierPage() {
     })
     if (syncKey === lastCashierDisplaySyncKey.current) return
     if (shouldSyncImmediately) {
-      lastCashierDisplaySyncKey.current = syncKey
-      void postCashierDisplaySession({
+      postCashierDisplaySessionOnce(syncKey, {
         storeCode,
         status,
         paymentMethod: displayPayment,
@@ -3078,8 +3113,7 @@ export default function CashierPage() {
       return
     }
     const timer = setTimeout(() => {
-      lastCashierDisplaySyncKey.current = syncKey
-      void postCashierDisplaySession({
+      postCashierDisplaySessionOnce(syncKey, {
         storeCode,
         status,
         paymentMethod: displayPayment,
@@ -3089,7 +3123,7 @@ export default function CashierPage() {
       })
     }, CASHIER_DISPLAY_SYNC_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore, isDesktopPos, checkoutStep, currencyCode])
+  }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore, isDesktopPos, checkoutStep, currencyCode, postCashierDisplaySessionOnce])
 
   // ── Submit sale ────────────────────────────────────────────────────────────
   async function handleSubmit(paymentOverride?: CashierPaymentMethod) {
@@ -3158,6 +3192,7 @@ export default function CashierPage() {
         setOfflinePendingCount(nextCount)
         cashierDisplayActiveRef.current = false
         lastCashierDisplaySyncKey.current = ''
+        inFlightCashierDisplaySyncKey.current = ''
         setCart([])
         setPayment('CASH')
         showToast('离线订单已保存，网络恢复后请同步')
@@ -3196,6 +3231,7 @@ export default function CashierPage() {
       if (!res.ok) { setSubmitError(body.message ?? body.error ?? '提交失败，请重试'); return }
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
+      inFlightCashierDisplaySyncKey.current = ''
       void postCashierDisplaySession({
         storeCode,
         status: 'COMPLETED',
@@ -3506,7 +3542,7 @@ export default function CashierPage() {
       syncCurrentCartToCustomerDisplay('KHQR', { focusKhqr: true })
       return
     }
-    syncCurrentCartToCustomerDisplay('KHQR')
+    syncCurrentCartToCustomerDisplay(method)
   }
 
   function openDesktopPaymentSelection() {
@@ -3915,6 +3951,14 @@ export default function CashierPage() {
               ))}
             </div>
             <div style={s.kioskActions}>
+              <button
+                type="button"
+                style={{ ...s.kioskBtn, gridColumn: '1 / -1', ...(!storeCode ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
+                disabled={!storeCode}
+                onClick={handleOpenCustomerDisplay}
+              >
+                {d.openCustomerDisplay}
+              </button>
               <button type="button" style={s.kioskBtn} onClick={handleInstallClick}>
                 {isStandalone ? d.desktopMode : d.installDesktop}
               </button>
