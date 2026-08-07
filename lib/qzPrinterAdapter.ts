@@ -72,6 +72,7 @@ export class QzPrintError extends Error {
 
 let qzModulePromise: Promise<QzClient> | null = null
 let qzRawModulePromise: Promise<QzClient> | null = null
+let qzRawSignedPrintTail: Promise<void> = Promise.resolve()
 
 const DEFAULT_SIGNING_DEPENDENCIES: QzSigningAdapterDependencies = {
   fetchImpl: (input, init) => fetch(input, init),
@@ -238,6 +239,14 @@ type HistoricalRawQzSecurity = {
   setSignaturePromise: (
     promiseFactory: () => (resolve: (value: string) => void) => void,
   ) => void
+  setSignatureAlgorithm: (algorithm: 'SHA1') => void
+}
+
+function configureHistoricalRawQzSecurity(qz: QzClient): void {
+  const security = qz.security as unknown as HistoricalRawQzSecurity
+  security.setCertificatePromise((resolve) => resolve(''))
+  security.setSignaturePromise(() => (resolve) => resolve(''))
+  security.setSignatureAlgorithm('SHA1')
 }
 
 async function loadRawQz(): Promise<QzClient> {
@@ -250,9 +259,7 @@ async function loadRawQz(): Promise<QzClient> {
     // Signed adapter's security initialization.
     qzRawModulePromise = import('qz-tray?raw-connection').then((mod) => {
       const qz = ((mod as { default?: QzClient }).default ?? mod) as QzClient
-      const security = qz.security as unknown as HistoricalRawQzSecurity
-      security.setCertificatePromise((resolve) => resolve(''))
-      security.setSignaturePromise(() => (resolve) => resolve(''))
+      configureHistoricalRawQzSecurity(qz)
       return qz
     })
   }
@@ -293,6 +300,25 @@ async function assertQueueExists(qz: QzClient, queueName: string): Promise<void>
   if (!printers.includes(queueName)) {
     throw new QzPrintError('QZ_QUEUE_NOT_FOUND', queueName)
   }
+}
+
+async function submitSignedRawPrintRequest(
+  qz: QzClient,
+  config: unknown,
+  data: unknown[],
+): Promise<void> {
+  const request = qzRawSignedPrintTail.then(async () => {
+    // Keep the historical RAW callbacks for connection and enumeration. Only
+    // the actual print request uses the existing E-Shop signing implementation.
+    configureQzSigningSecurity(qz)
+    try {
+      await qz.print(config, data)
+    } finally {
+      configureHistoricalRawQzSecurity(qz)
+    }
+  })
+  qzRawSignedPrintTail = request.catch(() => {})
+  return request
 }
 
 export async function detectQzOnline(
@@ -413,7 +439,7 @@ export async function printEscPosBitImageViaFixedQzQueue(
 
   const config = qz.configs.create(queueName)
   try {
-    await qz.print(config, [{
+    await submitSignedRawPrintRequest(qz, config, [{
       type: 'raw',
       format: 'base64',
       data: qzRawBytesToBase64(bytes),

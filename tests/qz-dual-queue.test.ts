@@ -20,6 +20,7 @@ function makeClient(options?: {
   connectError?: Error
   printers?: string[]
   print?: (config: unknown, data: unknown[]) => Promise<void>
+  security?: QzClient['security']
 }) {
   let active = options?.active ?? true
   const printCalls: PrintCall[] = []
@@ -45,7 +46,7 @@ function makeClient(options?: {
       printCalls.push({ config, data })
       await options?.print?.(config, data)
     },
-    security: {
+    security: options?.security ?? {
       setCertificatePromise: () => {},
       setSignaturePromise: () => {},
       setSignatureAlgorithm: () => {},
@@ -131,12 +132,104 @@ async function testEscPosRawUsesExactQueueAndBase64Bytes() {
   ])
 }
 
+async function testRawPrintUsesExistingNonBlankSignature() {
+  const certificate = `-----BEGIN CERTIFICATE-----
+VEVTVA==
+-----END CERTIFICATE-----`
+  const digest = 'a'.repeat(64)
+  const signature = 'AQIDBA=='
+  const fetchCalls: string[] = []
+  const certificateModes: string[] = []
+  let certificateHandler: (() => Promise<string>) | null = null
+  let signatureHandler: ((value: string) => Promise<string>) | null = null
+  let signatureAlgorithm = ''
+  let observedSignatureAlgorithm = ''
+  let observedCertificate = ''
+  let observedSignature = ''
+
+  const client = makeClient({
+    security: {
+      setCertificatePromise: (handler, options) => {
+        certificateModes.push(options?.rejectOnFailure === true ? 'signed' : 'raw')
+        certificateHandler = handler
+      },
+      setSignaturePromise: (handler) => { signatureHandler = handler },
+      setSignatureAlgorithm: (algorithm) => { signatureAlgorithm = algorithm },
+    },
+    print: async () => {
+      if (!certificateHandler || !signatureHandler) throw new Error('signing callbacks missing')
+      observedCertificate = await certificateHandler()
+      observedSignatureAlgorithm = signatureAlgorithm
+      observedSignature = await signatureHandler(digest)
+    },
+  })
+
+  const previousWindow = globalThis.window
+  const previousLocalStorage = globalThis.localStorage
+  const previousFetch = globalThis.fetch
+  const values = new Map([
+    ['cashier:deviceId', 'valid-pos-device-id'],
+    ['cashier:posDeviceToken:ST169E7000', 'valid-pos-token'],
+  ])
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    writable: true,
+    value: { location: { pathname: '/desktop/pos', search: '?storeCode=ST169E7000' } },
+  })
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    writable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value) },
+      removeItem: (key: string) => { values.delete(key) },
+      clear: () => { values.clear() },
+      key: (index: number) => [...values.keys()][index] ?? null,
+      get length() { return values.size },
+    },
+  })
+  globalThis.fetch = async (input, init) => {
+    const endpoint = String(input)
+    fetchCalls.push(endpoint)
+    if (endpoint === '/api/qz/config') {
+      return new Response(JSON.stringify({
+        certificate,
+        certificateVersion: 'test-leaf-20260805-3bf1b1a5',
+        signatureAlgorithm: 'SHA512',
+        enabled: true,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    if (endpoint === '/api/qz/sign') {
+      assert.equal(init?.body, digest)
+      return new Response(signature, { status: 200, headers: { 'Content-Type': 'text/plain' } })
+    }
+    throw new Error(`unexpected endpoint: ${endpoint}`)
+  }
+
+  try {
+    await printEscPosBitImageViaFixedQzQueue('receipt', FORMAL_RAW_BYTES, client)
+  } finally {
+    Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: previousWindow })
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, writable: true, value: previousLocalStorage })
+    globalThis.fetch = previousFetch
+  }
+
+  assert.equal(observedCertificate, certificate)
+  assert.equal(observedSignature, signature)
+  assert.notEqual(observedSignature, '')
+  assert.equal(observedSignatureAlgorithm, 'SHA512')
+  assert.equal(signatureAlgorithm, 'SHA1')
+  assert.deepEqual(fetchCalls, ['/api/qz/config', '/api/qz/sign'])
+  assert.deepEqual(certificateModes, ['signed', 'raw'], 'RAW callbacks must be restored after the print request')
+}
+
 async function run() {
   await testFixedQueueRouting()
   await testQzUnavailableIsExplicit()
   await testMissingQueueIsExplicitAndNeverUsesDefault()
   await testFailuresAndRetriesAreIndependent()
   await testEscPosRawUsesExactQueueAndBase64Bytes()
+  await testRawPrintUsesExistingNonBlankSignature()
   console.log('QZ dual-queue adapter tests passed')
 }
 

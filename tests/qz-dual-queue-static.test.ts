@@ -19,18 +19,38 @@ assert.match(adapter, /printKitchenTicketViaQz[\s\S]*'kitchen'/)
 assert.match(adapter, /type:\s*'raw'/)
 assert.match(adapter, /format:\s*'base64'/)
 
+const rawSecurity = adapter.slice(
+  adapter.indexOf('function configureHistoricalRawQzSecurity'),
+  adapter.indexOf('async function loadRawQz'),
+)
+assert.match(rawSecurity, /setCertificatePromise\(\(resolve\) => resolve\(''\)\)/)
+assert.match(rawSecurity, /setSignaturePromise\(\(\) => \(resolve\) => resolve\(''\)\)/)
+assert.match(rawSecurity, /setSignatureAlgorithm\('SHA1'\)/)
+
 const rawLoader = adapter.slice(
   adapter.indexOf('async function loadRawQz'),
   adapter.indexOf('async function ensureConnected'),
 )
 assert.match(rawLoader, /import\('qz-tray\?raw-connection'\)/)
-assert.match(rawLoader, /setCertificatePromise\(\(resolve\) => resolve\(''\)\)/)
-assert.match(rawLoader, /setSignaturePromise\(\(\) => \(resolve\) => resolve\(''\)\)/)
+assert.match(rawLoader, /configureHistoricalRawQzSecurity\(qz\)/)
 assert.doesNotMatch(rawLoader, /configureQzSigningSecurity\(/)
 
 const rawAdapter = adapter.slice(adapter.indexOf('export async function printEscPosBitImageViaFixedQzQueue'))
 assert.match(rawAdapter, /loadRawQz\(\)/)
 assert.doesNotMatch(rawAdapter, /window\.print|legacyPrint/, 'RAW failures must not fall back to browser printing')
+
+const signedRawRequest = adapter.slice(
+  adapter.indexOf('async function submitSignedRawPrintRequest'),
+  adapter.indexOf('export async function detectQzOnline'),
+)
+assert.match(signedRawRequest, /configureQzSigningSecurity\(qz\)[\s\S]*qz\.print\(config, data\)/)
+assert.match(signedRawRequest, /finally \{[\s\S]*configureHistoricalRawQzSecurity\(qz\)/)
+
+const rawPrint = adapter.slice(
+  adapter.indexOf('export async function printEscPosBitImageViaFixedQzQueue'),
+  adapter.indexOf('export type QzHtmlRasterizer'),
+)
+assert.match(rawPrint, /assertQueueExists\(qz, queueName\)[\s\S]*submitSignedRawPrintRequest\(qz, config/)
 
 assert.match(renderer, /QZ_RAW_PRINTABLE_WIDTH_PX = 576/)
 assert.match(renderer, /import\('html2canvas'\)/)
