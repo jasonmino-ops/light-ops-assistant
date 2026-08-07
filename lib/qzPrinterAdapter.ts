@@ -4,6 +4,8 @@
 // call these functions and never touch the qz-tray library directly.
 
 import { posDeviceHeaders } from './desktop-pos-client'
+import { qzRawBytesToBase64 } from './qzEscPosBitImage'
+import { renderTicketHtmlToEscPosRaw } from './qzHtmlBitmapRenderer'
 
 const QZ_CONFIG_ENDPOINT = '/api/qz/config'
 const QZ_SIGN_ENDPOINT = '/api/qz/sign'
@@ -46,6 +48,24 @@ export type QzClient = {
       promiseFactory: (toSign: string) => Promise<string>,
     ) => void
     setSignatureAlgorithm: (algorithm: typeof QZ_SIGNATURE_ALGORITHM) => void
+  }
+}
+
+export const QZ_PRINT_QUEUES = {
+  receipt: '前台',
+  kitchen: '厨房',
+} as const
+
+export type QzPrintKind = keyof typeof QZ_PRINT_QUEUES
+
+export class QzPrintError extends Error {
+  constructor(
+    public readonly code: 'QZ_UNAVAILABLE' | 'QZ_QUEUE_NOT_FOUND' | 'QZ_PRINT_FAILED',
+    public readonly queueName: string,
+    options?: { cause?: unknown },
+  ) {
+    super(`${code}:${queueName}`, options)
+    this.name = 'QzPrintError'
   }
 }
 
@@ -214,6 +234,33 @@ async function ensureConnected(qz: QzClient): Promise<void> {
   await qz.websocket.connect({ retries: 1, delay: 0 })
 }
 
+async function ensureFixedQueueConnected(qz: QzClient, queueName: string): Promise<void> {
+  try {
+    await ensureConnected(qz)
+    if (!qz.websocket.isActive()) {
+      throw new Error('QZ websocket inactive after connect')
+    }
+  } catch (cause) {
+    throw new QzPrintError('QZ_UNAVAILABLE', queueName, { cause })
+  }
+}
+
+function normalizePrinters(result: string | string[]): string[] {
+  return Array.isArray(result) ? result : [result]
+}
+
+async function assertQueueExists(qz: QzClient, queueName: string): Promise<void> {
+  let printers: string[]
+  try {
+    printers = normalizePrinters(await qz.printers.find())
+  } catch (cause) {
+    throw new QzPrintError('QZ_UNAVAILABLE', queueName, { cause })
+  }
+  if (!printers.includes(queueName)) {
+    throw new QzPrintError('QZ_QUEUE_NOT_FOUND', queueName)
+  }
+}
+
 export async function detectQzOnline(client?: QzClient): Promise<boolean> {
   try {
     const qz = client ?? (await loadQz())
@@ -307,4 +354,67 @@ export async function submitDesktopReceiptPrint(params: {
   } catch (qzError) {
     return { route: 'qz', qzError }
   }
+}
+
+/**
+ * Submits pre-built ESC/POS bytes as base64 RAW data to one of the two exact
+ * field-verified Windows queues. There is no default-printer lookup, browser
+ * fallback, retry, or alternate transport in this path.
+ */
+export async function printEscPosBitImageViaFixedQzQueue(
+  kind: QzPrintKind,
+  bytes: Uint8Array,
+  client?: QzClient,
+): Promise<{ kind: QzPrintKind; queueName: string }> {
+  const queueName = QZ_PRINT_QUEUES[kind]
+  const qz = client ?? (await loadQz())
+  await ensureFixedQueueConnected(qz, queueName)
+  await assertQueueExists(qz, queueName)
+
+  const config = qz.configs.create(queueName)
+  try {
+    await qz.print(config, [{
+      type: 'raw',
+      format: 'base64',
+      data: qzRawBytesToBase64(bytes),
+    }])
+  } catch (cause) {
+    throw new QzPrintError('QZ_PRINT_FAILED', queueName, { cause })
+  }
+
+  return { kind, queueName }
+}
+
+export type QzHtmlRasterizer = (html: string) => Promise<Uint8Array>
+
+export async function printHtmlAsEscPosBitImageViaFixedQzQueue(
+  kind: QzPrintKind,
+  html: string,
+  client?: QzClient,
+  rasterize: QzHtmlRasterizer = renderTicketHtmlToEscPosRaw,
+) {
+  const queueName = QZ_PRINT_QUEUES[kind]
+  let bytes: Uint8Array
+  try {
+    bytes = await rasterize(html)
+  } catch (cause) {
+    throw new QzPrintError('QZ_PRINT_FAILED', queueName, { cause })
+  }
+  return printEscPosBitImageViaFixedQzQueue(kind, bytes, client)
+}
+
+export function printCustomerReceiptViaQz(
+  html: string,
+  client?: QzClient,
+  rasterize?: QzHtmlRasterizer,
+) {
+  return printHtmlAsEscPosBitImageViaFixedQzQueue('receipt', html, client, rasterize)
+}
+
+export function printKitchenTicketViaQz(
+  html: string,
+  client?: QzClient,
+  rasterize?: QzHtmlRasterizer,
+) {
+  return printHtmlAsEscPosBitImageViaFixedQzQueue('kitchen', html, client, rasterize)
 }
