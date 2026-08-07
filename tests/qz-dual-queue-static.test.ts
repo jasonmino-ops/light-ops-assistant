@@ -19,7 +19,17 @@ assert.match(adapter, /printKitchenTicketViaQz[\s\S]*'kitchen'/)
 assert.match(adapter, /type:\s*'raw'/)
 assert.match(adapter, /format:\s*'base64'/)
 
+const rawLoader = adapter.slice(
+  adapter.indexOf('async function loadRawQz'),
+  adapter.indexOf('async function ensureConnected'),
+)
+assert.match(rawLoader, /import\('qz-tray\?raw-connection'\)/)
+assert.match(rawLoader, /setCertificatePromise\(\(resolve\) => resolve\(''\)\)/)
+assert.match(rawLoader, /setSignaturePromise\(\(\) => \(resolve\) => resolve\(''\)\)/)
+assert.doesNotMatch(rawLoader, /configureQzSigningSecurity\(/)
+
 const rawAdapter = adapter.slice(adapter.indexOf('export async function printEscPosBitImageViaFixedQzQueue'))
+assert.match(rawAdapter, /loadRawQz\(\)/)
 assert.doesNotMatch(rawAdapter, /window\.print|legacyPrint/, 'RAW failures must not fall back to browser printing')
 
 assert.match(renderer, /QZ_RAW_PRINTABLE_WIDTH_PX = 576/)

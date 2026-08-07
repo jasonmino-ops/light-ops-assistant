@@ -70,6 +70,7 @@ export class QzPrintError extends Error {
 }
 
 let qzModulePromise: Promise<QzClient> | null = null
+let qzRawModulePromise: Promise<QzClient> | null = null
 
 const DEFAULT_SIGNING_DEPENDENCIES: QzSigningAdapterDependencies = {
   fetchImpl: (input, init) => fetch(input, init),
@@ -229,6 +230,34 @@ async function loadQz(): Promise<QzClient> {
   return qzModulePromise
 }
 
+type HistoricalRawQzSecurity = {
+  setCertificatePromise: (
+    promiseHandler: (resolve: (value: string) => void) => void,
+  ) => void
+  setSignaturePromise: (
+    promiseFactory: () => (resolve: (value: string) => void) => void,
+  ) => void
+}
+
+async function loadRawQz(): Promise<QzClient> {
+  if (typeof window === 'undefined') {
+    throw new Error('QZ_BROWSER_ONLY')
+  }
+  if (!qzRawModulePromise) {
+    // The resource query gives the historical RAW path its own qz-tray SDK
+    // instance, so its unsigned callbacks cannot be replaced by the optional
+    // Signed adapter's security initialization.
+    qzRawModulePromise = import('qz-tray?raw-connection').then((mod) => {
+      const qz = ((mod as { default?: QzClient }).default ?? mod) as QzClient
+      const security = qz.security as unknown as HistoricalRawQzSecurity
+      security.setCertificatePromise((resolve) => resolve(''))
+      security.setSignaturePromise(() => (resolve) => resolve(''))
+      return qz
+    })
+  }
+  return qzRawModulePromise
+}
+
 async function ensureConnected(qz: QzClient): Promise<void> {
   if (qz.websocket.isActive()) return
   await qz.websocket.connect({ retries: 1, delay: 0 })
@@ -367,7 +396,7 @@ export async function printEscPosBitImageViaFixedQzQueue(
   client?: QzClient,
 ): Promise<{ kind: QzPrintKind; queueName: string }> {
   const queueName = QZ_PRINT_QUEUES[kind]
-  const qz = client ?? (await loadQz())
+  const qz = client ?? (await loadRawQz())
   await ensureFixedQueueConnected(qz, queueName)
   await assertQueueExists(qz, queueName)
 
