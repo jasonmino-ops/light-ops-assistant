@@ -1389,6 +1389,7 @@ export default function CashierPage() {
   const receiptPrintLockedRef = useRef(false)
   const qzPrintInFlightRef = useRef<Set<QzPrintKind>>(new Set())
   const qzRawBusinessActive = QZ_BUSINESS_RAW_PREVIEW_ACTIVE || qzRawCanaryAuthorized
+  const qzClientMode = qzRawBusinessActive ? 'raw' : 'signed'
 
   const focusSearchInput = useCallback(() => {
     window.setTimeout(() => searchRef.current?.focus(), 0)
@@ -2209,7 +2210,7 @@ export default function CashierPage() {
     setQzChecking(true)
     setQzStatus('checking')
     try {
-      const online = await detectQzOnline()
+      const online = await detectQzOnline(undefined, qzClientMode)
       if (!request.isCurrent()) return
       if (!online) {
         setQzStatus('offline')
@@ -2217,7 +2218,7 @@ export default function CashierPage() {
         return
       }
       setQzStatus('online')
-      const printers = await listQzPrinters()
+      const printers = await listQzPrinters(undefined, qzClientMode)
       if (!request.isCurrent()) return
       setQzPrinters(printers)
       if (qzSelectedPrinter && !printers.includes(qzSelectedPrinter)) {
@@ -2232,7 +2233,7 @@ export default function CashierPage() {
     } finally {
       if (request.isCurrent()) setQzChecking(false)
     }
-  }, [qzChecking, qzSelectedPrinter, storeCode])
+  }, [qzChecking, qzClientMode, qzSelectedPrinter, storeCode])
 
   function handleQzPrintToggle() {
     const next = !qzPrintEnabled

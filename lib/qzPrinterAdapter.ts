@@ -57,6 +57,7 @@ export const QZ_PRINT_QUEUES = {
 } as const
 
 export type QzPrintKind = keyof typeof QZ_PRINT_QUEUES
+export type QzClientMode = 'signed' | 'raw'
 
 export class QzPrintError extends Error {
   constructor(
@@ -258,6 +259,10 @@ async function loadRawQz(): Promise<QzClient> {
   return qzRawModulePromise
 }
 
+async function loadQzClient(mode: QzClientMode): Promise<QzClient> {
+  return mode === 'raw' ? loadRawQz() : loadQz()
+}
+
 async function ensureConnected(qz: QzClient): Promise<void> {
   if (qz.websocket.isActive()) return
   await qz.websocket.connect({ retries: 1, delay: 0 })
@@ -290,9 +295,12 @@ async function assertQueueExists(qz: QzClient, queueName: string): Promise<void>
   }
 }
 
-export async function detectQzOnline(client?: QzClient): Promise<boolean> {
+export async function detectQzOnline(
+  client?: QzClient,
+  mode: QzClientMode = 'signed',
+): Promise<boolean> {
   try {
-    const qz = client ?? (await loadQz())
+    const qz = client ?? (await loadQzClient(mode))
     await ensureConnected(qz)
     return qz.websocket.isActive()
   } catch {
@@ -300,8 +308,11 @@ export async function detectQzOnline(client?: QzClient): Promise<boolean> {
   }
 }
 
-export async function listQzPrinters(client?: QzClient): Promise<string[]> {
-  const qz = client ?? (await loadQz())
+export async function listQzPrinters(
+  client?: QzClient,
+  mode: QzClientMode = 'signed',
+): Promise<string[]> {
+  const qz = client ?? (await loadQzClient(mode))
   await ensureConnected(qz)
   const result = await qz.printers.find()
   return Array.isArray(result) ? result : [result]
