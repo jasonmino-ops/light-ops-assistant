@@ -155,6 +155,11 @@ VEVTVA==
   let signatureHandler: ((value: string) => Promise<string>) | null = null
   let signatureAlgorithm = ''
   let connectionCertificate = ''
+  const signingStoreCodes: string[] = []
+  const readCashierStoreCode = () => {
+    signingStoreCodes.push('ST169E7000')
+    return 'ST169E7000'
+  }
   const observeAuthorizedCall = async (call: 'printers.find' | 'qz.print') => {
     if (!certificateHandler || !signatureHandler) throw new Error('signing callbacks missing')
     const activeCertificateHandler = certificateHandler
@@ -211,7 +216,7 @@ VEVTVA==
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     writable: true,
-    value: { location: { pathname: '/desktop/pos', search: '?storeCode=ST169E7000' } },
+    value: { location: { pathname: '/cashier', search: '' } },
   })
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
@@ -238,20 +243,23 @@ VEVTVA==
     }
     if (endpoint === '/api/qz/sign') {
       assert.equal(init?.body, digest)
+      const headers = new Headers(init?.headers)
+      assert.equal(headers.get('x-pos-device-token'), 'valid-pos-token')
+      assert.equal(headers.get('x-pos-device-id'), 'valid-pos-device-id')
       return new Response(signature, { status: 200, headers: { 'Content-Type': 'text/plain' } })
     }
     throw new Error(`unexpected endpoint: ${endpoint}`)
   }
 
   try {
-    assert.deepEqual(await listQzPrinters(client, 'raw'), ['前台', '厨房'])
+    assert.deepEqual(await listQzPrinters(client, 'raw', readCashierStoreCode), ['前台', '厨房'])
     assert.deepEqual(callOrder, [
       'security.certificate',
       'security.signature',
       'websocket.connect',
       'printers.find',
     ], 'RAW status enumeration must immediately follow its signed connection')
-    await printEscPosBitImageViaFixedQzQueue('receipt', FORMAL_RAW_BYTES, client)
+    await printEscPosBitImageViaFixedQzQueue('receipt', FORMAL_RAW_BYTES, client, readCashierStoreCode)
   } finally {
     Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: previousWindow })
     Object.defineProperty(globalThis, 'localStorage', { configurable: true, writable: true, value: previousLocalStorage })
@@ -283,6 +291,7 @@ VEVTVA==
     '/api/qz/config', '/api/qz/sign',
   ])
   assert.deepEqual(certificateModes, ['signed'], 'RAW enumeration and print must share one signed security context')
+  assert.deepEqual(signingStoreCodes, ['ST169E7000', 'ST169E7000', 'ST169E7000'])
 }
 
 async function run() {

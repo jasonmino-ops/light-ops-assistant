@@ -35,25 +35,25 @@ const authenticatedRawSecurity = adapter.slice(
   adapter.indexOf('function configureRawAuthenticatedSecurity'),
   adapter.indexOf('async function loadRawQz'),
 )
-assert.match(authenticatedRawSecurity, /configureQzSigningSecurity\(qz\)/)
+assert.match(authenticatedRawSecurity, /configureQzSigningSecurity\(qz, DEFAULT_SIGNING_DEPENDENCIES, storeContextProvider\)/)
 
 const rawConnection = adapter.slice(
   adapter.indexOf('async function ensureConnected'),
   adapter.indexOf('async function ensureFixedQueueConnected'),
 )
-assert.match(rawConnection, /if \(mode === 'raw'\) configureRawAuthenticatedSecurity\(qz\)[\s\S]*qz\.websocket\.connect/)
+assert.match(rawConnection, /if \(mode === 'raw'\) configureRawAuthenticatedSecurity\(qz, storeContextProvider\)[\s\S]*qz\.websocket\.connect/)
 
 const rawEnumeration = adapter.slice(
   adapter.indexOf('export async function listQzPrinters'),
   adapter.indexOf('export async function printHelloWorldViaQz'),
 )
-assert.match(rawEnumeration, /ensureConnected\(qz, mode\)[\s\S]*if \(mode === 'raw'\) configureRawAuthenticatedSecurity\(qz\)[\s\S]*qz\.printers\.find\(\)/)
+assert.match(rawEnumeration, /ensureConnected\(qz, mode, storeContextProvider\)[\s\S]*if \(mode === 'raw'\) configureRawAuthenticatedSecurity\(qz, storeContextProvider\)[\s\S]*qz\.printers\.find\(\)/)
 
 const rawPrint = adapter.slice(
   adapter.indexOf('export async function printEscPosBitImageViaFixedQzQueue'),
   adapter.indexOf('export type QzHtmlRasterizer'),
 )
-assert.match(rawPrint, /ensureFixedQueueConnected\(qz, queueName\)[\s\S]*configureRawAuthenticatedSecurity\(qz\)[\s\S]*assertQueueExists\(qz, queueName\)[\s\S]*qz\.print\(config/)
+assert.match(rawPrint, /ensureFixedQueueConnected\(qz, queueName, storeContextProvider\)[\s\S]*configureRawAuthenticatedSecurity\(qz, storeContextProvider\)[\s\S]*assertQueueExists\(qz, queueName\)[\s\S]*qz\.print\(config/)
 
 assert.match(renderer, /QZ_RAW_PRINTABLE_WIDTH_PX = 576/)
 assert.match(renderer, /import\('html2canvas'\)/)

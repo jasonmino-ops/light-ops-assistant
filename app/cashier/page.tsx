@@ -1339,6 +1339,7 @@ export default function CashierPage() {
   const [qzChecking, setQzChecking] = useState(false)
   const qzRequestVersionRef = useRef(0)
   const qzActiveStoreCodeRef = useRef<string | null>(null)
+  const readQzSigningStoreCode = useCallback(() => qzActiveStoreCodeRef.current, [])
   const [compactMode, setCompactMode] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
   const [holdOrders, setHoldOrders] = useState<HoldOrder<CartLine, DesktopCheckoutStep>[]>([])
@@ -2066,7 +2067,7 @@ export default function CashierPage() {
     kitchenTicket?: KitchenTicketData,
   ) => {
     if (kind === 'receipt') {
-      await printCustomerReceiptViaQz(renderDesktopReceiptHtml(receipt, lang))
+      await printCustomerReceiptViaQz(renderDesktopReceiptHtml(receipt, lang), undefined, undefined, readQzSigningStoreCode)
       return
     }
     const ticket = kitchenTicket ?? {
@@ -2075,8 +2076,8 @@ export default function CashierPage() {
       createdAt: receipt.createdAt,
       items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
     }
-    await printKitchenTicketViaQz(getKitchenTicketHtmlForTest(ticket, lang))
-  }, [lang])
+    await printKitchenTicketViaQz(getKitchenTicketHtmlForTest(ticket, lang), undefined, undefined, readQzSigningStoreCode)
+  }, [lang, readQzSigningStoreCode])
 
   const handleControlledQzPrint = useCallback(async (
     kind: QzPrintKind,
@@ -2209,7 +2210,7 @@ export default function CashierPage() {
     setQzChecking(true)
     setQzStatus('checking')
     try {
-      const printers = await listQzPrinters(undefined, qzClientMode)
+      const printers = await listQzPrinters(undefined, qzClientMode, readQzSigningStoreCode)
       if (!request.isCurrent()) return
       setQzPrinters(printers)
       setQzStatus('online')
@@ -2225,7 +2226,7 @@ export default function CashierPage() {
     } finally {
       if (request.isCurrent()) setQzChecking(false)
     }
-  }, [qzChecking, qzClientMode, qzSelectedPrinter, storeCode])
+  }, [qzChecking, qzClientMode, qzSelectedPrinter, readQzSigningStoreCode, storeCode])
 
   function handleQzPrintToggle() {
     const next = !qzPrintEnabled

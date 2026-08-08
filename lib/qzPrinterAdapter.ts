@@ -27,6 +27,8 @@ export type QzSigningAdapterDependencies = {
   getPosHeaders: (storeCode: string) => Record<string, string>
 }
 
+export type QzSigningStoreContextProvider = () => string | null
+
 export type QzClient = {
   websocket: {
     isActive: () => boolean
@@ -135,10 +137,15 @@ async function readSigningConfig(
   }
 }
 
-function readStoreCode(dependencies: QzSigningAdapterDependencies): string {
-  const values = new URLSearchParams(dependencies.readLocationSearch())
-    .getAll('storeCode')
-    .map((value) => value.trim())
+function readStoreCode(
+  dependencies: QzSigningAdapterDependencies,
+  storeContextProvider?: QzSigningStoreContextProvider,
+): string {
+  const values = storeContextProvider
+    ? [storeContextProvider()?.trim() ?? '']
+    : new URLSearchParams(dependencies.readLocationSearch())
+      .getAll('storeCode')
+      .map((value) => value.trim())
   if (values.length !== 1 || !STORE_CODE_PATTERN.test(values[0])) {
     throw new Error('QZ_SIGNING_STORE_CONTEXT_INVALID')
   }
@@ -164,9 +171,10 @@ async function requestSignature(
   config: QzRemoteSigningConfig,
   digest: string,
   dependencies: QzSigningAdapterDependencies,
+  storeContextProvider?: QzSigningStoreContextProvider,
 ): Promise<string> {
   if (!DIGEST_PATTERN.test(digest)) throw new Error('QZ_SIGNING_DIGEST_INVALID')
-  const storeCode = readStoreCode(dependencies)
+  const storeCode = readStoreCode(dependencies, storeContextProvider)
   const posHeaders = dependencies.getPosHeaders(storeCode)
   const token = posHeaders['x-pos-device-token']?.trim() ?? ''
   const deviceId = posHeaders['x-pos-device-id']?.trim() ?? ''
@@ -196,6 +204,7 @@ async function requestSignature(
 export function configureQzSigningSecurity(
   qz: QzClient,
   dependencies: QzSigningAdapterDependencies = DEFAULT_SIGNING_DEPENDENCIES,
+  storeContextProvider?: QzSigningStoreContextProvider,
 ): void {
   let activeConfig: QzRemoteSigningConfig | null = null
 
@@ -209,7 +218,7 @@ export function configureQzSigningSecurity(
 
   qz.security.setSignaturePromise(async (digest) => {
     if (!activeConfig) throw new Error('QZ_SIGNING_CONFIG_UNAVAILABLE')
-    return requestSignature(activeConfig, digest, dependencies)
+    return requestSignature(activeConfig, digest, dependencies, storeContextProvider)
   })
 }
 
@@ -232,9 +241,12 @@ async function loadQz(): Promise<QzClient> {
   return qzModulePromise
 }
 
-function configureRawAuthenticatedSecurity(qz: QzClient): void {
+function configureRawAuthenticatedSecurity(
+  qz: QzClient,
+  storeContextProvider?: QzSigningStoreContextProvider,
+): void {
   if (qzRawAuthenticatedClients.has(qz)) return
-  configureQzSigningSecurity(qz)
+  configureQzSigningSecurity(qz, DEFAULT_SIGNING_DEPENDENCIES, storeContextProvider)
   qzRawAuthenticatedClients.add(qz)
 }
 
@@ -257,15 +269,23 @@ async function loadQzClient(mode: QzClientMode): Promise<QzClient> {
   return mode === 'raw' ? loadRawQz() : loadQz()
 }
 
-async function ensureConnected(qz: QzClient, mode: QzClientMode = 'signed'): Promise<void> {
-  if (mode === 'raw') configureRawAuthenticatedSecurity(qz)
+async function ensureConnected(
+  qz: QzClient,
+  mode: QzClientMode = 'signed',
+  storeContextProvider?: QzSigningStoreContextProvider,
+): Promise<void> {
+  if (mode === 'raw') configureRawAuthenticatedSecurity(qz, storeContextProvider)
   if (qz.websocket.isActive()) return
   await qz.websocket.connect({ retries: 1, delay: 0 })
 }
 
-async function ensureFixedQueueConnected(qz: QzClient, queueName: string): Promise<void> {
+async function ensureFixedQueueConnected(
+  qz: QzClient,
+  queueName: string,
+  storeContextProvider?: QzSigningStoreContextProvider,
+): Promise<void> {
   try {
-    await ensureConnected(qz, 'raw')
+    await ensureConnected(qz, 'raw', storeContextProvider)
     if (!qz.websocket.isActive()) {
       throw new Error('QZ websocket inactive after connect')
     }
@@ -306,10 +326,11 @@ export async function detectQzOnline(
 export async function listQzPrinters(
   client?: QzClient,
   mode: QzClientMode = 'signed',
+  storeContextProvider?: QzSigningStoreContextProvider,
 ): Promise<string[]> {
   const qz = client ?? (await loadQzClient(mode))
-  await ensureConnected(qz, mode)
-  if (mode === 'raw') configureRawAuthenticatedSecurity(qz)
+  await ensureConnected(qz, mode, storeContextProvider)
+  if (mode === 'raw') configureRawAuthenticatedSecurity(qz, storeContextProvider)
   const result = await qz.printers.find()
   return Array.isArray(result) ? result : [result]
 }
@@ -401,11 +422,12 @@ export async function printEscPosBitImageViaFixedQzQueue(
   kind: QzPrintKind,
   bytes: Uint8Array,
   client?: QzClient,
+  storeContextProvider?: QzSigningStoreContextProvider,
 ): Promise<{ kind: QzPrintKind; queueName: string }> {
   const queueName = QZ_PRINT_QUEUES[kind]
   const qz = client ?? (await loadRawQz())
-  await ensureFixedQueueConnected(qz, queueName)
-  configureRawAuthenticatedSecurity(qz)
+  await ensureFixedQueueConnected(qz, queueName, storeContextProvider)
+  configureRawAuthenticatedSecurity(qz, storeContextProvider)
   await assertQueueExists(qz, queueName)
 
   const config = qz.configs.create(queueName)
@@ -429,6 +451,7 @@ export async function printHtmlAsEscPosBitImageViaFixedQzQueue(
   html: string,
   client?: QzClient,
   rasterize: QzHtmlRasterizer = renderTicketHtmlToEscPosRaw,
+  storeContextProvider?: QzSigningStoreContextProvider,
 ) {
   const queueName = QZ_PRINT_QUEUES[kind]
   let bytes: Uint8Array
@@ -437,21 +460,23 @@ export async function printHtmlAsEscPosBitImageViaFixedQzQueue(
   } catch (cause) {
     throw new QzPrintError('QZ_PRINT_FAILED', queueName, { cause })
   }
-  return printEscPosBitImageViaFixedQzQueue(kind, bytes, client)
+  return printEscPosBitImageViaFixedQzQueue(kind, bytes, client, storeContextProvider)
 }
 
 export function printCustomerReceiptViaQz(
   html: string,
   client?: QzClient,
   rasterize?: QzHtmlRasterizer,
+  storeContextProvider?: QzSigningStoreContextProvider,
 ) {
-  return printHtmlAsEscPosBitImageViaFixedQzQueue('receipt', html, client, rasterize)
+  return printHtmlAsEscPosBitImageViaFixedQzQueue('receipt', html, client, rasterize, storeContextProvider)
 }
 
 export function printKitchenTicketViaQz(
   html: string,
   client?: QzClient,
   rasterize?: QzHtmlRasterizer,
+  storeContextProvider?: QzSigningStoreContextProvider,
 ) {
-  return printHtmlAsEscPosBitImageViaFixedQzQueue('kitchen', html, client, rasterize)
+  return printHtmlAsEscPosBitImageViaFixedQzQueue('kitchen', html, client, rasterize, storeContextProvider)
 }

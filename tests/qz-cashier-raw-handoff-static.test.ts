@@ -6,8 +6,8 @@ const access = readFileSync(new URL('../app/api/cashier/access/route.ts', import
 const adapter = readFileSync(new URL('../lib/qzPrinterAdapter.ts', import.meta.url), 'utf8')
 
 assert.match(cashier, /const submitRawTicket = useCallback/)
-assert.match(cashier, /printCustomerReceiptViaQz\(renderDesktopReceiptHtml\(receipt, lang\)\)/)
-assert.match(cashier, /printKitchenTicketViaQz\(getKitchenTicketHtmlForTest\(ticket, lang\)\)/)
+assert.match(cashier, /printCustomerReceiptViaQz\(renderDesktopReceiptHtml\(receipt, lang\), undefined, undefined, readQzSigningStoreCode\)/)
+assert.match(cashier, /printKitchenTicketViaQz\(getKitchenTicketHtmlForTest\(ticket, lang\), undefined, undefined, readQzSigningStoreCode\)/)
 assert.match(adapter, /printHtmlAsEscPosBitImageViaFixedQzQueue\('receipt'/)
 assert.match(adapter, /printHtmlAsEscPosBitImageViaFixedQzQueue\('kitchen'/)
 
@@ -16,14 +16,15 @@ assert.match(cashier, /QZ_PREVIEW_LABEL === 'QZ-PRINT-02D'/)
 assert.match(cashier, /\^\[0-9a-f\]\{40\}\$/)
 assert.match(cashier, /QZ_BUSINESS_RAW_PREVIEW_ACTIVE \|\| qzRawCanaryAuthorized/)
 assert.match(cashier, /const qzClientMode = qzRawBusinessActive \? 'raw' : 'signed'/)
-assert.match(cashier, /listQzPrinters\(undefined, qzClientMode\)/)
+assert.match(cashier, /const readQzSigningStoreCode = useCallback\(\(\) => qzActiveStoreCodeRef\.current, \[\]\)/)
+assert.match(cashier, /listQzPrinters\(undefined, qzClientMode, readQzSigningStoreCode\)/)
 const qzStatusRefresh = cashier.slice(
   cashier.indexOf('const handleRefreshQzStatus = useCallback'),
   cashier.indexOf('function handleQzPrintToggle'),
 )
 assert.doesNotMatch(qzStatusRefresh, /detectQzOnline/, 'RAW status refresh must not stop between signed connect and enumeration')
 assert.ok(
-  qzStatusRefresh.indexOf('listQzPrinters(undefined, qzClientMode)') < qzStatusRefresh.indexOf("setQzStatus('online')"),
+  qzStatusRefresh.indexOf('listQzPrinters(undefined, qzClientMode, readQzSigningStoreCode)') < qzStatusRefresh.indexOf("setQzStatus('online')"),
   'RAW status refresh must enumerate printers before reporting QZ online',
 )
 assert.ok(
@@ -53,5 +54,7 @@ const rawHandoff = cashier.slice(
   cashier.indexOf('const handlePrintReceipt = useCallback'),
 )
 assert.doesNotMatch(rawHandoff, /printDesktopReceipt|printKitchenTicket\(/, 'RAW handoff must not call browser printing')
+assert.match(rawHandoff, /printCustomerReceiptViaQz\([\s\S]*readQzSigningStoreCode\)/)
+assert.match(rawHandoff, /printKitchenTicketViaQz\([\s\S]*readQzSigningStoreCode\)/)
 
 console.log('QZ cashier RAW handoff static checks passed')
