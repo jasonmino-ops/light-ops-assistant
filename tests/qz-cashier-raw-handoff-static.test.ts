@@ -61,8 +61,8 @@ const manualRawButtons = cashier.slice(
 assert.match(manualRawButtons, /data-qz-print-kind="receipt"[\s\S]*onClick=\{\(\) => void handleControlledQzPrint\('receipt', saleResult\.receipt!, saleResult\.kitchenTicket\)\}/, 'OFF customer button must remain manual')
 assert.match(manualRawButtons, /data-qz-print-kind="kitchen"[\s\S]*onClick=\{\(\) => void handleControlledQzPrint\('kitchen', saleResult\.receipt!, saleResult\.kitchenTicket\)\}/, 'OFF kitchen button must remain manual')
 
-assert.match(access, /const QZ_RAW_CANARY_STORE_CODE = 'ST169E7000'/)
 assert.match(access, /process\.env\.QZ_RAW_CANARY_ENABLED === '1'/)
+assert.doesNotMatch(access, /QZ_RAW_CANARY_STORE_CODE|store\.code === ['"]ST169E7000['"]/, 'RAW authorization must not retain the historical single-store restriction')
 assert.match(access, /verifyPosDeviceRequest\(req, expectedStore\)/)
 assert.match(access, /deviceAuth\?\.browserPosSessionId/)
 assert.match(access, /browserPosDeviceId: deviceAuth\.browserPosSessionId/)

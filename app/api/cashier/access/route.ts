@@ -6,8 +6,6 @@ import {
 } from '@/lib/desktop-pos-auth'
 import { getContext } from '@/lib/context'
 
-const QZ_RAW_CANARY_STORE_CODE = 'ST169E7000'
-
 export async function GET(req: NextRequest) {
   const storeCode = req.nextUrl.searchParams.get('storeCode')?.trim()
   if (!storeCode) return NextResponse.json({ error: 'MISSING_STORE_CODE' }, { status: 400 })
@@ -47,7 +45,6 @@ export async function GET(req: NextRequest) {
   let qzRawCanary = false
   if (
     process.env.QZ_RAW_CANARY_ENABLED === '1' &&
-    store.code === QZ_RAW_CANARY_STORE_CODE &&
     deviceAuth?.browserPosSessionId
   ) {
     // Only prove at page load that this valid Browser POS Session originated
