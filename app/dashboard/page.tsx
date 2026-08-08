@@ -533,8 +533,8 @@ export default function DashboardPage() {
         </button>
         {showStoreConfig && (
           <>
-            <StoreConfigPanel t={t} />
             <PrintSettingsCard t={t} />
+            <StoreConfigPanel t={t} />
           </>
         )}
 
@@ -1383,7 +1383,7 @@ function PrintSettingsCard({ t }: { t: (k: string) => string }) {
   }
 
   return (
-    <div style={ps.card}>
+    <div data-print-settings-card="true" style={ps.card}>
       <div style={ps.title}>🖨️ {t('dashboard.printSettingsTitle')}</div>
       <div style={ps.desc}>{t('dashboard.printSettingsDesc')}</div>
       <div style={ps.row}>

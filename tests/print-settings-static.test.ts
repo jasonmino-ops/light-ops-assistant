@@ -23,7 +23,8 @@ assert.match(dashboard, /const STORE_CONFIG_OPEN_SESSION_KEY = 'dashboard:store-
 assert.match(dashboard, /useLayoutEffect\(\(\) => \{[\s\S]*sessionStorage\.getItem\(STORE_CONFIG_OPEN_SESSION_KEY\)[\s\S]*setShowStoreConfig\(true\)/, 'dashboard must restore the open state before browser paint')
 assert.match(dashboard, /function toggleStoreConfig\(\) \{[\s\S]*sessionStorage\.setItem\(STORE_CONFIG_OPEN_SESSION_KEY, next \? '1' : '0'\)[\s\S]*return next/, 'dashboard must persist intentional open and close actions')
 assert.match(dashboard, /onClick=\{toggleStoreConfig\}/, 'the existing store settings entry must use the stable toggle lifecycle')
-assert.match(dashboard, /showStoreConfig && \([\s\S]*<PrintSettingsCard t=\{t\} \/>/, 'print settings must remain under the existing store settings parent')
+assert.match(dashboard, /showStoreConfig && \([\s\S]*<PrintSettingsCard t=\{t\} \/>[\s\S]*<StoreConfigPanel t=\{t\} \/>/, 'print settings must remain under the existing parent and ahead of asynchronously expanding store content')
+assert.match(dashboard, /data-print-settings-card="true"/, 'the stable print settings region must be observable across async dashboard refreshes')
 
 for (const [name, source] of [['customer receipt', customerReceipt], ['kitchen ticket', kitchenTicket]]) {
   assert.match(source, /@media print \{\s*html, body \{\s*width: 80mm;\s*height: auto !important;\s*min-height: 0 !important;\s*overflow: visible !important;/, `${name} must use content-driven print height`)

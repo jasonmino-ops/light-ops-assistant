@@ -8,6 +8,22 @@ let settingsReadsAfterWrite = 0
 let delayedSettingsGetsRemaining = 0
 let delayedSettingsGetStarted: (() => void) | null = null
 let delayedSettingsGetRelease: Promise<void> = Promise.resolve()
+let storeReads = 0
+let delayStoreConfigRead = false
+let delayedStoreConfigReadStarted: (() => void) | null = null
+let delayedStoreConfigReadRelease: Promise<void> = Promise.resolve()
+let summaryReads = 0
+
+function delayNextStoreConfigRead() {
+  let release: (() => void) | null = null
+  const started = new Promise<void>((resolve) => { delayedStoreConfigReadStarted = resolve })
+  delayedStoreConfigReadRelease = new Promise<void>((resolve) => { release = resolve })
+  delayStoreConfigRead = true
+  return {
+    started,
+    release: () => release?.(),
+  }
+}
 
 function delayNextSettingsGets(count: number) {
   let release: (() => void) | null = null
@@ -29,7 +45,7 @@ async function waitForCondition(condition: () => boolean, message: string) {
 }
 
 async function mockDashboardApis(page: Page) {
-  page.setDefaultTimeout(10_000)
+  page.setDefaultTimeout(20_000)
   await page.route('https://telegram.org/**', (route) => route.abort())
   await page.route('https://fonts.googleapis.com/**', (route) => route.abort())
   await page.route('https://fonts.gstatic.com/**', (route) => route.abort())
@@ -54,6 +70,12 @@ async function mockDashboardApis(page: Page) {
       })
     }
     if (path === '/api/stores') {
+      storeReads += 1
+      if (delayStoreConfigRead) {
+        delayStoreConfigRead = false
+        delayedStoreConfigReadStarted?.()
+        await delayedStoreConfigReadRelease
+      }
       return json([{
         id: 'seed-store-a',
         name: 'Mobile Print Test',
@@ -72,6 +94,7 @@ async function mockDashboardApis(page: Page) {
     }
     if (path === '/api/admin/users') return json([])
     if (path === '/api/summary') {
+      summaryReads += 1
       return json({
         dateFrom: '2026-08-08',
         dateTo: '2026-08-08',
@@ -134,6 +157,14 @@ async function main() {
 
     const storeSettingsEntry = mobile.getByRole('button', { name: /门店配置/ })
     await storeSettingsEntry.waitFor()
+    await waitForCondition(() => storeReads >= 1, 'initial dashboard store read did not complete')
+    await waitForCondition(() => summaryReads >= 3, 'initial dashboard summary reads did not complete')
+    await mobile.waitForFunction(() => {
+      const buttons = Array.from(document.querySelectorAll('button'))
+      return buttons.some((button) => button.textContent?.trim() === '刷新' && !button.disabled)
+    })
+    await mobile.waitForTimeout(1_000)
+    const delayedStoreConfig = delayNextStoreConfigRead()
     await storeSettingsEntry.click()
     assert.equal(
       await mobile.evaluate(() => sessionStorage.getItem('dashboard:store-config-open')),
@@ -143,6 +174,27 @@ async function main() {
 
     const printSettingsTitle = mobile.getByText('🖨️ 打印设置', { exact: true })
     await printSettingsTitle.waitFor()
+    await delayedStoreConfig.started
+    const printSettingsCard = mobile.locator('[data-print-settings-card="true"]')
+    const mountedPrintSettingsCard = await printSettingsCard.elementHandle()
+    assert.ok(mountedPrintSettingsCard, 'print settings card must mount when store settings opens')
+    const initialPrintSettingsBox = await printSettingsCard.boundingBox()
+    assert.ok(initialPrintSettingsBox && initialPrintSettingsBox.y < 844, 'print settings must initially be inside the mobile viewport')
+    await mobile.getByRole('button', { name: '刷新', exact: true }).evaluate((button) => (button as HTMLElement).click())
+    await mobile.waitForTimeout(10_100)
+    delayedStoreConfig.release()
+    await waitForCondition(() => storeReads >= 2, 'store configuration refresh did not complete')
+    await mobile.waitForTimeout(200)
+    assert.equal(await mountedPrintSettingsCard.evaluate((element) => element.isConnected), true, 'async store refresh must not replace the open print settings card')
+    const refreshedPrintSettingsBox = await printSettingsCard.boundingBox()
+    assert.ok(
+      refreshedPrintSettingsBox && refreshedPrintSettingsBox.y < 844,
+      `async store refresh must not push print settings out of the mobile viewport (${JSON.stringify({ initialPrintSettingsBox, refreshedPrintSettingsBox })})`,
+    )
+    assert.ok(
+      Math.abs(refreshedPrintSettingsBox.y - initialPrintSettingsBox.y) < 20,
+      'async store content must render below the stable print settings card',
+    )
     const kitchenToggle = mobile.getByText('打印厨房小票', { exact: true })
       .locator('xpath=../..')
       .locator('button')
@@ -167,6 +219,9 @@ async function main() {
     )
     delayedGets.release()
     await mobile.waitForTimeout(200)
+    assert.equal(await printSettingsTitle.isVisible(), true, 'saving and authoritative revalidation must keep mobile print settings open')
+    const savedPrintSettingsBox = await printSettingsCard.boundingBox()
+    assert.ok(savedPrintSettingsBox && savedPrintSettingsBox.y < 844, 'saving must keep print settings inside the mobile viewport')
     assert.equal(settingsWrites, 1, 'OWNER toggle must persist through the existing settings API')
     assert.equal(printKitchenTicket, true)
     assert.equal(await kitchenToggle.getAttribute('aria-pressed'), 'true', 'a stale GET started before PATCH must not overwrite the confirmed value')
