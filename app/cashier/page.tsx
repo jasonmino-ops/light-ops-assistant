@@ -2743,11 +2743,20 @@ export default function CashierPage() {
     autoPrintedReceiptKeyRef.current = receiptKey
 
     const timer = window.setTimeout(() => {
+      if (qzRawBusinessActive) {
+        void (async () => {
+          await handleControlledQzPrint('receipt', receiptSnapshot, kitchenTicket)
+          if (kitchenTicket) {
+            await handleControlledQzPrint('kitchen', receiptSnapshot, kitchenTicket)
+          }
+        })()
+        return
+      }
       handlePrintReceipt(receiptSnapshot, kitchenTicket)
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, saleResult?.kitchenTicket, isDesktopPos, autoPrint, handlePrintReceipt])
+  }, [saleResult?.receipt, saleResult?.kitchenTicket, isDesktopPos, autoPrint, qzRawBusinessActive, handleControlledQzPrint, handlePrintReceipt])
 
   useEffect(() => {
     if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return

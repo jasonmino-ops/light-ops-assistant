@@ -40,6 +40,27 @@ assert.match(cashier, /qzPrintInFlightRef = useRef<Set<QzPrintKind>>\(new Set\(\
 assert.match(cashier, /qzPrintInFlightRef\.current\.has\(kind\)/)
 assert.match(cashier, /qzPrintInFlightRef\.current\.delete\(kind\)/)
 
+const autoPrintEffect = cashier.slice(
+  cashier.indexOf('const receiptSnapshot = saleResult?.receipt', cashier.indexOf('useEffect(() =>', cashier.indexOf('const handlePrintReceipt'))),
+  cashier.indexOf('useEffect(() =>', cashier.indexOf('const receiptSnapshot = saleResult?.receipt', cashier.indexOf('useEffect(() =>', cashier.indexOf('const handlePrintReceipt'))) + 1),
+)
+assert.match(autoPrintEffect, /if \(!isDesktopPos \|\| !autoPrint \|\| !receiptSnapshot\) return/, 'OFF must keep automatic printing disabled')
+assert.match(autoPrintEffect, /if \(qzRawBusinessActive\)/, 'RAW automatic printing must stay isolated to the RAW path')
+const automaticReceipt = "await handleControlledQzPrint('receipt', receiptSnapshot, kitchenTicket)"
+const kitchenGuard = 'if (kitchenTicket)'
+const automaticKitchen = "await handleControlledQzPrint('kitchen', receiptSnapshot, kitchenTicket)"
+assert.ok(autoPrintEffect.indexOf(automaticReceipt) >= 0, 'ON must automatically print the customer receipt')
+assert.ok(autoPrintEffect.indexOf(kitchenGuard) > autoPrintEffect.indexOf(automaticReceipt), 'the kitchen toggle result must be checked after customer printing')
+assert.ok(autoPrintEffect.indexOf(automaticKitchen) > autoPrintEffect.indexOf(kitchenGuard), 'ON + kitchen enabled must print customer then kitchen')
+assert.match(autoPrintEffect, /if \(kitchenTicket\) \{\s*await handleControlledQzPrint\('kitchen'/, 'ON + kitchen disabled must not send a kitchen ticket')
+
+const manualRawButtons = cashier.slice(
+  cashier.indexOf('data-qz-dual-queue-print="raw"'),
+  cashier.indexOf('data-qz-dual-queue-print="raw"') + 8_000,
+)
+assert.match(manualRawButtons, /data-qz-print-kind="receipt"[\s\S]*onClick=\{\(\) => void handleControlledQzPrint\('receipt', saleResult\.receipt!, saleResult\.kitchenTicket\)\}/, 'OFF customer button must remain manual')
+assert.match(manualRawButtons, /data-qz-print-kind="kitchen"[\s\S]*onClick=\{\(\) => void handleControlledQzPrint\('kitchen', saleResult\.receipt!, saleResult\.kitchenTicket\)\}/, 'OFF kitchen button must remain manual')
+
 assert.match(access, /const QZ_RAW_CANARY_STORE_CODE = 'ST169E7000'/)
 assert.match(access, /process\.env\.QZ_RAW_CANARY_ENABLED === '1'/)
 assert.match(access, /verifyPosDeviceRequest\(req, expectedStore\)/)
