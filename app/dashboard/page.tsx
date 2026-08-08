@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
@@ -47,6 +47,8 @@ type SummaryResult = {
 
 type StoreOption = { id: string; name: string }
 type StaffOption = { id: string; name: string }
+
+const STORE_CONFIG_OPEN_SESSION_KEY = 'dashboard:store-config-open'
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
@@ -122,6 +124,24 @@ export default function DashboardPage() {
   const [hotLoading, setHotLoading]             = useState(false)
   const [showStoreConfig, setShowStoreConfig]   = useState(false)
   const [dimMenuOpen, setDimMenuOpen]           = useState(false)
+
+  useLayoutEffect(() => {
+    try {
+      if (sessionStorage.getItem(STORE_CONFIG_OPEN_SESSION_KEY) === '1') {
+        setShowStoreConfig(true)
+      }
+    } catch {}
+  }, [])
+
+  function toggleStoreConfig() {
+    setShowStoreConfig((current) => {
+      const next = !current
+      try {
+        sessionStorage.setItem(STORE_CONFIG_OPEN_SESSION_KEY, next ? '1' : '0')
+      } catch {}
+      return next
+    })
+  }
 
   const load = useCallback(
     async (dim: Dimension, sid: string, uid: string, period: TimePeriod, cFrom: string, cTo: string) => {
@@ -443,7 +463,7 @@ export default function DashboardPage() {
         <button
           type="button"
           style={s.bigEntryCard}
-          onClick={() => setShowStoreConfig((v) => !v)}
+          onClick={toggleStoreConfig}
         >
           <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#ffc069,#fa8c16)' }}>🏪</div>
           <div style={s.bigEntryBody}>

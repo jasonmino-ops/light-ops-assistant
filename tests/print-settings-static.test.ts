@@ -19,6 +19,11 @@ assert.match(cashier, /const \[isKitchenTicketEnabled, setIsKitchenTicketEnabled
 assert.match(cashier, /setIsKitchenTicketEnabled\(d\.printKitchenTicket === true\)/, 'cashier must use the persisted store setting')
 assert.match(cashier, /kitchenTicket: receipt && isKitchenTicketEnabled/, 'customer receipts must remain independent from the kitchen toggle')
 assert.match(dashboard, /printSettingsTitle/, 'dashboard store settings must expose a print settings section')
+assert.match(dashboard, /const STORE_CONFIG_OPEN_SESSION_KEY = 'dashboard:store-config-open'/, 'dashboard must scope the open state to the current browser session')
+assert.match(dashboard, /useLayoutEffect\(\(\) => \{[\s\S]*sessionStorage\.getItem\(STORE_CONFIG_OPEN_SESSION_KEY\)[\s\S]*setShowStoreConfig\(true\)/, 'dashboard must restore the open state before browser paint')
+assert.match(dashboard, /function toggleStoreConfig\(\) \{[\s\S]*sessionStorage\.setItem\(STORE_CONFIG_OPEN_SESSION_KEY, next \? '1' : '0'\)[\s\S]*return next/, 'dashboard must persist intentional open and close actions')
+assert.match(dashboard, /onClick=\{toggleStoreConfig\}/, 'the existing store settings entry must use the stable toggle lifecycle')
+assert.match(dashboard, /showStoreConfig && \([\s\S]*<PrintSettingsCard t=\{t\} \/>/, 'print settings must remain under the existing store settings parent')
 
 for (const [name, source] of [['customer receipt', customerReceipt], ['kitchen ticket', kitchenTicket]]) {
   assert.match(source, /@media print \{\s*html, body \{\s*width: 80mm;\s*height: auto !important;\s*min-height: 0 !important;\s*overflow: visible !important;/, `${name} must use content-driven print height`)
