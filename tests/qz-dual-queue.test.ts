@@ -18,6 +18,7 @@ async function fakeRasterize() {
 
 function makeClient(options?: {
   active?: boolean
+  connect?: () => Promise<void>
   connectError?: Error
   printers?: string[]
   print?: (config: unknown, data: unknown[]) => Promise<void>
@@ -31,6 +32,7 @@ function makeClient(options?: {
       isActive: () => active,
       connect: async () => {
         if (options?.connectError) throw options.connectError
+        await options?.connect?.()
         active = true
       },
     },
@@ -141,6 +143,7 @@ VEVTVA==
   const signature = 'AQIDBA=='
   const fetchCalls: string[] = []
   const certificateModes: string[] = []
+  const callOrder: string[] = []
   const authorizedCalls: Array<{
     call: 'printers.find' | 'qz.print'
     certificate: string
@@ -151,6 +154,7 @@ VEVTVA==
   let certificateHandler: (() => Promise<string>) | null = null
   let signatureHandler: ((value: string) => Promise<string>) | null = null
   let signatureAlgorithm = ''
+  let connectionCertificate = ''
   const observeAuthorizedCall = async (call: 'printers.find' | 'qz.print') => {
     if (!certificateHandler || !signatureHandler) throw new Error('signing callbacks missing')
     const activeCertificateHandler = certificateHandler
@@ -168,17 +172,31 @@ VEVTVA==
   }
 
   const client = makeClient({
+    active: false,
+    connect: async () => {
+      callOrder.push('websocket.connect')
+      if (!certificateHandler || !signatureHandler) throw new Error('security not installed before connect')
+      connectionCertificate = await certificateHandler()
+    },
     security: {
       setCertificatePromise: (handler, options) => {
         certificateModes.push(options?.rejectOnFailure === true ? 'signed' : 'raw')
+        callOrder.push('security.certificate')
         certificateHandler = handler
       },
-      setSignaturePromise: (handler) => { signatureHandler = handler },
+      setSignaturePromise: (handler) => {
+        callOrder.push('security.signature')
+        signatureHandler = handler
+      },
       setSignatureAlgorithm: (algorithm) => { signatureAlgorithm = algorithm },
     },
-    print: async () => { await observeAuthorizedCall('qz.print') },
+    print: async () => {
+      callOrder.push('qz.print')
+      await observeAuthorizedCall('qz.print')
+    },
   })
   client.printers.find = async () => {
+    callOrder.push('printers.find')
     await observeAuthorizedCall('printers.find')
     return ['前台', '厨房']
   }
@@ -235,6 +253,15 @@ VEVTVA==
   }
 
   assert.deepEqual(authorizedCalls.map(({ call }) => call), ['printers.find', 'printers.find', 'qz.print'])
+  assert.deepEqual(callOrder, [
+    'security.certificate',
+    'security.signature',
+    'websocket.connect',
+    'printers.find',
+    'printers.find',
+    'qz.print',
+  ])
+  assert.equal(connectionCertificate, certificate)
   for (const request of authorizedCalls) {
     assert.equal(request.certificate, certificate)
     assert.equal(request.signature, signature)
@@ -244,6 +271,7 @@ VEVTVA==
   }
   assert.equal(signatureAlgorithm, 'SHA512')
   assert.deepEqual(fetchCalls, [
+    '/api/qz/config',
     '/api/qz/config', '/api/qz/sign',
     '/api/qz/config', '/api/qz/sign',
     '/api/qz/config', '/api/qz/sign',

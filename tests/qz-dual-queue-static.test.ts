@@ -19,21 +19,13 @@ assert.match(adapter, /printKitchenTicketViaQz[\s\S]*'kitchen'/)
 assert.match(adapter, /type:\s*'raw'/)
 assert.match(adapter, /format:\s*'base64'/)
 
-const rawSecurity = adapter.slice(
-  adapter.indexOf('function configureHistoricalRawQzSecurity'),
-  adapter.indexOf('async function loadRawQz'),
-)
-assert.match(rawSecurity, /setCertificatePromise\(\(resolve\) => resolve\(''\)\)/)
-assert.match(rawSecurity, /setSignaturePromise\(\(\) => \(resolve\) => resolve\(''\)\)/)
-assert.match(rawSecurity, /setSignatureAlgorithm\('SHA1'\)/)
-
 const rawLoader = adapter.slice(
   adapter.indexOf('async function loadRawQz'),
   adapter.indexOf('async function ensureConnected'),
 )
 assert.match(rawLoader, /import\('qz-tray\?raw-connection'\)/)
-assert.match(rawLoader, /configureHistoricalRawQzSecurity\(qz\)/)
 assert.doesNotMatch(rawLoader, /configureQzSigningSecurity\(/)
+assert.doesNotMatch(rawLoader, /resolve\(''\)/)
 
 const rawAdapter = adapter.slice(adapter.indexOf('export async function printEscPosBitImageViaFixedQzQueue'))
 assert.match(rawAdapter, /loadRawQz\(\)/)
@@ -44,6 +36,12 @@ const authenticatedRawSecurity = adapter.slice(
   adapter.indexOf('async function loadRawQz'),
 )
 assert.match(authenticatedRawSecurity, /configureQzSigningSecurity\(qz\)/)
+
+const rawConnection = adapter.slice(
+  adapter.indexOf('async function ensureConnected'),
+  adapter.indexOf('async function ensureFixedQueueConnected'),
+)
+assert.match(rawConnection, /if \(mode === 'raw'\) configureRawAuthenticatedSecurity\(qz\)[\s\S]*qz\.websocket\.connect/)
 
 const rawEnumeration = adapter.slice(
   adapter.indexOf('export async function listQzPrinters'),

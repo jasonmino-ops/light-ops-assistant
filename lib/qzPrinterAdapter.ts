@@ -232,24 +232,6 @@ async function loadQz(): Promise<QzClient> {
   return qzModulePromise
 }
 
-type HistoricalRawQzSecurity = {
-  setCertificatePromise: (
-    promiseHandler: (resolve: (value: string) => void) => void,
-  ) => void
-  setSignaturePromise: (
-    promiseFactory: () => (resolve: (value: string) => void) => void,
-  ) => void
-  setSignatureAlgorithm: (algorithm: 'SHA1') => void
-}
-
-function configureHistoricalRawQzSecurity(qz: QzClient): void {
-  const security = qz.security as unknown as HistoricalRawQzSecurity
-  security.setCertificatePromise((resolve) => resolve(''))
-  security.setSignaturePromise(() => (resolve) => resolve(''))
-  security.setSignatureAlgorithm('SHA1')
-  qzRawAuthenticatedClients.delete(qz)
-}
-
 function configureRawAuthenticatedSecurity(qz: QzClient): void {
   if (qzRawAuthenticatedClients.has(qz)) return
   configureQzSigningSecurity(qz)
@@ -261,13 +243,11 @@ async function loadRawQz(): Promise<QzClient> {
     throw new Error('QZ_BROWSER_ONLY')
   }
   if (!qzRawModulePromise) {
-    // The resource query gives the historical RAW path its own qz-tray SDK
-    // instance, so its unsigned callbacks cannot be replaced by the optional
-    // Signed adapter's security initialization.
+    // The resource query keeps the RAW transport on its own qz-tray SDK
+    // instance. Its E-Shop security providers are installed by ensureConnected
+    // before this client starts the websocket handshake.
     qzRawModulePromise = import('qz-tray?raw-connection').then((mod) => {
-      const qz = ((mod as { default?: QzClient }).default ?? mod) as QzClient
-      configureHistoricalRawQzSecurity(qz)
-      return qz
+      return ((mod as { default?: QzClient }).default ?? mod) as QzClient
     })
   }
   return qzRawModulePromise
@@ -278,8 +258,8 @@ async function loadQzClient(mode: QzClientMode): Promise<QzClient> {
 }
 
 async function ensureConnected(qz: QzClient, mode: QzClientMode = 'signed'): Promise<void> {
+  if (mode === 'raw') configureRawAuthenticatedSecurity(qz)
   if (qz.websocket.isActive()) return
-  if (mode === 'raw') configureHistoricalRawQzSecurity(qz)
   await qz.websocket.connect({ retries: 1, delay: 0 })
 }
 
