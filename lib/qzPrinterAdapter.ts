@@ -72,7 +72,7 @@ export class QzPrintError extends Error {
 
 let qzModulePromise: Promise<QzClient> | null = null
 let qzRawModulePromise: Promise<QzClient> | null = null
-let qzRawSignedPrintTail: Promise<void> = Promise.resolve()
+const qzRawAuthenticatedClients = new WeakSet<QzClient>()
 
 const DEFAULT_SIGNING_DEPENDENCIES: QzSigningAdapterDependencies = {
   fetchImpl: (input, init) => fetch(input, init),
@@ -247,6 +247,13 @@ function configureHistoricalRawQzSecurity(qz: QzClient): void {
   security.setCertificatePromise((resolve) => resolve(''))
   security.setSignaturePromise(() => (resolve) => resolve(''))
   security.setSignatureAlgorithm('SHA1')
+  qzRawAuthenticatedClients.delete(qz)
+}
+
+function configureRawAuthenticatedSecurity(qz: QzClient): void {
+  if (qzRawAuthenticatedClients.has(qz)) return
+  configureQzSigningSecurity(qz)
+  qzRawAuthenticatedClients.add(qz)
 }
 
 async function loadRawQz(): Promise<QzClient> {
@@ -270,14 +277,15 @@ async function loadQzClient(mode: QzClientMode): Promise<QzClient> {
   return mode === 'raw' ? loadRawQz() : loadQz()
 }
 
-async function ensureConnected(qz: QzClient): Promise<void> {
+async function ensureConnected(qz: QzClient, mode: QzClientMode = 'signed'): Promise<void> {
   if (qz.websocket.isActive()) return
+  if (mode === 'raw') configureHistoricalRawQzSecurity(qz)
   await qz.websocket.connect({ retries: 1, delay: 0 })
 }
 
 async function ensureFixedQueueConnected(qz: QzClient, queueName: string): Promise<void> {
   try {
-    await ensureConnected(qz)
+    await ensureConnected(qz, 'raw')
     if (!qz.websocket.isActive()) {
       throw new Error('QZ websocket inactive after connect')
     }
@@ -302,32 +310,13 @@ async function assertQueueExists(qz: QzClient, queueName: string): Promise<void>
   }
 }
 
-async function submitSignedRawPrintRequest(
-  qz: QzClient,
-  config: unknown,
-  data: unknown[],
-): Promise<void> {
-  const request = qzRawSignedPrintTail.then(async () => {
-    // Keep the historical RAW callbacks for connection and enumeration. Only
-    // the actual print request uses the existing E-Shop signing implementation.
-    configureQzSigningSecurity(qz)
-    try {
-      await qz.print(config, data)
-    } finally {
-      configureHistoricalRawQzSecurity(qz)
-    }
-  })
-  qzRawSignedPrintTail = request.catch(() => {})
-  return request
-}
-
 export async function detectQzOnline(
   client?: QzClient,
   mode: QzClientMode = 'signed',
 ): Promise<boolean> {
   try {
     const qz = client ?? (await loadQzClient(mode))
-    await ensureConnected(qz)
+    await ensureConnected(qz, mode)
     return qz.websocket.isActive()
   } catch {
     return false
@@ -339,7 +328,8 @@ export async function listQzPrinters(
   mode: QzClientMode = 'signed',
 ): Promise<string[]> {
   const qz = client ?? (await loadQzClient(mode))
-  await ensureConnected(qz)
+  await ensureConnected(qz, mode)
+  if (mode === 'raw') configureRawAuthenticatedSecurity(qz)
   const result = await qz.printers.find()
   return Array.isArray(result) ? result : [result]
 }
@@ -435,11 +425,12 @@ export async function printEscPosBitImageViaFixedQzQueue(
   const queueName = QZ_PRINT_QUEUES[kind]
   const qz = client ?? (await loadRawQz())
   await ensureFixedQueueConnected(qz, queueName)
+  configureRawAuthenticatedSecurity(qz)
   await assertQueueExists(qz, queueName)
 
   const config = qz.configs.create(queueName)
   try {
-    await submitSignedRawPrintRequest(qz, config, [{
+    await qz.print(config, [{
       type: 'raw',
       format: 'base64',
       data: qzRawBytesToBase64(bytes),

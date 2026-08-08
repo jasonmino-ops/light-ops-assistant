@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   QZ_PRINT_QUEUES,
   QzPrintError,
+  listQzPrinters,
   printEscPosBitImageViaFixedQzQueue,
   printCustomerReceiptViaQz,
   printKitchenTicketViaQz,
@@ -140,12 +141,31 @@ VEVTVA==
   const signature = 'AQIDBA=='
   const fetchCalls: string[] = []
   const certificateModes: string[] = []
+  const authorizedCalls: Array<{
+    call: 'printers.find' | 'qz.print'
+    certificate: string
+    signature: string
+    certificateHandler: unknown
+    signatureHandler: unknown
+  }> = []
   let certificateHandler: (() => Promise<string>) | null = null
   let signatureHandler: ((value: string) => Promise<string>) | null = null
   let signatureAlgorithm = ''
-  let observedSignatureAlgorithm = ''
-  let observedCertificate = ''
-  let observedSignature = ''
+  const observeAuthorizedCall = async (call: 'printers.find' | 'qz.print') => {
+    if (!certificateHandler || !signatureHandler) throw new Error('signing callbacks missing')
+    const activeCertificateHandler = certificateHandler
+    const activeSignatureHandler = signatureHandler
+    const observedCertificate = await activeCertificateHandler()
+    assert.equal(signatureAlgorithm, 'SHA512')
+    const observedSignature = await activeSignatureHandler(digest)
+    authorizedCalls.push({
+      call,
+      certificate: observedCertificate,
+      signature: observedSignature,
+      certificateHandler: activeCertificateHandler,
+      signatureHandler: activeSignatureHandler,
+    })
+  }
 
   const client = makeClient({
     security: {
@@ -156,13 +176,12 @@ VEVTVA==
       setSignaturePromise: (handler) => { signatureHandler = handler },
       setSignatureAlgorithm: (algorithm) => { signatureAlgorithm = algorithm },
     },
-    print: async () => {
-      if (!certificateHandler || !signatureHandler) throw new Error('signing callbacks missing')
-      observedCertificate = await certificateHandler()
-      observedSignatureAlgorithm = signatureAlgorithm
-      observedSignature = await signatureHandler(digest)
-    },
+    print: async () => { await observeAuthorizedCall('qz.print') },
   })
+  client.printers.find = async () => {
+    await observeAuthorizedCall('printers.find')
+    return ['前台', '厨房']
+  }
 
   const previousWindow = globalThis.window
   const previousLocalStorage = globalThis.localStorage
@@ -207,6 +226,7 @@ VEVTVA==
   }
 
   try {
+    assert.deepEqual(await listQzPrinters(client, 'raw'), ['前台', '厨房'])
     await printEscPosBitImageViaFixedQzQueue('receipt', FORMAL_RAW_BYTES, client)
   } finally {
     Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: previousWindow })
@@ -214,13 +234,21 @@ VEVTVA==
     globalThis.fetch = previousFetch
   }
 
-  assert.equal(observedCertificate, certificate)
-  assert.equal(observedSignature, signature)
-  assert.notEqual(observedSignature, '')
-  assert.equal(observedSignatureAlgorithm, 'SHA512')
-  assert.equal(signatureAlgorithm, 'SHA1')
-  assert.deepEqual(fetchCalls, ['/api/qz/config', '/api/qz/sign'])
-  assert.deepEqual(certificateModes, ['signed', 'raw'], 'RAW callbacks must be restored after the print request')
+  assert.deepEqual(authorizedCalls.map(({ call }) => call), ['printers.find', 'printers.find', 'qz.print'])
+  for (const request of authorizedCalls) {
+    assert.equal(request.certificate, certificate)
+    assert.equal(request.signature, signature)
+    assert.notEqual(request.signature, '')
+    assert.equal(request.certificateHandler, authorizedCalls[0].certificateHandler)
+    assert.equal(request.signatureHandler, authorizedCalls[0].signatureHandler)
+  }
+  assert.equal(signatureAlgorithm, 'SHA512')
+  assert.deepEqual(fetchCalls, [
+    '/api/qz/config', '/api/qz/sign',
+    '/api/qz/config', '/api/qz/sign',
+    '/api/qz/config', '/api/qz/sign',
+  ])
+  assert.deepEqual(certificateModes, ['signed'], 'RAW enumeration and print must share one signed security context')
 }
 
 async function run() {
