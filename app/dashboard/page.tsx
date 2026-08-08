@@ -50,6 +50,65 @@ type StaffOption = { id: string; name: string }
 
 const STORE_CONFIG_OPEN_SESSION_KEY = 'dashboard:store-config-open'
 
+type PrintSettingsApiBody = {
+  error?: string
+  message?: string
+  printKitchenTicket?: boolean
+}
+
+let printSettingsSnapshot: boolean | null = null
+let printSettingsDraft: boolean | null = null
+let printSettingsRevision = 0
+let printSettingsMutation: Promise<boolean> | null = null
+
+async function readPrintKitchenTicketSetting() {
+  const res = await apiFetch('/api/store/settings', { cache: 'no-store' }, OWNER_CTX)
+  const body = await res.json().catch(() => ({})) as PrintSettingsApiBody
+  if (!res.ok || body.error) {
+    throw new Error(body.message ?? body.error ?? 'PRINT_SETTINGS_READ_FAILED')
+  }
+  return body.printKitchenTicket === true
+}
+
+async function readLatestPrintKitchenTicketSetting() {
+  while (true) {
+    const pendingMutation = printSettingsMutation
+    if (pendingMutation) {
+      await pendingMutation.catch(() => undefined)
+    }
+
+    const revision = printSettingsRevision
+    const value = await readPrintKitchenTicketSetting()
+    if (revision === printSettingsRevision) return value
+  }
+}
+
+function persistPrintKitchenTicketSetting(next: boolean) {
+  printSettingsRevision += 1
+
+  const request = (async () => {
+    const res = await apiFetch('/api/store/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ printKitchenTicket: next }),
+    }, OWNER_CTX)
+    const body = await res.json().catch(() => ({})) as PrintSettingsApiBody
+    if (!res.ok || body.error) {
+      throw new Error(body.message ?? body.error ?? 'PRINT_SETTINGS_SAVE_FAILED')
+    }
+
+    const confirmed = await readPrintKitchenTicketSetting()
+    if (confirmed !== next) throw new Error('PRINT_SETTINGS_READBACK_MISMATCH')
+    return confirmed
+  })()
+
+  let tracked: Promise<boolean>
+  tracked = request.finally(() => {
+    if (printSettingsMutation === tracked) printSettingsMutation = null
+  })
+  printSettingsMutation = tracked
+  return tracked
+}
+
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
 function fmtAmount(n: number, currencyCode?: string | null) {
@@ -1268,41 +1327,54 @@ function StoreConfigPanel({ t }: { t: (k: string) => string }) {
 
 // ─── 店铺类型卡片（OWNER） ────────────────────────────────────────────────
 function PrintSettingsCard({ t }: { t: (k: string) => string }) {
-  const [printKitchenTicket, setPrintKitchenTicket] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const initialPersistedValue = printSettingsSnapshot ?? false
+  const [persistedPrintKitchenTicket, setPersistedPrintKitchenTicket] = useState(initialPersistedValue)
+  const [printKitchenTicket, setPrintKitchenTicket] = useState(() => printSettingsDraft ?? initialPersistedValue)
+  const [loading, setLoading] = useState(() => printSettingsSnapshot === null)
+  const [saving, setSaving] = useState(() => printSettingsMutation !== null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
-    apiFetch('/api/store/settings', { cache: 'no-store' }, OWNER_CTX)
-      .then((r) => r.json())
-      .then((body) => {
-        if (body && !body.error) setPrintKitchenTicket(body.printKitchenTicket === true)
+    let active = true
+    readLatestPrintKitchenTicketSetting()
+      .then((value) => {
+        printSettingsSnapshot = value
+        if (!active) return
+        setPersistedPrintKitchenTicket(value)
+        setPrintKitchenTicket(printSettingsDraft ?? value)
       })
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!active) return
+        setLoading(false)
+        setSaving(false)
+      })
+    return () => { active = false }
   }, [])
 
-  async function save(next: boolean) {
-    if (saving || next === printKitchenTicket) return
-    const previous = printKitchenTicket
+  function updateDraft(next: boolean) {
+    printSettingsDraft = next === persistedPrintKitchenTicket ? null : next
     setPrintKitchenTicket(next)
+    setMsg(null)
+  }
+
+  async function save() {
+    if (saving || printSettingsMutation || printKitchenTicket === persistedPrintKitchenTicket) return
+    const previous = persistedPrintKitchenTicket
+    const next = printKitchenTicket
     setSaving(true)
     setMsg(null)
     try {
-      const res = await apiFetch('/api/store/settings', {
-        method: 'PATCH',
-        body: JSON.stringify({ printKitchenTicket: next }),
-      }, OWNER_CTX)
-      const body = await res.json().catch(() => ({}))
-      if (res.ok) {
-        setPrintKitchenTicket(body.printKitchenTicket === true)
-        setMsg({ ok: true, text: t('dashboard.printSettingsSaved') })
-      } else {
-        setPrintKitchenTicket(previous)
-        setMsg({ ok: false, text: body.message ?? t('dashboard.printSettingsSaveFail') })
-      }
+      const confirmed = await persistPrintKitchenTicketSetting(next)
+      printSettingsSnapshot = confirmed
+      printSettingsDraft = null
+      setPersistedPrintKitchenTicket(confirmed)
+      setPrintKitchenTicket(confirmed)
+      setMsg({ ok: true, text: t('dashboard.printSettingsSaved') })
     } catch {
+      printSettingsSnapshot = previous
+      printSettingsDraft = null
+      setPersistedPrintKitchenTicket(previous)
       setPrintKitchenTicket(previous)
       setMsg({ ok: false, text: t('dashboard.printSettingsSaveFail') })
     } finally {
@@ -1330,10 +1402,21 @@ function PrintSettingsCard({ t }: { t: (k: string) => string }) {
           type="button"
           aria-pressed={printKitchenTicket}
           disabled={loading || saving}
-          onClick={() => void save(!printKitchenTicket)}
+          onClick={() => updateDraft(!printKitchenTicket)}
           style={{ ...ps.toggle, ...(printKitchenTicket ? ps.toggleOn : {}) }}
         >
-          {saving ? t('dashboard.printSettingsSaving') : printKitchenTicket ? t('dashboard.printSettingOn') : t('dashboard.printSettingOff')}
+          {printKitchenTicket ? t('dashboard.printSettingOn') : t('dashboard.printSettingOff')}
+        </button>
+      </div>
+      <div style={ps.saveRow}>
+        <button
+          type="button"
+          data-print-settings-save="true"
+          disabled={loading || saving || printKitchenTicket === persistedPrintKitchenTicket}
+          onClick={() => void save()}
+          style={{ ...ps.saveButton, ...((loading || saving || printKitchenTicket === persistedPrintKitchenTicket) ? ps.saveButtonDisabled : {}) }}
+        >
+          {saving ? t('dashboard.printSettingsSaving') : t('dashboard.saveBtnFull')}
         </button>
       </div>
       {msg && <div style={msg.ok ? ps.saved : ps.err}>{msg.text}</div>}
@@ -1352,6 +1435,9 @@ const ps: Record<string, React.CSSProperties> = {
   statusOn: { fontSize: 12, fontWeight: 800, color: '#16a34a' },
   toggle: { minWidth: 54, border: '1.5px solid var(--border)', borderRadius: 8, padding: '7px 10px', background: '#fff', color: 'var(--muted)', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
   toggleOn: { borderColor: '#16a34a', background: '#f0fdf4', color: '#15803d' },
+  saveRow: { display: 'flex', justifyContent: 'flex-end', marginTop: 8 },
+  saveButton: { minWidth: 88, border: 'none', borderRadius: 8, padding: '8px 14px', background: 'var(--blue)', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' },
+  saveButtonDisabled: { opacity: 0.55, cursor: 'not-allowed' },
   saved: { fontSize: 11, color: '#16a34a', marginTop: 2 },
   err: { fontSize: 11, color: '#cf1322', marginTop: 2 },
 }

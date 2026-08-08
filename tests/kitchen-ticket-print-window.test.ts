@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { printDesktopReceipt } from '../app/components/DesktopReceipt'
-import { printKitchenTicket } from '../app/components/KitchenTicket'
+import { getKitchenTicketHtmlForTest, printKitchenTicket } from '../app/components/KitchenTicket'
 
 type Listener = { callback: () => void; once: boolean }
 type PrintAction = 'afterprint' | 'none' | 'throw'
@@ -256,12 +256,26 @@ async function testKitchenOffStaysSinglePrint() {
   })
 }
 
+async function testManualKitchenUsesTheSameKhmerTemplate() {
+  const printWindow = new FakePrintWindow(['afterprint'])
+  await withPrintWindows([printWindow], async () => {
+    printKitchenTicket(kitchenTicket, 'km', { printWindow: printWindow as unknown as Window })
+    await wait(420)
+
+    assert.equal(printWindow.writes.length, 1)
+    assert.equal(printWindow.writes[0], getKitchenTicketHtmlForTest(kitchenTicket, 'km'), 'manual and RAW kitchen printing must share the same localized template')
+    assert.match(printWindow.writes[0], /បង្កាន់ដៃផ្ទះបាយ/)
+    assert.doesNotMatch(printWindow.writes[0], /厨房单|订单号|交易时间|数量/)
+  })
+}
+
 async function run() {
   await testNormalTwoStagePrint()
   await testMissingFirstAfterprintRecoversAndAllowsNextPrint()
   await testLateAfterprintCannotRestartKitchenPrinting()
   await testManualCloseAndPrintFailuresRecover()
   await testKitchenOffStaysSinglePrint()
+  await testManualKitchenUsesTheSameKhmerTemplate()
   console.log('kitchen ticket print-window tests passed')
 }
 

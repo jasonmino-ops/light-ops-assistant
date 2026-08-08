@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { getKitchenTicketHtmlForTest } from '../app/components/KitchenTicket'
 
-const html = getKitchenTicketHtmlForTest({
+const ticket = {
   storeName: 'CarGarden',
   orderNo: 'SO-20260726-001',
   createdAt: '2026-07-26T10:30:00.000Z',
@@ -10,7 +10,9 @@ const html = getKitchenTicketHtmlForTest({
     { name: '招牌汉堡', spec: '双层牛肉 / 少冰', qty: 2 },
     { name: '炸薯条', qty: 3 },
   ],
-}, 'zh')
+}
+
+const html = getKitchenTicketHtmlForTest(ticket, 'zh')
 
 assert.match(html, /CarGarden/)
 assert.match(html, /厨房单/)
@@ -21,6 +23,20 @@ assert.match(html, /数量：2/)
 assert.match(html, /炸薯条/)
 assert.match(html, /数量：3/)
 assert.doesNotMatch(html, /单价|小计|折扣|合计|实收|找零|支付方式|KHQR|二维码|金额/)
+
+const englishHtml = getKitchenTicketHtmlForTest(ticket, 'en')
+assert.match(englishHtml, /Kitchen Ticket/)
+assert.match(englishHtml, /Order No\./)
+assert.match(englishHtml, /Time/)
+assert.match(englishHtml, /Qty: 2/)
+assert.doesNotMatch(englishHtml, /厨房单|订单号|交易时间|数量|单价|合计|金额/)
+
+const khmerHtml = getKitchenTicketHtmlForTest(ticket, 'km')
+assert.match(khmerHtml, /បង្កាន់ដៃផ្ទះបាយ/)
+assert.match(khmerHtml, /លេខបញ្ជាទិញ/)
+assert.match(khmerHtml, /ពេលវេលា/)
+assert.match(khmerHtml, /ចំនួន: 2/)
+assert.doesNotMatch(khmerHtml, /厨房单|订单号|交易时间|数量|单价|合计|金额/)
 
 const cashier = fs.readFileSync('app/cashier/page.tsx', 'utf8')
 assert.match(cashier, /onAfterPrintWithWindow: printKitchenTicketAfterReceipt/)

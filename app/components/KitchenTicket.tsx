@@ -15,6 +15,38 @@ export type KitchenTicketData = {
   items: KitchenTicketItem[]
 }
 
+type KitchenTicketLabels = {
+  documentTitle: string
+  title: string
+  orderNo: string
+  time: string
+  quantity: string
+}
+
+const KITCHEN_TICKET_LABELS: Record<Lang, KitchenTicketLabels> = {
+  zh: {
+    documentTitle: '厨房单',
+    title: '厨房单',
+    orderNo: '订单号',
+    time: '交易时间',
+    quantity: '数量',
+  },
+  en: {
+    documentTitle: 'Kitchen Ticket',
+    title: 'Kitchen Ticket',
+    orderNo: 'Order No.',
+    time: 'Time',
+    quantity: 'Qty',
+  },
+  km: {
+    documentTitle: 'បង្កាន់ដៃផ្ទះបាយ',
+    title: 'បង្កាន់ដៃផ្ទះបាយ',
+    orderNo: 'លេខបញ្ជាទិញ',
+    time: 'ពេលវេលា',
+    quantity: 'ចំនួន',
+  },
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, '&amp;')
@@ -38,11 +70,13 @@ function formatKitchenTicketTime(iso: string, lang: Lang) {
 }
 
 function kitchenTicketHtml(data: KitchenTicketData, lang: Lang) {
+  const labels = KITCHEN_TICKET_LABELS[lang]
+  const quantitySeparator = lang === 'zh' ? '：' : ': '
   const itemsHtml = data.items.map((item) => `
       <div class="item">
         <div class="item-name">${escapeHtml(item.name)}</div>
         ${item.spec ? `<div class="item-spec">${escapeHtml(item.spec)}</div>` : ''}
-        <div class="item-qty">数量：${item.qty}</div>
+        <div class="item-qty">${escapeHtml(labels.quantity)}${quantitySeparator}${item.qty}</div>
       </div>
     `).join('')
 
@@ -50,7 +84,7 @@ function kitchenTicketHtml(data: KitchenTicketData, lang: Lang) {
 <html lang="${lang === 'zh' ? 'zh-CN' : lang}">
 <head>
   <meta charset="utf-8" />
-  <title>厨房单</title>
+  <title>${escapeHtml(labels.documentTitle)}</title>
   <style>
     @page { size: 80mm auto; margin: 3mm; }
     * { box-sizing: border-box; }
@@ -96,11 +130,11 @@ function kitchenTicketHtml(data: KitchenTicketData, lang: Lang) {
 <body>
   <div class="ticket">
     <div class="center store">${escapeHtml(data.storeName || 'Store')}</div>
-    <div class="center title">厨房单</div>
+    <div class="center title">${escapeHtml(labels.title)}</div>
     <div class="divider"></div>
     <div class="meta">
-      <div class="row"><span>订单号</span><span>${escapeHtml(data.orderNo || '-')}</span></div>
-      <div class="row"><span>交易时间</span><span>${escapeHtml(formatKitchenTicketTime(data.createdAt, lang))}</span></div>
+      <div class="row"><span>${escapeHtml(labels.orderNo)}</span><span>${escapeHtml(data.orderNo || '-')}</span></div>
+      <div class="row"><span>${escapeHtml(labels.time)}</span><span>${escapeHtml(formatKitchenTicketTime(data.createdAt, lang))}</span></div>
     </div>
     <div class="items">${itemsHtml}</div>
     <div class="divider"></div>

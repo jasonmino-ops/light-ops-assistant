@@ -4,6 +4,29 @@ import { chromium, type Page } from 'playwright'
 const baseURL = process.env.DASHBOARD_UI_BASE_URL ?? 'http://127.0.0.1:3100'
 let printKitchenTicket = false
 let settingsWrites = 0
+let settingsReadsAfterWrite = 0
+let delayedSettingsGetsRemaining = 0
+let delayedSettingsGetStarted: (() => void) | null = null
+let delayedSettingsGetRelease: Promise<void> = Promise.resolve()
+
+function delayNextSettingsGets(count: number) {
+  let release: (() => void) | null = null
+  const started = new Promise<void>((resolve) => { delayedSettingsGetStarted = resolve })
+  delayedSettingsGetRelease = new Promise<void>((resolve) => { release = resolve })
+  delayedSettingsGetsRemaining = count
+  return {
+    started,
+    release: () => release?.(),
+  }
+}
+
+async function waitForCondition(condition: () => boolean, message: string) {
+  const deadline = Date.now() + 10_000
+  while (!condition()) {
+    if (Date.now() >= deadline) throw new Error(message)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+}
 
 async function mockDashboardApis(page: Page) {
   page.setDefaultTimeout(10_000)
@@ -70,6 +93,21 @@ async function mockDashboardApis(page: Page) {
           printKitchenTicket = body.printKitchenTicket
           settingsWrites += 1
         }
+      } else if (settingsWrites > 0) {
+        settingsReadsAfterWrite += 1
+      }
+
+      const valueAtRequest = printKitchenTicket
+      if (request.method() === 'GET' && delayedSettingsGetsRemaining > 0) {
+        delayedSettingsGetsRemaining -= 1
+        if (delayedSettingsGetsRemaining === 0) delayedSettingsGetStarted?.()
+        await delayedSettingsGetRelease
+        return json({
+          ok: true,
+          businessType: 'GENERAL',
+          currencyCode: 'USD',
+          printKitchenTicket: valueAtRequest,
+        })
       }
       return json({
         ok: true,
@@ -108,12 +146,30 @@ async function main() {
     const kitchenToggle = mobile.getByText('打印厨房小票', { exact: true })
       .locator('xpath=../..')
       .locator('button')
+    const saveButton = mobile.locator('[data-print-settings-save="true"]')
     assert.equal(await kitchenToggle.getAttribute('aria-pressed'), 'false')
+
+    await storeSettingsEntry.click()
+    await printSettingsTitle.waitFor({ state: 'hidden' })
+    const delayedGets = delayNextSettingsGets(2)
+    await storeSettingsEntry.click()
+    await printSettingsTitle.waitFor()
+    await delayedGets.started
+    assert.equal(await kitchenToggle.isDisabled(), false, 'a remount must reuse the last authoritative value instead of disabling the toggle during revalidation')
 
     await kitchenToggle.click()
     await mobile.waitForFunction(() => document.querySelector('button[aria-pressed="true"]') !== null)
+    assert.equal(settingsWrites, 0, 'changing the draft must not write before OWNER saves')
+    await saveButton.click()
+    await waitForCondition(
+      () => settingsWrites >= 1 && settingsReadsAfterWrite >= 1,
+      'PATCH and authoritative GET did not complete',
+    )
+    delayedGets.release()
+    await mobile.waitForTimeout(200)
     assert.equal(settingsWrites, 1, 'OWNER toggle must persist through the existing settings API')
     assert.equal(printKitchenTicket, true)
+    assert.equal(await kitchenToggle.getAttribute('aria-pressed'), 'true', 'a stale GET started before PATCH must not overwrite the confirmed value')
 
     await mobile.reload({ waitUntil: 'domcontentloaded' })
     await printSettingsTitle.waitFor()
@@ -124,6 +180,12 @@ async function main() {
 
     await kitchenToggle.click()
     await mobile.waitForFunction(() => document.querySelector('button[aria-pressed="false"]') !== null)
+    assert.equal(settingsWrites, 1, 'the second draft must wait for its save action')
+    await saveButton.click()
+    await waitForCondition(
+      () => settingsWrites >= 2 && settingsReadsAfterWrite >= 2,
+      'second PATCH and authoritative GET did not complete',
+    )
     assert.equal(settingsWrites, 2, 'OWNER must be able to persist true and false')
     assert.equal(printKitchenTicket, false)
 
