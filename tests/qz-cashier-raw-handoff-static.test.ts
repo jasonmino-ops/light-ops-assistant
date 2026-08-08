@@ -16,8 +16,20 @@ assert.match(cashier, /QZ_PREVIEW_LABEL === 'QZ-PRINT-02D'/)
 assert.match(cashier, /\^\[0-9a-f\]\{40\}\$/)
 assert.match(cashier, /QZ_BUSINESS_RAW_PREVIEW_ACTIVE \|\| qzRawCanaryAuthorized/)
 assert.match(cashier, /const qzClientMode = qzRawBusinessActive \? 'raw' : 'signed'/)
-assert.match(cashier, /detectQzOnline\(undefined, qzClientMode\)/)
 assert.match(cashier, /listQzPrinters\(undefined, qzClientMode\)/)
+const qzStatusRefresh = cashier.slice(
+  cashier.indexOf('const handleRefreshQzStatus = useCallback'),
+  cashier.indexOf('function handleQzPrintToggle'),
+)
+assert.doesNotMatch(qzStatusRefresh, /detectQzOnline/, 'RAW status refresh must not stop between signed connect and enumeration')
+assert.ok(
+  qzStatusRefresh.indexOf('listQzPrinters(undefined, qzClientMode)') < qzStatusRefresh.indexOf("setQzStatus('online')"),
+  'RAW status refresh must enumerate printers before reporting QZ online',
+)
+assert.ok(
+  qzStatusRefresh.indexOf('setQzPrinters(printers)') < qzStatusRefresh.indexOf("setQzStatus('online')"),
+  'the enumerated printer list must reach UI state before QZ reports online',
+)
 assert.match(adapter, /return mode === 'raw' \? loadRawQz\(\) : loadQz\(\)/)
 assert.match(cashier, /if \(qzRawBusinessActive\) \{[\s\S]*handleControlledQzPrint\('receipt', receipt, kitchenTicket\)/)
 

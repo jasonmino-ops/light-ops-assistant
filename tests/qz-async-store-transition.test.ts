@@ -43,10 +43,7 @@ function makeHarness() {
     state.qzChecking = false
   }
 
-  async function refresh(deps: {
-    detectQzOnline: () => Promise<boolean>
-    listQzPrinters: () => Promise<string[]>
-  }) {
+  async function refresh(deps: { listQzPrinters: () => Promise<string[]> }) {
     if (state.qzChecking) return
     const requestStoreCode = activeStoreCode
     const request = startQzRequest(versionRef, activeStoreCodeRef, requestStoreCode)
@@ -55,17 +52,10 @@ function makeHarness() {
     state.qzChecking = true
     state.qzStatus = 'checking'
     try {
-      const online = await deps.detectQzOnline()
-      if (!request.isCurrent()) return
-      if (!online) {
-        state.qzStatus = 'offline'
-        state.qzPrinters = []
-        return
-      }
-      state.qzStatus = 'online'
       const printers = await deps.listQzPrinters()
       if (!request.isCurrent()) return
       state.qzPrinters = printers
+      state.qzStatus = 'online'
       if (state.qzSelectedPrinter && !printers.includes(state.qzSelectedPrinter)) {
         state.qzSelectedPrinter = null
         storageWrites.push({ storeCode: requestStoreCode, printer: null })
@@ -82,34 +72,32 @@ function makeHarness() {
   return { state, storageWrites, setActiveStore, refresh }
 }
 
-async function testDetectPendingThenStoreSwitchesToB() {
-  const h = makeHarness()
-  h.setActiveStore('STORE-A')
-  const detectDeferred = deferred<boolean>()
-
-  const refreshPromise = h.refresh({
-    detectQzOnline: () => detectDeferred.promise,
-    listQzPrinters: async () => ['SHOULD_NOT_BE_CALLED'],
-  })
-
-  assert.equal(h.state.qzChecking, true, 'refresh must mark checking while detect is pending')
-
-  h.setActiveStore('STORE-B')
-  detectDeferred.resolve(true)
-  await refreshPromise
-
-  assert.equal(h.state.qzStatus, 'idle', 'the stale Store A detect result must not overwrite Store B state')
-  assert.deepEqual(h.state.qzPrinters, [])
-  assert.equal(h.state.qzChecking, false, 'the reset for Store B must not be clobbered by the stale request')
-}
-
-async function testDetectOnlineThenListPendingThenStoreSwitchesToB() {
+async function testEnumerationPendingThenStoreSwitchesToB() {
   const h = makeHarness()
   h.setActiveStore('STORE-A')
   const listDeferred = deferred<string[]>()
 
   const refreshPromise = h.refresh({
-    detectQzOnline: async () => true,
+    listQzPrinters: () => listDeferred.promise,
+  })
+
+  assert.equal(h.state.qzChecking, true, 'refresh must mark checking while enumeration is pending')
+
+  h.setActiveStore('STORE-B')
+  listDeferred.resolve(['SHOULD_NOT_BE_APPLIED'])
+  await refreshPromise
+
+  assert.equal(h.state.qzStatus, 'idle', 'the stale Store A enumeration must not overwrite Store B state')
+  assert.deepEqual(h.state.qzPrinters, [])
+  assert.equal(h.state.qzChecking, false, 'the reset for Store B must not be clobbered by the stale request')
+}
+
+async function testEnumerationDoesNotReachNewStore() {
+  const h = makeHarness()
+  h.setActiveStore('STORE-A')
+  const listDeferred = deferred<string[]>()
+
+  const refreshPromise = h.refresh({
     listQzPrinters: () => listDeferred.promise,
   })
 
@@ -127,15 +115,14 @@ async function testDetectOnlineThenListPendingThenStoreSwitchesToB() {
 async function testStoreCodeBecomesNullMidRefresh() {
   const h = makeHarness()
   h.setActiveStore('STORE-A')
-  const detectDeferred = deferred<boolean>()
+  const listDeferred = deferred<string[]>()
 
   const refreshPromise = h.refresh({
-    detectQzOnline: () => detectDeferred.promise,
-    listQzPrinters: async () => ['POS-80'],
+    listQzPrinters: () => listDeferred.promise,
   })
 
   h.setActiveStore(null)
-  detectDeferred.resolve(true)
+  listDeferred.resolve(['POS-80'])
   await refreshPromise
 
   assert.equal(h.state.qzStatus, 'idle', 'a request whose store became null must not write any status')
@@ -145,21 +132,21 @@ async function testStoreCodeBecomesNullMidRefresh() {
 async function testOnlyNewestOfTwoRefreshesForSameStoreWrites() {
   const h = makeHarness()
   h.setActiveStore('STORE-A')
-  const firstDetect = deferred<boolean>()
-  const secondDetect = deferred<boolean>()
+  const firstList = deferred<string[]>()
+  const secondList = deferred<string[]>()
 
   // Bypass the qzChecking guard the same way overlapping calls could in
   // the real component (e.g. two rapid triggers before state flushes).
-  const first = h.refresh({ detectQzOnline: () => firstDetect.promise, listQzPrinters: async () => ['first'] })
+  const first = h.refresh({ listQzPrinters: () => firstList.promise })
   h.state.qzChecking = false
-  const second = h.refresh({ detectQzOnline: () => secondDetect.promise, listQzPrinters: async () => ['second'] })
+  const second = h.refresh({ listQzPrinters: () => secondList.promise })
 
-  secondDetect.resolve(true)
+  secondList.resolve(['second'])
   await second
   assert.equal(h.state.qzStatus, 'online')
   assert.deepEqual(h.state.qzPrinters, ['second'], 'the newest request must be the one that writes printers')
 
-  firstDetect.resolve(true)
+  firstList.resolve(['first'])
   await first
   assert.deepEqual(h.state.qzPrinters, ['second'], 'the stale first request must not overwrite the newest result')
 }
@@ -171,7 +158,6 @@ async function testStaleRequestNeverClearsPrinterConfigAfterSwitch() {
   const listDeferred = deferred<string[]>()
 
   const refreshPromise = h.refresh({
-    detectQzOnline: async () => true,
     listQzPrinters: () => listDeferred.promise,
   })
   await Promise.resolve()
@@ -192,7 +178,6 @@ async function testCurrentValidRequestStillSucceeds() {
   const h = makeHarness()
   h.setActiveStore('STORE-A')
   await h.refresh({
-    detectQzOnline: async () => true,
     listQzPrinters: async () => ['Printer POS-80'],
   })
 
@@ -204,17 +189,17 @@ async function testCurrentValidRequestStillSucceeds() {
 async function testQzCheckingNotResetByStaleRequestWhileNewerActive() {
   const h = makeHarness()
   h.setActiveStore('STORE-A')
-  const staleDetect = deferred<boolean>()
+  const staleList = deferred<string[]>()
 
-  const stale = h.refresh({ detectQzOnline: () => staleDetect.promise, listQzPrinters: async () => ['stale'] })
+  const stale = h.refresh({ listQzPrinters: () => staleList.promise })
 
   h.setActiveStore('STORE-A') // re-invalidate without changing store, simulating a fresh newer request window
   const newerListDeferred = deferred<string[]>()
-  const newer = h.refresh({ detectQzOnline: async () => true, listQzPrinters: () => newerListDeferred.promise })
+  const newer = h.refresh({ listQzPrinters: () => newerListDeferred.promise })
 
   assert.equal(h.state.qzChecking, true, 'the newer request must be marked checking')
 
-  staleDetect.resolve(true)
+  staleList.resolve(['stale'])
   await stale
   assert.equal(h.state.qzChecking, true, 'a stale request finishing must not clear qzChecking while the newer one is still in flight')
 
@@ -225,8 +210,8 @@ async function testQzCheckingNotResetByStaleRequestWhileNewerActive() {
 }
 
 async function run() {
-  await testDetectPendingThenStoreSwitchesToB()
-  await testDetectOnlineThenListPendingThenStoreSwitchesToB()
+  await testEnumerationPendingThenStoreSwitchesToB()
+  await testEnumerationDoesNotReachNewStore()
   await testStoreCodeBecomesNullMidRefresh()
   await testOnlyNewestOfTwoRefreshesForSameStoreWrites()
   await testStaleRequestNeverClearsPrinterConfigAfterSwitch()

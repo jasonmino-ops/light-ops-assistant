@@ -13,7 +13,6 @@ import {
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
 import {
-  detectQzOnline,
   listQzPrinters,
   printHelloWorldViaQz,
   printCustomerReceiptViaQz,
@@ -2210,17 +2209,10 @@ export default function CashierPage() {
     setQzChecking(true)
     setQzStatus('checking')
     try {
-      const online = await detectQzOnline(undefined, qzClientMode)
-      if (!request.isCurrent()) return
-      if (!online) {
-        setQzStatus('offline')
-        setQzPrinters([])
-        return
-      }
-      setQzStatus('online')
       const printers = await listQzPrinters(undefined, qzClientMode)
       if (!request.isCurrent()) return
       setQzPrinters(printers)
+      setQzStatus('online')
       if (qzSelectedPrinter && !printers.includes(qzSelectedPrinter)) {
         setQzSelectedPrinter(null)
         try { writeQzSelectedPrinter(requestStoreCode, null) } catch {}

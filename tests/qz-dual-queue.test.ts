@@ -245,6 +245,12 @@ VEVTVA==
 
   try {
     assert.deepEqual(await listQzPrinters(client, 'raw'), ['前台', '厨房'])
+    assert.deepEqual(callOrder, [
+      'security.certificate',
+      'security.signature',
+      'websocket.connect',
+      'printers.find',
+    ], 'RAW status enumeration must immediately follow its signed connection')
     await printEscPosBitImageViaFixedQzQueue('receipt', FORMAL_RAW_BYTES, client)
   } finally {
     Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: previousWindow })
