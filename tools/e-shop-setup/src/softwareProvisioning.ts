@@ -40,6 +40,7 @@ export type CertificateInspection = {
 export type PreflightInspection = {
   platform: NodeJS.Platform
   architecture: string
+  environmentDetectionSource?: 'CIM' | 'WINDOWS_ENVIRONMENT' | 'NODE_RUNTIME' | 'UNCONFIRMED'
   administrator: boolean | null
   cloudReachable: boolean | null
   printSpoolerRunning: boolean | null
@@ -129,6 +130,7 @@ export function createSoftwareProvisioningAdapters(system: SoftwareProvisioningS
         const evidence: SetupEvidence = {
           platform: state.platform,
           architecture: state.architecture,
+          environmentDetectionSource: state.environmentDetectionSource ?? null,
           administrator: state.administrator,
           cloudReachable: state.cloudReachable,
           printSpoolerRunning: state.printSpoolerRunning,
@@ -251,6 +253,14 @@ export function createSoftwareProvisioningAdapters(system: SoftwareProvisioningS
     },
     execute: async () => {
       try {
+        const before = await system.inspectCertificate()
+        if (before.ready) {
+          return ready('E-Shop certificate trust reused', {
+            ...certificateEvidence(before),
+            provisionInvoked: false,
+            softwareState: SOFTWARE_PROVISIONING_READY,
+          })
+        }
         const action = await system.provisionCertificate()
         const after = await system.inspectCertificate()
         return action.verified && after.ready

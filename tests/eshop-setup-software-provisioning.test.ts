@@ -9,6 +9,7 @@ import {
   JsonLinesSetupLogger,
   SOFTWARE_PROVISIONING_READY,
   createSoftwareProvisioningAdapters,
+  detectWindowsEnvironment,
   type CertificateInspection,
   type DesktopInspection,
   type PreflightInspection,
@@ -104,6 +105,14 @@ class FakeSoftwareSystem implements SoftwareProvisioningSystem {
   certificateProvisionCount = 0
   qzInspectCount = 0
   failDesktopInstall = false
+  readonly machineIdentity = {
+    installationId: 'installation-existing-machine',
+    machineId: 'machine-existing',
+  }
+  readonly merchantBinding = {
+    merchantNo: 'ST87CC8E11',
+    status: 'ACTIVE',
+  }
 
   async inspectPreflight(): Promise<PreflightInspection> {
     return {
@@ -197,13 +206,57 @@ async function testPreflightPassAndBlocked(): Promise<void> {
   assert.equal((await adapter.detect(context)).failureCode, 'UNSUPPORTED_WINDOWS')
 }
 
+async function testPreflightCimDeniedUsesFallback(): Promise<void> {
+  let calls = 0
+  const detected = await detectWindowsEnvironment({
+    runtimePlatform: 'win32',
+    runtimeArchitecture: 'x64',
+    run: async () => {
+      calls += 1
+      if (calls === 1) throw new Error('HRESULT 0x80041003 WBEM_E_ACCESS_DENIED')
+      return JSON.stringify({
+        Platform: 'Win32NT',
+        Is64BitOperatingSystem: true,
+        ProcessorArchitecture: 'AMD64',
+        ProcessorArchitectureW6432: null,
+      })
+    },
+  })
+  assert.deepEqual(detected, {
+    platform: 'win32',
+    architecture: 'x64',
+    source: 'WINDOWS_ENVIRONMENT',
+  })
+  const system = new FakeSoftwareSystem()
+  system.platform = detected.platform
+  system.architecture = detected.architecture
+  const result = await stage(createSoftwareProvisioningAdapters(system), 'preflight').detect(context)
+  assert.equal(result.status, 'READY')
+}
+
+async function testPreflightFailsWhenEnvironmentCannotBeConfirmed(): Promise<void> {
+  const detected = await detectWindowsEnvironment({
+    runtimePlatform: 'win32',
+    runtimeArchitecture: 'unknown',
+    run: async () => { throw new Error('probe unavailable') },
+  })
+  assert.equal(detected.source, 'UNCONFIRMED')
+  const system = new FakeSoftwareSystem()
+  system.platform = detected.platform
+  system.architecture = detected.architecture
+  const result = await stage(createSoftwareProvisioningAdapters(system), 'preflight').detect(context)
+  assert.equal(result.status, 'BLOCKED')
+  assert.equal(result.failureCode, 'UNSUPPORTED_WINDOWS')
+}
+
 async function testDesktopAlreadyInstalled(): Promise<void> {
   const system = new FakeSoftwareSystem()
   system.desktop = desktopState({ installed: true, version: '0.4.7', executablePresent: true, runtimeRunning: true })
   const adapter = stage(createSoftwareProvisioningAdapters(system), 'desktop')
   assert.equal((await adapter.detect(context)).status, 'READY')
+  assert.equal((await adapter.execute(context)).status, 'READY')
   assert.equal(system.desktopInstallCount, 0)
-  assert.equal(system.desktopStartCount, 0)
+  assert.equal(system.desktopStartCount, 1)
 }
 
 async function testDesktopInstallRequired(): Promise<void> {
@@ -226,8 +279,9 @@ async function testQzAlreadyCorrect(): Promise<void> {
   })
   const adapter = stage(createSoftwareProvisioningAdapters(system), 'qz')
   assert.equal((await adapter.detect(context)).status, 'READY')
+  assert.equal((await adapter.execute(context)).status, 'READY')
   assert.equal(system.qzInstallCount, 0)
-  assert.equal(system.qzStartCount, 0)
+  assert.equal(system.qzStartCount, 1)
 }
 
 async function testQzInstallRequired(): Promise<void> {
@@ -253,7 +307,7 @@ async function testCertificateIdempotentRerun(): Promise<void> {
   const system = new FakeSoftwareSystem()
   const adapter = stage(createSoftwareProvisioningAdapters(system), 'certificate')
   assert.equal((await adapter.execute(context)).status, 'READY')
-  assert.equal((await adapter.detect(context)).status, 'READY')
+  assert.equal((await adapter.execute(context)).status, 'READY')
   assert.equal(system.certificateProvisionCount, 1)
 }
 
@@ -297,6 +351,8 @@ async function testSecondRunReusesSoftwareStages(): Promise<void> {
     qz: system.qzInstallCount,
     certificate: system.certificateProvisionCount,
   }
+  const identityBeforeRerun = structuredClone(system.machineIdentity)
+  const bindingBeforeRerun = structuredClone(system.merchantBinding)
 
   const second = await orchestrator.run('NOT_BOUND')
   assert.equal(second.state, 'BLOCKED', 'Phase 2 must not emit READY_FOR_BINDING')
@@ -306,6 +362,8 @@ async function testSecondRunReusesSoftwareStages(): Promise<void> {
     qz: system.qzInstallCount,
     certificate: system.certificateProvisionCount,
   }, counts)
+  assert.deepEqual(system.machineIdentity, identityBeforeRerun)
+  assert.deepEqual(system.merchantBinding, bindingBeforeRerun)
 }
 
 async function testLogsExcludeSecrets(): Promise<void> {
@@ -343,6 +401,8 @@ async function testLogsExcludeSecrets(): Promise<void> {
 
 async function main(): Promise<void> {
   await testPreflightPassAndBlocked()
+  await testPreflightCimDeniedUsesFallback()
+  await testPreflightFailsWhenEnvironmentCannotBeConfirmed()
   await testDesktopAlreadyInstalled()
   await testDesktopInstallRequired()
   await testQzAlreadyCorrect()
@@ -352,7 +412,7 @@ async function main(): Promise<void> {
   await testFailureStopsDownstream()
   await testSecondRunReusesSoftwareStages()
   await testLogsExcludeSecrets()
-  console.log('E-Shop V1 Setup software provisioning tests passed (10/10)')
+  console.log('E-Shop V1 Setup software provisioning tests passed (12/12)')
 }
 
 void main().catch((error) => {

@@ -51,6 +51,25 @@ type DesktopPowerShellResult = {
   RuntimeRunning?: boolean
 }
 
+type WindowsEnvironmentPowerShellResult = {
+  Platform?: string | null
+  Is64BitOperatingSystem?: boolean | null
+  ProcessorArchitecture?: string | null
+  ProcessorArchitectureW6432?: string | null
+}
+
+export type WindowsEnvironmentDetection = {
+  platform: NodeJS.Platform
+  architecture: string
+  source: 'CIM' | 'WINDOWS_ENVIRONMENT' | 'NODE_RUNTIME' | 'UNCONFIRMED'
+}
+
+export type WindowsEnvironmentDetectionOptions = {
+  runtimePlatform?: NodeJS.Platform
+  runtimeArchitecture?: string
+  run?: (file: string, args: string[], timeout?: number) => Promise<string>
+}
+
 function escapePowerShell(value: string): string {
   return value.replace(/'/g, "''")
 }
@@ -94,6 +113,92 @@ function firstJsonObject(text: string): Record<string, unknown> | null {
   return parsed !== null && typeof parsed === 'object' ? parsed as Record<string, unknown> : null
 }
 
+function isWindowsPlatform(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  return value === 'Win32NT' || /Windows/i.test(value)
+}
+
+function isX64Architecture(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  return /^(?:x64|x86_64|AMD64)$/i.test(value.trim())
+}
+
+function detectedWindowsArchitecture(value: WindowsEnvironmentPowerShellResult | null): string | null {
+  if (!value || !isWindowsPlatform(value.Platform) || value.Is64BitOperatingSystem !== true) return null
+  const native = typeof value.ProcessorArchitectureW6432 === 'string'
+    ? value.ProcessorArchitectureW6432.trim()
+    : ''
+  if (native) return isX64Architecture(native) ? 'x64' : native
+  const current = typeof value.ProcessorArchitecture === 'string'
+    ? value.ProcessorArchitecture.trim()
+    : ''
+  if (current) return isX64Architecture(current) ? 'x64' : current
+  return null
+}
+
+/**
+ * Confirm Windows x64 without making CIM/WMI a single point of failure.
+ *
+ * CIM is retained as read-only evidence when available. WBEM access denial or
+ * another CIM failure falls back to the non-WMI .NET Environment APIs, then to
+ * the Node runtime identity. If none can prove Windows x64, the caller receives
+ * UNCONFIRMED and Preflight remains fail-closed.
+ */
+export async function detectWindowsEnvironment(
+  options: WindowsEnvironmentDetectionOptions = {},
+): Promise<WindowsEnvironmentDetection> {
+  const runtimePlatform = options.runtimePlatform ?? process.platform
+  const runtimeArchitecture = options.runtimeArchitecture ?? process.arch
+  const run = options.run ?? runExecutable
+
+  if (runtimePlatform !== 'win32') {
+    return { platform: runtimePlatform, architecture: runtimeArchitecture, source: 'UNCONFIRMED' }
+  }
+
+  try {
+    const output = await run('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      "$ErrorActionPreference='Stop';$os=Get-CimInstance Win32_OperatingSystem;" +
+      "[pscustomobject]@{Platform='Win32NT';Is64BitOperatingSystem=[Environment]::Is64BitOperatingSystem;" +
+      "ProcessorArchitecture=$env:PROCESSOR_ARCHITECTURE;ProcessorArchitectureW6432=$env:PROCESSOR_ARCHITEW6432}|ConvertTo-Json -Compress",
+    ], 20_000)
+    const value = firstJsonObject(output) as WindowsEnvironmentPowerShellResult | null
+    const architecture = detectedWindowsArchitecture(value)
+    if (architecture) {
+      return { platform: 'win32', architecture, source: 'CIM' }
+    }
+  } catch {
+    // CIM/WMI can be denied by local WBEM policy. Continue with read-only,
+    // non-WMI operating-system evidence instead of blocking a valid rerun.
+  }
+
+  try {
+    const output = await run('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      '[pscustomobject]@{Platform=[Environment]::OSVersion.Platform.ToString();' +
+      'Is64BitOperatingSystem=[Environment]::Is64BitOperatingSystem;' +
+      'ProcessorArchitecture=$env:PROCESSOR_ARCHITECTURE;' +
+      'ProcessorArchitectureW6432=$env:PROCESSOR_ARCHITEW6432}|ConvertTo-Json -Compress',
+    ], 20_000)
+    const value = firstJsonObject(output) as WindowsEnvironmentPowerShellResult | null
+    const architecture = detectedWindowsArchitecture(value)
+    if (architecture) {
+      return { platform: 'win32', architecture, source: 'WINDOWS_ENVIRONMENT' }
+    }
+  } catch {
+    // Node runtime evidence below is independent of PowerShell/WMI.
+  }
+
+  if (runtimeArchitecture === 'x64') {
+    return { platform: 'win32', architecture: 'x64', source: 'NODE_RUNTIME' }
+  }
+  return { platform: 'win32', architecture: 'UNCONFIRMED', source: 'UNCONFIRMED' }
+}
+
 export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSystem {
   private readonly requiredDiskBytes: number
 
@@ -102,10 +207,12 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
   }
 
   async inspectPreflight(): Promise<PreflightInspection> {
-    if (process.platform !== 'win32' || process.arch !== 'x64') {
+    const environment = await detectWindowsEnvironment()
+    if (environment.platform !== 'win32' || environment.architecture !== 'x64') {
       return {
-        platform: process.platform,
-        architecture: process.arch,
+        platform: environment.platform,
+        architecture: environment.architecture,
+        environmentDetectionSource: environment.source,
         administrator: null,
         cloudReachable: null,
         printSpoolerRunning: null,
@@ -127,8 +234,9 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
       this.inspectCertificate(),
     ])
     return {
-      platform: process.platform,
-      architecture: process.arch,
+      platform: environment.platform,
+      architecture: environment.architecture,
+      environmentDetectionSource: environment.source,
       administrator,
       cloudReachable,
       printSpoolerRunning,
@@ -178,6 +286,10 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
 
   async installDesktop(): Promise<ProvisionAction> {
     this.requireWindows()
+    const existing = await this.inspectDesktop()
+    if (existing.installed && existing.version === existing.expectedVersion && existing.executablePresent) {
+      return { changed: false, verified: true }
+    }
     if (!existsSync(this.config.desktopInstallerPath)) throw new Error('Desktop installer payload is missing')
     await runExecutable(this.config.desktopInstallerPath, ['/S'])
     const state = await this.inspectDesktop()
@@ -223,6 +335,10 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
 
   async installQz(): Promise<ProvisionAction> {
     this.requireWindows()
+    const existing = await this.inspectQz()
+    if (existing.installed && existing.version === existing.expectedVersion) {
+      return { changed: false, verified: true }
+    }
     if (!existsSync(this.config.qzInstallerPath)) throw new Error('QZ Tray installer payload is missing')
     await runExecutable(this.config.qzInstallerPath, ['/S'])
     const state = await this.inspectQz()
@@ -316,6 +432,7 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
     // public CA only, matching fingerprint, and no private-key-like material.
     this.loadFormalCertificatePackage()
     const before = await this.inspectCertificate()
+    if (before.ready) return { changed: false, verified: true }
     const action = installCertificate(this.certificateManagerEnv())
     if (!action.ok) throw new Error('Certificate Manager install action failed')
     const after = await this.inspectCertificate()
