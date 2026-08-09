@@ -94,7 +94,16 @@ async function testCurrentMainPosTokenContractDirectly() {
   const originalComputerLaunchFindFirst = computerBrowserLaunchTicket.findFirst
   let linkedTenantId = RAW_TENANT_ID
   let linkedStoreId = RAW_STORE_ID
-  browserPosDevice.findFirst = async ({ where }) => (
+  browserPosDevice.findFirst = (async ({ where }: {
+    where: {
+      id?: string
+      tenantId?: string
+      storeId?: string
+      browserDeviceId?: string
+      status?: string
+      activeSlot?: string
+    }
+  }) => (
     where.id === RAW_BROWSER_POS_SESSION_ID &&
     where.tenantId === RAW_TENANT_ID &&
     where.storeId === RAW_STORE_ID &&
@@ -103,14 +112,22 @@ async function testCurrentMainPosTokenContractDirectly() {
     where.activeSlot === 'ACTIVE'
       ? { id: RAW_BROWSER_POS_SESSION_ID }
       : null
-  ) as never
-  computerBrowserLaunchTicket.findFirst = async ({ where }) => (
+  )) as unknown as typeof browserPosDevice.findFirst
+  computerBrowserLaunchTicket.findFirst = (async ({ where }: {
+    where: {
+      browserPosDeviceId?: string
+      binding?: {
+        tenantId?: string
+        storeId?: string
+      }
+    }
+  }) => (
     where.browserPosDeviceId === RAW_BROWSER_POS_SESSION_ID &&
     where.binding?.tenantId === linkedTenantId &&
     where.binding?.storeId === linkedStoreId
       ? { id: 'launch-runtime-test' }
       : null
-  ) as never
+  )) as unknown as typeof computerBrowserLaunchTicket.findFirst
   const token = signPosDeviceToken({
     tenantId: RAW_TENANT_ID,
     storeId: RAW_STORE_ID,
