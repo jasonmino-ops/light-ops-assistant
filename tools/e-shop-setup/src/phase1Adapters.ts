@@ -14,7 +14,7 @@ export const REUSED_EXISTING_ASSETS = Object.freeze({
   runtimeHealth: 'Existing Desktop runtime health and structured logging conventions',
 })
 
-const PHASE_1_INTERNAL_STATUS = 'NOT_IMPLEMENTED_FOR_PHASE_1'
+export const PHASE_1_INTERNAL_STATUS = 'NOT_IMPLEMENTED_FOR_PHASE_1'
 
 const PLACEHOLDER_FAILURE: Record<Exclude<SetupStage, 'preflight'>, SetupFailureCode | null> = {
   desktop: null,
@@ -26,34 +26,43 @@ const PLACEHOLDER_FAILURE: Record<Exclude<SetupStage, 'preflight'>, SetupFailure
   'runtime-health': null,
 }
 
-function pending(stage: SetupStage, evidence: StageResult['evidence']): StageResult {
+function pending(
+  stage: SetupStage,
+  evidence: StageResult['evidence'],
+  implementationStatus = PHASE_1_INTERNAL_STATUS,
+): StageResult {
   return {
     status: 'NEEDS_ACTION',
     failureCode: null,
     message: `${stage} requires its Phase 2 provisioning adapter`,
     retryable: false,
-    evidence: { implementationStatus: PHASE_1_INTERNAL_STATUS, ...evidence },
+    evidence: { implementationStatus, ...evidence },
   }
 }
 
-function deferred(stage: Exclude<SetupStage, 'preflight'>, evidence: StageResult['evidence']): StageResult {
+function deferred(
+  stage: Exclude<SetupStage, 'preflight'>,
+  evidence: StageResult['evidence'],
+  implementationStatus = PHASE_1_INTERNAL_STATUS,
+): StageResult {
   return {
     status: 'BLOCKED',
     failureCode: PLACEHOLDER_FAILURE[stage],
-    message: PHASE_1_INTERNAL_STATUS,
+    message: implementationStatus,
     retryable: false,
-    evidence: { implementationStatus: PHASE_1_INTERNAL_STATUS, ...evidence },
+    evidence: { implementationStatus, ...evidence },
   }
 }
 
-function createDeferredAdapter(
+export function createDeferredAdapter(
   stage: Exclude<SetupStage, 'preflight'>,
   evidence: StageResult['evidence'],
+  implementationStatus = PHASE_1_INTERNAL_STATUS,
 ): SetupStageAdapter {
   return {
     stage,
-    detect: async () => pending(stage, evidence),
-    execute: async () => deferred(stage, evidence),
+    detect: async () => pending(stage, evidence, implementationStatus),
+    execute: async () => deferred(stage, evidence, implementationStatus),
   }
 }
 

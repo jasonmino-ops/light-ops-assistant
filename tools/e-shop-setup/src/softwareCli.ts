@@ -4,8 +4,9 @@ import { join, resolve } from 'node:path'
 import { FileSetupCheckpointStore } from './checkpoint'
 import type { MerchantBindingStatus } from './contracts'
 import { EShopSetupOrchestrator } from './orchestrator'
-import { createPhase1Adapters } from './phase1Adapters'
 import { JsonLinesSetupLogger } from './setupLog'
+import { createSoftwareProvisioningAdapters } from './softwareProvisioning'
+import { WindowsSoftwareProvisioningSystem } from './windowsSoftwareProvisioning'
 
 function argument(name: string): string | null {
   const index = process.argv.indexOf(name)
@@ -28,13 +29,28 @@ function defaultStateDir(): string {
 
 async function main(): Promise<void> {
   const stateDir = resolve(argument('--state-dir') ?? defaultStateDir())
+  const payloadDir = resolve(argument('--payload-dir') ?? join(process.cwd(), 'setup-payload'))
+  const system = new WindowsSoftwareProvisioningSystem({
+    desktopInstallerPath: resolve(
+      argument('--desktop-installer') ?? join(payloadDir, 'E-Shop-DianXiaoEr-Setup-0.4.7-x64.exe'),
+    ),
+    desktopExpectedVersion: '0.4.7',
+    desktopDisplayName: 'E-Shop 店小二',
+    desktopExecutableName: 'E-Shop 店小二.exe',
+    qzInstallerPath: resolve(argument('--qz-installer') ?? join(payloadDir, 'qz-tray-2.2.6.exe')),
+    qzExpectedVersion: '2.2.6',
+    certificatePackageDir: resolve(argument('--certificate-package') ?? join(payloadDir, 'certificate-package')),
+    cloudHealthUrl: 'https://elifekh.com/api/health',
+  })
   const orchestrator = new EShopSetupOrchestrator(
-    createPhase1Adapters(),
+    createSoftwareProvisioningAdapters(system),
     new FileSetupCheckpointStore(join(stateDir, 'setup-checkpoint-v1.json')),
     new JsonLinesSetupLogger(join(stateDir, 'setup.log.jsonl')),
   )
   const result = await orchestrator.run(bindingStatus())
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+  // Phase 2 intentionally remains BLOCKED at Driver. SOFTWARE_PROVISIONING_READY
+  // is evidence on the certificate stage, never a fourth global runtime state.
   if (result.state === 'BLOCKED') process.exitCode = 2
 }
 
