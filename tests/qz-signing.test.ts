@@ -378,12 +378,13 @@ async function testRuntimeSuccessAndSecurityFailures() {
   assert.equal((await missingIpResponse.json()).error, 'QZ_SIGN_REQUEST_METADATA_INVALID')
   assert.deepEqual(missingIp.calls, [])
 
-  const forbidden = routeDependencies({
-    verifySession: async () => ({ ...VALID_SESSION, storeCode: 'ST-OTHER' }),
+  const differentLegalStore = routeDependencies({
+    verifySession: async () => ({ ...VALID_SESSION, storeCode: 'ST87CC8E11' }),
   })
-  const forbiddenResponse = await handleQzSignRequest(request(), forbidden.dependencies)
-  assert.equal(forbiddenResponse.status, 403)
-  assert.deepEqual(forbidden.calls, ['reserve', 'audit:FAILED:QZ_SIGN_STORE_FORBIDDEN'])
+  const differentLegalStoreResponse = await handleQzSignRequest(request(), differentLegalStore.dependencies)
+  assert.equal(differentLegalStoreResponse.status, 200)
+  assert.equal(await differentLegalStoreResponse.text(), VALID_SIGNATURE)
+  assert.deepEqual(differentLegalStore.calls, ['reserve', 'sign', 'audit:SUCCESS'])
 
   const wrongVersion = routeDependencies()
   const versionResponse = await handleQzSignRequest(
