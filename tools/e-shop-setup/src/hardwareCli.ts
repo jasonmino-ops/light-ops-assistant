@@ -3,10 +3,11 @@ import { join, resolve } from 'node:path'
 
 import { FileSetupCheckpointStore } from './checkpoint'
 import type { MerchantBindingStatus } from './contracts'
-import { createHardwareProvisioningPhase2Adapters } from './hardwareProvisioning'
 import { EShopSetupOrchestrator } from './orchestrator'
+import { createHardwareProvisioningPhase3Adapters } from './queueProvisioning'
 import { JsonLinesSetupLogger } from './setupLog'
 import { WindowsHardwareProvisioningSystem } from './windowsHardwareProvisioning'
+import { WindowsQueueProvisioningSystem } from './windowsQueueProvisioning'
 import { WindowsSoftwareProvisioningSystem } from './windowsSoftwareProvisioning'
 
 function argument(name: string): string | null {
@@ -50,15 +51,15 @@ async function main(): Promise<void> {
       ...(xprinterInstaller ? { XPRINTER_80MM: resolve(xprinterInstaller) } : {}),
     },
   })
+  const queueSystem = new WindowsQueueProvisioningSystem()
   const orchestrator = new EShopSetupOrchestrator(
-    createHardwareProvisioningPhase2Adapters(softwareSystem, hardwareSystem),
+    createHardwareProvisioningPhase3Adapters(softwareSystem, hardwareSystem, queueSystem),
     new FileSetupCheckpointStore(join(stateDir, 'setup-checkpoint-v1.json')),
     new JsonLinesSetupLogger(join(stateDir, 'setup.log.jsonl')),
   )
   const result = await orchestrator.run(bindingStatus())
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-  // Hardware Phase 1 intentionally remains BLOCKED at Front confirmation,
-  // missing Front hardware, or the still-deferred Queue stage.
+  // Hardware Phase 3 remains BLOCKED until Runtime Health is implemented.
   if (result.state === 'BLOCKED') process.exitCode = 2
 }
 

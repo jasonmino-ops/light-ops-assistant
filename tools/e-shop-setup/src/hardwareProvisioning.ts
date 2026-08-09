@@ -72,6 +72,13 @@ export type FrontUsbPrinterInspection = {
   kitchenDiscovery: typeof KITCHEN_DISCOVERY_DEFERRED
 }
 
+export type ResolvedFrontUsbQueueTarget = {
+  candidateId: string
+  driverFamily: VerifiedDriverFamilyId
+  driverName: string
+  portName: string
+}
+
 export type KitchenNetworkDetectionSource =
   | 'WINDOWS_STANDARD_TCPIP_PORT'
   | 'WINDOWS_NETWORK_NEIGHBOR'
@@ -95,6 +102,10 @@ export interface HardwareProvisioningSystem {
   inspectDriver(): Promise<DriverInspection>
   installExternalDriver(family: VerifiedDriverFamilyId): Promise<ProvisionAction>
   inspectFrontUsbPrinters(): Promise<FrontUsbPrinterInspection>
+}
+
+export interface FrontUsbQueueTargetProvider {
+  getResolvedFrontQueueTarget(candidateId: string): ResolvedFrontUsbQueueTarget | null
 }
 
 export interface KitchenNetworkDiscoverySystem {

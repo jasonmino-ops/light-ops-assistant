@@ -12,10 +12,12 @@ import {
   type FrontUsbPrinterCandidate,
   type FrontUsbPrinterDetectionSource,
   type FrontUsbPrinterInspection,
+  type FrontUsbQueueTargetProvider,
   type HardwareProvisioningPhase2System,
   type KitchenNetworkDetectionSource,
   type KitchenNetworkPrinterCandidate,
   type KitchenNetworkPrinterInspection,
+  type ResolvedFrontUsbQueueTarget,
   type VerifiedDriverFamilyId,
 } from './hardwareProvisioning'
 import type { ProvisionAction } from './softwareProvisioning'
@@ -217,10 +219,11 @@ export function createKitchenNetworkPrinterCandidates(
   return [...candidates.values()].sort((left, right) => left.endpoint.localeCompare(right.endpoint, 'en-US'))
 }
 
-export class WindowsHardwareProvisioningSystem implements HardwareProvisioningPhase2System {
+export class WindowsHardwareProvisioningSystem implements HardwareProvisioningPhase2System, FrontUsbQueueTargetProvider {
   private readonly runtimePlatform: NodeJS.Platform
   private readonly runtimeArchitecture: string
   private readonly run: CommandRunner
+  private readonly resolvedFrontQueueTargets = new Map<string, ResolvedFrontUsbQueueTarget>()
 
   constructor(
     private readonly config: WindowsHardwareProvisioningConfig = {},
@@ -307,6 +310,11 @@ export class WindowsHardwareProvisioningSystem implements HardwareProvisioningPh
     }
   }
 
+  getResolvedFrontQueueTarget(candidateId: string): ResolvedFrontUsbQueueTarget | null {
+    const target = this.resolvedFrontQueueTargets.get(candidateId)
+    return target ? { ...target } : null
+  }
+
   async inspectKitchenNetworkPrinters(): Promise<KitchenNetworkPrinterInspection> {
     this.requireWindows()
     const script = [
@@ -377,7 +385,22 @@ export class WindowsHardwareProvisioningSystem implements HardwareProvisioningPh
       '-Command',
       script,
     ], 30_000))
-    return createFrontUsbPrinterCandidates(objectArray<WindowsPrinterMetadata>(value))
+    const records = objectArray<WindowsPrinterMetadata>(value)
+    const candidates = createFrontUsbPrinterCandidates(records)
+    this.resolvedFrontQueueTargets.clear()
+    for (const record of records) {
+      const candidate = createFrontUsbPrinterCandidates([record])[0]
+      const driverName = stringOrNull(record.DriverName)
+      const portName = stringOrNull(record.PortName)
+      if (!candidate || !driverName || !portName || this.resolvedFrontQueueTargets.has(candidate.candidateId)) continue
+      this.resolvedFrontQueueTargets.set(candidate.candidateId, {
+        candidateId: candidate.candidateId,
+        driverFamily: candidate.driverFamily,
+        driverName,
+        portName,
+      })
+    }
+    return candidates
   }
 
   private externalPayloadPath(family: VerifiedDriverFamilyId): string | null {
