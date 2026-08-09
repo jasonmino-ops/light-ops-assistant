@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
   QzSigningConfigError,
-  isQzSigningStoreAllowed,
   readQzActiveSigningConfig,
   type QzActiveSigningConfig,
   type QzCertificateKeyPair,
@@ -27,7 +26,7 @@ function errorResponse(error: string, status: number, headers?: Record<string, s
 }
 
 function requestErrorStatus(code: QzSigningRequestError['code']): number {
-  if (code === 'QZ_SIGN_ORIGIN_FORBIDDEN' || code === 'QZ_SIGN_STORE_FORBIDDEN') return 403
+  if (code === 'QZ_SIGN_ORIGIN_FORBIDDEN') return 403
   if (code === 'QZ_SIGN_SESSION_UNAUTHORIZED') return 401
   if (code === 'QZ_SIGN_RATE_LIMITED') return 429
   if (code === 'QZ_SIGN_VERSION_MISMATCH') return 409
@@ -55,7 +54,7 @@ export type QzSignRouteDependencies = {
   finishAudit: (
     attemptId: string,
     result: 'SUCCESS' | 'FAILED',
-    errorCode?: 'QZ_SIGN_KMS_FAILED' | 'QZ_SIGN_STORE_FORBIDDEN',
+    errorCode?: 'QZ_SIGN_KMS_FAILED',
   ) => Promise<void>
 }
 
@@ -90,10 +89,6 @@ export async function handleQzSignRequest(
     if (!session) throw new QzSigningRequestError('QZ_SIGN_SESSION_UNAUTHORIZED')
     const ipHash = qzRequestIpHash(req)
     const attemptId = await dependencies.reserveAttempt(session, pair.certificateVersion, ipHash)
-    if (!isQzSigningStoreAllowed(config, session.storeCode)) {
-      await dependencies.finishAudit(attemptId, 'FAILED', 'QZ_SIGN_STORE_FORBIDDEN')
-      throw new QzSigningRequestError('QZ_SIGN_STORE_FORBIDDEN')
-    }
 
     let signature: string
     try {

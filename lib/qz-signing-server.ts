@@ -92,13 +92,24 @@ export async function verifyQzSigningSession(req: NextRequest): Promise<QzSignin
   const { token, deviceId } = getPosAuthHeaders(req)
   if (!token || !deviceId) return null
   const payload = verifyPosDeviceToken(token)
-  if (!payload || payload.deviceId !== deviceId) return null
+  if (!payload?.browserPosSessionId || payload.deviceId !== deviceId) return null
   const verified = await verifyPosDeviceRequest(req, {
     tenantId: payload.tenantId,
     storeId: payload.storeId,
     storeCode: payload.storeCode,
   })
   if (!verified) return null
+  const computerLaunch = await prisma.computerBrowserLaunchTicket.findFirst({
+    where: {
+      browserPosDeviceId: payload.browserPosSessionId,
+      binding: {
+        tenantId: verified.tenantId,
+        storeId: verified.storeId,
+      },
+    },
+    select: { id: true },
+  })
+  if (!computerLaunch) return null
   return {
     tenantId: verified.tenantId,
     storeId: verified.storeId,

@@ -30,6 +30,7 @@ const RAW_STORE_ID = 'store-secret-runtime-test'
 const RAW_STORE_CODE = 'ST-NOT-CANARY'
 const RAW_SESSION_FINGERPRINT = 'session-secret-runtime-test'
 const RAW_DEVICE_ID = 'device-secret-runtime-test'
+const RAW_BROWSER_POS_SESSION_ID = 'browser-pos-session-runtime-test'
 const RAW_IP = '203.0.113.77'
 const VERSION = 'qz-runtime-test-v1'
 
@@ -87,12 +88,36 @@ async function testCurrentMainPosTokenContractDirectly() {
   const previousSecret = process.env.AUTH_SECRET
   const authSecret = 'qz-runtime-session-test-secret'
   process.env.AUTH_SECRET = authSecret
+  const browserPosDevice = prisma.browserPosDevice
+  const computerBrowserLaunchTicket = prisma.computerBrowserLaunchTicket
+  const originalBrowserPosFindFirst = browserPosDevice.findFirst
+  const originalComputerLaunchFindFirst = computerBrowserLaunchTicket.findFirst
+  let linkedTenantId = RAW_TENANT_ID
+  let linkedStoreId = RAW_STORE_ID
+  browserPosDevice.findFirst = async ({ where }) => (
+    where.id === RAW_BROWSER_POS_SESSION_ID &&
+    where.tenantId === RAW_TENANT_ID &&
+    where.storeId === RAW_STORE_ID &&
+    where.browserDeviceId === RAW_DEVICE_ID &&
+    where.status === 'ACTIVE' &&
+    where.activeSlot === 'ACTIVE'
+      ? { id: RAW_BROWSER_POS_SESSION_ID }
+      : null
+  ) as never
+  computerBrowserLaunchTicket.findFirst = async ({ where }) => (
+    where.browserPosDeviceId === RAW_BROWSER_POS_SESSION_ID &&
+    where.binding?.tenantId === linkedTenantId &&
+    where.binding?.storeId === linkedStoreId
+      ? { id: 'launch-runtime-test' }
+      : null
+  ) as never
   const token = signPosDeviceToken({
     tenantId: RAW_TENANT_ID,
     storeId: RAW_STORE_ID,
     storeCode: RAW_STORE_CODE,
     deviceId: RAW_DEVICE_ID,
     issuedBy: 'runtime-test',
+    browserPosSessionId: RAW_BROWSER_POS_SESSION_ID,
   })
   const expected = {
     tenantId: RAW_TENANT_ID,
@@ -120,7 +145,28 @@ async function testCurrentMainPosTokenContractDirectly() {
     assert.equal(await verifyQzSigningSession(posRequest(token, 'wrong-device')), null, 'device mismatch must fail')
     assert.equal(await verifyPosDeviceRequest(posRequest(token), { ...expected, storeId: 'wrong-store' }), null)
     assert.equal(await verifyPosDeviceRequest(posRequest(token), { ...expected, storeCode: 'WRONG-CODE' }), null)
+
+    linkedStoreId = 'other-store'
+    assert.equal(await verifyQzSigningSession(posRequest(token)), null, 'binding store mismatch must fail')
+    linkedTenantId = 'other-tenant'
+    linkedStoreId = RAW_STORE_ID
+    assert.equal(await verifyQzSigningSession(posRequest(token)), null, 'binding tenant mismatch must fail')
+
+    const sessionWithoutComputerLaunch = signPosDeviceToken({
+      tenantId: RAW_TENANT_ID,
+      storeId: RAW_STORE_ID,
+      storeCode: RAW_STORE_CODE,
+      deviceId: RAW_DEVICE_ID,
+      issuedBy: 'runtime-test',
+    })
+    assert.equal(
+      await verifyQzSigningSession(posRequest(sessionWithoutComputerLaunch)),
+      null,
+      'a Browser POS token without a Computer Launch Ticket session id must fail',
+    )
   } finally {
+    browserPosDevice.findFirst = originalBrowserPosFindFirst
+    computerBrowserLaunchTicket.findFirst = originalComputerLaunchFindFirst
     if (previousSecret === undefined) delete process.env.AUTH_SECRET
     else process.env.AUTH_SECRET = previousSecret
   }
@@ -258,23 +304,23 @@ function canaryConfig(): QzActiveSigningConfig {
   }
 }
 
-async function testCanaryDenialConsumesExistingAttemptLimitBeforeKms() {
+async function testDifferentLegalStoreUsesExistingAuditRateLimitAndKmsChain() {
   let kmsCalls = 0
   await withFakeRateLimitDb([0, 0, 0, 0], async (state) => {
     const dependencies: QzSignRouteDependencies = {
       readConfig: canaryConfig,
       verifySession: async () => SESSION,
       reserveAttempt: reserveQzSignRateLimit,
-      sign: async () => { kmsCalls += 1; return 'unexpected' },
+      sign: async () => { kmsCalls += 1; return 'signed-for-different-store' },
       finishAudit: finishQzSignAudit,
     }
     const response = await handleQzSignRequest(signingRequest(), dependencies)
-    assert.equal(response.status, 403)
-    assert.equal((await response.json()).error, 'QZ_SIGN_STORE_FORBIDDEN')
+    assert.equal(response.status, 200)
+    assert.equal(await response.text(), 'signed-for-different-store')
     assert.equal(state.creates.length, 1)
     assert.equal(state.updates.length, 1)
-    assert.deepEqual(state.updates[0].data, { status: 'FAILED', message: 'QZ_SIGN_STORE_FORBIDDEN' })
-    assert.equal(kmsCalls, 0)
+    assert.deepEqual(state.updates[0].data, { status: 'SUCCESS', message: null })
+    assert.equal(kmsCalls, 1)
   })
 
   await withFakeRateLimitDb([QZ_SIGN_RATE_LIMIT_MAX, 0, 0, 0], async (state) => {
@@ -289,14 +335,14 @@ async function testCanaryDenialConsumesExistingAttemptLimitBeforeKms() {
     assert.equal(response.status, 429)
     assert.equal(state.creates.length, 0)
     assert.equal(state.updates.length, 0)
-    assert.equal(kmsCalls, 0)
+    assert.equal(kmsCalls, 1)
   })
 }
 
 async function run() {
   await testCurrentMainPosTokenContractDirectly()
   await testFourRateLimitDimensionsAndAuditRedactionDirectly()
-  await testCanaryDenialConsumesExistingAttemptLimitBeforeKms()
+  await testDifferentLegalStoreUsesExistingAuditRateLimitAndKmsChain()
   console.log('QZ signing runtime boundary tests passed')
 }
 

@@ -13,11 +13,15 @@ import {
   type DesktopReceiptData,
 } from '@/app/components/DesktopReceipt'
 import {
-  detectQzOnline,
   listQzPrinters,
   printHelloWorldViaQz,
+  printCustomerReceiptViaQz,
+  printKitchenTicketViaQz,
+  QZ_PRINT_QUEUES,
+  QzPrintError,
   shouldUseQzPrint,
   submitDesktopReceiptPrint,
+  type QzPrintKind,
   type QzStatus,
 } from '@/lib/qzPrinterAdapter'
 import {
@@ -29,6 +33,7 @@ import {
 } from '@/lib/cashier-qz-config'
 import { invalidateQzRequests, startQzRequest } from '@/lib/qzRequestGuard'
 import {
+  getKitchenTicketHtmlForTest,
   printKitchenTicket,
   type KitchenTicketData,
 } from '@/app/components/KitchenTicket'
@@ -73,6 +78,7 @@ import {
   savePosDeviceToken,
 } from '@/lib/desktop-pos-client'
 import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
+import { browserPosCustomerDisplayPath } from '@/lib/browser-pos-customer-display'
 import { dispatchCashierCartTotalChanged } from '@/lib/customer-display-cart-event'
 import {
   createCustomerDisplayRealtimeChannel,
@@ -107,6 +113,16 @@ type SaleResult = {
   receipt?: DesktopReceiptData
   kitchenTicket?: KitchenTicketData
 }
+type QzControlledPrintState = {
+  status: 'idle' | 'printing' | 'success' | 'error'
+  message: string
+}
+
+const QZ_PREVIEW_LABEL = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_LABEL
+const QZ_PREVIEW_COMMIT = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_COMMIT
+const QZ_BUSINESS_RAW_PREVIEW_ACTIVE =
+  QZ_PREVIEW_LABEL === 'QZ-PRINT-02D' &&
+  /^[0-9a-f]{40}$/.test(QZ_PREVIEW_COMMIT ?? '')
 type CashierDisplayStatus = 'DRAFT' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'CANCELLED'
 type CashierDisplayPayment = 'CASH' | 'KHQR' | null
 type CashierPaymentMethod = 'CASH' | 'KHQR' | 'OTHER' | 'MEMBER_BALANCE'
@@ -331,9 +347,12 @@ function postCashierDisplaySession(input: {
   }).then((res) => {
     if (!res.ok) {
       console.warn('[cashier:display-session] sync failed', res.status)
+      return false
     }
+    return true
   }).catch((e) => {
     console.warn('[cashier:display-session] sync failed', e)
+    return false
   })
 }
 function isValidStoreCode(sc: string | null): sc is string {
@@ -410,6 +429,7 @@ type DesktopCopy = {
   storeLoading: string
   installDesktop: string
   desktopMode: string
+  openCustomerDisplay: string
   enterFullscreen: string
   exitFullscreen: string
   rememberedStore: string
@@ -518,6 +538,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       storeLoading: 'Loading…',
       installDesktop: 'Install to PC',
       desktopMode: 'Desktop mode',
+      openCustomerDisplay: 'Open Customer Display',
       enterFullscreen: 'Enter full screen',
       exitFullscreen: 'Exit full screen',
       rememberedStore: 'This store is remembered. Desktop open will enter this cashier.',
@@ -625,6 +646,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       storeLoading: 'កំពុងផ្ទុក…',
       installDesktop: 'ដំឡើងលើកុំព្យូទ័រ',
       desktopMode: 'របៀប Desktop',
+      openCustomerDisplay: 'បើកអេក្រង់អតិថិជន',
       enterFullscreen: 'ចូលពេញអេក្រង់',
       exitFullscreen: 'ចេញពីពេញអេក្រង់',
       rememberedStore: 'ហាងនេះត្រូវបានចងចាំ។ បើកលើ Desktop នឹងចូលទៅកាន់ប្រអប់គិតលុយនេះ។',
@@ -731,6 +753,7 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     storeLoading: '加载中…',
     installDesktop: '安装到电脑',
     desktopMode: '桌面模式',
+    openCustomerDisplay: '打开顾客屏',
     enterFullscreen: '进入全屏',
     exitFullscreen: '退出全屏',
     rememberedStore: '已记住当前门店，桌面打开会进入本店收银台',
@@ -1306,6 +1329,9 @@ export default function CashierPage() {
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const [cashTendered, setCashTendered] = useState('')
   const [autoPrint, setAutoPrint] = useState(false)
+  const [qzRawCanaryAuthorized, setQzRawCanaryAuthorized] = useState(false)
+  const [qzReceiptTest, setQzReceiptTest] = useState<QzControlledPrintState>({ status: 'idle', message: '' })
+  const [qzKitchenTest, setQzKitchenTest] = useState<QzControlledPrintState>({ status: 'idle', message: '' })
   const [qzPrintEnabled, setQzPrintEnabled] = useState(false)
   const [qzStatus, setQzStatus] = useState<QzStatus>('idle')
   const [qzPrinters, setQzPrinters] = useState<string[]>([])
@@ -1313,6 +1339,7 @@ export default function CashierPage() {
   const [qzChecking, setQzChecking] = useState(false)
   const qzRequestVersionRef = useRef(0)
   const qzActiveStoreCodeRef = useRef<string | null>(null)
+  const readQzSigningStoreCode = useCallback(() => qzActiveStoreCodeRef.current, [])
   const [compactMode, setCompactMode] = useState(false)
   const [usdKhrRate, setUsdKhrRate] = useState(DEFAULT_KHR_RATE)
   const [holdOrders, setHoldOrders] = useState<HoldOrder<CartLine, DesktopCheckoutStep>[]>([])
@@ -1353,12 +1380,16 @@ export default function CashierPage() {
   const ordersRef       = useRef<HTMLDivElement>(null)
   const cashierDisplayActiveRef = useRef(false)
   const lastCashierDisplaySyncKey = useRef('')
+  const inFlightCashierDisplaySyncKey = useRef('')
   const previousCashierDisplayCartCountRef = useRef(0)
   const customerDisplayRealtimeChannelRef = useRef<BroadcastChannel | null>(null)
   const customerDisplayRealtimeSequenceRef = useRef(0)
   const autoPrintedReceiptKeyRef = useRef('')
   const receiptPrintButtonRef = useRef<HTMLButtonElement>(null)
   const receiptPrintLockedRef = useRef(false)
+  const qzPrintInFlightRef = useRef<Set<QzPrintKind>>(new Set())
+  const qzRawBusinessActive = QZ_BUSINESS_RAW_PREVIEW_ACTIVE || qzRawCanaryAuthorized
+  const qzClientMode = qzRawBusinessActive ? 'raw' : 'signed'
 
   const focusSearchInput = useCallback(() => {
     window.setTimeout(() => searchRef.current?.focus(), 0)
@@ -1598,23 +1629,32 @@ export default function CashierPage() {
     setStoreCode(sc)
     setIsKitchenTicketEnabled(false)
     setPosDeviceToken(existingDeviceToken)
+    setQzRawCanaryAuthorized(false)
     setPosAuthError('')
     setPosAccountAccess(desktopPublicEntry || existingDeviceToken ? 'authorized' : 'checking')
     setPosAccountAccessMessage('')
     setIsRestoringCashierStore(false)
-    if (!desktopPublicEntry && !existingDeviceToken) {
-      apiFetch(`/api/cashier/access?storeCode=${encodeURIComponent(sc)}`)
+    if (!desktopPublicEntry) {
+      apiFetch(`/api/cashier/access?storeCode=${encodeURIComponent(sc)}`, {
+        cache: 'no-store',
+        headers: posDeviceHeaders(sc),
+      })
         .then(async (r) => {
           const body = await r.json().catch(() => null)
           if (r.ok && body?.ok) {
+            setQzRawCanaryAuthorized(body.qzRawCanary === true)
             setPosAccountAccess('authorized')
             setPosAccountAccessMessage('')
             return
           }
+          setQzRawCanaryAuthorized(false)
+          if (existingDeviceToken) return
           setPosAccountAccess(r.status === 401 ? 'login_required' : 'forbidden')
           setPosAccountAccessMessage(body?.message || body?.error || '请确认你已使用本店老板或员工账号登录。')
         })
         .catch(() => {
+          setQzRawCanaryAuthorized(false)
+          if (existingDeviceToken) return
           setPosAccountAccess('login_required')
           setPosAccountAccessMessage('请确认你已使用本店老板或员工账号登录。')
         })
@@ -1998,7 +2038,74 @@ export default function CashierPage() {
     focusScannerInput()
   }, [focusScannerInput])
 
+  const qzRawMessage = useCallback((kind: QzPrintKind, error?: unknown) => {
+    const queueName = QZ_PRINT_QUEUES[kind]
+    if (!error) {
+      if (lang === 'en') return `Submitted to “${queueName}”`
+      if (lang === 'km') return `បានបញ្ជូនទៅ “${queueName}”`
+      return `已提交到“${queueName}”`
+    }
+    const code = error instanceof QzPrintError ? error.code : 'QZ_PRINT_FAILED'
+    if (code === 'QZ_UNAVAILABLE') {
+      if (lang === 'en') return 'QZ Tray is unavailable. Confirm QZ Tray 2.2.6 is running.'
+      if (lang === 'km') return 'QZ Tray មិនអាចប្រើបាន។ សូមបញ្ជាក់ថា QZ Tray 2.2.6 កំពុងដំណើរការ។'
+      return 'QZ Tray 不可用，请确认 QZ Tray 2.2.6 正在运行'
+    }
+    if (code === 'QZ_QUEUE_NOT_FOUND') {
+      if (lang === 'en') return `Windows print queue “${queueName}” was not found.`
+      if (lang === 'km') return `រកមិនឃើញជួរបោះពុម្ព Windows “${queueName}” ទេ។`
+      return `未找到 Windows 打印队列“${queueName}”`
+    }
+    if (lang === 'en') return `Submission to “${queueName}” failed. Check that queue and retry.`
+    if (lang === 'km') return `ការបញ្ជូនទៅ “${queueName}” បរាជ័យ។ សូមពិនិត្យជួរនោះ ហើយសាកល្បងម្ដងទៀត។`
+    return `提交到“${queueName}”失败，请检查该队列后重试`
+  }, [lang])
+
+  const submitRawTicket = useCallback(async (
+    kind: QzPrintKind,
+    receipt: DesktopReceiptData,
+    kitchenTicket?: KitchenTicketData,
+  ) => {
+    if (kind === 'receipt') {
+      await printCustomerReceiptViaQz(renderDesktopReceiptHtml(receipt, lang), undefined, undefined, readQzSigningStoreCode)
+      return
+    }
+    const ticket = kitchenTicket ?? {
+      storeName: receipt.storeName,
+      orderNo: receipt.orderNo,
+      createdAt: receipt.createdAt,
+      items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
+    }
+    await printKitchenTicketViaQz(getKitchenTicketHtmlForTest(ticket, lang), undefined, undefined, readQzSigningStoreCode)
+  }, [lang, readQzSigningStoreCode])
+
+  const handleControlledQzPrint = useCallback(async (
+    kind: QzPrintKind,
+    receipt: DesktopReceiptData,
+    kitchenTicket?: KitchenTicketData,
+  ) => {
+    if (qzPrintInFlightRef.current.has(kind)) return
+    const setState = kind === 'receipt' ? setQzReceiptTest : setQzKitchenTest
+    qzPrintInFlightRef.current.add(kind)
+    setState({ status: 'printing', message: '' })
+    try {
+      await submitRawTicket(kind, receipt, kitchenTicket)
+      setState({ status: 'success', message: qzRawMessage(kind) })
+    } catch (error) {
+      console.warn(`[qz-printer] business ${kind} RAW print failed`, error)
+      const message = qzRawMessage(kind, error)
+      setState({ status: 'error', message })
+      showToast(message)
+    } finally {
+      qzPrintInFlightRef.current.delete(kind)
+    }
+  }, [qzRawMessage, submitRawTicket])
+
   const handlePrintReceipt = useCallback((receipt: DesktopReceiptData, kitchenTicket?: KitchenTicketData) => {
+    if (qzRawBusinessActive) {
+      void handleControlledQzPrint('receipt', receipt, kitchenTicket)
+      return
+    }
     if (receiptPrintLockedRef.current) return
     receiptPrintLockedRef.current = true
     setIsReceiptPrintChainActive(true)
@@ -2068,7 +2175,7 @@ export default function CashierPage() {
       }
       finishReceiptPrintFlow()
     })
-  }, [finishReceiptPrintFlow, lang, qzPrintEnabled, qzStatus, qzSelectedPrinter])
+  }, [finishReceiptPrintFlow, handleControlledQzPrint, lang, qzPrintEnabled, qzRawBusinessActive, qzStatus, qzSelectedPrinter])
 
   function closeSaleResultOverlay() {
     if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
@@ -2103,17 +2210,10 @@ export default function CashierPage() {
     setQzChecking(true)
     setQzStatus('checking')
     try {
-      const online = await detectQzOnline()
-      if (!request.isCurrent()) return
-      if (!online) {
-        setQzStatus('offline')
-        setQzPrinters([])
-        return
-      }
-      setQzStatus('online')
-      const printers = await listQzPrinters()
+      const printers = await listQzPrinters(undefined, qzClientMode, readQzSigningStoreCode)
       if (!request.isCurrent()) return
       setQzPrinters(printers)
+      setQzStatus('online')
       if (qzSelectedPrinter && !printers.includes(qzSelectedPrinter)) {
         setQzSelectedPrinter(null)
         try { writeQzSelectedPrinter(requestStoreCode, null) } catch {}
@@ -2126,7 +2226,7 @@ export default function CashierPage() {
     } finally {
       if (request.isCurrent()) setQzChecking(false)
     }
-  }, [qzChecking, qzSelectedPrinter, storeCode])
+  }, [qzChecking, qzClientMode, qzSelectedPrinter, readQzSigningStoreCode, storeCode])
 
   function handleQzPrintToggle() {
     const next = !qzPrintEnabled
@@ -2628,6 +2728,12 @@ export default function CashierPage() {
   }
 
   useEffect(() => {
+    qzPrintInFlightRef.current.clear()
+    setQzReceiptTest({ status: 'idle', message: '' })
+    setQzKitchenTest({ status: 'idle', message: '' })
+  }, [saleResult?.receipt])
+
+  useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
     if (!isDesktopPos || !autoPrint || !receiptSnapshot) return
     const kitchenTicket = saleResult?.kitchenTicket
@@ -2637,11 +2743,20 @@ export default function CashierPage() {
     autoPrintedReceiptKeyRef.current = receiptKey
 
     const timer = window.setTimeout(() => {
+      if (qzRawBusinessActive) {
+        void (async () => {
+          await handleControlledQzPrint('receipt', receiptSnapshot, kitchenTicket)
+          if (kitchenTicket) {
+            await handleControlledQzPrint('kitchen', receiptSnapshot, kitchenTicket)
+          }
+        })()
+        return
+      }
       handlePrintReceipt(receiptSnapshot, kitchenTicket)
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, saleResult?.kitchenTicket, isDesktopPos, autoPrint, handlePrintReceipt])
+  }, [saleResult?.receipt, saleResult?.kitchenTicket, isDesktopPos, autoPrint, qzRawBusinessActive, handleControlledQzPrint, handlePrintReceipt])
 
   useEffect(() => {
     if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return
@@ -2664,6 +2779,12 @@ export default function CashierPage() {
     window.addEventListener('keydown', onReceiptKey)
     return () => window.removeEventListener('keydown', onReceiptKey)
   }, [isDesktopPos, autoPrint, saleResult?.receipt, saleResult?.kitchenTicket, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
+
+  function handleOpenCustomerDisplay() {
+    const target = browserPosCustomerDisplayPath(storeCode, lang as DeskLang)
+    if (!target) return
+    window.open(target, '_blank', 'noopener,noreferrer')
+  }
 
   async function handleInstallClick() {
     if (!storeCode) {
@@ -2869,6 +2990,7 @@ export default function CashierPage() {
       const completedItems = cashierDisplayItems(cart)
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
+      inFlightCashierDisplaySyncKey.current = ''
       void postCashierDisplaySession({
         storeCode,
         status: 'COMPLETED',
@@ -2996,6 +3118,24 @@ export default function CashierPage() {
     publishCustomerDisplayRealtimeSnapshot,
   ])
 
+  const postCashierDisplaySessionOnce = useCallback((
+    syncKey: string,
+    input: Parameters<typeof postCashierDisplaySession>[0],
+  ) => {
+    if (syncKey === lastCashierDisplaySyncKey.current) return
+    if (syncKey === inFlightCashierDisplaySyncKey.current) return
+    inFlightCashierDisplaySyncKey.current = syncKey
+    void postCashierDisplaySession(input).then((ok) => {
+      if (inFlightCashierDisplaySyncKey.current !== syncKey) return
+      inFlightCashierDisplaySyncKey.current = ''
+      if (ok) lastCashierDisplaySyncKey.current = syncKey
+    }).catch(() => {
+      if (inFlightCashierDisplaySyncKey.current === syncKey) {
+        inFlightCashierDisplaySyncKey.current = ''
+      }
+    })
+  }, [])
+
   const syncCurrentCartToCustomerDisplay = useCallback((nextPayment: CashierPaymentMethod, options?: CustomerDisplaySyncOptions) => {
     if (!storeCode || noCodeError || isRestoringCashierStore || cart.length === 0) return
     const displayPayment: CashierDisplayPayment =
@@ -3005,27 +3145,28 @@ export default function CashierPage() {
     const status: CashierDisplayStatus = displayPayment === 'KHQR' ? 'AWAITING_PAYMENT' : 'DRAFT'
     const paymentStatus = displayPayment === 'KHQR' ? 'PENDING' : null
     const items = cashierDisplayItems(cart)
+    const message = displayPayment === 'KHQR'
+      ? (options?.focusKhqr ? CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE : '请扫码支付')
+      : null
     const syncKey = JSON.stringify({
       storeCode,
       status,
       paymentMethod: displayPayment,
       paymentStatus,
       items,
+      message,
     })
-    lastCashierDisplaySyncKey.current = syncKey
     cashierDisplayActiveRef.current = true
     previousCashierDisplayCartCountRef.current = cart.length
-    void postCashierDisplaySession({
+    postCashierDisplaySessionOnce(syncKey, {
       storeCode,
       status,
       paymentMethod: displayPayment,
       paymentStatus,
       items,
-      message: displayPayment === 'KHQR'
-        ? (options?.focusKhqr ? CUSTOMER_DISPLAY_KHQR_FOCUS_MESSAGE : '请扫码支付')
-        : null,
+      message,
     })
-  }, [cart, storeCode, isOnline, noCodeError, isRestoringCashierStore, currencyCode])
+  }, [cart, storeCode, isOnline, noCodeError, isRestoringCashierStore, currencyCode, postCashierDisplaySessionOnce])
 
   useEffect(() => {
     if (!storeCode || noCodeError || isRestoringCashierStore) return
@@ -3036,6 +3177,7 @@ export default function CashierPage() {
       if (!cashierDisplayActiveRef.current) return
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
+      inFlightCashierDisplaySyncKey.current = ''
       lastCashierDisplaySyncKey.current = '__terminal__'
       void postCashierDisplaySession({
         storeCode,
@@ -3066,8 +3208,7 @@ export default function CashierPage() {
     })
     if (syncKey === lastCashierDisplaySyncKey.current) return
     if (shouldSyncImmediately) {
-      lastCashierDisplaySyncKey.current = syncKey
-      void postCashierDisplaySession({
+      postCashierDisplaySessionOnce(syncKey, {
         storeCode,
         status,
         paymentMethod: displayPayment,
@@ -3078,8 +3219,7 @@ export default function CashierPage() {
       return
     }
     const timer = setTimeout(() => {
-      lastCashierDisplaySyncKey.current = syncKey
-      void postCashierDisplaySession({
+      postCashierDisplaySessionOnce(syncKey, {
         storeCode,
         status,
         paymentMethod: displayPayment,
@@ -3089,7 +3229,7 @@ export default function CashierPage() {
       })
     }, CASHIER_DISPLAY_SYNC_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore, isDesktopPos, checkoutStep, currencyCode])
+  }, [cart, payment, storeCode, isOnline, noCodeError, isRestoringCashierStore, isDesktopPos, checkoutStep, currencyCode, postCashierDisplaySessionOnce])
 
   // ── Submit sale ────────────────────────────────────────────────────────────
   async function handleSubmit(paymentOverride?: CashierPaymentMethod) {
@@ -3158,6 +3298,7 @@ export default function CashierPage() {
         setOfflinePendingCount(nextCount)
         cashierDisplayActiveRef.current = false
         lastCashierDisplaySyncKey.current = ''
+        inFlightCashierDisplaySyncKey.current = ''
         setCart([])
         setPayment('CASH')
         showToast('离线订单已保存，网络恢复后请同步')
@@ -3196,6 +3337,7 @@ export default function CashierPage() {
       if (!res.ok) { setSubmitError(body.message ?? body.error ?? '提交失败，请重试'); return }
       cashierDisplayActiveRef.current = false
       lastCashierDisplaySyncKey.current = ''
+      inFlightCashierDisplaySyncKey.current = ''
       void postCashierDisplaySession({
         storeCode,
         status: 'COMPLETED',
@@ -3506,7 +3648,7 @@ export default function CashierPage() {
       syncCurrentCartToCustomerDisplay('KHQR', { focusKhqr: true })
       return
     }
-    syncCurrentCartToCustomerDisplay('KHQR')
+    syncCurrentCartToCustomerDisplay(method)
   }
 
   function openDesktopPaymentSelection() {
@@ -3915,6 +4057,14 @@ export default function CashierPage() {
               ))}
             </div>
             <div style={s.kioskActions}>
+              <button
+                type="button"
+                style={{ ...s.kioskBtn, gridColumn: '1 / -1', ...(!storeCode ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
+                disabled={!storeCode}
+                onClick={handleOpenCustomerDisplay}
+              >
+                {d.openCustomerDisplay}
+              </button>
               <button type="button" style={s.kioskBtn} onClick={handleInstallClick}>
                 {isStandalone ? d.desktopMode : d.installDesktop}
               </button>
@@ -4846,10 +4996,57 @@ export default function CashierPage() {
             )}
             <div style={{ margin: '6px 0 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
               {isDesktopPos && saleResult.receipt
-                ? d.receiptReady
+                ? (qzRawBusinessActive
+                    ? (lang === 'en'
+                        ? '80mm tickets ready: customer → 前台; kitchen → 厨房 via QZ RAW.'
+                        : lang === 'km'
+                          ? 'សំបុត្រ 80mm រួចរាល់៖ អតិថិជន → 前台; ផ្ទះបាយ → 厨房 តាម QZ RAW។'
+                          : '已生成 80mm 票据：顾客票 → 前台，厨房票 → 厨房（QZ RAW）')
+                    : d.receiptReady)
                 : d.receiptNotAuto}
             </div>
-            {isDesktopPos && saleResult.receipt && (
+            {isDesktopPos && saleResult.receipt && qzRawBusinessActive && (
+              <div data-qz-dual-queue-print="raw" style={{ marginBottom: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: saleResult.kitchenTicket ? '1fr 1fr' : '1fr', gap: 8 }}>
+                  <button
+                    ref={receiptPrintButtonRef}
+                    type="button"
+                    data-qz-print-kind="receipt"
+                    style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(qzReceiptTest.status === 'printing' ? s.submitDis : {}) }}
+                    disabled={qzReceiptTest.status === 'printing'}
+                    onClick={() => void handleControlledQzPrint('receipt', saleResult.receipt!, saleResult.kitchenTicket)}
+                  >
+                    {qzReceiptTest.status === 'printing'
+                      ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…')
+                      : (lang === 'en' ? 'Customer → 前台' : lang === 'km' ? 'អតិថិជន → 前台' : '顾客票 → 前台')}
+                  </button>
+                  {saleResult.kitchenTicket && (
+                    <button
+                      type="button"
+                      data-qz-print-kind="kitchen"
+                      style={{ ...s.secondaryBtn, padding: '10px 8px', fontSize: 12, ...(qzKitchenTest.status === 'printing' ? s.submitDis : {}) }}
+                      disabled={qzKitchenTest.status === 'printing'}
+                      onClick={() => void handleControlledQzPrint('kitchen', saleResult.receipt!, saleResult.kitchenTicket)}
+                    >
+                      {qzKitchenTest.status === 'printing'
+                        ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…')
+                        : (lang === 'en' ? 'Kitchen → 厨房' : lang === 'km' ? 'ផ្ទះបាយ → 厨房' : '厨房票 → 厨房')}
+                    </button>
+                  )}
+                </div>
+                {qzReceiptTest.message && (
+                  <div data-qz-result="receipt" style={{ marginTop: 7, fontSize: 10, lineHeight: 1.4, color: qzReceiptTest.status === 'error' ? '#b91c1c' : '#166534' }}>
+                    {qzReceiptTest.message}
+                  </div>
+                )}
+                {qzKitchenTest.message && (
+                  <div data-qz-result="kitchen" style={{ marginTop: 5, fontSize: 10, lineHeight: 1.4, color: qzKitchenTest.status === 'error' ? '#b91c1c' : '#166534' }}>
+                    {qzKitchenTest.message}
+                  </div>
+                )}
+              </div>
+            )}
+            {isDesktopPos && saleResult.receipt && !qzRawBusinessActive && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                 <button
                   type="button"

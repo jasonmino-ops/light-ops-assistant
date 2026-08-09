@@ -68,6 +68,7 @@ function makeSigningHarness(options: {
   responses?: Response[]
   search?: string
   posHeaders?: Record<string, string>
+  storeContextProvider?: () => string | null
 } = {}) {
   const fetchCalls: FetchCall[] = []
   const storeCodes: string[] = []
@@ -107,7 +108,7 @@ function makeSigningHarness(options: {
         'x-lightops-client': 'desktop-pos',
       }
     },
-  })
+  }, options.storeContextProvider)
 
   return {
     client,
@@ -171,6 +172,17 @@ async function testSignatureRequestPreservesDigestAndRequiredHeaders() {
   assert.equal(headers.get('x-qz-certificate-version'), SIGNING_VERSION)
   assert.equal(headers.get('x-pos-device-token'), 'valid-pos-token')
   assert.equal(headers.get('x-pos-device-id'), 'valid-pos-device-id')
+  assert.deepEqual(harness.storeCodes, ['ST169E7000'])
+}
+
+async function testExplicitCashierStoreContextSignsWithoutQuery() {
+  const harness = makeSigningHarness({
+    search: '',
+    storeContextProvider: () => 'ST169E7000',
+  })
+  await harness.certificate()
+  assert.equal(await harness.signature(), SIGNING_SIGNATURE)
+  assert.deepEqual(harness.fetchCalls.map((call) => call.input), ['/api/qz/config', '/api/qz/sign'])
   assert.deepEqual(harness.storeCodes, ['ST169E7000'])
 }
 
@@ -407,6 +419,7 @@ async function run() {
   await testSigningConfigFailuresReject()
   await testDisabledSigningConfigRejects()
   await testSignatureRequestPreservesDigestAndRequiredHeaders()
+  await testExplicitCashierStoreContextSignsWithoutQuery()
   await testMissingStoreOrPosHeadersFailClosed()
   await testSignatureResponseFailuresRejectWithoutBlankFallback()
   await testInvalidDigestFailsBeforeSigningRequest()
