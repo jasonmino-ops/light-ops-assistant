@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 
 import {
-  ACTIVE_DRIVER_NAME,
   EShopSetupOrchestrator,
   KITCHEN_DISCOVERY_DEFERRED,
+  VERIFIED_DRIVER_CATALOG,
   createDriverProvisioningAdapter,
   createFrontUsbPrinterCandidates,
   createFrontUsbPrinterDetectionAdapter,
@@ -23,6 +23,7 @@ import {
   type SetupStageContext,
   type SetupStageLogEntry,
   type SoftwareProvisioningSystem,
+  type VerifiedDriverFamilyId,
 } from '../tools/e-shop-setup/src'
 
 const context: SetupStageContext = {
@@ -34,21 +35,26 @@ const context: SetupStageContext = {
 function driverState(overrides: Partial<DriverInspection> = {}): DriverInspection {
   return {
     ready: false,
-    expectedName: ACTIVE_DRIVER_NAME,
+    resolvedFamily: null,
+    resolutionSource: 'UNRESOLVED',
     detectedName: null,
     version: null,
     manufacturer: null,
     detectionSource: 'NOT_FOUND',
-    externalInstallerProvided: false,
+    payloadAvailable: false,
     ...overrides,
   }
 }
 
-function frontState(candidateIds: string[] = []): FrontUsbPrinterInspection {
+function frontState(
+  candidateIds: string[] = [],
+  driverFamily: VerifiedDriverFamilyId = 'RONGTA_80MM',
+): FrontUsbPrinterInspection {
   return {
     candidates: candidateIds.map((candidateId) => ({
       candidateId,
       detectionSource: 'WINDOWS_PRINTER_PORT_METADATA' as const,
+      driverFamily,
     })),
     roleResolution: candidateIds.length === 1
       ? 'AUTO_RESOLVED'
@@ -66,21 +72,25 @@ class FakeHardwareSystem implements HardwareProvisioningSystem {
   installCount = 0
   frontInspectCount = 0
   failInstall = false
+  selectedInstallerFamilies: VerifiedDriverFamilyId[] = []
 
   async inspectDriver(): Promise<DriverInspection> {
     return structuredClone(this.driver)
   }
 
-  async installExternalDriver(): Promise<ProvisionAction> {
+  async installExternalDriver(family: VerifiedDriverFamilyId): Promise<ProvisionAction> {
     this.installCount += 1
+    this.selectedInstallerFamilies.push(family)
     if (this.failInstall) throw new Error('synthetic external driver installer failure')
     this.driver = driverState({
       ready: true,
-      detectedName: ACTIVE_DRIVER_NAME,
+      resolvedFamily: family,
+      resolutionSource: 'INSTALLED_DRIVER',
+      detectedName: family === 'RONGTA_80MM' ? '80Normal' : 'Xprinter XP-N160II',
       version: '8.0',
-      manufacturer: 'RongTa',
+      manufacturer: family === 'RONGTA_80MM' ? 'RongTa' : 'Xprinter',
       detectionSource: 'WINDOWS_PRINT_MANAGEMENT',
-      externalInstallerProvided: true,
+      payloadAvailable: true,
     })
     return { changed: true, verified: true }
   }
@@ -159,7 +169,9 @@ async function testExisting80NormalIsReady(): Promise<void> {
   const system = new FakeHardwareSystem()
   system.driver = driverState({
     ready: true,
-    detectedName: ACTIVE_DRIVER_NAME,
+    resolvedFamily: 'RONGTA_80MM',
+    resolutionSource: 'INSTALLED_DRIVER',
+    detectedName: '80Normal',
     version: '8.0',
     manufacturer: 'RongTa',
     detectionSource: 'WINDOWS_PRINT_MANAGEMENT',
@@ -167,57 +179,103 @@ async function testExisting80NormalIsReady(): Promise<void> {
   const result = await createDriverProvisioningAdapter(system).detect(context)
   assert.equal(result.status, 'READY')
   assert.equal(result.failureCode, null)
-  assert.equal(result.evidence.detectedDriverName, ACTIVE_DRIVER_NAME)
+  assert.equal(result.evidence.detectedDriverName, '80Normal')
+  assert.equal(result.evidence.resolvedFamily, 'RONGTA_80MM')
   assert.equal(result.evidence.version, '8.0')
   assert.equal(result.evidence.detectionSource, 'WINDOWS_PRINT_MANAGEMENT')
   assert.equal(system.installCount, 0)
 }
 
-async function testMissingDriverRequiresExternalInstaller(): Promise<void> {
+async function testVerifiedCatalogContainsOnlyTwoUnknownRedistributionFamilies(): Promise<void> {
+  assert.deepEqual(
+    VERIFIED_DRIVER_CATALOG.map(({ id }) => id),
+    ['RONGTA_80MM', 'XPRINTER_80MM'],
+  )
+  assert.ok(VERIFIED_DRIVER_CATALOG.every(({ redistribution }) => redistribution === 'UNKNOWN'))
+}
+
+async function testKnownFamilyWithoutPayloadRequiresExternalInstaller(): Promise<void> {
   const system = new FakeHardwareSystem()
+  system.driver = driverState({
+    resolvedFamily: 'XPRINTER_80MM',
+    resolutionSource: 'USB_DEVICE_METADATA',
+  })
   const result = await createDriverProvisioningAdapter(system).detect(context)
   assert.equal(result.status, 'BLOCKED')
   assert.equal(result.failureCode, 'EXTERNAL_DRIVER_REQUIRED')
+  assert.equal(result.evidence.resolvedFamily, 'XPRINTER_80MM')
+  assert.equal(result.evidence.payloadAvailable, false)
   assert.equal(result.evidence.classification, 'EXTERNAL_INSTALLER')
   assert.equal(result.evidence.redistribution, 'UNKNOWN')
   assert.equal(system.installCount, 0)
 }
 
-async function testExternalInstallerAdapterSuccess(): Promise<void> {
+async function testUnknownPrinterDoesNotInstallUnknownDriver(): Promise<void> {
   const system = new FakeHardwareSystem()
-  system.driver.externalInstallerProvided = true
+  const result = await createDriverProvisioningAdapter(system).detect(context)
+  assert.equal(result.status, 'BLOCKED')
+  assert.equal(result.failureCode, 'EXTERNAL_DRIVER_REQUIRED')
+  assert.equal(result.evidence.resolvedFamily, null)
+  assert.equal(result.evidence.resolutionSource, 'UNRESOLVED')
+  assert.equal(system.installCount, 0)
+  assert.deepEqual(system.selectedInstallerFamilies, [])
+}
+
+async function verifyFamilyInstallerSelection(
+  family: VerifiedDriverFamilyId,
+  expectedDriverName: string,
+): Promise<void> {
+  const system = new FakeHardwareSystem()
+  system.driver = driverState({
+    resolvedFamily: family,
+    resolutionSource: 'USB_DEVICE_METADATA',
+    payloadAvailable: true,
+  })
   const adapter = createDriverProvisioningAdapter(system)
   assert.equal((await adapter.detect(context)).status, 'NEEDS_ACTION')
   const result = await adapter.execute(context)
   assert.equal(result.status, 'READY')
-  assert.equal(result.evidence.detectedDriverName, ACTIVE_DRIVER_NAME)
+  assert.equal(result.evidence.detectedDriverName, expectedDriverName)
+  assert.equal(result.evidence.selectedInstallerFamily, family)
   assert.equal(result.evidence.installerInvoked, true)
   assert.equal(system.installCount, 1)
+  assert.deepEqual(system.selectedInstallerFamilies, [family])
+}
+
+async function testRongtaCandidateSelectsRongtaInstallerAdapter(): Promise<void> {
+  await verifyFamilyInstallerSelection('RONGTA_80MM', '80Normal')
+}
+
+async function testXprinterCandidateSelectsXprinterInstallerAdapter(): Promise<void> {
+  await verifyFamilyInstallerSelection('XPRINTER_80MM', 'Xprinter XP-N160II')
 }
 
 async function testWindowsDriverDetectionMapsPrintManagementEvidence(): Promise<void> {
-  let script = ''
+  const scripts: string[] = []
   const system = new WindowsHardwareProvisioningSystem({}, {
     runtimePlatform: 'win32',
     runtimeArchitecture: 'x64',
     run: async (_file, args) => {
-      script = args.join(' ')
-      return JSON.stringify({
-        Found: true,
-        Name: ACTIVE_DRIVER_NAME,
-        Version: '8.0',
-        Manufacturer: 'RongTa',
-        DetectionSource: 'WINDOWS_PRINT_MANAGEMENT',
-      })
+      const script = args.join(' ')
+      scripts.push(script)
+      return script.includes('Get-PrinterDriver')
+        ? JSON.stringify([{
+            Name: '80Normal',
+            Version: '8.0',
+            Manufacturer: 'RongTa',
+            DetectionSource: 'WINDOWS_PRINT_MANAGEMENT',
+          }])
+        : '[]'
     },
   })
   const state = await system.inspectDriver()
   assert.equal(state.ready, true)
-  assert.equal(state.detectedName, ACTIVE_DRIVER_NAME)
+  assert.equal(state.resolvedFamily, 'RONGTA_80MM')
+  assert.equal(state.detectedName, '80Normal')
   assert.equal(state.version, '8.0')
   assert.equal(state.detectionSource, 'WINDOWS_PRINT_MANAGEMENT')
-  assert.match(script, /Get-PrinterDriver/)
-  assert.match(script, /Windows x64\\Drivers\\Version-3/)
+  assert.ok(scripts.some((script) => /Get-PrinterDriver/.test(script)))
+  assert.ok(scripts.some((script) => /Windows x64\\Drivers\\Version-3/.test(script)))
 }
 
 async function testSingleFrontCandidateAutoResolves(): Promise<void> {
@@ -226,6 +284,7 @@ async function testSingleFrontCandidateAutoResolves(): Promise<void> {
   const result = await createFrontUsbPrinterDetectionAdapter(system).detect(context)
   assert.equal(result.status, 'READY')
   assert.equal(result.evidence.candidateCount, 1)
+  assert.deepEqual(result.evidence.driverFamilies, ['RONGTA_80MM'])
   assert.equal(result.evidence.roleResolution, 'AUTO_RESOLVED')
   assert.equal(result.evidence.selectedCandidateId, 'front-usb-1111111111111111')
   assert.equal(result.evidence.kitchenDiscovery, KITCHEN_DISCOVERY_DEFERRED)
@@ -253,7 +312,7 @@ async function testDiscoveryUsesDynamicMetadataWithoutLeakingIt(): Promise<void>
   const candidates = createFrontUsbPrinterCandidates([
     {
       Name: 'Arbitrary Front Thermal Printer',
-      DriverName: ACTIVE_DRIVER_NAME,
+      DriverName: '80Normal',
       PortName: 'Port selected dynamically by Windows',
       PortMonitor: 'Vendor monitor',
       PnpDeviceId: 'USBPRINT\\DYNAMIC_MODEL\\8&ABC&0&DYNAMIC',
@@ -266,12 +325,13 @@ async function testDiscoveryUsesDynamicMetadataWithoutLeakingIt(): Promise<void>
     },
     {
       Name: 'Network printer using expected driver',
-      DriverName: ACTIVE_DRIVER_NAME,
+      DriverName: '80Normal',
       PortName: '10.20.30.40',
       PortMonitor: 'Standard TCP/IP Port',
     },
   ])
   assert.equal(candidates.length, 1)
+  assert.equal(candidates[0]!.driverFamily, 'RONGTA_80MM')
   assert.match(candidates[0]!.candidateId, /^front-usb-[a-f0-9]{16}$/)
   const serialized = JSON.stringify(candidates)
   assert.doesNotMatch(serialized, /Arbitrary Front Thermal Printer|Port selected dynamically by Windows|DYNAMIC_MODEL/)
@@ -288,7 +348,7 @@ async function testWindowsFrontDiscoveryUsesPrinterPnpAndPortMetadata(): Promise
       script = args.join(' ')
       return JSON.stringify([{
         Name: 'Windows-assigned thermal printer',
-        DriverName: ACTIVE_DRIVER_NAME,
+        DriverName: '80Normal',
         PortName: 'Dynamic Windows Port',
         PortMonitor: 'Vendor Monitor',
         PnpDeviceId: 'USBPRINT\\MODEL_FROM_WINDOWS\\INSTANCE_FROM_WINDOWS',
@@ -298,11 +358,26 @@ async function testWindowsFrontDiscoveryUsesPrinterPnpAndPortMetadata(): Promise
   const state = await system.inspectFrontUsbPrinters()
   assert.equal(state.roleResolution, 'AUTO_RESOLVED')
   assert.equal(state.candidates.length, 1)
+  assert.equal(state.candidates[0]!.driverFamily, 'RONGTA_80MM')
   assert.match(script, /Get-PnpDevice/)
   assert.match(script, /Get-Printer/)
   assert.match(script, /Get-PrinterPort/)
   assert.doesNotMatch(script, /USB001|VID_|PID_|192\.168|9100/)
   assert.doesNotMatch(JSON.stringify(state), /Windows-assigned|Dynamic Windows Port|MODEL_FROM_WINDOWS/)
+}
+
+async function testXprinterMetadataMapsToVerifiedFamilyWithoutFixedVidPid(): Promise<void> {
+  const candidates = createFrontUsbPrinterCandidates([{
+    Name: 'Xprinter XP-N160II',
+    DriverName: null,
+    PortName: 'Windows Dynamic Port',
+    PortMonitor: 'Vendor Monitor',
+    PnpDeviceId: 'USBPRINT\\XPRINTER_DEVICE\\DYNAMIC_INSTANCE',
+    Manufacturer: '芯烨',
+  }])
+  assert.equal(candidates.length, 1)
+  assert.equal(candidates[0]!.driverFamily, 'XPRINTER_80MM')
+  assert.doesNotMatch(JSON.stringify(candidates), /XP-N160II|DYNAMIC_INSTANCE|芯烨/)
 }
 
 async function testDriverFailureStopsFrontAndFrontFailureStopsQueue(): Promise<void> {
@@ -322,7 +397,9 @@ async function testDriverFailureStopsFrontAndFrontFailureStopsQueue(): Promise<v
 
   hardware.driver = driverState({
     ready: true,
-    detectedName: ACTIVE_DRIVER_NAME,
+    resolvedFamily: 'RONGTA_80MM',
+    resolutionSource: 'INSTALLED_DRIVER',
+    detectedName: '80Normal',
     detectionSource: 'WINDOWS_PRINT_MANAGEMENT',
   })
   const printerBlocked = await orchestrator.run('NOT_BOUND')
@@ -336,7 +413,9 @@ async function testQueueAndKitchenRemainDeferred(): Promise<void> {
   const hardware = new FakeHardwareSystem()
   hardware.driver = driverState({
     ready: true,
-    detectedName: ACTIVE_DRIVER_NAME,
+    resolvedFamily: 'RONGTA_80MM',
+    resolutionSource: 'INSTALLED_DRIVER',
+    detectedName: '80Normal',
     detectionSource: 'WINDOWS_PRINT_MANAGEMENT',
   })
   hardware.front = frontState(['front-usb-1111111111111111'])
@@ -353,17 +432,21 @@ async function testQueueAndKitchenRemainDeferred(): Promise<void> {
 
 async function main(): Promise<void> {
   await testExisting80NormalIsReady()
-  await testMissingDriverRequiresExternalInstaller()
-  await testExternalInstallerAdapterSuccess()
+  await testVerifiedCatalogContainsOnlyTwoUnknownRedistributionFamilies()
+  await testKnownFamilyWithoutPayloadRequiresExternalInstaller()
+  await testUnknownPrinterDoesNotInstallUnknownDriver()
+  await testRongtaCandidateSelectsRongtaInstallerAdapter()
+  await testXprinterCandidateSelectsXprinterInstallerAdapter()
   await testWindowsDriverDetectionMapsPrintManagementEvidence()
   await testSingleFrontCandidateAutoResolves()
   await testMultipleFrontCandidatesRequireConfirmation()
   await testNoFrontCandidateIsNotFound()
   await testDiscoveryUsesDynamicMetadataWithoutLeakingIt()
   await testWindowsFrontDiscoveryUsesPrinterPnpAndPortMetadata()
+  await testXprinterMetadataMapsToVerifiedFamilyWithoutFixedVidPid()
   await testDriverFailureStopsFrontAndFrontFailureStopsQueue()
   await testQueueAndKitchenRemainDeferred()
-  console.log('E-Shop V1 Setup Hardware Provisioning Phase 1 tests passed (11/11)')
+  console.log('E-Shop V1 Setup Hardware Provisioning Phase 1 tests passed (15/15)')
 }
 
 void main().catch((error) => {

@@ -4,15 +4,15 @@ import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 
 import {
-  ACTIVE_DRIVER_NAME,
   KITCHEN_DISCOVERY_DEFERRED,
-  MATCHING_DRIVER_INSTALLER,
+  VERIFIED_DRIVER_CATALOG,
   type DriverDetectionSource,
   type DriverInspection,
   type FrontUsbPrinterCandidate,
   type FrontUsbPrinterDetectionSource,
   type FrontUsbPrinterInspection,
   type HardwareProvisioningSystem,
+  type VerifiedDriverFamilyId,
 } from './hardwareProvisioning'
 import type { ProvisionAction } from './softwareProvisioning'
 
@@ -21,9 +21,9 @@ const PROCESS_TIMEOUT_MS = 10 * 60 * 1_000
 type CommandRunner = (file: string, args: string[], timeout?: number) => Promise<string>
 
 export type WindowsHardwareProvisioningConfig = {
-  expectedDriverName?: typeof ACTIVE_DRIVER_NAME
+  externalDriverPayloads?: Partial<Record<VerifiedDriverFamilyId, string>>
+  /** Backward-compatible explicit Rongta payload input. Never treated as bundled. */
   externalDriverInstallerPath?: string | null
-  matchingInstallerName?: typeof MATCHING_DRIVER_INSTALLER
 }
 
 export type WindowsHardwareProvisioningOptions = {
@@ -32,8 +32,7 @@ export type WindowsHardwareProvisioningOptions = {
   run?: CommandRunner
 }
 
-type DriverPowerShellResult = {
-  Found?: boolean
+type InstalledDriverMetadata = {
   Name?: string | null
   Version?: string | number | null
   Manufacturer?: string | null
@@ -46,6 +45,17 @@ export type WindowsPrinterMetadata = {
   PortName?: string | null
   PortMonitor?: string | null
   PnpDeviceId?: string | null
+  Manufacturer?: string | null
+}
+
+type DriverFamilyMetadata = Pick<
+  WindowsPrinterMetadata,
+  'Name' | 'DriverName' | 'PnpDeviceId' | 'Manufacturer'
+>
+
+const DRIVER_FAMILY_METADATA_PATTERNS: Record<VerifiedDriverFamilyId, readonly RegExp[]> = {
+  RONGTA_80MM: [/\b80Normal\b/i, /\bRong\s*Ta\b/i],
+  XPRINTER_80MM: [/\bX[\s-]?printer\b/i, /芯烨/u, /\bXP[\s-]?N160II\b/i, /\bXP[\s-]?80\w*\b/i],
 }
 
 function runExecutable(file: string, args: string[], timeout = PROCESS_TIMEOUT_MS): Promise<string> {
@@ -60,10 +70,6 @@ function runExecutable(file: string, args: string[], timeout = PROCESS_TIMEOUT_M
   })
 }
 
-function escapePowerShell(value: string): string {
-  return value.replace(/'/g, "''")
-}
-
 function parseJsonValue(text: string): unknown {
   const trimmed = text.trim()
   return trimmed ? JSON.parse(trimmed) as unknown : null
@@ -76,6 +82,32 @@ function stringOrNull(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function objectArray<T extends object>(value: unknown): T[] {
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is T => entry !== null && typeof entry === 'object')
+  }
+  return value !== null && typeof value === 'object' ? [value as T] : []
+}
+
+function catalogEntry(family: VerifiedDriverFamilyId) {
+  return VERIFIED_DRIVER_CATALOG.find(({ id }) => id === family)!
+}
+
+export function resolveVerifiedDriverFamily(metadata: DriverFamilyMetadata): VerifiedDriverFamilyId | null {
+  const values = [metadata.Name, metadata.DriverName, metadata.Manufacturer, metadata.PnpDeviceId]
+    .map(stringOrNull)
+    .filter((value): value is string => value !== null)
+  for (const family of VERIFIED_DRIVER_CATALOG) {
+    if (family.installedDriverNames.some((name) => values.some((value) => value.toLocaleLowerCase('en-US') === name.toLocaleLowerCase('en-US')))) {
+      return family.id
+    }
+    if (DRIVER_FAMILY_METADATA_PATTERNS[family.id].some((pattern) => values.some((value) => pattern.test(value)))) {
+      return family.id
+    }
+  }
+  return null
+}
+
 function isUsbTransport(record: WindowsPrinterMetadata): boolean {
   const pnpDeviceId = stringOrNull(record.PnpDeviceId)
   if (pnpDeviceId && /^(?:USBPRINT|USB)\\/i.test(pnpDeviceId)) return true
@@ -86,8 +118,11 @@ function isUsbTransport(record: WindowsPrinterMetadata): boolean {
 }
 
 function candidateIdentifier(record: WindowsPrinterMetadata): string {
-  const identity = [record.Name, record.DriverName, record.PortName, record.PnpDeviceId]
-    .map((value) => stringOrNull(value) ?? '')
+  const pnpDeviceId = stringOrNull(record.PnpDeviceId)
+  const identity = (pnpDeviceId
+    ? ['pnp', pnpDeviceId]
+    : [record.Name, record.DriverName, record.PortName]
+  ).map((value) => stringOrNull(value) ?? '')
     .join('\u0000')
     .toLocaleLowerCase('en-US')
   return `front-usb-${createHash('sha256').update(identity).digest('hex').slice(0, 16)}`
@@ -107,21 +142,24 @@ function candidateSource(record: WindowsPrinterMetadata): FrontUsbPrinterDetecti
  */
 export function createFrontUsbPrinterCandidates(
   records: readonly WindowsPrinterMetadata[],
-  expectedDriverName = ACTIVE_DRIVER_NAME,
 ): FrontUsbPrinterCandidate[] {
   const candidates = records
-    .filter((record) => stringOrNull(record.DriverName)?.toLocaleLowerCase('en-US') === expectedDriverName.toLocaleLowerCase('en-US'))
     .filter(isUsbTransport)
-    .map((record) => ({
-      candidateId: candidateIdentifier(record),
-      detectionSource: candidateSource(record),
-    }))
+    .map((record) => {
+      const driverFamily = resolveVerifiedDriverFamily(record)
+      return driverFamily
+        ? {
+            candidateId: candidateIdentifier(record),
+            detectionSource: candidateSource(record),
+            driverFamily,
+          }
+        : null
+    })
+    .filter((candidate): candidate is FrontUsbPrinterCandidate => candidate !== null)
   return [...new Map(candidates.map((candidate) => [candidate.candidateId, candidate])).values()]
 }
 
 export class WindowsHardwareProvisioningSystem implements HardwareProvisioningSystem {
-  private readonly expectedDriverName: typeof ACTIVE_DRIVER_NAME
-  private readonly matchingInstallerName: typeof MATCHING_DRIVER_INSTALLER
   private readonly runtimePlatform: NodeJS.Platform
   private readonly runtimeArchitecture: string
   private readonly run: CommandRunner
@@ -130,8 +168,6 @@ export class WindowsHardwareProvisioningSystem implements HardwareProvisioningSy
     private readonly config: WindowsHardwareProvisioningConfig = {},
     options: WindowsHardwareProvisioningOptions = {},
   ) {
-    this.expectedDriverName = config.expectedDriverName ?? ACTIVE_DRIVER_NAME
-    this.matchingInstallerName = config.matchingInstallerName ?? MATCHING_DRIVER_INSTALLER
     this.runtimePlatform = options.runtimePlatform ?? process.platform
     this.runtimeArchitecture = options.runtimeArchitecture ?? process.arch
     this.run = options.run ?? runExecutable
@@ -139,77 +175,68 @@ export class WindowsHardwareProvisioningSystem implements HardwareProvisioningSy
 
   async inspectDriver(): Promise<DriverInspection> {
     this.requireWindows()
-    const expected = escapePowerShell(this.expectedDriverName)
-    const script = [
-      "$ErrorActionPreference='Stop'",
-      `$expected='${expected}'`,
-      '$result=$null',
-      'try{$driver=Get-PrinterDriver -Name $expected -ErrorAction SilentlyContinue | Select-Object -First 1;if($driver){$version=$driver.DriverVersion;if(-not $version){$version=$driver.MajorVersion};$result=[pscustomobject]@{Found=$true;Name=[string]$driver.Name;Version=[string]$version;Manufacturer=[string]$driver.Manufacturer;DetectionSource=\'WINDOWS_PRINT_MANAGEMENT\'}}}catch{}',
-      'if(-not $result){$roots=@(\'Registry::HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Print\\Environments\\Windows x64\\Drivers\\Version-3\',\'Registry::HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Print\\Environments\\Windows x64\\Drivers\\Version-4\');foreach($root in $roots){$key=Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue | Where-Object {$_.PSChildName -ieq $expected} | Select-Object -First 1;if($key){$item=Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue;$version=$item.DriverVersion;if(-not $version){$version=$item.Version};$manufacturer=$item.Provider;$result=[pscustomobject]@{Found=$true;Name=[string]$key.PSChildName;Version=[string]$version;Manufacturer=[string]$manufacturer;DetectionSource=\'WINDOWS_PRINT_DRIVER_REGISTRY\'};break}}}',
-      'if(-not $result){$result=[pscustomobject]@{Found=$false;Name=$null;Version=$null;Manufacturer=$null;DetectionSource=\'NOT_FOUND\'}}',
-      '$result | ConvertTo-Json -Compress',
-    ].join(';')
-    const value = parseJsonValue(await this.run('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      script,
-    ], 30_000)) as DriverPowerShellResult | null
-    const detectedName = stringOrNull(value?.Name)
-    const source = stringOrNull(value?.DetectionSource)
-    const detectionSource: DriverDetectionSource = source === 'WINDOWS_PRINT_MANAGEMENT' || source === 'WINDOWS_PRINT_DRIVER_REGISTRY'
-      ? source
-      : 'NOT_FOUND'
-    const ready = value?.Found === true && detectedName?.toLocaleLowerCase('en-US') === this.expectedDriverName.toLocaleLowerCase('en-US')
+    const [installedDrivers, frontCandidates] = await Promise.all([
+      this.inspectInstalledDrivers(),
+      this.frontUsbCandidates(),
+    ])
+    const installedByFamily = installedDrivers
+      .map((driver) => ({ driver, family: resolveVerifiedDriverFamily({
+        Name: driver.Name,
+        DriverName: driver.Name,
+        Manufacturer: driver.Manufacturer,
+      }) }))
+      .filter((entry): entry is { driver: InstalledDriverMetadata; family: VerifiedDriverFamilyId } => entry.family !== null)
+    const candidateFamilies = [...new Set(frontCandidates.map(({ driverFamily }) => driverFamily))]
+    const preferredFamily = candidateFamilies.length === 1 ? candidateFamilies[0]! : null
+    const installed = preferredFamily
+      ? installedByFamily.find(({ family }) => family === preferredFamily) ?? null
+      : VERIFIED_DRIVER_CATALOG
+          .map(({ id }) => installedByFamily.find(({ family }) => family === id))
+          .find((entry) => entry !== undefined) ?? null
+
+    if (installed) {
+      const source = stringOrNull(installed.driver.DetectionSource)
+      const detectionSource: DriverDetectionSource = source === 'WINDOWS_PRINT_MANAGEMENT' || source === 'WINDOWS_PRINT_DRIVER_REGISTRY'
+        ? source
+        : 'NOT_FOUND'
+      return {
+        ready: true,
+        resolvedFamily: installed.family,
+        resolutionSource: 'INSTALLED_DRIVER',
+        detectedName: stringOrNull(installed.driver.Name),
+        version: stringOrNull(installed.driver.Version),
+        manufacturer: stringOrNull(installed.driver.Manufacturer),
+        detectionSource,
+        payloadAvailable: this.externalPayloadPath(installed.family) !== null,
+      }
+    }
+
     return {
-      ready,
-      expectedName: this.expectedDriverName,
-      detectedName: ready ? detectedName : null,
-      version: ready ? stringOrNull(value?.Version) : null,
-      manufacturer: ready ? stringOrNull(value?.Manufacturer) : null,
-      detectionSource: ready ? detectionSource : 'NOT_FOUND',
-      externalInstallerProvided: this.externalInstallerProvided(),
+      ready: false,
+      resolvedFamily: preferredFamily,
+      resolutionSource: preferredFamily ? 'USB_DEVICE_METADATA' : 'UNRESOLVED',
+      detectedName: null,
+      version: null,
+      manufacturer: null,
+      detectionSource: 'NOT_FOUND',
+      payloadAvailable: preferredFamily ? this.externalPayloadPath(preferredFamily) !== null : false,
     }
   }
 
-  async installExternalDriver(): Promise<ProvisionAction> {
+  async installExternalDriver(family: VerifiedDriverFamilyId): Promise<ProvisionAction> {
     this.requireWindows()
     const before = await this.inspectDriver()
-    if (before.ready) return { changed: false, verified: true }
-    const installerPath = this.config.externalDriverInstallerPath
-    if (!installerPath || !this.externalInstallerProvided()) {
-      throw new Error('A valid external driver installer was not supplied')
-    }
+    if (before.ready && before.resolvedFamily === family) return { changed: false, verified: true }
+    const installerPath = this.externalPayloadPath(family)
+    if (!installerPath) throw new Error('A valid external driver payload was not supplied for the resolved family')
     await this.run(installerPath, [], PROCESS_TIMEOUT_MS)
     const after = await this.inspectDriver()
-    return { changed: true, verified: after.ready }
+    return { changed: true, verified: after.ready && after.resolvedFamily === family }
   }
 
   async inspectFrontUsbPrinters(): Promise<FrontUsbPrinterInspection> {
     this.requireWindows()
-    const expected = escapePowerShell(this.expectedDriverName)
-    const script = [
-      "$ErrorActionPreference='Stop'",
-      `$expected='${expected}'`,
-      '$pnp=@()',
-      'try{$pnp=@(Get-PnpDevice -PresentOnly -Class Printer -ErrorAction SilentlyContinue | Where-Object {$_.InstanceId -match \'^(USBPRINT|USB)\\\\\'})}catch{}',
-      '$records=@()',
-      '$printers=@(Get-Printer -ErrorAction Stop | Where-Object {$_.DriverName -ieq $expected})',
-      'foreach($printer in $printers){$port=$null;try{$port=Get-PrinterPort -Name ([string]$printer.PortName) -ErrorAction SilentlyContinue}catch{};$pnpMatch=$pnp | Where-Object {$_.FriendlyName -eq $printer.Name -or $_.FriendlyName -like (\'*\' + $expected + \'*\')} | Select-Object -First 1;$records+=[pscustomobject]@{Name=[string]$printer.Name;DriverName=[string]$printer.DriverName;PortName=[string]$printer.PortName;PortMonitor=if($port){[string]$port.PortMonitor}else{$null};PnpDeviceId=if($pnpMatch){[string]$pnpMatch.InstanceId}else{$null}}}',
-      'ConvertTo-Json -InputObject @($records) -Compress',
-    ].join(';')
-    const value = parseJsonValue(await this.run('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      script,
-    ], 30_000))
-    const records = Array.isArray(value)
-      ? value.filter((entry): entry is WindowsPrinterMetadata => entry !== null && typeof entry === 'object')
-      : value !== null && typeof value === 'object'
-        ? [value as WindowsPrinterMetadata]
-        : []
-    const candidates = createFrontUsbPrinterCandidates(records, this.expectedDriverName)
+    const candidates = await this.frontUsbCandidates()
     return {
       candidates,
       roleResolution: candidates.length === 1
@@ -222,13 +249,50 @@ export class WindowsHardwareProvisioningSystem implements HardwareProvisioningSy
     }
   }
 
-  private externalInstallerProvided(): boolean {
-    const path = this.config.externalDriverInstallerPath
-    return Boolean(
-      path &&
-      basename(path).toLocaleLowerCase('en-US') === this.matchingInstallerName.toLocaleLowerCase('en-US') &&
-      existsSync(path),
-    )
+  private async inspectInstalledDrivers(): Promise<InstalledDriverMetadata[]> {
+    const script = [
+      "$ErrorActionPreference='Stop'",
+      '$result=@()',
+      'try{$drivers=@(Get-PrinterDriver -ErrorAction Stop);foreach($driver in $drivers){$version=$driver.DriverVersion;if(-not $version){$version=$driver.MajorVersion};$result+=[pscustomobject]@{Name=[string]$driver.Name;Version=[string]$version;Manufacturer=[string]$driver.Manufacturer;DetectionSource=\'WINDOWS_PRINT_MANAGEMENT\'}}}catch{}',
+      'if($result.Count -eq 0){$roots=@(\'Registry::HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Print\\Environments\\Windows x64\\Drivers\\Version-3\',\'Registry::HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Print\\Environments\\Windows x64\\Drivers\\Version-4\');foreach($root in $roots){$keys=@(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue);foreach($key in $keys){$item=Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue;$version=$item.DriverVersion;if(-not $version){$version=$item.Version};$result+=[pscustomobject]@{Name=[string]$key.PSChildName;Version=[string]$version;Manufacturer=[string]$item.Provider;DetectionSource=\'WINDOWS_PRINT_DRIVER_REGISTRY\'}}}}',
+      'ConvertTo-Json -InputObject @($result) -Compress',
+    ].join(';')
+    return objectArray<InstalledDriverMetadata>(parseJsonValue(await this.run('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ], 30_000)))
+  }
+
+  private async frontUsbCandidates(): Promise<FrontUsbPrinterCandidate[]> {
+    const script = [
+      "$ErrorActionPreference='Stop'",
+      '$pnp=@()',
+      'try{$pnp=@(Get-PnpDevice -PresentOnly -Class Printer -ErrorAction SilentlyContinue | Where-Object {$_.InstanceId -match \'^(USBPRINT|USB)\\\\\'})}catch{}',
+      '$records=@()',
+      '$printers=@(Get-Printer -ErrorAction Stop)',
+      'foreach($printer in $printers){$port=$null;try{$port=Get-PrinterPort -Name ([string]$printer.PortName) -ErrorAction SilentlyContinue}catch{};$driverName=[string]$printer.DriverName;$pnpMatch=$pnp | Where-Object {$_.FriendlyName -eq $printer.Name -or ($driverName -and $_.FriendlyName -like (\'*\' + $driverName + \'*\'))} | Select-Object -First 1;$records+=[pscustomobject]@{Name=[string]$printer.Name;DriverName=$driverName;PortName=[string]$printer.PortName;PortMonitor=if($port){[string]$port.PortMonitor}else{$null};PnpDeviceId=if($pnpMatch){[string]$pnpMatch.InstanceId}else{$null};Manufacturer=if($pnpMatch){[string]$pnpMatch.Manufacturer}else{$null}}}',
+      'foreach($device in $pnp){$records+=[pscustomobject]@{Name=[string]$device.FriendlyName;DriverName=$null;PortName=$null;PortMonitor=$null;PnpDeviceId=[string]$device.InstanceId;Manufacturer=[string]$device.Manufacturer}}',
+      'ConvertTo-Json -InputObject @($records) -Compress',
+    ].join(';')
+    const value = parseJsonValue(await this.run('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      script,
+    ], 30_000))
+    return createFrontUsbPrinterCandidates(objectArray<WindowsPrinterMetadata>(value))
+  }
+
+  private externalPayloadPath(family: VerifiedDriverFamilyId): string | null {
+    const path = this.config.externalDriverPayloads?.[family] ??
+      (family === 'RONGTA_80MM' ? this.config.externalDriverInstallerPath : null)
+    if (!path || !existsSync(path)) return null
+    const filename = basename(path).toLocaleLowerCase('en-US')
+    const allowed = catalogEntry(family).externalInstallerFilenames
+      .some((candidate) => candidate.toLocaleLowerCase('en-US') === filename)
+    return allowed ? path : null
   }
 
   private requireWindows(): void {

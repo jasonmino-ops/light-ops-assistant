@@ -11,11 +11,33 @@ import {
   type SoftwareProvisioningSystem,
 } from './softwareProvisioning'
 
-export const ACTIVE_DRIVER_NAME = '80Normal' as const
 export const DRIVER_CLASSIFICATION = 'EXTERNAL_INSTALLER' as const
 export const DRIVER_REDISTRIBUTION = 'UNKNOWN' as const
-export const MATCHING_DRIVER_INSTALLER = 'RongTaDriverInstall.exe' as const
 export const KITCHEN_DISCOVERY_DEFERRED = 'DEFERRED_TO_KITCHEN_PRINTER_DISCOVERY_PHASE' as const
+
+export const VERIFIED_DRIVER_CATALOG = [
+  {
+    id: 'RONGTA_80MM',
+    vendor: 'Rongta',
+    family: '80Normal',
+    installedDriverNames: ['80Normal'],
+    externalInstallerFilenames: ['RongTaDriverInstall.exe'],
+    redistribution: DRIVER_REDISTRIBUTION,
+  },
+  {
+    id: 'XPRINTER_80MM',
+    vendor: 'Xprinter / 芯烨',
+    family: '80mm series',
+    installedDriverNames: ['Xprinter XP-N160II'],
+    externalInstallerFilenames: [
+      '芯烨80系列驱动精简版V2.1R.exe',
+      '芯烨80系列产品驱动 V8.0.exe',
+    ],
+    redistribution: DRIVER_REDISTRIBUTION,
+  },
+] as const
+
+export type VerifiedDriverFamilyId = (typeof VERIFIED_DRIVER_CATALOG)[number]['id']
 
 export type DriverDetectionSource =
   | 'WINDOWS_PRINT_MANAGEMENT'
@@ -24,12 +46,13 @@ export type DriverDetectionSource =
 
 export type DriverInspection = {
   ready: boolean
-  expectedName: typeof ACTIVE_DRIVER_NAME
+  resolvedFamily: VerifiedDriverFamilyId | null
+  resolutionSource: 'INSTALLED_DRIVER' | 'USB_DEVICE_METADATA' | 'UNRESOLVED'
   detectedName: string | null
   version: string | null
   manufacturer: string | null
   detectionSource: DriverDetectionSource
-  externalInstallerProvided: boolean
+  payloadAvailable: boolean
 }
 
 export type FrontUsbPrinterDetectionSource =
@@ -39,6 +62,7 @@ export type FrontUsbPrinterDetectionSource =
 export type FrontUsbPrinterCandidate = {
   candidateId: string
   detectionSource: FrontUsbPrinterDetectionSource
+  driverFamily: VerifiedDriverFamilyId
 }
 
 export type FrontUsbPrinterInspection = {
@@ -50,7 +74,7 @@ export type FrontUsbPrinterInspection = {
 
 export interface HardwareProvisioningSystem {
   inspectDriver(): Promise<DriverInspection>
-  installExternalDriver(): Promise<ProvisionAction>
+  installExternalDriver(family: VerifiedDriverFamilyId): Promise<ProvisionAction>
   inspectFrontUsbPrinters(): Promise<FrontUsbPrinterInspection>
 }
 
@@ -77,7 +101,9 @@ function errorType(error: unknown): SetupEvidence {
 
 function driverEvidence(state: DriverInspection): SetupEvidence {
   return {
-    expectedDriverName: state.expectedName,
+    catalogFamilies: VERIFIED_DRIVER_CATALOG.map(({ id }) => id),
+    resolvedFamily: state.resolvedFamily,
+    resolutionSource: state.resolutionSource,
     detectedDriverName: state.detectedName,
     version: state.version,
     manufacturer: state.manufacturer,
@@ -85,8 +111,7 @@ function driverEvidence(state: DriverInspection): SetupEvidence {
     driverState: state.ready ? 'READY' : 'EXTERNAL_DRIVER_REQUIRED',
     classification: DRIVER_CLASSIFICATION,
     redistribution: DRIVER_REDISTRIBUTION,
-    matchingInstaller: MATCHING_DRIVER_INSTALLER,
-    externalInstallerProvided: state.externalInstallerProvided,
+    payloadAvailable: state.payloadAvailable,
   }
 }
 
@@ -95,6 +120,7 @@ function printerEvidence(state: FrontUsbPrinterInspection): SetupEvidence {
     frontRole: '前台',
     candidateCount: state.candidates.length,
     candidateIdentifiers: state.candidates.map(({ candidateId }) => candidateId),
+    driverFamilies: [...new Set(state.candidates.map(({ driverFamily }) => driverFamily))],
     detectionSources: [...new Set(state.candidates.map(({ detectionSource }) => detectionSource))],
     roleResolution: state.roleResolution,
     selectedCandidateId: state.selectedCandidateId,
@@ -110,16 +136,24 @@ export function createDriverProvisioningAdapter(system: HardwareProvisioningSyst
       try {
         const state = await system.inspectDriver()
         const evidence = driverEvidence(state)
-        if (state.ready) return ready('Windows print driver 80Normal is ready', evidence)
-        if (!state.externalInstallerProvided) {
+        if (state.ready) return ready('A Verified Driver Catalog family is installed and ready', evidence)
+        if (!state.resolvedFamily) {
           return blocked(
             'EXTERNAL_DRIVER_REQUIRED',
-            'A legally supplied external RongTaDriverInstall.exe is required',
+            'The detected printer does not match a Verified Driver Catalog family; install its official driver and retry',
             true,
             evidence,
           )
         }
-        return needsAction('External 80Normal driver installation is required', evidence)
+        if (!state.payloadAvailable) {
+          return blocked(
+            'EXTERNAL_DRIVER_REQUIRED',
+            'A legally supplied external driver payload is required for the resolved Verified Driver family',
+            true,
+            evidence,
+          )
+        }
+        return needsAction('Verified external driver installation is required', evidence)
       } catch (error) {
         return blocked('DRIVER_INSTALL_FAILED', 'Driver inspection failed', true, errorType(error))
       }
@@ -128,29 +162,32 @@ export function createDriverProvisioningAdapter(system: HardwareProvisioningSyst
       try {
         const before = await system.inspectDriver()
         if (before.ready) {
-          return ready('Windows print driver 80Normal was reused', {
+          return ready('The existing Verified Driver Catalog family was reused', {
             ...driverEvidence(before),
             installerInvoked: false,
           })
         }
-        if (!before.externalInstallerProvided) {
+        if (!before.resolvedFamily || !before.payloadAvailable) {
           return blocked(
             'EXTERNAL_DRIVER_REQUIRED',
-            'A legally supplied external RongTaDriverInstall.exe is required',
+            'A verified family and legally supplied external driver payload are required',
             true,
             driverEvidence(before),
           )
         }
-        const action = await system.installExternalDriver()
+        const selectedFamily = before.resolvedFamily
+        const action = await system.installExternalDriver(selectedFamily)
         const after = await system.inspectDriver()
-        if (action.verified && after.ready) {
-          return ready('External 80Normal driver installation completed and verified', {
+        if (action.verified && after.ready && after.resolvedFamily === selectedFamily) {
+          return ready('Verified external driver installation completed and verified', {
             ...driverEvidence(after),
+            selectedInstallerFamily: selectedFamily,
             installerInvoked: action.changed,
           })
         }
-        return blocked('DRIVER_INSTALL_FAILED', '80Normal was not available after external installation', true, {
+        return blocked('DRIVER_INSTALL_FAILED', 'The resolved Verified Driver family was not ready after installation', true, {
           ...driverEvidence(after),
+          selectedInstallerFamily: selectedFamily,
           installerInvoked: action.changed,
         })
       } catch (error) {

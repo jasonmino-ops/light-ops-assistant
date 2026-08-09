@@ -29,7 +29,9 @@ function defaultStateDir(): string {
 async function main(): Promise<void> {
   const stateDir = resolve(argument('--state-dir') ?? defaultStateDir())
   const payloadDir = resolve(argument('--payload-dir') ?? join(process.cwd(), 'setup-payload'))
-  const externalDriverInstaller = argument('--external-driver-installer')
+  const legacyRongtaInstaller = argument('--external-driver-installer')
+  const rongtaInstaller = argument('--rongta-driver-installer') ?? legacyRongtaInstaller
+  const xprinterInstaller = argument('--xprinter-driver-installer')
   const softwareSystem = new WindowsSoftwareProvisioningSystem({
     desktopInstallerPath: resolve(
       argument('--desktop-installer') ?? join(payloadDir, 'E-Shop-DianXiaoEr-Setup-0.4.7-x64.exe'),
@@ -43,7 +45,10 @@ async function main(): Promise<void> {
     cloudHealthUrl: 'https://elifekh.com/api/health',
   })
   const hardwareSystem = new WindowsHardwareProvisioningSystem({
-    externalDriverInstallerPath: externalDriverInstaller ? resolve(externalDriverInstaller) : null,
+    externalDriverPayloads: {
+      ...(rongtaInstaller ? { RONGTA_80MM: resolve(rongtaInstaller) } : {}),
+      ...(xprinterInstaller ? { XPRINTER_80MM: resolve(xprinterInstaller) } : {}),
+    },
   })
   const orchestrator = new EShopSetupOrchestrator(
     createHardwareProvisioningPhase1Adapters(softwareSystem, hardwareSystem),
