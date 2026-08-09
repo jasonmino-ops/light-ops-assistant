@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path'
 
 import { FileSetupCheckpointStore } from './checkpoint'
 import type { MerchantBindingStatus } from './contracts'
-import { createHardwareProvisioningPhase1Adapters } from './hardwareProvisioning'
+import { createHardwareProvisioningPhase2Adapters } from './hardwareProvisioning'
 import { EShopSetupOrchestrator } from './orchestrator'
 import { JsonLinesSetupLogger } from './setupLog'
 import { WindowsHardwareProvisioningSystem } from './windowsHardwareProvisioning'
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
     },
   })
   const orchestrator = new EShopSetupOrchestrator(
-    createHardwareProvisioningPhase1Adapters(softwareSystem, hardwareSystem),
+    createHardwareProvisioningPhase2Adapters(softwareSystem, hardwareSystem),
     new FileSetupCheckpointStore(join(stateDir, 'setup-checkpoint-v1.json')),
     new JsonLinesSetupLogger(join(stateDir, 'setup.log.jsonl')),
   )

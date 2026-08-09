@@ -72,11 +72,36 @@ export type FrontUsbPrinterInspection = {
   kitchenDiscovery: typeof KITCHEN_DISCOVERY_DEFERRED
 }
 
+export type KitchenNetworkDetectionSource =
+  | 'WINDOWS_STANDARD_TCPIP_PORT'
+  | 'WINDOWS_NETWORK_NEIGHBOR'
+  | 'LOCAL_IPV4_SUBNET_PROBE'
+
+export type KitchenNetworkPrinterCandidate = {
+  endpoint: string
+  port: 9100
+  detectionSources: KitchenNetworkDetectionSource[]
+  raw9100Reachable: true
+  windowsPrinterPortAssociated: boolean
+}
+
+export type KitchenNetworkPrinterInspection = {
+  candidates: KitchenNetworkPrinterCandidate[]
+  roleResolution: 'AUTO_RESOLVED' | 'USER_CONFIRM_REQUIRED' | 'NOT_FOUND'
+  selectedEndpoint: string | null
+}
+
 export interface HardwareProvisioningSystem {
   inspectDriver(): Promise<DriverInspection>
   installExternalDriver(family: VerifiedDriverFamilyId): Promise<ProvisionAction>
   inspectFrontUsbPrinters(): Promise<FrontUsbPrinterInspection>
 }
+
+export interface KitchenNetworkDiscoverySystem {
+  inspectKitchenNetworkPrinters(): Promise<KitchenNetworkPrinterInspection>
+}
+
+export type HardwareProvisioningPhase2System = HardwareProvisioningSystem & KitchenNetworkDiscoverySystem
 
 function ready(message: string, evidence: SetupEvidence): StageResult {
   return { status: 'READY', failureCode: null, message, retryable: false, evidence }
@@ -125,6 +150,24 @@ function printerEvidence(state: FrontUsbPrinterInspection): SetupEvidence {
     roleResolution: state.roleResolution,
     selectedCandidateId: state.selectedCandidateId,
     kitchenDiscovery: state.kitchenDiscovery,
+    queueProvisioning: 'DEFERRED',
+  }
+}
+
+function kitchenPrinterEvidence(state: KitchenNetworkPrinterInspection): SetupEvidence {
+  return {
+    kitchenRole: '厨房',
+    kitchenCandidateCount: state.candidates.length,
+    kitchenCandidates: state.candidates.map((candidate) => ({
+      endpoint: candidate.endpoint,
+      detectionSources: candidate.detectionSources,
+      raw9100Reachable: candidate.raw9100Reachable,
+      windowsPrinterPortAssociated: candidate.windowsPrinterPortAssociated,
+    })),
+    kitchenRoleResolution: state.roleResolution,
+    selectedKitchenEndpoint: state.selectedEndpoint,
+    userManualIpInputRequired: false,
+    printerPortCreation: 'DEFERRED',
     queueProvisioning: 'DEFERRED',
   }
 }
@@ -226,6 +269,74 @@ export function createFrontUsbPrinterDetectionAdapter(system: HardwareProvisioni
   }
 }
 
+async function resolveKitchenNetworkPrinter(system: KitchenNetworkDiscoverySystem): Promise<StageResult> {
+  try {
+    const state = await system.inspectKitchenNetworkPrinters()
+    const evidence = kitchenPrinterEvidence(state)
+    if (state.candidates.length === 1 && state.roleResolution === 'AUTO_RESOLVED') {
+      return ready('One reachable Network RAW 9100 printer was resolved as the Kitchen Printer candidate', evidence)
+    }
+    if (state.candidates.length > 1) {
+      return blocked(
+        'USER_CONFIRM_REQUIRED',
+        'Multiple reachable Network RAW 9100 candidates require physical Kitchen Printer confirmation',
+        true,
+        evidence,
+      )
+    }
+    return blocked('PRINTER_NOT_FOUND', 'No reachable Network RAW 9100 Kitchen Printer candidate was found', true, evidence)
+  } catch (error) {
+    return blocked('PRINTER_NOT_FOUND', 'Kitchen Network Printer detection failed', true, errorType(error))
+  }
+}
+
+export function createKitchenNetworkPrinterDetectionAdapter(system: KitchenNetworkDiscoverySystem): SetupStageAdapter {
+  return {
+    stage: 'printer-discovery',
+    detect: async () => resolveKitchenNetworkPrinter(system),
+    execute: async () => resolveKitchenNetworkPrinter(system),
+  }
+}
+
+async function resolveFrontAndKitchenPrinters(system: HardwareProvisioningPhase2System): Promise<StageResult> {
+  try {
+    const [front, kitchen] = await Promise.all([
+      system.inspectFrontUsbPrinters(),
+      system.inspectKitchenNetworkPrinters(),
+    ])
+    const evidence: SetupEvidence = {
+      ...printerEvidence(front),
+      ...kitchenPrinterEvidence(kitchen),
+      kitchenDiscovery: 'IMPLEMENTED',
+    }
+    if (front.candidates.length === 0 || kitchen.candidates.length === 0) {
+      return blocked('PRINTER_NOT_FOUND', 'A required Front or Kitchen Printer candidate was not found', true, evidence)
+    }
+    if (front.candidates.length > 1 || kitchen.candidates.length > 1) {
+      return blocked(
+        'USER_CONFIRM_REQUIRED',
+        'Multiple printer candidates require physical role confirmation',
+        true,
+        evidence,
+      )
+    }
+    if (front.roleResolution === 'AUTO_RESOLVED' && kitchen.roleResolution === 'AUTO_RESOLVED') {
+      return ready('Front USB and Kitchen Network printer candidates were resolved', evidence)
+    }
+    return blocked('PRINTER_NOT_FOUND', 'Printer role resolution was incomplete', true, evidence)
+  } catch (error) {
+    return blocked('PRINTER_NOT_FOUND', 'Printer discovery failed', true, errorType(error))
+  }
+}
+
+export function createHardwarePrinterDiscoveryAdapter(system: HardwareProvisioningPhase2System): SetupStageAdapter {
+  return {
+    stage: 'printer-discovery',
+    detect: async () => resolveFrontAndKitchenPrinters(system),
+    execute: async () => resolveFrontAndKitchenPrinters(system),
+  }
+}
+
 export function createHardwareProvisioningPhase1Adapters(
   softwareSystem: SoftwareProvisioningSystem,
   hardwareSystem: HardwareProvisioningSystem,
@@ -240,6 +351,24 @@ export function createHardwareProvisioningPhase1Adapters(
 
   if (!SETUP_STAGE_ORDER.every((stage, index) => adapters[index]?.stage === stage)) {
     throw new Error('Hardware Phase 1 adapters do not match the frozen setup stage order')
+  }
+  return adapters
+}
+
+export function createHardwareProvisioningPhase2Adapters(
+  softwareSystem: SoftwareProvisioningSystem,
+  hardwareSystem: HardwareProvisioningPhase2System,
+): SetupStageAdapter[] {
+  const driver = createDriverProvisioningAdapter(hardwareSystem)
+  const printerDiscovery = createHardwarePrinterDiscoveryAdapter(hardwareSystem)
+  const adapters = createSoftwareProvisioningAdapters(softwareSystem).map((adapter) => {
+    if (adapter.stage === 'driver') return driver
+    if (adapter.stage === 'printer-discovery') return printerDiscovery
+    return adapter
+  })
+
+  if (!SETUP_STAGE_ORDER.every((stage, index) => adapters[index]?.stage === stage)) {
+    throw new Error('Hardware Phase 2 adapters do not match the frozen setup stage order')
   }
   return adapters
 }
