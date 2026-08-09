@@ -30,6 +30,8 @@ import type {
 const DEFAULT_REQUIRED_DISK_BYTES = 2 * 1024 * 1024 * 1024
 const PROCESS_TIMEOUT_MS = 10 * 60 * 1_000
 const STARTUP_TIMEOUT_MS = 20_000
+const WINDOWS_UNINSTALL_EXECUTABLE_PATTERN_SOURCE =
+  String.raw`^(?:"((?:[A-Za-z]:\\|\\\\)[^"<>|?*\r\n]+?\.exe)"|((?:[A-Za-z]:\\|\\\\)[^"<>|?*\r\n]+?\.exe))(?:\s+.*)?$`
 
 export type WindowsSoftwareProvisioningConfig = {
   desktopInstallerPath: string
@@ -72,6 +74,18 @@ export type WindowsEnvironmentDetectionOptions = {
 
 function escapePowerShell(value: string): string {
   return value.replace(/'/g, "''")
+}
+
+/**
+ * Extract only the executable path from a Windows uninstall command line.
+ * The result is data for Test-Path/Split-Path; the command and its arguments
+ * are never executed. Malformed, relative, or non-EXE values fail closed.
+ */
+export function parseWindowsUninstallExecutablePath(value: unknown): string | null {
+  if (typeof value !== 'string' || /[\0\r\n]/.test(value)) return null
+  const match = value.trim().match(new RegExp(WINDOWS_UNINSTALL_EXECUTABLE_PATTERN_SOURCE, 'i'))
+  const executable = (match?.[1] ?? match?.[2] ?? '').trim()
+  return executable.length > 0 ? executable : null
 }
 
 function delay(ms: number): Promise<void> {
@@ -252,15 +266,17 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
     this.requireWindows()
     const displayName = escapePowerShell(this.config.desktopDisplayName)
     const executableName = escapePowerShell(this.config.desktopExecutableName)
+    const uninstallPattern = escapePowerShell(WINDOWS_UNINSTALL_EXECUTABLE_PATTERN_SOURCE)
     const script = [
       "$ErrorActionPreference='SilentlyContinue'",
       `$displayName='${displayName}'`,
       `$exeName='${executableName}'`,
+      `$uninstallPattern='${uninstallPattern}'`,
       "$keys=@('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*')",
       '$app=Get-ItemProperty $keys | Where-Object { $_.DisplayName -eq $displayName -or $_.DisplayName -like ($displayName + \' *\') } | Select-Object -First 1',
       '$candidates=New-Object System.Collections.Generic.List[string]',
       'if($app.InstallLocation){$candidates.Add((Join-Path $app.InstallLocation $exeName))}',
-      'if($app.UninstallString){$u=$app.UninstallString.Trim(\'"\');if(Test-Path -LiteralPath $u){$candidates.Add((Join-Path (Split-Path $u -Parent) $exeName))}}',
+      'if($app.UninstallString){$m=[regex]::Match([string]$app.UninstallString,$uninstallPattern,[Text.RegularExpressions.RegexOptions]::IgnoreCase);if($m.Success){$u=$null;if($m.Groups[1].Success){$u=$m.Groups[1].Value}else{$u=$m.Groups[2].Value};if($u -and (Test-Path -LiteralPath $u)){$candidates.Add((Join-Path (Split-Path $u -Parent) $exeName))}}}',
       '$candidates.Add((Join-Path $env:LOCALAPPDATA (\'Programs\\\' + $displayName + \'\\\' + $exeName)))',
       '$exe=$candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1',
       '$version=$null',
@@ -502,14 +518,16 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
   private async desktopExecutablePath(): Promise<string | null> {
     const displayName = escapePowerShell(this.config.desktopDisplayName)
     const executableName = escapePowerShell(this.config.desktopExecutableName)
+    const uninstallPattern = escapePowerShell(WINDOWS_UNINSTALL_EXECUTABLE_PATTERN_SOURCE)
     const script = [
       `$displayName='${displayName}'`,
       `$exeName='${executableName}'`,
+      `$uninstallPattern='${uninstallPattern}'`,
       "$keys=@('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*')",
       '$app=Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $displayName -or $_.DisplayName -like ($displayName + \' *\') } | Select-Object -First 1',
       '$candidates=@()',
       'if($app.InstallLocation){$candidates+=(Join-Path $app.InstallLocation $exeName)}',
-      'if($app.UninstallString){$u=$app.UninstallString.Trim(\'"\');if(Test-Path -LiteralPath $u){$candidates+=(Join-Path (Split-Path $u -Parent) $exeName)}}',
+      'if($app.UninstallString){$m=[regex]::Match([string]$app.UninstallString,$uninstallPattern,[Text.RegularExpressions.RegexOptions]::IgnoreCase);if($m.Success){$u=$null;if($m.Groups[1].Success){$u=$m.Groups[1].Value}else{$u=$m.Groups[2].Value};if($u -and (Test-Path -LiteralPath $u)){$candidates+=(Join-Path (Split-Path $u -Parent) $exeName)}}}',
       '$candidates+=(Join-Path $env:LOCALAPPDATA (\'Programs\\\' + $displayName + \'\\\' + $exeName))',
       '$candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1',
     ].join(';')

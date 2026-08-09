@@ -10,6 +10,7 @@ import {
   SOFTWARE_PROVISIONING_READY,
   createSoftwareProvisioningAdapters,
   detectWindowsEnvironment,
+  parseWindowsUninstallExecutablePath,
   type CertificateInspection,
   type DesktopInspection,
   type PreflightInspection,
@@ -249,6 +250,33 @@ async function testPreflightFailsWhenEnvironmentCannotBeConfirmed(): Promise<voi
   assert.equal(result.failureCode, 'UNSUPPORTED_WINDOWS')
 }
 
+async function testQuotedUninstallExecutableParsing(): Promise<void> {
+  assert.equal(
+    parseWindowsUninstallExecutablePath('"C:\\Program Files\\E-Shop\\Uninstall E-Shop.exe" /allusers'),
+    'C:\\Program Files\\E-Shop\\Uninstall E-Shop.exe',
+  )
+}
+
+async function testUnquotedUninstallExecutableParsing(): Promise<void> {
+  assert.equal(
+    parseWindowsUninstallExecutablePath('C:\\Program Files\\E-Shop\\Uninstall E-Shop.exe /allusers'),
+    'C:\\Program Files\\E-Shop\\Uninstall E-Shop.exe',
+  )
+}
+
+async function testMalformedUninstallExecutableFailsSafe(): Promise<void> {
+  for (const value of [
+    '"C:\\Program Files\\E-Shop\\Uninstall E-Shop.exe /allusers',
+    '"C:\\Program Files\\E-Shop\\Uninstall E-Shop.exe"/allusers',
+    'C:\\bad|path\\uninstall.exe /allusers',
+    'cmd.exe /c uninstall.exe',
+    '',
+    null,
+  ]) {
+    assert.equal(parseWindowsUninstallExecutablePath(value), null)
+  }
+}
+
 async function testDesktopAlreadyInstalled(): Promise<void> {
   const system = new FakeSoftwareSystem()
   system.desktop = desktopState({ installed: true, version: '0.4.7', executablePresent: true, runtimeRunning: true })
@@ -403,6 +431,9 @@ async function main(): Promise<void> {
   await testPreflightPassAndBlocked()
   await testPreflightCimDeniedUsesFallback()
   await testPreflightFailsWhenEnvironmentCannotBeConfirmed()
+  await testQuotedUninstallExecutableParsing()
+  await testUnquotedUninstallExecutableParsing()
+  await testMalformedUninstallExecutableFailsSafe()
   await testDesktopAlreadyInstalled()
   await testDesktopInstallRequired()
   await testQzAlreadyCorrect()
@@ -412,7 +443,7 @@ async function main(): Promise<void> {
   await testFailureStopsDownstream()
   await testSecondRunReusesSoftwareStages()
   await testLogsExcludeSecrets()
-  console.log('E-Shop V1 Setup software provisioning tests passed (12/12)')
+  console.log('E-Shop V1 Setup software provisioning tests passed (15/15)')
 }
 
 void main().catch((error) => {
