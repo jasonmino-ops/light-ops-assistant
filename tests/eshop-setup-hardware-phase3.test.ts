@@ -43,12 +43,19 @@ const FRONT_SOURCE: WindowsPrinterMetadata & { Name: string } = {
 
 const FRONT_CANDIDATE_ID = createFrontUsbPrinterCandidates([FRONT_SOURCE])[0]!.candidateId
 const KITCHEN_ENDPOINT = '10.20.30.80:9100'
+const GOLDEN_KITCHEN_ENDPOINT = '192.168.18.49:9100'
 const INPUT: QueueProvisioningInput = {
   frontCandidateId: FRONT_CANDIDATE_ID,
   frontDriverFamily: 'RONGTA_80MM',
   frontDriverName: '80Normal',
   frontPortName: 'USB-DYNAMIC',
   kitchenEndpoint: KITCHEN_ENDPOINT,
+}
+
+const GOLDEN_INPUT: QueueProvisioningInput = {
+  ...INPUT,
+  frontPortName: 'RongtaUSB PORT:',
+  kitchenEndpoint: GOLDEN_KITCHEN_ENDPOINT,
 }
 
 function queueState(overrides: Partial<QueueProvisioningInspection> = {}): QueueProvisioningInspection {
@@ -244,6 +251,40 @@ async function testExistingCorrectQueuesAreReused(): Promise<void> {
   assert.equal(harness.provisioningScripts.length, 0)
 }
 
+async function testGoldenFrontMappingUsesDiscoveryDriverAndUsbPort(): Promise<void> {
+  const harness = windowsHarness({
+    Printers: [
+      queuePrinter(LOGICAL_QUEUE_NAMES.front, '80NORMAL', 'RONGTAUSB PORT:'),
+      queuePrinter(LOGICAL_QUEUE_NAMES.kitchen, '80Normal', '192.168.18.49'),
+    ],
+    Ports: [{ Name: '192.168.18.49', PrinterHostAddress: '192.168.18.49', PortNumber: 9100, Protocol: 'RAW' }],
+    Drivers: ['80Normal'],
+  })
+  const state = await harness.system.inspectQueues(GOLDEN_INPUT)
+  assert.equal(state.front.mappingCorrect, true)
+  assert.equal(harness.provisioningScripts.length, 0)
+}
+
+async function testGoldenKitchenMappingUsesQueuePortEndpointMetadata(): Promise<void> {
+  const runtimePort = kitchenPortName(GOLDEN_KITCHEN_ENDPOINT)
+  const harness = windowsHarness({
+    Printers: [
+      queuePrinter(LOGICAL_QUEUE_NAMES.front, '80Normal', 'RongtaUSB PORT:'),
+      queuePrinter(LOGICAL_QUEUE_NAMES.kitchen, '80Normal', '192.168.18.49'),
+    ],
+    Ports: [
+      { Name: runtimePort, PrinterHostAddress: '192.168.18.49', PortNumber: 9100, Protocol: 1 },
+      { Name: '192.168.18.49', PrinterHostAddress: '192.168.18.49', PortNumber: 9100, Protocol: 'RAW' },
+    ],
+    Drivers: ['80Normal'],
+  })
+  const state = await harness.system.inspectQueues(GOLDEN_INPUT)
+  assert.equal(state.kitchen.portReady, true)
+  assert.equal(state.kitchen.mappingCorrect, true)
+  assert.equal(state.ready, true)
+  assert.equal(harness.provisioningScripts.length, 0)
+}
+
 async function testWrongMappingsAreSafelyRepaired(): Promise<void> {
   const port = correctKitchenPort()
   const harness = windowsHarness({
@@ -253,9 +294,16 @@ async function testWrongMappingsAreSafelyRepaired(): Promise<void> {
       queuePrinter(LOGICAL_QUEUE_NAMES.kitchen, '80Normal', 'WRONG-KITCHEN-PORT'),
       queuePrinter('Unrelated Office Printer', 'Office Driver', 'OFFICE-PORT'),
     ],
-    Ports: [port, { Name: 'OFFICE-PORT', PrinterHostAddress: '10.20.30.200', PortNumber: 515, Protocol: 2 }],
+    Ports: [
+      port,
+      { Name: 'WRONG-KITCHEN-PORT', PrinterHostAddress: '10.20.30.81', PortNumber: 9100, Protocol: 1 },
+      { Name: 'OFFICE-PORT', PrinterHostAddress: '10.20.30.200', PortNumber: 515, Protocol: 2 },
+    ],
     Drivers: ['80Normal', 'Office Driver'],
   })
+  const before = await harness.system.inspectQueues(INPUT)
+  assert.equal(before.front.mappingCorrect, false)
+  assert.equal(before.kitchen.mappingCorrect, false)
   const result = await createQueueProvisioningAdapter(harness.system, () => INPUT).execute(context)
   assert.equal(result.status, 'READY')
   assert.match(harness.provisioningScripts[0]!, /Set-Printer -Name \$frontQueue/)
@@ -414,13 +462,15 @@ async function main(): Promise<void> {
   await testWindowsDiscoveryHandoffPreservesResolvedFrontMapping()
   await testFrontAndKitchenQueueCreationWithRawPort()
   await testExistingCorrectQueuesAreReused()
+  await testGoldenFrontMappingUsesDiscoveryDriverAndUsbPort()
+  await testGoldenKitchenMappingUsesQueuePortEndpointMetadata()
   await testWrongMappingsAreSafelyRepaired()
   await testWrongRuntimePortUsesSafeRepairSlot()
   await testDriverNotReadyFailsClosed()
   await testQueueProvisioningIsIdempotentAndPreservesUnrelatedPrinters()
   await testPhase3StageHandoffUsesDiscoveryResult()
   await testNoFixedIpOrPrintingMutation()
-  console.log('E-Shop V1 Setup Hardware Provisioning Phase 3 tests passed (10/10)')
+  console.log('E-Shop V1 Setup Hardware Provisioning Phase 3 tests passed (12/12)')
 }
 
 void main().catch((error) => {

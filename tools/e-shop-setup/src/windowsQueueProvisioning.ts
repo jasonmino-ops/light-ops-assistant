@@ -86,6 +86,17 @@ function stringArray(value: unknown): string[] {
   return values.map(stringOrNull).filter((entry): entry is string => entry !== null)
 }
 
+function windowsIdentifier(value: unknown): string | null {
+  const text = stringOrNull(value)
+  return text ? text.replace(/\0/g, '').normalize('NFC').toLocaleLowerCase('en-US') : null
+}
+
+function windowsIdentifierEquals(left: unknown, right: unknown): boolean {
+  const normalizedLeft = windowsIdentifier(left)
+  const normalizedRight = windowsIdentifier(right)
+  return normalizedLeft !== null && normalizedLeft === normalizedRight
+}
+
 function escapePowerShell(value: string): string {
   return value.replace(/'/g, "''")
 }
@@ -128,8 +139,8 @@ function resolvePlan(input: QueueProvisioningInput, snapshot: WindowsQueueSnapsh
     resolvedFamily === input.frontDriverFamily &&
     installedDrivers.some((driver) => driver.toLocaleLowerCase('en-US') === frontDriverName.toLocaleLowerCase('en-US')),
   )
-  const frontQueue = printers.find((record) => queueName(record) === LOGICAL_QUEUE_NAMES.front) ?? null
-  const kitchenQueue = printers.find((record) => queueName(record) === LOGICAL_QUEUE_NAMES.kitchen) ?? null
+  const frontQueue = printers.find((record) => windowsIdentifierEquals(queueName(record), LOGICAL_QUEUE_NAMES.front)) ?? null
+  const kitchenQueue = printers.find((record) => windowsIdentifierEquals(queueName(record), LOGICAL_QUEUE_NAMES.kitchen)) ?? null
 
   const correctKitchenPort = endpoint
     ? ports.find((port) => portMatchesEndpoint(port, endpoint)) ?? null
@@ -151,17 +162,20 @@ function resolvePlan(input: QueueProvisioningInput, snapshot: WindowsQueueSnapsh
     frontQueue &&
     frontDriverName &&
     frontPortName &&
-    stringOrNull(frontQueue.DriverName) === frontDriverName &&
-    stringOrNull(frontQueue.PortName) === frontPortName,
+    windowsIdentifierEquals(frontQueue.DriverName, frontDriverName) &&
+    windowsIdentifierEquals(frontQueue.PortName, frontPortName),
   )
   const kitchenPortReady = correctKitchenPort !== null
+  const kitchenQueuePort = kitchenQueue
+    ? ports.find((port) => windowsIdentifierEquals(port.Name, kitchenQueue.PortName)) ?? null
+    : null
   const kitchenMappingCorrect = Boolean(
     kitchenQueue &&
     frontDriverName &&
-    kitchenPortNameValue &&
-    stringOrNull(kitchenQueue.DriverName) === frontDriverName &&
-    stringOrNull(kitchenQueue.PortName) === kitchenPortNameValue &&
-    kitchenPortReady,
+    endpoint &&
+    kitchenQueuePort &&
+    windowsIdentifierEquals(kitchenQueue.DriverName, frontDriverName) &&
+    portMatchesEndpoint(kitchenQueuePort, endpoint),
   )
   const portProvisionable = Boolean(kitchenPortNameValue)
   const inspection: QueueProvisioningInspection = {
