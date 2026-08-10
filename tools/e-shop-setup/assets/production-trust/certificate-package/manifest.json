@@ -1,0 +1,11 @@
+{
+  "schema": "eshop.certificate-package/v1",
+  "certificateId": "eshop-production-root-ca",
+  "version": 1,
+  "displayName": "E-Shop Production Root CA",
+  "rootFile": "eshop-root-ca.crt",
+  "rootFingerprint": "0B:DF:9E:25:AB:71:3A:87:F7:82:49:5B:ED:BB:DF:00:C4:0E:D1:BE:00:81:7A:1D:EE:7E:06:A0:5E:EA:39:BF",
+  "validFrom": "2026-08-10T10:20:43.000Z",
+  "validTo": "2031-08-10T10:20:43.000Z",
+  "minimumQzVersion": "2.2.5"
+}
