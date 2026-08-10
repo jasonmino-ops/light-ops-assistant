@@ -157,12 +157,16 @@ function upsertTargetQueue(snapshot: Snapshot, name: string, driverName: string,
 function windowsHarness(initial: Snapshot) {
   const snapshot = structuredClone(initial)
   const provisioningScripts: string[] = []
+  const inspectionScripts: string[] = []
   const system = new WindowsQueueProvisioningSystem({
     runtimePlatform: 'win32',
     runtimeArchitecture: 'x64',
     run: async (_file, args) => {
       const script = args.join(' ')
-      if (script.includes('eshop.queue.inspection.v1')) return JSON.stringify(snapshot)
+      if (script.includes('eshop.queue.inspection.v1')) {
+        inspectionScripts.push(script)
+        return Buffer.from(JSON.stringify(snapshot), 'utf8').toString('base64')
+      }
       if (!script.includes('eshop.queue.provisioning.v1')) throw new Error('unexpected command')
       provisioningScripts.push(script)
       const kitchenPort = selectKitchenPort(snapshot)
@@ -171,7 +175,7 @@ function windowsHarness(initial: Snapshot) {
       return ''
     },
   })
-  return { system, snapshot, provisioningScripts }
+  return { system, snapshot, provisioningScripts, inspectionScripts }
 }
 
 function discoveryResult(): StageResult {
@@ -254,14 +258,19 @@ async function testExistingCorrectQueuesAreReused(): Promise<void> {
 async function testGoldenFrontMappingUsesDiscoveryDriverAndUsbPort(): Promise<void> {
   const harness = windowsHarness({
     Printers: [
-      queuePrinter(LOGICAL_QUEUE_NAMES.front, '80NORMAL', 'RONGTAUSB PORT:'),
+      queuePrinter(LOGICAL_QUEUE_NAMES.front, '80Normal', 'RongtaUSB PORT:'),
       queuePrinter(LOGICAL_QUEUE_NAMES.kitchen, '80Normal', '192.168.18.49'),
     ],
     Ports: [{ Name: '192.168.18.49', PrinterHostAddress: '192.168.18.49', PortNumber: 9100, Protocol: 'RAW' }],
     Drivers: ['80Normal'],
   })
   const state = await harness.system.inspectQueues(GOLDEN_INPUT)
+  assert.equal(state.front.exists, true)
   assert.equal(state.front.mappingCorrect, true)
+  assert.equal(state.driverReady, true)
+  assert.match(harness.inspectionScripts[0]!, /UTF8Encoding/)
+  assert.match(harness.inspectionScripts[0]!, /ToBase64String/)
+  assert.match(harness.inspectionScripts[0]!, /List\[object\]/)
   assert.equal(harness.provisioningScripts.length, 0)
 }
 
@@ -276,9 +285,10 @@ async function testGoldenKitchenMappingUsesQueuePortEndpointMetadata(): Promise<
       { Name: runtimePort, PrinterHostAddress: '192.168.18.49', PortNumber: 9100, Protocol: 1 },
       { Name: '192.168.18.49', PrinterHostAddress: '192.168.18.49', PortNumber: 9100, Protocol: 'RAW' },
     ],
-    Drivers: ['80Normal'],
+    Drivers: ['80Normal', 'Office Driver'],
   })
   const state = await harness.system.inspectQueues(GOLDEN_INPUT)
+  assert.equal(state.kitchen.exists, true)
   assert.equal(state.kitchen.portReady, true)
   assert.equal(state.kitchen.mappingCorrect, true)
   assert.equal(state.ready, true)

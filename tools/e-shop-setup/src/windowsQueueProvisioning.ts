@@ -62,9 +62,12 @@ function runExecutable(file: string, args: string[], timeout = PROCESS_TIMEOUT_M
   })
 }
 
-function parseJsonValue(text: string): unknown {
-  const trimmed = text.trim()
-  return trimmed ? JSON.parse(trimmed) as unknown : null
+function parseUtf8Base64JsonValue(text: string): unknown {
+  const encoded = text.trim()
+  if (!encoded || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    throw new Error('Windows queue snapshot transport is invalid')
+  }
+  return JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')) as unknown
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -274,14 +277,19 @@ export class WindowsQueueProvisioningSystem implements QueueProvisioningSystem {
     const script = [
       "$ErrorActionPreference='Stop'",
       "$queueInspectionSchema='eshop.queue.inspection.v1'",
+      '$utf8=[System.Text.UTF8Encoding]::new($false)',
+      '[Console]::OutputEncoding=$utf8',
+      '$OutputEncoding=$utf8',
       `$frontQueue='${frontQueue}'`,
       `$kitchenQueue='${kitchenQueue}'`,
-      '$printerRecords=@();foreach($queueName in @($frontQueue,$kitchenQueue)){$printer=Get-Printer -Name $queueName -ErrorAction SilentlyContinue;if($printer){$printerRecords+=@([pscustomobject]@{Name=[string]$printer.Name;DriverName=[string]$printer.DriverName;PortName=[string]$printer.PortName})}}',
-      '$portRecords=@(Get-PrinterPort -ErrorAction Stop | ForEach-Object {[pscustomobject]@{Name=[string]$_.Name;PrinterHostAddress=[string]$_.PrinterHostAddress;PortNumber=[string]$_.PortNumber;Protocol=[string]$_.Protocol}})',
-      '$drivers=@(Get-PrinterDriver -ErrorAction Stop | ForEach-Object {[string]$_.Name})',
-      '[pscustomobject]@{Printers=@($printerRecords);Ports=@($portRecords);Drivers=@($drivers)} | ConvertTo-Json -Depth 5 -Compress',
+      '$printerRecords=[System.Collections.Generic.List[object]]::new();foreach($queueName in @($frontQueue,$kitchenQueue)){$printer=@(Get-Printer -Name $queueName -ErrorAction SilentlyContinue) | Select-Object -First 1;if($null -ne $printer){$printerRecords.Add([pscustomobject]@{Name=[string]$printer.Name;DriverName=[string]$printer.DriverName;PortName=[string]$printer.PortName})}}',
+      '$portRecords=[System.Collections.Generic.List[object]]::new();foreach($port in @(Get-PrinterPort -ErrorAction Stop)){$portRecords.Add([pscustomobject]@{Name=[string]$port.Name;PrinterHostAddress=[string]$port.PrinterHostAddress;PortNumber=[string]$port.PortNumber;Protocol=[string]$port.Protocol})}',
+      '$driverRecords=[System.Collections.Generic.List[string]]::new();foreach($driver in @(Get-PrinterDriver -ErrorAction Stop)){$driverRecords.Add([string]$driver.Name)}',
+      '$snapshot=[pscustomobject]@{Printers=[object[]]$printerRecords.ToArray();Ports=[object[]]$portRecords.ToArray();Drivers=[string[]]$driverRecords.ToArray()}',
+      '$json=ConvertTo-Json -InputObject $snapshot -Depth 5 -Compress',
+      '[Convert]::ToBase64String($utf8.GetBytes($json))',
     ].join(';')
-    return (parseJsonValue(await this.run('powershell.exe', [
+    return (parseUtf8Base64JsonValue(await this.run('powershell.exe', [
       '-NoProfile',
       '-NonInteractive',
       '-Command',
