@@ -29,6 +29,8 @@ assert.doesNotMatch(page, /KhqrFocusOverlay|khqrFocusBackdrop/, 'KHQR 不得使�
 assert.match(page, /customerQrCard: \{[^\n]*158px/, '左侧顾客 H5 二维码应轻度缩小')
 assert.match(page, /staticKhqrFrame: \{[^\n]*padding: 4/, 'KHQR 白色容器应减少内部留白')
 assert.match(page, /staticKhqrImage: \{[^\n]*maxWidth: 400/, 'KHQR 实际图片应获得更多可用宽度')
+assert.match(page, /staticKhqrFrame: \{[^\n]*position: 'relative'[^\n]*boxSizing: 'border-box'[^\n]*overflow: 'hidden'/, 'KHQR 外框必须建立确定的可用区域并约束边框与留白')
+assert.match(page, /staticKhqrImage: \{[^\n]*position: 'absolute'[^\n]*inset: 4[^\n]*width: 'calc\(100% - 8px\)'[^\n]*height: 'calc\(100% - 8px\)'[^\n]*maxWidth: 400[^\n]*objectFit: 'contain'/, 'KHQR 图片必须在外框内按响应式宽高完整缩放')
 assert.match(page, /cartRow: \{[^\n]*minHeight: 54/, '商品行应轻度紧凑')
 assert.match(page, /productImage: \{[^\n]*width: 34, height: 34/, '商品缩略图应轻度缩小')
 
