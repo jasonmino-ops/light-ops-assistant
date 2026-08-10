@@ -1,0 +1,305 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AppDelegate.swift */; };
+		A10000000000000000000002 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* SceneDelegate.swift */; };
+		A10000000000000000000003 /* WebHostViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* WebHostViewController.swift */; };
+		A10000000000000000000004 /* NativeTaskBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* NativeTaskBridge.swift */; };
+		A10000000000000000000005 /* NativeTaskContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* NativeTaskContract.swift */; };
+		A10000000000000000000006 /* NativeTaskValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* NativeTaskValidator.swift */; };
+		A10000000000000000000007 /* NativeTaskDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* NativeTaskDispatcher.swift */; };
+		A10000000000000000000008 /* ResultBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* ResultBridge.swift */; };
+		A10000000000000000000009 /* PrintBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* PrintBridge.swift */; };
+		A1000000000000000000000A /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* WebKit.framework */; };
+		A1000000000000000000000B /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* Network.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* WebHostViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebHostViewController.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* NativeTaskBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTaskBridge.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000006 /* NativeTaskContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTaskContract.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* NativeTaskValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTaskValidator.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* NativeTaskDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTaskDispatcher.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* ResultBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultBridge.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A /* PrintBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrintBridge.swift; sourceTree = "<group>"; };
+		A2000000000000000000000B /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		A2000000000000000000000C /* Network.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Network.framework; path = System/Library/Frameworks/Network.framework; sourceTree = SDKROOT; };
+		A2000000000000000000000D /* EShopMobileRuntime.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EShopMobileRuntime.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000000B /* Network.framework in Frameworks */,
+				A1000000000000000000000A /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000002 /* EShopMobileRuntime */,
+				A40000000000000000000003 /* MobileRuntimeCore */,
+				A40000000000000000000004 /* Frameworks */,
+				A40000000000000000000005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A40000000000000000000002 /* EShopMobileRuntime */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* AppDelegate.swift */,
+				A20000000000000000000002 /* SceneDelegate.swift */,
+				A20000000000000000000003 /* WebHostViewController.swift */,
+				A20000000000000000000004 /* NativeTaskBridge.swift */,
+				A20000000000000000000005 /* Info.plist */,
+			);
+			path = EShopMobileRuntime;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000003 /* MobileRuntimeCore */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000006 /* NativeTaskContract.swift */,
+				A20000000000000000000007 /* NativeTaskValidator.swift */,
+				A20000000000000000000008 /* NativeTaskDispatcher.swift */,
+				A20000000000000000000009 /* ResultBridge.swift */,
+				A2000000000000000000000A /* PrintBridge.swift */,
+			);
+			path = Sources/MobileRuntimeCore;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000004 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000B /* WebKit.framework */,
+				A2000000000000000000000C /* Network.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000D /* EShopMobileRuntime.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* EShopMobileRuntime */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000002 /* Build configuration list for PBXNativeTarget "EShopMobileRuntime" */;
+			buildPhases = (
+				A60000000000000000000001 /* Sources */,
+				A30000000000000000000001 /* Frameworks */,
+				A60000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EShopMobileRuntime;
+			productName = EShopMobileRuntime;
+			productReference = A2000000000000000000000D /* EShopMobileRuntime.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A70000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A50000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXProject "EShopMobileRuntime" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A40000000000000000000001;
+			productRefGroup = A40000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A50000000000000000000001 /* EShopMobileRuntime */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* AppDelegate.swift in Sources */,
+				A10000000000000000000002 /* SceneDelegate.swift in Sources */,
+				A10000000000000000000003 /* WebHostViewController.swift in Sources */,
+				A10000000000000000000004 /* NativeTaskBridge.swift in Sources */,
+				A10000000000000000000005 /* NativeTaskContract.swift in Sources */,
+				A10000000000000000000006 /* NativeTaskValidator.swift in Sources */,
+				A10000000000000000000007 /* NativeTaskDispatcher.swift in Sources */,
+				A10000000000000000000008 /* ResultBridge.swift in Sources */,
+				A10000000000000000000009 /* PrintBridge.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A90000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A90000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A90000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EShopMobileRuntime/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elifekh.eshop.mobile-runtime.sandbox;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A90000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EShopMobileRuntime/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elifekh.eshop.mobile-runtime.sandbox;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A80000000000000000000001 /* Build configuration list for PBXProject "EShopMobileRuntime" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A90000000000000000000001 /* Debug */,
+				A90000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000002 /* Build configuration list for PBXNativeTarget "EShopMobileRuntime" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A90000000000000000000003 /* Debug */,
+				A90000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A70000000000000000000001 /* Project object */;
+}
