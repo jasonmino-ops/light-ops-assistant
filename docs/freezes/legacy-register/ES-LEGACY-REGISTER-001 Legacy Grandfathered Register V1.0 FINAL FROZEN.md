@@ -1,4 +1,9 @@
 # E-Shop Legacy Grandfathered Register V1
+
+> [!IMPORTANT] ECCP Printing Capability V1.1 Cross-reference（2026-08-11）
+> 本文冻结正文与 Legacy 事实保持不变。当前动作：**DO NOT TOUCH — CROSS-REFERENCE ONLY**。
+>
+> Browser Print 当前映射为 Browser Native Transport Adapter；SW-AIOT 映射为 Cloud Transport Adapter；HRT/Provider Printer Executor 属 Runtime Consumer / Transport execution，不拥有 Printing Core、Profile、Layout 或 Rendering。当前分类真源：`ECCP Printing Capability Baseline V1.1 FINAL FROZEN`（Canonical Vault）；Repository 入口：`docs/governance/printing/PRINTING_CAPABILITY_V1_1_INDEX.md`。
 ## Legacy 既有豁免链路治理登记册
 
 | 项目 | 内容 |

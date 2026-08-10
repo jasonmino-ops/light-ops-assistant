@@ -1,5 +1,8 @@
 # EP-MB2-03 Command Runtime Acceptance Record
 
+> [!IMPORTANT] ECCP Printing Capability V1.1 Reference（2026-08-11）
+> 本 Acceptance 结果、Commit、CI 与 Gate 证据保持不变。Command Runtime 当前解释为 generic Runtime Consumer / dispatch boundary；打印业务语义与 Print Command Stream 生成属于 Printing Core / Profile，Transport Adapter 仅负责交付。当前权威分类见 Canonical Vault `ECCP Printing Capability Contract V1.1 FINAL FROZEN`；Repository 入口：`docs/governance/printing/PRINTING_CAPABILITY_V1_1_INDEX.md`。当前动作：**UPDATE REFERENCE ONLY**。
+
 ## Identity
 
 - Package: EP-MB2-03 — Command Runtime

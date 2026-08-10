@@ -1,5 +1,8 @@
 # SV-02 Printer Adapter V1 Architecture Note
 
+> [!WARNING] SUPERSEDED ARCHITECTURE — KEEP AS HISTORICAL EVIDENCE（2026-08-11）
+> 本文原有架构设计过程保留，不再作为当前 Printing Architecture authority。任何允许 Printer Adapter 接收 business payload、执行 render / transform、拥有 Receipt/Kitchen/Layout/Language/Image Composition 或 business semantics 的表述，均被 ECCP Printing Capability V1.1 取代。V1.1 要求 Printing Core / Profile 产生 Print Command Stream，Adapter 只负责 Transport → Printer。当前权威：Canonical Vault `ECCP Printing Capability Baseline V1.1 FINAL FROZEN`；Repository 入口：`docs/governance/printing/PRINTING_CAPABILITY_V1_1_INDEX.md`。
+
 ## Status
 
 Draft for Store Validation Era.

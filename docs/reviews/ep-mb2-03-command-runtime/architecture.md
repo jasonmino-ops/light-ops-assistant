@@ -1,5 +1,8 @@
 # Architecture
 
+> [!IMPORTANT] ECCP Printing Capability V1.1 Reference（2026-08-11）
+> 本文保留 Command Runtime 的 generic lifecycle / validation / dispatch 架构。任何 receipt-print 示例均为 command routing 示例，不授权 Runtime 或 Executor 拥有 Printing Core、Printing Profile、Layout、Rendering、Language、Image Composition 或 business semantics。当前权威分类见 Canonical Vault `ECCP Printing Capability Contract V1.1 FINAL FROZEN`；Repository 入口：`docs/governance/printing/PRINTING_CAPABILITY_V1_1_INDEX.md`。当前动作：**UPDATE REFERENCE ONLY**。
+
 ## Module Structure
 
 - `desktop/src/main/hrt/commandRuntimeTypes.ts`: Command contract, result, failure taxonomy, dispatch request, executor port.

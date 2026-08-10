@@ -1,4 +1,9 @@
 # Milestone B Architecture Entry Gate
+
+> [!IMPORTANT] ECCP Printing Capability V1.1 Cross-reference（2026-08-11）
+> 本 Gate 冻结正文保持不变。当前动作：**DO NOT TOUCH — CROSS-REFERENCE ONLY**。
+>
+> Printer Contract / Printer Executor / Provider 在 V1.1 中属于 Runtime Consumer、Transport Adapter 或 Transport Infrastructure 执行范围，不得拥有 Receipt/Kitchen、Layout、Rendering、Language、Image Composition 或 Business Semantic。当前分类真源：`ECCP Printing Capability Baseline V1.1 FINAL FROZEN`（Canonical Vault）；Repository 入口：`docs/governance/printing/PRINTING_CAPABILITY_V1_1_INDEX.md`。
 ## Milestone B 架构开工闸门
 
 | 项目 | 内容 |

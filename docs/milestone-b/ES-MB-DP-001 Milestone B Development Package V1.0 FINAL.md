@@ -1,5 +1,8 @@
 # ES-MB-DP-001 Milestone B Development Package V1.0 FINAL
 
+> [!IMPORTANT] ECCP Printing Capability V1.1 Reference（2026-08-11）
+> 本文批准范围、历史 Gate 与工程证据保持不变。涉及 Printer Contract、Printer Executor、Provider、Windows Queue、Driver、Port、Setup 或 Discovery 的内容，当前按 Runtime Consumer、Transport Adapter 或 Transport Infrastructure 解释；不得据本文把 Printing business semantics、Profile、Layout 或 Rendering 下放到 Runtime/Adapter。当前权威分类见 Canonical Vault `ECCP Printing Capability Baseline V1.1 FINAL FROZEN`；Repository 入口：`docs/governance/printing/PRINTING_CAPABILITY_V1_1_INDEX.md`。当前动作：**UPDATE REFERENCE ONLY**。
+
 VERSION: V1.0
 STATUS: APPROVED
 FREEZE STATUS: FINAL FROZEN

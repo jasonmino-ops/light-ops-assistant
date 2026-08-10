@@ -1,5 +1,8 @@
 # EP-MB2-03 Command Runtime Freeze Record
 
+> [!IMPORTANT] ECCP Printing Capability V1.1 Reference（2026-08-11）
+> 本 Command Runtime 冻结范围与历史验收证据保持不变。Command Runtime 是 generic Runtime Consumer / dispatch boundary；涉及 print command 时，只负责验证、路由、dispatch 与 result normalization，不拥有 Receipt/Kitchen、Profile、Layout、Rendering、Language、Image Composition 或 Print business semantics。当前权威分类见 Canonical Vault `ECCP Printing Capability Contract V1.1 FINAL FROZEN`；Repository 入口：`docs/governance/printing/PRINTING_CAPABILITY_V1_1_INDEX.md`。当前动作：**UPDATE REFERENCE ONLY**。
+
 ## Identity
 
 - Package: EP-MB2-03 — Command Runtime

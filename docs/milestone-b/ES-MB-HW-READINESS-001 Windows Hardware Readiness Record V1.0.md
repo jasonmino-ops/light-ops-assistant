@@ -1,5 +1,8 @@
 # ES-MB-HW-READINESS-001 Windows Hardware Readiness Record V1.0
 
+> [!IMPORTANT] ECCP Printing Capability V1.1 Reference（2026-08-11）
+> 本 Hardware Readiness 记录的设备、Queue、Driver、Port、USB 与验收事实保持不变。上述对象当前分类为 Transport / Transport Infrastructure 或 Transport Adapter，不构成 Printing Core / Printing Profile 定义。当前权威分类见 Canonical Vault `ECCP Printing Capability Baseline V1.1 FINAL FROZEN`；Repository 入口：`docs/governance/printing/PRINTING_CAPABILITY_V1_1_INDEX.md`。当前动作：**UPDATE REFERENCE ONLY**。
+
 DOCUMENT STATUS: ACTIVE CONTROL RECORD
 GATE STATUS: BLOCKED
 

@@ -1,5 +1,8 @@
 # Validation Matrix
 
+> [!IMPORTANT] ECCP Printing Capability V1.1 Reference（2026-08-11）
+> `receipt print` 在本 Matrix 中仅是 generic Command Runtime validation / dispatch fixture，不是 Printing Capability 分类定义。当前权威分类见 Canonical Vault `ECCP Printing Capability Contract V1.1 FINAL FROZEN`；Repository 入口：`docs/governance/printing/PRINTING_CAPABILITY_V1_1_INDEX.md`。当前动作：**UPDATE REFERENCE ONLY**。
+
 | Scenario | Input | Expected State | Error Code | Enters Dispatch |
 | --- | --- | --- | --- | --- |
 | Valid command | receipt print, assigned printer, ready provider | SUCCEEDED | none | yes |
