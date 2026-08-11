@@ -25,6 +25,8 @@ export type EshopTrayEndpoint = {
   health: EshopTrayHealth
 }
 
+export type EshopTrayStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+
 export type EshopTrayPrintResult = {
   protocolVersion: typeof ESHOP_TRAY_PROTOCOL_VERSION
   requestId: string
@@ -76,6 +78,76 @@ export function normalizeEshopTrayBaseUrl(value: string): string | null {
   }
 }
 
+/**
+ * Turns the single product-facing address field into the frozen LAN endpoint.
+ * A full URL remains accepted for backwards compatibility with the V0.1 query
+ * locator, but the UI only asks the user for an IP address or local hostname.
+ */
+export function normalizeEshopTrayAddress(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const candidate = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `http://${trimmed}`
+  return normalizeEshopTrayBaseUrl(candidate)
+}
+
+function browserStorage(): EshopTrayStorage | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+export function readSavedEshopTrayBaseUrl(
+  storage: EshopTrayStorage | null = browserStorage(),
+): string | null {
+  if (!storage) return null
+  try {
+    return normalizeEshopTrayBaseUrl(storage.getItem(ESHOP_TRAY_STORAGE_KEY) ?? '')
+  } catch {
+    return null
+  }
+}
+
+export function saveEshopTrayBaseUrl(
+  value: string,
+  storage: EshopTrayStorage | null = browserStorage(),
+): string {
+  const baseUrl = normalizeEshopTrayAddress(value)
+  if (!baseUrl) throw new EshopTrayClientError('TRAY_ADDRESS_INVALID', false)
+  if (!storage) throw new EshopTrayClientError('TRAY_STORAGE_UNAVAILABLE', false)
+  try {
+    storage.setItem(ESHOP_TRAY_STORAGE_KEY, baseUrl)
+    return baseUrl
+  } catch (cause) {
+    throw new EshopTrayClientError('TRAY_STORAGE_UNAVAILABLE', false, { cause })
+  }
+}
+
+export function clearEshopTrayBaseUrl(
+  storage: EshopTrayStorage | null = browserStorage(),
+): void {
+  if (!storage) return
+  try {
+    storage.removeItem(ESHOP_TRAY_STORAGE_KEY)
+  } catch {
+    // Clearing an unavailable browser store is already the desired UI state.
+  }
+}
+
+export function eshopTrayAddressFromBaseUrl(value: string): string {
+  const baseUrl = normalizeEshopTrayBaseUrl(value)
+  if (!baseUrl) return ''
+  try {
+    return new URL(baseUrl).hostname.replace(/^\[|\]$/g, '')
+  } catch {
+    return ''
+  }
+}
+
 function readRuntimeLocatorCandidates(): string[] {
   const candidates: string[] = []
   if (typeof window !== 'undefined') {
@@ -84,17 +156,13 @@ function readRuntimeLocatorCandidates(): string[] {
       const queryUrl = queryValue ? normalizeEshopTrayBaseUrl(queryValue) : null
       if (queryUrl) {
         candidates.push(queryUrl)
-        window.localStorage.setItem(ESHOP_TRAY_STORAGE_KEY, queryUrl)
+        saveEshopTrayBaseUrl(queryUrl)
       }
     } catch {
       // Runtime Locator continues with its non-persistent candidates.
     }
-    try {
-      const storedUrl = normalizeEshopTrayBaseUrl(window.localStorage.getItem(ESHOP_TRAY_STORAGE_KEY) ?? '')
-      if (storedUrl) candidates.push(storedUrl)
-    } catch {
-      // Storage can be unavailable in privacy-restricted browser contexts.
-    }
+    const storedUrl = readSavedEshopTrayBaseUrl()
+    if (storedUrl) candidates.push(storedUrl)
     const sameHostUrl = normalizeEshopTrayBaseUrl(`http://${window.location.hostname}:${ESHOP_TRAY_PORT}`)
     if (sameHostUrl) candidates.push(sameHostUrl)
   }
@@ -141,6 +209,19 @@ async function fetchHealth(baseUrl: string, fetchImpl: typeof fetch): Promise<Es
   } finally {
     timeout.dispose()
   }
+}
+
+export async function testEshopTrayConnection(
+  value: string,
+  options?: { fetchImpl?: typeof fetch },
+): Promise<EshopTrayEndpoint> {
+  const baseUrl = normalizeEshopTrayAddress(value)
+  if (!baseUrl) throw new EshopTrayClientError('TRAY_ADDRESS_INVALID', false)
+  const health = await fetchHealth(baseUrl, options?.fetchImpl ?? fetch)
+  if (!health || health.status !== 'online') {
+    throw new EshopTrayClientError('TRAY_CONNECTION_FAILED', false)
+  }
+  return { baseUrl, health }
 }
 
 /**

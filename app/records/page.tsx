@@ -9,6 +9,7 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
+import EshopTraySettings from '@/app/components/EshopTraySettings'
 import {
   DesktopReceiptPreview,
   printDesktopReceipt,
@@ -440,6 +441,7 @@ export default function RecordsPage() {
           </div>
         </div>
         <div style={s.headerTools}>
+          {!isDesktopRecords && realRole === 'OWNER' && <EshopTraySettings />}
           <LangToggleBtn />
           {isDesktopRecords && (
             <a href={cashierReturnHref} style={s.desktopBackLink}>
