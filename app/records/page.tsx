@@ -10,6 +10,7 @@ import LangToggleBtn from '@/app/components/LangToggleBtn'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import EshopTraySettings from '@/app/components/EshopTraySettings'
+import { isEshopTrayFieldEnabled } from '@/lib/eShopTrayFieldGate'
 import {
   DesktopReceiptPreview,
   printDesktopReceipt,
@@ -244,6 +245,11 @@ export default function RecordsPage() {
   const today = todayStr()
   const desktopStoreCode = searchParams.get('from') === 'desktop' ? searchParams.get('storeCode')?.trim() ?? '' : ''
   const isDesktopRecords = !!desktopStoreCode
+  const eshopTrayEnabled = isEshopTrayFieldEnabled({
+    storeCode: contextStoreCode,
+    realRole,
+    isDesktopRecords,
+  })
   const desktopReturnTo = searchParams.get('returnTo')?.trim()
   const desktopLang = searchParams.get('lang')?.trim()
   const cashierReturnHref = desktopReturnTo
@@ -441,7 +447,7 @@ export default function RecordsPage() {
           </div>
         </div>
         <div style={s.headerTools}>
-          {!isDesktopRecords && realRole === 'OWNER' && <EshopTraySettings />}
+          {eshopTrayEnabled && <EshopTraySettings />}
           <LangToggleBtn />
           {isDesktopRecords && (
             <a href={cashierReturnHref} style={s.desktopBackLink}>
@@ -636,6 +642,7 @@ export default function RecordsPage() {
 
       <OrderDetailSheet
         orderNo={selectedOrderNo}
+        eshopTrayEnabled={eshopTrayEnabled}
         onClose={() => setSelectedOrderNo(null)}
       />
 

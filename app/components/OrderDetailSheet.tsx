@@ -66,9 +66,11 @@ function fmtDateTime(iso: string) {
 
 export default function OrderDetailSheet({
   orderNo,
+  eshopTrayEnabled,
   onClose,
 }: {
   orderNo: string | null
+  eshopTrayEnabled: boolean
   onClose: () => void
 }) {
   const { t } = useLocale()
@@ -238,6 +240,11 @@ export default function OrderDetailSheet({
     if (!d || shareStatus !== 'idle') return
     setShareStatus('printing')
     const html = buildPrintHTML(d as ShareData, shareLabels)
+    if (!eshopTrayEnabled) {
+      openExistingBrowserPrint(html)
+      return
+    }
+
     const tray = await locateEshopTray()
     if (!tray) {
       openExistingBrowserPrint(html)
