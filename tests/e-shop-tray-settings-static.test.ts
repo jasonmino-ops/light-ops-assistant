@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 
 const settings = readFileSync(new URL('../app/components/EshopTraySettings.tsx', import.meta.url), 'utf8')
 const records = readFileSync(new URL('../app/records/page.tsx', import.meta.url), 'utf8')
+const telegramInit = readFileSync(new URL('../app/components/TelegramInit.tsx', import.meta.url), 'utf8')
 
 assert.match(settings, /testEshopTrayConnection\(address\)/)
 assert.match(settings, /saveEshopTrayBaseUrl\(verifiedBaseUrl\)/)
@@ -17,6 +18,8 @@ assert.match(settings, /data-eshop-tray-test/)
 assert.match(settings, /data-eshop-tray-save/)
 assert.match(settings, /data-eshop-tray-clear/)
 assert.match(records, /!isDesktopRecords && realRole === 'OWNER' && <EshopTraySettings/)
+assert.doesNotMatch(telegramInit, /PUBLIC_PATH_PREFIXES[^\n]*['"]\/records['"]/, 'mobile records must not bypass merchant auth')
+assert.match(telegramInit, /isDesktopRecordsRoute\(path, search\)/, 'desktop records must remain standalone')
 
 for (const language of ['zh', 'en', 'km']) {
   const dictionary = readFileSync(new URL(`../lib/i18n/${language}.ts`, import.meta.url), 'utf8')

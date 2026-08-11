@@ -32,6 +32,7 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
   const requestHeaders = new Headers(req.headers)
   requestHeaders.set('x-current-path', pathname)
+  requestHeaders.set('x-current-search', req.nextUrl.search)
   const next = () => NextResponse.next({ request: { headers: requestHeaders } })
 
   // /ops/login is always public — it IS the login page

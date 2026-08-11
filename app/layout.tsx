@@ -7,6 +7,7 @@ import LangProvider from './components/LangProvider'
 import WorkModeProvider from './components/WorkModeProvider'
 import DelegateBanner from './components/DelegateBanner'
 import { verifySession } from '@/lib/session'
+import { isDesktopRecordsRoute } from '@/lib/records-route-access'
 
 export const metadata = {
   title: '店小二助手',
@@ -18,10 +19,10 @@ const TIKTOK_PIXEL_ID = process.env.NODE_ENV === 'production'
   : ''
 
 const PUBLIC_EXACT_PATHS = ['/']
-const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/m', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/desktop', '/records', '/privacy', '/terms', '/contact', '/ops', '/mino-bos/assets-check']
+const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/m', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/desktop', '/privacy', '/terms', '/contact', '/ops', '/mino-bos/assets-check']
 
-function isProtectedMerchantPath(path: string) {
-  if (!path || PUBLIC_EXACT_PATHS.includes(path)) return false
+function isProtectedMerchantPath(path: string, search: string) {
+  if (!path || PUBLIC_EXACT_PATHS.includes(path) || isDesktopRecordsRoute(path, search)) return false
   return !PUBLIC_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }
 
@@ -33,7 +34,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const sessionRole = sessionToken ? verifySession(sessionToken)?.role : undefined
   const role = sessionRole ?? process.env.DEV_ROLE ?? 'STAFF'
   const pathname = headerStore.get('x-current-path') ?? ''
-  const initialProtected = isProtectedMerchantPath(pathname)
+  const search = headerStore.get('x-current-search') ?? ''
+  const initialProtected = isProtectedMerchantPath(pathname, search)
   const isCashierPath = pathname === '/cashier' || pathname.startsWith('/cashier/')
   const manifestHref = isCashierPath ? '/manifest.webmanifest' : '/manifest.json'
   const themeColor = isCashierPath ? '#111827' : '#1677ff'

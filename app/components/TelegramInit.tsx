@@ -8,6 +8,7 @@ import {
   redactStartParam,
   resolveTelegramStartParam,
 } from '@/lib/telegram-start-param'
+import { isDesktopRecordsRoute } from '@/lib/records-route-access'
 
 /**
  * TelegramInit — mounts once per layout.
@@ -54,15 +55,16 @@ function extractTgUserId(initData: string): string | null {
 // 均跳过商户 Bot auth 流程，由各页面自身处理身份或无需身份。
 // /cashier, /desktop and desktop-scoped /records are standalone PC pages — no Telegram session required
 const PUBLIC_EXACT_PATHS = ['/']
-const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/m', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/desktop', '/records', '/privacy', '/terms', '/contact', '/mino-bos/assets-check']
+const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/m', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/desktop', '/privacy', '/terms', '/contact', '/mino-bos/assets-check']
 
-function isPublicPath(path: string) {
-  return PUBLIC_EXACT_PATHS.includes(path) ||
+function isPublicPath(path: string, search: string) {
+  return isDesktopRecordsRoute(path, search) ||
+    PUBLIC_EXACT_PATHS.includes(path) ||
     PUBLIC_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }
 
-function isMerchantEntryPath(path: string) {
-  return !isPublicPath(path) && !path.startsWith('/ops')
+function isMerchantEntryPath(path: string, search: string) {
+  return !isPublicPath(path, search) && !path.startsWith('/ops')
 }
 
 export default function TelegramInit({
@@ -111,7 +113,7 @@ export default function TelegramInit({
       return
     }
 
-    if (isPublicPath(path)) {
+    if (isPublicPath(path, window.location.search)) {
       setAuthChecking(false)
       return
     }
@@ -192,7 +194,7 @@ export default function TelegramInit({
     // Even when this WebView saw the same Telegram user before, verify the
     // server cookie before revealing merchant UI. This prevents expired-cookie
     // or first-load pages from flashing /home before /relogin or re-auth.
-    if (isMerchantEntryPath(path) && tgUserId && sessionStorage.getItem(SESSION_KEY) === tgUserId) {
+    if (isMerchantEntryPath(path, window.location.search) && tgUserId && sessionStorage.getItem(SESSION_KEY) === tgUserId) {
       setAuthChecking(true)
       fetch('/api/auth/status', { cache: 'no-store' })
         .then((r) => {
