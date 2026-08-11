@@ -9,22 +9,27 @@ import {
   readSavedEshopTrayBaseUrl,
   saveEshopTrayBaseUrl,
   testEshopTrayConnection,
+  type EshopTrayHealth,
 } from '@/lib/eShopTrayClient'
 
-type ConnectionState = 'unconnected' | 'connected' | 'failed'
+type ConnectionState = 'unset' | 'unconnected' | 'checking' | 'connected' | 'failed'
 
 export default function EshopTraySettings() {
   const { t } = useLocale()
   const [open, setOpen] = useState(false)
   const [address, setAddress] = useState('')
-  const [connectionState, setConnectionState] = useState<ConnectionState>('unconnected')
+  const [connectionState, setConnectionState] = useState<ConnectionState>('unset')
   const [verifiedBaseUrl, setVerifiedBaseUrl] = useState<string | null>(null)
+  const [connectedHealth, setConnectedHealth] = useState<EshopTrayHealth | null>(null)
   const [testing, setTesting] = useState(false)
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
     const savedBaseUrl = readSavedEshopTrayBaseUrl()
-    if (savedBaseUrl) setAddress(eshopTrayAddressFromBaseUrl(savedBaseUrl))
+    if (savedBaseUrl) {
+      setAddress(eshopTrayAddressFromBaseUrl(savedBaseUrl))
+      setConnectionState('unconnected')
+    }
   }, [])
 
   const normalizedBaseUrl = useMemo(() => normalizeEshopTrayAddress(address), [address])
@@ -32,18 +37,22 @@ export default function EshopTraySettings() {
 
   function updateAddress(value: string) {
     setAddress(value)
-    setConnectionState('unconnected')
+    setConnectionState(value.trim() ? 'unconnected' : 'unset')
     setVerifiedBaseUrl(null)
+    setConnectedHealth(null)
     setNotice('')
   }
 
   async function handleTestConnection() {
     setTesting(true)
+    setConnectionState('checking')
     setNotice('')
     setVerifiedBaseUrl(null)
+    setConnectedHealth(null)
     try {
       const endpoint = await testEshopTrayConnection(address)
       setVerifiedBaseUrl(endpoint.baseUrl)
+      setConnectedHealth(endpoint.health)
       setConnectionState('connected')
     } catch {
       setConnectionState('failed')
@@ -68,20 +77,27 @@ export default function EshopTraySettings() {
     clearEshopTrayBaseUrl()
     setAddress('')
     setVerifiedBaseUrl(null)
-    setConnectionState('unconnected')
+    setConnectedHealth(null)
+    setConnectionState('unset')
     setNotice(t('tray.cleared'))
   }
 
-  const statusLabel = connectionState === 'connected'
-    ? t('tray.connected')
-    : connectionState === 'failed'
-      ? t('tray.failed')
-      : t('tray.unconnected')
+  const statusLabel = connectionState === 'unset'
+    ? t('tray.unset')
+    : connectionState === 'checking'
+      ? t('tray.checking')
+      : connectionState === 'connected'
+        ? t('tray.connected')
+        : connectionState === 'failed'
+          ? t('tray.failed')
+          : t('tray.unconnected')
   const statusColor = connectionState === 'connected'
     ? '#15803d'
     : connectionState === 'failed'
       ? '#b91c1c'
-      : '#6b7280'
+      : connectionState === 'checking'
+        ? '#2563eb'
+        : '#6b7280'
 
   return (
     <>
@@ -133,6 +149,14 @@ export default function EshopTraySettings() {
                 {statusLabel}
               </span>
             </div>
+
+            {connectionState === 'connected' && connectedHealth && (
+              <div style={s.serviceCard} data-eshop-tray-service-online>
+                <span style={s.serviceName}>E-Shop Tray</span>
+                <span style={s.onlineLabel}>{t('tray.online')}</span>
+                <span style={s.versionLabel}>{t('tray.version')} {connectedHealth.version}</span>
+              </div>
+            )}
 
             {notice && (
               <div style={{ ...s.notice, color: connectionState === 'failed' ? '#b91c1c' : '#166534' }} role="status">
@@ -247,6 +271,27 @@ const s: Record<string, CSSProperties> = {
   statusTitle: { fontSize: 13, color: '#4b5563' },
   statusValue: { display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 800 },
   statusDot: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%' },
+  serviceCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    padding: '11px 13px',
+    border: '1px solid #bbf7d0',
+    borderRadius: 12,
+    background: '#f0fdf4',
+  },
+  serviceName: { fontSize: 13, fontWeight: 850, color: '#166534' },
+  onlineLabel: {
+    padding: '3px 7px',
+    borderRadius: 999,
+    background: '#dcfce7',
+    color: '#15803d',
+    fontSize: 10,
+    fontWeight: 850,
+    textTransform: 'uppercase',
+  },
+  versionLabel: { marginLeft: 'auto', fontSize: 11, color: '#166534' },
   notice: { marginTop: 10, fontSize: 12, lineHeight: 1.45 },
   actions: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 18 },
   secondaryButton: {
