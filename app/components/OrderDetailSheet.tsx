@@ -7,6 +7,7 @@ import CheckoutSheet from '@/app/components/CheckoutSheet'
 import OrderShareCard, { buildPrintHTML, type ShareData, type ShareLabels } from '@/app/components/OrderShareCard'
 import { EshopTrayClientError, locateEshopTray, submitEshopTrayPrint } from '@/lib/eShopTrayClient'
 import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
+import { submitEshopTray02CloudPrint } from '@/lib/eShopTrayCloudClient'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,7 +84,25 @@ export default function OrderDetailSheet({
   const [cancelConfirm, setCancelConfirm] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const [cloudRelayEnabled, setCloudRelayEnabled] = useState(false)
   const shareCardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!orderNo) {
+      setCloudRelayEnabled(false)
+      return
+    }
+    let active = true
+    apiFetch('/api/es-tray-02/config', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((body) => {
+        if (active) setCloudRelayEnabled(body?.fieldOnly === true && body?.enabled === true)
+      })
+      .catch(() => {
+        if (active) setCloudRelayEnabled(false)
+      })
+    return () => { active = false }
+  }, [orderNo])
 
   useEffect(() => {
     if (!orderNo) {
@@ -240,6 +259,23 @@ export default function OrderDetailSheet({
     if (!d || shareStatus !== 'idle') return
     setShareStatus('printing')
     const html = buildPrintHTML(d as ShareData, shareLabels)
+
+    // ES-TRAY-02 FIELD ONLY: reuse the existing layout, bitmap renderer and
+    // ESC/POS encoder, then submit only the completed Print Command Stream.
+    if (cloudRelayEnabled) {
+      try {
+        const commandStream = await renderTicketHtmlToEscPosRaw(html)
+        await submitEshopTray02CloudPrint({ orderNo: d.orderNo, commandStream })
+        window.alert(t('order.trayFieldSubmitted'))
+      } catch (error) {
+        console.warn('[es-tray-02:field] cloud relay submission failed', error)
+        window.alert(t('order.trayFieldFailed'))
+      } finally {
+        setShareStatus('idle')
+      }
+      return
+    }
+
     if (!eshopTrayEnabled) {
       openExistingBrowserPrint(html)
       return
