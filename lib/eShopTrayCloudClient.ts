@@ -26,6 +26,29 @@ export const ESHOP_TRAY_02_CLIENT_TRACE_EVENTS = [
   'CLOUD_SUBMIT_START',
   'CLOUD_SUBMIT_RESULT',
   'CLOUD_SUBMIT_FAILED',
+  'RENDER_DOM_MOUNTED',
+  'FRAME_LOAD_START',
+  'FRAME_LOAD_DONE',
+  'FRAME_LOAD_FAILED',
+  'FONTS_START',
+  'FONTS_DONE',
+  'FONTS_FAILED',
+  'IMAGES_START',
+  'IMAGES_DONE',
+  'IMAGES_FAILED',
+  'RAF_1_START',
+  'RAF_1_DONE',
+  'RAF_2_START',
+  'RAF_2_DONE',
+  'HTML2CANVAS_IMPORT_START',
+  'HTML2CANVAS_IMPORT_DONE',
+  'HTML2CANVAS_IMPORT_FAILED',
+  'HTML2CANVAS_START',
+  'HTML2CANVAS_DONE',
+  'HTML2CANVAS_FAILED',
+  'PIXEL_ENCODE_START',
+  'PIXEL_ENCODE_DONE',
+  'PIXEL_ENCODE_FAILED',
 ] as const
 
 export type EshopTray02ClientTraceEvent = typeof ESHOP_TRAY_02_CLIENT_TRACE_EVENTS[number]
@@ -35,6 +58,9 @@ type EshopTray02ClientTraceInput = {
   orderNo?: string | null
   byteLength?: number
   httpStatus?: number
+  elapsedMs?: number
+  canvasWidth?: number
+  canvasHeight?: number
   error?: unknown
 }
 
@@ -87,6 +113,15 @@ export async function traceEshopTray02ClientPrint(
       : {}),
     ...(Number.isInteger(input.httpStatus) && Number(input.httpStatus) >= 100 && Number(input.httpStatus) <= 599
       ? { httpStatus: Number(input.httpStatus) }
+      : {}),
+    ...(Number.isSafeInteger(input.elapsedMs) && Number(input.elapsedMs) >= 0 && Number(input.elapsedMs) <= 3_600_000
+      ? { elapsedMs: Number(input.elapsedMs) }
+      : {}),
+    ...(Number.isSafeInteger(input.canvasWidth) && Number(input.canvasWidth) > 0 && Number(input.canvasWidth) <= 100_000
+      ? { canvasWidth: Number(input.canvasWidth) }
+      : {}),
+    ...(Number.isSafeInteger(input.canvasHeight) && Number(input.canvasHeight) > 0 && Number(input.canvasHeight) <= 100_000
+      ? { canvasHeight: Number(input.canvasHeight) }
       : {}),
     ...(input.error === undefined ? {} : { error: boundedTraceError(input.error) }),
   }

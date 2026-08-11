@@ -22,6 +22,29 @@ const expectedEvents = [
   'CLOUD_SUBMIT_START',
   'CLOUD_SUBMIT_RESULT',
   'CLOUD_SUBMIT_FAILED',
+  'RENDER_DOM_MOUNTED',
+  'FRAME_LOAD_START',
+  'FRAME_LOAD_DONE',
+  'FRAME_LOAD_FAILED',
+  'FONTS_START',
+  'FONTS_DONE',
+  'FONTS_FAILED',
+  'IMAGES_START',
+  'IMAGES_DONE',
+  'IMAGES_FAILED',
+  'RAF_1_START',
+  'RAF_1_DONE',
+  'RAF_2_START',
+  'RAF_2_DONE',
+  'HTML2CANVAS_IMPORT_START',
+  'HTML2CANVAS_IMPORT_DONE',
+  'HTML2CANVAS_IMPORT_FAILED',
+  'HTML2CANVAS_START',
+  'HTML2CANVAS_DONE',
+  'HTML2CANVAS_FAILED',
+  'PIXEL_ENCODE_START',
+  'PIXEL_ENCODE_DONE',
+  'PIXEL_ENCODE_FAILED',
 ]
 assert.deepEqual([...ESHOP_TRAY_02_CLIENT_TRACE_EVENTS], expectedEvents)
 
@@ -39,6 +62,9 @@ async function main() {
       orderNo: 'sensitive-prefix-ORDER_12345678901234567890',
       byteLength: 128,
       error: new Error('x'.repeat(500)),
+      elapsedMs: 321,
+      canvasWidth: 576,
+      canvasHeight: 2048,
       token: 'must-not-be-sent',
       html: '<html>must-not-be-sent</html>',
       commandStream: 'must-not-be-sent',
@@ -68,15 +94,24 @@ async function main() {
   assert.equal(typeof payload.orderRef, 'string')
   assert.ok(String(payload.orderRef).length <= 16)
   assert.equal(payload.byteLength, 128)
+  assert.equal(payload.elapsedMs, 321)
+  assert.equal(payload.canvasWidth, 576)
+  assert.equal(payload.canvasHeight, 2048)
   assert.ok(String((payload.error as { message: string }).message).length <= 160)
   assert.equal(JSON.stringify(payload).includes('must-not-be-sent'), false)
 
   const orderSheet = fs.readFileSync('app/components/OrderDetailSheet.tsx', 'utf8')
   const cloudClient = fs.readFileSync('lib/eShopTrayCloudClient.ts', 'utf8')
+  const renderer = fs.readFileSync('lib/qzHtmlBitmapRenderer.ts', 'utf8')
   const traceRoute = fs.readFileSync('app/api/es-tray-02/client-trace/route.ts', 'utf8')
 
   for (const event of expectedEvents) {
-    assert.ok(orderSheet.includes(`event: '${event}'`) || cloudClient.includes(`event: '${event}'`), `${event} must be emitted`)
+    assert.ok(
+      orderSheet.includes(`event: '${event}'`)
+      || cloudClient.includes(`event: '${event}'`)
+      || renderer.includes(`'${event}'`),
+      `${event} must be emitted`,
+    )
     assert.ok(traceRoute.includes(`'${event}'`), `${event} must be server-allowlisted`)
   }
   assert.ok(orderSheet.indexOf("event: 'PRINT_HTML_START'") < orderSheet.indexOf('buildPrintHTML('))

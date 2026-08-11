@@ -295,7 +295,11 @@ export default function OrderDetailSheet({
         let commandStream: Uint8Array
         void traceEshopTray02ClientPrint({ event: 'ESC_POS_RENDER_START', orderNo: d.orderNo })
         try {
-          commandStream = await renderTicketHtmlToEscPosRaw(html)
+          commandStream = await renderTicketHtmlToEscPosRaw(html, {
+            trace: (event, details) => {
+              void traceEshopTray02ClientPrint({ event, orderNo: d.orderNo, ...details })
+            },
+          })
           void traceEshopTray02ClientPrint({
             event: 'ESC_POS_RENDER_SUCCESS',
             orderNo: d.orderNo,

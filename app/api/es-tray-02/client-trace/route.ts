@@ -24,6 +24,29 @@ const CLIENT_TRACE_EVENTS = new Set([
   'CLOUD_SUBMIT_START',
   'CLOUD_SUBMIT_RESULT',
   'CLOUD_SUBMIT_FAILED',
+  'RENDER_DOM_MOUNTED',
+  'FRAME_LOAD_START',
+  'FRAME_LOAD_DONE',
+  'FRAME_LOAD_FAILED',
+  'FONTS_START',
+  'FONTS_DONE',
+  'FONTS_FAILED',
+  'IMAGES_START',
+  'IMAGES_DONE',
+  'IMAGES_FAILED',
+  'RAF_1_START',
+  'RAF_1_DONE',
+  'RAF_2_START',
+  'RAF_2_DONE',
+  'HTML2CANVAS_IMPORT_START',
+  'HTML2CANVAS_IMPORT_DONE',
+  'HTML2CANVAS_IMPORT_FAILED',
+  'HTML2CANVAS_START',
+  'HTML2CANVAS_DONE',
+  'HTML2CANVAS_FAILED',
+  'PIXEL_ENCODE_START',
+  'PIXEL_ENCODE_DONE',
+  'PIXEL_ENCODE_FAILED',
 ])
 
 type TraceBody = {
@@ -32,6 +55,9 @@ type TraceBody = {
   orderRef?: string
   byteLength?: number
   httpStatus?: number
+  elapsedMs?: number
+  canvasWidth?: number
+  canvasHeight?: number
   error?: { name: string; message: string }
 }
 
@@ -71,6 +97,19 @@ function parseTraceBody(raw: string): TraceBody | null {
       return null
     }
     parsed.httpStatus = Number(body.httpStatus)
+  }
+  if (body.elapsedMs !== undefined) {
+    if (!Number.isSafeInteger(body.elapsedMs) || Number(body.elapsedMs) < 0 || Number(body.elapsedMs) > 3_600_000) {
+      return null
+    }
+    parsed.elapsedMs = Number(body.elapsedMs)
+  }
+  for (const dimension of ['canvasWidth', 'canvasHeight'] as const) {
+    if (body[dimension] === undefined) continue
+    if (!Number.isSafeInteger(body[dimension]) || Number(body[dimension]) <= 0 || Number(body[dimension]) > 100_000) {
+      return null
+    }
+    parsed[dimension] = Number(body[dimension])
   }
   if (body.error !== undefined) {
     if (!body.error || typeof body.error !== 'object' || Array.isArray(body.error)) return null
@@ -115,6 +154,9 @@ export async function POST(req: NextRequest) {
       ...(trace.orderRef ? { orderRef: trace.orderRef } : {}),
       ...(trace.byteLength === undefined ? {} : { byteLength: trace.byteLength }),
       ...(trace.httpStatus === undefined ? {} : { httpStatus: trace.httpStatus }),
+      ...(trace.elapsedMs === undefined ? {} : { elapsedMs: trace.elapsedMs }),
+      ...(trace.canvasWidth === undefined ? {} : { canvasWidth: trace.canvasWidth }),
+      ...(trace.canvasHeight === undefined ? {} : { canvasHeight: trace.canvasHeight }),
       ...(trace.error ? { error: trace.error } : {}),
     } satisfies Prisma.InputJsonValue
     await prisma.operationLog.create({
