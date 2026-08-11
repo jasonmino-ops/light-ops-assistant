@@ -1,0 +1,12 @@
+.next/
+node_modules/
+e-shop-tray/node_modules/
+e-shop-tray/dist/
+e-shop-tray/release/
+e-shop-tray/release-field-sandbox/
+e-shop-tray/release-field-diagnostic/
+desktop/node_modules/
+desktop/dist/
+desktop/release/
+test-results/
+playwright-report/
