@@ -12,7 +12,7 @@ export const WINDOWS_PROVIDER_COMPATIBILITY_MATRIX: HrtCompatibilityMatrixEntry 
   providerId: WINDOWS_PROVIDER_ID,
   minProviderVersion: HRT_PROVIDER_COMPATIBILITY_MATRIX.minProviderVersion,
   maxProviderVersionExclusive: HRT_PROVIDER_COMPATIBILITY_MATRIX.maxProviderVersionExclusive,
-  requiredCapabilities: [],
+  requiredCapabilities: ['printer.receipt'],
 }
 
 export function requiredWindowsProviderCapabilities(): HrtCapability[] {

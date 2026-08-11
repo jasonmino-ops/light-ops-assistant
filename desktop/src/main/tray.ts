@@ -19,7 +19,7 @@ let tray: Tray | null = null
 export function createTray(windowManager: WindowManager, onQuit: () => void) {
   const icon = nativeImage.createFromDataURL(TRAY_ICON_DATA_URL)
   tray = new Tray(icon)
-  tray.setToolTip(`E-Shop Desktop v${app.getVersion()}`)
+  tray.setToolTip(`E-Shop Store Runtime v${app.getVersion()}`)
 
   const menu = Menu.buildFromTemplate([
     { label: '打开收银窗口', click: () => windowManager.focusEmployeeWindow() },
@@ -31,8 +31,8 @@ export function createTray(windowManager: WindowManager, onQuit: () => void) {
         const { logFile } = getLogPaths()
         dialog.showMessageBox({
           type: 'info',
-          title: 'E-Shop Desktop — Runtime Health',
-          message: `E-Shop Desktop v${health.version}`,
+          title: 'E-Shop Store Runtime — Health',
+          message: `E-Shop Store Runtime v${health.version}`,
           detail: [
             JSON.stringify(health, null, 2),
             '',
@@ -44,7 +44,7 @@ export function createTray(windowManager: WindowManager, onQuit: () => void) {
     },
     { type: 'separator' },
     {
-      label: '退出 E-Shop Desktop',
+      label: '退出 E-Shop Store Runtime',
       click: () => {
         logger.info('tray.quit-clicked')
         onQuit()

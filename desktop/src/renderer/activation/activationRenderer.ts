@@ -27,10 +27,10 @@ declare global {
 
 const titleByState: Record<string, string> = {
   BOOTING: '正在启动',
-  UNACTIVATED: '激活此收银台',
+  UNACTIVATED: '激活此门店运行环境',
   ACTIVATING: '正在激活',
   VERIFYING: '正在验证设备',
-  AUTHORIZED_STARTING: '正在打开收银台',
+  AUTHORIZED_STARTING: '正在启动门店运行环境',
   AUTHORIZED_RUNNING: '已激活',
   NETWORK_ERROR: '网络暂时不可用',
   INVALID_PIN: 'PIN 不正确',
@@ -53,7 +53,7 @@ const titleByState: Record<string, string> = {
 
 const detailByState: Record<string, string> = {
   UNACTIVATED: '请输入门店码和老板提供的 6 位 PIN。',
-  NETWORK_ERROR: '请检查网络后重试验证。此状态不会离线放行收银台。',
+  NETWORK_ERROR: '请检查网络后重试验证。此状态不会离线放行门店运行环境。',
   INVALID_PIN: '请重新输入 6 位 PIN。',
   PIN_LOCKED: 'PIN 连续错误次数过多，请稍后或联系 OWNER。',
   PIN_EXPIRED: '请在管理端重新生成 PIN。',

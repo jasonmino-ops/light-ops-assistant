@@ -28,6 +28,11 @@ extraResources:
     filter:
       - dist/**
       - package.json
+      - package-lock.json
+      - provider-manifest.json
+      - vendor/**
+      - node_modules/@eshop/hrt-contract/**
+      - helper/**
 
 win:
   target:

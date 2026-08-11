@@ -10,7 +10,7 @@
 
 import { app, BrowserWindow } from 'electron'
 import { initLogger, logger, getLogPaths } from './logger'
-import { loadConfig } from './config'
+import { getConfig, loadConfig } from './config'
 import { registerIpcHandlers } from './ipcRouter'
 import { windowManager } from './windowManager'
 import { createTray, destroyTray } from './tray'
@@ -23,6 +23,10 @@ import { ActivationRuntime } from './activation/activationRuntime'
 import { ActivationWindowController } from './activation/activationWindowController'
 import { registerActivationIpcHandlers } from './activation/activationIpc'
 import type { AuthorizedDesktopContext } from './activation/activationTypes'
+import { StoreRuntimeCloudClient } from './storeRuntime/cloudClient'
+import { StoreRuntimeStateStore } from './storeRuntime/stateStore'
+import { StoreRuntimeWorker } from './storeRuntime/worker'
+import { configureStoreRuntimeAutoStart } from './autoStart'
 
 // ── 单实例（A4）────────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -38,6 +42,8 @@ if (!gotLock) {
 
   let quitting = false
   let providerSupervisor: WindowsProviderSupervisor | null = null
+  let storeRuntimeWorker: StoreRuntimeWorker | null = null
+  let credentialStore: CredentialStore | null = null
   let activationRuntime: ActivationRuntime | null = null
   let activationWindowController: ActivationWindowController | null = null
   let authorizedRuntimeStarted = false
@@ -48,6 +54,7 @@ if (!gotLock) {
     quitting = true
     activationRuntime?.markQuitting()
     windowManager.setQuitting()
+    storeRuntimeWorker?.stop()
     try { await providerSupervisor?.stop() } catch (error) {
       recordHealthError('provider', `provider stop failed: ${String(error)}`)
     }
@@ -68,7 +75,7 @@ if (!gotLock) {
     recordHealthError('process', `unhandledRejection: ${String(reason)}`)
   })
 
-  async function startAuthorizedDesktopRuntime(_context: AuthorizedDesktopContext): Promise<void> {
+  async function startAuthorizedDesktopRuntime(context: AuthorizedDesktopContext): Promise<void> {
     if (authorizedRuntimeStarted) return
     if (authorizedRuntimeStartPromise) return authorizedRuntimeStartPromise
     authorizedRuntimeStartPromise = (async () => {
@@ -79,18 +86,32 @@ if (!gotLock) {
       updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
       logger.info('hardware.status', hardware.getStatusSummary())
 
+      providerSupervisor = new WindowsProviderSupervisor()
       registerIpcHandlers(windowManager)
 
-      windowManager.createEmployeeWindow()
-      windowManager.ensureCustomerWindow('startup')
-      windowManager.watchDisplays()
-
-      providerSupervisor = new WindowsProviderSupervisor()
-      providerSupervisor.start().catch((error) => {
-        recordHealthError('provider', `provider start failed: ${String(error)}`)
-      })
+      const backgroundStart = process.argv.includes('--store-runtime-background')
+      if (!backgroundStart) {
+        windowManager.createEmployeeWindow()
+        windowManager.ensureCustomerWindow('startup')
+        windowManager.watchDisplays()
+      } else {
+        logger.info('store-runtime.background-start', { businessWindowsOpened: false })
+      }
 
       createTray(windowManager, () => { void quitApp() })
+
+      const credential = await credentialStore?.readCredential()
+      if (!credential?.ok) throw new Error('STORE_RUNTIME_CREDENTIAL_UNAVAILABLE')
+      storeRuntimeWorker = new StoreRuntimeWorker({
+        identity: context.device,
+        cloud: new StoreRuntimeCloudClient({
+          baseUrl: getConfig().baseUrl,
+          deviceToken: credential.credential.deviceToken,
+        }),
+        stateStore: new StoreRuntimeStateStore(app.getPath('userData')),
+        executor: providerSupervisor,
+      })
+      await storeRuntimeWorker.start()
       authorizedRuntimeStarted = true
     })().catch((error) => {
       authorizedRuntimeStartPromise = null
@@ -111,6 +132,7 @@ if (!gotLock) {
     updateHealth({ app: 'ok', version: app.getVersion() }, 'app.ready')
 
     const config = loadConfig(app.getPath('userData'))
+    configureStoreRuntimeAutoStart()
     windowManager.setFormalRuntimeGuard(() => activationRuntime?.isAuthorized() === true)
 
     activationWindowController = new ActivationWindowController({
@@ -118,8 +140,9 @@ if (!gotLock) {
       onClosedBeforeAuthorization: () => { void quitApp() },
     })
 
+    credentialStore = new CredentialStore(app.getPath('userData'))
     activationRuntime = new ActivationRuntime({
-      credentialStore: new CredentialStore(app.getPath('userData')),
+      credentialStore,
       apiClient: new ActivationApiClient({ baseUrl: config.baseUrl }),
       initialStoreCodeHint: config.storeCode || undefined,
       startAuthorizedRuntime: startAuthorizedDesktopRuntime,

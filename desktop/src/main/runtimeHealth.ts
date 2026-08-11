@@ -27,6 +27,33 @@ export type RuntimeHealthSnapshot = {
     lastError: string | null
     restartAttempts?: number
   }
+  printerRuntime: {
+    providerConnected: boolean
+    printerCapabilityAvailable: boolean
+    configuredPrinterName: string | null
+    printerExecutorAvailable: boolean
+    lastPrintCommandAt: string | null
+    lastPrintOutcome: string | null
+    lastPrintError: string | null
+  }
+  storeRuntime: {
+    state: ComponentStatus
+    cloudConnection: ComponentStatus
+    storeId: string | null
+    storeCode: string | null
+    deviceId: string | null
+    bindingVersion: number | null
+    lastHeartbeatAt: string | null
+    lastTaskId: string | null
+    lastTaskStatus: string | null
+    lastResultCode: string | null
+    lastError: string | null
+  }
+  autoStart: {
+    supported: boolean
+    configured: boolean
+    lastError: string | null
+  }
   version: string
   uptimeSeconds: number
   lastError: { at: string; scope: string; message: string } | null
@@ -47,6 +74,29 @@ const state: RuntimeHealthSnapshot = {
   cloudReachability: 'unknown',
   hardwareRuntime: 'unknown',
   providerRuntime: { state: 'unknown', pid: null, lastError: null },
+  printerRuntime: {
+    providerConnected: false,
+    printerCapabilityAvailable: false,
+    configuredPrinterName: null,
+    printerExecutorAvailable: false,
+    lastPrintCommandAt: null,
+    lastPrintOutcome: null,
+    lastPrintError: null,
+  },
+  storeRuntime: {
+    state: 'unknown',
+    cloudConnection: 'unknown',
+    storeId: null,
+    storeCode: null,
+    deviceId: null,
+    bindingVersion: null,
+    lastHeartbeatAt: null,
+    lastTaskId: null,
+    lastTaskStatus: null,
+    lastResultCode: null,
+    lastError: null,
+  },
+  autoStart: { supported: false, configured: false, lastError: null },
   version: '0.0.0',
   uptimeSeconds: 0,
   lastError: null,
@@ -72,6 +122,9 @@ export function getHealthSnapshot(): RuntimeHealthSnapshot {
     ...state,
     displays: { ...state.displays, externalIds: [...state.displays.externalIds] },
     providerRuntime: { ...state.providerRuntime },
+    printerRuntime: { ...state.printerRuntime },
+    storeRuntime: { ...state.storeRuntime },
+    autoStart: { ...state.autoStart },
     uptimeSeconds: Math.round((Date.now() - startedAtMs) / 1000),
   }
 }

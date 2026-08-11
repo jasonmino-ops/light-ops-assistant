@@ -21,6 +21,7 @@ export interface SpawnWindowsProviderOptions {
   parentPid?: number
   executablePath?: string
   env?: NodeJS.ProcessEnv
+  printerName?: string
 }
 
 export function generateSupervisorToken(): string {
@@ -57,6 +58,7 @@ export function spawnWindowsProvider(options: SpawnWindowsProviderOptions): Chil
     env: {
       ...process.env,
       ...options.env,
+      ...(options.printerName ? { ESHOP_PRINTER_NAME: options.printerName } : {}),
       ELECTRON_RUN_AS_NODE: '1',
       ESHOP_PROVIDER_PIPE_NAME: options.pipeName,
       ESHOP_PROVIDER_SUPERVISOR_TOKEN: options.supervisorToken,

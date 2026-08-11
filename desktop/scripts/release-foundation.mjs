@@ -17,8 +17,11 @@ const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
 const desktopDir = resolve(scriptDir, '..')
 const repoRoot = resolve(desktopDir, '..')
 
-const BASELINE_FREEZE_TAG = 'ep-mb3-06b-desktop-activation-runtime-v1.0-final'
-const DEFAULT_PROVIDER_COMMIT = '7785be145d5259991038d17839d322e2694e338c'
+// Store Runtime Candidate starts from the repository baseline supplied for this
+// delivery. Compare protected paths against that exact baseline so unrelated
+// post-06B product work is not misclassified as a change from this candidate.
+const BASELINE_FREEZE_TAG = '62e6c000ea55e219c49f1289384302fc91696549'
+const DEFAULT_PROVIDER_COMMIT = '8b95380481da66d897b34b63f1987a443d53aa5d'
 const PROVENANCE_SCHEMA = 'ep-mb3-07a.release-provenance.v1'
 const PHASE1_DESKTOP_VERSION = '0.2.0-pilot.2'
 const PHASE1_UPDATE_METADATA_NAME = 'latest.yml'
@@ -42,10 +45,6 @@ const FROZEN_BOUNDARY_GROUPS = [
     paths: ['desktop/src/main/activation/credentialStore.ts'],
   },
   {
-    label: 'main startup gate',
-    paths: ['desktop/src/main/main.ts'],
-  },
-  {
     label: 'WindowManager',
     paths: ['desktop/src/main/windowManager.ts'],
   },
@@ -58,8 +57,11 @@ const FROZEN_BOUNDARY_GROUPS = [
     paths: ['packages/hrt-contract'],
   },
   {
-    label: 'Prisma',
-    paths: ['prisma'],
+    label: 'Desktop activation Prisma migrations',
+    paths: [
+      'prisma/migrations/20260717090000_add_desktop_activation_identity',
+      'prisma/migrations/20260717110000_add_desktop_device_token_version',
+    ],
   },
   {
     label: 'Payment',

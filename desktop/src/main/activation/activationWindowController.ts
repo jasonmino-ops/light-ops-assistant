@@ -69,7 +69,7 @@ export class ActivationWindowController {
     if (this.win && !this.win.isDestroyed()) return this.win
     this.allowClose = false
     const win = new BrowserWindow({
-      title: 'E-Shop Desktop Activation',
+      title: 'E-Shop Store Runtime Activation',
       width: 480,
       height: 620,
       minWidth: 420,

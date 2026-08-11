@@ -157,6 +157,8 @@ model Tenant {
   desktopActivationAudits  DesktopActivationAudit[]
   computerBindings         ComputerBinding[]
   computerBindingAudits    ComputerBindingAudit[]
+  storeRuntimePrinterBindings StoreRuntimePrinterBinding[]
+  storeRuntimePrintTasks   StoreRuntimePrintTask[]
 }
 
 model TenantSubscription {
@@ -246,6 +248,8 @@ model Store {
   desktopActivationAudits  DesktopActivationAudit[]
   computerBindings         ComputerBinding[]
   computerBindingAudits    ComputerBindingAudit[]
+  storeRuntimePrinterBindings StoreRuntimePrinterBinding[]
+  storeRuntimePrintTasks   StoreRuntimePrintTask[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -1284,6 +1288,7 @@ model DesktopDevice {
   replacedByDevices DesktopDevice[]          @relation("DesktopDeviceReplacement")
   usedPins          DesktopActivationPin[]   @relation("DesktopActivationPinUsedByDevice")
   audits            DesktopActivationAudit[]
+  claimedStoreRuntimePrintTasks StoreRuntimePrintTask[] @relation("StoreRuntimeClaimedDevice")
 
   @@unique([installationIdHash, activeSlot])
   @@index([tenantId, storeId])
@@ -1292,6 +1297,69 @@ model DesktopDevice {
   @@index([tokenExpiresAt])
   @@index([revokedByUserId])
   @@index([replacesDeviceId])
+}
+
+// E-Shop Store Runtime V1.0 — one formal Windows printer target per store.
+// This is execution configuration only; receipt layout and business rules stay outside Runtime.
+model StoreRuntimePrinterBinding {
+  id              String   @id @default(cuid())
+  tenantId        String
+  storeId         String   @unique
+  targetType      String   @default("WINDOWS_QUEUE")
+  printerName     String
+  enabled         Boolean  @default(true)
+  version         Int      @default(1)
+  updatedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  tasks  StoreRuntimePrintTask[]
+
+  @@index([tenantId, storeId])
+  @@index([enabled])
+}
+
+// Cloud-owned minimal task ledger. EXECUTING tasks are never automatically re-leased:
+// an interrupted execution remains explicit/uncertain instead of risking a duplicate print.
+model StoreRuntimePrintTask {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  storeId             String
+  bindingId           String
+  bindingVersion      Int
+  printerName         String
+  taskType            String    @default("PRINT_RECEIPT")
+  schemaVersion       Int       @default(1)
+  idempotencyKey      String
+  payload             Json
+  status              String    @default("PENDING")
+  claimedByDeviceId   String?
+  leaseExpiresAt      DateTime?
+  attemptCount        Int       @default(0)
+  acceptedAt          DateTime?
+  executingAt         DateTime?
+  completedAt         DateTime?
+  resultStatus        String?
+  resultCode          String?
+  resultMessage       String?
+  effectBoundary      String?
+  physicalCompletionKnown Boolean?
+  resultDetails       Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant        Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store         Store                      @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  binding       StoreRuntimePrinterBinding @relation(fields: [bindingId], references: [id], onDelete: Restrict)
+  claimedByDevice DesktopDevice?           @relation("StoreRuntimeClaimedDevice", fields: [claimedByDeviceId], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, idempotencyKey])
+  @@index([tenantId, storeId, status, createdAt])
+  @@index([storeId, status, leaseExpiresAt])
+  @@index([claimedByDeviceId, status])
+  @@index([bindingId])
 }
 
 model BrowserPosDevice {
