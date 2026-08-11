@@ -6,6 +6,7 @@ import { useLocale } from '@/app/components/LangProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import OrderShareCard, { buildPrintHTML, type ShareData, type ShareLabels } from '@/app/components/OrderShareCard'
 import { EshopTrayClientError, locateEshopTray, submitEshopTrayPrint } from '@/lib/eShopTrayClient'
+import { renderMountedOrderShareCardToEscPosRaw } from '@/lib/eShopTray02MountedDomRenderer'
 import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
 import {
   resolveEshopTray02PrintPath,
@@ -288,14 +289,16 @@ export default function OrderDetailSheet({
       throw error
     }
 
-    // ES-TRAY-02 FIELD ONLY: reuse the existing layout, bitmap renderer and
-    // ESC/POS encoder, then submit only the completed Print Command Stream.
+    // ES-TRAY-02 FIELD ONLY: reuse the mounted OrderShareCard mobile render
+    // path and existing ESC/POS encoder, then submit only the completed stream.
     if (printPath === 'CLOUD_RELAY') {
       try {
         let commandStream: Uint8Array
         void traceEshopTray02ClientPrint({ event: 'ESC_POS_RENDER_START', orderNo: d.orderNo })
         try {
-          commandStream = await renderTicketHtmlToEscPosRaw(html, {
+          const mountedReceipt = shareCardRef.current
+          if (!mountedReceipt) throw new Error('ES_TRAY_02_MOUNTED_RECEIPT_MISSING')
+          commandStream = await renderMountedOrderShareCardToEscPosRaw(mountedReceipt, {
             trace: (event, details) => {
               void traceEshopTray02ClientPrint({ event, orderNo: d.orderNo, ...details })
             },

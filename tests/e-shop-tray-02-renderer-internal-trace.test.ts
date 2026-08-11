@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
 const renderer = fs.readFileSync('lib/qzHtmlBitmapRenderer.ts', 'utf8')
+const mountedRenderer = fs.readFileSync('lib/eShopTray02MountedDomRenderer.ts', 'utf8')
 const orderSheet = fs.readFileSync('app/components/OrderDetailSheet.tsx', 'utf8')
 const traceRoute = fs.readFileSync('app/api/es-tray-02/client-trace/route.ts', 'utf8')
 
@@ -17,13 +18,16 @@ const events = [
 ]
 
 for (const event of events) {
-  assert.ok(renderer.includes(`'${event}'`), `${event} must be emitted by the renderer`)
+  assert.ok(
+    renderer.includes(`'${event}'`) || mountedRenderer.includes(`'${event}'`),
+    `${event} must be emitted by a FIELD renderer`,
+  )
   assert.ok(traceRoute.includes(`'${event}'`), `${event} must be accepted by the FIELD trace endpoint`)
 }
 
 assert.match(renderer, /options\?\.trace\?\.\(event,/)
 assert.match(renderer, /FIELD diagnostics must never affect the existing renderer result/)
-assert.match(orderSheet, /renderTicketHtmlToEscPosRaw\(html, \{\s*trace:/)
+assert.match(orderSheet, /renderMountedOrderShareCardToEscPosRaw\(mountedReceipt, \{\s*trace:/)
 assert.equal((orderSheet.match(/renderTicketHtmlToEscPosRaw\(html\)/g) ?? []).length, 1, 'LAN call must remain unchanged')
 
 // Observation only: preserve every known pending boundary and renderer option.

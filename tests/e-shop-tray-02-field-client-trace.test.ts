@@ -103,19 +103,21 @@ async function main() {
   const orderSheet = fs.readFileSync('app/components/OrderDetailSheet.tsx', 'utf8')
   const cloudClient = fs.readFileSync('lib/eShopTrayCloudClient.ts', 'utf8')
   const renderer = fs.readFileSync('lib/qzHtmlBitmapRenderer.ts', 'utf8')
+  const mountedRenderer = fs.readFileSync('lib/eShopTray02MountedDomRenderer.ts', 'utf8')
   const traceRoute = fs.readFileSync('app/api/es-tray-02/client-trace/route.ts', 'utf8')
 
   for (const event of expectedEvents) {
     assert.ok(
       orderSheet.includes(`event: '${event}'`)
       || cloudClient.includes(`event: '${event}'`)
-      || renderer.includes(`'${event}'`),
+      || renderer.includes(`'${event}'`)
+      || mountedRenderer.includes(`'${event}'`),
       `${event} must be emitted`,
     )
     assert.ok(traceRoute.includes(`'${event}'`), `${event} must be server-allowlisted`)
   }
   assert.ok(orderSheet.indexOf("event: 'PRINT_HTML_START'") < orderSheet.indexOf('buildPrintHTML('))
-  assert.ok(orderSheet.indexOf("event: 'ESC_POS_RENDER_START'") < orderSheet.indexOf('await renderTicketHtmlToEscPosRaw(html)'))
+  assert.ok(orderSheet.indexOf("event: 'ESC_POS_RENDER_START'") < orderSheet.indexOf('await renderMountedOrderShareCardToEscPosRaw(mountedReceipt'))
   assert.match(orderSheet, /traceCloudRelay = printPath === 'CLOUD_RELAY'/)
   assert.ok(cloudClient.indexOf("event: 'DIGEST_START'") < cloudClient.indexOf('digest = await sha256Hex'))
   assert.ok(cloudClient.indexOf("event: 'BASE64_START'") < cloudClient.indexOf('encodedCommandStream = qzRawBytesToBase64'))
