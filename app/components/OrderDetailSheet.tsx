@@ -10,6 +10,7 @@ import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
 import {
   resolveEshopTray02PrintPath,
   submitEshopTray02CloudPrint,
+  traceEshopTray02ClientPrint,
   type EshopTray02CloudEnableState,
 } from '@/lib/eShopTrayCloudClient'
 
@@ -266,14 +267,44 @@ export default function OrderDetailSheet({
     if (!d || shareStatus !== 'idle') return
     const printPath = resolveEshopTray02PrintPath(cloudRelayState, eshopTrayEnabled)
     if (printPath === 'CONFIG_PENDING') return
+    const traceCloudRelay = printPath === 'CLOUD_RELAY'
+    if (traceCloudRelay) {
+      void traceEshopTray02ClientPrint({ event: 'PRINT_CLICK', orderNo: d.orderNo })
+    }
     setShareStatus('printing')
-    const html = buildPrintHTML(d as ShareData, shareLabels)
+    let html: string
+    if (traceCloudRelay) {
+      void traceEshopTray02ClientPrint({ event: 'PRINT_HTML_START', orderNo: d.orderNo })
+    }
+    try {
+      html = buildPrintHTML(d as ShareData, shareLabels)
+      if (traceCloudRelay) {
+        void traceEshopTray02ClientPrint({ event: 'PRINT_HTML_SUCCESS', orderNo: d.orderNo })
+      }
+    } catch (error) {
+      if (traceCloudRelay) {
+        void traceEshopTray02ClientPrint({ event: 'PRINT_HTML_FAILED', orderNo: d.orderNo, error })
+      }
+      throw error
+    }
 
     // ES-TRAY-02 FIELD ONLY: reuse the existing layout, bitmap renderer and
     // ESC/POS encoder, then submit only the completed Print Command Stream.
     if (printPath === 'CLOUD_RELAY') {
       try {
-        const commandStream = await renderTicketHtmlToEscPosRaw(html)
+        let commandStream: Uint8Array
+        void traceEshopTray02ClientPrint({ event: 'ESC_POS_RENDER_START', orderNo: d.orderNo })
+        try {
+          commandStream = await renderTicketHtmlToEscPosRaw(html)
+          void traceEshopTray02ClientPrint({
+            event: 'ESC_POS_RENDER_SUCCESS',
+            orderNo: d.orderNo,
+            byteLength: commandStream.byteLength,
+          })
+        } catch (error) {
+          void traceEshopTray02ClientPrint({ event: 'ESC_POS_RENDER_FAILED', orderNo: d.orderNo, error })
+          throw error
+        }
         await submitEshopTray02CloudPrint({ orderNo: d.orderNo, commandStream })
         window.alert(t('order.trayFieldSubmitted'))
       } catch (error) {
