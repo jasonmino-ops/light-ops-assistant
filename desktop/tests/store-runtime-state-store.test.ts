@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
 import { StoreRuntimeStateStore } from '../src/main/storeRuntime/stateStore'
@@ -44,7 +44,7 @@ describe('Store Runtime local recovery state', () => {
       },
     })
 
-    const reloaded = new StoreRuntimeStateStore(store.path.replace(/\/store-runtime\/state\.json$/, ''))
+    const reloaded = new StoreRuntimeStateStore(dirname(dirname(store.path)))
     await reloaded.load()
     expect(reloaded.binding()).toMatchObject({ printerName: 'EPSON TM-T82', version: 2 })
     expect(reloaded.records()).toEqual([expect.objectContaining({
