@@ -78,6 +78,20 @@ npm run dist:win
 
 The unsigned x64 installer is written to `e-shop-tray/release/E-Shop-Tray-Setup-0.1.0.exe`. The NSIS installer runs per-machine, adds a private-network Windows Firewall rule for TCP `17631`, creates a Start Menu shortcut, and starts Tray after installation. The app enables launch at Windows login on its first packaged start.
 
+### FIELD-SANDBOX candidate
+
+The isolated FIELD verification build adds only the exact approved Preview Origin and uses a separate packaged entry point and output directory:
+
+```bash
+cd e-shop-tray
+npm run dist:win:field-sandbox
+npm run verify:field-sandbox
+```
+
+Output: `e-shop-tray/release-field-sandbox/E-Shop-Tray-Setup-0.1.0-FIELD-SANDBOX.exe`.
+
+The formal `dist:win` entry point and `release/E-Shop-Tray-Setup-0.1.0.exe` are unchanged. No wildcard or generic Vercel Origin is allowed.
+
 ## Windows Sandbox / field check
 
 1. Ensure the existing Windows RAW queue is named exactly `前台`.

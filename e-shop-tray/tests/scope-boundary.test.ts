@@ -27,4 +27,20 @@ describe('ES-TRAY-01 scope boundary', () => {
     expect(localApi).toMatch(/'\/v1\/print'/)
     expect(localApi).not.toMatch(/\/activate|\/heartbeat|\/tasks|\/identity/)
   })
+
+  it('isolates the exact Preview origin to the FIELD-SANDBOX packaged entry point', () => {
+    const formalMain = readFileSync(path.resolve(__dirname, '../src/main.ts'), 'utf8')
+    const fieldMain = readFileSync(path.resolve(__dirname, '../src/main.fieldSandbox.ts'), 'utf8')
+    const fieldBuilder = readFileSync(path.resolve(__dirname, '../electron-builder.field-sandbox.yml'), 'utf8')
+    const exactOrigin = 'https://light-ops-assistant-kly7gvtbe-sunxiaojian0910-2556s-projects.vercel.app'
+
+    expect(formalMain).not.toContain('FIELD_SANDBOX')
+    expect(fieldMain).toMatch(/ESHOP_TRAY_ALLOWED_ORIGINS\.add\(ESHOP_TRAY_FIELD_SANDBOX_ORIGIN\)/)
+    expect(fieldBuilder).toContain('main: dist/main.fieldSandbox.js')
+    expect(fieldBuilder).toContain('E-Shop-Tray-Setup-${version}-FIELD-SANDBOX.${ext}')
+    expect(fieldMain + fieldBuilder).not.toContain('*.vercel.app')
+
+    const localApi = readFileSync(path.resolve(__dirname, '../src/localApi.ts'), 'utf8')
+    expect(localApi.split(exactOrigin)).toHaveLength(2)
+  })
 })

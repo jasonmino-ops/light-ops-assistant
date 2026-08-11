@@ -1,0 +1,10 @@
+extends: ./electron-builder.yml
+
+directories:
+  output: release-field-sandbox
+
+extraMetadata:
+  main: dist/main.fieldSandbox.js
+
+win:
+  artifactName: "E-Shop-Tray-Setup-${version}-FIELD-SANDBOX.${ext}"

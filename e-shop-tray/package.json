@@ -13,7 +13,9 @@
     "check": "npm run typecheck && npm test && npm run compile",
     "start": "npm run compile && electron .",
     "pack:win": "npm run check && electron-builder --win --x64 --dir --publish never",
-    "dist:win": "npm run check && electron-builder --win --x64 --publish never"
+    "dist:win": "npm run check && electron-builder --win --x64 --publish never",
+    "dist:win:field-sandbox": "npm run check && electron-builder --config electron-builder.field-sandbox.yml --win --x64 --publish never",
+    "verify:field-sandbox": "node scripts/verify-field-sandbox-release.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

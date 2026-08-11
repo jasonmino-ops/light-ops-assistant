@@ -8,6 +8,7 @@ import {
 
 export const ESHOP_TRAY_PROTOCOL_VERSION = '0.1' as const
 export const ESHOP_TRAY_PORT = 17631 as const
+export const ESHOP_TRAY_FIELD_SANDBOX_ORIGIN = 'https://light-ops-assistant-kly7gvtbe-sunxiaojian0910-2556s-projects.vercel.app' as const
 export const ESHOP_TRAY_ALLOWED_ORIGINS = new Set([
   'https://elifekh.com',
   'https://www.elifekh.com',

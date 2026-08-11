@@ -4,6 +4,8 @@ import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   createLocalApi,
+  ESHOP_TRAY_ALLOWED_ORIGINS,
+  ESHOP_TRAY_FIELD_SANDBOX_ORIGIN,
   ESHOP_TRAY_PROTOCOL_VERSION,
   type PrintTransport,
 } from '../src/localApi'
@@ -30,10 +32,11 @@ function requestBody(bytes: Uint8Array, requestId = 'tray-test-1') {
   }
 }
 
-async function start(transport: PrintTransport) {
+async function start(transport: PrintTransport, allowedOrigins?: ReadonlySet<string>) {
   const server = createLocalApi({
     version: '0.1.0-test',
     transport,
+    allowedOrigins,
     logger: { info() {}, warn() {}, error() {} },
   })
   servers.push(server)
@@ -54,6 +57,75 @@ function fakeTransport(deliver?: (bytes: Uint8Array) => Promise<PrintDelivery>):
 }
 
 describe('E-Shop Tray Local API V0.1', () => {
+  it('allows only the exact FIELD-SANDBOX Preview origin in the sandbox variant', async () => {
+    expect(ESHOP_TRAY_ALLOWED_ORIGINS.has(ESHOP_TRAY_FIELD_SANDBOX_ORIGIN)).toBe(false)
+    const fieldSandboxOrigins = new Set([
+      ...ESHOP_TRAY_ALLOWED_ORIGINS,
+      ESHOP_TRAY_FIELD_SANDBOX_ORIGIN,
+    ])
+    const baseUrl = await start(fakeTransport(), fieldSandboxOrigins)
+    const bytes = Uint8Array.from([0x1b, 0x40, 0x1d, 0x56, 0x00])
+
+    for (const [index, origin] of [ORIGIN, ESHOP_TRAY_FIELD_SANDBOX_ORIGIN].entries()) {
+      const health = await fetch(`${baseUrl}/v1/health`, { headers: { Origin: origin } })
+      expect(health.status).toBe(200)
+      expect(health.headers.get('access-control-allow-origin')).toBe(origin)
+      expect(await health.json()).toMatchObject({
+        service: 'e-shop-tray',
+        protocolVersion: '0.1',
+        status: 'online',
+      })
+
+      const print = await fetch(`${baseUrl}/v1/print`, {
+        method: 'POST',
+        headers: {
+          Origin: origin,
+          'Content-Type': 'application/json',
+          'X-E-Shop-Tray-Protocol': '0.1',
+        },
+        body: JSON.stringify(requestBody(bytes, `field-sandbox-${index}`)),
+      })
+      expect(print.status).toBe(200)
+      expect(await print.json()).toMatchObject({
+        protocolVersion: '0.1',
+        status: 'success',
+        delivery: { transport: 'windows-queue', bytesWritten: bytes.byteLength },
+      })
+    }
+
+    const preflight = await fetch(`${baseUrl}/v1/health`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: ESHOP_TRAY_FIELD_SANDBOX_ORIGIN,
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Private-Network': 'true',
+      },
+    })
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers.get('access-control-allow-origin')).toBe(ESHOP_TRAY_FIELD_SANDBOX_ORIGIN)
+
+    for (const origin of [
+      'https://light-ops-assistant-random.vercel.app',
+      'https://unknown.example',
+    ]) {
+      const health = await fetch(`${baseUrl}/v1/health`, { headers: { Origin: origin } })
+      expect(health.status).toBe(403)
+      expect(health.headers.get('access-control-allow-origin')).toBeNull()
+
+      const print = await fetch(`${baseUrl}/v1/print`, {
+        method: 'POST',
+        headers: {
+          Origin: origin,
+          'Content-Type': 'application/json',
+          'X-E-Shop-Tray-Protocol': '0.1',
+        },
+        body: JSON.stringify(requestBody(bytes, `rejected-${origin.length}`)),
+      })
+      expect(print.status).toBe(403)
+      expect(await print.json()).toMatchObject({ error: { code: 'ORIGIN_FORBIDDEN' } })
+    }
+  })
+
   it('reports health with narrow CORS and private-network compatibility headers', async () => {
     const baseUrl = await start(fakeTransport())
     const response = await fetch(`${baseUrl}/v1/health`, { headers: { Origin: ORIGIN } })
