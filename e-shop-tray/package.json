@@ -2,7 +2,7 @@
   "name": "e-shop-tray",
   "productName": "E-Shop Tray",
   "version": "0.1.0",
-  "description": "E-Shop Tray V0.1 — LAN HTTP to the existing Windows printing path",
+  "description": "E-Shop Tray V0.1 FIELD — minimal Cloud Relay to the existing Windows printing path",
   "private": true,
   "main": "dist/main.js",
   "author": "E-Shop (店小二)",

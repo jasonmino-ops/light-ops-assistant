@@ -3,6 +3,7 @@ import {
   ESHOP_TRAY_FIELD_STORE_CODE,
   isEshopTrayFieldEnabled,
 } from '../lib/eShopTrayFieldGate'
+import { isEshopTrayCloudRelayFieldEnabled } from '../lib/eShopTrayCloudRelayField'
 
 assert.equal(ESHOP_TRAY_FIELD_STORE_CODE, 'ST169E7000')
 
@@ -26,5 +27,10 @@ assert.equal(enabledFor('STORE-A', '1'), false)
 assert.equal(enabledFor('*', '1'), false)
 assert.equal(enabledFor(null, '1'), false)
 assert.equal(enabledFor(undefined, '1'), false)
+
+assert.equal(isEshopTrayCloudRelayFieldEnabled('ST169E7000', '1'), true)
+assert.equal(isEshopTrayCloudRelayFieldEnabled('ST169E7000', '0'), false)
+assert.equal(isEshopTrayCloudRelayFieldEnabled('OTHER', '1'), false)
+assert.equal(isEshopTrayCloudRelayFieldEnabled('*', '1'), false)
 
 console.log('E-Shop Tray FIELD store gate checks passed')

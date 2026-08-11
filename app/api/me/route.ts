@@ -14,17 +14,18 @@ export async function GET(req: NextRequest) {
       select: { tier: true, name: true },
     }),
     ctx.storeId
-      ? prisma.store.findUnique({ where: { id: ctx.storeId }, select: { name: true, code: true, checkoutMode: true, currencyCode: true } })
+      ? prisma.store.findUnique({ where: { id: ctx.storeId }, select: { id: true, name: true, code: true, checkoutMode: true, currencyCode: true } })
       // storeId baked into session may be empty (logged in before stores were created) — fall back to first active store
       : prisma.store.findFirst({
           where: { tenantId: ctx.tenantId, status: 'ACTIVE' },
           orderBy: { createdAt: 'asc' },
-          select: { name: true, code: true, checkoutMode: true, currencyCode: true },
+          select: { id: true, name: true, code: true, checkoutMode: true, currencyCode: true },
         }),
   ])
   return NextResponse.json({
     tier: tenant?.tier ?? 'LITE',
     storeName: store?.name ?? null,
+    storeId: store?.id ?? null,
     storeCode: store?.code ?? null,
     tenantName: tenant?.name ?? null,
     checkoutMode: store?.checkoutMode ?? 'DIRECT_PAYMENT',

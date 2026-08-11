@@ -1,71 +1,38 @@
-# E-Shop Tray V0.1
+# E-Shop Tray V0.1 — FIELD Cloud Relay Candidate
 
-E-Shop Tray is a minimal Windows tray application that lets the existing E-Shop mobile Browser print through a Windows machine on the same LAN.
+This FIELD-only candidate keeps the existing E-Shop Tray and Windows printing path, while moving Telegram mobile submission across E-Shop Cloud HTTPS.
 
 ```text
-Existing Browser Print Action
-→ ECCP Runtime Client
-→ ECCP Runtime Locator
-→ LAN HTTP :17631
-→ E-Shop Tray
-→ Existing ESC/POS Print Command Stream
+ST169E7000 Telegram OWNER
+→ existing Sales Order Print Action
+→ existing HTML / Bitmap / ESC/POS command stream
+→ Cloud Print Job
+→ E-Shop Tray poll / claim / execute / result
+→ existing WindowsQueueTransport
 → fixed Windows queue “前台”
-→ existing Windows driver / port / printer
 ```
 
-It is not Store Runtime, Cloud Runtime, Activation, Identity, Task Queue, device discovery, or a printing center. It owns no receipt, kitchen, layout, language, bitmap, ESC/POS encoding, or business semantics.
+The Cloud Relay gate defaults OFF and accepts only `ST169E7000`. It is not a general task platform, heartbeat system, printer discovery service, multi-printer product, or new printing engine.
 
-## Browser configuration
+## FIELD binding
 
-The Runtime Locator uses the following candidates in order:
+The OWNER opens `网络打印` and creates a one-time connection code through the existing Desktop activation identity. In Tray, choose `Connect FIELD Store` and enter that code. The resulting store-bound, revocable device bearer is stored only as Electron `safeStorage` ciphertext under the Windows user-data directory.
 
-1. `eshopTray` URL parameter;
-2. the last valid URL saved by that parameter in browser `localStorage`;
-3. the current Browser hostname only when that hostname is already private/local.
+No long-lived credential is embedded in the installer. Other stores cannot create, claim, or update ES-TRAY-02 jobs.
 
-Use the Windows LAN address shown in the Tray menu for initial setup:
+## Cloud task reliability
 
-```text
-https://elifekh.com/records?eshopTray=http%3A%2F%2F192.168.18.10%3A17631
-```
+- Cloud creation is idempotent per Store and idempotency key.
+- Claim is atomic and uses a 30-second lease.
+- `EXECUTING` work is never automatically re-leased.
+- Tray persists ACCEPTED/EXECUTING/terminal recovery records before crossing the relevant boundary.
+- A terminal result that could not reach Cloud is replayed without reprinting.
+- An interrupted execution reports `CROSSING_UNKNOWN` and is not executed again.
+- `SUCCEEDED` means Windows accepted the bytes; physical paper completion is never claimed.
 
-Only private IP, loopback, and `.local` HTTP endpoints on port `17631` are accepted. Chrome asks the user to allow Local Network Access. If no Tray is located before any print is submitted, the existing Browser print window remains the fallback. After a request is submitted to Tray, there is no automatic fallback, preventing an ambiguous response from producing a duplicate print.
+## Existing Local API
 
-An unconfigured public Browser does not probe the LAN and falls back immediately. This avoids changing print latency or triggering a Local Network Access prompt for existing merchants that have not installed Tray.
-
-## Local API
-
-### `GET /v1/health`
-
-Returns the service version, protocol `0.1`, and `online` or `busy`.
-
-### `POST /v1/print`
-
-Headers:
-
-```text
-Content-Type: application/json
-X-E-Shop-Tray-Protocol: 0.1
-```
-
-Body:
-
-```json
-{
-  "protocolVersion": "0.1",
-  "requestId": "browser-generated-id",
-  "commandStream": {
-    "encoding": "base64",
-    "byteLength": 1234,
-    "sha256": "64-lowercase-hex-characters",
-    "data": "base64 ESC/POS command stream"
-  }
-}
-```
-
-The API accepts only the already generated command stream. It synchronously writes to the fixed Windows queue `前台`; concurrent requests return `409 TRAY_BUSY` and are not queued.
-
-Browser CORS access is limited to `https://elifekh.com`, `https://www.elifekh.com`, and the two local development origins. The server also validates the Host header, command length, canonical base64, byte length, and SHA-256 digest. Maximum command size is 8 MiB.
+`GET /v1/health`, `POST /v1/print`, port `17631`, CORS/PNA behavior, and the fixed `前台` queue remain unchanged for regression compatibility. The Telegram FIELD Browser path does not call the LAN API.
 
 ## Build
 
@@ -76,23 +43,27 @@ npm run check
 npm run dist:win
 ```
 
-The unsigned x64 installer is written to `e-shop-tray/release/E-Shop-Tray-Setup-0.1.0.exe`. The NSIS installer runs per-machine, adds a private-network Windows Firewall rule for TCP `17631`, creates a Start Menu shortcut, and starts Tray after installation. The app enables launch at Windows login on its first packaged start.
+The unsigned x64 FIELD installer is:
 
-## Windows Sandbox / field check
+```text
+e-shop-tray/release/E-Shop-Tray-Setup-0.1.0-FIELD-CLOUD-RELAY.exe
+```
 
-1. Ensure the existing Windows RAW queue is named exactly `前台`.
-2. Install `E-Shop-Tray-Setup-0.1.0.exe` and allow the installer elevation.
-3. Confirm the Tray menu shows `Online · http://<LAN-IP>:17631`.
-4. Run `scripts/windows-sandbox-smoke.ps1 -TrayHost <LAN-IP>` from another LAN device or inside Windows for API checks.
-5. Use Tray `Test Print`; verify one sheet, feed, and cut.
-6. On the phone, open `/records` once with the encoded `eshopTray` parameter, allow Chrome Local Network Access, and print an existing order.
+It does not overwrite the formal, FIELD-SANDBOX, or FIELD-DIAGNOSTIC artifact filenames.
 
-Windows Sandbox without the existing `前台` queue can verify installation, startup, firewall, CORS, health, and deterministic print failure, but cannot establish physical `FIELD VERIFIED` output.
+## FIELD check
 
-## Known release boundary
+1. Confirm the existing Windows RAW queue is named exactly `前台`.
+2. Install the FIELD Cloud Relay candidate.
+3. As the real Telegram OWNER for `ST169E7000`, open `/records → 网络打印` and create a connection code.
+4. In Windows Tray choose `Connect FIELD Store`, enter the code, and confirm `Cloud Relay · Connected`.
+5. Open a real completed sales order and press Print.
+6. Confirm Tray `Last Job` / `Last Result`, Windows queue submission, and one physical print.
 
-- Windows x64 only.
+## Release boundary
+
+- FIELD Store only: `ST169E7000`.
+- Windows x64 only; unsigned candidate.
 - One fixed queue: `前台`.
-- No printer discovery or queue selection.
-- Unsigned candidate installer; Windows SmartScreen may warn.
-- Chrome Local Network Access is the target Browser path for LAN HTTP. Other mobile browsers require field confirmation.
+- No heartbeat, discovery, multiple printers, OTA, or extra hardware capabilities.
+- Production printing/layout/order/payment baselines remain unchanged.

@@ -14,6 +14,7 @@ type Ctx = {
   isOwnerInStaffMode: boolean
   tier: string
   storeName: string | null
+  storeId: string | null
   storeCode: string | null
   tenantName: string | null
   checkoutMode: string
@@ -28,6 +29,7 @@ const WorkModeContext = createContext<Ctx>({
   isOwnerInStaffMode: false,
   tier: 'LITE',
   storeName: null,
+  storeId: null,
   storeCode: null,
   tenantName: null,
   checkoutMode: 'DIRECT_PAYMENT',
@@ -46,6 +48,7 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   const [workMode, setWorkMode] = useState<'owner' | 'staff'>('owner')
   const [tier, setTier] = useState('LITE')
   const [storeName, setStoreName] = useState<string | null>(null)
+  const [storeId, setStoreId] = useState<string | null>(null)
   const [storeCode, setStoreCode] = useState<string | null>(null)
   const [tenantName, setTenantName] = useState<string | null>(null)
   const [checkoutMode, setCheckoutMode] = useState('DIRECT_PAYMENT')
@@ -63,6 +66,7 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
       .then((d) => {
         setTier(d.tier ?? 'LITE')
         setStoreName(d.storeName ?? null)
+        setStoreId(d.storeId ?? null)
         setStoreCode(d.storeCode ?? null)
         setTenantName(d.tenantName ?? null)
         setCheckoutMode(d.checkoutMode ?? 'DIRECT_PAYMENT')
@@ -89,7 +93,7 @@ export default function WorkModeProvider({ role, children }: { role: string; chi
   return (
     <WorkModeContext.Provider value={{
       realRole: role, effectiveRole, isOwnerInStaffMode, tier,
-      storeName, storeCode, tenantName, checkoutMode, currencyCode,
+      storeName, storeId, storeCode, tenantName, checkoutMode, currencyCode,
       enterStaffMode, exitStaffMode,
     }}>
       {isOwnerInStaffMode && (

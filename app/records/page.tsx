@@ -643,6 +643,7 @@ export default function RecordsPage() {
       <OrderDetailSheet
         orderNo={selectedOrderNo}
         eshopTrayEnabled={eshopTrayEnabled}
+        eshopTrayStoreCode={eshopTrayEnabled ? contextStoreCode : null}
         onClose={() => setSelectedOrderNo(null)}
       />
 

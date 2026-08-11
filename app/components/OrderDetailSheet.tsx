@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import OrderShareCard, { buildPrintHTML, type ShareData, type ShareLabels } from '@/app/components/OrderShareCard'
-import { EshopTrayClientError, locateEshopTray, submitEshopTrayPrint } from '@/lib/eShopTrayClient'
+import { submitEshopTrayCloudPrint } from '@/lib/eShopTrayCloudClient'
 import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -67,10 +67,12 @@ function fmtDateTime(iso: string) {
 export default function OrderDetailSheet({
   orderNo,
   eshopTrayEnabled,
+  eshopTrayStoreCode,
   onClose,
 }: {
   orderNo: string | null
   eshopTrayEnabled: boolean
+  eshopTrayStoreCode?: string | null
   onClose: () => void
 }) {
   const { t } = useLocale()
@@ -245,12 +247,6 @@ export default function OrderDetailSheet({
       return
     }
 
-    const tray = await locateEshopTray()
-    if (!tray) {
-      openExistingBrowserPrint(html)
-      return
-    }
-
     let commandStream: Uint8Array
     try {
       commandStream = await renderTicketHtmlToEscPosRaw(html)
@@ -260,20 +256,20 @@ export default function OrderDetailSheet({
       return
     }
 
-    let browserFallbackStarted = false
     try {
-      await submitEshopTrayPrint(tray, commandStream)
+      if (!eshopTrayStoreCode) throw new Error('ESHOP_TRAY_FIELD_STORE_MISSING')
+      await submitEshopTrayCloudPrint({
+        storeCode: eshopTrayStoreCode,
+        orderNo: d.orderNo,
+        commandStream,
+      })
     } catch (error) {
-      if (error instanceof EshopTrayClientError && !error.submitted) {
-        console.warn('[e-shop-tray] local request was not submitted', error)
-        browserFallbackStarted = true
-        openExistingBrowserPrint(html)
-        return
-      }
-      console.warn('[e-shop-tray] print failed after local submission', error)
+      // Once Cloud submission is attempted, never start Browser fallback: a lost
+      // response can still mean the idempotent job was accepted.
+      console.warn('[e-shop-tray-cloud-relay] print job was not confirmed', error)
       window.alert(t('order.trayPrintFailed'))
     } finally {
-      if (!browserFallbackStarted) setShareStatus('idle')
+      setShareStatus('idle')
     }
   }
 

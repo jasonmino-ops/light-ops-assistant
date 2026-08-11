@@ -1,4 +1,6 @@
-export const ESHOP_TRAY_FIELD_STORE_CODE = 'ST169E7000' as const
+import { ESHOP_TRAY_FIELD_STORE_CODE } from './eShopTrayCloudRelayField'
+
+export { ESHOP_TRAY_FIELD_STORE_CODE }
 
 export function isEshopTrayFieldEnabled({
   storeCode,

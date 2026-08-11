@@ -25,7 +25,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: "E-Shop-Tray-Setup-${version}.${ext}"
+  artifactName: "E-Shop-Tray-Setup-${version}-FIELD-CLOUD-RELAY.${ext}"
 
 nsis:
   oneClick: false
