@@ -903,6 +903,7 @@ const en = {
     print: 'Print',
     generating: 'Generating…',
     preparingPrint: 'Printing…',
+    trayPrintFailed: 'E-Shop Tray print failed. Check the “前台” print queue and try again.',
     qty: 'Qty',
     unpaidHint: 'Unpaid',
     cancelOrder: 'Cancel order',

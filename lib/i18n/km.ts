@@ -900,6 +900,7 @@ const km = {
     print: 'បោះពុម្ព',
     generating: 'កំពុងបង្កើត…',
     preparingPrint: 'កំពុងបោះពុម្ព…',
+    trayPrintFailed: 'ការបោះពុម្ពតាម E-Shop Tray បានបរាជ័យ។ សូមពិនិត្យជួរបោះពុម្ព “前台” ហើយព្យាយាមម្តងទៀត។',
     qty: 'ចំនួន',
     unpaidHint: 'មិនទាន់ទូទាត់',
     cancelOrder: 'បោះបង់ការបញ្ជា',

@@ -1,0 +1,42 @@
+appId: com.elife.eshop.tray
+productName: E-Shop Tray
+copyright: "Copyright © 2026 E-Shop (店小二)"
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - package.json
+
+extraResources:
+  - from: assets/Write-RawPrint.ps1
+    to: Write-RawPrint.ps1
+  - from: ../public/icon-512.png
+    to: icon.png
+
+asar: true
+
+win:
+  executableName: E-Shop Tray
+  icon: ../public/icon-512.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: "E-Shop-Tray-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowElevation: true
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+  shortcutName: E-Shop Tray
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh
+
+publish: null

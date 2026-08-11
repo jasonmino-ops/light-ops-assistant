@@ -1,0 +1,76 @@
+name: e-shop-tray-windows-build
+
+on:
+  push:
+    branches: [main, "codex/**"]
+    paths:
+      - "e-shop-tray/**"
+      - "lib/eShopTrayClient.ts"
+      - "app/components/OrderDetailSheet.tsx"
+      - "tests/e-shop-tray-*.test.ts"
+      - ".github/workflows/e-shop-tray-windows-build.yml"
+  pull_request:
+    paths:
+      - "e-shop-tray/**"
+      - "lib/eShopTrayClient.ts"
+      - "app/components/OrderDetailSheet.tsx"
+      - "tests/e-shop-tray-*.test.ts"
+      - ".github/workflows/e-shop-tray-windows-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: e-shop-tray
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e-shop-tray/package-lock.json
+
+      - name: Install Tray dependencies
+        run: npm ci
+
+      - name: Type check, unit test, compile
+        run: npm run check
+
+      - name: Compile Winspool RAW helper under Windows PowerShell
+        shell: pwsh
+        run: |
+          $output = "" | powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\assets\Write-RawPrint.ps1 -PrinterName __ESHOP_TRAY_COMPILE_ONLY__ 2>&1
+          if ($LASTEXITCODE -ne 1 -or ($output -join "`n") -notmatch "EMPTY_COMMAND_STREAM") {
+            $output | Write-Output
+            throw "Write-RawPrint.ps1 did not compile cleanly"
+          }
+
+      - name: Build unsigned x64 Windows installer
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Verify installer and packaged resources
+        run: node scripts/verify-release.mjs
+
+      - name: Browser application validation
+        working-directory: .
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/light_ops_build?schema=public
+        run: |
+          npm ci
+          npx tsx tests/e-shop-tray-client.test.ts
+          npx tsx tests/e-shop-tray-browser-integration.test.ts
+          npx tsc --noEmit
+          npm run build
+
+      - name: Upload candidate installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: e-shop-tray-v0.1-windows-x64
+          path: e-shop-tray/release/E-Shop-Tray-Setup-0.1.0.exe
+          if-no-files-found: error

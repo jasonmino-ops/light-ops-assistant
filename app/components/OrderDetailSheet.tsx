@@ -5,6 +5,8 @@ import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import OrderShareCard, { buildPrintHTML, type ShareData, type ShareLabels } from '@/app/components/OrderShareCard'
+import { EshopTrayClientError, locateEshopTray, submitEshopTrayPrint } from '@/lib/eShopTrayClient'
+import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -201,10 +203,7 @@ export default function OrderDetailSheet({
     }
   }
 
-  function handlePrint() {
-    if (!d || shareStatus !== 'idle') return
-    setShareStatus('printing')
-    const html = buildPrintHTML(d as ShareData, shareLabels)
+  function openExistingBrowserPrint(html: string) {
     const win = window.open('', '_blank', 'width=420,height=700')
     if (win) {
       win.document.write(html)
@@ -214,23 +213,60 @@ export default function OrderDetailSheet({
         win.print()
         setShareStatus('idle')
       }, 400)
-    } else {
-      // Fallback: inject into current page for @media print
-      const styleEl = document.createElement('style')
-      styleEl.id = '__oprint_style'
-      styleEl.textContent = '@media print{body>*:not(#__oprint){display:none!important}#__oprint{display:block!important}}'
-      const divEl = document.createElement('div')
-      divEl.id = '__oprint'
-      divEl.style.cssText = 'display:none'
-      divEl.innerHTML = html
-      document.head.appendChild(styleEl)
-      document.body.appendChild(divEl)
-      window.print()
-      window.addEventListener('afterprint', () => {
-        styleEl.remove()
-        divEl.remove()
-        setShareStatus('idle')
-      }, { once: true })
+      return
+    }
+
+    // Existing fallback: inject into the current page for @media print.
+    const styleEl = document.createElement('style')
+    styleEl.id = '__oprint_style'
+    styleEl.textContent = '@media print{body>*:not(#__oprint){display:none!important}#__oprint{display:block!important}}'
+    const divEl = document.createElement('div')
+    divEl.id = '__oprint'
+    divEl.style.cssText = 'display:none'
+    divEl.innerHTML = html
+    document.head.appendChild(styleEl)
+    document.body.appendChild(divEl)
+    window.print()
+    window.addEventListener('afterprint', () => {
+      styleEl.remove()
+      divEl.remove()
+      setShareStatus('idle')
+    }, { once: true })
+  }
+
+  async function handlePrint() {
+    if (!d || shareStatus !== 'idle') return
+    setShareStatus('printing')
+    const html = buildPrintHTML(d as ShareData, shareLabels)
+    const tray = await locateEshopTray()
+    if (!tray) {
+      openExistingBrowserPrint(html)
+      return
+    }
+
+    let commandStream: Uint8Array
+    try {
+      commandStream = await renderTicketHtmlToEscPosRaw(html)
+    } catch (error) {
+      console.warn('[e-shop-tray] existing print command stream generation failed', error)
+      openExistingBrowserPrint(html)
+      return
+    }
+
+    let browserFallbackStarted = false
+    try {
+      await submitEshopTrayPrint(tray, commandStream)
+    } catch (error) {
+      if (error instanceof EshopTrayClientError && !error.submitted) {
+        console.warn('[e-shop-tray] local request was not submitted', error)
+        browserFallbackStarted = true
+        openExistingBrowserPrint(html)
+        return
+      }
+      console.warn('[e-shop-tray] print failed after local submission', error)
+      window.alert(t('order.trayPrintFailed'))
+    } finally {
+      if (!browserFallbackStarted) setShareStatus('idle')
     }
   }
 

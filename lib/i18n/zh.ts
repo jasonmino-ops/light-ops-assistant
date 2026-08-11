@@ -903,6 +903,7 @@ const zh = {
     print: '打印',
     generating: '生成中…',
     preparingPrint: '打印中…',
+    trayPrintFailed: 'E-Shop Tray 打印失败，请检查“前台”打印队列后重试。',
     qty: '数量',
     unpaidHint: '未结账',
     cancelOrder: '取消订单',
