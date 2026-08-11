@@ -6,6 +6,18 @@ import { qzRawBytesToBase64 } from './qzEscPosBitImage'
 const RELAY_VERSION = '0.1' as const
 const FIELD_QUEUE_NAME = '前台' as const
 
+export type EshopTray02CloudEnableState = 'pending' | 'enabled' | 'disabled'
+export type EshopTray02PrintPath = 'CONFIG_PENDING' | 'CLOUD_RELAY' | 'ES_TRAY_01_LAN' | 'BROWSER'
+
+export function resolveEshopTray02PrintPath(
+  cloudState: EshopTray02CloudEnableState,
+  eshopTrayEnabled: boolean,
+): EshopTray02PrintPath {
+  if (cloudState === 'pending') return 'CONFIG_PENDING'
+  if (cloudState === 'enabled') return 'CLOUD_RELAY'
+  return eshopTrayEnabled ? 'ES_TRAY_01_LAN' : 'BROWSER'
+}
+
 export class EshopTray02CloudClientError extends Error {
   constructor(public readonly code: string, options?: { cause?: unknown }) {
     super(code, options)

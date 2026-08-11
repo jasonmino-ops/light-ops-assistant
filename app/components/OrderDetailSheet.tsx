@@ -7,7 +7,11 @@ import CheckoutSheet from '@/app/components/CheckoutSheet'
 import OrderShareCard, { buildPrintHTML, type ShareData, type ShareLabels } from '@/app/components/OrderShareCard'
 import { EshopTrayClientError, locateEshopTray, submitEshopTrayPrint } from '@/lib/eShopTrayClient'
 import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
-import { submitEshopTray02CloudPrint } from '@/lib/eShopTrayCloudClient'
+import {
+  resolveEshopTray02PrintPath,
+  submitEshopTray02CloudPrint,
+  type EshopTray02CloudEnableState,
+} from '@/lib/eShopTrayCloudClient'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,22 +88,25 @@ export default function OrderDetailSheet({
   const [cancelConfirm, setCancelConfirm] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
-  const [cloudRelayEnabled, setCloudRelayEnabled] = useState(false)
+  const [cloudRelayState, setCloudRelayState] = useState<EshopTray02CloudEnableState>('pending')
   const shareCardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!orderNo) {
-      setCloudRelayEnabled(false)
+      setCloudRelayState('pending')
       return
     }
     let active = true
+    setCloudRelayState('pending')
     apiFetch('/api/es-tray-02/config', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() : null)
       .then((body) => {
-        if (active) setCloudRelayEnabled(body?.fieldOnly === true && body?.enabled === true)
+        if (active) {
+          setCloudRelayState(body?.fieldOnly === true && body?.enabled === true ? 'enabled' : 'disabled')
+        }
       })
       .catch(() => {
-        if (active) setCloudRelayEnabled(false)
+        if (active) setCloudRelayState('disabled')
       })
     return () => { active = false }
   }, [orderNo])
@@ -257,12 +264,14 @@ export default function OrderDetailSheet({
 
   async function handlePrint() {
     if (!d || shareStatus !== 'idle') return
+    const printPath = resolveEshopTray02PrintPath(cloudRelayState, eshopTrayEnabled)
+    if (printPath === 'CONFIG_PENDING') return
     setShareStatus('printing')
     const html = buildPrintHTML(d as ShareData, shareLabels)
 
     // ES-TRAY-02 FIELD ONLY: reuse the existing layout, bitmap renderer and
     // ESC/POS encoder, then submit only the completed Print Command Stream.
-    if (cloudRelayEnabled) {
+    if (printPath === 'CLOUD_RELAY') {
       try {
         const commandStream = await renderTicketHtmlToEscPosRaw(html)
         await submitEshopTray02CloudPrint({ orderNo: d.orderNo, commandStream })
@@ -276,7 +285,7 @@ export default function OrderDetailSheet({
       return
     }
 
-    if (!eshopTrayEnabled) {
+    if (printPath === 'BROWSER') {
       openExistingBrowserPrint(html)
       return
     }
@@ -314,6 +323,7 @@ export default function OrderDetailSheet({
   }
 
   const busy = shareStatus !== 'idle'
+  const printDisabled = busy || cloudRelayState === 'pending'
 
   return (
     <div style={sh.overlay} onClick={onClose}>
@@ -479,7 +489,7 @@ export default function OrderDetailSheet({
               <button style={{ ...sh.actionBtn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={handleShare}>
                 {shareStatus === 'generating' ? t('order.generating') : t('order.shareImage')}
               </button>
-              <button style={{ ...sh.actionBtn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={handlePrint}>
+              <button style={{ ...sh.actionBtn, opacity: printDisabled ? 0.6 : 1 }} disabled={printDisabled} onClick={handlePrint}>
                 {shareStatus === 'printing' ? t('order.preparingPrint') : t('order.print')}
               </button>
             </div>
