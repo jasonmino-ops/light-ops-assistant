@@ -28,6 +28,10 @@ const checks = {
   safeModeDefault: manifest.safeMode === true,
   writeOperationsDisabled: manifest.writeOperationsEnabled === false,
   windowsExecutionNotClaimed: manifest.windowsExecutionVerified === false,
+  launcherSourceUtf8Bom: manifest.launcherEncoding?.sourceBomHex === "efbbbf",
+  launcherEmbeddedBom: manifest.launcherEncoding?.embeddedLeadingCodePoint === "U+FEFF",
+  launcherEmbeddedBomEscape: manifest.launcherEncoding?.embeddedBomRepresentation === "\\uFEFF",
+  launcherTempFileUtf8Bom: manifest.launcherEncoding?.emittedTempFileBomHex === "efbbbf",
 };
 const passed = Object.values(checks).every(Boolean);
 const result = { passed, checks, inspection };

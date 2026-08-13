@@ -80,7 +80,12 @@ test("P0.5 manifest and local API expose no write operation", () => {
 });
 
 test("WinForms launcher shows required review metadata and contains no printer/Windows mutation command", () => {
-  const script = readFileSync(new URL("../src/app/winformsLauncher.ps1", import.meta.url), "utf8");
+  const sourceBytes = readFileSync(new URL("../src/app/winformsLauncher.ps1", import.meta.url));
+  assert.deepEqual([...sourceBytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  const script = sourceBytes.toString("utf8");
+  assert.equal(script.codePointAt(0), 0xfeff);
+  const emittedTempFileBytes = Buffer.from(script, "utf8");
+  assert.deepEqual([...emittedTempFileBytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
   for (const label of [
     "E-Shop Printer Tools",
     "安全审核模式",

@@ -66,6 +66,41 @@ function assertLocalNodeVersion() {
   }
 }
 
+function assertUtf8Bom(data, label) {
+  if (data.length < 3 || data[0] !== 0xef || data[1] !== 0xbb || data[2] !== 0xbf) {
+    throw new Error(`${label}_UTF8_BOM_MISSING`);
+  }
+}
+
+function verifyBundledLauncher(bundledMain, launcherScript) {
+  const bundledBytes = readFileSync(bundledMain);
+  const assignmentMarker = Buffer.from("var WINFORMS_SCRIPT = true ? `", "utf8");
+  const assignmentOffset = bundledBytes.indexOf(assignmentMarker);
+  if (assignmentOffset < 0) throw new Error("BUNDLED_WINFORMS_LAUNCHER_NOT_FOUND");
+
+  const embeddedOffset = assignmentOffset + assignmentMarker.length;
+  const escapedBom = Buffer.from("\\uFEFF", "utf8");
+  if (!bundledBytes.subarray(embeddedOffset, embeddedOffset + escapedBom.length).equals(escapedBom)) {
+    throw new Error("BUNDLED_WINFORMS_LAUNCHER_BOM_ESCAPE_MISSING");
+  }
+
+  const emittedLauncherBytes = Buffer.from(launcherScript, "utf8");
+  assertUtf8Bom(emittedLauncherBytes, "EMITTED_WINFORMS_LAUNCHER");
+  for (const requiredText of ["安全审核模式", "检测 USB 打印机", "扫描网络打印机"]) {
+    if (!launcherScript.includes(requiredText)) throw new Error(`WINFORMS_LAUNCHER_TEXT_MISSING: ${requiredText}`);
+  }
+
+  return {
+    sourceEncoding: "UTF-8 with BOM",
+    sourceBomHex: "efbbbf",
+    embeddedLeadingCodePoint: "U+FEFF",
+    embeddedBomRepresentation: "\\uFEFF",
+    emittedTempFileEncoding: "UTF-8 with BOM",
+    emittedTempFileBomHex: "efbbbf",
+    windowsPowerShellTarget: "5.1",
+  };
+}
+
 async function main() {
   assertLocalNodeVersion();
   const outputDirectory = outputArgument();
@@ -82,7 +117,11 @@ async function main() {
   })).trim();
   if (!/^[0-9a-f]{40}$/.test(buildCommit)) throw new Error(`INVALID_BUILD_COMMIT: ${buildCommit}`);
 
-  const launcherScript = readFileSync(path.join(packageDirectory, "src", "app", "winformsLauncher.ps1"), "utf8");
+  const launcherPath = path.join(packageDirectory, "src", "app", "winformsLauncher.ps1");
+  const launcherBytes = readFileSync(launcherPath);
+  assertUtf8Bom(launcherBytes, "SOURCE_WINFORMS_LAUNCHER");
+  const launcherScript = launcherBytes.toString("utf8");
+  if (launcherScript.codePointAt(0) !== 0xfeff) throw new Error("SOURCE_WINFORMS_LAUNCHER_BOM_DECODE_FAILED");
   const bundledMain = path.join(workDirectory, "review-app.cjs");
   await build({
     entryPoints: [path.join(packageDirectory, "src", "app", "main.ts")],
@@ -99,6 +138,7 @@ async function main() {
       __WINFORMS_SCRIPT__: JSON.stringify(launcherScript),
     },
   });
+  const launcherEncoding = verifyBundledLauncher(bundledMain, launcherScript);
 
   const seaBlob = path.join(workDirectory, "sea-prep.blob");
   const seaConfig = path.join(workDirectory, "sea-config.json");
@@ -151,6 +191,7 @@ async function main() {
     codeSigned: false,
     fieldVerification: "NOT_FIELD_VERIFIED",
     windowsExecutionVerified: false,
+    launcherEncoding,
     buildCommand: "npm run package:windows",
     artifact: pe,
     nodeRuntime: {
