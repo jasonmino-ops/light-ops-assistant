@@ -1,0 +1,21 @@
+{
+  "name": "@eshop/printer-tools",
+  "version": "0.1.0-p0",
+  "description": "Isolated E-Shop printer discovery and Windows provisioning planning tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "check": "npm run build && npm test",
+    "cli": "node --import tsx src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

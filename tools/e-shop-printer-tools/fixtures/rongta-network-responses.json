@@ -1,0 +1,9 @@
+{
+  "provenance": "Synthetic P0 parser fixtures; not captured from a physical Rongta printer",
+  "fieldVerification": "NOT_FIELD_VERIFIED",
+  "responses": [
+    "Manufacturer=Rongta;Model=RP80;MAC=00:11:22:33:44:55;IP=10.20.30.40;Port=9100",
+    "model:RP80\nmac:00-11-22-33-44-66\nip:10.20.30.41",
+    "malformed payload without device identity"
+  ]
+}
