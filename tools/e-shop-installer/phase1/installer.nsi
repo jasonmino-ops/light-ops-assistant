@@ -15,7 +15,7 @@ Unicode true
 RequestExecutionLevel admin
 Name "E-Shop V1 Setup"
 OutFile "${OUTPUT_FILE}"
-InstallDir "$PROGRAMDATA\E-Shop\Installer\MVP"
+InstallDir "$COMMONPROGRAMDATA\E-Shop\Installer\MVP"
 SetCompressor /SOLID lzma
 ShowInstDetails nevershow
 BrandingText "E-Shop V1 Setup"
