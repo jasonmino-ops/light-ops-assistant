@@ -1,6 +1,6 @@
 {
   "name": "@eshop/printer-tools",
-  "version": "0.1.0-p0",
+  "version": "0.5.0-p05",
   "description": "Isolated E-Shop printer discovery and Windows provisioning planning tools",
   "private": true,
   "type": "module",
@@ -8,10 +8,17 @@
     "build": "tsc -p tsconfig.json",
     "test": "node --import tsx --test tests/*.test.ts",
     "check": "npm run build && npm test",
-    "cli": "node --import tsx src/cli.ts"
+    "cli": "node --import tsx src/cli.ts",
+    "app:self-test": "node --import tsx src/app/main.ts --self-test",
+    "package:windows": "node packaging/build-windows-sea.mjs",
+    "verify:windows": "node packaging/verify-windows-artifact.mjs",
+    "verify:repeatability": "node packaging/check-repeatability.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "adm-zip": "0.6.0",
+    "esbuild": "0.28.2",
+    "postject": "1.0.0-alpha.6",
     "tsx": "^4.21.0",
     "typescript": "^5.8.0"
   },
