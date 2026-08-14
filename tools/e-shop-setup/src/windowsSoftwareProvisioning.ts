@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { statfs } from 'node:fs/promises'
 import { join, win32 } from 'node:path'
@@ -102,6 +102,261 @@ function runExecutable(file: string, args: string[], timeout = PROCESS_TIMEOUT_M
       resolve(`${stdout ?? ''}${stderr ?? ''}`)
     })
   })
+}
+
+type ExecutableRunner = (file: string, args: string[], timeout?: number) => Promise<string>
+
+export type InteractiveDesktopLaunchOptions = {
+  runtimePlatform?: NodeJS.Platform
+  run?: ExecutableRunner
+}
+
+export type DesktopRuntimeControl = {
+  resolveExecutablePath: () => Promise<string | null>
+  inspectDesktop: () => Promise<DesktopInspection>
+  launchDesktop: (executablePath: string) => Promise<void>
+  startupTimeoutMs?: number
+  retryIntervalMs?: number
+  now?: () => number
+  wait?: (ms: number) => Promise<void>
+}
+
+function interactiveDesktopLaunchScript(executablePath: string): string {
+  const escapedExecutablePath = escapePowerShell(executablePath)
+  return String.raw`
+$ErrorActionPreference = 'Stop'
+try {
+  $desktopExecutable = '${escapedExecutablePath}'
+  if (-not (Test-Path -LiteralPath $desktopExecutable -PathType Leaf)) {
+    throw 'Desktop executable is missing'
+  }
+
+  $source = @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace EShop.Setup
+{
+    public static class ExplorerShellLauncher
+    {
+        private const int CSIDL_DESKTOP = 0;
+        private const int SWC_DESKTOP = 8;
+        private const int SWFO_NEEDDISPATCH = 1;
+        private const int SW_SHOWNORMAL = 1;
+        private const uint SVGIO_BACKGROUND = 0;
+
+        private static readonly Guid SID_STopLevelBrowser =
+            new Guid("4C96BE40-915C-11CF-99D3-00AA004AE837");
+
+        public static void Execute(string process, string currentDirectory)
+        {
+            var shellWindows = (IShellWindows)new CShellWindows();
+            object location = CSIDL_DESKTOP;
+            object unused = new object();
+            int hwnd;
+
+            var serviceProvider = (IServiceProvider)shellWindows.FindWindowSW(
+                ref location,
+                ref unused,
+                SWC_DESKTOP,
+                out hwnd,
+                SWFO_NEEDDISPATCH
+            );
+            if (serviceProvider == null)
+                throw new InvalidOperationException("Interactive Explorer desktop shell is unavailable");
+
+            var serviceGuid = SID_STopLevelBrowser;
+            var interfaceGuid = typeof(IShellBrowser).GUID;
+            var shellBrowser = (IShellBrowser)serviceProvider.QueryService(
+                ref serviceGuid,
+                ref interfaceGuid
+            );
+            if (shellBrowser == null)
+                throw new InvalidOperationException("Interactive Explorer shell browser is unavailable");
+
+            var dispatchGuid = typeof(IDispatch).GUID;
+            var shellView = shellBrowser.QueryActiveShellView();
+            if (shellView == null)
+                throw new InvalidOperationException("Interactive Explorer shell view is unavailable");
+
+            var folderView = (IShellFolderViewDual)shellView.GetItemObject(
+                SVGIO_BACKGROUND,
+                ref dispatchGuid
+            );
+            if (folderView == null)
+                throw new InvalidOperationException("Interactive Explorer folder view is unavailable");
+
+            var shellDispatch = (IShellDispatch2)folderView.Application;
+            if (shellDispatch == null)
+                throw new InvalidOperationException("Interactive Explorer shell dispatch is unavailable");
+
+            shellDispatch.ShellExecute(process, "", currentDirectory, "open", SW_SHOWNORMAL);
+        }
+
+        [ComImport]
+        [Guid("9BA05972-F6A8-11CF-A442-00A0C90A8F39")]
+        [ClassInterface(ClassInterfaceType.None)]
+        private class CShellWindows
+        {
+        }
+
+        [ComImport]
+        [Guid("85CB6900-4D95-11CF-960C-0080C7F4EE85")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+        private interface IShellWindows
+        {
+            [return: MarshalAs(UnmanagedType.IDispatch)]
+            object FindWindowSW(
+                [MarshalAs(UnmanagedType.Struct)] ref object location,
+                [MarshalAs(UnmanagedType.Struct)] ref object locationRoot,
+                int windowClass,
+                out int hwnd,
+                int options
+            );
+        }
+
+        [ComImport]
+        [Guid("6D5140C1-7436-11CE-8034-00AA006009FA")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IServiceProvider
+        {
+            [return: MarshalAs(UnmanagedType.Interface)]
+            object QueryService(ref Guid serviceGuid, ref Guid interfaceGuid);
+        }
+
+        [ComImport]
+        [Guid("000214E2-0000-0000-C000-000000000046")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IShellBrowser
+        {
+            void VTableGap01();
+            void VTableGap02();
+            void VTableGap03();
+            void VTableGap04();
+            void VTableGap05();
+            void VTableGap06();
+            void VTableGap07();
+            void VTableGap08();
+            void VTableGap09();
+            void VTableGap10();
+            void VTableGap11();
+            void VTableGap12();
+            IShellView QueryActiveShellView();
+        }
+
+        [ComImport]
+        [Guid("000214E3-0000-0000-C000-000000000046")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IShellView
+        {
+            void VTableGap01();
+            void VTableGap02();
+            void VTableGap03();
+            void VTableGap04();
+            void VTableGap05();
+            void VTableGap06();
+            void VTableGap07();
+            void VTableGap08();
+            void VTableGap09();
+            void VTableGap10();
+            void VTableGap11();
+            void VTableGap12();
+
+            [return: MarshalAs(UnmanagedType.Interface)]
+            object GetItemObject(uint aspectOfView, ref Guid interfaceGuid);
+        }
+
+        [ComImport]
+        [Guid("00020400-0000-0000-C000-000000000046")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+        private interface IDispatch
+        {
+        }
+
+        [ComImport]
+        [Guid("E7A1AF80-4D96-11CF-960C-0080C7F4EE85")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+        private interface IShellFolderViewDual
+        {
+            object Application
+            {
+                [return: MarshalAs(UnmanagedType.IDispatch)]
+                get;
+            }
+        }
+
+        [ComImport]
+        [Guid("A4C6892C-3BA9-11D2-9DEA-00C04FB16162")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+        private interface IShellDispatch2
+        {
+            void ShellExecute(
+                [MarshalAs(UnmanagedType.BStr)] string file,
+                [MarshalAs(UnmanagedType.Struct)] object args,
+                [MarshalAs(UnmanagedType.Struct)] object directory,
+                [MarshalAs(UnmanagedType.Struct)] object operation,
+                [MarshalAs(UnmanagedType.Struct)] object show
+            );
+        }
+    }
+}
+'@
+
+  Add-Type -TypeDefinition $source -Language CSharp
+  [EShop.Setup.ExplorerShellLauncher]::Execute(
+    $desktopExecutable,
+    (Split-Path -LiteralPath $desktopExecutable -Parent)
+  )
+} catch {
+  [Console]::Error.WriteLine($_.Exception.ToString())
+  exit 1
+}
+`
+}
+
+/**
+ * Delegate Desktop launch to the interactive Explorer shell. This matches the
+ * electron-builder StdUtils.ExecShellAsUser -> ShellExecute("open") contract:
+ * the elevated Setup never opens, duplicates, or falls back to an Explorer
+ * token, and a missing interactive shell fails closed.
+ */
+export async function launchDesktopAsInteractiveUser(
+  executablePath: string,
+  options: InteractiveDesktopLaunchOptions = {},
+): Promise<void> {
+  const runtimePlatform = options.runtimePlatform ?? process.platform
+  if (runtimePlatform !== 'win32') throw new Error('Interactive Desktop launch requires Windows')
+  const script = interactiveDesktopLaunchScript(executablePath)
+  const encodedCommand = Buffer.from(script, 'utf16le').toString('base64')
+  await (options.run ?? runExecutable)('powershell.exe', [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-STA',
+    '-EncodedCommand',
+    encodedCommand,
+  ], 30_000)
+}
+
+export async function ensureDesktopProcessRunning(control: DesktopRuntimeControl): Promise<boolean> {
+  let executablePath = await control.resolveExecutablePath()
+  if (!executablePath) return false
+
+  const current = await control.inspectDesktop()
+  if (current.runtimeRunning) return true
+
+  await control.launchDesktop(executablePath)
+  const now = control.now ?? Date.now
+  const wait = control.wait ?? delay
+  const retryIntervalMs = control.retryIntervalMs ?? 500
+  const deadline = now() + (control.startupTimeoutMs ?? STARTUP_TIMEOUT_MS)
+  while (now() < deadline) {
+    await wait(retryIntervalMs)
+    const state = await control.inspectDesktop()
+    if (state.runtimeRunning) return true
+    executablePath = (await control.resolveExecutablePath()) ?? executablePath
+  }
+  return false
 }
 
 async function portReady(port: number, timeoutMs = 1_500): Promise<boolean> {
@@ -335,21 +590,11 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
 
   async ensureDesktopRunning(): Promise<boolean> {
     this.requireWindows()
-    let executablePath = await this.desktopExecutablePath()
-    if (!executablePath) return false
-    const current = await this.inspectDesktop()
-    if (current.runtimeRunning) return true
-
-    const child = spawn(executablePath, [], { detached: true, stdio: 'ignore', windowsHide: false })
-    child.unref()
-    const deadline = Date.now() + STARTUP_TIMEOUT_MS
-    while (Date.now() < deadline) {
-      await delay(500)
-      const state = await this.inspectDesktop()
-      if (state.runtimeRunning) return true
-      executablePath = (await this.desktopExecutablePath()) ?? executablePath
-    }
-    return false
+    return ensureDesktopProcessRunning({
+      resolveExecutablePath: () => this.desktopExecutablePath(),
+      inspectDesktop: () => this.inspectDesktop(),
+      launchDesktop: (executablePath) => launchDesktopAsInteractiveUser(executablePath),
+    })
   }
 
   async inspectQz(): Promise<QzInspection> {

@@ -10,6 +10,8 @@ import {
   SOFTWARE_PROVISIONING_READY,
   createSoftwareProvisioningAdapters,
   detectWindowsEnvironment,
+  ensureDesktopProcessRunning,
+  launchDesktopAsInteractiveUser,
   parseWindowsUninstallExecutablePath,
   runPreflightInspectionPhases,
   type CertificateInspection,
@@ -102,6 +104,7 @@ class FakeSoftwareSystem implements SoftwareProvisioningSystem {
   certificate = certificateState()
   desktopInstallCount = 0
   desktopStartCount = 0
+  desktopLaunchCount = 0
   qzInstallCount = 0
   qzStartCount = 0
   certificateProvisionCount = 0
@@ -145,6 +148,8 @@ class FakeSoftwareSystem implements SoftwareProvisioningSystem {
   async ensureDesktopRunning(): Promise<boolean> {
     this.desktopStartCount += 1
     if (!this.desktop.executablePresent) return false
+    if (this.desktop.runtimeRunning) return true
+    this.desktopLaunchCount += 1
     this.desktop.runtimeRunning = true
     return true
   }
@@ -330,6 +335,7 @@ async function testDesktopAlreadyInstalled(): Promise<void> {
   assert.equal((await adapter.execute(context)).status, 'READY')
   assert.equal(system.desktopInstallCount, 0)
   assert.equal(system.desktopStartCount, 1)
+  assert.equal(system.desktopLaunchCount, 0)
 }
 
 async function testDesktopInstallRequired(): Promise<void> {
@@ -339,6 +345,106 @@ async function testDesktopInstallRequired(): Promise<void> {
   assert.equal((await adapter.execute(context)).status, 'READY')
   assert.equal(system.desktopInstallCount, 1)
   assert.equal(system.desktopStartCount, 1)
+  assert.equal(system.desktopLaunchCount, 1)
+}
+
+async function testInteractiveDesktopLaunchUsesExplorerShellExecute(): Promise<void> {
+  const invocations: { file: string; args: string[]; timeout?: number }[] = []
+  const executablePath = "C:\\Users\\jason\\AppData\\Local\\Programs\\eshop-desktop-prototype\\E-Shop 店小二.exe"
+  await launchDesktopAsInteractiveUser(executablePath, {
+    runtimePlatform: 'win32',
+    run: async (file, args, timeout) => {
+      invocations.push({ file, args, timeout })
+      return ''
+    },
+  })
+
+  assert.equal(invocations.length, 1)
+  const invocation = invocations[0]!
+  assert.equal(invocation.file, 'powershell.exe')
+  assert.equal(invocation.timeout, 30_000)
+  assert.ok(invocation.args.includes('-STA'))
+  const encodedIndex = invocation.args.indexOf('-EncodedCommand')
+  assert.ok(encodedIndex >= 0)
+  const script = Buffer.from(invocation.args[encodedIndex + 1] ?? '', 'base64').toString('utf16le')
+  assert.match(script, /IShellDispatch2/)
+  assert.match(script, /FindWindowSW/)
+  assert.match(script, /ShellExecute\(process, "", currentDirectory, "open", SW_SHOWNORMAL\)/)
+  assert.match(script, /E-Shop 店小二\.exe/)
+  assert.doesNotMatch(script, /CreateProcessWithTokenW|OpenProcessToken|DuplicateToken|ScheduledTask/i)
+}
+
+async function testDesktopInstalledButStoppedLaunchesAndVerifies(): Promise<void> {
+  let running = false
+  let launches = 0
+  let now = 0
+  const ready = await ensureDesktopProcessRunning({
+    resolveExecutablePath: async () => 'C:\\E-Shop 店小二.exe',
+    inspectDesktop: async () => desktopState({
+      installed: true,
+      version: '0.4.7',
+      executablePresent: true,
+      runtimeRunning: running,
+    }),
+    launchDesktop: async () => {
+      launches += 1
+      running = true
+    },
+    startupTimeoutMs: 1_000,
+    retryIntervalMs: 500,
+    now: () => now,
+    wait: async (ms) => { now += ms },
+  })
+  assert.equal(ready, true)
+  assert.equal(launches, 1)
+}
+
+async function testDesktopAlreadyRunningDoesNotRelaunch(): Promise<void> {
+  let launches = 0
+  const ready = await ensureDesktopProcessRunning({
+    resolveExecutablePath: async () => 'C:\\E-Shop 店小二.exe',
+    inspectDesktop: async () => desktopState({
+      installed: true,
+      version: '0.4.7',
+      executablePresent: true,
+      runtimeRunning: true,
+    }),
+    launchDesktop: async () => { launches += 1 },
+  })
+  assert.equal(ready, true)
+  assert.equal(launches, 0)
+}
+
+async function testMissingInteractiveShellFailsClosed(): Promise<void> {
+  await assert.rejects(
+    ensureDesktopProcessRunning({
+      resolveExecutablePath: async () => 'C:\\E-Shop 店小二.exe',
+      inspectDesktop: async () => desktopState({
+        installed: true,
+        version: '0.4.7',
+        executablePresent: true,
+        runtimeRunning: false,
+      }),
+      launchDesktop: async () => { throw new Error('Interactive Explorer desktop shell is unavailable') },
+    }),
+    /Interactive Explorer desktop shell is unavailable/,
+  )
+}
+
+async function testMissingDesktopExecutableDoesNotLaunch(): Promise<void> {
+  let inspections = 0
+  let launches = 0
+  const ready = await ensureDesktopProcessRunning({
+    resolveExecutablePath: async () => null,
+    inspectDesktop: async () => {
+      inspections += 1
+      return desktopState()
+    },
+    launchDesktop: async () => { launches += 1 },
+  })
+  assert.equal(ready, false)
+  assert.equal(inspections, 0)
+  assert.equal(launches, 0)
 }
 
 async function testQzAlreadyCorrect(): Promise<void> {
@@ -483,6 +589,11 @@ async function main(): Promise<void> {
   await testMalformedUninstallExecutableFailsSafe()
   await testDesktopAlreadyInstalled()
   await testDesktopInstallRequired()
+  await testInteractiveDesktopLaunchUsesExplorerShellExecute()
+  await testDesktopInstalledButStoppedLaunchesAndVerifies()
+  await testDesktopAlreadyRunningDoesNotRelaunch()
+  await testMissingInteractiveShellFailsClosed()
+  await testMissingDesktopExecutableDoesNotLaunch()
   await testQzAlreadyCorrect()
   await testQzInstallRequired()
   await testCertificateFirstInstall()
@@ -490,7 +601,7 @@ async function main(): Promise<void> {
   await testFailureStopsDownstream()
   await testSecondRunReusesSoftwareStages()
   await testLogsExcludeSecrets()
-  console.log('E-Shop V1 Setup software provisioning tests passed (17/17)')
+  console.log('E-Shop V1 Setup software provisioning tests passed (22/22)')
 }
 
 void main().catch((error) => {
