@@ -213,6 +213,19 @@ export async function detectWindowsEnvironment(
   return { platform: 'win32', architecture: 'UNCONFIRMED', source: 'UNCONFIRMED' }
 }
 
+/**
+ * Keep the Cloud probe outside local inspections that can synchronously block
+ * the Node event loop (notably QZ and Certificate environment discovery).
+ */
+export async function runPreflightInspectionPhases<T>(
+  inspectCloud: () => Promise<boolean>,
+  inspectLocalEnvironment: () => Promise<T>,
+): Promise<{ cloudReachable: boolean; localEnvironment: T }> {
+  const cloudReachable = await inspectCloud()
+  const localEnvironment = await inspectLocalEnvironment()
+  return { cloudReachable, localEnvironment }
+}
+
 export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSystem {
   private readonly requiredDiskBytes: number
 
@@ -238,15 +251,20 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
       }
     }
 
-    const [administrator, cloudReachable, printSpoolerRunning, freeDiskBytes, desktop, qz, certificate] = await Promise.all([
-      this.administrator(),
-      this.cloudReachable(),
-      this.printSpoolerRunning(),
-      this.freeDiskBytes(),
-      this.inspectDesktop(),
-      this.inspectQz(),
-      this.inspectCertificate(),
-    ])
+    const {
+      cloudReachable,
+      localEnvironment: [administrator, printSpoolerRunning, freeDiskBytes, desktop, qz, certificate],
+    } = await runPreflightInspectionPhases(
+      () => this.cloudReachable(),
+      () => Promise.all([
+        this.administrator(),
+        this.printSpoolerRunning(),
+        this.freeDiskBytes(),
+        this.inspectDesktop(),
+        this.inspectQz(),
+        this.inspectCertificate(),
+      ]),
+    )
     return {
       platform: environment.platform,
       architecture: environment.architecture,

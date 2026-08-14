@@ -11,6 +11,7 @@ import {
   createSoftwareProvisioningAdapters,
   detectWindowsEnvironment,
   parseWindowsUninstallExecutablePath,
+  runPreflightInspectionPhases,
   type CertificateInspection,
   type DesktopInspection,
   type PreflightInspection,
@@ -250,6 +251,50 @@ async function testPreflightFailsWhenEnvironmentCannotBeConfirmed(): Promise<voi
   assert.equal(result.failureCode, 'UNSUPPORTED_WINDOWS')
 }
 
+async function testCloudProbeCompletesBeforeSlowSynchronousDiscovery(): Promise<void> {
+  let cloudSettled = false
+  let localInspectionStarted = false
+
+  const result = await runPreflightInspectionPhases(
+    async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      cloudSettled = true
+      return true
+    },
+    async () => {
+      localInspectionStarted = true
+      assert.equal(cloudSettled, true, 'local synchronous discovery must not overlap the Cloud probe')
+      const blockedUntil = Date.now() + 30
+      while (Date.now() < blockedUntil) {
+        // Simulate the synchronous QZ/environment discovery observed on Windows.
+      }
+      return 'LOCAL_READY'
+    },
+  )
+
+  assert.equal(localInspectionStarted, true)
+  assert.deepEqual(result, { cloudReachable: true, localEnvironment: 'LOCAL_READY' })
+}
+
+async function testCloudOfflineSemanticsRemainFailClosed(): Promise<void> {
+  let localInspectionCount = 0
+  const phases = await runPreflightInspectionPhases(
+    async () => false,
+    async () => {
+      localInspectionCount += 1
+      return 'LOCAL_INSPECTED'
+    },
+  )
+  assert.deepEqual(phases, { cloudReachable: false, localEnvironment: 'LOCAL_INSPECTED' })
+  assert.equal(localInspectionCount, 1, 'existing local Preflight evidence must still be collected')
+
+  const system = new FakeSoftwareSystem()
+  system.cloudReachable = false
+  const result = await stage(createSoftwareProvisioningAdapters(system), 'preflight').detect(context)
+  assert.equal(result.status, 'BLOCKED')
+  assert.equal(result.failureCode, 'CLOUD_OFFLINE')
+}
+
 async function testQuotedUninstallExecutableParsing(): Promise<void> {
   assert.equal(
     parseWindowsUninstallExecutablePath('"C:\\Program Files\\E-Shop\\Uninstall E-Shop.exe" /allusers'),
@@ -431,6 +476,8 @@ async function main(): Promise<void> {
   await testPreflightPassAndBlocked()
   await testPreflightCimDeniedUsesFallback()
   await testPreflightFailsWhenEnvironmentCannotBeConfirmed()
+  await testCloudProbeCompletesBeforeSlowSynchronousDiscovery()
+  await testCloudOfflineSemanticsRemainFailClosed()
   await testQuotedUninstallExecutableParsing()
   await testUnquotedUninstallExecutableParsing()
   await testMalformedUninstallExecutableFailsSafe()
@@ -443,7 +490,7 @@ async function main(): Promise<void> {
   await testFailureStopsDownstream()
   await testSecondRunReusesSoftwareStages()
   await testLogsExcludeSecrets()
-  console.log('E-Shop V1 Setup software provisioning tests passed (15/15)')
+  console.log('E-Shop V1 Setup software provisioning tests passed (17/17)')
 }
 
 void main().catch((error) => {
