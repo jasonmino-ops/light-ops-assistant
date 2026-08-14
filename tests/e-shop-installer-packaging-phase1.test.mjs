@@ -73,6 +73,8 @@ async function main() {
   assert.doesNotMatch(installerScript, /192\.168\.18\.49|RongtaUSB PORT:/i)
   assert.doesNotMatch(installerScript, /RongTaDriverInstall\.exe|芯烨.*\.(?:exe|msi)/i)
   assert.match(buildScript, /NSIS 3\.0\.4\.1/)
+  assert.match(buildScript, /E-Shop-V2-Setup\.exe/)
+  assert.doesNotMatch(buildScript, /join\(outputDir, 'E-Shop-V1-Setup\.exe'\)/)
   assert.match(buildScript, /private material is forbidden/)
   assert.match(buildScript, /driver payload must remain external/)
   assert.deepEqual(validateInstallerScript(), {
