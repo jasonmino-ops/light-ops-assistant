@@ -153,7 +153,7 @@ export function buildInstaller({ payloadDir: inputDir, outputDir: inputOutputDir
   validateInstallerScript()
   const outputDir = resolve(inputOutputDir)
   mkdirSync(outputDir, { recursive: true })
-  const outputFile = join(outputDir, 'E-Shop-V4-Setup.exe')
+  const outputFile = join(outputDir, 'E-Shop-V5-Setup.exe')
   rmSync(outputFile, { force: true })
 
   const makensis = resolveMakensis()
