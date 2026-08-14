@@ -52,11 +52,12 @@ async function launchWindowsGui(): Promise<void> {
   const child = spawn("powershell.exe", [
     "-NoLogo",
     "-NoProfile",
+    "-WindowStyle", "Hidden",
     "-ExecutionPolicy", "Bypass",
     "-STA",
     "-File", launcherPath,
   ], {
-    windowsHide: true,
+    windowsHide: false,
     stdio: "ignore",
     env: {
       ...process.env,

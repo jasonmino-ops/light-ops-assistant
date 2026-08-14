@@ -99,6 +99,11 @@ test("WinForms launcher shows required review metadata and contains no printer/W
     assert.match(script, new RegExp(label));
   }
   assert.doesNotMatch(script, /Add-Printer|Set-Printer|Remove-Printer|MP4200SAVE|pnputil|reg\.exe|netsh/i);
+
+  const mainSource = readFileSync(new URL("../src/app/main.ts", import.meta.url), "utf8");
+  assert.match(mainSource, /"-WindowStyle", "Hidden"/);
+  assert.match(mainSource, /windowsHide: false/);
+  assert.doesNotMatch(mainSource, /windowsHide: true/);
 });
 
 test("authenticated local API dispatcher supports read, discovery, probe, and preview only", async () => {
