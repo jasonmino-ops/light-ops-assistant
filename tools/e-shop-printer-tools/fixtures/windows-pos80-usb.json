@@ -1,0 +1,15 @@
+{
+  "FriendlyName": "Printer POS-80 / 芯烨小票打印机",
+  "Manufacturer": "Xprinter",
+  "Model": "POS-80",
+  "InstanceId": "USBPRINT\\PRINTERPOS-80\\1C7D57980000",
+  "UsbInstanceId": "USB\\VID_0483&PID_5743\\1C7D57980000",
+  "USBPRINTIdentity": "USBPRINT\\PRINTERPOS-80\\1C7D57980000",
+  "HardwareID": [
+    "USBPRINT\\PRINTERPOS-80",
+    "USB\\VID_0483&PID_5743"
+  ],
+  "SerialNumber": "1C7D57980000",
+  "Status": "OK",
+  "ExistingQueues": []
+}
