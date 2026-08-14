@@ -15,7 +15,6 @@ Unicode true
 RequestExecutionLevel admin
 Name "E-Shop V1 Setup"
 OutFile "${OUTPUT_FILE}"
-InstallDir "$COMMONPROGRAMDATA\E-Shop\Installer\MVP"
 SetCompressor /SOLID lzma
 ShowInstDetails nevershow
 BrandingText "E-Shop V1 Setup"
@@ -42,6 +41,25 @@ VIAddVersionKey /LANG=1033 "SourceCommit" "${SOURCE_COMMIT}"
 
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
+
+Function .onInit
+  ExpandEnvStrings $INSTDIR "%ProgramData%\E-Shop\Installer\MVP"
+  ${If} $INSTDIR == ""
+    MessageBox MB_ICONSTOP|MB_OK "E-Shop Packaging error: Windows ProgramData could not be resolved. Setup will stop."
+    Abort
+  ${EndIf}
+  ${If} $INSTDIR == "%ProgramData%\E-Shop\Installer\MVP"
+    MessageBox MB_ICONSTOP|MB_OK "E-Shop Packaging error: Windows ProgramData was not expanded. Setup will stop."
+    Abort
+  ${EndIf}
+  StrCpy $0 $INSTDIR 1 1
+  StrCpy $1 $INSTDIR 1 2
+  ${If} $0 != ":"
+  ${OrIf} $1 != "\"
+    MessageBox MB_ICONSTOP|MB_OK "E-Shop Packaging error: Windows ProgramData did not resolve to an absolute path. Setup will stop."
+    Abort
+  ${EndIf}
+FunctionEnd
 
 Section "E-Shop V1 Runtime" SEC_RUNTIME
   SetShellVarContext all

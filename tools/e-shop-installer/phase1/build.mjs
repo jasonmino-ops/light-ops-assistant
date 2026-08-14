@@ -23,6 +23,7 @@ const SECRET_FILE_PATTERN = /(?:^|\/)(?:identity\.json|[^/]+\.(?:key|p12|pfx|jks
 const PRIVATE_MATERIAL_PATTERN = /-----BEGIN (?:RSA |EC |ENCRYPTED |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}/
 const FIXED_GOLDEN_ENVIRONMENT_PATTERN = /192\.168\.18\.49|RongtaUSB PORT:/i
 const TEXT_FILE_PATTERN = /\.(?:cjs|crt|json|pem|ps1|txt)$/i
+const INSTALLER_SCRIPT_PATH = fileURLToPath(new URL('./installer.nsi', import.meta.url))
 
 function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
@@ -92,6 +93,39 @@ export function validateMvpPayload(inputDir) {
   return { payloadDir, manifest }
 }
 
+export function validateInstallerScript(scriptPath = INSTALLER_SCRIPT_PATH) {
+  const script = readFileSync(scriptPath, 'utf8')
+  const forbiddenVariables = ['$' + 'PROGRAMDATA', '$' + 'COMMONPROGRAMDATA', '$' + 'COMMONAPPDATA']
+  for (const variable of forbiddenVariables) {
+    if (script.includes(variable)) throw new Error(`forbidden unresolved NSIS path variable: ${variable}`)
+  }
+
+  const requiredLines = [
+    'ExpandEnvStrings $INSTDIR "%ProgramData%\\E-Shop\\Installer\\MVP"',
+    'SetOutPath "$INSTDIR"',
+    'CreateDirectory "$INSTDIR\\Drivers\\Rongta"',
+    'CreateDirectory "$INSTDIR\\Drivers\\Xprinter"',
+    'CopyFiles /SILENT "$EXEDIR\\Drivers\\Rongta\\*.exe" "$INSTDIR\\Drivers\\Rongta"',
+    'CopyFiles /SILENT "$EXEDIR\\Drivers\\Xprinter\\*.exe" "$INSTDIR\\Drivers\\Xprinter"',
+    '-File "$INSTDIR\\E-Shop-V1-Setup.ps1"',
+  ]
+  for (const line of requiredLines) {
+    if (!script.includes(line)) throw new Error(`installer target is not based on resolved $INSTDIR: ${line}`)
+  }
+  if (/^\s*InstallDir\b/m.test(script)) throw new Error('InstallDir must not provide an unresolved ProgramData path')
+  if (!script.includes('Function .onInit') || !script.includes('FunctionEnd')) {
+    throw new Error('installer initialization path resolution is missing')
+  }
+  if (!script.includes('File /r "${PAYLOAD_ROOT}/*.*"')) throw new Error('MVP payload destination is not validated')
+  if (!script.includes('Windows ProgramData could not be resolved') ||
+      !script.includes('Windows ProgramData was not expanded') ||
+      !script.includes('Windows ProgramData did not resolve to an absolute path')) {
+    throw new Error('ProgramData resolution must fail closed')
+  }
+
+  return { scriptPath: resolve(scriptPath) }
+}
+
 function option(name, args) {
   const index = args.indexOf(name)
   return index >= 0 && args[index + 1] ? args[index + 1] : null
@@ -116,13 +150,14 @@ function nsisRoot(makensis) {
 
 export function buildInstaller({ payloadDir: inputDir, outputDir: inputOutputDir }) {
   const { payloadDir, manifest } = validateMvpPayload(inputDir)
+  validateInstallerScript()
   const outputDir = resolve(inputOutputDir)
   mkdirSync(outputDir, { recursive: true })
   const outputFile = join(outputDir, 'E-Shop-V1-Setup.exe')
   rmSync(outputFile, { force: true })
 
   const makensis = resolveMakensis()
-  const script = fileURLToPath(new URL('./installer.nsi', import.meta.url))
+  const script = INSTALLER_SCRIPT_PATH
   const env = { ...process.env }
   const root = nsisRoot(makensis)
   if (root) env.NSISDIR = root

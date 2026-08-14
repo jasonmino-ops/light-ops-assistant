@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { validateMvpPayload } from '../tools/e-shop-installer/phase1/build.mjs'
+import { validateInstallerScript, validateMvpPayload } from '../tools/e-shop-installer/phase1/build.mjs'
 
 const installerScript = readFileSync(new URL('../tools/e-shop-installer/phase1/installer.nsi', import.meta.url), 'utf8')
 const buildScript = readFileSync(new URL('../tools/e-shop-installer/phase1/build.mjs', import.meta.url), 'utf8')
@@ -54,8 +54,15 @@ async function main() {
   assert.match(installerScript, /RequestExecutionLevel admin/)
   assert.match(installerScript, /ShowInstDetails nevershow/)
   assert.doesNotMatch(installerScript, /\$PROGRAMDATA(?:\\|\b)/)
+  assert.doesNotMatch(installerScript, /\$COMMONPROGRAMDATA(?:\\|\b)/)
   assert.doesNotMatch(installerScript, /\$COMMONAPPDATA(?:\\|\b)/)
-  assert.match(installerScript, /InstallDir "\$COMMONPROGRAMDATA\\E-Shop\\Installer\\MVP"/)
+  assert.doesNotMatch(installerScript, /^\s*InstallDir\b/m)
+  assert.match(installerScript, /ExpandEnvStrings \$INSTDIR "%ProgramData%\\E-Shop\\Installer\\MVP"/)
+  assert.match(installerScript, /Windows ProgramData could not be resolved/)
+  assert.match(installerScript, /Windows ProgramData was not expanded/)
+  assert.match(installerScript, /Windows ProgramData did not resolve to an absolute path/)
+  assert.match(installerScript, /SetOutPath "\$INSTDIR"/)
+  assert.match(installerScript, /-File "\$INSTDIR\\E-Shop-V1-Setup\.ps1"/)
   assert.match(installerScript, /File \/r/)
   assert.match(installerScript, /nsExec::ExecToStack/)
   assert.match(installerScript, /-WindowStyle Hidden/)
@@ -68,6 +75,9 @@ async function main() {
   assert.match(buildScript, /NSIS 3\.0\.4\.1/)
   assert.match(buildScript, /private material is forbidden/)
   assert.match(buildScript, /driver payload must remain external/)
+  assert.deepEqual(validateInstallerScript(), {
+    scriptPath: new URL('../tools/e-shop-installer/phase1/installer.nsi', import.meta.url).pathname,
+  })
 
   const dir = fixture()
   try {
