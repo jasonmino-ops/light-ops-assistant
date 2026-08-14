@@ -88,6 +88,22 @@ export function parseWindowsUninstallExecutablePath(value: unknown): string | nu
   return executable.length > 0 ? executable : null
 }
 
+export function decodePowerShellUtf8Base64Text(value: string): string | null {
+  const encoded = value.trim()
+  if (!encoded) return null
+  if (encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    throw new Error('Windows PowerShell UTF-8 transport is invalid')
+  }
+  const bytes = Buffer.from(encoded, 'base64')
+  const decoded = bytes.toString('utf8')
+  if (bytes.toString('base64') !== encoded ||
+      !Buffer.from(decoded, 'utf8').equals(bytes) ||
+      /[\0\r\n]/.test(decoded)) {
+    throw new Error('Windows PowerShell UTF-8 transport is invalid')
+  }
+  return decoded || null
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -303,9 +319,13 @@ namespace EShop.Setup
 '@
 
   Add-Type -TypeDefinition $source -Language CSharp
+  $desktopWorkingDirectory = [System.IO.Path]::GetDirectoryName($desktopExecutable)
+  if ([string]::IsNullOrWhiteSpace($desktopWorkingDirectory)) {
+    throw 'Desktop working directory could not be resolved'
+  }
   [EShop.Setup.ExplorerShellLauncher]::Execute(
     $desktopExecutable,
-    (Split-Path -LiteralPath $desktopExecutable -Parent)
+    $desktopWorkingDirectory
   )
 } catch {
   [Console]::Error.WriteLine($_.Exception.ToString())
@@ -783,6 +803,7 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
     const executableName = escapePowerShell(this.config.desktopExecutableName)
     const uninstallPattern = escapePowerShell(WINDOWS_UNINSTALL_EXECUTABLE_PATTERN_SOURCE)
     const script = [
+      '$utf8=[System.Text.UTF8Encoding]::new($false)',
       `$displayName='${displayName}'`,
       `$exeName='${executableName}'`,
       `$uninstallPattern='${uninstallPattern}'`,
@@ -792,9 +813,12 @@ export class WindowsSoftwareProvisioningSystem implements SoftwareProvisioningSy
       'if($app.InstallLocation){$candidates+=(Join-Path $app.InstallLocation $exeName)}',
       'if($app.UninstallString){$m=[regex]::Match([string]$app.UninstallString,$uninstallPattern,[Text.RegularExpressions.RegexOptions]::IgnoreCase);if($m.Success){$u=$null;if($m.Groups[1].Success){$u=$m.Groups[1].Value}else{$u=$m.Groups[2].Value};if($u -and (Test-Path -LiteralPath $u)){$candidates+=(Join-Path (Split-Path $u -Parent) $exeName)}}}',
       '$candidates+=(Join-Path $env:LOCALAPPDATA (\'Programs\\\' + $displayName + \'\\\' + $exeName))',
-      '$candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1',
+      '$resolvedPath=$candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1',
+      'if($resolvedPath){[Convert]::ToBase64String($utf8.GetBytes([string]$resolvedPath))}',
     ].join(';')
-    const path = (await runExecutable('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], 30_000)).trim()
+    const path = decodePowerShellUtf8Base64Text(
+      await runExecutable('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], 30_000),
+    )
     return path && existsSync(path) ? path : null
   }
 

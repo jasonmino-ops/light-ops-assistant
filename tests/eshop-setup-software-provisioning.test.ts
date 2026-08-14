@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import {
   EShopSetupOrchestrator,
@@ -9,6 +10,7 @@ import {
   JsonLinesSetupLogger,
   SOFTWARE_PROVISIONING_READY,
   createSoftwareProvisioningAdapters,
+  decodePowerShellUtf8Base64Text,
   detectWindowsEnvironment,
   ensureDesktopProcessRunning,
   launchDesktopAsInteractiveUser,
@@ -327,6 +329,34 @@ async function testMalformedUninstallExecutableFailsSafe(): Promise<void> {
   }
 }
 
+async function testDesktopExecutablePathUtf8Base64Transport(): Promise<void> {
+  for (const path of [
+    'C:\\Users\\测试 User\\AppData\\Local\\Programs\\eshop-desktop-prototype\\E-Shop 店小二.exe',
+    'C:\\Users\\អ្នកប្រើប្រាស់\\AppData\\Local\\Programs\\eshop desktop\\E-Shop 店小二.exe',
+  ]) {
+    assert.equal(
+      decodePowerShellUtf8Base64Text(Buffer.from(path, 'utf8').toString('base64')),
+      path,
+    )
+  }
+  assert.equal(decodePowerShellUtf8Base64Text('  '), null)
+  assert.throws(() => decodePowerShellUtf8Base64Text('not-base64'), /transport is invalid/)
+
+  const directory = await mkdtemp(join(tmpdir(), 'eshop-desktop-unicode-path-'))
+  const executablePath = join(directory, '测试 User អ្នកប្រើប្រាស់', 'E-Shop 店小二.exe')
+  try {
+    await mkdir(dirname(executablePath), { recursive: true })
+    await writeFile(executablePath, 'fixture')
+    const decoded = decodePowerShellUtf8Base64Text(
+      Buffer.from(executablePath, 'utf8').toString('base64'),
+    )
+    assert.equal(decoded, executablePath)
+    assert.equal(decoded ? existsSync(decoded) : false, true)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
+
 async function testDesktopAlreadyInstalled(): Promise<void> {
   const system = new FakeSoftwareSystem()
   system.desktop = desktopState({ installed: true, version: '0.4.7', executablePresent: true, runtimeRunning: true })
@@ -371,6 +401,8 @@ async function testInteractiveDesktopLaunchUsesExplorerShellExecute(): Promise<v
   assert.match(script, /FindWindowSW/)
   assert.match(script, /ShellExecute\(process, "", currentDirectory, "open", SW_SHOWNORMAL\)/)
   assert.match(script, /E-Shop 店小二\.exe/)
+  assert.match(script, /\[System\.IO\.Path\]::GetDirectoryName\(\$desktopExecutable\)/)
+  assert.doesNotMatch(script, /Split-Path\s+-LiteralPath[^\r\n]*-Parent/)
   assert.doesNotMatch(script, /CreateProcessWithTokenW|OpenProcessToken|DuplicateToken|ScheduledTask/i)
 }
 
@@ -378,16 +410,22 @@ async function testDesktopInstalledButStoppedLaunchesAndVerifies(): Promise<void
   let running = false
   let launches = 0
   let now = 0
+  const transportedPath = decodePowerShellUtf8Base64Text(
+    Buffer.from('C:\\Users\\测试 User\\E-Shop 店小二.exe', 'utf8').toString('base64'),
+  )
+  assert.ok(transportedPath)
+  let launchedPath: string | null = null
   const ready = await ensureDesktopProcessRunning({
-    resolveExecutablePath: async () => 'C:\\E-Shop 店小二.exe',
+    resolveExecutablePath: async () => transportedPath,
     inspectDesktop: async () => desktopState({
       installed: true,
       version: '0.4.7',
       executablePresent: true,
       runtimeRunning: running,
     }),
-    launchDesktop: async () => {
+    launchDesktop: async (executablePath) => {
       launches += 1
+      launchedPath = executablePath
       running = true
     },
     startupTimeoutMs: 1_000,
@@ -397,6 +435,7 @@ async function testDesktopInstalledButStoppedLaunchesAndVerifies(): Promise<void
   })
   assert.equal(ready, true)
   assert.equal(launches, 1)
+  assert.equal(launchedPath, transportedPath)
 }
 
 async function testDesktopAlreadyRunningDoesNotRelaunch(): Promise<void> {
@@ -587,6 +626,7 @@ async function main(): Promise<void> {
   await testQuotedUninstallExecutableParsing()
   await testUnquotedUninstallExecutableParsing()
   await testMalformedUninstallExecutableFailsSafe()
+  await testDesktopExecutablePathUtf8Base64Transport()
   await testDesktopAlreadyInstalled()
   await testDesktopInstallRequired()
   await testInteractiveDesktopLaunchUsesExplorerShellExecute()
@@ -601,7 +641,7 @@ async function main(): Promise<void> {
   await testFailureStopsDownstream()
   await testSecondRunReusesSoftwareStages()
   await testLogsExcludeSecrets()
-  console.log('E-Shop V1 Setup software provisioning tests passed (22/22)')
+  console.log('E-Shop V1 Setup software provisioning tests passed (23/23)')
 }
 
 void main().catch((error) => {
