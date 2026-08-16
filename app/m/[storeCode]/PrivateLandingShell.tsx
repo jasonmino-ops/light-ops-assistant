@@ -30,6 +30,8 @@ const LANGS: Lang[] = ['zh', 'en', 'km']
 const LS_KEY = 'menu_lang'
 const VISITOR_ID_KEY = 'customer_landing_visitor_id'
 const EVENT_PREFIX = 'customer_landing_event:'
+const CUSTOMER_BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
+const ENTRY_TITLE_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif'
 
 const copy: Record<Lang, {
   brand: string
@@ -41,6 +43,8 @@ const copy: Record<Lang, {
   myOrders: string
   coupons: string
   contact: string
+  memberEntry: { title: string; subtitle: string; action: string }
+  productEntry: { title: string; subtitle: string }
   open: string
   closed: string
   statusLabel: string
@@ -64,6 +68,15 @@ const copy: Record<Lang, {
     myOrders: '我的订单',
     coupons: '优惠券',
     contact: '联系商家',
+    memberEntry: {
+      title: '绑定 e-Life 会员',
+      subtitle: '绑定后可享会员权益、积分与专属优惠',
+      action: '立即绑定',
+    },
+    productEntry: {
+      title: '进入商品列表',
+      subtitle: '浏览全部商品，快速下单选购',
+    },
     open: '营业中',
     closed: '暂停营业',
     statusLabel: '营业状态',
@@ -92,6 +105,15 @@ const copy: Record<Lang, {
     myOrders: 'My Orders',
     coupons: 'Coupons',
     contact: 'Contact Merchant',
+    memberEntry: {
+      title: 'Bind e-Life Membership',
+      subtitle: 'Unlock member benefits, points, and exclusive offers',
+      action: 'Bind Now',
+    },
+    productEntry: {
+      title: 'Browse Products',
+      subtitle: 'Browse all products and order quickly',
+    },
     open: 'Open',
     closed: 'Closed',
     statusLabel: 'Status',
@@ -120,6 +142,15 @@ const copy: Record<Lang, {
     myOrders: 'បញ្ជាទិញរបស់ខ្ញុំ',
     coupons: 'គូប៉ុង',
     contact: 'ទំនាក់ទំនងហាង',
+    memberEntry: {
+      title: 'ភ្ជាប់សមាជិក e-Life',
+      subtitle: 'ទទួលបានអត្ថប្រយោជន៍ ពិន្ទុ និងការផ្តល់ជូនពិសេស',
+      action: 'ភ្ជាប់ឥឡូវ',
+    },
+    productEntry: {
+      title: 'ចូលមើលបញ្ជីទំនិញ',
+      subtitle: 'មើលទំនិញទាំងអស់ និងបញ្ជាទិញបានលឿន',
+    },
     open: 'កំពុងបើក',
     closed: 'បិទបណ្តោះអាសន្ន',
     statusLabel: 'ស្ថានភាព',
@@ -337,13 +368,42 @@ export default function PrivateLandingShell({
         </section>
 
         <div style={s.actions}>
+          {CUSTOMER_BOT && (
+            <a
+              href={`https://t.me/${CUSTOMER_BOT}?start=bind_${encodeURIComponent(storeCode)}`}
+              target="_blank"
+              rel="noreferrer"
+              style={s.memberEntryCard}
+            >
+              <span style={{ ...s.entryIcon, ...s.memberEntryIcon }} aria-hidden="true">
+                <TelegramIcon />
+              </span>
+              <span style={s.entryBody}>
+                <span style={s.entryTitle}>{t.memberEntry.title}</span>
+                <span style={s.entrySubtitle}>{t.memberEntry.subtitle}</span>
+              </span>
+              <span style={s.memberEntryAction}>
+                {t.memberEntry.action}
+                <span style={s.memberEntryChevron}>›</span>
+              </span>
+            </a>
+          )}
+
           <Link
             href={menuHref}
-            style={{ ...s.primaryBtn }}
+            style={s.productEntryCard}
             onClick={() => recordEvent('landing_cta_click', `${buildEventKey('landing_cta_click', store.code, visitorId)}:${Date.now()}`)}
           >
-            <span style={s.primaryIcon}>🛒</span>
-            <span style={s.primaryText}>{landing.orderNow}</span>
+            <span style={{ ...s.entryIcon, ...s.productEntryIcon }} aria-hidden="true">
+              <ShoppingBagIcon />
+            </span>
+            <span style={s.entryBody}>
+              <span style={s.entryTitle}>{t.productEntry.title}</span>
+              <span style={s.entrySubtitle}>{t.productEntry.subtitle}</span>
+            </span>
+            <span style={s.productEntryArrow} aria-hidden="true">
+              <ChevronRightIcon />
+            </span>
           </Link>
         </div>
 
@@ -380,6 +440,34 @@ export default function PrivateLandingShell({
         )}
       </section>
     </main>
+  )
+}
+
+function TelegramIcon() {
+  return (
+    <svg width="23" height="23" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M21.45 3.35 18.3 19.12c-.24 1.11-.88 1.38-1.78.86l-4.8-3.54-2.32 2.23c-.25.26-.47.47-.96.47l.34-4.89 8.9-8.04c.39-.34-.08-.53-.6-.19L6.08 12.95 1.34 11.47c-1.03-.32-1.05-1.03.21-1.52L20.1 2.8c.86-.32 1.61.2 1.35.55Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
+
+function ShoppingBagIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5.4 8.4h13.2l.75 11.1H4.65L5.4 8.4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M8.5 9V6.9a3.5 3.5 0 0 1 7 0V9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m9 18 6-6-6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
 
@@ -589,29 +677,97 @@ const s: Record<string, React.CSSProperties> = {
   actions: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
+    gap: 10,
   },
-  primaryBtn: {
+  memberEntryCard: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    minHeight: 56,
-    borderRadius: 18,
-    background: 'linear-gradient(135deg, #2563eb, #0f766e)',
-    color: '#fff',
+    gap: 12,
+    minHeight: 80,
+    padding: '14px 14px',
+    borderRadius: 20,
+    background: 'linear-gradient(135deg, #d7ebff 0%, #c8e2fb 100%)',
+    border: '1px solid rgba(0, 136, 204, 0.18)',
+    boxShadow: '0 10px 24px rgba(37, 99, 235, 0.10)',
     textDecoration: 'none',
-    fontSize: 18,
-    fontWeight: 900,
-    boxShadow: '0 18px 40px rgba(37, 99, 235, 0.28)',
+    color: '#0f2742',
+    boxSizing: 'border-box',
   },
-  primaryIcon: {
-    fontSize: 18,
+  productEntryCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 80,
+    padding: '14px 14px',
+    borderRadius: 20,
+    background: 'linear-gradient(135deg, #edf6ff 0%, #e1efff 100%)',
+    border: '1px solid rgba(37, 99, 235, 0.13)',
+    boxShadow: '0 8px 20px rgba(37, 99, 235, 0.08)',
+    textDecoration: 'none',
+    color: '#0f2742',
+    boxSizing: 'border-box',
+  },
+  entryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    display: 'grid',
+    placeItems: 'center',
+    flexShrink: 0,
+    background: 'rgba(255, 255, 255, 0.72)',
+    boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.78)',
+  },
+  memberEntryIcon: {
+    color: '#1684d6',
+  },
+  productEntryIcon: {
+    color: '#2563eb',
+  },
+  entryBody: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  entryTitle: {
+    fontFamily: ENTRY_TITLE_FONT,
+    fontSize: 16,
+    fontWeight: 700,
+    lineHeight: 1.25,
+    letterSpacing: '-0.2px',
+    color: '#102a43',
+  },
+  entrySubtitle: {
+    fontSize: 12,
+    fontWeight: 400,
+    lineHeight: 1.45,
+    color: '#526b82',
+  },
+  memberEntryAction: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 2,
+    flexShrink: 0,
+    color: '#0878c9',
+    fontSize: 12,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+  memberEntryChevron: {
+    fontSize: 20,
     lineHeight: 1,
   },
-  primaryText: {
-    fontSize: 17,
-    lineHeight: 1,
+  productEntryArrow: {
+    width: 34,
+    height: 34,
+    borderRadius: '50%',
+    display: 'grid',
+    placeItems: 'center',
+    flexShrink: 0,
+    color: '#fff',
+    background: '#3b82f6',
+    boxShadow: '0 5px 12px rgba(37, 99, 235, 0.22)',
   },
   quickGrid: {
     display: 'grid',
