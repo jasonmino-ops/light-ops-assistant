@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useDocumentLang } from '@/app/components/useDocumentLang'
 
@@ -221,7 +221,6 @@ export default function PrivateLandingShell({
   const [lang, setLang] = useState<Lang>(initialLang)
   const [visitorId, setVisitorId] = useState<string | null>(null)
   const [visitorReady, setVisitorReady] = useState(false)
-  const bindingMemberRef = useRef(false)
   useDocumentLang(lang)
 
   const t = copy[lang]
@@ -282,38 +281,6 @@ export default function PrivateLandingShell({
       localStorage.setItem(LS_KEY, next)
     } catch {
       // ignore
-    }
-  }
-
-  async function bindCurrentTelegramUser(event: MouseEvent<HTMLAnchorElement>) {
-    event.preventDefault()
-    if (bindingMemberRef.current) return
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tg = (window as any).Telegram?.WebApp
-    const initData = typeof tg?.initData === 'string' ? tg.initData : ''
-    if (!initData) {
-      window.alert(lang === 'zh' ? '请在 Telegram 中打开' : lang === 'en' ? 'Please open in Telegram' : 'សូមបើកនៅក្នុង Telegram')
-      return
-    }
-
-    bindingMemberRef.current = true
-    try {
-      const response = await fetch('/api/e-life/recent-stores/visit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData, storeCode }),
-      })
-      const body = await response.json().catch(() => null)
-      if (!response.ok || !body?.ok) throw new Error('BIND_FAILED')
-
-      tg?.HapticFeedback?.notificationOccurred?.('success')
-      window.alert(lang === 'zh' ? '绑定成功' : lang === 'en' ? 'Successfully bound' : 'ភ្ជាប់បានជោគជ័យ')
-    } catch {
-      tg?.HapticFeedback?.notificationOccurred?.('error')
-      window.alert(lang === 'zh' ? '绑定失败，请重试' : lang === 'en' ? 'Binding failed. Please try again.' : 'ការភ្ជាប់បរាជ័យ។ សូមព្យាយាមម្តងទៀត។')
-    } finally {
-      bindingMemberRef.current = false
     }
   }
 
@@ -403,8 +370,9 @@ export default function PrivateLandingShell({
         <div style={s.actions}>
           {CUSTOMER_BOT && (
             <a
-              href={`/m/${encodeURIComponent(storeCode)}`}
-              onClick={bindCurrentTelegramUser}
+              href={`https://t.me/${CUSTOMER_BOT}?start=bind_${encodeURIComponent(storeCode)}`}
+              target="_blank"
+              rel="noreferrer"
               style={s.memberEntryCard}
             >
               <span style={{ ...s.entryIcon, ...s.memberEntryIcon }} aria-hidden="true">
