@@ -9,6 +9,8 @@ const PRODUCT_SELECT = {
   name: true,
   spec: true,
   sellPrice: true,
+  discountPrice: true,
+  discountEnabled: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -21,6 +23,8 @@ const PRODUCT_LEGACY_SELECT = {
   name: true,
   spec: true,
   sellPrice: true,
+  discountPrice: true,
+  discountEnabled: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -99,6 +103,8 @@ export async function GET(req: NextRequest) {
         name: p.name,
         spec: p.spec,
         sellPrice: p.sellPrice.toNumber(),
+        discountPrice: p.discountPrice?.toNumber() ?? null,
+        discountEnabled: p.discountEnabled,
         status: p.status,
         categoryId: p.categoryId,
         imageUrl: p.imageUrl,
@@ -134,6 +140,8 @@ export async function GET(req: NextRequest) {
     name: product.name,
     spec: product.spec,
     sellPrice: product.sellPrice.toNumber(),
+    discountPrice: product.discountPrice?.toNumber() ?? null,
+    discountEnabled: product.discountEnabled,
     categoryId: product.categoryId,
     imageUrl: product.imageUrl,
     imageUrls: parseImageUrls(product.imageUrls, product.imageUrl),
@@ -154,20 +162,26 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; categoryId?: string | null }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; categoryId?: string | null }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { barcode, name, spec, sellPrice, categoryId } = body
+  const { barcode, name, spec, sellPrice, discountPrice, discountEnabled = false, categoryId } = body
 
   if (!name?.trim()) {
     return NextResponse.json({ error: 'MISSING_NAME', message: '商品名不能为空' }, { status: 400 })
   }
   if (sellPrice === undefined || isNaN(Number(sellPrice)) || Number(sellPrice) <= 0) {
     return NextResponse.json({ error: 'INVALID_PRICE', message: '售价必须大于 0' }, { status: 400 })
+  }
+  if (discountPrice != null && (isNaN(Number(discountPrice)) || Number(discountPrice) <= 0 || Number(discountPrice) >= Number(sellPrice))) {
+    return NextResponse.json({ error: 'INVALID_DISCOUNT_PRICE', message: '折扣价必须大于 0 且低于原售价' }, { status: 400 })
+  }
+  if (discountEnabled && discountPrice == null) {
+    return NextResponse.json({ error: 'MISSING_DISCOUNT_PRICE', message: '开启折扣前请填写折扣价' }, { status: 400 })
   }
 
   const cleanBarcode = barcode?.trim() || `MANUAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
@@ -190,6 +204,8 @@ export async function POST(req: NextRequest) {
       name: name.trim(),
       spec: spec?.trim() || null,
       sellPrice: String(sellPrice),
+      discountPrice: discountPrice == null ? null : String(discountPrice),
+      discountEnabled,
       status: 'ACTIVE',
       categoryId: categoryId ?? null,
     },
@@ -203,6 +219,8 @@ export async function POST(req: NextRequest) {
       name: created.name,
       spec: created.spec,
       sellPrice: created.sellPrice.toNumber(),
+      discountPrice: created.discountPrice?.toNumber() ?? null,
+      discountEnabled: created.discountEnabled,
       status: created.status,
       categoryId: created.categoryId,
       imageUrl: created.imageUrl,
