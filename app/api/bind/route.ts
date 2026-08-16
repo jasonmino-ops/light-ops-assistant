@@ -20,6 +20,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { signSession } from '@/lib/session'
 import { sendAndLogMessage, WELCOME_TEXT } from '@/lib/telegram'
+import { canExtendOwnerAcrossTenant } from '@/lib/owner-store-hub'
 
 const MERCHANT_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
 
@@ -140,12 +141,12 @@ export async function POST(req: NextRequest) {
   }
   const telegramId = String(tgUser.id)
 
-  // ── 3. Check if telegramId already bound to ANY active user globally ─────
-  // Rule: one Telegram account → one active user binding across all tenants.
-  // Same-tenant multi-store is NOT a conflict (user already exists, just re-scanned).
-  // Cross-tenant and same-tenant different-user are both blocked.
-  const existing = await prisma.user.findFirst({
+  // ── 3. Check existing active identities globally ─────────────────────────
+  // Same-tenant multi-store keeps reusing one User row. Cross-tenant extension
+  // is allowed only when both the existing identities and invitation are OWNER.
+  const existingUsers = await prisma.user.findMany({
     where: { telegramId, status: 'ACTIVE' },
+    orderBy: { createdAt: 'asc' },
     select: {
       id: true,
       displayName: true,
@@ -159,6 +160,10 @@ export async function POST(req: NextRequest) {
       },
     },
   })
+  const existing =
+    existingUsers.find((user) => user.tenantId === bt.tenantId) ??
+    existingUsers[0] ??
+    null
 
   if (bt.status !== 'ACTIVE' || bt.usedCount >= bt.maxUses) {
     const alreadyBoundToThisStore =
@@ -274,12 +279,19 @@ export async function POST(req: NextRequest) {
       return res
     }
 
-    const message = isSameTenant
-      ? `该 Telegram 账号已绑定本商户账号「${existing.displayName}」，如需重新绑定请联系管理员解绑`
-      : tenantArchived
+    if (!canExtendOwnerAcrossTenant(existingUsers.map((user) => user.role), bt.role)) {
+      const message = tenantArchived
         ? `该 Telegram 账号已绑定已归档商户「${existing.tenant?.name ?? ''}」，请联系运营管理员解绑后重试`
         : `该 Telegram 账号已绑定其他商户「${existing.tenant?.name ?? ''}」，不允许跨商户重复绑定，请联系运营管理员`
-    return NextResponse.json({ error: 'ALREADY_BOUND', message }, { status: 409 })
+      return NextResponse.json({ error: 'ALREADY_BOUND', message }, { status: 409 })
+    }
+
+    logBind('cross_tenant_owner_extension', {
+      token: tokenHash(token),
+      storeId: bt.storeId,
+      telegramId: redactedTelegramId(telegramId),
+      existingOwnerCount: existingUsers.length,
+    })
   }
 
   // ── 4. Create user + store role ───────────────────────────────────────────
