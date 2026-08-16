@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
   const [products, categories, contact, location] = await Promise.all([
     prisma.product.findMany({
       where: { tenantId: store.tenantId, status: 'ACTIVE' },
-      select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, categoryId: true, imageUrl: true, imageUrls: true },
+      select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, discountPrice: true, discountEnabled: true, categoryId: true, imageUrl: true, imageUrls: true },
       orderBy: { name: 'asc' },
       take: 200,
     }),
@@ -150,7 +150,9 @@ export async function GET(req: NextRequest) {
       descEn: p.descEn ?? null,
       descKm: p.descKm ?? null,
       spec:   p.spec ?? null,
-      price:  p.sellPrice.toNumber(),
+      price:  p.discountEnabled && p.discountPrice ? p.discountPrice.toNumber() : p.sellPrice.toNumber(),
+      originalPrice: p.sellPrice.toNumber(),
+      discountEnabled: p.discountEnabled && !!p.discountPrice,
       categoryId: p.categoryId ?? null,
       imageUrl:   p.imageUrl ?? null,
       imageUrls:  parseImageUrls(p.imageUrls, p.imageUrl),

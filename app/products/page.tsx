@@ -98,6 +98,8 @@ type Product = {
   name: string
   spec: string | null
   sellPrice: number
+  discountPrice: number | null
+  discountEnabled: boolean
   status: 'ACTIVE' | 'DISABLED'
   categoryId: string | null
   imageUrl: string | null
@@ -320,6 +322,8 @@ export default function ProductsPage() {
   const [editBarcode, setEditBarcode] = useState('')
   const [editSpec, setEditSpec] = useState('')
   const [editPrice, setEditPrice] = useState('')
+  const [editDiscountPrice, setEditDiscountPrice] = useState('')
+  const [editDiscountEnabled, setEditDiscountEnabled] = useState(false)
   const [editStatus, setEditStatus] = useState<'ACTIVE' | 'DISABLED'>('ACTIVE')
   const [editCategoryId, setEditCategoryId] = useState<string>('')
 
@@ -328,6 +332,8 @@ export default function ProductsPage() {
   const [newName, setNewName] = useState('')
   const [newSpec, setNewSpec] = useState('')
   const [newPrice, setNewPrice] = useState('')
+  const [newDiscountPrice, setNewDiscountPrice] = useState('')
+  const [newDiscountEnabled, setNewDiscountEnabled] = useState(false)
   const [newCategoryId, setNewCategoryId] = useState<string>('')
   const [newImageFile, setNewImageFile] = useState<File | null>(null)
   const [newImagePreview, setNewImagePreview] = useState<string | null>(null)
@@ -1313,6 +1319,8 @@ export default function ProductsPage() {
     setNewName('')
     setNewSpec('')
     setNewPrice('')
+    setNewDiscountPrice('')
+    setNewDiscountEnabled(false)
     setNewCategoryId('')
     clearNewImage()
     setMode('idle')
@@ -1375,6 +1383,8 @@ export default function ProductsPage() {
         setNewName(draft.name ?? '')
         setNewSpec(draft.spec ?? '')
         setNewPrice('')
+        setNewDiscountPrice('')
+        setNewDiscountEnabled(false)
         setNewCategoryId(draft.categoryId ?? '')
         if (photoCreatePreview) {
           setNewImageFiles([photoCreateFile])
@@ -1414,6 +1424,8 @@ export default function ProductsPage() {
       name: match.name,
       spec: match.spec,
       sellPrice: match.price,
+      discountPrice: null,
+      discountEnabled: false,
       status: match.status,
       categoryId: match.categoryId,
       imageUrl: match.imageUrl,
@@ -1424,6 +1436,8 @@ export default function ProductsPage() {
     setEditBarcode(next.barcode)
     setEditSpec(next.spec ?? '')
     setEditPrice(String(next.sellPrice))
+    setEditDiscountPrice(next.discountPrice == null ? '' : String(next.discountPrice))
+    setEditDiscountEnabled(next.discountEnabled)
     setEditStatus(next.status)
     setEditCategoryId(next.categoryId ?? '')
     setMode('found')
@@ -1545,6 +1559,8 @@ export default function ProductsPage() {
     setNewName('')
     setNewSpec('')
     setNewPrice('')
+    setNewDiscountPrice('')
+    setNewDiscountEnabled(false)
     setNewCategoryId('')
     clearNewImage()
     setProduct(null)
@@ -1688,6 +1704,8 @@ export default function ProductsPage() {
         setEditBarcode(p.barcode)
         setEditSpec(p.spec ?? '')
         setEditPrice(String(p.sellPrice))
+        setEditDiscountPrice(p.discountPrice == null ? '' : String(p.discountPrice))
+        setEditDiscountEnabled(p.discountEnabled)
         setEditStatus(p.status)
         setEditCategoryId(p.categoryId ?? '')
         setMode('found')
@@ -1702,6 +1720,8 @@ export default function ProductsPage() {
           setNewName('')
           setNewSpec('')
           setNewPrice('')
+          setNewDiscountPrice('')
+          setNewDiscountEnabled(false)
           setMode('not-found')
           blockHidBriefly()
           setHidMsg({ type: 'fail', text: fmt('products.hidNotFound', { barcode: b }) })
@@ -1774,10 +1794,13 @@ export default function ProductsPage() {
   async function handleSave() {
     if (!product) return
     const price = parseFloat(editPrice)
+    const discountPrice = editDiscountPrice.trim() ? parseFloat(editDiscountPrice) : null
     const cleanBarcode = editBarcode.trim()
     if (!editName.trim()) { setError(t('products.nameRequired')); return }
     if (!cleanBarcode) { setError(t('products.barcodeRequired')); return }
     if (isNaN(price) || price <= 0) { setError(t('products.priceInvalid')); return }
+    if (discountPrice != null && (isNaN(discountPrice) || discountPrice <= 0 || discountPrice >= price)) { setError(t('products.discountPriceInvalid')); return }
+    if (editDiscountEnabled && discountPrice == null) { setError(t('products.discountPriceRequired')); return }
     setError(null)
 
     try {
@@ -1790,6 +1813,8 @@ export default function ProductsPage() {
             name: editName.trim(),
             spec: editSpec.trim() || null,
             sellPrice: price,
+            discountPrice,
+            discountEnabled: editDiscountEnabled,
             status: editStatus,
             categoryId: editCategoryId || null,
           }),
@@ -1814,8 +1839,11 @@ export default function ProductsPage() {
   async function handleCreate() {
     if (creating) return
     const price = parseFloat(newPrice)
+    const discountPrice = newDiscountPrice.trim() ? parseFloat(newDiscountPrice) : null
     if (!newName.trim()) { setError(t('products.nameRequired')); return }
     if (isNaN(price) || price <= 0) { setError(t('products.priceInvalid')); return }
+    if (discountPrice != null && (isNaN(discountPrice) || discountPrice <= 0 || discountPrice >= price)) { setError(t('products.discountPriceInvalid')); return }
+    if (newDiscountEnabled && discountPrice == null) { setError(t('products.discountPriceRequired')); return }
     setError(null)
     setNewImageError(null)
     setCreating(true)
@@ -1830,6 +1858,8 @@ export default function ProductsPage() {
             name: newName.trim(),
             spec: newSpec.trim() || null,
             sellPrice: price,
+            discountPrice,
+            discountEnabled: newDiscountEnabled,
             categoryId: newCategoryId || null,
           }),
         },
@@ -1856,6 +1886,8 @@ export default function ProductsPage() {
         setEditBarcode(created.barcode)
         setEditSpec(created.spec ?? '')
         setEditPrice(String(created.sellPrice))
+        setEditDiscountPrice(created.discountPrice == null ? '' : String(created.discountPrice))
+        setEditDiscountEnabled(created.discountEnabled)
         setEditStatus(created.status)
         setEditCategoryId(created.categoryId ?? '')
         clearNewImage()
@@ -2161,6 +2193,14 @@ export default function ProductsPage() {
                         placeholder="0.00"
                       />
                     </Field>
+                    <DiscountFields
+                      priceLabel={t('products.fieldDiscountPrice')}
+                      enabledLabel={t('products.fieldDiscountEnabled')}
+                      price={newDiscountPrice}
+                      enabled={newDiscountEnabled}
+                      onPriceChange={setNewDiscountPrice}
+                      onEnabledChange={setNewDiscountEnabled}
+                    />
                     <div style={s.aiDraftStatusLine}>{t('products.aiCreateStatusHint')}</div>
                     <button
                       type="button"
@@ -3252,6 +3292,14 @@ export default function ProductsPage() {
                     ))}
                   </div>
                 </Field>
+                <DiscountFields
+                  priceLabel={t('products.fieldDiscountPrice')}
+                  enabledLabel={t('products.fieldDiscountEnabled')}
+                  price={editDiscountPrice}
+                  enabled={editDiscountEnabled}
+                  onPriceChange={setEditDiscountPrice}
+                  onEnabledChange={setEditDiscountEnabled}
+                />
 
                 <Field label={t('products.fieldCategory')}>
                   <CategorySelect
@@ -3410,6 +3458,14 @@ export default function ProductsPage() {
                     placeholder="0.00"
                   />
                 </Field>
+                <DiscountFields
+                  priceLabel={t('products.fieldDiscountPrice')}
+                  enabledLabel={t('products.fieldDiscountEnabled')}
+                  price={newDiscountPrice}
+                  enabled={newDiscountEnabled}
+                  onPriceChange={setNewDiscountPrice}
+                  onEnabledChange={setNewDiscountEnabled}
+                />
 
                 <Field label={t('products.fieldCategory')}>
                   <CategorySelect
@@ -3453,6 +3509,38 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div style={f.label}>{label}</div>
       {children}
     </div>
+  )
+}
+
+function DiscountFields({
+  priceLabel, enabledLabel, price, enabled, onPriceChange, onEnabledChange,
+}: {
+  priceLabel: string
+  enabledLabel: string
+  price: string
+  enabled: boolean
+  onPriceChange: (value: string) => void
+  onEnabledChange: (value: boolean) => void
+}) {
+  return (
+    <>
+      <Field label={priceLabel}>
+        <input
+          style={s.field}
+          type="text"
+          inputMode="decimal"
+          value={price}
+          onChange={(e) => onPriceChange(e.target.value.replace(/[^0-9.]/g, ''))}
+          placeholder="0.00"
+        />
+      </Field>
+      <Field label={enabledLabel}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 42 }}>
+          <input type="checkbox" checked={enabled} onChange={(e) => onEnabledChange(e.target.checked)} />
+          <span>{enabledLabel}</span>
+        </label>
+      </Field>
+    </>
   )
 }
 

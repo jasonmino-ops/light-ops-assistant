@@ -478,6 +478,8 @@ type ApiProduct = {
   descKm: string | null
   spec:   string | null
   price:  number
+  originalPrice: number
+  discountEnabled: boolean
   categoryId: string | null
   imageUrl:   string | null
   imageUrls?: string[]
@@ -671,7 +673,9 @@ export default function MenuPage() {
   const noneLabel       = lang === 'en' ? 'None'  : lang === 'km' ? 'គ្មាន'   : '不使用'
   const availableProductIds = new Set(apiProducts.map((p) => p.id))
   const activeCart = cart.filter((c) => availableProductIds.has(c.id) && Number.isInteger(c.quantity) && c.quantity > 0)
+  const cartOriginalTotal = activeCart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.originalPrice ?? 0) * c.quantity, 0)
   const cartTotal  = activeCart.reduce((s, c) => s + (apiProducts.find(p => p.id === c.id)?.price ?? 0) * c.quantity, 0)
+  const productDiscountAmount = +(cartOriginalTotal - cartTotal).toFixed(2)
 
   // 在确认弹窗开启 / 购物车变动 / 选中券变动时，重新拉可用券与折扣金额
   useEffect(() => {
@@ -1509,7 +1513,12 @@ export default function MenuPage() {
                           {product.spec && <div style={s.productSpec}>{product.spec}</div>}
                           {pDesc(product, lang) && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, lineHeight: 1.4 }}>{pDesc(product, lang)}</div>}
                           <div style={s.productFoot}>
-                            <span style={s.productPrice}>{money(product.price)}</span>
+                            <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                              <span style={s.productPrice}>{money(product.price)}</span>
+                              {product.discountEnabled && (
+                                <span style={{ color: '#9ca3af', fontSize: 12, textDecoration: 'line-through' }}>{money(product.originalPrice)}</span>
+                              )}
+                            </span>
                             {qty === 0 ? (
                               <button style={s.addBtn} onClick={() => handleAddClick(product.id)}>
                                 <span style={s.plus}>+</span>
@@ -1839,14 +1848,14 @@ export default function MenuPage() {
 
               {/* 商品金额 */}
               <div style={s.chkRow}>
-                <span style={s.chkRowKey}>{ui.itemCount(cartCount)}</span>
-                <span style={s.chkRowMuted}>{money(cartTotal)}</span>
+                <span style={s.chkRowKey}>{lang === 'en' ? 'Original price' : lang === 'km' ? 'តម្លៃដើម' : '商品原价'}</span>
+                <span style={s.chkRowMuted}>{money(cartOriginalTotal)}</span>
               </div>
 
               {/* 优惠合计 */}
               <div style={s.chkRow}>
                 <span style={s.chkRowKey}>{ui.discountLabel}</span>
-                <span style={s.chkRowMuted}>-{money(couponState?.discountAmount ?? 0)}</span>
+                <span style={s.chkRowMuted}>-{money(productDiscountAmount + (couponState?.discountAmount ?? 0))}</span>
               </div>
 
               <div style={s.confirmTotal}>
@@ -2095,7 +2104,7 @@ export default function MenuPage() {
             <div style={{ ...s.cartHint, color: submitError ? '#ff4d4f' : '#c0c0c0' }}>
               {submitError || (cartCount === 0 ? ui.notSelected : ui.itemCount(cartCount))}
               {cartCount > 0 && !submitError && (
-                <span style={s.discountInline}> · {ui.discountLabel} {money(0)}</span>
+                <span style={s.discountInline}> · {ui.discountLabel} {money(productDiscountAmount)}</span>
               )}
             </div>
           </div>

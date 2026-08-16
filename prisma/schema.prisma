@@ -346,6 +346,8 @@ model Product {
   name             String
   spec             String?
   sellPrice        Decimal       @db.Decimal(12, 2)
+  discountPrice    Decimal?      @db.Decimal(12, 2)
+  discountEnabled  Boolean       @default(false)
   status           ProductStatus @default(ACTIVE)
   categoryId       String?
   nameZh           String?

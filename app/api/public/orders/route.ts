@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
   const productIds = items.map((i) => i.productId)
   const products = await prisma.product.findMany({
     where: { id: { in: productIds }, tenantId: store.tenantId, status: 'ACTIVE' },
-    select: { id: true, name: true, spec: true, sellPrice: true },
+    select: { id: true, name: true, spec: true, sellPrice: true, discountPrice: true, discountEnabled: true },
   })
 
   const productMap = new Map(products.map((p) => [p.id, p]))
@@ -160,14 +160,19 @@ export async function POST(req: NextRequest) {
 
   // ── 服务端计算总金额 ────────────────────────────────────────────────────
   let subtotal = 0
+  let saleSubtotal = 0
   const itemsForJson = items.map((item) => {
     const p = productMap.get(item.productId)!
-    const price = p.sellPrice.toNumber()
+    const originalPrice = p.sellPrice.toNumber()
+    const price = p.discountEnabled && p.discountPrice ? p.discountPrice.toNumber() : originalPrice
     const lineAmount = price * item.quantity
-    subtotal += lineAmount
-    return { productId: item.productId, name: p.name, spec: p.spec ?? null, price, quantity: item.quantity, lineAmount, ...(item.sugar ? { sugar: item.sugar } : {}) }
+    subtotal += originalPrice * item.quantity
+    saleSubtotal += lineAmount
+    return { productId: item.productId, name: p.name, spec: p.spec ?? null, originalPrice, price, quantity: item.quantity, lineAmount, ...(item.sugar ? { sugar: item.sugar } : {}) }
   })
   subtotal = +subtotal.toFixed(2)
+  saleSubtotal = +saleSubtotal.toFixed(2)
+  const productDiscountAmount = +(subtotal - saleSubtotal).toFixed(2)
   const trimmedTgId = customerTelegramId?.trim() || null
 
   // ── 校验优惠券（如有） ───────────────────────────────────────────────────
@@ -190,19 +195,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'COUPON_EXPIRED', message: '优惠券已过期' }, { status: 400 })
     }
     const minSpend = coupon.minSpend.toNumber()
-    if (subtotal < minSpend) {
+    if (saleSubtotal < minSpend) {
       return NextResponse.json({ error: 'COUPON_MIN_NOT_MET', message: `未满 ${minSpend.toFixed(2)} 不可用` }, { status: 400 })
     }
-    if (coupon.type === 'AMOUNT_OFF') discountAmount = Math.min(Number(coupon.amountOff ?? 0), subtotal)
+    if (coupon.type === 'AMOUNT_OFF') discountAmount = Math.min(Number(coupon.amountOff ?? 0), saleSubtotal)
     else if (coupon.type === 'PERCENT_OFF') {
       const p = Math.max(0, Math.min(100, Number(coupon.percentOff ?? 0)))
-      discountAmount = +((subtotal * p) / 100).toFixed(2)
+      discountAmount = +((saleSubtotal * p) / 100).toFixed(2)
     }
     discountAmount = +Math.max(0, discountAmount).toFixed(2)
     couponSnapshot = { id: coupon.id, name: coupon.name, type: coupon.type as 'AMOUNT_OFF' | 'PERCENT_OFF' }
   }
 
-  const payableAmount = +Math.max(0, subtotal - discountAmount).toFixed(2)
+  const couponDiscountAmount = discountAmount
+  discountAmount = +(productDiscountAmount + couponDiscountAmount).toFixed(2)
+  const payableAmount = +Math.max(0, saleSubtotal - couponDiscountAmount).toFixed(2)
   const totalAmount = payableAmount
 
   // ── 推广归因（非阻断，CampaignLink 不存在时静默忽略） ────────────────────
@@ -299,7 +306,7 @@ export async function POST(req: NextRequest) {
             couponId:   couponSnapshot.id,
             telegramId: trimmedTgId!,
             orderNo:    created.orderNo,
-            discountAmount: String(discountAmount.toFixed(2)),
+            discountAmount: String(couponDiscountAmount.toFixed(2)),
           },
         })
       }

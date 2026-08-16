@@ -75,16 +75,17 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     storeName: store.name,
     orders: orders.map((o) => {
-      type RawItem = { lineAmount?: number; price?: number; quantity?: number }
+      type RawItem = { lineAmount?: number; price?: number; originalPrice?: number; quantity?: number }
       const items = JSON.parse(o.itemsJson) as RawItem[]
       const subtotalFromItems = +items.reduce((sum, it) => {
-        const l = typeof it.lineAmount === 'number' ? it.lineAmount
+        const l = typeof it.originalPrice === 'number' && typeof it.quantity === 'number' ? it.originalPrice * it.quantity
+                : typeof it.lineAmount === 'number' ? it.lineAmount
                 : (typeof it.price === 'number' && typeof it.quantity === 'number' ? it.price * it.quantity : 0)
         return sum + l
       }, 0).toFixed(2)
       const total = o.totalAmount.toNumber()
       const red = redByOrder.get(o.orderNo)
-      const discountAmount = red ? red.discountAmount.toNumber() : +(subtotalFromItems - total).toFixed(2)
+      const discountAmount = +(subtotalFromItems - total).toFixed(2)
       const safeDiscount   = (!Number.isFinite(discountAmount) || discountAmount < 0) ? 0 : discountAmount
       // 保证 subtotal - discount = total（兜底校准）
       const subtotal = +(total + safeDiscount).toFixed(2)
