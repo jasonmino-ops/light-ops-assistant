@@ -369,10 +369,8 @@ export default function PrivateLandingShell({
 
         <div style={s.actions}>
           {CUSTOMER_BOT && (
-            <a
-              href={`https://t.me/${CUSTOMER_BOT}?start=bind_${encodeURIComponent(storeCode)}`}
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href={`/me?code=${encodeURIComponent(storeCode)}`}
               style={s.memberEntryCard}
             >
               <span style={{ ...s.entryIcon, ...s.memberEntryIcon }} aria-hidden="true">
@@ -386,7 +384,7 @@ export default function PrivateLandingShell({
                 {t.memberEntry.action}
                 <span style={s.memberEntryChevron}>›</span>
               </span>
-            </a>
+            </Link>
           )}
 
           <Link
