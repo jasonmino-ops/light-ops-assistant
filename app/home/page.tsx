@@ -350,7 +350,8 @@ export default function HomePage() {
             <div style={s.brandSub}>{t('home.brandSub')}</div>
             {realRole === 'OWNER' && (
               <Link href="/my-stores" style={s.myStoresLink}>
-                ‹ {lang === 'km' ? 'ហាងរបស់ខ្ញុំ' : lang === 'en' ? 'My Stores' : '我的店铺'}
+                <span aria-hidden="true" style={s.myStoresChevron}>‹</span>
+                <span>{lang === 'km' ? 'ហាងរបស់ខ្ញុំ' : lang === 'en' ? 'My Stores' : '我的店铺'}</span>
               </Link>
             )}
           </div>
@@ -704,8 +705,8 @@ function LangDropdown({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => voi
   const [open, setOpen] = useState(false)
   const items: Array<{ code: Lang; flag: string; label: string }> = [
     { code: 'zh', flag: '🇨🇳', label: '中文' },
-    { code: 'en', flag: '🇺🇸', label: 'English' },
-    { code: 'km', flag: '🇰🇭', label: 'ខ្មែរ' },
+    { code: 'en', flag: '🇬🇧', label: 'English' },
+    { code: 'km', flag: '🇰🇭', label: 'ភាសាខ្មែរ' },
   ]
   const current = items.find((i) => i.code === lang) ?? items[0]
 
@@ -1090,12 +1091,28 @@ const s: Record<string, React.CSSProperties> = {
   },
   myStoresLink: {
     width: 'fit-content',
-    marginTop: 2,
-    color: '#1677ff',
-    fontSize: 11,
-    fontWeight: 650,
-    lineHeight: 1.35,
+    minHeight: 36,
+    marginTop: 7,
+    padding: '6px 11px 6px 9px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    border: '1px solid #cfe4ff',
+    background: '#eef6ff',
+    color: '#007aff',
+    fontSize: 12,
+    fontWeight: 700,
+    lineHeight: 1.2,
     textDecoration: 'none',
+    boxShadow: '0 3px 10px rgba(0,122,255,0.08)',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  myStoresChevron: {
+    fontSize: 20,
+    lineHeight: 0.8,
+    fontWeight: 450,
+    marginTop: -1,
   },
   brandRight: {
     display: 'flex',
