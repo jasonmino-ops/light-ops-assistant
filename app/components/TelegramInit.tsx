@@ -236,9 +236,10 @@ export default function TelegramInit({
                 window.location.replace(returnUrl)
                 return
               }
-              // 首次进入（sessionStorage 为空 → 触发了 auth）统一落到 /home，
-              // 不管 WebView 上次记住的路径是哪里（避免留在 /dashboard 等非默认页）
-              window.location.replace('/home')
+              // Only the authenticated server may choose the multi-store hub.
+              // All other or missing values keep the existing /home landing.
+              const nextPath = body.nextPath === '/my-stores' ? '/my-stores' : '/home'
+              window.location.replace(nextPath)
             }
           } else if (body.error === 'USER_NOT_FOUND') {
             // Use same three-source priority for start_param.

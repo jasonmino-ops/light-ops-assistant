@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { signSession } from '@/lib/session'
+import { getActiveOwnerStoresByTelegramId, getOwnerLandingPath } from '@/lib/owner-store-hub'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
 
@@ -87,8 +88,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Look up user by telegramId (cross-tenant: each user belongs to their own tenant)
-  const user = await prisma.user.findFirst({
+  const users = await prisma.user.findMany({
     where: { telegramId: telegramUserId, status: 'ACTIVE' },
+    orderBy: { createdAt: 'asc' },
     include: {
       tenant: {
         select: { status: true },
@@ -101,6 +103,10 @@ export async function POST(req: NextRequest) {
       },
     },
   })
+  // Cross-tenant OWNER identities can coexist. Prefer the earliest identity
+  // whose tenant is still active, while preserving TENANT_INACTIVE when every
+  // bound tenant has been stopped.
+  const user = users.find((candidate) => candidate.tenant.status === 'ACTIVE') ?? users[0]
 
   if (!user) {
     return NextResponse.json(
@@ -135,8 +141,12 @@ export async function POST(req: NextRequest) {
     role: user.role,
   })
 
+  const nextPath = user.role === 'OWNER'
+    ? getOwnerLandingPath((await getActiveOwnerStoresByTelegramId(telegramUserId)).length)
+    : '/home'
+
   const isProd = process.env.NODE_ENV === 'production'
-  const res = NextResponse.json({ ok: true, role: user.role })
+  const res = NextResponse.json({ ok: true, role: user.role, nextPath })
   res.cookies.set('auth-session', sessionToken, {
     httpOnly: true,
     sameSite: isProd ? 'none' : 'lax',

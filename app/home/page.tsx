@@ -348,6 +348,11 @@ export default function HomePage() {
           <div style={s.brandTextBlock}>
             <div style={s.brandTitle}>{displayStoreName}</div>
             <div style={s.brandSub}>{t('home.brandSub')}</div>
+            {realRole === 'OWNER' && (
+              <Link href="/my-stores" style={s.myStoresLink}>
+                ‹ {lang === 'km' ? 'ហាងរបស់ខ្ញុំ' : lang === 'en' ? 'My Stores' : '我的店铺'}
+              </Link>
+            )}
           </div>
         </div>
         <div style={s.brandRight}>
@@ -1082,6 +1087,15 @@ const s: Record<string, React.CSSProperties> = {
     color: '#6b7280',
     marginTop: 3,
     letterSpacing: '0.01em',
+  },
+  myStoresLink: {
+    width: 'fit-content',
+    marginTop: 2,
+    color: '#1677ff',
+    fontSize: 11,
+    fontWeight: 650,
+    lineHeight: 1.35,
+    textDecoration: 'none',
   },
   brandRight: {
     display: 'flex',
