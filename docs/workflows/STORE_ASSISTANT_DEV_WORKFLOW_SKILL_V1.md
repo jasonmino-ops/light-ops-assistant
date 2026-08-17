@@ -26,13 +26,23 @@
 8. 不能只说 done，必须给可复核的验收结果。
 9. 生产 migration 必须单独执行、单独验证，不允许依赖 Vercel build。
 10. Obsidian 是最终知识沉淀入口，重要开发、故障、冻结都必须同步。
+11. 任何新开发线路必须先通过 Production/Mainline Lineage Gate；“origin/main 最新”不能替代血统检查。
+12. FIELD VERIFIED 只代表真实环境验收通过，不等于 CLOSED。
+13. Production Release 前不得跳过已有 FIELD VERIFIED capability regression tests。
 
 ## 3. 标准工作流总览
 
 标准路径：
 
 ```text
-Obsidian 记录范围
+获取 Current Production SHA
+→ git fetch origin
+→ 获取 origin/main HEAD
+→ ./scripts/check-release-lineage.sh <production_sha>
+→ Lineage Gate PASS
+→ 检查 working tree CLEAN
+→ 创建独立 feature branch / worktree
+→ Obsidian 记录范围
 → Claude 架构/风险审查
 → ChatGPT 收口为 Codex 小步任务
 → Codex 小步开发
@@ -43,12 +53,48 @@ Obsidian 记录范围
 → production migration（如有）
 → Browser / Playwright 验收
 → 真机测试
-→ Obsidian 冻结
+→ Release Closure Lineage Check
+→ Obsidian 冻结 / CLOSED
 ```
 
 不是所有任务都需要走完整链路。文档任务、纯 UI 小修、只读检查可按风险简化。但只要涉及数据库、主链路、支付、权限、会员余额、离线订单、Telegram 绑定，必须走完整链路。
 
 ## 4. 阶段职责边界
+
+### 4.0 新开发线路 Release Lineage Gate
+
+新 feature branch / worktree 创建前，必须按以下顺序执行：
+
+1. 从现有可靠 deployment metadata 或人工确认取得 Current Production SHA。
+2. 执行 `git fetch origin`。
+3. 取得 `origin/main` HEAD。
+4. 在准备作为开发基线的干净 worktree 中执行：
+
+   ```bash
+   ./scripts/check-release-lineage.sh <production_sha>
+   ```
+
+5. 仅当 `Production ancestor of origin/main: YES` 且 `Safe Development Base: YES` 时，才允许创建开发线路。
+
+脚本参数缺失、Production SHA 不存在、`origin/main` 不存在、血统无法判断或 working tree DIRTY 时，一律不得默认 PASS。
+
+当 Production 不是 `origin/main` 的 ancestor 时，必须停止并报告：
+
+```text
+BLOCKED — PRODUCTION MAINLINE DIVERGENCE
+```
+
+禁止继续创建 feature branch、开始开发，或使用“main 已更新”绕过该门禁。
+
+新开发线路回报必须包含：
+
+```text
+Production SHA:
+origin/main SHA:
+Production Is Ancestor Of origin/main: YES / NO
+Working Tree: CLEAN / DIRTY
+Safe Development Base: YES / NO
+```
 
 ### 4.1 Obsidian 记录范围
 
@@ -118,6 +164,16 @@ npx prisma generate   # schema 变更后必须跑
 npm run build         # 所有开发任务必须跑
 npm run test:smoke:prod # Browser-Setup-01 后关键页面任务优先跑
 ```
+
+Production Release 前必须先执行仓库中与本次影响范围及既有 FIELD VERIFIED 能力对应的专项 regression tests。已有测试不得跳过；任一相关测试 FAIL，Production Release 必须 BLOCKED。当前至少保护：
+
+- Product Discount
+- OWNER Multi-Store Hub
+- Customer Display
+- Printing / Tray
+- 仓库中其他已经存在专项 regression tests 的 FIELD VERIFIED capability
+
+V1.0 只复用现有测试，不建设新测试平台。
 
 部署命令：
 
@@ -190,6 +246,23 @@ Browser smoke 不替代 Telegram 真机测试。
 
 ### 4.9 Obsidian 冻结
 
+正式定义：
+
+- **FIELD VERIFIED**：真实设备 / 真实环境验收通过。
+- **CLOSED**：FIELD VERIFIED + 对应代码已进入 `origin/main` + Production Git SHA 与 main 血统一致 + Known Capability Regression 为 NO。
+- `FIELD VERIFIED ≠ CLOSED`。
+
+真机验收通过后还必须执行最终 Closure Check：
+
+```text
+Production SHA:
+origin/main HEAD:
+Production Is Ancestor Of origin/main: YES
+Capability Field Verification: PASS
+Known Regression: NO
+Final Status: CLOSED
+```
+
 冻结条件：
 
 - build 通过
@@ -200,6 +273,7 @@ Browser smoke 不替代 Telegram 真机测试。
 - 真机测试通过
 - 关键禁止事项未违反
 - Obsidian 开发记录已同步
+- Release Closure Lineage Check 已通过
 
 冻结记录必须写：
 
@@ -327,6 +401,7 @@ npm run test:smoke:prod
 
 - 本地 HEAD = origin/main
 - Production commit = 目标 commit
+- Production commit 是 `origin/main` 的 ancestor
 - Deployment State = READY
 - production migration 完成（如有）
 
