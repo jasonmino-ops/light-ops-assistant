@@ -34,7 +34,7 @@ export async function GET(
       where: { id: co.storeId }, select: { name: true },
     })
 
-    type RawItem = { productId?: string; name?: string; spec?: string | null; quantity?: number; price?: number; lineAmount?: number }
+    type RawItem = { productId?: string; name?: string; spec?: string | null; quantity?: number; price?: number; originalPrice?: number; lineAmount?: number }
     let rawItems: RawItem[] = []
     try { rawItems = JSON.parse(co.itemsJson) as RawItem[] } catch { rawItems = [] }
 
@@ -54,13 +54,17 @@ export async function GET(
       }
     })
 
-    const subtotal       = +items.reduce((s, it) => s + it.lineAmount, 0).toFixed(2)
+    const subtotal = +rawItems.reduce((sum, it) => {
+      const quantity = typeof it.quantity === 'number' ? it.quantity : 1
+      const originalPrice = typeof it.originalPrice === 'number' ? it.originalPrice : (typeof it.price === 'number' ? it.price : 0)
+      return sum + originalPrice * quantity
+    }, 0).toFixed(2)
     const payableAmount  = co.totalAmount.toNumber()
     const redemption = await prisma.couponRedemption.findFirst({
       where: { orderNo, tenantId: ctx.tenantId },
       select: { discountAmount: true, couponId: true },
     })
-    let discountAmount = redemption ? redemption.discountAmount.toNumber() : +(subtotal - payableAmount).toFixed(2)
+    let discountAmount = +(subtotal - payableAmount).toFixed(2)
     if (!Number.isFinite(discountAmount) || discountAmount < 0) discountAmount = 0
     let couponName: string | null = null
     if (redemption?.couponId) {

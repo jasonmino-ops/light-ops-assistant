@@ -9,6 +9,8 @@ const PRODUCT_PATCH_SELECT = {
   name: true,
   spec: true,
   sellPrice: true,
+  discountPrice: true,
+  discountEnabled: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -21,6 +23,8 @@ const PRODUCT_PATCH_LEGACY_SELECT = {
   name: true,
   spec: true,
   sellPrice: true,
+  discountPrice: true,
+  discountEnabled: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -109,14 +113,14 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; status?: string; categoryId?: string | null }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; status?: string; categoryId?: string | null }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { barcode, name, spec, sellPrice, status, categoryId } = body
+  const { barcode, name, spec, sellPrice, discountPrice, discountEnabled, status, categoryId } = body
 
   if (barcode !== undefined && !String(barcode).trim()) {
     return NextResponse.json({ error: 'INVALID_BARCODE', message: '条码不能为空' }, { status: 400 })
@@ -129,6 +133,20 @@ export async function PATCH(
   }
   if (status !== undefined && !['ACTIVE', 'DISABLED'].includes(status)) {
     return NextResponse.json({ error: 'INVALID_STATUS' }, { status: 400 })
+  }
+  const current = await prisma.product.findFirst({
+    where: { id, tenantId: ctx.tenantId },
+    select: { sellPrice: true, discountPrice: true, discountEnabled: true },
+  })
+  if (!current) return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 })
+  const effectiveSellPrice = sellPrice === undefined ? current.sellPrice.toNumber() : Number(sellPrice)
+  const effectiveDiscountPrice = discountPrice === undefined ? current.discountPrice?.toNumber() ?? null : discountPrice
+  const effectiveDiscountEnabled = discountEnabled === undefined ? current.discountEnabled : discountEnabled
+  if (effectiveDiscountPrice != null && (isNaN(Number(effectiveDiscountPrice)) || Number(effectiveDiscountPrice) <= 0 || Number(effectiveDiscountPrice) >= effectiveSellPrice)) {
+    return NextResponse.json({ error: 'INVALID_DISCOUNT_PRICE', message: '折扣价必须大于 0 且低于原售价' }, { status: 400 })
+  }
+  if (effectiveDiscountEnabled && effectiveDiscountPrice == null) {
+    return NextResponse.json({ error: 'MISSING_DISCOUNT_PRICE', message: '开启折扣前请填写折扣价' }, { status: 400 })
   }
 
   const cleanBarcode = barcode !== undefined ? String(barcode).trim() : undefined
@@ -147,6 +165,8 @@ export async function PATCH(
     ...(name !== undefined ? { name: String(name).trim() } : {}),
     ...(spec !== undefined ? { spec: spec ? String(spec).trim() || null : null } : {}),
     ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
+    ...(discountPrice !== undefined ? { discountPrice: discountPrice == null ? null : String(discountPrice) } : {}),
+    ...(discountEnabled !== undefined ? { discountEnabled } : {}),
     ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
     ...(categoryId !== undefined ? { categoryId: categoryId ?? null } : {}),
   }
@@ -177,6 +197,8 @@ export async function PATCH(
     name: updated.name,
     spec: updated.spec,
     sellPrice: updated.sellPrice.toNumber(),
+    discountPrice: updated.discountPrice?.toNumber() ?? null,
+    discountEnabled: updated.discountEnabled,
     status: updated.status,
     categoryId: updated.categoryId,
     imageUrl: updated.imageUrl,
