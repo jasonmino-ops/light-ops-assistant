@@ -13,7 +13,70 @@ npm run migrate:prod  # 生产迁移（需先 export DIRECT_URL=<supabase直连�
 npx prisma db seed   # 注入种子数据（幂等）
 ```
 
-无测试框架，验收靠 `npm run build` 通过 + 手动真机验证。
+无统一测试框架，验收靠现有专项 regression tests、`npm run build` 和手动真机验证。
+
+## E-Shop Mainline & Production Lineage Gate（强制）
+
+任何 E-Shop feature branch / worktree 创建前，必须确认当前 Production 的全部 FIELD VERIFIED 能力已经进入 `origin/main` 血统。仅确认“main 最新、干净”不能放行。
+
+标准开线顺序：
+
+1. 取得当前 Production Git SHA（优先使用明确 SHA 或现有可靠 deployment metadata）。
+2. 执行 `git fetch origin`。
+3. 取得 `origin/main` HEAD。
+4. 在准备作为开发基线的干净 worktree 中执行：
+
+   ```bash
+   ./scripts/check-release-lineage.sh <production_sha>
+   ```
+
+5. 只有脚本输出以下两项时，才允许创建独立 feature branch / worktree：
+
+   ```text
+   Production ancestor of origin/main:
+   YES
+   Safe Development Base:
+   YES
+   ```
+
+如果 Production SHA 不存在、参数缺失、无法判断、working tree DIRTY，或 Production 不是 `origin/main` 的 ancestor，必须 fail closed。其中血统分叉统一报告：
+
+```text
+BLOCKED — PRODUCTION MAINLINE DIVERGENCE
+```
+
+禁止在 BLOCKED 状态创建 feature branch、开始开发，或以“origin/main 是最新的”为放行理由。
+
+新开发线路初始化回报必须包含：
+
+```text
+Production SHA:
+origin/main SHA:
+Production Is Ancestor Of origin/main: YES / NO
+Working Tree: CLEAN / DIRTY
+Safe Development Base: YES / NO
+```
+
+### FIELD VERIFIED 与 CLOSED
+
+- **FIELD VERIFIED**：真实设备 / 真实环境验收通过。
+- **CLOSED**：只有同时满足 FIELD VERIFIED、对应代码已进入 `origin/main`、Production Git SHA 与 main 血统一致、Known Capability Regression 为 NO，才可标记。
+- `FIELD VERIFIED ≠ CLOSED`。
+
+每次 Production Release 真机验收后必须做 Closure Check：
+
+```text
+Production SHA:
+origin/main HEAD:
+Production Is Ancestor Of origin/main: YES
+Capability Field Verification: PASS
+Known Regression: NO
+Final Status: CLOSED
+```
+
+### Capability Regression Gate
+
+每次 Production Release 前，必须运行仓库中已有的 FIELD VERIFIED capability 专项 tests；已有测试不得跳过。当前至少保护 Product Discount、OWNER Multi-Store Hub、Customer Display、Printing / Tray，以及仓库中其他已有专项 regression tests。任一相关测试 FAIL，Production Release 必须 BLOCKED。V1.0 不新增测试平台或服务。
 
 ## 身份认证与上下文
 
