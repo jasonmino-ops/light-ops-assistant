@@ -9,6 +9,8 @@ import CheckoutSheet from '@/app/components/CheckoutSheet'
 import { formatMoney } from '@/lib/currency'
 import ComputerConsoleModal from './ComputerConsoleModal'
 import { buildComputerConsoleCashierUrl } from './computer-console-url'
+import SubscriptionReminderCard from './SubscriptionReminderCard'
+import type { SubscriptionReminderResult } from '@/lib/subscription-reminder'
 
 const DEV_STAFF_CTX = process.env.NODE_ENV !== 'production' ? STAFF_CTX : undefined
 const DEV_OWNER_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
@@ -219,12 +221,34 @@ export default function HomePage() {
   const [storeCode, setStoreCode] = useState<string | null>(null)
   const [computerConsoleOpen, setComputerConsoleOpen] = useState(false)
   const [avatarFailed, setAvatarFailed] = useState(false)
+  const [subscriptionReminder, setSubscriptionReminder] = useState<SubscriptionReminderResult | null>(null)
 
   useEffect(() => {
     setStoreName(contextStoreName ?? contextTenantName ?? null)
     setStoreCode(contextStoreCode ?? null)
     setAvatarFailed(false)
   }, [contextStoreName, contextStoreCode, contextTenantName])
+
+  useEffect(() => {
+    if (realRole !== 'OWNER') {
+      setSubscriptionReminder(null)
+      return
+    }
+
+    let cancelled = false
+    apiFetch('/api/subscription/reminder', { cache: 'no-store' }, DEV_OWNER_CTX)
+      .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
+      .then((data: SubscriptionReminderResult) => {
+        if (!cancelled) setSubscriptionReminder(data)
+      })
+      .catch(() => {
+        if (!cancelled) setSubscriptionReminder(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [realRole])
 
   useEffect(() => {
     const today = todayStr()
@@ -368,6 +392,10 @@ export default function HomePage() {
           )}
         </div>
       </div>
+
+      {realRole === 'OWNER' && subscriptionReminder && (
+        <SubscriptionReminderCard reminder={subscriptionReminder} />
+      )}
 
       {realRole === 'OWNER' && (
         <Link href="/mino-bos/assets-check" style={s.minoBosCheckLink}>
