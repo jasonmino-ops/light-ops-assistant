@@ -406,11 +406,11 @@ async function applyForStore(applicant: TelegramApplicant, body: OpenBody) {
 }
 
 export async function GET() {
-  return NextResponse.json({ support: getPlatformSupportConfig() })
+  return NextResponse.json({ support: await getPlatformSupportConfig() })
 }
 
 export async function POST(req: NextRequest) {
-  const support = getPlatformSupportConfig()
+  const support = await getPlatformSupportConfig()
   let body: OpenBody
   try {
     body = await req.json() as OpenBody

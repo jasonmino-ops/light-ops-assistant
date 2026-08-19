@@ -9,7 +9,10 @@ import {
   isPublicAcquisitionSource,
   normalizeAcquisitionInviteCode,
 } from '../lib/sales-lead-invite'
-import { getPlatformSupportConfig } from '../lib/sales-lead-support'
+import {
+  normalizeSalesLeadSupportConfig,
+  normalizeTelegramSupportTarget,
+} from '../lib/sales-lead-support'
 
 function keys(value: unknown, prefix = ''): string[] {
   if (!value || typeof value !== 'object') return []
@@ -33,19 +36,22 @@ assert.equal(
   'http://127.0.0.1:3000/lead/23456789ABCD',
 )
 
-assert.deepEqual(getPlatformSupportConfig({
-  PLATFORM_SUPPORT_PHONE: '+855 12 345 678',
-  TELEGRAM_BOT_USERNAME: '@merchant_support_bot',
+assert.deepEqual(normalizeSalesLeadSupportConfig({
+  supportPhone: '+855 12 345 678',
+  telegramSupportTarget: 'https://t.me/merchant_support_bot',
 }), {
-  phoneDisplay: '+855 12 345 678',
-  phoneHref: 'tel:+85512345678',
-  telegramUrl: 'https://t.me/merchant_support_bot',
+  supportPhone: '+855 12 345 678',
+  telegramSupportTarget: 'merchant_support_bot',
 })
-assert.deepEqual(getPlatformSupportConfig({}), {
-  phoneDisplay: null,
-  phoneHref: null,
-  telegramUrl: null,
+assert.deepEqual(normalizeSalesLeadSupportConfig({ supportPhone: '', telegramSupportTarget: '' }), {
+  supportPhone: null,
+  telegramSupportTarget: null,
 })
+assert.equal(normalizeSalesLeadSupportConfig({ supportPhone: 'abc', telegramSupportTarget: 'merchant_bot' }), null)
+assert.equal(normalizeSalesLeadSupportConfig({ supportPhone: 123, telegramSupportTarget: 'merchant_bot' }), null)
+assert.equal(normalizeTelegramSupportTarget('javascript:alert(1)'), undefined)
+assert.equal(normalizeTelegramSupportTarget('https://example.com/merchant_bot'), undefined)
+assert.equal(normalizeTelegramSupportTarget('https://t.me/merchant_bot?x=1'), undefined)
 
 assert.deepEqual(keys(zh.salesLead), keys(en.salesLead))
 assert.deepEqual(keys(zh.salesLead), keys(km.salesLead))
@@ -63,6 +69,7 @@ assert.match(telegramInit, /'\/lead'/)
 assert.doesNotMatch(middleware, /\/lead/)
 assert.match(opsPage, /<QRCode value=\{invite\.url\}/)
 assert.match(opsPage, /copy\(invite\.url\)/)
+assert.match(opsPage, /\/api\/ops\/sales-lead-support/)
 assert.match(leadPage, /navigator\.geolocation/)
 assert.match(leadPage, /locationDenied/)
 assert.match(leadApi, /`open_\$\{result\.rawApplicationToken\}`/)

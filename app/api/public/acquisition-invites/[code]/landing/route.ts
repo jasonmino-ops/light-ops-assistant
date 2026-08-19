@@ -9,7 +9,7 @@ export async function POST(
 ) {
   const { code: rawCode } = await params
   const code = normalizeAcquisitionInviteCode(rawCode)
-  const support = getPlatformSupportConfig()
+  const support = await getPlatformSupportConfig()
   if (!code) {
     return NextResponse.json({ error: 'INVITE_NOT_FOUND', support }, { status: 404 })
   }

@@ -35,7 +35,7 @@ async function checkLeadSubmitRates(req: NextRequest, phone: string, inviteCode:
 }
 
 export async function POST(req: NextRequest) {
-  const support = getPlatformSupportConfig()
+  const support = await getPlatformSupportConfig()
   let body: LeadBody
   try {
     body = await req.json() as LeadBody

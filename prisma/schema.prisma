@@ -987,6 +987,19 @@ model SalesLeadRateCounter {
   @@index([expiresAt])
 }
 
+model SalesLeadSupportConfig {
+  id                    String   @id @default("platform")
+  supportPhone          String?
+  telegramSupportTarget String?
+  updatedByOpsAdminId   String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  updatedBy OpsAdmin? @relation("SalesLeadSupportConfigUpdatedBy", fields: [updatedByOpsAdminId], references: [id], onDelete: SetNull)
+
+  @@index([updatedByOpsAdminId])
+}
+
 model TelegramMessage {
   id                  String   @id @default(cuid())
   tenantId            String? // null = ops/系统级消息
@@ -1163,6 +1176,7 @@ model OpsAdmin {
   initialSalesLeads         SalesLead[]          @relation("SalesLeadInitialOwner")
   applicationBlocksCreated ApplicationBlock[]   @relation("ApplicationBlockCreatedBy")
   applicationBlocksCleared ApplicationBlock[]   @relation("ApplicationBlockClearedBy")
+  salesLeadSupportConfigs  SalesLeadSupportConfig[] @relation("SalesLeadSupportConfigUpdatedBy")
 }
 
 // 顾客下单后通过 /start bind_<storeCode>_<orderNo> 主动绑定 Telegram，沉淀为门店常驻联系人
