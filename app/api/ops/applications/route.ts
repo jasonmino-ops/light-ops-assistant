@@ -17,6 +17,14 @@ export async function GET(req: NextRequest) {
     where: validStatuses.includes(status) ? { status } : undefined,
     orderBy: { createdAt: 'desc' },
     take: 100,
+    include: {
+      salesLead: {
+        select: { id: true, firstSourceChannel: true, firstCampaign: true },
+      },
+      createdStore: {
+        select: { id: true, code: true, name: true },
+      },
+    },
   })
 
   return NextResponse.json(applications)
