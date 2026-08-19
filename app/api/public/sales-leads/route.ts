@@ -11,7 +11,7 @@ import { normalizeAcquisitionInviteCode } from '@/lib/sales-lead-invite'
 import { validateSalesLeadPhone } from '@/lib/sales-lead-phone'
 import { consumeSalesLeadRateLimit, getTrustedSalesLeadIpSignal } from '@/lib/sales-lead-rate'
 import { cleanSalesLeadRequiredText, createOrRestorePublicSalesLead } from '@/lib/sales-lead-service'
-import { getPlatformSupportConfig } from '@/lib/sales-lead-support'
+import { getLeadSupportConfig, getPlatformSupportConfig } from '@/lib/sales-lead-support'
 
 type LeadBody = {
   inviteCode?: unknown
@@ -94,10 +94,14 @@ export async function POST(req: NextRequest) {
       process.env.TELEGRAM_BOT_USERNAME,
       process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
     )
+    const contextualSupport = await getLeadSupportConfig({
+      salesLeadId: result.salesLeadId,
+      contextStage: 'LEAD_FORM',
+    })
     return NextResponse.json({
       state: result.created ? 'CREATED' : 'RESTORED',
       telegramUrl: buildTelegramStartAppLink(bot, `open_${result.rawApplicationToken}`),
-      support,
+      support: contextualSupport,
     }, { status: result.created ? 201 : 200 })
   }
   return NextResponse.json({ state: result.state, support })

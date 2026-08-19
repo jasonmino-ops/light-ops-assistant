@@ -21,6 +21,16 @@ export function buildTelegramStartAppLink(
   return `https://t.me/${bot}?startapp=${param}`
 }
 
+export function buildTelegramStartLink(
+  botUsername: string | null | undefined,
+  startParam: string,
+): string | null {
+  const bot = normalizeTelegramBotUsername(botUsername)
+  const param = startParam.trim()
+  if (!bot || !param) return null
+  return `https://t.me/${bot}?start=${param}`
+}
+
 export function merchantBotWarning() {
   return FALLBACK_BOT_WARNING
 }

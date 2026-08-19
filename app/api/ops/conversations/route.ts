@@ -21,7 +21,20 @@ type ConversationRow = {
   lastAt: string
   messageCount: number
   sessionState: string | null
+  leadContext: {
+    id: string
+    storeName: string
+    ownerName: string
+    source: string
+    campaign: string | null
+    inviteCode: string | null
+    status: string
+    stage: string | null
+    identitySource: 'APPLICANT' | 'SUPPORT'
+  } | null
 }
+
+type LeadContextRow = NonNullable<ConversationRow['leadContext']>
 
 function statePriority(sessionState: string | null) {
   if (sessionState === 'awaiting_human') return 0
@@ -64,14 +77,62 @@ export async function GET(req: NextRequest) {
   ])
 
   const sessionStateMap = new Map(supportSessions.map((s) => [s.telegramId, s.sessionState]))
+  const telegramIds = Array.from(new Set(messages.map((message) => message.recipientTelegramId)))
   const tenantIds = Array.from(new Set(messages.map((m) => m.tenantId).filter(Boolean) as string[]))
-  const tenants = tenantIds.length > 0
-    ? await prisma.tenant.findMany({
+  const [tenants, canonicalLeads, supportTokens] = await Promise.all([
+    tenantIds.length > 0 ? prisma.tenant.findMany({
         where: { id: { in: tenantIds } },
         select: { id: true, name: true },
-      })
-    : []
+      }) : [],
+    telegramIds.length > 0 ? prisma.salesLead.findMany({
+      where: { telegramId: { in: telegramIds } },
+      orderBy: { lastActivityAt: 'desc' },
+      include: { firstInvite: { select: { code: true } } },
+    }) : [],
+    telegramIds.length > 0 ? prisma.salesLeadContextToken.findMany({
+      where: {
+        purpose: 'SUPPORT',
+        consumedAt: { not: null },
+        consumedByTelegramId: { in: telegramIds },
+      },
+      orderBy: { consumedAt: 'desc' },
+      include: {
+        salesLead: { include: { firstInvite: { select: { code: true } } } },
+      },
+    }) : [],
+  ])
   const tenantNameMap = new Map(tenants.map((tenant) => [tenant.id, tenant.name]))
+  const leadContextMap = new Map<string, LeadContextRow>()
+  for (const lead of canonicalLeads) {
+    if (!lead.telegramId || leadContextMap.has(lead.telegramId)) continue
+    leadContextMap.set(lead.telegramId, {
+      id: lead.id,
+      storeName: lead.storeName,
+      ownerName: lead.ownerName,
+      source: lead.firstSourceChannel,
+      campaign: lead.firstCampaign,
+      inviteCode: lead.firstInvite?.code ?? null,
+      status: lead.status,
+      stage: null,
+      identitySource: 'APPLICANT',
+    })
+  }
+  for (const token of supportTokens) {
+    const telegramId = token.consumedByTelegramId
+    if (!telegramId || leadContextMap.has(telegramId)) continue
+    const lead = token.salesLead
+    leadContextMap.set(telegramId, {
+      id: lead.id,
+      storeName: lead.storeName,
+      ownerName: lead.ownerName,
+      source: lead.firstSourceChannel,
+      campaign: lead.firstCampaign,
+      inviteCode: lead.firstInvite?.code ?? null,
+      status: lead.status,
+      stage: token.contextStage,
+      identitySource: 'SUPPORT',
+    })
+  }
 
   // 按 telegramId 聚合，保留最新消息作为预览
   const map = new Map<string, ConversationRow>()
@@ -90,6 +151,7 @@ export async function GET(req: NextRequest) {
         lastAt: m.createdAt.toISOString(),
         messageCount: 1,
         sessionState: sessionStateMap.get(tid) ?? null,
+        leadContext: leadContextMap.get(tid) ?? null,
       })
     } else {
       const entry = map.get(tid)!

@@ -68,6 +68,6 @@ assert.match(leadPage, /locationDenied/)
 assert.match(leadApi, /`open_\$\{result\.rawApplicationToken\}`/)
 assert.match(service, /firstInvite\/source\/campaign\/initial owner are intentionally immutable/)
 assert.match(service, /pg_advisory_xact_lock/)
-assert.match(service, /generateSalesLeadContextToken\('APPLICATION'/)
+assert.match(service, /purpose: 'APPLICATION'/)
 
 console.log('sales lead public invite tests passed')

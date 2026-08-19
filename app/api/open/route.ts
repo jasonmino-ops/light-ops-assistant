@@ -6,7 +6,7 @@ import { cleanSalesLeadRequiredText } from '@/lib/sales-lead-service'
 import { validateSalesLeadPhone, salesLeadPhonesMatch } from '@/lib/sales-lead-phone'
 import { hashSalesLeadContextToken, isSalesLeadRawToken } from '@/lib/sales-lead-token'
 import { consumeSalesLeadRateLimit } from '@/lib/sales-lead-rate'
-import { getPlatformSupportConfig } from '@/lib/sales-lead-support'
+import { getLeadSupportConfig, getPlatformSupportConfig } from '@/lib/sales-lead-support'
 import {
   cleanStoreAddress,
   cleanStoreCoordinate,
@@ -125,15 +125,19 @@ async function statusForApplicant(applicant: TelegramApplicant) {
   const pending = await prisma.storeApplication.findFirst({
     where: { telegramId: applicant.telegramId, status: 'PENDING' },
     orderBy: { createdAt: 'desc' },
-    select: { id: true },
+    select: { id: true, salesLeadId: true },
   })
-  if (pending) return { state: 'PENDING' as const, applicationNo: pending.id.slice(-8).toUpperCase() }
-  if (await activeApplicationBlock(applicant.telegramId)) return { state: 'BLOCKED' as const }
+  if (pending) return {
+    state: 'PENDING' as const,
+    applicationNo: pending.id.slice(-8).toUpperCase(),
+    salesLeadId: pending.salesLeadId,
+  }
 
   const lead = await prisma.salesLead.findFirst({
     where: { telegramId: applicant.telegramId },
     orderBy: { lastActivityAt: 'desc' },
     select: {
+      id: true,
       storeName: true,
       ownerName: true,
       normalizedPhone: true,
@@ -143,8 +147,11 @@ async function statusForApplicant(applicant: TelegramApplicant) {
       status: true,
     },
   })
+  if (await activeApplicationBlock(applicant.telegramId)) {
+    return { state: 'BLOCKED' as const, salesLeadId: lead?.id ?? null }
+  }
   if (lead?.status === 'ACTIVATED') return { state: 'ALREADY_BOUND' as const }
-  if (lead) return { state: 'CLAIMED' as const, profile: leadProfile(lead) }
+  if (lead) return { state: 'CLAIMED' as const, profile: leadProfile(lead), salesLeadId: lead.id }
   return {
     state: 'LEGACY_FORM' as const,
     ownerName: [applicant.firstName, applicant.lastName].filter(Boolean).join(' ') || applicant.username || '',
@@ -183,7 +190,12 @@ async function claimAttributedLead(applicant: TelegramApplicant, body: OpenBody)
       context.consumedByTelegramId === applicant.telegramId &&
       context.salesLead.telegramId === applicant.telegramId
     ) {
-      return { state: 'CLAIMED' as const, status: 200, profile: leadProfile(context.salesLead) }
+      return {
+        state: 'CLAIMED' as const,
+        status: 200,
+        profile: leadProfile(context.salesLead),
+        salesLeadId: context.salesLeadId,
+      }
     }
     return { state: 'CLAIM_FAILED' as const, status: 409 }
   }
@@ -244,7 +256,12 @@ async function claimAttributedLead(applicant: TelegramApplicant, body: OpenBody)
     }
   }
 
-  return { state: 'CLAIMED' as const, status: 200, profile: leadProfile(context.salesLead) }
+  return {
+    state: 'CLAIMED' as const,
+    status: 200,
+    profile: leadProfile(context.salesLead),
+    salesLeadId: context.salesLeadId,
+  }
 }
 
 async function applyForStore(applicant: TelegramApplicant, body: OpenBody) {
@@ -280,10 +297,15 @@ async function applyForStore(applicant: TelegramApplicant, body: OpenBody) {
       const pending = await tx.storeApplication.findFirst({
         where: { telegramId: applicant.telegramId, status: 'PENDING' },
         orderBy: { createdAt: 'desc' },
-        select: { id: true },
+        select: { id: true, salesLeadId: true },
       })
       if (pending) {
-        return { state: 'PENDING' as const, status: 200, applicationNo: pending.id.slice(-8).toUpperCase() }
+        return {
+          state: 'PENDING' as const,
+          status: 200,
+          applicationNo: pending.id.slice(-8).toUpperCase(),
+          salesLeadId: pending.salesLeadId,
+        }
       }
       if (await activeApplicationBlock(applicant.telegramId, tx)) {
         return { state: 'BLOCKED' as const, status: 403 }
@@ -349,6 +371,7 @@ async function applyForStore(applicant: TelegramApplicant, body: OpenBody) {
         state: 'PENDING' as const,
         status: 201,
         applicationNo: application.id.slice(-8).toUpperCase(),
+        salesLeadId: lead.id,
       }
     })
   } catch (error) {
@@ -356,9 +379,14 @@ async function applyForStore(applicant: TelegramApplicant, body: OpenBody) {
       const pending = await prisma.storeApplication.findFirst({
         where: { telegramId: applicant.telegramId, status: 'PENDING' },
         orderBy: { createdAt: 'desc' },
-        select: { id: true },
+        select: { id: true, salesLeadId: true },
       })
-      if (pending) return { state: 'PENDING' as const, status: 200, applicationNo: pending.id.slice(-8).toUpperCase() }
+      if (pending) return {
+        state: 'PENDING' as const,
+        status: 200,
+        applicationNo: pending.id.slice(-8).toUpperCase(),
+        salesLeadId: pending.salesLeadId,
+      }
     }
     console.error('[/api/open] application transaction failed', error instanceof Prisma.PrismaClientKnownRequestError ? error.code : 'UNKNOWN')
     return { state: 'DB_ERROR' as const, status: 500 }
@@ -385,12 +413,24 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === 'STATUS') {
-    return NextResponse.json({ ...(await statusForApplicant(verified.applicant)), support })
+    const result = await statusForApplicant(verified.applicant)
+    const contextualSupport = await getLeadSupportConfig({
+      salesLeadId: 'salesLeadId' in result ? result.salesLeadId : null,
+      contextStage: result.state === 'PENDING' ? 'APPLICATION_PENDING' : 'OPEN',
+    })
+    const { salesLeadId: _salesLeadId, ...publicResult } = 'salesLeadId' in result
+      ? result
+      : { ...result, salesLeadId: null }
+    return NextResponse.json({ ...publicResult, support: contextualSupport })
   }
   if (body.action === 'CLAIM') {
     const result = await claimAttributedLead(verified.applicant, body)
+    const contextualSupport = await getLeadSupportConfig({
+      salesLeadId: 'salesLeadId' in result ? result.salesLeadId : null,
+      contextStage: 'OPEN',
+    })
     return NextResponse.json(
-      { state: result.state, profile: 'profile' in result ? result.profile : undefined, support },
+      { state: result.state, profile: 'profile' in result ? result.profile : undefined, support: contextualSupport },
       {
         status: result.status,
         headers: 'retryAfter' in result ? { 'Retry-After': String(result.retryAfter) } : undefined,
@@ -399,12 +439,16 @@ export async function POST(req: NextRequest) {
   }
   if (body.action === 'APPLY' || body.action == null) {
     const result = await applyForStore(verified.applicant, body)
+    const contextualSupport = await getLeadSupportConfig({
+      salesLeadId: 'salesLeadId' in result ? result.salesLeadId : null,
+      contextStage: result.state === 'PENDING' ? 'APPLICATION_PENDING' : 'OPEN',
+    })
     return NextResponse.json(
       {
         ok: result.state === 'PENDING',
         state: result.state,
         applicationNo: 'applicationNo' in result ? result.applicationNo : undefined,
-        support,
+        support: contextualSupport,
       },
       {
         status: result.status,

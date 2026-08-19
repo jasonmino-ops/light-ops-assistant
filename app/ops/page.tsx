@@ -28,6 +28,17 @@ type ConversationRow = {
   lastAt: string
   messageCount: number
   sessionState: string | null  // auto_active | awaiting_human | human_active | null
+  leadContext: {
+    id: string
+    storeName: string
+    ownerName: string
+    source: string
+    campaign: string | null
+    inviteCode: string | null
+    status: string
+    stage: string | null
+    identitySource: 'APPLICANT' | 'SUPPORT'
+  } | null
 }
 
 type ConversationsResponse = {
@@ -1035,6 +1046,13 @@ function ConversationsSection({
           {conv.tenantName && (
             <div style={s.convSource}>{conv.tenantName}</div>
           )}
+          {conv.leadContext && (
+            <div style={s.convSource}>
+              Lead · {conv.leadContext.storeName} · {conv.leadContext.source}
+              {conv.leadContext.campaign ? ` / ${conv.leadContext.campaign}` : ''}
+              {conv.leadContext.identitySource === 'SUPPORT' ? ' · 客服上下文' : ' · 已绑定申请人'}
+            </div>
+          )}
         </div>
         <div style={s.convCount}>客户消息数 {conv.messageCount}</div>
       </div>
@@ -1140,6 +1158,16 @@ function ConversationsSection({
               </button>
             )}
           </div>
+
+          {selectedConv.leadContext && (
+            <div style={{ background: '#eff6ff', color: '#1e40af', borderRadius: 8, padding: '8px 10px', fontSize: 12, marginBottom: 8 }}>
+              销售 Lead：{selectedConv.leadContext.storeName} / {selectedConv.leadContext.ownerName}
+              {' · '}{selectedConv.leadContext.source}
+              {selectedConv.leadContext.campaign ? ` / ${selectedConv.leadContext.campaign}` : ''}
+              {' · '}{selectedConv.leadContext.status}
+              {selectedConv.leadContext.stage ? ` · ${selectedConv.leadContext.stage}` : ''}
+            </div>
+          )}
 
           {/* 消息气泡区 */}
           <div style={s.threadBox}>

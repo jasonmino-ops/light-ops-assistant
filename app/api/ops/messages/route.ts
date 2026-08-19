@@ -64,5 +64,34 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Message delivery remains authoritative. Activity touch is best-effort and
+  // runs only after a successful send so a touch failure never duplicates chat.
+  try {
+    const now = new Date()
+    const canonical = await prisma.salesLead.updateMany({
+      where: { telegramId: recipientTelegramId.trim() },
+      data: { lastActivityAt: now },
+    })
+    if (canonical.count === 0) {
+      const context = await prisma.salesLeadContextToken.findFirst({
+        where: {
+          purpose: 'SUPPORT',
+          consumedByTelegramId: recipientTelegramId.trim(),
+          consumedAt: { not: null },
+        },
+        orderBy: { consumedAt: 'desc' },
+        select: { salesLeadId: true },
+      })
+      if (context) {
+        await prisma.salesLead.update({
+          where: { id: context.salesLeadId },
+          data: { lastActivityAt: now },
+        })
+      }
+    }
+  } catch {
+    // Conversation reply already succeeded; activity metadata is non-critical.
+  }
+
   return NextResponse.json({ ok: true })
 }
