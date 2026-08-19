@@ -42,16 +42,23 @@ export async function sendAndLogMessage({
   tenantId,
   sentBy = 'SYSTEM',
   botToken = process.env.TELEGRAM_BOT_TOKEN,
+  channel = 'MERCHANT',
+  salesLeadId,
 }: {
   recipientTelegramId: string
   text: string
   tenantId?: string
   sentBy?: string
   botToken?: string
+  channel?: 'MERCHANT' | 'SALES_ONBOARDING'
+  salesLeadId?: string | null
 }): Promise<{ ok: boolean; error?: string }> {
   if (!botToken) {
     const err = 'TELEGRAM_BOT_TOKEN 未配置'
-    await writeLog({ recipientTelegramId, text, tenantId, sentBy, status: 'FAILED', errorMessage: err })
+    await writeLog({
+      recipientTelegramId, text, tenantId, sentBy, channel, salesLeadId,
+      status: 'FAILED', errorMessage: err,
+    })
     return { ok: false, error: err }
   }
 
@@ -72,7 +79,7 @@ export async function sendAndLogMessage({
   }
 
   await writeLog({
-    recipientTelegramId, text, tenantId, sentBy,
+    recipientTelegramId, text, tenantId, sentBy, channel, salesLeadId,
     status: ok ? 'SENT' : 'FAILED',
     errorMessage,
   })
@@ -85,6 +92,8 @@ async function writeLog(params: {
   text: string
   tenantId?: string
   sentBy: string
+  channel: 'MERCHANT' | 'SALES_ONBOARDING'
+  salesLeadId?: string | null
   status: string
   errorMessage?: string
 }) {
@@ -94,6 +103,8 @@ async function writeLog(params: {
         recipientTelegramId: params.recipientTelegramId,
         content: params.text,
         tenantId: params.tenantId ?? null,
+        channel: params.channel,
+        salesLeadId: params.salesLeadId ?? null,
         sentBy: params.sentBy,
         status: params.status,
         errorMessage: params.errorMessage ?? null,

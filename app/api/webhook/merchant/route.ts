@@ -25,10 +25,6 @@ import {
   routeMessage, matchFaq, detectLanguage,
   ESCALATION_REPLY, GENERAL_HELP_OWNER, GENERAL_HELP_STAFF,
 } from '@/lib/support-faq'
-import {
-  consumeSupportContextToken,
-  parseSupportStartCommand,
-} from '@/lib/sales-lead-support-context'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
 const WEBHOOK_SECRET = process.env.MERCHANT_WEBHOOK_SECRET ?? ''
@@ -328,26 +324,6 @@ export async function POST(req: NextRequest) {
   const text: string = message.text ?? ''
   const senderId = String(message.from?.id ?? message.chat?.id ?? '')
   const chatId   = String(message.chat?.id ?? senderId)
-
-  // Support entry must run before the generic slash-command return. Never log,
-  // persist, or forward the raw command/token; invalid tokens degrade to the
-  // same context-free human support channel.
-  const supportStart = parseSupportStartCommand(text)
-  if (supportStart.attempted && senderId) {
-    try {
-      await consumeSupportContextToken({ rawToken: supportStart.rawToken, telegramId: senderId })
-    } catch {
-      // Context is optional. A persistence error must not block customer support.
-    }
-    const lang = detectLanguage([message.from?.language_code, message.from?.first_name].filter(Boolean).join(' '))
-    await upsertSupportSession(senderId, null, 'awaiting_human', lang)
-    await logCustomerMsg(senderId, '[SUPPORT_ENTRY]', null, message.from)
-    await tgSend('sendMessage', {
-      chat_id: chatId,
-      text: '已联系人工客服，我们会尽快回复。\nSupport has been notified and will reply soon.\nបានជូនដំណឹងទៅផ្នែកជំនួយ ហើយនឹងឆ្លើយតបឆាប់ៗ។',
-    })
-    return NextResponse.json({ ok: true })
-  }
 
   if (text.startsWith('/')) return NextResponse.json({ ok: true })
 
