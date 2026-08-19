@@ -7,6 +7,7 @@ import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { checkOpsAuthContext } from '@/lib/ops-auth'
 import { createTrialSubscriptionForTenant } from '@/lib/subscription'
+import { attachOpsSubscriptionReminders } from '@/lib/ops-subscription-renewal-summary'
 
 // Test products seeded for every new tenant.
 // Barcodes are prefixed DEMO- to be clearly non-production.
@@ -46,8 +47,9 @@ export async function GET(req: NextRequest) {
   const ids = tenants.map((t) => t.id)
 
   const todayUtc = new Date().toISOString().slice(0, 10)
+  const reminderNow = new Date()
 
-  const [storeGroups, users, todaySummaries, lastSaleRows] = await Promise.all([
+  const [storeGroups, users, todaySummaries, lastSaleRows, subscriptions] = await Promise.all([
     prisma.store.groupBy({
       by: ['tenantId'],
       where: { tenantId: { in: ids }, status: 'ACTIVE' },
@@ -67,6 +69,15 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
       distinct: ['tenantId'],
       select: { tenantId: true, createdAt: true },
+    }),
+    prisma.tenantSubscription.findMany({
+      where: { tenantId: { in: ids } },
+      select: {
+        tenantId: true,
+        status: true,
+        trialEndsAt: true,
+        currentPeriodEndsAt: true,
+      },
     }),
   ])
 
@@ -114,7 +125,7 @@ export async function GET(req: NextRequest) {
 
   const lastActiveMap = new Map(lastSaleRows.map((r) => [r.tenantId, r.createdAt.toISOString()]))
 
-  const result = tenants.map((t) => ({
+  const tenantRows = tenants.map((t) => ({
     id: t.id,
     name: t.name,
     status: t.status,
@@ -125,6 +136,7 @@ export async function GET(req: NextRequest) {
     todaySaleCount: todaySaleCountMap.get(t.id) ?? 0,
     lastActiveAt: lastActiveMap.get(t.id) ?? null,
   }))
+  const result = attachOpsSubscriptionReminders(tenantRows, subscriptions, reminderNow)
 
   return NextResponse.json(result)
 }

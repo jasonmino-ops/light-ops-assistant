@@ -36,8 +36,8 @@ function toValidDate(value: Date | string | null): Date | null {
 }
 
 /**
- * Computes the OWNER /home reminder only. It never changes the stored
- * subscription status or writes to the database.
+ * Computes the runtime reminder used by OWNER /home and Ops. It never changes
+ * the stored subscription status or writes to the database.
  */
 export function computeSubscriptionReminder(
   subscription: SubscriptionReminderInput | null,

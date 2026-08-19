@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
+import { getOpsRenewalDueTenants } from '@/lib/ops-subscription-renewal-summary'
+import type { SubscriptionReminderDisplayState, SubscriptionReminderResult } from '@/lib/subscription-reminder'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +65,7 @@ type TenantRow = {
   staffTotal: number
   todaySaleCount: number
   lastActiveAt: string | null
+  subscriptionReminder: SubscriptionReminderResult
 }
 
 type OverviewTenantRow = {
@@ -136,6 +139,7 @@ type StatusFilter = 'ACTIVE' | 'ARCHIVED' | 'all'
 export default function OpsPage() {
   const [authState, setAuthState] = useState<'checking' | 'ok' | 'denied'>('checking')
   const [tenants, setTenants] = useState<TenantRow[]>([])
+  const [renewalDueTenants, setRenewalDueTenants] = useState<TenantRow[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ACTIVE')
@@ -171,8 +175,12 @@ export default function OpsPage() {
     setLoading(true)
     try {
       const url = filter === 'ACTIVE' ? '/api/ops/tenants' : `/api/ops/tenants?status=${filter}`
-      const r = await apiFetch(url, undefined, OWNER_CTX)
-      if (r.ok) setTenants(await r.json())
+      const r = await apiFetch(url, { cache: 'no-store' }, OWNER_CTX)
+      if (r.ok) {
+        const rows = await r.json() as TenantRow[]
+        setTenants(rows)
+        if (filter === 'ACTIVE') setRenewalDueTenants(getOpsRenewalDueTenants(rows))
+      }
     } finally {
       setLoading(false)
     }
@@ -335,6 +343,7 @@ export default function OpsPage() {
           <SummaryTile label="当前筛选" value={String(tenants.length)} />
           <SummaryTile label="当前会话" value={String(conversationCounts?.active ?? conversations.length)} />
           <SummaryTile label="待处理申请" value={String(applications.length)} />
+          <SummaryTile label="待续费商家" value={String(renewalDueTenants.length)} />
         </div>
 
         {/* ── Create form ── */}
@@ -363,6 +372,18 @@ export default function OpsPage() {
           showAll={showAllConversations}
           onToggleAll={() => setShowAllConversations((value) => !value)}
         />
+
+        <div style={s.renewalQueue}>
+          <MerchantQueueSection
+            title="待续费商家"
+            count={renewalDueTenants.length}
+            emptyText="当前没有待续费商家"
+          >
+            {renewalDueTenants.map((tenant) => (
+              <SubscriptionRenewalCard key={tenant.id} tenant={tenant} />
+            ))}
+          </MerchantQueueSection>
+        </div>
 
         <div className="ops-work-grid" style={s.workGrid}>
           <MerchantQueueSection
@@ -640,6 +661,38 @@ function RecentMerchantCard({ tenant }: { tenant: OverviewTenantRow }) {
         <span style={s.queueMeta}>编码：{compactList(tenant.storeCodes)}</span>
       </div>
     </div>
+  )
+}
+
+const SUBSCRIPTION_REMINDER_META: Record<Exclude<SubscriptionReminderDisplayState, 'NORMAL'>, {
+  label: string
+  color: string
+  background: string
+  border: string
+}> = {
+  REMIND: { label: '即将到期', color: '#b45309', background: '#fffbeb', border: '#fde68a' },
+  GRACE: { label: '宽限期', color: '#c2410c', background: '#fff7ed', border: '#fdba74' },
+  EXPIRED: { label: '已到期', color: '#be123c', background: '#fff1f2', border: '#fda4af' },
+}
+
+function SubscriptionRenewalCard({ tenant }: { tenant: TenantRow }) {
+  const state = tenant.subscriptionReminder.displayState
+  if (state === 'NORMAL') return null
+  const meta = SUBSCRIPTION_REMINDER_META[state]
+
+  return (
+    <Link href={`/ops/${tenant.id}`} style={s.renewalCard}>
+      <div style={s.queueCardTop}>
+        <div style={s.queueMerchantName}>{tenant.name}</div>
+        <span style={{ ...s.renewalStatus, color: meta.color, background: meta.background, borderColor: meta.border }}>
+          {meta.label}
+        </span>
+      </div>
+      <div style={s.queueFooter}>
+        <span style={s.queueMeta}>有效到期：{fmtOpsTime(tenant.subscriptionReminder.expiry)}</span>
+        <span style={s.healthLink}>进入商户详情 →</span>
+      </div>
+    </Link>
   )
 }
 
@@ -1417,7 +1470,7 @@ const s: Record<string, React.CSSProperties> = {
   body: { maxWidth: 680, margin: '0 auto', padding: '14px 12px' },
   summaryGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
     gap: 8,
     marginBottom: 12,
   },
@@ -1434,6 +1487,9 @@ const s: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: 10,
+    marginBottom: 12,
+  },
+  renewalQueue: {
     marginBottom: 12,
   },
   queueSection: {
@@ -1482,6 +1538,23 @@ const s: Record<string, React.CSSProperties> = {
     padding: '10px 12px',
     background: '#fff',
     minWidth: 0,
+  },
+  renewalCard: {
+    display: 'block',
+    border: '1px solid #eef2f7',
+    borderRadius: 10,
+    padding: '10px 12px',
+    background: '#fff',
+    minWidth: 0,
+    textDecoration: 'none',
+  },
+  renewalStatus: {
+    flexShrink: 0,
+    borderRadius: 12,
+    padding: '2px 8px',
+    border: '1px solid',
+    fontSize: 11,
+    fontWeight: 800,
   },
   queueCardTop: {
     display: 'flex',
