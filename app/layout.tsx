@@ -18,7 +18,7 @@ const TIKTOK_PIXEL_ID = process.env.NODE_ENV === 'production'
   : ''
 
 const PUBLIC_EXACT_PATHS = ['/']
-const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/m', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/desktop', '/records', '/privacy', '/terms', '/contact', '/ops', '/mino-bos/assets-check']
+const PUBLIC_PATH_PREFIXES = ['/start', '/open', '/bind', '/relogin', '/menu', '/m', '/e-life', '/me', '/v', '/p', '/creator/p', '/cashier', '/desktop', '/records', '/privacy', '/terms', '/contact', '/ops', '/lead', '/mino-bos/assets-check']
 
 function isProtectedMerchantPath(path: string) {
   if (!path || PUBLIC_EXACT_PATHS.includes(path)) return false
