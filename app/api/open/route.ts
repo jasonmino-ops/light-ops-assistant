@@ -261,6 +261,22 @@ async function claimAttributedLead(applicant: TelegramApplicant, body: OpenBody)
 }
 
 async function applyForStore(applicant: TelegramApplicant, body: OpenBody) {
+  // Preserve HTTP idempotency before consuming a rate-limit slot. The
+  // transaction and partial unique index below remain authoritative for races.
+  const idempotentPending = await prisma.storeApplication.findFirst({
+    where: { telegramId: applicant.telegramId, status: 'PENDING' },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, salesLeadId: true },
+  })
+  if (idempotentPending) {
+    return {
+      state: 'PENDING' as const,
+      status: 200,
+      applicationNo: idempotentPending.id.slice(-8).toUpperCase(),
+      salesLeadId: idempotentPending.salesLeadId,
+    }
+  }
+
   const storeName = cleanSalesLeadRequiredText(body.storeName)
   const ownerName = cleanSalesLeadRequiredText(body.ownerName)
   const phone = validateSalesLeadPhone(typeof body.phone === 'string' ? body.phone : '')

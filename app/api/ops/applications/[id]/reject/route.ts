@@ -15,6 +15,7 @@ export async function POST(
   const reason = cleanApplicationBlockText(body?.reason, 160)
   const note = cleanApplicationBlockText(body?.note, 1000)
   if (!reason) return NextResponse.json({ error: 'REASON_REQUIRED' }, { status: 400 })
+  const rejectionNote = note ? `${reason}\n${note}` : reason
   const banActor = ban ? await getFkBackedOpsAdminIdentity(req, 'OPS_ADMIN') : null
   if (ban && !banActor) return NextResponse.json({ error: 'BAN_FORBIDDEN' }, { status: 403 })
 
@@ -36,7 +37,7 @@ export async function POST(
     if (current.status === 'PENDING') {
       const claimed = await tx.storeApplication.updateMany({
         where: { id, status: 'PENDING' },
-        data: { status: 'REJECTED', note },
+        data: { status: 'REJECTED', note: rejectionNote },
       })
       if (claimed.count !== 1) return 'RACE_LOST' as const
     }

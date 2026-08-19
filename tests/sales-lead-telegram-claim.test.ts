@@ -36,6 +36,10 @@ assert.match(openApi, /action === 'APPLY'/)
 assert.match(openApi, /firstSourceChannel: 'DIRECT_TELEGRAM'/)
 assert.match(openApi, /pg_advisory_xact_lock/)
 assert.match(openApi, /error\.code === 'P2002'/)
+assert.ok(
+  openApi.indexOf('const idempotentPending') < openApi.indexOf("action: 'APPLICATION_SUBMIT'"),
+  'existing PENDING must be returned before consuming an application-submit rate slot',
+)
 assert.match(migration, /StoreApplication_one_pending_per_telegram/)
 assert.match(openPage, /action: 'CLAIM'/)
 assert.match(openPage, /action: 'APPLY'/)
