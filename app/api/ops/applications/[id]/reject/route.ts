@@ -27,7 +27,7 @@ export async function POST(
   if (!application) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
 
   const result = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${getSalesLeadTelegramAdvisoryKey(application.telegramId)})`
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${getSalesLeadTelegramAdvisoryKey(application.telegramId)}) IS NULL AS "ignored"`
     const current = await tx.storeApplication.findUnique({
       where: { id },
       select: { status: true },

@@ -301,7 +301,7 @@ async function applyForStore(applicant: TelegramApplicant, body: OpenBody) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${getSalesLeadTelegramAdvisoryKey(applicant.telegramId)})`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${getSalesLeadTelegramAdvisoryKey(applicant.telegramId)}) IS NULL AS "ignored"`
 
       if (await activeMerchantUser(applicant.telegramId, tx)) {
         return { state: 'ALREADY_BOUND' as const, status: 409 }

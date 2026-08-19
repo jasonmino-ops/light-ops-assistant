@@ -66,7 +66,7 @@ export async function POST(
   try {
     result = await prisma.$transaction(async (tx) => {
       // Shared lock order with Reject/Ban/Application create: Telegram first.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${getSalesLeadTelegramAdvisoryKey(preflight.telegramId)})`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${getSalesLeadTelegramAdvisoryKey(preflight.telegramId)}) IS NULL AS "ignored"`
       const app = await tx.storeApplication.findUnique({ where: { id } })
       if (!app) throw new ApprovalTransitionError('NOT_FOUND')
       if (app.status !== 'PENDING') throw new ApprovalTransitionError('NOT_PENDING')

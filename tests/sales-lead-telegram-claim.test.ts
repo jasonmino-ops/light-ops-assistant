@@ -34,7 +34,8 @@ assert.match(openApi, /OR: \[\{ telegramId: null \}, \{ telegramId: applicant\.t
 assert.match(openApi, /action === 'CLAIM'/)
 assert.match(openApi, /action === 'APPLY'/)
 assert.match(openApi, /firstSourceChannel: 'DIRECT_TELEGRAM'/)
-assert.match(openApi, /pg_advisory_xact_lock/)
+assert.match(openApi, /pg_advisory_xact_lock\([\s\S]*\) IS NULL AS "ignored"/)
+assert.doesNotMatch(openApi, /SELECT pg_advisory_xact_lock\([^\n]+\)`/)
 assert.match(openApi, /error\.code === 'P2002'/)
 assert.ok(
   openApi.indexOf('const idempotentPending') < openApi.indexOf("action: 'APPLICATION_SUBMIT'"),

@@ -30,7 +30,7 @@ export async function POST(
   }
   const now = new Date()
   await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${getSalesLeadTelegramAdvisoryKey(lead.telegramId!)})`
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${getSalesLeadTelegramAdvisoryKey(lead.telegramId!)}) IS NULL AS "ignored"`
     if (action === 'BAN') {
       await blockStoreApplications({
         tx,
