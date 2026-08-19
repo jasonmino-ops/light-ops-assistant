@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { getOpsRenewalDueTenants } from '@/lib/ops-subscription-renewal-summary'
@@ -165,6 +165,11 @@ export default function OpsPage() {
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [showAllConversations, setShowAllConversations] = useState(false)
   const [showAllTenants, setShowAllTenants] = useState(false)
+  const [initialConversation, setInitialConversation] = useState('')
+
+  useEffect(() => {
+    setInitialConversation(new URLSearchParams(window.location.search).get('conversation') ?? '')
+  }, [])
 
   // ── Auth check ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -293,6 +298,7 @@ export default function OpsPage() {
       <Link href="/ops/overview" style={s.sysLink} title="查看全部商户运行状态">运行概览</Link>
       <Link href="/ops/health" style={s.sysLink} title="查看平台核心业务链路和当前可识别异常">运行健康</Link>
       <Link href="/ops/acquisition-invites" style={s.sysLink}>邀请开店</Link>
+      <Link href="/ops/sales-leads" style={s.sysLink}>Sales Leads</Link>
       <Link href="/system" style={s.sysLink}>系统自检</Link>
     </>
   )
@@ -330,6 +336,7 @@ export default function OpsPage() {
             <div style={s.moreMenu}>
               {opsRole === 'SUPER_ADMIN' && <Link href="/ops/admins" style={s.moreMenuItem}>管理员</Link>}
               <Link href="/ops/acquisition-invites" style={s.moreMenuItem}>邀请开店</Link>
+              <Link href="/ops/sales-leads" style={s.moreMenuItem}>Sales Leads</Link>
               <Link href="/system" style={s.moreMenuItem}>系统自检</Link>
               <a href="#ops-broadcast" style={s.moreMenuItem} onClick={() => setShowMoreMenu(false)}>广播发送</a>
               <a href="#ops-applications" style={s.moreMenuItem} onClick={() => setShowMoreMenu(false)}>开店申请</a>
@@ -378,13 +385,16 @@ export default function OpsPage() {
         )}
 
         {/* ── Customer conversations ── */}
-        <ConversationsSection
-          conversations={conversations}
-          archivedConversations={archivedConversations}
-          onRefresh={loadConversations}
-          showAll={showAllConversations}
-          onToggleAll={() => setShowAllConversations((value) => !value)}
-        />
+        <div id="ops-conversations">
+          <ConversationsSection
+            conversations={conversations}
+            archivedConversations={archivedConversations}
+            onRefresh={loadConversations}
+            showAll={showAllConversations}
+            onToggleAll={() => setShowAllConversations((value) => !value)}
+            initialConversation={initialConversation}
+          />
+        </div>
 
         <div style={s.renewalQueue}>
           <MerchantQueueSection
@@ -928,12 +938,14 @@ function ConversationsSection({
   onRefresh,
   showAll,
   onToggleAll,
+  initialConversation,
 }: {
   conversations: ConversationRow[]
   archivedConversations: ConversationRow[]
   onRefresh: () => void
   showAll: boolean
   onToggleAll: () => void
+  initialConversation: string
 }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
@@ -944,6 +956,7 @@ function ConversationsSection({
   const [sendError, setSendError] = useState('')
   const [takingOver, setTakingOver] = useState(false)
   const [takeoverDone, setTakeoverDone] = useState<Set<string>>(new Set())
+  const initialConversationOpened = useRef(false)
 
   async function openConversation(telegramId: string) {
     setSelected(telegramId)
@@ -957,6 +970,15 @@ function ConversationsSection({
       setLoadingThread(false)
     }
   }
+
+  useEffect(() => {
+    if (!initialConversation || initialConversationOpened.current) return
+    const exists = [...conversations, ...archivedConversations]
+      .some((conversation) => conversation.telegramId === initialConversation)
+    if (!exists) return
+    initialConversationOpened.current = true
+    void openConversation(initialConversation)
+  }, [initialConversation, conversations, archivedConversations])
 
   async function takeover(telegramId: string) {
     if (takingOver) return
@@ -1239,6 +1261,7 @@ function ApplicationsSection({
   onApproved: () => void
 }) {
   const [approving, setApproving] = useState<string | null>(null)
+  const [rejecting, setRejecting] = useState<string | null>(null)
   // approved: id → { notified: boolean }
   const [approved, setApproved] = useState<Record<string, { notified: boolean }>>({})
   const [sending, setSending] = useState<string | null>(null)
@@ -1280,6 +1303,25 @@ function ApplicationsSection({
     }
   }
 
+  async function reject(id: string, ban: boolean) {
+    const reason = window.prompt(ban ? '拒绝并封禁原因（必填）' : '拒绝原因（必填）')
+    if (!reason?.trim()) return
+    if (ban && !window.confirm('Reject 与 Ban 是两个动作。确认同时禁止该 Telegram 再次创建开店申请？')) return
+    setRejecting(id)
+    try {
+      const r = await apiFetch(`/api/ops/applications/${id}/reject`, {
+        method: 'POST', body: JSON.stringify({ reason, ban }),
+      }, OWNER_CTX)
+      const body = await r.json()
+      if (r.ok) onApproved()
+      else window.alert(body.error === 'BAN_FORBIDDEN' ? '仅 FK-backed OPS_ADMIN / SUPER_ADMIN 可执行 Ban' : body.error)
+    } catch {
+      window.alert('网络错误')
+    } finally {
+      setRejecting(null)
+    }
+  }
+
   return (
     <div style={s.appSection}>
       <div style={s.appSectionTitle}>
@@ -1313,13 +1355,17 @@ function ApplicationsSection({
             )}
           </div>
           {!approved[app.id] && (
-            <button
-              style={{ ...s.approveBtn, opacity: approving === app.id ? 0.6 : 1 }}
-              disabled={approving === app.id}
-              onClick={() => approve(app.id)}
-            >
-              {approving === app.id ? '处理中…' : '通过'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+              <button
+                style={{ ...s.approveBtn, opacity: approving === app.id ? 0.6 : 1 }}
+                disabled={approving === app.id || rejecting === app.id}
+                onClick={() => approve(app.id)}
+              >
+                {approving === app.id ? '处理中…' : '通过'}
+              </button>
+              <button style={s.sendBtn} disabled={rejecting === app.id} onClick={() => void reject(app.id, false)}>拒绝</button>
+              <button style={{ ...s.sendBtn, color: '#cf1322' }} disabled={rejecting === app.id} onClick={() => void reject(app.id, true)}>拒绝 + Ban</button>
+            </div>
           )}
           {approved[app.id] && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>

@@ -1,4 +1,3 @@
-import crypto from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -14,6 +13,7 @@ import {
   isValidStoreLng,
 } from '@/lib/store-location'
 import { verifyTgInitData } from '@/lib/verify-tg-init-data'
+import { getSalesLeadTelegramAdvisoryKey } from '@/lib/sales-lead-advisory'
 
 type TelegramApplicant = {
   telegramId: string
@@ -87,10 +87,6 @@ function leadProfile(lead: {
     latitude: lead.latitude,
     longitude: lead.longitude,
   }
-}
-
-function advisoryKey(domain: string, value: string): bigint {
-  return crypto.createHash('sha256').update(`${domain}:${value}`).digest().readBigInt64BE(0)
 }
 
 async function activeMerchantUser(telegramId: string, client: Prisma.TransactionClient | typeof prisma = prisma) {
@@ -289,7 +285,7 @@ async function applyForStore(applicant: TelegramApplicant, body: OpenBody) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${advisoryKey('sales-lead-telegram', applicant.telegramId)})`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${getSalesLeadTelegramAdvisoryKey(applicant.telegramId)})`
 
       if (await activeMerchantUser(applicant.telegramId, tx)) {
         return { state: 'ALREADY_BOUND' as const, status: 409 }

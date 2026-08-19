@@ -125,3 +125,24 @@ export function hasOpsRole(actual: OpsRole, required: OpsRole): boolean {
   const rank: Record<OpsRole, number> = { SUPER_ADMIN: 3, OPS_ADMIN: 2, BD: 1 }
   return rank[actual] >= rank[required]
 }
+
+/**
+ * High-risk Ops writes require a real active OpsAdmin row. Legacy `_ops_admin`
+ * and OPS_USER_IDS may retain existing operational compatibility, but cannot
+ * create permanent application bans or clear their audit trail.
+ */
+export async function getFkBackedOpsAdminIdentity(
+  req: NextRequest,
+  required: OpsRole = 'OPS_ADMIN',
+) {
+  const context = await checkOpsAuthContext(req)
+  if (!context || !hasOpsRole(context.role, required) || context.userId === '_ops_admin') return false
+  const admin = await prisma.opsAdmin.findUnique({
+    where: { id: context.userId },
+    select: { id: true, name: true, role: true, status: true },
+  })
+  if (!admin || admin.status !== 'ACTIVE') return false
+  if (admin.role !== 'SUPER_ADMIN' && admin.role !== 'OPS_ADMIN') return false
+  if (admin.role !== context.role) return false
+  return { id: admin.id, name: admin.name, role: admin.role as OpsRole }
+}
