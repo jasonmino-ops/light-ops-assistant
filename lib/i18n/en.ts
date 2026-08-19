@@ -932,6 +932,7 @@ const en = {
     restoredTitle: 'Welcome back',
     restoredBody: 'Your earlier details were restored and first-touch attribution remains unchanged.',
     telegramContinue: 'Continue the formal application in Telegram',
+    telegramApplicantHint: 'Identity verification continues in the Merchant Bot. Telegram support below is for help only.',
     existingApplicationTitle: 'Application under review',
     existingApplicationBody: 'You already have a pending application. No duplicate is needed.',
     activatedTitle: 'You already have an E-Shop store',

@@ -929,6 +929,7 @@ const km = {
     restoredTitle: 'សូមស្វាគមន៍មកវិញ',
     restoredBody: 'បានស្ដារព័ត៌មានមុនរបស់អ្នក ហើយប្រភពដំបូងមិនផ្លាស់ប្តូរ។',
     telegramContinue: 'បន្តពាក្យស្នើសុំផ្លូវការតាម Telegram',
+    telegramApplicantHint: 'ការផ្ទៀងផ្ទាត់អត្តសញ្ញាណបន្តនៅ Merchant Bot។ Telegram ជំនួយខាងក្រោមសម្រាប់សួរព័ត៌មានប៉ុណ្ណោះ។',
     existingApplicationTitle: 'ពាក្យស្នើសុំកំពុងពិនិត្យ',
     existingApplicationBody: 'អ្នកមានពាក្យស្នើសុំកំពុងរង់ចាំរួចហើយ មិនចាំបាច់ដាក់ស្ទួនទេ។',
     activatedTitle: 'អ្នកមានហាង E-Shop រួចហើយ',

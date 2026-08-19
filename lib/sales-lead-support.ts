@@ -65,8 +65,7 @@ async function loadSupportConfig(): Promise<{
   telegramTarget: string
 }> {
   const fallbackBot = normalizeTelegramBotUsername(
-    process.env.TELEGRAM_BOT_USERNAME,
-    process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
+    process.env.SALES_ONBOARDING_BOT_USERNAME,
   )
   try {
     const row = await prisma.salesLeadSupportConfig.findUnique({

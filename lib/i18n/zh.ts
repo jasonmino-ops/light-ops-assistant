@@ -932,6 +932,7 @@ const zh = {
     restoredTitle: '欢迎回来',
     restoredBody: '已恢复你之前的资料，首次来源保持不变。',
     telegramContinue: '通过 Telegram 继续正式申请',
+    telegramApplicantHint: '正式申请将在商户 Bot 中完成身份验证；下方 Telegram 客服仅用于咨询。',
     existingApplicationTitle: '申请正在审核',
     existingApplicationBody: '你已有待审核申请，无需重复提交。',
     activatedTitle: '你已拥有 E-Shop 店铺',
