@@ -31,6 +31,7 @@ export default function PublicSalesLeadPage() {
   const [locationMessage, setLocationMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [telegramUrl, setTelegramUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (!code || visitRecorded.current) return
@@ -82,6 +83,7 @@ export default function PublicSalesLeadPage() {
         else setError(body.error === 'INVALID_INPUT' ? t('salesLead.invalidInput') : t('salesLead.genericError'))
         return
       }
+      setTelegramUrl(typeof body.telegramUrl === 'string' ? body.telegramUrl : null)
       setSubmitState(body.state as SubmitState)
     } catch {
       setError(t('salesLead.genericError'))
@@ -128,7 +130,14 @@ export default function PublicSalesLeadPage() {
           </>
         )}
         {landing === 'ACTIVE' && submitState !== 'FORM' && (
-          <State title={resultCopy[submitState][0]} body={resultCopy[submitState][1]} />
+          <>
+            <State title={resultCopy[submitState][0]} body={resultCopy[submitState][1]} />
+            {telegramUrl && (
+              <a style={{ ...styles.primaryButton, ...styles.telegramButton }} href={telegramUrl}>
+                {t('salesLead.telegramContinue')}
+              </a>
+            )}
+          </>
         )}
         {landing !== 'LOADING' && <SupportFooter support={support} />}
       </section>
@@ -189,6 +198,7 @@ const styles: Record<string, React.CSSProperties> = {
   label: { display: 'grid', gap: 7, fontSize: 14, fontWeight: 700 },
   input: { height: 46, border: '1px solid #dbe3ef', borderRadius: 12, padding: '0 13px', fontSize: 16, color: '#172033', background: '#fff' },
   primaryButton: { minHeight: 48, border: 0, borderRadius: 13, background: '#2563eb', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer' },
+  telegramButton: { display: 'grid', placeItems: 'center', textDecoration: 'none' },
   secondaryButton: { minHeight: 44, border: '1px solid #bfdbfe', borderRadius: 12, background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, cursor: 'pointer' },
   hint: { color: '#64748b', fontSize: 13 },
   error: { background: '#fff1f2', color: '#be123c', padding: 11, borderRadius: 10, fontSize: 14 },

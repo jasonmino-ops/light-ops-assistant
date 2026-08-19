@@ -6,6 +6,7 @@ import {
   isValidStoreLat,
   isValidStoreLng,
 } from '@/lib/store-location'
+import { buildTelegramStartAppLink, normalizeTelegramBotUsername } from '@/lib/telegram-link'
 import { normalizeAcquisitionInviteCode } from '@/lib/sales-lead-invite'
 import { validateSalesLeadPhone } from '@/lib/sales-lead-phone'
 import { consumeSalesLeadRateLimit, getTrustedSalesLeadIpSignal } from '@/lib/sales-lead-rate'
@@ -88,9 +89,14 @@ export async function POST(req: NextRequest) {
       longitude: longitude ?? null,
     },
   })
-  if (result.state === 'LEAD_SAVED') {
+  if (result.state === 'READY_FOR_TELEGRAM') {
+    const bot = normalizeTelegramBotUsername(
+      process.env.TELEGRAM_BOT_USERNAME,
+      process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
+    )
     return NextResponse.json({
       state: result.created ? 'CREATED' : 'RESTORED',
+      telegramUrl: buildTelegramStartAppLink(bot, `open_${result.rawApplicationToken}`),
       support,
     }, { status: result.created ? 201 : 200 })
   }

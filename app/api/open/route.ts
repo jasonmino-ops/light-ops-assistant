@@ -1,106 +1,416 @@
-/**
- * POST /api/open
- *
- * Submit a store-opening application. Creates a StoreApplication record with
- * status PENDING. Ops reviews the application in /ops and approves it to
- * generate an owner bind token. The applicant then scans the token to bind
- * their account via /bind → /home.
- *
- * Body: { initData, storeName, ownerName }
- */
+import crypto from 'node:crypto'
+import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
-import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
+import { cleanSalesLeadRequiredText } from '@/lib/sales-lead-service'
+import { validateSalesLeadPhone, salesLeadPhonesMatch } from '@/lib/sales-lead-phone'
+import { hashSalesLeadContextToken, isSalesLeadRawToken } from '@/lib/sales-lead-token'
+import { consumeSalesLeadRateLimit } from '@/lib/sales-lead-rate'
+import { getPlatformSupportConfig } from '@/lib/sales-lead-support'
+import {
+  cleanStoreAddress,
+  cleanStoreCoordinate,
+  isValidStoreLat,
+  isValidStoreLng,
+} from '@/lib/store-location'
+import { verifyTgInitData } from '@/lib/verify-tg-init-data'
+
+type TelegramApplicant = {
+  telegramId: string
+  username: string | null
+  firstName: string | null
+  lastName: string | null
+}
+
+type OpenBody = {
+  action?: unknown
+  initData?: unknown
+  applicationToken?: unknown
+  phone?: unknown
+  storeName?: unknown
+  ownerName?: unknown
+  address?: unknown
+  latitude?: unknown
+  longitude?: unknown
+}
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
+const IN_FLIGHT_STATUSES = ['NEW', 'FOLLOWING', 'WAITING_TELEGRAM', 'APPLIED', 'LOST'] as const
 
-function verifyInitData(initData: string): URLSearchParams | null {
-  const params = new URLSearchParams(initData)
-  const hash = params.get('hash')
-  if (!hash) return null
-  params.delete('hash')
-  const dataCheckString = [...params.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n')
-  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest()
-  const expected = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
-  return expected === hash ? params : null
+function safeText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== 'string') return null
+  const clean = value.trim().slice(0, maxLength)
+  return clean || null
+}
+
+function verifyApplicant(initData: unknown): { applicant?: TelegramApplicant; error?: string } {
+  if (typeof initData !== 'string' || !initData) return { error: 'INVALID_TELEGRAM' }
+  let params: URLSearchParams | null
+  if (!BOT_TOKEN) {
+    if (process.env.NODE_ENV === 'production') return { error: 'TELEGRAM_CONFIG_UNAVAILABLE' }
+    params = new URLSearchParams(initData)
+  } else {
+    params = verifyTgInitData(initData, BOT_TOKEN)
+  }
+  if (!params) return { error: 'INVALID_TELEGRAM' }
+
+  try {
+    const user = JSON.parse(params.get('user') ?? '{}') as Record<string, unknown>
+    const telegramId = String(user.id ?? '')
+    if (!/^[1-9]\d{0,19}$/.test(telegramId)) return { error: 'INVALID_TELEGRAM' }
+    return {
+      applicant: {
+        telegramId,
+        username: safeText(user.username, 64),
+        firstName: safeText(user.first_name, 120),
+        lastName: safeText(user.last_name, 120),
+      },
+    }
+  } catch {
+    return { error: 'INVALID_TELEGRAM' }
+  }
+}
+
+function leadProfile(lead: {
+  storeName: string
+  ownerName: string
+  normalizedPhone: string
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+}) {
+  return {
+    storeName: lead.storeName,
+    ownerName: lead.ownerName,
+    phone: lead.normalizedPhone,
+    address: lead.address,
+    latitude: lead.latitude,
+    longitude: lead.longitude,
+  }
+}
+
+function advisoryKey(domain: string, value: string): bigint {
+  return crypto.createHash('sha256').update(`${domain}:${value}`).digest().readBigInt64BE(0)
+}
+
+async function activeMerchantUser(telegramId: string, client: Prisma.TransactionClient | typeof prisma = prisma) {
+  return client.user.findFirst({
+    where: { telegramId, status: 'ACTIVE', tenant: { status: 'ACTIVE' } },
+    select: { id: true },
+  })
+}
+
+async function activeApplicationBlock(telegramId: string, client: Prisma.TransactionClient | typeof prisma = prisma) {
+  return client.applicationBlock.findFirst({
+    where: { telegramId, unblockedAt: null },
+    select: { id: true },
+  })
+}
+
+async function consumeClaimRates(input: {
+  telegramId: string
+  token: string
+  phone: string
+}) {
+  const results = await Promise.all([
+    consumeSalesLeadRateLimit({ action: 'APPLICANT_CLAIM', scopeType: 'TELEGRAM', value: input.telegramId }),
+    consumeSalesLeadRateLimit({ action: 'APPLICANT_CLAIM', scopeType: 'APPLICATION_TOKEN', value: input.token || 'missing' }),
+    consumeSalesLeadRateLimit({ action: 'APPLICANT_CLAIM', scopeType: 'PHONE', value: input.phone || 'missing' }),
+  ])
+  return results.find((result) => !result.allowed) ?? null
+}
+
+async function statusForApplicant(applicant: TelegramApplicant) {
+  if (await activeMerchantUser(applicant.telegramId)) return { state: 'ALREADY_BOUND' as const }
+  const pending = await prisma.storeApplication.findFirst({
+    where: { telegramId: applicant.telegramId, status: 'PENDING' },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  })
+  if (pending) return { state: 'PENDING' as const, applicationNo: pending.id.slice(-8).toUpperCase() }
+  if (await activeApplicationBlock(applicant.telegramId)) return { state: 'BLOCKED' as const }
+
+  const lead = await prisma.salesLead.findFirst({
+    where: { telegramId: applicant.telegramId },
+    orderBy: { lastActivityAt: 'desc' },
+    select: {
+      storeName: true,
+      ownerName: true,
+      normalizedPhone: true,
+      address: true,
+      latitude: true,
+      longitude: true,
+      status: true,
+    },
+  })
+  if (lead?.status === 'ACTIVATED') return { state: 'ALREADY_BOUND' as const }
+  if (lead) return { state: 'CLAIMED' as const, profile: leadProfile(lead) }
+  return {
+    state: 'LEGACY_FORM' as const,
+    ownerName: [applicant.firstName, applicant.lastName].filter(Boolean).join(' ') || applicant.username || '',
+  }
+}
+
+async function claimAttributedLead(applicant: TelegramApplicant, body: OpenBody) {
+  const rawToken = typeof body.applicationToken === 'string' ? body.applicationToken : ''
+  const phoneInput = typeof body.phone === 'string' ? body.phone : ''
+  let rateBlocked
+  try {
+    rateBlocked = await consumeClaimRates({
+      telegramId: applicant.telegramId,
+      token: rawToken,
+      phone: phoneInput.trim(),
+    })
+  } catch {
+    return { state: 'RATE_GUARD_UNAVAILABLE' as const, status: 503 }
+  }
+  if (rateBlocked) return { state: 'RATE_LIMITED' as const, status: 429, retryAfter: rateBlocked.retryAfterSeconds }
+
+  const phone = validateSalesLeadPhone(phoneInput)
+  if (!isSalesLeadRawToken(rawToken) || !phone.ok) {
+    return { state: 'CLAIM_FAILED' as const, status: 400 }
+  }
+  const now = new Date()
+  const context = await prisma.salesLeadContextToken.findUnique({
+    where: { tokenHash: hashSalesLeadContextToken(rawToken) },
+    include: { salesLead: true },
+  })
+  if (!context || context.purpose !== 'APPLICATION' || context.revokedAt || context.expiresAt <= now) {
+    return { state: 'CLAIM_FAILED' as const, status: 400 }
+  }
+  if (context.consumedAt) {
+    if (
+      context.consumedByTelegramId === applicant.telegramId &&
+      context.salesLead.telegramId === applicant.telegramId
+    ) {
+      return { state: 'CLAIMED' as const, status: 200, profile: leadProfile(context.salesLead) }
+    }
+    return { state: 'CLAIM_FAILED' as const, status: 409 }
+  }
+  if (!salesLeadPhonesMatch(phone.normalizedPhone, context.salesLead.normalizedPhone)) {
+    return { state: 'CLAIM_FAILED' as const, status: 400 }
+  }
+  if (context.salesLead.telegramId && context.salesLead.telegramId !== applicant.telegramId) {
+    return { state: 'CLAIM_FAILED' as const, status: 409 }
+  }
+  if (await activeMerchantUser(applicant.telegramId)) {
+    return { state: 'ALREADY_BOUND' as const, status: 409 }
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const conflicting = await tx.salesLead.findFirst({
+        where: {
+          telegramId: applicant.telegramId,
+          id: { not: context.salesLeadId },
+          status: { in: [...IN_FLIGHT_STATUSES] },
+        },
+        select: { id: true },
+      })
+      if (conflicting) throw new Error('APPLICANT_FLOW_EXISTS')
+
+      const leadUpdate = await tx.salesLead.updateMany({
+        where: {
+          id: context.salesLeadId,
+          OR: [{ telegramId: null }, { telegramId: applicant.telegramId }],
+        },
+        data: {
+          telegramId: applicant.telegramId,
+          telegramUsername: applicant.username,
+          telegramFirstName: applicant.firstName,
+          telegramLastName: applicant.lastName,
+          telegramBoundAt: context.salesLead.telegramBoundAt ?? now,
+          status: context.salesLead.status === 'WAITING_TELEGRAM' ? 'NEW' : context.salesLead.status,
+          lastActivityAt: now,
+        },
+      })
+      if (leadUpdate.count !== 1) throw new Error('CLAIM_CONFLICT')
+
+      const tokenUpdate = await tx.salesLeadContextToken.updateMany({
+        where: { id: context.id, consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+        data: { consumedAt: now, consumedByTelegramId: applicant.telegramId },
+      })
+      if (tokenUpdate.count !== 1) throw new Error('CLAIM_CONFLICT')
+    })
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { state: 'APPLICANT_FLOW_EXISTS' as const, status: 409 }
+    }
+    return {
+      state: error instanceof Error && error.message === 'APPLICANT_FLOW_EXISTS'
+        ? 'APPLICANT_FLOW_EXISTS' as const
+        : 'CLAIM_FAILED' as const,
+      status: 409,
+    }
+  }
+
+  return { state: 'CLAIMED' as const, status: 200, profile: leadProfile(context.salesLead) }
+}
+
+async function applyForStore(applicant: TelegramApplicant, body: OpenBody) {
+  const storeName = cleanSalesLeadRequiredText(body.storeName)
+  const ownerName = cleanSalesLeadRequiredText(body.ownerName)
+  const phone = validateSalesLeadPhone(typeof body.phone === 'string' ? body.phone : '')
+  const address = cleanStoreAddress(body.address)
+  const latitude = cleanStoreCoordinate(body.latitude)
+  const longitude = cleanStoreCoordinate(body.longitude)
+  if (!storeName || !ownerName || !phone.ok) return { state: 'INVALID_INPUT' as const, status: 400 }
+  if (!isValidStoreLat(latitude) || !isValidStoreLng(longitude)) {
+    return { state: 'INVALID_LOCATION' as const, status: 400 }
+  }
+
+  try {
+    const rate = await consumeSalesLeadRateLimit({
+      action: 'APPLICATION_SUBMIT',
+      scopeType: 'TELEGRAM',
+      value: applicant.telegramId,
+    })
+    if (!rate.allowed) return { state: 'RATE_LIMITED' as const, status: 429, retryAfter: rate.retryAfterSeconds }
+  } catch {
+    return { state: 'RATE_GUARD_UNAVAILABLE' as const, status: 503 }
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${advisoryKey('sales-lead-telegram', applicant.telegramId)})`
+
+      if (await activeMerchantUser(applicant.telegramId, tx)) {
+        return { state: 'ALREADY_BOUND' as const, status: 409 }
+      }
+      const pending = await tx.storeApplication.findFirst({
+        where: { telegramId: applicant.telegramId, status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      })
+      if (pending) {
+        return { state: 'PENDING' as const, status: 200, applicationNo: pending.id.slice(-8).toUpperCase() }
+      }
+      if (await activeApplicationBlock(applicant.telegramId, tx)) {
+        return { state: 'BLOCKED' as const, status: 403 }
+      }
+
+      let lead = await tx.salesLead.findFirst({
+        where: { telegramId: applicant.telegramId, status: { in: [...IN_FLIGHT_STATUSES] } },
+        orderBy: { lastActivityAt: 'desc' },
+      })
+      const now = new Date()
+      if (lead) {
+        if (!salesLeadPhonesMatch(phone.normalizedPhone, lead.normalizedPhone)) {
+          return { state: 'INVALID_INPUT' as const, status: 400 }
+        }
+        lead = await tx.salesLead.update({
+          where: { id: lead.id },
+          data: {
+            storeName,
+            ownerName,
+            address: address ?? null,
+            latitude: latitude ?? null,
+            longitude: longitude ?? null,
+            telegramUsername: applicant.username,
+            telegramFirstName: applicant.firstName,
+            telegramLastName: applicant.lastName,
+            status: 'APPLIED',
+            lastActivityAt: now,
+          },
+        })
+      } else {
+        lead = await tx.salesLead.create({
+          data: {
+            storeName,
+            ownerName,
+            normalizedPhone: phone.normalizedPhone,
+            address: address ?? null,
+            latitude: latitude ?? null,
+            longitude: longitude ?? null,
+            firstSourceChannel: 'DIRECT_TELEGRAM',
+            telegramId: applicant.telegramId,
+            telegramUsername: applicant.username,
+            telegramFirstName: applicant.firstName,
+            telegramLastName: applicant.lastName,
+            telegramBoundAt: now,
+            status: 'APPLIED',
+            lastActivityAt: now,
+          },
+        })
+      }
+
+      const application = await tx.storeApplication.create({
+        data: {
+          storeName: lead.storeName,
+          ownerName: lead.ownerName,
+          telegramId: applicant.telegramId,
+          telegramUsername: applicant.username,
+          status: 'PENDING',
+          salesLeadId: lead.id,
+        },
+        select: { id: true },
+      })
+      return {
+        state: 'PENDING' as const,
+        status: 201,
+        applicationNo: application.id.slice(-8).toUpperCase(),
+      }
+    })
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const pending = await prisma.storeApplication.findFirst({
+        where: { telegramId: applicant.telegramId, status: 'PENDING' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      })
+      if (pending) return { state: 'PENDING' as const, status: 200, applicationNo: pending.id.slice(-8).toUpperCase() }
+    }
+    console.error('[/api/open] application transaction failed', error instanceof Prisma.PrismaClientKnownRequestError ? error.code : 'UNKNOWN')
+    return { state: 'DB_ERROR' as const, status: 500 }
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ support: getPlatformSupportConfig() })
 }
 
 export async function POST(req: NextRequest) {
-  let body: { initData?: string; storeName?: string; ownerName?: string }
+  const support = getPlatformSupportConfig()
+  let body: OpenBody
   try {
-    body = await req.json()
+    body = await req.json() as OpenBody
   } catch {
-    return NextResponse.json({ error: 'INVALID_JSON', message: '请求格式错误' }, { status: 400 })
+    return NextResponse.json({ error: 'INVALID_INPUT', support }, { status: 400 })
   }
 
-  const { initData, storeName, ownerName } = body
-
-  if (!initData || !storeName?.trim() || !ownerName?.trim()) {
-    return NextResponse.json({ error: 'MISSING_FIELDS', message: '请填写所有必填项' }, { status: 400 })
+  const verified = verifyApplicant(body.initData)
+  if (!verified.applicant) {
+    const status = verified.error === 'TELEGRAM_CONFIG_UNAVAILABLE' ? 503 : 401
+    return NextResponse.json({ error: verified.error, support }, { status })
   }
 
-  // ── 1. Verify Telegram initData ───────────────────────────────────────────
-  let params: URLSearchParams
-  if (!BOT_TOKEN) {
-    params = new URLSearchParams(initData) // dev: skip HMAC
-  } else {
-    const verified = verifyInitData(initData)
-    if (!verified) {
-      return NextResponse.json(
-        { error: 'INVALID_SIGNATURE', message: 'Telegram 签名验证失败' },
-        { status: 401 },
-      )
-    }
-    params = verified
+  if (body.action === 'STATUS') {
+    return NextResponse.json({ ...(await statusForApplicant(verified.applicant)), support })
   }
-
-  const userStr = params.get('user')
-  if (!userStr) {
-    return NextResponse.json({ error: 'MISSING_USER', message: '无法获取 Telegram 用户信息' }, { status: 400 })
-  }
-  let tgUser: { id: number; first_name?: string; last_name?: string; username?: string }
-  try {
-    tgUser = JSON.parse(userStr)
-  } catch {
-    return NextResponse.json({ error: 'INVALID_USER_PAYLOAD' }, { status: 400 })
-  }
-  const telegramId = String(tgUser.id)
-
-  // ── 2. Guard: must not already be bound to an active account under an active tenant ──
-  const existing = await prisma.user.findFirst({
-    where: { telegramId, status: 'ACTIVE' },
-    select: { id: true, displayName: true, tenant: { select: { status: true } } },
-  })
-  // Only block if the user's own tenant is also active — if tenant was deactivated,
-  // allow the user to submit a new store-opening application.
-  if (existing && existing.tenant?.status === 'ACTIVE') {
+  if (body.action === 'CLAIM') {
+    const result = await claimAttributedLead(verified.applicant, body)
     return NextResponse.json(
-      { error: 'ALREADY_BOUND', message: `该 Telegram 账号已绑定商户账号「${existing.displayName}」，请直接使用已有账号` },
-      { status: 409 },
-    )
-  }
-
-  // ── 3. Create PENDING application ─────────────────────────────────────────
-  try {
-    await prisma.storeApplication.create({
-      data: {
-        storeName: storeName.trim(),
-        ownerName: ownerName.trim(),
-        telegramId,
-        telegramUsername: tgUser.username ?? null,
-        status: 'PENDING',
+      { state: result.state, profile: 'profile' in result ? result.profile : undefined, support },
+      {
+        status: result.status,
+        headers: 'retryAfter' in result ? { 'Retry-After': String(result.retryAfter) } : undefined,
       },
-    })
-  } catch (err) {
-    console.error('[/api/open] DB error:', err)
-    return NextResponse.json(
-      { error: 'DB_ERROR', message: '服务暂时不可用，请稍后重试（数据库写入失败）' },
-      { status: 500 },
     )
   }
-
-  return NextResponse.json({ ok: true })
+  if (body.action === 'APPLY' || body.action == null) {
+    const result = await applyForStore(verified.applicant, body)
+    return NextResponse.json(
+      {
+        ok: result.state === 'PENDING',
+        state: result.state,
+        applicationNo: 'applicationNo' in result ? result.applicationNo : undefined,
+        support,
+      },
+      {
+        status: result.status,
+        headers: 'retryAfter' in result ? { 'Retry-After': String(result.retryAfter) } : undefined,
+      },
+    )
+  }
+  return NextResponse.json({ error: 'INVALID_ACTION', support }, { status: 400 })
 }

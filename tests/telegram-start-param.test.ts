@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   getBindTokenFromStartParam,
+  getOpenApplicationTokenFromStartParam,
   redactStartParam,
   resolveTelegramStartParam,
 } from '../lib/telegram-start-param'
@@ -39,6 +40,11 @@ assert.equal(
 assert.equal(resolveTelegramStartParam({ search: '?foo=bar' }), null)
 assert.equal(getBindTokenFromStartParam(token), 'abcdef123456')
 assert.equal(getBindTokenFromStartParam('open'), '')
+assert.equal(getOpenApplicationTokenFromStartParam('open'), '')
+assert.equal(getOpenApplicationTokenFromStartParam('open_abcdefghijklmnopqrstuv'), 'abcdefghijklmnopqrstuv')
+assert.equal(getOpenApplicationTokenFromStartParam('open_too-short'), '')
+assert.equal(getBindTokenFromStartParam('open_abcdefghijklmnopqrstuv'), '')
 assert.equal(redactStartParam(token), 'bind_abcdef...len12')
+assert.equal(redactStartParam('open_abcdefghijklmnopqrstuv'), 'open_abcdef...len22')
 
 console.log('telegram-start-param tests passed')

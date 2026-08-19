@@ -5,6 +5,7 @@ import zh from '@/lib/i18n/zh'
 import km from '@/lib/i18n/km'
 import {
   getBindTokenFromStartParam,
+  getOpenApplicationTokenFromStartParam,
   redactStartParam,
   resolveTelegramStartParam,
 } from '@/lib/telegram-start-param'
@@ -109,6 +110,19 @@ export default function TelegramInit({
       })
       window.location.replace(`/bind?token=${encodeURIComponent(preAuthBindToken)}`)
       return
+    }
+    const preAuthOpenToken = getOpenApplicationTokenFromStartParam(preAuthStartParam?.value)
+    const preAuthIsLegacyOpen = preAuthStartParam?.value === 'open'
+    if (preAuthOpenToken || preAuthIsLegacyOpen) {
+      const currentToken = new URLSearchParams(window.location.search).get('applicationToken')
+      const needsRedirect = !path.startsWith('/open') || (preAuthOpenToken && currentToken !== preAuthOpenToken)
+      if (needsRedirect) {
+        const target = preAuthOpenToken
+          ? `/open?applicationToken=${encodeURIComponent(preAuthOpenToken)}`
+          : '/open'
+        window.location.replace(target)
+        return
+      }
     }
 
     if (isPublicPath(path)) {
@@ -258,9 +272,13 @@ export default function TelegramInit({
               return
             }
 
-            // Fixed "open store" QR code: startapp=open
-            if (sp === 'open' && !window.location.pathname.startsWith('/open')) {
-              window.location.replace('/open')
+            // Fixed QR remains exact startapp=open; attributed flow uses open_<opaque token>.
+            const openApplicationToken = getOpenApplicationTokenFromStartParam(sp)
+            if ((sp === 'open' || openApplicationToken) && !window.location.pathname.startsWith('/open')) {
+              const target = openApplicationToken
+                ? `/open?applicationToken=${encodeURIComponent(openApplicationToken)}`
+                : '/open'
+              window.location.replace(target)
               return
             }
 

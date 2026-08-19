@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
-import type { AcquisitionInvite } from '@prisma/client'
+import type { AcquisitionInvite, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { generateSalesLeadContextToken } from '@/lib/sales-lead-token'
 
 export type PublicLeadInput = {
   storeName: string
@@ -12,7 +13,7 @@ export type PublicLeadInput = {
 }
 
 export type PublicLeadResult =
-  | { state: 'LEAD_SAVED'; created: boolean }
+  | { state: 'READY_FOR_TELEGRAM'; created: boolean; rawApplicationToken: string }
   | { state: 'EXISTING_APPLICATION' }
   | { state: 'ACTIVATED' }
   | { state: 'SHARED_PHONE_REVIEW' }
@@ -29,6 +30,28 @@ function identityName(value: string): string {
 function phoneAdvisoryLockKey(normalizedPhone: string): bigint {
   const digest = crypto.createHash('sha256').update(`sales-lead-phone:${normalizedPhone}`).digest()
   return digest.readBigInt64BE(0)
+}
+
+async function issueApplicationToken(
+  tx: Prisma.TransactionClient,
+  salesLeadId: string,
+  now: Date,
+) {
+  const material = generateSalesLeadContextToken('APPLICATION', now)
+  await tx.salesLeadContextToken.updateMany({
+    where: { salesLeadId, purpose: 'APPLICATION', consumedAt: null, revokedAt: null },
+    data: { revokedAt: now },
+  })
+  await tx.salesLeadContextToken.create({
+    data: {
+      salesLeadId,
+      tokenHash: material.tokenHash,
+      purpose: 'APPLICATION',
+      contextStage: 'LEAD_FORM',
+      expiresAt: material.expiresAt,
+    },
+  })
+  return material.rawToken
 }
 
 export async function createOrRestorePublicSalesLead(input: {
@@ -85,7 +108,8 @@ export async function createOrRestorePublicSalesLead(input: {
           // firstInvite/source/campaign/initial owner are intentionally immutable.
         },
       })
-      return { state: 'LEAD_SAVED', created: false }
+      const rawApplicationToken = await issueApplicationToken(tx, existing.id, now)
+      return { state: 'READY_FOR_TELEGRAM', created: false, rawApplicationToken }
     }
 
     const created = await tx.salesLead.create({
@@ -104,6 +128,7 @@ export async function createOrRestorePublicSalesLead(input: {
         lastActivityAt: now,
       },
     })
-    return { state: 'LEAD_SAVED', created: true }
+    const rawApplicationToken = await issueApplicationToken(tx, created.id, now)
+    return { state: 'READY_FOR_TELEGRAM', created: true, rawApplicationToken }
   })
 }

@@ -77,10 +77,20 @@ export function getBindTokenFromStartParam(value: string | null | undefined): st
   return normalized.startsWith('bind_') ? normalized.slice(5).trim() : ''
 }
 
+export function getOpenApplicationTokenFromStartParam(value: string | null | undefined): string {
+  const normalized = decodeStartParam(value ?? '')
+  const token = normalized.startsWith('open_') ? normalized.slice(5).trim() : ''
+  return /^[A-Za-z0-9_-]{22}$/.test(token) ? token : ''
+}
+
 export function redactStartParam(value: string | null | undefined): string | null {
   const normalized = decodeStartParam(value ?? '')
   if (!normalized) return null
-  const prefix = normalized.startsWith('bind_') ? 'bind_' : ''
+  const prefix = normalized.startsWith('bind_')
+    ? 'bind_'
+    : normalized.startsWith('open_')
+      ? 'open_'
+      : ''
   const body = prefix ? normalized.slice(prefix.length) : normalized
   return `${prefix}${body.slice(0, 6)}...len${body.length}`
 }
