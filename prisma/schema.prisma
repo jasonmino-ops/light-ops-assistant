@@ -911,6 +911,7 @@ model SalesLead {
   firstSourceChannel  AcquisitionSourceChannel
   firstCampaign       String?
   initialSalesOwnerId String?
+  salesOwnerId        String?
   telegramId          String?
   telegramUsername    String?
   telegramFirstName   String?
@@ -923,13 +924,16 @@ model SalesLead {
 
   firstInvite       AcquisitionInvite?       @relation(fields: [firstInviteId], references: [id], onDelete: Restrict)
   initialSalesOwner OpsAdmin?                 @relation("SalesLeadInitialOwner", fields: [initialSalesOwnerId], references: [id], onDelete: SetNull)
+  salesOwner        OpsAdmin?                 @relation("SalesLeadCurrentOwner", fields: [salesOwnerId], references: [id], onDelete: SetNull)
   contextTokens     SalesLeadContextToken[]
   applications     StoreApplication[]
+  telegramMessages TelegramMessage[]
 
   @@index([normalizedPhone])
   @@index([telegramId])
   @@index([firstInviteId, createdAt])
   @@index([initialSalesOwnerId, status])
+  @@index([salesOwnerId, status, lastActivityAt])
   @@index([status, lastActivityAt])
 }
 
@@ -1003,6 +1007,8 @@ model SalesLeadSupportConfig {
 model TelegramMessage {
   id                  String   @id @default(cuid())
   tenantId            String? // null = ops/系统级消息
+  channel             String   @default("MERCHANT") // MERCHANT | SALES_ONBOARDING
+  salesLeadId         String?
   recipientTelegramId String // 发件方(CUSTOMER)或收件方(OPS/SYSTEM)的 TG ID
   senderName          String? // 客户名称，CUSTOMER 消息时填入
   messageType         String   @default("TEXT") // TEXT | IMAGE | STICKER | VOICE | VIDEO | FILE | OTHER
@@ -1012,9 +1018,13 @@ model TelegramMessage {
   sentBy              String   @default("SYSTEM") // SYSTEM | OPS | CUSTOMER
   createdAt           DateTime @default(now())
 
+  salesLead SalesLead? @relation(fields: [salesLeadId], references: [id], onDelete: SetNull)
+
   @@index([tenantId])
   @@index([recipientTelegramId])
   @@index([createdAt])
+  @@index([channel, recipientTelegramId, createdAt])
+  @@index([channel, salesLeadId, createdAt])
 }
 
 model ProductImportSession {
@@ -1174,6 +1184,7 @@ model OpsAdmin {
 
   acquisitionInvites       AcquisitionInvite[] @relation("AcquisitionInviteSalesOwner")
   initialSalesLeads         SalesLead[]          @relation("SalesLeadInitialOwner")
+  salesLeads                SalesLead[]          @relation("SalesLeadCurrentOwner")
   applicationBlocksCreated ApplicationBlock[]   @relation("ApplicationBlockCreatedBy")
   applicationBlocksCleared ApplicationBlock[]   @relation("ApplicationBlockClearedBy")
   salesLeadSupportConfigs  SalesLeadSupportConfig[] @relation("SalesLeadSupportConfigUpdatedBy")

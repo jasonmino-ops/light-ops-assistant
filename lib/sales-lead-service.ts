@@ -120,6 +120,7 @@ export async function createOrRestorePublicSalesLead(input: {
         firstSourceChannel: input.invite.sourceChannel,
         firstCampaign: input.invite.campaignLabel,
         initialSalesOwnerId: input.invite.salesOwnerId,
+        salesOwnerId: input.invite.salesOwnerId,
         status: 'WAITING_TELEGRAM',
         lastActivityAt: now,
       },

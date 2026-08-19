@@ -102,6 +102,10 @@ const migration = fs.readFileSync(
   'prisma/migrations/20260819083000_add_sales_lead_attribution_v01/migration.sql',
   'utf8',
 )
+const supportChannelMigration = fs.readFileSync(
+  'prisma/migrations/20260819210000_add_sales_support_channel/migration.sql',
+  'utf8',
+)
 const leadService = fs.readFileSync('lib/sales-lead-service.ts', 'utf8')
 
 for (const model of [
@@ -122,6 +126,16 @@ assert.match(migration, /SalesLead_one_inflight_per_telegram/)
 assert.match(migration, /'NEW', 'FOLLOWING', 'WAITING_TELEGRAM', 'APPLIED'/)
 assert.match(migration, /duplicate telegramId groups: 0/)
 assert.match(migration, /REVOKE ALL ON public\."SalesLead" FROM anon/)
+assert.match(schema, /salesOwnerId\s+String\?/)
+assert.match(schema, /channel\s+String\s+@default\("MERCHANT"\)/)
+assert.match(schema, /salesLeadId\s+String\?/)
+assert.match(schema, /@@index\(\[channel, recipientTelegramId, createdAt\]\)/)
+assert.match(schema, /@@index\(\[channel, salesLeadId, createdAt\]\)/)
+assert.match(supportChannelMigration, /ADD COLUMN "channel" TEXT NOT NULL DEFAULT 'MERCHANT'/)
+assert.match(supportChannelMigration, /ADD COLUMN "salesLeadId" TEXT/)
+assert.match(supportChannelMigration, /SET "salesOwnerId" = "initialSalesOwnerId"/)
+assert.doesNotMatch(supportChannelMigration, /UPDATE "TelegramMessage"[\s\S]*"salesLeadId"/)
+assert.match(leadService, /initialSalesOwnerId: input\.invite\.salesOwnerId,[\s\S]*salesOwnerId: input\.invite\.salesOwnerId/)
 assert.match(leadService, /pg_advisory_xact_lock\([\s\S]*\) IS NULL AS "ignored"/)
 assert.doesNotMatch(leadService, /SELECT pg_advisory_xact_lock\([^\n]+\)`/)
 
