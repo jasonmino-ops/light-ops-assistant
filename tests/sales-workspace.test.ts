@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+const auth = fs.readFileSync('lib/sales-workspace-auth.ts', 'utf8')
+const list = fs.readFileSync('app/api/sales/leads/route.ts', 'utf8')
+const claim = fs.readFileSync('app/api/sales/leads/[id]/claim/route.ts', 'utf8')
+const status = fs.readFileSync('app/api/sales/leads/[id]/route.ts', 'utf8')
+const conversations = fs.readFileSync('app/api/sales/conversations/route.ts', 'utf8')
+const messages = fs.readFileSync('app/api/sales/messages/route.ts', 'utf8')
+const page = fs.readFileSync('app/ops/sales/page.tsx', 'utf8')
+
+assert.match(auth, /checkOpsAuthContext/)
+assert.match(auth, /context\.role === 'OPS_ADMIN' \|\| context\.role === 'SUPER_ADMIN'/)
+assert.match(list, /actor\.isManager \? \{\} : \{ salesOwnerId: actor\.userId \}/)
+assert.match(list, /where: \{ salesOwnerId: null \}/)
+assert.match(list, /unassigned: unassigned\.map/)
+assert.doesNotMatch(list.slice(list.indexOf('unassigned: unassigned.map')), /ownerName: lead\.ownerName|phone: lead\.normalizedPhone/)
+assert.match(claim, /where: \{ id, salesOwnerId: null \}/)
+assert.doesNotMatch(claim, /initialSalesOwnerId/)
+assert.match(status, /canAccessOwnedSalesLead/)
+assert.match(status, /notIn: \['APPLIED', 'ACTIVATED'\]/)
+assert.match(conversations, /channel: 'SALES_ONBOARDING', salesLeadId/)
+assert.match(messages, /channel: 'SALES_ONBOARDING'/)
+assert.match(messages, /select: \{ recipientTelegramId: true \}/)
+assert.doesNotMatch(messages, /body\?\.recipientTelegramId|recipientTelegramId\?: unknown/)
+assert.match(messages, /SALES_ONBOARDING_BOT_TOKEN/)
+assert.match(page, /\/api\/sales\/leads/)
+assert.match(page, /\/api\/sales\/messages/)
+assert.doesNotMatch(page, /approve|reject|ban|unban/i)
+
+console.log('sales workspace tests passed')

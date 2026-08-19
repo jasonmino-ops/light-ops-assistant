@@ -298,6 +298,7 @@ export default function OpsPage() {
       <Link href="/ops/overview" style={s.sysLink} title="查看全部商户运行状态">运行概览</Link>
       <Link href="/ops/health" style={s.sysLink} title="查看平台核心业务链路和当前可识别异常">运行健康</Link>
       <Link href="/ops/acquisition-invites" style={s.sysLink}>邀请开店</Link>
+      <Link href="/ops/sales" style={s.sysLink}>Sales Workspace</Link>
       <Link href="/ops/sales-leads" style={s.sysLink}>Sales Leads</Link>
       <Link href="/system" style={s.sysLink}>系统自检</Link>
     </>
@@ -336,6 +337,7 @@ export default function OpsPage() {
             <div style={s.moreMenu}>
               {opsRole === 'SUPER_ADMIN' && <Link href="/ops/admins" style={s.moreMenuItem}>管理员</Link>}
               <Link href="/ops/acquisition-invites" style={s.moreMenuItem}>邀请开店</Link>
+              <Link href="/ops/sales" style={s.moreMenuItem}>Sales Workspace</Link>
               <Link href="/ops/sales-leads" style={s.moreMenuItem}>Sales Leads</Link>
               <Link href="/system" style={s.moreMenuItem}>系统自检</Link>
               <a href="#ops-broadcast" style={s.moreMenuItem} onClick={() => setShowMoreMenu(false)}>广播发送</a>
