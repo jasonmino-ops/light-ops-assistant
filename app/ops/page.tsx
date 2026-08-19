@@ -177,6 +177,10 @@ export default function OpsPage() {
       .then(async (r) => {
         if (r.ok) {
           const data = await r.json()
+          if (data.opsRole === 'BD') {
+            window.location.replace('/ops/sales')
+            return
+          }
           setOpsRole(data.opsRole ?? '')
           setAuthState('ok')
         } else {

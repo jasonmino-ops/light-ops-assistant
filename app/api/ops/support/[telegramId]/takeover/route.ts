@@ -5,7 +5,7 @@
  * 接管后 bot 不再自动回复该用户，直到后续版本支持重置。
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 import { prisma } from '@/lib/prisma'
 
 export async function POST(
@@ -13,7 +13,9 @@ export async function POST(
   { params }: { params: Promise<{ telegramId: string }> },
 ) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const { telegramId } = await params
   if (!telegramId) return NextResponse.json({ error: 'MISSING_TELEGRAM_ID' }, { status: 400 })

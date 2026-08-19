@@ -5,7 +5,7 @@
  * 每个会话代表一个与 bot 交互过的客户，包含最新消息预览。
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 import { prisma } from '@/lib/prisma'
 
 const CUSTOMER_MESSAGE_LIMIT = 300
@@ -55,12 +55,14 @@ function sortByLastAtDesc(a: ConversationRow, b: ConversationRow) {
 
 export async function GET(req: NextRequest) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   // 并发拉取消息列表和支持会话状态
   const [messages, supportSessions] = await Promise.all([
     prisma.telegramMessage.findMany({
-      where: { sentBy: 'CUSTOMER' },
+      where: { channel: 'MERCHANT', sentBy: 'CUSTOMER' },
       orderBy: { createdAt: 'desc' },
       take: CUSTOMER_MESSAGE_LIMIT,
       select: {

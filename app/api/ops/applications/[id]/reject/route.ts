@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { blockStoreApplications, cleanApplicationBlockText } from '@/lib/application-block'
-import { checkOpsAuthContext, getFkBackedOpsAdminIdentity } from '@/lib/ops-auth'
+import { checkOpsAuthContext, getFkBackedOpsAdminIdentity, hasOpsRole } from '@/lib/ops-auth'
 import { getSalesLeadTelegramAdvisoryKey } from '@/lib/sales-lead-advisory'
 
 export async function POST(
@@ -9,7 +9,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const ops = await checkOpsAuthContext(req)
-  if (!ops) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!ops || !hasOpsRole(ops.role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
   const body = await req.json().catch(() => null) as Record<string, unknown> | null
   const ban = body?.ban === true
   const reason = cleanApplicationBlockText(body?.reason, 160)

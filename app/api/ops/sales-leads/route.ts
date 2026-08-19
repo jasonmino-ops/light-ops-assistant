@@ -1,13 +1,15 @@
 import { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuthContext } from '@/lib/ops-auth'
+import { checkOpsAuthContext, hasOpsRole } from '@/lib/ops-auth'
 
 const LEAD_STATUSES = ['NEW', 'FOLLOWING', 'WAITING_TELEGRAM', 'APPLIED', 'ACTIVATED', 'LOST']
 
 export async function GET(req: NextRequest) {
   const ops = await checkOpsAuthContext(req)
-  if (!ops) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!ops || !hasOpsRole(ops.role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const q = (req.nextUrl.searchParams.get('q') ?? '').trim().slice(0, 80)
   const requestedStatus = req.nextUrl.searchParams.get('status')

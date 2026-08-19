@@ -22,7 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuthContext } from '@/lib/ops-auth'
+import { checkOpsAuthContext, hasOpsRole } from '@/lib/ops-auth'
 import { createTrialSubscriptionForTenant } from '@/lib/subscription'
 import { sendAndLogMessage, WELCOME_TEXT } from '@/lib/telegram'
 import { getSalesLeadTelegramAdvisoryKey } from '@/lib/sales-lead-advisory'
@@ -44,7 +44,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const ops = await checkOpsAuthContext(req)
-  if (!ops) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!ops || !hasOpsRole(ops.role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const { id } = await params
 

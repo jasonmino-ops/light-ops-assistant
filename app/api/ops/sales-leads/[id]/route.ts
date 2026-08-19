@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuthContext } from '@/lib/ops-auth'
+import { checkOpsAuthContext, hasOpsRole } from '@/lib/ops-auth'
 
 const MANUAL_STATUSES = new Set(['NEW', 'FOLLOWING', 'LOST'])
 
@@ -9,7 +9,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const ops = await checkOpsAuthContext(req)
-  if (!ops) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!ops || !hasOpsRole(ops.role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
   const { id } = await params
   const lead = await prisma.salesLead.findUnique({
     where: { id },
@@ -62,7 +64,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const ops = await checkOpsAuthContext(req)
-  if (!ops) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!ops || !hasOpsRole(ops.role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
   const body = await req.json().catch(() => null) as { status?: unknown } | null
   if (typeof body?.status !== 'string' || !MANUAL_STATUSES.has(body.status)) {
     return NextResponse.json({ error: 'INVALID_STATUS' }, { status: 400 })

@@ -4,7 +4,7 @@
  * 返回与某个客户的完整会话记录（客户发入 + 后台回复），按时间升序。
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(
@@ -12,12 +12,14 @@ export async function GET(
   { params }: { params: Promise<{ telegramId: string }> },
 ) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const { telegramId } = await params
 
   const messages = await prisma.telegramMessage.findMany({
-    where: { recipientTelegramId: telegramId },
+    where: { channel: 'MERCHANT', recipientTelegramId: telegramId },
     orderBy: { createdAt: 'asc' },
     take: 100,
     select: {
