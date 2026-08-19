@@ -46,7 +46,9 @@ export async function createOrRestorePublicSalesLead(input: {
   return prisma.$transaction(async (tx) => {
     // Phone is deliberately not UNIQUE, but this transaction-scoped lock closes
     // the concurrent double-submit race without persisting the raw phone as a key.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${phoneAdvisoryLockKey(input.lead.normalizedPhone)})`
+    // Prisma 7 cannot deserialize PostgreSQL's `void` return type. Project the
+    // blocking lock call to a boolean while preserving the exact lock semantics.
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${phoneAdvisoryLockKey(input.lead.normalizedPhone)}) IS NULL AS "ignored"`
     const phoneCandidates = await tx.salesLead.findMany({
       where: { normalizedPhone: input.lead.normalizedPhone },
       orderBy: { createdAt: 'asc' },

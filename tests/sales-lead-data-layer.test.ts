@@ -102,6 +102,7 @@ const migration = fs.readFileSync(
   'prisma/migrations/20260819083000_add_sales_lead_attribution_v01/migration.sql',
   'utf8',
 )
+const leadService = fs.readFileSync('lib/sales-lead-service.ts', 'utf8')
 
 for (const model of [
   'AcquisitionInvite',
@@ -121,6 +122,8 @@ assert.match(migration, /SalesLead_one_inflight_per_telegram/)
 assert.match(migration, /'NEW', 'FOLLOWING', 'WAITING_TELEGRAM', 'APPLIED'/)
 assert.match(migration, /duplicate telegramId groups: 0/)
 assert.match(migration, /REVOKE ALL ON public\."SalesLead" FROM anon/)
+assert.match(leadService, /pg_advisory_xact_lock\([\s\S]*\) IS NULL AS "ignored"/)
+assert.doesNotMatch(leadService, /SELECT pg_advisory_xact_lock\([^\n]+\)`/)
 
 console.log('sales lead data-layer tests passed')
 }
