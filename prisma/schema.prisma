@@ -127,6 +127,49 @@ enum MemberBalanceLedgerSourceType {
   API
 }
 
+enum AcquisitionSourceChannel {
+  FACEBOOK
+  TIKTOK
+  SALES
+  POSTER
+  TELEGRAM
+  OTHER
+  DIRECT_TELEGRAM
+}
+
+enum AcquisitionInviteStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SalesLeadStatus {
+  NEW
+  FOLLOWING
+  WAITING_TELEGRAM
+  APPLIED
+  ACTIVATED
+  LOST
+}
+
+enum SalesLeadTokenPurpose {
+  APPLICATION
+  SUPPORT
+}
+
+enum SalesLeadRateAction {
+  LEAD_SUBMIT
+  APPLICANT_CLAIM
+  APPLICATION_SUBMIT
+}
+
+enum SalesLeadRateScope {
+  PHONE
+  TELEGRAM
+  INVITE
+  IP
+  APPLICATION_TOKEN
+}
+
 model Tenant {
   id        String   @id @default(cuid())
   name      String
@@ -246,6 +289,7 @@ model Store {
   desktopActivationAudits  DesktopActivationAudit[]
   computerBindings         ComputerBinding[]
   computerBindingAudits    ComputerBindingAudit[]
+  sourceApplication        StoreApplication?         @relation("StoreApplicationCreatedStore")
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -822,9 +866,125 @@ model StoreApplication {
   tenantId         String? // set on approval
   bindTokenValue   String? // set on approval, mirrors BindToken.token
   note             String?
+  salesLeadId      String?
+  createdStoreId   String?   @unique
+
+  salesLead    SalesLead? @relation(fields: [salesLeadId], references: [id], onDelete: SetNull)
+  createdStore Store?     @relation("StoreApplicationCreatedStore", fields: [createdStoreId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([telegramId])
+  @@index([telegramId, status])
+  @@index([salesLeadId, createdAt])
+}
+
+model AcquisitionInvite {
+  id            String                   @id @default(cuid())
+  code          String                   @unique
+  sourceChannel AcquisitionSourceChannel
+  campaignLabel String?
+  salesOwnerId  String?
+  internalNote  String?                  @db.Text
+  status        AcquisitionInviteStatus  @default(ACTIVE)
+  visitCount    Int                      @default(0)
+  firstVisitAt  DateTime?
+  lastVisitAt   DateTime?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  salesOwner OpsAdmin?   @relation("AcquisitionInviteSalesOwner", fields: [salesOwnerId], references: [id], onDelete: SetNull)
+  leads      SalesLead[]
+
+  @@index([status, createdAt])
+  @@index([salesOwnerId, status])
+}
+
+model SalesLead {
+  id                  String                   @id @default(cuid())
+  storeName           String
+  ownerName           String
+  normalizedPhone     String
+  address             String?                  @db.Text
+  latitude            Float?
+  longitude           Float?
+  firstInviteId       String?
+  firstSourceChannel  AcquisitionSourceChannel
+  firstCampaign       String?
+  initialSalesOwnerId String?
+  telegramId          String?
+  telegramUsername    String?
+  telegramFirstName   String?
+  telegramLastName    String?
+  telegramBoundAt     DateTime?
+  status              SalesLeadStatus          @default(WAITING_TELEGRAM)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  lastActivityAt      DateTime                 @default(now())
+
+  firstInvite       AcquisitionInvite?       @relation(fields: [firstInviteId], references: [id], onDelete: Restrict)
+  initialSalesOwner OpsAdmin?                 @relation("SalesLeadInitialOwner", fields: [initialSalesOwnerId], references: [id], onDelete: SetNull)
+  contextTokens     SalesLeadContextToken[]
+  applications     StoreApplication[]
+
+  @@index([normalizedPhone])
+  @@index([telegramId])
+  @@index([firstInviteId, createdAt])
+  @@index([initialSalesOwnerId, status])
+  @@index([status, lastActivityAt])
+}
+
+model SalesLeadContextToken {
+  id                   String                @id @default(cuid())
+  salesLeadId          String
+  tokenHash            String                @unique
+  purpose              SalesLeadTokenPurpose
+  contextStage         String?
+  expiresAt            DateTime
+  consumedAt           DateTime?
+  consumedByTelegramId String?
+  revokedAt            DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  salesLead SalesLead @relation(fields: [salesLeadId], references: [id], onDelete: Cascade)
+
+  @@index([salesLeadId, purpose, expiresAt])
+  @@index([purpose, consumedByTelegramId, consumedAt], map: "SalesLeadToken_support_context_idx")
+  @@index([expiresAt])
+}
+
+model ApplicationBlock {
+  id                    String    @id @default(cuid())
+  telegramId            String    @unique
+  telegramUsername      String?
+  reason                String
+  note                  String?   @db.Text
+  blockedByOpsAdminId   String
+  blockedAt             DateTime  @default(now())
+  unblockedByOpsAdminId String?
+  unblockedAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  blockedBy   OpsAdmin  @relation("ApplicationBlockCreatedBy", fields: [blockedByOpsAdminId], references: [id], onDelete: Restrict)
+  unblockedBy OpsAdmin? @relation("ApplicationBlockClearedBy", fields: [unblockedByOpsAdminId], references: [id], onDelete: SetNull)
+
+  @@index([unblockedAt, blockedAt])
+}
+
+model SalesLeadRateCounter {
+  id           String               @id @default(cuid())
+  action       SalesLeadRateAction
+  scopeType    SalesLeadRateScope
+  scopeKeyHash String
+  windowStart  DateTime
+  count        Int                  @default(0)
+  expiresAt    DateTime
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@unique([action, scopeType, scopeKeyHash, windowStart], map: "SalesLeadRateCounter_window_key")
+  @@index([expiresAt])
 }
 
 model TelegramMessage {
@@ -999,6 +1159,10 @@ model OpsAdmin {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  acquisitionInvites       AcquisitionInvite[] @relation("AcquisitionInviteSalesOwner")
+  initialSalesLeads         SalesLead[]          @relation("SalesLeadInitialOwner")
+  applicationBlocksCreated ApplicationBlock[]   @relation("ApplicationBlockCreatedBy")
+  applicationBlocksCleared ApplicationBlock[]   @relation("ApplicationBlockClearedBy")
 }
 
 // 顾客下单后通过 /start bind_<storeCode>_<orderNo> 主动绑定 Telegram，沉淀为门店常驻联系人
