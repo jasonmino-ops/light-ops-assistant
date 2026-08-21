@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
 /**
  * POST /api/orders/:orderNo/cancel
@@ -23,7 +24,7 @@ export async function POST(
   // Check records exist and are cancellable
   const records = await prisma.saleRecord.findMany({
     where: { orderNo, tenantId: ctx.tenantId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, tenantId: true, storeId: true },
   })
 
   if (records.length === 0) {
@@ -57,6 +58,12 @@ export async function POST(
         data: { status: 'CANCELLED' },
       })
     })
+
+    after(() => notifyCashierGateway({
+      tenantId: records[0].tenantId,
+      storeId: records[0].storeId,
+      type: 'pending_orders_changed',
+    }))
 
     return NextResponse.json({ orderNo, status: 'CANCELLED' })
   } catch (err) {

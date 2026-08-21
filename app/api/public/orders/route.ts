@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendAndLogMessage } from '@/lib/telegram'
 import {
@@ -6,6 +6,7 @@ import {
   cleanVisitorId,
   createCustomerJourneyEvent,
 } from '@/lib/customer-journey'
+import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
 /**
  * POST /api/public/orders
@@ -319,6 +320,12 @@ export async function POST(req: NextRequest) {
     }
     throw e
   }
+
+  after(() => notifyCashierGateway({
+    tenantId: store.tenantId,
+    storeId: store.id,
+    type: 'orders_changed',
+  }))
 
   if (orderSource === 'landing') {
     await createCustomerJourneyEvent({

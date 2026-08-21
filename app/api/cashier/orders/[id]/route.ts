@@ -6,9 +6,10 @@
  * Allowed: PENDING → CONFIRMED | CANCELLED, CONFIRMED → COMPLETED | CANCELLED.
  * No Telegram notification sent in v1; mobile /home sees status via its own poll.
  */
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
 const ALLOWED: Record<string, string[]> = {
   PENDING:   ['CONFIRMED', 'CANCELLED'],
@@ -61,5 +62,10 @@ export async function PATCH(
     data: { status: newStatus },
     select: { id: true, status: true },
   })
+  after(() => notifyCashierGateway({
+    tenantId: store.tenantId,
+    storeId: store.id,
+    type: 'orders_changed',
+  }))
   return NextResponse.json(updated)
 }

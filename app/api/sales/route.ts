@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 import { isKhqrSupportedCurrency } from '@/lib/currency'
+import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
 /**
  * POST /api/sales
@@ -272,7 +273,7 @@ async function handleDeferredSale(
 
   const store = await prisma.store.findFirst({
     where: { id: ctx.storeId, tenantId: ctx.tenantId, status: 'ACTIVE' },
-    select: { code: true },
+    select: { id: true, tenantId: true, code: true },
   })
   if (!store) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 400 })
 
@@ -331,6 +332,12 @@ async function handleDeferredSale(
 
       return { orderNo, totalAmount, itemCount: items.length, createdAt: firstCreatedAt!.toISOString() }
     })
+
+    after(() => notifyCashierGateway({
+      tenantId: store.tenantId,
+      storeId: store.id,
+      type: 'pending_orders_changed',
+    }))
 
     return NextResponse.json({ ...result, paymentMethod: 'DEFER' }, { status: 201 })
   } catch (err) {

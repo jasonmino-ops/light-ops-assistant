@@ -9,6 +9,7 @@ export type CashierRealtimeNotifyResult =
   | { ok: false; reason: 'disabled' | 'invalid_config' | 'timeout' | 'network' | 'rejected'; status?: number }
 
 type NotifyOptions = {
+  enabled?: boolean
   gatewayUrl?: string
   secret?: string
   timeoutMs?: number
@@ -44,6 +45,10 @@ export async function notifyCashierGateway(
   },
   options?: NotifyOptions,
 ): Promise<CashierRealtimeNotifyResult> {
+  const enabled = options?.enabled ?? ['1', 'true'].includes(
+    (process.env.NEXT_PUBLIC_CASHIER_REALTIME_ENABLED ?? '').trim().toLowerCase(),
+  )
+  if (!enabled) return { ok: false, reason: 'disabled' }
   const gatewayUrl = options?.gatewayUrl ?? process.env.CASHIER_REALTIME_GATEWAY_URL?.trim()
   const secret = options?.secret ?? process.env.CASHIER_REALTIME_NOTIFY_SECRET?.trim()
   if (!gatewayUrl || !secret) return { ok: false, reason: 'disabled' }

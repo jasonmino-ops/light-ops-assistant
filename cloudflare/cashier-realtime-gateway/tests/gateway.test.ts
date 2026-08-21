@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   CASHIER_REALTIME_PROTOCOL_VERSION,
   CASHIER_REALTIME_TICKET_PROTOCOL_PREFIX,
@@ -353,6 +354,7 @@ async function main() {
   const helperNotify = await notifyCashierGateway({
     tenantId: 'tenant-a', storeId: 'store-a', type: 'pending_orders_changed', eventId: 'helper-event',
   }, {
+    enabled: true,
     gatewayUrl: 'https://gateway.example',
     secret: notifySecret,
     fetchImpl: async (url, init) => {
@@ -383,6 +385,7 @@ async function main() {
   const failedNotify = await notifyCashierGateway({
     tenantId: 'tenant-a', storeId: 'store-a', type: 'orders_changed', eventId: 'failure-event',
   }, {
+    enabled: true,
     gatewayUrl: 'https://gateway.example',
     secret: notifySecret,
     fetchImpl: async () => { throw new Error('gateway unavailable') },
@@ -393,7 +396,7 @@ async function main() {
   assert.deepEqual(failedNotify, { ok: false, reason: 'network' })
 
   // 18-19. Worker has no E-Shop DB/Supabase dependency and no privileged secret reaches the client helper.
-  const root = process.cwd()
+  const root = resolve(fileURLToPath(new URL('../../..', import.meta.url)))
   const workerSource = readFileSync(resolve(root, 'cloudflare/cashier-realtime-gateway/src/worker.ts'), 'utf8')
   const clientSource = readFileSync(resolve(root, 'lib/cashier-realtime-client.ts'), 'utf8')
   assert.doesNotMatch(workerSource, /prisma|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/i)

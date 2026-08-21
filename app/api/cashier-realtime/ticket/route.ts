@@ -30,7 +30,16 @@ function gatewayUrl(): string | null {
   }
 }
 
+function cashierRealtimeEnabled(): boolean {
+  return ['1', 'true'].includes(
+    (process.env.NEXT_PUBLIC_CASHIER_REALTIME_ENABLED ?? '').trim().toLowerCase(),
+  )
+}
+
 export async function POST(req: NextRequest) {
+  if (!cashierRealtimeEnabled()) {
+    return json({ error: 'CASHIER_REALTIME_DISABLED' }, 503)
+  }
   let body: { storeCode?: unknown }
   try {
     body = await req.json() as { storeCode?: unknown }

@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 import { isKhqrSupportedCurrency } from '@/lib/currency'
+import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
 /**
  * POST /api/orders/:orderNo/checkout
@@ -123,6 +124,14 @@ export async function POST(
 
       return intent
     })
+
+    if (paymentMethod === 'CASH') {
+      after(() => notifyCashierGateway({
+        tenantId: records[0].tenantId,
+        storeId: records[0].storeId,
+        type: 'pending_orders_changed',
+      }))
+    }
 
     return NextResponse.json(
       {

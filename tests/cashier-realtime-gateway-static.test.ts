@@ -19,23 +19,15 @@ assert.match(worker, /setWebSocketAutoResponse/, 'optional ping handling must av
 assert.doesNotMatch(worker, /setInterval|setTimeout/, 'Gateway must not create a heartbeat or polling loop')
 assert.doesNotMatch(worker, /items|price|customer|payment|orderNo/, 'Gateway source must not define order payload fields')
 
-const protectedMainlineFiles = [
-  'app/cashier/page.tsx',
-  'app/api/public/orders/route.ts',
-  'app/api/customer-orders/[id]/route.ts',
+const frozenUnrelatedFiles = [
   'app/api/cashier/orders/route.ts',
-  'app/api/cashier/orders/[id]/route.ts',
-  'app/api/sales/route.ts',
-  'app/api/orders/[orderNo]/checkout/route.ts',
-  'app/api/orders/[orderNo]/cancel/route.ts',
-  'app/api/payments/[paymentId]/confirm/route.ts',
-  'app/api/payments/[paymentId]/cancel/route.ts',
+  'app/api/cashier/pending-orders/route.ts',
   'app/api/pos/session/update/route.ts',
 ]
-for (const path of protectedMainlineFiles) {
+for (const path of frozenUnrelatedFiles) {
   const source = read(path)
   assert.doesNotMatch(source, /cashier-realtime|notifyCashierGateway|createCashierRealtimeClient/,
-    `${path} must remain disconnected from the standalone gateway in Stage 1B`)
+    `${path} must remain semantically unchanged by Stage 1D scheduling integration`)
 }
 
-console.log('cashier realtime gateway mainline-isolation static checks passed')
+console.log('cashier realtime gateway isolation/static checks passed')
