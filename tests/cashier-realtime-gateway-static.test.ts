@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const root = process.cwd()
+const read = (path: string) => readFileSync(resolve(root, path), 'utf8')
+
+const ticketRoute = read('app/api/cashier-realtime/ticket/route.ts')
+assert.match(ticketRoute, /allowStoreCodeFallback:\s*false/, 'gateway ticket must reject store-code fallback authorization')
+assert.match(ticketRoute, /storeId:\s*store\.id/, 'ticket scope must use the authorized database Store id')
+assert.match(ticketRoute, /CASHIER_REALTIME_TICKET_SECRET/, 'ticket must use its dedicated secret')
+assert.match(ticketRoute, /notifySecret\s*&&\s*notifySecret\s*===\s*secret/, 'ticket and server-notify secrets must not be reused')
+assert.doesNotMatch(ticketRoute, /signSession|AUTH_SECRET|SUPABASE_SERVICE_ROLE_KEY/, 'ticket must not reuse session or Supabase privileged secrets')
+
+const worker = read('cloudflare/cashier-realtime-gateway/src/worker.ts')
+assert.match(worker, /acceptWebSocket\(/, 'Durable Object must use the hibernation-compatible accept API')
+assert.match(worker, /getWebSockets\(/, 'Durable Object must restore/broadcast to hibernating sockets')
+assert.match(worker, /setWebSocketAutoResponse/, 'optional ping handling must avoid waking the Durable Object')
+assert.doesNotMatch(worker, /setInterval|setTimeout/, 'Gateway must not create a heartbeat or polling loop')
+assert.doesNotMatch(worker, /items|price|customer|payment|orderNo/, 'Gateway source must not define order payload fields')
+
+const protectedMainlineFiles = [
+  'app/cashier/page.tsx',
+  'app/api/public/orders/route.ts',
+  'app/api/customer-orders/[id]/route.ts',
+  'app/api/cashier/orders/route.ts',
+  'app/api/cashier/orders/[id]/route.ts',
+  'app/api/sales/route.ts',
+  'app/api/orders/[orderNo]/checkout/route.ts',
+  'app/api/orders/[orderNo]/cancel/route.ts',
+  'app/api/payments/[paymentId]/confirm/route.ts',
+  'app/api/payments/[paymentId]/cancel/route.ts',
+  'app/api/pos/session/update/route.ts',
+]
+for (const path of protectedMainlineFiles) {
+  const source = read(path)
+  assert.doesNotMatch(source, /cashier-realtime|notifyCashierGateway|createCashierRealtimeClient/,
+    `${path} must remain disconnected from the standalone gateway in Stage 1B`)
+}
+
+console.log('cashier realtime gateway mainline-isolation static checks passed')
