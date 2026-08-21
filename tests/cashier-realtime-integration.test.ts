@@ -21,6 +21,16 @@ async function main() {
     'disabled ticket must return before DB/auth work',
   )
   assert.match(notify, /if \(!enabled\) return \{ ok: false, reason: 'disabled' \}/)
+  assert.match(ticket, /!dedicatedSecretConfigured\(secret\)/, 'ticket secret must be present and valid')
+  assert.match(ticket, /!dedicatedSecretConfigured\(notifySecret\)/, 'notify secret must be present and valid')
+  assert.match(ticket, /notifySecret === secret/, 'ticket and notify secrets must remain independent')
+  assert.match(ticket, /!configuredGatewayUrl/, 'gateway URL must be present and valid')
+  assert.ok(
+    ticket.indexOf('!dedicatedSecretConfigured(notifySecret)') < ticket.indexOf('const ticket = await signCashierRealtimeTicket'),
+    'incomplete server-notify configuration must fail closed before ticket signing',
+  )
+  const ticketResponse = ticket.slice(ticket.indexOf('return json({\n      ticket,'), ticket.indexOf('}, 503)', ticket.indexOf('return json({\n      ticket,')))
+  assert.doesNotMatch(ticketResponse, /notifySecret|CASHIER_REALTIME_NOTIFY_SECRET/, 'ticket response must never expose notify credentials')
   const previousFlag = process.env.NEXT_PUBLIC_CASHIER_REALTIME_ENABLED
   delete process.env.NEXT_PUBLIC_CASHIER_REALTIME_ENABLED
   let disabledFetchCalled = false
@@ -114,7 +124,7 @@ async function main() {
     ['app/api/sales/route.ts', 'pending_orders_changed', 'const result = await prisma.$transaction'],
     ['app/api/orders/[orderNo]/checkout/route.ts', 'pending_orders_changed', 'const pi = await prisma.$transaction'],
     ['app/api/orders/[orderNo]/cancel/route.ts', 'pending_orders_changed', 'await prisma.$transaction'],
-    ['app/api/payments/[paymentId]/confirm/route.ts', 'pending_orders_changed', 'const [updated] = await prisma.$transaction'],
+    ['app/api/payments/[paymentId]/confirm/route.ts', 'pending_orders_changed', 'const [updated, pendingTransition] = await prisma.$transaction'],
     ['app/api/payments/[paymentId]/cancel/route.ts', 'pending_orders_changed', 'await prisma.$transaction'],
   ] as const
   for (const [path, wakeType, successMarker] of routeCases) {
@@ -138,14 +148,30 @@ async function main() {
   assert.ok(salesRoute.indexOf('notifyCashierGateway({') < salesRoute.indexOf('async function handleRefund'))
   assert.match(read('app/api/orders/[orderNo]/checkout/route.ts'), /if \(paymentMethod === 'CASH'\)[\s\S]*after\(\(\) => notifyCashierGateway/)
 
+  // Payment wakes are conditional on a real pending-list transition, not merely a PaymentIntent mutation.
+  const paymentConfirmRoute = read('app/api/payments/[paymentId]/confirm/route.ts')
+  assert.match(paymentConfirmRoute, /const \[updated, pendingTransition\] = await prisma\.\$transaction/)
+  assert.match(paymentConfirmRoute, /if \(pendingTransition\.count > 0\) \{[\s\S]*pending_orders_changed[\s\S]*\}/)
+  assert.ok(
+    paymentConfirmRoute.indexOf('if (pendingTransition.count > 0)') < paymentConfirmRoute.indexOf('after(() => notifyCashierGateway'),
+    'direct-retail confirm no-op must not wake pending orders',
+  )
+  const paymentCancelRoute = read('app/api/payments/[paymentId]/cancel/route.ts')
+  assert.match(paymentCancelRoute, /prisma\.saleRecord\.count\([\s\S]*status: 'PENDING_PAYMENT'/)
+  assert.match(paymentCancelRoute, /if \(pendingRecordCount > 0\) \{[\s\S]*pending_orders_changed[\s\S]*\}/)
+  assert.ok(
+    paymentCancelRoute.indexOf('if (pendingRecordCount > 0)') < paymentCancelRoute.indexOf('after(() => notifyCashierGateway'),
+    'non-pending cancel must not wake pending orders',
+  )
+
   // Regression boundary: read APIs, /sale, Customer Display, printing, Prisma, and migrations remain untouched.
   const changed = execFileSync('git', ['diff', '--name-only', 'HEAD'], { cwd: root, encoding: 'utf8' })
     .trim().split('\n').filter(Boolean)
   const approved = new Set([
-    'app/cashier/page.tsx',
+    'lib/cashier-realtime-client.ts',
     'app/api/cashier-realtime/ticket/route.ts',
-    'lib/cashier-realtime-notify.ts',
-    ...routeCases.map(([path]) => path),
+    'app/api/payments/[paymentId]/confirm/route.ts',
+    'app/api/payments/[paymentId]/cancel/route.ts',
     'tests/cashier-realtime-integration.test.ts',
     'tests/cashier-realtime-gateway-static.test.ts',
     'cloudflare/cashier-realtime-gateway/tests/gateway.test.ts',
@@ -156,7 +182,7 @@ async function main() {
   assert.equal(changed.some(path => path === 'app/sale/page.tsx' || path.includes('customer-display') || path.includes('pos/session/update')), false)
   assert.equal(changed.some(path => path.startsWith('prisma/') || path.includes('migration') || path.includes('print')), false)
 
-  console.log('cashier realtime Stage 1D integration checks passed (27 required behaviors)')
+  console.log('cashier realtime Stage 1F integration and regression checks passed')
 }
 
 main().catch(error => {

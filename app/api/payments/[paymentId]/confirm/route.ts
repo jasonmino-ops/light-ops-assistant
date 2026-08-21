@@ -31,7 +31,7 @@ export async function POST(
     )
   }
 
-  const [updated] = await prisma.$transaction([
+  const [updated, pendingTransition] = await prisma.$transaction([
     prisma.paymentIntent.update({
       where: { id: paymentId },
       data: { status: 'PAID', paidAt: new Date() },
@@ -44,11 +44,13 @@ export async function POST(
     }),
   ])
 
-  after(() => notifyCashierGateway({
-    tenantId: pi.tenantId,
-    storeId: pi.storeId,
-    type: 'pending_orders_changed',
-  }))
+  if (pendingTransition.count > 0) {
+    after(() => notifyCashierGateway({
+      tenantId: pi.tenantId,
+      storeId: pi.storeId,
+      type: 'pending_orders_changed',
+    }))
+  }
 
   return NextResponse.json({ id: updated.id, status: updated.status, paidAt: updated.paidAt })
 }

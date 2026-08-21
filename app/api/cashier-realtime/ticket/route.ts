@@ -36,6 +36,10 @@ function cashierRealtimeEnabled(): boolean {
   )
 }
 
+function dedicatedSecretConfigured(value: string | undefined): value is string {
+  return Boolean(value && value.length >= 32)
+}
+
 export async function POST(req: NextRequest) {
   if (!cashierRealtimeEnabled()) {
     return json({ error: 'CASHIER_REALTIME_DISABLED' }, 503)
@@ -68,7 +72,12 @@ export async function POST(req: NextRequest) {
   const secret = process.env.CASHIER_REALTIME_TICKET_SECRET?.trim()
   const notifySecret = process.env.CASHIER_REALTIME_NOTIFY_SECRET?.trim()
   const configuredGatewayUrl = gatewayUrl()
-  if (!secret || (notifySecret && notifySecret === secret) || !configuredGatewayUrl) {
+  if (
+    !dedicatedSecretConfigured(secret) ||
+    !dedicatedSecretConfigured(notifySecret) ||
+    notifySecret === secret ||
+    !configuredGatewayUrl
+  ) {
     return json({ error: 'CASHIER_REALTIME_NOT_CONFIGURED' }, 503)
   }
 

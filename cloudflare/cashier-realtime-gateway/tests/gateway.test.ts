@@ -18,6 +18,7 @@ import {
   type CashierRealtimeServerNotify,
 } from '../../../lib/cashier-realtime-protocol'
 import {
+  acquireCashierRealtimeTicket,
   createCashierRealtimeClient,
   createCashierRealtimeWakeCoalescer,
 } from '../../../lib/cashier-realtime-client'
@@ -49,6 +50,27 @@ class FakeSocket {
     this.closed = { code, reason }
   }
 }
+
+class ClientSocket {
+  readyState = 0
+  closed: { code: number; reason: string } | null = null
+  onopen: (() => void) | null = null
+  onmessage: ((event: { data: string }) => void) | null = null
+  onerror: (() => void) | null = null
+  onclose: (() => void) | null = null
+
+  close(code: number, reason: string) {
+    this.readyState = 3
+    this.closed = { code, reason }
+  }
+
+  open() {
+    this.readyState = 1
+    this.onopen?.()
+  }
+}
+
+const wait = (delayMs: number) => new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs))
 
 class FakeState implements DurableObjectStateLike {
   private values = new Map<string, unknown>()
@@ -349,6 +371,139 @@ async function main() {
   standaloneClient.stop()
   assert.equal(connectionStatuses.at(-1), 'stopped')
 
+  // Ticket acquisition has a hard timeout even when the fetch implementation never settles.
+  let ticketRequestAborted = false
+  await assert.rejects(acquireCashierRealtimeTicket({
+    storeCode: 'STORE-A',
+    timeoutMs: 20,
+    fetchImpl: async (_url, init) => new Promise<Response>(() => {
+      init?.signal?.addEventListener('abort', () => { ticketRequestAborted = true })
+    }),
+  }), /CASHIER_REALTIME_TICKET_TIMEOUT/)
+  assert.equal(ticketRequestAborted, true)
+
+  // A hanging ticket attempt degrades, uses the existing backoff, and cannot stay CONNECTING forever.
+  const ticketTimeoutStatuses: string[] = []
+  let ticketAttempts = 0
+  const ticketTimeoutClient = createCashierRealtimeClient({
+    getTicket: () => {
+      ticketAttempts += 1
+      return acquireCashierRealtimeTicket({
+        storeCode: 'STORE-A',
+        timeoutMs: 20,
+        fetchImpl: async () => new Promise<Response>(() => {}),
+      })
+    },
+    onWake() {},
+    onStatus: (status) => ticketTimeoutStatuses.push(status),
+    reconnectDelayMs: 250,
+    connectTimeoutMs: 20,
+  })
+  ticketTimeoutClient.start()
+  await wait(50)
+  assert.equal(ticketTimeoutStatuses.at(-1), 'degraded')
+  await wait(260)
+  assert.ok(ticketAttempts >= 2, 'ticket timeout must enter the existing reconnect backoff')
+  ticketTimeoutClient.stop()
+
+  // A WebSocket that never opens times out, degrades, closes, and reconnects once.
+  const connectTimeoutStatuses: string[] = []
+  const timeoutSockets: ClientSocket[] = []
+  const connectTimeoutClient = createCashierRealtimeClient({
+    getTicket: async () => ({
+      ticket: validTicket,
+      gatewayUrl: 'https://gateway.example',
+      expiresAt: new Date(claims.exp * 1000).toISOString(),
+      storeCode: 'STORE-A',
+    }),
+    onWake() {},
+    onStatus: (status) => connectTimeoutStatuses.push(status),
+    webSocketFactory: () => {
+      const socket = new ClientSocket()
+      timeoutSockets.push(socket)
+      return socket as unknown as WebSocket
+    },
+    reconnectDelayMs: 250,
+    connectTimeoutMs: 20,
+  })
+  connectTimeoutClient.start()
+  await wait(50)
+  assert.equal(connectTimeoutStatuses.at(-1), 'degraded')
+  assert.deepEqual(timeoutSockets[0].closed, { code: 4000, reason: 'connect_timeout' })
+  await wait(260)
+  assert.equal(timeoutSockets.length, 2, 'one reconnect timer must create exactly one next socket')
+  connectTimeoutClient.stop()
+  await wait(30)
+  assert.equal(connectTimeoutStatuses.at(-1), 'stopped', 'stop must clear the active connect timeout')
+
+  // Current onerror owns one failure path; callbacks captured from that stale socket cannot change the new HEALTHY socket.
+  const guardedStatuses: string[] = []
+  const guardedSockets: ClientSocket[] = []
+  const guardedClient = createCashierRealtimeClient({
+    getTicket: async () => ({
+      ticket: validTicket,
+      gatewayUrl: 'https://gateway.example',
+      expiresAt: new Date(claims.exp * 1000).toISOString(),
+      storeCode: 'STORE-A',
+    }),
+    onWake() {},
+    onStatus: (status) => guardedStatuses.push(status),
+    webSocketFactory: () => {
+      const socket = new ClientSocket()
+      guardedSockets.push(socket)
+      return socket as unknown as WebSocket
+    },
+    reconnectDelayMs: 250,
+    connectTimeoutMs: 1_000,
+  })
+  guardedClient.start()
+  await wait(0)
+  const staleSocket = guardedSockets[0]
+  const staleOpen = staleSocket.onopen
+  const staleError = staleSocket.onerror
+  const staleClose = staleSocket.onclose
+  staleError?.()
+  assert.equal(guardedStatuses.at(-1), 'degraded')
+  assert.deepEqual(staleSocket.closed, { code: 4000, reason: 'connection_error' })
+  staleClose?.()
+  await wait(260)
+  assert.equal(guardedSockets.length, 2, 'onerror plus stale onclose must not create duplicate reconnects')
+  guardedSockets[1].open()
+  assert.equal(guardedStatuses.at(-1), 'healthy')
+  staleOpen?.()
+  staleError?.()
+  staleClose?.()
+  assert.equal(guardedStatuses.at(-1), 'healthy', 'all stale socket callbacks must be ignored')
+  guardedClient.stop()
+
+  // A ticket result arriving after stop is stale and must never create a WebSocket.
+  let resolveStoppedTicket!: (value: {
+    ticket: string; gatewayUrl: string; expiresAt: string; storeCode: string
+  }) => void
+  const stoppedTicketPromise = new Promise<{
+    ticket: string; gatewayUrl: string; expiresAt: string; storeCode: string
+  }>((resolvePromise) => { resolveStoppedTicket = resolvePromise })
+  const stoppedTicketSockets: ClientSocket[] = []
+  const stoppedTicketClient = createCashierRealtimeClient({
+    getTicket: () => stoppedTicketPromise,
+    onWake() {},
+    webSocketFactory: () => {
+      const socket = new ClientSocket()
+      stoppedTicketSockets.push(socket)
+      return socket as unknown as WebSocket
+    },
+  })
+  stoppedTicketClient.start()
+  stoppedTicketClient.stop()
+  resolveStoppedTicket({
+    ticket: validTicket,
+    gatewayUrl: 'https://gateway.example',
+    expiresAt: new Date(claims.exp * 1000).toISOString(),
+    storeCode: 'STORE-A',
+  })
+  await wait(0)
+  assert.equal(stoppedTicketSockets.length, 0)
+
   // The future server helper emits a correctly signed, wake-only request.
   let helperRequest: { url: string; init?: RequestInit } | null = null
   const helperNotify = await notifyCashierGateway({
@@ -402,7 +557,7 @@ async function main() {
   assert.doesNotMatch(workerSource, /prisma|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/i)
   assert.doesNotMatch(clientSource, /AUTH_SECRET|NOTIFY_SECRET|SERVICE_ROLE/i)
 
-  console.log('cashier realtime gateway targeted checks passed (19 security/isolation cases)')
+  console.log('cashier realtime gateway targeted checks passed (security/isolation/reconnect)')
 }
 
 main().catch((error) => {

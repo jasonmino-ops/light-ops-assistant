@@ -32,7 +32,10 @@ export async function POST(
     )
   }
 
-  await prisma.$transaction([
+  const [pendingRecordCount] = await prisma.$transaction([
+    prisma.saleRecord.count({
+      where: { orderNo: pi.orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
+    }),
     prisma.paymentIntent.update({
       where: { id: paymentId },
       data: { status: 'CANCELLED', cancelledAt: new Date() },
@@ -43,11 +46,13 @@ export async function POST(
     }),
   ])
 
-  after(() => notifyCashierGateway({
-    tenantId: pi.tenantId,
-    storeId: pi.storeId,
-    type: 'pending_orders_changed',
-  }))
+  if (pendingRecordCount > 0) {
+    after(() => notifyCashierGateway({
+      tenantId: pi.tenantId,
+      storeId: pi.storeId,
+      type: 'pending_orders_changed',
+    }))
+  }
 
   return NextResponse.json({ id: paymentId, status: 'CANCELLED' })
 }
