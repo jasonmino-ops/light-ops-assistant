@@ -28,10 +28,11 @@ assert.match(webhook, /senderUsername: senderUsername\(input\.message\.from\)/)
 assert.doesNotMatch(webhook, /salesLead\.update|telegramId:\s*input\.telegramId/)
 
 // Search scope is established before filters; unassigned search never includes PII.
-assert.match(leads, /actor\.isManager \? \{\} : \{ salesOwnerId: actor\.userId \}/)
+assert.match(leads, /const currentOwnerWhere:[\s\S]+salesOwnerId: actor\.userId/)
+assert.match(leads, /initialSalesOwnerId: actor\.userId/)
 assert.match(leads, /normalizedPhone: \{ contains: query \}/)
 assert.match(leads, /telegramUsername: \{ contains: query/)
-const unassignedSearch = leads.slice(leads.indexOf('const unassignedWhere'), leads.indexOf('const [leads'))
+const unassignedSearch = leads.slice(leads.indexOf('const unassignedWhere'), leads.indexOf('const [\n    leads'))
 assert.match(unassignedSearch, /storeName: \{ contains: query/)
 assert.doesNotMatch(unassignedSearch, /ownerName|normalizedPhone|telegramUsername/)
 
