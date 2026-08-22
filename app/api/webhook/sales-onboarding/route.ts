@@ -70,6 +70,11 @@ function senderName(from: TelegramFrom | undefined): string | null {
   return name || (from.username ? `@${from.username}` : null)
 }
 
+function senderUsername(from: TelegramFrom | undefined): string | null {
+  const username = from?.username?.trim() ?? ''
+  return /^[A-Za-z0-9_]{1,64}$/.test(username) ? username : null
+}
+
 async function resolveRecentLeadContext(telegramId: string): Promise<string | null> {
   const recent = await prisma.telegramMessage.findFirst({
     where: {
@@ -115,6 +120,7 @@ async function logIncomingMessage(input: {
       tenantId: null,
       recipientTelegramId: input.telegramId,
       senderName: senderName(input.message.from),
+      senderUsername: senderUsername(input.message.from),
       content: parsed.content,
       messageType: parsed.messageType,
       sentBy: 'CUSTOMER',

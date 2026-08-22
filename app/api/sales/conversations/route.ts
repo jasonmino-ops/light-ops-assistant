@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       id: true,
       sentBy: true,
       senderName: true,
+      senderUsername: true,
       content: true,
       messageType: true,
       status: true,

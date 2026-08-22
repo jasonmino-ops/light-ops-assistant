@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
         id: true,
         sentBy: true,
         senderName: true,
+        senderUsername: true,
         content: true,
         messageType: true,
         status: true,
@@ -47,34 +48,58 @@ export async function GET(req: NextRequest) {
   // One bounded recent row-set is grouped in memory so the API never exposes
   // recipientTelegramId. V0.1 intentionally has no inquiry/conversation model.
   const recent = await prisma.telegramMessage.findMany({
-    where: { ...INQUIRY_WHERE, sentBy: 'CUSTOMER' },
+    where: INQUIRY_WHERE,
     orderBy: { createdAt: 'desc' },
-    take: 500,
+    take: 1000,
     select: {
       id: true,
       recipientTelegramId: true,
       senderName: true,
+      senderUsername: true,
       content: true,
       createdAt: true,
+      sentBy: true,
       salesInquiryOwnerId: true,
       salesInquiryOwner: { select: { id: true, name: true } },
     },
   })
-  const seen = new Set<string>()
-  const inquiries = recent.flatMap((message) => {
-    if (seen.has(message.recipientTelegramId)) return []
-    seen.add(message.recipientTelegramId)
+  const grouped = new Map<string, {
+    customer?: typeof recent[number]
+    reply?: typeof recent[number]
+  }>()
+  for (const message of recent) {
+    const group = grouped.get(message.recipientTelegramId) ?? {}
+    if (message.sentBy === 'CUSTOMER' && !group.customer) group.customer = message
+    if (message.sentBy === 'OPS' && !group.reply) group.reply = message
+    grouped.set(message.recipientTelegramId, group)
+  }
+  const query = (req.nextUrl.searchParams.get('q') ?? '').trim().toLocaleLowerCase().slice(0, 80)
+  const inquiries = Array.from(grouped.values()).flatMap((group) => {
+    const message = group.customer
+    if (!message) return []
     if (!actor.isManager
       && message.salesInquiryOwnerId
       && message.salesInquiryOwnerId !== actor.userId) return []
+    const canSeeIdentity = actor.isManager || message.salesInquiryOwnerId === actor.userId
+    const latestHuman = !group.reply || message.createdAt > group.reply.createdAt
+      ? message
+      : group.reply
+    const searchable = [
+      message.senderName,
+      latestHuman.content,
+      canSeeIdentity ? message.senderUsername : null,
+    ].filter(Boolean).join(' ').toLocaleLowerCase()
+    if (query && !searchable.includes(query)) return []
     return [{
       id: message.id,
       senderName: message.senderName,
-      latestMessage: message.content,
-      lastAt: message.createdAt.toISOString(),
+      senderUsername: canSeeIdentity ? message.senderUsername : null,
+      latestMessage: latestHuman.content,
+      lastAt: latestHuman.createdAt.toISOString(),
+      hasNewMessage: !group.reply || message.createdAt > group.reply.createdAt,
       claimed: Boolean(message.salesInquiryOwnerId),
       ownedByMe: message.salesInquiryOwnerId === actor.userId,
-      owner: actor.isManager || message.salesInquiryOwnerId === actor.userId
+      owner: canSeeIdentity
         ? message.salesInquiryOwner
         : null,
     }]

@@ -24,8 +24,11 @@ assert.doesNotMatch(migration, /UPDATE "TelegramMessage"|INSERT INTO|DELETE FROM
 assert.match(inquiries, /channel: 'SALES_ONBOARDING'/)
 assert.match(inquiries, /salesLeadId: null/)
 assert.match(inquiries, /sentBy: 'CUSTOMER'/)
-assert.match(inquiries, /take: 500/)
+assert.match(inquiries, /take: 1000/)
 assert.match(inquiries, /if \(!actor\.isManager[\s\S]+salesInquiryOwnerId !== actor\.userId/)
+assert.match(inquiries, /const canSeeIdentity = actor\.isManager \|\| message\.salesInquiryOwnerId === actor\.userId/)
+assert.match(inquiries, /senderUsername: canSeeIdentity \? message\.senderUsername : null/)
+assert.match(inquiries, /req\.nextUrl\.searchParams\.get\('q'\)/)
 assert.match(inquiries, /updateMany\([\s\S]+salesInquiryOwnerId: null[\s\S]+salesInquiryOwnerId: admin\.id/)
 assert.match(inquiries, /ALREADY_CLAIMED/)
 
@@ -41,8 +44,8 @@ assert.doesNotMatch(webhook, /salesLead\.update|SalesLead\.telegramId/)
 assert.match(telegram, /salesInquiryOwnerId\?: string \| null/)
 assert.doesNotMatch(merchantWebhook, /salesInquiryOwnerId|SALES_ONBOARDING/)
 
-assert.match(page, /未关联咨询/)
-assert.match(page, /领取咨询/)
+assert.match(page, /salesWorkspace\.unlinkedInquiries/)
+assert.match(page, /salesWorkspace\.claimInquiry/)
 assert.match(page, /inquiryId: selectedInquiry!\.id/)
 assert.doesNotMatch(page, /recipientTelegramId/)
 

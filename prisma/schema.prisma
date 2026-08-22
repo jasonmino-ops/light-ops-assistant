@@ -1012,6 +1012,7 @@ model TelegramMessage {
   salesInquiryOwnerId String?
   recipientTelegramId String // 发件方(CUSTOMER)或收件方(OPS/SYSTEM)的 TG ID
   senderName          String? // 客户名称，CUSTOMER 消息时填入
+  senderUsername      String? // Telegram username（不含 @）；仅 owner-scoped Sales UI 展示
   messageType         String   @default("TEXT") // TEXT | IMAGE | STICKER | VOICE | VIDEO | FILE | OTHER
   content             String
   status              String   @default("SENT") // SENT | FAILED | RECEIVED
