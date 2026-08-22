@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuthContext } from '@/lib/ops-auth'
+import { checkOpsAuthContext, hasOpsRole } from '@/lib/ops-auth'
 import { createTrialSubscriptionForTenant } from '@/lib/subscription'
 import { attachOpsSubscriptionReminders } from '@/lib/ops-subscription-renewal-summary'
 
@@ -34,7 +34,9 @@ function ninetyDaysAgo() {
 
 export async function GET(req: NextRequest) {
   const ops = await checkOpsAuthContext(req)
-  if (!ops) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!ops || !hasOpsRole(ops.role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   // Default to ACTIVE only. Pass ?status=ARCHIVED or ?status=all to override.
   const statusParam = req.nextUrl.searchParams.get('status')
@@ -143,7 +145,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const ops = await checkOpsAuthContext(req)
-  if (!ops) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!ops || !hasOpsRole(ops.role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   let body: { tenantName?: string; storeName?: string; tier?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }

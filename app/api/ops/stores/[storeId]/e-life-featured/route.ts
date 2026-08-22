@@ -3,18 +3,20 @@
  * Body: { eLifeFeatured?: boolean, eLifeFeaturedSort?: number }
  *
  * OPS 后台设置/取消某门店为 E-Life 首页推荐位。
- * 权限：OPS 任意角色均可（BD 也可），只有 SUPER_ADMIN / OPS_ADMIN 才能改 tenant tier，但推荐位属于运营配置。
+ * 权限：仅 SUPER_ADMIN / OPS_ADMIN；BD 销售工作台不拥有平台推荐位配置权限。
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ storeId: string }> },
 ) {
   const role = await checkOpsAuth(req)
-  if (!role) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!role || !hasOpsRole(role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const { storeId } = await params
 

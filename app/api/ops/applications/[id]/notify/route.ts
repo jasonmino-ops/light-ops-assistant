@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 import { sendAndLogMessage, WELCOME_TEXT } from '@/lib/telegram'
 
 const NOTIFY_TEXT =
@@ -20,7 +20,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const { id } = await params
 

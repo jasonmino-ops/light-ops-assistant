@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 import { buildTelegramStartAppLink, merchantBotWarning, normalizeTelegramBotUsername } from '@/lib/telegram-link'
 
 export async function POST(
@@ -15,7 +15,9 @@ export async function POST(
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
   const { tenantId } = await params
 
   let body: { storeId?: string; role?: string; expiresInHours?: number }
@@ -38,8 +40,7 @@ export async function POST(
     )
   }
 
-  // BD can only generate OWNER bind tokens
-  const effectiveRole = opsRole === 'BD' ? 'OWNER' : role
+  const effectiveRole = role
 
   const store = await prisma.store.findFirst({
     where: { id: storeId, tenantId, status: 'ACTIVE' },

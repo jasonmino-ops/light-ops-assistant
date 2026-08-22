@@ -12,7 +12,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 import { getPaymentBreakdown } from '@/lib/payment-breakdown'
 
 export async function GET(
@@ -20,7 +20,9 @@ export async function GET(
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const { tenantId } = await params
   const days = Math.min(30, Math.max(1, parseInt(req.nextUrl.searchParams.get('days') ?? '7', 10)))

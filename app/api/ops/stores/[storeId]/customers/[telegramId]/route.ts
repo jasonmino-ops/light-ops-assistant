@@ -10,7 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 
 const VALID_STATUS = new Set(['active', 'flagged', 'revoked'])
 const MAX_NOTE = 500
@@ -20,7 +20,9 @@ export async function PATCH(
   { params }: { params: Promise<{ storeId: string; telegramId: string }> },
 ) {
   const role = await checkOpsAuth(req)
-  if (!role) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!role || !hasOpsRole(role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const { storeId, telegramId } = await params
   const tgId = decodeURIComponent(telegramId).trim()

@@ -2,18 +2,20 @@
  * GET /api/ops/stores/[storeId]/customers
  *
  * OPS 后台查询某门店顾客资产。严格按 storeId/tenantId 隔离。
- * 鉴权：lib/ops-auth.checkOpsAuth（SUPER_ADMIN / OPS_ADMIN / BD）
+ * 鉴权：lib/ops-auth.checkOpsAuth + OPS_ADMIN minimum role。
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ storeId: string }> },
 ) {
   const role = await checkOpsAuth(req)
-  if (!role) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!role || !hasOpsRole(role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const { storeId } = await params
   const store = await prisma.store.findUnique({

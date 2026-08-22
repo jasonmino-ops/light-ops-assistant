@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 
 type CapabilityStatus = 'AVAILABLE' | 'PARTIAL' | 'UNAVAILABLE'
 type HealthStatus = 'OK' | 'WARN' | 'ISSUE' | 'UNAVAILABLE'
@@ -151,7 +151,9 @@ function refForStore(storeMap: Map<string, StoreRef>, tenantMap: Map<string, str
 
 export async function GET(req: NextRequest) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   const generatedAt = new Date()
   const since24h = new Date(generatedAt.getTime() - DAY_MS)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuthContext } from '@/lib/ops-auth'
+import { checkOpsAuthContext, hasOpsRole } from '@/lib/ops-auth'
 import {
   ensureMigratedSubscriptionForTenant,
   serializeSubscription,
@@ -12,7 +12,9 @@ export async function GET(
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
   const ops = await checkOpsAuthContext(req)
-  if (!ops) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!ops || !hasOpsRole(ops.role, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
   const { tenantId } = await params
 
   const tenant = await prisma.tenant.findUnique({

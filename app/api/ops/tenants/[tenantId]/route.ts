@@ -4,7 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 import { canUseAiSupport, normalizeTier, type TenantTier } from '@/lib/tier'
 import {
   AI_PHOTO_FEATURE_KEY,
@@ -93,7 +93,9 @@ export async function GET(
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
   const { tenantId } = await params
 
   const todayUtc = new Date().toISOString().slice(0, 10)
@@ -357,9 +359,9 @@ export async function PATCH(
   { params }: { params: Promise<{ tenantId: string }> },
 ) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
-  // BD cannot modify tenant tier or status
-  if (opsRole === 'BD') return NextResponse.json({ error: 'FORBIDDEN', message: 'BD 角色无此操作权限' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
   const { tenantId } = await params
 
   let body: { tier?: string; status?: string }

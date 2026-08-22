@@ -15,7 +15,7 @@
  *   { ok, total, success, failed, errors: [{ displayName, telegramId, error }] }
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 import { prisma } from '@/lib/prisma'
 import { sendAndLogMessage } from '@/lib/telegram'
 import type { Prisma } from '@prisma/client'
@@ -25,7 +25,9 @@ type Scope = (typeof VALID_SCOPES)[number]
 
 export async function POST(req: NextRequest) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   let body: { scope?: string; tenantId?: string; text?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 }) }

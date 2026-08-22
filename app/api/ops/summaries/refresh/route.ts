@@ -6,11 +6,11 @@
  *
  * Body: { date?: string }   // YYYY-MM-DD UTC; defaults to today
  *
- * Access: any ops role.
+ * Access: SUPER_ADMIN / OPS_ADMIN only.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkOpsAuth } from '@/lib/ops-auth'
+import { checkOpsAuth, hasOpsRole } from '@/lib/ops-auth'
 
 interface Agg {
   saleOrderNos: Set<string>
@@ -21,7 +21,9 @@ interface Agg {
 
 export async function POST(req: NextRequest) {
   const opsRole = await checkOpsAuth(req)
-  if (!opsRole) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  if (!opsRole || !hasOpsRole(opsRole, 'OPS_ADMIN')) {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
 
   let body: { date?: string } = {}
   try { body = (await req.json()) ?? {} } catch { /* empty body ok */ }
