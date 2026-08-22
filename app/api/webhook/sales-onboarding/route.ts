@@ -83,10 +83,25 @@ async function resolveRecentLeadContext(telegramId: string): Promise<string | nu
   return recent?.salesLeadId ?? null
 }
 
+async function resolveUnlinkedInquiryOwner(telegramId: string): Promise<string | null> {
+  const recent = await prisma.telegramMessage.findFirst({
+    where: {
+      channel: 'SALES_ONBOARDING',
+      recipientTelegramId: telegramId,
+      salesLeadId: null,
+      salesInquiryOwnerId: { not: null },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { salesInquiryOwnerId: true },
+  })
+  return recent?.salesInquiryOwnerId ?? null
+}
+
 async function logIncomingMessage(input: {
   telegramId: string
   message: TelegramMessage
   salesLeadId: string | null
+  salesInquiryOwnerId: string | null
   supportEntry: boolean
 }) {
   const parsed = input.supportEntry
@@ -96,6 +111,7 @@ async function logIncomingMessage(input: {
     data: {
       channel: 'SALES_ONBOARDING',
       salesLeadId: input.salesLeadId,
+      salesInquiryOwnerId: input.salesInquiryOwnerId,
       tenantId: null,
       recipientTelegramId: input.telegramId,
       senderName: senderName(input.message.from),
@@ -139,10 +155,15 @@ export async function POST(req: NextRequest) {
     salesLeadId = await resolveRecentLeadContext(telegramId).catch(() => null)
   }
 
+  const salesInquiryOwnerId = salesLeadId
+    ? null
+    : await resolveUnlinkedInquiryOwner(telegramId).catch(() => null)
+
   await logIncomingMessage({
     telegramId,
     message,
     salesLeadId,
+    salesInquiryOwnerId,
     supportEntry: supportStart.attempted || /^\/start(?:@[A-Za-z0-9_]+)?$/.test(text.trim()),
   })
 
@@ -154,6 +175,7 @@ export async function POST(req: NextRequest) {
     botToken: BOT_TOKEN,
     channel: 'SALES_ONBOARDING',
     salesLeadId,
+    salesInquiryOwnerId,
   })
 
   return NextResponse.json({ ok: true })

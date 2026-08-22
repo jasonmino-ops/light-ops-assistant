@@ -178,28 +178,28 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stores                   Store[]
-  users                    User[]
-  products                 Product[]
-  marketingProductPages    MarketingProductPage[]
-  sales                    SaleRecord[]
-  logs                     OperationLog[]
-  bindTokens               BindToken[]
-  storeAiFeatureConfigs    StoreAiFeatureConfig[]
-  offlineSaleSyncMaps      OfflineSaleSyncMap[]
-  members                  Member[]
-  memberBalanceLedgers     MemberBalanceLedger[]
-  memberTelegramBindTokens MemberTelegramBindToken[]
-  subscription             TenantSubscription?
-  subscriptionEvents       SubscriptionEvent[]
-  desktopDevices           DesktopDevice[]
-  browserPosDevices        BrowserPosDevice[]
+  stores                      Store[]
+  users                       User[]
+  products                    Product[]
+  marketingProductPages       MarketingProductPage[]
+  sales                       SaleRecord[]
+  logs                        OperationLog[]
+  bindTokens                  BindToken[]
+  storeAiFeatureConfigs       StoreAiFeatureConfig[]
+  offlineSaleSyncMaps         OfflineSaleSyncMap[]
+  members                     Member[]
+  memberBalanceLedgers        MemberBalanceLedger[]
+  memberTelegramBindTokens    MemberTelegramBindToken[]
+  subscription                TenantSubscription?
+  subscriptionEvents          SubscriptionEvent[]
+  desktopDevices              DesktopDevice[]
+  browserPosDevices           BrowserPosDevice[]
   browserPosBindingDeliveries BrowserPosBindingDelivery[]
-  cashierSaleIdempotencies CashierSaleIdempotency[]
-  desktopActivationPins    DesktopActivationPin[]
-  desktopActivationAudits  DesktopActivationAudit[]
-  computerBindings         ComputerBinding[]
-  computerBindingAudits    ComputerBindingAudit[]
+  cashierSaleIdempotencies    CashierSaleIdempotency[]
+  desktopActivationPins       DesktopActivationPin[]
+  desktopActivationAudits     DesktopActivationAudit[]
+  computerBindings            ComputerBinding[]
+  computerBindingAudits       ComputerBindingAudit[]
 }
 
 model TenantSubscription {
@@ -243,53 +243,53 @@ model SubscriptionEvent {
 }
 
 model Store {
-  id                String      @id @default(cuid())
-  tenantId          String
-  code              String      @unique
-  name              String
-  status            StoreStatus @default(ACTIVE)
-  checkoutMode      String      @default("DIRECT_PAYMENT") // DIRECT_PAYMENT | DEFERRED_PAYMENT
-  currencyCode      String      @default("USD") // USD | XAF
-  businessType      String      @default("GENERAL") // FOOD | RETAIL | SERVICE | GENERAL
-  printKitchenTicket Boolean    @default(false)
-  bannerUrl         String? // 顾客页头图访问 URL（指向内部图片端点）
-  bannerData        String?     @db.Text // 头图 base64 数据（data:image/...;base64,...）
-  announcement      String? // 公告文本
-  promoText         String? // 活动文案
-  contactPhone      String? // 顾客公开联系电话
-  contactTelegram   String? // 顾客公开 Telegram 用户名或链接
-  contactWhatsApp   String? // 顾客公开 WhatsApp 电话或链接
-  storeAddress      String?     @db.Text // 顾客公开门店地址
-  storeLat          Float? // 顾客公开门店纬度
-  storeLng          Float? // 顾客公开门店经度
-  eLifeFeatured     Boolean     @default(false) // E-Life 首页「为你推荐」运营位
-  eLifeFeaturedSort Int         @default(0) // 推荐排序，数字越小排越前
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  id                 String      @id @default(cuid())
+  tenantId           String
+  code               String      @unique
+  name               String
+  status             StoreStatus @default(ACTIVE)
+  checkoutMode       String      @default("DIRECT_PAYMENT") // DIRECT_PAYMENT | DEFERRED_PAYMENT
+  currencyCode       String      @default("USD") // USD | XAF
+  businessType       String      @default("GENERAL") // FOOD | RETAIL | SERVICE | GENERAL
+  printKitchenTicket Boolean     @default(false)
+  bannerUrl          String? // 顾客页头图访问 URL（指向内部图片端点）
+  bannerData         String?     @db.Text // 头图 base64 数据（data:image/...;base64,...）
+  announcement       String? // 公告文本
+  promoText          String? // 活动文案
+  contactPhone       String? // 顾客公开联系电话
+  contactTelegram    String? // 顾客公开 Telegram 用户名或链接
+  contactWhatsApp    String? // 顾客公开 WhatsApp 电话或链接
+  storeAddress       String?     @db.Text // 顾客公开门店地址
+  storeLat           Float? // 顾客公开门店纬度
+  storeLng           Float? // 顾客公开门店经度
+  eLifeFeatured      Boolean     @default(false) // E-Life 首页「为你推荐」运营位
+  eLifeFeaturedSort  Int         @default(0) // 推荐排序，数字越小排越前
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
-  tenant                   Tenant                    @relation(fields: [tenantId], references: [id])
-  userRoles                UserStoreRole[]
-  sales                    SaleRecord[]
-  logs                     OperationLog[]
-  bindTokens               BindToken[]
-  campaignLinks            CampaignLink[]
-  creators                 Creator[]
-  marketingProductPages    MarketingProductPage[]
-  aiFeatureConfigs         StoreAiFeatureConfig[]
-  offlineSaleSyncMaps      OfflineSaleSyncMap[]
-  members                  Member[]
-  memberBalanceLedgers     MemberBalanceLedger[]
-  memberTelegramBindTokens MemberTelegramBindToken[]
-  customerJourneyEvents    CustomerJourneyEvent[]
-  desktopDevices           DesktopDevice[]
-  browserPosDevices        BrowserPosDevice[]
+  tenant                      Tenant                      @relation(fields: [tenantId], references: [id])
+  userRoles                   UserStoreRole[]
+  sales                       SaleRecord[]
+  logs                        OperationLog[]
+  bindTokens                  BindToken[]
+  campaignLinks               CampaignLink[]
+  creators                    Creator[]
+  marketingProductPages       MarketingProductPage[]
+  aiFeatureConfigs            StoreAiFeatureConfig[]
+  offlineSaleSyncMaps         OfflineSaleSyncMap[]
+  members                     Member[]
+  memberBalanceLedgers        MemberBalanceLedger[]
+  memberTelegramBindTokens    MemberTelegramBindToken[]
+  customerJourneyEvents       CustomerJourneyEvent[]
+  desktopDevices              DesktopDevice[]
+  browserPosDevices           BrowserPosDevice[]
   browserPosBindingDeliveries BrowserPosBindingDelivery[]
-  cashierSaleIdempotencies CashierSaleIdempotency[]
-  desktopActivationPins    DesktopActivationPin[]
-  desktopActivationAudits  DesktopActivationAudit[]
-  computerBindings         ComputerBinding[]
-  computerBindingAudits    ComputerBindingAudit[]
-  sourceApplication        StoreApplication?         @relation("StoreApplicationCreatedStore")
+  cashierSaleIdempotencies    CashierSaleIdempotency[]
+  desktopActivationPins       DesktopActivationPin[]
+  desktopActivationAudits     DesktopActivationAudit[]
+  computerBindings            ComputerBinding[]
+  computerBindingAudits       ComputerBindingAudit[]
+  sourceApplication           StoreApplication?           @relation("StoreApplicationCreatedStore")
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -335,8 +335,8 @@ model User {
   memberBalanceLedgers     MemberBalanceLedger[]
   memberTelegramBindTokens MemberTelegramBindToken[]
   revokedDesktopDevices    DesktopDevice[]           @relation("DesktopDeviceRevokedBy")
-  issuedBrowserPosDevices  BrowserPosDevice[]         @relation("BrowserPosDeviceIssuedBy")
-  revokedBrowserPosDevices BrowserPosDevice[]         @relation("BrowserPosDeviceRevokedBy")
+  issuedBrowserPosDevices  BrowserPosDevice[]        @relation("BrowserPosDeviceIssuedBy")
+  revokedBrowserPosDevices BrowserPosDevice[]        @relation("BrowserPosDeviceRevokedBy")
   createdActivationPins    DesktopActivationPin[]    @relation("DesktopActivationPinCreatedByUser")
   desktopActivationAudits  DesktopActivationAudit[]  @relation("DesktopActivationAuditUserActor")
   decidedComputerBindings  ComputerBinding[]         @relation("ComputerBindingDecidedBy")
@@ -481,10 +481,10 @@ model MarketingProductPage {
 }
 
 model SaleRecord {
-  id             String @id @default(cuid())
-  tenantId       String
-  storeId        String
-  operatorUserId String
+  id                   String  @id @default(cuid())
+  tenantId             String
+  storeId              String
+  operatorUserId       String
   transactionActorType String?
   transactionActorId   String?
   authorizedByUserId   String?
@@ -579,22 +579,22 @@ model Member {
 }
 
 model MemberBalanceLedger {
-  id             String                        @id @default(cuid())
-  tenantId       String
-  storeId        String
-  memberId       String
-  type           MemberBalanceLedgerType
-  sourceType     MemberBalanceLedgerSourceType
-  sourceId       String?
-  amount         Decimal                       @db.Decimal(12, 2)
-  balanceBefore  Decimal                       @db.Decimal(12, 2)
-  balanceAfter   Decimal                       @db.Decimal(12, 2)
-  operatorUserId String?
+  id                   String                        @id @default(cuid())
+  tenantId             String
+  storeId              String
+  memberId             String
+  type                 MemberBalanceLedgerType
+  sourceType           MemberBalanceLedgerSourceType
+  sourceId             String?
+  amount               Decimal                       @db.Decimal(12, 2)
+  balanceBefore        Decimal                       @db.Decimal(12, 2)
+  balanceAfter         Decimal                       @db.Decimal(12, 2)
+  operatorUserId       String?
   transactionActorType String?
   transactionActorId   String?
   authorizedByUserId   String?
-  note           String?                       @db.Text
-  createdAt      DateTime                      @default(now())
+  note                 String?                       @db.Text
+  createdAt            DateTime                      @default(now())
 
   tenant       Tenant @relation(fields: [tenantId], references: [id])
   store        Store  @relation(fields: [storeId], references: [id])
@@ -686,24 +686,24 @@ model MerchantPaymentConfig {
 }
 
 model PaymentIntent {
-  id               String        @id @default(cuid())
-  tenantId         String
-  storeId          String
-  operatorUserId   String
+  id                   String        @id @default(cuid())
+  tenantId             String
+  storeId              String
+  operatorUserId       String
   transactionActorType String?
   transactionActorId   String?
   authorizedByUserId   String?
-  orderNo          String        @unique
-  paymentMethod    PaymentMethod
-  status           PaymentStatus @default(PENDING)
-  amount           Decimal       @db.Decimal(12, 2)
-  khqrPayload      String? // EMV QR string; null for CASH
-  provider         String? // from MerchantPaymentConfig.provider
-  merchantConfigId String? // FK to MerchantPaymentConfig
-  paidAt           DateTime?
-  cancelledAt      DateTime?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  orderNo              String        @unique
+  paymentMethod        PaymentMethod
+  status               PaymentStatus @default(PENDING)
+  amount               Decimal       @db.Decimal(12, 2)
+  khqrPayload          String? // EMV QR string; null for CASH
+  provider             String? // from MerchantPaymentConfig.provider
+  merchantConfigId     String? // FK to MerchantPaymentConfig
+  paidAt               DateTime?
+  cancelledAt          DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   merchantConfig MerchantPaymentConfig? @relation(fields: [merchantConfigId], references: [id])
 
@@ -922,12 +922,12 @@ model SalesLead {
   updatedAt           DateTime                 @updatedAt
   lastActivityAt      DateTime                 @default(now())
 
-  firstInvite       AcquisitionInvite?       @relation(fields: [firstInviteId], references: [id], onDelete: Restrict)
-  initialSalesOwner OpsAdmin?                 @relation("SalesLeadInitialOwner", fields: [initialSalesOwnerId], references: [id], onDelete: SetNull)
-  salesOwner        OpsAdmin?                 @relation("SalesLeadCurrentOwner", fields: [salesOwnerId], references: [id], onDelete: SetNull)
+  firstInvite       AcquisitionInvite?      @relation(fields: [firstInviteId], references: [id], onDelete: Restrict)
+  initialSalesOwner OpsAdmin?               @relation("SalesLeadInitialOwner", fields: [initialSalesOwnerId], references: [id], onDelete: SetNull)
+  salesOwner        OpsAdmin?               @relation("SalesLeadCurrentOwner", fields: [salesOwnerId], references: [id], onDelete: SetNull)
   contextTokens     SalesLeadContextToken[]
-  applications     StoreApplication[]
-  telegramMessages TelegramMessage[]
+  applications      StoreApplication[]
+  telegramMessages  TelegramMessage[]
 
   @@index([normalizedPhone])
   @@index([telegramId])
@@ -977,15 +977,15 @@ model ApplicationBlock {
 }
 
 model SalesLeadRateCounter {
-  id           String               @id @default(cuid())
+  id           String              @id @default(cuid())
   action       SalesLeadRateAction
   scopeType    SalesLeadRateScope
   scopeKeyHash String
   windowStart  DateTime
-  count        Int                  @default(0)
+  count        Int                 @default(0)
   expiresAt    DateTime
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@unique([action, scopeType, scopeKeyHash, windowStart], map: "SalesLeadRateCounter_window_key")
   @@index([expiresAt])
@@ -1009,6 +1009,7 @@ model TelegramMessage {
   tenantId            String? // null = ops/系统级消息
   channel             String   @default("MERCHANT") // MERCHANT | SALES_ONBOARDING
   salesLeadId         String?
+  salesInquiryOwnerId String?
   recipientTelegramId String // 发件方(CUSTOMER)或收件方(OPS/SYSTEM)的 TG ID
   senderName          String? // 客户名称，CUSTOMER 消息时填入
   messageType         String   @default("TEXT") // TEXT | IMAGE | STICKER | VOICE | VIDEO | FILE | OTHER
@@ -1018,13 +1019,15 @@ model TelegramMessage {
   sentBy              String   @default("SYSTEM") // SYSTEM | OPS | CUSTOMER
   createdAt           DateTime @default(now())
 
-  salesLead SalesLead? @relation(fields: [salesLeadId], references: [id], onDelete: SetNull)
+  salesLead         SalesLead? @relation(fields: [salesLeadId], references: [id], onDelete: SetNull)
+  salesInquiryOwner OpsAdmin?  @relation("SalesInquiryOwner", fields: [salesInquiryOwnerId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([recipientTelegramId])
   @@index([createdAt])
   @@index([channel, recipientTelegramId, createdAt])
   @@index([channel, salesLeadId, createdAt])
+  @@index([channel, salesLeadId, salesInquiryOwnerId, createdAt], map: "TelegramMessage_sales_inquiry_owner_idx")
 }
 
 model ProductImportSession {
@@ -1182,12 +1185,13 @@ model OpsAdmin {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  acquisitionInvites       AcquisitionInvite[] @relation("AcquisitionInviteSalesOwner")
-  initialSalesLeads         SalesLead[]          @relation("SalesLeadInitialOwner")
-  salesLeads                SalesLead[]          @relation("SalesLeadCurrentOwner")
-  applicationBlocksCreated ApplicationBlock[]   @relation("ApplicationBlockCreatedBy")
-  applicationBlocksCleared ApplicationBlock[]   @relation("ApplicationBlockClearedBy")
+  acquisitionInvites       AcquisitionInvite[]      @relation("AcquisitionInviteSalesOwner")
+  initialSalesLeads        SalesLead[]              @relation("SalesLeadInitialOwner")
+  salesLeads               SalesLead[]              @relation("SalesLeadCurrentOwner")
+  applicationBlocksCreated ApplicationBlock[]       @relation("ApplicationBlockCreatedBy")
+  applicationBlocksCleared ApplicationBlock[]       @relation("ApplicationBlockClearedBy")
   salesLeadSupportConfigs  SalesLeadSupportConfig[] @relation("SalesLeadSupportConfigUpdatedBy")
+  salesInquiryMessages     TelegramMessage[]        @relation("SalesInquiryOwner")
 }
 
 // 顾客下单后通过 /start bind_<storeCode>_<orderNo> 主动绑定 Telegram，沉淀为门店常驻联系人
@@ -1486,28 +1490,28 @@ model DesktopDevice {
 }
 
 model BrowserPosDevice {
-  id                 String                 @id @default(cuid())
-  tenantId           String
-  storeId            String
-  browserDeviceId    String
-  displayName        String?
-  browserInfo        String?                @db.Text
-  status             BrowserPosDeviceStatus @default(ACTIVE)
-  activeSlot         String?                @default("ACTIVE")
-  tokenHash          String                 @unique
-  tokenHashVersion   Int                    @default(1)
-  tokenIssuedAt      DateTime
-  tokenExpiresAt     DateTime
-  scopes             Json
-  issuedByUserId     String?
-  activatedAt        DateTime               @default(now())
-  lastSeenAt         DateTime?
-  revokedAt          DateTime?
-  revokedByUserId    String?
-  revocationReason   String?                @db.Text
-  legacyMigratedAt   DateTime?
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
+  id               String                 @id @default(cuid())
+  tenantId         String
+  storeId          String
+  browserDeviceId  String
+  displayName      String?
+  browserInfo      String?                @db.Text
+  status           BrowserPosDeviceStatus @default(ACTIVE)
+  activeSlot       String?                @default("ACTIVE")
+  tokenHash        String                 @unique
+  tokenHashVersion Int                    @default(1)
+  tokenIssuedAt    DateTime
+  tokenExpiresAt   DateTime
+  scopes           Json
+  issuedByUserId   String?
+  activatedAt      DateTime               @default(now())
+  lastSeenAt       DateTime?
+  revokedAt        DateTime?
+  revokedByUserId  String?
+  revocationReason String?                @db.Text
+  legacyMigratedAt DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
   tenant            Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   store             Store                       @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -1548,28 +1552,28 @@ model BrowserPosBindingDelivery {
 }
 
 model DesktopActivationPin {
-  id                  String                     @id @default(cuid())
-  tenantId            String
-  storeId             String
-  pinHash             String
-  pinHashVersion      Int                        @default(1)
-  status              DesktopActivationPinStatus @default(ACTIVE)
-  activeSlot          String?                    @default("ACTIVE")
-  expiresAt           DateTime
-  usedAt              DateTime?
-  usedByDeviceId      String?
-  failedAttempts      Int                        @default(0)
-  lockedUntil         DateTime?
-  createdByUserId     String
-  revokedAt           DateTime?
-  createdAt           DateTime                   @default(now())
-  updatedAt           DateTime                   @updatedAt
+  id              String                     @id @default(cuid())
+  tenantId        String
+  storeId         String
+  pinHash         String
+  pinHashVersion  Int                        @default(1)
+  status          DesktopActivationPinStatus @default(ACTIVE)
+  activeSlot      String?                    @default("ACTIVE")
+  expiresAt       DateTime
+  usedAt          DateTime?
+  usedByDeviceId  String?
+  failedAttempts  Int                        @default(0)
+  lockedUntil     DateTime?
+  createdByUserId String
+  revokedAt       DateTime?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
 
-  tenant            Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store             Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  createdByUser     User                     @relation("DesktopActivationPinCreatedByUser", fields: [createdByUserId], references: [id])
-  usedByDevice      DesktopDevice?           @relation("DesktopActivationPinUsedByDevice", fields: [usedByDeviceId], references: [id], onDelete: SetNull)
-  audits            DesktopActivationAudit[]
+  tenant        Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store         Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdByUser User                     @relation("DesktopActivationPinCreatedByUser", fields: [createdByUserId], references: [id])
+  usedByDevice  DesktopDevice?           @relation("DesktopActivationPinUsedByDevice", fields: [usedByDeviceId], references: [id], onDelete: SetNull)
+  audits        DesktopActivationAudit[]
 
   @@unique([storeId, activeSlot])
   @@index([tenantId, storeId])
@@ -1580,25 +1584,25 @@ model DesktopActivationPin {
 }
 
 model DesktopActivationAudit {
-  id              String   @id @default(cuid())
-  tenantId        String
-  storeId         String
-  deviceId        String?
-  pinId           String?
-  actorUserId     String?
-  eventType       String
-  result          String
-  reasonCode      String?
-  ipHash          String?
-  userAgentHash   String?
-  metadata        Json?
-  createdAt       DateTime @default(now())
+  id            String   @id @default(cuid())
+  tenantId      String
+  storeId       String
+  deviceId      String?
+  pinId         String?
+  actorUserId   String?
+  eventType     String
+  result        String
+  reasonCode    String?
+  ipHash        String?
+  userAgentHash String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
 
-  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store         Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  device        DesktopDevice?        @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  pin           DesktopActivationPin? @relation(fields: [pinId], references: [id], onDelete: SetNull)
-  actorUser     User?                 @relation("DesktopActivationAuditUserActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store     Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  device    DesktopDevice?        @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  pin       DesktopActivationPin? @relation(fields: [pinId], references: [id], onDelete: SetNull)
+  actorUser User?                 @relation("DesktopActivationAuditUserActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
   @@index([storeId, createdAt])
@@ -1648,23 +1652,23 @@ model ComputerBinding {
   credentialExpiresAt   DateTime?
 
   // 审批与绑定结果
-  decidedByUserId String?
-  decidedAt       DateTime?
-  boundAt         DateTime? // 设备用 deviceSecret 确认绑定的时间
-  lastSeenAt      DateTime?
+  decidedByUserId  String?
+  decidedAt        DateTime?
+  boundAt          DateTime? // 设备用 deviceSecret 确认绑定的时间
+  lastSeenAt       DateTime?
   disabledByUserId String?
   disabledAt       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant               Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // 复合外键：数据库层面保证 storeId 必须属于 tenantId，
   // 杜绝「绑定记录的门店不属于该租户」这类非法组合。
-  store         Store                  @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  decidedByUser User?                  @relation("ComputerBindingDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
-  disabledByUser User?                 @relation("ComputerBindingDisabledBy", fields: [disabledByUserId], references: [id], onDelete: SetNull)
-  audits        ComputerBindingAudit[]
+  store                Store                         @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  decidedByUser        User?                         @relation("ComputerBindingDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  disabledByUser       User?                         @relation("ComputerBindingDisabledBy", fields: [disabledByUserId], references: [id], onDelete: SetNull)
+  audits               ComputerBindingAudit[]
   browserLaunchTickets ComputerBrowserLaunchTicket[]
 
   @@index([tenantId, storeId, status])
@@ -1678,14 +1682,14 @@ model ComputerBinding {
 // Agent 进入 Browser POS 使用的一次性短票据。
 // 浏览器只提交明文一次；数据库仅保存 HMAC 哈希，兑换后 usedAt 原子落库。
 model ComputerBrowserLaunchTicket {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   bindingId           String
-  ticketHash          String   @unique
+  ticketHash          String    @unique
   expiresAt           DateTime
   usedAt              DateTime?
   browserDeviceIdHash String?
   browserPosDeviceId  String?
-  createdAt           DateTime @default(now())
+  createdAt           DateTime  @default(now())
 
   binding ComputerBinding @relation(fields: [bindingId], references: [id], onDelete: Cascade)
 
