@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
 /**
  * POST /api/payments/:paymentId/confirm
@@ -30,7 +31,7 @@ export async function POST(
     )
   }
 
-  const [updated] = await prisma.$transaction([
+  const [updated, pendingTransition] = await prisma.$transaction([
     prisma.paymentIntent.update({
       where: { id: paymentId },
       data: { status: 'PAID', paidAt: new Date() },
@@ -42,6 +43,14 @@ export async function POST(
       data: { status: 'COMPLETED' },
     }),
   ])
+
+  if (pendingTransition.count > 0) {
+    after(() => notifyCashierGateway({
+      tenantId: pi.tenantId,
+      storeId: pi.storeId,
+      type: 'pending_orders_changed',
+    }))
+  }
 
   return NextResponse.json({ id: updated.id, status: updated.status, paidAt: updated.paidAt })
 }

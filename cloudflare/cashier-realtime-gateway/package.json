@@ -1,0 +1,9 @@
+{
+  "name": "@eshop/cashier-realtime-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "../../node_modules/.bin/tsx tests/gateway.test.ts",
+    "typecheck": "../../node_modules/.bin/tsc --noEmit -p tsconfig.json"
+  }
+}

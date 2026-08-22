@@ -1,0 +1,2 @@
+CASHIER_REALTIME_TICKET_SECRET=replace-with-an-independent-random-secret-at-least-32-bytes
+CASHIER_REALTIME_NOTIFY_SECRET=replace-with-a-different-random-secret-at-least-32-bytes

@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "eshop-cashier-realtime-gateway",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-22",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "STORE_REALTIME_GATEWAY",
+        "class_name": "StoreRealtimeGateway"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["StoreRealtimeGateway"]
+    }
+  ],
+  "vars": {
+    "CASHIER_REALTIME_ALLOWED_ORIGINS": "http://localhost:3000"
+  }
+}

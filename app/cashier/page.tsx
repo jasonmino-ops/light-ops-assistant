@@ -87,6 +87,11 @@ import {
   type CustomerDisplayRealtimePaymentStatus,
   type CustomerDisplayRealtimeStatus,
 } from '@/lib/customer-display-realtime-channel'
+import {
+  acquireCashierRealtimeTicket,
+  createCashierRealtimeClient,
+  type CashierRealtimeConnectionStatus,
+} from '@/lib/cashier-realtime-client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -120,6 +125,9 @@ type QzControlledPrintState = {
 
 const QZ_PREVIEW_LABEL = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_LABEL
 const QZ_PREVIEW_COMMIT = process.env.NEXT_PUBLIC_QZ_PRINT_PREVIEW_COMMIT
+const CASHIER_REALTIME_ENABLED = ['1', 'true'].includes(
+  (process.env.NEXT_PUBLIC_CASHIER_REALTIME_ENABLED ?? '').trim().toLowerCase(),
+)
 const QZ_BUSINESS_RAW_PREVIEW_ACTIVE =
   QZ_PREVIEW_LABEL === 'QZ-PRINT-02D' &&
   /^[0-9a-f]{40}$/.test(QZ_PREVIEW_COMMIT ?? '')
@@ -932,6 +940,51 @@ function playAlertSound() {
   } catch {}
 }
 
+type CashierRealtimeMode = 'DISABLED' | 'CONNECTING' | 'HEALTHY' | 'DEGRADED'
+
+type CashierPullGuard = {
+  scopeKey: string
+  inFlight: Promise<boolean> | null
+  trailing: boolean
+}
+
+function emptyCashierPullGuard(scopeKey = ''): CashierPullGuard {
+  return { scopeKey, inFlight: null, trailing: false }
+}
+
+function runCashierPullGuard(
+  guardRef: { current: CashierPullGuard },
+  scopeKey: string,
+  pullOnce: () => Promise<boolean>,
+): Promise<boolean> {
+  let guard = guardRef.current
+  if (guard.scopeKey !== scopeKey) {
+    guard = emptyCashierPullGuard(scopeKey)
+    guardRef.current = guard
+  }
+  if (guard.inFlight) {
+    guard.trailing = true
+    return guard.inFlight
+  }
+
+  const run = async () => {
+    let success = await pullOnce()
+    if (guardRef.current === guard && guard.trailing) {
+      guard.trailing = false
+      success = await pullOnce()
+    }
+    return success
+  }
+  const inFlight = run().finally(() => {
+    if (guardRef.current === guard) {
+      guard.inFlight = null
+      guard.trailing = false
+    }
+  })
+  guard.inFlight = inFlight
+  return inFlight
+}
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const SIDEBAR_BG  = '#0f172a'
@@ -1325,6 +1378,10 @@ export default function CashierPage() {
   const [posAuthChecking, setPosAuthChecking] = useState(false)
   const [posAccountAccess, setPosAccountAccess] = useState<PosAccountAccessState>('checking')
   const [posAccountAccessMessage, setPosAccountAccessMessage] = useState('')
+  const [cashierRealtimeMode, setCashierRealtimeMode] = useState<CashierRealtimeMode>(
+    CASHIER_REALTIME_ENABLED ? 'CONNECTING' : 'DISABLED',
+  )
+  const [cashierPageVisible, setCashierPageVisible] = useState(true)
   const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const [cashTendered, setCashTendered] = useState('')
@@ -1373,6 +1430,13 @@ export default function CashierPage() {
   })
   const knownOrderIds   = useRef<Set<string>>(new Set())
   const initialPollDone = useRef(false)
+  const cashierPollGenerationRef = useRef(0)
+  const cashierPollScopeRef = useRef('')
+  const cashierOrdersPullGuardRef = useRef<CashierPullGuard>(emptyCashierPullGuard())
+  const cashierPendingPullGuardRef = useRef<CashierPullGuard>(emptyCashierPullGuard())
+  const cashierVisibleRef = useRef(true)
+  const cashierRealtimeDirtyRef = useRef(false)
+  const cashierPosNeedAuthRef = useRef('')
   const wasOnlineRef    = useRef(true)
   const searchRef       = useRef<HTMLInputElement>(null)
   const scannerInputRef = useRef<HTMLInputElement>(null)
@@ -1799,67 +1863,169 @@ export default function CashierPage() {
     }
   }, [])
 
-  // ── Poll pending orders every 5s ───────────────────────────────────────────
-  useEffect(() => {
-    if (!storeCode) return
-    if (!posDeviceToken && posAccountAccess !== 'authorized') return
-    function poll() {
-      fetch(`/api/cashier/orders?storeCode=${encodeURIComponent(storeCode!)}`, {
-        headers: posDeviceHeaders(storeCode),
-      })
-        .then(async (r) => {
-          const data = await r.json().catch(() => null)
-          if (!r.ok && isPosUnauthorized(data, r.status)) {
-            setPosAuthError(posAuthCopy().needAuth)
-            return null
-          }
-          return data as CashierOrder[] | null
-        })
-        .then((data) => {
-          if (!Array.isArray(data)) return
-          if (!initialPollDone.current) {
-            initialPollDone.current = true
-            data.forEach(o => knownOrderIds.current.add(o.id))
-            setPendingOrders(data)
-            return
-          }
-          const newOnes = data.filter(o => !knownOrderIds.current.has(o.id))
-          data.forEach(o => knownOrderIds.current.add(o.id))
-          setPendingOrders(data)
-          if (newOnes.length > 0) playAlertSound()
-        })
-        .catch(() => {})
-    }
-    poll()
-    const timer = setInterval(poll, 5000)
-    return () => clearInterval(timer)
-  }, [storeCode, posDeviceToken, posAccountAccess, lang])
+  const cashierAuthorized = Boolean(storeCode && (posDeviceToken || posAccountAccess === 'authorized'))
+  cashierPosNeedAuthRef.current = posAuthCopy().needAuth
 
-  // ── Poll store-level pending-payment holds every 5s ─────────────────────────
-  // 门店级待收款挂单（手机端 / 浏览器端挂单统一来源），实现跨端同步。
+  const pullCashierOrders = useCallback((): Promise<boolean> => {
+    if (!storeCode) return Promise.resolve(false)
+    const scopeKey = cashierPollScopeRef.current
+    if (!scopeKey) return Promise.resolve(false)
+    return runCashierPullGuard(cashierOrdersPullGuardRef, scopeKey, async () => {
+      try {
+        const response = await fetch(`/api/cashier/orders?storeCode=${encodeURIComponent(storeCode)}`, {
+          headers: posDeviceHeaders(storeCode),
+        })
+        const data = await response.json().catch(() => null)
+        if (cashierPollScopeRef.current !== scopeKey) return false
+        if (!response.ok && isPosUnauthorized(data, response.status)) {
+          setPosAuthError(cashierPosNeedAuthRef.current)
+          return false
+        }
+        if (!Array.isArray(data)) return false
+        const orders = data as CashierOrder[]
+        if (!initialPollDone.current) {
+          initialPollDone.current = true
+          orders.forEach(order => knownOrderIds.current.add(order.id))
+          setPendingOrders(orders)
+          return true
+        }
+        const newOrders = orders.filter(order => !knownOrderIds.current.has(order.id))
+        orders.forEach(order => knownOrderIds.current.add(order.id))
+        setPendingOrders(orders)
+        if (newOrders.length > 0) playAlertSound()
+        return true
+      } catch {
+        return false
+      }
+    })
+  }, [storeCode])
+
+  const pullCashierPendingOrders = useCallback((): Promise<boolean> => {
+    if (!storeCode) return Promise.resolve(false)
+    const scopeKey = cashierPollScopeRef.current
+    if (!scopeKey) return Promise.resolve(false)
+    return runCashierPullGuard(cashierPendingPullGuardRef, scopeKey, async () => {
+      try {
+        const response = await fetch(`/api/cashier/pending-orders?storeCode=${encodeURIComponent(storeCode)}`, {
+          headers: posDeviceHeaders(storeCode),
+        })
+        const data = await response.json().catch(() => null)
+        if (cashierPollScopeRef.current !== scopeKey || !response.ok || !Array.isArray(data)) return false
+        setServerPendingOrders(data as ServerPendingOrder[])
+        return true
+      } catch {
+        return false
+      }
+    })
+  }, [storeCode])
+
+  const pullCashierBoth = useCallback(async () => {
+    const [ordersOk, pendingOk] = await Promise.all([
+      pullCashierOrders(),
+      pullCashierPendingOrders(),
+    ])
+    return ordersOk && pendingOk
+  }, [pullCashierOrders, pullCashierPendingOrders])
+
+  // One lifecycle owner: immediate pull, optional WebSocket, and full cleanup.
   useEffect(() => {
-    if (!storeCode) return
-    if (!posDeviceToken && posAccountAccess !== 'authorized') return
-    let cancelled = false
-    function poll() {
-      fetch(`/api/cashier/pending-orders?storeCode=${encodeURIComponent(storeCode!)}`, {
-        headers: posDeviceHeaders(storeCode),
-      })
-        .then(async (r) => {
-          const data = await r.json().catch(() => null)
-          if (!r.ok) return null
-          return data as ServerPendingOrder[] | null
-        })
-        .then((data) => {
-          if (cancelled || !Array.isArray(data)) return
-          setServerPendingOrders(data)
-        })
-        .catch(() => {})
+    if (!cashierAuthorized || !storeCode) return
+    const scopeKey = `${storeCode}:${++cashierPollGenerationRef.current}`
+    cashierPollScopeRef.current = scopeKey
+    cashierOrdersPullGuardRef.current = emptyCashierPullGuard(scopeKey)
+    cashierPendingPullGuardRef.current = emptyCashierPullGuard(scopeKey)
+    let active = true
+
+    void pullCashierBoth()
+
+    if (!CASHIER_REALTIME_ENABLED) {
+      setCashierRealtimeMode('DISABLED')
+      return () => {
+        active = false
+        if (cashierPollScopeRef.current === scopeKey) cashierPollScopeRef.current = ''
+      }
     }
-    poll()
-    const timer = setInterval(poll, 5000)
-    return () => { cancelled = true; clearInterval(timer) }
-  }, [storeCode, posDeviceToken, posAccountAccess])
+
+    setCashierRealtimeMode('CONNECTING')
+    const realtimeClient = createCashierRealtimeClient({
+      getTicket: () => acquireCashierRealtimeTicket({
+        storeCode,
+        headers: posDeviceHeaders(storeCode),
+      }),
+      onStatus: (status: CashierRealtimeConnectionStatus) => {
+        if (!active || status === 'stopped') return
+        const mode: CashierRealtimeMode = status === 'healthy'
+          ? 'HEALTHY'
+          : status === 'connecting'
+            ? 'CONNECTING'
+            : 'DEGRADED'
+        setCashierRealtimeMode(mode)
+        console.info('[cashier-realtime] connection_status', { status })
+      },
+      onConnected: (reconnected) => {
+        if (!active || !reconnected) return
+        console.info('[cashier-realtime] reconnected_refresh')
+        void pullCashierBoth().then((success) => {
+          if (success) cashierRealtimeDirtyRef.current = false
+        })
+      },
+      onWake: (type) => {
+        if (!active) return
+        console.info('[cashier-realtime] wake_received', { type })
+        if (type === 'orders_changed') {
+          if (!cashierVisibleRef.current) cashierRealtimeDirtyRef.current = true
+          void pullCashierOrders()
+          return
+        }
+        if (!cashierVisibleRef.current) {
+          cashierRealtimeDirtyRef.current = true
+          return
+        }
+        void pullCashierPendingOrders()
+      },
+    })
+    realtimeClient.start()
+
+    return () => {
+      active = false
+      realtimeClient.stop()
+      if (cashierPollScopeRef.current === scopeKey) cashierPollScopeRef.current = ''
+    }
+  }, [cashierAuthorized, storeCode, pullCashierBoth, pullCashierOrders, pullCashierPendingOrders])
+
+  // Visibility changes never recreate the WebSocket. Visible resume always reconciles both sources once.
+  useEffect(() => {
+    if (!cashierAuthorized) return
+    cashierVisibleRef.current = !document.hidden
+    setCashierPageVisible(!document.hidden)
+    const onVisibilityChange = () => {
+      const wasVisible = cashierVisibleRef.current
+      const visible = !document.hidden
+      cashierVisibleRef.current = visible
+      setCashierPageVisible(visible)
+      if (CASHIER_REALTIME_ENABLED) {
+        console.info('[cashier-realtime] visibility', { visible })
+      }
+      if (!wasVisible && visible) {
+        void pullCashierBoth().then((success) => {
+          if (success) cashierRealtimeDirtyRef.current = false
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [cashierAuthorized, pullCashierBoth])
+
+  // Exactly one fixed cadence exists at a time; immediate pulls are owned by lifecycle events above.
+  useEffect(() => {
+    if (!cashierAuthorized) return
+    const intervalMs = cashierRealtimeMode === 'HEALTHY'
+      ? (cashierPageVisible ? 30_000 : null)
+      : 5_000
+    if (intervalMs === null) return
+    const timer = window.setInterval(() => { void pullCashierBoth() }, intervalMs)
+    return () => window.clearInterval(timer)
+  }, [cashierAuthorized, cashierRealtimeMode, cashierPageVisible, pullCashierBoth])
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { sendAndLogMessage } from '@/lib/telegram'
+import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
 /**
  * PATCH /api/customer-orders/[id]
@@ -148,6 +149,12 @@ export async function PATCH(
     data: { status: newStatus },
     select: { id: true, orderNo: true, status: true, customerTelegramId: true, totalAmount: true, customerLang: true, storeCode: true },
   })
+
+  after(() => notifyCashierGateway({
+    tenantId: order.tenantId,
+    storeId: order.storeId,
+    type: 'orders_changed',
+  }))
 
   // 若顾客有 Telegram ID，异步发送状态变更通知（走顾客端机器人）
   if (updated.customerTelegramId) {

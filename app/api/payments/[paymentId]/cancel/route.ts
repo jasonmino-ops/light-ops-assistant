@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
 
 /**
  * POST /api/payments/:paymentId/cancel
@@ -31,7 +32,10 @@ export async function POST(
     )
   }
 
-  await prisma.$transaction([
+  const [pendingRecordCount] = await prisma.$transaction([
+    prisma.saleRecord.count({
+      where: { orderNo: pi.orderNo, tenantId: ctx.tenantId, status: 'PENDING_PAYMENT' },
+    }),
     prisma.paymentIntent.update({
       where: { id: paymentId },
       data: { status: 'CANCELLED', cancelledAt: new Date() },
@@ -41,6 +45,14 @@ export async function POST(
       data: { status: 'CANCELLED' },
     }),
   ])
+
+  if (pendingRecordCount > 0) {
+    after(() => notifyCashierGateway({
+      tenantId: pi.tenantId,
+      storeId: pi.storeId,
+      type: 'pending_orders_changed',
+    }))
+  }
 
   return NextResponse.json({ id: paymentId, status: 'CANCELLED' })
 }
