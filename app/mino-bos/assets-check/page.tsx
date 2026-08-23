@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { CASHIER_REALTIME_OBSERVATION } from '@/lib/mino-bos/cashier-realtime-observation'
 
 type ApiStatus = {
   status?: string
@@ -350,17 +351,21 @@ export default function MinoBosAssetsCheckPage() {
       )}
 
       {data && (
-        <>
-          <section style={s.panel}>
-            <h2 style={s.panelTitle}>商户 / 门店状态</h2>
-            <div style={s.metricGrid}>
-              <Metric label="门店名称" value={primaryStore?.name ?? 'unavailable'} />
-              <Metric label="门店数量 / 当前门店" value={`${assets?.stores?.total ?? 0} / ${primaryStore?.code ?? 'unavailable'}`} />
-              <Metric label="最近销售时间" value={summary.latestSaleAt} />
-              <Metric label="真实业务数据" value={summary.hasRealBusinessData ? 'available' : 'unavailable'} />
-            </div>
-          </section>
+        <section style={s.panel}>
+          <h2 style={s.panelTitle}>商户 / 门店状态</h2>
+          <div style={s.metricGrid}>
+            <Metric label="门店名称" value={primaryStore?.name ?? 'unavailable'} />
+            <Metric label="门店数量 / 当前门店" value={`${assets?.stores?.total ?? 0} / ${primaryStore?.code ?? 'unavailable'}`} />
+            <Metric label="最近销售时间" value={summary.latestSaleAt} />
+            <Metric label="真实业务数据" value={summary.hasRealBusinessData ? 'available' : 'unavailable'} />
+          </div>
+        </section>
+      )}
 
+      <CashierRealtimeObservationCard />
+
+      {data && (
+        <>
           <section style={s.panel}>
             <h2 style={s.panelTitle}>今日经营摘要</h2>
             <div style={s.metricGrid}>
@@ -586,6 +591,103 @@ export default function MinoBosAssetsCheckPage() {
   )
 }
 
+function CashierRealtimeObservationCard() {
+  const observation = CASHIER_REALTIME_OBSERVATION
+
+  return (
+    <section style={s.panel} aria-labelledby="cashier-realtime-observation-title">
+      <div style={s.observationHeader}>
+        <div>
+          <StatusBadge tone="pending" label={observation.status} />
+          <h2 id="cashier-realtime-observation-title" style={s.panelTitle}>{observation.title}</h2>
+          <p style={s.sectionLead}>READ-ONLY · Founder Decision Support / Production Observation</p>
+        </div>
+        <div style={s.observationPeriod}>
+          <span>{observation.start} → {observation.plannedEnd}</span>
+          <span>{observation.window}</span>
+        </div>
+      </div>
+
+      <p style={s.noteStrong}>以下 Before / After 为已完成的 Field Verification 基线，不是实时 Vercel Usage 数据。</p>
+
+      <div style={s.subsection}>
+        <h3 style={s.subTitle}>当前生产状态</h3>
+        <div style={s.metricGrid}>
+          {observation.productionStatus.map((item) => (
+            <Metric key={item.label} label={item.label} value={item.value} />
+          ))}
+        </div>
+      </div>
+
+      <div style={s.subsection}>
+        <h3 style={s.subTitle}>Before / After Field Verification Baseline</h3>
+        <div role="table" aria-label="Cashier fixed polling before and after baseline" style={s.observationTable}>
+          <div role="row" style={{ ...s.observationTableRow, ...s.observationTableHeader }}>
+            <span role="columnheader">指标</span>
+            <span role="columnheader">优化前</span>
+            <span role="columnheader">当前</span>
+          </div>
+          {observation.baseline.map((item) => (
+            <div role="row" key={item.metric} style={s.observationTableRow}>
+              <span role="cell" style={s.observationMetricName}>{item.metric}</span>
+              <span role="cell">{item.before}</span>
+              <span role="cell">{item.current}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={s.subsection}>
+        <h3 style={s.subTitle}>安全状态</h3>
+        <div style={s.checkGrid}>
+          {observation.safety.map((item) => (
+            <CheckRow key={item.label} name={item.label} detail={item.value} tone="readonly" />
+          ))}
+        </div>
+      </div>
+
+      <div style={s.subsection}>
+        <h3 style={s.subTitle}>Production Observation</h3>
+        <div style={s.metricGrid}>
+          <Metric label="Observation Start" value={observation.start} />
+          <Metric label="Planned Closure" value={observation.plannedEnd} />
+          <Metric label="Current Status" value={observation.status} />
+        </div>
+        <div style={{ ...s.checkGrid, ...s.subsectionTight }}>
+          {observation.checkpoints.map((checkpoint) => (
+            <CheckRow
+              key={checkpoint.label}
+              name={`${checkpoint.label} — ${checkpoint.date}`}
+              detail={checkpoint.status}
+              tone="pending"
+            />
+          ))}
+        </div>
+      </div>
+
+      <div style={s.subsection}>
+        <h3 style={s.subTitle}>Manual Review Items</h3>
+        <div style={s.checkGrid}>
+          {observation.reviewItems.map((item) => (
+            <CheckRow key={item} name={item} detail="Pending observation / manual review required" tone="pending" />
+          ))}
+        </div>
+      </div>
+
+      <div style={s.subsection}>
+        <h3 style={s.subTitle}>Planned Decision at {observation.plannedEnd}</h3>
+        <CheckRow
+          name={observation.plannedDecisions.join(' / ')}
+          detail={`Decision: ${observation.decision}`}
+          tone="pending"
+        />
+      </div>
+
+      <p style={s.note}>本观察区只提供只读决策支持；不修改 Realtime 配置，不执行回退，不自动 FINAL FROZEN。</p>
+    </section>
+  )
+}
+
 function InfoCard(props: { label: string; value: string; tone: CheckTone }) {
   return (
     <section style={s.infoCard}>
@@ -755,6 +857,43 @@ const s: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid #e2e8f0',
     fontSize: 13,
   },
+  observationHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  observationPeriod: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 4,
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: 800,
+  },
+  observationTable: {
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  observationTableRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr)',
+    gap: 8,
+    padding: '10px 12px',
+    borderBottom: '1px solid #e2e8f0',
+    fontSize: 12,
+    lineHeight: 1.4,
+    wordBreak: 'break-word',
+  },
+  observationTableHeader: {
+    background: '#f8fafc',
+    color: '#475569',
+    fontWeight: 900,
+  },
+  observationMetricName: { fontWeight: 800 },
   riskGrid: { display: 'grid', gap: 8 },
   riskItem: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 },
   permissionGrid: {
