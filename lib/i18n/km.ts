@@ -757,6 +757,7 @@ const km = {
     fieldPrice: 'តម្លៃ *',
     fieldDiscountPrice: 'តម្លៃបញ្ចុះ',
     fieldDiscountEnabled: 'បើកការបញ្ចុះតម្លៃ',
+    fieldRecommended: 'ទំនិញណែនាំ',
     discountPriceInvalid: 'តម្លៃបញ្ចុះត្រូវធំជាង 0 និងទាបជាងតម្លៃដើម',
     discountPriceRequired: 'សូមបញ្ចូលតម្លៃបញ្ចុះមុនពេលបើក',
     fieldStatus: 'ស្ថានភាព',

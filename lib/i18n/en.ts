@@ -760,6 +760,7 @@ const en = {
     fieldPrice: 'Selling price *',
     fieldDiscountPrice: 'Discount price',
     fieldDiscountEnabled: 'Enable discount',
+    fieldRecommended: 'Recommended product',
     discountPriceInvalid: 'Discount price must be greater than 0 and lower than the original price',
     discountPriceRequired: 'Enter a discount price before enabling the discount',
     fieldStatus: 'Status',

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import CustomerBottomNav from '@/app/components/CustomerBottomNav'
 import { useDocumentLang } from '@/app/components/useDocumentLang'
 import { formatMoney } from '@/lib/currency'
+import { shouldShowRecommendationBadge } from '@/lib/product-recommendation'
 
 // ─── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -480,6 +481,7 @@ type ApiProduct = {
   price:  number
   originalPrice: number
   discountEnabled: boolean
+  isRecommended: boolean
   categoryId: string | null
   imageUrl:   string | null
   imageUrls?: string[]
@@ -1508,7 +1510,7 @@ export default function MenuPage() {
                         <div style={s.productMeta}>
                           <div style={s.productName}>
                             {pName(product, lang)}
-                            {idx === 0 && <span style={s.recommendBadge}>{ui.recommendBadge}</span>}
+                            {shouldShowRecommendationBadge(product) && <span style={s.recommendBadge}>{ui.recommendBadge}</span>}
                           </div>
                           {product.spec && <div style={s.productSpec}>{product.spec}</div>}
                           {pDesc(product, lang) && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, lineHeight: 1.4 }}>{pDesc(product, lang)}</div>}

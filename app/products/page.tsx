@@ -100,6 +100,7 @@ type Product = {
   sellPrice: number
   discountPrice: number | null
   discountEnabled: boolean
+  isRecommended: boolean
   status: 'ACTIVE' | 'DISABLED'
   categoryId: string | null
   imageUrl: string | null
@@ -324,6 +325,7 @@ export default function ProductsPage() {
   const [editPrice, setEditPrice] = useState('')
   const [editDiscountPrice, setEditDiscountPrice] = useState('')
   const [editDiscountEnabled, setEditDiscountEnabled] = useState(false)
+  const [editIsRecommended, setEditIsRecommended] = useState(false)
   const [editStatus, setEditStatus] = useState<'ACTIVE' | 'DISABLED'>('ACTIVE')
   const [editCategoryId, setEditCategoryId] = useState<string>('')
 
@@ -334,6 +336,7 @@ export default function ProductsPage() {
   const [newPrice, setNewPrice] = useState('')
   const [newDiscountPrice, setNewDiscountPrice] = useState('')
   const [newDiscountEnabled, setNewDiscountEnabled] = useState(false)
+  const [newIsRecommended, setNewIsRecommended] = useState(false)
   const [newCategoryId, setNewCategoryId] = useState<string>('')
   const [newImageFile, setNewImageFile] = useState<File | null>(null)
   const [newImagePreview, setNewImagePreview] = useState<string | null>(null)
@@ -1321,6 +1324,7 @@ export default function ProductsPage() {
     setNewPrice('')
     setNewDiscountPrice('')
     setNewDiscountEnabled(false)
+    setNewIsRecommended(false)
     setNewCategoryId('')
     clearNewImage()
     setMode('idle')
@@ -1385,6 +1389,7 @@ export default function ProductsPage() {
         setNewPrice('')
         setNewDiscountPrice('')
         setNewDiscountEnabled(false)
+        setNewIsRecommended(false)
         setNewCategoryId(draft.categoryId ?? '')
         if (photoCreatePreview) {
           setNewImageFiles([photoCreateFile])
@@ -1426,6 +1431,7 @@ export default function ProductsPage() {
       sellPrice: match.price,
       discountPrice: null,
       discountEnabled: false,
+      isRecommended: false,
       status: match.status,
       categoryId: match.categoryId,
       imageUrl: match.imageUrl,
@@ -1438,6 +1444,7 @@ export default function ProductsPage() {
     setEditPrice(String(next.sellPrice))
     setEditDiscountPrice(next.discountPrice == null ? '' : String(next.discountPrice))
     setEditDiscountEnabled(next.discountEnabled)
+    setEditIsRecommended(next.isRecommended)
     setEditStatus(next.status)
     setEditCategoryId(next.categoryId ?? '')
     setMode('found')
@@ -1561,6 +1568,7 @@ export default function ProductsPage() {
     setNewPrice('')
     setNewDiscountPrice('')
     setNewDiscountEnabled(false)
+    setNewIsRecommended(false)
     setNewCategoryId('')
     clearNewImage()
     setProduct(null)
@@ -1706,6 +1714,7 @@ export default function ProductsPage() {
         setEditPrice(String(p.sellPrice))
         setEditDiscountPrice(p.discountPrice == null ? '' : String(p.discountPrice))
         setEditDiscountEnabled(p.discountEnabled)
+        setEditIsRecommended(p.isRecommended)
         setEditStatus(p.status)
         setEditCategoryId(p.categoryId ?? '')
         setMode('found')
@@ -1722,6 +1731,7 @@ export default function ProductsPage() {
           setNewPrice('')
           setNewDiscountPrice('')
           setNewDiscountEnabled(false)
+          setNewIsRecommended(false)
           setMode('not-found')
           blockHidBriefly()
           setHidMsg({ type: 'fail', text: fmt('products.hidNotFound', { barcode: b }) })
@@ -1815,6 +1825,7 @@ export default function ProductsPage() {
             sellPrice: price,
             discountPrice,
             discountEnabled: editDiscountEnabled,
+            isRecommended: editIsRecommended,
             status: editStatus,
             categoryId: editCategoryId || null,
           }),
@@ -1860,6 +1871,7 @@ export default function ProductsPage() {
             sellPrice: price,
             discountPrice,
             discountEnabled: newDiscountEnabled,
+            isRecommended: newIsRecommended,
             categoryId: newCategoryId || null,
           }),
         },
@@ -1888,6 +1900,7 @@ export default function ProductsPage() {
         setEditPrice(String(created.sellPrice))
         setEditDiscountPrice(created.discountPrice == null ? '' : String(created.discountPrice))
         setEditDiscountEnabled(created.discountEnabled)
+        setEditIsRecommended(created.isRecommended)
         setEditStatus(created.status)
         setEditCategoryId(created.categoryId ?? '')
         clearNewImage()
@@ -2200,6 +2213,11 @@ export default function ProductsPage() {
                       enabled={newDiscountEnabled}
                       onPriceChange={setNewDiscountPrice}
                       onEnabledChange={setNewDiscountEnabled}
+                    />
+                    <BooleanAttributeField
+                      label={t('products.fieldRecommended')}
+                      checked={newIsRecommended}
+                      onChange={setNewIsRecommended}
                     />
                     <div style={s.aiDraftStatusLine}>{t('products.aiCreateStatusHint')}</div>
                     <button
@@ -3300,6 +3318,11 @@ export default function ProductsPage() {
                   onPriceChange={setEditDiscountPrice}
                   onEnabledChange={setEditDiscountEnabled}
                 />
+                <BooleanAttributeField
+                  label={t('products.fieldRecommended')}
+                  checked={editIsRecommended}
+                  onChange={setEditIsRecommended}
+                />
 
                 <Field label={t('products.fieldCategory')}>
                   <CategorySelect
@@ -3466,6 +3489,11 @@ export default function ProductsPage() {
                   onPriceChange={setNewDiscountPrice}
                   onEnabledChange={setNewDiscountEnabled}
                 />
+                <BooleanAttributeField
+                  label={t('products.fieldRecommended')}
+                  checked={newIsRecommended}
+                  onChange={setNewIsRecommended}
+                />
 
                 <Field label={t('products.fieldCategory')}>
                   <CategorySelect
@@ -3541,6 +3569,23 @@ function DiscountFields({
         </label>
       </Field>
     </>
+  )
+}
+
+function BooleanAttributeField({
+  label, checked, onChange,
+}: {
+  label: string
+  checked: boolean
+  onChange: (value: boolean) => void
+}) {
+  return (
+    <Field label={label}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 42 }}>
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <span>{label}</span>
+      </label>
+    </Field>
   )
 }
 
