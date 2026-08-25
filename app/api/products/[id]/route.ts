@@ -11,6 +11,7 @@ const PRODUCT_PATCH_SELECT = {
   sellPrice: true,
   discountPrice: true,
   discountEnabled: true,
+  isRecommended: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -25,6 +26,7 @@ const PRODUCT_PATCH_LEGACY_SELECT = {
   sellPrice: true,
   discountPrice: true,
   discountEnabled: true,
+  isRecommended: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -113,14 +115,14 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; status?: string; categoryId?: string | null }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; isRecommended?: boolean; status?: string; categoryId?: string | null }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { barcode, name, spec, sellPrice, discountPrice, discountEnabled, status, categoryId } = body
+  const { barcode, name, spec, sellPrice, discountPrice, discountEnabled, isRecommended, status, categoryId } = body
 
   if (barcode !== undefined && !String(barcode).trim()) {
     return NextResponse.json({ error: 'INVALID_BARCODE', message: '条码不能为空' }, { status: 400 })
@@ -167,6 +169,7 @@ export async function PATCH(
     ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
     ...(discountPrice !== undefined ? { discountPrice: discountPrice == null ? null : String(discountPrice) } : {}),
     ...(discountEnabled !== undefined ? { discountEnabled } : {}),
+    ...(isRecommended !== undefined ? { isRecommended } : {}),
     ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
     ...(categoryId !== undefined ? { categoryId: categoryId ?? null } : {}),
   }
@@ -199,6 +202,7 @@ export async function PATCH(
     sellPrice: updated.sellPrice.toNumber(),
     discountPrice: updated.discountPrice?.toNumber() ?? null,
     discountEnabled: updated.discountEnabled,
+    isRecommended: updated.isRecommended,
     status: updated.status,
     categoryId: updated.categoryId,
     imageUrl: updated.imageUrl,
