@@ -246,6 +246,10 @@ export class StoreRealtimeGateway {
   }
 
   webSocketClose(socket: WebSocket, code: number, reason: string) {
+    if (code === 1005 || code === 1006 || code === 1015) {
+      socket.close()
+      return
+    }
     socket.close(code, reason)
   }
 
