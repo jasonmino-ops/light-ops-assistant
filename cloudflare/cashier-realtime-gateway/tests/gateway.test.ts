@@ -39,13 +39,16 @@ const nowMs = 1_800_000_000_000
 class FakeSocket {
   readyState = 1
   sent: string[] = []
-  closed: { code: number; reason: string } | null = null
+  closed: { code?: number; reason?: string } | null = null
   private attachment: unknown = null
 
   serializeAttachment(value: unknown) { this.attachment = value }
   deserializeAttachment() { return this.attachment }
   send(value: string) { this.sent.push(value) }
-  close(code: number, reason: string) {
+  close(code?: number, reason?: string) {
+    if (code === 1005 || code === 1006 || code === 1015) {
+      throw new DOMException(`Invalid WebSocket close code: ${code}`, 'InvalidAccessError')
+    }
     this.readyState = 3
     this.closed = { code, reason }
   }
@@ -97,6 +100,10 @@ class FakeState implements DurableObjectStateLike {
     return [...this.sockets.entries()]
       .filter(([, tags]) => !tag || tags.has(tag))
       .map(([socket]) => socket)
+  }
+
+  releaseWebSocket(socket: WebSocket) {
+    this.sockets.delete(socket)
   }
 
   setWebSocketAutoResponse() { this.autoResponseConfigured = true }
@@ -302,6 +309,27 @@ async function main() {
     method: 'POST', body: JSON.stringify(liveEvent), headers: { 'content-type': 'application/json' },
   }), env)
   assert.equal(anonymousNotify.status, 401, 'browser/anonymous caller must not have notify authority')
+
+  // Reserved close-status sentinels are never echoed into a Close frame after runtime cleanup.
+  const closeLifecycleState = new FakeState()
+  const closeLifecycleGateway = new StoreRealtimeGateway(closeLifecycleState)
+  for (const code of [1005, 1006, 1015]) {
+    const reservedSocket = new FakeSocket()
+    closeLifecycleState.acceptWebSocket(reservedSocket as unknown as WebSocket)
+    closeLifecycleState.releaseWebSocket(reservedSocket as unknown as WebSocket)
+    assert.doesNotThrow(() => closeLifecycleGateway.webSocketClose(
+      reservedSocket as unknown as WebSocket,
+      code,
+      '',
+    ))
+    assert.deepEqual(reservedSocket.closed, { code: undefined, reason: undefined })
+    assert.equal(closeLifecycleState.getWebSockets().length, 0)
+  }
+
+  // A normal, sendable close code preserves the existing reciprocal close behavior.
+  const normalCloseSocket = new FakeSocket()
+  closeLifecycleGateway.webSocketClose(normalCloseSocket as unknown as WebSocket, 1000, 'normal_close')
+  assert.deepEqual(normalCloseSocket.closed, { code: 1000, reason: 'normal_close' })
 
   // Reject signed payloads that attempt to smuggle order/customer fields.
   const forbiddenBody = JSON.stringify({ ...liveEvent, order: { customerName: 'forbidden' } })
