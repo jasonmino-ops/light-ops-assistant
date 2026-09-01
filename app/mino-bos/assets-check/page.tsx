@@ -598,7 +598,7 @@ function CashierRealtimeObservationCard() {
     <section style={s.panel} aria-labelledby="cashier-realtime-observation-title">
       <div style={s.observationHeader}>
         <div>
-          <StatusBadge tone="pending" label={observation.status} />
+          <StatusBadge tone="pass" label={observation.status} />
           <h2 id="cashier-realtime-observation-title" style={s.panelTitle}>{observation.title}</h2>
           <p style={s.sectionLead}>READ-ONLY · Founder Decision Support / Production Observation</p>
         </div>
@@ -649,9 +649,14 @@ function CashierRealtimeObservationCard() {
       <div style={s.subsection}>
         <h3 style={s.subTitle}>Production Observation</h3>
         <div style={s.metricGrid}>
-          <Metric label="Observation Start" value={observation.start} />
-          <Metric label="Planned Closure" value={observation.plannedEnd} />
-          <Metric label="Current Status" value={observation.status} />
+          <Metric label="Observation Status" value={observation.status} />
+          <Metric label="Observation Period" value={`${observation.start} → ${observation.plannedEnd}`} />
+          <Metric label="7-Day Result" value={observation.result} />
+          <Metric label="Issue Found" value={observation.issue} />
+          <Metric label="Issue Severity" value={observation.issueSeverity} />
+          <Metric label="Adjustment" value={observation.adjustment} />
+          <Metric label="Post-fix Verification" value={observation.postFixVerification} />
+          <Metric label="Decision" value={observation.decision} />
         </div>
         <div style={{ ...s.checkGrid, ...s.subsectionTight }}>
           {observation.checkpoints.map((checkpoint) => (
@@ -659,31 +664,23 @@ function CashierRealtimeObservationCard() {
               key={checkpoint.label}
               name={`${checkpoint.label} — ${checkpoint.date}`}
               detail={checkpoint.status}
-              tone="pending"
+              tone="readonly"
             />
           ))}
         </div>
       </div>
 
       <div style={s.subsection}>
-        <h3 style={s.subTitle}>Manual Review Items</h3>
-        <div style={s.checkGrid}>
-          {observation.reviewItems.map((item) => (
-            <CheckRow key={item} name={item} detail="Pending observation / manual review required" tone="pending" />
-          ))}
+        <h3 style={s.subTitle}>Final Status</h3>
+        <div style={s.metricGrid}>
+          <Metric label="Production Observation" value={observation.status} />
+          <Metric label="Final Decision" value={observation.decision} />
+          <Metric label="ES-CASHIER-COST-01 V0.1" value={observation.releaseStatus} />
+          {observation.finalFrozen ? <Metric label="Release Closure" value="FINAL FROZEN" /> : null}
         </div>
       </div>
 
-      <div style={s.subsection}>
-        <h3 style={s.subTitle}>Planned Decision at {observation.plannedEnd}</h3>
-        <CheckRow
-          name={observation.plannedDecisions.join(' / ')}
-          detail={`Decision: ${observation.decision}`}
-          tone="pending"
-        />
-      </div>
-
-      <p style={s.note}>本观察区只提供只读决策支持；不修改 Realtime 配置，不执行回退，不自动 FINAL FROZEN。</p>
+      <p style={s.note}>本观察区为只读收口记录；不修改 Realtime 配置，不执行回退，不写回任何业务数据。</p>
     </section>
   )
 }
