@@ -1,471 +1,145 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
-
-## Commands
-
-```bash
-npm run dev          # 启动开发服务 → http://localhost:3000
-npm run build        # 生产构建（Vercel 部署触发此命令，不执行迁移）
-npx prisma generate  # 重新生成 Prisma Client（改 schema 后运行）
-npx prisma migrate dev --name <描述>   # 本地创建迁移文件
-npm run migrate:prod  # 生产迁移（需先 export DIRECT_URL=<supabase直连串>）
-npx prisma db seed   # 注入种子数据（幂等）
-```
-
-无统一测试框架，验收靠现有专项 regression tests、`npm run build` 和手动真机验证。
-
-## E-Shop Mainline & Production Lineage Gate（强制）
-
-任何 E-Shop feature branch / worktree 创建前，必须确认当前 Production 的全部 FIELD VERIFIED 能力已经进入 `origin/main` 血统。仅确认“main 最新、干净”不能放行。
-
-标准开线顺序：
-
-1. 取得当前 Production Git SHA（优先使用明确 SHA 或现有可靠 deployment metadata）。
-2. 执行 `git fetch origin`。
-3. 取得 `origin/main` HEAD。
-4. 在准备作为开发基线的干净 worktree 中执行：
-
-   ```bash
-   ./scripts/check-release-lineage.sh <production_sha>
-   ```
-
-5. 只有脚本输出以下两项时，才允许创建独立 feature branch / worktree：
-
-   ```text
-   Production ancestor of origin/main:
-   YES
-   Safe Development Base:
-   YES
-   ```
-
-如果 Production SHA 不存在、参数缺失、无法判断、working tree DIRTY，或 Production 不是 `origin/main` 的 ancestor，必须 fail closed。其中血统分叉统一报告：
-
-```text
-BLOCKED — PRODUCTION MAINLINE DIVERGENCE
-```
-
-禁止在 BLOCKED 状态创建 feature branch、开始开发，或以“origin/main 是最新的”为放行理由。
-
-新开发线路初始化回报必须包含：
-
-```text
-Production SHA:
-origin/main SHA:
-Production Is Ancestor Of origin/main: YES / NO
-Working Tree: CLEAN / DIRTY
-Safe Development Base: YES / NO
-```
-
-### FIELD VERIFIED 与 CLOSED
-
-- **FIELD VERIFIED**：真实设备 / 真实环境验收通过。
-- **CLOSED**：只有同时满足 FIELD VERIFIED、对应代码已进入 `origin/main`、Production Git SHA 与 main 血统一致、Known Capability Regression 为 NO，才可标记。
-- `FIELD VERIFIED ≠ CLOSED`。
-
-每次 Production Release 真机验收后必须做 Closure Check：
-
-```text
-Production SHA:
-origin/main HEAD:
-Production Is Ancestor Of origin/main: YES
-Capability Field Verification: PASS
-Known Regression: NO
-Final Status: CLOSED
-```
-
-### Capability Regression Gate
-
-每次 Production Release 前，必须运行仓库中已有的 FIELD VERIFIED capability 专项 tests；已有测试不得跳过。当前至少保护 Product Discount、OWNER Multi-Store Hub、Customer Display、Printing / Tray，以及仓库中其他已有专项 regression tests。任一相关测试 FAIL，Production Release 必须 BLOCKED。V1.0 不新增测试平台或服务。
-
-## 身份认证与上下文
-
-**两种身份来源（按优先级）：**
-
-1. **生产：** Telegram WebApp `initData` → `POST /api/auth/telegram` 验签 → `auth-session` 签名 Cookie（`lib/session.ts` HMAC-SHA256）
-2. **本地开发：** `x-tenant-id / x-user-id / x-store-id / x-role` headers，由 `lib/api.ts` 的 `apiFetch()` 自动注入
-
-所有 API 路由通过 `lib/context.ts` 的 `getContext(req)` 读取当前用户。返回 `null` 则 401。`role` 只有 `OWNER` 和 `STAFF` 两种。
-
-**本地切换身份：** `.env` 中设 `DEV_ROLE=OWNER` 或 `DEV_ROLE=STAFF`；`lib/api.ts` 的 `STAFF_CTX` / `OWNER_CTX` 常量写死了种子账户，前端直接用 `apiFetch()` 调用。
-
-## 前端架构
-
-**框架：** Next.js 15 App Router，全部页面为 `'use client'`（除 `app/layout.tsx` 这一个 Server Component）。
-
-**全局 Provider 嵌套（`app/layout.tsx`）：**
-```
-LangProvider → WorkModeProvider → {children} + BottomNav
-```
-
-- `LangProvider`：中/柬双语，`t('sale.xxx')` 查 `lib/i18n/zh.ts` 或 `km.ts`，`localStorage` 持久化
-- `WorkModeProvider`：从 `/api/me` 获取 `tier`（`LITE` / `STANDARD` / `MULTI_STORE`）和 `checkoutMode`；OWNER 可切入 STAFF 模式；`useWorkMode()` 全局可用
-
-**商品档次（tier）驱动扫码行为：**
-- `LITE`：仅摄像头扫码，无蓝牙扫码枪（HID）支持
-- `STANDARD` / `MULTI_STORE`：HID 蓝牙扫码枪优先，摄像头作为备用
-
-**样式：** 纯 inline `CSSProperties` 对象（无 CSS Modules / Tailwind），统一使用 `var(--blue)` / `var(--red)` / `var(--card)` 等 CSS 变量（定义在 `app/globals.css`）。
-
-## 数据库
-
-**ORM：** Prisma 7 + `@prisma/adapter-pg`（PgBouncer 连接池兼容适配器），单例在 `lib/prisma.ts`。
-
-**关键模型关系：**
-```
-Tenant → Store → User（UserStoreRole 多对多）
-Tenant → Product（含 ProductCategory 两级分类）
-Store → SaleRecord（recordNo 唯一，orderNo 同一笔订单共享）
-SaleRecord ←→ PaymentIntent（orderNo 关联）
-SaleRecord → SaleRecord（退款自引用，originalSaleRecordId）
-```
-
-**结账模式（`Store.checkoutMode`）：**
-- `DIRECT_PAYMENT`：扫码选品 → 立即选支付方式 → 完成
-- `DEFERRED_PAYMENT`：扫码选品 → 先挂单（`PENDING_PAYMENT`）→ 后续结账
-
-**Supabase 部署注意：** `DATABASE_URL` 用 PgBouncer 端口 6543（运行时），`DIRECT_URL` 用直连端口 5432（迁移专用）。迁移与 build 分离，`npm run migrate:prod` 单独手动执行。
-
-## API 路由约定
-
-- 所有路由从 `getContext(req)` 取 `{ tenantId, userId, storeId, role }`，再做权限判断
-- STAFF 只能读/写自己 storeId 的数据；OWNER 可访问 tenantId 下全部数据
-- 错误响应格式：`{ error: 'ERROR_CODE', message?: string }`
-
-**核心端点：**
-| 端点 | 说明 |
-|------|------|
-| `GET /api/me` | 当前用户的 tier / storeName / checkoutMode |
-| `GET /api/products?barcode=xxx` | 按条码查单品；无参数返回全部 ACTIVE 商品（最多 500） |
-| `POST /api/sales` | 销售提交（`saleType: SALE/REFUND`，`paymentMethod: CASH/KHQR/DEFER`） |
-| `POST /api/orders/[orderNo]/checkout` | 挂单转收款 |
-| `GET /api/sales/lookup?recordNo=xxx` | 查原销售单（退款第一步） |
-
-## i18n 规范
-
-翻译 key 定义在 `lib/i18n/zh.ts`（主语言），同步更新 `lib/i18n/km.ts`（柬埔寨语）。新增 key 必须两个文件同时加，否则 Khmer 用户会看到 key 字符串而非翻译文本。`t()` 函数支持点路径（如 `t('sale.notFound')`）。
-
-## /sale 销售页关键逻辑
-
-- `allProducts`：页面加载时一次性拉取全部 ACTIVE 商品，用于前端下拉过滤（不按条码逐个查询）
-- `barcodeInput` 的变化触发 suggestions 过滤；Enter 键触发 `queryProductByBarcode()` 走 API
-- 两个失败计数：`cameraFailCount`（摄像头失败）和 `hidFailCount`（HID 不匹配），≥5 显示对应提示条
-- `isHidTier = tier === 'STANDARD' || tier === 'MULTI_STORE'` 控制 HID 提示是否出现
-- `selectProduct(p)` 是商品选中的统一入口（下拉选、suggestion 点击均调用此函数）
-
----
-
-# 店小二 / light-ops-assistant 项目开发约束
-
-## 1. 当前主线
-
-本项目当前处于 CarGarden 真实门店试跑前收口阶段，最高优先级是：
-
-- 保持现有主流程稳定；
-- 不破坏手机端 Telegram Mini App；
-- 不破坏顾客 H5 点单；
-- 不破坏电脑收银台 `/cashier`；
-- 不破坏邀请码、桌号二维码、顾客点单链接；
-- 不随意扩功能；
-- 先最小可用，再逐步增强。
-
-## 2. 修改边界原则
-
-每次任务只允许修改用户明确要求的页面、接口或文件。
-
-如果为了完成任务必须改动其他页面、接口、数据库结构或公共组件，必须先在回复中说明：
-
-- 为什么必须改；
-- 会影响哪些页面；
-- 是否有替代方案；
-- 是否需要用户确认。
-
-未经用户明确确认，不允许顺手扩大修改范围。
-
-## 3. 严禁顺手改动的稳定模块
-
-除非用户明确要求，不得改动以下模块的业务逻辑：
-
-- `/home` 首页主流程；
-- `/invite` 老板码 / 员工码生成逻辑；
-- `/table-qrcodes` 桌号二维码生成逻辑；
-- `/m/[storeCode]` 顾客点单短链；
-- `/menu` 顾客 H5 点单主流程；
-- `/cashier` 电脑收银台核心结算逻辑；
-- `/records` 销售记录；
-- `/products` 商品管理；
-- Telegram auth / TelegramInit / relogin 逻辑；
-- 订单状态流；
-- 销售记录写入接口；
-- 数据库 schema / Prisma migration。
-
-如需改动，必须先说明并等待确认。
-
-## 4. 入口整理规则
-
-入口可以调整展示位置，但不得改变原有功能归属：
-
-- `/home` 只放日常经营高频入口；
-- `/invite` 管理老板码、员工码、顾客点单链接、桌号二维码；
-- `/cashier` 仅作为电脑收银台；
-- `/table-qrcodes` 仅负责桌号二维码生成；
-- `/m/[storeCode]` 和 `/menu` 负责顾客点单。
-
-不得因为整理一个页面，就擅自删除另一个页面的入口。
-
-## 5. 改动前自检
-
-每次修改前必须先判断：
-
-- 本次任务的最小改动范围是什么？
-- 是否会影响手机端？
-- 是否会影响顾客端？
-- 是否会影响电脑收银台？
-- 是否会影响真实门店试跑？
-- 是否涉及数据库或权限？
-
-如果答案不确定，先停下并询问。
-
-## 6. 提交前自检
-
-每次 commit 前必须确认：
-
-- build 通过；
-- 没有无关文件改动；
-- 没有顺手重构；
-- 没有改动用户未要求的核心流程；
-- 若跨页面改动，必须在最终回复中列明原因。
-
-最终回复必须包含：
-
-- 修改文件；
-- 改动范围；
-- 是否影响现有流程；
-- build 结果；
-- commit hash；
-- 用户需要验证的点。
-
-## 7. 当前阶段禁止事项
-
-在用户未明确要求前，禁止：
-
-- 接 USB 打印；
-- 接 mPOS；
-- 重构权限系统；
-- 重构订单状态流；
-- 改数据库 schema；
-- 扩复杂 token 体系；
-- 大改 UI 结构；
-- 删除已有入口；
-- 合并多个业务模块；
-- 引入新第三方服务。
-
----
-
-# Obsidian Documentation Rules
-
-## Purpose
-
-本项目已建立 Obsidian 企业知识库。
-
-所有重要开发活动必须同步沉淀到 Obsidian。
-
-目标：
-
-开发即留痕。
-
-验收即归档。
-
-知识持续积累。
-
----
-
-## Documentation Required
-
-以下情况必须生成 Obsidian 文档：
-
-1. 新功能开发完成
-2. 重大 Bug 修复
-3. 数据库结构变更
-4. API结构变更
-5. SOP变更
-6. 架构调整
-7. 冻结文档更新
-8. 灾备方案更新
-
----
-
-## Obsidian Vault Path Rules
-
-所有开发记录、收口记录、排障记录、SOP 沉淀，必须写入真实 Obsidian Vault：
-
-`/Users/jason/E-Life-Knowledge-Base/E-life knowledge Base/`
-
-开发记录默认写入：
-
-`/Users/jason/E-Life-Knowledge-Base/E-life knowledge Base/05-开发记录/`
-
-不得默认写入项目仓库内的同名目录：
-
-`/Users/jason/light-ops-assistant/05-开发记录/`
-
-如果需要在项目仓库中保留技术文档，只能放在：
-
-`/Users/jason/light-ops-assistant/docs/`
-
-并且必须明确区分：
-
-- 项目技术文档：`light-ops-assistant/docs/`
-- 企业知识沉淀：真实 Obsidian Vault `/Users/jason/E-Life-Knowledge-Base/E-life knowledge Base/`
-
-每次业务开发完成后，如果属于功能开发、页面收口、API 调整、数据库变更或故障排查，必须同步真实 Obsidian Vault 中的开发记录。
-
-最终回复必须包含：
-
-- 业务 commit hash
-- Obsidian 文件真实路径
-- 是否同步到真实 Vault
-- 是否误写项目仓库 `05-开发记录`
-
----
-
-## Required Output
-
-开发完成后必须额外输出：
-
-### 修改文件
-
-列出所有修改文件。
-
----
-
-### Build Result
-
-输出：
-
-Build通过
-
-或
-
-Build失败
-
----
-
-### Git Information
-
-输出：
-
-Commit Hash
-
-Git Status
-
----
-
-### Risk Level
-
-输出：
-
-低风险
-
-中风险
-
-高风险
-
----
-
-### Obsidian Development Record
-
-必须生成以下格式：
-
-# YYYY-MM-DD 事项名称
-
-## 问题
-
-描述问题。
-
----
-
-## 原因
-
-描述根因。
-
----
-
-## 修改文件
-
-列出修改文件。
-
----
-
-## 修改内容
-
-说明修改内容。
-
----
-
-## Build
-
-通过 / 失败
-
----
-
-## Commit
-
-Commit Hash
-
----
-
-## 风险
-
-低 / 中 / 高
-
----
-
-## 结果
-
-最终结果。
-
----
-
-## 建议归档
-
-必须给出建议归档目录：
-
-例如：
-
-05-开发记录/开发日志
-
-或
-
-04-SOP
-
-或
-
-03-冻结文档/02-冻结过程资料
-
----
-
-## Classification Rules
-
-Codex 必须判断输出内容属于：
-
-1. 冻结文档
-2. SOP
-3. 开发日志
-4. Bug案例
-5. 验收记录
-6. 架构文档
-
-并给出建议归档位置。
-
----
-
-## Important
-
-开发完成后：
-
-先输出开发结果。
-
-再输出 Obsidian 文档。
-
-不得省略 Obsidian 文档部分。
+本文件是 E-Shop 仓库的 Codex 长期执行入口。
+用户只需描述“开发什么 / 修什么 / 审计什么”；Codex 自动分类任务、读取权威资产并执行适用门禁。
+
+## 1. 权威来源
+
+- 用户当前任务中的明确指令优先于本文件；本文件负责补齐用户没有重复说明的默认开发纪律。
+- 先读取本文件及当前目录链中更深层的 `AGENTS.md` / `AGENTS.override.md`。
+- 治理原则以 `docs/governance/ES-GOV-001 Level 0 Governance Baseline V1.0 FINAL.md` 为准。
+- 工程流程以 `docs/governance/ES-ENG-001 Engineering Workflow Baseline V1.0 FINAL.md` 为准。
+- 具体开发工作流以 `docs/workflows/STORE_ASSISTANT_DEV_WORKFLOW_SKILL_V1.md` 为准。
+- Scope Gate 以 `scripts/guards/check-change-scope.js` 及其当前配置为准。
+- Release Lineage Gate 以 `scripts/check-release-lineage.sh` 的当前实现为准。
+- 数据库、部署、验收等专项规则，以仓库内当前冻结文档、脚本和 CI 为准。
+- 权威资产冲突时：更高层治理优先；同层以更具体且更新的已批准资产优先。
+- 不复制权威资产全文，不用本文件中的摘要替代原文。
+- FINAL / Freeze 资产不得在普通开发任务中顺手修改；确需变更时走其正式治理流程。
+
+## 2. 自动任务分类
+
+- 收到请求后，先判断属于：只读审计、治理/文档、代码修复、功能开发、数据库/基础设施、发布或 Closure。
+- 用户未要求修改时，只读检查并报告，不产生外部写入或状态变化。
+- 用户要求“开发”或“修复”时，默认完成最小实现、验证和可审计交付。
+- 用户要求发布、迁移、合并或 Closure 时，追加对应高风险门禁。
+- 任务类型不明确但可从仓库和真实平台状态判断时，Codex 自行判断并说明。
+- 只有会实质改变范围、风险或外部状态的关键歧义，才请求用户决策。
+- 不要求用户重复本文件、Release Lineage、Scope、测试、部署或 Closure 提示词。
+
+## 3. Scope 与授权
+
+- 以用户明确目标为唯一业务 Scope，实施满足目标的最小改动。
+- 不顺手重构、扩功能、迁移架构、替换依赖、清理邻近代码或修无关问题。
+- 若必要改动超出原 Scope，先说明原因、影响、替代方案与所需授权。
+- 先检查当前 diff；用户已有改动一律保留，避免覆盖和混入。
+- 插件、连接器或工具可用，不构成扩大 Scope 或执行写操作的授权。
+- Production deploy、main merge、生产 migration、破坏性操作及其他受控动作，必须取得对应明确授权。
+- 不以“完成任务”为由推定高风险授权。
+- 不输出 secrets、tokens、连接串或敏感用户数据。
+
+## 4. 开工前自动检查
+
+- 读取相关代码、配置、文档、package scripts、CI 和现有测试，确认真实实现方式。
+- 检查 Git status、当前 branch/worktree、remote 与目标基线。
+- 判断是否影响 runtime、build、workflow、script、dependency、database、infrastructure 或 deployment。
+- 判断是否涉及认证、权限、租户隔离、订单/支付、数据写入或稳定入口。
+- 按 ES-GOV-001 / ES-ENG-001 确定 Readiness、Authorization、Review 与 Founder Approval 要求。
+- 发现工作区不干净、基线不明或权威资产冲突时，先保护现场并 fail closed。
+- 不修改业务代码，直到适用的开工门禁满足。
+
+## 5. 开发线路与 Release Lineage
+
+- 每项实现任务使用独立 `codex/*` branch，并在隔离 worktree 中执行；如果 Codex 当前已经位于安全隔离的独立 worktree，优先复用当前 worktree，不重复创建。
+- 开发基线必须来自最新、干净的 `origin/main`，不得从漂移分支继续开线。
+- 除第 6 节例外外，开线前主动取得当前 Production Git SHA。
+- 执行 `git fetch origin`，并在准备作为基线的干净 worktree 运行：
+- `./scripts/check-release-lineage.sh <production_sha>`
+- 只有脚本确认安全开发基线后，才可创建线路或开始实现。
+- Production SHA 缺失、读取失败、无法判定、工作区脏或 lineage 不通过时，一律 BLOCKED。
+- “origin/main 最新”不等于 Production 已进入 main 血统。
+- 未经授权，不 push、不建或合并 PR、不合并 main、不部署。
+
+## 6. Governance / Docs-only Exception
+
+- 本例外只豁免“开线前取得 Production SHA 并运行 Release Lineage Gate”。
+- 仅当计划 diff 与最终 diff 都是纯文档或治理说明时，才可使用。
+- 纯文档指只改变说明性文本，不改变项目可执行行为、自动化实现或线上状态。
+- 允许对象限于文档文件及 `AGENTS.md` 一类治理说明。
+- 不得仅凭扩展名判断；必须检查完整 diff 和文件用途。
+- 任何 runtime、build、workflow、script、dependency、database、infrastructure 或 deployment 影响都会使例外失效。
+- 代码、配置、脚本、CI、schema、migration、lockfile、部署描述或平台设置变化均不得使用本例外。
+- 若文档变更同时夹带或要求本次配套改变上述非文档资产，也不得使用本例外。
+- 混合 diff、影响不明或无法证明纯文档时，按普通 Release Lineage Gate 执行。
+- 使用例外仍须 `git fetch origin`，从 clean `origin/main` 建立独立 `codex/*` branch/worktree。
+- 使用例外仍须执行 Scope 检查、diff 校验、文档校验和正常交付报告。
+- 本例外不授权 main merge、Production deploy、migration 或任何破坏性操作。
+- 最终报告必须明确写明是否使用本例外及判定依据。
+
+## 7. 真实状态与工具
+
+- 与任务相关时，主动使用已安装的 GitHub、Vercel、Supabase、Cloudflare、Sentry 等能力读取真实状态。
+- 能自行读取的信息，不要求用户手工复制。
+- 只读取完成当前任务所需的最小数据，不因工具可用而扩大检查或操作范围。
+- 平台读取结果必须区分仓库事实、线上事实与推断。
+- 线上读取失败、权限不足或证据冲突时标记 `UNKNOWN`，不得猜测或把缓存当当前状态。
+- `UNKNOWN` 若影响安全开工、迁移、发布或 Closure，必须 fail closed。
+- 外部写操作仍受 Scope 与授权约束。
+
+## 8. 实施与 Scope Gate
+
+- 遵循现有架构、认证、权限、租户隔离、i18n、API 错误格式和数据约束。
+- 以局部修复优先；公共层、稳定流程和数据库变更需有明确必要性。
+- 新增依赖、服务、环境变量或平台资源前，先说明必要性和影响并取得授权。
+- 实施中持续检查 `git diff`，及时移除无关改动。
+- commit 前运行当前 Scope Guard；以其实际输出判定 PASS / BLOCKED。
+- Scope Guard 通过不替代测试、审查、验收或发布授权。
+
+## 9. 验证
+
+- 从当前代码、package scripts、CI、冻结文档和已有测试中发现应运行的验证，不维护静态测试清单。
+- 至少运行与改动面直接相关的测试、类型/静态检查和构建检查。
+- 纯文档任务执行权威资产要求的检查；若构建不适用，明确报告 N/A 及依据。
+- 发布候选必须执行当前权威资产要求的完整门禁与回归。
+- 不跳过已有且与改动或发布相关的检查。
+- 测试失败、未运行或受环境阻塞时如实报告；不得表述为 PASS。
+- CI 未触发、平台未返回或人工验收未进行，不等于通过。
+
+## 10. 数据库、基础设施与发布
+
+- 数据库与基础设施改动只在用户 Scope 明确包含且治理授权满足时执行。
+- schema、migration 与运行时兼容性必须成套审查，build 与 migration 分离。
+- 生产 migration、资源变更、密钥变更、流量切换、回滚和部署均需明确授权。
+- 发布前重新读取目标平台、commit、环境和 lineage 的真实状态。
+- 发布后验证实际部署 commit、健康状态和与本次变更相关的关键路径。
+- 无证据不得声称已部署、已迁移、已回滚或线上正常。
+
+## 11. FIELD VERIFIED 与 CLOSED
+
+- Codex 的本地测试、模拟器、自动化浏览器和 Preview 验证均不能自行产生 `FIELD VERIFIED`。
+- `FIELD VERIFIED` 只能来自真实设备 / 真实环境的实际验收证据及其明确记录。
+- Codex 可以整理证据并报告待验项，但不得代替验收人宣布 `FIELD VERIFIED`。
+- `FIELD VERIFIED` 不等于 `CLOSED`。
+- `CLOSED` 必须同时有：验收通过、变更进入 `origin/main`、Production 包含对应变更且与 main 血统一致、要求的回归无已知退化。
+- Closure 时重新读取 GitHub 与 Production 真实状态并执行适用 lineage 检查。
+- 任一证据缺失或为 `UNKNOWN` 时，状态保持 OPEN / BLOCKED，不得宣布 CLOSED。
+
+## 12. 文档与交付
+
+- 按权威治理文档判断是否需要项目文档、Obsidian 开发记录、SOP、冻结材料或验收记录。
+- 企业知识沉淀只写入真实 Obsidian Vault；项目技术文档只写入仓库 `docs/`。
+- 不得把企业开发记录误写进仓库同名目录。
+- 只读审计、方案讨论或未落地草案默认不生成开发完成记录。
+- 写入仓库外 Vault 前确认当前权限；无法写入时给出完整待落文内容和目标路径。
+- 最终回复只报告事实，并包含：任务类型、改动范围、文件、验证、Git 状态、外部操作、风险和待验项。
+- 有 commit 时报告 hash；无 commit 时明确写“未 commit”，不得虚构。
+- 明确报告 Production deploy、main merge、migration、FIELD VERIFIED、CLOSED 与 Obsidian 同步的实际状态。
+- 若阻塞，给出阻塞证据、当前 `UNKNOWN`、安全停止点和解除条件。
+
+## 13. 默认完成定义
+
+- 目标在授权 Scope 内完成，diff 最小且无无关改动。
+- 适用治理、lineage、Scope、测试、构建、文档和审查门禁均有真实结果。
+- 未授权的外部状态未被改变。
+- 风险、未验证项和人工验收点已明确交接。
+- 只有满足本文件与权威资产的全部适用条件，才可称任务完成。
