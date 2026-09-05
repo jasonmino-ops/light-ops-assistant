@@ -105,6 +105,18 @@ enum ComputerCredentialStatus {
   VOID
 }
 
+// ES-PRINT-DUAL-CHANNEL-01 — Production Relay V0.1 job lifecycle.
+// SUCCEEDED means the Windows transport accepted the command stream; it does
+// not mean that physical paper output has been observed.
+enum EshopTrayPrintJobStatus {
+  PENDING
+  CLAIMED
+  EXECUTING
+  SUCCEEDED
+  FAILED
+  EXPIRED
+}
+
 enum MemberStatus {
   ACTIVE
   INACTIVE
@@ -200,6 +212,9 @@ model Tenant {
   desktopActivationAudits     DesktopActivationAudit[]
   computerBindings            ComputerBinding[]
   computerBindingAudits       ComputerBindingAudit[]
+  storeRuntimePrinterBindings StoreRuntimePrinterBinding[]
+  storeRuntimePrintTasks      StoreRuntimePrintTask[]
+  eshopTrayPrintJobs          EshopTrayPrintJob[]
 }
 
 model TenantSubscription {
@@ -267,7 +282,7 @@ model Store {
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
-  tenant                      Tenant                      @relation(fields: [tenantId], references: [id])
+  tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
   userRoles                   UserStoreRole[]
   sales                       SaleRecord[]
   logs                        OperationLog[]
@@ -289,7 +304,10 @@ model Store {
   desktopActivationAudits     DesktopActivationAudit[]
   computerBindings            ComputerBinding[]
   computerBindingAudits       ComputerBindingAudit[]
-  sourceApplication           StoreApplication?           @relation("StoreApplicationCreatedStore")
+  storeRuntimePrinterBindings StoreRuntimePrinterBinding[]
+  storeRuntimePrintTasks      StoreRuntimePrintTask[]
+  eshopTrayPrintJobs          EshopTrayPrintJob[]
+  sourceApplication           StoreApplication?            @relation("StoreApplicationCreatedStore")
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -1474,13 +1492,14 @@ model DesktopDevice {
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
-  tenant            Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  store             Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  revokedByUser     User?                    @relation("DesktopDeviceRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
-  replacesDevice    DesktopDevice?           @relation("DesktopDeviceReplacement", fields: [replacesDeviceId], references: [id], onDelete: SetNull)
-  replacedByDevices DesktopDevice[]          @relation("DesktopDeviceReplacement")
-  usedPins          DesktopActivationPin[]   @relation("DesktopActivationPinUsedByDevice")
-  audits            DesktopActivationAudit[]
+  tenant                        Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store                         Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  revokedByUser                 User?                    @relation("DesktopDeviceRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  replacesDevice                DesktopDevice?           @relation("DesktopDeviceReplacement", fields: [replacesDeviceId], references: [id], onDelete: SetNull)
+  replacedByDevices             DesktopDevice[]          @relation("DesktopDeviceReplacement")
+  usedPins                      DesktopActivationPin[]   @relation("DesktopActivationPinUsedByDevice")
+  audits                        DesktopActivationAudit[]
+  claimedStoreRuntimePrintTasks StoreRuntimePrintTask[]  @relation("StoreRuntimeClaimedDevice")
 
   @@unique([installationIdHash, activeSlot])
   @@index([tenantId, storeId])
@@ -1672,13 +1691,117 @@ model ComputerBinding {
   disabledByUser       User?                         @relation("ComputerBindingDisabledBy", fields: [disabledByUserId], references: [id], onDelete: SetNull)
   audits               ComputerBindingAudit[]
   browserLaunchTickets ComputerBrowserLaunchTicket[]
+  claimedPrintJobs     EshopTrayPrintJob[]           @relation("EshopTrayPrintJobClaimedBy")
 
+  @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId, status])
   @@index([tenantId, storeId, disabledAt])
   @@index([storeId, status, requestedAt])
   @@index([status, expiresAt])
   @@index([decidedByUserId])
   @@index([disabledByUserId])
+}
+
+// These two Store Runtime models preserve the already-applied
+// 20260811160000_es_tray_02_cloud_relay_field migration in Prisma's schema
+// lineage. Production Relay V0.1 does not use them as its mailbox.
+model StoreRuntimePrinterBinding {
+  id              String   @id
+  tenantId        String
+  storeId         String   @unique
+  targetType      String   @default("WINDOWS_QUEUE")
+  printerName     String
+  enabled         Boolean  @default(true)
+  version         Int      @default(1)
+  updatedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store  Store                   @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  tasks  StoreRuntimePrintTask[]
+
+  @@index([tenantId, storeId])
+  @@index([enabled])
+}
+
+model StoreRuntimePrintTask {
+  id                      String    @id
+  tenantId                String
+  storeId                 String
+  bindingId               String
+  bindingVersion          Int
+  printerName             String
+  taskType                String    @default("PRINT_ESC_POS")
+  schemaVersion           Int       @default(1)
+  idempotencyKey          String
+  payload                 Json
+  status                  String    @default("ACCEPTED")
+  claimedByDeviceId       String?
+  leaseExpiresAt          DateTime?
+  attemptCount            Int       @default(0)
+  acceptedAt              DateTime?
+  executingAt             DateTime?
+  completedAt             DateTime?
+  resultStatus            String?
+  resultCode              String?
+  resultMessage           String?
+  effectBoundary          String?
+  physicalCompletionKnown Boolean?
+  resultDetails           Json?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  tenant          Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store           Store                      @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  binding         StoreRuntimePrinterBinding @relation(fields: [bindingId], references: [id], onDelete: Restrict)
+  claimedByDevice DesktopDevice?             @relation("StoreRuntimeClaimedDevice", fields: [claimedByDeviceId], references: [id], onDelete: SetNull)
+
+  @@unique([storeId, idempotencyKey])
+  @@index([tenantId, storeId, status, createdAt])
+  @@index([storeId, status, leaseExpiresAt])
+  @@index([claimedByDeviceId, status])
+  @@index([bindingId])
+}
+
+// Dedicated durable ledger for the Tray 0.1.3 Production Relay. It is
+// intentionally independent from OperationLog and the legacy FIELD tables.
+model EshopTrayPrintJob {
+  id                         String                  @id @default(cuid())
+  tenantId                   String
+  storeId                    String
+  idempotencyKey             String
+  requestHash                String                  @db.Char(64)
+  schemaVersion              Int                     @default(1)
+  payload                    Json
+  status                     EshopTrayPrintJobStatus @default(PENDING)
+  claimedByComputerBindingId String?
+  claimTokenHash             String?                 @unique @db.Char(64)
+  claimAttempt               Int                     @default(0)
+  leaseExpiresAt             DateTime?
+  attemptCount               Int                     @default(0)
+  maxAttempts                Int                     @default(3)
+  nextAttemptAt              DateTime                @default(now())
+  expiresAt                  DateTime
+  executingAt                DateTime?
+  completedAt                DateTime?
+  resultStatus               String?
+  resultCode                 String?
+  resultMessage              String?                 @db.Text
+  effectBoundary             String?
+  physicalCompletionKnown    Boolean                 @default(false)
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+
+  tenant                   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store                    Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  claimedByComputerBinding ComputerBinding? @relation("EshopTrayPrintJobClaimedBy", fields: [claimedByComputerBindingId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@unique([tenantId, storeId, idempotencyKey])
+  @@index([tenantId, storeId, status, nextAttemptAt, createdAt])
+  @@index([status, leaseExpiresAt])
+  @@index([claimedByComputerBindingId, status])
+  @@index([tenantId, storeId, expiresAt])
 }
 
 // Agent 进入 Browser POS 使用的一次性短票据。

@@ -23,6 +23,8 @@
     "node_modules",
     "desktop",
     "desktop/**",
+    "e-shop-tray",
+    "e-shop-tray/**",
     "packages/hrt-contract",
     "packages/hrt-contract/**",
     "packages/hrt-provider-simulator",
