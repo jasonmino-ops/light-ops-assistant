@@ -4,7 +4,7 @@ import type { RequestContext } from '../lib/context'
 import {
   handleRelayConfigRequest,
   type RelayConfigRouteDependencies,
-} from '../app/api/es-tray-02/config/route'
+} from '../lib/es-tray-relay/config-route'
 
 const ownerContext: RequestContext = {
   tenantId: 'tenant-a',
