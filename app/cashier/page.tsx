@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import QRCode from 'react-qr-code'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import {
   DesktopReceiptPreview,
@@ -1418,6 +1419,7 @@ export default function CashierPage() {
   const [desktopRecordsOpen, setDesktopRecordsOpen] = useState(false)
   const [desktopRecords, setDesktopRecords] = useState<DesktopRecordsState>({ loading: false, error: '', items: [] })
   const [expandedDesktopRecordKey, setExpandedDesktopRecordKey] = useState<string | null>(null)
+  const [selectedDesktopRecordOrderNo, setSelectedDesktopRecordOrderNo] = useState<string | null>(null)
   const [scannerDebug, setScannerDebug] = useState<ScannerDebugState>({
     mounted: false,
     isActive: false,
@@ -2542,6 +2544,7 @@ export default function CashierPage() {
     }
     setDesktopRecordsOpen(true)
     setExpandedDesktopRecordKey(null)
+    setSelectedDesktopRecordOrderNo(null)
     setDesktopRecords((prev) => ({ ...prev, loading: true, error: '' }))
     try {
       const dateTo = new Date()
@@ -5123,7 +5126,10 @@ export default function CashierPage() {
                         key={row.key}
                         type="button"
                         style={{ ...s.recordsItem, ...(expanded ? s.recordsItemExpanded : {}), cursor: 'pointer', textAlign: 'left' }}
-                        onClick={() => setExpandedDesktopRecordKey(expanded ? null : row.key)}
+                        onClick={() => {
+                          setExpandedDesktopRecordKey(row.key)
+                          setSelectedDesktopRecordOrderNo(row.orderNo)
+                        }}
                       >
                         <div style={{ minWidth: 0 }}>
                           <div style={s.recordsNo}>{shortNo(row.orderNo)}</div>
@@ -5141,6 +5147,16 @@ export default function CashierPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {isDesktopPos && (
+        <OrderDetailSheet
+          orderNo={selectedDesktopRecordOrderNo}
+          onClose={() => {
+            setSelectedDesktopRecordOrderNo(null)
+            setExpandedDesktopRecordKey(null)
+          }}
+        />
       )}
 
       {/* ── Sale success overlay ───────────────────────────────────────────── */}
