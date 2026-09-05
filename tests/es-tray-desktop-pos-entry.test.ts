@@ -66,8 +66,10 @@ test('opening the Desktop records panel resets any prior selected detail', () =>
   assert.match(openRecords, /setDesktopRecordsOpen\(true\)[\s\S]*setSelectedDesktopRecordOrderNo\(null\)/)
 })
 
-test('OrderDetailSheet requests the reviewed config gate when an order opens', () => {
-  assert.match(orderDetail, /useEffect\(\(\) => \{[\s\S]*readEshopTray02CloudEnableState\(\)[\s\S]*\}, \[orderNo\]\)/)
+test('OrderDetailSheet selects the reviewed OWNER or device config gate when an order opens', () => {
+  assert.match(orderDetail, /const readEnableState = isDesktopPosDeviceRuntime\(\)/)
+  assert.match(orderDetail, /readEshopTray02DeviceCloudEnableState[\s\S]*readEshopTray02CloudEnableState/)
+  assert.match(orderDetail, /void readEnableState\(\)\.then/)
 })
 
 test('a disabled or failed config gate preserves the existing browser print path', () => {
@@ -75,11 +77,12 @@ test('a disabled or failed config gate preserves the existing browser print path
   assert.match(printHandler, /if \(cloudRelayState !== 'enabled'\) \{[\s\S]*openExistingBrowserPrint\(html, completePrintAction\)[\s\S]*return/)
 })
 
-test('the Relay-enabled path reuses the reviewed receipt renderer and enqueue client', () => {
+test('the Relay-enabled path reuses the reviewed receipt renderer and explicit enqueue clients', () => {
   const printHandler = sourceBetween(orderDetail, 'async function handlePrint()', 'const busy =')
   assert.match(printHandler, /html = buildPrintHTML\(d as ShareData, shareLabels\)/)
   assert.match(printHandler, /renderTicketHtmlToEscPosRaw\(html\)/)
-  assert.equal((printHandler.match(/submitEshopTray02CloudPrint\(/g) ?? []).length, 1)
+  assert.match(printHandler, /submitEshopTray02DeviceCloudPrint[\s\S]*submitEshopTray02CloudPrint/)
+  assert.equal((printHandler.match(/await submitPrint\(/g) ?? []).length, 1)
 })
 
 test('the print handler remains single-flight and keeps a stable retry intent', () => {
@@ -113,10 +116,11 @@ test('the existing 补打小票 path remains unchanged outside the Desktop POS m
   assert.match(records, /printDesktopReceipt\(/)
 })
 
-test('the A10 OrderDetailSheet remains the sole owner of config, rendering, and enqueue', () => {
-  assert.equal((orderDetail.match(/readEshopTray02CloudEnableState\(\)/g) ?? []).length, 1)
+test('OrderDetailSheet remains the sole owner of config, rendering, and enqueue selection', () => {
+  assert.equal((orderDetail.match(/const readEnableState =/g) ?? []).length, 1)
   assert.equal((orderDetail.match(/renderTicketHtmlToEscPosRaw\(html\)/g) ?? []).length, 1)
-  assert.equal((orderDetail.match(/submitEshopTray02CloudPrint\(/g) ?? []).length, 1)
+  assert.equal((orderDetail.match(/const submitPrint =/g) ?? []).length, 1)
+  assert.equal((orderDetail.match(/await submitPrint\(/g) ?? []).length, 1)
 })
 
 console.log(`es-tray Desktop POS entry tests passed (${cases} cases)`)

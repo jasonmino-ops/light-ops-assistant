@@ -256,10 +256,11 @@ async function main() {
 
   await test('OrderDetailSheet alone owns the new config and enqueue integration', () => {
     const orderSheet = fs.readFileSync('app/components/OrderDetailSheet.tsx', 'utf8')
-    assert.match(orderSheet, /readEshopTray02CloudEnableState\(\)/)
+    assert.match(orderSheet, /readEshopTray02DeviceCloudEnableState[\s\S]*readEshopTray02CloudEnableState/)
     assert.match(orderSheet, /cloudRelayState !== 'enabled'[\s\S]*openExistingBrowserPrint\(html/)
     assert.match(orderSheet, /renderTicketHtmlToEscPosRaw\(html\)/)
-    assert.equal((orderSheet.match(/submitEshopTray02CloudPrint\(/g) ?? []).length, 1)
+    assert.match(orderSheet, /submitEshopTray02DeviceCloudPrint[\s\S]*submitEshopTray02CloudPrint/)
+    assert.equal((orderSheet.match(/await submitPrint\(/g) ?? []).length, 1)
     assert.match(orderSheet, /\|\| printInFlightRef\.current[\s\S]*printInFlightRef\.current = true/)
     assert.match(orderSheet, /const printDisabled = busy \|\| cloudRelayState === 'pending'/)
   })

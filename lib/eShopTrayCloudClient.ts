@@ -1,6 +1,7 @@
 'use client'
 
 import { apiFetch } from './api'
+import { desktopPosDeviceFetch } from './es-tray-device-client'
 import { qzRawBytesToBase64 } from './qzEscPosBitImage'
 
 const RELAY_VERSION = '0.1' as const
@@ -40,14 +41,15 @@ export function isEshopTray02CloudConfigEnabled(value: unknown): boolean {
   return body?.fieldOnly === true && body.enabled === true
 }
 
-export async function readEshopTray02CloudEnableState(
-  fetchImpl: EshopTray02Fetch = apiFetch,
+async function readCloudEnableState(
+  endpoint: string,
+  fetchImpl: EshopTray02Fetch,
   timeoutMs = CONFIG_REQUEST_TIMEOUT_MS,
 ): Promise<Exclude<EshopTray02CloudEnableState, 'pending'>> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), Math.max(1, timeoutMs))
   try {
-    const response = await fetchImpl('/api/es-tray-02/config', {
+    const response = await fetchImpl(endpoint, {
       method: 'GET',
       cache: 'no-store',
       signal: controller.signal,
@@ -60,6 +62,20 @@ export async function readEshopTray02CloudEnableState(
   } finally {
     clearTimeout(timeout)
   }
+}
+
+export function readEshopTray02CloudEnableState(
+  fetchImpl: EshopTray02Fetch = apiFetch,
+  timeoutMs = CONFIG_REQUEST_TIMEOUT_MS,
+) {
+  return readCloudEnableState('/api/es-tray-02/config', fetchImpl, timeoutMs)
+}
+
+export function readEshopTray02DeviceCloudEnableState(
+  fetchImpl: EshopTray02Fetch = desktopPosDeviceFetch,
+  timeoutMs = CONFIG_REQUEST_TIMEOUT_MS,
+) {
+  return readCloudEnableState('/api/es-tray-02/device/config', fetchImpl, timeoutMs)
 }
 
 function defaultRequestId(): string {
@@ -88,12 +104,16 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
 }
 
-export async function submitEshopTray02CloudPrint(input: {
+async function submitCloudPrint(input: {
   orderNo: string
   requestId: string
   commandStream: Uint8Array
   fetchImpl?: EshopTray02Fetch
-}): Promise<{ jobId: string; requestId: string; created: boolean }> {
+}, endpoint: string, defaultFetch: EshopTray02Fetch): Promise<{
+  jobId: string
+  requestId: string
+  created: boolean
+}> {
   if (!(input.commandStream instanceof Uint8Array) || input.commandStream.byteLength === 0) {
     throw new EshopTray02CloudClientError('ES_TRAY_02_INVALID_COMMAND_STREAM')
   }
@@ -104,7 +124,7 @@ export async function submitEshopTray02CloudPrint(input: {
   const digest = await sha256Hex(input.commandStream).catch((cause) => {
     throw new EshopTray02CloudClientError('ES_TRAY_02_COMMAND_DIGEST_FAILED', undefined, { cause })
   })
-  const response = await (input.fetchImpl ?? apiFetch)('/api/es-tray-02/print-jobs', {
+  const response = await (input.fetchImpl ?? defaultFetch)(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -148,4 +168,22 @@ export async function submitEshopTray02CloudPrint(input: {
     requestId: input.requestId,
     created: body.created,
   }
+}
+
+export function submitEshopTray02CloudPrint(input: {
+  orderNo: string
+  requestId: string
+  commandStream: Uint8Array
+  fetchImpl?: EshopTray02Fetch
+}) {
+  return submitCloudPrint(input, '/api/es-tray-02/print-jobs', apiFetch)
+}
+
+export function submitEshopTray02DeviceCloudPrint(input: {
+  orderNo: string
+  requestId: string
+  commandStream: Uint8Array
+  fetchImpl?: EshopTray02Fetch
+}) {
+  return submitCloudPrint(input, '/api/es-tray-02/device/print-jobs', desktopPosDeviceFetch)
 }

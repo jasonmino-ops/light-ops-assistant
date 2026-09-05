@@ -9,10 +9,16 @@ import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
 import {
   getOrCreateEshopTray02PrintIntent,
   readEshopTray02CloudEnableState,
+  readEshopTray02DeviceCloudEnableState,
   submitEshopTray02CloudPrint,
+  submitEshopTray02DeviceCloudPrint,
   type EshopTray02CloudEnableState,
   type EshopTray02PrintIntent,
 } from '@/lib/eShopTrayCloudClient'
+import {
+  isDesktopPosDeviceRuntime,
+  readDesktopPosDeviceOrderDetail,
+} from '@/lib/es-tray-device-client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,7 +139,10 @@ export default function OrderDetailSheet({
     if (relayIntentRef.current?.orderNo !== orderNo) relayIntentRef.current = null
     let active = true
     setCloudRelayState('pending')
-    void readEshopTray02CloudEnableState().then((state) => {
+    const readEnableState = isDesktopPosDeviceRuntime()
+      ? readEshopTray02DeviceCloudEnableState
+      : readEshopTray02CloudEnableState
+    void readEnableState().then((state) => {
       if (active) setCloudRelayState(state)
     })
     return () => { active = false }
@@ -148,7 +157,10 @@ export default function OrderDetailSheet({
     setLoading(true)
     setError(null)
     setDetail(null)
-    apiFetch(`/api/orders/${encodeURIComponent(orderNo)}`)
+    const detailRequest = isDesktopPosDeviceRuntime()
+      ? readDesktopPosDeviceOrderDetail(orderNo)
+      : apiFetch(`/api/orders/${encodeURIComponent(orderNo)}`)
+    detailRequest
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then(setDetail)
       .catch(() => setError(t('order.loadFailed')))
@@ -295,7 +307,10 @@ export default function OrderDetailSheet({
       if (!intent.commandStream) {
         intent.commandStream = await renderTicketHtmlToEscPosRaw(html)
       }
-      await submitEshopTray02CloudPrint({
+      const submitPrint = isDesktopPosDeviceRuntime()
+        ? submitEshopTray02DeviceCloudPrint
+        : submitEshopTray02CloudPrint
+      await submitPrint({
         orderNo: d.orderNo,
         requestId: intent.requestId,
         commandStream: intent.commandStream,
