@@ -22,5 +22,25 @@
   "approvedAt": "2026-09-05T08:35:16Z",
   "approvedBy": "Founder",
   "closeAfter": "FEATURE_MERGE",
-  "reason": "Authorize the reviewed dedicated EshopTrayPrintJob schema and exact Production Relay V0.1 migration without weakening the repository default deny rules."
+  "reason": "Authorize the reviewed dedicated EshopTrayPrintJob schema and exact Production Relay V0.1 migration without weakening the repository default deny rules.",
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "A11.2-DESKTOP-POS-CASHIER-PAGE",
+      "featureBranch": "codex/es-print-desktop-pos-relay-entry-v01",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "414a1c33e9907b57e7a47e43ff758738b64c0f51",
+      "status": "ACTIVE",
+      "authorizedPaths": [
+        "app/cashier/page.tsx"
+      ],
+      "authorizedPathSha256": {
+        "app/cashier/page.tsx": "9d1c8aaa8c0ac919dbc75dc18ee9668f3f81f315da46650862a0d14ee2c536b3"
+      },
+      "createdAt": "2026-09-05T13:56:29Z",
+      "approvedAt": "2026-09-05T13:56:29Z",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Authorize only the reviewed A11.2 Desktop POS sales-record detail wiring in app/cashier/page.tsx so the existing OrderDetailSheet Relay client reaches the V727 runtime entry."
+    }
+  ]
 }

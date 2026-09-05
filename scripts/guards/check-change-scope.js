@@ -14,6 +14,7 @@ const CONFIG_PATH = path.join(
 );
 
 const TASK_ID_PATTERN = /^[A-Z0-9][A-Z0-9-]{2,127}$/;
+const AUTHORIZATION_ID_PATTERN = /^[A-Z0-9][A-Z0-9.-]{2,127}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
@@ -125,6 +126,129 @@ function validateIsoTimestamp(value, fieldName) {
   }
 }
 
+function validateAdditionalAuthorization(authorization, repoRoot, index) {
+  const field = `exception.additionalAuthorizations[${index}]`;
+  if (!authorization || typeof authorization !== "object" || Array.isArray(authorization)) {
+    throw new GuardInputError(`${field} must be an object`);
+  }
+  if (
+    typeof authorization.authorizationId !== "string" ||
+    !AUTHORIZATION_ID_PATTERN.test(authorization.authorizationId)
+  ) {
+    throw new GuardInputError(`${field}.authorizationId is invalid`);
+  }
+  if (typeof authorization.featureBranch !== "string" || !authorization.featureBranch.trim()) {
+    throw new GuardInputError(`${field}.featureBranch is required`);
+  }
+  if (authorization.lineageMode !== "PRE_COMMIT_CONTENT_SHA256") {
+    throw new GuardInputError(`${field}.lineageMode is not authorized`);
+  }
+  if (
+    typeof authorization.baseOriginMainSha !== "string" ||
+    !COMMIT_SHA_PATTERN.test(authorization.baseOriginMainSha)
+  ) {
+    throw new GuardInputError(`${field}.baseOriginMainSha must be a full commit SHA`);
+  }
+  if (authorization.status !== "ACTIVE" && authorization.status !== "CLOSED") {
+    throw new GuardInputError(`${field}.status must be ACTIVE or CLOSED`);
+  }
+  if (authorization.approvedBy !== "Founder") {
+    throw new GuardInputError(`${field}.approvedBy must be Founder`);
+  }
+  if (authorization.closeAfter !== "FEATURE_MERGE") {
+    throw new GuardInputError(`${field}.closeAfter must be FEATURE_MERGE`);
+  }
+  if (typeof authorization.reason !== "string" || !authorization.reason.trim()) {
+    throw new GuardInputError(`${field}.reason is required`);
+  }
+  validateIsoTimestamp(authorization.createdAt, `${field}.createdAt`);
+  validateIsoTimestamp(authorization.approvedAt, `${field}.approvedAt`);
+  if (Date.parse(authorization.approvedAt) < Date.parse(authorization.createdAt)) {
+    throw new GuardInputError(`${field}.approvedAt cannot precede createdAt`);
+  }
+  if (authorization.status === "ACTIVE") {
+    if (authorization.closedAt != null || authorization.featureMergeCommitSha != null) {
+      throw new GuardInputError(`${field} ACTIVE authorization cannot contain closure metadata`);
+    }
+  } else {
+    validateIsoTimestamp(authorization.closedAt, `${field}.closedAt`);
+    if (
+      typeof authorization.featureMergeCommitSha !== "string" ||
+      !COMMIT_SHA_PATTERN.test(authorization.featureMergeCommitSha)
+    ) {
+      throw new GuardInputError(`${field} CLOSED authorization must record the feature merge commit SHA`);
+    }
+  }
+  if (!Array.isArray(authorization.authorizedPaths) || authorization.authorizedPaths.length === 0) {
+    throw new GuardInputError(`${field}.authorizedPaths must be a non-empty array`);
+  }
+
+  const normalizedPaths = authorization.authorizedPaths.map((authorizedPath) => {
+    if (typeof authorizedPath !== "string" || /[*?\[\]]/.test(authorizedPath)) {
+      throw new GuardInputError(`${field} paths must be exact and contain no wildcard`);
+    }
+    const normalized = normalizeFilePath(authorizedPath, repoRoot);
+    if (normalized !== authorizedPath) {
+      throw new GuardInputError(`${field} paths must use canonical repository-relative form`);
+    }
+    return normalized;
+  });
+  if (new Set(normalizedPaths).size !== normalizedPaths.length) {
+    throw new GuardInputError(`${field}.authorizedPaths contains duplicates`);
+  }
+
+  const hashes = authorization.authorizedPathSha256;
+  if (!hashes || typeof hashes !== "object" || Array.isArray(hashes)) {
+    throw new GuardInputError(`${field}.authorizedPathSha256 must be an object`);
+  }
+  const hashPaths = Object.keys(hashes).sort();
+  const authorizedPaths = [...normalizedPaths].sort();
+  if (
+    hashPaths.length !== authorizedPaths.length ||
+    hashPaths.some((hashPath, pathIndex) => hashPath !== authorizedPaths[pathIndex])
+  ) {
+    throw new GuardInputError(`${field} hashes must exactly cover authorizedPaths`);
+  }
+  for (const authorizedPath of normalizedPaths) {
+    if (typeof hashes[authorizedPath] !== "string" || !SHA256_PATTERN.test(hashes[authorizedPath])) {
+      throw new GuardInputError(`${field} hash is invalid for ${authorizedPath}`);
+    }
+  }
+
+  return { ...authorization, authorizedPaths: normalizedPaths };
+}
+
+function exceptionAuthorizations(exception) {
+  return [
+    {
+      authorizationId: "PRIMARY",
+      featureBranch: exception.featureBranch,
+      lineageMode: "AUTHORIZED_COMMITS",
+      baseOriginMainSha: exception.baseOriginMainSha,
+      authorizedCommits: exception.authorizedCommits,
+      status: exception.status,
+      authorizedPaths: exception.authorizedPaths,
+      authorizedPathSha256: exception.authorizedPathSha256,
+    },
+    ...(exception.additionalAuthorizations || []),
+  ];
+}
+
+function selectExceptionAuthorization(exception, currentBranch) {
+  const matches = exceptionAuthorizations(exception).filter(
+    (authorization) => authorization.featureBranch === currentBranch
+  );
+  if (matches.length !== 1) return null;
+  return matches[0];
+}
+
+function isWithinAuthorizedParent(filePath, authorization) {
+  return authorization.authorizedPaths.some((authorizedPath) => {
+    const parent = path.posix.dirname(authorizedPath);
+    return parent !== "." && filePath.startsWith(`${parent}/`);
+  });
+}
+
 function validateException(exception, repoRoot = process.cwd()) {
   if (!exception || typeof exception !== "object" || Array.isArray(exception)) {
     throw new GuardInputError("exception must be an object");
@@ -227,9 +351,28 @@ function validateException(exception, repoRoot = process.cwd()) {
     }
   }
 
+  const additionalAuthorizations = exception.additionalAuthorizations === undefined
+    ? []
+    : exception.additionalAuthorizations;
+  if (!Array.isArray(additionalAuthorizations)) {
+    throw new GuardInputError("exception.additionalAuthorizations must be an array");
+  }
+  const validatedAdditionalAuthorizations = additionalAuthorizations.map(
+    (authorization, index) => validateAdditionalAuthorization(authorization, repoRoot, index)
+  );
+  const authorizationIds = ["PRIMARY", ...validatedAdditionalAuthorizations.map((entry) => entry.authorizationId)];
+  if (new Set(authorizationIds).size !== authorizationIds.length) {
+    throw new GuardInputError("exception authorization IDs must be unique");
+  }
+  const featureBranches = [exception.featureBranch, ...validatedAdditionalAuthorizations.map((entry) => entry.featureBranch)];
+  if (new Set(featureBranches).size !== featureBranches.length) {
+    throw new GuardInputError("exception feature branches must be unique");
+  }
+
   return {
     ...exception,
     authorizedPaths: normalizedPaths,
+    additionalAuthorizations: validatedAdditionalAuthorizations,
   };
 }
 
@@ -262,7 +405,7 @@ function loadTrustedWorkingFile(relativePath, repoRoot, label) {
   return trustedContent;
 }
 
-function loadExceptionForTask(taskId, repoRoot = process.cwd()) {
+function loadExceptionForTask(taskId, currentBranch, repoRoot = process.cwd()) {
   if (typeof taskId !== "string" || !TASK_ID_PATTERN.test(taskId)) {
     throw new GuardInputError("--task-id is invalid");
   }
@@ -292,7 +435,7 @@ function loadExceptionForTask(taskId, repoRoot = process.cwd()) {
     throw new GuardInputError(`failed to parse trusted task exception: ${error.message}`);
   }
   const validated = validateException(exception, repoRoot);
-  validateExceptionGitProvenance(validated, repoRoot);
+  validateExceptionGitProvenance(validated, currentBranch, repoRoot);
   return validated;
 }
 
@@ -305,17 +448,34 @@ function gitIsAncestor(repoRoot, ancestor, descendant) {
   return result.status === 0;
 }
 
-function validateExceptionGitProvenance(exception, repoRoot = process.cwd()) {
-  if (!gitIsAncestor(repoRoot, exception.baseOriginMainSha, "origin/main")) {
-    throw new GuardInputError("exception base is not an ancestor of trusted origin/main");
+function validateExceptionGitProvenance(exception, currentBranch, repoRoot = process.cwd()) {
+  const authorizations = exceptionAuthorizations(exception);
+  for (const authorization of authorizations) {
+    if (!gitIsAncestor(repoRoot, authorization.baseOriginMainSha, "origin/main")) {
+      throw new GuardInputError(
+        `authorization ${authorization.authorizationId} base is not an ancestor of trusted origin/main`
+      );
+    }
   }
 
-  for (let index = 0; index < exception.authorizedCommits.length; index += 1) {
-    const commit = exception.authorizedCommits[index];
-    if (!gitIsAncestor(repoRoot, exception.baseOriginMainSha, commit)) {
+  const authorization = selectExceptionAuthorization(exception, currentBranch);
+  if (!authorization) {
+    throw new GuardInputError("current branch is not uniquely authorized");
+  }
+
+  if (authorization.lineageMode === "PRE_COMMIT_CONTENT_SHA256") {
+    if (!gitIsAncestor(repoRoot, authorization.baseOriginMainSha, "HEAD")) {
+      throw new GuardInputError("pre-commit authorization base is not an ancestor of current HEAD");
+    }
+    return;
+  }
+
+  for (let index = 0; index < authorization.authorizedCommits.length; index += 1) {
+    const commit = authorization.authorizedCommits[index];
+    if (!gitIsAncestor(repoRoot, authorization.baseOriginMainSha, commit)) {
       throw new GuardInputError(`authorized commit ${commit} is outside the approved base lineage`);
     }
-    if (index > 0 && !gitIsAncestor(repoRoot, exception.authorizedCommits[index - 1], commit)) {
+    if (index > 0 && !gitIsAncestor(repoRoot, authorization.authorizedCommits[index - 1], commit)) {
       throw new GuardInputError("exception.authorizedCommits are not in ancestor order");
     }
     if (!gitIsAncestor(repoRoot, commit, "HEAD")) {
@@ -323,8 +483,8 @@ function validateExceptionGitProvenance(exception, repoRoot = process.cwd()) {
     }
   }
 
-  const authorizedHead = exception.authorizedCommits[exception.authorizedCommits.length - 1];
-  for (const authorizedPath of exception.authorizedPaths) {
+  const authorizedHead = authorization.authorizedCommits[authorization.authorizedCommits.length - 1];
+  for (const authorizedPath of authorization.authorizedPaths) {
     let approvedContent;
     try {
       approvedContent = childProcess.execFileSync(
@@ -336,7 +496,7 @@ function validateExceptionGitProvenance(exception, repoRoot = process.cwd()) {
       throw new GuardInputError(`authorized commit does not contain ${authorizedPath}`);
     }
     const approvedHash = crypto.createHash("sha256").update(approvedContent).digest("hex");
-    if (approvedHash !== exception.authorizedPathSha256[authorizedPath]) {
+    if (approvedHash !== authorization.authorizedPathSha256[authorizedPath]) {
       throw new GuardInputError(`authorized commit content hash mismatch for ${authorizedPath}`);
     }
   }
@@ -453,8 +613,22 @@ function evaluateFile({
   const absoluteMatch = matchAbsolute(normalizedPath, absoluteRules);
   const globMatch = absoluteMatch ? null : matchGlob(normalizedPath, globRules);
   const match = absoluteMatch || globMatch;
+  const scopedAuthorization = taskId && exception
+    ? selectExceptionAuthorization(exception, currentBranch)
+    : null;
 
   if (!match) {
+    if (
+      scopedAuthorization &&
+      isWithinAuthorizedParent(normalizedPath, scopedAuthorization) &&
+      !scopedAuthorization.authorizedPaths.includes(normalizedPath)
+    ) {
+      return {
+        filePath: normalizedPath,
+        allowed: false,
+        reason: "path is outside the exact task-scoped authorization",
+      };
+    }
     return { filePath: normalizedPath, allowed: true, reason: "not forbidden" };
   }
 
@@ -469,13 +643,14 @@ function evaluateFile({
   if (exception.taskId !== taskId) {
     return { filePath: normalizedPath, allowed: false, match, reason: "exception taskId mismatch" };
   }
-  if (exception.status !== "ACTIVE") {
-    return { filePath: normalizedPath, allowed: false, match, reason: "exception is not ACTIVE" };
-  }
-  if (exception.featureBranch !== currentBranch) {
+  const authorization = scopedAuthorization;
+  if (!authorization) {
     return { filePath: normalizedPath, allowed: false, match, reason: "current branch is not authorized" };
   }
-  if (!exception.authorizedPaths.includes(normalizedPath)) {
+  if (authorization.status !== "ACTIVE") {
+    return { filePath: normalizedPath, allowed: false, match, reason: "exception is not ACTIVE" };
+  }
+  if (!authorization.authorizedPaths.includes(normalizedPath)) {
     return { filePath: normalizedPath, allowed: false, match, reason: "path is not exactly authorized" };
   }
 
@@ -486,7 +661,7 @@ function evaluateFile({
   } catch (error) {
     return { filePath: normalizedPath, allowed: false, match, reason: `content hash unavailable: ${error.message}` };
   }
-  if (actualHash !== exception.authorizedPathSha256[normalizedPath]) {
+  if (actualHash !== authorization.authorizedPathSha256[normalizedPath]) {
     return { filePath: normalizedPath, allowed: false, match, reason: "authorized content SHA-256 mismatch" };
   }
 
@@ -494,7 +669,7 @@ function evaluateFile({
     filePath: normalizedPath,
     allowed: true,
     match,
-    reason: `ACTIVE exact-path exception for ${taskId}`,
+    reason: `ACTIVE exact-path exception ${authorization.authorizationId} for ${taskId}`,
     exceptionApplied: true,
   };
 }
@@ -526,8 +701,8 @@ function main() {
   let currentBranch = null;
   if (taskId) {
     try {
-      exception = loadExceptionForTask(taskId);
       currentBranch = getCurrentBranch();
+      exception = loadExceptionForTask(taskId, currentBranch);
     } catch (error) {
       console.log(`EXCEPTION BLOCKED reason: ${error.message}`);
       console.log("BLOCKED");

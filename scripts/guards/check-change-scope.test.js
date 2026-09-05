@@ -18,18 +18,39 @@ const {
 const repoRoot = path.resolve(path.sep, "guard-test-repository");
 const taskId = "ES-PRINT-DUAL-CHANNEL-01";
 const featureBranch = "codex/es-print-dual-channel-relay-v01";
+const desktopFeatureBranch = "codex/es-print-desktop-pos-relay-entry-v01";
 const schemaPath = "prisma/schema.prisma";
 const migrationPath = "prisma/migrations/20260905070000_es_tray_production_relay_v01/migration.sql";
+const cashierPath = "app/cashier/page.tsx";
 const schemaHash = "a".repeat(64);
 const migrationHash = "b".repeat(64);
+const cashierHash = "c".repeat(64);
 
 const config = {
   forbidden_paths: {
-    absolute: [schemaPath],
+    absolute: [schemaPath, cashierPath],
     glob_patterns: ["prisma/migrations/", "app/api/print/**"],
   },
   allowed_paths: ["scripts/guards", "docs/change-gates"],
 };
+
+function cashierAuthorization(overrides = {}) {
+  return {
+    authorizationId: "A11.2-DESKTOP-POS-CASHIER-PAGE",
+    featureBranch: desktopFeatureBranch,
+    lineageMode: "PRE_COMMIT_CONTENT_SHA256",
+    baseOriginMainSha: "4".repeat(40),
+    status: "ACTIVE",
+    authorizedPaths: [cashierPath],
+    authorizedPathSha256: { [cashierPath]: cashierHash },
+    createdAt: "2026-09-05T13:56:29Z",
+    approvedAt: "2026-09-05T13:56:29Z",
+    approvedBy: "Founder",
+    closeAfter: "FEATURE_MERGE",
+    reason: "authorize the exact reviewed Desktop POS cashier entry draft",
+    ...overrides,
+  };
+}
 
 function exception(overrides = {}) {
   return validateException(
@@ -58,6 +79,12 @@ function exception(overrides = {}) {
   );
 }
 
+function exceptionWithCashier(overrides = {}) {
+  return exception({
+    additionalAuthorizations: [cashierAuthorization(overrides)],
+  });
+}
+
 function evaluate(filePath, options = {}) {
   const record = options.exception === undefined ? exception() : options.exception;
   return evaluateFile({
@@ -69,7 +96,11 @@ function evaluate(filePath, options = {}) {
     exception: record,
     contentHashResolver:
       options.contentHashResolver ||
-      ((candidate) => ({ [schemaPath]: schemaHash, [migrationPath]: migrationHash }[candidate])),
+      ((candidate) => ({
+        [schemaPath]: schemaHash,
+        [migrationPath]: migrationHash,
+        [cashierPath]: cashierHash,
+      })[candidate]),
   });
 }
 
@@ -83,6 +114,7 @@ function createTrustedCliFixture() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dev-gate-01b-"));
   const fixtureSchema = Buffer.from("approved schema\n");
   const fixtureMigration = Buffer.from("approved migration\n");
+  const fixtureCashier = Buffer.from("approved cashier entry\n");
   const fixtureConfigPath = path.join(fixtureRoot, "docs", "change-gates", "gate-config.json");
   const fixtureExceptionPath = path.join(
     fixtureRoot,
@@ -93,12 +125,14 @@ function createTrustedCliFixture() {
   );
   fs.mkdirSync(path.dirname(fixtureExceptionPath), { recursive: true });
   fs.mkdirSync(path.join(fixtureRoot, path.dirname(migrationPath)), { recursive: true });
+  fs.mkdirSync(path.join(fixtureRoot, path.dirname(cashierPath)), { recursive: true });
 
   runGit(fixtureRoot, ["init", "-q"]);
   runGit(fixtureRoot, ["config", "user.name", "Dev Gate Test"]);
   runGit(fixtureRoot, ["config", "user.email", "dev-gate@example.invalid"]);
   fs.writeFileSync(fixtureConfigPath, JSON.stringify(config));
-  runGit(fixtureRoot, ["add", "docs/change-gates/gate-config.json"]);
+  fs.writeFileSync(path.join(fixtureRoot, cashierPath), "base cashier entry\n");
+  runGit(fixtureRoot, ["add", "docs/change-gates/gate-config.json", cashierPath]);
   runGit(fixtureRoot, ["commit", "-q", "-m", "test: establish base"]);
   const baseSha = runGit(fixtureRoot, ["rev-parse", "HEAD"]);
 
@@ -129,6 +163,12 @@ function createTrustedCliFixture() {
     approvedBy: "Founder",
     closeAfter: "FEATURE_MERGE",
     reason: "integration test fixture",
+    additionalAuthorizations: [{
+      ...cashierAuthorization({ baseOriginMainSha: baseSha }),
+      authorizedPathSha256: {
+        [cashierPath]: crypto.createHash("sha256").update(fixtureCashier).digest("hex"),
+      },
+    }],
   };
   fs.writeFileSync(fixtureExceptionPath, JSON.stringify(record));
   runGit(fixtureRoot, ["add", `docs/change-gates/exceptions/${taskId}.json`]);
@@ -138,7 +178,11 @@ function createTrustedCliFixture() {
   runGit(fixtureRoot, ["checkout", "-q", featureBranch]);
   runGit(fixtureRoot, ["merge", "-q", "--no-edit", "governance-exception"]);
 
-  return { fixtureRoot, fixtureConfigPath, fixtureExceptionPath, record };
+  runGit(fixtureRoot, ["checkout", "-q", "-b", desktopFeatureBranch, baseSha]);
+  runGit(fixtureRoot, ["merge", "-q", "--no-edit", "governance-exception"]);
+  runGit(fixtureRoot, ["checkout", "-q", featureBranch]);
+
+  return { fixtureRoot, fixtureConfigPath, fixtureExceptionPath, fixtureCashier, record };
 }
 
 function runGuardCli(fixtureRoot, files) {
@@ -253,6 +297,108 @@ test("an exception cannot authorize another forbidden namespace", () => {
   assert.equal(evaluate("app/api/print/route.ts").allowed, false);
 });
 
+test("default deny blocks app/cashier/page.tsx without an exception", () => {
+  assert.equal(evaluateFile({ filePath: cashierPath, repoRoot, config }).allowed, false);
+});
+
+test("an ACTIVE additional authorization allows only the exact cashier page draft", () => {
+  const result = evaluate(cashierPath, {
+    exception: exceptionWithCashier(),
+    currentBranch: desktopFeatureBranch,
+  });
+  assert.equal(result.allowed, true);
+  assert.equal(result.exceptionApplied, true);
+  assert.match(result.reason, /A11\.2-DESKTOP-POS-CASHIER-PAGE/);
+});
+
+test("the cashier authorization does not permit another forbidden path", () => {
+  const result = evaluate("app/api/print/route.ts", {
+    exception: exceptionWithCashier(),
+    currentBranch: desktopFeatureBranch,
+  });
+  assert.equal(result.allowed, false);
+});
+
+test("the cashier authorization blocks sibling files outside its exact path", () => {
+  const result = evaluate("app/cashier/other.tsx", {
+    exception: exceptionWithCashier(),
+    currentBranch: desktopFeatureBranch,
+  });
+  assert.equal(result.allowed, false);
+  assert.match(result.reason, /outside the exact task-scoped authorization/);
+});
+
+test("the cashier authorization blocks the wrong branch", () => {
+  const result = evaluate(cashierPath, {
+    exception: exceptionWithCashier(),
+    currentBranch: "codex/unrelated",
+  });
+  assert.equal(result.allowed, false);
+});
+
+test("the cashier authorization blocks the wrong task", () => {
+  const result = evaluate(cashierPath, {
+    exception: exceptionWithCashier(),
+    currentBranch: desktopFeatureBranch,
+    taskId: "ES-PRINT-DUAL-CHANNEL-02",
+  });
+  assert.equal(result.allowed, false);
+});
+
+test("a malformed additional authorization fails closed", () => {
+  assert.throws(
+    () => exception({ additionalAuthorizations: [{ ...cashierAuthorization(), lineageMode: "SKIP_LINEAGE" }] }),
+    (error) => error instanceof GuardInputError
+  );
+});
+
+test("tampered cashier content fails the approved hash check", () => {
+  const result = evaluate(cashierPath, {
+    exception: exceptionWithCashier(),
+    currentBranch: desktopFeatureBranch,
+    contentHashResolver: () => "d".repeat(64),
+  });
+  assert.equal(result.allowed, false);
+  assert.match(result.reason, /SHA-256 mismatch/);
+});
+
+test("a CLOSED cashier authorization cannot allow the exact path", () => {
+  const record = exceptionWithCashier({
+    status: "CLOSED",
+    closedAt: "2026-09-06T13:56:29Z",
+    featureMergeCommitSha: "5".repeat(40),
+  });
+  assert.equal(evaluate(cashierPath, {
+    exception: record,
+    currentBranch: desktopFeatureBranch,
+  }).allowed, false);
+});
+
+test("the existing primary Prisma authorization is unchanged by the additional grant", () => {
+  const record = exceptionWithCashier();
+  const schemaResult = evaluate(schemaPath, { exception: record, currentBranch: featureBranch });
+  const migrationResult = evaluate(migrationPath, { exception: record, currentBranch: featureBranch });
+  assert.equal(schemaResult.allowed, true);
+  assert.equal(migrationResult.allowed, true);
+});
+
+test("additional authorization wildcard paths are rejected", () => {
+  assert.throws(
+    () => exceptionWithCashier({
+      authorizedPaths: ["app/cashier/**"],
+      authorizedPathSha256: { "app/cashier/**": cashierHash },
+    }),
+    (error) => error instanceof GuardInputError
+  );
+});
+
+test("two authorizations cannot target the same feature branch", () => {
+  assert.throws(
+    () => exceptionWithCashier({ featureBranch }),
+    (error) => error instanceof GuardInputError
+  );
+});
+
 test("the committed ES-PRINT exception record satisfies the strict contract", () => {
   const recordPath = path.resolve(
     __dirname,
@@ -261,6 +407,37 @@ test("the committed ES-PRINT exception record satisfies the strict contract", ()
   const record = validateException(JSON.parse(fs.readFileSync(recordPath, "utf8")), path.resolve(__dirname, "../.."));
   assert.equal(record.taskId, taskId);
   assert.deepEqual(record.authorizedPaths, [schemaPath, migrationPath]);
+});
+
+test("the trusted CLI accepts the approved pre-commit cashier draft on its exact branch", () => {
+  const { fixtureRoot, fixtureCashier } = createTrustedCliFixture();
+  try {
+    runGit(fixtureRoot, ["checkout", "-q", desktopFeatureBranch]);
+    fs.writeFileSync(path.join(fixtureRoot, cashierPath), fixtureCashier);
+    const result = runGuardCli(fixtureRoot, [cashierPath]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /A11\.2-DESKTOP-POS-CASHIER-PAGE/);
+    assert.match(result.stdout, /PASS/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("the trusted CLI blocks tampered cashier content and sibling cashier files", () => {
+  const { fixtureRoot } = createTrustedCliFixture();
+  try {
+    runGit(fixtureRoot, ["checkout", "-q", desktopFeatureBranch]);
+    fs.writeFileSync(path.join(fixtureRoot, cashierPath), "tampered cashier entry\n");
+    fs.writeFileSync(path.join(fixtureRoot, "app/cashier/other.tsx"), "scope creep\n");
+    const tampered = runGuardCli(fixtureRoot, [cashierPath]);
+    const sibling = runGuardCli(fixtureRoot, ["app/cashier/other.tsx"]);
+    assert.equal(tampered.status, 1, tampered.stdout + tampered.stderr);
+    assert.match(tampered.stdout, /authorized content SHA-256 mismatch/);
+    assert.equal(sibling.status, 1, sibling.stdout + sibling.stderr);
+    assert.match(sibling.stdout, /outside the exact task-scoped authorization/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 });
 
 test("the CLI applies the exception only on the actual authorized git branch", () => {
