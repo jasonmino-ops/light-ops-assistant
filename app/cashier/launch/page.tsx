@@ -13,7 +13,7 @@ type LaunchState = 'working' | 'failed'
 /**
  * Agent 默认浏览器接力页。
  * Ticket 只存在于 URL fragment（不会发送给 Web Server），页面启动后立即清除；
- * 兑换成功后保存现有 POS device session，并跳到无参数的 /cashier。
+ * 兑换成功后保存现有 POS device session，并跳到绑定门店的 /desktop/pos device context。
  */
 export default function ComputerCashierLaunchPage() {
   const { t } = useLocale()
@@ -51,7 +51,8 @@ export default function ComputerCashierLaunchPage() {
         savePosDeviceToken(body.storeCode, body.posDeviceToken)
         localStorage.setItem('cashier:lastStoreCode', body.storeCode)
         setComputerLaunchStoreCode(body.storeCode)
-        window.location.replace('/cashier')
+        const nextParams = new URLSearchParams({ storeCode: body.storeCode, mode: 'pos' })
+        window.location.replace(`/desktop/pos?${nextParams.toString()}`)
       })
       .catch(() => setState('failed'))
   }, [])
