@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "taskId": "ES-PRINT-DUAL-CHANNEL-01",
+  "featureBranch": "codex/es-print-dual-channel-relay-v01",
+  "baseOriginMainSha": "369996d92e5d6fab1fff69cf7da3b9d00dec7c78",
+  "authorizedCommits": [
+    "cf3a582ffb51ba0adcea03554ad39ebd3ed8446b",
+    "73ad3a4e3fcc095b9709a7e74657522984fd9371"
+  ],
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "prisma/schema.prisma",
+    "prisma/migrations/20260905070000_es_tray_production_relay_v01/migration.sql"
+  ],
+  "authorizedPathSha256": {
+    "prisma/schema.prisma": "241e8aa96760a87d7819f47caaabae50525c7c3dd69a3a3a9dcb4eeeca61aff3",
+    "prisma/migrations/20260905070000_es_tray_production_relay_v01/migration.sql": "e631002979ba6400e2caf8dbbbd98066e4fa94f4754c96e79d50265c509b7e34"
+  },
+  "createdAt": "2026-09-05T08:35:16Z",
+  "approvedAt": "2026-09-05T08:35:16Z",
+  "approvedBy": "Founder",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize the reviewed dedicated EshopTrayPrintJob schema and exact Production Relay V0.1 migration without weakening the repository default deny rules."
+}
