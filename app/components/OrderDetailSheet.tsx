@@ -19,6 +19,7 @@ import {
   isDesktopPosDeviceRuntime,
   readDesktopPosDeviceOrderDetail,
 } from '@/lib/es-tray-device-client'
+import { openExistingBrowserPrint } from '@/lib/browserPrintFallback'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,37 +73,6 @@ function fmtDateTime(iso: string) {
     hour: '2-digit',
     minute: '2-digit',
   })
-}
-
-function openExistingBrowserPrint(html: string, onComplete: () => void) {
-  const win = window.open('', '_blank', 'width=420,height=700')
-  if (win) {
-    win.document.write(html)
-    win.document.close()
-    setTimeout(() => {
-      win.focus()
-      win.print()
-      onComplete()
-    }, 400)
-    return
-  }
-
-  // Fallback: inject into current page for @media print.
-  const styleEl = document.createElement('style')
-  styleEl.id = '__oprint_style'
-  styleEl.textContent = '@media print{body>*:not(#__oprint){display:none!important}#__oprint{display:block!important}}'
-  const divEl = document.createElement('div')
-  divEl.id = '__oprint'
-  divEl.style.cssText = 'display:none'
-  divEl.innerHTML = html
-  document.head.appendChild(styleEl)
-  document.body.appendChild(divEl)
-  window.print()
-  window.addEventListener('afterprint', () => {
-    styleEl.remove()
-    divEl.remove()
-    onComplete()
-  }, { once: true })
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -297,7 +267,7 @@ export default function OrderDetailSheet({
     }
 
     if (cloudRelayState !== 'enabled') {
-      openExistingBrowserPrint(html, completePrintAction)
+      void openExistingBrowserPrint(html, completePrintAction)
       return
     }
 
