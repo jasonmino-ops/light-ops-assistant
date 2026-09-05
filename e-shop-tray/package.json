@@ -1,0 +1,24 @@
+{
+  "name": "e-shop-tray",
+  "productName": "E-Shop Tray",
+  "version": "0.1.3",
+  "description": "E-Shop Tray Production Relay — reliable Desktop-bound delivery to the existing Windows queue",
+  "private": true,
+  "main": "dist/main.js",
+  "author": "E-Shop (店小二)",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "compile": "tsc -p tsconfig.build.json",
+    "test": "vitest run --no-cache",
+    "check": "npm run typecheck && npm test && npm run compile",
+    "pack:win": "npm run check && electron-builder --win --x64 --dir --publish never",
+    "dist:win": "npm run check && electron-builder --win --x64 --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^33.3.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.8.0",
+    "vitest": "^2.1.9"
+  }
+}
