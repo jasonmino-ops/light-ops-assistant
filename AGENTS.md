@@ -93,6 +93,9 @@
 - 新增依赖、服务、环境变量或平台资源前，先说明必要性和影响并取得授权。
 - 实施中持续检查 `git diff`，及时移除无关改动。
 - commit 前运行当前 Scope Guard；以其实际输出判定 PASS / BLOCKED。
+- Scope Guard 默认拒绝 `gate-config.json` 中的全部 forbidden paths；不传 `--task-id` 时不得应用任何例外。
+- task-scoped exception 仅在 `origin/main` 的 `docs/change-gates/exceptions/` 中存在 Founder-approved `ACTIVE` 记录时可用；working-tree exception 与 `gate-config.json` 必须分别和受信 blob 一致，Guard 还必须校验 task ID、当前 Git branch、获批 commit 血统、精确文件路径和已批准内容 SHA-256。
+- exception 不得使用目录或 wildcard；feature 合并后必须把记录改为 `CLOSED`，治理记录保留但不得继续放行。
 - Scope Guard 通过不替代测试、审查、验收或发布授权。
 
 ## 9. 验证
