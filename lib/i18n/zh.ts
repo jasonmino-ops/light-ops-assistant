@@ -1067,6 +1067,8 @@ const zh = {
     print: '打印',
     generating: '生成中…',
     preparingPrint: '打印中…',
+    trayRelaySubmitted: '打印任务已发送',
+    trayRelayFailed: '打印失败，请重试',
     qty: '数量',
     unpaidHint: '未结账',
     cancelOrder: '取消订单',

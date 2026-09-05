@@ -1064,6 +1064,8 @@ const km = {
     print: 'បោះពុម្ព',
     generating: 'កំពុងបង្កើត…',
     preparingPrint: 'កំពុងបោះពុម្ព…',
+    trayRelaySubmitted: 'បានផ្ញើការងារបោះពុម្ព',
+    trayRelayFailed: 'ការបោះពុម្ពបានបរាជ័យ សូមព្យាយាមម្តងទៀត',
     qty: 'ចំនួន',
     unpaidHint: 'មិនទាន់ទូទាត់',
     cancelOrder: 'បោះបង់ការបញ្ជា',

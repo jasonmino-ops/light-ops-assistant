@@ -1067,6 +1067,8 @@ const en = {
     print: 'Print',
     generating: 'Generating…',
     preparingPrint: 'Printing…',
+    trayRelaySubmitted: 'Print job sent',
+    trayRelayFailed: 'Print failed. Please try again.',
     qty: 'Qty',
     unpaidHint: 'Unpaid',
     cancelOrder: 'Cancel order',

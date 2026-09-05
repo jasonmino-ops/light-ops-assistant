@@ -5,6 +5,14 @@ import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import OrderShareCard, { buildPrintHTML, type ShareData, type ShareLabels } from '@/app/components/OrderShareCard'
+import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
+import {
+  getOrCreateEshopTray02PrintIntent,
+  readEshopTray02CloudEnableState,
+  submitEshopTray02CloudPrint,
+  type EshopTray02CloudEnableState,
+  type EshopTray02PrintIntent,
+} from '@/lib/eShopTrayCloudClient'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +68,37 @@ function fmtDateTime(iso: string) {
   })
 }
 
+function openExistingBrowserPrint(html: string, onComplete: () => void) {
+  const win = window.open('', '_blank', 'width=420,height=700')
+  if (win) {
+    win.document.write(html)
+    win.document.close()
+    setTimeout(() => {
+      win.focus()
+      win.print()
+      onComplete()
+    }, 400)
+    return
+  }
+
+  // Fallback: inject into current page for @media print.
+  const styleEl = document.createElement('style')
+  styleEl.id = '__oprint_style'
+  styleEl.textContent = '@media print{body>*:not(#__oprint){display:none!important}#__oprint{display:block!important}}'
+  const divEl = document.createElement('div')
+  divEl.id = '__oprint'
+  divEl.style.cssText = 'display:none'
+  divEl.innerHTML = html
+  document.head.appendChild(styleEl)
+  document.body.appendChild(divEl)
+  window.print()
+  window.addEventListener('afterprint', () => {
+    styleEl.remove()
+    divEl.remove()
+    onComplete()
+  }, { once: true })
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function OrderDetailSheet({
@@ -79,7 +118,26 @@ export default function OrderDetailSheet({
   const [cancelConfirm, setCancelConfirm] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const [cloudRelayState, setCloudRelayState] = useState<EshopTray02CloudEnableState>('pending')
   const shareCardRef = useRef<HTMLDivElement>(null)
+  const relayIntentRef = useRef<EshopTray02PrintIntent | null>(null)
+  const printInFlightRef = useRef(false)
+
+  useEffect(() => {
+    if (!orderNo) {
+      relayIntentRef.current = null
+      setCloudRelayState('pending')
+      return
+    }
+
+    if (relayIntentRef.current?.orderNo !== orderNo) relayIntentRef.current = null
+    let active = true
+    setCloudRelayState('pending')
+    void readEshopTray02CloudEnableState().then((state) => {
+      if (active) setCloudRelayState(state)
+    })
+    return () => { active = false }
+  }, [orderNo])
 
   useEffect(() => {
     if (!orderNo) {
@@ -201,40 +259,61 @@ export default function OrderDetailSheet({
     }
   }
 
-  function handlePrint() {
-    if (!d || shareStatus !== 'idle') return
+  async function handlePrint() {
+    if (
+      !d
+      || shareStatus !== 'idle'
+      || cloudRelayState === 'pending'
+      || printInFlightRef.current
+    ) return
+
+    printInFlightRef.current = true
     setShareStatus('printing')
-    const html = buildPrintHTML(d as ShareData, shareLabels)
-    const win = window.open('', '_blank', 'width=420,height=700')
-    if (win) {
-      win.document.write(html)
-      win.document.close()
-      setTimeout(() => {
-        win.focus()
-        win.print()
-        setShareStatus('idle')
-      }, 400)
-    } else {
-      // Fallback: inject into current page for @media print
-      const styleEl = document.createElement('style')
-      styleEl.id = '__oprint_style'
-      styleEl.textContent = '@media print{body>*:not(#__oprint){display:none!important}#__oprint{display:block!important}}'
-      const divEl = document.createElement('div')
-      divEl.id = '__oprint'
-      divEl.style.cssText = 'display:none'
-      divEl.innerHTML = html
-      document.head.appendChild(styleEl)
-      document.body.appendChild(divEl)
-      window.print()
-      window.addEventListener('afterprint', () => {
-        styleEl.remove()
-        divEl.remove()
-        setShareStatus('idle')
-      }, { once: true })
+    const completePrintAction = () => {
+      printInFlightRef.current = false
+      setShareStatus('idle')
+    }
+
+    let html: string
+    try {
+      html = buildPrintHTML(d as ShareData, shareLabels)
+    } catch (error) {
+      console.warn('[es-tray-02] receipt document generation failed', error)
+      if (cloudRelayState === 'enabled') window.alert(t('order.trayRelayFailed'))
+      completePrintAction()
+      return
+    }
+
+    if (cloudRelayState !== 'enabled') {
+      openExistingBrowserPrint(html, completePrintAction)
+      return
+    }
+
+    try {
+      const intent = getOrCreateEshopTray02PrintIntent(relayIntentRef.current, d.orderNo)
+      relayIntentRef.current = intent
+      if (!intent.commandStream) {
+        intent.commandStream = await renderTicketHtmlToEscPosRaw(html)
+      }
+      await submitEshopTray02CloudPrint({
+        orderNo: d.orderNo,
+        requestId: intent.requestId,
+        commandStream: intent.commandStream,
+      })
+      if (relayIntentRef.current === intent) relayIntentRef.current = null
+      window.alert(t('order.trayRelaySubmitted'))
+    } catch (error) {
+      // Retain the intent and exact command bytes. A retry therefore reuses
+      // the same idempotency key even if the first response was lost.
+      console.warn('[es-tray-02] relay submission failed', error)
+      window.alert(t('order.trayRelayFailed'))
+    } finally {
+      completePrintAction()
     }
   }
 
   const busy = shareStatus !== 'idle'
+  const printDisabled = busy || cloudRelayState === 'pending'
 
   return (
     <div style={sh.overlay} onClick={onClose}>
@@ -400,7 +479,7 @@ export default function OrderDetailSheet({
               <button style={{ ...sh.actionBtn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={handleShare}>
                 {shareStatus === 'generating' ? t('order.generating') : t('order.shareImage')}
               </button>
-              <button style={{ ...sh.actionBtn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={handlePrint}>
+              <button style={{ ...sh.actionBtn, opacity: printDisabled ? 0.6 : 1 }} disabled={printDisabled} onClick={() => void handlePrint()}>
                 {shareStatus === 'printing' ? t('order.preparingPrint') : t('order.print')}
               </button>
             </div>
