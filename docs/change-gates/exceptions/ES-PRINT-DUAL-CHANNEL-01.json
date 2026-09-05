@@ -41,6 +41,24 @@
       "approvedBy": "Founder",
       "closeAfter": "FEATURE_MERGE",
       "reason": "Authorize only the reviewed A11.2 Desktop POS sales-record detail wiring in app/cashier/page.tsx so the existing OrderDetailSheet Relay client reaches the V727 runtime entry."
+    },
+    {
+      "authorizationId": "A12.2-DESKTOP-POS-LAUNCH-PAGE",
+      "featureBranch": "codex/es-print-desktop-launch-route-compat-v01",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "b8f15951e4e727b1c926536eedd9f9bcf1c3e310",
+      "status": "ACTIVE",
+      "authorizedPaths": [
+        "app/cashier/launch/page.tsx"
+      ],
+      "authorizedPathSha256": {
+        "app/cashier/launch/page.tsx": "1589fe6b8c7131cebecd9143a77b8e61eb76e0290e42f0bb94ecdd9aeb923901"
+      },
+      "createdAt": "2026-09-05T16:09:48Z",
+      "approvedAt": "2026-09-05T16:09:48Z",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Authorize only the reviewed A12.2 Desktop 0.4.7 launch redirect compatibility change in app/cashier/launch/page.tsx so a successfully consumed device launch enters its server-validated store at /desktop/pos?storeCode=<store>&mode=pos."
     }
   ]
 }

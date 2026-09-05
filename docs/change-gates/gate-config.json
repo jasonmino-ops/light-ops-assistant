@@ -6,6 +6,7 @@
     "absolute": [
       "app/menu",
       "app/cashier/page.tsx",
+      "app/cashier/launch/page.tsx",
       "app/sale/page.tsx",
       "app/api/sales",
       "app/api/cashier",

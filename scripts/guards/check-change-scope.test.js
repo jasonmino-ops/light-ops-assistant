@@ -19,16 +19,19 @@ const repoRoot = path.resolve(path.sep, "guard-test-repository");
 const taskId = "ES-PRINT-DUAL-CHANNEL-01";
 const featureBranch = "codex/es-print-dual-channel-relay-v01";
 const desktopFeatureBranch = "codex/es-print-desktop-pos-relay-entry-v01";
+const launchFeatureBranch = "codex/es-print-desktop-launch-route-compat-v01";
 const schemaPath = "prisma/schema.prisma";
 const migrationPath = "prisma/migrations/20260905070000_es_tray_production_relay_v01/migration.sql";
 const cashierPath = "app/cashier/page.tsx";
+const launchPath = "app/cashier/launch/page.tsx";
 const schemaHash = "a".repeat(64);
 const migrationHash = "b".repeat(64);
 const cashierHash = "c".repeat(64);
+const launchHash = "d".repeat(64);
 
 const config = {
   forbidden_paths: {
-    absolute: [schemaPath, cashierPath],
+    absolute: [schemaPath, cashierPath, launchPath],
     glob_patterns: ["prisma/migrations/", "app/api/print/**"],
   },
   allowed_paths: ["scripts/guards", "docs/change-gates"],
@@ -48,6 +51,24 @@ function cashierAuthorization(overrides = {}) {
     approvedBy: "Founder",
     closeAfter: "FEATURE_MERGE",
     reason: "authorize the exact reviewed Desktop POS cashier entry draft",
+    ...overrides,
+  };
+}
+
+function launchAuthorization(overrides = {}) {
+  return {
+    authorizationId: "A12.2-DESKTOP-POS-LAUNCH-PAGE",
+    featureBranch: launchFeatureBranch,
+    lineageMode: "PRE_COMMIT_CONTENT_SHA256",
+    baseOriginMainSha: "5".repeat(40),
+    status: "ACTIVE",
+    authorizedPaths: [launchPath],
+    authorizedPathSha256: { [launchPath]: launchHash },
+    createdAt: "2026-09-05T16:09:48Z",
+    approvedAt: "2026-09-05T16:09:48Z",
+    approvedBy: "Founder",
+    closeAfter: "FEATURE_MERGE",
+    reason: "authorize the exact reviewed Desktop POS launch-page redirect draft",
     ...overrides,
   };
 }
@@ -85,6 +106,12 @@ function exceptionWithCashier(overrides = {}) {
   });
 }
 
+function exceptionWithLaunch(overrides = {}) {
+  return exception({
+    additionalAuthorizations: [cashierAuthorization(), launchAuthorization(overrides)],
+  });
+}
+
 function evaluate(filePath, options = {}) {
   const record = options.exception === undefined ? exception() : options.exception;
   return evaluateFile({
@@ -100,6 +127,7 @@ function evaluate(filePath, options = {}) {
         [schemaPath]: schemaHash,
         [migrationPath]: migrationHash,
         [cashierPath]: cashierHash,
+        [launchPath]: launchHash,
       })[candidate]),
   });
 }
@@ -115,6 +143,7 @@ function createTrustedCliFixture() {
   const fixtureSchema = Buffer.from("approved schema\n");
   const fixtureMigration = Buffer.from("approved migration\n");
   const fixtureCashier = Buffer.from("approved cashier entry\n");
+  const fixtureLaunch = Buffer.from("approved launch redirect\n");
   const fixtureConfigPath = path.join(fixtureRoot, "docs", "change-gates", "gate-config.json");
   const fixtureExceptionPath = path.join(
     fixtureRoot,
@@ -126,13 +155,15 @@ function createTrustedCliFixture() {
   fs.mkdirSync(path.dirname(fixtureExceptionPath), { recursive: true });
   fs.mkdirSync(path.join(fixtureRoot, path.dirname(migrationPath)), { recursive: true });
   fs.mkdirSync(path.join(fixtureRoot, path.dirname(cashierPath)), { recursive: true });
+  fs.mkdirSync(path.join(fixtureRoot, path.dirname(launchPath)), { recursive: true });
 
   runGit(fixtureRoot, ["init", "-q"]);
   runGit(fixtureRoot, ["config", "user.name", "Dev Gate Test"]);
   runGit(fixtureRoot, ["config", "user.email", "dev-gate@example.invalid"]);
   fs.writeFileSync(fixtureConfigPath, JSON.stringify(config));
   fs.writeFileSync(path.join(fixtureRoot, cashierPath), "base cashier entry\n");
-  runGit(fixtureRoot, ["add", "docs/change-gates/gate-config.json", cashierPath]);
+  fs.writeFileSync(path.join(fixtureRoot, launchPath), "base launch redirect\n");
+  runGit(fixtureRoot, ["add", "docs/change-gates/gate-config.json", cashierPath, launchPath]);
   runGit(fixtureRoot, ["commit", "-q", "-m", "test: establish base"]);
   const baseSha = runGit(fixtureRoot, ["rev-parse", "HEAD"]);
 
@@ -163,12 +194,20 @@ function createTrustedCliFixture() {
     approvedBy: "Founder",
     closeAfter: "FEATURE_MERGE",
     reason: "integration test fixture",
-    additionalAuthorizations: [{
-      ...cashierAuthorization({ baseOriginMainSha: baseSha }),
-      authorizedPathSha256: {
-        [cashierPath]: crypto.createHash("sha256").update(fixtureCashier).digest("hex"),
+    additionalAuthorizations: [
+      {
+        ...cashierAuthorization({ baseOriginMainSha: baseSha }),
+        authorizedPathSha256: {
+          [cashierPath]: crypto.createHash("sha256").update(fixtureCashier).digest("hex"),
+        },
       },
-    }],
+      {
+        ...launchAuthorization({ baseOriginMainSha: baseSha }),
+        authorizedPathSha256: {
+          [launchPath]: crypto.createHash("sha256").update(fixtureLaunch).digest("hex"),
+        },
+      },
+    ],
   };
   fs.writeFileSync(fixtureExceptionPath, JSON.stringify(record));
   runGit(fixtureRoot, ["add", `docs/change-gates/exceptions/${taskId}.json`]);
@@ -180,9 +219,18 @@ function createTrustedCliFixture() {
 
   runGit(fixtureRoot, ["checkout", "-q", "-b", desktopFeatureBranch, baseSha]);
   runGit(fixtureRoot, ["merge", "-q", "--no-edit", "governance-exception"]);
+  runGit(fixtureRoot, ["checkout", "-q", "-b", launchFeatureBranch, baseSha]);
+  runGit(fixtureRoot, ["merge", "-q", "--no-edit", "governance-exception"]);
   runGit(fixtureRoot, ["checkout", "-q", featureBranch]);
 
-  return { fixtureRoot, fixtureConfigPath, fixtureExceptionPath, fixtureCashier, record };
+  return {
+    fixtureRoot,
+    fixtureConfigPath,
+    fixtureExceptionPath,
+    fixtureCashier,
+    fixtureLaunch,
+    record,
+  };
 }
 
 function runGuardCli(fixtureRoot, files) {
@@ -399,6 +447,123 @@ test("two authorizations cannot target the same feature branch", () => {
   );
 });
 
+test("default deny blocks app/cashier/launch/page.tsx without an exception", () => {
+  assert.equal(evaluateFile({ filePath: launchPath, repoRoot, config }).allowed, false);
+});
+
+test("an ACTIVE launch authorization allows only the exact approved launch-page draft", () => {
+  const result = evaluate(launchPath, {
+    exception: exceptionWithLaunch(),
+    currentBranch: launchFeatureBranch,
+  });
+  assert.equal(result.allowed, true);
+  assert.equal(result.exceptionApplied, true);
+  assert.match(result.reason, /A12\.2-DESKTOP-POS-LAUNCH-PAGE/);
+});
+
+test("the launch authorization blocks sibling launch files", () => {
+  const result = evaluate("app/cashier/launch/other.tsx", {
+    exception: exceptionWithLaunch(),
+    currentBranch: launchFeatureBranch,
+  });
+  assert.equal(result.allowed, false);
+  assert.match(result.reason, /outside the exact task-scoped authorization/);
+});
+
+test("the launch authorization does not inherit the separate cashier-page grant", () => {
+  const result = evaluate(cashierPath, {
+    exception: exceptionWithLaunch(),
+    currentBranch: launchFeatureBranch,
+  });
+  assert.equal(result.allowed, false);
+  assert.match(result.reason, /not exactly authorized/);
+});
+
+test("the launch authorization does not permit another forbidden namespace", () => {
+  const result = evaluate("app/api/print/route.ts", {
+    exception: exceptionWithLaunch(),
+    currentBranch: launchFeatureBranch,
+  });
+  assert.equal(result.allowed, false);
+});
+
+test("the launch authorization blocks the wrong branch", () => {
+  const result = evaluate(launchPath, {
+    exception: exceptionWithLaunch(),
+    currentBranch: "codex/unrelated",
+  });
+  assert.equal(result.allowed, false);
+});
+
+test("the launch authorization blocks the wrong task", () => {
+  const result = evaluate(launchPath, {
+    exception: exceptionWithLaunch(),
+    currentBranch: launchFeatureBranch,
+    taskId: "ES-PRINT-DUAL-CHANNEL-02",
+  });
+  assert.equal(result.allowed, false);
+});
+
+test("tampered launch-page content fails the approved hash check", () => {
+  const result = evaluate(launchPath, {
+    exception: exceptionWithLaunch(),
+    currentBranch: launchFeatureBranch,
+    contentHashResolver: () => "e".repeat(64),
+  });
+  assert.equal(result.allowed, false);
+  assert.match(result.reason, /SHA-256 mismatch/);
+});
+
+test("a CLOSED launch authorization cannot allow the exact path", () => {
+  const record = exceptionWithLaunch({
+    status: "CLOSED",
+    closedAt: "2026-09-06T16:09:48Z",
+    featureMergeCommitSha: "6".repeat(40),
+  });
+  assert.equal(evaluate(launchPath, {
+    exception: record,
+    currentBranch: launchFeatureBranch,
+  }).allowed, false);
+});
+
+test("a malformed launch authorization fails closed", () => {
+  assert.throws(
+    () => exception({
+      additionalAuthorizations: [
+        cashierAuthorization(),
+        launchAuthorization({ lineageMode: "SKIP_LINEAGE" }),
+      ],
+    }),
+    (error) => error instanceof GuardInputError
+  );
+});
+
+test("the launch authorization rejects wildcard expansion", () => {
+  assert.throws(
+    () => exceptionWithLaunch({
+      authorizedPaths: ["app/cashier/launch/**"],
+      authorizedPathSha256: { "app/cashier/launch/**": launchHash },
+    }),
+    (error) => error instanceof GuardInputError
+  );
+});
+
+test("adding the launch authorization leaves existing cashier and Prisma grants unchanged", () => {
+  const record = exceptionWithLaunch();
+  assert.equal(evaluate(cashierPath, {
+    exception: record,
+    currentBranch: desktopFeatureBranch,
+  }).allowed, true);
+  assert.equal(evaluate(schemaPath, {
+    exception: record,
+    currentBranch: featureBranch,
+  }).allowed, true);
+  assert.equal(evaluate(migrationPath, {
+    exception: record,
+    currentBranch: featureBranch,
+  }).allowed, true);
+});
+
 test("the committed ES-PRINT exception record satisfies the strict contract", () => {
   const recordPath = path.resolve(
     __dirname,
@@ -407,6 +572,9 @@ test("the committed ES-PRINT exception record satisfies the strict contract", ()
   const record = validateException(JSON.parse(fs.readFileSync(recordPath, "utf8")), path.resolve(__dirname, "../.."));
   assert.equal(record.taskId, taskId);
   assert.deepEqual(record.authorizedPaths, [schemaPath, migrationPath]);
+  assert.equal(record.additionalAuthorizations.length, 2);
+  assert.equal(record.additionalAuthorizations[0].authorizationId, "A11.2-DESKTOP-POS-CASHIER-PAGE");
+  assert.equal(record.additionalAuthorizations[1].authorizationId, "A12.2-DESKTOP-POS-LAUNCH-PAGE");
 });
 
 test("the trusted CLI accepts the approved pre-commit cashier draft on its exact branch", () => {
@@ -435,6 +603,40 @@ test("the trusted CLI blocks tampered cashier content and sibling cashier files"
     assert.match(tampered.stdout, /authorized content SHA-256 mismatch/);
     assert.equal(sibling.status, 1, sibling.stdout + sibling.stderr);
     assert.match(sibling.stdout, /outside the exact task-scoped authorization/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("the trusted CLI accepts the approved launch-page draft only on its exact branch", () => {
+  const { fixtureRoot, fixtureLaunch } = createTrustedCliFixture();
+  try {
+    runGit(fixtureRoot, ["checkout", "-q", launchFeatureBranch]);
+    fs.writeFileSync(path.join(fixtureRoot, launchPath), fixtureLaunch);
+    const result = runGuardCli(fixtureRoot, [launchPath]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /A12\.2-DESKTOP-POS-LAUNCH-PAGE/);
+    assert.match(result.stdout, /PASS/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("the trusted CLI blocks launch tampering, launch siblings, and the separately authorized cashier page", () => {
+  const { fixtureRoot } = createTrustedCliFixture();
+  try {
+    runGit(fixtureRoot, ["checkout", "-q", launchFeatureBranch]);
+    fs.writeFileSync(path.join(fixtureRoot, launchPath), "tampered launch redirect\n");
+    fs.writeFileSync(path.join(fixtureRoot, "app/cashier/launch/other.tsx"), "scope creep\n");
+    const tampered = runGuardCli(fixtureRoot, [launchPath]);
+    const sibling = runGuardCli(fixtureRoot, ["app/cashier/launch/other.tsx"]);
+    const cashier = runGuardCli(fixtureRoot, [cashierPath]);
+    assert.equal(tampered.status, 1, tampered.stdout + tampered.stderr);
+    assert.match(tampered.stdout, /authorized content SHA-256 mismatch/);
+    assert.equal(sibling.status, 1, sibling.stdout + sibling.stderr);
+    assert.match(sibling.stdout, /outside the exact task-scoped authorization/);
+    assert.equal(cashier.status, 1, cashier.stdout + cashier.stderr);
+    assert.match(cashier.stdout, /path is not exactly authorized/);
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
