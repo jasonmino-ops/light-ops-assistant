@@ -236,6 +236,12 @@ type QzKmsFailureMetadata = {
   attempts: number | null
 }
 
+type QzKmsOutputFailureCode =
+  | 'KMS_KEY_ID_MISMATCH'
+  | 'KMS_SIGNING_ALGORITHM_MISMATCH'
+  | 'KMS_SIGNATURE_MISSING'
+  | 'QZ_CERTIFICATE_SIGNATURE_MISMATCH'
+
 function safeKmsErrorIdentifier(value: unknown): string | null {
   return typeof value === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(value)
     ? value
@@ -272,6 +278,22 @@ export function qzKmsFailureMetadata(error: unknown, now = new Date()): QzKmsFai
     httpStatusCode: safeKmsErrorNumber(metadata.httpStatusCode),
     requestId: safeKmsErrorIdentifier(metadata.requestId),
     attempts: safeKmsErrorNumber(metadata.attempts),
+  }
+}
+
+function qzKmsOutputFailureMetadata(
+  output: SignCommandOutput,
+  errorCode: QzKmsOutputFailureCode,
+): QzKmsFailureMetadata {
+  return {
+    event: 'QZ_SIGN_KMS_FAILURE',
+    timestamp: new Date().toISOString(),
+    errorType: 'KmsSignOutputValidationError',
+    errorCode,
+    fault: 'unknown',
+    httpStatusCode: safeKmsErrorNumber(output.$metadata.httpStatusCode),
+    requestId: safeKmsErrorIdentifier(output.$metadata.requestId),
+    attempts: safeKmsErrorNumber(output.$metadata.attempts),
   }
 }
 
@@ -315,14 +337,18 @@ export async function signQzDigestWithKms(
     throw new QzSigningRequestError('QZ_SIGN_KMS_FAILED')
   }
   const signature = output.Signature ? Buffer.from(output.Signature) : null
-  if (
-    output.KeyId !== pair.kmsKeyArn ||
-    output.SigningAlgorithm !== QZ_KMS_SIGNING_ALGORITHM ||
-    !signature ||
-    signature.byteLength === 0 ||
-    !verifySignature('RSA-SHA512', Buffer.from(digestText, 'utf8'), pair.certificatePublicKey, signature)
-  ) {
+  const outputFailureCode: QzKmsOutputFailureCode | null = output.KeyId !== pair.kmsKeyArn
+    ? 'KMS_KEY_ID_MISMATCH'
+    : output.SigningAlgorithm !== QZ_KMS_SIGNING_ALGORITHM
+      ? 'KMS_SIGNING_ALGORITHM_MISMATCH'
+      : !signature || signature.byteLength === 0
+        ? 'KMS_SIGNATURE_MISSING'
+        : !verifySignature('RSA-SHA512', Buffer.from(digestText, 'utf8'), pair.certificatePublicKey, signature)
+          ? 'QZ_CERTIFICATE_SIGNATURE_MISMATCH'
+          : null
+  if (outputFailureCode) {
+    console.error(JSON.stringify(qzKmsOutputFailureMetadata(output, outputFailureCode)))
     throw new QzSigningRequestError('QZ_SIGN_KMS_FAILED')
   }
-  return signature.toString('base64')
+  return signature!.toString('base64')
 }

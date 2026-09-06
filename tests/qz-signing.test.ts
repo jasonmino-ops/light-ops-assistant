@@ -328,14 +328,36 @@ async function testKmsPairIsCryptographicallyBound() {
   })
   assert.equal(signature, VALID_SIGNATURE)
 
-  await assert.rejects(() => signQzDigestWithKms(config, pair, DIGEST, {
-    send: async () => ({
-      KeyId: KEY_ARN,
-      SigningAlgorithm: QZ_KMS_SIGNING_ALGORITHM,
-      Signature: Uint8Array.from([1, 2, 3, 4]),
-      $metadata: {},
-    }),
-  }), /QZ_SIGN_KMS_FAILED/)
+  const originalConsoleError = console.error
+  const outputFailureLogs: string[] = []
+  console.error = (value?: unknown) => { outputFailureLogs.push(String(value)) }
+  try {
+    await assert.rejects(() => signQzDigestWithKms(config, pair, DIGEST, {
+      send: async () => ({
+        KeyId: KEY_ARN,
+        SigningAlgorithm: QZ_KMS_SIGNING_ALGORITHM,
+        Signature: Uint8Array.from([1, 2, 3, 4]),
+        $metadata: {
+          httpStatusCode: 200,
+          requestId: 'kms-output-request-id-123',
+          attempts: 1,
+        },
+      }),
+    }), /QZ_SIGN_KMS_FAILED/)
+  } finally {
+    console.error = originalConsoleError
+  }
+  assert.equal(outputFailureLogs.length, 1)
+  assert.deepEqual(JSON.parse(outputFailureLogs[0]), {
+    event: 'QZ_SIGN_KMS_FAILURE',
+    timestamp: JSON.parse(outputFailureLogs[0]).timestamp,
+    errorType: 'KmsSignOutputValidationError',
+    errorCode: 'QZ_CERTIFICATE_SIGNATURE_MISMATCH',
+    fault: 'unknown',
+    httpStatusCode: 200,
+    requestId: 'kms-output-request-id-123',
+    attempts: 1,
+  })
 
   const rawKmsError = Object.assign(new Error('secret provider message'), {
     name: 'AccessDeniedException',
@@ -363,7 +385,6 @@ async function testKmsPairIsCryptographicallyBound() {
     },
   )
 
-  const originalConsoleError = console.error
   const errorLogs: string[] = []
   console.error = (value?: unknown) => { errorLogs.push(String(value)) }
   try {
