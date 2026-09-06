@@ -225,6 +225,56 @@ export type QzKmsClient = {
   send(command: SignCommand): Promise<SignCommandOutput>
 }
 
+type QzKmsFailureMetadata = {
+  event: 'QZ_SIGN_KMS_FAILURE'
+  timestamp: string
+  errorType: string
+  errorCode: string
+  fault: 'client' | 'server' | 'unknown'
+  httpStatusCode: number | null
+  requestId: string | null
+  attempts: number | null
+}
+
+function safeKmsErrorIdentifier(value: unknown): string | null {
+  return typeof value === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(value)
+    ? value
+    : null
+}
+
+function safeKmsErrorNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null
+}
+
+export function qzKmsFailureMetadata(error: unknown, now = new Date()): QzKmsFailureMetadata {
+  const source = error && typeof error === 'object'
+    ? error as Record<string, unknown>
+    : {}
+  const metadata = source.$metadata && typeof source.$metadata === 'object'
+    ? source.$metadata as Record<string, unknown>
+    : {}
+  const errorType = safeKmsErrorIdentifier(source.name) ?? 'UnknownError'
+  const errorCode = safeKmsErrorIdentifier(source.code)
+    ?? safeKmsErrorIdentifier(source.Code)
+    ?? errorType
+  const fault = source.$fault === 'client' || source.$fault === 'server'
+    ? source.$fault
+    : 'unknown'
+
+  return {
+    event: 'QZ_SIGN_KMS_FAILURE',
+    timestamp: now.toISOString(),
+    errorType,
+    errorCode,
+    fault,
+    httpStatusCode: safeKmsErrorNumber(metadata.httpStatusCode),
+    requestId: safeKmsErrorIdentifier(metadata.requestId),
+    attempts: safeKmsErrorNumber(metadata.attempts),
+  }
+}
+
 let cachedKmsClient: { cacheKey: string; client: KMSClient } | null = null
 
 function getKmsClient(config: QzActiveSigningConfig): KMSClient {
@@ -260,7 +310,8 @@ export async function signQzDigestWithKms(
   let output: SignCommandOutput
   try {
     output = await client.send(qzKmsSignCommand(pair, digestText))
-  } catch {
+  } catch (error) {
+    console.error(JSON.stringify(qzKmsFailureMetadata(error)))
     throw new QzSigningRequestError('QZ_SIGN_KMS_FAILED')
   }
   const signature = output.Signature ? Buffer.from(output.Signature) : null

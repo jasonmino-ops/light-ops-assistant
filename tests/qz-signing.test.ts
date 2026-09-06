@@ -20,6 +20,7 @@ import {
   assertQzDigestText,
   assertQzSignContentType,
   assertQzSignOrigin,
+  qzKmsFailureMetadata,
   qzKmsSignCommand,
   signQzDigestWithKms,
   type QzSigningSession,
@@ -335,6 +336,52 @@ async function testKmsPairIsCryptographicallyBound() {
       $metadata: {},
     }),
   }), /QZ_SIGN_KMS_FAILED/)
+
+  const rawKmsError = Object.assign(new Error('secret provider message'), {
+    name: 'AccessDeniedException',
+    code: 'AccessDeniedException',
+    $fault: 'client',
+    $metadata: {
+      httpStatusCode: 400,
+      requestId: 'kms-request-id-123',
+      attempts: 1,
+    },
+    cause: { secret: 'must-not-log' },
+    keyId: KEY_ARN,
+  })
+  assert.deepEqual(
+    qzKmsFailureMetadata(rawKmsError, new Date('2026-09-07T00:00:00.000Z')),
+    {
+      event: 'QZ_SIGN_KMS_FAILURE',
+      timestamp: '2026-09-07T00:00:00.000Z',
+      errorType: 'AccessDeniedException',
+      errorCode: 'AccessDeniedException',
+      fault: 'client',
+      httpStatusCode: 400,
+      requestId: 'kms-request-id-123',
+      attempts: 1,
+    },
+  )
+
+  const originalConsoleError = console.error
+  const errorLogs: string[] = []
+  console.error = (value?: unknown) => { errorLogs.push(String(value)) }
+  try {
+    await assert.rejects(() => signQzDigestWithKms(config, pair, DIGEST, {
+      send: async () => { throw rawKmsError },
+    }), /QZ_SIGN_KMS_FAILED/)
+  } finally {
+    console.error = originalConsoleError
+  }
+  assert.equal(errorLogs.length, 1)
+  assert.deepEqual(JSON.parse(errorLogs[0]), {
+    ...qzKmsFailureMetadata(rawKmsError),
+    timestamp: JSON.parse(errorLogs[0]).timestamp,
+  })
+  assert.match(JSON.parse(errorLogs[0]).timestamp, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+  for (const forbidden of ['secret provider message', 'must-not-log', KEY_ARN, DIGEST, VALID_SIGNATURE]) {
+    assert.equal(errorLogs[0].includes(forbidden), false)
+  }
 }
 
 const VALID_SESSION: QzSigningSession = {
