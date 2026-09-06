@@ -30,6 +30,7 @@ assert.equal(salesLeadPhonesMatch('85512345678', '85512345679'), false)
 
 const fixedNow = new Date('2026-08-19T00:00:00.000Z')
 const tokenEnv = {
+  NODE_ENV: 'test',
   SALES_LEAD_APPLICATION_TOKEN_TTL_HOURS: '72',
   SALES_LEAD_SUPPORT_TOKEN_TTL_HOURS: '12',
 } as NodeJS.ProcessEnv
@@ -63,7 +64,7 @@ assert.equal(
   getSalesLeadRateWindowStart(new Date('2026-08-19T00:07:59.000Z'), 300).toISOString(),
   '2026-08-19T00:05:00.000Z',
 )
-assert.deepEqual(getSalesLeadRatePolicy('LEAD_SUBMIT', 'PHONE', {}), {
+assert.deepEqual(getSalesLeadRatePolicy('LEAD_SUBMIT', 'PHONE', { NODE_ENV: 'test' }), {
   windowSeconds: 3600,
   limit: 6,
   hard: true,
@@ -85,7 +86,7 @@ const limited = await consumeSalesLeadRateLimit({
   value: '85512345678',
   now: fixedNow,
   client: fakeClient as never,
-  env: { SALES_LEAD_RATE_LIMIT_SECRET: rateSecret },
+  env: { NODE_ENV: 'test', SALES_LEAD_RATE_LIMIT_SECRET: rateSecret },
 })
 assert.equal(limited.allowed, false)
 assert.equal(limited.exceeded, true)
