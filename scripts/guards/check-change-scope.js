@@ -223,7 +223,7 @@ function exceptionAuthorizations(exception) {
     {
       authorizationId: "PRIMARY",
       featureBranch: exception.featureBranch,
-      lineageMode: "AUTHORIZED_COMMITS",
+      lineageMode: exception.lineageMode === undefined ? "AUTHORIZED_COMMITS" : exception.lineageMode,
       baseOriginMainSha: exception.baseOriginMainSha,
       authorizedCommits: exception.authorizedCommits,
       status: exception.status,
@@ -286,7 +286,15 @@ function validateException(exception, repoRoot = process.cwd()) {
   ) {
     throw new GuardInputError("exception.baseOriginMainSha must be a full commit SHA");
   }
-  if (
+  const lineageMode = exception.lineageMode === undefined ? "AUTHORIZED_COMMITS" : exception.lineageMode;
+  if (lineageMode !== "AUTHORIZED_COMMITS" && lineageMode !== "PRE_COMMIT_CONTENT_SHA256") {
+    throw new GuardInputError("exception.lineageMode is not authorized");
+  }
+  if (lineageMode === "PRE_COMMIT_CONTENT_SHA256") {
+    if (Object.prototype.hasOwnProperty.call(exception, "authorizedCommits")) {
+      throw new GuardInputError("pre-commit exception must not contain authorizedCommits");
+    }
+  } else if (
     !Array.isArray(exception.authorizedCommits) ||
     exception.authorizedCommits.length === 0 ||
     exception.authorizedCommits.some(
@@ -616,8 +624,13 @@ function evaluateFile({
   const scopedAuthorization = taskId && exception
     ? selectExceptionAuthorization(exception, currentBranch)
     : null;
+  // A listed path stays hash-bound even when it is not in the default forbidden set.
+  // Check every grant so the wrong branch cannot turn a listed path into an ordinary file.
+  const explicitlyListed = taskId && exception && exceptionAuthorizations(exception).some(
+    (authorization) => authorization.authorizedPaths.includes(normalizedPath)
+  );
 
-  if (!match) {
+  if (!match && !explicitlyListed) {
     if (
       scopedAuthorization &&
       isWithinAuthorizedParent(normalizedPath, scopedAuthorization) &&

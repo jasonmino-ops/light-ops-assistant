@@ -251,13 +251,13 @@ function createTrustedCliFixture() {
   };
 }
 
-function runGuardCli(fixtureRoot, files) {
+function runGuardCli(fixtureRoot, files, requestedTaskId = taskId) {
   return childProcess.spawnSync(
     process.execPath,
     [
       path.resolve(__dirname, "check-change-scope.js"),
       "--task-id",
-      taskId,
+      requestedTaskId,
       "--files",
       files.join(","),
     ],
@@ -813,6 +813,310 @@ test("a feature cannot bypass exact hashes by weakening its working-tree gate co
     assert.equal(result.status, 1, result.stdout + result.stderr);
     assert.match(result.stdout, /working-tree gate config differs from trusted origin\/main/);
     assert.match(result.stdout, /BLOCKED/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+const standaloneTaskId = "ES-GUARD-PRECOMMIT-TEST-01";
+const standaloneBranch = "codex/guard-precommit-test";
+const ordinaryPath = "lib/guard-fixture.ts";
+const otherOrdinaryPath = "scripts/guard-fixture.ts";
+const ordinaryHash = "6".repeat(64);
+
+function standaloneException(overrides = {}) {
+  const { authorizedCommits, additionalAuthorizations, ...record } = exception();
+  return validateException({
+    ...record,
+    taskId: standaloneTaskId,
+    featureBranch: standaloneBranch,
+    lineageMode: "PRE_COMMIT_CONTENT_SHA256",
+    authorizedPaths: [ordinaryPath],
+    authorizedPathSha256: { [ordinaryPath]: ordinaryHash },
+    ...overrides,
+  }, repoRoot);
+}
+
+test("standalone pre-commit authorization needs no feature commit or additional grant", () => {
+  const record = standaloneException();
+  assert.equal(record.lineageMode, "PRE_COMMIT_CONTENT_SHA256");
+  assert.equal(Object.hasOwn(record, "authorizedCommits"), false);
+  assert.deepEqual(record.additionalAuthorizations, []);
+});
+
+test("primary lineage mode is explicit or legacy-defaulted, never ambiguous", () => {
+  assert.doesNotThrow(() => exception());
+  assert.doesNotThrow(() => exception({ lineageMode: "AUTHORIZED_COMMITS" }));
+  for (const lineageMode of [null, "", "SKIP_LINEAGE", "pre_commit_content_sha256"]) {
+    assert.throws(() => exception({ lineageMode }), GuardInputError);
+  }
+  for (const authorizedCommits of [undefined, null, [], ["short"], ["A".repeat(40)]]) {
+    for (const lineageMode of [undefined, "AUTHORIZED_COMMITS"]) {
+      assert.throws(() => exception({ lineageMode, authorizedCommits }), GuardInputError);
+    }
+  }
+  for (const authorizedCommits of [undefined, null, [], ["2".repeat(40)]]) {
+    assert.throws(() => standaloneException({ authorizedCommits }), /must not contain authorizedCommits/);
+  }
+});
+
+test("standalone authorization retains Founder, dates, closure, exact path and hash rules", () => {
+  for (const overrides of [
+    { approvedBy: "Reviewer" }, { trustedRef: "HEAD" }, { taskId: "invalid/task" },
+    { featureBranch: "" }, { baseOriginMainSha: "short" }, { reason: "" },
+    { authorizationType: "SELF_APPROVED" }, { closeAfter: "NEVER" },
+    { createdAt: "invalid" }, { approvedAt: "2026-09-04T08:35:16Z" },
+    { status: "APPROVED" }, { status: "CLOSED" }, { closedAt: "2026-09-06T08:35:16Z" },
+    { authorizedPaths: [] }, { authorizedPaths: [ordinaryPath, ordinaryPath] },
+    { authorizedPathSha256: {} },
+    { authorizedPathSha256: { [ordinaryPath]: ordinaryHash, [otherOrdinaryPath]: ordinaryHash } },
+    { authorizedPathSha256: { [ordinaryPath]: "A".repeat(64) } },
+  ]) {
+    assert.throws(() => standaloneException(overrides), GuardInputError, JSON.stringify(overrides));
+  }
+  for (const candidate of [
+    "lib/*.ts", "lib/?.ts", "lib/{file}.ts", "lib/../file.ts", "./lib/file.ts",
+    "/lib/file.ts", "lib//file.ts", "lib/./file.ts", "lib/%2e%2e/file.ts",
+  ]) {
+    assert.throws(() => standaloneException({
+      authorizedPaths: [candidate], authorizedPathSha256: { [candidate]: ordinaryHash },
+    }), GuardInputError, candidate);
+  }
+});
+
+for (const mode of ["primary legacy", "primary pre-commit", "additional pre-commit"]) {
+  test(`${mode}: every listed non-forbidden file remains task, branch, status and hash bound`, () => {
+    const makeRecord = (overrides = {}) => {
+      const grant = {
+        authorizedPaths: [ordinaryPath], authorizedPathSha256: { [ordinaryPath]: ordinaryHash },
+        ...overrides,
+      };
+      if (mode === "primary pre-commit") return standaloneException(grant);
+      if (mode === "primary legacy") return exception(grant);
+      return exception({ additionalAuthorizations: [cashierAuthorization(grant)] });
+    };
+    const record = makeRecord();
+    const branch = mode === "primary pre-commit" ? standaloneBranch
+      : mode === "primary legacy" ? featureBranch : desktopFeatureBranch;
+    const options = {
+      exception: record, taskId: record.taskId, currentBranch: branch,
+      contentHashResolver: () => ordinaryHash,
+    };
+    const accepted = evaluate(ordinaryPath, options);
+    assert.equal(accepted.allowed, true);
+    assert.equal(accepted.exceptionApplied, true);
+    for (const [changed, reason] of [
+      [{ contentHashResolver: () => "7".repeat(64) }, /SHA-256 mismatch/],
+      [{ contentHashResolver: () => { throw new Error("EACCES"); } }, /hash unavailable/],
+      [{ taskId: "ES-GUARD-WRONG-TASK" }, /taskId mismatch/],
+      [{ currentBranch: "codex/unrelated" }, /branch is not authorized/],
+      [{ exception: makeRecord({
+        status: "CLOSED", closedAt: "2026-09-06T13:56:29Z", featureMergeCommitSha: "8".repeat(40),
+      }) }, /not ACTIVE/],
+    ]) {
+      const result = evaluate(ordinaryPath, { ...options, ...changed });
+      assert.equal(result.allowed, false);
+      assert.match(result.reason, reason);
+    }
+    const sibling = evaluate("lib/unlisted-fixture.ts", options);
+    assert.equal(sibling.allowed, false);
+    assert.match(sibling.reason, /outside the exact task-scoped authorization/);
+    assert.equal(evaluate("docs/unrelated.md", options).allowed, true);
+  });
+}
+
+test("non-forbidden paths cannot inherit another branch's primary or additional grant", () => {
+  for (const primary of [exception(), standaloneException()]) {
+    const record = validateException({
+      ...primary,
+      authorizedPaths: [ordinaryPath], authorizedPathSha256: { [ordinaryPath]: ordinaryHash },
+      additionalAuthorizations: [cashierAuthorization({
+        authorizedPaths: [otherOrdinaryPath], authorizedPathSha256: { [otherOrdinaryPath]: ordinaryHash },
+      })],
+    }, repoRoot);
+    for (const [candidate, branch] of [[ordinaryPath, desktopFeatureBranch], [otherOrdinaryPath, primary.featureBranch]]) {
+      const result = evaluate(candidate, {
+        exception: record, taskId: record.taskId, currentBranch: branch, contentHashResolver: () => ordinaryHash,
+      });
+      assert.equal(result.allowed, false);
+      assert.match(result.reason, /not exactly authorized/);
+    }
+  }
+});
+
+test("without task opt-in ordinary default behavior is unchanged and protected files stay blocked", () => {
+  const record = standaloneException();
+  assert.equal(evaluate(ordinaryPath, {
+    exception: record, taskId: null, contentHashResolver: () => { throw new Error("must not hash"); },
+  }).allowed, true);
+  assert.equal(evaluate(schemaPath, { exception: record, taskId: null }).allowed, false);
+});
+
+// All Git writes below are disposable test fixtures, never commits in this project.
+function createStandaloneCliFixture({ outsideMainBase = false, closed = false } = {}) {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "guard-standalone-precommit-"));
+  const fixtureConfigPath = path.join(fixtureRoot, "docs/change-gates/gate-config.json");
+  const fixtureExceptionPath = path.join(fixtureRoot, `docs/change-gates/exceptions/${standaloneTaskId}.json`);
+  const approvedBytes = Buffer.from("uncommitted exact draft\n");
+  fs.mkdirSync(path.dirname(fixtureExceptionPath), { recursive: true });
+  runGit(fixtureRoot, ["init", "-q"]);
+  runGit(fixtureRoot, ["config", "user.name", "Dev Gate Test"]);
+  runGit(fixtureRoot, ["config", "user.email", "dev-gate@example.invalid"]);
+  fs.writeFileSync(fixtureConfigPath, JSON.stringify(config));
+  runGit(fixtureRoot, ["add", "docs/change-gates/gate-config.json"]);
+  runGit(fixtureRoot, ["commit", "-q", "-m", "test: establish governance fixture"]);
+  const initialSha = runGit(fixtureRoot, ["rev-parse", "HEAD"]);
+  runGit(fixtureRoot, ["commit", "-q", "--allow-empty", "-m", "test: establish approved base"]);
+  const baseSha = runGit(fixtureRoot, ["rev-parse", "HEAD"]);
+  const record = standaloneException({
+    baseOriginMainSha: outsideMainBase
+      ? runGit(fixtureRoot, ["commit-tree", "HEAD^{tree}", "-m", "test: unrelated root"])
+      : baseSha,
+    authorizedPaths: [ordinaryPath, dynamicIdPath],
+    authorizedPathSha256: Object.fromEntries([ordinaryPath, dynamicIdPath].map((candidate) => [
+      candidate, crypto.createHash("sha256").update(approvedBytes).digest("hex"),
+    ])),
+    ...(closed ? {
+      status: "CLOSED", closedAt: "2026-09-06T13:56:29Z", featureMergeCommitSha: baseSha,
+    } : {}),
+  });
+  fs.writeFileSync(fixtureExceptionPath, JSON.stringify(record));
+  runGit(fixtureRoot, ["add", `docs/change-gates/exceptions/${standaloneTaskId}.json`]);
+  runGit(fixtureRoot, ["commit", "-q", "-m", "test: publish standalone governance grant"]);
+  runGit(fixtureRoot, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+  runGit(fixtureRoot, ["checkout", "-q", "-b", standaloneBranch]);
+  for (const candidate of record.authorizedPaths) {
+    fs.mkdirSync(path.dirname(path.join(fixtureRoot, candidate)), { recursive: true });
+    fs.writeFileSync(path.join(fixtureRoot, candidate), approvedBytes);
+  }
+  return { fixtureRoot, fixtureConfigPath, fixtureExceptionPath, approvedBytes, initialSha, record };
+}
+
+test("standalone CLI accepts protected and ordinary exact drafts without any feature commit", () => {
+  const { fixtureRoot, record } = createStandaloneCliFixture();
+  try {
+    assert.equal(runGit(fixtureRoot, ["log", "--all", "--format=%H", "--", ...record.authorizedPaths]), "");
+    assert.equal(runGit(fixtureRoot, ["diff", "--cached", "--name-only"]), "");
+    const result = runGuardCli(fixtureRoot, record.authorizedPaths, standaloneTaskId);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /PASS/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("standalone CLI rejects wrong bytes, missing files, symlinks and directories outside forbidden paths", () => {
+  const { fixtureRoot, approvedBytes } = createStandaloneCliFixture();
+  try {
+    const target = path.join(fixtureRoot, ordinaryPath);
+    for (const [prepare, expected] of [
+      [() => fs.writeFileSync(target, "changed bytes\n"), /SHA-256 mismatch/],
+      [() => fs.unlinkSync(target), /content hash unavailable/],
+      [() => fs.symlinkSync(path.join(fixtureRoot, dynamicIdPath), target), /not a regular file/],
+      [() => { fs.unlinkSync(target); fs.mkdirSync(target); }, /not a regular file/],
+    ]) {
+      prepare();
+      const result = runGuardCli(fixtureRoot, [ordinaryPath], standaloneTaskId);
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.match(result.stdout, expected);
+    }
+    assert.deepEqual(fs.readFileSync(path.join(fixtureRoot, dynamicIdPath)), approvedBytes);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("standalone CLI rejects wrong task or branch and tampered trusted governance inputs", () => {
+  const fixture = createStandaloneCliFixture();
+  const { fixtureRoot, fixtureConfigPath, fixtureExceptionPath, record } = fixture;
+  try {
+    const originalConfig = fs.readFileSync(fixtureConfigPath);
+    const originalException = fs.readFileSync(fixtureExceptionPath);
+    const wrongTask = runGuardCli(fixtureRoot, [ordinaryPath], "ES-GUARD-WRONG-TASK");
+    assert.equal(wrongTask.status, 1);
+    assert.match(wrongTask.stdout, /no trusted origin\/main exception/);
+    runGit(fixtureRoot, ["checkout", "-q", "-b", "codex/wrong-branch"]);
+    const wrongBranch = runGuardCli(fixtureRoot, [ordinaryPath], standaloneTaskId);
+    assert.equal(wrongBranch.status, 1);
+    assert.match(wrongBranch.stdout, /current branch is not uniquely authorized/);
+    runGit(fixtureRoot, ["checkout", "-q", standaloneBranch]);
+    for (const [file, content, expected] of [
+      [fixtureExceptionPath, JSON.stringify({ ...record, approvedBy: "Self" }), /working-tree exception differs/],
+      [fixtureConfigPath, JSON.stringify({ forbidden_paths: {} }), /working-tree gate config differs/],
+    ]) {
+      fs.writeFileSync(file, content);
+      const result = runGuardCli(fixtureRoot, [ordinaryPath], standaloneTaskId);
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.match(result.stdout, expected);
+      fs.writeFileSync(fixtureConfigPath, originalConfig);
+      fs.writeFileSync(fixtureExceptionPath, originalException);
+    }
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("standalone CLI retains approved-base ancestry checks against both main and HEAD", () => {
+  for (const outsideMainBase of [true, false]) {
+    const { fixtureRoot, fixtureExceptionPath, initialSha, record } = createStandaloneCliFixture({ outsideMainBase });
+    try {
+      if (!outsideMainBase) {
+        runGit(fixtureRoot, ["checkout", "-q", "-B", standaloneBranch, initialSha]);
+        fs.mkdirSync(path.dirname(fixtureExceptionPath), { recursive: true });
+        fs.writeFileSync(fixtureExceptionPath, JSON.stringify(record));
+      }
+      const result = runGuardCli(fixtureRoot, [ordinaryPath], standaloneTaskId);
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.match(result.stdout, outsideMainBase
+        ? /base is not an ancestor of trusted origin\/main/
+        : /pre-commit authorization base is not an ancestor of current HEAD/);
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  }
+});
+
+test("standalone CLI rejects a trusted CLOSED grant", () => {
+  const { fixtureRoot } = createStandaloneCliFixture({ closed: true });
+  try {
+    const result = runGuardCli(fixtureRoot, [ordinaryPath], standaloneTaskId);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /exception is not ACTIVE/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("legacy CLI still rejects a feature HEAD missing its authorized commit", () => {
+  const { fixtureRoot, fixtureExceptionPath, record } = createTrustedCliFixture();
+  try {
+    runGit(fixtureRoot, ["checkout", "-q", "-B", featureBranch, record.baseOriginMainSha]);
+    fs.mkdirSync(path.dirname(fixtureExceptionPath), { recursive: true });
+    fs.writeFileSync(fixtureExceptionPath, JSON.stringify(record));
+    const result = runGuardCli(fixtureRoot, [schemaPath]);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /authorized commit .* is not an ancestor of current HEAD/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test("legacy CLI still binds trusted approved hashes to actual authorized commit bytes", () => {
+  const { fixtureRoot, fixtureExceptionPath, record } = createTrustedCliFixture();
+  try {
+    runGit(fixtureRoot, ["checkout", "-q", "governance-exception"]);
+    const changedRecord = JSON.stringify({
+      ...record, authorizedPathSha256: { ...record.authorizedPathSha256, [schemaPath]: "9".repeat(64) },
+    });
+    fs.writeFileSync(fixtureExceptionPath, changedRecord);
+    runGit(fixtureRoot, ["add", `docs/change-gates/exceptions/${taskId}.json`]);
+    runGit(fixtureRoot, ["commit", "-q", "-m", "test: publish mismatched legacy approval"]);
+    runGit(fixtureRoot, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    runGit(fixtureRoot, ["checkout", "-q", featureBranch]);
+    fs.writeFileSync(fixtureExceptionPath, changedRecord);
+    const result = runGuardCli(fixtureRoot, [schemaPath]);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /authorized commit content hash mismatch/);
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
