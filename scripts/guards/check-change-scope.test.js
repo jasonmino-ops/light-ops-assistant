@@ -24,14 +24,29 @@ const schemaPath = "prisma/schema.prisma";
 const migrationPath = "prisma/migrations/20260905070000_es_tray_production_relay_v01/migration.sql";
 const cashierPath = "app/cashier/page.tsx";
 const launchPath = "app/cashier/launch/page.tsx";
+const dynamicIdPath = "app/api/cashier/orders/[id]/route.ts";
+const dynamicJobIdPath = "app/api/es-tray-02/network-agent/print-jobs/[jobId]/result/route.ts";
+const dynamicOrderNoPath = "app/api/orders/[orderNo]/checkout/route.ts";
+const siblingDynamicJobIdPath = "app/api/cashier/orders/[jobId]/route.ts";
 const schemaHash = "a".repeat(64);
 const migrationHash = "b".repeat(64);
 const cashierHash = "c".repeat(64);
 const launchHash = "d".repeat(64);
+const dynamicIdHash = "e".repeat(64);
+const dynamicJobIdHash = "f".repeat(64);
+const dynamicOrderNoHash = "0".repeat(64);
 
 const config = {
   forbidden_paths: {
-    absolute: [schemaPath, cashierPath, launchPath],
+    absolute: [
+      schemaPath,
+      cashierPath,
+      launchPath,
+      dynamicIdPath,
+      dynamicJobIdPath,
+      dynamicOrderNoPath,
+      siblingDynamicJobIdPath,
+    ],
     glob_patterns: ["prisma/migrations/", "app/api/print/**"],
   },
   allowed_paths: ["scripts/guards", "docs/change-gates"],
@@ -128,6 +143,9 @@ function evaluate(filePath, options = {}) {
         [migrationPath]: migrationHash,
         [cashierPath]: cashierHash,
         [launchPath]: launchHash,
+        [dynamicIdPath]: dynamicIdHash,
+        [dynamicJobIdPath]: dynamicJobIdHash,
+        [dynamicOrderNoPath]: dynamicOrderNoHash,
       })[candidate]),
   });
 }
@@ -333,6 +351,107 @@ test("wildcard exception paths are rejected", () => {
       }),
     (error) => error instanceof GuardInputError
   );
+});
+
+test("primary authorization accepts exact Next.js [id] and [orderNo] route paths", () => {
+  const record = exception({
+    authorizedPaths: [dynamicIdPath, dynamicOrderNoPath],
+    authorizedPathSha256: {
+      [dynamicIdPath]: dynamicIdHash,
+      [dynamicOrderNoPath]: dynamicOrderNoHash,
+    },
+  });
+
+  assert.equal(evaluate(dynamicIdPath, { exception: record }).allowed, true);
+  assert.equal(evaluate(dynamicOrderNoPath, { exception: record }).allowed, true);
+});
+
+test("additional authorization accepts an exact Next.js [jobId] route path", () => {
+  const networkFeatureBranch = "codex/network-agent-dynamic-route-test";
+  const record = exception({
+    additionalAuthorizations: [cashierAuthorization({
+      authorizationId: "A13.1-NETWORK-JOB-RESULT-ROUTE",
+      featureBranch: networkFeatureBranch,
+      authorizedPaths: [dynamicJobIdPath],
+      authorizedPathSha256: { [dynamicJobIdPath]: dynamicJobIdHash },
+    })],
+  });
+  const result = evaluate(dynamicJobIdPath, {
+    exception: record,
+    currentBranch: networkFeatureBranch,
+  });
+
+  assert.equal(result.allowed, true);
+  assert.equal(result.exceptionApplied, true);
+});
+
+test("authorization for [id] does not match the sibling [jobId] route", () => {
+  const record = exception({
+    authorizedPaths: [dynamicIdPath],
+    authorizedPathSha256: { [dynamicIdPath]: dynamicIdHash },
+  });
+
+  const result = evaluate(siblingDynamicJobIdPath, { exception: record });
+
+  assert.equal(result.allowed, false);
+  assert.match(result.reason, /not exactly authorized/);
+});
+
+test("exception paths containing *, ?, {, or } remain rejected", () => {
+  for (const candidate of [
+    "app/api/orders/*/route.ts",
+    "app/api/orders/?/route.ts",
+    "app/api/orders/{id}/route.ts",
+    "app/api/orders/id}/route.ts",
+  ]) {
+    assert.throws(
+      () => exception({
+        authorizedPaths: [candidate],
+        authorizedPathSha256: { [candidate]: dynamicIdHash },
+      }),
+      (error) => error instanceof GuardInputError
+    );
+  }
+});
+
+test("exception paths containing traversal or absolute syntax remain rejected", () => {
+  for (const candidate of [
+    "app/api/orders/../cashier/route.ts",
+    path.join(repoRoot, "app", "api", "orders", "[id]", "route.ts"),
+  ]) {
+    assert.throws(
+      () => exception({
+        authorizedPaths: [candidate],
+        authorizedPathSha256: { [candidate]: dynamicIdHash },
+      }),
+      (error) => error instanceof GuardInputError
+    );
+  }
+});
+
+test("percent-encoded authorization path syntax remains rejected", () => {
+  const encodedTraversalPath = "app/api/orders/%2e%2e/cashier/route.ts";
+  assert.throws(
+    () => exception({
+      authorizedPaths: [encodedTraversalPath],
+      authorizedPathSha256: { [encodedTraversalPath]: dynamicIdHash },
+    }),
+    (error) => error instanceof GuardInputError
+  );
+});
+
+test("dynamic route content must retain its exact authorized SHA-256", () => {
+  const record = exception({
+    authorizedPaths: [dynamicIdPath],
+    authorizedPathSha256: { [dynamicIdPath]: dynamicIdHash },
+  });
+  const result = evaluate(dynamicIdPath, {
+    exception: record,
+    contentHashResolver: () => "1".repeat(64),
+  });
+
+  assert.equal(result.allowed, false);
+  assert.match(result.reason, /SHA-256 mismatch/);
 });
 
 test("approved path content must retain its authorized SHA-256", () => {
