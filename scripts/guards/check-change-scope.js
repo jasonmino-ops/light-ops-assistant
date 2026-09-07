@@ -184,8 +184,8 @@ function validateAdditionalAuthorization(authorization, repoRoot, index) {
   }
 
   const normalizedPaths = authorization.authorizedPaths.map((authorizedPath) => {
-    if (typeof authorizedPath !== "string" || /[*?\[\]]/.test(authorizedPath)) {
-      throw new GuardInputError(`${field} paths must be exact and contain no wildcard`);
+    if (typeof authorizedPath !== "string" || /[*?{}]|%[0-9a-f]{2}/i.test(authorizedPath)) {
+      throw new GuardInputError(`${field} paths must be exact and contain no wildcard or encoded syntax`);
     }
     const normalized = normalizeFilePath(authorizedPath, repoRoot);
     if (normalized !== authorizedPath) {
@@ -319,8 +319,8 @@ function validateException(exception, repoRoot = process.cwd()) {
   }
 
   const normalizedPaths = exception.authorizedPaths.map((authorizedPath) => {
-    if (typeof authorizedPath !== "string" || /[*?\[\]]/.test(authorizedPath)) {
-      throw new GuardInputError("exception paths must be exact and contain no wildcard");
+    if (typeof authorizedPath !== "string" || /[*?{}]|%[0-9a-f]{2}/i.test(authorizedPath)) {
+      throw new GuardInputError("exception paths must be exact and contain no wildcard or encoded syntax");
     }
     const normalized = normalizeFilePath(authorizedPath, repoRoot);
     if (normalized !== authorizedPath) {
