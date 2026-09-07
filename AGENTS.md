@@ -10,6 +10,7 @@
 - 治理原则以 `docs/governance/ES-GOV-001 Level 0 Governance Baseline V1.0 FINAL.md` 为准。
 - 工程流程以 `docs/governance/ES-ENG-001 Engineering Workflow Baseline V1.0 FINAL.md` 为准。
 - 具体开发工作流以 `docs/workflows/STORE_ASSISTANT_DEV_WORKFLOW_SKILL_V1.md` 为准。
+- 所有开发、工作流、仓库审查、构建和发布任务，开始前必须读取并遵守 E-Shop Founder-Gated Agent Development Workflow V1.0（`docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V1.md`），并先确定任务等级（L1 / L2 / L3）。
 - Scope Gate 以 `scripts/guards/check-change-scope.js` 及其当前配置为准。
 - Release Lineage Gate 以 `scripts/check-release-lineage.sh` 的当前实现为准。
 - 数据库、部署、验收等专项规则，以仓库内当前冻结文档、脚本和 CI 为准。
