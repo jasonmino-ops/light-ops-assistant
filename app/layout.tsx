@@ -7,6 +7,8 @@ import LangProvider from './components/LangProvider'
 import WorkModeProvider from './components/WorkModeProvider'
 import DelegateBanner from './components/DelegateBanner'
 import { verifySession } from '@/lib/session'
+import ElectronicMenuDocument from './electronic-menu/ElectronicMenuDocument'
+import { isElectronicMenuPath } from '@/lib/electronic-menu'
 
 export const metadata = {
   title: '店小二助手',
@@ -26,13 +28,15 @@ function isProtectedMerchantPath(path: string) {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const pathname = (await headers()).get('x-current-path') ?? ''
+  // A child layout cannot remove ancestor cookies/providers; only the display delegates its document.
+  if (isElectronicMenuPath(pathname)) return <ElectronicMenuDocument>{children}</ElectronicMenuDocument>
+
   // Resolve role: signed cookie (Telegram auth) → DEV_ROLE env (local dev) → STAFF
   const cookieStore = await cookies()
-  const headerStore = await headers()
   const sessionToken = cookieStore.get('auth-session')?.value
   const sessionRole = sessionToken ? verifySession(sessionToken)?.role : undefined
   const role = sessionRole ?? process.env.DEV_ROLE ?? 'STAFF'
-  const pathname = headerStore.get('x-current-path') ?? ''
   const initialProtected = isProtectedMerchantPath(pathname)
   const isCashierPath = pathname === '/cashier' || pathname.startsWith('/cashier/')
   const manifestHref = isCashierPath ? '/manifest.webmanifest' : '/manifest.json'
