@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "taskId": "ES-ELECTRONIC-MENU-01",
+  "featureBranch": "codex/es-electronic-menu-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "a354624726ffac2600bdb7d18224a09bdf815c65",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/dashboard/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/dashboard/page.tsx": "660f2618303a4fb280c1fd08aab572237c6fb4de4201edb565e906b9ea10f2f6"
+  },
+  "createdAt": "2026-09-08T05:37:36Z",
+  "approvedAt": "2026-09-08T05:37:36Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Founder approval in the ES-ELECTRONIC-MENU-01 task conversation",
+    "statement": "授权为 ES-ELECTRONIC-MENU-01 办理任务级精确 Scope Exception：允许修改文件：app/dashboard/page.tsx。仅允许应用当前已封存的 dashboard.patch 内容，用于在 OWNER 概览页增加‘电子菜单屏’入口。",
+    "approvedAtMeaning": "Registration time of explicit approval already received in this conversation; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the sealed two-line dashboard entry: import ElectronicMenuEntry and render it for realRole OWNER. No dashboard business logic, layout structure, existing behavior or other protected file changes are authorized. ACTIVE grants nothing until this byte-identical record exists in trusted origin/main. Merge, migration, Preview/Production deployment and release require separate explicit authorization.",
+  "createdOnBranch": "codex/es-electronic-menu-01-scope-exception",
+  "sourceDraft": {
+    "baseOriginMainSha": "a354624726ffac2600bdb7d18224a09bdf815c65",
+    "patchSha256": "b011b5f169e0f6427974f17bfcd33ae064c3b34cdf6d20393accd639a57a9d7c",
+    "patchPath": ".task-state/ES-ELECTRONIC-MENU-01-sealed/dashboard.patch",
+    "candidatePath": ".task-state/ES-ELECTRONIC-MENU-01-sealed/dashboard-page.tsx",
+    "fileCount": 1,
+    "insertions": 2,
+    "deletions": 0
+  }
+}
