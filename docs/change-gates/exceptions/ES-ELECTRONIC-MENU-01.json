@@ -34,5 +34,40 @@
     "deletions": 0
   },
   "closedAt": "2026-09-08T12:52:08Z",
-  "featureMergeCommitSha": "b67686bd4645cb29173dd09c8f0da94c0c3f40e4"
+  "featureMergeCommitSha": "b67686bd4645cb29173dd09c8f0da94c0c3f40e4",
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "UI-FINAL-FULLSCREEN-EXTRACTION",
+      "featureBranch": "codex/es-electronic-menu-01-ui",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "0e22ad64804465b5487fc3a8e3494666f7430e84",
+      "status": "ACTIVE",
+      "authorizedPaths": [
+        "app/desktop/display/page.tsx"
+      ],
+      "authorizedPathSha256": {
+        "app/desktop/display/page.tsx": "bc2b6266ac0fe7544540dc123fca68bd7cc17caf9dfdec0412c170067290fad1"
+      },
+      "createdAt": "2026-09-08T14:12:18Z",
+      "approvedAt": "2026-09-08T14:12:18Z",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Authorize only the sealed Customer Display browser fullscreen extraction (3 additions, 10 deletions). Preserve its button, enter/exit/ESC, state synchronization, renderer, data and business logic. Shared hook is consumed by Customer Display and Electronic Menu. No other protected path or public contract is authorized. Close this additional authorization after the UI feature merge. The historical dashboard PRIMARY authorization stays CLOSED.",
+      "approvalSource": {
+        "source": "Founder approval in ES-ELECTRONIC-MENU-01 task conversation",
+        "statement": "仅应用当前已封存并完成只读审查的 fullscreen 提取补丁：.task-state/ES-ELECTRONIC-MENU-01-sealed/ui-final-fullscreen/customer-display-fullscreen.patch。批准按 AGENTS.md 要求创建并激活本次精确 Scope Exception。批准为使该 ACTIVE 记录进入 origin/main 所必需的 governance commit、merge main、push origin/main；明确批准该治理基线自动 Production 部署，但不得包含 Electronic Menu UI Candidate 业务代码。",
+        "approvedAtMeaning": "Registration time of the explicit Founder approval already received; not an invented message timestamp."
+      },
+      "sourceDraft": {
+        "candidateSha": "5714f341c667c9c1d0128bf3ebcff2c3b90ba41f",
+        "patchPath": ".task-state/ES-ELECTRONIC-MENU-01-sealed/ui-final-fullscreen/customer-display-fullscreen.patch",
+        "patchSha256": "43ea4b6cad0eaed116ac4b2ef0863bc960b73fa0cc985af9773e4b74d2743eb6",
+        "baseFileSha256": "a47130ee5bc49c1fb84e64d1540d53b60de9e344c08c0937fad2dbccc6630ac9",
+        "fileCount": 1,
+        "insertions": 3,
+        "deletions": 10
+      },
+      "activationBoundary": "Effective only when this byte-identical additional authorization exists in trusted origin/main and all existing Scope Guard checks pass. Any deviation from the sealed patch requires renewed Founder approval. Governance merge/push and automatic governance-only Production deployment are approved; Electronic Menu UI feature merge/deploy/release, migration/schema and other protected files remain unapproved."
+    }
+  ]
 }
