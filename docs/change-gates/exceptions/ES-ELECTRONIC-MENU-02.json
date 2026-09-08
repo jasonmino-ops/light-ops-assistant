@@ -6,7 +6,7 @@
   "baseOriginMainSha": "bcc3ee26947a0673159a80c71a97b8ebcf2410d1",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "authorizedPaths": [
     "prisma/schema.prisma",
     "prisma/migrations/20260908155736_add_electronic_menu_media/migration.sql"
@@ -35,5 +35,7 @@
     "fileCount": 2,
     "insertions": 5,
     "deletions": 0
-  }
+  },
+  "closedAt": "2026-09-08T16:52:18.802Z",
+  "featureMergeCommitSha": "b7429b4fb6468390f76ad3043b6f78267d3d8630"
 }
