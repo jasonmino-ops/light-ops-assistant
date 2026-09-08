@@ -11,15 +11,17 @@ export async function POST(req: NextRequest) {
   return withRelayApiError(async () => {
     const auth = await authenticateRelayAgent(req)
     if (!auth.ok) return relayError(auth.error, auth.status)
-    const { binding, tenantId, storeId } = auth.context
+    const { binding, tenantId, storeId, storeCode, schemaVersion } = auth.context
     const job = await claimNextRelayPrintJob({
       tenantId,
       storeId,
       computerBindingId: binding.id,
+      schemaVersion,
     }, readRelayTimingConfig())
     return relayJson({
       productionContract: true,
-      schemaVersion: 1,
+      schemaVersion,
+      ...(schemaVersion === 2 ? { bindingId: binding.id, storeCode } : {}),
       job,
     })
   })

@@ -18,12 +18,13 @@ export async function POST(
     if (!auth.ok) return relayError(auth.error, auth.status)
     const { jobId } = await params
     if (!JOB_ID_PATTERN.test(jobId)) return relayError('ES_TRAY_02_INVALID_JOB_ID', 400)
-    const proof = parseExecutingInput(await req.json())
+    const proof = parseExecutingInput(await req.json(), auth.context.schemaVersion)
     const { binding, tenantId, storeId } = auth.context
     const result = await markRelayPrintJobExecuting({
       tenantId,
       storeId,
       computerBindingId: binding.id,
+      schemaVersion: auth.context.schemaVersion,
     }, jobId, proof, readRelayTimingConfig())
     return relayJson({ productionContract: true, ...result })
   })

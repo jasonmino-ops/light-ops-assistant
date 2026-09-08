@@ -1,4 +1,6 @@
 import { Prisma, type EshopTrayPrintJob } from '@prisma/client'
+import { createHash } from 'node:crypto'
+import { parseNetworkRequest, type NetworkRequest } from '../../e-shop-tray/src/networkContract'
 import { prisma } from '@/lib/prisma'
 import {
   ES_TRAY_RELAY_SCHEMA_VERSION,
@@ -30,17 +32,18 @@ export type RelayStoreScope = {
 
 export type RelayAgentScope = RelayStoreScope & {
   computerBindingId: string
+  schemaVersion?: 1 | 2
 }
 
 export type ClaimedRelayJob = {
   id: string
-  schemaVersion: typeof ES_TRAY_RELAY_SCHEMA_VERSION
+  schemaVersion: 1 | 2
   idempotencyKey: string
   requestHash: string
   claimAttempt: number
   claimToken: string
   leaseExpiresAt: string
-  request: EshopTrayPrintRequest
+  request: EshopTrayPrintRequest | NetworkRequest
 }
 
 function serializeJob(job: EshopTrayPrintJob) {
@@ -70,8 +73,16 @@ function serializeJob(job: EshopTrayPrintJob) {
   }
 }
 
-function storedRequest(job: EshopTrayPrintJob): EshopTrayPrintRequest {
+function storedRequest(job: EshopTrayPrintJob): EshopTrayPrintRequest | NetworkRequest {
   try {
+    if (job.schemaVersion === 2) {
+      const request = parseNetworkRequest(job.payload)
+      if (createHash('sha256').update(JSON.stringify(request)).digest('hex') !== job.requestHash) {
+        throw new Error('NETWORK_PAYLOAD_HASH_MISMATCH')
+      }
+      return request
+    }
+    if (job.schemaVersion !== 1) throw new Error('UNSUPPORTED_SCHEMA')
     return parsePrintRequest(job.payload)
   } catch {
     throw new RelayServiceError('ES_TRAY_02_STORED_PAYLOAD_INVALID', 500)
@@ -80,10 +91,36 @@ function storedRequest(job: EshopTrayPrintJob): EshopTrayPrintRequest {
 
 export async function enqueueRelayPrintJob(
   scope: RelayStoreScope,
-  request: EshopTrayPrintRequest,
+  request: EshopTrayPrintRequest | NetworkRequest,
   timing: RelayTimingConfig,
   now = new Date(),
+  tx?: Prisma.TransactionClient,
 ) {
+  if ('profile' in request) {
+    if (!tx) throw new RelayServiceError('NETWORK_SALE_TRANSACTION_REQUIRED', 500)
+    const normalized = parseNetworkRequest(request)
+    const requestHash = createHash('sha256').update(JSON.stringify(normalized)).digest('hex')
+    // ON CONFLICT avoids aborting the surrounding sale transaction on a duplicate key.
+    const inserted = await tx.eshopTrayPrintJob.createMany({
+      skipDuplicates: true,
+      data: {
+        ...scope, idempotencyKey: normalized.requestId, requestHash, schemaVersion: 2,
+        payload: normalized as unknown as Prisma.InputJsonValue,
+        // Both role jobs share the immutable sale timestamp, so another order
+        // cannot be sorted between this order's FRONT and KITCHEN.
+        createdAt: new Date(normalized.order.createdAt),
+        maxAttempts: timing.maxAttempts, nextAttemptAt: now,
+        expiresAt: new Date(now.getTime() + timing.jobTtlMs), physicalCompletionKnown: false,
+      },
+    })
+    const job = await tx.eshopTrayPrintJob.findUniqueOrThrow({
+      where: { tenantId_storeId_idempotencyKey: { ...scope, idempotencyKey: normalized.requestId } },
+    })
+    if (job.requestHash !== requestHash || job.schemaVersion !== 2) {
+      throw new RelayServiceError('ES_TRAY_02_IDEMPOTENCY_CONFLICT', 409)
+    }
+    return { created: inserted.count === 1, job: serializeJob(job) }
+  }
   const requestHash = hashPrintRequest(request)
   const expiresAt = new Date(now.getTime() + timing.jobTtlMs)
   try {
@@ -124,7 +161,7 @@ export async function enqueueRelayPrintJob(
 
 async function recoverTimedOutJobs(
   tx: Prisma.TransactionClient,
-  scope: RelayStoreScope,
+  scope: RelayStoreScope & { schemaVersion?: 1 | 2 },
   now: Date,
 ) {
   // Once EXECUTING is reached the side-effect boundary is uncertain. Expiry
@@ -143,6 +180,7 @@ async function recoverTimedOutJobs(
      WHERE "tenantId" = ${scope.tenantId}
        AND "storeId" = ${scope.storeId}
        AND "status" = 'EXECUTING'::"EshopTrayPrintJobStatus"
+       AND "schemaVersion" = ${scope.schemaVersion ?? 1}
        AND "leaseExpiresAt" <= ${now}
   `)
 
@@ -163,6 +201,7 @@ async function recoverTimedOutJobs(
          'PENDING'::"EshopTrayPrintJobStatus",
          'CLAIMED'::"EshopTrayPrintJobStatus"
        )
+       AND "schemaVersion" = ${scope.schemaVersion ?? 1}
        AND "expiresAt" <= ${now}
   `)
 
@@ -182,6 +221,7 @@ async function recoverTimedOutJobs(
        AND "status" = 'CLAIMED'::"EshopTrayPrintJobStatus"
        AND "leaseExpiresAt" <= ${now}
        AND "attemptCount" >= "maxAttempts"
+       AND "schemaVersion" = ${scope.schemaVersion ?? 1}
   `)
 
   // RETRYABLE is represented by PENDING plus explicit result metadata, keeping
@@ -205,6 +245,7 @@ async function recoverTimedOutJobs(
        AND "leaseExpiresAt" <= ${now}
        AND "attemptCount" < "maxAttempts"
        AND "expiresAt" > ${now}
+       AND "schemaVersion" = ${scope.schemaVersion ?? 1}
   `)
 
   await tx.$executeRaw(Prisma.sql`
@@ -221,6 +262,7 @@ async function recoverTimedOutJobs(
        AND "storeId" = ${scope.storeId}
        AND "status" = 'PENDING'::"EshopTrayPrintJobStatus"
        AND "attemptCount" >= "maxAttempts"
+       AND "schemaVersion" = ${scope.schemaVersion ?? 1}
   `)
 }
 
@@ -270,11 +312,61 @@ export async function claimNextRelayPrintJob(
     await lockActiveClaimScope(tx, scope, now)
     await recoverTimedOutJobs(tx, scope, now)
 
-    const candidates = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    if (scope.schemaVersion === 2) {
+      // A partial/unknown TCP stream may still affect this single printer. ACK,
+      // TTL and a later order must not automatically release that boundary.
+      const unknown = await tx.eshopTrayPrintJob.findFirst({
+        where: {
+          tenantId: scope.tenantId, storeId: scope.storeId, schemaVersion: 2,
+          status: { in: ['SUCCEEDED', 'FAILED', 'EXPIRED'] }, effectBoundary: 'CROSSING_UNKNOWN',
+        },
+        select: { id: true },
+      })
+      if (unknown) return null
+      // A sale transaction may commit late with an earlier createdAt. Checking
+      // only the sorted head would hide an already active job behind that sale.
+      const active = await tx.eshopTrayPrintJob.findFirst({
+        where: {
+          tenantId: scope.tenantId, storeId: scope.storeId, schemaVersion: 2,
+          status: { in: ['CLAIMED', 'EXECUTING'] },
+        },
+        select: { id: true },
+      })
+      if (active) return null
+    }
+
+    const candidates = scope.schemaVersion === 2
+      ? await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT candidate."id"
+          FROM "EshopTrayPrintJob" AS candidate
+         WHERE candidate."tenantId" = ${scope.tenantId}
+           AND candidate."storeId" = ${scope.storeId}
+           AND candidate."schemaVersion" = 2
+           AND candidate."status" = 'PENDING'::"EshopTrayPrintJobStatus"
+         ORDER BY CASE WHEN candidate."payload"->>'role' = 'KITCHEN'
+           AND candidate."payload"->>'mode' = 'SHARED_PRINTER'
+           AND EXISTS (
+             SELECT 1 FROM "EshopTrayPrintJob" AS front
+              WHERE front."tenantId" = candidate."tenantId"
+                AND front."storeId" = candidate."storeId"
+                AND front."schemaVersion" = 2
+                AND front."status" = 'SUCCEEDED'::"EshopTrayPrintJobStatus"
+                AND front."payload"->>'role' = 'FRONT'
+                AND front."payload"->>'mode' = 'SHARED_PRINTER'
+                AND front."payload"->'order'->>'orderNo' = candidate."payload"->'order'->>'orderNo'
+           ) THEN 0 ELSE 1 END ASC,
+           candidate."createdAt" ASC, candidate."payload"->'order'->>'orderNo' ASC,
+           CASE candidate."payload"->>'role' WHEN 'FRONT' THEN 0 WHEN 'KITCHEN' THEN 1 ELSE 2 END ASC,
+           candidate."id" ASC
+         LIMIT 1
+         FOR UPDATE OF candidate
+      `)
+      : await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id"
         FROM "EshopTrayPrintJob"
        WHERE "tenantId" = ${scope.tenantId}
          AND "storeId" = ${scope.storeId}
+         AND "schemaVersion" = ${scope.schemaVersion ?? 1}
          AND "status" = 'PENDING'::"EshopTrayPrintJobStatus"
          AND "nextAttemptAt" <= ${now}
          AND "expiresAt" > ${now}
@@ -287,7 +379,10 @@ export async function claimNextRelayPrintJob(
     if (!candidateId) return null
 
     const candidate = await tx.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: candidateId } })
-    let request: EshopTrayPrintRequest
+    // Finish a started pair before untouched orders, even if another sale was
+    // committed late. Check readiness only after selecting that pending head.
+    if (scope.schemaVersion === 2 && (candidate.status !== 'PENDING' || candidate.nextAttemptAt > now)) return null
+    let request: EshopTrayPrintRequest | NetworkRequest
     try {
       request = storedRequest(candidate)
     } catch {
@@ -304,6 +399,40 @@ export async function claimNextRelayPrintJob(
         },
       })
       return null
+    }
+
+    if ('profile' in request && request.role === 'KITCHEN') {
+      const frontKey = createHash('sha256').update(`cashier-network-v2:${request.order.orderNo}:FRONT`).digest('hex')
+      const front = await tx.eshopTrayPrintJob.findUnique({
+        where: {
+          tenantId_storeId_idempotencyKey: {
+            tenantId: scope.tenantId, storeId: scope.storeId, idempotencyKey: `network:${frontKey}`,
+          },
+        },
+      })
+      let validFront = false
+      if (front?.schemaVersion === 2) {
+        try {
+          const prior = storedRequest(front)
+          validFront = 'profile' in prior && prior.mode === 'SHARED_PRINTER'
+            && prior.role === 'FRONT' && prior.order.orderNo === request.order.orderNo
+            && JSON.stringify(prior.order) === JSON.stringify(request.order)
+        } catch { /* An invalid dependency cannot authorize kitchen bytes. */ }
+      }
+      if (!validFront || !front || front.status === 'FAILED' || front.status === 'EXPIRED') {
+        await tx.eshopTrayPrintJob.update({
+          where: { id: candidate.id },
+          data: {
+            status: 'FAILED', completedAt: now, resultStatus: 'FAILURE',
+            resultCode: 'NETWORK_FRONT_DEPENDENCY_FAILED',
+            resultMessage: 'Kitchen printing requires the matching front receipt to finish submission.',
+            effectBoundary: 'NOT_CROSSED', physicalCompletionKnown: false,
+          },
+        })
+        return null
+      }
+      if (front.status !== 'SUCCEEDED' || front.effectBoundary !== 'CROSSED'
+        || front.resultCode !== 'SUBMITTED_TO_NETWORK_SOCKET') return null
     }
 
     const claimToken = createClaimToken()
@@ -326,7 +455,7 @@ export async function claimNextRelayPrintJob(
     })
     return {
       id: claimed.id,
-      schemaVersion: ES_TRAY_RELAY_SCHEMA_VERSION,
+      schemaVersion: candidate.schemaVersion as 1 | 2,
       idempotencyKey: claimed.idempotencyKey,
       requestHash: claimed.requestHash,
       claimAttempt: claimed.claimAttempt,
@@ -338,9 +467,11 @@ export async function claimNextRelayPrintJob(
 }
 
 async function findClaimedJob(scope: RelayAgentScope, jobId: string, proof: RelayClaimProof) {
+  if (proof.schemaVersion !== (scope.schemaVersion ?? 1)) return null
   return prisma.eshopTrayPrintJob.findFirst({
     where: {
       id: jobId,
+      schemaVersion: scope.schemaVersion ?? 1,
       tenantId: scope.tenantId,
       storeId: scope.storeId,
       claimedByComputerBindingId: scope.computerBindingId,
@@ -371,6 +502,7 @@ export async function markRelayPrintJobExecuting(
   const updated = await prisma.eshopTrayPrintJob.updateMany({
     where: {
       id: current.id,
+      schemaVersion: scope.schemaVersion ?? 1,
       tenantId: scope.tenantId,
       storeId: scope.storeId,
       claimedByComputerBindingId: scope.computerBindingId,
@@ -431,6 +563,7 @@ export async function completeRelayPrintJob(
   const updated = await prisma.eshopTrayPrintJob.updateMany({
     where: {
       id: current.id,
+      schemaVersion: scope.schemaVersion ?? 1,
       tenantId: scope.tenantId,
       storeId: scope.storeId,
       claimedByComputerBindingId: scope.computerBindingId,

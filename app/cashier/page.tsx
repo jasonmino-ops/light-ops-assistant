@@ -2,6 +2,7 @@
 
 import { Fragment, useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
+import type { NetworkRole } from '@/e-shop-tray/src/networkContract'
 import QRCode from 'react-qr-code'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
@@ -112,6 +113,8 @@ type CartLine = {
 }
 
 type SaleResult = {
+  networkPrintStatus?: 'QUEUED' | 'UNCONFIRMED'
+  networkPrintRoles?: NetworkRole[]
   orderNo?: string
   totalAmount: number
   khqrFallback?: boolean
@@ -3483,6 +3486,18 @@ export default function CashierPage() {
     const apiPayment = submitPayment === 'OTHER' ? 'CASH' : submitPayment
     const submittedItems = cashierDisplayItems(cart)
     const submittedTotal = cartTotal(cart)
+    // Explicit pilot opt-in, never inferred from isDesktopPos (also true in Desktop 0.4.7).
+    const networkPrint = window.location.pathname === '/cashier'
+      && !window.eshopDesktopRuntime?.isDesktop
+      && new URLSearchParams(window.location.search).get('networkPrint') === 'v01'
+    const networkMode = networkPrint ? new URLSearchParams(window.location.search).get('networkMode') : null
+    if (networkPrint && networkMode !== 'FRONT_ONLY' && networkMode !== 'SHARED_PRINTER') {
+      setSubmitError(lang === 'en' ? 'Choose FRONT_ONLY or SHARED_PRINTER in the network cashier link.'
+        : lang === 'km' ? 'សូមជ្រើសរើស FRONT_ONLY ឬ SHARED_PRINTER ក្នុងតំណគិតប្រាក់បណ្ដាញ។'
+        : '请使用明确指定 FRONT_ONLY 或 SHARED_PRINTER 模式的网络收银入口。')
+      setSubmitting(false)
+      return
+    }
     try {
       if (!requireOnlinePosAuthorization()) {
         setSubmitting(false)
@@ -3496,6 +3511,7 @@ export default function CashierPage() {
           items: cart.map(c => ({ barcode: c.barcode, quantity: c.qty, ...(c.sugar ? { sugar: c.sugar } : {}) })),
           paymentMethod: apiPayment,
           manualPaymentConfirmed: apiPayment === 'KHQR',
+          ...(networkPrint ? { printing: { profile: 'network-v2', mode: networkMode, lang } } : {}),
         }),
       })
       const body = await res.json()
@@ -3518,7 +3534,13 @@ export default function CashierPage() {
       setCart([])
       setPayment('CASH')
       setReceiptPreviewOpen(false)
-      const receipt = isDesktopPos
+      const networkRoles = Array.isArray(body.printing?.jobs)
+        ? body.printing.jobs.map((job: { role?: unknown } | null) => job?.role) : []
+      const networkQueued = body.printing?.profile === 'network-v2' && body.printing?.state === 'QUEUED'
+      const networkConfirmed = networkQueued && body.printing.mode === networkMode
+        && networkRoles.join(',') === (networkMode === 'SHARED_PRINTER' ? 'FRONT,KITCHEN' : 'FRONT')
+      // No receipt handed to the legacy auto/manual print effect for Network-owned sales.
+      const receipt = isDesktopPos && !networkPrint && !networkQueued
         ? buildReceiptSnapshot({
             items: submittedItems,
             totalAmount: submittedTotal,
@@ -3531,6 +3553,10 @@ export default function CashierPage() {
         orderNo: body.orderNo,
         totalAmount: submittedTotal,
         khqrFallback: body.khqrFallback ?? false,
+        ...(networkPrint ? {
+          networkPrintStatus: networkConfirmed ? 'QUEUED' as const : 'UNCONFIRMED' as const,
+          networkPrintRoles: networkConfirmed ? networkRoles as NetworkRole[] : undefined,
+        } : {}),
         paymentMethod: apiPayment,
         receipt,
         kitchenTicket: receipt && isKitchenTicketEnabled
@@ -3542,7 +3568,7 @@ export default function CashierPage() {
             }
           : undefined,
       })
-    } catch { setSubmitError('网络错误，请重试') }
+    } catch { setSubmitError(networkPrint ? '结果未确认，请先核对销售记录，勿重复提交。' : '网络错误，请重试') }
     finally { setSubmitting(false) }
   }
 
@@ -5166,6 +5192,7 @@ export default function CashierPage() {
             <div style={s.modalIcon}>✅</div>
             <div style={s.modalTitle}>{d.saleCompleted}</div>
             <div style={s.modalAmt}>{money(saleResult.totalAmount)}</div>
+            {saleResult.networkPrintStatus && <div style={s.modalSub}>{saleResult.networkPrintRoles?.join(' / ') ?? 'Network Print'} — {saleResult.networkPrintStatus}</div>}
             {saleResult.orderNo && <div style={s.modalSub}>{lang === 'en' ? `Order: ${saleResult.orderNo}` : lang === 'km' ? `លេខបញ្ជាទិញ៖ ${saleResult.orderNo}` : `单号：${saleResult.orderNo}`}</div>}
             {saleResult.khqrFallback && (
               <div style={{ margin: '10px 0 4px', padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.5, textAlign: 'left' as const }}>
@@ -5176,7 +5203,7 @@ export default function CashierPage() {
                     : '⚠️ 未配置自动 KHQR，本次已记录为 KHQR 收款，请确认顾客已实际付款。'}
               </div>
             )}
-            <div style={{ margin: '6px 0 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
+            {!saleResult.networkPrintStatus && <div style={{ margin: '6px 0 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
               {isDesktopPos && saleResult.receipt
                 ? (qzRawBusinessActive
                     ? (lang === 'en'
@@ -5186,7 +5213,7 @@ export default function CashierPage() {
                           : '已生成 80mm 票据：顾客票 → 前台，厨房票 → 厨房（QZ RAW）')
                     : d.receiptReady)
                 : d.receiptNotAuto}
-            </div>
+            </div>}
             {isDesktopPos && saleResult.receipt && qzRawBusinessActive && (
               <div data-qz-dual-queue-print="raw" style={{ marginBottom: 10 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: saleResult.kitchenTicket ? '1fr 1fr' : '1fr', gap: 8 }}>
