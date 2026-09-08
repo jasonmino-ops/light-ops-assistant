@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import QRCode from 'react-qr-code'
 import { publicCustomerEntryUrl } from '@/lib/public-url'
+import { useBrowserFullscreen } from '@/lib/use-browser-fullscreen'
 import { layoutMenuBoard, type BoardRow } from './menu-board-layout'
 import {
   groupElectronicMenu,
@@ -22,34 +23,37 @@ const LANGUAGES: { lang: MenuLang; label: string }[] = [
 ]
 const COPY = {
   zh: {
-    menu: '电子菜单', today: '今日菜单', loading: '正在准备菜单', loadingHint: '美味，即将呈现。',
+    menu: '电子菜单', today: '今日菜单', loading: '正在准备菜单', loadingHint: '正在读取门店商品。',
     invalid: '菜单链接无效', invalidHint: '请使用商家提供的完整菜单链接。',
     unavailable: '菜单暂不可用', unavailableHint: '门店暂未开放，请稍后再看。',
     failed: '暂时无法加载菜单', failedHint: '正在自动重试，请检查网络连接。',
-    empty: '菜单准备中', emptyHint: '新鲜美味，敬请期待。',
+    empty: '暂无可展示商品', emptyHint: '商品更新后将在此显示。',
     offline: '网络已断开', stale: '更新暂不可用 · 当前显示上次菜单',
     retry: '重新加载', live: '菜单已更新', refreshing: '正在更新菜单',
-    scan: '扫码下单', brand: '精选好物 · 每日相伴', recommended: '推荐', page: '页', language: '菜单语言', noImage: '美味待呈现',
+    scan: '扫码下单', recommended: '推荐', page: '页', language: '菜单语言', noImage: '暂无图片',
+    enterFullscreen: '全屏', exitFullscreen: '退出全屏', fullscreenHint: '请使用浏览器菜单中的全屏功能。',
   },
   en: {
-    menu: 'DIGITAL MENU', today: 'On the menu', loading: 'Preparing the menu', loadingHint: 'Something delicious is on its way.',
+    menu: 'DIGITAL MENU', today: 'On the menu', loading: 'Preparing the menu', loadingHint: 'Loading this store’s products.',
     invalid: 'Invalid menu link', invalidHint: 'Please use the complete menu link from the store.',
     unavailable: 'Menu unavailable', unavailableHint: 'This store is currently unavailable. Please check back later.',
     failed: 'Unable to load the menu', failedHint: 'Retrying automatically. Please check the connection.',
-    empty: 'Coming to the menu', emptyHint: 'Fresh favourites are on their way.',
+    empty: 'No items to display', emptyHint: 'Items will appear here when the catalog is updated.',
     offline: 'Connection lost', stale: 'Update unavailable · Showing the last menu',
     retry: 'Try again', live: 'Menu up to date', refreshing: 'Updating menu',
-    scan: 'Scan to order', brand: 'Everyday favourites, thoughtfully selected.', recommended: 'Recommended', page: 'Page', language: 'Menu language', noImage: 'Made to enjoy',
+    scan: 'Scan to order', recommended: 'Recommended', page: 'Page', language: 'Menu language', noImage: 'Image unavailable',
+    enterFullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', fullscreenHint: 'Use the fullscreen option in your browser menu.',
   },
   km: {
-    menu: 'ម៉ឺនុយឌីជីថល', today: 'ម៉ឺនុយថ្ងៃនេះ', loading: 'កំពុងរៀបចំម៉ឺនុយ', loadingHint: 'ម្ហូបឆ្ងាញ់ៗនឹងមកដល់ឆាប់ៗ។',
+    menu: 'ម៉ឺនុយឌីជីថល', today: 'ម៉ឺនុយថ្ងៃនេះ', loading: 'កំពុងរៀបចំម៉ឺនុយ', loadingHint: 'កំពុងផ្ទុកផលិតផលរបស់ហាង។',
     invalid: 'តំណម៉ឺនុយមិនត្រឹមត្រូវ', invalidHint: 'សូមប្រើតំណម៉ឺនុយពេញលេញពីហាង។',
     unavailable: 'ម៉ឺនុយមិនទាន់មាន', unavailableHint: 'ហាងមិនទាន់បើកទេ។ សូមពិនិត្យម្តងទៀតនៅពេលក្រោយ។',
     failed: 'មិនអាចផ្ទុកម៉ឺនុយបាន', failedHint: 'កំពុងព្យាយាមម្តងទៀត។ សូមពិនិត្យការតភ្ជាប់អ៊ីនធឺណិត។',
-    empty: 'កំពុងរៀបចំម៉ឺនុយ', emptyHint: 'ម្ហូបឆ្ងាញ់ៗនឹងមានឆាប់ៗនេះ។',
+    empty: 'មិនមានផលិតផលសម្រាប់បង្ហាញ', emptyHint: 'ផលិតផលនឹងបង្ហាញនៅពេលបញ្ជីត្រូវបានធ្វើបច្ចុប្បន្នភាព។',
     offline: 'បាត់ការតភ្ជាប់', stale: 'មិនអាចធ្វើបច្ចុប្បន្នភាព · កំពុងបង្ហាញម៉ឺនុយចុងក្រោយ',
     retry: 'សាកល្បងម្តងទៀត', live: 'ម៉ឺនុយបានធ្វើបច្ចុប្បន្នភាព', refreshing: 'កំពុងធ្វើបច្ចុប្បន្នភាព',
-    scan: 'ស្កេនដើម្បីបញ្ជាទិញ', brand: 'ជម្រើសល្អៗសម្រាប់រាល់ថ្ងៃ', recommended: 'ណែនាំ', page: 'ទំព័រ', language: 'ភាសាម៉ឺនុយ', noImage: 'រសជាតិឆ្ងាញ់',
+    scan: 'ស្កេនដើម្បីបញ្ជាទិញ', recommended: 'ណែនាំ', page: 'ទំព័រ', language: 'ភាសាម៉ឺនុយ', noImage: 'មិនមានរូបភាព',
+    enterFullscreen: 'ពេញអេក្រង់', exitFullscreen: 'ចាកចេញពេញអេក្រង់', fullscreenHint: 'សូមប្រើមុខងារពេញអេក្រង់នៅក្នុងម៉ឺនុយកម្មវិធីរុករក។',
   },
 }
 
@@ -137,7 +141,7 @@ function ProductRow({ row, lang, currency, columnWidth, fontSize }: { row: Board
   )
 }
 
-function BrandMedia({ data, lang }: { data: ElectronicMenuData; lang: MenuLang }) {
+function BrandMedia({ data }: { data: ElectronicMenuData }) {
   const [failed, setFailed] = useState<string[]>([])
   useEffect(() => { setFailed([]) }, [data])
   const sources = [data.store.bannerUrl, ...data.products.map(product => product.imageUrls[0] || product.imageUrl).filter(Boolean).slice(0, 3)]
@@ -151,8 +155,8 @@ function BrandMedia({ data, lang }: { data: ElectronicMenuData; lang: MenuLang }
         <img src={source} alt={data.store.name} referrerPolicy="no-referrer" onError={() => setFailed(current => [...current, source])} />
       ) : (
         <div className={styles.brandStatement} data-testid="menu-brand-fallback">
-          <span className={styles.brandMonogram} aria-hidden="true">{Array.from(data.store.name.trim())[0] || 'E'}</span>
-          <p>{data.store.promoText || COPY[lang].brand}</p>
+          <span className={styles.brandMonogram} aria-hidden="true">{Array.from(data.store.name.trim())[0]}</span>
+          <p>{data.store.promoText || data.store.name}</p>
         </div>
       )}
     </div>
@@ -169,7 +173,23 @@ export default function ElectronicMenuScreen({ code, initialLang }: { code: stri
   const boardRef = useRef<HTMLDivElement>(null)
   const [boardSize, setBoardSize] = useState({ width: 1200, height: 800 })
   const [pageIndex, setPageIndex] = useState(0)
+  const { isFullscreen, supported: fullscreenSupported, toggleFullscreen } = useBrowserFullscreen()
+  const [fullscreenPending, setFullscreenPending] = useState(false)
+  const [fullscreenFailed, setFullscreenFailed] = useState(false)
   const copy = COPY[lang]
+
+  async function handleFullscreen() {
+    if (fullscreenPending) return
+    setFullscreenPending(true)
+    setFullscreenFailed(false)
+    try {
+      await toggleFullscreen()
+    } catch {
+      setFullscreenFailed(true)
+    } finally {
+      setFullscreenPending(false)
+    }
+  }
 
   useEffect(() => {
     const previous = document.documentElement.lang
@@ -281,7 +301,7 @@ export default function ElectronicMenuScreen({ code, initialLang }: { code: stri
           <h1 className={styles.storeName}>{data?.store.name || copy.today}</h1>
           {data?.store.announcement && <p className={styles.announcement}>{data.store.announcement}</p>}
         </div>
-        {data && <BrandMedia data={data} lang={lang} />}
+        {data && <BrandMedia data={data} />}
         {data && (
           <div className={styles.orderEntry} data-testid="menu-order-entry">
             <div className={styles.qrCode} data-testid="menu-order-qr">
@@ -294,10 +314,22 @@ export default function ElectronicMenuScreen({ code, initialLang }: { code: stri
       <div className={styles.menuPanel}>
         <header className={styles.header}>
           <h2 className={styles.menuTitle}>{copy.today}</h2>
-          <div className={styles.languages} role="group" aria-label={copy.language} data-testid="menu-language">
-            {LANGUAGES.map((option) => (
-              <button key={option.lang} type="button" lang={option.lang} aria-pressed={lang === option.lang} onClick={() => setLang(option.lang)}>{option.label}</button>
-            ))}
+          <div className={styles.controls}>
+            <div className={styles.languages} role="group" aria-label={copy.language} data-testid="menu-language">
+              {LANGUAGES.map((option) => (
+                <button key={option.lang} type="button" lang={option.lang} aria-pressed={lang === option.lang} onClick={() => setLang(option.lang)}>{option.label}</button>
+              ))}
+            </div>
+            <button type="button" className={styles.fullscreenButton} data-testid="menu-fullscreen"
+              onClick={handleFullscreen} disabled={!fullscreenSupported || fullscreenPending}
+              aria-pressed={isFullscreen} aria-label={isFullscreen ? copy.exitFullscreen : copy.enterFullscreen}
+              title={fullscreenSupported ? (isFullscreen ? copy.exitFullscreen : copy.enterFullscreen) : copy.fullscreenHint}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d={isFullscreen ? 'M9 3v6H3m18 0h-6V3M3 15h6v6m6 0v-6h6' : 'M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6'}
+                  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {fullscreenFailed && <span className={styles.fullscreenHint} role="status" data-testid="menu-fullscreen-hint">{copy.fullscreenHint}</span>}
           </div>
         </header>
         <div className={styles.catalog} ref={boardRef}>

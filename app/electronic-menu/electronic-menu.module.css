@@ -1,7 +1,7 @@
 .screen {
   --menu-cream: #f5f1e8;
   --menu-ink: #243c31;
-  --menu-muted: #737a70;
+  --menu-muted: #656e63;
   --menu-gold: #b08648;
   box-sizing: border-box;
   height: 100vh;
@@ -25,17 +25,17 @@
   display: flex;
   flex-direction: column;
   gap: clamp(18px, 2vh, 26px);
-  background: #193e32;
+  background: linear-gradient(160deg, #204638, #173a30 75%);
   color: var(--menu-cream);
 }
 .storeBrand { flex-shrink: 0; min-width: 0; }
 .eyebrow { margin: 0 0 14px; font-size: 11px; font-weight: 650; letter-spacing: .2em; color: #dabd87; }
 .storeName { margin: 0; font-size: clamp(25px, 2.65vw, 51px); line-height: 1.12; font-weight: 600; letter-spacing: -.035em; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .announcement { margin: 18px 0 0; max-width: 34ch; font-size: clamp(12px, 1vw, 18px); line-height: 1.5; color: #d3dcce; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.brandMedia { flex: 1; min-height: 0; overflow: hidden; position: relative; border-top: 1px solid #ffffff29; border-bottom: 1px solid #ffffff29; }
+.brandMedia { flex: 1; min-height: 0; overflow: hidden; position: relative; border: 1px solid #ffffff1c; border-radius: 2px; }
 .brandMedia > img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.brandStatement { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 26px; padding: 20px 0; }
-.brandMonogram { font-size: clamp(64px, 8vw, 156px); line-height: 1; font-family: Georgia, serif; font-style: italic; color: #d9c393; }
+.brandStatement { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 24px; padding: 24px; }
+.brandMonogram { font-size: clamp(64px, 7.5vw, 144px); line-height: 1; font-family: Georgia, serif; font-style: italic; color: #d9c393; }
 .brandStatement p { font-size: clamp(20px, 2vw, 38px); font-weight: 400; line-height: 1.35; letter-spacing: -.025em; margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
 .orderEntry { flex-shrink: 0; display: flex; align-items: center; gap: clamp(12px, 1.1vw, 22px); min-width: 0; }
 .qrCode { padding: 12px; background: #fff; flex-shrink: 0; width: clamp(104px, 10vw, 188px); aspect-ratio: 1; }
@@ -46,6 +46,11 @@
 .menuPanel { min-width: 0; min-height: 0; padding: clamp(18px, 2vw, 38px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 20px; }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding-bottom: 16px; border-bottom: 2px solid var(--menu-ink); }
 .menuTitle { margin: 0; font-size: clamp(20px, 1.7vw, 32px); font-weight: 550; letter-spacing: -.03em; }
+.controls { display: flex; align-items: center; gap: 12px; flex-shrink: 0; position: relative; }
+.fullscreenButton { width: 34px; height: 34px; padding: 8px; display: grid; place-items: center; border: 0; border-radius: 3px; background: transparent; color: var(--menu-muted); }
+.fullscreenButton:hover:not(:disabled) { background: #e7e6dc; color: var(--menu-ink); }
+.fullscreenButton:disabled { opacity: .45; cursor: default; }
+.fullscreenHint { position: absolute; z-index: 2; top: calc(100% + 8px); right: 0; max-width: min(280px, 75vw); width: max-content; padding: 10px 12px; background: var(--menu-ink); color: var(--menu-cream); font-size: 12px; line-height: 1.5; border-radius: 3px; box-shadow: 0 3px 12px #243c3120; }
 .languages { display: flex; gap: 3px; flex-shrink: 0; }
 .languages button { padding: 6px 9px; border: 0; background: transparent; color: var(--menu-muted); font-size: 12px; }
 .languages button[aria-pressed='true'] { color: var(--menu-ink); background: #e4e4d8; border-radius: 3px; font-weight: 650; }
@@ -53,7 +58,7 @@
 .priceList { height: 100%; display: grid; grid-template-columns: repeat(var(--board-columns), minmax(0, 1fr)); align-content: start; }
 .menuColumn { min-width: 0; min-height: 0; }
 .menuGroup { min-width: 0; }
-.categoryHeading { height: var(--heading-height); margin: 0; padding: 5px 0; color: #88642f; border-bottom: 1px solid #c7bea7; font-size: 16px; font-weight: 650; line-height: 21px; letter-spacing: .015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.categoryHeading { height: var(--heading-height); margin: 0; padding: 5px 8px; color: #735225; background: #e9e4d6; border-bottom: 1px solid #d0c6b0; font-size: 17px; font-weight: 650; line-height: 21px; letter-spacing: .015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .productRow { display: flex; align-items: center; gap: 12px; padding: 6px 0; min-width: 0; border-bottom: 1px solid #283b3018; }
 .thumbnail { width: calc(var(--row-font) * 2); height: calc(var(--row-font) * 2); flex-shrink: 0; overflow: hidden; background: #e5e5da; border-radius: 3px; }
 .thumbnail img { width: 100%; height: 100%; display: block; object-fit: cover; }
@@ -66,7 +71,7 @@
 .productSpec { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--menu-muted); font-size: 13px; line-height: 18px; }
 .recommendation { flex-shrink: 0; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #8a642c; font-size: 11px; font-weight: 650; line-height: 18px; }
 .priceRow { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; max-width: 45%; font-variant-numeric: tabular-nums; }
-.price { font-size: var(--row-font); font-weight: 650; line-height: 1.2; letter-spacing: -.035em; white-space: nowrap; max-width: 100%; text-align: right; }
+.price { font-size: var(--row-font); font-weight: 700; line-height: 1.2; letter-spacing: -.01em; white-space: nowrap; max-width: 100%; text-align: right; }
 .originalPrice { font-size: 13px; white-space: nowrap; line-height: 1.25; color: var(--menu-muted); }
 .footer { min-height: 25px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--menu-muted); font-size: 11px; line-height: 1.4; border-top: 1px solid #283b3024; padding-top: 10px; }
 .refreshStatus { display: flex; align-items: center; gap: 7px; min-width: 0; }
@@ -117,5 +122,7 @@
   .header { padding-bottom: 10px; gap: 8px; }
   .menuTitle { font-size: 20px; }
   .languages button { padding: 6px; font-size: 11px; }
+  .controls { gap: 4px; }
+  .fullscreenButton { width: 30px; height: 30px; padding: 6px; }
   .footer { font-size: 10px; }
 }

@@ -223,7 +223,7 @@ test('language changes preserve prices/order without refetch; missing images and
   await page.route('**/api/public/electronic-menu?*', route => { count++; return route.fulfill({ json: data }) })
   await page.goto('/electronic-menu?code=STORE-A&lang=en')
   await expect(page.getByTestId('menu-product-row')).toHaveCount(2)
-  await expect(page.getByLabel('Made to enjoy')).toHaveCount(2)
+  await expect(page.getByLabel('Image unavailable')).toHaveCount(2)
   await page.getByTestId('menu-language').getByRole('button', { name: '中文' }).click()
   await expect(page.getByTestId('menu-product-name').first()).toHaveText('咖啡 1')
   await expect(page.getByTestId('menu-product-price').first()).toContainText('4.50')
@@ -234,7 +234,7 @@ test('language changes preserve prices/order without refetch; missing images and
   await page.clock.fastForward(30_100)
   await expect(page.getByTestId('menu-product-row')).toHaveCount(0)
   await page.getByTestId('menu-language').getByRole('button', { name: 'EN' }).click()
-  await expect(page.getByRole('heading', { name: 'Coming to the menu' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'No items to display' })).toBeVisible()
 })
 
 test('a transient image failure retries the same GIF URL on the next catalog refresh', async ({ page }) => {
@@ -248,7 +248,7 @@ test('a transient image failure retries the same GIF URL on the next catalog ref
     : route.fulfill({ contentType: 'image/gif', body: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64') }))
   await page.route('**/api/public/electronic-menu?*', route => route.fulfill({ json: data }))
   await page.goto('/electronic-menu?code=STORE-A&lang=en')
-  await expect(page.getByLabel('Made to enjoy')).toHaveCount(1)
+  await expect(page.getByLabel('Image unavailable')).toHaveCount(1)
   await page.clock.fastForward(30_100)
   await expect(page.getByTestId('menu-product-row').locator('img')).toBeVisible()
   await expect.poll(() => reads).toBeGreaterThanOrEqual(2)
@@ -549,4 +549,296 @@ test('supported XAF prices keep the full amount and unit readable through the De
       })).toBe(true)
     }
   }
+})
+
+async function expectNativeFullscreen(page: Page, active: boolean) {
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === document.documentElement), {
+    message: active ? 'The browser must enter native document fullscreen' : 'The browser must leave native document fullscreen',
+  }).toBe(active)
+  if (!active) expect(await page.evaluate(() => document.fullscreenElement)).toBeNull()
+}
+
+for (const size of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }]) {
+  test(`native menu fullscreen ${size.width}x${size.height} supports exit and re-entry while pages, refresh, QR, GIF and language remain live`, async ({ page }) => {
+    await page.setViewportSize(size)
+    await page.clock.install()
+    await blockExternal(page)
+    let data = largeMenu(80)
+    const gifURL = `${baseURL}/fullscreen-menu-brand.gif`
+    data.store.bannerUrl = gifURL
+    await page.route('**/fullscreen-menu-brand.gif', route => route.fulfill({
+      contentType: 'image/gif', body: Buffer.from('R0lGODlhAQABAIAAAKa4m7+TfCH/C05FVFNDQVBFMi4wAwEAAAAh+QQEGQAAACwAAAAAAQABAAACAkQBACH5BAQZAAAALAAAAAABAAEAAAICTAEAOw==', 'base64'),
+    }))
+    let reads = 0
+    await page.route('**/api/public/electronic-menu?*', route => { reads++; return route.fulfill({ json: data }) })
+    const errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto('/electronic-menu?code=STORE-A&lang=en')
+    await expect(page.getByTestId('menu-product-row').first()).toBeVisible()
+    const fullscreen = page.getByTestId('menu-fullscreen')
+    await expect(fullscreen).toBeEnabled()
+    await expect(fullscreen).toHaveAttribute('aria-label', 'Fullscreen')
+    await expect(fullscreen).toHaveAttribute('aria-pressed', 'false')
+    const brandImage = page.getByTestId('menu-brand-media').locator('img')
+    await expect(brandImage).toHaveAttribute('src', gifURL)
+    await expect.poll(() => brandImage.evaluate(image => (image as HTMLImageElement).naturalWidth)).toBe(1)
+    await brandImage.evaluate(image => image.setAttribute('data-fullscreen-mount', 'original-gif'))
+    const qrPath = await page.getByTestId('menu-order-qr').locator('svg path').last().getAttribute('d')
+    expect(qrPath).toBeTruthy()
+
+    try {
+      // All success transitions use the real browser API through the real UI.
+      await fullscreen.click()
+      await expectNativeFullscreen(page, true)
+      await expect(fullscreen).toHaveAttribute('aria-pressed', 'true')
+      await expect(fullscreen).toHaveAttribute('aria-label', 'Exit fullscreen')
+      await page.getByTestId('menu-language').getByRole('button', { name: '中文' }).click()
+      await expect(page.getByTestId('menu-product-name').first()).toHaveText('咖啡 1')
+      await expect(page.getByTestId('menu-product-price').first()).toContainText('4.50')
+      await expect(fullscreen).toHaveAttribute('aria-pressed', 'true')
+      await expect(fullscreen).toHaveAttribute('aria-label', '退出全屏')
+      await page.getByTestId('menu-language').getByRole('button', { name: 'EN' }).click()
+      await expect(fullscreen).toHaveAttribute('aria-label', 'Exit fullscreen')
+      await fullscreen.click()
+      await expectNativeFullscreen(page, false)
+      await expect(fullscreen).toHaveAttribute('aria-pressed', 'false')
+      await expect(fullscreen).toHaveAttribute('aria-label', 'Fullscreen')
+      await fullscreen.click()
+      await expectNativeFullscreen(page, true)
+      await expect(fullscreen).toHaveAttribute('aria-label', 'Exit fullscreen')
+      await page.clock.runFor(250) // Let native resize and ResizeObserver settle.
+      expect(reads).toBe(1)
+      const indicator = page.getByTestId('menu-page-indicator')
+      const firstPage = await indicator.getAttribute('aria-label')
+      expect(Number(firstPage!.split('/')[1].trim())).toBeGreaterThan(1)
+      await page.clock.fastForward(15_100)
+      await expect(indicator).not.toHaveAttribute('aria-label', firstPage!)
+      expect(reads).toBe(1)
+
+      data = { ...data, products: data.products.map(product => ({ ...product, nameEn: `${product.nameEn} refreshed` })) }
+      await page.clock.fastForward(15_100)
+      await expect.poll(() => reads).toBe(2)
+      await expect(page.getByTestId('menu-product-name').first()).toContainText('refreshed')
+      await expect(page.getByTestId('menu-refresh-status')).toContainText('Menu up to date')
+      await expectNativeFullscreen(page, true)
+      await expect(fullscreen).toHaveAttribute('aria-pressed', 'true')
+      await expect(brandImage).toHaveAttribute('src', gifURL)
+      await expect(brandImage).toHaveAttribute('data-fullscreen-mount', 'original-gif')
+      const gifFrame = await brandImage.screenshot({ animations: 'allow' })
+      await expect.poll(async () => Buffer.compare(gifFrame, await brandImage.screenshot({ animations: 'allow' })), {
+        timeout: 4_000, message: 'The real animated GIF must continue presenting different frames while fullscreen',
+      }).not.toBe(0)
+      expect(await page.getByTestId('menu-order-qr').locator('svg path').last().getAttribute('d')).toBe(qrPath)
+      await expect(page.getByTestId('menu-order-qr')).toBeVisible()
+      await expect(page.getByTestId('menu-language').getByRole('button', { name: 'EN' })).toHaveAttribute('aria-pressed', 'true')
+      await expect(page.getByTestId('menu-fullscreen-hint')).toHaveCount(0)
+      expect(errors).toEqual([])
+      await fullscreen.click()
+      await expectNativeFullscreen(page, false)
+    } finally {
+      // Native cleanup only; never substitute a fake fullscreen state.
+      await page.evaluate(async () => { if (document.fullscreenElement) await document.exitFullscreen() })
+    }
+  })
+}
+
+test('browser-driven fullscreen exit updates the menu button before a second entry', async ({ page }) => {
+  await blockExternal(page)
+  await page.route('**/api/public/electronic-menu?*', route => route.fulfill({ json: menu() }))
+  await page.goto('/electronic-menu?code=STORE-A&lang=en')
+  const fullscreen = page.getByTestId('menu-fullscreen')
+  await expect(fullscreen).toBeEnabled()
+  try {
+    await fullscreen.click()
+    await expectNativeFullscreen(page, true)
+    // A browser-originated exit must update React without a button click.
+    // This uses the real API/event, not a fake fullscreenElement. Native ESC
+    // is checked separately in ordinary Chrome: CDP's synthetic Escape is
+    // delivered to page content rather than the browser's fullscreen command.
+    await page.evaluate(() => document.exitFullscreen())
+    await expectNativeFullscreen(page, false)
+    await expect(fullscreen).toHaveAttribute('aria-pressed', 'false')
+    await expect(fullscreen).toHaveAttribute('aria-label', 'Fullscreen')
+    await fullscreen.click()
+    await expectNativeFullscreen(page, true)
+    await expect(fullscreen).toHaveAttribute('aria-pressed', 'true')
+    await expect(fullscreen).toHaveAttribute('aria-label', 'Exit fullscreen')
+    await fullscreen.click()
+    await expectNativeFullscreen(page, false)
+  } finally {
+    await page.evaluate(async () => { if (document.fullscreenElement) await document.exitFullscreen() })
+  }
+})
+
+for (const support of ['disabled', 'missing'] as const) {
+test(`unsupported menu fullscreen (${support}) is disabled with a localized browser-menu hint and keeps catalog refresh working`, async ({ page }) => {
+  await page.clock.install()
+  await page.addInitScript((mode) => {
+    if (mode === 'disabled') Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, get: () => false })
+    else Object.defineProperty(Element.prototype, 'requestFullscreen', { configurable: true, value: undefined })
+  }, support)
+  await blockExternal(page)
+  let data = menu()
+  let reads = 0
+  await page.route('**/api/public/electronic-menu?*', route => { reads++; return route.fulfill({ json: data }) })
+  await page.goto('/electronic-menu?code=STORE-A&lang=en')
+  const fullscreen = page.getByTestId('menu-fullscreen')
+  await expect(fullscreen).toBeDisabled()
+  await expect(fullscreen).toHaveAttribute('aria-pressed', 'false')
+  await expect(fullscreen).toHaveAttribute('title', 'Use the fullscreen option in your browser menu.')
+  await expect(page.getByTestId('menu-product-row')).toHaveCount(10)
+  await page.getByTestId('menu-language').getByRole('button', { name: '中文' }).click()
+  await expect(fullscreen).toHaveAttribute('title', '请使用浏览器菜单中的全屏功能。')
+  await expect(fullscreen).toBeDisabled()
+  data = { ...data, products: [{ ...data.products[0], nameZh: '不支持全屏时仍更新' }] }
+  await page.clock.fastForward(30_100)
+  await expect.poll(() => reads).toBe(2)
+  await expect(page.getByTestId('menu-product-name')).toHaveText('不支持全屏时仍更新')
+  await expectNativeFullscreen(page, false)
+})
+
+}
+
+test('denied menu fullscreen leaves its state false, reports a hint and allows retry without interrupting the catalog', async ({ page }) => {
+  await page.clock.install()
+  await page.addInitScript(() => {
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, get: () => true })
+    Object.defineProperty(Element.prototype, 'requestFullscreen', {
+      configurable: true,
+      value: async function () {
+        const root = document.documentElement
+        root.dataset.deniedFullscreenRequests = String(Number(root.dataset.deniedFullscreenRequests ?? '0') + 1)
+        throw new DOMException('Fullscreen denied by test policy boundary', 'NotAllowedError')
+      },
+    })
+  })
+  await blockExternal(page)
+  let data = menu()
+  await page.route('**/api/public/electronic-menu?*', route => route.fulfill({ json: data }))
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto('/electronic-menu?code=STORE-A&lang=en')
+  const fullscreen = page.getByTestId('menu-fullscreen')
+  await expect(fullscreen).toBeEnabled()
+  await fullscreen.click()
+  await expect(page.getByTestId('menu-fullscreen-hint')).toHaveText('Use the fullscreen option in your browser menu.')
+  await expect(fullscreen).toHaveAttribute('aria-pressed', 'false')
+  await expect(fullscreen).toHaveAttribute('aria-label', 'Fullscreen')
+  await expect(fullscreen).toBeEnabled()
+  await expectNativeFullscreen(page, false)
+  await expect(page.getByTestId('menu-product-row')).toHaveCount(10)
+  await fullscreen.click()
+  await expect(page.locator('html')).toHaveAttribute('data-denied-fullscreen-requests', '2')
+  data = { ...data, products: [{ ...data.products[0], nameEn: 'Catalog survives fullscreen denial' }] }
+  await page.clock.fastForward(30_100)
+  await expect(page.getByTestId('menu-product-name')).toHaveText('Catalog survives fullscreen denial')
+  await expect(page.getByTestId('menu-refresh-status')).toContainText('Menu up to date')
+  expect(errors).toEqual([])
+})
+
+test('existing Customer Display enters, exits and re-enters native fullscreen while its POS session polling continues', async ({ page }) => {
+  await page.clock.install()
+  await mockOwner(page)
+  let storeName = 'Customer Display fullscreen regression'
+  let polls = 0
+  await page.route('**/api/pos/session/current?*', route => {
+    polls++
+    expect(new URL(route.request().url()).searchParams.get('storeCode')).toBe('STORE-A')
+    return route.fulfill({ json: { storeCode: 'STORE-A', storeName, serverNow: new Date().toISOString(), session: null, displayProducts: [] } })
+  })
+  await page.goto('/desktop/display?storeCode=STORE-A&lang=en')
+  await expect(page.getByText(storeName, { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Waiting for items', { exact: true })).toBeVisible()
+  try {
+    await page.getByRole('button', { name: 'Fullscreen', exact: true }).click()
+    await expectNativeFullscreen(page, true)
+    await expect(page.getByRole('button', { name: 'Exit fullscreen', exact: true })).toBeVisible()
+    const before = polls
+    storeName = 'Customer Display still receiving updates'
+    await page.clock.fastForward(900)
+    await expect.poll(() => polls).toBeGreaterThan(before)
+    await expect(page.getByText(storeName, { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('Waiting for items', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Exit fullscreen', exact: true }).click()
+    await expectNativeFullscreen(page, false)
+    await page.getByRole('button', { name: 'Fullscreen', exact: true }).click()
+    await expectNativeFullscreen(page, true)
+    const beforeReentry = polls
+    await page.clock.fastForward(900)
+    await expect.poll(() => polls).toBeGreaterThan(beforeReentry)
+    await expect(page.getByTestId('electronic-menu-screen')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Exit fullscreen', exact: true }).click()
+    await expectNativeFullscreen(page, false)
+  } finally {
+    await page.evaluate(async () => { if (document.fullscreenElement) await document.exitFullscreen() })
+  }
+})
+
+test('cashier keeps its existing browser fullscreen flow and order polling without the menu hook', async ({ page }) => {
+  await page.clock.install()
+  await mockOwner(page)
+  let accessReads = 0
+  let orderPolls = 0
+  let pendingPolls = 0
+  await page.route('**/api/cashier/**', route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/cashier/access') { accessReads++; return route.fulfill({ json: { ok: true } }) }
+    if (path === '/api/cashier/store') return route.fulfill({ json: {
+      storeCode: 'STORE-A', storeId: 'fullscreen-store', tenantId: 'fullscreen-tenant',
+      storeName: 'Cashier fullscreen regression', currencyCode: 'USD', printKitchenTicket: false,
+      categories: [], products: [{
+        id: 'fullscreen-product', barcode: 'FULLSCREEN-COFFEE', name: 'Fullscreen regression coffee',
+        spec: '350 ml', sellPrice: 4.5, categoryId: null, imageUrl: null, status: 'ACTIVE',
+      }],
+    } })
+    if (path === '/api/cashier/orders') { orderPolls++; return route.fulfill({ json: [] }) }
+    if (path === '/api/cashier/pending-orders') { pendingPolls++; return route.fulfill({ json: [] }) }
+    return route.fulfill({ json: {} })
+  })
+  await page.goto('/cashier?storeCode=STORE-A')
+  await page.locator('[aria-label="Desktop POS language switch"]').getByRole('button', { name: 'EN', exact: true }).click()
+  await expect(page.getByText('Cashier fullscreen regression', { exact: true })).toBeVisible()
+  await expect(page.getByText('Fullscreen regression coffee', { exact: true })).toBeVisible()
+  expect(accessReads).toBeGreaterThanOrEqual(1)
+  expect(await page.evaluate(() => Boolean((window as Window & { eshopDesktopEmployeeFullscreen?: unknown }).eshopDesktopEmployeeFullscreen))).toBe(false)
+  try {
+    await page.getByRole('button', { name: 'Enter full screen', exact: true }).click()
+    await expectNativeFullscreen(page, true)
+    await expect(page.getByRole('button', { name: 'Exit full screen', exact: true })).toBeVisible()
+    const before = { orders: orderPolls, pending: pendingPolls }
+    await page.clock.fastForward(5_100)
+    await expect.poll(() => orderPolls).toBeGreaterThan(before.orders)
+    await expect.poll(() => pendingPolls).toBeGreaterThan(before.pending)
+    await expect(page.getByText('Fullscreen regression coffee', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Exit full screen', exact: true }).click()
+    await expectNativeFullscreen(page, false)
+    await page.getByRole('button', { name: 'Enter full screen', exact: true }).click()
+    await expectNativeFullscreen(page, true)
+    await expect(page.getByTestId('menu-fullscreen')).toHaveCount(0)
+    await expect(page.getByTestId('electronic-menu-screen')).toHaveCount(0)
+    await expect(page.getByText('Cashier fullscreen regression', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Exit full screen', exact: true }).click()
+    await expectNativeFullscreen(page, false)
+  } finally {
+    await page.evaluate(async () => { if (document.fullscreenElement) await document.exitFullscreen() })
+  }
+})
+
+
+test('store and product display use only supplied catalog fields with no invented branding or specifications', async ({ page }) => {
+  await blockExternal(page)
+  const data = menu()
+  data.store = { ...data.store, name: '青叶生活馆 · TEST', announcement: null, promoText: null, bannerUrl: null }
+  data.categories = [{ id: 'care', name: '护理用品', parentId: null, sortOrder: 0 }]
+  data.products = [{ ...data.products[0], name: '护理梳', nameZh: '护理梳', nameEn: null, nameKm: null, spec: null,
+    categoryId: 'care', imageUrl: null, imageUrls: [], price: 8, originalPrice: 8, discountEnabled: false, isRecommended: false }]
+  await page.route('**/api/public/electronic-menu?*', route => route.fulfill({ json: data }))
+  await page.goto('/electronic-menu?code=STORE-A&lang=zh')
+  await expect(page.getByTestId('menu-brand-fallback')).toContainText(data.store.name)
+  await expect(page.getByTestId('menu-product-name')).toHaveText('护理梳')
+  await expect(page.getByTestId('menu-product-price')).toHaveText('$8.00')
+  await expect(page.getByRole('heading', { name: '护理用品', exact: true })).toBeVisible()
+  await expect(page.getByTestId('menu-product-row').locator('del')).toHaveCount(0)
+  await expect(page.getByTestId('menu-product-row')).not.toContainText('推荐')
+  await expect(page.locator('main')).not.toContainText(/MORNING COFFEE|House coffee|350 ml|Seasonal|精选好物|Freshly brewed|Everyday favourites/)
 })
