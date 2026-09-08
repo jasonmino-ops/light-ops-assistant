@@ -291,6 +291,80 @@
       "expirationCondition": "After the actual Network Print V0.1 feature merge, close this grant, the prior journal grant and PRIMARY explicitly, retaining actual merge SHA and audit history. Closing only the top level is insufficient. No standing authorization after final freeze; no future scope.",
       "createdOnBranch": "codex/es-print-network-first-01-modes-governance",
       "governanceBaseOriginMainSha": "1fa15488613011a7265483b3f62d6d5b30176329"
+    },
+    {
+      "authorizationId": "NETWORK-SERVER-V01-RELEASE-15",
+      "featureBranch": "codex/es-network-server-v01-release",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "1b05e6cddc5f9dbf8be7bc861cc50de60b1f9061",
+      "status": "ACTIVE",
+      "authorizedPaths": [
+        "app/api/cashier/sales/route.ts",
+        "app/api/es-tray-02/print-jobs/[jobId]/executing/route.ts",
+        "app/api/es-tray-02/print-jobs/[jobId]/result/route.ts",
+        "app/api/es-tray-02/print-jobs/receive/route.ts",
+        "app/cashier/page.tsx",
+        "docs/acceptance/ES-PRINT-NETWORK-FIRST-01 Server V0.1 Release and Operations V1.0.md",
+        "e-shop-tray/src/networkContract.ts",
+        "lib/es-tray-relay/auth.ts",
+        "lib/es-tray-relay/cashier-network-producer.ts",
+        "lib/es-tray-relay/contract.ts",
+        "lib/es-tray-relay/service.ts",
+        "tests/cashier-network-print-v01.test.ts",
+        "tests/es-tray-device-print-contract.test.ts",
+        "tests/network-release-deployment-policy.test.cjs",
+        "vercel.json"
+      ],
+      "authorizedPathSha256": {
+        "app/api/cashier/sales/route.ts": "91f0f5e51f161ab695dee3af464415ec8864d475ceeb0ae45f662b8497ab6a00",
+        "app/api/es-tray-02/print-jobs/[jobId]/executing/route.ts": "9a472ad9015101f08fa715105b7712f6aaa97c060e235c5d4f91b4ad57fd5e77",
+        "app/api/es-tray-02/print-jobs/[jobId]/result/route.ts": "7e90b3c4619c86c2b6735d76fabbb1d8bbdddf7296e21f10fcd7ac3080335c31",
+        "app/api/es-tray-02/print-jobs/receive/route.ts": "e68c7f43d90555cfc5adb8273f5d365ae33e057c88d08a165037d92c68324aeb",
+        "app/cashier/page.tsx": "2b1da596b8cc9c11346e797201ea46f5016ab180cdb9cefffda127115aa1d1d7",
+        "docs/acceptance/ES-PRINT-NETWORK-FIRST-01 Server V0.1 Release and Operations V1.0.md": "fc32fd659cd7e2d6138910c021aa961be3d2095d21ca63150959178c091d68b6",
+        "e-shop-tray/src/networkContract.ts": "c960059e98ed3e84414bd3f5a5529b2b9662b6a875c57f1c89e95041980f5944",
+        "lib/es-tray-relay/auth.ts": "6e4380238d2d2b7ce7512caf32611ff69ea2528f5ca54c26234d7f57c6d19d35",
+        "lib/es-tray-relay/cashier-network-producer.ts": "b46a960fa0e766795bcc592da8a9e82ab0be2a6976a1723b85a4b764772ad405",
+        "lib/es-tray-relay/contract.ts": "7aaa3a61cb2ac8d5448fde6b7d02df2149185cc28f2214b760b88717a552da2c",
+        "lib/es-tray-relay/service.ts": "a8d76f7e7b98284a8c2a21796b327772c2db241fe8eb8ac6a98ed5dbf5c56686",
+        "tests/cashier-network-print-v01.test.ts": "f55a410611a8620cd13b0ab64d2e84af05ed8bcc48dce03d8aa8687f9ff8a4f2",
+        "tests/es-tray-device-print-contract.test.ts": "a47ad551084f8d249e231fbf0d1d3ba74e3d496629caa0bcc46cd6c407d73623",
+        "tests/network-release-deployment-policy.test.cjs": "fd7fef59334b94f59b2b90ae9ba9bd145ec7f4687c44971a95e3d8a64af63851",
+        "vercel.json": "74a6956503d009e5bf49b7aeb65ed18e6e7f00a26f233e84473075ae89ef4a39"
+      },
+      "createdAt": "2026-09-08T20:05:17.000Z",
+      "approvedAt": "2026-09-08T20:05:17.000Z",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Exact server-only V0.1 release: twelve reviewed source/test files unchanged from 6a6c784, scoped no-Preview branch configuration/test, and operations record. No installer, Desktop, schema, old Windows transport or printing-core changes.",
+      "createdOnBranch": "codex/es-network-server-v01-governance",
+      "approvedContentMappingSha256": "8732a0a54dab611c472981b77db33b36796ea46144cf6b4211bede56c7fa2648",
+      "approvalSource": {
+        "source": "Explicit Founder server release authorization in this task, reaffirmed by commercial-delivery instruction",
+        "statement": "授权完成本任务必要的精确治理登记、代码提交、push、main合并及 Production部署；全部门禁通过后直接执行。",
+        "timestampMeaning": "Registration time, not a fabricated historical message timestamp"
+      },
+      "sourceDraft": {
+        "path": "/private/tmp/es-network-server-v01-release",
+        "startingHead": "1b05e6cddc5f9dbf8be7bc861cc50de60b1f9061",
+        "reviewedSourceCommit": "6a6c784d479255182402f429059537a0059d92a1",
+        "fileCount": 15,
+        "exactPriorSourceFiles": 12
+      },
+      "allowedPurposes": [
+        "Atomic online cashier sale and FRONT_ONLY/SHARED_PRINTER task creation; existing Relay ledger/ACK reused",
+        "Strict v1 Windows and network-v2 schema/client isolation; no host/port in cloud task",
+        "Default-off operational opt-in after local configuration and one Agent per store",
+        "Disable automatic Preview for only the named release branch while shared Preview credentials remain unsafe",
+        "Document stop/fallback and original-order manual handling; never resubmit a sale for paper"
+      ],
+      "prohibitedChanges": [
+        "Desktop 0.4.7, QZ, USB, Windows transport or installer implementations",
+        "Schema/migration, renderer/encoder/template, H5/offline/member-balance scope",
+        "Cloud network endpoints, multi-Agent assignment, auto-reprint UNKNOWN",
+        "Production secrets, broad Preview changes, new auth or updater"
+      ],
+      "expirationCondition": "Close this authorization after actual server feature merge and preserve the actual merge SHA. Old draft grants remain historical and must also be closed for the completed server scope; formal Add-on needs a distinct exact authorization."
     }
   ]
 }
