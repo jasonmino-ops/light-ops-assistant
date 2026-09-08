@@ -1,20 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import QRCode from 'react-qr-code'
+import { publicCustomerEntryUrl } from '@/lib/public-url'
+import { layoutMenuBoard, type BoardRow } from './menu-board-layout'
 import {
   groupElectronicMenu,
   MENU_REFRESH_MS,
-  menuProductDescription,
   menuProductName,
   type ElectronicMenuData,
-  type ElectronicMenuProduct,
   type MenuLang,
 } from '@/lib/electronic-menu'
 import { formatMoney } from '@/lib/currency'
 import { shouldShowRecommendationBadge } from '@/lib/product-recommendation'
 import styles from './electronic-menu.module.css'
 
-const PAGE_MS = 12_000
+const PAGE_MS = 15_000
 const REQUEST_TIMEOUT_MS = 10_000
 const LANGUAGES: { lang: MenuLang; label: string }[] = [
   { lang: 'zh', label: '中文' }, { lang: 'en', label: 'EN' }, { lang: 'km', label: 'ខ្មែរ' },
@@ -28,7 +29,7 @@ const COPY = {
     empty: '菜单准备中', emptyHint: '新鲜美味，敬请期待。',
     offline: '网络已断开', stale: '更新暂不可用 · 当前显示上次菜单',
     retry: '重新加载', live: '菜单已更新', refreshing: '正在更新菜单',
-    recommended: '推荐', page: '页', language: '菜单语言', noImage: '美味待呈现',
+    scan: '扫码下单', brand: '精选好物 · 每日相伴', recommended: '推荐', page: '页', language: '菜单语言', noImage: '美味待呈现',
   },
   en: {
     menu: 'DIGITAL MENU', today: 'On the menu', loading: 'Preparing the menu', loadingHint: 'Something delicious is on its way.',
@@ -38,7 +39,7 @@ const COPY = {
     empty: 'Coming to the menu', emptyHint: 'Fresh favourites are on their way.',
     offline: 'Connection lost', stale: 'Update unavailable · Showing the last menu',
     retry: 'Try again', live: 'Menu up to date', refreshing: 'Updating menu',
-    recommended: 'Recommended', page: 'Page', language: 'Menu language', noImage: 'Made to enjoy',
+    scan: 'Scan to order', brand: 'Everyday favourites, thoughtfully selected.', recommended: 'Recommended', page: 'Page', language: 'Menu language', noImage: 'Made to enjoy',
   },
   km: {
     menu: 'ម៉ឺនុយឌីជីថល', today: 'ម៉ឺនុយថ្ងៃនេះ', loading: 'កំពុងរៀបចំម៉ឺនុយ', loadingHint: 'ម្ហូបឆ្ងាញ់ៗនឹងមកដល់ឆាប់ៗ។',
@@ -48,12 +49,11 @@ const COPY = {
     empty: 'កំពុងរៀបចំម៉ឺនុយ', emptyHint: 'ម្ហូបឆ្ងាញ់ៗនឹងមានឆាប់ៗនេះ។',
     offline: 'បាត់ការតភ្ជាប់', stale: 'មិនអាចធ្វើបច្ចុប្បន្នភាព · កំពុងបង្ហាញម៉ឺនុយចុងក្រោយ',
     retry: 'សាកល្បងម្តងទៀត', live: 'ម៉ឺនុយបានធ្វើបច្ចុប្បន្នភាព', refreshing: 'កំពុងធ្វើបច្ចុប្បន្នភាព',
-    recommended: 'ណែនាំ', page: 'ទំព័រ', language: 'ភាសាម៉ឺនុយ', noImage: 'រសជាតិឆ្ងាញ់',
+    scan: 'ស្កេនដើម្បីបញ្ជាទិញ', brand: 'ជម្រើសល្អៗសម្រាប់រាល់ថ្ងៃ', recommended: 'ណែនាំ', page: 'ទំព័រ', language: 'ភាសាម៉ឺនុយ', noImage: 'រសជាតិឆ្ងាញ់',
   },
 }
 
 type LoadError = 'invalid' | 'unavailable' | 'refresh' | 'offline' | null
-type CatalogItem = { product: ElectronicMenuProduct; category: string }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -83,13 +83,6 @@ function isCatalog(value: unknown, code: string): value is ElectronicMenuData {
       && nullableText(category.parentId) && typeof category.sortOrder === 'number')
 }
 
-function itemsPerPage(width: number, height: number) {
-  const columns = width >= 1600 ? 4 : width >= 1100 ? 3 : width >= 680 ? 2 : 1
-  // Small 16:9 browser windows still need room for two-line names and prices.
-  const rows = width >= 680 && height < 650 ? 1 : 2
-  return columns * rows
-}
-
 function isOffline() {
   return navigator.onLine === false
 }
@@ -103,45 +96,66 @@ function MenuMark({ decorative = false }: { decorative?: boolean }) {
   )
 }
 
-function ProductCard({ item, lang, currency }: { item: CatalogItem; lang: MenuLang; currency: string }) {
-  const { product, category } = item
+function ProductRow({ row, lang, currency, columnWidth, fontSize }: { row: BoardRow; lang: MenuLang; currency: string; columnWidth: number; fontSize: number }) {
+  const { product } = row
   const name = menuProductName(product, lang)
-  const description = [product.spec, menuProductDescription(product, lang)].filter(Boolean).join(' · ')
+  const price = formatMoney(product.price, currency)
+  const originalPrice = formatMoney(product.originalPrice, currency)
+  // Keep long supported currency amounts on one line, including on a narrow
+  // screen. Only typography adapts; formatted values remain unchanged.
+  const priceWidth = Math.min(columnWidth * .45, Math.max(64, price.length * fontSize * .65, originalPrice.length * 13 * .65))
+  const priceFont = Math.min(fontSize, priceWidth / (price.length * .65))
+  const originalPriceFont = Math.min(13, priceWidth / (originalPrice.length * .65))
   const source = product.imageUrls[0] || product.imageUrl || null
   const [failedSource, setFailedSource] = useState<string | null>(null)
-  const showImage = source && source !== failedSource
-
-  // A fresh catalog response retries a transient image failure, even when the
-  // stored URL is unchanged and this single-page card never unmounts.
   useEffect(() => { setFailedSource(null) }, [product])
 
   return (
-    <article className={styles.productCard} data-product-id={product.id} data-testid="menu-product-card">
-      <div className={styles.productVisual}>
-        {showImage ? (
-          // Preserve existing product image/GIF behavior without new media services.
+    <article className={styles.productRow} data-product-id={product.id} data-testid="menu-product-row"
+      style={{ height: row.height, '--name-lines': row.lines } as CSSProperties}>
+      <div className={styles.thumbnail}>
+        {source && source !== failedSource ? (
+          // Preserve existing image/GIF URLs without a new media service.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={source} alt={name} className={styles.productImage} referrerPolicy="no-referrer" onError={() => setFailedSource(source)} />
-        ) : (
-          <div className={styles.imagePlaceholder} aria-label={COPY[lang].noImage}>
-            <MenuMark decorative />
-            <span>{COPY[lang].noImage}</span>
-          </div>
-        )}
-        <span className={styles.categoryTag}>{category}</span>
-        {shouldShowRecommendationBadge(product) && <span className={styles.recommendation}>{COPY[lang].recommended}</span>}
+          <img src={source} alt={name} referrerPolicy="no-referrer" onError={() => setFailedSource(source)} />
+        ) : <span className={styles.thumbnailFallback} aria-label={COPY[lang].noImage}><MenuMark decorative /></span>}
       </div>
       <div className={styles.productInfo}>
         <h3 className={styles.productName} title={name} data-testid="menu-product-name">{name}</h3>
-        {description && <p className={styles.productDescription} title={description}>{description}</p>}
-        <div className={styles.priceRow}>
-          <strong className={styles.price} data-testid="menu-product-price">{formatMoney(product.price, currency)}</strong>
-          {product.discountEnabled && product.price < product.originalPrice && (
-            <del className={styles.originalPrice}>{formatMoney(product.originalPrice, currency)}</del>
-          )}
+        <div className={styles.productDetails}>
+          {product.spec && <span className={styles.productSpec} title={product.spec}>{product.spec}</span>}
+          {shouldShowRecommendationBadge(product) && <span className={styles.recommendation}>{COPY[lang].recommended}</span>}
         </div>
       </div>
+      <div className={styles.priceRow} style={{ width: priceWidth }}>
+        <strong className={styles.price} style={{ fontSize: priceFont }} data-testid="menu-product-price">{price}</strong>
+        {product.discountEnabled && product.price < product.originalPrice && (
+          <del className={styles.originalPrice} style={{ fontSize: originalPriceFont }}>{originalPrice}</del>
+        )}
+      </div>
     </article>
+  )
+}
+
+function BrandMedia({ data, lang }: { data: ElectronicMenuData; lang: MenuLang }) {
+  const [failed, setFailed] = useState<string[]>([])
+  useEffect(() => { setFailed([]) }, [data])
+  const sources = [data.store.bannerUrl, ...data.products.map(product => product.imageUrls[0] || product.imageUrl).filter(Boolean).slice(0, 3)]
+  const source = sources.find((value): value is string => !!value && !failed.includes(value))
+  return (
+    <div className={styles.brandMedia} data-testid="menu-brand-media">
+      {source ? (
+        // Banner and product image/GIF URLs already belong to the public catalog.
+        // No video type is available in this DTO; video remains deferred.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={source} alt={data.store.name} referrerPolicy="no-referrer" onError={() => setFailed(current => [...current, source])} />
+      ) : (
+        <div className={styles.brandStatement} data-testid="menu-brand-fallback">
+          <span className={styles.brandMonogram} aria-hidden="true">{Array.from(data.store.name.trim())[0] || 'E'}</span>
+          <p>{data.store.promoText || COPY[lang].brand}</p>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -152,7 +166,8 @@ export default function ElectronicMenuScreen({ code, initialLang }: { code: stri
   const [refreshing, setRefreshing] = useState(false)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [retry, setRetry] = useState(0)
-  const [pageSize, setPageSize] = useState(8)
+  const boardRef = useRef<HTMLDivElement>(null)
+  const [boardSize, setBoardSize] = useState({ width: 1200, height: 800 })
   const [pageIndex, setPageIndex] = useState(0)
   const copy = COPY[lang]
 
@@ -163,10 +178,16 @@ export default function ElectronicMenuScreen({ code, initialLang }: { code: stri
   }, [lang])
 
   useEffect(() => {
-    const resize = () => setPageSize(itemsPerPage(window.innerWidth, window.innerHeight))
+    const board = boardRef.current
+    if (!board) return
+    const resize = () => {
+      const { width, height } = board.getBoundingClientRect()
+      setBoardSize(current => current.width === width && current.height === height ? current : { width, height })
+    }
     resize()
-    window.addEventListener('resize', resize)
-    return () => window.removeEventListener('resize', resize)
+    const observer = new ResizeObserver(resize)
+    observer.observe(board)
+    return () => observer.disconnect()
   }, [])
 
   useEffect(() => {
@@ -230,15 +251,11 @@ export default function ElectronicMenuScreen({ code, initialLang }: { code: stri
     }
   }, [code, retry])
 
-  const pages = useMemo(() => {
-    const items = data ? groupElectronicMenu(data, lang).flatMap((group) => group.items.map((product) => ({ product, category: group.title }))) : []
-    const result: CatalogItem[][] = []
-    for (let offset = 0; offset < items.length; offset += pageSize) result.push(items.slice(offset, offset + pageSize))
-    return result
-  }, [data, lang, pageSize])
+  const layout = useMemo(() => layoutMenuBoard(
+    data ? groupElectronicMenu(data, lang) : [], boardSize.width, boardSize.height, lang,
+  ), [data, lang, boardSize])
+  const { pages } = layout
   const currentIndex = pages.length ? pageIndex % pages.length : 0
-  const currentItems = pages[currentIndex] ?? []
-  const categoryHeading = Array.from(new Set(currentItems.map((item) => item.category))).join(' · ')
 
   useEffect(() => {
     setPageIndex(0)
@@ -247,7 +264,7 @@ export default function ElectronicMenuScreen({ code, initialLang }: { code: stri
       if (!document.hidden) setPageIndex((current) => (current + 1) % pages.length)
     }, PAGE_MS)
     return () => clearInterval(timer)
-  }, [pages.length, pageSize, lang])
+  }, [pages.length, boardSize, lang])
 
   const state = error === 'invalid' ? 'invalid' : error === 'unavailable' ? 'unavailable'
     : !data && error ? 'failed' : !data ? 'loading' : 'empty'
@@ -258,48 +275,64 @@ export default function ElectronicMenuScreen({ code, initialLang }: { code: stri
 
   return (
     <main className={styles.screen} data-electronic-menu="true" data-testid="electronic-menu-screen" lang={lang === 'zh' ? 'zh-CN' : lang}>
-      <header className={styles.header}>
+      <aside className={styles.brandPanel} data-testid="menu-brand-panel">
         <div className={styles.storeBrand}>
-          <span className={styles.brandMark}><MenuMark decorative /></span>
-          <div className={styles.brandText}>
-            <p className={styles.eyebrow}>{copy.menu}</p>
-            <h1 className={styles.storeName}>{data?.store.name || copy.today}</h1>
-          </div>
-        </div>
-        <div className={styles.languages} role="group" aria-label={copy.language} data-testid="menu-language">
-          {LANGUAGES.map((option) => (
-            <button key={option.lang} type="button" lang={option.lang} aria-pressed={lang === option.lang} onClick={() => setLang(option.lang)}>{option.label}</button>
-          ))}
-        </div>
-      </header>
-
-      {data && data.products.length > 0 ? (
-        <section className={styles.catalog} aria-label={copy.today}>
-          <div className={styles.sectionHeading}>
-            <div className={styles.categoryHeading}><span className={styles.headingAccent} /><h2 title={categoryHeading}>{categoryHeading}</h2></div>
-            {data.store.promoText && <p className={styles.promoText}>{data.store.promoText}</p>}
-          </div>
-          <div className={styles.productGrid} key={`${currentIndex}:${pageSize}:${lang}`} data-menu-page={currentIndex + 1}>
-            {currentItems.map((item) => <ProductCard key={item.product.id} item={item} lang={lang} currency={data.store.currencyCode} />)}
-          </div>
-        </section>
-      ) : (
-        <section className={styles.emptyState} aria-live="polite" aria-busy={state === 'loading'}>
-          <div className={styles.stateMark}><MenuMark decorative /></div>
           <p className={styles.eyebrow}>{copy.menu}</p>
-          <h2>{stateTitle}</h2>
-          <p>{stateHint}</p>
-          {state === 'failed' && <button type="button" className={styles.retryButton} disabled={refreshing} onClick={() => setRetry((value) => value + 1)}>{copy.retry}</button>}
-        </section>
-      )}
+          <h1 className={styles.storeName}>{data?.store.name || copy.today}</h1>
+          {data?.store.announcement && <p className={styles.announcement}>{data.store.announcement}</p>}
+        </div>
+        {data && <BrandMedia data={data} lang={lang} />}
+        {data && (
+          <div className={styles.orderEntry} data-testid="menu-order-entry">
+            <div className={styles.qrCode} data-testid="menu-order-qr">
+              <QRCode value={publicCustomerEntryUrl(data.store.code)} size={160} level="M" title={copy.scan} />
+            </div>
+            <div><p>{copy.scan}</p><span>{data.store.name}</span></div>
+          </div>
+        )}
+      </aside>
+      <div className={styles.menuPanel}>
+        <header className={styles.header}>
+          <h2 className={styles.menuTitle}>{copy.today}</h2>
+          <div className={styles.languages} role="group" aria-label={copy.language} data-testid="menu-language">
+            {LANGUAGES.map((option) => (
+              <button key={option.lang} type="button" lang={option.lang} aria-pressed={lang === option.lang} onClick={() => setLang(option.lang)}>{option.label}</button>
+            ))}
+          </div>
+        </header>
+        <div className={styles.catalog} ref={boardRef}>
+          {data && data.products.length > 0 ? (
+            <section className={styles.priceList} aria-label={copy.today} data-menu-page={currentIndex + 1}
+              style={{ '--board-columns': layout.columns, '--row-font': layout.fontSize + 'px', '--heading-height': layout.headingHeight + 'px', gap: layout.gap } as CSSProperties}>
+              {(pages[currentIndex] ?? []).map((sections, column) => (
+                <div className={styles.menuColumn} key={column} data-testid="menu-column">
+                  {sections.map(section => (
+                    <section className={styles.menuGroup} key={section.id}>
+                      <h2 className={styles.categoryHeading} title={section.title}>{section.title}</h2>
+                      {section.rows.map(row => <ProductRow key={row.product.id} row={row} lang={lang} currency={data.store.currencyCode} columnWidth={layout.columnWidth} fontSize={layout.fontSize} />)}
+                    </section>
+                  ))}
+                </div>
+              ))}
+            </section>
+          ) : (
+            <section className={styles.emptyState} aria-live="polite" aria-busy={state === 'loading'}>
+              <p className={styles.eyebrow}>{copy.menu}</p>
+              <h2>{stateTitle}</h2>
+              <p>{stateHint}</p>
+              {state === 'failed' && <button type="button" className={styles.retryButton} disabled={refreshing} onClick={() => setRetry((value) => value + 1)}>{copy.retry}</button>}
+            </section>
+          )}
+        </div>
 
       <footer className={styles.footer}>
         <div className={`${styles.refreshStatus} ${error ? styles.refreshError : ''}`} role="status" data-testid="menu-refresh-status" title={updatedAt ? updatedAt.toLocaleTimeString() : undefined}>
           <span className={styles.statusDot} /><span>{statusText}</span>
         </div>
-        {data?.store.announcement && <p className={styles.announcement} title={data.store.announcement}>{data.store.announcement}</p>}
+
         {pages.length > 0 && <div className={styles.pagination} data-testid="menu-page-indicator" aria-label={`${copy.page} ${currentIndex + 1} / ${pages.length}`}><strong>{String(currentIndex + 1).padStart(2, '0')}</strong><span>/ {String(pages.length).padStart(2, '0')}</span></div>}
       </footer>
+      </div>
     </main>
   )
 }
