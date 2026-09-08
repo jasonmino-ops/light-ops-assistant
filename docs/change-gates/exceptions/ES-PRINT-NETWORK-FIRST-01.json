@@ -190,6 +190,107 @@
         "Production configuration, deployment, formal EXE or installer"
       ],
       "expirationCondition": "Close this successor authorization and the task exception after actual Network Print V0.1 feature merge, retaining actual merge SHA and audit history. No future feature authorization; must not remain active beyond final freeze."
+    },
+    {
+      "authorizationId": "NETWORK-V01-SINGLE-PRINTER-MODES-24",
+      "featureBranch": "codex/es-network-print-v01-modes-draft",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "b67686bd4645cb29173dd09c8f0da94c0c3f40e4",
+      "status": "ACTIVE",
+      "authorizedPaths": [
+        "app/api/cashier/sales/route.ts",
+        "app/api/es-tray-02/print-jobs/[jobId]/executing/route.ts",
+        "app/api/es-tray-02/print-jobs/[jobId]/result/route.ts",
+        "app/api/es-tray-02/print-jobs/receive/route.ts",
+        "app/cashier/page.tsx",
+        "e-shop-tray/package-lock.json",
+        "e-shop-tray/package.json",
+        "e-shop-tray/scripts/build-network-v01.mjs",
+        "e-shop-tray/src/cloudRelayClient.ts",
+        "e-shop-tray/src/executionJournal.ts",
+        "e-shop-tray/src/main.ts",
+        "e-shop-tray/src/networkContract.ts",
+        "e-shop-tray/src/networkNodeConfig.ts",
+        "e-shop-tray/src/networkRenderPreload.tsx",
+        "e-shop-tray/src/printing/networkRawTcpTransport.ts",
+        "e-shop-tray/src/relayPoller.ts",
+        "e-shop-tray/tests/execution-journal.test.ts",
+        "e-shop-tray/tests/network-print-v01.test.ts",
+        "lib/es-tray-relay/auth.ts",
+        "lib/es-tray-relay/cashier-network-producer.ts",
+        "lib/es-tray-relay/contract.ts",
+        "lib/es-tray-relay/service.ts",
+        "tests/cashier-network-print-v01.test.ts",
+        "tests/es-tray-device-print-contract.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "app/api/cashier/sales/route.ts": "91f0f5e51f161ab695dee3af464415ec8864d475ceeb0ae45f662b8497ab6a00",
+        "app/api/es-tray-02/print-jobs/[jobId]/executing/route.ts": "9a472ad9015101f08fa715105b7712f6aaa97c060e235c5d4f91b4ad57fd5e77",
+        "app/api/es-tray-02/print-jobs/[jobId]/result/route.ts": "7e90b3c4619c86c2b6735d76fabbb1d8bbdddf7296e21f10fcd7ac3080335c31",
+        "app/api/es-tray-02/print-jobs/receive/route.ts": "e68c7f43d90555cfc5adb8273f5d365ae33e057c88d08a165037d92c68324aeb",
+        "app/cashier/page.tsx": "2b1da596b8cc9c11346e797201ea46f5016ab180cdb9cefffda127115aa1d1d7",
+        "e-shop-tray/package-lock.json": "68e8bc816774d9b26a699bf04d7d915dc35d5c7315e797705e7b29114c41807b",
+        "e-shop-tray/package.json": "5923542791c8efe3703728643a79aef79069fbabee6ed0a12fe623c6d2f98e08",
+        "e-shop-tray/scripts/build-network-v01.mjs": "8ae538e5c261749045682fd8b79b5b33dd7d6a714696d984fdfe5704a426f17e",
+        "e-shop-tray/src/cloudRelayClient.ts": "0145ba7d6d4a1299ea3fa470837a278b197272ab725438a55b982eb2c3b65446",
+        "e-shop-tray/src/executionJournal.ts": "13eb0e924651b9ab6dc69f7b5821df5dc108306417ee497a97e6cb0ab48f97e2",
+        "e-shop-tray/src/main.ts": "0ad37d5ca9a3b098c1c8955990eb9df15c0c0b52b5f5b2192c12a0eeadb5ad4d",
+        "e-shop-tray/src/networkContract.ts": "c960059e98ed3e84414bd3f5a5529b2b9662b6a875c57f1c89e95041980f5944",
+        "e-shop-tray/src/networkNodeConfig.ts": "f67dbc671eae26013700334baeaa973f307592e36a44413267e0052ed1c6d359",
+        "e-shop-tray/src/networkRenderPreload.tsx": "1b483d51209ed78fc4852b3f58d4b3040b6a255553f9cff20c7952a2350bf2d5",
+        "e-shop-tray/src/printing/networkRawTcpTransport.ts": "10a41e189a4132162b4ba203bc67fa3bbe9d66cf1911dc3f315e7b71deba26cc",
+        "e-shop-tray/src/relayPoller.ts": "aadb907335bcca4bb0a55ed8d7d7f07bcda005f6f2593b2b786f25febf256277",
+        "e-shop-tray/tests/execution-journal.test.ts": "89b313f5452f2e5a755e9de6cfc61a0ea36bb10ba1164da6e4002d2c7b28e740",
+        "e-shop-tray/tests/network-print-v01.test.ts": "4e698ac11c26eaa0224554e6cebf6ca365adb57956eb7f600ee8630a3d6cd9ee",
+        "lib/es-tray-relay/auth.ts": "6e4380238d2d2b7ce7512caf32611ff69ea2528f5ca54c26234d7f57c6d19d35",
+        "lib/es-tray-relay/cashier-network-producer.ts": "b46a960fa0e766795bcc592da8a9e82ab0be2a6976a1723b85a4b764772ad405",
+        "lib/es-tray-relay/contract.ts": "7aaa3a61cb2ac8d5448fde6b7d02df2149185cc28f2214b760b88717a552da2c",
+        "lib/es-tray-relay/service.ts": "a8d76f7e7b98284a8c2a21796b327772c2db241fe8eb8ac6a98ed5dbf5c56686",
+        "tests/cashier-network-print-v01.test.ts": "f55a410611a8620cd13b0ab64d2e84af05ed8bcc48dce03d8aa8687f9ff8a4f2",
+        "tests/es-tray-device-print-contract.test.ts": "a47ad551084f8d249e231fbf0d1d3ba74e3d496629caa0bcc46cd6c407d73623"
+      },
+      "createdAt": "2026-09-08T14:02:47.422Z",
+      "approvedAt": "2026-09-08T14:20:07.813Z",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Authorize only the exact reviewed24 single-physical-printer Network V0.1 file bytes: FRONT_ONLY creates one FRONT job; SHARED_PRINTER creates separate FRONT and KITCHEN jobs and serially submits different tickets to one explicitly protected local endpoint. This record grants no functional commit, push, main merge, deployment or formal installer authority.",
+      "approvalSource": {
+        "source": "Current Founder instruction in this task conversation; approvedAt is registration time of this explicit approval, not an invented historical message timestamp",
+        "statement": "批准本轮已封存、独立复审通过的最终 24 个精确路径及对应 SHA-256，以本轮 FINAL-24-SHA256.txt 为准。",
+        "governanceScope": "Only the exception JSON and Single Printer Modes Exact Exception Review Record V1.0.md may be committed and merged; one existing-Git automatic Production deployment is accepted. No manual deployment/Promote or functional commit/push/merge/installer."
+      },
+      "approvedContentMappingSha256": "b34f33baed27c93d451c12f6ced8b56af2809dfdac2fb6193555ee6bf422f683",
+      "sourceDraft": {
+        "path": "/private/tmp/es-network-print-v01-modes-draft",
+        "startingHead": "b67686bd4645cb29173dd09c8f0da94c0c3f40e4",
+        "fileCount": 24,
+        "previousModesMappingSha256": "196644555c0345dd96ec35772b5ed7a4830b9ad5e71e997d4ac66fae01467dba",
+        "changedSincePreviousModesSeal": [
+          "tests/es-tray-device-print-contract.test.ts"
+        ],
+        "review": "Prior modes and FIELD evidence independently reviewed; current single approved Cashier-hash increment and all24 exact bytes independently re-reviewed PASS by fresh-context cashier_hash_increment_review; current governance preflight confirms the same24 bytes. Final governance diff requires separate review."
+      },
+      "allowedPurposes": [
+        "Chrome cashier normal online sale transaction persists FRONT_ONLY one FRONT job or SHARED_PRINTER separate FRONT and KITCHEN jobs atomically.",
+        "Reuse existing version-isolated Relay, ledger, Computer Binding, ACK, execution journal and Tray; operationally one Network Agent per store.",
+        "SHARED_PRINTER uses an explicit single local RFC1918 endpoint, FRONT then KITCHEN serial delivery without byte interleaving; configuration immutable within the local profile.",
+        "Existing templates, Renderer and Encoder remain unchanged; TCP results retain physicalCompletionKnown=false, CROSSING_UNKNOWN forbids automatic reprint.",
+        "Retain the previously reviewed Windows journal writable-handle compatibility fix and required fail-closed durability checks.",
+        "Bind the single Cashier SHA assertion to the exact Founder-approved bytes and preserve historical authorization records."
+      ],
+      "prohibitedChanges": [
+        "Desktop 0.4.7 and any of its released files or packages.",
+        "QZ, certificates, USB, drivers, Windows Queue/Winspool/old transport; no legacy behavior changes beyond the already approved shared journal compatibility fix.",
+        "Receipt templates, bitmap Renderer or ESC/POS Encoder implementation.",
+        "Database schema or migrations; Production or real business data.",
+        "H5, offline sales, member balance, other payments, reprint UI, multilingual management or cloud multi-Agent assignment.",
+        "Dual physical printer rollout, hot configuration switching, mode/endpoint reconfiguration that bypasses journal protections.",
+        "Cloud host/port payloads, duplicate Agent/Relay/poller/journal/logger/printing core.",
+        "Feature commit/push/main merge, Preview/Production configuration/deployment, formal EXE or installer without separate explicit authority."
+      ],
+      "expirationCondition": "After the actual Network Print V0.1 feature merge, close this grant, the prior journal grant and PRIMARY explicitly, retaining actual merge SHA and audit history. Closing only the top level is insufficient. No standing authorization after final freeze; no future scope.",
+      "createdOnBranch": "codex/es-print-network-first-01-modes-governance",
+      "governanceBaseOriginMainSha": "1fa15488613011a7265483b3f62d6d5b30176329"
     }
   ]
 }
