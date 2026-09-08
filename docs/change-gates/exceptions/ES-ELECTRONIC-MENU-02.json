@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "taskId": "ES-ELECTRONIC-MENU-02",
+  "featureBranch": "codex/es-electronic-menu-02",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "bcc3ee26947a0673159a80c71a97b8ebcf2410d1",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "prisma/schema.prisma",
+    "prisma/migrations/20260908155736_add_electronic_menu_media/migration.sql"
+  ],
+  "authorizedPathSha256": {
+    "prisma/schema.prisma": "743d163a3de165206fe9cef36796f91db5fcb7acb206fc45d2f4fb920015017a",
+    "prisma/migrations/20260908155736_add_electronic_menu_media/migration.sql": "3ac9b3f7aa00e14a84633df80151dc7012e5ccef1618f7e2cd0bb95376fc1ba5"
+  },
+  "createdAt": "2026-09-08T15:59:44.650Z",
+  "approvedAt": "2026-09-08T15:59:44.650Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder approval in ES-ELECTRONIC-MENU-02 task conversation",
+    "statement": "批准 Store 新增两个可空字段 electronicMenuMediaData、electronicMenuMediaUrl；批准修改 Prisma schema、创建本任务所需的最小 additive migration、办理对应精确 Scope Exception。本次批准创建 migration 文件不等于批准执行 migration。如 Scope Exception 必须先 ACTIVE 进入 origin/main，重新触发 Founder Gate 获取治理 merge / push 授权。",
+    "approvedAtMeaning": "Registration time of explicit approval already received; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the two nullable Store media fields and the exact additive migration file identified by content hashes. Existing Store banner/Product/H5/Customer Display semantics and migration history remain unchanged. The local ACTIVE record is NOT EFFECTIVE until byte-identical in origin/main. No database migration execution, main merge/push, Preview/Production deployment or release is authorized by this record; each requires separate explicit Founder approval. No other protected path or content is authorized. Close after feature merge.",
+  "createdOnBranch": "codex/es-electronic-menu-02-schema-governance",
+  "sourceDraft": {
+    "baseOriginMainSha": "bcc3ee26947a0673159a80c71a97b8ebcf2410d1",
+    "patchSha256": "105b52a76e069ec00ad033bef6971c701cac73932dd6ee7fce5993819d99c6a7",
+    "patchPath": ".task-state/ES-ELECTRONIC-MENU-02-sealed/schema-exception/schema-and-migration.patch",
+    "candidateSchemaPath": ".task-state/ES-ELECTRONIC-MENU-02-sealed/schema-exception/schema.prisma",
+    "candidateMigrationPath": ".task-state/ES-ELECTRONIC-MENU-02-sealed/schema-exception/migration.sql",
+    "fileCount": 2,
+    "insertions": 5,
+    "deletions": 0
+  }
+}
