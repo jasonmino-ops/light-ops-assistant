@@ -731,6 +731,7 @@ test('denied menu fullscreen leaves its state false, reports a hint and allows r
   await expect(page.locator('html')).toHaveAttribute('data-denied-fullscreen-requests', '2')
   data = { ...data, products: [{ ...data.products[0], nameEn: 'Catalog survives fullscreen denial' }] }
   await page.clock.fastForward(30_100)
+  await expect(page.getByTestId('menu-product-name')).toHaveCount(1)
   await expect(page.getByTestId('menu-product-name')).toHaveText('Catalog survives fullscreen denial')
   await expect(page.getByTestId('menu-refresh-status')).toContainText('Menu up to date')
   expect(errors).toEqual([])

@@ -104,6 +104,12 @@ async function withPrismaMock(db: PublicMenuDatabase, run: () => Promise<void>, 
     }
   }
   replace(prisma.store, 'findUnique', db.store.findUnique)
+  replace(prisma.store, 'findFirst', async (args: { where: { code: string; tenantId: string; status: string }; select: unknown }) => {
+    assert.equal(args.where.status, 'ACTIVE')
+    assert.ok(args.where.code && args.where.tenantId)
+    assert.deepEqual(args.select, { electronicMenuMediaUrl: true })
+    return { electronicMenuMediaUrl: null }
+  })
   replace(prisma.product, 'findMany', db.product.findMany)
   replace(prisma.productCategory, 'findMany', db.productCategory.findMany)
   replace(prisma.storeCustomerContact, 'findUnique', allowLegacy ? async (args: unknown) => {
@@ -197,7 +203,7 @@ test('shared catalog selects existing columns; display projection remains whitel
     { model: 'category', args: { where: { tenantId: 'tenant-a' }, select: { id: true, name: true, parentId: true, sortOrder: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] } },
   ])
   assert.deepEqual(Object.keys(data).sort(), ['categories', 'products', 'store'])
-  assert.deepEqual(Object.keys(data.store).sort(), ['announcement', 'bannerUrl', 'code', 'currencyCode', 'name', 'promoText'])
+  assert.deepEqual(Object.keys(data.store).sort(), ['announcement', 'bannerUrl', 'code', 'currencyCode', 'electronicMenuMediaUrl', 'name', 'promoText'])
   assert.deepEqual(Object.keys(data.products[0]).sort(), ['categoryId', 'descEn', 'descKm', 'descZh', 'discountEnabled', 'id', 'imageUrl', 'imageUrls', 'isRecommended', 'name', 'nameEn', 'nameKm', 'nameZh', 'originalPrice', 'price', 'spec'])
   assert.deepEqual(Object.keys(data.categories[0]).sort(), ['id', 'name', 'parentId', 'sortOrder'])
   assert.doesNotMatch(JSON.stringify(data), /PRIVATE_|tenantId|storeId|customerBound|marketingImageUrls|contactPhone|storeAddress|barcode|imageStorageKey/)
