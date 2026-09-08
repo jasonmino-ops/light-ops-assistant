@@ -2,6 +2,15 @@
 
 Task: ES-ELECTRONIC-MENU-02 / Dedicated Promotion Media V0.1. Feature L2; database execution and release L3-controlled. This record supersedes the local-only authorization/status checkpoint in the Candidate Record; the reviewed implementation is unchanged.
 
+## Governance
+
+This document is governed by:
+
+- ES-CONST-001 Store Operating System Constitution
+- ES-STRAT-001 Store Operating System Strategy Baseline
+- ES-ENG-001 Engineering Workflow Baseline
+- ES-GOV-001 Level 0 Governance Baseline
+
 ## Authorization and lineage
 
 Founder explicitly approved candidate `8b30f6e80881429429b9f056c3c27193d88ba524` branch push, automatic Preview/formal CI, safety-gated exact Production migration, then main merge/push/Production and reversible dedicated-media FIELD. No other migration, schema extension, feature or unrelated Production data write is authorized.
