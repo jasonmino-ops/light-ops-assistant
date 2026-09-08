@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { signSession } from '../lib/session'
+import { getRedirectError } from 'next/dist/client/components/redirect'
+import { RedirectType } from 'next/dist/client/components/redirect-error'
 import type { ElectronicMenuData } from '../lib/electronic-menu'
 
 const baseURL = process.env.ELECTRONIC_MENU_TEST_URL ?? 'http://127.0.0.1:3100'
@@ -326,21 +328,66 @@ test('STAFF cannot access the OWNER entry', async ({ page, context }) => {
   await expect(page.getByTestId('electronic-menu-entry')).toHaveCount(0)
 })
 
-test('client navigation across the public boundary reloads the correct shell in both directions', async ({ page, context }) => {
+test('OWNER preview opens a standalone public document; leaving it restores the merchant shell', async ({ page, context }) => {
   await context.addCookies([{ name: 'auth-session', value: signSession({ tenantId: 'fixture', userId: 'owner', storeId: 'a', role: 'OWNER' }), url: baseURL }])
   await mockOwner(page)
-  await page.route('**/api/public/electronic-menu?*', route => route.fulfill({ json: menu() }))
+  // Context routes also cover the popup's initial document and first catalog read.
+  await context.route('**/*', route => {
+    const url = new URL(route.request().url())
+    if (url.origin !== new URL(baseURL).origin) return route.fulfill({ body: '' })
+    if (url.pathname === '/api/public/electronic-menu') return route.fulfill({ json: menu() })
+    return route.continue()
+  })
+  await page.goto('/dashboard')
+  await page.getByTestId('electronic-menu-entry').click()
+  // Build this local suite with NEXT_PUBLIC_PUBLIC_SITE_URL matching baseURL.
+  const displayURL = await page.locator('#electronic-menu-url').inputValue()
+  expect(new URL(displayURL).origin).toBe(new URL(baseURL).origin)
+  const [display] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByRole('link', { name: '预览菜单屏' }).click(),
+  ])
+  await expect(display).toHaveURL(displayURL)
+  await expect(display.getByTestId('menu-product-card')).toHaveCount(8)
+  await expect(display.locator('body')).toHaveAttribute('data-electronic-menu-document', 'true')
+  await expect(display.getByTestId('electronic-menu-entry')).toHaveCount(0)
+  await expect(display.locator('script[src*="telegram"]')).toHaveCount(0)
+  await expect(page.getByTestId('electronic-menu-entry')).toBeVisible()
+  await mockOwner(display)
+  const ownerDocument = display.waitForRequest(request => request.isNavigationRequest() && request.resourceType() === 'document' && new URL(request.url()).pathname === '/dashboard')
+  await display.evaluate(() => { window.history.pushState(null, '', '/dashboard') })
+  await ownerDocument
+  await expect(display.getByTestId('electronic-menu-entry')).toBeVisible()
+  await expect(display.getByTestId('electronic-menu-screen')).toHaveCount(0)
+  await expect(display.locator('body')).not.toHaveAttribute('data-electronic-menu-document', 'true')
+  await display.close()
+})
+
+test('App Router navigation into the display reloads before mounting the catalog in the merchant document', async ({ page, context }) => {
+  await context.addCookies([{ name: 'auth-session', value: signSession({ tenantId: 'fixture', userId: 'owner', storeId: 'a', role: 'OWNER' }), url: baseURL }])
+  await mockOwner(page)
+  let catalogReads = 0
+  await page.route('**/api/public/electronic-menu?*', async route => {
+    catalogReads++
+    expect(await page.locator('body').getAttribute('data-electronic-menu-document')).toBe('true')
+    await route.fulfill({ json: menu() })
+  })
   await page.goto('/dashboard')
   await expect(page.getByTestId('electronic-menu-entry')).toBeVisible()
-  const displayDocument = page.waitForRequest(request => request.isNavigationRequest() && request.resourceType() === 'document' && new URL(request.url()).pathname === '/electronic-menu')
-  await page.evaluate(() => { window.history.pushState(null, '', '/electronic-menu?code=STORE-A&lang=en') })
-  await displayDocument
+  await expect(page.locator('body')).not.toHaveAttribute('data-electronic-menu-document', 'true')
+  const rsc = page.waitForRequest(request => new URL(request.url()).pathname === '/electronic-menu' && request.headers().rsc === '1')
+  const document = page.waitForRequest(request => request.isNavigationRequest() && request.resourceType() === 'document' && new URL(request.url()).pathname === '/electronic-menu')
+  // Next's redirect handler calls its real App Router.push. This exercises SPA
+  // entry without adding a test-only Link/route or exposing a router in the app.
+  const redirect = getRedirectError('/electronic-menu?code=STORE-A&lang=en', RedirectType.push)
+  await page.evaluate(({ message, digest }) => {
+    const error = Object.assign(new Error(message), { digest })
+    window.dispatchEvent(new ErrorEvent('error', { error, cancelable: true }))
+  }, { message: redirect.message, digest: redirect.digest })
+  await rsc
+  await document
   await expect(page.getByTestId('menu-product-card')).toHaveCount(8)
   await expect(page.getByTestId('electronic-menu-entry')).toHaveCount(0)
   await expect(page.locator('script[src*="telegram"]')).toHaveCount(0)
-  const ownerDocument = page.waitForRequest(request => request.isNavigationRequest() && request.resourceType() === 'document' && new URL(request.url()).pathname === '/dashboard')
-  await page.evaluate(() => { window.history.pushState(null, '', '/dashboard') })
-  await ownerDocument
-  await expect(page.getByTestId('electronic-menu-entry')).toBeVisible()
-  await expect(page.getByTestId('electronic-menu-screen')).toHaveCount(0)
+  expect(catalogReads).toBe(1)
 })

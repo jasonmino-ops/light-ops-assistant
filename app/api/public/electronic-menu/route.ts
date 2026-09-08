@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isValidMenuCode } from '@/lib/electronic-menu'
-import { loadElectronicMenu } from '@/lib/electronic-menu-data'
+import { isValidMenuCode, projectElectronicMenuData } from '@/lib/electronic-menu'
+import { loadPublicMenuCatalog } from '@/lib/public-menu-data'
 
 const headers = { 'Cache-Control': 'no-store' }
 
@@ -12,9 +12,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const data = await loadElectronicMenu(codes[0])
+    const data = await loadPublicMenuCatalog(codes[0])
     if (!data) return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404, headers })
-    return NextResponse.json(data, { headers })
+    return NextResponse.json(projectElectronicMenuData(data), { headers })
   } catch {
     return NextResponse.json({ error: 'MENU_UNAVAILABLE' }, { status: 503, headers })
   }

@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { loadPublicMenuCatalog } from '@/lib/public-menu-data'
 import { getStoreContactById } from '@/lib/store-contact-db'
 import { getStoreLocationById } from '@/lib/store-location-db'
-
-function parseImageUrls(imageUrls: string | null, imageUrl: string | null): string[] {
-  try {
-    const parsed = imageUrls ? JSON.parse(imageUrls) : []
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 3)
-  } catch {}
-  return imageUrl ? [imageUrl] : []
-}
 
 function compactUrls(urls: Array<string | null | undefined>, limit?: number): string[] {
   const seen = new Set<string>()
@@ -37,23 +30,11 @@ export async function GET(req: NextRequest) {
 
   const tgId = req.nextUrl.searchParams.get('tgId')?.trim() || null
 
-  const store = await prisma.store.findUnique({
-    where: { code },
-    select: {
-      name: true,
-      status: true,
-      tenantId: true,
-      bannerUrl: true,
-      announcement: true,
-      promoText: true,
-      businessType: true,
-      currencyCode: true,
-    },
-  })
-
-  if (!store || store.status !== 'ACTIVE') {
+  const catalog = await loadPublicMenuCatalog(code)
+  if (!catalog) {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
   }
+  const { store, products, categories } = catalog
 
   // 顾客绑定状态：仅当客户端能提供自己的 tgId（Telegram WebApp）时才查；
   // 普通浏览器无 tgId → customerBound: false，前端正常显示绑定引导
@@ -67,18 +48,7 @@ export async function GET(req: NextRequest) {
   }
 
   const storeIdPromise = prisma.store.findUnique({ where: { code }, select: { id: true } })
-  const [products, categories, contact, location] = await Promise.all([
-    prisma.product.findMany({
-      where: { tenantId: store.tenantId, status: 'ACTIVE' },
-      select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, discountPrice: true, discountEnabled: true, isRecommended: true, categoryId: true, imageUrl: true, imageUrls: true },
-      orderBy: { name: 'asc' },
-      take: 200,
-    }),
-    prisma.productCategory.findMany({
-      where: { tenantId: store.tenantId },
-      select: { id: true, name: true, parentId: true, sortOrder: true },
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-    }),
+  const [contact, location] = await Promise.all([
     storeIdPromise.then((row) => row ? getStoreContactById(row.id) : { contactPhone: null, contactTelegram: null, contactWhatsApp: null }),
     storeIdPromise.then((row) => row ? getStoreLocationById(row.id) : { storeAddress: null, storeLat: null, storeLng: null, mapUrl: null }),
   ])
@@ -134,30 +104,10 @@ export async function GET(req: NextRequest) {
       ...location,
     },
     customerBound,
-    categories: categories.map((c) => ({
-      id: c.id,
-      name: c.name,
-      parentId: c.parentId ?? null,
-      sortOrder: c.sortOrder,
-    })),
-    products: products.map((p) => ({
-      id: p.id,
-      name:   p.name,
-      nameZh: p.nameZh ?? null,
-      nameEn: p.nameEn ?? null,
-      nameKm: p.nameKm ?? null,
-      descZh: p.descZh ?? null,
-      descEn: p.descEn ?? null,
-      descKm: p.descKm ?? null,
-      spec:   p.spec ?? null,
-      price:  p.discountEnabled && p.discountPrice ? p.discountPrice.toNumber() : p.sellPrice.toNumber(),
-      originalPrice: p.sellPrice.toNumber(),
-      discountEnabled: p.discountEnabled && !!p.discountPrice,
-      isRecommended: p.isRecommended,
-      categoryId: p.categoryId ?? null,
-      imageUrl:   p.imageUrl ?? null,
-      imageUrls:  parseImageUrls(p.imageUrls, p.imageUrl),
-      marketingImageUrls: marketingImagesByProduct.get(p.id) ?? [],
+    categories,
+    products: products.map((product) => ({
+      ...product,
+      marketingImageUrls: marketingImagesByProduct.get(product.id) ?? [],
     })),
   })
 }

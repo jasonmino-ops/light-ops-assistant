@@ -1,30 +1,9 @@
+import type { PublicMenuCatalog, PublicMenuProduct, PublicMenuCategory } from '@/lib/public-menu-data'
+
 export type MenuLang = 'zh' | 'en' | 'km'
 
-export type ElectronicMenuProduct = {
-  id: string
-  name: string
-  nameZh: string | null
-  nameEn: string | null
-  nameKm: string | null
-  descZh: string | null
-  descEn: string | null
-  descKm: string | null
-  spec: string | null
-  price: number
-  originalPrice: number
-  discountEnabled: boolean
-  isRecommended: boolean
-  categoryId: string | null
-  imageUrl: string | null
-  imageUrls: string[]
-}
-
-export type ElectronicMenuCategory = {
-  id: string
-  name: string
-  parentId: string | null
-  sortOrder: number
-}
+export type ElectronicMenuProduct = PublicMenuProduct
+export type ElectronicMenuCategory = PublicMenuCategory
 
 export type ElectronicMenuData = {
   store: {
@@ -37,6 +16,21 @@ export type ElectronicMenuData = {
   }
   products: ElectronicMenuProduct[]
   categories: ElectronicMenuCategory[]
+}
+
+// The public H5 response additionally contains contacts/customer binding/marketing.
+// This adapter only narrows the shared catalog; it does not recalculate business values.
+export function projectElectronicMenuData(catalog: PublicMenuCatalog): ElectronicMenuData {
+  const { store, products, categories } = catalog
+  return {
+    store: {
+      code: store.code, name: store.name, currencyCode: store.currencyCode ?? 'USD',
+      announcement: store.announcement ?? null, promoText: store.promoText ?? null,
+      bannerUrl: store.bannerUrl ?? null,
+    },
+    products,
+    categories,
+  }
 }
 
 export const MENU_REFRESH_MS = 30_000

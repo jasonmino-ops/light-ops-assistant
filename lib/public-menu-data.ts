@@ -1,14 +1,23 @@
 import { prisma } from '@/lib/prisma'
-import {
-  isValidMenuCode,
-  type ElectronicMenuCategory,
-  type ElectronicMenuData,
-  type ElectronicMenuProduct,
-} from '@/lib/electronic-menu'
+// Shared catalog core used by the existing H5 menu and display-only adapters.
+// Keep product/discount/order/isolation rules here, never in a renderer.
+export type PublicMenuProduct = {
+  id: string; name: string; nameZh: string | null; nameEn: string | null; nameKm: string | null
+  descZh: string | null; descEn: string | null; descKm: string | null; spec: string | null
+  price: number; originalPrice: number; discountEnabled: boolean; isRecommended: boolean
+  categoryId: string | null; imageUrl: string | null; imageUrls: string[]
+}
+export type PublicMenuCategory = { id: string; name: string; parentId: string | null; sortOrder: number }
+type PublicMenuStore = {
+  code: string; name: string; status: string; tenantId: string
+  currencyCode: string | null; businessType: string | null
+  announcement: string | null; promoText: string | null; bannerUrl: string | null
+}
+export type PublicMenuCatalog = { store: PublicMenuStore; products: PublicMenuProduct[]; categories: PublicMenuCategory[] }
 
 const STORE_SELECT = {
   code: true, name: true, status: true, tenantId: true,
-  currencyCode: true, announcement: true, promoText: true, bannerUrl: true,
+  currencyCode: true, businessType: true, announcement: true, promoText: true, bannerUrl: true,
 } as const
 const PRODUCT_SELECT = {
   id: true, name: true, nameZh: true, nameEn: true, nameKm: true,
@@ -18,8 +27,8 @@ const PRODUCT_SELECT = {
 } as const
 const CATEGORY_SELECT = { id: true, name: true, parentId: true, sortOrder: true } as const
 
-type MenuStoreRecord = ElectronicMenuData['store'] & { status: string; tenantId: string }
-type MenuProductRecord = Omit<ElectronicMenuProduct, 'price' | 'originalPrice' | 'imageUrls'> & {
+type MenuStoreRecord = PublicMenuStore
+type MenuProductRecord = Omit<PublicMenuProduct, 'price' | 'originalPrice' | 'imageUrls'> & {
   sellPrice: { toNumber(): number }
   discountPrice: { toNumber(): number } | null
   imageUrls: string | null
@@ -27,7 +36,7 @@ type MenuProductRecord = Omit<ElectronicMenuProduct, 'price' | 'originalPrice' |
 
 // A read-only structural subset of the existing singleton, injectable for tests.
 // It deliberately contains no write delegate, contact, marketing or POS query.
-export type ElectronicMenuDatabase = {
+export type PublicMenuDatabase = {
   store: {
     findUnique(args: { where: { code: string }; select: typeof STORE_SELECT }): Promise<MenuStoreRecord | null>
   }
@@ -44,7 +53,7 @@ export type ElectronicMenuDatabase = {
       where: { tenantId: string }
       select: typeof CATEGORY_SELECT
       orderBy: Array<{ sortOrder: 'asc' } | { name: 'asc' }>
-    }): Promise<ElectronicMenuCategory[]>
+    }): Promise<PublicMenuCategory[]>
   }
 }
 
@@ -59,11 +68,10 @@ function productImageUrls(imageUrls: string | null, imageUrl: string | null): st
   return imageUrl ? [imageUrl] : []
 }
 
-export async function loadElectronicMenu(
+export async function loadPublicMenuCatalog(
   code: string,
-  db: ElectronicMenuDatabase = prisma,
-): Promise<ElectronicMenuData | null> {
-  if (!isValidMenuCode(code)) return null
+  db: PublicMenuDatabase = prisma,
+): Promise<PublicMenuCatalog | null> {
   const store = await db.store.findUnique({ where: { code }, select: STORE_SELECT })
   if (!store || store.status !== 'ACTIVE') return null
 
@@ -85,14 +93,7 @@ export async function loadElectronicMenu(
   ])
 
   return {
-    store: {
-      code: store.code,
-      name: store.name,
-      currencyCode: store.currencyCode ?? 'USD',
-      announcement: store.announcement ?? null,
-      promoText: store.promoText ?? null,
-      bannerUrl: store.bannerUrl ?? null,
-    },
+    store,
     products: products.map((product) => ({
       id: product.id,
       name: product.name,

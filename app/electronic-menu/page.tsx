@@ -1,4 +1,5 @@
 import ElectronicMenuScreen from './ElectronicMenuScreen'
+import { DisplayPageBoundary } from './DisplayBoundary'
 import { isValidMenuCode, type MenuLang } from '@/lib/electronic-menu'
 
 export const metadata = {
@@ -21,5 +22,5 @@ export default async function ElectronicMenuPage({ searchParams }: PageProps) {
 
   // A different selector remounts the screen, so an earlier store cannot flash
   // while the new public catalog is loading. No raw invalid input is serialized.
-  return <ElectronicMenuScreen key={`${code ?? 'invalid'}:${lang}`} code={code} initialLang={lang} />
+  return <DisplayPageBoundary><ElectronicMenuScreen key={`${code ?? 'invalid'}:${lang}`} code={code} initialLang={lang} /></DisplayPageBoundary>
 }

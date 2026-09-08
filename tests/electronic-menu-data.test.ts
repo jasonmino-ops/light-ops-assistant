@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '../lib/prisma'
 import * as menuRoute from '../app/api/public/electronic-menu/route'
 import { GET as getExistingMenu } from '../app/api/public/menu/route'
-import { loadElectronicMenu, type ElectronicMenuDatabase } from '../lib/electronic-menu-data'
+import { loadPublicMenuCatalog, type PublicMenuDatabase } from '../lib/public-menu-data'
 import {
   MENU_REFRESH_MS,
   electronicMenuPath,
@@ -14,14 +14,15 @@ import {
   menuCategoryLabel,
   menuProductDescription,
   menuProductName,
+  projectElectronicMenuData,
   type ElectronicMenuData,
   type MenuLang,
 } from '../lib/electronic-menu'
 import { shouldShowRecommendationBadge } from '../lib/product-recommendation'
 
-type StoreRow = NonNullable<Awaited<ReturnType<ElectronicMenuDatabase['store']['findUnique']>>>
-type ProductRow = Awaited<ReturnType<ElectronicMenuDatabase['product']['findMany']>>[number]
-type CategoryRow = Awaited<ReturnType<ElectronicMenuDatabase['productCategory']['findMany']>>[number]
+type StoreRow = NonNullable<Awaited<ReturnType<PublicMenuDatabase['store']['findUnique']>>>
+type ProductRow = Awaited<ReturnType<PublicMenuDatabase['product']['findMany']>>[number]
+type CategoryRow = Awaited<ReturnType<PublicMenuDatabase['productCategory']['findMany']>>[number]
 type FixtureProduct = ProductRow & { tenantId: string; status: string; barcode: string; imageStorageKey: string }
 const decimal = (value: number) => ({ toNumber: () => value })
 
@@ -39,11 +40,11 @@ function product(id: string, name: string, overrides: Partial<FixtureProduct> = 
 
 function fixture() {
   const stores: Array<StoreRow & { id: string; contactPhone: string; storeAddress: string }> = [
-    { id: 'private-store-a', code: 'STORE-A', name: 'Store A', status: 'ACTIVE', tenantId: 'tenant-a', currencyCode: 'USD', announcement: 'Announcement A', promoText: 'Promo A', bannerUrl: '/banner-a.png', contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
-    { id: 'private-store-a2', code: 'STORE-A2', name: 'Store A2', status: 'ACTIVE', tenantId: 'tenant-a', currencyCode: 'XAF', announcement: 'Announcement A2', promoText: null, bannerUrl: '/banner-a2.png', contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
-    { id: 'private-store-b', code: 'STORE-B', name: 'Store B', status: 'ACTIVE', tenantId: 'tenant-b', currencyCode: 'USD', announcement: null, promoText: null, bannerUrl: null, contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
-    { id: 'private-store-empty', code: 'EMPTY', name: 'Empty', status: 'ACTIVE', tenantId: 'tenant-empty', currencyCode: 'USD', announcement: null, promoText: null, bannerUrl: null, contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
-    { id: 'private-store-disabled', code: 'DISABLED', name: 'Disabled', status: 'DISABLED', tenantId: 'tenant-a', currencyCode: 'USD', announcement: null, promoText: null, bannerUrl: null, contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
+    { id: 'private-store-a', code: 'STORE-A', name: 'Store A', status: 'ACTIVE', tenantId: 'tenant-a', businessType: 'CAFE', currencyCode: 'USD', announcement: 'Announcement A', promoText: 'Promo A', bannerUrl: '/banner-a.png', contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
+    { id: 'private-store-a2', code: 'STORE-A2', name: 'Store A2', status: 'ACTIVE', tenantId: 'tenant-a', businessType: null, currencyCode: 'XAF', announcement: 'Announcement A2', promoText: null, bannerUrl: '/banner-a2.png', contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
+    { id: 'private-store-b', code: 'STORE-B', name: 'Store B', status: 'ACTIVE', tenantId: 'tenant-b', businessType: null, currencyCode: 'USD', announcement: null, promoText: null, bannerUrl: null, contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
+    { id: 'private-store-empty', code: 'EMPTY', name: 'Empty', status: 'ACTIVE', tenantId: 'tenant-empty', businessType: null, currencyCode: 'USD', announcement: null, promoText: null, bannerUrl: null, contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
+    { id: 'private-store-disabled', code: 'DISABLED', name: 'Disabled', status: 'DISABLED', tenantId: 'tenant-a', businessType: null, currencyCode: 'USD', announcement: null, promoText: null, bannerUrl: null, contactPhone: 'PRIVATE_PHONE', storeAddress: 'PRIVATE_ADDRESS' },
   ]
   const products = [
     product('z-last', 'Zulu', { isRecommended: true, discountEnabled: true, discountPrice: decimal(8) }),
@@ -57,7 +58,7 @@ function fixture() {
     { id: 'foreign-category', name: 'Foreign category', parentId: null, sortOrder: 0, tenantId: 'tenant-b' },
   ]
   const calls: Array<{ model: string; args: unknown }> = []
-  const db: ElectronicMenuDatabase = {
+  const db: PublicMenuDatabase = {
     store: {
       async findUnique(args) {
         calls.push({ model: 'store', args })
@@ -82,7 +83,14 @@ function fixture() {
   return { stores, products, categories, calls, db }
 }
 
-async function withPrismaMock(db: ElectronicMenuDatabase, run: () => Promise<void>, allowLegacy = false) {
+async function displayData(code: string, db?: PublicMenuDatabase) {
+  const catalog = await loadPublicMenuCatalog(code, db)
+  return catalog ? projectElectronicMenuData(catalog) : null
+}
+
+type QueryCall = { model: string; args: unknown }
+
+async function withPrismaMock(db: PublicMenuDatabase, run: () => Promise<void>, allowLegacy = false, legacyCalls: QueryCall[] = []) {
   const restore: Array<() => void> = []
   function replace(target: object, key: string, value: unknown) {
     const previous = Reflect.get(target, key)
@@ -98,11 +106,21 @@ async function withPrismaMock(db: ElectronicMenuDatabase, run: () => Promise<voi
   replace(prisma.store, 'findUnique', db.store.findUnique)
   replace(prisma.product, 'findMany', db.product.findMany)
   replace(prisma.productCategory, 'findMany', db.productCategory.findMany)
-  replace(prisma.storeCustomerContact, 'findUnique', forbidden)
-  replace(prisma.marketingProductPage, 'findMany', allowLegacy ? async () => [{
-    productId: 'a-first', detailImage1: 'https://images.example/OTHER_STORE_MARKETING.png',
-  }] : forbidden)
-  replace(prisma, '$queryRaw', allowLegacy ? async () => [] : forbidden)
+  replace(prisma.storeCustomerContact, 'findUnique', allowLegacy ? async (args: unknown) => {
+    legacyCalls.push({ model: 'customer', args })
+    return { id: 'PRIVATE_CUSTOMER_CONTACT', status: 'active' }
+  } : forbidden)
+  replace(prisma.marketingProductPage, 'findMany', allowLegacy ? async (args: unknown) => {
+    legacyCalls.push({ model: 'marketing', args })
+    return [
+      { productId: 'a-first', detailImage1: ' https://images.example/legacy-marketing.png ', detailImage2: 'https://images.example/legacy-marketing.png', heroImageUrl: 'https://images.example/hero.png' },
+      { productId: 'a-first', detailImage1: 'https://images.example/older-marketing.png' },
+    ]
+  } : forbidden)
+  replace(prisma, '$queryRaw', allowLegacy ? async (args: unknown) => {
+    legacyCalls.push({ model: 'store-metadata', args })
+    return [{ id: 'private-store-a', contactPhone: 'PRIVATE_PHONE', contactTelegram: 'PRIVATE_TELEGRAM', contactWhatsApp: 'PRIVATE_WHATSAPP', storeAddress: 'PRIVATE_ADDRESS', storeLat: 11.56, storeLng: 104.92 }]
+  } : forbidden)
   replace(prisma, '$executeRaw', forbidden)
   try {
     await run()
@@ -133,14 +151,12 @@ test('public URL/code validation is exact, bounded and independent of merchant i
   }
 })
 
-test('invalid, unknown and inactive stores fail before catalog reads; active empty store remains valid', async () => {
+test('unknown and inactive stores fail before catalog reads; active empty store remains valid', async () => {
   const f = fixture()
-  assert.equal(await loadElectronicMenu(' A', f.db), null)
-  assert.equal(f.calls.length, 0)
-  assert.equal(await loadElectronicMenu('UNKNOWN', f.db), null)
-  assert.equal(await loadElectronicMenu('DISABLED', f.db), null)
+  assert.equal(await displayData('UNKNOWN', f.db), null)
+  assert.equal(await displayData('DISABLED', f.db), null)
   assert.deepEqual(f.calls.map((call) => call.model), ['store', 'store'])
-  const empty = await loadElectronicMenu('EMPTY', f.db)
+  const empty = await displayData('EMPTY', f.db)
   assert.ok(empty)
   assert.deepEqual(empty.products, [])
   assert.deepEqual(empty.categories, [])
@@ -149,9 +165,9 @@ test('invalid, unknown and inactive stores fail before catalog reads; active emp
 
 test('store selection isolates tenant catalog and preserves same-tenant sharing with store-specific presentation', async () => {
   const f = fixture()
-  const a = await loadElectronicMenu('STORE-A', f.db)
-  const a2 = await loadElectronicMenu('STORE-A2', f.db)
-  const b = await loadElectronicMenu('STORE-B', f.db)
+  const a = await displayData('STORE-A', f.db)
+  const a2 = await displayData('STORE-A2', f.db)
+  const b = await displayData('STORE-B', f.db)
   assert.ok(a && a2 && b)
   assert.deepEqual(a.products.map((row) => row.id), ['a-first', 'z-last'])
   assert.deepEqual(a.products, a2.products)
@@ -163,20 +179,20 @@ test('store selection isolates tenant catalog and preserves same-tenant sharing 
   assert.equal(a2.store.bannerUrl, '/banner-a2.png')
   assert.deepEqual(b.products.map((row) => row.id), ['foreign-product'])
   assert.deepEqual(b.categories.map((row) => row.id), ['foreign-category'])
-  assert.equal(await loadElectronicMenu('store-a', f.db), null, 'Store code is not silently case-folded')
+  assert.equal(await displayData('store-a', f.db), null, 'Store code is not silently case-folded')
   assert.deepEqual(a.categories.map((row) => row.id), ['drinks', 'snacks'])
 })
 
-test('only whitelisted columns are selected and projected; product ordering and 200-item bound remain unchanged', async () => {
+test('shared catalog selects existing columns; display projection remains whitelisted with the existing 200-item bound', async () => {
   const f = fixture()
   for (let i = 0; i < 205; i++) f.products.push(product(`many-${i}`, `Item ${String(i).padStart(3, '0')}`))
-  const data = await loadElectronicMenu('STORE-A', f.db)
+  const data = await displayData('STORE-A', f.db)
   assert.ok(data)
   assert.equal(data.products.length, 200)
   assert.equal(data.products[0].name, 'Alpha')
   assert.equal(data.products[199].name, 'Item 198')
   assert.deepEqual(f.calls, [
-    { model: 'store', args: { where: { code: 'STORE-A' }, select: { code: true, name: true, status: true, tenantId: true, currencyCode: true, announcement: true, promoText: true, bannerUrl: true } } },
+    { model: 'store', args: { where: { code: 'STORE-A' }, select: { code: true, name: true, status: true, tenantId: true, currencyCode: true, announcement: true, promoText: true, bannerUrl: true, businessType: true } } },
     { model: 'product', args: { where: { tenantId: 'tenant-a', status: 'ACTIVE' }, select: { id: true, name: true, nameZh: true, nameEn: true, nameKm: true, descZh: true, descEn: true, descKm: true, spec: true, sellPrice: true, discountPrice: true, discountEnabled: true, isRecommended: true, categoryId: true, imageUrl: true, imageUrls: true }, orderBy: { name: 'asc' }, take: 200 } },
     { model: 'category', args: { where: { tenantId: 'tenant-a' }, select: { id: true, name: true, parentId: true, sortOrder: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] } },
   ])
@@ -187,7 +203,7 @@ test('only whitelisted columns are selected and projected; product ordering and 
   assert.doesNotMatch(JSON.stringify(data), /PRIVATE_|tenantId|storeId|customerBound|marketingImageUrls|contactPhone|storeAddress|barcode|imageStorageKey/)
 })
 
-test('actual legacy GET and the new loader have identical catalog, discount and stored-media projections', async () => {
+test('actual legacy GET and shared display projection have identical catalog, discount and stored-media projections', async () => {
   const f = fixture()
   f.products.push(
     product('discount-off', 'Beta', { discountPrice: decimal(4), discountEnabled: false }),
@@ -200,7 +216,7 @@ test('actual legacy GET and the new loader have identical catalog, discount and 
     product('no-image', 'Image E', { imageUrl: null, imageUrls: null }),
   )
   await withPrismaMock(f.db, async () => {
-    const current = await loadElectronicMenu('STORE-A')
+    const current = await displayData('STORE-A')
     assert.ok(current)
     const legacyResponse = await getExistingMenu(new NextRequest('http://localhost/api/public/menu?code=STORE-A'))
     const legacy = await legacyResponse.json()
@@ -220,9 +236,123 @@ test('actual legacy GET and the new loader have identical catalog, discount and 
   }, true)
 })
 
+test('legacy GET preserves its complete store, binding, marketing and catalog response', async () => {
+  const f = fixture()
+  const legacyCalls: QueryCall[] = []
+  await withPrismaMock(f.db, async () => {
+    const response = await getExistingMenu(new NextRequest('http://localhost/api/public/menu?code=STORE-A&tgId=%20customer-1%20'))
+    assert.equal(response.status, 200)
+    const sharedProductFields = {
+      nameZh: '中文名称', nameEn: 'English name', nameKm: 'ឈ្មោះ',
+      descZh: '中文描述', descEn: 'English description', descKm: 'ការពិពណ៌នា',
+      spec: 'Regular', originalPrice: 10, categoryId: 'drinks',
+      imageUrl: 'https://images.example/product.png', imageUrls: ['https://images.example/product.png'],
+    }
+    assert.deepEqual(await response.json(), {
+      store: {
+        name: 'Store A', isOpen: true, bannerUrl: '/banner-a.png', announcement: 'Announcement A', promoText: 'Promo A', businessType: 'CAFE', currencyCode: 'USD',
+        contactPhone: 'PRIVATE_PHONE', contactTelegram: 'PRIVATE_TELEGRAM', contactWhatsApp: 'PRIVATE_WHATSAPP',
+        storeAddress: 'PRIVATE_ADDRESS', storeLat: 11.56, storeLng: 104.92, mapUrl: 'https://maps.google.com/?q=11.56,104.92',
+      },
+      customerBound: true,
+      categories: [
+        { id: 'drinks', name: '饮料', parentId: null, sortOrder: 1 },
+        { id: 'snacks', name: 'Snacks', parentId: null, sortOrder: 2 },
+      ],
+      products: [
+        { ...sharedProductFields, id: 'a-first', name: 'Alpha', price: 10, discountEnabled: false, isRecommended: false, marketingImageUrls: ['https://images.example/legacy-marketing.png', 'https://images.example/hero.png'] },
+        { ...sharedProductFields, id: 'z-last', name: 'Zulu', price: 8, discountEnabled: true, isRecommended: true, marketingImageUrls: [] },
+      ],
+    })
+    assert.deepEqual(legacyCalls.find((call) => call.model === 'customer')?.args, {
+      where: { storeCode_telegramId: { storeCode: 'STORE-A', telegramId: 'customer-1' } },
+      select: { id: true, status: true },
+    })
+    assert.deepEqual(legacyCalls.find((call) => call.model === 'marketing')?.args, {
+      where: { tenantId: 'tenant-a', productId: { in: ['a-first', 'z-last'] }, status: { not: 'DISABLED' } },
+      select: { productId: true, heroImageUrl: true, detailImage1: true, detailImage2: true, detailImage3: true, reviewImage1: true, reviewImage2: true, reviewImage3: true },
+      orderBy: { updatedAt: 'desc' }, take: 6,
+    })
+    const metadataCalls = legacyCalls.filter((call) => call.model === 'store-metadata')
+    assert.equal(metadataCalls.length, 2)
+    for (const call of metadataCalls) assert.deepEqual((call.args as { values: unknown[] }).values, ['private-store-a'])
+
+    legacyCalls.length = 0
+    f.stores[0].businessType = null
+    f.stores[0].currencyCode = null
+    const anonymous = await getExistingMenu(new NextRequest('http://localhost/api/public/menu?code=STORE-A'))
+    const anonymousData = await anonymous.json()
+    assert.equal(anonymousData.customerBound, false)
+    assert.equal(anonymousData.store.businessType, 'GENERAL')
+    assert.equal(anonymousData.store.currencyCode, 'USD')
+    assert.equal(legacyCalls.some((call) => call.model === 'customer'), false)
+  }, true, legacyCalls)
+})
+
+test('both endpoints use identical public catalog queries while the display excludes legacy-only reads and fields', async () => {
+  const f = fixture()
+  let display: ElectronicMenuData | undefined
+  await withPrismaMock(f.db, async () => {
+    const response = await menuRoute.GET(request('?code=STORE-A'))
+    assert.equal(response.status, 200)
+    display = await response.json()
+  })
+  const displayCalls = [...f.calls]
+  assert.deepEqual(displayCalls.map((call) => call.model), ['store', 'product', 'category'])
+  f.calls.length = 0
+  const legacyCalls: QueryCall[] = []
+  await withPrismaMock(f.db, async () => {
+    const response = await getExistingMenu(new NextRequest('http://localhost/api/public/menu?code=STORE-A'))
+    assert.equal(response.status, 200)
+    const legacy = await response.json()
+    const coreQueries = f.calls.filter((call) => call.model !== 'store'
+      || 'tenantId' in (call.args as { select: Record<string, boolean> }).select)
+    assert.deepEqual(coreQueries, displayCalls)
+    assert.ok(display)
+    assert.deepEqual(display.categories, legacy.categories)
+    assert.deepEqual(display.products, legacy.products.map((row: Record<string, unknown>) => {
+      const { marketingImageUrls: _marketingImages, ...catalogProduct } = row
+      return catalogProduct
+    }))
+    assert.doesNotMatch(JSON.stringify(display), /PRIVATE_|tenantId|storeId|customerBound|businessType|marketingImageUrls|contactPhone|storeAddress/)
+    assert.match(JSON.stringify(legacy), /PRIVATE_PHONE/)
+    assert.equal(legacyCalls.filter((call) => call.model === 'marketing').length, 1)
+  }, true, legacyCalls)
+})
+
+test('legacy GET keeps its existing missing-code, lookup, selector and failure behavior', async () => {
+  const f = fixture()
+  await withPrismaMock(f.db, async () => {
+    for (const query of ['', '?code=']) {
+      const response = await getExistingMenu(new NextRequest(`http://localhost/api/public/menu${query}`))
+      assert.equal(response.status, 400)
+      assert.deepEqual(await response.json(), { error: 'MISSING_CODE' })
+    }
+    assert.equal(f.calls.length, 0)
+    for (const code of ['UNKNOWN', 'DISABLED']) {
+      const response = await getExistingMenu(new NextRequest(`http://localhost/api/public/menu?code=${code}`))
+      assert.equal(response.status, 404)
+      assert.deepEqual(await response.json(), { error: 'STORE_NOT_FOUND' })
+    }
+    assert.deepEqual(f.calls.map((call) => call.model), ['store', 'store'])
+    const duplicate = await getExistingMenu(new NextRequest('http://localhost/api/public/menu?code=STORE-A&code=STORE-B&unknown=1'))
+    assert.equal(duplicate.status, 200)
+    assert.equal((await duplicate.json()).store.name, 'Store A')
+    f.stores[0].code = 'OLD.CODE'
+    const historical = await getExistingMenu(new NextRequest('http://localhost/api/public/menu?code=OLD.CODE'))
+    assert.equal(historical.status, 200, 'The shared loader must not impose the display-only code grammar on legacy callers')
+  }, true)
+
+  const failed = fixture()
+  failed.db.store.findUnique = async () => { throw new Error('LEGACY_QUERY_FAILURE') }
+  await withPrismaMock(failed.db, async () => {
+    await assert.rejects(getExistingMenu(new NextRequest('http://localhost/api/public/menu?code=STORE-A')), /LEGACY_QUERY_FAILURE/)
+  })
+})
+
 test('grouping retains product/category order, iced-coffee priority and every orphan product', async () => {
   const f = fixture()
-  const base = await loadElectronicMenu('STORE-A', f.db)
+  const base = await displayData('STORE-A', f.db)
   assert.ok(base)
   const data: ElectronicMenuData = {
     ...base,
@@ -250,7 +380,7 @@ test('grouping retains product/category order, iced-coffee priority and every or
 })
 
 test('three-language display falls back exactly to Chinese and original catalog values', async () => {
-  const data = await loadElectronicMenu('STORE-A', fixture().db)
+  const data = await displayData('STORE-A', fixture().db)
   assert.ok(data)
   const p = data.products[0]
   assert.deepEqual(['zh', 'en', 'km'].map((lang) => menuProductName(p, lang as MenuLang)), ['中文名称', 'English name', 'ឈ្មោះ'])
