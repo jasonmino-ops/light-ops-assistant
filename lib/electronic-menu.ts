@@ -13,6 +13,7 @@ export type ElectronicMenuData = {
     announcement: string | null
     promoText: string | null
     bannerUrl: string | null
+    electronicMenuMediaUrl?: string | null
   }
   products: ElectronicMenuProduct[]
   categories: ElectronicMenuCategory[]
@@ -20,13 +21,14 @@ export type ElectronicMenuData = {
 
 // The public H5 response additionally contains contacts/customer binding/marketing.
 // This adapter only narrows the shared catalog; it does not recalculate business values.
-export function projectElectronicMenuData(catalog: PublicMenuCatalog): ElectronicMenuData {
+export function projectElectronicMenuData(catalog: PublicMenuCatalog, electronicMenuMediaUrl: string | null = null): ElectronicMenuData {
   const { store, products, categories } = catalog
   return {
     store: {
       code: store.code, name: store.name, currencyCode: store.currencyCode ?? 'USD',
       announcement: store.announcement ?? null, promoText: store.promoText ?? null,
       bannerUrl: store.bannerUrl ?? null,
+      electronicMenuMediaUrl,
     },
     products,
     categories,

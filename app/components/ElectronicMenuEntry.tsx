@@ -5,6 +5,7 @@ import { useWorkMode } from './WorkModeProvider'
 import { useLocale } from './LangProvider'
 import { electronicMenuPath } from '@/lib/electronic-menu'
 import { publicUrl } from '@/lib/public-url'
+import ElectronicMenuMediaPanel from './ElectronicMenuMediaPanel'
 
 const COPY = {
   zh: { title: '电子菜单屏', hint: '在普通浏览器大屏展示商品与价格', url: '本门店菜单屏 URL', help: '复制链接到门店电脑、平板或大屏浏览器打开。商品资料约每 30 秒自动更新。', copy: '复制链接', copied: '已复制', failed: '复制失败，请选择上方链接手动复制。', preview: '预览菜单屏', close: '关闭', waiting: '正在获取当前门店…' },
@@ -75,6 +76,7 @@ export default function ElectronicMenuEntry() {
           {url && <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...styles.action, background: '#f1f5f9', color: '#1e293b' }}>{text.preview}</a>}
         </div>
         <p role="status" style={{ minHeight: 20, margin: '12px 0 0', fontSize: 13, color: '#64748b' }}>{copyState === 'failed' ? text.failed : copyState === 'copied' ? text.copied : ''}</p>
+        {open && realRole === 'OWNER' && storeCode && <ElectronicMenuMediaPanel key={storeCode} storeCode={storeCode} storeName={storeName} />}
       </dialog>
       <style jsx>{`dialog::backdrop { background: rgba(15, 23, 42, .48); }`}</style>
     </>
@@ -83,7 +85,7 @@ export default function ElectronicMenuEntry() {
 
 const styles: Record<string, React.CSSProperties> = {
   entry: { width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fff', color: '#334155', cursor: 'pointer', fontFamily: 'inherit' },
-  dialog: { border: 0, borderRadius: 22, padding: 24, width: 'min(520px, calc(100vw - 32px))', margin: 'auto', color: '#1e293b', boxShadow: '0 24px 80px #0f172a33', fontFamily: 'inherit' },
+  dialog: { border: 0, borderRadius: 22, padding: 24, width: 'min(520px, calc(100vw - 32px))', boxSizing: 'border-box', maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', margin: 'auto', color: '#1e293b', boxShadow: '0 24px 80px #0f172a33', fontFamily: 'inherit' },
   close: { border: 0, borderRadius: '50%', width: 34, height: 34, fontSize: 24, background: '#f1f5f9', color: '#475569', cursor: 'pointer' },
   input: { width: '100%', minWidth: 0, boxSizing: 'border-box', border: '1px solid #cbd5e1', borderRadius: 10, padding: 12, fontSize: 13, background: '#f8fafc', color: '#334155' },
   action: { display: 'inline-flex', justifyContent: 'center', alignItems: 'center', border: 0, borderRadius: 10, padding: '12px 18px', fontSize: 14, fontWeight: 600, textDecoration: 'none', fontFamily: 'inherit', cursor: 'pointer' },

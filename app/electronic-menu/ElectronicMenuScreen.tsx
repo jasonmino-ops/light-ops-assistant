@@ -73,7 +73,8 @@ function isCatalog(value: unknown, code: string): value is ElectronicMenuData {
     || !Array.isArray(value.products) || !Array.isArray(value.categories)) return false
   const { store, products, categories } = value
   if (store.code !== code || typeof store.name !== 'string' || typeof store.currencyCode !== 'string'
-    || !['announcement', 'promoText', 'bannerUrl'].every((key) => nullableText(store[key]))) return false
+    || !['announcement', 'promoText', 'bannerUrl'].every((key) => nullableText(store[key]))
+    || (store.electronicMenuMediaUrl !== undefined && !nullableText(store.electronicMenuMediaUrl))) return false
 
   return products.every((product) => isRecord(product)
     && typeof product.id === 'string' && typeof product.name === 'string'
@@ -144,7 +145,7 @@ function ProductRow({ row, lang, currency, columnWidth, fontSize }: { row: Board
 function BrandMedia({ data }: { data: ElectronicMenuData }) {
   const [failed, setFailed] = useState<string[]>([])
   useEffect(() => { setFailed([]) }, [data])
-  const sources = [data.store.bannerUrl, ...data.products.map(product => product.imageUrls[0] || product.imageUrl).filter(Boolean).slice(0, 3)]
+  const sources = [data.store.electronicMenuMediaUrl, data.store.bannerUrl, ...data.products.map(product => product.imageUrls[0] || product.imageUrl).filter(Boolean).slice(0, 3)]
   const source = sources.find((value): value is string => !!value && !failed.includes(value))
   return (
     <div className={styles.brandMedia} data-testid="menu-brand-media">
