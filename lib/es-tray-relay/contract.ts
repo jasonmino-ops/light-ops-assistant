@@ -34,7 +34,7 @@ export type EshopTrayPrintRequest = {
 }
 
 export type RelayClaimProof = {
-  schemaVersion: typeof ES_TRAY_RELAY_SCHEMA_VERSION
+  schemaVersion: 1 | 2
   claimAttempt: number
   claimToken: string
 }
@@ -147,8 +147,8 @@ export function hashPrintRequest(request: EshopTrayPrintRequest) {
   return createHash('sha256').update(JSON.stringify(request)).digest('hex')
 }
 
-function parseClaimProof(body: Record<string, unknown>): RelayClaimProof {
-  if (body.schemaVersion !== ES_TRAY_RELAY_SCHEMA_VERSION) {
+function parseClaimProof(body: Record<string, unknown>, schemaVersion: 1 | 2): RelayClaimProof {
+  if (body.schemaVersion !== schemaVersion) {
     throw new RelayContractError('ES_TRAY_02_UNSUPPORTED_SCHEMA_VERSION')
   }
   if (!Number.isSafeInteger(body.claimAttempt) || Number(body.claimAttempt) < 1) {
@@ -158,27 +158,27 @@ function parseClaimProof(body: Record<string, unknown>): RelayClaimProof {
     throw new RelayContractError('ES_TRAY_02_INVALID_CLAIM_TOKEN')
   }
   return {
-    schemaVersion: ES_TRAY_RELAY_SCHEMA_VERSION,
+    schemaVersion,
     claimAttempt: Number(body.claimAttempt),
     claimToken: body.claimToken,
   }
 }
 
-export function parseExecutingInput(value: unknown): RelayClaimProof {
+export function parseExecutingInput(value: unknown, schemaVersion: 1 | 2 = ES_TRAY_RELAY_SCHEMA_VERSION): RelayClaimProof {
   const body = object(value)
   if (!body || !exactKeys(body, ['schemaVersion', 'claimAttempt', 'claimToken'])) {
     throw new RelayContractError('ES_TRAY_02_INVALID_EXECUTING_REQUEST')
   }
-  return parseClaimProof(body)
+  return parseClaimProof(body, schemaVersion)
 }
 
-export function parseResultInput(value: unknown): RelayTerminalResult {
+export function parseResultInput(value: unknown, schemaVersion: 1 | 2 = ES_TRAY_RELAY_SCHEMA_VERSION): RelayTerminalResult {
   const body = object(value)
   if (!body || !exactKeys(body, [
     'schemaVersion', 'claimAttempt', 'claimToken', 'state', 'resultCode',
     'effectBoundary', 'physicalCompletionKnown',
   ], ['resultMessage'])) throw new RelayContractError('ES_TRAY_02_INVALID_RESULT')
-  const proof = parseClaimProof(body)
+  const proof = parseClaimProof(body, schemaVersion)
   if (body.state !== 'SUCCEEDED' && body.state !== 'FAILED') {
     throw new RelayContractError('ES_TRAY_02_INVALID_RESULT')
   }

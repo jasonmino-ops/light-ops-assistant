@@ -14,6 +14,8 @@ import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
 import { isKhqrSupportedCurrency } from '@/lib/currency'
+import { enqueueCashierNetworkJobs } from '@/lib/es-tray-relay/cashier-network-producer'
+import { NETWORK_PROFILE, type NetworkSnapshot } from '@/e-shop-tray/src/networkContract'
 import {
   requiresCashierManualPaymentConfirmation,
   resolveCashierPaymentIntentStatus,
@@ -42,6 +44,15 @@ export async function POST(req: NextRequest) {
     items?: CartItem[]
     paymentMethod?: string
     manualPaymentConfirmed?: boolean
+  }
+
+  // Opt-in only. Old Desktop and cashier clients keep their existing response/printing path.
+  const network = body.printing !== undefined
+  if (network && (body.printing?.profile !== NETWORK_PROFILE
+    || Object.keys(body.printing).sort().join(',') !== 'lang,mode,profile'
+    || !['zh', 'en', 'km'].includes(body.printing.lang)
+    || !['FRONT_ONLY', 'SHARED_PRINTER'].includes(body.printing.mode))) {
+    return NextResponse.json({ error: 'INVALID_NETWORK_PRINT_PROFILE' }, { status: 400 })
   }
 
   if (!storeCode?.trim()) {
@@ -84,7 +95,7 @@ export async function POST(req: NextRequest) {
   // Resolve store
   const store = await prisma.store.findUnique({
     where: { code: storeCode.trim() },
-    select: { id: true, code: true, tenantId: true, status: true, currencyCode: true },
+    select: { id: true, code: true, name: true, tenantId: true, status: true, currencyCode: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -134,6 +145,7 @@ export async function POST(req: NextRequest) {
       let totalAmount = 0
       let firstCreatedAt: Date | null = null
       let isFirst = true
+      const snapshotItems: NetworkSnapshot['items'] = []
 
       for (const it of items) {
         const product = productMap.get(it.barcode)!
@@ -169,6 +181,10 @@ export async function POST(req: NextRequest) {
           },
         })
         if (!firstCreatedAt) firstCreatedAt = record.createdAt
+        if (network) snapshotItems.push({
+          name: record.productNameSnapshot, spec: record.specSnapshot,
+          qty: Number(record.quantity), price: Number(record.unitPrice), lineAmount: Number(record.lineAmount),
+        })
       }
 
       const khqrPayload = paymentMethod === 'KHQR' && khqrConfig
@@ -196,6 +212,15 @@ export async function POST(req: NextRequest) {
         },
       })
 
+      const printing = network ? await enqueueCashierNetworkJobs(tx, {
+        tenantId: store.tenantId, storeId: store.id,
+      }, {
+        storeCode: store.code, storeName: store.name, orderNo,
+        createdAt: firstCreatedAt!.toISOString(), cashierName: 'Desktop POS',
+        paymentMethod: paymentMethod as 'CASH' | 'KHQR', currencyCode: store.currencyCode,
+        totalAmount, lang: body.printing.lang, items: snapshotItems,
+      }, body.printing.mode) : undefined
+
       return {
         orderNo,
         totalAmount,
@@ -204,6 +229,7 @@ export async function POST(req: NextRequest) {
         paymentMethod,
         paymentIntentId: pi.id,
         khqrFallback,
+        ...(printing ? { printing } : {}),
       }
     })
 
