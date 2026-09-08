@@ -26,6 +26,7 @@ import {
   type CustomerDisplayPanelState,
 } from '@/lib/customer-display-panel-state'
 import { publicCustomerEntryUrl } from '@/lib/public-url'
+import { useBrowserFullscreen } from '@/lib/use-browser-fullscreen'
 
 type PosItem = {
   productId: string
@@ -79,7 +80,7 @@ export default function DesktopCustomerDisplayPage() {
   const [storeKhqrImageUrl, setStoreKhqrImageUrl] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [lingerNow, setLingerNow] = useState(() => Date.now())
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const { isFullscreen, toggleFullscreen: toggleBrowserFullscreen } = useBrowserFullscreen()
   const [usdKhrRate, setUsdKhrRate] = useState(4100)
   const pollInFlightRef = useRef(false)
   const realtimeGuardRef = useRef<CustomerDisplayRealtimeGuard | null>(null)
@@ -157,13 +158,6 @@ export default function DesktopCustomerDisplayPage() {
   }, [storeCode])
 
   useEffect(() => {
-    const updateFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement))
-    updateFullscreen()
-    document.addEventListener('fullscreenchange', updateFullscreen)
-    return () => document.removeEventListener('fullscreenchange', updateFullscreen)
-  }, [])
-
-  useEffect(() => {
     try {
       const savedRate = Number(window.localStorage.getItem('cashier:usdKhrRate'))
       if (Number.isFinite(savedRate) && savedRate >= 1000 && savedRate <= 10000) setUsdKhrRate(Math.round(savedRate))
@@ -214,8 +208,7 @@ export default function DesktopCustomerDisplayPage() {
 
   async function toggleFullscreen() {
     try {
-      if (document.fullscreenElement) await document.exitFullscreen()
-      else await document.documentElement.requestFullscreen()
+      await toggleBrowserFullscreen()
     } catch (error) {
       console.warn('[desktop-display] fullscreen toggle failed', error)
     }
