@@ -7,6 +7,8 @@ import LangProvider from './components/LangProvider'
 import WorkModeProvider from './components/WorkModeProvider'
 import DelegateBanner from './components/DelegateBanner'
 import { verifySession } from '@/lib/session'
+import RootRouteBoundary from './components/RootRouteBoundary'
+import { isElectronicMenuPath } from '@/lib/electronic-menu'
 
 export const metadata = {
   title: '店小二助手',
@@ -26,13 +28,28 @@ function isProtectedMerchantPath(path: string) {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const headerStore = await headers()
+  const pathname = headerStore.get('x-current-path') ?? ''
+  // The standalone display never reads or serializes merchant identity, even during OWNER preview.
+  if (isElectronicMenuPath(pathname)) {
+    return (
+      <html lang="zh-CN">
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta name="referrer" content="no-referrer" />
+          <meta name="robots" content="noindex, nofollow" />
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700&display=swap" />
+        </head>
+        <body style={{ paddingBottom: 0, background: '#191c1a' }}><RootRouteBoundary initialPublicMenu>{children}</RootRouteBoundary></body>
+      </html>
+    )
+  }
+
   // Resolve role: signed cookie (Telegram auth) → DEV_ROLE env (local dev) → STAFF
   const cookieStore = await cookies()
-  const headerStore = await headers()
   const sessionToken = cookieStore.get('auth-session')?.value
   const sessionRole = sessionToken ? verifySession(sessionToken)?.role : undefined
   const role = sessionRole ?? process.env.DEV_ROLE ?? 'STAFF'
-  const pathname = headerStore.get('x-current-path') ?? ''
   const initialProtected = isProtectedMerchantPath(pathname)
   const isCashierPath = pathname === '/cashier' || pathname.startsWith('/cashier/')
   const manifestHref = isCashierPath ? '/manifest.webmanifest' : '/manifest.json'
@@ -70,6 +87,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script src="https://telegram.org/js/telegram-web-app.js" />
       </head>
       <body>
+        <RootRouteBoundary initialPublicMenu={false}>
         {TIKTOK_PIXEL_ID && (
           <Script
             id="tiktok-pixel"
@@ -103,6 +121,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </WorkModeProvider>
           </LangProvider>
         </TelegramInit>
+        </RootRouteBoundary>
       </body>
     </html>
   )

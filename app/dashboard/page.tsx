@@ -8,6 +8,7 @@ import LangToggleBtn from '@/app/components/LangToggleBtn'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { getAiSupportModuleStatus } from '@/lib/tier'
 import { formatMoney } from '@/lib/currency'
+import ElectronicMenuEntry from '@/app/components/ElectronicMenuEntry'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -345,6 +346,7 @@ export default function DashboardPage() {
       </div>
 
       <div style={s.body}>
+        {realRole === 'OWNER' && <ElectronicMenuEntry />}
         {/* Loading skeleton */}
         {loading && (
           <div style={s.loadingWrap}>
