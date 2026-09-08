@@ -41,7 +41,7 @@
       "featureBranch": "codex/es-electronic-menu-01-ui",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "0e22ad64804465b5487fc3a8e3494666f7430e84",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "authorizedPaths": [
         "app/desktop/display/page.tsx"
       ],
@@ -67,7 +67,9 @@
         "insertions": 3,
         "deletions": 10
       },
-      "activationBoundary": "Effective only when this byte-identical additional authorization exists in trusted origin/main and all existing Scope Guard checks pass. Any deviation from the sealed patch requires renewed Founder approval. Governance merge/push and automatic governance-only Production deployment are approved; Electronic Menu UI feature merge/deploy/release, migration/schema and other protected files remain unapproved."
+      "activationBoundary": "Effective only when this byte-identical additional authorization exists in trusted origin/main and all existing Scope Guard checks pass. Any deviation from the sealed patch requires renewed Founder approval. Governance merge/push and automatic governance-only Production deployment are approved; Electronic Menu UI feature merge/deploy/release, migration/schema and other protected files remain unapproved.",
+      "closedAt": "2026-09-08T15:11:25Z",
+      "featureMergeCommitSha": "4a3a991af4736d02c6f9ad1712588c1f9e46796e"
     }
   ]
 }
