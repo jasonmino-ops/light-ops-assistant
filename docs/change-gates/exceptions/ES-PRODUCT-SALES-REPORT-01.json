@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "taskId": "ES-PRODUCT-SALES-REPORT-01",
+  "featureBranch": "codex/es-product-sales-report-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "3015d0c1a322a96cd8b499ae64ad625145e73889",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/dashboard/page.tsx",
+    "prisma/schema.prisma",
+    "prisma/migrations/20260909150000_add_product_sales_reports/migration.sql"
+  ],
+  "authorizedPathSha256": {
+    "app/dashboard/page.tsx": "26cbe937969126d44bb107c6ded0ca0ab787500586d0d216a5c70c4826777832",
+    "prisma/schema.prisma": "42fdabd4afbdcb3e62075cad4c1d5b80749bb00224099580be94866296391f1b",
+    "prisma/migrations/20260909150000_add_product_sales_reports/migration.sql": "877ed14563f0927fc95b80c7705fa30ff4f960d0cc38d39cc485caf6ac248861"
+  },
+  "createdAt": "2026-09-09T15:15:59.017Z",
+  "approvedAt": "2026-09-09T15:15:59.017Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder decision in ES-PRODUCT-SALES-REPORT-01 task conversation",
+    "statement": "批准方案 A。允许为 ES-PRODUCT-SALES-REPORT-01 单独办理精确 Scope Exception 治理登记，并按 AGENTS.md 要求进入 origin/main。Scope Exception 必须精确到实际文件路径；状态登记为 ACTIVE；仅授权本任务使用；治理变更必须作为独立治理提交；保持已封存的功能实现、文件哈希和补丁不变。",
+    "approvedAtMeaning": "Registration time of explicit approval already received, not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the sealed OWNER dashboard entry, two feature-owned Prisma models, and one additive migration FILE at the three exact content hashes. This local ACTIVE record has no effect until byte-identical in trusted origin/main. No other dashboard/schema/migration content, guard/config change, transaction/payment/refund/OWNER/printing contract change is authorized. Governance-only commit and main registration are approved, but Preview/Production deployment, feature merge, migration execution and release remain unapproved. Current Git-triggered Production behavior requires a separate Founder decision before pushing the governance main change. Close the record after feature merge.",
+  "createdOnBranch": "codex/es-product-sales-report-01-governance",
+  "sourceDraft": {
+    "manifestPath": ".task-state/ES-PRODUCT-SALES-REPORT-01-sealed/manifest.json",
+    "manifestSha256": "b570871ff45dc0e550589594b0f8d67939c840bbb6c3dcdfc103a75429bdc845",
+    "patchPath": ".task-state/ES-PRODUCT-SALES-REPORT-01-sealed/protected-files.patch",
+    "patchSha256": "fe2c3522bed2af35f70a82cbc0ac23a6f67844d1f450b7192a62d4f6661a189e",
+    "fileCount": 3
+  }
+}
