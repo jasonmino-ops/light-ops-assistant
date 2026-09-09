@@ -6,6 +6,7 @@ const root = path.resolve(__dirname, '..');
 const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
 assert.deepEqual(config, {
   $schema: 'https://openapi.vercel.sh/vercel.json',
+  crons: [{ path: '/api/cron/product-sales-daily', schedule: '10 17 * * *' }],
   git: { deploymentEnabled: {
     'codex/es-network-server-v01-release': false,
     'codex/es-network-commercial-addon-v01': false,
