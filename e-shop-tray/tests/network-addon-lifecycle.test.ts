@@ -4,7 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, it, expect, vi } from 'vitest'
 import { NetworkAddonProfile } from '../network-addon/profile'
-import { submitLocalNetworkTest } from '../src/networkRuntime'
+import { submitLocalNetworkTest, activateNetworkPrinting } from '../src/networkRuntime'
+import { assertConfirmedPrinter, createLocalNetworkSnapshot, networkContinuityFingerprint } from '../src/networkDiscovery'
 import { NetworkDeliveryError } from '../src/printing/networkRawTcpTransport'
 import type { ReceivedPrintJob } from '../src/cloudRelayClient'
 
@@ -45,6 +46,37 @@ function job(): ReceivedPrintJob {
     documentName: 'FRONT', commandStream: new Uint8Array() }
 }
 describe('commercial profile initialization, TEST and same-device address recovery', () => {
+  it('historical full-hash confirmation stays intact but cannot activate until an explicit new TEST and same-printer confirmation', async () => {
+    const f = await fixture()
+    const snap = createLocalNetworkSnapshot({
+      adapters: [{ interfaceIndex: 7, name: 'LAN', description: 'Physical Ethernet', interfaceType: 6,
+        hardwareInterface: true, virtual: false, status: 'Up' }],
+      addresses: [{ interfaceIndex: 7, address: '10.20.30.1', prefixLength: 24, addressState: 'Preferred', skipAsSource: false }],
+      routes: [{ interfaceIndex: 7, destinationPrefix: '10.20.30.0/24', nextHop: '0.0.0.0', routeMetric: 256, interfaceMetric: 50 }],
+    }, interfaces)
+    const old = await f.profile.beginTest({ ...testInput(), networkFingerprint: snap.fingerprint })
+    await f.profile.finishTest(old.id, 'SUBMITTED'); await f.profile.confirmTest(old.id, true, false)
+    await f.profile.journal.recordClaimed(job())
+    await f.profile.journal.recordTerminal(job(), { state: 'SUCCEEDED', resultCode: 'SUBMITTED_TO_NETWORK_SOCKET', effectBoundary: 'CROSSED', physicalCompletionKnown: false })
+    await f.profile.journal.markReported(job().id, 1)
+    const beforeProfile = await readFile(path.join(f.directory, 'profile.sealed')), journal = await readFile(f.profile.journal.filePath)
+    const next = f.fresh(); await next.open()
+    const hardware = vi.fn(async () => old.hardwareAddress), start = vi.fn(), persistEnabled = vi.fn()
+    await expect(activateNetworkPrinting({ isEnabled: () => next.snapshot().enabled, stopAndWait: async () => {},
+      validate: async () => { await assertConfirmedPrinter(endpoint, next.snapshot().test!, snap, hardware, async () => snap) },
+      persistEnabled, start })).rejects.toThrow('NETWORK_CHANGED')
+    expect(hardware).not.toHaveBeenCalled(); expect(start).not.toHaveBeenCalled(); expect(persistEnabled).not.toHaveBeenCalled()
+    expect(await readFile(path.join(f.directory, 'profile.sealed'))).toEqual(beforeProfile)
+    expect(await readFile(next.journal.filePath)).toEqual(journal)
+    const newTest = await next.beginTest({ ...testInput(), networkFingerprint: networkContinuityFingerprint(snap) })
+    await expect(next.confirmTest(newTest.id, true, true)).rejects.toThrow('ADDON_TEST_CONFIRMATION_REQUIRED')
+    await next.finishTest(newTest.id, 'SUBMITTED')
+    await expect(next.confirmTest(newTest.id, true, false)).rejects.toThrow('ADDON_SAME_PHYSICAL_PRINTER_REQUIRED')
+    await next.confirmTest(newTest.id, true, true)
+    await expect(assertConfirmedPrinter(endpoint, next.snapshot().test!, snap, hardware, async () => snap)).resolves.toMatchObject(endpoint)
+    expect(await readFile(next.journal.filePath)).toEqual(journal)
+    expect(next.snapshot()).toMatchObject({ enabled: false, revision: 2 })
+  })
   it('ARP/identity verification failure after durable intent records NOT_CROSSED, zero delivery, and permits a new explicit TEST', async () => {
     const f = await fixture(), test = await f.profile.beginTest(testInput())
     const deliver = vi.fn(async () => {})

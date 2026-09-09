@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url'
 import { CloudRelayClient } from '../src/cloudRelayClient'
 import { desktopBindingIdentityPath, readDesktopBindingIdentity, type DesktopBindingIdentity } from '../src/desktopBindingIdentity'
 import { protectNetworkDirectory, type NetworkNode } from '../src/networkNodeConfig'
-import { getWindowsLocalNetworks, validateLocalPrinterEndpoint, discoverNetworkPrinters, readLocalPrinterHardware, assertConfirmedPrinter } from '../src/networkDiscovery'
+import { getWindowsLocalNetworks, validateLocalPrinterEndpoint, discoverNetworkPrinters, readLocalPrinterHardware, assertConfirmedPrinter, networkContinuityFingerprint } from '../src/networkDiscovery'
 import { NETWORK_PROFILE, parseNetworkMode, exactObject, type NetworkRequest } from '../src/networkContract'
 import { NetworkRawTcpTransport, NetworkDeliveryError } from '../src/printing/networkRawTcpTransport'
 import { RelayPoller } from '../src/relayPoller'
@@ -46,7 +46,7 @@ async function assertIdentity() {
 async function validateEndpoint(endpoint: NetworkNode) {
   const snapshot = await getWindowsLocalNetworks()
   const confirmed = profile?.snapshot().test
-  if (!confirmed || confirmed.outcome !== 'CONFIRMED' || confirmed.networkFingerprint !== snapshot.fingerprint) {
+  if (!confirmed || confirmed.outcome !== 'CONFIRMED' || confirmed.networkFingerprint !== networkContinuityFingerprint(snapshot)) {
     throw new Error('NETWORK_CHANGED')
   }
   return assertConfirmedPrinter(endpoint, confirmed, snapshot)
@@ -123,7 +123,7 @@ async function sendTest(input: Record<string, unknown>) {
         spec: '中文、走纸、切刀 / Chinese, feed, cut', qty: 1, price: 0, lineAmount: 0 }] } }
   const bytes = await renderer!.render(request)
   const endpoint = { host: selected.host, port: selected.port }
-  await target.beginTest({ id, mode, endpoint, networkFingerprint: snapshot.fingerprint,
+  await target.beginTest({ id, mode, endpoint, networkFingerprint: networkContinuityFingerprint(snapshot),
     hardwareAddress,
     bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') })
   // All critical checks occur again after durable intent, before any bytes.
@@ -132,7 +132,7 @@ async function sendTest(input: Record<string, unknown>) {
     verify: async () => {
       await assertIdentity()
       const current = await getWindowsLocalNetworks()
-      const verified = await assertConfirmedPrinter(endpoint, { networkFingerprint: snapshot.fingerprint, hardwareAddress }, current)
+      const verified = await assertConfirmedPrinter(endpoint, { networkFingerprint: networkContinuityFingerprint(snapshot), hardwareAddress }, current)
       localAddress = verified.localAddress
     },
     deliver: () => transport.deliver(bytes, endpoint, localAddress),
@@ -199,7 +199,7 @@ async function perform(action: unknown, value: unknown) {
         if (!test || data.id !== test.id) throw new Error('ADDON_TEST_STATE_CONFLICT')
         await assertIdentity()
         const current = await getWindowsLocalNetworks()
-        if (current.fingerprint !== test.networkFingerprint) throw new Error('NETWORK_CHANGED')
+        if (networkContinuityFingerprint(current) !== test.networkFingerprint) throw new Error('NETWORK_CHANGED')
         await assertConfirmedPrinter(test.endpoint, test, current)
         await profile!.confirmTest(String(data.id), data.paperConfirmed === true, data.sameOriginalPrinter === true)
         lastCode = 'CONFIGURED_PAUSED'; break

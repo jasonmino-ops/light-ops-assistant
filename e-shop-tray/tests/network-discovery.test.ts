@@ -1,15 +1,16 @@
 import { EventEmitter } from 'node:events'
-import { execFile } from 'node:child_process'
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { PassThrough } from 'node:stream'
 import type os from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   assertNetworkSnapshotCurrent, createLocalNetworkSnapshot, discoverNetworkPrinters, getWindowsLocalNetworks,
   NETWORK_DISCOVERY_LIMITS, snapshotFingerprint, validateLocalPrinterEndpoint, WINDOWS_NETWORK_METADATA_COMMAND,
-  readLocalPrinterHardware, assertConfirmedPrinter,
+  readLocalPrinterHardware, assertConfirmedPrinter, networkContinuityFingerprint,
   type DiscoverySocket, type LocalNetworkSnapshot, type NetworkDiscoveryDependencies,
 } from '../src/networkDiscovery'
 
-vi.mock('node:child_process', () => ({ execFile: vi.fn() }))
+vi.mock('node:child_process', () => ({ execFile: vi.fn(), spawn: vi.fn() }))
 
 type Interfaces = ReturnType<typeof os.networkInterfaces>
 function metadata(prefix = 24, local = '192.168.18.41', network = '192.168.18.0') {
@@ -55,6 +56,30 @@ function fakeDependencies(snap: LocalNetworkSnapshot, behavior: 'open' | 'closed
   return { deps, sockets, connects, maximum: () => maximum, active: () => active }
 }
 
+function fakeMetadataProcess(raw: ReturnType<typeof metadata>, lateFault: 'none' | 'stderr' | 'stdout' | 'exit' = 'none', delay = 0) {
+  const child = new EventEmitter() as EventEmitter & { stdin: PassThrough; stdout: PassThrough; stderr: PassThrough; kill: ReturnType<typeof vi.fn> }
+  child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough()
+  let closed = false
+  const requests: string[] = []
+  const finish = (exit: number | null, signal: string | null) => {
+    if (closed) return
+    closed = true; child.emit('exit', exit, signal); child.emit('close', exit, signal)
+  }
+  child.kill = vi.fn(() => { queueMicrotask(() => finish(null, 'SIGKILL')); return true })
+  child.stdin.on('data', chunk => {
+    const request = String(chunk).trim(); requests.push(request)
+    const reply = () => { if (!closed) child.stdout.write(`${request}\t${JSON.stringify(raw)}\r\n`) }
+    if (delay) setTimeout(reply, delay); else queueMicrotask(reply)
+  })
+  child.stdin.on('finish', () => queueMicrotask(() => {
+    if (lateFault === 'stderr') child.stderr.write('unexpected local metadata failure')
+    if (lateFault === 'stdout') child.stdout.write('unexpected late frame\n')
+    finish(lateFault === 'exit' ? 1 : 0, null)
+  }))
+  vi.mocked(spawn).mockReturnValueOnce(child as unknown as ChildProcessWithoutNullStreams)
+  return { child, requests }
+}
+
 afterEach(() => vi.useRealTimers())
 
 describe('physical Windows LAN metadata and endpoint restrictions', () => {
@@ -66,7 +91,7 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
   })
   it('identical topology and private IP with a different physical MAC still cannot print', async () => {
     const snap = snapshot(), read = vi.fn(async () => '02-99-88-77-66-55')
-    const proof = { networkFingerprint: snap.fingerprint, hardwareAddress: '02-11-22-33-44-55' }
+    const proof = { networkFingerprint: networkContinuityFingerprint(snap), hardwareAddress: '02-11-22-33-44-55' }
     await expect(assertConfirmedPrinter({ host: '192.168.18.53', port: 9100 }, proof, snap, read)).rejects.toThrow('NETWORK_DEVICE_CHANGED')
     read.mockResolvedValueOnce(proof.hardwareAddress)
     expect(await assertConfirmedPrinter({ host: '192.168.18.53', port: 9100 }, proof, snap, read, async () => snap)).toMatchObject({ host: '192.168.18.53' })
@@ -79,7 +104,7 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
     const wait = new Promise<void>(resolve => { release = resolve })
     const read = vi.fn(async () => { await wait; return '02-11-22-33-44-55' })
     const pending = assertConfirmedPrinter({ host: '192.168.18.53', port: 9100 },
-      { networkFingerprint: before.fingerprint, hardwareAddress: '02-11-22-33-44-55' }, before, read, async () => after)
+      { networkFingerprint: networkContinuityFingerprint(before), hardwareAddress: '02-11-22-33-44-55' }, before, read, async () => after)
     release()
     await expect(pending).rejects.toThrow('NETWORK_CHANGED')
   })
@@ -230,12 +255,94 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
   it('refreshes an aged snapshot, but rejects changed routes before TEST or runtime reuse', async () => {
     const original = snapshot(), aged = { ...original, capturedAt: Date.now() - 90_000 }
     await expect(assertNetworkSnapshotCurrent(aged, { getSnapshot: async () => original })).resolves.toEqual(original)
-    const raw = metadata(); raw.routes[0].routeMetric++
+    const raw = metadata(); raw.routes[1].nextHop = '192.168.18.2'
     await expect(assertNetworkSnapshotCurrent(original, { getSnapshot: async () => createLocalNetworkSnapshot(raw, interfaces()) })).rejects.toThrow('NETWORK_CHANGED')
+  })
+
+  it('native Wi-Fi automatic metric drift changes full integrity SHA, not direct-path continuity', async () => {
+    const raw = metadata(); raw.routes.forEach(route => { route.interfaceMetric = 50 })
+    const before = createLocalNetworkSnapshot(raw, interfaces())
+    raw.routes.forEach(route => { route.interfaceMetric = 45; route.routeMetric++ })
+    const after = createLocalNetworkSnapshot(raw, interfaces())
+    expect(before.fingerprint).not.toBe(after.fingerprint)
+    expect(networkContinuityFingerprint(before)).toBe(networkContinuityFingerprint(after))
+    await expect(assertNetworkSnapshotCurrent(before, { getSnapshot: async () => after })).resolves.toBe(after)
+    const read = vi.fn(async () => '02-11-22-33-44-55')
+    const proof = { networkFingerprint: networkContinuityFingerprint(before), hardwareAddress: '02-11-22-33-44-55' }
+    await expect(assertConfirmedPrinter({ host: '192.168.18.53', port: 9100 }, proof, after, read, async () => before)).resolves.toMatchObject({ localAddress: '192.168.18.41' })
+    expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([-1, 0.5, NaN, Infinity, 0x100000000, '45'])('still rejects invalid metrics %s before continuity', value => {
+    for (const field of ['routeMetric', 'interfaceMetric'] as const) {
+      const raw = metadata(); (raw.routes[0] as Record<string, unknown>)[field] = value
+      expect(() => createLocalNetworkSnapshot(raw, interfaces())).toThrow('NETWORK_METADATA_INVALID')
+    }
+  })
+
+  it('metric tampering without a new full integrity checksum still fails before hardware lookup', async () => {
+    const before = snapshot(), forged = { ...before, routes: before.routes.map(route => ({ ...route, interfaceMetric: 45 })) }
+    expect(() => networkContinuityFingerprint(forged)).toThrow('NETWORK_SNAPSHOT_INVALID')
+    const read = vi.fn(async () => '02-11-22-33-44-55')
+    await expect(assertConfirmedPrinter({ host: '192.168.18.53', port: 9100 },
+      { networkFingerprint: networkContinuityFingerprint(before), hardwareAddress: '02-11-22-33-44-55' }, forged, read))
+      .rejects.toThrow('NETWORK_SNAPSHOT_INVALID')
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it.each(['add', 'remove', 'nextHop', 'interface', 'prefix', 'localIp'] as const)('continuity rejects actual %s topology changes', async change => {
+    const before = snapshot(), raw = metadata()
+    if (change === 'add') raw.routes.push({ ...raw.routes[0] })
+    if (change === 'remove') raw.routes.pop()
+    if (change === 'nextHop') raw.routes[1].nextHop = '192.168.18.2'
+    if (change === 'interface') raw.routes[1].interfaceIndex = 99
+    if (change === 'prefix') raw.routes[1].destinationPrefix = '0.0.0.0/1'
+    const after = change === 'localIp' ? snapshot(24, '192.168.18.42') : createLocalNetworkSnapshot(raw, interfaces())
+    await expect(assertNetworkSnapshotCurrent(before, { getSnapshot: async () => after })).rejects.toThrow('NETWORK_CHANGED')
+  })
+
+  it.each([0, 0xffffffff])('never prefers a competing route by favorable or unfavorable metric %s', metric => {
+    const raw = metadata()
+    raw.routes.push({ interfaceIndex: 99, destinationPrefix: '192.168.18.53/32', nextHop: '0.0.0.0', routeMetric: metric, interfaceMetric: metric })
+    expect(() => validateLocalPrinterEndpoint('192.168.18.53', 9100, createLocalNetworkSnapshot(raw, interfaces())))
+      .toThrow('NETWORK_ROUTE_ESCAPE')
+  })
+
+  it('does not silently accept a pre-upgrade full-hash confirmation', async () => {
+    const snap = snapshot(), read = vi.fn(async () => '02-11-22-33-44-55')
+    expect(networkContinuityFingerprint(snap)).not.toBe(snap.fingerprint)
+    await expect(assertConfirmedPrinter({ host: '192.168.18.53', port: 9100 },
+      { networkFingerprint: snap.fingerprint, hardwareAddress: '02-11-22-33-44-55' }, snap, read)).rejects.toThrow('NETWORK_CHANGED')
+    expect(read).not.toHaveBeenCalled()
   })
 })
 
 describe('bounded zero-payload candidate discovery (fake sockets only)', () => {
+  it.each(['none', 'stderr', 'stdout', 'exit'] as const)('actual discovery awaits metadata EOF cleanup and handles late %s', async fault => {
+    const raw = metadata(30, '192.168.18.41', '192.168.18.40'), snap = createLocalNetworkSnapshot(raw, interfaces(30))
+    const h = fakeDependencies(snap), worker = fakeMetadataProcess(raw, fault)
+    const { getSnapshot: _unused, ...sockets } = h.deps
+    const result = discoverNetworkPrinters(snap, {}, { ...sockets, platform: () => 'win32', interfaces: () => interfaces(30) })
+    if (fault === 'none') await expect(result).resolves.toMatchObject({ status: 'COMPLETE', attempted: 1 })
+    else await expect(result).rejects.toThrow(fault === 'stdout' ? 'NETWORK_METADATA_INVALID' : 'NETWORK_METADATA_UNAVAILABLE')
+    expect(worker.requests).toEqual(['SNAPSHOT1', 'SNAPSHOT2', 'SNAPSHOT3'])
+    expect(h.connects).toHaveLength(1); expect(h.active()).toBe(0)
+    expect(h.sockets.every(socket => !socket.write.mock.calls.length && !socket.end.mock.calls.length)).toBe(true)
+  })
+
+  it('actual metadata worker preserves the 45-second discovery deadline during an outstanding fresh read', async () => {
+    vi.useFakeTimers()
+    const raw = metadata(22, '192.168.16.41', '192.168.16.0'), local = interfaces(22, '192.168.16.41')
+    const snap = createLocalNetworkSnapshot(raw, local), h = fakeDependencies(snap), worker = fakeMetadataProcess(raw, 'none', 400)
+    const { getSnapshot: _unused, ...sockets } = h.deps
+    const rejected = expect(discoverNetworkPrinters(snap, {}, { ...sockets, platform: () => 'win32', interfaces: () => local }))
+      .rejects.toThrow('NETWORK_DISCOVERY_DEADLINE')
+    await vi.advanceTimersByTimeAsync(45_000)
+    await rejected
+    expect(worker.child.kill).toHaveBeenCalledTimes(1)
+    expect(h.active()).toBe(0)
+    expect(worker.requests.length).toBeGreaterThan(1)
+  })
   it('connects at most 16 at once to 9100, binds the source IP and marks every result unverified', async () => {
     const snap = snapshot(), h = fakeDependencies(snap), onCandidate = vi.fn()
     const result = await discoverNetworkPrinters(snap, { onCandidate }, h.deps)
@@ -297,11 +404,26 @@ describe('bounded zero-payload candidate discovery (fake sockets only)', () => {
 
   it('aborts when metadata changes after connection and emits no stale candidate', async () => {
     const snap = snapshot(30, '192.168.18.41', '192.168.18.40'), h = fakeDependencies(snap), onCandidate = vi.fn()
-    const changed = metadata(30, '192.168.18.41', '192.168.18.40'); changed.routes[0].routeMetric++
+    const changed = metadata(30, '192.168.18.41', '192.168.18.40'); changed.routes[1].nextHop = '192.168.18.2'
     h.deps.getSnapshot = vi.fn().mockResolvedValueOnce(snap).mockResolvedValueOnce(snap)
       .mockResolvedValue(createLocalNetworkSnapshot(changed, interfaces(30)))
     await expect(discoverNetworkPrinters(snap, { onCandidate }, h.deps)).rejects.toThrow('NETWORK_CHANGED')
     expect(onCandidate).not.toHaveBeenCalled(); expect(h.active()).toBe(0)
+  })
+
+  it('freshly reads before and after every wave while accepting metric-only drift without payload', async () => {
+    const snap = snapshot(), h = fakeDependencies(snap)
+    let reads = 0
+    h.deps.getSnapshot = vi.fn(async () => {
+      const raw = metadata(), metric = (++reads % 2) ? 45 : 50
+      raw.routes.forEach(route => { route.interfaceMetric = metric })
+      return createLocalNetworkSnapshot(raw, interfaces())
+    })
+    const result = await discoverNetworkPrinters(snap, {}, h.deps)
+    expect(result.status).toBe('COMPLETE')
+    expect(h.deps.getSnapshot).toHaveBeenCalledTimes(1 + 2 * Math.ceil(252 / 16))
+    expect(h.maximum()).toBe(16)
+    expect(h.sockets.every(socket => socket.destroyed && !socket.write.mock.calls.length && !socket.end.mock.calls.length)).toBe(true)
   })
 
   it('rejects an already aborted signal without reading metadata or opening sockets', async () => {

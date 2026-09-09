@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { Socket } from 'node:net'
 import os from 'node:os'
 import { validateNetworkNode } from './networkNodeConfig'
+import { createWindowsMetadataReader, type WindowsMetadataReader } from './networkDiscoveryMetadata'
 
 // This is candidate discovery, never printer identification or print authorization.
 // RAW 9100 is the discovery default; there is no vendor discovery wire protocol.
@@ -112,10 +113,10 @@ export async function assertConfirmedPrinter(endpoint: { host: string; port: num
   readHardware: typeof readLocalPrinterHardware = readLocalPrinterHardware,
   refresh: () => Promise<LocalNetworkSnapshot> = getWindowsLocalNetworks): Promise<ValidatedLocalPrinterEndpoint> {
   const selected = validateLocalPrinterEndpoint(endpoint.host, endpoint.port, snapshot)
-  if (confirmation.networkFingerprint !== snapshot.fingerprint) fail('NETWORK_CHANGED')
+  if (confirmation.networkFingerprint !== networkContinuityFingerprint(snapshot)) fail('NETWORK_CHANGED')
   if (await readHardware(endpoint.host, endpoint.port, snapshot) !== confirmation.hardwareAddress) fail('NETWORK_DEVICE_CHANGED')
   const after = await refresh()
-  if (after.fingerprint !== snapshot.fingerprint) fail('NETWORK_CHANGED')
+  if (networkContinuityFingerprint(after) !== networkContinuityFingerprint(snapshot)) fail('NETWORK_CHANGED')
   return validateLocalPrinterEndpoint(selected.host, selected.port, after)
 }
 
@@ -165,6 +166,23 @@ function sortObjects<T>(values: T[]): T[] {
 export function snapshotFingerprint(snapshot: Pick<LocalNetworkSnapshot, 'networks' | 'routes' | 'localAddresses'>): string {
   return createHash('sha256').update(JSON.stringify({
     networks: sortObjects([...snapshot.networks]), routes: sortObjects([...snapshot.routes]),
+    localAddresses: [...snapshot.localAddresses].sort(),
+  })).digest('hex')
+}
+
+/** Cross-time continuity, NOT snapshot integrity. Windows can change automatic
+ * interface metrics with Wi-Fi link speed without changing the network path.
+ * Keep every route's topology: endpoint validation rejects ANY equally/more
+ * specific competing route regardless of its cost, then binds the source IP.
+ * The complete fingerprint (including both metrics) is still checked first.
+ * Domain separation makes pre-upgrade full-hash confirmations fail closed. */
+export function networkContinuityFingerprint(snapshot: LocalNetworkSnapshot): string {
+  validateSnapshot(snapshot, false)
+  return createHash('sha256').update(JSON.stringify({
+    domain: 'EShopNetworkDirectLanTopology/v1',
+    networks: sortObjects([...snapshot.networks]),
+    routes: sortObjects(snapshot.routes.map(({ interfaceIndex, destinationPrefix, nextHop }) =>
+      ({ interfaceIndex, destinationPrefix, nextHop }))),
     localAddresses: [...snapshot.localAddresses].sort(),
   })).digest('hex')
 }
@@ -295,7 +313,7 @@ export async function assertNetworkSnapshotCurrent(snapshot: LocalNetworkSnapsho
   const current = await abortable(deps.getSnapshot ? deps.getSnapshot(signal) : getWindowsLocalNetworks(deps, signal), signal)
   checkAbort(signal)
   validateSnapshot(current)
-  if (snapshot.fingerprint !== current.fingerprint) fail('NETWORK_CHANGED')
+  if (networkContinuityFingerprint(snapshot) !== networkContinuityFingerprint(current)) fail('NETWORK_CHANGED')
   return current
 }
 
@@ -354,12 +372,27 @@ export async function discoverNetworkPrinters(snapshot: LocalNetworkSnapshot, op
   if (scanActive) fail('NETWORK_DISCOVERY_BUSY')
   scanActive = true
   const controller = new AbortController()
+  let metadataReader: WindowsMetadataReader | undefined
   const cancel = () => controller.abort(new NetworkDiscoveryError('NETWORK_DISCOVERY_CANCELLED'))
   const deadline = setTimeout(() => controller.abort(new NetworkDiscoveryError('NETWORK_DISCOVERY_DEADLINE')), NETWORK_DISCOVERY_LIMITS.deadlineMs)
   options.signal?.addEventListener('abort', cancel, { once: true })
   if (options.signal?.aborted) cancel()
   try {
     validateSnapshot(snapshot)
+    checkAbort(controller.signal)
+    if (!deps.getSnapshot && !deps.readMetadata) {
+      // Only the process/cmdlet imports are reused, never a snapshot. Normal
+      // TEST/confirm/enable/delivery retain their one-shot metadata reader.
+      metadataReader = createWindowsMetadataReader(WINDOWS_NETWORK_METADATA_COMMAND, { platform: deps.platform })
+      const reader = metadataReader
+      deps = { ...deps, readMetadata: async signal => {
+        try { return await reader.read(signal) }
+        catch (error) {
+          const code = error instanceof Error ? error.message : ''
+          throw new NetworkDiscoveryError(/^NETWORK_[A-Z_]+$/.test(code) ? code : 'NETWORK_METADATA_UNAVAILABLE')
+        }
+      } }
+    }
     let current = await assertNetworkSnapshotCurrent(snapshot, deps, controller.signal)
     const endpoints = targets(current)
     if (!endpoints || !endpoints.length) return Object.freeze({ status: 'MANUAL_REQUIRED', candidates: [], attempted: 0,
@@ -388,6 +421,7 @@ export async function discoverNetworkPrinters(snapshot: LocalNetworkSnapshot, op
     controller.abort()
     clearTimeout(deadline)
     options.signal?.removeEventListener('abort', cancel)
-    scanActive = false
+    try { await metadataReader?.close() }
+    finally { scanActive = false }
   }
 }
