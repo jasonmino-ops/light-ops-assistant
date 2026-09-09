@@ -677,6 +677,69 @@
       "closedAt": "2026-09-09T16:32:17.276Z",
       "featureMergeCommitSha": "a29e12683cf89bfa2c807cb6e238d8c8a4769e42",
       "closureReason": "Exact 22-file cold-conversion source facc45449656d012d198c2391e13b632901f937f is merged into trusted origin/main at a29e12683cf89bfa2c807cb6e238d8c8a4769e42; all approved bytes match the actual source and merge. Task-scoped permission consumed under renewed explicit Founder source push/main/automatic Production authority. All approval metadata and hashes remain historical evidence. This closure does not assert Production READY, installed-candidate paper acceptance, formal signed release or whole-product FIELD closure."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-LATENCY-RC4-6",
+      "featureBranch": "codex/es-network-print-latency-rc4",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "8761596f2614e88421fbfaad01472e988329ef80",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-09-09T19:41:38.000Z",
+      "approvedAt": "2026-09-09T19:41:38.000Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder-approved three-file latency increment, plus narrowly necessary rc.4 candidate version/source assertions and strict deployment-policy fixture alignment with the already-merged cron. Reuse the existing bounded Windows metadata process for two fresh prepare/delivery reads, preserving every security and durability boundary and unchanged cloud polling.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/src/networkDiscovery.ts",
+        "e-shop-tray/tests/network-addon.test.ts",
+        "e-shop-tray/tests/network-discovery.test.ts",
+        "tests/network-release-deployment-policy.test.cjs"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/main.ts": "d5eb5dc619d50c59ed84cc044e52978917752bf59466bc394337cbb0209aed1e",
+        "e-shop-tray/scripts/build-network-addon.mjs": "c4225f93e1f1d766308bdebe6c2423dee2dd6012dd4733cc2fcb6bd6c86df013",
+        "e-shop-tray/src/networkDiscovery.ts": "bdd3a72695a3ac0ec06a5f374609e53f8a7b25a9ad4ef7d49e3584aa7f63ba04",
+        "e-shop-tray/tests/network-addon.test.ts": "aa9127cf944c1677789abec642b927b3f0eb9a9866c756fba1fe252474dd8cc2",
+        "e-shop-tray/tests/network-discovery.test.ts": "3898901874333fb6a1a93ffe472956e16ad7dbacea993ed8b1d46412644ea816",
+        "tests/network-release-deployment-policy.test.cjs": "e08f2054b764d670e52b1a25d35d3becd20ef1b640b6592d30a21ebf184e404a"
+      },
+      "approvedContentMappingSha256": "21f7efb0a7f4eea4139a1aaa53b2ed45984dcc7fbb08046e6a4b9cbbe9c141f8",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.4",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "approvalSource": {
+        "statement": "批准本轮已独立复审的三文件精确哈希清单，按既有流程完成精确授权、必要治理与功能提交、候选包构建及 V727 安全升级；相关合并及伴随自动部署纳入本次授权。",
+        "originalThreeMappingSha256": "fbb052f63426e7063d868b0737fdca414c1dfaf0a25ef10da372f333f39bce3e",
+        "scopeDistinction": "Founder explicitly approved the original three sealed bytes. Three companion build/test files are newly generated necessary candidate-delivery work under that same instruction, not hashes previously supplied by Founder. Fresh-context scope review PASS; candidate-companion content review separately required before integration.",
+        "timestampMeaning": "Registration time under the existing explicit instruction, not an invented historical message time."
+      },
+      "createdOnBranch": "codex/es-network-print-latency-governance",
+      "governanceStartingHead": "8761596f2614e88421fbfaad01472e988329ef80",
+      "sourceDraft": {
+        "path": "/private/tmp/es-network-print-latency-rc4",
+        "startingHead": "8761596f2614e88421fbfaad01472e988329ef80",
+        "sourceCommit": null,
+        "fileCount": 6,
+        "contentState": "uncommitted successor; original three bytes identical to independently reviewed seal; no source commit exists yet"
+      },
+      "allowedPurposes": [
+        "Only prepare/delivery validation reuses one existing bounded metadata reader for two real cmdlet reads; mandatory cleanup precedes final Node interface check.",
+        "Exact rc.4 candidate version, true successor baseline and exact related tests; preserve source snapshots, before/after hashes, original candidate evidence and unsigned TEST-only restriction.",
+        "Keep strict full-object deployment configuration assertions and include the cron already present in trusted main; no vercel.json or deployment-setting change."
+      ],
+      "prohibitedChanges": [
+        "Desktop0.4.7/identity, templates/Renderer/Encoder, QZ/USB/Windows Queue transport, journal/ACK/idempotency/UNKNOWN semantics, schema/migrations and business sale semantics.",
+        "Snapshot caching, removed identity/address/route/MAC checks, reduced polling intervals, more idle cloud requests, new wake/auth/Agent/updater platform or automatic uncertain reprints.",
+        "Uncontrolled/shared-production-database Preview, wildcard/directory/hash bypass, manual Promote, fake paper timing/commit/approval proof or unsigned formal publication."
+      ],
+      "expirationCondition": "Close this exact grant after the accepted latency source actually merges into trusted origin/main. Build candidate while ACTIVE; preserve exact hashes and real merge evidence. No future byte or branch authorization."
     }
   ]
 }
