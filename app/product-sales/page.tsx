@@ -12,6 +12,7 @@ import { createProductReportPrintAction } from '@/lib/product-sales/print-action
 import { reportPeriodPresentation } from '@/lib/product-sales/presentation'
 import { productKey, type GroupView, type Period, type ProductRef, type ProductSalesResult, type ReportStore, type Selection } from '@/lib/product-sales/contract'
 import styles from './page.module.css'
+import ReportImage from './ReportImage'
 
 const DEV_CTX = process.env.NODE_ENV !== 'production' ? OWNER_CTX : undefined
 const BASE = '/api/owner/product-sales'
@@ -233,7 +234,7 @@ export default function ProductSalesPage() {
     {busy && <p role="status">{copy.working}</p>}
     <section className={styles.card} aria-label={copy.title}>
       {result ? <>
-        <div className={styles.row}><h2>{result.groupName ?? copy.title}</h2><button type="button" disabled={busy || printState === 'pending'} onClick={print}>{copy.print}</button></div>
+        <div className={styles.row}><h2>{result.groupName ?? copy.title}</h2><button type="button" disabled={busy || printState === 'pending'} onClick={print}>{copy.print}</button><ReportImage result={result} lang={lang} disabled={busy} /></div>
         <p>{resultPeriod?.interval}</p><p className={styles.notice}>{resultPeriod?.status}</p>
         {resultPeriod?.legacy && <p className={styles.notice}>{resultPeriod.legacy}</p>}
         <p className={styles.muted}>{copy.generated}: {new Date(result.generatedAt).toLocaleString(lang, { timeZone: result.range.timezone })}</p>

@@ -1,0 +1,7 @@
+.capture{position:fixed;left:-10000px;top:0;pointer-events:none;z-index:-1}
+.dialog{width:min(480px,calc(100vw - 24px));max-height:90dvh;box-sizing:border-box;padding:18px;border:1px solid #cbd5e1;border-radius:16px;color:#172033;background:#fff;overflow:auto}
+.dialog::backdrop{background:rgba(15,23,42,.55)}
+.header,.actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.header h3{margin:0;flex:1;min-width:0;font-size:17px;overflow-wrap:anywhere}.actions{justify-content:flex-start;margin-top:14px}
+.preview{display:block;width:100%;height:auto;margin:14px auto;background:#fff;border:1px solid #e2e8f0;box-sizing:border-box}
+.note{font-size:13px;line-height:1.7;color:#526079;overflow-wrap:anywhere}.error{color:#9f1239;font-size:14px;line-height:1.7}
+@media print{.dialog,.capture{display:none!important}}
