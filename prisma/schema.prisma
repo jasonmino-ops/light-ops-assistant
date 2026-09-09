@@ -844,6 +844,32 @@ model OperationLog {
   @@index([requestId])
 }
 
+// ES-PRODUCT-SALES-REPORT-01: feature-owned configuration; no transaction copies.
+model ProductSalesGroup {
+  id              String   @id
+  ownerTelegramId String
+  name            String   @db.VarChar(80)
+  selection       Json
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  reports         ProductSalesDailyReport[]
+
+  @@index([ownerTelegramId, createdAt])
+  @@index([enabled, id])
+}
+
+model ProductSalesDailyReport {
+  id          String   @id @default(cuid())
+  groupId     String
+  reportDate  String   @db.VarChar(10)
+  generatedAt DateTime @default(now())
+  result      Json
+  group       ProductSalesGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, reportDate])
+}
+
 model TenantDailySummary {
   id           String   @id @default(cuid())
   date         String // YYYY-MM-DD (UTC)

@@ -9,6 +9,7 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { getAiSupportModuleStatus } from '@/lib/tier'
 import { formatMoney } from '@/lib/currency'
 import ElectronicMenuEntry from '@/app/components/ElectronicMenuEntry'
+import ProductSalesEntry from '@/app/components/ProductSalesEntry'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -347,6 +348,7 @@ export default function DashboardPage() {
 
       <div style={s.body}>
         {realRole === 'OWNER' && <ElectronicMenuEntry />}
+        {realRole === 'OWNER' && <ProductSalesEntry />}
         {/* Loading skeleton */}
         {loading && (
           <div style={s.loadingWrap}>
