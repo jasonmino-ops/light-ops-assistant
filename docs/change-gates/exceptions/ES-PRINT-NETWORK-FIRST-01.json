@@ -590,7 +590,7 @@
       "featureBranch": "codex/es-network-commercial-cold-conversion-v01",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "3015d0c1a322a96cd8b499ae64ad625145e73889",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-09-09T15:54:48.000Z",
       "approvedAt": "2026-09-09T15:54:48.000Z",
@@ -673,7 +673,10 @@
         "Wildcard/directory scope, hash bypass, deleting or falsifying task/order/journal state, auto-reprinting unknown effects, hot switching or dual physical printers.",
         "Shared-Production-database Preview, signing purchases/key export, formal unsigned publication, invented clean-x64/new-LAN/abnormal-power-loss or paper evidence."
       ],
-      "expirationCondition": "Close this exact authorization after the accepted cold-conversion feature is actually merged into trusted origin/main. Preserve approved paths/hashes and actual merge evidence; no standing future permission."
+      "expirationCondition": "Close this exact authorization after the accepted cold-conversion feature is actually merged into trusted origin/main. Preserve approved paths/hashes and actual merge evidence; no standing future permission.",
+      "closedAt": "2026-09-09T16:32:17.276Z",
+      "featureMergeCommitSha": "a29e12683cf89bfa2c807cb6e238d8c8a4769e42",
+      "closureReason": "Exact 22-file cold-conversion source facc45449656d012d198c2391e13b632901f937f is merged into trusted origin/main at a29e12683cf89bfa2c807cb6e238d8c8a4769e42; all approved bytes match the actual source and merge. Task-scoped permission consumed under renewed explicit Founder source push/main/automatic Production authority. All approval metadata and hashes remain historical evidence. This closure does not assert Production READY, installed-candidate paper acceptance, formal signed release or whole-product FIELD closure."
     }
   ]
 }
