@@ -3,10 +3,13 @@ import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child
 import { PassThrough } from 'node:stream'
 import type os from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ReceivedPrintJob } from '../src/cloudRelayClient'
+import { NETWORK_PROFILE, type NetworkRequest } from '../src/networkContract'
+import { createGuardedNetworkClient, createNetworkStrategy } from '../src/networkRuntime'
 import {
   assertNetworkSnapshotCurrent, createLocalNetworkSnapshot, discoverNetworkPrinters, getWindowsLocalNetworks,
   NETWORK_DISCOVERY_LIMITS, snapshotFingerprint, validateLocalPrinterEndpoint, WINDOWS_NETWORK_METADATA_COMMAND,
-  readLocalPrinterHardware, assertConfirmedPrinter, networkContinuityFingerprint,
+  readLocalPrinterHardware, assertConfirmedPrinter, networkContinuityFingerprint, withWindowsValidationSnapshots,
   type DiscoverySocket, type LocalNetworkSnapshot, type NetworkDiscoveryDependencies,
 } from '../src/networkDiscovery'
 
@@ -56,7 +59,9 @@ function fakeDependencies(snap: LocalNetworkSnapshot, behavior: 'open' | 'closed
   return { deps, sockets, connects, maximum: () => maximum, active: () => active }
 }
 
-function fakeMetadataProcess(raw: ReturnType<typeof metadata>, lateFault: 'none' | 'stderr' | 'stdout' | 'exit' = 'none', delay = 0) {
+function fakeMetadataProcess(raw: ReturnType<typeof metadata> | ((read: number) => ReturnType<typeof metadata>),
+  lateFault: 'none' | 'stderr' | 'stdout' | 'exit' | 'hang' | 'unclosed' = 'none', delay = 0,
+  options: { readTimeoutAt?: number; onCleanup?: () => void } = {}) {
   const child = new EventEmitter() as EventEmitter & { stdin: PassThrough; stdout: PassThrough; stderr: PassThrough; kill: ReturnType<typeof vi.fn> }
   child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough()
   let closed = false
@@ -65,19 +70,22 @@ function fakeMetadataProcess(raw: ReturnType<typeof metadata>, lateFault: 'none'
     if (closed) return
     closed = true; child.emit('exit', exit, signal); child.emit('close', exit, signal)
   }
-  child.kill = vi.fn(() => { queueMicrotask(() => finish(null, 'SIGKILL')); return true })
+  child.kill = vi.fn(() => { if (lateFault !== 'unclosed') queueMicrotask(() => finish(null, 'SIGKILL')); return true })
   child.stdin.on('data', chunk => {
     const request = String(chunk).trim(); requests.push(request)
-    const reply = () => { if (!closed) child.stdout.write(`${request}\t${JSON.stringify(raw)}\r\n`) }
+    if (requests.length === options.readTimeoutAt) return
+    const reply = () => { if (!closed) child.stdout.write(`${request}\t${JSON.stringify(typeof raw === 'function' ? raw(requests.length) : raw)}\r\n`) }
     if (delay) setTimeout(reply, delay); else queueMicrotask(reply)
   })
   child.stdin.on('finish', () => queueMicrotask(() => {
+    options.onCleanup?.()
+    if (lateFault === 'hang' || lateFault === 'unclosed') return
     if (lateFault === 'stderr') child.stderr.write('unexpected local metadata failure')
     if (lateFault === 'stdout') child.stdout.write('unexpected late frame\n')
     finish(lateFault === 'exit' ? 1 : 0, null)
   }))
   vi.mocked(spawn).mockReturnValueOnce(child as unknown as ChildProcessWithoutNullStreams)
-  return { child, requests }
+  return { child, requests, finish }
 }
 
 afterEach(() => vi.useRealTimers())
@@ -314,6 +322,219 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
     await expect(assertConfirmedPrinter({ host: '192.168.18.53', port: 9100 },
       { networkFingerprint: snap.fingerprint, hardwareAddress: '02-11-22-33-44-55' }, snap, read)).rejects.toThrow('NETWORK_CHANGED')
     expect(read).not.toHaveBeenCalled()
+  })
+})
+
+describe('validation-scoped fresh Windows snapshots (real reader, fake process only)', () => {
+  const endpoint = { host: '192.168.18.53', port: 9100 }
+  const hardwareAddress = '02-11-22-33-44-55'
+  const deps = { platform: () => 'win32', interfaces: () => interfaces() }
+  const confirmation = () => ({ networkFingerprint: networkContinuityFingerprint(snapshot()), hardwareAddress })
+  const validate = (readHardware: typeof readLocalPrinterHardware = async () => hardwareAddress,
+    overrides: Partial<typeof deps> = {}) => withWindowsValidationSnapshots(async getSnapshot => {
+    const before = await getSnapshot()
+    return assertConfirmedPrinter(endpoint, confirmation(), before, readHardware, getSnapshot)
+  }, { ...deps, ...overrides })
+
+  function runtime() {
+    const request: NetworkRequest = { profile: NETWORK_PROFILE, requestId: 'network-validation-0001', role: 'FRONT',
+      mode: 'SHARED_PRINTER', rendererVersion: 1, order: { storeCode: 'STORE-A', storeName: 'Test', orderNo: 'ORDER-001',
+        createdAt: '2026-09-07T00:00:00.000Z', cashierName: 'Cashier', paymentMethod: 'CASH', currencyCode: 'USD',
+        totalAmount: 3, lang: 'zh', items: [{ name: '小票', spec: null, qty: 1, price: 3, lineAmount: 3 }] } }
+    const job: ReceivedPrintJob = { id: 'network-validation-job', schemaVersion: 2, requestId: request.requestId,
+      idempotencyKey: request.requestId, requestHash: 'a'.repeat(64), orderNo: request.order.orderNo, documentName: 'FRONT',
+      commandStream: new Uint8Array(), network: request, claimAttempt: 1, claimToken: `ecp_v1_${'a'.repeat(43)}`,
+      leaseExpiresAt: new Date(Date.now() + 30000).toISOString() }
+    vi.mocked(execFile).mockClear()
+    vi.mocked(spawn).mockClear()
+    vi.mocked(execFile).mockImplementation((...args: unknown[]) => {
+      const command = args[1] as string[]
+      const callback = args[3] as (error: null, stdout: string, stderr: string) => void
+      if (command.includes('-Command')) callback(null, JSON.stringify(metadata()), '')
+      else {
+        expect(Buffer.from(command.at(-1)!, 'base64').toString('utf16le')).toContain('SendARP')
+        callback(null, `${hardwareAddress}\r\n`, '')
+      }
+      return {} as ReturnType<typeof execFile>
+    })
+    // Same composition as the commercial entry: receive keeps the default
+    // one-shot validator; only prepare and delivery supply the scoped reader.
+    const validateEndpoint = async (selected: typeof endpoint, getSnapshot = () => getWindowsLocalNetworks(deps)) =>
+      assertConfirmedPrinter(selected, confirmation(), await getSnapshot(),
+        (host, port, current) => readLocalPrinterHardware(host, port, current, { platform: deps.platform }), getSnapshot)
+    const bytes = new Uint8Array([27, 64, 29, 86, 0])
+    const options = { assertIdentity: vi.fn(async () => {}), identity: { storeCode: 'STORE-A' },
+      nodes: { read: vi.fn(async () => ({ mode: 'SHARED_PRINTER' as const, endpoint })) }, validateEndpoint,
+      journal: { records: () => [] }, client: { receive: vi.fn(async (): Promise<ReceivedPrintJob | null> => job), markExecuting: vi.fn(), reportResult: vi.fn() },
+      render: vi.fn(async () => bytes), recorder: { record: vi.fn(async () => {}) },
+      transport: { deliver: vi.fn(async () => ({ bytesWritten: bytes.length, durationMs: 1,
+        effectBoundary: 'CROSSED' as const, physicalCompletionKnown: false as const })) } }
+    return { options, guarded: createGuardedNetworkClient(options),
+      strategy: createNetworkStrategy({ ...options,
+        validateEndpoint: selected => withWindowsValidationSnapshots(getSnapshot => validateEndpoint(selected, getSnapshot), deps) }) }
+  }
+
+  it('keeps receive at three one-shot processes, and composes one job with seven total processes', async () => {
+    const h = runtime()
+    const received = await h.guarded.receive()
+    expect(execFile).toHaveBeenCalledTimes(3)
+    expect(spawn).not.toHaveBeenCalled()
+    const workers = [fakeMetadataProcess(metadata()), fakeMetadataProcess(metadata())]
+    const deliver = await h.strategy.prepare(received!)
+    expect(h.options.transport.deliver).not.toHaveBeenCalled()
+    await expect(deliver()).resolves.toMatchObject({ physicalCompletionKnown: false })
+    expect(execFile).toHaveBeenCalledTimes(5)
+    expect(spawn).toHaveBeenCalledTimes(2)
+    expect(workers.map(worker => worker.requests)).toEqual([['SNAPSHOT1', 'SNAPSHOT2'], ['SNAPSHOT1', 'SNAPSHOT2']])
+    expect(h.options.transport.deliver).toHaveBeenCalledWith(new Uint8Array([27, 64, 29, 86, 0]), endpoint, '192.168.18.41')
+    h.options.client.receive.mockResolvedValueOnce(null)
+    await expect(h.guarded.receive()).resolves.toBeNull()
+    expect(execFile).toHaveBeenCalledTimes(8)
+    expect(spawn).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['prepare', 'delivery'] as const)('actual runtime %s blocks transport when scoped cleanup fails', async stage => {
+    vi.useFakeTimers()
+    const h = runtime(), received = await h.guarded.receive()
+    if (stage === 'delivery') fakeMetadataProcess(metadata())
+    const failed = fakeMetadataProcess(metadata(), 'unclosed')
+    const run = stage === 'prepare' ? h.strategy.prepare(received!) : (await h.strategy.prepare(received!))()
+    const rejected = stage === 'prepare' ? expect(run).rejects.toThrow('NETWORK_METADATA_CLEANUP_FAILED')
+      : expect(run).rejects.toMatchObject({ code: 'NETWORK_METADATA_CLEANUP_FAILED', effectBoundary: 'NOT_CROSSED' })
+    await vi.advanceTimersByTimeAsync(1000)
+    await rejected
+    expect(failed.requests).toEqual(['SNAPSHOT1', 'SNAPSHOT2'])
+    expect(h.options.transport.deliver).not.toHaveBeenCalled()
+    expect(h.options.render).toHaveBeenCalledTimes(stage === 'prepare' ? 0 : 1)
+    expect(execFile).toHaveBeenCalledTimes(stage === 'prepare' ? 4 : 5)
+    expect(spawn).toHaveBeenCalledTimes(stage === 'prepare' ? 1 : 2)
+  })
+
+  it('awaits the entire validator and closes before the last Node interface check or permission', async () => {
+    const events: string[] = [], worker = fakeMetadataProcess(metadata(), 'hang', 0,
+      { onCleanup: () => { events.push('cleanup-start') } })
+    let releaseHardware!: () => void
+    const waitHardware = new Promise<void>(resolve => { releaseHardware = resolve })
+    const readHardware = vi.fn(async () => { events.push('arp'); await waitHardware; return hardwareAddress })
+    worker.child.stdin.on('data', chunk => events.push(String(chunk).trim()))
+    worker.child.on('close', () => events.push('cleanup-done'))
+    const local = vi.fn(() => { events.push('interfaces'); return interfaces() })
+    const permission = vi.fn()
+    const pending = validate(readHardware, { interfaces: local }).then(permission)
+    await vi.waitFor(() => expect(readHardware).toHaveBeenCalledTimes(1))
+    expect(worker.child.stdin.writableEnded).toBe(false)
+    expect(worker.requests).toEqual(['SNAPSHOT1'])
+    releaseHardware()
+    await vi.waitFor(() => expect(events).toContain('cleanup-start'))
+    expect(local).toHaveBeenCalledTimes(3)
+    expect(permission).not.toHaveBeenCalled()
+    worker.finish(0, null)
+    await pending
+    expect(events).toEqual(['interfaces', 'SNAPSHOT1', 'interfaces', 'arp', 'interfaces', 'SNAPSHOT2',
+      'cleanup-start', 'cleanup-done', 'interfaces'])
+    expect(permission).toHaveBeenCalledWith(expect.objectContaining({ localAddress: '192.168.18.41' }))
+    expect(worker.child.kill).not.toHaveBeenCalled()
+  })
+
+  it('uses a new process per validation, executes both fresh reads and accepts metric-only drift', async () => {
+    const workerCount = vi.mocked(spawn).mock.calls.length
+    const workers = [fakeMetadataProcess(read => {
+      const raw = metadata(); raw.routes.forEach(route => { route.interfaceMetric = read === 1 ? 50 : 45 }); return raw
+    }), fakeMetadataProcess(metadata())]
+    const first = await validate(), second = await validate()
+    expect(first.snapshotFingerprint).not.toBe(second.snapshotFingerprint)
+    expect(vi.mocked(spawn).mock.calls.length - workerCount).toBe(2)
+    for (const worker of workers) {
+      expect(worker.requests).toEqual(['SNAPSHOT1', 'SNAPSHOT2'])
+      expect(worker.child.stdin.writableEnded).toBe(true)
+      expect(worker.child.kill).not.toHaveBeenCalled()
+    }
+  })
+
+  it.each([0, 1, 3])('does not permit a successful callback after %s snapshots', async count => {
+    const worker = fakeMetadataProcess(metadata())
+    await expect(withWindowsValidationSnapshots(async getSnapshot => {
+      for (let read = 0; read < count; read++) await getSnapshot()
+      return endpoint
+    }, deps)).rejects.toThrow(count === 3 ? 'NETWORK_METADATA_LIMIT' : 'NETWORK_METADATA_INVALID')
+    expect(worker.requests).toHaveLength(Math.min(count, 2))
+    expect(worker.child.stdin.writableEnded).toBe(true)
+  })
+
+  it('preserves a validator failure and awaits cleanup even before its first snapshot', async () => {
+    const worker = fakeMetadataProcess(metadata(), 'hang')
+    const settled = vi.fn()
+    const rejected = withWindowsValidationSnapshots(async () => { throw new Error('NETWORK_CHANGED') }, deps)
+      .catch(error => { settled(); throw error })
+    const assertion = expect(rejected).rejects.toThrow('NETWORK_CHANGED')
+    await vi.waitFor(() => expect(worker.child.stdin.writableFinished).toBe(true))
+    expect(settled).not.toHaveBeenCalled()
+    worker.finish(0, null)
+    await assertion
+    expect(worker.requests).toEqual([])
+  })
+
+  it('rejects a changed route from the second fresh read after ARP', async () => {
+    const worker = fakeMetadataProcess(read => {
+      const raw = metadata()
+      if (read === 2) raw.routes.push({ interfaceIndex: 99, destinationPrefix: '192.168.18.53/32',
+        nextHop: '0.0.0.0', routeMetric: 1, interfaceMetric: 1 })
+      return raw
+    })
+    await expect(validate()).rejects.toThrow('NETWORK_CHANGED')
+    expect(worker.requests).toEqual(['SNAPSHOT1', 'SNAPSHOT2'])
+    expect(worker.child.stdin.writableEnded).toBe(true)
+  })
+
+  it('rejects a changed MAC without taking a second snapshot and still awaits cleanup', async () => {
+    const worker = fakeMetadataProcess(metadata())
+    await expect(validate(async () => '02-99-88-77-66-55')).rejects.toThrow('NETWORK_DEVICE_CHANGED')
+    expect(worker.requests).toEqual(['SNAPSHOT1'])
+    expect(worker.child.stdin.writableEnded).toBe(true)
+  })
+
+  it.each([2, 3, 4])('rejects Node interface changes at interface observation %s', async observation => {
+    const worker = fakeMetadataProcess(metadata())
+    let observations = 0
+    await expect(validate(undefined, { interfaces: () => ++observations < observation ? interfaces() : interfaces(24, '192.168.18.42') }))
+      .rejects.toThrow('NETWORK_CHANGED')
+    expect(worker.child.stdin.writableEnded).toBe(true)
+  })
+
+  it('detects a Node interface change during successful EOF cleanup', async () => {
+    let local = interfaces()
+    const worker = fakeMetadataProcess(metadata(), 'none', 0, { onCleanup: () => { local = interfaces(24, '192.168.18.42') } })
+    await expect(validate(undefined, { interfaces: () => local })).rejects.toThrow('NETWORK_CHANGED')
+    expect(worker.requests).toEqual(['SNAPSHOT1', 'SNAPSHOT2'])
+    expect(worker.child.kill).not.toHaveBeenCalled()
+  })
+
+  it.each(['stderr', 'stdout', 'exit', 'hang', 'unclosed'] as const)('does not permit output after cleanup %s failure or retry one-shot', async fault => {
+    vi.useFakeTimers()
+    const oneShots = vi.mocked(execFile).mock.calls.length, starts = vi.mocked(spawn).mock.calls.length
+    const worker = fakeMetadataProcess(metadata(), fault)
+    const rejected = expect(validate()).rejects.toThrow(fault === 'stdout' ? 'NETWORK_METADATA_INVALID'
+      : fault === 'hang' || fault === 'unclosed' ? 'NETWORK_METADATA_CLEANUP_FAILED' : 'NETWORK_METADATA_UNAVAILABLE')
+    await vi.advanceTimersByTimeAsync(1000)
+    await rejected
+    expect(worker.requests).toEqual(['SNAPSHOT1', 'SNAPSHOT2'])
+    expect(vi.mocked(execFile).mock.calls.length).toBe(oneShots)
+    expect(vi.mocked(spawn).mock.calls.length - starts).toBe(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each([1, 2])('fails closed on fresh read %s timeout and does not start a fallback process', async readTimeoutAt => {
+    vi.useFakeTimers()
+    const oneShots = vi.mocked(execFile).mock.calls.length, starts = vi.mocked(spawn).mock.calls.length
+    const worker = fakeMetadataProcess(metadata(), 'none', 0, { readTimeoutAt })
+    const rejected = expect(validate()).rejects.toThrow('NETWORK_METADATA_UNAVAILABLE')
+    await vi.advanceTimersByTimeAsync(5000)
+    await rejected
+    expect(worker.requests).toHaveLength(readTimeoutAt)
+    expect(worker.child.kill).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(execFile).mock.calls.length).toBe(oneShots)
+    expect(vi.mocked(spawn).mock.calls.length - starts).toBe(1)
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
 

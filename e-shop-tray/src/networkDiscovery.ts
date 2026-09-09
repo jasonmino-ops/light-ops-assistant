@@ -256,6 +256,35 @@ export async function getWindowsLocalNetworks(deps: NetworkDiscoveryDependencies
   return current
 }
 
+/** One prepare/delivery validation, with two fresh reads and no retained
+ * snapshot. Cleanup precedes the second read's final Node interface check. */
+export async function withWindowsValidationSnapshots<T>(
+  operation: (getSnapshot: () => Promise<LocalNetworkSnapshot>) => Promise<T>,
+  deps: Pick<NetworkDiscoveryDependencies, 'platform' | 'interfaces'> = {},
+): Promise<T> {
+  const reader = createWindowsMetadataReader(WINDOWS_NETWORK_METADATA_COMMAND, { platform: deps.platform })
+  let reads = 0, completed = 0
+  const getSnapshot = async () => {
+    const snapshot = await getWindowsLocalNetworks({ ...deps, readMetadata: async signal => {
+      if (++reads > 2) fail('NETWORK_METADATA_LIMIT')
+      const metadata = await reader.read(signal)
+      // Do not let EOF, trailing output or process failures arrive after the
+      // final interface check has already authorized this endpoint.
+      if (reads === 2) await reader.close()
+      return metadata
+    } })
+    completed++
+    return snapshot
+  }
+  try {
+    return await operation(getSnapshot).then(result => {
+      if (reads !== 2 || completed !== 2) fail('NETWORK_METADATA_INVALID')
+      return result
+    })
+  }
+  finally { await reader.close() }
+}
+
 function validateSnapshot(snapshot: LocalNetworkSnapshot, checkAge = true): void {
   if (snapshot.fingerprint !== snapshotFingerprint(snapshot)) fail('NETWORK_SNAPSHOT_INVALID')
   if (!Number.isFinite(snapshot.capturedAt) || (checkAge
@@ -382,7 +411,7 @@ export async function discoverNetworkPrinters(snapshot: LocalNetworkSnapshot, op
     checkAbort(controller.signal)
     if (!deps.getSnapshot && !deps.readMetadata) {
       // Only the process/cmdlet imports are reused, never a snapshot. Normal
-      // TEST/confirm/enable/delivery retain their one-shot metadata reader.
+      // TEST/confirm/enable/receive retain their one-shot metadata reader.
       metadataReader = createWindowsMetadataReader(WINDOWS_NETWORK_METADATA_COMMAND, { platform: deps.platform })
       const reader = metadataReader
       deps = { ...deps, readMetadata: async signal => {

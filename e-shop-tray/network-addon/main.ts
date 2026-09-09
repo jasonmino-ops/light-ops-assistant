@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url'
 import { CloudRelayClient } from '../src/cloudRelayClient'
 import { desktopBindingIdentityPath, readDesktopBindingIdentity, type DesktopBindingIdentity } from '../src/desktopBindingIdentity'
 import { protectNetworkDirectory, type NetworkNode } from '../src/networkNodeConfig'
-import { getWindowsLocalNetworks, validateLocalPrinterEndpoint, discoverNetworkPrinters, readLocalPrinterHardware, assertConfirmedPrinter, networkContinuityFingerprint } from '../src/networkDiscovery'
+import { getWindowsLocalNetworks, validateLocalPrinterEndpoint, discoverNetworkPrinters, readLocalPrinterHardware, assertConfirmedPrinter, networkContinuityFingerprint, withWindowsValidationSnapshots } from '../src/networkDiscovery'
 import { NETWORK_PROFILE, parseNetworkMode, exactObject, type NetworkRequest } from '../src/networkContract'
 import { NetworkRawTcpTransport, NetworkDeliveryError } from '../src/printing/networkRawTcpTransport'
 import { RelayPoller } from '../src/relayPoller'
@@ -46,13 +46,13 @@ async function assertIdentity() {
     throw new Error('NETWORK_BINDING_CHANGED_RESTART_REQUIRED')
   }
 }
-async function validateEndpoint(endpoint: NetworkNode) {
-  const snapshot = await getWindowsLocalNetworks()
+async function validateEndpoint(endpoint: NetworkNode, getSnapshot: () => ReturnType<typeof getWindowsLocalNetworks> = getWindowsLocalNetworks) {
+  const snapshot = await getSnapshot()
   const confirmed = profile?.snapshot().test
   if (!confirmed || confirmed.outcome !== 'CONFIRMED' || confirmed.networkFingerprint !== networkContinuityFingerprint(snapshot)) {
     throw new Error('NETWORK_CHANGED')
   }
-  return assertConfirmedPrinter(endpoint, confirmed, snapshot)
+  return assertConfirmedPrinter(endpoint, confirmed, snapshot, readLocalPrinterHardware, getSnapshot)
 }
 function knownProfile() {
   if (!profile || !binding) throw new Error('DESKTOP_BINDING_NOT_ACTIVE')
@@ -107,7 +107,9 @@ async function initialize() {
   const dependencies = { assertIdentity, identity: bindingTuple(binding), nodes: profile, journal: profile.journal,
     client: modeClient, render: renderer.render, recorder, transport, validateEndpoint }
   poller = new RelayPoller({ client: createGuardedNetworkClient(dependencies), journal: profile.journal, recorder,
-    network: createNetworkStrategy(dependencies), onError(error) { lastCode = code(error) } })
+    network: createNetworkStrategy({ ...dependencies,
+      validateEndpoint: endpoint => withWindowsValidationSnapshots(getSnapshot => validateEndpoint(endpoint, getSnapshot)) }),
+    onError(error) { lastCode = code(error) } })
   lifecycle = new ColdModeLifecycle({ profile, client, assertIdentity, validate: validateColdContext,
     stopAndWait: () => poller!.stopAndWait(), start: () => poller!.start(), exit: finishExit })
   try {

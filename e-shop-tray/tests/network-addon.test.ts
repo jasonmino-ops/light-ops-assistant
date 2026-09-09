@@ -51,6 +51,7 @@ describe('Network Add-on build and release boundary', () => {
     for (const change of [{ status: 'CLOSED' }, { lineageMode: 'AUTHORIZED_COMMITS' }, { candidateBuild: undefined },
       { candidateBuild: { ...build.CANDIDATE_BUILD, version: '0.1.0-rc.3' } },
       { candidateBuild: { ...build.CANDIDATE_BUILD, version: '0.1.0-commercial-rc.1' } },
+      { candidateBuild: { ...build.CANDIDATE_BUILD, version: '0.1.0-commercial-rc.3' } },
       { candidateBuild: { ...build.CANDIDATE_BUILD, releaseReady: true } }]) {
       expect(() => build.selectCandidateAuthorization({ ...exception, additionalAuthorizations: [{ ...authorization, ...change }] }, 'codex/test'))
         .toThrow('ADDON_CANDIDATE_EXACT_AUTHORIZATION_REQUIRED')
@@ -133,13 +134,13 @@ describe('Network Add-on build and release boundary', () => {
   it('candidate payload records a dirty source honestly and marks the transformed visible UI TEST ONLY', async () => {
     const manifest = build.createManifest({ source: { baselineCommit: build.BASELINE_COMMIT,
       headCommit: build.BASELINE_COMMIT, sourceCommit: null, workingTreeDirty: true }, inputs: {}, outputs: {}, tools: {}, candidate: { authorizationId: 'TEST-FIXTURE' } })
-    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.3', sourceCommit: null, workingTreeDirty: true,
+    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.4', sourceCommit: null, workingTreeDirty: true,
       testOnly: true, installer: false, runtimeIncluded: false, releaseReady: false, published: false,
       installed: false, fieldVerified: false, buildClass: 'unsigned-test-candidate', signingStatus: 'unsigned-test-only' })
     const original = await readFile(path.join(tray, 'network-addon/ui.html'))
     const html = build.candidateHtml(original).toString()
     expect(html).toContain('<title>E-Shop Network Print — TEST ONLY</title>')
-    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.3')
+    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.4')
     expect(html).toContain('未正式发布')
     expect(html).toContain('发送 TEST 纸票前须由负责人明确确认')
     expect(html.match(/id="[^"]+"/g)).toEqual(original.toString().match(/id="[^"]+"/g))
