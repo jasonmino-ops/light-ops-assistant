@@ -683,7 +683,7 @@
       "featureBranch": "codex/es-network-print-latency-rc4",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "8761596f2614e88421fbfaad01472e988329ef80",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-09-09T19:41:38.000Z",
       "approvedAt": "2026-09-09T19:41:38.000Z",
@@ -739,7 +739,10 @@
         "Snapshot caching, removed identity/address/route/MAC checks, reduced polling intervals, more idle cloud requests, new wake/auth/Agent/updater platform or automatic uncertain reprints.",
         "Uncontrolled/shared-production-database Preview, wildcard/directory/hash bypass, manual Promote, fake paper timing/commit/approval proof or unsigned formal publication."
       ],
-      "expirationCondition": "Close this exact grant after the accepted latency source actually merges into trusted origin/main. Build candidate while ACTIVE; preserve exact hashes and real merge evidence. No future byte or branch authorization."
+      "expirationCondition": "Close this exact grant after the accepted latency source actually merges into trusted origin/main. Build candidate while ACTIVE; preserve exact hashes and real merge evidence. No future byte or branch authorization.",
+      "closedAt": "2026-09-09T19:56:34.000Z",
+      "featureMergeCommitSha": "cde0341a5cd53d9e4d5b54a58e651587b5fed7a1",
+      "closureReason": "Consumed by actual accepted source eb026d6c719447e6f0935733ef9a86ed133964bf merge cde0341a5cd53d9e4d5b54a58e651587b5fed7a1 in trusted origin/main. All six approved hashes match source and merge. rc.4 unsigned TEST candidate was built and independently verified while this grant was ACTIVE. Original approval and hash history remain intact. This closes only exact content permission, not installed latency FIELD acceptance, signed commercial release or the whole task."
     }
   ]
 }
