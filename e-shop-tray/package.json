@@ -9,12 +9,18 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "compile": "tsc -p tsconfig.build.json",
+    "network:check": "node scripts/build-network-addon.mjs --check",
+    "network:build": "node scripts/build-network-addon.mjs --bundle",
     "test": "vitest run --no-cache",
     "check": "npm run typecheck && npm test && npm run compile",
     "pack:win": "npm run check && electron-builder --win --x64 --dir --publish never",
     "dist:win": "npm run check && electron-builder --win --x64 --publish never"
   },
   "devDependencies": {
+    "@types/react": "19.2.14",
+    "esbuild": "0.27.4",
+    "html2canvas": "1.4.1",
+    "react": "19.2.4",
     "@types/node": "^22.0.0",
     "electron": "^33.3.0",
     "electron-builder": "^25.1.8",

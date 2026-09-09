@@ -103,6 +103,7 @@ function recordKey(record: Pick<JournalRecord, 'jobId' | 'claimAttempt'>) {
 export class ExecutionJournal {
   private file: JournalFile = { schemaVersion: 1, records: [], updatedAt: new Date(0).toISOString() }
   private loaded = false
+  private initializationObservedFile = false
 
   constructor(
     public readonly filePath: string,
@@ -117,6 +118,34 @@ export class ExecutionJournal {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
+    this.loaded = true
+  }
+
+  // Candidate first-entry only, under its existing single-instance lock. The
+  // caller must establish absence of runtime history before allowing creation.
+  // Unlike load(), this explicitly completes durability before returning.
+  async ensureInitialized({ allowCreate = false }: { allowCreate?: boolean } = {}) {
+    await mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o700 })
+    let existing: JournalFile
+    try {
+      // Never use a cached empty snapshot to replace a file that appeared, or
+      // conceal corruption/deletion since an earlier observation.
+      const raw = await readFile(this.filePath, 'utf8')
+      this.initializationObservedFile = true
+      existing = parseJournal(raw)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      if (!allowCreate || this.loaded || this.initializationObservedFile) {
+        throw new ExecutionJournalError('EXECUTION_JOURNAL_MISSING', { cause: error })
+      }
+      await this.persist()
+      this.loaded = true
+      return
+    }
+    // A previous initialization may have stopped after rename but before the
+    // final sync. Finish that barrier without rewriting/pruning existing bytes.
+    await this.syncPersistedFile()
+    this.file = existing
     this.loaded = true
   }
 
@@ -246,7 +275,13 @@ export class ExecutionJournal {
       await handle.close()
     }
     await rename(tempPath, this.filePath)
-    const finalHandle = await open(this.filePath, 'r')
+    await this.syncPersistedFile()
+  }
+
+  private async syncPersistedFile() {
+    // Windows fsync requires a writable handle. Keep both durability barriers;
+    // an open/sync failure must still reject before any print side effect.
+    const finalHandle = await open(this.filePath, process.platform === 'win32' ? 'r+' : 'r')
     try {
       await finalHandle.sync()
     } finally {

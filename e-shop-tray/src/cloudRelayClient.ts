@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { NETWORK_CLIENT_VERSION, NETWORK_PROFILE, exactObject, parseNetworkRequest, type NetworkRequest } from './networkContract'
 
 export const ES_TRAY_POLL_INTERVAL_MS = 2_000
 export const ES_TRAY_SCHEMA_VERSION = 1 as const
@@ -17,13 +18,14 @@ export type RelayEffectBoundary = 'NOT_CROSSED' | 'CROSSING_UNKNOWN' | 'CROSSED'
 
 export type ReceivedPrintJob = {
   id: string
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   idempotencyKey: string
   requestHash: string
   requestId: string
   orderNo: string
   documentName: string
   commandStream: Uint8Array
+  network?: NetworkRequest
   claimAttempt: number
   claimToken: string
   leaseExpiresAt: string
@@ -190,6 +192,7 @@ export class CloudRelayClient {
     credential: DesktopBindingCredential
     fetchImpl?: typeof fetch
     timeoutMs?: number
+    network?: { bindingId: string; storeCode: string }
   }) {}
 
   private headers(json = false) {
@@ -197,7 +200,8 @@ export class CloudRelayClient {
       Accept: 'application/json',
       ...(json ? { 'Content-Type': 'application/json' } : {}),
       'x-installation-id': this.options.credential.installationId,
-      'x-es-tray-version': ES_TRAY_CLIENT_VERSION,
+      'x-es-tray-version': this.options.network ? NETWORK_CLIENT_VERSION : ES_TRAY_CLIENT_VERSION,
+      ...(this.options.network ? { 'x-es-tray-profile': NETWORK_PROFILE } : {}),
       Authorization: `Bearer ${this.options.credential.deviceSecret}`,
     }
   }
@@ -211,6 +215,7 @@ export class CloudRelayClient {
         headers: this.headers(body !== undefined),
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: controller.signal,
+        ...(this.options.network ? { redirect: 'error' as const } : {}),
       })
       const text = await response.text()
       if (text.length > MAX_RESPONSE_CHARACTERS) throw new CloudRelayError('ES_TRAY_02_RESPONSE_TOO_LARGE')
@@ -240,12 +245,41 @@ export class CloudRelayClient {
   }
 
   async receive(): Promise<ReceivedPrintJob | null> {
-    return parseReceivedJob(await this.request('/api/es-tray-02/print-jobs/receive'))
+    const value = await this.request('/api/es-tray-02/print-jobs/receive')
+    if (!this.options.network) return parseReceivedJob(value)
+    try {
+      const body = exactObject(value, ['productionContract', 'schemaVersion', 'bindingId', 'storeCode', 'job'])
+      if (body.productionContract !== true || body.schemaVersion !== 2
+        || body.bindingId !== this.options.network.bindingId || body.storeCode !== this.options.network.storeCode) {
+        throw new Error('NETWORK_IDENTITY_MISMATCH')
+      }
+      if (body.job === null) return null
+      const job = exactObject(body.job, ['id', 'schemaVersion', 'idempotencyKey', 'requestHash',
+        'claimAttempt', 'claimToken', 'leaseExpiresAt', 'request'])
+      const request = parseNetworkRequest(job.request)
+      if (job.schemaVersion !== 2 || typeof job.id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(job.id)
+        || request.order.storeCode !== body.storeCode || job.idempotencyKey !== request.requestId
+        || createHash('sha256').update(JSON.stringify(request)).digest('hex') !== job.requestHash
+        || !Number.isSafeInteger(job.claimAttempt) || Number(job.claimAttempt) < 1
+        || typeof job.claimToken !== 'string' || !CLAIM_TOKEN_PATTERN.test(job.claimToken)
+        || typeof job.leaseExpiresAt !== 'string' || !Number.isFinite(Date.parse(job.leaseExpiresAt))) {
+        throw new Error('NETWORK_INVALID_JOB')
+      }
+      return {
+        id: job.id, schemaVersion: 2, idempotencyKey: request.requestId, requestHash: job.requestHash as string,
+        requestId: request.requestId, orderNo: request.order.orderNo,
+        documentName: `${request.order.orderNo} ${request.role}`.slice(0, 96),
+        commandStream: new Uint8Array(), network: request,
+        claimAttempt: Number(job.claimAttempt), claimToken: job.claimToken, leaseExpiresAt: job.leaseExpiresAt,
+      }
+    } catch (cause) {
+      throw new CloudRelayError('NETWORK_INVALID_RESPONSE', { cause })
+    }
   }
 
   async markExecuting(job: Pick<ReceivedPrintJob, 'id' | 'claimAttempt' | 'claimToken'>) {
     const response = object(await this.request(`/api/es-tray-02/print-jobs/${encodeURIComponent(job.id)}/executing`, {
-      schemaVersion: ES_TRAY_SCHEMA_VERSION,
+      schemaVersion: this.options.network ? 2 : ES_TRAY_SCHEMA_VERSION,
       claimAttempt: job.claimAttempt,
       claimToken: job.claimToken,
     }))
@@ -260,7 +294,7 @@ export class CloudRelayClient {
     result: TerminalResult,
   ) {
     const response = object(await this.request(`/api/es-tray-02/print-jobs/${encodeURIComponent(job.id)}/result`, {
-      schemaVersion: ES_TRAY_SCHEMA_VERSION,
+      schemaVersion: this.options.network ? 2 : ES_TRAY_SCHEMA_VERSION,
       claimAttempt: job.claimAttempt,
       claimToken: job.claimToken,
       ...result,

@@ -222,6 +222,46 @@ async function main() {
     ...(chromePath ? { executablePath: chromePath } : {}),
   })
   try {
+    for (const mode of ['FRONT_ONLY', 'SHARED_PRINTER']) {
+      await test(`Network ${mode} reuses the consumed binding session and opens exact cashier opt-in`, async () => {
+        const page = await browser.newPage()
+        let consumeBody: unknown
+        await page.route('**/api/**', async route => {
+          const url = new URL(route.request().url())
+          if (url.pathname === '/api/computer-client/browser-launch/consume') {
+            consumeBody = route.request().postDataJSON()
+            return jsonRoute(route, { storeCode, posDeviceToken: 'network-runtime-session' })
+          }
+          if (url.pathname === '/api/cashier/store') return jsonRoute(route, { storeName: 'Network test store', products: [], categories: [] })
+          return jsonRoute(route, {})
+        })
+        await page.goto(`${runtimeBaseUrl}/cashier/launch?storeCode=ATTACKER#ticket=network-ticket&networkPrint=v01&networkMode=${mode}&redirect=https://attacker.invalid&host=10.1.2.3&port=9100`, { waitUntil: 'domcontentloaded' })
+        await page.waitForURL(url => url.pathname === '/cashier', { timeout: 30000 })
+        const target = new URL(page.url())
+        assert.equal(target.origin, new URL(runtimeBaseUrl!).origin)
+        assert.equal(target.hash, '')
+        assert.deepEqual(Object.fromEntries(target.searchParams), { storeCode, from: 'desktop', networkPrint: 'v01', networkMode: mode })
+        assert.deepEqual(Object.keys(consumeBody as object).sort(), ['browserDeviceId', 'ticket'])
+        assert.equal(await page.evaluate(code => localStorage.getItem(`cashier:posDeviceToken:${code}`), storeCode), 'network-runtime-session')
+        assert.equal(target.href.includes('network-runtime-session'), false)
+        await page.close()
+      })
+    }
+    for (const options of ['networkPrint=v01&networkMode=DUAL_PRINTER', 'networkPrint=v01', 'networkMode=FRONT_ONLY', 'networkPrint=invalid&networkMode=FRONT_ONLY']) {
+      await test(`invalid explicit Network options reject without auth consumption or legacy fallback: ${options}`, async () => {
+        const page = await browser.newPage()
+        let consumes = 0
+        await page.route('**/api/computer-client/browser-launch/consume', async route => {
+          consumes++; return jsonRoute(route, { storeCode, posDeviceToken: 'must-not-consume' })
+        })
+        await page.goto(`${runtimeBaseUrl}/cashier/launch#ticket=network-ticket&${options}`, { waitUntil: 'domcontentloaded' })
+        await page.waitForTimeout(250)
+        assert.equal(consumes, 0)
+        assert.equal(new URL(page.url()).pathname, '/cashier/launch')
+        assert.equal(new URL(page.url()).hash, '')
+        await page.close()
+      })
+    }
     await test('missing ticket does not consume or enter Desktop POS', async () => {
       const page = await browser.newPage()
       let consumeCount = 0
