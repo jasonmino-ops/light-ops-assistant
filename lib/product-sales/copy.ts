@@ -1,7 +1,10 @@
 export const COPY = {
   zh: {
     interval: '统计时段', endExclusive: '截止时刻不含', provisional: '实时结果（未结日），截至', completePeriod: '完整历史时段', legacyPeriod: '此历史日报保留原 06:00 起算口径，未改写为自然日。',
-    printTarget: '打印发送至当前登录门店的前台打印机；未启用小票发送时使用现有浏览器打印。', printSent: '报表已发送，请在打印机确认出纸。', printTooLarge: '报表超出现有小票打印大小限制，请缩小查询范围后再试。',
+    printTarget: '按当前登录门店的现有配置发送小票；允许提交不代表打印机在线。配置未启用时使用现有浏览器打印。', printSent: '报表已发送，请在打印机确认出纸。', printTooLarge: '报表超出现有小票打印大小限制，请缩小查询范围后再试。',
+    printPrepareTimeout: '生成打印内容超时，本次尚未发送。请重试；仍失败时请记录此提示。', printPrepareFailed: '生成打印内容失败，本次尚未发送。请重试。',
+    printSendTimeout: '小票发送响应超时，结果未确认。请先检查打印机，再重试；重试会复用同一任务。',
+    printBrowserFailed: '浏览器打印未能打开或准备完成，请检查浏览器的打印与弹窗支持后重试。', printBrowserPending: '上次浏览器打印仍在等待清理。请完成或关闭打印窗口后重试；未收到关闭通知时，最多等待 90 秒。',
     retry: '重新加载商品', unavailableStore: '原门店已不可访问',
     title: '商品销售查询', back: '经营查询', intro: '选择重点商品，保存固定组，查看销售和历史日报。',
     rule: '柬埔寨专项口径 · Asia/Phnom_Penh。当地自然日 00:00～24:00；今日、本周、本月从当天、周一或月初 00:00 统计至本次查询时刻。',
@@ -15,7 +18,10 @@ export const COPY = {
   },
   en: {
     interval: 'Reporting interval', endExclusive: 'end exclusive', provisional: 'Live result (day not closed), as of', completePeriod: 'Complete historical interval', legacyPeriod: 'This saved report retains its original 06:00 start; it has not been rewritten as a calendar day.',
-    printTarget: 'Send to the current signed-in store’s front printer. When receipt sending is disabled, use existing browser printing.', printSent: 'Report sent. Confirm paper output at the printer.', printTooLarge: 'Report exceeds the existing receipt size limit. Query a smaller range and try again.',
+    printTarget: 'Use the signed-in store’s existing receipt configuration. Submission eligibility does not mean a printer is online. Disabled configuration uses existing browser printing.', printSent: 'Report sent. Confirm paper output at the printer.', printTooLarge: 'Report exceeds the existing receipt size limit. Query a smaller range and try again.',
+    printPrepareTimeout: 'Preparing print content timed out. Nothing was sent by this attempt. Retry; if it persists, record this message.', printPrepareFailed: 'Could not prepare print content. Nothing was sent by this attempt. Please retry.',
+    printSendTimeout: 'Receipt submission timed out; the result is unconfirmed. Check the printer before retrying. A retry reuses the same job.',
+    printBrowserFailed: 'Browser printing could not open or finish preparation. Check browser printing and popup support, then retry.', printBrowserPending: 'The previous browser print is awaiting cleanup. Finish or close its window before retrying. Without a close notification, cleanup may take up to 90 seconds.',
     retry: 'Reload products', unavailableStore: 'Original store is unavailable',
     title: 'Product sales', back: 'Business overview', intro: 'Save frequently checked products and view sales and daily reports.',
     rule: 'Cambodia reporting · Asia/Phnom_Penh. Local calendar days: 00:00–24:00. Today/week/month run from midnight today/Monday/day 1 up to this query time.',
@@ -29,7 +35,10 @@ export const COPY = {
   },
   km: {
     interval: 'រយៈពេលរបាយការណ៍', endExclusive: 'មិនរាប់ពេលបញ្ចប់', provisional: 'លទ្ធផលបណ្ដោះអាសន្ន គិតត្រឹម', completePeriod: 'រយៈពេលប្រវត្តិពេញលេញ', legacyPeriod: 'របាយការណ៍នេះរក្សាពេលចាប់ផ្ដើម06:00 ដើម មិនបានប្ដូរជាថ្ងៃប្រតិទិនទេ។',
-    printTarget: 'ផ្ញើទៅម៉ាស៊ីនបោះពុម្ពខាងមុខនៃហាងដែលកំពុងចូល។ បើមិនបានបើកការផ្ញើបង្កាន់ដៃ ប្រើការបោះពុម្ពតាមកម្មវិធីរុករកដែលមានស្រាប់។', printSent: 'បានផ្ញើរបាយការណ៍។ សូមបញ្ជាក់ក្រដាសចេញពីម៉ាស៊ីន។', printTooLarge: 'របាយការណ៍លើសទំហំបង្កាន់ដៃ។ សូមបន្ថយរយៈពេលស្វែងរក ហើយព្យាយាមម្ដងទៀត។',
+    printTarget: 'ប្រើការកំណត់បង្កាន់ដៃរបស់ហាងដែលកំពុងចូល។ សិទ្ធិផ្ញើមិនមានន័យថាម៉ាស៊ីនកំពុងភ្ជាប់ទេ។ បើមិនបានបើក ប្រើការបោះពុម្ពតាមកម្មវិធីរុករកដែលមានស្រាប់។', printSent: 'បានផ្ញើរបាយការណ៍។ សូមបញ្ជាក់ក្រដាសចេញពីម៉ាស៊ីន។', printTooLarge: 'របាយការណ៍លើសទំហំបង្កាន់ដៃ។ សូមបន្ថយរយៈពេលស្វែងរក ហើយព្យាយាមម្ដងទៀត។',
+    printPrepareTimeout: 'ការរៀបចំមាតិកាបោះពុម្ពហួសពេលកំណត់។ ការព្យាយាមនេះមិនទាន់បានផ្ញើទេ។ សូមព្យាយាមម្ដងទៀត និងកត់ត្រាសារនេះបើនៅតែបរាជ័យ។', printPrepareFailed: 'មិនអាចរៀបចំមាតិកាបោះពុម្ពបាន។ ការព្យាយាមនេះមិនទាន់បានផ្ញើទេ។ សូមព្យាយាមម្ដងទៀត។',
+    printSendTimeout: 'ការផ្ញើបង្កាន់ដៃហួសពេលកំណត់ លទ្ធផលមិនទាន់បញ្ជាក់។ សូមពិនិត្យម៉ាស៊ីនមុនព្យាយាមម្ដងទៀត ដែលនឹងប្រើការងារដដែល។',
+    printBrowserFailed: 'មិនអាចបើក ឬរៀបចំការបោះពុម្ពតាមកម្មវិធីរុករកបាន។ សូមពិនិត្យការគាំទ្របោះពុម្ព និងផ្ទាំងលោត រួចព្យាយាមម្ដងទៀត។', printBrowserPending: 'ការបោះពុម្ពមុនកំពុងរង់ចាំសម្អាត។ សូមបញ្ចប់ ឬបិទផ្ទាំងបោះពុម្ពមុនព្យាយាមម្ដងទៀត។ បើគ្មានដំណឹងបិទ អាចរង់ចាំរហូតដល់៩០វិនាទី។',
     retry: 'ផ្ទុកទំនិញឡើងវិញ', unavailableStore: 'ហាងដើមមិនអាចចូលបាន',
     title: 'ការលក់តាមទំនិញ', back: 'ទិដ្ឋភាពអាជីវកម្ម', intro: 'រក្សាទុកក្រុមទំនិញ ហើយមើលការលក់ និងរបាយការណ៍ប្រចាំថ្ងៃ។',
     rule: 'សម្រាប់កម្ពុជា · Asia/Phnom_Penh។ ថ្ងៃប្រតិទិន៖ 00:00–24:00។ ថ្ងៃនេះ/សប្ដាហ៍/ខែ៖ ចាប់ពីម៉ោង00:00 នៃថ្ងៃនេះ/ថ្ងៃចន្ទ/ថ្ងៃទី១ ដល់ពេលស្វែងរកនេះ។',
@@ -43,6 +52,15 @@ export const COPY = {
   },
 } as const
 export type ReportLang = keyof typeof COPY
+export function printError(code: string, lang: ReportLang): string {
+  const copy = COPY[lang]
+  if (code === 'PRINT_TOO_LARGE') return copy.printTooLarge
+  if (code === 'PRINT_PREPARE_TIMEOUT') return copy.printPrepareTimeout
+  if (code === 'PRINT_PREPARE_FAILED') return copy.printPrepareFailed
+  if (code === 'PRINT_SEND_TIMEOUT') return copy.printSendTimeout
+  if (code.startsWith('PRINT_BROWSER_')) return `${copy.printBrowserFailed} (${code})`
+  return copy.printFailed
+}
 export function displayError(code: string, lang: ReportLang) {
   const copy = COPY[lang]
   if (['MISSING_CONTEXT', 'FORBIDDEN', 'STORE_ACCESS_DENIED', 'OWNER_TELEGRAM_IDENTITY_REQUIRED', 'PRODUCT_ACCESS_DENIED'].includes(code)) return copy.unauthorized

@@ -30,6 +30,8 @@ async function main() {
     let writes = 0
     let relayEnabled = false
     let failRelay = true
+    let holdQuery: Promise<void> | null = null
+    let holdPrint: Promise<void> | null = null
     const printRequests: EshopTrayPrintRequest[] = []
     await context.route('**/*', async (route) => {
       const url = new URL(route.request().url())
@@ -43,6 +45,8 @@ async function main() {
       else if (url.pathname === '/api/es-tray-02/print-jobs') {
         const payload = parsePrintRequest(route.request().postDataJSON())
         printRequests.push(payload)
+        const wait = holdPrint; holdPrint = null
+        if (wait) await wait
         if (failRelay) { status = 503; data = { error: 'TEST_RESPONSE_UNCERTAIN' } }
         else { status = 202; data = { fieldOnly: true, productionContract: true, schemaVersion: 1, jobId: 'report-print', requestId: payload.requestId, status: 'PENDING_RECEIVE', created: false } }
       }
@@ -52,6 +56,7 @@ async function main() {
         else data = { stores, products: products.filter((p) => !url.searchParams.get('storeId') || stores.some((s) => s.storeId === url.searchParams.get('storeId') && s.tenantId === p.tenantId)), today: '2026-09-09', nextCursor: null }
       } else if (path === '/query') {
         const body = route.request().postDataJSON(); queryBodies.push(body)
+        if (holdQuery) await holdQuery
         if (body.storeId === 'revoked-store') { status = 403; data = { error: 'STORE_ACCESS_DENIED' } }
         else data = { ...result, range: reportRange(body, now) }
       } else if (path === '/groups' && route.request().method() === 'GET') data = saved
@@ -111,12 +116,32 @@ async function main() {
     await expect(page.getByRole('heading', { name: '昨日固定组', exact: true })).toBeVisible()
     await page.evaluate(() => {
       window.open = () => null
-      window.print = () => { document.body.dataset.printCalled = 'yes' }
+      window.print = () => { document.body.dataset.printCalled = 'yes'; document.body.dataset.printCount = String(Number(document.body.dataset.printCount || 0) + 1) }
     })
     await page.getByRole('button', { name: '打印', exact: true }).click()
     await expect(page.locator('body')).toHaveAttribute('data-print-called', 'yes')
     await expect(page.locator('#__oprint .total-value')).toHaveText('30.00')
+    await expect(page.getByRole('button', { name: '打印', exact: true })).toBeEnabled()
+    await expect(page.getByText('处理中…', { exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: '打印', exact: true }).click()
+    await expect(page.getByRole('status')).toContainText('上次浏览器打印仍在等待清理')
+    await expect(page.locator('#__oprint')).toHaveCount(1)
+    await expect(page.locator('body')).toHaveAttribute('data-print-count', '1')
+    // A late browser cleanup must not release busy for a newer query.
+    let releaseQuery!: () => void
+    holdQuery = new Promise<void>((resolve) => { releaseQuery = resolve })
+    await page.getByRole('button', { name: '查询', exact: true }).click()
+    await expect(page.getByRole('button', { name: '查询', exact: true })).toBeDisabled()
     await page.evaluate(() => { window.dispatchEvent(new Event('afterprint')) })
+    await expect(page.locator('#__oprint')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '查询', exact: true })).toBeDisabled()
+    releaseQuery(); holdQuery = null
+    await expect(page.getByRole('button', { name: '打印', exact: true })).toBeEnabled()
+    // Existing browser failure is surfaced and always leaves a usable retry.
+    await page.evaluate(() => { window.print = () => { throw new Error('native print unavailable') } })
+    await page.getByRole('button', { name: '打印', exact: true }).click()
+    await expect(page.getByRole('main').getByRole('alert')).toContainText('PRINT_BROWSER_PRINT_FAILED')
+    await expect(page.getByRole('button', { name: '打印', exact: true })).toBeEnabled()
     await expect(page.locator('#__oprint')).toHaveCount(0)
 
     // The same Production receipt capability runs with the real HTML renderer.
@@ -128,6 +153,17 @@ async function main() {
     await expect(page.getByText(/实时结果（未结日），截至: 2026-09-09 12:00:00/)).toBeVisible()
     await expect(page.getByText(/2026-09-09 00:00:00 → 2026-09-09 12:00:00/)).toBeVisible()
     assert.equal(printRequests.length, 0, 'loading and querying never send print jobs')
+    // Stall only the report's own document digest. This uses the real caller
+    // deadline and UI finally, without replacing shared printing code.
+    await page.evaluate(() => {
+      const digest = crypto.subtle.digest.bind(crypto.subtle)
+      crypto.subtle.digest = () => { crypto.subtle.digest = digest; return new Promise(() => {}) }
+    })
+    await page.getByRole('button', { name: '打印', exact: true }).evaluate((button: HTMLButtonElement) => { button.click(); button.click() })
+    await expect(page.getByRole('button', { name: '打印', exact: true })).toBeDisabled()
+    await expect(page.getByRole('main').getByRole('alert')).toContainText('生成打印内容超时，本次尚未发送', { timeout: 20_000 })
+    await expect(page.getByRole('button', { name: '打印', exact: true })).toBeEnabled()
+    assert.equal(printRequests.length, 0, 'timed-out preparation never submits')
     await page.getByRole('button', { name: '打印', exact: true }).click()
     await expect(page.getByRole('main').getByRole('alert')).toHaveText('打印未能确认发送，请检查现有打印服务后重试。')
     assert.equal(printRequests.length, 1)
@@ -146,6 +182,23 @@ async function main() {
     await expect(page.getByRole('status')).toHaveText('报表已发送，请在打印机确认出纸。')
     assert.equal(printRequests.length, 3)
     assert.notEqual(printRequests[2].orderNo, printRequests[1].orderNo, 'history prints its own result document')
+
+    // A real fetch with an unreturned response expires, unlocks the button and
+    // retries the identical request. A late response cannot start another send.
+    let releasePrint!: () => void
+    holdPrint = new Promise<void>((resolve) => { releasePrint = resolve })
+    await page.getByRole('button', { name: '打印', exact: true }).evaluate((button: HTMLButtonElement) => { button.click(); button.click() })
+    await expect.poll(() => printRequests.length).toBe(4)
+    await expect(page.getByRole('button', { name: '打印', exact: true })).toBeDisabled()
+    await expect(page.getByRole('main').getByRole('alert')).toContainText('小票发送响应超时，结果未确认', { timeout: 20_000 })
+    await expect(page.getByRole('button', { name: '打印', exact: true })).toBeEnabled()
+    assert.equal(printRequests.length, 4, 'repeated clicks do not duplicate a pending send')
+    await page.getByRole('button', { name: '打印', exact: true }).click()
+    await expect(page.getByRole('status')).toHaveText('报表已发送，请在打印机确认出纸。')
+    assert.deepEqual(printRequests[4], printRequests[3], 'timeout retry retains the exact request identity and bytes')
+    releasePrint()
+    await expect(page.getByRole('button', { name: '打印', exact: true })).toBeEnabled()
+    assert.equal(printRequests.length, 5)
 
     // A saved single-store group remains manageable after that store is revoked.
     await page.getByRole('button', { name: '撤权单店组', exact: true }).click()
@@ -171,7 +224,7 @@ async function main() {
     await page.screenshot({ path: '.task-state/product-sales-mobile.png', fullPage: true })
     assert.deepEqual(errors, [], 'no uncaught browser errors')
     await context.close()
-    console.log('product sales browser passed: live cutoff, groups/history, existing OWNER receipt render/send/retry, browser fallback, revoked store recovery and desktop/mobile')
+    console.log('product sales browser passed: live cutoff, groups/history, existing OWNER receipt render/send/retry, preparation/HTTP deadlines, UI recovery, browser cleanup/failure, revoked store recovery and desktop/mobile')
   } finally { await browser.close() }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1 })

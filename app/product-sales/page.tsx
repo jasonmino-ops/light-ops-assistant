@@ -6,7 +6,7 @@ import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { readEshopTray02CloudEnableState, type EshopTray02CloudEnableState } from '@/lib/eShopTrayCloudClient'
-import { COPY, displayError } from '@/lib/product-sales/copy'
+import { COPY, displayError, printError } from '@/lib/product-sales/copy'
 import { reportPrintHtml } from '@/lib/product-sales/print'
 import { createProductReportPrintAction } from '@/lib/product-sales/print-action'
 import { reportPeriodPresentation } from '@/lib/product-sales/presentation'
@@ -52,6 +52,7 @@ export default function ProductSalesPage() {
   const [busy, setBusy] = useState(false)
   const [printState, setPrintState] = useState<EshopTray02CloudEnableState>('pending')
   const printAction = useRef(createProductReportPrintAction())
+  const printInFlight = useRef(false)
   const [optionsBusy, setOptionsBusy] = useState(false)
   const [ready, setReady] = useState(false)
   const [optionsRevision, setOptionsRevision] = useState(0)
@@ -171,13 +172,19 @@ export default function ProductSalesPage() {
     finally { if (mounted.current) setBusy(false) }
   }
   async function print() {
-    if (!result || busy || printState === 'pending') return
+    if (!result || busy || printState === 'pending' || printInFlight.current) return
+    printInFlight.current = true
     setError(''); setMessage(''); setBusy(true)
     try {
-      const outcome = await printAction.current(reportPrintHtml(result, lang), printState, () => { if (mounted.current) setBusy(false) })
+      const outcome = await printAction.current(reportPrintHtml(result, lang), printState)
       if (outcome === 'submitted' && mounted.current) setMessage(copy.printSent)
+      if (outcome === 'browser-pending' && mounted.current) setMessage(copy.printBrowserPending)
     } catch (failure) {
-      if (mounted.current) { setError((failure as Error).message === 'PRINT_TOO_LARGE' ? 'PRINT_TOO_LARGE' : 'PRINT_FAILED'); setBusy(false) }
+      const code = failure instanceof Error ? failure.message : ''
+      if (mounted.current) setError(code.startsWith('PRINT_') ? code : 'PRINT_PREPARE_FAILED')
+    } finally {
+      printInFlight.current = false
+      if (mounted.current) setBusy(false)
     }
   }
   const selectedKeys = new Set(selected.map(productKey))
@@ -187,7 +194,7 @@ export default function ProductSalesPage() {
     <header className={styles.header}><Link href="/dashboard">‹ {copy.back}</Link><LangToggleBtn /></header>
     <h1>{copy.title}</h1><p className={styles.muted}>{copy.intro}</p>
     <p className={styles.notice}>{copy.rule}</p>
-    {error && <p role="alert" className={styles.error}>{error === 'PRINT_FAILED' ? copy.printFailed : error === 'PRINT_TOO_LARGE' ? copy.printTooLarge : displayError(error, lang)}</p>}
+    {error && <p role="alert" className={styles.error}>{error.startsWith('PRINT_') ? printError(error, lang) : displayError(error, lang)}</p>}
     {message && <p role="status" className={styles.notice}>{message}</p>}
     <fieldset disabled={busy} className={styles.fieldset}>
       <section className={styles.card}>
