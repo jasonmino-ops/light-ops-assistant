@@ -14,7 +14,7 @@
     <section>
       <h2><span class="number">1</span> 选择打印方式</h2>
       <div class="modes"><label><input type="radio" name="mode" value="FRONT_ONLY" checked><strong>仅前台票</strong><small>FRONT_ONLY · 每单一张前台销售票</small></label><label><input type="radio" name="mode" value="SHARED_PRINTER"><strong>一机两张票</strong><small>SHARED_PRINTER · 每单先前台，后厨房</small></label></div>
-      <p class="note">首次配置后模式固定。每店只能运行一个 Network Agent；不能同时使用旧打印方式打印同一订单。</p>
+      <p class="note">已配置模式在此锁定；变更模式请使用下方冷切换。每店只能运行一个 Network Agent；不能同时使用旧打印方式打印同一订单。</p>
     </section>
     <section>
       <h2><span class="number">2</span> 选择并确认打印机</h2>
@@ -36,9 +36,22 @@
     <section>
       <h2><span class="number">3</span> 开始营业</h2>
       <label class="check"><input id="single-agent" type="checkbox">本店只有这一台 Network Agent，其他电脑未运行同店 Network 打印。</label>
+      <label class="check" id="enable-tabs-row" hidden><input id="enable-tabs-closed" type="checkbox">模式已变更，我已关闭所有旧 Network 收银标签页；启用后将从本程序打开新的收银入口。</label>
       <div class="toolbar"><button id="enable">启用自动打印</button><button id="cashier">在 Chrome 打开网络收银</button></div>
       <label class="check"><input id="autostart" type="checkbox">登录 Windows 时自动启动 Network Print</label>
       <p class="note">启用时默认开启登录自启。以后登录 Windows，打开此入口完成销售即可；普通未启用的收银入口不创建网络任务。</p>
+    </section>
+    <section>
+      <h2>变更已配置模式（冷切换）</h2>
+      <p class="note">仅支持同一门店、同一台已确认打印机在「仅前台票」与「一机两张票」间变更。此操作不发送 TEST，也不出票。</p>
+      <p class="note">先关闭本店所有电脑的 Network 收银标签页并停止新单，再点击「暂停并安全退出」。重新打开本程序，保持暂停，确认以下事项后变更。切换成功会再次退出；重启后需手动启用，并使用新的收银入口。</p>
+      <div class="toolbar"><button id="pause-exit" class="secondary">暂停并安全退出</button><button id="safe-exit" class="secondary">安全退出</button></div>
+      <p id="cold-status" class="note" role="status"></p>
+      <label>切换到<select id="cold-mode"><option value="FRONT_ONLY">仅前台票 · FRONT_ONLY</option><option value="SHARED_PRINTER">一机两张票 · SHARED_PRINTER</option></select></label>
+      <label class="check"><input id="cold-tabs-closed" type="checkbox">我已关闭本店所有电脑的 Network 收银标签页，并停止新单。</label>
+      <label class="check"><input id="cold-single-agent" type="checkbox">本店只有当前这一台 Network Agent，其他电脑没有领取同店任务。</label>
+      <button id="convert-mode" class="secondary">确认变更模式并安全退出</button>
+      <p class="note">程序会检查本地记录与云端队列。存在待处理、未确认或结果不明的任务时会拒绝切换，请核对原订单并联系负责人；不要清空记录、重装、重打或重提销售。暂停不等于云端队列已清空。</p>
     </section>
     <details><summary>打印异常、残缺票或停用时怎么办？</summary>
       <p>先核对原订单和实际纸票，再暂停处理。TCP 提交成功不等于纸张打印完成。</p>

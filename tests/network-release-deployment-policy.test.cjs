@@ -10,6 +10,7 @@ assert.deepEqual(config, {
     'codex/es-network-server-v01-release': false,
     'codex/es-network-commercial-addon-v01': false,
     'codex/es-network-commercial-discovery-v01': false,
+    'codex/es-network-commercial-cold-conversion-v01': false,
   } },
 });
 // Vercel's documented default for unspecified branches is true. Do not

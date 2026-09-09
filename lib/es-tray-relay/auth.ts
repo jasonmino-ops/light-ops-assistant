@@ -3,7 +3,7 @@ import type { ComputerBinding } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { authenticateAgent } from '@/lib/computer-client/service'
 import { ES_TRAY_CLIENT_VERSION, ES_TRAY_CLIENT_VERSION_HEADER } from './config'
-import { NETWORK_PROFILE, NETWORK_CLIENT_VERSION } from '../../e-shop-tray/src/networkContract'
+import { NETWORK_PROFILE, NETWORK_CLIENT_VERSION, NETWORK_MODE_GUARD_CLIENT_VERSION } from '../../e-shop-tray/src/networkContract'
 
 export type RelayAgentContext = {
   binding: ComputerBinding
@@ -25,8 +25,11 @@ export async function authenticateRelayAgent(req: NextRequest): Promise<RelayAge
   // be allowed to consume a production job and exhaust safe claim attempts.
   const profile = req.headers.get('x-es-tray-profile')
   const schemaVersion = profile === NETWORK_PROFILE ? 2 : 1
+  const clientVersion = req.headers.get(ES_TRAY_CLIENT_VERSION_HEADER)
   if ((profile !== null && profile !== NETWORK_PROFILE)
-    || req.headers.get(ES_TRAY_CLIENT_VERSION_HEADER) !== (schemaVersion === 2 ? NETWORK_CLIENT_VERSION : ES_TRAY_CLIENT_VERSION)) {
+    || (schemaVersion === 2
+      ? clientVersion !== NETWORK_CLIENT_VERSION && clientVersion !== NETWORK_MODE_GUARD_CLIENT_VERSION
+      : clientVersion !== ES_TRAY_CLIENT_VERSION)) {
     return { ok: false, status: 426, error: 'ES_TRAY_02_CLIENT_UPGRADE_REQUIRED' }
   }
 
