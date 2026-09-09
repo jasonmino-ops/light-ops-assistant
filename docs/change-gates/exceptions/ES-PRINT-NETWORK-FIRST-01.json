@@ -584,6 +584,96 @@
       "closedAt": "2026-09-09T03:36:25.455Z",
       "featureMergeCommitSha": "a76ce8cc09ebab5dd178dcdaad9d5e2e3348eb89",
       "closureReason": "Exact 34-file successor source 6083729 is merged into trusted main; approved bytes verified at actual merge. Task-scoped permission consumed; not a formal signed installer or whole-product FIELD closure."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-COLD-CONVERSION-V01",
+      "featureBranch": "codex/es-network-commercial-cold-conversion-v01",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "3015d0c1a322a96cd8b499ae64ad625145e73889",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-09-09T15:54:48.000Z",
+      "approvedAt": "2026-09-09T15:54:48.000Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder-approved minimal controlled cold conversion only between FRONT_ONLY and SHARED_PRINTER. Preserve all print records and immutable configuration/journal evidence, refuse unsettled or unknown work, retain original configuration on failed save, restart and require explicit enable. Add fail-closed mode-aware receive using existing Relay and identity; no hot switching, dual printers or database changes.",
+      "authorizedPaths": [
+        "app/api/es-tray-02/print-jobs/receive/route.ts",
+        "docs/acceptance/ES-PRINT-NETWORK-FIRST-01 Controlled Cold Mode Conversion V1.0.md",
+        "e-shop-tray/network-addon/coldModeLifecycle.ts",
+        "e-shop-tray/network-addon/coldModeTransaction.ts",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/profile.ts",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/src/cloudRelayClient.ts",
+        "e-shop-tray/src/networkContract.ts",
+        "e-shop-tray/tests/cloud-relay-client.test.ts",
+        "e-shop-tray/tests/network-addon-cold-lifecycle.test.ts",
+        "e-shop-tray/tests/network-addon-cold-mode-change.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts",
+        "e-shop-tray/tests/network-print-v01.test.ts",
+        "lib/es-tray-relay/auth.ts",
+        "lib/es-tray-relay/service.ts",
+        "tests/cashier-network-print-v01.test.ts",
+        "tests/network-release-deployment-policy.test.cjs",
+        "vercel.json"
+      ],
+      "authorizedPathSha256": {
+        "app/api/es-tray-02/print-jobs/receive/route.ts": "6a81c4a64e78ce60738c629986d60581f2489874453a0c77dbac090916ffbeb4",
+        "docs/acceptance/ES-PRINT-NETWORK-FIRST-01 Controlled Cold Mode Conversion V1.0.md": "ce0a91dbe517cab27865812aedc6d7f9cd2c0f5c1f2a4f0dcb5af34a3fb98963",
+        "e-shop-tray/network-addon/coldModeLifecycle.ts": "4075b1490a39e403c841dcba3cd3fa6c1c20c1099d7b60b9e6868981b246af11",
+        "e-shop-tray/network-addon/coldModeTransaction.ts": "5b40be81b132a6a3fc93df4acd63788034994135912c63e24967744761364424",
+        "e-shop-tray/network-addon/main.ts": "c80d248ce47f1ce3c79ef9b310c41e03700f020e62675bfff95baeba9a6a0439",
+        "e-shop-tray/network-addon/preload.ts": "26de5df825bde1abe1fee710e38da610dc7062e2813ccfbdfaebc61d3b6e3a9e",
+        "e-shop-tray/network-addon/profile.ts": "63befe1f01b66ebe27e35ac266fc879d69c6afb7bad4a68e00d1e45a54f967fc",
+        "e-shop-tray/network-addon/ui.html": "1a283af9aecd5b8fad91ed534d89c823e178b0a043d002c5938e6b87ef195ba5",
+        "e-shop-tray/network-addon/ui.ts": "e8c716d2be77630108bbe12f2e51e6cd70b6e5d0a639b074b6110b45dd5bc891",
+        "e-shop-tray/scripts/build-network-addon.mjs": "04e52173188d47a3595511646c88875321cc048095ec04026049c3d906926b87",
+        "e-shop-tray/src/cloudRelayClient.ts": "0ff9f1d382f0c61d60d00090fcdd8dfb959ae02e383ec0ad4b3b365045ae1486",
+        "e-shop-tray/src/networkContract.ts": "a026dec9a85503404cdaa8ca6303258dcb235eea93046725233264b063a2f9af",
+        "e-shop-tray/tests/cloud-relay-client.test.ts": "a5949d2fbe9ddb45db0596544554336312b70875ec7b135e901c8ee1919fec5e",
+        "e-shop-tray/tests/network-addon-cold-lifecycle.test.ts": "11284325e655a28c5a9f0f7b1bc2422feaf8a148d56071b0aae4fdc1d7dd1492",
+        "e-shop-tray/tests/network-addon-cold-mode-change.test.ts": "a9ce132e75c07699f856ce29adcfb7a23d197fc7a8407a6498918892b44b1712",
+        "e-shop-tray/tests/network-addon.test.ts": "02b25029ba6e3a31a871a5818e28f3e137844e8384d02422378e0c52b3d0b2bc",
+        "e-shop-tray/tests/network-print-v01.test.ts": "54ae56634631e88021b2f3d28d50fa11fc21c61e8ce60ddc42153e1886e07bda",
+        "lib/es-tray-relay/auth.ts": "9080daf8b5c30e608829e859bbdaea85dc155e9d3e7a47cee364752728aabf5f",
+        "lib/es-tray-relay/service.ts": "71110833c3bfe4e50aab2ebec33ad6b541dc93072106376dfc1d992021c30e33",
+        "tests/cashier-network-print-v01.test.ts": "51362d448a99ed5b7fc9bacded9b68755856060737c58c062af4638c42b52d74",
+        "tests/network-release-deployment-policy.test.cjs": "fa970b111f6b646ba57f92fe6c43b71baacf6ae2c03e8b9f2f498d1fb096398e",
+        "vercel.json": "24affab44f4c350134254eef0a114b7dc6166a6bf94134ea21c9c227a9a494db"
+      },
+      "approvedContentMappingSha256": "ddbf99878629462c7963d177573ff6f7f40f3c95838ac87db9b892297a103064",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.3",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "approvalSource": "Current Founder explicitly approved option A controlled cold conversion, scoped fixes/fault tests/independent review/exact governance/successor candidate and V727 SHARED acceptance. Standing authorization for this commercial task explicitly includes necessary exact governance, commit/push/main merge and matching Production; not borrowed from earlier one-off governance approvals. Formal publication still requires signing and actual acceptance. Timestamps record registration under that existing approval, not a fabricated new message.",
+      "createdOnBranch": "codex/es-network-cold-conversion-governance",
+      "governanceStartingHead": "dc611853e9343ba25c5d4fbd1286095611632559",
+      "sourceDraft": {
+        "path": "/private/tmp/es-network-commercial-cold-conversion-v01",
+        "startingHead": "3015d0c1a322a96cd8b499ae64ad625145e73889",
+        "sourceCommit": null,
+        "fileCount": 22,
+        "contentState": "reviewed uncommitted sealed draft; source commit to be recorded after real trusted Scope PASS"
+      },
+      "allowedPurposes": [
+        "Minimal cold conversion between the two single-physical-printer modes using the existing Add-on/profile/Relay/Binding/journal architecture.",
+        "Backups, atomic configuration recovery, explicit post-restart enable and fail-closed guarded Network receive; no claim or record deletion by queue observation.",
+        "Exact related fault/regression tests, mandatory acceptance record, TEST-only commercial-rc.3 build and exact successor branch Preview suppression."
+      ],
+      "prohibitedChanges": [
+        "Desktop0.4.7/identity, QZ/certificates/USB/Windows Queue transport, templates/Renderer/Encoder, schema/migrations, cashier sales semantics, new authentication/poller/journal/updater platform.",
+        "Wildcard/directory scope, hash bypass, deleting or falsifying task/order/journal state, auto-reprinting unknown effects, hot switching or dual physical printers.",
+        "Shared-Production-database Preview, signing purchases/key export, formal unsigned publication, invented clean-x64/new-LAN/abnormal-power-loss or paper evidence."
+      ],
+      "expirationCondition": "Close this exact authorization after the accepted cold-conversion feature is actually merged into trusted origin/main. Preserve approved paths/hashes and actual merge evidence; no standing future permission."
     }
   ]
 }
