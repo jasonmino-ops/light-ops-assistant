@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { NETWORK_CLIENT_VERSION, NETWORK_PROFILE, exactObject, parseNetworkRequest, type NetworkRequest } from './networkContract'
+import { NETWORK_CLIENT_VERSION, NETWORK_MODE_GUARD_CLIENT_VERSION, NETWORK_PROFILE, exactObject, parseNetworkMode, parseNetworkRequest, type NetworkMode, type NetworkRequest } from './networkContract'
 
 export const ES_TRAY_POLL_INTERVAL_MS = 2_000
 export const ES_TRAY_SCHEMA_VERSION = 1 as const
@@ -206,16 +206,19 @@ export class CloudRelayClient {
     }
   }
 
-  private async request(path: string, body?: unknown): Promise<unknown> {
+  private async request(path: string, body?: unknown, control?: { method?: 'GET'; expectedMode?: NetworkMode }): Promise<unknown> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 10_000)
     try {
       const response = await (this.options.fetchImpl ?? fetch)(`${this.options.config.baseUrl}${path}`, {
-        method: 'POST',
-        headers: this.headers(body !== undefined),
+        method: control?.method ?? 'POST',
+        headers: { ...this.headers(body !== undefined),
+          ...(control?.expectedMode || control?.method === 'GET' ? { 'x-es-tray-version': NETWORK_MODE_GUARD_CLIENT_VERSION } : {}),
+          ...(control?.expectedMode ? { 'x-es-network-mode': control.expectedMode } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: controller.signal,
         ...(this.options.network ? { redirect: 'error' as const } : {}),
+        ...(control?.method === 'GET' ? { cache: 'no-store' as const } : {}),
       })
       const text = await response.text()
       if (text.length > MAX_RESPONSE_CHARACTERS) throw new CloudRelayError('ES_TRAY_02_RESPONSE_TOO_LARGE')
@@ -244,19 +247,39 @@ export class CloudRelayClient {
     }
   }
 
-  async receive(): Promise<ReceivedPrintJob | null> {
-    const value = await this.request('/api/es-tray-02/print-jobs/receive')
+  async networkQueueState(): Promise<{ pending: number; claimed: number; executing: number; unknown: number }> {
+    if (!this.options.network) throw new CloudRelayError('NETWORK_MODE_GUARD_REQUIRES_V2')
+    const value = await this.request('/api/es-tray-02/print-jobs/receive', undefined, { method: 'GET' })
+    try {
+      const body = exactObject(value, ['productionContract', 'schemaVersion', 'bindingId', 'storeCode', 'observedAt', 'queue'])
+      const queue = exactObject(body.queue, ['pending', 'claimed', 'executing', 'unknown'])
+      if (body.productionContract !== true || body.schemaVersion !== 2
+        || body.bindingId !== this.options.network.bindingId || body.storeCode !== this.options.network.storeCode
+        || typeof body.observedAt !== 'string' || !Number.isFinite(Date.parse(body.observedAt))
+        || Object.values(queue).some(count => !Number.isSafeInteger(count) || Number(count) < 0)) throw new Error('NETWORK_INVALID_QUEUE_STATE')
+      return queue as { pending: number; claimed: number; executing: number; unknown: number }
+    } catch (cause) { throw new CloudRelayError('NETWORK_INVALID_QUEUE_STATE', { cause }) }
+  }
+
+  async receive(expectedMode?: NetworkMode): Promise<ReceivedPrintJob | null> {
+    if (expectedMode !== undefined) {
+      if (!this.options.network) throw new CloudRelayError('NETWORK_MODE_GUARD_REQUIRES_V2')
+      parseNetworkMode(expectedMode)
+    }
+    const value = await this.request('/api/es-tray-02/print-jobs/receive', undefined, { expectedMode })
     if (!this.options.network) return parseReceivedJob(value)
     try {
-      const body = exactObject(value, ['productionContract', 'schemaVersion', 'bindingId', 'storeCode', 'job'])
+      const body = exactObject(value, ['productionContract', 'schemaVersion', 'bindingId', 'storeCode', 'job', ...(expectedMode ? ['modeGuard'] : [])])
       if (body.productionContract !== true || body.schemaVersion !== 2
         || body.bindingId !== this.options.network.bindingId || body.storeCode !== this.options.network.storeCode) {
         throw new Error('NETWORK_IDENTITY_MISMATCH')
       }
+      if (expectedMode && body.modeGuard !== expectedMode) throw new Error('NETWORK_MODE_GUARD_UNAVAILABLE')
       if (body.job === null) return null
       const job = exactObject(body.job, ['id', 'schemaVersion', 'idempotencyKey', 'requestHash',
         'claimAttempt', 'claimToken', 'leaseExpiresAt', 'request'])
       const request = parseNetworkRequest(job.request)
+      if (expectedMode && request.mode !== expectedMode) throw new Error('NETWORK_MODE_GUARD_MISMATCH')
       if (job.schemaVersion !== 2 || typeof job.id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(job.id)
         || request.order.storeCode !== body.storeCode || job.idempotencyKey !== request.requestId
         || createHash('sha256').update(JSON.stringify(request)).digest('hex') !== job.requestHash

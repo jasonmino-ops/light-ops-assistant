@@ -611,15 +611,17 @@ describe('single physical printer: shared runtime, timer poller, durable journal
       expect(restarted.journal.records()).toHaveLength(1)
       expect(await restarted.journal.pendingRecords()).toEqual([])
       const replacement = { ...test, id: randomUUID(), endpoint: { ...node, host: '10.20.30.3' } }
-      await expect(restarted.beginTest(replacement)).rejects.toMatchObject({ code: 'ENOENT' })
+      // A failed profile open now latches the process closed; subsequent setup
+      // cannot bypass that failure by reaching the missing node file again.
+      await expect(restarted.beginTest(replacement)).rejects.toThrow('ADDON_PROFILE_BUSY_OR_FAULTED')
       const dependencies = { assertIdentity: async () => {}, identity: h.identity, nodes: restarted,
         journal: restarted.journal, client: h.client, render: h.render, recorder: { record: async () => {} },
         transport: h.transport, validateEndpoint: async () => {} }
       const guardedClient = createGuardedNetworkClient(dependencies)
       const poller = new RelayPoller({ client: guardedClient, journal: restarted.journal,
         recorder: dependencies.recorder, network: createNetworkStrategy(dependencies) })
-      await expect(guardedClient.receive()).rejects.toThrow('ADDON_PAUSED_OR_UNCONFIGURED')
-      await expect(poller.runOnceForTest()).rejects.toThrow('ADDON_PAUSED_OR_UNCONFIGURED')
+      await expect(guardedClient.receive()).rejects.toThrow('ADDON_PROFILE_RESTART_REQUIRED')
+      await expect(poller.runOnceForTest()).rejects.toThrow('ADDON_PROFILE_RESTART_REQUIRED')
       await expect(lstat(configFile)).rejects.toMatchObject({ code: 'ENOENT' })
       await expect(lstat(path.join(directory, 'nodes-2.sealed'))).rejects.toMatchObject({ code: 'ENOENT' })
       expect(h.client.receive).not.toHaveBeenCalled()

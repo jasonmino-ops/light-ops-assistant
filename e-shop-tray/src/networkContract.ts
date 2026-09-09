@@ -1,6 +1,9 @@
 /** Shared by the cloud producer and Tray. No Electron, network or database dependency. */
 export const NETWORK_PROFILE = 'network-v2' as const
 export const NETWORK_CLIENT_VERSION = 'network-0.1.1' as const
+// Guarded receives deliberately use a new version: an older server must
+// reject before claiming, not ignore a newly added optional header.
+export const NETWORK_MODE_GUARD_CLIENT_VERSION = 'network-0.1.2' as const
 export const NETWORK_SCHEMA = 2 as const
 export const NETWORK_MAX_BYTES = 3 * 1024 * 1024
 export type NetworkRole = 'FRONT' | 'KITCHEN'

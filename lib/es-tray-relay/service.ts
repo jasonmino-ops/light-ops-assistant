@@ -1,6 +1,6 @@
 import { Prisma, type EshopTrayPrintJob } from '@prisma/client'
 import { createHash } from 'node:crypto'
-import { parseNetworkRequest, type NetworkRequest } from '../../e-shop-tray/src/networkContract'
+import { parseNetworkMode, parseNetworkRequest, type NetworkMode, type NetworkRequest } from '../../e-shop-tray/src/networkContract'
 import { prisma } from '@/lib/prisma'
 import {
   ES_TRAY_RELAY_SCHEMA_VERSION,
@@ -33,6 +33,7 @@ export type RelayStoreScope = {
 export type RelayAgentScope = RelayStoreScope & {
   computerBindingId: string
   schemaVersion?: 1 | 2
+  expectedMode?: NetworkMode
 }
 
 export type ClaimedRelayJob = {
@@ -73,7 +74,7 @@ function serializeJob(job: EshopTrayPrintJob) {
   }
 }
 
-function storedRequest(job: EshopTrayPrintJob): EshopTrayPrintRequest | NetworkRequest {
+function storedRequest(job: Pick<EshopTrayPrintJob, 'schemaVersion' | 'payload' | 'requestHash'>): EshopTrayPrintRequest | NetworkRequest {
   try {
     if (job.schemaVersion === 2) {
       const request = parseNetworkRequest(job.payload)
@@ -303,6 +304,56 @@ async function lockActiveClaimScope(
   }
 }
 
+/** Read-only observation, never recovery/claim. It is NOT a sales/producer lock. */
+export async function readNetworkQueueState(scope: RelayStoreScope) {
+  const [counts] = await prisma.$queryRaw<Array<{ pending: bigint; claimed: bigint; executing: bigint; unknown: bigint }>>(Prisma.sql`
+    SELECT count(*) FILTER (WHERE "status" = 'PENDING') AS pending,
+           count(*) FILTER (WHERE "status" = 'CLAIMED') AS claimed,
+           count(*) FILTER (WHERE "status" = 'EXECUTING') AS executing,
+           count(*) FILTER (WHERE "effectBoundary" = 'CROSSING_UNKNOWN') AS unknown
+      FROM "EshopTrayPrintJob"
+     WHERE "tenantId" = ${scope.tenantId} AND "storeId" = ${scope.storeId} AND "schemaVersion" = 2
+  `)
+  const result = { pending: Number(counts.pending), claimed: Number(counts.claimed),
+    executing: Number(counts.executing), unknown: Number(counts.unknown) }
+  if (Object.values(result).some(count => !Number.isSafeInteger(count) || count < 0)) {
+    throw new RelayServiceError('NETWORK_QUEUE_STATE_UNAVAILABLE', 503)
+  }
+  return result
+}
+
+/** Opt-in commercial cold-conversion protection. No expiry, claim or result
+ * mutation may precede this check. Old-mode late sales remain in the ledger. */
+async function assertExpectedNetworkMode(tx: Prisma.TransactionClient, scope: RelayAgentScope) {
+  if (scope.expectedMode === undefined) return
+  if (scope.schemaVersion !== 2) throw new RelayServiceError('NETWORK_MODE_GUARD_REQUIRES_V2', 400)
+  const mode = parseNetworkMode(scope.expectedMode)
+  const where = { tenantId: scope.tenantId, storeId: scope.storeId, schemaVersion: 2 }
+  if (await tx.eshopTrayPrintJob.findFirst({ where: { ...where, effectBoundary: 'CROSSING_UNKNOWN' }, select: { id: true } })) {
+    throw new RelayServiceError('NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW', 409)
+  }
+  // Bounded pages avoid loading an arbitrary store backlog into memory. The
+  // surrounding existing store/binding lock serializes competing receivers.
+  let cursor: string | undefined
+  for (;;) {
+    const jobs = await tx.eshopTrayPrintJob.findMany({
+      where: { ...where, status: { in: ['PENDING', 'CLAIMED', 'EXECUTING'] }, ...(cursor ? { id: { gt: cursor } } : {}) },
+      orderBy: { id: 'asc' }, take: 100,
+      select: { id: true, schemaVersion: true, payload: true, requestHash: true },
+    })
+    for (const job of jobs) {
+      let request: EshopTrayPrintRequest | NetworkRequest
+      try { request = storedRequest(job) }
+      catch { throw new RelayServiceError('NETWORK_QUEUED_PAYLOAD_REQUIRES_REVIEW', 409) }
+      if (!('profile' in request) || request.mode !== mode) {
+        throw new RelayServiceError('NETWORK_QUEUED_MODE_MISMATCH', 409)
+      }
+    }
+    if (jobs.length < 100) break
+    cursor = jobs[jobs.length - 1].id
+  }
+}
+
 export async function claimNextRelayPrintJob(
   scope: RelayAgentScope,
   timing: RelayTimingConfig,
@@ -310,6 +361,7 @@ export async function claimNextRelayPrintJob(
 ): Promise<ClaimedRelayJob | null> {
   return prisma.$transaction(async (tx) => {
     await lockActiveClaimScope(tx, scope, now)
+    await assertExpectedNetworkMode(tx, scope)
     await recoverTimedOutJobs(tx, scope, now)
 
     if (scope.schemaVersion === 2) {
@@ -386,6 +438,7 @@ export async function claimNextRelayPrintJob(
     try {
       request = storedRequest(candidate)
     } catch {
+      if (scope.expectedMode !== undefined) throw new RelayServiceError('NETWORK_QUEUED_PAYLOAD_REQUIRES_REVIEW', 409)
       await tx.eshopTrayPrintJob.update({
         where: { id: candidate.id },
         data: {
@@ -399,6 +452,12 @@ export async function claimNextRelayPrintJob(
         },
       })
       return null
+    }
+
+    // Defend again at the exact chosen row, including any transaction that
+    // became visible after the backlog observation. Throw rolls back recovery.
+    if (scope.expectedMode !== undefined && (!('profile' in request) || request.mode !== scope.expectedMode)) {
+      throw new RelayServiceError('NETWORK_QUEUED_MODE_MISMATCH', 409)
     }
 
     if ('profile' in request && request.role === 'KITCHEN') {

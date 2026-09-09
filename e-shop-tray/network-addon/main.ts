@@ -13,8 +13,9 @@ import { NETWORK_PROFILE, parseNetworkMode, exactObject, type NetworkRequest } f
 import { NetworkRawTcpTransport, NetworkDeliveryError } from '../src/printing/networkRawTcpTransport'
 import { RelayPoller } from '../src/relayPoller'
 import { RelayResultLog } from '../src/resultLog'
-import { createGuardedNetworkClient, createNetworkStrategy, createNetworkRenderer, activateNetworkPrinting, submitLocalNetworkTest } from '../src/networkRuntime'
-import { NetworkAddonProfile, bindingTuple, sameBinding } from './profile'
+import { createGuardedNetworkClient, createNetworkStrategy, createNetworkRenderer, submitLocalNetworkTest } from '../src/networkRuntime'
+import { NetworkAddonProfile, bindingTuple, sameBinding, type ColdModePreflightContext } from './profile'
+import { ColdModeLifecycle } from './coldModeLifecycle'
 
 const SERVER = 'https://elifekh.com'
 const USER_DATA = path.join(app.getPath('appData'), 'E-Shop-Network-Print-Addon')
@@ -25,6 +26,7 @@ let tray: Tray | null = null
 let binding: DesktopBindingIdentity | undefined
 let profile: NetworkAddonProfile | undefined
 let poller: RelayPoller | undefined
+let lifecycle: ColdModeLifecycle | undefined
 let renderer: ReturnType<typeof createNetworkRenderer> | undefined
 const transport = new NetworkRawTcpTransport()
 let operation: Promise<unknown> | undefined
@@ -32,6 +34,7 @@ let scanner: AbortController | undefined
 let lastCode = 'STARTING'
 let lastEvent: { event: string; jobId?: string; resultCode?: string; effectBoundary?: string } | undefined
 let quitting = false
+let exitPending: Promise<void> | undefined
 
 function code(error: unknown) {
   const value = error instanceof Error ? ('code' in error ? String(error.code) : error.message) : ''
@@ -54,6 +57,23 @@ async function validateEndpoint(endpoint: NetworkNode) {
 function knownProfile() {
   if (!profile || !binding) throw new Error('DESKTOP_BINDING_NOT_ACTIVE')
   return profile
+}
+function knownLifecycle() {
+  if (!lifecycle) throw new Error('ADDON_RESTART_REQUIRED')
+  return lifecycle
+}
+async function validateColdContext(context: ColdModePreflightContext) {
+  if (!binding || !sameBinding(bindingTuple(binding), context.identity)) throw new Error('NETWORK_BINDING_CHANGED_RESTART_REQUIRED')
+  if (context.test.outcome !== 'CONFIRMED'
+    || context.config.endpoint.host !== context.test.endpoint.host || context.config.endpoint.port !== context.test.endpoint.port) {
+    throw new Error('ADDON_COLD_SETTLED_TEST_REQUIRED')
+  }
+  await assertConfirmedPrinter(context.config.endpoint, context.test, await getWindowsLocalNetworks())
+}
+async function finishExit() {
+  renderer?.dispose()
+  quitting = true
+  app.quit()
 }
 
 async function initialize() {
@@ -78,31 +98,48 @@ async function initialize() {
   const client = new CloudRelayClient({ config: { baseUrl: SERVER },
     credential: { installationId: binding.installationId, deviceSecret: binding.deviceSecret },
     network: { bindingId: binding.computerId, storeCode: binding.storeCode } })
+  // Only this commercial entry opts in. The server must reject late tasks for
+  // an old mode before recovering or claiming them; existing clients are intact.
+  const modeClient = {
+    receive: () => client.receive(parseNetworkMode(knownProfile().snapshot().mode)),
+    markExecuting: client.markExecuting.bind(client), reportResult: client.reportResult.bind(client),
+  }
   const dependencies = { assertIdentity, identity: bindingTuple(binding), nodes: profile, journal: profile.journal,
-    client, render: renderer.render, recorder, transport, validateEndpoint }
+    client: modeClient, render: renderer.render, recorder, transport, validateEndpoint }
   poller = new RelayPoller({ client: createGuardedNetworkClient(dependencies), journal: profile.journal, recorder,
     network: createNetworkStrategy(dependencies), onError(error) { lastCode = code(error) } })
-  if (profile.snapshot().enabled) {
-    try { const config = await profile.read(); await validateEndpoint(config.endpoint); poller.start(); lastCode = 'RUNNING' }
-    catch (error) { lastCode = code(error) }
-  } else lastCode = 'SETUP_OR_PAUSED'
+  lifecycle = new ColdModeLifecycle({ profile, client, assertIdentity, validate: validateColdContext,
+    stopAndWait: () => poller!.stopAndWait(), start: () => poller!.start(), exit: finishExit })
+  try {
+    await lifecycle.resumeAtStartup()
+    lastCode = profile.snapshot().enabled ? 'RUNNING' : profile.snapshot().coldEnableCheckRequired
+      ? 'ADDON_COLD_EXPLICIT_ENABLE_REQUIRED' : 'SETUP_OR_PAUSED'
+  } catch (error) { lastCode = code(error) }
 }
 
 async function status() {
   let state: ReturnType<NetworkAddonProfile['snapshot']> | undefined
   let endpoint: NetworkNode | undefined
   try { state = profile?.snapshot(); if (state?.revision) endpoint = (await profile!.readForRecovery()).endpoint }
-  catch (error) { lastCode = code(error) }
+  catch (error) {
+    // Keep the reason a cold conversion was refused visible after the profile
+    // closes this process, rather than replacing it with a generic restart code.
+    const failure = code(error)
+    if (failure !== 'ADDON_PROFILE_RESTART_REQUIRED'
+      || ['STARTING', 'RUNNING', 'SETUP_OR_PAUSED', 'CONFIGURED_PAUSED', 'PAUSED'].includes(lastCode)) lastCode = failure
+  }
   return { version: app.getVersion(), server: SERVER, storeCode: binding?.storeCode ?? null,
-    ready: !!profile, busy: !!operation, code: lastCode, mode: state?.mode ?? null,
+    ready: !!profile && !!lifecycle && !!state, busy: !!operation, code: lastCode, mode: state?.mode ?? null,
     enabled: state?.enabled ?? false, endpoint: endpoint ?? null, revision: state?.revision ?? 0,
     test: state?.test ?? null, lastEvent: lastEvent ?? null,
+    restartRequired: lifecycle?.restartRequired ?? profile?.restartRequired ?? false,
+    coldEnableCheckRequired: state?.coldEnableCheckRequired ?? false,
+    coldProcess: lifecycle?.coldProcess ?? false,
     autostart: app.getLoginItemSettings({ path: process.execPath }).openAtLogin }
 }
 
 async function pause() {
-  await poller?.stopAndWait()
-  await knownProfile().setEnabled(false)
+  await knownLifecycle().pause()
   lastCode = 'PAUSED'
 }
 
@@ -176,6 +213,10 @@ async function openCashier() {
 
 async function perform(action: unknown, value: unknown) {
   if (action === 'status') return status()
+  if (action !== 'exit' && (lifecycle?.restartRequired || profile?.restartRequired)) throw new Error('ADDON_PROFILE_RESTART_REQUIRED')
+  if (['discover', 'test', 'confirmTest'].includes(String(action)) && profile?.snapshot().coldEnableCheckRequired) {
+    throw new Error('ADDON_COLD_EXPLICIT_ENABLE_REQUIRED')
+  }
   if (action === 'cancelDiscovery') { scanner?.abort(); return null }
   if (operation) throw new Error('ADDON_BUSY')
   const input = value ?? {}
@@ -184,6 +225,14 @@ async function perform(action: unknown, value: unknown) {
     switch (action) {
       case 'retryBinding': exactObject(input, []); await initialize(); break
       case 'pause': exactObject(input, []); await pause(); break
+      case 'pauseAndExit': exactObject(input, []); await knownLifecycle().pauseAndExit(); break
+      case 'exit': exactObject(input, []); scanner?.abort(); if (lifecycle) await lifecycle.safeExit(); else await finishExit(); break
+      case 'convertMode': {
+        const data = exactObject(input, ['mode', 'cashierTabsClosed', 'singleAgentConfirmed'])
+        await knownLifecycle().convertAndExit(parseNetworkMode(data.mode), {
+          cashierTabsClosed: data.cashierTabsClosed === true, singleAgentConfirmed: data.singleAgentConfirmed === true })
+        break
+      }
       case 'discover': {
         exactObject(input, [])
         if (knownProfile().snapshot().enabled) throw new Error('ADDON_PAUSE_REQUIRED')
@@ -205,13 +254,10 @@ async function perform(action: unknown, value: unknown) {
         lastCode = 'CONFIGURED_PAUSED'; break
       }
       case 'enable': {
-        const data = exactObject(input, ['singleAgentConfirmed'])
-        if (data.singleAgentConfirmed !== true) throw new Error('ADDON_SINGLE_AGENT_CONFIRMATION_REQUIRED')
-        await activateNetworkPrinting({ isEnabled: () => knownProfile().snapshot().enabled,
-          stopAndWait: () => poller!.stopAndWait(),
-          validate: async () => { await assertIdentity(); await validateEndpoint((await knownProfile().readForRecovery()).endpoint) },
-          persistEnabled: () => profile!.setEnabled(true),
-          start: () => { app.setLoginItemSettings({ name: 'EShopNetworkPrintAddon', openAtLogin: true, path: process.execPath }); poller!.start() } })
+        const data = exactObject(input, ['singleAgentConfirmed', 'cashierTabsClosed'])
+        await knownLifecycle().enable({ singleAgentConfirmed: data.singleAgentConfirmed === true,
+          cashierTabsClosed: data.cashierTabsClosed === true })
+        app.setLoginItemSettings({ name: 'EShopNetworkPrintAddon', openAtLogin: true, path: process.execPath })
         lastCode = 'RUNNING'; break
       }
       case 'autostart': {
@@ -251,11 +297,12 @@ else {
   app.on('before-quit', event => {
     if (quitting) return
     event.preventDefault(); scanner?.abort()
-    void (async () => {
+    if (!exitPending) exitPending = (async () => {
       try { await operation } catch { /* The operation reports its own state. */ }
-      await poller?.stopAndWait()
-      renderer?.dispose(); quitting = true; app.quit()
-    })()
+      if (quitting) return
+      if (lifecycle) await lifecycle.safeExit()
+      else { await poller?.stopAndWait(); await finishExit() }
+    })().catch(error => { lastCode = code(error); showWindow() }).finally(() => { exitPending = undefined })
   })
   app.whenReady().then(async () => {
     ipcMain.handle('network-addon:action', async (event, action: unknown, value: unknown) => {
