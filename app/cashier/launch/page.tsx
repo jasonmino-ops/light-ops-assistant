@@ -26,8 +26,13 @@ export default function ComputerCashierLaunchPage() {
 
     const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''))
     const ticket = fragment.get('ticket')?.trim() ?? ''
+    // Explicit Add-on opt-in only. No arbitrary destination, store or endpoint
+    // is accepted from the fragment; the consumed ticket supplies the store.
+    const networkOptIn = fragment.get('networkPrint') === 'v01'
+    const networkMode = fragment.get('networkMode')
+    const hasNetworkOptions = fragment.has('networkPrint') || fragment.has('networkMode')
     window.history.replaceState(null, '', '/cashier/launch')
-    if (!ticket) {
+    if (!ticket || (hasNetworkOptions && (!networkOptIn || (networkMode !== 'FRONT_ONLY' && networkMode !== 'SHARED_PRINTER')))) {
       setState('failed')
       return
     }
@@ -51,6 +56,12 @@ export default function ComputerCashierLaunchPage() {
         savePosDeviceToken(body.storeCode, body.posDeviceToken)
         localStorage.setItem('cashier:lastStoreCode', body.storeCode)
         setComputerLaunchStoreCode(body.storeCode)
+        if (networkOptIn) {
+          const networkParams = new URLSearchParams({ storeCode: body.storeCode,
+            from: 'desktop', networkPrint: 'v01', networkMode: networkMode! })
+          window.location.replace(`/cashier?${networkParams.toString()}`)
+          return
+        }
         const nextParams = new URLSearchParams({ storeCode: body.storeCode, mode: 'pos' })
         window.location.replace(`/desktop/pos?${nextParams.toString()}`)
       })

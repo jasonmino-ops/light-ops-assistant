@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>E-Shop Network Print</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body>
+  <main>
+    <header><div class="eyebrow">E-SHOP · NETWORK PRINT</div><h1>让订单，自动到达打印机。</h1><p>独立网络打印扩展 · Desktop 0.4.7 保持不变</p></header>
+    <section class="status"><div><span id="pill">正在启动</span><h2 id="store">读取门店绑定…</h2><p id="status-message" role="status" aria-live="polite"></p></div><button id="retry-binding" class="secondary">重新读取 Desktop 绑定</button></section>
+    <section>
+      <h2><span class="number">1</span> 选择打印方式</h2>
+      <div class="modes"><label><input type="radio" name="mode" value="FRONT_ONLY" checked><strong>仅前台票</strong><small>FRONT_ONLY · 每单一张前台销售票</small></label><label><input type="radio" name="mode" value="SHARED_PRINTER"><strong>一机两张票</strong><small>SHARED_PRINTER · 每单先前台，后厨房</small></label></div>
+      <p class="note">首次配置后模式固定。每店只能运行一个 Network Agent；不能同时使用旧打印方式打印同一订单。</p>
+    </section>
+    <section>
+      <h2><span class="number">2</span> 选择并确认打印机</h2>
+      <p id="configured-endpoint" class="note"></p>
+      <div class="toolbar"><button id="discover" class="secondary">发现本地网络打印设备</button><button id="cancel" class="secondary" hidden>取消发现</button><button id="pause" class="secondary">暂停 / 地址恢复</button></div>
+      <p class="note">只检查当前直连有线 / Wi-Fi 私网的常用 RAW 端口。发现过程不出票；开放端口不代表可以打印。大网段、非默认端口请手工填写。</p>
+      <div id="candidates" aria-live="polite"></div>
+      <div class="manual"><label>打印机 IPv4<input id="host" placeholder="例如 192.168.1.80" inputmode="decimal" autocomplete="off" maxlength="15"></label><label>RAW TCP 端口<input id="port" value="9100" inputmode="numeric" autocomplete="off" maxlength="5"></label></div>
+      <p class="note">地址只保存在本机加密配置中，不会上传。仅支持当前物理局域网内的 RFC1918 IPv4 地址。</p>
+      <label class="check"><input id="test-ready" type="checkbox">我已选定目标、装纸，可以向此设备发送 <strong>一张 TEST 测试票</strong>。</label>
+      <button id="test">向选中设备发送 1 张 TEST</button>
+      <div id="confirmation" hidden>
+        <p id="test-summary"></p>
+        <label class="check"><input id="paper-confirmed" type="checkbox">我已看见对应 TEST 纸票，中文、走纸、切刀正常。</label>
+        <label class="check" id="same-printer-row"><input id="same-printer" type="checkbox">恢复地址后，这仍是原来那台实体打印机，不是另一台设备。</label>
+        <button id="confirm" class="secondary">确认纸票并保存配置</button>
+      </div>
+    </section>
+    <section>
+      <h2><span class="number">3</span> 开始营业</h2>
+      <label class="check"><input id="single-agent" type="checkbox">本店只有这一台 Network Agent，其他电脑未运行同店 Network 打印。</label>
+      <div class="toolbar"><button id="enable">启用自动打印</button><button id="cashier">在 Chrome 打开网络收银</button></div>
+      <label class="check"><input id="autostart" type="checkbox">登录 Windows 时自动启动 Network Print</label>
+      <p class="note">启用时默认开启登录自启。以后登录 Windows，打开此入口完成销售即可；普通未启用的收银入口不创建网络任务。</p>
+    </section>
+    <details><summary>打印异常、残缺票或停用时怎么办？</summary>
+      <p>先核对原订单和实际纸票，再暂停处理。TCP 提交成功不等于纸张打印完成。</p>
+      <p>结果不确定时不会自动重打。不要删除 journal、重装以清空记录，也不要重新提交销售来补票。保留下面的任务号和错误代码，交由负责人核对原订单；厨房残缺票需人工确认菜品并记录处理。</p>
+      <p>停用 Network 时，关闭所有 Network 收银标签页并移除相应书签，再选择既有工作方式。停用不取消历史任务。</p>
+      <p>地址改变：暂停 → 重新发现或填新地址 → 主动 TEST → 确认仍为原打印机 → 保存并启用。不能确认同一设备时保持暂停。</p>
+    </details>
+    <footer><code id="diagnostic"></code><span id="version"></span></footer>
+  </main>
+  <script src="ui.js"></script>
+</body>
+</html>

@@ -20,7 +20,7 @@ function jobReference(record: RecoveredJournalRecord) {
 }
 
 function safeResultCode(error: unknown) {
-  return error instanceof PrintDeliveryError
+  return process.env.ES_TRAY_BUILD_PROFILE !== 'network-v2' && error instanceof PrintDeliveryError
     ? error.code
     : 'TRAY_EXECUTION_FAILED'
 }
@@ -29,15 +29,23 @@ export class RelayPoller {
   private timer: NodeJS.Timeout | null = null
   private stopped = true
   private running = false
+  private idleWaiters: (() => void)[] = []
 
   constructor(private readonly options: {
     client: RelayClientPort
-    transport: QueueTransport
+    transport?: QueueTransport
     journal: ExecutionJournal
     recorder: RelayEventRecorder
     intervalMs?: number
     now?: () => number
-  }) {}
+    onError?: (error: unknown) => void
+    network?: {
+      prepare(job: ReceivedPrintJob): Promise<() => Promise<{ bytesWritten: number; durationMs: number; effectBoundary: 'CROSSED' }>>
+      failure(error: unknown): Pick<TerminalResult, 'resultCode' | 'effectBoundary'>
+    }
+  }) {
+    if (!options.transport && !options.network) throw new Error('DELIVERY_STRATEGY_REQUIRED')
+  }
 
   start(): void {
     if (!this.stopped) return
@@ -51,8 +59,22 @@ export class RelayPoller {
     this.timer = null
   }
 
+  /** Stop receiving; let the current claim, journal writes and ACK settle first.
+   * Never interrupt a physical submission to make configuration changes. */
+  async stopAndWait(): Promise<void> {
+    this.stop()
+    if (this.running) await new Promise<void>(resolve => this.idleWaiters.push(resolve))
+  }
+
+  private becameIdle(): void {
+    this.running = false
+    for (const resolve of this.idleWaiters.splice(0)) resolve()
+  }
+
   async runOnceForTest(): Promise<void> {
-    await this.runOnce()
+    if (this.running) throw new Error('RELAY_ALREADY_RUNNING')
+    this.running = true
+    try { await this.runOnce() } finally { this.becameIdle() }
   }
 
   private schedule(delayMs: number): void {
@@ -65,11 +87,12 @@ export class RelayPoller {
     this.running = true
     try {
       await this.runOnce()
-    } catch {
+    } catch (error) {
       // Journal state remains durable. The next bounded poll retries only the
       // network acknowledgement, never an uncertain physical side effect.
+      try { this.options.onError?.(error) } catch { /* UI diagnostics are optional. */ }
     } finally {
-      this.running = false
+      this.becameIdle()
       this.schedule(this.options.intervalMs ?? ES_TRAY_POLL_INTERVAL_MS)
     }
   }
@@ -84,6 +107,22 @@ export class RelayPoller {
   private async process(job: ReceivedPrintJob) {
     await this.options.journal.recordClaimed(job)
     await this.record({ event: 'JOB_CLAIMED', jobId: job.id, claimAttempt: job.claimAttempt })
+
+    let prepared: Awaited<ReturnType<NonNullable<typeof this.options.network>['prepare']>> | undefined
+    if (this.options.network) {
+      try {
+        if (job.schemaVersion !== 2 || !job.network) throw new Error('NETWORK_JOB_REQUIRED')
+        prepared = await this.options.network.prepare(job)
+      } catch {
+        await this.finish(job, { state: 'FAILED', resultCode: 'NETWORK_PREPARATION_FAILED',
+          effectBoundary: 'NOT_CROSSED', physicalCompletionKnown: false })
+        return
+      }
+    } else if (job.schemaVersion !== 1 || job.network) {
+      await this.finish(job, { state: 'FAILED', resultCode: 'UNEXPECTED_JOB_PROTOCOL',
+        effectBoundary: 'NOT_CROSSED', physicalCompletionKnown: false })
+      return
+    }
 
     // Persist intent before asking the server to cross into EXECUTING.
     await this.options.journal.recordExecuting(job, 'NOT_CROSSED')
@@ -103,7 +142,7 @@ export class RelayPoller {
     // This durable write is the final action before invoking Winspool.
     await this.options.journal.recordExecuting(job, 'CROSSING_UNKNOWN')
     await this.record({
-      event: 'WINDOWS_RAW_START',
+      event: this.options.network ? 'NETWORK_RAW_START' : 'WINDOWS_RAW_START',
       jobId: job.id,
       claimAttempt: job.claimAttempt,
       effectBoundary: 'CROSSING_UNKNOWN',
@@ -112,16 +151,18 @@ export class RelayPoller {
 
     let result: TerminalResult
     try {
-      const delivery = await this.options.transport.deliver(job.commandStream, job.documentName)
+      const delivery = prepared ? await prepared() : await this.options.transport!.deliver(job.commandStream, job.documentName)
       result = {
         state: 'SUCCEEDED',
-        resultCode: 'SUBMITTED_TO_WINDOWS_SPOOLER',
-        resultMessage: 'Winspool accepted the complete RAW command stream; physical paper output is not confirmed.',
+        resultCode: process.env.ES_TRAY_BUILD_PROFILE === 'network-v2' || this.options.network ? 'SUBMITTED_TO_NETWORK_SOCKET' : 'SUBMITTED_TO_WINDOWS_SPOOLER',
+        resultMessage: process.env.ES_TRAY_BUILD_PROFILE === 'network-v2' || this.options.network
+          ? 'Complete byte stream submitted to TCP; physical paper output is not confirmed.'
+          : 'Winspool accepted the complete RAW command stream; physical paper output is not confirmed.',
         effectBoundary: 'CROSSED',
         physicalCompletionKnown: false,
       }
       await this.record({
-        event: 'WINDOWS_RAW_ACCEPTED',
+        event: this.options.network ? 'NETWORK_RAW_ACCEPTED' : 'WINDOWS_RAW_ACCEPTED',
         jobId: job.id,
         claimAttempt: job.claimAttempt,
         effectBoundary: delivery.effectBoundary,
@@ -131,8 +172,9 @@ export class RelayPoller {
     } catch (error) {
       result = {
         state: 'FAILED',
-        resultCode: safeResultCode(error),
-        effectBoundary: error instanceof PrintDeliveryError
+        resultCode: this.options.network ? this.options.network.failure(error).resultCode : safeResultCode(error),
+        effectBoundary: this.options.network ? this.options.network.failure(error).effectBoundary
+          : process.env.ES_TRAY_BUILD_PROFILE !== 'network-v2' && error instanceof PrintDeliveryError
           ? error.effectBoundary
           : 'CROSSING_UNKNOWN',
         physicalCompletionKnown: false,

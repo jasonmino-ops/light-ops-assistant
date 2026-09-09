@@ -63,6 +63,26 @@ async function harness(overrides: {
 }
 
 describe('Tray 0.1.3 reliable relay poller', () => {
+  it('stopAndWait waits for the current submission and ACK without receiving another job', async () => {
+    let finishDelivery!: () => void, finishAck!: () => void
+    const delivery = new Promise<void>(resolve => { finishDelivery = resolve })
+    const ack = new Promise<void>(resolve => { finishAck = resolve })
+    const h = await harness({ receive: vi.fn().mockResolvedValueOnce(job()).mockResolvedValue(null),
+      deliver: vi.fn(async () => { await delivery; return { bytesWritten: 2, durationMs: 1, effectBoundary: 'CROSSED' as const } }),
+      reportResult: vi.fn(async () => { await ack }) })
+    h.poller.start()
+    await vi.waitFor(() => expect(h.transport.deliver).toHaveBeenCalledTimes(1))
+    let stopped = false
+    const waiting = h.poller.stopAndWait().then(() => { stopped = true })
+    await Promise.resolve(); expect(stopped).toBe(false)
+    finishDelivery()
+    await vi.waitFor(() => expect(h.client.reportResult).toHaveBeenCalledTimes(1))
+    expect(stopped).toBe(false)
+    finishAck(); await waiting
+    expect(stopped).toBe(true)
+    expect(h.client.receive).toHaveBeenCalledTimes(1)
+    expect(h.journal.records()[0]).toMatchObject({ reported: true, effectBoundary: 'CROSSED' })
+  })
   it('persists, marks EXECUTING, prints once, and ACKs the terminal result', async () => {
     const claimed = job()
     const calls: string[] = []
