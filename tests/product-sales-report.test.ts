@@ -7,33 +7,42 @@ import { parseSelection, ReportError } from '../lib/product-sales/contract'
 import { canReadReport, selectedStores } from '../lib/product-sales/service'
 import { scheduledAuthorization, generateDailyReports } from '../lib/product-sales/daily'
 import { reportPrintHtml } from '../lib/product-sales/print'
+import { reportPeriodPresentation } from '../lib/product-sales/presentation'
 import type { OwnerStoreAccess } from '../lib/owner-store-hub'
 
 const now = new Date('2026-09-09T10:00:00Z') // Wednesday 17:00 Cambodia
 const contains = (range: ReturnType<typeof reportRange>, instant: string) => range.windows.some((window) => Date.parse(instant) >= Date.parse(window.from) && Date.parse(instant) < Date.parse(window.to))
 const range = reportRange({ period: 'TODAY' }, now)
-assert.deepEqual(businessWindow('2026-09-09'), { from: '2026-09-08T23:00:00.000Z', to: '2026-09-09T17:00:00.000Z' })
-assert.equal(contains(range, '2026-09-09T05:59:59.999+07:00'), false)
-assert.equal(contains(range, '2026-09-09T06:00:00+07:00'), true)
-assert.equal(contains(range, '2026-09-09T23:59:59.999+07:00'), true)
-assert.equal(contains(range, '2026-09-10T00:00:00+07:00'), false)
+assert.deepEqual(businessWindow('2026-09-09'), { from: '2026-09-08T17:00:00.000Z', to: '2026-09-09T17:00:00.000Z' })
+assert.equal(contains(range, '2026-09-08T23:59:59.999+07:00'), false)
+for (const hour of ['00:00:00', '01:00:00', '05:59:59.999', '06:00:00', '16:59:59.999']) assert.equal(contains(range, `2026-09-09T${hour}+07:00`), true)
+assert.equal(contains(range, now.toISOString()), false, 'exclusive cutoff is the captured query instant')
+assert.equal(contains(range, '2026-09-09T23:59:59.999+07:00'), false, 'future part of today is excluded')
 assert.equal(localDate(new Date('2026-09-08T17:00:00Z')), '2026-09-09')
-assert.equal(reportRange({ period: 'YESTERDAY' }, now).dateFrom, '2026-09-08')
+assert.deepEqual(reportRange({ period: 'YESTERDAY' }, now).windows, [{ from: '2026-09-07T17:00:00.000Z', to: '2026-09-08T17:00:00.000Z' }])
 const week = reportRange({ period: 'WEEK' }, now)
-assert.equal(week.windows[0].from, '2026-09-06T23:00:00.000Z')
+assert.equal(week.windows[0].from, '2026-09-06T17:00:00.000Z')
 assert.equal(week.windows[0].to, now.toISOString())
-assert.equal(contains(week, '2026-09-08T03:00:00+07:00'), true, 'Founder specified continuous week/month windows')
-assert.equal(contains(week, now.toISOString()), false, 'query end is exclusive')
-assert.equal(reportRange({ period: 'WEEK' }, new Date('2026-09-07T05:00:00+07:00')).windows.length, 0)
-assert.equal(reportRange({ period: 'MONTH' }, now).windows[0].from, '2026-08-31T23:00:00.000Z')
+assert.equal(contains(week, '2026-09-07T00:00:00+07:00'), true)
+assert.equal(contains(week, now.toISOString()), false)
+assert.equal(reportRange({ period: 'WEEK' }, new Date('2026-09-07T05:00:00+07:00')).windows.length, 1)
+assert.equal(reportRange({ period: 'MONTH' }, now).windows[0].from, '2026-08-31T17:00:00.000Z')
+for (const instant of ['2026-01-01T00:00:00+07:00', '2026-09-07T00:00:00+07:00']) {
+  const midnight = reportRange({ period: 'TODAY' }, new Date(instant))
+  assert.deepEqual(midnight.windows, [], 'no future interval at exact midnight')
+}
 const custom = reportRange({ period: 'CUSTOM', dateFrom: '2026-09-07', dateTo: '2026-09-09' }, now)
 assert.equal(custom.windows.length, 3)
 for (const date of ['2026-09-07', '2026-09-08', '2026-09-09']) {
-  assert.equal(contains(custom, `${date}T00:00:00+07:00`), false)
-  assert.equal(contains(custom, `${date}T05:59:59+07:00`), false)
-  assert.equal(contains(custom, `${date}T06:00:00+07:00`), true)
+  assert.equal(contains(custom, `${date}T00:00:00+07:00`), true)
+  assert.equal(contains(custom, `${date}T05:59:59+07:00`), true)
 }
-assert.equal(reportRange({ period: 'CUSTOM', dateFrom: '2024-02-28', dateTo: '2024-03-01' }, now).windows.length, 3)
+assert.equal(custom.windows.at(-1)?.to, now.toISOString(), 'custom including today cannot claim future hours')
+const february = reportRange({ period: 'CUSTOM', dateFrom: '2024-02-01', dateTo: '2024-02-29' }, now)
+assert.equal(february.windows.length, 29)
+assert.equal(contains(february, '2024-02-29T23:59:59.999+07:00'), true)
+assert.equal(contains(february, '2024-03-01T00:00:00+07:00'), false)
+assert.equal(reportRange({ period: 'YESTERDAY' }, new Date('2026-01-01T01:00:00+07:00')).dateFrom, '2025-12-31')
 for (const dates of [['2026-02-30', '2026-03-01'], ['2026-09-09', '2026-09-08'], ['2026-09-09', '2026-09-10'], ['2024-01-01', '2026-09-09']]) {
   assert.throws(() => reportRange({ period: 'CUSTOM', dateFrom: dates[0], dateTo: dates[1] }, now), ReportError)
 }
@@ -81,6 +90,20 @@ assert.equal(html.includes('<script>bad()</script>'), false)
 assert.ok(html.includes('&lt;script&gt;bad()&lt;/script&gt;'))
 assert.ok(html.includes('商品销售额'))
 assert.ok(html.includes('40.60'))
+const shown = reportPeriodPresentation(report, 'zh')
+assert.match(shown.interval, /2026-09-09 00:00:00 → 2026-09-09 17:00:00/)
+assert.match(shown.status, /实时结果.*截至: 2026-09-09 17:00:00/)
+assert.equal(shown.legacy, null)
+const legacy = { ...report, range: { ...report.range, period: 'CUSTOM' as const, dateFrom: '2026-09-08', dateTo: '2026-09-08', continuous: false, windows: [{ from: '2026-09-07T23:00:00.000Z', to: '2026-09-08T17:00:00.000Z' }] } }
+const sealedLegacy = JSON.stringify(legacy)
+const oldShown = reportPeriodPresentation(legacy, 'zh')
+assert.match(oldShown.interval, /2026-09-08 06:00:00 → 2026-09-09 00:00:00/)
+assert.match(oldShown.legacy!, /原 06:00/)
+assert.equal(oldShown.status, '完整历史时段')
+assert.match(reportPrintHtml(legacy, 'zh'), /原 06:00/)
+assert.equal(JSON.stringify(legacy), sealedLegacy, 'presentation never rewrites archived results')
+assert.match(html, /<body><main class="report-ticket">/)
+assert.match(html, /<\/main><\/body>/)
 assert.ok(!Object.keys(report).includes('netRevenue'))
 assert.equal(scheduledAuthorization(null, undefined), false)
 assert.equal(scheduledAuthorization('Bearer undefined', undefined), false)

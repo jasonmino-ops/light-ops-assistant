@@ -14,7 +14,7 @@ export function shiftDate(date: string, days: number) {
 }
 export function businessWindow(date: string): Window {
   validDate(date)
-  return { from: new Date(`${date}T06:00:00+07:00`).toISOString(), to: new Date(`${shiftDate(date, 1)}T00:00:00+07:00`).toISOString() }
+  return { from: new Date(`${date}T00:00:00+07:00`).toISOString(), to: new Date(`${shiftDate(date, 1)}T00:00:00+07:00`).toISOString() }
 }
 export function reportRange(input: { period: unknown; dateFrom?: unknown; dateTo?: unknown }, now = new Date()): ReportRange {
   const today = localDate(now)
@@ -23,7 +23,7 @@ export function reportRange(input: { period: unknown; dateFrom?: unknown; dateTo
   let dateTo = today
   let continuous = false
   switch (period) {
-    case 'TODAY': break
+    case 'TODAY': continuous = true; break
     case 'YESTERDAY': dateFrom = dateTo = shiftDate(today, -1); break
     case 'WEEK': {
       const weekday = new Date(`${today}T00:00:00Z`).getUTCDay()
@@ -40,7 +40,12 @@ export function reportRange(input: { period: unknown; dateFrom?: unknown; dateTo
     const from = businessWindow(dateFrom).from
     if (Date.parse(from) < now.getTime()) windows.push({ from, to: now.toISOString() })
   } else {
-    for (let index = 0; index < days; index++) windows.push(businessWindow(shiftDate(dateFrom, index)))
+    for (let index = 0; index < days; index++) {
+      const window = businessWindow(shiftDate(dateFrom, index))
+      // A custom range may include today, but never a future part of today.
+      if (Date.parse(window.to) > now.getTime()) window.to = now.toISOString()
+      if (Date.parse(window.from) < Date.parse(window.to)) windows.push(window)
+    }
   }
   return { period, dateFrom, dateTo, windows, continuous, timezone: REPORT_TIMEZONE }
 }

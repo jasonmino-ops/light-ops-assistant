@@ -40,14 +40,14 @@ let queue: Promise<unknown> = Promise.resolve()
 const when = new Date('2026-09-10T00:10:00+07:00')
 const products = [{ id: 'p1', tenantId: 'tenant-a', name: 'Same', barcode: 'SAME', status: 'ACTIVE' }, { id: 'p2', tenantId: 'tenant-b', name: 'Same', barcode: 'SAME', status: 'ACTIVE' }, { id: 'secret', tenantId: 'other', name: 'Secret', barcode: 'SAME' }]
 const saleRows: Data[] = [
-  { id: 'r1', tenantId: 'tenant-a', storeId: 'store-a', productId: 'p1', saleType: 'SALE', quantity: 2, lineAmount: 10, status: 'COMPLETED', createdAt: new Date('2026-09-09T06:00:00+07:00') },
+  { id: 'r1', tenantId: 'tenant-a', storeId: 'store-a', productId: 'p1', saleType: 'SALE', quantity: 2, lineAmount: 10, status: 'COMPLETED', createdAt: new Date('2026-09-09T00:00:00+07:00') },
   { id: 'r2', tenantId: 'tenant-b', storeId: 'store-b', productId: 'p2', saleType: 'SALE', quantity: 3, lineAmount: 20, status: 'COMPLETED', createdAt: new Date('2026-09-09T23:59:59+07:00') },
-  { id: 'r3', tenantId: 'tenant-a', storeId: 'store-a', productId: 'p1', saleType: 'SALE', quantity: 100, lineAmount: 999, status: 'COMPLETED', createdAt: new Date('2026-09-09T05:59:59+07:00') },
+  { id: 'r3', tenantId: 'tenant-a', storeId: 'store-a', productId: 'p1', saleType: 'SALE', quantity: 100, lineAmount: 999, status: 'COMPLETED', createdAt: new Date('2026-09-08T23:59:59.999+07:00') },
   { id: 'r4', tenantId: 'tenant-a', storeId: 'store-a', productId: 'p1', saleType: 'SALE', quantity: 100, lineAmount: 999, status: 'PENDING_PAYMENT', createdAt: new Date('2026-09-09T12:00:00+07:00') },
   { id: 'r5', tenantId: 'other', storeId: 'store-x', productId: 'secret', saleType: 'SALE', quantity: 100, lineAmount: 999, status: 'COMPLETED', createdAt: new Date('2026-09-09T12:00:00+07:00') },
 ]
 const orders: Data[] = [
-  { id: 'c1', tenantId: 'tenant-a', storeId: 'store-a', status: 'COMPLETED', paymentStatus: 'PAID', paidAt: new Date('2026-09-09T12:00:00+07:00'), totalAmount: 6, itemsJson: JSON.stringify([{ productId: 'p1', quantity: 1, lineAmount: 10 }]) },
+  { id: 'c1', tenantId: 'tenant-a', storeId: 'store-a', status: 'COMPLETED', paymentStatus: 'PAID', paidAt: new Date('2026-09-09T02:00:00+07:00'), totalAmount: 6, itemsJson: JSON.stringify([{ productId: 'p1', quantity: 1, lineAmount: 10 }]) },
   { id: 'c2', tenantId: 'tenant-a', storeId: 'store-a', status: 'COMPLETED', paymentStatus: 'UNPAID', paidAt: new Date('2026-09-09T12:00:00+07:00'), itemsJson: JSON.stringify([{ productId: 'p1', quantity: 100, lineAmount: 999 }]) },
 ]
 function sourceFilter(rows: Data[], args: Data, timeField: string) {
@@ -156,6 +156,22 @@ async function main() {
     assert.equal(overCap.status, 422)
     assert.equal((await overCap.json()).error, 'QUERY_TOO_LARGE', 'no silent truncation across sources')
   } finally { saleRows.splice(0, saleRows.length, ...originalSales); orders.splice(0, orders.length, ...originalOrders) }
+  const beforeLive = [...saleRows]; const ordersBeforeLive = [...orders]
+  try {
+    const start = new Date(`${localDate()}T00:00:00+07:00`)
+    const future = new Date(Date.now() + 60_000)
+    saleRows.splice(0, saleRows.length,
+      { ...beforeLive[0], id: 'live-in', createdAt: start },
+      { ...beforeLive[0], id: 'live-before', createdAt: new Date(start.getTime() - 1), lineAmount: 999 },
+      { ...beforeLive[0], id: 'live-future', createdAt: future, lineAmount: 999 })
+    orders.splice(0, orders.length,
+      { ...ordersBeforeLive[0], id: 'live-order', paidAt: start },
+      { ...ordersBeforeLive[0], id: 'future-order', paidAt: future })
+    const live = await (await query(req('/query', 'POST', { ...selection, period: 'TODAY' }))).json()
+    assert.equal(live.totals[0].salesAmount, '20.00', 'both real source predicates include midnight and exclude future transactions')
+    assert.equal(live.range.windows[0].from, start.toISOString())
+    assert.equal(live.range.windows[0].to, live.generatedAt, 'API cutoff and displayed generation time are the same captured instant')
+  } finally { saleRows.splice(0, saleRows.length, ...beforeLive); orders.splice(0, orders.length, ...ordersBeforeLive) }
   const broken = new NextRequest('http://localhost/api/owner/product-sales/query', { method: 'POST', headers: req('/').headers, body: '{broken' })
   assert.equal((await query(broken)).status, 400)
   const crossOrigin = req('/query', 'POST', body); crossOrigin.headers.set('origin', 'https://attacker.invalid')
@@ -178,6 +194,7 @@ async function main() {
   assert.deepEqual(outcomes.sort(), ['created', 'existing']); assert.equal(reports.size, 1); assert.ok(lockCalls >= 2)
   const stored = [...reports.values()][0]
   assert.equal(stored.reportDate, '2026-09-09')
+  assert.deepEqual(stored.result.range.windows, [{ from: '2026-09-08T17:00:00.000Z', to: '2026-09-09T17:00:00.000Z' }], 'daily is the previous full local natural day')
   assert.equal(stored.result.totals[0].salesAmount, '40.00')
   const originalJson = JSON.stringify(stored.result)
   records.get(id)!.name = 'Later edit'

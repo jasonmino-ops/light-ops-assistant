@@ -4,6 +4,7 @@ import { chromium, expect } from '@playwright/test'
 import { signSession } from '../lib/session'
 import { reportRange } from '../lib/product-sales/dates'
 import type { GroupView, ProductSalesResult } from '../lib/product-sales/contract'
+import { parsePrintRequest, type EshopTrayPrintRequest } from '../lib/es-tray-relay/contract'
 
 // Run against a local built app. APIs use fixtures; real UI and printing helper run
 // in Chromium. Only the native print dialog is replaced so no paper is consumed.
@@ -27,6 +28,9 @@ async function main() {
     let failOptions = false
     const queryBodies: any[] = []
     let writes = 0
+    let relayEnabled = false
+    let failRelay = true
+    const printRequests: EshopTrayPrintRequest[] = []
     await context.route('**/*', async (route) => {
       const url = new URL(route.request().url())
       if (url.origin !== new URL(base).origin) return route.fulfill({ status: 200, contentType: url.hostname.includes('fonts') ? 'text/css' : 'application/javascript', body: '' })
@@ -35,6 +39,13 @@ async function main() {
       const path = url.pathname.replace('/api/owner/product-sales', '')
       if (url.pathname === '/api/auth/status') data = { ok: true }
       else if (url.pathname === '/api/me') data = { role: 'OWNER', storeId: 'sa', tenantId: 'ta' }
+      else if (url.pathname === '/api/es-tray-02/config') data = { fieldOnly: true, enabled: relayEnabled }
+      else if (url.pathname === '/api/es-tray-02/print-jobs') {
+        const payload = parsePrintRequest(route.request().postDataJSON())
+        printRequests.push(payload)
+        if (failRelay) { status = 503; data = { error: 'TEST_RESPONSE_UNCERTAIN' } }
+        else { status = 202; data = { fieldOnly: true, productionContract: true, schemaVersion: 1, jobId: 'report-print', requestId: payload.requestId, status: 'PENDING_RECEIVE', created: false } }
+      }
       else if (path === '/options') {
         if (url.searchParams.get('storeId') === 'revoked-store') { status = 403; data = { error: 'STORE_ACCESS_DENIED' } }
         else if (failOptions) { failOptions = false; status = 500; data = { error: 'INTERNAL_ERROR' } }
@@ -108,6 +119,34 @@ async function main() {
     await page.evaluate(() => { window.dispatchEvent(new Event('afterprint')) })
     await expect(page.locator('#__oprint')).toHaveCount(0)
 
+    // The same Production receipt capability runs with the real HTML renderer.
+    // Only its remote enqueue response is replaced; no physical job is created.
+    relayEnabled = true
+    await page.reload()
+    await page.getByRole('button', { name: '重点商品调整', exact: true }).click()
+    await expect(page.locator('table tbody tr')).toHaveCount(2)
+    await expect(page.getByText(/实时结果（未结日），截至: 2026-09-09 12:00:00/)).toBeVisible()
+    await expect(page.getByText(/2026-09-09 00:00:00 → 2026-09-09 12:00:00/)).toBeVisible()
+    assert.equal(printRequests.length, 0, 'loading and querying never send print jobs')
+    await page.getByRole('button', { name: '打印', exact: true }).click()
+    await expect(page.getByRole('main').getByRole('alert')).toHaveText('打印未能确认发送，请检查现有打印服务后重试。')
+    assert.equal(printRequests.length, 1)
+    assert.ok(printRequests[0].commandStream.byteLength > 10_000, 'complete report renders into a substantial receipt stream')
+    assert.match(printRequests[0].orderNo, /^product-sales-report:[a-f0-9]{64}$/)
+    assert.equal('storeId' in printRequests[0], false, 'all-store report does not override the active OWNER print target')
+    failRelay = false
+    await page.getByRole('button', { name: '打印', exact: true }).click()
+    await expect(page.getByRole('status')).toHaveText('报表已发送，请在打印机确认出纸。')
+    assert.deepEqual(printRequests[1], printRequests[0], 'UI retry reuses exact rendered bytes and request identity')
+    await page.getByRole('button', { name: '2026-09-08 · 昨日固定组 ›', exact: true }).click()
+    await expect(page.getByText('完整历史时段', { exact: true })).toBeVisible()
+    await expect(page.getByRole('status')).toHaveCount(0, { timeout: 5000 })
+    assert.equal(printRequests.length, 2, 'opening history neither prints nor retains the prior report send status')
+    await page.getByRole('button', { name: '打印', exact: true }).click()
+    await expect(page.getByRole('status')).toHaveText('报表已发送，请在打印机确认出纸。')
+    assert.equal(printRequests.length, 3)
+    assert.notEqual(printRequests[2].orderNo, printRequests[1].orderNo, 'history prints its own result document')
+
     // A saved single-store group remains manageable after that store is revoked.
     await page.getByRole('button', { name: '撤权单店组', exact: true }).click()
     await expect(page.getByRole('button', { name: '重新加载商品', exact: true })).toBeVisible()
@@ -132,7 +171,7 @@ async function main() {
     await page.screenshot({ path: '.task-state/product-sales-mobile.png', fullPage: true })
     assert.deepEqual(errors, [], 'no uncaught browser errors')
     await context.close()
-    console.log('product sales browser passed: selection, dates, groups/edit, history, real popup/fallback printing, revoked store recovery, retry, desktop/mobile')
+    console.log('product sales browser passed: live cutoff, groups/history, existing OWNER receipt render/send/retry, browser fallback, revoked store recovery and desktop/mobile')
   } finally { await browser.close() }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1 })

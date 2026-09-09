@@ -5,9 +5,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocale } from '@/app/components/LangProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
-import { openExistingBrowserPrint } from '@/lib/browserPrintFallback'
+import { readEshopTray02CloudEnableState, type EshopTray02CloudEnableState } from '@/lib/eShopTrayCloudClient'
 import { COPY, displayError } from '@/lib/product-sales/copy'
 import { reportPrintHtml } from '@/lib/product-sales/print'
+import { createProductReportPrintAction } from '@/lib/product-sales/print-action'
+import { reportPeriodPresentation } from '@/lib/product-sales/presentation'
 import { productKey, type GroupView, type Period, type ProductRef, type ProductSalesResult, type ReportStore, type Selection } from '@/lib/product-sales/contract'
 import styles from './page.module.css'
 
@@ -48,6 +50,8 @@ export default function ProductSalesPage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [printState, setPrintState] = useState<EshopTray02CloudEnableState>('pending')
+  const printAction = useRef(createProductReportPrintAction())
   const [optionsBusy, setOptionsBusy] = useState(false)
   const [ready, setReady] = useState(false)
   const [optionsRevision, setOptionsRevision] = useState(0)
@@ -60,6 +64,11 @@ export default function ProductSalesPage() {
   useEffect(() => {
     mounted.current = true
     return () => { mounted.current = false; queryAttempt.current++; optionsAttempt.current++ }
+  }, [])
+  useEffect(() => {
+    let active = true
+    void readEshopTray02CloudEnableState().then((state) => { if (active) setPrintState(state) })
+    return () => { active = false }
   }, [])
   useEffect(() => {
     const controller = new AbortController()
@@ -154,7 +163,7 @@ export default function ProductSalesPage() {
   }
   async function openHistory(id: string) {
     const attempt = ++queryAttempt.current
-    setBusy(true); setError(''); setResult(null)
+    setBusy(true); setError(''); setMessage(''); setResult(null)
     try {
       const data = await request<{ result: ProductSalesResult }>(`/reports/${id}`)
       if (attempt === queryAttempt.current && mounted.current) setResult(data.result)
@@ -162,21 +171,23 @@ export default function ProductSalesPage() {
     finally { if (mounted.current) setBusy(false) }
   }
   async function print() {
-    if (!result || busy) return
-    setError(''); setBusy(true)
+    if (!result || busy || printState === 'pending') return
+    setError(''); setMessage(''); setBusy(true)
     try {
-      const outcome = await openExistingBrowserPrint(reportPrintHtml(result, lang), () => {})
-      if (outcome.status === 'blocked') setError('PRINT_FAILED')
-    } catch { setError('PRINT_FAILED') }
-    finally { if (mounted.current) setBusy(false) }
+      const outcome = await printAction.current(reportPrintHtml(result, lang), printState, () => { if (mounted.current) setBusy(false) })
+      if (outcome === 'submitted' && mounted.current) setMessage(copy.printSent)
+    } catch (failure) {
+      if (mounted.current) { setError((failure as Error).message === 'PRINT_TOO_LARGE' ? 'PRINT_TOO_LARGE' : 'PRINT_FAILED'); setBusy(false) }
+    }
   }
   const selectedKeys = new Set(selected.map(productKey))
+  const resultPeriod = result && reportPeriodPresentation(result, lang)
 
   return <main className={styles.page}>
     <header className={styles.header}><Link href="/dashboard">‹ {copy.back}</Link><LangToggleBtn /></header>
     <h1>{copy.title}</h1><p className={styles.muted}>{copy.intro}</p>
     <p className={styles.notice}>{copy.rule}</p>
-    {error && <p role="alert" className={styles.error}>{error === 'PRINT_FAILED' ? copy.printFailed : displayError(error, lang)}</p>}
+    {error && <p role="alert" className={styles.error}>{error === 'PRINT_FAILED' ? copy.printFailed : error === 'PRINT_TOO_LARGE' ? copy.printTooLarge : displayError(error, lang)}</p>}
     {message && <p role="status" className={styles.notice}>{message}</p>}
     <fieldset disabled={busy} className={styles.fieldset}>
       <section className={styles.card}>
@@ -215,8 +226,11 @@ export default function ProductSalesPage() {
     {busy && <p role="status">{copy.working}</p>}
     <section className={styles.card} aria-label={copy.title}>
       {result ? <>
-        <div className={styles.row}><h2>{result.groupName ?? copy.title}</h2><button type="button" disabled={busy} onClick={print}>{copy.print}</button></div>
-        <p>{result.range.dateFrom} — {result.range.dateTo}</p><p className={styles.muted}>{copy.generated}: {new Date(result.generatedAt).toLocaleString(lang, { timeZone: result.range.timezone })}</p>
+        <div className={styles.row}><h2>{result.groupName ?? copy.title}</h2><button type="button" disabled={busy || printState === 'pending'} onClick={print}>{copy.print}</button></div>
+        <p>{resultPeriod?.interval}</p><p className={styles.notice}>{resultPeriod?.status}</p>
+        {resultPeriod?.legacy && <p className={styles.notice}>{resultPeriod.legacy}</p>}
+        <p className={styles.muted}>{copy.generated}: {new Date(result.generatedAt).toLocaleString(lang, { timeZone: result.range.timezone })}</p>
+        <p className={styles.muted}>{copy.printTarget}</p>
         <p className={styles.muted}>{copy.moneyNote}</p>
         {!!result.unidentifiedSales && <p role="alert" className={styles.error}>{copy.incomplete}</p>}
         {!!result.unidentifiedRefunds && <p role="alert" className={styles.error}>{copy.refundIncomplete}</p>}
