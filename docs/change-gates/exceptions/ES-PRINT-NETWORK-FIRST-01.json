@@ -383,7 +383,7 @@
       "featureBranch": "codex/es-network-commercial-addon-v01",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "40f60c9af3c6c6bd80f4b94e88ad70eeadaf2764",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-09-09T02:09:08.799Z",
       "approvedAt": "2026-09-09T02:09:08.799Z",
@@ -463,14 +463,17 @@
         "electronVersion": "44.3.0",
         "published": false,
         "releaseReady": false
-      }
+      },
+      "closedAt": "2026-09-09T03:36:25.455Z",
+      "featureMergeCommitSha": "a76ce8cc09ebab5dd178dcdaad9d5e2e3348eb89",
+      "closureReason": "Predecessor source def76447 is an ancestor of the accepted successor merge. Superseded by exact reviewed discovery successor; original paths/hashes/candidate metadata retained, rc.1 discovery failure not retroactively accepted."
     },
     {
       "authorizationId": "NETWORK-COMMERCIAL-DISCOVERY-V01",
       "featureBranch": "codex/es-network-commercial-discovery-v01",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "c205dd64821fdbe4ee45197d610b22190427e083",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-09-09T03:12:39.507Z",
       "approvedAt": "2026-09-09T03:12:39.507Z",
@@ -577,7 +580,10 @@
         "Wildcard/directory authorization, arbitrary egress, public/DNS/VPN discovery, cached-route authorization, automatic TEST or silent rerouting.",
         "False physical-completion/clean-machine/new-LAN/Production-paper claims; signing purchases, key export or formal unsigned release."
       ],
-      "expirationCondition": "Close this and the preserved predecessor commercial authorization after the actual accepted successor feature merge enters origin/main; retain original hashes and closure evidence. No indefinite authorization."
+      "expirationCondition": "Close this and the preserved predecessor commercial authorization after the actual accepted successor feature merge enters origin/main; retain original hashes and closure evidence. No indefinite authorization.",
+      "closedAt": "2026-09-09T03:36:25.455Z",
+      "featureMergeCommitSha": "a76ce8cc09ebab5dd178dcdaad9d5e2e3348eb89",
+      "closureReason": "Exact 34-file successor source 6083729 is merged into trusted main; approved bytes verified at actual merge. Task-scoped permission consumed; not a formal signed installer or whole-product FIELD closure."
     }
   ]
 }
