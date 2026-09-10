@@ -452,9 +452,12 @@ async function main() {
   await test('the existing cashier page remains byte-identical to its exact governance approval', () => {
     // ES-PRINT-NETWORK-FIRST-01 R3: Founder approved the R2-reviewed Network V0.1
     // Cashier bytes (plan B). This does not amend the historical A11.2 authorization.
+    // 2026-09-10: Founder approved this single-hash alignment to the exact Cashier
+    // bytes registered by ES-CASHIER-CASH-NUMPAD-01 (CLOSED), feature a06831656697bc545ecef3d8d4821e9b6b7f6d11,
+    // merged by 21480d8467ed48cdeddecd95ae041ea50d5accfc. Historical approvals remain unchanged.
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      '2b1da596b8cc9c11346e797201ea46f5016ab180cdb9cefffda127115aa1d1d7',
+      'fb4dca2530a8a99bd41ed2eb0c36b8a6c3255b47be92427fa0201066f020a825',
     )
   })
 
