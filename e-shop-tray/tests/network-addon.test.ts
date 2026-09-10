@@ -52,6 +52,7 @@ describe('Network Add-on build and release boundary', () => {
       { candidateBuild: { ...build.CANDIDATE_BUILD, version: '0.1.0-rc.3' } },
       { candidateBuild: { ...build.CANDIDATE_BUILD, version: '0.1.0-commercial-rc.1' } },
       { candidateBuild: { ...build.CANDIDATE_BUILD, version: '0.1.0-commercial-rc.3' } },
+      { candidateBuild: { ...build.CANDIDATE_BUILD, version: '0.1.0-commercial-rc.4' } },
       { candidateBuild: { ...build.CANDIDATE_BUILD, releaseReady: true } }]) {
       expect(() => build.selectCandidateAuthorization({ ...exception, additionalAuthorizations: [{ ...authorization, ...change }] }, 'codex/test'))
         .toThrow('ADDON_CANDIDATE_EXACT_AUTHORIZATION_REQUIRED')
@@ -134,13 +135,13 @@ describe('Network Add-on build and release boundary', () => {
   it('candidate payload records a dirty source honestly and marks the transformed visible UI TEST ONLY', async () => {
     const manifest = build.createManifest({ source: { baselineCommit: build.BASELINE_COMMIT,
       headCommit: build.BASELINE_COMMIT, sourceCommit: null, workingTreeDirty: true }, inputs: {}, outputs: {}, tools: {}, candidate: { authorizationId: 'TEST-FIXTURE' } })
-    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.4', sourceCommit: null, workingTreeDirty: true,
+    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.5', sourceCommit: null, workingTreeDirty: true,
       testOnly: true, installer: false, runtimeIncluded: false, releaseReady: false, published: false,
       installed: false, fieldVerified: false, buildClass: 'unsigned-test-candidate', signingStatus: 'unsigned-test-only' })
     const original = await readFile(path.join(tray, 'network-addon/ui.html'))
     const html = build.candidateHtml(original).toString()
     expect(html).toContain('<title>E-Shop Network Print — TEST ONLY</title>')
-    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.4')
+    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.5')
     expect(html).toContain('未正式发布')
     expect(html).toContain('发送 TEST 纸票前须由负责人明确确认')
     expect(html.match(/id="[^"]+"/g)).toEqual(original.toString().match(/id="[^"]+"/g))
@@ -299,5 +300,61 @@ describe('Network Add-on independent installer contract', () => {
     expect(installer).toContain('${IfNot} ${isUpdated}')
     expect(installer).toContain('"EShopNetworkPrintAddon"')
     expect(installer).not.toContain('E-Shop 店小二')
+  })
+
+  it('disables all builder name-only shortcut actions and protects the legacy uninstall phase', async () => {
+    expect(builder.nsis).toMatchObject({ createDesktopShortcut: false, createStartMenuShortcut: false })
+    expect(build.candidateBuilderConfig('/private/tmp/es-network-addon-TEST-fixture').nsis)
+      .toMatchObject({ createDesktopShortcut: false, createStartMenuShortcut: false })
+    const init = installer.split('!macro customInit\n')[1].split('!macroend')[0]
+    expect(init).toContain('ReadRegStr $R1 HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString')
+    expect(init).toContain('ReadRegStr $R2 HKCU "${INSTALL_REGISTRY_KEY}" KeepShortcuts')
+    expect(init).toContain('${OrIf} $R2 != "true"')
+    expect(init).toContain('IfFileExists "$R0\\E-Shop-Network-Print-Addon.exe"')
+    expect(init).not.toMatch(/WriteRegStr|Delete|Rename/)
+    const uninit = installer.split('!macro customUnInit\n')[1].split('!macroend')[0]
+    expect(uninit).toContain('${IfNot} ${isUpdated}')
+    expect(uninit).toContain('--uninstall-shortcuts')
+    expect(uninit.indexOf('!insertmacro customCheckAppRunning')).toBeLessThan(uninit.indexOf('ExecWait'))
+    expect(uninit.indexOf('ExecWait')).toBeLessThan(uninit.indexOf('SetOutPath'))
+    expect(uninit).toContain('${If} ${Errors}')
+    const install = installer.split('!macro customInstall\n')[1].split('!macroend')[0]
+    expect(install).toContain('--install-shortcuts')
+    expect(install).toContain('${If} ${Silent}')
+    expect(install).toContain('--install-shortcuts --silent-shortcuts')
+    expect(install).toMatch(/IfSilent \+2 0\s+MessageBox/)
+    expect(install).toMatch(/SetErrorLevel 7\s+(?:;[^\n]*\n\s*)*Quit/)
+    expect(install).not.toMatch(/--cashier|--enable|Delete|Rename/)
+    // Verify the installed, pinned toolchain's real order, not a copied model.
+    const section = await readFile(load.resolve('app-builder-lib/templates/nsis/installSection.nsh'), 'utf8')
+    const uninstall = await readFile(load.resolve('app-builder-lib/templates/nsis/uninstaller.nsh'), 'utf8')
+    const helper = await readFile(load.resolve('app-builder-lib/templates/nsis/include/installUtil.nsh'), 'utf8')
+    expect(section.indexOf('uninstallOldVersion')).toBeLessThan(section.indexOf('customInstall'))
+    expect(uninstall.indexOf('Delete "$oldDesktopLink"')).toBeLessThan(uninstall.indexOf('customUnInstall'))
+    expect(helper).toContain('${if} $R5 == "true"\n    ${andIf} ${FileExists} "$appExe"')
+    expect(helper).toContain('StrCpy $0 "$0 --keep-shortcuts"')
+    const common = await readFile(load.resolve('app-builder-lib/templates/nsis/common.nsh'), 'utf8')
+    expect(common).toMatch(/!macro quitSuccess\s+SetErrorLevel 0/)
+  })
+
+  it('keeps installer ownership prompts explicit and maintenance isolated from startup and printing', async () => {
+    const main = await readFile(path.join(tray, 'network-addon/main.ts'), 'utf8')
+    const helper = main.split('else if (helperMode) {')[1].split('} else {\n  app.on')[0]
+    expect(helper).toContain('installShortcuts(silentShortcutArgs.length ? undefined : async item =>')
+    expect(helper).toContain('checkboxChecked: false')
+    expect(helper).toContain('defaultId: 0, cancelId: 0')
+    expect(helper).toContain('result.response === 1 && result.checkboxChecked === true')
+    expect(helper).toContain("login && !login.background")
+    expect(helper).toContain("args: ['--background'], openAtLogin: true, enabled: login.enabled")
+    expect(helper).not.toMatch(/entry\.initialize\(|poller[?!]?\.|profile[?!]?\.|sendTest\(|openCashier\(/)
+    const install = main.split('async function installShortcuts(')[1].split('function currentLoginItem')[0]
+    expect(install).toContain('reviewLegacyShortcuts(manager, confirmLegacy)')
+    expect(install).toContain("['PRESERVED', 'UNAVAILABLE', 'NEEDS_CONFIRMATION']")
+    expect(install).not.toContain('setLoginItemSettings')
+    const enable = main.split("case 'enable': {")[1].split("case 'autostart':")[0]
+    expect(enable).not.toContain('setLoginItemSettings')
+    const html = await readFile(path.join(tray, 'network-addon/ui.html'), 'utf8')
+    expect(html).toContain('<details open><summary>桌面入口整理')
+    expect(html).toContain('启用打印不会擅自恢复已关闭的自启')
   })
 })

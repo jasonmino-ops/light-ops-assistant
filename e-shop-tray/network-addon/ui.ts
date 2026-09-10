@@ -1,4 +1,6 @@
 type Status = { version: string; server: string; storeCode: string | null; ready: boolean; busy: boolean; code: string;
+  cashierAvailable: boolean; entryCode: string; entryPending: boolean;
+  shortcutCode: string;
   mode: string | null; enabled: boolean; endpoint: { host: string; port: number } | null; revision: number;
   restartRequired: boolean; coldEnableCheckRequired: boolean; coldProcess: boolean;
   test: { id: string; outcome: string; endpoint: { host: string; port: number }; bytes: number; sha256: string } | null;
@@ -10,6 +12,16 @@ const input = (id: string) => el<HTMLInputElement>(id)
 let current: Status | undefined
 let busy = false
 const messages: Record<string, string> = {
+  ENTRY_IDLE: '日常点击桌面「店小二收银」。首次使用请完成绑定与打印配置；点击入口不会解除暂停。',
+  ENTRY_OPENING: '正在准备正确门店与模式的 Chrome 入口，请勿重复点击。',
+  ENTRY_OPENED: '已交由 Chrome 打开网络收银。请核对浏览器中的门店；打印暂停或异常仍需单独处理。',
+  ENTRY_CANCELLED: '已取消打开收银。原暂停状态与配置没有改变。',
+  ENTRY_PRINT_WARNING: '请确认打印暂停或异常提示；继续不会转入旧打印，也不会解除暂停。',
+  ADDON_CASHIER_SETUP_REQUIRED: '请先完成下方打印方式与设备确认，再进入正确模式的网络收银。',
+  ADDON_ENTRY_CONFIGURATION_CHANGED: '配置在准备入口期间发生变化，已取消打开。请安全退出后重新打开，不会使用旧模式。',
+  ADDON_EXIT_IN_PROGRESS: '正在安全退出，请等待完成后再点击桌面收银入口。',
+  SHORTCUT_NEEDS_ATTENTION: '部分入口存在冲突或无法确认归属，已保留原文件。请查看「桌面入口整理」。',
+  SHORTCUT_HISTORY_INVALID: '快捷方式历史无法校验，原文件已保留。请联系支持；不要清空目录重试。',
   RUNNING: '已启用。等待门店网络打印任务；任务由服务器持久保存。',
   PAUSED: '已暂停领取，当前交付已结束。配置和 journal 保持不变。',
   SETUP_OR_PAUSED: '已配置设备可直接启用；首次配置请先确认 TEST 纸票。',
@@ -73,7 +85,11 @@ function render(state: Status) {
   el<HTMLButtonElement>('retry-binding').disabled = state.ready || blocked
   el<HTMLButtonElement>('enable').disabled = !state.ready || state.enabled || !state.revision || blocked || state.test?.outcome !== 'CONFIRMED' || !input('single-agent').checked
     || (state.coldEnableCheckRequired && !input('enable-tabs-closed').checked)
-  el<HTMLButtonElement>('cashier').disabled = !state.enabled || blocked || state.code !== 'RUNNING'
+  el<HTMLButtonElement>('cashier').disabled = !state.cashierAvailable || blocked || state.entryPending
+  el('entry-message').textContent = state.entryCode && state.entryCode !== 'READY'
+    ? (messages[state.entryCode] ?? '请按提示完成首次设置或查看打印状态；入口不会解除暂停，也不会切换到旧打印。')
+    : state.enabled ? '日常使用桌面的「店小二收银」，无需分别打开两个程序。'
+      : '自动打印保持暂停。仍可进入网络收银，销售打印任务会保留在队列，待恢复处理；不会转交旧打印。'
   el<HTMLButtonElement>('confirm').disabled = !canConfigure || !input('paper-confirmed').checked || (state.revision > 0 && !input('same-printer').checked)
   input('autostart').disabled = blocked
   el('enable-tabs-row').hidden = !state.coldEnableCheckRequired
@@ -117,6 +133,41 @@ el('safe-exit').addEventListener('click', () => { void act('exit') })
 el('convert-mode').addEventListener('click', () => { void act('convertMode', { mode: el<HTMLSelectElement>('cold-mode').value,
   cashierTabsClosed: input('cold-tabs-closed').checked, singleAgentConfirmed: input('cold-single-agent').checked }) })
 el('cashier').addEventListener('click', () => { void act('cashier') })
+type ShortcutResult = { subject: string; status: string; reason?: string; sha256?: string }
+const shortcutNames: Record<string, string> = { cashier: '店小二收银', manage: 'Network 打印设置',
+  'desktop-binding': 'Desktop 门店绑定', uninstall: '卸载 Network Print', desktop: 'E-Shop.lnk',
+  'network-formal': 'E-Shop Network Print Add-on.lnk', 'network-test': 'E-Shop Network Print Add-on (TEST ONLY).lnk' }
+const shortcutStates: Record<string, string> = { CREATED: '已创建', UNCHANGED: '已校验保留',
+  MIGRATED: '已备份并收纳', REMOVED: '已收纳', RESTORED: '已恢复', ABSENT: '不存在，无需处理',
+  PRESERVED: '归属或内容不符，保持原样', UNAVAILABLE: '无法确认，保持原样', NEEDS_CONFIRMATION: '内容符合本产品默认入口，仍需你确认来源' }
+async function refreshShortcuts() {
+  const list = el('shortcut-results'); list.replaceChildren()
+  const result = await act('shortcuts') as { created: ShortcutResult[]; legacy: ShortcutResult[] } | undefined
+  if (!result) return
+  for (const item of [...result.created, ...result.legacy]) {
+    const row = document.createElement('div')
+    const note = document.createElement('p')
+    note.textContent = `${shortcutNames[item.subject] ?? item.subject}：${shortcutStates[item.status] ?? item.status}${item.reason ? `（${item.reason}）` : ''}`
+    row.append(note)
+    if (item.status === 'NEEDS_CONFIRMATION' && item.sha256) {
+      const label = document.createElement('label'); label.className = 'check'
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'
+      label.append(checkbox, document.createTextNode(`我确认「${shortcutNames[item.subject]}」是安装器创建的旧入口，不是我自建或修改的快捷方式；同意备份后收纳。`))
+      const button = document.createElement('button'); button.className = 'secondary'; button.disabled = true
+      button.textContent = '备份并收纳此旧入口'
+      checkbox.addEventListener('change', () => { button.disabled = !checkbox.checked })
+      button.addEventListener('click', async () => {
+        if (!checkbox.checked || busy) return
+        button.disabled = true
+        await act('migrateShortcut', { id: item.subject, sha256: item.sha256, ownershipConfirmed: true })
+        await refreshShortcuts()
+      })
+      row.append(label, button)
+    }
+    list.append(row)
+  }
+}
+el('shortcuts').addEventListener('click', () => { if (!busy) void refreshShortcuts() })
 input('autostart').addEventListener('change', () => { void act('autostart', { enabled: input('autostart').checked }) })
 el('cancel').addEventListener('click', () => { void invoke('cancelDiscovery') })
 el('discover').addEventListener('click', async () => {
