@@ -80,6 +80,7 @@ import {
   savePosDeviceToken,
 } from '@/lib/desktop-pos-client'
 import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
+import CashTenderPanel, { cashHelperQuote, type CashInputCurrency } from '@/app/components/CashTenderPanel'
 import { browserPosCustomerDisplayPath } from '@/lib/browser-pos-customer-display'
 import { dispatchCashierCartTotalChanged } from '@/lib/customer-display-cart-event'
 import {
@@ -1389,6 +1390,7 @@ export default function CashierPage() {
   const [checkoutStep, setCheckoutStep] = useState<DesktopCheckoutStep>('SELECT_ITEMS')
   const [desktopSelectedPaymentMethod, setDesktopSelectedPaymentMethod] = useState<DesktopPaymentMethod>(null)
   const [cashTendered, setCashTendered] = useState('')
+  const [cashInputCurrency, setCashInputCurrency] = useState<CashInputCurrency>('USD')
   const [autoPrint, setAutoPrint] = useState(false)
   const [qzRawCanaryAuthorized, setQzRawCanaryAuthorized] = useState(false)
   const [qzReceiptTest, setQzReceiptTest] = useState<QzControlledPrintState>({ status: 'idle', message: '' })
@@ -1467,7 +1469,7 @@ export default function CashierPage() {
   const isUserInputElement = useCallback((element: Element | null) => {
     if (!(element instanceof HTMLElement)) return false
     if (element === scannerInputRef.current) return false
-    return element.matches('input, textarea, select, [contenteditable="true"], [contenteditable=""]')
+    return !!element.closest('[data-cash-tender-panel]') || element.matches('input, textarea, select, [contenteditable="true"], [contenteditable=""]')
   }, [])
 
   const getActiveElementName = useCallback(() => {
@@ -1641,12 +1643,23 @@ export default function CashierPage() {
       setCheckoutStep('SELECT_ITEMS')
       setDesktopSelectedPaymentMethod(null)
       setCashTendered('')
+      setCashInputCurrency('USD')
+      setSubmitError('')
     }
   }, [cart.length])
 
   useEffect(() => {
-    if (desktopSelectedPaymentMethod !== 'CASH') setCashTendered('')
+    if (desktopSelectedPaymentMethod !== 'CASH') {
+      setCashTendered('')
+      setCashInputCurrency('USD')
+      setSubmitError('')
+    }
   }, [desktopSelectedPaymentMethod])
+
+  useEffect(() => {
+    setCashTendered('')
+    setCashInputCurrency('USD')
+  }, [storeCode])
 
   // ── Load store data ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2462,6 +2475,7 @@ export default function CashierPage() {
   function resetDesktopTransientCheckoutState() {
     setDesktopSelectedPaymentMethod(null)
     setCashTendered('')
+    setCashInputCurrency('USD')
     setSubmitError('')
     setSaleResult(null)
     setReceiptPreviewOpen(false)
@@ -3831,7 +3845,9 @@ export default function CashierPage() {
   const hasCashReceivedAmount = Number.isFinite(cashReceivedAmount)
   const cashChangeAmount = hasCashReceivedAmount ? Math.max(0, cashReceivedAmount - total) : 0
   const isCashPaymentSelected = isDesktopPos && checkoutStep === 'SELECT_PAYMENT' && desktopSelectedPaymentMethod === 'CASH'
-  const isCashReceivedInsufficient = isCashPaymentSelected && (!hasCashReceivedAmount || cashReceivedAmount + 0.0001 < total)
+  const cashQuote = currencyCode === 'USD' ? cashHelperQuote(total, usdKhrRate, cashInputCurrency, cashTendered) : null
+  const isCashReceivedInsufficient = isCashPaymentSelected && (currencyCode === 'USD'
+    ? !cashQuote?.sufficient : !hasCashReceivedAmount || cashReceivedAmount + 0.0001 < total)
   const desktopKhrAssist = (amount: number) => {
     if (!isDesktopPos || amount <= 0) return null
     return <div style={s.khrAssist}>≈ {toKhr(amount, usdKhrRate)}</div>
@@ -3870,6 +3886,8 @@ export default function CashierPage() {
   }
 
   function closeDesktopPaymentSelection() {
+    setCashTendered('')
+    setCashInputCurrency('USD')
     setDesktopSelectedPaymentMethod(null)
     setSubmitError('')
     syncCurrentCartToCustomerDisplay('CASH')
@@ -4683,6 +4701,7 @@ export default function CashierPage() {
             ...s.paySec,
             ...(isDesktopPos ? s.desktopPaySec : {}),
             ...(isDesktopPos && checkoutStep === 'SELECT_PAYMENT' ? s.desktopSelectPaySec : {}),
+            ...(isCashPaymentSelected && currencyCode === 'USD' ? { position: 'fixed', top: 56, bottom: 0, right: 0, width: 'min(740px, 100vw)', boxSizing: 'border-box', height: 'auto', maxHeight: 'none', zIndex: 60, boxShadow: '-8px 0 30px #0002' } as const : {}),
           }}>
             {isDesktopPos ? (
               checkoutStep === 'CONFIRM_ORDER' ? (
@@ -4724,16 +4743,21 @@ export default function CashierPage() {
               ) : checkoutStep === 'SELECT_PAYMENT' ? (
                 <div style={{ ...s.confirmPanel, ...s.desktopSelectPanel }}>
                   <div style={s.desktopSelectScroll}>
-                    <div>
+                    {!(isCashPaymentSelected && currencyCode === 'USD') && <div>
                       <div style={s.confirmTitle}>{d.selectPayTitle}</div>
                       <div style={s.confirmSub}>{d.selectPaySub}</div>
-                    </div>
-                    <div style={s.totalRow}>
+                    </div>}
+                    {!(isCashPaymentSelected && currencyCode === 'USD') && <><div style={s.totalRow}>
                       <span style={s.totalLbl}>{lang === 'en' ? `Items ${count} · Payable` : lang === 'km' ? `មុខ ${count} · ត្រូវបង់` : `共 ${count} 件 · 应付`}</span>
                       <span style={s.totalAmt}>{money(total)}</span>
                     </div>
-                    {khqrSupported && desktopKhrAssist(total)}
-                    {desktopSelectedPaymentMethod === 'CASH' && (
+                    {khqrSupported && desktopKhrAssist(total)}</>}
+                    {desktopSelectedPaymentMethod === 'CASH' && currencyCode === 'USD' && (
+                      <CashTenderPanel value={cashTendered} onChange={setCashTendered} currency={cashInputCurrency}
+                        onCurrencyChange={code => { setCashInputCurrency(code); setCashTendered(''); setSubmitError('') }}
+                        orderAmount={total} rate={usdKhrRate} disabled={submitting} lang={lang} />
+                    )}
+                    {desktopSelectedPaymentMethod === 'CASH' && currencyCode !== 'USD' && (
                       <div style={s.cashReceivedBox}>
                         <label style={s.cashReceivedLabel} htmlFor="desktop-cash-tendered">
                           {d.cashTenderedLabel}
