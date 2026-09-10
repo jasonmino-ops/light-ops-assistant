@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "taskId": "ES-CASHIER-CASH-NUMPAD-01",
+  "featureBranch": "codex/es-cashier-cash-numpad-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "f3e5bc22664b51fc92aa3447c0df39d46fc4bdde",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/cashier/page.tsx",
+    "app/components/CashTenderPanel.tsx",
+    "tests/cash-helper.test.ts",
+    "tests/cash-numpad.browser.spec.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "fb4dca2530a8a99bd41ed2eb0c36b8a6c3255b47be92427fa0201066f020a825",
+    "app/components/CashTenderPanel.tsx": "08b6ed3fb00c6071353cb3c06fc0e7fb40de7950f88dcd0e23dac817d08536f1",
+    "tests/cash-helper.test.ts": "1c4122a6d43df17dcbfb1f339aabe0ab64ccd3cf80924048af94879fbf8cc9f0",
+    "tests/cash-numpad.browser.spec.ts": "4ef66ded0c6f09891686df875a89533cd5cb64cdb75d92b4c69e642eed2031da"
+  },
+  "createdAt": "2026-09-10T03:28:17.549Z",
+  "approvedAt": "2026-09-10T03:28:17.549Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Founder MINIMAL GOVERNANCE ACTIVATION APPROVED decision in the current task",
+    "statement": "批准仅为本任务激活最小 Scope Guard 所必需的治理文件进入最新 main。只提交治理文件；不夹带 Cashier 业务代码；激活范围仅覆盖本任务实际需要的 4 个文件；内容 hash 必须与当前 UI-only sealed draft 对齐。允许 governance-only 自动部署。允许 feature push 产生 Preview。",
+    "approvedAtMeaning": "Time of recording the explicit Founder activation decision; not an invented message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Activate the accepted UI-only Cash Touch Numpad + KHR Conversion Helper V0.1 sealed draft for exactly four files on the named feature branch. Old five-field plan and grants are ABANDONED. No Prisma/schema/migration/Store/PaymentIntent/SaleRecord/API contract, printing/Network Print/QZ/Desktop/KHQR/reports/offline contract, dependency or Guard/config changes. Governance-only main entry and its automatic deployment are approved; feature push and Preview are approved. Feature main merge, Production business deployment, migration, freeze and closure remain unapproved. Close this record only after a separately approved feature merge.",
+  "sourceDraft": {
+    "manifestPath": ".task-state/ES-CASHIER-CASH-NUMPAD-01-ui-only/manifest.json",
+    "manifestSha256": "f23144a7472a6c113227c4c277b88a15cd098b1aa3acc5fd42a5b29c1cf4a74b",
+    "patchPath": ".task-state/ES-CASHIER-CASH-NUMPAD-01-ui-only/candidate.patch",
+    "patchSha256": "8983959f369c8d97102dac1b80647b93d876f52e1be9d1e26708e7567f1b8684",
+    "fileCount": 4
+  }
+}
