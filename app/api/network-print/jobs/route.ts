@@ -109,7 +109,6 @@ function readPayload(payload: unknown) {
     role,
     // 未知取值原样带出，不丢弃；只有已知的两个 mode 才参与漏单判定。
     mode: rawMode,
-    modeKnown: rawMode === 'FRONT_ONLY' || rawMode === 'SHARED_PRINTER',
     cashierName: typeof order?.cashierName === 'string' ? order.cashierName : null,
     paymentMethod: typeof order?.paymentMethod === 'string' ? order.paymentMethod : null,
     totalAmount: typeof order?.totalAmount === 'number' ? order.totalAmount : null,
@@ -257,24 +256,19 @@ export async function GET(req: NextRequest) {
   // 订单分组。orderNo 读不出来的任务无法归入任何订单，单列出来而不是硬塞进某单。
   type OrderGroup = {
     orderNo: string
-    jobIds: string[]
     roles: string[]
     modes: string[]
     firstCreatedAt: string
-    lastCreatedAt: string
   }
   const orders = new Map<string, OrderGroup>()
   const jobsWithoutOrderNo: string[] = []
-  for (const job of [...jobs].reverse()) { // 时间正序便于取首末
+  for (const job of [...jobs].reverse()) { // 时间正序，让 firstCreatedAt 落在该单最早的任务上
     if (!job.orderNo) { jobsWithoutOrderNo.push(job.id); continue }
     const group = orders.get(job.orderNo) ?? {
-      orderNo: job.orderNo, jobIds: [], roles: [], modes: [],
-      firstCreatedAt: job.createdAt, lastCreatedAt: job.createdAt,
+      orderNo: job.orderNo, roles: [], modes: [], firstCreatedAt: job.createdAt,
     }
-    group.jobIds.push(job.id)
     group.roles.push(job.role ?? 'UNKNOWN')
     if (job.mode) group.modes.push(job.mode)
-    group.lastCreatedAt = job.createdAt
     orders.set(job.orderNo, group)
   }
 
@@ -321,7 +315,7 @@ export async function GET(req: NextRequest) {
   const pairs = new Map<string, { orderNo: string; role: string; jobIds: string[]; firstCreatedAt: string }>()
   for (const job of [...jobs].reverse()) {
     if (!job.orderNo) continue
-    const key = `${job.orderNo} ${job.role ?? 'UNKNOWN'}`
+    const key = `${job.orderNo}\u0000${job.role ?? 'UNKNOWN'}`
     const entry = pairs.get(key)
       ?? { orderNo: job.orderNo, role: job.role ?? 'UNKNOWN', jobIds: [], firstCreatedAt: job.createdAt }
     entry.jobIds.push(job.id)
