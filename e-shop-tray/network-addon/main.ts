@@ -75,9 +75,15 @@ async function installShortcuts(confirmLegacy?: (item: ShortcutResult) => Promis
     catch (error) { results.push({ subject: role, status: 'UNAVAILABLE', reason: code(error) }) }
   }
   results.push(...await reviewLegacyShortcuts(manager, confirmLegacy))
-  shortcutCode = results.some(result => ['PRESERVED', 'UNAVAILABLE', 'NEEDS_CONFIRMATION'].includes(result.status))
-    ? 'SHORTCUT_NEEDS_ATTENTION' : 'SHORTCUT_READY'
+  // Installation readiness is the four new product entries. Legacy links are
+  // warnings for explicit/manual review and never silently redirect printing.
+  // In particular, the all-users Desktop 0.4.7 entry is outside automation.
+  shortcutCode = shortcutsReady(results) ? 'SHORTCUT_READY' : 'SHORTCUT_NEEDS_ATTENTION'
   return results
+}
+function shortcutsReady(results: ShortcutResult[]) {
+  return SHORTCUT_ROLES.every(role => ['CREATED', 'UNCHANGED'].includes(
+    results.filter(result => result.subject === role).at(-1)?.status ?? ''))
 }
 function currentLoginItem() {
   return networkLoginItem(app.getLoginItemSettings({ path: process.execPath }).launchItems ?? [], process.execPath)

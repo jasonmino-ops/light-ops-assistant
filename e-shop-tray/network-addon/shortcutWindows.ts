@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { lstat, open, readFile, realpath } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { DesktopRegistration, NetworkRegistration } from './shortcutLifecycle'
 
@@ -73,17 +73,17 @@ async function regularLocal(file: string) {
   await assertNormalShortcutFile(file)
   let current = file
   while (path.dirname(current) !== current) {
-    const info = await lstat(current)
+    const info = await physicalFs().lstat(current)
     if (info.isSymbolicLink()) fail()
     current = path.dirname(current)
   }
-  if ((await realpath(file)).toLowerCase() !== file.toLowerCase()) fail()
-  const info = await lstat(file)
+  if ((await physicalFs().realpath(file)).toLowerCase() !== file.toLowerCase()) fail()
+  const info = await physicalFs().lstat(file)
   if (!info.isFile()) fail()
 }
 async function verifyExecutable(file: string, packageName: string, version: string) {
   await regularLocal(file)
-  const handle = await open(file, 'r')
+  const handle = await physicalFs().open(file, 'r')
   try {
     const dos = Buffer.alloc(64)
     if ((await handle.read(dos, 0, dos.length, 0)).bytesRead !== 64 || dos.readUInt16LE(0) !== 0x5a4d) fail()
@@ -120,7 +120,7 @@ export async function desktopRegistration(snapshot: RegistrySnapshot): Promise<D
 export async function networkRegistration(snapshot: RegistrySnapshot, executable: string): Promise<NetworkRegistration | null> {
   const row = uniqueRow(snapshot, NETWORK_KEY.slice(9))
   if (!row) return null
-  if (row.hive !== 'HKCU' || !/^0\.1\.0-commercial-rc\.[1-5]$/.test(row.version)
+  if (row.hive !== 'HKCU' || !/^0\.1\.0-commercial-rc\.[1-6]$/.test(row.version)
     || !['E-Shop Network Print Add-on', 'E-Shop Network Print Add-on (TEST ONLY)'].includes(row.shortcut)
     || path.join(row.location, 'E-Shop-Network-Print-Addon.exe') !== executable) fail()
   await verifyExecutable(executable, 'eshop-network-print-addon', row.version)
@@ -135,7 +135,16 @@ export async function networkUninstaller(snapshot: RegistrySnapshot, executable:
   if (!parsed) fail()
   const file = localPath(parsed[1])
   if (path.dirname(file) !== row.location
-    || !['Uninstall E-Shop Network Print Add-on.exe', 'Uninstall E-Shop Network Print Add-on (TEST ONLY).exe'].includes(path.basename(file))) fail()
+    || !['Uninstall E-Shop-Network-Print-Addon.exe', 'Uninstall E-Shop Network Print Add-on.exe', 'Uninstall E-Shop Network Print Add-on (TEST ONLY).exe'].includes(path.basename(file))) {
+    throw new Error('ADDON_SHORTCUT_UNINSTALLER_MISMATCH')
+  }
   await regularLocal(file)
   return file
+}
+
+function physicalFs(): typeof import('node:fs/promises') {
+  // Electron virtualizes app.asar as a directory. Physical PE/archive checks
+  // use Electron's built-in original-fs; the exact package.json member above
+  // remains read through ASAR-aware node:fs.
+  return require('original-fs').promises
 }

@@ -126,9 +126,9 @@
   ${EndIf}
   ${If} ${Errors}
   ${OrIf} $R0 != 0
-    DetailPrint "Network Print installed; shortcut setup incomplete. Open Management and Maintenance to review preserved files."
+    DetailPrint "Network Print installed; required entry setup incomplete."
     IfSilent +2 0
-      MessageBox MB_OK|MB_ICONEXCLAMATION "Network Print is installed, but entry setup is incomplete. Open Network Print management from the Start Menu, then Desktop entry setup. Existing files and history were preserved."
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Network Print is installed, but a required entry is incomplete. Open E-Shop-Network-Print-Addon.exe from the installation folder if the Start Menu management entry is unavailable. Existing files and print history were preserved. The old public Desktop E-Shop shortcut is not changed automatically and is only an informational manual-cleanup item."
     SetErrorLevel 7
     ; builder's following quitSuccess resets the result to zero. Stop here so
     ; an incomplete shortcut setup cannot be reported as a successful install.

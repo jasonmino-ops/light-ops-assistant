@@ -135,13 +135,13 @@ describe('Network Add-on build and release boundary', () => {
   it('candidate payload records a dirty source honestly and marks the transformed visible UI TEST ONLY', async () => {
     const manifest = build.createManifest({ source: { baselineCommit: build.BASELINE_COMMIT,
       headCommit: build.BASELINE_COMMIT, sourceCommit: null, workingTreeDirty: true }, inputs: {}, outputs: {}, tools: {}, candidate: { authorizationId: 'TEST-FIXTURE' } })
-    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.5', sourceCommit: null, workingTreeDirty: true,
+    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.6', sourceCommit: null, workingTreeDirty: true,
       testOnly: true, installer: false, runtimeIncluded: false, releaseReady: false, published: false,
       installed: false, fieldVerified: false, buildClass: 'unsigned-test-candidate', signingStatus: 'unsigned-test-only' })
     const original = await readFile(path.join(tray, 'network-addon/ui.html'))
     const html = build.candidateHtml(original).toString()
     expect(html).toContain('<title>E-Shop Network Print — TEST ONLY</title>')
-    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.5')
+    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.6')
     expect(html).toContain('未正式发布')
     expect(html).toContain('发送 TEST 纸票前须由负责人明确确认')
     expect(html.match(/id="[^"]+"/g)).toEqual(original.toString().match(/id="[^"]+"/g))
@@ -165,7 +165,7 @@ describe('Network Add-on build and release boundary', () => {
   it('keeps all Node/network access out of the GUI and sandboxed renderer preloads', () => {
     const metadata = (dependency: string) => ({ outputs: { bundle: { imports: [{ path: dependency, external: true }] } } })
     for (const filename of ['ui.js', 'preload.cjs', 'network-render.cjs']) {
-      for (const dependency of ['node:fs', 'node:net', 'node:child_process', 'unbundled-package']) {
+      for (const dependency of ['node:fs', 'node:net', 'node:child_process', 'original-fs', 'unbundled-package']) {
         expect(() => build.assertExternalBoundary(filename, metadata(dependency))).toThrow('ADDON_UNSAFE_EXTERNAL_IMPORT')
       }
     }
@@ -173,6 +173,7 @@ describe('Network Add-on build and release boundary', () => {
     expect(() => build.assertExternalBoundary('preload.cjs', metadata('electron'))).not.toThrow()
     expect(() => build.assertExternalBoundary('network-render.cjs', metadata('electron'))).not.toThrow()
     expect(() => build.assertExternalBoundary('main.cjs', metadata('node:net'))).not.toThrow()
+    expect(() => build.assertExternalBoundary('main.cjs', metadata('original-fs'))).not.toThrow()
     expect(() => build.assertExternalBoundary('main.cjs', metadata('unbundled-package'))).toThrow('ADDON_UNSAFE_EXTERNAL_IMPORT')
   })
 })
@@ -349,12 +350,16 @@ describe('Network Add-on independent installer contract', () => {
     expect(helper).not.toMatch(/entry\.initialize\(|poller[?!]?\.|profile[?!]?\.|sendTest\(|openCashier\(/)
     const install = main.split('async function installShortcuts(')[1].split('function currentLoginItem')[0]
     expect(install).toContain('reviewLegacyShortcuts(manager, confirmLegacy)')
-    expect(install).toContain("['PRESERVED', 'UNAVAILABLE', 'NEEDS_CONFIRMATION']")
+    expect(install).toContain('shortcutsReady(results)')
+    expect(install).toContain("['CREATED', 'UNCHANGED']")
+    expect(install).toContain('results.filter(result => result.subject === role)')
+    expect(install).not.toContain('desktop-public')
     expect(install).not.toContain('setLoginItemSettings')
     const enable = main.split("case 'enable': {")[1].split("case 'autostart':")[0]
     expect(enable).not.toContain('setLoginItemSettings')
     const html = await readFile(path.join(tray, 'network-addon/ui.html'), 'utf8')
     expect(html).toContain('<details open><summary>桌面入口整理')
     expect(html).toContain('启用打印不会擅自恢复已关闭的自启')
+    expect(html).toContain('公共桌面的旧 E-Shop 入口不会自动移动')
   })
 })

@@ -113,7 +113,7 @@ describe('actual shortcutManager initialization and ACL ordering', () => {
 })
 
 async function executableFixture(blocked?: 'executable' | 'archive') {
-  const source = await compiledFunctions('shortcutWindows.ts', ['fail', 'localPath', 'regularLocal', 'verifyExecutable'])
+  const source = await compiledFunctions('shortcutWindows.ts', ['fail', 'localPath', 'physicalFs', 'regularLocal', 'verifyExecutable'])
   const executable = 'C:\\Programs\\Original Desktop\\E-Shop 店小二.exe'
   const archive = path.win32.join(path.win32.dirname(executable), 'resources', 'app.asar')
   const trace: Array<[string, string]> = []
@@ -134,9 +134,12 @@ async function executableFixture(blocked?: 'executable' | 'archive') {
     trace.push(['metadata-read', file])
     return JSON.stringify({ name: 'eshop-desktop-prototype', version: '0.4.7' })
   })
-  const context = { path: { ...path.win32, win32: path.win32 }, Error, Buffer, assertNormalShortcutFile, lstat, realpath, open, readFile }
+  const asarAwareLstat = vi.fn(async () => { throw new Error('ASAR_AWARE_FS_MUST_NOT_VALIDATE_PHYSICAL_FILES') })
+  const context = { path: { ...path.win32, win32: path.win32 }, Error, Buffer, assertNormalShortcutFile,
+    require: (name: string) => name === 'original-fs' ? { promises: { lstat, realpath, open } } : (() => { throw new Error('unexpected import') })(),
+    lstat: asarAwareLstat, realpath, open, readFile }
   const verifyExecutable = runInNewContext(source.compiled, context, { filename: source.filename, timeout: 1000 }) as (file: string, name: string, version: string) => Promise<void>
-  return { verifyExecutable, executable, archive, trace, close, read, ...context }
+  return { verifyExecutable, executable, archive, trace, close, read, physicalLstat: lstat, asarAwareLstat, ...context }
 }
 
 describe('actual executable and ASAR native file validation', () => {
@@ -144,7 +147,7 @@ describe('actual executable and ASAR native file validation', () => {
     const f = await executableFixture('executable')
     await expect(f.verifyExecutable(f.executable, 'eshop-desktop-prototype', '0.4.7')).rejects.toThrow('SHORTCUT_UNSAFE_DIRECTORY')
     expect(f.assertNormalShortcutFile.mock.calls).toEqual([[f.executable]])
-    expect(f.lstat).not.toHaveBeenCalled(); expect(f.realpath).not.toHaveBeenCalled()
+    expect(f.physicalLstat).not.toHaveBeenCalled(); expect(f.realpath).not.toHaveBeenCalled()
     expect(f.open).not.toHaveBeenCalled(); expect(f.readFile).not.toHaveBeenCalled()
   })
   it('does not read packaged metadata after regularLocal native file validation rejects the ASAR', async () => {
@@ -153,7 +156,7 @@ describe('actual executable and ASAR native file validation', () => {
     expect(f.assertNormalShortcutFile.mock.calls).toEqual([[f.executable], [f.archive]])
     expect(f.open.mock.calls).toEqual([[f.executable, 'r']])
     expect(f.read).toHaveBeenCalledTimes(2); expect(f.close).toHaveBeenCalledTimes(1)
-    expect(f.lstat.mock.calls.map(([file]) => file)).not.toContain(f.archive)
+    expect(f.physicalLstat.mock.calls.map(([file]) => file)).not.toContain(f.archive)
     expect(f.readFile).not.toHaveBeenCalled()
   })
   it('checks both ordinary file paths before opening the executable or reading its packaged metadata', async () => {
@@ -163,5 +166,43 @@ describe('actual executable and ASAR native file validation', () => {
       ['native-file', f.executable], ['open', f.executable], ['native-file', f.archive],
       ['metadata-read', path.win32.join(f.archive, 'package.json')],
     ])
+    expect(f.asarAwareLstat).not.toHaveBeenCalled()
+  })
+})
+
+describe('actual packaged uninstaller registration', () => {
+  it('accepts the builder hyphenated basename and rejects other executable names or arguments before IO', async () => {
+    const source = await compiledFunctions('shortcutWindows.ts', ['fail', 'localPath', 'uniqueRow', 'networkUninstaller'], ['NETWORK_KEY'])
+    const executable = 'C:\\Users\\Cashier\\Apps\\Network\\E-Shop-Network-Print-Addon.exe'
+    const location = path.win32.dirname(executable), file = path.win32.join(location, 'Uninstall E-Shop-Network-Print-Addon.exe')
+    const regularLocal = vi.fn(async (_file: string) => {})
+    const fn = runInNewContext(source.compiled, { exports: {}, path: { ...path.win32, win32: path.win32 }, Error, regularLocal }, { timeout: 1000 })
+    const snapshot = (uninstall: string) => ({ registrations: [{ hive: 'HKCU', id: '3b0d00d3-14c9-55d6-bef2-f6474bb2de71', location, uninstall }] })
+    await expect(fn(snapshot(`"${file}" /currentuser`), executable)).resolves.toBe(file)
+    for (const invalid of [`"${path.win32.join(location, 'other.exe')}" /currentuser`, `"${file}" /allusers`, `"${file}" /currentuser /extra`]) {
+      await expect(fn(snapshot(invalid), executable)).rejects.toThrow()
+    }
+    expect(regularLocal.mock.calls).toEqual([[file]])
+  })
+})
+
+describe('required entry readiness without automatic public Desktop migration', () => {
+  it('requires the four Network entries but treats retained legacy links only as manual-review warnings', async () => {
+    const file = path.join(__dirname, '../network-addon/main.ts'), source = await readFile(file, 'utf8')
+    expect(source).not.toContain('CommonDesktopDirectory')
+    expect(source).not.toContain('desktop-public')
+    const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.ES2022, true)
+    const declaration = parsed.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === 'shortcutsReady')
+    expect(declaration).toBeTruthy()
+    const compiled = ts.transpileModule(`${declaration!.getText(parsed)}\nshortcutsReady`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }, fileName: file }).outputText
+    const fn = runInNewContext(compiled, { SHORTCUT_ROLES: ['cashier', 'manage', 'desktop-binding', 'uninstall'] }, { timeout: 1000 })
+    const required = ['cashier', 'manage', 'desktop-binding', 'uninstall']
+    const base = required.map(subject => ({ subject, status: 'CREATED' }))
+    for (const legacyStatus of ['NEEDS_CONFIRMATION', 'PRESERVED', 'UNAVAILABLE']) {
+      expect(fn([...base, { subject: 'desktop', status: legacyStatus }])).toBe(true)
+    }
+    expect(fn(base.slice(1))).toBe(false)
+    expect(fn([...base, { subject: 'cashier', status: 'UNAVAILABLE' }])).toBe(false)
   })
 })
