@@ -6,7 +6,7 @@
   "baseOriginMainSha": "f3e5bc22664b51fc92aa3447c0df39d46fc4bdde",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "authorizedPaths": [
     "app/cashier/page.tsx",
     "app/components/CashTenderPanel.tsx",
@@ -35,5 +35,7 @@
     "patchPath": ".task-state/ES-CASHIER-CASH-NUMPAD-01-ui-only/candidate.patch",
     "patchSha256": "8983959f369c8d97102dac1b80647b93d876f52e1be9d1e26708e7567f1b8684",
     "fileCount": 4
-  }
+  },
+  "closedAt": "2026-09-10T03:53:05.541Z",
+  "featureMergeCommitSha": "21480d8467ed48cdeddecd95ae041ea50d5accfc"
 }
