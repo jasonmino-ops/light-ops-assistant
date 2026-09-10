@@ -1,5 +1,6 @@
 export const IMAGE_COPY = {
   zh: {
+    quantity: '数量', total: '合计', zeroSales: '未显示：{count} 个零销售商品',
     title: '商品销售报表', generate: '生成图片', preview: '报表图片预览', close: '关闭', generating: '正在生成图片…',
     download: '下载 / 保存', share: '分享图片', sharing: '正在打开分享…', saveHint: '可下载图片；手机也可长按预览图保存。',
     unavailable: '当前浏览器不支持文件分享，可先保存图片再分享。', downloaded: '已请求保存，请在浏览器中确认下载或保存。', shared: '已完成系统分享。', cancelled: '已取消分享。',
@@ -8,6 +9,7 @@ export const IMAGE_COPY = {
     sharePending: '系统分享尚未返回结果。请完成或关闭系统分享后重试，也可保存图片。',
   },
   en: {
+    quantity: 'Qty', total: 'Total', zeroSales: 'Products with no sales (not shown): {count}',
     title: 'Product sales report', generate: 'Generate image', preview: 'Report image preview', close: 'Close', generating: 'Generating image…',
     download: 'Download / save', share: 'Share image', sharing: 'Opening sharing…', saveHint: 'Download the image, or touch and hold the preview to save on mobile.',
     unavailable: 'File sharing is unavailable in this browser. Save the image to share it.', downloaded: 'Save requested. Confirm the download or save in your browser.', shared: 'System sharing completed.', cancelled: 'Sharing cancelled.',
@@ -16,6 +18,7 @@ export const IMAGE_COPY = {
     sharePending: 'System sharing has not returned a result. Finish or close it before retrying. You can also save the image.',
   },
   km: {
+    quantity: 'ចំនួន', total: 'សរុប', zeroSales: 'មិនបង្ហាញ៖ ទំនិញ {count} មុខគ្មានការលក់',
     title: 'របាយការណ៍លក់ទំនិញ', generate: 'បង្កើតរូបភាព', preview: 'មើលរូបភាពរបាយការណ៍', close: 'បិទ', generating: 'កំពុងបង្កើតរូបភាព…',
     download: 'ទាញយក / រក្សាទុក', share: 'ចែករំលែករូបភាព', sharing: 'កំពុងបើកការចែករំលែក…', saveHint: 'អាចទាញយករូបភាព ឬចុចរូបភាពឱ្យជាប់ដើម្បីរក្សាទុកលើទូរសព្ទ។',
     unavailable: 'កម្មវិធីរុករកនេះមិនគាំទ្រការចែករំលែកឯកសារ។ សូមរក្សាទុករូបភាពសិន។', downloaded: 'បានស្នើរក្សាទុក។ សូមបញ្ជាក់ក្នុងកម្មវិធីរុករក។', shared: 'បានបញ្ចប់ការចែករំលែកតាមប្រព័ន្ធ។', cancelled: 'បានបោះបង់ការចែករំលែក។',

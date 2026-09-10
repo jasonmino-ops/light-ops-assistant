@@ -12,13 +12,14 @@ import type { ProductSalesResult } from '../lib/product-sales/contract'
 // preview and download run in Chromium. Native file sharing is simulated.
 const base = process.env.PRODUCT_SALES_UI_BASE_URL ?? 'http://127.0.0.1:3107'
 assert.ok(['127.0.0.1', 'localhost'].includes(new URL(base).hostname))
-const output = '.task-state/product-sales-images'
+const output = '.task-state/product-sales-images-compact'
 const now = new Date('2026-09-09T05:12:34Z')
 const stores = [{ tenantId: 'ta', storeId: 'sa', storeName: '金边旗舰店 Phnom Penh ហាងភ្នំពេញ', currencyCode: 'USD' }, { tenantId: 'tb', storeId: 'sb', storeName: 'សាខាទី២', currencyCode: 'KHR' }]
 const products = [{ tenantId: 'ta', productId: 'p1', name: '冰咖啡 Iced coffee កាហ្វេទឹកកក', barcode: '100', status: 'ACTIVE' }, { tenantId: 'tb', productId: 'p2', name: '茶 <script>bad()</script> ទឹកតែទឹកដោះគោ', barcode: '200', status: 'ACTIVE' }]
 const result: ProductSalesResult = {
   range: reportRange({ period: 'TODAY' }, now), generatedAt: now.toISOString(), stores,
-  rows: products.map((p, i) => ({ ...p, storeId: stores[i].storeId, quantity: i ? '3.00' : '1.50', salesAmount: i ? '12000.00' : '30.25', refundAmount: i ? '0.00' : '0.25' })),
+  rows: [...products.map((p, i) => ({ ...p, storeId: stores[i].storeId, quantity: i ? '3.00' : '1.50', salesAmount: i ? '12000.00' : '30.25', refundAmount: i ? '0.00' : '0.25' })),
+    { ...products[0], productId: 'zero', name: 'ZERO_SALES_HIDDEN', storeId: stores[0].storeId, quantity: '0.00', salesAmount: '0.00', refundAmount: '0.00' }],
   totals: [{ currencyCode: 'USD', quantity: '1.50', salesAmount: '30.25', refundAmount: '0.25' }, { currencyCode: 'KHR', quantity: '3.00', salesAmount: '12000.00', refundAmount: '0.00' }], unidentifiedSales: 0, unidentifiedRefunds: 1,
 }
 async function main() {
@@ -91,6 +92,12 @@ async function main() {
       assert.equal(await page.evaluate(() => (window as any).imageTest.shares), 0, 'generation never auto-shares')
       await expect(modal).toHaveJSProperty('scrollWidth', await modal.evaluate((node) => node.clientWidth))
       await expect(page.locator('[data-report-image-row]')).toHaveCount(2)
+      await expect(page.locator('[data-report-image-card]')).toContainText(lang === 'zh' ? '2026-09-09 00:00:00' : '2026-09-08 00:00:00')
+      await expect(page.locator('[data-report-image-card]')).toContainText(lang === 'zh' ? '2026-09-09 12:12:34' : '2026-09-09 00:00:00')
+      await expect(page.locator('[data-report-image-card]')).not.toContainText('ZERO_SALES_HIDDEN')
+      await expect(page.locator('[data-report-image-zero-sales]')).toHaveText(copy.zeroSales.replace('{count}', '1'))
+      await expect(page.locator('[data-report-image-card]')).not.toContainText(COPY[lang].refund)
+      assert.ok(await page.locator('[data-report-image-card]').evaluate((card) => Array.from(card.querySelectorAll<HTMLElement>('[data-report-image-row], [data-report-image-row] *')).every((node) => node.scrollWidth <= node.clientWidth)), 'mobile rows do not overflow')
       await expect(page.locator('[data-report-image-card] script')).toHaveCount(0)
       const [download] = await Promise.all([page.waitForEvent('download'), modal.getByRole('button', { name: copy.download, exact: true }).click()])
       const saved = `${output}/${lang === 'zh' ? 'query' : 'history'}-${lang}.png`
@@ -98,7 +105,7 @@ async function main() {
       const bytes = readFileSync(saved)
       assert.equal(bytes.subarray(1, 4).toString(), 'PNG')
       assert.equal(bytes.readUInt32BE(16), 720)
-      assert.ok(bytes.readUInt32BE(20) > 1000)
+      assert.ok(bytes.readUInt32BE(20) > 300 && bytes.readUInt32BE(20) < 1800, 'compact image stays readable without the old verbose body')
       const digest = createHash('sha256').update(bytes).digest('hex')
       await modal.getByRole('button', { name: copy.share, exact: true }).click()
       await expect(modal.getByRole('status')).toHaveText(copy.shared)
@@ -179,7 +186,7 @@ async function main() {
       await page.evaluate(() => {
         const original = HTMLCanvasElement.prototype.getContext
         HTMLCanvasElement.prototype.getContext = function (...args: any[]): any {
-          if (this.width >= 360 && this.height > 1000) {
+          if (this.width >= 360 && this.height > 300) {
             HTMLCanvasElement.prototype.getContext = original
             ;(window as any).failedCanvas = this
             throw new Error('simulated renderer allocation failure')
@@ -236,7 +243,7 @@ async function main() {
     await page.getByRole('button', { name: COPY.zh.query, exact: true }).click()
     await generate(); await expect(modal.getByRole('img')).toBeVisible({ timeout: 20000 })
     await expect(page.locator('[data-report-image-row]')).toHaveCount(100)
-    assert.ok(await modal.getByRole('img').evaluate((node: HTMLImageElement) => node.naturalHeight > 10000 && node.naturalWidth >= 360))
+    assert.ok(await modal.getByRole('img').evaluate((node: HTMLImageElement) => node.naturalHeight > 1000 && node.naturalWidth >= 360))
     await close()
     // Oversized content is explicitly rejected, with no silent missing rows.
     queryResult = { ...result, rows: Array.from({ length: 100 }, (_, i) => ({ ...result.rows[0], productId: `long${i}`, name: '中文 កាហ្វេ English '.repeat(100) })) }

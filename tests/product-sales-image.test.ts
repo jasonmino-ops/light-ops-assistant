@@ -21,17 +21,55 @@ const result: ProductSalesResult = {
   unidentifiedSales: 1, unidentifiedRefunds: 1,
 }
 
-test('image card preserves current strings, store identity, currencies, cutoff and warnings in every locale', () => {
+test('compact image preserves exact sales, store identity, currencies, cutoff and sales warnings in every locale', () => {
   const before = JSON.stringify(result)
   for (const lang of ['zh', 'en', 'km'] as const) {
     const html = renderToStaticMarkup(React.createElement(ReportImageCard, { result, lang }))
-    for (const text of [IMAGE_COPY[lang].title, result.groupName!, '金边一店', 'ហាងទី២', '9007199254740993.01', '4000.00', '1.50', '2.00', '0.25', 'USD', 'KHR', '2026-09-09 00:00:00', '2026-09-09 12:12:34', COPY[lang].incomplete, COPY[lang].refundIncomplete]) assert.ok(html.includes(text), text)
+    for (const text of [IMAGE_COPY[lang].title, result.groupName!, '金边一店', 'ហាងទី២', '9007199254740993.01', '4000.00', '1.50', '2.00', 'USD', 'KHR', '2026-09-09 00:00:00', '2026-09-09 12:12:34', COPY[lang].incomplete]) assert.ok(html.includes(text), text)
+    for (const text of [COPY[lang].refund, COPY[lang].refundIncomplete, COPY[lang].moneyNote, COPY[lang].generated, COPY[lang].provisional, '0.25']) assert.ok(!html.includes(text), text)
     assert.equal((html.match(/data-report-image-row=/g) ?? []).length, 2)
     assert.equal((html.match(/data-report-image-total=/g) ?? []).length, 2)
     assert.ok(html.includes('&lt;script&gt;bad()&lt;/script&gt;'))
     assert.ok(!html.includes('<script>'))
   }
   assert.equal(JSON.stringify(result), before)
+})
+
+test('zero-sales rows are counted only in the image; free sales, exact small amounts and store identities remain', () => {
+  const condensed: ProductSalesResult = { ...result, rows: [
+    { ...result.rows[0], productId: 'zero', name: 'ZERO_ONLY', quantity: '0.00', salesAmount: '0.00', refundAmount: '0.00' },
+    { ...result.rows[0], productId: 'refund', name: 'REFUND_ONLY', quantity: '0', salesAmount: '-0.00', refundAmount: '5.00' },
+    { ...result.rows[0], productId: 'free', name: 'FREE_SALE', quantity: '1.00', salesAmount: '0.00' },
+    { ...result.rows[0], productId: 'small', name: 'RECORDED_AMOUNT', quantity: '0.00', salesAmount: '0.01' },
+    { ...result.rows[0], name: 'SAME_NAME' },
+    { ...result.rows[1], name: 'SAME_NAME' },
+  ] }
+  const before = JSON.stringify(condensed)
+  for (const lang of ['zh', 'en', 'km'] as const) {
+    const html = renderToStaticMarkup(React.createElement(ReportImageCard, { result: condensed, lang }))
+    assert.equal((html.match(/data-report-image-row=/g) ?? []).length, 4)
+    for (const name of ['ZERO_ONLY', 'REFUND_ONLY']) assert.ok(!html.includes(name))
+    for (const name of ['FREE_SALE', 'RECORDED_AMOUNT']) assert.ok(html.includes(name))
+    assert.equal((html.match(/SAME_NAME/g) ?? []).length, 2, 'never merge names across stores')
+    assert.ok(html.includes(IMAGE_COPY[lang].zeroSales.replace('{count}', '2')))
+    assert.ok(html.includes('9007199254740993.01'), 'existing totals are not recomputed')
+  }
+  assert.equal(JSON.stringify(condensed), before, 'query/print input unchanged')
+})
+
+test('all-zero, empty and legacy history images remain explicit without phantom sold rows', () => {
+  for (const count of [0, 3]) {
+    const empty = { ...result, rows: Array.from({ length: count }, (_, i) => ({ ...result.rows[0], productId: `zero${i}`, quantity: '0.00', salesAmount: '0.00' })), totals: [{ currencyCode: 'USD', quantity: '0.00', salesAmount: '0.00', refundAmount: '0.25' }] }
+    const html = renderToStaticMarkup(React.createElement(ReportImageCard, { result: empty, lang: 'zh' }))
+    assert.equal((html.match(/data-report-image-row=/g) ?? []).length, 0)
+    assert.equal(html.includes('data-report-image-zero-sales'), count > 0)
+    assert.ok(html.includes(IMAGE_COPY.zh.total))
+    if (count) assert.ok(html.includes(IMAGE_COPY.zh.zeroSales.replace('{count}', String(count))))
+  }
+  const legacy = { ...result, range: { ...result.range, windows: [{ from: '2026-09-08T23:00:00Z', to: '2026-09-09T17:00:00Z' }] } }
+  const html = renderToStaticMarkup(React.createElement(ReportImageCard, { result: legacy, lang: 'zh' }))
+  assert.ok(html.includes('2026-09-09 06:00:00'))
+  assert.ok(html.includes(COPY.zh.legacyPeriod))
 })
 
 test('historical report uses its own group and dates; long names and every row are retained', () => {
