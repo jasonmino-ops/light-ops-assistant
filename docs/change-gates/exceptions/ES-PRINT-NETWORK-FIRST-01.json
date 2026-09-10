@@ -823,6 +823,88 @@
         "Wildcard/directory/future-file scope, hash or signing bypass, uncontrolled shared-Production-database Preview, invented commit/approval/FIELD proof, manual Promote or formal unsigned publication."
       ],
       "expirationCondition": "Close this exact grant after the accepted single-entry source actually merges into trusted origin/main; build rc.5 while ACTIVE. Preserve every approved hash and actual merge evidence, not a standing future permission."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-SINGLE-ENTRY-RC6-MINIMAL-14",
+      "featureBranch": "codex/es-network-single-entry-rc6-minimal",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "ed682e5558542abdba02a360ad09f05bf148be12",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-09-10T15:24:31.000Z",
+      "approvedAt": "2026-09-10T15:24:31.000Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Authorize only the independently reviewed rc.6 minimal successor bytes: accept the actual packaged uninstaller name, validate physical Electron ASAR files through original-fs, require all four Network entries, and treat retained legacy shortcuts as informational/manual cleanup. Public Desktop migration is explicitly deferred.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/electron-builder.cjs",
+        "e-shop-tray/network-addon/entryCoordinator.ts",
+        "e-shop-tray/network-addon/installer.nsh",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "e-shop-tray/network-addon/shortcutWindows.ts",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/tests/network-addon-entry.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/electron-builder.cjs": "81962606c88086a8de8b39858375011430d5870204e74404380577c3538d9d4a",
+        "e-shop-tray/network-addon/entryCoordinator.ts": "e9e3e2b255c51a715b73ec6ac90b37e843f4acfbebf41cb4db5dbd1aaa3d2a27",
+        "e-shop-tray/network-addon/installer.nsh": "82d9505545ee64b819f62edb229063e44657a1999e532cf4aacfd0feb231c746",
+        "e-shop-tray/network-addon/main.ts": "803fc60149e513a63ad550188a56c9083659ff0af2a942d3038d22d0bdcac758",
+        "e-shop-tray/network-addon/preload.ts": "65d555ed7efbd3d01c0f7f4d837b3d6471faacdd6ab16d744d3a2a0966f691b2",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "2879dacf1f6b9fa42b18a4caa0fa7405329bcb77c7cc19bc528c3394f088b638",
+        "e-shop-tray/network-addon/shortcutWindows.ts": "1c8bd08f46ab5a58066987f56c9a9f4ec1ef74c4d9f386e95e28d08045007c83",
+        "e-shop-tray/network-addon/ui.html": "8d663c6bc5b11852caf1d359e361f7f98d88955a21c3ab4c58a76d8a67ce316e",
+        "e-shop-tray/network-addon/ui.ts": "042712b66d89004e2cc159d4eb0f2fc970a5ecb8c35b54e0f6a71610566485ec",
+        "e-shop-tray/scripts/build-network-addon.mjs": "f6120aed695649c6013385f3af343e39be4a5a9b0678d1aa8979ec8045a2d717",
+        "e-shop-tray/tests/network-addon-entry.test.ts": "58c8ce8fbb54367447122bba57325d2754e0e69ff5a46851b3318bfa7f7d577e",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "0d195b7c5b574a43a99d0abaacbdb087329b1f2872d39c4d4f5d51a0dcf4f1d9",
+        "e-shop-tray/tests/network-addon.test.ts": "ab7f265784b8b2c43202410ca95d2c37d104197bd78b936d78c966b7c248bd10"
+      },
+      "approvedContentMappingSha256": "0a06d22cadb89d52d14348a5a980af77369b6d6eb805b566e66017b5d74bee52",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.6",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "approvalSource": {
+        "statement": "请停止继续扩展原生文件对象、权限保全及快捷方式自动迁移方案，保存当前草稿和证据。本轮改为最小交付……按现有授权流程构建候选并完成入口验收。",
+        "priorScopeApproval": "同意采用 A……完成修复、独立复审、精确授权和候选验收。",
+        "scopeMeaning": "Authorization is limited to the final reviewed fourteen-path rc.6 mapping. It does not authorize the stopped native-object draft or public shortcut migration.",
+        "timestampMeaning": "Time this exact reviewed mapping was registered under the current explicit execution authority, not an invented message timestamp."
+      },
+      "createdOnBranch": "codex/es-network-single-entry-rc6-minimal-governance",
+      "governanceStartingHead": "ed682e5558542abdba02a360ad09f05bf148be12",
+      "sourceDraft": {
+        "path": "/private/tmp/es-network-single-entry-rc6-minimal",
+        "startingHead": "62e73930f93cdd17457a25253b6ad437483aa009",
+        "sourceCommit": null,
+        "fileCount": 14,
+        "incrementalFileCount": 7,
+        "sourceSnapshotSha256": "4c1f8d95843b65e7e06a74c41e6b79be64dbfb1b22bb02916844d90c633e0513",
+        "review": "Fresh-context minimal rc.6 incremental review PASS; 108/108 focused tests, TypeScript and in-memory build check PASS."
+      },
+      "allowedPurposes": [
+        "Create and validate the four existing Network product entries, including one 店小二收银 shortcut using the existing fixed HTTPS launch-ticket flow and the existing management/binding/uninstall entries.",
+        "Accept only the actual registered hyphenated Network uninstaller basename under the already validated installation directory and argument contract.",
+        "Use Electron built-in original-fs only in main.cjs for physical executable/app.asar checks while retaining ASAR-aware package member reads.",
+        "Build an unsigned TEST-only rc.6 candidate and verify upgrade/entry behavior without orders or paper."
+      ],
+      "prohibitedChanges": [
+        "Any automatic migration, movement, deletion, ACL copy, ownership change or native-object handling for the Public Desktop E-Shop shortcut; it remains manual informational cleanup.",
+        "Desktop0.4.7 installer/program/identity, Network binding/configuration/pause/journal/history, templates/Renderer/Encoder, Relay/poller/transport/server/schema, QZ/USB/Windows Queue.",
+        "Automatic elevation, security-policy changes, arbitrary file migration, wildcard/directory/future-file authorization, signing bypass, formal publication, orders or print output."
+      ],
+      "expirationCondition": "Close this exact grant after the accepted rc.6 minimal source merges into trusted origin/main. Preserve the stopped native research and rc.5 evidence separately; this is not future authorization."
     }
   ]
 }
