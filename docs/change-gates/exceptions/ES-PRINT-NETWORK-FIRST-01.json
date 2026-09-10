@@ -743,6 +743,86 @@
       "closedAt": "2026-09-09T19:56:34.000Z",
       "featureMergeCommitSha": "cde0341a5cd53d9e4d5b54a58e651587b5fed7a1",
       "closureReason": "Consumed by actual accepted source eb026d6c719447e6f0935733ef9a86ed133964bf merge cde0341a5cd53d9e4d5b54a58e651587b5fed7a1 in trusted origin/main. All six approved hashes match source and merge. rc.4 unsigned TEST candidate was built and independently verified while this grant was ACTIVE. Original approval and hash history remain intact. This closes only exact content permission, not installed latency FIELD acceptance, signed commercial release or the whole task."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-SINGLE-ENTRY-RC5-14",
+      "featureBranch": "codex/es-network-single-entry-v01",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "452de10f112140637bc419e7bff740fb3b5f2c27",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-09-10T12:11:12.000Z",
+      "approvedAt": "2026-09-10T12:11:12.000Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder explicitly approved the independently reviewed final14 content mapping for the single merchant desktop cashier entry and rc.5 candidate. Reuse existing Network Add-on service, binding, HTTPS Chrome launch and printing lifecycle; preserve pause, history and original Desktop.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/electron-builder.cjs",
+        "e-shop-tray/network-addon/entryCoordinator.ts",
+        "e-shop-tray/network-addon/installer.nsh",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "e-shop-tray/network-addon/shortcutWindows.ts",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/tests/network-addon-entry.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/electron-builder.cjs": "81962606c88086a8de8b39858375011430d5870204e74404380577c3538d9d4a",
+        "e-shop-tray/network-addon/entryCoordinator.ts": "e9e3e2b255c51a715b73ec6ac90b37e843f4acfbebf41cb4db5dbd1aaa3d2a27",
+        "e-shop-tray/network-addon/installer.nsh": "9d0485e2bdca8e5c6e81cc57d1c2de6fae031235e39e7b71180bd02948e93307",
+        "e-shop-tray/network-addon/main.ts": "1293a84aa08592177cbd00baab7f823178e93b907828584faa704ff67b1a3dcf",
+        "e-shop-tray/network-addon/preload.ts": "65d555ed7efbd3d01c0f7f4d837b3d6471faacdd6ab16d744d3a2a0966f691b2",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "2879dacf1f6b9fa42b18a4caa0fa7405329bcb77c7cc19bc528c3394f088b638",
+        "e-shop-tray/network-addon/shortcutWindows.ts": "2a48f870403cc7bacdd1abb340466f6c8c965c718c50f054607b89a34db3e9c1",
+        "e-shop-tray/network-addon/ui.html": "4e89e8782f51cb15c4e61b44d14b75d8377faf48cb54ef658e17251c0cf6116e",
+        "e-shop-tray/network-addon/ui.ts": "042712b66d89004e2cc159d4eb0f2fc970a5ecb8c35b54e0f6a71610566485ec",
+        "e-shop-tray/scripts/build-network-addon.mjs": "b6e9d11ebf74dde406a32c177a08aec3089af56cd1a9768890e5c6bfc5642442",
+        "e-shop-tray/tests/network-addon-entry.test.ts": "58c8ce8fbb54367447122bba57325d2754e0e69ff5a46851b3318bfa7f7d577e",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "4e1e917c59f96083b61cae835705d010aa0ca997d936bc9a481731cff4cb6f74",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "0d195b7c5b574a43a99d0abaacbdb087329b1f2872d39c4d4f5d51a0dcf4f1d9",
+        "e-shop-tray/tests/network-addon.test.ts": "558eddc3fd83aac2e47a4c47c4c13898a7ad9dfd9ae39ca9356f2cb4e70df54d"
+      },
+      "approvedContentMappingSha256": "4e6aa55def3817ad722544eab12017fe40c96a84dd436f1028a3a0bb4a655af4",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.5",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "approvalSource": {
+        "statement": "批准",
+        "inReplyTo": "The final single-entry14 file seal and exact SHA-256 mapping presented for rc.5 registration and candidate verification; current task conversation.",
+        "approvedMappingSha256": "4e6aa55def3817ad722544eab12017fe40c96a84dd436f1028a3a0bb4a655af4",
+        "standingExecutionAuthority": "The current commercial-delivery task explicitly authorizes necessary exact governance, commit/push/main merge and corresponding Production, candidate construction and local installation acceptance; the single-entry instruction reaffirms already authorized steps without repeated permission requests. This is not borrowed from old one-off governance approvals.",
+        "timestampMeaning": "Time this approval was registered, not an invented timestamp of the Founder message."
+      },
+      "createdOnBranch": "codex/es-network-single-entry-governance",
+      "governanceStartingHead": "452de10f112140637bc419e7bff740fb3b5f2c27",
+      "sourceDraft": {
+        "path": "/private/tmp/es-network-single-entry-v01",
+        "startingHead": "452de10f112140637bc419e7bff740fb3b5f2c27",
+        "sourceCommit": null,
+        "fileCount": 14,
+        "contentState": "Independently reviewed uncommitted sealed draft; exact contents confirmed by Founder, source commit will be recorded only after actual creation."
+      },
+      "allowedPurposes": [
+        "One product-owned desktop cashier shortcut starts the existing single Network Agent and opens the bound store/mode via the existing HTTPS ticket, with first-use guidance and explicit paused/not-ready warning; never implicit enable or legacy-print fallback.",
+        "Fixed Network management/binding/uninstall shortcuts; exact product registration and reparse checks, per-object user confirmation for unreceipted legacy shortcuts, durable recoverable backups, exclusive publication and no overwriting of custom entries.",
+        "Exact candidate rc.5 build baseline/version and related entry/shortcut/install/failure tests; preserve before/after source hashes, original rc.4 evidence and unsigned TEST-only restrictions."
+      ],
+      "prohibitedChanges": [
+        "Desktop0.4.7 installer/program/identity, shared templates/Renderer/Encoder, Relay/poller/journal/transport/profile/cold-lifecycle implementations, QZ/USB/Windows Queue, server sale semantics and database/schema/migrations.",
+        "Deleting unknown/custom shortcuts, silently changing paused state, weakening path/identity checks, duplicate Agents, new auth/updater/remote-diagnostic platform, dual physical printers or hot switching.",
+        "Wildcard/directory/future-file scope, hash or signing bypass, uncontrolled shared-Production-database Preview, invented commit/approval/FIELD proof, manual Promote or formal unsigned publication."
+      ],
+      "expirationCondition": "Close this exact grant after the accepted single-entry source actually merges into trusted origin/main; build rc.5 while ACTIVE. Preserve every approved hash and actual merge evidence, not a standing future permission."
     }
   ]
 }
