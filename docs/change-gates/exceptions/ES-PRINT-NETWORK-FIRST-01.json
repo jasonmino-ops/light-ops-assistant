@@ -905,6 +905,88 @@
         "Automatic elevation, security-policy changes, arbitrary file migration, wildcard/directory/future-file authorization, signing bypass, formal publication, orders or print output."
       ],
       "expirationCondition": "Close this exact grant after the accepted rc.6 minimal source merges into trusted origin/main. Preserve the stopped native research and rc.5 evidence separately; this is not future authorization."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-CANDIDATE-RC6-BUILD-15",
+      "featureBranch": "codex/es-network-candidate-rc6-build",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "9919828f7bd07c4d1aade46163e7623829e6fc2b",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-09-11T06:55:15Z",
+      "approvedAt": "2026-09-11T06:55:15Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Authorize packaging one unsigned TEST-only 0.1.0-commercial-rc.6 candidate from the already-merged trusted origin/main bytes. No source change is authorized: the build branch carries zero commits over origin/main and exists only so the candidate build can match a unique feature branch. Content pins are the current origin/main hashes after the commercial UI rewrite, and they now also cover network-addon/ui.css, which the rc.6 minimal grant omitted even though it is a FIXED_INPUT shipped in the payload.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/electron-builder.cjs",
+        "e-shop-tray/network-addon/entryCoordinator.ts",
+        "e-shop-tray/network-addon/installer.nsh",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "e-shop-tray/network-addon/shortcutWindows.ts",
+        "e-shop-tray/network-addon/ui.css",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/tests/network-addon-entry.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/electron-builder.cjs": "81962606c88086a8de8b39858375011430d5870204e74404380577c3538d9d4a",
+        "e-shop-tray/network-addon/entryCoordinator.ts": "e9e3e2b255c51a715b73ec6ac90b37e843f4acfbebf41cb4db5dbd1aaa3d2a27",
+        "e-shop-tray/network-addon/installer.nsh": "82d9505545ee64b819f62edb229063e44657a1999e532cf4aacfd0feb231c746",
+        "e-shop-tray/network-addon/main.ts": "803fc60149e513a63ad550188a56c9083659ff0af2a942d3038d22d0bdcac758",
+        "e-shop-tray/network-addon/preload.ts": "65d555ed7efbd3d01c0f7f4d837b3d6471faacdd6ab16d744d3a2a0966f691b2",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "2879dacf1f6b9fa42b18a4caa0fa7405329bcb77c7cc19bc528c3394f088b638",
+        "e-shop-tray/network-addon/shortcutWindows.ts": "1c8bd08f46ab5a58066987f56c9a9f4ec1ef74c4d9f386e95e28d08045007c83",
+        "e-shop-tray/network-addon/ui.css": "543d8f48aea9b6d722257793c39b87d447abd1900979547122f8d9f0f5d1a54e",
+        "e-shop-tray/network-addon/ui.html": "4aadc2930d233a963fce9872ebc6807074cb3846b3600946d055715d86752024",
+        "e-shop-tray/network-addon/ui.ts": "019ea0ddde4291e6cc5a939828bc4801a5e754bf3f427b8a5cee0e3d0a8c785a",
+        "e-shop-tray/scripts/build-network-addon.mjs": "f6120aed695649c6013385f3af343e39be4a5a9b0678d1aa8979ec8045a2d717",
+        "e-shop-tray/tests/network-addon-entry.test.ts": "58c8ce8fbb54367447122bba57325d2754e0e69ff5a46851b3318bfa7f7d577e",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "0d195b7c5b574a43a99d0abaacbdb087329b1f2872d39c4d4f5d51a0dcf4f1d9",
+        "e-shop-tray/tests/network-addon.test.ts": "fdacda1f4d10a7ff305a0da4e408cbeda210b75cc13e9d6e1f62575ade5f3068"
+      },
+      "approvedContentMappingSha256": "32676f0694613f67ec2d533ac58fd3dc2251a3475628cb0b722a280e48b32cd7",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.6",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "createdOnBranch": "codex/es-network-candidate-rc6-build-governance",
+      "governanceStartingHead": "9919828f7bd07c4d1aade46163e7623829e6fc2b",
+      "sourceDraft": {
+        "path": "N/A packaging-only authorization; no source draft exists",
+        "startingHead": "9919828f7bd07c4d1aade46163e7623829e6fc2b",
+        "sourceCommit": "9919828f7bd07c4d1aade46163e7623829e6fc2b",
+        "fileCount": 15,
+        "incrementalFileCount": 4,
+        "sourceSnapshotSha256": null,
+        "review": "No new source bytes. Pins are taken from merged trusted origin/main 9919828. The rc.6 single-entry bytes were independently reviewed under NETWORK-COMMERCIAL-SINGLE-ENTRY-RC6-MINIMAL-14; the commercial UI rewrite bytes (ui.html, ui.css, ui.ts, tests/network-addon.test.ts) were self-review accepted by the Founder under Workflow 5.4 and merged as 1781c56, which is not an independent review in the repository process sense."
+      },
+      "toolchainEvidence": {
+        "crossPlatformWindowsPackagingVerified": true,
+        "verifiedOn": "2026-09-11",
+        "method": "Unrelated E-Shop Tray probe built on macOS produced a real NSIS installer (PE32 GUI i386, Nullsoft self-extracting archive, 81779669 bytes, sha256 f8953d2772ca3aa43d932220b445d96547b428d6b8eb6669824db21f61395165) which this repository's own verifyNsisBinary() accepted at offset 51712. The probe used Electron 33.4.11; the rc.6 candidate requires 44.3.0, which is present in the local Electron cache but has not been exercised.",
+        "probeArtifactIsNotACandidate": true
+      },
+      "allowedPurposes": [
+        "Package exactly one unsigned TEST-only 0.1.0-commercial-rc.6 NSIS candidate from the merged trusted origin/main bytes, for installation testing on the V727 all-in-one.",
+        "Verify install, upgrade and the four Network entries on real Windows without orders or paper."
+      ],
+      "prohibitedChanges": [
+        "Any source change on the build branch; it must carry zero commits over trusted origin/main.",
+        "Code signing, formal publication, release manifest claims, or any FIELD VERIFIED assertion derived from this build.",
+        "productName, appId, installer directory, Desktop0.4.7 installer/program/identity, Network binding/configuration/pause/journal/history, Relay/poller/transport/server/schema, QZ/USB/Windows Queue."
+      ],
+      "expirationCondition": "Close this exact grant once the rc.6 candidate has been packaged and retained with its build record, or once a later candidate supersedes it. It authorizes packaging only; it is neither acceptance nor FIELD VERIFIED, and it is not future authorization."
     }
   ]
 }
