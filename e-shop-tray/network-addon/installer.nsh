@@ -61,6 +61,28 @@
     SetErrorLevel 4
     Quit
   ${EndIf}
+  ; A legacy uninstaller must receive --keep-shortcuts before it runs. Do not
+  ; invent missing registration or delete a same-name user link to repair it.
+  ReadRegStr $R1 HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString
+  ${If} $R0 != ""
+  ${OrIf} $R1 != ""
+    ReadRegStr $R2 HKCU "${INSTALL_REGISTRY_KEY}" KeepShortcuts
+    ${If} $R0 != "$LOCALAPPDATA\Programs\E-Shop-Network-Print-Addon"
+    ${OrIf} $R1 == ""
+    ${OrIf} $R2 != "true"
+      DetailPrint "Existing shortcut ownership cannot be preserved. Installation stopped."
+      IfSilent +2 0
+        MessageBox MB_OK|MB_ICONSTOP "Existing shortcut ownership cannot be preserved. Installation stopped; keep all existing files and contact support."
+      SetErrorLevel 5
+      Quit
+    ${EndIf}
+    IfFileExists "$R0\E-Shop-Network-Print-Addon.exe" +6 0
+      DetailPrint "Existing Network program is missing. Installation stopped."
+      IfSilent +2 0
+        MessageBox MB_OK|MB_ICONSTOP "Existing Network program is missing. Installation stopped to preserve shortcuts and history."
+      SetErrorLevel 5
+      Quit
+  ${EndIf}
   StrCpy $installMode CurrentUser
   StrCpy $INSTDIR "$LOCALAPPDATA\Programs\E-Shop-Network-Print-Addon"
   !insertmacro customCheckAppRunning
@@ -75,8 +97,43 @@
   ${EndIf}
   StrCpy $installMode CurrentUser
   !insertmacro customCheckAppRunning
+  ; Run before builder removes $INSTDIR. This mode never initializes binding,
+  ; a printing profile, journal, renderer or polling. Upgrades retain links.
+  ${IfNot} ${isUpdated}
+    ClearErrors
+    ExecWait '"$INSTDIR\E-Shop-Network-Print-Addon.exe" --uninstall-shortcuts' $R0
+    ${If} ${Errors}
+    ${OrIf} $R0 != 0
+      DetailPrint "Shortcut restore could not be verified. Uninstall stopped."
+      IfSilent +2 0
+        MessageBox MB_OK|MB_ICONSTOP "Shortcut restore could not be verified. Uninstall stopped; no print history was removed."
+      SetErrorLevel 6
+      Quit
+    ${EndIf}
+  ${EndIf}
   ; Release the install directory handle before builder's ordinary removal.
   SetOutPath "$TEMP"
+!macroend
+
+!macro customInstall
+  ; Owned entry creation and per-object explicit legacy ownership confirmation.
+  ; Silent installs retain unconfirmed files. No printing Agent starts here.
+  ClearErrors
+  ${If} ${Silent}
+    ExecWait '"$INSTDIR\E-Shop-Network-Print-Addon.exe" --install-shortcuts --silent-shortcuts' $R0
+  ${Else}
+    ExecWait '"$INSTDIR\E-Shop-Network-Print-Addon.exe" --install-shortcuts' $R0
+  ${EndIf}
+  ${If} ${Errors}
+  ${OrIf} $R0 != 0
+    DetailPrint "Network Print installed; required entry setup incomplete."
+    IfSilent +2 0
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Network Print is installed, but a required entry is incomplete. Open E-Shop-Network-Print-Addon.exe from the installation folder if the Start Menu management entry is unavailable. Existing files and print history were preserved. The old public Desktop E-Shop shortcut is not changed automatically and is only an informational manual-cleanup item."
+    SetErrorLevel 7
+    ; builder's following quitSuccess resets the result to zero. Stop here so
+    ; an incomplete shortcut setup cannot be reported as a successful install.
+    Quit
+  ${EndIf}
 !macroend
 
 !macro customUnInstall
