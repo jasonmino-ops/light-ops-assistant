@@ -9,9 +9,9 @@ import { inflateRawSync } from 'node:zlib'
 
 export const TASK_ID = 'ES-PRINT-NETWORK-FIRST-01'
 export const ADDON_VERSION = '0.1.0'
-export const CANDIDATE_VERSION = '0.1.0-commercial-rc.4'
+export const CANDIDATE_VERSION = '0.1.0-commercial-rc.6'
 export const ELECTRON_VERSION = '44.3.0'
-export const BASELINE_COMMIT = '8761596f2614e88421fbfaad01472e988329ef80'
+export const BASELINE_COMMIT = '452de10f112140637bc419e7bff740fb3b5f2c27'
 export const APP_ID = 'com.elife.eshop.networkprint.addon'
 export const PACKAGE_NAME = 'eshop-network-print-addon'
 export const PRODUCT_NAME = 'E-Shop Network Print Add-on'
@@ -178,7 +178,7 @@ export function assertExternalBoundary(filename, metadata) {
     for (const item of output.imports || []) {
       if (!item.external) continue
       const permitted = filename === 'main.cjs'
-        ? item.path === 'electron' || builtins.has(item.path)
+        ? item.path === 'electron' || item.path === 'original-fs' || builtins.has(item.path)
         : filename !== 'ui.js' && item.path === 'electron'
       if (!permitted) fail('ADDON_UNSAFE_EXTERNAL_IMPORT')
     }
@@ -231,7 +231,7 @@ function typecheck() {
 async function compileInMemory() {
   const { build } = require('esbuild')
   const shared = { absWorkingDir: root, bundle: true, write: false, metafile: true,
-    sourcemap: false, minifySyntax: true, logLevel: 'silent', external: ['electron'],
+    sourcemap: false, minifySyntax: true, logLevel: 'silent', external: ['electron', 'original-fs'],
     nodePaths: [path.join(tray, 'node_modules')],
     plugins: [{ name: 'network-excludes-unused-windows-transport', setup(builder) {
       // This frozen module has only declarations/constants at top level. The

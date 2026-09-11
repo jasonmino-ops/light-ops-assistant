@@ -43,8 +43,10 @@ module.exports = {
     packElevateHelper: false,
     runAfterFinish: false,
     deleteAppDataOnUninstall: false,
-    createDesktopShortcut: true,
-    createStartMenuShortcut: true,
+    // The controlled shortcut lifecycle owns creation, attribution and restore.
+    // Builder's name-only upgrade/uninstall operations must never run.
+    createDesktopShortcut: false,
+    createStartMenuShortcut: false,
     shortcutName: 'E-Shop Network Print Add-on',
     uninstallDisplayName: 'E-Shop Network Print Add-on',
     include: 'installer.nsh',
