@@ -145,8 +145,79 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
     expect(snap.networks).toHaveLength(1)
     expect(execFile).toHaveBeenCalledWith('powershell.exe',
       ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', WINDOWS_NETWORK_METADATA_COMMAND],
-      expect.objectContaining({ windowsHide: true, timeout: 5000, maxBuffer: 1024 * 1024, encoding: 'utf8' }), expect.any(Function))
+      expect.objectContaining({ windowsHide: true, timeout: 15_000, maxBuffer: 1024 * 1024, encoding: 'utf8' }), expect.any(Function))
     expect(vi.mocked(execFile).mock.calls.at(-1)?.[2]).not.toHaveProperty('shell')
+  })
+
+  // One failing local metadata read used to collapse four different causes into
+  // NETWORK_METADATA_UNAVAILABLE. These fix each cause to its own code so a hot
+  // idle timeout stays distinguishable from a machine missing powershell.exe.
+  it.each([
+    ['timeout kill', Object.assign(new Error('timeout'), { killed: true, signal: 'SIGTERM' }), 'NETWORK_METADATA_TIMEOUT'],
+    ['non-zero exit', Object.assign(new Error('exit 1'), { code: 1, killed: false }), 'NETWORK_METADATA_COMMAND_FAILED'],
+    ['missing powershell.exe', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT', killed: false }), 'NETWORK_METADATA_TOOL_MISSING'],
+    ['unclassified fault', new Error('something else'), 'NETWORK_METADATA_UNAVAILABLE'],
+  ])('reports %s as its own code and retries once before failing', async (_label, fault, code) => {
+    let calls = 0
+    vi.mocked(execFile).mockImplementation((...args: unknown[]) => {
+      const callback = args[3] as (error: Error, stdout: string, stderr: string) => void
+      calls += 1
+      callback(fault as Error, '', 'Get-NetAdapter : boom')
+      return {} as ReturnType<typeof execFile>
+    })
+    const deps = { platform: () => 'win32', interfaces: () => interfaces() }
+    await expect(getWindowsLocalNetworks(deps)).rejects.toThrow(code)
+    // Deterministic causes are not retried; transient ones get exactly one retry.
+    expect(calls).toBe(code === 'NETWORK_METADATA_TOOL_MISSING' ? 1 : 2)
+  })
+
+  // The entry checkAbort already rejects an up-front aborted signal with the
+  // existing NETWORK_DISCOVERY_CANCELLED, so this covers aborting mid-read.
+  it('cancellation during the read is its own code and is never retried', async () => {
+    const controller = new AbortController()
+    let calls = 0
+    vi.mocked(execFile).mockImplementation((...args: unknown[]) => {
+      const callback = args[3] as (error: Error, stdout: string, stderr: string) => void
+      calls += 1
+      controller.abort()
+      callback(Object.assign(new Error('aborted'), { name: 'AbortError', code: 'ABORT_ERR', killed: true }), '', 'stderr must not leak')
+      return {} as ReturnType<typeof execFile>
+    })
+    const deps = { platform: () => 'win32', interfaces: () => interfaces() }
+    await expect(getWindowsLocalNetworks(deps, controller.signal)).rejects.toThrow('NETWORK_METADATA_CANCELLED')
+    expect(calls).toBe(1)
+  })
+
+  it('retries once and succeeds, so a single spike never reaches an error state', async () => {
+    let calls = 0
+    vi.mocked(execFile).mockImplementation((...args: unknown[]) => {
+      const callback = args[3] as (error: Error | null, stdout: string, stderr: string) => void
+      calls += 1
+      if (calls === 1) callback(Object.assign(new Error('timeout'), { killed: true }), '', 'transient')
+      else callback(null, JSON.stringify(metadata()), '')
+      return {} as ReturnType<typeof execFile>
+    })
+    const snap = await getWindowsLocalNetworks({ platform: () => 'win32', interfaces: () => interfaces() })
+    expect(snap.networks).toHaveLength(1)
+    expect(calls).toBe(2)
+  })
+
+  // The excerpt exists for local diagnosis. It must never become the code that
+  // the status surface or a cloud resultCode is built from.
+  it('keeps the stderr excerpt off the error code and bounded in length', async () => {
+    const noisy = `${'x'.repeat(500)} secret-looking-tail`
+    vi.mocked(execFile).mockImplementation((...args: unknown[]) => {
+      const callback = args[3] as (error: Error, stdout: string, stderr: string) => void
+      callback(Object.assign(new Error('exit 1'), { code: 1, killed: false }), '', noisy)
+      return {} as ReturnType<typeof execFile>
+    })
+    const deps = { platform: () => 'win32', interfaces: () => interfaces() }
+    const error = await getWindowsLocalNetworks(deps).catch((thrown: unknown) => thrown) as
+      { code: string; message: string; detail?: string }
+    expect(error.code).toBe('NETWORK_METADATA_COMMAND_FAILED')
+    expect(error.message).toBe('NETWORK_METADATA_COMMAND_FAILED')
+    expect(error.detail).toHaveLength(200)
+    expect(error.detail).not.toContain('secret-looking-tail')
   })
 
   it('accepts a physical Ethernet adapter, freezes metadata and supports strict manual ports', () => {
