@@ -11,67 +11,91 @@ const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as
 const input = (id: string) => el<HTMLInputElement>(id)
 let current: Status | undefined
 let busy = false
+// 用户主动点了「打印设置」。设置完成后回到日常屏。
+let showSettings = false
 const messages: Record<string, string> = {
-  ENTRY_IDLE: '日常点击桌面「店小二收银」。首次使用请完成绑定与打印配置；点击入口不会解除暂停。',
-  ENTRY_OPENING: '正在准备正确门店与模式的 Chrome 入口，请勿重复点击。',
-  ENTRY_OPENED: '已交由 Chrome 打开网络收银。请核对浏览器中的门店；打印暂停或异常仍需单独处理。',
-  ENTRY_CANCELLED: '已取消打开收银。原暂停状态与配置没有改变。',
-  ENTRY_PRINT_WARNING: '请确认打印暂停或异常提示；继续不会转入旧打印，也不会解除暂停。',
-  ADDON_CASHIER_SETUP_REQUIRED: '请先完成下方打印方式与设备确认，再进入正确模式的网络收银。',
-  ADDON_ENTRY_CONFIGURATION_CHANGED: '配置在准备入口期间发生变化，已取消打开。请安全退出后重新打开，不会使用旧模式。',
-  ADDON_EXIT_IN_PROGRESS: '正在安全退出，请等待完成后再点击桌面收银入口。',
-  SHORTCUT_NEEDS_ATTENTION: '部分入口存在冲突或无法确认归属，已保留原文件。请查看「桌面入口整理」。',
-  SHORTCUT_HISTORY_INVALID: '快捷方式历史无法校验，原文件已保留。请联系支持；不要清空目录重试。',
-  RUNNING: '已启用。等待门店网络打印任务；任务由服务器持久保存。',
-  PAUSED: '已暂停领取，当前交付已结束。配置和 journal 保持不变。',
-  SETUP_OR_PAUSED: '已配置设备可直接启用；首次配置请先确认 TEST 纸票。',
-  CONFIGURED_PAUSED: '配置已保存。确认单 Agent 约束后启用。',
-  TEST_AWAITING_PHYSICAL_CONFIRMATION: '测试字节已提交。请核对实体纸票；不会自动重发。',
-  DESKTOP_BINDING_IDENTITY_UNAVAILABLE: '请先安装原 Desktop 0.4.7 并完成门店绑定，再重新读取。',
-  DESKTOP_BINDING_NOT_ACTIVE: '请在 Desktop 完成有效门店绑定。本程序不会修改原身份。',
-  ADDON_CHROME_REQUIRED: '请安装 Google Chrome 后重试打开收银入口。',
-  ADDON_TEST_REVIEW_REQUIRED: '上次 TEST 尚未确认或结果不确定。请核对纸票，不要反复发送。',
-  NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW: '存在不确定打印结果。已停止自动交付，请记录任务并由负责人核对；不会重打。',
-  ADDON_INITIALIZATION_INCOMPLETE_OR_PROFILE_LOST: '本机持久状态缺失或初始化曾中断，已安全停止。请保留目录，联系支持；不要清空重装。',
-  ADDON_SINGLE_AGENT_CONFIRMATION_REQUIRED: '请先确认本店没有其他 Network Agent 在领取任务。',
-  NETWORK_CHANGED: '网络已变化。保持暂停，重新发现并主动确认原打印机。',
-  ADDON_PAUSE_REQUIRED: '请先暂停，等待当前任务安全结束。',
-  ADDON_MODE_LOCKED: '已配置模式在常规设置中锁定。请使用「变更已配置模式（冷切换）」。',
-  ADDON_PROFILE_RESTART_REQUIRED: '已安全停止，本次进程只允许查看状态或安全退出。请退出并重启，保留全部原记录。',
-  ADDON_PROFILE_BUSY_OR_FAULTED: '本机配置写入未完成。请保留原记录，安全退出后重启；不要清空重装。',
-  ADDON_COLD_PROCESS_RESTART_REQUIRED: '本次进程曾启用打印或修改配置，不能直接切换。请先「暂停并安全退出」，重新打开后保持暂停。',
-  ADDON_COLD_CLOSE_CASHIER_REQUIRED: '请先关闭本店所有电脑的 Network 收银标签页并停止新单，再确认。切换后请使用新的收银入口。',
-  ADDON_COLD_PAUSE_REQUIRED: '冷切换需要保持暂停。请先暂停并安全退出，然后重新打开。',
-  ADDON_COLD_SAME_MODE: '目标与当前模式相同，配置没有变更，也不会出票。',
-  ADDON_COLD_SETTLED_TEST_REQUIRED: '需要保留有效的原打印机确认记录。当前不能冷切换，请保留记录并联系支持。',
-  ADDON_COLD_LOCAL_WORK_UNSETTLED: '本地存在未完成、未回执或结果不明的打印记录，不能冷切换或首次启用新模式。请核对原订单，不要清空记录或补打。',
-  ADDON_COLD_CLOUD_WORK_PENDING: '云端仍有待处理、已领取或执行中的任务。请核对并按原模式处理历史任务，不能清空记录或直接切换。',
-  ADDON_COLD_CLOUD_UNKNOWN: '云端存在结果不明的任务，不能继续。请保留记录并由负责人核对原订单和纸票。',
-  ADDON_COLD_EXPLICIT_ENABLE_REQUIRED: '新模式已保存并保持暂停。关闭所有旧 Network 收银页、确认单 Agent 后，手动启用并打开新的收银入口。',
-  ADDON_COLD_TRANSACTION_BLOCKED: '模式变更或恢复未能完整确认，已安全停止。请保留全部目录和记录，联系支持；不要清空重装。',
-  ADDON_COLD_PROVENANCE_INVALID: '模式变更历史校验未通过，已安全停止。请保留全部记录并联系支持。',
-  NETWORK_DEVICE_CHANGED: '当前地址的设备与原确认打印机不同，已拒绝操作。请检查原打印机地址，不要重新发送销售补票。',
-  NETWORK_DEVICE_IDENTITY_UNAVAILABLE: '无法确认原打印机的硬件地址。请检查本地网络并保持暂停。',
-  NETWORK_INVALID_QUEUE_STATE: '无法确认云端队列状态，已拒绝操作。请保留记录，检查网络或联系支持。',
-  NETWORK_QUEUED_MODE_MISMATCH: '检测到与当前模式不同的历史任务，已停止领取。请关闭旧收银页并联系负责人处理原任务。',
-  NETWORK_QUEUE_STATE_UNAVAILABLE: '云端队列暂时无法核实，已拒绝继续。请保持暂停，检查网络或联系支持。',
+  ENTRY_IDLE: '日常点桌面上的「店小二收银」就可以。第一次使用请先完成门店绑定和打印机设置。',
+  ENTRY_OPENING: '正在打开收银台，请不要重复点击。',
+  ENTRY_OPENED: '收银台已经在 Chrome 里打开了。请核对一下浏览器里显示的门店是否正确。',
+  ENTRY_CANCELLED: '已取消打开收银台。设置没有任何改动。',
+  ENTRY_PRINT_WARNING: '打印当前是暂停或异常状态。继续开单可以，但票不会自动出，也不会转到原来的打印方式。',
+  ADDON_CASHIER_SETUP_REQUIRED: '请先把打印方式和打印机设置好，再进入收银台。',
+  ADDON_ENTRY_CONFIGURATION_CHANGED: '刚才设置有改动，已经取消打开收银台。请退出程序后重新打开。',
+  ADDON_EXIT_IN_PROGRESS: '正在安全退出，请等它结束后再点桌面上的收银图标。',
+  SHORTCUT_NEEDS_ATTENTION: '有几个桌面图标无法确认来源，已经原样保留。请到「整理桌面图标」里看一下。',
+  SHORTCUT_HISTORY_INVALID: '桌面图标的记录无法核对，原文件已经保留。请联系技术支持，不要自己清空目录重试。',
+  RUNNING: '打印已开启。收银台开的每一单都会自动出票。',
+  PAUSED: '已暂停。设置和记录都还在，随时可以重新开始。',
+  SETUP_OR_PAUSED: '打印机已经设置好，可以直接开始。第一次设置请先打一张测试票并确认。',
+  CONFIGURED_PAUSED: '设置已保存。确认本店只有这一台电脑负责打印，就可以开始了。',
+  TEST_AWAITING_PHYSICAL_CONFIRMATION: '测试票已经送出去了。请去打印机那里拿一下纸，确认之后再继续。不会自动重发。',
+  DESKTOP_BINDING_IDENTITY_UNAVAILABLE: '还没连上门店。请先打开「店小二」完成门店绑定，再回到这里点「重新读取门店」。',
+  DESKTOP_BINDING_NOT_ACTIVE: '门店绑定还没有生效。请在「店小二」里完成绑定；本程序不会改动原来的身份信息。',
+  ADDON_CHROME_REQUIRED: '需要 Google Chrome 才能打开收银台。请先装好 Chrome 再试。',
+  ADDON_TEST_REVIEW_REQUIRED: '上一张测试票还没确认，或者不确定有没有打出来。请先去打印机那里看一眼，不要反复发送。',
+  NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW: '有单不确定有没有出纸，已经停止自动打印。请把下面这一行记录交给负责人核对；程序不会自己补打。',
+  ADDON_INITIALIZATION_INCOMPLETE_OR_PROFILE_LOST: '这台电脑上的设置记录缺失或没写完，已经安全停下。请保留原来的文件夹并联系技术支持，不要清空重装。',
+  ADDON_SINGLE_AGENT_CONFIRMATION_REQUIRED: '请先确认本店没有别的电脑也在跑打印。',
+  NETWORK_CHANGED: '网络变了。请保持暂停，重新搜索打印机，并确认还是原来那一台。',
+  ADDON_PAUSE_REQUIRED: '请先暂停打印，等当前这一单安全结束。',
+  ADDON_MODE_LOCKED: '打印方式设置好之后就锁住了。要改请用下面的「更换打印方式」。',
+  ADDON_PROFILE_RESTART_REQUIRED: '程序已经安全停下。这一次只能查看状态或退出。请退出后重新打开，所有记录都会保留。',
+  ADDON_PROFILE_BUSY_OR_FAULTED: '设置还没写完。请保留原记录，退出后重新打开，不要清空重装。',
+  ADDON_COLD_PROCESS_RESTART_REQUIRED: '这次打开之后已经启用过打印或改过设置，不能直接换打印方式。请先「暂停并退出」，重新打开后保持暂停再来换。',
+  ADDON_COLD_CLOSE_CASHIER_REQUIRED: '请先关掉本店所有电脑上的收银页面，并停止开新单，再确认。换完之后要用新的收银入口。',
+  ADDON_COLD_PAUSE_REQUIRED: '换打印方式需要先暂停。请「暂停并退出」，然后重新打开本程序。',
+  ADDON_COLD_SAME_MODE: '和现在用的是同一种打印方式，没有变化，也不会出纸。',
+  ADDON_COLD_SETTLED_TEST_REQUIRED: '需要保留原打印机的确认记录才能更换。现在不能换，请保留记录并联系技术支持。',
+  ADDON_COLD_LOCAL_WORK_UNSETTLED: '这台电脑上还有没打完、或者结果不确定的票，不能更换打印方式。请先核对那几单，不要清记录，也不要补打。',
+  ADDON_COLD_CLOUD_WORK_PENDING: '还有单在排队或正在处理。请按原来的打印方式把它们处理完，不能直接换，也不能清空记录。',
+  ADDON_COLD_CLOUD_UNKNOWN: '有单结果不确定，不能继续。请保留记录，由负责人核对原订单和实际纸票。',
+  ADDON_COLD_EXPLICIT_ENABLE_REQUIRED: '新的打印方式已保存，当前保持暂停。请关掉所有旧的收银页面、确认只有这一台电脑打印，然后手动开始，并用新的收银入口。',
+  ADDON_COLD_TRANSACTION_BLOCKED: '更换打印方式没有完整完成，已经安全停下。请保留全部记录并联系技术支持，不要清空重装。',
+  ADDON_COLD_PROVENANCE_INVALID: '更换记录核对没通过，已经安全停下。请保留全部记录并联系技术支持。',
+  NETWORK_DEVICE_CHANGED: '这个地址上的设备和原来确认过的打印机不是同一台，已经拒绝操作。请核对打印机地址，不要重新开单补票。',
+  NETWORK_DEVICE_IDENTITY_UNAVAILABLE: '没法确认这是不是原来那台打印机。请检查本店网络，并保持暂停。',
+  NETWORK_INVALID_QUEUE_STATE: '没法确认排队情况，已经拒绝操作。请保留记录，检查网络或联系技术支持。',
+  NETWORK_QUEUED_MODE_MISMATCH: '发现了用另一种打印方式产生的历史任务，已经停止领取。请关掉旧的收银页面并联系负责人处理。',
+  NETWORK_QUEUE_STATE_UNAVAILABLE: '暂时连不上服务器核对排队情况，已经停下。请保持暂停，检查网络或联系技术支持。',
 }
-function message(code: string) { return messages[code] ?? '操作未完成或打印异常。请保留下面的错误代码并核对网络、绑定和原订单；不要重新提交销售补票。' }
+function message(code: string) { return messages[code] ?? '操作没有完成，或者打印出了问题。请保留下面的错误代码，核对网络、门店绑定和原订单；不要重新开单补票。' }
 async function invoke(action: string, value: unknown = {}) {
   const result = await window.networkAddon.invoke(action, value)
   if (!result.ok) throw new Error(result.code ?? 'ADDON_OPERATION_FAILED')
   return result.value
 }
+// 决定显示哪一屏。只使用 status() 已有的字段，不引入任何新的探测或计数。
+function decideView(state: Status): { view: 'calm' | 'alarm' | 'setup'; severity: 'down' | 'unsure' } {
+  const settled = state.ready && !!state.mode && state.revision > 0 && state.test?.outcome === 'CONFIRMED'
+  if (showSettings || !settled || state.restartRequired || state.coldEnableCheckRequired) return { view: 'setup', severity: 'down' }
+  const uncertain = state.lastEvent?.effectBoundary === 'CROSSING_UNKNOWN' || state.code === 'NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW'
+  if (uncertain) return { view: 'alarm', severity: 'unsure' }
+  if (state.enabled && state.code !== 'RUNNING') return { view: 'alarm', severity: 'down' }
+  return { view: 'calm', severity: 'down' }
+}
+function pillText(state: Status, view: string, severity: string) {
+  if (view === 'alarm') return severity === 'unsure' ? '有单要核对' : '打印有问题'
+  if (view === 'calm') return state.enabled ? '打印正常' : '已暂停'
+  if (!state.ready) return '正在启动'
+  return state.mode ? '需要处理' : '准备设置'
+}
 function render(state: Status) {
   const previousMode = current?.mode
   current = state
   const blocked = busy || state.busy || state.restartRequired
-  el('store').textContent = state.storeCode ? `绑定门店 · ${state.storeCode}` : '等待 Desktop 门店绑定'
-  el('pill').textContent = state.enabled && state.code === 'RUNNING' ? 'NETWORK 已启用' : '设置 / 需要注意'
-  el('status-message').textContent = message(state.code)
-  el('version').textContent = `v${state.version} · ${state.server}`
-  el('diagnostic').textContent = [state.code, state.lastEvent?.jobId, state.lastEvent?.resultCode, state.lastEvent?.effectBoundary].filter(Boolean).join(' · ')
-  el('configured-endpoint').textContent = state.endpoint ? `已确认端点：${state.endpoint.host}:${state.endpoint.port} · 配置修订 ${state.revision}` : '尚未确认任何打印设备'
+  const { view, severity } = decideView(state)
+  const root = document.querySelector('main') as HTMLElement
+  root.dataset.view = view
+  root.dataset.severity = severity
+  el('store').textContent = state.storeCode ? state.storeCode : '还没连上门店'
+  el('pill').textContent = pillText(state, view, severity)
+  el('status-message').textContent = view === 'calm' && state.enabled && state.code === 'RUNNING' && state.endpoint
+    ? `${state.mode === 'SHARED_PRINTER' ? '小票 ＋ 厨房单' : '只打小票'} · 打印机 ${state.endpoint.host}`
+    : message(state.code)
+  el('version').textContent = `店小二打印 ${state.version}`
+  el('diagnostic').textContent = [state.lastEvent?.jobId ? `任务 ${state.lastEvent.jobId}` : null,
+    state.code, state.lastEvent?.resultCode, state.lastEvent?.effectBoundary].filter(Boolean).join(' · ')
+  el('configured-endpoint').textContent = state.endpoint ? `当前打印机：${state.endpoint.host}，端口 ${state.endpoint.port}` : '还没有确认过打印机'
   for (const radio of Array.from(document.querySelectorAll<HTMLInputElement>('input[name=mode]'))) {
     radio.disabled = !!state.mode || blocked
     if (state.mode) radio.checked = radio.value === state.mode
@@ -86,10 +110,13 @@ function render(state: Status) {
   el<HTMLButtonElement>('enable').disabled = !state.ready || state.enabled || !state.revision || blocked || state.test?.outcome !== 'CONFIRMED' || !input('single-agent').checked
     || (state.coldEnableCheckRequired && !input('enable-tabs-closed').checked)
   el<HTMLButtonElement>('cashier').disabled = !state.cashierAvailable || blocked || state.entryPending
+  el('cashier').textContent = view === 'alarm' ? '仍然开始营业' : state.enabled ? '开始营业' : '打开收银台'
   el('entry-message').textContent = state.entryCode && state.entryCode !== 'READY'
-    ? (messages[state.entryCode] ?? '请按提示完成首次设置或查看打印状态；入口不会解除暂停，也不会切换到旧打印。')
-    : state.enabled ? '日常使用桌面的「店小二收银」，无需分别打开两个程序。'
-      : '自动打印保持暂停。仍可进入网络收银，销售打印任务会保留在队列，待恢复处理；不会转交旧打印。'
+    ? (messages[state.entryCode] ?? '请按提示完成设置，或先看一下打印状态。打开收银台不会解除暂停，也不会转到原来的打印方式。')
+    : view === 'calm' && state.enabled ? '也可以直接点桌面上的「店小二收银」。'
+      : view === 'alarm' ? '现在开单可以，但票不会自动出来。'
+        : state.enabled ? '也可以直接点桌面上的「店小二收银」。'
+          : '打印当前是暂停的。仍然可以开单，票会先排队等恢复，不会转到原来的打印方式。'
   el<HTMLButtonElement>('confirm').disabled = !canConfigure || !input('paper-confirmed').checked || (state.revision > 0 && !input('same-printer').checked)
   input('autostart').disabled = blocked
   el('enable-tabs-row').hidden = !state.coldEnableCheckRequired
@@ -101,19 +128,19 @@ function render(state: Status) {
   const canConvert = state.ready && !!state.mode && !state.enabled && !blocked && state.coldProcess && state.test?.outcome === 'CONFIRMED'
   coldMode.disabled = !canConvert
   el<HTMLButtonElement>('convert-mode').disabled = !canConvert || coldMode.value === state.mode || !input('cold-tabs-closed').checked || !input('cold-single-agent').checked
-  el('cold-status').textContent = state.restartRequired ? '请安全退出并重新打开，当前不能继续操作。'
-    : state.coldEnableCheckRequired ? '已切换；请按「开始营业」的提示手动启用。首次启用会再次检查云端队列。'
-      : !state.mode ? '首次配置完成后才可使用冷切换。'
-        : !state.coldProcess || state.enabled ? '请先暂停并安全退出，再重新打开。'
-          : '当前从暂停状态启动，尚未领取任务。确认后仍需通过本地与云端检查。'
+  el('cold-status').textContent = state.restartRequired ? '请先退出程序再重新打开，现在不能继续操作。'
+    : state.coldEnableCheckRequired ? '已经换好了。请按第 3 步「开始营业」手动开启，开启时会再检查一次排队情况。'
+      : !state.mode ? '第一次设置完成之后，才能在这里更换打印方式。'
+        : !state.coldProcess || state.enabled ? '请先「暂停并退出」，然后重新打开本程序。'
+          : '当前是从暂停状态打开的，还没有领取任务。确认之后仍然要通过本机和服务器的检查。'
   input('host').disabled = !canConfigure || testPending
   input('port').disabled = !canConfigure || testPending
   el('confirmation').hidden = state.test?.outcome !== 'SUBMITTED'
   el('same-printer-row').hidden = state.revision === 0
-  if (state.test) el('test-summary').textContent = `TEST ${state.test.id} → ${state.test.endpoint.host}:${state.test.endpoint.port} · ${state.test.bytes} bytes · SHA-256 ${state.test.sha256}。TCP 不是实体出票证明。`
+  if (state.test) el('test-summary').textContent = `已向 ${state.test.endpoint.host} 送出一张测试票。送出去了不代表纸一定打出来，请去打印机那里看一眼。`
 }
 async function refresh() {
-  try { render(await invoke('status') as Status) } catch { el('status-message').textContent = '无法读取状态。请安全退出后重启；不会自动补打。' }
+  try { render(await invoke('status') as Status) } catch { el('status-message').textContent = '读不到状态。请退出程序后重新打开；不会自动补打任何票。' }
 }
 async function act(action: string, data: unknown = {}) {
   if (busy) return
@@ -125,21 +152,22 @@ async function act(action: string, data: unknown = {}) {
 }
 for (const id of ['test-ready', 'paper-confirmed', 'single-agent', 'same-printer', 'enable-tabs-closed', 'cold-tabs-closed', 'cold-single-agent']) input(id).addEventListener('change', () => { if (current) render(current) })
 el('cold-mode').addEventListener('change', () => { if (current) render(current) })
+el('goto-setup').addEventListener('click', () => { showSettings = true; if (current) render(current) })
 el('retry-binding').addEventListener('click', () => { void act('retryBinding') })
 el('pause').addEventListener('click', () => { void act('pause') })
-el('enable').addEventListener('click', () => { void act('enable', { singleAgentConfirmed: input('single-agent').checked, cashierTabsClosed: input('enable-tabs-closed').checked }) })
+el('enable').addEventListener('click', () => { showSettings = false; void act('enable', { singleAgentConfirmed: input('single-agent').checked, cashierTabsClosed: input('enable-tabs-closed').checked }) })
 el('pause-exit').addEventListener('click', () => { void act('pauseAndExit') })
 el('safe-exit').addEventListener('click', () => { void act('exit') })
 el('convert-mode').addEventListener('click', () => { void act('convertMode', { mode: el<HTMLSelectElement>('cold-mode').value,
   cashierTabsClosed: input('cold-tabs-closed').checked, singleAgentConfirmed: input('cold-single-agent').checked }) })
 el('cashier').addEventListener('click', () => { void act('cashier') })
 type ShortcutResult = { subject: string; status: string; reason?: string; sha256?: string }
-const shortcutNames: Record<string, string> = { cashier: '店小二收银', manage: 'Network 打印设置',
-  'desktop-binding': 'Desktop 门店绑定', uninstall: '卸载 Network Print', desktop: 'E-Shop.lnk',
+const shortcutNames: Record<string, string> = { cashier: '店小二收银', manage: '店小二打印设置',
+  'desktop-binding': '门店绑定', uninstall: '卸载店小二打印', desktop: 'E-Shop.lnk',
   'network-formal': 'E-Shop Network Print Add-on.lnk', 'network-test': 'E-Shop Network Print Add-on (TEST ONLY).lnk' }
-const shortcutStates: Record<string, string> = { CREATED: '已创建', UNCHANGED: '已校验保留',
-  MIGRATED: '已备份并收纳', REMOVED: '已收纳', RESTORED: '已恢复', ABSENT: '不存在，无需处理',
-  PRESERVED: '归属或内容不符，保持原样', UNAVAILABLE: '无法确认，保持原样', NEEDS_CONFIRMATION: '内容符合本产品默认入口，仍需你确认来源' }
+const shortcutStates: Record<string, string> = { CREATED: '已创建', UNCHANGED: '已检查，保持原样',
+  MIGRATED: '已备份并收起', REMOVED: '已收起', RESTORED: '已恢复', ABSENT: '不存在，不用处理',
+  PRESERVED: '来源或内容对不上，保持原样', UNAVAILABLE: '无法确认，保持原样', NEEDS_CONFIRMATION: '看起来是安装时创建的，需要你确认一下' }
 async function refreshShortcuts() {
   const list = el('shortcut-results'); list.replaceChildren()
   const result = await act('shortcuts') as { created: ShortcutResult[]; legacy: ShortcutResult[] } | undefined
@@ -152,9 +180,9 @@ async function refreshShortcuts() {
     if (item.status === 'NEEDS_CONFIRMATION' && item.sha256) {
       const label = document.createElement('label'); label.className = 'check'
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox'
-      label.append(checkbox, document.createTextNode(`我确认「${shortcutNames[item.subject]}」是安装器创建的旧入口，不是我自建或修改的快捷方式；同意备份后收纳。`))
+      label.append(checkbox, document.createTextNode(`我确认「${shortcutNames[item.subject]}」是装程序时自动创建的旧图标，不是我自己建的或改过的；同意备份后收起来。`))
       const button = document.createElement('button'); button.className = 'secondary'; button.disabled = true
-      button.textContent = '备份并收纳此旧入口'
+      button.textContent = '备份并收起这个旧图标'
       checkbox.addEventListener('change', () => { button.disabled = !checkbox.checked })
       button.addEventListener('click', async () => {
         if (!checkbox.checked || busy) return
@@ -176,10 +204,10 @@ el('discover').addEventListener('click', async () => {
   const result = await act('discover') as { candidates: { host: string; port: number }[]; status: string; reason?: string } | undefined
   el('cancel').hidden = true
   if (!result) return
-  if (!result.candidates.length) { const note = document.createElement('p'); note.className = 'note'; note.textContent = '未发现可选端点，请手工填写设备地址和实际 RAW 端口。此结果不表示打印机不存在。'; list.append(note) }
+  if (!result.candidates.length) { const note = document.createElement('p'); note.className = 'note'; note.textContent = '这一遍没找到打印机。可以展开下面的「手动填打印机地址」自己填。没找到不代表打印机坏了。'; list.append(note) }
   for (const candidate of result.candidates) {
     const button = document.createElement('button'); button.className = 'candidate'
-    button.textContent = `${candidate.host}:${candidate.port} · 仅 TCP 可连接，尚未验证出票 · 选择`
+    button.textContent = `${candidate.host}　端口 ${candidate.port} · 点这里选它`
     button.addEventListener('click', () => { input('host').value = candidate.host; input('port').value = String(candidate.port); input('test-ready').checked = false; if (current) render(current) })
     list.append(button)
   }
@@ -188,7 +216,7 @@ el('test').addEventListener('click', async () => {
   if (!input('test-ready').checked) return
   const mode = document.querySelector<HTMLInputElement>('input[name=mode]:checked')!.value
   const rawPort = input('port').value
-  if (!/^[1-9][0-9]{0,4}$/.test(rawPort)) { el('status-message').textContent = '请输入 1–65535 的整数端口。'; return }
+  if (!/^[1-9][0-9]{0,4}$/.test(rawPort)) { el('status-message').textContent = '端口请填 1 到 65535 之间的数字。'; return }
   input('paper-confirmed').checked = false; input('same-printer').checked = false
   await act('test', { mode, host: input('host').value, port: Number(rawPort) })
   input('test-ready').checked = false
