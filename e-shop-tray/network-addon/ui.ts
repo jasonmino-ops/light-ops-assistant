@@ -57,6 +57,13 @@ const messages: Record<string, string> = {
   NETWORK_INVALID_QUEUE_STATE: '没法确认排队情况，已经拒绝操作。请保留记录，检查网络或联系技术支持。',
   NETWORK_QUEUED_MODE_MISMATCH: '发现了用另一种打印方式产生的历史任务，已经停止领取。请关掉旧的收银页面并联系负责人处理。',
   NETWORK_QUEUE_STATE_UNAVAILABLE: '暂时连不上服务器核对排队情况，已经停下。请保持暂停，检查网络或联系技术支持。',
+  // 以下是「本机读取自己的网络信息」失败。此时没有向打印机发送任何东西，
+  // 没有任何订单受影响，所以不提打印机电源/网线/路由器，也不提补票。
+  ADDON_METADATA_TIMEOUT: '这台电脑读自己的网络信息用的时间比平时长，已经自动重试了一次。没有任何单受影响。如果这一行一直不消失，请把这台电脑重启一次。',
+  ADDON_METADATA_COMMAND_FAILED: '这台电脑的系统网络信息暂时读不出来，已经自动重试了一次。没有任何单受影响。如果一直这样，请重启这台电脑，或联系技术支持。',
+  ADDON_METADATA_TOOL_MISSING: '这台电脑缺少读取网络信息所需的系统组件，程序没法自己解决。没有任何单受影响。请联系技术支持，不用重装本程序。',
+  ADDON_METADATA_CANCELLED: '刚才读取网络信息的操作被中断了，通常是因为退出程序或中途切换了操作。没有任何单受影响，重新操作一次就好。',
+  NETWORK_METADATA_UNAVAILABLE: '这台电脑暂时读不到自己的网络信息，已经自动重试了一次。没有任何单受影响。如果一直这样，请重启这台电脑，或联系技术支持。',
 }
 function message(code: string) { return messages[code] ?? '操作没有完成，或者打印出了问题。请保留下面的错误代码，核对网络、门店绑定和原订单；不要重新开单补票。' }
 async function invoke(action: string, value: unknown = {}) {

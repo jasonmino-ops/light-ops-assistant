@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, type ExecFileException } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { Socket } from 'node:net'
 import os from 'node:os'
@@ -9,7 +9,12 @@ import { createWindowsMetadataReader, type WindowsMetadataReader } from './netwo
 // RAW 9100 is the discovery default; there is no vendor discovery wire protocol.
 export const NETWORK_DISCOVERY_LIMITS = Object.freeze({
   targets: 1024, concurrency: 16, connectTimeoutMs: 600, deadlineMs: 45_000,
-  metadataTimeoutMs: 5_000, snapshotMaxAgeMs: 60_000, defaultPort: 9100,
+  // 15s, not 5s: a fresh powershell.exe running three CIM queries measured
+  // 2.44s hot-idle on the V727, so 5s left almost no headroom and any spike
+  // pushed the program into an error state. This reader is never inside a
+  // claimed job lease (the delivery path uses the persistent reader), so the
+  // worst case of 15s plus one retry stays clear of the 30s claim lease.
+  metadataTimeoutMs: 15_000, snapshotMaxAgeMs: 60_000, defaultPort: 9100,
 })
 
 // Constant local, read-only commands. Never interpolate a host, port or UI input.
@@ -37,7 +42,10 @@ $routes = @(Get-NetRoute -AddressFamily IPv4 -PolicyStore ActiveStore -ErrorActi
 `.trim()
 
 export class NetworkDiscoveryError extends Error {
-  constructor(readonly code: string) { super(code); this.name = 'NetworkDiscoveryError' }
+  /** `detail` is a truncated local diagnostic excerpt. It is never read by the
+   *  status surface (main.ts code() reads only `code`) and never enters a cloud
+   *  payload, which carries only NetworkDeliveryError.code. */
+  constructor(readonly code: string, readonly detail?: string) { super(code); this.name = 'NetworkDiscoveryError' }
 }
 export type LocalNetwork = Readonly<{
   interfaceIndex: number; name: string; localAddress: string; prefixLength: number
@@ -231,16 +239,71 @@ export function createLocalNetworkSnapshot(metadata: unknown, interfaces: Interf
   return Object.freeze({ ...content, capturedAt, fingerprint: snapshotFingerprint(content) })
 }
 
-async function readWindowsMetadata(signal?: AbortSignal): Promise<unknown> {
+/**
+ * Classify one failed metadata read. The four causes used to collapse into a
+ * single NETWORK_METADATA_UNAVAILABLE, which made a hot-idle timeout
+ * indistinguishable from a missing powershell.exe on the machine.
+ *
+ * The codes deliberately use the ADDON_ prefix, not NETWORK_. Only a message
+ * matching /^NETWORK_[A-Z0-9_]+$/ survives preDelivery() in networkRuntime.ts
+ * and becomes a cloud resultCode; an ADDON_ code is replaced there by the
+ * generic NETWORK_ENDPOINT_REVALIDATION_FAILED. So these classifications stay
+ * local by construction, which is the requirement.
+ *
+ * Abort is checked before the kill test because an aborted child is also
+ * reported as killed.
+ */
+function classifyMetadataFailure(error: ExecFileException, signal?: AbortSignal): string {
+  if (signal?.aborted || error.name === 'AbortError' || error.code === 'ABORT_ERR') return 'ADDON_METADATA_CANCELLED'
+  if (error.code === 'ENOENT') return 'ADDON_METADATA_TOOL_MISSING'
+  if (error.killed === true) return 'ADDON_METADATA_TIMEOUT'
+  if (typeof error.code === 'number' && error.code !== 0) return 'ADDON_METADATA_COMMAND_FAILED'
+  return 'NETWORK_METADATA_UNAVAILABLE'
+}
+
+/** Local diagnosis only. Never rendered into a cloud payload; see the
+ *  classifyMetadataFailure comment for why the prefix keeps that true. */
+const METADATA_STDERR_DIAGNOSTIC_LIMIT = 200
+
+function metadataFailure(code: string, stderr: unknown): NetworkDiscoveryError {
+  const text = typeof stderr === 'string' ? stderr : ''
+  const detail = text.replace(/\s+/g, ' ').trim().slice(0, METADATA_STDERR_DIAGNOSTIC_LIMIT)
+  return detail ? new NetworkDiscoveryError(code, detail) : new NetworkDiscoveryError(code)
+}
+
+function runWindowsMetadata(signal?: AbortSignal): Promise<unknown> {
   return new Promise((resolve, reject) => {
     execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', WINDOWS_NETWORK_METADATA_COMMAND],
       { windowsHide: true, timeout: NETWORK_DISCOVERY_LIMITS.metadataTimeoutMs, maxBuffer: 1024 * 1024,
-        encoding: 'utf8', signal }, (error, stdout) => {
-        if (error) { reject(new NetworkDiscoveryError('NETWORK_METADATA_UNAVAILABLE')); return }
+        encoding: 'utf8', signal }, (error, stdout, stderr) => {
+        if (error) { reject(metadataFailure(classifyMetadataFailure(error, signal), stderr)); return }
         try { resolve(JSON.parse(stdout.replace(/^\uFEFF/, '').trim())) }
-        catch { reject(new NetworkDiscoveryError('NETWORK_METADATA_INVALID')) }
+        catch { reject(metadataFailure('NETWORK_METADATA_INVALID', stderr)) }
       })
   })
+}
+
+/**
+ * One retry, so a single spike no longer pushes the program into an error
+ * state. Only consecutive failures surface.
+ *
+ * Not retried: a cancelled read (the caller asked to stop, retrying would
+ * ignore that) and a missing powershell.exe (deterministic within a session,
+ * so a second spawn only adds latency to the same answer).
+ *
+ * This is the default reader. The delivery path overrides deps.readMetadata
+ * with the persistent reader in networkDiscoveryMetadata.ts, so neither the
+ * widened timeout nor this retry runs inside a claimed job lease, and the
+ * two-fresh-reads contract of withWindowsValidationSnapshots is untouched.
+ */
+async function readWindowsMetadata(signal?: AbortSignal): Promise<unknown> {
+  try { return await runWindowsMetadata(signal) }
+  catch (first) {
+    const code = first instanceof NetworkDiscoveryError ? first.code : ''
+    if (code === 'ADDON_METADATA_CANCELLED' || code === 'ADDON_METADATA_TOOL_MISSING') throw first
+    checkAbort(signal)
+    return await runWindowsMetadata(signal)
+  }
 }
 
 export async function getWindowsLocalNetworks(deps: NetworkDiscoveryDependencies = {}, signal?: AbortSignal): Promise<LocalNetworkSnapshot> {
