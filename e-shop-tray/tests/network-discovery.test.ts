@@ -153,9 +153,9 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
   // NETWORK_METADATA_UNAVAILABLE. These fix each cause to its own code so a hot
   // idle timeout stays distinguishable from a machine missing powershell.exe.
   it.each([
-    ['timeout kill', Object.assign(new Error('timeout'), { killed: true, signal: 'SIGTERM' }), 'ADDON_METADATA_TIMEOUT'],
-    ['non-zero exit', Object.assign(new Error('exit 1'), { code: 1, killed: false }), 'ADDON_METADATA_COMMAND_FAILED'],
-    ['missing powershell.exe', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT', killed: false }), 'ADDON_METADATA_TOOL_MISSING'],
+    ['timeout kill', Object.assign(new Error('timeout'), { killed: true, signal: 'SIGTERM' }), 'NETWORK_METADATA_TIMEOUT'],
+    ['non-zero exit', Object.assign(new Error('exit 1'), { code: 1, killed: false }), 'NETWORK_METADATA_COMMAND_FAILED'],
+    ['missing powershell.exe', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT', killed: false }), 'NETWORK_METADATA_TOOL_MISSING'],
     ['unclassified fault', new Error('something else'), 'NETWORK_METADATA_UNAVAILABLE'],
   ])('reports %s as its own code and retries once before failing', async (_label, fault, code) => {
     let calls = 0
@@ -168,7 +168,7 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
     const deps = { platform: () => 'win32', interfaces: () => interfaces() }
     await expect(getWindowsLocalNetworks(deps)).rejects.toThrow(code)
     // Deterministic causes are not retried; transient ones get exactly one retry.
-    expect(calls).toBe(code === 'ADDON_METADATA_TOOL_MISSING' ? 1 : 2)
+    expect(calls).toBe(code === 'NETWORK_METADATA_TOOL_MISSING' ? 1 : 2)
   })
 
   // The entry checkAbort already rejects an up-front aborted signal with the
@@ -184,7 +184,7 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
       return {} as ReturnType<typeof execFile>
     })
     const deps = { platform: () => 'win32', interfaces: () => interfaces() }
-    await expect(getWindowsLocalNetworks(deps, controller.signal)).rejects.toThrow('ADDON_METADATA_CANCELLED')
+    await expect(getWindowsLocalNetworks(deps, controller.signal)).rejects.toThrow('NETWORK_METADATA_CANCELLED')
     expect(calls).toBe(1)
   })
 
@@ -214,8 +214,8 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
     const deps = { platform: () => 'win32', interfaces: () => interfaces() }
     const error = await getWindowsLocalNetworks(deps).catch((thrown: unknown) => thrown) as
       { code: string; message: string; detail?: string }
-    expect(error.code).toBe('ADDON_METADATA_COMMAND_FAILED')
-    expect(error.message).toBe('ADDON_METADATA_COMMAND_FAILED')
+    expect(error.code).toBe('NETWORK_METADATA_COMMAND_FAILED')
+    expect(error.message).toBe('NETWORK_METADATA_COMMAND_FAILED')
     expect(error.detail).toHaveLength(200)
     expect(error.detail).not.toContain('secret-looking-tail')
   })

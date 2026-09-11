@@ -42,9 +42,14 @@ $routes = @(Get-NetRoute -AddressFamily IPv4 -PolicyStore ActiveStore -ErrorActi
 `.trim()
 
 export class NetworkDiscoveryError extends Error {
-  /** `detail` is a truncated local diagnostic excerpt. It is never read by the
-   *  status surface (main.ts code() reads only `code`) and never enters a cloud
-   *  payload, which carries only NetworkDeliveryError.code. */
+  /** `code` is allowed to travel: preDelivery() forwards a NETWORK_-prefixed
+   *  message to the cloud resultCode, which is how the observability page can
+   *  group failure types without anyone being on site.
+   *
+   *  `detail` is the opposite. It is a truncated stderr excerpt that may contain
+   *  a hostname, file path, Windows user name or subnet, so it must stay local.
+   *  Nothing forwards it: preDelivery reads only `message`, failure() reads only
+   *  `code`, and main.ts code() reads only `code`. */
   constructor(readonly code: string, readonly detail?: string) { super(code); this.name = 'NetworkDiscoveryError' }
 }
 export type LocalNetwork = Readonly<{
@@ -244,27 +249,37 @@ export function createLocalNetworkSnapshot(metadata: unknown, interfaces: Interf
  * single NETWORK_METADATA_UNAVAILABLE, which made a hot-idle timeout
  * indistinguishable from a missing powershell.exe on the machine.
  *
- * The codes deliberately use the ADDON_ prefix, not NETWORK_. Only a message
- * matching /^NETWORK_[A-Z0-9_]+$/ survives preDelivery() in networkRuntime.ts
- * and becomes a cloud resultCode; an ADDON_ code is replaced there by the
- * generic NETWORK_ENDPOINT_REVALIDATION_FAILED. So these classifications stay
- * local by construction, which is the requirement.
+ * These names are a de facto contract. The NETWORK_ prefix is required, not
+ * decorative: preDelivery() in networkRuntime.ts forwards a message to the
+ * cloud resultCode only when it matches /^NETWORK_[A-Z0-9_]+$/, and the
+ * observability page groups failures by resultCode. A differently prefixed code
+ * would be replaced there by the generic NETWORK_ENDPOINT_REVALIDATION_FAILED
+ * and the distinction would be lost to anyone not standing at the machine.
+ * They also join the existing NETWORK_METADATA_* family (UNAVAILABLE, INVALID,
+ * LIMIT, CLEANUP_FAILED). Do not rename them casually.
  *
  * Abort is checked before the kill test because an aborted child is also
  * reported as killed.
  */
 function classifyMetadataFailure(error: ExecFileException, signal?: AbortSignal): string {
-  if (signal?.aborted || error.name === 'AbortError' || error.code === 'ABORT_ERR') return 'ADDON_METADATA_CANCELLED'
-  if (error.code === 'ENOENT') return 'ADDON_METADATA_TOOL_MISSING'
-  if (error.killed === true) return 'ADDON_METADATA_TIMEOUT'
-  if (typeof error.code === 'number' && error.code !== 0) return 'ADDON_METADATA_COMMAND_FAILED'
+  if (signal?.aborted || error.name === 'AbortError' || error.code === 'ABORT_ERR') return 'NETWORK_METADATA_CANCELLED'
+  if (error.code === 'ENOENT') return 'NETWORK_METADATA_TOOL_MISSING'
+  if (error.killed === true) return 'NETWORK_METADATA_TIMEOUT'
+  if (typeof error.code === 'number' && error.code !== 0) return 'NETWORK_METADATA_COMMAND_FAILED'
   return 'NETWORK_METADATA_UNAVAILABLE'
 }
 
-/** Local diagnosis only. Never rendered into a cloud payload; see the
- *  classifyMetadataFailure comment for why the prefix keeps that true. */
 const METADATA_STDERR_DIAGNOSTIC_LIMIT = 200
 
+/**
+ * This is the only place stderr is ever retained, and it is truncated here,
+ * inside the execFile callback, before the error object exists. The full string
+ * is never stored, never assigned to `message`, and never leaves this scope.
+ *
+ * The excerpt may still contain a hostname, path, Windows user name or subnet,
+ * so it rides on `detail`, which nothing forwards: the cloud payload is built
+ * from NetworkDeliveryError.code, and preDelivery reads only `message`.
+ */
 function metadataFailure(code: string, stderr: unknown): NetworkDiscoveryError {
   const text = typeof stderr === 'string' ? stderr : ''
   const detail = text.replace(/\s+/g, ' ').trim().slice(0, METADATA_STDERR_DIAGNOSTIC_LIMIT)
@@ -300,7 +315,7 @@ async function readWindowsMetadata(signal?: AbortSignal): Promise<unknown> {
   try { return await runWindowsMetadata(signal) }
   catch (first) {
     const code = first instanceof NetworkDiscoveryError ? first.code : ''
-    if (code === 'ADDON_METADATA_CANCELLED' || code === 'ADDON_METADATA_TOOL_MISSING') throw first
+    if (code === 'NETWORK_METADATA_CANCELLED' || code === 'NETWORK_METADATA_TOOL_MISSING') throw first
     checkAbort(signal)
     return await runWindowsMetadata(signal)
   }
