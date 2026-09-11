@@ -1,1 +1,199 @@
-:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#18323d;background:#f3f6f5;font-size:14px;line-height:1.6}*{box-sizing:border-box}body{margin:0}main{max-width:780px;margin:0 auto;padding:32px 28px 20px}header{margin-bottom:26px}.eyebrow{font-size:11px;letter-spacing:2px;color:#36745f;font-weight:700}h1{font-size:28px;letter-spacing:-.7px;margin:8px 0}h2{font-size:17px;margin:0 0 14px}p{margin:8px 0;color:#566b74}section{background:#fff;border:1px solid #dce5e1;border-radius:14px;padding:22px;margin:14px 0}.status{display:flex;gap:16px;align-items:center;justify-content:space-between;border-left:4px solid #377b63}.status h2{margin:8px 0 0}#pill{font-size:11px;letter-spacing:.5px;background:#e8f2ed;color:#256248;border-radius:30px;padding:4px 9px}.number{display:inline-grid;place-items:center;background:#edf3ef;width:25px;height:25px;border-radius:50%;margin-right:8px;color:#306e53}.modes{display:grid;grid-template-columns:1fr 1fr;gap:12px}.modes label{border:1px solid #d5dfda;padding:14px;border-radius:8px;cursor:pointer}.modes strong{font-size:15px}.modes small{display:block;color:#64786d;margin-left:22px;font-size:12px}.note{font-size:12px;color:#6b7c76}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}button{font:inherit;font-size:13px;border:1px solid #245f49;border-radius:7px;padding:9px 14px;color:white;background:#245f49;cursor:pointer;font-weight:600}button.secondary{color:#315e4c;background:#f6f9f7;border-color:#cfdbd4}button:disabled{opacity:.4;cursor:not-allowed}button:hover:enabled{filter:brightness(.94)}button:focus-visible,input:focus-visible{outline:3px solid #8ebdb0;outline-offset:2px}.manual{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin:14px 0}.manual label{font-size:12px;color:#566b63}input:not([type=checkbox]):not([type=radio]){display:block;width:100%;font:inherit;color:#18323d;padding:10px;border:1px solid #bdcec5;border-radius:6px;background:#fafcfb}input[type=radio],input[type=checkbox]{accent-color:#245f49;margin-right:7px}.check{display:flex;align-items:flex-start;gap:4px;font-size:12px;margin:14px 0}.check input{margin-top:5px}.candidate{display:block;width:100%;text-align:left;margin:6px 0;color:#315e4c;background:#f3f8f5;border-color:#d4e2da}#confirmation{background:#f2f7ee;padding:14px;margin-top:14px;border-radius:8px}#test-summary{overflow-wrap:anywhere;font-size:12px}details{font-size:12px;padding:14px;background:#eaf0ec;border-radius:10px;margin:16px 0}summary{cursor:pointer;font-weight:600}footer{display:flex;gap:12px;justify-content:space-between;font-size:10px;color:#708078}code{overflow-wrap:anywhere;font-size:10px;max-width:70%}[hidden]{display:none!important}
+/* 店小二 · 打印　设置界面
+   目标硬件：V727 触摸屏一体机。所有可点区域 >= 52px，正文 >= 16px。 */
+
+:root{
+  --ink:#132B33; --ink-2:#4C6068; --ink-3:#6E828A;
+  --bg:#F2F5F4; --card:#FFFFFF; --line:#DBE3E0; --line-2:#EDF1EF;
+  --brand:#1E6349; --brand-2:#2C8163; --brand-bg:#E6F0EB;
+  --warn:#8A5A12; --warn-bg:#FBF1DE; --warn-line:#E3CE9C;
+  --bad:#9C3B2C; --bad-bg:#F8E5E1; --bad-line:#E4BDB4;
+  font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  color:var(--ink); background:var(--bg); font-size:16px; line-height:1.6;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg)}
+main{max-width:760px;margin:0 auto;padding:28px 22px 40px}
+@media (max-width:520px){main{padding:20px 15px 32px}}
+
+h1{font-size:26px;margin:10px 0 0;font-weight:700;letter-spacing:-.02em}
+h2{font-size:18px;margin:0 0 6px;font-weight:600;display:flex;align-items:center;gap:11px}
+p{margin:8px 0 0}
+.note{font-size:14px;color:var(--ink-2)}
+strong{font-weight:600}
+
+/* ── 状态区 ── */
+.head{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--brand);
+  border-radius:12px;padding:20px;display:flex;gap:16px;align-items:flex-start;
+  justify-content:space-between;flex-wrap:wrap}
+#pill{display:inline-block;font-size:14px;font-weight:700;background:var(--brand-bg);
+  color:var(--brand);padding:5px 12px;border-radius:20px}
+#status-message{color:var(--ink-2);font-size:15px;max-width:52ch}
+
+/* ── 检查清单（只在问题态显示）── */
+.checklist{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:18px 20px;margin-top:14px;font-size:15px;color:var(--ink-2)}
+.checklist p{margin:0 0 7px}
+.ck-title{font-weight:700;color:var(--ink);font-size:16px}
+.ck-foot{margin-top:13px;padding-top:12px;border-top:1px solid var(--line-2);color:var(--ink)}
+
+/* ── 主操作 ── */
+.act{margin-top:16px;text-align:center}
+#entry-message{font-size:14px;color:var(--ink-2);max-width:52ch;margin:12px auto 0}
+
+/* ── 卡片与步骤 ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:20px;margin-top:14px}
+.num{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:50%;
+  background:var(--brand-bg);color:var(--brand);font-size:15px;font-weight:700;flex:0 0 auto}
+
+/* ── 按钮：触摸尺寸 ── */
+button{font:inherit;font-size:16px;font-weight:600;min-height:52px;padding:13px 22px;
+  border-radius:10px;border:1px solid var(--brand);background:var(--brand);color:#fff;cursor:pointer}
+button.secondary{background:#fff;color:var(--brand);border-color:#B9CCC4}
+button.quiet{background:transparent;color:var(--ink-2);border-color:var(--line);font-weight:500}
+button:disabled{opacity:.42;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{
+  outline:3px solid var(--brand-2);outline-offset:2px}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.toolbar button{flex:1 1 auto;min-width:150px}
+#test,#enable,#confirm{width:100%;font-size:18px;min-height:60px;margin-top:16px}
+#cashier{width:100%;max-width:420px;font-size:21px;min-height:78px}
+button.linky{background:none;border:none;color:var(--ink-3);font-weight:400;font-size:15px;
+  text-decoration:underline;text-underline-offset:3px;min-height:52px;padding:12px 16px;margin-top:18px}
+button.linky:hover{color:var(--ink-2)}
+
+/* ── 打印方式：整块可点 ── */
+.modes{display:grid;gap:11px;margin-top:14px}
+.modes label{display:flex;gap:13px;align-items:flex-start;border:2px solid var(--line);
+  border-radius:11px;padding:16px;cursor:pointer;min-height:64px;background:#fff}
+.modes label:has(input:checked){border-color:var(--brand);background:var(--brand-bg)}
+.modes strong{font-size:17px;display:block}
+.modes small{font-size:14px;color:var(--ink-2);display:block;margin-top:3px}
+
+/* ── 确认勾选：整行 >= 52px，框 >= 24px ── */
+.check{display:flex;gap:13px;align-items:flex-start;min-height:52px;padding:13px 15px;
+  border:1px solid var(--line);border-radius:10px;background:#fff;margin-top:11px;
+  font-size:15px;cursor:pointer;line-height:1.5}
+.check:has(input:checked){border-color:var(--brand);background:var(--brand-bg)}
+input[type=checkbox],input[type=radio]{width:24px;height:24px;margin:0;
+  accent-color:var(--brand);flex:0 0 auto}
+.modes input[type=radio]{width:22px;height:22px;margin-top:2px}
+
+/* ── 候选打印机（由 ui.ts 生成，class=candidate）── */
+#candidates{margin-top:13px;display:grid;gap:9px}
+button.candidate{display:block;width:100%;text-align:left;background:#fff;color:var(--ink);
+  border:2px solid var(--line);border-radius:11px;padding:16px 18px;min-height:64px;
+  font-size:16px;font-weight:500;line-height:1.45}
+button.candidate:hover{border-color:#B9CCC4}
+
+/* ── 手动填地址 ── */
+details.manual{margin-top:14px;border:1px solid var(--line);border-radius:11px;background:#fff}
+details.manual>summary{padding:16px;cursor:pointer;font-size:15px;font-weight:500;
+  color:var(--brand);min-height:52px;display:flex;align-items:center;list-style:none}
+details.manual>summary::-webkit-details-marker{display:none}
+details.manual>summary::before{content:"＋";font-weight:700;margin-right:8px}
+details.manual[open]>summary::before{content:"−"}
+.fields{padding:0 16px;display:grid;grid-template-columns:2fr 1fr;gap:12px}
+@media (max-width:460px){.fields{grid-template-columns:1fr}}
+.fields label{font-size:14px;color:var(--ink-2);font-weight:500}
+.fields input{display:block;width:100%;font:inherit;font-size:19px;margin-top:6px;padding:14px;
+  min-height:56px;border:2px solid #C3D2CB;border-radius:9px;background:#FBFDFC;
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.kbdnote{grid-column:1/-1;font-size:14px;color:var(--warn);background:var(--warn-bg);
+  padding:12px 14px;border-radius:9px;margin:0}
+details.manual>.note{padding:0 16px 16px;margin:10px 0 0}
+
+#confirmation{margin-top:16px;padding:18px;background:var(--brand-bg);border-radius:11px}
+#test-summary{margin:0;font-size:15px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+
+.sel{display:block;margin-top:14px;font-size:14px;color:var(--ink-2);font-weight:500}
+.sel select{display:block;width:100%;font:inherit;font-size:16px;padding:14px;min-height:56px;
+  margin-top:6px;border:2px solid #C3D2CB;border-radius:9px;background:#fff;color:var(--ink)}
+
+/* ── 维护区：默认收起 ── */
+.maint{margin-top:24px;border-top:1px solid var(--line);padding-top:6px}
+.maint>details{border-bottom:1px solid var(--line-2)}
+.maint>details>summary{padding:17px 4px;cursor:pointer;font-size:16px;font-weight:500;
+  color:var(--ink-2);min-height:52px;display:flex;align-items:center;
+  justify-content:space-between;list-style:none}
+.maint>details>summary::-webkit-details-marker{display:none}
+.maint>details>summary::after{content:"›";font-size:22px;color:var(--ink-3)}
+.maint>details[open]>summary::after{content:"⌄"}
+.maint .body{padding:0 4px 22px;font-size:15px;color:var(--ink-2)}
+#shortcut-results{margin-top:12px}
+#shortcut-results>div{padding:12px 0;border-top:1px solid var(--line-2)}
+#shortcut-results p{margin:0;font-size:15px}
+
+footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line-2);
+  display:flex;justify-content:space-between;gap:14px;font-size:13px;color:var(--ink-3)}
+#diagnostic{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;
+  overflow-wrap:anywhere;max-width:64%}
+
+[hidden]{display:none!important}
+
+/* ══ 日常态：只剩状态、一个大按钮、一个不起眼的设置链接 ══ */
+main[data-view="calm"] .checklist,
+main[data-view="calm"] .card,
+main[data-view="calm"] .maint,
+main[data-view="calm"] #diagnostic,
+main[data-view="calm"] #retry-binding{display:none!important}
+main[data-view="calm"] footer{justify-content:center}
+main[data-view="calm"] .head{border-left-color:transparent;border:none;background:none;
+  padding:24px 0 0;justify-content:center;text-align:center}
+main[data-view="calm"] .headmain{width:100%}
+main[data-view="calm"] h1{font-size:30px;margin-top:18px}
+main[data-view="calm"] #status-message{margin-inline:auto;font-size:16px}
+main[data-view="calm"] #pill{font-size:16px;padding:11px 22px;border-radius:30px}
+main[data-view="calm"] .act{margin-top:28px}
+
+/* ══ 问题态：界面自己说清楚发生了什么 ══ */
+main[data-view="alarm"] .card,
+main[data-view="alarm"] .maint,
+main[data-view="alarm"] #retry-binding{display:none!important}
+main[data-view="alarm"] .head{border-left-color:var(--bad);background:var(--bad-bg);
+  border-color:var(--bad-line)}
+main[data-view="alarm"] #pill{background:var(--bad);color:#fff;font-size:15px;padding:8px 16px}
+main[data-view="alarm"] h1{font-size:19px;font-weight:600}
+main[data-view="alarm"] #status-message{color:var(--ink);font-size:18px;font-weight:600;max-width:56ch}
+main[data-view="alarm"] #cashier{background:#fff;color:var(--brand);border-color:#B9CCC4;
+  font-size:17px;min-height:56px}
+main[data-view="alarm"] #goto-setup{background:var(--bad);border:1px solid var(--bad);
+  color:#fff;text-decoration:none;font-weight:600;font-size:17px;min-height:56px;
+  width:100%;max-width:420px;border-radius:10px;margin-top:14px}
+main[data-view="alarm"] .act{display:flex;flex-direction:column-reverse;align-items:center}
+
+/* 两份检查清单，按严重程度显示其中一份 */
+.checklist{display:none}
+main[data-view="alarm"][data-severity="down"] .checklist[data-for="down"],
+main[data-view="alarm"][data-severity="unsure"] .checklist[data-for="unsure"]{display:block}
+
+/* 不确定态用琥珀色，与"打不出来"区分开 */
+main[data-view="alarm"][data-severity="unsure"] .head{border-left-color:var(--warn);
+  background:var(--warn-bg);border-color:var(--warn-line)}
+main[data-view="alarm"][data-severity="unsure"] #pill{background:var(--warn)}
+main[data-view="alarm"][data-severity="unsure"] #goto-setup{background:var(--warn);
+  border-color:var(--warn)}
+
+/* ══ 设置态 ══ */
+main[data-view="setup"] .checklist,
+main[data-view="setup"] #goto-setup{display:none!important}
+main[data-view="setup"] .act{margin-top:14px}
+main[data-view="setup"] #cashier{font-size:18px;min-height:60px}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ══ 首帧：render() 尚未设置 data-view 时只显示状态区，避免闪过整页 ══ */
+main:not([data-view]) .checklist,
+main:not([data-view]) .card,
+main:not([data-view]) .maint,
+main:not([data-view]) .act{display:none!important}
+
+/* ══ 候选构建注入的 TEST ONLY 横幅 ══
+   由 build-network-addon.mjs 的 candidateHtml() 插在 <main> 之后，无 class。
+   三屏都必须可见，不受 data-view 隐藏规则影响。 */
+main > section[role="note"]{
+  display:block!important;background:var(--warn-bg);border:2px solid var(--warn);
+  border-radius:12px;padding:16px 18px;margin-bottom:14px}
+main > section[role="note"] strong{
+  display:block;font-size:17px;color:var(--warn);margin-bottom:6px;letter-spacing:.01em}
+main > section[role="note"] p{margin:0;font-size:14px;color:var(--ink-2)}

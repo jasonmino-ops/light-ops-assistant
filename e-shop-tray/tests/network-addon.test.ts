@@ -358,8 +358,8 @@ describe('Network Add-on independent installer contract', () => {
     const enable = main.split("case 'enable': {")[1].split("case 'autostart':")[0]
     expect(enable).not.toContain('setLoginItemSettings')
     const html = await readFile(path.join(tray, 'network-addon/ui.html'), 'utf8')
-    expect(html).toContain('<details open><summary>桌面入口整理')
-    expect(html).toContain('启用打印不会擅自恢复已关闭的自启')
-    expect(html).toContain('公共桌面的旧 E-Shop 入口不会自动移动')
+    expect(html).toContain('<summary>整理桌面图标')
+    expect(html).toContain('不会自己再把它打开')
+    expect(html).toContain('公共桌面上的旧图标需要管理员人工处理')
   })
 })
