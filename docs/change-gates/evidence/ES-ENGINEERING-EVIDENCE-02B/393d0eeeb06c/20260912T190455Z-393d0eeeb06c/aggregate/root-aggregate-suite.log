@@ -1,0 +1,4 @@
+SUITE_START	root-top-level	lane=AGGREGATE	expected=82	head=393d0eeeb06cf50c1c367b9612cd61239046aa6a
+LANE_RESULT	CORE	environment=PASS	overall=PASS	exit=0	summary_sha256=4f9c739b2bee079f79decaac7f7a796a977c8ccd29f99ca3fb43a3a58268816f
+LANE_RESULT	INTEGRATION	environment=BLOCKED	overall=BLOCKED	exit=2	summary_sha256=d8b9c98af646565d5c24b375d6f87beedcc222fdc87093a3545b3c57d263db61
+SUITE_SUMMARY	root-top-level	expected=82	collected=82	executed=82	pass=71	fail=11	known=1	new=0	recovered=1	known_environment_blocked=1	environment_failures=10	unassigned=0	duplicate=0	environment=BLOCKED	overall=BLOCKED
