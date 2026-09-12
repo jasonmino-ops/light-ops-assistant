@@ -9,6 +9,7 @@ import { deflateRawSync } from 'node:zlib'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 const tray = path.resolve(__dirname, '..')
+const root = path.resolve(tray, '..')
 const script = path.join(tray, 'scripts/build-network-addon.mjs')
 const load = createRequire(path.join(tray, 'package.json'))
 const builder = load('./network-addon/electron-builder.cjs')
@@ -62,6 +63,25 @@ describe('Network Add-on build and release boundary', () => {
     expect(() => build.assertCandidateInput('approved.ts', 'changed', { 'approved.ts': 'approved' }, 'changed')).toThrow('ADDON_CANDIDATE_SOURCE_NOT_APPROVED')
     expect(() => build.assertCandidateInput('unchanged.ts', 'baseline', {}, 'baseline')).not.toThrow()
     expect(() => build.assertCandidateInput('extra.ts', 'draft', {}, null)).toThrow('ADDON_CANDIDATE_SOURCE_NOT_APPROVED')
+  })
+
+  it('pins the active rc.7 build grant to exact reviewed repository bytes', async () => {
+    const exception = JSON.parse(await readFile(path.join(root,
+      'docs/change-gates/exceptions/ES-PRINT-NETWORK-FIRST-01.json'), 'utf8'))
+    const authorization = build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc7-build')
+    expect(authorization).toMatchObject({
+      authorizationId: 'NETWORK-COMMERCIAL-CANDIDATE-RC7-BUILD-17',
+      baseOriginMainSha: '4b48610f63b5dbbdc73eb46f9feeb4c7f6a2c5c6',
+      status: 'ACTIVE',
+      candidateBuild: build.CANDIDATE_BUILD,
+    })
+    const actual: Record<string, string> = {}
+    for (const file of authorization.authorizedPaths) {
+      actual[file] = createHash('sha256').update(await readFile(path.join(root, file))).digest('hex')
+    }
+    expect(actual).toEqual(authorization.authorizedPathSha256)
+    expect(createHash('sha256').update(build.canonicalMapping(actual)).digest('hex'))
+      .toBe(authorization.approvedContentMappingSha256)
   })
 
   it('actual candidate command fails on injected approval before any compiler or installer work', () => {
@@ -135,13 +155,13 @@ describe('Network Add-on build and release boundary', () => {
   it('candidate payload records a dirty source honestly and marks the transformed visible UI TEST ONLY', async () => {
     const manifest = build.createManifest({ source: { baselineCommit: build.BASELINE_COMMIT,
       headCommit: build.BASELINE_COMMIT, sourceCommit: null, workingTreeDirty: true }, inputs: {}, outputs: {}, tools: {}, candidate: { authorizationId: 'TEST-FIXTURE' } })
-    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.6', sourceCommit: null, workingTreeDirty: true,
+    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.7', sourceCommit: null, workingTreeDirty: true,
       testOnly: true, installer: false, runtimeIncluded: false, releaseReady: false, published: false,
       installed: false, fieldVerified: false, buildClass: 'unsigned-test-candidate', signingStatus: 'unsigned-test-only' })
     const original = await readFile(path.join(tray, 'network-addon/ui.html'))
     const html = build.candidateHtml(original).toString()
     expect(html).toContain('<title>E-Shop Network Print — TEST ONLY</title>')
-    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.6')
+    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.7')
     expect(html).toContain('未正式发布')
     expect(html).toContain('发送 TEST 纸票前须由负责人明确确认')
     expect(html.match(/id="[^"]+"/g)).toEqual(original.toString().match(/id="[^"]+"/g))

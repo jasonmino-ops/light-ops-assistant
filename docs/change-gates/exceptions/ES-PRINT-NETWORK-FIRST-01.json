@@ -996,6 +996,94 @@
         "productName, appId, installer directory, Desktop0.4.7 installer/program/identity, Network binding/configuration/pause/journal/history, Relay/poller/transport/server/schema, QZ/USB/Windows Queue."
       ],
       "expirationCondition": "Close this exact grant once the rc.6 candidate has been packaged and retained with its build record, or once a later candidate supersedes it. It authorizes packaging only; it is neither acceptance nor FIELD VERIFIED, and it is not future authorization."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-CANDIDATE-RC7-BUILD-17",
+      "featureBranch": "codex/es-network-candidate-rc7-build",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "4b48610f63b5dbbdc73eb46f9feeb4c7f6a2c5c6",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-09-12T17:34:55Z",
+      "approvedAt": "2026-09-12T17:34:55Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder approved RC7-PREPARE so the candidate version contract and one exact ACTIVE authorization can become part of the next trusted origin/main baseline before any rc.7 build. This grant pins the complete seventeen-path rc.7 build/review surface, including the current network discovery diagnostics and their test, and permits a later zero-delta build branch only after this preparation is independently reviewed, separately authorized for integration, and integrated into origin/main. It does not authorize this preparation turn to build, push, merge, deploy, install or perform FIELD work.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/electron-builder.cjs",
+        "e-shop-tray/network-addon/entryCoordinator.ts",
+        "e-shop-tray/network-addon/installer.nsh",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "e-shop-tray/network-addon/shortcutWindows.ts",
+        "e-shop-tray/network-addon/ui.css",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/src/networkDiscovery.ts",
+        "e-shop-tray/tests/network-addon-entry.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts",
+        "e-shop-tray/tests/network-discovery.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/electron-builder.cjs": "81962606c88086a8de8b39858375011430d5870204e74404380577c3538d9d4a",
+        "e-shop-tray/network-addon/entryCoordinator.ts": "e9e3e2b255c51a715b73ec6ac90b37e843f4acfbebf41cb4db5dbd1aaa3d2a27",
+        "e-shop-tray/network-addon/installer.nsh": "82d9505545ee64b819f62edb229063e44657a1999e532cf4aacfd0feb231c746",
+        "e-shop-tray/network-addon/main.ts": "803fc60149e513a63ad550188a56c9083659ff0af2a942d3038d22d0bdcac758",
+        "e-shop-tray/network-addon/preload.ts": "65d555ed7efbd3d01c0f7f4d837b3d6471faacdd6ab16d744d3a2a0966f691b2",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "2879dacf1f6b9fa42b18a4caa0fa7405329bcb77c7cc19bc528c3394f088b638",
+        "e-shop-tray/network-addon/shortcutWindows.ts": "1c8bd08f46ab5a58066987f56c9a9f4ec1ef74c4d9f386e95e28d08045007c83",
+        "e-shop-tray/network-addon/ui.css": "543d8f48aea9b6d722257793c39b87d447abd1900979547122f8d9f0f5d1a54e",
+        "e-shop-tray/network-addon/ui.html": "4aadc2930d233a963fce9872ebc6807074cb3846b3600946d055715d86752024",
+        "e-shop-tray/network-addon/ui.ts": "03c0f173ba95fa40212cfb3ddbbfcdb2c1d0ad1dd4088926cca175b81412b446",
+        "e-shop-tray/scripts/build-network-addon.mjs": "b25776613c343e4e942e72063949d73add048c2d2e88635a6cdc3af2854af50d",
+        "e-shop-tray/src/networkDiscovery.ts": "fa8464af44a166b83e9671cf03abd8de60c0d2681a19b6f67b9f4757742a1f05",
+        "e-shop-tray/tests/network-addon-entry.test.ts": "58c8ce8fbb54367447122bba57325d2754e0e69ff5a46851b3318bfa7f7d577e",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "0d195b7c5b574a43a99d0abaacbdb087329b1f2872d39c4d4f5d51a0dcf4f1d9",
+        "e-shop-tray/tests/network-addon.test.ts": "d406946769cbb17f06e9c8e01b5c11539f47e86213a6387923dcb91831d1c8ed",
+        "e-shop-tray/tests/network-discovery.test.ts": "d908b3004674ebd22d4df86b1efae6a8e77bebabcab087df41bc555307409479"
+      },
+      "approvedContentMappingSha256": "c293781461cc28479d4789ba9d8ce6ac5daae6858e93e397c4486cc69c22c71f",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.7",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "createdOnBranch": "codex/es-network-candidate-rc7-prepare",
+      "governanceStartingHead": "4b48610f63b5dbbdc73eb46f9feeb4c7f6a2c5c6",
+      "sourceDraft": {
+        "path": "codex/es-network-candidate-rc7-prepare",
+        "startingHead": "4b48610f63b5dbbdc73eb46f9feeb4c7f6a2c5c6",
+        "sourceCommit": null,
+        "fileCount": 17,
+        "incrementalFileCount": 2,
+        "sourceSnapshotSha256": null,
+        "review": "The rc.7 version constant, direct contract test and this exact authorization require fresh-context independent review before any integration. The review result belongs to the RC7-PREPARE task record and Candidate report; no installer is built in this preparation."
+      },
+      "toolchainEvidence": {
+        "rc7BuildPerformed": false,
+        "requiredElectronRuntime": "44.3.0",
+        "requiredTarget": "win32-x64",
+        "note": "This authorization records the unchanged locked build contract only. Toolchain and build-machine evidence must be captured by the later separately approved rc.7 Build Gate."
+      },
+      "allowedPurposes": [
+        "After RC7-PREPARE is independently reviewed and integrated by a separate Founder Gate, establish codex/es-network-candidate-rc7-build at the resulting trusted origin/main with zero commits over that main.",
+        "Under a later explicit rc.7 Build Gate, package exactly one unsigned TEST-only 0.1.0-commercial-rc.7 NSIS candidate and retain its source, toolchain, machine, bytes and SHA256 evidence.",
+        "Use that retained Candidate only under a later explicit V727 FIELD Gate; this authorization itself is not FIELD acceptance."
+      ],
+      "prohibitedChanges": [
+        "Any source change on the rc.7 build branch; it must carry zero commits over the then-current trusted origin/main and every authorized path must match this exact mapping.",
+        "Any bypass or weakening of exact authorization, Scope Guard, trusted origin/main gate bytes, source snapshots, signing boundary or installer verification.",
+        "Any print product capability, FRONT/KITCHEN, G1, USB, Linux, HRT, Renderer, Agent, networkRuntime, new UI, Desktop0.4.7, QZ, certificate, Windows Queue, schema or migration change.",
+        "Push, main merge, release update, Production deploy, installation, FIELD, code signing, formal publication or release claims without their own explicit Founder Gate."
+      ],
+      "expirationCondition": "Close this exact grant after the one retained rc.7 Candidate is packaged under a separate Founder Build Gate, or when it is explicitly superseded. It authorizes only the exact seventeen-path mapping and exact build branch; it grants no future byte, branch, release or FIELD authority."
     }
   ]
 }
