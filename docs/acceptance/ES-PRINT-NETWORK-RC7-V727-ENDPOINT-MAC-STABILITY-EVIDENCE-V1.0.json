@@ -1,0 +1,149 @@
+{
+  "schema": "D2_ENDPOINT_MAC_PRECHECK_V1",
+  "task": "D2-ENDPOINT-CONTINUITY-PRECHECK",
+  "recordedAtUtc": "2026-09-12T20:42:16.8495202Z",
+  "sourceSha": "cabba4d138553585062d8b7ceb005921d887c69a",
+  "artifact": {
+    "version": "0.1.0-commercial-rc.7",
+    "installerSha256": "91364a92d097c4b9cb8510b9632e4ece78a894474d45c3367da6106b0b10e955"
+  },
+  "method": {
+    "physicalAction": "Founder/onsite operator performed five complete power-off and power-on cycles of the printer server/NP330.",
+    "observation": "A read-only remote monitor observed TCP 9100 transition offline and recover, then used Windows SendARP for the exact confirmed endpoint. TCP probes wrote zero bytes.",
+    "profileRead": "The protected local profile was decrypted in memory under the logged-in Windows account only to obtain endpoint and confirmed hardwareAddress; no decrypted profile or credential is stored in this record."
+  },
+  "baseline": {
+    "observedAtUtc": "2026-09-12T20:37:24.8187570Z",
+    "endpoint": "192.168.18.53:9100",
+    "tcp": {
+      "reachable": true,
+      "elapsedMs": 15,
+      "bytesWritten": 0,
+      "failure": null
+    },
+    "confirmedHardwareAddress": "08-00-27-5c-ca-57",
+    "observedHardwareAddress": "08-00-27-5c-ca-57",
+    "matchesConfirmed": true
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "endpoint": "192.168.18.53:9100",
+      "offlineObservedAtUtc": "2026-09-12T20:40:13.3237375Z",
+      "recoveredAtUtc": "2026-09-12T20:40:24.9336971Z",
+      "tcp": {
+        "reachable": true,
+        "elapsedMs": 352,
+        "bytesWritten": 0,
+        "failure": null
+      },
+      "confirmedHardwareAddress": "08-00-27-5c-ca-57",
+      "observedHardwareAddress": "08-00-27-5c-ca-57",
+      "matchesConfirmed": true
+    },
+    {
+      "round": 2,
+      "endpoint": "192.168.18.53:9100",
+      "offlineObservedAtUtc": "2026-09-12T20:41:00.6057284Z",
+      "recoveredAtUtc": "2026-09-12T20:41:09.7311207Z",
+      "tcp": {
+        "reachable": true,
+        "elapsedMs": 1,
+        "bytesWritten": 0,
+        "failure": null
+      },
+      "confirmedHardwareAddress": "08-00-27-5c-ca-57",
+      "observedHardwareAddress": "08-00-27-5c-ca-57",
+      "matchesConfirmed": true
+    },
+    {
+      "round": 3,
+      "endpoint": "192.168.18.53:9100",
+      "offlineObservedAtUtc": "2026-09-12T20:41:18.9218401Z",
+      "recoveredAtUtc": "2026-09-12T20:41:27.3567691Z",
+      "tcp": {
+        "reachable": true,
+        "elapsedMs": 816,
+        "bytesWritten": 0,
+        "failure": null
+      },
+      "confirmedHardwareAddress": "08-00-27-5c-ca-57",
+      "observedHardwareAddress": "08-00-27-5c-ca-57",
+      "matchesConfirmed": true
+    },
+    {
+      "round": 4,
+      "endpoint": "192.168.18.53:9100",
+      "offlineObservedAtUtc": "2026-09-12T20:41:34.9534352Z",
+      "recoveredAtUtc": "2026-09-12T20:41:47.3566686Z",
+      "tcp": {
+        "reachable": true,
+        "elapsedMs": 246,
+        "bytesWritten": 0,
+        "failure": null
+      },
+      "confirmedHardwareAddress": "08-00-27-5c-ca-57",
+      "observedHardwareAddress": "08-00-27-5c-ca-57",
+      "matchesConfirmed": true
+    },
+    {
+      "round": 5,
+      "endpoint": "192.168.18.53:9100",
+      "offlineObservedAtUtc": "2026-09-12T20:41:51.9343284Z",
+      "recoveredAtUtc": "2026-09-12T20:41:59.8557694Z",
+      "tcp": {
+        "reachable": true,
+        "elapsedMs": 303,
+        "bytesWritten": 0,
+        "failure": null
+      },
+      "confirmedHardwareAddress": "08-00-27-5c-ca-57",
+      "observedHardwareAddress": "08-00-27-5c-ca-57",
+      "matchesConfirmed": true
+    }
+  ],
+  "postCycleReadOnlyCheck": {
+    "observedAtUtc": "2026-09-12T20:42:16.8495202Z",
+    "endpoint": "192.168.18.53:9100",
+    "tcp": {
+      "reachable": true,
+      "elapsedMs": 23,
+      "bytesWritten": 0
+    },
+    "secondaryEndpoint": {
+      "endpoint": "192.168.18.49:9100",
+      "reachable": false,
+      "result": "TIMEOUT",
+      "elapsedMs": 2512,
+      "bytesWritten": 0
+    },
+    "addonMainProcessIdBefore": 1180,
+    "addonMainProcessIdAfter": 1180,
+    "stateIntegrity": {
+      "profile.sealed": {
+        "bytes": 1644,
+        "sha256Before": "6a861bd83cb5e525f23f3296104646e30a0a6fedcc870b91bf06c1bd52b507a0",
+        "sha256After": "6a861bd83cb5e525f23f3296104646e30a0a6fedcc870b91bf06c1bd52b507a0"
+      },
+      "execution-journal.json": {
+        "bytes": 27659,
+        "sha256Before": "adedf1003fcf211257fc4e55909763d523e64d43245d7cb28f8d4c2bde0ccaa8",
+        "sha256After": "adedf1003fcf211257fc4e55909763d523e64d43245d7cb28f8d4c2bde0ccaa8"
+      },
+      "results.jsonl": {
+        "bytes": 49500,
+        "sha256Before": "6cfb01745329b1f3dc5d6d97870f032e8edd87e5c78d9a26123dd6381b2831aa",
+        "sha256After": "6cfb01745329b1f3dc5d6d97870f032e8edd87e5c78d9a26123dd6381b2831aa"
+      }
+    }
+  },
+  "result": {
+    "powerCyclesObserved": 5,
+    "macMatches": 5,
+    "macChanges": 0,
+    "allTcpRecovered": true,
+    "allMacsMatchedConfirmedHardwareAddress": true,
+    "precondition": "PASS"
+  },
+  "proceduralNote": "One earlier read-only runtime-version probe invoked the packaged executable as a secondary instance because its run-as-Node fuse is disabled. The original main process remained PID 1180 and no settings action was taken. The post-cycle process list contained one additional child process; the protected profile, execution journal, and result log byte counts and SHA-256 values were unchanged from the prior read-only snapshot."
+}
