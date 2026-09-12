@@ -4,6 +4,7 @@ import { spawnSync, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   appendFileSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -15,8 +16,11 @@ import { fileURLToPath } from 'node:url'
 
 export const MIN_COLLECTION_RATIO = 0.9
 export const DEFAULT_BASELINE_PATH = 'docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md'
+export const DEFAULT_CORE_MANIFEST_PATH = 'scripts/test/manifests/root-core-tests.json'
+export const DEFAULT_INTEGRATION_MANIFEST_PATH = 'scripts/test/manifests/root-integration-tests.json'
 
 const ROOT_SUITE_NAME = 'root-top-level'
+const DURABLE_EVIDENCE_ROOT = 'docs/change-gates/evidence/ES-ENGINEERING-EVIDENCE-02B'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const DEFAULT_REPO_ROOT = resolve(SCRIPT_DIR, '..', '..')
 
@@ -34,6 +38,164 @@ function unique(values) {
 
 function sha256(content) {
   return createHash('sha256').update(content).digest('hex')
+}
+
+function duplicateValues(values) {
+  const seen = new Set()
+  const duplicates = new Set()
+  for (const value of values) {
+    if (seen.has(value)) duplicates.add(value)
+    seen.add(value)
+  }
+  return stableSort(duplicates)
+}
+
+function assertSafeRelativePath(value, label) {
+  if (typeof value !== 'string' || value.length === 0 || isAbsolute(value)) {
+    throw new Error(`${label} must be a non-empty repository-relative path`)
+  }
+  const normalized = toPosix(value)
+  if (normalized.split('/').includes('..')) {
+    throw new Error(`${label} must not escape its evidence root`)
+  }
+  return normalized
+}
+
+export function parseLaneManifest(raw, expectedLane) {
+  let manifest
+  try {
+    manifest = JSON.parse(raw)
+  } catch (error) {
+    throw new Error(`Invalid ${expectedLane} manifest JSON: ${error.message}`)
+  }
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error(`${expectedLane} manifest must be a JSON object`)
+  }
+  if ('sha256' in manifest || 'manifestSha256' in manifest) {
+    throw new Error(`${expectedLane} manifest must not contain a self SHA-256`)
+  }
+  if (manifest.schemaVersion !== 1 || manifest.lane !== expectedLane) {
+    throw new Error(`${expectedLane} manifest schema or lane is invalid`)
+  }
+  if (!Number.isInteger(manifest.expectedCount) || manifest.expectedCount < 1) {
+    throw new Error(`${expectedLane} manifest expectedCount must be a positive integer`)
+  }
+  if (!Array.isArray(manifest.tests)) {
+    throw new Error(`${expectedLane} manifest tests must be an array`)
+  }
+  const tests = manifest.tests.map((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`${expectedLane} manifest test ${index} must be an object`)
+    }
+    for (const field of ['file', 'lane', 'reason', 'dependencyType', 'evidence']) {
+      if (typeof entry[field] !== 'string' || entry[field].trim().length === 0) {
+        throw new Error(`${expectedLane} manifest test ${index} has no ${field}`)
+      }
+    }
+    if (entry.lane !== expectedLane) {
+      throw new Error(`${expectedLane} manifest test ${entry.file} declares lane ${entry.lane}`)
+    }
+    if (!/^tests\/[^/]+\.test\.(?:ts|cjs)$/.test(entry.file)) {
+      throw new Error(`${expectedLane} manifest has invalid root test path: ${entry.file}`)
+    }
+    return { ...entry }
+  })
+  return { ...manifest, tests }
+}
+
+function loadLaneManifest({ repoRoot, path, lane }) {
+  const absolutePath = isAbsolute(path) ? path : resolve(repoRoot, path)
+  const raw = readFileSync(absolutePath, 'utf8')
+  const manifest = parseLaneManifest(raw, lane)
+  return {
+    lane,
+    path: toPosix(relative(repoRoot, absolutePath)),
+    absolutePath,
+    raw,
+    sha256: sha256(raw),
+    expectedCount: manifest.expectedCount,
+    tests: manifest.tests,
+    files: manifest.tests.map(({ file }) => file),
+  }
+}
+
+function manifestReason(code, message) {
+  return { category: 'MANIFEST', code, message }
+}
+
+export function auditLaneManifests({ coreManifest, integrationManifest, discoveredFiles, integrityErrors = [] }) {
+  const coreFiles = coreManifest.files ?? coreManifest.tests.map(({ file }) => file)
+  const integrationFiles = integrationManifest.files ?? integrationManifest.tests.map(({ file }) => file)
+  const discovered = stableSort(unique(discoveredFiles))
+  const coreUnique = stableSort(unique(coreFiles))
+  const integrationUnique = stableSort(unique(integrationFiles))
+  const union = stableSort(unique([...coreFiles, ...integrationFiles]))
+  const unionSet = new Set(union)
+  const discoveredSet = new Set(discovered)
+  const coreDuplicates = duplicateValues(coreFiles)
+  const integrationDuplicates = duplicateValues(integrationFiles)
+  const integrationSet = new Set(integrationFiles)
+  const crossLaneDuplicates = coreUnique.filter((file) => integrationSet.has(file))
+  const addedUnassigned = discovered.filter((file) => !unionSet.has(file))
+  const removedMissing = union.filter((file) => !discoveredSet.has(file))
+  const blockingReasons = []
+
+  if (coreManifest.expectedCount !== coreFiles.length || integrationManifest.expectedCount !== integrationFiles.length) {
+    blockingReasons.push(manifestReason(
+      'MANIFEST_EXPECTED_COUNT_MISMATCH',
+      `CORE expected/entries ${coreManifest.expectedCount}/${coreFiles.length}; ` +
+        `INTEGRATION expected/entries ${integrationManifest.expectedCount}/${integrationFiles.length}`,
+    ))
+  }
+  if (coreDuplicates.length > 0 || integrationDuplicates.length > 0) {
+    blockingReasons.push(manifestReason(
+      'DUPLICATE_MEMBERSHIP',
+      `CORE duplicates: ${coreDuplicates.join(', ') || 'NONE'}; ` +
+        `INTEGRATION duplicates: ${integrationDuplicates.join(', ') || 'NONE'}`,
+    ))
+  }
+  if (crossLaneDuplicates.length > 0) {
+    blockingReasons.push(manifestReason(
+      'CROSS_LANE_DUPLICATE',
+      `tests assigned to both lanes: ${crossLaneDuplicates.join(', ')}`,
+    ))
+  }
+  if (addedUnassigned.length > 0) {
+    blockingReasons.push(manifestReason(
+      'ADDED_UNASSIGNED_TEST',
+      `filesystem tests absent from both manifests: ${addedUnassigned.join(', ')}`,
+    ))
+  }
+  if (removedMissing.length > 0) {
+    blockingReasons.push(manifestReason(
+      'REMOVED_MISSING_TEST',
+      `manifest tests absent from filesystem discovery: ${removedMissing.join(', ')}`,
+    ))
+  }
+  for (const error of integrityErrors) {
+    blockingReasons.push(manifestReason('MANIFEST_HASH_INTEGRITY_ERROR', String(error)))
+  }
+
+  return {
+    expected: {
+      core: coreManifest.expectedCount,
+      integration: integrationManifest.expectedCount,
+      aggregate: coreManifest.expectedCount + integrationManifest.expectedCount,
+    },
+    discovered,
+    coreFiles: coreUnique,
+    integrationFiles: integrationUnique,
+    union,
+    coreDuplicates,
+    integrationDuplicates,
+    crossLaneDuplicates,
+    addedUnassigned,
+    removedMissing,
+    unassigned: addedUnassigned,
+    duplicate: stableSort(unique([...coreDuplicates, ...integrationDuplicates, ...crossLaneDuplicates])),
+    blockingReasons,
+    exact: blockingReasons.length === 0,
+  }
 }
 
 export function discoverRootTests({ repoRoot = DEFAULT_REPO_ROOT, testsDir = 'tests' } = {}) {
@@ -157,6 +319,7 @@ function environmentReason(code, message) {
 }
 
 export function evaluateSuite({
+  suite = ROOT_SUITE_NAME,
   expected,
   expectedFiles,
   collectedFiles,
@@ -210,6 +373,9 @@ export function evaluateSuite({
     }))
     .sort((left, right) => left.file.localeCompare(right.file, 'en'))
   const recoveredFailures = known.filter(({ file }) => outcomes.get(file)?.status === 'PASS')
+  const knownEnvironmentBlocked = known.filter(
+    ({ file }) => outcomes.get(file)?.status === 'FAIL' && outcomes.get(file)?.classification === 'ENVIRONMENT',
+  )
   const missingKnownFailures = known.filter(({ file }) => !collectedSet.has(file))
   const incompleteKnownFailures = known.filter(
     ({ file }) => collectedSet.has(file) && !['PASS', 'FAIL'].includes(outcomes.get(file)?.status),
@@ -312,7 +478,7 @@ export function evaluateSuite({
 
   return {
     schemaVersion: 1,
-    suite: ROOT_SUITE_NAME,
+    suite,
     metadata,
     counts: {
       expected,
@@ -323,6 +489,7 @@ export function evaluateSuite({
       knownFailures: knownStillFailing.length,
       newFailures: newFailures.length,
       recoveredFailures: recoveredFailures.length,
+      knownEnvironmentBlocked: knownEnvironmentBlocked.length,
       skipped: skipped.length,
       uncollected,
       environmentFailures: environmentFailureResults.length,
@@ -335,6 +502,7 @@ export function evaluateSuite({
       knownFailures: knownStillFailing,
       newFailures,
       recoveredFailures,
+      knownEnvironmentBlocked,
       missingKnownFailures,
       incompleteKnownFailures,
       skipped,
@@ -347,6 +515,145 @@ export function evaluateSuite({
     runnerErrors: [...runnerErrors],
     testEnvironmentHealth,
     environmentReasons: deduplicatedEnvironmentReasons,
+    authority: 'LANE_ONLY',
+    laneStatus: overallStatus,
+    overallStatus,
+    blockingReasons,
+    exitCode,
+  }
+}
+
+function laneCounts(summary, field) {
+  return summary?.counts?.[field] ?? 0
+}
+
+function aggregateFiles(laneSummaries, field) {
+  return laneSummaries
+    .flatMap((summary) => summary?.files?.[field] ?? [])
+    .sort((left, right) => left.file.localeCompare(right.file, 'en'))
+}
+
+export function evaluateAggregate({
+  coreSummary,
+  integrationSummary,
+  manifestAudit,
+  metadata = {},
+  runnerErrors = [],
+  manifestIntegrityErrors = [],
+  evidenceIntegrityErrors = [],
+}) {
+  const laneSummaries = [coreSummary, integrationSummary].filter(Boolean)
+  const manifestReasons = [
+    ...manifestAudit.blockingReasons,
+    ...manifestIntegrityErrors.map((message) => manifestReason('MANIFEST_HASH_INTEGRITY_ERROR', String(message))),
+  ]
+  const laneEnvironmentReasons = []
+  for (const [lane, summary] of [['CORE', coreSummary], ['INTEGRATION', integrationSummary]]) {
+    if (!summary) {
+      laneEnvironmentReasons.push(environmentReason(`${lane}_LANE_NOT_EXECUTED`, `${lane} lane was not executed`))
+    } else if (summary.testEnvironmentHealth !== 'PASS') {
+      laneEnvironmentReasons.push(environmentReason(
+        `${lane}_ENVIRONMENT_BLOCKED`,
+        `${lane} environment is BLOCKED: ${summary.environmentReasons.map(({ code }) => code).join(', ') || 'UNKNOWN'}`,
+      ))
+    }
+  }
+  const runnerReasons = runnerErrors.length > 0
+    ? [environmentReason('RUNNER_ERROR', runnerErrors.join('; '))]
+    : []
+  const evidenceReasons = evidenceIntegrityErrors.map((message) => ({
+    category: 'EVIDENCE',
+    code: 'EVIDENCE_INTEGRITY_ERROR',
+    message: String(message),
+  }))
+  const newFailures = aggregateFiles(laneSummaries, 'newFailures')
+  const testFailureReasons = newFailures.length > 0
+    ? [{
+        category: 'TEST_FAILURE',
+        code: 'NEW_FAILURES',
+        message: newFailures.map(({ file, reason }) => `${file} (${reason})`).join(', '),
+      }]
+    : []
+  const nonTestBlockingReasons = [
+    ...manifestReasons,
+    ...laneEnvironmentReasons,
+    ...runnerReasons,
+    ...evidenceReasons,
+  ]
+  const blockingReasons = [...nonTestBlockingReasons, ...testFailureReasons]
+  const testEnvironmentHealth = nonTestBlockingReasons.length === 0 ? 'PASS' : 'BLOCKED'
+  const overallStatus = blockingReasons.length === 0 ? 'PASS' : 'BLOCKED'
+  const exitCode = nonTestBlockingReasons.length > 0 ? 2 : newFailures.length > 0 ? 1 : 0
+  const expected = manifestAudit.expected.aggregate
+  const collected = laneCounts(coreSummary, 'collected') + laneCounts(integrationSummary, 'collected')
+  const executed = laneCounts(coreSummary, 'executed') + laneCounts(integrationSummary, 'executed')
+
+  return {
+    schemaVersion: 1,
+    suite: ROOT_SUITE_NAME,
+    metadata,
+    counts: {
+      expected,
+      collected,
+      executed,
+      passed: laneCounts(coreSummary, 'passed') + laneCounts(integrationSummary, 'passed'),
+      failed: laneCounts(coreSummary, 'failed') + laneCounts(integrationSummary, 'failed'),
+      knownFailures: laneCounts(coreSummary, 'knownFailures') + laneCounts(integrationSummary, 'knownFailures'),
+      newFailures: newFailures.length,
+      recoveredFailures: laneCounts(coreSummary, 'recoveredFailures') + laneCounts(integrationSummary, 'recoveredFailures'),
+      knownEnvironmentBlocked:
+        laneCounts(coreSummary, 'knownEnvironmentBlocked') + laneCounts(integrationSummary, 'knownEnvironmentBlocked'),
+      skipped: laneCounts(coreSummary, 'skipped') + laneCounts(integrationSummary, 'skipped'),
+      uncollected: Math.max(0, expected - collected),
+      environmentFailures:
+        laneCounts(coreSummary, 'environmentFailures') + laneCounts(integrationSummary, 'environmentFailures'),
+      unassigned: manifestAudit.unassigned.length,
+      duplicate: manifestAudit.duplicate.length,
+    },
+    files: {
+      collected: stableSort(laneSummaries.flatMap((summary) => summary.files.collected)),
+      results: laneSummaries
+        .flatMap((summary) => summary.files.results)
+        .sort((left, right) => left.file.localeCompare(right.file, 'en')),
+      knownFailures: aggregateFiles(laneSummaries, 'knownFailures'),
+      newFailures,
+      recoveredFailures: aggregateFiles(laneSummaries, 'recoveredFailures'),
+      knownEnvironmentBlocked: aggregateFiles(laneSummaries, 'knownEnvironmentBlocked'),
+      missingKnownFailures: aggregateFiles(laneSummaries, 'missingKnownFailures'),
+      incompleteKnownFailures: aggregateFiles(laneSummaries, 'incompleteKnownFailures'),
+      skipped: stableSort(laneSummaries.flatMap((summary) => summary.files.skipped)),
+      environmentFailures: laneSummaries
+        .flatMap((summary) => summary.files.environmentFailures)
+        .sort((left, right) => left.file.localeCompare(right.file, 'en')),
+      uncollected: manifestAudit.removedMissing,
+      unexpectedCollected: manifestAudit.addedUnassigned,
+      unassigned: manifestAudit.unassigned,
+      duplicate: manifestAudit.duplicate,
+    },
+    manifestAudit: {
+      expected: manifestAudit.expected,
+      discovered: manifestAudit.discovered.length,
+      union: manifestAudit.union.length,
+      intersection: manifestAudit.crossLaneDuplicates.length,
+      unassigned: manifestAudit.unassigned,
+      duplicate: manifestAudit.duplicate,
+      removedMissing: manifestAudit.removedMissing,
+      exact: manifestAudit.exact && manifestIntegrityErrors.length === 0,
+    },
+    lanes: {
+      core: coreSummary
+        ? { environmentHealth: coreSummary.testEnvironmentHealth, status: coreSummary.overallStatus, exitCode: coreSummary.exitCode }
+        : { environmentHealth: 'BLOCKED', status: 'NOT_EXECUTED', exitCode: 2 },
+      integration: integrationSummary
+        ? { environmentHealth: integrationSummary.testEnvironmentHealth, status: integrationSummary.overallStatus, exitCode: integrationSummary.exitCode }
+        : { environmentHealth: 'BLOCKED', status: 'NOT_EXECUTED', exitCode: 2 },
+    },
+    runnerErrors: [...runnerErrors],
+    testEnvironmentHealth,
+    environmentReasons: nonTestBlockingReasons,
+    evidenceStatus: metadata.durableEvidenceExists ? 'DURABLE' : 'NOT_DURABLE',
+    authority: 'FULL_SUITE',
+    fullSuiteStatus: overallStatus,
     overallStatus,
     blockingReasons,
     exitCode,
@@ -364,7 +671,8 @@ function renderList(label, values, formatter = (value) => value) {
 export function renderHumanSummary(summary) {
   const { counts } = summary
   return [
-    'FULL SUITE SUMMARY',
+    `${summary.suite.toUpperCase()} SUMMARY`,
+    ...(summary.authority === 'FULL_SUITE' ? [`FULL SUITE STATUS: ${summary.fullSuiteStatus}`] : []),
     `Expected: ${counts.expected}`,
     `Collected: ${counts.collected}`,
     `Executed: ${counts.executed}`,
@@ -373,6 +681,7 @@ export function renderHumanSummary(summary) {
     `Known Failures: ${counts.knownFailures}`,
     `New Failures: ${counts.newFailures}`,
     `Recovered Failures: ${counts.recoveredFailures}`,
+    `Known but Environment Blocked: ${counts.knownEnvironmentBlocked ?? 0}`,
     `Skipped / Not Collected: ${counts.skipped} / ${counts.uncollected}`,
     `Environment Failures: ${counts.environmentFailures}`,
     `TEST ENVIRONMENT HEALTH: ${summary.testEnvironmentHealth}`,
@@ -381,6 +690,11 @@ export function renderHumanSummary(summary) {
     ...renderList('Known Failures:', summary.files.knownFailures, ({ id, file }) => `${id} ${file}`),
     ...renderList('New Failures:', summary.files.newFailures, ({ file, reason }) => `${file} (${reason})`),
     ...renderList('Recovered Failures:', summary.files.recoveredFailures, ({ id, file }) => `${id} ${file}`),
+    ...renderList(
+      'Known but Environment Blocked:',
+      summary.files.knownEnvironmentBlocked ?? [],
+      ({ id, file }) => `${id} ${file}`,
+    ),
     ...renderList('Skipped:', summary.files.skipped),
     ...renderList('Uncollected:', summary.files.uncollected),
     ...renderList('Unexpected Collected:', summary.files.unexpectedCollected),
@@ -396,14 +710,29 @@ function parseArgs(argv) {
   const options = {
     repoRoot: DEFAULT_REPO_ROOT,
     baselinePath: DEFAULT_BASELINE_PATH,
+    coreManifestPath: DEFAULT_CORE_MANIFEST_PATH,
+    integrationManifestPath: DEFAULT_INTEGRATION_MANIFEST_PATH,
     testsDir: 'tests',
     outputDir: null,
+    lane: 'aggregate',
+    promoteRun: null,
+    verifyDurable: null,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
     if (argument === '--help') return { ...options, help: true }
-    if (!['--repo-root', '--baseline', '--tests-dir', '--output-dir'].includes(argument)) {
+    if (![
+      '--repo-root',
+      '--baseline',
+      '--core-manifest',
+      '--integration-manifest',
+      '--tests-dir',
+      '--output-dir',
+      '--lane',
+      '--promote-run',
+      '--verify-durable',
+    ].includes(argument)) {
       throw new Error(`Unknown argument: ${argument}`)
     }
     const value = argv[index + 1]
@@ -411,8 +740,19 @@ function parseArgs(argv) {
     index += 1
     if (argument === '--repo-root') options.repoRoot = resolve(value)
     if (argument === '--baseline') options.baselinePath = value
+    if (argument === '--core-manifest') options.coreManifestPath = value
+    if (argument === '--integration-manifest') options.integrationManifestPath = value
     if (argument === '--tests-dir') options.testsDir = value
     if (argument === '--output-dir') options.outputDir = resolve(value)
+    if (argument === '--lane') options.lane = value.toLowerCase()
+    if (argument === '--promote-run') options.promoteRun = resolve(value)
+    if (argument === '--verify-durable') options.verifyDurable = resolve(value)
+  }
+  if (!['core', 'integration', 'aggregate'].includes(options.lane)) {
+    throw new Error(`Invalid lane: ${options.lane}`)
+  }
+  if (options.promoteRun && options.verifyDurable) {
+    throw new Error('--promote-run and --verify-durable are mutually exclusive')
   }
   return options
 }
@@ -420,9 +760,14 @@ function parseArgs(argv) {
 function helpText() {
   return `Usage: npm run test:full -- [options]\n\n` +
     `Options:\n` +
+    `  --lane <lane>        core, integration, or aggregate (default)\n` +
     `  --baseline <path>    Markdown Known Failure Baseline (source of truth)\n` +
+    `  --core-manifest <p>  Fixed Core lane manifest\n` +
+    `  --integration-manifest <p>  Fixed Integration lane manifest\n` +
     `  --tests-dir <path>   Root-suite directory; only immediate *.test.ts/*.test.cjs files\n` +
     `  --output-dir <path>  Exact new evidence directory (must not already exist)\n` +
+    `  --promote-run <path> Promote an existing aggregate runtime run without rerunning\n` +
+    `  --verify-durable <p> Verify an existing durable evidence directory\n` +
     `  --repo-root <path>   Repository root\n`
 }
 
@@ -436,7 +781,7 @@ function defaultRunIdentity(timestamp, headSha) {
 }
 
 function prepareEvidenceDirectory({ repoRoot, outputDir, runIdentity }) {
-  const target = outputDir ?? resolve(repoRoot, 'test-results', 'test-evidence', 'root-full', runIdentity)
+  const target = outputDir ?? resolve(repoRoot, 'test-results', 'test-evidence', 'root-lanes', runIdentity)
   if (existsSync(target)) throw new Error(`Evidence directory already exists: ${target}`)
   mkdirSync(target, { recursive: true })
   return target
@@ -445,6 +790,360 @@ function prepareEvidenceDirectory({ repoRoot, outputDir, runIdentity }) {
 function emitRaw(rawLogPath, text) {
   appendFileSync(rawLogPath, text)
   process.stdout.write(text)
+}
+
+function laneDirectoryName(lane) {
+  return lane.toLowerCase()
+}
+
+function laneSuiteName(lane) {
+  return `root-${lane.toLowerCase()}`
+}
+
+function laneRawLogName(lane) {
+  return `root-${lane.toLowerCase()}-suite.log`
+}
+
+function expectedDurableEvidencePath(headSha, runIdentity) {
+  return `${DURABLE_EVIDENCE_ROOT}/${headSha.slice(0, 12)}/${runIdentity}`
+}
+
+function executeLane({
+  repoRoot,
+  evidenceDirectory,
+  manifestInfo,
+  baseline,
+  baselineAbsolutePath,
+  baselineContent,
+  headSha,
+  timestamp,
+  runIdentity,
+}) {
+  const lane = manifestInfo.lane
+  const laneDirectory = resolve(evidenceDirectory, laneDirectoryName(lane))
+  mkdirSync(laneDirectory, { recursive: true })
+  const manifestSnapshotPath = resolve(laneDirectory, 'manifest.json')
+  writeFileSync(manifestSnapshotPath, manifestInfo.raw)
+  const rawLogPath = resolve(laneDirectory, laneRawLogName(lane))
+  writeFileSync(rawLogPath, '')
+  emitRaw(
+    rawLogPath,
+    `SUITE_START\t${laneSuiteName(lane)}\tlane=${lane}\tfiles=${manifestInfo.files.length}\t` +
+      `expected=${manifestInfo.expectedCount}\thead=${headSha}\n`,
+  )
+  const knownFailures = baseline.knownFailures.filter(({ file }) => manifestInfo.files.includes(file))
+  const { results, runnerErrors } = runCollectedTests({
+    repoRoot,
+    collectedFiles: manifestInfo.files,
+    rawLogPath,
+    baselineFingerprints: baseline.environmentFingerprints,
+  })
+  const summary = evaluateSuite({
+    suite: laneSuiteName(lane),
+    expected: manifestInfo.expectedCount,
+    expectedFiles: manifestInfo.files,
+    collectedFiles: manifestInfo.files,
+    results,
+    knownFailures,
+    runnerErrors,
+    metadata: {
+      lane,
+      runIdentity,
+      timestamp,
+      headSha,
+      manifestPath: manifestInfo.path,
+      manifestSha256: manifestInfo.sha256,
+      manifestSnapshotPath: `${laneDirectoryName(lane)}/manifest.json`,
+      baselinePath: toPosix(relative(repoRoot, baselineAbsolutePath)),
+      baselineSha256: sha256(baselineContent),
+      baselineEvidencePath: baseline.baselineEvidence.path,
+      baselineEvidenceSha256: baseline.baselineEvidence.sha256,
+      evidenceDirectory: toPosix(relative(repoRoot, evidenceDirectory)),
+      laneEvidenceDirectory: `${laneDirectoryName(lane)}/`,
+    },
+  })
+  emitRaw(
+    rawLogPath,
+    `SUITE_SUMMARY\t${laneSuiteName(lane)}\texpected=${summary.counts.expected}\t` +
+      `collected=${summary.counts.collected}\texecuted=${summary.counts.executed}\t` +
+      `pass=${summary.counts.passed}\tfail=${summary.counts.failed}\t` +
+      `known=${summary.counts.knownFailures}\tnew=${summary.counts.newFailures}\t` +
+      `recovered=${summary.counts.recoveredFailures}\t` +
+      `known_environment_blocked=${summary.counts.knownEnvironmentBlocked}\t` +
+      `environment_failures=${summary.counts.environmentFailures}\t` +
+      `skipped=${summary.counts.skipped}\tuncollected=${summary.counts.uncollected}\t` +
+      `environment=${summary.testEnvironmentHealth}\toverall=${summary.overallStatus}\n`,
+  )
+  summary.metadata.rawLogSha256 = sha256(readFileSync(rawLogPath))
+  const summaryPath = resolve(laneDirectory, 'summary.json')
+  writeFileSync(summaryPath, renderStructuredSummary(summary))
+  process.stdout.write(`\n${renderHumanSummary(summary)}\n`)
+  process.stdout.write(`RAW EVIDENCE: ${rawLogPath}\n`)
+  process.stdout.write(`STRUCTURED EVIDENCE: ${summaryPath}\n`)
+  return { summary, rawLogPath, summaryPath, manifestSnapshotPath }
+}
+
+export function collectLaneEvidenceIntegrityErrors({ laneResult, manifestInfo, baselineSha256 }) {
+  const errors = []
+  const { summary, rawLogPath, summaryPath, manifestSnapshotPath } = laneResult
+  const persistedSummary = JSON.parse(readFileSync(summaryPath, 'utf8'))
+  if (sha256(readFileSync(rawLogPath)) !== summary.metadata.rawLogSha256) {
+    errors.push(`${manifestInfo.lane} raw log SHA-256 mismatch`)
+  }
+  if (sha256(readFileSync(manifestSnapshotPath)) !== manifestInfo.sha256) {
+    errors.push(`${manifestInfo.lane} manifest snapshot SHA-256 mismatch`)
+  }
+  if (persistedSummary.metadata.manifestSha256 !== manifestInfo.sha256) {
+    errors.push(`${manifestInfo.lane} summary manifest SHA-256 mismatch`)
+  }
+  if (persistedSummary.metadata.baselineSha256 !== baselineSha256) {
+    errors.push(`${manifestInfo.lane} summary baseline SHA-256 mismatch`)
+  }
+  if (persistedSummary.metadata.headSha !== summary.metadata.headSha) {
+    errors.push(`${manifestInfo.lane} summary Candidate HEAD mismatch`)
+  }
+  return errors
+}
+
+export function collectManifestIntegrityErrors(manifests) {
+  return manifests
+    .filter((manifest) => sha256(readFileSync(manifest.absolutePath)) !== manifest.sha256)
+    .map((manifest) => `${manifest.lane} manifest changed during execution`)
+}
+
+function writeAggregateEvidence({
+  repoRoot,
+  evidenceDirectory,
+  runIdentity,
+  timestamp,
+  headSha,
+  baselineAbsolutePath,
+  baselineContent,
+  baseline,
+  coreManifest,
+  integrationManifest,
+  coreResult,
+  integrationResult,
+  manifestAudit,
+  manifestIntegrityErrors,
+  evidenceIntegrityErrors,
+}) {
+  const aggregateDirectory = resolve(evidenceDirectory, 'aggregate')
+  mkdirSync(aggregateDirectory, { recursive: true })
+  const rawLogPath = resolve(aggregateDirectory, 'root-aggregate-suite.log')
+  writeFileSync(rawLogPath, '')
+  emitRaw(rawLogPath, `SUITE_START\t${ROOT_SUITE_NAME}\tlane=AGGREGATE\texpected=${manifestAudit.expected.aggregate}\thead=${headSha}\n`)
+  for (const result of [coreResult, integrationResult]) {
+    if (!result) continue
+    emitRaw(
+      rawLogPath,
+      `LANE_RESULT\t${result.summary.metadata.lane}\tenvironment=${result.summary.testEnvironmentHealth}\t` +
+        `overall=${result.summary.overallStatus}\texit=${result.summary.exitCode}\t` +
+        `summary_sha256=${sha256(readFileSync(result.summaryPath))}\n`,
+    )
+  }
+  const durablePath = expectedDurableEvidencePath(headSha, runIdentity)
+  const summary = evaluateAggregate({
+    coreSummary: coreResult?.summary,
+    integrationSummary: integrationResult?.summary,
+    manifestAudit,
+    manifestIntegrityErrors,
+    evidenceIntegrityErrors,
+    metadata: {
+      lane: 'AGGREGATE',
+      runIdentity,
+      timestamp,
+      headSha,
+      coreManifestPath: coreManifest.path,
+      coreManifestSha256: coreManifest.sha256,
+      integrationManifestPath: integrationManifest.path,
+      integrationManifestSha256: integrationManifest.sha256,
+      baselinePath: toPosix(relative(repoRoot, baselineAbsolutePath)),
+      baselineSha256: sha256(baselineContent),
+      baselineEvidencePath: baseline.baselineEvidence.path,
+      baselineEvidenceSha256: baseline.baselineEvidence.sha256,
+      evidenceDirectory: toPosix(relative(repoRoot, evidenceDirectory)),
+      expectedDurableEvidencePath: durablePath,
+      durableEvidenceExists: false,
+      coreSummarySha256: coreResult ? sha256(readFileSync(coreResult.summaryPath)) : null,
+      integrationSummarySha256: integrationResult ? sha256(readFileSync(integrationResult.summaryPath)) : null,
+    },
+  })
+  emitRaw(
+    rawLogPath,
+    `SUITE_SUMMARY\t${ROOT_SUITE_NAME}\texpected=${summary.counts.expected}\t` +
+      `collected=${summary.counts.collected}\texecuted=${summary.counts.executed}\t` +
+      `pass=${summary.counts.passed}\tfail=${summary.counts.failed}\t` +
+      `known=${summary.counts.knownFailures}\tnew=${summary.counts.newFailures}\t` +
+      `recovered=${summary.counts.recoveredFailures}\t` +
+      `known_environment_blocked=${summary.counts.knownEnvironmentBlocked}\t` +
+      `environment_failures=${summary.counts.environmentFailures}\t` +
+      `unassigned=${summary.counts.unassigned}\tduplicate=${summary.counts.duplicate}\t` +
+      `environment=${summary.testEnvironmentHealth}\toverall=${summary.overallStatus}\n`,
+  )
+  summary.metadata.rawLogSha256 = sha256(readFileSync(rawLogPath))
+  const summaryPath = resolve(aggregateDirectory, 'summary.json')
+  writeFileSync(summaryPath, renderStructuredSummary(summary))
+  process.stdout.write(`\n${renderHumanSummary(summary)}\n`)
+  process.stdout.write(`EXPECTED DURABLE EVIDENCE PATH: ${resolve(repoRoot, durablePath)}\n`)
+  process.stdout.write(`EVIDENCE STATUS: ${summary.evidenceStatus}\n`)
+  return { summary, rawLogPath, summaryPath }
+}
+
+function listEvidenceFiles(directory, prefix = '') {
+  const files = []
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
+    const absolutePath = resolve(directory, entry.name)
+    if (entry.isDirectory()) files.push(...listEvidenceFiles(absolutePath, relativePath))
+    else if (entry.isFile() && relativePath !== 'checksums.json') files.push(relativePath)
+    else if (!entry.isFile()) throw new Error(`Unsupported evidence entry: ${relativePath}`)
+  }
+  return stableSort(files)
+}
+
+function writeEvidenceChecksums({
+  evidenceDirectory,
+  headSha,
+  runIdentity,
+  baselinePath,
+  baselineSha256,
+  coreManifest,
+  integrationManifest,
+}) {
+  const files = listEvidenceFiles(evidenceDirectory).map((path) => {
+    const content = readFileSync(resolve(evidenceDirectory, path))
+    return { path, sha256: sha256(content), bytes: content.byteLength }
+  })
+  const checksums = {
+    schemaVersion: 1,
+    headSha,
+    runIdentity,
+    baseline: { path: baselinePath, sha256: baselineSha256 },
+    manifests: {
+      core: { path: coreManifest.path, sha256: coreManifest.sha256 },
+      integration: { path: integrationManifest.path, sha256: integrationManifest.sha256 },
+    },
+    files,
+  }
+  const path = resolve(evidenceDirectory, 'checksums.json')
+  writeFileSync(path, renderStructuredSummary(checksums))
+  return { checksums, path, sha256: sha256(readFileSync(path)) }
+}
+
+export function verifyEvidenceBundle({ repoRoot, evidenceDirectory, requireAggregate = true }) {
+  const checksumsPath = resolve(evidenceDirectory, 'checksums.json')
+  if (!existsSync(checksumsPath)) throw new Error('Evidence integrity error: checksums.json is missing')
+  const checksums = JSON.parse(readFileSync(checksumsPath, 'utf8'))
+  if (!checksums || checksums.schemaVersion !== 1 || !Array.isArray(checksums.files)) {
+    throw new Error('Evidence integrity error: checksums.json schema is invalid')
+  }
+  const declaredPaths = checksums.files.map(({ path }) => assertSafeRelativePath(path, 'Evidence file path'))
+  if (duplicateValues(declaredPaths).length > 0) {
+    throw new Error('Evidence integrity error: checksums.json has duplicate file paths')
+  }
+  const actualPaths = listEvidenceFiles(evidenceDirectory)
+  if (JSON.stringify(stableSort(declaredPaths)) !== JSON.stringify(actualPaths)) {
+    throw new Error('Evidence integrity error: declared and actual evidence file manifests differ')
+  }
+  for (const entry of checksums.files) {
+    const content = readFileSync(resolve(evidenceDirectory, entry.path))
+    if (content.byteLength !== entry.bytes || sha256(content) !== entry.sha256) {
+      throw new Error(`Evidence integrity error: checksum mismatch for ${entry.path}`)
+    }
+  }
+  const requiredPaths = requireAggregate
+    ? [
+        'core/manifest.json',
+        'core/root-core-suite.log',
+        'core/summary.json',
+        'integration/manifest.json',
+        'integration/root-integration-suite.log',
+        'integration/summary.json',
+        'aggregate/root-aggregate-suite.log',
+        'aggregate/summary.json',
+      ]
+    : []
+  for (const path of requiredPaths) {
+    if (!declaredPaths.includes(path)) throw new Error(`Evidence integrity error: required file missing: ${path}`)
+  }
+  if (!requireAggregate) {
+    return { checksums, checksumsPath, checksumsSha256: sha256(readFileSync(checksumsPath)) }
+  }
+  const coreSummary = JSON.parse(readFileSync(resolve(evidenceDirectory, 'core/summary.json'), 'utf8'))
+  const integrationSummary = JSON.parse(readFileSync(resolve(evidenceDirectory, 'integration/summary.json'), 'utf8'))
+  const aggregateSummary = JSON.parse(readFileSync(resolve(evidenceDirectory, 'aggregate/summary.json'), 'utf8'))
+  for (const [lane, summary] of [['CORE', coreSummary], ['INTEGRATION', integrationSummary], ['AGGREGATE', aggregateSummary]]) {
+    if (summary.metadata.headSha !== checksums.headSha) {
+      throw new Error(`Evidence integrity error: ${lane} Candidate HEAD mismatch`)
+    }
+    const rawPath = lane === 'AGGREGATE'
+      ? 'aggregate/root-aggregate-suite.log'
+      : `${lane.toLowerCase()}/${laneRawLogName(lane)}`
+    if (sha256(readFileSync(resolve(evidenceDirectory, rawPath))) !== summary.metadata.rawLogSha256) {
+      throw new Error(`Evidence integrity error: ${lane} raw log SHA-256 mismatch`)
+    }
+  }
+  if (sha256(readFileSync(resolve(evidenceDirectory, 'core/manifest.json'))) !== checksums.manifests.core.sha256 ||
+      coreSummary.metadata.manifestSha256 !== checksums.manifests.core.sha256) {
+    throw new Error('Evidence integrity error: CORE manifest SHA-256 mismatch')
+  }
+  if (sha256(readFileSync(resolve(evidenceDirectory, 'integration/manifest.json'))) !== checksums.manifests.integration.sha256 ||
+      integrationSummary.metadata.manifestSha256 !== checksums.manifests.integration.sha256) {
+    throw new Error('Evidence integrity error: INTEGRATION manifest SHA-256 mismatch')
+  }
+  if (coreSummary.metadata.baselineSha256 !== checksums.baseline.sha256 ||
+      integrationSummary.metadata.baselineSha256 !== checksums.baseline.sha256 ||
+      aggregateSummary.metadata.baselineSha256 !== checksums.baseline.sha256) {
+    throw new Error('Evidence integrity error: baseline SHA-256 mismatch')
+  }
+  return {
+    checksums,
+    checksumsPath,
+    checksumsSha256: sha256(readFileSync(checksumsPath)),
+    coreSummary,
+    integrationSummary,
+    aggregateSummary,
+  }
+}
+
+function promoteEvidenceBundle({ repoRoot, sourceDirectory }) {
+  const verification = verifyEvidenceBundle({ repoRoot, evidenceDirectory: sourceDirectory })
+  const { aggregateSummary, checksums } = verification
+  const currentHead = getHeadSha(repoRoot)
+  if (aggregateSummary.metadata.headSha !== currentHead) {
+    throw new Error(`Evidence Candidate HEAD ${aggregateSummary.metadata.headSha} does not equal current HEAD ${currentHead}`)
+  }
+  const expectedPath = expectedDurableEvidencePath(checksums.headSha, checksums.runIdentity)
+  if (aggregateSummary.metadata.expectedDurableEvidencePath !== expectedPath) {
+    throw new Error('Evidence expected durable path does not match Candidate HEAD and run identity')
+  }
+  for (const manifest of Object.values(checksums.manifests)) {
+    if (sha256(readFileSync(resolve(repoRoot, assertSafeRelativePath(manifest.path, 'Manifest path')))) !== manifest.sha256) {
+      throw new Error(`Manifest SHA-256 changed after run: ${manifest.path}`)
+    }
+  }
+  if (sha256(readFileSync(resolve(repoRoot, assertSafeRelativePath(checksums.baseline.path, 'Baseline path')))) !== checksums.baseline.sha256) {
+    throw new Error(`Baseline SHA-256 changed after run: ${checksums.baseline.path}`)
+  }
+  const destination = resolve(repoRoot, assertSafeRelativePath(expectedPath, 'Expected durable evidence path'))
+  const allowedRoot = resolve(repoRoot, DURABLE_EVIDENCE_ROOT)
+  if (!destination.startsWith(`${allowedRoot}${sep}`)) {
+    throw new Error('Expected durable evidence path is outside the approved durable evidence root')
+  }
+  if (existsSync(destination)) throw new Error(`Durable evidence destination already exists: ${destination}`)
+  mkdirSync(destination, { recursive: true })
+  for (const relativePath of [...checksums.files.map(({ path }) => path), 'checksums.json']) {
+    const target = resolve(destination, relativePath)
+    mkdirSync(dirname(target), { recursive: true })
+    copyFileSync(resolve(sourceDirectory, relativePath), target)
+  }
+  const durableVerification = verifyEvidenceBundle({ repoRoot, evidenceDirectory: destination })
+  process.stdout.write(`DURABLE EVIDENCE: ${destination}\n`)
+  process.stdout.write(`DURABLE EVIDENCE EXISTS: YES\n`)
+  process.stdout.write(`EVIDENCE STATUS: DURABLE\n`)
+  process.stdout.write(`CHECKSUMS SHA-256: ${durableVerification.checksumsSha256}\n`)
+  return { destination, ...durableVerification }
 }
 
 export function detectEnvironmentFailure(file, output, baselineFingerprints) {
@@ -551,6 +1250,7 @@ function blockedStartupSummary(error) {
       knownFailures: 0,
       newFailures: 0,
       recoveredFailures: 0,
+      knownEnvironmentBlocked: 0,
       skipped: 0,
       uncollected: null,
       environmentFailures: 0,
@@ -561,6 +1261,7 @@ function blockedStartupSummary(error) {
       knownFailures: [],
       newFailures: [],
       recoveredFailures: [],
+      knownEnvironmentBlocked: [],
       missingKnownFailures: [],
       incompleteKnownFailures: [],
       skipped: [],
@@ -571,6 +1272,7 @@ function blockedStartupSummary(error) {
     runnerErrors: [error.message],
     testEnvironmentHealth: 'BLOCKED',
     environmentReasons: [reason],
+    laneStatus: 'BLOCKED',
     overallStatus: 'BLOCKED',
     blockingReasons: [reason],
     exitCode: 2,
@@ -586,6 +1288,29 @@ export function main(argv = process.argv.slice(2)) {
     }
 
     const repoRoot = options.repoRoot
+    if (options.promoteRun) {
+      promoteEvidenceBundle({ repoRoot, sourceDirectory: options.promoteRun })
+      return 0
+    }
+    if (options.verifyDurable) {
+      const verification = verifyEvidenceBundle({ repoRoot, evidenceDirectory: options.verifyDurable })
+      const expected = resolve(
+        repoRoot,
+        assertSafeRelativePath(
+          verification.aggregateSummary.metadata.expectedDurableEvidencePath,
+          'Expected durable evidence path',
+        ),
+      )
+      if (resolve(options.verifyDurable) !== expected) {
+        throw new Error(`Durable evidence is not at its expected path: ${expected}`)
+      }
+      process.stdout.write(`DURABLE EVIDENCE: ${options.verifyDurable}\n`)
+      process.stdout.write('DURABLE EVIDENCE EXISTS: YES\n')
+      process.stdout.write('EVIDENCE STATUS: DURABLE\n')
+      process.stdout.write(`CHECKSUMS SHA-256: ${verification.checksumsSha256}\n`)
+      return 0
+    }
+
     const baselineAbsolutePath = isAbsolute(options.baselinePath)
       ? options.baselinePath
       : resolve(repoRoot, options.baselinePath)
@@ -596,11 +1321,28 @@ export function main(argv = process.argv.slice(2)) {
     if (sha256(baselineEvidenceContent) !== baseline.baselineEvidence.sha256) {
       throw new Error('Stable baseline evidence SHA-256 does not match the Markdown source of truth')
     }
-    const expectedFiles = parseBaselineTestManifest(baselineEvidenceContent.toString('utf8'))
-    if (expectedFiles.length !== baseline.expected) {
-      throw new Error('Stable baseline evidence manifest does not match the expected test-file count')
-    }
-    const collectedFiles = discoverRootTests({ repoRoot, testsDir: options.testsDir })
+    const coreManifest = loadLaneManifest({
+      repoRoot,
+      path: options.coreManifestPath,
+      lane: 'CORE',
+    })
+    const integrationManifest = loadLaneManifest({
+      repoRoot,
+      path: options.integrationManifestPath,
+      lane: 'INTEGRATION',
+    })
+    const discoveredFiles = discoverRootTests({ repoRoot, testsDir: options.testsDir })
+    const knownOutsideManifests = baseline.knownFailures
+      .filter(({ file }) => !coreManifest.files.includes(file) && !integrationManifest.files.includes(file))
+      .map(({ id, file }) => `${id} ${file}`)
+    const manifestAudit = auditLaneManifests({
+      coreManifest,
+      integrationManifest,
+      discoveredFiles,
+      integrityErrors: knownOutsideManifests.length > 0
+        ? [`active known failures absent from both manifests: ${knownOutsideManifests.join(', ')}`]
+        : [],
+    })
     const headSha = getHeadSha(repoRoot)
     const timestamp = new Date().toISOString()
     const runIdentity = defaultRunIdentity(timestamp, headSha)
@@ -609,58 +1351,71 @@ export function main(argv = process.argv.slice(2)) {
       outputDir: options.outputDir,
       runIdentity,
     })
-    const rawLogPath = resolve(evidenceDirectory, 'root-full-suite.log')
-    writeFileSync(rawLogPath, '')
-    emitRaw(
-      rawLogPath,
-      `SUITE_START\t${ROOT_SUITE_NAME}\tfiles=${collectedFiles.length}\texpected=${baseline.expected}\thead=${headSha}\n`,
-    )
-
-    const { results, runnerErrors } = runCollectedTests({
+    let coreResult = null
+    let integrationResult = null
+    const baselineSha256 = sha256(baselineContent)
+    const executionArguments = {
       repoRoot,
-      collectedFiles,
-      rawLogPath,
-      baselineFingerprints: baseline.environmentFingerprints,
+      evidenceDirectory,
+      baseline,
+      baselineAbsolutePath,
+      baselineContent,
+      headSha,
+      timestamp,
+      runIdentity,
+    }
+
+    if (manifestAudit.exact && ['core', 'aggregate'].includes(options.lane)) {
+      coreResult = executeLane({ ...executionArguments, manifestInfo: coreManifest })
+    }
+    if (manifestAudit.exact && ['integration', 'aggregate'].includes(options.lane)) {
+      integrationResult = executeLane({ ...executionArguments, manifestInfo: integrationManifest })
+    }
+
+    const evidenceIntegrityErrors = [
+      ...(coreResult
+        ? collectLaneEvidenceIntegrityErrors({ laneResult: coreResult, manifestInfo: coreManifest, baselineSha256 })
+        : []),
+      ...(integrationResult
+        ? collectLaneEvidenceIntegrityErrors({ laneResult: integrationResult, manifestInfo: integrationManifest, baselineSha256 })
+        : []),
+    ]
+    const manifestIntegrityErrors = collectManifestIntegrityErrors([coreManifest, integrationManifest])
+    let aggregateResult = null
+    if (options.lane === 'aggregate' || !manifestAudit.exact) {
+      aggregateResult = writeAggregateEvidence({
+        ...executionArguments,
+        coreManifest,
+        integrationManifest,
+        coreResult,
+        integrationResult,
+        manifestAudit,
+        manifestIntegrityErrors,
+        evidenceIntegrityErrors,
+      })
+    }
+    const checksums = writeEvidenceChecksums({
+      evidenceDirectory,
+      headSha,
+      runIdentity,
+      baselinePath: toPosix(relative(repoRoot, baselineAbsolutePath)),
+      baselineSha256,
+      coreManifest,
+      integrationManifest,
     })
-    const summary = evaluateSuite({
-      expected: baseline.expected,
-      expectedFiles,
-      collectedFiles,
-      results,
-      knownFailures: baseline.knownFailures,
-      runnerErrors,
-      metadata: {
-        runIdentity,
-        timestamp,
-        headSha,
-        baselinePath: toPosix(relative(repoRoot, baselineAbsolutePath)),
-        baselineSha256: sha256(baselineContent),
-        baselineEvidencePath: baseline.baselineEvidence.path,
-        baselineEvidenceSha256: baseline.baselineEvidence.sha256,
-        evidenceDirectory: toPosix(relative(repoRoot, evidenceDirectory)),
-      },
-    })
+    process.stdout.write(`RUNTIME EVIDENCE: ${evidenceDirectory}\n`)
+    process.stdout.write(`CHECKSUMS: ${checksums.path}\n`)
 
-    emitRaw(
-      rawLogPath,
-      `SUITE_SUMMARY\t${ROOT_SUITE_NAME}\texpected=${summary.counts.expected}\t` +
-        `collected=${summary.counts.collected}\texecuted=${summary.counts.executed}\t` +
-        `pass=${summary.counts.passed}\tfail=${summary.counts.failed}\t` +
-        `known=${summary.counts.knownFailures}\tnew=${summary.counts.newFailures}\t` +
-        `recovered=${summary.counts.recoveredFailures}\tenvironment_failures=${summary.counts.environmentFailures}\t` +
-        `skipped=${summary.counts.skipped}\t` +
-        `uncollected=${summary.counts.uncollected}\tenvironment=${summary.testEnvironmentHealth}\t` +
-        `overall=${summary.overallStatus}\n`,
-    )
-
-    summary.metadata.rawLogSha256 = sha256(readFileSync(rawLogPath))
-
-    const summaryPath = resolve(evidenceDirectory, 'summary.json')
-    writeFileSync(summaryPath, renderStructuredSummary(summary))
-    process.stdout.write(`\n${renderHumanSummary(summary)}\n`)
-    process.stdout.write(`RAW EVIDENCE: ${rawLogPath}\n`)
-    process.stdout.write(`STRUCTURED EVIDENCE: ${summaryPath}\n`)
-    return summary.exitCode
+    if (!manifestAudit.exact) return aggregateResult.summary.exitCode
+    if (options.lane === 'core') {
+      if (manifestIntegrityErrors.length > 0 || evidenceIntegrityErrors.length > 0) return 2
+      return coreResult.summary.exitCode
+    }
+    if (options.lane === 'integration') {
+      if (manifestIntegrityErrors.length > 0 || evidenceIntegrityErrors.length > 0) return 2
+      return integrationResult.summary.exitCode
+    }
+    return aggregateResult.summary.exitCode
   } catch (error) {
     const summary = blockedStartupSummary(error instanceof Error ? error : new Error(String(error)))
     process.stderr.write(`${renderHumanSummary(summary)}\n`)

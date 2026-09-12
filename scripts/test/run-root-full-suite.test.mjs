@@ -6,11 +6,16 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
+  auditLaneManifests,
+  collectLaneEvidenceIntegrityErrors,
+  collectManifestIntegrityErrors,
   discoverRootTests,
   detectEnvironmentFailure,
+  evaluateAggregate,
   evaluateSuite,
   parseBaselineTestManifest,
   parseKnownFailureBaseline,
+  parseLaneManifest,
   renderStructuredSummary,
 } from './run-root-full-suite.mjs'
 
@@ -278,14 +283,220 @@ test('root discovery is immediate-only, extension-bounded, and stably sorted', (
   assert.deepEqual(discoverRootTests({ repoRoot }), ['tests/a.test.cjs', 'tests/z.test.ts'])
 })
 
-test('repository baseline and root-suite count agree', () => {
+test('repository lane manifests form the exact discovered universe and preserve the known baseline', () => {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
   const baseline = parseKnownFailureBaseline(
     readFileSync(resolve(repoRoot, 'docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md'), 'utf8'),
   )
-  assert.equal(baseline.expected, 82)
-  const evidence = readFileSync(resolve(repoRoot, baseline.baselineEvidence.path), 'utf8')
-  const expectedFiles = parseBaselineTestManifest(evidence)
-  assert.deepEqual(discoverRootTests({ repoRoot }), expectedFiles)
+  const core = parseLaneManifest(
+    readFileSync(resolve(repoRoot, 'scripts/test/manifests/root-core-tests.json'), 'utf8'),
+    'CORE',
+  )
+  const integration = parseLaneManifest(
+    readFileSync(resolve(repoRoot, 'scripts/test/manifests/root-integration-tests.json'), 'utf8'),
+    'INTEGRATION',
+  )
+  const audit = auditLaneManifests({
+    coreManifest: { ...core, files: core.tests.map(({ file }) => file) },
+    integrationManifest: { ...integration, files: integration.tests.map(({ file }) => file) },
+    discoveredFiles: discoverRootTests({ repoRoot }),
+  })
+  assert.equal(core.expectedCount, core.tests.length)
+  assert.equal(integration.expectedCount, integration.tests.length)
+  assert.equal(audit.expected.aggregate, core.expectedCount + integration.expectedCount)
+  assert.equal(audit.discovered.length, audit.expected.aggregate)
+  assert.equal(audit.union.length, audit.expected.aggregate)
+  assert.equal(audit.crossLaneDuplicates.length, 0)
+  assert.equal(audit.unassigned.length, 0)
+  assert.equal(audit.duplicate.length, 0)
+  assert.equal(audit.exact, true)
   assert.equal(baseline.knownFailures.length, 3)
+})
+
+function testManifest(lane, laneFiles, expectedCount = laneFiles.length) {
+  return {
+    lane,
+    expectedCount,
+    files: laneFiles,
+    tests: laneFiles.map((file) => ({
+      file,
+      lane,
+      reason: 'synthetic explicit dependency evidence',
+      dependencyType: lane === 'CORE' ? 'NONE' : 'POSTGRESQL',
+      evidence: `${file}:1`,
+    })),
+  }
+}
+
+const scenarioCoreFiles = ['tests/a.test.ts', 'tests/b.test.ts']
+const scenarioIntegrationFiles = ['tests/c.test.cjs']
+
+function scenarioAudit(overrides = {}) {
+  return auditLaneManifests({
+    coreManifest: testManifest('CORE', scenarioCoreFiles),
+    integrationManifest: testManifest('INTEGRATION', scenarioIntegrationFiles),
+    discoveredFiles: [...scenarioCoreFiles, ...scenarioIntegrationFiles],
+    ...overrides,
+  })
+}
+
+function passingLaneSummary(lane, laneFiles, overrides = {}) {
+  return evaluateSuite({
+    suite: `root-${lane.toLowerCase()}`,
+    expected: laneFiles.length,
+    expectedFiles: laneFiles,
+    collectedFiles: laneFiles,
+    results: laneFiles.map((file) => outcome(file, 'PASS')),
+    knownFailures: [],
+    metadata: { lane },
+    ...overrides,
+  })
+}
+
+function scenarioAggregate(overrides = {}) {
+  return evaluateAggregate({
+    coreSummary: passingLaneSummary('CORE', scenarioCoreFiles),
+    integrationSummary: passingLaneSummary('INTEGRATION', scenarioIntegrationFiles),
+    manifestAudit: scenarioAudit(),
+    ...overrides,
+  })
+}
+
+test('aggregate scenario 01: added or unassigned test blocks', () => {
+  const manifestAudit = scenarioAudit({
+    discoveredFiles: [...scenarioCoreFiles, ...scenarioIntegrationFiles, 'tests/added.test.ts'],
+  })
+  const summary = scenarioAggregate({ manifestAudit })
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'ADDED_UNASSIGNED_TEST'))
+})
+
+test('aggregate scenario 02: removed or missing test blocks', () => {
+  const manifestAudit = scenarioAudit({ discoveredFiles: scenarioCoreFiles })
+  const summary = scenarioAggregate({ manifestAudit })
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'REMOVED_MISSING_TEST'))
+})
+
+test('aggregate scenario 03: duplicate membership blocks', () => {
+  const manifestAudit = scenarioAudit({
+    integrationManifest: testManifest('INTEGRATION', ['tests/b.test.ts', ...scenarioIntegrationFiles]),
+  })
+  const summary = scenarioAggregate({ manifestAudit })
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'CROSS_LANE_DUPLICATE'))
+})
+
+test('aggregate scenario 04: Core execution incomplete blocks', () => {
+  const coreSummary = passingLaneSummary('CORE', scenarioCoreFiles, {
+    results: [outcome(scenarioCoreFiles[0], 'PASS')],
+  })
+  const summary = scenarioAggregate({ coreSummary })
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'CORE_ENVIRONMENT_BLOCKED'))
+})
+
+test('aggregate scenario 05: Integration execution incomplete blocks', () => {
+  const integrationSummary = passingLaneSummary('INTEGRATION', scenarioIntegrationFiles, { results: [] })
+  const summary = scenarioAggregate({ integrationSummary })
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'INTEGRATION_ENVIRONMENT_BLOCKED'))
+})
+
+test('aggregate scenario 06: Core Environment BLOCKED makes Aggregate BLOCKED', () => {
+  const coreSummary = passingLaneSummary('CORE', scenarioCoreFiles, {
+    results: [
+      outcome(scenarioCoreFiles[0], 'FAIL', { classification: 'ENVIRONMENT' }),
+      outcome(scenarioCoreFiles[1], 'PASS'),
+    ],
+  })
+  const summary = scenarioAggregate({ coreSummary })
+  assert.equal(summary.testEnvironmentHealth, 'BLOCKED')
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'CORE_ENVIRONMENT_BLOCKED'))
+})
+
+test('aggregate scenario 07: Integration Environment BLOCKED makes Aggregate BLOCKED', () => {
+  const integrationSummary = passingLaneSummary('INTEGRATION', scenarioIntegrationFiles, {
+    results: [outcome(scenarioIntegrationFiles[0], 'FAIL', { classification: 'ENVIRONMENT' })],
+  })
+  const summary = scenarioAggregate({ integrationSummary })
+  assert.equal(summary.testEnvironmentHealth, 'BLOCKED')
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'INTEGRATION_ENVIRONMENT_BLOCKED'))
+})
+
+test('aggregate scenario 08: New Failure greater than zero blocks', () => {
+  const coreSummary = passingLaneSummary('CORE', scenarioCoreFiles, {
+    results: [outcome(scenarioCoreFiles[0], 'FAIL'), outcome(scenarioCoreFiles[1], 'PASS')],
+  })
+  const summary = scenarioAggregate({ coreSummary })
+  assert.equal(summary.testEnvironmentHealth, 'PASS')
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 1)
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'NEW_FAILURES'))
+})
+
+test('aggregate scenario 09: runner error blocks', () => {
+  const summary = scenarioAggregate({ runnerErrors: ['synthetic runner error'] })
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'RUNNER_ERROR'))
+})
+
+test('aggregate scenario 10: manifest or hash integrity error blocks', () => {
+  const directory = mkdtempSync(resolve(tmpdir(), 'root-manifest-integrity-'))
+  const manifestPath = resolve(directory, 'core.json')
+  writeFileSync(manifestPath, '{"changed":true}\n')
+  const manifestIntegrityErrors = collectManifestIntegrityErrors([{
+    lane: 'CORE',
+    absolutePath: manifestPath,
+    sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+  }])
+  const summary = scenarioAggregate({ manifestIntegrityErrors })
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'MANIFEST_HASH_INTEGRITY_ERROR'))
+})
+
+test('aggregate scenario 11: evidence integrity error blocks', () => {
+  const directory = mkdtempSync(resolve(tmpdir(), 'root-evidence-integrity-'))
+  const rawLogPath = resolve(directory, 'root-core-suite.log')
+  const summaryPath = resolve(directory, 'summary.json')
+  const manifestSnapshotPath = resolve(directory, 'manifest.json')
+  writeFileSync(rawLogPath, 'tampered raw log\n')
+  writeFileSync(manifestSnapshotPath, '{"snapshot":true}\n')
+  const persistedSummary = {
+    metadata: {
+      rawLogSha256: 'invalid-raw-hash',
+      manifestSha256: 'invalid-manifest-hash',
+      baselineSha256: 'invalid-baseline-hash',
+      headSha: 'candidate-head',
+    },
+  }
+  writeFileSync(summaryPath, JSON.stringify(persistedSummary))
+  const evidenceIntegrityErrors = collectLaneEvidenceIntegrityErrors({
+    laneResult: {
+      summary: persistedSummary,
+      rawLogPath,
+      summaryPath,
+      manifestSnapshotPath,
+    },
+    manifestInfo: { lane: 'CORE', sha256: 'expected-manifest-hash' },
+    baselineSha256: 'expected-baseline-hash',
+  })
+  const summary = scenarioAggregate({ evidenceIntegrityErrors })
+  assert.equal(summary.overallStatus, 'BLOCKED')
+  assert.equal(summary.exitCode, 2)
+  assert.ok(summary.blockingReasons.some(({ code }) => code === 'EVIDENCE_INTEGRITY_ERROR'))
+})
+
+test('lane manifests reject self hashes and never silently accept them', () => {
+  const raw = JSON.stringify({ ...testManifest('CORE', ['tests/a.test.ts']), sha256: 'forbidden' })
+  assert.throws(() => parseLaneManifest(raw, 'CORE'), /must not contain a self SHA-256/)
 })
