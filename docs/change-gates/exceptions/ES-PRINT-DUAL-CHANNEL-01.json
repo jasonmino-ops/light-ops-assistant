@@ -12,7 +12,7 @@
   "status": "CLOSED",
   "closedAt": "2026-09-12T13:38:25Z",
   "featureMergeCommitSha": "128caf904e22c71d14349093d42dab2f27e8dde0",
-  "closureReason": "Consumed by commit 128caf904e22c71d14349093d42dab2f27e8dde0, which is itself directly present on trusted origin/main first-parent lineage. The verified Git DAG contains no distinct merge commit for the codex/es-print-dual-channel-relay-v01 tip; Founder Decision on 2026-09-12 explicitly approved using that commit itself as the verifiable featureMergeCommitSha. This closes only the primary ES-PRINT-DUAL-CHANNEL-01 exception and does not alter its separately recorded additional authorizations or assert release/FIELD completion.",
+  "closureReason": "Consumed by commit 128caf904e22c71d14349093d42dab2f27e8dde0, which entered trusted origin/main by fast-forward and is itself directly present on its first-parent lineage. The verified Git DAG contains no distinct merge commit for the codex/es-print-dual-channel-relay-v01 tip; Founder Decision on 2026-09-12 explicitly approved using that commit itself as the verifiable featureMergeCommitSha. This closes only the primary ES-PRINT-DUAL-CHANNEL-01 exception and does not alter its separately recorded additional authorizations or assert release/FIELD completion.",
   "authorizedPaths": [
     "prisma/schema.prisma",
     "prisma/migrations/20260905070000_es_tray_production_relay_v01/migration.sql"

@@ -26,6 +26,8 @@ Engineering implementation is `AUTHORIZED` only by the Founder's current instruc
 
 Required outputs are the four closures, plan, policy/test, Phase 0 Known Failure baseline, validation evidence and independent review. No 80%-90% partial product implementation is permitted. This local authorization does not extend to any external state change or later build.
 
+The canonical Phase 0 failure baseline is the tracked repository file `docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md`. Any `.task-state` copy and temporary log path is execution evidence only. Every later merge calibration must use the tracked file, rerun the then-applicable suite and update evidence rather than relying on the original worktree.
+
 ## 1. rc.7 registration plan
 
 ### Version and bounded delta
@@ -88,6 +90,13 @@ The necessary rc.7 constant/hash/authorization preparation and the candidate bui
 
 ## 2. D1 — Production and main separation
 
+### Current state and gate boundary
+
+- Repository candidate: `main:false` and `release:true` exist only on the local governance branch until a separately authorized main integration.
+- Vercel control plane: Production Branch remains `main`.
+- Git remote: `release` does not exist.
+- D1 status: `PREPARED`, not activated or completed. No feature branch, main or release ref may be pushed during the first control-plane gate.
+
 ### Verified trigger
 
 Read-only evidence on 2026-09-12 established:
@@ -114,21 +123,26 @@ References: [Vercel Git deployment and Production Branch](https://vercel.com/doc
 
 `tests/network-release-deployment-policy.test.cjs` seals that exact repository policy. It cannot verify the Vercel control-plane Production Branch; that remains a Founder-executed and separately verified setting.
 
-### Founder-only Vercel control-plane change
+The test change is a necessary synchronization with the D1 policy, not an assertion relaxation. The prior exact `deepEqual` expected `main` to be absent and would now enforce the obsolete policy. The updated test retains exact full-object comparison, adds explicit `main:false` and `release:true` assertions, and preserves the no-wildcard and four existing branch-exclusion checks.
 
-Before any later push or main merge:
+### Gate D1-CONTROL-01 — first Founder action
+
+The next Founder Gate should authorize only the Founder-operated Vercel control-plane change and read-back below. It must not authorize any Git push, branch creation, merge or deployment. Freeze all repository pushes until Gate D1-INTEGRATE-02 is separately approved and verified.
 
 1. Open Vercel project `light-ops-assistant` → Settings → Environments → Production → Branch Tracking.
-2. Confirm the current value is `main`, change it to the custom branch `release`, and save.
-3. If the dashboard refuses the not-yet-created custom branch, stop. Do not create `release` while `main` is still the Production Branch and automatic Preview behavior is active; return for a new Founder sequencing decision.
-4. Do not create/update `release`, redeploy, promote, or roll back as part of this setting change.
-5. Read the setting back and record Production Branch=`release`; confirm the current Production deployment remains READY at its existing SHA.
+2. Record the current Production Branch=`main` and current READY Production SHA.
+3. Change Branch Tracking to the custom branch `release` and save.
+4. Read the setting back as Production Branch=`release`; confirm the current Production deployment SHA/state did not change and no new Preview or Production deployment was created.
+5. If the dashboard refuses the not-yet-created custom branch, stop with no state change. Do not create `release` while `main` remains the Production Branch; return for a new Founder sequencing decision.
+6. Rollback for this gate is only to restore Branch Tracking=`main` before any Git operation, then read back the unchanged Production SHA/state.
 
 Only Founder performs these dashboard actions. This task performs none of them.
 
-### Controlled integration and manual Production release
+### Gate D1-INTEGRATE-02 — later repository integration
 
-After the Founder-only setting change, a separately approved integration may merge this governance commit to `main`. Verify that Vercel creates no Production or Preview deployment for that main SHA. A discrepancy blocks further pushes.
+After D1-CONTROL-01 succeeds, a new Founder Gate may authorize direct integration of the reviewed local governance commits into `main` and the single resulting main push. Do not push the feature branch: it remains an unspecified Preview branch and would target the shared Preview database. The main update must already contain `main:false`; after the push, verify that Vercel created neither a Production nor Preview deployment for that main SHA. A discrepancy blocks every further D1 forward operation; a necessary incident rollback remains a separate Founder-authorized action.
+
+### Gate D1-RELEASE-03 — later manual Production release
 
 For a later authorized Production release:
 
