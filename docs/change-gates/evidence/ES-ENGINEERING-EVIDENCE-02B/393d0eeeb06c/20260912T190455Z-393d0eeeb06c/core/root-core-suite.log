@@ -1,0 +1,432 @@
+SUITE_START	root-core	lane=CORE	files=72	expected=72	head=393d0eeeb06cf50c1c367b9612cd61239046aa6a
+TEST_START	tests/bd-ops-permission-closure.test.ts
+BD ops permission closure tests passed
+TEST_RESULT	PASS	tests/bd-ops-permission-closure.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/browser-order-sync-static.test.ts
+browser order-sync (view-only) static tests passed
+TEST_RESULT	PASS	tests/browser-order-sync-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/browser-pos-customer-display-entry.test.ts
+browser POS customer display entry tests passed
+TEST_RESULT	PASS	tests/browser-pos-customer-display-entry.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/browser-print-readiness.test.ts
+browser print readiness tests passed (18 cases)
+TEST_RESULT	PASS	tests/browser-print-readiness.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/browser-transaction-security.test.ts
+browser transaction security focused checks passed
+[security] 已拒绝生产环境中的 x-* 开发身份头
+TEST_RESULT	PASS	tests/browser-transaction-security.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/cash-helper.test.ts
+✔ USD 7.30, rate4100, received 10 -> $2.70 (9.210875ms)
+✔ USD 7.30, rate4100, received 7.30 -> $0.00 (0.064042ms)
+✔ USD 7.30, rate4100, received 7.29 -> $0.00 (0.052417ms)
+✔ KHR 7.30, rate4100, received 29930 -> ៛0 (0.043417ms)
+✔ KHR 7.30, rate4100, received 30000 -> ៛70 (0.0665ms)
+✔ KHR 7.30, rate4100, received 50000 -> ៛20,070 (0.037833ms)
+✔ KHR 7.30, rate4100, received 20000 -> ៛0 (0.0355ms)
+✔ uses supplied device rate with explicit integer half-up rounding (0.073042ms)
+✔ USD rejects invalid input -1 (0.1325ms)
+✔ USD rejects invalid input 1e5 (0.081292ms)
+✔ USD rejects invalid input NaN (0.0365ms)
+✔ USD rejects invalid input Infinity (0.033333ms)
+✔ USD rejects invalid input  10 (0.021625ms)
+✔ USD rejects invalid input 1,000 (0.029167ms)
+✔ USD rejects invalid input a (0.021ms)
+✔ USD rejects invalid input 1.2.3 (0.03925ms)
+✔ USD rejects invalid input 99999999999999999 (0.040125ms)
+✔ KHR rejects invalid input -1 (0.021625ms)
+✔ KHR rejects invalid input 1e5 (0.035625ms)
+✔ KHR rejects invalid input NaN (0.016959ms)
+✔ KHR rejects invalid input Infinity (0.015792ms)
+✔ KHR rejects invalid input  10 (0.016ms)
+✔ KHR rejects invalid input 1,000 (0.015084ms)
+✔ KHR rejects invalid input a (0.015ms)
+✔ KHR rejects invalid input 1.2.3 (0.015ms)
+✔ KHR rejects invalid input 99999999999999999 (0.014333ms)
+✔ KHR decimals and USD fractional cents cannot be confirmed (0.034125ms)
+✔ USD dot, cents, backspace, clear, leading zero; no second amount state (0.07025ms)
+✔ invalid order or rate cannot authorize helper confirmation (0.03425ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15.164917
+TEST_RESULT	PASS	tests/cash-helper.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/cashier-inline-style-conflicts-static.test.ts
+cashier inline-style conflict tests passed
+TEST_RESULT	PASS	tests/cashier-inline-style-conflicts-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/cashier-realtime-gateway-static.test.ts
+cashier realtime gateway isolation/static checks passed
+TEST_RESULT	PASS	tests/cashier-realtime-gateway-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/cashier-realtime-integration.test.ts
+cashier realtime Stage 1F integration and regression checks passed
+TEST_RESULT	PASS	tests/cashier-realtime-integration.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/computer-console-static.test.ts
+computer console static tests passed
+TEST_RESULT	PASS	tests/computer-console-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/customer-display-adapter.test.ts
+customer display adapter tests passed
+TEST_RESULT	PASS	tests/customer-display-adapter.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/customer-display-cart-sync-static.test.ts
+customer display cart sync static tests passed
+TEST_RESULT	PASS	tests/customer-display-cart-sync-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/customer-display-panel-state.test.ts
+customer display panel state tests passed
+TEST_RESULT	PASS	tests/customer-display-panel-state.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/customer-display-persistent-panel-static.test.ts
+customer display persistent panel static tests passed
+TEST_RESULT	PASS	tests/customer-display-persistent-panel-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/customer-display-public-entry-url.test.ts
+customer display public entry URL tests passed
+TEST_RESULT	PASS	tests/customer-display-public-entry-url.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/customer-display-realtime-channel.test.ts
+customer display realtime channel tests passed
+TEST_RESULT	PASS	tests/customer-display-realtime-channel.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/customer-display-session-current-static.test.ts
+customer display session/current static KHQR tests passed
+TEST_RESULT	PASS	tests/customer-display-session-current-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/customer-landing-journey-static.test.ts
+customer landing journey static tests passed
+TEST_RESULT	PASS	tests/customer-landing-journey-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/desktop-activation-concurrency-static.test.ts
+desktop activation concurrency static tests passed
+TEST_RESULT	PASS	tests/desktop-activation-concurrency-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/desktop-activation-crypto.test.ts
+desktop activation crypto tests passed
+TEST_RESULT	PASS	tests/desktop-activation-crypto.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/desktop-activation-security-static.test.ts
+desktop activation security static tests passed
+TEST_RESULT	PASS	tests/desktop-activation-security-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/desktop-activation-subscription.test.ts
+desktop activation subscription tests passed
+TEST_RESULT	PASS	tests/desktop-activation-subscription.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/electronic-menu-data.test.ts
+✔ public URL/code validation is exact, bounded and independent of merchant identity (0.681208ms)
+✔ unknown and inactive stores fail before catalog reads; active empty store remains valid (0.899083ms)
+✔ store selection isolates tenant catalog and preserves same-tenant sharing with store-specific presentation (0.270833ms)
+✔ shared catalog selects existing columns; display projection remains whitelisted with the existing 200-item bound (0.73425ms)
+✔ actual legacy GET and shared display projection have identical catalog, discount and stored-media projections (3.393959ms)
+✔ legacy GET preserves its complete store, binding, marketing and catalog response (0.94075ms)
+✔ both endpoints use identical public catalog queries while the display excludes legacy-only reads and fields (0.75425ms)
+✔ legacy GET keeps its existing missing-code, lookup, selector and failure behavior (1.195667ms)
+✔ grouping retains product/category order, iced-coffee priority and every orphan product (0.265709ms)
+✔ three-language display falls back exactly to Chinese and original catalog values (0.162542ms)
+✔ GET rejects ambiguous selectors and malformed codes before any query, with no-store errors (2.355791ms)
+✔ anonymous repeat GET refreshes data without writes or identity-based selection (0.566583ms)
+✔ database failures produce generic retryable errors without leaking internal details (0.327917ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16.800834
+TEST_RESULT	PASS	tests/electronic-menu-data.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/electronic-menu-layout.test.ts
+✔ pagination preserves existing group and product order exactly once across columns and pages (2.536208ms)
+✔ an exact full page adds no empty trailing column or page, and one extra product starts the next page (0.171667ms)
+✔ a new category moves with its first product when only the heading would fit (0.086583ms)
+✔ empty catalogs have no page and a small catalog has no second page (0.094667ms)
+✔ multiple categories and long multilingual names remain within each container height budget (2.857792ms)
+✔ the menu area of a 1920x1080 screen displays about 20–40 regular products per full page (0.0955ms)
+✔ an equivalent refreshed data object produces the same page boundaries and display budgets (0.33775ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9.937
+TEST_RESULT	PASS	tests/electronic-menu-layout.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/electronic-menu-media.test.ts
+✔ dedicated and banner upload share exact MIME/2MiB/multipart errors with no rejected writes (26.135458ms)
+✔ OWNER/session and tenant isolation gate all dedicated operations and legacy writes (1.552541ms)
+✔ A banner stays on H5, B GIF is dedicated only, clear restores A; same-tenant stores remain separate (2.178292ms)
+✔ identical retries are stable, rapid replacements version distinctly, banner updates/clear leave dedicated intact (0.890625ms)
+✔ anonymous media is GET-only; malformed/unknown/inactive selectors never expose other store images (0.357667ms)
+✔ failed writes preserve both field pairs and return generic retryable errors (0.46175ms)
+✔ media query failures are bounded and disclose no internal error or fallback from another store (0.301125ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34.363291
+[security] 已拒绝生产环境中的 x-* 开发身份头
+TEST_RESULT	PASS	tests/electronic-menu-media.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/es-tray-desktop-compatibility.test.ts
+PASS config 200 with fieldOnly=true and enabled=true enables Relay
+PASS config enabled=false keeps Relay disabled
+PASS config HTTP 401 keeps Relay disabled
+PASS config HTTP 403 keeps Relay disabled
+PASS config HTTP 404 keeps Relay disabled
+PASS config HTTP 500 keeps Relay disabled
+PASS invalid config payload keeps Relay disabled
+PASS config network error creates no Relay intent
+PASS a black-holed config request times out to the legacy path
+PASS one submit action produces exactly one enqueue request
+PASS the same logical retry reuses its stable requestId and exact bytes
+PASS an idempotent replay returns the same job without a new physical intent
+PASS a conflicting idempotency payload is an explicit 409 failure
+PASS the Desktop payload is byte-for-byte compatible with the Production parser
+PASS the client never injects tenant or store identifiers
+PASS the target queue remains the fixed 前台 Windows queue
+PASS commandStream byteLength, digest, and base64 are exact
+PASS an invalid success envelope is rejected
+PASS OrderDetailSheet alone owns the new config and enqueue integration
+PASS the existing cashier completion print path remains QZ/legacy
+PASS the existing 补打小票 path remains DesktopReceipt browser print
+PASS all supported locales contain the minimal Relay result messages
+es-tray Desktop compatibility tests passed (22 cases)
+TEST_RESULT	PASS	tests/es-tray-desktop-compatibility.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/es-tray-desktop-pos-entry.test.ts
+PASS /desktop/pos still renders the existing CashierPage runtime
+PASS the Desktop sales-record list remains sourced from the scoped records API
+PASS the sales-record row keeps the server order number as the detail identity
+PASS CashierPage reuses OrderDetailSheet instead of defining a second Relay client
+PASS the Desktop record selection has an order-scoped detail state
+PASS one Desktop record click opens the reused detail with that row order number
+PASS the reused detail is mounted only for the Desktop POS path
+PASS closing the reused detail clears both selected order and inline expansion
+PASS opening the Desktop records panel resets any prior selected detail
+PASS OrderDetailSheet selects the reviewed OWNER or device config gate when an order opens
+PASS a disabled or failed config gate preserves the existing browser print path
+PASS the Relay-enabled path reuses the reviewed receipt renderer and explicit enqueue clients
+PASS the print handler remains single-flight and keeps a stable retry intent
+PASS an ambiguous Relay failure has no blind browser or QZ fallback
+PASS the cloud client still fixes the target to the 前台 Windows queue
+PASS the cashier completion print path remains on its existing QZ/browser implementation
+PASS the existing 补打小票 path remains unchanged outside the Desktop POS modal
+PASS OrderDetailSheet remains the sole owner of config, rendering, and enqueue selection
+es-tray Desktop POS entry tests passed (18 cases)
+TEST_RESULT	PASS	tests/es-tray-desktop-pos-entry.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/es-tray-device-print-contract.test.ts
+PASS device config accepts an authenticated delegated Browser POS principal
+PASS device config preserves the frozen Desktop fieldOnly marker
+PASS eligible device config reports enabled=true
+PASS device config is never cacheable
+PASS device config exposes no binding, tenant, store, or credential material
+PASS device config rejects a missing device principal
+PASS device authentication fails closed when AUTH_SECRET is absent
+PASS an authenticated but inactive binding receives enabled=false
+PASS device enqueue uses only the server-derived tenant scope
+PASS device enqueue uses only the server-derived store scope
+PASS client tenant/store/binding override fields fail the exact request contract
+PASS device enqueue rejects orders outside its derived scope
+PASS device enqueue rejects an inactive binding before parsing side effects
+PASS device enqueue keeps the target queue fixed to 前台
+PASS device enqueue retains the production response envelope
+PASS device order detail receives only server-derived scope
+PASS device order detail returns 404 without leaking another scope
+PASS device order detail is non-cacheable
+PASS device config client calls only the device endpoint
+PASS owner config client still calls only the OWNER endpoint
+PASS device print client calls only the device enqueue endpoint
+PASS owner print client still calls only the OWNER enqueue endpoint
+PASS device retry keeps one idempotency key and exact command bytes
+PASS OrderDetailSheet explicitly selects device config only for /desktop/pos
+PASS OrderDetailSheet explicitly selects device-scoped order detail
+PASS OrderDetailSheet explicitly selects device enqueue
+PASS device fetch has no OWNER apiFetch fallback
+PASS device fetch explicitly omits account-session cookies
+PASS browser device client never reads or transmits deviceSecret
+PASS OWNER routes remain independent of Browser POS device auth
+PASS OWNER enqueue remains unavailable without an OWNER session
+PASS OWNER enqueue still rejects a non-OWNER identity
+PASS ambiguous Relay failure still cannot fall back to QZ or browser print
+PASS the existing cashier page remains byte-identical to its exact governance approval
+PASS device routes are isolated from OWNER routes at distinct paths
+es-tray device print contract tests passed (35 cases)
+TEST_RESULT	PASS	tests/es-tray-device-print-contract.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/es-tray-relay-config.test.ts
+PASS authenticated OWNER with an active store receives 200
+PASS the Desktop compatibility marker remains fieldOnly=true
+PASS an eligible authenticated store receives enabled=true
+PASS every successful gate response is non-cacheable
+PASS an unauthenticated request is rejected
+PASS a non-OWNER request is rejected by the current relay policy
+PASS tenant scope comes only from the authenticated context
+PASS store scope comes only from the authenticated context
+PASS an inactive or invalid tenant/store scope is disabled
+PASS the exact Desktop 0.4.7 parser selects the enqueue path
+PASS the gate does not depend on Tray or printer online state
+PASS the response exposes no credential or claim material
+es-tray relay config tests passed (12 cases)
+TEST_RESULT	PASS	tests/es-tray-relay-config.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/es-tray-relay-contract.test.ts
+PASS the 0.1 Desktop request contract remains accepted and canonical
+PASS command stream tampering is rejected
+PASS executing requires schema, attempt, and a high-entropy claim token
+PASS SUCCEEDED means CROSSED but never physical completion
+PASS the enqueue response preserves the frozen Desktop 0.4.7 envelope
+es-tray relay contract tests passed (5 cases)
+TEST_RESULT	PASS	tests/es-tray-relay-contract.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/hrt-contract.test.ts
+hrt contract tests passed
+TEST_RESULT	PASS	tests/hrt-contract.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/kitchen-ticket-content.test.ts
+TEST_RESULT	PASS	tests/kitchen-ticket-content.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/kitchen-ticket-print-window.test.ts
+kitchen ticket print-window tests passed
+[desktop-receipt] print failed Error: print failed
+    at FakePrintWindow.print (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/kitchen-ticket-print-window.test.ts:44:35)
+    at Timeout._onTimeout (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/app/components/DesktopReceipt.tsx:407:11)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+[kitchen-ticket] print failed Error: print failed
+    at FakePrintWindow.print (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/kitchen-ticket-print-window.test.ts:44:35)
+    at Timeout._onTimeout (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/app/components/KitchenTicket.tsx:193:11)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+TEST_RESULT	PASS	tests/kitchen-ticket-print-window.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/mino-bos-cashier-realtime-observation.test.ts
+mino bos cashier realtime observation tests passed
+TEST_RESULT	PASS	tests/mino-bos-cashier-realtime-observation.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/network-release-deployment-policy.test.cjs
+PASS main automatic deployment disabled, release enabled, exact governance/Network branch exclusions preserved
+TEST_RESULT	PASS	tests/network-release-deployment-policy.test.cjs	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/ops-subscription-renewal-summary.test.ts
+ops subscription renewal summary tests passed
+TEST_RESULT	PASS	tests/ops-subscription-renewal-summary.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/owner-multi-store-hub.test.ts
+owner multi-store hub tests passed
+TEST_RESULT	PASS	tests/owner-multi-store-hub.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/print-settings-static.test.ts
+TEST_RESULT	PASS	tests/print-settings-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/product-discount-v01-static.test.ts
+product discount V0.1 static checks passed
+TEST_RESULT	PASS	tests/product-discount-v01-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/product-recommendation-v01.test.ts
+product recommendation V0.1: 8 cases passed
+TEST_RESULT	PASS	tests/product-recommendation-v01.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/product-sales-api.test.ts
+product sales real route/service tests passed: auth, isolation, source predicates, CRUD, retries, history revocation and daily concurrency
+[security] 已拒绝生产环境中的 x-* 开发身份头
+TEST_RESULT	PASS	tests/product-sales-api.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/product-sales-image.test.ts
+✔ compact image preserves exact sales, store identity, currencies, cutoff and sales warnings in every locale (4.677834ms)
+✔ zero-sales rows are counted only in the image; free sales, exact small amounts and store identities remain (2.849584ms)
+✔ all-zero, empty and legacy history images remain explicit without phantom sold rows (2.384042ms)
+✔ historical report uses its own group and dates; long names and every row are retained (11.774ms)
+✔ canvas bounds retain readable scale and reject oversized results instead of cropping (0.251458ms)
+✔ generation/share waits settle on success, failure, timeout and cancel; late failures stay observed (6.834375ms)
+✔ existing browser file-share detection and explicit download keep preview URL ownership (0.372083ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31.468125
+TEST_RESULT	PASS	tests/product-sales-image.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/product-sales-print.test.ts
+product report print tests passed: OWNER contract, deadlines, abort, late completion fences, repeat/retry identity and browser cleanup
+TEST_RESULT	PASS	tests/product-sales-print.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/product-sales-report.test.ts
+product sales dates, recorded money, isolation, rendering and scheduler tests passed
+TEST_RESULT	PASS	tests/product-sales-report.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-async-store-transition.test.ts
+qz async store transition tests passed
+TEST_RESULT	PASS	tests/qz-async-store-transition.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-cashier-raw-handoff-static.test.ts
+QZ cashier RAW handoff static checks passed
+TEST_RESULT	PASS	tests/qz-cashier-raw-handoff-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-dual-queue-static.test.ts
+QZ dual-queue static tests passed
+TEST_RESULT	PASS	tests/qz-dual-queue-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-dual-queue.test.ts
+QZ dual-queue adapter tests passed
+TEST_RESULT	PASS	tests/qz-dual-queue.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-escpos-bit-image.test.ts
+QZ ESC/POS ESC * 0x21 bit-image tests passed
+TEST_RESULT	PASS	tests/qz-escpos-bit-image.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-printer-adapter.test.ts
+qz printer adapter tests passed
+TEST_RESULT	PASS	tests/qz-printer-adapter.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-raw-scope-alignment-runtime.test.ts
+QZ RAW scope alignment runtime checks passed
+TEST_RESULT	PASS	tests/qz-raw-scope-alignment-runtime.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-receipt-content.test.ts
+qz receipt content tests passed
+TEST_RESULT	PASS	tests/qz-receipt-content.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-signing-runtime-boundaries.test.ts
+QZ signing runtime boundary tests passed
+TEST_RESULT	PASS	tests/qz-signing-runtime-boundaries.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-signing-static.test.ts
+QZ signing API static checks passed
+TEST_RESULT	PASS	tests/qz-signing-static.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-signing.test.ts
+QZ signing runtime and contract tests passed
+TEST_RESULT	PASS	tests/qz-signing.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/qz-store-isolation.test.ts
+qz store isolation tests passed
+TEST_RESULT	PASS	tests/qz-store-isolation.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-lead-conversion.test.ts
+sales lead conversion tests passed
+TEST_RESULT	PASS	tests/sales-lead-conversion.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-lead-data-layer.test.ts
+sales lead data-layer tests passed
+TEST_RESULT	PASS	tests/sales-lead-data-layer.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-lead-ops-guard.test.ts
+sales lead ops guard tests passed
+TEST_RESULT	PASS	tests/sales-lead-ops-guard.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-lead-public-invite.test.ts
+sales lead public invite tests passed
+TEST_RESULT	PASS	tests/sales-lead-public-invite.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-lead-support-config.test.ts
+sales lead support config tests passed
+TEST_RESULT	PASS	tests/sales-lead-support-config.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-lead-support-context.test.ts
+sales lead support context tests passed
+TEST_RESULT	PASS	tests/sales-lead-support-context.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-lead-telegram-claim.test.ts
+sales lead telegram claim tests passed
+TEST_RESULT	PASS	tests/sales-lead-telegram-claim.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-onboarding-webhook.test.ts
+sales onboarding webhook tests passed
+TEST_RESULT	PASS	tests/sales-onboarding-webhook.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-permission-closure.test.ts
+sales permission closure tests passed
+TEST_RESULT	PASS	tests/sales-permission-closure.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-unlinked-inquiries.test.ts
+sales unlinked inquiry tests passed
+TEST_RESULT	PASS	tests/sales-unlinked-inquiries.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-workspace-conversion.test.ts
+sales workspace conversion closure tests passed
+TEST_RESULT	PASS	tests/sales-workspace-conversion.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-workspace-ux.test.ts
+sales workspace UX tests passed
+TEST_RESULT	PASS	tests/sales-workspace-ux.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/sales-workspace.test.ts
+sales workspace tests passed
+TEST_RESULT	PASS	tests/sales-workspace.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/subscription-expiry-reminder.test.ts
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual - expected
+
++ 'EXPIRED'
+- 'REMIND'
+
+    at testReminderApiIsolation (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/subscription-expiry-reminder.test.ts:169:12) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 'EXPIRED',
+  expected: 'REMIND',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+TEST_RESULT	FAIL	tests/subscription-expiry-reminder.test.ts	exit=1	classification=TEST	signal=none	error=none
+TEST_START	tests/subscription-lifecycle.test.ts
+subscription lifecycle tests passed
+TEST_RESULT	PASS	tests/subscription-lifecycle.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/telegram-start-param.test.ts
+telegram-start-param tests passed
+TEST_RESULT	PASS	tests/telegram-start-param.test.ts	exit=0	classification=TEST	signal=none	error=none
+SUITE_SUMMARY	root-core	expected=72	collected=72	executed=72	pass=71	fail=1	known=1	new=0	recovered=1	known_environment_blocked=0	environment_failures=0	skipped=0	uncollected=0	environment=PASS	overall=PASS

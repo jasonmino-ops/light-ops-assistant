@@ -35,19 +35,29 @@ function jsonRoute(route: Route, body: unknown, status = 200) {
 async function openRejectedLaunch(browser: Browser, status: number, error: string) {
   const page = await browser.newPage()
   let consumeCount = 0
+  const pageErrors: string[] = []
+  page.on('pageerror', (pageError) => pageErrors.push(pageError.message))
   await page.route('**/api/computer-client/browser-launch/consume', async (route) => {
     consumeCount += 1
     await jsonRoute(route, { error }, status)
   })
+  const consumeRequestObserved = page.waitForRequest((request) => (
+    new URL(request.url()).pathname === '/api/computer-client/browser-launch/consume'
+  ))
   await page.goto(`${runtimeBaseUrl}/cashier/launch#ticket=rejected-ticket`, {
     waitUntil: 'domcontentloaded',
     timeout: 30_000,
   })
-  await page.waitForTimeout(200)
+  await consumeRequestObserved
+  await page.locator('section[aria-live="polite"]').filter({ hasText: '⚠️' }).waitFor({
+    state: 'visible',
+    timeout: 30_000,
+  })
   const result = {
     consumeCount,
     pathname: new URL(page.url()).pathname,
     redirectedToDevicePos: new URL(page.url()).pathname === '/desktop/pos',
+    pageErrors,
   }
   await page.close()
   return result
@@ -281,6 +291,7 @@ async function main() {
       assert.equal(result.consumeCount, 1)
       assert.equal(result.pathname, '/cashier/launch')
       assert.equal(result.redirectedToDevicePos, false)
+      assert.deepEqual(result.pageErrors, [])
     })
 
     await test('revoked or unavailable binding cannot enter Desktop POS', async () => {
@@ -288,6 +299,7 @@ async function main() {
       assert.equal(result.consumeCount, 1)
       assert.equal(result.pathname, '/cashier/launch')
       assert.equal(result.redirectedToDevicePos, false)
+      assert.deepEqual(result.pageErrors, [])
     })
 
     const runtime = await runValidLaunch(browser)

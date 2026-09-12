@@ -1,0 +1,175 @@
+SUITE_START	root-integration	lane=INTEGRATION	files=10	expected=10	head=393d0eeeb06cf50c1c367b9612cd61239046aa6a
+TEST_START	tests/cashier-network-print-v01.test.ts
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/cashier-network-print-v01.test.ts:24
+  throw new Error('Explicit LOCAL test database and test secret required; migrations are never run')
+        ^
+
+Error: Explicit LOCAL test database and test secret required; migrations are never run
+    at assert (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/cashier-network-print-v01.test.ts:24:9)
+    at Object.<anonymous> (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/cashier-network-print-v01.test.ts:497:2)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object.transformer (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/node_modules/tsx/dist/register-D46fvsV_.cjs:3:1104)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:328:3)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:233:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
+
+Node.js v24.14.0
+TEST_RESULT	FAIL	tests/cashier-network-print-v01.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+TEST_START	tests/dashboard-print-settings-mobile.test.ts
+page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3100/dashboard
+Call log:
+[2m  - navigating to "http://127.0.0.1:3100/dashboard", waiting until "domcontentloaded"[22m
+
+    at main (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/dashboard-print-settings-mobile.test.ts:156:18) {
+  log: [
+    '  - navigating to "http://127.0.0.1:3100/dashboard", waiting until "domcontentloaded"'
+  ],
+  name: 'Error'
+}
+TEST_RESULT	FAIL	tests/dashboard-print-settings-mobile.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+TEST_START	tests/desktop-activation-runtime.test.ts
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/desktop-activation-runtime.test.ts:11
+  throw new Error('DESKTOP_ACTIVATION_TEST_DATABASE=1 is required for real database activation tests')
+        ^
+
+Error: DESKTOP_ACTIVATION_TEST_DATABASE=1 is required for real database activation tests
+    at assert (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/desktop-activation-runtime.test.ts:11:9)
+    at Object.<anonymous> (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/desktop-activation-runtime.test.ts:264:4)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object.transformer (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/node_modules/tsx/dist/register-D46fvsV_.cjs:3:1104)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:328:3)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:233:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
+
+Node.js v24.14.0
+TEST_RESULT	FAIL	tests/desktop-activation-runtime.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+TEST_START	tests/desktop-pos-write-fallback-runtime.test.ts
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/desktop-pos-write-fallback-runtime.test.ts:13
+  throw new Error('CASHIER_SECURITY_TEST_DATABASE=1 is required for real cashier security database tests')
+        ^
+
+Error: CASHIER_SECURITY_TEST_DATABASE=1 is required for real cashier security database tests
+    at assert (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/desktop-pos-write-fallback-runtime.test.ts:13:9)
+    at Object.<anonymous> (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/desktop-pos-write-fallback-runtime.test.ts:418:4)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object.transformer (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/node_modules/tsx/dist/register-D46fvsV_.cjs:3:1104)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:328:3)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:233:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
+
+Node.js v24.14.0
+TEST_RESULT	FAIL	tests/desktop-pos-write-fallback-runtime.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+TEST_START	tests/es-tray-desktop-launch-route.test.ts
+PASS official Desktop launch reads the one-time ticket only from the URL fragment
+PASS the fragment is removed before ticket validation or network use
+PASS the launch page still consumes through the existing BrowserPosDevice endpoint
+PASS consume success must supply both storeCode and posDeviceToken
+PASS redirect store context comes from the server-validated binding response
+PASS URLSearchParams provides encoded store context and mode=pos
+PASS the launch page exposes neither deviceSecret nor an OWNER-session dependency
+PASS the existing non-device browser cashier entry remains /cashier
+PASS mobile and OWNER navigation are not introduced into the device launch page
+PASS the target Desktop page still selects POS mode from mode=pos
+PASS device runtime detection remains exact to /desktop/pos
+PASS the reused order detail still selects the device order endpoint in Desktop POS
+AssertionError [ERR_ASSERTION]: A12_LAUNCH_RUNTIME_BASE_URL is required
+    at main (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/es-tray-desktop-launch-route.test.ts:219:10) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+TEST_RESULT	FAIL	tests/es-tray-desktop-launch-route.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+TEST_START	tests/es-tray-device-print-runtime.test.ts
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/es-tray-device-print-runtime.test.ts:23
+  throw new Error('ES_TRAY_DEVICE_TEST_DATABASE=1 is required')
+        ^
+
+Error: ES_TRAY_DEVICE_TEST_DATABASE=1 is required
+    at assert (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/es-tray-device-print-runtime.test.ts:23:9)
+    at Object.<anonymous> (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/es-tray-device-print-runtime.test.ts:580:4)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object.transformer (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/node_modules/tsx/dist/register-D46fvsV_.cjs:3:1104)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:328:3)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:233:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
+
+Node.js v24.14.0
+TEST_RESULT	FAIL	tests/es-tray-device-print-runtime.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+TEST_START	tests/es-tray-relay-runtime.test.ts
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/es-tray-relay-runtime.test.ts:26
+  throw new Error('ES_TRAY_RELAY_TEST_DATABASE=1 is required')
+        ^
+
+Error: ES_TRAY_RELAY_TEST_DATABASE=1 is required
+    at assert (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/es-tray-relay-runtime.test.ts:26:9)
+    at Object.<anonymous> (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/es-tray-relay-runtime.test.ts:408:4)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object.transformer (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/node_modules/tsx/dist/register-D46fvsV_.cjs:3:1104)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:328:3)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:233:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
+
+Node.js v24.14.0
+TEST_RESULT	FAIL	tests/es-tray-relay-runtime.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+TEST_START	tests/network-print-jobs-api.test.ts
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/network-print-jobs-api.test.ts:16
+  throw new Error('Explicit LOCAL test database (127.0.0.1/light_ops_test) and AUTH_SECRET are required')
+        ^
+
+Error: Explicit LOCAL test database (127.0.0.1/light_ops_test) and AUTH_SECRET are required
+    at assert (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/network-print-jobs-api.test.ts:16:9)
+    at Object.<anonymous> (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/network-print-jobs-api.test.ts:533:4)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object.transformer (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/node_modules/tsx/dist/register-D46fvsV_.cjs:3:1104)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:328:3)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:233:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
+
+Node.js v24.14.0
+TEST_RESULT	FAIL	tests/network-print-jobs-api.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+TEST_START	tests/product-sales-browser.test.ts
+page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3107/product-sales
+Call log:
+[2m  - navigating to "http://127.0.0.1:3107/product-sales", waiting until "load"[22m
+
+    at main (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/product-sales-browser.test.ts:76:16) {
+  log: [
+    '  - navigating to "http://127.0.0.1:3107/product-sales", waiting until "load"'
+  ],
+  name: 'Error'
+}
+TEST_RESULT	FAIL	tests/product-sales-browser.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+TEST_START	tests/product-sales-image-browser.test.ts
+page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:3107/product-sales
+Call log:
+[2m  - navigating to "http://127.0.0.1:3107/product-sales", waiting until "load"[22m
+
+    at main (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/product-sales-image-browser.test.ts:76:16) {
+  log: [
+    '  - navigating to "http://127.0.0.1:3107/product-sales", waiting until "load"'
+  ],
+  name: 'Error'
+}
+TEST_RESULT	FAIL	tests/product-sales-image-browser.test.ts	exit=1	classification=ENVIRONMENT	signal=none	error=none
+SUITE_SUMMARY	root-integration	expected=10	collected=10	executed=10	pass=0	fail=10	known=0	new=0	recovered=0	known_environment_blocked=1	environment_failures=10	skipped=0	uncollected=0	environment=BLOCKED	overall=BLOCKED

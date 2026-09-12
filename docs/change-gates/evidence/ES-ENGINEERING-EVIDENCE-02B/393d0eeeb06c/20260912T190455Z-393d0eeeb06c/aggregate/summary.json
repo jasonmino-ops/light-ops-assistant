@@ -1,0 +1,1137 @@
+{
+  "schemaVersion": 1,
+  "suite": "root-top-level",
+  "metadata": {
+    "lane": "AGGREGATE",
+    "runIdentity": "20260912T190455Z-393d0eeeb06c",
+    "timestamp": "2026-09-12T19:04:55.131Z",
+    "headSha": "393d0eeeb06cf50c1c367b9612cd61239046aa6a",
+    "coreManifestPath": "scripts/test/manifests/root-core-tests.json",
+    "coreManifestSha256": "f48223296ffc467700e2d27f71e9b50a5d2322f0c7978db3c1d80714fe47d637",
+    "integrationManifestPath": "scripts/test/manifests/root-integration-tests.json",
+    "integrationManifestSha256": "dceccc12b65540318067d6515f3eadb3a9e89f8b0ef17f9590c36d844b689947",
+    "baselinePath": "docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md",
+    "baselineSha256": "504d3009c3c6c6e1d4680a146ec564b68f733784fad87bc6dfa01dc4872a27cd",
+    "baselineEvidencePath": "docs/change-gates/evidence/TASK-PRINT-RC7-PREFLIGHT-01/root-full-suite.log",
+    "baselineEvidenceSha256": "103b2f581a87e611bc6a021017cbab0c18a46f51869addf89f49365dc8a8f06f",
+    "evidenceDirectory": "test-results/test-evidence/root-lanes/20260912T190455Z-393d0eeeb06c",
+    "expectedDurableEvidencePath": "docs/change-gates/evidence/ES-ENGINEERING-EVIDENCE-02B/393d0eeeb06c/20260912T190455Z-393d0eeeb06c",
+    "durableEvidenceExists": false,
+    "coreSummarySha256": "4f9c739b2bee079f79decaac7f7a796a977c8ccd29f99ca3fb43a3a58268816f",
+    "integrationSummarySha256": "d8b9c98af646565d5c24b375d6f87beedcc222fdc87093a3545b3c57d263db61",
+    "rawLogSha256": "46d6c2b02093eb481221bd1537e231a7e1d69d4509e3dca98ecf5060308dc0df"
+  },
+  "counts": {
+    "expected": 82,
+    "collected": 82,
+    "executed": 82,
+    "passed": 71,
+    "failed": 11,
+    "knownFailures": 1,
+    "newFailures": 0,
+    "recoveredFailures": 1,
+    "knownEnvironmentBlocked": 1,
+    "skipped": 0,
+    "uncollected": 0,
+    "environmentFailures": 10,
+    "unassigned": 0,
+    "duplicate": 0
+  },
+  "files": {
+    "collected": [
+      "tests/bd-ops-permission-closure.test.ts",
+      "tests/browser-order-sync-static.test.ts",
+      "tests/browser-pos-customer-display-entry.test.ts",
+      "tests/browser-print-readiness.test.ts",
+      "tests/browser-transaction-security.test.ts",
+      "tests/cash-helper.test.ts",
+      "tests/cashier-inline-style-conflicts-static.test.ts",
+      "tests/cashier-network-print-v01.test.ts",
+      "tests/cashier-realtime-gateway-static.test.ts",
+      "tests/cashier-realtime-integration.test.ts",
+      "tests/computer-console-static.test.ts",
+      "tests/customer-display-adapter.test.ts",
+      "tests/customer-display-cart-sync-static.test.ts",
+      "tests/customer-display-panel-state.test.ts",
+      "tests/customer-display-persistent-panel-static.test.ts",
+      "tests/customer-display-public-entry-url.test.ts",
+      "tests/customer-display-realtime-channel.test.ts",
+      "tests/customer-display-session-current-static.test.ts",
+      "tests/customer-landing-journey-static.test.ts",
+      "tests/dashboard-print-settings-mobile.test.ts",
+      "tests/desktop-activation-concurrency-static.test.ts",
+      "tests/desktop-activation-crypto.test.ts",
+      "tests/desktop-activation-runtime.test.ts",
+      "tests/desktop-activation-security-static.test.ts",
+      "tests/desktop-activation-subscription.test.ts",
+      "tests/desktop-pos-write-fallback-runtime.test.ts",
+      "tests/electronic-menu-data.test.ts",
+      "tests/electronic-menu-layout.test.ts",
+      "tests/electronic-menu-media.test.ts",
+      "tests/es-tray-desktop-compatibility.test.ts",
+      "tests/es-tray-desktop-launch-route.test.ts",
+      "tests/es-tray-desktop-pos-entry.test.ts",
+      "tests/es-tray-device-print-contract.test.ts",
+      "tests/es-tray-device-print-runtime.test.ts",
+      "tests/es-tray-relay-config.test.ts",
+      "tests/es-tray-relay-contract.test.ts",
+      "tests/es-tray-relay-runtime.test.ts",
+      "tests/hrt-contract.test.ts",
+      "tests/kitchen-ticket-content.test.ts",
+      "tests/kitchen-ticket-print-window.test.ts",
+      "tests/mino-bos-cashier-realtime-observation.test.ts",
+      "tests/network-print-jobs-api.test.ts",
+      "tests/network-release-deployment-policy.test.cjs",
+      "tests/ops-subscription-renewal-summary.test.ts",
+      "tests/owner-multi-store-hub.test.ts",
+      "tests/print-settings-static.test.ts",
+      "tests/product-discount-v01-static.test.ts",
+      "tests/product-recommendation-v01.test.ts",
+      "tests/product-sales-api.test.ts",
+      "tests/product-sales-browser.test.ts",
+      "tests/product-sales-image-browser.test.ts",
+      "tests/product-sales-image.test.ts",
+      "tests/product-sales-print.test.ts",
+      "tests/product-sales-report.test.ts",
+      "tests/qz-async-store-transition.test.ts",
+      "tests/qz-cashier-raw-handoff-static.test.ts",
+      "tests/qz-dual-queue-static.test.ts",
+      "tests/qz-dual-queue.test.ts",
+      "tests/qz-escpos-bit-image.test.ts",
+      "tests/qz-printer-adapter.test.ts",
+      "tests/qz-raw-scope-alignment-runtime.test.ts",
+      "tests/qz-receipt-content.test.ts",
+      "tests/qz-signing-runtime-boundaries.test.ts",
+      "tests/qz-signing-static.test.ts",
+      "tests/qz-signing.test.ts",
+      "tests/qz-store-isolation.test.ts",
+      "tests/sales-lead-conversion.test.ts",
+      "tests/sales-lead-data-layer.test.ts",
+      "tests/sales-lead-ops-guard.test.ts",
+      "tests/sales-lead-public-invite.test.ts",
+      "tests/sales-lead-support-config.test.ts",
+      "tests/sales-lead-support-context.test.ts",
+      "tests/sales-lead-telegram-claim.test.ts",
+      "tests/sales-onboarding-webhook.test.ts",
+      "tests/sales-permission-closure.test.ts",
+      "tests/sales-unlinked-inquiries.test.ts",
+      "tests/sales-workspace-conversion.test.ts",
+      "tests/sales-workspace-ux.test.ts",
+      "tests/sales-workspace.test.ts",
+      "tests/subscription-expiry-reminder.test.ts",
+      "tests/subscription-lifecycle.test.ts",
+      "tests/telegram-start-param.test.ts"
+    ],
+    "results": [
+      {
+        "file": "tests/bd-ops-permission-closure.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/browser-order-sync-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/browser-pos-customer-display-entry.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/browser-print-readiness.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/browser-transaction-security.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/cash-helper.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/cashier-inline-style-conflicts-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/cashier-network-print-v01.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_LOCAL_TEST_DATABASE",
+        "environmentFingerprint": "Error: Explicit LOCAL test database and test secret required"
+      },
+      {
+        "file": "tests/cashier-realtime-gateway-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/cashier-realtime-integration.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/computer-console-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/customer-display-adapter.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/customer-display-cart-sync-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/customer-display-panel-state.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/customer-display-persistent-panel-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/customer-display-public-entry-url.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/customer-display-realtime-channel.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/customer-display-session-current-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/customer-landing-journey-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/dashboard-print-settings-mobile.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "BASELINE_ENVIRONMENT_FINGERPRINT",
+        "environmentFingerprint": "net::ERR_CONNECTION_REFUSED"
+      },
+      {
+        "file": "tests/desktop-activation-concurrency-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/desktop-activation-crypto.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/desktop-activation-runtime.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: DESKTOP_ACTIVATION_TEST_DATABASE=1 is required"
+      },
+      {
+        "file": "tests/desktop-activation-security-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/desktop-activation-subscription.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/desktop-pos-write-fallback-runtime.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: CASHIER_SECURITY_TEST_DATABASE=1 is required"
+      },
+      {
+        "file": "tests/electronic-menu-data.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/electronic-menu-layout.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/electronic-menu-media.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/es-tray-desktop-compatibility.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/es-tray-desktop-launch-route.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "BASELINE_ENVIRONMENT_FINGERPRINT",
+        "environmentFingerprint": "A12_LAUNCH_RUNTIME_BASE_URL is required"
+      },
+      {
+        "file": "tests/es-tray-desktop-pos-entry.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/es-tray-device-print-contract.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/es-tray-device-print-runtime.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: ES_TRAY_DEVICE_TEST_DATABASE=1 is required"
+      },
+      {
+        "file": "tests/es-tray-relay-config.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/es-tray-relay-contract.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/es-tray-relay-runtime.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: ES_TRAY_RELAY_TEST_DATABASE=1 is required"
+      },
+      {
+        "file": "tests/hrt-contract.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/kitchen-ticket-content.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/kitchen-ticket-print-window.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/mino-bos-cashier-realtime-observation.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/network-print-jobs-api.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: Explicit LOCAL test database (127.0.0.1/light_ops_test) and AUTH_SECRET are required"
+      },
+      {
+        "file": "tests/network-release-deployment-policy.test.cjs",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/ops-subscription-renewal-summary.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/owner-multi-store-hub.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/print-settings-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/product-discount-v01-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/product-recommendation-v01.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/product-sales-api.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/product-sales-browser.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "BASELINE_ENVIRONMENT_FINGERPRINT",
+        "environmentFingerprint": "net::ERR_CONNECTION_REFUSED"
+      },
+      {
+        "file": "tests/product-sales-image-browser.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "BASELINE_ENVIRONMENT_FINGERPRINT",
+        "environmentFingerprint": "net::ERR_CONNECTION_REFUSED"
+      },
+      {
+        "file": "tests/product-sales-image.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/product-sales-print.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/product-sales-report.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-async-store-transition.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-cashier-raw-handoff-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-dual-queue-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-dual-queue.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-escpos-bit-image.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-printer-adapter.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-raw-scope-alignment-runtime.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-receipt-content.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-signing-runtime-boundaries.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-signing-static.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-signing.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/qz-store-isolation.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-lead-conversion.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-lead-data-layer.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-lead-ops-guard.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-lead-public-invite.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-lead-support-config.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-lead-support-context.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-lead-telegram-claim.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-onboarding-webhook.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-permission-closure.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-unlinked-inquiries.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-workspace-conversion.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-workspace-ux.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/sales-workspace.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/subscription-expiry-reminder.test.ts",
+        "status": "FAIL",
+        "classification": "TEST",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/subscription-lifecycle.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/telegram-start-param.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      }
+    ],
+    "knownFailures": [
+      {
+        "id": "KTF-20260912-07",
+        "file": "tests/subscription-expiry-reminder.test.ts",
+        "failureIdentity": "testReminderApiIsolation",
+        "failureFingerprints": [
+          "REMIND",
+          "EXPIRED"
+        ]
+      }
+    ],
+    "newFailures": [],
+    "recoveredFailures": [
+      {
+        "id": "KTF-20260912-01",
+        "file": "tests/browser-print-readiness.test.ts",
+        "failureIdentity": "unstable layout reaches the bounded timeout without printing",
+        "failureFingerprints": [
+          "blocked",
+          "printed"
+        ]
+      }
+    ],
+    "knownEnvironmentBlocked": [
+      {
+        "id": "KTF-20260912-03",
+        "file": "tests/desktop-pos-write-fallback-runtime.test.ts",
+        "failureIdentity": "testAuthorizedRegressionPaths",
+        "failureFingerprints": [
+          "after was called outside a request scope"
+        ]
+      }
+    ],
+    "missingKnownFailures": [],
+    "incompleteKnownFailures": [],
+    "skipped": [],
+    "environmentFailures": [
+      {
+        "file": "tests/cashier-network-print-v01.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_LOCAL_TEST_DATABASE",
+        "environmentFingerprint": "Error: Explicit LOCAL test database and test secret required"
+      },
+      {
+        "file": "tests/dashboard-print-settings-mobile.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "BASELINE_ENVIRONMENT_FINGERPRINT",
+        "environmentFingerprint": "net::ERR_CONNECTION_REFUSED"
+      },
+      {
+        "file": "tests/desktop-activation-runtime.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: DESKTOP_ACTIVATION_TEST_DATABASE=1 is required"
+      },
+      {
+        "file": "tests/desktop-pos-write-fallback-runtime.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: CASHIER_SECURITY_TEST_DATABASE=1 is required"
+      },
+      {
+        "file": "tests/es-tray-desktop-launch-route.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "BASELINE_ENVIRONMENT_FINGERPRINT",
+        "environmentFingerprint": "A12_LAUNCH_RUNTIME_BASE_URL is required"
+      },
+      {
+        "file": "tests/es-tray-device-print-runtime.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: ES_TRAY_DEVICE_TEST_DATABASE=1 is required"
+      },
+      {
+        "file": "tests/es-tray-relay-runtime.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: ES_TRAY_RELAY_TEST_DATABASE=1 is required"
+      },
+      {
+        "file": "tests/network-print-jobs-api.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "MISSING_REQUIRED_CONFIGURATION",
+        "environmentFingerprint": "Error: Explicit LOCAL test database (127.0.0.1/light_ops_test) and AUTH_SECRET are required"
+      },
+      {
+        "file": "tests/product-sales-browser.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "BASELINE_ENVIRONMENT_FINGERPRINT",
+        "environmentFingerprint": "net::ERR_CONNECTION_REFUSED"
+      },
+      {
+        "file": "tests/product-sales-image-browser.test.ts",
+        "status": "FAIL",
+        "classification": "ENVIRONMENT",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": "BASELINE_ENVIRONMENT_FINGERPRINT",
+        "environmentFingerprint": "net::ERR_CONNECTION_REFUSED"
+      }
+    ],
+    "uncollected": [],
+    "unexpectedCollected": [],
+    "unassigned": [],
+    "duplicate": []
+  },
+  "manifestAudit": {
+    "expected": {
+      "core": 72,
+      "integration": 10,
+      "aggregate": 82
+    },
+    "discovered": 82,
+    "union": 82,
+    "intersection": 0,
+    "unassigned": [],
+    "duplicate": [],
+    "removedMissing": [],
+    "exact": true
+  },
+  "lanes": {
+    "core": {
+      "environmentHealth": "PASS",
+      "status": "PASS",
+      "exitCode": 0
+    },
+    "integration": {
+      "environmentHealth": "BLOCKED",
+      "status": "BLOCKED",
+      "exitCode": 2
+    }
+  },
+  "runnerErrors": [],
+  "testEnvironmentHealth": "BLOCKED",
+  "environmentReasons": [
+    {
+      "category": "ENVIRONMENT",
+      "code": "INTEGRATION_ENVIRONMENT_BLOCKED",
+      "message": "INTEGRATION environment is BLOCKED: TEST_ENVIRONMENT_FAILURE"
+    }
+  ],
+  "evidenceStatus": "NOT_DURABLE",
+  "authority": "FULL_SUITE",
+  "fullSuiteStatus": "BLOCKED",
+  "overallStatus": "BLOCKED",
+  "blockingReasons": [
+    {
+      "category": "ENVIRONMENT",
+      "code": "INTEGRATION_ENVIRONMENT_BLOCKED",
+      "message": "INTEGRATION environment is BLOCKED: TEST_ENVIRONMENT_FAILURE"
+    }
+  ],
+  "exitCode": 2
+}

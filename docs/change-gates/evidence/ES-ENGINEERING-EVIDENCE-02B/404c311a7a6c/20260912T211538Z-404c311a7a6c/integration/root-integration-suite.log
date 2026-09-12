@@ -1,0 +1,216 @@
+SUITE_START	root-integration	lane=INTEGRATION	files=10	expected=10	head=404c311a7a6c157c37fb1efb68a2e20d7fffdb6b
+TEST_START	tests/cashier-network-print-v01.test.ts
+PASS cold readiness is a same-store read-only observation, never expiry/recovery or claim
+PASS late old-mode jobs are preserved exactly before timeout recovery/claim; new version requires a mode
+PASS a real concurrent old-mode sale waits on the guarded store transaction then remains unclaimed
+PASS guard checks the entire pending backlog, not only matching head, and refuses malformed hashes without terminalizing
+PASS unknown terminal history blocks guarded claim; each valid mode echoes its guard; unextended v2 stays compatible
+PASS real cashier transaction persists two jobs even when response body is discarded
+PASS FRONT_ONLY transaction creates one FRONT and no KITCHEN, including on response loss
+PASS role idempotency is stable and preserves immutable snapshot after product edits
+PASS failure inserting KITCHEN rolls back sale, payment and already inserted FRONT
+PASS legacy sale unchanged; normal manual-confirmed KHQR creates Network pair
+PASS missing/unknown/DUAL mode, host/port injection and excluded payment cause zero writes
+PASS v1 cannot claim or invalidate v2; v2 cannot claim v1
+PASS cross-store and wrong-protocol execution/result proofs are rejected
+PASS the old network development client is rejected before consuming mode jobs
+PASS mode is hash-bound and old mode-less stored payloads are never reinterpreted
+PASS Shared FRONT precedes KITCHEN at identical timestamps and active claims block later jobs
+PASS a late earlier-dated order cannot interrupt Shared pair after FRONT CLAIMED
+PASS a late earlier-dated order cannot interrupt Shared pair after FRONT EXECUTING
+PASS a late earlier-dated order cannot interrupt Shared pair after FRONT ACKNOWLEDGED
+PASS KITCHEN cannot depend on a separately valid FRONT with a different immutable snapshot
+PASS Shared retry delay and claim recovery cannot be overtaken by KITCHEN or the next order
+PASS a definite FRONT failure fails only its KITCHEN dependency without sending or claiming it
+PASS an acknowledged unknown FRONT stops KITCHEN and all later network orders durably
+PASS CROSSING_UNKNOWN execution timeout is terminal and never reclaimed
+PASS cashier Network-owned sale has no legacy receipt/auto-print handoff
+Network V0.1 database integration PASS (25)
+[POST /api/cashier/sales] Error: INJECTED_SECOND_JOB_WRITE_FAILURE
+    at Proxy.<anonymous> (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/cashier-network-print-v01.test.ts:239:57)
+    at enqueueRelayPrintJob (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/lib/es-tray-relay/service.ts:105:49)
+    at enqueueCashierNetworkJobs (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/lib/es-tray-relay/cashier-network-producer.ts:22:26)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/app/api/cashier/sales/route.ts:215:34)
+    at async Proxy._transactionWithCallback (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:785:18)
+    at async POST (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/app/api/cashier/sales/route.ts:143:20)
+    at async <anonymous> (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/cashier-network-print-v01.test.ts:246:25)
+    at async test (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/cashier-network-print-v01.test.ts:28:63)
+    at async run (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/cashier-network-print-v01.test.ts:226:3)
+TEST_RESULT	PASS	tests/cashier-network-print-v01.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/dashboard-print-settings-mobile.test.ts
+dashboard mobile print settings lifecycle tests passed
+TEST_RESULT	PASS	tests/dashboard-print-settings-mobile.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/desktop-activation-runtime.test.ts
+desktop activation runtime database tests passed
+TEST_RESULT	PASS	tests/desktop-activation-runtime.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/desktop-pos-write-fallback-runtime.test.ts
+Error: `after` was called outside a request scope. Read more: https://nextjs.org/docs/messages/next-dynamic-api-wrong-context
+    at after (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/node_modules/next/src/server/after/after.ts:14:11)
+    at PATCH (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/app/api/cashier/orders/[id]/route.ts:65:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async testAuthorizedRegressionPaths (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/desktop-pos-write-fallback-runtime.test.ts:384:23)
+    at async main (/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/tests/desktop-pos-write-fallback-runtime.test.ts:401:5)
+TEST_RESULT	FAIL	tests/desktop-pos-write-fallback-runtime.test.ts	exit=1	classification=TEST	signal=none	error=none
+TEST_START	tests/es-tray-desktop-launch-route.test.ts
+PASS official Desktop launch reads the one-time ticket only from the URL fragment
+PASS the fragment is removed before ticket validation or network use
+PASS the launch page still consumes through the existing BrowserPosDevice endpoint
+PASS consume success must supply both storeCode and posDeviceToken
+PASS redirect store context comes from the server-validated binding response
+PASS URLSearchParams provides encoded store context and mode=pos
+PASS the launch page exposes neither deviceSecret nor an OWNER-session dependency
+PASS the existing non-device browser cashier entry remains /cashier
+PASS mobile and OWNER navigation are not introduced into the device launch page
+PASS the target Desktop page still selects POS mode from mode=pos
+PASS device runtime detection remains exact to /desktop/pos
+PASS the reused order detail still selects the device order endpoint in Desktop POS
+PASS Network FRONT_ONLY reuses the consumed binding session and opens exact cashier opt-in
+PASS Network SHARED_PRINTER reuses the consumed binding session and opens exact cashier opt-in
+PASS invalid explicit Network options reject without auth consumption or legacy fallback: networkPrint=v01&networkMode=DUAL_PRINTER
+PASS invalid explicit Network options reject without auth consumption or legacy fallback: networkPrint=v01
+PASS invalid explicit Network options reject without auth consumption or legacy fallback: networkMode=FRONT_ONLY
+PASS invalid explicit Network options reject without auth consumption or legacy fallback: networkPrint=invalid&networkMode=FRONT_ONLY
+PASS missing ticket does not consume or enter Desktop POS
+PASS invalid or expired ticket cannot enter Desktop POS
+PASS revoked or unavailable binding cannot enter Desktop POS
+PASS valid official launch reaches the exact server-scoped Desktop POS URL
+PASS valid launch preserves the delegated BrowserPosDevice session without URL exposure
+PASS sales-record selection triggers device config and scoped order detail
+PASS device order detail carries delegated headers and loads successfully
+PASS runtime verification creates no print job
+es-tray Desktop launch route tests passed (26 cases)
+TEST_RESULT	PASS	tests/es-tray-desktop-launch-route.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/es-tray-device-print-runtime.test.ts
+PASS DEVICE-ONLY config succeeds with no OWNER cookie
+PASS DEVICE-ONLY order detail succeeds only inside the binding store
+PASS DEVICE-ONLY reads the real POS SaleRecord receipt shape without an OWNER session
+PASS DEVICE-ONLY enqueue persists a PrintJob in the derived tenant/store
+prisma:error 
+Invalid `prisma.eshopTrayPrintJob.create()` invocation in
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/lib/es-tray-relay/service.ts:128:48
+
+  125 const requestHash = hashPrintRequest(request)
+  126 const expiresAt = new Date(now.getTime() + timing.jobTtlMs)
+  127 try {
+→ 128   const job = await prisma.eshopTrayPrintJob.create(
+Unique constraint failed on the fields: (`"tenantId"`, `"storeId"`, `"idempotencyKey"`)
+PASS same device idempotency key and payload returns the original job
+prisma:error 
+Invalid `prisma.eshopTrayPrintJob.create()` invocation in
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/lib/es-tray-relay/service.ts:128:48
+
+  125 const requestHash = hashPrintRequest(request)
+  126 const expiresAt = new Date(now.getTime() + timing.jobTtlMs)
+  127 try {
+→ 128   const job = await prisma.eshopTrayPrintJob.create(
+Unique constraint failed on the fields: (`"tenantId"`, `"storeId"`, `"idempotencyKey"`)
+PASS same device idempotency key with different bytes returns 409
+PASS a valid device cannot read an order from another tenant
+PASS a valid device cannot enqueue an order from another tenant
+PASS a valid device cannot read an order from another store in its tenant
+PASS a valid device cannot enqueue an order from another store in its tenant
+PASS missing Browser POS credentials are rejected
+PASS a forged Browser POS token is rejected
+PASS a valid token presented for a different browser device is rejected
+PASS a revoked BrowserPosDevice session is rejected
+PASS an expired BrowserPosDevice session is rejected
+PASS a BrowserPosDevice session without BROWSER_POS scope is rejected
+PASS a Browser POS session without its consumed launch ticket is rejected
+PASS ambiguous duplicate launch-ticket linkage is rejected fail-closed
+PASS a launch ticket without consumed-at evidence is rejected
+PASS a launch ticket linked to the wrong browser device is rejected
+PASS a disabled ComputerBinding makes config disabled and enqueue forbidden
+PASS a non-APPROVED ComputerBinding is unavailable
+PASS an unbound ComputerBinding is unavailable
+PASS a revoked ComputerBinding credential is unavailable
+PASS an expired ComputerBinding credential is unavailable
+PASS an inactive tenant disables the delegated print capability
+PASS an inactive store disables the delegated print capability
+PASS a signed token with forged tenant/store scope is rejected
+es-tray device print runtime tests passed (28 cases)
+TEST_RESULT	PASS	tests/es-tray-device-print-runtime.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/es-tray-relay-runtime.test.ts
+prisma:error 
+Invalid `prisma.eshopTrayPrintJob.create()` invocation in
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/lib/es-tray-relay/service.ts:128:48
+
+  125 const requestHash = hashPrintRequest(request)
+  126 const expiresAt = new Date(now.getTime() + timing.jobTtlMs)
+  127 try {
+→ 128   const job = await prisma.eshopTrayPrintJob.create(
+Unique constraint failed on the fields: (`"tenantId"`, `"storeId"`, `"idempotencyKey"`)
+PASS enqueue idempotency returns the original job
+prisma:error 
+Invalid `prisma.eshopTrayPrintJob.create()` invocation in
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/lib/es-tray-relay/service.ts:128:48
+
+  125 const requestHash = hashPrintRequest(request)
+  126 const expiresAt = new Date(now.getTime() + timing.jobTtlMs)
+  127 try {
+→ 128   const job = await prisma.eshopTrayPrintJob.create(
+Unique constraint failed on the fields: (`"tenantId"`, `"storeId"`, `"idempotencyKey"`)
+PASS concurrent duplicate enqueue creates one row
+prisma:error 
+Invalid `prisma.eshopTrayPrintJob.create()` invocation in
+/Users/jason/.codex/worktrees/4ba4/light-ops-assistant/lib/es-tray-relay/service.ts:128:48
+
+  125 const requestHash = hashPrintRequest(request)
+  126 const expiresAt = new Date(now.getTime() + timing.jobTtlMs)
+  127 try {
+→ 128   const job = await prisma.eshopTrayPrintJob.create(
+Unique constraint failed on the fields: (`"tenantId"`, `"storeId"`, `"idempotencyKey"`)
+PASS same key with a different payload conflicts
+PASS tenant and store scopes have independent idempotency domains
+PASS invalid installation id and invalid device secret are rejected
+PASS disabled and revoked credentials are rejected
+PASS Tray 0.1.2 cannot claim a production job
+PASS atomic concurrent claim returns a job once
+PASS claim transaction loses to a concurrent binding disable
+PASS claim transaction loses to a concurrent credential revoke
+PASS claim transaction loses to a concurrent store deactivation
+PASS claim cannot cross a tenant or store boundary
+PASS lease expiry before EXECUTING permits a new attempt only
+PASS EXECUTING and terminal result transitions are idempotent
+PASS an old attempt token cannot acknowledge a newer claim
+PASS execution timeout becomes terminal CROSSING_UNKNOWN without reprint
+PASS maxAttempts terminates safe pre-execution retries
+PASS TTL expiration is terminal and never claimable
+prisma:error 
+Invalid `prisma.$executeRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `23503`. Message: `insert or update on table "EshopTrayPrintJob" violates foreign key constraint "EshopTrayPrintJob_claimedByComputerBindingId_tenantId_stor_fkey"`
+PASS database constraint rejects a cross-scope claim owner
+es-tray relay runtime database tests passed (19 cases)
+TEST_RESULT	PASS	tests/es-tray-relay-runtime.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/network-print-jobs-api.test.ts
+PASS 未认证请求被拒（无会话、无开发身份头）
+PASS 跨店越权：query 里的 storeId / tenantId 不作为权限依据，别店数据一律看不到
+PASS 时间范围过滤：今天 / 近 7 天 / 自定义各自收窄
+PASS ① 总量与 role 分布
+PASS ② 漏单：SHARED_PRINTER 缺 KITCHEN 报出，FRONT_ONLY 只有 FRONT 不报
+PASS ② 漏单：payload 读不出 mode 时标为无法判定，不算漏单
+PASS ③ 重复：同一 orderNo + role 出现多个 job
+PASS ④ 卡住：非终态停留超过阈值，阈值可调
+PASS ⑤ 失败：FAILED / EXPIRED 按 resultCode 分组，未知 code 不被丢弃
+PASS ⑥ 不确定：CROSSING_UNKNOWN 单独成区块，与普通失败分开
+PASS ⑦ 重试与延迟：attemptCount > 1 列出，createdAt→completedAt 落入耗时分布
+PASS physicalCompletionKnown 恒为 false 的成功任务不产生任何异常
+PASS 空数据区间正常返回零值，不报错
+PASS 非 network-v2（旧 relay）任务不进明细，但单独计数不静默丢弃
+PASS 订单号读不出的任务单独计数，不塞进任何订单
+PASS 参数校验：非法 range / 日期 / 阈值返回 400，且不泄露内部错误
+PASS 只读保证：路由与页面都不含任何写操作
+PASS 页面对未知取值有兜底，未知 resultCode / 状态不会导致渲染崩溃
+PASS 扫描上限被如实报告，不静默截断
+network print observability API PASS (19 cases)
+[security] 已拒绝生产环境中的 x-* 开发身份头
+TEST_RESULT	PASS	tests/network-print-jobs-api.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/product-sales-browser.test.ts
+product sales browser passed: live cutoff, groups/history, existing OWNER receipt render/send/retry, preparation/HTTP deadlines, UI recovery, browser cleanup/failure, revoked store recovery and desktop/mobile
+TEST_RESULT	PASS	tests/product-sales-browser.test.ts	exit=0	classification=TEST	signal=none	error=none
+TEST_START	tests/product-sales-image-browser.test.ts
+PASS: query/history PNG, mobile zh/en/km, exact downloaded/shared bytes, activation, cancellation, errors, deadlines, repeated clicks, stale work, URL/owned canvas/clone cleanup, other capture isolation and no writes
+TEST_RESULT	PASS	tests/product-sales-image-browser.test.ts	exit=0	classification=TEST	signal=none	error=none
+SUITE_SUMMARY	root-integration	expected=10	collected=10	executed=10	pass=9	fail=1	known=1	new=0	recovered=0	known_environment_blocked=0	environment_failures=0	skipped=0	uncollected=0	environment=PASS	overall=PASS
