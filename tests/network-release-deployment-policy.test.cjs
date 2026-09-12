@@ -10,6 +10,7 @@ assert.deepEqual(config, {
   git: { deploymentEnabled: {
     main: false,
     release: true,
+    'codex/print-rc7-preflight-governance': false,
     'codex/es-network-server-v01-release': false,
     'codex/es-network-commercial-addon-v01': false,
     'codex/es-network-commercial-discovery-v01': false,
@@ -21,5 +22,6 @@ assert.deepEqual(config, {
 // branch after that switch. Unspecified branches retain Vercel's true default.
 assert.equal(config.git.deploymentEnabled.main, false);
 assert.equal(config.git.deploymentEnabled.release, true);
+assert.equal(config.git.deploymentEnabled['codex/print-rc7-preflight-governance'], false);
 assert.equal(Object.keys(config.git.deploymentEnabled).some(key => /[*?{}]/.test(key)), false);
-console.log('PASS main automatic deployment disabled, release enabled, exact Network branch exclusions preserved');
+console.log('PASS main automatic deployment disabled, release enabled, exact governance/Network branch exclusions preserved');
