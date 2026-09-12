@@ -65,13 +65,29 @@ describe('Network Add-on build and release boundary', () => {
     expect(() => build.assertCandidateInput('extra.ts', 'draft', {}, null)).toThrow('ADDON_CANDIDATE_SOURCE_NOT_APPROVED')
   })
 
-  it('keeps the rc.7 grant exact and rejects the successor source instead of reusing the failed artifact identity', async () => {
+  it('closes the failed rc.7 identity and pins the rc.8 successor to the exact reviewed source', async () => {
     const exception = JSON.parse(await readFile(path.join(root,
       'docs/change-gates/exceptions/ES-PRINT-NETWORK-FIRST-01.json'), 'utf8'))
-    const authorization = build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc7-build')
+    const rc7 = exception.additionalAuthorizations.find((item: Record<string, unknown>) =>
+      item.authorizationId === 'NETWORK-COMMERCIAL-CANDIDATE-RC7-BUILD-17')
+    expect(rc7).toMatchObject({
+      status: 'CLOSED',
+      featureMergeCommitSha: 'cabba4d138553585062d8b7ceb005921d887c69a',
+      toolchainEvidence: {
+        rc7BuildPerformed: true,
+        builtSourceSha: 'cabba4d138553585062d8b7ceb005921d887c69a',
+        installerSha256: '91364a92d097c4b9cb8510b9632e4ece78a894474d45c3367da6106b0b10e955',
+        installerBytes: 114339331,
+        fieldResult: 'FAIL',
+      },
+    })
+    expect(() => build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc7-build'))
+      .toThrow('ADDON_CANDIDATE_EXACT_AUTHORIZATION_REQUIRED')
+
+    const authorization = build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc8-build')
     expect(authorization).toMatchObject({
-      authorizationId: 'NETWORK-COMMERCIAL-CANDIDATE-RC7-BUILD-17',
-      baseOriginMainSha: '4b48610f63b5dbbdc73eb46f9feeb4c7f6a2c5c6',
+      authorizationId: 'NETWORK-COMMERCIAL-CANDIDATE-RC8-BUILD-18',
+      baseOriginMainSha: 'a1db772f49be0c63d0399fc3ce1c6070f3ce5d61',
       status: 'ACTIVE',
       candidateBuild: build.CANDIDATE_BUILD,
     })
@@ -82,16 +98,10 @@ describe('Network Add-on build and release boundary', () => {
     expect(createHash('sha256').update(build.canonicalMapping(authorization.authorizedPathSha256)).digest('hex'))
       .toBe(authorization.approvedContentMappingSha256)
     const changed = Object.keys(actual).filter(file => actual[file] !== authorization.authorizedPathSha256[file])
-    expect(changed).toEqual([
-      'e-shop-tray/network-addon/main.ts',
-      'e-shop-tray/src/networkDiscovery.ts',
-      'e-shop-tray/tests/network-addon.test.ts',
-      'e-shop-tray/tests/network-discovery.test.ts',
-    ])
+    expect(changed).toEqual([])
     for (const file of authorization.authorizedPaths) {
       const check = () => build.assertCandidateInput(file, actual[file], authorization.authorizedPathSha256, null)
-      if (changed.includes(file)) expect(check).toThrow('ADDON_CANDIDATE_SOURCE_NOT_APPROVED')
-      else expect(check).not.toThrow()
+      expect(check).not.toThrow()
     }
   })
 
@@ -166,13 +176,13 @@ describe('Network Add-on build and release boundary', () => {
   it('candidate payload records a dirty source honestly and marks the transformed visible UI TEST ONLY', async () => {
     const manifest = build.createManifest({ source: { baselineCommit: build.BASELINE_COMMIT,
       headCommit: build.BASELINE_COMMIT, sourceCommit: null, workingTreeDirty: true }, inputs: {}, outputs: {}, tools: {}, candidate: { authorizationId: 'TEST-FIXTURE' } })
-    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.7', sourceCommit: null, workingTreeDirty: true,
+    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.8', sourceCommit: null, workingTreeDirty: true,
       testOnly: true, installer: false, runtimeIncluded: false, releaseReady: false, published: false,
       installed: false, fieldVerified: false, buildClass: 'unsigned-test-candidate', signingStatus: 'unsigned-test-only' })
     const original = await readFile(path.join(tray, 'network-addon/ui.html'))
     const html = build.candidateHtml(original).toString()
     expect(html).toContain('<title>E-Shop Network Print — TEST ONLY</title>')
-    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.7')
+    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.8')
     expect(html).toContain('未正式发布')
     expect(html).toContain('发送 TEST 纸票前须由负责人明确确认')
     expect(html.match(/id="[^"]+"/g)).toEqual(original.toString().match(/id="[^"]+"/g))

@@ -1002,7 +1002,10 @@
       "featureBranch": "codex/es-network-candidate-rc7-build",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "4b48610f63b5dbbdc73eb46f9feeb4c7f6a2c5c6",
-      "status": "ACTIVE",
+      "status": "CLOSED",
+      "closedAt": "2026-09-12T21:48:46Z",
+      "featureMergeCommitSha": "cabba4d138553585062d8b7ceb005921d887c69a",
+      "closureReason": "The one rc.7 candidate was built from cabba4d138553585062d8b7ceb005921d887c69a and entered V727 FIELD, where cold-start continuity failed. The authorization preparation commit cabba4d138553585062d8b7ceb005921d887c69a itself fast-forwarded into origin/main first-parent lineage; there is no distinct merge commit to record. This consumed grant is now superseded by the separately exact rc.8 preparation and grants no future build, release or FIELD authority.",
       "approvedBy": "Founder",
       "createdAt": "2026-09-12T17:34:55Z",
       "approvedAt": "2026-09-12T17:34:55Z",
@@ -1067,10 +1070,14 @@
         "review": "The rc.7 version constant, direct contract test and this exact authorization require fresh-context independent review before any integration. The review result belongs to the RC7-PREPARE task record and Candidate report; no installer is built in this preparation."
       },
       "toolchainEvidence": {
-        "rc7BuildPerformed": false,
+        "rc7BuildPerformed": true,
         "requiredElectronRuntime": "44.3.0",
         "requiredTarget": "win32-x64",
-        "note": "This authorization records the unchanged locked build contract only. Toolchain and build-machine evidence must be captured by the later separately approved rc.7 Build Gate."
+        "builtSourceSha": "cabba4d138553585062d8b7ceb005921d887c69a",
+        "installerSha256": "91364a92d097c4b9cb8510b9632e4ece78a894474d45c3367da6106b0b10e955",
+        "installerBytes": 114339331,
+        "fieldResult": "FAIL",
+        "note": "The separately approved rc.7 Build Gate produced and retained the one unsigned TEST Candidate with this source and artifact identity. V727 FIELD later failed cold-start continuity; this closure records consumption and supersession, not a release or FIELD acceptance."
       },
       "allowedPurposes": [
         "After RC7-PREPARE is independently reviewed and integrated by a separate Founder Gate, establish codex/es-network-candidate-rc7-build at the resulting trusted origin/main with zero commits over that main.",
@@ -1084,6 +1091,102 @@
         "Push, main merge, release update, Production deploy, installation, FIELD, code signing, formal publication or release claims without their own explicit Founder Gate."
       ],
       "expirationCondition": "Close this exact grant after the one retained rc.7 Candidate is packaged under a separate Founder Build Gate, or when it is explicitly superseded. It authorizes only the exact seventeen-path mapping and exact build branch; it grants no future byte, branch, release or FIELD authority."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-CANDIDATE-RC8-BUILD-18",
+      "featureBranch": "codex/es-network-candidate-rc8-build",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "a1db772f49be0c63d0399fc3ce1c6070f3ce5d61",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-09-12T21:48:46Z",
+      "approvedAt": "2026-09-12T21:48:46Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder approved NEXT NETWORK CANDIDATE PREPARE after the rc.7 V727 FIELD failure and the independently reviewed Endpoint Continuity fix entered trusted origin/main. This grant advances only the unsigned TEST candidate identity to rc.8 and pins the complete twenty-one-path build/review surface, including all eight Endpoint Continuity implementation and test files, to exact reviewed bytes. It permits a later zero-delta build branch only after this preparation is independently reviewed, separately authorized for integration, and integrated into origin/main. It does not authorize this preparation turn to build, push, merge, deploy, install or perform FIELD work.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/electron-builder.cjs",
+        "e-shop-tray/network-addon/entryCoordinator.ts",
+        "e-shop-tray/network-addon/installer.nsh",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "e-shop-tray/network-addon/shortcutWindows.ts",
+        "e-shop-tray/network-addon/ui.css",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/src/networkDiscovery.ts",
+        "e-shop-tray/src/networkRuntime.ts",
+        "e-shop-tray/src/resultLog.ts",
+        "e-shop-tray/tests/network-addon-cold-lifecycle.test.ts",
+        "e-shop-tray/tests/network-addon-entry.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts",
+        "e-shop-tray/tests/network-discovery.test.ts",
+        "e-shop-tray/tests/network-runtime.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/electron-builder.cjs": "81962606c88086a8de8b39858375011430d5870204e74404380577c3538d9d4a",
+        "e-shop-tray/network-addon/entryCoordinator.ts": "e9e3e2b255c51a715b73ec6ac90b37e843f4acfbebf41cb4db5dbd1aaa3d2a27",
+        "e-shop-tray/network-addon/installer.nsh": "82d9505545ee64b819f62edb229063e44657a1999e532cf4aacfd0feb231c746",
+        "e-shop-tray/network-addon/main.ts": "e460ecb4c61577c484077ce4e666181c11ec0c5e34cd17d45e16f44df396b604",
+        "e-shop-tray/network-addon/preload.ts": "65d555ed7efbd3d01c0f7f4d837b3d6471faacdd6ab16d744d3a2a0966f691b2",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "2879dacf1f6b9fa42b18a4caa0fa7405329bcb77c7cc19bc528c3394f088b638",
+        "e-shop-tray/network-addon/shortcutWindows.ts": "1c8bd08f46ab5a58066987f56c9a9f4ec1ef74c4d9f386e95e28d08045007c83",
+        "e-shop-tray/network-addon/ui.css": "543d8f48aea9b6d722257793c39b87d447abd1900979547122f8d9f0f5d1a54e",
+        "e-shop-tray/network-addon/ui.html": "4aadc2930d233a963fce9872ebc6807074cb3846b3600946d055715d86752024",
+        "e-shop-tray/network-addon/ui.ts": "03c0f173ba95fa40212cfb3ddbbfcdb2c1d0ad1dd4088926cca175b81412b446",
+        "e-shop-tray/scripts/build-network-addon.mjs": "67eb518678f89c4151cbc10b5be9f8c4d0f344837216e50c8acb2ca62858a04e",
+        "e-shop-tray/src/networkDiscovery.ts": "cf76b286e8321e1928916277df2a1732ced280241f3052b0c7f58d58cef2f70a",
+        "e-shop-tray/src/networkRuntime.ts": "fdf369a8fd8d6017d50867beda9528ac783ff4e64b3e0e1829e9f230ceb95363",
+        "e-shop-tray/src/resultLog.ts": "31e671b4032c326a0645b0dc4e02bc31ed47e0c3ec932fd6b71063b1b81399ea",
+        "e-shop-tray/tests/network-addon-cold-lifecycle.test.ts": "11ddcea77798ded4f54fb9b86154a881f7726ab1927c4db1ef6a83b447c3002b",
+        "e-shop-tray/tests/network-addon-entry.test.ts": "58c8ce8fbb54367447122bba57325d2754e0e69ff5a46851b3318bfa7f7d577e",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "0d195b7c5b574a43a99d0abaacbdb087329b1f2872d39c4d4f5d51a0dcf4f1d9",
+        "e-shop-tray/tests/network-addon.test.ts": "e10f58c0492debf80159e1d52f6c9342c4ee2d8922a981268082bc59fd459011",
+        "e-shop-tray/tests/network-discovery.test.ts": "ba4fb2c81800664371798001b0dfb52059f4099d9b758b0b904252466e7bc7ec",
+        "e-shop-tray/tests/network-runtime.test.ts": "c90b75dc735133e5d1316253bc8f31c9f9ea75a68e8184009b5182ace14e5795"
+      },
+      "approvedContentMappingSha256": "4474325133f9ca21583ada6d0af00878c96b5f3a96c8914281bdc0114664c2ff",
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.8",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "createdOnBranch": "codex/es-network-candidate-rc8-prepare",
+      "governanceStartingHead": "a1db772f49be0c63d0399fc3ce1c6070f3ce5d61",
+      "sourceDraft": {
+        "path": "codex/es-network-candidate-rc8-prepare",
+        "startingHead": "a1db772f49be0c63d0399fc3ce1c6070f3ce5d61",
+        "sourceCommit": null,
+        "fileCount": 21,
+        "incrementalFileCount": 2,
+        "sourceSnapshotSha256": null,
+        "review": "The rc.8 version constant, direct contract test and this exact authorization require fresh-context independent review before any integration. The review result belongs to TASK-NETWORK-CANDIDATE-RC8-PREPARE-01 and the Candidate report; no installer is built in this preparation."
+      },
+      "toolchainEvidence": {
+        "rc8BuildPerformed": false,
+        "requiredElectronRuntime": "44.3.0",
+        "requiredTarget": "win32-x64",
+        "note": "This authorization records the unchanged locked build contract only. Toolchain and build-machine evidence must be captured by a later separately approved rc.8 Build Gate."
+      },
+      "allowedPurposes": [
+        "After this PREPARE Candidate is independently reviewed and integrated by a separate Founder Gate, establish codex/es-network-candidate-rc8-build at the resulting trusted origin/main with zero commits over that main.",
+        "Under a later explicit rc.8 Build Gate, package exactly one unsigned TEST-only 0.1.0-commercial-rc.8 NSIS candidate and retain its source, toolchain, machine, bytes and SHA256 evidence.",
+        "Use that retained Candidate only under a later explicit V727 FIELD Gate; this authorization itself is not FIELD acceptance."
+      ],
+      "prohibitedChanges": [
+        "Any source change on the rc.8 build branch; it must carry zero commits over the then-current trusted origin/main and every authorized path must match this exact mapping.",
+        "Any bypass or weakening of exact authorization, Scope Guard, trusted origin/main gate bytes, source snapshots, signing boundary or installer verification.",
+        "Any Endpoint Continuity behavior change or other print product capability, C4 recovery, FRONT/KITCHEN, G1, USB, Linux, HRT, Renderer, Transport, poller, claim/lease, networkRuntime architecture, UI, Desktop0.4.7, QZ, certificate, Windows Queue, schema or migration change.",
+        "Push, main merge, release update, Production deploy, installation, FIELD, code signing, formal publication or release claims without their own explicit Founder Gate."
+      ],
+      "expirationCondition": "Close this exact grant after the one retained rc.8 Candidate is packaged under a separate Founder Build Gate, or when it is explicitly superseded. It authorizes only the exact twenty-one-path mapping and exact build branch; it grants no future byte, branch, release or FIELD authority."
     }
   ]
 }
