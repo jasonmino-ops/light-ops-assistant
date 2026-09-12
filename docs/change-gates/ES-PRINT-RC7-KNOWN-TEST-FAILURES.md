@@ -9,7 +9,7 @@
 - 本基线记录 `a33b44c1c51223009326c4869526f7de6bd4a89d` 的一次完整首轮结果；它不把历史结果自动继承为未来 SHA 的测试结论。
 - 每次合并前必须在当时的候选 SHA 上重新发现并执行适用全量测试，把每个失败精确到测试文件和用例，与本表逐条比对。
 - 新失败、失败形态变化、证据失效或超过复核期限均阻塞合并。清单变更必须同时记录新的原始输出位置/哈希、事实归因、处置和复核期限，并接受适用的 Scope Guard 与独立审查。
-- `/private/tmp` 日志可能被环境清理；本文件保留其原始哈希作为当次执行凭据。后续复核以新执行产生的新日志与哈希为准，不得用不可访问的旧日志替代重跑。
+- 原始 root full-suite 日志已有仓库受控的不可变副本；`/private/tmp` 仅保留为原执行位置，不再是长期唯一证据。后续复核以 `npm run test:full` 在 `test-results/test-evidence/root-full/<timestamp>-<HEAD>/` 产生的新日志和结构化 summary 为准；该目录已被 Git 忽略，需按候选交付要求另行保留，不得把临时日志无限累积进 Git 历史。
 - 证据保留限制：KTF-20260912-01 的五次专项复跑没有单独保留日志；复跑次数来自原执行记录，当前不可独立复核。其源码计时结构仍支持非确定性归因，但下一次合并校准必须重新复跑并保留新日志与哈希。
 
 ## 基线信息
@@ -22,7 +22,8 @@
 - PostgreSQL：`18.3`，一次性本地集群 `127.0.0.1:65432/light_ops_test`
 - 全量口径：仓库根 `tests/` 下 81 个 `*.test.ts` 与 1 个 `*.test.cjs`，顺序执行，共 82 个测试文件。
 - 首轮结果：75 个测试文件 PASS，7 个测试文件 FAIL。
-- 原始完整日志位置：`/private/tmp/TASK-PRINT-RC7-PREFLIGHT-01/root-full-suite.log`
+- 原始完整日志稳定位置：`docs/change-gates/evidence/TASK-PRINT-RC7-PREFLIGHT-01/root-full-suite.log`
+- 原执行位置：`/private/tmp/TASK-PRINT-RC7-PREFLIGHT-01/root-full-suite.log`
 - 原始完整日志 SHA-256：`103b2f581a87e611bc6a021017cbab0c18a46f51869addf89f49365dc8a8f06f`
 - 打印数据库 E2E 专项日志位置：`/private/tmp/TASK-PRINT-RC7-PREFLIGHT-01/cashier-network-print-v01.log`
 - 打印数据库 E2E 专项日志 SHA-256：`1d9fa5f05f6612e775ad24376f367150e4a08bcbba20f0f40460d2bfe22436c3`
