@@ -65,7 +65,7 @@ describe('Network Add-on build and release boundary', () => {
     expect(() => build.assertCandidateInput('extra.ts', 'draft', {}, null)).toThrow('ADDON_CANDIDATE_SOURCE_NOT_APPROVED')
   })
 
-  it('pins the active rc.7 build grant to exact reviewed repository bytes', async () => {
+  it('keeps the rc.7 grant exact and rejects the successor source instead of reusing the failed artifact identity', async () => {
     const exception = JSON.parse(await readFile(path.join(root,
       'docs/change-gates/exceptions/ES-PRINT-NETWORK-FIRST-01.json'), 'utf8'))
     const authorization = build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc7-build')
@@ -79,9 +79,20 @@ describe('Network Add-on build and release boundary', () => {
     for (const file of authorization.authorizedPaths) {
       actual[file] = createHash('sha256').update(await readFile(path.join(root, file))).digest('hex')
     }
-    expect(actual).toEqual(authorization.authorizedPathSha256)
-    expect(createHash('sha256').update(build.canonicalMapping(actual)).digest('hex'))
+    expect(createHash('sha256').update(build.canonicalMapping(authorization.authorizedPathSha256)).digest('hex'))
       .toBe(authorization.approvedContentMappingSha256)
+    const changed = Object.keys(actual).filter(file => actual[file] !== authorization.authorizedPathSha256[file])
+    expect(changed).toEqual([
+      'e-shop-tray/network-addon/main.ts',
+      'e-shop-tray/src/networkDiscovery.ts',
+      'e-shop-tray/tests/network-addon.test.ts',
+      'e-shop-tray/tests/network-discovery.test.ts',
+    ])
+    for (const file of authorization.authorizedPaths) {
+      const check = () => build.assertCandidateInput(file, actual[file], authorization.authorizedPathSha256, null)
+      if (changed.includes(file)) expect(check).toThrow('ADDON_CANDIDATE_SOURCE_NOT_APPROVED')
+      else expect(check).not.toThrow()
+    }
   })
 
   it('actual candidate command fails on injected approval before any compiler or installer work', () => {

@@ -7,9 +7,11 @@ import type { ReceivedPrintJob } from '../src/cloudRelayClient'
 import { NETWORK_PROFILE, type NetworkRequest } from '../src/networkContract'
 import { createGuardedNetworkClient, createNetworkStrategy } from '../src/networkRuntime'
 import {
-  assertNetworkSnapshotCurrent, createLocalNetworkSnapshot, discoverNetworkPrinters, getWindowsLocalNetworks,
+  assertNetworkSnapshotCurrent, assertConfirmedPrinterContinuity, assertReachableConfirmedPrinter,
+  createLocalNetworkSnapshot, discoverNetworkPrinters, getWindowsEndpointContinuitySnapshot, getWindowsLocalNetworks,
   NETWORK_DISCOVERY_LIMITS, snapshotFingerprint, validateLocalPrinterEndpoint, WINDOWS_NETWORK_METADATA_COMMAND,
-  readLocalPrinterHardware, assertConfirmedPrinter, networkContinuityFingerprint, withWindowsValidationSnapshots,
+  readLocalPrinterHardware, assertConfirmedPrinter, networkContinuityFingerprint, validateConfirmedPrinterPath,
+  withWindowsEndpointContinuitySnapshots, withWindowsValidationSnapshots,
   type DiscoverySocket, type LocalNetworkSnapshot, type NetworkDiscoveryDependencies,
 } from '../src/networkDiscovery'
 
@@ -396,6 +398,122 @@ describe('physical Windows LAN metadata and endpoint restrictions', () => {
   })
 })
 
+describe('confirmed endpoint continuity', () => {
+  const endpoint = { host: '192.168.18.53', port: 9100 }
+  const hardwareAddress = '02-11-22-33-44-55'
+  const proof = (snap: LocalNetworkSnapshot) => ({ networkFingerprint: networkContinuityFingerprint(snap), hardwareAddress })
+  const hardware = vi.fn(async () => hardwareAddress)
+
+  it('treats irrelevant route/local-address changes as diagnostics while the exact direct endpoint remains safe', async () => {
+    const confirmed = snapshot(), raw = metadata()
+    raw.routes.push({ interfaceIndex: 99, destinationPrefix: '100.64.0.0/10', nextHop: '0.0.0.0', routeMetric: 0, interfaceMetric: 0 })
+    const local: Interfaces = { ...interfaces(), Overlay: [{ address: '100.108.88.51', netmask: '255.192.0.0', family: 'IPv4',
+      internal: false, mac: '', cidr: '100.108.88.51/10' }] }
+    const current = createLocalNetworkSnapshot(raw, local), report = vi.fn(async () => {})
+    await expect(assertConfirmedPrinterContinuity(endpoint, proof(confirmed), current, hardware, async () => current, report))
+      .resolves.toMatchObject({ host: endpoint.host, localAddress: '192.168.18.41' })
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ code: 'NETWORK_FINGERPRINT_MISMATCH',
+      comparison: 'CONFIRMED_TO_CURRENT', historicalSnapshotAvailable: false }))
+  })
+
+  it('accepts a DHCP address changed since confirmation when endpoint, MAC and direct path remain valid', async () => {
+    const confirmed = snapshot(), current = snapshot(24, '192.168.18.42'), report = vi.fn(async () => {})
+    await expect(assertConfirmedPrinterContinuity(endpoint, proof(confirmed), current, hardware, async () => current, report))
+      .resolves.toMatchObject({ host: endpoint.host, localAddress: '192.168.18.42' })
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ comparison: 'CONFIRMED_TO_CURRENT',
+      historicalSnapshotAvailable: false }))
+  })
+
+  it('returns the stable endpoint snapshot and diagnostics instead of hard-blocking a transient Node read mismatch', async () => {
+    const report = vi.fn(async () => {}), local = vi.fn()
+      .mockReturnValueOnce(interfaces()).mockReturnValueOnce(interfaces(24, '192.168.18.42'))
+    const current = await getWindowsEndpointContinuitySnapshot(endpoint, report, { platform: () => 'win32', interfaces: local,
+      readMetadata: async () => metadata(24, '192.168.18.42') })
+    expect(current.localAddresses).toEqual(['192.168.18.42'])
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ comparison: 'READ_TO_READ',
+      fingerprintKind: 'SNAPSHOT_INTEGRITY', changes: expect.objectContaining({
+        localAddresses: expect.objectContaining({ added: ['192.168.18.42'], removed: ['192.168.18.41'] }),
+      }) }))
+  })
+
+  it('keeps strict discovery snapshot capture unchanged', async () => {
+    const local = vi.fn().mockReturnValueOnce(interfaces()).mockReturnValueOnce(interfaces(24, '192.168.18.42'))
+    await expect(getWindowsLocalNetworks({ platform: () => 'win32', interfaces: local,
+      readMetadata: async () => metadata(24, '192.168.18.42') })).rejects.toThrow('NETWORK_CHANGED')
+  })
+
+  it('does zero-byte TCP before ARP and reaches continuity only after the exact endpoint opens', async () => {
+    const snap = snapshot(), sockets = fakeDependencies(snap, 'open')
+    const read = vi.fn(async () => {
+      expect(sockets.connects).toEqual([{ host: endpoint.host, port: endpoint.port, localAddress: '192.168.18.41', family: 4 }])
+      expect(sockets.sockets[0].destroyed).toBe(true)
+      return hardwareAddress
+    })
+    await expect(assertReachableConfirmedPrinter(endpoint, proof(snap), snap,
+      { readHardware: read, refresh: async () => snap, socket: sockets.deps })).resolves.toMatchObject(endpoint)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(sockets.sockets[0].write).not.toHaveBeenCalled()
+    expect(sockets.sockets[0].end).not.toHaveBeenCalled()
+  })
+
+  it.each(['closed', 'timeout'] as const)('maps TCP %s to printer unreachable with zero ARP', async behavior => {
+    const snap = snapshot(), sockets = fakeDependencies(snap, behavior), read = vi.fn(async () => hardwareAddress)
+    await expect(assertReachableConfirmedPrinter(endpoint, proof(snap), snap,
+      { readHardware: read, refresh: async () => snap, socket: sockets.deps })).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+    expect(read).not.toHaveBeenCalled()
+    expect(sockets.connects).toHaveLength(1)
+  })
+
+  it('bounds a TCP socket that emits no terminal event and never attempts ARP', async () => {
+    vi.useFakeTimers()
+    const snap = snapshot(), sockets = fakeDependencies(snap, 'hang'), read = vi.fn(async () => hardwareAddress)
+    const pending = assertReachableConfirmedPrinter(endpoint, proof(snap), snap,
+      { readHardware: read, refresh: async () => snap, socket: sockets.deps })
+    const rejected = expect(pending).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+    await vi.advanceTimersByTimeAsync(NETWORK_DISCOVERY_LIMITS.confirmedConnectTimeoutMs)
+    await rejected
+    expect(read).not.toHaveBeenCalled()
+    expect(sockets.active()).toBe(0)
+  })
+
+  it('keeps unresolved ARP separate from a valid changed MAC', async () => {
+    const snap = snapshot()
+    await expect(assertConfirmedPrinterContinuity(endpoint, proof(snap), snap,
+      async () => { throw new Error('NETWORK_DEVICE_IDENTITY_UNAVAILABLE') }, async () => snap))
+      .rejects.toThrow('NETWORK_DEVICE_IDENTITY_UNAVAILABLE')
+    await expect(assertConfirmedPrinterContinuity(endpoint, proof(snap), snap,
+      async () => '02-99-88-77-66-55', async () => snap)).rejects.toThrow('NETWORK_DEVICE_CHANGED')
+  })
+
+  it('rechecks and blocks an unsafe endpoint path after a matching ARP identity', async () => {
+    const before = snapshot(), raw = metadata()
+    raw.routes.push({ interfaceIndex: 99, destinationPrefix: '192.168.18.53/32', nextHop: '0.0.0.0',
+      routeMetric: 1, interfaceMetric: 1 })
+    const escaped = createLocalNetworkSnapshot(raw, interfaces()), read = vi.fn(async () => hardwareAddress)
+    await expect(assertConfirmedPrinterContinuity(endpoint, proof(before), before, read, async () => escaped))
+      .rejects.toThrow('NETWORK_ROUTE_ESCAPE')
+    expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['no direct LAN', () => snapshot(24, '10.20.30.1', '10.20.30.0'), 'NETWORK_DIRECT_PHYSICAL_LAN_REQUIRED'],
+    ['route escape', () => { const raw = metadata(); raw.routes.push({ interfaceIndex: 99, destinationPrefix: '192.168.18.53/32',
+      nextHop: '0.0.0.0', routeMetric: 1, interfaceMetric: 1 }); return createLocalNetworkSnapshot(raw, interfaces()) }, 'NETWORK_ROUTE_ESCAPE'],
+    ['endpoint is gateway', () => { const raw = metadata(); raw.routes.push({ interfaceIndex: 7, destinationPrefix: '10.0.0.0/8',
+      nextHop: endpoint.host, routeMetric: 1, interfaceMetric: 1 }); return createLocalNetworkSnapshot(raw, interfaces()) }, 'NETWORK_GATEWAY_REJECTED'],
+    ['ambiguous physical interfaces', () => { const raw = metadata(); raw.adapters.push({ interfaceIndex: 8, name: 'LAN2',
+      description: 'Intel Ethernet', interfaceType: 6, hardwareInterface: true, virtual: false, status: 'Up' });
+    raw.addresses.push({ interfaceIndex: 8, address: '192.168.18.40', prefixLength: 24, addressState: 'Preferred', skipAsSource: false })
+    raw.routes.push({ interfaceIndex: 8, destinationPrefix: '192.168.18.0/24', nextHop: '0.0.0.0', routeMetric: 1, interfaceMetric: 1 })
+    const local: Interfaces = { ...interfaces(), LAN2: [{ address: '192.168.18.40', netmask: '255.255.255.0', family: 'IPv4',
+      internal: false, mac: '', cidr: '192.168.18.40/24' }] }; return createLocalNetworkSnapshot(raw, local) }, 'NETWORK_AMBIGUOUS_INTERFACE'],
+  ] as const)('blocks %s before confirmed-device identity', async (_label, makeSnapshot, error) => {
+    const current = makeSnapshot(), read = vi.fn(async () => hardwareAddress)
+    await expect(validateConfirmedPrinterPath(endpoint, proof(snapshot()), current)).rejects.toThrow(error)
+    expect(read).not.toHaveBeenCalled()
+  })
+})
+
 describe('validation-scoped fresh Windows snapshots (real reader, fake process only)', () => {
   const endpoint = { host: '192.168.18.53', port: 9100 }
   const hardwareAddress = '02-11-22-33-44-55'
@@ -428,57 +546,62 @@ describe('validation-scoped fresh Windows snapshots (real reader, fake process o
       }
       return {} as ReturnType<typeof execFile>
     })
-    // Same composition as the commercial entry: receive keeps the default
-    // one-shot validator; only prepare and delivery supply the scoped reader.
-    const validateEndpoint = async (selected: typeof endpoint, getSnapshot = () => getWindowsLocalNetworks(deps)) =>
-      assertConfirmedPrinter(selected, confirmation(), await getSnapshot(),
-        (host, port, current) => readLocalPrinterHardware(host, port, current, { platform: deps.platform }), getSnapshot)
+    // Same composition as the commercial entry: receive performs one fresh
+    // endpoint-path read; prepare has no probe; send-before verifies MAC and a
+    // second path snapshot through one scoped metadata worker.
+    const report = vi.fn(async () => {})
+    const validatePath = async (selected: typeof endpoint) => validateConfirmedPrinterPath(selected, confirmation(),
+      await getWindowsEndpointContinuitySnapshot(selected, report, deps), report)
+    const validateIdentity = async (selected: typeof endpoint, getSnapshot: () => ReturnType<typeof getWindowsEndpointContinuitySnapshot>) =>
+      assertConfirmedPrinterContinuity(selected, confirmation(), await getSnapshot(),
+        (host, port, current) => readLocalPrinterHardware(host, port, current, { platform: deps.platform }), getSnapshot, report)
     const bytes = new Uint8Array([27, 64, 29, 86, 0])
     const options = { assertIdentity: vi.fn(async () => {}), identity: { storeCode: 'STORE-A' },
-      nodes: { read: vi.fn(async () => ({ mode: 'SHARED_PRINTER' as const, endpoint })) }, validateEndpoint,
+      nodes: { read: vi.fn(async () => ({ mode: 'SHARED_PRINTER' as const, endpoint })) }, validateEndpoint: validatePath,
       journal: { records: () => [] }, client: { receive: vi.fn(async (): Promise<ReceivedPrintJob | null> => job), markExecuting: vi.fn(), reportResult: vi.fn() },
       render: vi.fn(async () => bytes), recorder: { record: vi.fn(async () => {}) },
       transport: { deliver: vi.fn(async () => ({ bytesWritten: bytes.length, durationMs: 1,
         effectBoundary: 'CROSSED' as const, physicalCompletionKnown: false as const })) } }
     return { options, guarded: createGuardedNetworkClient(options),
       strategy: createNetworkStrategy({ ...options,
-        validateEndpoint: selected => withWindowsValidationSnapshots(getSnapshot => validateEndpoint(selected, getSnapshot), deps) }) }
+        validateEndpoint: selected => withWindowsEndpointContinuitySnapshots(selected,
+          getSnapshot => validateIdentity(selected, getSnapshot), report, deps) }), report }
   }
 
-  it('keeps receive at three one-shot processes, and composes one job with seven total processes', async () => {
+  it('uses one path read before claim, no prepare probe, and one scoped send-before verifier', async () => {
     const h = runtime()
     const received = await h.guarded.receive()
-    expect(execFile).toHaveBeenCalledTimes(3)
+    expect(execFile).toHaveBeenCalledTimes(1)
     expect(spawn).not.toHaveBeenCalled()
-    const workers = [fakeMetadataProcess(metadata()), fakeMetadataProcess(metadata())]
+    const worker = fakeMetadataProcess(metadata())
     const deliver = await h.strategy.prepare(received!)
+    expect(spawn).not.toHaveBeenCalled()
+    expect(execFile).toHaveBeenCalledTimes(1)
     expect(h.options.transport.deliver).not.toHaveBeenCalled()
     await expect(deliver()).resolves.toMatchObject({ physicalCompletionKnown: false })
-    expect(execFile).toHaveBeenCalledTimes(5)
-    expect(spawn).toHaveBeenCalledTimes(2)
-    expect(workers.map(worker => worker.requests)).toEqual([['SNAPSHOT1', 'SNAPSHOT2'], ['SNAPSHOT1', 'SNAPSHOT2']])
+    expect(execFile).toHaveBeenCalledTimes(2)
+    expect(spawn).toHaveBeenCalledTimes(1)
+    expect(worker.requests).toEqual(['SNAPSHOT1', 'SNAPSHOT2'])
     expect(h.options.transport.deliver).toHaveBeenCalledWith(new Uint8Array([27, 64, 29, 86, 0]), endpoint, '192.168.18.41')
     h.options.client.receive.mockResolvedValueOnce(null)
     await expect(h.guarded.receive()).resolves.toBeNull()
-    expect(execFile).toHaveBeenCalledTimes(8)
-    expect(spawn).toHaveBeenCalledTimes(2)
+    expect(execFile).toHaveBeenCalledTimes(3)
+    expect(spawn).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['prepare', 'delivery'] as const)('actual runtime %s blocks transport when scoped cleanup fails', async stage => {
+  it('actual runtime send-before blocks transport when scoped cleanup fails', async () => {
     vi.useFakeTimers()
     const h = runtime(), received = await h.guarded.receive()
-    if (stage === 'delivery') fakeMetadataProcess(metadata())
     const failed = fakeMetadataProcess(metadata(), 'unclosed')
-    const run = stage === 'prepare' ? h.strategy.prepare(received!) : (await h.strategy.prepare(received!))()
-    const rejected = stage === 'prepare' ? expect(run).rejects.toThrow('NETWORK_METADATA_CLEANUP_FAILED')
-      : expect(run).rejects.toMatchObject({ code: 'NETWORK_METADATA_CLEANUP_FAILED', effectBoundary: 'NOT_CROSSED' })
+    const run = (await h.strategy.prepare(received!))()
+    const rejected = expect(run).rejects.toMatchObject({ code: 'NETWORK_METADATA_CLEANUP_FAILED', effectBoundary: 'NOT_CROSSED' })
     await vi.advanceTimersByTimeAsync(1000)
     await rejected
     expect(failed.requests).toEqual(['SNAPSHOT1', 'SNAPSHOT2'])
     expect(h.options.transport.deliver).not.toHaveBeenCalled()
-    expect(h.options.render).toHaveBeenCalledTimes(stage === 'prepare' ? 0 : 1)
-    expect(execFile).toHaveBeenCalledTimes(stage === 'prepare' ? 4 : 5)
-    expect(spawn).toHaveBeenCalledTimes(stage === 'prepare' ? 1 : 2)
+    expect(h.options.render).toHaveBeenCalledTimes(1)
+    expect(execFile).toHaveBeenCalledTimes(2)
+    expect(spawn).toHaveBeenCalledTimes(1)
   })
 
   it('awaits the entire validator and closes before the last Node interface check or permission', async () => {

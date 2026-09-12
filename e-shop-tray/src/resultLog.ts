@@ -1,5 +1,6 @@
 import { appendFile, mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import type { NetworkContinuityDiagnostic } from './networkDiscovery'
 
 const DEFAULT_MAX_LOG_BYTES = 1024 * 1024
 
@@ -13,6 +14,7 @@ export type RelayLogEvent = {
   commandBytes?: number
   bytesWritten?: number
   durationMs?: number
+  diagnostic?: NetworkContinuityDiagnostic
 }
 
 export type RelayEventRecorder = { record(event: RelayLogEvent): Promise<void> }

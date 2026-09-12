@@ -14,7 +14,7 @@ export const NETWORK_DISCOVERY_LIMITS = Object.freeze({
   // pushed the program into an error state. This reader is never inside a
   // claimed job lease (the delivery path uses the persistent reader), so the
   // worst case of 15s plus one retry stays clear of the 30s claim lease.
-  metadataTimeoutMs: 15_000, snapshotMaxAgeMs: 60_000, defaultPort: 9100,
+  metadataTimeoutMs: 15_000, snapshotMaxAgeMs: 60_000, confirmedConnectTimeoutMs: 5_000, defaultPort: 9100,
 })
 
 // Constant local, read-only commands. Never interpolate a host, port or UI input.
@@ -74,6 +74,25 @@ export type NetworkDiscoveryResult = Readonly<{
   status: 'COMPLETE' | 'MANUAL_REQUIRED'; candidates: readonly NetworkPrinterCandidate[]
   attempted: number; totalTargets: number; reason?: string
 }>
+type NetworkDifference<T> = Readonly<{
+  added: readonly T[]; removed: readonly T[]; addedCount: number; removedCount: number; truncated: boolean
+}>
+export type NetworkContinuityDiagnostic = Readonly<{
+  code: 'NETWORK_FINGERPRINT_MISMATCH'
+  comparison: 'CONFIRMED_TO_CURRENT' | 'READ_TO_READ'
+  fingerprintKind: 'NETWORK_CONTINUITY' | 'SNAPSHOT_INTEGRITY'
+  expectedFingerprint: string
+  observedFingerprint: string
+  observedSnapshotFingerprint: string
+  endpoint: Readonly<{ host: string; port: number; localAddress?: string; interfaceIndex?: number }>
+  historicalSnapshotAvailable: boolean
+  changes?: Readonly<{
+    localAddresses: NetworkDifference<string>
+    networks: NetworkDifference<LocalNetwork>
+    routes: NetworkDifference<IPv4Route>
+  }>
+}>
+export type NetworkContinuityReporter = (diagnostic: NetworkContinuityDiagnostic) => void | Promise<void>
 type Interfaces = ReturnType<typeof os.networkInterfaces>
 export interface DiscoverySocket {
   once(event: string, listener: (...args: unknown[]) => void): this
@@ -133,6 +152,81 @@ export async function assertConfirmedPrinter(endpoint: { host: string; port: num
   return validateLocalPrinterEndpoint(selected.host, selected.port, after)
 }
 
+async function emitContinuityDiagnostic(reporter: NetworkContinuityReporter | undefined,
+  diagnostic: NetworkContinuityDiagnostic): Promise<void> {
+  if (!reporter) return
+  try { await reporter(Object.freeze(diagnostic)) } catch { /* Diagnostics never grant or deny permission. */ }
+}
+
+/** Runtime continuity for an already confirmed exact endpoint. Unlike discovery
+ * and TEST confirmation, a full-topology fingerprint is diagnostic only. */
+export async function validateConfirmedPrinterPath(endpoint: { host: string; port: number },
+  confirmation: { networkFingerprint: string }, snapshot: LocalNetworkSnapshot,
+  reporter?: NetworkContinuityReporter): Promise<ValidatedLocalPrinterEndpoint> {
+  const selected = validateLocalPrinterEndpoint(endpoint.host, endpoint.port, snapshot)
+  const observed = networkContinuityFingerprint(snapshot)
+  if (confirmation.networkFingerprint !== observed) {
+    await emitContinuityDiagnostic(reporter, {
+      code: 'NETWORK_FINGERPRINT_MISMATCH', comparison: 'CONFIRMED_TO_CURRENT', fingerprintKind: 'NETWORK_CONTINUITY',
+      expectedFingerprint: confirmation.networkFingerprint, observedFingerprint: observed,
+      observedSnapshotFingerprint: snapshot.fingerprint,
+      endpoint: { host: selected.host, port: selected.port, localAddress: selected.localAddress, interfaceIndex: selected.interfaceIndex },
+      historicalSnapshotAvailable: false,
+    })
+  }
+  return selected
+}
+
+async function finishConfirmedPrinterContinuity(endpoint: { host: string; port: number },
+  confirmation: { networkFingerprint: string; hardwareAddress: string }, snapshot: LocalNetworkSnapshot,
+  selected: ValidatedLocalPrinterEndpoint, readHardware: typeof readLocalPrinterHardware,
+  refresh: () => Promise<LocalNetworkSnapshot>, reporter?: NetworkContinuityReporter): Promise<ValidatedLocalPrinterEndpoint> {
+  if (await readHardware(endpoint.host, endpoint.port, snapshot) !== confirmation.hardwareAddress) fail('NETWORK_DEVICE_CHANGED')
+  const after = await refresh()
+  const verified = validateLocalPrinterEndpoint(selected.host, selected.port, after)
+  const beforeFingerprint = networkContinuityFingerprint(snapshot)
+  const afterFingerprint = networkContinuityFingerprint(after)
+  if (beforeFingerprint !== afterFingerprint) {
+    await emitContinuityDiagnostic(reporter, {
+      code: 'NETWORK_FINGERPRINT_MISMATCH', comparison: 'READ_TO_READ', fingerprintKind: 'NETWORK_CONTINUITY',
+      expectedFingerprint: beforeFingerprint, observedFingerprint: afterFingerprint,
+      observedSnapshotFingerprint: after.fingerprint,
+      endpoint: { host: verified.host, port: verified.port, localAddress: verified.localAddress, interfaceIndex: verified.interfaceIndex },
+      historicalSnapshotAvailable: true, changes: snapshotDifference(snapshot, after),
+    })
+  }
+  return verified
+}
+
+export async function assertConfirmedPrinterContinuity(endpoint: { host: string; port: number },
+  confirmation: { networkFingerprint: string; hardwareAddress: string }, snapshot: LocalNetworkSnapshot,
+  readHardware: typeof readLocalPrinterHardware = readLocalPrinterHardware,
+  refresh?: () => Promise<LocalNetworkSnapshot>,
+  reporter?: NetworkContinuityReporter): Promise<ValidatedLocalPrinterEndpoint> {
+  const selected = await validateConfirmedPrinterPath(endpoint, confirmation, snapshot, reporter)
+  return finishConfirmedPrinterContinuity(endpoint, confirmation, snapshot, selected, readHardware,
+    refresh ?? (() => getWindowsEndpointContinuitySnapshot(endpoint, reporter)), reporter)
+}
+
+/** Cold-start/explicit-enable continuity. The successful zero-byte TCP connect
+ * intentionally precedes SendARP so an empty neighbor cache is not a mismatch. */
+export async function assertReachableConfirmedPrinter(endpoint: { host: string; port: number },
+  confirmation: { networkFingerprint: string; hardwareAddress: string }, snapshot: LocalNetworkSnapshot,
+  options: {
+    readHardware?: typeof readLocalPrinterHardware
+    refresh?: () => Promise<LocalNetworkSnapshot>
+    reporter?: NetworkContinuityReporter
+    socket?: Pick<NetworkDiscoveryDependencies, 'createSocket'>
+  } = {}): Promise<ValidatedLocalPrinterEndpoint> {
+  const selected = await validateConfirmedPrinterPath(endpoint, confirmation, snapshot, options.reporter)
+  if (!await zeroPayloadProbe(selected, NETWORK_DISCOVERY_LIMITS.confirmedConnectTimeoutMs, options.socket ?? {})) {
+    fail('NETWORK_PRINTER_UNREACHABLE')
+  }
+  return finishConfirmedPrinterContinuity(endpoint, confirmation, snapshot, selected,
+    options.readHardware ?? readLocalPrinterHardware,
+    options.refresh ?? (() => getWindowsEndpointContinuitySnapshot(endpoint, options.reporter)), options.reporter)
+}
+
 function fail(code: string): never { throw new NetworkDiscoveryError(code) }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('NETWORK_METADATA_INVALID')
@@ -173,6 +267,21 @@ function subnet(value: string): { first: number; last: number; prefix: number } 
 }
 function sortObjects<T>(values: T[]): T[] {
   return values.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b), 'en'))
+}
+
+const DIAGNOSTIC_DIFF_LIMIT = 32
+function difference<T>(before: readonly T[], after: readonly T[]): NetworkDifference<T> {
+  const prior = new Map(before.map(value => [JSON.stringify(value), value]))
+  const current = new Map(after.map(value => [JSON.stringify(value), value]))
+  const added = [...current].filter(([key]) => !prior.has(key)).sort(([left], [right]) => left.localeCompare(right, 'en')).map(([, value]) => value)
+  const removed = [...prior].filter(([key]) => !current.has(key)).sort(([left], [right]) => left.localeCompare(right, 'en')).map(([, value]) => value)
+  return Object.freeze({ added: Object.freeze(added.slice(0, DIAGNOSTIC_DIFF_LIMIT)),
+    removed: Object.freeze(removed.slice(0, DIAGNOSTIC_DIFF_LIMIT)), addedCount: added.length, removedCount: removed.length,
+    truncated: added.length > DIAGNOSTIC_DIFF_LIMIT || removed.length > DIAGNOSTIC_DIFF_LIMIT })
+}
+function snapshotDifference(before: LocalNetworkSnapshot, after: LocalNetworkSnapshot) {
+  return Object.freeze({ localAddresses: difference(before.localAddresses, after.localAddresses),
+    networks: difference(before.networks, after.networks), routes: difference(before.routes, after.routes) })
 }
 
 /** Integrity/change token only, not a signature. Snapshots must stay in the main process. */
@@ -334,6 +443,29 @@ export async function getWindowsLocalNetworks(deps: NetworkDiscoveryDependencies
   return current
 }
 
+/** A confirmed endpoint uses endpoint-specific safety rather than equality of
+ * every local address/route. The transient read is retained as local evidence. */
+export async function getWindowsEndpointContinuitySnapshot(endpoint: { host: string; port: number },
+  reporter?: NetworkContinuityReporter, deps: NetworkDiscoveryDependencies = {}, signal?: AbortSignal): Promise<LocalNetworkSnapshot> {
+  if ((deps.platform?.() ?? process.platform) !== 'win32') fail('NETWORK_WINDOWS_REQUIRED')
+  checkAbort(signal)
+  const interfaces = deps.interfaces ?? os.networkInterfaces
+  const before = interfaces()
+  const metadata = await (deps.readMetadata ?? readWindowsMetadata)(signal)
+  checkAbort(signal)
+  const first = createLocalNetworkSnapshot(metadata, before)
+  const current = createLocalNetworkSnapshot(metadata, interfaces())
+  if (first.fingerprint !== current.fingerprint) {
+    await emitContinuityDiagnostic(reporter, {
+      code: 'NETWORK_FINGERPRINT_MISMATCH', comparison: 'READ_TO_READ', fingerprintKind: 'SNAPSHOT_INTEGRITY',
+      expectedFingerprint: first.fingerprint, observedFingerprint: current.fingerprint,
+      observedSnapshotFingerprint: current.fingerprint, endpoint: { host: endpoint.host, port: endpoint.port },
+      historicalSnapshotAvailable: true, changes: snapshotDifference(first, current),
+    })
+  }
+  return current
+}
+
 /** One prepare/delivery validation, with two fresh reads and no retained
  * snapshot. Cleanup precedes the second read's final Node interface check. */
 export async function withWindowsValidationSnapshots<T>(
@@ -348,6 +480,30 @@ export async function withWindowsValidationSnapshots<T>(
       const metadata = await reader.read(signal)
       // Do not let EOF, trailing output or process failures arrive after the
       // final interface check has already authorized this endpoint.
+      if (reads === 2) await reader.close()
+      return metadata
+    } })
+    completed++
+    return snapshot
+  }
+  try {
+    return await operation(getSnapshot).then(result => {
+      if (reads !== 2 || completed !== 2) fail('NETWORK_METADATA_INVALID')
+      return result
+    })
+  }
+  finally { await reader.close() }
+}
+
+export async function withWindowsEndpointContinuitySnapshots<T>(endpoint: { host: string; port: number },
+  operation: (getSnapshot: () => Promise<LocalNetworkSnapshot>) => Promise<T>, reporter?: NetworkContinuityReporter,
+  deps: Pick<NetworkDiscoveryDependencies, 'platform' | 'interfaces'> = {}): Promise<T> {
+  const reader = createWindowsMetadataReader(WINDOWS_NETWORK_METADATA_COMMAND, { platform: deps.platform })
+  let reads = 0, completed = 0
+  const getSnapshot = async () => {
+    const snapshot = await getWindowsEndpointContinuitySnapshot(endpoint, reporter, { ...deps, readMetadata: async signal => {
+      if (++reads > 2) fail('NETWORK_METADATA_LIMIT')
+      const metadata = await reader.read(signal)
       if (reads === 2) await reader.close()
       return metadata
     } })
@@ -442,7 +598,8 @@ function targets(snapshot: LocalNetworkSnapshot): ValidatedLocalPrinterEndpoint[
   return [...result.values()]
 }
 
-function probe(endpoint: ValidatedLocalPrinterEndpoint, signal: AbortSignal, deps: NetworkDiscoveryDependencies): Promise<boolean> {
+function zeroPayloadProbe(endpoint: ValidatedLocalPrinterEndpoint, timeoutMs: number,
+  deps: Pick<NetworkDiscoveryDependencies, 'createSocket'>, signal?: AbortSignal): Promise<boolean> {
   return new Promise(resolve => {
     let socket: DiscoverySocket | undefined, done = false
     let timeout: ReturnType<typeof setTimeout> | undefined
@@ -450,9 +607,9 @@ function probe(endpoint: ValidatedLocalPrinterEndpoint, signal: AbortSignal, dep
       if (done) return
       done = true
       clearTimeout(timeout)
-      signal.removeEventListener('abort', abort)
+      signal?.removeEventListener('abort', abort)
       socket?.destroy()
-      resolve(open && !signal.aborted)
+      resolve(open && !signal?.aborted)
     }
     const abort = () => finish(false)
     try {
@@ -460,14 +617,18 @@ function probe(endpoint: ValidatedLocalPrinterEndpoint, signal: AbortSignal, dep
       socket = deps.createSocket?.() ?? new Socket()
       socket.once('error', () => finish(false)).once('timeout', () => finish(false))
         .once('close', () => finish(false)).once('connect', () => finish(true))
-      signal.addEventListener('abort', abort, { once: true })
+      signal?.addEventListener('abort', abort, { once: true })
       // A wall-clock cap also covers a socket implementation which never emits timeout.
-      timeout = setTimeout(() => finish(false), NETWORK_DISCOVERY_LIMITS.connectTimeoutMs)
-      socket.setTimeout(NETWORK_DISCOVERY_LIMITS.connectTimeoutMs)
+      timeout = setTimeout(() => finish(false), timeoutMs)
+      socket.setTimeout(timeoutMs)
       // No write/end payload, protocol query, hostname lookup, or printer command.
       socket.connect({ host: endpoint.host, port: endpoint.port, localAddress: endpoint.localAddress, family: 4 })
     } catch { finish(false) }
   })
+}
+
+function probe(endpoint: ValidatedLocalPrinterEndpoint, signal: AbortSignal, deps: NetworkDiscoveryDependencies): Promise<boolean> {
+  return zeroPayloadProbe(endpoint, NETWORK_DISCOVERY_LIMITS.connectTimeoutMs, deps, signal)
 }
 
 let scanActive = false

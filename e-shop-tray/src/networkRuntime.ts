@@ -92,7 +92,8 @@ export function createNetworkStrategy(options: Guards & {
       if (request.order.storeCode !== options.identity.storeCode) throw new Error('NETWORK_STORE_MISMATCH')
       const mode = config.mode
       const endpoint = Object.freeze({ ...resolveNetworkEndpoint(config, request) })
-      await options.validateEndpoint(endpoint)
+      // Receive already validated the endpoint path before the claim. Do not
+      // repeat TCP/ARP work after claiming; send-before revalidates identity.
       const rendered = await options.render(request)
       if (!(rendered instanceof Uint8Array) || !rendered.byteLength || rendered.byteLength > NETWORK_MAX_BYTES) {
         throw new Error('NETWORK_RENDER_SIZE')

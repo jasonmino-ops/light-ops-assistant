@@ -52,23 +52,24 @@ describe('shared Network preparation and receive gates', () => {
     idle(); await activation
     expect(calls).toEqual(['pause', 'ack-idle', 'validate', 'journal-load-enable', 'start'])
   })
-  it('validates identity/config/current route before rendering and again immediately before delivery', async () => {
+  it('keeps prepare probe-free and revalidates identity/config/current endpoint immediately before delivery', async () => {
     const h = strategyHarness(), events: string[] = []
     h.options.assertIdentity.mockImplementation(async () => { events.push('identity') })
     h.options.nodes.read.mockImplementation(async () => { events.push('config'); return h.config })
     h.options.validateEndpoint.mockImplementation(async () => { events.push('route') })
     h.options.render.mockImplementation(async () => { events.push('render'); return h.bytes })
     const deliver = await h.strategy.prepare(job())
+    expect(events).toEqual(['identity', 'config', 'render'])
+    expect(h.options.validateEndpoint).not.toHaveBeenCalled()
     expect(h.options.transport.deliver).not.toHaveBeenCalled()
     await deliver()
-    expect(events).toEqual(['identity', 'config', 'route', 'render', 'identity', 'config', 'route'])
+    expect(events).toEqual(['identity', 'config', 'render', 'identity', 'config', 'route'])
     expect(h.options.transport.deliver).toHaveBeenCalledWith(h.bytes, h.config.endpoint)
   })
 
-  it.each(['identity', 'config', 'route', 'render'] as const)('never swallows a preparation %s failure', async stage => {
+  it.each(['identity', 'config', 'render'] as const)('never swallows a preparation %s failure', async stage => {
     const h = strategyHarness()
-    const operation = { identity: h.options.assertIdentity, config: h.options.nodes.read,
-      route: h.options.validateEndpoint, render: h.options.render }[stage]
+    const operation = { identity: h.options.assertIdentity, config: h.options.nodes.read, render: h.options.render }[stage]
     operation.mockRejectedValueOnce(new Error(`failed ${stage}`))
     await expect(h.strategy.prepare(job())).rejects.toThrow(`failed ${stage}`)
     expect(h.options.transport.deliver).not.toHaveBeenCalled()

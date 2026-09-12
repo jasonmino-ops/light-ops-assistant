@@ -8,7 +8,10 @@ import { pathToFileURL } from 'node:url'
 import { CloudRelayClient } from '../src/cloudRelayClient'
 import { desktopBindingIdentityPath, readDesktopBindingIdentity, type DesktopBindingIdentity } from '../src/desktopBindingIdentity'
 import { protectNetworkDirectory, type NetworkNode, type NetworkPrinterConfig } from '../src/networkNodeConfig'
-import { getWindowsLocalNetworks, validateLocalPrinterEndpoint, discoverNetworkPrinters, readLocalPrinterHardware, assertConfirmedPrinter, networkContinuityFingerprint, withWindowsValidationSnapshots } from '../src/networkDiscovery'
+import { getWindowsLocalNetworks, getWindowsEndpointContinuitySnapshot, validateLocalPrinterEndpoint,
+  validateConfirmedPrinterPath, discoverNetworkPrinters, readLocalPrinterHardware, assertConfirmedPrinter,
+  assertConfirmedPrinterContinuity, assertReachableConfirmedPrinter, networkContinuityFingerprint,
+  withWindowsEndpointContinuitySnapshots, type NetworkContinuityDiagnostic } from '../src/networkDiscovery'
 import { NETWORK_PROFILE, parseNetworkMode, exactObject, type NetworkRequest } from '../src/networkContract'
 import { NetworkRawTcpTransport, NetworkDeliveryError } from '../src/printing/networkRawTcpTransport'
 import { RelayPoller } from '../src/relayPoller'
@@ -31,12 +34,14 @@ let profile: NetworkAddonProfile | undefined
 let poller: RelayPoller | undefined
 let lifecycle: ColdModeLifecycle | undefined
 let renderer: ReturnType<typeof createNetworkRenderer> | undefined
+let resultLog: RelayResultLog | undefined
 const transport = new NetworkRawTcpTransport()
 let scanner: AbortController | undefined
 let lastCode = 'STARTING'
 let lastEvent: { event: string; jobId?: string; resultCode?: string; effectBoundary?: string } | undefined
 let quitting = false
 let shortcutCode = 'SHORTCUT_NOT_CHECKED'
+const recordedContinuityDiagnostics = new Set<string>()
 
 async function shortcutManager() {
   const snapshot = await readShortcutRegistration()
@@ -99,13 +104,36 @@ async function assertIdentity() {
     throw new Error('NETWORK_BINDING_CHANGED_RESTART_REQUIRED')
   }
 }
-async function validateEndpoint(endpoint: NetworkNode, getSnapshot: () => ReturnType<typeof getWindowsLocalNetworks> = getWindowsLocalNetworks) {
-  const snapshot = await getSnapshot()
+function confirmedTest(endpoint: NetworkNode) {
   const confirmed = profile?.snapshot().test
-  if (!confirmed || confirmed.outcome !== 'CONFIRMED' || confirmed.networkFingerprint !== networkContinuityFingerprint(snapshot)) {
-    throw new Error('NETWORK_CHANGED')
+  if (!confirmed || confirmed.outcome !== 'CONFIRMED') throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
+  if (confirmed.endpoint.host !== endpoint.host || confirmed.endpoint.port !== endpoint.port) {
+    throw new Error('NETWORK_CONFIG_CHANGED')
   }
-  return assertConfirmedPrinter(endpoint, confirmed, snapshot, readLocalPrinterHardware, getSnapshot)
+  return confirmed
+}
+async function recordContinuityDiagnostic(diagnostic: NetworkContinuityDiagnostic) {
+  const log = resultLog
+  if (!log) return
+  const key = `${diagnostic.comparison}:${diagnostic.fingerprintKind}:${diagnostic.expectedFingerprint}:${diagnostic.observedFingerprint}:${diagnostic.endpoint.host}:${diagnostic.endpoint.port}`
+  if (recordedContinuityDiagnostics.has(key) || recordedContinuityDiagnostics.size >= 128) return
+  try {
+    await log.record({ event: diagnostic.code, status: diagnostic.comparison, diagnostic })
+    recordedContinuityDiagnostics.add(key)
+  } catch { /* Local diagnostics are best-effort and never authorize printing. */ }
+}
+async function validateEndpointPath(endpoint: NetworkNode,
+  getSnapshot: () => ReturnType<typeof getWindowsEndpointContinuitySnapshot> =
+    () => getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic)) {
+  const confirmed = confirmedTest(endpoint)
+  return validateConfirmedPrinterPath(endpoint, confirmed, await getSnapshot(), recordContinuityDiagnostic)
+}
+async function validateEndpoint(endpoint: NetworkNode,
+  getSnapshot: () => ReturnType<typeof getWindowsEndpointContinuitySnapshot> =
+    () => getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic)) {
+  const confirmed = confirmedTest(endpoint)
+  return assertConfirmedPrinterContinuity(endpoint, confirmed, await getSnapshot(), readLocalPrinterHardware,
+    getSnapshot, recordContinuityDiagnostic)
 }
 function knownProfile() {
   if (!profile || !binding) throw new Error('DESKTOP_BINDING_NOT_ACTIVE')
@@ -121,7 +149,12 @@ async function validateColdContext(context: ColdModePreflightContext) {
     || context.config.endpoint.host !== context.test.endpoint.host || context.config.endpoint.port !== context.test.endpoint.port) {
     throw new Error('ADDON_COLD_SETTLED_TEST_REQUIRED')
   }
-  await assertConfirmedPrinter(context.config.endpoint, context.test, await getWindowsLocalNetworks())
+  const endpoint = context.config.endpoint
+  const snapshot = await getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic)
+  await assertReachableConfirmedPrinter(endpoint, context.test, snapshot, {
+    refresh: () => getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic),
+    reporter: recordContinuityDiagnostic,
+  })
 }
 async function finishExit() {
   entry.markExiting()
@@ -144,10 +177,10 @@ async function initialize() {
   await next.open()
   profile = next
   renderer = createNetworkRenderer({ electron, distDirectory: __dirname })
-  const resultLog = new RelayResultLog(path.join(directory, 'results.jsonl'))
+  resultLog = new RelayResultLog(path.join(directory, 'results.jsonl'))
   const recorder = { async record(event: Parameters<RelayResultLog['record']>[0]) {
     lastEvent = { event: event.event, jobId: event.jobId, resultCode: event.resultCode, effectBoundary: event.effectBoundary }
-    await resultLog.record(event)
+    await resultLog!.record(event)
   } }
   const client = new CloudRelayClient({ config: { baseUrl: SERVER },
     credential: { installationId: binding.installationId, deviceSecret: binding.deviceSecret },
@@ -160,9 +193,11 @@ async function initialize() {
   }
   const dependencies = { assertIdentity, identity: bindingTuple(binding), nodes: profile, journal: profile.journal,
     client: modeClient, render: renderer.render, recorder, transport, validateEndpoint }
-  poller = new RelayPoller({ client: createGuardedNetworkClient(dependencies), journal: profile.journal, recorder,
+  poller = new RelayPoller({ client: createGuardedNetworkClient({ ...dependencies, validateEndpoint: validateEndpointPath }),
+    journal: profile.journal, recorder,
     network: createNetworkStrategy({ ...dependencies,
-      validateEndpoint: endpoint => withWindowsValidationSnapshots(getSnapshot => validateEndpoint(endpoint, getSnapshot)) }),
+      validateEndpoint: endpoint => withWindowsEndpointContinuitySnapshots(endpoint,
+        getSnapshot => validateEndpoint(endpoint, getSnapshot), recordContinuityDiagnostic) }),
     onError(error) { lastCode = code(error) } })
   lifecycle = new ColdModeLifecycle({ profile, client, assertIdentity, validate: validateColdContext,
     stopAndWait: () => poller!.stopAndWait(), start: () => poller!.start(), exit: finishExit })

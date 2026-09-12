@@ -106,6 +106,16 @@ describe('commercial cold lifecycle used by the main process', () => {
     await expect(next.lifecycle.convertAndExit('SHARED_PRINTER', confirmation)).rejects.toThrow('ADDON_COLD_PROCESS_RESTART_REQUIRED')
   })
 
+  it('does not start the poller or inspect cloud work when the confirmed endpoint is unreachable at cold start', async () => {
+    const f = await fixture()
+    await f.profile.setEnabled(true)
+    const next = await f.restart()
+    f.ports.validate.mockRejectedValueOnce(new Error('NETWORK_PRINTER_UNREACHABLE'))
+    await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+    expect(f.ports.start).not.toHaveBeenCalled()
+    expect(f.ports.client.networkQueueState).not.toHaveBeenCalled()
+  })
+
   it('requires another paused boot after a same-process printer configuration change', async () => {
     const f = await fixture()
     const prior = f.profile.snapshot().test!
