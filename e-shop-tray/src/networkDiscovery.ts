@@ -77,6 +77,15 @@ export type NetworkDiscoveryResult = Readonly<{
 type NetworkDifference<T> = Readonly<{
   added: readonly T[]; removed: readonly T[]; addedCount: number; removedCount: number; truncated: boolean
 }>
+type NetworkTopologyList<T> = Readonly<{ entries: readonly T[]; count: number; truncated: boolean }>
+type NetworkTopologyDiagnostic = Readonly<{
+  localAddresses: NetworkTopologyList<string>
+  networks: NetworkTopologyList<LocalNetwork>
+  routes: NetworkTopologyList<IPv4Route>
+}>
+type EndpointSafetyDiagnostic = Readonly<
+  { result: 'PASS' } | { result: 'BLOCKED'; blockingCode: string }
+>
 export type NetworkContinuityDiagnostic = Readonly<{
   code: 'NETWORK_FINGERPRINT_MISMATCH'
   comparison: 'CONFIRMED_TO_CURRENT' | 'READ_TO_READ'
@@ -85,6 +94,8 @@ export type NetworkContinuityDiagnostic = Readonly<{
   observedFingerprint: string
   observedSnapshotFingerprint: string
   endpoint: Readonly<{ host: string; port: number; localAddress?: string; interfaceIndex?: number }>
+  currentTopology: NetworkTopologyDiagnostic
+  endpointSafety: EndpointSafetyDiagnostic
   historicalSnapshotAvailable: boolean
   changes?: Readonly<{
     localAddresses: NetworkDifference<string>
@@ -163,16 +174,25 @@ async function emitContinuityDiagnostic(reporter: NetworkContinuityReporter | un
 export async function validateConfirmedPrinterPath(endpoint: { host: string; port: number },
   confirmation: { networkFingerprint: string }, snapshot: LocalNetworkSnapshot,
   reporter?: NetworkContinuityReporter): Promise<ValidatedLocalPrinterEndpoint> {
-  const selected = validateLocalPrinterEndpoint(endpoint.host, endpoint.port, snapshot)
   const observed = networkContinuityFingerprint(snapshot)
+  let selected: ValidatedLocalPrinterEndpoint
+  try { selected = validateLocalPrinterEndpoint(endpoint.host, endpoint.port, snapshot) }
+  catch (error) {
+    if (confirmation.networkFingerprint !== observed) {
+      await emitContinuityDiagnostic(reporter, continuityDiagnostic(endpoint, snapshot, {
+        comparison: 'CONFIRMED_TO_CURRENT', fingerprintKind: 'NETWORK_CONTINUITY',
+        expectedFingerprint: confirmation.networkFingerprint, observedFingerprint: observed,
+        historicalSnapshotAvailable: false, endpointSafety: blockedEndpointSafety(error),
+      }))
+    }
+    throw error
+  }
   if (confirmation.networkFingerprint !== observed) {
-    await emitContinuityDiagnostic(reporter, {
-      code: 'NETWORK_FINGERPRINT_MISMATCH', comparison: 'CONFIRMED_TO_CURRENT', fingerprintKind: 'NETWORK_CONTINUITY',
+    await emitContinuityDiagnostic(reporter, continuityDiagnostic(endpoint, snapshot, {
+      comparison: 'CONFIRMED_TO_CURRENT', fingerprintKind: 'NETWORK_CONTINUITY',
       expectedFingerprint: confirmation.networkFingerprint, observedFingerprint: observed,
-      observedSnapshotFingerprint: snapshot.fingerprint,
-      endpoint: { host: selected.host, port: selected.port, localAddress: selected.localAddress, interfaceIndex: selected.interfaceIndex },
-      historicalSnapshotAvailable: false,
-    })
+      historicalSnapshotAvailable: false, selected, endpointSafety: { result: 'PASS' },
+    }))
   }
   return selected
 }
@@ -183,17 +203,41 @@ async function finishConfirmedPrinterContinuity(endpoint: { host: string; port: 
   refresh: () => Promise<LocalNetworkSnapshot>, reporter?: NetworkContinuityReporter): Promise<ValidatedLocalPrinterEndpoint> {
   if (await readHardware(endpoint.host, endpoint.port, snapshot) !== confirmation.hardwareAddress) fail('NETWORK_DEVICE_CHANGED')
   const after = await refresh()
-  const verified = validateLocalPrinterEndpoint(selected.host, selected.port, after)
   const beforeFingerprint = networkContinuityFingerprint(snapshot)
   const afterFingerprint = networkContinuityFingerprint(after)
-  if (beforeFingerprint !== afterFingerprint) {
-    await emitContinuityDiagnostic(reporter, {
-      code: 'NETWORK_FINGERPRINT_MISMATCH', comparison: 'READ_TO_READ', fingerprintKind: 'NETWORK_CONTINUITY',
-      expectedFingerprint: beforeFingerprint, observedFingerprint: afterFingerprint,
-      observedSnapshotFingerprint: after.fingerprint,
-      endpoint: { host: verified.host, port: verified.port, localAddress: verified.localAddress, interfaceIndex: verified.interfaceIndex },
-      historicalSnapshotAvailable: true, changes: snapshotDifference(snapshot, after),
-    })
+  const changed = beforeFingerprint !== afterFingerprint
+  let verified: ValidatedLocalPrinterEndpoint
+  try { verified = validateLocalPrinterEndpoint(selected.host, selected.port, after) }
+  catch (error) {
+    if (changed) {
+      await emitContinuityDiagnostic(reporter, continuityDiagnostic(endpoint, after, {
+        comparison: 'READ_TO_READ', fingerprintKind: 'NETWORK_CONTINUITY', expectedFingerprint: beforeFingerprint,
+        observedFingerprint: afterFingerprint, historicalSnapshotAvailable: true,
+        changes: snapshotDifference(snapshot, after), endpointSafety: blockedEndpointSafety(error),
+      }))
+    }
+    throw error
+  }
+  // The MAC was proven through selected.localAddress/interfaceIndex. A later
+  // safe-looking physical path is not the same proof and must not be handed to
+  // the transport without another identity check.
+  if (verified.localAddress !== selected.localAddress || verified.interfaceIndex !== selected.interfaceIndex) {
+    if (changed) {
+      await emitContinuityDiagnostic(reporter, continuityDiagnostic(endpoint, after, {
+        comparison: 'READ_TO_READ', fingerprintKind: 'NETWORK_CONTINUITY', expectedFingerprint: beforeFingerprint,
+        observedFingerprint: afterFingerprint, historicalSnapshotAvailable: true, selected: verified,
+        changes: snapshotDifference(snapshot, after),
+        endpointSafety: { result: 'BLOCKED', blockingCode: 'NETWORK_ENDPOINT_PATH_CHANGED' },
+      }))
+    }
+    fail('NETWORK_ENDPOINT_PATH_CHANGED')
+  }
+  if (changed) {
+    await emitContinuityDiagnostic(reporter, continuityDiagnostic(endpoint, after, {
+      comparison: 'READ_TO_READ', fingerprintKind: 'NETWORK_CONTINUITY', expectedFingerprint: beforeFingerprint,
+      observedFingerprint: afterFingerprint, historicalSnapshotAvailable: true, selected: verified,
+      changes: snapshotDifference(snapshot, after), endpointSafety: { result: 'PASS' },
+    }))
   }
   return verified
 }
@@ -270,6 +314,37 @@ function sortObjects<T>(values: T[]): T[] {
 }
 
 const DIAGNOSTIC_DIFF_LIMIT = 32
+const DIAGNOSTIC_TOPOLOGY_LIMIT = 256
+function topologyList<T>(values: readonly T[]): NetworkTopologyList<T> {
+  return Object.freeze({ entries: Object.freeze(values.slice(0, DIAGNOSTIC_TOPOLOGY_LIMIT)), count: values.length,
+    truncated: values.length > DIAGNOSTIC_TOPOLOGY_LIMIT })
+}
+function currentTopology(snapshot: LocalNetworkSnapshot): NetworkTopologyDiagnostic {
+  return Object.freeze({ localAddresses: topologyList(snapshot.localAddresses), networks: topologyList(snapshot.networks),
+    routes: topologyList(snapshot.routes) })
+}
+function blockedEndpointSafety(error: unknown): EndpointSafetyDiagnostic {
+  return Object.freeze({ result: 'BLOCKED', blockingCode: error instanceof NetworkDiscoveryError
+    && /^NETWORK_[A-Z0-9_]+$/.test(error.code) ? error.code : 'NETWORK_ENDPOINT_SAFETY_FAILED' })
+}
+function continuityDiagnostic(endpoint: { host: string; port: number }, snapshot: LocalNetworkSnapshot, value: {
+  comparison: NetworkContinuityDiagnostic['comparison']
+  fingerprintKind: NetworkContinuityDiagnostic['fingerprintKind']
+  expectedFingerprint: string
+  observedFingerprint: string
+  historicalSnapshotAvailable: boolean
+  endpointSafety: EndpointSafetyDiagnostic
+  selected?: ValidatedLocalPrinterEndpoint
+  changes?: NetworkContinuityDiagnostic['changes']
+}): NetworkContinuityDiagnostic {
+  return Object.freeze({ code: 'NETWORK_FINGERPRINT_MISMATCH', comparison: value.comparison,
+    fingerprintKind: value.fingerprintKind, expectedFingerprint: value.expectedFingerprint,
+    observedFingerprint: value.observedFingerprint, observedSnapshotFingerprint: snapshot.fingerprint,
+    endpoint: { host: endpoint.host, port: endpoint.port,
+      ...(value.selected ? { localAddress: value.selected.localAddress, interfaceIndex: value.selected.interfaceIndex } : {}) },
+    currentTopology: currentTopology(snapshot), endpointSafety: value.endpointSafety,
+    historicalSnapshotAvailable: value.historicalSnapshotAvailable, ...(value.changes ? { changes: value.changes } : {}) })
+}
 function difference<T>(before: readonly T[], after: readonly T[]): NetworkDifference<T> {
   const prior = new Map(before.map(value => [JSON.stringify(value), value]))
   const current = new Map(after.map(value => [JSON.stringify(value), value]))
@@ -456,12 +531,14 @@ export async function getWindowsEndpointContinuitySnapshot(endpoint: { host: str
   const first = createLocalNetworkSnapshot(metadata, before)
   const current = createLocalNetworkSnapshot(metadata, interfaces())
   if (first.fingerprint !== current.fingerprint) {
-    await emitContinuityDiagnostic(reporter, {
-      code: 'NETWORK_FINGERPRINT_MISMATCH', comparison: 'READ_TO_READ', fingerprintKind: 'SNAPSHOT_INTEGRITY',
-      expectedFingerprint: first.fingerprint, observedFingerprint: current.fingerprint,
-      observedSnapshotFingerprint: current.fingerprint, endpoint: { host: endpoint.host, port: endpoint.port },
-      historicalSnapshotAvailable: true, changes: snapshotDifference(first, current),
-    })
+    let selected: ValidatedLocalPrinterEndpoint | undefined, endpointSafety: EndpointSafetyDiagnostic = { result: 'PASS' }
+    try { selected = validateLocalPrinterEndpoint(endpoint.host, endpoint.port, current) }
+    catch (error) { endpointSafety = blockedEndpointSafety(error) }
+    await emitContinuityDiagnostic(reporter, continuityDiagnostic(endpoint, current, {
+      comparison: 'READ_TO_READ', fingerprintKind: 'SNAPSHOT_INTEGRITY', expectedFingerprint: first.fingerprint,
+      observedFingerprint: current.fingerprint, historicalSnapshotAvailable: true, selected, endpointSafety,
+      changes: snapshotDifference(first, current),
+    }))
   }
   return current
 }

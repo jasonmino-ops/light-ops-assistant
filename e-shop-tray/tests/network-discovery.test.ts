@@ -413,7 +413,13 @@ describe('confirmed endpoint continuity', () => {
     await expect(assertConfirmedPrinterContinuity(endpoint, proof(confirmed), current, hardware, async () => current, report))
       .resolves.toMatchObject({ host: endpoint.host, localAddress: '192.168.18.41' })
     expect(report).toHaveBeenCalledWith(expect.objectContaining({ code: 'NETWORK_FINGERPRINT_MISMATCH',
-      comparison: 'CONFIRMED_TO_CURRENT', historicalSnapshotAvailable: false }))
+      comparison: 'CONFIRMED_TO_CURRENT', historicalSnapshotAvailable: false,
+      endpoint: { host: endpoint.host, port: endpoint.port, localAddress: '192.168.18.41', interfaceIndex: 7 },
+      endpointSafety: { result: 'PASS' }, currentTopology: {
+        localAddresses: { entries: ['100.108.88.51', '192.168.18.41'], count: 2, truncated: false },
+        networks: { entries: confirmed.networks, count: 1, truncated: false },
+        routes: { entries: current.routes, count: current.routes.length, truncated: false },
+      } }))
   })
 
   it('accepts a DHCP address changed since confirmation when endpoint, MAC and direct path remain valid', async () => {
@@ -433,6 +439,8 @@ describe('confirmed endpoint continuity', () => {
     expect(report).toHaveBeenCalledWith(expect.objectContaining({ comparison: 'READ_TO_READ',
       fingerprintKind: 'SNAPSHOT_INTEGRITY', changes: expect.objectContaining({
         localAddresses: expect.objectContaining({ added: ['192.168.18.42'], removed: ['192.168.18.41'] }),
+      }), endpointSafety: { result: 'PASS' }, currentTopology: expect.objectContaining({
+        localAddresses: { entries: ['192.168.18.42'], count: 1, truncated: false },
       }) }))
   })
 
@@ -493,6 +501,34 @@ describe('confirmed endpoint continuity', () => {
     await expect(assertConfirmedPrinterContinuity(endpoint, proof(before), before, read, async () => escaped))
       .rejects.toThrow('NETWORK_ROUTE_ESCAPE')
     expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it('records the exact endpoint safety block with current topology when a fingerprint mismatch is unsafe', async () => {
+    const confirmed = snapshot(), raw = metadata(), report = vi.fn(async () => {})
+    raw.routes.push({ interfaceIndex: 99, destinationPrefix: '192.168.18.53/32', nextHop: '0.0.0.0',
+      routeMetric: 1, interfaceMetric: 1 })
+    const escaped = createLocalNetworkSnapshot(raw, interfaces())
+    await expect(validateConfirmedPrinterPath(endpoint, proof(confirmed), escaped, report)).rejects.toThrow('NETWORK_ROUTE_ESCAPE')
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ endpoint: { host: endpoint.host, port: endpoint.port },
+      endpointSafety: { result: 'BLOCKED', blockingCode: 'NETWORK_ROUTE_ESCAPE' },
+      currentTopology: expect.objectContaining({ routes: { entries: escaped.routes, count: escaped.routes.length, truncated: false } }) }))
+  })
+
+  it('does not reuse an ARP identity proof after the endpoint moves to another safe physical path', async () => {
+    const before = snapshot(), raw = metadata(24, '192.168.18.42')
+    raw.adapters[0] = { ...raw.adapters[0], interfaceIndex: 8, name: 'LAN2' }
+    raw.addresses[0] = { ...raw.addresses[0], interfaceIndex: 8 }
+    raw.routes[0] = { ...raw.routes[0], interfaceIndex: 8 }
+    const local: Interfaces = { LAN2: [{ address: '192.168.18.42', netmask: '255.255.255.0', family: 'IPv4',
+      internal: false, mac: '', cidr: '192.168.18.42/24' }] }
+    const moved = createLocalNetworkSnapshot(raw, local), read = vi.fn(async () => hardwareAddress), report = vi.fn(async () => {})
+    await expect(assertConfirmedPrinterContinuity(endpoint, proof(before), before, read, async () => moved, report))
+      .rejects.toThrow('NETWORK_ENDPOINT_PATH_CHANGED')
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ comparison: 'READ_TO_READ',
+      endpoint: { host: endpoint.host, port: endpoint.port, localAddress: '192.168.18.42', interfaceIndex: 8 },
+      endpointSafety: { result: 'BLOCKED', blockingCode: 'NETWORK_ENDPOINT_PATH_CHANGED' },
+      changes: expect.objectContaining({ networks: expect.objectContaining({ addedCount: 1, removedCount: 1 }) }) }))
   })
 
   it.each([
