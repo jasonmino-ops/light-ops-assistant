@@ -5,7 +5,7 @@
 - Task: `TASK-PRINT-RC7-PREFLIGHT-01`
 - Level: L3
 - Baseline at investigation: `origin/main` and READY Production both `a33b44c1c51223009326c4869526f7de6bd4a89d`
-- This document is a registration and deployment-control plan. It does not authorize or perform an rc.7 build, push, main merge, Preview/Production deployment, migration, publication, installation, or FIELD acceptance.
+- This document is a registration and deployment-control plan plus the as-executed D1 control record. External actions described below occurred only under their separately named Founder Gates; this document itself does not authorize an rc.7 build, future push/ref update, Preview/Production deployment, migration, publication, installation, or FIELD acceptance.
 - Frozen printing architecture and product scope remain unchanged. In particular this plan adds no FRONT/KITCHEN work, G1 source, USB/Linux/HRT work, Renderer/Agent/networkRuntime change, UI, copy, or product feature.
 
 ### Readiness Review and Engineering Authorization disposition
@@ -15,13 +15,13 @@ Readiness is `READY` only for the local repository governance implementation des
 - Risk/Production impact: changing `vercel.json` changes the Git deployment policy after integration; an incorrect transition could create an unintended Preview or Production deployment against a shared database.
 - Runtime/contract/provider impact: no application runtime, print contract, Provider, schema, migration, order flow or installed Agent behavior changes.
 - Required review: L3 Scope Guard, deployment-policy test and a fresh-context independent review using the ES-ENG Claude Review output fields are mandatory before commit.
-- Required Founder gates: Vercel setting write, push, main merge, Production deployment, rc.7 build, installation and FIELD remain separate approvals.
+- Required Founder gates remain independent. `D1-CONTROL-01` and `D1-BOOTSTRAP-01` completed the control-plane/bootstrap steps; `PRINT-RC7-INTEGRATE` authorizes only this reviewed Candidate's integration into `main`. Any `release` update, Production deployment, rc.7 build, installation or FIELD still requires a separate approval.
 
 Engineering implementation is `AUTHORIZED` only by the Founder's current instructions for branch `codex/print-rc7-preflight-governance` from starting HEAD `a33b44c1c51223009326c4869526f7de6bd4a89d`. The authorized package is limited to:
 
 - truthful closure metadata in the two named exception JSON files;
 - this rc.7 registration/D1 plan;
-- `vercel.json` entries `main:false` and `release:true` while preserving existing exact exclusions;
+- `vercel.json` entries `main:false`, `release:true` and exact `codex/print-rc7-preflight-governance:false` while preserving the four existing exact Network exclusions;
 - the exact deployment-policy test update.
 
 Required outputs are the four closures, plan, policy/test, Phase 0 Known Failure baseline, validation evidence and independent review. No 80%-90% partial product implementation is permitted. This local authorization does not extend to any external state change or later build.
@@ -90,22 +90,23 @@ The necessary rc.7 constant/hash/authorization preparation and the candidate bui
 
 ## 2. D1 — Production and main separation
 
-### Current state and gate boundary
+### Current state and gate boundary (after D1-BOOTSTRAP-01)
 
-- Repository candidate: `main:false` and `release:true` exist only on the local governance branch until a separately authorized main integration.
-- Vercel control plane: Production Branch remains `main`.
-- Git remote: `release` does not exist.
-- D1 status: `PREPARED`, not activated or completed. No feature branch, main or release ref may be pushed during the first control-plane gate.
+- Repository candidate: `main:false`, `release:true` and exact `codex/print-rc7-preflight-governance:false` exist on the local governance branch pending the Founder-authorized `PRINT-RC7-INTEGRATE` main integration.
+- Vercel control plane: Production Branch is `release`.
+- Git remote: `origin/main` and `origin/release` both point to `a33b44c1c51223009326c4869526f7de6bd4a89d`; the governance Candidate branch has not been pushed.
+- READY Production remains deployment `dpl_Hy3PrXRw7dSNv5Bahf4H6S9tSCac` at source SHA `a33b44c1c51223009326c4869526f7de6bd4a89d`.
+- D1 status: control-plane switch and zero-delta `release` bootstrap are complete; repository integration and post-integration no-deployment verification remain pending. No future `release` update or Production deployment is authorized here.
 
 ### Verified trigger
 
 Read-only evidence on 2026-09-12 established:
 
 - Vercel project `light-ops-assistant` is connected through the GitHub integration.
-- The live Project setting has Production Branch=`main`.
+- Before `D1-CONTROL-01`, the live Project setting had Production Branch=`main`; it now reads `release`.
 - At baseline, `vercel.json` did not list `main`; Vercel documents unspecified branches as deployment-enabled by default.
 - No repository GitHub workflow deploys the web application to Vercel.
-- A read-only remote query on 2026-09-12 found no `origin/release` branch.
+- A read-only remote query before `D1-BOOTSTRAP-01` found no `origin/release` branch; the authorized bootstrap later created it at the unchanged READY Production SHA `a33b44c1c51223009326c4869526f7de6bd4a89d`.
 - Vercel deployment metadata contains five READY Production deployments dated 2026-09-11 UTC, all sourced from branch `main`: `d25b0fee47b42bb979f481eaff1f1dd9a1738f6f`, `1781c5637e40e9033c0c074830b73476247fd972`, `9919828f7bd07c4d1aade46163e7623829e6fc2b`, `7291c4ba1fc8b8f4d8d926616ccf42b0445a22c0`, and `a33b44c1c51223009326c4869526f7de6bd4a89d`.
 
 The trigger is therefore the Vercel GitHub integration plus Production Branch=`main`, with automatic deployment enabled by the repository default.
@@ -118,6 +119,7 @@ References: [Vercel Git deployment and Production Branch](https://vercel.com/doc
 
 - `main: false` — a main merge must create neither an automatic Production deployment nor an automatic Preview deployment.
 - `release: true` — an explicit update of the future Production Branch remains the release trigger.
+- `codex/print-rc7-preflight-governance: false` — the exact governance Candidate branch is also suppressed; it remains unpushed.
 - Preserve the four existing exact Network branch exclusions.
 - Do not add a wildcard. Other branches retain Vercel's default Preview behavior.
 
@@ -125,29 +127,28 @@ References: [Vercel Git deployment and Production Branch](https://vercel.com/doc
 
 The test change is a necessary synchronization with the D1 policy, not an assertion relaxation. The prior exact `deepEqual` expected `main` to be absent and would now enforce the obsolete policy. The updated test retains exact full-object comparison, adds explicit `main:false` and `release:true` assertions, and preserves the no-wildcard and four existing branch-exclusion checks.
 
-### Gate D1-CONTROL-01 — first Founder action
+### Gates D1-CONTROL-01 and D1-BOOTSTRAP-01 — completed control/bootstrap
 
-The next Founder Gate should authorize only the Founder-operated Vercel control-plane change and read-back below. It must not authorize any Git push, branch creation, merge or deployment. Freeze all repository pushes until Gate D1-INTEGRATE-02 is separately approved and verified.
+`D1-CONTROL-01` first authorized only the Vercel control-plane change. Vercel rejected `release` while that remote branch did not exist, so the operation stopped without changing the setting. `D1-BOOTSTRAP-01` then separately authorized the zero-delta bootstrap and one control-plane retry:
 
-1. Open Vercel project `light-ops-assistant` → Settings → Environments → Production → Branch Tracking.
-2. Record the current Production Branch=`main` and current READY Production SHA.
-3. Change Branch Tracking to the custom branch `release` and save.
-4. Read the setting back as Production Branch=`release`; confirm the current Production deployment SHA/state did not change and no new Preview or Production deployment was created.
-5. If the dashboard refuses the not-yet-created custom branch, stop with no state change. Do not create `release` while `main` remains the Production Branch; return for a new Founder sequencing decision.
-6. Rollback for this gate is only to restore Branch Tracking=`main` before any Git operation, then read back the unchanged Production SHA/state.
+1. Audit the READY Production source/build path for migration, schema or production-data-write side effects.
+2. Create only `refs/heads/release` at the exact current READY Production SHA `a33b44c1c51223009326c4869526f7de6bd4a89d`; do not push the governance Candidate.
+3. Confirm Vercel created no deployment for the already-deployed SHA.
+4. Save Branch Tracking=`release` once and do not redeploy.
+5. Read back Production Branch=`release`; confirm the existing Production deployment, SHA, aliases, domain and Cron stayed unchanged.
 
-Only Founder performs these dashboard actions. This task performs none of them.
+Those steps completed on 2026-09-12. No Preview or Production deployment was created, and the existing Production source remained `a33b44c1c51223009326c4869526f7de6bd4a89d`.
 
-### Gate D1-INTEGRATE-02 — later repository integration
+### Gate PRINT-RC7-INTEGRATE — current repository integration
 
-After D1-CONTROL-01 succeeds, a new Founder Gate may authorize direct integration of the reviewed local governance commits into `main` and the single resulting main push. Do not push the feature branch: it remains an unspecified Preview branch and would target the shared Preview database. The main update must already contain `main:false`; after the push, verify that Vercel created neither a Production nor Preview deployment for that main SHA. A discrepancy blocks every further D1 forward operation; a necessary incident rollback remains a separate Founder-authorized action.
+Founder Gate `PRINT-RC7-INTEGRATE` authorizes direct integration of the reviewed local governance commits into `main` and the single resulting main ref update. Do not push the feature branch; although this exact branch is now disabled in the Candidate policy, its push is neither necessary nor authorized. The main update must already contain `main:false`; after the push, verify that Vercel created neither a Production nor Preview deployment for that main SHA. A discrepancy blocks every further D1 forward operation; a necessary incident rollback remains a separate Founder-authorized action.
 
 ### Gate D1-RELEASE-03 — later manual Production release
 
 For a later authorized Production release:
 
 1. Select an exact, reviewed SHA already present in `origin/main` and rerun the Release Lineage Gate against the then-current Production SHA.
-2. Because `release` does not currently exist, its first creation at that exact SHA is the first explicit Production release event after the control-plane switch, not a harmless setup step. It requires separate Founder push and Production authorization. Every later update must be a fast-forward; never force-update it.
+2. `release` already exists at bootstrap SHA `a33b44c1c51223009326c4869526f7de6bd4a89d`. Updating it to a new exact SHA is the first explicit Production release event after the control-plane switch and requires separate Founder push and Production authorization. Every update must be a fast-forward; never force-update it.
 3. The Vercel Git integration builds the `release` push as Production. Verify target=`production`, source branch=`release`, exact Git SHA, state=`READY`, and application health.
 4. Run `npm run vercel:current` and the Release Lineage Gate again; retain the deployment receipt. An rc.7 build or FIELD approval does not imply this Production authorization.
 
@@ -165,14 +166,14 @@ Other unspecified branches still auto-create Preview deployments. The existing r
 - Application rollback: Founder may immediately point Production to a prior known-good READY deployment, then land a normal revert commit on `main` and fast-forward `release` to that new revert SHA so Git lineage becomes consistent again. Do not force-push `release`.
 - Any dashboard rollback, ref update, redeploy or promotion is a distinct Founder-authorized Production operation.
 
-### D1 completion evidence
+### D1 control completion evidence
 
-D1 is complete only when all of the following are recorded:
+D1 control separation is complete only when all of the following are recorded:
 
 - repository policy and its test are present in trusted `origin/main`;
 - live Vercel Production Branch reads `release`;
 - merging the policy SHA to `main` produced no automatic Production or Preview deployment;
 - the pre-existing Production deployment stayed unchanged until an explicitly authorized `release` update;
-- the first later manual release receipt ties Production to the exact approved `origin/main` SHA and passes Release Lineage.
+- `origin/release` remains unchanged until a separately authorized manual Production release.
 
-Until those facts exist, this commit is D1 preparation, not a claim that the live platform has already been separated.
+A later manual release receipt must independently tie Production to its exact approved `origin/main` SHA and pass Release Lineage, but it is not authorized or performed by this integration gate.
