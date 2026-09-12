@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "suite": "root-integration",
+  "metadata": {
+    "lane": "INTEGRATION",
+    "runIdentity": "20260912T211538Z-404c311a7a6c",
+    "timestamp": "2026-09-12T21:15:38.270Z",
+    "headSha": "404c311a7a6c157c37fb1efb68a2e20d7fffdb6b",
+    "manifestPath": "scripts/test/manifests/root-integration-tests.json",
+    "manifestSha256": "dceccc12b65540318067d6515f3eadb3a9e89f8b0ef17f9590c36d844b689947",
+    "manifestSnapshotPath": "integration/manifest.json",
+    "baselinePath": "docs/change-gates/ES-PRINT-RC7-KNOWN-TEST-FAILURES.md",
+    "baselineSha256": "bd68ca5c3d3b5c38984a426634ace73b7fbdc0235ab9b5de8310b458fab283f3",
+    "baselineEvidencePath": "docs/change-gates/evidence/TASK-PRINT-RC7-PREFLIGHT-01/root-full-suite.log",
+    "baselineEvidenceSha256": "103b2f581a87e611bc6a021017cbab0c18a46f51869addf89f49365dc8a8f06f",
+    "evidenceDirectory": "test-results/test-evidence/root-lanes/20260912T211538Z-404c311a7a6c",
+    "laneEvidenceDirectory": "integration/",
+    "rawLogSha256": "2d369a00d18c047b469a2f1a2b27b7c2a08a5e8bdb4457f36a5cc7bac45fe8bc"
+  },
+  "counts": {
+    "expected": 10,
+    "collected": 10,
+    "executed": 10,
+    "passed": 9,
+    "failed": 1,
+    "knownFailures": 1,
+    "newFailures": 0,
+    "recoveredFailures": 0,
+    "knownEnvironmentBlocked": 0,
+    "skipped": 0,
+    "uncollected": 0,
+    "environmentFailures": 0
+  },
+  "files": {
+    "collected": [
+      "tests/cashier-network-print-v01.test.ts",
+      "tests/dashboard-print-settings-mobile.test.ts",
+      "tests/desktop-activation-runtime.test.ts",
+      "tests/desktop-pos-write-fallback-runtime.test.ts",
+      "tests/es-tray-desktop-launch-route.test.ts",
+      "tests/es-tray-device-print-runtime.test.ts",
+      "tests/es-tray-relay-runtime.test.ts",
+      "tests/network-print-jobs-api.test.ts",
+      "tests/product-sales-browser.test.ts",
+      "tests/product-sales-image-browser.test.ts"
+    ],
+    "results": [
+      {
+        "file": "tests/cashier-network-print-v01.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/dashboard-print-settings-mobile.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/desktop-activation-runtime.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/desktop-pos-write-fallback-runtime.test.ts",
+        "status": "FAIL",
+        "classification": "TEST",
+        "exitStatus": 1,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/es-tray-desktop-launch-route.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/es-tray-device-print-runtime.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/es-tray-relay-runtime.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/network-print-jobs-api.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/product-sales-browser.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      },
+      {
+        "file": "tests/product-sales-image-browser.test.ts",
+        "status": "PASS",
+        "classification": "TEST",
+        "exitStatus": 0,
+        "signal": null,
+        "error": null,
+        "environmentCode": null,
+        "environmentFingerprint": null
+      }
+    ],
+    "knownFailures": [
+      {
+        "id": "KTF-20260912-03",
+        "file": "tests/desktop-pos-write-fallback-runtime.test.ts",
+        "failureIdentity": "testAuthorizedRegressionPaths",
+        "failureFingerprints": [
+          "after",
+          "next-dynamic-api-wrong-context"
+        ]
+      }
+    ],
+    "newFailures": [],
+    "recoveredFailures": [],
+    "knownEnvironmentBlocked": [],
+    "missingKnownFailures": [],
+    "incompleteKnownFailures": [],
+    "skipped": [],
+    "environmentFailures": [],
+    "uncollected": [],
+    "unexpectedCollected": []
+  },
+  "runnerErrors": [],
+  "testEnvironmentHealth": "PASS",
+  "environmentReasons": [],
+  "authority": "LANE_ONLY",
+  "laneStatus": "PASS",
+  "overallStatus": "PASS",
+  "blockingReasons": [],
+  "exitCode": 0
+}
