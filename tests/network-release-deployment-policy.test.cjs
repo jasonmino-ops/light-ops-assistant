@@ -8,14 +8,18 @@ assert.deepEqual(config, {
   $schema: 'https://openapi.vercel.sh/vercel.json',
   crons: [{ path: '/api/cron/product-sales-daily', schedule: '10 17 * * *' }],
   git: { deploymentEnabled: {
+    main: false,
+    release: true,
     'codex/es-network-server-v01-release': false,
     'codex/es-network-commercial-addon-v01': false,
     'codex/es-network-commercial-discovery-v01': false,
     'codex/es-network-commercial-cold-conversion-v01': false,
   } },
 });
-// Vercel's documented default for unspecified branches is true. Do not
-// disable main, enable a Preview override, or change env/build/alias settings.
-assert.equal(Object.hasOwn(config.git.deploymentEnabled, 'main'), false);
+// The Founder-controlled Vercel setting must track `release` as the Production
+// Branch. Disabling `main` here also prevents it becoming an automatic Preview
+// branch after that switch. Unspecified branches retain Vercel's true default.
+assert.equal(config.git.deploymentEnabled.main, false);
+assert.equal(config.git.deploymentEnabled.release, true);
 assert.equal(Object.keys(config.git.deploymentEnabled).some(key => /[*?{}]/.test(key)), false);
-console.log('PASS exact Network server and commercial Add-on branches automatic deployment disabled; main and other branches unchanged');
+console.log('PASS main automatic deployment disabled, release enabled, exact Network branch exclusions preserved');
