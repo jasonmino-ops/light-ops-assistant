@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "taskId": "ES-PRODUCT-AI-BULK-IMPORT-01",
+  "featureBranch": "codex/es-product-ai-bulk-import-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "3c42353777c4c8dfa38c7e5a73e8bcf6966f3c48",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "prisma/schema.prisma",
+    "prisma/migrations/20260914020000_add_product_bulk_import_jobs/migration.sql"
+  ],
+  "authorizedPathSha256": {
+    "prisma/schema.prisma": "2176973a8f4ed92ab629cf8b8b735ede8001449a924a3d7f4eadbbd452945598",
+    "prisma/migrations/20260914020000_add_product_bulk_import_jobs/migration.sql": "605dab42360ec16f28bc6937fae410e39e08dc8f9c8e150ae532136070b46911"
+  },
+  "createdAt": "2026-09-13T18:22:12.000Z",
+  "approvedAt": "2026-09-13T19:34:05.000Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder exact authorization in the ES-PRODUCT-AI-BULK-IMPORT-01 task conversation",
+    "statement": "Founder formally authorized this ACTIVE PRE_COMMIT_CONTENT_SHA256 exception for exactly prisma/schema.prisma at 2176973a8f4ed92ab629cf8b8b735ede8001449a924a3d7f4eadbbd452945598 and prisma/migrations/20260914020000_add_product_bulk_import_jobs/migration.sql at 605dab42360ec16f28bc6937fae410e39e08dc8f9c8e150ae532136070b46911, with no authorized-path expansion. Founder separately authorized the governance registration commit, merge and push. Production migration, release merge and Production deployment remain unauthorized.",
+    "approvedAtMeaning": "Registration time of the exact Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the complete additive Prisma schema containing ProductBulkImportJob, ProductBulkImportRow and ProductGeneratedBarcode, plus the single exact migration file identified by content hashes. Product fields and unique identity, ProductImportSession, Telegram import, historical Product data and all other protected paths remain unchanged. The ACTIVE record is effective only when byte-identical in trusted origin/main. Any protected candidate byte change requires a new seal, review and Founder authorization. This exception does not authorize Production migration, release merge, Production deployment, FIELD VERIFIED, FINAL FROZEN or CLOSED.",
+  "createdOnBranch": "codex/es-product-ai-bulk-import-01-scope-exception",
+  "sourceDraft": {
+    "baseOriginMainSha": "3c42353777c4c8dfa38c7e5a73e8bcf6966f3c48",
+    "baseSchemaSha256": "42fdabd4afbdcb3e62075cad4c1d5b80749bb00224099580be94866296391f1b",
+    "candidateSchemaPath": ".task-state/ES-PRODUCT-AI-BULK-IMPORT-01-sealed/schema-exception/schema.prisma",
+    "candidateMigrationPath": ".task-state/ES-PRODUCT-AI-BULK-IMPORT-01-sealed/schema-exception/migration.sql",
+    "fileCount": 2
+  }
+}
