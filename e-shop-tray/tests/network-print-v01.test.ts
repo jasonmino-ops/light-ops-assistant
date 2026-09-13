@@ -129,6 +129,26 @@ describe('Network V0.1 contract and local authority', () => {
       expect(await readFile(file, 'utf8')).toBe(sealed)
     }
   })
+  it('persists two distinct locked role endpoints while legacy shared config keeps one endpoint', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'network-role-config-'))
+    const file = path.join(directory, 'nodes.sealed')
+    const identity = { installationId: 'installation-dual', computerId: 'binding-dual', storeCode: 'STORE-DUAL', boundAt: '2026-09-13' }
+    const config = new NetworkNodeConfig({ file, identity, protector, interfaces: () => interfaces })
+    const kitchenEndpoint = { host: '10.20.30.3', port: 9100 }
+    await config.save({ mode: 'SHARED_PRINTER', endpoint: node, kitchenEndpoint })
+    const stored = await config.read()
+    expect(stored).toEqual({ mode: 'SHARED_PRINTER', endpoint: node, kitchenEndpoint })
+    expect(resolveNetworkEndpoint(stored, { ...request, role: 'FRONT' })).toEqual(node)
+    expect(resolveNetworkEndpoint(stored, { ...request, role: 'KITCHEN' })).toEqual(kitchenEndpoint)
+    await config.save({ mode: 'SHARED_PRINTER', endpoint: { ...node }, kitchenEndpoint: { ...kitchenEndpoint } })
+    await expect(config.save({ mode: 'SHARED_PRINTER', endpoint: node,
+      kitchenEndpoint: { ...kitchenEndpoint, port: 9101 } })).rejects.toThrow('NETWORK_INITIAL_CONFIG_LOCKED')
+    for (const [index, invalid] of [
+      { mode: 'FRONT_ONLY', endpoint: node, kitchenEndpoint },
+      { mode: 'SHARED_PRINTER', endpoint: node, kitchenEndpoint: node },
+    ].entries()) await expect(new NetworkNodeConfig({ file: path.join(directory, `invalid-${index}.sealed`),
+      identity, protector, interfaces: () => interfaces }).save(invalid)).rejects.toThrow()
+  })
   it('a stale concurrent initializer cannot atomically overwrite the first published endpoint', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'network-config-race-'))
     const file = path.join(directory, 'nodes.sealed')
@@ -684,6 +704,118 @@ describe('single physical printer: shared runtime, timer poller, durable journal
       }))
       expect(runtime.journal.records()[0]).toMatchObject({ state: 'TERMINAL', reported: true, effectBoundary: 'NOT_CROSSED' })
     } finally { await h.close() }
+  })
+})
+
+describe('two confirmed physical endpoints: shared runtime, durable journal and TCP', () => {
+  it('routes one order to FRONT and KITCHEN exactly once, including a lost FRONT ACK restart', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'network-dual-printer-'))
+    const kitchenNode = { host: '10.20.30.3', port: 9100 }
+    const config = { mode: 'SHARED_PRINTER' as const, endpoint: node, kitchenEndpoint: kitchenNode }
+    const identity = { installationId: 'installation-dual', computerId: 'binding-dual',
+      storeCode: request.order.storeCode, boundAt: '2026-09-13' }
+    const nodeOptions = { file: path.join(directory, 'nodes.sealed'), identity, protector, interfaces: () => interfaces }
+    await new NetworkNodeConfig(nodeOptions).save(config)
+
+    const captureServer = async () => {
+      const connections: Buffer[][] = []
+      const ended: number[] = []
+      const sockets = new Set<Socket>()
+      const server = createServer(socket => {
+        sockets.add(socket)
+        const index = connections.length
+        connections.push([])
+        socket.on('data', bytes => connections[index].push(Buffer.from(bytes)))
+        socket.on('end', () => ended.push(index))
+        socket.on('close', () => sockets.delete(socket))
+      })
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject); server.listen(0, '127.0.0.1', resolve)
+      })
+      return { server, connections, ended, sockets, port: (server.address() as { port: number }).port }
+    }
+    const frontServer = await captureServer()
+    const kitchenServer = await captureServer()
+    const closeServer = async (target: Awaited<ReturnType<typeof captureServer>>) => {
+      for (const socket of target.sockets) socket.destroy()
+      await new Promise<void>((resolve, reject) => target.server.close(error => error ? reject(error) : resolve()))
+    }
+
+    const targets: { host: string; port: number }[] = []
+    const transport = new NetworkRawTcpTransport({ interfaces, timeoutMs: 2000, socketFactory: () => {
+      const socket = new Socket(), connect = socket.connect.bind(socket)
+      socket.connect = ((target: { host: string; port: number }) => {
+        targets.push({ host: target.host, port: target.port })
+        const port = target.host === node.host && target.port === node.port ? frontServer.port
+          : target.host === kitchenNode.host && target.port === kitchenNode.port ? kitchenServer.port
+            : 0
+        if (!port) throw new Error('UNEXPECTED_TEST_ENDPOINT')
+        return connect({ host: '127.0.0.1', port })
+      }) as typeof socket.connect
+      return socket
+    } })
+    const deliver = vi.spyOn(transport, 'deliver')
+    const bytes = {
+      FRONT: Uint8Array.from({ length: 28001 }, (_, index) => (index * 7 + 5) % 256),
+      KITCHEN: Uint8Array.from({ length: 19003 }, (_, index) => (index * 11 + 9) % 256),
+    }
+    const render = vi.fn(async (value: NetworkRequest) => bytes[value.role])
+    const jobs = [roleJob('FRONT'), roleJob('KITCHEN')]
+    const pending = [...jobs]
+    const client = {
+      receive: vi.fn(async () => pending.shift() ?? null),
+      markExecuting: vi.fn(async (_job: Pick<ReceivedPrintJob, 'id'>) => {}),
+      reportResult: vi.fn(async (_job: Pick<ReceivedPrintJob, 'id'>, _result: TerminalResult) => {}),
+    }
+    client.reportResult.mockRejectedValueOnce(new Error('lost FRONT ACK'))
+    const validateEndpoint = vi.fn(async () => {})
+    const recorder = { record: vi.fn(async (_event: { event: string }) => {}) }
+    const journalPath = path.join(directory, 'journal.json')
+    const session = async () => {
+      const journal = new ExecutionJournal(journalPath, protector)
+      await journal.load()
+      const dependencies = { assertIdentity: async () => {}, identity, nodes: new NetworkNodeConfig(nodeOptions),
+        journal, client, render, recorder, transport, validateEndpoint }
+      const guarded = createGuardedNetworkClient(dependencies)
+      const poller = new RelayPoller({ client: guarded, journal, recorder,
+        network: createNetworkStrategy(dependencies) })
+      return { journal, poller }
+    }
+    const digest = (value: Uint8Array) => createHash('sha256').update(value).digest('hex')
+
+    try {
+      const first = await session()
+      await expect(first.poller.runOnceForTest()).rejects.toThrow('lost FRONT ACK')
+      await vi.waitFor(() => expect(frontServer.ended).toEqual([0]))
+      expect(kitchenServer.connections).toHaveLength(0)
+      expect(deliver).toHaveBeenCalledTimes(1)
+
+      const restarted = await session()
+      await restarted.poller.runOnceForTest()
+      expect(client.receive).toHaveBeenCalledTimes(1)
+      expect(render).toHaveBeenCalledTimes(1)
+      expect(deliver).toHaveBeenCalledTimes(1)
+      await restarted.poller.runOnceForTest()
+      await vi.waitFor(() => expect(kitchenServer.ended).toEqual([0]))
+
+      const frontBytes = Buffer.concat(frontServer.connections[0])
+      const kitchenBytes = Buffer.concat(kitchenServer.connections[0])
+      expect(frontServer.connections).toHaveLength(1)
+      expect(kitchenServer.connections).toHaveLength(1)
+      expect([frontBytes.length, kitchenBytes.length]).toEqual([bytes.FRONT.byteLength, bytes.KITCHEN.byteLength])
+      expect([digest(frontBytes), digest(kitchenBytes)]).toEqual([digest(bytes.FRONT), digest(bytes.KITCHEN)])
+      expect(digest(frontBytes)).not.toBe(digest(kitchenBytes))
+      expect(targets).toEqual([node, kitchenNode])
+      expect(deliver.mock.calls.map(([, endpoint]) => endpoint)).toEqual([node, kitchenNode])
+      expect(render.mock.calls.map(([value]) => value.role)).toEqual(['FRONT', 'KITCHEN'])
+      expect(client.markExecuting.mock.calls.map(([job]) => job.id)).toEqual(jobs.map(job => job.id))
+      expect(client.reportResult.mock.calls.map(([job]) => job.id)).toEqual([jobs[0].id, jobs[0].id, jobs[1].id])
+      expect(restarted.journal.records()).toHaveLength(2)
+      expect(restarted.journal.records().every(record => record.reported && record.effectBoundary === 'CROSSED')).toBe(true)
+    } finally {
+      await closeServer(frontServer)
+      await closeServer(kitchenServer)
+    }
   })
 })
 

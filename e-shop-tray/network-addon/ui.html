@@ -52,7 +52,7 @@
       <label><input type="radio" name="mode" value="FRONT_ONLY" checked>
         <span><strong>只打小票</strong><small>每单一张，给顾客的收银小票</small></span></label>
       <label><input type="radio" name="mode" value="SHARED_PRINTER">
-        <span><strong>小票 ＋ 厨房单</strong><small>每单两张，先出小票再出厨房单，都从这一台打印机出</small></span></label>
+        <span><strong>小票 ＋ 厨房单</strong><small>每单两张，分别送到已确认的前台和厨房打印机</small></span></label>
     </div>
     <p class="note">已经设置好的打印方式在这里是锁住的，要改请用下面的「更换打印方式」。本店只能有一台电脑负责打印。</p>
   </section>
@@ -61,6 +61,7 @@
   <section class="card step" id="step-printer">
     <h2><span class="num">2</span>找到打印机</h2>
     <p class="note" id="configured-endpoint"></p>
+    <p class="note" id="configured-kitchen-endpoint"></p>
     <p class="note">打印机要和这台电脑连在同一个路由器下，并且已经开机、装好纸。</p>
     <div class="toolbar">
       <button id="discover" class="secondary">搜索打印机</button>
@@ -82,6 +83,20 @@
 
     <label class="check"><input id="test-ready" type="checkbox">打印机已开机、装好纸，可以打一张测试票</label>
     <button id="test">打一张测试票</button>
+
+    <div id="kitchen-printer" hidden>
+      <h3>厨房打印机</h3>
+      <p class="note">厨房单只会送到这里确认的地址，不会自动改用搜索到的其他打印机。</p>
+      <div class="fields">
+        <label>厨房打印机地址<input id="kitchen-host" placeholder="192.168.1.81" inputmode="decimal" autocomplete="off" maxlength="15"></label>
+        <label>端口<input id="kitchen-port" value="9100" inputmode="numeric" autocomplete="off" maxlength="5"></label>
+      </div>
+      <label class="check"><input id="dual-tabs-closed" type="checkbox">我已关掉本店所有收银页面，并停止开新单</label>
+      <label class="check"><input id="dual-single-agent" type="checkbox">本店只有这一台电脑负责打印</label>
+      <label class="check"><input id="kitchen-test-ready" type="checkbox">厨房打印机已开机、装好纸，可以打一张标明 KITCHEN 的测试票</label>
+      <button id="test-kitchen">打印 KITCHEN 测试票</button>
+      <p id="kitchen-status" class="note" role="status"></p>
+    </div>
 
     <div id="confirmation" hidden>
       <p id="test-summary"></p>
@@ -108,7 +123,7 @@
     <details>
       <summary>更换打印方式</summary>
       <div class="body">
-        <p>在「只打小票」和「小票 ＋ 厨房单」之间切换，打印机不变。切换过程不会出纸。</p>
+        <p>在「只打小票」和「小票 ＋ 厨房单」之间切换。已经确认的双打印机绑定不会被自动替换。切换过程不会出纸。</p>
         <p>换之前请先关掉本店所有电脑上的收银页面，并停止开新单，然后点「暂停并退出」，重新打开本程序再来这里。</p>
         <div class="toolbar">
           <button id="pause-exit" class="quiet">暂停并退出</button>

@@ -11,6 +11,7 @@ import { RelayPoller } from '../src/relayPoller'
 const protector = { protect: (value: string) => Buffer.from(value).toString('base64'), unprotect: (value: string) => Buffer.from(value, 'base64').toString() }
 const identity = { installationId: 'test-cold-installation', computerId: 'test-cold-computer', storeCode: 'TEST-COLD', boundAt: '2026-09-09' }
 const endpoint = { host: '10.20.30.2', port: 9100 }
+const kitchenEndpoint = { host: '10.20.30.3', port: 9100 }
 const interfaces: ReturnType<typeof os.networkInterfaces> = { LAN: [{ address: '10.20.30.1', netmask: '255.255.255.0',
   family: 'IPv4', internal: false, mac: '00:00:00:00:00:01', cidr: '10.20.30.1/24' }] }
 const confirmation = { cashierTabsClosed: true, singleAgentConfirmed: true }
@@ -43,6 +44,14 @@ async function fixture() {
   } }
 }
 
+async function confirmKitchen(target: { profile: NetworkAddonProfile; lifecycle: ColdModeLifecycle }) {
+  await target.lifecycle.prepareEndpointChange(confirmation)
+  const test = await target.profile.beginTest({ id: randomUUID(), mode: 'SHARED_PRINTER', endpoint: kitchenEndpoint,
+    networkFingerprint: '3'.repeat(64), hardwareAddress: '02-66-77-88-99-aa', bytes: 11, sha256: '4'.repeat(64) }, 'KITCHEN')
+  await target.profile.finishTest(test.id, 'SUBMITTED')
+  await target.profile.confirmTest(test.id, true, false)
+}
+
 describe('commercial cold lifecycle used by the main process', () => {
   it('converts without enabling or printing, exits, and requires a new process with an explicit checked enable', async () => {
     const f = await fixture(), beforeJournal = await readFile(f.profile.journal.filePath)
@@ -55,9 +64,12 @@ describe('commercial cold lifecycle used by the main process', () => {
     await expect(f.lifecycle.enable(confirmation)).rejects.toThrow('ADDON_PROFILE_RESTART_REQUIRED')
     await expect(f.lifecycle.pause()).rejects.toThrow('ADDON_PROFILE_RESTART_REQUIRED')
     const next = await f.restart()
-    expect(next.profile.snapshot()).toMatchObject({ mode: 'SHARED_PRINTER', enabled: false, coldEnableCheckRequired: true })
+    expect(next.profile.snapshot()).toMatchObject({ mode: 'SHARED_PRINTER', enabled: false,
+      coldEnableCheckRequired: false, kitchenTest: null })
     await next.lifecycle.resumeAtStartup()
     expect(f.ports.start).not.toHaveBeenCalled()
+    await expect(next.lifecycle.enable(confirmation)).rejects.toThrow('ADDON_ROLE_TEST_CONFIRMATION_REQUIRED')
+    await confirmKitchen(next)
     await expect(next.lifecycle.enable({ ...confirmation, cashierTabsClosed: false })).rejects.toThrow('ADDON_COLD_CLOSE_CASHIER_REQUIRED')
     f.ports.client.networkQueueState.mockClear()
     await next.lifecycle.enable(confirmation)
@@ -197,7 +209,8 @@ describe('commercial cold lifecycle used by the main process', () => {
       await f.lifecycle.safeExit()
       expect(f.ports.exit).toHaveBeenCalledTimes(2)
       const next = await f.restart()
-      expect(next.profile.snapshot()).toMatchObject({ mode: 'SHARED_PRINTER', enabled: false, coldEnableCheckRequired: true })
+      expect(next.profile.snapshot()).toMatchObject({ mode: 'SHARED_PRINTER', enabled: false,
+        coldEnableCheckRequired: false, kitchenTest: null })
     }
   })
 
@@ -205,6 +218,7 @@ describe('commercial cold lifecycle used by the main process', () => {
     const f = await fixture()
     if (stage === 'firstEnable') await f.lifecycle.convertAndExit('SHARED_PRINTER', confirmation)
     const target = stage === 'firstEnable' ? await f.restart() : f
+    if (stage === 'firstEnable') await confirmKitchen(target)
     const current = job()
     await target.profile.journal.recordClaimed(current)
     await target.profile.journal.recordTerminal(current, { state: 'SUCCEEDED', resultCode: 'SUBMITTED_TO_NETWORK_SOCKET',
@@ -221,6 +235,7 @@ describe('commercial cold lifecycle used by the main process', () => {
     const f = await fixture()
     if (stage === 'firstEnable') await f.lifecycle.convertAndExit('SHARED_PRINTER', confirmation)
     const target = stage === 'firstEnable' ? await f.restart() : f
+    if (stage === 'firstEnable') await confirmKitchen(target)
     const current = job()
     await target.profile.journal.recordClaimed(current)
     await target.profile.journal.recordTerminal(current, { state: 'FAILED', resultCode: 'NETWORK_TCP_TIMEOUT',
@@ -246,6 +261,7 @@ describe('commercial cold lifecycle used by the main process', () => {
     await f.lifecycle.convertAndExit('SHARED_PRINTER', confirmation)
     expect(await readFile(f.profile.journal.filePath)).toEqual(bytes)
     const next = await f.restart()
+    await confirmKitchen(next)
     await next.lifecycle.enable(confirmation)
     expect(f.ports.start).toHaveBeenCalledTimes(1)
   })
@@ -254,6 +270,7 @@ describe('commercial cold lifecycle used by the main process', () => {
     const f = await fixture()
     await f.lifecycle.convertAndExit('SHARED_PRINTER', confirmation)
     const next = await f.restart()
+    await confirmKitchen(next)
     f.ports.client.networkQueueState.mockResolvedValueOnce({ ...empty, pending: 1 })
     await expect(next.lifecycle.enable(confirmation)).rejects.toThrow('ADDON_COLD_CLOUD_WORK_PENDING')
     expect(next.profile.snapshot()).toMatchObject({ enabled: false, coldEnableCheckRequired: true })
@@ -267,6 +284,7 @@ describe('commercial cold lifecycle used by the main process', () => {
     const f = await fixture()
     await f.lifecycle.convertAndExit('SHARED_PRINTER', confirmation)
     const next = await f.restart()
+    await confirmKitchen(next)
     vi.spyOn(next.profile, 'setEnabled').mockRejectedValueOnce(new Error('INJECTED_ENABLE_PERSIST_FAILURE'))
     await expect(next.lifecycle.enable(confirmation)).rejects.toThrow('INJECTED_ENABLE_PERSIST_FAILURE')
     expect(next.profile.snapshot()).toMatchObject({ enabled: false, coldEnableCheckRequired: true })

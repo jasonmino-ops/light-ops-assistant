@@ -3,8 +3,8 @@ import path from 'node:path'
 import type { BrowserWindow, IpcMainEvent } from 'electron'
 import type { CloudRelayClient } from './cloudRelayClient'
 import type { ExecutionJournal } from './executionJournal'
-import { NETWORK_MAX_BYTES, parseNetworkRequest, type NetworkRequest } from './networkContract'
-import { resolveNetworkEndpoint, type NetworkNode, type NetworkPrinterConfig } from './networkNodeConfig'
+import { NETWORK_MAX_BYTES, parseNetworkRequest, type NetworkRequest, type NetworkRole } from './networkContract'
+import { networkRoleEndpoints, resolveNetworkEndpoint, sameNetworkPrinterConfig, type NetworkNode, type NetworkPrinterConfig } from './networkNodeConfig'
 import { NetworkDeliveryError, type NetworkRawTcpTransport } from './printing/networkRawTcpTransport'
 import type { RelayPoller } from './relayPoller'
 import type { RelayEventRecorder } from './resultLog'
@@ -12,8 +12,9 @@ import type { RelayEventRecorder } from './resultLog'
 type RelayClientPort = Pick<CloudRelayClient, 'receive' | 'markExecuting' | 'reportResult'>
 type NetworkStrategy = NonNullable<ConstructorParameters<typeof RelayPoller>[0]['network']>
 type Nodes = { read(): Promise<NetworkPrinterConfig> }
-export type NetworkEndpointValidator = (endpoint: NetworkNode) => unknown | Promise<unknown>
-type Guards = { assertIdentity(): Promise<void>; nodes: Nodes; validateEndpoint: NetworkEndpointValidator }
+export type NetworkEndpointValidator = (endpoint: NetworkNode, role: NetworkRole) => unknown | Promise<unknown>
+type Guards = { assertIdentity(): Promise<void>; nodes: Nodes; validateEndpoint: NetworkEndpointValidator;
+  validateConfig?: (config: NetworkPrinterConfig) => unknown | Promise<unknown> }
 
 /** One explicit activation boundary; journal initialization must never race
  * an active claim. Repeated clicks cannot reload an executing journal. */
@@ -55,7 +56,16 @@ export function createGuardedNetworkClient(options: Guards & {
     async receive() {
       await options.assertIdentity()
       const config = await options.nodes.read()
-      await options.validateEndpoint(config.endpoint)
+      if (options.validateConfig) await options.validateConfig(config)
+      else {
+        const checked = new Set<string>()
+        for (const { role, endpoint } of networkRoleEndpoints(config)) {
+          const key = `${endpoint.host}:${endpoint.port}`
+          if (checked.has(key)) continue
+          await options.validateEndpoint(endpoint, role)
+          checked.add(key)
+        }
+      }
       // A reported/quarantined/lost ACK must never erase an uncertain physical effect.
       if (options.journal.records().some(record => record.effectBoundary === 'CROSSING_UNKNOWN')) {
         throw new Error('NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW')
@@ -109,10 +119,10 @@ export function createNetworkStrategy(options: Guards & {
       return async () => {
         await preDelivery(() => options.assertIdentity(), 'NETWORK_IDENTITY_UNAVAILABLE')
         const latest = await preDelivery(() => options.nodes.read(), 'NETWORK_CONFIG_UNAVAILABLE')
-        if (latest.mode !== mode || latest.endpoint.host !== endpoint.host || latest.endpoint.port !== endpoint.port) {
+        if (!sameNetworkPrinterConfig(latest, config)) {
           throw new NetworkDeliveryError('NETWORK_CONFIG_CHANGED', 'NOT_CROSSED')
         }
-        const selected = await preDelivery(() => options.validateEndpoint(endpoint), 'NETWORK_ENDPOINT_REVALIDATION_FAILED')
+        const selected = await preDelivery(() => options.validateEndpoint(endpoint, request.role), 'NETWORK_ENDPOINT_REVALIDATION_FAILED')
         if (selected && typeof selected === 'object' && 'localAddress' in selected && typeof selected.localAddress === 'string') {
           return options.transport.deliver(bytes, endpoint, selected.localAddress)
         }

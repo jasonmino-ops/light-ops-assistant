@@ -11,14 +11,14 @@ const request: NetworkRequest = { profile: NETWORK_PROFILE, requestId: 'network-
   order: { storeCode: 'STORE-A', storeName: 'Test', orderNo: 'ORDER-001', createdAt: '2026-09-07T00:00:00.000Z',
     cashierName: 'Cashier', paymentMethod: 'CASH', currencyCode: 'USD', totalAmount: 3, lang: 'zh',
     items: [{ name: '小票', spec: null, qty: 1, price: 3, lineAmount: 3 }] } }
-function job(): ReceivedPrintJob {
-  return { id: 'network-job-0001', schemaVersion: 2, requestId: request.requestId,
-    idempotencyKey: request.requestId, requestHash: createHash('sha256').update(JSON.stringify(request)).digest('hex'),
-    orderNo: request.order.orderNo, documentName: 'FRONT', commandStream: new Uint8Array(), network: request,
+function job(role: NetworkRequest['role'] = 'FRONT'): ReceivedPrintJob {
+  const network = { ...request, role, requestId: `${request.requestId}-${role}` }
+  return { id: `network-job-${role.toLowerCase()}`, schemaVersion: 2, requestId: network.requestId,
+    idempotencyKey: network.requestId, requestHash: createHash('sha256').update(JSON.stringify(network)).digest('hex'),
+    orderNo: request.order.orderNo, documentName: role, commandStream: new Uint8Array(), network,
     claimAttempt: 1, claimToken: `ecp_v1_${'a'.repeat(43)}`, leaseExpiresAt: new Date(Date.now() + 30000).toISOString() }
 }
-function strategyHarness() {
-  const config: NetworkPrinterConfig = { mode: 'SHARED_PRINTER', endpoint: { host: '10.20.30.2', port: 9100 } }
+function strategyHarness(config: NetworkPrinterConfig = { mode: 'SHARED_PRINTER', endpoint: { host: '10.20.30.2', port: 9100 } }) {
   const bytes = Uint8Array.from([27, 64, 29, 86, 0])
   const options = {
     assertIdentity: vi.fn(async () => {}), identity: { storeCode: 'STORE-A' },
@@ -65,6 +65,23 @@ describe('shared Network preparation and receive gates', () => {
     await deliver()
     expect(events).toEqual(['identity', 'config', 'render', 'identity', 'config', 'route'])
     expect(h.options.transport.deliver).toHaveBeenCalledWith(h.bytes, h.config.endpoint)
+  })
+
+  it('routes one FRONT + KITCHEN order once each to two locked endpoints without role crossover', async () => {
+    const config: NetworkPrinterConfig = { mode: 'SHARED_PRINTER', endpoint: { host: '10.20.30.2', port: 9100 },
+      kitchenEndpoint: { host: '10.20.30.3', port: 9100 } }
+    const h = strategyHarness(config)
+    const front = await h.strategy.prepare(job('FRONT'))
+    const kitchen = await h.strategy.prepare(job('KITCHEN'))
+    await front(); await kitchen()
+    expect(h.options.render.mock.calls.map(([value]) => value.role)).toEqual(['FRONT', 'KITCHEN'])
+    expect(h.options.validateEndpoint.mock.calls).toEqual([
+      [config.endpoint, 'FRONT'], [config.kitchenEndpoint, 'KITCHEN'],
+    ])
+    expect(h.options.transport.deliver.mock.calls.map(([, endpoint]) => endpoint)).toEqual([
+      config.endpoint, config.kitchenEndpoint,
+    ])
+    expect(h.options.transport.deliver).toHaveBeenCalledTimes(2)
   })
 
   it.each(['identity', 'config', 'render'] as const)('never swallows a preparation %s failure', async stage => {
@@ -114,6 +131,16 @@ describe('shared Network preparation and receive gates', () => {
     expect(h.options.transport.deliver).not.toHaveBeenCalled()
   })
 
+  it('seals the KITCHEN endpoint so a post-render config change cannot redirect its ticket', async () => {
+    const config: NetworkPrinterConfig = { mode: 'SHARED_PRINTER', endpoint: { host: '10.20.30.2', port: 9100 },
+      kitchenEndpoint: { host: '10.20.30.3', port: 9100 } }
+    const h = strategyHarness(config), deliver = await h.strategy.prepare(job('KITCHEN'))
+    h.options.nodes.read.mockResolvedValueOnce({ ...config, kitchenEndpoint: { ...config.kitchenEndpoint!, port: 9101 } })
+    await expect(deliver()).rejects.toMatchObject({ code: 'NETWORK_CONFIG_CHANGED', effectBoundary: 'NOT_CROSSED' })
+    expect(h.options.validateEndpoint).not.toHaveBeenCalled()
+    expect(h.options.transport.deliver).not.toHaveBeenCalled()
+  })
+
   it('preserves transport uncertainty and never promotes TCP submission to paper confirmation', async () => {
     const h = strategyHarness(), deliver = await h.strategy.prepare(job())
     expect(await deliver()).toMatchObject({ physicalCompletionKnown: false })
@@ -144,6 +171,31 @@ describe('shared Network preparation and receive gates', () => {
     await expect(guarded.receive()).rejects.toThrow('NETWORK_ROUTE_ESCAPE')
     expect(client.receive).not.toHaveBeenCalled()
     await guarded.receive()
+    expect(client.receive).toHaveBeenCalledTimes(1)
+  })
+
+  it('checks both distinct role paths before receiving a dual-endpoint claim', async () => {
+    const config: NetworkPrinterConfig = { mode: 'SHARED_PRINTER', endpoint: { host: '10.20.30.2', port: 9100 },
+      kitchenEndpoint: { host: '10.20.30.3', port: 9100 } }
+    const h = strategyHarness(config)
+    const client = { receive: vi.fn(async () => null), markExecuting: vi.fn(async () => {}), reportResult: vi.fn(async () => {}) }
+    const guarded = createGuardedNetworkClient({ ...h.options, journal: { records: () => [] }, client })
+    await guarded.receive()
+    expect(h.options.validateEndpoint.mock.calls).toEqual([
+      [config.endpoint, 'FRONT'], [config.kitchenEndpoint, 'KITCHEN'],
+    ])
+    expect(client.receive).toHaveBeenCalledTimes(1)
+  })
+
+  it('allows the main process to validate both role paths from one shared metadata snapshot', async () => {
+    const h = strategyHarness({ mode: 'SHARED_PRINTER', endpoint: { host: '10.20.30.2', port: 9100 },
+      kitchenEndpoint: { host: '10.20.30.3', port: 9100 } })
+    const validateConfig = vi.fn(async () => {})
+    const client = { receive: vi.fn(async () => null), markExecuting: vi.fn(async () => {}), reportResult: vi.fn(async () => {}) }
+    const guarded = createGuardedNetworkClient({ ...h.options, validateConfig, journal: { records: () => [] }, client })
+    await guarded.receive()
+    expect(validateConfig).toHaveBeenCalledWith(h.config)
+    expect(h.options.validateEndpoint).not.toHaveBeenCalled()
     expect(client.receive).toHaveBeenCalledTimes(1)
   })
 })

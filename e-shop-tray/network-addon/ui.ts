@@ -1,9 +1,12 @@
 type Status = { version: string; server: string; storeCode: string | null; ready: boolean; busy: boolean; code: string;
   cashierAvailable: boolean; entryCode: string; entryPending: boolean;
   shortcutCode: string;
-  mode: string | null; enabled: boolean; endpoint: { host: string; port: number } | null; revision: number;
+  mode: string | null; enabled: boolean; endpoint: { host: string; port: number } | null;
+  kitchenEndpoint: { host: string; port: number } | null; revision: number;
   restartRequired: boolean; coldEnableCheckRequired: boolean; coldProcess: boolean;
+  endpointChangeProcess: boolean; dualSetupRequired: boolean;
   test: { id: string; outcome: string; endpoint: { host: string; port: number }; bytes: number; sha256: string } | null;
+  kitchenTest: { id: string; outcome: string; endpoint: { host: string; port: number }; bytes: number; sha256: string } | null;
   lastEvent: { event: string; jobId?: string; resultCode?: string; effectBoundary?: string } | null; autostart: boolean }
 declare global { interface Window { networkAddon: { invoke(action: string, value?: unknown): Promise<{ ok: boolean; value?: unknown; code?: string }> } } }
 export {}
@@ -33,6 +36,11 @@ const messages: Record<string, string> = {
   DESKTOP_BINDING_NOT_ACTIVE: '门店绑定还没有生效。请在「店小二」里完成绑定；本程序不会改动原来的身份信息。',
   ADDON_CHROME_REQUIRED: '需要 Google Chrome 才能打开收银台。请先装好 Chrome 再试。',
   ADDON_TEST_REVIEW_REQUIRED: '上一张测试票还没确认，或者不确定有没有打出来。请先去打印机那里看一眼，不要反复发送。',
+  ADDON_ROLE_TEST_NOT_READY: '请先确认前台打印机，再设置厨房打印机。',
+  ADDON_ROLE_TEST_CONFIRMATION_REQUIRED: '还没有确认厨房打印机的测试票，当前不能开始双打印。',
+  ADDON_ROLE_ENDPOINT_UNCONFIGURED: '厨房打印机还没有设置完成，当前不会领取订单。',
+  ADDON_ROLE_ENDPOINT_LOCKED: '厨房打印机已经确认并锁定，不能在营业中替换。',
+  NETWORK_ROLE_ENDPOINT_DUPLICATE: '前台和厨房必须是两个不同的打印地址。',
   NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW: '有单不确定有没有出纸，已经停止自动打印。请把下面这一行记录交给负责人核对；程序不会自己补打。',
   ADDON_INITIALIZATION_INCOMPLETE_OR_PROFILE_LOST: '这台电脑上的设置记录缺失或没写完，已经安全停下。请保留原来的文件夹并联系技术支持，不要清空重装。',
   ADDON_SINGLE_AGENT_CONFIRMATION_REQUIRED: '请先确认本店没有别的电脑也在跑打印。',
@@ -74,6 +82,7 @@ async function invoke(action: string, value: unknown = {}) {
 // 决定显示哪一屏。只使用 status() 已有的字段，不引入任何新的探测或计数。
 function decideView(state: Status): { view: 'calm' | 'alarm' | 'setup'; severity: 'down' | 'unsure' } {
   const settled = state.ready && !!state.mode && state.revision > 0 && state.test?.outcome === 'CONFIRMED'
+    && (!state.dualSetupRequired || state.kitchenTest?.outcome === 'CONFIRMED')
   if (showSettings || !settled || state.restartRequired || state.coldEnableCheckRequired) return { view: 'setup', severity: 'down' }
   const uncertain = state.lastEvent?.effectBoundary === 'CROSSING_UNKNOWN' || state.code === 'NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW'
   if (uncertain) return { view: 'alarm', severity: 'unsure' }
@@ -97,24 +106,31 @@ function render(state: Status) {
   el('store').textContent = state.storeCode ? state.storeCode : '还没连上门店'
   el('pill').textContent = pillText(state, view, severity)
   el('status-message').textContent = view === 'calm' && state.enabled && state.code === 'RUNNING' && state.endpoint
-    ? `${state.mode === 'SHARED_PRINTER' ? '小票 ＋ 厨房单' : '只打小票'} · 打印机 ${state.endpoint.host}`
+    ? state.kitchenEndpoint
+      ? `小票 ${state.endpoint.host} · 厨房单 ${state.kitchenEndpoint.host}`
+      : `${state.mode === 'SHARED_PRINTER' ? '小票 ＋ 厨房单（共用）' : '只打小票'} · 打印机 ${state.endpoint.host}`
     : message(state.code)
   el('version').textContent = `店小二打印 ${state.version}`
   el('diagnostic').textContent = [state.lastEvent?.jobId ? `任务 ${state.lastEvent.jobId}` : null,
     state.code, state.lastEvent?.resultCode, state.lastEvent?.effectBoundary].filter(Boolean).join(' · ')
-  el('configured-endpoint').textContent = state.endpoint ? `当前打印机：${state.endpoint.host}，端口 ${state.endpoint.port}` : '还没有确认过打印机'
+  el('configured-endpoint').textContent = state.endpoint ? `前台打印机：${state.endpoint.host}，端口 ${state.endpoint.port}` : '还没有确认前台打印机'
+  el('configured-kitchen-endpoint').textContent = state.kitchenEndpoint
+    ? `厨房打印机：${state.kitchenEndpoint.host}，端口 ${state.kitchenEndpoint.port}`
+    : state.mode === 'SHARED_PRINTER' && !state.dualSetupRequired ? '厨房单目前仍与前台共用同一台已确认打印机。'
+      : state.mode === 'SHARED_PRINTER' ? '还没有确认厨房打印机。' : ''
   for (const radio of Array.from(document.querySelectorAll<HTMLInputElement>('input[name=mode]'))) {
     radio.disabled = !!state.mode || blocked
     if (state.mode) radio.checked = radio.value === state.mode
   }
   input('autostart').checked = state.autostart
-  const testPending = !!state.test && ['INTENT', 'SUBMITTED', 'UNKNOWN'].includes(state.test.outcome)
+  const testPending = [state.test, state.kitchenTest].some(test => !!test && ['INTENT', 'SUBMITTED', 'UNKNOWN'].includes(test.outcome))
   const canConfigure = state.ready && !state.enabled && !blocked && !state.coldEnableCheckRequired
   el<HTMLButtonElement>('discover').disabled = !canConfigure
   el<HTMLButtonElement>('test').disabled = !canConfigure || testPending || !input('test-ready').checked
   el<HTMLButtonElement>('pause').disabled = !state.ready || blocked
   el<HTMLButtonElement>('retry-binding').disabled = state.ready || blocked
-  el<HTMLButtonElement>('enable').disabled = !state.ready || state.enabled || !state.revision || blocked || state.test?.outcome !== 'CONFIRMED' || !input('single-agent').checked
+  el<HTMLButtonElement>('enable').disabled = !state.ready || state.enabled || !state.revision || blocked || state.test?.outcome !== 'CONFIRMED'
+    || (state.dualSetupRequired && state.kitchenTest?.outcome !== 'CONFIRMED') || !input('single-agent').checked
     || (state.coldEnableCheckRequired && !input('enable-tabs-closed').checked)
   el<HTMLButtonElement>('cashier').disabled = !state.cashierAvailable || blocked || state.entryPending
   el('cashier').textContent = view === 'alarm' ? '仍然开始营业' : state.enabled ? '开始营业' : '打开收银台'
@@ -124,7 +140,11 @@ function render(state: Status) {
       : view === 'alarm' ? '现在开单可以，但票不会自动出来。'
         : state.enabled ? '也可以直接点桌面上的「店小二收银」。'
           : '打印当前是暂停的。仍然可以开单，票会先排队等恢复，不会转到原来的打印方式。'
-  el<HTMLButtonElement>('confirm').disabled = !canConfigure || !input('paper-confirmed').checked || (state.revision > 0 && !input('same-printer').checked)
+  const pendingTest = state.kitchenTest?.outcome === 'SUBMITTED' ? state.kitchenTest
+    : state.test?.outcome === 'SUBMITTED' ? state.test : null
+  const pendingRole = pendingTest === state.kitchenTest ? 'KITCHEN' : pendingTest ? 'FRONT' : null
+  el<HTMLButtonElement>('confirm').disabled = !canConfigure || !pendingTest || !input('paper-confirmed').checked
+    || (pendingRole === 'FRONT' && state.revision > 0 && !input('same-printer').checked)
   input('autostart').disabled = blocked
   el('enable-tabs-row').hidden = !state.coldEnableCheckRequired
   el<HTMLButtonElement>('pause-exit').disabled = !state.ready || blocked
@@ -142,9 +162,22 @@ function render(state: Status) {
           : '当前是从暂停状态打开的，还没有领取任务。确认之后仍然要通过本机和服务器的检查。'
   input('host').disabled = !canConfigure || testPending
   input('port').disabled = !canConfigure || testPending
-  el('confirmation').hidden = state.test?.outcome !== 'SUBMITTED'
-  el('same-printer-row').hidden = state.revision === 0
-  if (state.test) el('test-summary').textContent = `已向 ${state.test.endpoint.host} 送出一张测试票。送出去了不代表纸一定打出来，请去打印机那里看一眼。`
+  const selectedMode = state.mode ?? document.querySelector<HTMLInputElement>('input[name=mode]:checked')?.value
+  const kitchenVisible = selectedMode === 'SHARED_PRINTER'
+  el('kitchen-printer').hidden = !kitchenVisible
+  input('kitchen-host').disabled = !canConfigure || testPending || !!state.kitchenEndpoint || !state.endpointChangeProcess
+  input('kitchen-port').disabled = input('kitchen-host').disabled
+  const kitchenReady = canConfigure && state.test?.outcome === 'CONFIRMED' && !state.kitchenEndpoint
+    && !testPending && state.endpointChangeProcess && input('dual-tabs-closed').checked
+    && input('dual-single-agent').checked && input('kitchen-test-ready').checked
+  el<HTMLButtonElement>('test-kitchen').disabled = !kitchenReady
+  el('kitchen-status').textContent = state.kitchenEndpoint ? '厨房打印机已确认并锁定。'
+    : state.test?.outcome !== 'CONFIRMED' ? '请先完成前台打印机测试。'
+      : !state.endpointChangeProcess ? '请先暂停并退出，再重新打开程序；保持暂停后设置厨房打印机。'
+        : '请分别核对 KITCHEN 测试票和实际出纸，再确认保存。'
+  el('confirmation').hidden = !pendingTest
+  el('same-printer-row').hidden = pendingRole !== 'FRONT' || state.revision === 0
+  if (pendingTest) el('test-summary').textContent = `已向 ${pendingTest.endpoint.host} 送出一张 ${pendingRole} 测试票。送出去了不代表纸一定打出来，请去打印机那里看一眼。`
 }
 async function refresh() {
   try { render(await invoke('status') as Status) } catch { el('status-message').textContent = '读不到状态。请退出程序后重新打开；不会自动补打任何票。' }
@@ -157,7 +190,11 @@ async function act(action: string, data: unknown = {}) {
   catch (error) { el('status-message').textContent = message(error instanceof Error ? error.message : ''); el('diagnostic').textContent = error instanceof Error ? error.message : '' }
   finally { busy = false; await refresh() }
 }
-for (const id of ['test-ready', 'paper-confirmed', 'single-agent', 'same-printer', 'enable-tabs-closed', 'cold-tabs-closed', 'cold-single-agent']) input(id).addEventListener('change', () => { if (current) render(current) })
+for (const id of ['test-ready', 'paper-confirmed', 'single-agent', 'same-printer', 'enable-tabs-closed', 'cold-tabs-closed', 'cold-single-agent',
+  'dual-tabs-closed', 'dual-single-agent', 'kitchen-test-ready']) input(id).addEventListener('change', () => { if (current) render(current) })
+for (const radio of Array.from(document.querySelectorAll<HTMLInputElement>('input[name=mode]'))) {
+  radio.addEventListener('change', () => { if (current) render(current) })
+}
 el('cold-mode').addEventListener('change', () => { if (current) render(current) })
 el('goto-setup').addEventListener('click', () => { showSettings = true; if (current) render(current) })
 el('retry-binding').addEventListener('click', () => { void act('retryBinding') })
@@ -213,10 +250,19 @@ el('discover').addEventListener('click', async () => {
   if (!result) return
   if (!result.candidates.length) { const note = document.createElement('p'); note.className = 'note'; note.textContent = '这一遍没找到打印机。可以展开下面的「手动填打印机地址」自己填。没找到不代表打印机坏了。'; list.append(note) }
   for (const candidate of result.candidates) {
+    const row = document.createElement('div')
     const button = document.createElement('button'); button.className = 'candidate'
-    button.textContent = `${candidate.host}　端口 ${candidate.port} · 点这里选它`
+    button.textContent = `${candidate.host}　端口 ${candidate.port} · 选作前台`
     button.addEventListener('click', () => { input('host').value = candidate.host; input('port').value = String(candidate.port); input('test-ready').checked = false; if (current) render(current) })
-    list.append(button)
+    row.append(button)
+    const shared = (current?.mode ?? document.querySelector<HTMLInputElement>('input[name=mode]:checked')?.value) === 'SHARED_PRINTER'
+    if (shared && current?.test?.outcome === 'CONFIRMED' && current.endpointChangeProcess && !current.kitchenEndpoint) {
+      const kitchen = document.createElement('button'); kitchen.className = 'candidate secondary'
+      kitchen.textContent = `${candidate.host}　端口 ${candidate.port} · 选作厨房`
+      kitchen.addEventListener('click', () => { input('kitchen-host').value = candidate.host; input('kitchen-port').value = String(candidate.port); input('kitchen-test-ready').checked = false; if (current) render(current) })
+      row.append(kitchen)
+    }
+    list.append(row)
   }
 })
 el('test').addEventListener('click', async () => {
@@ -225,10 +271,23 @@ el('test').addEventListener('click', async () => {
   const rawPort = input('port').value
   if (!/^[1-9][0-9]{0,4}$/.test(rawPort)) { el('status-message').textContent = '端口请填 1 到 65535 之间的数字。'; return }
   input('paper-confirmed').checked = false; input('same-printer').checked = false
-  await act('test', { mode, host: input('host').value, port: Number(rawPort) })
+  await act('test', { mode, role: 'FRONT', host: input('host').value, port: Number(rawPort) })
   input('test-ready').checked = false
 })
-el('confirm').addEventListener('click', () => { if (current?.test) void act('confirmTest', {
-  id: current.test.id, paperConfirmed: input('paper-confirmed').checked, sameOriginalPrinter: input('same-printer').checked }) })
+el('test-kitchen').addEventListener('click', async () => {
+  const rawPort = input('kitchen-port').value
+  if (!/^[1-9][0-9]{0,4}$/.test(rawPort)) { el('status-message').textContent = '端口请填 1 到 65535 之间的数字。'; return }
+  input('paper-confirmed').checked = false; input('same-printer').checked = false
+  await act('test', { mode: 'SHARED_PRINTER', role: 'KITCHEN', host: input('kitchen-host').value, port: Number(rawPort),
+    cashierTabsClosed: input('dual-tabs-closed').checked, singleAgentConfirmed: input('dual-single-agent').checked })
+  input('kitchen-test-ready').checked = false
+})
+el('confirm').addEventListener('click', () => {
+  const pending = current?.kitchenTest?.outcome === 'SUBMITTED' ? current.kitchenTest
+    : current?.test?.outcome === 'SUBMITTED' ? current.test : null
+  if (pending) void act('confirmTest', { id: pending.id, paperConfirmed: input('paper-confirmed').checked,
+    sameOriginalPrinter: input('same-printer').checked, cashierTabsClosed: input('dual-tabs-closed').checked,
+    singleAgentConfirmed: input('dual-single-agent').checked })
+})
 void refresh()
 setInterval(() => { if (!busy) void refresh() }, 2000)

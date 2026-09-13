@@ -19,12 +19,13 @@ export class ColdModeLifecycle {
   readonly initializedPaused: boolean
   private started = false
   private exitRequired = false
-  private readonly bootConfiguration: { mode: NetworkMode | null; revision: number; testId: string | null }
+  private readonly bootConfiguration: { mode: NetworkMode | null; revision: number; testId: string | null; kitchenTestId: string | null }
 
   constructor(private readonly options: Options) {
     const state = options.profile.snapshot()
     this.initializedPaused = !state.enabled
-    this.bootConfiguration = { mode: state.mode, revision: state.revision, testId: state.test?.id ?? null }
+    this.bootConfiguration = { mode: state.mode, revision: state.revision, testId: state.test?.id ?? null,
+      kitchenTestId: state.kitchenTest?.id ?? null }
   }
 
   get everStartedPoller() { return this.started }
@@ -34,6 +35,12 @@ export class ColdModeLifecycle {
     const state = this.options.profile.snapshot()
     return !state.enabled && state.revision === this.bootConfiguration.revision
       && state.mode === this.bootConfiguration.mode && state.test?.id === this.bootConfiguration.testId
+      && (state.kitchenTest?.id ?? null) === this.bootConfiguration.kitchenTestId
+  }
+  get endpointChangeProcess() {
+    if (this.restartRequired || !this.initializedPaused || this.started) return false
+    const state = this.options.profile.snapshot()
+    return !state.enabled && state.mode === 'SHARED_PRINTER' && state.test?.outcome === 'CONFIRMED'
   }
 
   assertMutable() {
@@ -49,7 +56,8 @@ export class ColdModeLifecycle {
   private async currentContext(): Promise<ColdModePreflightContext> {
     const state = this.options.profile.snapshot()
     if (!state.test || state.test.outcome !== 'CONFIRMED') throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
-    return { identity: state.identity, config: await this.options.profile.readForRecovery(), test: state.test }
+    return { identity: state.identity, config: await this.options.profile.readForRecovery(), test: state.test,
+      kitchenTest: state.kitchenTest }
   }
 
   private async assertLocalSettled() {
@@ -109,6 +117,18 @@ export class ColdModeLifecycle {
       await this.options.assertIdentity()
     })
     await this.safeExit()
+  }
+
+  async prepareEndpointChange(confirmation: { cashierTabsClosed: boolean; singleAgentConfirmed: boolean }) {
+    this.assertMutable()
+    if (!this.endpointChangeProcess) throw new Error('ADDON_COLD_PROCESS_RESTART_REQUIRED')
+    if (confirmation.cashierTabsClosed !== true) throw new Error('ADDON_COLD_CLOSE_CASHIER_REQUIRED')
+    if (confirmation.singleAgentConfirmed !== true) throw new Error('ADDON_SINGLE_AGENT_CONFIRMATION_REQUIRED')
+    await this.options.stopAndWait()
+    await this.options.assertIdentity()
+    await this.assertLocalSettled()
+    await this.assertCloudEmpty()
+    await this.options.assertIdentity()
   }
 
   async enable(confirmation: { singleAgentConfirmed: boolean; cashierTabsClosed: boolean }) {

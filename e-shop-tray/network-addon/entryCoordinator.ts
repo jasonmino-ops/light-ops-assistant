@@ -27,6 +27,9 @@ export function cashierBlocker(state: ReturnType<NetworkAddonProfile['snapshot']
   if (state.coldEnableCheckRequired) return 'ADDON_COLD_EXPLICIT_ENABLE_REQUIRED'
   if (!state.revision || !state.mode) return 'ADDON_CASHIER_SETUP_REQUIRED'
   if (state.test?.outcome !== 'CONFIRMED') return 'ADDON_TEST_CONFIRMATION_REQUIRED'
+  if (state.schemaVersion === 3 && state.mode === 'SHARED_PRINTER' && state.kitchenTest?.outcome !== 'CONFIRMED') {
+    return 'ADDON_ROLE_TEST_CONFIRMATION_REQUIRED'
+  }
   return null
 }
 
@@ -44,7 +47,10 @@ export async function readCashierEntry(options: {
   const changed = cashierBlocker(current, options.restartRequired || options.profile.restartRequired)
   if (changed) throw new Error(changed)
   if (current.revision !== state.revision || config.mode !== current.mode
-    || current.test?.endpoint.host !== config.endpoint.host || current.test.endpoint.port !== config.endpoint.port) {
+    || current.test?.endpoint.host !== config.endpoint.host || current.test.endpoint.port !== config.endpoint.port
+    || (!!config.kitchenEndpoint && (current.kitchenTest?.outcome !== 'CONFIRMED'
+      || current.kitchenTest.endpoint.host !== config.kitchenEndpoint.host
+      || current.kitchenTest.endpoint.port !== config.kitchenEndpoint.port))) {
     throw new Error('ADDON_ENTRY_CONFIGURATION_CHANGED')
   }
   return { config, revision: current.revision, warning: !current.enabled || !options.printingReady }

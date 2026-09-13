@@ -334,7 +334,7 @@ describe('cashier admission against the real protected profile and cold lifecycl
     const next = new NetworkAddonProfile(cold.options); await next.open()
     const c = coordinator({ readCashier: () => readCashierEntry({ profile: next, restartRequired: false,
       printingReady: false, assertIdentity: cold.ports.assertIdentity }) })
-    await expect(c.entry.launchCashier()).rejects.toThrow('ADDON_COLD_EXPLICIT_ENABLE_REQUIRED')
+    await expect(c.entry.launchCashier()).rejects.toThrow('ADDON_ROLE_TEST_CONFIRMATION_REQUIRED')
     expect(c.ports.openCashier).not.toHaveBeenCalled(); expect(c.ports.confirmWarning).not.toHaveBeenCalled()
   })
 })

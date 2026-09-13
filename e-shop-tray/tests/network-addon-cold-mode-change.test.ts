@@ -95,7 +95,10 @@ describe('cold single-printer mode conversion and retained evidence', () => {
     await expect(f.profile.readForRecovery()).rejects.toThrow('ADDON_PROFILE_RESTART_REQUIRED')
     await expect(f.profile.setEnabled(true)).rejects.toThrow('ADDON_PROFILE_BUSY_OR_FAULTED')
     const fresh = f.fresh(); await fresh.open()
-    expect(fresh.snapshot()).toMatchObject({ schemaVersion: 2, mode: nextMode, enabled: false, coldEnableCheckRequired: true, test })
+    expect(fresh.snapshot()).toMatchObject({ schemaVersion: 3,
+      mode: nextMode, enabled: false, coldEnableCheckRequired: originalMode === 'SHARED_PRINTER', test })
+    const nextConfig = { mode: nextMode, endpoint,
+      ...(nextMode === 'SHARED_PRINTER' ? { kitchenEndpoint: { host: '10.20.30.3', port: 9100 } } : {}) }
     expect(await fresh.readForRecovery()).toEqual({ mode: nextMode, endpoint })
     const id = fresh.snapshot().conversion!.id
     for (const [name, contents] of [['profile.sealed', before.profile], ['nodes-1.sealed', before.node], ['execution-journal.json', before.journal]]) {
@@ -103,12 +106,21 @@ describe('cold single-printer mode conversion and retained evidence', () => {
     }
     expect(await readFile(fresh.journal.filePath, 'utf8')).toBe(before.journal)
     expect(await readFile(path.join(f.directory, 'nodes-1.sealed'), 'utf8')).toBe(before.node)
+    if (nextMode === 'SHARED_PRINTER') {
+      await expect(fresh.setEnabled(true)).rejects.toThrow('ADDON_ROLE_TEST_CONFIRMATION_REQUIRED')
+      const kitchen = { ...testInput('SHARED_PRINTER'), endpoint: nextConfig.kitchenEndpoint! }
+      const pending = await fresh.beginTest(kitchen, 'KITCHEN')
+      await fresh.finishTest(pending.id, 'SUBMITTED')
+      await fresh.confirmTest(pending.id, true, false)
+      expect(fresh.snapshot()).toMatchObject({ coldEnableCheckRequired: true,
+        kitchenTest: { endpoint: nextConfig.kitchenEndpoint, outcome: 'CONFIRMED' } })
+    }
     await fresh.setEnabled(true)
     expect(fresh.snapshot().coldEnableCheckRequired).toBe(false)
     for (let count = 0; count < 2; count++) {
       const dailyBoot = f.fresh(); await dailyBoot.open()
       expect(dailyBoot.snapshot()).toMatchObject({ enabled: true, coldEnableCheckRequired: false, test })
-      expect(await dailyBoot.read()).toEqual({ mode: nextMode, endpoint })
+      expect(await dailyBoot.read()).toEqual(nextConfig)
     }
   })
 
@@ -306,6 +318,10 @@ describe('real filesystem fault barriers and interrupted recovery', () => {
   it.each(['profile-final-sync', 'decision-sync', 'decision-rename'])('first manual enable %s failure cannot become auto-enabled on restart', async stage => {
     const f = await fixture(); await f.profile.convertMode('SHARED_PRINTER', async () => {})
     const paused = f.fresh(); await paused.open()
+    const kitchen = await paused.beginTest({ ...testInput('SHARED_PRINTER'),
+      endpoint: { host: '10.20.30.3', port: 9100 } }, 'KITCHEN')
+    await paused.finishTest(kitchen.id, 'SUBMITTED')
+    await paused.confirmTest(kitchen.id, true, false)
     const before = await readFile(path.join(f.directory, 'profile.sealed'), 'utf8')
     Object.assign(fault, stage === 'profile-final-sync' ? { operation: 'sync', match: '/profile.sealed', skip: 2 }
       : stage === 'decision-sync' ? { operation: 'sync', match: 'decision-', skip: 0 }

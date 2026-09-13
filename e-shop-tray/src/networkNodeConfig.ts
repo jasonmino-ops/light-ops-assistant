@@ -3,17 +3,28 @@ import { promisify } from 'node:util'
 import { mkdir, open, readFile, link, unlink, lstat } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
-import { exactObject, parseNetworkMode, type NetworkMode, type NetworkRequest } from './networkContract'
+import { exactObject, parseNetworkMode, type NetworkMode, type NetworkRequest, type NetworkRole } from './networkContract'
 import type { DesktopBindingIdentity } from './desktopBindingIdentity'
 import type { ClaimTokenProtector } from './executionJournal'
 
 export type NetworkNode = Readonly<{ host: string; port: number }>
-export type NetworkPrinterConfig = Readonly<{ mode: NetworkMode; endpoint: NetworkNode }>
+export type NetworkPrinterConfig = Readonly<{ mode: NetworkMode; endpoint: NetworkNode; kitchenEndpoint?: NetworkNode }>
 export function resolveNetworkEndpoint(config: NetworkPrinterConfig, request: NetworkRequest): NetworkNode {
   if (config.mode !== request.mode || (config.mode === 'FRONT_ONLY' && request.role !== 'FRONT')) {
     throw new Error('NETWORK_MODE_MISMATCH')
   }
-  return config.endpoint
+  return request.role === 'KITCHEN' ? config.kitchenEndpoint ?? config.endpoint : config.endpoint
+}
+export function networkRoleEndpoints(config: NetworkPrinterConfig): ReadonlyArray<Readonly<{ role: NetworkRole; endpoint: NetworkNode }>> {
+  if (config.mode === 'FRONT_ONLY') return Object.freeze([{ role: 'FRONT', endpoint: config.endpoint }])
+  return Object.freeze([
+    { role: 'FRONT', endpoint: config.endpoint },
+    { role: 'KITCHEN', endpoint: config.kitchenEndpoint ?? config.endpoint },
+  ])
+}
+export function sameNetworkPrinterConfig(left: NetworkPrinterConfig, right: NetworkPrinterConfig): boolean {
+  return left.mode === right.mode && left.endpoint.host === right.endpoint.host && left.endpoint.port === right.endpoint.port
+    && left.kitchenEndpoint?.host === right.kitchenEndpoint?.host && left.kitchenEndpoint?.port === right.kitchenEndpoint?.port
 }
 type Interfaces = ReturnType<typeof os.networkInterfaces>
 function ip(value: string): number {
@@ -76,27 +87,35 @@ export class NetworkNodeConfig {
     interfaces?: () => Interfaces
   }) {}
 
-  private config(value: unknown): NetworkPrinterConfig {
-    // A single physical endpoint is explicit. Two ports are never pseudo-nodes.
-    const config = exactObject(value, ['mode', 'endpoint'])
+  private config(value: unknown, schemaVersion?: 2 | 3): NetworkPrinterConfig {
+    const version = schemaVersion ?? (value && typeof value === 'object' && !Array.isArray(value)
+      && Object.hasOwn(value, 'kitchenEndpoint') ? 3 : 2)
+    const config = exactObject(value, version === 3 ? ['mode', 'endpoint', 'kitchenEndpoint'] : ['mode', 'endpoint'])
     const interfaces = this.options.interfaces?.() ?? os.networkInterfaces()
-    return Object.freeze({ mode: parseNetworkMode(config.mode), endpoint: validateNetworkNode(config.endpoint, interfaces) })
+    const mode = parseNetworkMode(config.mode)
+    const endpoint = validateNetworkNode(config.endpoint, interfaces)
+    if (version === 2) return Object.freeze({ mode, endpoint })
+    if (mode !== 'SHARED_PRINTER') throw new Error('NETWORK_ROLE_ENDPOINT_MODE_REQUIRED')
+    const kitchenEndpoint = validateNetworkNode(config.kitchenEndpoint, interfaces)
+    if (endpoint.host === kitchenEndpoint.host && endpoint.port === kitchenEndpoint.port) {
+      throw new Error('NETWORK_ROLE_ENDPOINT_DUPLICATE')
+    }
+    return Object.freeze({ mode, endpoint, kitchenEndpoint })
   }
 
   async save(value: unknown) {
     const config = this.config(value)
-    // V0.1 chooses one mode/physical endpoint at initial setup. Re-imports are
+    // V0.1 locks the exact endpoint set at confirmation. Re-imports are
     // idempotent, not live routing changes: a restart or the gap between FRONT
     // ACK and KITCHEN must never redirect the remainder of an existing order.
     let existing: NetworkPrinterConfig | undefined
     try { existing = await this.read() }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
     if (existing) {
-      if (existing.mode !== config.mode || existing.endpoint.host !== config.endpoint.host
-        || existing.endpoint.port !== config.endpoint.port) throw new Error('NETWORK_INITIAL_CONFIG_LOCKED')
+      if (!sameNetworkPrinterConfig(existing, config)) throw new Error('NETWORK_INITIAL_CONFIG_LOCKED')
       return
     }
-    const document = { schemaVersion: 2, identity: this.options.identity, config }
+    const document = { schemaVersion: config.kitchenEndpoint ? 3 : 2, identity: this.options.identity, config }
     const sealed = this.options.protector.protect(JSON.stringify(document))
     const temporary = `${this.options.file}.${process.pid}.tmp`
     const handle = await open(temporary, 'wx', 0o600)
@@ -119,10 +138,20 @@ export class NetworkNodeConfig {
     const raw = await readFile(this.options.file, 'utf8')
     const document = exactObject(JSON.parse(this.options.protector.unprotect(raw)), ['schemaVersion', 'identity', 'config'])
     const identity = exactObject(document.identity, ['installationId', 'computerId', 'storeCode', 'boundAt'])
-    if (document.schemaVersion !== 2 || Object.entries(this.options.identity).some(([key, value]) => identity[key] !== value)) {
+    if ((document.schemaVersion !== 2 && document.schemaVersion !== 3)
+      || Object.entries(this.options.identity).some(([key, value]) => identity[key] !== value)) {
       throw new Error('NETWORK_CONFIG_IDENTITY_MISMATCH')
     }
-    const config = exactObject(document.config, ['mode', 'endpoint'])
-    return Object.freeze({ mode: parseNetworkMode(config.mode), endpoint: validateNetworkLiteral(config.endpoint) })
+    const config = exactObject(document.config, document.schemaVersion === 3
+      ? ['mode', 'endpoint', 'kitchenEndpoint'] : ['mode', 'endpoint'])
+    const mode = parseNetworkMode(config.mode)
+    const endpoint = validateNetworkLiteral(config.endpoint)
+    if (document.schemaVersion === 2) return Object.freeze({ mode, endpoint })
+    if (mode !== 'SHARED_PRINTER') throw new Error('NETWORK_ROLE_ENDPOINT_MODE_REQUIRED')
+    const kitchenEndpoint = validateNetworkLiteral(config.kitchenEndpoint)
+    if (endpoint.host === kitchenEndpoint.host && endpoint.port === kitchenEndpoint.port) {
+      throw new Error('NETWORK_ROLE_ENDPOINT_DUPLICATE')
+    }
+    return Object.freeze({ mode, endpoint, kitchenEndpoint })
   }
 }

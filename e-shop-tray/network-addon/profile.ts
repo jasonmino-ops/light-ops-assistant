@@ -3,7 +3,7 @@ import { lstat, mkdir, open, readFile, readdir, rename } from 'node:fs/promises'
 import path from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { ExecutionJournal, type ClaimTokenProtector, type JournalRecord } from '../src/executionJournal'
-import { exactObject, parseNetworkMode, type NetworkMode } from '../src/networkContract'
+import { exactObject, parseNetworkMode, type NetworkMode, type NetworkRole } from '../src/networkContract'
 import { NetworkNodeConfig, validateNetworkLiteral, type NetworkNode, type NetworkPrinterConfig } from '../src/networkNodeConfig'
 import type { DesktopBindingIdentity } from '../src/desktopBindingIdentity'
 import { ColdModeTransaction, sealedHash } from './coldModeTransaction'
@@ -15,9 +15,11 @@ export type LocalTest = { id: string; mode: NetworkMode; endpoint: NetworkNode; 
 type Conversion = { schemaVersion: 1; id: string; fromMode: NetworkMode; toMode: NetworkMode;
   fromRevision: number; toRevision: number; originalProfileSha256: string; originalNodeSha256: string;
   originalJournalSha256: string; originalTestSha256: string; previousConversionId: string | null }
-type ProfileState = { schemaVersion: 1 | 2; identity: ProfileIdentity; revision: number; mode: NetworkMode | null;
-  enabled: boolean; test: LocalTest | null; conversion?: Conversion; coldEnableCheckRequired?: boolean }
-export type ColdModePreflightContext = { identity: ProfileIdentity; config: NetworkPrinterConfig; test: LocalTest }
+type ProfileState = { schemaVersion: 1 | 2 | 3; identity: ProfileIdentity; revision: number; mode: NetworkMode | null;
+  enabled: boolean; test: LocalTest | null; kitchenTest?: LocalTest | null;
+  conversion?: Conversion | null; coldEnableCheckRequired?: boolean }
+export type ColdModePreflightContext = { identity: ProfileIdentity; config: NetworkPrinterConfig;
+  test: LocalTest; kitchenTest?: LocalTest | null }
 
 export function isColdJournalSettled(record: JournalRecord): boolean {
   if (!record.reported) return false
@@ -65,19 +67,27 @@ export class NetworkAddonProfile {
 
   private parse(raw: string): ProfileState {
     const decoded = JSON.parse(this.options.protector.unprotect(raw))
-    const state = exactObject(decoded, decoded?.schemaVersion === 2
+    const schemaVersion = decoded?.schemaVersion
+    const state = exactObject(decoded, schemaVersion === 2
       ? ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test', 'conversion', 'coldEnableCheckRequired']
-      : ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test'])
+      : schemaVersion === 3
+        ? ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test', 'kitchenTest', 'conversion', 'coldEnableCheckRequired']
+        : ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test'])
     const identity = exactObject(state.identity, ['installationId', 'computerId', 'storeCode', 'boundAt'])
-    if ((state.schemaVersion !== 1 && state.schemaVersion !== 2) || !sameBinding(this.options.identity, identity as ProfileIdentity)
+    if ((state.schemaVersion !== 1 && state.schemaVersion !== 2 && state.schemaVersion !== 3)
+      || !sameBinding(this.options.identity, identity as ProfileIdentity)
       || !Number.isSafeInteger(state.revision) || Number(state.revision) < 0 || Number(state.revision) > 10000
       || typeof state.enabled !== 'boolean') throw new Error('ADDON_PROFILE_INVALID_OR_BINDING_CHANGED')
     const mode = state.mode === null ? null : parseNetworkMode(state.mode)
     if ((state.revision === 0) !== (mode === null) || (state.enabled && !mode)) throw new Error('ADDON_PROFILE_INVALID')
     let conversion: Conversion | undefined
-    if (state.schemaVersion === 2) {
-      const value = exactObject(state.conversion, ['schemaVersion', 'id', 'fromMode', 'toMode', 'fromRevision', 'toRevision',
+    if (state.schemaVersion === 2 || state.schemaVersion === 3) {
+      if (typeof state.coldEnableCheckRequired !== 'boolean') throw new Error('ADDON_COLD_PROVENANCE_INVALID')
+      const value = state.conversion === null ? null : exactObject(state.conversion, ['schemaVersion', 'id', 'fromMode', 'toMode', 'fromRevision', 'toRevision',
         'originalProfileSha256', 'originalNodeSha256', 'originalJournalSha256', 'originalTestSha256', 'previousConversionId'])
+      if (value === null) {
+        if (state.schemaVersion !== 3) throw new Error('ADDON_COLD_PROVENANCE_INVALID')
+      } else {
       if (value.schemaVersion !== 1 || typeof value.id !== 'string' || !/^cold-transaction-\d{5}-[0-9a-f-]{36}$/.test(value.id)
         || !Number.isSafeInteger(value.fromRevision) || Number(value.fromRevision) < 1
         || value.toRevision !== Number(value.fromRevision) + 1 || Number(value.toRevision) > Number(state.revision)
@@ -85,13 +95,14 @@ export class NetworkAddonProfile {
           .every(hash => typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash))
         || (value.previousConversionId !== null && (typeof value.previousConversionId !== 'string'
           || !/^cold-transaction-\d{5}-[0-9a-f-]{36}$/.test(value.previousConversionId)))
-        || typeof state.coldEnableCheckRequired !== 'boolean' || (state.enabled && state.coldEnableCheckRequired)) throw new Error('ADDON_COLD_PROVENANCE_INVALID')
+        || (state.enabled && state.coldEnableCheckRequired)) throw new Error('ADDON_COLD_PROVENANCE_INVALID')
       conversion = { ...value, fromMode: parseNetworkMode(value.fromMode), toMode: parseNetworkMode(value.toMode) } as Conversion
       if (conversion.fromMode === conversion.toMode || conversion.toMode !== mode) throw new Error('ADDON_COLD_PROVENANCE_INVALID')
+      }
     }
-    let test: LocalTest | null = null
-    if (state.test !== null) {
-      const value = exactObject(state.test, ['id', 'mode', 'endpoint', 'networkFingerprint', 'hardwareAddress', 'outcome', 'bytes', 'sha256'])
+    const parseTest = (input: unknown): LocalTest | null => {
+      if (input === null) return null
+      const value = exactObject(input, ['id', 'mode', 'endpoint', 'networkFingerprint', 'hardwareAddress', 'outcome', 'bytes', 'sha256'])
       if (typeof value.id !== 'string' || !/^[0-9a-f-]{36}$/.test(value.id)
         || typeof value.networkFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(value.networkFingerprint)
         || typeof value.hardwareAddress !== 'string' || !/^[0-9a-f]{2}(-[0-9a-f]{2}){5}$/.test(value.hardwareAddress)
@@ -99,16 +110,23 @@ export class NetworkAddonProfile {
         || !['INTENT', 'SUBMITTED', 'NOT_CROSSED', 'UNKNOWN', 'CONFIRMED'].includes(String(value.outcome))
         || !Number.isSafeInteger(value.bytes) || Number(value.bytes) < 1 || Number(value.bytes) > 3 * 1024 * 1024
         || typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(value.sha256)) throw new Error('ADDON_TEST_RECORD_INVALID')
-      test = { id: value.id, mode: parseNetworkMode(value.mode), endpoint: validateNetworkLiteral(value.endpoint),
+      return { id: value.id, mode: parseNetworkMode(value.mode), endpoint: validateNetworkLiteral(value.endpoint),
         hardwareAddress: value.hardwareAddress,
         networkFingerprint: value.networkFingerprint, outcome: value.outcome as LocalTest['outcome'],
         bytes: Number(value.bytes), sha256: value.sha256 }
-      if (mode && mode !== test.mode && !conversion) throw new Error('ADDON_MODE_LOCKED')
-      if (state.enabled && test.outcome !== 'CONFIRMED') throw new Error('ADDON_UNCONFIRMED_TEST')
     }
+    const test = parseTest(state.test)
+    const kitchenTest = state.schemaVersion === 3 ? parseTest(state.kitchenTest) : undefined
+    if (test && mode && mode !== test.mode && !conversion) throw new Error('ADDON_MODE_LOCKED')
+    if (kitchenTest && kitchenTest.mode !== 'SHARED_PRINTER') throw new Error('ADDON_MODE_LOCKED')
+    if (state.enabled && test?.outcome !== 'CONFIRMED') throw new Error('ADDON_UNCONFIRMED_TEST')
+    if (state.schemaVersion === 3 && state.enabled && mode === 'SHARED_PRINTER'
+      && kitchenTest?.outcome !== 'CONFIRMED') throw new Error('ADDON_UNCONFIRMED_ROLE_TEST')
     if (state.enabled && !test) throw new Error('ADDON_UNCONFIRMED_TEST')
-    return { schemaVersion: state.schemaVersion as 1 | 2, identity: this.options.identity, revision: Number(state.revision), mode,
-      enabled: state.enabled, test, ...(conversion ? { conversion, coldEnableCheckRequired: state.coldEnableCheckRequired as boolean } : {}) }
+    return { schemaVersion: state.schemaVersion as 1 | 2 | 3, identity: this.options.identity, revision: Number(state.revision), mode,
+      enabled: state.enabled, test, ...(state.schemaVersion === 3 ? { kitchenTest,
+        conversion: conversion ?? null, coldEnableCheckRequired: state.coldEnableCheckRequired as boolean }
+        : conversion ? { conversion, coldEnableCheckRequired: state.coldEnableCheckRequired as boolean } : {}) }
   }
 
   private async validateProvenance(state: ProfileState, seen = new Set<string>()): Promise<void> {
@@ -157,14 +175,14 @@ export class NetworkAddonProfile {
       await this.journal.ensureInitialized()
       if (this.state.revision) {
         await this.readForRecovery()
-        if (this.state.schemaVersion === 2) {
+        if (this.state.schemaVersion >= 2) {
           await this.transactions.syncFile(path.join(this.options.directory, `nodes-${this.state.revision}.sealed`))
           await this.transactions.syncDirectory(this.options.directory)
         }
       }
       if (this.recoveredPaused && this.state.enabled) {
         await this.persist({ ...this.state, enabled: false,
-          ...(this.state.schemaVersion === 2 ? { coldEnableCheckRequired: true } : {}) })
+          ...(this.state.schemaVersion >= 2 ? { coldEnableCheckRequired: true } : {}) })
       }
       return
     }
@@ -188,6 +206,16 @@ export class NetworkAddonProfile {
     return { ...structuredClone(this.state), coldEnableCheckRequired: this.state.coldEnableCheckRequired ?? false }
   }
 
+  confirmedTest(role: NetworkRole, endpoint?: NetworkNode): LocalTest {
+    this.assertUsable()
+    const confirmed = role === 'KITCHEN' ? this.state.kitchenTest ?? this.state.test : this.state.test
+    if (!confirmed || confirmed.outcome !== 'CONFIRMED') throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
+    if (endpoint && (confirmed.endpoint.host !== endpoint.host || confirmed.endpoint.port !== endpoint.port)) {
+      throw new Error('NETWORK_CONFIG_CHANGED')
+    }
+    return structuredClone(confirmed)
+  }
+
   private async exclusive<T>(action: () => Promise<T>): Promise<T> {
     if (this.busy || this.restartRequired) throw new Error('ADDON_PROFILE_BUSY_OR_FAULTED')
     this.busy = true
@@ -198,7 +226,7 @@ export class NetworkAddonProfile {
     const sealed = this.options.protector.protect(JSON.stringify(next))
     // Validate exactly the bytes that will become authoritative.
     this.parse(sealed)
-    if (this.transactionProtected || this.state?.schemaVersion === 2 || next.schemaVersion === 2) {
+    if (this.transactionProtected || (this.state?.schemaVersion ?? 1) >= 2 || next.schemaVersion >= 2) {
       try {
         await this.transactions.commit({ id: await this.transactions.nextId(), originalFiles: [], nextProfile: sealed, prepare: async () => {} })
         this.state = next
@@ -226,6 +254,17 @@ export class NetworkAddonProfile {
     await this.validateProvenance(state)
     const config = await this.nodes(state.revision).readForRecovery()
     if (config.mode !== state.mode) throw new Error('ADDON_MODE_LOCKED')
+    if (state.test?.outcome === 'CONFIRMED' && JSON.stringify(state.test.endpoint) !== JSON.stringify(config.endpoint)) {
+      throw new Error('ADDON_TEST_CONFIG_MISMATCH')
+    }
+    if (config.kitchenEndpoint) {
+      if (state.kitchenTest?.outcome !== 'CONFIRMED'
+        || JSON.stringify(state.kitchenTest.endpoint) !== JSON.stringify(config.kitchenEndpoint)) {
+        throw new Error('ADDON_ROLE_TEST_CONFIG_MISMATCH')
+      }
+    } else if (state.kitchenTest?.outcome === 'CONFIRMED' && state.mode === 'SHARED_PRINTER') {
+      throw new Error('ADDON_ROLE_TEST_CONFIG_MISMATCH')
+    }
     return config
   }
 
@@ -234,9 +273,15 @@ export class NetworkAddonProfile {
     this.assertUsable()
     const state = await this.readState()
     await this.validateProvenance(state)
-    if (!state.enabled || state.test?.outcome !== 'CONFIRMED') throw new Error('ADDON_PAUSED_OR_UNCONFIGURED')
+    if (!state.enabled || state.test?.outcome !== 'CONFIRMED'
+      || (state.schemaVersion === 3 && state.mode === 'SHARED_PRINTER' && state.kitchenTest?.outcome !== 'CONFIRMED')) {
+      throw new Error('ADDON_PAUSED_OR_UNCONFIGURED')
+    }
     const config = await this.nodes(state.revision).read()
     if (config.mode !== state.mode) throw new Error('ADDON_MODE_LOCKED')
+    if (state.schemaVersion === 3 && state.mode === 'SHARED_PRINTER' && !config.kitchenEndpoint) {
+      throw new Error('ADDON_ROLE_ENDPOINT_UNCONFIGURED')
+    }
     return config
   }
 
@@ -244,13 +289,15 @@ export class NetworkAddonProfile {
     return this.exclusive(async () => {
       if (enabled) {
         if (!this.state.revision || this.state.test?.outcome !== 'CONFIRMED') throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
+        if (this.state.schemaVersion === 3 && this.state.mode === 'SHARED_PRINTER'
+          && this.state.kitchenTest?.outcome !== 'CONFIRMED') throw new Error('ADDON_ROLE_TEST_CONFIRMATION_REQUIRED')
         await this.readForRecovery()
         await this.journal.ensureInitialized()
         if (this.journal.records().some(record => record.effectBoundary === 'CROSSING_UNKNOWN')) throw new Error('NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW')
         await this.nodes().read()
       }
       await this.persist({ ...this.state, enabled,
-        ...(this.state.schemaVersion === 2 && enabled ? { coldEnableCheckRequired: false } : {}) })
+        ...(this.state.schemaVersion >= 2 && enabled ? { coldEnableCheckRequired: false } : {}) })
       if (enabled) this.recoveredPaused = false
     })
   }
@@ -275,7 +322,9 @@ export class NetworkAddonProfile {
         const config = await this.readForRecovery()
         if (JSON.stringify(test.endpoint) !== JSON.stringify(config.endpoint)) throw new Error('ADDON_COLD_PROVENANCE_INVALID')
         await this.assertSettledJournal()
-        const context = { identity: structuredClone(this.options.identity), config, test: structuredClone(test) }
+        const kitchenTest = this.state.kitchenTest
+        const context: ColdModePreflightContext = { identity: structuredClone(this.options.identity), config,
+          test: structuredClone(test), ...(kitchenTest ? { kitchenTest: structuredClone(kitchenTest) } : {}) }
         await preflight(structuredClone(context))
         const originalRaw = await this.transactions.readRegular(this.file, 32768)
         const original = this.parse(originalRaw)
@@ -289,14 +338,20 @@ export class NetworkAddonProfile {
           originalNodeSha256: sealedHash(await this.transactions.readRegular(path.join(this.options.directory, nodeName), 32768)),
           originalJournalSha256: sealedHash(journalRaw), originalTestSha256: sealedHash(JSON.stringify(original.test)),
           previousConversionId: this.state.conversion?.id ?? null }
-        const next: ProfileState = { ...this.state, schemaVersion: 2, mode, revision, enabled: false,
-          coldEnableCheckRequired: true, conversion }
+        const schemaVersion = this.state.schemaVersion === 3 || mode === 'SHARED_PRINTER' ? 3 : 2
+        const retainedKitchenTest = schemaVersion === 3 ? this.state.kitchenTest ?? null : undefined
+        const needsKitchenConfirmation = mode === 'SHARED_PRINTER' && retainedKitchenTest?.outcome !== 'CONFIRMED'
+        const next: ProfileState = { ...this.state, schemaVersion, mode, revision, enabled: false,
+          ...(schemaVersion === 3 ? { kitchenTest: retainedKitchenTest } : {}),
+          coldEnableCheckRequired: !needsKitchenConfirmation, conversion }
         const sealed = this.options.protector.protect(JSON.stringify(next))
         this.parse(sealed)
         this.transactionProtected = true
         await this.transactions.commit({ id, originalFiles: [nodeName, 'execution-journal.json'], nextProfile: sealed,
           prepare: async () => {
-            await this.nodes(revision).save({ mode, endpoint: config.endpoint })
+            const kitchenEndpoint = mode === 'SHARED_PRINTER' && this.state.kitchenTest?.outcome === 'CONFIRMED'
+              ? this.state.kitchenTest.endpoint : undefined
+            await this.nodes(revision).save({ mode, endpoint: config.endpoint, ...(kitchenEndpoint ? { kitchenEndpoint } : {}) })
             await this.transactions.syncFile(path.join(this.options.directory, `nodes-${revision}.sealed`))
             await this.transactions.syncDirectory(this.options.directory)
             await this.assertSettledJournal()
@@ -310,35 +365,76 @@ export class NetworkAddonProfile {
     })
   }
 
-  async beginTest(input: Omit<LocalTest, 'outcome'>): Promise<LocalTest> {
+  async beginTest(input: Omit<LocalTest, 'outcome'>, role: NetworkRole = 'FRONT'): Promise<LocalTest> {
     return this.exclusive(async () => {
       if (this.state.enabled) throw new Error('ADDON_PAUSE_REQUIRED')
-      if (this.state.test && ['INTENT', 'UNKNOWN', 'SUBMITTED'].includes(this.state.test.outcome)) throw new Error('ADDON_TEST_REVIEW_REQUIRED')
+      if (role !== 'FRONT' && role !== 'KITCHEN') throw new Error('ADDON_INVALID_ROLE')
+      const existingTest = role === 'KITCHEN' ? this.state.kitchenTest : this.state.test
+      if (existingTest && ['INTENT', 'UNKNOWN', 'SUBMITTED'].includes(existingTest.outcome)) throw new Error('ADDON_TEST_REVIEW_REQUIRED')
       if (this.state.mode && this.state.mode !== input.mode) throw new Error('ADDON_MODE_LOCKED')
+      const config = this.state.revision ? await this.readForRecovery() : undefined
+      if (role === 'KITCHEN') {
+        if (input.mode !== 'SHARED_PRINTER' || this.state.mode !== 'SHARED_PRINTER'
+          || !this.state.revision || this.state.test?.outcome !== 'CONFIRMED') throw new Error('ADDON_ROLE_TEST_NOT_READY')
+        if (config?.kitchenEndpoint || this.state.kitchenTest?.outcome === 'CONFIRMED') throw new Error('ADDON_ROLE_ENDPOINT_LOCKED')
+        if (config?.endpoint.host === input.endpoint.host && config.endpoint.port === input.endpoint.port) {
+          throw new Error('NETWORK_ROLE_ENDPOINT_DUPLICATE')
+        }
+      } else if (config?.kitchenEndpoint?.host === input.endpoint.host && config.kitchenEndpoint.port === input.endpoint.port) {
+        throw new Error('NETWORK_ROLE_ENDPOINT_DUPLICATE')
+      }
       await this.journal.ensureInitialized()
       if (this.journal.records().some(record => record.effectBoundary === 'CROSSING_UNKNOWN')) throw new Error('NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW')
-      if (this.state.revision) await this.readForRecovery()
       const test: LocalTest = { ...input, outcome: 'INTENT' }
-      await this.persist({ ...this.state, test })
+      if (role === 'KITCHEN') {
+        await this.persist({ ...this.state, schemaVersion: 3, kitchenTest: test,
+          conversion: this.state.conversion ?? null, coldEnableCheckRequired: this.state.coldEnableCheckRequired ?? false })
+      } else if (input.mode === 'SHARED_PRINTER' && this.state.revision === 0) {
+        await this.persist({ ...this.state, schemaVersion: 3, test, kitchenTest: null,
+          conversion: this.state.conversion ?? null, coldEnableCheckRequired: this.state.coldEnableCheckRequired ?? false })
+      } else await this.persist({ ...this.state, test })
       return structuredClone(test)
     })
   }
 
   async finishTest(id: string, outcome: 'SUBMITTED' | 'NOT_CROSSED' | 'UNKNOWN') {
     return this.exclusive(async () => {
-      if (this.state.test?.id !== id || this.state.test.outcome !== 'INTENT') throw new Error('ADDON_TEST_STATE_CONFLICT')
-      await this.persist({ ...this.state, test: { ...this.state.test, outcome } })
+      if (this.state.test?.id === id && this.state.test.outcome === 'INTENT') {
+        await this.persist({ ...this.state, test: { ...this.state.test, outcome } })
+        return
+      }
+      if (this.state.kitchenTest?.id === id && this.state.kitchenTest.outcome === 'INTENT') {
+        await this.persist({ ...this.state, kitchenTest: { ...this.state.kitchenTest, outcome } })
+        return
+      }
+      throw new Error('ADDON_TEST_STATE_CONFLICT')
     })
   }
 
   async confirmTest(id: string, physicalPaperConfirmed: boolean, sameOriginalPrinter: boolean) {
     return this.exclusive(async () => {
-      const test = this.state.test
-      if (this.state.enabled || !test || test.id !== id || test.outcome !== 'SUBMITTED' || physicalPaperConfirmed !== true) throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
-      if (this.state.revision && sameOriginalPrinter !== true) throw new Error('ADDON_SAME_PHYSICAL_PRINTER_REQUIRED')
-      if (this.state.revision) await this.readForRecovery()
+      const role: NetworkRole | null = this.state.test?.id === id ? 'FRONT' : this.state.kitchenTest?.id === id ? 'KITCHEN' : null
+      const test = role === 'KITCHEN' ? this.state.kitchenTest : role === 'FRONT' ? this.state.test : null
+      if (this.state.enabled || !test || test.outcome !== 'SUBMITTED' || physicalPaperConfirmed !== true) {
+        throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
+      }
+      if (role === 'FRONT' && this.state.revision && sameOriginalPrinter !== true) throw new Error('ADDON_SAME_PHYSICAL_PRINTER_REQUIRED')
+      const current = this.state.revision ? await this.readForRecovery() : undefined
       const revision = this.state.revision + 1
-      await this.nodes(revision).save({ mode: test.mode, endpoint: test.endpoint })
+      if (role === 'KITCHEN') {
+        if (!current || current.mode !== 'SHARED_PRINTER' || current.kitchenEndpoint
+          || this.state.mode !== 'SHARED_PRINTER' || this.state.test?.outcome !== 'CONFIRMED') {
+          throw new Error('ADDON_ROLE_TEST_NOT_READY')
+        }
+        await this.nodes(revision).save({ mode: 'SHARED_PRINTER', endpoint: current.endpoint, kitchenEndpoint: test.endpoint })
+        await this.persist({ ...this.state, schemaVersion: 3, revision,
+          kitchenTest: { ...test, outcome: 'CONFIRMED' }, conversion: this.state.conversion ?? null,
+          coldEnableCheckRequired: true })
+        return
+      }
+      const nextConfig = { mode: test.mode, endpoint: test.endpoint,
+        ...(current?.kitchenEndpoint ? { kitchenEndpoint: current.kitchenEndpoint } : {}) }
+      await this.nodes(revision).save(nextConfig)
       await this.persist({ ...this.state, mode: test.mode, revision, test: { ...test, outcome: 'CONFIRMED' } })
     })
   }

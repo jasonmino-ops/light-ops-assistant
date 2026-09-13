@@ -7,12 +7,12 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { CloudRelayClient } from '../src/cloudRelayClient'
 import { desktopBindingIdentityPath, readDesktopBindingIdentity, type DesktopBindingIdentity } from '../src/desktopBindingIdentity'
-import { protectNetworkDirectory, type NetworkNode, type NetworkPrinterConfig } from '../src/networkNodeConfig'
+import { networkRoleEndpoints, protectNetworkDirectory, type NetworkNode, type NetworkPrinterConfig } from '../src/networkNodeConfig'
 import { getWindowsLocalNetworks, getWindowsEndpointContinuitySnapshot, validateLocalPrinterEndpoint,
   validateConfirmedPrinterPath, discoverNetworkPrinters, readLocalPrinterHardware, assertConfirmedPrinter,
   assertConfirmedPrinterContinuity, assertReachableConfirmedPrinter, networkContinuityFingerprint,
   withWindowsEndpointContinuitySnapshots, type NetworkContinuityDiagnostic } from '../src/networkDiscovery'
-import { NETWORK_PROFILE, parseNetworkMode, exactObject, type NetworkRequest } from '../src/networkContract'
+import { NETWORK_PROFILE, parseNetworkMode, exactObject, type NetworkRequest, type NetworkRole } from '../src/networkContract'
 import { NetworkRawTcpTransport, NetworkDeliveryError } from '../src/printing/networkRawTcpTransport'
 import { RelayPoller } from '../src/relayPoller'
 import { RelayResultLog } from '../src/resultLog'
@@ -104,13 +104,8 @@ async function assertIdentity() {
     throw new Error('NETWORK_BINDING_CHANGED_RESTART_REQUIRED')
   }
 }
-function confirmedTest(endpoint: NetworkNode) {
-  const confirmed = profile?.snapshot().test
-  if (!confirmed || confirmed.outcome !== 'CONFIRMED') throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
-  if (confirmed.endpoint.host !== endpoint.host || confirmed.endpoint.port !== endpoint.port) {
-    throw new Error('NETWORK_CONFIG_CHANGED')
-  }
-  return confirmed
+function confirmedTest(endpoint: NetworkNode, role: NetworkRole) {
+  return knownProfile().confirmedTest(role, endpoint)
 }
 async function recordContinuityDiagnostic(diagnostic: NetworkContinuityDiagnostic) {
   const log = resultLog
@@ -122,18 +117,28 @@ async function recordContinuityDiagnostic(diagnostic: NetworkContinuityDiagnosti
     recordedContinuityDiagnostics.add(key)
   } catch { /* Local diagnostics are best-effort and never authorize printing. */ }
 }
-async function validateEndpointPath(endpoint: NetworkNode,
+async function validateEndpointPath(endpoint: NetworkNode, role: NetworkRole,
   getSnapshot: () => ReturnType<typeof getWindowsEndpointContinuitySnapshot> =
     () => getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic)) {
-  const confirmed = confirmedTest(endpoint)
+  const confirmed = confirmedTest(endpoint, role)
   return validateConfirmedPrinterPath(endpoint, confirmed, await getSnapshot(), recordContinuityDiagnostic)
 }
-async function validateEndpoint(endpoint: NetworkNode,
+async function validateEndpoint(endpoint: NetworkNode, role: NetworkRole,
   getSnapshot: () => ReturnType<typeof getWindowsEndpointContinuitySnapshot> =
     () => getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic)) {
-  const confirmed = confirmedTest(endpoint)
+  const confirmed = confirmedTest(endpoint, role)
   return assertConfirmedPrinterContinuity(endpoint, confirmed, await getSnapshot(), readLocalPrinterHardware,
     getSnapshot, recordContinuityDiagnostic)
+}
+async function validateConfiguredEndpointPaths(config: NetworkPrinterConfig) {
+  const snapshot = await getWindowsEndpointContinuitySnapshot(config.endpoint, recordContinuityDiagnostic)
+  const checked = new Set<string>()
+  for (const { role, endpoint } of networkRoleEndpoints(config)) {
+    const key = `${endpoint.host}:${endpoint.port}`
+    if (checked.has(key)) continue
+    await validateConfirmedPrinterPath(endpoint, confirmedTest(endpoint, role), snapshot, recordContinuityDiagnostic)
+    checked.add(key)
+  }
 }
 function knownProfile() {
   if (!profile || !binding) throw new Error('DESKTOP_BINDING_NOT_ACTIVE')
@@ -145,16 +150,21 @@ function knownLifecycle() {
 }
 async function validateColdContext(context: ColdModePreflightContext) {
   if (!binding || !sameBinding(bindingTuple(binding), context.identity)) throw new Error('NETWORK_BINDING_CHANGED_RESTART_REQUIRED')
-  if (context.test.outcome !== 'CONFIRMED'
-    || context.config.endpoint.host !== context.test.endpoint.host || context.config.endpoint.port !== context.test.endpoint.port) {
-    throw new Error('ADDON_COLD_SETTLED_TEST_REQUIRED')
+  const checked = new Set<string>()
+  for (const { role, endpoint } of networkRoleEndpoints(context.config)) {
+    const confirmed = role === 'KITCHEN' ? context.kitchenTest ?? context.test : context.test
+    if (confirmed.outcome !== 'CONFIRMED' || endpoint.host !== confirmed.endpoint.host || endpoint.port !== confirmed.endpoint.port) {
+      throw new Error('ADDON_COLD_SETTLED_TEST_REQUIRED')
+    }
+    const key = `${endpoint.host}:${endpoint.port}`
+    if (checked.has(key)) continue
+    const snapshot = await getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic)
+    await assertReachableConfirmedPrinter(endpoint, confirmed, snapshot, {
+      refresh: () => getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic),
+      reporter: recordContinuityDiagnostic,
+    })
+    checked.add(key)
   }
-  const endpoint = context.config.endpoint
-  const snapshot = await getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic)
-  await assertReachableConfirmedPrinter(endpoint, context.test, snapshot, {
-    refresh: () => getWindowsEndpointContinuitySnapshot(endpoint, recordContinuityDiagnostic),
-    reporter: recordContinuityDiagnostic,
-  })
 }
 async function finishExit() {
   entry.markExiting()
@@ -192,12 +202,13 @@ async function initialize() {
     markExecuting: client.markExecuting.bind(client), reportResult: client.reportResult.bind(client),
   }
   const dependencies = { assertIdentity, identity: bindingTuple(binding), nodes: profile, journal: profile.journal,
-    client: modeClient, render: renderer.render, recorder, transport, validateEndpoint }
+    client: modeClient, render: renderer.render, recorder, transport, validateEndpoint,
+    validateConfig: validateConfiguredEndpointPaths }
   poller = new RelayPoller({ client: createGuardedNetworkClient({ ...dependencies, validateEndpoint: validateEndpointPath }),
     journal: profile.journal, recorder,
     network: createNetworkStrategy({ ...dependencies,
-      validateEndpoint: endpoint => withWindowsEndpointContinuitySnapshots(endpoint,
-        getSnapshot => validateEndpoint(endpoint, getSnapshot), recordContinuityDiagnostic) }),
+      validateEndpoint: (endpoint, role) => withWindowsEndpointContinuitySnapshots(endpoint,
+        getSnapshot => validateEndpoint(endpoint, role, getSnapshot), recordContinuityDiagnostic) }),
     onError(error) { lastCode = code(error) } })
   lifecycle = new ColdModeLifecycle({ profile, client, assertIdentity, validate: validateColdContext,
     stopAndWait: () => poller!.stopAndWait(), start: () => poller!.start(), exit: finishExit })
@@ -210,8 +221,15 @@ async function initialize() {
 
 async function status() {
   let state: ReturnType<NetworkAddonProfile['snapshot']> | undefined
-  let endpoint: NetworkNode | undefined
-  try { state = profile?.snapshot(); if (state?.revision) endpoint = (await profile!.readForRecovery()).endpoint }
+  let endpoint: NetworkNode | undefined, kitchenEndpoint: NetworkNode | undefined
+  try {
+    state = profile?.snapshot()
+    if (state?.revision) {
+      const config = await profile!.readForRecovery()
+      endpoint = config.endpoint
+      kitchenEndpoint = config.kitchenEndpoint
+    }
+  }
   catch (error) {
     // Keep the reason a cold conversion was refused visible after the profile
     // closes this process, rather than replacing it with a generic restart code.
@@ -227,11 +245,13 @@ async function status() {
   }
   return { version: app.getVersion(), server: SERVER, storeCode: binding?.storeCode ?? null,
     ready: !!profile && !!lifecycle && !!state, busy: entry.busy, code: lastCode, mode: state?.mode ?? null,
-    enabled: state?.enabled ?? false, endpoint: endpoint ?? null, revision: state?.revision ?? 0,
-    test: state?.test ?? null, lastEvent: lastEvent ?? null,
+    enabled: state?.enabled ?? false, endpoint: endpoint ?? null, kitchenEndpoint: kitchenEndpoint ?? null,
+    revision: state?.revision ?? 0,
+    test: state?.test ?? null, kitchenTest: state?.kitchenTest ?? null, lastEvent: lastEvent ?? null,
     restartRequired, cashierAvailable, entryCode: entry.entryCode, entryPending: entry.entryPending, shortcutCode,
     coldEnableCheckRequired: state?.coldEnableCheckRequired ?? false,
-    coldProcess: lifecycle?.coldProcess ?? false,
+    coldProcess: lifecycle?.coldProcess ?? false, endpointChangeProcess: lifecycle?.endpointChangeProcess ?? false,
+    dualSetupRequired: state?.schemaVersion === 3 && state.mode === 'SHARED_PRINTER',
     autostart: currentLoginItem()?.enabled ?? false }
 }
 
@@ -241,25 +261,33 @@ async function pause() {
 }
 
 async function sendTest(input: Record<string, unknown>) {
-  exactObject(input, ['mode', 'host', 'port'])
+  const role = input.role
+  if (role !== 'FRONT' && role !== 'KITCHEN') throw new Error('ADDON_INVALID_ROLE')
+  exactObject(input, role === 'KITCHEN'
+    ? ['mode', 'role', 'host', 'port', 'cashierTabsClosed', 'singleAgentConfirmed']
+    : ['mode', 'role', 'host', 'port'])
   const target = knownProfile()
   await pause()
   await assertIdentity()
   const mode = parseNetworkMode(input.mode)
+  if (role === 'KITCHEN') {
+    if (mode !== 'SHARED_PRINTER') throw new Error('ADDON_ROLE_TEST_NOT_READY')
+    await knownLifecycle().prepareEndpointChange({ cashierTabsClosed: input.cashierTabsClosed === true,
+      singleAgentConfirmed: input.singleAgentConfirmed === true })
+  }
   const snapshot = await getWindowsLocalNetworks()
   const selected = validateLocalPrinterEndpoint(input.host, input.port, snapshot)
   const hardwareAddress = await readLocalPrinterHardware(selected.host, selected.port, snapshot)
   const id = randomUUID()
-  const request: NetworkRequest = { profile: NETWORK_PROFILE, requestId: `TEST-${id}`, mode, role: 'FRONT', rendererVersion: 1,
-    order: { storeCode: binding!.storeCode, storeName: 'TEST 测试票 / NOT A SALE', orderNo: `TEST-${id}`,
+  const request: NetworkRequest = { profile: NETWORK_PROFILE, requestId: `TEST-${id}`, mode, role, rendererVersion: 1,
+    order: { storeCode: binding!.storeCode, storeName: `TEST ${role} 测试票 / NOT A SALE`, orderNo: `TEST-${id}`,
       createdAt: new Date().toISOString(), cashierName: '用户主动测试 / User requested TEST', paymentMethod: 'CASH',
       currencyCode: 'USD', totalAmount: 0, lang: 'zh', items: [{ name: 'TEST 请确认打印目标 · 非营业订单',
         spec: '中文、走纸、切刀 / Chinese, feed, cut', qty: 1, price: 0, lineAmount: 0 }] } }
   const bytes = await renderer!.render(request)
   const endpoint = { host: selected.host, port: selected.port }
   await target.beginTest({ id, mode, endpoint, networkFingerprint: networkContinuityFingerprint(snapshot),
-    hardwareAddress,
-    bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') })
+    hardwareAddress, bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') }, role)
   // All critical checks occur again after durable intent, before any bytes.
   let localAddress: string | undefined
   await submitLocalNetworkTest({
@@ -273,7 +301,8 @@ async function sendTest(input: Record<string, unknown>) {
     finish: outcome => target.finishTest(id, outcome),
   })
   lastCode = 'TEST_AWAITING_PHYSICAL_CONFIRMATION'
-  return { testId: id, bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex'), physicalCompletionKnown: false }
+  return { testId: id, role, bytes: bytes.byteLength,
+    sha256: createHash('sha256').update(bytes).digest('hex'), physicalCompletionKnown: false }
 }
 
 async function openCashier(config: NetworkPrinterConfig) {
@@ -378,9 +407,13 @@ async function perform(action: unknown, value: unknown) {
       }
       case 'test': return sendTest(input as Record<string, unknown>)
       case 'confirmTest': {
-        const data = exactObject(input, ['id', 'paperConfirmed', 'sameOriginalPrinter'])
-        const test = knownProfile().snapshot().test
-        if (!test || data.id !== test.id) throw new Error('ADDON_TEST_STATE_CONFLICT')
+        const data = exactObject(input, ['id', 'paperConfirmed', 'sameOriginalPrinter', 'cashierTabsClosed', 'singleAgentConfirmed'])
+        const state = knownProfile().snapshot()
+        const role: NetworkRole | null = data.id === state.test?.id ? 'FRONT' : data.id === state.kitchenTest?.id ? 'KITCHEN' : null
+        const test = role === 'KITCHEN' ? state.kitchenTest : role === 'FRONT' ? state.test : null
+        if (!test || !role) throw new Error('ADDON_TEST_STATE_CONFLICT')
+        if (role === 'KITCHEN') await knownLifecycle().prepareEndpointChange({
+          cashierTabsClosed: data.cashierTabsClosed === true, singleAgentConfirmed: data.singleAgentConfirmed === true })
         await assertIdentity()
         const current = await getWindowsLocalNetworks()
         if (networkContinuityFingerprint(current) !== test.networkFingerprint) throw new Error('NETWORK_CHANGED')
