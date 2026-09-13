@@ -99,7 +99,14 @@ describe('Network Add-on build and release boundary', () => {
         fieldResult: 'PASS',
         fieldVerified: true,
       },
-      candidateBuild: build.CANDIDATE_BUILD,
+      candidateBuild: {
+        mode: 'unsigned-test-only',
+        version: '0.1.0-commercial-rc.8',
+        target: 'win32-x64',
+        electronVersion: '44.3.0',
+        published: false,
+        releaseReady: false,
+      },
     })
     const actual: Record<string, string> = {}
     for (const file of authorization.authorizedPaths) {
@@ -121,6 +128,37 @@ describe('Network Add-on build and release boundary', () => {
     }
     expect(() => build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc8-build'))
       .toThrow('ADDON_CANDIDATE_EXACT_AUTHORIZATION_REQUIRED')
+  })
+
+  it('accepts only the active rc.9 exact grant and pins the dual-endpoint review surface', async () => {
+    const exception = JSON.parse(await readFile(path.join(root,
+      'docs/change-gates/exceptions/ES-PRINT-NETWORK-FIRST-01.json'), 'utf8'))
+    const authorization = exception.additionalAuthorizations.find((item: Record<string, unknown>) =>
+      item.authorizationId === 'NETWORK-COMMERCIAL-CANDIDATE-RC9-BUILD-19')
+    expect(authorization).toMatchObject({
+      featureBranch: 'codex/es-network-candidate-rc9-build',
+      baseOriginMainSha: '266c968733382d77ebd7dd08f2ab992ae7b71fdd',
+      status: 'ACTIVE',
+      candidateBuild: build.CANDIDATE_BUILD,
+    })
+    expect(authorization.authorizedPaths).toEqual(expect.arrayContaining([
+      'e-shop-tray/network-addon/coldModeLifecycle.ts',
+      'e-shop-tray/network-addon/profile.ts',
+      'e-shop-tray/src/networkNodeConfig.ts',
+      'e-shop-tray/tests/network-addon-cold-mode-change.test.ts',
+      'e-shop-tray/tests/network-dual-endpoint.test.ts',
+      'e-shop-tray/tests/network-print-v01.test.ts',
+    ]))
+    expect(authorization.authorizedPaths).toHaveLength(27)
+    expect(build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc9-build'))
+      .toEqual(authorization)
+    const actual: Record<string, string> = {}
+    for (const file of authorization.authorizedPaths) {
+      actual[file] = createHash('sha256').update(await readFile(path.join(root, file))).digest('hex')
+    }
+    expect(actual).toEqual(authorization.authorizedPathSha256)
+    expect(createHash('sha256').update(build.canonicalMapping(actual)).digest('hex'))
+      .toBe(authorization.approvedContentMappingSha256)
   })
 
   it('actual candidate command fails on injected approval before any compiler or installer work', () => {
@@ -194,13 +232,13 @@ describe('Network Add-on build and release boundary', () => {
   it('candidate payload records a dirty source honestly and marks the transformed visible UI TEST ONLY', async () => {
     const manifest = build.createManifest({ source: { baselineCommit: build.BASELINE_COMMIT,
       headCommit: build.BASELINE_COMMIT, sourceCommit: null, workingTreeDirty: true }, inputs: {}, outputs: {}, tools: {}, candidate: { authorizationId: 'TEST-FIXTURE' } })
-    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.8', sourceCommit: null, workingTreeDirty: true,
+    expect(manifest).toMatchObject({ version: '0.1.0-commercial-rc.9', sourceCommit: null, workingTreeDirty: true,
       testOnly: true, installer: false, runtimeIncluded: false, releaseReady: false, published: false,
       installed: false, fieldVerified: false, buildClass: 'unsigned-test-candidate', signingStatus: 'unsigned-test-only' })
     const original = await readFile(path.join(tray, 'network-addon/ui.html'))
     const html = build.candidateHtml(original).toString()
     expect(html).toContain('<title>E-Shop Network Print — TEST ONLY</title>')
-    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.8')
+    expect(html).toContain('TEST ONLY · 0.1.0-commercial-rc.9')
     expect(html).toContain('未正式发布')
     expect(html).toContain('发送 TEST 纸票前须由负责人明确确认')
     expect(html.match(/id="[^"]+"/g)).toEqual(original.toString().match(/id="[^"]+"/g))
