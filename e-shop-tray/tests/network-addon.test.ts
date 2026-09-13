@@ -130,7 +130,7 @@ describe('Network Add-on build and release boundary', () => {
       .toThrow('ADDON_CANDIDATE_EXACT_AUTHORIZATION_REQUIRED')
   })
 
-  it('accepts only the active rc.9 exact grant and pins the dual-endpoint review surface', async () => {
+  it('closes the consumed and FIELD-verified rc.9 exact build identity', async () => {
     const exception = JSON.parse(await readFile(path.join(root,
       'docs/change-gates/exceptions/ES-PRINT-NETWORK-FIRST-01.json'), 'utf8'))
     const authorization = exception.additionalAuthorizations.find((item: Record<string, unknown>) =>
@@ -138,7 +138,18 @@ describe('Network Add-on build and release boundary', () => {
     expect(authorization).toMatchObject({
       featureBranch: 'codex/es-network-candidate-rc9-build',
       baseOriginMainSha: '266c968733382d77ebd7dd08f2ab992ae7b71fdd',
-      status: 'ACTIVE',
+      status: 'CLOSED',
+      featureMergeCommitSha: 'a7bee16c9bbdc4f32360afa331a3b66fd80c1fe2',
+      toolchainEvidence: {
+        rc9BuildPerformed: true,
+        builtSourceSha: 'a7bee16c9bbdc4f32360afa331a3b66fd80c1fe2',
+        sourceSnapshotSha256: '4bdc3503526323c2bb3c539bb861d7632f513495b03a4092aeb8933585b05dfb',
+        installerSha256: 'b9391daa68922e0693678d5c80b23b8fbe541d9f516f89bb5ca0165ad80365df',
+        installerBytes: 114343227,
+        fieldResult: 'PASS',
+        fieldVerified: true,
+        fieldOrderNo: 'S-20260913-ST169E7000-0010',
+      },
       candidateBuild: build.CANDIDATE_BUILD,
     })
     expect(authorization.authorizedPaths).toEqual(expect.arrayContaining([
@@ -150,15 +161,26 @@ describe('Network Add-on build and release boundary', () => {
       'e-shop-tray/tests/network-print-v01.test.ts',
     ]))
     expect(authorization.authorizedPaths).toHaveLength(27)
-    expect(build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc9-build'))
-      .toEqual(authorization)
     const actual: Record<string, string> = {}
     for (const file of authorization.authorizedPaths) {
-      actual[file] = createHash('sha256').update(await readFile(path.join(root, file))).digest('hex')
+      const source = spawnSync('git', ['show', `${authorization.toolchainEvidence.builtSourceSha}:${file}`], {
+        cwd: root,
+        encoding: null,
+        maxBuffer: 20 * 1024 * 1024,
+      })
+      expect(source.status).toBe(0)
+      actual[file] = createHash('sha256').update(source.stdout).digest('hex')
     }
-    expect(actual).toEqual(authorization.authorizedPathSha256)
-    expect(createHash('sha256').update(build.canonicalMapping(actual)).digest('hex'))
+    expect(createHash('sha256').update(build.canonicalMapping(authorization.authorizedPathSha256)).digest('hex'))
       .toBe(authorization.approvedContentMappingSha256)
+    const changed = Object.keys(actual).filter(file => actual[file] !== authorization.authorizedPathSha256[file])
+    expect(changed).toEqual([])
+    for (const file of authorization.authorizedPaths) {
+      const check = () => build.assertCandidateInput(file, actual[file], authorization.authorizedPathSha256, null)
+      expect(check).not.toThrow()
+    }
+    expect(() => build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc9-build'))
+      .toThrow('ADDON_CANDIDATE_EXACT_AUTHORIZATION_REQUIRED')
   })
 
   it('actual candidate command fails on injected approval before any compiler or installer work', () => {

@@ -1203,7 +1203,10 @@
       "featureBranch": "codex/es-network-candidate-rc9-build",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "266c968733382d77ebd7dd08f2ab992ae7b71fdd",
-      "status": "ACTIVE",
+      "status": "CLOSED",
+      "closedAt": "2026-09-13T19:43:41Z",
+      "featureMergeCommitSha": "a7bee16c9bbdc4f32360afa331a3b66fd80c1fe2",
+      "closureReason": "The one rc.9 unsigned TEST Candidate was built from a7bee16c9bbdc4f32360afa331a3b66fd80c1fe2 and passed the separately authorized V727 FRONT/KITCHEN dual-endpoint FIELD. Real order S-20260913-ST169E7000-0010 produced exactly one FRONT ticket at 192.168.18.53:9100 and exactly one KITCHEN ticket at 192.168.18.229:9100, with zero loss, duplication or cross-role delivery; the journal finished 56/56 terminal/reported. The rc.9 PREPARE commit a7bee16c9bbdc4f32360afa331a3b66fd80c1fe2 itself entered origin/main by direct first-parent fast-forward lineage, so there is no distinct merge commit. This consumed grant is closed and grants no future build, release, deployment or FIELD authority. FIELD acceptance does not claim a signed publication, Production deployment or whole-product closure.",
       "approvedBy": "Founder",
       "createdAt": "2026-09-13T17:48:30Z",
       "approvedAt": "2026-09-13T17:48:30Z",
@@ -1286,6 +1289,20 @@
         "incrementalFileCount": 2,
         "sourceSnapshotSha256": null,
         "review": "The rc.9 version constant, direct contract test and this exact authorization require fresh-context independent review before any integration. The review result belongs to TASK-NETWORK-CANDIDATE-RC9-PREPARE-01 and the Candidate report; no installer is built in this preparation."
+      },
+      "toolchainEvidence": {
+        "rc9BuildPerformed": true,
+        "requiredElectronRuntime": "44.3.0",
+        "requiredTarget": "win32-x64",
+        "builtSourceSha": "a7bee16c9bbdc4f32360afa331a3b66fd80c1fe2",
+        "sourceSnapshotSha256": "4bdc3503526323c2bb3c539bb861d7632f513495b03a4092aeb8933585b05dfb",
+        "installerSha256": "b9391daa68922e0693678d5c80b23b8fbe541d9f516f89bb5ca0165ad80365df",
+        "installerBytes": 114343227,
+        "fieldResult": "PASS",
+        "fieldVerified": true,
+        "fieldDevice": "V727 / PC-20260119FZUI",
+        "fieldOrderNo": "S-20260913-ST169E7000-0010",
+        "note": "The separately approved rc.9 Build Gate produced and retained the one unsigned TEST Candidate with this source and artifact identity. The separately approved V727 FIELD Gate verified one real FRONT and one real KITCHEN ticket at their locked confirmed endpoints, with 56/56 journal entries terminal/reported. This closure records consumption and bounded FIELD acceptance, not signing, publication, Production deployment or whole-product closure."
       },
       "allowedPurposes": [
         "After this PREPARE Candidate is independently reviewed and integrated by a separate Founder Gate, establish codex/es-network-candidate-rc9-build at the resulting trusted origin/main with zero commits over that main.",
