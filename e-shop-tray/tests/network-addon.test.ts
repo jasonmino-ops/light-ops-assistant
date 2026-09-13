@@ -65,7 +65,7 @@ describe('Network Add-on build and release boundary', () => {
     expect(() => build.assertCandidateInput('extra.ts', 'draft', {}, null)).toThrow('ADDON_CANDIDATE_SOURCE_NOT_APPROVED')
   })
 
-  it('closes the failed rc.7 identity and pins the rc.8 successor to the exact reviewed source', async () => {
+  it('closes the consumed rc.7 and FIELD-verified rc.8 exact build identities', async () => {
     const exception = JSON.parse(await readFile(path.join(root,
       'docs/change-gates/exceptions/ES-PRINT-NETWORK-FIRST-01.json'), 'utf8'))
     const rc7 = exception.additionalAuthorizations.find((item: Record<string, unknown>) =>
@@ -84,16 +84,32 @@ describe('Network Add-on build and release boundary', () => {
     expect(() => build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc7-build'))
       .toThrow('ADDON_CANDIDATE_EXACT_AUTHORIZATION_REQUIRED')
 
-    const authorization = build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc8-build')
+    const authorization = exception.additionalAuthorizations.find((item: Record<string, unknown>) =>
+      item.authorizationId === 'NETWORK-COMMERCIAL-CANDIDATE-RC8-BUILD-18')
     expect(authorization).toMatchObject({
       authorizationId: 'NETWORK-COMMERCIAL-CANDIDATE-RC8-BUILD-18',
       baseOriginMainSha: 'a1db772f49be0c63d0399fc3ce1c6070f3ce5d61',
-      status: 'ACTIVE',
+      status: 'CLOSED',
+      featureMergeCommitSha: '70c61bf46855350aae478a96f05ab4608b0695fe',
+      toolchainEvidence: {
+        rc8BuildPerformed: true,
+        builtSourceSha: '70c61bf46855350aae478a96f05ab4608b0695fe',
+        installerSha256: 'e31ecd572b9f82bd6a0d1022a856493e20973d05177d5eb3c9d3c2fd3a60f306',
+        installerBytes: 114340855,
+        fieldResult: 'PASS',
+        fieldVerified: true,
+      },
       candidateBuild: build.CANDIDATE_BUILD,
     })
     const actual: Record<string, string> = {}
     for (const file of authorization.authorizedPaths) {
-      actual[file] = createHash('sha256').update(await readFile(path.join(root, file))).digest('hex')
+      const source = spawnSync('git', ['show', `${authorization.toolchainEvidence.builtSourceSha}:${file}`], {
+        cwd: root,
+        encoding: null,
+        maxBuffer: 20 * 1024 * 1024,
+      })
+      expect(source.status).toBe(0)
+      actual[file] = createHash('sha256').update(source.stdout).digest('hex')
     }
     expect(createHash('sha256').update(build.canonicalMapping(authorization.authorizedPathSha256)).digest('hex'))
       .toBe(authorization.approvedContentMappingSha256)
@@ -103,6 +119,8 @@ describe('Network Add-on build and release boundary', () => {
       const check = () => build.assertCandidateInput(file, actual[file], authorization.authorizedPathSha256, null)
       expect(check).not.toThrow()
     }
+    expect(() => build.selectCandidateAuthorization(exception, 'codex/es-network-candidate-rc8-build'))
+      .toThrow('ADDON_CANDIDATE_EXACT_AUTHORIZATION_REQUIRED')
   })
 
   it('actual candidate command fails on injected approval before any compiler or installer work', () => {

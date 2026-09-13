@@ -1097,7 +1097,10 @@
       "featureBranch": "codex/es-network-candidate-rc8-build",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "a1db772f49be0c63d0399fc3ce1c6070f3ce5d61",
-      "status": "ACTIVE",
+      "status": "CLOSED",
+      "closedAt": "2026-09-13T03:32:06Z",
+      "featureMergeCommitSha": "70c61bf46855350aae478a96f05ab4608b0695fe",
+      "closureReason": "The one rc.8 unsigned TEST Candidate was built from 70c61bf46855350aae478a96f05ab4608b0695fe and passed the separately authorized V727 FIELD: cold start restored RUNNING without setup, search, rebind or repair; the rc.7 false NETWORK_CHANGED did not recur; one real CASH order produced two normal tickets; and the journal finished 48/48 terminal/reported. The authorization preparation commit 70c61bf46855350aae478a96f05ab4608b0695fe itself fast-forwarded into origin/main first-parent lineage, so there is no distinct merge commit. This consumed grant is closed and grants no future build, release, deployment or FIELD authority. FIELD acceptance does not claim a signed publication, Production deployment or whole-product closure.",
       "approvedBy": "Founder",
       "createdAt": "2026-09-12T21:48:46Z",
       "approvedAt": "2026-09-12T21:48:46Z",
@@ -1170,10 +1173,17 @@
         "review": "The rc.8 version constant, direct contract test and this exact authorization require fresh-context independent review before any integration. The review result belongs to TASK-NETWORK-CANDIDATE-RC8-PREPARE-01 and the Candidate report; no installer is built in this preparation."
       },
       "toolchainEvidence": {
-        "rc8BuildPerformed": false,
+        "rc8BuildPerformed": true,
         "requiredElectronRuntime": "44.3.0",
         "requiredTarget": "win32-x64",
-        "note": "This authorization records the unchanged locked build contract only. Toolchain and build-machine evidence must be captured by a later separately approved rc.8 Build Gate."
+        "builtSourceSha": "70c61bf46855350aae478a96f05ab4608b0695fe",
+        "sourceSnapshotSha256": "e90b22e77a2951c2553505d85f9524c1c645f24b1d83745029dcb8deb7ff69c9",
+        "installerSha256": "e31ecd572b9f82bd6a0d1022a856493e20973d05177d5eb3c9d3c2fd3a60f306",
+        "installerBytes": 114340855,
+        "fieldResult": "PASS",
+        "fieldVerified": true,
+        "fieldDevice": "V727 / PC-20260119FZUI",
+        "note": "The separately approved rc.8 Build Gate produced and retained the one unsigned TEST Candidate with this source and artifact identity. The separately approved V727 FIELD Gate verified cold-start Endpoint Continuity and real paper output. This closure records consumption and FIELD acceptance, not signing, publication, Production deployment or whole-product closure."
       },
       "allowedPurposes": [
         "After this PREPARE Candidate is independently reviewed and integrated by a separate Founder Gate, establish codex/es-network-candidate-rc8-build at the resulting trusted origin/main with zero commits over that main.",
