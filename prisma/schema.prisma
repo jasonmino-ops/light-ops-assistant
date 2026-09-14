@@ -193,6 +193,9 @@ model Tenant {
   stores                      Store[]
   users                       User[]
   products                    Product[]
+  productBulkImportJobs       ProductBulkImportJob[]
+  productBulkImportRows       ProductBulkImportRow[]
+  productGeneratedBarcodes    ProductGeneratedBarcode[]
   marketingProductPages       MarketingProductPage[]
   sales                       SaleRecord[]
   logs                        OperationLog[]
@@ -1085,6 +1088,103 @@ model ProductImportSession {
   phase       String   @default("AWAITING_DATA") // AWAITING_DATA | AWAITING_CONFIRM
   pendingRows String   @default("[]") // JSON — TgImportRow[]
   updatedAt   DateTime @default(now()) @updatedAt
+}
+
+model ProductBulkImportJob {
+  id                  String    @id @default(cuid())
+  tenantId            String
+  sourceFileName      String    @db.VarChar(255)
+  sourceMimeType      String    @db.VarChar(127)
+  sourceFormat        String    @db.VarChar(16)
+  sourceFileSize      Int
+  sourceFileHash      String?   @db.Char(64)
+  stagingStorageKey   String    @unique @db.VarChar(512)
+  status              String    @default("AWAITING_UPLOAD") @db.VarChar(32)
+  version             Int       @default(0)
+  analysisRevision    Int       @default(0)
+  totalRowCount       Int       @default(0)
+  analyzedRowCount    Int       @default(0)
+  readyRowCount       Int       @default(0)
+  invalidRowCount     Int       @default(0)
+  confirmedRowCount   Int       @default(0)
+  failedRowCount      Int       @default(0)
+  analyzeAttemptCount Int       @default(0)
+  confirmAttemptCount Int       @default(0)
+  cleanupAttemptCount Int       @default(0)
+  lastErrorCode       String?   @db.VarChar(64)
+  lastErrorMessage    String?   @db.Text
+  analysisMetadata    Json?
+  resultSummary       Json?
+  expiresAt           DateTime
+  analyzedAt          DateTime?
+  confirmedAt         DateTime?
+  completedAt         DateTime?
+  stagingCleanedAt    DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rows   ProductBulkImportRow[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, status, updatedAt])
+  @@index([tenantId, sourceFileHash])
+  @@index([expiresAt])
+}
+
+model ProductBulkImportRow {
+  id                      String    @id @default(cuid())
+  jobId                   String
+  tenantId                String
+  sourceOrdinal           Int
+  sourceSheetIndex        Int?
+  sourceSheetName         String?   @db.VarChar(255)
+  sourceRowNumber         Int?
+  sourcePageNumber        Int?
+  stableSourceRowIdentity String    @db.Char(64)
+  sourcePayload           Json
+  previewPayload          Json
+  validationIssues        Json
+  aiMetadata              Json?
+  assignedBarcode         String?
+  barcodeOrigin           String?   @db.VarChar(16)
+  action                  String?   @db.VarChar(16)
+  imagePlan               Json?
+  imageResult             Json?
+  status                  String    @default("ANALYZED") @db.VarChar(32)
+  version                 Int       @default(0)
+  attemptCount            Int       @default(0)
+  lastErrorCode           String?   @db.VarChar(64)
+  lastErrorMessage        String?   @db.Text
+  confirmedAt             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  job    ProductBulkImportJob @relation(fields: [jobId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  tenant Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, sourceOrdinal])
+  @@unique([jobId, stableSourceRowIdentity])
+  @@index([jobId, status, id])
+  @@index([tenantId, status, updatedAt])
+}
+
+model ProductGeneratedBarcode {
+  id                      String    @id @default(cuid())
+  tenantId                String
+  sourceFileHash          String    @db.Char(64)
+  stableSourceRowIdentity String    @db.Char(64)
+  assignedBarcode         String    @db.VarChar(13)
+  reuseCount              Int       @default(0)
+  lastReusedAt            DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sourceFileHash, stableSourceRowIdentity])
+  @@unique([tenantId, assignedBarcode])
+  @@index([tenantId, sourceFileHash])
 }
 
 model CustomerOrder {

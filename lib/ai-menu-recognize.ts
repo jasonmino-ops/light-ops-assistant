@@ -10,10 +10,10 @@
  * 失败时抛出 Error，message 字段为可读错误码。
  */
 
-const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-haiku-4-5-20251001'
+import { productImportAiConfig } from '@/lib/product-bulk-import/ai/config'
 
 export type AiMenuItem = {
+  sourceBox: [number, number, number, number]
   name: string
   category: string | null
   price: number | null
@@ -27,6 +27,7 @@ export type AiMenuItem = {
 const PROMPT = `你是菜单图片识别助手。请从图片中提取商品列表，输出严格 JSON 数组，**不要任何 markdown 标记，不要任何解释文本，只输出 JSON**。
 
 每个商品对象字段：
+- sourceBox: 商品在原图中的边界框 [left, top, right, bottom]，坐标必须是 0..1000 的整数（必填）
 - name: 商品名（必填，保留原图语言）
 - category: 推断的分类（如「饮料」「主食」「凉菜」「炒菜」），不能推断填 null
 - price: 单价数字（按图中数值原样填，不做任何换算），不能确定填 null
@@ -52,20 +53,19 @@ export async function recognizeMenuImage(
   imageBase64: string,
   mediaType: string,
 ): Promise<AiMenuItem[]> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('AI_NOT_CONFIGURED')
+  const config = productImportAiConfig()
 
   let resp: Response
   try {
-    resp = await fetch(ANTHROPIC_API, {
+    resp = await fetch(config.baseUrl, {
       method: 'POST',
       headers: {
-        'x-api-key': apiKey,
+        'x-api-key': config.apiKey,
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: config.model,
         max_tokens: 4096,
         messages: [{
           role: 'user',
@@ -75,6 +75,7 @@ export async function recognizeMenuImage(
           ],
         }],
       }),
+      signal: AbortSignal.timeout(55_000),
     })
   } catch {
     throw new Error('AI_NETWORK_ERROR')
@@ -108,19 +109,40 @@ export async function recognizeMenuImage(
   }
   if (!Array.isArray(parsed)) throw new Error('AI_NOT_ARRAY')
 
-  const items: AiMenuItem[] = []
-  for (const raw of parsed) {
-    const it = normalize(raw)
-    if (it) items.push(it)
-  }
-  return items
+  return normalizeMenuItems(parsed)
 }
 
-function normalize(raw: unknown): AiMenuItem | null {
-  if (!raw || typeof raw !== 'object') return null
+export function normalizeMenuItems(parsed: unknown): AiMenuItem[] {
+  if (!Array.isArray(parsed)) throw new Error('AI_NOT_ARRAY')
+  const items = parsed.map(normalize)
+  const identities = new Set(items.map((item) => quantizedSourceBox(item.sourceBox).join(':')))
+  if (identities.size !== items.length) throw new Error('AI_SCHEMA_INVALID')
+  return items.sort((left, right) => (
+    left.sourceBox[1] - right.sourceBox[1]
+    || left.sourceBox[0] - right.sourceBox[0]
+    || left.sourceBox[3] - right.sourceBox[3]
+    || left.sourceBox[2] - right.sourceBox[2]
+  ))
+}
+
+export function quantizedSourceBox(sourceBox: AiMenuItem['sourceBox']): [number, number, number, number] {
+  return sourceBox.map((coordinate) => Math.round(coordinate / 10)) as [number, number, number, number]
+}
+
+function normalize(raw: unknown): AiMenuItem {
+  if (!raw || typeof raw !== 'object') throw new Error('AI_SCHEMA_INVALID')
   const o = raw as Record<string, unknown>
-  const name = typeof o.name === 'string' ? o.name.trim() : ''
-  if (!name) return null
+  const name = typeof o.name === 'string' ? o.name.slice(0, 500).trim() : ''
+  const sourceBox = Array.isArray(o.sourceBox) && o.sourceBox.length === 4
+    ? o.sourceBox.map(Number)
+    : []
+  if (
+    !name
+    || sourceBox.length !== 4
+    || sourceBox.some((coordinate) => !Number.isInteger(coordinate) || coordinate < 0 || coordinate > 1_000)
+    || sourceBox[2] <= sourceBox[0]
+    || sourceBox[3] <= sourceBox[1]
+  ) throw new Error('AI_SCHEMA_INVALID')
 
   const price =
     typeof o.price === 'number' && !isNaN(o.price) && o.price > 0
@@ -128,13 +150,14 @@ function normalize(raw: unknown): AiMenuItem | null {
       : null
 
   return {
+    sourceBox: sourceBox as [number, number, number, number],
     name,
-    category:    typeof o.category    === 'string' ? (o.category.trim()    || null) : null,
+    category:    typeof o.category    === 'string' ? (o.category.slice(0, 500).trim()    || null) : null,
     price,
-    currency:    typeof o.currency    === 'string' ? (o.currency.trim().toUpperCase() || null) : null,
-    unit:        typeof o.unit        === 'string' ? (o.unit.trim()        || null) : null,
-    description: typeof o.description === 'string' ? (o.description.trim() || null) : null,
+    currency:    typeof o.currency    === 'string' ? (o.currency.slice(0, 16).trim().toUpperCase() || null) : null,
+    unit:        typeof o.unit        === 'string' ? (o.unit.slice(0, 128).trim()        || null) : null,
+    description: typeof o.description === 'string' ? (o.description.slice(0, 2_000).trim() || null) : null,
     confidence:  typeof o.confidence  === 'number' ? Math.max(0, Math.min(1, o.confidence)) : 0.5,
-    warnings:    Array.isArray(o.warnings) ? o.warnings.filter((w): w is string => typeof w === 'string') : [],
+    warnings:    Array.isArray(o.warnings) ? o.warnings.filter((w): w is string => typeof w === 'string').map((warning) => warning.slice(0, 300)).slice(0, 20) : [],
   }
 }
