@@ -8,7 +8,7 @@ assert.deepEqual(config, {
   $schema: 'https://openapi.vercel.sh/vercel.json',
   crons: [
     { path: '/api/cron/product-sales-daily', schedule: '10 17 * * *' },
-    { path: '/api/cron/product-import-staging-cleanup', schedule: '35 * * * *' },
+    { path: '/api/cron/product-import-staging-cleanup', schedule: '35 17 * * *' },
   ],
   git: { deploymentEnabled: {
     main: false,
