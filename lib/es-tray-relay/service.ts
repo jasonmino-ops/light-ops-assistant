@@ -1,6 +1,12 @@
 import { Prisma, type EshopTrayPrintJob } from '@prisma/client'
 import { createHash } from 'node:crypto'
-import { parseNetworkMode, parseNetworkRequest, type NetworkMode, type NetworkRequest } from '../../e-shop-tray/src/networkContract'
+import {
+  parseNetworkMode,
+  parseNetworkRequest,
+  type NetworkMode,
+  type NetworkRequest,
+  type NetworkSnapshot,
+} from '../../e-shop-tray/src/networkContract'
 import { prisma } from '@/lib/prisma'
 import {
   ES_TRAY_RELAY_SCHEMA_VERSION,
@@ -88,6 +94,54 @@ function storedRequest(job: Pick<EshopTrayPrintJob, 'schemaVersion' | 'payload' 
   } catch {
     throw new RelayServiceError('ES_TRAY_02_STORED_PAYLOAD_INVALID', 500)
   }
+}
+
+function cashierNetworkRoleIdempotencyKey(orderNo: string, role: 'FRONT' | 'KITCHEN') {
+  const key = createHash('sha256').update(`cashier-network-v2:${orderNo}:${role}`).digest('hex')
+  return `network:${key}`
+}
+
+function sameNetworkItem(
+  front: NetworkSnapshot['items'][number],
+  kitchen: NetworkSnapshot['items'][number],
+) {
+  return front.name === kitchen.name
+    && front.spec === kitchen.spec
+    && front.qty === kitchen.qty
+    && front.price === kitchen.price
+    && front.lineAmount === kitchen.lineAmount
+}
+
+function isOrderedNetworkItemSubset(
+  frontItems: NetworkSnapshot['items'],
+  kitchenItems: NetworkSnapshot['items'],
+) {
+  let frontIndex = 0
+  return kitchenItems.every((kitchenItem) => {
+    while (frontIndex < frontItems.length && !sameNetworkItem(frontItems[frontIndex], kitchenItem)) {
+      frontIndex += 1
+    }
+    if (frontIndex === frontItems.length) return false
+    frontIndex += 1
+    return true
+  })
+}
+
+function isValidKitchenDependency(front: NetworkRequest, kitchen: NetworkRequest) {
+  return front.mode === 'SHARED_PRINTER'
+    && front.role === 'FRONT'
+    && kitchen.mode === 'SHARED_PRINTER'
+    && kitchen.role === 'KITCHEN'
+    && front.order.storeCode === kitchen.order.storeCode
+    && front.order.storeName === kitchen.order.storeName
+    && front.order.orderNo === kitchen.order.orderNo
+    && front.order.createdAt === kitchen.order.createdAt
+    && front.order.cashierName === kitchen.order.cashierName
+    && front.order.paymentMethod === kitchen.order.paymentMethod
+    && front.order.currencyCode === kitchen.order.currencyCode
+    && front.order.totalAmount === kitchen.order.totalAmount
+    && front.order.lang === kitchen.order.lang
+    && isOrderedNetworkItemSubset(front.order.items, kitchen.order.items)
 }
 
 export async function enqueueRelayPrintJob(
@@ -461,11 +515,11 @@ export async function claimNextRelayPrintJob(
     }
 
     if ('profile' in request && request.role === 'KITCHEN') {
-      const frontKey = createHash('sha256').update(`cashier-network-v2:${request.order.orderNo}:FRONT`).digest('hex')
+      const frontKey = cashierNetworkRoleIdempotencyKey(request.order.orderNo, 'FRONT')
       const front = await tx.eshopTrayPrintJob.findUnique({
         where: {
           tenantId_storeId_idempotencyKey: {
-            tenantId: scope.tenantId, storeId: scope.storeId, idempotencyKey: `network:${frontKey}`,
+            tenantId: scope.tenantId, storeId: scope.storeId, idempotencyKey: frontKey,
           },
         },
       })
@@ -473,9 +527,12 @@ export async function claimNextRelayPrintJob(
       if (front?.schemaVersion === 2) {
         try {
           const prior = storedRequest(front)
-          validFront = 'profile' in prior && prior.mode === 'SHARED_PRINTER'
-            && prior.role === 'FRONT' && prior.order.orderNo === request.order.orderNo
-            && JSON.stringify(prior.order) === JSON.stringify(request.order)
+          validFront = 'profile' in prior
+            && front.idempotencyKey === prior.requestId
+            && candidate.idempotencyKey === request.requestId
+            && prior.requestId === frontKey
+            && request.requestId === cashierNetworkRoleIdempotencyKey(request.order.orderNo, 'KITCHEN')
+            && isValidKitchenDependency(prior, request)
         } catch { /* An invalid dependency cannot authorize kitchen bytes. */ }
       }
       if (!validFront || !front || front.status === 'FAILED' || front.status === 'EXPIRED') {
