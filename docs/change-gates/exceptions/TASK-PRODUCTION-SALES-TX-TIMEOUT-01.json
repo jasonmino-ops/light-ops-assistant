@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "taskId": "TASK-PRODUCTION-SALES-TX-TIMEOUT-01",
+  "featureBranch": "codex/prod-sales-tx-timeout-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "9ce44d0a7fc1ef61686b55fb2d52c398f6a98d14",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/api/sales/route.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/api/sales/route.ts": "8caabb556c26458fb632d7bbcd745d2e11e4de349c71403797cfb72b08162117"
+  },
+  "createdAt": "2026-09-14T17:36:37Z",
+  "approvedAt": "2026-09-14T17:36:37Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Founder instruction in this task conversation",
+    "statement": "批准当前最小 incident fix；授权按仓库既有流程注册 task-scoped ACTIVE exact-hash exception。",
+    "scopeStatement": "Only app/api/sales/route.ts at the exact approved SHA-256 is authorized; candidate push and Production deployment remain unapproved."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the independently reviewed local incident fix that reduces the eight-line /api/sales interactive transaction from 25 sequential database operations to 4 fixed database operations while preserving SaleRecord, OperationLog and PaymentIntent atomicity. This exception does not authorize candidate push, release, deployment, database changes, printing changes or Runtime changes.",
+  "createdOnBranch": "codex/prod-sales-tx-timeout-01-exception",
+  "allowedPurposes": [
+    "Batch the existing SaleRecord and OperationLog writes for /api/sales",
+    "Preserve the existing PaymentIntent write and full rollback semantics in the same transaction",
+    "Create a local-only clean verification commit and rerun the repository gates"
+  ],
+  "prohibitedChanges": [
+    "Transaction timeout increase",
+    "Database schema or migration changes",
+    "Kitchen routing, PrintJob, Network Contract, endpoint, renderer, transport or Runtime changes",
+    "Candidate push, release update or Production deployment"
+  ],
+  "expirationCondition": "Close this exception after the incident feature merge; retain the closed audit record with the actual feature merge SHA."
+}
