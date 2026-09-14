@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "lane": "INTEGRATION",
-  "expectedCount": 11,
+  "expectedCount": 12,
   "tests": [
     { "file": "tests/cashier-network-print-v01.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly isolated PostgreSQL test database and test secret.", "dependencyType": "POSTGRESQL", "evidence": "tests/cashier-network-print-v01.test.ts:20-24" },
     { "file": "tests/dashboard-print-settings-mobile.test.ts", "lane": "INTEGRATION", "reason": "Launches Chromium against a local dashboard UI service.", "dependencyType": "LOCAL_UI_BROWSER", "evidence": "tests/dashboard-print-settings-mobile.test.ts:2-4" },
@@ -13,6 +13,7 @@
     { "file": "tests/network-print-jobs-api.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly local light_ops_test PostgreSQL database and AUTH_SECRET.", "dependencyType": "POSTGRESQL", "evidence": "tests/network-print-jobs-api.test.ts:9-16" },
     { "file": "tests/product-bulk-import-integration.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly isolated local PostgreSQL database; Storage and Anthropic HTTP contracts are deterministic in-process fakes.", "dependencyType": "POSTGRESQL", "evidence": "tests/product-bulk-import-integration.test.ts:23-28" },
     { "file": "tests/product-sales-browser.test.ts", "lane": "INTEGRATION", "reason": "Launches Chromium against a local built application.", "dependencyType": "LOCAL_UI_BROWSER", "evidence": "tests/product-sales-browser.test.ts:9-12" },
-    { "file": "tests/product-sales-image-browser.test.ts", "lane": "INTEGRATION", "reason": "Runs real Chromium and html2canvas against a local built application.", "dependencyType": "LOCAL_UI_BROWSER", "evidence": "tests/product-sales-image-browser.test.ts:11-14" }
+    { "file": "tests/product-sales-image-browser.test.ts", "lane": "INTEGRATION", "reason": "Runs real Chromium and html2canvas against a local built application.", "dependencyType": "LOCAL_UI_BROWSER", "evidence": "tests/product-sales-image-browser.test.ts:11-14" },
+    { "file": "tests/sales-transaction-timeout-integration.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly isolated localhost PostgreSQL database and installs temporary per-test triggers for transaction timing and rollback evidence.", "dependencyType": "POSTGRESQL", "evidence": "tests/sales-transaction-timeout-integration.test.ts:5-12" }
   ]
 }
