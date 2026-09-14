@@ -6,7 +6,7 @@
   "baseOriginMainSha": "f89384e60f967423ac0739bd7711e7106fdd789b",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "authorizedPaths": [
     "app/api/cashier/sales/route.ts",
     "app/cashier/page.tsx",
@@ -22,6 +22,8 @@
   "createdAt": "2026-09-14T09:42:39Z",
   "approvedAt": "2026-09-14T09:42:39Z",
   "approvedBy": "Founder",
+  "closedAt": "2026-09-14T11:27:34Z",
+  "featureMergeCommitSha": "bc7db987ee0220799112b23d15ddc5fd0e32c428",
   "approvalSource": {
     "source": "Explicit Founder Decision APPROVE OPTION 1 in the ES-PRINT-KITCHEN-ITEM-ROUTING-01 task conversation",
     "statement": "Founder approved exactly four protected candidate paths and their sealed SHA-256 values, authorized the governance-only registration commit, branch push and main merge, and prohibited any authorized-path expansion or byte drift. Feature push or merge, Preview or Production deployment, migrate:prod, Production migration, DDL, backfill, database write, FIELD VERIFIED, FINAL FROZEN and Closure remain unauthorized.",
