@@ -57,6 +57,18 @@ export async function POST(req: NextRequest) {
 
 type CartItem = { barcode: string; quantity: number }
 
+function recordNoAtOffset(firstRecordNo: string, offset: number) {
+  if (offset === 0) return firstRecordNo
+
+  const separatorIndex = firstRecordNo.lastIndexOf('-')
+  const firstSequence = Number(firstRecordNo.slice(separatorIndex + 1))
+  if (separatorIndex < 0 || !Number.isSafeInteger(firstSequence)) {
+    throw new Error('INVALID_GENERATED_RECORD_NO')
+  }
+
+  return `${firstRecordNo.slice(0, separatorIndex + 1)}${String(firstSequence + offset).padStart(4, '0')}`
+}
+
 async function handleSale(
   ctx: { tenantId: string; userId: string; storeId: string },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,62 +151,64 @@ async function handleSale(
     khqrConfig = cfg
   }
 
+  let totalAmount = 0
+  const saleLines = items.map((it) => {
+    const product = productMap.get(it.barcode)!
+    const quantity = Number(it.quantity)
+    const lineAmount = product.sellPrice.mul(quantity)
+    totalAmount += lineAmount.toNumber()
+    return { product, quantity, lineAmount }
+  })
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       // 生成第一条记录号，同时用作整单的 orderNo
       const orderNo = await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
 
-      let totalAmount = 0
-      let firstCreatedAt: Date | null = null
-      let isFirst = true
+      const saleRecordData = saleLines.map(({ product, quantity, lineAmount }, index) => ({
+        tenantId: ctx.tenantId,
+        storeId: ctx.storeId,
+        operatorUserId: ctx.userId,
+        recordNo: recordNoAtOffset(orderNo, index),
+        orderNo,
+        saleType: 'SALE' as const,
+        status: 'COMPLETED' as const,
+        productId: product.id,
+        barcode: product.barcode,
+        productNameSnapshot: product.name,
+        specSnapshot: product.spec ?? null,
+        unitPrice: product.sellPrice,
+        quantity,
+        lineAmount,
+      }))
 
-      for (const it of items) {
-        const product = productMap.get(it.barcode)!
-        const qty = Number(it.quantity)
-        const lineAmount = product.sellPrice.mul(qty)
-        totalAmount += lineAmount.toNumber()
+      const records = await tx.saleRecord.createManyAndReturn({
+        data: saleRecordData,
+        select: { id: true, recordNo: true, createdAt: true },
+      })
+      const recordsByRecordNo = new Map(records.map((record) => [record.recordNo, record]))
+      const firstRecord = recordsByRecordNo.get(orderNo)
+      if (!firstRecord || records.length !== saleRecordData.length) {
+        throw new Error('SALE_RECORD_BATCH_RESULT_MISMATCH')
+      }
 
-        // 第一件商品复用 orderNo 作为 recordNo；后续各自生成新 recordNo
-        const recordNo = isFirst
-          ? orderNo
-          : await generateRecordNo(tx, 'S', ctx.tenantId, ctx.storeId, store.code)
-        isFirst = false
-
-        const record = await tx.saleRecord.create({
-          data: {
-            tenantId: ctx.tenantId,
-            storeId: ctx.storeId,
-            operatorUserId: ctx.userId,
-            recordNo,
-            orderNo,
-            saleType: 'SALE',
-            status: 'COMPLETED',
-            productId: product.id,
-            barcode: product.barcode,
-            productNameSnapshot: product.name,
-            specSnapshot: product.spec ?? null,
-            unitPrice: product.sellPrice,
-            quantity: qty,
-            lineAmount,
-          },
-        })
-
-        if (!firstCreatedAt) firstCreatedAt = record.createdAt
-
-        await tx.operationLog.create({
-          data: {
+      await tx.operationLog.createMany({
+        data: saleRecordData.map(({ recordNo }) => {
+          const record = recordsByRecordNo.get(recordNo)
+          if (!record) throw new Error('SALE_RECORD_BATCH_RESULT_MISMATCH')
+          return {
             tenantId: ctx.tenantId,
             storeId: ctx.storeId,
             userId: ctx.userId,
             actionType: 'CREATE_SALE',
             targetType: 'SaleRecord',
             targetId: record.id,
-            status: 'SUCCESS',
+            status: 'SUCCESS' as const,
             message: `Sale line created: ${recordNo} (order ${orderNo})`,
             saleRecordId: record.id,
-          },
-        })
-      }
+          }
+        }),
+      })
 
       const khqrPayload = paymentMethod === 'KHQR' && khqrConfig
         ? generateKhqrPayload({ amount: totalAmount, orderNo, config: khqrConfig })
@@ -220,7 +234,7 @@ async function handleSale(
         orderNo,
         totalAmount,
         itemCount: items.length,
-        createdAt: firstCreatedAt!.toISOString(),
+        createdAt: firstRecord.createdAt.toISOString(),
         paymentMethod,
         paymentIntentId: pi.id,
         khqrPayload,
