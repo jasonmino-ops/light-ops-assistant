@@ -6,7 +6,10 @@
   "baseOriginMainSha": "9ce44d0a7fc1ef61686b55fb2d52c398f6a98d14",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-09-14T17:44:15Z",
+  "featureMergeCommitSha": "88857da131ddfdd59bfd61c6b4794102b9cf3d5d",
+  "closureReason": "Closed immediately after the exact reviewed incident candidate was integrated into main. The historical exact path and SHA-256 remain audit evidence and cannot authorize later changes.",
   "authorizedPaths": [
     "app/api/sales/route.ts"
   ],
