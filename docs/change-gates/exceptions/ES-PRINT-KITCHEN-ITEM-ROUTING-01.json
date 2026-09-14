@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "taskId": "ES-PRINT-KITCHEN-ITEM-ROUTING-01",
+  "featureBranch": "codex/es-print-kitchen-item-routing-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "f89384e60f967423ac0739bd7711e7106fdd789b",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/api/cashier/sales/route.ts",
+    "app/cashier/page.tsx",
+    "prisma/schema.prisma",
+    "prisma/migrations/20260914143000_add_kitchen_item_routing/migration.sql"
+  ],
+  "authorizedPathSha256": {
+    "app/api/cashier/sales/route.ts": "0084ce727063aedb70bd9cf8b38b99c103696c88bc16546051403d6df27b493e",
+    "app/cashier/page.tsx": "e3cf668531d844bb766924eeb877b01ab6bffa78f1615701cc8d8e788142b0a7",
+    "prisma/schema.prisma": "0184b381526d9fce4841087bac674da49041f87c7e8f4ad00f8685f2d395f601",
+    "prisma/migrations/20260914143000_add_kitchen_item_routing/migration.sql": "d9035aa3311857637437d689b35266d14786731141aa0199fe8a4d2a0030dc46"
+  },
+  "createdAt": "2026-09-14T09:42:39Z",
+  "approvedAt": "2026-09-14T09:42:39Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder Decision APPROVE OPTION 1 in the ES-PRINT-KITCHEN-ITEM-ROUTING-01 task conversation",
+    "statement": "Founder approved exactly four protected candidate paths and their sealed SHA-256 values, authorized the governance-only registration commit, branch push and main merge, and prohibited any authorized-path expansion or byte drift. Feature push or merge, Preview or Production deployment, migrate:prod, Production migration, DDL, backfill, database write, FIELD VERIFIED, FINAL FROZEN and Closure remain unauthorized.",
+    "approvedAtMeaning": "Registration time of the exact Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the reviewed Network kitchen item routing V0.1 candidate bytes needed to read the existing Store gate, preserve the full FRONT order, filter KITCHEN items by the tenant-level Product flag, suppress a zero-item KITCHEN request before parsing while retaining SHARED_PRINTER mode, and add the two exact additive Prisma columns. NETWORK_SCHEMA, NetworkSnapshot items, Tray endpoints/runtime/renderer/transport/claim/lease, Device Onboarding, Browser/QZ/USB and all other protected paths remain unchanged. Any protected byte change requires a new seal, independent review and Founder approval. This exception does not authorize any Production action.",
+  "createdOnBranch": "codex/es-print-kitchen-item-routing-01-scope-exception",
+  "sourceDraft": {
+    "baseOriginMainSha": "f89384e60f967423ac0739bd7711e7106fdd789b",
+    "manifestPath": ".task-state/ES-PRINT-KITCHEN-ITEM-ROUTING-01-sealed/manifest.json",
+    "manifestSha256": "05c49bbc65aba3c924f92bd48a98af14ed42ce6f3b7d8ee7dc6a383ae5dda907",
+    "protectedPatchPath": ".task-state/ES-PRINT-KITCHEN-ITEM-ROUTING-01-sealed/protected-files.patch",
+    "protectedPatchSha256": "553e905afe731508b3b897990ceb2b5039d9f03d0609ade105d2ce299ca805d0",
+    "fileCount": 4
+  }
+}
