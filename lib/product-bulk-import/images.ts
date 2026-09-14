@@ -11,6 +11,7 @@ const MAX_INPUT_IMAGE_BYTES = 12 * 1024 * 1024
 const MAX_OUTPUT_IMAGE_BYTES = 3 * 1024 * 1024
 const EXTERNAL_IMAGE_TOTAL_TIMEOUT_MS = 25_000
 const ALLOWED_OUTPUT_TYPES = new Set(['jpeg', 'png', 'webp', 'gif', 'tiff', 'avif'])
+const AMBIGUOUS_LEGACY_IMAGE_CONTENT_TYPES = new Set(['application/octet-stream', 'text/plain'])
 
 export type NormalizedImportImage = {
   buffer: Buffer
@@ -225,8 +226,17 @@ async function downloadExternalImageUsing(
       continue
     }
     if (response.status < 200 || response.status >= 300) throw new Error(`EXTERNAL_IMAGE_HTTP_${response.status}`)
-    const contentType = response.headers['content-type']?.toLowerCase() ?? ''
-    if (contentType && !contentType.startsWith('image/')) throw new Error('EXTERNAL_IMAGE_CONTENT_TYPE_INVALID')
+    const contentType = response.headers['content-type']?.toLowerCase().split(';', 1)[0].trim() ?? ''
+    // Some legacy object stores (including the real CarGarden source) serve
+    // raster bytes as text/plain or application/octet-stream. These bounded
+    // bodies still go through fail-closed Sharp decoding before they can be
+    // previewed or uploaded; HTML and other declared document types remain
+    // rejected here.
+    if (
+      contentType
+      && !contentType.startsWith('image/')
+      && !AMBIGUOUS_LEGACY_IMAGE_CONTENT_TYPES.has(contentType)
+    ) throw new Error('EXTERNAL_IMAGE_CONTENT_TYPE_INVALID')
     if (response.body.length === 0) throw new Error('EXTERNAL_IMAGE_EMPTY')
     return response.body
   }

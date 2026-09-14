@@ -102,6 +102,17 @@ async function main() {
   assert.equal(irregularResult.rows[0].product.barcode, null)
   assert.ok(irregularResult.warnings.some((warning) => warning.code === 'SHEET_SKIPPED' && warning.message.includes('说明')))
 
+  const externalImages = parseSpreadsheetBuffer(workbookBuffer([{ name: 'Products', rows: [
+    ['中文名', '售价', '状态', '图片地址'],
+    ['外链图片商品', 6.5, 'ON', 'https://images.example/product.jpg'],
+    ['停用外链图片商品', 7.5, 'OFF', 'https://images.example/disabled.jpg'],
+  ] }]), 'XLSX')
+  assert.equal(externalImages.rows.length, 2)
+  assert.equal(externalImages.rows[0].images[0].kind, 'EXTERNAL_URL')
+  assert.equal(externalImages.rows[0].issues.some((issue) => issue.code === 'UNSUPPORTED_IMAGE_FORMAT'), false)
+  assert.equal(externalImages.rows[0].product.status, 'ACTIVE')
+  assert.equal(externalImages.rows[1].product.status, 'DISABLED')
+
   const offsetBook = XLSX.utils.book_new()
   const offsetSheet = XLSX.utils.aoa_to_sheet([])
   XLSX.utils.sheet_add_aoa(offsetSheet, [
@@ -171,6 +182,18 @@ async function main() {
     '2001:db8::1', '2002:c0a8:101::1', '3fff::1',
   ]) assert.equal(isPublicImageAddress(address), false, `${address} must not be fetched by the server`)
   await assert.rejects(() => downloadExternalImage('http://localhost/image.png'), /HOST_NOT_ALLOWED/)
+  const mislabeledLegacyImage = await testExternalImageDeadline('https://images.example/legacy', 100, {
+    resolve: async (rawUrl) => ({ url: new URL(rawUrl), address: '8.8.8.8', family: 4 }),
+    request: async () => ({ status: 200, headers: { 'content-type': 'text/plain; charset=binary' }, body: rawImage }),
+  })
+  assert.equal((await normalizeImportImage(mislabeledLegacyImage)).contentType, 'image/webp')
+  await assert.rejects(
+    () => testExternalImageDeadline('https://images.example/not-image', 100, {
+      resolve: async (rawUrl) => ({ url: new URL(rawUrl), address: '8.8.8.8', family: 4 }),
+      request: async () => ({ status: 200, headers: { 'content-type': 'text/html' }, body: Buffer.from('<html></html>') }),
+    }),
+    /EXTERNAL_IMAGE_CONTENT_TYPE_INVALID/,
+  )
   const slowRedirectStarted = Date.now()
   await assert.rejects(
     () => testExternalImageDeadline('https://images.example/start', 35, {

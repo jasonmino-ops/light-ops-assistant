@@ -367,6 +367,10 @@ function parsePrice(value: string): number {
 }
 
 function unsupportedImageIssue(candidate: ProductImportImageCandidate): ProductImportIssue | null {
+  // External URLs do not have a trusted media type until the bounded fetch and
+  // Sharp decode performed during Analyze. A null media type here is expected,
+  // not evidence of an unsupported embedded Office object.
+  if (candidate.kind === 'EXTERNAL_URL') return null
   if (candidate.mediaType && !['image/emf', 'image/wmf'].includes(candidate.mediaType)) return null
   return {
     code: 'UNSUPPORTED_IMAGE_FORMAT',
@@ -524,6 +528,7 @@ export function parseSpreadsheetBuffer(
       }
 
       const statusText = get('status').trim().toUpperCase()
+      const disabled = ['DISABLED', 'INACTIVE', 'OFF'].includes(statusText)
       rows.push({
         sourceOrdinal,
         stableSourceRowIdentity: stableRowIdentity(['spreadsheet-row-v1', inspection.sheetIndex, rowNumber]),
@@ -541,7 +546,7 @@ export function parseSpreadsheetBuffer(
           descKm: optional(get('descKm')),
           spec: optional(get('spec')),
           sellPrice,
-          status: statusText === 'DISABLED' ? 'DISABLED' : 'ACTIVE',
+          status: disabled ? 'DISABLED' : 'ACTIVE',
           statusProvided: !!statusText,
           category1: optional(get('category1')),
           category2: optional(get('category2')),
