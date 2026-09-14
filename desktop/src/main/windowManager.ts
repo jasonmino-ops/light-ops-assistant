@@ -144,6 +144,7 @@ export class WindowManager {
 
   private saveEmployeeState() {
     if (!this.employeeWindow || this.employeeWindow.isDestroyed()) return
+    if (this.employeeWindow.isFullScreen()) return
     try {
       const b = this.employeeWindow.getBounds()
       writeFileSync(this.employeeStatePath(), JSON.stringify(b), 'utf8')
@@ -183,6 +184,17 @@ export class WindowManager {
     this.roleByWebContentsId.set(win.webContents.id, 'employee')
     this.hardenWebContents(win, 'employee')
     updateHealth({ employeeWindow: 'starting' }, 'employee-window.creating')
+
+    if (getConfig().autoFullscreen) {
+      try {
+        win.setFullScreen(true)
+        logger.info('employee-window.auto-fullscreen-entered')
+      } catch (error) {
+        recordHealthError('employee-window', `auto fullscreen failed: ${String(error)}`)
+      }
+    } else {
+      logger.info('employee-window.auto-fullscreen-skipped', { reason: 'temporary-environment-opt-out' })
+    }
 
     win.loadURL(employeeUrl()).catch((error) => {
       recordHealthError('employee-window', `loadURL failed: ${String(error)}`)
