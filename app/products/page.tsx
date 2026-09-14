@@ -101,6 +101,7 @@ type Product = {
   discountPrice: number | null
   discountEnabled: boolean
   isRecommended: boolean
+  printKitchenTicket: boolean
   status: 'ACTIVE' | 'DISABLED'
   categoryId: string | null
   imageUrl: string | null
@@ -221,6 +222,7 @@ type AiMatchedProduct = {
   name: string
   spec: string | null
   price: number
+  printKitchenTicket: boolean
   imageUrl: string | null
   categoryId: string | null
   status: 'ACTIVE' | 'DISABLED'
@@ -326,6 +328,7 @@ export default function ProductsPage() {
   const [editDiscountPrice, setEditDiscountPrice] = useState('')
   const [editDiscountEnabled, setEditDiscountEnabled] = useState(false)
   const [editIsRecommended, setEditIsRecommended] = useState(false)
+  const [editPrintKitchenTicket, setEditPrintKitchenTicket] = useState(true)
   const [editStatus, setEditStatus] = useState<'ACTIVE' | 'DISABLED'>('ACTIVE')
   const [editCategoryId, setEditCategoryId] = useState<string>('')
 
@@ -337,6 +340,7 @@ export default function ProductsPage() {
   const [newDiscountPrice, setNewDiscountPrice] = useState('')
   const [newDiscountEnabled, setNewDiscountEnabled] = useState(false)
   const [newIsRecommended, setNewIsRecommended] = useState(false)
+  const [newPrintKitchenTicket, setNewPrintKitchenTicket] = useState(true)
   const [newCategoryId, setNewCategoryId] = useState<string>('')
   const [newImageFile, setNewImageFile] = useState<File | null>(null)
   const [newImagePreview, setNewImagePreview] = useState<string | null>(null)
@@ -1325,6 +1329,7 @@ export default function ProductsPage() {
     setNewDiscountPrice('')
     setNewDiscountEnabled(false)
     setNewIsRecommended(false)
+    setNewPrintKitchenTicket(true)
     setNewCategoryId('')
     clearNewImage()
     setMode('idle')
@@ -1390,6 +1395,7 @@ export default function ProductsPage() {
         setNewDiscountPrice('')
         setNewDiscountEnabled(false)
         setNewIsRecommended(false)
+        setNewPrintKitchenTicket(true)
         setNewCategoryId(draft.categoryId ?? '')
         if (photoCreatePreview) {
           setNewImageFiles([photoCreateFile])
@@ -1432,6 +1438,7 @@ export default function ProductsPage() {
       discountPrice: null,
       discountEnabled: false,
       isRecommended: false,
+      printKitchenTicket: match.printKitchenTicket,
       status: match.status,
       categoryId: match.categoryId,
       imageUrl: match.imageUrl,
@@ -1445,6 +1452,7 @@ export default function ProductsPage() {
     setEditDiscountPrice(next.discountPrice == null ? '' : String(next.discountPrice))
     setEditDiscountEnabled(next.discountEnabled)
     setEditIsRecommended(next.isRecommended)
+    setEditPrintKitchenTicket(next.printKitchenTicket)
     setEditStatus(next.status)
     setEditCategoryId(next.categoryId ?? '')
     setMode('found')
@@ -1569,6 +1577,7 @@ export default function ProductsPage() {
     setNewDiscountPrice('')
     setNewDiscountEnabled(false)
     setNewIsRecommended(false)
+    setNewPrintKitchenTicket(true)
     setNewCategoryId('')
     clearNewImage()
     setProduct(null)
@@ -1715,6 +1724,7 @@ export default function ProductsPage() {
         setEditDiscountPrice(p.discountPrice == null ? '' : String(p.discountPrice))
         setEditDiscountEnabled(p.discountEnabled)
         setEditIsRecommended(p.isRecommended)
+        setEditPrintKitchenTicket(p.printKitchenTicket)
         setEditStatus(p.status)
         setEditCategoryId(p.categoryId ?? '')
         setMode('found')
@@ -1732,6 +1742,7 @@ export default function ProductsPage() {
           setNewDiscountPrice('')
           setNewDiscountEnabled(false)
           setNewIsRecommended(false)
+          setNewPrintKitchenTicket(true)
           setMode('not-found')
           blockHidBriefly()
           setHidMsg({ type: 'fail', text: fmt('products.hidNotFound', { barcode: b }) })
@@ -1826,6 +1837,7 @@ export default function ProductsPage() {
             discountPrice,
             discountEnabled: editDiscountEnabled,
             isRecommended: editIsRecommended,
+            printKitchenTicket: editPrintKitchenTicket,
             status: editStatus,
             categoryId: editCategoryId || null,
           }),
@@ -1872,6 +1884,7 @@ export default function ProductsPage() {
             discountPrice,
             discountEnabled: newDiscountEnabled,
             isRecommended: newIsRecommended,
+            printKitchenTicket: newPrintKitchenTicket,
             categoryId: newCategoryId || null,
           }),
         },
@@ -1901,6 +1914,7 @@ export default function ProductsPage() {
         setEditDiscountPrice(created.discountPrice == null ? '' : String(created.discountPrice))
         setEditDiscountEnabled(created.discountEnabled)
         setEditIsRecommended(created.isRecommended)
+        setEditPrintKitchenTicket(created.printKitchenTicket)
         setEditStatus(created.status)
         setEditCategoryId(created.categoryId ?? '')
         clearNewImage()
@@ -2218,6 +2232,11 @@ export default function ProductsPage() {
                       label={t('products.fieldRecommended')}
                       checked={newIsRecommended}
                       onChange={setNewIsRecommended}
+                    />
+                    <BooleanAttributeField
+                      label={t('products.fieldPrintKitchenTicket')}
+                      checked={newPrintKitchenTicket}
+                      onChange={setNewPrintKitchenTicket}
                     />
                     <div style={s.aiDraftStatusLine}>{t('products.aiCreateStatusHint')}</div>
                     <button
@@ -3323,6 +3342,11 @@ export default function ProductsPage() {
                   checked={editIsRecommended}
                   onChange={setEditIsRecommended}
                 />
+                <BooleanAttributeField
+                  label={t('products.fieldPrintKitchenTicket')}
+                  checked={editPrintKitchenTicket}
+                  onChange={setEditPrintKitchenTicket}
+                />
 
                 <Field label={t('products.fieldCategory')}>
                   <CategorySelect
@@ -3493,6 +3517,11 @@ export default function ProductsPage() {
                   label={t('products.fieldRecommended')}
                   checked={newIsRecommended}
                   onChange={setNewIsRecommended}
+                />
+                <BooleanAttributeField
+                  label={t('products.fieldPrintKitchenTicket')}
+                  checked={newPrintKitchenTicket}
+                  onChange={setNewPrintKitchenTicket}
                 />
 
                 <Field label={t('products.fieldCategory')}>

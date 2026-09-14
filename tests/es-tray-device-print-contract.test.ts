@@ -449,15 +449,13 @@ async function main() {
     assert.doesNotMatch(component.slice(catchStart, catchEnd), /openExistingBrowserPrint|window\.print|qz/i)
   })
 
-  await test('the existing cashier page remains byte-identical to its exact governance approval', () => {
-    // ES-PRINT-NETWORK-FIRST-01 R3: Founder approved the R2-reviewed Network V0.1
-    // Cashier bytes (plan B). This does not amend the historical A11.2 authorization.
-    // 2026-09-10: Founder approved this single-hash alignment to the exact Cashier
-    // bytes registered by ES-CASHIER-CASH-NUMPAD-01 (CLOSED), feature a06831656697bc545ecef3d8d4821e9b6b7f6d11,
-    // merged by 21480d8467ed48cdeddecd95ae041ea50d5accfc. Historical approvals remain unchanged.
+  await test('the cashier page remains byte-identical to its latest exact governance approval', () => {
+    // ES-PRINT-KITCHEN-ITEM-ROUTING-01: Founder approved these exact Cashier bytes
+    // and registered them in the ACTIVE PRE_COMMIT_CONTENT_SHA256 exception.
+    // This updates only the latest-byte regression target; historical approvals remain unchanged.
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      'fb4dca2530a8a99bd41ed2eb0c36b8a6c3255b47be92427fa0201066f020a825',
+      'e3cf668531d844bb766924eeb877b01ab6bffa78f1615701cc8d8e788142b0a7',
     )
   })
 

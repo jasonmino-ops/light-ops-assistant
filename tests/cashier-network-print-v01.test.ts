@@ -12,6 +12,7 @@ import { POST as receive, GET as queueState } from '../app/api/es-tray-02/print-
 import { POST as executing } from '../app/api/es-tray-02/print-jobs/[jobId]/executing/route'
 import { POST as result } from '../app/api/es-tray-02/print-jobs/[jobId]/result/route'
 import { enqueueCashierNetworkJobs } from '../lib/es-tray-relay/cashier-network-producer'
+import { parseConfirmedCashierNetworkRoles } from '../lib/es-tray-relay/cashier-network-confirmation'
 import { enqueueRelayPrintJob, claimNextRelayPrintJob, markRelayPrintJobExecuting, completeRelayPrintJob } from '../lib/es-tray-relay/service'
 import { parsePrintRequest } from '../lib/es-tray-relay/contract'
 import { readRelayTimingConfig } from '../lib/es-tray-relay/config'
@@ -30,7 +31,7 @@ const printing = (mode: NetworkMode = 'SHARED_PRINTER') => ({ profile: NETWORK_P
 async function fixture() {
   const tag = `NET${randomUUID().replaceAll('-', '').slice(0, 12)}`
   const tenant = await prisma.tenant.create({ data: { name: tag } }); tenants.push(tenant.id)
-  const store = await prisma.store.create({ data: { name: tag, code: tag, tenantId: tenant.id } })
+  const store = await prisma.store.create({ data: { name: tag, code: tag, tenantId: tenant.id, printKitchenTicket: true } })
   const user = await prisma.user.create({ data: { tenantId: tenant.id, username: tag, displayName: tag, role: 'STAFF' } })
   await prisma.userStoreRole.create({ data: { tenantId: tenant.id, storeId: store.id, userId: user.id, role: 'STAFF', status: 'ACTIVE' } })
   const product = await prisma.product.create({ data: { tenantId: tenant.id, barcode: tag, name: '网络打印测试', sellPrice: 2.5 } })
@@ -44,9 +45,13 @@ async function fixture() {
   } })
   const scope = { tenantId: tenant.id, storeId: store.id }
   const cookie = `auth-session=${signSession({ ...scope, userId: user.id, role: 'STAFF' })}`
-  const sale = (printIntent: unknown = printing(), paymentMethod = 'CASH') => new NextRequest('http://localhost/api/cashier/sales', {
+  const sale = (
+    printIntent: unknown = printing(),
+    paymentMethod = 'CASH',
+    saleItems: Array<{ barcode: string; quantity: number; sugar?: string }> = [{ barcode: product.barcode, quantity: 2 }],
+  ) => new NextRequest('http://localhost/api/cashier/sales', {
     method: 'POST', headers: { cookie, 'content-type': 'application/json' },
-    body: JSON.stringify({ storeCode: store.code, items: [{ barcode: product.barcode, quantity: 2 }],
+    body: JSON.stringify({ storeCode: store.code, items: saleItems,
       paymentMethod, manualPaymentConfirmed: paymentMethod === 'KHQR', ...(printIntent === null ? {} : { printing: printIntent }) }),
   })
   const agent = (path = 'receive', body?: unknown, version: 1 | 2 = 2) => new NextRequest(`http://localhost/api/es-tray-02/print-jobs/${path}`, {
@@ -198,6 +203,107 @@ async function run() {
     assert.ok(jobs.every(j => j.createdAt.toISOString() === parseNetworkRequest(j.payload).order.createdAt))
     assert.equal(parseNetworkRequest(jobs[0].payload).order.orderNo, sales[0].orderNo)
     assert.equal(parseNetworkRequest(jobs[0].payload).order.totalAmount, 5)
+  })
+  await test('SHARED_PRINTER routes mixed items while FRONT remains complete', async () => {
+    const f = await fixture()
+    const retail = await prisma.product.create({
+      data: {
+        tenantId: f.tenant.id, barcode: `${f.product.barcode}-OFF`, name: '瓶装水',
+        sellPrice: 1, printKitchenTicket: false,
+      },
+    })
+    const response = await sell(f.sale(printing(), 'CASH', [
+      { barcode: f.product.barcode, quantity: 2 },
+      { barcode: retail.barcode, quantity: 1 },
+    ]))
+    assert.equal(response.status, 201)
+    const responseBody = await response.json()
+    assert.equal(responseBody.printing.kitchenJobSuppressed, false)
+    assert.deepEqual(
+      parseConfirmedCashierNetworkRoles(responseBody.printing, 'SHARED_PRINTER'),
+      ['FRONT', 'KITCHEN'],
+    )
+    const jobs = await prisma.eshopTrayPrintJob.findMany({ where: f.scope })
+    assert.equal(jobs.length, 2)
+    const front = parseNetworkRequest(jobs.find((job) => parseNetworkRequest(job.payload).role === 'FRONT')!.payload)
+    const kitchen = parseNetworkRequest(jobs.find((job) => parseNetworkRequest(job.payload).role === 'KITCHEN')!.payload)
+    assert.deepEqual(front.order.items.map((item) => item.name), ['网络打印测试', '瓶装水'])
+    assert.deepEqual(kitchen.order.items.map((item) => item.name), ['网络打印测试'])
+    assert.equal(front.order.totalAmount, 6)
+    assert.equal(kitchen.order.totalAmount, 6)
+    assert.ok(jobs.every((job) => job.kitchenJobSuppressed === false))
+  })
+  await test('all kitchen-ineligible items suppress KITCHEN before parsing without rolling back sale', async () => {
+    const f = await fixture()
+    await prisma.product.update({ where: { id: f.product.id }, data: { printKitchenTicket: false } })
+    const response = await sell(f.sale())
+    assert.equal(response.status, 201)
+    const body = await response.json()
+    assert.deepEqual(body.printing.jobs.map((job: { role: string }) => job.role), ['FRONT'])
+    assert.equal(body.printing.kitchenJobSuppressed, true)
+    assert.deepEqual(parseConfirmedCashierNetworkRoles(body.printing, 'SHARED_PRINTER'), ['FRONT'])
+    assert.equal(await prisma.saleRecord.count({ where: f.scope }), 1)
+    assert.equal(await prisma.paymentIntent.count({ where: f.scope }), 1)
+    const jobs = await prisma.eshopTrayPrintJob.findMany({ where: f.scope })
+    assert.equal(jobs.length, 1)
+    const front = parseNetworkRequest(jobs[0].payload)
+    assert.equal(front.role, 'FRONT')
+    assert.equal(front.mode, 'SHARED_PRINTER')
+    assert.equal(front.order.items.length, 1)
+    assert.equal(jobs[0].kitchenJobSuppressed, true)
+    const claim = await receive(guarded(f, 'SHARED_PRINTER'))
+    assert.equal(claim.status, 200)
+    assert.equal((await claim.json()).job.request.role, 'FRONT')
+  })
+  await test('store kitchen switch off suppresses KITCHEN but keeps FRONT and sale successful', async () => {
+    const f = await fixture()
+    await prisma.store.update({ where: { id: f.store.id }, data: { printKitchenTicket: false } })
+    const response = await sell(f.sale())
+    assert.equal(response.status, 201)
+    const body = await response.json()
+    assert.equal(body.printing.kitchenJobSuppressed, true)
+    assert.deepEqual(parseConfirmedCashierNetworkRoles(body.printing, 'SHARED_PRINTER'), ['FRONT'])
+    const jobs = await prisma.eshopTrayPrintJob.findMany({ where: f.scope })
+    assert.equal(jobs.length, 1)
+    assert.equal(parseNetworkRequest(jobs[0].payload).role, 'FRONT')
+    assert.equal(parseNetworkRequest(jobs[0].payload).order.items.length, 1)
+    assert.equal(jobs[0].kitchenJobSuppressed, true)
+    assert.equal(await prisma.saleRecord.count({ where: f.scope }), 1)
+  })
+  await test('cashier confirmation requires an explicit suppression signal for a one-role SHARED result', async () => {
+    const base = {
+      profile: 'network-v2', mode: 'SHARED_PRINTER', state: 'QUEUED',
+      jobs: [{ role: 'FRONT', jobId: 'front-job' }],
+    }
+    assert.equal(parseConfirmedCashierNetworkRoles(base, 'SHARED_PRINTER'), null)
+    assert.deepEqual(
+      parseConfirmedCashierNetworkRoles({ ...base, kitchenJobSuppressed: true }, 'SHARED_PRINTER'),
+      ['FRONT'],
+    )
+    assert.equal(
+      parseConfirmedCashierNetworkRoles({ ...base, kitchenJobSuppressed: true }, 'FRONT_ONLY'),
+      null,
+    )
+    assert.equal(
+      parseConfirmedCashierNetworkRoles({ ...base, jobs: [{ role: 'FRONT' }, { role: 'KITCHEN' }] }, 'SHARED_PRINTER')?.join(','),
+      'FRONT,KITCHEN',
+    )
+  })
+  await test('suppression routing decision is idempotent and cannot later grow a KITCHEN job', async () => {
+    const f = await fixture()
+    const snapshot = {
+      storeCode: f.store.code, storeName: f.store.name, orderNo: `ROUTE-${randomUUID()}`,
+      createdAt: new Date().toISOString(), cashierName: 'Desktop POS', paymentMethod: 'CASH' as const,
+      currencyCode: 'USD', totalAmount: 2.5, lang: 'zh' as const,
+      items: [{ name: f.product.name, spec: null, qty: 1, price: 2.5, lineAmount: 2.5 }],
+    }
+    await prisma.$transaction((tx) => enqueueCashierNetworkJobs(tx, f.scope, snapshot, 'SHARED_PRINTER', []))
+    await prisma.$transaction((tx) => enqueueCashierNetworkJobs(tx, f.scope, snapshot, 'SHARED_PRINTER', []))
+    await assert.rejects(
+      prisma.$transaction((tx) => enqueueCashierNetworkJobs(tx, f.scope, snapshot, 'SHARED_PRINTER', snapshot.items)),
+      /NETWORK_KITCHEN_ROUTING_CONFLICT/,
+    )
+    assert.equal(await prisma.eshopTrayPrintJob.count({ where: f.scope }), 1)
   })
   await test('FRONT_ONLY transaction creates one FRONT and no KITCHEN, including on response loss', async () => {
     const f = await queuedFixture('FRONT_ONLY')
@@ -474,6 +580,7 @@ async function run() {
     assert.match(source, /get\('networkMode'\)/)
     assert.match(source, /networkMode !== 'FRONT_ONLY' && networkMode !== 'SHARED_PRINTER'/)
     assert.match(source, /mode: networkMode/)
+    assert.match(source, /parseConfirmedCashierNetworkRoles\(body\.printing, networkMode as NetworkMode\)/)
     assert.match(source, /saleResult\.networkPrintRoles\?\.join/)
     assert.doesNotMatch(source, /<div style=\{s\.modalSub\}>FRONT \/ KITCHEN —/)
   })

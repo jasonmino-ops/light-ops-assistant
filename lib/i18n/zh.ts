@@ -761,6 +761,7 @@ const zh = {
     fieldDiscountPrice: '折扣价',
     fieldDiscountEnabled: '开启折扣',
     fieldRecommended: '推荐商品',
+    fieldPrintKitchenTicket: '出厨房小票',
     discountPriceInvalid: '折扣价必须大于 0 且低于原售价',
     discountPriceRequired: '开启折扣前请填写折扣价',
     fieldStatus: '状态',

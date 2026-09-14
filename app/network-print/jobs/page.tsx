@@ -69,6 +69,9 @@ type JobsResponse = {
       orderNo: string; mode: string; expectedRoles: string[]; presentRoles: string[]
       missingRoles: string[]; firstCreatedAt: string; modeConflict: boolean
     }>
+    suppressedKitchenOrders: Array<{
+      orderNo: string; mode: string; presentRoles: string[]; firstCreatedAt: string
+    }>
     modeUndeterminedOrders: Array<{ orderNo: string; presentRoles: string[]; firstCreatedAt: string; reason: string }>
     duplicateJobs: Array<{ orderNo: string; role: string; jobIds: string[]; firstCreatedAt: string; count: number }>
     stuckJobs: Array<{
@@ -332,7 +335,7 @@ export default function NetworkPrintJobsPage() {
             <Stat title="② 漏单" value={data.anomalies.missingRoleOrders.length}
               detail={data.anomalies.modeUndeterminedOrders.length > 0
                 ? `另有 ${data.anomalies.modeUndeterminedOrders.length} 单无法判定`
-                : '按各单 payload 记录的打印模式判定'}
+                : `${data.anomalies.suppressedKitchenOrders.length} 单厨房票为合法抑制`}
               tone={data.anomalies.missingRoleOrders.length > 0 ? 'bad' : 'good'} />
             <Stat title="③ 重复" value={data.anomalies.duplicateJobs.length}
               detail="同一订单号 + role 出现多个任务"
@@ -380,8 +383,8 @@ export default function NetworkPrintJobsPage() {
             <div style={s.note}>
               判定依据：每个任务入队时把当笔销售的打印模式写进 payload.mode。
               「仅前台」（FRONT_ONLY）本来每单只出前台小票，只有 FRONT 属正常；
-              「前台+厨房」（SHARED_PRINTER）才要求 FRONT 与 KITCHEN 同时存在。
-              服务端不保存门店级模式，因此本页只用各单自己记录的模式，不做推测。
+              「前台+厨房」（SHARED_PRINTER）通常要求 FRONT 与 KITCHEN 同时存在；若 FRONT job
+              持久记录了厨房票合法抑制，则只有 FRONT 也是正常。未记录抑制却缺 KITCHEN 仍报漏单。
             </div>
             {data.anomalies.missingRoleOrders.length === 0
               ? <div style={s.empty}>无漏单</div>

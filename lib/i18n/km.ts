@@ -758,6 +758,7 @@ const km = {
     fieldDiscountPrice: 'តម្លៃបញ្ចុះ',
     fieldDiscountEnabled: 'បើកការបញ្ចុះតម្លៃ',
     fieldRecommended: 'ទំនិញណែនាំ',
+    fieldPrintKitchenTicket: 'បោះពុម្ពលើបង្កាន់ដៃផ្ទះបាយ',
     discountPriceInvalid: 'តម្លៃបញ្ចុះត្រូវធំជាង 0 និងទាបជាងតម្លៃដើម',
     discountPriceRequired: 'សូមបញ្ចូលតម្លៃបញ្ចុះមុនពេលបើក',
     fieldStatus: 'ស្ថានភាព',

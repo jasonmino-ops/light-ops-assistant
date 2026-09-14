@@ -139,6 +139,7 @@ type JobRow = {
   cashierName: string | null
   paymentMethod: string | null
   totalAmount: number | null
+  kitchenJobSuppressed: boolean
   /** createdAt → completedAt；未完成为 null。 */
   durationMs: number | null
   /** 非终态任务的滞留时长，用于卡住判定。 */
@@ -204,6 +205,7 @@ export async function GET(req: NextRequest) {
         expiresAt: true, nextAttemptAt: true, leaseExpiresAt: true, payload: true,
         status: true, resultStatus: true, resultCode: true, resultMessage: true,
         effectBoundary: true, physicalCompletionKnown: true,
+        kitchenJobSuppressed: true,
         attemptCount: true, maxAttempts: true, claimAttempt: true,
       },
     }),
@@ -236,6 +238,7 @@ export async function GET(req: NextRequest) {
       cashierName: payload.cashierName,
       paymentMethod: payload.paymentMethod,
       totalAmount: payload.totalAmount,
+      kitchenJobSuppressed: row.kitchenJobSuppressed,
       durationMs: row.completedAt ? row.completedAt.getTime() - row.createdAt.getTime() : null,
       openAgeMs: isOpen ? now.getTime() - row.createdAt.getTime() : null,
     }
@@ -258,6 +261,7 @@ export async function GET(req: NextRequest) {
     orderNo: string
     roles: string[]
     modes: string[]
+    kitchenJobSuppressed: boolean
     firstCreatedAt: string
   }
   const orders = new Map<string, OrderGroup>()
@@ -265,10 +269,11 @@ export async function GET(req: NextRequest) {
   for (const job of [...jobs].reverse()) { // 时间正序，让 firstCreatedAt 落在该单最早的任务上
     if (!job.orderNo) { jobsWithoutOrderNo.push(job.id); continue }
     const group = orders.get(job.orderNo) ?? {
-      orderNo: job.orderNo, roles: [], modes: [], firstCreatedAt: job.createdAt,
+      orderNo: job.orderNo, roles: [], modes: [], kitchenJobSuppressed: false, firstCreatedAt: job.createdAt,
     }
     group.roles.push(job.role ?? 'UNKNOWN')
     if (job.mode) group.modes.push(job.mode)
+    if (job.role === 'FRONT' && job.kitchenJobSuppressed) group.kitchenJobSuppressed = true
     orders.set(job.orderNo, group)
   }
 
@@ -286,6 +291,7 @@ export async function GET(req: NextRequest) {
     firstCreatedAt: string; modeConflict: boolean
   }> = []
   const modeUndeterminedOrders: Array<{ orderNo: string; presentRoles: string[]; firstCreatedAt: string; reason: string }> = []
+  const suppressedKitchenOrders: Array<{ orderNo: string; mode: string; presentRoles: string[]; firstCreatedAt: string }> = []
   for (const group of orders.values()) {
     const known = group.modes.filter((mode) => mode === 'FRONT_ONLY' || mode === 'SHARED_PRINTER')
     if (!known.length) {
@@ -300,8 +306,15 @@ export async function GET(req: NextRequest) {
     const modeConflict = new Set(known).size > 1
     // 冲突时取超集（SHARED_PRINTER），并标出冲突，让人看到而不是被静默合并。
     const mode = known.includes('SHARED_PRINTER') ? 'SHARED_PRINTER' : 'FRONT_ONLY'
-    const expectedRoles = mode === 'SHARED_PRINTER' ? ['FRONT', 'KITCHEN'] : ['FRONT']
     const presentRoles = [...new Set(group.roles)]
+    if (mode === 'SHARED_PRINTER' && group.kitchenJobSuppressed) {
+      suppressedKitchenOrders.push({
+        orderNo: group.orderNo, mode, presentRoles, firstCreatedAt: group.firstCreatedAt,
+      })
+    }
+    const expectedRoles = mode === 'SHARED_PRINTER' && !group.kitchenJobSuppressed
+      ? ['FRONT', 'KITCHEN']
+      : ['FRONT']
     const missingRoles = expectedRoles.filter((role) => !presentRoles.includes(role))
     if (missingRoles.length) {
       missingRoleOrders.push({
@@ -404,6 +417,7 @@ export async function GET(req: NextRequest) {
     },
     anomalies: {
       missingRoleOrders,
+      suppressedKitchenOrders,
       modeUndeterminedOrders,
       duplicateJobs,
       stuckJobs,

@@ -12,6 +12,7 @@ const PRODUCT_PATCH_SELECT = {
   discountPrice: true,
   discountEnabled: true,
   isRecommended: true,
+  printKitchenTicket: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -27,6 +28,7 @@ const PRODUCT_PATCH_LEGACY_SELECT = {
   discountPrice: true,
   discountEnabled: true,
   isRecommended: true,
+  printKitchenTicket: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -115,14 +117,14 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; isRecommended?: boolean; status?: string; categoryId?: string | null }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; isRecommended?: boolean; printKitchenTicket?: boolean; status?: string; categoryId?: string | null }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { barcode, name, spec, sellPrice, discountPrice, discountEnabled, isRecommended, status, categoryId } = body
+  const { barcode, name, spec, sellPrice, discountPrice, discountEnabled, isRecommended, printKitchenTicket, status, categoryId } = body
 
   if (barcode !== undefined && !String(barcode).trim()) {
     return NextResponse.json({ error: 'INVALID_BARCODE', message: '条码不能为空' }, { status: 400 })
@@ -135,6 +137,9 @@ export async function PATCH(
   }
   if (status !== undefined && !['ACTIVE', 'DISABLED'].includes(status)) {
     return NextResponse.json({ error: 'INVALID_STATUS' }, { status: 400 })
+  }
+  if (printKitchenTicket !== undefined && typeof printKitchenTicket !== 'boolean') {
+    return NextResponse.json({ error: 'INVALID_PRINT_KITCHEN_TICKET' }, { status: 400 })
   }
   const current = await prisma.product.findFirst({
     where: { id, tenantId: ctx.tenantId },
@@ -170,6 +175,7 @@ export async function PATCH(
     ...(discountPrice !== undefined ? { discountPrice: discountPrice == null ? null : String(discountPrice) } : {}),
     ...(discountEnabled !== undefined ? { discountEnabled } : {}),
     ...(isRecommended !== undefined ? { isRecommended } : {}),
+    ...(printKitchenTicket !== undefined ? { printKitchenTicket } : {}),
     ...(status !== undefined ? { status: status as 'ACTIVE' | 'DISABLED' } : {}),
     ...(categoryId !== undefined ? { categoryId: categoryId ?? null } : {}),
   }
@@ -203,6 +209,7 @@ export async function PATCH(
     discountPrice: updated.discountPrice?.toNumber() ?? null,
     discountEnabled: updated.discountEnabled,
     isRecommended: updated.isRecommended,
+    printKitchenTicket: updated.printKitchenTicket,
     status: updated.status,
     categoryId: updated.categoryId,
     imageUrl: updated.imageUrl,

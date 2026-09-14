@@ -761,6 +761,7 @@ const en = {
     fieldDiscountPrice: 'Discount price',
     fieldDiscountEnabled: 'Enable discount',
     fieldRecommended: 'Recommended product',
+    fieldPrintKitchenTicket: 'Print on kitchen ticket',
     discountPriceInvalid: 'Discount price must be greater than 0 and lower than the original price',
     discountPriceRequired: 'Enter a discount price before enabling the discount',
     fieldStatus: 'Status',

@@ -12,6 +12,7 @@ const PRODUCT_SELECT = {
   discountPrice: true,
   discountEnabled: true,
   isRecommended: true,
+  printKitchenTicket: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -27,6 +28,7 @@ const PRODUCT_LEGACY_SELECT = {
   discountPrice: true,
   discountEnabled: true,
   isRecommended: true,
+  printKitchenTicket: true,
   status: true,
   categoryId: true,
   imageUrl: true,
@@ -108,6 +110,7 @@ export async function GET(req: NextRequest) {
         discountPrice: p.discountPrice?.toNumber() ?? null,
         discountEnabled: p.discountEnabled,
         isRecommended: p.isRecommended,
+        printKitchenTicket: p.printKitchenTicket,
         status: p.status,
         categoryId: p.categoryId,
         imageUrl: p.imageUrl,
@@ -146,6 +149,7 @@ export async function GET(req: NextRequest) {
     discountPrice: product.discountPrice?.toNumber() ?? null,
     discountEnabled: product.discountEnabled,
     isRecommended: product.isRecommended,
+    printKitchenTicket: product.printKitchenTicket,
     categoryId: product.categoryId,
     imageUrl: product.imageUrl,
     imageUrls: parseImageUrls(product.imageUrls, product.imageUrl),
@@ -166,14 +170,14 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; isRecommended?: boolean; categoryId?: string | null }
+  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; isRecommended?: boolean; printKitchenTicket?: boolean; categoryId?: string | null }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { barcode, name, spec, sellPrice, discountPrice, discountEnabled = false, isRecommended = false, categoryId } = body
+  const { barcode, name, spec, sellPrice, discountPrice, discountEnabled = false, isRecommended = false, printKitchenTicket = true, categoryId } = body
 
   if (!name?.trim()) {
     return NextResponse.json({ error: 'MISSING_NAME', message: '商品名不能为空' }, { status: 400 })
@@ -186,6 +190,9 @@ export async function POST(req: NextRequest) {
   }
   if (discountEnabled && discountPrice == null) {
     return NextResponse.json({ error: 'MISSING_DISCOUNT_PRICE', message: '开启折扣前请填写折扣价' }, { status: 400 })
+  }
+  if (typeof printKitchenTicket !== 'boolean') {
+    return NextResponse.json({ error: 'INVALID_PRINT_KITCHEN_TICKET' }, { status: 400 })
   }
 
   const cleanBarcode = barcode?.trim() || `MANUAL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
@@ -211,6 +218,7 @@ export async function POST(req: NextRequest) {
       discountPrice: discountPrice == null ? null : String(discountPrice),
       discountEnabled,
       isRecommended,
+      printKitchenTicket,
       status: 'ACTIVE',
       categoryId: categoryId ?? null,
     },
@@ -227,6 +235,7 @@ export async function POST(req: NextRequest) {
       discountPrice: created.discountPrice?.toNumber() ?? null,
       discountEnabled: created.discountEnabled,
       isRecommended: created.isRecommended,
+      printKitchenTicket: created.printKitchenTicket,
       status: created.status,
       categoryId: created.categoryId,
       imageUrl: created.imageUrl,

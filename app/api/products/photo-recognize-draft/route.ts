@@ -15,6 +15,7 @@ type MatchedProduct = {
   name: string
   spec: string | null
   price: number
+  printKitchenTicket: boolean
   imageUrl: string | null
   categoryId: string | null
   status: 'ACTIVE' | 'DISABLED'
@@ -42,6 +43,7 @@ type ProductRow = {
   name: string
   spec: string | null
   sellPrice: { toNumber(): number }
+  printKitchenTicket: boolean
   status: 'ACTIVE' | 'DISABLED'
   imageUrl: string | null
   categoryId: string | null
@@ -138,6 +140,7 @@ export async function POST(req: NextRequest) {
         name: true,
         spec: true,
         sellPrice: true,
+        printKitchenTicket: true,
         status: true,
         imageUrl: true,
         categoryId: true,
@@ -299,6 +302,7 @@ function scoreCandidates(f: AiProductFeature, products: ProductRow[]): MatchedPr
       name: p.name,
       spec: p.spec,
       price: p.sellPrice.toNumber(),
+      printKitchenTicket: p.printKitchenTicket,
       imageUrl: p.imageUrl,
       categoryId: p.categoryId,
       status: p.status,

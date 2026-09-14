@@ -24,6 +24,7 @@ type ProductRecord = {
   discountPrice: DecimalLike | null
   discountEnabled: boolean
   isRecommended: boolean
+  printKitchenTicket: boolean
   status: 'ACTIVE' | 'DISABLED'
   categoryId: string | null
   imageUrl: string | null
@@ -92,6 +93,7 @@ let product: ProductRecord = {
   discountPrice: null,
   discountEnabled: false,
   isRecommended: false,
+  printKitchenTicket: true,
   status: 'ACTIVE',
   categoryId: 'category-recommendation-test',
   imageUrl: null,
@@ -135,6 +137,7 @@ async function main() {
     discountPrice: data.discountPrice == null ? null : decimal(Number(data.discountPrice)),
     discountEnabled: data.discountEnabled === true,
     isRecommended: data.isRecommended === true,
+    printKitchenTicket: data.printKitchenTicket !== false,
     categoryId: typeof data.categoryId === 'string' ? data.categoryId : null,
   })
   categoryDelegate.findMany = async () => [{
@@ -199,11 +202,43 @@ async function main() {
     assert.equal(createResponse.status, 201)
     assert.equal((await createResponse.json()).isRecommended, true)
 
+    // Kitchen routing is an independent OWNER-controlled product attribute.
+    const disableKitchenResponse = await updateProduct(
+      ownerRequest(`/api/products/${product.id}`, 'PATCH', { printKitchenTicket: false }),
+      { params: Promise.resolve({ id: product.id }) },
+    )
+    assert.equal(disableKitchenResponse.status, 200)
+    assert.equal((await disableKitchenResponse.json()).printKitchenTicket, false)
+    const kitchenReread = await getProducts(ownerRequest(`/api/products?barcode=${product.barcode}`))
+    assert.equal((await kitchenReread.json()).printKitchenTicket, false)
+
+    const compatibleCreate = await createProduct(ownerRequest('/api/products', 'POST', {
+      barcode: 'REC-KITCHEN-DEFAULT', name: 'Kitchen default product', sellPrice: 5,
+    }))
+    assert.equal(compatibleCreate.status, 201)
+    assert.equal((await compatibleCreate.json()).printKitchenTicket, true)
+
+    const invalidKitchenFlag = await createProduct(ownerRequest('/api/products', 'POST', {
+      barcode: 'REC-KITCHEN-INVALID', name: 'Invalid kitchen flag', sellPrice: 5,
+      printKitchenTicket: 'false',
+    }))
+    assert.equal(invalidKitchenFlag.status, 400)
+    assert.equal((await invalidKitchenFlag.json()).error, 'INVALID_PRINT_KITCHEN_TICKET')
+
     // Compatibility check: bulk import neither opts products in nor overwrites an existing flag.
     const importSource = fs.readFileSync('app/api/products/import/confirm/route.ts', 'utf8')
     assert.doesNotMatch(importSource, /isRecommended/)
+    assert.doesNotMatch(importSource, /printKitchenTicket/)
+    const photoMatchSource = fs.readFileSync('app/api/products/photo-recognize-draft/route.ts', 'utf8')
+    assert.match(photoMatchSource, /printKitchenTicket: true/)
+    assert.match(photoMatchSource, /printKitchenTicket: p\.printKitchenTicket/)
+    const productPageSource = fs.readFileSync('app/products/page.tsx', 'utf8')
+    assert.match(productPageSource, /printKitchenTicket: match\.printKitchenTicket/)
     const migration = fs.readFileSync('prisma/migrations/20260825090000_add_product_is_recommended/migration.sql', 'utf8')
     assert.match(migration, /"isRecommended" BOOLEAN NOT NULL DEFAULT false/)
+    const kitchenMigration = fs.readFileSync('prisma/migrations/20260914143000_add_kitchen_item_routing/migration.sql', 'utf8')
+    assert.match(kitchenMigration, /"printKitchenTicket" BOOLEAN NOT NULL DEFAULT true/)
+    assert.match(kitchenMigration, /"kitchenJobSuppressed" BOOLEAN NOT NULL DEFAULT false/)
   } finally {
     productDelegate.findFirst = originals.productFindFirst
     productDelegate.findMany = originals.productFindMany
@@ -215,7 +250,7 @@ async function main() {
     mutablePrisma.$queryRaw = originals.queryRaw
   }
 
-  console.log('product recommendation V0.1: 8 cases passed')
+  console.log('product recommendation and kitchen routing attributes: cases passed')
 }
 
 main().catch((error) => {

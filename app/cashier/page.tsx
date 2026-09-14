@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
-import type { NetworkRole } from '@/e-shop-tray/src/networkContract'
+import type { NetworkMode, NetworkRole } from '@/e-shop-tray/src/networkContract'
 import QRCode from 'react-qr-code'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
@@ -95,6 +95,7 @@ import {
   createCashierRealtimeClient,
   type CashierRealtimeConnectionStatus,
 } from '@/lib/cashier-realtime-client'
+import { parseConfirmedCashierNetworkRoles } from '@/lib/es-tray-relay/cashier-network-confirmation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -3548,11 +3549,11 @@ export default function CashierPage() {
       setCart([])
       setPayment('CASH')
       setReceiptPreviewOpen(false)
-      const networkRoles = Array.isArray(body.printing?.jobs)
-        ? body.printing.jobs.map((job: { role?: unknown } | null) => job?.role) : []
       const networkQueued = body.printing?.profile === 'network-v2' && body.printing?.state === 'QUEUED'
-      const networkConfirmed = networkQueued && body.printing.mode === networkMode
-        && networkRoles.join(',') === (networkMode === 'SHARED_PRINTER' ? 'FRONT,KITCHEN' : 'FRONT')
+      const networkRoles = networkPrint
+        ? parseConfirmedCashierNetworkRoles(body.printing, networkMode as NetworkMode)
+        : null
+      const networkConfirmed = networkRoles !== null
       // No receipt handed to the legacy auto/manual print effect for Network-owned sales.
       const receipt = isDesktopPos && !networkPrint && !networkQueued
         ? buildReceiptSnapshot({
@@ -3569,7 +3570,7 @@ export default function CashierPage() {
         khqrFallback: body.khqrFallback ?? false,
         ...(networkPrint ? {
           networkPrintStatus: networkConfirmed ? 'QUEUED' as const : 'UNCONFIRMED' as const,
-          networkPrintRoles: networkConfirmed ? networkRoles as NetworkRole[] : undefined,
+          networkPrintRoles: networkConfirmed ? networkRoles : undefined,
         } : {}),
         paymentMethod: apiPayment,
         receipt,

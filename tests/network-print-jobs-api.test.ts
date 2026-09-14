@@ -68,6 +68,7 @@ type Seed = {
   resultMessage?: string | null
   effectBoundary?: string | null
   physicalCompletionKnown?: boolean
+  kitchenJobSuppressed?: boolean
   attemptCount?: number
   claimAttempt?: number
   schemaVersion?: number
@@ -110,6 +111,7 @@ async function seedJob(f: Fixture, seed: Seed) {
       resultMessage: seed.resultMessage ?? null,
       effectBoundary: seed.effectBoundary ?? null,
       physicalCompletionKnown: seed.physicalCompletionKnown ?? false,
+      kitchenJobSuppressed: seed.kitchenJobSuppressed ?? false,
       createdAt,
     },
   })
@@ -253,6 +255,33 @@ async function run() {
     assert.equal(missing.some((order) => order.orderNo === 'M-FRONTONLY'), false)
     assert.equal(missing.some((order) => order.orderNo === 'M-OK'), false)
     assert.equal(body.anomalies.modeUndeterminedOrders.length, 0)
+  })
+
+  await test('② 漏单：合法 KITCHEN suppression 有持久标记且不产生假漏单', async () => {
+    const f = await fixture()
+    await seedJob(f, {
+      orderNo: 'M-SUPPRESSED', role: 'FRONT', mode: 'SHARED_PRINTER',
+      kitchenJobSuppressed: true, effectBoundary: 'CROSSED',
+    })
+    await seedJob(f, {
+      orderNo: 'M-REAL-MISSING', role: 'FRONT', mode: 'SHARED_PRINTER',
+      effectBoundary: 'CROSSED',
+    })
+
+    const { body } = await call(f.cookie, spanningRange())
+    assert.deepEqual(
+      (body.anomalies.suppressedKitchenOrders as Body[]).map((order) => order.orderNo),
+      ['M-SUPPRESSED'],
+    )
+    assert.equal(
+      (body.anomalies.missingRoleOrders as Body[]).some((order) => order.orderNo === 'M-SUPPRESSED'),
+      false,
+    )
+    assert.equal(
+      (body.anomalies.missingRoleOrders as Body[]).some((order) => order.orderNo === 'M-REAL-MISSING'),
+      true,
+    )
+    assert.equal(body.jobs.find((job: Body) => job.orderNo === 'M-SUPPRESSED').kitchenJobSuppressed, true)
   })
 
   await test('② 漏单：payload 读不出 mode 时标为无法判定，不算漏单', async () => {
@@ -460,7 +489,7 @@ async function run() {
 
   await test('参数校验：非法 range / 日期 / 阈值返回 400，且不泄露内部错误', async () => {
     const f = await fixture()
-    for (const query of [
+    const invalidQueries: Array<Record<string, string>> = [
       { range: 'LAST_YEAR' },
       { range: 'CUSTOM' },
       { range: 'CUSTOM', dateFrom: '2026-13-01', dateTo: localDate(0) },
@@ -469,8 +498,9 @@ async function run() {
       { range: 'TODAY', stuckMinutes: '0' },
       { range: 'TODAY', stuckMinutes: '9999' },
       { range: 'TODAY', stuckMinutes: 'abc' },
-    ]) {
-      const { status, body } = await call(f.cookie, query as Record<string, string>)
+    ]
+    for (const query of invalidQueries) {
+      const { status, body } = await call(f.cookie, query)
       assert.equal(status, 400, `expected 400 for ${JSON.stringify(query)}`)
       assert.ok(['INVALID_RANGE', 'INVALID_DATE', 'INVALID_DATE_RANGE', 'INVALID_STUCK_MINUTES'].includes(body.error), body.error)
     }

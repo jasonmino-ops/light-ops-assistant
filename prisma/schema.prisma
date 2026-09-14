@@ -413,6 +413,7 @@ model Product {
   discountPrice    Decimal?      @db.Decimal(12, 2)
   discountEnabled  Boolean       @default(false)
   isRecommended    Boolean       @default(false)
+  printKitchenTicket Boolean       @default(true)
   status           ProductStatus @default(ACTIVE)
   categoryId       String?
   nameZh           String?
@@ -1802,6 +1803,7 @@ model EshopTrayPrintJob {
   requestHash                String                  @db.Char(64)
   schemaVersion              Int                     @default(1)
   payload                    Json
+  kitchenJobSuppressed       Boolean                 @default(false)
   status                     EshopTrayPrintJobStatus @default(PENDING)
   claimedByComputerBindingId String?
   claimTokenHash             String?                 @unique @db.Char(64)

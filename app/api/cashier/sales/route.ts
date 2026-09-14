@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
   // Resolve store
   const store = await prisma.store.findUnique({
     where: { code: storeCode.trim() },
-    select: { id: true, code: true, name: true, tenantId: true, status: true, currencyCode: true },
+    select: { id: true, code: true, name: true, tenantId: true, status: true, currencyCode: true, printKitchenTicket: true },
   })
   if (!store || store.status !== 'ACTIVE') {
     return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
@@ -146,6 +146,7 @@ export async function POST(req: NextRequest) {
       let firstCreatedAt: Date | null = null
       let isFirst = true
       const snapshotItems: NetworkSnapshot['items'] = []
+      const kitchenItems: NetworkSnapshot['items'] = []
 
       for (const it of items) {
         const product = productMap.get(it.barcode)!
@@ -181,10 +182,14 @@ export async function POST(req: NextRequest) {
           },
         })
         if (!firstCreatedAt) firstCreatedAt = record.createdAt
-        if (network) snapshotItems.push({
-          name: record.productNameSnapshot, spec: record.specSnapshot,
-          qty: Number(record.quantity), price: Number(record.unitPrice), lineAmount: Number(record.lineAmount),
-        })
+        if (network) {
+          const snapshotItem: NetworkSnapshot['items'][number] = {
+            name: record.productNameSnapshot, spec: record.specSnapshot,
+            qty: Number(record.quantity), price: Number(record.unitPrice), lineAmount: Number(record.lineAmount),
+          }
+          snapshotItems.push(snapshotItem)
+          if (product.printKitchenTicket) kitchenItems.push(snapshotItem)
+        }
       }
 
       const khqrPayload = paymentMethod === 'KHQR' && khqrConfig
@@ -219,7 +224,7 @@ export async function POST(req: NextRequest) {
         createdAt: firstCreatedAt!.toISOString(), cashierName: 'Desktop POS',
         paymentMethod: paymentMethod as 'CASH' | 'KHQR', currencyCode: store.currencyCode,
         totalAmount, lang: body.printing.lang, items: snapshotItems,
-      }, body.printing.mode) : undefined
+      }, body.printing.mode, store.printKitchenTicket ? kitchenItems : []) : undefined
 
       return {
         orderNo,
