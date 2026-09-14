@@ -6,8 +6,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { createHash } from 'node:crypto'
 import { getContext } from '@/lib/context'
-import { recognizeMenuImage } from '@/lib/ai-menu-recognize'
+import { normalizeMenuItems, quantizedSourceBox, recognizeMenuImage, type AiMenuItem } from '@/lib/ai-menu-recognize'
+import { prisma } from '@/lib/prisma'
+import { stableRowIdentity } from '@/lib/product-bulk-import/barcode'
+import { resolveExistingCategory } from '@/lib/product-bulk-import/categories'
+import { allocateStableGeneratedBarcode } from '@/lib/product-bulk-import/jobs'
 import type { PreviewRow } from '../../import/route'
 
 const MAX_SIZE = 5 * 1024 * 1024 // 5MB
@@ -39,10 +44,48 @@ export async function POST(req: NextRequest) {
 
   const buf = Buffer.from(await file.arrayBuffer())
   const base64 = buf.toString('base64')
+  const sourceFileHash = createHash('sha256').update(buf).digest('hex')
+  const cacheId = `menu-ai-v2-${createHash('sha256').update(`${ctx.tenantId}:${sourceFileHash}`).digest('hex')}`
 
-  let items
+  let items: AiMenuItem[]
   try {
-    items = await recognizeMenuImage(base64, file.type)
+    const cached = await prisma.productBulkImportJob.findUnique({ where: { id: cacheId }, select: { analysisMetadata: true } })
+    const cachedItems = cached?.analysisMetadata && typeof cached.analysisMetadata === 'object' && !Array.isArray(cached.analysisMetadata)
+      ? (cached.analysisMetadata as Record<string, unknown>).menuItems
+      : null
+    if (cachedItems) {
+      items = normalizeMenuItems(cachedItems)
+    } else {
+      const recognized = await recognizeMenuImage(base64, file.type)
+      const now = new Date()
+      const canonical = await prisma.productBulkImportJob.upsert({
+        where: { id: cacheId },
+        create: {
+          id: cacheId,
+          tenantId: ctx.tenantId,
+          sourceFileName: file.name.slice(0, 255) || 'menu-image',
+          sourceMimeType: file.type,
+          sourceFormat: 'MENU_IMAGE_CACHE',
+          sourceFileSize: file.size,
+          sourceFileHash,
+          stagingStorageKey: `analysis-cache/menu-image-v2/${cacheId}`,
+          status: 'COMPLETED',
+          analysisRevision: 1,
+          analysisMetadata: { capability: 'MENU_IMAGE_V2', menuItems: recognized },
+          resultSummary: { cachedItems: recognized.length },
+          expiresAt: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000),
+          analyzedAt: now,
+          completedAt: now,
+          stagingCleanedAt: now,
+        },
+        update: {},
+        select: { analysisMetadata: true },
+      })
+      const canonicalItems = canonical.analysisMetadata && typeof canonical.analysisMetadata === 'object' && !Array.isArray(canonical.analysisMetadata)
+        ? (canonical.analysisMetadata as Record<string, unknown>).menuItems
+        : null
+      items = normalizeMenuItems(canonicalItems)
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'AI_FAILED'
     if (msg === 'AI_NOT_CONFIGURED') {
@@ -51,7 +94,7 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       )
     }
-    if (msg === 'AI_JSON_PARSE_ERROR' || msg === 'AI_NOT_ARRAY' || msg === 'AI_RESP_PARSE_ERROR') {
+    if (msg === 'AI_JSON_PARSE_ERROR' || msg === 'AI_NOT_ARRAY' || msg === 'AI_RESP_PARSE_ERROR' || msg === 'AI_SCHEMA_INVALID') {
       return NextResponse.json(
         { error: 'AI_PARSE_ERROR', message: 'AI 返回内容无法解析，请重试或换一张更清晰的图片' },
         { status: 502 },
@@ -70,11 +113,24 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // 临时条码：tenantId 内单次操作唯一即可，confirm 路由也会做最终去重
-  const ts = Date.now().toString(36).toUpperCase()
-  const preview: PreviewRow[] = items.map((it, i) => ({
+  const barcodes = await Promise.all(items.map((item) => allocateStableGeneratedBarcode(
+    ctx.tenantId,
+    sourceFileHash,
+    stableRowIdentity(['menu-image-block-v1', ...quantizedSourceBox(item.sourceBox)]),
+  )))
+  const existingCategories = await prisma.productCategory.findMany({
+    where: { tenantId: ctx.tenantId },
+    select: { id: true, name: true, parentId: true },
+  })
+  const categoriesById = new Map(existingCategories.map((category) => [category.id, category]))
+  const preview: PreviewRow[] = items.map((it, i) => {
+    const categoryResolution = resolveExistingCategory(existingCategories, it.category, null)
+    const matchedCategory = categoryResolution.status === 'MATCHED'
+      ? categoriesById.get(categoryResolution.categoryId)
+      : null
+    return {
     rowNum: i + 1,
-    barcode: `AI${ts}${String(i).padStart(3, '0')}`,
+    barcode: barcodes[i],
     sku:     null,
     name:    it.name,
     nameZh:  it.name ?? null,
@@ -89,14 +145,17 @@ export async function POST(req: NextRequest) {
     imageUrl: null,
     category1Raw: it.category ?? '',
     category2Raw: '',
-    resolvedL1: it.category ?? null,
+    resolvedL1: matchedCategory?.name ?? null,
     resolvedL2: null,
-    catSource: it.category ? 'AUTO' : 'NONE',
+    catSource: matchedCategory ? 'AUTO' : 'NONE',
     isDuplicate: false,
     error: null,
     confidence: it.confidence,
-    warnings: it.warnings,
-  }))
+    warnings: it.category && !matchedCategory
+      ? [...it.warnings, `分类候选“${it.category}”未匹配现有分类，需人工确认`]
+      : it.warnings,
+    }
+  })
 
   return NextResponse.json({ preview })
 }

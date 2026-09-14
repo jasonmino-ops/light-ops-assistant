@@ -201,7 +201,10 @@ export async function POST(req: NextRequest) {
 
     const rawBarcode = String(row[col.barcode] ?? '').trim()
     const sku        = col.sku >= 0 ? String(row[col.sku] ?? '').trim() || null : null
-    const barcode    = rawBarcode || sku || `GEN-${Date.now().toString(36).toUpperCase()}-${i}`
+    // Legacy Preview has no generated-barcode ledger context. Never promote an
+    // arbitrary SKU into Product.barcode; missing barcodes must use the new
+    // bulk-import flow so D3 idempotency is preserved.
+    const barcode    = rawBarcode
     const priceRaw = String(row[col.sellPrice] ?? '').trim()
     const nameZh   = col.nameZh  >= 0 ? String(row[col.nameZh]  ?? '').trim() || null : null
     const nameEn   = col.nameEn  >= 0 ? String(row[col.nameEn]  ?? '').trim() || null : null
@@ -225,7 +228,9 @@ export async function POST(req: NextRequest) {
 
     // 行级错误校验
     let rowError: string | null = null
-    if (!primaryName) {
+    if (!barcode) {
+      rowError = '条码不能为空；缺少条码请使用新版批量导入以分配稳定 EAN-13'
+    } else if (!primaryName) {
       rowError = '商品名不能为空（需要 name_zh / name_en / name_km 其中之一）'
     } else if (seenBarcodes.has(barcode)) {
       rowError = `文件内条码重复（第 ${seenBarcodes.get(barcode)} 行）`
