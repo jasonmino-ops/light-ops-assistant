@@ -35,6 +35,15 @@
 | [known-limitations.md](known-limitations.md) | Known Limitations：如实记录的已知限制 |
 | [rollback-plan.md](rollback-plan.md) | Rollback Plan：回滚策略 |
 
+## ES-DESKTOP-UX-01 — Desktop UX Redesign
+
+- [Governance Archival Wrapper / Repository Governance Freeze](es-desktop-ux-01-governance-freeze-record.md)
+- [Development Blueprint V1.0 FINAL](es-desktop-ux-01-blueprint-v1-final.md)
+- [Implementation Roadmap V1.0 FINAL](es-desktop-ux-01-roadmap-v1-final.md)
+- [Original Final Freeze Record](es-desktop-ux-01-freeze-record.md)
+
+`Implementation Authorization = NO`
+
 ## 冻结原则（速览）
 
 Cloud is Business · Desktop is Runtime · Hardware is Managed · Cloud is the Source of Truth · Desktop Must Be Replaceable · AI Calls Runtime, Not Hardware

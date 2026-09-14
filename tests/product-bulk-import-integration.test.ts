@@ -24,6 +24,7 @@ import { POST as uploadSingleProductImage } from '../app/api/products/[id]/image
 import { PATCH as patchJobRoute } from '../app/api/products/import/jobs/[id]/route'
 import { GET as imagePreviewRoute } from '../app/api/products/import/jobs/[id]/rows/[rowId]/images/[slot]/route'
 import { internalEan13Candidate, stableRowIdentity } from '../lib/product-bulk-import/barcode'
+import { createSignedUploadUrl, ensurePrivateBucket } from '../lib/supabase-storage'
 
 if (process.env.PRODUCT_BULK_IMPORT_TEST_DATABASE !== '1' || !process.env.DATABASE_URL?.includes('127.0.0.1')) {
   throw new Error('PRODUCT_BULK_IMPORT_TEST_DATABASE=1 with an isolated localhost DATABASE_URL is required')
@@ -193,7 +194,122 @@ async function createAndAnalyze(fileName: string, mimeType: string, source: Buff
   return getProductImportJob(tenantId, created.jobId, { limit: 200 })
 }
 
+const bucketContract = {
+  fileSizeLimit: 50 * 1024 * 1024,
+  allowedMimeTypes: [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'application/csv',
+    'application/pdf',
+    'application/json',
+  ],
+}
+
+async function withFetch<T>(fetchImpl: typeof fetch, action: () => Promise<T>): Promise<T> {
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = fetchImpl
+  try {
+    return await action()
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+}
+
+async function assertMissingBucketCreates(status: 400 | 404) {
+  let createCount = 0
+  await withFetch(async (input, init = {}) => {
+    const url = String(input)
+    const method = (init.method ?? 'GET').toUpperCase()
+    if (url.endsWith('/storage/v1/bucket/product-import-staging') && method === 'GET') {
+      return Response.json({ code: 'NoSuchBucket', message: 'Bucket not found' }, { status })
+    }
+    if (url.endsWith('/storage/v1/bucket') && method === 'POST') {
+      createCount += 1
+      const body = JSON.parse(String(init.body))
+      assert.deepEqual(body, {
+        id: 'product-import-staging',
+        name: 'product-import-staging',
+        public: false,
+        file_size_limit: bucketContract.fileSizeLimit,
+        allowed_mime_types: bucketContract.allowedMimeTypes,
+      })
+      return Response.json({})
+    }
+    throw new Error(`UNEXPECTED_BUCKET_FETCH ${method} ${url}`)
+  }, () => ensurePrivateBucket('product-import-staging', bucketContract))
+  assert.equal(createCount, 1, `${status} NoSuchBucket creates the private staging bucket exactly once`)
+}
+
+async function assertBucketReadFailsClosed(status: 400 | 401 | 403 | 404 | 500, body: BodyInit) {
+  let createCount = 0
+  await assert.rejects(
+    () => withFetch(async (input, init = {}) => {
+      const url = String(input)
+      const method = (init.method ?? 'GET').toUpperCase()
+      if (url.endsWith('/storage/v1/bucket/product-import-staging') && method === 'GET') {
+        return new Response(body, { status, headers: { 'content-type': 'application/json' } })
+      }
+      if (url.endsWith('/storage/v1/bucket') && method === 'POST') createCount += 1
+      throw new Error(`UNEXPECTED_BUCKET_FETCH ${method} ${url}`)
+    }, () => ensurePrivateBucket('product-import-staging', bucketContract)),
+    (error: unknown) => error instanceof Error && error.message === `STORAGE_BUCKET_READ_${status}`,
+  )
+  assert.equal(createCount, 0, `${status} without explicit NoSuchBucket must not create a bucket`)
+}
+
+async function verifyBucketInitializationContract() {
+  await assertMissingBucketCreates(404)
+  await assertMissingBucketCreates(400)
+
+  await assertBucketReadFailsClosed(400, JSON.stringify({ code: 'InvalidRequest', message: 'bad request' }))
+  await assertBucketReadFailsClosed(401, JSON.stringify({ code: 'InvalidJWT', message: 'invalid JWT' }))
+  await assertBucketReadFailsClosed(403, JSON.stringify({ code: 'AccessDenied', message: 'denied' }))
+  await assertBucketReadFailsClosed(401, JSON.stringify({ code: 'NoSuchBucket', message: 'unauthorized' }))
+  await assertBucketReadFailsClosed(403, JSON.stringify({ code: 'NoSuchBucket', message: 'forbidden' }))
+  await assertBucketReadFailsClosed(500, JSON.stringify({ code: 'NoSuchBucket', message: 'server error' }))
+  await assertBucketReadFailsClosed(404, '<not-json>')
+
+  let existingBucketMutationCount = 0
+  await withFetch(async (input, init = {}) => {
+    const url = String(input)
+    const method = (init.method ?? 'GET').toUpperCase()
+    if (url.endsWith('/storage/v1/bucket/product-import-staging') && method === 'GET') {
+      return Response.json({
+        id: 'product-import-staging',
+        public: false,
+        file_size_limit: bucketContract.fileSizeLimit,
+        allowed_mime_types: bucketContract.allowedMimeTypes,
+      })
+    }
+    existingBucketMutationCount += 1
+    throw new Error(`UNEXPECTED_BUCKET_FETCH ${method} ${url}`)
+  }, () => ensurePrivateBucket('product-import-staging', bucketContract))
+  assert.equal(existingBucketMutationCount, 0, 'an existing conforming bucket is not created or updated')
+
+  let signedUploadCount = 0
+  await assert.rejects(
+    () => withFetch(async (input, init = {}) => {
+      const url = String(input)
+      const method = (init.method ?? 'GET').toUpperCase()
+      if (url.endsWith('/storage/v1/bucket/product-import-staging') && method === 'GET') {
+        return Response.json({ code: 'NoSuchBucket', message: 'Bucket not found' }, { status: 400 })
+      }
+      if (url.endsWith('/storage/v1/bucket') && method === 'POST') {
+        return Response.json({ code: 'InternalError', message: 'create failed' }, { status: 500 })
+      }
+      if (url.includes('/storage/v1/object/upload/sign/')) signedUploadCount += 1
+      throw new Error(`UNEXPECTED_BUCKET_FETCH ${method} ${url}`)
+    }, async () => {
+      await ensurePrivateBucket('product-import-staging', bucketContract)
+      await createSignedUploadUrl('product-import-staging', 'test/source.xlsx')
+    }),
+    (error: unknown) => error instanceof Error && error.message.startsWith('STORAGE_BUCKET_CREATE_500:'),
+  )
+  assert.equal(signedUploadCount, 0, 'a failed bucket create cannot continue to signed upload')
+}
+
 async function main() {
+  await verifyBucketInitializationContract()
   await prisma.product.deleteMany({ where: { tenantId } })
   await prisma.tenant.deleteMany({ where: { id: tenantId } })
   await prisma.tenant.create({ data: { id: tenantId, name: 'Bulk Import Test' } })
