@@ -204,7 +204,7 @@ async function run() {
     assert.equal(parseNetworkRequest(jobs[0].payload).order.orderNo, sales[0].orderNo)
     assert.equal(parseNetworkRequest(jobs[0].payload).order.totalAmount, 5)
   })
-  await test('SHARED_PRINTER routes mixed items while FRONT remains complete', async () => {
+  await test('SHARED_PRINTER routes mixed items and claims filtered KITCHEN after FRONT succeeds', async () => {
     const f = await fixture()
     const retail = await prisma.product.create({
       data: {
@@ -225,13 +225,28 @@ async function run() {
     )
     const jobs = await prisma.eshopTrayPrintJob.findMany({ where: f.scope })
     assert.equal(jobs.length, 2)
-    const front = parseNetworkRequest(jobs.find((job) => parseNetworkRequest(job.payload).role === 'FRONT')!.payload)
-    const kitchen = parseNetworkRequest(jobs.find((job) => parseNetworkRequest(job.payload).role === 'KITCHEN')!.payload)
+    const frontJob = jobs.find((job) => parseNetworkRequest(job.payload).role === 'FRONT')!
+    const kitchenJob = jobs.find((job) => parseNetworkRequest(job.payload).role === 'KITCHEN')!
+    const front = parseNetworkRequest(frontJob.payload)
+    const kitchen = parseNetworkRequest(kitchenJob.payload)
     assert.deepEqual(front.order.items.map((item) => item.name), ['网络打印测试', '瓶装水'])
     assert.deepEqual(kitchen.order.items.map((item) => item.name), ['网络打印测试'])
     assert.equal(front.order.totalAmount, 6)
     assert.equal(kitchen.order.totalAmount, 6)
     assert.ok(jobs.every((job) => job.kitchenJobSuppressed === false))
+    const agentScope = { ...f.scope, computerBindingId: f.binding.id, schemaVersion: 2 as const }
+    const timing = readRelayTimingConfig()
+    const claimedFront = await claimNextRelayPrintJob(agentScope, timing); assert.ok(claimedFront)
+    assert.equal(claimedFront.id, frontJob.id)
+    await markRelayPrintJobExecuting(agentScope, claimedFront.id, claimedFront, timing)
+    await completeRelayPrintJob(agentScope, claimedFront.id, { ...claimedFront, state: 'SUCCEEDED',
+      resultCode: 'SUBMITTED_TO_NETWORK_SOCKET', effectBoundary: 'CROSSED', physicalCompletionKnown: false })
+    const claimedKitchen = await claimNextRelayPrintJob(agentScope, timing); assert.ok(claimedKitchen)
+    assert.equal(claimedKitchen.id, kitchenJob.id)
+    assert.deepEqual(
+      parseNetworkRequest(claimedKitchen.request).order.items.map((item) => item.name),
+      ['网络打印测试'],
+    )
   })
   await test('all kitchen-ineligible items suppress KITCHEN before parsing without rolling back sale', async () => {
     const f = await fixture()
@@ -512,6 +527,55 @@ async function run() {
     } })
     assert.equal(await claimNextRelayPrintJob(f.agentScope, f.timing), null)
     const kitchen = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: f.kitchen!.id } })
+    assert.equal(kitchen.resultCode, 'NETWORK_FRONT_DEPENDENCY_FAILED')
+    assert.equal(kitchen.attemptCount, 0)
+  })
+  for (const corruption of [
+    {
+      name: 'wrong order',
+      mutate: (request: ReturnType<typeof parseNetworkRequest>) => ({
+        ...request, order: { ...request.order, orderNo: `WRONG-${randomUUID()}` },
+      }),
+    },
+    {
+      name: 'item outside the FRONT ordered subset',
+      mutate: (request: ReturnType<typeof parseNetworkRequest>) => ({
+        ...request, order: { ...request.order, items: [{ ...request.order.items[0], name: 'Unrelated item' }] },
+      }),
+    },
+  ] as const) {
+    await test(`KITCHEN dependency rejects ${corruption.name}`, async () => {
+      const f = await queuedFixture()
+      const first = await claimNextRelayPrintJob(f.agentScope, f.timing); assert.ok(first)
+      await markRelayPrintJobExecuting(f.agentScope, first.id, first, f.timing)
+      await completeRelayPrintJob(f.agentScope, first.id, { ...first, state: 'SUCCEEDED',
+        resultCode: 'SUBMITTED_TO_NETWORK_SOCKET', effectBoundary: 'CROSSED', physicalCompletionKnown: false })
+      const changed = corruption.mutate(parseNetworkRequest(f.kitchen!.payload))
+      await prisma.eshopTrayPrintJob.update({ where: { id: f.kitchen!.id }, data: {
+        payload: changed as unknown as Prisma.InputJsonValue,
+        requestHash: createHash('sha256').update(JSON.stringify(changed)).digest('hex'),
+      } })
+      assert.equal(await claimNextRelayPrintJob(f.agentScope, f.timing), null)
+      const kitchen = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: f.kitchen!.id } })
+      assert.equal(kitchen.resultCode, 'NETWORK_FRONT_DEPENDENCY_FAILED')
+      assert.equal(kitchen.attemptCount, 0)
+    })
+  }
+  await test('KITCHEN dependency cannot cross Store or tenant scope', async () => {
+    const source = await queuedFixture()
+    const first = await claimNextRelayPrintJob(source.agentScope, source.timing); assert.ok(first)
+    await markRelayPrintJobExecuting(source.agentScope, first.id, first, source.timing)
+    await completeRelayPrintJob(source.agentScope, first.id, { ...first, state: 'SUCCEEDED',
+      resultCode: 'SUBMITTED_TO_NETWORK_SOCKET', effectBoundary: 'CROSSED', physicalCompletionKnown: false })
+    const foreign = await fixture()
+    const inserted = await prisma.$transaction((tx) => enqueueRelayPrintJob(
+      foreign.scope, parseNetworkRequest(source.kitchen!.payload), readRelayTimingConfig(), new Date(), tx,
+    ))
+    const foreignScope = {
+      ...foreign.scope, computerBindingId: foreign.binding.id, schemaVersion: 2 as const,
+    }
+    assert.equal(await claimNextRelayPrintJob(foreignScope, readRelayTimingConfig()), null)
+    const kitchen = await prisma.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: inserted.job.id } })
     assert.equal(kitchen.resultCode, 'NETWORK_FRONT_DEPENDENCY_FAILED')
     assert.equal(kitchen.attemptCount, 0)
   })
