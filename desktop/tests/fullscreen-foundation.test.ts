@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { isAutoFullscreenEnabled, parseConfigFile } from '../src/main/config'
+import { getPersistableEmployeeState } from '../src/main/windowManager'
+
+vi.mock('electron', () => ({
+  app: {},
+  BrowserWindow: vi.fn(),
+  screen: {},
+}))
 
 const windowManagerSource = readFileSync(
   join(__dirname, '..', 'src', 'main', 'windowManager.ts'),
@@ -39,11 +46,40 @@ describe('P1A fullscreen foundation', () => {
     expect(body).toContain('win.setFullScreen(true)')
   })
 
-  it('never persists physical fullscreen bounds as normal window state', () => {
-    const body = methodBody(windowManagerSource, 'saveEmployeeState')
-    const fullscreenGuard = body.indexOf('this.employeeWindow.isFullScreen()')
-    const boundsRead = body.indexOf('this.employeeWindow.getBounds()')
-    expect(fullscreenGuard).toBeGreaterThanOrEqual(0)
-    expect(boundsRead).toBeGreaterThan(fullscreenGuard)
+  it('skips state persistence while the employee window is fullscreen', () => {
+    const getNormalBounds = vi.fn(() => ({ x: 20, y: 30, width: 1200, height: 760 }))
+    const state = getPersistableEmployeeState({
+      isDestroyed: () => false,
+      isFullScreen: () => true,
+      getNormalBounds,
+    })
+
+    expect(state).toBeNull()
+    expect(getNormalBounds).not.toHaveBeenCalled()
+  })
+
+  it('uses normal bounds when fullscreen transition state has not settled', () => {
+    const normalBounds = { x: 20, y: 30, width: 1200, height: 760 }
+    const getNormalBounds = vi.fn(() => normalBounds)
+    const state = getPersistableEmployeeState({
+      isDestroyed: () => false,
+      isFullScreen: () => false,
+      getNormalBounds,
+    })
+
+    expect(state).toEqual(normalBounds)
+    expect(getNormalBounds).toHaveBeenCalledOnce()
+  })
+
+  it('skips state persistence after the employee window is destroyed', () => {
+    const getNormalBounds = vi.fn(() => ({ x: 20, y: 30, width: 1200, height: 760 }))
+    const state = getPersistableEmployeeState({
+      isDestroyed: () => true,
+      isFullScreen: () => false,
+      getNormalBounds,
+    })
+
+    expect(state).toBeNull()
+    expect(getNormalBounds).not.toHaveBeenCalled()
   })
 })
