@@ -110,6 +110,13 @@ function serviceHeaders(key: string): Record<string, string> {
 
 const STORAGE_CONTROL_TIMEOUT_MS = 15_000
 
+async function storageErrorCode(response: Response): Promise<string | null> {
+  const payload = await response.json().catch(() => null) as { code?: unknown } | null
+  return payload && typeof payload === 'object' && typeof payload.code === 'string'
+    ? payload.code
+    : null
+}
+
 /** Creates the private import-staging bucket if absent. Safe under concurrent callers. */
 export async function ensurePrivateBucket(
   bucket: string,
@@ -158,7 +165,10 @@ export async function ensurePrivateBucket(
     }
     return
   }
-  if (current.status !== 404) throw new Error(`STORAGE_BUCKET_READ_${current.status}`)
+  const currentErrorCode = await storageErrorCode(current)
+  const bucketIsMissing = (current.status === 400 || current.status === 404)
+    && currentErrorCode === 'NoSuchBucket'
+  if (!bucketIsMissing) throw new Error(`STORAGE_BUCKET_READ_${current.status}`)
   const created = await fetch(`${url}/storage/v1/bucket`, {
     method: 'POST',
     headers: serviceHeaders(key),
