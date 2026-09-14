@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
+import { checkOpsAuthContext } from '@/lib/ops-auth'
+import { verifySession } from '@/lib/session'
 import { apiError, noStoreJson, withComputerClientApiError } from '@/lib/computer-client/http'
 import {
   auditRequestFingerprint,
@@ -30,6 +32,33 @@ export async function POST(
       return apiError('COMPUTER_NOT_BOUND', 409)
     }
 
+    const actorUser = await prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: { id: true },
+    })
+    let actorUserId: string | null = actorUser?.id ?? null
+    let operatorRole: string = ctx.role
+
+    if (!actorUserId) {
+      const delegateToken = req.cookies.get('delegate-session')?.value ?? ''
+      const delegate = verifySession(delegateToken)
+      const isMatchingDelegate = Boolean(
+        delegate
+        && !delegate.opsRole
+        && delegate.tenantId === ctx.tenantId
+        && delegate.storeId === ctx.storeId
+        && delegate.userId === ctx.userId,
+      )
+      const opsActor = isMatchingDelegate ? await checkOpsAuthContext(req) : false
+      if (!opsActor) return apiError('OWNER_REQUIRED', 403)
+
+      // OPS delegate 在门店没有真实 OWNER 时使用虚拟 context actor（如 sys）。
+      // 三个目标字段都是 nullable User FK；此时必须写 NULL，并在绑定审计中保留
+      // delegate 来源与已验证的 OPS 角色。平台入口审计继续保存真实 OpsAdmin 身份。
+      actorUserId = null
+      operatorRole = `OPS_DELEGATE_${opsActor.role}`
+    }
+
     const now = new Date()
     const fingerprint = auditRequestFingerprint(req)
     const disabled = await prisma.$transaction(async (tx) => {
@@ -48,7 +77,7 @@ export async function POST(
         },
         data: {
           disabledAt: now,
-          disabledByUserId: ctx.userId,
+          disabledByUserId: actorUserId,
           credentialStatus: 'VOID',
         },
       })
@@ -82,7 +111,7 @@ export async function POST(
             status: 'REVOKED',
             activeSlot: null,
             revokedAt: now,
-            revokedByUserId: ctx.userId,
+            revokedByUserId: actorUserId,
             revocationReason: 'COMPUTER_BINDING_DISABLED',
           },
         })
@@ -92,14 +121,14 @@ export async function POST(
         tenantId: ctx.tenantId,
         storeId: ctx.storeId,
         bindingId: current.id,
-        actorUserId: ctx.userId,
+        actorUserId,
         eventType: 'COMPUTER_BINDING_DISABLED',
         result: 'SUCCESS',
         metadata: {
           status: 'DISABLED',
           previousStatus: 'APPROVED',
           credentialStatus: 'VOID',
-          operatorRole: 'OWNER',
+          operatorRole,
         },
         ...fingerprint,
       })

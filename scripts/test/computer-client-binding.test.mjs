@@ -92,9 +92,43 @@ function decodePosDeviceToken(token) {
 // ── 固定测试数据 ────────────────────────────────────────────────────────────
 const T1 = { tenantId: 'cc-t1', storeId: 'cc-s1', storeCode: 'CCTEST1', ownerId: 'cc-owner1', staffId: 'cc-staff1' }
 const T2 = { tenantId: 'cc-t2', storeId: 'cc-s2', storeCode: 'CCTEST2', ownerId: 'cc-owner2' }
+const OPS = { id: 'cc-ops-super-admin', username: 'cc-ops-super-admin', sessionVersion: 3 }
 
 const ownerSession = (t) => ({ tenantId: t.tenantId, userId: t.ownerId, storeId: t.storeId, role: 'OWNER' })
 const staffSession = { tenantId: T1.tenantId, userId: T1.staffId, storeId: T1.storeId, role: 'STAFF' }
+
+async function enterOpsDelegate(t) {
+  const opsSession = signSession({
+    tenantId: '_ops',
+    userId: OPS.id,
+    storeId: '_ops',
+    role: 'OWNER',
+    opsRole: 'SUPER_ADMIN',
+    opsSessionVersion: OPS.sessionVersion,
+  })
+  const response = await fetch(`${BASE}/ops/stores/${t.storeId}/delegate`, {
+    headers: { Cookie: `auth-session=${opsSession}` },
+    redirect: 'manual',
+  })
+  assert.equal(response.status, 307)
+  const setCookies = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie()
+    : [response.headers.get('set-cookie') ?? '']
+  const delegateCookie = setCookies
+    .find((value) => value.startsWith('delegate-session='))
+    ?.split(';', 1)[0]
+  assert.ok(delegateCookie, 'delegate route 必须签发 delegate-session')
+
+  const delegateToken = delegateCookie.slice('delegate-session='.length)
+  const delegatePayload = JSON.parse(
+    Buffer.from(delegateToken.slice(0, delegateToken.lastIndexOf('.')), 'base64url').toString(),
+  )
+  assert.equal(delegatePayload.userId, 'sys', '无 ACTIVE OWNER 时必须覆盖真实的 virtual actor 场景')
+  assert.equal(delegatePayload.tenantId, t.tenantId)
+  assert.equal(delegatePayload.storeId, t.storeId)
+
+  return { Cookie: `auth-session=${opsSession}; ${delegateCookie}` }
+}
 
 test('准备测试租户与门店', async () => {
   for (const t of [T1, T2]) {
@@ -141,6 +175,24 @@ test('准备测试租户与门店', async () => {
       storeId: T1.storeId,
       role: 'STAFF',
       status: 'ACTIVE',
+    },
+  })
+  await prisma.opsAdmin.upsert({
+    where: { id: OPS.id },
+    update: {
+      name: 'Computer Binding Test Super Admin',
+      username: OPS.username,
+      role: 'SUPER_ADMIN',
+      status: 'ACTIVE',
+      sessionVersion: OPS.sessionVersion,
+    },
+    create: {
+      id: OPS.id,
+      name: 'Computer Binding Test Super Admin',
+      username: OPS.username,
+      role: 'SUPER_ADMIN',
+      status: 'ACTIVE',
+      sessionVersion: OPS.sessionVersion,
     },
   })
   await prisma.product.upsert({
@@ -891,6 +943,14 @@ test('OWNER 软停用保留历史并即时阻断 Agent 与已签发 POS session'
   assert.equal(await prisma.computerBindingAudit.count({
     where: { bindingId: id, eventType: 'COMPUTER_BINDING_DISABLED' },
   }), 1)
+  const ownerAudit = await prisma.computerBindingAudit.findFirst({
+    where: { bindingId: id, eventType: 'COMPUTER_BINDING_DISABLED' },
+    orderBy: { createdAt: 'desc' },
+  })
+  assert.ok(ownerAudit)
+  assert.equal(ownerAudit.actorUserId, T1.ownerId)
+  assert.equal(ownerAudit.result, 'SUCCESS')
+  assert.equal(ownerAudit.metadata.operatorRole, 'OWNER')
   const revokedSession = await prisma.browserPosDevice.findUnique({
     where: { id: sessionPayload.browserPosSessionId },
   })
@@ -928,6 +988,189 @@ test('OWNER 软停用保留历史并即时阻断 Agent 与已签发 POS session'
     },
   })
   assert.equal(independentOwnerSession.status, 200, '电脑停用不得破坏独立的既有 OWNER Browser Session')
+})
+
+test('virtual actor 缺少有效 OPS 授权时拒绝且不产生部分 mutation', async () => {
+  const { inst, id } = await createBoundComputer('非法 virtual actor 停用电脑')
+  const launch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+  })
+  const consumed = await api('/api/computer-client/browser-launch/consume', {
+    method: 'POST',
+    body: { ticket: launch.data.ticket, browserDeviceId: rnd(18) },
+  })
+  assert.equal(consumed.status, 200)
+  const sessionPayload = decodePosDeviceToken(consumed.data.posDeviceToken)
+  const invalidOpsSession = signSession({
+    tenantId: '_ops',
+    userId: OPS.id,
+    storeId: '_ops',
+    role: 'OWNER',
+    opsRole: 'SUPER_ADMIN',
+    opsSessionVersion: OPS.sessionVersion - 1,
+  })
+  const virtualDelegate = signSession({
+    tenantId: T1.tenantId,
+    userId: 'sys',
+    storeId: T1.storeId,
+    role: 'OWNER',
+  })
+
+  const denied = await api(`/api/computer-client/computers/${id}/disable`, {
+    method: 'POST',
+    headers: {
+      Cookie: `auth-session=${invalidOpsSession}; delegate-session=${virtualDelegate}`,
+    },
+  })
+  assert.equal(denied.status, 403)
+  assert.equal(denied.data.error, 'OWNER_REQUIRED')
+
+  const row = await prisma.computerBinding.findUnique({ where: { id } })
+  assert.equal(row.disabledAt, null)
+  assert.equal(row.disabledByUserId, null)
+  assert.equal(row.credentialStatus, 'ACTIVE')
+  const browserSession = await prisma.browserPosDevice.findUnique({
+    where: { id: sessionPayload.browserPosSessionId },
+  })
+  assert.equal(browserSession.status, 'ACTIVE')
+  assert.equal(browserSession.revokedAt, null)
+  assert.equal(await prisma.computerBindingAudit.count({
+    where: { bindingId: id, eventType: 'COMPUTER_BINDING_DISABLED' },
+  }), 0)
+})
+
+test('OPS delegate 跨 tenant/store 停用返回 404 且不产生 mutation', async () => {
+  const { inst, id } = await createBoundComputer('OPS 跨租户目标电脑')
+  const launch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+  })
+  const consumed = await api('/api/computer-client/browser-launch/consume', {
+    method: 'POST',
+    body: { ticket: launch.data.ticket, browserDeviceId: rnd(18) },
+  })
+  assert.equal(consumed.status, 200)
+  const sessionPayload = decodePosDeviceToken(consumed.data.posDeviceToken)
+
+  await prisma.userStoreRole.update({
+    where: { userId_storeId: { userId: T2.ownerId, storeId: T2.storeId } },
+    data: { status: 'DISABLED' },
+  })
+  await prisma.user.update({ where: { id: T2.ownerId }, data: { status: 'DISABLED' } })
+
+  try {
+    const delegateHeaders = await enterOpsDelegate(T2)
+    const denied = await api(`/api/computer-client/computers/${id}/disable`, {
+      method: 'POST',
+      headers: delegateHeaders,
+    })
+    assert.equal(denied.status, 404)
+    assert.equal(denied.data.error, 'COMPUTER_NOT_FOUND')
+
+    const row = await prisma.computerBinding.findUnique({ where: { id } })
+    assert.equal(row.disabledAt, null)
+    assert.equal(row.disabledByUserId, null)
+    assert.equal(row.credentialStatus, 'ACTIVE')
+    const browserSession = await prisma.browserPosDevice.findUnique({
+      where: { id: sessionPayload.browserPosSessionId },
+    })
+    assert.equal(browserSession.status, 'ACTIVE')
+    assert.equal(browserSession.revokedAt, null)
+    assert.equal(await prisma.computerBindingAudit.count({
+      where: { bindingId: id, eventType: 'COMPUTER_BINDING_DISABLED' },
+    }), 0)
+  } finally {
+    await prisma.user.update({ where: { id: T2.ownerId }, data: { status: 'ACTIVE' } })
+    await prisma.userStoreRole.update({
+      where: { userId_storeId: { userId: T2.ownerId, storeId: T2.storeId } },
+      data: { status: 'ACTIVE' },
+    })
+  }
+})
+
+test('无 ACTIVE OWNER 时合法 OPS delegate 以 NULL actor 原子停用电脑', async () => {
+  const { inst, id } = await createBoundComputer('OPS 代管停用电脑')
+  const launch = await api('/api/computer-client/bindings/self/launch-ticket', {
+    method: 'POST',
+    headers: agentHeaders(inst.installationId, inst.deviceSecret),
+  })
+  const browserDeviceId = rnd(18)
+  const consumed = await api('/api/computer-client/browser-launch/consume', {
+    method: 'POST',
+    body: { ticket: launch.data.ticket, browserDeviceId },
+  })
+  assert.equal(consumed.status, 200)
+  const sessionPayload = decodePosDeviceToken(consumed.data.posDeviceToken)
+  assert.equal(await prisma.user.count({ where: { id: 'sys' } }), 0)
+
+  await prisma.userStoreRole.update({
+    where: { userId_storeId: { userId: T1.ownerId, storeId: T1.storeId } },
+    data: { status: 'DISABLED' },
+  })
+  await prisma.user.update({ where: { id: T1.ownerId }, data: { status: 'DISABLED' } })
+
+  try {
+    const delegateHeaders = await enterOpsDelegate(T1)
+    const delegateEntry = await prisma.operationLog.findFirst({
+      where: {
+        tenantId: T1.tenantId,
+        storeId: T1.storeId,
+        actionType: 'OPS_DELEGATE_ENTER',
+        targetId: T1.storeId,
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    assert.ok(delegateEntry)
+    assert.equal(delegateEntry.userId, null)
+    assert.equal(delegateEntry.payloadSnapshot.source, 'ops_delegate_operation')
+    assert.equal(delegateEntry.payloadSnapshot.opsAdminId, OPS.id)
+    assert.equal(delegateEntry.payloadSnapshot.opsRole, 'SUPER_ADMIN')
+
+    const disabled = await api(`/api/computer-client/computers/${id}/disable`, {
+      method: 'POST',
+      headers: delegateHeaders,
+    })
+    assert.equal(disabled.status, 200)
+    assert.equal(disabled.data.computer.status, 'DISABLED')
+
+    const row = await prisma.computerBinding.findUnique({ where: { id } })
+    assert.ok(row.disabledAt)
+    assert.equal(row.disabledByUserId, null)
+    assert.equal(row.credentialStatus, 'VOID')
+    assert.equal(row.status, 'APPROVED')
+
+    const revokedSession = await prisma.browserPosDevice.findUnique({
+      where: { id: sessionPayload.browserPosSessionId },
+    })
+    assert.equal(revokedSession.status, 'REVOKED')
+    assert.equal(revokedSession.activeSlot, null)
+    assert.ok(revokedSession.revokedAt)
+    assert.equal(revokedSession.revokedByUserId, null)
+
+    const audit = await prisma.computerBindingAudit.findFirst({
+      where: { bindingId: id, eventType: 'COMPUTER_BINDING_DISABLED' },
+      orderBy: { createdAt: 'desc' },
+    })
+    assert.ok(audit)
+    assert.equal(audit.actorUserId, null)
+    assert.equal(audit.result, 'SUCCESS')
+    assert.equal(audit.metadata.operatorRole, 'OPS_DELEGATE_SUPER_ADMIN')
+
+    const protectedCall = await api(`/api/cashier/orders?storeCode=${T1.storeCode}`, {
+      headers: {
+        'x-pos-device-id': browserDeviceId,
+        'x-pos-device-token': consumed.data.posDeviceToken,
+      },
+    })
+    assert.equal(protectedCall.status, 403, 'delegate 停用提交后关联 Browser Session 必须失效')
+  } finally {
+    await prisma.user.update({ where: { id: T1.ownerId }, data: { status: 'ACTIVE' } })
+    await prisma.userStoreRole.update({
+      where: { userId_storeId: { userId: T1.ownerId, storeId: T1.storeId } },
+      data: { status: 'ACTIVE' },
+    })
+  }
 })
 
 test('人工恢复许可可重签、一次性消费，并创建独立新绑定', async () => {
