@@ -21,6 +21,7 @@ export type ProductImportIssueCode =
   | 'PDF_IMAGE_REQUIRES_CONFIRMATION'
   | 'AI_MAPPING_REQUIRED'
   | 'AI_MAPPING_FAILED'
+  | 'UNSUPPORTED_GROUPED_VARIANT_SOURCE'
   | 'SHEET_SKIPPED'
 
 export type ProductImportIssue = {

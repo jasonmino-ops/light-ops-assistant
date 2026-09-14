@@ -380,6 +380,39 @@ function unsupportedImageIssue(candidate: ProductImportImageCandidate): ProductI
   }
 }
 
+function groupedVariantSourceIssue(
+  sheet: XLSX.WorkSheet,
+  range: XLSX.Range,
+  headerRowIndex: number,
+): ProductImportIssue | null {
+  const normalizedHeaders = worksheetRowValues(sheet, headerRowIndex, range)
+    .map((value) => value.normalize('NFKC').trim().toLowerCase().replace(/[\s*_]+/g, ''))
+  const productIdColumn = normalizedHeaders.findIndex((header) => /^(?:商品|product)id$/.test(header))
+  const variantIdColumn = normalizedHeaders.findIndex((header) => /^(?:规格|specification|variant|variation)id$/.test(header))
+  if (productIdColumn < 0 || variantIdColumn < 0) return null
+
+  const productGroups = new Map<string, { rowCount: number; variantRowCount: number }>()
+  for (let rowIndex = headerRowIndex + 1; rowIndex <= range.e.r; rowIndex += 1) {
+    const productId = safeCellString(sheet, rowIndex, productIdColumn, true).normalize('NFKC').trim()
+    if (!productId) continue
+    const variantId = safeCellString(sheet, rowIndex, variantIdColumn, true).normalize('NFKC').trim()
+    const group = productGroups.get(productId) ?? { rowCount: 0, variantRowCount: 0 }
+    group.rowCount += 1
+    if (variantId) group.variantRowCount += 1
+    productGroups.set(productId, group)
+  }
+  const groupedProducts = [...productGroups.values()].filter((group) => group.rowCount > 1 && group.variantRowCount > 1)
+  const repeatedGroups = groupedProducts.length
+  const extraVariantRows = groupedProducts.reduce((total, group) => total + group.rowCount - 1, 0)
+  if (repeatedGroups === 0) return null
+
+  return {
+    code: 'UNSUPPORTED_GROUPED_VARIANT_SOURCE',
+    message: `检测到规格分组商品结构（${repeatedGroups} 个重复 Product ID 分组，${extraVariantRows} 条附加规格行）；V0.1 不支持跨行合并商品/规格，已阻止确认，请使用后续 ES-PRODUCT-VARIANT-IMPORT-01 处理`,
+    blocking: true,
+  }
+}
+
 export function inspectSpreadsheetBuffer(buffer: Buffer, format: Exclude<ProductImportFormat, 'PDF'>) {
   // Preflight OOXML before SheetJS sees the archive. The streaming pass bounds
   // every entry (including unknown entries), total expansion and path names.
@@ -461,6 +494,8 @@ export function parseSpreadsheetBuffer(
       })
       continue
     }
+    const groupedVariantIssue = groupedVariantSourceIssue(sheet, range, headerRowIndex)
+    if (groupedVariantIssue) warnings.push(groupedVariantIssue)
     const headers = worksheetRowValues(sheet, headerRowIndex, range)
     const firstRowIndex = options.cursor?.sheetIndex === inspection.sheetIndex
       ? Math.max(headerRowIndex + 1, options.cursor.rowIndex)

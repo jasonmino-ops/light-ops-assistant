@@ -131,7 +131,7 @@ export class AnthropicProductImportAiProvider implements ProductImportAiProvider
         })),
       })),
     }))
-    const raw = await this.request([{ type: 'text', text: `你是商品导入字段映射器。判断哪些工作表包含商品，并从 candidateRows 中选择真实表头行，将绝对 worksheet columnIndex 映射到允许字段。只输出 JSON 数组，不要 markdown。字段仅可为 barcode,sku,nameZh,nameEn,nameKm,descZh,descEn,descKm,spec,sellPrice,status,imageUrl,category1,category2。每项格式：{"sheetIndex":0,"selected":true,"headerRowNumber":1,"mapping":{"nameZh":0,"sellPrice":1},"confidence":0.9,"warnings":[]}。不得编造 candidateRows 中不存在的表头行或列。输入：${JSON.stringify(payload)}` }])
+    const raw = await this.request([{ type: 'text', text: `你是商品导入字段映射器。判断哪些工作表包含商品，并从 candidateRows 中选择真实表头行，将绝对 worksheet columnIndex 映射到允许字段。只输出 JSON 数组，不要 markdown。字段仅可为 barcode,sku,nameZh,nameEn,nameKm,descZh,descEn,descKm,spec,sellPrice,status,imageUrl,category1,category2。每项格式：{"sheetIndex":0,"selected":true,"headerRowNumber":1,"mapping":{"nameZh":0,"sellPrice":1},"confidence":0.9,"warnings":[]}。selected=true 只允许用于可独立生成商品行、且能映射至少一个名称字段和 sellPrice 的主商品表；分类、商品多语言、规格、加料等仅供关联的辅助表必须 selected=false、mapping={}，并在 warnings 说明其角色，当前导入器不会跨表 join。映射必须同时依据表头和候选行样本值：商品名称样本以高棉文字为主时映射 nameKm，以汉字为主时映射 nameZh，以拉丁文字为主时映射 nameEn；双语表头不能覆盖样本值的实际语言。明确写 SKU/货号的列映射 sku；写编码/Code 且样本值是可扫码商品标识（包括带 # 等原样字符）时优先映射 barcode。category1/category2 只接受用于现有分类名称匹配的人类可读分类名称列；不得把分类ID或其他 opaque numeric ID 映射为分类，若同时存在“分类ID”和“分类名称”必须选择“分类名称”。只有样本单元格实际包含 HTTP/HTTPS URL 时才映射 imageUrl；图片表头下的空单元格可能是 XLSX 内嵌 Drawing，不得映射 imageUrl。不得编造 candidateRows 中不存在的表头行或列，不得把同一列映射到多个字段。输入：${JSON.stringify(payload)}` }])
     const result: ProductImportAiSpreadsheetMapping[] = []
     for (const value of raw) {
       if (!value || typeof value !== 'object') throw new Error('AI_SCHEMA_INVALID')

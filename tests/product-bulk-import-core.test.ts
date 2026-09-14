@@ -102,6 +102,31 @@ async function main() {
   assert.equal(irregularResult.rows[0].product.barcode, null)
   assert.ok(irregularResult.warnings.some((warning) => warning.code === 'SHEET_SKIPPED' && warning.message.includes('说明')))
 
+  const groupedVariantResult = parseSpreadsheetBuffer(workbookBuffer([{ name: '商品表', rows: [
+    ['商品ID', '商品编号', '商品名称', '售价', '规格ID'],
+    ['P-1', 'SKU-1-S', '咖啡（小杯）', 1.5, 'SPEC-S'],
+    ['P-1', 'SKU-1-L', '咖啡（大杯）', 2, 'SPEC-L'],
+    ['P-2', 'SKU-2', '茶', 1, 'SPEC-DEFAULT'],
+  ] }]), 'XLSX', {
+    0: { selected: true, headerRowNumber: 1, mapping: { nameZh: 2, sellPrice: 3 } },
+  })
+  assert.equal(groupedVariantResult.rows.length, 3)
+  assert.ok(groupedVariantResult.warnings.some((warning) => (
+    warning.code === 'UNSUPPORTED_GROUPED_VARIANT_SOURCE'
+    && warning.blocking
+    && warning.message.includes('1 个重复 Product ID 分组')
+  )))
+
+  const nonGroupedResult = parseSpreadsheetBuffer(workbookBuffer([{ name: '商品表', rows: [
+    ['商品ID', '商品编号', '商品名称', '售价', '规格ID'],
+    ['P-1', 'REUSED-SKU', '普通商品 A', 1.5, ''],
+    ['P-1', 'REUSED-SKU', '普通商品 A 补充行', 1.5, ''],
+    ['P-2', 'REUSED-SKU', '普通商品 B', 2, 'SPEC-B'],
+  ] }]), 'XLSX', {
+    0: { selected: true, headerRowNumber: 1, mapping: { sku: 1, nameZh: 2, sellPrice: 3 } },
+  })
+  assert.equal(nonGroupedResult.warnings.some((warning) => warning.code === 'UNSUPPORTED_GROUPED_VARIANT_SOURCE'), false)
+
   const externalImages = parseSpreadsheetBuffer(workbookBuffer([{ name: 'Products', rows: [
     ['中文名', '售价', '状态', '图片地址'],
     ['外链图片商品', 6.5, 'ON', 'https://images.example/product.jpg'],
@@ -288,6 +313,11 @@ async function main() {
     assert.match(deepPrompt, /"rowNumber":5/)
     assert.match(deepPrompt, /ឈ្មោះក្នុងតារាង/)
     assert.match(deepPrompt, /"columnIndex":2/)
+    assert.match(deepPrompt, /高棉文字为主时映射 nameKm/)
+    assert.match(deepPrompt, /写编码\/Code.*优先映射 barcode/)
+    assert.match(deepPrompt, /实际包含 HTTP\/HTTPS URL 时才映射 imageUrl/)
+    assert.match(deepPrompt, /商品多语言、规格、加料.*必须 selected=false/)
+    assert.match(deepPrompt, /不得把分类ID.*必须选择“分类名称”/)
     const deepParsed = parseSpreadsheetBuffer(deepHeaderSource, 'XLSX', {
       0: { selected: deepMappings[0].selected, headerRowNumber: deepMappings[0].headerRowNumber, mapping: deepMappings[0].mapping },
     })
