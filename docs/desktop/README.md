@@ -37,7 +37,7 @@
 
 ## ES-DESKTOP-UX-01 — Desktop UX Redesign
 
-- [Governance Archival Wrapper / Publication Candidate](es-desktop-ux-01-governance-freeze-record.md)
+- [Governance Archival Wrapper / Repository Governance Freeze](es-desktop-ux-01-governance-freeze-record.md)
 - [Development Blueprint V1.0 FINAL](es-desktop-ux-01-blueprint-v1-final.md)
 - [Implementation Roadmap V1.0 FINAL](es-desktop-ux-01-roadmap-v1-final.md)
 - [Original Final Freeze Record](es-desktop-ux-01-freeze-record.md)
