@@ -5,6 +5,10 @@ import ts from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
 
 const rendererPath = join(__dirname, '../src/renderer/activation/activationRenderer.ts')
+const activationWindowControllerPath = join(
+  __dirname,
+  '../src/main/activation/activationWindowController.ts',
+)
 
 function compileRenderer(): string {
   return ts.transpileModule(readFileSync(rendererPath, 'utf8'), {
@@ -38,6 +42,19 @@ function fakeElement(): FakeElement {
 }
 
 describe('activation renderer packaged boot compatibility', () => {
+  it('retains the hardened Activation BrowserWindow boundary', () => {
+    const controller = readFileSync(activationWindowControllerPath, 'utf8')
+
+    expect(controller).toMatch(/contextIsolation:\s*true/)
+    expect(controller).toMatch(/sandbox:\s*true/)
+    expect(controller).toMatch(/nodeIntegration:\s*false/)
+    expect(controller).toMatch(/webSecurity:\s*true/)
+    expect(controller).not.toMatch(/contextIsolation:\s*false/)
+    expect(controller).not.toMatch(/sandbox:\s*false/)
+    expect(controller).not.toMatch(/nodeIntegration:\s*true/)
+    expect(controller).not.toMatch(/webSecurity:\s*false/)
+  })
+
   it('compiles as a classic browser script without CommonJS runtime globals', () => {
     const compiled = compileRenderer()
 

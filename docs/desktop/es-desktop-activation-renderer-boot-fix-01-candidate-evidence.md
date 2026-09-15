@@ -57,10 +57,10 @@ No package script, tsconfig, dependency, preload, main process, Activation runti
 | Validation | Result |
 | --- | --- |
 | Root-cause reproduction using predecessor packaged bytes | `PASS` — exact `ReferenceError: exports is not defined` at line 2 |
-| Focused renderer boot tests | `PASS` — 1 file / 2 tests |
+| Focused renderer boot tests | `PASS` — 1 file / 3 tests |
 | Browser-like renderer execution | `PASS` — bridge subscription and `getState()` called; `UNACTIVATED` reveals store-code, PIN, and activation controls |
 | TypeScript | `PASS` |
-| Desktop full suite | `PASS` — 22 files / 159 tests |
+| Desktop full suite | `PASS` — 22 files / 160 tests |
 | Static Electron security | `PASS` — 16/16 |
 | Compile | `PASS` |
 | Activation dist assets | `PASS` |
