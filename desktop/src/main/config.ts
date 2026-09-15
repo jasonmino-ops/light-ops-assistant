@@ -7,6 +7,7 @@
  *   ESHOP_DESKTOP_STORE_CODE  门店编码
  *   ESHOP_DESKTOP_LANG        zh | en | km
  *   ESHOP_DESKTOP_FORCE_CUSTOMER=1  单屏开发时强制打开顾客窗口（窗口化）
+ *   ESHOP_DESKTOP_DISABLE_AUTO_FULLSCREEN=1  本次启动临时关闭员工窗口自动全屏
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -18,6 +19,7 @@ export type DesktopConfig = {
   storeCode: string
   lang: 'zh' | 'en' | 'km'
   forceCustomerWindow: boolean
+  autoFullscreen: boolean
 }
 
 export const DEFAULT_BASE_URL = 'https://elifekh.com'
@@ -39,6 +41,10 @@ export function parseConfigFile(raw: string): Partial<DesktopConfig> {
 
 let cached: DesktopConfig | null = null
 let configPath: string | null = null
+
+export function isAutoFullscreenEnabled(env: NodeJS.ProcessEnv): boolean {
+  return env.ESHOP_DESKTOP_DISABLE_AUTO_FULLSCREEN !== '1'
+}
 
 export function loadConfig(userDataDir: string): DesktopConfig {
   configPath = join(userDataDir, 'config.json')
@@ -65,8 +71,15 @@ export function loadConfig(userDataDir: string): DesktopConfig {
       ? env.ESHOP_DESKTOP_LANG
       : fromFile.lang || 'zh',
     forceCustomerWindow: env.ESHOP_DESKTOP_FORCE_CUSTOMER === '1',
+    autoFullscreen: isAutoFullscreenEnabled(env),
   }
-  logger.info('config.loaded', { baseUrl: cached.baseUrl, storeCode: cached.storeCode, lang: cached.lang, path: configPath })
+  logger.info('config.loaded', {
+    baseUrl: cached.baseUrl,
+    storeCode: cached.storeCode,
+    lang: cached.lang,
+    autoFullscreen: cached.autoFullscreen,
+    path: configPath,
+  })
   return cached
 }
 
