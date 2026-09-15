@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import * as XLSX from 'xlsx'
 import { strToU8, unzipSync, zipSync } from 'fflate'
 import sharp from 'sharp'
@@ -52,6 +53,8 @@ let reverseMenuAiItems = false
 let menuAiCallCount = 0
 let reversePdfAiBlocks = false
 let pdfAiCallCount = 0
+const defaultSpreadsheetMappings = [{ sheetIndex: 0, selected: true, headerRowNumber: 1, mapping: { nameZh: 0, sellPrice: 1 } }]
+let spreadsheetMappings: unknown = defaultSpreadsheetMappings
 
 const originalFetch = globalThis.fetch
 globalThis.fetch = async (input, init = {}) => {
@@ -61,7 +64,7 @@ globalThis.fetch = async (input, init = {}) => {
     const requestBody = JSON.parse(String(init.body)) as { messages?: Array<{ content?: Array<{ type?: string; text?: string }> }> }
     const prompt = requestBody.messages?.[0]?.content?.find((part) => part.type === 'text')?.text ?? ''
     if (prompt.includes('商品导入字段映射器')) {
-      return Response.json({ content: [{ type: 'text', text: '[{"sheetIndex":0,"selected":true,"headerRowNumber":1,"mapping":{"nameZh":0,"sellPrice":1}}]' }] })
+      return Response.json({ content: [{ type: 'text', text: JSON.stringify(spreadsheetMappings) }] })
     }
     if (prompt.includes('识别 PDF 中的商品块')) {
       pdfAiCallCount += 1
@@ -578,10 +581,19 @@ async function main() {
     const largeCreated = await createProductImportJob(tenantId, { fileName: 'large.csv', mimeType: 'text/csv', fileSize: largeSource.length })
     staged.set(largeCreated.storageKey, largeSource)
     let largeProgress = await analyzeProductImportJob(tenantId, largeCreated.jobId)
-    assert.equal(largeProgress.job.analyzedRowCount, 200, 'one Analyze request processes at most one row batch')
+    assert.equal(largeProgress.job.analyzedRowCount, 50, 'one Analyze request persists at most 50 rows')
     assert.equal(largeProgress.job.status, 'ANALYSIS_PENDING')
     assert.equal(stagingGetCounts.get(largeCreated.storageKey), 1)
-    while (largeProgress.hasMoreAnalysis) largeProgress = await analyzeProductImportJob(tenantId, largeCreated.jobId)
+    const largeJobAfterFirstBatch = await prisma.productBulkImportJob.findUniqueOrThrow({ where: { id: largeCreated.jobId } })
+    const firstArtifactChunk = ((largeJobAfterFirstBatch.analysisMetadata as Record<string, unknown>).parseArtifacts as { chunks: Array<{ rowCount: number }> }).chunks[0]
+    assert.equal(firstArtifactChunk.rowCount, 200, 'parse artifacts stay at 200 rows while DB persistence is windowed')
+    let priorAnalyzedCount = largeProgress.job.analyzedRowCount
+    while (largeProgress.hasMoreAnalysis) {
+      largeProgress = await analyzeProductImportJob(tenantId, largeCreated.jobId)
+      const persistedThisRequest = largeProgress.job.analyzedRowCount - priorAnalyzedCount
+      assert.ok(persistedThisRequest > 0 && persistedThisRequest <= 50, 'each Analyze transaction persists no more than 50 rows')
+      priorAnalyzedCount = largeProgress.job.analyzedRowCount
+    }
     const large = await getProductImportJob(tenantId, largeCreated.jobId, { limit: 200 })
     assert.equal(large.job.totalRowCount, 501)
     assert.equal(large.job.analyzedRowCount, 501)
@@ -616,8 +628,11 @@ async function main() {
       fileName: 'generated-collision.csv', mimeType: 'text/csv', fileSize: generatedCollisionSource.length,
     })
     staged.set(generatedCollisionJob.storageKey, generatedCollisionSource)
-    const generatedCollisionFirst = await analyzeProductImportJob(tenantId, generatedCollisionJob.jobId)
-    assert.equal(generatedCollisionFirst.job.analyzedRowCount, 200)
+    let generatedCollisionFirst = await analyzeProductImportJob(tenantId, generatedCollisionJob.jobId)
+    assert.equal(generatedCollisionFirst.job.analyzedRowCount, 50)
+    while (generatedCollisionFirst.job.analyzedRowCount < 200) {
+      generatedCollisionFirst = await analyzeProductImportJob(tenantId, generatedCollisionJob.jobId)
+    }
     const generatedCollisionRecord = await prisma.productBulkImportJob.findUniqueOrThrow({ where: { id: generatedCollisionJob.jobId } })
     const collidingBarcode = internalEan13Candidate(
       `${tenantId}:${generatedCollisionRecord.sourceFileHash}:${stableRowIdentity(['spreadsheet-row-v1', 0, 202])}`,
@@ -647,8 +662,11 @@ async function main() {
     const resumableSource = Buffer.from(`name_zh,sell_price\n${resumableRows}\n`)
     const resumableJob = await createProductImportJob(tenantId, { fileName: 'resume.csv', mimeType: 'text/csv', fileSize: resumableSource.length })
     staged.set(resumableJob.storageKey, resumableSource)
-    const resumableFirst = await analyzeProductImportJob(tenantId, resumableJob.jobId)
-    assert.equal(resumableFirst.job.analyzedRowCount, 200)
+    let resumableFirst = await analyzeProductImportJob(tenantId, resumableJob.jobId)
+    assert.equal(resumableFirst.job.analyzedRowCount, 50)
+    while (resumableFirst.job.analyzedRowCount < 200) {
+      resumableFirst = await analyzeProductImportJob(tenantId, resumableJob.jobId)
+    }
     failNextStagingGet = true
     await assert.rejects(() => analyzeProductImportJob(tenantId, resumableJob.jobId), /simulated transient staging read failure/)
     const resumableFailed = await getProductImportJob(tenantId, resumableJob.jobId)
@@ -657,6 +675,63 @@ async function main() {
     const resumableDone = await analyzeProductImportJob(tenantId, resumableJob.jobId)
     assert.equal(resumableDone.job.status, 'PREVIEW_READY')
     await cancelProductImportJob(tenantId, resumableJob.jobId)
+
+    const realFixturePath = process.env.PRODUCT_BULK_IMPORT_REAL_XLSX_FIXTURE
+    if (realFixturePath) {
+      const realSource = await readFile(realFixturePath)
+      assert.equal(realSource.length, 26_867_993, 'Home Depo fixture byte size')
+      assert.equal(
+        createHash('sha256').update(realSource).digest('hex'),
+        '43dbee620170c54364eab98501cc2703ede0044671b85caa629986ed572a72fa',
+        'Home Depo fixture hash',
+      )
+      spreadsheetMappings = [{
+        sheetIndex: 0,
+        selected: true,
+        headerRowNumber: 2,
+        mapping: { nameKm: 1, barcode: 2, sellPrice: 3 },
+        confidence: 0.95,
+        warnings: [],
+      }]
+      const productCountBeforeRealAnalyze = await prisma.product.count({ where: { tenantId } })
+      const realJob = await createProductImportJob(tenantId, {
+        fileName: 'សម្ភារៈបរិក្ខារបន្ទប់ទឹក.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        fileSize: realSource.length,
+      })
+      staged.set(realJob.storageKey, realSource)
+      let realProgress = await analyzeProductImportJob(tenantId, realJob.jobId)
+      let priorRealAnalyzedCount = 0
+      let realAnalyzeCalls = 1
+      assert.ok(realProgress.job.analyzedRowCount <= 50)
+      priorRealAnalyzedCount = realProgress.job.analyzedRowCount
+      while (realProgress.hasMoreAnalysis) {
+        realProgress = await analyzeProductImportJob(tenantId, realJob.jobId)
+        realAnalyzeCalls += 1
+        const persistedThisRequest = realProgress.job.analyzedRowCount - priorRealAnalyzedCount
+        assert.ok(persistedThisRequest > 0 && persistedThisRequest <= 50, 'Home Depo DB persistence is bounded per transaction')
+        priorRealAnalyzedCount = realProgress.job.analyzedRowCount
+      }
+      assert.equal(realAnalyzeCalls, 5)
+      assert.equal(realProgress.job.status, 'PREVIEW_READY')
+      assert.equal(realProgress.job.totalRowCount, 219)
+      assert.equal(realProgress.job.analyzedRowCount, 219)
+      assert.equal(realProgress.job.readyRowCount, 216)
+      assert.equal(realProgress.job.invalidRowCount, 3)
+      const realRows = await prisma.productBulkImportRow.findMany({
+        where: { jobId: realJob.jobId, tenantId },
+        select: { imagePlan: true },
+      })
+      const imageRelationships = realRows.reduce((total, row) => {
+        const candidates = (row.imagePlan as { candidates?: unknown[] } | null)?.candidates
+        return total + (Array.isArray(candidates) ? candidates.length : 0)
+      }, 0)
+      assert.equal(realRows.length, 219)
+      assert.equal(imageRelationships, 219)
+      assert.equal(await prisma.product.count({ where: { tenantId } }), productCountBeforeRealAnalyze, 'Analyze never creates Product records')
+      await cancelProductImportJob(tenantId, realJob.jobId)
+      spreadsheetMappings = defaultSpreadsheetMappings
+    }
 
     const cancelImageSource = await xlsxWithImage([['name_zh', 'sell_price'], ['取消图片商品', 4]])
     const cancelImageJob = await createAndAnalyze('cancel-image.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', cancelImageSource)
