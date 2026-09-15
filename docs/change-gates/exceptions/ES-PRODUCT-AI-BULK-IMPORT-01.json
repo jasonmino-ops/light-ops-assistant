@@ -6,7 +6,10 @@
   "baseOriginMainSha": "d1e116c72fb89cc1c916d92ed77a2e197eabbd74",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-09-15T05:53:15Z",
+  "featureMergeCommitSha": "939fc4ab8c786e67336afababf7a7e12d742794f",
+  "closureReason": "Closed after the exact protected Product AI bulk import candidate entered trusted origin/main through merge 939fc4ab8c786e67336afababf7a7e12d742794f, the sealed Production migration was applied and verified once, the final mobile Analyze resume fix entered Production lineage, and Founder completed the Cambodia Home Depo Production FIELD acceptance at 219 source, 216 confirmed, 3 isolated invalid, 0 failed and 0 compensation required. The original authorization, reseal history, exact protected paths and SHA-256 values remain audit evidence; this CLOSED record cannot authorize future protected changes or the separate CarGarden grouped/variant scope.",
   "authorizedPaths": [
     "prisma/schema.prisma",
     "prisma/migrations/20260914020000_add_product_bulk_import_jobs/migration.sql"
