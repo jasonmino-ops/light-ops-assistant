@@ -22,6 +22,215 @@ import { productImportAiConfig, PRODUCT_IMPORT_AI_DEFAULT_MODEL } from '../lib/p
 import { AnthropicProductImportAiProvider } from '../lib/product-bulk-import/ai/anthropic'
 import { pdfBlocksToRows } from '../lib/product-bulk-import/pdf'
 import { inspectSpreadsheetBuffer, parseSpreadsheetBuffer } from '../lib/product-bulk-import/xlsx'
+import {
+  ProductImportAnalyzeRecoveryError,
+  runProductImportAnalysis,
+  type JobView,
+} from '../app/products/ProductBulkImportPanel'
+
+function analyzeView({
+  status,
+  analyzed,
+  total = 219,
+  ready = analyzed,
+  invalid = 0,
+  hasMore = status === 'ANALYZING' || status === 'ANALYSIS_PENDING',
+  lastErrorMessage = null,
+}: {
+  status: string
+  analyzed: number
+  total?: number
+  ready?: number
+  invalid?: number
+  hasMore?: boolean
+  lastErrorMessage?: string | null
+}): JobView {
+  return {
+    job: {
+      id: 'existing-job',
+      fileName: 'home-depo.xlsx',
+      sourceFileSize: 26_867_993,
+      sourceMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      format: 'XLSX',
+      status,
+      totalRowCount: total,
+      analyzedRowCount: analyzed,
+      readyRowCount: ready,
+      invalidRowCount: invalid,
+      confirmedRowCount: 0,
+      failedRowCount: 0,
+      lastErrorCode: status === 'FAILED' ? 'SERVER_ANALYZE_FAILED' : null,
+      lastErrorMessage,
+      resultSummary: null,
+      analysisWarnings: [],
+    },
+    rows: [],
+    nextCursor: null,
+    hasMoreAnalysis: hasMore,
+  }
+}
+
+async function productImportAnalyzeRecoveryChecks() {
+  const noWait = async () => undefined
+
+  let successfulAnalyzeCalls = 0
+  const successful = await runProductImportAnalysis({
+    analyze: async () => {
+      successfulAnalyzeCalls += 1
+      return analyzeView({ status: 'PREVIEW_READY', analyzed: 1, total: 1, ready: 1, hasMore: false })
+    },
+    load: async () => { throw new Error('successful Analyze must not reconcile') },
+    wait: noWait,
+  })
+  assert.equal(successful.job.status, 'PREVIEW_READY', 'successful Analyze reaches Preview')
+  assert.equal(successfulAnalyzeCalls, 1)
+
+  let beforeCommitCalls = 0
+  const beforeCommit = await runProductImportAnalysis({
+    analyze: async () => {
+      beforeCommitCalls += 1
+      if (beforeCommitCalls === 1) throw new TypeError('Load failed')
+      return analyzeView({ status: 'PREVIEW_READY', analyzed: 50, total: 50, ready: 50, hasMore: false })
+    },
+    load: async () => analyzeView({ status: 'AWAITING_UPLOAD', analyzed: 0, total: 0, ready: 0, hasMore: false }),
+    wait: noWait,
+  })
+  assert.equal(beforeCommitCalls, 2, 'network failure before claim retries the same AWAITING_UPLOAD Job')
+  assert.equal(beforeCommit.job.analyzedRowCount, 50)
+
+  const persistedOrdinals = new Set(Array.from({ length: 150 }, (_, index) => index + 1))
+  const assignedBarcodes = new Map(Array.from({ length: 150 }, (_, index) => [index + 1, `29${String(index + 1).padStart(10, '0')}0`]))
+  const originalBarcode = assignedBarcodes.get(25)
+  const persistedBatchSizes: number[] = []
+  let lostResponseCalls = 0
+  const lostResponse = await runProductImportAnalysis({
+    initialView: analyzeView({ status: 'ANALYSIS_PENDING', analyzed: 150, total: 200, ready: 149, invalid: 1 }),
+    analyze: async () => {
+      lostResponseCalls += 1
+      const start = persistedOrdinals.size + 1
+      const end = lostResponseCalls === 1 ? 200 : 219
+      persistedBatchSizes.push(end - start + 1)
+      for (let ordinal = start; ordinal <= end; ordinal += 1) {
+        assert.equal(persistedOrdinals.has(ordinal), false, `row ${ordinal} must not be duplicated`)
+        persistedOrdinals.add(ordinal)
+        assignedBarcodes.set(ordinal, `29${String(ordinal).padStart(10, '0')}0`)
+      }
+      if (lostResponseCalls === 1) throw new TypeError('Load failed')
+      return analyzeView({ status: 'PREVIEW_READY', analyzed: 219, ready: 216, invalid: 3, hasMore: false })
+    },
+    load: async () => analyzeView({ status: 'ANALYSIS_PENDING', analyzed: 200, total: 200, ready: 198, invalid: 2 }),
+    wait: noWait,
+  })
+  assert.deepEqual(persistedBatchSizes, [50, 19], 'existing 50-row batch/resume contract remains intact')
+  assert.equal(lostResponseCalls, 2, 'lost response reconciles before resuming the next batch')
+  assert.equal(persistedOrdinals.size, 219, 'resume does not duplicate persisted rows')
+  assert.equal(assignedBarcodes.get(25), originalBarcode, 'resume preserves an existing assigned barcode')
+  assert.deepEqual(
+    [lostResponse.job.analyzedRowCount, lostResponse.job.readyRowCount, lostResponse.job.invalidRowCount],
+    [219, 216, 3],
+  )
+
+  const analyzingEvents: string[] = []
+  let analyzingLoads = 0
+  let analyzingCalls = 0
+  const analyzingReconciled = await runProductImportAnalysis({
+    analyze: async () => {
+      analyzingCalls += 1
+      analyzingEvents.push('analyze')
+      if (analyzingCalls === 1) throw new TypeError('Load failed')
+      return analyzeView({ status: 'PREVIEW_READY', analyzed: 219, ready: 216, invalid: 3, hasMore: false })
+    },
+    load: async () => {
+      analyzingLoads += 1
+      analyzingEvents.push(`load-${analyzingLoads}`)
+      if (analyzingLoads === 1) {
+        return analyzeView({ status: 'ANALYSIS_PENDING', analyzed: 150, total: 200, ready: 149, invalid: 1 })
+      }
+      if (analyzingLoads < 4) {
+        return analyzeView({ status: 'ANALYZING', analyzed: 150, total: 200, ready: 149, invalid: 1 })
+      }
+      return analyzeView({ status: 'ANALYSIS_PENDING', analyzed: 200, total: 200, ready: 198, invalid: 2 })
+    },
+    wait: noWait,
+  })
+  assert.equal(analyzingReconciled.job.status, 'PREVIEW_READY')
+  assert.equal(analyzingCalls, 2)
+  assert.deepEqual(
+    analyzingEvents,
+    ['analyze', 'load-1', 'load-2', 'load-3', 'load-4', 'analyze'],
+    'a delayed request that moves PENDING to ANALYZING during backoff is polled without a concurrent Analyze',
+  )
+
+  let previewAnalyzeCalls = 0
+  const previewReconciled = await runProductImportAnalysis({
+    analyze: async () => {
+      previewAnalyzeCalls += 1
+      throw new TypeError('Load failed')
+    },
+    load: async () => analyzeView({ status: 'PREVIEW_READY', analyzed: 219, ready: 216, invalid: 3, hasMore: false }),
+    wait: noWait,
+  })
+  assert.equal(previewReconciled.job.status, 'PREVIEW_READY')
+  assert.equal(previewAnalyzeCalls, 1, 'a reconciled Preview is never analyzed again')
+
+  let terminalAnalyzeCalls = 0
+  await assert.rejects(
+    () => runProductImportAnalysis({
+      analyze: async () => {
+        terminalAnalyzeCalls += 1
+        throw new TypeError('Load failed')
+      },
+      load: async () => analyzeView({
+        status: 'FAILED', analyzed: 150, total: 200, ready: 149, invalid: 1, hasMore: false,
+        lastErrorMessage: '服务端真实失败',
+      }),
+      wait: noWait,
+    }),
+    (reason: unknown) => reason instanceof ProductImportAnalyzeRecoveryError && reason.message === '服务端真实失败',
+    'terminal state stops retries and surfaces the server error',
+  )
+  assert.equal(terminalAnalyzeCalls, 1)
+
+  let manualFailedResumeCalls = 0
+  const manualFailedResume = await runProductImportAnalysis({
+    initialView: analyzeView({
+      status: 'FAILED', analyzed: 150, total: 200, ready: 149, invalid: 1,
+      lastErrorMessage: '先前批次瞬时失败', hasMore: true,
+    }),
+    analyze: async () => {
+      manualFailedResumeCalls += 1
+      return analyzeView({ status: 'PREVIEW_READY', analyzed: 219, ready: 216, invalid: 3, hasMore: false })
+    },
+    load: async () => { throw new Error('manual FAILED resume does not reconcile before its explicit Analyze') },
+    wait: noWait,
+    allowInitialFailedResume: true,
+  })
+  assert.equal(manualFailedResume.job.status, 'PREVIEW_READY')
+  assert.equal(manualFailedResumeCalls, 1, 'an explicit user action preserves the existing resumable FAILED contract')
+
+  let exhaustedAnalyzeCalls = 0
+  const exhaustedJobIds: string[] = []
+  await assert.rejects(
+    () => runProductImportAnalysis({
+      analyze: async () => {
+        exhaustedAnalyzeCalls += 1
+        exhaustedJobIds.push('existing-job')
+        throw new TypeError('Load failed')
+      },
+      load: async () => analyzeView({ status: 'ANALYSIS_PENDING', analyzed: 150, total: 200, ready: 149, invalid: 1 }),
+      wait: noWait,
+      maxNetworkRetries: 2,
+    }),
+    (reason: unknown) => (
+      reason instanceof ProductImportAnalyzeRecoveryError
+      && reason.message.includes('重试次数已用完')
+      && reason.latestView?.job.id === 'existing-job'
+    ),
+    'bounded retry exhaustion preserves the latest existing Job view',
+  )
+  assert.equal(exhaustedAnalyzeCalls, 3, 'maxNetworkRetries=2 means the initial request plus two retries')
+  assert.deepEqual(exhaustedJobIds, ['existing-job', 'existing-job', 'existing-job'], 'retries never create or switch Job IDs')
+}
 
 function workbookBuffer(sheets: Array<{ name: string; rows: unknown[][] }>): Buffer {
   const workbook = XLSX.utils.book_new()
@@ -59,6 +268,7 @@ async function drawingWorkbook(options: { wps?: boolean; unsupported?: boolean; 
 }
 
 async function main() {
+  await productImportAnalyzeRecoveryChecks()
   assert.equal(ean13CheckDigit('400638133393'), '1')
   const candidates = new Set<string>()
   for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -378,6 +588,9 @@ async function main() {
   assert.match(bulkUi, /accept="\.xlsx,\.csv,\.pdf"/)
   assert.match(bulkUi, /assignedBarcode/)
   assert.match(bulkUi, /discardImages/)
+  assert.match(bulkUi, /网络连接中断，正在恢复导入任务/)
+  assert.match(bulkUi, /ProductImportAnalyzeRecoveryError/)
+  assert.match(bulkUi, /reason\.latestView/)
 
   console.log('product bulk import core checks passed')
 }
