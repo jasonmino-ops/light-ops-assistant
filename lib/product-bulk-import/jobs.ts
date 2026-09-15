@@ -42,6 +42,9 @@ const STAGING_MIME_TYPES = [
 const ANALYSIS_ARTIFACT_MAX_BYTES = 8 * 1024 * 1024
 const ANALYSIS_ARTIFACT_JOB_MAX_BYTES = 256 * 1024 * 1024
 const ANALYSIS_ARTIFACT_QUIESCENCE_MS = 2 * 60 * 1000
+// Keep row persistence comfortably below the interactive-transaction deadline.
+// Parse artifacts stay larger so XLSX/OOXML work is not repeated for every DB batch.
+const ANALYSIS_DB_PERSIST_BATCH_SIZE = 50
 
 export class ProductImportError extends Error {
   constructor(readonly code: string, message = code, readonly status = 400) {
@@ -402,7 +405,10 @@ async function persistParseArtifacts(
 }
 
 async function readParseArtifactBatch(manifest: ParseArtifactManifest, analyzedCount: number) {
-  const descriptor = manifest.chunks.find((chunk) => chunk.startOrdinal === analyzedCount + 1)
+  const nextOrdinal = analyzedCount + 1
+  const descriptor = manifest.chunks.find((chunk) => (
+    nextOrdinal >= chunk.startOrdinal && nextOrdinal < chunk.startOrdinal + chunk.rowCount
+  ))
   if (!descriptor) {
     if (analyzedCount === manifest.totalRows) return []
     throw new ProductImportError('ANALYSIS_ARTIFACT_CURSOR_INVALID', 'Analyze 分片游标不连续', 409)
@@ -416,7 +422,15 @@ async function readParseArtifactBatch(manifest: ParseArtifactManifest, analyzedC
     if (!Array.isArray(parsed) || parsed.length !== descriptor.rowCount) {
       throw new ProductImportError('ANALYSIS_ARTIFACT_INVALID', 'Analyze 分片格式无效', 409)
     }
-    return parsed as ParsedProductImportRow[]
+    const offset = nextOrdinal - descriptor.startOrdinal
+    const batch = (parsed as ParsedProductImportRow[]).slice(offset, offset + ANALYSIS_DB_PERSIST_BATCH_SIZE)
+    if (
+      batch.length === 0
+      || batch.some((row, index) => row.sourceOrdinal !== nextOrdinal + index)
+    ) {
+      throw new ProductImportError('ANALYSIS_ARTIFACT_CURSOR_INVALID', 'Analyze 分片行游标不连续', 409)
+    }
+    return batch
   } catch (error) {
     if (error instanceof ProductImportError) throw error
     throw new ProductImportError('ANALYSIS_ARTIFACT_READ_FAILED', 'Analyze 分片无法读取，将从原始文件恢复', 409)
