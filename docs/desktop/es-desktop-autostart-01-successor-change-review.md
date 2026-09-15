@@ -114,4 +114,3 @@ for ES-DESKTOP-AUTOSTART-01
 ```
 
 Any need to edit another Desktop implementation file, weaken a gate, add a second startup path, or change install semantics beyond the single HKCU Run lifecycle is outside this authorization and must STOP.
-
