@@ -17,7 +17,7 @@ const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
 const desktopDir = resolve(scriptDir, '..')
 const repoRoot = resolve(desktopDir, '..')
 
-const BASELINE_FREEZE_TAG = 'ep-mb3-06b-desktop-activation-runtime-v1.0-final'
+const BASELINE_FREEZE_TAG = 'cc9aca6f36518a83c4f3de12b3f7645105a5e3c8'
 const DEFAULT_PROVIDER_COMMIT = '7785be145d5259991038d17839d322e2694e338c'
 const PROVENANCE_SCHEMA = 'ep-mb3-07a.release-provenance.v1'
 const PHASE1_DESKTOP_VERSION = '0.2.0-pilot.2'
