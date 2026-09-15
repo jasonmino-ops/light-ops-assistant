@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest'
 const desktopRoot = join(__dirname, '..')
 const builderConfig = readFileSync(join(desktopRoot, 'electron-builder.yml'), 'utf8')
 const installerInclude = readFileSync(join(desktopRoot, 'build', 'installer.nsh'), 'utf8')
+const builderTemplateRoot = join(desktopRoot, 'node_modules', 'app-builder-lib', 'templates', 'nsis')
+const installTemplate = readFileSync(join(builderTemplateRoot, 'installSection.nsh'), 'utf8')
+const uninstallTemplate = readFileSync(join(builderTemplateRoot, 'uninstaller.nsh'), 'utf8')
 
 const runKey = 'Software\\Microsoft\\Windows\\CurrentVersion\\Run'
 const valueName = 'E-Shop Desktop'
@@ -21,6 +24,11 @@ describe('ES-DESKTOP-AUTOSTART-01 Windows installer registration', () => {
     expect(builderConfig).toMatch(/^\s*include:\s*build\/installer\.nsh\s*$/m)
     expect(builderConfig).toMatch(/^\s*perMachine:\s*false\s*$/m)
     expect(builderConfig).toMatch(/^\s*deleteAppDataOnUninstall:\s*false\s*$/m)
+  })
+
+  it('uses lifecycle hooks invoked by the installed electron-builder version', () => {
+    expect(installTemplate).toMatch(/!ifmacrodef customInstall\s+!insertmacro customInstall/)
+    expect(uninstallTemplate).toMatch(/!ifmacrodef customUnInstall\s+!insertmacro customUnInstall/)
   })
 
   it('writes exactly one current-user Run value for the normal packaged executable', () => {
