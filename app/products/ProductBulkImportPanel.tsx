@@ -54,7 +54,7 @@ type ResultSummary = {
   failed?: number
   compensationRequired?: number
 }
-type JobView = {
+export type JobView = {
   job: {
     id: string
     fileName: string
@@ -77,6 +77,129 @@ type JobView = {
   nextCursor: number | null
   hasMoreAnalysis: boolean
   batch?: { claimed: number; succeeded: number; failed: number }
+}
+
+export const PRODUCT_IMPORT_ANALYZE_NETWORK_RETRY_LIMIT = 3
+export const PRODUCT_IMPORT_ANALYZE_RETRY_BACKOFF_MS = [1_000, 2_000, 4_000] as const
+export const PRODUCT_IMPORT_ANALYZE_RECONCILE_DELAYS_MS = [
+  0, 1_000, 2_000, 4_000,
+  5_000, 5_000, 5_000, 5_000, 5_000, 5_000, 5_000, 5_000, 5_000,
+] as const
+
+const ANALYSIS_COMPLETE_STATUSES = new Set(['PREVIEW_READY', 'COMPLETED'])
+const ANALYSIS_TERMINAL_STATUSES = new Set(['FAILED', 'CANCELLED', 'EXPIRED', 'COMPENSATION_REQUIRED'])
+
+export class ProductImportAnalyzeRecoveryError extends Error {
+  latestView: JobView | null
+
+  constructor(message: string, latestView: JobView | null) {
+    super(message)
+    this.name = 'ProductImportAnalyzeRecoveryError'
+    this.latestView = latestView
+  }
+}
+
+export function isProductImportAnalyzeNetworkError(reason: unknown) {
+  return reason instanceof TypeError
+}
+
+type ProductImportAnalyzeRunnerOptions = {
+  initialView?: JobView | null
+  analyze: () => Promise<JobView>
+  load: () => Promise<JobView>
+  onProgress?: (message: string) => void
+  wait?: (milliseconds: number) => Promise<void>
+  maxNetworkRetries?: number
+  retryBackoffMs?: readonly number[]
+  reconcileDelaysMs?: readonly number[]
+  allowInitialFailedResume?: boolean
+}
+
+function analysisTerminalError(view: JobView) {
+  return new ProductImportAnalyzeRecoveryError(
+    view.job.lastErrorMessage || view.job.lastErrorCode || `导入任务已停止（${view.job.status}）`,
+    view,
+  )
+}
+
+export async function runProductImportAnalysis({
+  initialView = null,
+  analyze,
+  load,
+  onProgress = () => undefined,
+  wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  maxNetworkRetries = PRODUCT_IMPORT_ANALYZE_NETWORK_RETRY_LIMIT,
+  retryBackoffMs = PRODUCT_IMPORT_ANALYZE_RETRY_BACKOFF_MS,
+  reconcileDelaysMs = PRODUCT_IMPORT_ANALYZE_RECONCILE_DELAYS_MS,
+  allowInitialFailedResume = false,
+}: ProductImportAnalyzeRunnerOptions): Promise<JobView> {
+  let current = initialView
+  let networkRetries = 0
+  let canResumeInitialFailed = allowInitialFailedResume && current?.job.status === 'FAILED'
+
+  async function reconcile(): Promise<JobView> {
+    let latest = current
+    for (const delay of reconcileDelaysMs) {
+      if (delay > 0) await wait(delay)
+      try {
+        latest = await load()
+      } catch (reason) {
+        if (!isProductImportAnalyzeNetworkError(reason)) throw reason
+        continue
+      }
+      if (latest.job.status !== 'ANALYZING') return latest
+    }
+    throw new ProductImportAnalyzeRecoveryError(
+      '网络连接中断，自动恢复未完成。任务进度已保留，请点击“继续 / 重试分析”。',
+      latest,
+    )
+  }
+
+  while (true) {
+    if (current && ANALYSIS_COMPLETE_STATUSES.has(current.job.status)) return current
+    if (current && ANALYSIS_TERMINAL_STATUSES.has(current.job.status)) {
+      if (current.job.status === 'FAILED' && canResumeInitialFailed) {
+        canResumeInitialFailed = false
+      } else {
+        throw analysisTerminalError(current)
+      }
+    }
+    if (current?.job.status === 'ANALYZING') {
+      onProgress('网络连接中断，正在恢复导入任务…')
+      current = await reconcile()
+      continue
+    }
+    if (current && !current.hasMoreAnalysis && current.job.status !== 'AWAITING_UPLOAD') return current
+
+    try {
+      current = await analyze()
+      onProgress(`已分析 ${current.job.analyzedRowCount}/${current.job.totalRowCount || '…'} 行…`)
+    } catch (reason) {
+      if (!isProductImportAnalyzeNetworkError(reason)) throw reason
+      onProgress('网络连接中断，正在恢复导入任务…')
+      current = await reconcile()
+      if (ANALYSIS_COMPLETE_STATUSES.has(current.job.status)) return current
+      if (ANALYSIS_TERMINAL_STATUSES.has(current.job.status)) throw analysisTerminalError(current)
+      if (!['ANALYSIS_PENDING', 'AWAITING_UPLOAD'].includes(current.job.status)) {
+        throw new ProductImportAnalyzeRecoveryError(
+          `导入任务当前为 ${current.job.status}，请稍后点击“继续 / 重试分析”。`,
+          current,
+        )
+      }
+      if (networkRetries >= maxNetworkRetries) {
+        throw new ProductImportAnalyzeRecoveryError(
+          '网络连接中断，自动恢复重试次数已用完。任务进度已保留，请点击“继续 / 重试分析”。',
+          current,
+        )
+      }
+      const backoff = retryBackoffMs[Math.min(networkRetries, retryBackoffMs.length - 1)] ?? 0
+      networkRetries += 1
+      if (backoff > 0) await wait(backoff)
+      // Re-read after backoff so a delayed original request cannot move from
+      // PENDING to ANALYZING between reconciliation and the retry POST.
+      current = await reconcile()
+    }
+  }
 }
 
 async function jsonResponse(response: Response) {
@@ -188,12 +311,14 @@ export default function ProductBulkImportPanel({
     setBusy(true)
     setError(null)
     setView(null)
+    let activeJobId: string | null = null
     try {
       setProgress('创建导入任务…')
       const created = await appRequest('/api/products/import/jobs', {
         method: 'POST',
         body: JSON.stringify({ fileName: file.name, mimeType: file.type || 'application/octet-stream', fileSize: file.size }),
       }) as { jobId: string; uploadUrl: string; uploadMimeType: string }
+      activeJobId = created.jobId
       setProgress('原始文件直传 Storage…')
       let uploadUrl = created.uploadUrl
       let uploaded = await fetch(uploadUrl, {
@@ -211,12 +336,12 @@ export default function ProductBulkImportPanel({
         })
       }
       if (!uploaded.ok) throw new Error(`文件直传失败（${uploaded.status}）`)
-      let analysis: JobView
-      do {
-        setProgress('分析商品字段与图片…')
-        analysis = await appRequest(`/api/products/import/jobs/${created.jobId}/analyze`, { method: 'POST' }) as unknown as JobView
-        setProgress(`已分析 ${analysis.job.analyzedRowCount}/${analysis.job.totalRowCount || '…'} 行…`)
-      } while (analysis.hasMoreAnalysis)
+      setProgress('分析商品字段与图片…')
+      await runProductImportAnalysis({
+        analyze: () => appRequest(`/api/products/import/jobs/${created.jobId}/analyze`, { method: 'POST' }) as unknown as Promise<JobView>,
+        load: () => loadJobPage(created.jobId),
+        onProgress: setProgress,
+      })
       setPageCursor(0)
       setView(await loadJobPage(created.jobId))
       const listed = await appRequest('/api/products/import/jobs') as { jobs?: JobListItem[] }
@@ -225,6 +350,17 @@ export default function ProductBulkImportPanel({
       if (fileInputRef.current) fileInputRef.current.value = ''
       setProgress('')
     } catch (reason) {
+      if (activeJobId) {
+        const latest = reason instanceof ProductImportAnalyzeRecoveryError && reason.latestView
+          ? reason.latestView
+          : await loadJobPage(activeJobId).catch(() => null)
+        if (latest) {
+          setPageCursor(0)
+          setView(latest)
+        }
+        const listed = await appRequest('/api/products/import/jobs').catch(() => null) as { jobs?: JobListItem[] } | null
+        if (listed) setJobs(listed.jobs ?? [])
+      }
       setError(reason instanceof Error ? reason.message : '导入分析失败')
       setProgress('')
     } finally {
@@ -237,14 +373,21 @@ export default function ProductBulkImportPanel({
     setBusy(true)
     setError(null)
     try {
-      let analysis = view
-      do {
-        setProgress(`继续分析 ${analysis.job.analyzedRowCount}/${analysis.job.totalRowCount || '…'}…`)
-        analysis = await appRequest(`/api/products/import/jobs/${view.job.id}/analyze`, { method: 'POST' }) as unknown as JobView
-      } while (analysis.hasMoreAnalysis)
+      setProgress(`继续分析 ${view.job.analyzedRowCount}/${view.job.totalRowCount || '…'}…`)
+      await runProductImportAnalysis({
+        initialView: view,
+        analyze: () => appRequest(`/api/products/import/jobs/${view.job.id}/analyze`, { method: 'POST' }) as unknown as Promise<JobView>,
+        load: () => loadJobPage(view.job.id),
+        onProgress: setProgress,
+        allowInitialFailedResume: true,
+      })
       setView(await loadJobPage(view.job.id, pageCursor))
       setProgress('')
     } catch (reason) {
+      const latest = reason instanceof ProductImportAnalyzeRecoveryError && reason.latestView
+        ? reason.latestView
+        : await loadJobPage(view.job.id, pageCursor).catch(() => null)
+      if (latest) setView(latest)
       setError(reason instanceof Error ? reason.message : '继续分析失败')
       setProgress('')
     } finally {
