@@ -27,6 +27,18 @@ type ManagedComputer = {
   reapplyConsumed?: boolean
 }
 
+type ActivationStore = {
+  id: string
+  name: string
+  code: string
+}
+
+type IssuedActivationPin = {
+  pin: string
+  expiresAt: string
+  storeId: string
+}
+
 function formatTime(iso: string | null) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -37,7 +49,7 @@ function formatTime(iso: string | null) {
 export default function ComputerClientPage() {
   const router = useRouter()
   const { t } = useLocale()
-  const { effectiveRole } = useWorkMode()
+  const { effectiveRole, storeCode } = useWorkMode()
 
   const [requests, setRequests] = useState<PendingRequest[]>([])
   const [boundComputers, setBoundComputers] = useState<ManagedComputer[]>([])
@@ -46,6 +58,12 @@ export default function ComputerClientPage() {
   const [loadFailed, setLoadFailed] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [activationStore, setActivationStore] = useState<ActivationStore | null>(null)
+  const [activationStoreLoading, setActivationStoreLoading] = useState(true)
+  const [activationError, setActivationError] = useState('')
+  const [activationIssuing, setActivationIssuing] = useState(false)
+  const [issuedActivationPin, setIssuedActivationPin] = useState<IssuedActivationPin | null>(null)
+  const [activationPinCopied, setActivationPinCopied] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -71,6 +89,97 @@ export default function ComputerClientPage() {
   useEffect(() => {
     if (effectiveRole === 'OWNER') void load()
   }, [effectiveRole, load])
+
+  useEffect(() => {
+    setActivationStore(null)
+    setIssuedActivationPin(null)
+    setActivationPinCopied(false)
+    setActivationError('')
+
+    if (effectiveRole !== 'OWNER') return
+    if (!storeCode) {
+      setActivationStoreLoading(true)
+      return
+    }
+
+    let active = true
+    setActivationStoreLoading(true)
+    apiFetch('/api/stores', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('STORE_LOAD_FAILED')
+        const stores = await response.json() as ActivationStore[]
+        const currentStore = stores.find((store) => store.code === storeCode)
+        if (!currentStore) throw new Error('CURRENT_STORE_NOT_FOUND')
+        if (active) setActivationStore(currentStore)
+      })
+      .catch(() => {
+        if (active) setActivationError(t('home.computerActivationStoreUnavailable'))
+      })
+      .finally(() => {
+        if (active) setActivationStoreLoading(false)
+      })
+
+    return () => { active = false }
+  }, [effectiveRole, storeCode, t])
+
+  async function generateActivationPin() {
+    if (!activationStore || activationIssuing) return
+    if (issuedActivationPin && !window.confirm(t('home.computerActivationConfirmRegenerate'))) return
+
+    setActivationIssuing(true)
+    setActivationError('')
+    setActivationPinCopied(false)
+    try {
+      const response = await apiFetch('/api/desktop/activation-pins', {
+        method: 'POST',
+        body: JSON.stringify({ storeId: activationStore.id }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error('PIN_ISSUE_FAILED')
+      if (
+        typeof body.pin !== 'string'
+        || !/^\d{6}$/.test(body.pin)
+        || body.storeId !== activationStore.id
+        || typeof body.expiresAt !== 'string'
+      ) {
+        throw new Error('INVALID_PIN_RESPONSE')
+      }
+      setIssuedActivationPin({
+        pin: body.pin,
+        expiresAt: body.expiresAt,
+        storeId: body.storeId,
+      })
+    } catch {
+      setIssuedActivationPin(null)
+      setActivationError(t('home.computerActivationGenerateFailed'))
+    } finally {
+      setActivationIssuing(false)
+    }
+  }
+
+  async function copyActivationPin() {
+    if (!issuedActivationPin) return
+    try {
+      await navigator.clipboard.writeText(issuedActivationPin.pin)
+      setActivationPinCopied(true)
+      return
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = issuedActivationPin.pin
+      textarea.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none'
+      document.body.appendChild(textarea)
+      textarea.focus()
+      textarea.select()
+      try {
+        if (!document.execCommand('copy')) throw new Error('COPY_FAILED')
+        setActivationPinCopied(true)
+      } catch {
+        setActivationError(t('home.computerActivationCopyFailed'))
+      } finally {
+        document.body.removeChild(textarea)
+      }
+    }
+  }
 
   const decide = useCallback(
     async (requestId: string, action: 'approve' | 'reject') => {
@@ -183,6 +292,72 @@ export default function ComputerClientPage() {
               <p style={s.description}>{t('home.computerClientManagementDesc')}</p>
             </div>
           </div>
+        </section>
+
+        <section
+          style={s.activationSection}
+          aria-labelledby="desktop-activation-pin-title"
+          data-desktop-activation-pin="owner-entry"
+        >
+          <div style={s.sectionHeading}>
+            <span style={s.sectionIconActivation} aria-hidden="true">🔐</span>
+            <div>
+              <h2 id="desktop-activation-pin-title" style={s.sectionTitle}>
+                {t('home.computerActivationTitle')}
+              </h2>
+              <p style={s.activationDescription}>{t('home.computerActivationDesc')}</p>
+            </div>
+          </div>
+
+          <div style={s.activationStore} data-desktop-activation-store>
+            <span>{t('home.computerActivationCurrentStore')}</span>
+            <strong>
+              {activationStore
+                ? `${activationStore.name} · ${activationStore.code}`
+                : t('home.computerActivationStoreLoading')}
+            </strong>
+          </div>
+
+          {activationError && <div style={s.noticeErr}>{activationError}</div>}
+
+          {issuedActivationPin ? (
+            <div data-desktop-activation-result>
+              <div style={s.activationPinLabel}>{t('home.computerActivationPinLabel')}</div>
+              <div style={s.activationPin} aria-label={t('home.computerActivationPinLabel')}>
+                {issuedActivationPin.pin}
+              </div>
+              <p style={s.activationValidity}>{t('home.computerActivationValidity')}</p>
+              <p style={s.activationInstruction}>{t('home.computerActivationInstruction')}</p>
+              <div style={s.activationActions}>
+                <button type="button" style={s.copyPinBtn} onClick={() => void copyActivationPin()}>
+                  {activationPinCopied
+                    ? t('home.computerActivationCopied')
+                    : t('home.computerActivationCopy')}
+                </button>
+                <button
+                  type="button"
+                  style={s.regeneratePinBtn}
+                  disabled={activationIssuing}
+                  onClick={() => void generateActivationPin()}
+                >
+                  {activationIssuing
+                    ? t('home.computerActivationGenerating')
+                    : t('home.computerActivationRegenerate')}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              style={s.generatePinBtn}
+              disabled={activationStoreLoading || !activationStore || activationIssuing}
+              onClick={() => void generateActivationPin()}
+            >
+              {activationIssuing
+                ? t('home.computerActivationGenerating')
+                : t('home.computerActivationGenerate')}
+            </button>
+          )}
         </section>
 
         <section style={s.pendingSection} aria-labelledby="pending-computers-title">
@@ -462,6 +637,14 @@ const s: Record<string, CSSProperties> = {
     background: 'var(--card)',
     boxShadow: '0 10px 28px rgba(15,23,42,0.05)',
   },
+  activationSection: {
+    marginTop: 14,
+    padding: '18px 16px 16px',
+    border: '1px solid #bfdbfe',
+    borderRadius: 20,
+    background: '#fff',
+    boxShadow: '0 10px 28px rgba(15,23,42,0.05)',
+  },
   sectionHeading: {
     display: 'flex',
     alignItems: 'center',
@@ -497,12 +680,111 @@ const s: Record<string, CSSProperties> = {
     background: '#fee2e2',
     fontSize: 16,
   },
+  sectionIconActivation: {
+    width: 32,
+    height: 32,
+    display: 'grid',
+    placeItems: 'center',
+    borderRadius: 10,
+    background: '#dbeafe',
+    fontSize: 16,
+  },
   sectionTitle: {
     margin: 0,
     color: 'var(--text)',
     fontSize: 16,
     fontWeight: 900,
     lineHeight: 1.35,
+  },
+  activationDescription: {
+    margin: '4px 0 0',
+    color: 'var(--muted)',
+    fontSize: 12.5,
+    lineHeight: 1.55,
+  },
+  activationStore: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 14,
+    padding: '10px 12px',
+    borderRadius: 12,
+    background: '#f8fafc',
+    color: '#475569',
+    fontSize: 12,
+    lineHeight: 1.5,
+  },
+  activationPinLabel: {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: 800,
+    textAlign: 'center',
+  },
+  activationPin: {
+    marginTop: 8,
+    minHeight: 76,
+    display: 'grid',
+    placeItems: 'center',
+    border: '1px solid #93c5fd',
+    borderRadius: 14,
+    background: '#eff6ff',
+    color: '#1e3a8a',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: 36,
+    fontWeight: 900,
+    letterSpacing: 4,
+  },
+  activationValidity: {
+    margin: '10px 0 0',
+    color: '#1e40af',
+    fontSize: 12.5,
+    fontWeight: 800,
+    textAlign: 'center',
+    lineHeight: 1.5,
+  },
+  activationInstruction: {
+    margin: '6px 0 0',
+    color: '#64748b',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 1.55,
+  },
+  activationActions: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 10,
+    marginTop: 14,
+  },
+  generatePinBtn: {
+    width: '100%',
+    minHeight: 44,
+    border: 'none',
+    borderRadius: 12,
+    background: 'var(--blue)',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 900,
+    cursor: 'pointer',
+  },
+  copyPinBtn: {
+    minHeight: 42,
+    border: 'none',
+    borderRadius: 12,
+    background: 'var(--blue)',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 900,
+    cursor: 'pointer',
+  },
+  regeneratePinBtn: {
+    minHeight: 42,
+    border: '1px solid #bfdbfe',
+    borderRadius: 12,
+    background: '#fff',
+    color: '#1d4ed8',
+    fontSize: 13,
+    fontWeight: 900,
+    cursor: 'pointer',
   },
   requestStateRegion: {
     minHeight: 220,
