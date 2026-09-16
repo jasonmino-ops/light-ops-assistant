@@ -17,7 +17,8 @@ Governed by:
 | Risk | `L3` — FINAL FROZEN NSIS installer boundary |
 | Successor review | `PASS` / `AUTHORIZED INSTALLER UPGRADE LIFECYCLE SUCCESSOR CHANGE` |
 | Review commit | `05f472628fbd953daf158934c243b6bdb7c5f3ea` |
-| Implementation commit | `942f4c7c650deec28da9db659da4c29e539dce99` |
+| Initial implementation commit | `942f4c7c650deec28da9db659da4c29e539dce99` |
+| First-hop predecessor bridge commit | `55447903d152059010793d05df4200d98706e625` |
 | Starting `origin/main` | `822cbef0eda7ad73192537d35648d24067d77ef9` |
 | Starting Production | `822cbef0eda7ad73192537d35648d24067d77ef9` / `READY` |
 | Direct predecessor Candidate | `5c899f7bd17bca59ec35afb1a15de34fff0a2826` |
@@ -33,9 +34,10 @@ The commit containing this evidence record is the proposed local successor Candi
 
 | File | Change |
 | --- | --- |
-| `desktop/build/installer.nsh` | Replace the default process-kill path with exact executable detection and fail-closed safe-exit instructions; add install/uninstall hooks, `$TEMP` handoff, and matching-icon CRC protection while preserving HKCU auto-start hooks |
+| `desktop/build/installer.nsh` | Replace the default process-kill path with exact executable detection and fail-closed safe-exit instructions; use the Candidate's verified uninstaller for the predecessor handoff; add install/uninstall hooks, `$TEMP` working-directory safety, and matching-icon CRC protection while preserving HKCU auto-start hooks |
 | `desktop/scripts/verify-nsis-installer.mjs` | Read-only structural verifier for one unsigned outer NSIS installer and exactly one embedded uninstaller, including both CRC32 values and optional SHA manifest binding |
 | `desktop/tests/windows-installer-upgrade-lifecycle.test.ts` | Verify exact detection, no force kill, hook order, `$TEMP`, icon protection, HKCU/AppData preservation, and CRC corruption rejection |
+| `desktop/tests/windows-autostart-installer.test.ts` | Keep the existing no-argument assertion scoped to the actual HKCU login command while allowing the governed internal uninstaller handoff flags |
 | `docs/desktop/es-desktop-installer-upgrade-lifecycle-fix-01-successor-change-review.md` | Frozen-boundary authorization and historical pattern review |
 | `docs/desktop/es-desktop-installer-upgrade-lifecycle-fix-01-candidate-evidence.md` | This Candidate evidence |
 
@@ -46,11 +48,12 @@ The commit containing this evidence record is the proposed local successor Candi
 1. `nsProcess::_FindProcess /NOUNLOAD "${APP_EXECUTABLE_FILENAME}"` checks the exact E-Shop Desktop executable name.
 2. Result `0` stops with instructions to exit through the existing tray path; result `603` is the only accepted absence; other results stop fail-closed.
 3. The custom include contains no executable `tasklist`, `find.exe`, `taskkill`, `_KillProcess`, `ExecWait`, `CloseWindow`, or `SendMessage` instruction.
-4. `customInit` applies the check before installer work. `customUnInit` applies it to ordinary and silent prior-version uninstall and then changes the working directory to `$TEMP`.
-5. electron-builder's existing `uninstallOldVersion` then copies the prior uninstaller to its private temporary directory and executes the ordinary `/S /KEEP_APP_DATA --updated` handoff.
-6. Installer and uninstaller icons are required to match, preventing electron-builder's icon patch from invalidating the embedded uninstaller CRC.
+4. `customInit` applies an exact check before installer UI work. The install section checks again after the operator proceeds, closing the launch-to-install race.
+5. If this appId is registered, the installer validates both its install location and exact executable, extracts this Candidate's CRC-verified uninstaller to the private plugin directory, changes the working directory to `$TEMP`, and executes the ordinary current-user uninstall with `--keep-shortcuts --updated`.
+6. The broken registered predecessor uninstaller is never executed. Nonzero handoff or remaining install registration stops the upgrade fail-closed.
+7. `customUnInit` applies exact detection and `$TEMP` working-directory safety to this Candidate's uninstaller. Installer and uninstaller icons are required to match, preventing electron-builder's icon patch from invalidating future embedded-uninstaller CRCs.
 
-No custom deletion or replacement algorithm, second installer path, force-kill fallback, service, scheduled task, or Runtime IPC is introduced.
+No direct file-deletion algorithm, manual `app.asar` replacement, second launch path, force-kill fallback, service, scheduled task, or Runtime IPC is introduced. The handoff reuses this Candidate's standard electron-builder uninstaller for the same appId.
 
 ## Preserved Contracts
 
@@ -68,9 +71,9 @@ No custom deletion or replacement algorithm, second installer path, force-kill f
 | Validation | Result |
 | --- | --- |
 | Frozen-boundary successor review | `PASS` |
-| Focused lifecycle + existing auto-start tests | `PASS` — 2 files / 13 tests |
+| Focused lifecycle + existing auto-start tests | `PASS` — 2 files / 15 tests |
 | TypeScript | `PASS` |
-| Desktop full suite | `PASS` — 23 files / 167 tests |
+| Desktop full suite | `PASS` — 23 files / 169 tests |
 | Static Electron security | `PASS` — 16/16 |
 | Compile | `PASS` |
 | Activation dist assets | `PASS` |
@@ -91,6 +94,7 @@ Package evidence:
 - Electron: `33.4.11`
 - outer NSIS: unsigned x86 PE, installer flag `0`, CRC32 validated
 - embedded uninstaller: unsigned x86 PE, uninstaller flag `1`, CRC32 validated
+- predecessor diagnosis: exact `d01f411...` outer NSIS CRC `PASS`; embedded uninstaller CRC `FAIL`, confirming why the registered predecessor uninstaller must not be executed
 
 The first sandboxed package attempt was blocked by Wine socket permissions. The same unchanged command was rerun with the required local process permission and completed successfully. This was an environment restriction, not a waived package failure.
 

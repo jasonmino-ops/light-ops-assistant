@@ -29,6 +29,8 @@ This review authorizes only the smallest E-Shop Desktop NSIS upgrade-lifecycle c
 
 `docs/desktop/milestone-a-freeze-record.md` freezes the Windows CI / NSIS build chain. V727 supplied direct FIELD evidence that the predecessor installer could not hand off through the ordinary prior-version uninstall lifecycle: the interactive installer claimed that E-Shop Desktop could not be closed even though read-only process inspection found no running E-Shop Desktop process, and the predecessor `app.asar` remained installed. The exact successor Candidate therefore never ran.
 
+The package-integrity verifier added by this task subsequently established the exact first-hop failure mechanism without mutating the predecessor: installer SHA-256 `d01f411a1f954c69b79c9432abed5af1d6537d97fbcd27ab579916db698d6c6b` has a valid outer NSIS CRC32 (`51a244dc`), while its embedded uninstaller fails NSIS CRC validation. The installed predecessor uninstaller is therefore not a safe handoff target. A successor that merely improves its own future uninstaller would not repair the V727 transition.
+
 The Activation Renderer boot fix cannot receive its separately authorized FIELD verification until a regular upgrade can install the exact Candidate. This is a Windows-machine-proven installer blocker and satisfies the freeze record's reopen condition for a formal successor review. The change is an installation prerequisite, not a Desktop business feature, P1A expansion, P1B, Printing, or Production work.
 
 ## Historical Reuse Basis
@@ -59,7 +61,9 @@ No equally regular solution avoids the frozen NSIS boundary. The selected patter
 - Treat `0` as exact executable running, `603` as not running, and unexpected plugin results as fail-closed installer errors.
 - If the exact Desktop executable is running, require the operator to exit through the existing normal application/tray path and rerun; do not terminate it.
 - Invoke the exact check from `customInit` and `customUnInit` so install and prior-version uninstall both apply the same policy.
-- Set the uninstaller working directory to `$TEMP` before the existing electron-builder prior-version uninstall handoff.
+- Set the working directory to `$TEMP` before executing the verified successor uninstaller and again inside that uninstaller before removal.
+- At the actual install-section check, if this appId is already registered, extract and execute this Candidate's CRC-verified uninstaller from the installer's private temporary directory with current-user, keep-shortcuts, and updated/AppData-retention semantics. Do not execute the registered predecessor uninstaller.
+- Fail closed if the prior registration, executable, handoff result, or post-handoff registry cleanup cannot be verified.
 - Force installer and uninstaller to use the same default NSIS icon so electron-builder's embedded-uninstaller icon patch cannot invalidate its CRC.
 - Add a read-only package verifier that validates the outer installer NSIS CRC32 and finds and validates exactly one embedded uninstaller NSIS CRC32.
 - Preserve the existing `customInstall` / `customUnInstall` HKCU Run hooks exactly.
@@ -86,7 +90,8 @@ No equally regular solution avoids the frozen NSIS boundary. The selected patter
 
 - Exact executable-name detection replaces the default user/task-list heuristic and cannot match RC9 because the executable identities differ.
 - Safe exit remains owned by the application and operator; the installer receives no capability to kill or signal unrelated processes.
-- `$TEMP` is used only as a working directory for the existing electron-builder uninstaller handoff, preventing the uninstaller process from retaining the installation directory as its current directory.
+- `$TEMP` is the working directory before the verified successor uninstaller is executed and remains the working directory in that uninstaller's removal path, preventing either process from retaining the installation directory as its current directory.
+- The successor uninstaller uses electron-builder's ordinary same-appId uninstall implementation. It preserves shortcuts during the handoff, retains AppData through `--updated`, and leaves the normal install section to recreate the one HKCU auto-start value.
 - CRC validation is a build-time read-only integrity gate. It does not patch, sign, execute, or mutate the produced installer.
 - One fixed HKCU Run value remains the sole Desktop auto-start registration; install/upgrade overwrite it and uninstall deletes it as before.
 - Electron security, Activation authorization, safeStorage, credentials, installation identity, AppData retention, and manual launch are unchanged because no Runtime source is modified.
