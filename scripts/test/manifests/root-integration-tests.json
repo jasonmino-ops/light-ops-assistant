@@ -1,11 +1,12 @@
 {
   "schemaVersion": 1,
   "lane": "INTEGRATION",
-  "expectedCount": 12,
+  "expectedCount": 13,
   "tests": [
     { "file": "tests/cashier-network-print-v01.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly isolated PostgreSQL test database and test secret.", "dependencyType": "POSTGRESQL", "evidence": "tests/cashier-network-print-v01.test.ts:20-24" },
     { "file": "tests/dashboard-print-settings-mobile.test.ts", "lane": "INTEGRATION", "reason": "Launches Chromium against a local dashboard UI service.", "dependencyType": "LOCAL_UI_BROWSER", "evidence": "tests/dashboard-print-settings-mobile.test.ts:2-4" },
     { "file": "tests/desktop-activation-runtime.test.ts", "lane": "INTEGRATION", "reason": "Requires the real desktop activation test database and test secrets.", "dependencyType": "POSTGRESQL", "evidence": "tests/desktop-activation-runtime.test.ts:10-17" },
+    { "file": "tests/desktop-pos-web-auth-compat.test.ts", "lane": "INTEGRATION", "reason": "Mixes repository source assertions with a required local runtime URL and Chromium launch.", "dependencyType": "LOCAL_RUNTIME_BROWSER", "evidence": "tests/desktop-pos-web-auth-compat.test.ts:7-8,166-170" },
     { "file": "tests/desktop-pos-write-fallback-runtime.test.ts", "lane": "INTEGRATION", "reason": "Requires the real cashier security test database.", "dependencyType": "POSTGRESQL", "evidence": "tests/desktop-pos-write-fallback-runtime.test.ts:12-16" },
     { "file": "tests/es-tray-desktop-launch-route.test.ts", "lane": "INTEGRATION", "reason": "File-level test mixes static checks with a required local runtime URL and Chromium launch; future file-split candidate.", "dependencyType": "LOCAL_RUNTIME_BROWSER", "evidence": "tests/es-tray-desktop-launch-route.test.ts:15-16,219-223" },
     { "file": "tests/es-tray-device-print-runtime.test.ts", "lane": "INTEGRATION", "reason": "Requires the real ES Tray device test database and runtime secrets.", "dependencyType": "POSTGRESQL", "evidence": "tests/es-tray-device-print-runtime.test.ts:22-26" },

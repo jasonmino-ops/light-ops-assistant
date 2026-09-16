@@ -166,6 +166,14 @@ function getElectronEmployeeFullscreenBridge(): EmployeeFullscreenBridge | null 
   if (!window.eshopDesktopRuntime?.isDesktop || window.eshopDesktopRuntime.windowRole !== 'employee') return null
   return window.eshopDesktopEmployeeFullscreen ?? null
 }
+
+function usesPosDeviceAuthorizationFlow() {
+  if (typeof window === 'undefined') return false
+  const params = new URLSearchParams(window.location.search)
+  return window.location.pathname === '/desktop/pos' ||
+    params.get('from') === 'desktop' ||
+    params.get('deviceAuth') === '1'
+}
 type DesktopPaymentMethod = 'CASH' | 'KHQR' | 'MEMBER_BALANCE' | null
 type CustomerDisplaySyncOptions = { focusKhqr?: boolean }
 type ShiftRecordItem = {
@@ -1704,44 +1712,49 @@ export default function CashierPage() {
     }
 
     rememberCashierStore(sc)
-    const desktopPublicEntry =
-      window.location.pathname === '/desktop/pos' ||
-      new URLSearchParams(window.location.search).get('from') === 'desktop'
-
     const existingDeviceToken = getPosDeviceToken(sc)
     setStoreCode(sc)
     setIsKitchenTicketEnabled(false)
     setPosDeviceToken(existingDeviceToken)
     setQzRawCanaryAuthorized(false)
     setPosAuthError('')
-    setPosAccountAccess(desktopPublicEntry || existingDeviceToken ? 'authorized' : 'checking')
+    setPosAccountAccess('checking')
     setPosAccountAccessMessage('')
     setIsRestoringCashierStore(false)
-    if (!desktopPublicEntry) {
-      apiFetch(`/api/cashier/access?storeCode=${encodeURIComponent(sc)}`, {
-        cache: 'no-store',
-        headers: posDeviceHeaders(sc),
+    apiFetch(`/api/cashier/access?storeCode=${encodeURIComponent(sc)}`, {
+      cache: 'no-store',
+      headers: posDeviceHeaders(sc),
+    })
+      .then(async (r) => {
+        const body = await r.json().catch(() => null)
+        if (r.ok && body?.ok) {
+          setQzRawCanaryAuthorized(body.qzRawCanary === true)
+          setPosAccountAccess('authorized')
+          setPosAccountAccessMessage('')
+          return
+        }
+        setQzRawCanaryAuthorized(false)
+        const explicitAuthorizationFailure = r.status === 401 || r.status === 403
+        if (existingDeviceToken && !explicitAuthorizationFailure) {
+          setPosAccountAccess('authorized')
+          return
+        }
+        if (existingDeviceToken) {
+          clearPosDeviceToken(sc)
+          setPosDeviceToken('')
+        }
+        setPosAccountAccess(r.status === 401 ? 'login_required' : 'forbidden')
+        setPosAccountAccessMessage(body?.message || body?.error || '请确认你已使用本店老板或员工账号登录。')
       })
-        .then(async (r) => {
-          const body = await r.json().catch(() => null)
-          if (r.ok && body?.ok) {
-            setQzRawCanaryAuthorized(body.qzRawCanary === true)
-            setPosAccountAccess('authorized')
-            setPosAccountAccessMessage('')
-            return
-          }
-          setQzRawCanaryAuthorized(false)
-          if (existingDeviceToken) return
-          setPosAccountAccess(r.status === 401 ? 'login_required' : 'forbidden')
-          setPosAccountAccessMessage(body?.message || body?.error || '请确认你已使用本店老板或员工账号登录。')
-        })
-        .catch(() => {
-          setQzRawCanaryAuthorized(false)
-          if (existingDeviceToken) return
-          setPosAccountAccess('login_required')
-          setPosAccountAccessMessage('请确认你已使用本店老板或员工账号登录。')
-        })
-    }
+      .catch(() => {
+        setQzRawCanaryAuthorized(false)
+        if (existingDeviceToken) {
+          setPosAccountAccess('authorized')
+          return
+        }
+        setPosAccountAccess('login_required')
+        setPosAccountAccessMessage('请确认你已使用本店老板或员工账号登录。')
+      })
     getCashierProductCacheMeta(sc)
       .then((meta) => {
         if (meta) {
@@ -1882,7 +1895,7 @@ export default function CashierPage() {
     }
   }, [])
 
-  const cashierAuthorized = Boolean(storeCode && (posDeviceToken || posAccountAccess === 'authorized'))
+  const cashierAuthorized = Boolean(storeCode && posAccountAccess === 'authorized')
   cashierPosNeedAuthRef.current = posAuthCopy().needAuth
 
   const pullCashierOrders = useCallback((): Promise<boolean> => {
@@ -2152,6 +2165,8 @@ export default function CashierPage() {
       if (body.status === 'APPROVED' && body.token) {
         savePosDeviceToken(storeCode, body.token)
         setPosDeviceToken(body.token)
+        setPosAccountAccess('authorized')
+        setPosAccountAccessMessage('')
         setPosAuthChallenge(null)
         setPosAuthError('')
         showToast(posAuthCopy().success)
@@ -2171,14 +2186,13 @@ export default function CashierPage() {
 
   function requireOnlinePosAuthorization() {
     if (posAccountAccess === 'authorized') return true
-    if (posDeviceToken) return true
     handlePosUnauthorized()
     return false
   }
 
   useEffect(() => {
     if (!storeCode || posAccountAccess === 'authorized' || posDeviceToken || posAuthChallenge || posAuthLoading) return
-    if (new URLSearchParams(window.location.search).get('deviceAuth') !== '1') return
+    if (!usesPosDeviceAuthorizationFlow()) return
     void startPosAuthorization()
   }, [storeCode, posAccountAccess, posDeviceToken, posAuthChallenge, posAuthLoading])
 
@@ -4026,14 +4040,14 @@ export default function CashierPage() {
     )
   }
 
-  if (storeCode && !posDeviceToken && posAccountAccess !== 'authorized') {
+  if (storeCode && posAccountAccess !== 'authorized') {
     const currentReturnUrl = typeof window !== 'undefined'
       ? `${window.location.pathname}${window.location.search}`
       : `/cashier?storeCode=${encodeURIComponent(storeCode)}`
     const loginUrl = `/relogin?returnUrl=${encodeURIComponent(currentReturnUrl)}`
-    const legacyDeviceAuth = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('deviceAuth') === '1'
+    const deviceAuthorizationEntry = usesPosDeviceAuthorizationFlow()
 
-    if (!legacyDeviceAuth) {
+    if (posDeviceToken || !deviceAuthorizationEntry) {
       const isCheckingAccess = posAccountAccess === 'checking'
       const title =
         isCheckingAccess ? '正在检查收银权限' :
