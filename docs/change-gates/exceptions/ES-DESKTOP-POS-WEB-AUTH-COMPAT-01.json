@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "taskId": "ES-DESKTOP-POS-WEB-AUTH-COMPAT-01",
+  "featureBranch": "codex/es-desktop-pos-web-auth-compat-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "0934b1b8ac09d0780ee7775c254778dc83c3f8c3",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/cashier/page.tsx",
+    "tests/desktop-pos-web-auth-compat.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "a0c3bb2736f77874b2a682256ad19af6e1a7f6b0861a5181d9a91bdec048d4e9",
+    "tests/desktop-pos-web-auth-compat.test.ts": "b73f2c7ff72a12f34c8e7bf8031948f95e479485f93a24917eda8e9925ed2c35"
+  },
+  "createdAt": "2026-09-16T11:24:14.000Z",
+  "approvedAt": "2026-09-16T11:24:14.000Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Founder APPROVE decision in the current ES-DESKTOP-POS-WEB-AUTH-COMPAT-01 task",
+    "statement": "Founder approved the frozen D1-D5 correction and a task-scoped PRE_COMMIT_CONTENT_SHA256 exception for exactly app/cashier/page.tsx and tests/desktop-pos-web-auth-compat.test.ts. The separate root integration test-manifest registration is governance metadata and is not added to the protected-path exception.",
+    "approvedAtMeaning": "Time of recording the explicit Founder approval; not an invented message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the reviewed External Web Compatibility correction that makes Desktop POS reuse the existing Browser POS device-authorization flow, probes access before authorization, downgrades stale tokens only on explicit 401/403, and preserves cached-token network-failure tolerance. No API, schema, migration, Desktop, RC9, Printing, checkout, payment, offline, member, order-handler, Computer Client, attribution, or P1A/P1B change is authorized."
+}
