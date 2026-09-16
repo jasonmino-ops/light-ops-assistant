@@ -1375,7 +1375,7 @@
         "e-shop-tray/src/networkNodeConfig.ts": "4bee45a291c64393870145c1ebfe0a353cbaa9037896dfa753831df9f6bac1c2",
         "e-shop-tray/src/networkRuntime.ts": "fc2d36ea0eea513f8e29e2081eb4f5899ce8c2a60ed19b1e4757fc5326c3b8a0",
         "e-shop-tray/src/resultLog.ts": "31e671b4032c326a0645b0dc4e02bc31ed47e0c3ec932fd6b71063b1b81399ea",
-        "e-shop-tray/tests/network-addon-cold-lifecycle.test.ts": "a8b4e213c438f11487b7d0de768027652f8d4ebfb3d31e6a5fc33299bf664bc0daca",
+        "e-shop-tray/tests/network-addon-cold-lifecycle.test.ts": "a8b4e213c438f11487b7d0de768027652f8d596298c22f9598ece0a244d59343",
         "e-shop-tray/tests/network-addon-cold-mode-change.test.ts": "33428a61541c096166da44c9cab64e9e62b45c9f7e5b064f861cfd87705800f4",
         "e-shop-tray/tests/network-addon-entry.test.ts": "1f5dc3e56248ed01fecbeab6e98b5139f6c07e1ab6e7f8210cff7ae7c586467a",
         "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
