@@ -30,4 +30,8 @@ The separately Founder-approved `scripts/test/manifests/root-integration-tests.j
 
 The focused runtime suite passed 14 cases and the existing Computer Client launch route suite passed 26 cases before registration. The root test-manifest audit is exact at 74 CORE + 13 INTEGRATION = 87 discovered tests. Independent pre-alignment review passed after the manifest registration decision.
 
-This ACTIVE record permits only the exact reviewed bytes to pass Scope Guard. It does not authorize feature merge or Production deployment. The exception must remain fail-closed and must be closed only after a separately Founder-authorized feature merge.
+## Closure
+
+Founder closed the consumed exception at `2026-09-16T14:04:45Z` after the exact feature merge `7d9dae4c1d3a61672a1f49bd32327eb14ccd9c8a`. The shipped capability remains in Production as `CLOSED-AS-FALLBACK` for Browser fallback, Desktop recovery fallback, and legacy migration fallback. It is not the normal Desktop commercial authorization flow.
+
+This CLOSED record preserves the exact reviewed bytes and historical authorization evidence. It grants no future protected-path change and does not authorize Product deployment or reopening P1A.

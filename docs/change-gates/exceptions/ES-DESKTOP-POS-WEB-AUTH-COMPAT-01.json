@@ -6,7 +6,7 @@
   "baseOriginMainSha": "0934b1b8ac09d0780ee7775c254778dc83c3f8c3",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "authorizedPaths": [
     "app/cashier/page.tsx",
     "tests/desktop-pos-web-auth-compat.test.ts",
@@ -20,6 +20,9 @@
   "createdAt": "2026-09-16T11:24:14.000Z",
   "approvedAt": "2026-09-16T11:24:14.000Z",
   "approvedBy": "Founder",
+  "closedAt": "2026-09-16T14:04:45Z",
+  "featureMergeCommitSha": "7d9dae4c1d3a61672a1f49bd32327eb14ccd9c8a",
+  "disposition": "CLOSED-AS-FALLBACK",
   "approvalSource": {
     "source": "Founder APPROVE decision in the current ES-DESKTOP-POS-WEB-AUTH-COMPAT-01 task",
     "statement": "Founder approved the frozen D1-D5 correction and a task-scoped PRE_COMMIT_CONTENT_SHA256 exception for exactly app/cashier/page.tsx, tests/desktop-pos-web-auth-compat.test.ts, and tests/es-tray-device-print-contract.test.ts. The print-contract test authorization is limited to synchronizing its exact Cashier SHA-256 assertion with the reviewed Product Candidate bytes. The separate root integration test-manifest registration is governance metadata and is not added to the protected-path exception.",

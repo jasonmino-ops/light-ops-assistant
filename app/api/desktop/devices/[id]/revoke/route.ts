@@ -35,28 +35,47 @@ export async function POST(
         where: { id, tenantId: ctx.tenantId },
       })
       if (!device) return null
-      if (device.status === 'REVOKED') return device
 
-      const revoked = await tx.desktopDevice.update({
-        where: { id: device.id },
+      let revoked = device
+      if (device.status !== 'REVOKED') {
+        revoked = await tx.desktopDevice.update({
+          where: { id: device.id },
+          data: {
+            status: 'REVOKED',
+            activeSlot: null,
+            revokedAt: now,
+            revokedByUserId: ctx.userId,
+            revocationReason: reason,
+          },
+        })
+
+        await writeDesktopActivationAudit(tx, {
+          tenantId: revoked.tenantId,
+          storeId: revoked.storeId,
+          deviceId: revoked.id,
+          actorUserId: ctx.userId,
+          eventType: 'DEVICE_REVOKED',
+          result: 'SUCCESS',
+          reasonCode: 'OWNER_REVOKED',
+          ...requestHashes,
+        })
+      }
+
+      await tx.browserPosDevice.updateMany({
+        where: {
+          tenantId: device.tenantId,
+          storeId: device.storeId,
+          browserDeviceId: `desktop-${device.id}`,
+          status: 'ACTIVE',
+          activeSlot: 'ACTIVE',
+        },
         data: {
           status: 'REVOKED',
           activeSlot: null,
           revokedAt: now,
           revokedByUserId: ctx.userId,
-          revocationReason: reason,
+          revocationReason: 'DESKTOP_DEVICE_REVOKED',
         },
-      })
-
-      await writeDesktopActivationAudit(tx, {
-        tenantId: revoked.tenantId,
-        storeId: revoked.storeId,
-        deviceId: revoked.id,
-        actorUserId: ctx.userId,
-        eventType: 'DEVICE_REVOKED',
-        result: 'SUCCESS',
-        reasonCode: 'OWNER_REVOKED',
-        ...requestHashes,
       })
 
       return revoked

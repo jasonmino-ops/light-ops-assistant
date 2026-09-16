@@ -86,3 +86,7 @@ The authoritative results are the command evidence and final task report; this r
 ## Stop Boundary
 
 This alignment authorizes no Product merge, Production deployment, V727 action, P1A reopening, P1B start, or unrelated correction. After all required gates pass, the task stops at a local release Candidate awaiting a separate Founder merge/deploy decision.
+
+## Final Disposition
+
+The exact feature merged as `7d9dae4c1d3a61672a1f49bd32327eb14ccd9c8a`. Founder subsequently classified this capability `CLOSED-AS-FALLBACK`: it remains available for Browser fallback, Desktop recovery fallback, and legacy migration fallback, but it is not the normal one-computer/one-OWNER-authorization Desktop flow. The consumed Scope Guard exception closed at `2026-09-16T14:04:45Z`; the exact Release Foundation successor snapshot remains unchanged as historical frozen evidence.

@@ -21,6 +21,7 @@ const CART_PUBLISH_CHANNEL = 'eshop:cart:publish'
 const EMPLOYEE_FULLSCREEN_ENTER_CHANNEL = 'eshop:employee-fullscreen:enter'
 const EMPLOYEE_FULLSCREEN_EXIT_CHANNEL = 'eshop:employee-fullscreen:exit'
 const EMPLOYEE_FULLSCREEN_STATE_CHANNEL = 'eshop:employee-fullscreen:state'
+const POS_SESSION_TAKE_CHANNEL = 'eshop:pos-session:take'
 const WEB_REALTIME_BROADCAST_CHANNEL = 'light-ops:customer-display:realtime:v1'
 const DESKTOP_RELAY_FLAG = 'relayedByDesktop'
 const desktopEpoch = (() => {
@@ -48,6 +49,49 @@ contextBridge.exposeInMainWorld('eshopDesktopEmployeeFullscreen', Object.freeze(
   exitEmployeeFullscreen: () => ipcRenderer.invoke(EMPLOYEE_FULLSCREEN_EXIT_CHANNEL),
   getEmployeeFullscreenState: () => ipcRenderer.invoke(EMPLOYEE_FULLSCREEN_STATE_CHANNEL),
 }))
+
+type PosSessionPayload = {
+  browserDeviceId: string
+  storeCode: string
+  token: string
+  expiresAt: string
+}
+
+function isPosSessionPayload(value: unknown): value is PosSessionPayload {
+  if (!value || typeof value !== 'object') return false
+  const payload = value as Record<string, unknown>
+  return (
+    typeof payload.browserDeviceId === 'string' &&
+    /^desktop-[A-Za-z0-9_-]+$/.test(payload.browserDeviceId) &&
+    typeof payload.storeCode === 'string' &&
+    payload.storeCode.length > 0 &&
+    payload.storeCode.length <= 128 &&
+    typeof payload.token === 'string' &&
+    payload.token.length >= 40 &&
+    payload.token.length <= 4096 &&
+    payload.token.includes('.') &&
+    typeof payload.expiresAt === 'string' &&
+    Number.isFinite(Date.parse(payload.expiresAt))
+  )
+}
+
+// The Desktop credential never leaves main. Preload receives only the derived
+// managed POS session and initializes the existing Cashier storage contract.
+void ipcRenderer.invoke(POS_SESSION_TAKE_CHANNEL).then((value: unknown) => {
+  if (!isPosSessionPayload(value)) return
+  const tokenKey = `cashier:posDeviceToken:${value.storeCode}`
+  const changed =
+    window.localStorage.getItem('cashier:deviceId') !== value.browserDeviceId ||
+    window.localStorage.getItem(tokenKey) !== value.token
+  if (!changed) return
+  window.localStorage.setItem('cashier:deviceId', value.browserDeviceId)
+  window.localStorage.setItem(tokenKey, value.token)
+  // Cashier reads its device token during initial mount. A one-time reload is
+  // required when this startup handoff replaces or restores that token.
+  window.location.reload()
+}).catch(() => {
+  // Existing Browser/Desktop recovery fallback remains responsible for recovery.
+})
 
 // 旁路捕获现有 Web 实时通道（零侵入：不修改任何冻结页面）
 try {

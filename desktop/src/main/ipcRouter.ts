@@ -8,11 +8,14 @@
  * - payload 由 validateCartSnapshotMessage 做运行时校验
  */
 
-import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { app, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, SENDABLE_BY_ROLE, INVOKABLE_BY_ROLE, type WindowRole } from '../shared/ipcChannels'
 import { cartSyncService } from './cartSyncService'
 import { getHealthSnapshot, updateHealth } from './runtimeHealth'
 import { logger } from './logger'
+import { getConfig, isAllowedNavigation } from './config'
+import { CredentialStore } from './activation/credentialStore'
+import { PosSessionBridge } from './posSessionBridge'
 import type { WindowManager } from './windowManager'
 
 function senderRole(
@@ -40,6 +43,13 @@ function authorize(
 }
 
 export function registerIpcHandlers(windowManager: WindowManager) {
+  const config = getConfig()
+  const posSessionBridge = new PosSessionBridge({
+    credentialReader: new CredentialStore(app.getPath('userData')),
+    baseUrl: config.baseUrl,
+  })
+  void posSessionBridge.prepare()
+
   ipcMain.on(IPC_CHANNELS.CART_PUBLISH, (event, payload: unknown) => {
     if (!authorize(windowManager, event, IPC_CHANNELS.CART_PUBLISH, 'send')) return
     cartSyncService.ingest(payload)
@@ -69,6 +79,14 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     const win = windowManager.getEmployeeWindow()
     if (!win || win.isDestroyed() || win.webContents.id !== event.sender.id) return false
     return win.isFullScreen()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.POS_SESSION_TAKE, async (event) => {
+    if (authorize(windowManager, event, IPC_CHANNELS.POS_SESSION_TAKE, 'invoke') !== 'employee') return null
+    const win = windowManager.getEmployeeWindow()
+    if (!win || win.isDestroyed() || win.webContents.id !== event.sender.id) return null
+    if (!event.senderFrame || !isAllowedNavigation(event.senderFrame.url, config)) return null
+    return posSessionBridge.take()
   })
 
   updateHealth({ ipc: 'ok' }, 'ipc.registered')
