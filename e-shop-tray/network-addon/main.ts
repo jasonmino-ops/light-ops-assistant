@@ -216,7 +216,16 @@ async function initialize() {
     await lifecycle.resumeAtStartup()
     lastCode = profile.snapshot().enabled ? 'RUNNING' : profile.snapshot().coldEnableCheckRequired
       ? 'ADDON_COLD_EXPLICIT_ENABLE_REQUIRED' : 'SETUP_OR_PAUSED'
-  } catch (error) { lastCode = code(error) }
+  } catch (error) {
+    if (lifecycle.beginStartupRecovery(error, {
+      onStarted() {
+        if (profile?.snapshot().enabled && lifecycle?.everStartedPoller) lastCode = 'RUNNING'
+      },
+      onBlocked(failure) { lastCode = code(failure) },
+    })) {
+      lastCode = 'NETWORK_PRINTER_UNREACHABLE'
+    } else lastCode = code(error)
+  }
 }
 
 async function status() {

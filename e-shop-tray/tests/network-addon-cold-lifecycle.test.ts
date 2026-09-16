@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { ColdModeLifecycle } from '../network-addon/coldModeLifecycle'
+import { ColdModeLifecycle, STARTUP_RECOVERY_INTERVAL_MS } from '../network-addon/coldModeLifecycle'
 import { NetworkAddonProfile } from '../network-addon/profile'
 import type { ReceivedPrintJob } from '../src/cloudRelayClient'
 import { RelayPoller } from '../src/relayPoller'
@@ -126,6 +126,109 @@ describe('commercial cold lifecycle used by the main process', () => {
     await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
     expect(f.ports.start).not.toHaveBeenCalled()
     expect(f.ports.client.networkQueueState).not.toHaveBeenCalled()
+  })
+
+  it('retries only the complete startup validation and starts the poller exactly once after recovery', async () => {
+    vi.useFakeTimers()
+    try {
+      const f = await fixture()
+      await f.profile.setEnabled(true)
+      const next = await f.restart()
+      f.ports.validate.mockRejectedValueOnce(new Error('NETWORK_PRINTER_UNREACHABLE')).mockResolvedValueOnce(undefined)
+      await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+      const onStarted = vi.fn(), onBlocked = vi.fn()
+      expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_PRINTER_UNREACHABLE'), { onStarted, onBlocked })).toBe(true)
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS)
+      await vi.waitFor(() => expect(f.ports.validate).toHaveBeenCalledTimes(2))
+      await vi.waitFor(() => expect(f.ports.start).toHaveBeenCalledTimes(1))
+      expect(onStarted).toHaveBeenCalledTimes(1)
+      expect(onBlocked).not.toHaveBeenCalled()
+      expect(next.lifecycle.recoveryWaiting).toBe(false)
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS * 2)
+      expect(f.ports.validate).toHaveBeenCalledTimes(2)
+      expect(f.ports.start).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps other recovery errors blocked and does not schedule another attempt', async () => {
+    vi.useFakeTimers()
+    try {
+      const f = await fixture()
+      await f.profile.setEnabled(true)
+      const next = await f.restart()
+      f.ports.validate.mockRejectedValueOnce(new Error('NETWORK_PRINTER_UNREACHABLE'))
+        .mockRejectedValueOnce(new Error('NETWORK_DEVICE_CHANGED'))
+      await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+      const onStarted = vi.fn(), onBlocked = vi.fn()
+      expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_DEVICE_CHANGED'), { onStarted, onBlocked })).toBe(false)
+      expect(next.lifecycle.recoveryWaiting).toBe(false)
+      expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_PRINTER_UNREACHABLE'), { onStarted, onBlocked })).toBe(true)
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS)
+      await vi.waitFor(() => expect(f.ports.validate).toHaveBeenCalledTimes(2))
+      await vi.waitFor(() => expect(onBlocked).toHaveBeenCalledTimes(1))
+      expect(f.ports.start).not.toHaveBeenCalled()
+      expect(onStarted).not.toHaveBeenCalled()
+      expect(onBlocked).toHaveBeenCalledTimes(1)
+      expect(onBlocked).toHaveBeenCalledWith(expect.objectContaining({ message: 'NETWORK_DEVICE_CHANGED' }))
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS * 2)
+      expect(f.ports.validate).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('invalidates an in-flight recovery before pause can change enabled state', async () => {
+    vi.useFakeTimers()
+    try {
+      const f = await fixture()
+      await f.profile.setEnabled(true)
+      const next = await f.restart()
+      f.ports.validate.mockRejectedValueOnce(new Error('NETWORK_PRINTER_UNREACHABLE'))
+      await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+      let release!: () => void
+      const pending = new Promise<void>(resolve => { release = resolve })
+      const validationStarted = new Promise<void>(resolve => {
+        f.ports.validate.mockImplementationOnce(async () => { resolve(); await pending })
+      })
+      const onStarted = vi.fn(), onBlocked = vi.fn()
+      expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_PRINTER_UNREACHABLE'), { onStarted, onBlocked })).toBe(true)
+      vi.advanceTimersByTime(STARTUP_RECOVERY_INTERVAL_MS)
+      await validationStarted
+      await next.lifecycle.pause()
+      release()
+      await pending
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(f.ports.start).not.toHaveBeenCalled()
+      expect(onStarted).not.toHaveBeenCalled()
+      expect(onBlocked).not.toHaveBeenCalled()
+      expect(next.lifecycle.recoveryWaiting).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels a queued recovery on exit before the timer fires', async () => {
+    vi.useFakeTimers()
+    try {
+      const f = await fixture()
+      await f.profile.setEnabled(true)
+      const next = await f.restart()
+      f.ports.validate.mockRejectedValueOnce(new Error('NETWORK_PRINTER_UNREACHABLE'))
+      await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+      const onStarted = vi.fn(), onBlocked = vi.fn()
+      expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_PRINTER_UNREACHABLE'), { onStarted, onBlocked })).toBe(true)
+      await next.lifecycle.safeExit()
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS * 2)
+      expect(f.ports.validate).toHaveBeenCalledTimes(1)
+      expect(f.ports.start).not.toHaveBeenCalled()
+      expect(onStarted).not.toHaveBeenCalled()
+      expect(onBlocked).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('requires another paused boot after a same-process printer configuration change', async () => {
