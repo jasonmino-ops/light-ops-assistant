@@ -13,7 +13,7 @@ const device: PublicDeviceIdentity = {
   deviceId: 'device-001',
   tenantId: 'tenant-001',
   storeId: 'store-001',
-  storeCode: 'STORE-A',
+  storeCode: 'ST169E7000',
   status: 'ACTIVE',
   tokenExpiresAt: '2027-01-01T00:00:00.000Z',
   credentialVersion: 1,
@@ -44,7 +44,7 @@ function makeRuntime(options: {
     })),
     readMetadata: vi.fn(async (): Promise<ActivationMetadataV1 | null> => ({
       schemaVersion: 1,
-      storeCodeHint: 'STORE-A',
+      storeCodeHint: 'STALE-CONFIG',
     })),
     isEncryptionAvailable: vi.fn(() => options.encryptionAvailable ?? true),
     readCredential: vi.fn(async () => storedCredential
@@ -74,7 +74,7 @@ function makeRuntime(options: {
     credentialStore: store as never,
     apiClient: api as never,
     startAuthorizedRuntime,
-    initialStoreCodeHint: 'STORE-A',
+    initialStoreCodeHint: 'STALE-CONFIG',
   })
   return { runtime, store, api, startAuthorizedRuntime }
 }
@@ -87,13 +87,17 @@ describe('activation runtime state machine', () => {
     expect(startAuthorizedRuntime).not.toHaveBeenCalled()
   })
 
-  it('verifies a valid credential and starts formal runtime once', async () => {
+  it('restores a valid credential with the verified device store context', async () => {
     const { runtime, api, startAuthorizedRuntime } = makeRuntime({ storedCredential: credential() })
     await runtime.initialize()
     await runtime.retryVerification()
     expect(api.verify).toHaveBeenCalledTimes(2)
     expect(startAuthorizedRuntime).toHaveBeenCalledTimes(1)
-    expect(runtime.getPublicState()).toMatchObject({ kind: 'AUTHORIZED_RUNNING' })
+    expect(startAuthorizedRuntime).toHaveBeenCalledWith({ device, subscription })
+    expect(runtime.getPublicState()).toMatchObject({
+      kind: 'AUTHORIZED_RUNNING',
+      storeCodeHint: 'ST169E7000',
+    })
   })
 
   it('keeps token local and enters blocked state when subscription is blocked', async () => {
@@ -161,6 +165,18 @@ describe('activation runtime state machine', () => {
     ])
     expect(api.activate).toHaveBeenCalledTimes(1)
     expect(startAuthorizedRuntime).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts first Activation with the verified device store context', async () => {
+    const { runtime, startAuthorizedRuntime } = makeRuntime({ storedCredential: null })
+    await runtime.initialize()
+    await runtime.activate({ storeCode: 'st169e7000', pin: '123456' })
+    expect(startAuthorizedRuntime).toHaveBeenCalledTimes(1)
+    expect(startAuthorizedRuntime).toHaveBeenCalledWith({ device, subscription })
+    expect(runtime.getPublicState()).toMatchObject({
+      kind: 'AUTHORIZED_RUNNING',
+      storeCodeHint: 'ST169E7000',
+    })
   })
 
   it('local reset deletes only local activation state', async () => {
