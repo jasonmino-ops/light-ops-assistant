@@ -49,7 +49,7 @@ The commit containing this evidence record is the proposed local successor Candi
 
 1. `nsProcess::_FindProcess /NOUNLOAD "${APP_EXECUTABLE_FILENAME}"` checks the exact E-Shop Desktop executable name.
 2. Result `0` stops with instructions to exit through the existing tray path; result `603` is the only accepted absence; other results stop fail-closed.
-3. The custom include contains no executable `tasklist`, `find.exe`, `taskkill`, `_KillProcess`, `ExecWait`, `CloseWindow`, or `SendMessage` instruction.
+3. The custom include contains no executable `tasklist`, `find.exe`, `taskkill`, `_KillProcess`, `CloseWindow`, or `SendMessage` process-termination instruction. Its sole `ExecWait` is the verified successor-uninstaller handoff described below; it never invokes the registered predecessor uninstaller.
 4. `customInit` applies an exact check before installer UI work. The install section checks again after the operator proceeds, closing the launch-to-install race.
 5. If this appId is registered, the installer validates its install location, exact executable, and quoted registered uninstaller identity. The private quoted-path parser is available before `customInit`, unlike electron-builder's later `installUtil.nsh` helper. It then extracts this Candidate's CRC-verified uninstaller to the private plugin directory, changes the working directory to `$TEMP`, and executes the ordinary current-user uninstall with `--keep-shortcuts --updated`.
 6. The broken registered predecessor uninstaller is never executed. Nonzero handoff or remaining install registration stops the upgrade fail-closed.
