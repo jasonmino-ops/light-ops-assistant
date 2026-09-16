@@ -242,9 +242,41 @@ assert.doesNotMatch(
 assert.doesNotMatch(computerClientPage, /computerClientCloudUnavailable/, 'the stale "cloud unavailable" copy must no longer be rendered')
 assert.doesNotMatch(computerClientPage, /localhost|127\.0\.0\.1|iframe/i, 'the approval page must not embed or reference local services')
 assert.doesNotMatch(computerClientPage, /mock|fixture|sampleRequests/i, 'the approval page must not provide fake requests')
-assert.doesNotMatch(computerClientPage, /\bPIN\b|activation-pins|desktopPin|generateDesktopPin/i, 'the approval page must not retain legacy PIN copy or actions')
-assert.doesNotMatch(computerClientPage, /\/desktop\b|DesktopActivation|desktop activation/i, 'the approval page must not expose the legacy Desktop activation entry')
-assert.doesNotMatch(computerClientPage, /tenantId|storeId/, 'the approval page must not surface internal tenant or store identifiers')
+assert.match(
+  computerClientPage,
+  /apiFetch\('\/api\/stores',\s*\{ cache: 'no-store' \}\)/,
+  'the activation entry must resolve the OWNER-visible store list through the existing API',
+)
+assert.match(
+  computerClientPage,
+  /stores\.find\(\(store\) => store\.code === storeCode\)/,
+  'multi-store issuance must bind to the explicit current store context',
+)
+assert.match(
+  computerClientPage,
+  /apiFetch\('\/api\/desktop\/activation-pins',\s*\{[\s\S]*method: 'POST'[\s\S]*JSON\.stringify\(\{ storeId: activationStore\.id \}\)/,
+  'the OWNER entry must reuse the frozen Desktop activation PIN API with the resolved storeId',
+)
+assert.match(computerClientPage, /!\/\^\\d\{6\}\$\/\.test\(body\.pin\)/, 'the UI must reject malformed PIN responses')
+assert.match(computerClientPage, /body\.storeId !== activationStore\.id/, 'the UI must reject a cross-store PIN response')
+assert.match(computerClientPage, /computerActivationConfirmRegenerate/, 'regeneration must warn that the active PIN will be replaced')
+assert.match(computerClientPage, /navigator\.clipboard\.writeText\(issuedActivationPin\.pin\)/, 'copy must use only the in-memory issued PIN')
+assert.match(computerClientPage, /document\.execCommand\('copy'\)/, 'copy must retain a mobile WebView fallback')
+assert.doesNotMatch(
+  computerClientPage,
+  /(?:localStorage|sessionStorage|document\.cookie|URLSearchParams|console\.)[\s\S]{0,120}issuedActivationPin/,
+  'issued PIN plaintext must not be persisted, logged, or placed in a URL',
+)
+assert.doesNotMatch(
+  computerClientPage,
+  /apiFetch\([^)]*activation-pins[^)]*method:\s*'GET'/,
+  'page refresh must not retrieve previously issued PIN plaintext',
+)
+assert.doesNotMatch(
+  computerClientPage,
+  /<[^>]+(?:tenantId|activationStore\.id|issuedActivationPin\.storeId)/,
+  'the page must not render internal tenant or store identifiers',
+)
 
 for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) {
   for (const key of [
@@ -255,6 +287,22 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
     'manageComputers',
     'computerClientManagementTitle',
     'computerClientManagementDesc',
+    'computerActivationTitle',
+    'computerActivationDesc',
+    'computerActivationCurrentStore',
+    'computerActivationStoreLoading',
+    'computerActivationStoreUnavailable',
+    'computerActivationGenerate',
+    'computerActivationGenerating',
+    'computerActivationPinLabel',
+    'computerActivationValidity',
+    'computerActivationInstruction',
+    'computerActivationCopy',
+    'computerActivationCopied',
+    'computerActivationRegenerate',
+    'computerActivationConfirmRegenerate',
+    'computerActivationGenerateFailed',
+    'computerActivationCopyFailed',
     'computerClientPendingTitle',
     'computerClientEmptyTitle',
     'computerClientEmptyDesc',
@@ -303,8 +351,8 @@ for (const [language, source] of [['zh', zh], ['en', en], ['km', km]] as const) 
   }
   assert.doesNotMatch(
     source,
-    /\b(?:desktopClientTitle|desktopClientDesc|desktopPin\w*|copyDesktopPin|revokeDesktopPin|generateDesktopPin|generatingDesktopPin):/,
-    `${language} should not retain the merchant PIN product copy`,
+    /\b(?:desktopClientTitle|desktopClientDesc|copyDesktopPin|revokeDesktopPin|generateDesktopPin|generatingDesktopPin):/,
+    `${language} should not restore the removed legacy PIN product keys`,
   )
 }
 

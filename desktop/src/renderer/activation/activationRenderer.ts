@@ -19,10 +19,8 @@ type ActivationApi = {
   onStateChanged(callback: (state: ActivationState) => void): () => void
 }
 
-declare global {
-  interface Window {
-    eshopDesktopActivation: ActivationApi
-  }
+interface Window {
+  eshopDesktopActivation: ActivationApi
 }
 
 const titleByState: Record<string, string> = {
@@ -148,5 +146,3 @@ window.addEventListener('DOMContentLoaded', () => {
   if (currentState?.storeCodeHint) must(pinInput).focus()
   else must(storeCodeInput).focus()
 })
-
-export {}

@@ -27,6 +27,13 @@ type WindowState = { x?: number; y?: number; width: number; height: number }
 
 const EMPLOYEE_DEFAULT: WindowState = { width: 1280, height: 800 }
 
+type EmployeeStateWindow = Pick<BrowserWindow, 'isDestroyed' | 'isFullScreen' | 'getNormalBounds'>
+
+export function getPersistableEmployeeState(win: EmployeeStateWindow | null): WindowState | null {
+  if (!win || win.isDestroyed() || win.isFullScreen()) return null
+  return win.getNormalBounds()
+}
+
 export class WindowManager {
   private employeeWindow: BrowserWindow | null = null
   private customerWindow: BrowserWindow | null = null
@@ -143,10 +150,10 @@ export class WindowManager {
   }
 
   private saveEmployeeState() {
-    if (!this.employeeWindow || this.employeeWindow.isDestroyed()) return
+    const state = getPersistableEmployeeState(this.employeeWindow)
+    if (!state) return
     try {
-      const b = this.employeeWindow.getBounds()
-      writeFileSync(this.employeeStatePath(), JSON.stringify(b), 'utf8')
+      writeFileSync(this.employeeStatePath(), JSON.stringify(state), 'utf8')
     } catch { /* 非关键 */ }
   }
 
@@ -183,6 +190,17 @@ export class WindowManager {
     this.roleByWebContentsId.set(win.webContents.id, 'employee')
     this.hardenWebContents(win, 'employee')
     updateHealth({ employeeWindow: 'starting' }, 'employee-window.creating')
+
+    if (getConfig().autoFullscreen) {
+      try {
+        win.setFullScreen(true)
+        logger.info('employee-window.auto-fullscreen-requested')
+      } catch (error) {
+        recordHealthError('employee-window', `auto fullscreen failed: ${String(error)}`)
+      }
+    } else {
+      logger.info('employee-window.auto-fullscreen-skipped', { reason: 'temporary-environment-opt-out' })
+    }
 
     win.loadURL(employeeUrl()).catch((error) => {
       recordHealthError('employee-window', `loadURL failed: ${String(error)}`)
