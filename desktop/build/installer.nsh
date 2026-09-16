@@ -30,9 +30,12 @@ Var /GLOBAL eshopPriorUninstallHandled
   ReadRegStr $R2 HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString
   ${If} $R1 != ""
   ${OrIf} $R2 != ""
+    !insertmacro GetInQuotes $R3 "$R2"
     ${If} $R1 == ""
     ${OrIf} $R2 == ""
+    ${OrIf} $R3 != "$R1\${UNINSTALL_FILENAME}"
     ${OrIfNot} ${FileExists} "$R1\${APP_EXECUTABLE_FILENAME}"
+    ${OrIfNot} ${FileExists} "$R3"
       DetailPrint "The prior E-Shop Desktop installation cannot be verified. Stopping."
       SetErrorLevel 4
       Quit
@@ -49,8 +52,8 @@ Var /GLOBAL eshopPriorUninstallHandled
       Quit
     ${EndIf}
 
-    ReadRegStr $R3 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
-    ${If} $R3 != ""
+    ReadRegStr $R4 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ${If} $R4 != ""
       DetailPrint "The prior E-Shop Desktop installation remained registered. Stopping."
       SetErrorLevel 5
       Quit
