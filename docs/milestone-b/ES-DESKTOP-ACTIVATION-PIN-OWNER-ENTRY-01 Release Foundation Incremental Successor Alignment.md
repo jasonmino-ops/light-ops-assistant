@@ -79,7 +79,20 @@ This changes no frozen group, protected path, exact `git diff --name-only` opera
 
 ## Validation
 
-Validation results are recorded on the exact committed alignment candidate before final handoff. Required gates are: default Release Foundation, Scope Guard, TypeScript, focused tests, relevant core suite, production build, Release Lineage, and fresh-context Independent Review.
+| Gate | Result |
+| --- | --- |
+| Default Release Foundation policy | `PASS` — all 12 frozen groups, no special baseline argument |
+| Scope Guard | `PASS` — no exception |
+| TypeScript | `PASS` |
+| Focused Computer Client / Activation static tests | `PASS` |
+| Mocked mobile Chromium OWNER flow | `PASS` — 1/1, no real PIN or Production call |
+| Root core suite | `PASS` — 74 collected, 73 pass, one active known failure, zero new failures |
+| Production build | `PASS` — compile, lint/type validation, 179 static pages |
+| Release Lineage | `PASS` — current `origin/main@822cbef0...`, Desktop Candidate, and OWNER UI Candidate are all ancestors of this successor line |
+
+The first core-suite attempt detected only a compiler-generated `tsconfig.tsbuildinfo` working-tree delta. That cache file was restored to committed bytes and the suite was rerun cleanly to `PASS`; no known-failure entry or exception was added.
+
+Fresh-context Independent Review remains a required final gate and is recorded in the task handoff rather than pre-claimed here.
 
 ## Stop Boundary
 
