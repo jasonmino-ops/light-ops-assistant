@@ -43,13 +43,11 @@ The frozen-boundary code delta is `19 insertions, 3 deletions` across those two 
 
 The successor does not change Activation authorization, credential verification, safeStorage, installation identity, config persistence, Web business behavior, cashier logic, Customer Display behavior, API, schema, migration, Printing, RC9, Provider/HRT, or P1B.
 
-## Proposed Durable Alignment — Pending Separate Founder Authorization
+## Durable Alignment
 
-The safe proposal keeps the original executable freeze anchor at `439dcac561734d07b9e022c8d99e693c99d26794`. The gate would record exact successor snapshot `17c764427f1e53288dedb82a1965b1365c1ded3d` only for the two authorized frozen groups. A group would pass through that successor only when the snapshot is an ancestor of the current `HEAD` and the group's current bytes are byte-exact to that immutable snapshot.
+Following the Founder reuse audit and explicit `APPROVE` implementation decision, the original executable freeze anchor remains `439dcac561734d07b9e022c8d99e693c99d26794`. The gate records exact successor snapshot `17c764427f1e53288dedb82a1965b1365c1ded3d` only for the two authorized frozen groups. A group passes through that successor only when the snapshot is an ancestor of the current `HEAD` and the group's current bytes are byte-exact to that immutable snapshot.
 
-This would preserve the full prior-anchor-to-successor audit chain and would not be Candidate self-comparison: the final Candidate necessarily descends from the immutable implementation snapshot and includes this alignment record plus the exact successor declaration. The declaration would accept no later Candidate bytes.
-
-No default gate behavior has been changed. Implementing this proposal requires a separate explicit Founder authorization because it changes how the default Release Foundation gate represents authorized successors.
+This preserves the full prior-anchor-to-successor audit chain and is not Candidate self-comparison: the final Candidate necessarily descends from the immutable implementation snapshot and includes this alignment record plus the exact successor declaration. The declaration accepts no later Candidate bytes.
 
 The alignment changes none of the following:
 

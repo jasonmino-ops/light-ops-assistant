@@ -57,6 +57,27 @@ describe('EP-MB3-07A release foundation policy', () => {
     expect(result.frozenBoundary.every((group: { status: string }) => group.status === 'PASS')).toBe(true)
   })
 
+  it('accepts only the exact authorized launch-context successor bytes', () => {
+    const output = runReleaseFoundation(['policy'])
+    const result = JSON.parse(output)
+    const authorized = result.frozenBoundary
+      .filter((group: { authorizedSuccessorSnapshot?: string }) => group.authorizedSuccessorSnapshot)
+      .map((group: { label: string; authorizedSuccessorSnapshot: string }) => ({
+        label: group.label,
+        snapshot: group.authorizedSuccessorSnapshot,
+      }))
+
+    expect(authorized).toEqual([
+      { label: 'main startup gate', snapshot: '17c764427f1e53288dedb82a1965b1365c1ded3d' },
+      { label: 'WindowManager', snapshot: '17c764427f1e53288dedb82a1965b1365c1ded3d' },
+    ])
+    expect(() => runReleaseFoundation([
+      'policy',
+      '--baseline',
+      '439dcac561734d07b9e022c8d99e693c99d26794',
+    ])).toThrow(/frozen boundary changed: main startup gate, WindowManager/)
+  })
+
   it('writes and verifies release provenance plus SHA manifest without secrets', () => {
     const releaseDir = makeReleaseDir()
     const output = runReleaseFoundation(['write', '--release-dir', releaseDir])
