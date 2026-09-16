@@ -73,6 +73,7 @@ No equally regular solution avoids the frozen NSIS boundary. The selected patter
 
 - `desktop/build/installer.nsh`
 - new focused lifecycle test under `desktop/tests/`
+- the existing focused `desktop/tests/windows-autostart-installer.test.ts`, only to keep its no-argument assertion bound to the HKCU Run registration while permitting the authorized internal uninstall handoff flags
 - new package-integrity verifier under `desktop/scripts/`
 - this successor review and a minimal Candidate evidence record under `docs/desktop/`
 
