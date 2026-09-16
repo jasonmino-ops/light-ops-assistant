@@ -52,6 +52,18 @@ async function confirmKitchen(target: { profile: NetworkAddonProfile; lifecycle:
   await target.profile.confirmTest(test.id, true, false)
 }
 
+async function enabledWaitingFixture() {
+  const f = await fixture()
+  await f.profile.setEnabled(true)
+  const next = await f.restart()
+  f.ports.validate.mockRejectedValueOnce(new Error('NETWORK_PRINTER_UNREACHABLE'))
+  await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+  expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_PRINTER_UNREACHABLE'), {
+    onStarted: vi.fn(), onBlocked: vi.fn(),
+  })).toBe(true)
+  return { f, next }
+}
+
 describe('commercial cold lifecycle used by the main process', () => {
   it('converts without enabling or printing, exits, and requires a new process with an explicit checked enable', async () => {
     const f = await fixture(), beforeJournal = await readFile(f.profile.journal.filePath)
@@ -147,6 +159,7 @@ describe('commercial cold lifecycle used by the main process', () => {
       await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS * 2)
       expect(f.ports.validate).toHaveBeenCalledTimes(2)
       expect(f.ports.start).toHaveBeenCalledTimes(1)
+      expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
     }
@@ -163,6 +176,7 @@ describe('commercial cold lifecycle used by the main process', () => {
       await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
       const onStarted = vi.fn(), onBlocked = vi.fn()
       expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_DEVICE_CHANGED'), { onStarted, onBlocked })).toBe(false)
+      expect(next.lifecycle.beginStartupRecovery(new Error('UNKNOWN_ERROR'), { onStarted, onBlocked })).toBe(false)
       expect(next.lifecycle.recoveryWaiting).toBe(false)
       expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_PRINTER_UNREACHABLE'), { onStarted, onBlocked })).toBe(true)
       await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS)
@@ -174,6 +188,7 @@ describe('commercial cold lifecycle used by the main process', () => {
       expect(onBlocked).toHaveBeenCalledWith(expect.objectContaining({ message: 'NETWORK_DEVICE_CHANGED' }))
       await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS * 2)
       expect(f.ports.validate).toHaveBeenCalledTimes(2)
+      expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
     }
@@ -188,9 +203,11 @@ describe('commercial cold lifecycle used by the main process', () => {
       f.ports.validate.mockRejectedValueOnce(new Error('NETWORK_PRINTER_UNREACHABLE'))
       await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
       let release!: () => void
+      let validationFinished!: () => void
       const pending = new Promise<void>(resolve => { release = resolve })
+      const finished = new Promise<void>(resolve => { validationFinished = resolve })
       const validationStarted = new Promise<void>(resolve => {
-        f.ports.validate.mockImplementationOnce(async () => { resolve(); await pending })
+        f.ports.validate.mockImplementationOnce(async () => { resolve(); await pending; validationFinished() })
       })
       const onStarted = vi.fn(), onBlocked = vi.fn()
       expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_PRINTER_UNREACHABLE'), { onStarted, onBlocked })).toBe(true)
@@ -199,12 +216,14 @@ describe('commercial cold lifecycle used by the main process', () => {
       await next.lifecycle.pause()
       release()
       await pending
+      await finished
       await Promise.resolve()
       await Promise.resolve()
       expect(f.ports.start).not.toHaveBeenCalled()
       expect(onStarted).not.toHaveBeenCalled()
       expect(onBlocked).not.toHaveBeenCalled()
       expect(next.lifecycle.recoveryWaiting).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
     }
@@ -226,6 +245,132 @@ describe('commercial cold lifecycle used by the main process', () => {
       expect(f.ports.start).not.toHaveBeenCalled()
       expect(onStarted).not.toHaveBeenCalled()
       expect(onBlocked).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it.each(['convertAndExit', 'prepareEndpointChange', 'enable'] as const)('cancels queued recovery before %s', async action => {
+    vi.useFakeTimers()
+    try {
+      const { f, next } = await enabledWaitingFixture()
+      const operation = action === 'convertAndExit' ? next.lifecycle.convertAndExit('SHARED_PRINTER', confirmation)
+        : action === 'prepareEndpointChange' ? next.lifecycle.prepareEndpointChange(confirmation)
+          : next.lifecycle.enable(confirmation)
+      await expect(operation).rejects.toThrow(action === 'enable' ? 'ADDON_ALREADY_ENABLED' : 'ADDON_COLD_PROCESS_RESTART_REQUIRED')
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS * 2)
+      expect(f.ports.validate).toHaveBeenCalledTimes(1)
+      expect(f.ports.start).not.toHaveBeenCalled()
+      expect(next.lifecycle.recoveryWaiting).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels an in-flight recovery on safe exit after the validator continuation completes', async () => {
+    vi.useFakeTimers()
+    try {
+      const { f, next } = await enabledWaitingFixture()
+      let release!: () => void
+      let validationStarted!: () => void
+      let validationFinished!: () => void
+      const pending = new Promise<void>(resolve => { release = resolve })
+      const started = new Promise<void>(resolve => { validationStarted = resolve })
+      const finished = new Promise<void>(resolve => { validationFinished = resolve })
+      f.ports.validate.mockImplementationOnce(async () => {
+        validationStarted()
+        await pending
+        validationFinished()
+      })
+      vi.advanceTimersByTime(STARTUP_RECOVERY_INTERVAL_MS)
+      await started
+      const exiting = next.lifecycle.safeExit()
+      await exiting
+      release()
+      await finished
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(f.ports.exit).toHaveBeenCalledTimes(1)
+      expect(f.ports.start).not.toHaveBeenCalled()
+      expect(next.lifecycle.recoveryWaiting).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps FRONT and KITCHEN role validation atomic across repeated recovery failures', async () => {
+    vi.useFakeTimers()
+    try {
+      const f = await fixture()
+      await f.lifecycle.convertAndExit('SHARED_PRINTER', confirmation)
+      const setup = await f.restart()
+      await confirmKitchen(setup)
+      await setup.lifecycle.enable(confirmation)
+      f.ports.start.mockClear()
+      f.ports.validate.mockClear()
+      const running = await f.restart()
+      const roles: string[][] = []
+      f.ports.validate.mockImplementation(async () => {
+        roles.push(['FRONT', 'KITCHEN'])
+        if (roles.length <= 2) throw new Error('NETWORK_PRINTER_UNREACHABLE')
+      })
+      await expect(running.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+      expect(roles).toEqual([['FRONT', 'KITCHEN']])
+      expect(running.lifecycle.beginStartupRecovery(new Error('NETWORK_PRINTER_UNREACHABLE'), {
+        onStarted: vi.fn(), onBlocked: vi.fn(),
+      })).toBe(true)
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS)
+      await vi.waitFor(() => expect(roles).toHaveLength(2))
+      expect(roles[1]).toEqual(['FRONT', 'KITCHEN'])
+      expect(f.ports.start).not.toHaveBeenCalled()
+      expect(running.lifecycle.recoveryWaiting).toBe(true)
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS)
+      await vi.waitFor(() => expect(f.ports.start).toHaveBeenCalledTimes(1))
+      expect(roles).toEqual([['FRONT', 'KITCHEN'], ['FRONT', 'KITCHEN'], ['FRONT', 'KITCHEN']])
+      expect(running.lifecycle.recoveryWaiting).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('recovers after multiple consecutive NETWORK_PRINTER_UNREACHABLE attempts without overlapping validation', async () => {
+    vi.useFakeTimers()
+    try {
+      const f = await fixture()
+      await f.profile.setEnabled(true)
+      const next = await f.restart()
+      const validationCalls: number[] = []
+      let activeValidations = 0, maxActiveValidations = 0
+      f.ports.validate.mockImplementation(async () => {
+        activeValidations++
+        maxActiveValidations = Math.max(maxActiveValidations, activeValidations)
+        validationCalls.push(Date.now())
+        try {
+          if (validationCalls.length <= 3) throw new Error('NETWORK_PRINTER_UNREACHABLE')
+        } finally {
+          activeValidations--
+        }
+      })
+      await expect(next.lifecycle.resumeAtStartup()).rejects.toThrow('NETWORK_PRINTER_UNREACHABLE')
+      const onStarted = vi.fn(), onBlocked = vi.fn()
+      expect(next.lifecycle.beginStartupRecovery(new Error('NETWORK_PRINTER_UNREACHABLE'), { onStarted, onBlocked })).toBe(true)
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS)
+      await vi.waitFor(() => expect(f.ports.validate).toHaveBeenCalledTimes(2))
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS)
+      await vi.waitFor(() => expect(f.ports.validate).toHaveBeenCalledTimes(3))
+      await vi.advanceTimersByTimeAsync(STARTUP_RECOVERY_INTERVAL_MS)
+      await vi.waitFor(() => expect(f.ports.start).toHaveBeenCalledTimes(1))
+      expect(f.ports.validate).toHaveBeenCalledTimes(4)
+      expect(validationCalls).toHaveLength(4)
+      expect(maxActiveValidations).toBe(1)
+      expect(onStarted).toHaveBeenCalledTimes(1)
+      expect(onBlocked).not.toHaveBeenCalled()
+      expect(next.lifecycle.recoveryWaiting).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
     }
