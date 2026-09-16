@@ -14,6 +14,51 @@
 !define ESHOP_DESKTOP_AUTOSTART_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 !define ESHOP_DESKTOP_AUTOSTART_VALUE "E-Shop Desktop"
 
+!ifndef BUILD_UNINSTALLER
+Var /GLOBAL eshopDesktopInstallerPhase
+Var /GLOBAL eshopPriorUninstallHandled
+
+!macro eshopUninstallPriorVersion
+  StrCpy $eshopPriorUninstallHandled "1"
+
+  ; Do not execute the registered predecessor uninstaller. A predecessor built
+  ; before this lifecycle fix can have an invalid embedded CRC and still be
+  ; registered successfully. Use this Candidate's CRC-verified uninstaller for
+  ; the same appId instead, while retaining AppData through --updated.
+  ClearErrors
+  ReadRegStr $R1 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ReadRegStr $R2 HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString
+  ${If} $R1 != ""
+  ${OrIf} $R2 != ""
+    ${If} $R1 == ""
+    ${OrIf} $R2 == ""
+    ${OrIfNot} ${FileExists} "$R1\${APP_EXECUTABLE_FILENAME}"
+      DetailPrint "The prior E-Shop Desktop installation cannot be verified. Stopping."
+      SetErrorLevel 4
+      Quit
+    ${EndIf}
+
+    InitPluginsDir
+    SetOutPath "$PLUGINSDIR"
+    File /oname=eshop-current-uninstaller.exe "${UNINSTALLER_OUT_FILE}"
+    SetOutPath "$TEMP"
+    ExecWait '"$PLUGINSDIR\eshop-current-uninstaller.exe" /S /KEEP_APP_DATA /currentuser --keep-shortcuts --updated _?=$R1' $R0
+    ${If} $R0 != 0
+      DetailPrint "The verified prior-version uninstall handoff failed with exit code $R0."
+      SetErrorLevel 5
+      Quit
+    ${EndIf}
+
+    ReadRegStr $R3 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ${If} $R3 != ""
+      DetailPrint "The prior E-Shop Desktop installation remained registered. Stopping."
+      SetErrorLevel 5
+      Quit
+    ${EndIf}
+  ${EndIf}
+!macroend
+!endif
+
 !macro customCheckAppRunning
   ; This macro replaces electron-builder's tasklist/find + taskkill fallback.
   ; nsProcess result 0 means running and 603 means verified absence. Any other
@@ -31,11 +76,20 @@
     SetErrorLevel 3
     Quit
   ${EndIf}
+
+  !ifndef BUILD_UNINSTALLER
+    ${If} $eshopDesktopInstallerPhase == "install"
+    ${AndIf} $eshopPriorUninstallHandled != "1"
+      !insertmacro eshopUninstallPriorVersion
+    ${EndIf}
+  !endif
 !macroend
 
 !macro customInit
   SetShellVarContext current
+  StrCpy $eshopDesktopInstallerPhase "init"
   !insertmacro customCheckAppRunning
+  StrCpy $eshopDesktopInstallerPhase "install"
 !macroend
 
 !macro customUnInit

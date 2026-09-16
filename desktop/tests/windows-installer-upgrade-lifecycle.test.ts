@@ -114,6 +114,38 @@ describe('ES-DESKTOP-INSTALLER-UPGRADE-LIFECYCLE-FIX-01', () => {
     expect(macroBody('customUnInit')).toContain('!insertmacro customCheckAppRunning')
   })
 
+  it('uses the CRC-verified successor uninstaller for the first predecessor handoff', () => {
+    const body = macroBody('eshopUninstallPriorVersion')
+    const checkBody = macroBody('customCheckAppRunning')
+
+    expect(body).toContain('File /oname=eshop-current-uninstaller.exe "${UNINSTALLER_OUT_FILE}"')
+    expect(body).toContain(
+      'ExecWait \'"$PLUGINSDIR\\eshop-current-uninstaller.exe" /S /KEEP_APP_DATA /currentuser --keep-shortcuts --updated _?=$R1\'',
+    )
+    expect(body).not.toMatch(/ExecWait[^\n]*\$R2/)
+    expect(body.indexOf('SetOutPath "$TEMP"')).toBeLessThan(body.indexOf('ExecWait'))
+    expect(checkBody).toContain('!insertmacro eshopUninstallPriorVersion')
+    expect(checkBody).toContain('$eshopDesktopInstallerPhase == "install"')
+    expect(macroBody('customInit').indexOf('"init"')).toBeLessThan(
+      macroBody('customInit').indexOf('!insertmacro customCheckAppRunning'),
+    )
+    expect(macroBody('customInit').indexOf('!insertmacro customCheckAppRunning')).toBeLessThan(
+      macroBody('customInit').indexOf('"install"'),
+    )
+  })
+
+  it('fails closed instead of executing an unverifiable prior installation', () => {
+    const body = macroBody('eshopUninstallPriorVersion')
+
+    expect(body).toContain('ReadRegStr $R1 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation')
+    expect(body).toContain('ReadRegStr $R2 HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString')
+    expect(body).toContain('${OrIfNot} ${FileExists} "$R1\\${APP_EXECUTABLE_FILENAME}"')
+    expect(body).toContain('SetErrorLevel 4')
+    expect(body).toContain('SetErrorLevel 5')
+    expect(body).toContain('ReadRegStr $R3 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation')
+    expect(body).not.toMatch(/\bReturn\b/)
+  })
+
   it('moves the prior uninstaller working directory to TEMP without changing AppData semantics', () => {
     const body = macroBody('customUnInit')
 

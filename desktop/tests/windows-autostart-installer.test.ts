@@ -57,9 +57,12 @@ describe('ES-DESKTOP-AUTOSTART-01 Windows installer registration', () => {
   })
 
   it('does not add an alternate startup system or Activation-bypass argument', () => {
+    const writes = matchingLines(/^WriteRegStr\b/)
+
     expect(installerInclude).not.toMatch(/HKLM|CurrentVersion\\RunOnce/i)
     expect(installerInclude).not.toMatch(/Startup|CreateShortCut|schtasks|Schedule|Service/i)
-    expect(installerInclude).not.toMatch(/--[A-Za-z]/)
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).not.toMatch(/--[A-Za-z]/)
     expect(installerInclude).not.toMatch(/activation|credential|fullscreen/i)
   })
 })
