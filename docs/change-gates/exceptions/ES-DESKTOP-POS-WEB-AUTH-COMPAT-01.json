@@ -9,20 +9,22 @@
   "status": "ACTIVE",
   "authorizedPaths": [
     "app/cashier/page.tsx",
-    "tests/desktop-pos-web-auth-compat.test.ts"
+    "tests/desktop-pos-web-auth-compat.test.ts",
+    "tests/es-tray-device-print-contract.test.ts"
   ],
   "authorizedPathSha256": {
     "app/cashier/page.tsx": "a0c3bb2736f77874b2a682256ad19af6e1a7f6b0861a5181d9a91bdec048d4e9",
-    "tests/desktop-pos-web-auth-compat.test.ts": "b73f2c7ff72a12f34c8e7bf8031948f95e479485f93a24917eda8e9925ed2c35"
+    "tests/desktop-pos-web-auth-compat.test.ts": "b73f2c7ff72a12f34c8e7bf8031948f95e479485f93a24917eda8e9925ed2c35",
+    "tests/es-tray-device-print-contract.test.ts": "1fad70a416c904627feab6a20393699843a90b37359d8cc31961f096d61f5753"
   },
   "createdAt": "2026-09-16T11:24:14.000Z",
   "approvedAt": "2026-09-16T11:24:14.000Z",
   "approvedBy": "Founder",
   "approvalSource": {
     "source": "Founder APPROVE decision in the current ES-DESKTOP-POS-WEB-AUTH-COMPAT-01 task",
-    "statement": "Founder approved the frozen D1-D5 correction and a task-scoped PRE_COMMIT_CONTENT_SHA256 exception for exactly app/cashier/page.tsx and tests/desktop-pos-web-auth-compat.test.ts. The separate root integration test-manifest registration is governance metadata and is not added to the protected-path exception.",
+    "statement": "Founder approved the frozen D1-D5 correction and a task-scoped PRE_COMMIT_CONTENT_SHA256 exception for exactly app/cashier/page.tsx, tests/desktop-pos-web-auth-compat.test.ts, and tests/es-tray-device-print-contract.test.ts. The print-contract test authorization is limited to synchronizing its exact Cashier SHA-256 assertion with the reviewed Product Candidate bytes. The separate root integration test-manifest registration is governance metadata and is not added to the protected-path exception.",
     "approvedAtMeaning": "Time of recording the explicit Founder approval; not an invented message timestamp."
   },
   "closeAfter": "FEATURE_MERGE",
-  "reason": "Authorize only the reviewed External Web Compatibility correction that makes Desktop POS reuse the existing Browser POS device-authorization flow, probes access before authorization, downgrades stale tokens only on explicit 401/403, and preserves cached-token network-failure tolerance. No API, schema, migration, Desktop, RC9, Printing, checkout, payment, offline, member, order-handler, Computer Client, attribution, or P1A/P1B change is authorized."
+  "reason": "Authorize only the reviewed External Web Compatibility correction that makes Desktop POS reuse the existing Browser POS device-authorization flow, probes access before authorization, downgrades stale tokens only on explicit 401/403, and preserves cached-token network-failure tolerance, plus the exact print-contract test SHA-256 synchronization required by those reviewed Cashier bytes. No print-contract semantic change, API, schema, migration, Desktop, RC9, Printing, checkout, payment, offline, member, order-handler, Computer Client, attribution, or P1A/P1B change is authorized."
 }

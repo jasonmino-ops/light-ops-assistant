@@ -10,6 +10,9 @@ The approved task uses the existing `PRE_COMMIT_CONTENT_SHA256` mechanism from c
 
 - `app/cashier/page.tsx` — `a0c3bb2736f77874b2a682256ad19af6e1a7f6b0861a5181d9a91bdec048d4e9`
 - `tests/desktop-pos-web-auth-compat.test.ts` — `b73f2c7ff72a12f34c8e7bf8031948f95e479485f93a24917eda8e9925ed2c35`
+- `tests/es-tray-device-print-contract.test.ts` — `1fad70a416c904627feab6a20393699843a90b37359d8cc31961f096d61f5753`
+
+The print-contract test authorization is limited to replacing its exact protected Cashier SHA-256 assertion with the reviewed Product Candidate value `a0c3bb2736f77874b2a682256ad19af6e1a7f6b0861a5181d9a91bdec048d4e9`. It does not authorize any RC9, Printing, print-contract behavior, or assertion-strength change.
 
 The separately Founder-approved `scripts/test/manifests/root-integration-tests.json` change is limited to `expectedCount: 12 → 13` and one `LOCAL_RUNTIME_BROWSER` registration for the new focused test. It is test-governance metadata, not a protected business/test implementation grant, and its reviewed content SHA-256 is `fee548ad6234a4bbd0a5e5195a4f5fea755eaaa741fedb73365a0992cf9939e4`.
 
