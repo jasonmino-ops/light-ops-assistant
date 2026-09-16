@@ -408,11 +408,35 @@ async function assertExpectedNetworkMode(tx: Prisma.TransactionClient, scope: Re
   }
 }
 
+/** A read-only preflight for the common empty queue. Any non-terminal job or
+ * uncertain effect must remain on the original transaction/recovery path. */
+async function hasPotentialRelayWork(scope: RelayAgentScope) {
+  const rows = await prisma.$queryRaw<Array<{ one: number }>>(Prisma.sql`
+    SELECT 1 AS one
+      FROM "EshopTrayPrintJob"
+     WHERE "tenantId" = ${scope.tenantId}
+       AND "storeId" = ${scope.storeId}
+       AND "schemaVersion" = ${scope.schemaVersion ?? 1}
+       AND (
+         "status" IN (
+           'PENDING'::"EshopTrayPrintJobStatus",
+           'CLAIMED'::"EshopTrayPrintJobStatus",
+           'EXECUTING'::"EshopTrayPrintJobStatus"
+         )
+         OR "effectBoundary" = 'CROSSING_UNKNOWN'
+       )
+     LIMIT 1
+  `)
+  return rows.length > 0
+}
+
 export async function claimNextRelayPrintJob(
   scope: RelayAgentScope,
   timing: RelayTimingConfig,
   now = new Date(),
 ): Promise<ClaimedRelayJob | null> {
+  if (!await hasPotentialRelayWork(scope)) return null
+
   return prisma.$transaction(async (tx) => {
     await lockActiveClaimScope(tx, scope, now)
     await assertExpectedNetworkMode(tx, scope)

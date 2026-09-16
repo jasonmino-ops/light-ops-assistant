@@ -3,7 +3,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
-import pg from 'pg'
 import { prisma } from '../lib/prisma'
 import { signSession } from '../lib/session'
 import { hashClaimSecret, hashDeviceSecret, hashInstallationId } from '../lib/computer-client/crypto'
@@ -73,6 +72,20 @@ async function queuedFixture(mode: NetworkMode = 'SHARED_PRINTER') {
     agentScope: { ...f.scope, computerBindingId: f.binding.id, schemaVersion: 2 as const } }
 }
 
+async function withTransactionObservation<T>(run: () => Promise<T>) {
+  const original = prisma.$transaction.bind(prisma)
+  let calls = 0
+  prisma.$transaction = (async (callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => {
+    calls += 1
+    return original(callback)
+  }) as typeof prisma.$transaction
+  try {
+    return { value: await run(), calls }
+  } finally {
+    prisma.$transaction = original as typeof prisma.$transaction
+  }
+}
+
 async function run() {
   const a = await fixture(), b = await fixture()
   const guarded = (f: Awaited<ReturnType<typeof fixture>>, mode?: NetworkMode, method = 'POST') => {
@@ -82,6 +95,52 @@ async function run() {
     if (mode) headers.set('x-es-network-mode', mode)
     return new NextRequest(base.url, { method, headers })
   }
+  await test('expectedMode true EMPTY uses the read-only fast path without opening the claim transaction', async () => {
+    const f = await fixture()
+    const observed = await withTransactionObservation(() => receive(guarded(f, 'SHARED_PRINTER')))
+    assert.equal(observed.calls, 0)
+    assert.equal(observed.value.status, 200)
+    assert.equal((await observed.value.json()).job, null)
+  })
+  await test('expectedMode PENDING enters the original guarded claim flow', async () => {
+    const f = await queuedFixture('SHARED_PRINTER')
+    const observed = await withTransactionObservation(() => receive(guarded(f, 'SHARED_PRINTER')))
+    assert.equal(observed.calls, 1)
+    assert.equal(observed.value.status, 200)
+    const body = await observed.value.json()
+    assert.equal(body.modeGuard, 'SHARED_PRINTER')
+    assert.equal(body.job.request.role, 'FRONT')
+  })
+  await test('expectedMode expired CLAIMED enters recovery and can claim again', async () => {
+    const f = await queuedFixture('SHARED_PRINTER')
+    const first = await claimNextRelayPrintJob(f.agentScope, f.timing)
+    assert.ok(first)
+    await prisma.eshopTrayPrintJob.update({ where: { id: first.id }, data: { leaseExpiresAt: new Date(0) } })
+    const observed = await withTransactionObservation(() => receive(guarded(f, 'SHARED_PRINTER')))
+    assert.equal(observed.calls, 1)
+    assert.equal(observed.value.status, 200)
+    const body = await observed.value.json()
+    assert.equal(body.job.id, first.id)
+    assert.equal(body.job.claimAttempt, first.claimAttempt + 1)
+  })
+  await test('expectedMode EXECUTING and CROSSING_UNKNOWN never use the fast path', async () => {
+    const executingFixture = await queuedFixture('SHARED_PRINTER')
+    const executingJob = await claimNextRelayPrintJob(executingFixture.agentScope, executingFixture.timing)
+    assert.ok(executingJob)
+    await markRelayPrintJobExecuting(executingFixture.agentScope, executingJob.id, executingJob, executingFixture.timing)
+    const executingObserved = await withTransactionObservation(() => receive(guarded(executingFixture, 'SHARED_PRINTER')))
+    assert.equal(executingObserved.calls, 1)
+    assert.equal(executingObserved.value.status, 409)
+    assert.equal((await executingObserved.value.json()).error, 'NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW')
+
+    const unknownFixture = await queuedFixture('SHARED_PRINTER')
+    await prisma.eshopTrayPrintJob.update({ where: { id: unknownFixture.front.id },
+      data: { status: 'FAILED', effectBoundary: 'CROSSING_UNKNOWN' } })
+    const unknownObserved = await withTransactionObservation(() => receive(guarded(unknownFixture, 'SHARED_PRINTER')))
+    assert.equal(unknownObserved.calls, 1)
+    assert.equal(unknownObserved.value.status, 409)
+    assert.equal((await unknownObserved.value.json()).error, 'NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW')
+  })
   await test('cold readiness is a same-store read-only observation, never expiry/recovery or claim', async () => {
     const f = await queuedFixture('SHARED_PRINTER')
     const foreign = await queuedFixture('FRONT_ONLY')
@@ -108,58 +167,24 @@ async function run() {
     assert.equal((await receive(guarded(f))).status, 400)
     assert.deepEqual(await prisma.eshopTrayPrintJob.findMany({ where: f.scope }), before)
   })
-  await test('a real concurrent old-mode sale waits on the guarded store transaction then remains unclaimed', async () => {
+  await test('concurrent enqueue during a true EMPTY fast path cannot lose the new job', async () => {
     const f = await fixture()
-    assert.deepEqual((await (await queueState(guarded(f, undefined, 'GET'))).json()).queue,
-      { pending: 0, claimed: 0, executing: 0, unknown: 0 })
-    const transaction = prisma.$transaction.bind(prisma)
-    // Independent read-only observer: the production-sized Prisma pool has
-    // exactly two connections, both intentionally occupied in this test.
-    const observer = new pg.Client({ connectionString: process.env.DATABASE_URL })
-    await observer.connect()
-    let entered!: () => void, release!: () => void, blockerPid = 0, armed = true
-    const held = new Promise<void>(resolve => { entered = resolve })
-    const gate = new Promise<void>(resolve => { release = resolve })
-    // Test-only observation barrier around the REAL existing row lock, not a
-    // replacement implementation or source-level production test hook.
-    prisma.$transaction = (async (callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options?: object) =>
-      transaction(async tx => callback(new Proxy(tx, { get(target, key, receiver) {
-        if (key !== '$queryRaw') return Reflect.get(target, key, receiver)
-        return async (query: Prisma.Sql) => {
-          const result = await target.$queryRaw(query)
-          if (armed && query.sql?.includes('FOR UPDATE OF binding, store, tenant')) {
-            armed = false
-            blockerPid = (await target.$queryRaw<Array<{ pid: number }>>(Prisma.sql`SELECT pg_backend_pid() AS pid`))[0].pid
-            entered(); await gate
-          }
-          return result
-        }
-      } })), options)) as typeof prisma.$transaction
-    let sale: Promise<Response> | undefined
-    const claim = receive(guarded(f, 'SHARED_PRINTER'))
-    try {
-      await held
-      sale = sell(f.sale(printing('FRONT_ONLY')))
-      let blocked = false
-      for (let i = 0; i < 100; i++) {
-        const rows = await observer.query('SELECT count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND $1 = ANY(pg_blocking_pids(pid))', [blockerPid])
-        if (Number(rows.rows[0].n) > 0) { blocked = true; break }
-        await new Promise(resolve => setTimeout(resolve, 20))
-      }
-      assert.equal(blocked, true, 'actual database reports sale waiting on guarded claim row locks')
-    } finally {
-      release()
-      prisma.$transaction = transaction as typeof prisma.$transaction
-      await observer.end()
+    const [firstReceive, sale] = await Promise.all([
+      receive(guarded(f, 'FRONT_ONLY')),
+      sell(f.sale(printing('FRONT_ONLY'))),
+    ])
+    assert.equal(sale.status, 201)
+    assert.equal(firstReceive.status, 200)
+    const firstBody = await firstReceive.json()
+    const jobs = await prisma.eshopTrayPrintJob.findMany({ where: f.scope, orderBy: { createdAt: 'asc' } })
+    assert.equal(jobs.length, 1)
+    if (firstBody.job) {
+      assert.equal(firstBody.job.id, jobs[0].id)
+    } else {
+      const nextReceive = await receive(guarded(f, 'FRONT_ONLY'))
+      assert.equal(nextReceive.status, 200)
+      assert.equal((await nextReceive.json()).job.id, jobs[0].id)
     }
-    const claimed = await claim
-    assert.equal(claimed.status, 200); assert.equal((await claimed.json()).job, null)
-    assert.equal((await sale!).status, 201)
-    const before = await prisma.eshopTrayPrintJob.findMany({ where: f.scope })
-    assert.equal(before.length, 1); assert.equal(before[0].claimAttempt, 0)
-    const rejected = await receive(guarded(f, 'SHARED_PRINTER'))
-    assert.equal((await rejected.json()).error, 'NETWORK_QUEUED_MODE_MISMATCH')
-    assert.deepEqual(await prisma.eshopTrayPrintJob.findMany({ where: f.scope }), before)
   })
   await test('guard checks the entire pending backlog, not only matching head, and refuses malformed hashes without terminalizing', async () => {
     const f = await queuedFixture('FRONT_ONLY')
