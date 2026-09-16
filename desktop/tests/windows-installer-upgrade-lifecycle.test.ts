@@ -139,7 +139,8 @@ describe('ES-DESKTOP-INSTALLER-UPGRADE-LIFECYCLE-FIX-01', () => {
 
     expect(body).toContain('ReadRegStr $R1 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation')
     expect(body).toContain('ReadRegStr $R2 HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString')
-    expect(body).toContain('!insertmacro GetInQuotes $R3 "$R2"')
+    expect(installerInclude).toContain('Function eshopGetQuotedPath')
+    expect(body).toContain('!insertmacro eshopGetQuotedPath $R3 "$R2"')
     expect(body).toContain('$R3 != "$R1\\${UNINSTALL_FILENAME}"')
     expect(body).toContain('${OrIfNot} ${FileExists} "$R1\\${APP_EXECUTABLE_FILENAME}"')
     expect(body).toContain('${OrIfNot} ${FileExists} "$R3"')

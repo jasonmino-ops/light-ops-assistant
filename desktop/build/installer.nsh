@@ -18,6 +18,50 @@
 Var /GLOBAL eshopDesktopInstallerPhase
 Var /GLOBAL eshopPriorUninstallHandled
 
+; The custom include is expanded before electron-builder's installUtil.nsh, so
+; its GetInQuotes helper is not available to customInit. Keep a private,
+; equivalent parser here to validate the registered predecessor path without
+; weakening the fail-closed identity check.
+Function eshopGetQuotedPath
+  Exch $R0
+  Push $R1
+  Push $R2
+  Push $R3
+
+  StrCpy $R2 -1
+  IntOp $R2 $R2 + 1
+  StrCpy $R3 $R0 1 $R2
+  StrCmp $R3 "" 0 +3
+  StrCpy $R0 ""
+  Goto eshopGetQuotedPathDone
+  StrCmp $R3 '"' 0 -5
+
+  IntOp $R2 $R2 + 1
+  StrCpy $R0 $R0 "" $R2
+
+  StrCpy $R2 0
+  IntOp $R2 $R2 + 1
+  StrCpy $R3 $R0 1 $R2
+  StrCmp $R3 "" 0 +3
+  StrCpy $R0 ""
+  Goto eshopGetQuotedPathDone
+  StrCmp $R3 '"' 0 -5
+
+  StrCpy $R0 $R0 $R2
+  eshopGetQuotedPathDone:
+
+  Pop $R3
+  Pop $R2
+  Pop $R1
+  Exch $R0
+FunctionEnd
+
+!macro eshopGetQuotedPath Var Str
+  Push "${Str}"
+  Call eshopGetQuotedPath
+  Pop "${Var}"
+!macroend
+
 !macro eshopUninstallPriorVersion
   StrCpy $eshopPriorUninstallHandled "1"
 
@@ -30,7 +74,7 @@ Var /GLOBAL eshopPriorUninstallHandled
   ReadRegStr $R2 HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString
   ${If} $R1 != ""
   ${OrIf} $R2 != ""
-    !insertmacro GetInQuotes $R3 "$R2"
+    !insertmacro eshopGetQuotedPath $R3 "$R2"
     ${If} $R1 == ""
     ${OrIf} $R2 == ""
     ${OrIf} $R3 != "$R1\${UNINSTALL_FILENAME}"
