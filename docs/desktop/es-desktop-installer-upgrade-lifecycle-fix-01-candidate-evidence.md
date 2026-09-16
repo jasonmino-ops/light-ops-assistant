@@ -77,8 +77,8 @@ No custom deletion or replacement algorithm, second installer path, force-kill f
 | Windows x64 NSIS package | `PASS` — unsigned internal pilot only |
 | Packaged Activation assets | `PASS` |
 | Packaged Provider resource | `PASS` |
-| Outer installer NSIS CRC32 | `PASS` — `fdd4281d` |
-| Embedded uninstaller NSIS CRC32 | `PASS` — `6ec03b18`; exactly one embedded uninstaller |
+| Outer installer NSIS CRC32 | `PASS` — read-only verifier |
+| Embedded uninstaller NSIS CRC32 | `PASS` — exactly one embedded uninstaller |
 | Release Foundation policy | `PASS` — all 12 frozen groups |
 | Scope Guard | `PASS`; Scope exception `NO` |
 | Release Lineage | `PASS` — Production/main `822cbef...` |
@@ -87,7 +87,7 @@ Package evidence:
 
 - installer: `E-Shop-Desktop-Setup-0.2.0-pilot.2.exe`
 - size: `81,887,947` bytes
-- SHA-256: `63b0d1673957b0b5d2dbe10e6c03f1781b2ee6c2a57aeea76542800cd6bbe1cb`
+- exact SHA-256 and both CRC32 values: generated from the final committed Candidate and bound by the local `SHA256SUMS.txt` / release provenance validation reported at handoff
 - electron-builder: `25.1.8`
 - Electron: `33.4.11`
 - outer NSIS: unsigned x86 PE, installer flag `0`, CRC32 validated
