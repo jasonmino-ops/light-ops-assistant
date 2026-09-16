@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 const script = join(__dirname, '..', 'scripts', 'release-foundation.mjs')
 const desktopRoot = join(__dirname, '..')
+const repositoryRoot = join(desktopRoot, '..')
 const desktopVersion = '0.2.0-pilot.2'
 const installer = `E-Shop-Desktop-Setup-${desktopVersion}.exe`
 
@@ -124,6 +125,19 @@ describe('EP-MB3-07A release foundation policy', () => {
     expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(
       /release asset allowlist mismatch.*builder-debug\.yml/,
     )
+  })
+
+  it('removes only electron-builder diagnostic metadata before release verification', () => {
+    const workflow = readFileSync(join(repositoryRoot, '.github/workflows/desktop-windows-build.yml'), 'utf8')
+    const cleanupStep = workflow.indexOf('Remove electron-builder diagnostic metadata')
+    const diagnosticPath = workflow.indexOf('$diagnostic = ".\\release\\builder-debug.yml"')
+    const exactRemoval = workflow.indexOf('Remove-Item -LiteralPath $diagnostic -Force')
+    const manifestStep = workflow.indexOf('Generate release foundation manifests')
+
+    expect(cleanupStep).toBeGreaterThan(-1)
+    expect(diagnosticPath).toBeGreaterThan(cleanupStep)
+    expect(exactRemoval).toBeGreaterThan(diagnosticPath)
+    expect(manifestStep).toBeGreaterThan(exactRemoval)
   })
 
   it('rejects arbitrary extra files as unexpected published assets', () => {

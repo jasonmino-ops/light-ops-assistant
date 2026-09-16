@@ -177,6 +177,17 @@ jobs:
       - name: Build Windows installer (NSIS, unsigned)
         run: npx electron-builder --win --x64 --publish never
 
+      - name: Remove electron-builder diagnostic metadata
+        shell: pwsh
+        run: |
+          $diagnostic = ".\release\builder-debug.yml"
+          if (Test-Path -LiteralPath $diagnostic -PathType Leaf) {
+            Remove-Item -LiteralPath $diagnostic -Force
+          }
+          if (Test-Path -LiteralPath $diagnostic) {
+            throw "electron-builder diagnostic metadata remains in the release directory"
+          }
+
       - name: Verify packaged activation assets
         run: node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar
 
