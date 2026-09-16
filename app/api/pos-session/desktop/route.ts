@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma'
 import { getDesktopDeviceContext } from '@/lib/desktop-activation/auth'
 import { hashDesktopDeviceToken, isValidDesktopDeviceTokenFormat } from '@/lib/desktop-activation/crypto'
 import { apiError, noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
+import {
+  isDesktopSubscriptionAllowed,
+  resolveDesktopSubscriptionAccess,
+} from '@/lib/desktop-activation/subscription-access'
 import { issuePosDeviceSession } from '@/lib/desktop-pos-auth'
 
 function bearerToken(req: NextRequest) {
@@ -63,6 +67,10 @@ export async function POST(req: NextRequest) {
       if (device.store.status !== 'ACTIVE') {
         return { ok: false as const, status: 403, error: 'STORE_INACTIVE' }
       }
+      const subscription = await resolveDesktopSubscriptionAccess(tx, device.tenantId)
+      if (!isDesktopSubscriptionAllowed(subscription)) {
+        return { ok: false as const, status: 403, error: 'SUBSCRIPTION_BLOCKED' }
+      }
 
       const browserDeviceId = browserDeviceIdForDesktop(device.id)
       const session = await issuePosDeviceSession(tx, {
@@ -74,13 +82,25 @@ export async function POST(req: NextRequest) {
         issuedByUserId: null,
         displayName: `${device.store.name} Desktop`,
       })
+      // A derived POS session must never outlive the Desktop authorization
+      // that created it. BrowserPosDevice remains the existing managed
+      // session model; only its effective expiry is narrowed here.
+      const expiresAt = session.expiresAt.getTime() > device.tokenExpiresAt.getTime()
+        ? device.tokenExpiresAt
+        : session.expiresAt
+      if (expiresAt.getTime() !== session.expiresAt.getTime()) {
+        await tx.browserPosDevice.update({
+          where: { id: session.sessionId },
+          data: { tokenExpiresAt: expiresAt },
+        })
+      }
 
       return {
         ok: true as const,
         browserDeviceId,
         storeCode: device.store.code,
         token: session.token,
-        expiresAt: session.expiresAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
       }
     })
 
