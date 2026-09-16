@@ -68,10 +68,11 @@ if (!gotLock) {
     recordHealthError('process', `unhandledRejection: ${String(reason)}`)
   })
 
-  async function startAuthorizedDesktopRuntime(_context: AuthorizedDesktopContext): Promise<void> {
+  async function startAuthorizedDesktopRuntime(context: AuthorizedDesktopContext): Promise<void> {
     if (authorizedRuntimeStarted) return
     if (authorizedRuntimeStartPromise) return authorizedRuntimeStartPromise
     authorizedRuntimeStartPromise = (async () => {
+      windowManager.setAuthorizedLaunchContext({ storeCode: context.device.storeCode })
       windowManager.setFormalRuntimeGuard(() => activationRuntime?.isAuthorized() === true)
 
       // Hardware Runtime 基础框架（A9）：仅注册占位设备

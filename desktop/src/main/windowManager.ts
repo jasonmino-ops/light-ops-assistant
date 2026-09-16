@@ -24,6 +24,7 @@ import {
 } from '../shared/backoff'
 
 type WindowState = { x?: number; y?: number; width: number; height: number }
+type AuthorizedLaunchContext = Readonly<{ storeCode: string }>
 
 const EMPLOYEE_DEFAULT: WindowState = { width: 1280, height: 800 }
 
@@ -44,6 +45,7 @@ export class WindowManager {
   private customerEnabled = true
   private displayWatchRegistered = false
   private formalRuntimeGuard: () => boolean = () => true
+  private authorizedLaunchContext: AuthorizedLaunchContext | null = null
   private readonly roleByWebContentsId = new Map<number, WindowRole>()
 
   /** IPC 层用于校验发送者身份 */
@@ -67,6 +69,19 @@ export class WindowManager {
 
   setFormalRuntimeGuard(guard: () => boolean) {
     this.formalRuntimeGuard = guard
+  }
+
+  setAuthorizedLaunchContext(context: AuthorizedLaunchContext) {
+    const storeCode = context.storeCode.trim()
+    if (!storeCode) throw new Error('verified storeCode is required for authorized launch context')
+    this.authorizedLaunchContext = { storeCode }
+  }
+
+  private launchConfig() {
+    const config = getConfig()
+    return this.authorizedLaunchContext
+      ? { ...config, storeCode: this.authorizedLaunchContext.storeCode }
+      : config
   }
 
   private isFormalRuntimeAllowed(action: string, reason?: string): boolean {
@@ -202,7 +217,7 @@ export class WindowManager {
       logger.info('employee-window.auto-fullscreen-skipped', { reason: 'temporary-environment-opt-out' })
     }
 
-    win.loadURL(employeeUrl()).catch((error) => {
+    win.loadURL(employeeUrl(this.launchConfig())).catch((error) => {
       recordHealthError('employee-window', `loadURL failed: ${String(error)}`)
     })
 
@@ -296,7 +311,7 @@ export class WindowManager {
       if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.CART_APPLY, message)
     })
 
-    win.loadURL(customerUrl()).catch((error) => {
+    win.loadURL(customerUrl(this.launchConfig())).catch((error) => {
       recordHealthError('customer-window', `loadURL failed: ${String(error)}`)
     })
 

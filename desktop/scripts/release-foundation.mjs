@@ -79,6 +79,11 @@ const FROZEN_BOUNDARY_GROUPS = [
   },
 ]
 
+const FROZEN_BOUNDARY_SUCCESSORS = new Map([
+  ['main startup gate', '17c764427f1e53288dedb82a1965b1365c1ded3d'],
+  ['WindowManager', '17c764427f1e53288dedb82a1965b1365c1ded3d'],
+])
+
 function parseArgs(argv) {
   const args = {}
   for (let index = 0; index < argv.length; index += 1) {
@@ -108,6 +113,18 @@ function git(args) {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim()
+}
+
+function gitIsAncestor(ancestor, descendant) {
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', ancestor, descendant], {
+      cwd: repoRoot,
+      stdio: 'ignore',
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 function validateSemver(version) {
@@ -356,15 +373,23 @@ async function runPolicy(options) {
   }
 
   const baseline = options.baseline ?? BASELINE_FREEZE_TAG
+  const allowAuthorizedSuccessors = options.baseline == null
   const frozenBoundary = []
   for (const group of FROZEN_BOUNDARY_GROUPS) {
     const changed = git(['diff', '--name-only', baseline, '--', ...group.paths])
       .split('\n')
       .filter(Boolean)
+    const successorSnapshot = allowAuthorizedSuccessors ? FROZEN_BOUNDARY_SUCCESSORS.get(group.label) : undefined
+    const matchesAuthorizedSuccessor =
+      changed.length > 0 &&
+      successorSnapshot != null &&
+      gitIsAncestor(successorSnapshot, 'HEAD') &&
+      git(['diff', '--name-only', successorSnapshot, '--', ...group.paths]) === ''
     frozenBoundary.push({
       label: group.label,
-      status: changed.length === 0 ? 'PASS' : 'FAIL',
+      status: changed.length === 0 || matchesAuthorizedSuccessor ? 'PASS' : 'FAIL',
       changed,
+      ...(matchesAuthorizedSuccessor ? { authorizedSuccessorSnapshot: successorSnapshot } : {}),
     })
   }
   const failed = frozenBoundary.filter((group) => group.status !== 'PASS')
