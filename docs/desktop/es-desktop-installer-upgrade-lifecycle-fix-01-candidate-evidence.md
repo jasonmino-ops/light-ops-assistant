@@ -86,8 +86,7 @@ No custom deletion or replacement algorithm, second installer path, force-kill f
 Package evidence:
 
 - installer: `E-Shop-Desktop-Setup-0.2.0-pilot.2.exe`
-- size: `81,887,947` bytes
-- exact SHA-256 and both CRC32 values: generated from the final committed Candidate and bound by the local `SHA256SUMS.txt` / release provenance validation reported at handoff
+- exact byte size, SHA-256, and both CRC32 values: generated from the final committed Candidate and bound by the local `SHA256SUMS.txt` / release provenance validation reported at handoff
 - electron-builder: `25.1.8`
 - Electron: `33.4.11`
 - outer NSIS: unsigned x86 PE, installer flag `0`, CRC32 validated
