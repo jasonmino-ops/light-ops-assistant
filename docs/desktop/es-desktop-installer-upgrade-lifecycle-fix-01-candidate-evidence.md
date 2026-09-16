@@ -19,6 +19,7 @@ Governed by:
 | Review commit | `05f472628fbd953daf158934c243b6bdb7c5f3ea` |
 | Initial implementation commit | `942f4c7c650deec28da9db659da4c29e539dce99` |
 | First-hop predecessor bridge commit | `55447903d152059010793d05df4200d98706e625` |
+| Predecessor identity hardening commit | `0eeebf7f50e54f04b29e8adf881f466caf2756db` |
 | Starting `origin/main` | `822cbef0eda7ad73192537d35648d24067d77ef9` |
 | Starting Production | `822cbef0eda7ad73192537d35648d24067d77ef9` / `READY` |
 | Direct predecessor Candidate | `5c899f7bd17bca59ec35afb1a15de34fff0a2826` |
