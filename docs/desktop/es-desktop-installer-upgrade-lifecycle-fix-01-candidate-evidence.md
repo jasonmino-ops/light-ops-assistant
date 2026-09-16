@@ -20,6 +20,7 @@ Governed by:
 | Initial implementation commit | `942f4c7c650deec28da9db659da4c29e539dce99` |
 | First-hop predecessor bridge commit | `55447903d152059010793d05df4200d98706e625` |
 | Predecessor identity hardening commit | `0eeebf7f50e54f04b29e8adf881f466caf2756db` |
+| Predecessor identity build-compatibility commit | `b7b96a1e8c7a9112c80dc18e67ba1bc2617c862f` |
 | Starting `origin/main` | `822cbef0eda7ad73192537d35648d24067d77ef9` |
 | Starting Production | `822cbef0eda7ad73192537d35648d24067d77ef9` / `READY` |
 | Direct predecessor Candidate | `5c899f7bd17bca59ec35afb1a15de34fff0a2826` |
@@ -50,7 +51,7 @@ The commit containing this evidence record is the proposed local successor Candi
 2. Result `0` stops with instructions to exit through the existing tray path; result `603` is the only accepted absence; other results stop fail-closed.
 3. The custom include contains no executable `tasklist`, `find.exe`, `taskkill`, `_KillProcess`, `ExecWait`, `CloseWindow`, or `SendMessage` instruction.
 4. `customInit` applies an exact check before installer UI work. The install section checks again after the operator proceeds, closing the launch-to-install race.
-5. If this appId is registered, the installer validates both its install location and exact executable, extracts this Candidate's CRC-verified uninstaller to the private plugin directory, changes the working directory to `$TEMP`, and executes the ordinary current-user uninstall with `--keep-shortcuts --updated`.
+5. If this appId is registered, the installer validates its install location, exact executable, and quoted registered uninstaller identity. The private quoted-path parser is available before `customInit`, unlike electron-builder's later `installUtil.nsh` helper. It then extracts this Candidate's CRC-verified uninstaller to the private plugin directory, changes the working directory to `$TEMP`, and executes the ordinary current-user uninstall with `--keep-shortcuts --updated`.
 6. The broken registered predecessor uninstaller is never executed. Nonzero handoff or remaining install registration stops the upgrade fail-closed.
 7. `customUnInit` applies exact detection and `$TEMP` working-directory safety to this Candidate's uninstaller. Installer and uninstaller icons are required to match, preventing electron-builder's icon patch from invalidating future embedded-uninstaller CRCs.
 
