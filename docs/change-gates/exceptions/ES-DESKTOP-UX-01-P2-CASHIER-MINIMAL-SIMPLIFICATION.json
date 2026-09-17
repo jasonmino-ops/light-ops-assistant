@@ -6,7 +6,7 @@
   "baseOriginMainSha": "122b37e3f2c589fc0aacad55d26b01b6f0773d1c",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "authorizedPaths": [
     "app/cashier/page.tsx"
   ],
@@ -15,6 +15,8 @@
   },
   "createdAt": "2026-09-17T17:44:13.000Z",
   "approvedAt": "2026-09-17T17:44:13.000Z",
+  "closedAt": "2026-09-17T19:48:17.000Z",
+  "featureMergeCommitSha": "d30fb6cd3294f32006fe240ab2215e305747e000",
   "approvedBy": "Founder",
   "approvalSource": {
     "source": "Explicit Founder authorization in the current ES-DESKTOP-UX-01 / P2 task",
