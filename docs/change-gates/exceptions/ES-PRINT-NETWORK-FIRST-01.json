@@ -1322,7 +1322,7 @@
       "featureBranch": "codex/es-network-candidate-rc10-build",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "67c5fc5ecb880d674cd9b1a2cd3c3c5636308fa4",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-09-16T19:32:03Z",
       "approvedAt": "2026-09-16T19:32:03Z",
@@ -1402,7 +1402,10 @@
         "Any recovery runtime, Transport, Routing, Binding, Network Discovery, Print Job semantics, partial recovery, auto rebind, Retry Now UI or unrelated source change.",
         "Any source delta on the rc.10 build branch, bypass of trusted origin/main or exact hash authorization, Production deploy, installation, FIELD, signing or formal publication."
       ],
-      "expirationCondition": "Close this exact grant after the one retained rc.10 Candidate is packaged under this Founder-approved Candidate Gate, or when explicitly superseded."
+      "expirationCondition": "Close this exact grant after the one retained rc.10 Candidate is packaged under this Founder-approved Candidate Gate, or when explicitly superseded.",
+      "closedAt": "2026-09-17T17:00:33Z",
+      "featureMergeCommitSha": "b1439ceeb95c4b895940123904d64f42fa80103b",
+      "closureReason": "Consumed by the retained unsigned TEST-only rc.10 Candidate and Founder-confirmed V727 FIELD acceptance for bounded cold-start printer reachability recovery. This closes the one-candidate authorization and grants no future build, installation, FIELD, signing, publication or Production authority."
     }
   ]
 }
