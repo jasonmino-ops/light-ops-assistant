@@ -12,6 +12,10 @@ import {
 } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const { evaluateFile, validateException } = require('../../scripts/guards/check-change-scope.js')
 
 const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
 const desktopDir = resolve(scriptDir, '..')
@@ -19,6 +23,7 @@ const repoRoot = resolve(desktopDir, '..')
 
 const BASELINE_FREEZE_TAG = '439dcac561734d07b9e022c8d99e693c99d26794'
 const DEFAULT_PROVIDER_COMMIT = '7785be145d5259991038d17839d322e2694e338c'
+const RISK_REGISTER_PATH = 'docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-register.json'
 const PROVENANCE_SCHEMA = 'ep-mb3-07a.release-provenance.v1'
 const PHASE1_DESKTOP_VERSION = '0.2.0-pilot.2'
 const PHASE1_UPDATE_METADATA_NAME = 'latest.yml'
@@ -114,6 +119,13 @@ function git(args) {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim()
+}
+
+function gitBytes(args) {
+  return execFileSync('git', args, {
+    cwd: repoRoot,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
 }
 
 function gitIsAncestor(ancestor, descendant) {
@@ -233,6 +245,36 @@ async function sha256(path) {
   const hash = createHash('sha256')
   hash.update(await readFile(path))
   return hash.digest('hex')
+}
+
+function sha256Bytes(value) {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+function assertCommitSha(value, label) {
+  if (typeof value !== 'string' || !/^[a-f0-9]{40}$/.test(value)) {
+    throw new Error(`${label} must be a full lowercase commit SHA`)
+  }
+}
+
+function gitObjectExists(commit) {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${commit}^{commit}`], {
+      cwd: repoRoot,
+      stdio: 'ignore',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function gitBlobSha256(commit, filePath) {
+  try {
+    return sha256Bytes(gitBytes(['show', `${commit}:${filePath}`]))
+  } catch {
+    throw new Error(`missing source file at ${commit}: ${filePath}`)
+  }
 }
 
 async function fileDescriptor(path) {
@@ -409,6 +451,165 @@ async function runPolicy(options) {
     installerName: facts.installerName,
     updateMetadataName: facts.updateMetadataName,
     frozenBoundary,
+  }
+}
+
+function assertExactPathHashes(sourceCommit, paths, hashes, label) {
+  if (!Array.isArray(paths) || paths.length === 0) {
+    throw new Error(`${label}.boundaryPaths must be a non-empty array`)
+  }
+  if (!hashes || typeof hashes !== 'object' || Array.isArray(hashes)) {
+    throw new Error(`${label}.authorizedPathSha256 must be an object`)
+  }
+  const hashPaths = Object.keys(hashes).sort()
+  const expectedPaths = [...paths].sort()
+  if (hashPaths.length !== expectedPaths.length || hashPaths.some((path, index) => path !== expectedPaths[index])) {
+    throw new Error(`${label}.authorizedPathSha256 must exactly cover boundaryPaths`)
+  }
+  for (const filePath of paths) {
+    if (!/^[a-zA-Z0-9._/-]+$/.test(filePath) || filePath.startsWith('/') || filePath.includes('..')) {
+      throw new Error(`${label} contains an invalid exact path: ${filePath}`)
+    }
+    if (!/^[a-f0-9]{64}$/.test(hashes[filePath])) {
+      throw new Error(`${label} has an invalid SHA-256 for ${filePath}`)
+    }
+    if (gitBlobSha256(sourceCommit, filePath) !== hashes[filePath]) {
+      throw new Error(`${label} SHA-256 mismatch for ${filePath}`)
+    }
+  }
+}
+
+async function runSourceAcceptance(options) {
+  const taskId = options['task-id']
+  const sourceCommit = options['source-commit']
+  const productionSha = options['production-sha']
+  if (typeof taskId !== 'string' || taskId.trim() === '') throw new Error('source-policy requires --task-id')
+  assertCommitSha(sourceCommit, 'source-policy --source-commit')
+  assertCommitSha(productionSha, 'source-policy --production-sha')
+
+  const register = await readJson(join(repoRoot, RISK_REGISTER_PATH))
+  if (register.schemaVersion !== 'es-risk-based-delivery.register.v1' || register.status !== 'ACTIVE_AFTER_MAIN_MERGE') {
+    throw new Error('risk-based delivery register is not active and valid')
+  }
+  const pilot = register.sourceAcceptancePilots?.find((entry) => entry.taskId === taskId)
+  if (!pilot) throw new Error(`unregistered source acceptance task: ${taskId}`)
+  if (pilot.sourceCommit !== sourceCommit) {
+    throw new Error(`source commit does not match registered task ${taskId}`)
+  }
+  assertCommitSha(pilot.baselineOriginMain, `${taskId}.baselineOriginMain`)
+  if (!gitObjectExists(sourceCommit)) throw new Error(`source commit is unavailable: ${sourceCommit}`)
+
+  const currentOriginMain = git(['rev-parse', 'origin/main'])
+  let trustedRegister
+  try {
+    trustedRegister = JSON.parse(gitBytes(['show', `origin/main:${RISK_REGISTER_PATH}`]).toString('utf8'))
+  } catch {
+    throw new Error('risk-based delivery Addendum/register is not active in trusted origin/main')
+  }
+  if (JSON.stringify(trustedRegister) !== JSON.stringify(register)) {
+    throw new Error('working-tree risk-based delivery register differs from trusted origin/main')
+  }
+  if (!gitIsAncestor(pilot.baselineOriginMain, currentOriginMain)) {
+    throw new Error(`registered origin/main baseline is not an ancestor of current origin/main: ${pilot.baselineOriginMain}`)
+  }
+  if (git(['status', '--porcelain']) !== '') throw new Error('source-policy requires a clean worktree')
+  if (!gitIsAncestor(productionSha, currentOriginMain)) {
+    throw new Error(`Production SHA is not an ancestor of origin/main: ${productionSha}`)
+  }
+  if (!gitIsAncestor(pilot.baselineOriginMain, sourceCommit)) {
+    throw new Error(`source commit is not a descendant of the registered origin/main: ${sourceCommit}`)
+  }
+
+  const exception = await readJson(join(repoRoot, pilot.scopeExceptionPath))
+  let validatedException
+  try {
+    const trustedExceptionText = gitBytes(['show', `origin/main:${pilot.scopeExceptionPath}`])
+    const trustedException = JSON.parse(trustedExceptionText.toString('utf8'))
+    if (JSON.stringify(trustedException) !== JSON.stringify(exception)) {
+      throw new Error('working-tree exception differs from trusted origin/main')
+    }
+    validatedException = validateException(trustedException, repoRoot)
+  } catch (error) {
+    throw new Error(`scope exception failed trusted validation: ${error.message}`)
+  }
+  if (
+    validatedException.taskId !== taskId ||
+    validatedException.status !== 'ACTIVE' ||
+    validatedException.lineageMode !== 'PRE_COMMIT_CONTENT_SHA256' ||
+    validatedException.baseOriginMainSha !== pilot.baselineOriginMain ||
+    validatedException.featureBranch !== pilot.sourceBranch
+  ) {
+    throw new Error(`scope exception is not the exact active authorization for ${taskId}`)
+  }
+  if (
+    JSON.stringify([...exception.authorizedPaths].sort()) !== JSON.stringify([...pilot.boundaryPaths].sort()) ||
+    JSON.stringify(exception.authorizedPathSha256) !== JSON.stringify(pilot.authorizedPathSha256)
+  ) {
+    throw new Error(`scope exception does not exactly match registered source acceptance for ${taskId}`)
+  }
+
+  const targetGroup = FROZEN_BOUNDARY_GROUPS.find((group) => group.label === pilot.boundaryGroup)
+  if (!targetGroup) throw new Error(`unknown frozen boundary group: ${pilot.boundaryGroup}`)
+  const changedSourcePaths = git(['diff', '--name-only', pilot.baselineOriginMain, sourceCommit, '--'])
+    .split('\n')
+    .filter(Boolean)
+  const frozenBoundary = []
+  for (const group of FROZEN_BOUNDARY_GROUPS) {
+    const changed = git(['diff', '--name-only', pilot.baselineOriginMain, sourceCommit, '--', ...group.paths])
+      .split('\n')
+      .filter(Boolean)
+    if (group.label !== targetGroup.label && changed.length > 0) {
+      throw new Error(`unregistered frozen boundary change: ${group.label}`)
+    }
+    frozenBoundary.push({ label: group.label, changed, status: changed.length === 0 ? 'PASS' : 'REGISTERED_SUCCESSOR' })
+  }
+  const changedTarget = frozenBoundary.find((group) => group.label === targetGroup.label)
+  if (JSON.stringify(changedTarget.changed) !== JSON.stringify([...pilot.boundaryPaths].sort())) {
+    throw new Error(`registered boundary paths do not match source diff for ${taskId}`)
+  }
+  assertExactPathHashes(sourceCommit, pilot.boundaryPaths, pilot.authorizedPathSha256, taskId)
+
+  const trustedConfig = JSON.parse(
+    gitBytes(['show', 'origin/main:docs/change-gates/gate-config.json']).toString('utf8'),
+  )
+  const scopeResults = changedSourcePaths.map((filePath) => evaluateFile({
+    filePath,
+    repoRoot,
+    config: trustedConfig,
+    taskId,
+    currentBranch: pilot.sourceBranch,
+    exception: validatedException,
+    contentHashResolver: (candidate) => gitBlobSha256(sourceCommit, candidate),
+  }))
+  const scopeFailures = scopeResults.filter((result) => !result.allowed)
+  if (scopeFailures.length > 0) {
+    throw new Error(`Scope Guard failed for source commit: ${scopeFailures.map((result) => `${result.filePath} (${result.reason})`).join(', ')}`)
+  }
+
+  if (!['L1', 'L2'].includes(pilot.riskClass)) throw new Error(`${taskId} source acceptance pilot must be L1 or L2`)
+  if (pilot.fieldStatus !== 'PENDING' || typeof pilot.milestoneTarget !== 'string' || pilot.milestoneTarget.trim() === '') {
+    throw new Error(`${taskId} must record FIELD status PENDING and a Milestone target`)
+  }
+  const fieldDebt = register.fieldDebt?.filter((entry) => entry.task === 'ES-DESKTOP-UX-01 / P1B') ?? []
+  if (fieldDebt.some((entry) => entry.status === 'PASS')) throw new Error('FIELD debt register cannot record deferred debt as PASS')
+
+  return {
+    mode: 'SOURCE_ACCEPTANCE',
+    result: 'PASS',
+    taskId,
+    riskClass: pilot.riskClass,
+    sourceCommit,
+    baselineOriginMain: pilot.baselineOriginMain,
+    productionSha,
+    scopeException: pilot.scopeExceptionPath,
+    scopeGuard: 'PASS',
+    frozenBoundary,
+    fieldStatus: pilot.fieldStatus,
+    milestoneTarget: pilot.milestoneTarget,
+    fieldDebtCount: fieldDebt.length,
+    installerRequired: false,
+    fieldVerified: false,
+    productionReady: false,
   }
 }
 
@@ -638,12 +839,14 @@ async function main() {
   let result
   if (command === 'policy') {
     result = await runPolicy(options)
+  } else if (command === 'source-policy') {
+    result = await runSourceAcceptance(options)
   } else if (command === 'write') {
     result = await writeManifests(options)
   } else if (command === 'verify') {
     result = await verifyManifests(options)
   } else {
-    throw new Error(`usage: release-foundation.mjs <policy|write|verify> [--release-dir dir]`)
+    throw new Error(`usage: release-foundation.mjs <policy|source-policy|write|verify> [options]`)
   }
   console.log(JSON.stringify(result, null, 2))
 }
