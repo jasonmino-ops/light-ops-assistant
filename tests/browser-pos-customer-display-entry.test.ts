@@ -20,5 +20,10 @@ assert.match(cashierPage, /openCustomerDisplay: 'បើកអេក្រង់�
 assert.match(cashierPage, /browserPosCustomerDisplayPath\(storeCode, lang as DeskLang\)/)
 assert.match(cashierPage, /window\.open\(target, '_blank', 'noopener,noreferrer'\)/)
 assert.match(cashierPage, /disabled=\{!storeCode\}/)
+assert.match(cashierPage, /\{!isDesktopPos && \(\s*<>[\s\S]*?\{d\.openCustomerDisplay\}[\s\S]*?d\.installDesktop[\s\S]*?<\/>\s*\)\}/)
+assert.match(cashierPage, /<button type="button" style=\{s\.kioskBtn\} onClick=\{handleFullscreenClick\}>/)
+assert.match(cashierPage, /\{!isDesktopPos && <div>\{cacheText\}<\/div>\}/)
+assert.match(cashierPage, /<div>\{d\.pendingOffline\(offlinePendingCount\)\}<\/div>/)
+assert.match(cashierPage, /onClick=\{handleSyncOfflineOrders\}/)
 
 console.log('browser POS customer display entry tests passed')

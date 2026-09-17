@@ -4285,17 +4285,21 @@ export default function CashierPage() {
               ))}
             </div>
             <div style={s.kioskActions}>
-              <button
-                type="button"
-                style={{ ...s.kioskBtn, gridColumn: '1 / -1', ...(!storeCode ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
-                disabled={!storeCode}
-                onClick={handleOpenCustomerDisplay}
-              >
-                {d.openCustomerDisplay}
-              </button>
-              <button type="button" style={s.kioskBtn} onClick={handleInstallClick}>
-                {isStandalone ? d.desktopMode : d.installDesktop}
-              </button>
+              {!isDesktopPos && (
+                <>
+                  <button
+                    type="button"
+                    style={{ ...s.kioskBtn, gridColumn: '1 / -1', ...(!storeCode ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
+                    disabled={!storeCode}
+                    onClick={handleOpenCustomerDisplay}
+                  >
+                    {d.openCustomerDisplay}
+                  </button>
+                  <button type="button" style={s.kioskBtn} onClick={handleInstallClick}>
+                    {isStandalone ? d.desktopMode : d.installDesktop}
+                  </button>
+                </>
+              )}
               <button type="button" style={s.kioskBtn} onClick={handleFullscreenClick}>
                 {isFullscreen ? d.exitFullscreen : d.enterFullscreen}
               </button>
@@ -4316,7 +4320,7 @@ export default function CashierPage() {
                   {isOnline ? d.online : d.offline}
                 </span>
               </div>
-              <div>{cacheText}</div>
+              {!isDesktopPos && <div>{cacheText}</div>}
               <div>{d.pendingOffline(offlinePendingCount)}</div>
               {offlinePendingCount > 0 && (
                 <button
