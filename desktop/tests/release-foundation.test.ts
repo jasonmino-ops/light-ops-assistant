@@ -9,6 +9,30 @@ const desktopRoot = join(__dirname, '..')
 const repositoryRoot = join(desktopRoot, '..')
 const desktopVersion = '0.2.0-pilot.2'
 const installer = `E-Shop-Desktop-Setup-${desktopVersion}.exe`
+const p2TaskId = 'ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION'
+const p2SourceCommit = 'db56bb9035afd74c28d26df42a7f7de89843bbce'
+const productionSha = 'b4ff8e1dfbc1f095811b247e63e2bdf04534f5a4'
+
+function gitObjectAvailable(commit: string) {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${commit}^{commit}`], { cwd: repositoryRoot, stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function trustedRiskRegisterAvailable() {
+  try {
+    execFileSync('git', ['show', `origin/main:docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-register.json`], {
+      cwd: repositoryRoot,
+      stdio: 'ignore',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
 
 function runReleaseFoundation(args: string[], options: { cwd?: string } = {}) {
   return execFileSync(process.execPath, [script, ...args], {
@@ -167,5 +191,64 @@ describe('EP-MB3-07A release foundation policy', () => {
     const shaManifest = readFileSync(join(releaseDir, 'SHA256SUMS.txt'), 'utf8')
     writeFileSync(join(releaseDir, 'SHA256SUMS.txt'), `${shaManifest}${shaManifest.split('\n')[0]}\n`)
     expect(() => runReleaseFoundation(['verify', '--release-dir', releaseDir])).toThrow(/duplicate release asset filename/)
+  })
+})
+
+describe('risk-based source acceptance policy', () => {
+  it.skipIf(!gitObjectAvailable(p2SourceCommit) || !trustedRiskRegisterAvailable())('accepts the exact registered P2 source pilot without packaging', () => {
+    const output = runReleaseFoundation([
+      'source-policy',
+      '--task-id',
+      p2TaskId,
+      '--source-commit',
+      p2SourceCommit,
+      '--production-sha',
+      productionSha,
+    ])
+    const result = JSON.parse(output)
+    expect(result.mode).toBe('SOURCE_ACCEPTANCE')
+    expect(result.result).toBe('PASS')
+    expect(result.taskId).toBe(p2TaskId)
+    expect(result.fieldStatus).toBe('PENDING')
+    expect(result.milestoneTarget).toBe('P3-B Desktop Pilot')
+    expect(result.installerRequired).toBe(false)
+    expect(result.fieldVerified).toBe(false)
+    expect(result.productionReady).toBe(false)
+  })
+
+  it('fails closed for an unregistered source task', () => {
+    expect(() => runReleaseFoundation([
+      'source-policy',
+      '--task-id',
+      'ES-UNREGISTERED-SOURCE-TASK',
+      '--source-commit',
+      p2SourceCommit,
+      '--production-sha',
+      productionSha,
+    ])).toThrow(/unregistered source acceptance task/)
+  })
+
+  it('fails closed when the registered source commit is substituted', () => {
+    expect(() => runReleaseFoundation([
+      'source-policy',
+      '--task-id',
+      p2TaskId,
+      '--source-commit',
+      '150524da711bbb886afed086064ad1965b6d80d7',
+      '--production-sha',
+      productionSha,
+    ])).toThrow(/source commit does not match registered task/)
+  })
+
+  it.skipIf(!trustedRiskRegisterAvailable())('fails closed when the source commit is not descended from the trusted baseline', () => {
+    expect(() => runReleaseFoundation([
+      'source-policy',
+      '--task-id',
+      p2TaskId,
+      '--source-commit',
+      p2SourceCommit,
+      '--production-sha',
+      p2SourceCommit,
+    ])).toThrow(/Production SHA is not an ancestor/)
   })
 })

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "es-risk-based-delivery.register.v1",
+  "policyId": "ES-ENGINEERING-RISK-BASED-DELIVERY-01",
+  "status": "ACTIVE_AFTER_MAIN_MERGE",
+  "fieldDebt": [
+    {
+      "task": "ES-DESKTOP-UX-01 / P1B",
+      "riskClass": "L3",
+      "unverifiedBehavior": "Dual-display assignment, swap, restore, and hotplug FIELD",
+      "deferralReason": "V727 hardware unavailable",
+      "requiredEnvironmentOrHardware": "Windows host with two independent usable display regions",
+      "mustClearBefore": "Dual-display commercial claim, dual-display Production acceptance, or P1B FINAL FROZEN",
+      "status": "DEFERRED",
+      "evidenceReference": "docs/desktop/es-desktop-ux-01-roadmap-v1-final.md"
+    }
+  ],
+  "sourceAcceptancePilots": [
+    {
+      "taskId": "ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION",
+      "riskClass": "L2",
+      "sourceCommit": "db56bb9035afd74c28d26df42a7f7de89843bbce",
+      "sourceBranch": "codex/es-desktop-ux-01-p2-cashier-minimal-simplification",
+      "baselineOriginMain": "150524da711bbb886afed086064ad1965b6d80d7",
+      "scopeExceptionPath": "docs/change-gates/exceptions/ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION.json",
+      "boundaryGroup": "cashier/customer/mobile business",
+      "boundaryPaths": [
+        "app/cashier/page.tsx"
+      ],
+      "authorizedPathSha256": {
+        "app/cashier/page.tsx": "01e2b3d4487a2aff983acc9e6b0d33acb4aa44cf9a8fd508956a5f3760ece099"
+      },
+      "fieldStatus": "PENDING",
+      "milestoneTarget": "P3-B Desktop Pilot",
+      "status": "SOURCE_ACCEPTANCE_PENDING"
+    }
+  ]
+}
