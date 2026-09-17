@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "taskId": "ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION",
+  "featureBranch": "codex/es-desktop-ux-01-p2-cashier-minimal-simplification",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "122b37e3f2c589fc0aacad55d26b01b6f0773d1c",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/cashier/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "01e2b3d4487a2aff983acc9e6b0d33acb4aa44cf9a8fd508956a5f3760ece099"
+  },
+  "createdAt": "2026-09-17T17:44:13.000Z",
+  "approvedAt": "2026-09-17T17:44:13.000Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder authorization in the current ES-DESKTOP-UX-01 / P2 task",
+    "statement": "Founder authorized a task-scoped PRE_COMMIT_CONTENT_SHA256 exception for exactly app/cashier/page.tsx at the sealed P2 candidate SHA-256, solely to hide Desktop-only installation and customer-display controls and collapse technical product-cache detail while preserving Browser behavior, language, Management Center, fullscreen, offline status and pending sync count. The governance-only exception commit may enter origin/main; P2 implementation merge, Candidate/Preview, Production deployment, FIELD, freeze and closure remain separately gated.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the sealed P2 minimal conditional-visibility change in app/cashier/page.tsx: Desktop hides the install-to-PC and open-customer-display controls and collapses the technical product-cache detail; Desktop language, Management Center, fullscreen, offline state and pending-sync capability remain visible, and Browser behavior remains unchanged. No cashier business logic, order, payment, offline/sync semantics, authorization, Activation, Customer Display business, P1A/P1B, Printing, schema, migration, API, dependency, P3 or P4 change is authorized. This governance commit contains no implementation bytes. Close after separately authorized feature merge.",
+  "createdOnBranch": "codex/es-desktop-ux-01-p2-scope-governance",
+  "sourceDraft": {
+    "baseOriginMainSha": "122b37e3f2c589fc0aacad55d26b01b6f0773d1c",
+    "baseProtectedFileSha256": "a0c3bb2736f77874b2a682256ad19af6e1a7f6b0861a5181d9a91bdec048d4e9",
+    "candidatePath": "/private/tmp/es-desktop-ux-01-p2-candidate/app/cashier/page.tsx",
+    "candidateProtectedFileSha256": "01e2b3d4487a2aff983acc9e6b0d33acb4aa44cf9a8fd508956a5f3760ece099",
+    "candidateBranch": "codex/es-desktop-ux-01-p2-cashier-minimal-simplification",
+    "candidateTestPath": "tests/browser-pos-customer-display-entry.test.ts",
+    "candidateDiffStat": "app/cashier/page.tsx: 16 insertions, 12 deletions; tests/browser-pos-customer-display-entry.test.ts: 5 insertions",
+    "fileCount": 1
+  },
+  "allowedPurposes": [
+    "Register the exact P2 protected-path SHA-256 in trusted origin/main",
+    "Run the separately authorized P2 development branch with the byte-identical sealed page candidate",
+    "Hide only the three approved Desktop presentation surfaces while preserving existing Browser, cashier, offline/sync and fullscreen behavior"
+  ],
+  "prohibitedChanges": [
+    "Any app/cashier/page.tsx byte drift from the authorized SHA-256",
+    "Cashier business, order, payment, offline or sync semantic changes",
+    "POS authorization, Activation, Customer Display business, P1A or P1B changes",
+    "Printing, RC9, schema, migration, API, dependency or visual redesign changes",
+    "Production deploy, Production promotion, FIELD VERIFIED, FINAL FROZEN or CLOSED"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized P2 feature merge. It must not remain active as authorization for future Cashier changes."
+}
