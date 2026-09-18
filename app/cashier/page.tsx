@@ -82,6 +82,7 @@ import {
 import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
 import CashTenderPanel, { cashHelperQuote, type CashInputCurrency } from '@/app/components/CashTenderPanel'
 import { browserPosCustomerDisplayPath } from '@/lib/browser-pos-customer-display'
+import { isDesktopCashierPathname } from '@/lib/cashier-environment'
 import { dispatchCashierCartTotalChanged } from '@/lib/customer-display-cart-event'
 import {
   createCustomerDisplayRealtimeChannel,
@@ -1519,7 +1520,7 @@ export default function CashierPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    setIsDesktopPos(window.location.pathname === '/desktop/pos' || window.location.pathname === '/cashier')
+    setIsDesktopPos(isDesktopCashierPathname(window.location.pathname))
     setIsUsbCustomerDisplayEventSource(window.location.pathname === '/desktop/pos' && params.get('mode') === 'pos')
   }, [])
 

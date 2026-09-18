@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { browserPosCustomerDisplayPath } from '../lib/browser-pos-customer-display'
+import { isDesktopCashierPathname } from '../lib/cashier-environment'
+
+assert.equal(isDesktopCashierPathname('/cashier'), false, 'normal /cashier must remain Browser mode')
+assert.equal(isDesktopCashierPathname('/desktop/pos'), true, '/desktop/pos must remain Desktop mode')
 
 assert.equal(
   browserPosCustomerDisplayPath(' ST169E7000 ', 'zh'),
@@ -20,6 +24,7 @@ assert.match(cashierPage, /openCustomerDisplay: 'បើកអេក្រង់�
 assert.match(cashierPage, /browserPosCustomerDisplayPath\(storeCode, lang as DeskLang\)/)
 assert.match(cashierPage, /window\.open\(target, '_blank', 'noopener,noreferrer'\)/)
 assert.match(cashierPage, /disabled=\{!storeCode\}/)
+assert.match(cashierPage, /setIsDesktopPos\(isDesktopCashierPathname\(window\.location\.pathname\)\)/)
 assert.match(cashierPage, /\{!isDesktopPos && \(\s*<>[\s\S]*?\{d\.openCustomerDisplay\}[\s\S]*?d\.installDesktop[\s\S]*?<\/>\s*\)\}/)
 assert.match(cashierPage, /<button type="button" style=\{s\.kioskBtn\} onClick=\{handleFullscreenClick\}>/)
 assert.match(cashierPage, /\{!isDesktopPos && <div>\{cacheText\}<\/div>\}/)
