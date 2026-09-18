@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "taskId": "ES-DESKTOP-CANONICAL-PRINT-WIRING-01",
+  "featureBranch": "codex/es-desktop-canonical-print-wiring-01-option-d",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "e4b6035e70321aeaaf14d64c3dc98dc896639a56",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "prisma/schema.prisma",
+    "prisma/migrations/20260919090000_add_computer_binding_network_mode_snapshot/migration.sql",
+    "lib/desktop-network-print.ts",
+    "app/api/es-tray-02/print-jobs/receive/route.ts",
+    "app/api/computer-client/network-mode/route.ts",
+    "app/api/cashier/sales/route.ts",
+    "app/cashier/page.tsx",
+    "tests/cashier-network-print-v01.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "prisma/schema.prisma": "dd75b3f13d82250fac09d83ea718b009b6f5df6f876c5db6e53997ef70983b2e",
+    "prisma/migrations/20260919090000_add_computer_binding_network_mode_snapshot/migration.sql": "9ee9a1adf7d8abf802131b0241a002510fb662ea6aa2ce555bdede8e108bf1f6",
+    "lib/desktop-network-print.ts": "55e46c53e8f244708a3cd98e717051c37b73fe8bf759351bef46c2f79127496c",
+    "app/api/es-tray-02/print-jobs/receive/route.ts": "cb5cd2fd67bc8782d4721c7ebd39750253fe112db9fecd93fb979464ca62c697",
+    "app/api/computer-client/network-mode/route.ts": "2b3937817b22f1d1dafd51b76a5c27730646190a0f051858ecd728ebad09266e",
+    "app/api/cashier/sales/route.ts": "cfc0801462a7e596f1fcf9e8f7d8da03630f3ada889e414b7859bae4fdde0788",
+    "app/cashier/page.tsx": "d63d19b1eefd1170740fa43482230a4d0793e11b2355d57b116bf4b5518a1525",
+    "tests/cashier-network-print-v01.test.ts": "e0fbf8a73fa867277a8f963ba25e164ee0f6df3df75bcb780d129f81c52901ce"
+  },
+  "createdAt": "2026-09-18T18:51:11.000Z",
+  "approvedAt": "2026-09-18T18:51:11.000Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder approval in ES-DESKTOP-CANONICAL-PRINT-WIRING-01",
+    "statement": "Founder approved scheme 1: establish and integrate this task-specific trusted origin/main Scope Guard exception before continuing the bounded Option D implementation.",
+    "approvedAtMeaning": "Registration time of the explicit Founder approval; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the sealed Option D candidate: the two nullable ComputerBinding network-mode observation fields and their exact migration CHECK, the single canonical Desktop mode resolver, authenticated RC10 receive observation update, Desktop network-mode preflight, server-side Desktop mode revalidation, existing Cashier network-v2 intent reuse, and the exact focused regression test updates. RC10 bytes, desktop shell, Printing Core, PrintJob contract/model, routing, idempotency, offline business logic, KHQR semantics, operator attribution semantics, P1B, P6C, image rendering, installers, Production migration, Production deployment, flag enablement, and FIELD remain outside this exception.",
+  "createdOnBranch": "codex/es-desktop-canonical-print-wiring-01-governance",
+  "sealedCandidate": {
+    "candidateBranch": "codex/es-desktop-canonical-print-wiring-01-option-d",
+    "candidateBaseOriginMainSha": "e4b6035e70321aeaaf14d64c3dc98dc896639a56",
+    "fileCount": 8,
+    "contentRule": "PRE_COMMIT_CONTENT_SHA256 exact final candidate bytes"
+  }
+}
