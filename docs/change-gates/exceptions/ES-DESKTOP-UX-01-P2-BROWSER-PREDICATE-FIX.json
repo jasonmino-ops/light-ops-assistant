@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "taskId": "ES-DESKTOP-UX-01-P2-BROWSER-PREDICATE-FIX",
+  "featureBranch": "codex/es-desktop-ux-01-p2-browser-predicate-fix",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "294d22f644827ddbc44ba0aa6b6916da90146d46",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/cashier/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "01e2b3d4487a2aff983acc9e6b0d33acb4aa44cf9a8fd508956a5f3760ece099"
+  },
+  "createdAt": "2026-09-18T13:47:23Z",
+  "approvedAt": "2026-09-18T13:47:23Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder authorization in the current ES-DESKTOP-UX-01 / P2 Browser Environment Predicate Corrective Fix task",
+    "statement": "Founder authorized a task-scoped PRE_COMMIT_CONTENT_SHA256 corrective change for exactly app/cashier/page.tsx to restore Browser /cashier visibility of the install-to-PC and open-customer-display controls while keeping Desktop /desktop/pos behavior unchanged. The change is Web Delivery only; Desktop Shell, P3-B Candidate, Printing, Cashier business, Offline/Sync, Authorization, P1A and P1B remain out of scope. After strict validation, Source Acceptance, trusted integration and Production Web deployment are authorized; no Desktop installer or V727 reinstall is authorized or required.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the minimal environment predicate correction required by the confirmed P2 Browser FIELD failure. The protected Cashier page may change only so /cashier is treated as Browser and /desktop/pos remains Desktop, with the existing conditional visibility surfaces and all business, offline/sync, authorization, Customer Display, Printing, P1A and P1B behavior preserved.",
+  "allowedPurposes": [
+    "Correct the Browser versus Desktop environment predicate for the confirmed P2 FIELD failure",
+    "Add the minimum regression coverage for /cashier and /desktop/pos semantics",
+    "Run the authorized Web-only Source Acceptance, trusted integration and Production Web delivery flow"
+  ],
+  "prohibitedChanges": [
+    "Any app/cashier/page.tsx change outside the exact predicate correction",
+    "Cashier business, order, payment, offline or sync semantic changes",
+    "POS authorization, Activation, Customer Display business, P1A, P1B or P3-B changes",
+    "Desktop Shell, installer, Provider, Printing, RC9/RC10, schema, migration, API, dependency or visual redesign changes",
+    "FIELD VERIFIED, FINAL FROZEN or CLOSED claims"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized corrective source integration. It must not remain active as authorization for future Cashier changes."
+}
