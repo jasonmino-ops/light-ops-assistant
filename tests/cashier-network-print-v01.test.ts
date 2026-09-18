@@ -8,10 +8,17 @@ import { signSession } from '../lib/session'
 import { hashClaimSecret, hashDeviceSecret, hashInstallationId } from '../lib/computer-client/crypto'
 import { POST as sell } from '../app/api/cashier/sales/route'
 import { POST as receive, GET as queueState } from '../app/api/es-tray-02/print-jobs/receive/route'
+import { GET as readDesktopNetworkMode } from '../app/api/computer-client/network-mode/route'
 import { POST as executing } from '../app/api/es-tray-02/print-jobs/[jobId]/executing/route'
 import { POST as result } from '../app/api/es-tray-02/print-jobs/[jobId]/result/route'
 import { enqueueCashierNetworkJobs } from '../lib/es-tray-relay/cashier-network-producer'
 import { parseConfirmedCashierNetworkRoles } from '../lib/es-tray-relay/cashier-network-confirmation'
+import {
+  DESKTOP_NETWORK_PRINT_STALE_AFTER_MS,
+  isDesktopNetworkPrintEnabled,
+  isFreshDesktopNetworkMode,
+  resolveDesktopNetworkMode,
+} from '../lib/desktop-network-print'
 import { enqueueRelayPrintJob, claimNextRelayPrintJob, markRelayPrintJobExecuting, completeRelayPrintJob } from '../lib/es-tray-relay/service'
 import { parsePrintRequest } from '../lib/es-tray-relay/contract'
 import { readRelayTimingConfig } from '../lib/es-tray-relay/config'
@@ -48,8 +55,9 @@ async function fixture() {
     printIntent: unknown = printing(),
     paymentMethod = 'CASH',
     saleItems: Array<{ barcode: string; quantity: number; sugar?: string }> = [{ barcode: product.barcode, quantity: 2 }],
+    extraHeaders: Record<string, string> = {},
   ) => new NextRequest('http://localhost/api/cashier/sales', {
-    method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+    method: 'POST', headers: { cookie, 'content-type': 'application/json', ...extraHeaders },
     body: JSON.stringify({ storeCode: store.code, items: saleItems,
       paymentMethod, manualPaymentConfirmed: paymentMethod === 'KHQR', ...(printIntent === null ? {} : { printing: printIntent }) }),
   })
@@ -101,6 +109,89 @@ async function run() {
     assert.equal(observed.calls, 0)
     assert.equal(observed.value.status, 200)
     assert.equal((await observed.value.json()).job, null)
+    const binding = await prisma.computerBinding.findUniqueOrThrow({ where: { id: f.binding.id } })
+    assert.equal(binding.lastNetworkMode, 'SHARED_PRINTER')
+    assert.ok(binding.lastNetworkModeAt)
+  })
+  await test('mode observation is the only source, has an exact 32s boundary, and fails closed for zero or multiple bindings', async () => {
+    assert.equal(DESKTOP_NETWORK_PRINT_STALE_AFTER_MS, 32_000)
+    const now = new Date()
+    assert.equal(isFreshDesktopNetworkMode('FRONT_ONLY', new Date(now.getTime() - 32_000), now), true)
+    assert.equal(isFreshDesktopNetworkMode('FRONT_ONLY', new Date(now.getTime() - 32_001), now), false)
+    assert.equal(isFreshDesktopNetworkMode(null, now, now), false)
+    assert.equal(isDesktopNetworkPrintEnabled({}), false)
+
+    const f = await fixture()
+    const previous = process.env.DESKTOP_NETWORK_PRINT_ENABLED
+    process.env.DESKTOP_NETWORK_PRINT_ENABLED = '1'
+    try {
+      assert.equal(await resolveDesktopNetworkMode(f.scope, now), null)
+      await prisma.computerBinding.update({
+        where: { id: f.binding.id },
+        data: { lastNetworkMode: 'FRONT_ONLY', lastNetworkModeAt: now },
+      })
+      assert.equal(await resolveDesktopNetworkMode(f.scope, now), 'FRONT_ONLY')
+      await prisma.computerBinding.create({ data: {
+        tenantId: f.tenant.id, storeId: f.store.id, installationIdHash: hashInstallationId(`second_${randomUUID()}`),
+        computerName: `${f.store.code}-second`, agentVersion: NETWORK_CLIENT_VERSION, status: 'APPROVED',
+        expiresAt: new Date(now.getTime() + 86_400_000), claimSecretHash: hashClaimSecret(`ecr_v1_${'b'.repeat(32)}`),
+        deviceSecretHash: hashDeviceSecret(`ecc_v1_${'c'.repeat(32)}`), credentialStatus: 'ACTIVE', boundAt: now,
+        lastNetworkMode: 'FRONT_ONLY', lastNetworkModeAt: now,
+      } })
+      assert.equal(await resolveDesktopNetworkMode(f.scope, now), null)
+    } finally {
+      if (previous === undefined) delete process.env.DESKTOP_NETWORK_PRINT_ENABLED
+      else process.env.DESKTOP_NETWORK_PRINT_ENABLED = previous
+    }
+  })
+  await test('legacy receive without a mode never changes the observed RC10 mode', async () => {
+    const f = await fixture()
+    await receive(guarded(f, 'FRONT_ONLY'))
+    const before = await prisma.computerBinding.findUniqueOrThrow({ where: { id: f.binding.id }, select: { lastNetworkMode: true, lastNetworkModeAt: true } })
+    assert.equal((await receive(f.agent())).status, 200)
+    const after = await prisma.computerBinding.findUniqueOrThrow({ where: { id: f.binding.id }, select: { lastNetworkMode: true, lastNetworkModeAt: true } })
+    assert.deepEqual(after, before)
+  })
+  await test('Desktop uses a fresh server mode and stale observation falls back to a successful legacy sale', async () => {
+    const f = await fixture()
+    const previous = process.env.DESKTOP_NETWORK_PRINT_ENABLED
+    process.env.DESKTOP_NETWORK_PRINT_ENABLED = '1'
+    const desktopHeaders = {
+      'x-lightops-client': 'desktop-pos',
+      'x-pos-operator-source': 'ACCOUNT',
+      cookie: `auth-session=${signSession({ tenantId: f.tenant.id, storeId: f.store.id, userId: f.user.id, role: 'STAFF' })}`,
+    }
+    try {
+      await prisma.computerBinding.update({ where: { id: f.binding.id }, data: { lastNetworkMode: 'FRONT_ONLY', lastNetworkModeAt: new Date() } })
+      const fresh = await sell(f.sale(printing('SHARED_PRINTER'), 'CASH', undefined, desktopHeaders))
+      assert.equal(fresh.status, 201)
+      const freshBody = await fresh.json()
+      assert.equal(freshBody.printing.mode, 'FRONT_ONLY')
+      assert.equal(await prisma.eshopTrayPrintJob.count({ where: f.scope }), 1)
+      const record = await prisma.saleRecord.findFirstOrThrow({ where: { tenantId: f.tenant.id, orderNo: freshBody.orderNo } })
+      assert.equal(record.operatorUserId, f.user.id)
+
+      const modeResponse = await readDesktopNetworkMode(new NextRequest(
+        `http://localhost/api/computer-client/network-mode?storeCode=${f.store.code}`,
+        { headers: desktopHeaders },
+      ))
+      assert.equal(modeResponse.status, 200)
+      assert.deepEqual(await modeResponse.json(), { enabled: true, mode: 'FRONT_ONLY' })
+
+      const browserResponse = await readDesktopNetworkMode(new NextRequest(
+        `http://localhost/api/computer-client/network-mode?storeCode=${f.store.code}`,
+      ))
+      assert.deepEqual(await browserResponse.json(), { enabled: false, mode: null })
+
+      await prisma.computerBinding.update({ where: { id: f.binding.id }, data: { lastNetworkModeAt: new Date(Date.now() - 32_001) } })
+      const stale = await sell(f.sale(printing('FRONT_ONLY'), 'CASH', undefined, desktopHeaders))
+      assert.equal(stale.status, 201)
+      assert.equal((await stale.json()).printing, undefined)
+      assert.equal(await prisma.eshopTrayPrintJob.count({ where: f.scope }), 1)
+    } finally {
+      if (previous === undefined) delete process.env.DESKTOP_NETWORK_PRINT_ENABLED
+      else process.env.DESKTOP_NETWORK_PRINT_ENABLED = previous
+    }
   })
   await test('expectedMode PENDING enters the original guarded claim flow', async () => {
     const f = await queuedFixture('SHARED_PRINTER')
@@ -664,12 +755,14 @@ async function run() {
     const source = readFileSync('app/cashier/page.tsx', 'utf8')
     assert.match(source, /pathname === '\/cashier'/)
     assert.match(source, /!window\.eshopDesktopRuntime\?\.isDesktop/)
-    assert.match(source, /const receipt = isDesktopPos && !networkPrint && !networkQueued/)
+    assert.match(source, /const networkResponse = body\.printing\?\.profile === 'network-v2'/)
+    assert.match(source, /const receipt = isDesktopPos && !networkResponse/)
     assert.match(source, /\{!saleResult\.networkPrintStatus && <div[^>]*>[\s\S]*?: d\.receiptNotAuto\}\s*<\/div>\}/)
     assert.match(source, /get\('networkMode'\)/)
-    assert.match(source, /networkMode !== 'FRONT_ONLY' && networkMode !== 'SHARED_PRINTER'/)
+    assert.match(source, /browserNetworkMode !== 'FRONT_ONLY' && browserNetworkMode !== 'SHARED_PRINTER'/)
     assert.match(source, /mode: networkMode/)
-    assert.match(source, /parseConfirmedCashierNetworkRoles\(body\.printing, networkMode as NetworkMode\)/)
+    assert.match(source, /parseConfirmedCashierNetworkRoles\(body\.printing, responseNetworkMode\)/)
+    assert.match(source, /api\/computer-client\/network-mode\?storeCode=/)
     assert.match(source, /saleResult\.networkPrintRoles\?\.join/)
     assert.doesNotMatch(source, /<div style=\{s\.modalSub\}>FRONT \/ KITCHEN —/)
   })

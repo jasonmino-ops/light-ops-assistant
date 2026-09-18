@@ -13,6 +13,7 @@ import { generateRecordNo } from '@/lib/record-no'
 import { generateKhqrPayload } from '@/lib/khqr'
 import { findKhqrConfig, type MerchantKhqrConfig } from '@/lib/merchant-config'
 import { authorizeDesktopPosRequest, unauthorizedPosResponse } from '@/lib/desktop-pos-auth'
+import { isDesktopPosRequest, resolveDesktopNetworkMode } from '@/lib/desktop-network-print'
 import { isKhqrSupportedCurrency } from '@/lib/currency'
 import { enqueueCashierNetworkJobs } from '@/lib/es-tray-relay/cashier-network-producer'
 import { NETWORK_PROFILE, type NetworkSnapshot } from '@/e-shop-tray/src/networkContract'
@@ -46,12 +47,16 @@ export async function POST(req: NextRequest) {
     manualPaymentConfirmed?: boolean
   }
 
-  // Opt-in only. Old Desktop and cashier clients keep their existing response/printing path.
-  const network = body.printing !== undefined
-  if (network && (body.printing?.profile !== NETWORK_PROFILE
-    || Object.keys(body.printing).sort().join(',') !== 'lang,mode,profile'
-    || !['zh', 'en', 'km'].includes(body.printing.lang)
-    || !['FRONT_ONLY', 'SHARED_PRINTER'].includes(body.printing.mode))) {
+  // Browser keeps the existing opt-in contract. Desktop requests are
+  // revalidated against the current RC10 observation below.
+  const desktopRequest = isDesktopPosRequest(req)
+  const suppliedPrinting = body.printing !== undefined
+  const validPrinting = suppliedPrinting
+    && body.printing?.profile === NETWORK_PROFILE
+    && Object.keys(body.printing).sort().join(',') === 'lang,mode,profile'
+    && ['zh', 'en', 'km'].includes(body.printing.lang)
+    && ['FRONT_ONLY', 'SHARED_PRINTER'].includes(body.printing.mode)
+  if (suppliedPrinting && !validPrinting && !desktopRequest) {
     return NextResponse.json({ error: 'INVALID_NETWORK_PRINT_PROFILE' }, { status: 400 })
   }
 
@@ -108,6 +113,21 @@ export async function POST(req: NextRequest) {
   if (!posAuth) {
     return unauthorizedPosResponse()
   }
+  const desktopNetworkMode = desktopRequest
+    ? await resolveDesktopNetworkMode({ tenantId: store.tenantId, storeId: store.id })
+    : null
+  // Unknown, stale, ambiguous, or disabled observations preserve the
+  // successful legacy sale and receipt-preview path.
+  const network = desktopRequest
+    ? validPrinting && desktopNetworkMode !== null
+    : validPrinting
+  const effectivePrinting = network
+    ? {
+        profile: NETWORK_PROFILE,
+        mode: desktopRequest ? desktopNetworkMode! : body.printing.mode,
+        lang: body.printing.lang,
+      }
+    : null
   if (paymentMethod === 'KHQR' && !isKhqrSupportedCurrency(store.currencyCode)) {
     return NextResponse.json(
       { error: 'KHQR_UNSUPPORTED_CURRENCY', message: '当前门店货币不支持 KHQR，请使用现金收款' },
@@ -223,8 +243,8 @@ export async function POST(req: NextRequest) {
         storeCode: store.code, storeName: store.name, orderNo,
         createdAt: firstCreatedAt!.toISOString(), cashierName: 'Desktop POS',
         paymentMethod: paymentMethod as 'CASH' | 'KHQR', currencyCode: store.currencyCode,
-        totalAmount, lang: body.printing.lang, items: snapshotItems,
-      }, body.printing.mode, store.printKitchenTicket ? kitchenItems : []) : undefined
+        totalAmount, lang: effectivePrinting!.lang, items: snapshotItems,
+      }, effectivePrinting!.mode, store.printKitchenTicket ? kitchenItems : []) : undefined
 
       return {
         orderNo,
