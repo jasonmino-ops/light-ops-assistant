@@ -6,7 +6,7 @@ This record activates the already Founder-authorized additive clarification for 
 
 ## Governance change
 
-- Final candidate is the current clean branch HEAD; its history contains the additive clarification, evidence records, fail-closed validator/test corrections, official manifest registration, and acceptance-record template corrections.
+- The implementation candidate was `988d60967bc5a325a58b1a46c5e713e7e3048b0b`; the current branch adds only this durable verification receipt after that candidate.
 - Files: 15 governance/evidence/test/tooling paths; no business/runtime implementation paths.
 - Intended effect: select the correct verification boundary while retaining all existing risk and release gates.
 - Effective condition: trusted integration into `origin/main`.
@@ -21,6 +21,19 @@ This record activates the already Founder-authorized additive clarification for 
 - Business/runtime implementation drift: `NONE`.
 - Independent fresh-context review: `PENDING` for the final candidate; this must be `PASS` before trusted integration.
 - Old strict governance remains the governing gate for this L3 change.
+
+## Verification snapshot
+
+- Trusted baseline: `origin/main@4d177a8b507aaa8bdccb0abf8677df71fcbe789b`.
+- Production SHA used by the old Release Lineage Gate: `4bb3cbcea90f7e29e22d4b1f71c03f948056773a`; result: `PASS`.
+- `node tests/governance-delivery-classification.test.cjs`: `PASS`.
+- `desktop/tests/release-foundation.test.ts`: `14 tests; 12 passed; 2 pre-integration skips; exit 0`.
+- `node desktop/scripts/release-foundation.mjs policy`: `PASS`.
+- Pre-integration `source-policy`: expected fail-closed result because the working register was not yet identical to trusted `origin/main`.
+- Root CORE manifest: `75/75 collected`, `74 passed`, `1 registered known failure`, `0 new failures`, `overall PASS`.
+- Scope Guard over the complete 15-path candidate set: `PASS`.
+- `git diff --check`: `PASS`.
+- No business/runtime implementation bytes were changed; P1A/P1B/P2/Printing boundaries remain preserved.
 
 ## Compatibility assertions
 
