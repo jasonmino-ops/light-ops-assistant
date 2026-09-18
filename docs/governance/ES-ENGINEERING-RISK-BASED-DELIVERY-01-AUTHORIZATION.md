@@ -15,9 +15,12 @@ Governed by:
 
 `ES-ENGINEERING-RISK-BASED-DELIVERY-01 Governance Addendum Implementation`
 
-## Authorized Branch / Starting HEAD
+## Authorized Branch
 
-- Branch: `codex/es-desktop-web-shell-delivery-classification`
+`codex/es-desktop-web-shell-delivery-classification`
+
+## Authorized Starting HEAD
+
 - Starting HEAD: `4d177a8b507aaa8bdccb0abf8677df71fcbe789b`
 
 ## Allowed Scope
