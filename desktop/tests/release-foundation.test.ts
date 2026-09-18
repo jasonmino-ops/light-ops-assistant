@@ -264,4 +264,16 @@ describe('risk-based source acceptance policy', () => {
       p2SourceCommit,
     ])).toThrow(/Production SHA is not an ancestor/)
   })
+
+  it.skipIf(!trustedRiskRegisterAvailable() || trustedRiskRegisterMatchesWorkingTree())('fails closed before integration when the working register differs from trusted origin/main', () => {
+    expect(() => runReleaseFoundation([
+      'source-policy',
+      '--task-id',
+      p2TaskId,
+      '--source-commit',
+      p2SourceCommit,
+      '--production-sha',
+      productionSha,
+    ])).toThrow(/working-tree risk-based delivery register differs from trusted origin\/main/)
+  })
 })

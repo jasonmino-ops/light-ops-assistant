@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
-const { validatePilot, validateRegister } = require('../scripts/governance/delivery-classification.cjs')
+const { validatePilot, validatePilotSourcePaths, validateRegister } = require('../scripts/governance/delivery-classification.cjs')
 
 const root = path.resolve(__dirname, '..')
 const policyPath = path.join(root, 'docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-WEB-SHELL-DELIVERY-CLARIFICATION.md')
@@ -38,6 +38,8 @@ assert.throws(() => validateRegister({
   ...register,
   deliveryClassification: { ...register.deliveryClassification, classes: ['WEB'] },
 }), /classes are invalid/)
+assert.throws(() => validateRegister({ ...register, status: 'DRAFT' }), /register status is not active/)
+assert.throws(() => validateRegister({ ...register, fieldDebt: [{ ...register.fieldDebt[0], riskClass: 'L4' }] }), /fieldDebt\[0\]\.riskClass is invalid/)
 
 assert.throws(() => validatePilot({ ...p2, deliveryClass: 'UNKNOWN' }), /delivery classification invalid/)
 assert.throws(() => validatePilot({ ...p2, runtimeDelivery: 'DESKTOP_SHELL_LOCAL_RUNTIME' }), /boundary\/runtime mismatch|runtime must be remote Web/)
@@ -74,5 +76,16 @@ assert.throws(() => validatePilot({
   runtimeDelivery: 'MIXED_REMOTE_WEB_AND_DESKTOP_SHELL',
   boundaryPaths: ['app/cashier/page.tsx'],
 }), /MIXED boundary\/runtime mismatch/)
+
+assert.doesNotThrow(() => validatePilotSourcePaths([
+  'app/cashier/page.tsx',
+  'tests/browser-pos-customer-display-entry.test.ts',
+  'docs/desktop/es-desktop-ux-01-p2-candidate-evidence.md',
+], p2))
+assert.throws(() => validatePilotSourcePaths([
+  'app/cashier/page.tsx',
+  'desktop/src/main/main.ts',
+], p2), /source diff\/class mismatch/)
+assert.throws(() => validatePilotSourcePaths(['package.json'], p2), /unclassified source paths/)
 
 console.log('governance delivery classification tests passed')

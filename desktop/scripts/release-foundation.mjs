@@ -16,7 +16,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { evaluateFile, validateException } = require('../../scripts/guards/check-change-scope.js')
-const { validateRegister, validatePilot } = require('../../scripts/governance/delivery-classification.cjs')
+const { validateRegister, validatePilot, validatePilotSourcePaths } = require('../../scripts/governance/delivery-classification.cjs')
 
 const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
 const desktopDir = resolve(scriptDir, '..')
@@ -558,6 +558,7 @@ async function runSourceAcceptance(options) {
   const changedSourcePaths = git(['diff', '--name-only', pilot.baselineOriginMain, sourceCommit, '--'])
     .split('\n')
     .filter(Boolean)
+  validatePilotSourcePaths(changedSourcePaths, pilot)
   const frozenBoundary = []
   for (const group of FROZEN_BOUNDARY_GROUPS) {
     const changed = git(['diff', '--name-only', pilot.baselineOriginMain, sourceCommit, '--', ...group.paths])

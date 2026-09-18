@@ -32,7 +32,7 @@ Only the V727 single-display pilot observations and the combined Web/Shell ident
 
 No P3-B implementation change, P1A/P1B reopen, dual-display claim, Printing change, packaging change, deployment, P4-1, or 4-0 design decision.
 
-## Supplied FIELD facts
+## Evidence
 
 - Installer transfer and source/SMB/Windows-local hashes: `PASS`.
 - Installation and Desktop launch: `PASS`.

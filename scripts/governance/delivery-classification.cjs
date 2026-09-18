@@ -31,8 +31,28 @@ function isDesktopShellPath(filePath) {
   )
 }
 
+function isNeutralGovernancePath(filePath) {
+  return typeof filePath === 'string' && (
+    filePath.startsWith('docs/') ||
+    filePath.startsWith('tests/') ||
+    filePath.startsWith('scripts/test/manifests/')
+  )
+}
+
+function validateFieldDebt(entry, index) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) fail(`fieldDebt[${index}] must be an object`)
+  for (const key of ['task', 'riskClass', 'unverifiedBehavior', 'deferralReason', 'requiredEnvironmentOrHardware', 'mustClearBefore', 'status', 'evidenceReference']) {
+    if (typeof entry[key] !== 'string' || entry[key].trim() === '') fail(`fieldDebt[${index}].${key} is required`)
+  }
+  if (!['L1', 'L2', 'L3'].includes(entry.riskClass)) fail(`fieldDebt[${index}].riskClass is invalid`)
+  if (!['DEFERRED', 'PASS'].includes(entry.status)) fail(`fieldDebt[${index}].status is invalid`)
+}
+
 function validateRegister(register) {
   if (!register || typeof register !== 'object' || Array.isArray(register)) fail('register must be an object')
+  if (register.schemaVersion !== 'es-risk-based-delivery.register.v1') fail('register schemaVersion is invalid')
+  if (register.policyId !== 'ES-ENGINEERING-RISK-BASED-DELIVERY-01') fail('register policyId is invalid')
+  if (register.status !== 'ACTIVE_AFTER_MAIN_MERGE') fail('register status is not active')
   const classification = register.deliveryClassification
   if (!classification || typeof classification !== 'object' || Array.isArray(classification)) {
     fail('deliveryClassification is required')
@@ -49,6 +69,8 @@ function validateRegister(register) {
   if (JSON.stringify(classification.milestoneIdentity) !== JSON.stringify(MILESTONE_IDENTITY)) {
     fail('milestone identity fields are invalid')
   }
+  if (!Array.isArray(register.fieldDebt)) fail('fieldDebt is required')
+  register.fieldDebt.forEach(validateFieldDebt)
   if (!Array.isArray(register.sourceAcceptancePilots)) fail('sourceAcceptancePilots is required')
   for (const pilot of register.sourceAcceptancePilots) validatePilot(pilot)
   return true
@@ -77,4 +99,32 @@ function validatePilot(pilot) {
   return true
 }
 
-module.exports = { DELIVERY_CLASSES, DELIVERY_RUNTIMES, MILESTONE_IDENTITY, validatePilot, validateRegister }
+function validatePilotSourcePaths(changedSourcePaths, pilot) {
+  if (!Array.isArray(changedSourcePaths)) fail('changedSourcePaths must be an array')
+  const deliveryPaths = changedSourcePaths.filter((filePath) => !isNeutralGovernancePath(filePath))
+  const unknownPaths = deliveryPaths.filter((filePath) => !isWebPath(filePath) && !isDesktopShellPath(filePath))
+  if (unknownPaths.length > 0) {
+    fail(`${pilot.taskId ?? 'pilot'} contains unclassified source paths: ${unknownPaths.join(', ')}`)
+  }
+  const hasWeb = deliveryPaths.some(isWebPath)
+  const hasDesktop = deliveryPaths.some(isDesktopShellPath)
+  if (pilot.deliveryClass === 'WEB' && (!hasWeb || hasDesktop)) {
+    fail(`${pilot.taskId ?? 'pilot'} source diff/class mismatch: WEB requires Web-only source paths`)
+  }
+  if (pilot.deliveryClass === 'DESKTOP_SHELL' && (!hasDesktop || hasWeb)) {
+    fail(`${pilot.taskId ?? 'pilot'} source diff/class mismatch: DESKTOP_SHELL requires Desktop-only source paths`)
+  }
+  if (pilot.deliveryClass === 'MIXED' && (!hasWeb || !hasDesktop)) {
+    fail(`${pilot.taskId ?? 'pilot'} source diff/class mismatch: MIXED requires both Web and Desktop source paths`)
+  }
+  return true
+}
+
+module.exports = {
+  DELIVERY_CLASSES,
+  DELIVERY_RUNTIMES,
+  MILESTONE_IDENTITY,
+  validatePilot,
+  validatePilotSourcePaths,
+  validateRegister,
+}
