@@ -77,6 +77,6 @@
     { "file": "tests/subscription-expiry-reminder.test.ts", "lane": "CORE", "reason": "Prisma findUnique is replaced by an in-process fixture.", "dependencyType": "NONE", "evidence": "tests/subscription-expiry-reminder.test.ts:151-154" },
     { "file": "tests/subscription-lifecycle.test.ts", "lane": "CORE", "reason": "In-process lifecycle helpers and repository schema/route assertions.", "dependencyType": "NONE", "evidence": "tests/subscription-lifecycle.test.ts:1-3" },
     { "file": "tests/telegram-start-param.test.ts", "lane": "CORE", "reason": "Pure in-process Telegram start parameter tests.", "dependencyType": "NONE", "evidence": "tests/telegram-start-param.test.ts:1" },
-    { "file": "tests/governance-delivery-classification.test.cjs", "lane": "CORE", "reason": "Validates governance schema and fail-closed classification matching without external services.", "dependencyType": "NONE", "evidence": "tests/governance-delivery-classification.test.cjs:1-90" }
+    { "file": "tests/governance-delivery-classification.test.cjs", "lane": "CORE", "reason": "Validates governance schema and fail-closed classification matching without external services.", "dependencyType": "NONE", "evidence": "tests/governance-delivery-classification.test.cjs:1-80" }
   ]
 }

@@ -69,7 +69,7 @@ function validatePilot(pilot) {
     if (!hasWeb || hasDesktop) fail(`${pilot.taskId ?? 'pilot'} WEB boundary must be Web-only`)
   }
   if (pilot.deliveryClass === 'DESKTOP_SHELL') {
-    if (pilot.runtimeDelivery === 'REMOTE_WEB_VIA_BROWSERWINDOW_LOADURL' || !hasDesktop || hasWeb) fail(`${pilot.taskId ?? 'pilot'} DESKTOP_SHELL boundary/runtime mismatch`)
+    if (pilot.runtimeDelivery !== 'DESKTOP_SHELL_LOCAL_RUNTIME' || !hasDesktop || hasWeb) fail(`${pilot.taskId ?? 'pilot'} DESKTOP_SHELL boundary/runtime mismatch`)
   }
   if (pilot.deliveryClass === 'MIXED') {
     if (pilot.runtimeDelivery !== 'MIXED_REMOTE_WEB_AND_DESKTOP_SHELL' || !hasWeb || !hasDesktop) fail(`${pilot.taskId ?? 'pilot'} MIXED boundary/runtime mismatch`)

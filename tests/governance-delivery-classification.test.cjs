@@ -53,6 +53,13 @@ assert.doesNotThrow(() => validatePilot({
   runtimeDelivery: 'DESKTOP_SHELL_LOCAL_RUNTIME',
   boundaryPaths: ['desktop/src/main/main.ts'],
 }))
+assert.throws(() => validatePilot({
+  ...p2,
+  taskId: 'ES-TEST-DESKTOP-SHELL-MIXED-RUNTIME',
+  deliveryClass: 'DESKTOP_SHELL',
+  runtimeDelivery: 'MIXED_REMOTE_WEB_AND_DESKTOP_SHELL',
+  boundaryPaths: ['desktop/src/main/main.ts'],
+}), /DESKTOP_SHELL boundary\/runtime mismatch/)
 assert.doesNotThrow(() => validatePilot({
   ...p2,
   taskId: 'ES-TEST-MIXED',
