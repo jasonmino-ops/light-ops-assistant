@@ -6,8 +6,8 @@ This record activates the already Founder-authorized additive clarification for 
 
 ## Governance change
 
-- The implementation candidate was `988d60967bc5a325a58b1a46c5e713e7e3048b0b`; the current branch adds only this durable verification receipt after that candidate.
-- Files: 15 governance/evidence/test/tooling paths; no business/runtime implementation paths.
+- The implementation candidate is the clean governance branch at the exact verification SHA recorded in `ES-ENGINEERING-RISK-BASED-DELIVERY-01-VERIFICATION-EVIDENCE.md`; its history contains the additive clarification, evidence records, fail-closed validator/test corrections, official manifest registration, and acceptance-record template corrections.
+- Files: 16 governance/evidence/test/tooling paths; no business/runtime implementation paths.
 - Intended effect: select the correct verification boundary while retaining all existing risk and release gates.
 - Effective condition: trusted integration into `origin/main`.
 
@@ -16,7 +16,7 @@ This record activates the already Founder-authorized additive clarification for 
 - Governance classification test: `PASS`.
 - Fail-closed validator tests: `PASS` (unknown class, class/runtime mismatch, boundary mismatch, and valid `MIXED` cases).
 - Root manifest audit: `PASS` after registering the governance test in the CORE lane.
-- Full 15-path Scope Guard check: `PASS`.
+- Full 16-path Scope Guard check: `PASS`.
 - `git diff --check`: `PASS`.
 - Business/runtime implementation drift: `NONE`.
 - Independent fresh-context review: `PENDING` for the final candidate; this must be `PASS` before trusted integration.
