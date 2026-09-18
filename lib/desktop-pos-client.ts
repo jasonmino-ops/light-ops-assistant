@@ -1,6 +1,9 @@
 const POS_DEVICE_TOKEN_PREFIX = 'cashier:posDeviceToken:'
 const POS_DEVICE_ID_KEY = 'cashier:deviceId'
 const COMPUTER_LAUNCH_STORE_KEY = 'cashier:computerLaunchStoreCode'
+const DESKTOP_OPERATOR_SELECTION_PREFIX = 'cashier:desktopOperatorSelection:'
+
+export type DesktopOperatorSelection = 'ACCOUNT' | 'DEVICE'
 
 function randomId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
@@ -38,6 +41,25 @@ export function clearPosDeviceToken(storeCode: string) {
   } catch {}
 }
 
+export function getDesktopOperatorSelection(storeCode: string | null | undefined): DesktopOperatorSelection | null {
+  if (!storeCode) return null
+  try {
+    const value = sessionStorage.getItem(`${DESKTOP_OPERATOR_SELECTION_PREFIX}${storeCode}`)
+    return value === 'ACCOUNT' || value === 'DEVICE' ? value : null
+  } catch {
+    return null
+  }
+}
+
+export function saveDesktopOperatorSelection(
+  storeCode: string,
+  selection: DesktopOperatorSelection,
+) {
+  try {
+    sessionStorage.setItem(`${DESKTOP_OPERATOR_SELECTION_PREFIX}${storeCode}`, selection)
+  } catch {}
+}
+
 /** Launch Ticket 兑换页与最终 /cashier 之间的一次性同标签页接力。 */
 export function setComputerLaunchStoreCode(storeCode: string) {
   sessionStorage.setItem(COMPUTER_LAUNCH_STORE_KEY, storeCode)
@@ -56,9 +78,16 @@ export function takeComputerLaunchStoreCode(): string {
 export function posDeviceHeaders(storeCode: string | null | undefined): Record<string, string> {
   const deviceId = getPosDeviceId()
   const token = getPosDeviceToken(storeCode)
+  const desktopContext = isDesktopPosRequestContext()
+  const operatorSelection = desktopContext ? getDesktopOperatorSelection(storeCode) : null
   return {
     'x-pos-device-id': deviceId,
-    ...(isDesktopPosRequestContext() ? { 'x-lightops-client': 'desktop-pos' } : {}),
+    ...(desktopContext ? {
+      'x-lightops-client': 'desktop-pos',
+      // The server treats DEVICE as the safe Desktop default. ACCOUNT is
+      // emitted only after the explicit startup boundary choice.
+      'x-pos-operator-source': operatorSelection ?? 'DEVICE',
+    } : {}),
     ...(token ? { 'x-pos-device-token': token } : {}),
   }
 }

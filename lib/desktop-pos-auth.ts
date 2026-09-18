@@ -39,6 +39,12 @@ export type DesktopPosAuthorization = {
   source: 'ACCOUNT' | 'DEVICE' | 'STORE_CODE'
 }
 
+export type DesktopOperatorSource = 'ACCOUNT' | 'DEVICE'
+
+export function isDesktopOperatorBoundaryEnabled() {
+  return process.env.DESKTOP_OPERATOR_BOUNDARY_ENABLED !== '0'
+}
+
 function secret(): string {
   return process.env.AUTH_SECRET ?? 'dev-secret-change-in-production'
 }
@@ -169,7 +175,9 @@ export function unauthorizedPosResponse() {
 export async function verifyPosDeviceRequest(
   req: NextRequest,
   expected: { tenantId: string; storeId: string; storeCode: string },
+  options?: { ignoreOperatorBoundary?: boolean },
 ) {
+  if (!options?.ignoreOperatorBoundary && getDesktopOperatorSource(req) === 'ACCOUNT') return null
   const { token, deviceId } = getPosAuthHeaders(req)
   if (!token || !deviceId) return null
   const payload = verifyPosDeviceToken(token)
@@ -208,10 +216,20 @@ function hasDesktopPosMarker(req: NextRequest) {
   return req.headers.get('x-lightops-client') === 'desktop-pos'
 }
 
+export function getDesktopOperatorSource(req: NextRequest): DesktopOperatorSource | null {
+  if (!isDesktopOperatorBoundaryEnabled() || !hasDesktopPosMarker(req)) return null
+  const value = req.headers.get('x-pos-operator-source')?.trim().toUpperCase()
+  return value === 'ACCOUNT' || value === 'DEVICE' ? value : 'DEVICE'
+}
+
 export async function authorizeDesktopPosAccount(
   req: NextRequest,
   expected: DesktopPosStoreScope,
+  options?: { ignoreOperatorBoundary?: boolean },
 ): Promise<DesktopPosAuthorization | null> {
+  const operatorSource = options?.ignoreOperatorBoundary ? null : getDesktopOperatorSource(req)
+  if (operatorSource === 'DEVICE') return null
+
   const ctx = await getContext(req)
   if (!ctx || ctx.tenantId !== expected.tenantId) return null
 
@@ -255,7 +273,9 @@ export async function authorizeDesktopPosRequest(
   expected: DesktopPosStoreScope,
   options?: { allowStoreCodeFallback?: boolean },
 ): Promise<DesktopPosAuthorization | null> {
+  const operatorSource = getDesktopOperatorSource(req)
   const accountAuth = await authorizeDesktopPosAccount(req, expected)
+  if (operatorSource === 'ACCOUNT') return accountAuth
   if (accountAuth) return accountAuth
 
   const deviceAuth = await verifyPosDeviceRequest(req, expected)

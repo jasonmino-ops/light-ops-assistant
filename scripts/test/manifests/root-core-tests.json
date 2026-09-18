@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "lane": "CORE",
-  "expectedCount": 75,
+  "expectedCount": 76,
   "tests": [
     { "file": "tests/bd-ops-permission-closure.test.ts", "lane": "CORE", "reason": "Prisma delegate is replaced by an in-process test stub.", "dependencyType": "NONE", "evidence": "tests/bd-ops-permission-closure.test.ts:37-88" },
     { "file": "tests/browser-order-sync-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only.", "dependencyType": "NONE", "evidence": "tests/browser-order-sync-static.test.ts:16-27" },
@@ -26,6 +26,7 @@
     { "file": "tests/desktop-activation-crypto.test.ts", "lane": "CORE", "reason": "Crypto test supplies and restores its own test secrets.", "dependencyType": "NONE", "evidence": "tests/desktop-activation-crypto.test.ts:21-28" },
     { "file": "tests/desktop-activation-security-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only.", "dependencyType": "NONE", "evidence": "tests/desktop-activation-security-static.test.ts:1-3" },
     { "file": "tests/desktop-activation-subscription.test.ts", "lane": "CORE", "reason": "In-process subscription helper and source assertions only.", "dependencyType": "NONE", "evidence": "tests/desktop-activation-subscription.test.ts:1-39" },
+    { "file": "tests/desktop-operator-boundary-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only; no runtime, database, or browser service required.", "dependencyType": "NONE", "evidence": "tests/desktop-operator-boundary-static.test.ts:1-22" },
     { "file": "tests/electronic-menu-data.test.ts", "lane": "CORE", "reason": "Prisma delegates are replaced by in-process database fixtures.", "dependencyType": "NONE", "evidence": "tests/electronic-menu-data.test.ts:94-134" },
     { "file": "tests/electronic-menu-layout.test.ts", "lane": "CORE", "reason": "Pure in-process layout tests.", "dependencyType": "NONE", "evidence": "tests/electronic-menu-layout.test.ts:1-70" },
     { "file": "tests/electronic-menu-media.test.ts", "lane": "CORE", "reason": "Database delegates are replaced by in-process stubs.", "dependencyType": "NONE", "evidence": "tests/electronic-menu-media.test.ts:38-68" },
