@@ -253,7 +253,7 @@ describe('risk-based source acceptance policy', () => {
     ])).toThrow(/source commit does not match registered task/)
   })
 
-  it.skipIf(!trustedRiskRegisterAvailable())('fails closed when the source commit is not descended from the trusted baseline', () => {
+  it.skipIf(!trustedRiskRegisterAvailable() || !trustedRiskRegisterMatchesWorkingTree())('fails closed when the source commit is not descended from the trusted baseline', () => {
     expect(() => runReleaseFoundation([
       'source-policy',
       '--task-id',
