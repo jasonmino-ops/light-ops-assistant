@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
+const { validatePilot, validateRegister } = require('../scripts/governance/delivery-classification.cjs')
 
 const root = path.resolve(__dirname, '..')
 const policyPath = path.join(root, 'docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-WEB-SHELL-DELIVERY-CLARIFICATION.md')
@@ -29,5 +30,38 @@ const p2 = register.sourceAcceptancePilots.find((entry) => entry.taskId === 'ES-
 assert.ok(p2)
 assert.equal(p2.deliveryClass, 'WEB')
 assert.equal(p2.runtimeDelivery, 'REMOTE_WEB_VIA_BROWSERWINDOW_LOADURL')
+assert.equal(p2.status, 'SOURCE_ACCEPTED')
+assert.equal(p2.fieldStatus, 'MILESTONE_FIELD_PENDING')
+assert.doesNotThrow(() => validateRegister(register))
+assert.throws(() => validateRegister({ ...register, deliveryClassification: undefined }), /deliveryClassification is required/)
+assert.throws(() => validateRegister({
+  ...register,
+  deliveryClassification: { ...register.deliveryClassification, classes: ['WEB'] },
+}), /classes are invalid/)
+
+assert.throws(() => validatePilot({ ...p2, deliveryClass: 'UNKNOWN' }), /delivery classification invalid/)
+assert.throws(() => validatePilot({ ...p2, runtimeDelivery: 'DESKTOP_SHELL_LOCAL_RUNTIME' }), /boundary\/runtime mismatch|runtime must be remote Web/)
+assert.throws(() => validatePilot({ ...p2, boundaryPaths: ['desktop/src/main/main.ts'] }), /WEB boundary must be Web-only/)
+assert.doesNotThrow(() => validatePilot({
+  ...p2,
+  taskId: 'ES-TEST-DESKTOP-SHELL',
+  deliveryClass: 'DESKTOP_SHELL',
+  runtimeDelivery: 'DESKTOP_SHELL_LOCAL_RUNTIME',
+  boundaryPaths: ['desktop/src/main/main.ts'],
+}))
+assert.doesNotThrow(() => validatePilot({
+  ...p2,
+  taskId: 'ES-TEST-MIXED',
+  deliveryClass: 'MIXED',
+  runtimeDelivery: 'MIXED_REMOTE_WEB_AND_DESKTOP_SHELL',
+  boundaryPaths: ['app/cashier/page.tsx', 'desktop/src/main/main.ts'],
+}))
+assert.throws(() => validatePilot({
+  ...p2,
+  taskId: 'ES-TEST-MIXED-BROKEN',
+  deliveryClass: 'MIXED',
+  runtimeDelivery: 'MIXED_REMOTE_WEB_AND_DESKTOP_SHELL',
+  boundaryPaths: ['app/cashier/page.tsx'],
+}), /MIXED boundary\/runtime mismatch/)
 
 console.log('governance delivery classification tests passed')

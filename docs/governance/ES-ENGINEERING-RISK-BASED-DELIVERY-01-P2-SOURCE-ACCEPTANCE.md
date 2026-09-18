@@ -16,7 +16,7 @@
 - Typecheck: `PASS`
 - Compile: `PASS`
 - Independent Review: `PASS`
-- FIELD status: `PENDING`
+- FIELD status: `MILESTONE_FIELD_PENDING`
 - Milestone FIELD target: `P3-B Desktop Pilot`
 
 This record establishes source acceptance only. It does not claim installer packaging,

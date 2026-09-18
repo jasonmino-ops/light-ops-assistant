@@ -209,7 +209,7 @@ describe('risk-based source acceptance policy', () => {
     expect(result.mode).toBe('SOURCE_ACCEPTANCE')
     expect(result.result).toBe('PASS')
     expect(result.taskId).toBe(p2TaskId)
-    expect(result.fieldStatus).toBe('PENDING')
+    expect(result.fieldStatus).toBe('MILESTONE_FIELD_PENDING')
     expect(result.milestoneTarget).toBe('P3-B Desktop Pilot')
     expect(result.installerRequired).toBe(false)
     expect(result.fieldVerified).toBe(false)

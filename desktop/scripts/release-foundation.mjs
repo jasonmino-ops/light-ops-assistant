@@ -16,6 +16,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const { evaluateFile, validateException } = require('../../scripts/guards/check-change-scope.js')
+const { validateRegister, validatePilot } = require('../../scripts/governance/delivery-classification.cjs')
 
 const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
 const desktopDir = resolve(scriptDir, '..')
@@ -359,6 +360,8 @@ function validateBuilderConfig(facts) {
 }
 
 async function runPolicy(options) {
+  const riskRegister = await readJson(join(repoRoot, RISK_REGISTER_PATH))
+  validateRegister(riskRegister)
   const facts = await loadReleaseFacts()
   if (facts.packageName !== 'eshop-desktop') {
     throw new Error(`unexpected Desktop package name: ${facts.packageName}`)
@@ -488,11 +491,13 @@ async function runSourceAcceptance(options) {
   assertCommitSha(productionSha, 'source-policy --production-sha')
 
   const register = await readJson(join(repoRoot, RISK_REGISTER_PATH))
+  validateRegister(register)
   if (register.schemaVersion !== 'es-risk-based-delivery.register.v1' || register.status !== 'ACTIVE_AFTER_MAIN_MERGE') {
     throw new Error('risk-based delivery register is not active and valid')
   }
   const pilot = register.sourceAcceptancePilots?.find((entry) => entry.taskId === taskId)
   if (!pilot) throw new Error(`unregistered source acceptance task: ${taskId}`)
+  validatePilot(pilot)
   if (pilot.sourceCommit !== sourceCommit) {
     throw new Error(`source commit does not match registered task ${taskId}`)
   }
@@ -587,8 +592,8 @@ async function runSourceAcceptance(options) {
   }
 
   if (!['L1', 'L2'].includes(pilot.riskClass)) throw new Error(`${taskId} source acceptance pilot must be L1 or L2`)
-  if (pilot.fieldStatus !== 'PENDING' || typeof pilot.milestoneTarget !== 'string' || pilot.milestoneTarget.trim() === '') {
-    throw new Error(`${taskId} must record FIELD status PENDING and a Milestone target`)
+  if (pilot.fieldStatus !== 'MILESTONE_FIELD_PENDING' || typeof pilot.milestoneTarget !== 'string' || pilot.milestoneTarget.trim() === '') {
+    throw new Error(`${taskId} must record FIELD status MILESTONE_FIELD_PENDING and a Milestone target`)
   }
   const fieldDebt = register.fieldDebt?.filter((entry) => entry.task === 'ES-DESKTOP-UX-01 / P1B') ?? []
   if (fieldDebt.some((entry) => entry.status === 'PASS')) throw new Error('FIELD debt register cannot record deferred debt as PASS')

@@ -47,9 +47,9 @@
       "authorizedPathSha256": {
         "app/cashier/page.tsx": "01e2b3d4487a2aff983acc9e6b0d33acb4aa44cf9a8fd508956a5f3760ece099"
       },
-      "fieldStatus": "PENDING",
+      "fieldStatus": "MILESTONE_FIELD_PENDING",
       "milestoneTarget": "P3-B Desktop Pilot",
-      "status": "SOURCE_ACCEPTANCE_PENDING"
+      "status": "SOURCE_ACCEPTED"
     }
   ]
 }

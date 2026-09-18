@@ -14,6 +14,8 @@ This record activates the already Founder-authorized additive clarification for 
 ## Required checks
 
 - Governance classification test: `PASS`.
+- Fail-closed validator tests: `PASS` (unknown class, class/runtime mismatch, boundary mismatch, and valid `MIXED` cases).
+- Root integration manifest audit: `PASS` after registering the governance test.
 - Exact three-file Scope Guard check: `PASS`.
 - `git diff --check`: `PASS`.
 - Business/runtime implementation drift: `NONE`.
