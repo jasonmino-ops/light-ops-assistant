@@ -27,7 +27,7 @@ This record activates the already Founder-authorized additive clarification for 
 - Trusted baseline: `origin/main@4d177a8b507aaa8bdccb0abf8677df71fcbe789b`.
 - Production SHA used by the old Release Lineage Gate: `4bb3cbcea90f7e29e22d4b1f71c03f948056773a`; result: `PASS`.
 - `node tests/governance-delivery-classification.test.cjs`: `PASS`.
-- `desktop/tests/release-foundation.test.ts`: `14 tests; 12 passed; 2 pre-integration skips; exit 0`.
+- `desktop/tests/release-foundation.test.ts`: `15 tests; 13 passed; 2 pre-integration skips; exit 0`.
 - `node desktop/scripts/release-foundation.mjs policy`: `PASS`.
 - Pre-integration `source-policy`: expected fail-closed result because the working register was not yet identical to trusted `origin/main`.
 - Root CORE manifest: `75/75 collected`, `74 passed`, `1 registered known failure`, `0 new failures`, `overall PASS`.

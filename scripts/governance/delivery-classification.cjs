@@ -45,7 +45,7 @@ function validateFieldDebt(entry, index) {
     if (typeof entry[key] !== 'string' || entry[key].trim() === '') fail(`fieldDebt[${index}].${key} is required`)
   }
   if (!['L1', 'L2', 'L3'].includes(entry.riskClass)) fail(`fieldDebt[${index}].riskClass is invalid`)
-  if (!['DEFERRED', 'PASS'].includes(entry.status)) fail(`fieldDebt[${index}].status is invalid`)
+  if (entry.status !== 'DEFERRED') fail(`fieldDebt[${index}].status must be DEFERRED until separately cleared`)
 }
 
 function validateRegister(register) {
@@ -78,6 +78,14 @@ function validateRegister(register) {
 
 function validatePilot(pilot) {
   if (!pilot || typeof pilot !== 'object' || Array.isArray(pilot)) fail('source acceptance pilot must be an object')
+  for (const key of ['taskId', 'sourceBranch', 'scopeExceptionPath', 'boundaryGroup', 'milestoneTarget']) {
+    if (typeof pilot[key] !== 'string' || pilot[key].trim() === '') fail(`source acceptance pilot ${key} is required`)
+  }
+  for (const key of ['sourceCommit', 'baselineOriginMain']) {
+    if (typeof pilot[key] !== 'string' || !/^[a-f0-9]{40}$/.test(pilot[key])) fail(`${pilot.taskId ?? 'pilot'}.${key} must be a commit SHA`)
+  }
+  if (pilot.status !== 'SOURCE_ACCEPTED') fail(`${pilot.taskId ?? 'pilot'}.status must be SOURCE_ACCEPTED`)
+  if (pilot.fieldStatus !== 'MILESTONE_FIELD_PENDING') fail(`${pilot.taskId ?? 'pilot'}.fieldStatus must be MILESTONE_FIELD_PENDING`)
   if (!DELIVERY_CLASSES.includes(pilot.deliveryClass)) fail(`${pilot.taskId ?? 'pilot'}.deliveryClass is unknown`)
   if (!DELIVERY_RUNTIMES.includes(pilot.runtimeDelivery)) fail(`${pilot.taskId ?? 'pilot'}.runtimeDelivery is unknown`)
   if (!Array.isArray(pilot.boundaryPaths) || pilot.boundaryPaths.length === 0) fail(`${pilot.taskId ?? 'pilot'}.boundaryPaths is required`)

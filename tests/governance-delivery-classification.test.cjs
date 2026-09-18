@@ -40,8 +40,11 @@ assert.throws(() => validateRegister({
 }), /classes are invalid/)
 assert.throws(() => validateRegister({ ...register, status: 'DRAFT' }), /register status is not active/)
 assert.throws(() => validateRegister({ ...register, fieldDebt: [{ ...register.fieldDebt[0], riskClass: 'L4' }] }), /fieldDebt\[0\]\.riskClass is invalid/)
+assert.throws(() => validateRegister({ ...register, fieldDebt: [{ ...register.fieldDebt[0], status: 'PASS' }] }), /fieldDebt\[0\]\.status must be DEFERRED/)
 
 assert.throws(() => validatePilot({ ...p2, deliveryClass: 'UNKNOWN' }), /delivery classification invalid/)
+assert.throws(() => validatePilot({ ...p2, status: 'DRAFT' }), /status must be SOURCE_ACCEPTED/)
+assert.throws(() => validatePilot({ ...p2, milestoneTarget: '' }), /milestoneTarget is required/)
 assert.throws(() => validatePilot({ ...p2, runtimeDelivery: 'DESKTOP_SHELL_LOCAL_RUNTIME' }), /boundary\/runtime mismatch|runtime must be remote Web/)
 assert.throws(() => validatePilot({ ...p2, boundaryPaths: ['desktop/src/main/main.ts'] }), /WEB boundary must be Web-only/)
 assert.throws(() => validatePilot({
