@@ -20,8 +20,7 @@ function isWebPath(filePath) {
   return typeof filePath === 'string' && (
     filePath.startsWith('app/') ||
     filePath.startsWith('lib/') ||
-    filePath === 'middleware.ts' ||
-    filePath.startsWith('tests/')
+    filePath === 'middleware.ts'
   )
 }
 
@@ -62,6 +61,9 @@ function validatePilot(pilot) {
   if (!Array.isArray(pilot.boundaryPaths) || pilot.boundaryPaths.length === 0) fail(`${pilot.taskId ?? 'pilot'}.boundaryPaths is required`)
   const hasWeb = pilot.boundaryPaths.some(isWebPath)
   const hasDesktop = pilot.boundaryPaths.some(isDesktopShellPath)
+  if (pilot.boundaryPaths.some((filePath) => !isWebPath(filePath) && !isDesktopShellPath(filePath))) {
+    fail(`${pilot.taskId ?? 'pilot'} contains an unrecognized boundary path`)
+  }
   if (pilot.deliveryClass === 'WEB') {
     if (pilot.runtimeDelivery !== 'REMOTE_WEB_VIA_BROWSERWINDOW_LOADURL') fail(`${pilot.taskId ?? 'pilot'} WEB runtime must be remote Web`)
     if (!hasWeb || hasDesktop) fail(`${pilot.taskId ?? 'pilot'} WEB boundary must be Web-only`)

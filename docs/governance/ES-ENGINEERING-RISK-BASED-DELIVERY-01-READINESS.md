@@ -2,7 +2,14 @@
 
 ## Governance
 
-This L3 governance change is governed by ES-GOV-001, ES-ENG-001, the Founder-Gated Workflow, AGENTS.md, and the Founder authorization in the current task.
+Governed by:
+
+- ES-CONST-001 Store Operating System Constitution
+- ES-STRAT-001 Store Operating System Strategy Baseline
+- ES-ENG-001 Engineering Workflow Baseline
+- ES-GOV-001 Level 0 Governance Baseline
+- E-Shop Founder-Gated Agent Development Workflow V1.0
+- AGENTS.md
 
 ## Goal
 
@@ -10,7 +17,11 @@ Make WEB / DESKTOP_SHELL / MIXED delivery selection explicit and machine-validat
 
 ## Current State
 
-The additive clarification commit `a2ccb8fbf38469b9a72a63577f0a701d8477c377` records the intended classes, but review found that executable fail-closed validation and official test registration were incomplete. This correction round closes those gaps.
+The additive clarification and correction commits are isolated on `codex/es-desktop-web-shell-delivery-classification`. The final candidate includes fail-closed validation, negative tests, official manifest registration, and durable evidence records.
+
+## Prerequisites
+
+Trusted `origin/main` is `4d177a8b507aaa8bdccb0abf8677df71fcbe789b`; the known Production lineage SHA `4bb3cbcea90f7e29e22d4b1f71c03f948056773a` is an ancestor. The current worktree is isolated and no business implementation is in scope.
 
 ## Scope
 
@@ -29,14 +40,22 @@ No business implementation, Desktop runtime, Electron, Provider, installer, Prin
 
 L3 because this changes Release Foundation governance and controls whether packaging/FIELD gates are selected. Fail-closed validation and old-governance review are required.
 
-## Production / Runtime / Contract Impact
+## Production Impact
+
+No Production deployment, promotion, environment change, or rollback is part of this package.
+
+## Runtime / Contract / Provider Impact
 
 No runtime or Production behavior changes. The existing strict `policy` mode remains required for release candidates. `SOURCE_ACCEPTANCE` remains non-release and non-Production.
 
-## Required Review / Founder Approval
+## Required Review
 
-Fresh-context independent review is required. Founder approval is recorded by the current task and is limited to this exact governance scope and trusted integration after all old gates pass.
+Fresh-context independent review is required.
+
+## Required Founder Approval
+
+Founder approval is recorded by the current task and is limited to this exact governance scope and trusted integration after all old gates pass.
 
 ## Decision
 
-`READY WITH CORRECTIONS` — implementation may continue on the isolated governance branch; trusted integration remains blocked until all gates and review pass.
+`READY`

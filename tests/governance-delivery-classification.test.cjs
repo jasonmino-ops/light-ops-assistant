@@ -42,6 +42,10 @@ assert.throws(() => validateRegister({
 assert.throws(() => validatePilot({ ...p2, deliveryClass: 'UNKNOWN' }), /delivery classification invalid/)
 assert.throws(() => validatePilot({ ...p2, runtimeDelivery: 'DESKTOP_SHELL_LOCAL_RUNTIME' }), /boundary\/runtime mismatch|runtime must be remote Web/)
 assert.throws(() => validatePilot({ ...p2, boundaryPaths: ['desktop/src/main/main.ts'] }), /WEB boundary must be Web-only/)
+assert.throws(() => validatePilot({
+  ...p2,
+  boundaryPaths: ['app/cashier/page.tsx', 'prisma/schema.prisma'],
+}), /unrecognized boundary path/)
 assert.doesNotThrow(() => validatePilot({
   ...p2,
   taskId: 'ES-TEST-DESKTOP-SHELL',

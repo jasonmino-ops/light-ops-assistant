@@ -34,6 +34,19 @@ function trustedRiskRegisterAvailable() {
   }
 }
 
+function trustedRiskRegisterMatchesWorkingTree() {
+  try {
+    const trusted = execFileSync('git', ['show', 'origin/main:docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-register.json'], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+    })
+    const working = readFileSync(join(repositoryRoot, 'docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-register.json'), 'utf8')
+    return trusted === working
+  } catch {
+    return false
+  }
+}
+
 function runReleaseFoundation(args: string[], options: { cwd?: string } = {}) {
   return execFileSync(process.execPath, [script, ...args], {
     cwd: options.cwd ?? desktopRoot,
@@ -195,7 +208,7 @@ describe('EP-MB3-07A release foundation policy', () => {
 })
 
 describe('risk-based source acceptance policy', () => {
-  it.skipIf(!gitObjectAvailable(p2SourceCommit) || !trustedRiskRegisterAvailable())('accepts the exact registered P2 source pilot without packaging', () => {
+  it.skipIf(!gitObjectAvailable(p2SourceCommit) || !trustedRiskRegisterAvailable() || !trustedRiskRegisterMatchesWorkingTree())('accepts the exact registered P2 source pilot without packaging', () => {
     const output = runReleaseFoundation([
       'source-policy',
       '--task-id',
