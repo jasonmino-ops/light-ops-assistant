@@ -19,7 +19,7 @@ This record activates the already Founder-authorized additive clarification for 
 - Full 16-path Scope Guard check: `PASS`.
 - `git diff --check`: `PASS`.
 - Business/runtime implementation drift: `NONE`.
-- Independent fresh-context review: `PENDING` for the final candidate; this must be `PASS` before trusted integration.
+- Independent fresh-context review: `PASS` for exact candidate `3e7381eb84c198470c7695920cc8d94ee7aec88a`.
 - Old strict governance remains the governing gate for this L3 change.
 
 ## Verification snapshot
@@ -45,6 +45,6 @@ This record activates the already Founder-authorized additive clarification for 
 
 ## Activation status
 
-`PENDING FINAL INDEPENDENT REVIEW AND TRUSTED ORIGIN/MAIN INTEGRATION`.
+`ACTIVE`.
 
-This record must not be read as `ACTIVE` until the commit is independently reviewed, passes the old strict gates, and is integrated into trusted `origin/main`.
+Activation receipt: exact candidate `3e7381eb84c198470c7695920cc8d94ee7aec88a` passed the old strict gates and was fast-forward integrated into trusted `origin/main`. The post-integration status update is documentation-only; it does not alter business/runtime behavior or authorize Production, FIELD VERIFIED, Freeze, or Closure.
