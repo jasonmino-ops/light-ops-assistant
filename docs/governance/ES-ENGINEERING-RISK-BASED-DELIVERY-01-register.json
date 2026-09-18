@@ -2,6 +2,22 @@
   "schemaVersion": "es-risk-based-delivery.register.v1",
   "policyId": "ES-ENGINEERING-RISK-BASED-DELIVERY-01",
   "status": "ACTIVE_AFTER_MAIN_MERGE",
+  "deliveryClassification": {
+    "schemaVersion": "es-risk-based-delivery.delivery-classification.v1",
+    "classes": [
+      "WEB",
+      "DESKTOP_SHELL",
+      "MIXED"
+    ],
+    "remoteWebDesktopRule": "WEB changes delivered through BrowserWindow.loadURL do not require Desktop repackaging unless Desktop Shell bytes also change.",
+    "milestoneIdentity": [
+      "desktopShellCandidateSha",
+      "desktopShellVersion",
+      "desktopInstallerSha256",
+      "productionWebDeploymentId",
+      "productionWebSourceSha"
+    ]
+  },
   "fieldDebt": [
     {
       "task": "ES-DESKTOP-UX-01 / P1B",
@@ -22,6 +38,8 @@
       "sourceBranch": "codex/es-desktop-ux-01-p2-cashier-minimal-simplification",
       "baselineOriginMain": "122b37e3f2c589fc0aacad55d26b01b6f0773d1c",
       "scopeExceptionPath": "docs/change-gates/exceptions/ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION.json",
+      "deliveryClass": "WEB",
+      "runtimeDelivery": "REMOTE_WEB_VIA_BROWSERWINDOW_LOADURL",
       "boundaryGroup": "cashier/customer/mobile business",
       "boundaryPaths": [
         "app/cashier/page.tsx"
