@@ -6,8 +6,8 @@ This record activates the already Founder-authorized additive clarification for 
 
 ## Governance change
 
-- Final candidate commits under review: `a2ccb8fbf38469b9a72a63577f0a701d8477c377`, `15d3bab`, and the correction commit containing the final validator and evidence updates.
-- Files: additive clarification, machine-readable register extension, fail-closed validator/tests, official manifest registration, and evidence records.
+- Final candidate is the current clean branch HEAD; its history contains the additive clarification, evidence records, fail-closed validator/test corrections, official manifest registration, and acceptance-record template corrections.
+- Files: 15 governance/evidence/test/tooling paths; no business/runtime implementation paths.
 - Intended effect: select the correct verification boundary while retaining all existing risk and release gates.
 - Effective condition: trusted integration into `origin/main`.
 
@@ -16,7 +16,7 @@ This record activates the already Founder-authorized additive clarification for 
 - Governance classification test: `PASS`.
 - Fail-closed validator tests: `PASS` (unknown class, class/runtime mismatch, boundary mismatch, and valid `MIXED` cases).
 - Root manifest audit: `PASS` after registering the governance test in the CORE lane.
-- Exact three-file Scope Guard check: `PASS`.
+- Full 15-path Scope Guard check: `PASS`.
 - `git diff --check`: `PASS`.
 - Business/runtime implementation drift: `NONE`.
 - Independent fresh-context review: `PENDING` for the final candidate; this must be `PASS` before trusted integration.

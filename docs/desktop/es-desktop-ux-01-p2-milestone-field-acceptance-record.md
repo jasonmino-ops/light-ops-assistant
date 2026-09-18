@@ -2,11 +2,34 @@
 
 ## Governance
 
+Governed by:
+
+- ES-CONST-001 Store Operating System Constitution
+- ES-STRAT-001 Store Operating System Strategy Baseline
+- ES-ENG-001 Engineering Workflow Baseline
+- ES-GOV-001 Level 0 Governance Baseline
+- E-Shop Founder-Gated Agent Development Workflow V1.0
+- ES-ENGINEERING-RISK-BASED-DELIVERY-01 Risk-Based Development / Milestone FIELD Governance Addendum
+
+## Basic Information
+
 - Task: `ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION`
 - Risk class: `L2`
 - Source Accepted SHA: `db56bb9035afd74c28d26df42a7f7de89843bbce`
 - Milestone target: `P3-B Desktop Pilot`
 - Record purpose: record supplied V727 evidence without changing P2 implementation.
+
+## Acceptance Decision
+
+This record evaluates the P2 milestone gate. It does not accept a release, grant Production authorization, or reopen P2 implementation.
+
+## Accepted Scope
+
+Only the P2 Desktop visibility/preservation observations listed below and their milestone evidence classification.
+
+## Explicit Non-Scope
+
+No Cashier business logic, Offline/Sync semantics, Browser business change, P1A/P1B implementation, Printing, schema, migration, API, packaging, deployment, or final freeze.
 
 ## Evidence
 
@@ -44,6 +67,22 @@ The frozen Roadmap requires one real Desktop smoke and one real Browser smoke fo
 - P2 CLOSED: `NO`
 
 Required follow-up is a small authenticated Browser smoke on the approved machine, including the preserved `打开顾客屏` path and fallback. No code, packaging, or Production change is required by this record.
+
+## Level 0 Compliance
+
+No historical P1A/P1B evidence is reinterpreted. `SOURCE ACCEPTED` is not treated as `FIELD VERIFIED`, release, Freeze, or Closure.
+
+## Acceptance Conditions
+
+P2 can be accepted at this milestone only after the frozen Roadmap's real Browser smoke is recorded in addition to the supplied Desktop evidence.
+
+## Result
+
+`HOLD` — the exact missing evidence is recorded above.
+
+## Merge
+
+This evidence record does not authorize a merge, Production action, or next Phase.
 
 ## Boundary preservation
 
