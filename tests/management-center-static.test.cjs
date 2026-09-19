@@ -35,7 +35,7 @@ assert.match(home, /<Link href="\/management"[^>]*>\{t\('home\.managementCenter'
 
 for (const file of translations) {
   const source = fs.readFileSync(file, 'utf8')
-  assert.match(source, /managementCenter:/, `${file} must translate the home entry`) 
+  assert.match(source, /managementCenter:/, `${file} must translate the home entry`)
   assert.match(source, /management: \{/, `${file} must translate the Management Center namespace`)
 }
 
