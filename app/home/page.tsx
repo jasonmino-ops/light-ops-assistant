@@ -381,6 +381,7 @@ export default function HomePage() {
           </div>
         </div>
         <div style={s.brandRight}>
+          <Link href="/management" style={s.managementLink}>{t('home.managementCenter')}</Link>
           <LangDropdown lang={lang} setLang={setLang} />
           {realRole === 'OWNER' && (
             <ModeDropdown
@@ -1149,6 +1150,21 @@ const s: Record<string, React.CSSProperties> = {
     gap: 4,
     flexShrink: 0,
     minWidth: 118,
+  },
+  managementLink: {
+    minHeight: 34,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '6px 11px',
+    borderRadius: 999,
+    border: '1px solid #cfe4ff',
+    background: '#eef6ff',
+    color: '#1467d8',
+    fontSize: 12,
+    fontWeight: 700,
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
   },
   switchBtn: {
     fontSize: 10,
