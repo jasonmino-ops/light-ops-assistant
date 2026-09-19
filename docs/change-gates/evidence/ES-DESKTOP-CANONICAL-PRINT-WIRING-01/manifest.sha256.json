@@ -1,0 +1,33 @@
+{
+  "taskId": "ES-DESKTOP-CANONICAL-PRINT-WIRING-01",
+  "candidateSha": "a5e1ec4e9c19f85fae4db58745f50d665c831e56",
+  "baselineSha": "f5cec5c8cb7acc96d199493d9336438dd4ca2327",
+  "environment": "2026-09-19 Asia/Phnom_Penh; Node v24.14.0; isolated PostgreSQL 127.0.0.1:65432/light_ops_test; local Candidate server 3100; local baseline server 3101",
+  "sourceArtifacts": [
+    {
+      "path": "test-results/test-evidence/root-lanes/20260919T162649Z-a5e1ec4e9c19/integration/summary.json",
+      "sha256": "1ba5cd2dc18e3ff80136de05d2af3f3dd8faf8426f7fec5a077fbb1b21e9cbc6"
+    },
+    {
+      "path": "test-results/test-evidence/root-lanes/20260919T162649Z-a5e1ec4e9c19/integration/root-integration-suite.log",
+      "sha256": "c0f609fc470b4d43ecc878e465303bdbf7beae6eec0f2f6e4881409b47aca0a3"
+    }
+  ],
+  "durableArtifacts": [
+    {
+      "path": "candidate-root-integration-normalized.md",
+      "sha256": "8305280de6e6812ed5c5ad7c97e0e656ffe0045af2f9c35b92145872a95bd278"
+    },
+    {
+      "path": "baseline-comparison-normalized.md",
+      "sha256": "a50e9e6463f55b1cdf8c3ae5b5e4917f8d629ad4737fe12d5c3e7633f3eafbb3"
+    }
+  ],
+  "records": [
+    {"id": "KTF-20260912-01", "classification": "historical timing flake; current baseline-equivalent", "candidateCausation": "NO"},
+    {"id": "KTF-20260912-02", "classification": "baseline-equivalent browser harness recurrence", "candidateCausation": "NO"},
+    {"id": "KTF-20260912-03", "classification": "existing Next.js request-scope harness debt", "candidateCausation": "NO"},
+    {"id": "KTF-20260912-07", "classification": "fixed-date fixture drift; baseline-equivalent", "candidateCausation": "NO"}
+  ],
+  "note": "SHA-256 values for the two committed normalized evidence files are recorded above; source artifact values preserve the original run identity without relying on ignored files for durable review."
+}
