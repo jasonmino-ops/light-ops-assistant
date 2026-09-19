@@ -6,7 +6,10 @@
   "baseOriginMainSha": "e4b6035e70321aeaaf14d64c3dc98dc896639a56",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-09-19T17:17:55Z",
+  "featureMergeCommitSha": "27da1a046c99d1712ed8c15d22597ba4e69364e2",
+  "closureReason": "Closed after the exact Option D Product Candidate and its authorized durable KTF/evidence amendment entered trusted origin/main by fast-forward. The nine protected product/test paths remain byte-exact at their approved SHA-256 values; this historical exception cannot authorize future changes. Production migration, deployment and FIELD remain separate Founder-gated actions.",
   "authorizedPaths": [
     "prisma/schema.prisma",
     "prisma/migrations/20260919090000_add_computer_binding_network_mode_snapshot/migration.sql",
