@@ -1,7 +1,7 @@
 {
   "version": 1,
   "taskId": "ES-DESKTOP-UX-01-P5-B",
-  "featureBranch": "codex/es-desktop-ux-01-p5-management-center",
+  "featureBranch": "codex/es-desktop-ux-01-p5-integration-final",
   "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
   "baseOriginMainSha": "b08506233aec40b4e6e52aa9feab77a6087489e1",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
