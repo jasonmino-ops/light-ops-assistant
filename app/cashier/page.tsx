@@ -3516,22 +3516,40 @@ export default function CashierPage() {
     const apiPayment = submitPayment === 'OTHER' ? 'CASH' : submitPayment
     const submittedItems = cashierDisplayItems(cart)
     const submittedTotal = cartTotal(cart)
-    // Explicit pilot opt-in, never inferred from isDesktopPos (also true in Desktop 0.4.7).
-    const networkPrint = window.location.pathname === '/cashier'
+    // Browser keeps explicit pilot opt-in. Desktop uses a server-authorized
+    // RC10 observation and remains legacy receipt-preview when unavailable.
+    const browserNetworkPrint = window.location.pathname === '/cashier'
       && !window.eshopDesktopRuntime?.isDesktop
       && new URLSearchParams(window.location.search).get('networkPrint') === 'v01'
-    const networkMode = networkPrint ? new URLSearchParams(window.location.search).get('networkMode') : null
-    if (networkPrint && networkMode !== 'FRONT_ONLY' && networkMode !== 'SHARED_PRINTER') {
+    const browserNetworkMode = browserNetworkPrint ? new URLSearchParams(window.location.search).get('networkMode') : null
+    if (browserNetworkPrint && browserNetworkMode !== 'FRONT_ONLY' && browserNetworkMode !== 'SHARED_PRINTER') {
       setSubmitError(lang === 'en' ? 'Choose FRONT_ONLY or SHARED_PRINTER in the network cashier link.'
         : lang === 'km' ? 'សូមជ្រើសរើស FRONT_ONLY ឬ SHARED_PRINTER ក្នុងតំណគិតប្រាក់បណ្ដាញ។'
         : '请使用明确指定 FRONT_ONLY 或 SHARED_PRINTER 模式的网络收银入口。')
       setSubmitting(false)
       return
     }
+    let networkPrint = browserNetworkPrint
+    let networkMode: NetworkMode | null = browserNetworkMode as NetworkMode | null
     try {
       if (!requireOnlinePosAuthorization()) {
         setSubmitting(false)
         return
+      }
+      if (isDesktopPos) {
+        try {
+          const modeResponse = await fetch(`/api/computer-client/network-mode?storeCode=${encodeURIComponent(storeCode)}`, {
+            cache: 'no-store',
+            headers: posDeviceHeaders(storeCode),
+          })
+          const modeBody = await modeResponse.json().catch(() => null)
+          if (modeResponse.ok && (modeBody?.mode === 'FRONT_ONLY' || modeBody?.mode === 'SHARED_PRINTER')) {
+            networkPrint = true
+            networkMode = modeBody.mode
+          }
+        } catch {
+          // Fail closed to the existing Desktop receipt path.
+        }
       }
       const res = await fetch('/api/cashier/sales', {
         method: 'POST',
@@ -3564,13 +3582,17 @@ export default function CashierPage() {
       setCart([])
       setPayment('CASH')
       setReceiptPreviewOpen(false)
-      const networkQueued = body.printing?.profile === 'network-v2' && body.printing?.state === 'QUEUED'
-      const networkRoles = networkPrint
-        ? parseConfirmedCashierNetworkRoles(body.printing, networkMode as NetworkMode)
+      const networkResponse = body.printing?.profile === 'network-v2'
+      const networkQueued = networkResponse && body.printing?.state === 'QUEUED'
+      const responseNetworkMode = body.printing?.mode === 'FRONT_ONLY' || body.printing?.mode === 'SHARED_PRINTER'
+        ? body.printing.mode as NetworkMode
+        : networkMode
+      const networkRoles = networkResponse && responseNetworkMode
+        ? parseConfirmedCashierNetworkRoles(body.printing, responseNetworkMode)
         : null
       const networkConfirmed = networkRoles !== null
       // No receipt handed to the legacy auto/manual print effect for Network-owned sales.
-      const receipt = isDesktopPos && !networkPrint && !networkQueued
+      const receipt = isDesktopPos && !networkResponse
         ? buildReceiptSnapshot({
             items: submittedItems,
             totalAmount: submittedTotal,
@@ -3583,7 +3605,7 @@ export default function CashierPage() {
         orderNo: body.orderNo,
         totalAmount: submittedTotal,
         khqrFallback: body.khqrFallback ?? false,
-        ...(networkPrint ? {
+        ...(networkResponse || (browserNetworkPrint && networkPrint) ? {
           networkPrintStatus: networkConfirmed ? 'QUEUED' as const : 'UNCONFIRMED' as const,
           networkPrintRoles: networkConfirmed ? networkRoles : undefined,
         } : {}),

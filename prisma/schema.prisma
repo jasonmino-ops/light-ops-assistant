@@ -1806,6 +1806,8 @@ model ComputerBinding {
   decidedAt        DateTime?
   boundAt          DateTime? // 设备用 deviceSecret 确认绑定的时间
   lastSeenAt       DateTime?
+  lastNetworkMode  String?   @db.VarChar(20)
+  lastNetworkModeAt DateTime?
   disabledByUserId String?
   disabledAt       DateTime?
 

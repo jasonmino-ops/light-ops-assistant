@@ -4,6 +4,7 @@ import { readRelayTimingConfig } from '@/lib/es-tray-relay/config'
 import { relayError, relayJson, withRelayApiError } from '@/lib/es-tray-relay/http'
 import { claimNextRelayPrintJob, readNetworkQueueState } from '@/lib/es-tray-relay/service'
 import { NETWORK_MODE_GUARD_CLIENT_VERSION, parseNetworkMode } from '@/e-shop-tray/src/networkContract'
+import { recordDesktopNetworkModeObservation } from '@/lib/desktop-network-print'
 
 export const runtime = 'nodejs'
 
@@ -22,6 +23,13 @@ export async function POST(req: NextRequest) {
       if (schemaVersion !== 2) return relayError('NETWORK_MODE_GUARD_REQUIRES_V2', 400)
       try { expectedMode = parseNetworkMode(requestedMode) }
       catch { return relayError('NETWORK_INVALID_MODE', 400) }
+      const observed = await recordDesktopNetworkModeObservation({
+        tenantId,
+        storeId,
+        bindingId: binding.id,
+        mode: expectedMode,
+      })
+      if (!observed) return relayError('NETWORK_MODE_OBSERVATION_UNAVAILABLE', 503)
     }
     const job = await claimNextRelayPrintJob({
       tenantId,
