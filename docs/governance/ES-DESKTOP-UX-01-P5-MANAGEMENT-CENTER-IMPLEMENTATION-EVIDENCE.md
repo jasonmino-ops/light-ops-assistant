@@ -36,8 +36,11 @@ This record captures the Founder-authorized P5 first slice. It is additive evide
 - `npm run build`: PASS with `DATABASE_URL` supplied for local Prisma Client generation; the new `/management` route compiled and was emitted.
 - Local OWNER browser smoke: PASS — `/home` links to `/management`; all five groups and existing owner entries render.
 - Local STAFF browser smoke: PASS — business/support entries render and owner-only entries are hidden. This uses local `DEV_ROLE=STAFF`, not a real production STAFF session.
-- Real STAFF session smoke: pending environment-backed execution.
-- `npm run test:core`: BLOCKED before collection by the repository runner's active known-failure metadata (`KTF-20260912-01` has no machine-checkable failure-shape fingerprint); no core tests were collected.
+- REAL STAFF SESSION: `NOT VERIFIED / DEFERRED`.
+  - Reason: Unable to safely obtain a real STAFF session in the available validation environment; the Telegram production authentication flow is blocked by browser security policy.
+- KTF-20260912-01: `PRE-EXISTING KNOWN FAILURE`.
+- P5 causality to KTF-20260912-01: `NOT SUPPORTED`.
+- Core regression: `BLOCKED BEFORE TEST COLLECTION` by the repository runner's active known-failure metadata (`KTF-20260912-01` has no machine-checkable failure-shape fingerprint); no core tests were collected.
 - Independent review, including the 10-item UX Complexity Check from the Founder UX Addendum: PASS. The review verified the dashboard/system/technical entries were hidden, POS entry was consolidated, and no duplicate business logic or false status was introduced.
 - Scope Guard: PASS on the explicit seven-file implementation set.
 - Browser/Desktop consistency: source-level PASS; live real-session evidence remains unavailable.
