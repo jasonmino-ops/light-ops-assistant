@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "taskId": "ES-DESKTOP-UX-01-P5-B",
+  "featureBranch": "codex/es-desktop-ux-01-p5-management-center",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "b08506233aec40b4e6e52aa9feab77a6087489e1",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/cashier/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "d63d19b1eefd1170740fa43482230a4d0793e11b2355d57b116bf4b5518a1525"
+  },
+  "createdAt": "2026-09-19T20:04:30Z",
+  "approvedAt": "2026-09-19T20:04:30Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder authorization in the current ES-DESKTOP-UX-01 / P5-B Cashier to Management Center Direct Entry task",
+    "statement": "Founder authorized an ACTIVE PRE_COMMIT_CONTENT_SHA256 exception for exactly app/cashier/page.tsx, baseline Git blob 4e31b4f377f0aff95bc279c4e793be37e1320ada and the corresponding SHA-256 content hash recorded above. The authorization is limited to the Cashier to Management Center direct-entry micro-slice and does not authorize Cashier redesign, transaction persistence, Browser holds, checkout or payment changes, pending-order changes, OperatorBoundary, Customer Display, Printing, Runtime, Electron, IPC, auth, session, context, or unrelated cleanup.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the exact P5-B protected Cashier path change: add the existing-header Management Center entry, block navigation while the active cart is non-empty, allow navigation when empty, generate minimal Browser/Desktop management context, and show the minimum user-facing warning. Browser and Desktop must share the same entry logic. No automatic save, automatic hold, automatic clear, Browser hold capability, persistence contract, or business-flow refactor is authorized.",
+  "allowedPurposes": [
+    "Add a visible 管理中心 entry in the existing Cashier header action area",
+    "Block navigation when the active cart is non-empty and allow it when empty",
+    "Generate minimal Browser/Desktop Management Center navigation context",
+    "Show the minimum user-facing warning when navigation is blocked",
+    "Run the separately authorized P5-B targeted validation and Scope Guard"
+  ],
+  "prohibitedChanges": [
+    "Cashier redesign or P8 visual work",
+    "Cart state, checkout, payment, pending-order, or persistence refactor",
+    "New Browser hold capability, automatic save, automatic hold, automatic clear, or automatic discard",
+    "OperatorBoundary, operator selection, Customer Display, RC10, network-v2, Printing, Runtime, Electron, IPC, WindowManager, Activation, or Single Authorization changes",
+    "Auth, session, context, IAM, ACL, middleware, API, DB, schema, migration, dependency, or unrelated cleanup changes",
+    "FIELD VERIFIED, FINAL FROZEN, or CLOSED claims"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized P5-B feature merge. It must not remain active as authorization for future Cashier changes."
+}
