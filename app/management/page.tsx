@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 
@@ -81,7 +82,24 @@ export default function ManagementPage() {
   const { effectiveRole, storeName, storeCode, tenantName } = useWorkMode()
   const isOwner = effectiveRole === 'OWNER'
   const currentStore = storeName ?? tenantName
-  const cashierHref = storeCode ? `/cashier?storeCode=${encodeURIComponent(storeCode)}` : '/cashier'
+  const [navigationContext, setNavigationContext] = useState({ fromDesktop: false, storeCode: null as string | null })
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setNavigationContext({
+      fromDesktop: params.get('from') === 'desktop',
+      storeCode: params.get('storeCode')?.trim() || null,
+    })
+  }, [])
+
+  const navigationStoreCode = navigationContext.storeCode ?? storeCode
+  const cashierHref = navigationContext.fromDesktop
+    ? navigationStoreCode
+      ? `/desktop/pos?mode=pos&storeCode=${encodeURIComponent(navigationStoreCode)}`
+      : '/desktop/pos?mode=pos'
+    : navigationStoreCode
+      ? `/cashier?storeCode=${encodeURIComponent(navigationStoreCode)}`
+      : '/cashier'
 
   const groups: Group[] = [
     {

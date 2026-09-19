@@ -29,8 +29,14 @@ assert.match(management, /effectiveRole === 'OWNER'/, 'visibility must use the e
 assert.doesNotMatch(management, /apiFetch|fetch\(|\/api\//, 'management must not add API calls')
 assert.doesNotMatch(management, /online|connected|runtime|IPC|network-v2|Provider Runtime|Local Printing Contract/i, 'management must not expose technical or false status language')
 assert.doesNotMatch(management, /systemCheck|computerClient|businessDashboard/, 'management must hide future or technical entries')
-assert.doesNotMatch(management, /['"]\/dashboard|['"]\/desktop\/pos/, 'management must not expose P5 out-of-scope dashboard or desktop POS entries')
-assert.doesNotMatch(management, /useState|useReducer|useEffect/, 'management should remain a navigation hub without business state')
+assert.doesNotMatch(management, /['"]\/dashboard/, 'management must not expose a dashboard entry')
+assert.doesNotMatch(management, /CashierPage|OperatorBoundary|UsbCustomerDisplayBridge|checkout|payment|cartState|pendingOrderState/, 'management must not duplicate Cashier or Desktop business logic')
+assert.match(management, /params\.get\('from'\) === 'desktop'/, 'management must recognize the authorized Desktop navigation context')
+assert.match(management, /params\.get\('storeCode'\)/, 'management must preserve the existing storeCode navigation context')
+assert.match(management, /\/desktop\/pos\?mode=pos&storeCode=/, 'management must return to the authorized Desktop POS route')
+assert.match(management, /\/cashier\?storeCode=/, 'management must retain the authorized Browser Cashier return route')
+assert.match(management, /useState|useEffect/, 'management may use only the minimal state/effect needed for navigation context')
+assert.doesNotMatch(management, /useReducer/, 'management must not add a reducer or business state machine')
 assert.match(home, /<Link href="\/management"[^>]*>\{t\('home\.managementCenter'\)\}/, 'home must link to the Management Center')
 
 for (const file of translations) {

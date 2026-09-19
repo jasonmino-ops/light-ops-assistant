@@ -453,6 +453,9 @@ type DesktopCopy = {
   installDesktop: string
   desktopMode: string
   openCustomerDisplay: string
+  managementCenter: string
+  managementBlockedBrowser: string
+  managementBlockedDesktop: string
   enterFullscreen: string
   exitFullscreen: string
   rememberedStore: string
@@ -562,6 +565,9 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       installDesktop: 'Install to PC',
       desktopMode: 'Desktop mode',
       openCustomerDisplay: 'Open Customer Display',
+      managementCenter: 'Management Center',
+      managementBlockedBrowser: 'Finish or clear the current transaction before opening Management Center.',
+      managementBlockedDesktop: 'Finish the current transaction or hold it before opening Management Center.',
       enterFullscreen: 'Enter full screen',
       exitFullscreen: 'Exit full screen',
       rememberedStore: 'This store is remembered. Desktop open will enter this cashier.',
@@ -670,6 +676,9 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
       installDesktop: 'ដំឡើងលើកុំព្យូទ័រ',
       desktopMode: 'របៀប Desktop',
       openCustomerDisplay: 'បើកអេក្រង់អតិថិជន',
+      managementCenter: 'មជ្ឈមណ្ឌលគ្រប់គ្រង',
+      managementBlockedBrowser: 'សូមបញ្ចប់ ឬសម្អាតការលក់បច្ចុប្បន្នសិន មុនពេលបើកមជ្ឈមណ្ឌលគ្រប់គ្រង។',
+      managementBlockedDesktop: 'សូមបញ្ចប់ការលក់បច្ចុប្បន្ន ឬផ្អាកបញ្ជាទិញសិន មុនពេលបើកមជ្ឈមណ្ឌលគ្រប់គ្រង។',
       enterFullscreen: 'ចូលពេញអេក្រង់',
       exitFullscreen: 'ចេញពីពេញអេក្រង់',
       rememberedStore: 'ហាងនេះត្រូវបានចងចាំ។ បើកលើ Desktop នឹងចូលទៅកាន់ប្រអប់គិតលុយនេះ។',
@@ -777,6 +786,9 @@ function desktopCopy(lang: DeskLang): DesktopCopy {
     installDesktop: '安装到电脑',
     desktopMode: '桌面模式',
     openCustomerDisplay: '打开顾客屏',
+    managementCenter: '管理中心',
+    managementBlockedBrowser: '请先完成或清空当前交易后再进入管理中心。',
+    managementBlockedDesktop: '请先完成当前交易，或挂单后再进入管理中心。',
     enterFullscreen: '进入全屏',
     exitFullscreen: '退出全屏',
     rememberedStore: '已记住当前门店，桌面打开会进入本店收银台',
@@ -1039,6 +1051,11 @@ const s: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 700,
     cursor: 'pointer',
+  },
+  managementBtn: {
+    background: 'rgba(96,165,250,.16)',
+    borderColor: 'rgba(147,197,253,.28)',
+    color: '#dbeafe',
   },
   kioskHint: { marginTop: 4, fontSize: 9, lineHeight: 1.35, color: '#94a3b8' },
   offlineStatusCard: {
@@ -3746,6 +3763,18 @@ export default function CashierPage() {
     focusScannerInput()
   }
   const d = desktopCopy(lang as DeskLang)
+  function handleOpenManagement() {
+    const desktopContext = isDesktopPos || (typeof window !== 'undefined' && window.location.pathname === '/desktop/pos')
+    if (cart.length > 0) {
+      showToast(desktopContext ? d.managementBlockedDesktop : d.managementBlockedBrowser)
+      return
+    }
+    const params = new URLSearchParams()
+    if (desktopContext) params.set('from', 'desktop')
+    if (storeCode) params.set('storeCode', storeCode)
+    const query = params.toString()
+    router.push(`/management${query ? `?${query}` : ''}`)
+  }
   const categoryById = new Map(categories.map(c => [c.id, c]))
   const displayProductGroups = (() => {
     if (!isDesktopPos || activeCatId !== null) return []
@@ -4308,6 +4337,13 @@ export default function CashierPage() {
               ))}
             </div>
             <div style={s.kioskActions}>
+              <button
+                type="button"
+                style={{ ...s.kioskBtn, ...s.managementBtn, gridColumn: '1 / -1' }}
+                onClick={handleOpenManagement}
+              >
+                {d.managementCenter}
+              </button>
               {!isDesktopPos && (
                 <>
                   <button
