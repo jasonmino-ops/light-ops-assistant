@@ -1,0 +1,27 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+
+const management = fs.readFileSync('app/management/page.tsx', 'utf8')
+const records = fs.readFileSync('app/records/page.tsx', 'utf8')
+const refund = fs.readFileSync('app/refund/page.tsx', 'utf8')
+const cashier = fs.readFileSync('app/cashier/page.tsx', 'utf8')
+
+assert.match(management, /legacyBusinessHref\('\/records'\)/)
+assert.match(management, /from: 'desktop'/)
+assert.match(management, /storeCode: navigationStoreCode/)
+assert.match(management, /returnTo: managementReturnHref/)
+assert.match(management, /desktopHidden: true/)
+assert.match(management, /!entry\.desktopHidden \|\| !isDesktopSurface/)
+assert.doesNotMatch(management, /apiFetch|fetch\(|\/api\//)
+
+assert.match(records, /searchParams\.get\('from'\) === 'desktop'/)
+assert.match(records, /posDeviceHeaders\(desktopStoreCode\)/)
+assert.match(records, /managementReturnHref/)
+assert.match(records, /returnsToManagement/)
+assert.match(records, /records\.backToManagement/)
+
+assert.doesNotMatch(refund, /posDeviceHeaders|from.*desktop|storeCode.*searchParams/)
+assert.match(cashier, /\/api\/cashier\/pending-orders/)
+assert.match(cashier, /handleOpenManagement/)
+
+console.log('management-legacy-navigation-static.test.cjs: PASS')

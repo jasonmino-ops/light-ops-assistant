@@ -541,6 +541,7 @@ const en = {
     title: 'Records',
     workbenchSub: 'Sales records and business review',
     backToCashier: 'Back to cashier',
+    backToManagement: 'Back to Management Center',
     todayOverview: "Today's record overview",
     listTitle: 'Record list',
     saleCount: 'Sales',

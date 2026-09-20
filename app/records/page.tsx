@@ -245,6 +245,10 @@ export default function RecordsPage() {
   const isDesktopRecords = !!desktopStoreCode
   const desktopReturnTo = searchParams.get('returnTo')?.trim()
   const desktopLang = searchParams.get('lang')?.trim()
+  const managementReturnHref = desktopStoreCode
+    ? `/management?from=desktop&storeCode=${encodeURIComponent(desktopStoreCode)}`
+    : '/management?from=desktop'
+  const returnsToManagement = desktopReturnTo === managementReturnHref
   const cashierReturnHref = desktopReturnTo
     || (desktopStoreCode
       ? `/desktop/pos?${new URLSearchParams({
@@ -443,7 +447,7 @@ export default function RecordsPage() {
           <LangToggleBtn />
           {isDesktopRecords && (
             <a href={cashierReturnHref} style={s.desktopBackLink}>
-              {t('records.backToCashier')}
+              {returnsToManagement ? t('records.backToManagement') : t('records.backToCashier')}
             </a>
           )}
           {realRole === 'OWNER' && (

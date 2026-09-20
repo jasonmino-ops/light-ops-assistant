@@ -541,6 +541,7 @@ const km = {
     title: 'កំណត់ត្រា',
     workbenchSub: 'កំណត់ត្រាលក់ និងសង្ខេបអាជីវកម្ម',
     backToCashier: 'Back to cashier',
+    backToManagement: 'ត្រឡប់ទៅមជ្ឈមណ្ឌលគ្រប់គ្រង',
     todayOverview: 'សង្ខេបកំណត់ត្រាថ្ងៃនេះ',
     listTitle: 'បញ្ជីកំណត់ត្រា',
     saleCount: 'ចំនួនលក់',

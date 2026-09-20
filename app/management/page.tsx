@@ -26,6 +26,7 @@ type Entry = {
   icon: IconName
   ownerOnly?: boolean
   desktopOnly?: boolean
+  desktopHidden?: boolean
   action?: 'printing'
   status?: string
 }
@@ -111,6 +112,18 @@ export default function ManagementPage() {
     : navigationStoreCode
       ? `/cashier?storeCode=${encodeURIComponent(navigationStoreCode)}`
       : '/cashier'
+  const managementReturnHref = navigationStoreCode
+    ? `/management?from=desktop&storeCode=${encodeURIComponent(navigationStoreCode)}`
+    : '/management?from=desktop'
+  const legacyBusinessHref = (path: string) => {
+    if (!navigationContext.fromDesktop || !navigationStoreCode) return path
+    const params = new URLSearchParams({
+      from: 'desktop',
+      storeCode: navigationStoreCode,
+      returnTo: managementReturnHref,
+    })
+    return `${path}?${params.toString()}`
+  }
 
   const groups: Group[] = [
     {
@@ -119,8 +132,8 @@ export default function ManagementPage() {
       icon: 'receipt',
       accent: '#eaf3ff',
       entries: [
-        { href: '/records', label: t('management.salesRecords'), description: t('management.salesRecordsDesc'), icon: 'receipt' },
-        { href: '/refund', label: t('management.refunds'), description: t('management.refundsDesc'), icon: 'refund' },
+        { href: legacyBusinessHref('/records'), label: t('management.salesRecords'), description: t('management.salesRecordsDesc'), icon: 'receipt' },
+        { href: '/refund', label: t('management.refunds'), description: t('management.refundsDesc'), icon: 'refund', desktopHidden: true },
         { href: cashierHref, label: t('management.pendingOrders'), description: t('management.pendingOrdersDesc'), icon: 'orders' },
       ],
     },
@@ -196,8 +209,8 @@ export default function ManagementPage() {
         </header>
 
         <div className="management-hub-grid" style={styles.groups}>
-          {groups.filter((group) => group.entries.some((entry) => (!entry.ownerOnly || isOwner) && (!entry.desktopOnly || isDesktopSurface))).map((group) => {
-            const visibleEntries = group.entries.filter((entry) => (!entry.ownerOnly || isOwner) && (!entry.desktopOnly || isDesktopSurface))
+          {groups.filter((group) => group.entries.some((entry) => (!entry.ownerOnly || isOwner) && (!entry.desktopOnly || isDesktopSurface) && (!entry.desktopHidden || !isDesktopSurface))).map((group) => {
+            const visibleEntries = group.entries.filter((entry) => (!entry.ownerOnly || isOwner) && (!entry.desktopOnly || isDesktopSurface) && (!entry.desktopHidden || !isDesktopSurface))
             return (
               <section
                 key={group.key}
