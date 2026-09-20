@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "taskId": "ES-CASHIER-PRODUCT-CARD-COLLAPSE-01",
+  "featureBranch": "codex/es-cashier-product-card-collapse-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "2da71fd9670a67facaaef1320240d811ff6c54b3",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/cashier/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "d6b715c7270284cb85119de3e0ae08458f0954d431f4a6ef06d0fcca34a906c0"
+  },
+  "createdAt": "2026-09-20T09:49:17Z",
+  "approvedAt": "2026-09-20T09:49:17Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder authorization in ES-CASHIER-PRODUCT-CARD-COLLAPSE-01 EVIDENCE-BASED BROWSER LAYOUT CORRECTIVE",
+    "statement": "Founder authorized only the evidence-based Browser product-card layout corrective: add an appropriate minimum height to the shared base product card and prevent the shared Browser image wrapper from flex-shrinking. Desktop-specific sizing, compact-mode behavior, product data, API, Auth, Printing, Runtime, and unrelated Cashier behavior remain unchanged.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the exact Browser product-card defensive sizing bytes required by the confirmed V727 runtime evidence. No other Cashier or product scope is authorized.",
+  "allowedPurposes": [
+    "Add minHeight: 180 to the shared Browser/base pcard style",
+    "Add flexShrink: 0 to the shared Browser/base pcardImg style",
+    "Prevent Browser product cards and image wrappers from collapsing as product count increases",
+    "Run the separately authorized Browser layout, Cashier regression, Build, Scope Guard, and Release Lineage validation"
+  ],
+  "prohibitedChanges": [
+    "Restore or add compact/large mode controls",
+    "Desktop-specific card sizing or compact-mode changes",
+    "Grid architecture changes, product-count heuristics, JavaScript height calculations, virtualization, or new layout components",
+    "Management Center changes or navigation changes",
+    "Search, category, cart, checkout, payment, or pending-order behavior changes",
+    "API, DB, Auth, Session, Context, Middleware, or authorization changes",
+    "OperatorBoundary, Customer Display, Printing, Runtime, Electron, IPC, or WindowManager changes",
+    "Product data, image storage, image URL, or migration changes",
+    "Unrelated cleanup",
+    "FIELD VERIFIED, FINAL FROZEN, or CLOSED claims"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized corrective feature merge. It must not remain active as authorization for future Cashier changes."
+}
