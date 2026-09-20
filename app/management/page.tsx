@@ -5,6 +5,15 @@ import { useEffect, useState } from 'react'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 
+declare global {
+  interface Window {
+    eshopDesktopRuntime?: {
+      isDesktop?: boolean
+      windowRole?: string
+    }
+  }
+}
+
 type IconName =
   | 'receipt'
   | 'refund'
@@ -25,6 +34,8 @@ type Entry = {
   description: string
   icon: IconName
   ownerOnly?: boolean
+  desktopOnly?: boolean
+  action?: 'printing'
   status?: string
 }
 
@@ -77,15 +88,24 @@ function SemanticIcon({ name, size = 20 }: { name: IconName; size?: number }) {
   }
 }
 
+function readDesktopEmployeeSurface() {
+  return typeof window !== 'undefined'
+    && window.eshopDesktopRuntime?.isDesktop === true
+    && window.eshopDesktopRuntime?.windowRole === 'employee'
+}
+
 export default function ManagementPage() {
   const { t } = useLocale()
   const { effectiveRole, storeName, storeCode, tenantName } = useWorkMode()
   const isOwner = effectiveRole === 'OWNER'
   const currentStore = storeName ?? tenantName
   const [navigationContext, setNavigationContext] = useState({ fromDesktop: false, storeCode: null as string | null })
+  const [isDesktopSurface, setIsDesktopSurface] = useState(false)
+  const [printingInfoOpen, setPrintingInfoOpen] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
+    setIsDesktopSurface(readDesktopEmployeeSurface())
     setNavigationContext({
       fromDesktop: params.get('from') === 'desktop',
       storeCode: params.get('storeCode')?.trim() || null,
@@ -150,6 +170,7 @@ export default function ManagementPage() {
       accent: '#f1f3f6',
       entries: [
         { href: '/settings#printing', label: t('management.settings'), description: t('management.settingsDesc'), icon: 'settings', ownerOnly: true },
+        { action: 'printing', label: t('management.printConfig'), description: t('management.printConfigDesc'), icon: 'printer', desktopOnly: true },
         { href: '/contact', label: t('management.support'), description: t('management.supportDesc'), icon: 'help' },
       ],
     },
@@ -184,8 +205,8 @@ export default function ManagementPage() {
         </header>
 
         <div className="management-hub-grid" style={styles.groups}>
-          {groups.filter((group) => isOwner || group.entries.some((entry) => !entry.ownerOnly)).map((group) => {
-            const visibleEntries = group.entries.filter((entry) => isOwner || !entry.ownerOnly)
+          {groups.filter((group) => group.entries.some((entry) => (!entry.ownerOnly || isOwner) && (!entry.desktopOnly || isDesktopSurface))).map((group) => {
+            const visibleEntries = group.entries.filter((entry) => (!entry.ownerOnly || isOwner) && (!entry.desktopOnly || isDesktopSurface))
             return (
               <section
                 key={group.key}
@@ -215,7 +236,17 @@ export default function ManagementPage() {
                       </>
                     )
 
-                    return entry.href ? (
+                    return entry.action === 'printing' ? (
+                      <button
+                        key={entry.label}
+                        type="button"
+                        style={{ ...styles.entry, ...styles.actionEntry }}
+                        aria-expanded={printingInfoOpen}
+                        onClick={() => setPrintingInfoOpen((open) => !open)}
+                      >
+                        {content}
+                      </button>
+                    ) : entry.href ? (
                       <Link key={entry.label} href={entry.href} style={styles.entry}>
                         {content}
                       </Link>
@@ -230,6 +261,44 @@ export default function ManagementPage() {
             )
           })}
         </div>
+
+        {isDesktopSurface && printingInfoOpen && (
+          <section
+            data-printing-info-surface="desktop-only"
+            aria-labelledby="printing-info-title"
+            style={styles.printingPanel}
+          >
+            <div style={styles.printingPanelHeader}>
+              <div>
+                <h2 id="printing-info-title" style={styles.printingPanelTitle}>{t('management.printingTitle')}</h2>
+                <p style={styles.printingPanelDescription}>{t('management.printingDescription')}</p>
+              </div>
+              <button
+                type="button"
+                style={styles.printingClose}
+                onClick={() => setPrintingInfoOpen(false)}
+              >
+                {t('management.printingClose')}
+              </button>
+            </div>
+            <div style={styles.printingItems}>
+              {[
+                ['management.frontPrinter', 'management.frontPrinterDesc'],
+                ['management.kitchenPrinter', 'management.kitchenPrinterDesc'],
+                ['management.autoPrint', 'management.autoPrintDesc'],
+              ].map(([titleKey, descriptionKey]) => (
+                <div key={titleKey} style={styles.printingItem}>
+                  <span style={styles.printingItemIcon}><SemanticIcon name="printer" size={17} /></span>
+                  <span style={styles.printingItemBody}>
+                    <strong style={styles.printingItemTitle}>{t(titleKey)}</strong>
+                    <span style={styles.printingItemDescription}>{t(descriptionKey)}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p style={styles.printingHint}>{t('management.printingHint')}</p>
+          </section>
+        )}
       </div>
     </main>
   )
@@ -349,10 +418,30 @@ const styles: Record<string, React.CSSProperties> = {
     textDecoration: 'none',
   },
   disabledEntry: { background: 'rgba(247, 249, 252, 0.72)', color: '#2f3d52' },
+  actionEntry: { width: '100%', textAlign: 'left' as const, cursor: 'pointer', font: 'inherit' },
   entryIcon: { width: 34, height: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, borderRadius: 10, background: '#f3f5f8', color: '#6e7c8e' },
   entryBody: { display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 },
   entryLabel: { fontSize: 14, lineHeight: 1.2, fontWeight: 720 },
   entryDescription: { color: '#8792a2', fontSize: 12, lineHeight: 1.3 },
   entryArrow: { color: '#aeb8c7', fontSize: 21, lineHeight: 1, fontWeight: 350 },
   entryStatus: { flexShrink: 0, padding: '5px 8px', borderRadius: 8, background: '#eef1f5', color: '#8792a2', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' },
+  printingPanel: {
+    marginTop: 18,
+    padding: 24,
+    border: '1px solid #dfe6ef',
+    borderRadius: 16,
+    background: '#fff',
+    boxShadow: '0 8px 24px rgba(33, 48, 74, 0.045)',
+  },
+  printingPanelHeader: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20 },
+  printingPanelTitle: { margin: 0, fontSize: 20, lineHeight: 1.2, letterSpacing: '-0.025em', fontWeight: 760 },
+  printingPanelDescription: { margin: '8px 0 0', color: '#637187', fontSize: 13, lineHeight: 1.55 },
+  printingClose: { border: 0, background: 'transparent', color: '#155dcc', cursor: 'pointer', font: 'inherit', fontSize: 13, fontWeight: 700, padding: '3px 0' },
+  printingItems: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginTop: 22 },
+  printingItem: { display: 'flex', alignItems: 'flex-start', gap: 10, padding: 14, borderRadius: 12, background: '#f7f9fc' },
+  printingItemIcon: { width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, borderRadius: 9, background: '#eaf3ff', color: '#155dcc' },
+  printingItemBody: { display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 },
+  printingItemTitle: { fontSize: 13, lineHeight: 1.25, fontWeight: 750 },
+  printingItemDescription: { color: '#718096', fontSize: 12, lineHeight: 1.45 },
+  printingHint: { margin: '20px 0 0', paddingTop: 18, borderTop: '1px solid #edf0f4', color: '#536174', fontSize: 13, lineHeight: 1.6 },
 }

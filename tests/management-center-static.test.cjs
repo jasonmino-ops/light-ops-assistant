@@ -24,10 +24,16 @@ for (const route of [
   assert.match(management, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `management must retain the existing ${route} entry`)
 }
 
-assert.match(management, /entry\.ownerOnly\)/, 'owner-only entries must be filtered in the UI')
+assert.match(management, /entry\.ownerOnly/, 'owner-only entries must be filtered in the UI')
 assert.match(management, /effectiveRole === 'OWNER'/, 'visibility must use the existing effective UI role')
 assert.doesNotMatch(management, /apiFetch|fetch\(|\/api\//, 'management must not add API calls')
-assert.doesNotMatch(management, /online|connected|runtime|IPC|network-v2|Provider Runtime|Local Printing Contract/i, 'management must not expose technical or false status language')
+assert.doesNotMatch(management, /online|connected|healthy|runtime status|IPC|network-v2|Provider Runtime|Local Printing Contract/i, 'management must not expose technical or false status language')
+assert.match(management, /window\.eshopDesktopRuntime\?\.isDesktop === true/, 'printing entry must use the existing Desktop environment marker')
+assert.match(management, /window\.eshopDesktopRuntime\?\.windowRole === 'employee'/, 'printing entry must be limited to the Desktop employee surface')
+assert.match(management, /desktopOnly: true/, 'printing entry must be Desktop-only')
+assert.match(management, /data-printing-info-surface="desktop-only"/, 'printing surface must remain explicitly Desktop-only')
+assert.doesNotMatch(management, /apiFetch|fetch\(|\/api\//, 'printing information surface must not call APIs')
+assert.doesNotMatch(management, /\b(?:IP|MAC|TCP|journal|retry|claim|lease|endpoint)\b|schema version/i, 'printing information surface must not expose technical configuration')
 assert.doesNotMatch(management, /systemCheck|computerClient|businessDashboard/, 'management must hide future or technical entries')
 assert.doesNotMatch(management, /['"]\/dashboard/, 'management must not expose a dashboard entry')
 assert.doesNotMatch(management, /CashierPage|OperatorBoundary|UsbCustomerDisplayBridge|checkout|payment|cartState|pendingOrderState/, 'management must not duplicate Cashier or Desktop business logic')
