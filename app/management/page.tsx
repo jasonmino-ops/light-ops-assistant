@@ -149,7 +149,7 @@ export default function ManagementPage() {
       icon: 'settings',
       accent: '#f1f3f6',
       entries: [
-        { label: t('management.printConfig'), description: t('management.printConfigDesc'), icon: 'printer', status: t('management.comingSoon') },
+        { href: '/settings#printing', label: t('management.settings'), description: t('management.settingsDesc'), icon: 'settings', ownerOnly: true },
         { href: '/contact', label: t('management.support'), description: t('management.supportDesc'), icon: 'help' },
       ],
     },
