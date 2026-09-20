@@ -6,7 +6,10 @@
   "baseOriginMainSha": "b08506233aec40b4e6e52aa9feab77a6087489e1",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-09-20T11:30:39Z",
+  "featureMergeCommitSha": "27ffc081ffdde43ce80379e293ce7b77dca07e0a",
+  "closureReason": "Closed after the exact P5-B Cashier to Management Center direct-entry slice entered trusted origin/main. The historical exact path and SHA-256 remain audit evidence; this CLOSED exception cannot authorize future Cashier changes.",
   "authorizedPaths": [
     "app/cashier/page.tsx"
   ],
