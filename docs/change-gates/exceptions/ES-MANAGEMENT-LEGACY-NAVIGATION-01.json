@@ -11,7 +11,7 @@
     "app/records/page.tsx"
   ],
   "authorizedPathSha256": {
-    "app/records/page.tsx": "d0f2b91bb0ddc674cef89723a44a15baa1490f90d10615687ec7deff97318229"
+    "app/records/page.tsx": "33e16497b457e4017304f2fa0cedc8fc4ddf4196efef37ba34c91bed6bfc11ff"
   },
   "createdAt": "2026-09-20T15:10:12.000Z",
   "approvedAt": "2026-09-20T15:10:12.000Z",
@@ -23,6 +23,13 @@
   },
   "closeAfter": "FEATURE_MERGE",
   "reason": "Authorize only the exact protected Records page navigation correction: preserve the existing Desktop from/storeCode context and render a fixed return-to-Management Center path. The exception does not authorize changing records data loading, API behavior, authorization, business logic, or any other protected path.",
+  "sourceDraft": {
+    "baseOriginMainSha": "0bcf63ac45d80860e4b8c1d8fe5e12961e63e971",
+    "baseProtectedFileSha256": "d0f2b91bb0ddc674cef89723a44a15baa1490f90d10615687ec7deff97318229",
+    "candidateProtectedFileSha256": "33e16497b457e4017304f2fa0cedc8fc4ddf4196efef37ba34c91bed6bfc11ff",
+    "candidateBranch": "codex/es-management-legacy-navigation-01",
+    "fileCount": 1
+  },
   "allowedPurposes": [
     "Preserve the existing Desktop Records context when launched from Management Center",
     "Render the fixed Desktop return-to-Management Center navigation",
