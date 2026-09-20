@@ -11,7 +11,7 @@
     "app/records/page.tsx"
   ],
   "authorizedPathSha256": {
-    "app/records/page.tsx": "33e16497b457e4017304f2fa0cedc8fc4ddf4196efef37ba34c91bed6bfc11ff"
+    "app/records/page.tsx": "dc967ddf29a54c1be18e88cc6f27947442b1a7fef882e011c0b46aa27848bb6c"
   },
   "createdAt": "2026-09-20T16:22:46Z",
   "approvedAt": "2026-09-20T16:22:46Z",
@@ -26,7 +26,7 @@
   "sourceDraft": {
     "baseOriginMainSha": "0874a3a0c6f4d19e011098cb1a8a939d183451a4",
     "baseProtectedFileSha256": "33e16497b457e4017304f2fa0cedc8fc4ddf4196efef37ba34c91bed6bfc11ff",
-    "candidateProtectedFileSha256": "33e16497b457e4017304f2fa0cedc8fc4ddf4196efef37ba34c91bed6bfc11ff",
+    "candidateProtectedFileSha256": "dc967ddf29a54c1be18e88cc6f27947442b1a7fef882e011c0b46aa27848bb6c",
     "candidateBranch": "codex/es-management-legacy-navigation-return",
     "fileCount": 1
   },
