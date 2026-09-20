@@ -6,7 +6,10 @@
   "baseOriginMainSha": "2da71fd9670a67facaaef1320240d811ff6c54b3",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-09-20T11:26:14Z",
+  "featureMergeCommitSha": "e463e8c34c73a0dedfa8c1bfc9cee5f9f634085a",
+  "closureReason": "Closed after the exact Browser product-card defensive sizing corrective and its synchronized protected-file assertion entered trusted origin/main by fast-forward. The historical exact path and SHA-256 remain audit evidence; this CLOSED exception cannot authorize future Cashier changes.",
   "authorizedPaths": [
     "app/cashier/page.tsx"
   ],
