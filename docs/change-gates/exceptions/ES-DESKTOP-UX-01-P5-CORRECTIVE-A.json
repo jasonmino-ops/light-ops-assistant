@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "taskId": "ES-DESKTOP-UX-01-P5-CORRECTIVE-A",
+  "featureBranch": "codex/es-desktop-ux-01-p5-corrective-a",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "27ffc081ffdde43ce80379e293ce7b77dca07e0a",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/cashier/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "ea1936d6b0aca9a4dd854102a2068829f42b54ec38433ac12dfe8686505a3894"
+  },
+  "createdAt": "2026-09-20T05:56:47Z",
+  "approvedAt": "2026-09-20T05:56:47Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder authorization in the current ES-DESKTOP-UX-01 / P5 Corrective A exact Scope Exception Registration task",
+    "statement": "Founder authorized an ACTIVE PRE_COMMIT_CONTENT_SHA256 exception for exactly app/cashier/page.tsx and the exact corrective candidate SHA-256 recorded above. The authorization is limited to adding display:flex and flexDirection:column to the shared pcard base style to correct the Production product-card/image grid-row collapse. It does not authorize Cashier redesign, Management Center changes, navigation changes, cart logic, checkout or payment changes, API, Auth, OperatorBoundary, Customer Display, Printing, Runtime, Electron, IPC, or unrelated cleanup.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the exact Slice A corrective bytes for app/cashier/page.tsx: pcard display:flex and pcard flexDirection:column. No other product or governance scope is authorized.",
+  "allowedPurposes": [
+    "Add display:flex to the shared Cashier pcard base style",
+    "Add flexDirection:column to the shared Cashier pcard base style",
+    "Correct the Production product-card/image grid-row collapse",
+    "Run the separately authorized Slice A targeted validation and Scope Guard"
+  ],
+  "prohibitedChanges": [
+    "Cashier redesign or unrelated CSS cleanup",
+    "Management Center changes or navigation changes",
+    "Cart, checkout, payment, pending-order, or persistence changes",
+    "API, Auth, session, context, middleware, or authorization changes",
+    "OperatorBoundary, Customer Display, Printing, Runtime, Electron, IPC, or WindowManager changes",
+    "Slice B files or auth-delay optimization",
+    "FIELD VERIFIED, FINAL FROZEN, or CLOSED claims"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized Slice A corrective feature merge. It must not remain active as authorization for future Cashier changes."
+}
