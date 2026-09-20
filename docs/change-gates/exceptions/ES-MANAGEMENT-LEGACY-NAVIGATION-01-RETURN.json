@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "taskId": "ES-MANAGEMENT-LEGACY-NAVIGATION-01",
+  "featureBranch": "codex/es-management-legacy-navigation-return",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "0874a3a0c6f4d19e011098cb1a8a939d183451a4",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/records/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/records/page.tsx": "33e16497b457e4017304f2fa0cedc8fc4ddf4196efef37ba34c91bed6bfc11ff"
+  },
+  "createdAt": "2026-09-20T16:22:46Z",
+  "approvedAt": "2026-09-20T16:22:46Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder authorization in ES-MANAGEMENT-LEGACY-NAVIGATION-01 FIELD RETURN-NAVIGATION CORRECTIVE",
+    "statement": "Founder authorizes one new exact PRE_COMMIT_CONTENT_SHA256 exception for app/records/page.tsx only. The allowed change is limited to reusing the existing Cashier-to-Management client navigation contract for the Desktop Records return control. No Records query semantics, API, auth, session, context, middleware, sale/refund business logic, Cashier, Electron, IPC, schema, migration, Printing, Runtime, RC10, formatting churn, or unrelated refactor is authorized.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the exact Desktop Records return-navigation corrective: preserve the existing fixed Management target while using the already verified Cashier router.push client-navigation semantics so the Desktop auth context is not re-bootstrapped.",
+  "sourceDraft": {
+    "baseOriginMainSha": "0874a3a0c6f4d19e011098cb1a8a939d183451a4",
+    "baseProtectedFileSha256": "33e16497b457e4017304f2fa0cedc8fc4ddf4196efef37ba34c91bed6bfc11ff",
+    "candidateProtectedFileSha256": "33e16497b457e4017304f2fa0cedc8fc4ddf4196efef37ba34c91bed6bfc11ff",
+    "candidateBranch": "codex/es-management-legacy-navigation-return",
+    "fileCount": 1
+  },
+  "allowedPurposes": [
+    "Reuse the existing Cashier router.push Desktop-to-Management navigation semantics from Records",
+    "Preserve the existing fixed /management?from=desktop&storeCode=... target",
+    "Run the separately authorized focused navigation tests and Scope Guard"
+  ],
+  "prohibitedChanges": [
+    "Records query semantics, filtering, aggregation, caching, or data mapping changes",
+    "Records API, auth, session, context, middleware, or authorization changes",
+    "Sale, refund, or pending-order business logic changes",
+    "Cashier, Desktop, Electron, IPC, Printing, Runtime, RC10, schema, migration, dependency, or API changes",
+    "Formatting churn or unrelated refactor",
+    "Production deploy, FIELD VERIFIED, FINAL FROZEN, or CLOSED claims"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized FIELD return-navigation corrective feature merge. It must not remain active as authorization for future Records changes."
+}
