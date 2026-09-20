@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "taskId": "ES-CASHIER-AUTH-TRANSITION-UX-01",
+  "featureBranch": "codex/es-cashier-auth-transition-ux-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "3723cd2a8383c10b0c2493a12d96a15b07a23474",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/cashier/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "218ebd31ead202865b64a72f7066824747d9650ba1ba32be01d67f8e7661520c"
+  },
+  "createdAt": "2026-09-20T06:56:52Z",
+  "approvedAt": "2026-09-20T06:56:52Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder authorization in ES-CASHIER-AUTH-TRANSITION-UX-01 UI-ONLY IMPLEMENTATION AUTHORIZATION",
+    "statement": "Founder authorized only the checking-state presentation change in app/cashier/page.tsx. Existing authorization requests, decisions, failure behavior, Desktop Activation, OperatorBoundary, and device authorization remain unchanged.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the exact Cashier authorization checking-state presentation bytes for a neutral, non-interactive loading shell. No authorization, API, Desktop, product-card, or unrelated Cashier changes are authorized.",
+  "allowedPurposes": [
+    "Replace the visible posAccountAccess checking-state presentation with a neutral Cashier loading/skeleton shell",
+    "Keep the loading state non-interactive and render no transactional controls before authorization succeeds",
+    "Preserve the existing /api/cashier/access request, authorization decisions, and denied/error behavior",
+    "Run the separately authorized targeted validation and Scope Guard"
+  ],
+  "prohibitedChanges": [
+    "API, getContext, auth/session contract, authorization caching, or authorization decision changes",
+    "OperatorBoundary, Desktop Activation, device authorization, Electron, IPC, Runtime, or Printing changes",
+    "Management Center changes or navigation changes",
+    "Product-card layout or product-data changes",
+    "Cart, checkout, payment, pending-order, or transactional behavior changes",
+    "Cashier redesign beyond the checking-state presentation",
+    "DB, Schema, Migration, or unrelated cleanup",
+    "FIELD VERIFIED, FINAL FROZEN, or CLOSED claims"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized feature merge. It must not remain active as authorization for future Cashier changes."
+}
