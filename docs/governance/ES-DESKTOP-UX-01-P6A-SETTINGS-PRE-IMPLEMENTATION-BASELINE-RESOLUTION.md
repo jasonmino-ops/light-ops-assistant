@@ -93,8 +93,30 @@ Expected future implementation surface is limited to a new `app/settings/page.ts
 | Minimum P6A forbidden path required | `NO` |
 | Scope Exception | `NO` |
 
-## 7. Status
+## 7. Founder Pre-Merge Review and blocker attribution
 
-This record is governance evidence only. It does not authorize implementation, merge, push, deployment, migration, FIELD, P6B, P6C, P7, or P8.
+Review date: 2026-09-20. The review used clean `origin/main` at `fad5e514381358fa57fa135e66f517f2da5b4b8f` and candidate `93c79af0dfeb80ecd14b79b9254ae31288ae2fc8`. The candidate ancestry and governance evidence ancestry both passed, and the candidate worktree was clean before review.
 
-**Result:** READY FOR IMPLEMENTATION AUTHORIZATION, pending a separate explicit implementation authorization.
+The same commands were run in detached baseline `/private/tmp/es-p6a-baseline` and candidate `/private/tmp/es-desktop-ux-01-p6a-settings` with the same copied dependency tree:
+
+```text
+npm run test:core
+npm run build
+./node_modules/.bin/tsc --noEmit --incremental false
+```
+
+| Check | Baseline | Candidate | Exact comparison | Attribution |
+|---|---|---|---|---|
+| Core regression | exit 2; runner startup blocked by `KTF-20260912-01` missing machine-checkable fingerprint | exit 2; same blocker | captured outputs byte-identical | PRE-EXISTING / NON-CAUSAL |
+| Build | exit 1; missing `fast-xml-parser` and `fflate` from `lib/product-bulk-import/xlsx.ts` with the same import trace | exit 1; same failure | captured outputs byte-identical | PRE-EXISTING / NON-CAUSAL |
+| Full Typecheck | exit 2; 221 output lines | exit 2; 221 output lines | captured outputs byte-identical; SHA-256 `cd19a0ac6dcb3c023f40ca3d09ba6a409303c336c24a24b7f722f3da9405fba8` on both | PRE-EXISTING / NON-CAUSAL |
+
+No candidate-only test, build, or type error was found. The related review commands also passed on the candidate: `node tests/settings-center-static.test.cjs`, `node tests/management-center-static.test.cjs`, Settings Playwright 2/2, cashier inline-style static test, print-settings static test, customer-display persistent-panel static test, and ES Tray device-print contract test (35 cases). Scope Guard and `git diff --check` passed.
+
+Independent diff review of `origin/main...93c79af` found only the authorized Settings UI, Management navigation, i18n resources, tests, and this governance evidence; no API/schema/migration/Electron/IPC/Printing Core/Runtime/RC10/HRT/forbidden-path change was present.
+
+## 8. Status
+
+This record contains the subsequent Founder Pre-Merge Review evidence. It does not authorize merge, push, deployment, migration, FIELD, P6B, P6C, P7, or P8.
+
+**Result:** READY FOR FOUNDER MERGE AUTHORIZATION; merge authorization remains a separate Founder decision.
