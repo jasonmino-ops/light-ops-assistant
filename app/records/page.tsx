@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { isPosUnauthorized, posDeviceHeaders } from '@/lib/desktop-pos-client'
 import { useLocale } from '@/app/components/LangProvider'
@@ -231,6 +231,7 @@ function writeRecordsCache(key: string, data: ApiResponse) {
 
 export default function RecordsPage() {
   const { t, lang } = useLocale()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const {
     realRole,
@@ -446,7 +447,14 @@ export default function RecordsPage() {
         <div style={s.headerTools}>
           <LangToggleBtn />
           {isDesktopRecords && (
-            <a href={cashierReturnHref} style={s.desktopBackLink}>
+            <a
+              href={cashierReturnHref}
+              style={s.desktopBackLink}
+              onClick={(event) => {
+                event.preventDefault()
+                router.push(cashierReturnHref)
+              }}
+            >
               {returnsToManagement ? t('records.backToManagement') : t('records.backToCashier')}
             </a>
           )}

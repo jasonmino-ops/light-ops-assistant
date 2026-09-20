@@ -15,10 +15,13 @@ assert.match(management, /!entry\.desktopHidden \|\| !isDesktopSurface/)
 assert.doesNotMatch(management, /apiFetch|fetch\(|\/api\//)
 
 assert.match(records, /searchParams\.get\('from'\) === 'desktop'/)
+assert.match(records, /useRouter, useSearchParams/)
 assert.match(records, /posDeviceHeaders\(desktopStoreCode\)/)
 assert.match(records, /managementReturnHref/)
 assert.match(records, /returnsToManagement/)
 assert.match(records, /records\.backToManagement/)
+assert.match(records, /event\.preventDefault\(\)/)
+assert.match(records, /router\.push\(cashierReturnHref\)/)
 
 assert.doesNotMatch(refund, /posDeviceHeaders|from.*desktop|storeCode.*searchParams/)
 assert.match(cashier, /\/api\/cashier\/pending-orders/)
