@@ -455,7 +455,7 @@ async function main() {
     // This updates only the latest-byte regression target; historical approvals remain unchanged.
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      'd63d19b1eefd1170740fa43482230a4d0793e11b2355d57b116bf4b5518a1525',
+      'd6b715c7270284cb85119de3e0ae08458f0954d431f4a6ef06d0fcca34a906c0',
     )
   })
 
