@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "taskId": "ES-MANAGEMENT-LEGACY-NAVIGATION-01",
+  "featureBranch": "codex/es-management-legacy-navigation-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "0bcf63ac45d80860e4b8c1d8fe5e12961e63e971",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/records/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/records/page.tsx": "d0f2b91bb0ddc674cef89723a44a15baa1490f90d10615687ec7deff97318229"
+  },
+  "createdAt": "2026-09-20T15:10:12.000Z",
+  "approvedAt": "2026-09-20T15:10:12.000Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder authorization in ES-MANAGEMENT-LEGACY-NAVIGATION-01",
+    "statement": "Founder authorizes one exact PRE_COMMIT_CONTENT_SHA256 exception for app/records/page.tsx only. The allowed change is limited to Desktop context preservation and fixed return-to-Management navigation. No records query semantics, records API, auth, sale/refund business logic, Cashier, Electron, IPC, schema, migration, Printing, Runtime, RC10, formatting churn, or unrelated refactor is authorized.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the exact protected Records page navigation correction: preserve the existing Desktop from/storeCode context and render a fixed return-to-Management Center path. The exception does not authorize changing records data loading, API behavior, authorization, business logic, or any other protected path.",
+  "allowedPurposes": [
+    "Preserve the existing Desktop Records context when launched from Management Center",
+    "Render the fixed Desktop return-to-Management Center navigation",
+    "Run the separately authorized focused navigation tests and Scope Guard"
+  ],
+  "prohibitedChanges": [
+    "Records query semantics, filtering, aggregation, caching, or data mapping changes",
+    "Records API, auth, session, context, middleware, or authorization changes",
+    "Sale, refund, or pending-order business logic changes",
+    "Cashier, Desktop, Electron, IPC, Printing, Runtime, RC10, schema, migration, dependency, or API changes",
+    "Formatting churn or unrelated refactor",
+    "Production deploy, FIELD VERIFIED, FINAL FROZEN, or CLOSED claims"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized feature merge. It must not remain active as authorization for future Records changes."
+}
