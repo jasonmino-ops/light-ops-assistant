@@ -5,15 +5,6 @@ import { useEffect, useState } from 'react'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 
-declare global {
-  interface Window {
-    eshopDesktopRuntime?: {
-      isDesktop?: boolean
-      windowRole?: string
-    }
-  }
-}
-
 type IconName =
   | 'receipt'
   | 'refund'
