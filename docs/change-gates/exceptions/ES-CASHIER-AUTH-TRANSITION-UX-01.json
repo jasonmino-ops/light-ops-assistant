@@ -6,7 +6,10 @@
   "baseOriginMainSha": "3723cd2a8383c10b0c2493a12d96a15b07a23474",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-09-20T09:21:41Z",
+  "featureMergeCommitSha": "5b63cadab13bee174e7ae199e9fde0f6fadcc6d6",
+  "closureReason": "Closed after the exact reviewed Cashier authorization checking-state presentation candidate entered trusted origin/main and canonical Production. Historical path and SHA-256 remain audit evidence; this exception cannot authorize future Cashier changes.",
   "authorizedPaths": [
     "app/cashier/page.tsx"
   ],
