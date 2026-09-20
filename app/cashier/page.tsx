@@ -1335,6 +1335,15 @@ const s: Record<string, CSSProperties> = {
   errTitle:    { fontSize: 18, fontWeight: 700, color: '#111827' },
   errSub:      { fontSize: 13, color: '#6b7280', textAlign: 'center' as const, maxWidth: 380, lineHeight: 1.6 },
   errCode:     { fontSize: 12, color: '#9ca3af', fontFamily: 'monospace', background: '#fff', padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb' },
+  cashierLoadingScreen: { minHeight: '100dvh', display: 'grid', gridTemplateColumns: 'minmax(150px, 200px) minmax(0, 1fr) minmax(260px, 390px)', background: '#f1f5f9', fontFamily: 'system-ui,-apple-system,sans-serif', pointerEvents: 'none', userSelect: 'none' as const },
+  cashierLoadingSidebar: { background: '#0f172a', padding: '18px 12px', display: 'flex', flexDirection: 'column', gap: 12 },
+  cashierLoadingMain: { minWidth: 0, padding: 18 },
+  cashierLoadingPanel: { background: '#fff', borderLeft: '1px solid #e5e7eb', padding: 18 },
+  cashierLoadingBlock: { borderRadius: 9, background: 'rgba(148,163,184,.20)' },
+  cashierLoadingLightBlock: { borderRadius: 9, background: '#e2e8f0' },
+  cashierLoadingCard: { minHeight: 142, borderRadius: 10, background: '#fff', border: '1px solid #e5e7eb', padding: 10 },
+  cashierLoadingCardImage: { height: 78, borderRadius: 7, background: '#e2e8f0' },
+  cashierLoadingCardLine: { height: 10, borderRadius: 999, background: '#e2e8f0' },
   authPage: { minHeight: '100dvh', background: '#f1f5f9', display: 'grid', gridTemplateColumns: 'minmax(420px, .9fr) minmax(420px, 1.1fr)', gap: 28, alignItems: 'center', padding: 36, fontFamily: 'system-ui,-apple-system,sans-serif' },
   authIntro: { maxWidth: 560 },
   authBadge: { display: 'inline-flex', alignItems: 'center', minHeight: 30, borderRadius: 999, padding: '0 12px', background: '#dbeafe', color: '#1d4ed8', fontSize: 13, fontWeight: 900, marginBottom: 16 },
@@ -4101,12 +4110,43 @@ export default function CashierPage() {
 
     if (posDeviceToken || !deviceAuthorizationEntry) {
       const isCheckingAccess = posAccountAccess === 'checking'
+      if (isCheckingAccess) {
+        return (
+          <main aria-busy="true" aria-label="正在打开收银台" style={s.cashierLoadingScreen}>
+            <div style={s.cashierLoadingSidebar}>
+              <div style={{ ...s.cashierLoadingBlock, width: '72%', height: 18 }} />
+              <div style={{ ...s.cashierLoadingBlock, width: '92%', height: 34 }} />
+              <div style={{ ...s.cashierLoadingBlock, width: '84%', height: 34 }} />
+              <div style={{ ...s.cashierLoadingBlock, width: '88%', height: 34 }} />
+            </div>
+            <div style={s.cashierLoadingMain}>
+              <div style={{ ...s.cashierLoadingLightBlock, width: '100%', height: 38, marginBottom: 18 }} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 12 }}>
+                {Array.from({ length: 8 }, (_, index) => (
+                  <div key={index} style={s.cashierLoadingCard}>
+                    <div style={s.cashierLoadingCardImage} />
+                    <div style={{ ...s.cashierLoadingCardLine, width: '68%', marginTop: 12 }} />
+                    <div style={{ ...s.cashierLoadingCardLine, width: '42%', marginTop: 8 }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={s.cashierLoadingPanel}>
+              <div style={{ ...s.cashierLoadingCardLine, width: '52%', marginBottom: 18 }} />
+              <div style={{ display: 'grid', gap: 12 }}>
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div key={index} style={{ ...s.cashierLoadingLightBlock, height: 48 }} />
+                ))}
+              </div>
+              <div style={{ ...s.cashierLoadingLightBlock, height: 54, marginTop: 24 }} />
+            </div>
+          </main>
+        )
+      }
       const title =
-        isCheckingAccess ? '正在检查收银权限' :
         posAccountAccess === 'login_required' ? '请先登录本店账号' :
         '当前账号无权进入本店收银台'
       const sub =
-        isCheckingAccess ? '正在确认你是否已使用本店老板或员工账号登录，请稍候。' :
         posAccountAccess === 'login_required'
           ? '请使用该门店老板或员工账号登录后，再打开这条电脑收银台链接。'
           : '请确认当前登录账号属于这家门店，或让老板重新分享正确的收银台链接。'
