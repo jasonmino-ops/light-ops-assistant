@@ -1406,6 +1406,97 @@
       "closedAt": "2026-09-17T17:00:33Z",
       "featureMergeCommitSha": "b1439ceeb95c4b895940123904d64f42fa80103b",
       "closureReason": "Consumed by the retained unsigned TEST-only rc.10 Candidate and Founder-confirmed V727 FIELD acceptance for bounded cold-start printer reachability recovery. This closes the one-candidate authorization and grants no future build, installation, FIELD, signing, publication or Production authority."
+    },
+    {
+      "authorizationId": "NETWORK-COMMERCIAL-CANDIDATE-RC10-RECOVERY-BUILD-21",
+      "featureBranch": "codex/es-network-candidate-rc10-recovery-build",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "1e666ba67906573fd02ca0993b9c513073e1491c",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "createdAt": "2026-09-20T19:15:04Z",
+      "approvedAt": "2026-09-20T19:15:04Z",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder approved one replacement rc.10 unsigned TEST-only Candidate recovery build after NETWORK-COMMERCIAL-CANDIDATE-RC10-BUILD-20 was closed. This exact authorization binds the new recovery branch to the current trusted origin/main, the verified rc.10 source state b1439ceeb95c4b895940123904d64f42fa80103b, and the identical zero-delta authorized path/hash mapping. It authorizes exactly one macOS-hosted unsigned TEST-only 0.1.0-commercial-rc.10 win32-x64 candidate recovery build and evidence retention only; it does not authorize source changes, installation, Production deployment, FIELD, signing or formal publication.",
+      "authorizedPaths": [
+        "e-shop-tray/network-addon/coldModeLifecycle.ts",
+        "e-shop-tray/network-addon/electron-builder.cjs",
+        "e-shop-tray/network-addon/entryCoordinator.ts",
+        "e-shop-tray/network-addon/installer.nsh",
+        "e-shop-tray/network-addon/main.ts",
+        "e-shop-tray/network-addon/preload.ts",
+        "e-shop-tray/network-addon/profile.ts",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts",
+        "e-shop-tray/network-addon/shortcutWindows.ts",
+        "e-shop-tray/network-addon/ui.css",
+        "e-shop-tray/network-addon/ui.html",
+        "e-shop-tray/network-addon/ui.ts",
+        "e-shop-tray/scripts/build-network-addon.mjs",
+        "e-shop-tray/src/networkDiscovery.ts",
+        "e-shop-tray/src/networkNodeConfig.ts",
+        "e-shop-tray/src/networkRuntime.ts",
+        "e-shop-tray/src/resultLog.ts",
+        "e-shop-tray/tests/network-addon-cold-lifecycle.test.ts",
+        "e-shop-tray/tests/network-addon-cold-mode-change.test.ts",
+        "e-shop-tray/tests/network-addon-entry.test.ts",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts",
+        "e-shop-tray/tests/network-addon.test.ts",
+        "e-shop-tray/tests/network-discovery.test.ts",
+        "e-shop-tray/tests/network-dual-endpoint.test.ts",
+        "e-shop-tray/tests/network-print-v01.test.ts",
+        "e-shop-tray/tests/network-runtime.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "e-shop-tray/network-addon/coldModeLifecycle.ts": "9d1d16981c9f3bca96d53346dac1ca1608cbdafacdd755897b5e1e953fd12287",
+        "e-shop-tray/network-addon/electron-builder.cjs": "81962606c88086a8de8b39858375011430d5870204e74404380577c3538d9d4a",
+        "e-shop-tray/network-addon/entryCoordinator.ts": "d7857d6f084642ed614bd5b9ee197917def51a491ed97b9bedd625359931a77c",
+        "e-shop-tray/network-addon/installer.nsh": "82d9505545ee64b819f62edb229063e44657a1999e532cf4aacfd0feb231c746",
+        "e-shop-tray/network-addon/main.ts": "93a7ef32eb16c6552810168a86f2a7b2bc1f46752e5a1faf86b1e11157d7a81c",
+        "e-shop-tray/network-addon/preload.ts": "65d555ed7efbd3d01c0f7f4d837b3d6471faacdd6ab16d744d3a2a0966f691b2",
+        "e-shop-tray/network-addon/profile.ts": "f07cb419f45e3cbcd96bbefdf51d7d14dc1254a5d8347d759f19fcdf41ace16c",
+        "e-shop-tray/network-addon/shortcutLifecycle.ts": "2879dacf1f6b9fa42b18a4caa0fa7405329bcb77c7cc19bc528c3394f088b638",
+        "e-shop-tray/network-addon/shortcutWindows.ts": "1c8bd08f46ab5a58066987f56c9a9f4ec1ef74c4d9f386e95e28d08045007c83",
+        "e-shop-tray/network-addon/ui.css": "543d8f48aea9b6d722257793c39b87d447abd1900979547122f8d9f0f5d1a54e",
+        "e-shop-tray/network-addon/ui.html": "6840c98283b5419252217989b76d0c4a0a0a0c5ca0c546a2b04608e4b516f78b",
+        "e-shop-tray/network-addon/ui.ts": "944f916e8b29d36f3118c6eecf28d13f9542513e0d78e2856b2400bd4a9bd4e7",
+        "e-shop-tray/scripts/build-network-addon.mjs": "3f9c6486cccf7677782b75dc69281ce606008685932a3c904730a38676af0974",
+        "e-shop-tray/src/networkDiscovery.ts": "cf76b286e8321e1928916277df2a1732ced280241f3052b0c7f58d58cef2f70a",
+        "e-shop-tray/src/networkNodeConfig.ts": "4bee45a291c64393870145c1ebfe0a353cbaa9037896dfa753831df9f6bac1c2",
+        "e-shop-tray/src/networkRuntime.ts": "fc2d36ea0eea513f8e29e2081eb4f5899ce8c2a60ed19b1e4757fc5326c3b8a0",
+        "e-shop-tray/src/resultLog.ts": "31e671b4032c326a0645b0dc4e02bc31ed47e0c3ec932fd6b71063b1b81399ea",
+        "e-shop-tray/tests/network-addon-cold-lifecycle.test.ts": "a8b4e213c438f11487b7d0de768027652f8d596298c22f9598ece0a244d59343",
+        "e-shop-tray/tests/network-addon-cold-mode-change.test.ts": "33428a61541c096166da44c9cab64e9e62b45c9f7e5b064f861cfd87705800f4",
+        "e-shop-tray/tests/network-addon-entry.test.ts": "1f5dc3e56248ed01fecbeab6e98b5139f6c07e1ab6e7f8210cff7ae7c586467a",
+        "e-shop-tray/tests/network-addon-shortcut-windows.test.ts": "f262e11a6369db5a9a0c110c21dd9847755937936be11a869b952a7828d9474f",
+        "e-shop-tray/tests/network-addon-shortcuts.test.ts": "0d195b7c5b574a43a99d0abaacbdb087329b1f2872d39c4d4f5d51a0dcf4f1d9",
+        "e-shop-tray/tests/network-addon.test.ts": "d7a98a749a014898cdf010ba4c7b92e8fcfb3d31e6a5fc33299bf664bc0d0aca",
+        "e-shop-tray/tests/network-discovery.test.ts": "ba4fb2c81800664371798001b0dfb52059f4099d9b758b0b904252466e7bc7ec",
+        "e-shop-tray/tests/network-dual-endpoint.test.ts": "d922e1f086bcae6ed4c3bbb8d6b3b6ad595a06f08384f2e323ffb80eaf045afe",
+        "e-shop-tray/tests/network-print-v01.test.ts": "790d6c0d101c5586fca9e2218431f8567cd7348d3de8f4ef887f835135ddabb0",
+        "e-shop-tray/tests/network-runtime.test.ts": "96e28d30da486df1253c9114eb1d176f77fcdebdc13f4396d81736327839784d"
+      },
+      "candidateBuild": {
+        "mode": "unsigned-test-only",
+        "version": "0.1.0-commercial-rc.10",
+        "target": "win32-x64",
+        "electronVersion": "44.3.0",
+        "published": false,
+        "releaseReady": false
+      },
+      "sourceState": {
+        "commit": "b1439ceeb95c4b895940123904d64f42fa80103b",
+        "exactMatchRequired": true
+      },
+      "allowedPurposes": [
+        "Build exactly one unsigned TEST-only 0.1.0-commercial-rc.10 Candidate on the Mac development host from the verified rc.10 source state and the current trusted origin/main zero-delta worktree for V727 Candidate recovery review.",
+        "Retain source, toolchain, machine, installer bytes and SHA-256 evidence; this authorization is not installation, Production deployment, FIELD acceptance, signing or formal publication."
+      ],
+      "prohibitedChanges": [
+        "Any recovery runtime, Transport, Routing, Binding, Network Discovery, Print Job semantics, partial recovery, auto rebind, Retry Now UI or unrelated source change.",
+        "Any source delta on the rc.10 recovery build worktree, bypass of trusted origin/main or exact hash authorization, second candidate build, installation, Production deploy, FIELD, signing or formal publication."
+      ],
+      "expirationCondition": "Close this exact grant after the one retained rc.10 recovery Candidate is packaged, or when explicitly superseded."
     }
   ]
 }
