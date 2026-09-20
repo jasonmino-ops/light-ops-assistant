@@ -6,7 +6,10 @@
   "baseOriginMainSha": "0874a3a0c6f4d19e011098cb1a8a939d183451a4",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-09-20T16:27:05Z",
+  "featureMergeCommitSha": "5d11ea10941b52e8d7fd49479af509f148c9b002",
+  "closureReason": "Closed after the exact FIELD return-navigation corrective entered trusted origin/main. The historical exact path and SHA-256 remain audit evidence; this CLOSED exception cannot authorize future Records changes.",
   "authorizedPaths": [
     "app/records/page.tsx"
   ],
