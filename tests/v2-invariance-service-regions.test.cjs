@@ -12,7 +12,11 @@
 //     · enqueueRelayPrintJob（唯一 v3 扩展点）——不做哈希冻结，但其既有 v2 判定行
 //       必须按原相对顺序完整保留，新增 v3 分支只能是纯增量；
 //     · 文件头部（import / type / class 声明区）——既有行按原相对顺序完整
-//       保留，允许新增，不允许删除、改写或重排。
+//       保留，允许新增，不允许删除、改写或重排；
+//     · 既有顶层函数之间的全部间隙——逐字冻结，禁止插入顶层可执行语句、
+//       常量初始化、副作用或 monkey patch；
+//     · 顶层函数集合——不得插入新的 helper。以后唯一允许修改的 service.ts
+//       区域就是 enqueueRelayPrintJob 函数体；新的 v3 helper 必须放在独立模块。
 //
 //   因此"新增 v3 分支未改变 v2 分支的顺序、判定条件或既有输出"这件事，
 //   在静态层由本文件证明（顺序 + 判定行 + 逐函数字节），在运行时层由
@@ -30,7 +34,7 @@ const FILE = "lib/es-tray-relay/service.ts"
 // 唯一允许新增 v3 分支的区段；本区段刻意不做哈希冻结。
 const EXTENSION_REGION = "enqueueRelayPrintJob"
 
-// 顶层函数在基线上的相对顺序（允许在其间插入新函数，不允许重排既有函数）。
+// 顶层函数在基线上的精确顺序；不允许插入新函数或重排既有函数。
 const REGION_ORDER = [
   "serializeJob",
   "storedRequest",
@@ -69,6 +73,28 @@ const FROZEN_REGIONS = [
   { name: "markRelayPrintJobExecuting", sha256: "2dc5ffe01f52c006162f20abba70edaefda9383110bbddc7366fa9335dd90cbf", lines: 47 },
   { name: "sameTerminalResult", sha256: "2642a198cd2b978ecc992da01f58b76f359513df0b1d5b07fe91b0cca091880b", lines: 8 },
   { name: "completeRelayPrintJob", sha256: "12b55aaa1887a41cc603e8fec3c735b4d37d833f28ebb7efecc466a1cc68cd74", lines: 55 },
+]
+
+// 顶层函数之间的既有间隙逐字冻结。空白间隙使用 SHA-256 仍然校验，
+// 因而在任一间隙插入顶层可执行语句、常量初始化、副作用或 monkey patch
+// 都会 fail-closed；不要把它们改成“允许新增 helper”的扩展面。
+const FROZEN_GAPS = [
+  { from: "serializeJob", to: "storedRequest", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "storedRequest", to: "cashierNetworkRoleIdempotencyKey", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "cashierNetworkRoleIdempotencyKey", to: "sameNetworkItem", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "sameNetworkItem", to: "isOrderedNetworkItemSubset", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "isOrderedNetworkItemSubset", to: "isValidKitchenDependency", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "isValidKitchenDependency", to: "enqueueRelayPrintJob", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "enqueueRelayPrintJob", to: "recoverTimedOutJobs", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "recoverTimedOutJobs", to: "lockActiveClaimScope", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "lockActiveClaimScope", to: "readNetworkQueueState", sha256: "ef67a6553fa047707c1c078966d1f485b00c771991a39b11aaf227e9d4085c06", lines: 2 },
+  { from: "readNetworkQueueState", to: "assertExpectedNetworkMode", sha256: "e974d816549ade1b4292ba7e0f3f7e067245db7dc3bfed6e20be14029cad123f", lines: 3 },
+  { from: "assertExpectedNetworkMode", to: "hasPotentialRelayWork", sha256: "0e9a6b9c6a78c917f35247dda3e2b5e3532fe5baca6b5e0288073050dcffe55d", lines: 3 },
+  { from: "hasPotentialRelayWork", to: "claimNextRelayPrintJob", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "claimNextRelayPrintJob", to: "findClaimedJob", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "findClaimedJob", to: "markRelayPrintJobExecuting", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "markRelayPrintJobExecuting", to: "sameTerminalResult", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
+  { from: "sameTerminalResult", to: "completeRelayPrintJob", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
 ]
 
 // 文件头部（import / type / class 声明区）在基线上的既有非空行。
@@ -136,6 +162,7 @@ const EXTENSION_V2_PREDICATES = [
 // ── 自检：清单本身必须自洽 ────────────────────────────────────────────
 assert.equal(REGION_ORDER.length, 17, 'I-2b 顶层函数基线条目数已变化；增删属治理变更')
 assert.equal(FROZEN_REGIONS.length, 16, 'I-2b 冻结区段条目数已变化；增删属治理变更')
+assert.equal(FROZEN_GAPS.length, 16, 'I-2b 顶层函数间隙条目数已变化；增删属治理变更')
 assert.ok(!FROZEN_REGIONS.some((r) => r.name === EXTENSION_REGION),
   'I-2b 自检失败：扩展点不得同时被哈希冻结')
 assert.deepEqual(
@@ -183,15 +210,25 @@ for (const expected of HEADER_LINES) {
   headerCursor = at
 }
 
-// ── A2 顶层函数相对顺序不变 ───────────────────────────────────────────
+// ── A2 顶层函数集合与顺序均不得变化 ──────────────────────────────────
 const orderActual = regions.map((region) => region.name)
-let orderCursor = -1
-for (const expected of REGION_ORDER) {
-  const at = orderActual.indexOf(expected, orderCursor + 1)
-  assert.notEqual(at, -1,
-    `I-2b 违约（顺序）：顶层函数 ${expected} 缺失或相对顺序被改变\n` +
-    `  基线顺序 ${REGION_ORDER.join(' → ')}\n  实际顺序 ${orderActual.join(' → ')}`)
-  orderCursor = at
+assert.deepEqual(orderActual, REGION_ORDER,
+  `I-2b 违约（顶层函数集合/顺序）：不得插入 helper 或重排既有函数\n` +
+  `  基线顺序 ${REGION_ORDER.join(' → ')}\n  实际顺序 ${orderActual.join(' → ')}`)
+
+// ── A2b 顶层函数之间的全部既有间隙逐字冻结 ─────────────────────────────
+for (const { from, to, sha256, lines } of FROZEN_GAPS) {
+  const left = byName.get(from)
+  const right = byName.get(to)
+  assert.ok(left && right, `I-2b 违约：无法定位间隙 ${from} → ${to}`)
+  const gap = source.slice(left.end + 1, right.start).join('\n')
+  const actualLines = right.start - left.end - 1
+  const actualHash = crypto.createHash('sha256').update(gap).digest('hex')
+  assert.equal(actualLines, lines,
+    `I-2b 违约（函数间隙）：${from} → ${to} 行数变化（期望 ${lines}，实际 ${actualLines}）`)
+  assert.equal(actualHash, sha256,
+    `I-2b 违约（函数间隙）：${from} → ${to} 含新增顶层语句、常量初始化、` +
+    `副作用或 monkey patch；该间隙必须保持冻结\n  期望 ${sha256}\n  实际 ${actualHash}`)
 }
 
 // ── A3 v2 既有执行分支逐字冻结 ────────────────────────────────────────
@@ -220,5 +257,5 @@ for (const expected of EXTENSION_V2_PREDICATES) {
 
 console.log(
   `I-2b PASS：${FROZEN_REGIONS.length} 个 v2 执行分支逐字冻结、` +
-  `${REGION_ORDER.length} 个顶层函数顺序不变、` +
+  `${REGION_ORDER.length} 个顶层函数集合/顺序不变、${FROZEN_GAPS.length} 个函数间隙冻结、` +
   `扩展点 ${EXTENSION_REGION} 的 ${EXTENSION_V2_PREDICATES.length} 条 v2 判定行完整保留（基线 5a2c4dcb30de）`)

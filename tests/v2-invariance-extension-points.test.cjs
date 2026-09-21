@@ -10,9 +10,10 @@
 //   3. 每个扩展点在基线上含 schemaVersion 的判定行，作为"既有 v2 分支
 //      判定条件与求值顺序逐字不变"（I-3 条件 a）的可执行证据。
 //
-// 允许的变化方式：按 I-3 做"纯新增分支"扩展时，在同一个 PR 内更新本文件的
-// sha256 与（如有新增的）predicates，并附 I-3(c) 要求的逐行说明。
-// 既有 predicates 行必须继续按原相对顺序出现——删除或改写它们即违约。
+// G1 阶段整文件哈希必须完全一致。将来若要做合法 v3 扩展，必须在同一受审
+// PR 内明确更新基线哈希/判定行，并由 I-1 证明 v2 输出不变；本守卫不提供
+// driftAuthorized 自动豁免机制。既有 predicates 行必须继续按原相对顺序出现——
+// 删除或改写它们即违约。
 //
 // 关于 lib/es-tray-relay/service.ts：它含唯一的 v3 enqueue 扩展点，但其同文件
 // 内还有 16 个 v2 执行分支，整文件哈希不适合做守卫，改由 I-2b 区段级指纹
@@ -88,10 +89,11 @@ for (const { file, sha256, predicates } of EXTENSION_POINTS) {
   }
 
   const actual = crypto.createHash('sha256').update(content).digest('hex')
-  if (actual !== sha256) {
-    console.log(`I-3 NOTE：${file} 已相对基线变化（${sha256.slice(0, 12)} → ${actual.slice(0, 12)}）`)
-    console.log('        变化本身不违约，但必须附 I-3(c) 逐行说明；下方按既有判定行逐条校验。')
-  }
+  assert.equal(actual, sha256,
+    `I-3 违约：${file} 整文件内容已相对 G1 基线变化\n` +
+    `  期望 ${sha256}\n  实际 ${actual}\n` +
+    '  G1 阶段必须 fail-closed；未来合法 v3 扩展须在同一受审 PR 内更新基线，' +
+    '并由 I-1 证明 v2 输出不变。')
 
   const lines = content.split('\n').map((line) => line.trim())
   let cursor = -1

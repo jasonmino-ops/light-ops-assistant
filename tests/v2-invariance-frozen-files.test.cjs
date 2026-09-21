@@ -18,6 +18,9 @@ const fs = require('node:fs')
 const crypto = require('node:crypto')
 
 const FROZEN_FILES = [
+  ["lib/es-tray-relay/config.ts", "37890fb8c648d70871e87b900d165af49fd7f5cbdfc3fa4ae7818e0d823056cb"],
+  ["lib/es-tray-relay/crypto.ts", "0c4554c7edf967438595414ab31b09f8395256bfc682c8afff56225f6cda536d"],
+  ["e-shop-tray/src/networkContract.ts", "a026dec9a85503404cdaa8ca6303258dcb235eea93046725233264b063a2f9af"],
   ["e-shop-tray/src/relayPoller.ts", "04bd79f0b4bd55f5508a148b241558d472ef70afb116f0fc97833e164b0783e9"],
   ["e-shop-tray/src/networkRuntime.ts", "fc2d36ea0eea513f8e29e2081eb4f5899ce8c2a60ed19b1e4757fc5326c3b8a0"],
   ["e-shop-tray/src/executionJournal.ts", "15cfecd9c2c8575de93bbd20783f1bd641372f12372424454e587ea4a3f4a5d5"],
@@ -27,7 +30,7 @@ const FROZEN_FILES = [
   ["app/api/es-tray-02/print-jobs/[jobId]/result/route.ts", "7e90b3c4619c86c2b6735d76fabbb1d8bbdddf7296e21f10fcd7ac3080335c31"],
 ]
 
-assert.equal(FROZEN_FILES.length, 7,
+assert.equal(FROZEN_FILES.length, 10,
   'I-2a 冻结清单条目数已变化；增删冻结文件属治理变更，不是测试维护')
 
 for (const [file, expected] of FROZEN_FILES) {

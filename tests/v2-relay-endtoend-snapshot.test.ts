@@ -30,10 +30,10 @@
 //
 // ── 数据足迹：创建 / 修改 / 清理 ────────────────────────────────────────
 // 创建（每一遍都全新建立，带随机后缀，绝不复用既有行）：
-//   · Tenant            4 行（name 前缀 v2inv-）
-//   · Store             4 行（每个 Tenant 一个）
-//   · ComputerBinding   4 行（每个 Store 一个，status=APPROVED）
-//   · EshopTrayPrintJob 5 行（3 行经 enqueueRelayPrintJob 生产，
+//   · Tenant            5 行（name 前缀 v2inv-）
+//   · Store             5 行（每个 Tenant 一个）
+//   · ComputerBinding   5 行（每个 Store 一个，status=APPROVED）
+//   · EshopTrayPrintJob 6 行（4 行经 enqueueRelayPrintJob 生产，
 //                              2 行为 v2 阻断场景直接写入夹具行）
 //   生成 golden 时跑两遍，因此总计上述数量的两倍，两遍之间已完整清理。
 // 修改：
@@ -65,6 +65,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { RelayTimingConfig } from '../lib/es-tray-relay/config'
 import type { EshopTrayPrintRequest } from '../lib/es-tray-relay/contract'
+import type { NetworkRequest } from '../e-shop-tray/src/networkContract'
 
 // ── fail-closed 隔离守卫 ────────────────────────────────────────────────
 const ISOLATED_HOSTS = ['127.0.0.1', 'localhost', '::1', '[::1]']
@@ -339,6 +340,41 @@ function request(id = `request-${randomUUID()}`, bytes = Buffer.from([0x1b, 0x40
   })
 }
 
+function networkRequest(
+  requestId = `network-${randomUUID()}`,
+  totalAmount = 125,
+): NetworkRequest {
+  return {
+    profile: 'network-v2',
+    requestId,
+    role: 'FRONT',
+    mode: 'FRONT_ONLY',
+    rendererVersion: 1,
+    order: {
+      storeCode: 'STORE-V2',
+      storeName: 'Snapshot Store',
+      orderNo: 'ORDER-V2-001',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      cashierName: 'Snapshot Cashier',
+      paymentMethod: 'CASH',
+      currencyCode: 'USD',
+      totalAmount,
+      lang: 'en',
+      items: [{ name: 'Snapshot Item', spec: null, qty: 1, price: totalAmount, lineAmount: totalAmount }],
+    },
+  }
+}
+
+async function enqueueNetwork(scope: { tenantId: string; storeId: string }, request: NetworkRequest) {
+  return prisma.$transaction((tx) => enqueueRelayPrintJob(
+    scope,
+    request,
+    timing,
+    new Date('2026-01-01T00:00:01.000Z'),
+    tx,
+  ))
+}
+
 async function seedScope(label: string, fp: Footprint) {
   const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`
   const tenant = await prisma.tenant.create({
@@ -496,6 +532,79 @@ async function runAllScenarios(fp: Footprint): Promise<Record<string, unknown>> 
     }))
   }
 
+  // ── v2 网络 enqueue：真实 profile 分支、幂等冲突与完整生命周期 ────────────
+  {
+    const s = await seedScope('v2inv-network', fp)
+    const requestId = `network-${randomUUID()}`
+    const firstRequest = networkRequest(requestId)
+    const first = await enqueueNetwork(s.scope, firstRequest)
+    fp.jobIds.push(first.job.id)
+
+    await scenario('v2.network.enqueue.first', async () => ({
+      created: first.created,
+      requestHashCanonical: first.job.requestHash === sha256(JSON.stringify(firstRequest)),
+      job: first.job,
+      row: await observeJob(first.job.id),
+    }))
+
+    await scenario('v2.network.enqueue.duplicate', async () => {
+      const duplicate = await enqueueNetwork(s.scope, firstRequest)
+      const jobCount = await prisma.eshopTrayPrintJob.count({
+        where: { tenantId: s.scope.tenantId, storeId: s.scope.storeId, idempotencyKey: requestId },
+      })
+      return { created: duplicate.created, job: duplicate.job, jobCount }
+    })
+
+    await scenario('v2.network.enqueue.conflict', async () => {
+      const conflictingRequest = networkRequest(requestId, 135)
+      return enqueueNetwork(s.scope, conflictingRequest)
+    })
+
+    const lifecycleNow = new Date('2026-01-01T00:00:02.000Z')
+    const claimed = await claimNextRelayPrintJob({ ...s.agent, schemaVersion: 2 }, timing, lifecycleNow)
+    assert.ok(claimed, 'v2 network lifecycle 需要一次成功 claim')
+    const proof = { schemaVersion: 2 as const, claimAttempt: claimed.claimAttempt, claimToken: claimed.claimToken }
+    const wrongTokenProof = { ...proof, claimToken: `${proof.claimToken}wrong` }
+
+    await scenario('v2.network.lifecycle.claim', async () => ({
+      claimed: { claimAttempt: claimed.claimAttempt, status: 'CLAIMED' },
+      row: await observeJob(first.job.id),
+    }))
+
+    await scenario('v2.network.lifecycle.markExecutingWrongClaimToken', async () =>
+      markRelayPrintJobExecuting({ ...s.agent, schemaVersion: 2 }, first.job.id, wrongTokenProof, timing, lifecycleNow))
+
+    await scenario('v2.network.lifecycle.markExecuting', async () => ({
+      result: await markRelayPrintJobExecuting({ ...s.agent, schemaVersion: 2 }, first.job.id, proof, timing, lifecycleNow),
+      row: await observeJob(first.job.id),
+    }))
+
+    const success = {
+      ...proof,
+      state: 'SUCCEEDED' as const,
+      resultCode: 'SUBMITTED_TO_WINDOWS_SPOOLER',
+      effectBoundary: 'CROSSED' as const,
+      physicalCompletionKnown: false as const,
+    }
+    await scenario('v2.network.lifecycle.completeWrongProof', async () =>
+      completeRelayPrintJob(
+        { ...s.agent, schemaVersion: 2 },
+        first.job.id,
+        { ...success, claimAttempt: 999 },
+        new Date('2026-01-01T00:00:03.000Z'),
+      ))
+
+    await scenario('v2.network.lifecycle.complete', async () => ({
+      result: await completeRelayPrintJob(
+        { ...s.agent, schemaVersion: 2 },
+        first.job.id,
+        success,
+        new Date('2026-01-01T00:00:03.000Z'),
+      ),
+      row: await observeJob(first.job.id),
+    }))
+  }
+
   // ── 终态契约：幂等、冲突、stale claim ──────────────────────────────────
   {
     const s = await seedScope('v2inv-terminal', fp)
@@ -514,22 +623,22 @@ async function runAllScenarios(fp: Footprint): Promise<Record<string, unknown>> 
       effectBoundary: 'CROSSED' as const, physicalCompletionKnown: false as const, ...proof }
 
     await scenario('terminal.complete', async () => ({
-      result: await completeRelayPrintJob({ ...s.agent, schemaVersion: 1 }, job.id, success),
+      result: await completeRelayPrintJob({ ...s.agent, schemaVersion: 1 }, job.id, success, new Date('2026-01-01T00:00:03.000Z')),
       row: await observeJob(job.id),
     }))
 
     await scenario('terminal.completeIdempotent', async () => ({
-      result: await completeRelayPrintJob({ ...s.agent, schemaVersion: 1 }, job.id, success),
+      result: await completeRelayPrintJob({ ...s.agent, schemaVersion: 1 }, job.id, success, new Date('2026-01-01T00:00:03.000Z')),
     }))
 
     await scenario('terminal.completeConflict', async () => ({
       result: await completeRelayPrintJob({ ...s.agent, schemaVersion: 1 }, job.id, {
         ...success, state: 'FAILED' as const, resultCode: 'DIFFERENT', effectBoundary: 'CROSSING_UNKNOWN' as const,
-      }),
+      }, new Date('2026-01-01T00:00:03.000Z')),
     }))
 
     await scenario('terminal.staleClaimAttempt', async () => ({
-      result: await completeRelayPrintJob({ ...s.agent, schemaVersion: 1 }, job.id, { ...success, claimAttempt: 999 }),
+      result: await completeRelayPrintJob({ ...s.agent, schemaVersion: 1 }, job.id, { ...success, claimAttempt: 999 }, new Date('2026-01-01T00:00:03.000Z')),
     }))
   }
 
@@ -560,12 +669,27 @@ const serialize = (observations: Record<string, unknown>) => JSON.stringify(obse
 /** 跑一遍完整场景并清理；返回序列化后的 JSON。 */
 async function runPass(pass: string): Promise<string> {
   const fp = newFootprint()
-  let json: string
+  let json: string | undefined
+  let mainError: unknown
   try {
     json = serialize(await runAllScenarios(fp))
-  } finally {
-    await teardown(fp, pass)
+  } catch (error) {
+    mainError = error
   }
+
+  let teardownError: unknown
+  try {
+    await teardown(fp, pass)
+  } catch (error) {
+    teardownError = error
+  }
+
+  if (mainError && teardownError) {
+    throw new AggregateError([mainError, teardownError], `I-1 主体测试与清理均失败（${pass}）`)
+  }
+  if (mainError) throw mainError
+  if (teardownError) throw teardownError
+  if (!json) throw new Error(`I-1 runPass 未产生 snapshot（${pass}）`)
   return json
 }
 

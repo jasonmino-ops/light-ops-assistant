@@ -184,16 +184,16 @@ GC-01…GC-16、Golden Tests 1–22、FIELD F-01…F-37 全部有效，不可豁
 
 - **ESC-1** 改变 V2 Frozen Fallback 的代码或运行行为
 - **ESC-2** 扩大业务范围（离线营业、MQTT、Linux Box、USB、蓝牙、A4/PDF、支付等）
-- **ESC-3** 降低 CROSSING_UNKNOWN 处理强度
-- **ESC-4** 降低防重强度
-- **ESC-5** 降低权限与安全边界
+- **ESC-3** 降低 `CROSSING_UNKNOWN` 处理强度（自动重打、自动清除、缩短保留期，或跳过人工恢复闸门）
+- **ESC-4** 降低防重强度（移除 `printJobId` 幂等约束、放宽 `requestHash` 冲突检测，或允许已执行 / 未知任务复用）
+- **ESC-5** 降低权限与安全边界（放宽身份 / 租户 / 设备绑定、IPC sender 校验、最小权限或审计要求）
 
 ---
 
 ## 7. G1 冻结清单与基线哈希（2026-09-21，`origin/main` = `5a2c4dcb`）
 
 ### I-2a 完全 v2 专属文件（整文件冻结，禁止修改，ESC-1）
-由 `tests/v2-invariance-frozen-files.test.cjs` 固化并逐次校验。这 7 个文件
+由 `tests/v2-invariance-frozen-files.test.cjs` 固化并逐次校验。这 10 个文件
 不含任何 v3 扩展点，因此「整文件未被编辑」与「v2 行为未变」等价：
 
 ```
@@ -204,11 +204,15 @@ e-shop-tray/src/printing/networkRawTcpTransport.ts
 app/api/es-tray-02/print-jobs/receive/route.ts
 app/api/es-tray-02/print-jobs/[jobId]/executing/route.ts
 app/api/es-tray-02/print-jobs/[jobId]/result/route.ts
+lib/es-tray-relay/config.ts
+lib/es-tray-relay/crypto.ts
+e-shop-tray/src/networkContract.ts
 ```
 
 ### I-2b `lib/es-tray-relay/service.ts` 区段级指纹
 由 `tests/v2-invariance-service-regions.test.cjs` 固化。该文件 736 行、
-17 个顶层函数，其中 **16 个是 v2 既有执行分支，1 个是唯一的 v3 扩展点**：
+17 个顶层函数，其中 **16 个是 v2 既有执行分支，1 个是唯一的 v3 扩展点**；
+函数之间的 16 个既有间隙也逐字冻结：
 
 ```
 [冻结] serializeJob / storedRequest / cashierNetworkRoleIdempotencyKey
@@ -225,9 +229,10 @@ app/api/es-tray-02/print-jobs/[jobId]/result/route.ts
 | 断言 | 内容 | 允许的变化 |
 |---|---|---|
 | A1 | 头部声明区 50 条既有行按原相对顺序完整保留 | 只允许新增 import / type |
-| A2 | 17 个顶层函数的相对顺序不变 | 允许在其间插入新函数 |
+| A2 | 17 个顶层函数的集合与相对顺序不变 | 不允许插入 helper；新 v3 helper 放独立模块 |
+| A2b | 16 个既有函数间隙逐字冻结 | 不得新增顶层可执行语句、常量初始化、副作用或 monkey patch |
 | A3 | 16 个冻结区段的 SHA-256 + 行数逐一匹配 | 无 |
-| A4 | `enqueueRelayPrintJob` 内 4 条既有 v2 判定行按原相对顺序保留 | 纯新增 v3 分支 |
+| A4 | `enqueueRelayPrintJob` 内 4 条既有 v2 判定行按原相对顺序保留 | 仅允许修改该明确扩展区 |
 
 `enqueueRelayPrintJob` 是**唯一**的版本选择点（写 `schemaVersion: 2` 或
 `ES_TRAY_RELAY_SCHEMA_VERSION`）。G3 的 mode-aware 生产必须落在这里，
@@ -261,8 +266,10 @@ G-2 的判定规则：
 可能携带连接串或行内容且不可控。
 
 ### I-3 扩展点（允许纯新增分支，清单 G1 一次性冻结）
-由 `tests/v2-invariance-extension-points.test.cjs` 固化清单、基线哈希与
-27 条既有 `schemaVersion` 判定行的相对顺序：
+由 `tests/v2-invariance-extension-points.test.cjs` 固化清单、G1 整文件基线哈希与
+27 条既有 `schemaVersion` 判定行的相对顺序。G1 阶段整文件哈希不一致即
+fail-closed；未来合法 v3 扩展必须在同一受审 PR 内明确更新基线，并由 I-1
+证明 v2 输出不变，不存在自动 drift 豁免：
 
 ```
 lib/es-tray-relay/auth.ts           （4 条判定行）

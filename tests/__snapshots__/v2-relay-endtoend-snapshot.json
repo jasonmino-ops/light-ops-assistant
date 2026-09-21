@@ -77,6 +77,198 @@
       }
     }
   },
+  "v2.network.enqueue.first": {
+    "outcome": "RESOLVED",
+    "value": {
+      "created": true,
+      "job": {
+        "attemptCount": 0,
+        "claimAttempt": 0,
+        "completedAt": null,
+        "createdAt": "<TIMESTAMP>",
+        "executingAt": null,
+        "expiresAt": "<TIMESTAMP>",
+        "id": "<ID>",
+        "idempotencyKey": "<IDEMPOTENCYKEY>",
+        "leaseExpiresAt": null,
+        "maxAttempts": 3,
+        "nextAttemptAt": "<TIMESTAMP>",
+        "requestHash": "<SHA256>",
+        "result": null,
+        "schemaVersion": 2,
+        "status": "PENDING",
+        "updatedAt": "<TIMESTAMP>"
+      },
+      "requestHashCanonical": true,
+      "row": {
+        "attemptCount": 0,
+        "claimAttempt": 0,
+        "effectBoundary": null,
+        "hasClaimTokenHash": false,
+        "hasLease": false,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": null,
+        "resultStatus": null,
+        "schemaVersion": 2,
+        "status": "PENDING"
+      }
+    }
+  },
+  "v2.network.enqueue.duplicate": {
+    "outcome": "RESOLVED",
+    "value": {
+      "created": false,
+      "job": {
+        "attemptCount": 0,
+        "claimAttempt": 0,
+        "completedAt": null,
+        "createdAt": "<TIMESTAMP>",
+        "executingAt": null,
+        "expiresAt": "<TIMESTAMP>",
+        "id": "<ID>",
+        "idempotencyKey": "<IDEMPOTENCYKEY>",
+        "leaseExpiresAt": null,
+        "maxAttempts": 3,
+        "nextAttemptAt": "<TIMESTAMP>",
+        "requestHash": "<SHA256>",
+        "result": null,
+        "schemaVersion": 2,
+        "status": "PENDING",
+        "updatedAt": "<TIMESTAMP>"
+      },
+      "jobCount": 1
+    }
+  },
+  "v2.network.enqueue.conflict": {
+    "outcome": "RELAY_SERVICE_ERROR",
+    "code": "ES_TRAY_02_IDEMPOTENCY_CONFLICT",
+    "status": 409
+  },
+  "v2.network.lifecycle.claim": {
+    "outcome": "RESOLVED",
+    "value": {
+      "claimed": {
+        "claimAttempt": 1,
+        "status": "CLAIMED"
+      },
+      "row": {
+        "attemptCount": 1,
+        "claimAttempt": 1,
+        "effectBoundary": "NOT_CROSSED",
+        "hasClaimTokenHash": true,
+        "hasLease": true,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": null,
+        "resultStatus": null,
+        "schemaVersion": 2,
+        "status": "CLAIMED"
+      }
+    }
+  },
+  "v2.network.lifecycle.markExecutingWrongClaimToken": {
+    "outcome": "RELAY_SERVICE_ERROR",
+    "code": "ES_TRAY_02_STALE_CLAIM",
+    "status": 409
+  },
+  "v2.network.lifecycle.markExecuting": {
+    "outcome": "RESOLVED",
+    "value": {
+      "result": {
+        "idempotent": false,
+        "job": {
+          "attemptCount": 1,
+          "claimAttempt": 1,
+          "completedAt": null,
+          "createdAt": "<TIMESTAMP>",
+          "executingAt": "<TIMESTAMP>",
+          "expiresAt": "<TIMESTAMP>",
+          "id": "<ID>",
+          "idempotencyKey": "<IDEMPOTENCYKEY>",
+          "leaseExpiresAt": "<TIMESTAMP>",
+          "maxAttempts": 3,
+          "nextAttemptAt": "<TIMESTAMP>",
+          "requestHash": "<SHA256>",
+          "result": null,
+          "schemaVersion": 2,
+          "status": "EXECUTING",
+          "updatedAt": "<TIMESTAMP>"
+        }
+      },
+      "row": {
+        "attemptCount": 1,
+        "claimAttempt": 1,
+        "effectBoundary": "CROSSING_UNKNOWN",
+        "hasClaimTokenHash": true,
+        "hasLease": true,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": null,
+        "resultStatus": null,
+        "schemaVersion": 2,
+        "status": "EXECUTING"
+      }
+    }
+  },
+  "v2.network.lifecycle.completeWrongProof": {
+    "outcome": "RELAY_SERVICE_ERROR",
+    "code": "ES_TRAY_02_STALE_CLAIM",
+    "status": 409
+  },
+  "v2.network.lifecycle.complete": {
+    "outcome": "RESOLVED",
+    "value": {
+      "result": {
+        "idempotent": false,
+        "job": {
+          "attemptCount": 1,
+          "claimAttempt": 1,
+          "completedAt": "<TIMESTAMP>",
+          "createdAt": "<TIMESTAMP>",
+          "executingAt": "<TIMESTAMP>",
+          "expiresAt": "<TIMESTAMP>",
+          "id": "<ID>",
+          "idempotencyKey": "<IDEMPOTENCYKEY>",
+          "leaseExpiresAt": null,
+          "maxAttempts": 3,
+          "nextAttemptAt": "<TIMESTAMP>",
+          "requestHash": "<SHA256>",
+          "result": {
+            "code": "SUBMITTED_TO_WINDOWS_SPOOLER",
+            "effectBoundary": "CROSSED",
+            "message": null,
+            "physicalCompletionKnown": false,
+            "status": "SUCCESS"
+          },
+          "schemaVersion": 2,
+          "status": "SUCCEEDED",
+          "updatedAt": "<TIMESTAMP>"
+        }
+      },
+      "row": {
+        "attemptCount": 1,
+        "claimAttempt": 1,
+        "effectBoundary": "CROSSED",
+        "hasClaimTokenHash": true,
+        "hasLease": false,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": "SUBMITTED_TO_WINDOWS_SPOOLER",
+        "resultStatus": "SUCCESS",
+        "schemaVersion": 2,
+        "status": "SUCCEEDED"
+      }
+    }
+  },
   "terminal.markExecuting": {
     "outcome": "RESOLVED",
     "value": {
