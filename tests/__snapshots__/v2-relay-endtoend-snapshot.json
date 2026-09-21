@@ -1,0 +1,210 @@
+{
+  "v1.claim.first": {
+    "outcome": "RESOLVED",
+    "value": {
+      "claimed": {
+        "claimAttempt": 1,
+        "status": "CLAIMED"
+      },
+      "row": {
+        "attemptCount": 1,
+        "claimAttempt": 1,
+        "effectBoundary": "NOT_CROSSED",
+        "hasClaimTokenHash": true,
+        "hasLease": true,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": null,
+        "resultStatus": null,
+        "schemaVersion": 1,
+        "status": "CLAIMED"
+      }
+    }
+  },
+  "v1.claim.secondWhileActive": {
+    "outcome": "RESOLVED",
+    "value": {
+      "claimedIsNull": true
+    }
+  },
+  "v2.claim.emptyQueue": {
+    "outcome": "RESOLVED",
+    "value": {
+      "claimedIsNull": true
+    }
+  },
+  "v2.claim.storeSingleFlightBlocks": {
+    "outcome": "RESOLVED",
+    "value": {
+      "activeRow": {
+        "attemptCount": 0,
+        "claimAttempt": 0,
+        "effectBoundary": null,
+        "hasClaimTokenHash": false,
+        "hasLease": false,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": null,
+        "resultStatus": null,
+        "schemaVersion": 2,
+        "status": "CLAIMED"
+      },
+      "claimedIsNull": true
+    }
+  },
+  "v2.claim.storeUnknownBlocks": {
+    "outcome": "RESOLVED",
+    "value": {
+      "claimedIsNull": true,
+      "unknownRow": {
+        "attemptCount": 0,
+        "claimAttempt": 0,
+        "effectBoundary": "CROSSING_UNKNOWN",
+        "hasClaimTokenHash": false,
+        "hasLease": false,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": null,
+        "resultStatus": null,
+        "schemaVersion": 2,
+        "status": "FAILED"
+      }
+    }
+  },
+  "terminal.markExecuting": {
+    "outcome": "RESOLVED",
+    "value": {
+      "row": {
+        "attemptCount": 1,
+        "claimAttempt": 1,
+        "effectBoundary": "CROSSING_UNKNOWN",
+        "hasClaimTokenHash": true,
+        "hasLease": true,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": null,
+        "resultStatus": null,
+        "schemaVersion": 1,
+        "status": "EXECUTING"
+      }
+    }
+  },
+  "terminal.complete": {
+    "outcome": "RESOLVED",
+    "value": {
+      "result": {
+        "idempotent": false,
+        "job": {
+          "attemptCount": 1,
+          "claimAttempt": 1,
+          "completedAt": "<TIMESTAMP>",
+          "createdAt": "<TIMESTAMP>",
+          "executingAt": "<TIMESTAMP>",
+          "expiresAt": "<TIMESTAMP>",
+          "id": "<ID>",
+          "idempotencyKey": "<IDEMPOTENCYKEY>",
+          "leaseExpiresAt": null,
+          "maxAttempts": 3,
+          "nextAttemptAt": "<TIMESTAMP>",
+          "requestHash": "<SHA256>",
+          "result": {
+            "code": "SUBMITTED_TO_WINDOWS_SPOOLER",
+            "effectBoundary": "CROSSED",
+            "message": null,
+            "physicalCompletionKnown": false,
+            "status": "SUCCESS"
+          },
+          "schemaVersion": 1,
+          "status": "SUCCEEDED",
+          "updatedAt": "<TIMESTAMP>"
+        }
+      },
+      "row": {
+        "attemptCount": 1,
+        "claimAttempt": 1,
+        "effectBoundary": "CROSSED",
+        "hasClaimTokenHash": true,
+        "hasLease": false,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": "SUBMITTED_TO_WINDOWS_SPOOLER",
+        "resultStatus": "SUCCESS",
+        "schemaVersion": 1,
+        "status": "SUCCEEDED"
+      }
+    }
+  },
+  "terminal.completeIdempotent": {
+    "outcome": "RESOLVED",
+    "value": {
+      "result": {
+        "idempotent": true,
+        "job": {
+          "attemptCount": 1,
+          "claimAttempt": 1,
+          "completedAt": "<TIMESTAMP>",
+          "createdAt": "<TIMESTAMP>",
+          "executingAt": "<TIMESTAMP>",
+          "expiresAt": "<TIMESTAMP>",
+          "id": "<ID>",
+          "idempotencyKey": "<IDEMPOTENCYKEY>",
+          "leaseExpiresAt": null,
+          "maxAttempts": 3,
+          "nextAttemptAt": "<TIMESTAMP>",
+          "requestHash": "<SHA256>",
+          "result": {
+            "code": "SUBMITTED_TO_WINDOWS_SPOOLER",
+            "effectBoundary": "CROSSED",
+            "message": null,
+            "physicalCompletionKnown": false,
+            "status": "SUCCESS"
+          },
+          "schemaVersion": 1,
+          "status": "SUCCEEDED",
+          "updatedAt": "<TIMESTAMP>"
+        }
+      }
+    }
+  },
+  "terminal.completeConflict": {
+    "outcome": "RELAY_SERVICE_ERROR",
+    "code": "ES_TRAY_02_RESULT_CONFLICT",
+    "status": 409
+  },
+  "terminal.staleClaimAttempt": {
+    "outcome": "RELAY_SERVICE_ERROR",
+    "code": "ES_TRAY_02_STALE_CLAIM",
+    "status": 409
+  },
+  "recover.timedOutExecutingBecomesUnknown": {
+    "outcome": "RESOLVED",
+    "value": {
+      "claimedAgainIsSameJob": false,
+      "row": {
+        "attemptCount": 1,
+        "claimAttempt": 1,
+        "effectBoundary": "CROSSING_UNKNOWN",
+        "hasClaimTokenHash": true,
+        "hasLease": false,
+        "kitchenJobSuppressed": false,
+        "maxAttempts": 3,
+        "physicalCompletionKnown": false,
+        "present": true,
+        "resultCode": "EXECUTION_RESULT_TIMEOUT",
+        "resultStatus": "FAILURE",
+        "schemaVersion": 1,
+        "status": "FAILED"
+      }
+    }
+  }
+}
