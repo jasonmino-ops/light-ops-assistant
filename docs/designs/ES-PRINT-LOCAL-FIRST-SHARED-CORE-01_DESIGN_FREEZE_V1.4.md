@@ -212,7 +212,7 @@ e-shop-tray/src/networkContract.ts
 ### I-2b `lib/es-tray-relay/service.ts` 区段级指纹
 由 `tests/v2-invariance-service-regions.test.cjs` 固化。该文件 736 行、
 17 个顶层函数，其中 **16 个是 v2 既有执行分支，1 个是唯一的 v3 扩展点**；
-函数之间的 16 个既有间隙也逐字冻结：
+头部、函数之间的 16 个既有间隙以及最后一个函数之后的尾部也逐字冻结：
 
 ```
 [冻结] serializeJob / storedRequest / cashierNetworkRoleIdempotencyKey
@@ -228,15 +228,18 @@ e-shop-tray/src/networkContract.ts
 
 | 断言 | 内容 | 允许的变化 |
 |---|---|---|
-| A1 | 头部声明区 50 条既有行按原相对顺序完整保留 | 只允许新增 import / type |
+| A1 | 头部声明区原始字节与基线 SHA-256 完全一致 | 无；头部不得新增顶层语句 |
 | A2 | 17 个顶层函数的集合与相对顺序不变 | 不允许插入 helper；新 v3 helper 放独立模块 |
 | A2b | 16 个既有函数间隙逐字冻结 | 不得新增顶层可执行语句、常量初始化、副作用或 monkey patch |
+| A2c | 最后一个既有函数之后的尾部原始字节与基线完全一致 | 不得追加顶层可执行语句、常量初始化、副作用或 monkey patch |
 | A3 | 16 个冻结区段的 SHA-256 + 行数逐一匹配 | 无 |
-| A4 | `enqueueRelayPrintJob` 内 4 条既有 v2 判定行按原相对顺序保留 | 仅允许修改该明确扩展区 |
+| A4 | `enqueueRelayPrintJob` 内 4 条既有 v2 判定行按原相对顺序保留 | 仅允许修改该明确既有函数体 |
 
 `enqueueRelayPrintJob` 是**唯一**的版本选择点（写 `schemaVersion: 2` 或
 `ES_TRAY_RELAY_SCHEMA_VERSION`）。G3 的 mode-aware 生产必须落在这里，
-不得另起第二个版本选择点。
+不得另起第二个版本选择点。当前 G1 允许扩展的唯一既有函数体仍是
+`enqueueRelayPrintJob`；未来若确需调整 `service.ts` 头部，必须在受审 v3 PR
+中更新基线，并由 I-1 证明 v2 输出不变。
 
 ### I-1 golden 的三道 fail-closed 门槛
 

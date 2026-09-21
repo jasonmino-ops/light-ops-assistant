@@ -11,8 +11,7 @@
 //       顶层函数）——逐函数 SHA-256 + 行数 + 相对顺序，逐字冻结；
 //     · enqueueRelayPrintJob（唯一 v3 扩展点）——不做哈希冻结，但其既有 v2 判定行
 //       必须按原相对顺序完整保留，新增 v3 分支只能是纯增量；
-//     · 文件头部（import / type / class 声明区）——既有行按原相对顺序完整
-//       保留，允许新增，不允许删除、改写或重排；
+//     · 文件头部（import / type / class 声明区）——基线原始字节逐字冻结；
 //     · 既有顶层函数之间的全部间隙——逐字冻结，禁止插入顶层可执行语句、
 //       常量初始化、副作用或 monkey patch；
 //     · 顶层函数集合——不得插入新的 helper。以后唯一允许修改的 service.ts
@@ -97,59 +96,16 @@ const FROZEN_GAPS = [
   { from: "sameTerminalResult", to: "completeRelayPrintJob", sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", lines: 1 },
 ]
 
-// 文件头部（import / type / class 声明区）在基线上的既有非空行。
-const HEADER_LINES = [
-  "import { Prisma, type EshopTrayPrintJob } from '@prisma/client'",
-  "import { createHash } from 'node:crypto'",
-  "import {",
-  "parseNetworkMode,",
-  "parseNetworkRequest,",
-  "type NetworkMode,",
-  "type NetworkRequest,",
-  "type NetworkSnapshot,",
-  "} from '../../e-shop-tray/src/networkContract'",
-  "import { prisma } from '@/lib/prisma'",
-  "import {",
-  "ES_TRAY_RELAY_SCHEMA_VERSION,",
-  "type RelayTimingConfig,",
-  "} from './config'",
-  "import {",
-  "hashPrintRequest,",
-  "parsePrintRequest,",
-  "type EshopTrayPrintRequest,",
-  "type RelayClaimProof,",
-  "type RelayTerminalResult,",
-  "} from './contract'",
-  "import { createClaimToken, hashClaimToken } from './crypto'",
-  "export class RelayServiceError extends Error {",
-  "constructor(",
-  "public readonly code: string,",
-  "public readonly status: number,",
-  ") {",
-  "super(code)",
-  "this.name = 'RelayServiceError'",
-  "}",
-  "}",
-  "export type RelayStoreScope = {",
-  "tenantId: string",
-  "storeId: string",
-  "}",
-  "export type RelayAgentScope = RelayStoreScope & {",
-  "computerBindingId: string",
-  "schemaVersion?: 1 | 2",
-  "expectedMode?: NetworkMode",
-  "}",
-  "export type ClaimedRelayJob = {",
-  "id: string",
-  "schemaVersion: 1 | 2",
-  "idempotencyKey: string",
-  "requestHash: string",
-  "claimAttempt: number",
-  "claimToken: string",
-  "leaseExpiresAt: string",
-  "request: EshopTrayPrintRequest | NetworkRequest",
-  "}",
-]
+// service.ts 的头部与尾部基线原始字节。头部包含 import / class / type 声明区；
+// 任何新增顶层语句、常量初始化、副作用或 monkey patch 都必须 fail-closed。
+const FROZEN_HEADER = {
+  lines: 55,
+  sha256: "6336968e920a4062ab14e7f0bd3915d9881244a92b751b6e9e9b745e5ae42cd0",
+}
+const FROZEN_TAIL = {
+  lines: 1,
+  sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+}
 
 // 扩展点内部既有的 v2 版本判定行；新增 v3 分支不得删改或重排它们。
 const EXTENSION_V2_PREDICATES = [
@@ -198,17 +154,14 @@ for (const region of regions) {
   byName.set(region.name, region)
 }
 
-// ── A1 头部区：既有行按原相对顺序完整保留（允许新增） ──────────────────
+// ── A1 头部区：原始字节逐字冻结 ────────────────────────────────────────
 assert.ok(regions.length > 0, 'I-2b 违约：service.ts 中找不到任何顶层函数')
-const headerActual = source.slice(0, regions[0].start).map((line) => line.trim()).filter(Boolean)
-let headerCursor = -1
-for (const expected of HEADER_LINES) {
-  const at = headerActual.indexOf(expected, headerCursor + 1)
-  assert.notEqual(at, -1,
-    `I-2b 违约（头部区）：既有声明行缺失或被改写/重排\n  ${expected}\n` +
-    '  头部只允许纯新增，不允许删除、改写或重排既有行。')
-  headerCursor = at
-}
+const header = source.slice(0, regions[0].start).join('\n')
+assert.equal(regions[0].start, FROZEN_HEADER.lines,
+  `I-2b 违约（头部区）：头部行数变化（期望 ${FROZEN_HEADER.lines}，实际 ${regions[0].start}）`)
+assert.equal(crypto.createHash('sha256').update(header).digest('hex'), FROZEN_HEADER.sha256,
+  `I-2b 违约（头部区）：头部原始字节已变化；不得新增顶层可执行语句、` +
+  `常量初始化、副作用或 monkey patch\n  期望 ${FROZEN_HEADER.sha256}`)
 
 // ── A2 顶层函数集合与顺序均不得变化 ──────────────────────────────────
 const orderActual = regions.map((region) => region.name)
@@ -230,6 +183,15 @@ for (const { from, to, sha256, lines } of FROZEN_GAPS) {
     `I-2b 违约（函数间隙）：${from} → ${to} 含新增顶层语句、常量初始化、` +
     `副作用或 monkey patch；该间隙必须保持冻结\n  期望 ${sha256}\n  实际 ${actualHash}`)
 }
+
+// ── A2c 文件尾部：最后一个既有函数之后的原始字节逐字冻结 ───────────────
+const lastRegion = regions[regions.length - 1]
+const tail = source.slice(lastRegion.end + 1).join('\n')
+assert.equal(source.length - lastRegion.end - 1, FROZEN_TAIL.lines,
+  `I-2b 违约（尾部区）：尾部行数变化（期望 ${FROZEN_TAIL.lines}，实际 ${source.length - lastRegion.end - 1}）`)
+assert.equal(crypto.createHash('sha256').update(tail).digest('hex'), FROZEN_TAIL.sha256,
+  `I-2b 违约（尾部区）：最后一个既有函数后追加了顶层语句、副作用或 monkey patch\n` +
+  `  期望 ${FROZEN_TAIL.sha256}`)
 
 // ── A3 v2 既有执行分支逐字冻结 ────────────────────────────────────────
 for (const { name, sha256, lines } of FROZEN_REGIONS) {
@@ -257,5 +219,5 @@ for (const expected of EXTENSION_V2_PREDICATES) {
 
 console.log(
   `I-2b PASS：${FROZEN_REGIONS.length} 个 v2 执行分支逐字冻结、` +
-  `${REGION_ORDER.length} 个顶层函数集合/顺序不变、${FROZEN_GAPS.length} 个函数间隙冻结、` +
+  `头部、${REGION_ORDER.length} 个顶层函数集合/顺序、${FROZEN_GAPS.length} 个函数间隙、尾部均冻结、` +
   `扩展点 ${EXTENSION_REGION} 的 ${EXTENSION_V2_PREDICATES.length} 条 v2 判定行完整保留（基线 5a2c4dcb30de）`)
