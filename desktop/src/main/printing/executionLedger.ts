@@ -236,7 +236,9 @@ function validateRecord(value: unknown): value is LedgerRecord {
     return false;
   }
 
-  if (record.state === "FAILED_NOT_CROSSED" && record.zeroBytesSent !== true) {
+  if (record.state === "FAILED_NOT_CROSSED") {
+    if (record.zeroBytesSent !== true) return false;
+  } else if (record.zeroBytesSent !== undefined || record.lastErrorCode !== undefined) {
     return false;
   }
 

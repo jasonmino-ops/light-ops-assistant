@@ -520,6 +520,24 @@ describe("ExecutionLedger durability and platform contracts", () => {
     });
   });
 
+  it("keeps the old disk fact when the real rename operation fails", async () => {
+    const { root, record } = await acceptedRoot();
+    const fs = new FaultInjectingFileSystem(root);
+    fs.failure = "rename";
+    const instance = await openLedger(root, { fileSystem: fs });
+    const result = await instance.beginCrossing(guard(record));
+    expect(result).toMatchObject({ ok: false, error: { code: "LEDGER_DURABILITY_FAILURE" } });
+    expect(fs.events).toContain("rename");
+    expect((await instance.close()).ok).toBe(true);
+
+    const reopened = await openLedger(root);
+    expect(await reopened.get(record.printJobId)).toMatchObject({
+      ok: true,
+      value: { found: true, record: { state: "NOT_CROSSED", attemptCount: 1 } },
+    });
+    expect((await readdir(root)).some((entry) => entry.endsWith(".tmp"))).toBe(true);
+  });
+
   it("does not infer old disk state after rename and final fsync failure", async () => {
     const { root, record } = await acceptedRoot();
     const fs = new FaultInjectingFileSystem(root);
@@ -774,6 +792,34 @@ describe("ExecutionLedger corruption and locks", () => {
     const invalid = ledger(root);
     expect(errorCode(await invalid.open())).toBe("LEDGER_CORRUPT");
     expect((await invalid.close()).ok).toBe(true);
+  });
+
+  it("fails closed for contradictory state and diagnostic fields", async () => {
+    const { root, record } = await (async () => {
+      const createdRoot = await makeRoot();
+      const instance = await openLedger(createdRoot);
+      const created = await instance.accept(input());
+      expect(created.ok).toBe(true);
+      if (!created.ok) throw new Error("accept setup failed");
+      await instance.close();
+      return { root: createdRoot, record: created.value.record };
+    })();
+    const ledgerPath = path.join(root, ".execution-ledger.json");
+    const parsed = JSON.parse(await readFile(ledgerPath, "utf8")) as {
+      ledgerSchemaVersion: 1;
+      records: Record<string, LedgerRecord>;
+    };
+    parsed.records[record.printJobId] = {
+      ...parsed.records[record.printJobId],
+      state: "NOT_CROSSED",
+      zeroBytesSent: true,
+    };
+    await writeFile(ledgerPath, JSON.stringify(parsed), "utf8");
+
+    const instance = ledger(root);
+    expect(errorCode(await instance.open())).toBe("LEDGER_CORRUPT");
+    expect(errorCode(await instance.get(record.printJobId))).toBe("LEDGER_UNUSABLE");
+    expect((await instance.close()).ok).toBe(true);
   });
 
   it("returns BUSY for a valid second lock and never adopts an unknown lock", async () => {
