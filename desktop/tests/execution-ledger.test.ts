@@ -139,6 +139,33 @@ class FaultInjectingFileSystem implements LedgerFileSystem {
   }
 }
 
+class MappedFileSystem implements LedgerFileSystem {
+  private readonly base = createNodeLedgerFileSystem();
+
+  public constructor(private readonly root: string) {}
+
+  private map(filePath: string): string {
+    const normalized = filePath.replace(/\\/g, "/");
+    return path.join(this.root, path.basename(normalized));
+  }
+
+  public open(filePath: string, flags: string): Promise<LedgerFileHandle> {
+    return this.base.open(this.map(filePath), flags);
+  }
+
+  public readFile(filePath: string): Promise<string> {
+    return this.base.readFile(this.map(filePath));
+  }
+
+  public rename(oldPath: string, newPath: string): Promise<void> {
+    return this.base.rename(this.map(oldPath), this.map(newPath));
+  }
+
+  public unlink(filePath: string): Promise<void> {
+    return this.base.unlink(this.map(filePath));
+  }
+}
+
 describe("ExecutionLedger lifecycle and identity", () => {
   it("has no runtime import or reference from the Desktop source tree", async () => {
     const sourceRoot = path.resolve(__dirname, "../src");
@@ -367,6 +394,70 @@ describe("ExecutionLedger state machine", () => {
     );
   });
 
+  it("serializes same-guard beginCrossing and preserves the UNKNOWN decision", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const created = await instance.accept(input());
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const [first, second] = await Promise.all([
+      instance.beginCrossing(guard(created.value.record)),
+      instance.beginCrossing(guard(created.value.record)),
+    ]);
+    expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
+    expect([first.ok, second.ok].filter((value) => !value)).toHaveLength(1);
+    expect(errorCode(first.ok ? second : first)).toBe("LEDGER_STALE_GUARD");
+    const permit = first.ok
+      ? first.value.executionPermit
+      : second.ok
+        ? second.value.executionPermit
+        : undefined;
+    expect(permit).toBeDefined();
+    if (!permit) return;
+    expect(permit.executionId).toBe(created.value.record.executionId);
+
+    await instance.close();
+    const reopened = await openLedger(root);
+    const read = await reopened.get(created.value.record.printJobId);
+    expect(read).toMatchObject({
+      ok: true,
+      value: { found: true, record: { state: "CROSSING_UNKNOWN" } },
+    });
+  });
+
+  it("serializes beginCrossing and cancel so only one transition succeeds", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const created = await instance.accept(input());
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const [crossing, cancelled] = await Promise.all([
+      instance.beginCrossing(guard(created.value.record)),
+      instance.cancel(guard(created.value.record)),
+    ]);
+    expect([crossing.ok, cancelled.ok].filter(Boolean)).toHaveLength(1);
+    expect([crossing.ok, cancelled.ok].filter((value) => !value)).toHaveLength(1);
+    const successfulState = crossing.ok
+      ? crossing.value.record.state
+      : cancelled.ok
+        ? cancelled.value.state
+        : undefined;
+    expect(successfulState).toBeDefined();
+    if (!successfulState) return;
+    const rejected = crossing.ok ? cancelled : crossing;
+    expect(errorCode(rejected)).toBe("LEDGER_STALE_GUARD");
+
+    await instance.close();
+    const reopened = await openLedger(root);
+    const read = await reopened.get(created.value.record.printJobId);
+    expect(read).toMatchObject({
+      ok: true,
+      value: { found: true, record: { state: successfulState } },
+    });
+  });
+
   it("computes both retainUntil branches at accept and never changes them on retry", async () => {
     const root = await makeRoot();
     const instance = await openLedger(root);
@@ -503,6 +594,153 @@ describe("ExecutionLedger durability and platform contracts", () => {
     expect(result.ok).toBe(true);
     expect(fs.events).toContain("open:r+:.execution-ledger.json");
     expect(fs.events.some((event) => event.includes("directory"))).toBe(false);
+  });
+
+  it("accepts Windows drive paths through the injected filesystem without host disk side effects", async () => {
+    const root = await makeRoot();
+    const fileSystem = new MappedFileSystem(root);
+    for (const userDataPath of [
+      "C:\\Users\\operator\\AppData\\Roaming\\Eshop",
+      "D:/Eshop/userData",
+    ]) {
+      const instance = ledger(userDataPath, { platform: "win32", fileSystem });
+      expect((await instance.open()).ok).toBe(true);
+      expect((await instance.accept(input(userDataPath))).ok).toBe(true);
+      expect((await instance.close()).ok).toBe(true);
+    }
+  });
+
+  it.each([
+    ["\\\\server\\share", "UNC path"],
+    ["file:/Users/operator/userData", "file URL"],
+    ["smb:/server/share", "SMB URL"],
+    ["nfs:/server/share", "NFS URL"],
+  ])("rejects %s as a Windows Ledger path (%s)", async (userDataPath) => {
+    const root = await makeRoot();
+    const instance = ledger(userDataPath, {
+      platform: "win32",
+      fileSystem: new MappedFileSystem(root),
+    });
+    expect(errorCode(await instance.open())).toBe("LEDGER_INVALID_INPUT");
+  });
+});
+
+describe("ExecutionLedger concurrency and key safety", () => {
+  it("serializes concurrent accepts for the same identity", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const identity = input();
+    const [first, second] = await Promise.all([
+      instance.accept(identity),
+      instance.accept(identity),
+    ]);
+    expect([first, second].filter((result) => result.ok)).toHaveLength(2);
+    expect([first, second].filter((result) => result.ok && result.value.kind === "CREATED")).toHaveLength(1);
+    expect([first, second].filter((result) => result.ok && result.value.kind === "EXISTING")).toHaveLength(1);
+    if (!first.ok || !second.ok) return;
+    expect(first.value.record.executionId).toBe(second.value.record.executionId);
+    expect(first.value.record.attemptCount).toBe(1);
+    expect(second.value.record.attemptCount).toBe(1);
+
+    const read = await instance.get(identity.printJobId);
+    expect(read).toMatchObject({ ok: true, value: { found: true, record: { attemptCount: 1 } } });
+  });
+
+  it("serializes concurrent accepts with different identities without overwriting", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const firstIdentity = input("job-identity-race", { requestHash: "first" });
+    const secondIdentity = input("job-identity-race", { requestHash: "second" });
+    const [first, second] = await Promise.all([
+      instance.accept(firstIdentity),
+      instance.accept(secondIdentity),
+    ]);
+    expect([first, second].filter((result) => result.ok && result.value.kind === "CREATED")).toHaveLength(1);
+    expect([first, second].filter((result) => !result.ok && result.error.code === "LEDGER_IDENTITY_CONFLICT")).toHaveLength(1);
+
+    const read = await instance.get(firstIdentity.printJobId);
+    expect(read).toMatchObject({ ok: true, value: { found: true, record: { requestHash: expect.any(String) } } });
+    if (read.ok && read.value.found) {
+      expect([firstIdentity.requestHash, secondIdentity.requestHash]).toContain(read.value.record.requestHash);
+      expect(read.value.record.attemptCount).toBe(1);
+    }
+  });
+
+  it("preserves independent records during cross-record concurrent mutations", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const a = await instance.accept(input("job-a"));
+    const b = await instance.accept(input("job-b"));
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+
+    const [crossing, cancelled] = await Promise.all([
+      instance.beginCrossing(guard(a.value.record)),
+      instance.cancel(guard(b.value.record)),
+    ]);
+    expect(crossing.ok).toBe(true);
+    expect(cancelled.ok).toBe(true);
+
+    await instance.close();
+    const reopened = await openLedger(root);
+    expect(await reopened.get("job-a")).toMatchObject({ ok: true, value: { found: true, record: { state: "CROSSING_UNKNOWN" } } });
+    expect(await reopened.get("job-b")).toMatchObject({ ok: true, value: { found: true, record: { state: "CANCELLED" } } });
+  });
+
+  it("continues the queue after rejected mutations while preserving UNUSABLE", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const created = await instance.accept(input());
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    expect(errorCode(await instance.cancel({ ...guard(created.value.record), expectedStateVersion: 99 }))).toBe(
+      "LEDGER_STALE_GUARD",
+    );
+    expect((await instance.beginCrossing(guard(created.value.record))).ok).toBe(true);
+
+    await instance.close();
+    const failureRoot = await makeRoot();
+    const fs = new FaultInjectingFileSystem(failureRoot);
+    const stable = await openLedger(failureRoot);
+    const stableCreated = await stable.accept(input());
+    expect(stableCreated.ok).toBe(true);
+    if (!stableCreated.ok) return;
+    await stable.close();
+
+    fs.failure = "temp-sync";
+    const unusable = await openLedger(failureRoot, { fileSystem: fs });
+    expect(errorCode(await unusable.beginCrossing(guard(stableCreated.value.record)))).toBe(
+      "LEDGER_DURABILITY_FAILURE",
+    );
+    expect(errorCode(await unusable.get("job-1"))).toBe("LEDGER_UNUSABLE");
+    expect(errorCode(await unusable.accept(input("job-2")))).toBe("LEDGER_UNUSABLE");
+    expect((await unusable.close()).ok).toBe(true);
+  });
+
+  it("treats prototype-chain keys as missing and allows a real own __proto__ record", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    expect(await instance.get("__proto__")).toEqual({ ok: true, value: { found: false } });
+    expect(await instance.get("constructor")).toEqual({ ok: true, value: { found: false } });
+    expect(await instance.get("prototype")).toEqual({ ok: true, value: { found: false } });
+
+    const created = await instance.accept(input("__proto__"));
+    expect(created).toMatchObject({ ok: true, value: { kind: "CREATED" } });
+    if (!created.ok) return;
+    expect((await instance.get("__proto__"))).toMatchObject({
+      ok: true,
+      value: { found: true, record: { printJobId: "__proto__" } },
+    });
+
+    await instance.close();
+    const reopened = await openLedger(root);
+    expect(await reopened.get("__proto__")).toMatchObject({
+      ok: true,
+      value: { found: true, record: { printJobId: "__proto__" } },
+    });
+    expect(await reopened.get("constructor")).toEqual({ ok: true, value: { found: false } });
   });
 });
 

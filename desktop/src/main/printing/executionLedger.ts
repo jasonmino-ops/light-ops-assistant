@@ -139,10 +139,6 @@ function isUtcIso(value: unknown): value is string {
   );
 }
 
-function addDays(value: string, days: number): string {
-  return new Date(Date.parse(value) + days * 24 * 60 * 60 * 1000).toISOString();
-}
-
 function expectedRetainUntil(expiresAt: string, createdAt: string): string {
   const expiresRetention = Date.parse(expiresAt) + 7 * 24 * 60 * 60 * 1000;
   const createdRetention = Date.parse(createdAt) + 90 * 24 * 60 * 60 * 1000;
@@ -163,7 +159,10 @@ function identityEquals(left: LedgerIdentity, right: LedgerIdentity): boolean {
 }
 
 function emptyLedger(): LedgerFile {
-  return { ledgerSchemaVersion: LEDGER_SCHEMA_VERSION, records: {} };
+  return {
+    ledgerSchemaVersion: LEDGER_SCHEMA_VERSION,
+    records: Object.create(null) as Record<string, LedgerRecord>,
+  };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -259,6 +258,10 @@ function validateLedgerFile(value: unknown): value is LedgerFile {
   );
 }
 
+function hasOwnRecord(records: Record<string, LedgerRecord>, printJobId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(records, printJobId);
+}
+
 function validateLockFile(value: unknown): value is LockFile {
   return (
     isPlainObject(value) &&
@@ -270,12 +273,17 @@ function validateLockFile(value: unknown): value is LockFile {
   );
 }
 
-function isForbiddenStoragePath(userDataPath: string): boolean {
+function isForbiddenStoragePath(userDataPath: string, platform: NodeJS.Platform): boolean {
+  const isWindowsDrivePath = /^[a-z]:[\\/]/i.test(userDataPath);
+  const hasUriScheme = /^[a-z][a-z0-9+.-]*:/i.test(userDataPath) && !isWindowsDrivePath;
+  const isAbsolute = path.isAbsolute(userDataPath) ||
+    (platform === "win32" && path.win32.isAbsolute(userDataPath));
+
   return (
-    !path.isAbsolute(userDataPath) ||
+    !isAbsolute ||
     userDataPath.startsWith("//") ||
     userDataPath.startsWith("\\\\") ||
-    /^(?:[a-z]+:|file:)/i.test(userDataPath) ||
+    hasUriScheme ||
     /(?:^|[\\/])(onedrive|dropbox|google drive|icloud drive|smb|nfs)(?:[\\/]|$)/i.test(
       userDataPath,
     )
@@ -287,11 +295,13 @@ function copyRecord(record: LedgerRecord): LedgerRecord {
 }
 
 function copyFile(file: LedgerFile): LedgerFile {
+  const records = Object.create(null) as Record<string, LedgerRecord>;
+  for (const [key, record] of Object.entries(file.records)) {
+    records[key] = copyRecord(record);
+  }
   return {
     ledgerSchemaVersion: LEDGER_SCHEMA_VERSION,
-    records: Object.fromEntries(
-      Object.entries(file.records).map(([key, record]) => [key, copyRecord(record)]),
-    ),
+    records,
   };
 }
 
@@ -306,6 +316,7 @@ export class ExecutionLedger {
   private ownerToken: string | null = null;
   private opened = false;
   private unusable = false;
+  private queue: Promise<void> = Promise.resolve();
 
   public constructor(options: ExecutionLedgerOptions) {
     this.userDataPath = options.userDataPath;
@@ -316,14 +327,18 @@ export class ExecutionLedger {
     this.fileSystem = options.fileSystem ?? defaultFileSystem;
   }
 
-  public async open(): Promise<LedgerResult<void>> {
+  public open(): Promise<LedgerResult<void>> {
+    return this.runExclusive(() => this.openInternal());
+  }
+
+  private async openInternal(): Promise<LedgerResult<void>> {
     if (this.opened) {
       return this.unusable
         ? failure("LEDGER_UNUSABLE", "Ledger instance is unusable.")
         : failure("LEDGER_BUSY", "Ledger instance is already open.");
     }
 
-    if (isForbiddenStoragePath(this.userDataPath)) {
+    if (isForbiddenStoragePath(this.userDataPath, this.platform)) {
       return failure(
         "LEDGER_INVALID_INPUT",
         "Ledger and lock paths must be on the local Electron userData filesystem.",
@@ -383,7 +398,11 @@ export class ExecutionLedger {
     }
   }
 
-  public async close(): Promise<LedgerResult<void>> {
+  public close(): Promise<LedgerResult<void>> {
+    return this.runExclusive(() => this.closeInternal());
+  }
+
+  private async closeInternal(): Promise<LedgerResult<void>> {
     if (!this.opened) {
       return failure("LEDGER_NOT_OPEN", "Ledger is not open.");
     }
@@ -426,7 +445,13 @@ export class ExecutionLedger {
     return success(undefined);
   }
 
-  public async accept(
+  public accept(
+    input: AcceptInput,
+  ): Promise<LedgerResult<{ kind: "CREATED" | "EXISTING"; record: LedgerRecord }>> {
+    return this.runExclusive(() => this.acceptInternal(input));
+  }
+
+  private async acceptInternal(
     input: AcceptInput,
   ): Promise<LedgerResult<{ kind: "CREATED" | "EXISTING"; record: LedgerRecord }>> {
     const ready = this.ensureReady();
@@ -435,7 +460,9 @@ export class ExecutionLedger {
       return failure("LEDGER_INVALID_INPUT", "Accept identity is invalid.");
     }
 
-    const existing = this.file.records[input.printJobId];
+    const existing = hasOwnRecord(this.file.records, input.printJobId)
+      ? this.file.records[input.printJobId]
+      : undefined;
     if (existing) {
       if (!identityEquals(existing, input)) {
         return failure("LEDGER_IDENTITY_CONFLICT", "Existing identity does not match accept input.");
@@ -462,7 +489,13 @@ export class ExecutionLedger {
     return success({ kind: "CREATED", record: copyRecord(record) });
   }
 
-  public async get(
+  public get(
+    printJobId: string,
+  ): Promise<LedgerResult<{ found: true; record: LedgerRecord } | { found: false }>> {
+    return this.runExclusive(() => this.getInternal(printJobId));
+  }
+
+  private async getInternal(
     printJobId: string,
   ): Promise<LedgerResult<{ found: true; record: LedgerRecord } | { found: false }>> {
     const ready = this.ensureReady();
@@ -470,13 +503,21 @@ export class ExecutionLedger {
     if (typeof printJobId !== "string" || printJobId.length === 0) {
       return failure("LEDGER_INVALID_INPUT", "printJobId is required.");
     }
-    const record = this.file.records[printJobId];
+    const record = hasOwnRecord(this.file.records, printJobId)
+      ? this.file.records[printJobId]
+      : undefined;
     return record
       ? success({ found: true, record: copyRecord(record) })
       : success({ found: false });
   }
 
-  public async beginCrossing(
+  public beginCrossing(
+    guard: LedgerGuard,
+  ): Promise<LedgerResult<{ record: LedgerRecord; executionPermit: ExecutionPermit }>> {
+    return this.runExclusive(() => this.beginCrossingInternal(guard));
+  }
+
+  private async beginCrossingInternal(
     guard: LedgerGuard,
   ): Promise<LedgerResult<{ record: LedgerRecord; executionPermit: ExecutionPermit }>> {
     const ready = this.ensureReady();
@@ -511,7 +552,13 @@ export class ExecutionLedger {
     });
   }
 
-  public async failNotCrossed(
+  public failNotCrossed(
+    guard: LedgerGuard & { zeroBytesSent: true; lastErrorCode?: string },
+  ): Promise<LedgerResult<LedgerRecord>> {
+    return this.runExclusive(() => this.failNotCrossedInternal(guard));
+  }
+
+  private async failNotCrossedInternal(
     guard: LedgerGuard & { zeroBytesSent: true; lastErrorCode?: string },
   ): Promise<LedgerResult<LedgerRecord>> {
     const ready = this.ensureReady();
@@ -547,7 +594,13 @@ export class ExecutionLedger {
     return success(copyRecord(nextRecord));
   }
 
-  public async retryFailedNotCrossed(
+  public retryFailedNotCrossed(
+    guard: LedgerGuard,
+  ): Promise<LedgerResult<LedgerRecord>> {
+    return this.runExclusive(() => this.retryFailedNotCrossedInternal(guard));
+  }
+
+  private async retryFailedNotCrossedInternal(
     guard: LedgerGuard,
   ): Promise<LedgerResult<LedgerRecord>> {
     const ready = this.ensureReady();
@@ -586,7 +639,13 @@ export class ExecutionLedger {
     return success(copyRecord(nextRecord));
   }
 
-  public async markCrossed(
+  public markCrossed(
+    guard: LedgerGuard & { allBytesWritten: true; flushAndFinConfirmed: true },
+  ): Promise<LedgerResult<LedgerRecord>> {
+    return this.runExclusive(() => this.markCrossedInternal(guard));
+  }
+
+  private async markCrossedInternal(
     guard: LedgerGuard & { allBytesWritten: true; flushAndFinConfirmed: true },
   ): Promise<LedgerResult<LedgerRecord>> {
     const ready = this.ensureReady();
@@ -615,7 +674,11 @@ export class ExecutionLedger {
     return success(copyRecord(nextRecord));
   }
 
-  public async cancel(guard: LedgerGuard): Promise<LedgerResult<LedgerRecord>> {
+  public cancel(guard: LedgerGuard): Promise<LedgerResult<LedgerRecord>> {
+    return this.runExclusive(() => this.cancelInternal(guard));
+  }
+
+  private async cancelInternal(guard: LedgerGuard): Promise<LedgerResult<LedgerRecord>> {
     const ready = this.ensureReady();
     if (!ready.ok) return ready;
     const guarded = this.guardRecord(guard);
@@ -638,6 +701,15 @@ export class ExecutionLedger {
     return success(copyRecord(nextRecord));
   }
 
+  private runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(operation, operation);
+    this.queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
   private ensureReady(): LedgerResult<void> {
     if (!this.opened) return failure("LEDGER_NOT_OPEN", "Ledger is not open.");
     if (this.unusable) return failure("LEDGER_UNUSABLE", "Ledger instance is unusable.");
@@ -656,7 +728,9 @@ export class ExecutionLedger {
     ) {
       return failure("LEDGER_INVALID_INPUT", "Ledger guard is invalid.");
     }
-    const record = this.file.records[guard.printJobId];
+    const record = hasOwnRecord(this.file.records, guard.printJobId)
+      ? this.file.records[guard.printJobId]
+      : undefined;
     if (!record) return failure("LEDGER_INVALID_INPUT", "Ledger record does not exist.");
     if (
       record.executionId !== guard.expectedExecutionId ||
