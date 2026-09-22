@@ -6,9 +6,9 @@
 - Purpose: V3 candidate safety-remediation verification only.
 - Founder decision: `APPROVED WITH NARROWED SCOPE — candidate-scoped baseline exception`, 2026-09-23.
 - Baseline SHA: `98a82eaa0733fc732788013aab2f9d80be621f6a`
-- Safety-remediation implementation SHA: `0a48973`
+- Safety-remediation implementation SHA: `10732a3`
 - Test file: `desktop/tests/release-foundation.test.ts`
-- Clean-candidate aggregate result: 271 PASS / 4 FAIL / 1 SKIP.
+- Clean-candidate aggregate result: 273 PASS / 4 FAIL / 1 SKIP.
 - Authorized interpretation: `Desktop Aggregate = PASS WITH BASELINE EXCEPTION`; baseline-excepted failures = 4; new aggregate regressions = 0. The four tests did not pass.
 
 This record does not modify, skip, delete, or weaken any test or assertion. It does not authorize release-foundation repair, runtime/control-plane wiring, or reuse by another task or milestone.
