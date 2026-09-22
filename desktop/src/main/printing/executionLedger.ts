@@ -71,6 +71,12 @@ export type ExecutionPermit = {
   stateVersion: number;
 };
 
+export type ZeroByteCrossingProof = {
+  executionPermit: ExecutionPermit;
+  zeroBytesSent: true;
+  lastErrorCode?: string;
+};
+
 export type LedgerFileHandle = Pick<FileHandle, "writeFile" | "sync" | "close">;
 
 export type LedgerFileSystem = {
@@ -588,6 +594,56 @@ export class ExecutionLedger {
       updatedAt: this.now().toISOString(),
       zeroBytesSent: true,
       ...(guard.lastErrorCode === undefined ? {} : { lastErrorCode: guard.lastErrorCode }),
+    };
+    const next = copyFile(this.file);
+    next.records[record.printJobId] = nextRecord;
+    const persisted = await this.persist(next);
+    if (!persisted.ok) return persisted;
+    return success(copyRecord(nextRecord));
+  }
+
+  public confirmNotCrossed(
+    proof: ZeroByteCrossingProof,
+  ): Promise<LedgerResult<LedgerRecord>> {
+    return this.runExclusive(() => this.confirmNotCrossedInternal(proof));
+  }
+
+  private async confirmNotCrossedInternal(
+    proof: ZeroByteCrossingProof,
+  ): Promise<LedgerResult<LedgerRecord>> {
+    const ready = this.ensureReady();
+    if (!ready.ok) return ready;
+    if (!proof || proof.zeroBytesSent !== true || !proof.executionPermit) {
+      return failure("LEDGER_INVALID_INPUT", "Current execution permit and zero-byte proof are required.");
+    }
+    if (
+      proof.lastErrorCode !== undefined &&
+      (typeof proof.lastErrorCode !== "string" || proof.lastErrorCode.length === 0)
+    ) {
+      return failure("LEDGER_INVALID_INPUT", "lastErrorCode must be a non-empty string.");
+    }
+
+    const guarded = this.guardRecord({
+      printJobId: proof.executionPermit.printJobId,
+      expectedExecutionId: proof.executionPermit.executionId,
+      expectedStateVersion: proof.executionPermit.stateVersion,
+    });
+    if (!guarded.ok) return guarded;
+    const record = guarded.value;
+    if (record.state !== "CROSSING_UNKNOWN") {
+      return failure(
+        "LEDGER_ILLEGAL_TRANSITION",
+        "confirmNotCrossed is only legal for the current crossing attempt.",
+      );
+    }
+
+    const nextRecord: LedgerRecord = {
+      ...record,
+      state: "FAILED_NOT_CROSSED",
+      stateVersion: record.stateVersion + 1,
+      updatedAt: this.now().toISOString(),
+      zeroBytesSent: true,
+      ...(proof.lastErrorCode === undefined ? {} : { lastErrorCode: proof.lastErrorCode }),
     };
     const next = copyFile(this.file);
     next.records[record.printJobId] = nextRecord;
