@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "taskId": "ES-PRINT-LOCAL-FIRST-SHARED-CORE-01",
+  "featureBranch": "codex/es-print-local-first-shared-core-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "98a82eaa0733fc732788013aab2f9d80be621f6a",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "prisma/schema.prisma",
+    "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql"
+  ],
+  "authorizedPathSha256": {
+    "prisma/schema.prisma": "78ba2ec6db6f524fe95a463114660e640d06ac12f0105c6153b9dc3acd2efebc",
+    "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql": "7b94b530f2b964d4c469ae74b5be876f316291f00b5dbaa84fc14ede24110274"
+  },
+  "createdAt": "2026-09-23T02:20:00.000Z",
+  "approvedAt": "2026-09-23T02:20:00.000Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder decision in the ES-PRINT-LOCAL-FIRST-SHARED-CORE-01 task conversation",
+    "statement": "Founder approved creation of one trusted ACTIVE PRE_COMMIT_CONTENT_SHA256 exception for exactly prisma/schema.prisma and prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql, solely for the minimal V3 authoritative printing control plane and owner-scoped execution batch. The governance-only exception must enter origin/main before implementation. Production migration, Production schema mutation, deployment, activation, V2 changes, ComputerBinding semantic changes, EshopTrayPrintJob semantic changes, wildcard paths and unrelated Prisma changes are not authorized.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the sealed minimal V3 printing control-plane schema: one store-scoped authoritative owner/mode/epoch/lease/version/handoff entity, one owner-scoped expiring execution-batch entity, and their necessary Tenant, Store and DesktopDevice reverse relations, plus the one exact additive development migration. DesktopDevice remains device identity truth; ComputerBinding and EshopTrayPrintJob semantics remain unchanged. Server/Cloud remains the only authoritative writer. No timeout promotion, duplicate ledger/job/device registry, Production migration, deployment or unrelated schema change is authorized. Any byte change to either protected candidate requires a new Founder-approved trusted authorization.",
+  "createdOnBranch": "codex/es-print-local-first-shared-core-01-scope-exception",
+  "sourceDraft": {
+    "baseOriginMainSha": "98a82eaa0733fc732788013aab2f9d80be621f6a",
+    "candidateSchemaPath": ".task-state/ES-PRINT-LOCAL-FIRST-SHARED-CORE-01-sealed/schema-exception/schema.prisma",
+    "candidateMigrationPath": ".task-state/ES-PRINT-LOCAL-FIRST-SHARED-CORE-01-sealed/schema-exception/migration.sql",
+    "fileCount": 2
+  },
+  "expirationCondition": "Close this exception after the separately authorized V3 control-plane feature merge. It must not authorize later Prisma or migration changes."
+}
