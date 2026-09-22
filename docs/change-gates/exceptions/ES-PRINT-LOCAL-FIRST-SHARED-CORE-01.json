@@ -12,8 +12,8 @@
     "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql"
   ],
   "authorizedPathSha256": {
-    "prisma/schema.prisma": "78ba2ec6db6f524fe95a463114660e640d06ac12f0105c6153b9dc3acd2efebc",
-    "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql": "7b94b530f2b964d4c469ae74b5be876f316291f00b5dbaa84fc14ede24110274"
+    "prisma/schema.prisma": "df3ee3ecba62e1c371bd9559d79038784e1d113746f15552922cd72d17953931",
+    "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql": "354c88e0065409af990d9d1ab03d2d1d74ec4d8c890568c4d14a1accb0e7c59f"
   },
   "createdAt": "2026-09-23T02:20:00.000Z",
   "approvedAt": "2026-09-23T02:20:00.000Z",
