@@ -12,19 +12,19 @@
     "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql"
   ],
   "authorizedPathSha256": {
-    "prisma/schema.prisma": "df3ee3ecba62e1c371bd9559d79038784e1d113746f15552922cd72d17953931",
-    "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql": "354c88e0065409af990d9d1ab03d2d1d74ec4d8c890568c4d14a1accb0e7c59f"
+    "prisma/schema.prisma": "846e6e3768a72d83abdeaf2b183efb8596299d4ed34079261c45d66775df42bd",
+    "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql": "c30b41d30225706b8259d9f84890dab0b30b0089ebf0701b172449b81eaa383f"
   },
   "createdAt": "2026-09-23T02:20:00.000Z",
   "approvedAt": "2026-09-23T02:20:00.000Z",
   "approvedBy": "Founder",
   "approvalSource": {
     "source": "Explicit Founder decision in the ES-PRINT-LOCAL-FIRST-SHARED-CORE-01 task conversation",
-    "statement": "Founder approved creation of one trusted ACTIVE PRE_COMMIT_CONTENT_SHA256 exception for exactly prisma/schema.prisma and prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql, solely for the minimal V3 authoritative printing control plane and owner-scoped execution batch. The governance-only exception must enter origin/main before implementation. Production migration, Production schema mutation, deployment, activation, V2 changes, ComputerBinding semantic changes, EshopTrayPrintJob semantic changes, wildcard paths and unrelated Prisma changes are not authorized.",
+    "statement": "Founder approved resealing the existing trusted ACTIVE PRE_COMMIT_CONTENT_SHA256 exception for exactly prisma/schema.prisma and prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql, solely to correct the minimal V3 authoritative printing control plane to Design Freeze V1.4: exact frozen modes, BLOCKED_UNKNOWN, and strictly necessary Grace/quarantine/handoff state. The migration path remains unchanged and no second migration, Production migration, endpoint database storage, V2 change, wildcard or unrelated Prisma change is authorized.",
     "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
   },
   "closeAfter": "FEATURE_MERGE",
-  "reason": "Authorize only the sealed minimal V3 printing control-plane schema: one store-scoped authoritative owner/mode/epoch/lease/version/handoff entity, one owner-scoped expiring execution-batch entity, and their necessary Tenant, Store and DesktopDevice reverse relations, plus the one exact additive development migration. DesktopDevice remains device identity truth; ComputerBinding and EshopTrayPrintJob semantics remain unchanged. Server/Cloud remains the only authoritative writer. No timeout promotion, duplicate ledger/job/device registry, Production migration, deployment or unrelated schema change is authorized. Any byte change to either protected candidate requires a new Founder-approved trusted authorization.",
+  "reason": "Authorize only the resealed minimal V3 printing control-plane schema: exact Design Freeze modes including BLOCKED_UNKNOWN and no durable HELD, one quarantine-until fact required to prevent old/new execution overlap, the existing owner/epoch/lease/version entity and owner-scoped expiring batches. DesktopDevice remains device identity truth and endpoint authority remains Desktop-local. No timeout promotion, second migration, Production migration, deployment or unrelated schema change is authorized. Any further byte change requires a new Founder-approved trusted authorization.",
   "createdOnBranch": "codex/es-print-local-first-shared-core-01-scope-exception",
   "sourceDraft": {
     "baseOriginMainSha": "98a82eaa0733fc732788013aab2f9d80be621f6a",
