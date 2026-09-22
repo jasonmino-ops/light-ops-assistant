@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 export const V3_PRINT_MODES = ['V2_ACTIVE', 'V2_DRAINING', 'V3_ACTIVE', 'V3_DRAINING', 'BLOCKED_UNKNOWN'] as const
 export type V3PrintMode = typeof V3_PRINT_MODES[number]
@@ -71,6 +71,12 @@ function validDuration(value: number | undefined, fallback: number, max: number)
   return Number.isInteger(value) && value! > 0 ? Math.min(value!, max) : fallback
 }
 
+function handoffBinding(identity: { tenantId: string; storeId: string; intendedOwnerDeviceId: string; confirmationId: string }): string {
+  return `handoff:${createHash('sha256').update([
+    identity.tenantId, identity.storeId, identity.intendedOwnerDeviceId, identity.confirmationId,
+  ].join('\0')).digest('hex')}`
+}
+
 function serializable(record: V3ControlPlaneRecord) {
   if (!validMode(record.mode)) throw new Error('CONTROL_PLANE_CORRUPT_MODE')
   return {
@@ -122,15 +128,6 @@ export async function acquireV3Authority(
     if (current.ownerDeviceId !== null) {
       if (current.ownerDeviceId === identity.deviceId && current.leaseExpiresAt && current.leaseExpiresAt > now) {
         return { ok: true, value: { controlPlane: serializable(current) } }
-      }
-      if (current.ownerDeviceId === identity.deviceId && current.leaseId === null && current.leaseExpiresAt === null) {
-        const claimed = await tx.v3PrintControlPlane.updateMany({
-          where: { id: current.id, tenantId: identity.tenantId, storeId: identity.storeId, stateVersion: current.stateVersion,
-            ownerDeviceId: identity.deviceId, ownerEpoch: current.ownerEpoch, leaseId: null, leaseExpiresAt: null, mode: 'V3_ACTIVE' },
-          data: { leaseId: randomUUID(), leaseExpiresAt, stateVersion: { increment: 1 }, lastReconciledAt: now },
-        })
-        if (claimed.count !== 1) return { ok: false, code: 'CONCURRENT_STATE_CHANGE' }
-        return { ok: true, value: { controlPlane: serializable(await readAfter(tx, identity.storeId)) } }
       }
       return { ok: false, code: current.leaseExpiresAt && current.leaseExpiresAt <= now ? 'OWNER_LIVENESS_AMBIGUOUS' : 'OWNER_ALREADY_ACTIVE' }
     }
@@ -238,7 +235,9 @@ export async function transitionV3PrintMode(
       return { ok: false, code: 'HANDOFF_NOT_FINALIZED' }
     }
     if (identity.nextMode === 'V3_ACTIVE' && current.ownerDeviceId !== null &&
-      (current.leaseId !== null || current.leaseExpiresAt !== null)) return { ok: false, code: 'HANDOFF_NOT_FINALIZED' }
+      (!current.leaseId || !current.leaseExpiresAt || current.leaseExpiresAt <= now || current.leaseId.startsWith('handoff:'))) {
+      return { ok: false, code: 'HANDOFF_NOT_FINALIZED' }
+    }
     if (identity.nextMode === 'V2_ACTIVE' && current.ownerDeviceId !== null) return { ok: false, code: 'V3_OWNER_NOT_RELEASED' }
     const result = await tx.v3PrintControlPlane.updateMany({
       where: { id: current.id, tenantId: identity.tenantId, storeId: identity.storeId, stateVersion: identity.expectedStateVersion, mode: current.mode },
@@ -256,6 +255,7 @@ export async function controlledV3OwnerHandoff(
 ): Promise<ControlPlaneResult<{ controlPlane: ReturnType<typeof serializable> }>> {
   return db.$transaction(async (tx) => {
     const current = await ensurePlane(tx, identity.tenantId, identity.storeId)
+    const binding = handoffBinding(identity)
     const previousOwnerDeviceId = current.ownerDeviceId
     const previousOwnerEpoch = current.ownerEpoch
     const intendedOwner = await tx.desktopDevice.findFirst({ where: {
@@ -291,7 +291,15 @@ export async function controlledV3OwnerHandoff(
       const quarantineUntil = latest?.expiresAt ?? now
       const result = await tx.v3PrintControlPlane.updateMany({
         where: { id: current.id, tenantId: identity.tenantId, storeId: identity.storeId, stateVersion: identity.expectedStateVersion },
-        data: { mode: 'BLOCKED_UNKNOWN', stateVersion: { increment: 1 }, handoffRequestedAt: now, handoffQuarantineUntil: quarantineUntil },
+        data: {
+          ownerDeviceId: intendedOwner.id,
+          leaseId: binding,
+          leaseExpiresAt: quarantineUntil,
+          mode: 'BLOCKED_UNKNOWN',
+          stateVersion: { increment: 1 },
+          handoffRequestedAt: now,
+          handoffQuarantineUntil: quarantineUntil,
+        },
       })
       if (result.count !== 1) return { ok: false, code: 'CONCURRENT_STATE_CHANGE' }
       await audit('QUARANTINE_STARTED', previousOwnerDeviceId, previousOwnerEpoch, current.stateVersion + 1)
@@ -299,15 +307,19 @@ export async function controlledV3OwnerHandoff(
     }
     if (!current.handoffQuarantineUntil || current.handoffQuarantineUntil > now) return { ok: false, code: 'HANDOFF_QUARANTINE_ACTIVE' }
     const result = await tx.v3PrintControlPlane.updateMany({
-      where: { id: current.id, tenantId: identity.tenantId, storeId: identity.storeId, stateVersion: identity.expectedStateVersion, mode: 'BLOCKED_UNKNOWN' },
+      where: {
+        id: current.id, tenantId: identity.tenantId, storeId: identity.storeId,
+        stateVersion: identity.expectedStateVersion, mode: 'BLOCKED_UNKNOWN',
+        ownerDeviceId: intendedOwner.id, leaseId: binding, leaseExpiresAt: current.handoffQuarantineUntil,
+      },
       data: {
-        ownerDeviceId: intendedOwner.id, leaseId: null, leaseExpiresAt: null, ownerEpoch: { increment: 1 },
+        leaseId: randomUUID(), leaseExpiresAt: new Date(now.getTime() + DEFAULT_LEASE_MS), ownerEpoch: { increment: 1 },
         stateVersion: { increment: 1 }, handoffQuarantineUntil: null,
       },
     })
     if (result.count !== 1) return { ok: false, code: 'CONCURRENT_STATE_CHANGE' }
     await tx.v3PrintExecutionBatch.updateMany({ where: { controlPlaneId: current.id, revokedAt: null }, data: { revokedAt: now } })
-    await audit('HANDOFF_CONFIRMED', previousOwnerDeviceId, previousOwnerEpoch + 1, current.stateVersion + 1)
+    await audit('HANDOFF_CONFIRMED', null, previousOwnerEpoch + 1, current.stateVersion + 1)
     return { ok: true, value: { controlPlane: serializable(await readAfter(tx, identity.storeId)) } }
   })
 }

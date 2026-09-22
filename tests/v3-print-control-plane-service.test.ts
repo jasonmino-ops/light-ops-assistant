@@ -7,7 +7,7 @@ import {
 
 const now = new Date('2026-01-01T00:00:00.000Z')
 
-function fakeDb(initial: Partial<any> = {}) {
+function fakeDb(initial: Partial<any> = {}, options: { failAudit?: boolean } = {}) {
   let plane: any = {
     id: 'plane-a', tenantId: 'tenant-a', storeId: 'store-a', ownerDeviceId: null, ownerEpoch: 0,
     leaseId: null, leaseExpiresAt: null, mode: 'V3_ACTIVE', stateVersion: 1,
@@ -33,6 +33,9 @@ function fakeDb(initial: Partial<any> = {}) {
       updateMany: async ({ where, data }: any) => {
         if (!matches(where)) return { count: 0 }
         apply(data)
+        const ownerShapeValid = (plane.ownerDeviceId === null && plane.leaseId === null && plane.leaseExpiresAt === null) ||
+          (plane.ownerDeviceId !== null && plane.leaseId !== null && plane.leaseExpiresAt !== null)
+        if (!ownerShapeValid) throw new Error('V3PrintControlPlane_owner_shape_check')
         return { count: 1 }
       },
     },
@@ -50,11 +53,26 @@ function fakeDb(initial: Partial<any> = {}) {
     },
     desktopDevice: { findFirst: async ({ where }: any) => ({ id: where.id }) },
     operationLog: {
-      create: async ({ data }: any) => { const row = { id: `audit-${audits.length + 1}`, ...data }; audits.push(row); return row },
+      create: async ({ data }: any) => {
+        if (options.failAudit) throw new Error('AUDIT_WRITE_FAILED')
+        const row = { id: `audit-${audits.length + 1}`, ...data }; audits.push(row); return row
+      },
       findFirst: async ({ where }: any) => [...audits].reverse().find(row => Object.entries(where).every(([key, value]) => row[key] === value)) ?? null,
     },
   }
-  const db: V3ControlPlaneDb = { ...tx, $transaction: async (operation: any) => operation(tx) }
+  const db: V3ControlPlaneDb = { ...tx, $transaction: async (operation: any) => {
+    const beforePlane = structuredClone(plane)
+    const beforeBatches = structuredClone(batches)
+    const beforeAudits = structuredClone(audits)
+    try {
+      return await operation(tx)
+    } catch (error) {
+      plane = beforePlane
+      batches.splice(0, batches.length, ...beforeBatches)
+      audits.splice(0, audits.length, ...beforeAudits)
+      throw error
+    }
+  } }
   return { db, plane: () => ({ ...plane }), batches, audits }
 }
 
@@ -110,6 +128,8 @@ test('mode transitions require BLOCKED_UNKNOWN and controlled handoff quarantine
   assert.equal((await controlledV3OwnerHandoff(state.db, { ...handoff, expectedStateVersion: 4 }, now)).ok, true)
   assert.equal(state.plane().ownerEpoch, before)
   assert.equal(state.plane().mode, 'BLOCKED_UNKNOWN')
+  assert.equal(state.plane().ownerDeviceId, 'device-new')
+  assert.match(state.plane().leaseId, /^handoff:[0-9a-f]{64}$/)
   assert.equal((await controlledV3OwnerHandoff(state.db, { ...handoff, expectedStateVersion: 5 }, new Date(now.getTime() + 1))).ok, true)
   assert.equal(state.plane().ownerEpoch, before + 1)
   assert.equal(state.plane().ownerDeviceId, 'device-new')
@@ -148,4 +168,30 @@ test('finalized handoff prebinds only the intended owner and does not advance ep
   assert.equal((await acquireV3Authority(state.db, { tenantId: 'tenant-a', storeId: 'store-a', deviceId: 'device-new' }, { now: new Date(now.getTime() + 120_003) })).ok, true)
   assert.equal(state.plane().ownerEpoch, 5)
   assert.ok(state.plane().leaseId)
+})
+
+test('handoff confirmation is bound to the intended owner and confirmation identity', async () => {
+  const state = fakeDb({ ownerDeviceId: 'device-old', ownerEpoch: 4, leaseId: 'lease-old', leaseExpiresAt: new Date(now.getTime() + 120_000) })
+  const request = { tenantId: 'tenant-a', storeId: 'store-a', actorUserId: 'user-owner', intendedOwnerDeviceId: 'device-new', confirmationId: 'confirm-0001' }
+  await controlledV3OwnerHandoff(state.db, { ...request, expectedStateVersion: 1 }, now)
+  const afterStart = state.plane()
+  assert.deepEqual(await controlledV3OwnerHandoff(state.db, {
+    ...request, intendedOwnerDeviceId: 'device-other', expectedStateVersion: 2,
+  }, new Date(now.getTime() + 120_001)), { ok: false, code: 'CONCURRENT_STATE_CHANGE' })
+  assert.deepEqual(await controlledV3OwnerHandoff(state.db, {
+    ...request, confirmationId: 'confirm-other', expectedStateVersion: 2,
+  }, new Date(now.getTime() + 120_001)), { ok: false, code: 'CONCURRENT_STATE_CHANGE' })
+  assert.deepEqual(state.plane(), afterStart)
+})
+
+test('handoff state and authority roll back when durable audit insertion fails', async () => {
+  const initial = { ownerDeviceId: 'device-old', ownerEpoch: 4, leaseId: 'lease-old', leaseExpiresAt: new Date(now.getTime() + 120_000) }
+  const state = fakeDb(initial, { failAudit: true })
+  const before = state.plane()
+  await assert.rejects(controlledV3OwnerHandoff(state.db, {
+    tenantId: 'tenant-a', storeId: 'store-a', expectedStateVersion: 1, actorUserId: 'user-owner',
+    intendedOwnerDeviceId: 'device-new', confirmationId: 'confirm-0001',
+  }, now), /AUDIT_WRITE_FAILED/)
+  assert.deepEqual(state.plane(), before)
+  assert.equal(state.audits.length, 0)
 })
