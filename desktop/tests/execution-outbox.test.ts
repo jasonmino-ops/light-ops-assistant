@@ -1,7 +1,8 @@
+import { promises as fs } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExecutionOutbox } from "../src/main/printing/executionOutbox";
 
 const roots: string[] = [];
@@ -60,5 +61,24 @@ describe("ExecutionOutbox", () => {
       entries: [{ executionId: "same" }, { executionId: "same" }],
     }));
     await expect(new ExecutionOutbox(directory).open()).rejects.toThrow("OUTBOX_CORRUPT");
+  });
+
+  it("poisons the instance after post-rename durability uncertainty and reloads from disk on restart", async () => {
+    const { directory, instance } = await outbox();
+    const originalOpen = fs.open.bind(fs);
+    let opens = 0;
+    const open = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      opens += 1;
+      if (opens === 2) throw new Error("final fsync unavailable");
+      return originalOpen(...args);
+    });
+    const entry = { executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSING_UNKNOWN" as const };
+    await expect(instance.enqueue(entry)).rejects.toThrow("final fsync unavailable");
+    await expect(instance.enqueue({ ...entry, executionId: "execution-b", printJobId: "job-b" }))
+      .rejects.toThrow("OUTBOX_UNUSABLE");
+    expect(() => instance.list()).toThrow("OUTBOX_UNUSABLE");
+    open.mockRestore();
+    const restarted = (await outbox(directory)).instance;
+    expect(restarted.list()).toMatchObject([entry]);
   });
 });

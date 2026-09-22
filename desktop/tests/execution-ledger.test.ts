@@ -647,6 +647,15 @@ describe("ExecutionLedger state machine", () => {
     );
   });
 
+  it("rejects execution when expiresAt equals the current instant", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const created = await instance.accept({ ...input(), expiresAt: "2026-01-01T00:00:00.000Z" });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(errorCode(await instance.beginCrossing(guard(created.value.record)))).toBe("LEDGER_EXPIRED");
+  });
+
   it("serializes same-guard beginCrossing and preserves the UNKNOWN decision", async () => {
     const root = await makeRoot();
     const instance = await openLedger(root);

@@ -158,7 +158,7 @@ function expectedRetainUntil(expiresAt: string, createdAt: string): string {
 }
 
 function isExpired(expiresAt: string, now: Date): boolean {
-  return Date.parse(expiresAt) < now.getTime();
+  return Date.parse(expiresAt) <= now.getTime();
 }
 
 function identityEquals(left: LedgerIdentity, right: LedgerIdentity): boolean {

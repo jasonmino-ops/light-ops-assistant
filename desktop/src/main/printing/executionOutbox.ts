@@ -29,6 +29,7 @@ export class ExecutionOutbox {
   private readonly filePath: string;
   private entries: OutboxEntry[] = [];
   private queue: Promise<void> = Promise.resolve();
+  private unusable = false;
 
   public constructor(private readonly root: string, private readonly now: () => Date = () => new Date()) {
     this.filePath = path.join(root, ".execution-outbox.json");
@@ -70,6 +71,7 @@ export class ExecutionOutbox {
   }
 
   public list(): OutboxEntry[] {
+    if (this.unusable) throw new Error("OUTBOX_UNUSABLE");
     return this.entries.map((entry) => ({ ...entry }));
   }
 
@@ -83,13 +85,18 @@ export class ExecutionOutbox {
   }
 
   private exclusive<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.queue.then(operation, operation);
+    const guarded = () => {
+      if (this.unusable) throw new Error("OUTBOX_UNUSABLE");
+      return operation();
+    };
+    const result = this.queue.then(guarded, guarded);
     this.queue = result.then(() => undefined, () => undefined);
     return result;
   }
 
   private async persist(entries: OutboxEntry[]): Promise<void> {
     const temporary = `${this.filePath}.tmp`;
+    let renamed = false;
     const handle = await fs.open(temporary, "w");
     try {
       await handle.writeFile(`${JSON.stringify({ schemaVersion: 1, entries })}\n`);
@@ -97,13 +104,19 @@ export class ExecutionOutbox {
     } finally {
       await handle.close();
     }
-    await fs.rename(temporary, this.filePath);
-    const finalHandle = await fs.open(this.filePath, "r+");
-    try { await finalHandle.sync(); } finally { await finalHandle.close(); }
-    if (process.platform !== "win32") {
-      const directory = await fs.open(this.root, "r");
-      try { await directory.sync(); } finally { await directory.close(); }
+    try {
+      await fs.rename(temporary, this.filePath);
+      renamed = true;
+      const finalHandle = await fs.open(this.filePath, "r+");
+      try { await finalHandle.sync(); } finally { await finalHandle.close(); }
+      if (process.platform !== "win32") {
+        const directory = await fs.open(this.root, "r");
+        try { await directory.sync(); } finally { await directory.close(); }
+      }
+      this.entries = entries;
+    } catch (error) {
+      if (renamed) this.unusable = true;
+      throw error;
     }
-    this.entries = entries;
   }
 }
