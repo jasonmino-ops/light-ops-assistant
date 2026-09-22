@@ -1,0 +1,153 @@
+export type SharedLedgerState =
+  | "NOT_CROSSED"
+  | "CROSSING_UNKNOWN"
+  | "CROSSED"
+  | "FAILED_NOT_CROSSED"
+  | "CANCELLED";
+
+export type SharedLedgerRecord = {
+  printJobId: string;
+  executionId: string;
+  state: SharedLedgerState;
+  stateVersion: number;
+  physicalCompletionKnown: false;
+};
+
+export type SharedExecutionPermit = {
+  printJobId: string;
+  executionId: string;
+  stateVersion: number;
+};
+
+type PortError = { code: string; message: string };
+export type PortResult<T> = { ok: true; value: T } | { ok: false; error: PortError };
+
+export type SharedPrintIdentity = {
+  printJobId: string;
+  requestHash: string;
+  rendererVersion: string;
+  expiresAt: string;
+};
+
+export interface SharedPrintingLedgerPort {
+  accept(input: SharedPrintIdentity): Promise<PortResult<{
+    kind: "CREATED" | "EXISTING";
+    record: SharedLedgerRecord;
+  }>>;
+  beginCrossing(guard: {
+    printJobId: string;
+    expectedExecutionId: string;
+    expectedStateVersion: number;
+  }): Promise<PortResult<{ record: SharedLedgerRecord; executionPermit: SharedExecutionPermit }>>;
+  confirmNotCrossed(proof: {
+    executionPermit: SharedExecutionPermit;
+    zeroBytesSent: true;
+    lastErrorCode?: string;
+  }): Promise<PortResult<SharedLedgerRecord>>;
+  markCrossed(proof: {
+    printJobId: string;
+    expectedExecutionId: string;
+    expectedStateVersion: number;
+    allBytesWritten: true;
+    flushAndFinConfirmed: true;
+  }): Promise<PortResult<SharedLedgerRecord>>;
+}
+
+export type EffectBoundaryResult =
+  | { outcome: "NOT_CROSSED"; zeroBytesSent: true; errorCode?: string }
+  | { outcome: "CROSSED"; allBytesWritten: true; flushAndFinConfirmed: true }
+  | { outcome: "UNKNOWN"; reason: string };
+
+export interface PrintingEffectBoundary<TPayload> {
+  cross(input: {
+    identity: SharedPrintIdentity;
+    executionPermit: SharedExecutionPermit;
+    endpointKey: string;
+    payload: TPayload;
+  }): Promise<EffectBoundaryResult>;
+}
+
+export type SharedExecutionResult =
+  | { status: "CROSSED" | "FAILED_NOT_CROSSED"; record: SharedLedgerRecord }
+  | { status: "CROSSING_UNKNOWN"; record: SharedLedgerRecord; reason: string }
+  | { status: "NOT_EXECUTED"; record: SharedLedgerRecord; reason: "EXISTING_NON_EXECUTABLE" }
+  | { status: "REJECTED"; error: PortError };
+
+function guard(record: SharedLedgerRecord) {
+  return {
+    printJobId: record.printJobId,
+    expectedExecutionId: record.executionId,
+    expectedStateVersion: record.stateVersion,
+  };
+}
+
+export class SharedPrintingCore<TPayload> {
+  public constructor(
+    private readonly ledger: SharedPrintingLedgerPort,
+    private readonly boundary: PrintingEffectBoundary<TPayload>,
+  ) {}
+
+  public async execute(input: {
+    identity: SharedPrintIdentity;
+    endpointKey: string;
+    payload: TPayload;
+  }): Promise<SharedExecutionResult> {
+    const accepted = await this.ledger.accept(input.identity);
+    if (!accepted.ok) return { status: "REJECTED", error: accepted.error };
+
+    if (accepted.value.record.state !== "NOT_CROSSED") {
+      return {
+        status: "NOT_EXECUTED",
+        record: accepted.value.record,
+        reason: "EXISTING_NON_EXECUTABLE",
+      };
+    }
+
+    const crossing = await this.ledger.beginCrossing(guard(accepted.value.record));
+    if (!crossing.ok) return { status: "REJECTED", error: crossing.error };
+
+    let outcome: EffectBoundaryResult;
+    try {
+      outcome = await this.boundary.cross({
+        identity: input.identity,
+        executionPermit: crossing.value.executionPermit,
+        endpointKey: input.endpointKey,
+        payload: input.payload,
+      });
+    } catch {
+      return {
+        status: "CROSSING_UNKNOWN",
+        record: crossing.value.record,
+        reason: "BOUNDARY_THROW",
+      };
+    }
+
+    if (outcome.outcome === "UNKNOWN") {
+      return {
+        status: "CROSSING_UNKNOWN",
+        record: crossing.value.record,
+        reason: outcome.reason,
+      };
+    }
+
+    if (outcome.outcome === "NOT_CROSSED") {
+      const completed = await this.ledger.confirmNotCrossed({
+        executionPermit: crossing.value.executionPermit,
+        zeroBytesSent: true,
+        ...(outcome.errorCode === undefined ? {} : { lastErrorCode: outcome.errorCode }),
+      });
+      return completed.ok
+        ? { status: "FAILED_NOT_CROSSED", record: completed.value }
+        : { status: "REJECTED", error: completed.error };
+    }
+
+    const completed = await this.ledger.markCrossed({
+      ...guard(crossing.value.record),
+      allBytesWritten: true,
+      flushAndFinConfirmed: true,
+    });
+    return completed.ok
+      ? { status: "CROSSED", record: completed.value }
+      : { status: "REJECTED", error: completed.error };
+  }
+}
