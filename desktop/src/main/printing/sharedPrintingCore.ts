@@ -82,12 +82,43 @@ function guard(record: SharedLedgerRecord) {
 }
 
 export class SharedPrintingCore<TPayload> {
+  private readonly endpointTails = new Map<string, Promise<void>>();
+
   public constructor(
     private readonly ledger: SharedPrintingLedgerPort,
     private readonly boundary: PrintingEffectBoundary<TPayload>,
   ) {}
 
   public async execute(input: {
+    identity: SharedPrintIdentity;
+    endpointKey: string;
+    payload: TPayload;
+  }): Promise<SharedExecutionResult> {
+    if (typeof input.endpointKey !== "string" || input.endpointKey.length === 0) {
+      return {
+        status: "REJECTED",
+        error: { code: "SHARED_CORE_INVALID_ENDPOINT", message: "endpointKey is required." },
+      };
+    }
+
+    const previous = this.endpointTails.get(input.endpointKey) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const tail = previous.catch(() => undefined).then(() => current);
+    this.endpointTails.set(input.endpointKey, tail);
+
+    await previous.catch(() => undefined);
+    try {
+      return await this.executeAtEndpoint(input);
+    } finally {
+      release();
+      if (this.endpointTails.get(input.endpointKey) === tail) {
+        this.endpointTails.delete(input.endpointKey);
+      }
+    }
+  }
+
+  private async executeAtEndpoint(input: {
     identity: SharedPrintIdentity;
     endpointKey: string;
     payload: TPayload;

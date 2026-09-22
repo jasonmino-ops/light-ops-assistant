@@ -98,4 +98,36 @@ describe("SharedPrintingCore", () => {
     })).toMatchObject({ status: "REJECTED", error: { code: "LEDGER_IDENTITY_CONFLICT" } });
     expect(effect.cross).toHaveBeenCalledTimes(1);
   });
+
+  it("strictly serializes one endpoint while allowing different endpoints concurrently", async () => {
+    const instance = await ledger();
+    const entered: string[] = [];
+    const releases = new Map<string, () => void>();
+    const effect: PrintingEffectBoundary<Uint8Array> = {
+      cross: vi.fn(async ({ identity: accepted, endpointKey }): Promise<EffectBoundaryResult> => {
+        entered.push(accepted.printJobId);
+        await new Promise<void>((resolve) => releases.set(accepted.printJobId, resolve));
+        return { outcome: "CROSSED", allBytesWritten: true, flushAndFinConfirmed: true };
+      }),
+    };
+    const core = new SharedPrintingCore(instance, effect);
+    const execute = (printJobId: string, endpointKey: string) => core.execute({
+      identity: { ...identity, printJobId, requestHash: `hash-${printJobId}` },
+      endpointKey,
+      payload: new Uint8Array(),
+    });
+
+    const first = execute("job-a1", "printer-a:9100");
+    const queued = execute("job-a2", "printer-a:9100");
+    const parallel = execute("job-b1", "printer-b:9100");
+    await vi.waitFor(() => expect(entered).toEqual(["job-a1", "job-b1"]));
+    releases.get("job-b1")?.();
+    await parallel;
+    expect(entered).not.toContain("job-a2");
+    releases.get("job-a1")?.();
+    await first;
+    await vi.waitFor(() => expect(entered).toContain("job-a2"));
+    releases.get("job-a2")?.();
+    await queued;
+  });
 });
