@@ -47,7 +47,13 @@ export class EndpointMutex {
         break;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        const raw = await fs.readFile(lockPath, "utf8");
+        let raw: string;
+        try {
+          raw = await fs.readFile(lockPath, "utf8");
+        } catch (readError) {
+          if ((readError as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw readError;
+        }
         let parsed: unknown;
         try { parsed = JSON.parse(raw); } catch { throw new Error("ENDPOINT_MUTEX_UNVERIFIABLE"); }
         if (!validLock(parsed) || parsed.endpointKey !== endpointKey) throw new Error("ENDPOINT_MUTEX_UNVERIFIABLE");
