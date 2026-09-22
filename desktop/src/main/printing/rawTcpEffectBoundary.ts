@@ -53,6 +53,7 @@ export class RawTcpEffectBoundary implements PrintingEffectBoundary<Uint8Array> 
           socket.destroy();
           return;
         }
+        if (settled) return;
         attempted = true;
         socket.write(input.payload, (error?: Error | null) => {
           if (error) {

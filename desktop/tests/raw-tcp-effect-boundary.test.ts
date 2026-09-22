@@ -76,4 +76,18 @@ describe("RawTcpEffectBoundary", () => {
     expect(await result).toEqual({ outcome: "NOT_CROSSED", zeroBytesSent: true, errorCode: "MODE_NOT_V3_ACTIVE" });
     expect(socket.written).toBe(false);
   });
+
+  it("never writes when timeout settles while pre-write validation is pending", async () => {
+    let completeValidation!: () => void;
+    const { socket, result } = setup(() => new Promise((resolve) => {
+      completeValidation = () => resolve({ ok: true, value: undefined });
+    }));
+    socket.emit("connect");
+    await Promise.resolve();
+    socket.emit("timeout");
+    expect(await result).toEqual({ outcome: "UNKNOWN", reason: "TIMEOUT" });
+    completeValidation();
+    await Promise.resolve();
+    expect(socket.written).toBe(false);
+  });
 });
