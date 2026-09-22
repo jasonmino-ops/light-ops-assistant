@@ -15,6 +15,7 @@ export type AuthorityDecision =
 export class ExecutionAuthorityGuard {
   private disconnectedAtMs: number | null = null;
   private highestObservedEpoch: number;
+  private invalidEpochObserved = false;
 
   public constructor(
     private readonly authority: ExecutionAuthority,
@@ -31,6 +32,10 @@ export class ExecutionAuthorityGuard {
   }
 
   public noteConnected(observedOwnerEpoch: number): void {
+    if (!Number.isInteger(observedOwnerEpoch) || observedOwnerEpoch < 1) {
+      this.invalidEpochObserved = true;
+      return;
+    }
     this.highestObservedEpoch = Math.max(this.highestObservedEpoch, observedOwnerEpoch);
     this.disconnectedAtMs = null;
   }
@@ -40,6 +45,9 @@ export class ExecutionAuthorityGuard {
   }
 
   public canAdmit(candidate: ExecutionAuthority): AuthorityDecision {
+    if (this.invalidEpochObserved) {
+      return { allowed: false, mode: "ADMISSION_CLOSED", reason: "INVALID_OBSERVED_EPOCH" };
+    }
     if (
       candidate.storeId !== this.authority.storeId ||
       candidate.deviceId !== this.authority.deviceId ||

@@ -64,6 +64,7 @@ export interface PrintingEffectBoundary<TPayload> {
     executionPermit: SharedExecutionPermit;
     endpointKey: string;
     payload: TPayload;
+    validateExecution: ExecutionSafetyCheck;
   }): Promise<EffectBoundaryResult>;
 }
 
@@ -166,6 +167,7 @@ export class SharedPrintingCore<TPayload> {
         executionPermit: crossing.value.executionPermit,
         endpointKey: input.endpointKey,
         payload: input.payload,
+        validateExecution: input.validateExecution,
       });
     } catch {
       return {

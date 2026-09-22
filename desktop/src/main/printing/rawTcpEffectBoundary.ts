@@ -1,5 +1,5 @@
 import net from "node:net";
-import type { PrintingEffectBoundary, EffectBoundaryResult } from "./sharedPrintingCore";
+import type { PrintingEffectBoundary, EffectBoundaryResult, ExecutionSafetyCheck } from "./sharedPrintingCore";
 
 export type TcpSocket = Pick<net.Socket, "once" | "write" | "end" | "destroy" | "setTimeout">;
 export type TcpSocketFactory = (options: { host: string; port: number }) => TcpSocket;
@@ -19,7 +19,11 @@ export class RawTcpEffectBoundary implements PrintingEffectBoundary<Uint8Array> 
     private readonly createSocket: TcpSocketFactory = (options) => net.createConnection(options),
   ) {}
 
-  public cross(input: { endpointKey: string; payload: Uint8Array }): Promise<EffectBoundaryResult> {
+  public cross(input: {
+    endpointKey: string;
+    payload: Uint8Array;
+    validateExecution: ExecutionSafetyCheck;
+  }): Promise<EffectBoundaryResult> {
     const endpoint = parseEndpoint(input.endpointKey);
     if (!endpoint || input.payload.byteLength === 0) {
       return Promise.resolve({ outcome: "UNKNOWN", reason: "INVALID_BOUNDARY_INPUT" });
@@ -36,7 +40,19 @@ export class RawTcpEffectBoundary implements PrintingEffectBoundary<Uint8Array> 
       };
       const socket = this.createSocket(endpoint);
       socket.setTimeout(this.timeoutMs);
-      socket.once("connect", () => {
+      socket.once("connect", async () => {
+        try {
+          const admission = await input.validateExecution();
+          if (!admission.ok) {
+            finish({ outcome: "NOT_CROSSED", zeroBytesSent: true, errorCode: admission.error.code });
+            socket.destroy();
+            return;
+          }
+        } catch {
+          finish({ outcome: "NOT_CROSSED", zeroBytesSent: true, errorCode: "PRE_WRITE_VALIDATION_FAILED" });
+          socket.destroy();
+          return;
+        }
         attempted = true;
         socket.write(input.payload, (error?: Error | null) => {
           if (error) {

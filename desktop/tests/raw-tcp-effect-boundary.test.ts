@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 import { RawTcpEffectBoundary, type TcpSocket } from "../src/main/printing/rawTcpEffectBoundary";
+import type { ExecutionSafetyCheck } from "../src/main/printing/sharedPrintingCore";
 
 class FakeSocket extends EventEmitter {
   public writeCallback?: (error?: Error | null) => void;
@@ -15,12 +16,13 @@ class FakeSocket extends EventEmitter {
   public setTimeout(): this { return this; }
 }
 
-function setup() {
+function setup(validateExecution: ExecutionSafetyCheck = async () => ({ ok: true as const, value: undefined })) {
   const socket = new FakeSocket();
   const boundary = new RawTcpEffectBoundary(1000, () => socket as unknown as TcpSocket);
   const result = boundary.cross({
     endpointKey: "printer.local:9100",
     payload: new Uint8Array([1, 2]),
+    validateExecution,
   });
   return { socket, result };
 }
@@ -36,6 +38,7 @@ describe("RawTcpEffectBoundary", () => {
   it("marks attempted immediately before write and requires write plus clean FIN", async () => {
     const { socket, result } = setup();
     socket.emit("connect");
+    await Promise.resolve();
     expect(socket.written).toBe(true);
     socket.writeCallback?.();
     socket.emit("close", false);
@@ -44,7 +47,10 @@ describe("RawTcpEffectBoundary", () => {
 
   it.each(["timeout", "partial-close", "write-error", "post-write-error"])("keeps %s UNKNOWN", async (kind) => {
     const { socket, result } = setup();
-    if (kind !== "timeout") socket.emit("connect");
+    if (kind !== "timeout") {
+      socket.emit("connect");
+      await Promise.resolve();
+    }
     if (kind === "timeout") socket.emit("timeout");
     if (kind === "partial-close") socket.emit("close", false);
     if (kind === "write-error") socket.writeCallback?.(new Error("partial"));
@@ -55,8 +61,19 @@ describe("RawTcpEffectBoundary", () => {
   it("fails invalid endpoint and empty payload closed without opening a socket", async () => {
     let created = 0;
     const boundary = new RawTcpEffectBoundary(1000, () => { created += 1; return new FakeSocket() as unknown as TcpSocket; });
-    expect(await boundary.cross({ endpointKey: "bad", payload: new Uint8Array([1]) })).toMatchObject({ outcome: "UNKNOWN" });
-    expect(await boundary.cross({ endpointKey: "host:9100", payload: new Uint8Array() })).toMatchObject({ outcome: "UNKNOWN" });
+    const validateExecution = async () => ({ ok: true as const, value: undefined });
+    expect(await boundary.cross({ endpointKey: "bad", payload: new Uint8Array([1]), validateExecution })).toMatchObject({ outcome: "UNKNOWN" });
+    expect(await boundary.cross({ endpointKey: "host:9100", payload: new Uint8Array(), validateExecution })).toMatchObject({ outcome: "UNKNOWN" });
     expect(created).toBe(0);
+  });
+
+  it("revalidates immediately before socket.write and proves zero bytes on revocation", async () => {
+    const { socket, result } = setup(async () => ({
+      ok: false as const,
+      error: { code: "MODE_NOT_V3_ACTIVE", message: "revoked while connecting" },
+    }));
+    socket.emit("connect");
+    expect(await result).toEqual({ outcome: "NOT_CROSSED", zeroBytesSent: true, errorCode: "MODE_NOT_V3_ACTIVE" });
+    expect(socket.written).toBe(false);
   });
 });

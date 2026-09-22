@@ -38,6 +38,14 @@ describe("ExecutionAuthorityGuard", () => {
     expect(guard.canAdmit(authority)).toEqual({ allowed: false, mode: "FENCED", reason: "AUTHORITY_MISMATCH" });
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 1.5])("fails closed after invalid observed epoch %s", (observed) => {
+    const guard = new ExecutionAuthorityGuard(authority, 15 * 60_000, () => base);
+    guard.noteConnected(observed);
+    expect(guard.canAdmit(authority)).toEqual({
+      allowed: false, mode: "ADMISSION_CLOSED", reason: "INVALID_OBSERVED_EPOCH",
+    });
+  });
+
   it("fails closed for expired batches and grace below the frozen minimum", () => {
     expect(() => new ExecutionAuthorityGuard(authority, 9 * 60_000, () => base)).toThrow(/ten minutes/);
     const guard = new ExecutionAuthorityGuard({ ...authority, batchExpiresAt: new Date(base).toISOString() }, 10 * 60_000, () => base);
