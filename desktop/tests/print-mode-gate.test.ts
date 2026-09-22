@@ -36,4 +36,16 @@ describe("PrintModeGate", () => {
     expect(gate.abortDrain()).toBe(true);
     expect(gate.current()).toBe("V3_ACTIVE");
   });
+
+  it("surfaces HELD watchdog expiry without executing or changing mode", () => {
+    let now = 0;
+    const gate = new PrintModeGate("V2_DRAINING", 30_000, () => now);
+    gate.route({ printJobId: "a", value: 1 });
+    now = 29_999;
+    expect(gate.overdueHeldPrintJobIds()).toEqual([]);
+    now = 30_000;
+    expect(gate.overdueHeldPrintJobIds()).toEqual(["a"]);
+    expect(gate.current()).toBe("V2_DRAINING");
+    expect(() => new PrintModeGate("V2_ACTIVE", 29_999)).toThrow(/30 and 300/);
+  });
 });

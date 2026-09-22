@@ -9,8 +9,17 @@ export type HeldPrintIntent<T> = { printJobId: string; value: T };
 
 export class PrintModeGate<T> {
   private held: HeldPrintIntent<T>[] = [];
+  private heldSince = new Map<string, number>();
 
-  public constructor(private mode: PrintExecutionMode) {}
+  public constructor(
+    private mode: PrintExecutionMode,
+    private readonly heldWatchdogMs = 60_000,
+    private readonly now: () => number = Date.now,
+  ) {
+    if (heldWatchdogMs < 30_000 || heldWatchdogMs > 300_000) {
+      throw new Error("heldWatchdogMs must be between 30 and 300 seconds");
+    }
+  }
 
   public current(): PrintExecutionMode {
     return this.mode;
@@ -19,8 +28,18 @@ export class PrintModeGate<T> {
   public route(intent: HeldPrintIntent<T>): "V2" | "V3" | "HELD" {
     if (this.mode === "V2_ACTIVE") return "V2";
     if (this.mode === "V3_ACTIVE") return "V3";
-    if (!this.held.some(({ printJobId }) => printJobId === intent.printJobId)) this.held.push(intent);
+    if (!this.held.some(({ printJobId }) => printJobId === intent.printJobId)) {
+      this.held.push(intent);
+      this.heldSince.set(intent.printJobId, this.now());
+    }
     return "HELD";
+  }
+
+  public overdueHeldPrintJobIds(): string[] {
+    const now = this.now();
+    return this.held
+      .filter(({ printJobId }) => now - (this.heldSince.get(printJobId) ?? now) >= this.heldWatchdogMs)
+      .map(({ printJobId }) => printJobId);
   }
 
   public beginDrain(): boolean {
@@ -52,6 +71,7 @@ export class PrintModeGate<T> {
     this.mode = target;
     const released = this.held;
     this.held = [];
+    this.heldSince.clear();
     return released;
   }
 
