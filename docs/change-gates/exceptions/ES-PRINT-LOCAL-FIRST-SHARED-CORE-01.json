@@ -15,7 +15,7 @@
   "authorizedPathSha256": {
     "prisma/schema.prisma": "846e6e3768a72d83abdeaf2b183efb8596299d4ed34079261c45d66775df42bd",
     "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql": "c30b41d30225706b8259d9f84890dab0b30b0089ebf0701b172449b81eaa383f",
-    "app/cashier/page.tsx": "8e4ec86725c3d72e5638d0c17dbe825a1d27561c13318ecb6312905de6eeef65"
+    "app/cashier/page.tsx": "872db4cbcbd88f3cdb2573e6043605bb5eef902987207ed73c009ba8aafd152d"
   },
   "createdAt": "2026-09-23T02:20:00.000Z",
   "approvedAt": "2026-09-23T02:20:00.000Z",
@@ -44,10 +44,20 @@
         "app/cashier/page.tsx"
       ],
       "authorizedPathSha256": {
-        "app/cashier/page.tsx": "8e4ec86725c3d72e5638d0c17dbe825a1d27561c13318ecb6312905de6eeef65"
+        "app/cashier/page.tsx": "872db4cbcbd88f3cdb2573e6043605bb5eef902987207ed73c009ba8aafd152d"
       },
       "purpose": "V3 Local-first real caller wiring only: stable order/role canonical printJobId, existing rendered bytes through the bounded V3 IPC, V2_ACTIVE fallback preserved, FRONT/KITCHEN kept separate.",
-      "prohibited": "No wildcard, UI, cashier UX, order, payment, product, V2 print implementation, remote/H5 business logic, endpoint/owner/lease/batch injection, Production action, installer or FIELD change."
+      "prohibited": "No wildcard, UI, cashier UX, order, payment, product, V2 print implementation, remote/H5 business logic, endpoint/owner/lease/batch injection, Production action, installer or FIELD change.",
+      "contentReseals": [
+        {
+          "previousSha256": "8e4ec86725c3d72e5638d0c17dbe825a1d27561c13318ecb6312905de6eeef65",
+          "finalSha256": "872db4cbcbd88f3cdb2573e6043605bb5eef902987207ed73c009ba8aafd152d",
+          "approvedAt": "2026-09-23T03:20:00.000Z",
+          "approvedBy": "Founder",
+          "approvalSource": "Explicit Founder Decision: APPROVED — EXACT CONTENT HASH UPDATE for ES-PRINT-LOCAL-FIRST-SHARED-CORE-01.",
+          "reason": "Pre-write TypeScript validation proved DesktopReceiptData.orderNo may be absent. The final sealed caller treats the request as V3-ineligible and preserves the unchanged V2 path before any V3 IPC when canonical order identity is unavailable; it never invents a printJobId."
+        }
+      ]
     }
   ],
   "expirationCondition": "Close this exception after the separately authorized V3 control-plane feature merge. It must not authorize later Prisma or migration changes."
