@@ -3,24 +3,32 @@ import path from "node:path";
 
 export type ExecutionOutcome = "CROSSED" | "FAILED_NOT_CROSSED" | "CROSSING_UNKNOWN";
 export type OutboxEntry = {
+  batchId: string;
   executionId: string;
   printJobId: string;
+  source: "LOCAL_DESKTOP" | "CLOUD_H5" | "CLOUD_THIRD_PARTY" | "CLOUD_REMOTE_REPRINT";
+  role: "FRONT" | "KITCHEN";
   ownerEpoch: number;
   outcome: ExecutionOutcome;
+  reportable: boolean;
   createdAt: string;
   attempts: number;
 };
-type OutboxFile = { schemaVersion: 1; entries: OutboxEntry[] };
+type OutboxFile = { schemaVersion: 1 | 2; entries: Array<OutboxEntry | Omit<OutboxEntry, "reportable">> };
 const OUTCOMES: readonly ExecutionOutcome[] = ["CROSSED", "FAILED_NOT_CROSSED", "CROSSING_UNKNOWN"];
 
 function validEntry(value: unknown): value is OutboxEntry {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
-  return Object.keys(entry).sort().join(",") === "attempts,createdAt,executionId,outcome,ownerEpoch,printJobId" &&
+  return Object.keys(entry).sort().join(",") === "attempts,batchId,createdAt,executionId,outcome,ownerEpoch,printJobId,reportable,role,source" &&
+    typeof entry.batchId === "string" && entry.batchId.length > 0 &&
     typeof entry.executionId === "string" && entry.executionId.length > 0 &&
     typeof entry.printJobId === "string" && entry.printJobId.length > 0 &&
+    ["LOCAL_DESKTOP", "CLOUD_H5", "CLOUD_THIRD_PARTY", "CLOUD_REMOTE_REPRINT"].includes(String(entry.source)) &&
+    (entry.role === "FRONT" || entry.role === "KITCHEN") &&
     Number.isInteger(entry.ownerEpoch) && (entry.ownerEpoch as number) > 0 &&
     typeof entry.outcome === "string" && OUTCOMES.includes(entry.outcome as ExecutionOutcome) &&
+    typeof entry.reportable === "boolean" &&
     typeof entry.createdAt === "string" && !Number.isNaN(Date.parse(entry.createdAt)) &&
     Number.isInteger(entry.attempts) && (entry.attempts as number) >= 0;
 }
@@ -39,12 +47,16 @@ export class ExecutionOutbox {
     try {
       const parsed = JSON.parse(await fs.readFile(this.filePath, "utf8")) as OutboxFile;
       if (
-        parsed.schemaVersion !== 1 ||
+        (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) ||
         !Array.isArray(parsed.entries) ||
-        !parsed.entries.every(validEntry) ||
+        !(parsed.schemaVersion === 1
+          ? parsed.entries.every((entry) => validEntry({ ...(entry as object), reportable: true }))
+          : parsed.entries.every(validEntry)) ||
         new Set(parsed.entries.map(({ executionId }) => executionId)).size !== parsed.entries.length
       ) throw new Error("OUTBOX_CORRUPT");
-      this.entries = parsed.entries.map((entry) => ({ ...entry }));
+      this.entries = parsed.entries.map((entry) => ({ ...entry, reportable: parsed.schemaVersion === 1 ? true : (entry as OutboxEntry).reportable }));
+      const recovered = this.entries.map((entry) => entry.reportable ? entry : { ...entry, reportable: true });
+      if (parsed.schemaVersion === 1 || recovered.some((entry, index) => entry !== this.entries[index])) await this.persist(recovered);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
@@ -54,15 +66,16 @@ export class ExecutionOutbox {
     return this.exclusive(async () => {
       const existing = this.entries.find(({ executionId }) => executionId === input.executionId);
       if (existing) {
-        if (existing.printJobId !== input.printJobId || existing.ownerEpoch !== input.ownerEpoch) {
+        if (existing.batchId !== input.batchId || existing.printJobId !== input.printJobId || existing.source !== input.source ||
+          existing.role !== input.role || existing.ownerEpoch !== input.ownerEpoch) {
           throw new Error("OUTBOX_IDENTITY_CONFLICT");
         }
-        if (existing.outcome === input.outcome) return;
+        if (existing.outcome === input.outcome && existing.reportable === input.reportable) return;
         if (existing.outcome !== "CROSSING_UNKNOWN" || input.outcome === "CROSSING_UNKNOWN") {
           throw new Error("OUTBOX_OUTCOME_CONFLICT");
         }
         await this.persist(this.entries.map((entry) => entry.executionId === input.executionId
-          ? { ...entry, outcome: input.outcome }
+          ? { ...entry, outcome: input.outcome, reportable: input.reportable }
           : entry));
         return;
       }
@@ -73,6 +86,10 @@ export class ExecutionOutbox {
   public list(): OutboxEntry[] {
     if (this.unusable) throw new Error("OUTBOX_UNUSABLE");
     return this.entries.map((entry) => ({ ...entry }));
+  }
+
+  public listReportable(): OutboxEntry[] {
+    return this.list().filter((entry) => entry.reportable);
   }
 
   public acknowledge(executionId: string): Promise<void> {
@@ -99,7 +116,7 @@ export class ExecutionOutbox {
     let renamed = false;
     const handle = await fs.open(temporary, "w");
     try {
-      await handle.writeFile(`${JSON.stringify({ schemaVersion: 1, entries })}\n`);
+      await handle.writeFile(`${JSON.stringify({ schemaVersion: 2, entries })}\n`);
       await handle.sync();
     } finally {
       await handle.close();

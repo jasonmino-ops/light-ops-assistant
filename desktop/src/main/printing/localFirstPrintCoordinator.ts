@@ -28,7 +28,7 @@ export interface ExecutionModePort {
 }
 
 export interface ExecutionOutboxPort {
-  enqueue(input: { executionId: string; printJobId: string; ownerEpoch: number; outcome: "CROSSED" | "FAILED_NOT_CROSSED" | "CROSSING_UNKNOWN" }): Promise<void>;
+  enqueue(input: { batchId: string; executionId: string; printJobId: string; source: PrintIntentSource; role: "FRONT" | "KITCHEN"; ownerEpoch: number; outcome: "CROSSED" | "FAILED_NOT_CROSSED" | "CROSSING_UNKNOWN"; reportable: boolean }): Promise<void>;
 }
 
 export type CoordinatedPrintResult =
@@ -49,6 +49,7 @@ export class LocalFirstPrintCoordinator<TPayload> {
   public execute(input: {
     mode: V3ExecutionMode;
     source: PrintIntentSource;
+    role: "FRONT" | "KITCHEN";
     authority: ExecutionAuthority;
     identity: SharedPrintIdentity;
     endpointKey: string;
@@ -76,6 +77,8 @@ export class LocalFirstPrintCoordinator<TPayload> {
 
   private async executeAndRecord(input: {
     authority: ExecutionAuthority;
+    source: PrintIntentSource;
+    role: "FRONT" | "KITCHEN";
     identity: SharedPrintIdentity;
     endpointKey: string;
     payload: TPayload;
@@ -96,10 +99,14 @@ export class LocalFirstPrintCoordinator<TPayload> {
       onDurableBarrier: async (record) => {
         try {
           await this.outbox.enqueue({
+            batchId: input.authority.batchId,
             executionId: record.executionId,
             printJobId: record.printJobId,
+            source: input.source,
+            role: input.role,
             ownerEpoch: input.authority.ownerEpoch,
             outcome: "CROSSING_UNKNOWN",
+            reportable: false,
           });
           return { ok: true, value: undefined };
         } catch {
@@ -114,10 +121,14 @@ export class LocalFirstPrintCoordinator<TPayload> {
     }
     try {
       await this.outbox.enqueue({
+        batchId: input.authority.batchId,
         executionId: execution.record.executionId,
         printJobId: execution.record.printJobId,
+        source: input.source,
+        role: input.role,
         ownerEpoch: input.authority.ownerEpoch,
         outcome: reportableStatus,
+        reportable: true,
       });
       return execution;
     } catch {

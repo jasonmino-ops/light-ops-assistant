@@ -7,9 +7,9 @@ import {
 } from '../src/shared/ipcChannels'
 
 describe('IPC 通道白名单（A6）', () => {
-  it('通道全集固定为 8 个，且全部带 eshop: 前缀', () => {
+  it('通道全集固定为 9 个，且全部带 eshop: 前缀', () => {
     const all = Object.values(IPC_CHANNELS)
-    expect(all).toHaveLength(8)
+    expect(all).toHaveLength(9)
     for (const ch of all) expect(ch.startsWith('eshop:')).toBe(true)
     expect(new Set(all).size).toBe(all.length)
   })
@@ -22,6 +22,7 @@ describe('IPC 通道白名单（A6）', () => {
       IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT,
       IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
       IPC_CHANNELS.POS_SESSION_TAKE,
+      IPC_CHANNELS.V3_PRINT_SUBMIT,
     ])
   })
 

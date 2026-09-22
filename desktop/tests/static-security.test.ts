@@ -22,6 +22,7 @@ const windowManagerSrc = src('main/windowManager.ts')
 const employeePreloadSrc = src('preload/employeePreload.ts')
 const customerPreloadSrc = src('preload/customerPreload.ts')
 const mainSrc = src('main/main.ts')
+const ipcRouterSrc = src('main/ipcRouter.ts')
 
 describe('Electron 安全基线（静态）', () => {
   it('窗口 webPreferences：contextIsolation:true / nodeIntegration:false / sandbox:true', () => {
@@ -47,6 +48,13 @@ describe('Electron 安全基线（静态）', () => {
       expect(s).not.toMatch(/\beval\(/)
     }
   })
+
+  it('V3 print IPC validates sender navigation and independently recomputes canonical order/role identity', () => {
+    expect(ipcRouterSrc).toMatch(/isAllowedNavigation\(event\.senderFrame\.url, config\)/)
+    expect(ipcRouterSrc).toMatch(/cashier-network-v2:\$\{row\.orderNo\}:\$\{row\.role\}/)
+    expect(ipcRouterSrc).toMatch(/row\.printJobId !== canonicalPrintJobId/)
+    expect(ipcRouterSrc).toMatch(/expiresAt,orderNo,payloadBase64,printJobId,rendererVersion,role/)
+  })
 })
 
 describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含约束）', () => {
@@ -55,6 +63,7 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER}'`)
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT}'`)
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE}'`)
+    expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.V3_PRINT_SUBMIT}'`)
     expect(employeePreloadSrc).toContain(`'${WEB_REALTIME_BROADCAST_CHANNEL}'`)
     expect(employeePreloadSrc).toContain(`'${DESKTOP_RELAY_FLAG}'`)
     expect(employeePreloadSrc).not.toContain(IPC_CHANNELS.CART_APPLY)

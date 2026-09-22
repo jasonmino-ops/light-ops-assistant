@@ -21,6 +21,8 @@ export const IPC_CHANNELS = {
   EMPLOYEE_FULLSCREEN_STATE: 'eshop:employee-fullscreen:state',
   /** Renderer(员工 preload) → Main (invoke)：一次性领取派生的托管 POS Session */
   POS_SESSION_TAKE: 'eshop:pos-session:take',
+  /** Renderer(employee) -> Main: endpoint-free V3 local print intent. */
+  V3_PRINT_SUBMIT: 'eshop:v3-print:submit',
   /** Main → Renderer(顾客窗口)：下发最新购物车快照 */
   CART_APPLY: 'eshop:cart:apply',
 } as const
@@ -43,6 +45,7 @@ export const INVOKABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT,
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
     IPC_CHANNELS.POS_SESSION_TAKE,
+    IPC_CHANNELS.V3_PRINT_SUBMIT,
   ],
   customer: [],
 }

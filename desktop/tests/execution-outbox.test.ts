@@ -17,9 +17,10 @@ async function outbox(root?: string) {
 }
 
 describe("ExecutionOutbox", () => {
+  const provenance = { batchId: "batch-a", source: "LOCAL_DESKTOP" as const, role: "FRONT" as const };
   it("persists minimal idempotent outcomes across restart", async () => {
     const { directory, instance } = await outbox();
-    const entry = { executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSED" as const };
+    const entry = { ...provenance, executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSED" as const, reportable: true };
     await instance.enqueue(entry);
     await instance.enqueue(entry);
     const reopened = (await outbox(directory)).instance;
@@ -29,24 +30,25 @@ describe("ExecutionOutbox", () => {
 
   it("rejects execution identity conflicts", async () => {
     const { instance } = await outbox();
-    await instance.enqueue({ executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSED" });
-    await expect(instance.enqueue({ executionId: "execution-a", printJobId: "job-a", ownerEpoch: 4, outcome: "CROSSED" }))
+    await instance.enqueue({ ...provenance, executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSED", reportable: true });
+    await expect(instance.enqueue({ ...provenance, executionId: "execution-a", printJobId: "job-a", ownerEpoch: 4, outcome: "CROSSED", reportable: true }))
       .rejects.toThrow("OUTBOX_IDENTITY_CONFLICT");
   });
 
   it("conservatively reserves UNKNOWN and only then permits a terminal report", async () => {
     const { instance } = await outbox();
-    const base = { executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3 };
-    await instance.enqueue({ ...base, outcome: "CROSSING_UNKNOWN" });
-    await instance.enqueue({ ...base, outcome: "CROSSED" });
+    const base = { ...provenance, executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3 };
+    await instance.enqueue({ ...base, outcome: "CROSSING_UNKNOWN", reportable: false });
+    expect(instance.listReportable()).toEqual([]);
+    await instance.enqueue({ ...base, outcome: "CROSSED", reportable: true });
     expect(instance.list()[0]?.outcome).toBe("CROSSED");
-    await expect(instance.enqueue({ ...base, outcome: "FAILED_NOT_CROSSED" }))
+    await expect(instance.enqueue({ ...base, outcome: "FAILED_NOT_CROSSED", reportable: true }))
       .rejects.toThrow("OUTBOX_OUTCOME_CONFLICT");
   });
 
   it("continues attempts and acknowledgement without execution authority", async () => {
     const { instance } = await outbox();
-    await instance.enqueue({ executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSING_UNKNOWN" });
+    await instance.enqueue({ ...provenance, executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSING_UNKNOWN", reportable: true });
     await instance.recordAttempt("execution-a");
     expect(instance.list()[0]?.attempts).toBe(1);
     await instance.acknowledge("execution-a");
@@ -72,13 +74,21 @@ describe("ExecutionOutbox", () => {
       if (opens === 2) throw new Error("final fsync unavailable");
       return originalOpen(...args);
     });
-    const entry = { executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSING_UNKNOWN" as const };
+    const entry = { ...provenance, executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSING_UNKNOWN" as const, reportable: false };
     await expect(instance.enqueue(entry)).rejects.toThrow("final fsync unavailable");
     await expect(instance.enqueue({ ...entry, executionId: "execution-b", printJobId: "job-b" }))
       .rejects.toThrow("OUTBOX_UNUSABLE");
     expect(() => instance.list()).toThrow("OUTBOX_UNUSABLE");
     open.mockRestore();
     const restarted = (await outbox(directory)).instance;
-    expect(restarted.list()).toMatchObject([entry]);
+    expect(restarted.list()).toMatchObject([{ ...entry, reportable: true }]);
+  });
+
+  it("makes an interrupted in-flight UNKNOWN reportable only after restart", async () => {
+    const { directory, instance } = await outbox();
+    await instance.enqueue({ ...provenance, executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSING_UNKNOWN", reportable: false });
+    expect(instance.listReportable()).toEqual([]);
+    const restarted = (await outbox(directory)).instance;
+    expect(restarted.listReportable()).toMatchObject([{ executionId: "execution-a", outcome: "CROSSING_UNKNOWN", reportable: true }]);
   });
 });

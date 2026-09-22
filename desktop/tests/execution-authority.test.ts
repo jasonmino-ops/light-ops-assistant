@@ -3,6 +3,7 @@ import { ExecutionAuthorityGuard, type ExecutionAuthority } from "../src/main/pr
 
 const base = Date.parse("2026-01-01T00:00:00.000Z");
 const authority: ExecutionAuthority = {
+  batchId: "batch-a",
   storeId: "store-a",
   deviceId: "device-a",
   ownerEpoch: 7,

@@ -1,6 +1,7 @@
 export type AuthorityMode = "CONNECTED" | "PARTITION_GRACE" | "ADMISSION_CLOSED" | "FENCED";
 
 export type ExecutionAuthority = {
+  batchId: string;
   storeId: string;
   deviceId: string;
   ownerEpoch: number;
@@ -50,6 +51,7 @@ export class ExecutionAuthorityGuard {
     }
     if (
       candidate.storeId !== this.authority.storeId ||
+      candidate.batchId !== this.authority.batchId ||
       candidate.deviceId !== this.authority.deviceId ||
       candidate.leaseId !== this.authority.leaseId ||
       candidate.ownerEpoch !== this.authority.ownerEpoch ||

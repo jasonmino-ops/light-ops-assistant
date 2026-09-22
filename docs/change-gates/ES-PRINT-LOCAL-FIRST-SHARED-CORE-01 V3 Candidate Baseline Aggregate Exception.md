@@ -1,5 +1,7 @@
 # ES-PRINT-LOCAL-FIRST-SHARED-CORE-01 V3 Candidate Baseline Aggregate Exception
 
+> **Status: INVALIDATED / NOT APPLICABLE TO THE CURRENT CANDIDATE.** Later authorized V3 changes overlap the failure signatures' change surface, so this historical exception must not be used to report the current aggregate as PASS or PASS WITH BASELINE EXCEPTION. A fresh full aggregate and causality analysis are required.
+
 ## Authorization and scope
 
 - Task: `ES-PRINT-LOCAL-FIRST-SHARED-CORE-01`

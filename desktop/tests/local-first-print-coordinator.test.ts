@@ -12,6 +12,7 @@ import { SharedPrintingCore, type EffectBoundaryResult, type PrintingEffectBound
 const roots: string[] = [];
 const now = Date.parse("2026-01-01T00:00:00.000Z");
 const authority: ExecutionAuthority = {
+  batchId: "batch-a",
   storeId: "store-a", deviceId: "device-a", ownerEpoch: 4, leaseId: "lease-a",
   batchExpiresAt: "2026-01-01T01:00:00.000Z",
 };
@@ -46,7 +47,7 @@ describe("LocalFirstPrintCoordinator", () => {
     const { coordinator } = await composition(boundary);
     const sources: PrintIntentSource[] = ["LOCAL_DESKTOP", "CLOUD_H5", "CLOUD_THIRD_PARTY", "CLOUD_REMOTE_REPRINT"];
     const results = await Promise.all(sources.map((source) => coordinator.execute({
-      mode: "V3_ACTIVE", source, authority, identity, endpointKey: "front:9100", payload: new Uint8Array([1]),
+      mode: "V3_ACTIVE", source, role: "FRONT", authority, identity, endpointKey: "front:9100", payload: new Uint8Array([1]),
     })));
     expect(boundary.cross).toHaveBeenCalledTimes(1);
     expect(results.filter((result) => result.status === "CROSSED")).toHaveLength(1);
@@ -56,7 +57,7 @@ describe("LocalFirstPrintCoordinator", () => {
   it("preserves V2 fallback without invoking V3 and blocks unknown mode", async () => {
     const boundary: PrintingEffectBoundary<Uint8Array> = { cross: vi.fn() };
     const { coordinator, setMode } = await composition(boundary);
-    const common = { source: "LOCAL_DESKTOP" as const, authority, identity, endpointKey: "front:9100", payload: new Uint8Array() };
+    const common = { source: "LOCAL_DESKTOP" as const, role: "FRONT" as const, authority, identity, endpointKey: "front:9100", payload: new Uint8Array() };
     setMode("V2_ACTIVE");
     expect(await coordinator.execute({ ...common, mode: "V2_ACTIVE" })).toEqual({ status: "V2_FALLBACK_REQUIRED" });
     setMode("BLOCKED_UNKNOWN");
@@ -68,7 +69,7 @@ describe("LocalFirstPrintCoordinator", () => {
     const boundary: PrintingEffectBoundary<Uint8Array> = { cross: vi.fn() };
     const { ledger, coordinator } = await composition(boundary);
     expect(await coordinator.execute({
-      mode: "V3_ACTIVE", source: "CLOUD_H5", authority: { ...authority, ownerEpoch: 3 },
+      mode: "V3_ACTIVE", source: "CLOUD_H5", role: "FRONT", authority: { ...authority, ownerEpoch: 3 },
       identity, endpointKey: "front:9100", payload: new Uint8Array(),
     })).toMatchObject({ status: "AUTHORITY_REJECTED", mode: "FENCED" });
     expect(await ledger.get(identity.printJobId)).toEqual({ ok: true, value: { found: false } });
@@ -84,7 +85,7 @@ describe("LocalFirstPrintCoordinator", () => {
       };
       const { root, ledger, coordinator } = await composition(firstBoundary);
       const job = { ...identity, printJobId: `job-${outcome}`, requestHash: `hash-${outcome}` };
-      await coordinator.execute({ mode: "V3_ACTIVE", source: "LOCAL_DESKTOP", authority, identity: job, endpointKey: "front:9100", payload: new Uint8Array() });
+      await coordinator.execute({ mode: "V3_ACTIVE", source: "LOCAL_DESKTOP", role: "FRONT", authority, identity: job, endpointKey: "front:9100", payload: new Uint8Array() });
       expect((await ledger.close()).ok).toBe(true);
 
       const reopened = createExecutionLedger({ userDataPath: root, platform: "win32", now: () => new Date(now) });
@@ -96,7 +97,7 @@ describe("LocalFirstPrintCoordinator", () => {
         { enqueue: vi.fn(async () => undefined) },
         { current: () => "V3_ACTIVE" },
       );
-      expect(await restarted.execute({ mode: "V3_ACTIVE", source: "CLOUD_H5", authority, identity: job, endpointKey: "front:9100", payload: new Uint8Array() }))
+      expect(await restarted.execute({ mode: "V3_ACTIVE", source: "CLOUD_H5", role: "FRONT", authority, identity: job, endpointKey: "front:9100", payload: new Uint8Array() }))
         .toMatchObject({ status: "NOT_EXECUTED", record: { state: outcome === "UNKNOWN" ? "CROSSING_UNKNOWN" : "CROSSED" } });
       expect(delayedBoundary.cross).not.toHaveBeenCalled();
       await reopened.close();
@@ -114,7 +115,7 @@ describe("LocalFirstPrintCoordinator", () => {
       { enqueue: vi.fn(async () => { throw new Error("disk"); }) },
       { current: () => "V3_ACTIVE" },
     );
-    const input = { mode: "V3_ACTIVE" as const, source: "LOCAL_DESKTOP" as const, authority, identity, endpointKey: "front:9100", payload: new Uint8Array([1]) };
+    const input = { mode: "V3_ACTIVE" as const, source: "LOCAL_DESKTOP" as const, role: "FRONT" as const, authority, identity, endpointKey: "front:9100", payload: new Uint8Array([1]) };
     expect(await coordinator.execute(input)).toMatchObject({
       status: "EXECUTION_RECORDED_REPORT_PENDING", execution: { status: "CROSSING_UNKNOWN" },
     });
@@ -134,7 +135,7 @@ describe("LocalFirstPrintCoordinator", () => {
     };
     const { coordinator, setMode } = await composition(boundary);
     const execute = (printJobId: string) => coordinator.execute({
-      mode: "V3_ACTIVE", source: "LOCAL_DESKTOP", authority,
+      mode: "V3_ACTIVE", source: "LOCAL_DESKTOP", role: "FRONT", authority,
       identity: { ...identity, printJobId, requestHash: `hash-${printJobId}` },
       endpointKey: "front:9100", payload: new Uint8Array([1]),
     });
@@ -158,7 +159,7 @@ describe("LocalFirstPrintCoordinator", () => {
     };
     const { coordinator, guard } = await composition(boundary);
     const execute = (printJobId: string) => coordinator.execute({
-      mode: "V3_ACTIVE", source: "LOCAL_DESKTOP", authority,
+      mode: "V3_ACTIVE", source: "LOCAL_DESKTOP", role: "FRONT", authority,
       identity: { ...identity, printJobId, requestHash: `hash-${printJobId}` },
       endpointKey: "front:9100", payload: new Uint8Array([1]),
     });
@@ -196,7 +197,7 @@ describe("LocalFirstPrintCoordinator", () => {
       { current: () => "V3_ACTIVE" },
     );
     expect(await coordinator.execute({
-      mode: "V3_ACTIVE", source: "LOCAL_DESKTOP", authority, identity: { ...identity, printJobId: "job-real-outbox" },
+      mode: "V3_ACTIVE", source: "LOCAL_DESKTOP", role: "FRONT", authority, identity: { ...identity, printJobId: "job-real-outbox" },
       endpointKey: "front:9100", payload: new Uint8Array([1]),
     })).toMatchObject({ status: "CROSSED" });
     expect(observedAtEffect).toEqual(["CROSSING_UNKNOWN"]);

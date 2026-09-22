@@ -17,6 +17,33 @@ import { getConfig, isAllowedNavigation } from './config'
 import { CredentialStore } from './activation/credentialStore'
 import { PosSessionBridge } from './posSessionBridge'
 import type { WindowManager } from './windowManager'
+import type { V3PrintingRuntime } from './printing/v3PrintingRuntime'
+import { createHash } from 'node:crypto'
+
+let v3PrintingRuntimeProvider: () => V3PrintingRuntime | null = () => null
+export function setV3PrintingRuntimeProvider(provider: () => V3PrintingRuntime | null) {
+  v3PrintingRuntimeProvider = provider
+}
+
+function localPrintIntent(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const row = value as Record<string, unknown>
+  if (Object.keys(row).sort().join(',') !== 'expiresAt,orderNo,payloadBase64,printJobId,rendererVersion,role' ||
+    typeof row.orderNo !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(row.orderNo) ||
+    typeof row.printJobId !== 'string' || row.printJobId.length < 8 || row.printJobId.length > 128 ||
+    (row.role !== 'FRONT' && row.role !== 'KITCHEN') || typeof row.rendererVersion !== 'string' ||
+    !row.rendererVersion || typeof row.expiresAt !== 'string' || !Number.isFinite(Date.parse(row.expiresAt)) ||
+    typeof row.payloadBase64 !== 'string' || row.payloadBase64.length > 4 * 1024 * 1024) return null
+  const payload = Buffer.from(row.payloadBase64, 'base64')
+  if (!payload.length || payload.toString('base64') !== row.payloadBase64) return null
+  const canonicalKey = `cashier-network-v2:${row.orderNo}:${row.role}`
+  const canonicalPrintJobId = `network:${createHash('sha256').update(canonicalKey).digest('hex')}`
+  if (row.printJobId !== canonicalPrintJobId) return null
+  return {
+    role: row.role as 'FRONT' | 'KITCHEN', payload: new Uint8Array(payload),
+    identity: { printJobId: row.printJobId, requestHash: createHash('sha256').update(payload).digest('hex'), rendererVersion: row.rendererVersion, expiresAt: row.expiresAt },
+  }
+}
 
 function senderRole(
   windowManager: WindowManager,
@@ -87,6 +114,15 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     if (!win || win.isDestroyed() || win.webContents.id !== event.sender.id) return null
     if (!event.senderFrame || !isAllowedNavigation(event.senderFrame.url, config)) return null
     return posSessionBridge.take()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.V3_PRINT_SUBMIT, async (event, payload: unknown) => {
+    if (authorize(windowManager, event, IPC_CHANNELS.V3_PRINT_SUBMIT, 'invoke') !== 'employee') return { status: 'REJECTED', reason: 'IPC_UNAUTHORIZED' }
+    if (!event.senderFrame || !isAllowedNavigation(event.senderFrame.url, config)) return { status: 'REJECTED', reason: 'IPC_UNAUTHORIZED' }
+    const intent = localPrintIntent(payload)
+    if (!intent) return { status: 'REJECTED', reason: 'INVALID_PRINT_INTENT' }
+    const runtime = v3PrintingRuntimeProvider()
+    return runtime ? runtime.execute({ source: 'LOCAL_DESKTOP', ...intent }) : { status: 'REJECTED', reason: 'V3_RUNTIME_UNAVAILABLE' }
   })
 
   updateHealth({ ipc: 'ok' }, 'ipc.registered')

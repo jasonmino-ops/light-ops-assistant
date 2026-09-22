@@ -218,6 +218,8 @@ model Tenant {
   storeRuntimePrinterBindings StoreRuntimePrinterBinding[]
   storeRuntimePrintTasks      StoreRuntimePrintTask[]
   eshopTrayPrintJobs          EshopTrayPrintJob[]
+  v3PrintControlPlanes       V3PrintControlPlane[]
+  v3PrintExecutionBatches    V3PrintExecutionBatch[]
 }
 
 model TenantSubscription {
@@ -312,6 +314,8 @@ model Store {
   storeRuntimePrinterBindings StoreRuntimePrinterBinding[]
   storeRuntimePrintTasks      StoreRuntimePrintTask[]
   eshopTrayPrintJobs          EshopTrayPrintJob[]
+  v3PrintControlPlane         V3PrintControlPlane?
+  v3PrintExecutionBatches     V3PrintExecutionBatch[]
   sourceApplication           StoreApplication?            @relation("StoreApplicationCreatedStore")
 
   @@unique([id, tenantId])
@@ -1629,8 +1633,11 @@ model DesktopDevice {
   usedPins                      DesktopActivationPin[]   @relation("DesktopActivationPinUsedByDevice")
   audits                        DesktopActivationAudit[]
   claimedStoreRuntimePrintTasks StoreRuntimePrintTask[]  @relation("StoreRuntimeClaimedDevice")
+  ownedV3PrintControlPlanes     V3PrintControlPlane[]     @relation("V3PrintControlPlaneOwner")
+  v3PrintExecutionBatches       V3PrintExecutionBatch[]   @relation("V3PrintExecutionBatchOwner")
 
   @@unique([installationIdHash, activeSlot])
+  @@unique([id, tenantId, storeId])
   @@index([tenantId, storeId])
   @@index([storeId, status])
   @@index([installationIdHash])
@@ -1934,6 +1941,62 @@ model EshopTrayPrintJob {
   @@index([status, leaseExpiresAt])
   @@index([claimedByComputerBindingId, status])
   @@index([tenantId, storeId, expiresAt])
+}
+
+/// V3 store-scoped authoritative printing control plane. Server/Cloud is the
+/// only writer; DesktopDevice is identity only and consumes fenced projections.
+model V3PrintControlPlane {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  storeId            String   @unique
+  ownerDeviceId      String?
+  ownerEpoch         Int      @default(0)
+  leaseId            String?  @unique
+  leaseExpiresAt     DateTime?
+  mode               String   @default("V2_ACTIVE") @db.VarChar(24)
+  stateVersion       Int      @default(1)
+  handoffRequestedAt DateTime?
+  handoffQuarantineUntil DateTime?
+  lastReconciledAt   DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant      Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store       Store                   @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  ownerDevice DesktopDevice?          @relation("V3PrintControlPlaneOwner", fields: [ownerDeviceId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  batches     V3PrintExecutionBatch[]
+
+  @@unique([id, tenantId, storeId])
+  @@unique([storeId, tenantId])
+  @@index([tenantId, storeId, mode])
+  @@index([ownerDeviceId, ownerEpoch])
+  @@index([leaseExpiresAt])
+}
+
+/// Short-lived execution authority derived from one exact control-plane state.
+/// It is a fenced projection, never a second owner or mode truth.
+model V3PrintExecutionBatch {
+  id             String   @id @default(cuid())
+  controlPlaneId String
+  tenantId       String
+  storeId        String
+  ownerDeviceId  String
+  ownerEpoch     Int
+  stateVersion   Int
+  leaseId        String
+  mode           String   @db.VarChar(24)
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime @default(now())
+
+  controlPlane V3PrintControlPlane @relation(fields: [controlPlaneId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Cascade)
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  store        Store               @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  ownerDevice  DesktopDevice       @relation("V3PrintExecutionBatchOwner", fields: [ownerDeviceId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+
+  @@index([tenantId, storeId, ownerDeviceId, ownerEpoch])
+  @@index([controlPlaneId, stateVersion])
+  @@index([expiresAt])
 }
 
 // Agent 进入 Browser POS 使用的一次性短票据。

@@ -173,15 +173,20 @@ class MappedFileSystem implements LedgerFileSystem {
 }
 
 describe("ExecutionLedger lifecycle and identity", () => {
-  it("has no runtime import or reference from the Desktop source tree", async () => {
+  it("permits only the Founder-authorized V3 runtime composition to import the Ledger", async () => {
     const sourceRoot = path.resolve(__dirname, "../src");
     const files = await sourceFiles(sourceRoot);
     const protectedSources = files.filter(
       (filePath) => !filePath.endsWith(path.join("printing", "executionLedger.ts")),
     );
+    const authorizedComposition = path.join("printing", "v3PrintingRuntime.ts");
     for (const filePath of protectedSources) {
       const source = await readFile(filePath, "utf8");
-      expect(source, filePath).not.toContain("executionLedger");
+      if (filePath.endsWith(authorizedComposition)) {
+        expect(source.match(/executionLedger/g), filePath).toHaveLength(1);
+      } else {
+        expect(source, filePath).not.toContain("executionLedger");
+      }
     }
   });
 
