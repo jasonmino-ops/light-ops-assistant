@@ -77,7 +77,7 @@ test('restart redelivery is same-device same-epoch only', async () => {
 test('report ACK is idempotent and never claims physical completion', async () => {
   const db = database(); await enqueueV3PrintIntent(db, scope, intent(), expiresAt); await deliverV3PrintIntent(db, identity, now)
   const report = { printJobId: 'job-canonical-001', source: 'CLOUD_H5' as const, role: 'FRONT' as const,
-    executionId: 'execution-a', ownerEpoch: 7, outcome: 'CROSSED' as const }
+    executionId: 'execution-a', ownerEpoch: 7, reportVersion: 1, outcome: 'CROSSED' as const }
   assert.deepEqual(await reportV3Execution(db, identity, report, now), { ok: true, acknowledged: true })
   assert.deepEqual(await reportV3Execution(db, identity, report, now), { ok: true, acknowledged: true })
   assert.equal(db.jobs[0].physicalCompletionKnown, false); assert.equal(db.jobs[0].claimTokenHash, null)
@@ -86,16 +86,27 @@ test('report ACK is idempotent and never claims physical completion', async () =
 test('Local-first report creates an endpoint-free reconciliation destination', async () => {
   const db = database()
   const report = { printJobId: 'job-local-001', source: 'LOCAL_DESKTOP' as const, role: 'KITCHEN' as const,
-    executionId: 'execution-local', ownerEpoch: 7, outcome: 'CROSSING_UNKNOWN' as const }
+    executionId: 'execution-local', ownerEpoch: 7, reportVersion: 1, outcome: 'CROSSING_UNKNOWN' as const }
   assert.deepEqual(await reportV3Execution(db, identity, report, now), { ok: true, acknowledged: true })
   assert.equal(db.jobs[0].schemaVersion, 3); assert.equal(db.jobs[0].resultStatus, 'CROSSING_UNKNOWN')
   assert.equal(/host|port|endpoint/i.test(JSON.stringify(db.jobs[0].payload)), false)
 })
 
+test('a higher-version terminal fact safely reconciles an earlier UNKNOWN report without retrying print', async () => {
+  const db = database()
+  const unknown = { printJobId: 'job-local-001', source: 'LOCAL_DESKTOP' as const, role: 'FRONT' as const,
+    executionId: 'execution-local', ownerEpoch: 7, reportVersion: 1, outcome: 'CROSSING_UNKNOWN' as const }
+  assert.deepEqual(await reportV3Execution(db, identity, unknown, now), { ok: true, acknowledged: true })
+  assert.deepEqual(await reportV3Execution(db, identity, { ...unknown, reportVersion: 2, outcome: 'CROSSED' }, now),
+    { ok: true, acknowledged: true })
+  assert.equal(db.jobs[0].resultStatus, 'CROSSED')
+  assert.equal(db.jobs[0].status, 'SUCCEEDED')
+})
+
 test('delayed Cloud intent recognizes the terminal Local reconciliation without creating a second job', async () => {
   const db = database()
   const report = { printJobId: 'job-canonical-001', source: 'LOCAL_DESKTOP' as const, role: 'FRONT' as const,
-    executionId: 'execution-local', ownerEpoch: 7, outcome: 'CROSSED' as const }
+    executionId: 'execution-local', ownerEpoch: 7, reportVersion: 2, outcome: 'CROSSED' as const }
   await reportV3Execution(db, identity, report, now)
   assert.equal((await enqueueV3PrintIntent(db, scope, intent(), expiresAt)).created, false)
   assert.equal(db.jobs.length, 1)
@@ -106,7 +117,7 @@ test('Local terminal atomically consumes an already pending Cloud intent for the
   const db = database()
   await enqueueV3PrintIntent(db, scope, intent(), expiresAt)
   const report = { printJobId: 'job-canonical-001', source: 'LOCAL_DESKTOP' as const, role: 'FRONT' as const,
-    executionId: 'execution-local', ownerEpoch: 7, outcome: 'CROSSED' as const }
+    executionId: 'execution-local', ownerEpoch: 7, reportVersion: 2, outcome: 'CROSSED' as const }
   assert.deepEqual(await reportV3Execution(db, identity, report, now), { ok: true, acknowledged: true })
   assert.equal(db.jobs[0].status, 'SUCCEEDED')
   assert.equal(db.jobs[0].payload.kind, 'LOCAL_RECONCILIATION')
@@ -118,7 +129,7 @@ test('Local terminal can reconcile a concurrently claimed Cloud intent only unde
   await enqueueV3PrintIntent(db, scope, intent(), expiresAt)
   await deliverV3PrintIntent(db, identity, now)
   const report = { printJobId: 'job-canonical-001', source: 'LOCAL_DESKTOP' as const, role: 'FRONT' as const,
-    executionId: 'execution-local', ownerEpoch: 7, outcome: 'CROSSED' as const }
+    executionId: 'execution-local', ownerEpoch: 7, reportVersion: 2, outcome: 'CROSSED' as const }
   assert.deepEqual(await reportV3Execution(db, identity, report, now), { ok: true, acknowledged: true })
   assert.equal(db.jobs[0].status, 'SUCCEEDED')
 })
@@ -126,7 +137,7 @@ test('Local terminal can reconcile a concurrently claimed Cloud intent only unde
 test('delayed Cloud intent cannot collide with a Local reconciliation for another role', async () => {
   const db = database()
   await reportV3Execution(db, identity, { printJobId: 'job-canonical-001', source: 'LOCAL_DESKTOP', role: 'KITCHEN',
-    executionId: 'execution-local', ownerEpoch: 7, outcome: 'CROSSED' }, now)
+    executionId: 'execution-local', ownerEpoch: 7, reportVersion: 2, outcome: 'CROSSED' }, now)
   await assert.rejects(enqueueV3PrintIntent(db, scope, intent(), expiresAt), /V3_INTENT_IDEMPOTENCY_CONFLICT/)
 })
 

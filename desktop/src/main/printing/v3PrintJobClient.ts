@@ -40,7 +40,7 @@ export class V3PrintJobClient {
     try {
       const response = await this.fetchImpl(`${this.baseUrl}/api/desktop/v3-print-jobs`, { method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'REPORT', batchId: entry.batchId, printJobId: entry.printJobId, source: entry.source, role: entry.role,
-          executionId: entry.executionId, ownerEpoch: entry.ownerEpoch, outcome: entry.outcome }) })
+          executionId: entry.executionId, ownerEpoch: entry.ownerEpoch, outcome: entry.outcome, reportVersion: entry.factVersion }) })
       const body = record(await response.json().catch(() => null))
       return response.ok && body?.ok === true && body.acknowledged === true
     } catch { return false }

@@ -30,6 +30,10 @@ function sameExecutionOwner(value: string | null, deviceId: string, ownerEpoch: 
   const prefix = `V3_CLAIM:${deviceId}:${ownerEpoch}:`
   return typeof value === 'string' && value.startsWith(prefix) && value.length > prefix.length
 }
+function parsedResultCode(value: string | null) {
+  const match = /^V3:([^:]+):(\d+):(\d+):(CROSSED|FAILED_NOT_CROSSED|CROSSING_UNKNOWN)$/.exec(value ?? '')
+  return match ? { executionId: match[1], ownerEpoch: Number(match[2]), reportVersion: Number(match[3]), outcome: match[4] } : null
+}
 function isTerminalLocalReconciliation(job: EshopTrayPrintJob, printJobId: string, role: V3PrintRole) {
   if (job.schemaVersion !== 3 || !job.completedAt || job.idempotencyKey !== printJobId || !job.payload ||
     typeof job.payload !== 'object' || Array.isArray(job.payload)) return false
@@ -124,12 +128,12 @@ export async function deliverV3PrintIntent(db: Db, identity: { tenantId: string;
 }
 
 export async function reportV3Execution(db: Db, identity: { tenantId: string; storeId: string; deviceId: string; batchId: string }, report: {
-  printJobId: string; source: V3PrintSource; role: V3PrintRole; executionId: string; ownerEpoch: number; outcome: 'CROSSED' | 'FAILED_NOT_CROSSED' | 'CROSSING_UNKNOWN'
+  printJobId: string; source: V3PrintSource; role: V3PrintRole; executionId: string; ownerEpoch: number; reportVersion: number; outcome: 'CROSSED' | 'FAILED_NOT_CROSSED' | 'CROSSING_UNKNOWN'
 }, now = new Date()) {
   const batch = await db.v3PrintExecutionBatch.findUnique({ where: { id: identity.batchId } })
   if (!batch || batch.tenantId !== identity.tenantId || batch.storeId !== identity.storeId || batch.ownerDeviceId !== identity.deviceId ||
     batch.ownerEpoch !== report.ownerEpoch) return { ok: false as const, code: 'V3_REPORT_PROVENANCE_STALE' }
-  const resultCode = `V3:${report.executionId}:${report.ownerEpoch}:${report.outcome}`
+  const resultCode = `V3:${report.executionId}:${report.ownerEpoch}:${report.reportVersion}:${report.outcome}`
   let job = await db.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: { tenantId: identity.tenantId, storeId: identity.storeId, idempotencyKey: report.printJobId } } })
   if (!job && report.source === 'LOCAL_DESKTOP') {
     const reconciliation = { schemaVersion: 3, kind: 'LOCAL_RECONCILIATION', printJobId: report.printJobId, source: report.source, role: report.role,
@@ -147,7 +151,19 @@ export async function reportV3Execution(db: Db, identity: { tenantId: string; st
     }
   }
   if (!job || job.schemaVersion !== 3) return { ok: false as const, code: 'V3_JOB_NOT_FOUND' }
-  if (job.completedAt) return job.resultCode === resultCode ? { ok: true as const, acknowledged: true as const } : { ok: false as const, code: 'V3_REPORT_CONFLICT' }
+  if (job.completedAt) {
+    if (job.resultCode === resultCode) return { ok: true as const, acknowledged: true as const }
+    const previous = parsedResultCode(job.resultCode)
+    if (previous?.executionId === report.executionId && previous.ownerEpoch === report.ownerEpoch &&
+      previous.outcome === 'CROSSING_UNKNOWN' && report.outcome !== 'CROSSING_UNKNOWN' && previous.reportVersion < report.reportVersion) {
+      const reconciled = await db.eshopTrayPrintJob.updateMany({ where: { id: job.id, schemaVersion: 3, resultCode: job.resultCode }, data: {
+        status: report.outcome === 'CROSSED' ? 'SUCCEEDED' : 'FAILED', completedAt: now, resultStatus: report.outcome,
+        resultCode, effectBoundary: report.outcome === 'FAILED_NOT_CROSSED' ? 'NOT_CROSSED' : report.outcome,
+      } })
+      return reconciled.count === 1 ? { ok: true as const, acknowledged: true as const } : { ok: false as const, code: 'V3_REPORT_RACE' }
+    }
+    return { ok: false as const, code: 'V3_REPORT_CONFLICT' }
+  }
   const intent = parse(job.payload)
   if (!intent || intent.role !== report.role) return { ok: false as const, code: 'V3_REPORT_IDENTITY_MISMATCH' }
   const localReconciliation = report.source === 'LOCAL_DESKTOP'

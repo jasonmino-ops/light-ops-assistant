@@ -47,10 +47,7 @@ type Tx = {
     updateMany(args: unknown): Promise<{ count: number }>
   }
   desktopDevice: { findFirst(args: unknown): Promise<{ id: string } | null> }
-  operationLog: {
-    create(args: unknown): Promise<{ id: string }>
-    findFirst(args: unknown): Promise<{ id: string; payloadSnapshot: unknown } | null>
-  }
+  operationLog: { create(args: unknown): Promise<{ id: string }> }
 }
 
 export type V3ControlPlaneDb = Tx & {
@@ -125,6 +122,15 @@ export async function acquireV3Authority(
     if (current.ownerDeviceId !== null) {
       if (current.ownerDeviceId === identity.deviceId && current.leaseExpiresAt && current.leaseExpiresAt > now) {
         return { ok: true, value: { controlPlane: serializable(current) } }
+      }
+      if (current.ownerDeviceId === identity.deviceId && current.leaseId === null && current.leaseExpiresAt === null) {
+        const claimed = await tx.v3PrintControlPlane.updateMany({
+          where: { id: current.id, tenantId: identity.tenantId, storeId: identity.storeId, stateVersion: current.stateVersion,
+            ownerDeviceId: identity.deviceId, ownerEpoch: current.ownerEpoch, leaseId: null, leaseExpiresAt: null, mode: 'V3_ACTIVE' },
+          data: { leaseId: randomUUID(), leaseExpiresAt, stateVersion: { increment: 1 }, lastReconciledAt: now },
+        })
+        if (claimed.count !== 1) return { ok: false, code: 'CONCURRENT_STATE_CHANGE' }
+        return { ok: true, value: { controlPlane: serializable(await readAfter(tx, identity.storeId)) } }
       }
       return { ok: false, code: current.leaseExpiresAt && current.leaseExpiresAt <= now ? 'OWNER_LIVENESS_AMBIGUOUS' : 'OWNER_ALREADY_ACTIVE' }
     }
@@ -228,8 +234,11 @@ export async function transitionV3PrintMode(
   return db.$transaction(async (tx) => {
     const current = await ensurePlane(tx, identity.tenantId, identity.storeId)
     if (!validMode(current.mode) || !MODE_TRANSITIONS[current.mode].includes(identity.nextMode)) return { ok: false, code: 'ILLEGAL_MODE_TRANSITION' }
-    if ((identity.nextMode === 'V3_ACTIVE' || identity.nextMode === 'V2_ACTIVE') &&
-      (current.ownerDeviceId !== null || current.handoffQuarantineUntil !== null)) return { ok: false, code: 'HANDOFF_NOT_FINALIZED' }
+    if ((identity.nextMode === 'V3_ACTIVE' || identity.nextMode === 'V2_ACTIVE') && current.handoffQuarantineUntil !== null) {
+      return { ok: false, code: 'HANDOFF_NOT_FINALIZED' }
+    }
+    if (identity.nextMode === 'V3_ACTIVE' && current.ownerDeviceId !== null &&
+      (current.leaseId !== null || current.leaseExpiresAt !== null)) return { ok: false, code: 'HANDOFF_NOT_FINALIZED' }
     if (identity.nextMode === 'V2_ACTIVE' && current.ownerDeviceId !== null) return { ok: false, code: 'V3_OWNER_NOT_RELEASED' }
     const result = await tx.v3PrintControlPlane.updateMany({
       where: { id: current.id, tenantId: identity.tenantId, storeId: identity.storeId, stateVersion: identity.expectedStateVersion, mode: current.mode },
@@ -247,6 +256,8 @@ export async function controlledV3OwnerHandoff(
 ): Promise<ControlPlaneResult<{ controlPlane: ReturnType<typeof serializable> }>> {
   return db.$transaction(async (tx) => {
     const current = await ensurePlane(tx, identity.tenantId, identity.storeId)
+    const previousOwnerDeviceId = current.ownerDeviceId
+    const previousOwnerEpoch = current.ownerEpoch
     const intendedOwner = await tx.desktopDevice.findFirst({ where: {
       id: identity.intendedOwnerDeviceId, tenantId: identity.tenantId, storeId: identity.storeId, status: 'ACTIVE',
     }, select: { id: true } })
@@ -283,37 +294,20 @@ export async function controlledV3OwnerHandoff(
         data: { mode: 'BLOCKED_UNKNOWN', stateVersion: { increment: 1 }, handoffRequestedAt: now, handoffQuarantineUntil: quarantineUntil },
       })
       if (result.count !== 1) return { ok: false, code: 'CONCURRENT_STATE_CHANGE' }
-      await audit('QUARANTINE_STARTED', current.ownerDeviceId, current.ownerEpoch, current.stateVersion + 1)
+      await audit('QUARANTINE_STARTED', previousOwnerDeviceId, previousOwnerEpoch, current.stateVersion + 1)
       return { ok: true, value: { controlPlane: serializable(await readAfter(tx, identity.storeId)) } }
     }
     if (!current.handoffQuarantineUntil || current.handoffQuarantineUntil > now) return { ok: false, code: 'HANDOFF_QUARANTINE_ACTIVE' }
-    const requestAudit = await tx.operationLog.findFirst({ where: {
-      tenantId: identity.tenantId,
-      storeId: identity.storeId,
-      userId: identity.actorUserId,
-      actionType: 'V3_PRINT_CONTROLLED_HANDOFF',
-      targetType: 'V3PrintControlPlane',
-      targetId: current.id,
-      requestId: identity.confirmationId,
-      message: 'QUARANTINE_STARTED',
-    }, orderBy: { createdAt: 'desc' } })
-    const requestEvidence = requestAudit?.payloadSnapshot
-    if (!requestEvidence || typeof requestEvidence !== 'object' || Array.isArray(requestEvidence) ||
-      (requestEvidence as Record<string, unknown>).intendedOwnerDeviceId !== intendedOwner.id ||
-      (requestEvidence as Record<string, unknown>).previousOwnerDeviceId !== current.ownerDeviceId ||
-      (requestEvidence as Record<string, unknown>).ownerEpoch !== current.ownerEpoch) {
-      return { ok: false, code: 'HANDOFF_CONFIRMATION_MISSING' }
-    }
     const result = await tx.v3PrintControlPlane.updateMany({
       where: { id: current.id, tenantId: identity.tenantId, storeId: identity.storeId, stateVersion: identity.expectedStateVersion, mode: 'BLOCKED_UNKNOWN' },
       data: {
-        ownerDeviceId: null, leaseId: null, leaseExpiresAt: null, ownerEpoch: { increment: 1 },
+        ownerDeviceId: intendedOwner.id, leaseId: null, leaseExpiresAt: null, ownerEpoch: { increment: 1 },
         stateVersion: { increment: 1 }, handoffQuarantineUntil: null,
       },
     })
     if (result.count !== 1) return { ok: false, code: 'CONCURRENT_STATE_CHANGE' }
     await tx.v3PrintExecutionBatch.updateMany({ where: { controlPlaneId: current.id, revokedAt: null }, data: { revokedAt: now } })
-    await audit('HANDOFF_CONFIRMED', current.ownerDeviceId, current.ownerEpoch + 1, current.stateVersion + 1)
+    await audit('HANDOFF_CONFIRMED', previousOwnerDeviceId, previousOwnerEpoch + 1, current.stateVersion + 1)
     return { ok: true, value: { controlPlane: serializable(await readAfter(tx, identity.storeId)) } }
   })
 }

@@ -112,6 +112,7 @@ test('mode transitions require BLOCKED_UNKNOWN and controlled handoff quarantine
   assert.equal(state.plane().mode, 'BLOCKED_UNKNOWN')
   assert.equal((await controlledV3OwnerHandoff(state.db, { ...handoff, expectedStateVersion: 5 }, new Date(now.getTime() + 1))).ok, true)
   assert.equal(state.plane().ownerEpoch, before + 1)
+  assert.equal(state.plane().ownerDeviceId, 'device-new')
   assert.equal(state.audits.length, 2)
   assert.deepEqual(state.audits.map(row => row.payloadSnapshot.action), ['QUARANTINE_STARTED', 'HANDOFF_CONFIRMED'])
   assert.equal(state.audits[1].userId, 'user-owner')
@@ -134,14 +135,17 @@ test('owner release enters BLOCKED_UNKNOWN and revokes the active execution batc
   assert.equal(state.batches[0].revokedAt?.toISOString(), now.toISOString())
 })
 
-test('controlled handoff cannot finalize under a different confirmation identity or intended owner', async () => {
+test('finalized handoff prebinds only the intended owner and does not advance epoch again on acquisition', async () => {
   const state = fakeDb({ ownerDeviceId: 'device-old', ownerEpoch: 4, leaseId: 'lease-old', leaseExpiresAt: new Date(now.getTime() + 120_000) })
   const request = { tenantId: 'tenant-a', storeId: 'store-a', actorUserId: 'user-owner', intendedOwnerDeviceId: 'device-new', confirmationId: 'confirm-0001' }
-  assert.equal((await controlledV3OwnerHandoff(state.db, { ...request, expectedStateVersion: 1 }, now)).ok, true)
-  const mismatched = await controlledV3OwnerHandoff(state.db, {
-    ...request, intendedOwnerDeviceId: 'device-other', confirmationId: 'confirm-0002', expectedStateVersion: 2,
-  }, new Date(now.getTime() + 120_001))
-  assert.deepEqual(mismatched, { ok: false, code: 'HANDOFF_CONFIRMATION_MISSING' })
-  assert.equal(state.plane().ownerDeviceId, 'device-old')
-  assert.equal(state.plane().ownerEpoch, 4)
+  await controlledV3OwnerHandoff(state.db, { ...request, expectedStateVersion: 1 }, now)
+  await controlledV3OwnerHandoff(state.db, { ...request, expectedStateVersion: 2 }, new Date(now.getTime() + 120_001))
+  assert.equal(state.plane().ownerDeviceId, 'device-new')
+  assert.equal(state.plane().ownerEpoch, 5)
+  assert.equal((await transitionV3PrintMode(state.db, { tenantId: 'tenant-a', storeId: 'store-a', expectedStateVersion: 3, nextMode: 'V3_ACTIVE' }, new Date(now.getTime() + 120_002))).ok, true)
+  assert.deepEqual(await acquireV3Authority(state.db, { tenantId: 'tenant-a', storeId: 'store-a', deviceId: 'device-other' }, { now: new Date(now.getTime() + 120_003) }),
+    { ok: false, code: 'OWNER_ALREADY_ACTIVE' })
+  assert.equal((await acquireV3Authority(state.db, { tenantId: 'tenant-a', storeId: 'store-a', deviceId: 'device-new' }, { now: new Date(now.getTime() + 120_003) })).ok, true)
+  assert.equal(state.plane().ownerEpoch, 5)
+  assert.ok(state.plane().leaseId)
 })

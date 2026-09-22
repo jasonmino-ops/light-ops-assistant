@@ -24,7 +24,7 @@ describe("ExecutionOutbox", () => {
     await instance.enqueue(entry);
     await instance.enqueue(entry);
     const reopened = (await outbox(directory)).instance;
-    expect(reopened.list()).toEqual([{ ...entry, createdAt: "2026-01-01T00:00:00.000Z", attempts: 0 }]);
+    expect(reopened.list()).toEqual([{ ...entry, factVersion: 1, createdAt: "2026-01-01T00:00:00.000Z", attempts: 0 }]);
     expect(JSON.stringify(reopened.list())).not.toMatch(/payload|customer|item|esc|bytes/i);
   });
 
@@ -51,7 +51,7 @@ describe("ExecutionOutbox", () => {
     await instance.enqueue({ ...provenance, executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSING_UNKNOWN", reportable: true });
     await instance.recordAttempt("execution-a");
     expect(instance.list()[0]?.attempts).toBe(1);
-    await instance.acknowledge("execution-a");
+    await instance.acknowledge("execution-a", 1);
     expect(instance.list()).toEqual([]);
   });
 
@@ -90,5 +90,15 @@ describe("ExecutionOutbox", () => {
     expect(instance.listReportable()).toEqual([]);
     const restarted = (await outbox(directory)).instance;
     expect(restarted.listReportable()).toMatchObject([{ executionId: "execution-a", outcome: "CROSSING_UNKNOWN", reportable: true }]);
+  });
+
+  it("does not let a stale UNKNOWN ACK delete a concurrently persisted terminal fact", async () => {
+    const { instance } = await outbox();
+    const base = { ...provenance, executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3 };
+    await instance.enqueue({ ...base, outcome: "CROSSING_UNKNOWN", reportable: true });
+    const stale = instance.listReportable()[0]!;
+    await instance.enqueue({ ...base, outcome: "CROSSED", reportable: true });
+    expect(await instance.acknowledge(stale.executionId, stale.factVersion)).toBe(false);
+    expect(instance.listReportable()).toMatchObject([{ outcome: "CROSSED", factVersion: 2 }]);
   });
 });

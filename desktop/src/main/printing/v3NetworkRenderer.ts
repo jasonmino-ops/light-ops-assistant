@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { BrowserWindow, ipcMain, type IpcMainEvent } from 'electron'
 
 const MAX_BYTES = 3 * 1024 * 1024
@@ -35,6 +36,7 @@ export class V3NetworkRenderer {
       web.session.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (_details, callback) => callback({ cancel: true }))
     }
     const active = this.window!
+    const trustedRendererUrl = pathToFileURL(path.join(__dirname, 'v3-network-render.html')).toString()
     const renderId = randomUUID()
     return new Promise<Uint8Array>((resolve, reject) => {
       let finished = false
@@ -46,7 +48,8 @@ export class V3NetworkRenderer {
       }
       const failed = () => finish()
       const onResult = (event: IpcMainEvent, value: { renderId?: unknown; bytes?: unknown }) => {
-        if (event.sender !== active.webContents || event.senderFrame !== active.webContents.mainFrame || value?.renderId !== renderId) return
+        if (event.sender !== active.webContents || event.senderFrame !== active.webContents.mainFrame ||
+          event.senderFrame.url !== trustedRendererUrl || value?.renderId !== renderId) return
         finish(value.bytes instanceof Uint8Array && value.bytes.byteLength > 0 && value.bytes.byteLength <= MAX_BYTES ? Uint8Array.from(value.bytes) : undefined)
       }
       const timer = setTimeout(failed, 12_000)

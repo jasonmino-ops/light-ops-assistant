@@ -10,17 +10,18 @@ export type OutboxEntry = {
   role: "FRONT" | "KITCHEN";
   ownerEpoch: number;
   outcome: ExecutionOutcome;
+  factVersion: number;
   reportable: boolean;
   createdAt: string;
   attempts: number;
 };
-type OutboxFile = { schemaVersion: 1 | 2; entries: Array<OutboxEntry | Omit<OutboxEntry, "reportable">> };
+type OutboxFile = { schemaVersion: 1 | 2 | 3; entries: Array<OutboxEntry | Omit<OutboxEntry, "reportable" | "factVersion">> };
 const OUTCOMES: readonly ExecutionOutcome[] = ["CROSSED", "FAILED_NOT_CROSSED", "CROSSING_UNKNOWN"];
 
 function validEntry(value: unknown): value is OutboxEntry {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
-  return Object.keys(entry).sort().join(",") === "attempts,batchId,createdAt,executionId,outcome,ownerEpoch,printJobId,reportable,role,source" &&
+  return Object.keys(entry).sort().join(",") === "attempts,batchId,createdAt,executionId,factVersion,outcome,ownerEpoch,printJobId,reportable,role,source" &&
     typeof entry.batchId === "string" && entry.batchId.length > 0 &&
     typeof entry.executionId === "string" && entry.executionId.length > 0 &&
     typeof entry.printJobId === "string" && entry.printJobId.length > 0 &&
@@ -28,6 +29,7 @@ function validEntry(value: unknown): value is OutboxEntry {
     (entry.role === "FRONT" || entry.role === "KITCHEN") &&
     Number.isInteger(entry.ownerEpoch) && (entry.ownerEpoch as number) > 0 &&
     typeof entry.outcome === "string" && OUTCOMES.includes(entry.outcome as ExecutionOutcome) &&
+    Number.isInteger(entry.factVersion) && (entry.factVersion as number) > 0 &&
     typeof entry.reportable === "boolean" &&
     typeof entry.createdAt === "string" && !Number.isNaN(Date.parse(entry.createdAt)) &&
     Number.isInteger(entry.attempts) && (entry.attempts as number) >= 0;
@@ -47,22 +49,24 @@ export class ExecutionOutbox {
     try {
       const parsed = JSON.parse(await fs.readFile(this.filePath, "utf8")) as OutboxFile;
       if (
-        (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) ||
+        ![1, 2, 3].includes(parsed.schemaVersion) ||
         !Array.isArray(parsed.entries) ||
-        !(parsed.schemaVersion === 1
-          ? parsed.entries.every((entry) => validEntry({ ...(entry as object), reportable: true }))
+        !(parsed.schemaVersion < 3
+          ? parsed.entries.every((entry) => validEntry({ ...(entry as object), reportable: parsed.schemaVersion === 1 ? true : (entry as OutboxEntry).reportable, factVersion: 1 }))
           : parsed.entries.every(validEntry)) ||
         new Set(parsed.entries.map(({ executionId }) => executionId)).size !== parsed.entries.length
       ) throw new Error("OUTBOX_CORRUPT");
-      this.entries = parsed.entries.map((entry) => ({ ...entry, reportable: parsed.schemaVersion === 1 ? true : (entry as OutboxEntry).reportable }));
+      this.entries = parsed.entries.map((entry) => ({ ...entry,
+        factVersion: parsed.schemaVersion < 3 ? 1 : (entry as OutboxEntry).factVersion,
+        reportable: parsed.schemaVersion === 1 ? true : (entry as OutboxEntry).reportable }));
       const recovered = this.entries.map((entry) => entry.reportable ? entry : { ...entry, reportable: true });
-      if (parsed.schemaVersion === 1 || recovered.some((entry, index) => entry !== this.entries[index])) await this.persist(recovered);
+      if (parsed.schemaVersion < 3 || recovered.some((entry, index) => entry !== this.entries[index])) await this.persist(recovered);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 
-  public enqueue(input: Omit<OutboxEntry, "createdAt" | "attempts">): Promise<void> {
+  public enqueue(input: Omit<OutboxEntry, "createdAt" | "attempts" | "factVersion">): Promise<void> {
     return this.exclusive(async () => {
       const existing = this.entries.find(({ executionId }) => executionId === input.executionId);
       if (existing) {
@@ -75,11 +79,11 @@ export class ExecutionOutbox {
           throw new Error("OUTBOX_OUTCOME_CONFLICT");
         }
         await this.persist(this.entries.map((entry) => entry.executionId === input.executionId
-          ? { ...entry, outcome: input.outcome, reportable: input.reportable }
+          ? { ...entry, outcome: input.outcome, reportable: input.reportable, factVersion: entry.factVersion + 1 }
           : entry));
         return;
       }
-      await this.persist([...this.entries, { ...input, createdAt: this.now().toISOString(), attempts: 0 }]);
+      await this.persist([...this.entries, { ...input, factVersion: 1, createdAt: this.now().toISOString(), attempts: 0 }]);
     });
   }
 
@@ -92,8 +96,13 @@ export class ExecutionOutbox {
     return this.list().filter((entry) => entry.reportable);
   }
 
-  public acknowledge(executionId: string): Promise<void> {
-    return this.exclusive(() => this.persist(this.entries.filter((entry) => entry.executionId !== executionId)));
+  public acknowledge(executionId: string, expectedFactVersion: number): Promise<boolean> {
+    return this.exclusive(async () => {
+      const current = this.entries.find((entry) => entry.executionId === executionId);
+      if (!current || current.factVersion !== expectedFactVersion) return false;
+      await this.persist(this.entries.filter((entry) => entry.executionId !== executionId));
+      return true;
+    });
   }
 
   public recordAttempt(executionId: string): Promise<void> {
@@ -116,7 +125,7 @@ export class ExecutionOutbox {
     let renamed = false;
     const handle = await fs.open(temporary, "w");
     try {
-      await handle.writeFile(`${JSON.stringify({ schemaVersion: 2, entries })}\n`);
+      await handle.writeFile(`${JSON.stringify({ schemaVersion: 3, entries })}\n`);
       await handle.sync();
     } finally {
       await handle.close();

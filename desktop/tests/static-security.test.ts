@@ -23,6 +23,7 @@ const employeePreloadSrc = src('preload/employeePreload.ts')
 const customerPreloadSrc = src('preload/customerPreload.ts')
 const mainSrc = src('main/main.ts')
 const ipcRouterSrc = src('main/ipcRouter.ts')
+const v3NetworkRendererSrc = src('main/printing/v3NetworkRenderer.ts')
 
 describe('Electron 安全基线（静态）', () => {
   it('窗口 webPreferences：contextIsolation:true / nodeIntegration:false / sandbox:true', () => {
@@ -54,6 +55,11 @@ describe('Electron 安全基线（静态）', () => {
     expect(ipcRouterSrc).toMatch(/cashier-network-v2:\$\{row\.orderNo\}:\$\{row\.role\}/)
     expect(ipcRouterSrc).toMatch(/row\.printJobId !== canonicalPrintJobId/)
     expect(ipcRouterSrc).toMatch(/expiresAt,orderNo,payloadBase64,printJobId,rendererVersion,role/)
+  })
+
+  it('isolated V3 renderer accepts bytes only from its exact trusted main-frame URL', () => {
+    expect(v3NetworkRendererSrc).toMatch(/pathToFileURL\(path\.join\(__dirname, 'v3-network-render\.html'\)\)/)
+    expect(v3NetworkRendererSrc).toMatch(/event\.senderFrame\.url !== trustedRendererUrl/)
   })
 })
 

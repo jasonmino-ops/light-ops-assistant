@@ -137,7 +137,7 @@ export class V3PrintingRuntime {
     if (!this.cloud) return
     for (const entry of this.outbox.listReportable()) {
       await this.outbox.recordAttempt(entry.executionId)
-      if (await this.cloud.report(entry)) await this.outbox.acknowledge(entry.executionId)
+      if (await this.cloud.report(entry)) await this.outbox.acknowledge(entry.executionId, entry.factVersion)
     }
   }
 }
