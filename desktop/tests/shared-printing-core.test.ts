@@ -43,6 +43,22 @@ function boundary(result: EffectBoundaryResult | Error): PrintingEffectBoundary<
 }
 
 describe("SharedPrintingCore", () => {
+  it("never invokes the effect when the durable barrier fails", async () => {
+    const effect = boundary({ outcome: "CROSSED", allBytesWritten: true, flushAndFinConfirmed: true });
+    const core = new SharedPrintingCore({
+      accept: vi.fn(async () => ({ ok: true as const, value: {
+        kind: "CREATED" as const,
+        record: { printJobId: "job-1", executionId: "execution-1", state: "NOT_CROSSED" as const, stateVersion: 0, physicalCompletionKnown: false as const },
+      } })),
+      beginCrossing: vi.fn(async () => ({ ok: false as const, error: { code: "LEDGER_DURABILITY_FAILURE", message: "fsync failed" } })),
+      confirmNotCrossed: vi.fn(),
+      markCrossed: vi.fn(),
+    }, effect);
+    expect(await core.execute({ identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
+      .toMatchObject({ status: "REJECTED", error: { code: "LEDGER_DURABILITY_FAILURE" } });
+    expect(effect.cross).not.toHaveBeenCalled();
+  });
+
   it("persists the UNKNOWN barrier before invoking the effect", async () => {
     const instance = await ledger();
     let stateAtEffect: string | undefined;

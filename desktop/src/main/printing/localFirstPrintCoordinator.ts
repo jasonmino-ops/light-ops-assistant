@@ -21,16 +21,22 @@ export interface SharedExecutionPort<TPayload> {
   }): Promise<SharedExecutionResult>;
 }
 
+export interface ExecutionOutboxPort {
+  enqueue(input: { executionId: string; printJobId: string; ownerEpoch: number; outcome: "CROSSED" | "FAILED_NOT_CROSSED" | "CROSSING_UNKNOWN" }): Promise<void>;
+}
+
 export type CoordinatedPrintResult =
   | SharedExecutionResult
   | { status: "V2_FALLBACK_REQUIRED" }
   | { status: "AUTHORITY_REJECTED"; reason: string; mode: "ADMISSION_CLOSED" | "FENCED" }
-  | { status: "MODE_BLOCKED" };
+  | { status: "MODE_BLOCKED" }
+  | { status: "EXECUTION_RECORDED_REPORT_PENDING"; execution: SharedExecutionResult };
 
 export class LocalFirstPrintCoordinator<TPayload> {
   public constructor(
     private readonly authority: AuthorityAdmissionPort,
     private readonly sharedCore: SharedExecutionPort<TPayload>,
+    private readonly outbox: ExecutionOutboxPort,
   ) {}
 
   public execute(input: {
@@ -57,10 +63,33 @@ export class LocalFirstPrintCoordinator<TPayload> {
       });
     }
 
-    return this.sharedCore.execute({
+    return this.executeAndRecord(input);
+  }
+
+  private async executeAndRecord(input: {
+    authority: ExecutionAuthority;
+    identity: SharedPrintIdentity;
+    endpointKey: string;
+    payload: TPayload;
+  }): Promise<CoordinatedPrintResult> {
+    const execution = await this.sharedCore.execute({
       identity: input.identity,
       endpointKey: input.endpointKey,
       payload: input.payload,
     });
+    if (execution.status !== "CROSSED" && execution.status !== "FAILED_NOT_CROSSED" && execution.status !== "CROSSING_UNKNOWN") {
+      return execution;
+    }
+    try {
+      await this.outbox.enqueue({
+        executionId: execution.record.executionId,
+        printJobId: execution.record.printJobId,
+        ownerEpoch: input.authority.ownerEpoch,
+        outcome: execution.status,
+      });
+      return execution;
+    } catch {
+      return { status: "EXECUTION_RECORDED_REPORT_PENDING", execution };
+    }
   }
 }

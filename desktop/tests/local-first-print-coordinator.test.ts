@@ -26,7 +26,8 @@ async function composition(boundary: PrintingEffectBoundary<Uint8Array>) {
   const ledger = createExecutionLedger({ userDataPath: root, platform: "win32", now: () => new Date(now) });
   expect((await ledger.open()).ok).toBe(true);
   const guard = new ExecutionAuthorityGuard(authority, 10 * 60_000, () => now);
-  return { root, ledger, coordinator: new LocalFirstPrintCoordinator(guard, new SharedPrintingCore(ledger, boundary)) };
+  const outbox = { enqueue: vi.fn(async () => undefined) };
+  return { root, ledger, outbox, coordinator: new LocalFirstPrintCoordinator(guard, new SharedPrintingCore(ledger, boundary), outbox) };
 }
 
 describe("LocalFirstPrintCoordinator", () => {
@@ -82,11 +83,30 @@ describe("LocalFirstPrintCoordinator", () => {
       const restarted = new LocalFirstPrintCoordinator(
         new ExecutionAuthorityGuard(authority, 10 * 60_000, () => now),
         new SharedPrintingCore(reopened, delayedBoundary),
+        { enqueue: vi.fn(async () => undefined) },
       );
       expect(await restarted.execute({ mode: "V3_ACTIVE", source: "CLOUD_H5", authority, identity: job, endpointKey: "front:9100", payload: new Uint8Array() }))
         .toMatchObject({ status: "NOT_EXECUTED", record: { state: outcome === "UNKNOWN" ? "CROSSING_UNKNOWN" : "CROSSED" } });
       expect(delayedBoundary.cross).not.toHaveBeenCalled();
       await reopened.close();
     }
+  });
+
+  it("does not reopen execution when durable reporting is temporarily unavailable", async () => {
+    const boundary: PrintingEffectBoundary<Uint8Array> = {
+      cross: vi.fn(async (): Promise<EffectBoundaryResult> => ({ outcome: "CROSSED", allBytesWritten: true, flushAndFinConfirmed: true })),
+    };
+    const { ledger } = await composition(boundary);
+    const coordinator = new LocalFirstPrintCoordinator(
+      new ExecutionAuthorityGuard(authority, 10 * 60_000, () => now),
+      new SharedPrintingCore(ledger, boundary),
+      { enqueue: vi.fn(async () => { throw new Error("disk"); }) },
+    );
+    const input = { mode: "V3_ACTIVE" as const, source: "LOCAL_DESKTOP" as const, authority, identity, endpointKey: "front:9100", payload: new Uint8Array([1]) };
+    expect(await coordinator.execute(input)).toMatchObject({
+      status: "EXECUTION_RECORDED_REPORT_PENDING", execution: { status: "CROSSED" },
+    });
+    expect(await coordinator.execute({ ...input, source: "CLOUD_H5" })).toMatchObject({ status: "NOT_EXECUTED" });
+    expect(boundary.cross).toHaveBeenCalledTimes(1);
   });
 });
