@@ -43,5 +43,7 @@ describe("ExecutionAuthorityGuard", () => {
     const guard = new ExecutionAuthorityGuard({ ...authority, batchExpiresAt: new Date(base).toISOString() }, 10 * 60_000, () => base);
     expect(guard.canAdmit({ ...authority, batchExpiresAt: new Date(base).toISOString() }))
       .toMatchObject({ allowed: false, reason: "BATCH_EXPIRED" });
+    expect(guard.canAdmit({ ...authority, batchExpiresAt: "not-a-date" }))
+      .toMatchObject({ allowed: false, reason: "BATCH_EXPIRED" });
   });
 });

@@ -16,6 +16,11 @@ const identity = {
   rendererVersion: "renderer-v1",
   expiresAt: "2027-01-01T00:00:00.000Z",
 };
+const safety = {
+  validateExecution: async () => ({ ok: true as const, value: undefined }),
+  onDurableBarrier: async () => ({ ok: true as const, value: undefined }),
+};
+const mutex = { runExclusive: async <T>(_endpointKey: string, operation: () => Promise<T>) => operation() };
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -53,8 +58,8 @@ describe("SharedPrintingCore", () => {
       beginCrossing: vi.fn(async () => ({ ok: false as const, error: { code: "LEDGER_DURABILITY_FAILURE", message: "fsync failed" } })),
       confirmNotCrossed: vi.fn(),
       markCrossed: vi.fn(),
-    }, effect);
-    expect(await core.execute({ identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
+    }, effect, mutex);
+    expect(await core.execute({ ...safety, identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
       .toMatchObject({ status: "REJECTED", error: { code: "LEDGER_DURABILITY_FAILURE" } });
     expect(effect.cross).not.toHaveBeenCalled();
   });
@@ -69,7 +74,8 @@ describe("SharedPrintingCore", () => {
         return { outcome: "CROSSED", allBytesWritten: true, flushAndFinConfirmed: true };
       }),
     };
-    const result = await new SharedPrintingCore(instance, effect).execute({
+    const result = await new SharedPrintingCore(instance, effect, mutex).execute({
+      ...safety,
       identity,
       endpointKey: "printer-a:9100",
       payload: new Uint8Array([1]),
@@ -83,10 +89,10 @@ describe("SharedPrintingCore", () => {
     ["throw", boundary(new Error("timeout"))],
   ])("keeps %s fail-closed and never executes the same job again", async (_name, effect) => {
     const instance = await ledger();
-    const core = new SharedPrintingCore(instance, effect);
-    expect(await core.execute({ identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
+    const core = new SharedPrintingCore(instance, effect, mutex);
+    expect(await core.execute({ ...safety, identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
       .toMatchObject({ status: "CROSSING_UNKNOWN" });
-    expect(await core.execute({ identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
+    expect(await core.execute({ ...safety, identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
       .toMatchObject({ status: "NOT_EXECUTED", record: { state: "CROSSING_UNKNOWN" } });
     expect(effect.cross).toHaveBeenCalledTimes(1);
   });
@@ -94,10 +100,10 @@ describe("SharedPrintingCore", () => {
   it("maps only explicit zero-byte proof to FAILED_NOT_CROSSED without retry", async () => {
     const instance = await ledger();
     const effect = boundary({ outcome: "NOT_CROSSED", zeroBytesSent: true, errorCode: "NO_CONNECT" });
-    const core = new SharedPrintingCore(instance, effect);
-    expect(await core.execute({ identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
+    const core = new SharedPrintingCore(instance, effect, mutex);
+    expect(await core.execute({ ...safety, identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
       .toMatchObject({ status: "FAILED_NOT_CROSSED", record: { zeroBytesSent: true } });
-    expect(await core.execute({ identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
+    expect(await core.execute({ ...safety, identity, endpointKey: "printer-a:9100", payload: new Uint8Array() }))
       .toMatchObject({ status: "NOT_EXECUTED", record: { state: "FAILED_NOT_CROSSED" } });
     expect(effect.cross).toHaveBeenCalledTimes(1);
   });
@@ -105,9 +111,10 @@ describe("SharedPrintingCore", () => {
   it("rejects identity conflicts before the effect boundary", async () => {
     const instance = await ledger();
     const effect = boundary({ outcome: "CROSSED", allBytesWritten: true, flushAndFinConfirmed: true });
-    const core = new SharedPrintingCore(instance, effect);
-    await core.execute({ identity, endpointKey: "printer-a:9100", payload: new Uint8Array() });
+    const core = new SharedPrintingCore(instance, effect, mutex);
+    await core.execute({ ...safety, identity, endpointKey: "printer-a:9100", payload: new Uint8Array() });
     expect(await core.execute({
+      ...safety,
       identity: { ...identity, requestHash: "different" },
       endpointKey: "printer-a:9100",
       payload: new Uint8Array(),
@@ -126,8 +133,9 @@ describe("SharedPrintingCore", () => {
         return { outcome: "CROSSED", allBytesWritten: true, flushAndFinConfirmed: true };
       }),
     };
-    const core = new SharedPrintingCore(instance, effect);
+    const core = new SharedPrintingCore(instance, effect, mutex);
     const execute = (printJobId: string, endpointKey: string) => core.execute({
+      ...safety,
       identity: { ...identity, printJobId, requestHash: `hash-${printJobId}` },
       endpointKey,
       payload: new Uint8Array(),

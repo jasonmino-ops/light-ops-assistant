@@ -91,6 +91,11 @@ export type ExecutionLedgerOptions = {
   now?: () => Date;
   platform?: NodeJS.Platform;
   fileSystem?: LedgerFileSystem;
+  processId?: number;
+  staleLockRecovery?: {
+    hasExclusiveRecoveryAuthority(): boolean;
+    proveProcessDead(processId: number): Promise<true | false | "UNKNOWN">;
+  };
 };
 
 const LEDGER_SCHEMA_VERSION = 1 as const;
@@ -112,6 +117,7 @@ type LockFile = {
   lockSchemaVersion: 1;
   ownerToken: string;
   createdAt: string;
+  processId?: number;
 };
 
 const defaultFileSystem: LedgerFileSystem = {
@@ -273,11 +279,13 @@ function hasOwnRecord(records: Record<string, LedgerRecord>, printJobId: string)
 function validateLockFile(value: unknown): value is LockFile {
   return (
     isPlainObject(value) &&
-    assertNoUnknownKeys(value, ["lockSchemaVersion", "ownerToken", "createdAt"]) &&
+    assertNoUnknownKeys(value, ["lockSchemaVersion", "ownerToken", "createdAt", "processId"]) &&
     value.lockSchemaVersion === 1 &&
     typeof value.ownerToken === "string" &&
     UUID_PATTERN.test(value.ownerToken) &&
-    isUtcIso(value.createdAt)
+    isUtcIso(value.createdAt) &&
+    (value.processId === undefined ||
+      (typeof value.processId === "number" && Number.isInteger(value.processId) && value.processId > 0))
   );
 }
 
@@ -320,6 +328,8 @@ export class ExecutionLedger {
   private readonly now: () => Date;
   private readonly platform: NodeJS.Platform;
   private readonly fileSystem: LedgerFileSystem;
+  private readonly processId: number;
+  private readonly staleLockRecovery?: ExecutionLedgerOptions["staleLockRecovery"];
   private file: LedgerFile = emptyLedger();
   private ownerToken: string | null = null;
   private opened = false;
@@ -333,13 +343,15 @@ export class ExecutionLedger {
     this.now = options.now ?? (() => new Date());
     this.platform = options.platform ?? process.platform;
     this.fileSystem = options.fileSystem ?? defaultFileSystem;
+    this.processId = options.processId ?? process.pid;
+    this.staleLockRecovery = options.staleLockRecovery;
   }
 
   public open(): Promise<LedgerResult<void>> {
     return this.runExclusive(() => this.openInternal());
   }
 
-  private async openInternal(): Promise<LedgerResult<void>> {
+  private async openInternal(recoveryAttempted = false): Promise<LedgerResult<void>> {
     if (this.opened) {
       return this.unusable
         ? failure("LEDGER_UNUSABLE", "Ledger instance is unusable.")
@@ -361,6 +373,7 @@ export class ExecutionLedger {
         lockSchemaVersion: 1,
         ownerToken,
         createdAt: this.now().toISOString(),
+        processId: this.processId,
       };
       await lockHandle.writeFile(`${JSON.stringify(lock)}\n`);
       await lockHandle.sync();
@@ -369,7 +382,7 @@ export class ExecutionLedger {
     } catch (error) {
       if (lockHandle) await this.closeQuietly(lockHandle);
       if (isErrorCode(error, "EEXIST")) {
-        return this.inspectExistingLock();
+        return this.inspectExistingLock(recoveryAttempted);
       }
       return failure("LEDGER_UNUSABLE", "Unable to establish a verifiable Ledger lock.");
     }
@@ -841,11 +854,26 @@ export class ExecutionLedger {
     }
   }
 
-  private async inspectExistingLock(): Promise<LedgerResult<void>> {
+  private async inspectExistingLock(recoveryAttempted: boolean): Promise<LedgerResult<void>> {
     try {
       const raw = await this.fileSystem.readFile(this.lockPath);
       const parsed = JSON.parse(raw) as unknown;
       if (validateLockFile(parsed)) {
+        if (
+          !recoveryAttempted &&
+          parsed.processId !== undefined &&
+          this.staleLockRecovery?.hasExclusiveRecoveryAuthority() === true
+        ) {
+          const proof = await this.staleLockRecovery.proveProcessDead(parsed.processId);
+          if (proof === true) {
+            const currentRaw = await this.fileSystem.readFile(this.lockPath);
+            if (currentRaw !== raw) {
+              return failure("LEDGER_BUSY", "Lock ownership changed during recovery.");
+            }
+            await this.fileSystem.unlink(this.lockPath);
+            return this.openInternal(true);
+          }
+        }
         return failure("LEDGER_BUSY", "Another Ledger instance owns the lock.");
       }
       return failure("LEDGER_UNUSABLE", "Existing lock ownership cannot be verified.");

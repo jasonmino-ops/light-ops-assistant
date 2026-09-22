@@ -18,7 +18,13 @@ export interface SharedExecutionPort<TPayload> {
     identity: SharedPrintIdentity;
     endpointKey: string;
     payload: TPayload;
+    validateExecution: () => Promise<{ ok: true; value: void } | { ok: false; error: { code: string; message: string } }>;
+    onDurableBarrier: (record: { executionId: string; printJobId: string }) => Promise<{ ok: true; value: void } | { ok: false; error: { code: string; message: string } }>;
   }): Promise<SharedExecutionResult>;
+}
+
+export interface ExecutionModePort {
+  current(): "V2_ACTIVE" | "V2_DRAINING" | "V3_ACTIVE" | "V3_DRAINING" | "BLOCKED_UNKNOWN";
 }
 
 export interface ExecutionOutboxPort {
@@ -37,6 +43,7 @@ export class LocalFirstPrintCoordinator<TPayload> {
     private readonly authority: AuthorityAdmissionPort,
     private readonly sharedCore: SharedExecutionPort<TPayload>,
     private readonly outbox: ExecutionOutboxPort,
+    private readonly mode: ExecutionModePort,
   ) {}
 
   public execute(input: {
@@ -47,10 +54,11 @@ export class LocalFirstPrintCoordinator<TPayload> {
     endpointKey: string;
     payload: TPayload;
   }): Promise<CoordinatedPrintResult> {
-    if (input.mode === "V2_ACTIVE") {
+    const currentMode = this.mode.current();
+    if (currentMode === "V2_ACTIVE") {
       return Promise.resolve({ status: "V2_FALLBACK_REQUIRED" });
     }
-    if (input.mode !== "V3_ACTIVE") {
+    if (currentMode !== "V3_ACTIVE") {
       return Promise.resolve({ status: "MODE_BLOCKED" });
     }
 
@@ -76,8 +84,32 @@ export class LocalFirstPrintCoordinator<TPayload> {
       identity: input.identity,
       endpointKey: input.endpointKey,
       payload: input.payload,
+      validateExecution: async () => {
+        if (this.mode.current() !== "V3_ACTIVE") {
+          return { ok: false, error: { code: "MODE_NOT_V3_ACTIVE", message: "V3 execution mode is no longer active." } };
+        }
+        const decision = this.authority.canAdmit(input.authority);
+        return decision.allowed
+          ? { ok: true, value: undefined }
+          : { ok: false, error: { code: `AUTHORITY_${decision.mode}`, message: decision.reason } };
+      },
+      onDurableBarrier: async (record) => {
+        try {
+          await this.outbox.enqueue({
+            executionId: record.executionId,
+            printJobId: record.printJobId,
+            ownerEpoch: input.authority.ownerEpoch,
+            outcome: "CROSSING_UNKNOWN",
+          });
+          return { ok: true, value: undefined };
+        } catch {
+          return { ok: false, error: { code: "OUTBOX_DURABILITY_FAILURE", message: "Unable to persist crossing report." } };
+        }
+      },
     });
-    if (execution.status !== "CROSSED" && execution.status !== "FAILED_NOT_CROSSED" && execution.status !== "CROSSING_UNKNOWN") {
+    if (execution.status === "REJECTED") return execution;
+    const reportableStatus = execution.status === "NOT_EXECUTED" ? execution.record.state : execution.status;
+    if (reportableStatus !== "CROSSED" && reportableStatus !== "FAILED_NOT_CROSSED" && reportableStatus !== "CROSSING_UNKNOWN") {
       return execution;
     }
     try {
@@ -85,7 +117,7 @@ export class LocalFirstPrintCoordinator<TPayload> {
         executionId: execution.record.executionId,
         printJobId: execution.record.printJobId,
         ownerEpoch: input.authority.ownerEpoch,
-        outcome: execution.status,
+        outcome: reportableStatus,
       });
       return execution;
     } catch {

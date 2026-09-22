@@ -58,6 +58,8 @@ function ledger(
     now?: () => Date;
     platform?: NodeJS.Platform;
     fileSystem?: LedgerFileSystem;
+    processId?: number;
+    staleLockRecovery?: ConstructorParameters<typeof ExecutionLedger>[0]["staleLockRecovery"];
   } = {},
 ): ExecutionLedger {
   return createExecutionLedger({
@@ -65,6 +67,8 @@ function ledger(
     now: options.now ?? (() => new Date(fixedCreatedAt)),
     platform: options.platform ?? "win32",
     fileSystem: options.fileSystem,
+    processId: options.processId,
+    staleLockRecovery: options.staleLockRecovery,
   });
 }
 
@@ -74,6 +78,8 @@ async function openLedger(
     now?: () => Date;
     platform?: NodeJS.Platform;
     fileSystem?: LedgerFileSystem;
+    processId?: number;
+    staleLockRecovery?: ConstructorParameters<typeof ExecutionLedger>[0]["staleLockRecovery"];
   } = {},
 ): Promise<ExecutionLedger> {
   const instance = ledger(root, options);
@@ -1108,6 +1114,56 @@ describe("ExecutionLedger corruption and locks", () => {
     const third = ledger(root);
     expect(errorCode(await third.open())).toBe("LEDGER_UNUSABLE");
     expect(await readFile(lockPath, "utf8")).toBe("unknown-lock");
+  });
+
+  it("recovers a dead-process lock only with explicit death and exclusive-recovery proof", async () => {
+    const root = await makeRoot();
+    const original = await openLedger(root, { processId: 101 });
+    const accepted = await original.accept(input());
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) return;
+    const crossing = await original.beginCrossing(guard(accepted.value.record));
+    expect(crossing.ok).toBe(true);
+    expect((await original.close()).ok).toBe(true);
+    const lockPath = path.join(root, ".execution-ledger.lock");
+    await writeFile(lockPath, JSON.stringify({
+      lockSchemaVersion: 1,
+      ownerToken: "00000000-0000-4000-8000-000000000101",
+      createdAt: fixedCreatedAt,
+      processId: 101,
+    }), "utf8");
+
+    for (const proof of [false, "UNKNOWN"] as const) {
+      const blocked = ledger(root, {
+        processId: 202,
+        staleLockRecovery: {
+          hasExclusiveRecoveryAuthority: () => true,
+          proveProcessDead: async () => proof,
+        },
+      });
+      expect(errorCode(await blocked.open())).toBe("LEDGER_BUSY");
+    }
+    const noExclusiveProof = ledger(root, {
+      processId: 202,
+      staleLockRecovery: {
+        hasExclusiveRecoveryAuthority: () => false,
+        proveProcessDead: async () => true,
+      },
+    });
+    expect(errorCode(await noExclusiveProof.open())).toBe("LEDGER_BUSY");
+
+    const recovered = await openLedger(root, {
+      processId: 202,
+      staleLockRecovery: {
+        hasExclusiveRecoveryAuthority: () => true,
+        proveProcessDead: async (processId) => processId === 101,
+      },
+    });
+    expect(await recovered.get("job-1")).toMatchObject({
+      ok: true,
+      value: { found: true, record: { state: "CROSSING_UNKNOWN" } },
+    });
+    expect((await recovered.close()).ok).toBe(true);
   });
 
   it("does not release a lock whose ownership can no longer be confirmed", async () => {

@@ -53,9 +53,16 @@ export class ExecutionOutbox {
     return this.exclusive(async () => {
       const existing = this.entries.find(({ executionId }) => executionId === input.executionId);
       if (existing) {
-        if (existing.printJobId !== input.printJobId || existing.ownerEpoch !== input.ownerEpoch || existing.outcome !== input.outcome) {
+        if (existing.printJobId !== input.printJobId || existing.ownerEpoch !== input.ownerEpoch) {
           throw new Error("OUTBOX_IDENTITY_CONFLICT");
         }
+        if (existing.outcome === input.outcome) return;
+        if (existing.outcome !== "CROSSING_UNKNOWN" || input.outcome === "CROSSING_UNKNOWN") {
+          throw new Error("OUTBOX_OUTCOME_CONFLICT");
+        }
+        await this.persist(this.entries.map((entry) => entry.executionId === input.executionId
+          ? { ...entry, outcome: input.outcome }
+          : entry));
         return;
       }
       await this.persist([...this.entries, { ...input, createdAt: this.now().toISOString(), attempts: 0 }]);

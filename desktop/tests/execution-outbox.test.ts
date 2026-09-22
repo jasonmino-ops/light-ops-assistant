@@ -33,6 +33,16 @@ describe("ExecutionOutbox", () => {
       .rejects.toThrow("OUTBOX_IDENTITY_CONFLICT");
   });
 
+  it("conservatively reserves UNKNOWN and only then permits a terminal report", async () => {
+    const { instance } = await outbox();
+    const base = { executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3 };
+    await instance.enqueue({ ...base, outcome: "CROSSING_UNKNOWN" });
+    await instance.enqueue({ ...base, outcome: "CROSSED" });
+    expect(instance.list()[0]?.outcome).toBe("CROSSED");
+    await expect(instance.enqueue({ ...base, outcome: "FAILED_NOT_CROSSED" }))
+      .rejects.toThrow("OUTBOX_OUTCOME_CONFLICT");
+  });
+
   it("continues attempts and acknowledgement without execution authority", async () => {
     const { instance } = await outbox();
     await instance.enqueue({ executionId: "execution-a", printJobId: "job-a", ownerEpoch: 3, outcome: "CROSSING_UNKNOWN" });

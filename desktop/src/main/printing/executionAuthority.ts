@@ -50,7 +50,8 @@ export class ExecutionAuthorityGuard {
       return { allowed: false, mode: "FENCED", reason: "AUTHORITY_MISMATCH" };
     }
     const now = this.now();
-    if (Date.parse(candidate.batchExpiresAt) <= now) {
+    const batchExpiresAt = Date.parse(candidate.batchExpiresAt);
+    if (!Number.isFinite(batchExpiresAt) || batchExpiresAt <= now) {
       return { allowed: false, mode: "ADMISSION_CLOSED", reason: "BATCH_EXPIRED" };
     }
     if (this.disconnectedAtMs === null) return { allowed: true, mode: "CONNECTED" };
