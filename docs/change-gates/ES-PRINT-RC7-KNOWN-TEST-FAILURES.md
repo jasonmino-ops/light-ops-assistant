@@ -10,7 +10,7 @@
 - 每次合并前必须在当时的候选 SHA 上重新发现并执行适用全量测试，把每个失败精确到测试文件和用例，与本表逐条比对。
 - 新失败、失败形态变化、证据失效或超过复核期限均阻塞合并。清单变更必须同时记录新的原始输出位置/哈希、事实归因、处置和复核期限，并接受适用的 Scope Guard 与独立审查。
 - 原始 root full-suite 日志已有仓库受控的不可变副本；`/private/tmp` 仅保留为原执行位置，不再是长期唯一证据。后续复核以 `npm run test:full` 在 `test-results/test-evidence/root-full/<timestamp>-<HEAD>/` 产生的新日志和结构化 summary 为准；该目录已被 Git 忽略，需按候选交付要求另行保留，不得把临时日志无限累积进 Git 历史。
-- 证据保留限制：KTF-20260912-01 的五次专项复跑没有单独保留日志；复跑次数来自原执行记录，当前不可独立复核。其源码计时结构仍支持非确定性归因，但下一次合并校准必须重新复跑并保留新日志与哈希。
+- KTF-20260912-01 已在 `ES-PRINT-LOCAL-FIRST-SHARED-CORE-01` Pilot blocker correction 中完成可复核的 deterministic harness 校准。新证据位于 `docs/change-gates/evidence/ES-PRINT-LOCAL-FIRST-SHARED-CORE-01/ktf-20260912-01-focused-recalibration.log`，SHA-256 为 `a331933959ce9864edc86979baa3eabf45974af36522f3154a88e888de4815e5`。
 
 ## 基线信息
 
@@ -32,7 +32,7 @@
 
 | 编号 | 测试文件 + 用例名 | 失败形态 | 归因 | 归因证据 | 处置 |
 | --- | --- | --- | --- | --- | --- |
-| KTF-20260912-01 | `tests/browser-print-readiness.test.ts` — `unstable layout reaches the bounded timeout without printing` | 历史记录为毫秒级非确定性断言失败；2026-09-19 Candidate 与 pre-Option-D baseline 均复跑 18/18 PASS | 历史测试抖动；当前 Candidate 不再复现，但源代码中的 flake 机制未改变 | Candidate 与 baseline 同条件均为 18/18 PASS；历史五次专项复跑日志未被持久化，当前只能保留历史归因而不能把本次绿色运行升级为永久 PASS | **保留 OPEN / flaky-test-harness quarantine**；不改测试或业务实现；下次复核截止 `2026-09-26` |
+| KTF-20260912-01 | `tests/browser-print-readiness.test.ts` — `unstable layout reaches the bounded timeout without printing` | 历史 fake-frame 与 fallback timer 竞态曾产生 expected `blocked`, actual `printed`；后续校准又捕获同一计时竞态导致的其他 case 假失败 | 测试 harness 在两个真实 timer 之间竞争 fake frame；非 product contract failure | Pilot blocker correction 仅将 fake `requestAnimationFrame` 改为由 harness 确定性推进；生产断言、失败条件与 product source 未改。持久化校准 10/10 runs、180/180 cases PASS，证据 SHA-256 `a331933959ce9864edc86979baa3eabf45974af36522f3154a88e888de4815e5` | **RECALIBRATED / removed from active known failures / closure pending root aggregate**；root aggregate 当前被无关 lane-manifest drift 阻止于 collection 前，不得提前记录 CLOSED |
 | KTF-20260912-02 | `tests/dashboard-print-settings-mobile.test.ts` — `main`：打开 `/dashboard` 后「门店配置」按钮应可见 | 当前复现：Candidate 与 baseline 均在 `getByRole('button', { name: /门店配置/ })` 等待 20s 后超时；历史首轮另有 `page.goto` 对 3100 的 `ECONNREFUSED` | 测试环境/权限上下文不完整；Candidate causation = NO | Candidate 3100 与 baseline 3101 的 production-server 条件下均为相同 timeout/locator；历史以 `DEV_ROLE=OWNER` 补齐环境后曾 PASS，但当前 root lane 又复现该 case。详见 durable evidence `candidate-root-integration-normalized.md` 与 `baseline-comparison-normalized.md`。 | **RETAIN OPEN / recurrence observed**；仅允许独立环境复现与 OWNER 上下文核验，不改 Candidate；下次复核截止 `2026-09-26` |
 | KTF-20260912-03 | `tests/desktop-pos-write-fallback-runtime.test.ts` — `testAuthorizedRegressionPaths`：`authorized order status update must remain available` | 运行期异常：Next.js `after` / `next-dynamic-api-wrong-context`，未到达状态断言 | 测试本身直接调用 Next Route，未建立 request scope；Candidate causation = NO | 2026-09-19 Candidate 与 pre-Option-D baseline 在同条件下均于 `app/api/cashier/orders/[id]/route.ts:65` 复现同一错误。Candidate 合法修改 `app/api/cashier/sales/route.ts`，但失败 PATCH 路由与 direct-call harness 未变化；runtime behavior 仍需在 Cashier route semantics 变化时持续检查。 | **保留 OPEN**；后续修复仍属独立 `TEST-DESKTOP-POS-REQUEST-SCOPE-01`；下次复核截止 `2026-09-26` |
 | KTF-20260912-04 | `tests/es-tray-desktop-launch-route.test.ts` — runtime 段：`Network FRONT_ONLY reuses the consumed binding session and opens exact cashier opt-in`（进入该段前置） | 环境缺失：`A12_LAUNCH_RUNTIME_BASE_URL is required` | 环境问题 | `tests/es-tray-desktop-launch-route.test.ts:15` 读取 URL，`:219` 明确断言必填；首轮在 12 个静态用例 PASS 后于该断言停止。设置 `A12_LAUNCH_RUNTIME_BASE_URL=http://127.0.0.1:3100`、Chrome 路径并启动本地 Next 服务后，复跑 26 cases PASS。复核日志：`/private/tmp/TASK-PRINT-RC7-PREFLIGHT-01/ui-runtime-rerun.log`，SHA-256 `03ea86096255a3413a218ff8bcd649820b90dc5c792a35c019f7af483f8145b3`。 | 已修（仅补齐测试运行环境），复跑 PASS；仓库文件未修改。 |
@@ -42,7 +42,6 @@
 
 ## 当前仍为已知失败
 
-- `KTF-20260912-01`：历史 timing flake 机制未改变，当前绿色复跑不构成永久 PASS。
 - `KTF-20260912-02`：Dashboard browser harness 当前再次复现 OWNER/路由上下文相关 timeout。
 - `KTF-20260912-03`：缺失 Next.js request scope 的直接 Route 测试。
 - `KTF-20260912-07`：固定日期 fixture 已过期。
