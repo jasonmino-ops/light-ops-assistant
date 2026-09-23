@@ -89,7 +89,7 @@ const FROZEN_BOUNDARY_SUCCESSORS = new Map([
   ['main startup gate', 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494'],
   ['WindowManager', '17c764427f1e53288dedb82a1965b1365c1ded3d'],
   ['Prisma', 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494'],
-  ['cashier/customer/mobile business', 'c41447eebffeda6cbd58b06fc091d7ff34035161'],
+  ['cashier/customer/mobile business', 'b936b5e4c5616859c58de3762474ab8cc3356ea3'],
 ])
 
 function parseArgs(argv) {
