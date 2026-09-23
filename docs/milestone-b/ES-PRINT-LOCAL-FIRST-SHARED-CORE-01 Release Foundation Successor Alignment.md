@@ -3,7 +3,7 @@
 ## Exact disposition
 
 - Task: `ES-PRINT-LOCAL-FIRST-SHARED-CORE-01`
-- Immutable implementation snapshot: `cb55c5a9e78cb7f80c8295a0387bb82cb0af8494`
+- Immutable implementation snapshots: original V3 boundary snapshot `cb55c5a9e78cb7f80c8295a0387bb82cb0af8494`; Founder-approved Cashier HELD admission snapshot `c41447eebffeda6cbd58b06fc091d7ff34035161`
 - Production SHA: `c1bedd7d89c280553c6c96c70c30fc800f890ddf`
 - Production change: `NO`
 - Production migration/deployment/activation: `NO`
@@ -14,7 +14,7 @@ The V3 implementation intentionally changes three Release Foundation frozen grou
 | --- | --- |
 | `main startup gate` | `cb55c5a9e78cb7f80c8295a0387bb82cb0af8494` |
 | `Prisma` | `cb55c5a9e78cb7f80c8295a0387bb82cb0af8494` |
-| `cashier/customer/mobile business` | `cb55c5a9e78cb7f80c8295a0387bb82cb0af8494` |
+| `cashier/customer/mobile business` | `c41447eebffeda6cbd58b06fc091d7ff34035161` |
 
 `WindowManager` remains pinned to `17c764427f1e53288dedb82a1965b1365c1ded3d`.
 
