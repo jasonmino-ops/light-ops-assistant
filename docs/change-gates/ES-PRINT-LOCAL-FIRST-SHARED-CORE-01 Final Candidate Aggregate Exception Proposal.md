@@ -6,11 +6,11 @@
 
 - Task: `ES-PRINT-LOCAL-FIRST-SHARED-CORE-01`
 - Baseline: `origin/main@b47380af8c091cfea23ba4fcceeb9d39bc8e991f`
-- Implementation candidate: `b194089`
+- Implementation candidate: `c41447eebffeda6cbd58b06fc091d7ff34035161`
 - Governance proposal: `5ddf0d0ef80e18cff35e784f86183997c92d1394`
 - Authorized candidate lineage: the final clean descendant that changes this proposal to `ACTIVE` without changing product or test behavior
 - Test file: `desktop/tests/release-foundation.test.ts`
-- Candidate aggregate: 290 PASS / 2 FAIL / 1 SKIP
+- Candidate aggregate: 295 PASS / 2 FAIL / 1 SKIP
 - New aggregate regression failures: 0
 - Authorized aggregate interpretation: `PASS WITH FINAL-CANDIDATE BASELINE EXCEPTION`
 
