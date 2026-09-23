@@ -159,7 +159,7 @@ type V3PrintingBridge = {
     rendererVersion: 'network-1'
     expiresAt: string
     payloadBase64: string
-  }) => Promise<{ status?: string } | null>
+  }) => Promise<{ status?: string; admission?: string } | null>
 }
 type V3LocalAdmission = 'ALL_ACCEPTED' | 'NONE_ACCEPTED' | 'FRONT_ONLY'
 
@@ -2312,29 +2312,31 @@ export default function CashierPage() {
     if (!bridge || !window.eshopDesktopRuntime?.isDesktop || !orderNo) return 'NONE_ACCEPTED'
     const acceptedRoles: V3PrintEffectRole[] = []
     for (const role of roles) {
-      const html = role === 'FRONT'
-        ? renderDesktopReceiptHtml(receipt, lang)
-        : getKitchenTicketHtmlForTest(kitchenTicket!, lang)
-      const bytes = await renderTicketHtmlToEscPosRaw(html)
-      const key = canonicalV3PrintEffectKey(orderNo, role)
-      const digest = new Uint8Array(await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)))
-      const printJobId = `network:${Array.from(digest, value => value.toString(16).padStart(2, '0')).join('')}`
-      let binary = ''
-      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+      try {
+        const html = role === 'FRONT'
+          ? renderDesktopReceiptHtml(receipt, lang)
+          : getKitchenTicketHtmlForTest(kitchenTicket!, lang)
+        const bytes = await renderTicketHtmlToEscPosRaw(html)
+        const key = canonicalV3PrintEffectKey(orderNo, role)
+        const digest = new Uint8Array(await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)))
+        const printJobId = `network:${Array.from(digest, value => value.toString(16).padStart(2, '0')).join('')}`
+        let binary = ''
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+        }
+        const result = await bridge.submit({
+          orderNo,
+          printJobId,
+          role,
+          rendererVersion: 'network-1',
+          expiresAt: v3PrintIntentExpiresAt(receipt.createdAt),
+          payloadBase64: window.btoa(binary),
+        })
+        if (result?.admission !== 'DURABLY_ACCEPTED') break
+        acceptedRoles.push(role)
+      } catch {
+        break
       }
-      const result = await bridge.submit({
-        orderNo,
-        printJobId,
-        role,
-        rendererVersion: 'network-1',
-        expiresAt: v3PrintIntentExpiresAt(receipt.createdAt),
-        payloadBase64: window.btoa(binary),
-      })
-      const accepted = result?.status === 'HELD' || result?.status === 'CROSSED' || result?.status === 'FAILED_NOT_CROSSED' ||
-        result?.status === 'CROSSING_UNKNOWN' || result?.status === 'NOT_EXECUTED' || result?.status === 'EXECUTION_RECORDED_REPORT_PENDING'
-      if (!accepted) break
-      acceptedRoles.push(role)
     }
     if (acceptedRoles.length === roles.length) return 'ALL_ACCEPTED'
     return acceptedRoles.length === 1 && acceptedRoles[0] === 'FRONT' ? 'FRONT_ONLY' : 'NONE_ACCEPTED'
