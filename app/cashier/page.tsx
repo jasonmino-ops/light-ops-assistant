@@ -26,6 +26,8 @@ import {
   type QzPrintKind,
   type QzStatus,
 } from '@/lib/qzPrinterAdapter'
+import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
+import { canonicalV3PrintEffectKey, v3PrintIntentExpiresAt, type V3PrintEffectRole } from '@/lib/v3-print-identity'
 import {
   clearLegacyGlobalQzConfig,
   readQzPrintEnabled,
@@ -149,6 +151,18 @@ type EmployeeFullscreenBridge = {
   getEmployeeFullscreenState: () => Promise<boolean>
 }
 
+type V3PrintingBridge = {
+  submit: (intent: {
+    orderNo: string
+    printJobId: string
+    role: V3PrintEffectRole
+    rendererVersion: 'network-1'
+    expiresAt: string
+    payloadBase64: string
+  }) => Promise<{ status?: string; admission?: string } | null>
+}
+type V3LocalAdmission = 'ALL_ACCEPTED' | 'NONE_ACCEPTED' | 'FRONT_ONLY'
+
 declare global {
   interface Window {
     eshopDesktopRuntime?: {
@@ -159,6 +173,7 @@ declare global {
       desktopEpoch?: string
     }
     eshopDesktopEmployeeFullscreen?: EmployeeFullscreenBridge
+    eshopV3Printing?: V3PrintingBridge
   }
 }
 
@@ -2287,11 +2302,57 @@ export default function CashierPage() {
     return `提交到“${queueName}”失败，请检查该队列后重试`
   }, [lang])
 
+  const submitV3LocalTickets = useCallback(async (
+    receipt: DesktopReceiptData,
+    kitchenTicket: KitchenTicketData | undefined,
+    roles: readonly V3PrintEffectRole[] = kitchenTicket ? ['FRONT', 'KITCHEN'] : ['FRONT'],
+  ): Promise<V3LocalAdmission> => {
+    const bridge = window.eshopV3Printing
+    const orderNo = receipt.orderNo
+    if (!bridge || !window.eshopDesktopRuntime?.isDesktop || !orderNo) return 'NONE_ACCEPTED'
+    const acceptedRoles: V3PrintEffectRole[] = []
+    for (const role of roles) {
+      try {
+        const html = role === 'FRONT'
+          ? renderDesktopReceiptHtml(receipt, lang)
+          : getKitchenTicketHtmlForTest(kitchenTicket!, lang)
+        const bytes = await renderTicketHtmlToEscPosRaw(html)
+        const key = canonicalV3PrintEffectKey(orderNo, role)
+        const digest = new Uint8Array(await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)))
+        const printJobId = `network:${Array.from(digest, value => value.toString(16).padStart(2, '0')).join('')}`
+        let binary = ''
+        for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+        }
+        const result = await bridge.submit({
+          orderNo,
+          printJobId,
+          role,
+          rendererVersion: 'network-1',
+          expiresAt: v3PrintIntentExpiresAt(receipt.createdAt),
+          payloadBase64: window.btoa(binary),
+        })
+        if (result?.admission !== 'DURABLY_ACCEPTED') break
+        acceptedRoles.push(role)
+      } catch {
+        break
+      }
+    }
+    if (acceptedRoles.length === roles.length) return 'ALL_ACCEPTED'
+    return acceptedRoles.length === 1 && acceptedRoles[0] === 'FRONT' ? 'FRONT_ONLY' : 'NONE_ACCEPTED'
+  }, [lang])
+
   const submitRawTicket = useCallback(async (
     kind: QzPrintKind,
     receipt: DesktopReceiptData,
     kitchenTicket?: KitchenTicketData,
   ) => {
+    if (await submitV3LocalTickets(receipt, kind === 'kitchen' ? (kitchenTicket ?? {
+      storeName: receipt.storeName,
+      orderNo: receipt.orderNo,
+      createdAt: receipt.createdAt,
+      items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
+    }) : undefined, kind === 'receipt' ? ['FRONT'] : ['KITCHEN']) === 'ALL_ACCEPTED') return
     if (kind === 'receipt') {
       await printCustomerReceiptViaQz(renderDesktopReceiptHtml(receipt, lang), undefined, undefined, readQzSigningStoreCode)
       return
@@ -2303,7 +2364,7 @@ export default function CashierPage() {
       items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
     }
     await printKitchenTicketViaQz(getKitchenTicketHtmlForTest(ticket, lang), undefined, undefined, readQzSigningStoreCode)
-  }, [lang, readQzSigningStoreCode])
+  }, [lang, readQzSigningStoreCode, submitV3LocalTickets])
 
   const handleControlledQzPrint = useCallback(async (
     kind: QzPrintKind,
@@ -2376,32 +2437,51 @@ export default function CashierPage() {
       }
     }
 
-    // QZ Tray POC: only ever taken for a plain customer receipt (no kitchen
-    // ticket) with QZ online and a printer selected. Once this submission
-    // starts, it never falls back to runLegacyPrint — success or failure,
-    // the operator uses the existing "打印小票" button to retry manually.
-    const useQz = shouldUseQzPrint({
-      qzPrintEnabled,
-      hasKitchenTicket: !!kitchenTicket,
-      qzStatus,
-      selectedPrinter: qzSelectedPrinter,
-    })
-    void submitDesktopReceiptPrint({
-      useQz,
-      printerName: qzSelectedPrinter,
-      html: useQz ? renderDesktopReceiptHtml(receipt, lang) : '',
-      legacyPrint: runLegacyPrint,
-    }).then((result) => {
-      if (result.route !== 'qz') return
-      if (result.qzError) {
-        console.warn('[qz-printer] receipt print failed', result.qzError)
-        showToast('QZ 打印失败，本单未自动切换到浏览器打印，请检查 QZ Tray 后手动打印')
-      } else {
-        showToast('已通过 QZ Tray 提交打印')
+    void submitV3LocalTickets(receipt, kitchenTicket).then((admission) => {
+      if (admission === 'ALL_ACCEPTED') {
+        finishReceiptPrintFlow()
+        return
       }
+      if (admission === 'FRONT_ONLY' && kitchenTicket) {
+        try {
+          printKitchenTicket(kitchenTicket, lang, { onAfterPrint: finishReceiptPrintFlow })
+        } catch (err) {
+          console.warn('[kitchen-ticket] print window failed', err)
+          showToast('厨房单打印窗口未打开，交易已完成')
+          finishReceiptPrintFlow()
+        }
+        return
+      }
+      // QZ Tray POC: only ever taken for a plain customer receipt (no kitchen
+      // ticket) with QZ online and a printer selected. Once this submission
+      // starts, it never falls back to runLegacyPrint — success or failure,
+      // the operator uses the existing "打印小票" button to retry manually.
+      const useQz = shouldUseQzPrint({
+        qzPrintEnabled,
+        hasKitchenTicket: !!kitchenTicket,
+        qzStatus,
+        selectedPrinter: qzSelectedPrinter,
+      })
+      return submitDesktopReceiptPrint({
+        useQz,
+        printerName: qzSelectedPrinter,
+        html: useQz ? renderDesktopReceiptHtml(receipt, lang) : '',
+        legacyPrint: runLegacyPrint,
+      }).then((result) => {
+        if (result.route !== 'qz') return
+        if (result.qzError) {
+          console.warn('[qz-printer] receipt print failed', result.qzError)
+          showToast('QZ 打印失败，本单未自动切换到浏览器打印，请检查 QZ Tray 后手动打印')
+        } else {
+          showToast('已通过 QZ Tray 提交打印')
+        }
+        finishReceiptPrintFlow()
+      })
+    }).catch((error) => {
+      console.warn('[v3-printing] local-first submission failed closed', error)
       finishReceiptPrintFlow()
     })
-  }, [finishReceiptPrintFlow, handleControlledQzPrint, lang, qzPrintEnabled, qzRawBusinessActive, qzStatus, qzSelectedPrinter])
+  }, [finishReceiptPrintFlow, handleControlledQzPrint, lang, qzPrintEnabled, qzRawBusinessActive, qzStatus, qzSelectedPrinter, submitV3LocalTickets])
 
   function closeSaleResultOverlay() {
     if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return

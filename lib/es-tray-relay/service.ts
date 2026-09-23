@@ -151,6 +151,28 @@ export async function enqueueRelayPrintJob(
   now = new Date(),
   tx?: Prisma.TransactionClient,
 ) {
+  const v3db = (tx ?? prisma) as any
+  const controlPlane = v3db.v3PrintControlPlane
+    ? await v3db.v3PrintControlPlane.findUnique({ where: { storeId: scope.storeId }, select: { tenantId: true, mode: true } })
+    : null
+  if (controlPlane && controlPlane.tenantId !== scope.tenantId) throw new RelayServiceError('V3_CONTROL_PLANE_SCOPE_MISMATCH', 409)
+  if (controlPlane && controlPlane.mode !== 'V2_ACTIVE') {
+    const adapter = await import('../v3-print-job-adapter')
+    const expiresAt = 'profile' in request
+      ? new Date((await import('../v3-print-identity')).v3PrintIntentExpiresAt(request.order.createdAt))
+      : new Date(now.getTime() + timing.jobTtlMs)
+    const intent = 'profile' in request
+      ? adapter.v3IntentFromNetworkRequest(request, 'CLOUD_H5')
+      : {
+          schemaVersion: 3 as const, printJobId: request.requestId, source: 'CLOUD_REMOTE_REPRINT' as const, role: 'FRONT' as const,
+          payloadKind: 'RAW_BYTES' as const, orderNo: request.orderNo, rendererVersion: request.relayVersion, payloadBase64: request.commandStream.data,
+          byteLength: request.commandStream.byteLength, payloadHash: request.commandStream.sha256,
+        }
+    const result = controlPlane.mode === 'V3_ACTIVE'
+      ? await adapter.enqueueV3PrintIntent(v3db, scope, intent, expiresAt)
+      : await adapter.enqueueHeldV3PrintIntent(v3db, scope, intent, expiresAt)
+    return { created: result.created, job: serializeJob(result.job) }
+  }
   if ('profile' in request) {
     if (!tx) throw new RelayServiceError('NETWORK_SALE_TRANSACTION_REQUIRED', 500)
     const normalized = parseNetworkRequest(request)

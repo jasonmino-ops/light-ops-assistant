@@ -106,10 +106,10 @@ describe('EP-MB3-07A release foundation policy', () => {
       }))
 
     expect(authorized).toEqual([
-      { label: 'main startup gate', snapshot: '17c764427f1e53288dedb82a1965b1365c1ded3d' },
+      { label: 'main startup gate', snapshot: 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494' },
       { label: 'WindowManager', snapshot: '17c764427f1e53288dedb82a1965b1365c1ded3d' },
-      { label: 'Prisma', snapshot: 'dd7121b554b41bbddecaa7f0fd6cf3cb3acfa5ff' },
-      { label: 'cashier/customer/mobile business', snapshot: 'dd7121b554b41bbddecaa7f0fd6cf3cb3acfa5ff' },
+      { label: 'Prisma', snapshot: 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494' },
+      { label: 'cashier/customer/mobile business', snapshot: 'b936b5e4c5616859c58de3762474ab8cc3356ea3' },
     ])
     expect(() => runReleaseFoundation([
       'policy',

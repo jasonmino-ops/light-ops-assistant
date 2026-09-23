@@ -10,8 +10,8 @@
 
 import { app, BrowserWindow } from 'electron'
 import { initLogger, logger, getLogPaths } from './logger'
-import { loadConfig } from './config'
-import { registerIpcHandlers } from './ipcRouter'
+import { getConfig, loadConfig } from './config'
+import { registerIpcHandlers, setV3PrintingRuntimeProvider } from './ipcRouter'
 import { windowManager } from './windowManager'
 import { createTray, destroyTray } from './tray'
 import { updateHealth, recordHealthError, getHealthSnapshot } from './runtimeHealth'
@@ -23,6 +23,11 @@ import { ActivationRuntime } from './activation/activationRuntime'
 import { ActivationWindowController } from './activation/activationWindowController'
 import { registerActivationIpcHandlers } from './activation/activationIpc'
 import type { AuthorizedDesktopContext } from './activation/activationTypes'
+import { V3ControlPlaneClient } from './printing/controlPlaneClient'
+import { V3ControlPlaneRuntime } from './printing/controlPlaneRuntime'
+import { V3PrintingRuntime } from './printing/v3PrintingRuntime'
+import { V3PrintJobClient } from './printing/v3PrintJobClient'
+import { applyAuthorizedEndpointProvisioning } from './printing/localEndpointProvisioning'
 
 // ── 单实例（A4）────────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -42,6 +47,9 @@ if (!gotLock) {
   let activationWindowController: ActivationWindowController | null = null
   let authorizedRuntimeStarted = false
   let authorizedRuntimeStartPromise: Promise<void> | null = null
+  let credentialStore: CredentialStore | null = null
+  let v3ControlPlaneRuntime: V3ControlPlaneRuntime | null = null
+  let v3PrintingRuntime: V3PrintingRuntime | null = null
 
   async function quitApp() {
     if (quitting) return
@@ -50,6 +58,12 @@ if (!gotLock) {
     windowManager.setQuitting()
     try { await providerSupervisor?.stop() } catch (error) {
       recordHealthError('provider', `provider stop failed: ${String(error)}`)
+    }
+    try { await v3PrintingRuntime?.close() } catch (error) {
+      recordHealthError('v3-printing', `printing runtime close failed: ${String(error)}`)
+    }
+    try { await v3ControlPlaneRuntime?.stop() } catch (error) {
+      recordHealthError('v3-control-plane', `control-plane stop failed: ${String(error)}`)
     }
     destroyTray()
     activationWindowController?.destroy()
@@ -80,6 +94,7 @@ if (!gotLock) {
       updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
       logger.info('hardware.status', hardware.getStatusSummary())
 
+      setV3PrintingRuntimeProvider(() => v3PrintingRuntime)
       registerIpcHandlers(windowManager)
 
       windowManager.createEmployeeWindow()
@@ -90,6 +105,29 @@ if (!gotLock) {
       providerSupervisor.start().catch((error) => {
         recordHealthError('provider', `provider start failed: ${String(error)}`)
       })
+
+      const credential = await credentialStore?.readCredential()
+      if (credential?.ok) {
+        v3ControlPlaneRuntime = new V3ControlPlaneRuntime(
+          new V3ControlPlaneClient(getConfig().baseUrl, credential.credential.deviceToken),
+          context.device.deviceId,
+        )
+        await v3ControlPlaneRuntime.start()
+        v3PrintingRuntime = await V3PrintingRuntime.open({
+          userDataPath: app.getPath('userData'),
+          controlPlane: v3ControlPlaneRuntime,
+          storeId: context.device.storeId,
+          deviceId: context.device.deviceId,
+          cloud: new V3PrintJobClient(getConfig().baseUrl, credential.credential.deviceToken),
+        })
+        await applyAuthorizedEndpointProvisioning(v3PrintingRuntime, {
+          storeId: context.device.storeId,
+          deviceId: context.device.deviceId,
+        })
+        logger.info('v3-control-plane.reconciled', { status: v3ControlPlaneRuntime.current().status })
+      } else {
+        recordHealthError('v3-control-plane', 'authorized runtime has no readable credential')
+      }
 
       createTray(windowManager, () => { void quitApp() })
       authorizedRuntimeStarted = true
@@ -119,8 +157,9 @@ if (!gotLock) {
       onClosedBeforeAuthorization: () => { void quitApp() },
     })
 
+    credentialStore = new CredentialStore(app.getPath('userData'))
     activationRuntime = new ActivationRuntime({
-      credentialStore: new CredentialStore(app.getPath('userData')),
+      credentialStore,
       apiClient: new ActivationApiClient({ baseUrl: config.baseUrl }),
       initialStoreCodeHint: config.storeCode || undefined,
       startAuthorizedRuntime: startAuthorizedDesktopRuntime,

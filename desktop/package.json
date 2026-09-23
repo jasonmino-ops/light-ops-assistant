@@ -8,7 +8,7 @@
   "author": "E-Shop (店小二)",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "compile": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-activation-assets.mjs",
+    "compile": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-activation-assets.mjs && node scripts/build-v3-print-renderer.mjs",
     "dev": "npm run compile && electron .",
     "start": "npm run compile && electron .",
     "test": "vitest run",

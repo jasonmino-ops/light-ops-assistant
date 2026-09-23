@@ -58,6 +58,8 @@ function ledger(
     now?: () => Date;
     platform?: NodeJS.Platform;
     fileSystem?: LedgerFileSystem;
+    processId?: number;
+    staleLockRecovery?: ConstructorParameters<typeof ExecutionLedger>[0]["staleLockRecovery"];
   } = {},
 ): ExecutionLedger {
   return createExecutionLedger({
@@ -65,6 +67,8 @@ function ledger(
     now: options.now ?? (() => new Date(fixedCreatedAt)),
     platform: options.platform ?? "win32",
     fileSystem: options.fileSystem,
+    processId: options.processId,
+    staleLockRecovery: options.staleLockRecovery,
   });
 }
 
@@ -74,6 +78,8 @@ async function openLedger(
     now?: () => Date;
     platform?: NodeJS.Platform;
     fileSystem?: LedgerFileSystem;
+    processId?: number;
+    staleLockRecovery?: ConstructorParameters<typeof ExecutionLedger>[0]["staleLockRecovery"];
   } = {},
 ): Promise<ExecutionLedger> {
   const instance = ledger(root, options);
@@ -167,15 +173,20 @@ class MappedFileSystem implements LedgerFileSystem {
 }
 
 describe("ExecutionLedger lifecycle and identity", () => {
-  it("has no runtime import or reference from the Desktop source tree", async () => {
+  it("permits only the Founder-authorized V3 runtime composition to import the Ledger", async () => {
     const sourceRoot = path.resolve(__dirname, "../src");
     const files = await sourceFiles(sourceRoot);
     const protectedSources = files.filter(
       (filePath) => !filePath.endsWith(path.join("printing", "executionLedger.ts")),
     );
+    const authorizedComposition = path.join("printing", "v3PrintingRuntime.ts");
     for (const filePath of protectedSources) {
       const source = await readFile(filePath, "utf8");
-      expect(source, filePath).not.toContain("executionLedger");
+      if (filePath.endsWith(authorizedComposition)) {
+        expect(source.match(/executionLedger/g), filePath).toHaveLength(1);
+      } else {
+        expect(source, filePath).not.toContain("executionLedger");
+      }
     }
   });
 
@@ -194,6 +205,16 @@ describe("ExecutionLedger lifecycle and identity", () => {
     expect(errorCode(await instance.failNotCrossed({ ...dummy, zeroBytesSent: true }))).toBe(
       "LEDGER_NOT_OPEN",
     );
+    expect(
+      errorCode(await instance.confirmNotCrossed({
+        executionPermit: {
+          printJobId: dummy.printJobId,
+          executionId: dummy.expectedExecutionId,
+          stateVersion: dummy.expectedStateVersion,
+        },
+        zeroBytesSent: true,
+      })),
+    ).toBe("LEDGER_NOT_OPEN");
     expect(errorCode(await instance.retryFailedNotCrossed(dummy))).toBe("LEDGER_NOT_OPEN");
     expect(
       errorCode(await instance.markCrossed({ ...dummy, allBytesWritten: true, flushAndFinConfirmed: true })),
@@ -349,6 +370,243 @@ describe("ExecutionLedger state machine", () => {
     expect(await readFile(path.join(root, ".execution-ledger.json"), "utf8")).toBe(rawBefore);
   });
 
+  it("requires the current execution permit and explicit zero-byte proof after the barrier", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const created = await instance.accept(input());
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const crossing = await instance.beginCrossing(guard(created.value.record));
+    expect(crossing.ok).toBe(true);
+    if (!crossing.ok) return;
+
+    const permit = crossing.value.executionPermit;
+    expect(
+      errorCode(await instance.confirmNotCrossed({
+        executionPermit: { ...permit, stateVersion: permit.stateVersion - 1 },
+        zeroBytesSent: true,
+      })),
+    ).toBe("LEDGER_STALE_GUARD");
+    expect(
+      errorCode(await instance.confirmNotCrossed({
+        executionPermit: { ...permit, executionId: "00000000-0000-4000-8000-000000000000" },
+        zeroBytesSent: true,
+      })),
+    ).toBe("LEDGER_STALE_GUARD");
+
+    expect(await instance.get(permit.printJobId)).toMatchObject({
+      ok: true,
+      value: { found: true, record: { state: "CROSSING_UNKNOWN" } },
+    });
+
+    const failed = await instance.confirmNotCrossed({
+      executionPermit: permit,
+      zeroBytesSent: true,
+      lastErrorCode: "BOUNDARY_ZERO_BYTES",
+    });
+    expect(failed).toMatchObject({
+      ok: true,
+      value: {
+        state: "FAILED_NOT_CROSSED",
+        zeroBytesSent: true,
+        lastErrorCode: "BOUNDARY_ZERO_BYTES",
+        physicalCompletionKnown: false,
+      },
+    });
+  });
+
+  it("rejects missing or false zero-byte claims and keeps every ambiguous outcome UNKNOWN", async () => {
+    for (const suffix of ["partial", "ambiguous", "throw", "timeout"]) {
+      const root = await makeRoot();
+      const instance = await openLedger(root);
+      const created = await instance.accept(input(`job-${suffix}`));
+      expect(created.ok).toBe(true);
+      if (!created.ok) continue;
+      const crossing = await instance.beginCrossing(guard(created.value.record));
+      expect(crossing.ok).toBe(true);
+      if (!crossing.ok) continue;
+
+      const invalidProof = suffix === "partial"
+        ? { executionPermit: crossing.value.executionPermit, zeroBytesSent: false }
+        : { executionPermit: crossing.value.executionPermit };
+      expect(
+        errorCode(await instance.confirmNotCrossed(
+          invalidProof as unknown as Parameters<ExecutionLedger["confirmNotCrossed"]>[0],
+        )),
+      ).toBe("LEDGER_INVALID_INPUT");
+
+      expect(await instance.get(created.value.record.printJobId)).toMatchObject({
+        ok: true,
+        value: { found: true, record: { state: "CROSSING_UNKNOWN" } },
+      });
+      await instance.close();
+      const reopened = await openLedger(root);
+      expect(await reopened.get(created.value.record.printJobId)).toMatchObject({
+        ok: true,
+        value: { found: true, record: { state: "CROSSING_UNKNOWN" } },
+      });
+    }
+  });
+
+  it("does not downgrade CROSSED or reopen any terminal tombstone", async () => {
+    for (const terminal of ["CROSSED", "FAILED_NOT_CROSSED", "CANCELLED"] as const) {
+      const root = await makeRoot();
+      const instance = await openLedger(root);
+      const created = await instance.accept(input(`job-${terminal}`));
+      expect(created.ok).toBe(true);
+      if (!created.ok) continue;
+
+      let terminalRecord: LedgerRecord;
+      if (terminal === "CANCELLED") {
+        const result = await instance.cancel(guard(created.value.record));
+        expect(result.ok).toBe(true);
+        if (!result.ok) continue;
+        terminalRecord = result.value;
+      } else if (terminal === "FAILED_NOT_CROSSED") {
+        const result = await instance.failNotCrossed({
+          ...guard(created.value.record),
+          zeroBytesSent: true,
+        });
+        expect(result.ok).toBe(true);
+        if (!result.ok) continue;
+        terminalRecord = result.value;
+      } else {
+        const crossing = await instance.beginCrossing(guard(created.value.record));
+        expect(crossing.ok).toBe(true);
+        if (!crossing.ok) continue;
+        const result = await instance.markCrossed({
+          ...guard(crossing.value.record),
+          allBytesWritten: true,
+          flushAndFinConfirmed: true,
+        });
+        expect(result.ok).toBe(true);
+        if (!result.ok) continue;
+        terminalRecord = result.value;
+      }
+
+      expect(
+        errorCode(await instance.confirmNotCrossed({
+          executionPermit: {
+            printJobId: terminalRecord.printJobId,
+            executionId: terminalRecord.executionId,
+            stateVersion: terminalRecord.stateVersion,
+          },
+          zeroBytesSent: true,
+        })),
+      ).toBe("LEDGER_ILLEGAL_TRANSITION");
+      expect(await instance.get(terminalRecord.printJobId)).toMatchObject({
+        ok: true,
+        value: { found: true, record: { state: terminal } },
+      });
+    }
+  });
+
+  it("serializes competing zero-byte completion actors without opening a duplicate window", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const created = await instance.accept(input());
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const crossing = await instance.beginCrossing(guard(created.value.record));
+    expect(crossing.ok).toBe(true);
+    if (!crossing.ok) return;
+    const proof = { executionPermit: crossing.value.executionPermit, zeroBytesSent: true as const };
+
+    const [first, second] = await Promise.all([
+      instance.confirmNotCrossed(proof),
+      instance.confirmNotCrossed(proof),
+    ]);
+    expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
+    expect(errorCode(first.ok ? second : first)).toBe("LEDGER_STALE_GUARD");
+    expect(await instance.get(created.value.record.printJobId)).toMatchObject({
+      ok: true,
+      value: { found: true, record: { state: "FAILED_NOT_CROSSED", attemptCount: 1 } },
+    });
+  });
+
+  it("persists post-barrier zero-byte completion across restart", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const created = await instance.accept(input());
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const crossing = await instance.beginCrossing(guard(created.value.record));
+    expect(crossing.ok).toBe(true);
+    if (!crossing.ok) return;
+    expect((await instance.confirmNotCrossed({
+      executionPermit: crossing.value.executionPermit,
+      zeroBytesSent: true,
+    })).ok).toBe(true);
+    expect((await instance.close()).ok).toBe(true);
+
+    const reopened = await openLedger(root);
+    expect(await reopened.get(created.value.record.printJobId)).toMatchObject({
+      ok: true,
+      value: {
+        found: true,
+        record: { state: "FAILED_NOT_CROSSED", zeroBytesSent: true, physicalCompletionKnown: false },
+      },
+    });
+
+    expect(
+      errorCode(await reopened.confirmNotCrossed({
+        executionPermit: crossing.value.executionPermit,
+        zeroBytesSent: true,
+      })),
+    ).toBe("LEDGER_STALE_GUARD");
+  });
+
+  it("keeps the old permit stale after an explicit retry creates a new execution", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const created = await instance.accept(input());
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const crossing = await instance.beginCrossing(guard(created.value.record));
+    expect(crossing.ok).toBe(true);
+    if (!crossing.ok) return;
+    const failed = await instance.confirmNotCrossed({
+      executionPermit: crossing.value.executionPermit,
+      zeroBytesSent: true,
+    });
+    expect(failed.ok).toBe(true);
+    if (!failed.ok) return;
+
+    const retried = await instance.retryFailedNotCrossed(guard(failed.value));
+    expect(retried.ok).toBe(true);
+    if (!retried.ok) return;
+    expect(retried.value.executionId).not.toBe(crossing.value.executionPermit.executionId);
+    expect(retried.value.attemptCount).toBe(2);
+    expect(
+      errorCode(await instance.confirmNotCrossed({
+        executionPermit: crossing.value.executionPermit,
+        zeroBytesSent: true,
+      })),
+    ).toBe("LEDGER_STALE_GUARD");
+    expect(await instance.get(retried.value.printJobId)).toMatchObject({
+      ok: true,
+      value: { found: true, record: { state: "NOT_CROSSED", attemptCount: 2 } },
+    });
+  });
+
+  it("blocks a second ledger instance while the crossing owner holds the file lock", async () => {
+    const root = await makeRoot();
+    const owner = await openLedger(root);
+    const created = await owner.accept(input());
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const crossing = await owner.beginCrossing(guard(created.value.record));
+    expect(crossing.ok).toBe(true);
+    if (!crossing.ok) return;
+
+    const competing = ledger(root);
+    expect(errorCode(await competing.open())).toBe("LEDGER_BUSY");
+    expect((await owner.confirmNotCrossed({
+      executionPermit: crossing.value.executionPermit,
+      zeroBytesSent: true,
+    })).ok).toBe(true);
+  });
+
   it("rejects expired execution while still accepting an expired dedupe record", async () => {
     const root = await makeRoot();
     let current = new Date(fixedCreatedAt);
@@ -392,6 +650,15 @@ describe("ExecutionLedger state machine", () => {
     expect(errorCode(await instance.retryFailedNotCrossed(guard(cancelled.value)))).toBe(
       "LEDGER_ILLEGAL_TRANSITION",
     );
+  });
+
+  it("rejects execution when expiresAt equals the current instant", async () => {
+    const root = await makeRoot();
+    const instance = await openLedger(root);
+    const created = await instance.accept({ ...input(), expiresAt: "2026-01-01T00:00:00.000Z" });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(errorCode(await instance.beginCrossing(guard(created.value.record)))).toBe("LEDGER_EXPIRED");
   });
 
   it("serializes same-guard beginCrossing and preserves the UNKNOWN decision", async () => {
@@ -502,6 +769,33 @@ describe("ExecutionLedger durability and platform contracts", () => {
     await instance.close();
     return { root, record: result.value.record };
   }
+
+  it("keeps UNKNOWN durable when zero-byte completion cannot be persisted", async () => {
+    const root = await makeRoot();
+    const owner = await openLedger(root);
+    const created = await owner.accept(input());
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const crossing = await owner.beginCrossing(guard(created.value.record));
+    expect(crossing.ok).toBe(true);
+    if (!crossing.ok) return;
+    expect((await owner.close()).ok).toBe(true);
+
+    const fileSystem = new FaultInjectingFileSystem(root);
+    const resumed = await openLedger(root, { fileSystem });
+    fileSystem.failure = "temp-sync";
+    expect(errorCode(await resumed.confirmNotCrossed({
+      executionPermit: crossing.value.executionPermit,
+      zeroBytesSent: true,
+    }))).toBe("LEDGER_DURABILITY_FAILURE");
+    expect((await resumed.close()).ok).toBe(true);
+
+    const reopened = await openLedger(root);
+    expect(await reopened.get(created.value.record.printJobId)).toMatchObject({
+      ok: true,
+      value: { found: true, record: { state: "CROSSING_UNKNOWN" } },
+    });
+  });
 
   it("keeps the old disk fact when failure occurs before rename", async () => {
     const { root, record } = await acceptedRoot();
@@ -834,6 +1128,56 @@ describe("ExecutionLedger corruption and locks", () => {
     const third = ledger(root);
     expect(errorCode(await third.open())).toBe("LEDGER_UNUSABLE");
     expect(await readFile(lockPath, "utf8")).toBe("unknown-lock");
+  });
+
+  it("recovers a dead-process lock only with explicit death and exclusive-recovery proof", async () => {
+    const root = await makeRoot();
+    const original = await openLedger(root, { processId: 101 });
+    const accepted = await original.accept(input());
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) return;
+    const crossing = await original.beginCrossing(guard(accepted.value.record));
+    expect(crossing.ok).toBe(true);
+    expect((await original.close()).ok).toBe(true);
+    const lockPath = path.join(root, ".execution-ledger.lock");
+    await writeFile(lockPath, JSON.stringify({
+      lockSchemaVersion: 1,
+      ownerToken: "00000000-0000-4000-8000-000000000101",
+      createdAt: fixedCreatedAt,
+      processId: 101,
+    }), "utf8");
+
+    for (const proof of [false, "UNKNOWN"] as const) {
+      const blocked = ledger(root, {
+        processId: 202,
+        staleLockRecovery: {
+          hasExclusiveRecoveryAuthority: () => true,
+          proveProcessDead: async () => proof,
+        },
+      });
+      expect(errorCode(await blocked.open())).toBe("LEDGER_BUSY");
+    }
+    const noExclusiveProof = ledger(root, {
+      processId: 202,
+      staleLockRecovery: {
+        hasExclusiveRecoveryAuthority: () => false,
+        proveProcessDead: async () => true,
+      },
+    });
+    expect(errorCode(await noExclusiveProof.open())).toBe("LEDGER_BUSY");
+
+    const recovered = await openLedger(root, {
+      processId: 202,
+      staleLockRecovery: {
+        hasExclusiveRecoveryAuthority: () => true,
+        proveProcessDead: async (processId) => processId === 101,
+      },
+    });
+    expect(await recovered.get("job-1")).toMatchObject({
+      ok: true,
+      value: { found: true, record: { state: "CROSSING_UNKNOWN" } },
+    });
+    expect((await recovered.close()).ok).toBe(true);
   });
 
   it("does not release a lock whose ownership can no longer be confirmed", async () => {
