@@ -450,12 +450,11 @@ async function main() {
   })
 
   await test('the cashier page remains byte-identical to its latest exact governance approval', () => {
-    // ES-PRINT-KITCHEN-ITEM-ROUTING-01: Founder approved these exact Cashier bytes
-    // and registered them in the ACTIVE PRE_COMMIT_CONTENT_SHA256 exception.
-    // This updates only the latest-byte regression target; historical approvals remain unchanged.
+    // ES-PRINT-LOCAL-FIRST-SHARED-CORE-01: Founder approved these exact final
+    // Cashier candidate bytes and the trusted Scope Guard authorization was closed on main.
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      'd6b715c7270284cb85119de3e0ae08458f0954d431f4a6ef06d0fcca34a906c0',
+      'cf1cf0b3632065bd39c85293fb823a82e4e08d91cc5a6bff32b7aba4091474f4',
     )
   })
 
