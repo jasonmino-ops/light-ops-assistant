@@ -8,10 +8,14 @@ describe('V3PrintJobClient durable HELD admission', () => {
   }
 
   it.each(['DURABLY_HELD', 'DURABLY_ACCEPTED'] as const)('accepts only explicit server durability status %s', async (status) => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true, status }), { status: 200 }))
+    let requestBody = ''
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      requestBody = String(init?.body)
+      return new Response(JSON.stringify({ ok: true, status }), { status: 200 })
+    })
     const client = new V3PrintJobClient('https://example.test', 'token', fetchImpl)
     await expect(client.holdLocal(input)).resolves.toBe(status)
-    const body = JSON.parse(String(fetchImpl.mock.calls[0][1].body))
+    const body = JSON.parse(requestBody)
     expect(body).toMatchObject({ action: 'HOLD_LOCAL', orderNo: 'ORDER-001', printJobId: 'network:canonical-001', role: 'FRONT' })
     expect(body).not.toHaveProperty('host')
     expect(body).not.toHaveProperty('port')
