@@ -15,7 +15,7 @@
   "authorizedPathSha256": {
     "prisma/schema.prisma": "846e6e3768a72d83abdeaf2b183efb8596299d4ed34079261c45d66775df42bd",
     "prisma/migrations/20260923022000_add_v3_print_control_plane/migration.sql": "c30b41d30225706b8259d9f84890dab0b30b0089ebf0701b172449b81eaa383f",
-    "app/cashier/page.tsx": "ba7310e9661df858e5f8d6359aa2ffdb1889a62e3501089dd477341b5461eb12"
+    "app/cashier/page.tsx": "cf1cf0b3632065bd39c85293fb823a82e4e08d91cc5a6bff32b7aba4091474f4"
   },
   "createdAt": "2026-09-23T02:20:00.000Z",
   "approvedAt": "2026-09-23T02:20:00.000Z",
@@ -44,7 +44,7 @@
         "app/cashier/page.tsx"
       ],
       "authorizedPathSha256": {
-        "app/cashier/page.tsx": "ba7310e9661df858e5f8d6359aa2ffdb1889a62e3501089dd477341b5461eb12"
+        "app/cashier/page.tsx": "cf1cf0b3632065bd39c85293fb823a82e4e08d91cc5a6bff32b7aba4091474f4"
       },
       "purpose": "V3 Local-first real caller wiring only: stable order/role canonical printJobId, existing rendered bytes through the bounded V3 IPC, V2_ACTIVE fallback preserved, FRONT/KITCHEN kept separate.",
       "prohibited": "No wildcard, UI, cashier UX, order, payment, product, V2 print implementation, remote/H5 business logic, endpoint/owner/lease/batch injection, Production action, installer or FIELD change.",
@@ -72,6 +72,14 @@
           "approvedBy": "Founder",
           "approvalSource": "Explicit Founder Decision: APPROVED — NARROW CASHIER HELD CONTRACT RESEAL for ES-PRINT-LOCAL-FIRST-SHARED-CORE-01.",
           "reason": "Exact Cashier reseal solely for V3 admission semantics: only explicit durable HELD/accepted execution outcomes count as V3 takeover; pre-effect MODE_BLOCKED, AUTHORITY_REJECTED, REJECTED, runtime-unavailable or equivalent rejection cannot silently consume an intent. Missing orderNo, V2 behavior, post-effect fail-closed rules, UI and business behavior remain unchanged."
+        },
+        {
+          "previousSha256": "ba7310e9661df858e5f8d6359aa2ffdb1889a62e3501089dd477341b5461eb12",
+          "finalSha256": "cf1cf0b3632065bd39c85293fb823a82e4e08d91cc5a6bff32b7aba4091474f4",
+          "approvedAt": "2026-09-23T10:02:00.000Z",
+          "approvedBy": "Founder",
+          "approvalSource": "Founder-authorized P0/P1 remediation under APPROVED — NARROW CASHIER HELD CONTRACT RESEAL for ES-PRINT-LOCAL-FIRST-SHARED-CORE-01.",
+          "reason": "Corrective exact reseal within the same sole HELD/admission purpose after independent review: Cashier consumes an intent only from Main's explicit DURABLY_ACCEPTED admission fact, never by inferring admission from execution outcome strings; per-role pre-admission throws preserve the existing safe role-specific fallback. No post-effect fallback, UI, business, identity or V2 semantic change."
         }
       ]
     }
