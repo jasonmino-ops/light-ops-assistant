@@ -6,9 +6,10 @@
 
 - Task: `ES-PRINT-LOCAL-FIRST-SHARED-CORE-01`
 - Baseline: `origin/main@b47380af8c091cfea23ba4fcceeb9d39bc8e991f`
-- Implementation candidate: `c41447eebffeda6cbd58b06fc091d7ff34035161`
+- Implementation candidate: `b936b5e4c5616859c58de3762474ab8cc3356ea3`
 - Governance proposal: `5ddf0d0ef80e18cff35e784f86183997c92d1394`
 - Authorized candidate lineage: the final clean descendant that changes this proposal to `ACTIVE` without changing product or test behavior
+- Current validation lineage: candidate `d44375c` against governance-only `origin/main@cd185b8`; the authorized failure baseline remains `b47380a` and was not replaced by the newer merge-base
 - Test file: `desktop/tests/release-foundation.test.ts`
 - Candidate aggregate: 295 PASS / 2 FAIL / 1 SKIP
 - New aggregate regression failures: 0
@@ -26,6 +27,8 @@
 ## Baseline evidence and causality
 
 Both exact test names and material signatures reproduce in an isolated clean checkout of `origin/main@b47380af8c091cfea23ba4fcceeb9d39bc8e991f`. The candidate reproduces exactly those two failures and no additional aggregate failure.
+
+After the Founder-approved Cashier HELD reseal entered `origin/main`, the final candidate aggregate was rerun at `d44375c`: the same two names and signatures remained exact/equivalent, the count remained two, and new regression remained zero. The intervening `origin/main` commits only reseal this task's exact Cashier content authorization; they do not modify or repair the other task's source-acceptance exception. This is revalidation of the original authorized baseline exception, not a new or broadened baseline.
 
 The failures concern another task's trusted source-acceptance exception. The V3 candidate does not modify that task's exception record. Candidate changes to release-foundation are limited to exact immutable successor snapshot alignment required by this V3 candidate; they do not cause or suppress the failing task-specific exception lookup. This proposal therefore records baseline equivalence, not test success.
 
