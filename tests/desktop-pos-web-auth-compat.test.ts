@@ -124,6 +124,13 @@ async function waitForCashier(page: Page) {
   })
 }
 
+async function waitForBrowserCashier(page: Page) {
+  await page.getByRole('button', { name: /完成销售/ }).waitFor({
+    state: 'visible',
+    timeout: 30_000,
+  })
+}
+
 async function waitForDeviceAuthorization(page: Page) {
   await page.getByRole('heading', { name: '本机尚未授权为收银机' }).waitFor({
     state: 'visible',
@@ -282,8 +289,9 @@ async function main() {
           waitUntil: 'domcontentloaded',
           timeout: 30_000,
         })
-        await waitForCashier(runtime.page)
+        await waitForBrowserCashier(runtime.page)
         assert.equal(await runtime.page.evaluate((key) => localStorage.getItem(key), tokenKey), 'offline-cached-token')
+        assert.equal(runtime.state.accessCount, 1)
         assert.equal(runtime.state.authorizationStartCount, 0)
       } finally {
         await runtime.context.close()
@@ -300,7 +308,7 @@ async function main() {
             waitUntil: 'domcontentloaded',
             timeout: 30_000,
           })
-          await waitForCashier(runtime.page)
+          await waitForBrowserCashier(runtime.page)
           assert.equal(runtime.state.accessCount, 1)
           assert.equal(runtime.state.authorizationStartCount, 0)
         } finally {
@@ -323,7 +331,7 @@ async function main() {
           waitUntil: 'domcontentloaded',
           timeout: 30_000,
         })
-        await waitForCashier(runtime.page)
+        await waitForBrowserCashier(runtime.page)
         assert.equal(await runtime.page.evaluate((key) => localStorage.getItem(key), tokenKey), 'browser-pos-token')
         assert.equal(runtime.state.accessHeaders[0]['x-pos-device-token'], 'browser-pos-token')
         assert.equal(runtime.state.authorizationStartCount, 0)
