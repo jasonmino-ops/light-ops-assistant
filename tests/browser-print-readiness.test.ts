@@ -102,12 +102,10 @@ class FakeWindow {
   }
 
   requestAnimationFrame(callback: FrameRequestCallback) {
-    const id = globalThis.setTimeout(() => {
-      this.frameCalls += 1
-      this.onFrame?.()
-      callback(Date.now())
-    }, 1)
-    return Number(id)
+    this.frameCalls += 1
+    this.onFrame?.()
+    callback(Date.now())
+    return this.frameCalls
   }
 
   setTimeout(callback: TimerHandler, delay?: number) {

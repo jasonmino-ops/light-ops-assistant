@@ -1,0 +1,15 @@
+TASK ES-PRINT-LOCAL-FIRST-SHARED-CORE-01
+PURPOSE KTF-20260912-01 deterministic harness recalibration
+BASE origin/main@1f54868deb55e19c9dbe3a9c059a6022b711a753
+COMMAND npx tsx tests/browser-print-readiness.test.ts
+RUN-01 browser print readiness tests passed (18 cases)
+RUN-02 browser print readiness tests passed (18 cases)
+RUN-03 browser print readiness tests passed (18 cases)
+RUN-04 browser print readiness tests passed (18 cases)
+RUN-05 browser print readiness tests passed (18 cases)
+RUN-06 browser print readiness tests passed (18 cases)
+RUN-07 browser print readiness tests passed (18 cases)
+RUN-08 browser print readiness tests passed (18 cases)
+RUN-09 browser print readiness tests passed (18 cases)
+RUN-10 browser print readiness tests passed (18 cases)
+RESULT 10/10 runs PASS; 180/180 cases PASS

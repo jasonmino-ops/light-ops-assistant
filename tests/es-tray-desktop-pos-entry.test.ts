@@ -104,10 +104,13 @@ test('the cloud client still fixes the target to the 前台 Windows queue', () =
   assert.match(relayClient, /target: \{ transport: 'windows-queue', queueName: RELAY_QUEUE_NAME \}/)
 })
 
-test('the cashier completion print path remains on its existing QZ/browser implementation', () => {
-  assert.match(cashier, /submitDesktopReceiptPrint\(/)
+test('the cashier completion path preserves its existing V2 QZ/browser fallback contract', () => {
+  const printHandler = sourceBetween(cashier, 'const handlePrintReceipt = useCallback', 'function closeSaleResultOverlay()')
+  const legacyPrint = sourceBetween(printHandler, 'const runLegacyPrint = () =>', 'void submitV3LocalTickets')
   assert.match(cashier, /handlePrintReceipt\(saleResult\.receipt, saleResult\.kitchenTicket\)/)
-  assert.doesNotMatch(cashier, /submitEshopTray02CloudPrint\(|renderTicketHtmlToEscPosRaw\(/)
+  assert.match(legacyPrint, /printDesktopReceipt\(receipt, lang/)
+  assert.match(printHandler, /submitDesktopReceiptPrint\(\{[\s\S]*legacyPrint: runLegacyPrint/)
+  assert.doesNotMatch(legacyPrint, /submitEshopTray02CloudPrint\(|renderTicketHtmlToEscPosRaw\(/)
 })
 
 test('the existing 补打小票 path remains unchanged outside the Desktop POS modal', () => {
