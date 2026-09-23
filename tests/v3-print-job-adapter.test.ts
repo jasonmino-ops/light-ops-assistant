@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { Prisma } from '@prisma/client'
-import { deliverV3PrintIntent, enqueueV3PrintIntent, reportV3Execution, type V3Intent } from '../lib/v3-print-job-adapter'
+import { deliverV3PrintIntent, enqueueHeldV3PrintIntent, enqueueV3PrintIntent, materializeHeldV3PrintIntents, reportV3Execution, type V3Intent } from '../lib/v3-print-job-adapter'
 import { canonicalV3PrintEffectKey } from '../lib/v3-print-identity'
 
 const now = new Date('2026-09-23T00:00:00.000Z')
@@ -13,7 +13,8 @@ const identity = { ...scope, deviceId: 'device-a', batchId: 'batch-a' }
 function intent(overrides: Partial<Extract<V3Intent, { payloadKind: 'RAW_BYTES' }>> = {}): V3Intent {
   const bytes = Buffer.from('receipt')
   return { schemaVersion: 3, printJobId: 'job-canonical-001', source: 'CLOUD_H5', role: 'FRONT', payloadKind: 'RAW_BYTES', rendererVersion: 'renderer-v3',
-    payloadBase64: bytes.toString('base64'), byteLength: bytes.length, payloadHash: createHash('sha256').update(bytes).digest('hex'), ...overrides }
+    payloadBase64: bytes.toString('base64'), byteLength: bytes.length, payloadHash: createHash('sha256').update(bytes).digest('hex'), ...overrides,
+    orderNo: overrides.orderNo ?? 'ORDER-001' }
 }
 function database() {
   const jobs: any[] = []
@@ -40,6 +41,7 @@ function database() {
       findUnique: async ({ where }: any) => jobs.find(job => job.tenantId === where.tenantId_storeId_idempotencyKey.tenantId &&
         job.storeId === where.tenantId_storeId_idempotencyKey.storeId && job.idempotencyKey === where.tenantId_storeId_idempotencyKey.idempotencyKey) ?? null,
       findFirst: async ({ where }: any) => jobs.filter(job => matches(job, where)).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0] ?? null,
+      findMany: async ({ where }: any) => jobs.filter(job => matches(job, where)),
       updateMany: async ({ where, data }: any) => {
         const selected = jobs.filter(job => matches(job, where))
         for (const job of selected) for (const [key, value] of Object.entries(data) as [string, any][]) job[key] = value && typeof value === 'object' && 'increment' in value ? job[key] + value.increment : value
@@ -64,6 +66,28 @@ test('delivery requires a live owner-scoped batch', async () => {
   const delivered = await deliverV3PrintIntent(db, identity, now)
   assert.equal(delivered.ok, true); assert.equal(delivered.ok && delivered.job?.printJobId, 'job-canonical-001')
   assert.equal(db.jobs[0].status, 'CLAIMED'); assert.equal(db.jobs[0].attemptCount, 1)
+})
+
+test('transition admission is durably HELD across restart and materializes only for final V3 mode', async () => {
+  const db = database()
+  await enqueueHeldV3PrintIntent(db, scope, intent(), expiresAt)
+  assert.equal(db.jobs[0].resultMessage, 'V3_DURABLY_HELD')
+  assert.equal((await deliverV3PrintIntent(db, identity, now)).job, null)
+  const restartedDb = { ...db, eshopTrayPrintJob: db.eshopTrayPrintJob }
+  assert.equal(await materializeHeldV3PrintIntents(restartedDb as any, scope, 'V3_ACTIVE', now), 1)
+  assert.equal(db.jobs[0].resultMessage, null)
+  assert.equal((await deliverV3PrintIntent(db, identity, now)).job?.printJobId, 'job-canonical-001')
+})
+
+test('final V2 mode materializes held local bytes into the existing schema-1 path', async () => {
+  const db = database()
+  await enqueueHeldV3PrintIntent(db, scope, intent({ source: 'LOCAL_DESKTOP', role: 'KITCHEN' }), expiresAt)
+  assert.equal(await materializeHeldV3PrintIntents(db, scope, 'V2_ACTIVE', now), 1)
+  assert.equal(db.jobs[0].schemaVersion, 1)
+  assert.equal(db.jobs[0].idempotencyKey, 'job-canonical-001')
+  assert.equal(db.jobs[0].payload.orderNo, 'ORDER-001')
+  assert.equal(db.jobs[0].payload.commandStream.data, Buffer.from('receipt').toString('base64'))
+  assert.equal(db.jobs[0].resultMessage, null)
 })
 
 test('restart redelivery is same-device same-epoch only', async () => {
@@ -150,9 +174,12 @@ test('canonical cashier identity is stable, role-specific, and rejects synthetic
 
 test('Cashier keeps the original path before V3 IPC when canonical order identity is unavailable', () => {
   const cashier = readFileSync(new URL('../app/cashier/page.tsx', import.meta.url), 'utf8')
-  assert.match(cashier, /const orderNo = receipt\.orderNo\s+if \(!bridge \|\| !window\.eshopDesktopRuntime\?\.isDesktop \|\| !orderNo\) return false/)
+  assert.match(cashier, /const orderNo = receipt\.orderNo\s+if \(!bridge \|\| !window\.eshopDesktopRuntime\?\.isDesktop \|\| !orderNo\) return 'NONE_ACCEPTED'/)
   assert.match(cashier, /canonicalV3PrintEffectKey\(orderNo, role\)/)
   assert.match(cashier, /bridge\.submit\(\{\s*orderNo,/)
   assert.doesNotMatch(cashier, /canonicalV3PrintEffectKey\((?:Date\.now|crypto\.randomUUID|Math\.random)/)
   assert.match(cashier, /if \(await submitV3LocalTickets[\s\S]*?\) return\s+if \(kind === 'receipt'\)/)
+  assert.match(cashier, /result\?\.status === 'HELD'/)
+  assert.match(cashier, /if \(!accepted\) break/)
+  assert.doesNotMatch(cashier, /if \(!v3Selected && result\?\.status === 'V2_FALLBACK_REQUIRED'\) return false/)
 })

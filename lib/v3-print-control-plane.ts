@@ -48,6 +48,12 @@ type Tx = {
   }
   desktopDevice: { findFirst(args: unknown): Promise<{ id: string } | null> }
   operationLog: { create(args: unknown): Promise<{ id: string }> }
+  eshopTrayPrintJob: {
+    findMany(args: unknown): Promise<any[]>
+    findUnique(args: unknown): Promise<any | null>
+    updateMany(args: unknown): Promise<{ count: number }>
+    create(args: unknown): Promise<any>
+  }
 }
 
 export type V3ControlPlaneDb = Tx & {
@@ -244,6 +250,10 @@ export async function transitionV3PrintMode(
       data: { mode: identity.nextMode, stateVersion: { increment: 1 }, handoffRequestedAt: identity.nextMode === 'BLOCKED_UNKNOWN' ? now : null },
     })
     if (result.count !== 1) return { ok: false, code: 'CONCURRENT_STATE_CHANGE' }
+    if (identity.nextMode === 'V2_ACTIVE' || identity.nextMode === 'V3_ACTIVE') {
+      const { materializeHeldV3PrintIntents } = await import('./v3-print-job-adapter')
+      await materializeHeldV3PrintIntents(tx as any, { tenantId: identity.tenantId, storeId: identity.storeId }, identity.nextMode, now)
+    }
     return { ok: true, value: { controlPlane: serializable(await readAfter(tx, identity.storeId)) } }
   })
 }

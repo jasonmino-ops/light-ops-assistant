@@ -36,6 +36,17 @@ export class V3PrintJobClient {
       return { ok: false }
     } catch { return { ok: false } }
   }
+  public async holdLocal(input: { orderNo: string; printJobId: string; role: PrinterRole; rendererVersion: string; expiresAt: string; payload: Uint8Array }): Promise<'DURABLY_HELD' | 'DURABLY_ACCEPTED' | null> {
+    try {
+      const bytes = Buffer.from(input.payload)
+      const response = await this.fetchImpl(`${this.baseUrl}/api/desktop/v3-print-jobs`, { method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'HOLD_LOCAL', orderNo: input.orderNo, printJobId: input.printJobId, role: input.role,
+          rendererVersion: input.rendererVersion, expiresAt: input.expiresAt, payloadBase64: bytes.toString('base64'), byteLength: bytes.length,
+          payloadHash: createHash('sha256').update(bytes).digest('hex') }) })
+      const body = record(await response.json().catch(() => null))
+      return response.ok && body?.ok === true && (body.status === 'DURABLY_HELD' || body.status === 'DURABLY_ACCEPTED') ? body.status : null
+    } catch { return null }
+  }
   public async report(entry: OutboxEntry): Promise<boolean> {
     try {
       const response = await this.fetchImpl(`${this.baseUrl}/api/desktop/v3-print-jobs`, { method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },

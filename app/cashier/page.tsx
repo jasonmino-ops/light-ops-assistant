@@ -161,6 +161,7 @@ type V3PrintingBridge = {
     payloadBase64: string
   }) => Promise<{ status?: string } | null>
 }
+type V3LocalAdmission = 'ALL_ACCEPTED' | 'NONE_ACCEPTED' | 'FRONT_ONLY'
 
 declare global {
   interface Window {
@@ -2305,11 +2306,11 @@ export default function CashierPage() {
     receipt: DesktopReceiptData,
     kitchenTicket: KitchenTicketData | undefined,
     roles: readonly V3PrintEffectRole[] = kitchenTicket ? ['FRONT', 'KITCHEN'] : ['FRONT'],
-  ): Promise<boolean> => {
+  ): Promise<V3LocalAdmission> => {
     const bridge = window.eshopV3Printing
     const orderNo = receipt.orderNo
-    if (!bridge || !window.eshopDesktopRuntime?.isDesktop || !orderNo) return false
-    let v3Selected = false
+    if (!bridge || !window.eshopDesktopRuntime?.isDesktop || !orderNo) return 'NONE_ACCEPTED'
+    const acceptedRoles: V3PrintEffectRole[] = []
     for (const role of roles) {
       const html = role === 'FRONT'
         ? renderDesktopReceiptHtml(receipt, lang)
@@ -2330,10 +2331,13 @@ export default function CashierPage() {
         expiresAt: v3PrintIntentExpiresAt(receipt.createdAt),
         payloadBase64: window.btoa(binary),
       })
-      if (!v3Selected && result?.status === 'V2_FALLBACK_REQUIRED') return false
-      v3Selected = true
+      const accepted = result?.status === 'HELD' || result?.status === 'CROSSED' || result?.status === 'FAILED_NOT_CROSSED' ||
+        result?.status === 'CROSSING_UNKNOWN' || result?.status === 'NOT_EXECUTED' || result?.status === 'EXECUTION_RECORDED_REPORT_PENDING'
+      if (!accepted) break
+      acceptedRoles.push(role)
     }
-    return v3Selected
+    if (acceptedRoles.length === roles.length) return 'ALL_ACCEPTED'
+    return acceptedRoles.length === 1 && acceptedRoles[0] === 'FRONT' ? 'FRONT_ONLY' : 'NONE_ACCEPTED'
   }, [lang])
 
   const submitRawTicket = useCallback(async (
@@ -2346,7 +2350,7 @@ export default function CashierPage() {
       orderNo: receipt.orderNo,
       createdAt: receipt.createdAt,
       items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
-    }) : undefined, kind === 'receipt' ? ['FRONT'] : ['KITCHEN'])) return
+    }) : undefined, kind === 'receipt' ? ['FRONT'] : ['KITCHEN']) === 'ALL_ACCEPTED') return
     if (kind === 'receipt') {
       await printCustomerReceiptViaQz(renderDesktopReceiptHtml(receipt, lang), undefined, undefined, readQzSigningStoreCode)
       return
@@ -2431,9 +2435,19 @@ export default function CashierPage() {
       }
     }
 
-    void submitV3LocalTickets(receipt, kitchenTicket).then((v3Selected) => {
-      if (v3Selected) {
+    void submitV3LocalTickets(receipt, kitchenTicket).then((admission) => {
+      if (admission === 'ALL_ACCEPTED') {
         finishReceiptPrintFlow()
+        return
+      }
+      if (admission === 'FRONT_ONLY' && kitchenTicket) {
+        try {
+          printKitchenTicket(kitchenTicket, lang, { onAfterPrint: finishReceiptPrintFlow })
+        } catch (err) {
+          console.warn('[kitchen-ticket] print window failed', err)
+          showToast('厨房单打印窗口未打开，交易已完成')
+          finishReceiptPrintFlow()
+        }
         return
       }
       // QZ Tray POC: only ever taken for a plain customer receipt (no kitchen

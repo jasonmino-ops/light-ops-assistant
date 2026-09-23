@@ -156,7 +156,7 @@ export async function enqueueRelayPrintJob(
     ? await v3db.v3PrintControlPlane.findUnique({ where: { storeId: scope.storeId }, select: { tenantId: true, mode: true } })
     : null
   if (controlPlane && controlPlane.tenantId !== scope.tenantId) throw new RelayServiceError('V3_CONTROL_PLANE_SCOPE_MISMATCH', 409)
-  if (controlPlane?.mode === 'V3_ACTIVE') {
+  if (controlPlane && controlPlane.mode !== 'V2_ACTIVE') {
     const adapter = await import('../v3-print-job-adapter')
     const expiresAt = 'profile' in request
       ? new Date((await import('../v3-print-identity')).v3PrintIntentExpiresAt(request.order.createdAt))
@@ -165,13 +165,14 @@ export async function enqueueRelayPrintJob(
       ? adapter.v3IntentFromNetworkRequest(request, 'CLOUD_H5')
       : {
           schemaVersion: 3 as const, printJobId: request.requestId, source: 'CLOUD_REMOTE_REPRINT' as const, role: 'FRONT' as const,
-          payloadKind: 'RAW_BYTES' as const, rendererVersion: request.relayVersion, payloadBase64: request.commandStream.data,
+          payloadKind: 'RAW_BYTES' as const, orderNo: request.orderNo, rendererVersion: request.relayVersion, payloadBase64: request.commandStream.data,
           byteLength: request.commandStream.byteLength, payloadHash: request.commandStream.sha256,
         }
-    const result = await adapter.enqueueV3PrintIntent(v3db, scope, intent, expiresAt)
+    const result = controlPlane.mode === 'V3_ACTIVE'
+      ? await adapter.enqueueV3PrintIntent(v3db, scope, intent, expiresAt)
+      : await adapter.enqueueHeldV3PrintIntent(v3db, scope, intent, expiresAt)
     return { created: result.created, job: serializeJob(result.job) }
   }
-  if (controlPlane && controlPlane.mode !== 'V2_ACTIVE') throw new RelayServiceError('PRINT_MODE_ADMISSION_CLOSED', 409)
   if ('profile' in request) {
     if (!tx) throw new RelayServiceError('NETWORK_SALE_TRANSACTION_REQUIRED', 500)
     const normalized = parseNetworkRequest(request)

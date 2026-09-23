@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { Prisma, type EshopTrayPrintJob } from '@prisma/client'
 import type { V3ControlPlaneDb } from './v3-print-control-plane'
 import { parseNetworkRequest, type NetworkRequest } from '../e-shop-tray/src/networkContract'
+import { ES_TRAY_QUEUE_NAME, ES_TRAY_RELAY_VERSION } from './es-tray-relay/config'
+import { hashPrintRequest, type EshopTrayPrintRequest } from './es-tray-relay/contract'
 
 export const V3_PRINT_JOB_SCHEMA = 3 as const
 export type V3PrintSource = 'LOCAL_DESKTOP' | 'CLOUD_H5' | 'CLOUD_THIRD_PARTY' | 'CLOUD_REMOTE_REPRINT'
@@ -9,7 +11,7 @@ export type V3PrintRole = 'FRONT' | 'KITCHEN'
 type V3IntentBase = {
   schemaVersion: 3; printJobId: string; source: V3PrintSource; role: V3PrintRole
 }
-export type V3Intent = V3IntentBase & ({ payloadKind: 'RAW_BYTES'; rendererVersion: string; payloadBase64: string; byteLength: number; payloadHash: string }
+export type V3Intent = V3IntentBase & ({ payloadKind: 'RAW_BYTES'; orderNo: string; rendererVersion: string; payloadBase64: string; byteLength: number; payloadHash: string }
   | { payloadKind: 'NETWORK_REQUEST'; rendererVersion: 'network-1'; networkRequest: NetworkRequest; payloadHash: string })
 
 type Db = V3ControlPlaneDb & {
@@ -49,7 +51,8 @@ function parse(value: unknown): V3Intent | null {
     (row.role !== 'FRONT' && row.role !== 'KITCHEN') || typeof row.rendererVersion !== 'string' || !row.rendererVersion ||
     typeof row.payloadHash !== 'string' || !/^[0-9a-f]{64}$/.test(row.payloadHash)) return null
   if (row.payloadKind === 'RAW_BYTES') {
-    if (Object.keys(row).sort().join(',') !== 'byteLength,payloadBase64,payloadHash,payloadKind,printJobId,rendererVersion,role,schemaVersion,source' ||
+    if (Object.keys(row).sort().join(',') !== 'byteLength,orderNo,payloadBase64,payloadHash,payloadKind,printJobId,rendererVersion,role,schemaVersion,source' ||
+      typeof row.orderNo !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(row.orderNo) ||
       typeof row.payloadBase64 !== 'string' || !Number.isInteger(row.byteLength) || Number(row.byteLength) < 1) return null
     const bytes = Buffer.from(row.payloadBase64, 'base64')
     return bytes.length === row.byteLength && bytes.toString('base64') === row.payloadBase64 && sha(bytes) === row.payloadHash ? row as unknown as V3Intent : null
@@ -62,6 +65,60 @@ function parse(value: unknown): V3Intent | null {
     } catch { return null }
   }
   return null
+}
+
+const HELD_MARKER = 'V3_DURABLY_HELD'
+
+export async function enqueueHeldV3PrintIntent(db: Db, scope: { tenantId: string; storeId: string }, intent: V3Intent, expiresAt: Date) {
+  const result = await enqueueV3PrintIntent(db, scope, intent, expiresAt)
+  if (!result.created) return result
+  const held = await db.eshopTrayPrintJob.updateMany({
+    where: { id: result.job.id, schemaVersion: 3, status: 'PENDING', completedAt: null },
+    data: { resultMessage: HELD_MARKER, nextAttemptAt: expiresAt },
+  })
+  if (held.count !== 1) throw new Error('V3_HELD_DURABILITY_RACE')
+  const job = await db.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: { ...scope, idempotencyKey: intent.printJobId } } })
+  if (!job) throw new Error('V3_HELD_DURABILITY_MISSING')
+  return { created: true, job }
+}
+
+export async function materializeHeldV3PrintIntents(
+  db: Db,
+  scope: { tenantId: string; storeId: string },
+  target: 'V2_ACTIVE' | 'V3_ACTIVE',
+  now: Date,
+) {
+  const jobs = await (db.eshopTrayPrintJob as any).findMany({ where: {
+    ...scope, schemaVersion: 3, status: 'PENDING', completedAt: null, resultMessage: HELD_MARKER,
+  } }) as EshopTrayPrintJob[]
+  for (const job of jobs) {
+    const intent = parse(job.payload)
+    if (!intent) throw new Error('V3_HELD_INTENT_CORRUPT')
+    if (target === 'V3_ACTIVE') {
+      const updated = await db.eshopTrayPrintJob.updateMany({ where: {
+        id: job.id, schemaVersion: 3, status: 'PENDING', completedAt: null, resultMessage: HELD_MARKER,
+      }, data: { resultMessage: null, nextAttemptAt: now } })
+      if (updated.count !== 1) throw new Error('V3_HELD_MATERIALIZATION_RACE')
+      continue
+    }
+    const payload: EshopTrayPrintRequest | NetworkRequest = intent.payloadKind === 'NETWORK_REQUEST'
+      ? intent.networkRequest
+      : {
+          relayVersion: ES_TRAY_RELAY_VERSION,
+          requestId: intent.printJobId,
+          orderNo: intent.orderNo,
+          documentName: `E-Shop ${intent.role}`,
+          target: { transport: 'windows-queue', queueName: ES_TRAY_QUEUE_NAME },
+          commandStream: { encoding: 'base64', byteLength: intent.byteLength, sha256: intent.payloadHash, data: intent.payloadBase64 },
+        }
+    const schemaVersion = intent.payloadKind === 'NETWORK_REQUEST' ? 2 : 1
+    const requestHash = intent.payloadKind === 'NETWORK_REQUEST' ? sha(JSON.stringify(payload)) : hashPrintRequest(payload as EshopTrayPrintRequest)
+    const updated = await db.eshopTrayPrintJob.updateMany({ where: {
+      id: job.id, schemaVersion: 3, status: 'PENDING', completedAt: null, resultMessage: HELD_MARKER,
+    }, data: { schemaVersion, payload: payload as unknown as Prisma.InputJsonValue, requestHash, resultMessage: null, nextAttemptAt: now } })
+    if (updated.count !== 1) throw new Error('V3_HELD_MATERIALIZATION_RACE')
+  }
+  return jobs.length
 }
 
 export function v3IntentFromNetworkRequest(request: NetworkRequest, source: Exclude<V3PrintSource, 'LOCAL_DESKTOP'>): V3Intent {

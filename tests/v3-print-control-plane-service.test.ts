@@ -59,6 +59,12 @@ function fakeDb(initial: Partial<any> = {}, options: { failAudit?: boolean } = {
       },
       findFirst: async ({ where }: any) => [...audits].reverse().find(row => Object.entries(where).every(([key, value]) => row[key] === value)) ?? null,
     },
+    eshopTrayPrintJob: {
+      findMany: async () => [],
+      findUnique: async () => null,
+      updateMany: async () => ({ count: 0 }),
+      create: async () => { throw new Error('UNEXPECTED_JOB_CREATE') },
+    },
   }
   const db: V3ControlPlaneDb = { ...tx, $transaction: async (operation: any) => {
     const beforePlane = structuredClone(plane)

@@ -40,7 +40,7 @@ function localPrintIntent(value: unknown) {
   const canonicalPrintJobId = `network:${createHash('sha256').update(canonicalKey).digest('hex')}`
   if (row.printJobId !== canonicalPrintJobId) return null
   return {
-    role: row.role as 'FRONT' | 'KITCHEN', payload: new Uint8Array(payload),
+    orderNo: row.orderNo, role: row.role as 'FRONT' | 'KITCHEN', payload: new Uint8Array(payload),
     identity: { printJobId: row.printJobId, requestHash: createHash('sha256').update(payload).digest('hex'), rendererVersion: row.rendererVersion, expiresAt: row.expiresAt },
   }
 }
@@ -122,7 +122,7 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     const intent = localPrintIntent(payload)
     if (!intent) return { status: 'REJECTED', reason: 'INVALID_PRINT_INTENT' }
     const runtime = v3PrintingRuntimeProvider()
-    return runtime ? runtime.execute({ source: 'LOCAL_DESKTOP', ...intent }) : { status: 'REJECTED', reason: 'V3_RUNTIME_UNAVAILABLE' }
+    return runtime ? runtime.execute({ source: 'LOCAL_DESKTOP', ...intent }) : { status: 'V2_FALLBACK_REQUIRED', reason: 'V3_RUNTIME_UNAVAILABLE' }
   })
 
   updateHealth({ ipc: 'ok' }, 'ipc.registered')
