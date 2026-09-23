@@ -1,17 +1,20 @@
-# ES-PRINT-LOCAL-FIRST-SHARED-CORE-01 Final Candidate Aggregate Exception Proposal
+# ES-PRINT-LOCAL-FIRST-SHARED-CORE-01 Final Candidate Aggregate Exception
 
-> **Status: PROPOSED / NOT AUTHORIZED / NOT ACTIVE.** This record does not change the aggregate result to PASS or PASS WITH BASELINE EXCEPTION.
+> **Status: ACTIVE / FOUNDER AUTHORIZED.** This record authorizes only the two exact baseline-reproduced failures below. It does not state that either test passed.
 
 ## Exact scope
 
 - Task: `ES-PRINT-LOCAL-FIRST-SHARED-CORE-01`
 - Baseline: `origin/main@b47380af8c091cfea23ba4fcceeb9d39bc8e991f`
-- Candidate: `b194089`
+- Implementation candidate: `b194089`
+- Governance proposal: `5ddf0d0ef80e18cff35e784f86183997c92d1394`
+- Authorized candidate lineage: the final clean descendant that changes this proposal to `ACTIVE` without changing product or test behavior
 - Test file: `desktop/tests/release-foundation.test.ts`
 - Candidate aggregate: 290 PASS / 2 FAIL / 1 SKIP
 - New aggregate regression failures: 0
+- Authorized aggregate interpretation: `PASS WITH FINAL-CANDIDATE BASELINE EXCEPTION`
 
-## Exact proposed failures
+## Exact authorized failures
 
 1. `risk-based source acceptance policy > accepts the exact registered P2 source pilot without packaging`
    - Command targets task `ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION` at source commit `db56bb9035afd74c28d26df42a7f7de89843bbce`.
@@ -28,8 +31,8 @@ The failures concern another task's trusted source-acceptance exception. The V3 
 
 ## Automatic invalidation
 
-This proposal, if authorized, is valid only for the task, baseline, candidate lineage, two exact test names, and signatures above. It becomes invalid if the failure count increases, another test fails, either name/signature changes, baseline reproduction differs, the candidate modifies the other task's exception, `origin/main` fixes the failures, or the exception is used for another task/candidate.
+This exception is valid only for the task, baseline, authorized candidate lineage, two exact test names, and signatures above. It becomes invalid if the failure count increases, another test fails, either name/signature changes materially, baseline reproduction differs, new regression becomes non-zero, the candidate enters the same causal area or modifies the other task's exception, `origin/main` fixes the failures, or the exception is used for another task or milestone.
 
 ## Non-authorizations
 
-No test is skipped or weakened. This proposal does not authorize Production deployment, migration, activation, installer, FIELD, merge, release-foundation repair, or reuse of any prior aggregate exception.
+No test is skipped or weakened. This exception does not authorize Production deployment, migration, activation, installer, FIELD, merge, release-foundation repair, or reuse of any prior aggregate exception.
