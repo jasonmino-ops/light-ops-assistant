@@ -84,18 +84,23 @@ export class V3PrintingRuntime {
     const resolved = await this.endpoints.resolve(input.role)
     if (!resolved.ok && input.source === 'LOCAL_DESKTOP') return this.holdLocal(input)
     if (!resolved.ok) return { status: 'AUTHORITY_REJECTED' as const, mode: 'ADMISSION_CLOSED' as const, reason: resolved.code }
-    return this.coordinator.execute({
+    const result = await this.coordinator.execute({
       mode: 'V3_ACTIVE', source: input.source, role: input.role,
       authority: { batchId: batch.id, storeId: batch.storeId, deviceId: batch.ownerDeviceId, ownerEpoch: batch.ownerEpoch, leaseId: batch.leaseId, batchExpiresAt: batch.expiresAt },
       identity: input.identity, endpointKey: resolved.endpointKey, payload: input.payload,
     })
+    return result.status === 'V2_FALLBACK_REQUIRED' || result.status === 'MODE_BLOCKED' || result.status === 'AUTHORITY_REJECTED' || result.status === 'REJECTED'
+      ? result
+      : { ...result, admission: 'DURABLY_ACCEPTED' as const }
   }
 
   private async holdLocal(input: { source: PrintIntentSource; orderNo?: string; identity: SharedPrintIdentity; role: PrinterRole; payload: Uint8Array }) {
     if (!this.cloud || !input.orderNo) return { status: 'REJECTED' as const, reason: 'V3_DURABLE_ADMISSION_UNAVAILABLE' }
     const status = await this.cloud.holdLocal({ orderNo: input.orderNo, printJobId: input.identity.printJobId, role: input.role,
       rendererVersion: input.identity.rendererVersion, expiresAt: input.identity.expiresAt, payload: input.payload })
-    return status ? { status: 'HELD' as const, durability: status } : { status: 'REJECTED' as const, reason: 'V3_DURABLE_ADMISSION_REJECTED' }
+    return status
+      ? { status: 'HELD' as const, admission: 'DURABLY_ACCEPTED' as const, durability: status }
+      : { status: 'REJECTED' as const, reason: 'V3_DURABLE_ADMISSION_REJECTED' }
   }
 
   public provisionEndpoints(input: { revision: number; endpoints: Partial<Record<PrinterRole, LocalEndpoint>> }): Promise<void> {
