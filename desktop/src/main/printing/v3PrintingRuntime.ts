@@ -72,11 +72,8 @@ export class V3PrintingRuntime {
     )
     const authority = {
       canAdmit: (candidate: { batchId: string; storeId: string; deviceId: string; ownerEpoch: number; leaseId: string; batchExpiresAt: string }) => {
-        const snapshot = options.controlPlane.current()
-        const batch = snapshot.batch
-        const validation = options.controlPlane.validateExecution()
-        if (!validation.ok || !batch || candidate.batchId !== batch.id || candidate.storeId !== batch.storeId || candidate.deviceId !== batch.ownerDeviceId ||
-          candidate.ownerEpoch !== batch.ownerEpoch || candidate.leaseId !== batch.leaseId || candidate.batchExpiresAt !== batch.expiresAt) {
+        const validation = options.controlPlane.validateAdmittedExecution(candidate)
+        if (!validation.ok) {
           return { allowed: false as const, mode: 'FENCED' as const, reason: 'AUTHORITATIVE_CONTROL_PLANE_MISMATCH' }
         }
         return { allowed: true as const, mode: 'CONNECTED' as const }
@@ -107,7 +104,7 @@ export class V3PrintingRuntime {
     const resolved = await this.endpoints.resolve(input.role)
     if (!resolved.ok && input.source === 'LOCAL_DESKTOP') return this.holdLocal(input)
     if (!resolved.ok) return { status: 'AUTHORITY_REJECTED' as const, mode: 'ADMISSION_CLOSED' as const, reason: resolved.code }
-    const lifecycle = this.controlPlane.beginExecutionLifecycle()
+    const lifecycle = this.controlPlane.beginExecutionLifecycle(batch)
     if (!lifecycle.ok) {
       return { status: 'AUTHORITY_REJECTED' as const, mode: 'FENCED' as const, reason: lifecycle.error.code }
     }

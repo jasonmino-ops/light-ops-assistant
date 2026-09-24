@@ -2,6 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ControlPlaneProjection, ExecutionBatchProjection, V3ControlPlaneClient } from '../src/main/printing/controlPlaneClient'
+import { V3ControlPlaneRuntime } from '../src/main/printing/controlPlaneRuntime'
 import { createExecutionLedger } from '../src/main/printing/executionLedger'
 import { hasDurableCrossingUnknown, V3PrintingRuntime } from '../src/main/printing/v3PrintingRuntime'
 
@@ -28,7 +30,7 @@ function runtime(execute: () => Promise<any>) {
   const complete = vi.fn(async (_input: { releaseSafe: boolean }) => undefined)
   const controlPlane = {
     current: vi.fn(() => ({ status: 'V3_OWNER', controlPlane: { mode: 'V3_ACTIVE' }, batch })),
-    beginExecutionLifecycle: vi.fn(() => ({ ok: true as const, guard: { complete } })),
+    beginExecutionLifecycle: vi.fn((_batch: typeof batch) => ({ ok: true as const, guard: { complete } })),
   }
   const coordinator = { execute: vi.fn(execute) }
   const endpoints = { resolve: vi.fn(async () => ({ ok: true as const, endpointKey: '192.168.1.10:9100' })) }
@@ -65,9 +67,76 @@ describe('V3PrintingRuntime execution lifecycle', () => {
     const harness = runtime(async () => ({ status: 'CROSSED', record }))
 
     await expect(harness.instance.execute(input)).resolves.toEqual({ status: 'CROSSED', record, admission: 'DURABLY_ACCEPTED' })
-    expect(harness.controlPlane.beginExecutionLifecycle).toHaveBeenCalledTimes(1)
+    expect(harness.controlPlane.beginExecutionLifecycle).toHaveBeenCalledWith(batch)
     expect(harness.coordinator.execute).toHaveBeenCalledTimes(1)
     expect(harness.complete).toHaveBeenCalledWith({ releaseSafe: true })
+  })
+
+  it('keeps the exact admitted KITCHEN batch valid at second pre-effect validation across renewal', async () => {
+    const authorityN: ControlPlaneProjection = {
+      id: 'plane-a', tenantId: 'tenant-a', storeId: 'store-a', ownerDeviceId: 'device-a', ownerEpoch: 3,
+      leaseId: 'lease-a', leaseExpiresAt: batch.expiresAt, mode: 'V3_ACTIVE', stateVersion: 7,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }
+    const authorityN1 = { ...authorityN, stateVersion: 8, updatedAt: '2026-01-01T00:00:30.000Z' }
+    const projection = (controlPlane: ControlPlaneProjection, id: string): ExecutionBatchProjection => ({
+      ...batch, id, stateVersion: controlPlane.stateVersion,
+    })
+    const api = {
+      read: vi.fn(async () => ({ ok: true as const, controlPlane: authorityN })),
+      acquire: vi.fn(),
+      renew: vi.fn(async (controlPlane: ControlPlaneProjection) => ({ ok: true as const, controlPlane })),
+      release: vi.fn(async (controlPlane: ControlPlaneProjection) => ({ ok: true as const, controlPlane })),
+      issueBatch: vi.fn(async (controlPlane: ControlPlaneProjection) => ({
+        ok: true as const,
+        batch: projection(controlPlane, controlPlane.stateVersion === 7 ? 'batch-n' : 'batch-n-plus-1'),
+      })),
+    }
+    const controlPlane = new V3ControlPlaneRuntime(api as unknown as V3ControlPlaneClient, 'device-a', 60_000)
+    await controlPlane.start()
+    await controlPlane.markExecutionLifecycleReady()
+
+    let executionStarted!: () => void
+    let continueExecution!: () => void
+    const started = new Promise<void>((resolve) => { executionStarted = resolve })
+    const continueAfterRenewal = new Promise<void>((resolve) => { continueExecution = resolve })
+    const coordinator = { execute: vi.fn(async ({ authority }: any) => {
+      expect(controlPlane.validateAdmittedExecution(authority).ok).toBe(true)
+      executionStarted()
+      await continueAfterRenewal
+      expect(controlPlane.validateAdmittedExecution(authority).ok).toBe(true)
+      return { status: 'CROSSED', record: { state: 'CROSSED' } }
+    }) }
+    const instance = new (V3PrintingRuntime as any)(
+      {}, coordinator, controlPlane,
+      { resolve: vi.fn(async () => ({ ok: true as const, endpointKey: '192.168.1.11:9100' })) },
+      {}, null, 60_000, { dispose: vi.fn() },
+    ) as V3PrintingRuntime
+    const kitchenInput = {
+      ...input,
+      role: 'KITCHEN' as const,
+      identity: { ...input.identity, printJobId: 'job-kitchen-field-regression' },
+    }
+    const execution = instance.execute(kitchenInput)
+    await started
+
+    api.read.mockResolvedValueOnce({ ok: true, controlPlane: authorityN })
+    api.renew.mockResolvedValueOnce({ ok: true, controlPlane: authorityN1 })
+    await (controlPlane as any).reconcile()
+    expect(controlPlane.current().batch?.id).toBe('batch-n')
+
+    continueExecution()
+    await expect(execution).resolves.toMatchObject({ status: 'CROSSED', admission: 'DURABLY_ACCEPTED' })
+    expect(controlPlane.current().batch?.id).toBe('batch-n-plus-1')
+
+    await instance.execute({
+      ...kitchenInput,
+      identity: { ...kitchenInput.identity, printJobId: 'job-kitchen-after-renewal' },
+    })
+    expect(coordinator.execute).toHaveBeenLastCalledWith(expect.objectContaining({
+      authority: expect.objectContaining({ batchId: 'batch-n-plus-1' }),
+    }))
+    await controlPlane.stop()
   })
 
   it('does not signal completion until coordinator.execute has actually exited', async () => {
