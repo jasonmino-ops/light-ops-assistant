@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "lane": "CORE",
-  "expectedCount": 85,
+  "expectedCount": 86,
   "tests": [
     { "file": "tests/bd-ops-permission-closure.test.ts", "lane": "CORE", "reason": "Prisma delegate is replaced by an in-process test stub.", "dependencyType": "NONE", "evidence": "tests/bd-ops-permission-closure.test.ts:37-88" },
     { "file": "tests/browser-order-sync-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only.", "dependencyType": "NONE", "evidence": "tests/browser-order-sync-static.test.ts:16-27" },
@@ -87,6 +87,7 @@
     { "file": "tests/v2-invariance-service-regions.test.cjs", "lane": "CORE", "reason": "Repository source region-fingerprint and ordering inspection only.", "dependencyType": "NONE", "evidence": "tests/v2-invariance-service-regions.test.cjs:1-224" },
     { "file": "tests/v3-print-control-plane-contract.test.cjs", "lane": "CORE", "reason": "Repository schema, migration, and authority-boundary source inspection only.", "dependencyType": "NONE", "evidence": "tests/v3-print-control-plane-contract.test.cjs:1-37" },
     { "file": "tests/v3-print-control-plane-service.test.ts", "lane": "CORE", "reason": "Control-plane transactions use deterministic in-process database fakes.", "dependencyType": "NONE", "evidence": "tests/v3-print-control-plane-service.test.ts:1-142" },
-    { "file": "tests/v3-print-job-adapter.test.ts", "lane": "CORE", "reason": "Schema-3 adapter and canonical identity contracts use deterministic in-process database fakes and source assertions.", "dependencyType": "NONE", "evidence": "tests/v3-print-job-adapter.test.ts:1-118" }
+    { "file": "tests/v3-print-job-adapter.test.ts", "lane": "CORE", "reason": "Schema-3 adapter and canonical identity contracts use deterministic in-process database fakes and source assertions.", "dependencyType": "NONE", "evidence": "tests/v3-print-job-adapter.test.ts:1-118" },
+    { "file": "tests/v3-reprint-recovery.test.ts", "lane": "CORE", "reason": "V3 reprint identity, authorization, audit, UNKNOWN fencing, and Desktop-context behavior use deterministic in-process fakes.", "dependencyType": "NONE", "evidence": "tests/v3-reprint-recovery.test.ts:1-330" }
   ]
 }

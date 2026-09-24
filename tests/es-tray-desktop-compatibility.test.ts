@@ -262,7 +262,8 @@ async function main() {
     assert.match(orderSheet, /submitEshopTray02DeviceCloudPrint[\s\S]*submitEshopTray02CloudPrint/)
     assert.equal((orderSheet.match(/await submitPrint\(/g) ?? []).length, 1)
     assert.match(orderSheet, /\|\| printInFlightRef\.current[\s\S]*printInFlightRef\.current = true/)
-    assert.match(orderSheet, /const printDisabled = busy \|\| cloudRelayState === 'pending'/)
+    assert.match(orderSheet, /const printDisabled = busy \|\| cloudRelayState === 'pending' \|\| v3Reprint === null \|\|[\s\S]*!v3Reprint\.enabled && !v3Reprint\.legacyAllowed/)
+    assert.match(orderSheet, /else if \(v3Reprint\?\.legacyAllowed\) void handlePrint\(\)/)
   })
 
   await test('the existing cashier completion print path remains QZ/legacy', () => {
@@ -271,12 +272,14 @@ async function main() {
     assert.doesNotMatch(cashier, /eShopTrayCloudClient|\/api\/es-tray-02\/config|\/api\/es-tray-02\/print-jobs/)
   })
 
-  await test('the existing 补打小票 path remains DesktopReceipt browser print', () => {
+  await test('Desktop Records delegates intentional reprint to the V3-aware order detail', () => {
     const records = fs.readFileSync('app/records/page.tsx', 'utf8')
-    assert.match(records, /reprintLabel=.*'补打小票'/)
-    assert.match(records, /handleSaleRecordReprint/)
-    assert.match(records, /printDesktopReceipt\(/)
-    assert.doesNotMatch(records, /eShopTrayCloudClient|\/api\/es-tray-02\/config|\/api\/es-tray-02\/print-jobs/)
+    const orderSheet = fs.readFileSync('app/components/OrderDetailSheet.tsx', 'utf8')
+    assert.match(records, /<OrderDetailSheet[\s\S]*orderNo=\{selectedOrderNo\}/)
+    assert.match(records, /canonicalOrderNo: item\.orderNo/)
+    assert.doesNotMatch(records, /handleSaleRecordReprint|printDesktopReceipt|DesktopReceiptPreview/)
+    assert.match(orderSheet, /getOrCreateV3ReprintIntent/)
+    assert.match(orderSheet, /submitDeviceV3Reprint[\s\S]*submitAccountV3Reprint/)
   })
 
   await test('all supported locales contain the minimal Relay result messages', () => {

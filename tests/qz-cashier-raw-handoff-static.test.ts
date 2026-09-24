@@ -44,7 +44,7 @@ const autoPrintEffect = cashier.slice(
   cashier.indexOf('const receiptSnapshot = saleResult?.receipt', cashier.indexOf('useEffect(() =>', cashier.indexOf('const handlePrintReceipt'))),
   cashier.indexOf('useEffect(() =>', cashier.indexOf('const receiptSnapshot = saleResult?.receipt', cashier.indexOf('useEffect(() =>', cashier.indexOf('const handlePrintReceipt'))) + 1),
 )
-assert.match(autoPrintEffect, /if \(!isDesktopPos \|\| !autoPrint \|\| !receiptSnapshot\) return/, 'OFF must keep automatic printing disabled')
+assert.match(autoPrintEffect, /if \(!isDesktopPos \|\| !autoPrint \|\| !receiptSnapshot \|\|[\s\S]*saleResult\.v3Admission\.status !== 'V2_LEGACY'\)\) return/, 'OFF must keep automatic printing disabled and V3 admission must not enter the V2/QZ effect')
 assert.match(autoPrintEffect, /if \(qzRawBusinessActive\)/, 'RAW automatic printing must stay isolated to the RAW path')
 const automaticReceipt = "await handleControlledQzPrint('receipt', receiptSnapshot, kitchenTicket)"
 const kitchenGuard = 'if (kitchenTicket)'

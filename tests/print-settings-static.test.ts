@@ -17,7 +17,7 @@ assert.match(storeSettings, /data\.printKitchenTicket = body\.printKitchenTicket
 assert.match(cashierStore, /printKitchenTicket: true/, 'cashier bootstrap must receive the store setting')
 assert.match(cashier, /const \[isKitchenTicketEnabled, setIsKitchenTicketEnabled\] = useState\(false\)/, 'cashier must use a safe disabled default')
 assert.match(cashier, /setIsKitchenTicketEnabled\(d\.printKitchenTicket === true\)/, 'cashier must use the persisted store setting')
-assert.match(cashier, /kitchenTicket: receipt && isKitchenTicketEnabled/, 'customer receipts must remain independent from the kitchen toggle')
+assert.match(cashier, /const kitchenTicket = receipt && isKitchenTicketEnabled/, 'customer receipts must remain independent from the kitchen toggle')
 assert.match(dashboard, /printSettingsTitle/, 'dashboard store settings must expose a print settings section')
 assert.match(dashboard, /const STORE_CONFIG_OPEN_SESSION_KEY = 'dashboard:store-config-open'/, 'dashboard must scope the open state to the current browser session')
 assert.match(dashboard, /useLayoutEffect\(\(\) => \{[\s\S]*sessionStorage\.getItem\(STORE_CONFIG_OPEN_SESSION_KEY\)[\s\S]*setShowStoreConfig\(true\)/, 'dashboard must restore the open state before browser paint')
