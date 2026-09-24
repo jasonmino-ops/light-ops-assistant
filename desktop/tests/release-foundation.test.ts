@@ -12,7 +12,7 @@ const installer = `E-Shop-Desktop-Setup-${desktopVersion}.exe`
 const p2TaskId = 'ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION'
 const p2SourceCommit = 'db56bb9035afd74c28d26df42a7f7de89843bbce'
 const productionSha = 'b4ff8e1dfbc1f095811b247e63e2bdf04534f5a4'
-const nonAncestorProductionSha = 'eb671337a479d43b24dc6114bcbff82b06eccd65'
+const nonAncestorProductionSha = '3110af05a4e38b433bb4e1bd5b1bbea80dfe0ae6'
 
 function gitObjectAvailable(commit: string) {
   try {
