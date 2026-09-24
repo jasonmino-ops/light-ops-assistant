@@ -6,10 +6,10 @@
 
 - Task: `ES-PRINT-V3-OPS-ACTIVATION-01`
 - Exact baseline: `origin/main@c944c0c8b8407855d5ea9c67b5f953aa5a2c08b3`
-- Exact implementation candidate: `262177e35c6c9481795f206b330d83e167171e76`
+- Exact implementation candidate: `1d0cb2d3d826054d9513d6b8ec9d2e8e31883991`
 - Authorized candidate lineage: the product-byte-identical governance-only descendant that adds this record
 - Test file: `desktop/tests/release-foundation.test.ts`
-- Candidate aggregate: `310 PASS / 2 FAIL / 1 SKIP`
+- Candidate aggregate: `311 PASS / 2 FAIL / 1 SKIP`
 - New aggregate regression failures: `0`
 - Authorized aggregate interpretation: `PASS WITH EXACT CANDIDATE-SCOPED BASELINE EXCEPTION`
 
@@ -24,7 +24,7 @@
 
 ## Baseline reproduction evidence
 
-The two exact test names and material signatures above were reproduced by running `desktop/tests/release-foundation.test.ts` from an isolated clean worktree at exact baseline `c944c0c8b8407855d5ea9c67b5f953aa5a2c08b3`. The baseline result was `12 PASS / 2 FAIL / 1 SKIP` for that file. The complete Desktop aggregate at implementation candidate `262177e35c6c9481795f206b330d83e167171e76` reproduced exactly those same two failures and no additional failure.
+The two exact test names and material signatures above were reproduced by running `desktop/tests/release-foundation.test.ts` from an isolated clean worktree at exact baseline `c944c0c8b8407855d5ea9c67b5f953aa5a2c08b3`. The baseline result was `12 PASS / 2 FAIL / 1 SKIP` for that file. The complete Desktop aggregate at implementation candidate `1d0cb2d3d826054d9513d6b8ec9d2e8e31883991` reproduced exactly those same two failures and no additional failure.
 
 ## Causality exclusion
 
