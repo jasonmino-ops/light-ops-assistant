@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { getContext, type RequestContext } from '@/lib/context'
 import {
-  authenticateDeviceRelayPrincipal,
+  authenticateDeviceRelayRecoveryPrincipal,
   type DeviceRelayAuthResult,
 } from '@/lib/es-tray-relay/device-auth'
 import { relayError, relayJson } from '@/lib/es-tray-relay/http'
@@ -26,7 +26,7 @@ export type V3ReprintRouteDependencies = {
 
 const productionDependencies: V3ReprintRouteDependencies = {
   accountContext: getContext,
-  deviceContext: authenticateDeviceRelayPrincipal,
+  deviceContext: authenticateDeviceRelayRecoveryPrincipal,
   availability: readV3ReprintAvailability,
   enqueue: enqueueV3ManualReprint,
 }
@@ -84,11 +84,18 @@ export async function handleDeviceV3ReprintRequest(
     if (req.method === 'GET') return relayJson(await dependencies.availability(scope))
     if (req.method !== 'POST') return relayError('METHOD_NOT_ALLOWED', 405)
     const request = parseV3ReprintRequest(await req.json())
-    const result = await dependencies.enqueue(scope, {
-      kind: 'DESKTOP_DEVICE',
-      browserPosDeviceId: auth.context.browserPosDeviceId,
-      computerBindingId: auth.context.computerBindingId,
-    }, request)
+    const actor = auth.context.principal === 'DESKTOP_POS_DEVICE'
+      ? {
+        kind: 'DESKTOP_DEVICE' as const,
+        browserPosDeviceId: auth.context.browserPosDeviceId,
+        desktopDeviceId: auth.context.desktopDeviceId,
+      }
+      : {
+        kind: 'DESKTOP_DEVICE' as const,
+        browserPosDeviceId: auth.context.browserPosDeviceId,
+        computerBindingId: auth.context.computerBindingId,
+      }
+    const result = await dependencies.enqueue(scope, actor, request)
     return accepted(result)
   })
 }

@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import {
-  authenticateDeviceRelayPrincipal,
+  authenticateDeviceRelayRecoveryPrincipal,
   type DeviceRelayAuthResult,
   type DeviceRelayContext,
 } from './device-auth'
@@ -16,7 +16,7 @@ export type DeviceOrderRouteDependencies = {
 }
 
 const productionDependencies: DeviceOrderRouteDependencies = {
-  authenticate: authenticateDeviceRelayPrincipal,
+  authenticate: authenticateDeviceRelayRecoveryPrincipal,
   readOrder: readDeviceRelayOrderDetail,
 }
 

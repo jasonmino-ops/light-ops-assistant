@@ -261,6 +261,28 @@ async function main() {
     })
   })
 
+  await test('Desktop-issued device recovery derives its audit actor from the verified DesktopDevice', async () => {
+    let observed: unknown
+    const response = await handleDeviceV3ReprintRequest(request('/api/es-tray-02/device/v3-reprints', 'POST', input()), dependencies({
+      deviceContext: async () => ({
+        ok: true,
+        context: {
+          principal: 'DESKTOP_POS_DEVICE', browserPosDeviceId: 'browser-desktop-a', desktopDeviceId: 'desktop-device-a',
+          tenantId: 'tenant-a', storeId: 'store-a', storeCode: 'STORE-A', enabled: true, unavailableReason: null,
+        },
+      }),
+      enqueue: async (scope, actor, value) => {
+        observed = { scope, actor }
+        return { created: true, jobId: 'job-a', requestId: value.requestId, orderNo: value.orderNo, role: value.role }
+      },
+    }))
+    assert.equal(response.status, 202)
+    assert.deepEqual(observed, {
+      scope: { tenantId: 'tenant-a', storeId: 'store-a' },
+      actor: { kind: 'DESKTOP_DEVICE', browserPosDeviceId: 'browser-desktop-a', desktopDeviceId: 'desktop-device-a' },
+    })
+  })
+
   await test('Desktop records route is device-authenticated only with an explicit desktop store context', () => {
     const previous = (globalThis as any).window
     try {

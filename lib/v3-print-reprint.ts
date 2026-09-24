@@ -26,7 +26,16 @@ export type V3ReprintRequest = {
 
 export type V3ReprintActor =
   | { kind: 'ACCOUNT'; userId: string; role: 'OWNER' | 'STAFF' }
-  | { kind: 'DESKTOP_DEVICE'; browserPosDeviceId: string; computerBindingId: string }
+  | {
+    kind: 'DESKTOP_DEVICE'
+    browserPosDeviceId: string
+    computerBindingId: string
+  }
+  | {
+    kind: 'DESKTOP_DEVICE'
+    browserPosDeviceId: string
+    desktopDeviceId: string
+  }
 
 export class V3ReprintError extends Error {
   constructor(public readonly code: string, public readonly status: number) {
@@ -232,7 +241,9 @@ export async function enqueueV3ManualReprintWithDb(
             printJobId: request.requestId,
             actor: actor.kind === 'ACCOUNT'
               ? { kind: actor.kind, userId: actor.userId, role: actor.role }
-              : { kind: actor.kind, browserPosDeviceId: actor.browserPosDeviceId, computerBindingId: actor.computerBindingId },
+              : 'desktopDeviceId' in actor
+                ? { kind: actor.kind, browserPosDeviceId: actor.browserPosDeviceId, desktopDeviceId: actor.desktopDeviceId }
+                : { kind: actor.kind, browserPosDeviceId: actor.browserPosDeviceId, computerBindingId: actor.computerBindingId },
             confirmedAt: now.toISOString(),
           } as Prisma.InputJsonValue,
         } })

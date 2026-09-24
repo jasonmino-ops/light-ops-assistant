@@ -4,6 +4,7 @@ import { parsePrintRequest, type EshopTrayPrintRequest } from './contract'
 import { readRelayTimingConfig, type RelayTimingConfig } from './config'
 import {
   authenticateDeviceRelayPrincipal,
+  authenticateDeviceRelayRecoveryPrincipal,
   type DeviceRelayAuthResult,
   type DeviceRelayContext,
 } from './device-auth'
@@ -43,16 +44,25 @@ const productionDependencies: DeviceRelayRouteDependencies = {
   enqueue: enqueueRelayPrintJob,
 }
 
+const recoveryConfigDependencies: Pick<DeviceRelayRouteDependencies, 'authenticate'> = {
+  authenticate: authenticateDeviceRelayRecoveryPrincipal,
+}
+
 /**
  * Device-only Relay capability gate.
  *
- * `enabled` reports only that the delegated Browser POS session still maps to
- * an eligible ComputerBinding and active tenant/store. It does not report
- * Tray presence, queue health, printer connectivity, or physical output.
+ * `enabled` reports only that a ComputerBrowserLaunchTicket-backed Browser
+ * POS session still maps to an eligible ComputerBinding and active
+ * tenant/store. A directly-issued Desktop session may authenticate this
+ * read-only recovery endpoint, but it must never acquire the legacy relay
+ * enqueue capability through this config response.
+ *
+ * Neither result reports Tray presence, queue health, printer connectivity,
+ * or physical output.
  */
 export async function handleDeviceRelayConfigRequest(
   req: NextRequest,
-  dependencies: Pick<DeviceRelayRouteDependencies, 'authenticate'> = productionDependencies,
+  dependencies: Pick<DeviceRelayRouteDependencies, 'authenticate'> = recoveryConfigDependencies,
 ) {
   return withRelayApiError(async () => {
     const auth = await dependencies.authenticate(req)
@@ -61,7 +71,7 @@ export async function handleDeviceRelayConfigRequest(
     return relayJson({
       fieldOnly: true,
       productionContract: true,
-      enabled: auth.context.enabled,
+      enabled: auth.context.enabled && auth.context.principal === 'BROWSER_POS_DEVICE',
     })
   })
 }
