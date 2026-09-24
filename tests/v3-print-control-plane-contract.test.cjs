@@ -33,13 +33,16 @@ test('server writer rejects timeout promotion and requires explicit fenced write
   assert.match(source, /controlledV3OwnerHandoff/)
 })
 
-test('Desktop and Owner APIs keep authority roles separate', () => {
+test('Desktop and Owner APIs keep authority roles separate and retire raw OWNER mode writes', () => {
   const desktop = read('app/api/desktop/v3-print-control-plane/route.ts')
   const owner = read('app/api/owner/v3-print-control-plane/route.ts')
   assert.match(desktop, /getDesktopDeviceContext/)
   assert.doesNotMatch(desktop, /transitionV3PrintMode|controlledV3OwnerHandoff/)
   assert.match(owner, /ctx\.role !== 'OWNER'/)
-  assert.match(owner, /transitionV3PrintMode/)
+  assert.match(owner, /body\.action === 'SET_MODE'/)
+  assert.match(owner, /RAW_SET_MODE_RETIRED/)
+  assert.match(owner, /status: 409/)
+  assert.doesNotMatch(owner, /transitionV3PrintMode|V3_PRINT_MODES/)
   assert.match(owner, /controlledV3OwnerHandoff/)
 })
 
