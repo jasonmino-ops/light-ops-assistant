@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import { buildManagementHref, withManagementReturn } from '@/lib/management-navigation'
 
 type IconName =
   | 'receipt'
@@ -124,6 +125,14 @@ export default function ManagementPage() {
     })
     return `${path}?${params.toString()}`
   }
+  // ES-MANAGEMENT-CENTER-P5-01: newly integrated destinations return to this
+  // Management Center (Browser or Desktop context) instead of legacy targets.
+  const currentManagementHref = buildManagementHref({
+    fromDesktop: navigationContext.fromDesktop,
+    storeCode: navigationStoreCode,
+  })
+  const managedHref = (path: string) => withManagementReturn(path, currentManagementHref)
+  const showHomeReturn = !isDesktopSurface && !navigationContext.fromDesktop
 
   const groups: Group[] = [
     {
@@ -154,6 +163,8 @@ export default function ManagementPage() {
       accent: '#edf8f3',
       entries: [
         { href: '/members', label: t('management.memberManagement'), description: t('management.memberManagementDesc'), icon: 'user', ownerOnly: true },
+        { href: managedHref('/customers'), label: t('management.customers'), description: t('management.customersDesc'), icon: 'user', ownerOnly: true },
+        { href: managedHref('/campaign'), label: t('management.campaign'), description: t('management.campaignDesc'), icon: 'invite', ownerOnly: true },
       ],
     },
     {
@@ -165,6 +176,7 @@ export default function ManagementPage() {
         { href: '/my-stores', label: t('management.storeList'), description: t('management.storeListDesc'), icon: 'store', ownerOnly: true },
         { href: '/invite', label: t('management.staffInvite'), description: t('management.staffInviteDesc'), icon: 'invite', ownerOnly: true },
         { href: '/table-qrcodes', label: t('management.tableQrcodes'), description: t('management.tableQrcodesDesc'), icon: 'qrcode', ownerOnly: true },
+        { href: managedHref('/home/computer-client'), label: t('management.computerActivation'), description: t('management.computerActivationDesc'), icon: 'settings', ownerOnly: true },
       ],
     },
     {
@@ -175,6 +187,8 @@ export default function ManagementPage() {
       entries: [
         { href: '/settings#printing', label: t('management.settings'), description: t('management.settingsDesc'), icon: 'settings', ownerOnly: true },
         { action: 'printing', label: t('management.printConfig'), description: t('management.printConfigDesc'), icon: 'printer', desktopOnly: true },
+        // Existing read-only log page; navigation only, no status is read here.
+        { href: managedHref('/network-print/jobs'), label: t('management.printJobs'), description: t('management.printJobsDesc'), icon: 'receipt', ownerOnly: true },
         { href: '/contact', label: t('management.support'), description: t('management.supportDesc'), icon: 'help' },
       ],
     },
@@ -184,8 +198,8 @@ export default function ManagementPage() {
     <main style={styles.page}>
       <style>{responsiveStyles}</style>
       <div style={styles.shell}>
-        <header style={styles.header}>
-          <div style={styles.headerLeft}>
+        <header className="management-header" style={styles.header}>
+          <div className="management-header-left" style={styles.headerLeft}>
             <h1 style={styles.title}>{t('management.title')}</h1>
             <div style={styles.storeChip}>
               <span style={styles.storeChipIcon}><SemanticIcon name="store" size={16} /></span>
@@ -196,11 +210,16 @@ export default function ManagementPage() {
               )}
             </div>
           </div>
-          <div style={styles.headerActions}>
+          <div className="management-header-actions" style={styles.headerActions}>
             <span style={styles.rolePill}>
               <SemanticIcon name="user" size={14} />
               {isOwner ? t('management.ownerRole') : t('management.staffRole')}
             </span>
+            {showHomeReturn && (
+              <Link href="/home" style={styles.homeLink}>
+                {t('management.backToHome')}
+              </Link>
+            )}
             <Link href={cashierHref} style={styles.backLink}>
               <SemanticIcon name="receipt" size={16} />
               {t('management.backToCashier')}
@@ -318,6 +337,8 @@ const responsiveStyles = `
   @media (max-width: 640px) {
     .management-hub-grid { grid-template-columns: 1fr; }
     .management-system-group { grid-column: span 1; }
+    .management-header, .management-header-left, .management-header-actions { flex-wrap: wrap; }
+    .management-header-actions { flex-shrink: 1 !important; min-width: 0; }
   }
 `
 
@@ -373,6 +394,19 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#536174',
     fontSize: 12,
     fontWeight: 700,
+  },
+  homeLink: {
+    height: 36,
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0 14px',
+    border: '1px solid #e3e8f0',
+    borderRadius: 10,
+    background: '#fff',
+    color: '#155dcc',
+    fontSize: 13,
+    fontWeight: 700,
+    textDecoration: 'none',
   },
   backLink: {
     height: 36,

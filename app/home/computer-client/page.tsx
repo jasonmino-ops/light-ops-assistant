@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import { useManagementReturnHref } from '@/app/components/useManagementReturnHref'
 
 type PendingRequest = {
   requestId: string
@@ -49,6 +50,7 @@ function formatTime(iso: string | null) {
 export default function ComputerClientPage() {
   const router = useRouter()
   const { t } = useLocale()
+  const managementReturnHref = useManagementReturnHref()
   const { effectiveRole, storeCode } = useWorkMode()
 
   const [requests, setRequests] = useState<PendingRequest[]>([])
@@ -278,7 +280,7 @@ export default function ComputerClientPage() {
   return (
     <main style={s.page}>
       <div style={s.content}>
-        <Link href="/home" style={s.backLink}>
+        <Link href={managementReturnHref ?? '/home'} style={s.backLink}>
           ← {t('common.back')}
         </Link>
 

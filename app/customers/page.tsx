@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
+import { useManagementReturnHref } from '@/app/components/useManagementReturnHref'
+import { useLocale } from '@/app/components/LangProvider'
 
 type Customer = {
   telegramId: string
@@ -66,6 +68,8 @@ export default function CustomersPage() {
   const [batchIssueOpen, setBatchIssueOpen] = useState(false)
   const [toast, setToast]             = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const { tier } = useWorkMode()
+  const managementReturnHref = useManagementReturnHref()
+  const { t } = useLocale()
   const isFlagship = tier === 'MULTI_STORE'
 
   useEffect(() => {
@@ -121,7 +125,7 @@ export default function CustomersPage() {
     <div style={s.page}>
       {/* Header */}
       <div style={s.header}>
-        <Link href="/dashboard" style={s.back}>‹ 返回</Link>
+        <Link href={managementReturnHref ?? '/dashboard'} style={s.back}>‹ {managementReturnHref ? t('management.backToManagement') : '返回'}</Link>
         <span style={s.title}>顾客资产</span>
         <span style={{ width: 48 }} />
       </div>

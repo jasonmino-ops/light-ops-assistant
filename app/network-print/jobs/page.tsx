@@ -13,7 +13,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { useLocale } from '@/app/components/LangProvider'
+import { useManagementReturnHref } from '@/app/components/useManagementReturnHref'
 
 type RangeMode = 'TODAY' | '7D' | 'CUSTOM'
 
@@ -169,6 +172,8 @@ function shiftLocalDate(days: number) {
 }
 
 export default function NetworkPrintJobsPage() {
+  const { t } = useLocale()
+  const managementReturnHref = useManagementReturnHref()
   const [rangeMode, setRangeMode] = useState<RangeMode>('TODAY')
   const [dateFrom, setDateFrom] = useState(shiftLocalDate(-6))
   const [dateTo, setDateTo] = useState(localToday())
@@ -250,6 +255,9 @@ export default function NetworkPrintJobsPage() {
   return (
     <div style={s.page}>
       <header style={s.header}>
+        {managementReturnHref && (
+          <Link href={managementReturnHref} style={s.backLink}>← {t('management.backToManagement')}</Link>
+        )}
         <div style={s.kicker}>Network Print Observability · 只读</div>
         <h1 style={s.title}>网络打印任务查询</h1>
         <div style={s.subtitle}>
@@ -638,6 +646,7 @@ const TONE_COLOR: Record<'good' | 'bad' | 'warn' | 'unknown' | 'neutral', string
 const s: Record<string, React.CSSProperties> = {
   page: { padding: 16, background: '#f8fafc', minHeight: '100vh', color: '#0f172a', fontSize: 15, lineHeight: 1.6 },
   header: { marginBottom: 16 },
+  backLink: { display: 'inline-flex', alignItems: 'center', minHeight: 44, marginBottom: 4, color: '#155dcc', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
   kicker: { fontSize: 14, color: '#64748b', letterSpacing: 1 },
   title: { fontSize: 26, fontWeight: 700, margin: '4px 0' },
   subtitle: { fontSize: 14, color: '#475569' },

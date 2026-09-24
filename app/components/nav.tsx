@@ -13,6 +13,12 @@ const STAFF_TABS = [
   { href: '/products', labelKey: 'nav.products', icon: '📦' },
 ]
 
+// ES-MANAGEMENT-CENTER-P5-01: /products is an OWNER-only page route in
+// middleware (checked against the session role). A real STAFF session is
+// redirected to /home, so only an OWNER working in staff mode keeps the
+// read-only Products tab. Server permissions are unchanged.
+const REAL_STAFF_TABS = STAFF_TABS.filter((tab) => tab.href !== '/products')
+
 const OWNER_TABS = [
   { href: '/home',      labelKey: 'nav.home', icon: '🏠' },
   { href: '/sale',      labelKey: 'nav.sale', icon: '💰' },
@@ -26,7 +32,7 @@ const SHOW_PATHS = new Set(['/home', '/sale', '/records', '/products', '/invite'
 
 export default function BottomNav() {
   const pathname = usePathname()
-  const { effectiveRole } = useWorkMode()
+  const { effectiveRole, realRole } = useWorkMode()
   const { t } = useLocale()
   const [isStandalone, setIsStandalone] = useState(false)
 
@@ -45,7 +51,7 @@ export default function BottomNav() {
   if (!isStandalone) return null
   if (!SHOW_PATHS.has(pathname)) return null
 
-  const tabs = effectiveRole === 'OWNER' ? OWNER_TABS : STAFF_TABS
+  const tabs = effectiveRole === 'OWNER' ? OWNER_TABS : realRole === 'OWNER' ? STAFF_TABS : REAL_STAFF_TABS
 
   return (
     <nav style={s.nav} data-merchant-bottom-nav="true">
