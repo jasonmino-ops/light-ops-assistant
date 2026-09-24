@@ -12,6 +12,7 @@ const installer = `E-Shop-Desktop-Setup-${desktopVersion}.exe`
 const p2TaskId = 'ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION'
 const p2SourceCommit = 'db56bb9035afd74c28d26df42a7f7de89843bbce'
 const productionSha = 'b4ff8e1dfbc1f095811b247e63e2bdf04534f5a4'
+const nonAncestorProductionSha = 'eb671337a479d43b24dc6114bcbff82b06eccd65'
 
 function gitObjectAvailable(commit: string) {
   try {
@@ -95,7 +96,7 @@ describe('EP-MB3-07A release foundation policy', () => {
     expect(result.frozenBoundary.every((group: { status: string }) => group.status === 'PASS')).toBe(true)
   })
 
-  it('accepts only the exact authorized launch-context successor bytes', () => {
+  it('accepts only the exact authorized frozen-boundary successor bytes', () => {
     const output = runReleaseFoundation(['policy'])
     const result = JSON.parse(output)
     const authorized = result.frozenBoundary
@@ -109,7 +110,7 @@ describe('EP-MB3-07A release foundation policy', () => {
       { label: 'main startup gate', snapshot: 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494' },
       { label: 'WindowManager', snapshot: '17c764427f1e53288dedb82a1965b1365c1ded3d' },
       { label: 'Prisma', snapshot: 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494' },
-      { label: 'cashier/customer/mobile business', snapshot: 'b936b5e4c5616859c58de3762474ab8cc3356ea3' },
+      { label: 'cashier/customer/mobile business', snapshot: 'eb671337a479d43b24dc6114bcbff82b06eccd65' },
     ])
     expect(() => runReleaseFoundation([
       'policy',
@@ -209,8 +210,8 @@ describe('EP-MB3-07A release foundation policy', () => {
 })
 
 describe('risk-based source acceptance policy', () => {
-  it.skipIf(!gitObjectAvailable(p2SourceCommit) || !trustedRiskRegisterAvailable() || !trustedRiskRegisterMatchesWorkingTree())('accepts the exact registered P2 source pilot without packaging', () => {
-    const output = runReleaseFoundation([
+  it.skipIf(!gitObjectAvailable(p2SourceCommit) || !trustedRiskRegisterAvailable() || !trustedRiskRegisterMatchesWorkingTree())('rejects a historical P2 source pilot after its exact authorization is closed', () => {
+    expect(() => runReleaseFoundation([
       'source-policy',
       '--task-id',
       p2TaskId,
@@ -218,16 +219,7 @@ describe('risk-based source acceptance policy', () => {
       p2SourceCommit,
       '--production-sha',
       productionSha,
-    ])
-    const result = JSON.parse(output)
-    expect(result.mode).toBe('SOURCE_ACCEPTANCE')
-    expect(result.result).toBe('PASS')
-    expect(result.taskId).toBe(p2TaskId)
-    expect(result.fieldStatus).toBe('MILESTONE_FIELD_PENDING')
-    expect(result.milestoneTarget).toBe('P3-B Desktop Pilot')
-    expect(result.installerRequired).toBe(false)
-    expect(result.fieldVerified).toBe(false)
-    expect(result.productionReady).toBe(false)
+    ])).toThrow(/scope exception is not the exact active authorization/)
   })
 
   it('fails closed for an unregistered source task', () => {
@@ -254,7 +246,7 @@ describe('risk-based source acceptance policy', () => {
     ])).toThrow(/source commit does not match registered task/)
   })
 
-  it.skipIf(!trustedRiskRegisterAvailable() || !trustedRiskRegisterMatchesWorkingTree())('fails closed when the source commit is not descended from the trusted baseline', () => {
+  it.skipIf(!trustedRiskRegisterAvailable() || !trustedRiskRegisterMatchesWorkingTree())('fails closed when the declared Production SHA is outside current main lineage', () => {
     expect(() => runReleaseFoundation([
       'source-policy',
       '--task-id',
@@ -262,7 +254,7 @@ describe('risk-based source acceptance policy', () => {
       '--source-commit',
       p2SourceCommit,
       '--production-sha',
-      p2SourceCommit,
+      nonAncestorProductionSha,
     ])).toThrow(/Production SHA is not an ancestor/)
   })
 
