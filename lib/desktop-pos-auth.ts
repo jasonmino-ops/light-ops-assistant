@@ -327,3 +327,25 @@ async function authorizationForDevice(
     source: 'DEVICE',
   }
 }
+
+export type DesktopPosDeviceAuthority =
+  | { ok: true; payload: PosDeviceTokenPayload; authorization: DesktopPosAuthorization }
+  | { ok: false; reason: 'POS_SESSION_INVALID' | 'OWNER_NOT_FOUND' }
+
+/**
+ * ES-DESKTOP-OWNER-WEB-SESSION-01: device-only composition of the existing
+ * managed POS device verification and the existing device → store OWNER
+ * authority. It never consults account cookies, the Desktop operator
+ * boundary, or any storeCode fallback. Existing authorization semantics are
+ * unchanged; this only exposes the two existing steps together.
+ */
+export async function authorizeDesktopPosDevice(
+  req: NextRequest,
+  expected: DesktopPosStoreScope,
+): Promise<DesktopPosDeviceAuthority> {
+  const payload = await verifyPosDeviceRequest(req, expected, { ignoreOperatorBoundary: true })
+  if (!payload) return { ok: false, reason: 'POS_SESSION_INVALID' }
+  const authorization = await authorizationForDevice(expected, payload)
+  if (!authorization) return { ok: false, reason: 'OWNER_NOT_FOUND' }
+  return { ok: true, payload, authorization }
+}
