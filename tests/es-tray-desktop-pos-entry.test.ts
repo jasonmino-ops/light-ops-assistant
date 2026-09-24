@@ -33,9 +33,13 @@ test('the Desktop sales-record list remains sourced from the scoped records API'
   assert.match(openRecords, /headers: posDeviceHeaders\(storeCode\)/)
 })
 
-test('the sales-record row keeps the server order number as the detail identity', () => {
+test('the sales-record row keeps orderNo distinct from its display record number', () => {
   const rowProjection = sourceBetween(cashier, 'const desktopRecordRows = (() =>', '// 待收款挂单')
-  assert.match(rowProjection, /orderNo: item\.orderNo \|\| item\.recordNo/)
+  assert.match(rowProjection, /orderNo: string \| null/)
+  assert.match(rowProjection, /displayNo: string/)
+  assert.match(rowProjection, /orderNo: item\.orderNo,/)
+  assert.match(rowProjection, /displayNo: key,/)
+  assert.doesNotMatch(rowProjection, /orderNo: item\.orderNo \|\| item\.recordNo/)
 })
 
 test('CashierPage reuses OrderDetailSheet instead of defining a second Relay client', () => {
@@ -51,6 +55,7 @@ test('one Desktop record click opens the reused detail with that row order numbe
   const recordList = sourceBetween(cashier, '{desktopRecordRows.map((row) =>', '{/* ── Sale success overlay')
   assert.match(recordList, /onClick=\{\(\) => \{[\s\S]*setSelectedDesktopRecordOrderNo\(row\.orderNo\)[\s\S]*\}\}/)
   assert.equal((recordList.match(/setSelectedDesktopRecordOrderNo\(row\.orderNo\)/g) ?? []).length, 1)
+  assert.match(recordList, /!row\.orderNo[\s\S]*缺少原始订单号，无法查看订单详情或补打/)
 })
 
 test('the reused detail is mounted only for the Desktop POS path', () => {
@@ -67,14 +72,25 @@ test('opening the Desktop records panel resets any prior selected detail', () =>
 })
 
 test('OrderDetailSheet selects the reviewed OWNER or device config gate when an order opens', () => {
-  assert.match(orderDetail, /const readEnableState = isDesktopPosDeviceRuntime\(\)/)
+  assert.match(orderDetail, /const deviceRuntime = isDesktopPosDeviceRuntime\(\)/)
+  assert.match(orderDetail, /const readEnableState = deviceRuntime/)
   assert.match(orderDetail, /readEshopTray02DeviceCloudEnableState[\s\S]*readEshopTray02CloudEnableState/)
-  assert.match(orderDetail, /void readEnableState\(\)\.then/)
+  assert.match(orderDetail, /Promise\.all\(\[readEnableState\(\), readReprint\(\)\]\)/)
 })
 
 test('a disabled or failed config gate preserves the existing browser print path', () => {
   const printHandler = sourceBetween(orderDetail, 'async function handlePrint()', 'const busy =')
+  assert.match(printHandler, /const availability = await readCurrentV3ReprintAvailability\(\)/)
+  assert.match(printHandler, /if \(!availability\?\.legacyAllowed\)[\s\S]*return/)
   assert.match(printHandler, /if \(cloudRelayState !== 'enabled'\) \{[\s\S]*openExistingBrowserPrint\(html, completePrintAction\)[\s\S]*return/)
+})
+
+test('legacy reprint permission is refreshed at click time and fails closed after a V3 transition', () => {
+  const action = sourceBetween(orderDetail, 'async function handleReprintAction()', 'async function handleV3Reprint()')
+  assert.match(action, /const availability = await readCurrentV3ReprintAvailability\(\)/)
+  assert.match(action, /if \(availability\?\.enabled\)[\s\S]*setReprintChoice\('FRONT'\)/)
+  assert.match(action, /if \(availability\?\.legacyAllowed\)[\s\S]*void handlePrint\(\)/)
+  assert.doesNotMatch(action, /v3Reprint\?\.legacyAllowed/)
 })
 
 test('the Relay-enabled path reuses the reviewed receipt renderer and explicit enqueue clients', () => {
@@ -113,15 +129,16 @@ test('the cashier completion path preserves its existing V2 QZ/browser fallback 
   assert.doesNotMatch(legacyPrint, /submitEshopTray02CloudPrint\(|renderTicketHtmlToEscPosRaw\(/)
 })
 
-test('the existing 补打小票 path remains unchanged outside the Desktop POS modal', () => {
-  assert.match(records, /reprintLabel=.*'补打小票'/)
-  assert.match(records, /handleSaleRecordReprint/)
-  assert.match(records, /printDesktopReceipt\(/)
+test('Desktop Records delegates 补打小票 to canonical OrderDetail V3 recovery', () => {
+  assert.match(records, /canonicalOrderNo: item\.orderNo/)
+  assert.match(records, /setSelectedOrderNo\(entry\.canonicalOrderNo\)/)
+  assert.doesNotMatch(records, /handleSaleRecordReprint|printDesktopReceipt|DesktopReceiptPreview/)
+  assert.match(orderDetail, /getOrCreateV3ReprintIntent/)
 })
 
-test('OrderDetailSheet remains the sole owner of config, rendering, and enqueue selection', () => {
+test('OrderDetailSheet remains the sole owner of legacy and V3 rendering/enqueue selection', () => {
   assert.equal((orderDetail.match(/const readEnableState =/g) ?? []).length, 1)
-  assert.equal((orderDetail.match(/renderTicketHtmlToEscPosRaw\(html\)/g) ?? []).length, 1)
+  assert.equal((orderDetail.match(/renderTicketHtmlToEscPosRaw\(html\)/g) ?? []).length, 2)
   assert.equal((orderDetail.match(/const submitPrint =/g) ?? []).length, 1)
   assert.equal((orderDetail.match(/await submitPrint\(/g) ?? []).length, 1)
 })

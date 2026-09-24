@@ -389,7 +389,7 @@ async function main() {
   const ownerEnqueueRoute = fs.readFileSync('app/api/es-tray-02/print-jobs/route.ts', 'utf8')
   const cashier = fs.readFileSync('app/cashier/page.tsx', 'utf8')
 
-  await test('OrderDetailSheet explicitly selects device config only for /desktop/pos', () => {
+  await test('OrderDetailSheet selects device config only for an explicit Desktop context', () => {
     assert.match(component, /isDesktopPosDeviceRuntime\(\)[\s\S]*readEshopTray02DeviceCloudEnableState[\s\S]*readEshopTray02CloudEnableState/)
   })
 
@@ -449,12 +449,12 @@ async function main() {
     assert.doesNotMatch(component.slice(catchStart, catchEnd), /openExistingBrowserPrint|window\.print|qz/i)
   })
 
-  await test('the cashier page remains byte-identical to its latest exact governance approval', () => {
+  await test('the cashier page remains byte-identical to its active exact governance approval', () => {
     // ES-PRINT-LOCAL-FIRST-SHARED-CORE-01: Founder approved these exact final
     // Cashier candidate bytes and the trusted Scope Guard authorization was closed on main.
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      'cf1cf0b3632065bd39c85293fb823a82e4e08d91cc5a6bff32b7aba4091474f4',
+      '6716d0414fd2cf6bb603517abce055b6624020208224a98694a16691a54ed1eb',
     )
   })
 

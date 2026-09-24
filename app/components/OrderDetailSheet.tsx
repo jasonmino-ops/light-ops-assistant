@@ -8,18 +8,26 @@ import OrderShareCard, { buildPrintHTML, type ShareData, type ShareLabels } from
 import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
 import {
   getOrCreateEshopTray02PrintIntent,
+  getOrCreateV3ReprintIntent,
+  readAccountV3ReprintAvailability,
+  readDeviceV3ReprintAvailability,
   readEshopTray02CloudEnableState,
   readEshopTray02DeviceCloudEnableState,
+  submitAccountV3Reprint,
+  submitDeviceV3Reprint,
   submitEshopTray02CloudPrint,
   submitEshopTray02DeviceCloudPrint,
   type EshopTray02CloudEnableState,
   type EshopTray02PrintIntent,
+  type V3ReprintAvailability,
+  type V3ReprintIntent,
 } from '@/lib/eShopTrayCloudClient'
 import {
   isDesktopPosDeviceRuntime,
   readDesktopPosDeviceOrderDetail,
 } from '@/lib/es-tray-device-client'
 import { openExistingBrowserPrint } from '@/lib/browserPrintFallback'
+import { getKitchenTicketHtmlForTest } from '@/app/components/KitchenTicket'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,7 +92,7 @@ export default function OrderDetailSheet({
   orderNo: string | null
   onClose: () => void
 }) {
-  const { t } = useLocale()
+  const { t, lang } = useLocale()
   const [detail, setDetail] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -95,25 +103,53 @@ export default function OrderDetailSheet({
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [cloudRelayState, setCloudRelayState] = useState<EshopTray02CloudEnableState>('pending')
+  const [v3Reprint, setV3Reprint] = useState<V3ReprintAvailability | null>(null)
+  const [reprintChoice, setReprintChoice] = useState<'FRONT' | 'KITCHEN' | 'BOTH' | null>(null)
+  const [reprintError, setReprintError] = useState<string | null>(null)
   const shareCardRef = useRef<HTMLDivElement>(null)
   const relayIntentRef = useRef<EshopTray02PrintIntent | null>(null)
+  const v3ReprintIntentRef = useRef<Record<'FRONT' | 'KITCHEN', V3ReprintIntent | null>>({ FRONT: null, KITCHEN: null })
   const printInFlightRef = useRef(false)
+
+  async function readCurrentV3ReprintAvailability() {
+    const availability = await (isDesktopPosDeviceRuntime()
+      ? readDeviceV3ReprintAvailability()
+      : readAccountV3ReprintAvailability())
+    setV3Reprint(availability)
+    return availability
+  }
 
   useEffect(() => {
     if (!orderNo) {
       relayIntentRef.current = null
       setCloudRelayState('pending')
+      setV3Reprint(null)
+      setReprintChoice(null)
+      setReprintError(null)
+      v3ReprintIntentRef.current = { FRONT: null, KITCHEN: null }
       return
     }
 
-    if (relayIntentRef.current?.orderNo !== orderNo) relayIntentRef.current = null
+    if (relayIntentRef.current?.orderNo !== orderNo) {
+      relayIntentRef.current = null
+      v3ReprintIntentRef.current = { FRONT: null, KITCHEN: null }
+    }
     let active = true
     setCloudRelayState('pending')
-    const readEnableState = isDesktopPosDeviceRuntime()
+    setV3Reprint(null)
+    setReprintChoice(null)
+    setReprintError(null)
+    const deviceRuntime = isDesktopPosDeviceRuntime()
+    const readEnableState = deviceRuntime
       ? readEshopTray02DeviceCloudEnableState
       : readEshopTray02CloudEnableState
-    void readEnableState().then((state) => {
-      if (active) setCloudRelayState(state)
+    const readReprint = deviceRuntime
+      ? readDeviceV3ReprintAvailability
+      : readAccountV3ReprintAvailability
+    void Promise.all([readEnableState(), readReprint()]).then(([state, availability]) => {
+      if (!active) return
+      setCloudRelayState(state)
+      setV3Reprint(availability)
     })
     return () => { active = false }
   }, [orderNo])
@@ -256,6 +292,16 @@ export default function OrderDetailSheet({
       setShareStatus('idle')
     }
 
+    // A record detail can remain open while the authoritative printing mode
+    // changes. Never use the availability snapshot captured when it opened to
+    // decide whether the legacy browser path is permitted.
+    const availability = await readCurrentV3ReprintAvailability()
+    if (!availability?.legacyAllowed) {
+      setReprintError('打印模式正在切换或状态不可确认，请稍后核对后重试。')
+      completePrintAction()
+      return
+    }
+
     let html: string
     try {
       html = buildPrintHTML(d as ShareData, shareLabels)
@@ -297,8 +343,73 @@ export default function OrderDetailSheet({
     }
   }
 
+  async function handleReprintAction() {
+    if (!d || shareStatus !== 'idle' || printInFlightRef.current) return
+    setReprintError(null)
+    const availability = await readCurrentV3ReprintAvailability()
+    if (availability?.enabled) {
+      setReprintChoice('FRONT')
+      return
+    }
+    if (availability?.legacyAllowed) {
+      void handlePrint()
+      return
+    }
+    setReprintError('打印模式正在切换或状态不可确认，请稍后核对后重试。')
+  }
+
+  async function handleV3Reprint() {
+    if (!d || !reprintChoice || printInFlightRef.current) return
+    const roles = reprintChoice === 'BOTH' ? ['FRONT', 'KITCHEN'] as const : [reprintChoice]
+    printInFlightRef.current = true
+    setShareStatus('printing')
+    setReprintError(null)
+    for (const role of roles) {
+      v3ReprintIntentRef.current[role] = getOrCreateV3ReprintIntent(
+        v3ReprintIntentRef.current[role], d.orderNo, role,
+      )
+    }
+    try {
+      for (const role of roles) {
+        const intent = v3ReprintIntentRef.current[role]!
+        if (!intent.commandStream) {
+          const html = role === 'FRONT'
+            ? buildPrintHTML(d as ShareData, shareLabels)
+            : getKitchenTicketHtmlForTest({
+                storeName: d.storeName,
+                orderNo: d.orderNo,
+                createdAt: d.createdAt,
+                items: d.items
+                  .filter((item) => item.saleType === 'SALE')
+                  .map((item) => ({
+                    name: item.productNameSnapshot,
+                    spec: item.specSnapshot,
+                    qty: Math.abs(item.quantity),
+                  })),
+              }, lang)
+          intent.commandStream = await renderTicketHtmlToEscPosRaw(html)
+        }
+        const submit = isDesktopPosDeviceRuntime() ? submitDeviceV3Reprint : submitAccountV3Reprint
+        await submit({ intent })
+        v3ReprintIntentRef.current[role] = null
+      }
+      setReprintChoice(null)
+      window.alert('补打请求已安全接收')
+    } catch (error) {
+      console.warn('[v3-reprint] submission failed closed', error)
+      const unresolvedRoles = roles.filter((role) => v3ReprintIntentRef.current[role] !== null)
+      if (unresolvedRoles.length === 2) setReprintChoice('BOTH')
+      else if (unresolvedRoles[0]) setReprintChoice(unresolvedRoles[0])
+      setReprintError('补打请求尚未确认接收。请核对状态后，仅重试当前角色。')
+    } finally {
+      printInFlightRef.current = false
+      setShareStatus('idle')
+    }
+  }
+
   const busy = shareStatus !== 'idle'
-  const printDisabled = busy || cloudRelayState === 'pending'
+  const printDisabled = busy || cloudRelayState === 'pending' || v3Reprint === null ||
+    (!v3Reprint.enabled && !v3Reprint.legacyAllowed)
 
   return (
     <div style={sh.overlay} onClick={onClose}>
@@ -464,10 +575,48 @@ export default function OrderDetailSheet({
               <button style={{ ...sh.actionBtn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={handleShare}>
                 {shareStatus === 'generating' ? t('order.generating') : t('order.shareImage')}
               </button>
-              <button style={{ ...sh.actionBtn, opacity: printDisabled ? 0.6 : 1 }} disabled={printDisabled} onClick={() => void handlePrint()}>
-                {shareStatus === 'printing' ? t('order.preparingPrint') : t('order.print')}
+              <button
+                style={{ ...sh.actionBtn, opacity: printDisabled ? 0.6 : 1 }}
+                disabled={printDisabled}
+                onClick={() => void handleReprintAction()}
+              >
+                {shareStatus === 'printing'
+                  ? t('order.preparingPrint')
+                  : v3Reprint?.enabled
+                    ? '补打小票'
+                    : v3Reprint?.legacyAllowed
+                      ? t('order.print')
+                      : '打印暂不可用'}
               </button>
             </div>
+            {v3Reprint && !v3Reprint.enabled && !v3Reprint.legacyAllowed && (
+              <div style={sh.confirmError}>打印模式正在切换或状态不可确认，请稍后核对后重试。</div>
+            )}
+            {v3Reprint?.enabled && reprintChoice && (
+              <div style={sh.reprintPanel}>
+                <div style={sh.confirmHint}>选择要补打的角色。每次确认都会创建新的、可审计的补打任务。</div>
+                <div style={sh.reprintChoices}>
+                  {(['FRONT', ...(v3Reprint.kitchenEnabled ? ['KITCHEN', 'BOTH'] : [])] as Array<'FRONT' | 'KITCHEN' | 'BOTH'>).map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      style={{ ...sh.confirmBackBtn, ...(reprintChoice === role ? sh.reprintChoiceActive : {}) }}
+                      disabled={busy}
+                      onClick={() => { setReprintChoice(role); setReprintError(null) }}
+                    >
+                      {role === 'FRONT' ? '前台' : role === 'KITCHEN' ? '厨房' : '两者'}
+                    </button>
+                  ))}
+                </div>
+                {reprintError && <div style={sh.confirmError}>{reprintError}</div>}
+                <div style={sh.confirmBtns}>
+                  <button style={sh.confirmBackBtn} disabled={busy} onClick={() => { setReprintChoice(null); setReprintError(null) }}>取消</button>
+                  <button style={sh.confirmDoBtn} disabled={busy} onClick={() => void handleV3Reprint()}>
+                    {busy ? '提交中…' : '确认补打'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -604,6 +753,12 @@ const sh: Record<string, React.CSSProperties> = {
     border: '1.5px solid #d9d9d9', borderRadius: 10,
     fontSize: 14, fontWeight: 600, cursor: 'pointer',
   },
+  reprintPanel: {
+    marginTop: 10, padding: 12, borderRadius: 10,
+    border: '1px solid #d9d9d9', background: '#fafafa',
+  },
+  reprintChoices: { display: 'flex', gap: 8, marginBottom: 12 },
+  reprintChoiceActive: { background: '#1677ff', color: '#fff' },
   cancelOrderBtn: {
     display: 'block', width: '100%', height: 42, marginTop: 8,
     background: 'transparent', color: '#ff4d4f',

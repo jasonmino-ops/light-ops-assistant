@@ -13,6 +13,19 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/
 export type EshopTray02CloudEnableState = 'pending' | 'enabled' | 'disabled'
 export type EshopTray02Fetch = (input: string, init?: RequestInit) => Promise<Response>
 
+export type V3ReprintAvailability = {
+  enabled: boolean
+  kitchenEnabled: boolean
+  legacyAllowed: boolean
+}
+
+export type V3ReprintIntent = {
+  orderNo: string
+  role: 'FRONT' | 'KITCHEN'
+  requestId: string
+  commandStream?: Uint8Array
+}
+
 export type EshopTray02PrintIntent = {
   orderNo: string
   requestId: string
@@ -83,6 +96,27 @@ function defaultRequestId(): string {
     throw new EshopTray02CloudClientError('ES_TRAY_02_RANDOM_UUID_UNAVAILABLE')
   }
   return `desktop-order-print:${crypto.randomUUID()}`
+}
+
+function defaultV3ReprintRequestId(role: V3ReprintIntent['role']): string {
+  if (typeof crypto.randomUUID !== 'function') {
+    throw new EshopTray02CloudClientError('V3_REPRINT_RANDOM_UUID_UNAVAILABLE')
+  }
+  return `v3-reprint:${role.toLowerCase()}:${crypto.randomUUID()}`
+}
+
+export function getOrCreateV3ReprintIntent(
+  current: V3ReprintIntent | null,
+  orderNo: string,
+  role: V3ReprintIntent['role'],
+  createRequestId: (role: V3ReprintIntent['role']) => string = defaultV3ReprintRequestId,
+): V3ReprintIntent {
+  if (current?.orderNo === orderNo && current.role === role) return current
+  const requestId = createRequestId(role)
+  if (!new RegExp(`^v3-reprint:${role.toLowerCase()}:[0-9a-f-]{36}$`).test(requestId)) {
+    throw new EshopTray02CloudClientError('V3_REPRINT_INVALID_IDENTITY')
+  }
+  return { orderNo, role, requestId }
 }
 
 export function getOrCreateEshopTray02PrintIntent(
@@ -186,4 +220,97 @@ export function submitEshopTray02DeviceCloudPrint(input: {
   fetchImpl?: EshopTray02Fetch
 }) {
   return submitCloudPrint(input, '/api/es-tray-02/device/print-jobs', desktopPosDeviceFetch)
+}
+
+async function readV3ReprintAvailability(
+  endpoint: string,
+  fetchImpl: EshopTray02Fetch,
+): Promise<V3ReprintAvailability | null> {
+  try {
+    const response = await fetchImpl(endpoint, { method: 'GET', cache: 'no-store' })
+    if (!response.ok) return null
+    const body = object(await response.json().catch(() => null))
+    if (!body || typeof body.enabled !== 'boolean' || typeof body.kitchenEnabled !== 'boolean' ||
+      typeof body.legacyAllowed !== 'boolean') return null
+    return {
+      enabled: body.enabled,
+      kitchenEnabled: body.enabled && body.kitchenEnabled,
+      legacyAllowed: !body.enabled && body.legacyAllowed,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function readAccountV3ReprintAvailability(fetchImpl: EshopTray02Fetch = apiFetch) {
+  return readV3ReprintAvailability('/api/es-tray-02/v3-reprints', fetchImpl)
+}
+
+export function readDeviceV3ReprintAvailability(fetchImpl: EshopTray02Fetch = desktopPosDeviceFetch) {
+  return readV3ReprintAvailability('/api/es-tray-02/device/v3-reprints', fetchImpl)
+}
+
+async function submitV3Reprint(input: {
+  intent: V3ReprintIntent
+  fetchImpl?: EshopTray02Fetch
+}, endpoint: string, defaultFetch: EshopTray02Fetch) {
+  const { intent } = input
+  if (!(intent.commandStream instanceof Uint8Array) || intent.commandStream.byteLength === 0) {
+    throw new EshopTray02CloudClientError('V3_REPRINT_INVALID_COMMAND_STREAM')
+  }
+  const digest = await sha256Hex(intent.commandStream).catch((cause) => {
+    throw new EshopTray02CloudClientError('V3_REPRINT_COMMAND_DIGEST_FAILED', undefined, { cause })
+  })
+  const response = await (input.fetchImpl ?? defaultFetch)(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      schemaVersion: 3,
+      requestId: intent.requestId,
+      orderNo: intent.orderNo,
+      role: intent.role,
+      confirmation: 'OPERATOR_CONFIRMED',
+      rendererVersion: 'reprint-raw-v1',
+      commandStream: {
+        encoding: 'base64',
+        byteLength: intent.commandStream.byteLength,
+        sha256: digest,
+        data: qzRawBytesToBase64(intent.commandStream),
+      },
+    }),
+  }).catch((cause) => {
+    throw new EshopTray02CloudClientError('V3_REPRINT_SUBMIT_NETWORK_FAILED', undefined, { cause })
+  })
+  const body = object(await response.json().catch(() => null))
+  if (response.status !== 202) {
+    throw new EshopTray02CloudClientError(
+      typeof body?.error === 'string' ? body.error : 'V3_REPRINT_SUBMIT_FAILED',
+      response.status,
+    )
+  }
+  if (
+    body?.schemaVersion !== 3
+    || body.source !== 'CLOUD_REMOTE_REPRINT'
+    || body.status !== 'PENDING_RECEIVE'
+    || body.audited !== true
+    || body.requestId !== intent.requestId
+    || body.orderNo !== intent.orderNo
+    || body.role !== intent.role
+    || typeof body.jobId !== 'string'
+    || typeof body.created !== 'boolean'
+  ) throw new EshopTray02CloudClientError('V3_REPRINT_INVALID_RESPONSE', response.status)
+  return {
+    jobId: body.jobId,
+    requestId: intent.requestId,
+    role: intent.role,
+    created: body.created,
+  }
+}
+
+export function submitAccountV3Reprint(input: { intent: V3ReprintIntent; fetchImpl?: EshopTray02Fetch }) {
+  return submitV3Reprint(input, '/api/es-tray-02/v3-reprints', apiFetch)
+}
+
+export function submitDeviceV3Reprint(input: { intent: V3ReprintIntent; fetchImpl?: EshopTray02Fetch }) {
+  return submitV3Reprint(input, '/api/es-tray-02/device/v3-reprints', desktopPosDeviceFetch)
 }

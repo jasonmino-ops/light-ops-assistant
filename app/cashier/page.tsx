@@ -126,6 +126,7 @@ type SaleResult = {
   paymentMethod?: string
   receipt?: DesktopReceiptData
   kitchenTicket?: KitchenTicketData
+  v3Admission?: V3AdmissionState
 }
 type QzControlledPrintState = {
   status: 'idle' | 'printing' | 'success' | 'error'
@@ -159,9 +160,19 @@ type V3PrintingBridge = {
     rendererVersion: 'network-1'
     expiresAt: string
     payloadBase64: string
-  }) => Promise<{ status?: string; admission?: string } | null>
+  }) => Promise<{ status?: string; admission?: string; reason?: string } | null>
 }
-type V3LocalAdmission = 'ALL_ACCEPTED' | 'NONE_ACCEPTED' | 'FRONT_ONLY'
+type V3AdmissionState = {
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'V2_LEGACY'
+  acceptedRoles: V3PrintEffectRole[]
+  unresolvedRoles: V3PrintEffectRole[]
+}
+
+type V3LocalAdmission = {
+  route: 'V3' | 'V2_LEGACY'
+  acceptedRoles: V3PrintEffectRole[]
+  rejectedRoles: V3PrintEffectRole[]
+}
 
 declare global {
   interface Window {
@@ -2309,8 +2320,12 @@ export default function CashierPage() {
   ): Promise<V3LocalAdmission> => {
     const bridge = window.eshopV3Printing
     const orderNo = receipt.orderNo
-    if (!bridge || !window.eshopDesktopRuntime?.isDesktop || !orderNo) return 'NONE_ACCEPTED'
+    if (!window.eshopDesktopRuntime?.isDesktop || !orderNo) {
+      return { route: 'V2_LEGACY', acceptedRoles: [], rejectedRoles: [] }
+    }
+    if (!bridge) return { route: 'V3', acceptedRoles: [], rejectedRoles: [...roles] }
     const acceptedRoles: V3PrintEffectRole[] = []
+    const rejectedRoles: V3PrintEffectRole[] = []
     for (const role of roles) {
       try {
         const html = role === 'FRONT'
@@ -2332,14 +2347,19 @@ export default function CashierPage() {
           expiresAt: v3PrintIntentExpiresAt(receipt.createdAt),
           payloadBase64: window.btoa(binary),
         })
-        if (result?.admission !== 'DURABLY_ACCEPTED') break
-        acceptedRoles.push(role)
+        if (result?.admission === 'DURABLY_ACCEPTED') {
+          acceptedRoles.push(role)
+          continue
+        }
+        if (result?.status === 'V2_FALLBACK_REQUIRED' && result.reason == null && acceptedRoles.length === 0) {
+          return { route: 'V2_LEGACY', acceptedRoles: [], rejectedRoles: [] }
+        }
+        rejectedRoles.push(role)
       } catch {
-        break
+        rejectedRoles.push(role)
       }
     }
-    if (acceptedRoles.length === roles.length) return 'ALL_ACCEPTED'
-    return acceptedRoles.length === 1 && acceptedRoles[0] === 'FRONT' ? 'FRONT_ONLY' : 'NONE_ACCEPTED'
+    return { route: 'V3', acceptedRoles, rejectedRoles }
   }, [lang])
 
   const submitRawTicket = useCallback(async (
@@ -2347,12 +2367,16 @@ export default function CashierPage() {
     receipt: DesktopReceiptData,
     kitchenTicket?: KitchenTicketData,
   ) => {
-    if (await submitV3LocalTickets(receipt, kind === 'kitchen' ? (kitchenTicket ?? {
+    const admission = await submitV3LocalTickets(receipt, kind === 'kitchen' ? (kitchenTicket ?? {
       storeName: receipt.storeName,
       orderNo: receipt.orderNo,
       createdAt: receipt.createdAt,
       items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
-    }) : undefined, kind === 'receipt' ? ['FRONT'] : ['KITCHEN']) === 'ALL_ACCEPTED') return
+    }) : undefined, kind === 'receipt' ? ['FRONT'] : ['KITCHEN'])
+    if (admission.route === 'V3') {
+      if (admission.rejectedRoles.length === 0) return
+      throw new Error('V3_DURABLE_ADMISSION_NOT_ACCEPTED')
+    }
     if (kind === 'receipt') {
       await printCustomerReceiptViaQz(renderDesktopReceiptHtml(receipt, lang), undefined, undefined, readQzSigningStoreCode)
       return
@@ -2438,18 +2462,13 @@ export default function CashierPage() {
     }
 
     void submitV3LocalTickets(receipt, kitchenTicket).then((admission) => {
-      if (admission === 'ALL_ACCEPTED') {
+      if (admission.route === 'V3' && admission.rejectedRoles.length === 0) {
         finishReceiptPrintFlow()
         return
       }
-      if (admission === 'FRONT_ONLY' && kitchenTicket) {
-        try {
-          printKitchenTicket(kitchenTicket, lang, { onAfterPrint: finishReceiptPrintFlow })
-        } catch (err) {
-          console.warn('[kitchen-ticket] print window failed', err)
-          showToast('厨房单打印窗口未打开，交易已完成')
-          finishReceiptPrintFlow()
-        }
+      if (admission.route === 'V3') {
+        showToast('打印尚未被 V3 安全接收，请在成交结果中重试')
+        finishReceiptPrintFlow()
         return
       }
       // QZ Tray POC: only ever taken for a plain customer receipt (no kitchen
@@ -2484,16 +2503,40 @@ export default function CashierPage() {
   }, [finishReceiptPrintFlow, handleControlledQzPrint, lang, qzPrintEnabled, qzRawBusinessActive, qzStatus, qzSelectedPrinter, submitV3LocalTickets])
 
   function closeSaleResultOverlay() {
-    if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
+    if (isReceiptPrintChainActive || receiptPrintLockedRef.current ||
+      saleResult?.v3Admission?.status === 'PENDING' || saleResult?.v3Admission?.status === 'REJECTED') return
     setReceiptPreviewOpen(false)
     setSaleResult(null)
   }
 
   function handleContinueSale() {
-    if (isReceiptPrintChainActive || receiptPrintLockedRef.current) return
+    if (isReceiptPrintChainActive || receiptPrintLockedRef.current ||
+      saleResult?.v3Admission?.status === 'PENDING' || saleResult?.v3Admission?.status === 'REJECTED') return
     setReceiptPreviewOpen(false)
     setSaleResult(null)
     focusScannerInput()
+  }
+
+  function handleSaleResultPrintAction() {
+    if (!saleResult?.receipt) return
+    const admission = saleResult.v3Admission
+    if (admission?.status === 'PENDING') return
+    if (admission?.status === 'REJECTED') {
+      setSaleResult((current) => current ? {
+        ...current,
+        v3Admission: { ...admission, status: 'PENDING' },
+      } : current)
+      return
+    }
+    if (admission?.status === 'ACCEPTED') {
+      const orderNo = saleResult.orderNo
+      if (!orderNo) return
+      setReceiptPreviewOpen(false)
+      setSaleResult(null)
+      setSelectedDesktopRecordOrderNo(orderNo)
+      return
+    }
+    handlePrintReceipt(saleResult.receipt, saleResult.kitchenTicket)
   }
 
   function handleAutoPrintToggle() {
@@ -3042,8 +3085,43 @@ export default function CashierPage() {
   }, [saleResult?.receipt])
 
   useEffect(() => {
+    const current = saleResult
+    const admission = current?.v3Admission
+    if (!current?.receipt || admission?.status !== 'PENDING' || admission.unresolvedRoles.length === 0) return
+    const orderNo = current.orderNo
+    const attemptedRoles = [...admission.unresolvedRoles]
+    let active = true
+    void submitV3LocalTickets(current.receipt, current.kitchenTicket, attemptedRoles)
+      .catch((): V3LocalAdmission => ({ route: 'V3', acceptedRoles: [], rejectedRoles: attemptedRoles }))
+      .then((result) => {
+        if (!active) return
+        setSaleResult((latest) => {
+          if (!latest || latest.orderNo !== orderNo || latest.v3Admission?.status !== 'PENDING') return latest
+          if (result.route === 'V2_LEGACY') {
+            return { ...latest, v3Admission: { status: 'V2_LEGACY', acceptedRoles: [], unresolvedRoles: [] } }
+          }
+          const acceptedRoles = Array.from(new Set([
+            ...latest.v3Admission.acceptedRoles,
+            ...result.acceptedRoles,
+          ])) as V3PrintEffectRole[]
+          const unresolvedRoles = latest.v3Admission.unresolvedRoles.filter((role) => !result.acceptedRoles.includes(role))
+          return {
+            ...latest,
+            v3Admission: {
+              status: unresolvedRoles.length === 0 ? 'ACCEPTED' : 'REJECTED',
+              acceptedRoles,
+              unresolvedRoles,
+            },
+          }
+        })
+      })
+    return () => { active = false }
+  }, [saleResult, submitV3LocalTickets])
+
+  useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
-    if (!isDesktopPos || !autoPrint || !receiptSnapshot) return
+    if (!isDesktopPos || !autoPrint || !receiptSnapshot ||
+      (saleResult?.v3Admission && saleResult.v3Admission.status !== 'V2_LEGACY')) return
     const kitchenTicket = saleResult?.kitchenTicket
 
     const receiptKey = `${receiptSnapshot.orderNo ?? 'no-order'}:${receiptSnapshot.createdAt}:${receiptSnapshot.totalAmount}`
@@ -3064,17 +3142,19 @@ export default function CashierPage() {
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [saleResult?.receipt, saleResult?.kitchenTicket, isDesktopPos, autoPrint, qzRawBusinessActive, handleControlledQzPrint, handlePrintReceipt])
+  }, [saleResult?.receipt, saleResult?.kitchenTicket, saleResult?.v3Admission, isDesktopPos, autoPrint, qzRawBusinessActive, handleControlledQzPrint, handlePrintReceipt])
 
   useEffect(() => {
-    if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen) return
+    if (!isDesktopPos || autoPrint || !saleResult?.receipt || receiptPreviewOpen ||
+      (saleResult.v3Admission && saleResult.v3Admission.status !== 'V2_LEGACY')) return
     const timer = window.setTimeout(() => receiptPrintButtonRef.current?.focus(), 80)
     return () => window.clearTimeout(timer)
-  }, [isDesktopPos, autoPrint, saleResult?.receipt, receiptPreviewOpen])
+  }, [isDesktopPos, autoPrint, saleResult?.receipt, saleResult?.v3Admission, receiptPreviewOpen])
 
   useEffect(() => {
     const receiptSnapshot = saleResult?.receipt
-    if (!isDesktopPos || autoPrint || !receiptSnapshot || receiptPreviewOpen) return
+    if (!isDesktopPos || autoPrint || !receiptSnapshot || receiptPreviewOpen ||
+      (saleResult?.v3Admission && saleResult.v3Admission.status !== 'V2_LEGACY')) return
     const printableReceipt = receiptSnapshot
     const kitchenTicket = saleResult?.kitchenTicket
     function onReceiptKey(e: KeyboardEvent) {
@@ -3086,7 +3166,7 @@ export default function CashierPage() {
     }
     window.addEventListener('keydown', onReceiptKey)
     return () => window.removeEventListener('keydown', onReceiptKey)
-  }, [isDesktopPos, autoPrint, saleResult?.receipt, saleResult?.kitchenTicket, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
+  }, [isDesktopPos, autoPrint, saleResult?.receipt, saleResult?.kitchenTicket, saleResult?.v3Admission, receiptPreviewOpen, isEditableShortcutTarget, handlePrintReceipt])
 
   function handleOpenCustomerDisplay() {
     const target = browserPosCustomerDisplayPath(storeCode, lang as DeskLang)
@@ -3312,10 +3392,49 @@ export default function CashierPage() {
       setMemberPayOpen(false)
       setMemberPhone('')
       setMemberPayMember(null)
-      setSaleResult({
+      const baseSaleResult: SaleResult = {
         orderNo: body.orderNo,
         totalAmount: Number(body.totalAmount ?? total),
         paymentMethod: 'MEMBER_BALANCE',
+      }
+      const receipt = isDesktopPos
+        ? buildReceiptSnapshot({
+            items: completedItems,
+            totalAmount: Number(body.totalAmount ?? total),
+            paymentMethod: 'MEMBER_BALANCE',
+            orderNo: body.orderNo,
+            createdAt: body.createdAt,
+          })
+        : undefined
+      const kitchenTicket = receipt && isKitchenTicketEnabled
+        ? {
+            storeName: receipt.storeName,
+            orderNo: receipt.orderNo,
+            createdAt: receipt.createdAt,
+            items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
+          }
+        : undefined
+      const v3Roles: V3PrintEffectRole[] = kitchenTicket ? ['FRONT', 'KITCHEN'] : ['FRONT']
+      if (!receipt?.orderNo) {
+        setSaleResult(baseSaleResult)
+        return
+      }
+      const admission = await submitV3LocalTickets(receipt, kitchenTicket, v3Roles)
+      if (admission.route === 'V2_LEGACY') {
+        setSaleResult(baseSaleResult)
+        return
+      }
+      const acceptedRoles = Array.from(new Set(admission.acceptedRoles)) as V3PrintEffectRole[]
+      const unresolvedRoles = v3Roles.filter((role) => !acceptedRoles.includes(role))
+      setSaleResult({
+        ...baseSaleResult,
+        receipt,
+        kitchenTicket,
+        v3Admission: {
+          status: unresolvedRoles.length === 0 ? 'ACCEPTED' : 'REJECTED',
+          acceptedRoles,
+          unresolvedRoles,
+        },
       })
     } catch (err) {
       setMemberPayError(err instanceof Error ? err.message : '会员余额支付失败')
@@ -3707,6 +3826,15 @@ export default function CashierPage() {
             createdAt: body.createdAt,
           })
         : undefined
+      const kitchenTicket = receipt && isKitchenTicketEnabled
+        ? {
+            storeName: receipt.storeName,
+            orderNo: receipt.orderNo,
+            createdAt: receipt.createdAt,
+            items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
+          }
+        : undefined
+      const v3Roles: V3PrintEffectRole[] = kitchenTicket ? ['FRONT', 'KITCHEN'] : ['FRONT']
       setSaleResult({
         orderNo: body.orderNo,
         totalAmount: submittedTotal,
@@ -3717,14 +3845,10 @@ export default function CashierPage() {
         } : {}),
         paymentMethod: apiPayment,
         receipt,
-        kitchenTicket: receipt && isKitchenTicketEnabled
-          ? {
-              storeName: receipt.storeName,
-              orderNo: receipt.orderNo,
-              createdAt: receipt.createdAt,
-              items: receipt.items.map(({ name, spec, qty }) => ({ name, spec, qty })),
-            }
-          : undefined,
+        kitchenTicket,
+        ...(receipt?.orderNo ? {
+          v3Admission: { status: 'PENDING', acceptedRoles: [], unresolvedRoles: v3Roles },
+        } : {}),
       })
     } catch { setSubmitError(networkPrint ? '结果未确认，请先核对销售记录，勿重复提交。' : '网络错误，请重试') }
     finally { setSubmitting(false) }
@@ -3881,7 +4005,8 @@ export default function CashierPage() {
   const desktopRecordRows = (() => {
     const rows = new Map<string, {
       key: string
-      orderNo: string
+      orderNo: string | null
+      displayNo: string
       createdAt: string
       paymentMethod: string | null
       pending: boolean
@@ -3903,7 +4028,8 @@ export default function CashierPage() {
       }
       rows.set(key, {
         key,
-        orderNo: item.orderNo || item.recordNo,
+        orderNo: item.orderNo,
+        displayNo: key,
         createdAt: item.createdAt,
         paymentMethod: item.paymentMethod,
         pending: isPending,
@@ -5380,13 +5506,18 @@ export default function CashierPage() {
                         }}
                       >
                         <div style={{ minWidth: 0 }}>
-                          <div style={s.recordsNo}>{shortNo(row.orderNo)}</div>
-                          <div style={s.recordsMeta}>{row.orderNo} · {row.itemCount} 项</div>
+                          <div style={s.recordsNo}>{shortNo(row.displayNo)}</div>
+                          <div style={s.recordsMeta}>{row.displayNo} · {row.itemCount} 项</div>
                         </div>
                         <div style={s.recordsTime}>{fmtDateTimeShort(row.createdAt)}</div>
                         <div style={s.recordsPay}>{desktopRecordPayLabel(row)}</div>
                         <div style={s.recordsAmt}>{money(row.amount)}</div>
                         {expanded && renderDesktopRecordDetails(row)}
+                        {expanded && !row.orderNo && (
+                          <div style={{ ...s.recordsMeta, color: '#b91c1c' }}>
+                            此历史记录缺少原始订单号，无法查看订单详情或补打。
+                          </div>
+                        )}
                       </button>
                     )
                   })}
@@ -5416,6 +5547,17 @@ export default function CashierPage() {
             <div style={s.modalAmt}>{money(saleResult.totalAmount)}</div>
             {saleResult.networkPrintStatus && <div style={s.modalSub}>{saleResult.networkPrintRoles?.join(' / ') ?? 'Network Print'} — {saleResult.networkPrintStatus}</div>}
             {saleResult.orderNo && <div style={s.modalSub}>{lang === 'en' ? `Order: ${saleResult.orderNo}` : lang === 'km' ? `លេខបញ្ជាទិញ៖ ${saleResult.orderNo}` : `单号：${saleResult.orderNo}`}</div>}
+            {saleResult.v3Admission?.status === 'PENDING' && (
+              <div style={s.modalSub}>正在安全接收打印任务…</div>
+            )}
+            {saleResult.v3Admission?.status === 'ACCEPTED' && (
+              <div style={{ ...s.modalSub, color: '#166534' }}>打印任务已安全接收，可继续收银</div>
+            )}
+            {saleResult.v3Admission?.status === 'REJECTED' && (
+              <div style={{ ...s.modalSub, color: '#b91c1c' }}>
+                打印尚未接收：{saleResult.v3Admission.unresolvedRoles.join(' / ')}。请重试后再继续。
+              </div>
+            )}
             {saleResult.khqrFallback && (
               <div style={{ margin: '10px 0 4px', padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.5, textAlign: 'left' as const }}>
                 {lang === 'en'
@@ -5436,7 +5578,8 @@ export default function CashierPage() {
                     : d.receiptReady)
                 : d.receiptNotAuto}
             </div>}
-            {isDesktopPos && saleResult.receipt && qzRawBusinessActive && (
+            {isDesktopPos && saleResult.receipt && qzRawBusinessActive &&
+              (!saleResult.v3Admission || saleResult.v3Admission.status === 'V2_LEGACY') && (
               <div data-qz-dual-queue-print="raw" style={{ marginBottom: 10 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: saleResult.kitchenTicket ? '1fr 1fr' : '1fr', gap: 8 }}>
                   <button
@@ -5477,7 +5620,8 @@ export default function CashierPage() {
                 )}
               </div>
             )}
-            {isDesktopPos && saleResult.receipt && !qzRawBusinessActive && (
+            {isDesktopPos && saleResult.receipt && (!qzRawBusinessActive ||
+              (saleResult.v3Admission && saleResult.v3Admission.status !== 'V2_LEGACY')) && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                 <button
                   type="button"
@@ -5493,21 +5637,33 @@ export default function CashierPage() {
                 <button
                   ref={receiptPrintButtonRef}
                   type="button"
-                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...(isReceiptPrintChainActive ? s.submitDis : {}) }}
-                  disabled={isReceiptPrintChainActive}
-                  onClick={() => saleResult.receipt && handlePrintReceipt(saleResult.receipt, saleResult.kitchenTicket)}
+                  style={{ ...s.modalBtn, padding: '10px 8px', fontSize: 12, ...((isReceiptPrintChainActive || saleResult.v3Admission?.status === 'PENDING') ? s.submitDis : {}) }}
+                  disabled={isReceiptPrintChainActive || saleResult.v3Admission?.status === 'PENDING'}
+                  onClick={handleSaleResultPrintAction}
                 >
-                  {isReceiptPrintChainActive ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…') : d.printReceipt}
+                  {isReceiptPrintChainActive
+                    ? (lang === 'en' ? 'Printing…' : lang === 'km' ? 'កំពុងបោះពុម្ព…' : '打印中…')
+                    : saleResult.v3Admission?.status === 'PENDING'
+                      ? '接收中…'
+                      : saleResult.v3Admission?.status === 'REJECTED'
+                        ? '重试未接收小票'
+                        : saleResult.v3Admission?.status === 'ACCEPTED'
+                          ? '补打小票'
+                          : d.printReceipt}
                 </button>
               </div>
             )}
             <button
-              style={{ ...s.modalBtn, ...(isReceiptPrintChainActive ? s.submitDis : {}) }}
-              disabled={isReceiptPrintChainActive}
+              style={{ ...s.modalBtn, ...((isReceiptPrintChainActive || saleResult.v3Admission?.status === 'PENDING' || saleResult.v3Admission?.status === 'REJECTED') ? s.submitDis : {}) }}
+              disabled={isReceiptPrintChainActive || saleResult.v3Admission?.status === 'PENDING' || saleResult.v3Admission?.status === 'REJECTED'}
               onClick={handleContinueSale}
             >
               {isReceiptPrintChainActive
                 ? (lang === 'en' ? 'Finishing print…' : lang === 'km' ? 'កំពុងបញ្ចប់ការបោះពុម្ព…' : '正在完成打印…')
+                : saleResult.v3Admission?.status === 'PENDING'
+                  ? '等待打印任务接收…'
+                  : saleResult.v3Admission?.status === 'REJECTED'
+                    ? '请先处理未接收打印'
                 : d.continueSale}
             </button>
           </div>
@@ -5519,7 +5675,7 @@ export default function CashierPage() {
           data={saleResult.receipt}
           lang={lang}
           onClose={() => setReceiptPreviewOpen(false)}
-          onPrint={() => handlePrintReceipt(saleResult.receipt!, saleResult.kitchenTicket)}
+          onPrint={handleSaleResultPrintAction}
         />
       )}
 

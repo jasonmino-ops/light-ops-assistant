@@ -3,7 +3,11 @@
 import { getPosDeviceToken, posDeviceHeaders } from './desktop-pos-client'
 
 export function isDesktopPosDeviceRuntime(): boolean {
-  return typeof window !== 'undefined' && window.location.pathname === '/desktop/pos'
+  if (typeof window === 'undefined') return false
+  if (window.location.pathname === '/desktop/pos') return true
+  if (window.location.pathname !== '/records') return false
+  const search = new URLSearchParams(window.location.search)
+  return search.get('from') === 'desktop' && Boolean(search.get('storeCode')?.trim())
 }
 
 function currentDesktopPosStoreCode(): string {
