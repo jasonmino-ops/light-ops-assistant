@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import CashierPage from '@/app/cashier/page'
 import DesktopModePage from '@/app/desktop/page'
 import UsbCustomerDisplayBridge from './UsbCustomerDisplayBridge'
+import DesktopOwnerWebSession from './DesktopOwnerWebSession'
 import {
   getDesktopOperatorSelection,
   posDeviceHeaders,
@@ -223,6 +224,7 @@ export default function DesktopPosPage() {
       <CashierPage />
       <OperatorBoundary />
       <UsbCustomerDisplayBridge />
+      <DesktopOwnerWebSession />
     </>
   ) : <DesktopModePage />
 }
