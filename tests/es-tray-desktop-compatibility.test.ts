@@ -263,7 +263,10 @@ async function main() {
     assert.equal((orderSheet.match(/await submitPrint\(/g) ?? []).length, 1)
     assert.match(orderSheet, /\|\| printInFlightRef\.current[\s\S]*printInFlightRef\.current = true/)
     assert.match(orderSheet, /const printDisabled = busy \|\| cloudRelayState === 'pending' \|\| v3Reprint === null \|\|[\s\S]*!v3Reprint\.enabled && !v3Reprint\.legacyAllowed/)
-    assert.match(orderSheet, /else if \(v3Reprint\?\.legacyAllowed\) void handlePrint\(\)/)
+    assert.match(orderSheet, /async function readCurrentV3ReprintAvailability\(\)[\s\S]*readDeviceV3ReprintAvailability[\s\S]*readAccountV3ReprintAvailability/)
+    assert.match(orderSheet, /async function handleReprintAction\(\)[\s\S]*const availability = await readCurrentV3ReprintAvailability\(\)[\s\S]*availability\?\.enabled[\s\S]*availability\?\.legacyAllowed[\s\S]*void handlePrint\(\)/)
+    assert.match(orderSheet, /async function handlePrint\(\)[\s\S]*const availability = await readCurrentV3ReprintAvailability\(\)[\s\S]*if \(!availability\?\.legacyAllowed\)[\s\S]*return/)
+    assert.match(orderSheet, /onClick=\{\(\) => void handleReprintAction\(\)\}/)
   })
 
   await test('the existing cashier completion print path remains QZ/legacy', () => {

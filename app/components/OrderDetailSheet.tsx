@@ -111,6 +111,14 @@ export default function OrderDetailSheet({
   const v3ReprintIntentRef = useRef<Record<'FRONT' | 'KITCHEN', V3ReprintIntent | null>>({ FRONT: null, KITCHEN: null })
   const printInFlightRef = useRef(false)
 
+  async function readCurrentV3ReprintAvailability() {
+    const availability = await (isDesktopPosDeviceRuntime()
+      ? readDeviceV3ReprintAvailability()
+      : readAccountV3ReprintAvailability())
+    setV3Reprint(availability)
+    return availability
+  }
+
   useEffect(() => {
     if (!orderNo) {
       relayIntentRef.current = null
@@ -284,6 +292,16 @@ export default function OrderDetailSheet({
       setShareStatus('idle')
     }
 
+    // A record detail can remain open while the authoritative printing mode
+    // changes. Never use the availability snapshot captured when it opened to
+    // decide whether the legacy browser path is permitted.
+    const availability = await readCurrentV3ReprintAvailability()
+    if (!availability?.legacyAllowed) {
+      setReprintError('打印模式正在切换或状态不可确认，请稍后核对后重试。')
+      completePrintAction()
+      return
+    }
+
     let html: string
     try {
       html = buildPrintHTML(d as ShareData, shareLabels)
@@ -323,6 +341,21 @@ export default function OrderDetailSheet({
     } finally {
       completePrintAction()
     }
+  }
+
+  async function handleReprintAction() {
+    if (!d || shareStatus !== 'idle' || printInFlightRef.current) return
+    setReprintError(null)
+    const availability = await readCurrentV3ReprintAvailability()
+    if (availability?.enabled) {
+      setReprintChoice('FRONT')
+      return
+    }
+    if (availability?.legacyAllowed) {
+      void handlePrint()
+      return
+    }
+    setReprintError('打印模式正在切换或状态不可确认，请稍后核对后重试。')
   }
 
   async function handleV3Reprint() {
@@ -545,10 +578,7 @@ export default function OrderDetailSheet({
               <button
                 style={{ ...sh.actionBtn, opacity: printDisabled ? 0.6 : 1 }}
                 disabled={printDisabled}
-                onClick={() => {
-                  if (v3Reprint?.enabled) setReprintChoice('FRONT')
-                  else if (v3Reprint?.legacyAllowed) void handlePrint()
-                }}
+                onClick={() => void handleReprintAction()}
               >
                 {shareStatus === 'printing'
                   ? t('order.preparingPrint')

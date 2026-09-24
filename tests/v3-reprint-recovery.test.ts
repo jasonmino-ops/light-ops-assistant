@@ -325,6 +325,21 @@ async function main() {
     })
   })
 
+  await test('record detail refreshes authoritative mode at action time before any legacy browser reprint', () => {
+    const detail = readFileSync('app/components/OrderDetailSheet.tsx', 'utf8')
+    const printStart = detail.indexOf('async function handlePrint()')
+    const actionStart = detail.indexOf('async function handleReprintAction()')
+    const v3Start = detail.indexOf('async function handleV3Reprint()')
+    assert.ok(printStart >= 0 && actionStart > printStart && v3Start > actionStart)
+    const print = detail.slice(printStart, actionStart)
+    const action = detail.slice(actionStart, v3Start)
+    assert.match(print, /const availability = await readCurrentV3ReprintAvailability\(\)/)
+    assert.match(print, /if \(!availability\?\.legacyAllowed\)[\s\S]*return/)
+    assert.match(action, /const availability = await readCurrentV3ReprintAvailability\(\)/)
+    assert.match(action, /availability\?\.enabled[\s\S]*availability\?\.legacyAllowed[\s\S]*void handlePrint\(\)/)
+    assert.doesNotMatch(action, /v3Reprint\?\.legacyAllowed/)
+  })
+
   await test('Cashier auto-admission is independent of preview and cannot be discarded before acceptance', () => {
     const cashier = readFileSync('app/cashier/page.tsx', 'utf8')
     assert.equal((cashier.match(/v3Admission: \{ status: 'PENDING', acceptedRoles: \[\], unresolvedRoles: v3Roles \}/g) ?? []).length, 1)

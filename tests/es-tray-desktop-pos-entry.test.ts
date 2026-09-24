@@ -80,7 +80,17 @@ test('OrderDetailSheet selects the reviewed OWNER or device config gate when an 
 
 test('a disabled or failed config gate preserves the existing browser print path', () => {
   const printHandler = sourceBetween(orderDetail, 'async function handlePrint()', 'const busy =')
+  assert.match(printHandler, /const availability = await readCurrentV3ReprintAvailability\(\)/)
+  assert.match(printHandler, /if \(!availability\?\.legacyAllowed\)[\s\S]*return/)
   assert.match(printHandler, /if \(cloudRelayState !== 'enabled'\) \{[\s\S]*openExistingBrowserPrint\(html, completePrintAction\)[\s\S]*return/)
+})
+
+test('legacy reprint permission is refreshed at click time and fails closed after a V3 transition', () => {
+  const action = sourceBetween(orderDetail, 'async function handleReprintAction()', 'async function handleV3Reprint()')
+  assert.match(action, /const availability = await readCurrentV3ReprintAvailability\(\)/)
+  assert.match(action, /if \(availability\?\.enabled\)[\s\S]*setReprintChoice\('FRONT'\)/)
+  assert.match(action, /if \(availability\?\.legacyAllowed\)[\s\S]*void handlePrint\(\)/)
+  assert.doesNotMatch(action, /v3Reprint\?\.legacyAllowed/)
 })
 
 test('the Relay-enabled path reuses the reviewed receipt renderer and explicit enqueue clients', () => {
