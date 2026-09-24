@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
 import type { PrintIntentSource } from './localFirstPrintCoordinator'
 import { LocalFirstPrintCoordinator } from './localFirstPrintCoordinator'
 import { createExecutionLedger, type ExecutionLedger } from './executionLedger'
@@ -12,6 +14,25 @@ import { LocalEndpointAuthority, type PrinterRole } from './localEndpointAuthori
 import type { LocalEndpoint } from './localEndpointAuthority'
 import { V3PrintJobClient } from './v3PrintJobClient'
 import { V3NetworkRenderer } from './v3NetworkRenderer'
+
+function releaseSafeExecutionResult(result: { status: string; record?: { state?: string } }): boolean {
+  if (result.status === 'NOT_EXECUTED') return result.record?.state !== 'CROSSING_UNKNOWN'
+  return result.status === 'CROSSED' || result.status === 'FAILED_NOT_CROSSED' || result.status === 'V2_FALLBACK_REQUIRED' ||
+    result.status === 'MODE_BLOCKED' || result.status === 'AUTHORITY_REJECTED'
+}
+
+export async function hasDurableCrossingUnknown(userDataPath: string): Promise<boolean> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(path.join(userDataPath, '.execution-ledger.json'), 'utf8')) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return true
+    const records = (parsed as { records?: unknown }).records
+    if (!records || typeof records !== 'object' || Array.isArray(records)) return true
+    return Object.values(records).some((record) =>
+      Boolean(record && typeof record === 'object' && !Array.isArray(record) && (record as { state?: unknown }).state === 'CROSSING_UNKNOWN'))
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ENOENT'
+  }
+}
 
 export class V3PrintingRuntime {
   private timer: ReturnType<typeof setInterval> | null = null
@@ -41,6 +62,7 @@ export class V3PrintingRuntime {
     const ledger = createExecutionLedger({ userDataPath: options.userDataPath, staleLockRecovery: recovery })
     const opened = await ledger.open()
     if (!opened.ok) throw new Error(opened.error.code)
+    const releaseBlocked = await hasDurableCrossingUnknown(options.userDataPath)
     const outbox = new ExecutionOutbox(options.userDataPath)
     await outbox.open()
     const shared = new SharedPrintingCore(
@@ -71,6 +93,7 @@ export class V3PrintingRuntime {
     const runtime = new V3PrintingRuntime(ledger, new LocalFirstPrintCoordinator(authority, shared, outbox, mode), options.controlPlane,
       new LocalEndpointAuthority(options.userDataPath, { storeId: options.storeId, deviceId: options.deviceId }), outbox,
       options.cloud ?? null, options.cloudPollIntervalMs ?? 2_000, new V3NetworkRenderer())
+    await options.controlPlane.markExecutionLifecycleReady({ releaseBlocked })
     runtime.startCloudPump()
     return runtime
   }
@@ -84,14 +107,24 @@ export class V3PrintingRuntime {
     const resolved = await this.endpoints.resolve(input.role)
     if (!resolved.ok && input.source === 'LOCAL_DESKTOP') return this.holdLocal(input)
     if (!resolved.ok) return { status: 'AUTHORITY_REJECTED' as const, mode: 'ADMISSION_CLOSED' as const, reason: resolved.code }
-    const result = await this.coordinator.execute({
-      mode: 'V3_ACTIVE', source: input.source, role: input.role,
-      authority: { batchId: batch.id, storeId: batch.storeId, deviceId: batch.ownerDeviceId, ownerEpoch: batch.ownerEpoch, leaseId: batch.leaseId, batchExpiresAt: batch.expiresAt },
-      identity: input.identity, endpointKey: resolved.endpointKey, payload: input.payload,
-    })
-    return result.status === 'V2_FALLBACK_REQUIRED' || result.status === 'MODE_BLOCKED' || result.status === 'AUTHORITY_REJECTED' || result.status === 'REJECTED'
-      ? result
-      : { ...result, admission: 'DURABLY_ACCEPTED' as const }
+    const lifecycle = this.controlPlane.beginExecutionLifecycle()
+    if (!lifecycle.ok) {
+      return { status: 'AUTHORITY_REJECTED' as const, mode: 'FENCED' as const, reason: lifecycle.error.code }
+    }
+    let releaseSafe = false
+    try {
+      const result = await this.coordinator.execute({
+        mode: 'V3_ACTIVE', source: input.source, role: input.role,
+        authority: { batchId: batch.id, storeId: batch.storeId, deviceId: batch.ownerDeviceId, ownerEpoch: batch.ownerEpoch, leaseId: batch.leaseId, batchExpiresAt: batch.expiresAt },
+        identity: input.identity, endpointKey: resolved.endpointKey, payload: input.payload,
+      })
+      releaseSafe = releaseSafeExecutionResult(result)
+      return result.status === 'V2_FALLBACK_REQUIRED' || result.status === 'MODE_BLOCKED' || result.status === 'AUTHORITY_REJECTED' || result.status === 'REJECTED'
+        ? result
+        : { ...result, admission: 'DURABLY_ACCEPTED' as const }
+    } finally {
+      await lifecycle.guard.complete({ releaseSafe })
+    }
   }
 
   private async holdLocal(input: { source: PrintIntentSource; orderNo?: string; identity: SharedPrintIdentity; role: PrinterRole; payload: Uint8Array }) {
