@@ -38,7 +38,8 @@
   },
   "additionalAuthorizations": [
     {
-      "authorizationId": "CASHIER_AUTO_ADMISSION_REPRINT_RECOVERY_20260924",
+      "authorizationId": "CASHIER-AUTO-ADMISSION-REPRINT-RECOVERY-20260924",
+      "founderAuthorizationId": "CASHIER_AUTO_ADMISSION_REPRINT_RECOVERY_20260924",
       "featureBranch": "codex/es-print-cashier-auto-admission-reprint",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "e84f38d975fd5872481f33800bd0a594e76aad88",
