@@ -36,6 +36,39 @@
     "candidateMigrationPath": ".task-state/ES-PRINT-LOCAL-FIRST-SHARED-CORE-01-sealed/schema-exception/migration.sql",
     "fileCount": 2
   },
+  "additionalAuthorizations": [
+    {
+      "authorizationId": "CASHIER_AUTO_ADMISSION_REPRINT_RECOVERY_20260924",
+      "featureBranch": "codex/es-print-cashier-auto-admission-reprint",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "e84f38d975fd5872481f33800bd0a594e76aad88",
+      "status": "ACTIVE",
+      "authorizedPaths": [
+        "app/cashier/page.tsx",
+        "app/records/page.tsx"
+      ],
+      "authorizedPathSha256": {
+        "app/cashier/page.tsx": "713eadd092b0d56b093cf01b56072b2b9fb956450c3cd607c2bfef44d86586d3",
+        "app/records/page.tsx": "3660f5b4f087cffb10641ec5c98c1695cefdbaae3798b0b98169a3647abd19f0"
+      },
+      "createdAt": "2026-09-24T15:34:39Z",
+      "approvedAt": "2026-09-24T15:34:39Z",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Authorize only the exact sealed Cashier auto-admission and Records reprint-recovery blobs: V3 sale success submits original role-specific intents independently of receipt-preview UI; pre-admission rejection remains recoverable; Desktop Records uses device-authenticated context; legacy recordNo cannot impersonate orderNo; intentional FRONT, KITCHEN or BOTH reprint uses a new role-specific execution identity and never reuses the original canonical printJobId. V2 semantics, Shared Printing Core, ExecutionLedger, owner/fencing/batch/control-plane contracts, endpoint/TCP authority, schema/migration, retry architecture and unrelated Cashier or Records UX remain frozen.",
+      "approvalSource": {
+        "source": "Explicit Founder Decision — EXACT SCOPE GUARD AUTHORIZATION in the ES-PRINT-LOCAL-FIRST-SHARED-CORE-01 task conversation",
+        "statement": "Founder approved ACTIVE / PRE_COMMIT_CONTENT_SHA256 exact-file authorization CASHIER_AUTO_ADMISSION_REPRINT_RECOVERY_20260924 for app/cashier/page.tsx at 713eadd092b0d56b093cf01b56072b2b9fb956450c3cd607c2bfef44d86586d3 and app/records/page.tsx at 3660f5b4f087cffb10641ec5c98c1695cefdbaae3798b0b98169a3647abd19f0 on branch codex/es-print-cashier-auto-admission-reprint from origin/main e84f38d975fd5872481f33800bd0a594e76aad88, and authorized the minimum governance-only change required to register it in trusted origin/main.",
+        "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+      },
+      "sourceDraft": {
+        "cashierCandidatePath": ".task-state/ES-PRINT-LOCAL-FIRST-SHARED-CORE-01-sealed/auto-admission-reprint/cashier-page.tsx",
+        "recordsCandidatePath": ".task-state/ES-PRINT-LOCAL-FIRST-SHARED-CORE-01-sealed/auto-admission-reprint/records-page.tsx",
+        "fileCount": 2
+      },
+      "activationBoundary": "Effective only when this byte-identical ACTIVE authorization exists in trusted origin/main and the existing Scope Guard validates the exact branch, ancestry, paths and SHA-256 values. Any protected-file byte deviation requires a new Founder authorization. FIELD, Production deployment, V727 changes and historical retry/reprint remain unauthorized."
+    }
+  ],
   "authorizationAmendments": [
     {
       "amendmentId": "V3_LOCAL_FIRST_CASHIER_CALLER_20260923",
