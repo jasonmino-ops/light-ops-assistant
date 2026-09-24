@@ -10,11 +10,22 @@ function plane(overrides: Partial<ControlPlaneProjection> = {}): ControlPlanePro
     updatedAt: '2026-01-01T00:00:00.000Z', ...overrides,
   }
 }
-function batch(controlPlane: ControlPlaneProjection): ExecutionBatchProjection {
+function batch(controlPlane: ControlPlaneProjection, id = 'batch-a'): ExecutionBatchProjection {
   return {
-    id: 'batch-a', controlPlaneId: controlPlane.id, tenantId: controlPlane.tenantId, storeId: controlPlane.storeId,
+    id, controlPlaneId: controlPlane.id, tenantId: controlPlane.tenantId, storeId: controlPlane.storeId,
     ownerDeviceId: controlPlane.ownerDeviceId!, ownerEpoch: controlPlane.ownerEpoch, stateVersion: controlPlane.stateVersion,
     leaseId: controlPlane.leaseId!, mode: 'V3_ACTIVE', expiresAt: future, revokedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+  }
+}
+
+function executionAuthority(value: ExecutionBatchProjection) {
+  return {
+    batchId: value.id,
+    storeId: value.storeId,
+    deviceId: value.ownerDeviceId,
+    ownerEpoch: value.ownerEpoch,
+    leaseId: value.leaseId,
+    batchExpiresAt: value.expiresAt,
   }
 }
 
@@ -92,6 +103,126 @@ describe('V3ControlPlaneRuntime', () => {
     await runtime.stop()
   })
 
+  it('keeps the admitted KITCHEN authority stable through normal renewal until the execution settles', async () => {
+    const authorityN = plane({ ownerDeviceId: 'device-a', ownerEpoch: 7, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 12 })
+    const authorityN1 = { ...authorityN, stateVersion: 13, updatedAt: '2026-01-01T00:00:30.000Z' }
+    const api = client(authorityN)
+    const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+    await runtime.start()
+    await runtime.markExecutionLifecycleReady()
+    const admittedBatch = runtime.current().batch!
+    const lifecycle = runtime.beginExecutionLifecycle(admittedBatch)
+    expect(lifecycle.ok).toBe(true)
+
+    api.read.mockResolvedValueOnce({ ok: true, controlPlane: authorityN })
+    api.renew.mockResolvedValueOnce({ ok: true, controlPlane: authorityN1 })
+    api.issueBatch.mockResolvedValueOnce({ ok: true, batch: batch(authorityN1, 'batch-n-plus-1') })
+    await (runtime as any).reconcile()
+
+    expect(runtime.current().batch?.id).toBe(admittedBatch.id)
+    expect(runtime.validateAdmittedExecution(executionAuthority(admittedBatch)).ok).toBe(true)
+    expect(runtime.validateAdmittedExecution(executionAuthority(admittedBatch)).ok).toBe(true)
+    expect(runtime.beginExecutionLifecycle(admittedBatch).ok).toBe(false)
+
+    if (lifecycle.ok) await lifecycle.guard.complete({ releaseSafe: true })
+    expect(runtime.current().batch?.id).toBe('batch-n-plus-1')
+    expect(runtime.validateAdmittedExecution(executionAuthority(admittedBatch)).ok).toBe(false)
+    const next = runtime.beginExecutionLifecycle(runtime.current().batch!)
+    expect(next.ok).toBe(true)
+    if (next.ok) await next.guard.complete({ releaseSafe: true })
+    await runtime.stop()
+  })
+
+  it('keeps one admitted FRONT execution valid until normal renewal is adopted', async () => {
+    const authorityN = plane({ ownerDeviceId: 'device-a', ownerEpoch: 7, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 14 })
+    const authorityN1 = { ...authorityN, stateVersion: 15, updatedAt: '2026-01-01T00:00:30.000Z' }
+    const api = client(authorityN)
+    const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+    await runtime.start()
+    await runtime.markExecutionLifecycleReady()
+    const admittedBatch = runtime.current().batch!
+    const front = runtime.beginExecutionLifecycle(admittedBatch)
+
+    api.read.mockResolvedValueOnce({ ok: true, controlPlane: authorityN })
+    api.renew.mockResolvedValueOnce({ ok: true, controlPlane: authorityN1 })
+    api.issueBatch.mockResolvedValueOnce({ ok: true, batch: batch(authorityN1, 'batch-front-next') })
+    await (runtime as any).reconcile()
+    expect(runtime.validateAdmittedExecution(executionAuthority(admittedBatch)).ok).toBe(true)
+    if (front.ok) await front.guard.complete({ releaseSafe: true })
+    expect(runtime.current().batch?.id).toBe('batch-front-next')
+    await runtime.stop()
+  })
+
+  it('waits for both admitted FRONT and KITCHEN executions before adopting renewed authority', async () => {
+    const authorityN = plane({ ownerDeviceId: 'device-a', ownerEpoch: 8, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 20 })
+    const authorityN1 = { ...authorityN, stateVersion: 21, updatedAt: '2026-01-01T00:00:30.000Z' }
+    const api = client(authorityN)
+    const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+    await runtime.start()
+    await runtime.markExecutionLifecycleReady()
+    const admittedBatch = runtime.current().batch!
+    const front = runtime.beginExecutionLifecycle(admittedBatch)
+    const kitchen = runtime.beginExecutionLifecycle(admittedBatch)
+    expect(front.ok && kitchen.ok).toBe(true)
+
+    api.read.mockResolvedValueOnce({ ok: true, controlPlane: authorityN })
+    api.renew.mockResolvedValueOnce({ ok: true, controlPlane: authorityN1 })
+    api.issueBatch.mockResolvedValueOnce({ ok: true, batch: batch(authorityN1, 'batch-n-plus-1') })
+    await (runtime as any).reconcile()
+    expect(runtime.validateAdmittedExecution(executionAuthority(admittedBatch)).ok).toBe(true)
+
+    if (front.ok) await front.guard.complete({ releaseSafe: true })
+    expect(runtime.current().batch?.id).toBe(admittedBatch.id)
+    expect(runtime.validateAdmittedExecution(executionAuthority(admittedBatch)).ok).toBe(true)
+    if (kitchen.ok) await kitchen.guard.complete({ releaseSafe: true })
+    expect(runtime.current().batch?.id).toBe('batch-n-plus-1')
+    expect(runtime.validateAdmittedExecution(executionAuthority(admittedBatch)).ok).toBe(false)
+    await runtime.stop()
+  })
+
+  it('fences an admitted snapshot when ownerEpoch, device, or lease genuinely changes', async () => {
+    for (const changed of [
+      { ownerEpoch: 10 },
+      { ownerDeviceId: 'device-b' },
+      { leaseId: 'lease-b' },
+    ]) {
+      const authorityN = plane({ ownerDeviceId: 'device-a', ownerEpoch: 9, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 30 })
+      const api = client(authorityN)
+      const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+      await runtime.start()
+      await runtime.markExecutionLifecycleReady()
+      const admittedBatch = runtime.current().batch!
+      const lifecycle = runtime.beginExecutionLifecycle(admittedBatch)
+      expect(lifecycle.ok).toBe(true)
+
+      api.read.mockResolvedValueOnce({ ok: true, controlPlane: { ...authorityN, ...changed, stateVersion: 31 } })
+      await (runtime as any).reconcile()
+      expect(runtime.validateAdmittedExecution(executionAuthority(admittedBatch)).ok).toBe(false)
+      if (lifecycle.ok) await lifecycle.guard.complete({ releaseSafe: false })
+      await runtime.stop()
+    }
+  })
+
+  it('does not resurrect an admitted snapshot after restart', async () => {
+    const authorityN = plane({ ownerDeviceId: 'device-a', ownerEpoch: 10, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 40 })
+    const authorityN1 = { ...authorityN, stateVersion: 41, updatedAt: '2026-01-01T00:00:30.000Z' }
+    const apiN = client(authorityN)
+    const first = new V3ControlPlaneRuntime(apiN, 'device-a', 60_000)
+    await first.start()
+    await first.markExecutionLifecycleReady()
+    const oldBatch = first.current().batch!
+    await first.stop()
+
+    const apiN1 = client(authorityN1)
+    apiN1.issueBatch.mockResolvedValueOnce({ ok: true, batch: batch(authorityN1, 'batch-after-restart') })
+    const restarted = new V3ControlPlaneRuntime(apiN1, 'device-a', 60_000)
+    await restarted.start()
+    await restarted.markExecutionLifecycleReady()
+    expect(restarted.validateAdmittedExecution(executionAuthority(oldBatch)).ok).toBe(false)
+    expect(restarted.current().batch?.id).toBe('batch-after-restart')
+    await restarted.stop()
+  })
+
   it('never lets an older delayed reconciliation restore authority after draining releases it', async () => {
     const active = plane({ ownerDeviceId: 'device-a', ownerEpoch: 7, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 12 })
     const draining = { ...active, mode: 'V3_DRAINING' as const, stateVersion: 13 }
@@ -139,14 +270,15 @@ describe('V3ControlPlaneRuntime', () => {
     const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
     await runtime.start()
     await runtime.markExecutionLifecycleReady()
-    const lifecycle = runtime.beginExecutionLifecycle()
+    const admittedBatch = runtime.current().batch!
+    const lifecycle = runtime.beginExecutionLifecycle(admittedBatch)
     expect(lifecycle.ok).toBe(true)
 
     api.read.mockResolvedValueOnce({ ok: true, controlPlane: draining })
     await (runtime as any).reconcile()
     expect(api.release).not.toHaveBeenCalled()
     expect(runtime.validateExecution().ok).toBe(false)
-    expect(runtime.beginExecutionLifecycle().ok).toBe(false)
+    expect(runtime.beginExecutionLifecycle(admittedBatch).ok).toBe(false)
 
     if (lifecycle.ok) await lifecycle.guard.complete({ releaseSafe: true })
     expect(api.release).toHaveBeenCalledTimes(1)
@@ -159,8 +291,9 @@ describe('V3ControlPlaneRuntime', () => {
     const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
     await runtime.start()
     await runtime.markExecutionLifecycleReady()
-    const first = runtime.beginExecutionLifecycle()
-    const second = runtime.beginExecutionLifecycle()
+    const admittedBatch = runtime.current().batch!
+    const first = runtime.beginExecutionLifecycle(admittedBatch)
+    const second = runtime.beginExecutionLifecycle(admittedBatch)
     expect(first.ok && second.ok).toBe(true)
 
     api.read.mockResolvedValueOnce({ ok: true, controlPlane: { ...owned, mode: 'V3_DRAINING', stateVersion: 9 } })
@@ -178,7 +311,8 @@ describe('V3ControlPlaneRuntime', () => {
     const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
     await runtime.start()
     await runtime.markExecutionLifecycleReady()
-    const lifecycle = runtime.beginExecutionLifecycle()
+    const admittedBatch = runtime.current().batch!
+    const lifecycle = runtime.beginExecutionLifecycle(admittedBatch)
     expect(lifecycle.ok).toBe(true)
 
     api.read.mockResolvedValueOnce({ ok: true, controlPlane: { ...owned, mode: 'V3_DRAINING', stateVersion: 11 } })
@@ -188,7 +322,7 @@ describe('V3ControlPlaneRuntime', () => {
       await lifecycle.guard.complete({ releaseSafe: true })
     }
     expect(api.release).not.toHaveBeenCalled()
-    expect(runtime.beginExecutionLifecycle().ok).toBe(false)
+    expect(runtime.beginExecutionLifecycle(admittedBatch).ok).toBe(false)
     await runtime.stop()
     expect(api.release).not.toHaveBeenCalled()
   })
@@ -227,11 +361,12 @@ describe('V3ControlPlaneRuntime', () => {
     const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
     await runtime.start()
     await runtime.markExecutionLifecycleReady()
+    const admittedBatch = runtime.current().batch!
 
     const stopping = runtime.stop()
     await vi.waitFor(() => expect(api.release).toHaveBeenCalledTimes(1))
     expect(runtime.validateExecution().ok).toBe(false)
-    expect(runtime.beginExecutionLifecycle().ok).toBe(false)
+    expect(runtime.beginExecutionLifecycle(admittedBatch).ok).toBe(false)
     finishRelease({ ok: true, controlPlane: { ...owned, ownerDeviceId: null, leaseId: null, leaseExpiresAt: null, mode: 'BLOCKED_UNKNOWN' } })
     await stopping
     expect(runtime.current().status).toBe('STOPPED')
