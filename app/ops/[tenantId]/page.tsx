@@ -92,6 +92,46 @@ type TenantDetail = {
   aiPhoto: AiPhotoOpsView
 }
 
+type V3PrintMode = 'V2_ACTIVE' | 'V2_DRAINING' | 'V3_ACTIVE' | 'V3_DRAINING' | 'BLOCKED_UNKNOWN'
+type OpsPrintModeState = {
+  controlPlane: {
+    mode: V3PrintMode
+    stateVersion: number
+    ownerDeviceId: string | null
+    ownerEpoch: number
+    leaseExpiresAt: string | null
+    handoffRequestedAt: string | null
+    handoffQuarantineUntil: string | null
+    lastReconciledAt: string | null
+    updatedAt: string
+  }
+  ownerDevice: { id: string; status: string; lastSeenAt: string | null } | null
+  activeBatch: { id: string; ownerDeviceId: string; ownerEpoch: number; expiresAt: string } | null
+  v2Queue: { pending: number; claimed: number; executing: number; crossingUnknown: number }
+  v3Queue: { pending: number; claimed: number; executing: number; crossingUnknown: number }
+  v2DrainReadyAt: string | null
+  registeredDeviceCount: number
+  blocking: {
+    ownerActive: boolean
+    activeExecutionBatch: boolean
+    handoffOrReconciliation: boolean
+    v2Drain: boolean
+    v2DrainWindowActive: boolean
+    v2ExecutionAmbiguous: boolean
+    v3Drain: boolean
+  }
+  actions: {
+    startActivation: boolean
+    enterManualReview: boolean
+    finalizeV3Active: boolean
+    startDeactivation: boolean
+    finalizeV2Active: boolean
+  }
+}
+
+type OpsPrintModeAction = 'START_ACTIVATION' | 'ENTER_MANUAL_REVIEW' | 'FINALIZE_V3_ACTIVE' |
+  'START_DEACTIVATION' | 'FINALIZE_V2_ACTIVE'
+
 const TIER_META: Record<string, { label: string; color: string; bg: string; border: string; desc: string; scan: string }> = {
   LITE:        { label: '轻试用版',     color: '#389e0d', bg: '#f6ffed', border: '#b7eb8f', desc: '手机即用，适合个体小摊初次体验数字化',     scan: '摄像头扫码（强制）· 连续5次失败提示手动输入' },
   STANDARD:    { label: '标准收银版',   color: '#1677ff', bg: '#e6f4ff', border: '#91caff', desc: '单店实体零售，含商品管理与条码扫描',         scan: 'HID扫码枪优先 · 输入框默认聚焦 · 5次失败切换摄像头' },
@@ -246,7 +286,7 @@ export default function TenantDetailPage() {
             {detail.stores.length === 0 ? (
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>该商户暂无门店</div>
             ) : detail.stores.map((st) => (
-              <StoreRow key={st.id} st={st} onChanged={load} />
+              <StoreRow key={st.id} tenantId={detail.id} st={st} onChanged={load} />
             ))}
           </div>
         </Section>
@@ -283,7 +323,7 @@ const BIZ_LABELS: Record<string, string> = {
   FOOD: '餐饮', RETAIL: '零售', SERVICE: '服务', GENERAL: '综合',
 }
 
-function StoreRow({ st, onChanged }: { st: Store; onChanged: () => void }) {
+function StoreRow({ tenantId, st, onChanged }: { tenantId: string; st: Store; onChanged: () => void }) {
   const [featured, setFeatured] = useState(st.eLifeFeatured)
   const [sort, setSort]         = useState(String(st.eLifeFeaturedSort))
   const [saving, setSaving]     = useState(false)
@@ -357,6 +397,8 @@ function StoreRow({ st, onChanged }: { st: Store; onChanged: () => void }) {
         </div>
       </div>
 
+      <PrintModePanel tenantId={tenantId} store={st} />
+
       {/* ── E-Life 推荐控件 ── */}
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {featured ? (
@@ -384,6 +426,189 @@ function StoreRow({ st, onChanged }: { st: Store; onChanged: () => void }) {
         )}
         {err && <span style={{ fontSize: 11, color: '#ff7875' }}>{err}</span>}
       </div>
+    </div>
+  )
+}
+
+const PRINT_MODE_META: Record<V3PrintMode, { label: string; color: string; bg: string; border: string }> = {
+  V2_ACTIVE: { label: '传统打印', color: '#d97706', bg: 'rgba(217,119,6,0.12)', border: 'rgba(217,119,6,0.35)' },
+  V2_DRAINING: { label: '正在切换到 Local First', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.35)' },
+  V3_ACTIVE: { label: 'Local First', color: '#4ade80', bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.35)' },
+  V3_DRAINING: { label: '正在切回传统打印', color: '#60a5fa', bg: 'rgba(96,165,250,0.12)', border: 'rgba(96,165,250,0.35)' },
+  BLOCKED_UNKNOWN: { label: '需要人工处理', color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.35)' },
+}
+
+const PRINT_MODE_ERRORS: Record<string, string> = {
+  FORBIDDEN: '当前账号没有打印模式操作权限。',
+  STORE_NOT_FOUND: '当前商户与门店绑定无效。',
+  CONCURRENT_STATE_CHANGE: '状态已被其他操作更新，请刷新后重试。',
+  ACTION_NOT_AVAILABLE: '当前状态不允许执行该操作。',
+  OWNER_RELEASE_REQUIRED: 'V3 Desktop 仍持有执行权限，必须先安全释放。',
+  ACTIVE_EXECUTION_BATCH: '仍有有效执行批次，系统已停止切换。',
+  V2_DRAIN_NOT_COMPLETE: '旧 V2 队列尚未排空，不能进入人工切换闸。',
+  V2_DRAIN_WINDOW_ACTIVE: 'V2 安全排空窗口尚未结束，请等待页面允许继续。',
+  V2_EXECUTION_AMBIGUOUS: '仍有 V2 claimed/executing/unknown 记录，不能完成切换。',
+  V3_DRAIN_NOT_COMPLETE: '仍有可执行或状态不明的 V3 intent，不能恢复传统打印。',
+  V3_EXECUTION_AMBIGUOUS: '仍有可执行或状态不明的 V3 intent，必须人工核对后才能激活。',
+  HANDOFF_NOT_FINALIZED: '当前 handoff/reconciliation 尚未完成。',
+  ILLEGAL_MODE_TRANSITION: 'authoritative state machine 拒绝了该转换。',
+  CONTROL_PLANE_UNAVAILABLE: '打印控制面暂时不可用，请勿重复点击。',
+  UNEXPECTED_SERVER_ERROR: '服务器发生非预期错误；authoritative state 未被视为已切换，请先刷新。',
+  INVALID_REQUEST: '操作确认无效，请刷新后重试。',
+  INVALID_REQUEST_ORIGIN: '请求不是从当前 Ops 页面发起，操作已拒绝。',
+  INVALID_CONTENT_TYPE: '请求格式无效，操作已拒绝。',
+}
+
+function PrintModePanel({ tenantId, store }: { tenantId: string; store: Store }) {
+  const [state, setState] = useState<OpsPrintModeState | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const endpoint = `/api/ops/tenants/${encodeURIComponent(tenantId)}/stores/${encodeURIComponent(store.id)}/v3-print-control-plane`
+
+  async function loadPrintMode() {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await apiFetch(endpoint, { cache: 'no-store' }, OWNER_CTX)
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok || !body.state) setError(PRINT_MODE_ERRORS[body.error] ?? '无法读取打印模式。')
+      else setState(body.state)
+    } catch {
+      setError('打印控制面网络不可用。')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadPrintMode() }, [tenantId, store.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function requestTransition(action: OpsPrintModeAction) {
+    if (!state || loading || error) return
+    const messages: Record<OpsPrintModeAction, string> = {
+      START_ACTIVATION: '开始切换后，本门店将进入 V2 排空状态，新打印 intent 不会继续交给旧 V2 执行器。是否继续？',
+      ENTER_MANUAL_REVIEW: '请确认当前执行器已停止接单，且页面显示没有 claimed/executing/unknown 或有效 execution batch。进入人工确认闸后不会自动激活任何模式。',
+      FINALIZE_V3_ACTIVE: '启用 Local First 后，本门店将由已授权 Desktop 执行 V3 本地优先打印。请再次确认旧 V2 打印执行器已停止。',
+      START_DEACTIVATION: '开始切回后，本门店进入 V3 排空状态。V3 Desktop 必须安全释放 owner，且有效 execution batch 必须结束。是否继续？',
+      FINALIZE_V2_ACTIVE: '请确认 V3 owner 已释放、没有有效 execution batch，也没有未知执行。确认后恢复传统打印。',
+    }
+    const confirmed = window.confirm(messages[action])
+    if (!confirmed) return
+    setBusy(true)
+    setError(null)
+    try {
+      const response = await apiFetch(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({
+          action,
+          confirmed: true,
+          expectedStateVersion: state.controlPlane.stateVersion,
+        }),
+      }, OWNER_CTX)
+      const body = await response.json().catch(() => ({}))
+      if (body.state) setState(body.state)
+      if (!response.ok) setError(PRINT_MODE_ERRORS[body.error] ?? `切换已停止（${body.error ?? 'UNKNOWN'}）。`)
+    } catch {
+      setError('请求结果未知，请先刷新 authoritative state，勿重复操作。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const mode = state?.controlPlane.mode
+  const meta = mode ? PRINT_MODE_META[mode] : null
+  const ownerLabel = state?.ownerDevice?.id ?? state?.controlPlane.ownerDeviceId ?? '无'
+  const controlsDisabled = loading || busy || error !== null
+
+  return (
+    <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '10px 12px', background: 'rgba(0,0,0,0.08)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(255,255,255,0.55)', marginBottom: 5 }}>打印模式</div>
+          {loading && !state ? (
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>读取 authoritative state…</span>
+          ) : meta ? (
+            <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 800, color: meta.color, background: meta.bg, border: `1px solid ${meta.border}`, borderRadius: 10, padding: '3px 9px' }}>
+              {meta.label}
+            </span>
+          ) : null}
+        </div>
+        <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+          {state?.actions.startActivation && (
+            <button disabled={controlsDisabled} onClick={() => requestTransition('START_ACTIVATION')}
+              style={{ height: 30, padding: '0 12px', border: 'none', borderRadius: 6, background: '#16a34a', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+              {busy ? '切换中…' : '启用 Local First'}
+            </button>
+          )}
+          {state?.actions.startDeactivation && (
+            <button disabled={controlsDisabled} onClick={() => requestTransition('START_DEACTIVATION')}
+              style={{ height: 30, padding: '0 12px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+              {busy ? '切换中…' : '切回传统打印'}
+            </button>
+          )}
+          {state?.actions.enterManualReview && (
+            <button disabled={controlsDisabled} onClick={() => requestTransition('ENTER_MANUAL_REVIEW')}
+              style={{ height: 30, padding: '0 12px', border: '1px solid rgba(251,191,36,0.45)', borderRadius: 6, background: 'rgba(251,191,36,0.12)', color: '#fde68a', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+              {busy ? '确认中…' : '进入人工确认闸'}
+            </button>
+          )}
+          {state?.actions.finalizeV3Active && (
+            <button disabled={controlsDisabled} onClick={() => requestTransition('FINALIZE_V3_ACTIVE')}
+              style={{ height: 30, padding: '0 12px', border: 'none', borderRadius: 6, background: '#16a34a', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+              {busy ? '切换中…' : '确认启用 Local First'}
+            </button>
+          )}
+          {state?.actions.finalizeV2Active && (
+            <button disabled={controlsDisabled} onClick={() => requestTransition('FINALIZE_V2_ACTIVE')}
+              style={{ height: 30, padding: '0 12px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', opacity: controlsDisabled ? 0.55 : 1 }}>
+              {busy ? '切换中…' : '确认恢复传统打印'}
+            </button>
+          )}
+          <button disabled={loading || busy} onClick={loadPrintMode}
+            style={{ height: 30, padding: '0 9px', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, background: 'transparent', color: 'rgba(255,255,255,0.55)', fontSize: 11, cursor: 'pointer' }}>
+            刷新
+          </button>
+        </div>
+      </div>
+
+      {mode === 'BLOCKED_UNKNOWN' && (
+        <div style={{ marginTop: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>
+          已进入人工安全闸；BLOCKED_UNKNOWN 不会自动转出。请核对 owner、V2/V3 execution 与 reconciliation 后，明确选择最终模式。
+        </div>
+      )}
+      {state && mode === 'V2_DRAINING' && (state.blocking.v2Drain || state.blocking.v2DrainWindowActive) && (
+        <div style={{ marginTop: 8, fontSize: 11, color: '#fde68a', lineHeight: 1.5 }}>
+          正在等待 120 秒安全排空窗口与旧 V2 队列清零；claimed、executing 或 CROSSING_UNKNOWN 未清零时不能继续。
+          {state.v2DrainReadyAt ? ` 最早复核时间：${new Date(state.v2DrainReadyAt).toLocaleString('zh-CN')}` : ''}
+        </div>
+      )}
+      {state && mode === 'V3_DRAINING' && (state.blocking.ownerActive || state.blocking.activeExecutionBatch || state.blocking.v3Drain) && (
+        <div style={{ marginTop: 8, fontSize: 11, color: '#fde68a', lineHeight: 1.5 }}>
+          正在等待 V3 Desktop 安全释放 owner、已签发 execution batch 结束或撤销，并确认没有可执行或状态不明的 V3 intent。
+        </div>
+      )}
+      {state && mode === 'V3_ACTIVE' && state.blocking.handoffOrReconciliation && (
+        <div style={{ marginTop: 8, fontSize: 11, color: '#fde68a', lineHeight: 1.5 }}>
+          当前 handoff/reconciliation 未完成，不能开始切回传统打印。
+        </div>
+      )}
+      {error && <div style={{ marginTop: 8, fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>{error}</div>}
+
+      {state && (
+        <details style={{ marginTop: 8, color: 'rgba(255,255,255,0.48)' }}>
+          <summary style={{ fontSize: 11, cursor: 'pointer' }}>安全状态详情</summary>
+          <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '5px 8px', marginTop: 7, fontSize: 10, lineHeight: 1.45 }}>
+            <span>Active Desktop devices</span><span>{state.registeredDeviceCount > 0 ? `${state.registeredDeviceCount} (V3 capability not asserted)` : '0'}</span>
+            <span>Current owner</span><span style={{ wordBreak: 'break-all' }}>{ownerLabel}</span>
+            <span>Active execution batch</span><span>{state.activeBatch ? `YES · expires ${new Date(state.activeBatch.expiresAt).toLocaleString('zh-CN')}` : 'NO'}</span>
+            <span>V2 queue</span><span>{`PENDING ${state.v2Queue.pending} · CLAIMED ${state.v2Queue.claimed} · EXECUTING ${state.v2Queue.executing} · UNKNOWN ${state.v2Queue.crossingUnknown}`}</span>
+            <span>V3 executable queue</span><span>{`PENDING ${state.v3Queue.pending} · CLAIMED ${state.v3Queue.claimed} · EXECUTING ${state.v3Queue.executing} · UNKNOWN ${state.v3Queue.crossingUnknown}`}</span>
+            <span>Handoff/reconciliation</span><span>{state.blocking.handoffOrReconciliation ? 'BLOCKING' : 'CLEAR'}</span>
+            <span>State version</span><span>{state.controlPlane.stateVersion}</span>
+            <span>Endpoint readiness</span><span>由 Pilot/FIELD 单独验证</span>
+          </div>
+        </details>
+      )}
     </div>
   )
 }
