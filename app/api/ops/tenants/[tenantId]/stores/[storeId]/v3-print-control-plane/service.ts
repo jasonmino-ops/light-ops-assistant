@@ -147,19 +147,31 @@ async function hasFinalizedHandoffAuthority(
   if (!controlPlane.ownerDeviceId || !controlPlane.leaseId || !controlPlane.leaseExpiresAt ||
     controlPlane.leaseId.startsWith('handoff:') || new Date(controlPlane.leaseExpiresAt) <= now ||
     controlPlane.handoffQuarantineUntil !== null) return false
-  const audit = await targetDb.operationLog.findFirst({
-    where: {
-      tenantId: controlPlane.tenantId,
-      storeId: controlPlane.storeId,
-      actionType: 'V3_PRINT_CONTROLLED_HANDOFF',
-      targetType: 'V3PrintControlPlane',
-      targetId: controlPlane.id,
-      status: 'SUCCESS',
-      message: 'HANDOFF_CONFIRMED',
-    },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true, payloadSnapshot: true },
-  })
+  const [owner, audit] = await Promise.all([
+    targetDb.desktopDevice.findFirst({
+      where: {
+        id: controlPlane.ownerDeviceId,
+        tenantId: controlPlane.tenantId,
+        storeId: controlPlane.storeId,
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    }),
+    targetDb.operationLog.findFirst({
+      where: {
+        tenantId: controlPlane.tenantId,
+        storeId: controlPlane.storeId,
+        actionType: 'V3_PRINT_CONTROLLED_HANDOFF',
+        targetType: 'V3PrintControlPlane',
+        targetId: controlPlane.id,
+        status: 'SUCCESS',
+        message: 'HANDOFF_CONFIRMED',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, payloadSnapshot: true },
+    }),
+  ])
+  if (!owner || owner.id !== controlPlane.ownerDeviceId) return false
   const snapshot = audit?.payloadSnapshot
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false
   const evidence = snapshot as Record<string, unknown>
