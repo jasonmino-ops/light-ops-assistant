@@ -22,6 +22,9 @@ export type OpsPrintControlDb = V3ControlPlaneDb & {
   eshopTrayPrintJob: V3ControlPlaneDb['eshopTrayPrintJob'] & {
     count(args: unknown): Promise<number>
   }
+  operationLog: V3ControlPlaneDb['operationLog'] & {
+    findFirst(args: unknown): Promise<{ id: string; payloadSnapshot: unknown } | null>
+  }
 }
 
 type TransitionInput = {
@@ -136,6 +139,34 @@ async function findActiveBatch(
   })
 }
 
+async function hasFinalizedHandoffAuthority(
+  targetDb: OpsPrintControlDb,
+  controlPlane: Awaited<ReturnType<typeof readV3ControlPlane>>,
+  now: Date,
+) {
+  if (!controlPlane.ownerDeviceId || !controlPlane.leaseId || !controlPlane.leaseExpiresAt ||
+    controlPlane.leaseId.startsWith('handoff:') || new Date(controlPlane.leaseExpiresAt) <= now ||
+    controlPlane.handoffQuarantineUntil !== null) return false
+  const audit = await targetDb.operationLog.findFirst({
+    where: {
+      tenantId: controlPlane.tenantId,
+      storeId: controlPlane.storeId,
+      actionType: 'V3_PRINT_CONTROLLED_HANDOFF',
+      targetType: 'V3PrintControlPlane',
+      targetId: controlPlane.id,
+      status: 'SUCCESS',
+      message: 'HANDOFF_CONFIRMED',
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, payloadSnapshot: true },
+  })
+  const snapshot = audit?.payloadSnapshot
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false
+  const evidence = snapshot as Record<string, unknown>
+  return evidence.intendedOwnerDeviceId === controlPlane.ownerDeviceId &&
+    evidence.ownerEpoch === controlPlane.ownerEpoch && evidence.stateVersion === controlPlane.stateVersion
+}
+
 async function readV2QueueState(
   targetDb: OpsPrintControlDb,
   scope: { tenantId: string; storeId: string },
@@ -207,6 +238,8 @@ export async function readOpsPrintModeState(
   const v2ExecutionAmbiguous = v2Queue.claimed > 0 || v2Queue.executing > 0 || v2Queue.crossingUnknown > 0
   const v3DrainBlocked = Object.values(v3Queue).some((count) => count > 0)
   const v3Released = !hasOwner && !hasActiveBatch && !handoffBlocked
+  const finalizedHandoffAuthority = !hasActiveBatch && ownerDevice?.status === 'ACTIVE' &&
+    await hasFinalizedHandoffAuthority(targetDb, controlPlane, now)
   const v2DrainReadyAt = controlPlane.mode === 'V2_DRAINING'
     ? new Date(Date.parse(controlPlane.updatedAt) + V2_DRAIN_WINDOW_MS)
     : null
@@ -255,7 +288,8 @@ export async function readOpsPrintModeState(
       ) || (
         controlPlane.mode === 'V3_DRAINING' && v3Released && !v2ExecutionAmbiguous && !v3DrainBlocked
       ),
-      finalizeV3Active: controlPlane.mode === 'BLOCKED_UNKNOWN' && v3Released && !v2DrainBlocked && !v3DrainBlocked,
+      finalizeV3Active: controlPlane.mode === 'BLOCKED_UNKNOWN' && (v3Released || finalizedHandoffAuthority) &&
+        !v2DrainBlocked && !v3DrainBlocked,
       startDeactivation: controlPlane.mode === 'V3_ACTIVE' && !handoffBlocked && !v3DrainBlocked,
       finalizeV2Active: controlPlane.mode === 'BLOCKED_UNKNOWN' && v3Released && !v2ExecutionAmbiguous && !v3DrainBlocked,
     },
@@ -337,8 +371,10 @@ export async function runOpsPrintModeAction(
       if (input.action === 'START_DEACTIVATION' && v3DrainBlocked) {
         return { ok: false, code: 'V3_DRAIN_NOT_COMPLETE', controlPlane: initial }
       }
+      const finalizedHandoffAuthority = input.action === 'FINALIZE_V3_ACTIVE' &&
+        await hasFinalizedHandoffAuthority(tx, initial, now)
       if (input.action !== 'START_DEACTIVATION') {
-        if (initial.ownerDeviceId !== null) {
+        if (initial.ownerDeviceId !== null && !finalizedHandoffAuthority) {
           return { ok: false, code: 'OWNER_RELEASE_REQUIRED', controlPlane: initial }
         }
         if (activeBatch) return { ok: false, code: 'ACTIVE_EXECUTION_BATCH', controlPlane: initial }

@@ -92,6 +92,33 @@ describe('V3ControlPlaneRuntime', () => {
     await runtime.stop()
   })
 
+  it('never lets an older delayed reconciliation restore authority after draining releases it', async () => {
+    const active = plane({ ownerDeviceId: 'device-a', ownerEpoch: 7, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 12 })
+    const draining = { ...active, mode: 'V3_DRAINING' as const, stateVersion: 13 }
+    const api = client(plane())
+    const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+    await runtime.start()
+    await runtime.markExecutionLifecycleReady()
+
+    let finishOldBatch!: (value: { ok: true; batch: ExecutionBatchProjection }) => void
+    api.read.mockResolvedValueOnce({ ok: true, controlPlane: active })
+    api.renew.mockResolvedValueOnce({ ok: true, controlPlane: active })
+    api.issueBatch.mockImplementationOnce(() => new Promise((resolve) => { finishOldBatch = resolve }) as never)
+    const older = (runtime as any).reconcile() as Promise<void>
+    await vi.waitFor(() => expect(api.issueBatch).toHaveBeenCalledTimes(1))
+
+    api.read.mockResolvedValueOnce({ ok: true, controlPlane: draining })
+    await (runtime as any).reconcile()
+    expect(api.release).toHaveBeenCalledWith(draining)
+    expect(runtime.current()).toMatchObject({ status: 'BLOCKED_UNKNOWN', controlPlane: { ownerDeviceId: null }, batch: null })
+
+    finishOldBatch({ ok: true, batch: batch(active) })
+    await older
+    expect(runtime.current()).toMatchObject({ status: 'BLOCKED_UNKNOWN', controlPlane: { ownerDeviceId: null }, batch: null })
+    expect(runtime.validateExecution().ok).toBe(false)
+    await runtime.stop()
+  })
+
   it('fences admission and releases a current owner on V3_DRAINING when no execution is in flight', async () => {
     const owned = plane({ ownerDeviceId: 'device-a', ownerEpoch: 2, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_DRAINING', stateVersion: 5 })
     const api = client(owned)

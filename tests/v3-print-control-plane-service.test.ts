@@ -55,8 +55,8 @@ function fakeDb(initial: Partial<any> = {}, options: {
   }
   const tx: any = {
     v3PrintControlPlane: {
-      upsert: async () => plane,
-      findUnique: async () => plane,
+      upsert: async () => ({ ...plane }),
+      findUnique: async () => ({ ...plane }),
       updateMany: async ({ where, data }: any) => {
         if (options.failModeCasAfterAudit && audits.length > 0 && data.mode !== undefined) return { count: 0 }
         if (!matches(where)) return { count: 0 }
@@ -80,7 +80,7 @@ function fakeDb(initial: Partial<any> = {}, options: {
       },
     },
     desktopDevice: {
-      findFirst: async ({ where }: any) => ({ id: where.id }),
+      findFirst: async ({ where }: any) => ({ id: where.id, status: 'ACTIVE', lastSeenAt: now }),
       count: async () => 1,
     },
     operationLog: {
@@ -215,6 +215,41 @@ test('finalized handoff prebinds only the intended owner and does not advance ep
   assert.equal((await acquireV3Authority(state.db, { tenantId: 'tenant-a', storeId: 'store-a', deviceId: 'device-new' }, { now: new Date(now.getTime() + 120_003) })).ok, true)
   assert.equal(state.plane().ownerEpoch, 5)
   assert.ok(state.plane().leaseId)
+})
+
+test('Ops finalization preserves a completed controlled handoff but rejects unaudited prebinding', async () => {
+  const state = fakeDb({ ownerDeviceId: 'device-old', ownerEpoch: 4, leaseId: 'lease-old', leaseExpiresAt: new Date(now.getTime() + 120_000) })
+  const handoff = { tenantId: 'tenant-a', storeId: 'store-a', actorUserId: 'user-owner', intendedOwnerDeviceId: 'device-new', confirmationId: 'confirm-0001' }
+  await controlledV3OwnerHandoff(state.db, { ...handoff, expectedStateVersion: 1 }, now)
+  const finalizedAt = new Date(now.getTime() + 120_001)
+  await controlledV3OwnerHandoff(state.db, { ...handoff, expectedStateVersion: 2 }, finalizedAt)
+  assert.equal(state.audits.at(-1)?.message, 'HANDOFF_CONFIRMED')
+  assert.equal(state.audits.at(-1)?.payloadSnapshot.intendedOwnerDeviceId, state.plane().ownerDeviceId)
+  assert.equal(state.audits.at(-1)?.payloadSnapshot.ownerEpoch, state.plane().ownerEpoch)
+  assert.equal(state.audits.at(-1)?.payloadSnapshot.stateVersion, state.plane().stateVersion)
+
+  const readable = await readOpsPrintModeState(state.db, { tenantId: 'tenant-a', storeId: 'store-a' }, finalizedAt)
+  assert.equal(readable.actions.finalizeV3Active, true)
+  const result = await runOpsPrintModeAction(state.db, {
+    tenantId: 'tenant-a', storeId: 'store-a', operatorAdminId: 'ops-admin-a', operatorRole: 'OPS_ADMIN',
+    expectedStateVersion: 3, action: 'FINALIZE_V3_ACTIVE',
+  }, finalizedAt)
+  assert.equal(result.ok, true)
+  assert.equal(state.plane().mode, 'V3_ACTIVE')
+  assert.equal(state.plane().ownerDeviceId, 'device-new')
+  assert.equal(state.plane().ownerEpoch, 5)
+
+  const unaudited = fakeDb({
+    mode: 'BLOCKED_UNKNOWN', ownerDeviceId: 'device-new', ownerEpoch: 5, leaseId: 'lease-new',
+    leaseExpiresAt: new Date(finalizedAt.getTime() + 60_000), stateVersion: 3,
+  })
+  const denied = await runOpsPrintModeAction(unaudited.db, {
+    tenantId: 'tenant-a', storeId: 'store-a', operatorAdminId: 'ops-admin-a', operatorRole: 'OPS_ADMIN',
+    expectedStateVersion: 3, action: 'FINALIZE_V3_ACTIVE',
+  }, finalizedAt)
+  assert.equal(denied.ok, false)
+  if (!denied.ok) assert.equal(denied.code, 'OWNER_RELEASE_REQUIRED')
+  assert.equal(unaudited.plane().mode, 'BLOCKED_UNKNOWN')
 })
 
 test('handoff confirmation is bound to the intended owner and confirmation identity', async () => {

@@ -23,6 +23,7 @@ export class V3ControlPlaneRuntime {
   private releaseBlocked = false
   private drainingAuthority: ControlPlaneProjection | null = null
   private releasePromise: Promise<void> | null = null
+  private reconcileGeneration = 0
   private snapshot: V3RuntimeSnapshot = { status: 'STOPPED', controlPlane: null, batch: null }
 
   public constructor(
@@ -45,6 +46,7 @@ export class V3ControlPlaneRuntime {
 
   public async stop(): Promise<void> {
     this.running = false
+    this.reconcileGeneration += 1
     if (this.timer) clearInterval(this.timer)
     this.timer = null
     const current = this.snapshot.controlPlane
@@ -94,7 +96,9 @@ export class V3ControlPlaneRuntime {
 
   private async reconcile(): Promise<void> {
     if (!this.running) return
+    const generation = ++this.reconcileGeneration
     const read = await this.client.read()
+    if (!this.running || generation !== this.reconcileGeneration) return
     if (!read.ok) {
       if (this.snapshot.status !== 'V3_OWNER' || !this.snapshot.batch || Date.parse(this.snapshot.batch.expiresAt) <= Date.now()) {
         this.snapshot = { status: 'FENCED', controlPlane: null, batch: null }
@@ -117,6 +121,7 @@ export class V3ControlPlaneRuntime {
     }
     if (controlPlane.ownerDeviceId === null) {
       const acquired = await this.client.acquire()
+      if (!this.running || generation !== this.reconcileGeneration) return
       if (!acquired.ok) {
         this.snapshot = { status: 'FENCED', controlPlane, batch: null }
         return
@@ -124,6 +129,7 @@ export class V3ControlPlaneRuntime {
       controlPlane = acquired.controlPlane
     } else if (controlPlane.ownerDeviceId === this.deviceId) {
       const renewed = await this.client.renew(controlPlane)
+      if (!this.running || generation !== this.reconcileGeneration) return
       if (!renewed.ok) {
         if (this.snapshot.status !== 'V3_OWNER' || !this.snapshot.batch ||
           this.snapshot.batch.ownerEpoch !== controlPlane.ownerEpoch || this.snapshot.batch.leaseId !== controlPlane.leaseId ||
@@ -138,6 +144,7 @@ export class V3ControlPlaneRuntime {
       return
     }
     const issued = await this.client.issueBatch(controlPlane)
+    if (!this.running || generation !== this.reconcileGeneration) return
     this.snapshot = issued.ok
       ? { status: 'V3_OWNER', controlPlane, batch: issued.batch }
       : { status: 'FENCED', controlPlane, batch: null }
