@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useState, CSSProperties } from 'react'
+import Link from 'next/link'
+import { useLocale } from '@/app/components/LangProvider'
+import { useManagementReturnHref } from '@/app/components/useManagementReturnHref'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import { publicUrl } from '@/lib/public-url'
 
@@ -128,6 +131,8 @@ async function readApiMessage(res: Response, fallback: string): Promise<string> 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function CampaignPage() {
+  const { t } = useLocale()
+  const managementReturnHref = useManagementReturnHref()
   // data
   const [creators, setCreators] = useState<Creator[]>([])
   const [links,    setLinks]    = useState<CampaignLink[]>([])
@@ -479,7 +484,9 @@ export default function CampaignPage() {
     <div style={s.page}>
       <div style={s.topBar}>
         <div>
-          <a href="/dashboard" style={s.backLink}>← 返回概览</a>
+          {managementReturnHref
+            ? <Link href={managementReturnHref} style={s.backLink}>← {t('management.backToManagement')}</Link>
+            : <a href="/dashboard" style={s.backLink}>← 返回概览</a>}
           <h1 style={s.h1}>TikTok 推广管理</h1>
           <p style={s.desc}>创建推广短链，追踪点击、订单、销售额和佣金。</p>
         </div>

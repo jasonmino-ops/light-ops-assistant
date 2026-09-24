@@ -51,4 +51,21 @@ for (const file of translations) {
   assert.match(source, /management: \{/, `${file} must translate the Management Center namespace`)
 }
 
+// ES-MANAGEMENT-CENTER-P5-01 — navigation-only integration of existing capabilities.
+for (const route of ['/customers', '/campaign', '/home/computer-client', '/network-print/jobs']) {
+  const escaped = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  assert.match(management, new RegExp(`managedHref\\('${escaped}'\\)[^\\n]*ownerOnly: true`), `${route} must be an OWNER-visible Management entry with a Management return path`)
+}
+assert.match(management, /href: '\/products'[^\n]*ownerOnly: true/, 'Products entry must follow the OWNER-only /products page route')
+const bottomNav = fs.readFileSync('app/components/nav.tsx', 'utf8')
+assert.match(bottomNav, /const REAL_STAFF_TABS = STAFF_TABS\.filter\(\(tab\) => tab\.href !== '\/products'\)/, 'real STAFF bottom navigation must not offer the OWNER-only /products page')
+assert.match(bottomNav, /realRole === 'OWNER' \? STAFF_TABS : REAL_STAFF_TABS/, 'only an OWNER in staff mode keeps the read-only Products tab')
+assert.match(management, /t\('management\.backToHome'\)/, 'Browser/mobile Management must offer a return to home')
+
+const navigation = fs.readFileSync('lib/management-navigation.ts', 'utf8')
+assert.doesNotMatch(navigation, /apiFetch|fetch\(|\/api\/|localStorage|eshopDesktopRuntime|ipcRenderer/, 'management return helper must stay pure navigation')
+for (const file of ['app/customers/page.tsx', 'app/campaign/page.tsx', 'app/home/computer-client/page.tsx', 'app/network-print/jobs/page.tsx']) {
+  assert.match(fs.readFileSync(file, 'utf8'), /useManagementReturnHref\(\)/, `${file} must return to the Management Center when opened from it`)
+}
+
 console.log('management-center-static.test.cjs: PASS')
