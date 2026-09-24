@@ -6,13 +6,9 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "**": false,
       "main": false,
-      "release": true,
-      "codex/print-rc7-preflight-governance": false,
-      "codex/es-network-server-v01-release": false,
-      "codex/es-network-commercial-addon-v01": false,
-      "codex/es-network-commercial-discovery-v01": false,
-      "codex/es-network-commercial-cold-conversion-v01": false
+      "release": true
     }
   }
 }

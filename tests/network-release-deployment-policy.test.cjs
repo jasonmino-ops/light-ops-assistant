@@ -11,20 +11,16 @@ assert.deepEqual(config, {
     { path: '/api/cron/product-import-staging-cleanup', schedule: '35 17 * * *' },
   ],
   git: { deploymentEnabled: {
+    '**': false,
     main: false,
     release: true,
-    'codex/print-rc7-preflight-governance': false,
-    'codex/es-network-server-v01-release': false,
-    'codex/es-network-commercial-addon-v01': false,
-    'codex/es-network-commercial-discovery-v01': false,
-    'codex/es-network-commercial-cold-conversion-v01': false,
   } },
 });
 // The Founder-controlled Vercel setting must track `release` as the Production
-// Branch. Disabling `main` here also prevents it becoming an automatic Preview
-// branch after that switch. Unspecified branches retain Vercel's true default.
+// Branch. The wildcard deny keeps every other branch from creating a deployment;
+// the explicit release allow is the only automatic deployment path.
+assert.equal(config.git.deploymentEnabled['**'], false);
 assert.equal(config.git.deploymentEnabled.main, false);
 assert.equal(config.git.deploymentEnabled.release, true);
-assert.equal(config.git.deploymentEnabled['codex/print-rc7-preflight-governance'], false);
-assert.equal(Object.keys(config.git.deploymentEnabled).some(key => /[*?{}]/.test(key)), false);
-console.log('PASS main automatic deployment disabled, release enabled, exact governance/Network branch exclusions preserved');
+assert.deepEqual(Object.keys(config.git.deploymentEnabled), ['**', 'main', 'release']);
+console.log('PASS wildcard deployment deny, main disabled, release enabled');
