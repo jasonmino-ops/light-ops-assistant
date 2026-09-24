@@ -43,7 +43,9 @@
       "featureBranch": "codex/es-print-cashier-auto-admission-reprint",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "e84f38d975fd5872481f33800bd0a594e76aad88",
-      "status": "ACTIVE",
+      "status": "CLOSED",
+      "closedAt": "2026-09-24T17:13:24Z",
+      "featureMergeCommitSha": "40646360611ea218f39c7f5737754ad46a3d9629",
       "authorizedPaths": [
         "app/cashier/page.tsx",
         "app/records/page.tsx"
