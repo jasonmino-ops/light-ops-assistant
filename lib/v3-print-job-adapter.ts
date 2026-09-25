@@ -24,6 +24,10 @@ type Db = V3ControlPlaneDb & {
   v3PrintExecutionBatch: V3ControlPlaneDb['v3PrintExecutionBatch'] & { findUnique(args: any): Promise<any> }
 }
 
+function persistenceScope(scope: { tenantId: string; storeId: string }) {
+  return { tenantId: scope.tenantId, storeId: scope.storeId }
+}
+
 function sha(value: string | Uint8Array) { return createHash('sha256').update(value).digest('hex') }
 function claimProvenance(input: { deviceId: string; ownerEpoch: number; batchId: string }) {
   return `V3_CLAIM:${input.deviceId}:${input.ownerEpoch}:${input.batchId}`
@@ -70,14 +74,15 @@ function parse(value: unknown): V3Intent | null {
 const HELD_MARKER = 'V3_DURABLY_HELD'
 
 export async function enqueueHeldV3PrintIntent(db: Db, scope: { tenantId: string; storeId: string }, intent: V3Intent, expiresAt: Date) {
-  const result = await enqueueV3PrintIntent(db, scope, intent, expiresAt)
+  const ownedScope = persistenceScope(scope)
+  const result = await enqueueV3PrintIntent(db, ownedScope, intent, expiresAt)
   if (!result.created) return result
   const held = await db.eshopTrayPrintJob.updateMany({
     where: { id: result.job.id, schemaVersion: 3, status: 'PENDING', completedAt: null },
     data: { resultMessage: HELD_MARKER, nextAttemptAt: expiresAt },
   })
   if (held.count !== 1) throw new Error('V3_HELD_DURABILITY_RACE')
-  const job = await db.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: { ...scope, idempotencyKey: intent.printJobId } } })
+  const job = await db.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: { ...ownedScope, idempotencyKey: intent.printJobId } } })
   if (!job) throw new Error('V3_HELD_DURABILITY_MISSING')
   return { created: true, job }
 }
@@ -88,8 +93,9 @@ export async function materializeHeldV3PrintIntents(
   target: 'V2_ACTIVE' | 'V3_ACTIVE',
   now: Date,
 ) {
+  const ownedScope = persistenceScope(scope)
   const jobs = await (db.eshopTrayPrintJob as any).findMany({ where: {
-    ...scope, schemaVersion: 3, status: 'PENDING', completedAt: null, resultMessage: HELD_MARKER,
+    ...ownedScope, schemaVersion: 3, status: 'PENDING', completedAt: null, resultMessage: HELD_MARKER,
   } }) as EshopTrayPrintJob[]
   for (const job of jobs) {
     const intent = parse(job.payload)
@@ -128,17 +134,18 @@ export function v3IntentFromNetworkRequest(request: NetworkRequest, source: Excl
 }
 
 export async function enqueueV3PrintIntent(db: Db, scope: { tenantId: string; storeId: string }, intent: V3Intent, expiresAt: Date) {
+  const ownedScope = persistenceScope(scope)
   const normalized = parse(intent)
   if (!normalized) throw new Error('V3_INTENT_INVALID')
   const requestHash = sha(JSON.stringify(normalized))
   try {
-    const job = await db.eshopTrayPrintJob.create({ data: { ...scope, idempotencyKey: normalized.printJobId, requestHash,
+    const job = await db.eshopTrayPrintJob.create({ data: { ...ownedScope, idempotencyKey: normalized.printJobId, requestHash,
       schemaVersion: 3, payload: normalized as unknown as Prisma.InputJsonValue, maxAttempts: 1, expiresAt,
       physicalCompletionKnown: false } })
     return { created: true, job }
   } catch (error) {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error
-    const job = await db.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: { ...scope, idempotencyKey: normalized.printJobId } } })
+    const job = await db.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: { ...ownedScope, idempotencyKey: normalized.printJobId } } })
     if (!job || (job.requestHash !== requestHash && !isTerminalLocalReconciliation(job, normalized.printJobId, normalized.role))) {
       throw new Error('V3_INTENT_IDEMPOTENCY_CONFLICT')
     }

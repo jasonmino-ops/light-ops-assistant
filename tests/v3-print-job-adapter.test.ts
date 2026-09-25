@@ -16,7 +16,7 @@ function intent(overrides: Partial<Extract<V3Intent, { payloadKind: 'RAW_BYTES' 
     payloadBase64: bytes.toString('base64'), byteLength: bytes.length, payloadHash: createHash('sha256').update(bytes).digest('hex'), ...overrides,
     orderNo: overrides.orderNo ?? 'ORDER-001' }
 }
-function database() {
+function database(options: { rejectDeviceIdInPersistenceScope?: boolean } = {}) {
   const jobs: any[] = []
   const batch: any = { id: 'batch-a', controlPlaneId: 'control-a', ...scope, ownerDeviceId: 'device-a', ownerEpoch: 7,
     stateVersion: 4, leaseId: 'lease-a', mode: 'V3_ACTIVE', expiresAt, revokedAt: null,
@@ -27,10 +27,14 @@ function database() {
     if (value && typeof value === 'object' && !Array.isArray(value)) return true
     return job[key] === value
   })
+  const assertPersistenceScope = (value: Record<string, unknown>) => {
+    if (options.rejectDeviceIdInPersistenceScope) assert.equal(Object.hasOwn(value, 'deviceId'), false)
+  }
   const db: any = { jobs, batch,
     v3PrintExecutionBatch: { findUnique: async ({ where, include }: any) => where.id === batch.id ? (include ? batch : { ...batch, controlPlane: undefined }) : null },
     eshopTrayPrintJob: {
       create: async ({ data }: any) => {
+        assertPersistenceScope(data)
         if (jobs.some(job => job.tenantId === data.tenantId && job.storeId === data.storeId && job.idempotencyKey === data.idempotencyKey)) {
           throw new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: 'test' })
         }
@@ -38,10 +42,19 @@ function database() {
           nextAttemptAt: now, completedAt: null, resultCode: null, resultMessage: null, ...data, createdAt: now, updatedAt: now }
         jobs.push(job); return job
       },
-      findUnique: async ({ where }: any) => jobs.find(job => job.tenantId === where.tenantId_storeId_idempotencyKey.tenantId &&
-        job.storeId === where.tenantId_storeId_idempotencyKey.storeId && job.idempotencyKey === where.tenantId_storeId_idempotencyKey.idempotencyKey) ?? null,
-      findFirst: async ({ where }: any) => jobs.filter(job => matches(job, where)).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0] ?? null,
-      findMany: async ({ where }: any) => jobs.filter(job => matches(job, where)),
+      findUnique: async ({ where }: any) => {
+        assertPersistenceScope(where.tenantId_storeId_idempotencyKey)
+        return jobs.find(job => job.tenantId === where.tenantId_storeId_idempotencyKey.tenantId &&
+        job.storeId === where.tenantId_storeId_idempotencyKey.storeId && job.idempotencyKey === where.tenantId_storeId_idempotencyKey.idempotencyKey) ?? null
+      },
+      findFirst: async ({ where }: any) => {
+        assertPersistenceScope(where)
+        return jobs.filter(job => matches(job, where)).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0] ?? null
+      },
+      findMany: async ({ where }: any) => {
+        assertPersistenceScope(where)
+        return jobs.filter(job => matches(job, where))
+      },
       updateMany: async ({ where, data }: any) => {
         const selected = jobs.filter(job => matches(job, where))
         for (const job of selected) for (const [key, value] of Object.entries(data) as [string, any][]) job[key] = value && typeof value === 'object' && 'increment' in value ? job[key] + value.increment : value
@@ -77,6 +90,28 @@ test('transition admission is durably HELD across restart and materializes only 
   assert.equal(await materializeHeldV3PrintIntents(restartedDb as any, scope, 'V3_ACTIVE', now), 1)
   assert.equal(db.jobs[0].resultMessage, null)
   assert.equal((await deliverV3PrintIntent(db, identity, now)).job?.printJobId, 'job-canonical-001')
+})
+
+test('no-batch local HOLD projects rich Desktop auth context to schema-3 persistence scope', async () => {
+  const db = database({ rejectDeviceIdInPersistenceScope: true })
+  const desktopContext = { ...scope, deviceId: 'device-a' }
+  for (const role of ['FRONT', 'KITCHEN'] as const) {
+    const printJobId = `network:held-${role.toLowerCase()}-001`
+    const held = await enqueueHeldV3PrintIntent(db, desktopContext, intent({
+      printJobId, source: 'LOCAL_DESKTOP', role,
+    }), expiresAt)
+    assert.equal(held.created, true)
+    assert.equal(held.job.idempotencyKey, printJobId)
+    assert.equal(held.job.schemaVersion, 3)
+    assert.equal(held.job.resultMessage, 'V3_DURABLY_HELD')
+    assert.equal(held.job.attemptCount, 0)
+    assert.equal(held.job.claimAttempt, 0)
+  }
+  assert.equal(await materializeHeldV3PrintIntents(db, desktopContext, 'V3_ACTIVE', now), 2)
+  assert.deepEqual(db.jobs.map((job: any) => job.idempotencyKey), [
+    'network:held-front-001', 'network:held-kitchen-001',
+  ])
+  assert.ok(db.jobs.every((job: any) => !Object.hasOwn(job, 'deviceId')))
 })
 
 test('final V2 mode materializes held local bytes into the existing schema-1 path', async () => {
