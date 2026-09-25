@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { NextRequest } from 'next/server'
 import { prisma } from '../lib/prisma'
 import { createActivationPin, hashActivationPin, hashDesktopDeviceToken } from '../lib/desktop-activation/crypto'
 import { activateDesktopDevice } from '../lib/desktop-activation/service'
 import { getDesktopDeviceContext } from '../lib/desktop-activation/auth'
 import { POST as revokeDevice } from '../app/api/desktop/devices/[id]/revoke/route'
+import { POST as holdV3LocalPrint } from '../app/api/desktop/v3-print-jobs/route'
 
 if (process.env.DESKTOP_ACTIVATION_TEST_DATABASE !== '1') {
   throw new Error('DESKTOP_ACTIVATION_TEST_DATABASE=1 is required for real database activation tests')
@@ -248,9 +249,51 @@ async function testConcurrentActivation() {
   assert.equal(new Set(tokens).size, 1, 'only one token should be issued')
 }
 
+async function testNoBatchV3HoldLocalProjectsDesktopDeviceContext() {
+  const { tenant, store, owner } = await seedTenant('rt-v3-hold-local')
+  const { pin } = await createPin({ tenantId: tenant.id, storeId: store.id, ownerId: owner.id })
+  const activation = await activateDesktopDevice({
+    req: activationRequest(),
+    store: { id: store.id, code: store.code, tenantId: tenant.id },
+    pin,
+    installationId: `installation-${randomUUID()}`,
+  })
+  assert.equal(activation.ok, true)
+  if (!activation.ok) return
+  await prisma.v3PrintControlPlane.create({ data: {
+    tenantId: tenant.id, storeId: store.id, mode: 'V3_ACTIVE', ownerEpoch: 0, stateVersion: 1,
+  } })
+
+  const payload = Buffer.from([0x1b, 0x40, 0x0a])
+  for (const role of ['FRONT', 'KITCHEN'] as const) {
+    const printJobId = `network:desktop-hold-${role.toLowerCase()}-${randomUUID()}`
+    const response = await holdV3LocalPrint(new NextRequest('http://localhost/api/desktop/v3-print-jobs', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${activation.deviceToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'HOLD_LOCAL', orderNo: `ORDER-${randomUUID()}`, printJobId, role, rendererVersion: 'network-1',
+        expiresAt: new Date(Date.now() + 60_000).toISOString(), payloadBase64: payload.toString('base64'),
+        byteLength: payload.byteLength, payloadHash: createHash('sha256').update(payload).digest('hex'),
+      }),
+    }))
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), { ok: true, status: 'DURABLY_ACCEPTED', created: true })
+    const job = await prisma.eshopTrayPrintJob.findUniqueOrThrow({
+      where: { tenantId_storeId_idempotencyKey: { tenantId: tenant.id, storeId: store.id, idempotencyKey: printJobId } },
+    })
+    assert.equal(job.schemaVersion, 3)
+    assert.equal(job.status, 'PENDING')
+    assert.equal(job.attemptCount, 0)
+    assert.equal(job.claimAttempt, 0)
+    assert.equal(job.effectBoundary, null)
+    assert.equal(job.idempotencyKey, printJobId)
+  }
+}
+
 async function main() {
   await testSuccessfulActivationAndRotation()
   await testConcurrentActivation()
+  await testNoBatchV3HoldLocalProjectsDesktopDeviceContext()
   console.log('desktop activation runtime database tests passed')
 }
 

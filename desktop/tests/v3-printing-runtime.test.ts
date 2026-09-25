@@ -41,6 +41,29 @@ function runtime(execute: () => Promise<any>) {
 }
 
 describe('V3PrintingRuntime execution lifecycle', () => {
+  it.each(['FRONT', 'KITCHEN'] as const)('durably HOLDS no-batch local %s admission without starting physical execution', async (role) => {
+    const cloud = { holdLocal: vi.fn(async () => 'DURABLY_HELD' as const) }
+    const controlPlane = {
+      current: vi.fn(() => ({ status: 'FENCED', controlPlane: { mode: 'V3_ACTIVE' }, batch: null })),
+      beginExecutionLifecycle: vi.fn(),
+    }
+    const coordinator = { execute: vi.fn() }
+    const endpoints = { resolve: vi.fn() }
+    const instance = new (V3PrintingRuntime as any)(
+      {}, coordinator, controlPlane, endpoints, {}, cloud, 60_000, { dispose: vi.fn() },
+    ) as V3PrintingRuntime
+
+    await expect(instance.execute({ ...input, role })).resolves.toEqual({
+      status: 'HELD', admission: 'DURABLY_ACCEPTED', durability: 'DURABLY_HELD',
+    })
+    expect(cloud.holdLocal).toHaveBeenCalledWith(expect.objectContaining({
+      orderNo: input.orderNo, printJobId: input.identity.printJobId, role,
+    }))
+    expect(endpoints.resolve).not.toHaveBeenCalled()
+    expect(controlPlane.beginExecutionLifecycle).not.toHaveBeenCalled()
+    expect(coordinator.execute).not.toHaveBeenCalled()
+  })
+
   it('recovers a durable UNKNOWN across restart before control-plane release can become ready', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'v3-printing-runtime-'))
     roots.push(directory)
