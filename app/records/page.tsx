@@ -10,6 +10,7 @@ import LangToggleBtn from '@/app/components/LangToggleBtn'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
 import CheckoutSheet from '@/app/components/CheckoutSheet'
 import { formatMoney } from '@/lib/currency'
+import { readManagementReturnHref } from '@/lib/management-navigation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -247,6 +248,10 @@ export default function RecordsPage() {
     ? `/management?from=desktop&storeCode=${encodeURIComponent(desktopStoreCode)}`
     : '/management?from=desktop'
   const returnsToManagement = desktopReturnTo === managementReturnHref
+  // ES-MANAGEMENT-CENTER-P5-01 FIELD corrective: Management-origin navigation
+  // (Browser or Desktop) returns from the same top-left control as the other
+  // Management destinations. Other entry points keep their existing behaviour.
+  const managementOriginHref = readManagementReturnHref(searchParams.toString())
   const cashierReturnHref = desktopReturnTo
     || (desktopStoreCode
       ? `/desktop/pos?${new URLSearchParams({
@@ -387,6 +392,19 @@ export default function RecordsPage() {
     <main style={{ ...s.page, ...(isDesktopRecords ? s.pageDesktop : {}) }}>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`}</style>
 
+      {managementOriginHref && (
+        <a
+          href={managementOriginHref}
+          style={s.managementBackLink}
+          onClick={(event) => {
+            event.preventDefault()
+            router.push(managementOriginHref)
+          }}
+        >
+          ‹ {t('records.backToManagement')}
+        </a>
+      )}
+
       <div style={{ ...s.recordsHeader, ...(isDesktopRecords ? s.recordsHeaderDesktop : {}) }}>
         <div style={s.brandLeft}>
           <span style={s.brandAvatar}>
@@ -404,7 +422,7 @@ export default function RecordsPage() {
         </div>
         <div style={s.headerTools}>
           <LangToggleBtn />
-          {isDesktopRecords && (
+          {isDesktopRecords && !managementOriginHref && (
             <a
               href={cashierReturnHref}
               style={s.desktopBackLink}
@@ -901,6 +919,16 @@ const s: Record<string, React.CSSProperties> = {
     minWidth: 82,
     whiteSpace: 'nowrap',
     textAlign: 'center',
+  },
+  managementBackLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: 44,
+    marginBottom: 4,
+    color: '#155dcc',
+    fontSize: 14,
+    fontWeight: 600,
+    textDecoration: 'none',
   },
   desktopBackLink: {
     display: 'inline-flex',
