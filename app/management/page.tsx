@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
-import { buildManagementHref, withManagementReturn } from '@/lib/management-navigation'
+import { buildManagementHref, MANAGEMENT_PATH, withManagementReturn } from '@/lib/management-navigation'
 
 type IconName =
   | 'receipt'
@@ -117,7 +117,9 @@ export default function ManagementPage() {
     ? `/management?from=desktop&storeCode=${encodeURIComponent(navigationStoreCode)}`
     : '/management?from=desktop'
   const legacyBusinessHref = (path: string) => {
-    if (!navigationContext.fromDesktop || !navigationStoreCode) return path
+    // P5-01 FIELD corrective: Browser Management origin also carries a Management return.
+    if (!navigationContext.fromDesktop) return withManagementReturn(path, MANAGEMENT_PATH)
+    if (!navigationStoreCode) return path
     const params = new URLSearchParams({
       from: 'desktop',
       storeCode: navigationStoreCode,
@@ -152,7 +154,7 @@ export default function ManagementPage() {
       icon: 'chart',
       accent: '#f1efff',
       entries: [
-        { href: '/products', label: t('management.products'), description: t('management.productsDesc'), icon: 'box', ownerOnly: true },
+        { href: managedHref('/products'), label: t('management.products'), description: t('management.productsDesc'), icon: 'box', ownerOnly: true },
         { href: '/product-sales', label: t('management.productSales'), description: t('management.productSalesDesc'), icon: 'chart', ownerOnly: true },
       ],
     },
