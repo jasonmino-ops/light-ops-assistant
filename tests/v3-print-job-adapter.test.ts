@@ -18,28 +18,47 @@ function intent(overrides: Partial<Extract<V3Intent, { payloadKind: 'RAW_BYTES' 
 }
 function database(options: { rejectDeviceIdInPersistenceScope?: boolean } = {}) {
   const jobs: any[] = []
+  const controlPlane: any = { mode: 'V3_ACTIVE', ownerDeviceId: 'device-a', ownerEpoch: 7,
+    stateVersion: 4, leaseId: 'lease-a', leaseExpiresAt: expiresAt }
   const batch: any = { id: 'batch-a', controlPlaneId: 'control-a', ...scope, ownerDeviceId: 'device-a', ownerEpoch: 7,
-    stateVersion: 4, leaseId: 'lease-a', mode: 'V3_ACTIVE', expiresAt, revokedAt: null,
-    controlPlane: { mode: 'V3_ACTIVE', ownerDeviceId: 'device-a', ownerEpoch: 7, stateVersion: 4, leaseId: 'lease-a' } }
+    stateVersion: 4, leaseId: 'lease-a', mode: 'V3_ACTIVE', expiresAt, revokedAt: null, controlPlane }
+  const batches = [batch]
   const matches = (job: any, where: any) => Object.entries(where).every(([key, value]: [string, any]) => {
-    if (key === 'expiresAt') return !value.gt || job.expiresAt > value.gt
-    if (key === 'nextAttemptAt') return !value.lte || job.nextAttemptAt <= value.lte
-    if (value && typeof value === 'object' && !Array.isArray(value)) return true
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if ('gt' in value && !(job[key] > value.gt)) return false
+      if ('lte' in value && !(job[key] <= value.lte)) return false
+      if ('not' in value && job[key] === value.not) return false
+      if ('in' in value && !value.in.includes(job[key])) return false
+      return true
+    }
     return job[key] === value
   })
+  const assertActiveClaimConstraint = (job: any) => {
+    if (job.status === 'CLAIMED' || job.status === 'EXECUTING') {
+      assert.ok(job.claimedByComputerBindingId)
+      assert.ok(job.claimTokenHash)
+      assert.ok(job.claimAttempt > 0)
+      assert.ok(job.leaseExpiresAt)
+    }
+  }
   const assertPersistenceScope = (value: Record<string, unknown>) => {
     if (options.rejectDeviceIdInPersistenceScope) assert.equal(Object.hasOwn(value, 'deviceId'), false)
   }
-  const db: any = { jobs, batch,
-    v3PrintExecutionBatch: { findUnique: async ({ where, include }: any) => where.id === batch.id ? (include ? batch : { ...batch, controlPlane: undefined }) : null },
+  const db: any = { jobs, batch, batches, controlPlane,
+    v3PrintExecutionBatch: { findUnique: async ({ where, include }: any) => {
+      const selected = batches.find(value => value.id === where.id)
+      return selected ? (include ? { ...selected, controlPlane } : { ...selected, controlPlane: undefined }) : null
+    } },
     eshopTrayPrintJob: {
       create: async ({ data }: any) => {
         assertPersistenceScope(data)
         if (jobs.some(job => job.tenantId === data.tenantId && job.storeId === data.storeId && job.idempotencyKey === data.idempotencyKey)) {
           throw new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: 'test' })
         }
-        const job = { id: `row-${jobs.length + 1}`, status: 'PENDING', claimTokenHash: null, claimAttempt: 0, attemptCount: 0,
-          nextAttemptAt: now, completedAt: null, resultCode: null, resultMessage: null, ...data, createdAt: now, updatedAt: now }
+        const job = { id: `row-${jobs.length + 1}`, status: 'PENDING', claimedByComputerBindingId: null, claimTokenHash: null,
+          claimAttempt: 0, attemptCount: 0, leaseExpiresAt: null, nextAttemptAt: now, completedAt: null,
+          resultCode: null, resultMessage: null, ...data, createdAt: now, updatedAt: now }
+        assertActiveClaimConstraint(job)
         jobs.push(job); return job
       },
       findUnique: async ({ where }: any) => {
@@ -57,7 +76,14 @@ function database(options: { rejectDeviceIdInPersistenceScope?: boolean } = {}) 
       },
       updateMany: async ({ where, data }: any) => {
         const selected = jobs.filter(job => matches(job, where))
-        for (const job of selected) for (const [key, value] of Object.entries(data) as [string, any][]) job[key] = value && typeof value === 'object' && 'increment' in value ? job[key] + value.increment : value
+        for (const job of selected) {
+          const next = { ...job }
+          for (const [key, value] of Object.entries(data) as [string, any][]) {
+            next[key] = value && typeof value === 'object' && 'increment' in value ? next[key] + value.increment : value
+          }
+          assertActiveClaimConstraint(next)
+          Object.assign(job, next)
+        }
         return { count: selected.length }
       },
     },
@@ -78,7 +104,71 @@ test('delivery requires a live owner-scoped batch', async () => {
   assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, deviceId: 'stale-device' }, now), { ok: false, code: 'V3_BATCH_STALE' })
   const delivered = await deliverV3PrintIntent(db, identity, now)
   assert.equal(delivered.ok, true); assert.equal(delivered.ok && delivered.job?.printJobId, 'job-canonical-001')
-  assert.equal(db.jobs[0].status, 'CLAIMED'); assert.equal(db.jobs[0].attemptCount, 1)
+  assert.equal(db.jobs[0].status, 'PENDING')
+  assert.equal(db.jobs[0].claimedByComputerBindingId, null)
+  assert.match(db.jobs[0].resultMessage, /^V3_CLAIM:device-a:7:batch-a$/)
+  assert.equal(db.jobs[0].attemptCount, 1)
+  assert.equal(db.jobs[0].claimAttempt, 1)
+  assert.ok(db.jobs[0].claimTokenHash)
+})
+
+test('delivery rejects wrong scope, stale ownerEpoch/lease/stateVersion, and expired owner lease', async () => {
+  const db = database(); await enqueueV3PrintIntent(db, scope, intent(), expiresAt)
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, tenantId: 'tenant-b' }, now), { ok: false, code: 'V3_BATCH_STALE' })
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, storeId: 'store-b' }, now), { ok: false, code: 'V3_BATCH_STALE' })
+  db.batch.controlPlane.stateVersion += 1
+  assert.deepEqual(await deliverV3PrintIntent(db, identity, now), { ok: false, code: 'V3_BATCH_STALE' })
+  db.batch.controlPlane.stateVersion = db.batch.stateVersion
+  db.batch.controlPlane.ownerEpoch += 1
+  assert.deepEqual(await deliverV3PrintIntent(db, identity, now), { ok: false, code: 'V3_BATCH_STALE' })
+  db.batch.controlPlane.ownerEpoch = db.batch.ownerEpoch
+  db.batch.controlPlane.leaseId = 'lease-b'
+  assert.deepEqual(await deliverV3PrintIntent(db, identity, now), { ok: false, code: 'V3_BATCH_STALE' })
+  db.batch.controlPlane.leaseId = db.batch.leaseId
+  db.batch.controlPlane.leaseExpiresAt = now
+  assert.deepEqual(await deliverV3PrintIntent(db, identity, now), { ok: false, code: 'V3_BATCH_STALE' })
+  assert.equal(db.jobs[0].claimAttempt, 0)
+})
+
+for (const role of ['FRONT', 'KITCHEN'] as const) {
+  test(`CLOUD_REMOTE_REPRINT ${role} is claimed once with its exact intentional identity and role`, async () => {
+    const db = database()
+    const printJobId = `v3-reprint:${role.toLowerCase()}:11111111-2222-4333-8444-555555555555`
+    await enqueueV3PrintIntent(db, scope, intent({
+      printJobId, source: 'CLOUD_REMOTE_REPRINT', role, orderNo: 'ORDER-REPRINT-001', rendererVersion: 'reprint-raw-v1',
+    }), expiresAt)
+    const first = await deliverV3PrintIntent(db, identity, now)
+    const second = await deliverV3PrintIntent(db, identity, now)
+    assert.equal(first.ok && first.job?.printJobId, printJobId)
+    assert.equal(first.ok && first.job?.intent.source, 'CLOUD_REMOTE_REPRINT')
+    assert.equal(first.ok && first.job?.intent.role, role)
+    assert.equal(second.ok && second.job, null)
+    assert.notEqual(printJobId, `network:${createHash('sha256').update(canonicalV3PrintEffectKey('ORDER-REPRINT-001', role)).digest('hex')}`)
+    assert.equal(db.jobs[0].claimAttempt, 1)
+    assert.equal(db.jobs[0].attemptCount, 1)
+    assert.deepEqual(await reportV3Execution(db, identity, {
+      printJobId, source: 'CLOUD_REMOTE_REPRINT', role, executionId: `execution-${role.toLowerCase()}`,
+      ownerEpoch: 7, reportVersion: 1, outcome: 'CROSSED',
+    }, now), { ok: true, acknowledged: true })
+    assert.equal(db.jobs[0].status, 'SUCCEEDED')
+    assert.equal(db.jobs[0].claimTokenHash, null)
+  })
+}
+
+test('CLOUD_REMOTE_REPRINT UNKNOWN is terminally reconciled and never redelivered as a physical retry', async () => {
+  const db = database()
+  const printJobId = 'v3-reprint:kitchen:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+  await enqueueV3PrintIntent(db, scope, intent({
+    printJobId, source: 'CLOUD_REMOTE_REPRINT', role: 'KITCHEN', orderNo: 'ORDER-REPRINT-UNKNOWN', rendererVersion: 'reprint-raw-v1',
+  }), expiresAt)
+  assert.equal((await deliverV3PrintIntent(db, identity, now)).job?.printJobId, printJobId)
+  assert.deepEqual(await reportV3Execution(db, identity, {
+    printJobId, source: 'CLOUD_REMOTE_REPRINT', role: 'KITCHEN', executionId: 'execution-unknown',
+    ownerEpoch: 7, reportVersion: 1, outcome: 'CROSSING_UNKNOWN',
+  }, now), { ok: true, acknowledged: true })
+  assert.equal(db.jobs[0].resultStatus, 'CROSSING_UNKNOWN')
+  assert.equal(db.jobs[0].attemptCount, 1)
+  assert.equal((await deliverV3PrintIntent(db, identity, now)).job, null)
 })
 
 test('transition admission is durably HELD across restart and materializes only for final V3 mode', async () => {
@@ -125,12 +215,39 @@ test('final V2 mode materializes held local bytes into the existing schema-1 pat
   assert.equal(db.jobs[0].resultMessage, null)
 })
 
-test('restart redelivery is same-device same-epoch only', async () => {
+test('batch renewal preserves the original durable claim and report without redelivery', async () => {
   const db = database(); await enqueueV3PrintIntent(db, scope, intent(), expiresAt); await deliverV3PrintIntent(db, identity, now)
-  db.batch.id = 'batch-b'
-  assert.equal((await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now)).ok, true)
-  db.batch.ownerEpoch = 8; db.batch.controlPlane.ownerEpoch = 8
-  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now), { ok: false, code: 'V3_CLAIM_AMBIGUOUS' })
+  db.controlPlane.stateVersion = 5
+  db.batches.push({ ...db.batch, id: 'batch-b', stateVersion: 5, controlPlane: db.controlPlane })
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now), { ok: true, job: null })
+  assert.equal(db.jobs[0].resultMessage, 'V3_CLAIM:device-a:7:batch-a')
+  assert.equal(db.jobs[0].claimAttempt, 1)
+  assert.equal(db.jobs[0].attemptCount, 1)
+  assert.deepEqual(await reportV3Execution(db, identity, {
+    printJobId: 'job-canonical-001', source: 'CLOUD_H5', role: 'FRONT', executionId: 'execution-a',
+    ownerEpoch: 7, reportVersion: 1, outcome: 'CROSSED',
+  }, now), { ok: true, acknowledged: true })
+})
+
+test('concurrent callers receive a schema-3 job at most once', async () => {
+  const db = database(); await enqueueV3PrintIntent(db, scope, intent(), expiresAt)
+  const results = await Promise.all([deliverV3PrintIntent(db, identity, now), deliverV3PrintIntent(db, identity, now)])
+  assert.equal(results.filter(result => result.ok && result.job).length, 1)
+  assert.equal(results.filter(result => result.ok && result.job === null).length +
+    results.filter(result => !result.ok && result.code === 'V3_DELIVERY_RACE').length, 1)
+  assert.equal(db.jobs[0].claimAttempt, 1)
+  assert.equal(db.jobs[0].attemptCount, 1)
+})
+
+test('a new owner epoch cannot inherit an outstanding V3 delivery reservation', async () => {
+  const db = database(); await enqueueV3PrintIntent(db, scope, intent(), expiresAt); await deliverV3PrintIntent(db, identity, now)
+  db.controlPlane.ownerEpoch = 8
+  db.controlPlane.stateVersion = 5
+  db.controlPlane.leaseId = 'lease-b'
+  db.batches.push({ ...db.batch, id: 'batch-b', ownerEpoch: 8, stateVersion: 5, leaseId: 'lease-b', controlPlane: db.controlPlane })
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now), {
+    ok: false, code: 'V3_CLAIM_AMBIGUOUS',
+  })
 })
 
 test('report ACK is idempotent and never claims physical completion', async () => {
