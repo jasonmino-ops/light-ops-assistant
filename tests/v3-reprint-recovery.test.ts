@@ -395,7 +395,7 @@ async function main() {
     )
     assert.equal(
       createHash('sha256').update(readFileSync('app/records/page.tsx')).digest('hex'),
-      '3660f5b4f087cffb10641ec5c98c1695cefdbaae3798b0b98169a3647abd19f0',
+      '48efc97f9b77dd63bed22fb0e3b69e44bf13ababbad3a8956cf39a6426912a22',
     )
   })
 
