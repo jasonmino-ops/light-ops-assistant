@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "taskId": "ES-MANAGEMENT-CENTER-P5-01-FIELD-NAV",
+  "featureBranch": "codex/es-management-center-p5-01-field-nav",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "d772ff33dc8233ad3fbcd8712afcb1f417b8e0b6",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/records/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/records/page.tsx": "48efc97f9b77dd63bed22fb0e3b69e44bf13ababbad3a8956cf39a6426912a22"
+  },
+  "createdAt": "2026-09-26T16:27:32Z",
+  "approvedAt": "2026-09-26T16:27:32Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder Decision in the ES-MANAGEMENT-CENTER-P5-01 FIELD navigation corrective task (方案 A, sealed exception approval)",
+    "statement": "Founder approves the sealed exception ES-MANAGEMENT-CENTER-P5-01-FIELD-NAV for app/records/page.tsx only: base SHA-256 3660f5b4f087cffb10641ec5c98c1695cefdbaae3798b0b98169a3647abd19f0, candidate SHA-256 48efc97f9b77dd63bed22fb0e3b69e44bf13ababbad3a8956cf39a6426912a22, patch SHA-256 ecf037f0468dbe5c7459d65525e7ac3cffc3700bf7ae483d7c220e48ca396c83, lineageMode PRE_COMMIT_CONTENT_SHA256, baseOriginMainSha d772ff33dc8233ad3fbcd8712afcb1f417b8e0b6, featureBranch codex/es-management-center-p5-01-field-nav, closeAfter FEATURE_MERGE. Any final content whose SHA-256 differs from the candidate is outside authorization.",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the exact P5-01 FIELD navigation corrective for Sales Records: Management-origin navigation (Browser or Desktop) shows a top-left Back to Management Center control via the existing readManagementReturnHref; Cashier-origin Desktop navigation keeps the existing right-side Back to Cashier control.",
+  "sourceDraft": {
+    "baseOriginMainSha": "d772ff33dc8233ad3fbcd8712afcb1f417b8e0b6",
+    "baseProtectedFileSha256": "3660f5b4f087cffb10641ec5c98c1695cefdbaae3798b0b98169a3647abd19f0",
+    "candidateProtectedFileSha256": "48efc97f9b77dd63bed22fb0e3b69e44bf13ababbad3a8956cf39a6426912a22",
+    "patchSha256": "ecf037f0468dbe5c7459d65525e7ac3cffc3700bf7ae483d7c220e48ca396c83",
+    "candidatePath": ".task-state/ES-MANAGEMENT-CENTER-P5-01-FIELD-NAV-sealed/records-page.tsx",
+    "patchPath": ".task-state/ES-MANAGEMENT-CENTER-P5-01-FIELD-NAV-sealed/records-page.patch",
+    "candidateBranch": "codex/es-management-center-p5-01-field-nav",
+    "fileCount": 1
+  },
+  "allowedPurposes": [
+    "Import the existing readManagementReturnHref from lib/management-navigation",
+    "Compute a validated managementOriginHref from the current search params",
+    "Show a top-left Back to Management Center control for Management-origin navigation (Browser and Desktop) using the existing router.push client-navigation semantics",
+    "Keep the existing right-side Cashier-origin Desktop return control, hidden only when a Management origin is present, plus the minimal navigation style"
+  ],
+  "prohibitedChanges": [
+    "Records query, filter, summary, aggregation, caching or data mapping changes",
+    "Records API or sales record data structure changes",
+    "Permission, auth, session, context or middleware changes",
+    "Cashier, Printing, reprint, refund or order behaviour changes",
+    "Desktop runtime, Electron, IPC, schema, migration or dependency changes",
+    "Other Records UI refactors or unrelated formatting churn",
+    "Production deploy, FIELD VERIFIED, FINAL FROZEN or CLOSED claims"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized feature merge of the FIELD navigation corrective. It must not remain active as authorization for future Records changes."
+}
