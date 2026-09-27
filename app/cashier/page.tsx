@@ -1138,6 +1138,15 @@ const s: Record<string, CSSProperties> = {
   sideGroupSettings: { background: 'rgba(148,163,184,.08)', borderColor: 'rgba(148,163,184,.18)' },
   sideSectionTitle: { fontSize: 13, fontWeight: 800, color: '#dbe7f7', letterSpacing: 0.2, lineHeight: 1.1 },
   sideSectionBody: { display: 'flex', flexDirection: 'column', gap: 4 },
+  sideEventList: { display: 'flex', flexDirection: 'column', gap: 4 },
+  sideEventEntry: { padding: '6px 7px', borderRadius: 9, background: 'rgba(15,23,42,.22)', border: '1px solid rgba(255,255,255,.06)' },
+  sideEventHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  sideEventRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '5px 0', borderTop: '1px solid rgba(255,255,255,.06)' },
+  sideEventMeta: { display: 'flex', flexDirection: 'column', minWidth: 0, gap: 2 },
+  sideEventName: { fontSize: 10, fontWeight: 800, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  sideEventCount: { fontSize: 9, color: '#94a3b8' },
+  sideEventActions: { display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 },
+  sideToolsSummary: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, cursor: 'pointer', listStyle: 'none' as const },
   sidePrimaryBtn: { minHeight: 42, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(96,165,250,.24)', background: 'rgba(37,99,235,.18)', color: '#eaf2ff', fontSize: 14, fontWeight: 800, cursor: 'pointer', textAlign: 'left' as const },
   sideSecondaryBtn: { minHeight: 30, padding: '7px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,.08)', background: 'rgba(255,255,255,.05)', color: '#dbe2ea', fontSize: 11, fontWeight: 600, cursor: 'pointer', textAlign: 'left' as const },
   sideMutedBtn: { minHeight: 26, padding: '6px 10px', borderRadius: 10, border: '1px dashed rgba(255,255,255,.08)', background: 'rgba(255,255,255,.02)', color: '#94a3b8', fontSize: 10, fontWeight: 600, cursor: 'pointer', textAlign: 'left' as const },
@@ -4676,27 +4685,22 @@ export default function CashierPage() {
                 <div style={{ ...s.sideSection, ...s.sideGroupCashier }}>
                   <div style={{ ...s.sideSectionTitle, color: '#93c5fd' }}>{d.sectionCashier}</div>
                   <div style={s.sideSectionBody}>
-                    <div style={s.holdCard}>
-                      <div style={s.holdHead}>
-                        <span style={s.holdTitle}>{d.serverPendingTitle}</span>
+                    <div style={s.sideEventEntry}>
+                      <div style={s.sideEventHead}>
+                        <span style={s.sideEventName}>{d.serverPendingTitle}</span>
                         <span style={s.holdCount}>{serverPendingOrders.length} 单</span>
                       </div>
-                      <div style={{ ...s.holdSub, marginBottom: 6 }}>{d.serverPendingHint}</div>
                       {serverPendingOrders.length > 0 ? (
-                        <div style={s.holdList}>
+                        <div style={s.sideEventList}>
                           {serverPendingOrders.map(order => {
                             const heldLabel = holdOrderLabel(lang as DeskLang, order.createdAt, undefined, order.totalAmount)
                             return (
-                              <div key={order.orderNo} style={s.holdItem}>
-                                <div style={s.holdMeta}>
-                                  <span>{shortNo(order.orderNo)}</span>
-                                  <span>{heldLabel.time}</span>
-                                  <span>{heldLabel.total}</span>
+                              <div key={order.orderNo} style={s.sideEventRow}>
+                                <div style={s.sideEventMeta}>
+                                  <span style={s.sideEventName}>{shortNo(order.orderNo)}</span>
+                                  <span style={s.sideEventCount}>{order.itemCount} 件 · {heldLabel.time}</span>
                                 </div>
-                                <div style={s.holdSub}>
-                                  {order.itemCount} 件 · {d.recordPendingPayment}
-                                </div>
-                                <div style={s.holdActions}>
+                                <div style={s.sideEventActions}>
                                   <button type="button" style={s.holdRestoreBtn} onClick={() => setViewPendingOrder(order)}>
                                     {d.serverPendingView}
                                   </button>
@@ -4706,36 +4710,32 @@ export default function CashierPage() {
                           })}
                         </div>
                       ) : (
-                        <div style={s.holdEmpty}>{d.serverPendingEmpty}</div>
+                        <div style={s.holdEmpty}>{d.serverPendingEmpty} · {d.serverPendingHint}</div>
                       )}
                     </div>
-                    <div style={s.holdCard}>
-                      <div style={s.holdHead}>
-                        <span style={s.holdTitle}>{d.holdTitle}</span>
+                    <div style={s.sideEventEntry}>
+                      <div style={s.sideEventHead}>
+                        <span style={s.sideEventName}>{d.holdTitle}</span>
                         <span style={s.holdCount}>{holdOrders.length} 单</span>
                       </div>
                       {cart.length > 0 && (
-                        <button type="button" style={s.holdBtn} onClick={handleHoldCurrentOrder}>
+                        <button type="button" style={s.sideMutedBtn} onClick={handleHoldCurrentOrder}>
                           {d.holdButton}
                         </button>
                       )}
                       {holdOrders.length > 0 ? (
-                        <div style={s.holdList}>
+                        <div style={s.sideEventList}>
                           {holdOrders.map(order => {
                             const heldCount = cartCount(order.cart)
                             const heldTotal = cartTotal(order.cart)
                             const heldLabel = holdOrderLabel(lang as DeskLang, order.createdAt, order.note, heldTotal)
                             return (
-                              <div key={order.id} style={s.holdItem}>
-                                <div style={s.holdMeta}>
-                                  <span>{heldLabel.time}</span>
-                                  {heldLabel.note && <span>{heldLabel.note}</span>}
-                                  <span>{heldLabel.total}</span>
+                              <div key={order.id} style={s.sideEventRow}>
+                                <div style={s.sideEventMeta}>
+                                  <span style={s.sideEventName}>{heldLabel.note || heldLabel.time}</span>
+                                  <span style={s.sideEventCount}>{heldCount} 件 · {heldLabel.total}</span>
                                 </div>
-                                <div style={s.holdSub}>
-                                  {heldCount} 件 · {order.checkoutStep === 'SELECT_PAYMENT' ? (lang === 'en' ? 'Waiting payment' : lang === 'km' ? 'រង់ចាំទូទាត់' : '待收款') : order.checkoutStep === 'CONFIRM_ORDER' ? (lang === 'en' ? 'Waiting confirm' : lang === 'km' ? 'រង់ចាំបញ្ជាក់' : '待确认') : (lang === 'en' ? 'Selecting items' : lang === 'km' ? 'កំពុងជ្រើសទំនិញ' : '选品中')}
-                                </div>
-                                <div style={s.holdActions}>
+                                <div style={s.sideEventActions}>
                                   <button type="button" style={s.holdRestoreBtn} onClick={() => handleRestoreHoldOrder(order)}>
                                     {lang === 'en' ? 'Restore' : lang === 'km' ? 'យកត្រឡប់' : '恢复'}
                                   </button>
@@ -4751,17 +4751,14 @@ export default function CashierPage() {
                         <div style={s.holdEmpty}>{d.holdEmpty}</div>
                       )}
                     </div>
-                    <button
-                      style={{ ...s.sidePrimaryBtn, marginTop: 2 }}
-                      onClick={handleOpenDesktopRecords}
-                    >
-                      {d.desktopRecordsBtn}
-                    </button>
                   </div>
                 </div>
                 <div style={s.sideDivider} />
-                <div style={{ ...s.sideSection, ...s.sideGroupOps }}>
-                  <div style={{ ...s.sideSectionTitle, color: '#86efac' }}>{d.sectionOps}</div>
+                <details style={{ ...s.sideSection, ...s.sideGroupOps }}>
+                  <summary style={s.sideToolsSummary}>
+                    <span style={{ ...s.sideSectionTitle, color: '#86efac' }}>{lang === 'en' ? 'Business tools' : lang === 'km' ? 'ឧបករណ៍អាជីវកម្ម' : '营业工具'}</span>
+                    <span style={s.holdCount}>{lang === 'en' ? 'More' : lang === 'km' ? 'បន្ថែម' : '更多'}</span>
+                  </summary>
                   <div style={s.sideSectionBody}>
                     <div style={s.shiftCard}>
                       <div style={s.shiftStart}>{d.shiftStart(shiftStartIso ? fmtTime(shiftStartIso) : '--:--')}</div>
@@ -4773,7 +4770,6 @@ export default function CashierPage() {
                       </button>
                     </div>
                   </div>
-                </div>
                 {khqrSupported && (
                   <>
                     <div style={s.sideDivider} />
@@ -4858,6 +4854,7 @@ export default function CashierPage() {
                     )}
                   </div>
                 </div>
+                </details>
               </>
             )}
           </div>
