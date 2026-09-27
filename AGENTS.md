@@ -58,6 +58,7 @@
 - 除第 6 节例外外，开线前主动取得当前 Production Git SHA。
 - 执行 `git fetch origin`，并在准备作为基线的干净 worktree 运行：
 - `./scripts/check-release-lineage.sh <production_sha>`
+- Release Lineage 默认使用 `STRICT`：Production 是 `origin/main` ancestor 才能直接确认安全开发基线；仅在 STRICT 因 ancestry divergence 失败且 worktree clean 时，才可按 `docs/governance/ES-RELEASE-SELECTIVE-LINEAGE-GOVERNANCE-01.md` 尝试 fail-closed `CONTENT_SUBSET`。CONTENT_SUBSET 只是受限的 Git/content provenance proof，不是 semantic-equivalence proof，也不构成 selective release authorization。
 - 只有脚本确认安全开发基线后，才可创建线路或开始实现。
 - Production SHA 缺失、读取失败、无法判定、工作区脏或 lineage 不通过时，一律 BLOCKED。
 - “origin/main 最新”不等于 Production 已进入 main 血统。
@@ -127,6 +128,7 @@
 - Codex 可以整理证据并报告待验项，但不得代替验收人宣布 `FIELD VERIFIED`。
 - `FIELD VERIFIED` 不等于 `CLOSED`。
 - `CLOSED` 必须同时有：验收通过、变更进入 `origin/main`、Production 包含对应变更且与 main 血统一致、要求的回归无已知退化。
+- `AUTHORIZED_SELECTIVE_RELEASE` 是独立于 Development Baseline Safety 的 release authorization；必须使用独立 validator、最小 machine-readable record、Founder authorization 和受保护 release branch。它不改变 STRICT 默认，也不因 validator PASS 自动授权部署或 Closure。
 - Closure 时重新读取 GitHub 与 Production 真实状态并执行适用 lineage 检查。
 - 任一证据缺失或为 `UNKNOWN` 时，状态保持 OPEN / BLOCKED，不得宣布 CLOSED。
 
