@@ -56,7 +56,7 @@ for (const route of ['/customers', '/campaign', '/home/computer-client', '/netwo
   const escaped = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   assert.match(management, new RegExp(`managedHref\\('${escaped}'\\)[^\\n]*ownerOnly: true`), `${route} must be an OWNER-visible Management entry with a Management return path`)
 }
-assert.match(management, /href: '\/products'[^\n]*ownerOnly: true/, 'Products entry must follow the OWNER-only /products page route')
+assert.match(management, /href: managedHref\('\/products'\)[^\n]*ownerOnly: true/, 'Products entry must follow the OWNER-only /products page route and return to Management')
 const bottomNav = fs.readFileSync('app/components/nav.tsx', 'utf8')
 assert.match(bottomNav, /const REAL_STAFF_TABS = STAFF_TABS\.filter\(\(tab\) => tab\.href !== '\/products'\)/, 'real STAFF bottom navigation must not offer the OWNER-only /products page')
 assert.match(bottomNav, /realRole === 'OWNER' \? STAFF_TABS : REAL_STAFF_TABS/, 'only an OWNER in staff mode keeps the read-only Products tab')

@@ -9,6 +9,8 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { publicUrl } from '@/lib/public-url'
 import { formatMoney } from '@/lib/currency'
 import ProductBulkImportPanel from './ProductBulkImportPanel'
+import Link from 'next/link'
+import { useManagementReturnHref } from '@/app/components/useManagementReturnHref'
 
 type MarketingLang = 'zh' | 'en' | 'km'
 type MarketingTemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
@@ -247,6 +249,7 @@ function withImages(p: Product, imageUrls: string[]): Product {
 export default function ProductsPage() {
   const { t } = useLocale()
   const { effectiveRole, currencyCode } = useWorkMode()
+  const managementReturnHref = useManagementReturnHref()
   const canManageProducts = effectiveRole === 'OWNER'
   const fmt = useCallback((key: string, vars: Record<string, string | number>) => {
     let text = t(key)
@@ -1861,7 +1864,12 @@ export default function ProductsPage() {
 
       {/* Header */}
       <div style={{ ...s.headerBar, justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={s.headerTitle}>{t('products.title')}</span>
+        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+          {managementReturnHref && (
+            <Link href={managementReturnHref} style={s.managementBackLink}>‹ {t('management.backToManagement')}</Link>
+          )}
+          <span style={s.headerTitle}>{t('products.title')}</span>
+        </span>
         <LangToggleBtn />
       </div>
 
@@ -3457,6 +3465,15 @@ const s: Record<string, React.CSSProperties> = {
     background: 'var(--blue)',
     padding: '16px 16px 18px',
     display: 'flex',
+    alignItems: 'center',
+  },
+  managementBackLink: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 600,
+    textDecoration: 'none',
+    minHeight: 32,
+    display: 'inline-flex',
     alignItems: 'center',
   },
   headerTitle: {
