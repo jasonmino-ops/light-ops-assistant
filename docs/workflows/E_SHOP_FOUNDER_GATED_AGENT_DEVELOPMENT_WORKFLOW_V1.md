@@ -21,8 +21,9 @@ Governed by:
 - ES-STRAT-001 Store Operating System Strategy Baseline
 - ES-ENG-001 Engineering Workflow Baseline
 - ES-GOV-001 Level 0 Governance Baseline
+- ES-ENGINEERING-UI-FAST-PATH-01 UI Fast Path / Risk-Proportional Validation Governance
 
-本文档不改写、不削弱任何 Level 0 规则、`AGENTS.md` 规则、Scope Guard、Release Lineage Gate 或冻结资产。它只规定三件事：代理如何按风险分级执行任务、何时必须停下等待 Founder 决策、如何汇报和交接。
+本文档不改写、不削弱任何 Level 0 规则、`AGENTS.md` 规则、Scope Guard、Release Lineage Gate 或冻结资产。UI-only / presentation-only 变更的完整比例验证规则以 `ES-ENGINEERING-UI-FAST-PATH-01.md` 为准；该规则是 additive，不构成 governance bypass，发生冲突时本工作流及更高层、更严格的约束优先。本文档只规定三件事：代理如何按风险分级执行任务、何时必须停下等待 Founder 决策、如何汇报和交接。
 
 ## 1. 目的
 

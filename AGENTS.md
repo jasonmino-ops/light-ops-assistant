@@ -8,6 +8,7 @@
 - 用户当前任务中的明确指令优先于本文件；本文件负责补齐用户没有重复说明的默认开发纪律。
 - 先读取本文件及当前目录链中更深层的 `AGENTS.md` / `AGENTS.override.md`。
 - 治理原则以 `docs/governance/ES-GOV-001 Level 0 Governance Baseline V1.0 FINAL.md` 为准。
+- UI Fast Path / Risk-Proportional Validation 的完整规则以 `docs/governance/ES-ENGINEERING-UI-FAST-PATH-01.md` 为准；该规则是 subordinate additive governance，不替代任何上位治理。
 - 工程流程以 `docs/governance/ES-ENG-001 Engineering Workflow Baseline V1.0 FINAL.md` 为准。
 - 具体开发工作流以 `docs/workflows/STORE_ASSISTANT_DEV_WORKFLOW_SKILL_V1.md` 为准。
 - 所有开发、工作流、仓库审查、构建和发布任务，开始前必须读取并遵守 E-Shop Founder-Gated Agent Development Workflow V1.0（`docs/workflows/E_SHOP_FOUNDER_GATED_AGENT_DEVELOPMENT_WORKFLOW_V1.md`），并先确定任务等级（L1 / L2 / L3）。
@@ -46,6 +47,7 @@
 - 判断是否影响 runtime、build、workflow、script、dependency、database、infrastructure 或 deployment。
 - 判断是否涉及认证、权限、租户隔离、订单/支付、数据写入或稳定入口。
 - 按 ES-GOV-001 / ES-ENG-001 确定 Readiness、Authorization、Review 与 Founder Approval 要求。
+- 对 UI-only / presentation-only 变更，按 UI Fast Path canonical rule 以实际代码风险选择验证强度；命中更严格的路径、能力或 Founder Gate 要求时仍按更严格规则执行。
 - 发现工作区不干净、基线不明或权威资产冲突时，先保护现场并 fail closed。
 - 不修改业务代码，直到适用的开工门禁满足。
 
