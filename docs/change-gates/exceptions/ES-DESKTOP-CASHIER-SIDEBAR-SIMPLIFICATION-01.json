@@ -6,7 +6,7 @@
   "baseOriginMainSha": "c21c4e18c5d60d2feda2c023cc9b83f48447fab6",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "authorizedPaths": [
     "app/cashier/page.tsx"
   ],
@@ -15,6 +15,8 @@
   },
   "createdAt": "2026-09-27T16:47:14Z",
   "approvedAt": "2026-09-27T16:47:14Z",
+  "closedAt": "2026-09-27T17:23:45Z",
+  "featureMergeCommitSha": "234c8315c1c03d3aa888cd671868764ccbedc615",
   "approvedBy": "Founder",
   "closeAfter": "FEATURE_MERGE",
   "reason": "Authorize only the Founder-approved sealed Desktop Sidebar presentation candidate in app/cashier/page.tsx: reduce server-pending and local hold surfaces to lightweight name/count event entries, remove the Desktop sales-record Sidebar entry, and place existing shift/day-close, FX, auto-print and QZ controls inside a default-collapsed Business tools section. Browser behavior, shared CashierPage architecture, handlers, state, APIs, persistence and all non-Sidebar runtime behavior remain unchanged.",
