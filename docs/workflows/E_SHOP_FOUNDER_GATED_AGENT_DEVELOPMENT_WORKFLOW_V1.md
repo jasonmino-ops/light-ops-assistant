@@ -356,7 +356,7 @@ FOUNDER DECISION REQUIRED
 | ES-GOV-001 / ES-ENG-001（Level 0） | 本文档位于 Level 0 之下。冲突时 Level 0 优先；本文档不定义 Readiness、Authorization、Acceptance、Freeze 的替代流程，只规定何时必须进入这些流程。 |
 | `docs/workflows/STORE_ASSISTANT_DEV_WORKFLOW_SKILL_V1.md` | 继续规定具体技术路径：Release Lineage Gate 操作、build / smoke、production migration、Browser 与真机验收、Obsidian 冻结、P0–P3 优先级、必须先审与必须暂停的清单。本文档规定代理执行模式与风险等级，两者并行适用；本文档不放宽该工作流的任何要求，同一事项两者表述不同时按 `AGENTS.md` 第 1 节的同层冲突规则处理。 |
 | Scope Guard（`scripts/guards/check-change-scope.js`） | 与任务等级无关的硬门禁。任何等级的任务 commit 前都必须以 Guard 实际输出判定；需要 forbidden paths 时走 exception 机制并构成 Founder Gate。 |
-| Release Lineage Gate（`scripts/check-release-lineage.sh`）与 Docs-only Exception | 与任务等级无关。任何等级的新开发线路都必须通过 Lineage Gate 或满足 `AGENTS.md` 第 6 节例外的全部条件。 |
+| Release Lineage Gate（`scripts/check-release-lineage.sh`）、CONTENT_SUBSET 与 Selective Release Validator | 与任务等级无关。任何等级的新开发线路默认必须通过 STRICT Lineage Gate 或满足 `AGENTS.md` 第 6 节例外；只有 STRICT ancestry divergence 且 worktree clean 时，才可按 `docs/governance/ES-RELEASE-SELECTIVE-LINEAGE-GOVERNANCE-01.md` 尝试 fail-closed CONTENT_SUBSET。CONTENT_SUBSET 只是开发基线 provenance proof，不是 semantic-equivalence proof，也不替代独立的 `scripts/check-selective-release.sh`、Founder release authorization、branch protection、build/test/review 或部署授权。 |
 | FIELD VERIFIED / CLOSED（`AGENTS.md` 第 11 节） | 原样适用。任务等级不改变证据要求。 |
 
 本文档没有引入任何新的放行路径。
