@@ -540,6 +540,10 @@ async function main() {
     await prisma.product.create({
       data: { tenantId, sku: 'ERA1001', barcode: 'ERA1001-BARCODE', name: 'ERA1001 展示验证', sellPrice: '1.49' },
     })
+    await prisma.tenant.create({ data: { id: otherTenantId, name: 'Other Tenant' } })
+    await prisma.product.create({
+      data: { tenantId: otherTenantId, sku: 'ERA1001-OTHER', barcode: 'ERA1001-BARCODE-OTHER', name: 'Other tenant product', sellPrice: '9.99' },
+    })
     const productListResponse = await productsGet(ownerRequest('/api/products?all=true', 'GET'))
     assert.equal(productListResponse.status, 200)
     const productListBody = await productListResponse.json() as Array<{ sku?: string | null; barcode?: string }>
@@ -551,11 +555,9 @@ async function main() {
     const productLookupBody = await productLookupResponse.json() as { sku?: string | null; barcode?: string }
     assert.equal(productLookupBody.sku, 'ERA1001', '商品单条查询也返回 Product.sku')
     assert.equal(productLookupBody.barcode, 'ERA1001-BARCODE', '商品单条查询保持 barcode 独立')
-    await prisma.tenant.create({ data: { id: otherTenantId, name: 'Other Tenant' } })
-    await prisma.product.create({
-      data: { tenantId: otherTenantId, sku: 'ERA1001-OTHER', barcode: 'ERA1001-BARCODE-OTHER', name: 'Other tenant product', sellPrice: '9.99' },
-    })
     assert.equal(productListBody.some((product) => product.sku === 'ERA1001-OTHER'), false, 'Product list remains tenant-scoped')
+    const otherTenantLookupResponse = await productsGet(ownerRequest('/api/products?barcode=ERA1001-BARCODE-OTHER', 'GET'))
+    assert.equal(otherTenantLookupResponse.status, 404, 'single-product lookup remains tenant-scoped')
 
     const templateResponse = await legacyTemplate(ownerRequest('/api/products/import', 'GET'))
     assert.equal(templateResponse.status, 200)
