@@ -70,8 +70,8 @@ globalThis.fetch = async (input, init = {}) => {
     if (prompt.includes('识别 PDF 中的商品块')) {
       pdfAiCallCount += 1
       const pdfBlocks = [
-        { pageNumber: 1, sourceBox: [100, 100, 900, 220], name: 'PDF 商品 A', price: 2 },
-        { pageNumber: 1, sourceBox: [100, 300, 900, 420], name: 'PDF 商品 B', price: 3 },
+        { pageNumber: 1, sourceBox: [100, 100, 900, 220], name: 'PDF 商品 A', barcode: 'PDF-BAR-A', sku: 'PDF-SKU-A', price: 2 },
+        { pageNumber: 1, sourceBox: [100, 300, 900, 420], name: 'PDF 商品 B', barcode: 'PDF-BAR-B', sku: 'PDF-SKU-B', price: 3 },
       ]
       return Response.json({ content: [{ type: 'text', text: JSON.stringify(reversePdfAiBlocks ? pdfBlocks.reverse() : pdfBlocks) }] })
     }
@@ -166,8 +166,12 @@ function xlsxBuffer(rows: unknown[][]): Buffer {
 }
 
 function ownerRequest(path: string, method: 'GET' | 'POST' | 'PATCH', body?: BodyInit, contentType?: string) {
+  return ownerRequestForTenant(tenantId, path, method, body, contentType)
+}
+
+function ownerRequestForTenant(requestTenantId: string, path: string, method: 'GET' | 'POST' | 'PATCH', body?: BodyInit, contentType?: string) {
   const headers: Record<string, string> = {
-    'x-tenant-id': tenantId,
+    'x-tenant-id': requestTenantId,
     'x-user-id': 'owner-product-import-test',
     'x-store-id': 'store-product-import-test',
     'x-role': 'OWNER',
@@ -518,6 +522,17 @@ async function main() {
 
     const legacyProduct = await prisma.product.findUnique({ where: { tenantId_barcode: { tenantId, barcode: 'LEGACY-001' } } })
     assert.equal(legacyProduct?.sku, 'ERA1001', '旧入口 keeps 编码 in Product.sku, separate from Product.barcode')
+    const crossTenantPatchResponse = await patchProduct(
+      ownerRequestForTenant(
+        'tenant-product-bulk-import-other',
+        `/api/products/${legacyProduct!.id}`,
+        'PATCH',
+        JSON.stringify({ barcode: 'CROSS-TENANT', sku: 'MUST-NOT-WRITE', name: '越租户修改', sellPrice: 2.5 }),
+        'application/json',
+      ),
+      { params: Promise.resolve({ id: legacyProduct!.id }) },
+    )
+    assert.equal(crossTenantPatchResponse.status, 404, 'PATCH cannot access a Product from another tenant')
     const skuPatchResponse = await patchProduct(
       ownerRequest(
         `/api/products/${legacyProduct!.id}`,
@@ -584,6 +599,13 @@ async function main() {
 
     const pdfSource = Buffer.from('%PDF-1.7 deterministic test source')
     const pdfFirst = await createAndAnalyze('products-a.pdf', 'application/pdf', pdfSource)
+    const firstPdfPreview = pdfFirst.rows[0].previewPayload as { barcode?: string | null; sku?: string | null }
+    assert.equal(firstPdfPreview.barcode, 'PDF-BAR-A', 'PDF AI barcode reaches Preview without becoming SKU')
+    assert.equal(firstPdfPreview.sku, 'PDF-SKU-A', 'PDF AI SKU reaches Preview')
+    await confirmProductImportJob(tenantId, pdfFirst.job.id)
+    const firstPdfProduct = await prisma.product.findUnique({ where: { tenantId_barcode: { tenantId, barcode: 'PDF-BAR-A' } } })
+    assert.equal(firstPdfProduct?.sku, 'PDF-SKU-A', 'PDF AI SKU reaches Product.sku after Confirm')
+    assert.equal(firstPdfProduct?.barcode, 'PDF-BAR-A', 'PDF AI barcode remains Product.barcode after Confirm')
     reversePdfAiBlocks = true
     const pdfSecond = await createAndAnalyze('products-b.pdf', 'application/pdf', pdfSource)
     assert.deepEqual(
@@ -592,7 +614,6 @@ async function main() {
       'same PDF in a new Job reuses canonical blocks and generated barcodes',
     )
     assert.equal(pdfAiCallCount, 1)
-    await cancelProductImportJob(tenantId, pdfFirst.job.id)
     await cancelProductImportJob(tenantId, pdfSecond.job.id)
 
     const manyRows = Array.from({ length: 501 }, (_, index) => `商品${index + 1},${index + 1}.5`).join('\n')
