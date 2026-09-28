@@ -5,6 +5,7 @@ import { getContext } from '@/lib/context'
 
 const PRODUCT_SELECT = {
   id: true,
+  sku: true,
   barcode: true,
   name: true,
   spec: true,
@@ -21,6 +22,7 @@ const PRODUCT_SELECT = {
 
 const PRODUCT_LEGACY_SELECT = {
   id: true,
+  sku: true,
   barcode: true,
   name: true,
   spec: true,
@@ -103,6 +105,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       products.map((p) => ({
         id: p.id,
+        sku: p.sku,
         barcode: p.barcode,
         name: p.name,
         spec: p.spec,
@@ -142,6 +145,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     id: product.id,
+    sku: product.sku,
     barcode: product.barcode,
     name: product.name,
     spec: product.spec,
@@ -228,6 +232,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(
     {
       id: created.id,
+      sku: created.sku,
       barcode: created.barcode,
       name: created.name,
       spec: created.spec,

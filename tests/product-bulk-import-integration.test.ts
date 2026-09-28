@@ -20,6 +20,7 @@ import { confirmProductImportJob, retryProductImportJob } from '../lib/product-b
 import { GET as legacyTemplate, POST as legacyPreview } from '../app/api/products/import/route'
 import type { PreviewRow } from '../app/api/products/import/route'
 import { POST as legacyConfirm } from '../app/api/products/import/confirm/route'
+import { GET as productsGet } from '../app/api/products/route'
 import { POST as recognizeMenu } from '../app/api/products/import-ai/recognize/route'
 import { POST as uploadSingleProductImage } from '../app/api/products/[id]/image/route'
 import { PATCH as patchJobRoute } from '../app/api/products/import/jobs/[id]/route'
@@ -500,6 +501,21 @@ async function main() {
     await confirmProductImportJob(tenantId, first.job.id)
     await confirmProductImportJob(tenantId, first.job.id)
     assert.equal(await prisma.product.count({ where: { tenantId, barcode: firstBarcode } }), 1, 'duplicate Confirm does not create another Product')
+
+    await prisma.product.create({
+      data: { tenantId, sku: 'ERA1001', barcode: 'ERA1001-BARCODE', name: 'ERA1001 展示验证', sellPrice: '1.49' },
+    })
+    const productListResponse = await productsGet(ownerRequest('/api/products?all=true', 'GET'))
+    assert.equal(productListResponse.status, 200)
+    const productListBody = await productListResponse.json() as Array<{ sku?: string | null; barcode?: string }>
+    const eraProduct = productListBody.find((product) => product.sku === 'ERA1001')
+    assert.equal(eraProduct?.sku, 'ERA1001', '商品管理 API 返回 Product.sku')
+    assert.equal(eraProduct?.barcode, 'ERA1001-BARCODE', '商品管理 API 保持 barcode 独立')
+    const productLookupResponse = await productsGet(ownerRequest('/api/products?barcode=ERA1001-BARCODE', 'GET'))
+    assert.equal(productLookupResponse.status, 200)
+    const productLookupBody = await productLookupResponse.json() as { sku?: string | null; barcode?: string }
+    assert.equal(productLookupBody.sku, 'ERA1001', '商品单条查询也返回 Product.sku')
+    assert.equal(productLookupBody.barcode, 'ERA1001-BARCODE', '商品单条查询保持 barcode 独立')
 
     const templateResponse = await legacyTemplate(ownerRequest('/api/products/import', 'GET'))
     assert.equal(templateResponse.status, 200)
