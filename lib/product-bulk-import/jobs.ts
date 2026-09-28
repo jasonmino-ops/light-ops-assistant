@@ -1110,6 +1110,14 @@ export async function getProductImportJob(tenantId: string, jobId: string, optio
   const hasNextPage = fetchedRows.length > limit
   const rows = fetchedRows.slice(0, limit)
   const counts = await productImportRowCounts(jobId, tenantId)
+  const skuMappingIssue = await prisma.$queryRaw<Array<{ one: number }>>(Prisma.sql`
+    SELECT 1 AS "one"
+    FROM "ProductBulkImportRow"
+    WHERE "jobId" = ${jobId}
+      AND "tenantId" = ${tenantId}
+      AND "validationIssues" @> ${JSON.stringify([{ code: 'SKU_MAPPING_REQUIRED' }])}::jsonb
+    LIMIT 1
+  `)
   return {
     job: {
       id: job.id,
@@ -1129,6 +1137,7 @@ export async function getProductImportJob(tenantId: string, jobId: string, optio
       lastErrorMessage: job.lastErrorMessage,
       resultSummary: job.resultSummary,
       analysisWarnings: (record(job.analysisMetadata) as SavedAnalysis).parseWarnings ?? [],
+      hasSkuMappingIssue: skuMappingIssue.length > 0,
       expiresAt: job.expiresAt,
     },
     rows,

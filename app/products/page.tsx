@@ -97,6 +97,7 @@ type Category = {
 
 type Product = {
   id: string
+  sku: string | null
   barcode: string
   name: string
   spec: string | null
@@ -1346,6 +1347,7 @@ export default function ProductsPage() {
     const existing = productList.find((p) => p.id === match.productId)
     const next: Product = existing ?? {
       id: match.productId,
+      sku: null,
       barcode: '',
       name: match.name,
       spec: match.spec,
@@ -2569,7 +2571,7 @@ export default function ProductsPage() {
                               {p.name}{p.spec ? ` · ${p.spec}` : ''}
                             </span>
                             <span style={ls.rowMeta}>
-	                              {p.barcode}
+	                              商品编码/SKU：{p.sku || '—'} · 条码：{p.barcode}
 	                              {p.status === 'DISABLED' && <span style={ls.disabledTag}>{t('products.disabledInlineTag')}</span>}
 	                              {p.imageUrl && <span style={ls.imgTag}>{t('products.imageInlineTag')}</span>}
 	                              {canManageProducts && marketingPage && <span style={ls.imgTag}> · 营销页 {marketingPage.status}</span>}

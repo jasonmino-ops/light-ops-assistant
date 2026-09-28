@@ -20,6 +20,7 @@ import { confirmProductImportJob, retryProductImportJob } from '../lib/product-b
 import { GET as legacyTemplate, POST as legacyPreview } from '../app/api/products/import/route'
 import type { PreviewRow } from '../app/api/products/import/route'
 import { POST as legacyConfirm } from '../app/api/products/import/confirm/route'
+import { GET as productsGet } from '../app/api/products/route'
 import { POST as recognizeMenu } from '../app/api/products/import-ai/recognize/route'
 import { POST as uploadSingleProductImage } from '../app/api/products/[id]/image/route'
 import { PATCH as patchJobRoute } from '../app/api/products/import/jobs/[id]/route'
@@ -36,6 +37,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-test'
 process.env.ANTHROPIC_API_KEY = 'anthropic-test'
 
 const tenantId = 'tenant-product-bulk-import-test'
+const otherTenantId = 'tenant-product-bulk-import-other-test'
 const staged = new Map<string, Buffer>()
 const stagingGetCounts = new Map<string, number>()
 const productImages = new Map<string, Buffer>()
@@ -315,6 +317,8 @@ async function main() {
   await verifyBucketInitializationContract()
   await prisma.product.deleteMany({ where: { tenantId } })
   await prisma.tenant.deleteMany({ where: { id: tenantId } })
+  await prisma.product.deleteMany({ where: { tenantId: otherTenantId } })
+  await prisma.tenant.deleteMany({ where: { id: otherTenantId } })
   await prisma.tenant.create({ data: { id: tenantId, name: 'Bulk Import Test' } })
   try {
     const sourceA = Buffer.from('name_zh,sell_price\n稳定商品,5.25\n')
@@ -324,6 +328,62 @@ async function main() {
     assert.equal(first.rows.length, 1)
     assert.equal(first.rows[0].barcodeOrigin, 'GENERATED')
     const firstBarcode = first.rows[0].assignedBarcode!
+    const unmappedWorkbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(unmappedWorkbook, XLSX.utils.aoa_to_sheet([
+      ['商品名称', '编码', '售价'],
+      ['洛威诗 N05', 'ERA1001', 1.49],
+    ]), 'Products')
+    XLSX.utils.book_append_sheet(unmappedWorkbook, XLSX.utils.aoa_to_sheet([['说明'], ['需要 AI 决策']]), 'Notes')
+    spreadsheetMappings = [
+      { sheetIndex: 0, selected: true, headerRowNumber: 1, mapping: { nameZh: 0, sellPrice: 2 } },
+      { sheetIndex: 1, selected: false, headerRowNumber: 1, mapping: {} },
+    ]
+    const unmappedJob = await createAndAnalyze(
+      'code-mapping-mismatch.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      Buffer.from(XLSX.write(unmappedWorkbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer),
+    )
+    const unmappedIssues = unmappedJob.rows[0].validationIssues as Array<{ code?: string }>
+    assert.ok(unmappedIssues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED'))
+    assert.equal(unmappedJob.job.hasSkuMappingIssue, true, 'Job view aggregates SKU mapping issues beyond the current page')
+    await assert.rejects(
+      () => confirmProductImportJob(tenantId, unmappedJob.job.id),
+      (error: unknown) => error instanceof ProductImportError && error.code === 'SKU_MAPPING_REQUIRED',
+      'Confirm must stop when 编码 exists but Preview SKU is empty',
+    )
+    assert.equal(await prisma.product.count({ where: { tenantId, name: '洛威诗 N05' } }), 0)
+    await cancelProductImportJob(tenantId, unmappedJob.job.id)
+
+    const pagedUnmappedWorkbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(pagedUnmappedWorkbook, XLSX.utils.aoa_to_sheet([
+      ['商品名称', '商品编码', '售价'],
+      ...Array.from({ length: 201 }, (_, index) => [`分页商品 ${index + 1}`, `PAGE-${index + 1}`, 1.49]),
+    ]), 'Products')
+    XLSX.utils.book_append_sheet(pagedUnmappedWorkbook, XLSX.utils.aoa_to_sheet([['说明'], ['需要 AI 决策']]), 'Notes')
+    const pagedUnmappedJob = await createAndAnalyze(
+      'paged-code-mapping-mismatch.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      Buffer.from(XLSX.write(pagedUnmappedWorkbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer),
+    )
+    await prisma.productBulkImportRow.updateMany({
+      where: { jobId: pagedUnmappedJob.job.id, tenantId, sourceOrdinal: { lte: 200 } },
+      data: { validationIssues: [] },
+    })
+    const pagedFirstView = await getProductImportJob(tenantId, pagedUnmappedJob.job.id, { limit: 200 })
+    const pagedLastView = await getProductImportJob(tenantId, pagedUnmappedJob.job.id, { cursor: 200, limit: 10 })
+    const pagedLastIssues = pagedLastView.rows[0]?.validationIssues as Array<{ code?: string }> | undefined
+    assert.equal(pagedLastIssues?.[0]?.code, 'SKU_MAPPING_REQUIRED')
+    const pagedFirstHasSkuIssue = pagedFirstView.rows.some((row) => (
+      (row.validationIssues as Array<{ code?: string }>).some((issue) => issue.code === 'SKU_MAPPING_REQUIRED')
+    ))
+    assert.equal(pagedFirstHasSkuIssue, false)
+    assert.equal(pagedFirstView.job.hasSkuMappingIssue, true, '第 201 行的 SKU 映射问题仍会阻止整项任务 Confirm')
+    await assert.rejects(
+      () => confirmProductImportJob(tenantId, pagedUnmappedJob.job.id),
+      (error: unknown) => error instanceof ProductImportError && error.code === 'SKU_MAPPING_REQUIRED',
+    )
+    await cancelProductImportJob(tenantId, pagedUnmappedJob.job.id)
+    spreadsheetMappings = defaultSpreadsheetMappings
     const invalidStatusPatch = await patchJobRoute(
       ownerRequest(
         `/api/products/import/jobs/${first.job.id}`,
@@ -476,6 +536,28 @@ async function main() {
     await confirmProductImportJob(tenantId, first.job.id)
     await confirmProductImportJob(tenantId, first.job.id)
     assert.equal(await prisma.product.count({ where: { tenantId, barcode: firstBarcode } }), 1, 'duplicate Confirm does not create another Product')
+
+    await prisma.product.create({
+      data: { tenantId, sku: 'ERA1001', barcode: 'ERA1001-BARCODE', name: 'ERA1001 展示验证', sellPrice: '1.49' },
+    })
+    await prisma.tenant.create({ data: { id: otherTenantId, name: 'Other Tenant' } })
+    await prisma.product.create({
+      data: { tenantId: otherTenantId, sku: 'ERA1001-OTHER', barcode: 'ERA1001-BARCODE-OTHER', name: 'Other tenant product', sellPrice: '9.99' },
+    })
+    const productListResponse = await productsGet(ownerRequest('/api/products?all=true', 'GET'))
+    assert.equal(productListResponse.status, 200)
+    const productListBody = await productListResponse.json() as Array<{ sku?: string | null; barcode?: string }>
+    const eraProduct = productListBody.find((product) => product.sku === 'ERA1001')
+    assert.equal(eraProduct?.sku, 'ERA1001', '商品管理 API 返回 Product.sku')
+    assert.equal(eraProduct?.barcode, 'ERA1001-BARCODE', '商品管理 API 保持 barcode 独立')
+    const productLookupResponse = await productsGet(ownerRequest('/api/products?barcode=ERA1001-BARCODE', 'GET'))
+    assert.equal(productLookupResponse.status, 200)
+    const productLookupBody = await productLookupResponse.json() as { sku?: string | null; barcode?: string }
+    assert.equal(productLookupBody.sku, 'ERA1001', '商品单条查询也返回 Product.sku')
+    assert.equal(productLookupBody.barcode, 'ERA1001-BARCODE', '商品单条查询保持 barcode 独立')
+    assert.equal(productListBody.some((product) => product.sku === 'ERA1001-OTHER'), false, 'Product list remains tenant-scoped')
+    const otherTenantLookupResponse = await productsGet(ownerRequest('/api/products?barcode=ERA1001-BARCODE-OTHER', 'GET'))
+    assert.equal(otherTenantLookupResponse.status, 404, 'single-product lookup remains tenant-scoped')
 
     const templateResponse = await legacyTemplate(ownerRequest('/api/products/import', 'GET'))
     assert.equal(templateResponse.status, 200)
@@ -1005,6 +1087,8 @@ async function main() {
   } finally {
     await prisma.product.deleteMany({ where: { tenantId } })
     await prisma.tenant.deleteMany({ where: { id: tenantId } })
+    await prisma.product.deleteMany({ where: { tenantId: otherTenantId } })
+    await prisma.tenant.deleteMany({ where: { id: otherTenantId } })
     await prisma.$disconnect()
     globalThis.fetch = originalFetch
   }

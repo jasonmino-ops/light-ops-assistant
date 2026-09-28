@@ -63,6 +63,7 @@ function analyzeView({
       lastErrorMessage,
       resultSummary: null,
       analysisWarnings: [],
+      hasSkuMappingIssue: false,
     },
     rows: [],
     nextCursor: null,
@@ -297,6 +298,40 @@ async function main() {
   assert.equal(csvResult.rows[0].product.barcode, '0001234567890')
   assert.equal(csvResult.rows[0].product.sellPrice, 1.25)
   assert.ok(csvResult.rows.every((row) => row.issues.some((issue) => issue.code === 'DUPLICATE_BARCODE_IN_FILE')))
+
+  const codeTable = Buffer.from('\uFEFF商品图片,商品名称,编码,条码,售价\nimage-1.png,洛威诗 N05,ERA1001,0891234567890,1.49\n')
+  const codeTableResult = parseSpreadsheetBuffer(codeTable, 'CSV')
+  assert.equal(codeTableResult.rows[0].product.sku, 'ERA1001', '裸“编码”映射为 Product.sku')
+  assert.equal(codeTableResult.rows[0].product.barcode, '0891234567890', '条码仍映射为 Product.barcode')
+  assert.equal(codeTableResult.rows[0].issues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED'), false)
+
+  const bilingualCodeTableResult = parseSpreadsheetBuffer(
+    Buffer.from('\uFEFF商品图片,商品名称,កូដទំនិញ/编码,条码,售价\nimage-1.png,洛威诗 N05,ERA1001,0891234567890,1.49\n'),
+    'CSV',
+  )
+  assert.equal(bilingualCodeTableResult.rows[0].product.sku, 'ERA1001', '实际 E-RA 复合表头映射为 Product.sku')
+  assert.equal(bilingualCodeTableResult.rows[0].product.barcode, '0891234567890', '复合表头不改变 Product.barcode')
+
+  const unmappedBilingualCodeResult = parseSpreadsheetBuffer(
+    Buffer.from('\uFEFF商品名称,កូដទំនិញ/编码,售价\n洛威诗 N05,ERA1001,1.49\n'),
+    'CSV',
+    { 0: { selected: true, headerRowNumber: 1, mapping: { nameZh: 0, sellPrice: 2 } } },
+  )
+  assert.ok(unmappedBilingualCodeResult.rows[0].issues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED' && issue.blocking), '实际复合编码表头存在但 SKU 未提取时必须阻止确认')
+
+  const unmappedCodeResult = parseSpreadsheetBuffer(
+    Buffer.from('\uFEFF商品名称,编码,售价\n洛威诗 N05,ERA1001,1.49\n'),
+    'CSV',
+    { 0: { selected: true, headerRowNumber: 1, mapping: { nameZh: 0, sellPrice: 2 } } },
+  )
+  assert.ok(unmappedCodeResult.rows[0].issues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED' && issue.blocking), '编码存在但 SKU 未提取时必须阻止确认')
+
+  const unmappedProductCodeResult = parseSpreadsheetBuffer(
+    Buffer.from('\uFEFF商品名称,商品编码,售价\n洛威诗 N05,ERA1001,1.49\n'),
+    'CSV',
+    { 0: { selected: true, headerRowNumber: 1, mapping: { nameZh: 0, sellPrice: 2 } } },
+  )
+  assert.ok(unmappedProductCodeResult.rows[0].issues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED' && issue.blocking), '商品编码存在但 SKU 未提取时必须阻止确认')
 
   const irregular = workbookBuffer([
     { name: '说明', rows: [['本文件由系统导出'], ['请勿删除']] },
@@ -587,6 +622,20 @@ async function main() {
   assert.match(bulkUi, /method: 'PUT'/)
   assert.match(bulkUi, /accept="\.xlsx,\.csv,\.pdf"/)
   assert.match(bulkUi, /assignedBarcode/)
+  assert.match(bulkUi, /商品编码 \/ SKU/)
+  assert.match(bulkUi, /已阻止确认/)
+  const confirmSource = fs.readFileSync('lib/product-bulk-import/confirm.ts', 'utf8')
+  assert.match(confirmSource, /SKU_MAPPING_REQUIRED/)
+  assert.match(confirmSource, /Preview 未提取商品编码/)
+  const jobsSource = fs.readFileSync('lib/product-bulk-import/jobs.ts', 'utf8')
+  assert.match(jobsSource, /hasSkuMappingIssue/)
+  assert.match(bulkUi, /hasSkuMappingIssue/)
+  const productsApi = fs.readFileSync('app/api/products/route.ts', 'utf8')
+  assert.match(productsApi, /sku: true/)
+  assert.match(productsApi, /sku: p\.sku/)
+  const productsPage = fs.readFileSync('app/products/page.tsx', 'utf8')
+  assert.match(productsPage, /商品编码\/SKU：\{p\.sku \|\| '—'\}/)
+  assert.match(productsPage, /条码：\{p\.barcode\}/)
   assert.match(bulkUi, /discardImages/)
   assert.match(bulkUi, /网络连接中断，正在恢复导入任务/)
   assert.match(bulkUi, /ProductImportAnalyzeRecoveryError/)

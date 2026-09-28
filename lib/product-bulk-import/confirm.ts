@@ -354,6 +354,24 @@ export async function confirmProductImportJob(tenantId: string, jobId: string) {
   if (!claimable) {
     throw new ProductImportError('JOB_NOT_CONFIRMABLE', '任务尚未完成 Preview 或已终止', 409)
   }
+  const pendingRows = await prisma.productBulkImportRow.findMany({
+    where: { jobId, tenantId, status: { in: ['READY', 'INVALID'] } },
+    select: { validationIssues: true },
+  })
+  const hasUnmappedBareCode = pendingRows.some((row) => (
+    Array.isArray(row.validationIssues)
+    && row.validationIssues.some((issue) => (
+      issue && typeof issue === 'object' && !Array.isArray(issue)
+      && (issue as { code?: unknown }).code === 'SKU_MAPPING_REQUIRED'
+    ))
+  ))
+  if (hasUnmappedBareCode) {
+    throw new ProductImportError(
+      'SKU_MAPPING_REQUIRED',
+      '源表存在“编码”列，但 Preview 未提取商品编码；请检查列映射后重新分析或上传',
+      409,
+    )
+  }
   const jobClaim = await prisma.productBulkImportJob.updateMany({
     where: {
       id: job.id,

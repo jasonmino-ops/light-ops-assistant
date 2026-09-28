@@ -35,7 +35,7 @@ const xmlParser = new XMLParser({
 
 const FIELD_ALIASES: Record<ProductImportField, string[]> = {
   barcode: ['barcode', '条码', '商品条码', '条形码', 'product barcode', 'ean', 'ean13'],
-  sku: ['sku', '商品编码', '货号', 'item code', 'product code'],
+  sku: ['sku', '商品编码', '编码', 'កូដទំនិញ/编码', '货号', 'item code', 'product code'],
   nameZh: ['name_zh', '中文名', '名称_中文', 'name', '商品名', '商品名称', '名称', '品名'],
   nameEn: ['name_en', '英文名', '名称_英文', 'english name', 'product name'],
   nameKm: ['name_km', '柬文名', '名称_柬文', 'khmer name', 'ឈ្មោះទំនិញ'],
@@ -65,6 +65,13 @@ function arrays<T>(value: T | T[] | null | undefined): T[] {
 
 function normalizeHeader(value: string): string {
   return value.normalize('NFKC').trim().toLocaleLowerCase('und').replace(/[\s_-]+/g, '')
+}
+
+const SKU_HEADER_ALIASES = new Set(FIELD_ALIASES.sku.map(normalizeHeader))
+
+function isSkuHeader(header: string): boolean {
+  if (SKU_HEADER_ALIASES.has(normalizeHeader(header))) return true
+  return header.split(/[\/|]/).some((part) => SKU_HEADER_ALIASES.has(normalizeHeader(part)))
 }
 
 function isSafeZipPath(name: string): boolean {
@@ -536,6 +543,14 @@ export function parseSpreadsheetBuffer(
       const externalImage = optional(get('imageUrl'))
       if (externalImage) rowImages.push({ kind: 'EXTERNAL_URL', source: externalImage, mediaType: null })
       const issues: ProductImportIssue[] = []
+      if (headers.some(isSkuHeader) && !sku) {
+        issues.push({
+          code: 'SKU_MAPPING_REQUIRED',
+          field: 'sku',
+          message: '检测到“编码”列但未提取商品编码，请检查列映射后重新分析或上传',
+          blocking: true,
+        })
+      }
       if (!name) issues.push({ code: 'MISSING_NAME', field: 'name', message: '商品名不能为空', blocking: true })
       if (!(sellPrice > 0)) issues.push({ code: 'INVALID_PRICE', field: 'sellPrice', message: `售价无效：${priceText}`, blocking: true })
       for (const image of rowImages) {
