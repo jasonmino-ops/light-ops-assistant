@@ -67,6 +67,13 @@ function normalizeHeader(value: string): string {
   return value.normalize('NFKC').trim().toLocaleLowerCase('und').replace(/[\s_-]+/g, '')
 }
 
+const SKU_HEADER_ALIASES = new Set(FIELD_ALIASES.sku.map(normalizeHeader))
+
+function isSkuHeader(header: string): boolean {
+  if (SKU_HEADER_ALIASES.has(normalizeHeader(header))) return true
+  return header.split(/[\/|]/).some((part) => SKU_HEADER_ALIASES.has(normalizeHeader(part)))
+}
+
 function isSafeZipPath(name: string): boolean {
   const normalized = name.replace(/\\/g, '/')
   return !normalized.startsWith('/') && !normalized.split('/').includes('..')
@@ -536,11 +543,7 @@ export function parseSpreadsheetBuffer(
       const externalImage = optional(get('imageUrl'))
       if (externalImage) rowImages.push({ kind: 'EXTERNAL_URL', source: externalImage, mediaType: null })
       const issues: ProductImportIssue[] = []
-      const hasCodeHeader = headers.some((header) => {
-        const normalized = normalizeHeader(header)
-        return normalized === '编码' || normalized === normalizeHeader('កូដទំនិញ/编码')
-      })
-      if (hasCodeHeader && !sku) {
+      if (headers.some(isSkuHeader) && !sku) {
         issues.push({
           code: 'SKU_MAPPING_REQUIRED',
           field: 'sku',

@@ -63,6 +63,7 @@ function analyzeView({
       lastErrorMessage,
       resultSummary: null,
       analysisWarnings: [],
+      hasSkuMappingIssue: false,
     },
     rows: [],
     nextCursor: null,
@@ -324,6 +325,13 @@ async function main() {
     { 0: { selected: true, headerRowNumber: 1, mapping: { nameZh: 0, sellPrice: 2 } } },
   )
   assert.ok(unmappedCodeResult.rows[0].issues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED' && issue.blocking), '编码存在但 SKU 未提取时必须阻止确认')
+
+  const unmappedProductCodeResult = parseSpreadsheetBuffer(
+    Buffer.from('\uFEFF商品名称,商品编码,售价\n洛威诗 N05,ERA1001,1.49\n'),
+    'CSV',
+    { 0: { selected: true, headerRowNumber: 1, mapping: { nameZh: 0, sellPrice: 2 } } },
+  )
+  assert.ok(unmappedProductCodeResult.rows[0].issues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED' && issue.blocking), '商品编码存在但 SKU 未提取时必须阻止确认')
 
   const irregular = workbookBuffer([
     { name: '说明', rows: [['本文件由系统导出'], ['请勿删除']] },
@@ -619,6 +627,9 @@ async function main() {
   const confirmSource = fs.readFileSync('lib/product-bulk-import/confirm.ts', 'utf8')
   assert.match(confirmSource, /SKU_MAPPING_REQUIRED/)
   assert.match(confirmSource, /Preview 未提取商品编码/)
+  const jobsSource = fs.readFileSync('lib/product-bulk-import/jobs.ts', 'utf8')
+  assert.match(jobsSource, /hasSkuMappingIssue/)
+  assert.match(bulkUi, /hasSkuMappingIssue/)
   const productsApi = fs.readFileSync('app/api/products/route.ts', 'utf8')
   assert.match(productsApi, /sku: true/)
   assert.match(productsApi, /sku: p\.sku/)

@@ -73,6 +73,7 @@ export type JobView = {
     lastErrorMessage: string | null
     resultSummary: unknown
     analysisWarnings: Issue[]
+    hasSkuMappingIssue: boolean
   }
   rows: ImportRow[]
   nextCursor: number | null
@@ -286,7 +287,9 @@ export default function ProductBulkImportPanel({
     failed: view?.job.failedRowCount ?? 0,
     images: view?.rows.reduce((sum, row) => sum + (row.previewPayload.imageCount || 0), 0) ?? 0,
   }), [view])
-  const hasVisibleSkuMappingIssue = view?.rows.some((row) => row.validationIssues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED')) ?? false
+  const hasSkuMappingIssue = view?.job.hasSkuMappingIssue
+    || view?.rows.some((row) => row.validationIssues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED'))
+    || false
   const resultSummary = view?.job.resultSummary && typeof view.job.resultSummary === 'object'
     ? view.job.resultSummary as ResultSummary
     : null
@@ -716,19 +719,19 @@ export default function ProductBulkImportPanel({
             <button
               type="button"
               style={styles.primary}
-              disabled={busy || hasVisibleSkuMappingIssue || counts.ready === 0 || !['PREVIEW_READY', 'CONFIRMING', 'CONFIRMING_ACTIVE'].includes(view.job.status)}
+              disabled={busy || hasSkuMappingIssue || counts.ready === 0 || !['PREVIEW_READY', 'CONFIRMING', 'CONFIRMING_ACTIVE'].includes(view.job.status)}
               onClick={confirmAll}
             >
               {busy ? '执行中…' : `确认 ${counts.ready} 条可导入商品`}
             </button>
             {view.job.status === 'PREVIEW_READY' && counts.ready === 0 && counts.invalid > 0 && (
-              <button type="button" style={styles.primary} disabled={busy || hasVisibleSkuMappingIssue} onClick={confirmAll}>
+              <button type="button" style={styles.primary} disabled={busy || hasSkuMappingIssue} onClick={confirmAll}>
                 完成并保留 {counts.invalid} 条隔离异常
               </button>
             )}
             {view.job.status === 'COMPLETED' && <button type="button" style={styles.primary} onClick={() => { setView(null); setPageCursor(0) }}>继续导入</button>}
           </div>
-          {hasVisibleSkuMappingIssue && <div style={styles.issue}>检测到“编码”列但 Preview 的 SKU 为空，已阻止确认；请检查列映射后重新分析或上传。</div>}
+          {hasSkuMappingIssue && <div style={styles.issue}>检测到“编码”列但 Preview 的 SKU 为空，已阻止确认；请检查列映射后重新分析或上传。</div>}
           {counts.invalid > 0 && <div style={styles.hint}>异常行不会写入 Product；可直接修正名称、售价、分类，系统生成条码不会因 Preview 修改而变化。</div>}
         </>
       )}
