@@ -324,6 +324,30 @@ async function main() {
     assert.equal(first.rows.length, 1)
     assert.equal(first.rows[0].barcodeOrigin, 'GENERATED')
     const firstBarcode = first.rows[0].assignedBarcode!
+    const unmappedWorkbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(unmappedWorkbook, XLSX.utils.aoa_to_sheet([
+      ['商品名称', '编码', '售价'],
+      ['洛威诗 N05', 'ERA1001', 1.49],
+    ]), 'Products')
+    XLSX.utils.book_append_sheet(unmappedWorkbook, XLSX.utils.aoa_to_sheet([['说明'], ['需要 AI 决策']]), 'Notes')
+    spreadsheetMappings = [
+      { sheetIndex: 0, selected: true, headerRowNumber: 1, mapping: { nameZh: 0, sellPrice: 2 } },
+      { sheetIndex: 1, selected: false, headerRowNumber: 1, mapping: {} },
+    ]
+    const unmappedJob = await createAndAnalyze(
+      'code-mapping-mismatch.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      Buffer.from(XLSX.write(unmappedWorkbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer),
+    )
+    assert.ok(unmappedJob.rows[0].validationIssues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED'))
+    await assert.rejects(
+      () => confirmProductImportJob(tenantId, unmappedJob.job.id),
+      (error: unknown) => error instanceof ProductImportError && error.code === 'SKU_MAPPING_REQUIRED',
+      'Confirm must stop when 编码 exists but Preview SKU is empty',
+    )
+    assert.equal(await prisma.product.count({ where: { tenantId, name: '洛威诗 N05' } }), 0)
+    await cancelProductImportJob(tenantId, unmappedJob.job.id)
+    spreadsheetMappings = defaultSpreadsheetMappings
     const invalidStatusPatch = await patchJobRoute(
       ownerRequest(
         `/api/products/import/jobs/${first.job.id}`,

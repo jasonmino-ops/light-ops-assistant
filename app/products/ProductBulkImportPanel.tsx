@@ -8,6 +8,7 @@ type Category = { id: string; name: string; parentId: string | null }
 type Issue = { code: string; field?: string; message: string; blocking: boolean }
 type Preview = {
   barcode: string
+  sku: string | null
   name: string
   nameZh: string | null
   nameEn: string | null
@@ -285,6 +286,7 @@ export default function ProductBulkImportPanel({
     failed: view?.job.failedRowCount ?? 0,
     images: view?.rows.reduce((sum, row) => sum + (row.previewPayload.imageCount || 0), 0) ?? 0,
   }), [view])
+  const hasVisibleSkuMappingIssue = view?.rows.some((row) => row.validationIssues.some((issue) => issue.code === 'SKU_MAPPING_REQUIRED')) ?? false
   const resultSummary = view?.job.resultSummary && typeof view.job.resultSummary === 'object'
     ? view.job.resultSummary as ResultSummary
     : null
@@ -603,7 +605,7 @@ export default function ProductBulkImportPanel({
           <div style={{ overflowX: 'auto', maxHeight: 560 }}>
             <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr>
-                <th style={styles.th}>来源</th><th style={styles.th}>条码</th><th style={styles.th}>商品名</th>
+                <th style={styles.th}>来源</th><th style={styles.th}>条码</th><th style={styles.th}>商品编码 / SKU</th><th style={styles.th}>商品名</th>
                 <th style={styles.th}>售价</th><th style={styles.th}>分类</th><th style={styles.th}>图片</th><th style={styles.th}>状态 / 异常</th>
               </tr></thead>
               <tbody>{view.rows.map((row) => (
@@ -613,6 +615,7 @@ export default function ProductBulkImportPanel({
                     <code>{row.assignedBarcode}</code>
                     {row.barcodeOrigin === 'GENERATED' && <div style={styles.generated}>系统 EAN-13（只读）</div>}
                   </td>
+                  <td style={styles.td}><code>{row.previewPayload.sku || '—'}</code></td>
                   <td style={styles.td}>
                     <input
                       value={row.previewPayload.name}
@@ -713,18 +716,19 @@ export default function ProductBulkImportPanel({
             <button
               type="button"
               style={styles.primary}
-              disabled={busy || counts.ready === 0 || !['PREVIEW_READY', 'CONFIRMING', 'CONFIRMING_ACTIVE'].includes(view.job.status)}
+              disabled={busy || hasVisibleSkuMappingIssue || counts.ready === 0 || !['PREVIEW_READY', 'CONFIRMING', 'CONFIRMING_ACTIVE'].includes(view.job.status)}
               onClick={confirmAll}
             >
               {busy ? '执行中…' : `确认 ${counts.ready} 条可导入商品`}
             </button>
             {view.job.status === 'PREVIEW_READY' && counts.ready === 0 && counts.invalid > 0 && (
-              <button type="button" style={styles.primary} disabled={busy} onClick={confirmAll}>
+              <button type="button" style={styles.primary} disabled={busy || hasVisibleSkuMappingIssue} onClick={confirmAll}>
                 完成并保留 {counts.invalid} 条隔离异常
               </button>
             )}
             {view.job.status === 'COMPLETED' && <button type="button" style={styles.primary} onClick={() => { setView(null); setPageCursor(0) }}>继续导入</button>}
           </div>
+          {hasVisibleSkuMappingIssue && <div style={styles.issue}>检测到“编码”列但 Preview 的 SKU 为空，已阻止确认；请检查列映射后重新分析或上传。</div>}
           {counts.invalid > 0 && <div style={styles.hint}>异常行不会写入 Product；可直接修正名称、售价、分类，系统生成条码不会因 Preview 修改而变化。</div>}
         </>
       )}
