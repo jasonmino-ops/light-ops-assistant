@@ -98,6 +98,7 @@ type Category = {
 type Product = {
   id: string
   barcode: string
+  sku: string | null
   name: string
   spec: string | null
   sellPrice: number
@@ -608,6 +609,7 @@ export default function ProductsPage() {
     const keywordOk = !q ||
       p.name.toLowerCase().includes(q) ||
       p.barcode.toLowerCase().includes(q) ||
+      (p.sku ?? '').toLowerCase().includes(q) ||
       (p.spec ?? '').toLowerCase().includes(q)
     return keywordOk && matchesListCategory(p)
   })
@@ -1347,6 +1349,7 @@ export default function ProductsPage() {
     const next: Product = existing ?? {
       id: match.productId,
       barcode: '',
+      sku: null,
       name: match.name,
       spec: match.spec,
       sellPrice: match.price,
@@ -2569,7 +2572,7 @@ export default function ProductsPage() {
                               {p.name}{p.spec ? ` · ${p.spec}` : ''}
                             </span>
                             <span style={ls.rowMeta}>
-	                              {p.barcode}
+                              SKU: {p.sku || '—'} · 条码: {p.barcode}
 	                              {p.status === 'DISABLED' && <span style={ls.disabledTag}>{t('products.disabledInlineTag')}</span>}
 	                              {p.imageUrl && <span style={ls.imgTag}>{t('products.imageInlineTag')}</span>}
 	                              {canManageProducts && marketingPage && <span style={ls.imgTag}> · 营销页 {marketingPage.status}</span>}
@@ -2949,7 +2952,7 @@ export default function ProductsPage() {
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={s.staffProductName}>{product.name}</div>
-                    <div style={s.staffProductMeta}>{product.spec || '-'} · {product.barcode}</div>
+                    <div style={s.staffProductMeta}>{product.spec || '-'} · SKU: {product.sku || '—'} · 条码: {product.barcode}</div>
                     <div style={s.staffProductPrice}>{formatMoney(product.sellPrice, currencyCode)}</div>
                     <div style={s.staffProductStatus}>
                       {product.status === 'ACTIVE' ? t('products.statusActiveBadge') : t('products.statusDisabledBadge')}
@@ -3044,6 +3047,10 @@ export default function ProductsPage() {
                       ⊡
                     </button>
                   </div>
+                </Field>
+
+                <Field label="商品编码 / SKU">
+                  <input style={s.field} value={product.sku ?? ''} readOnly placeholder="—" />
                 </Field>
 
                 <Field label={t('products.fieldName')}>

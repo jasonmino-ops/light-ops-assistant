@@ -6,6 +6,7 @@ import { getContext } from '@/lib/context'
 const PRODUCT_PATCH_SELECT = {
   id: true,
   barcode: true,
+  sku: true,
   name: true,
   spec: true,
   sellPrice: true,
@@ -22,6 +23,7 @@ const PRODUCT_PATCH_SELECT = {
 const PRODUCT_PATCH_LEGACY_SELECT = {
   id: true,
   barcode: true,
+  sku: true,
   name: true,
   spec: true,
   sellPrice: true,
@@ -203,6 +205,7 @@ export async function PATCH(
   return NextResponse.json({
     id: updated.id,
     barcode: updated.barcode,
+    sku: updated.sku,
     name: updated.name,
     spec: updated.spec,
     sellPrice: updated.sellPrice.toNumber(),

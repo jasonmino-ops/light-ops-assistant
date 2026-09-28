@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
   const headerRow = (rows[0] as unknown[]).map((h) => String(h).trim().toLowerCase())
   const col = {
     barcode:   findCol(headerRow, 'barcode', '条码', '商品条码', '条形码'),
-    sku:       findCol(headerRow, 'sku'),
+    sku:       findCol(headerRow, 'sku', '商品编码', '编码', '货号', 'item code', 'product code'),
     // 新模板优先，旧模板 name 列兼容为 nameZh
     nameZh:    findCol(headerRow, 'name_zh', '中文名', '名称_中文', 'name', '商品名', '商品名称', '名称'),
     nameEn:    findCol(headerRow, 'name_en', '英文名', '名称_英文'),

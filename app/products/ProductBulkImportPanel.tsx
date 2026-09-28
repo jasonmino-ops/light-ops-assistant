@@ -8,6 +8,7 @@ type Category = { id: string; name: string; parentId: string | null }
 type Issue = { code: string; field?: string; message: string; blocking: boolean }
 type Preview = {
   barcode: string
+  sku: string | null
   name: string
   nameZh: string | null
   nameEn: string | null
@@ -603,7 +604,7 @@ export default function ProductBulkImportPanel({
           <div style={{ overflowX: 'auto', maxHeight: 560 }}>
             <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontSize: 12 }}>
               <thead><tr>
-                <th style={styles.th}>来源</th><th style={styles.th}>条码</th><th style={styles.th}>商品名</th>
+                <th style={styles.th}>来源</th><th style={styles.th}>条码</th><th style={styles.th}>商品编码 / SKU</th><th style={styles.th}>商品名</th>
                 <th style={styles.th}>售价</th><th style={styles.th}>分类</th><th style={styles.th}>图片</th><th style={styles.th}>状态 / 异常</th>
               </tr></thead>
               <tbody>{view.rows.map((row) => (
@@ -613,6 +614,7 @@ export default function ProductBulkImportPanel({
                     <code>{row.assignedBarcode}</code>
                     {row.barcodeOrigin === 'GENERATED' && <div style={styles.generated}>系统 EAN-13（只读）</div>}
                   </td>
+                  <td style={styles.td}><code>{row.previewPayload.sku || '—'}</code></td>
                   <td style={styles.td}>
                     <input
                       value={row.previewPayload.name}

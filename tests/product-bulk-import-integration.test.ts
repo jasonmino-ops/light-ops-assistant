@@ -479,13 +479,14 @@ async function main() {
 
     const templateResponse = await legacyTemplate(ownerRequest('/api/products/import', 'GET'))
     assert.equal(templateResponse.status, 200)
-    const legacyFileBuffer = xlsxBuffer([['barcode', 'name_zh', 'sell_price'], ['LEGACY-001', '旧入口商品', 2.5]])
+    const legacyFileBuffer = xlsxBuffer([['条码', '编码', 'name_zh', 'sell_price'], ['LEGACY-001', 'ERA1001', '旧入口商品', 2.5]])
     const legacyForm = new FormData()
     legacyForm.append('file', new File([new Uint8Array(legacyFileBuffer)], 'legacy.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
     const legacyPreviewResponse = await legacyPreview(ownerRequest('/api/products/import', 'POST', legacyForm))
     assert.equal(legacyPreviewResponse.status, 200)
     const legacyPreviewBody = await legacyPreviewResponse.json()
     assert.equal(legacyPreviewBody.preview[0].barcode, 'LEGACY-001')
+    assert.equal(legacyPreviewBody.preview[0].sku, 'ERA1001')
 
     const legacyMissingBarcodeBuffer = xlsxBuffer([['barcode', 'sku', 'name_zh', 'sell_price'], ['', 'SKU-MUST-NOT-BECOME-BARCODE', '缺条码旧入口商品', 2.5]])
     const legacyMissingBarcodeForm = new FormData()
@@ -515,6 +516,7 @@ async function main() {
     assert.equal((await legacyConfirmResponse.json()).imported, 1)
 
     const legacyProduct = await prisma.product.findUnique({ where: { tenantId_barcode: { tenantId, barcode: 'LEGACY-001' } } })
+    assert.equal(legacyProduct?.sku, 'ERA1001', '旧入口 keeps 编码 in Product.sku, separate from Product.barcode')
     const singleImageForm = new FormData()
     const singlePng = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#12ab34' } }).png().toBuffer()
     singleImageForm.append('file', new File([new Uint8Array(singlePng)], 'single.png', { type: 'image/png' }))

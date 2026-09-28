@@ -298,6 +298,13 @@ async function main() {
   assert.equal(csvResult.rows[0].product.sellPrice, 1.25)
   assert.ok(csvResult.rows.every((row) => row.issues.some((issue) => issue.code === 'DUPLICATE_BARCODE_IN_FILE')))
 
+  const codeAndBarcode = Buffer.from('\uFEFF编码,条码,中文名,售价\nERA1001,0891234567890,商品一,3.50\n')
+  const codeAndBarcodeInspection = inspectSpreadsheetBuffer(codeAndBarcode, 'CSV')
+  assert.equal(codeAndBarcodeInspection[0].deterministicMapping?.sku, 0, '裸“编码”可走确定性 SKU 映射，不依赖 AI')
+  const codeAndBarcodeResult = parseSpreadsheetBuffer(codeAndBarcode, 'CSV')
+  assert.equal(codeAndBarcodeResult.rows[0].product.sku, 'ERA1001', '裸“编码”映射为 Product.sku')
+  assert.equal(codeAndBarcodeResult.rows[0].product.barcode, '0891234567890', '条码仍映射为 Product.barcode')
+
   const irregular = workbookBuffer([
     { name: '说明', rows: [['本文件由系统导出'], ['请勿删除']] },
     { name: 'Products', rows: [['报表日期'], [], ['商品编码', 'ឈ្មោះទំនិញ', '价格'], ['SKU-01', 'ក្បាលទឹក', 8.5]] },
@@ -524,7 +531,8 @@ async function main() {
     assert.match(deepPrompt, /ឈ្មោះក្នុងតារាង/)
     assert.match(deepPrompt, /"columnIndex":2/)
     assert.match(deepPrompt, /高棉文字为主时映射 nameKm/)
-    assert.match(deepPrompt, /写编码\/Code.*优先映射 barcode/)
+    assert.match(deepPrompt, /商品编码\/编码\/Code.*映射 sku/)
+    assert.match(deepPrompt, /“编码”不是 barcode/)
     assert.match(deepPrompt, /实际包含 HTTP\/HTTPS URL 时才映射 imageUrl/)
     assert.match(deepPrompt, /商品多语言、规格、加料.*必须 selected=false/)
     assert.match(deepPrompt, /不得把分类ID.*必须选择“分类名称”/)
@@ -587,10 +595,18 @@ async function main() {
   assert.match(bulkUi, /method: 'PUT'/)
   assert.match(bulkUi, /accept="\.xlsx,\.csv,\.pdf"/)
   assert.match(bulkUi, /assignedBarcode/)
+  assert.match(bulkUi, /商品编码 \/ SKU/)
   assert.match(bulkUi, /discardImages/)
   assert.match(bulkUi, /网络连接中断，正在恢复导入任务/)
   assert.match(bulkUi, /ProductImportAnalyzeRecoveryError/)
   assert.match(bulkUi, /reason\.latestView/)
+  const productRoute = fs.readFileSync('app/api/products/route.ts', 'utf8')
+  assert.match(productRoute, /sku: true/)
+  const productPage = fs.readFileSync('app/products/page.tsx', 'utf8')
+  assert.match(productPage, /SKU: \{p\.sku \|\| '—'\}/)
+  const confirmSource = fs.readFileSync('lib/product-bulk-import/confirm.ts', 'utf8')
+  assert.match(confirmSource, /sku: preview\.sku/)
+  assert.match(confirmSource, /barcode: row\.assignedBarcode/)
 
   console.log('product bulk import core checks passed')
 }

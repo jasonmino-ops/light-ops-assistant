@@ -35,7 +35,10 @@ const xmlParser = new XMLParser({
 
 const FIELD_ALIASES: Record<ProductImportField, string[]> = {
   barcode: ['barcode', '条码', '商品条码', '条形码', 'product barcode', 'ean', 'ean13'],
-  sku: ['sku', '商品编码', '货号', 'item code', 'product code'],
+  // “编码” is the merchant-facing product code/SKU in the source files.
+  // Keep it separate from barcode: barcode aliases must explicitly identify a
+  // scannable barcode/EAN value.
+  sku: ['sku', '商品编码', '编码', '货号', 'item code', 'product code'],
   nameZh: ['name_zh', '中文名', '名称_中文', 'name', '商品名', '商品名称', '名称', '品名'],
   nameEn: ['name_en', '英文名', '名称_英文', 'english name', 'product name'],
   nameKm: ['name_km', '柬文名', '名称_柬文', 'khmer name', 'ឈ្មោះទំនិញ'],
