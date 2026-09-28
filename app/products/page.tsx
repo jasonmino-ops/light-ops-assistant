@@ -321,6 +321,7 @@ export default function ProductsPage() {
   // Edit form
   const [editName, setEditName] = useState('')
   const [editBarcode, setEditBarcode] = useState('')
+  const [editSku, setEditSku] = useState('')
   const [editSpec, setEditSpec] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editDiscountPrice, setEditDiscountPrice] = useState('')
@@ -1365,6 +1366,7 @@ export default function ProductsPage() {
     setProduct(next)
     setEditName(next.name)
     setEditBarcode(next.barcode)
+    setEditSku(next.sku ?? '')
     setEditSpec(next.spec ?? '')
     setEditPrice(String(next.sellPrice))
     setEditDiscountPrice(next.discountPrice == null ? '' : String(next.discountPrice))
@@ -1637,6 +1639,7 @@ export default function ProductsPage() {
         setProduct(p)
         setEditName(p.name)
         setEditBarcode(p.barcode)
+        setEditSku(p.sku ?? '')
         setEditSpec(p.spec ?? '')
         setEditPrice(String(p.sellPrice))
         setEditDiscountPrice(p.discountPrice == null ? '' : String(p.discountPrice))
@@ -1723,6 +1726,7 @@ export default function ProductsPage() {
     setMode('idle')
     setError(null)
     setEditBarcode('')
+    setEditSku('')
     setEditCategoryId('')
     setNewCategoryId('')
     clearNewImage()
@@ -1735,6 +1739,7 @@ export default function ProductsPage() {
     const price = parseFloat(editPrice)
     const discountPrice = editDiscountPrice.trim() ? parseFloat(editDiscountPrice) : null
     const cleanBarcode = editBarcode.trim()
+    const cleanSku = editSku.trim() || null
     if (!editName.trim()) { setError(t('products.nameRequired')); return }
     if (!cleanBarcode) { setError(t('products.barcodeRequired')); return }
     if (isNaN(price) || price <= 0) { setError(t('products.priceInvalid')); return }
@@ -1749,6 +1754,7 @@ export default function ProductsPage() {
           method: 'PATCH',
           body: JSON.stringify({
             barcode: cleanBarcode,
+            sku: cleanSku,
             name: editName.trim(),
             spec: editSpec.trim() || null,
             sellPrice: price,
@@ -1766,6 +1772,7 @@ export default function ProductsPage() {
       if (res.ok) {
         setProduct(body)
         setEditBarcode(body.barcode)
+        setEditSku(body.sku ?? '')
         setMode('saved')
       } else {
         setError(body.message ?? t('products.saveFailed'))
@@ -1827,6 +1834,7 @@ export default function ProductsPage() {
         })
         setEditName(created.name)
         setEditBarcode(created.barcode)
+        setEditSku(created.sku ?? '')
         setEditSpec(created.spec ?? '')
         setEditPrice(String(created.sellPrice))
         setEditDiscountPrice(created.discountPrice == null ? '' : String(created.discountPrice))
@@ -3050,7 +3058,7 @@ export default function ProductsPage() {
                 </Field>
 
                 <Field label="商品编码 / SKU">
-                  <input style={s.field} value={product.sku ?? ''} readOnly placeholder="—" />
+                  <input style={s.field} value={editSku} onChange={(e) => setEditSku(e.target.value)} placeholder="可选" maxLength={128} />
                 </Field>
 
                 <Field label={t('products.fieldName')}>

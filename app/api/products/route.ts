@@ -233,6 +233,7 @@ export async function POST(req: NextRequest) {
     {
       id: created.id,
       barcode: created.barcode,
+      sku: created.sku,
       name: created.name,
       spec: created.spec,
       sellPrice: created.sellPrice.toNumber(),

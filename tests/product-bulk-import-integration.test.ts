@@ -21,6 +21,7 @@ import { GET as legacyTemplate, POST as legacyPreview } from '../app/api/product
 import type { PreviewRow } from '../app/api/products/import/route'
 import { POST as legacyConfirm } from '../app/api/products/import/confirm/route'
 import { POST as recognizeMenu } from '../app/api/products/import-ai/recognize/route'
+import { PATCH as patchProduct } from '../app/api/products/[id]/route'
 import { POST as uploadSingleProductImage } from '../app/api/products/[id]/image/route'
 import { PATCH as patchJobRoute } from '../app/api/products/import/jobs/[id]/route'
 import { GET as imagePreviewRoute } from '../app/api/products/import/jobs/[id]/rows/[rowId]/images/[slot]/route'
@@ -517,6 +518,22 @@ async function main() {
 
     const legacyProduct = await prisma.product.findUnique({ where: { tenantId_barcode: { tenantId, barcode: 'LEGACY-001' } } })
     assert.equal(legacyProduct?.sku, 'ERA1001', '旧入口 keeps 编码 in Product.sku, separate from Product.barcode')
+    const skuPatchResponse = await patchProduct(
+      ownerRequest(
+        `/api/products/${legacyProduct!.id}`,
+        'PATCH',
+        JSON.stringify({ barcode: 'LEGACY-001', sku: 'ERA1001-EDITED', name: '旧入口商品', sellPrice: 2.5 }),
+        'application/json',
+      ),
+      { params: Promise.resolve({ id: legacyProduct!.id }) },
+    )
+    assert.equal(skuPatchResponse.status, 200)
+    const skuPatchBody = await skuPatchResponse.json()
+    assert.equal(skuPatchBody.sku, 'ERA1001-EDITED')
+    assert.equal(skuPatchBody.barcode, 'LEGACY-001')
+    const editedLegacyProduct = await prisma.product.findUnique({ where: { id: legacyProduct!.id } })
+    assert.equal(editedLegacyProduct?.sku, 'ERA1001-EDITED')
+    assert.equal(editedLegacyProduct?.barcode, 'LEGACY-001')
     const singleImageForm = new FormData()
     const singlePng = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#12ab34' } }).png().toBuffer()
     singleImageForm.append('file', new File([new Uint8Array(singlePng)], 'single.png', { type: 'image/png' }))

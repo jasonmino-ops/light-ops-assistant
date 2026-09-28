@@ -102,7 +102,7 @@ export async function DELETE(
  * PATCH /api/products/[id]  — OWNER only
  *
  * Updates one or more fields of an existing product.
- * Body (all optional): { barcode?, name?, spec?, sellPrice?, status? }
+ * Body (all optional): { barcode?, sku?, name?, spec?, sellPrice?, status? }
  */
 export async function PATCH(
   req: NextRequest,
@@ -119,17 +119,23 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { barcode?: string; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; isRecommended?: boolean; printKitchenTicket?: boolean; status?: string; categoryId?: string | null }
+  let body: { barcode?: string; sku?: string | null; name?: string; spec?: string | null; sellPrice?: number; discountPrice?: number | null; discountEnabled?: boolean; isRecommended?: boolean; printKitchenTicket?: boolean; status?: string; categoryId?: string | null }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const { barcode, name, spec, sellPrice, discountPrice, discountEnabled, isRecommended, printKitchenTicket, status, categoryId } = body
+  const { barcode, sku, name, spec, sellPrice, discountPrice, discountEnabled, isRecommended, printKitchenTicket, status, categoryId } = body
 
   if (barcode !== undefined && !String(barcode).trim()) {
     return NextResponse.json({ error: 'INVALID_BARCODE', message: '条码不能为空' }, { status: 400 })
+  }
+  if (sku !== undefined && sku !== null && typeof sku !== 'string') {
+    return NextResponse.json({ error: 'INVALID_SKU', message: '商品编码必须是文本' }, { status: 400 })
+  }
+  if (typeof sku === 'string' && sku.trim().length > 128) {
+    return NextResponse.json({ error: 'INVALID_SKU', message: '商品编码不能超过 128 个字符' }, { status: 400 })
   }
   if (name !== undefined && !String(name).trim()) {
     return NextResponse.json({ error: 'INVALID_NAME', message: '商品名不能为空' }, { status: 400 })
@@ -159,6 +165,7 @@ export async function PATCH(
   }
 
   const cleanBarcode = barcode !== undefined ? String(barcode).trim() : undefined
+  const cleanSku = sku === undefined ? undefined : sku === null ? null : sku.trim() || null
   if (cleanBarcode !== undefined) {
     const existing = await prisma.product.findFirst({
       where: { tenantId: ctx.tenantId, barcode: cleanBarcode, id: { not: id } },
@@ -171,6 +178,7 @@ export async function PATCH(
 
   const data = {
     ...(cleanBarcode !== undefined ? { barcode: cleanBarcode } : {}),
+    ...(cleanSku !== undefined ? { sku: cleanSku } : {}),
     ...(name !== undefined ? { name: String(name).trim() } : {}),
     ...(spec !== undefined ? { spec: spec ? String(spec).trim() || null : null } : {}),
     ...(sellPrice !== undefined ? { sellPrice: String(sellPrice) } : {}),
