@@ -8,6 +8,7 @@ import { useWorkMode } from '@/app/components/WorkModeProvider'
 import LangToggleBtn from '@/app/components/LangToggleBtn'
 import KhqrSheet from '@/app/components/KhqrSheet'
 import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
+import { matchesProductSearch } from '@/lib/product-search'
 
 // ─── HID Scanner Hook ─────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ function useHidScanner(onScan: (code: string) => void) {
 
 type Product = {
   id: string
+  sku: string | null
   barcode: string
   name: string
   spec: string | null
@@ -334,19 +336,18 @@ export default function SalePage() {
     }
     const ql = q.toLowerCase()
     const isNumeric = /^\d+$/.test(q)
-    const matches = allProducts.filter(
-      (p) =>
-        p.barcode.toLowerCase().includes(ql) ||
-        p.name.toLowerCase().includes(ql) ||
-        (p.spec ?? '').toLowerCase().includes(ql),
-    )
+    const matches = allProducts.filter((p) => matchesProductSearch(p, q))
     matches.sort((a, b) => {
-      if (isNumeric) {
-        return (a.barcode.toLowerCase().startsWith(ql) ? 0 : 1) -
-               (b.barcode.toLowerCase().startsWith(ql) ? 0 : 1)
+      const rank = (product: Product) => {
+        if (product.sku?.toLowerCase() === ql) return 0
+        if (product.barcode.toLowerCase() === ql) return 1
+        if (isNumeric && product.barcode.toLowerCase().startsWith(ql)) return 2
+        if (product.name.toLowerCase().includes(ql)) return 3
+        return 4
       }
-      return (a.name.toLowerCase().includes(ql) ? 0 : 1) -
-             (b.name.toLowerCase().includes(ql) ? 0 : 1)
+      const aRank = rank(a)
+      const bRank = rank(b)
+      return aRank - bRank
     })
     const top = matches.slice(0, 5)
     setSuggestions(top)
@@ -368,9 +369,7 @@ export default function SalePage() {
     ? allProducts.filter((p) => {
         const q = dropSearch.toLowerCase()
         return (
-          p.barcode.toLowerCase().includes(q) ||
-          p.name.toLowerCase().includes(q) ||
-          (p.spec ?? '').toLowerCase().includes(q)
+          matchesProductSearch(p, q)
         )
       })
     : allProducts
@@ -403,7 +402,7 @@ export default function SalePage() {
     setRecentProductIds((prev) => [p.id, ...prev.filter((id) => id !== p.id)].slice(0, 8))
   }
 
-  // ── 按条码查询 ─────────────────────────────────────────────────────────────
+  // ── 按商品编码或条码查询 ────────────────────────────────────────────────────
 
   async function queryProductByBarcode(barcode: string) {
     if (!barcode) return
@@ -432,7 +431,16 @@ export default function SalePage() {
 
   function queryProduct() {
     setShowSuggestions(false)
-    queryProductByBarcode(barcodeInput.trim())
+    const query = barcodeInput.trim()
+    if (!query) return
+    const ql = query.toLowerCase()
+    const localProduct = allProducts.find((p) => p.sku?.toLowerCase() === ql) ??
+      allProducts.find((p) => p.barcode.toLowerCase() === ql)
+    if (localProduct) {
+      queryProductByBarcode(localProduct.barcode)
+      return
+    }
+    queryProductByBarcode(query)
   }
 
   function handleBarcodeKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -1728,7 +1736,7 @@ export default function SalePage() {
                   <div style={s.suggestPanel}>
                     {suggestions.map((p) => (
                       <div key={p.id} style={s.suggestItem} onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}>
-                        <span style={s.suggestCode}>{p.barcode}</span>
+                        <span style={s.suggestCode}>{p.sku ? `${p.sku} · ${p.barcode}` : p.barcode}</span>
                         <span style={s.suggestName}>{p.name}</span>
                         {p.spec && <span style={s.suggestSpec}> · {p.spec}</span>}
                         <span style={s.suggestPrice}>{money(p.sellPrice)}</span>
@@ -1872,7 +1880,7 @@ export default function SalePage() {
                       <div style={s.suggestPanel}>
                         {suggestions.map((p) => (
                           <div key={p.id} style={s.suggestItem} onMouseDown={(e) => { e.preventDefault(); selectProduct(p) }}>
-                            <span style={s.suggestCode}>{p.barcode}</span>
+                            <span style={s.suggestCode}>{p.sku ? `${p.sku} · ${p.barcode}` : p.barcode}</span>
                             <span style={s.suggestName}>{p.name}</span>
                             {p.spec && <span style={s.suggestSpec}> · {p.spec}</span>}
                             <span style={s.suggestPrice}>{money(p.sellPrice)}</span>

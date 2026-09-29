@@ -8,6 +8,7 @@ import LangToggleBtn from '@/app/components/LangToggleBtn'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { publicUrl } from '@/lib/public-url'
 import { formatMoney } from '@/lib/currency'
+import { matchesProductSearch } from '@/lib/product-search'
 import ProductBulkImportPanel from './ProductBulkImportPanel'
 import Link from 'next/link'
 import { useManagementReturnHref } from '@/app/components/useManagementReturnHref'
@@ -606,10 +607,7 @@ export default function ProductsPage() {
 
   const filteredProductList = productList.filter((p) => {
     const q = listSearch.trim().toLowerCase()
-    const keywordOk = !q ||
-      p.name.toLowerCase().includes(q) ||
-      p.barcode.toLowerCase().includes(q) ||
-      (p.spec ?? '').toLowerCase().includes(q)
+    const keywordOk = matchesProductSearch(p, q)
     return keywordOk && matchesListCategory(p)
   })
   const displayedProductList = listOpen ? filteredProductList : filteredProductList.slice(0, 5)
