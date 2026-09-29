@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "taskId": "ES-PRODUCT-SKU-SEARCH",
+  "featureBranch": "codex/es-product-sku-search",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "38b649fec76d0b55accd1fc1582ca043fff8aba8",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "CLOSED",
+  "authorizedPaths": [
+    "app/sale/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/sale/page.tsx": "7071f3a74c837c056c196c375e78afb1b959d49394f804a74668511e8824612c"
+  },
+  "createdAt": "2026-09-29T09:50:17Z",
+  "approvedAt": "2026-09-29T09:50:17Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder authorization in the ES-PRODUCT-SKU-SEARCH task conversation",
+    "statement": "Founder authorized ES-PRODUCT-SKU-SEARCH on codex/es-product-sku-search to modify exactly app/sale/page.tsx for sales SKU lookup, product selection and necessary display only, preserving barcode, tenant and ACTIVE checks.",
+    "approvedAtMeaning": "Registration time of the exact Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the reviewed sales-entry SKU lookup and selection change in app/sale/page.tsx. Barcode semantics, tenant isolation, ACTIVE validation, sales submission and all other protected paths remain unchanged.",
+  "closedAt": "2026-09-29T10:10:00Z",
+  "featureMergeCommitSha": "9b05fbc72201f39854935d6fdae5508710d00909",
+  "closureReason": "Closed after the authorized feature branch entered origin/main through the recorded feature merge. The original Founder authorization, exact path and pre-commit content hash remain preserved as audit evidence; this record no longer authorizes changes."
+}
