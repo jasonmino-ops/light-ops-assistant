@@ -41,6 +41,98 @@ function runtime(execute: () => Promise<any>) {
 }
 
 describe('V3PrintingRuntime execution lifecycle', () => {
+  it('keeps polling and claiming closed while recovery endpoint readiness is unavailable', async () => {
+    let readiness!: () => Promise<{ ok: true } | { ok: false; reason: string }>
+    const controlPlane = {
+      current: vi.fn(() => ({ status: 'FENCED', controlPlane: { mode: 'V3_ACTIVE' }, batch: null })),
+      validateExecution: vi.fn(() => ({ ok: false as const })),
+      markExecutionLifecycleReady: vi.fn(async (inputValue: any) => { readiness = inputValue.expiredSelfRecoveryReadiness }),
+      beginExecutionLifecycle: vi.fn(),
+    }
+    const endpoints = { configuredForRecovery: vi.fn(async () => ({ ok: true as const, endpoints: [
+      { role: 'FRONT' as const, endpointKey: '192.168.1.10:9100' },
+      { role: 'KITCHEN' as const, endpointKey: '192.168.1.11:9100' },
+    ] })) }
+    let endpointsReady = false
+    const endpointReadiness = { check: vi.fn(async () => endpointsReady
+      ? { ok: true as const }
+      : { ok: false as const, code: 'ENDPOINT_KITCHEN_UNREACHABLE', role: 'KITCHEN' }) }
+    const cloud = {
+      receive: vi.fn(), report: vi.fn(), holdLocal: vi.fn(),
+    }
+    const coordinator = { execute: vi.fn() }
+    const instance = new (V3PrintingRuntime as any)(
+      { close: vi.fn(async () => ({ ok: true as const })) }, coordinator, controlPlane, endpoints,
+      { listReportable: vi.fn(() => []) }, cloud, 60_000, { dispose: vi.fn() }, false, endpointReadiness,
+    ) as V3PrintingRuntime
+
+    await instance.start()
+    await expect(readiness()).resolves.toEqual({ ok: false, reason: 'ENDPOINT_KITCHEN_UNREACHABLE' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(cloud.receive).not.toHaveBeenCalled()
+    expect(controlPlane.beginExecutionLifecycle).not.toHaveBeenCalled()
+    expect(coordinator.execute).not.toHaveBeenCalled()
+
+    endpointsReady = true
+    await expect(readiness()).resolves.toEqual({ ok: true })
+    expect(endpointReadiness.check).toHaveBeenCalledWith([
+      { role: 'FRONT', endpointKey: '192.168.1.10:9100' },
+      { role: 'KITCHEN', endpointKey: '192.168.1.11:9100' },
+    ])
+    await instance.close()
+  })
+
+  it('blocks expired-self recovery before endpoint loading when local effect ambiguity exists', async () => {
+    let readiness!: () => Promise<{ ok: true } | { ok: false; reason: string }>
+    const controlPlane = {
+      current: vi.fn(() => ({ status: 'FENCED', controlPlane: { mode: 'V3_ACTIVE' }, batch: null })),
+      validateExecution: vi.fn(() => ({ ok: false as const })),
+      markExecutionLifecycleReady: vi.fn(async (inputValue: any) => { readiness = inputValue.expiredSelfRecoveryReadiness }),
+    }
+    const endpoints = { configuredForRecovery: vi.fn() }
+    const endpointReadiness = { check: vi.fn() }
+    const instance = new (V3PrintingRuntime as any)(
+      { close: vi.fn(async () => ({ ok: true as const })) }, { execute: vi.fn() }, controlPlane, endpoints,
+      { listReportable: vi.fn(() => []) }, null, 60_000, { dispose: vi.fn() }, true, endpointReadiness,
+    ) as V3PrintingRuntime
+    await instance.start()
+    await expect(readiness()).resolves.toEqual({ ok: false, reason: 'LOCAL_EFFECT_AMBIGUITY' })
+    expect(endpoints.configuredForRecovery).not.toHaveBeenCalled()
+    expect(endpointReadiness.check).not.toHaveBeenCalled()
+    await instance.close()
+  })
+
+  it('cancels an in-flight endpoint readiness result when printing closes before control-plane stop', async () => {
+    let readiness!: () => Promise<{ ok: true } | { ok: false; reason: string }>
+    let finishProbe!: () => void
+    const controlPlane = {
+      current: vi.fn(() => ({ status: 'FENCED', controlPlane: { mode: 'V3_ACTIVE' }, batch: null })),
+      validateExecution: vi.fn(() => ({ ok: false as const })),
+      markExecutionLifecycleReady: vi.fn(async (inputValue: any) => { readiness = inputValue.expiredSelfRecoveryReadiness }),
+    }
+    const endpoints = { configuredForRecovery: vi.fn(async () => ({ ok: true as const, endpoints: [
+      { role: 'FRONT' as const, endpointKey: '192.168.1.10:9100' },
+    ] })) }
+    const endpointReadiness = { check: vi.fn(() => new Promise<{ ok: true }>((resolve) => {
+      finishProbe = () => resolve({ ok: true })
+    })) }
+    const ledger = { close: vi.fn(async () => ({ ok: true as const })) }
+    const instance = new (V3PrintingRuntime as any)(
+      ledger, { execute: vi.fn() }, controlPlane, endpoints, { listReportable: vi.fn(() => []) },
+      null, 60_000, { dispose: vi.fn() }, false, endpointReadiness,
+    ) as V3PrintingRuntime
+
+    await instance.start()
+    const pendingReadiness = readiness()
+    await vi.waitFor(() => expect(endpointReadiness.check).toHaveBeenCalledTimes(1))
+    const closing = instance.close()
+    finishProbe()
+
+    await expect(pendingReadiness).resolves.toEqual({ ok: false, reason: 'RUNTIME_STOPPED' })
+    await closing
+    expect(ledger.close).toHaveBeenCalledTimes(1)
+  })
+
   it.each(['FRONT', 'KITCHEN'] as const)('durably HOLDS no-batch local %s admission without starting physical execution', async (role) => {
     const cloud = { holdLocal: vi.fn(async () => 'DURABLY_HELD' as const) }
     const controlPlane = {

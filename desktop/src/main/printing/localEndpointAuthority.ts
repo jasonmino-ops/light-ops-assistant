@@ -6,6 +6,7 @@ import type { ActivationSecretSafeStorage } from '../activation/activationTypes'
 export type PrinterRole = 'FRONT' | 'KITCHEN'
 export type LocalEndpointIdentity = { storeId: string; deviceId: string }
 export type LocalEndpoint = { host: string; port: number }
+export type ConfiguredLocalEndpoint = { role: PrinterRole; endpointKey: string }
 type EndpointDocument = {
   schemaVersion: 1
   identity: LocalEndpointIdentity
@@ -60,6 +61,18 @@ export class LocalEndpointAuthority {
     if (!loaded.ok) return loaded
     const selected = loaded.value.endpoints[role]
     return selected ? { ok: true, endpointKey: `${selected.host}:${selected.port}` } : { ok: false, code: `ENDPOINT_${role}_MISSING` }
+  }
+
+  public async configuredForRecovery(): Promise<
+    { ok: true; endpoints: ConfiguredLocalEndpoint[] } | { ok: false; code: string }
+  > {
+    const loaded = await this.read()
+    if (!loaded.ok) return loaded
+    const endpoints = [...ROLES].flatMap((role) => {
+      const selected = loaded.value.endpoints[role]
+      return selected ? [{ role, endpointKey: `${selected.host}:${selected.port}` }] : []
+    })
+    return endpoints.length > 0 ? { ok: true, endpoints } : { ok: false, code: 'ENDPOINT_CONFIG_EMPTY' }
   }
 
   public async provision(input: { revision: number; endpoints: Partial<Record<PrinterRole, LocalEndpoint>> }): Promise<void> {

@@ -50,6 +50,12 @@ describe('Electron 安全基线（静态）', () => {
     }
   })
 
+  it('V3 expired-self readiness runs only inside the single-instance runtime and after endpoint provisioning', () => {
+    expect(mainSrc).toMatch(/requestSingleInstanceLock\(\)/)
+    expect(mainSrc).toMatch(/if \(!gotLock\)/)
+    expect(mainSrc.lastIndexOf('await applyAuthorizedEndpointProvisioning')).toBeLessThan(mainSrc.indexOf('await v3PrintingRuntime.start()'))
+  })
+
   it('V3 print IPC validates sender navigation and independently recomputes canonical order/role identity', () => {
     expect(ipcRouterSrc).toMatch(/isAllowedNavigation\(event\.senderFrame\.url, config\)/)
     expect(ipcRouterSrc).toMatch(/cashier-network-v2:\$\{row\.orderNo\}:\$\{row\.role\}/)

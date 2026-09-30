@@ -36,6 +36,7 @@ export type V3BatchRecord = {
 }
 
 type Tx = {
+  $queryRaw?<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>
   v3PrintControlPlane: {
     upsert(args: unknown): Promise<V3ControlPlaneRecord>
     findUnique(args: unknown): Promise<V3ControlPlaneRecord | null>
@@ -116,6 +117,18 @@ async function readAfter(tx: Tx, storeId: string): Promise<V3ControlPlaneRecord>
   return record
 }
 
+async function lockControlPlaneRow(tx: Tx, current: V3ControlPlaneRecord): Promise<void> {
+  if (!tx.$queryRaw) throw new Error('CONTROL_PLANE_ROW_LOCK_UNAVAILABLE')
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "V3PrintControlPlane"
+    WHERE "id" = ${current.id} AND "storeId" = ${current.storeId}
+    FOR UPDATE
+  `
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== current.id) {
+    throw new Error('CONTROL_PLANE_ROW_LOCK_FAILED')
+  }
+}
+
 export async function readV3ControlPlane(db: V3ControlPlaneDb, identity: { tenantId: string; storeId: string }) {
   return db.$transaction(async (tx) => serializable(await ensurePlane(tx, identity.tenantId, identity.storeId)))
 }
@@ -174,6 +187,102 @@ export async function renewV3Authority(
   })
 }
 
+export async function recoverExpiredSelfV3Authority(
+  db: V3ControlPlaneDb,
+  identity: { tenantId: string; storeId: string; deviceId: string; ownerEpoch: number; stateVersion: number; leaseId: string },
+  options: { now?: Date; leaseMs?: number } = {},
+): Promise<ControlPlaneResult<{ controlPlane: ReturnType<typeof serializable> }>> {
+  const now = options.now ?? new Date()
+  const leaseExpiresAt = new Date(now.getTime() + validDuration(options.leaseMs, DEFAULT_LEASE_MS, MAX_LEASE_MS))
+  const requestId = randomUUID()
+  return db.$transaction(async (tx) => {
+    const observed = await ensurePlane(tx, identity.tenantId, identity.storeId)
+    await lockControlPlaneRow(tx, observed)
+    const current = await readAfter(tx, identity.storeId)
+    if (current.tenantId !== identity.tenantId || current.storeId !== identity.storeId) {
+      return { ok: false, code: 'SCOPE_MISMATCH' }
+    }
+    const audit = async (
+      actionType: 'RECOVER_EXPIRED_SELF_ATTEMPT' | 'RECOVER_EXPIRED_SELF_SUCCESS' | 'RECOVER_EXPIRED_SELF_REJECTED',
+      status: 'SUCCESS' | 'FAILED',
+      reason: string,
+      next?: V3ControlPlaneRecord,
+    ) => {
+      await tx.operationLog.create({ data: {
+        tenantId: current.tenantId,
+        storeId: current.storeId,
+        userId: null,
+        actionType,
+        targetType: 'V3PrintControlPlane',
+        targetId: current.id,
+        requestId,
+        status,
+        message: reason,
+        payloadSnapshot: {
+          ownerDeviceId: identity.deviceId,
+          oldLeaseId: identity.leaseId,
+          newLeaseId: next?.leaseId ?? null,
+          ownerEpoch: identity.ownerEpoch,
+          oldStateVersion: identity.stateVersion,
+          newStateVersion: next?.stateVersion ?? null,
+          reason,
+          occurredAt: now.toISOString(),
+        },
+      } })
+    }
+    const reject = async (code: string): Promise<ControlPlaneResult<never>> => {
+      await audit('RECOVER_EXPIRED_SELF_REJECTED', 'FAILED', code)
+      return { ok: false, code }
+    }
+
+    await audit('RECOVER_EXPIRED_SELF_ATTEMPT', 'SUCCESS', 'ATTEMPT_RECORDED')
+    if (current.mode !== 'V3_ACTIVE') return reject('MODE_NOT_V3_ACTIVE')
+    if (current.ownerDeviceId !== identity.deviceId) return reject('RECOVERY_OWNER_MISMATCH')
+    if (!current.leaseId || !current.leaseExpiresAt) return reject('RECOVERY_LEASE_MISSING')
+    if (current.ownerEpoch !== identity.ownerEpoch || current.stateVersion !== identity.stateVersion ||
+      current.leaseId !== identity.leaseId) return reject('RECOVERY_STALE_FENCE')
+    if (current.handoffRequestedAt !== null) return reject('RECOVERY_HANDOFF_ACTIVE')
+    if (current.handoffQuarantineUntil !== null) return reject('RECOVERY_QUARANTINE_ACTIVE')
+    if (current.leaseExpiresAt > now) return reject('RECOVERY_LEASE_NOT_EXPIRED')
+    const activeBatch = await tx.v3PrintExecutionBatch.findFirst({
+      where: { controlPlaneId: current.id, revokedAt: null, expiresAt: { gt: now } },
+      orderBy: { expiresAt: 'desc' },
+    })
+    if (activeBatch) return reject('RECOVERY_ACTIVE_BATCH')
+
+    const nextLeaseId = randomUUID()
+    const result = await tx.v3PrintControlPlane.updateMany({
+      where: {
+        id: current.id,
+        tenantId: identity.tenantId,
+        storeId: identity.storeId,
+        ownerDeviceId: identity.deviceId,
+        ownerEpoch: identity.ownerEpoch,
+        stateVersion: identity.stateVersion,
+        leaseId: identity.leaseId,
+        leaseExpiresAt: { lte: now },
+        mode: 'V3_ACTIVE',
+        handoffRequestedAt: null,
+        handoffQuarantineUntil: null,
+      },
+      data: {
+        leaseId: nextLeaseId,
+        leaseExpiresAt,
+        stateVersion: { increment: 1 },
+        lastReconciledAt: now,
+      },
+    })
+    if (result.count !== 1) return reject('RECOVERY_STALE_FENCE')
+    await tx.v3PrintExecutionBatch.updateMany({
+      where: { controlPlaneId: current.id, revokedAt: null },
+      data: { revokedAt: now },
+    })
+    const recovered = await readAfter(tx, identity.storeId)
+    await audit('RECOVER_EXPIRED_SELF_SUCCESS', 'SUCCESS', 'RECOVERY_SUCCEEDED', recovered)
+    return { ok: true, value: { controlPlane: serializable(recovered) } }
+  })
+}
+
 export async function releaseV3Authority(
   db: V3ControlPlaneDb,
   identity: { tenantId: string; storeId: string; deviceId: string; ownerEpoch: number; stateVersion: number; leaseId: string },
@@ -203,6 +312,9 @@ export async function issueV3ExecutionBatch(
 ): Promise<ControlPlaneResult<{ batch: Omit<V3BatchRecord, 'expiresAt' | 'createdAt'> & { expiresAt: string; createdAt: string } }>> {
   const now = options.now ?? new Date()
   return db.$transaction(async (tx) => {
+    const observed = await tx.v3PrintControlPlane.findUnique({ where: { storeId: identity.storeId } })
+    if (!observed) return { ok: false, code: 'AUTHORITY_STALE_OR_EXPIRED' }
+    await lockControlPlaneRow(tx, observed)
     const current = await tx.v3PrintControlPlane.findUnique({ where: { storeId: identity.storeId } })
     if (!current || current.tenantId !== identity.tenantId || current.mode !== 'V3_ACTIVE' ||
       current.ownerDeviceId !== identity.deviceId || current.ownerEpoch !== identity.ownerEpoch ||

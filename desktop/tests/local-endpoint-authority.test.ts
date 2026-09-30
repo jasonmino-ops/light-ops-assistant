@@ -27,6 +27,10 @@ describe('LocalEndpointAuthority', () => {
     await value.provision({ revision: 1, endpoints: { FRONT: { host: '192.168.1.10', port: 9100 }, KITCHEN: { host: '192.168.1.11', port: 9100 } } })
     expect(await value.resolve('FRONT')).toEqual({ ok: true, endpointKey: '192.168.1.10:9100' })
     expect(await value.resolve('KITCHEN')).toEqual({ ok: true, endpointKey: '192.168.1.11:9100' })
+    expect(await value.configuredForRecovery()).toEqual({ ok: true, endpoints: [
+      { role: 'FRONT', endpointKey: '192.168.1.10:9100' },
+      { role: 'KITCHEN', endpointKey: '192.168.1.11:9100' },
+    ] })
     expect((await new LocalEndpointAuthority(root, { storeId: 'store-b', deviceId: 'device-a' }, storage).resolve('FRONT')).ok).toBe(false)
     expect((await new LocalEndpointAuthority(root, { storeId: 'store-a', deviceId: 'device-b' }, storage).resolve('FRONT')).ok).toBe(false)
     await expect(value.provision({ revision: 1, endpoints: { FRONT: { host: '10.0.0.1', port: 9100 } } })).rejects.toThrow('ENDPOINT_CONFIG_REVISION_STALE')
@@ -37,6 +41,9 @@ describe('LocalEndpointAuthority', () => {
     await expect(value.provision({ revision: 1, endpoints: { FRONT: { host: '8.8.8.8', port: 9100 } } })).rejects.toThrow('ENDPOINT_CONFIG_INVALID')
     await value.provision({ revision: 1, endpoints: { FRONT: { host: '10.0.0.8', port: 9100 } } })
     expect(await value.resolve('KITCHEN')).toEqual({ ok: false, code: 'ENDPOINT_KITCHEN_MISSING' })
+    expect(await value.configuredForRecovery()).toEqual({ ok: true, endpoints: [
+      { role: 'FRONT', endpointKey: '10.0.0.8:9100' },
+    ] })
     const file = join(root, 'v3-printing', 'endpoints.json')
     const outer = JSON.parse(await readFile(file, 'utf8'))
     outer.ciphertextBase64 = Buffer.from('tampered').toString('base64')
