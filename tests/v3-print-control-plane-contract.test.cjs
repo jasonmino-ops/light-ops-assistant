@@ -26,17 +26,31 @@ test('migration constrains mode, owner shape, expiry and exact composite identit
 
 test('server writer rejects timeout promotion and requires explicit fenced writes', () => {
   const source = read('lib/v3-print-control-plane.ts')
+  const recoverExpiredSelfSource = source.slice(
+    source.indexOf('export async function recoverExpiredSelfV3Authority'),
+    source.indexOf('export async function releaseV3Authority'),
+  )
   assert.match(source, /OWNER_LIVENESS_AMBIGUOUS/)
-  assert.doesNotMatch(source, /leaseExpiresAt:\s*\{\s*lte: now\s*\}.*ownerEpoch:\s*\{\s*increment/s)
+  assert.match(recoverExpiredSelfSource, /leaseExpiresAt:\s*\{\s*lte: now\s*\}/)
+  assert.doesNotMatch(recoverExpiredSelfSource, /ownerEpoch:\s*\{\s*increment/)
+  assert.match(source, /SELECT "id" FROM "V3PrintControlPlane"[\s\S]*FOR UPDATE/)
+  assert.match(recoverExpiredSelfSource, /await lockControlPlaneRow\(tx, observed\)[\s\S]*const activeBatch/)
+  assert.match(source.slice(source.indexOf('export async function issueV3ExecutionBatch'), source.indexOf('const MODE_TRANSITIONS')),
+    /await lockControlPlaneRow\(tx, observed\)[\s\S]*v3PrintExecutionBatch\.create/)
   assert.match(source, /stateVersion: identity\.stateVersion/)
   assert.match(source, /leaseExpiresAt: \{ gt: now \}/)
   assert.match(source, /controlledV3OwnerHandoff/)
+  assert.match(source, /recoverExpiredSelfV3Authority/)
+  assert.match(source, /RECOVER_EXPIRED_SELF_ATTEMPT/)
+  assert.match(source, /RECOVER_EXPIRED_SELF_SUCCESS/)
+  assert.match(source, /RECOVER_EXPIRED_SELF_REJECTED/)
 })
 
 test('Desktop and Owner APIs keep authority roles separate and retire raw OWNER mode writes', () => {
   const desktop = read('app/api/desktop/v3-print-control-plane/route.ts')
   const owner = read('app/api/owner/v3-print-control-plane/route.ts')
   assert.match(desktop, /getDesktopDeviceContext/)
+  assert.match(desktop, /body\.action === 'RECOVER_EXPIRED_SELF'/)
   assert.doesNotMatch(desktop, /transitionV3PrintMode|controlledV3OwnerHandoff/)
   assert.match(owner, /ctx\.role !== 'OWNER'/)
   assert.match(owner, /body\.action === 'SET_MODE'/)

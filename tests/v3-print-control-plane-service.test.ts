@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   acquireV3Authority, controlledV3OwnerHandoff, issueV3ExecutionBatch,
-  releaseV3Authority, renewV3Authority, transitionV3PrintMode, type V3ControlPlaneDb,
+  recoverExpiredSelfV3Authority, releaseV3Authority, renewV3Authority, transitionV3PrintMode, type V3ControlPlaneDb,
 } from '../lib/v3-print-control-plane'
 import {
   parseOpsPrintModeCommand,
@@ -18,8 +18,11 @@ const afterV2Drain = new Date(now.getTime() + 120_001)
 
 function fakeDb(initial: Partial<any> = {}, options: {
   failAudit?: boolean
+  failAuditAction?: string
   failModeCasAfterAudit?: boolean
   failSerializableOnce?: boolean
+  serializeRowLocks?: boolean
+  beforeBatchCreate?: () => Promise<void>
   jobs?: any[]
 } = {}) {
   let plane: any = {
@@ -31,10 +34,13 @@ function fakeDb(initial: Partial<any> = {}, options: {
   const audits: any[] = []
   const jobs = options.jobs ?? []
   const transactionOptions: any[] = []
+  const rowLockQueries: string[] = []
+  let rowLockTail = Promise.resolve()
   let serializableFailureRemaining = options.failSerializableOnce === true
   const matches = (where: any) => Object.entries(where).every(([key, expected]: any) => {
     const actual = plane[key]
     if (expected && typeof expected === 'object' && 'gt' in expected) return actual instanceof Date && actual > expected.gt
+    if (expected && typeof expected === 'object' && 'lte' in expected) return actual instanceof Date && actual <= expected.lte
     return actual === expected
   })
   const matchesJob = (row: any, where: any): boolean => Object.entries(where).every(([key, expected]: any) => {
@@ -69,6 +75,7 @@ function fakeDb(initial: Partial<any> = {}, options: {
     },
     v3PrintExecutionBatch: {
       create: async ({ data }: any) => {
+        await options.beforeBatchCreate?.()
         const row = { id: `batch-${batches.length + 1}`, revokedAt: null, createdAt: now, ...data }
         batches.push(row)
         return row
@@ -85,7 +92,7 @@ function fakeDb(initial: Partial<any> = {}, options: {
     },
     operationLog: {
       create: async ({ data }: any) => {
-        if (options.failAudit) throw new Error('AUDIT_WRITE_FAILED')
+        if (options.failAudit || options.failAuditAction === data.actionType) throw new Error('AUDIT_WRITE_FAILED')
         const row = { id: `audit-${audits.length + 1}`, ...data }; audits.push(row); return row
       },
       findFirst: async ({ where }: any) => [...audits].reverse().find(row => Object.entries(where).every(([key, value]) => row[key] === value)) ?? null,
@@ -110,17 +117,34 @@ function fakeDb(initial: Partial<any> = {}, options: {
       const beforePlane = structuredClone(plane)
       const beforeBatches = structuredClone(batches)
       const beforeAudits = structuredClone(audits)
+      const rowLockState: { release?: () => void } = {}
+      const transactionTx = {
+        ...tx,
+        $queryRaw: async (strings: TemplateStringsArray) => {
+          rowLockQueries.push(strings.join('?'))
+          if (options.serializeRowLocks && !rowLockState.release) {
+            let release!: () => void
+            const previous = rowLockTail
+            rowLockTail = new Promise<void>((resolve) => { release = resolve })
+            await previous
+            rowLockState.release = release
+          }
+          return [{ id: plane.id }]
+        },
+      }
       try {
-        return await operation(tx)
+        return await operation(transactionTx)
       } catch (error) {
         plane = beforePlane
         batches.splice(0, batches.length, ...beforeBatches)
         audits.splice(0, audits.length, ...beforeAudits)
         throw error
+      } finally {
+        rowLockState.release?.()
       }
     },
   }
-  return { db, plane: () => ({ ...plane }), batches, audits, jobs, transactionOptions }
+  return { db, plane: () => ({ ...plane }), batches, audits, jobs, transactionOptions, rowLockQueries }
 }
 
 test('concurrent acquisition creates one owner and monotonically advances epoch', async () => {
@@ -161,6 +185,170 @@ test('renewal and batch issuance require every fencing value and live lease', as
   assert.equal(state.batches[0].ownerEpoch, 3)
   assert.equal(state.batches[0].expiresAt.getTime() - now.getTime(), 15 * 60_000)
   assert.ok(state.batches[0].expiresAt > leaseExpiresAt, 'execution Grace remains independent of the short control-plane lease')
+})
+
+test('expired same-owner recovery rotates only lease/state, revokes stale batches, audits, and preserves pending jobs', async () => {
+  const incidentJobs = [
+    { id: 'front-row', idempotencyKey: 'network:front', schemaVersion: 3, status: 'PENDING', claimAttempt: 0 },
+    { id: 'kitchen-row', idempotencyKey: 'network:kitchen', schemaVersion: 3, status: 'PENDING', claimAttempt: 0 },
+  ]
+  const state = fakeDb({
+    ownerDeviceId: 'device-a', ownerEpoch: 5, leaseId: 'lease-expired',
+    leaseExpiresAt: new Date(now.getTime() - 1), stateVersion: 12,
+  }, { jobs: incidentJobs })
+  state.batches.push({
+    id: 'batch-stale', controlPlaneId: 'plane-a', tenantId: 'tenant-a', storeId: 'store-a',
+    ownerDeviceId: 'device-a', ownerEpoch: 5, stateVersion: 12, leaseId: 'lease-expired', mode: 'V3_ACTIVE',
+    expiresAt: new Date(now.getTime() - 1), revokedAt: null, createdAt: new Date(now.getTime() - 60_000),
+  })
+  const jobsBefore = structuredClone(state.jobs)
+  const staleFence = {
+    tenantId: 'tenant-a', storeId: 'store-a', deviceId: 'device-a', ownerEpoch: 5,
+    stateVersion: 12, leaseId: 'lease-expired',
+  }
+
+  const result = await recoverExpiredSelfV3Authority(state.db, staleFence, { now })
+  assert.equal(result.ok, true)
+  assert.equal(state.plane().ownerDeviceId, 'device-a')
+  assert.equal(state.plane().ownerEpoch, 5)
+  assert.equal(state.plane().stateVersion, 13)
+  assert.notEqual(state.plane().leaseId, 'lease-expired')
+  assert.ok(state.plane().leaseExpiresAt > now)
+  assert.equal(state.batches[0].revokedAt?.toISOString(), now.toISOString())
+  assert.deepEqual(state.jobs, jobsBefore)
+  assert.deepEqual(state.audits.slice(0, 2).map((row) => row.actionType), [
+    'RECOVER_EXPIRED_SELF_ATTEMPT', 'RECOVER_EXPIRED_SELF_SUCCESS',
+  ])
+  assert.equal(state.audits[1].payloadSnapshot.oldLeaseId, 'lease-expired')
+  assert.equal(state.audits[1].payloadSnapshot.newLeaseId, state.plane().leaseId)
+  assert.equal(state.audits[1].payloadSnapshot.oldStateVersion, 12)
+  assert.equal(state.audits[1].payloadSnapshot.newStateVersion, 13)
+
+  assert.deepEqual(await renewV3Authority(state.db, staleFence, { now }), {
+    ok: false, code: 'AUTHORITY_STALE_OR_EXPIRED',
+  })
+  assert.deepEqual(await recoverExpiredSelfV3Authority(state.db, staleFence, { now }), {
+    ok: false, code: 'RECOVERY_STALE_FENCE',
+  })
+  assert.deepEqual(await issueV3ExecutionBatch(state.db, staleFence, { now }), {
+    ok: false, code: 'AUTHORITY_STALE_OR_EXPIRED',
+  })
+  assert.deepEqual(state.jobs, jobsBefore)
+})
+
+test('expired-self recovery rolls authority and stale-batch revocation back when success audit cannot persist', async () => {
+  const state = fakeDb({
+    ownerDeviceId: 'device-a', ownerEpoch: 5, leaseId: 'lease-expired',
+    leaseExpiresAt: new Date(now.getTime() - 1), stateVersion: 12,
+  }, { failAuditAction: 'RECOVER_EXPIRED_SELF_SUCCESS' })
+  state.batches.push({
+    id: 'batch-stale', controlPlaneId: 'plane-a', tenantId: 'tenant-a', storeId: 'store-a',
+    ownerDeviceId: 'device-a', ownerEpoch: 5, stateVersion: 12, leaseId: 'lease-expired', mode: 'V3_ACTIVE',
+    expiresAt: new Date(now.getTime() - 1), revokedAt: null, createdAt: new Date(now.getTime() - 60_000),
+  })
+
+  await assert.rejects(() => recoverExpiredSelfV3Authority(state.db, {
+    tenantId: 'tenant-a', storeId: 'store-a', deviceId: 'device-a', ownerEpoch: 5,
+    stateVersion: 12, leaseId: 'lease-expired',
+  }, { now }), /AUDIT_WRITE_FAILED/)
+  assert.equal(state.plane().leaseId, 'lease-expired')
+  assert.equal(state.plane().stateVersion, 12)
+  assert.equal(state.batches[0].revokedAt, null)
+  assert.equal(state.audits.length, 0)
+})
+
+test('expired-self recovery rejects every unsafe eligibility state', async () => {
+  const base = {
+    ownerDeviceId: 'device-a', ownerEpoch: 5, leaseId: 'lease-a',
+    leaseExpiresAt: new Date(now.getTime() - 1), stateVersion: 12,
+  }
+  const request = {
+    tenantId: 'tenant-a', storeId: 'store-a', deviceId: 'device-a', ownerEpoch: 5,
+    stateVersion: 12, leaseId: 'lease-a',
+  }
+  const cases: Array<{ name: string; initial?: Record<string, unknown>; request?: Record<string, unknown>; code: string }> = [
+    { name: 'live lease', initial: { leaseExpiresAt: new Date(now.getTime() + 1) }, code: 'RECOVERY_LEASE_NOT_EXPIRED' },
+    { name: 'different owner', initial: { ownerDeviceId: 'device-b' }, code: 'RECOVERY_OWNER_MISMATCH' },
+    { name: 'owner epoch mismatch', request: { ownerEpoch: 4 }, code: 'RECOVERY_STALE_FENCE' },
+    { name: 'state version mismatch', request: { stateVersion: 11 }, code: 'RECOVERY_STALE_FENCE' },
+    { name: 'lease mismatch', request: { leaseId: 'lease-old' }, code: 'RECOVERY_STALE_FENCE' },
+    { name: 'active handoff', initial: { handoffRequestedAt: now }, code: 'RECOVERY_HANDOFF_ACTIVE' },
+    { name: 'active quarantine', initial: { handoffQuarantineUntil: now }, code: 'RECOVERY_QUARANTINE_ACTIVE' },
+    { name: 'wrong mode', initial: { mode: 'BLOCKED_UNKNOWN' }, code: 'MODE_NOT_V3_ACTIVE' },
+  ]
+  for (const value of cases) {
+    const state = fakeDb({ ...base, ...value.initial })
+    const result = await recoverExpiredSelfV3Authority(state.db, { ...request, ...value.request } as any, { now })
+    assert.deepEqual(result, { ok: false, code: value.code }, value.name)
+    assert.equal(state.plane().leaseId, (value.initial?.leaseId as string | undefined) ?? base.leaseId)
+    assert.equal(state.audits.at(-1)?.actionType, 'RECOVER_EXPIRED_SELF_REJECTED')
+    assert.equal(state.audits.at(-1)?.message, value.code)
+  }
+
+  const activeBatch = fakeDb(base)
+  activeBatch.batches.push({
+    id: 'batch-active', controlPlaneId: 'plane-a', tenantId: 'tenant-a', storeId: 'store-a',
+    ownerDeviceId: 'device-a', ownerEpoch: 5, stateVersion: 12, leaseId: 'lease-a', mode: 'V3_ACTIVE',
+    expiresAt: new Date(now.getTime() + 1), revokedAt: null, createdAt: now,
+  })
+  assert.deepEqual(await recoverExpiredSelfV3Authority(activeBatch.db, request, { now }), {
+    ok: false, code: 'RECOVERY_ACTIVE_BATCH',
+  })
+  assert.equal(activeBatch.batches[0].revokedAt, null)
+})
+
+test('two concurrent expired-self recoveries allow exactly one winner', async () => {
+  const state = fakeDb({
+    ownerDeviceId: 'device-a', ownerEpoch: 5, leaseId: 'lease-expired',
+    leaseExpiresAt: new Date(now.getTime() - 1), stateVersion: 12,
+  })
+  const request = {
+    tenantId: 'tenant-a', storeId: 'store-a', deviceId: 'device-a', ownerEpoch: 5,
+    stateVersion: 12, leaseId: 'lease-expired',
+  }
+  const results = await Promise.all([
+    recoverExpiredSelfV3Authority(state.db, request, { now }),
+    recoverExpiredSelfV3Authority(state.db, request, { now }),
+  ])
+  assert.equal(results.filter(({ ok }) => ok).length, 1)
+  assert.deepEqual(results.filter(({ ok }) => !ok), [{ ok: false, code: 'RECOVERY_STALE_FENCE' }])
+  assert.equal(state.plane().ownerEpoch, 5)
+  assert.equal(state.plane().stateVersion, 13)
+  assert.equal(state.audits.filter((row) => row.actionType === 'RECOVER_EXPIRED_SELF_SUCCESS').length, 1)
+  assert.equal(state.audits.filter((row) => row.actionType === 'RECOVER_EXPIRED_SELF_REJECTED').length, 1)
+})
+
+test('row lock makes a late old-fence batch visible before expired-self recovery can succeed', async () => {
+  let enteredCreate!: () => void
+  let releaseCreate!: () => void
+  const createEntered = new Promise<void>((resolve) => { enteredCreate = resolve })
+  const createBlocked = new Promise<void>((resolve) => { releaseCreate = resolve })
+  const state = fakeDb({
+    ownerDeviceId: 'device-a', ownerEpoch: 5, leaseId: 'lease-expiring',
+    leaseExpiresAt: new Date(now.getTime() - 1), stateVersion: 12,
+  }, {
+    serializeRowLocks: true,
+    beforeBatchCreate: async () => { enteredCreate(); await createBlocked },
+  })
+  const request = {
+    tenantId: 'tenant-a', storeId: 'store-a', deviceId: 'device-a', ownerEpoch: 5,
+    stateVersion: 12, leaseId: 'lease-expiring',
+  }
+
+  const issue = issueV3ExecutionBatch(state.db, request, { now: new Date(now.getTime() - 2) })
+  await createEntered
+  const recover = recoverExpiredSelfV3Authority(state.db, request, { now })
+  await new Promise((resolve) => setImmediate(resolve))
+  releaseCreate()
+
+  assert.equal((await issue).ok, true)
+  assert.deepEqual(await recover, { ok: false, code: 'RECOVERY_ACTIVE_BATCH' })
+  assert.equal(state.plane().leaseId, 'lease-expiring')
+  assert.equal(state.plane().stateVersion, 12)
+  assert.equal(state.batches.length, 1)
+  assert.equal(state.batches[0].revokedAt, null)
+  assert.equal(state.rowLockQueries.length, 2)
+  assert.ok(state.rowLockQueries.every((query) => query.includes('V3PrintControlPlane') && query.includes('FOR UPDATE')))
 })
 
 test('mode transitions require BLOCKED_UNKNOWN and controlled handoff quarantines before epoch advance', async () => {

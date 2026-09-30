@@ -124,6 +124,7 @@ if (!gotLock) {
           storeId: context.device.storeId,
           deviceId: context.device.deviceId,
         })
+        await v3PrintingRuntime.start()
         logger.info('v3-control-plane.reconciled', { status: v3ControlPlaneRuntime.current().status })
       } else {
         recordHealthError('v3-control-plane', 'authorized runtime has no readable credential')

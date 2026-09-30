@@ -34,6 +34,7 @@ function client(initial: ControlPlaneProjection, acquired = initial) {
     read: vi.fn(async () => ({ ok: true as const, controlPlane: initial })),
     acquire: vi.fn(async () => ({ ok: true as const, controlPlane: acquired })),
     renew: vi.fn(async () => ({ ok: true as const, controlPlane: acquired })),
+    recoverExpiredSelf: vi.fn(async () => ({ ok: true as const, controlPlane: acquired })),
     release: vi.fn(async (authority: ControlPlaneProjection) => ({ ok: true as const, controlPlane: {
       ...authority, ownerDeviceId: null, leaseId: null, leaseExpiresAt: null, mode: 'BLOCKED_UNKNOWN' as const,
       stateVersion: authority.stateVersion + 1,
@@ -88,6 +89,105 @@ describe('V3ControlPlaneRuntime', () => {
     expect(api.issueBatch).toHaveBeenCalledTimes(1)
     expect(runtime.current().status).toBe('V3_OWNER')
     await runtime.stop()
+  })
+
+  it('cold start recovers an expired same owner only after local readiness passes', async () => {
+    const expired = plane({
+      ownerDeviceId: 'device-a', ownerEpoch: 7, leaseId: 'lease-old',
+      leaseExpiresAt: '2000-01-01T00:00:00.000Z', mode: 'V3_ACTIVE', stateVersion: 12,
+    })
+    const recovered = { ...expired, leaseId: 'lease-new', leaseExpiresAt: future, stateVersion: 13 }
+    const api = client(expired, recovered)
+    api.renew.mockResolvedValue({ ok: false, error: 'AUTHORITY_STALE_OR_EXPIRED' } as never)
+    const readiness = vi.fn(async () => ({ ok: true as const }))
+    const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+
+    await runtime.start()
+    expect(runtime.current().status).toBe('FENCED')
+    expect(api.recoverExpiredSelf).not.toHaveBeenCalled()
+    expect(api.issueBatch).not.toHaveBeenCalled()
+
+    await runtime.markExecutionLifecycleReady({ expiredSelfRecoveryReadiness: readiness })
+    expect(readiness).toHaveBeenCalledTimes(1)
+    expect(api.recoverExpiredSelf).toHaveBeenCalledWith(expired)
+    expect(api.issueBatch).toHaveBeenCalledWith(recovered)
+    expect(runtime.current()).toMatchObject({
+      status: 'V3_OWNER',
+      controlPlane: { ownerDeviceId: 'device-a', ownerEpoch: 7, stateVersion: 13, leaseId: 'lease-new' },
+    })
+    await runtime.stop()
+  })
+
+  it('remains fenced while endpoint readiness fails and recovers on the existing bounded reconcile cycle', async () => {
+    const expired = plane({
+      ownerDeviceId: 'device-a', ownerEpoch: 8, leaseId: 'lease-old',
+      leaseExpiresAt: '2000-01-01T00:00:00.000Z', mode: 'V3_ACTIVE', stateVersion: 20,
+    })
+    const recovered = { ...expired, leaseId: 'lease-new', leaseExpiresAt: future, stateVersion: 21 }
+    const api = client(expired, recovered)
+    api.renew.mockResolvedValue({ ok: false, error: 'AUTHORITY_STALE_OR_EXPIRED' } as never)
+    let endpointReady = false
+    const readiness = vi.fn(async () => endpointReady
+      ? { ok: true as const }
+      : { ok: false as const, reason: 'ENDPOINT_KITCHEN_UNREACHABLE' })
+    const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+    await runtime.start()
+    await runtime.markExecutionLifecycleReady({ expiredSelfRecoveryReadiness: readiness })
+
+    expect(runtime.current().status).toBe('FENCED')
+    expect(api.recoverExpiredSelf).not.toHaveBeenCalled()
+    expect(api.issueBatch).not.toHaveBeenCalled()
+
+    endpointReady = true
+    await (runtime as any).reconcile()
+    expect(api.recoverExpiredSelf).toHaveBeenCalledTimes(1)
+    expect(runtime.current().status).toBe('V3_OWNER')
+    await runtime.stop()
+  })
+
+  it('never recovers through local ambiguity or an unknown readiness error', async () => {
+    for (const value of [
+      { releaseBlocked: true, readiness: vi.fn(async () => ({ ok: true as const })) },
+      { releaseBlocked: false, readiness: vi.fn(async () => { throw new Error('unknown readiness failure') }) },
+    ]) {
+      const expired = plane({
+        ownerDeviceId: 'device-a', ownerEpoch: 9, leaseId: 'lease-old',
+        leaseExpiresAt: '2000-01-01T00:00:00.000Z', mode: 'V3_ACTIVE', stateVersion: 30,
+      })
+      const api = client(expired)
+      api.renew.mockResolvedValue({ ok: false, error: 'AUTHORITY_STALE_OR_EXPIRED' } as never)
+      const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+      await runtime.start()
+      await runtime.markExecutionLifecycleReady({
+        releaseBlocked: value.releaseBlocked,
+        expiredSelfRecoveryReadiness: value.readiness,
+      })
+      expect(runtime.current().status).toBe('FENCED')
+      expect(api.recoverExpiredSelf).not.toHaveBeenCalled()
+      await runtime.stop()
+    }
+  })
+
+  it.each([true, false])('cancels an in-progress readiness decision returning %s when the runtime stops', async (ready) => {
+    const expired = plane({
+      ownerDeviceId: 'device-a', ownerEpoch: 10, leaseId: 'lease-old',
+      leaseExpiresAt: '2000-01-01T00:00:00.000Z', mode: 'V3_ACTIVE', stateVersion: 40,
+    })
+    const api = client(expired)
+    api.renew.mockResolvedValue({ ok: false, error: 'AUTHORITY_STALE_OR_EXPIRED' } as never)
+    let finishReadiness!: () => void
+    const readiness = vi.fn(() => new Promise<{ ok: true } | { ok: false; reason: string }>((resolve) => {
+      finishReadiness = () => resolve(ready ? { ok: true } : { ok: false, reason: 'RUNTIME_STOPPED' })
+    }))
+    const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+    await runtime.start()
+    const markingReady = runtime.markExecutionLifecycleReady({ expiredSelfRecoveryReadiness: readiness })
+    await vi.waitFor(() => expect(readiness).toHaveBeenCalledTimes(1))
+    const stopping = runtime.stop()
+    finishReadiness()
+    await Promise.all([markingReady, stopping])
+    expect(api.recoverExpiredSelf).not.toHaveBeenCalled()
+    expect(runtime.current().status).toBe('STOPPED')
   })
 
   it('keeps an already issued execution batch through a short lease renewal failure until Grace expires', async () => {

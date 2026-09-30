@@ -14,6 +14,7 @@ import { LocalEndpointAuthority, type PrinterRole } from './localEndpointAuthori
 import type { LocalEndpoint } from './localEndpointAuthority'
 import { V3PrintJobClient } from './v3PrintJobClient'
 import { V3NetworkRenderer } from './v3NetworkRenderer'
+import { NoPayloadEndpointReadiness } from './endpointReadiness'
 
 function releaseSafeExecutionResult(result: { status: string; record?: { state?: string } }): boolean {
   if (result.status === 'NOT_EXECUTED') return result.record?.state !== 'CROSSING_UNKNOWN'
@@ -37,7 +38,9 @@ export async function hasDurableCrossingUnknown(userDataPath: string): Promise<b
 export class V3PrintingRuntime {
   private timer: ReturnType<typeof setInterval> | null = null
   private pumpPromise: Promise<void> | null = null
-  private running = true
+  private running = false
+  private started = false
+  private lifecycleGeneration = 0
   private constructor(
     private readonly ledger: ExecutionLedger,
     private readonly coordinator: LocalFirstPrintCoordinator<Uint8Array>,
@@ -47,6 +50,8 @@ export class V3PrintingRuntime {
     private readonly cloud: V3PrintJobClient | null,
     private readonly pollIntervalMs: number,
     private readonly networkRenderer: V3NetworkRenderer,
+    private readonly releaseBlocked = false,
+    private readonly endpointReadiness = new NoPayloadEndpointReadiness(),
   ) {}
 
   public static async open(options: {
@@ -62,9 +67,10 @@ export class V3PrintingRuntime {
     const ledger = createExecutionLedger({ userDataPath: options.userDataPath, staleLockRecovery: recovery })
     const opened = await ledger.open()
     if (!opened.ok) throw new Error(opened.error.code)
-    const releaseBlocked = await hasDurableCrossingUnknown(options.userDataPath)
     const outbox = new ExecutionOutbox(options.userDataPath)
     await outbox.open()
+    const releaseBlocked = await hasDurableCrossingUnknown(options.userDataPath) ||
+      outbox.list().some(({ outcome }) => outcome === 'CROSSING_UNKNOWN')
     const shared = new SharedPrintingCore(
       ledger,
       new RawTcpEffectBoundary(options.tcpTimeoutMs ?? 10_000),
@@ -89,10 +95,26 @@ export class V3PrintingRuntime {
     } }
     const runtime = new V3PrintingRuntime(ledger, new LocalFirstPrintCoordinator(authority, shared, outbox, mode), options.controlPlane,
       new LocalEndpointAuthority(options.userDataPath, { storeId: options.storeId, deviceId: options.deviceId }), outbox,
-      options.cloud ?? null, options.cloudPollIntervalMs ?? 2_000, new V3NetworkRenderer())
-    await options.controlPlane.markExecutionLifecycleReady({ releaseBlocked })
-    runtime.startCloudPump()
+      options.cloud ?? null, options.cloudPollIntervalMs ?? 2_000, new V3NetworkRenderer(), releaseBlocked)
     return runtime
+  }
+
+  public async start(): Promise<void> {
+    if (this.started) return
+    this.started = true
+    this.running = true
+    const generation = ++this.lifecycleGeneration
+    try {
+      await this.controlPlane.markExecutionLifecycleReady({
+        releaseBlocked: this.releaseBlocked,
+        expiredSelfRecoveryReadiness: () => this.checkExpiredSelfRecoveryReadiness(generation),
+      })
+      if (this.running) this.startCloudPump()
+    } catch (error) {
+      this.running = false
+      this.started = false
+      throw error
+    }
   }
 
   public async execute(input: { source: PrintIntentSource; orderNo?: string; identity: SharedPrintIdentity; role: PrinterRole; payload: Uint8Array }) {
@@ -139,6 +161,8 @@ export class V3PrintingRuntime {
 
   public async close(): Promise<void> {
     this.running = false
+    this.started = false
+    this.lifecycleGeneration += 1
     if (this.timer) clearInterval(this.timer)
     this.timer = null
     await this.pumpPromise
@@ -151,6 +175,18 @@ export class V3PrintingRuntime {
     if (!this.cloud) return
     void this.pump()
     this.timer = setInterval(() => { void this.pump() }, this.pollIntervalMs)
+  }
+
+  private async checkExpiredSelfRecoveryReadiness(generation: number): Promise<{ ok: true } | { ok: false; reason: string }> {
+    if (!this.running || generation !== this.lifecycleGeneration || this.releaseBlocked) {
+      return { ok: false, reason: 'LOCAL_EFFECT_AMBIGUITY' }
+    }
+    const configured = await this.endpoints.configuredForRecovery()
+    if (!this.running || generation !== this.lifecycleGeneration) return { ok: false, reason: 'RUNTIME_STOPPED' }
+    if (!configured.ok) return { ok: false, reason: configured.code }
+    const ready = await this.endpointReadiness.check(configured.endpoints)
+    if (!this.running || generation !== this.lifecycleGeneration) return { ok: false, reason: 'RUNTIME_STOPPED' }
+    return ready.ok ? ready : { ok: false, reason: ready.code }
   }
 
   private async pump(): Promise<void> {
