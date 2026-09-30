@@ -129,7 +129,7 @@ function ReleaseItem({ item }: { item: ReleaseStatusItem }) {
       <div style={s.evidenceGrid}>
         <Evidence label="Implemented on Main" value={item.implementedOnMain ? 'YES' : 'NO'} positive={item.implementedOnMain} />
         <Evidence label="Released to Production" value={item.releasedToProduction ? 'YES' : 'NO'} positive={item.releasedToProduction} />
-        <Evidence label="Visible on V727" value={item.visibleOnField ? 'YES' : 'NO'} positive={item.visibleOnField} />
+        <Evidence label="V727 可见" value={item.visibleOnField === true ? 'YES' : item.visibleOnField === false ? 'NO' : '发布后待确认'} positive={item.visibleOnField === true} />
         <Evidence label="Visual Acceptance" value={item.visualAcceptance} />
         <Evidence label="FIELD Verified" value={item.fieldVerified ? 'YES' : 'NO'} positive={item.fieldVerified} />
       </div>

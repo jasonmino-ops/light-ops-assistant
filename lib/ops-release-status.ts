@@ -7,7 +7,7 @@ export type ReleaseStatusItem = {
   status: FounderStatus
   implementedOnMain: boolean
   releasedToProduction: boolean
-  visibleOnField: boolean
+  visibleOnField: boolean | 'NOT_CHECKED_AFTER_RELEASE'
   visualAcceptance: string
   fieldVerified: boolean
   implementedSha?: string
@@ -42,8 +42,8 @@ export const OPS_RELEASE_STATUS: OpsReleaseStatusSnapshot = {
       status: '已发布待验收',
       implementedOnMain: true,
       releasedToProduction: true,
-      visibleOnField: false,
-      visualAcceptance: 'DEFERRED TO DESKTOP MILESTONE',
+      visibleOnField: 'NOT_CHECKED_AFTER_RELEASE',
+      visualAcceptance: 'DEFERRED / 待确认',
       fieldVerified: false,
       implementedSha: '8fdf9b310a9b23e1e3c9e02cf88ec2790a9f879c',
       productionSha: '23bd6bc55142bfb523f5b9beea53f35e306a4740',
