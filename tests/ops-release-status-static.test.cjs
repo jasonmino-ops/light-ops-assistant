@@ -1,0 +1,31 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+
+const source = fs.readFileSync('lib/ops-release-status.ts', 'utf8')
+const page = fs.readFileSync('app/ops/release-status/page.tsx', 'utf8')
+const opsHome = fs.readFileSync('app/ops/page.tsx', 'utf8')
+
+assert.match(page, /data-release-status-page="readonly"/)
+assert.match(page, /apiFetch\('\/api\/ops\/check'/, 'the page must reuse the existing Ops auth check')
+assert.match(page, /OPS_RELEASE_STATUS/, 'the page must use the repository-owned status source')
+assert.match(opsHome, /href="\/ops\/release-status"/, 'desktop Ops navigation must expose the page')
+assert.match(opsHome, /style=\{s\.moreMenuItem\}>版本与待发布/, 'mobile Ops More menu must expose the page')
+
+assert.match(source, /ES-DESKTOP-CASHIER-SIDEBAR-SIMPLIFICATION-01/)
+assert.match(source, /status: '已发布待验收'/)
+assert.match(source, /pendingItems: \[\]/)
+assert.match(source, /implementedOnMain: true/)
+assert.match(source, /releasedToProduction: true/)
+assert.match(source, /visibleOnField: 'NOT_CHECKED_AFTER_RELEASE'/)
+assert.match(source, /fieldVerified: false/)
+assert.match(source, /DEFERRED \/ 待确认/)
+assert.match(source, /8fdf9b310a9b23e1e3c9e02cf88ec2790a9f879c/)
+assert.match(source, /23bd6bc55142bfb523f5b9beea53f35e306a4740/)
+assert.match(source, /8b140d7922a68f9337a674a0e2fbf972b6fa6d76/)
+assert.doesNotMatch(source, /a242e3b7e8c03fade6c060fc340d818f9d4e97d7/)
+
+assert.doesNotMatch(page, /method:\s*['"](?:POST|PUT|PATCH|DELETE)/i, 'the page must not add write requests')
+assert.doesNotMatch(page, /deploy|promote|cherry-pick|rollback|release engine/i, 'the page must not become a release action surface')
+assert.doesNotMatch(source, /FIELD Verified:\s*YES|fieldVerified:\s*true/, 'the curated record must not claim FIELD verification')
+
+console.log('ops-release-status-static.test.cjs: PASS')
