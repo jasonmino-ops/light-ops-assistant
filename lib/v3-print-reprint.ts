@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { ES_TRAY_MAX_COMMAND_BYTES } from '@/lib/es-tray-relay/config'
-import { enqueueV3PrintIntent, type V3PrintRole } from '@/lib/v3-print-job-adapter'
+import {
+  enqueueV3PrintIntent,
+  isV3PrintIntentIdempotencyConflict,
+  type V3PrintRole,
+} from '@/lib/v3-print-job-adapter'
 import { V3_PRINT_INTENT_TTL_MS } from '@/lib/v3-print-identity'
 import {
   canonicalV3OriginalPrintJobId,
@@ -184,6 +188,49 @@ export async function enqueueV3ManualReprintWithDb(
   request: V3ReprintRequest,
   now = new Date(),
 ) {
+  const intent = {
+    schemaVersion: 3 as const,
+    printJobId: request.requestId,
+    source: 'CLOUD_REMOTE_REPRINT' as const,
+    role: request.role,
+    payloadKind: 'RAW_BYTES' as const,
+    orderNo: request.orderNo,
+    rendererVersion: request.rendererVersion,
+    payloadBase64: request.commandStream.data,
+    byteLength: request.commandStream.byteLength,
+    payloadHash: request.commandStream.sha256,
+  }
+  const expectedRequestHash = createHash('sha256').update(JSON.stringify(intent)).digest('hex')
+  const readCommittedIdempotentResult = () => db.$transaction(async (tx) => {
+    const job = await tx.eshopTrayPrintJob.findUnique({
+      where: { tenantId_storeId_idempotencyKey: {
+        tenantId: scope.tenantId,
+        storeId: scope.storeId,
+        idempotencyKey: request.requestId,
+      } },
+    })
+    if (!job) return null
+    if (job.schemaVersion !== 3 || job.requestHash !== expectedRequestHash) {
+      throw new V3ReprintError('V3_REPRINT_IDEMPOTENCY_CONFLICT', 409)
+    }
+    const audit = await tx.operationLog.findFirst({
+      where: {
+        tenantId: scope.tenantId,
+        storeId: scope.storeId,
+        actionType: 'V3_PRINT_MANUAL_REPRINT_REQUESTED',
+        requestId: request.requestId,
+      },
+      select: { id: true },
+    })
+    if (!audit) throw new V3ReprintError('V3_REPRINT_AUDIT_MISSING', 409)
+    return {
+      created: false,
+      jobId: job.id,
+      requestId: request.requestId,
+      orderNo: request.orderNo,
+      role: request.role,
+    }
+  })
   try {
     return await db.$transaction(async (tx) => {
       const [store, controlPlane, sale, customerOrder, original] = await Promise.all([
@@ -302,23 +349,12 @@ export async function enqueueV3ManualReprintWithDb(
         } })
       }
 
-      const intent = {
-        schemaVersion: 3 as const,
-        printJobId: request.requestId,
-        source: 'CLOUD_REMOTE_REPRINT' as const,
-        role: request.role,
-        payloadKind: 'RAW_BYTES' as const,
-        orderNo: request.orderNo,
-        rendererVersion: request.rendererVersion,
-        payloadBase64: request.commandStream.data,
-        byteLength: request.commandStream.byteLength,
-        payloadHash: request.commandStream.sha256,
-      }
       const result = await enqueueV3PrintIntent(
         tx as unknown as Parameters<typeof enqueueV3PrintIntent>[0],
         scope,
         intent,
         new Date(now.getTime() + V3_PRINT_INTENT_TTL_MS),
+        { idempotencyConflict: 'THROW' },
       )
       if (result.created) {
         await tx.operationLog.create({ data: {
@@ -367,7 +403,14 @@ export async function enqueueV3ManualReprintWithDb(
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   } catch (error) {
     if (error instanceof V3ReprintError) throw error
+    if (isV3PrintIntentIdempotencyConflict(error)) {
+      const recovered = await readCommittedIdempotentResult()
+      if (recovered) return recovered
+      throw error
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      const recovered = await readCommittedIdempotentResult()
+      if (recovered) return recovered
       throw new V3ReprintError('V3_REPRINT_CONCURRENT_STATE_CHANGE', 409)
     }
     throw error

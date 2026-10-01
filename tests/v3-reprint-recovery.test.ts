@@ -59,6 +59,7 @@ function fakeDb(options: {
   originalPending?: boolean
   originalMissing?: boolean
   enqueueFailure?: boolean
+  duplicateConstraint?: 'EXPECTED' | 'UNRELATED'
   role?: 'FRONT' | 'KITCHEN'
 } = {}) {
   const jobs: any[] = []
@@ -106,7 +107,16 @@ function fakeDb(options: {
       create: async ({ data }: any) => {
         if (options.enqueueFailure) throw new Error('simulated enqueue failure')
         if (jobs.some((job) => job.idempotencyKey === data.idempotencyKey)) {
-          throw new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: 'test' })
+          throw new Prisma.PrismaClientKnownRequestError('duplicate', {
+            code: 'P2002',
+            clientVersion: 'test',
+            meta: {
+              modelName: 'EshopTrayPrintJob',
+              target: options.duplicateConstraint === 'UNRELATED'
+                ? ['claimTokenHash']
+                : ['tenantId', 'storeId', 'idempotencyKey'],
+            },
+          })
         }
         const job = { id: `job-${jobs.length + 1}`, status: 'PENDING', completedAt: null, ...data }
         jobs.push(job)
@@ -346,6 +356,64 @@ async function main() {
     assert.equal(state.jobs.length, 1)
     assert.equal(state.audits.filter((row) => row.actionType === 'V3_PRINT_OPERATOR_RECOVERY_COMMITTED').length, 1)
     assert.equal(state.audits.filter((row) => row.actionType === 'V3_PRINT_MANUAL_REPRINT_REQUESTED').length, 1)
+  })
+
+  await test('same request identity with mismatched bytes fails closed after transaction rollback', async () => {
+    const state = fakeDb({ originalPending: true, role: 'KITCHEN' })
+    const originalJobId = canonicalV3OriginalPrintJobId('ORDER-REPRINT-1', 'KITCHEN')
+    const now = new Date('2026-09-24T00:00:30.000Z')
+    const recoveryProof = await issueV3OperatorRecoveryProofWithDb(state.tx as any, {
+      tenantId: 'tenant-a', storeId: 'store-a', desktopDeviceId: 'desktop-device-a',
+    }, { orderNo: 'ORDER-REPRINT-1', role: 'KITCHEN', originalJobId, localEvidence: 'LEDGER_ABSENT' }, now)
+    const request = input({
+      role: 'KITCHEN',
+      requestId: 'v3-reprint:kitchen:11111111-2222-4333-8444-555555555555',
+      recoveryProof: recoveryProof!,
+    })
+    const actor = { kind: 'DESKTOP_DEVICE' as const, browserPosDeviceId: 'browser-a', desktopDeviceId: 'desktop-device-a' }
+    await enqueueV3ManualReprintWithDb(state.db, { tenantId: 'tenant-a', storeId: 'store-a' }, actor, request, now)
+    const differentBytes = Buffer.from([0x1b, 0x40, 0x0a, 0x0a])
+    await assert.rejects(enqueueV3ManualReprintWithDb(state.db, {
+      tenantId: 'tenant-a', storeId: 'store-a',
+    }, actor, {
+      ...request,
+      commandStream: {
+        encoding: 'base64',
+        byteLength: differentBytes.byteLength,
+        sha256: createHash('sha256').update(differentBytes).digest('hex'),
+        data: differentBytes.toString('base64'),
+      },
+    }, now), (error: unknown) => error instanceof V3ReprintError && error.code === 'V3_REPRINT_IDEMPOTENCY_CONFLICT')
+    assert.equal(state.jobs.length, 1)
+  })
+
+  await test('different request identities remain distinct after one recovery commits', async () => {
+    const state = fakeDb({ originalPending: true, role: 'KITCHEN' })
+    const originalJobId = canonicalV3OriginalPrintJobId('ORDER-REPRINT-1', 'KITCHEN')
+    const now = new Date('2026-09-24T00:00:30.000Z')
+    const recoveryProof = await issueV3OperatorRecoveryProofWithDb(state.tx as any, {
+      tenantId: 'tenant-a', storeId: 'store-a', desktopDeviceId: 'desktop-device-a',
+    }, { orderNo: 'ORDER-REPRINT-1', role: 'KITCHEN', originalJobId, localEvidence: 'LEDGER_ABSENT' }, now)
+    const actor = { kind: 'DESKTOP_DEVICE' as const, browserPosDeviceId: 'browser-a', desktopDeviceId: 'desktop-device-a' }
+    await enqueueV3ManualReprintWithDb(state.db, { tenantId: 'tenant-a', storeId: 'store-a' }, actor, input({
+      role: 'KITCHEN', requestId: 'v3-reprint:kitchen:11111111-2222-4333-8444-555555555555', recoveryProof: recoveryProof!,
+    }), now)
+    await enqueueV3ManualReprintWithDb(state.db, { tenantId: 'tenant-a', storeId: 'store-a' }, actor, input({
+      role: 'KITCHEN', requestId: 'v3-reprint:kitchen:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    }), now)
+    assert.equal(state.jobs.length, 2)
+    assert.notEqual(state.jobs[0].idempotencyKey, state.jobs[1].idempotencyKey)
+  })
+
+  await test('P2002 on an unrelated constraint is never recovered as idempotent success', async () => {
+    const state = fakeDb({ duplicateConstraint: 'UNRELATED' })
+    await enqueueV3ManualReprintWithDb(state.db, { tenantId: 'tenant-a', storeId: 'store-a' }, {
+      kind: 'ACCOUNT', userId: 'user-a', role: 'OWNER',
+    }, input())
+    await assert.rejects(enqueueV3ManualReprintWithDb(state.db, { tenantId: 'tenant-a', storeId: 'store-a' }, {
+      kind: 'ACCOUNT', userId: 'user-a', role: 'OWNER',
+    }, input()), (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+    assert.equal(state.jobs.length, 1)
   })
 
   await test('cloud reservation without a valid Desktop proof remains ambiguous and creates no reprint', async () => {

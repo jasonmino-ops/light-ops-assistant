@@ -17,6 +17,10 @@ type V3IntentBase = {
 export type V3Intent = V3IntentBase & ({ payloadKind: 'RAW_BYTES'; orderNo: string; rendererVersion: string; payloadBase64: string; byteLength: number; payloadHash: string }
   | { payloadKind: 'NETWORK_REQUEST'; rendererVersion: 'network-1'; networkRequest: NetworkRequest; payloadHash: string })
 
+type EnqueueV3PrintIntentOptions = {
+  idempotencyConflict?: 'LOOKUP' | 'THROW'
+}
+
 type Db = V3ControlPlaneDb & {
   eshopTrayPrintJob: {
     create(args: any): Promise<EshopTrayPrintJob>
@@ -140,7 +144,27 @@ export function v3IntentFromNetworkRequest(request: NetworkRequest, source: Excl
     rendererVersion: 'network-1', networkRequest: normalized, payloadHash: sha(JSON.stringify(normalized)) }
 }
 
-export async function enqueueV3PrintIntent(db: Db, scope: { tenantId: string; storeId: string }, intent: V3Intent, expiresAt: Date) {
+export function isV3PrintIntentIdempotencyConflict(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') return false
+  const meta = error.meta && typeof error.meta === 'object' ? error.meta as Record<string, unknown> : null
+  if (typeof meta?.modelName === 'string' && meta.modelName !== 'EshopTrayPrintJob') return false
+  const target = Array.isArray(meta?.target) ? meta.target.map(String) : null
+  if (target) return target.join(',') === 'tenantId,storeId,idempotencyKey'
+  const evidence = `${error.message}\n${JSON.stringify(meta ?? {})}`
+  return evidence.includes('EshopTrayPrintJob_tenantId_storeId_idempotencyKey_key')
+    || (/Unique constraint failed on the fields:/.test(evidence)
+      && evidence.includes('tenantId')
+      && evidence.includes('storeId')
+      && evidence.includes('idempotencyKey'))
+}
+
+export async function enqueueV3PrintIntent(
+  db: Db,
+  scope: { tenantId: string; storeId: string },
+  intent: V3Intent,
+  expiresAt: Date,
+  options: EnqueueV3PrintIntentOptions = {},
+) {
   const ownedScope = persistenceScope(scope)
   const normalized = parse(intent)
   if (!normalized) throw new Error('V3_INTENT_INVALID')
@@ -151,7 +175,11 @@ export async function enqueueV3PrintIntent(db: Db, scope: { tenantId: string; st
       physicalCompletionKnown: false } })
     return { created: true, job }
   } catch (error) {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error
+    if (!isV3PrintIntentIdempotencyConflict(error)) throw error
+    // PostgreSQL marks an explicit transaction as aborted after a statement
+    // error. Transactional callers must let the P2002 escape and perform any
+    // idempotency lookup only after that transaction has rolled back.
+    if (options.idempotencyConflict === 'THROW') throw error
     const job = await db.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: { ...ownedScope, idempotencyKey: normalized.printJobId } } })
     if (!job || (job.requestHash !== requestHash && !isTerminalLocalReconciliation(job, normalized.printJobId, normalized.role))) {
       throw new Error('V3_INTENT_IDEMPOTENCY_CONFLICT')
