@@ -3,7 +3,12 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { ES_TRAY_MAX_COMMAND_BYTES } from '@/lib/es-tray-relay/config'
 import { enqueueV3PrintIntent, type V3PrintRole } from '@/lib/v3-print-job-adapter'
-import { canonicalV3PrintEffectKey, V3_PRINT_INTENT_TTL_MS } from '@/lib/v3-print-identity'
+import { V3_PRINT_INTENT_TTL_MS } from '@/lib/v3-print-identity'
+import {
+  canonicalV3OriginalPrintJobId,
+  readV3OperatorPrintStatesWithDb,
+  verifyV3OperatorRecoveryProof,
+} from '@/lib/v3-print-operator-status'
 
 const ORDER_NO_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/
 const SHA256_PATTERN = /^[0-9a-f]{64}$/
@@ -22,6 +27,7 @@ export type V3ReprintRequest = {
     sha256: string
     data: string
   }
+  recoveryProof?: string
 }
 
 export type V3ReprintActor =
@@ -68,9 +74,12 @@ function decodeCanonicalBase64(value: string): Buffer {
 
 export function parseV3ReprintRequest(value: unknown): V3ReprintRequest {
   const body = object(value)
-  if (!body || !exactKeys(body, [
+  const requiredKeys = [
     'schemaVersion', 'requestId', 'orderNo', 'role', 'confirmation', 'rendererVersion', 'commandStream',
-  ])) throw new V3ReprintError('V3_REPRINT_REQUEST_INVALID', 400)
+  ] as const
+  if (!body || (!exactKeys(body, requiredKeys) && !exactKeys(body, [...requiredKeys, 'recoveryProof']))) {
+    throw new V3ReprintError('V3_REPRINT_REQUEST_INVALID', 400)
+  }
   if (body.schemaVersion !== 3) throw new V3ReprintError('V3_REPRINT_SCHEMA_INVALID', 400)
   if (body.role !== 'FRONT' && body.role !== 'KITCHEN') throw new V3ReprintError('V3_REPRINT_ROLE_INVALID', 400)
   if (typeof body.requestId !== 'string' || !REQUEST_ID_PATTERN.test(body.requestId)) {
@@ -95,6 +104,9 @@ export function parseV3ReprintRequest(value: unknown): V3ReprintRequest {
   if (createHash('sha256').update(bytes).digest('hex') !== stream.sha256) {
     throw new V3ReprintError('V3_REPRINT_COMMAND_DIGEST_MISMATCH', 400)
   }
+  if ('recoveryProof' in body && (typeof body.recoveryProof !== 'string' || body.recoveryProof.length > 4096)) {
+    throw new V3ReprintError('V3_REPRINT_RECOVERY_PROOF_INVALID', 400)
+  }
   return {
     schemaVersion: 3,
     requestId: body.requestId,
@@ -108,12 +120,14 @@ export function parseV3ReprintRequest(value: unknown): V3ReprintRequest {
       sha256: stream.sha256,
       data: stream.data,
     },
+    ...(typeof body.recoveryProof === 'string' ? { recoveryProof: body.recoveryProof } : {}),
   }
 }
 
 export async function readV3ReprintAvailabilityWithDb(
-  db: Pick<typeof prisma, 'store' | 'v3PrintControlPlane'>,
+  db: Pick<typeof prisma, 'store' | 'v3PrintControlPlane' | 'eshopTrayPrintJob'>,
   scope: { tenantId: string; storeId: string },
+  input?: { orderNo?: string; desktopDeviceId?: string },
 ) {
   const [store, controlPlane] = await Promise.all([
     db.store.findFirst({
@@ -127,19 +141,31 @@ export async function readV3ReprintAvailabilityWithDb(
   ])
   const authoritativeMode = store && controlPlane?.tenantId === scope.tenantId ? controlPlane.mode : null
   const enabled = authoritativeMode === 'V3_ACTIVE'
-  return {
+  const result: {
+    enabled: boolean
+    kitchenEnabled: boolean
+    legacyAllowed: boolean
+    roles?: Awaited<ReturnType<typeof readV3OperatorPrintStatesWithDb>>
+  } = {
     enabled,
     kitchenEnabled: enabled && store!.printKitchenTicket,
     legacyAllowed: authoritativeMode === 'V2_ACTIVE',
   }
+  if (enabled && input?.orderNo) {
+    result.roles = await readV3OperatorPrintStatesWithDb(db, scope, {
+      orderNo: input.orderNo,
+      kitchenEnabled: result.kitchenEnabled,
+      desktopDeviceId: input.desktopDeviceId,
+    })
+  }
+  return result
 }
 
-export function readV3ReprintAvailability(scope: { tenantId: string; storeId: string }) {
-  return readV3ReprintAvailabilityWithDb(prisma, scope)
-}
-
-function originalPrintJobId(orderNo: string, role: V3PrintRole) {
-  return `network:${createHash('sha256').update(canonicalV3PrintEffectKey(orderNo, role)).digest('hex')}`
+export function readV3ReprintAvailability(
+  scope: { tenantId: string; storeId: string },
+  input?: { orderNo?: string; desktopDeviceId?: string },
+) {
+  return readV3ReprintAvailabilityWithDb(prisma, scope, input)
 }
 
 export async function enqueueV3ManualReprint(
@@ -181,9 +207,8 @@ export async function enqueueV3ManualReprintWithDb(
           where: { tenantId_storeId_idempotencyKey: {
             tenantId: scope.tenantId,
             storeId: scope.storeId,
-            idempotencyKey: originalPrintJobId(request.orderNo, request.role),
+            idempotencyKey: canonicalV3OriginalPrintJobId(request.orderNo, request.role),
           } },
-          select: { schemaVersion: true, effectBoundary: true, resultStatus: true, resultCode: true },
         }),
       ])
       if (!store) throw new V3ReprintError('V3_REPRINT_STORE_UNAVAILABLE', 403)
@@ -194,14 +219,87 @@ export async function enqueueV3ManualReprintWithDb(
       if (request.role === 'KITCHEN' && !store.printKitchenTicket) {
         throw new V3ReprintError('V3_REPRINT_KITCHEN_DISABLED', 409)
       }
-      if (original?.schemaVersion === 3 && (
+      if (!original || original.schemaVersion !== 3) {
+        throw new V3ReprintError('V3_REPRINT_ORIGINAL_NOT_TERMINAL', 409)
+      }
+      if (
         original.effectBoundary === 'CROSSING_UNKNOWN'
         || original.resultStatus === 'CROSSING_UNKNOWN'
         || original.resultCode?.endsWith(':CROSSING_UNKNOWN')
-      )) throw new V3ReprintError('V3_REPRINT_ORIGINAL_UNKNOWN', 409)
-      if (original?.schemaVersion === 3 &&
-        original.resultStatus !== 'CROSSED' && original.resultStatus !== 'FAILED_NOT_CROSSED') {
-        throw new V3ReprintError('V3_REPRINT_ORIGINAL_NOT_TERMINAL', 409)
+      ) throw new V3ReprintError('V3_REPRINT_ORIGINAL_UNKNOWN', 409)
+
+      const originalTerminal = Boolean(
+        original.completedAt
+        && original.resultCode
+        && (
+          (original.status === 'SUCCEEDED' && original.resultStatus === 'CROSSED' && original.effectBoundary === 'CROSSED')
+          || (original.status === 'FAILED' && original.resultStatus === 'FAILED_NOT_CROSSED' && original.effectBoundary === 'NOT_CROSSED')
+        ),
+      )
+      if (!originalTerminal) {
+        if (actor.kind !== 'DESKTOP_DEVICE' || !('desktopDeviceId' in actor)) {
+          throw new V3ReprintError('V3_REPRINT_RECOVERY_DESKTOP_REQUIRED', 409)
+        }
+        const originalJobId = canonicalV3OriginalPrintJobId(request.orderNo, request.role)
+        const proof = request.recoveryProof && verifyV3OperatorRecoveryProof(request.recoveryProof, {
+          tenantId: scope.tenantId,
+          storeId: scope.storeId,
+          desktopDeviceId: actor.desktopDeviceId,
+          orderNo: request.orderNo,
+          role: request.role,
+          originalJobId,
+        }, original, now)
+        if (!proof) throw new V3ReprintError('V3_REPRINT_RECOVERY_PROOF_INVALID', 409)
+        const terminalized = await tx.eshopTrayPrintJob.updateMany({
+          where: {
+            id: original.id,
+            tenantId: scope.tenantId,
+            storeId: scope.storeId,
+            schemaVersion: 3,
+            status: 'PENDING',
+            completedAt: null,
+            claimTokenHash: original.claimTokenHash,
+            updatedAt: original.updatedAt,
+            resultStatus: null,
+            resultCode: null,
+            effectBoundary: null,
+            physicalCompletionKnown: false,
+          },
+          data: {
+            status: 'FAILED',
+            resultStatus: 'FAILED_NOT_CROSSED',
+            effectBoundary: 'NOT_CROSSED',
+            completedAt: now,
+            resultCode: `V3_OPERATOR_RECOVERY:${request.requestId}`,
+            resultMessage: 'V3_OPERATOR_RECOVERY_LEDGER_ABSENT',
+            claimTokenHash: null,
+            leaseExpiresAt: null,
+            claimedByComputerBindingId: null,
+            physicalCompletionKnown: false,
+          },
+        })
+        if (terminalized.count !== 1) throw new V3ReprintError('V3_REPRINT_CONCURRENT_STATE_CHANGE', 409)
+        await tx.operationLog.create({ data: {
+          tenantId: scope.tenantId,
+          storeId: scope.storeId,
+          userId: null,
+          actionType: 'V3_PRINT_OPERATOR_RECOVERY_COMMITTED',
+          targetType: 'EshopTrayPrintJob',
+          targetId: original.id,
+          requestId: request.requestId,
+          status: 'SUCCESS',
+          message: `${request.role} original terminalized before operator reprint`,
+          payloadSnapshot: {
+            schemaVersion: 1,
+            originalJobId,
+            orderNo: request.orderNo,
+            role: request.role,
+            recoveryEvidence: 'AUTHENTICATED_DESKTOP_LEDGER_ABSENT',
+            desktopDeviceId: actor.desktopDeviceId,
+            proofIssuedAt: proof.issuedAt,
+            committedAt: now.toISOString(),
+          } as Prisma.InputJsonValue,
+        } })
       }
 
       const intent = {

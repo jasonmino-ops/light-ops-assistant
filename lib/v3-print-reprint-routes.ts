@@ -20,7 +20,10 @@ type ReprintResult = Awaited<ReturnType<typeof enqueueV3ManualReprint>>
 export type V3ReprintRouteDependencies = {
   accountContext(req: NextRequest): Promise<RequestContext | null>
   deviceContext(req: NextRequest): Promise<DeviceRelayAuthResult>
-  availability(scope: Scope): Promise<{ enabled: boolean; kitchenEnabled: boolean; legacyAllowed: boolean }>
+  availability(
+    scope: Scope,
+    input?: { orderNo?: string; desktopDeviceId?: string },
+  ): ReturnType<typeof readV3ReprintAvailability>
   enqueue(scope: Scope, actor: V3ReprintActor, request: V3ReprintRequest): Promise<ReprintResult>
 }
 
@@ -52,6 +55,16 @@ function accepted(result: ReprintResult) {
   }, { status: 202 })
 }
 
+function availabilityInput(req: NextRequest) {
+  const values = new URL(req.url).searchParams.getAll('orderNo')
+  if (values.length === 0) return { ok: true as const, orderNo: undefined }
+  const orderNo = values[0]
+  if (values.length !== 1 || !/^[A-Za-z0-9._:-]{1,128}$/.test(orderNo)) {
+    return { ok: false as const }
+  }
+  return { ok: true as const, orderNo }
+}
+
 export async function handleAccountV3ReprintRequest(
   req: NextRequest,
   dependencies: V3ReprintRouteDependencies = productionDependencies,
@@ -60,9 +73,14 @@ export async function handleAccountV3ReprintRequest(
     const context = await dependencies.accountContext(req)
     if (!context) return relayError('LOGIN_REQUIRED', 401)
     const scope = { tenantId: context.tenantId, storeId: context.storeId }
-    if (req.method === 'GET') return relayJson(await dependencies.availability(scope))
+    if (req.method === 'GET') {
+      const input = availabilityInput(req)
+      if (!input.ok) return relayError('V3_REPRINT_ORDER_INVALID', 400)
+      return relayJson(await dependencies.availability(scope, { orderNo: input.orderNo }))
+    }
     if (req.method !== 'POST') return relayError('METHOD_NOT_ALLOWED', 405)
     const request = parseV3ReprintRequest(await req.json())
+    if (request.recoveryProof) return relayError('V3_REPRINT_RECOVERY_DESKTOP_REQUIRED', 409)
     const result = await dependencies.enqueue(scope, {
       kind: 'ACCOUNT', userId: context.userId, role: context.role,
     }, request)
@@ -81,7 +99,16 @@ export async function handleDeviceV3ReprintRequest(
       reason: auth.context.unavailableReason,
     })
     const scope = { tenantId: auth.context.tenantId, storeId: auth.context.storeId }
-    if (req.method === 'GET') return relayJson(await dependencies.availability(scope))
+    if (req.method === 'GET') {
+      const input = availabilityInput(req)
+      if (!input.ok) return relayError('V3_REPRINT_ORDER_INVALID', 400)
+      return relayJson(await dependencies.availability(scope, {
+        orderNo: input.orderNo,
+        ...(auth.context.principal === 'DESKTOP_POS_DEVICE'
+          ? { desktopDeviceId: auth.context.desktopDeviceId }
+          : {}),
+      }))
+    }
     if (req.method !== 'POST') return relayError('METHOD_NOT_ALLOWED', 405)
     const request = parseV3ReprintRequest(await req.json())
     const actor = auth.context.principal === 'DESKTOP_POS_DEVICE'

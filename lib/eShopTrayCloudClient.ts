@@ -17,6 +17,17 @@ export type V3ReprintAvailability = {
   enabled: boolean
   kitchenEnabled: boolean
   legacyAllowed: boolean
+  roles?: {
+    FRONT: V3OperatorRoleStatus
+    KITCHEN: V3OperatorRoleStatus | null
+  }
+}
+
+export type V3OperatorRoleStatus = {
+  state: 'PRINTED' | 'DEFINITELY_NOT_PRINTED' | 'AMBIGUOUS'
+  originalJobId: string
+  localProofEligible: boolean
+  recoveryProof?: string
 }
 
 export type V3ReprintIntent = {
@@ -24,6 +35,12 @@ export type V3ReprintIntent = {
   role: 'FRONT' | 'KITCHEN'
   requestId: string
   commandStream?: Uint8Array
+  recoveryProof?: string
+}
+
+export function refreshV3ReprintRecoveryProof(intent: V3ReprintIntent, recoveryProof?: string) {
+  if (recoveryProof) intent.recoveryProof = recoveryProof
+  return intent
 }
 
 export type EshopTray02PrintIntent = {
@@ -225,29 +242,85 @@ export function submitEshopTray02DeviceCloudPrint(input: {
 async function readV3ReprintAvailability(
   endpoint: string,
   fetchImpl: EshopTray02Fetch,
+  orderNo?: string,
 ): Promise<V3ReprintAvailability | null> {
   try {
-    const response = await fetchImpl(endpoint, { method: 'GET', cache: 'no-store' })
+    const url = orderNo ? `${endpoint}?orderNo=${encodeURIComponent(orderNo)}` : endpoint
+    const response = await fetchImpl(url, { method: 'GET', cache: 'no-store' })
     if (!response.ok) return null
     const body = object(await response.json().catch(() => null))
     if (!body || typeof body.enabled !== 'boolean' || typeof body.kitchenEnabled !== 'boolean' ||
       typeof body.legacyAllowed !== 'boolean') return null
+    const roles = parseV3OperatorRoles(body.roles)
+    if (orderNo && body.enabled && !roles) return null
     return {
       enabled: body.enabled,
       kitchenEnabled: body.enabled && body.kitchenEnabled,
       legacyAllowed: !body.enabled && body.legacyAllowed,
+      ...(roles ? { roles } : {}),
     }
   } catch {
     return null
   }
 }
 
-export function readAccountV3ReprintAvailability(fetchImpl: EshopTray02Fetch = apiFetch) {
-  return readV3ReprintAvailability('/api/es-tray-02/v3-reprints', fetchImpl)
+function parseV3OperatorRoleStatus(value: unknown): V3OperatorRoleStatus | null {
+  const row = object(value)
+  if (!row || !['PRINTED', 'DEFINITELY_NOT_PRINTED', 'AMBIGUOUS'].includes(String(row.state)) ||
+    typeof row.originalJobId !== 'string' || !/^network:[0-9a-f]{64}$/.test(row.originalJobId) ||
+    typeof row.localProofEligible !== 'boolean') return null
+  return {
+    state: row.state as V3OperatorRoleStatus['state'],
+    originalJobId: row.originalJobId,
+    localProofEligible: row.localProofEligible,
+  }
 }
 
-export function readDeviceV3ReprintAvailability(fetchImpl: EshopTray02Fetch = desktopPosDeviceFetch) {
-  return readV3ReprintAvailability('/api/es-tray-02/device/v3-reprints', fetchImpl)
+function parseV3OperatorRoles(value: unknown): V3ReprintAvailability['roles'] | null {
+  if (value === undefined) return null
+  const row = object(value)
+  const front = parseV3OperatorRoleStatus(row?.FRONT)
+  const kitchen = row?.KITCHEN === null ? null : parseV3OperatorRoleStatus(row?.KITCHEN)
+  return front && (row?.KITCHEN === null || kitchen) ? { FRONT: front, KITCHEN: kitchen } : null
+}
+
+export function readAccountV3ReprintAvailability(
+  orderNoOrFetch?: string | EshopTray02Fetch,
+  fetchImpl: EshopTray02Fetch = apiFetch,
+) {
+  const orderNo = typeof orderNoOrFetch === 'string' ? orderNoOrFetch : undefined
+  const reader = typeof orderNoOrFetch === 'function' ? orderNoOrFetch : fetchImpl
+  return readV3ReprintAvailability('/api/es-tray-02/v3-reprints', reader, orderNo)
+}
+
+export function readDeviceV3ReprintAvailability(
+  orderNoOrFetch?: string | EshopTray02Fetch,
+  fetchImpl: EshopTray02Fetch = desktopPosDeviceFetch,
+) {
+  const orderNo = typeof orderNoOrFetch === 'string' ? orderNoOrFetch : undefined
+  const reader = typeof orderNoOrFetch === 'function' ? orderNoOrFetch : fetchImpl
+  return readV3ReprintAvailability('/api/es-tray-02/device/v3-reprints', reader, orderNo)
+}
+
+export async function readDesktopV3OperatorRecoveryProof(input: {
+  orderNo: string
+  originalJobId: string
+  role: V3ReprintIntent['role']
+}): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  const bridge = (window as Window & { eshopV3Printing?: {
+    readOperatorRecoveryProof?: (value: typeof input) => Promise<unknown>
+  } }).eshopV3Printing
+  if (!bridge?.readOperatorRecoveryProof) return null
+  try {
+    const result = object(await bridge.readOperatorRecoveryProof(input))
+    return result?.state === 'DEFINITELY_NOT_PRINTED' && typeof result.recoveryProof === 'string' &&
+      /^v3orp1\.[A-Za-z0-9_-]+\.[0-9a-f]{64}$/.test(result.recoveryProof)
+      ? result.recoveryProof
+      : null
+  } catch {
+    return null
+  }
 }
 
 async function submitV3Reprint(input: {
@@ -277,6 +350,7 @@ async function submitV3Reprint(input: {
         sha256: digest,
         data: qzRawBytesToBase64(intent.commandStream),
       },
+      ...(intent.recoveryProof ? { recoveryProof: intent.recoveryProof } : {}),
     }),
   }).catch((cause) => {
     throw new EshopTray02CloudClientError('V3_REPRINT_SUBMIT_NETWORK_FAILED', undefined, { cause })

@@ -126,3 +126,28 @@ describe('V3PrintJobClient durable HELD admission', () => {
     await expect(client.holdLocal(input)).resolves.toBeNull()
   })
 })
+
+describe('V3PrintJobClient operator recovery proof', () => {
+  it('uses the existing authenticated Desktop V3 endpoint and accepts only an opaque signed proof', async () => {
+    const proof = `v3orp1.${Buffer.from('{}').toString('base64url')}.${'a'.repeat(64)}`
+    const client = new V3PrintJobClient('https://example.test', 'credential-value', async (url, init) => {
+      const parsed = new URL(String(url))
+      expect(parsed.pathname).toBe('/api/desktop/v3-print-jobs')
+      expect(parsed.searchParams.get('action')).toBe('OPERATOR_RECOVERY_PROOF')
+      expect(parsed.searchParams.get('localEvidence')).toBe('LEDGER_ABSENT')
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer credential-value' })
+      return new Response(JSON.stringify({ ok: true, proof }), { status: 200 })
+    })
+    await expect(client.readOperatorRecoveryProof({
+      orderNo: 'ORDER-1', originalJobId: `network:${'a'.repeat(64)}`, role: 'KITCHEN',
+    })).resolves.toBe(proof)
+  })
+
+  it('fails closed on an unsigned or unavailable proof', async () => {
+    const invalid = new V3PrintJobClient('https://example.test', 'credential-value', async () =>
+      new Response(JSON.stringify({ ok: true, proof: 'browser-fabricated' }), { status: 200 }))
+    await expect(invalid.readOperatorRecoveryProof({
+      orderNo: 'ORDER-1', originalJobId: `network:${'a'.repeat(64)}`, role: 'FRONT',
+    })).resolves.toBeNull()
+  })
+})

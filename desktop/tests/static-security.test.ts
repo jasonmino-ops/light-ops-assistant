@@ -127,6 +127,13 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(employeePreloadSrc).not.toMatch(/setFullScreen|BrowserWindow|windowControl/)
     expect(customerPreloadSrc).not.toMatch(/eshopDesktopEmployeeFullscreen/)
   })
+
+  it('operator recovery preload exposes only a fixed read-only proof invocation', () => {
+    expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.V3_OPERATOR_RECOVERY_PROOF_GET}'`)
+    expect(employeePreloadSrc).toMatch(/readOperatorRecoveryProof:\s*\(input: unknown\) => ipcRenderer\.invoke/)
+    expect(employeePreloadSrc).not.toMatch(/clearClaim|releaseClaim|forceClaim|retryPrint/)
+    expect(customerPreloadSrc).not.toContain(IPC_CHANNELS.V3_OPERATOR_RECOVERY_PROOF_GET)
+  })
 })
 
 describe('Desktop 环境检测（兼容策略：显式标识，不用 User-Agent）', () => {

@@ -7,9 +7,9 @@ import {
 } from '../src/shared/ipcChannels'
 
 describe('IPC 通道白名单（A6）', () => {
-  it('通道全集固定为 9 个，且全部带 eshop: 前缀', () => {
+  it('通道全集固定为 10 个，且全部带 eshop: 前缀', () => {
     const all = Object.values(IPC_CHANNELS)
-    expect(all).toHaveLength(9)
+    expect(all).toHaveLength(10)
     for (const ch of all) expect(ch.startsWith('eshop:')).toBe(true)
     expect(new Set(all).size).toBe(all.length)
   })
@@ -23,6 +23,7 @@ describe('IPC 通道白名单（A6）', () => {
       IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
       IPC_CHANNELS.POS_SESSION_TAKE,
       IPC_CHANNELS.V3_PRINT_SUBMIT,
+      IPC_CHANNELS.V3_OPERATOR_RECOVERY_PROOF_GET,
     ])
   })
 
@@ -35,6 +36,7 @@ describe('IPC 通道白名单（A6）', () => {
     expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT)
     expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE)
     expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.POS_SESSION_TAKE)
+    expect(INVOKABLE_BY_ROLE.customer).not.toContain(IPC_CHANNELS.V3_OPERATOR_RECOVERY_PROOF_GET)
   })
 
   it('只有顾客窗口接收 cart:apply', () => {

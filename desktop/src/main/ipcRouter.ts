@@ -45,6 +45,23 @@ function localPrintIntent(value: unknown) {
   }
 }
 
+function operatorRecoveryProofRequest(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const row = value as Record<string, unknown>
+  if (
+    Object.keys(row).sort().join(',') !== 'orderNo,originalJobId,role'
+    || typeof row.orderNo !== 'string'
+    || !/^[A-Za-z0-9._:-]{1,128}$/.test(row.orderNo)
+    || typeof row.originalJobId !== 'string'
+    || (row.role !== 'FRONT' && row.role !== 'KITCHEN')
+  ) return null
+  const canonicalKey = `cashier-network-v2:${row.orderNo}:${row.role}`
+  const expectedJobId = `network:${createHash('sha256').update(canonicalKey).digest('hex')}`
+  return row.originalJobId === expectedJobId
+    ? { orderNo: row.orderNo, originalJobId: row.originalJobId, role: row.role as 'FRONT' | 'KITCHEN' }
+    : null
+}
+
 function senderRole(
   windowManager: WindowManager,
   event: IpcMainEvent | IpcMainInvokeEvent,
@@ -123,6 +140,17 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     if (!intent) return { status: 'REJECTED', reason: 'INVALID_PRINT_INTENT' }
     const runtime = v3PrintingRuntimeProvider()
     return runtime ? runtime.execute({ source: 'LOCAL_DESKTOP', ...intent }) : { status: 'V2_FALLBACK_REQUIRED', reason: 'V3_RUNTIME_UNAVAILABLE' }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.V3_OPERATOR_RECOVERY_PROOF_GET, async (event, payload: unknown) => {
+    if (authorize(windowManager, event, IPC_CHANNELS.V3_OPERATOR_RECOVERY_PROOF_GET, 'invoke') !== 'employee') {
+      return { state: 'AMBIGUOUS' }
+    }
+    if (!event.senderFrame || !isAllowedNavigation(event.senderFrame.url, config)) return { state: 'AMBIGUOUS' }
+    const request = operatorRecoveryProofRequest(payload)
+    if (!request) return { state: 'AMBIGUOUS' }
+    const runtime = v3PrintingRuntimeProvider()
+    return runtime ? runtime.readOperatorRecoveryProof(request) : { state: 'AMBIGUOUS' }
   })
 
   updateHealth({ ipc: 'ok' }, 'ipc.registered')
