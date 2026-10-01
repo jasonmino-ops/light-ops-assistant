@@ -60,7 +60,11 @@ production-only content
 
 It is not a semantic-equivalence proof. A fingerprint match must never be described as semantic equivalence or as release authorization.
 
-The proof fails closed for merge commits (except a zero-content/tree-equal reconciliation merge), conflict-resolved or unmapped changes, binary files, mode changes, renames/copies, submodules, schema, migrations, path mismatch, fingerprint mismatch, non-ancestor source commits, and unknown Git objects.
+The proof fails closed for merge commits (except a zero-content/tree-equal reconciliation merge), conflict-resolved or unmapped changes, non-text blobs, non-UTF-8 paths, mode changes, submodules, schema, migrations, path mismatch, fingerprint mismatch, non-ancestor source commits, unsupported diff states, and unknown Git objects.
+
+Git rename/copy classification is a similarity heuristic, not stored commit metadata, so provenance validation disables it with an explicit no-rename/no-copy interpretation. Every commit is fingerprinted as exact `ADD`, `MODIFY`, `DELETE`, or type-change path entries. A path move therefore appears as an exact delete plus add and passes only when source and release match both paths, modes, byte lengths, and byte hashes; similarity never establishes equivalence. Paths must decode as strict UTF-8, and their original byte identity is retained in the fingerprint so distinct raw path bytes cannot collapse after decoding.
+
+Binary/non-text rejection is determined directly from immutable blob bytes, independent of `.gitattributes`, diff drivers, and text-conversion configuration. V1 accepts only blobs that contain no NUL byte and decode as strict UTF-8; all other blobs fail closed as `BINARY_FILE`.
 
 The implementation uses `scripts/lib/release-provenance.mjs` to compute a path-aware fingerprint containing the destination path, status, modes, old/new byte lengths, and old/new SHA-256 values. It does not use `git patch-id --stable`, does not normalize whitespace, and retains both sides of the change.
 
@@ -123,7 +127,8 @@ The validator must prove all of the following:
 - Each release commit contains one exact `cherry-pick -x` source mapping.
 - Mapping order is identical to `includedSourceCommits` order.
 - Release and source fingerprints match path-by-path and byte-for-byte.
-- Binary, rename/copy, mode, submodule, schema, migration, conflict/unmapped and unknown states are rejected.
+- Git heuristic rename/copy equivalence is disabled; exact add/modify/delete paths must match source and release byte-for-byte.
+- Non-text blobs, non-UTF-8 paths, mode, submodule, schema, migration, conflict/unmapped, unsupported diff and unknown states are rejected.
 - Founder authorization exists and exactly covers the ordered included source set.
 
 The release candidate tree must pass the relevant build/tests and a fresh-context independent review before a Founder release decision.
