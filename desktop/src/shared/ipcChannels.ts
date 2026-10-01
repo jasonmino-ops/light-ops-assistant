@@ -23,6 +23,8 @@ export const IPC_CHANNELS = {
   POS_SESSION_TAKE: 'eshop:pos-session:take',
   /** Renderer(employee) -> Main: endpoint-free V3 local print intent. */
   V3_PRINT_SUBMIT: 'eshop:v3-print:submit',
+  /** Renderer(employee) -> Main (invoke): read-only proof of absent local V3 execution. */
+  V3_OPERATOR_RECOVERY_PROOF_GET: 'eshop:v3-print:operator-recovery-proof:get',
   /** Main → Renderer(顾客窗口)：下发最新购物车快照 */
   CART_APPLY: 'eshop:cart:apply',
 } as const
@@ -46,6 +48,7 @@ export const INVOKABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
     IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE,
     IPC_CHANNELS.POS_SESSION_TAKE,
     IPC_CHANNELS.V3_PRINT_SUBMIT,
+    IPC_CHANNELS.V3_OPERATOR_RECOVERY_PROOF_GET,
   ],
   customer: [],
 }

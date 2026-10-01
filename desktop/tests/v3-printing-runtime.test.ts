@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -302,6 +303,39 @@ describe('V3PrintingRuntime execution lifecycle', () => {
     expect(endpoints.resolve).not.toHaveBeenCalled()
     expect(controlPlane.beginExecutionLifecycle).not.toHaveBeenCalled()
     expect(coordinator.execute).not.toHaveBeenCalled()
+  })
+
+  it('issues operator recovery proof only when the exact canonical job has no local ledger record', async () => {
+    const orderNo = 'ORDER-RECOVERY-001'
+    const role = 'KITCHEN' as const
+    const originalJobId = `network:${createHash('sha256').update(`cashier-network-v2:${orderNo}:${role}`).digest('hex')}`
+    const proof = `v3orp1.${Buffer.from('{}').toString('base64url')}.${'a'.repeat(64)}`
+    const ledger = { get: vi.fn(async () => ({ ok: true as const, value: { found: false as const } })) }
+    const cloud = { readOperatorRecoveryProof: vi.fn(async () => proof) }
+    const instance = new (V3PrintingRuntime as any)(
+      ledger, {}, {}, {}, {}, cloud, 60_000, { dispose: vi.fn() },
+    ) as V3PrintingRuntime
+    ;(instance as any).running = true
+
+    await expect(instance.readOperatorRecoveryProof({ orderNo, originalJobId, role })).resolves.toEqual({
+      state: 'DEFINITELY_NOT_PRINTED', recoveryProof: proof,
+    })
+    expect(cloud.readOperatorRecoveryProof).toHaveBeenCalledWith({ orderNo, originalJobId, role })
+  })
+
+  it('keeps existing local execution evidence ambiguous and never requests a server proof', async () => {
+    const orderNo = 'ORDER-RECOVERY-002'
+    const role = 'FRONT' as const
+    const originalJobId = `network:${createHash('sha256').update(`cashier-network-v2:${orderNo}:${role}`).digest('hex')}`
+    const ledger = { get: vi.fn(async () => ({ ok: true as const, value: { found: true as const, record: { state: 'CROSSED' } } })) }
+    const cloud = { readOperatorRecoveryProof: vi.fn() }
+    const instance = new (V3PrintingRuntime as any)(
+      ledger, {}, {}, {}, {}, cloud, 60_000, { dispose: vi.fn() },
+    ) as V3PrintingRuntime
+    ;(instance as any).running = true
+
+    await expect(instance.readOperatorRecoveryProof({ orderNo, originalJobId, role })).resolves.toEqual({ state: 'AMBIGUOUS' })
+    expect(cloud.readOperatorRecoveryProof).not.toHaveBeenCalled()
   })
 
   it('recovers a durable UNKNOWN across restart before control-plane release can become ready', async () => {
