@@ -13,6 +13,10 @@ function git(repo, ...args) {
   return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" }).trim();
 }
 
+function gitBuffer(repo, args, input = undefined) {
+  return execFileSync("git", ["-C", repo, ...args], { encoding: null, input });
+}
+
 function run(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, encoding: "utf8" });
   return { status: result.status, output: `${result.stdout || ""}${result.stderr || ""}` };
@@ -28,6 +32,22 @@ function write(repo, filePath, contents) {
   const target = path.join(repo, filePath);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, contents);
+}
+
+function fixedWidthLines(prefix, count) {
+  return Array.from({ length: count }, (_, index) => `${prefix}-${String(index).padStart(3, "0")}-${"x".repeat(80)}\n`).join("");
+}
+
+function commitRawPath(repo, base, rawPath, contents, message) {
+  const blob = gitBuffer(repo, ["hash-object", "-w", "--stdin"], Buffer.from(contents, "utf8")).toString("ascii").trim();
+  const baseEntries = gitBuffer(repo, ["ls-tree", "-z", `${base}^{tree}`]);
+  const newEntry = Buffer.concat([
+    Buffer.from(`100644 blob ${blob}\t`, "ascii"),
+    rawPath,
+    Buffer.from([0]),
+  ]);
+  const tree = gitBuffer(repo, ["mktree", "-z"], Buffer.concat([baseEntries, newEntry])).toString("ascii").trim();
+  return gitBuffer(repo, ["commit-tree", tree, "-p", base], Buffer.from(`${message}\n`, "utf8")).toString("ascii").trim();
 }
 
 function initRepository(initializer = null) {
@@ -46,6 +66,9 @@ function createFixture(kind = "text") {
   const fixture = initRepository((repo) => {
     if (kind === "rename") write(repo, "old.txt", "rename me\n");
     if (kind === "mode") write(repo, "mode.txt", "mode\n");
+    if (kind === "copy-heuristic") {
+      write(repo, "copy-source.txt", `shared-a-${"s".repeat(78)}\nshared-b-${"s".repeat(78)}\n${fixedWidthLines("source", 98)}`);
+    }
   });
   const { repo, base } = fixture;
 
@@ -59,6 +82,15 @@ function createFixture(kind = "text") {
     write(repo, "prisma/migrations/20260928000000_fixture/migration.sql", "CREATE TABLE fixture(id TEXT);\n");
   } else if (kind === "binary") {
     fs.writeFileSync(path.join(repo, "binary.bin"), Buffer.from([0, 1, 2, 3, 4]));
+  } else if (kind === "binary-attribute-override") {
+    write(repo, ".gitattributes", "*.bin diff\n");
+    fs.writeFileSync(path.join(repo, "payload.bin"), Buffer.from([0, 1, 2, 3, 4]));
+  } else if (kind === "submodule") {
+    const submodule = initRepository();
+    git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", submodule.repo, "vendor/submodule");
+  } else if (kind === "copy-heuristic") {
+    fs.appendFileSync(path.join(repo, "copy-source.txt"), `source-updated-${"u".repeat(80)}\n`);
+    write(repo, "endpoint-readiness.ts", `shared-a-${"s".repeat(78)}\nshared-b-${"s".repeat(78)}\n${fixedWidthLines("destination", 98)}`);
   } else {
     write(repo, "selected.txt", "selected\n");
   }
@@ -68,13 +100,25 @@ function createFixture(kind = "text") {
   fixture.source = source;
   fixture.main = source;
 
+  if (kind === "submodule") {
+    git(repo, "submodule", "deinit", "-f", "--", "vendor/submodule");
+    fs.rmSync(path.join(repo, "vendor/submodule"), { recursive: true, force: true });
+  }
+
   git(repo, "checkout", "-q", "-b", "release", base);
   if (kind === "whitespace") {
     write(repo, "selected.txt", "selected  \n");
     fixture.release = commit(repo, `fixture: release whitespace\n\n(cherry picked from commit ${source})`);
+  } else if (kind === "changed-bytes" || kind === "conflict-resolved") {
+    write(repo, "selected.txt", "changed bytes\n");
+    fixture.release = commit(repo, `fixture: release ${kind}\n\n(cherry picked from commit ${source})`);
   } else if (kind === "different-path") {
     write(repo, "other.txt", "selected\n");
     fixture.release = commit(repo, `fixture: release different path\n\n(cherry picked from commit ${source})`);
+  } else if (kind === "extra-path") {
+    write(repo, "selected.txt", "selected\n");
+    write(repo, "unauthorized.txt", "extra\n");
+    fixture.release = commit(repo, `fixture: release extra path\n\n(cherry picked from commit ${source})`);
   } else if (kind === "unmatched") {
     write(repo, "selected.txt", "selected\n");
     fixture.release = commit(repo, "fixture: release without source mapping");
@@ -134,7 +178,7 @@ test("CONTENT_SUBSET rejects a path mismatch", () => {
   assert.match(result.output, /REASON:\nFINGERPRINT_MISMATCH/);
 });
 
-test("selective validator passes the minimum V1 record", () => {
+test("selective validator passes an exact added file", () => {
   const fixture = createFixture();
   const result = run(selectiveScript, [
     "--record", fixture.recordPath,
@@ -147,10 +191,51 @@ test("selective validator passes the minimum V1 record", () => {
   assert.match(result.output, /INFORMATIONAL OVERLAP REPORT:/);
 });
 
+test("selective validator ignores a low-similarity Git copy heuristic and validates exact paths", () => {
+  const fixture = createFixture("copy-heuristic");
+  const heuristic = git(fixture.repo, "diff", "--name-status", "--find-renames=1%", "--find-copies=1%", fixture.base, fixture.source);
+  assert.match(heuristic, /^C001\s+copy-source\.txt\s+endpoint-readiness\.ts$/m);
+  const result = run(selectiveScript, [
+    "--record", fixture.recordPath,
+    "--production", fixture.base,
+    "--trusted-ref", "origin/main",
+    "--release-ref", fixture.release,
+  ], fixture.repo);
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /AUTHORIZED_SELECTIVE_RELEASE: PASS/);
+});
+
+test("selective validator validates an exact delete plus add path transition", () => {
+  const fixture = createFixture("rename");
+  const result = run(selectiveScript, [
+    "--record", fixture.recordPath,
+    "--production", fixture.base,
+    "--trusted-ref", "origin/main",
+    "--release-ref", fixture.release,
+  ], fixture.repo);
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /AUTHORIZED_SELECTIVE_RELEASE: PASS/);
+});
+
+for (const kind of ["changed-bytes", "different-path", "whitespace", "extra-path", "conflict-resolved"]) {
+  test(`selective validator rejects exact provenance mismatch: ${kind}`, () => {
+    const fixture = createFixture(kind);
+    const result = run(selectiveScript, [
+      "--record", fixture.recordPath,
+      "--production", fixture.base,
+      "--trusted-ref", "origin/main",
+      "--release-ref", fixture.release,
+    ], fixture.repo);
+    assert.notEqual(result.status, 0);
+    assert.match(result.output, /REASON: FINGERPRINT_MISMATCH/);
+  });
+}
+
 for (const [kind, expectedReason] of [
   ["binary", "BINARY_FILE"],
-  ["rename", "RENAME_OR_COPY"],
+  ["binary-attribute-override", "BINARY_FILE"],
   ["mode", "MODE_CHANGE"],
+  ["submodule", "SUBMODULE"],
   ["schema", "SCHEMA_OR_MIGRATION"],
   ["migration", "SCHEMA_OR_MIGRATION"],
   ["unmatched", "SOURCE_MAPPING_MISMATCH"],
@@ -167,6 +252,88 @@ for (const [kind, expectedReason] of [
     assert.match(result.output, new RegExp(`REASON: ${expectedReason}`));
   });
 }
+
+test("selective validator rejects distinct non-UTF-8 paths before lossy decoding can collide", () => {
+  const fixture = initRepository();
+  const { repo, base } = fixture;
+  const source = commitRawPath(repo, base, Buffer.from([0xff]), "same bytes\n", "fixture: source non-UTF-8 path");
+  git(repo, "update-ref", "refs/remotes/origin/main", source);
+  const release = commitRawPath(
+    repo,
+    base,
+    Buffer.from([0xfe]),
+    "same bytes\n",
+    `fixture: release non-UTF-8 path\n\n(cherry picked from commit ${source})`,
+  );
+  const recordPath = path.join(repo, "release-record.json");
+  fs.writeFileSync(recordPath, JSON.stringify({
+    releaseId: "fixture-release-non-utf8-path",
+    taskIds: ["ES-RELEASE-FIXTURE-01"],
+    baseProductionSha: base,
+    sourceMainSha: source,
+    includedSourceCommits: [source],
+    founderAuthorization: {
+      authorizationId: "FOUNDER-FIXTURE-NON-UTF8",
+      approvedBy: "Founder",
+      status: "APPROVED",
+      approvedAt: "2026-09-28T00:00:00Z",
+      includedSourceCommits: [source],
+    },
+    releaseSha: release,
+    deploymentId: "PENDING",
+    productionSha: "PENDING",
+  }, null, 2));
+  const result = run(selectiveScript, [
+    "--record", recordPath,
+    "--production", base,
+    "--trusted-ref", "origin/main",
+    "--release-ref", release,
+  ], repo);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /REASON: NON_UTF8_PATH/);
+});
+
+test("selective validator fingerprints raw path bytes so a leading UTF-8 BOM cannot collide", () => {
+  const fixture = initRepository();
+  const { repo, base } = fixture;
+  const sourcePath = Buffer.from("allowed.txt", "utf8");
+  const source = commitRawPath(repo, base, sourcePath, "same bytes\n", "fixture: source plain path");
+  git(repo, "update-ref", "refs/remotes/origin/main", source);
+  const releasePath = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), sourcePath]);
+  const release = commitRawPath(
+    repo,
+    base,
+    releasePath,
+    "same bytes\n",
+    `fixture: release BOM path\n\n(cherry picked from commit ${source})`,
+  );
+  const recordPath = path.join(repo, "release-record.json");
+  fs.writeFileSync(recordPath, JSON.stringify({
+    releaseId: "fixture-release-bom-path",
+    taskIds: ["ES-RELEASE-FIXTURE-01"],
+    baseProductionSha: base,
+    sourceMainSha: source,
+    includedSourceCommits: [source],
+    founderAuthorization: {
+      authorizationId: "FOUNDER-FIXTURE-BOM-PATH",
+      approvedBy: "Founder",
+      status: "APPROVED",
+      approvedAt: "2026-09-28T00:00:00Z",
+      includedSourceCommits: [source],
+    },
+    releaseSha: release,
+    deploymentId: "PENDING",
+    productionSha: "PENDING",
+  }, null, 2));
+  const result = run(selectiveScript, [
+    "--record", recordPath,
+    "--production", base,
+    "--trusted-ref", "origin/main",
+    "--release-ref", release,
+  ], repo);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /REASON: FINGERPRINT_MISMATCH/);
+});
 
 test("selective validator rejects a source commit outside trusted main", () => {
   const fixture = initRepository();

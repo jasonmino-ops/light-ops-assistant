@@ -77,35 +77,71 @@ function isForbiddenPath(filePath) {
   return filePath === "prisma/schema.prisma" || filePath.startsWith("prisma/migrations/");
 }
 
+function splitNul(buffer) {
+  const fields = [];
+  let start = 0;
+  for (let index = 0; index < buffer.length; index += 1) {
+    if (buffer[index] !== 0) continue;
+    fields.push(buffer.subarray(start, index));
+    start = index + 1;
+  }
+  if (start < buffer.length) fields.push(buffer.subarray(start));
+  return fields;
+}
+
+function decodeUtf8(buffer, code, detail) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer);
+  } catch {
+    throw new ProvenanceError(code, detail);
+  }
+}
+
 function parseRawDiff(repoRoot, parent, commit) {
-  const result = git(repoRoot, ["diff", "--raw", "-z", "--no-ext-diff", "--find-renames=1%", "--find-copies=1%", parent, commit, "--"], { encoding: null });
-  const fields = result.stdout.toString("utf8").split("\0");
+  // Git does not store rename/copy intent in a commit. Disable similarity-based
+  // classification so provenance is always expressed as exact A/M/D paths.
+  const result = git(repoRoot, ["diff", "--raw", "-z", "--no-ext-diff", "--no-renames", parent, commit, "--"], { encoding: null });
+  const fields = splitNul(result.stdout);
   const entries = [];
-  for (let index = 0; index < fields.length - 1;) {
-    const header = fields[index++];
+  for (let index = 0; index < fields.length;) {
+    const header = decodeUtf8(fields[index++], "UNKNOWN_GIT_OBJECT", `unparseable raw diff header for ${commit}`);
     if (!header) continue;
-    const filePath = fields[index++];
+    if (index >= fields.length) {
+      throw new ProvenanceError("UNKNOWN_GIT_OBJECT", `missing raw diff path for ${commit}`);
+    }
+    const rawFilePath = fields[index++];
+    const filePath = decodeUtf8(rawFilePath, "NON_UTF8_PATH", `${commit} contains a non-UTF-8 path`);
     const parts = header.slice(1).trim().split(/\s+/);
     if (parts.length < 5 || !filePath) {
       throw new ProvenanceError("UNKNOWN_GIT_OBJECT", `unparseable raw diff for ${commit}`);
     }
     const [oldMode, newMode, oldOid, newOid, status] = parts;
     const statusCode = status[0];
-    let destinationPath = filePath;
-    if (statusCode === "R" || statusCode === "C") {
-      destinationPath = fields[index++];
+    if (!["A", "M", "D", "T"].includes(statusCode)) {
+      throw new ProvenanceError("UNSUPPORTED_DIFF_STATUS", `${commit} contains unsupported status ${statusCode} for ${filePath}`);
     }
-    entries.push({ oldMode, newMode, oldOid, newOid, statusCode, filePath, destinationPath });
+    entries.push({
+      oldMode,
+      newMode,
+      oldOid,
+      newOid,
+      statusCode,
+      filePath,
+      destinationPath: filePath,
+      pathBytes: rawFilePath.toString("hex"),
+    });
   }
   return entries;
 }
 
-function isBinary(repoRoot, parent, commit, filePath) {
-  const result = git(repoRoot, ["diff", "--numstat", "--no-ext-diff", parent, commit, "--", filePath], { allowFailure: true });
-  if (result.status !== 0) {
-    throw new ProvenanceError("UNKNOWN_GIT_OBJECT", `cannot inspect ${filePath}`);
+function isNonTextBlob(buffer) {
+  if (buffer.includes(0)) return true;
+  try {
+    new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer);
+    return false;
+  } catch {
+    return true;
   }
-  return /^-\t-\t/.test(String(result.stdout || ""));
 }
 
 export function fingerprintCommit(repoRoot, commit) {
@@ -121,9 +157,6 @@ export function fingerprintCommit(repoRoot, commit) {
     if (paths.some(isForbiddenPath)) {
       throw new ProvenanceError("SCHEMA_OR_MIGRATION", `${commitSha} touches ${paths.find(isForbiddenPath)}`);
     }
-    if (entry.statusCode === "R" || entry.statusCode === "C") {
-      throw new ProvenanceError("RENAME_OR_COPY", `${commitSha} contains ${entry.statusCode === "R" ? "rename" : "copy"}`);
-    }
     if (
       entry.statusCode === "T" ||
       (entry.oldMode !== "000000" && entry.newMode !== "000000" && entry.oldMode !== entry.newMode)
@@ -133,13 +166,16 @@ export function fingerprintCommit(repoRoot, commit) {
     if (entry.oldMode === "160000" || entry.newMode === "160000") {
       throw new ProvenanceError("SUBMODULE", `${commitSha} touches a submodule`);
     }
-    if (isBinary(repoRoot, parent, commitSha, entry.destinationPath)) {
-      throw new ProvenanceError("BINARY_FILE", `${commitSha} touches binary file ${entry.destinationPath}`);
-    }
     const oldBytes = blobBytes(repoRoot, entry.oldOid);
     const newBytes = blobBytes(repoRoot, entry.newOid);
+    // Inspect immutable blob bytes directly. Git diff attributes can override
+    // presentation-level binary classification, so they are not authoritative.
+    if (isNonTextBlob(oldBytes) || isNonTextBlob(newBytes)) {
+      throw new ProvenanceError("BINARY_FILE", `${commitSha} touches non-text blob ${entry.destinationPath}`);
+    }
     return {
       path: entry.destinationPath,
+      pathBytes: entry.pathBytes,
       status: entry.statusCode,
       oldMode: entry.oldMode,
       newMode: entry.newMode,
@@ -148,7 +184,7 @@ export function fingerprintCommit(repoRoot, commit) {
       oldSha256: sha256(oldBytes),
       newSha256: sha256(newBytes),
     };
-  }).sort((left, right) => left.path.localeCompare(right.path));
+  }).sort((left, right) => left.pathBytes.localeCompare(right.pathBytes));
   const canonical = JSON.stringify(entries);
   return {
     commit: commitSha,
