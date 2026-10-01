@@ -33,48 +33,118 @@ function runtime(execute: () => Promise<any>) {
     beginExecutionLifecycle: vi.fn((_batch: typeof batch) => ({ ok: true as const, guard: { complete } })),
   }
   const coordinator = { execute: vi.fn(execute) }
-  const endpoints = { resolve: vi.fn(async () => ({ ok: true as const, endpointKey: '192.168.1.10:9100' })) }
+  const endpoints = { configuredForRecovery: vi.fn(async () => ({ ok: true as const, endpoints: [
+    { role: 'FRONT' as const, endpointKey: '192.168.1.10:9100' },
+    { role: 'KITCHEN' as const, endpointKey: '192.168.1.11:9100' },
+  ] })) }
+  const endpointReadiness = { check: vi.fn(async () => ({ ok: true as const, roles: { FRONT: true, KITCHEN: true } })) }
   const instance = new (V3PrintingRuntime as any)(
-    {}, coordinator, controlPlane, endpoints, {}, null, 60_000, { dispose: vi.fn() },
+    {}, coordinator, controlPlane, endpoints, {}, null, 60_000, { dispose: vi.fn() }, false, endpointReadiness,
   ) as V3PrintingRuntime
+  ;(instance as any).running = true
+  ;(instance as any).lifecycleGeneration = 1
   return { instance, controlPlane, coordinator, complete }
 }
 
-describe('V3PrintingRuntime execution lifecycle', () => {
-  it('keeps polling and claiming closed while recovery endpoint readiness is unavailable', async () => {
-    let readiness!: () => Promise<{ ok: true } | { ok: false; reason: string }>
-    const controlPlane = {
-      current: vi.fn(() => ({ status: 'FENCED', controlPlane: { mode: 'V3_ACTIVE' }, batch: null })),
-      validateExecution: vi.fn(() => ({ ok: false as const })),
-      markExecutionLifecycleReady: vi.fn(async (inputValue: any) => { readiness = inputValue.expiredSelfRecoveryReadiness }),
-      beginExecutionLifecycle: vi.fn(),
-    }
-    const endpoints = { configuredForRecovery: vi.fn(async () => ({ ok: true as const, endpoints: [
+function rolePumpHarness(
+  readiness: Array<{ FRONT: boolean; KITCHEN: boolean }>,
+  initialJobs: Partial<Record<'FRONT' | 'KITCHEN', Array<{ printJobId: string }>>>,
+  freshReadiness: Array<{ FRONT: boolean; KITCHEN: boolean }> = [],
+) {
+  const jobs = {
+    FRONT: [...(initialJobs.FRONT ?? [])],
+    KITCHEN: [...(initialJobs.KITCHEN ?? [])],
+  }
+  const controlPlane = {
+    current: vi.fn(() => ({ status: 'V3_OWNER', controlPlane: { mode: 'V3_ACTIVE' }, batch })),
+    validateExecution: vi.fn(() => ({ ok: true as const })),
+    beginExecutionLifecycle: vi.fn(() => ({ ok: true as const, guard: { complete: vi.fn(async () => undefined) } })),
+  }
+  const endpoints = {
+    configuredForRecovery: vi.fn(async () => ({ ok: true as const, endpoints: [
       { role: 'FRONT' as const, endpointKey: '192.168.1.10:9100' },
       { role: 'KITCHEN' as const, endpointKey: '192.168.1.11:9100' },
-    ] })) }
-    let endpointsReady = false
-    const endpointReadiness = { check: vi.fn(async () => endpointsReady
-      ? { ok: true as const }
-      : { ok: false as const, code: 'ENDPOINT_KITCHEN_UNREACHABLE', role: 'KITCHEN' }) }
-    const cloud = {
-      receive: vi.fn(), report: vi.fn(), holdLocal: vi.fn(),
+    ] })),
+    resolve: vi.fn(async (role: 'FRONT' | 'KITCHEN') => ({ ok: true as const,
+      endpointKey: role === 'FRONT' ? '192.168.1.10:9100' : '192.168.1.11:9100' })),
+  }
+  let activeReadiness = { FRONT: false, KITCHEN: false }
+  const endpointReadiness = { check: vi.fn(async (probed: Array<{ role: 'FRONT' | 'KITCHEN' }>) => {
+    if (probed.length > 1) activeReadiness = readiness.shift() ?? { FRONT: false, KITCHEN: false }
+    const current = probed.length === 1 && freshReadiness.length > 0 ? freshReadiness.shift()! : activeReadiness
+    return { ok: true as const, roles: { ...current } }
+  }) }
+  const receive = vi.fn(async (_batch: typeof batch, role: 'FRONT' | 'KITCHEN') => {
+    const selected = jobs[role].shift()
+    return selected ? { ok: true as const, job: {
+      printJobId: selected.printJobId, source: 'CLOUD_H5' as const, role,
+      rendererVersion: 'renderer-1', expiresAt: batch.expiresAt,
+      payloadKind: 'RAW_BYTES' as const, payload: new Uint8Array([role === 'FRONT' ? 1 : 2]),
+    } } : { ok: true as const, job: null }
+  })
+  const cloud = { receive, report: vi.fn(), holdLocal: vi.fn() }
+  const coordinator = { execute: vi.fn(async (_value: { role: 'FRONT' | 'KITCHEN' }) => ({
+    status: 'CROSSED', record: { state: 'CROSSED' },
+  })) }
+  const instance = new (V3PrintingRuntime as any)(
+    { close: vi.fn(async () => ({ ok: true as const })) }, coordinator, controlPlane, endpoints,
+    { listReportable: vi.fn(() => []) }, cloud, 60_000, { dispose: vi.fn() }, false, endpointReadiness, 0,
+  ) as V3PrintingRuntime
+  ;(instance as any).running = true
+  ;(instance as any).lifecycleGeneration = 1
+  const pump = async () => {
+    await (instance as any).pump()
+  }
+  return { instance, jobs, receive, coordinator, endpointReadiness, pump }
+}
+
+describe('V3PrintingRuntime execution lifecycle', () => {
+  it('recovers store authority independently and receives only a ready FRONT role while KITCHEN is unavailable', async () => {
+    let readiness!: () => Promise<{ ok: true } | { ok: false; reason: string }>
+    const complete = vi.fn(async () => undefined)
+    const controlPlane = {
+      current: vi.fn(() => ({ status: 'V3_OWNER', controlPlane: { mode: 'V3_ACTIVE' }, batch })),
+      validateExecution: vi.fn(() => ({ ok: true as const })),
+      markExecutionLifecycleReady: vi.fn(async (inputValue: any) => { readiness = inputValue.expiredSelfRecoveryReadiness }),
+      beginExecutionLifecycle: vi.fn(() => ({ ok: true as const, guard: { complete } })),
     }
-    const coordinator = { execute: vi.fn() }
+    const endpoints = {
+      configuredForRecovery: vi.fn(async () => ({ ok: true as const, endpoints: [
+        { role: 'FRONT' as const, endpointKey: '192.168.1.10:9100' },
+        { role: 'KITCHEN' as const, endpointKey: '192.168.1.11:9100' },
+      ] })),
+      resolve: vi.fn(async (role: 'FRONT' | 'KITCHEN') => ({ ok: true as const,
+        endpointKey: role === 'FRONT' ? '192.168.1.10:9100' : '192.168.1.11:9100' })),
+    }
+    const endpointReadiness = { check: vi.fn(async () => ({
+      ok: true as const, roles: { FRONT: true, KITCHEN: false },
+    })) }
+    let delivered = false
+    const cloud = {
+      receive: vi.fn(async (_batch: typeof batch, role: 'FRONT' | 'KITCHEN') => {
+        if (role !== 'FRONT' || delivered) return { ok: true as const, job: null }
+        delivered = true
+        return { ok: true as const, job: {
+          printJobId: 'job-front-ready', source: 'CLOUD_H5' as const, role: 'FRONT' as const,
+          rendererVersion: 'renderer-1', expiresAt: batch.expiresAt,
+          payloadKind: 'RAW_BYTES' as const, payload: new Uint8Array([1]),
+        } }
+      }),
+      report: vi.fn(), holdLocal: vi.fn(),
+    }
+    const coordinator = { execute: vi.fn(async () => ({ status: 'CROSSED', record: { state: 'CROSSED' } })) }
     const instance = new (V3PrintingRuntime as any)(
       { close: vi.fn(async () => ({ ok: true as const })) }, coordinator, controlPlane, endpoints,
       { listReportable: vi.fn(() => []) }, cloud, 60_000, { dispose: vi.fn() }, false, endpointReadiness,
     ) as V3PrintingRuntime
 
     await instance.start()
-    await expect(readiness()).resolves.toEqual({ ok: false, reason: 'ENDPOINT_KITCHEN_UNREACHABLE' })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(cloud.receive).not.toHaveBeenCalled()
-    expect(controlPlane.beginExecutionLifecycle).not.toHaveBeenCalled()
-    expect(coordinator.execute).not.toHaveBeenCalled()
-
-    endpointsReady = true
     await expect(readiness()).resolves.toEqual({ ok: true })
+    await vi.waitFor(() => expect(coordinator.execute).toHaveBeenCalledTimes(1))
+    expect(cloud.receive).toHaveBeenCalledTimes(1)
+    expect(cloud.receive).toHaveBeenCalledWith(batch, 'FRONT')
+    expect(cloud.receive).not.toHaveBeenCalledWith(batch, 'KITCHEN')
+    expect(coordinator.execute).toHaveBeenCalledWith(expect.objectContaining({ role: 'FRONT' }))
     expect(endpointReadiness.check).toHaveBeenCalledWith([
       { role: 'FRONT', endpointKey: '192.168.1.10:9100' },
       { role: 'KITCHEN', endpointKey: '192.168.1.11:9100' },
@@ -102,7 +172,7 @@ describe('V3PrintingRuntime execution lifecycle', () => {
     await instance.close()
   })
 
-  it('cancels an in-flight endpoint readiness result when printing closes before control-plane stop', async () => {
+  it('cancels an in-flight role-readiness result when printing closes', async () => {
     let readiness!: () => Promise<{ ok: true } | { ok: false; reason: string }>
     let finishProbe!: () => void
     const controlPlane = {
@@ -113,8 +183,8 @@ describe('V3PrintingRuntime execution lifecycle', () => {
     const endpoints = { configuredForRecovery: vi.fn(async () => ({ ok: true as const, endpoints: [
       { role: 'FRONT' as const, endpointKey: '192.168.1.10:9100' },
     ] })) }
-    const endpointReadiness = { check: vi.fn(() => new Promise<{ ok: true }>((resolve) => {
-      finishProbe = () => resolve({ ok: true })
+    const endpointReadiness = { check: vi.fn(() => new Promise<{ ok: true; roles: { FRONT: boolean; KITCHEN: boolean } }>((resolve) => {
+      finishProbe = () => resolve({ ok: true, roles: { FRONT: true, KITCHEN: false } })
     })) }
     const ledger = { close: vi.fn(async () => ({ ok: true as const })) }
     const instance = new (V3PrintingRuntime as any)(
@@ -122,15 +192,93 @@ describe('V3PrintingRuntime execution lifecycle', () => {
       null, 60_000, { dispose: vi.fn() }, false, endpointReadiness,
     ) as V3PrintingRuntime
 
-    await instance.start()
-    const pendingReadiness = readiness()
+    const starting = instance.start()
     await vi.waitFor(() => expect(endpointReadiness.check).toHaveBeenCalledTimes(1))
     const closing = instance.close()
     finishProbe()
 
-    await expect(pendingReadiness).resolves.toEqual({ ok: false, reason: 'RUNTIME_STOPPED' })
-    await closing
+    await Promise.all([starting, closing])
+    await expect(readiness()).resolves.toEqual({ ok: false, reason: 'RUNTIME_STOPPED' })
+    expect((instance as any).roleReadiness).toEqual({ FRONT: false, KITCHEN: false })
     expect(ledger.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('allows KITCHEN to execute while FRONT is unavailable and leaves FRONT unclaimed', async () => {
+    const harness = rolePumpHarness(
+      [{ FRONT: false, KITCHEN: true }],
+      { FRONT: [{ printJobId: 'job-front-pending' }], KITCHEN: [{ printJobId: 'job-kitchen-ready' }] },
+    )
+    await harness.pump()
+    expect(harness.receive).toHaveBeenCalledTimes(1)
+    expect(harness.receive).toHaveBeenCalledWith(batch, 'KITCHEN')
+    expect(harness.coordinator.execute).toHaveBeenCalledWith(expect.objectContaining({ role: 'KITCHEN' }))
+    expect(harness.jobs.FRONT).toHaveLength(1)
+  })
+
+  it('does not claim a role when its endpoint drops after cached readiness but before receive', async () => {
+    const harness = rolePumpHarness(
+      [{ FRONT: true, KITCHEN: false }],
+      { FRONT: [{ printJobId: 'job-front-readiness-race' }] },
+      [{ FRONT: false, KITCHEN: false }],
+    )
+    await harness.pump()
+    expect(harness.receive).not.toHaveBeenCalled()
+    expect(harness.coordinator.execute).not.toHaveBeenCalled()
+    expect(harness.jobs.FRONT).toHaveLength(1)
+  })
+
+  it('prints FRONT once, then executes only the pending KITCHEN effect after KITCHEN becomes ready', async () => {
+    const harness = rolePumpHarness(
+      [{ FRONT: true, KITCHEN: false }, { FRONT: true, KITCHEN: true }],
+      { FRONT: [{ printJobId: 'job-front-once' }], KITCHEN: [{ printJobId: 'job-kitchen-later' }] },
+    )
+    await harness.pump()
+    expect(harness.coordinator.execute.mock.calls.map(([value]) => value.role)).toEqual(['FRONT'])
+    expect(harness.receive.mock.calls.map(([, role]) => role)).toEqual(['FRONT'])
+
+    await harness.pump()
+    expect(harness.coordinator.execute.mock.calls.map(([value]) => value.role)).toEqual(['FRONT', 'KITCHEN'])
+    expect(harness.coordinator.execute.mock.calls.filter(([value]) => value.role === 'FRONT')).toHaveLength(1)
+    expect(harness.jobs.FRONT).toHaveLength(0)
+    expect(harness.jobs.KITCHEN).toHaveLength(0)
+  })
+
+  it('preserves normal FRONT and KITCHEN execution when both roles are ready', async () => {
+    const harness = rolePumpHarness(
+      [{ FRONT: true, KITCHEN: true }],
+      { FRONT: [{ printJobId: 'job-front-both' }], KITCHEN: [{ printJobId: 'job-kitchen-both' }] },
+    )
+    await harness.pump()
+    expect(harness.coordinator.execute.mock.calls.map(([value]) => value.role)).toEqual(['FRONT', 'KITCHEN'])
+  })
+
+  it('keeps store authority valid but performs no receive when both roles are unavailable', async () => {
+    const harness = rolePumpHarness(
+      [{ FRONT: false, KITCHEN: false }],
+      { FRONT: [{ printJobId: 'job-front-offline' }], KITCHEN: [{ printJobId: 'job-kitchen-offline' }] },
+    )
+    await harness.pump()
+    expect(harness.receive).not.toHaveBeenCalled()
+    expect(harness.coordinator.execute).not.toHaveBeenCalled()
+    expect(harness.jobs.FRONT).toHaveLength(1)
+    expect(harness.jobs.KITCHEN).toHaveLength(1)
+  })
+
+  it('does not poll an unavailable flapping KITCHEN role or duplicate its completed execution', async () => {
+    const harness = rolePumpHarness(
+      [
+        { FRONT: false, KITCHEN: false },
+        { FRONT: false, KITCHEN: true },
+        { FRONT: false, KITCHEN: false },
+      ],
+      { KITCHEN: [{ printJobId: 'job-kitchen-flap' }] },
+    )
+    await harness.pump()
+    await harness.pump()
+    await harness.pump()
+    expect(harness.receive).toHaveBeenCalledTimes(1)
+    expect(harness.receive).toHaveBeenCalledWith(batch, 'KITCHEN')
+    expect(harness.coordinator.execute).toHaveBeenCalledTimes(1)
   })
 
   it.each(['FRONT', 'KITCHEN'] as const)('durably HOLDS no-batch local %s admission without starting physical execution', async (role) => {
@@ -222,11 +370,16 @@ describe('V3PrintingRuntime execution lifecycle', () => {
       expect(controlPlane.validateAdmittedExecution(authority).ok).toBe(true)
       return { status: 'CROSSED', record: { state: 'CROSSED' } }
     }) }
+    const endpoints = { configuredForRecovery: vi.fn(async () => ({ ok: true as const, endpoints: [
+      { role: 'KITCHEN' as const, endpointKey: '192.168.1.11:9100' },
+    ] })) }
+    const endpointReadiness = { check: vi.fn(async () => ({ ok: true as const, roles: { FRONT: false, KITCHEN: true } })) }
     const instance = new (V3PrintingRuntime as any)(
-      {}, coordinator, controlPlane,
-      { resolve: vi.fn(async () => ({ ok: true as const, endpointKey: '192.168.1.11:9100' })) },
-      {}, null, 60_000, { dispose: vi.fn() },
+      {}, coordinator, controlPlane, endpoints,
+      {}, null, 60_000, { dispose: vi.fn() }, false, endpointReadiness,
     ) as V3PrintingRuntime
+    ;(instance as any).running = true
+    ;(instance as any).lifecycleGeneration = 1
     const kitchenInput = {
       ...input,
       role: 'KITCHEN' as const,

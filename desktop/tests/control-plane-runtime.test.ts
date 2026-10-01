@@ -118,7 +118,7 @@ describe('V3ControlPlaneRuntime', () => {
     await runtime.stop()
   })
 
-  it('remains fenced while endpoint readiness fails and recovers on the existing bounded reconcile cycle', async () => {
+  it('remains fenced while local recovery safety fails and recovers on the existing bounded reconcile cycle', async () => {
     const expired = plane({
       ownerDeviceId: 'device-a', ownerEpoch: 8, leaseId: 'lease-old',
       leaseExpiresAt: '2000-01-01T00:00:00.000Z', mode: 'V3_ACTIVE', stateVersion: 20,
@@ -126,10 +126,10 @@ describe('V3ControlPlaneRuntime', () => {
     const recovered = { ...expired, leaseId: 'lease-new', leaseExpiresAt: future, stateVersion: 21 }
     const api = client(expired, recovered)
     api.renew.mockResolvedValue({ ok: false, error: 'AUTHORITY_STALE_OR_EXPIRED' } as never)
-    let endpointReady = false
-    const readiness = vi.fn(async () => endpointReady
+    let recoverySafe = false
+    const readiness = vi.fn(async () => recoverySafe
       ? { ok: true as const }
-      : { ok: false as const, reason: 'ENDPOINT_KITCHEN_UNREACHABLE' })
+      : { ok: false as const, reason: 'LOCAL_EFFECT_AMBIGUITY' })
     const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
     await runtime.start()
     await runtime.markExecutionLifecycleReady({ expiredSelfRecoveryReadiness: readiness })
@@ -138,7 +138,7 @@ describe('V3ControlPlaneRuntime', () => {
     expect(api.recoverExpiredSelf).not.toHaveBeenCalled()
     expect(api.issueBatch).not.toHaveBeenCalled()
 
-    endpointReady = true
+    recoverySafe = true
     await (runtime as any).reconcile()
     expect(api.recoverExpiredSelf).toHaveBeenCalledTimes(1)
     expect(runtime.current().status).toBe('V3_OWNER')

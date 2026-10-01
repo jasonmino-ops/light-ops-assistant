@@ -9,12 +9,16 @@ import { EndpointMutex } from './endpointMutex'
 import { RawTcpEffectBoundary } from './rawTcpEffectBoundary'
 import { SharedPrintingCore, type SharedPrintIdentity } from './sharedPrintingCore'
 import type { V3ControlPlaneRuntime } from './controlPlaneRuntime'
+import type { ExecutionBatchProjection } from './controlPlaneClient'
 import { proveProcessDead } from './processLiveness'
 import { LocalEndpointAuthority, type PrinterRole } from './localEndpointAuthority'
 import type { LocalEndpoint } from './localEndpointAuthority'
 import { V3PrintJobClient } from './v3PrintJobClient'
 import { V3NetworkRenderer } from './v3NetworkRenderer'
-import { NoPayloadEndpointReadiness } from './endpointReadiness'
+import { NoPayloadEndpointReadiness, type RoleReadinessMask } from './endpointReadiness'
+
+const PRINT_ROLES: readonly PrinterRole[] = ['FRONT', 'KITCHEN']
+const NO_ROLES_READY: RoleReadinessMask = Object.freeze({ FRONT: false, KITCHEN: false })
 
 function releaseSafeExecutionResult(result: { status: string; record?: { state?: string } }): boolean {
   if (result.status === 'NOT_EXECUTED') return result.record?.state !== 'CROSSING_UNKNOWN'
@@ -41,6 +45,9 @@ export class V3PrintingRuntime {
   private running = false
   private started = false
   private lifecycleGeneration = 0
+  private roleReadiness: RoleReadinessMask = NO_ROLES_READY
+  private roleReadinessRefreshAt = 0
+  private roleReadinessPromise: Promise<void> | null = null
   private constructor(
     private readonly ledger: ExecutionLedger,
     private readonly coordinator: LocalFirstPrintCoordinator<Uint8Array>,
@@ -52,6 +59,7 @@ export class V3PrintingRuntime {
     private readonly networkRenderer: V3NetworkRenderer,
     private readonly releaseBlocked = false,
     private readonly endpointReadiness = new NoPayloadEndpointReadiness(),
+    private readonly roleReadinessIntervalMs = 30_000,
   ) {}
 
   public static async open(options: {
@@ -109,7 +117,8 @@ export class V3PrintingRuntime {
         releaseBlocked: this.releaseBlocked,
         expiredSelfRecoveryReadiness: () => this.checkExpiredSelfRecoveryReadiness(generation),
       })
-      if (this.running) this.startCloudPump()
+      if (!this.releaseBlocked) await this.refreshRoleReadiness(generation, true)
+      if (this.running && generation === this.lifecycleGeneration) this.startCloudPump()
     } catch (error) {
       this.running = false
       this.started = false
@@ -123,9 +132,19 @@ export class V3PrintingRuntime {
     const batch = this.controlPlane.current().batch
     if (input.source === 'LOCAL_DESKTOP' && (mode !== 'V3_ACTIVE' || !batch)) return this.holdLocal(input)
     if (!batch) return { status: 'AUTHORITY_REJECTED' as const, mode: 'ADMISSION_CLOSED' as const, reason: 'NO_OWNER_SCOPED_BATCH' }
-    const resolved = await this.endpoints.resolve(input.role)
-    if (!resolved.ok && input.source === 'LOCAL_DESKTOP') return this.holdLocal(input)
-    if (!resolved.ok) return { status: 'AUTHORITY_REJECTED' as const, mode: 'ADMISSION_CLOSED' as const, reason: resolved.code }
+    const readiness = await this.proveRoleReadiness(input.role, this.lifecycleGeneration)
+    if (!readiness) {
+      if (input.source === 'LOCAL_DESKTOP') return this.holdLocal(input)
+      return { status: 'AUTHORITY_REJECTED' as const, mode: 'ADMISSION_CLOSED' as const, reason: `ENDPOINT_${input.role}_UNAVAILABLE` }
+    }
+    return this.executeAtReadyEndpoint(input, batch, readiness.endpointKey)
+  }
+
+  private async executeAtReadyEndpoint(
+    input: { source: PrintIntentSource; orderNo?: string; identity: SharedPrintIdentity; role: PrinterRole; payload: Uint8Array },
+    batch: ExecutionBatchProjection,
+    endpointKey: string,
+  ) {
     const lifecycle = this.controlPlane.beginExecutionLifecycle(batch)
     if (!lifecycle.ok) {
       return { status: 'AUTHORITY_REJECTED' as const, mode: 'FENCED' as const, reason: lifecycle.error.code }
@@ -135,7 +154,7 @@ export class V3PrintingRuntime {
       const result = await this.coordinator.execute({
         mode: 'V3_ACTIVE', source: input.source, role: input.role,
         authority: { batchId: batch.id, storeId: batch.storeId, deviceId: batch.ownerDeviceId, ownerEpoch: batch.ownerEpoch, leaseId: batch.leaseId, batchExpiresAt: batch.expiresAt },
-        identity: input.identity, endpointKey: resolved.endpointKey, payload: input.payload,
+        identity: input.identity, endpointKey, payload: input.payload,
       })
       releaseSafe = releaseSafeExecutionResult(result)
       return result.status === 'V2_FALLBACK_REQUIRED' || result.status === 'MODE_BLOCKED' || result.status === 'AUTHORITY_REJECTED' || result.status === 'REJECTED'
@@ -166,6 +185,7 @@ export class V3PrintingRuntime {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
     await this.pumpPromise
+    await this.roleReadinessPromise
     this.networkRenderer.dispose()
     const closed = await this.ledger.close()
     if (!closed.ok) throw new Error(closed.error.code)
@@ -178,39 +198,77 @@ export class V3PrintingRuntime {
   }
 
   private async checkExpiredSelfRecoveryReadiness(generation: number): Promise<{ ok: true } | { ok: false; reason: string }> {
-    if (!this.running || generation !== this.lifecycleGeneration || this.releaseBlocked) {
-      return { ok: false, reason: 'LOCAL_EFFECT_AMBIGUITY' }
-    }
+    if (!this.running || generation !== this.lifecycleGeneration) return { ok: false, reason: 'RUNTIME_STOPPED' }
+    if (this.releaseBlocked) return { ok: false, reason: 'LOCAL_EFFECT_AMBIGUITY' }
+    return { ok: true }
+  }
+
+  private async refreshRoleReadiness(generation: number, force = false): Promise<void> {
+    if (!this.running || generation !== this.lifecycleGeneration) return
+    if (!force && Date.now() < this.roleReadinessRefreshAt) return
+    if (this.roleReadinessPromise) return this.roleReadinessPromise
+    this.roleReadiness = NO_ROLES_READY
+    this.roleReadinessRefreshAt = Date.now() + this.roleReadinessIntervalMs
+    this.roleReadinessPromise = (async () => {
+      const configured = await this.endpoints.configuredForRecovery()
+      if (!this.running || generation !== this.lifecycleGeneration || !configured.ok) return
+      const ready = await this.endpointReadiness.check(configured.endpoints)
+      if (!this.running || generation !== this.lifecycleGeneration || !ready.ok) return
+      this.roleReadiness = Object.freeze({ ...ready.roles })
+    })().finally(() => { this.roleReadinessPromise = null })
+    await this.roleReadinessPromise
+  }
+
+  private async proveRoleReadiness(role: PrinterRole, generation: number): Promise<{ endpointKey: string } | null> {
+    if (!this.running || generation !== this.lifecycleGeneration) return null
     const configured = await this.endpoints.configuredForRecovery()
-    if (!this.running || generation !== this.lifecycleGeneration) return { ok: false, reason: 'RUNTIME_STOPPED' }
-    if (!configured.ok) return { ok: false, reason: configured.code }
-    const ready = await this.endpointReadiness.check(configured.endpoints)
-    if (!this.running || generation !== this.lifecycleGeneration) return { ok: false, reason: 'RUNTIME_STOPPED' }
-    return ready.ok ? ready : { ok: false, reason: ready.code }
+    if (!this.running || generation !== this.lifecycleGeneration) return null
+    if (!configured.ok) {
+      this.roleReadiness = Object.freeze({ ...this.roleReadiness, [role]: false })
+      return null
+    }
+    const endpoint = configured.endpoints.find((candidate) => candidate.role === role)
+    if (!endpoint) {
+      this.roleReadiness = Object.freeze({ ...this.roleReadiness, [role]: false })
+      return null
+    }
+    const ready = await this.endpointReadiness.check([endpoint])
+    if (!this.running || generation !== this.lifecycleGeneration) return null
+    const available = ready.ok && ready.roles[role]
+    this.roleReadiness = Object.freeze({ ...this.roleReadiness, [role]: available })
+    return available ? { endpointKey: endpoint.endpointKey } : null
   }
 
   private async pump(): Promise<void> {
     if (!this.running || !this.cloud || this.pumpPromise) return
     this.pumpPromise = (async () => {
       await this.flushReports()
-      const batch = this.controlPlane.current().batch
-      if (!batch || !this.controlPlane.validateExecution().ok) return
-      const delivered = await this.cloud!.receive(batch)
-      if (!delivered.ok || !delivered.job) return
-      const job = delivered.job
-      const payload = job.payloadKind === 'RAW_BYTES' ? job.payload : await this.networkRenderer.render(job.networkRequest)
-      await this.execute({
-        source: job.source,
-        role: job.role,
-        identity: {
-          printJobId: job.printJobId,
-          requestHash: createHash('sha256').update(payload).digest('hex'),
-          rendererVersion: job.rendererVersion,
-          expiresAt: job.expiresAt,
-        },
-        payload,
-      })
-      await this.flushReports()
+      await this.refreshRoleReadiness(this.lifecycleGeneration)
+      for (const role of PRINT_ROLES) {
+        if (!this.running || !this.roleReadiness[role]) continue
+        const readiness = await this.proveRoleReadiness(role, this.lifecycleGeneration)
+        if (!readiness) continue
+        const batch = this.controlPlane.current().batch
+        if (!batch || !this.controlPlane.validateExecution().ok) return
+        const delivered = await this.cloud!.receive(batch, role)
+        if (!delivered.ok || !delivered.job) continue
+        const job = delivered.job
+        const payload = job.payloadKind === 'RAW_BYTES' ? job.payload : await this.networkRenderer.render(job.networkRequest)
+        const executionBatch = this.controlPlane.current().batch
+        if (!executionBatch || !this.controlPlane.validateExecution().ok) return
+        await this.executeAtReadyEndpoint({
+          source: job.source,
+          role: job.role,
+          identity: {
+            printJobId: job.printJobId,
+            requestHash: createHash('sha256').update(payload).digest('hex'),
+            rendererVersion: job.rendererVersion,
+            expiresAt: job.expiresAt,
+          },
+          payload,
+        }, executionBatch, readiness.endpointKey)
+        await this.flushReports()
+      }
     })().finally(() => { this.pumpPromise = null })
     await this.pumpPromise
   }
