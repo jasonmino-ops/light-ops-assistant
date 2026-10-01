@@ -29,8 +29,11 @@ function reprintResponse(role: 'FRONT' | 'KITCHEN') {
 
 describe('V3PrintJobClient receive', () => {
   it.each(['FRONT', 'KITCHEN'] as const)('accepts a valid role-specific CLOUD_REMOTE_REPRINT %s claim', async (role) => {
-    const client = new V3PrintJobClient('https://example.test', 'credential-value', async () => reprintResponse(role))
-    const result = await client.receive(batch)
+    const client = new V3PrintJobClient('https://example.test', 'credential-value', async (url) => {
+      expect(String(url)).toContain(`batchId=${batch.id}&role=${role}`)
+      return reprintResponse(role)
+    })
+    const result = await client.receive(batch, role)
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.job).toMatchObject({
@@ -46,7 +49,7 @@ describe('V3PrintJobClient receive', () => {
       expect(init?.headers).toMatchObject({ Accept: 'application/json', Authorization: 'Bearer credential-value' })
       return new Response(JSON.stringify({ ok: false, error: 'V3_BATCH_STALE', detail: 'must-not-be-logged' }), { status: 409 })
     })
-    await expect(client.receive(batch)).resolves.toEqual({
+    await expect(client.receive(batch, 'FRONT')).resolves.toEqual({
       ok: false,
       error: { operation: 'RECEIVE', category: 'HTTP', code: 'V3_BATCH_STALE', httpStatus: 409 },
     })
@@ -63,19 +66,30 @@ describe('V3PrintJobClient receive', () => {
     const warning = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     const invalid = new V3PrintJobClient('https://example.test', 'credential-value', async () =>
       new Response(JSON.stringify({ ok: true, job: { malformed: true } }), { status: 200 }))
-    await expect(invalid.receive(batch)).resolves.toEqual({
+    await expect(invalid.receive(batch, 'FRONT')).resolves.toEqual({
       ok: false,
       error: { operation: 'RECEIVE', category: 'PROTOCOL', code: 'V3_RECEIVE_INVALID_RESPONSE', httpStatus: 200 },
     })
     const offline = new V3PrintJobClient('https://example.test', 'credential-value', async () => {
       throw new Error('sensitive transport detail')
     })
-    await expect(offline.receive(batch)).resolves.toEqual({
+    await expect(offline.receive(batch, 'FRONT')).resolves.toEqual({
       ok: false,
       error: { operation: 'RECEIVE', category: 'NETWORK', code: 'V3_RECEIVE_NETWORK_ERROR' },
     })
     expect(JSON.stringify(warning.mock.calls)).not.toContain('sensitive transport detail')
     warning.mockRestore()
+  })
+
+  it.each([
+    ['FRONT', 'KITCHEN'],
+    ['KITCHEN', 'FRONT'],
+  ] as const)('rejects a requested %s / returned %s role mismatch before execution', async (requested, returned) => {
+    const client = new V3PrintJobClient('https://example.test', 'credential-value', async () => reprintResponse(returned))
+    await expect(client.receive(batch, requested)).resolves.toEqual({
+      ok: false,
+      error: { operation: 'RECEIVE', category: 'PROTOCOL', code: 'V3_RECEIVE_INVALID_RESPONSE', httpStatus: 200 },
+    })
   })
 })
 

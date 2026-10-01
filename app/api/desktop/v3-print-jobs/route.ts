@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getDesktopDeviceContext } from '@/lib/desktop-activation/auth'
 import { noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
-import { deliverV3PrintIntent, enqueueHeldV3PrintIntent, materializeHeldV3PrintIntents, reportV3Execution } from '@/lib/v3-print-job-adapter'
+import { deliverV3PrintIntent, enqueueHeldV3PrintIntent, materializeHeldV3PrintIntents, parseV3PrintRole, reportV3Execution } from '@/lib/v3-print-job-adapter'
 
 export const runtime = 'nodejs'
 const db = prisma as any
@@ -10,8 +10,16 @@ export async function GET(req: NextRequest) {
   return withDesktopApiError(async () => {
     const auth = await getDesktopDeviceContext(req, { updateLastSeen: true })
     if (!auth.ok) return noStoreJson({ ok: false, error: auth.error }, { status: auth.status })
-    const batchId = new URL(req.url).searchParams.get('batchId') ?? ''
-    const result = await deliverV3PrintIntent(db, { ...auth.context, batchId })
+    const searchParams = new URL(req.url).searchParams
+    const batchId = searchParams.get('batchId') ?? ''
+    const role = parseV3PrintRole(searchParams.get('role'))
+    if (!batchId || searchParams.getAll('batchId').length !== 1) {
+      return noStoreJson({ ok: false, error: 'V3_BATCH_REQUIRED' }, { status: 400 })
+    }
+    if (!role || searchParams.getAll('role').length !== 1) {
+      return noStoreJson({ ok: false, error: 'V3_ROLE_INVALID' }, { status: 400 })
+    }
+    const result = await deliverV3PrintIntent(db, { ...auth.context, batchId, role })
     return result.ok ? noStoreJson({ ok: true, job: result.job }) : noStoreJson({ ok: false, error: result.code }, { status: 409 })
   })
 }

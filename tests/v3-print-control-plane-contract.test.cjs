@@ -60,6 +60,21 @@ test('Desktop and Owner APIs keep authority roles separate and retire raw OWNER 
   assert.match(owner, /controlledV3OwnerHandoff/)
 })
 
+test('V3 receive contract is batch-fenced and explicitly role-aware on client and server', () => {
+  const route = read('app/api/desktop/v3-print-jobs/route.ts')
+  const client = read('desktop/src/main/printing/v3PrintJobClient.ts')
+  const adapter = read('lib/v3-print-job-adapter.ts')
+  assert.match(route, /searchParams\.get\('role'\)/)
+  assert.match(route, /parseV3PrintRole\(searchParams\.get\('role'\)\)/)
+  assert.match(route, /deliverV3PrintIntent\(db, \{ \.\.\.auth\.context, batchId, role \}\)/)
+  assert.match(client, /batchId=\$\{encodeURIComponent\(batch\.id\)\}&role=\$\{encodeURIComponent\(role\)\}/)
+  assert.match(client, /intent\.role !== role/)
+  assert.match(adapter, /payload: \{ path: \['role'\], equals: identity\.role \}/)
+  assert.match(adapter, /if \(!batch\) return \{ ok: false as const, code: 'V3_BATCH_STALE' \}/)
+  assert.match(adapter, /db\.\$transaction\(async \(transaction\)/)
+  assert.match(adapter, /FROM "V3PrintControlPlane"[\s\S]*FOR UPDATE/)
+})
+
 test('Ops activation adapter is authenticated, store-scoped and service-composed', () => {
   const route = read('app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/route.ts')
   const service = read('app/api/ops/tenants/[tenantId]/stores/[storeId]/v3-print-control-plane/service.ts')

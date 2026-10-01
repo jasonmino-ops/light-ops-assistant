@@ -1,8 +1,9 @@
 import net from 'node:net'
-import type { ConfiguredLocalEndpoint } from './localEndpointAuthority'
+import type { ConfiguredLocalEndpoint, PrinterRole } from './localEndpointAuthority'
 
 export type ReadinessSocket = Pick<net.Socket, 'once' | 'destroy' | 'setTimeout'>
 export type ReadinessSocketFactory = (options: { host: string; port: number }) => ReadinessSocket
+export type RoleReadinessMask = Readonly<Record<PrinterRole, boolean>>
 
 function parseEndpointKey(endpointKey: string): { host: string; port: number } | null {
   const separator = endpointKey.lastIndexOf(':')
@@ -20,18 +21,17 @@ export class NoPayloadEndpointReadiness {
   ) {}
 
   public async check(endpoints: readonly ConfiguredLocalEndpoint[]): Promise<
-    { ok: true } | { ok: false; code: string; role?: string }
+    { ok: true; roles: RoleReadinessMask } | { ok: false; code: string }
   > {
     if (endpoints.length === 0) return { ok: false, code: 'ENDPOINT_CONFIG_EMPTY' }
     if (new Set(endpoints.map(({ role }) => role)).size !== endpoints.length) {
       return { ok: false, code: 'ENDPOINT_ROLE_DUPLICATE' }
     }
+    const roles: Record<PrinterRole, boolean> = { FRONT: false, KITCHEN: false }
     for (const endpoint of endpoints) {
-      if (!await this.probe(endpoint.endpointKey)) {
-        return { ok: false, code: `ENDPOINT_${endpoint.role}_UNREACHABLE`, role: endpoint.role }
-      }
+      roles[endpoint.role] = await this.probe(endpoint.endpointKey)
     }
-    return { ok: true }
+    return { ok: true, roles }
   }
 
   private probe(endpointKey: string): Promise<boolean> {

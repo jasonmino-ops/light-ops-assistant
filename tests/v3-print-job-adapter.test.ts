@@ -3,28 +3,43 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { Prisma } from '@prisma/client'
-import { deliverV3PrintIntent, enqueueHeldV3PrintIntent, enqueueV3PrintIntent, materializeHeldV3PrintIntents, reportV3Execution, type V3Intent } from '../lib/v3-print-job-adapter'
+import { deliverV3PrintIntent, enqueueHeldV3PrintIntent, enqueueV3PrintIntent, materializeHeldV3PrintIntents, parseV3PrintRole, reportV3Execution, type V3Intent } from '../lib/v3-print-job-adapter'
 import { canonicalV3PrintEffectKey } from '../lib/v3-print-identity'
 
 const now = new Date('2026-09-23T00:00:00.000Z')
 const expiresAt = new Date('2026-09-23T01:00:00.000Z')
 const scope = { tenantId: 'tenant-a', storeId: 'store-a' }
-const identity = { ...scope, deviceId: 'device-a', batchId: 'batch-a' }
+const identity = { ...scope, deviceId: 'device-a', batchId: 'batch-a', role: 'FRONT' as const }
+test('role parser fails closed for missing, unknown and non-string values', () => {
+  assert.equal(parseV3PrintRole(null), null)
+  assert.equal(parseV3PrintRole('OTHER'), null)
+  assert.equal(parseV3PrintRole(['FRONT']), null)
+  assert.equal(parseV3PrintRole('FRONT'), 'FRONT')
+  assert.equal(parseV3PrintRole('KITCHEN'), 'KITCHEN')
+})
 function intent(overrides: Partial<Extract<V3Intent, { payloadKind: 'RAW_BYTES' }>> = {}): V3Intent {
   const bytes = Buffer.from('receipt')
   return { schemaVersion: 3, printJobId: 'job-canonical-001', source: 'CLOUD_H5', role: 'FRONT', payloadKind: 'RAW_BYTES', rendererVersion: 'renderer-v3',
     payloadBase64: bytes.toString('base64'), byteLength: bytes.length, payloadHash: createHash('sha256').update(bytes).digest('hex'), ...overrides,
     orderNo: overrides.orderNo ?? 'ORDER-001' }
 }
-function database(options: { rejectDeviceIdInPersistenceScope?: boolean } = {}) {
+function deliveredJob(result: Awaited<ReturnType<typeof deliverV3PrintIntent>>) {
+  assert.equal(result.ok, true)
+  return result.ok ? result.job : null
+}
+function database(options: { rejectDeviceIdInPersistenceScope?: boolean; beforeRoleJobSelect?: () => Promise<void> } = {}) {
   const jobs: any[] = []
-  const controlPlane: any = { mode: 'V3_ACTIVE', ownerDeviceId: 'device-a', ownerEpoch: 7,
+  const controlPlane: any = { id: 'control-a', ...scope, mode: 'V3_ACTIVE', ownerDeviceId: 'device-a', ownerEpoch: 7,
     stateVersion: 4, leaseId: 'lease-a', leaseExpiresAt: expiresAt }
   const batch: any = { id: 'batch-a', controlPlaneId: 'control-a', ...scope, ownerDeviceId: 'device-a', ownerEpoch: 7,
     stateVersion: 4, leaseId: 'lease-a', mode: 'V3_ACTIVE', expiresAt, revokedAt: null, controlPlane }
   const batches = [batch]
   const matches = (job: any, where: any) => Object.entries(where).every(([key, value]: [string, any]) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if ('path' in value) {
+        const selected = value.path.reduce((current: any, segment: string) => current?.[segment], job[key])
+        return selected === value.equals
+      }
       if ('gt' in value && !(job[key] > value.gt)) return false
       if ('lte' in value && !(job[key] <= value.lte)) return false
       if ('not' in value && job[key] === value.not) return false
@@ -44,7 +59,22 @@ function database(options: { rejectDeviceIdInPersistenceScope?: boolean } = {}) 
   const assertPersistenceScope = (value: Record<string, unknown>) => {
     if (options.rejectDeviceIdInPersistenceScope) assert.equal(Object.hasOwn(value, 'deviceId'), false)
   }
+  let transactionTail = Promise.resolve()
   const db: any = { jobs, batch, batches, controlPlane,
+    $transaction: async (operation: (tx: any) => Promise<any>) => {
+      const previous = transactionTail
+      let release!: () => void
+      transactionTail = new Promise<void>((resolve) => { release = resolve })
+      await previous
+      try { return await operation(db) } finally { release() }
+    },
+    $queryRaw: async (_query: TemplateStringsArray, ...values: unknown[]) => {
+      const [id, tenantId, storeId] = values
+      return id === controlPlane.id && tenantId === controlPlane.tenantId && storeId === controlPlane.storeId
+        ? [{ id: controlPlane.id }]
+        : []
+    },
+    v3PrintControlPlane: { findUnique: async ({ where }: any) => where.storeId === controlPlane.storeId ? controlPlane : null },
     v3PrintExecutionBatch: { findUnique: async ({ where, include }: any) => {
       const selected = batches.find(value => value.id === where.id)
       return selected ? (include ? { ...selected, controlPlane } : { ...selected, controlPlane: undefined }) : null
@@ -68,6 +98,7 @@ function database(options: { rejectDeviceIdInPersistenceScope?: boolean } = {}) 
       },
       findFirst: async ({ where }: any) => {
         assertPersistenceScope(where)
+        if (where.payload?.path && options.beforeRoleJobSelect) await options.beforeRoleJobSelect()
         return jobs.filter(job => matches(job, where)).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0] ?? null
       },
       findMany: async ({ where }: any) => {
@@ -112,6 +143,87 @@ test('delivery requires a live owner-scoped batch', async () => {
   assert.ok(db.jobs[0].claimTokenHash)
 })
 
+test('role-aware delivery never returns or claims the other role', async () => {
+  const db = database()
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-kitchen-role-filter', role: 'KITCHEN' }), expiresAt)
+  assert.deepEqual(await deliverV3PrintIntent(db, identity, now), { ok: true, job: null })
+  assert.equal(db.jobs[0].claimAttempt, 0)
+  assert.equal(db.jobs[0].attemptCount, 0)
+  const kitchen = await deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now)
+  assert.equal(kitchen.ok && kitchen.job?.intent.role, 'KITCHEN')
+})
+
+test('KITCHEN delivery never returns or claims a FRONT job', async () => {
+  const db = database()
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-front-reverse-filter', role: 'FRONT' }), expiresAt)
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now), { ok: true, job: null })
+  assert.equal(db.jobs[0].claimAttempt, 0)
+  assert.equal(db.jobs[0].attemptCount, 0)
+})
+
+test('delivery rejects an unrecognized role before batch or job mutation', async () => {
+  const db = database()
+  await enqueueV3PrintIntent(db, scope, intent(), expiresAt)
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, role: 'OTHER' as any }, now), {
+    ok: false, code: 'V3_ROLE_INVALID',
+  })
+  assert.equal(db.jobs[0].claimAttempt, 0)
+  assert.equal(db.jobs[0].attemptCount, 0)
+})
+
+test('concurrent FRONT and KITCHEN receives atomically claim only their requested roles', async () => {
+  const db = database()
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-front-concurrent', role: 'FRONT' }), expiresAt)
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-kitchen-concurrent', role: 'KITCHEN' }), expiresAt)
+  const [front, kitchen] = await Promise.all([
+    deliverV3PrintIntent(db, identity, now),
+    deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now),
+  ])
+  assert.equal(front.ok && front.job?.intent.role, 'FRONT')
+  assert.equal(kitchen.ok && kitchen.job?.intent.role, 'KITCHEN')
+  assert.deepEqual(db.jobs.map((job: any) => [job.payload.role, job.claimAttempt, job.attemptCount]), [
+    ['FRONT', 1, 1],
+    ['KITCHEN', 1, 1],
+  ])
+})
+
+test('pre-existing incident identities stay stable across role-atomic recovery and FRONT never replays', async () => {
+  const db = database()
+  const frontId = 'network:2edcd4b9221aa1bc7e67fb5ab18f541ab1d325abab311efb6b25cd61c6cce8ce'
+  const kitchenId = 'network:945ef7b5a547ed8d22e80c49b966dd9cc92bc97f1991b5e47138106f95ef9a26'
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: frontId, role: 'FRONT' }), expiresAt)
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: kitchenId, role: 'KITCHEN' }), expiresAt)
+
+  const front = await deliverV3PrintIntent(db, identity, now)
+  assert.equal(front.ok && front.job?.printJobId, frontId)
+  assert.equal(db.jobs[1].status, 'PENDING')
+  assert.equal(db.jobs[1].claimAttempt, 0)
+  assert.equal(db.jobs[1].attemptCount, 0)
+  assert.equal(db.jobs[1].expiresAt, expiresAt)
+  await reportV3Execution(db, identity, {
+    printJobId: frontId, source: 'CLOUD_H5', role: 'FRONT', executionId: 'execution-incident-front',
+    ownerEpoch: 7, reportVersion: 1, outcome: 'CROSSED',
+  }, now)
+
+  const kitchen = await deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now)
+  assert.equal(kitchen.ok && kitchen.job?.printJobId, kitchenId)
+  assert.deepEqual(await deliverV3PrintIntent(db, identity, now), { ok: true, job: null })
+  assert.equal(db.jobs.length, 2)
+  assert.deepEqual(db.jobs.map((job: any) => job.idempotencyKey), [frontId, kitchenId])
+  assert.ok(db.jobs.every((job: any) => job.expiresAt === expiresAt))
+})
+
+test('endpoint recovery does not recreate or extend an expired role job', async () => {
+  const db = database()
+  const expiredAt = new Date(now.getTime() - 1)
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-kitchen-expired', role: 'KITCHEN' }), expiredAt)
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now), { ok: true, job: null })
+  assert.equal(db.jobs.length, 1)
+  assert.equal(db.jobs[0].expiresAt, expiredAt)
+  assert.equal(db.jobs[0].claimAttempt, 0)
+  assert.equal(db.jobs[0].attemptCount, 0)
+})
+
 test('delivery rejects wrong scope, stale ownerEpoch/lease/stateVersion, and expired owner lease', async () => {
   const db = database(); await enqueueV3PrintIntent(db, scope, intent(), expiresAt)
   assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, tenantId: 'tenant-b' }, now), { ok: false, code: 'V3_BATCH_STALE' })
@@ -137,8 +249,8 @@ for (const role of ['FRONT', 'KITCHEN'] as const) {
     await enqueueV3PrintIntent(db, scope, intent({
       printJobId, source: 'CLOUD_REMOTE_REPRINT', role, orderNo: 'ORDER-REPRINT-001', rendererVersion: 'reprint-raw-v1',
     }), expiresAt)
-    const first = await deliverV3PrintIntent(db, identity, now)
-    const second = await deliverV3PrintIntent(db, identity, now)
+    const first = await deliverV3PrintIntent(db, { ...identity, role }, now)
+    const second = await deliverV3PrintIntent(db, { ...identity, role }, now)
     assert.equal(first.ok && first.job?.printJobId, printJobId)
     assert.equal(first.ok && first.job?.intent.source, 'CLOUD_REMOTE_REPRINT')
     assert.equal(first.ok && first.job?.intent.role, role)
@@ -161,25 +273,25 @@ test('CLOUD_REMOTE_REPRINT UNKNOWN is terminally reconciled and never redelivere
   await enqueueV3PrintIntent(db, scope, intent({
     printJobId, source: 'CLOUD_REMOTE_REPRINT', role: 'KITCHEN', orderNo: 'ORDER-REPRINT-UNKNOWN', rendererVersion: 'reprint-raw-v1',
   }), expiresAt)
-  assert.equal((await deliverV3PrintIntent(db, identity, now)).job?.printJobId, printJobId)
+  assert.equal(deliveredJob(await deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now))?.printJobId, printJobId)
   assert.deepEqual(await reportV3Execution(db, identity, {
     printJobId, source: 'CLOUD_REMOTE_REPRINT', role: 'KITCHEN', executionId: 'execution-unknown',
     ownerEpoch: 7, reportVersion: 1, outcome: 'CROSSING_UNKNOWN',
   }, now), { ok: true, acknowledged: true })
   assert.equal(db.jobs[0].resultStatus, 'CROSSING_UNKNOWN')
   assert.equal(db.jobs[0].attemptCount, 1)
-  assert.equal((await deliverV3PrintIntent(db, identity, now)).job, null)
+  assert.equal(deliveredJob(await deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now)), null)
 })
 
 test('transition admission is durably HELD across restart and materializes only for final V3 mode', async () => {
   const db = database()
   await enqueueHeldV3PrintIntent(db, scope, intent(), expiresAt)
   assert.equal(db.jobs[0].resultMessage, 'V3_DURABLY_HELD')
-  assert.equal((await deliverV3PrintIntent(db, identity, now)).job, null)
+  assert.equal(deliveredJob(await deliverV3PrintIntent(db, identity, now)), null)
   const restartedDb = { ...db, eshopTrayPrintJob: db.eshopTrayPrintJob }
   assert.equal(await materializeHeldV3PrintIntents(restartedDb as any, scope, 'V3_ACTIVE', now), 1)
   assert.equal(db.jobs[0].resultMessage, null)
-  assert.equal((await deliverV3PrintIntent(db, identity, now)).job?.printJobId, 'job-canonical-001')
+  assert.equal(deliveredJob(await deliverV3PrintIntent(db, identity, now))?.printJobId, 'job-canonical-001')
 })
 
 test('no-batch local HOLD projects rich Desktop auth context to schema-3 persistence scope', async () => {
@@ -239,6 +351,35 @@ test('concurrent callers receive a schema-3 job at most once', async () => {
   assert.equal(db.jobs[0].attemptCount, 1)
 })
 
+test('authority rotation cannot interleave between batch validation and role claim', async () => {
+  let enterSelection!: () => void
+  let releaseSelection!: () => void
+  const selectionEntered = new Promise<void>((resolve) => { enterSelection = resolve })
+  const selectionGate = new Promise<void>((resolve) => { releaseSelection = resolve })
+  const db = database({ beforeRoleJobSelect: async () => { enterSelection(); await selectionGate } })
+  await enqueueV3PrintIntent(db, scope, intent(), expiresAt)
+
+  const delivery = deliverV3PrintIntent(db, identity, now)
+  await selectionEntered
+  let rotationCompleted = false
+  const rotation = db.$transaction(async () => {
+    db.controlPlane.ownerEpoch = 8
+    db.controlPlane.stateVersion = 5
+    db.controlPlane.leaseId = 'lease-b'
+    db.batch.revokedAt = now
+    rotationCompleted = true
+  })
+  await Promise.resolve()
+  assert.equal(rotationCompleted, false)
+
+  releaseSelection()
+  const delivered = await delivery
+  assert.equal(delivered.ok && delivered.job?.printJobId, 'job-canonical-001')
+  await rotation
+  assert.equal(rotationCompleted, true)
+  assert.deepEqual(await deliverV3PrintIntent(db, identity, now), { ok: false, code: 'V3_BATCH_STALE' })
+})
+
 test('a new owner epoch cannot inherit an outstanding V3 delivery reservation', async () => {
   const db = database(); await enqueueV3PrintIntent(db, scope, intent(), expiresAt); await deliverV3PrintIntent(db, identity, now)
   db.controlPlane.ownerEpoch = 8
@@ -248,6 +389,21 @@ test('a new owner epoch cannot inherit an outstanding V3 delivery reservation', 
   assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now), {
     ok: false, code: 'V3_CLAIM_AMBIGUOUS',
   })
+})
+
+test('a stale cross-role reservation fences a new owner instead of weakening store authority', async () => {
+  const db = database()
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-kitchen-old-owner', role: 'KITCHEN' }), expiresAt)
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-front-new-owner', role: 'FRONT' }), expiresAt)
+  await deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now)
+  db.controlPlane.ownerEpoch = 8
+  db.controlPlane.stateVersion = 5
+  db.controlPlane.leaseId = 'lease-b'
+  db.batches.push({ ...db.batch, id: 'batch-b', ownerEpoch: 8, stateVersion: 5, leaseId: 'lease-b', controlPlane: db.controlPlane })
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now), {
+    ok: false, code: 'V3_CLAIM_AMBIGUOUS',
+  })
+  assert.equal(db.jobs[1].claimAttempt, 0)
 })
 
 test('report ACK is idempotent and never claims physical completion', async () => {
@@ -286,7 +442,7 @@ test('delayed Cloud intent recognizes the terminal Local reconciliation without 
   await reportV3Execution(db, identity, report, now)
   assert.equal((await enqueueV3PrintIntent(db, scope, intent(), expiresAt)).created, false)
   assert.equal(db.jobs.length, 1)
-  assert.equal((await deliverV3PrintIntent(db, identity, now)).job, null)
+  assert.equal(deliveredJob(await deliverV3PrintIntent(db, identity, now)), null)
 })
 
 test('Local terminal atomically consumes an already pending Cloud intent for the same canonical effect', async () => {
@@ -297,7 +453,7 @@ test('Local terminal atomically consumes an already pending Cloud intent for the
   assert.deepEqual(await reportV3Execution(db, identity, report, now), { ok: true, acknowledged: true })
   assert.equal(db.jobs[0].status, 'SUCCEEDED')
   assert.equal(db.jobs[0].payload.kind, 'LOCAL_RECONCILIATION')
-  assert.equal((await deliverV3PrintIntent(db, identity, now)).job, null)
+  assert.equal(deliveredJob(await deliverV3PrintIntent(db, identity, now)), null)
 })
 
 test('Local terminal can reconcile a concurrently claimed Cloud intent only under the same batch fence', async () => {

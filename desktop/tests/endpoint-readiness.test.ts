@@ -14,7 +14,7 @@ function socket(outcome: 'connect' | 'timeout' | 'error') {
 }
 
 describe('NoPayloadEndpointReadiness', () => {
-  it('requires each configured role and performs connect-only checks without a payload API', async () => {
+  it('records readiness independently for each configured role and performs connect-only checks without a payload API', async () => {
     const sockets: ReadinessSocket[] = []
     const create = vi.fn(() => {
       const created = socket('connect')
@@ -25,7 +25,7 @@ describe('NoPayloadEndpointReadiness', () => {
     await expect(readiness.check([
       { role: 'FRONT', endpointKey: '192.168.1.10:9100' },
       { role: 'KITCHEN', endpointKey: '192.168.1.11:9100' },
-    ])).resolves.toEqual({ ok: true })
+    ])).resolves.toEqual({ ok: true, roles: { FRONT: true, KITCHEN: true } })
     expect(create.mock.calls).toEqual([
       [{ host: '192.168.1.10', port: 9100 }],
       [{ host: '192.168.1.11', port: 9100 }],
@@ -36,7 +36,7 @@ describe('NoPayloadEndpointReadiness', () => {
     }
   })
 
-  it('fails closed on one unavailable role and never substitutes another role', async () => {
+  it('keeps a healthy role ready when another configured role is unavailable', async () => {
     const create = vi.fn()
       .mockImplementationOnce(() => socket('connect'))
       .mockImplementationOnce(() => socket('timeout'))
@@ -44,7 +44,7 @@ describe('NoPayloadEndpointReadiness', () => {
     await expect(readiness.check([
       { role: 'FRONT', endpointKey: '192.168.1.10:9100' },
       { role: 'KITCHEN', endpointKey: '192.168.1.11:9100' },
-    ])).resolves.toEqual({ ok: false, code: 'ENDPOINT_KITCHEN_UNREACHABLE', role: 'KITCHEN' })
+    ])).resolves.toEqual({ ok: true, roles: { FRONT: true, KITCHEN: false } })
     expect(create).toHaveBeenCalledTimes(2)
   })
 
@@ -57,9 +57,9 @@ describe('NoPayloadEndpointReadiness', () => {
     ])).resolves.toEqual({ ok: false, code: 'ENDPOINT_ROLE_DUPLICATE' })
     await expect(readiness.check([
       { role: 'FRONT', endpointKey: 'not-an-endpoint' },
-    ])).resolves.toEqual({ ok: false, code: 'ENDPOINT_FRONT_UNREACHABLE', role: 'FRONT' })
+    ])).resolves.toEqual({ ok: true, roles: { FRONT: false, KITCHEN: false } })
     await expect(readiness.check([
       { role: 'KITCHEN', endpointKey: '192.168.1.11:9100' },
-    ])).resolves.toEqual({ ok: false, code: 'ENDPOINT_KITCHEN_UNREACHABLE', role: 'KITCHEN' })
+    ])).resolves.toEqual({ ok: true, roles: { FRONT: false, KITCHEN: false } })
   })
 })
