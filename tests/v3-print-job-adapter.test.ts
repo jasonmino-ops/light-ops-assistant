@@ -83,7 +83,14 @@ function database(options: { rejectDeviceIdInPersistenceScope?: boolean; beforeR
       create: async ({ data }: any) => {
         assertPersistenceScope(data)
         if (jobs.some(job => job.tenantId === data.tenantId && job.storeId === data.storeId && job.idempotencyKey === data.idempotencyKey)) {
-          throw new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: 'test' })
+          throw new Prisma.PrismaClientKnownRequestError('duplicate', {
+            code: 'P2002',
+            clientVersion: 'test',
+            meta: {
+              modelName: 'EshopTrayPrintJob',
+              target: ['tenantId', 'storeId', 'idempotencyKey'],
+            },
+          })
         }
         const job = { id: `row-${jobs.length + 1}`, status: 'PENDING', claimedByComputerBindingId: null, claimTokenHash: null,
           claimAttempt: 0, attemptCount: 0, leaseExpiresAt: null, nextAttemptAt: now, completedAt: null,
