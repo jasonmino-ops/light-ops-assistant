@@ -22,9 +22,9 @@ function safeCode(value: unknown, fallback: string): string {
 export class V3PrintJobClient {
   private readonly baseUrl: string
   public constructor(baseUrl: string, private readonly token: string, private readonly fetchImpl: FetchLike = fetch) { this.baseUrl = baseUrl.replace(/\/+$/, '') }
-  public async receive(batch: ExecutionBatchProjection): Promise<{ ok: true; job: DeliveredV3Job | null } | { ok: false; error: V3ReceiveDiagnostic }> {
+  public async receive(batch: ExecutionBatchProjection, role: PrinterRole): Promise<{ ok: true; job: DeliveredV3Job | null } | { ok: false; error: V3ReceiveDiagnostic }> {
     try {
-      const response = await this.fetchImpl(`${this.baseUrl}/api/desktop/v3-print-jobs?batchId=${encodeURIComponent(batch.id)}`, {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/desktop/v3-print-jobs?batchId=${encodeURIComponent(batch.id)}&role=${encodeURIComponent(role)}`, {
         method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${this.token}` },
       })
       const body = record(await response.json().catch(() => null))
@@ -39,7 +39,7 @@ export class V3PrintJobClient {
       const job = record(body.job), intent = record(job?.intent)
       if (!job || !intent || job.printJobId !== intent.printJobId || typeof job.expiresAt !== 'string' || !Number.isFinite(Date.parse(job.expiresAt)) || intent.schemaVersion !== 3 ||
         !['LOCAL_DESKTOP', 'CLOUD_H5', 'CLOUD_THIRD_PARTY', 'CLOUD_REMOTE_REPRINT'].includes(String(intent.source)) ||
-        (intent.role !== 'FRONT' && intent.role !== 'KITCHEN') || typeof intent.rendererVersion !== 'string' || typeof intent.payloadHash !== 'string') {
+        intent.role !== role || typeof intent.rendererVersion !== 'string' || typeof intent.payloadHash !== 'string') {
         return this.invalidReceiveResponse(response.status)
       }
       const base = { printJobId: job.printJobId as string, source: intent.source as PrintIntentSource, role: intent.role as PrinterRole,

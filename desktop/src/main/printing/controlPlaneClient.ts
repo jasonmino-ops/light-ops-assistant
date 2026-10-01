@@ -69,6 +69,10 @@ export class V3ControlPlaneClient {
     return this.request('POST', { action: 'RENEW', ownerEpoch: authority.ownerEpoch, stateVersion: authority.stateVersion, leaseId: authority.leaseId })
   }
 
+  public recoverExpiredSelf(authority: ControlPlaneProjection): Promise<{ ok: true; controlPlane: ControlPlaneProjection } | { ok: false; error: string }> {
+    return this.request('POST', { action: 'RECOVER_EXPIRED_SELF', ownerEpoch: authority.ownerEpoch, stateVersion: authority.stateVersion, leaseId: authority.leaseId })
+  }
+
   public release(authority: ControlPlaneProjection): Promise<{ ok: true; controlPlane: ControlPlaneProjection } | { ok: false; error: string }> {
     return this.request('POST', { action: 'RELEASE', ownerEpoch: authority.ownerEpoch, stateVersion: authority.stateVersion, leaseId: authority.leaseId })
   }

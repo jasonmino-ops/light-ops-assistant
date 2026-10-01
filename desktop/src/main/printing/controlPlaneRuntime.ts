@@ -11,6 +11,10 @@ export type V3ExecutionLifecycleGuard = {
   complete(input: { releaseSafe: boolean }): Promise<void>
 }
 
+export type V3ExpiredSelfRecoveryReadiness = () => Promise<
+  { ok: true } | { ok: false; reason: string }
+>
+
 function sameAuthority(left: ControlPlaneProjection | null, right: ControlPlaneProjection): boolean {
   return left?.ownerDeviceId === right.ownerDeviceId && left?.ownerEpoch === right.ownerEpoch &&
     left?.stateVersion === right.stateVersion && left?.leaseId === right.leaseId
@@ -48,6 +52,7 @@ export class V3ControlPlaneRuntime {
   private authorityRotationsInProgress = 0
   private pendingAuthoritySnapshot: V3RuntimeSnapshot | null = null
   private releaseBlocked = false
+  private expiredSelfRecoveryReadiness: V3ExpiredSelfRecoveryReadiness | null = null
   private drainingAuthority: ControlPlaneProjection | null = null
   private releasePromise: Promise<void> | null = null
   private reconcileGeneration = 0
@@ -84,10 +89,18 @@ export class V3ControlPlaneRuntime {
     this.snapshot = { status: 'STOPPED', controlPlane: null, batch: null }
   }
 
-  public async markExecutionLifecycleReady(input: { releaseBlocked?: boolean } = {}): Promise<void> {
+  public async markExecutionLifecycleReady(input: {
+    releaseBlocked?: boolean
+    expiredSelfRecoveryReadiness?: V3ExpiredSelfRecoveryReadiness
+  } = {}): Promise<void> {
     if (input.releaseBlocked) this.releaseBlocked = true
+    if (input.expiredSelfRecoveryReadiness) this.expiredSelfRecoveryReadiness = input.expiredSelfRecoveryReadiness
     this.executionLifecycleReady = true
     await this.releaseDrainingAuthorityIfSafe()
+    if (this.snapshot.status === 'FENCED' && this.snapshot.controlPlane?.ownerDeviceId === this.deviceId &&
+      this.snapshot.controlPlane.leaseExpiresAt && Date.parse(this.snapshot.controlPlane.leaseExpiresAt) <= Date.now()) {
+      await this.reconcile()
+    }
   }
 
   public beginExecutionLifecycle(admittedBatch: ExecutionBatchProjection):
@@ -205,14 +218,25 @@ export class V3ControlPlaneRuntime {
         const renewed = await this.client.renew(controlPlane)
         if (!this.running || generation !== this.reconcileGeneration) return
         if (!renewed.ok) {
-          if (this.snapshot.status !== 'V3_OWNER' || !this.snapshot.batch ||
-            this.snapshot.batch.ownerEpoch !== controlPlane.ownerEpoch || this.snapshot.batch.leaseId !== controlPlane.leaseId ||
-            Date.parse(this.snapshot.batch.expiresAt) <= Date.now()) {
-            this.snapshot = { status: 'FENCED', controlPlane, batch: null }
+          const recoveryReady = await this.canRecoverExpiredSelf(controlPlane, renewed.error)
+          if (!this.running || generation !== this.reconcileGeneration) return
+          if (recoveryReady) {
+            const recovered = await this.client.recoverExpiredSelf(controlPlane)
+            if (!this.running || generation !== this.reconcileGeneration) return
+            if (!recovered.ok) {
+              this.snapshot = { status: 'FENCED', controlPlane, batch: null }
+              return
+            }
+            controlPlane = recovered.controlPlane
+          } else {
+            if (this.snapshot.status !== 'V3_OWNER' || !this.snapshot.batch ||
+              this.snapshot.batch.ownerEpoch !== controlPlane.ownerEpoch || this.snapshot.batch.leaseId !== controlPlane.leaseId ||
+              Date.parse(this.snapshot.batch.expiresAt) <= Date.now()) {
+              this.snapshot = { status: 'FENCED', controlPlane, batch: null }
+            }
+            return
           }
-          return
-        }
-        controlPlane = renewed.controlPlane
+        } else controlPlane = renewed.controlPlane
       }
 
       const issued = await this.client.issueBatch(controlPlane)
@@ -242,6 +266,19 @@ export class V3ControlPlaneRuntime {
 
   private fenced(): { ok: false; error: { code: string; message: string } } {
     return { ok: false, error: { code: 'CONTROL_PLANE_FENCED', message: 'Authoritative V3 execution authority is unavailable.' } }
+  }
+
+  private async canRecoverExpiredSelf(controlPlane: ControlPlaneProjection, renewError: string): Promise<boolean> {
+    if (renewError !== 'AUTHORITY_STALE_OR_EXPIRED' || !this.running || !this.executionLifecycleReady ||
+      this.releaseBlocked || this.snapshot.status !== 'FENCED' || this.activeExecutions !== 0 ||
+      this.pendingAuthoritySnapshot !== null || controlPlane.mode !== 'V3_ACTIVE' ||
+      controlPlane.ownerDeviceId !== this.deviceId || !controlPlane.leaseId || !controlPlane.leaseExpiresAt ||
+      Date.parse(controlPlane.leaseExpiresAt) > Date.now() || !this.expiredSelfRecoveryReadiness) return false
+    try {
+      return (await this.expiredSelfRecoveryReadiness()).ok
+    } catch {
+      return false
+    }
   }
 
   private async releaseDrainingAuthorityIfSafe(): Promise<void> {

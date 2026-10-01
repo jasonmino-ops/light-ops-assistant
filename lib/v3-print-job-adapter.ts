@@ -8,6 +8,9 @@ import { hashPrintRequest, type EshopTrayPrintRequest } from './es-tray-relay/co
 export const V3_PRINT_JOB_SCHEMA = 3 as const
 export type V3PrintSource = 'LOCAL_DESKTOP' | 'CLOUD_H5' | 'CLOUD_THIRD_PARTY' | 'CLOUD_REMOTE_REPRINT'
 export type V3PrintRole = 'FRONT' | 'KITCHEN'
+export function parseV3PrintRole(value: unknown): V3PrintRole | null {
+  return value === 'FRONT' || value === 'KITCHEN' ? value : null
+}
 type V3IntentBase = {
   schemaVersion: 3; printJobId: string; source: V3PrintSource; role: V3PrintRole
 }
@@ -19,6 +22,7 @@ type Db = V3ControlPlaneDb & {
     create(args: any): Promise<EshopTrayPrintJob>
     findUnique(args: any): Promise<EshopTrayPrintJob | null>
     findFirst(args: any): Promise<EshopTrayPrintJob | null>
+    findMany(args: any): Promise<EshopTrayPrintJob[]>
     updateMany(args: any): Promise<{ count: number }>
   }
   v3PrintExecutionBatch: V3ControlPlaneDb['v3PrintExecutionBatch'] & { findUnique(args: any): Promise<any> }
@@ -165,41 +169,71 @@ async function validBatch(db: Db, identity: { tenantId: string; storeId: string;
     batch.controlPlane.leaseExpiresAt > now ? batch : null
 }
 
-export async function deliverV3PrintIntent(db: Db, identity: { tenantId: string; storeId: string; deviceId: string; batchId: string }, now = new Date()) {
-  const batch = await validBatch(db, identity, now)
-  if (!batch) return { ok: false as const, code: 'V3_BATCH_STALE' }
-  const existing = await db.eshopTrayPrintJob.findFirst({ where: { tenantId: identity.tenantId, storeId: identity.storeId,
-    schemaVersion: 3, status: { in: ['PENDING', 'CLAIMED'] }, claimTokenHash: { not: null },
-    expiresAt: { gt: now } }, orderBy: { createdAt: 'asc' } })
-  if (existing) {
-    const intent = parse(existing.payload)
-    if (!intent || !sameExecutionOwner(existing.resultMessage, identity.deviceId, batch.ownerEpoch)) {
-      return { ok: false as const, code: 'V3_CLAIM_AMBIGUOUS' }
+async function lockDeliveryControlPlane(db: Db, identity: { tenantId: string; storeId: string }): Promise<
+  { ok: true } | { ok: false; code: 'V3_BATCH_STALE' | 'V3_CLAIM_FENCE_UNAVAILABLE' }
+> {
+  const observed = await db.v3PrintControlPlane.findUnique({ where: { storeId: identity.storeId } })
+  if (!observed || observed.tenantId !== identity.tenantId) return { ok: false, code: 'V3_BATCH_STALE' }
+  if (!db.$queryRaw) return { ok: false, code: 'V3_CLAIM_FENCE_UNAVAILABLE' }
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "V3PrintControlPlane"
+    WHERE "id" = ${observed.id} AND "tenantId" = ${identity.tenantId} AND "storeId" = ${identity.storeId}
+    FOR UPDATE
+  `
+  return Array.isArray(rows) && rows.length === 1 && rows[0]?.id === observed.id
+    ? { ok: true }
+    : { ok: false, code: 'V3_CLAIM_FENCE_UNAVAILABLE' }
+}
+
+export async function deliverV3PrintIntent(db: Db, identity: {
+  tenantId: string; storeId: string; deviceId: string; batchId: string; role: V3PrintRole
+}, now?: Date) {
+  if (!parseV3PrintRole(identity.role)) return { ok: false as const, code: 'V3_ROLE_INVALID' }
+  return db.$transaction(async (transaction) => {
+    const tx = transaction as Db
+    const locked = await lockDeliveryControlPlane(tx, identity)
+    if (!locked.ok) return { ok: false as const, code: locked.code }
+    const claimNow = now ?? new Date()
+    const batch = await validBatch(tx, identity, claimNow)
+    if (!batch) return { ok: false as const, code: 'V3_BATCH_STALE' }
+    const existingClaims = await tx.eshopTrayPrintJob.findMany({ where: { tenantId: identity.tenantId, storeId: identity.storeId,
+      schemaVersion: 3, status: { in: ['PENDING', 'CLAIMED'] }, claimTokenHash: { not: null },
+      expiresAt: { gt: claimNow } }, orderBy: { createdAt: 'asc' } })
+    for (const existing of existingClaims) {
+      const intent = parse(existing.payload)
+      if (!intent) return { ok: false as const, code: 'V3_CLAIM_AMBIGUOUS' }
+      if (!sameExecutionOwner(existing.resultMessage, identity.deviceId, batch.ownerEpoch)) {
+        return { ok: false as const, code: 'V3_CLAIM_AMBIGUOUS' }
+      }
+      if (existing.claimTokenHash !== v3DeliveryClaimToken(existing.idempotencyKey, identity.deviceId, batch.ownerEpoch)) {
+        return { ok: false as const, code: 'V3_CLAIM_AMBIGUOUS' }
+      }
+      if (intent.role !== identity.role) continue
+      // A durable V3 reservation is delivered once. Normal batch rotation must not
+      // transfer or redeliver it while the first execution/report can still settle.
+      return { ok: true as const, job: null }
     }
-    if (existing.claimTokenHash !== v3DeliveryClaimToken(existing.idempotencyKey, identity.deviceId, batch.ownerEpoch)) {
-      return { ok: false as const, code: 'V3_CLAIM_AMBIGUOUS' }
-    }
-    // A durable V3 reservation is delivered once. Normal batch rotation must not
-    // transfer or redeliver it while the first execution/report can still settle.
-    return { ok: true as const, job: null }
-  }
-  const job = await db.eshopTrayPrintJob.findFirst({ where: { tenantId: identity.tenantId, storeId: identity.storeId,
-    schemaVersion: 3, status: 'PENDING', claimTokenHash: null, nextAttemptAt: { lte: now },
-    expiresAt: { gt: now } }, orderBy: { createdAt: 'asc' } })
-  if (!job || !parse(job.payload)) return { ok: true as const, job: null }
-  const tokenHash = v3DeliveryClaimToken(job.idempotencyKey, identity.deviceId, batch.ownerEpoch)
-  // Schema 1/2 use claimedByComputerBindingId with CLAIMED/EXECUTING. V3 authority is a
-  // DesktopDevice plus a fenced execution batch, so keep the shared row PENDING while
-  // the V3-only claim provenance/token durably reserves delivery. This satisfies the
-  // existing V2 active-claim constraint without inventing a ComputerBinding identity.
-  const updated = await db.eshopTrayPrintJob.updateMany({ where: {
-    id: job.id, schemaVersion: 3, status: 'PENDING', completedAt: null, claimTokenHash: null,
-  }, data: {
-    claimTokenHash: tokenHash, resultMessage: claimProvenance({ deviceId: identity.deviceId, ownerEpoch: batch.ownerEpoch, batchId: batch.id }),
-    claimAttempt: { increment: 1 }, attemptCount: { increment: 1 }, leaseExpiresAt: batch.expiresAt,
-  } })
-  return updated.count === 1 ? { ok: true as const, job: { id: job.id, printJobId: job.idempotencyKey, expiresAt: job.expiresAt, intent: parse(job.payload)! } }
-    : { ok: false as const, code: 'V3_DELIVERY_RACE' }
+    const job = await tx.eshopTrayPrintJob.findFirst({ where: { tenantId: identity.tenantId, storeId: identity.storeId,
+      schemaVersion: 3, status: 'PENDING', claimTokenHash: null, nextAttemptAt: { lte: claimNow },
+      expiresAt: { gt: claimNow }, payload: { path: ['role'], equals: identity.role } }, orderBy: { createdAt: 'asc' } })
+    if (!job) return { ok: true as const, job: null }
+    const intent = parse(job.payload)
+    if (!intent || intent.role !== identity.role) return { ok: false as const, code: 'V3_ROLE_JOB_MISMATCH' }
+    const tokenHash = v3DeliveryClaimToken(job.idempotencyKey, identity.deviceId, batch.ownerEpoch)
+    // Schema 1/2 use claimedByComputerBindingId with CLAIMED/EXECUTING. V3 authority is a
+    // DesktopDevice plus a fenced execution batch, so keep the shared row PENDING while
+    // the V3-only claim provenance/token durably reserves delivery. This satisfies the
+    // existing V2 active-claim constraint without inventing a ComputerBinding identity.
+    const updated = await tx.eshopTrayPrintJob.updateMany({ where: {
+      id: job.id, schemaVersion: 3, status: 'PENDING', completedAt: null, claimTokenHash: null,
+      payload: { path: ['role'], equals: identity.role },
+    }, data: {
+      claimTokenHash: tokenHash, resultMessage: claimProvenance({ deviceId: identity.deviceId, ownerEpoch: batch.ownerEpoch, batchId: batch.id }),
+      claimAttempt: { increment: 1 }, attemptCount: { increment: 1 }, leaseExpiresAt: batch.expiresAt,
+    } })
+    return updated.count === 1 ? { ok: true as const, job: { id: job.id, printJobId: job.idempotencyKey, expiresAt: job.expiresAt, intent } }
+      : { ok: false as const, code: 'V3_DELIVERY_RACE' }
+  })
 }
 
 export async function reportV3Execution(db: Db, identity: { tenantId: string; storeId: string; deviceId: string; batchId: string }, report: {

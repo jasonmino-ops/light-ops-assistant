@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { getDesktopDeviceContext } from '@/lib/desktop-activation/auth'
 import { noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
 import {
-  acquireV3Authority, issueV3ExecutionBatch, readV3ControlPlane, releaseV3Authority, renewV3Authority,
+  acquireV3Authority, issueV3ExecutionBatch, readV3ControlPlane, recoverExpiredSelfV3Authority,
+  releaseV3Authority, renewV3Authority,
   type V3ControlPlaneDb,
 } from '@/lib/v3-print-control-plane'
 
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
       }
       const fenced = { ...base, ownerEpoch: body.ownerEpoch as number, stateVersion: body.stateVersion as number, leaseId: body.leaseId }
       if (body.action === 'RENEW') result = await renewV3Authority(db, fenced)
+      else if (body.action === 'RECOVER_EXPIRED_SELF') result = await recoverExpiredSelfV3Authority(db, fenced)
       else if (body.action === 'RELEASE') result = await releaseV3Authority(db, fenced)
       else if (body.action === 'ISSUE_BATCH') result = await issueV3ExecutionBatch(db, fenced)
       else return noStoreJson({ ok: false, error: 'INVALID_ACTION' }, { status: 400 })

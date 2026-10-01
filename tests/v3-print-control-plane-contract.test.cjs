@@ -26,17 +26,31 @@ test('migration constrains mode, owner shape, expiry and exact composite identit
 
 test('server writer rejects timeout promotion and requires explicit fenced writes', () => {
   const source = read('lib/v3-print-control-plane.ts')
+  const recoverExpiredSelfSource = source.slice(
+    source.indexOf('export async function recoverExpiredSelfV3Authority'),
+    source.indexOf('export async function releaseV3Authority'),
+  )
   assert.match(source, /OWNER_LIVENESS_AMBIGUOUS/)
-  assert.doesNotMatch(source, /leaseExpiresAt:\s*\{\s*lte: now\s*\}.*ownerEpoch:\s*\{\s*increment/s)
+  assert.match(recoverExpiredSelfSource, /leaseExpiresAt:\s*\{\s*lte: now\s*\}/)
+  assert.doesNotMatch(recoverExpiredSelfSource, /ownerEpoch:\s*\{\s*increment/)
+  assert.match(source, /SELECT "id" FROM "V3PrintControlPlane"[\s\S]*FOR UPDATE/)
+  assert.match(recoverExpiredSelfSource, /await lockControlPlaneRow\(tx, observed\)[\s\S]*const activeBatch/)
+  assert.match(source.slice(source.indexOf('export async function issueV3ExecutionBatch'), source.indexOf('const MODE_TRANSITIONS')),
+    /await lockControlPlaneRow\(tx, observed\)[\s\S]*v3PrintExecutionBatch\.create/)
   assert.match(source, /stateVersion: identity\.stateVersion/)
   assert.match(source, /leaseExpiresAt: \{ gt: now \}/)
   assert.match(source, /controlledV3OwnerHandoff/)
+  assert.match(source, /recoverExpiredSelfV3Authority/)
+  assert.match(source, /RECOVER_EXPIRED_SELF_ATTEMPT/)
+  assert.match(source, /RECOVER_EXPIRED_SELF_SUCCESS/)
+  assert.match(source, /RECOVER_EXPIRED_SELF_REJECTED/)
 })
 
 test('Desktop and Owner APIs keep authority roles separate and retire raw OWNER mode writes', () => {
   const desktop = read('app/api/desktop/v3-print-control-plane/route.ts')
   const owner = read('app/api/owner/v3-print-control-plane/route.ts')
   assert.match(desktop, /getDesktopDeviceContext/)
+  assert.match(desktop, /body\.action === 'RECOVER_EXPIRED_SELF'/)
   assert.doesNotMatch(desktop, /transitionV3PrintMode|controlledV3OwnerHandoff/)
   assert.match(owner, /ctx\.role !== 'OWNER'/)
   assert.match(owner, /body\.action === 'SET_MODE'/)
@@ -44,6 +58,21 @@ test('Desktop and Owner APIs keep authority roles separate and retire raw OWNER 
   assert.match(owner, /status: 409/)
   assert.doesNotMatch(owner, /transitionV3PrintMode|V3_PRINT_MODES/)
   assert.match(owner, /controlledV3OwnerHandoff/)
+})
+
+test('V3 receive contract is batch-fenced and explicitly role-aware on client and server', () => {
+  const route = read('app/api/desktop/v3-print-jobs/route.ts')
+  const client = read('desktop/src/main/printing/v3PrintJobClient.ts')
+  const adapter = read('lib/v3-print-job-adapter.ts')
+  assert.match(route, /searchParams\.get\('role'\)/)
+  assert.match(route, /parseV3PrintRole\(searchParams\.get\('role'\)\)/)
+  assert.match(route, /deliverV3PrintIntent\(db, \{ \.\.\.auth\.context, batchId, role \}\)/)
+  assert.match(client, /batchId=\$\{encodeURIComponent\(batch\.id\)\}&role=\$\{encodeURIComponent\(role\)\}/)
+  assert.match(client, /intent\.role !== role/)
+  assert.match(adapter, /payload: \{ path: \['role'\], equals: identity\.role \}/)
+  assert.match(adapter, /if \(!batch\) return \{ ok: false as const, code: 'V3_BATCH_STALE' \}/)
+  assert.match(adapter, /db\.\$transaction\(async \(transaction\)/)
+  assert.match(adapter, /FROM "V3PrintControlPlane"[\s\S]*FOR UPDATE/)
 })
 
 test('Ops activation adapter is authenticated, store-scoped and service-composed', () => {
