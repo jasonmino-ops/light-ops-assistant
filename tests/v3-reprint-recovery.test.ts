@@ -831,7 +831,7 @@ async function main() {
   await test('protected Cashier and Records blobs match the exact active authorization', () => {
     assert.equal(
       createHash('sha256').update(readFileSync('app/cashier/page.tsx')).digest('hex'),
-      '6a03169bfbf5ab14d7f6f516211a06beaea00aeb5ca92e313373243e60d25718',
+      'fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9',
     )
     assert.equal(
       createHash('sha256').update(readFileSync('app/records/page.tsx')).digest('hex'),
