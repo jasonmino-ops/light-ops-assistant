@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "taskId": "ES-PRINT-SOURCE-ROUTING-NORMALIZATION-01",
+  "featureBranch": "codex/es-print-source-routing-normalization-01",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "734b8c40424ed3752891287f006fe3ea21d4f1c6",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/cashier/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/cashier/page.tsx": "fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9"
+  },
+  "createdAt": "2026-10-02T15:15:40Z",
+  "approvedAt": "2026-10-02T15:15:40Z",
+  "approvedBy": "Founder",
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the Founder-approved sealed routing candidate in app/cashier/page.tsx: Desktop live-sale ORIGINAL uses the existing LOCAL FIRST path, configured Browser ORIGINAL continues through the existing Cloud producer, and all REPRINT paths remain unchanged. H5 and Mobile ORIGINAL are explicitly deferred.",
+  "createdOnBranch": "codex/es-print-source-routing-normalization-01-exception",
+  "sourceDraft": {
+    "baseOriginMainSha": "734b8c40424ed3752891287f006fe3ea21d4f1c6",
+    "baseProtectedFileSha256": "6a03169bfbf5ab14d7f6f516211a06beaea00aeb5ca92e313373243e60d25718",
+    "candidatePath": "/private/tmp/es-print-source-routing-normalization-01-candidate/app/cashier/page.tsx",
+    "candidateProtectedFileSha256": "fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9",
+    "candidateFileSizeBytes": 276711,
+    "candidateBranch": "codex/es-print-source-routing-normalization-01",
+    "candidateDiffStat": "app/cashier/page.tsx: 12 insertions, 23 deletions",
+    "candidateChangedLineRanges": "baseline 3753-3759 -> candidate 3753-3762; baseline 3766-3787 -> candidate 3769-3775",
+    "fileCount": 1
+  },
+  "allowedPurposes": [
+    "Register the exact Founder-approved candidate app/cashier/page.tsx SHA-256 in trusted origin/main",
+    "Run the separately authorized feature branch with the byte-identical sealed candidate",
+    "Normalize only ORIGINAL source routing for Desktop live sale and configured Browser while preserving existing REPRINT behavior"
+  ],
+  "prohibitedChanges": [
+    "Any app/cashier/page.tsx byte drift from the authorized SHA-256",
+    "H5 or Mobile ORIGINAL routing, /api/public/orders, /api/sales, payment or print trigger semantics, or failure-status contract changes",
+    "ORIGINAL identity, execution identity, FRONT/KITCHEN isolation, ExecutionLedger, effect boundary, CROSSING_UNKNOWN, authority, lease, RECOVER_EXPIRED_SELF, reprint engine or REPRINT identity changes",
+    "Database migration, new API, new printing engine, Production deploy, feature merge, installer build, FIELD VERIFIED or CLOSED"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized feature merge. It must not remain active as authorization for future Cashier changes."
+}
