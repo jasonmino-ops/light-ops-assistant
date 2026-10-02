@@ -16,8 +16,6 @@ export type ReleaseStatusItem = {
 
 export type OpsReleaseStatusSnapshot = {
   updatedAt: string
-  production: { sha: string; status: 'READY' | 'UNKNOWN' }
-  main: { sha: string }
   pendingItems: ReleaseStatusItem[]
   releasedAwaitingAcceptance: ReleaseStatusItem[]
   recentlyCompleted: ReleaseStatusItem[]
@@ -26,13 +24,6 @@ export type OpsReleaseStatusSnapshot = {
 // Curated repository-owned status source. These are recorded references, not a live release monitor.
 export const OPS_RELEASE_STATUS: OpsReleaseStatusSnapshot = {
   updatedAt: '2026-10-02',
-  production: {
-    sha: '4b83e38ceeae74f41682f05f19721816ff685bd3',
-    status: 'READY',
-  },
-  main: {
-    sha: 'df529b227a57e7d6cd13dd8513514b051a49f604',
-  },
   pendingItems: [
     {
       taskId: 'ES-PRINT-SOURCE-ROUTING-NORMALIZATION-01',
