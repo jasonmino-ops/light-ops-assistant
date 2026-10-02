@@ -3750,40 +3750,29 @@ export default function CashierPage() {
     const apiPayment = submitPayment === 'OTHER' ? 'CASH' : submitPayment
     const submittedItems = cashierDisplayItems(cart)
     const submittedTotal = cartTotal(cart)
-    // Browser keeps explicit pilot opt-in. Desktop uses a server-authorized
-    // RC10 observation and remains legacy receipt-preview when unavailable.
-    const browserNetworkPrint = window.location.pathname === '/cashier'
+    // Configured Browser-originated sales use the existing Cloud network producer.
+    // Desktop live sales never submit a competing Cloud ORIGINAL; their
+    // receipt snapshot continues through the existing LOCAL FIRST path.
+    const browserCashier = window.location.pathname === '/cashier'
       && !window.eshopDesktopRuntime?.isDesktop
-      && new URLSearchParams(window.location.search).get('networkPrint') === 'v01'
-    const browserNetworkMode = browserNetworkPrint ? new URLSearchParams(window.location.search).get('networkMode') : null
-    if (browserNetworkPrint && browserNetworkMode !== 'FRONT_ONLY' && browserNetworkMode !== 'SHARED_PRINTER') {
+    const browserNetworkParams = new URLSearchParams(window.location.search)
+    const browserNetworkRequested = browserCashier
+      && (browserNetworkParams.has('networkMode') || browserNetworkParams.get('networkPrint') === 'v01')
+    const browserNetworkMode = browserNetworkRequested ? browserNetworkParams.get('networkMode') : null
+    if (browserNetworkRequested && browserNetworkMode !== 'FRONT_ONLY' && browserNetworkMode !== 'SHARED_PRINTER') {
       setSubmitError(lang === 'en' ? 'Choose FRONT_ONLY or SHARED_PRINTER in the network cashier link.'
         : lang === 'km' ? 'សូមជ្រើសរើស FRONT_ONLY ឬ SHARED_PRINTER ក្នុងតំណគិតប្រាក់បណ្ដាញ។'
         : '请使用明确指定 FRONT_ONLY 或 SHARED_PRINTER 模式的网络收银入口。')
       setSubmitting(false)
       return
     }
-    let networkPrint = browserNetworkPrint
-    let networkMode: NetworkMode | null = browserNetworkMode as NetworkMode | null
+    const browserNetworkPrint = browserNetworkRequested
+    const networkPrint = browserNetworkPrint
+    const networkMode: NetworkMode | null = browserNetworkMode as NetworkMode | null
     try {
       if (!requireOnlinePosAuthorization()) {
         setSubmitting(false)
         return
-      }
-      if (isDesktopPos) {
-        try {
-          const modeResponse = await fetch(`/api/computer-client/network-mode?storeCode=${encodeURIComponent(storeCode)}`, {
-            cache: 'no-store',
-            headers: posDeviceHeaders(storeCode),
-          })
-          const modeBody = await modeResponse.json().catch(() => null)
-          if (modeResponse.ok && (modeBody?.mode === 'FRONT_ONLY' || modeBody?.mode === 'SHARED_PRINTER')) {
-            networkPrint = true
-            networkMode = modeBody.mode
-          }
-        } catch {
-          // Fail closed to the existing Desktop receipt path.
-        }
       }
       const res = await fetch('/api/cashier/sales', {
         method: 'POST',
