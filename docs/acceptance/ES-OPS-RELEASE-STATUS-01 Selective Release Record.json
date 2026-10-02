@@ -1,0 +1,29 @@
+{
+  "releaseId": "ES-OPS-RELEASE-STATUS-01-V2-20261003",
+  "taskIds": [
+    "ES-OPS-RELEASE-STATUS-01"
+  ],
+  "baseProductionSha": "4b83e38ceeae74f41682f05f19721816ff685bd3",
+  "sourceMainSha": "afbfc65d1b4fc3c01b85877d58fd50abfb335ab4",
+  "includedSourceCommits": [
+    "e64a124d81465d0e86abaea5d7761b90fbf98383",
+    "8b128968e5fc05bffef15b746b74a2968ac1a4cf",
+    "4028b49f1c1a7b31853cbeeb915307a0356fbe82",
+    "d0b22766e19eb6973b744f0d58f8540695299b44"
+  ],
+  "founderAuthorization": {
+    "authorizationId": "FOUNDER-GOVERNANCE-FEATURE-MERGE-GATE-ES-OPS-RELEASE-STATUS-01-V2-20261003",
+    "approvedBy": "Founder",
+    "status": "APPROVED",
+    "approvedAt": "2026-10-02T17:10:23Z",
+    "includedSourceCommits": [
+      "e64a124d81465d0e86abaea5d7761b90fbf98383",
+      "8b128968e5fc05bffef15b746b74a2968ac1a4cf",
+      "4028b49f1c1a7b31853cbeeb915307a0356fbe82",
+      "d0b22766e19eb6973b744f0d58f8540695299b44"
+    ]
+  },
+  "releaseSha": "ccdceae8499bd73f84b0489a827d1a7eceadde0a",
+  "deploymentId": "dpl_EQManS5DnQcEEjvA1EinYaFotQcV",
+  "productionSha": "ccdceae8499bd73f84b0489a827d1a7eceadde0a"
+}
