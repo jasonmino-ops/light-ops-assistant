@@ -71,11 +71,31 @@ test('opening the Desktop records panel resets any prior selected detail', () =>
   assert.match(openRecords, /setDesktopRecordsOpen\(true\)[\s\S]*setSelectedDesktopRecordOrderNo\(null\)/)
 })
 
-test('OrderDetailSheet selects the reviewed OWNER or device config gate when an order opens', () => {
-  assert.match(orderDetail, /const deviceRuntime = isDesktopPosDeviceRuntime\(\)/)
-  assert.match(orderDetail, /const readEnableState = deviceRuntime/)
-  assert.match(orderDetail, /readEshopTray02DeviceCloudEnableState[\s\S]*readEshopTray02CloudEnableState/)
-  assert.match(orderDetail, /Promise\.all\(\[readEnableState\(\), readReprint\(\)\]\)/)
+test('OrderDetailSheet selects the reviewed config gate and role-scoped recovery source when an order opens', () => {
+  const proofHydration = sourceBetween(
+    orderDetail,
+    'async function hydrateDesktopRecoveryProofs',
+    'async function loadV3ReprintAvailability',
+  )
+  assert.match(proofHydration, /!availability\?\.enabled \|\| !availability\.roles \|\| !isDesktopPosDeviceRuntime\(\)/)
+  assert.match(proofHydration, /for \(const role of \['FRONT', 'KITCHEN'\] as const\)/)
+  assert.match(proofHydration, /if \(!status\?\.localProofEligible\) continue/)
+  assert.match(proofHydration, /readDesktopV3OperatorRecoveryProof\(\{[\s\S]*orderNo: currentOrderNo,[\s\S]*originalJobId: status\.originalJobId,[\s\S]*role,/)
+  assert.match(proofHydration, /state: 'DEFINITELY_NOT_PRINTED',[\s\S]*localProofEligible: false,[\s\S]*recoveryProof,/)
+
+  const availabilityLoad = sourceBetween(
+    orderDetail,
+    'async function loadV3ReprintAvailability',
+    'async function readCurrentV3ReprintAvailability',
+  )
+  assert.match(availabilityLoad, /isDesktopPosDeviceRuntime\(\)[\s\S]*readDeviceV3ReprintAvailability\(currentOrderNo\)[\s\S]*readAccountV3ReprintAvailability\(currentOrderNo\)/)
+  assert.match(availabilityLoad, /return hydrateDesktopRecoveryProofs\(availability, currentOrderNo\)/)
+
+  const initialLoad = sourceBetween(orderDetail, 'useEffect(() => {\n    if (!orderNo) {', '  }, [orderNo])')
+  assert.match(initialLoad, /const deviceRuntime = isDesktopPosDeviceRuntime\(\)/)
+  assert.match(initialLoad, /const readEnableState = deviceRuntime/)
+  assert.match(initialLoad, /readEshopTray02DeviceCloudEnableState[\s\S]*readEshopTray02CloudEnableState/)
+  assert.match(initialLoad, /Promise\.all\(\[readEnableState\(\), loadV3ReprintAvailability\(orderNo\)\]\)/)
 })
 
 test('a disabled or failed config gate preserves the existing browser print path', () => {
