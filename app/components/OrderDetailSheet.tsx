@@ -9,7 +9,9 @@ import { renderTicketHtmlToEscPosRaw } from '@/lib/qzHtmlBitmapRenderer'
 import {
   getOrCreateEshopTray02PrintIntent,
   getOrCreateV3ReprintIntent,
+  refreshV3ReprintRecoveryProof,
   readAccountV3ReprintAvailability,
+  readDesktopV3OperatorRecoveryProof,
   readDeviceV3ReprintAvailability,
   readEshopTray02CloudEnableState,
   readEshopTray02DeviceCloudEnableState,
@@ -21,6 +23,7 @@ import {
   type EshopTray02PrintIntent,
   type V3ReprintAvailability,
   type V3ReprintIntent,
+  type V3OperatorRoleStatus,
 } from '@/lib/eShopTrayCloudClient'
 import {
   isDesktopPosDeviceRuntime,
@@ -105,16 +108,46 @@ export default function OrderDetailSheet({
   const [cloudRelayState, setCloudRelayState] = useState<EshopTray02CloudEnableState>('pending')
   const [v3Reprint, setV3Reprint] = useState<V3ReprintAvailability | null>(null)
   const [reprintChoice, setReprintChoice] = useState<'FRONT' | 'KITCHEN' | 'BOTH' | null>(null)
+  const [operatorRecoveryRole, setOperatorRecoveryRole] = useState<'FRONT' | 'KITCHEN' | null>(null)
   const [reprintError, setReprintError] = useState<string | null>(null)
   const shareCardRef = useRef<HTMLDivElement>(null)
   const relayIntentRef = useRef<EshopTray02PrintIntent | null>(null)
   const v3ReprintIntentRef = useRef<Record<'FRONT' | 'KITCHEN', V3ReprintIntent | null>>({ FRONT: null, KITCHEN: null })
   const printInFlightRef = useRef(false)
 
-  async function readCurrentV3ReprintAvailability() {
+  async function hydrateDesktopRecoveryProofs(availability: V3ReprintAvailability | null, currentOrderNo: string) {
+    if (!availability?.enabled || !availability.roles || !isDesktopPosDeviceRuntime()) return availability
+    const roles = { ...availability.roles }
+    for (const role of ['FRONT', 'KITCHEN'] as const) {
+      const status = roles[role]
+      if (!status?.localProofEligible) continue
+      const recoveryProof = await readDesktopV3OperatorRecoveryProof({
+        orderNo: currentOrderNo,
+        originalJobId: status.originalJobId,
+        role,
+      })
+      if (recoveryProof) {
+        roles[role] = {
+          ...status,
+          state: 'DEFINITELY_NOT_PRINTED',
+          localProofEligible: false,
+          recoveryProof,
+        }
+      }
+    }
+    return { ...availability, roles }
+  }
+
+  async function loadV3ReprintAvailability(currentOrderNo: string) {
     const availability = await (isDesktopPosDeviceRuntime()
-      ? readDeviceV3ReprintAvailability()
-      : readAccountV3ReprintAvailability())
+      ? readDeviceV3ReprintAvailability(currentOrderNo)
+      : readAccountV3ReprintAvailability(currentOrderNo))
+    return hydrateDesktopRecoveryProofs(availability, currentOrderNo)
+  }
+
+  async function readCurrentV3ReprintAvailability() {
+    if (!orderNo) return null
+    const availability = await loadV3ReprintAvailability(orderNo)
     setV3Reprint(availability)
     return availability
   }
@@ -125,6 +158,7 @@ export default function OrderDetailSheet({
       setCloudRelayState('pending')
       setV3Reprint(null)
       setReprintChoice(null)
+      setOperatorRecoveryRole(null)
       setReprintError(null)
       v3ReprintIntentRef.current = { FRONT: null, KITCHEN: null }
       return
@@ -138,15 +172,13 @@ export default function OrderDetailSheet({
     setCloudRelayState('pending')
     setV3Reprint(null)
     setReprintChoice(null)
+    setOperatorRecoveryRole(null)
     setReprintError(null)
     const deviceRuntime = isDesktopPosDeviceRuntime()
     const readEnableState = deviceRuntime
       ? readEshopTray02DeviceCloudEnableState
       : readEshopTray02CloudEnableState
-    const readReprint = deviceRuntime
-      ? readDeviceV3ReprintAvailability
-      : readAccountV3ReprintAvailability
-    void Promise.all([readEnableState(), readReprint()]).then(([state, availability]) => {
+    void Promise.all([readEnableState(), loadV3ReprintAvailability(orderNo)]).then(([state, availability]) => {
       if (!active) return
       setCloudRelayState(state)
       setV3Reprint(availability)
@@ -348,7 +380,13 @@ export default function OrderDetailSheet({
     setReprintError(null)
     const availability = await readCurrentV3ReprintAvailability()
     if (availability?.enabled) {
-      setReprintChoice('FRONT')
+      setOperatorRecoveryRole(null)
+      setReprintChoice(null)
+      const frontSafe = Boolean(availability.roles?.FRONT && availability.roles.FRONT.state !== 'AMBIGUOUS')
+      const kitchenSafe = Boolean(availability.roles?.KITCHEN && availability.roles.KITCHEN.state !== 'AMBIGUOUS')
+      if (frontSafe) setReprintChoice('FRONT')
+      else if (kitchenSafe) setReprintChoice('KITCHEN')
+      else setReprintError('当前打印状态待确认，请先确认打印机是否已经出票。')
       return
     }
     if (availability?.legacyAllowed) {
@@ -364,12 +402,27 @@ export default function OrderDetailSheet({
     printInFlightRef.current = true
     setShareStatus('printing')
     setReprintError(null)
-    for (const role of roles) {
-      v3ReprintIntentRef.current[role] = getOrCreateV3ReprintIntent(
-        v3ReprintIntentRef.current[role], d.orderNo, role,
-      )
-    }
     try {
+      const availability = await readCurrentV3ReprintAvailability()
+      if (!availability?.enabled || !availability.roles || roles.some((role) => availability.roles?.[role]?.state === 'AMBIGUOUS')) {
+        throw new Error('V3_REPRINT_ROLE_NOT_RECOVERABLE')
+      }
+      if (operatorRecoveryRole && (
+        roles.length !== 1
+        || roles[0] !== operatorRecoveryRole
+        || availability.roles[operatorRecoveryRole]?.state !== 'DEFINITELY_NOT_PRINTED'
+      )) {
+        setReprintChoice(null)
+        setOperatorRecoveryRole(null)
+        setReprintError('打印状态已更新，请重新核对后操作。')
+        return
+      }
+      for (const role of roles) {
+        const intent = getOrCreateV3ReprintIntent(v3ReprintIntentRef.current[role], d.orderNo, role)
+        const recoveryProof = availability.roles[role]?.recoveryProof
+        refreshV3ReprintRecoveryProof(intent, recoveryProof)
+        v3ReprintIntentRef.current[role] = intent
+      }
       for (const role of roles) {
         const intent = v3ReprintIntentRef.current[role]!
         if (!intent.commandStream) {
@@ -393,7 +446,9 @@ export default function OrderDetailSheet({
         await submit({ intent })
         v3ReprintIntentRef.current[role] = null
       }
+      await readCurrentV3ReprintAvailability()
       setReprintChoice(null)
+      setOperatorRecoveryRole(null)
       window.alert('补打请求已安全接收')
     } catch (error) {
       console.warn('[v3-reprint] submission failed closed', error)
@@ -410,6 +465,20 @@ export default function OrderDetailSheet({
   const busy = shareStatus !== 'idle'
   const printDisabled = busy || cloudRelayState === 'pending' || v3Reprint === null ||
     (!v3Reprint.enabled && !v3Reprint.legacyAllowed)
+  const bothReprintAllowed = Boolean(
+    v3Reprint?.roles?.KITCHEN
+    && v3Reprint.roles.FRONT.state === 'PRINTED'
+    && v3Reprint.roles.KITCHEN.state === 'PRINTED',
+  )
+  const reprintRoleChoices = (['FRONT', ...(v3Reprint?.kitchenEnabled ? ['KITCHEN'] : []),
+    ...(bothReprintAllowed ? ['BOTH'] : [])] as Array<'FRONT' | 'KITCHEN' | 'BOTH'>)
+    .filter((role) => role === 'BOTH' || v3Reprint?.roles?.[role]?.state !== 'AMBIGUOUS')
+
+  function operatorStatusLabel(status: V3OperatorRoleStatus) {
+    if (status.state === 'PRINTED') return { icon: '✓', label: '已打印', style: sh.printStatusOk }
+    if (status.state === 'DEFINITELY_NOT_PRINTED') return { icon: '⚠', label: '未打印', style: sh.printStatusFailed }
+    return { icon: '⚠', label: '状态待确认', style: sh.printStatusUnknown }
+  }
 
   return (
     <div style={sh.overlay} onClick={onClose}>
@@ -556,6 +625,41 @@ export default function OrderDetailSheet({
               </div>
             </div>
 
+            {/* V3 operator-facing print status. Technical claim/ledger details stay hidden. */}
+            {v3Reprint?.enabled && v3Reprint.roles && (
+              <div style={sh.section}>
+                <div style={sh.sectionLabel}>打印状态</div>
+                {(['FRONT', 'KITCHEN'] as const).map((role) => {
+                  const status = v3Reprint.roles?.[role]
+                  if (!status) return null
+                  const presentation = operatorStatusLabel(status)
+                  return (
+                    <div key={role} style={sh.printStatusRow}>
+                      <div>
+                        <div style={sh.printStatusRole}>{role === 'FRONT' ? '前台小票' : '厨房小票'}</div>
+                        <div style={{ ...sh.printStatusValue, ...presentation.style }}>
+                          {presentation.icon} {presentation.label}
+                        </div>
+                        {status.state === 'AMBIGUOUS' && (
+                          <div style={sh.printStatusHint}>请先确认打印机是否已经出票</div>
+                        )}
+                      </div>
+                      {status.state === 'DEFINITELY_NOT_PRINTED' && (
+                        <button
+                          type="button"
+                          style={sh.roleReprintBtn}
+                          disabled={busy}
+                          onClick={() => { setOperatorRecoveryRole(role); setReprintChoice(role); setReprintError(null) }}
+                        >
+                          {role === 'FRONT' ? '补打前台小票' : '补打厨房小票'}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
             {/* Checkout button — only for deferred unpaid orders */}
             {isDeferred && (
               <button style={sh.checkoutBtn} onClick={() => setShowCheckout(true)}>
@@ -596,7 +700,7 @@ export default function OrderDetailSheet({
               <div style={sh.reprintPanel}>
                 <div style={sh.confirmHint}>选择要补打的角色。每次确认都会创建新的、可审计的补打任务。</div>
                 <div style={sh.reprintChoices}>
-                  {(['FRONT', ...(v3Reprint.kitchenEnabled ? ['KITCHEN', 'BOTH'] : [])] as Array<'FRONT' | 'KITCHEN' | 'BOTH'>).map((role) => (
+                  {(operatorRecoveryRole ? [operatorRecoveryRole] : reprintRoleChoices).map((role) => (
                     <button
                       key={role}
                       type="button"
@@ -610,7 +714,7 @@ export default function OrderDetailSheet({
                 </div>
                 {reprintError && <div style={sh.confirmError}>{reprintError}</div>}
                 <div style={sh.confirmBtns}>
-                  <button style={sh.confirmBackBtn} disabled={busy} onClick={() => { setReprintChoice(null); setReprintError(null) }}>取消</button>
+                  <button style={sh.confirmBackBtn} disabled={busy} onClick={() => { setReprintChoice(null); setOperatorRecoveryRole(null); setReprintError(null) }}>取消</button>
                   <button style={sh.confirmDoBtn} disabled={busy} onClick={() => void handleV3Reprint()}>
                     {busy ? '提交中…' : '确认补打'}
                   </button>
@@ -759,6 +863,20 @@ const sh: Record<string, React.CSSProperties> = {
   },
   reprintChoices: { display: 'flex', gap: 8, marginBottom: 12 },
   reprintChoiceActive: { background: '#1677ff', color: '#fff' },
+  printStatusRow: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+    padding: '8px 0', borderBottom: '1px solid #f5f5f5',
+  },
+  printStatusRole: { fontSize: 13, fontWeight: 600, color: '#1a1a1a', marginBottom: 3 },
+  printStatusValue: { fontSize: 13, fontWeight: 700 },
+  printStatusOk: { color: '#389e0d' },
+  printStatusFailed: { color: '#d4380d' },
+  printStatusUnknown: { color: '#d48806' },
+  printStatusHint: { marginTop: 3, fontSize: 12, color: '#8c8c8c' },
+  roleReprintBtn: {
+    flexShrink: 0, minHeight: 36, padding: '0 12px', background: '#fff2f0', color: '#cf1322',
+    border: '1px solid #ffa39e', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+  },
   cancelOrderBtn: {
     display: 'block', width: '100%', height: 42, marginTop: 8,
     background: 'transparent', color: '#ff4d4f',

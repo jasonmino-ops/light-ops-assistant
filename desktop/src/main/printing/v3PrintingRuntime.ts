@@ -174,6 +174,28 @@ export class V3PrintingRuntime {
       : { status: 'REJECTED' as const, reason: 'V3_DURABLE_ADMISSION_REJECTED' }
   }
 
+  public async readOperatorRecoveryProof(input: {
+    orderNo: string
+    originalJobId: string
+    role: PrinterRole
+  }): Promise<{ state: 'DEFINITELY_NOT_PRINTED'; recoveryProof: string } | { state: 'AMBIGUOUS' }> {
+    if (!this.running || !this.cloud || this.pumpPromise) return { state: 'AMBIGUOUS' }
+    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(input.orderNo)) return { state: 'AMBIGUOUS' }
+    const canonicalKey = `cashier-network-v2:${input.orderNo}:${input.role}`
+    const expectedJobId = `network:${createHash('sha256').update(canonicalKey).digest('hex')}`
+    if (input.originalJobId !== expectedJobId) return { state: 'AMBIGUOUS' }
+
+    // Ledger absence is checked while no cloud pump is active. Once a V3 job is
+    // durably reserved the server will not redeliver it, so an absent ledger here
+    // proves that this runtime never admitted the transport effect.
+    const local = await this.ledger.get(input.originalJobId)
+    if (!local.ok || local.value.found || this.pumpPromise) return { state: 'AMBIGUOUS' }
+    const recoveryProof = await this.cloud.readOperatorRecoveryProof(input)
+    return recoveryProof
+      ? { state: 'DEFINITELY_NOT_PRINTED', recoveryProof }
+      : { state: 'AMBIGUOUS' }
+  }
+
   public provisionEndpoints(input: { revision: number; endpoints: Partial<Record<PrinterRole, LocalEndpoint>> }): Promise<void> {
     return this.endpoints.provision(input)
   }

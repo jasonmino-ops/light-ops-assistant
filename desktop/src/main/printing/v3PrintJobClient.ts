@@ -83,6 +83,32 @@ export class V3PrintJobClient {
       return response.ok && body?.ok === true && (body.status === 'DURABLY_HELD' || body.status === 'DURABLY_ACCEPTED') ? body.status : null
     } catch { return null }
   }
+  public async readOperatorRecoveryProof(input: {
+    orderNo: string
+    originalJobId: string
+    role: PrinterRole
+  }): Promise<string | null> {
+    try {
+      const query = new URLSearchParams({
+        action: 'OPERATOR_RECOVERY_PROOF',
+        orderNo: input.orderNo,
+        originalJobId: input.originalJobId,
+        role: input.role,
+        localEvidence: 'LEDGER_ABSENT',
+      })
+      const response = await this.fetchImpl(`${this.baseUrl}/api/desktop/v3-print-jobs?${query}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${this.token}` },
+      })
+      const body = record(await response.json().catch(() => null))
+      return response.ok && body?.ok === true && typeof body.proof === 'string' &&
+        /^v3orp1\.[A-Za-z0-9_-]+\.[0-9a-f]{64}$/.test(body.proof)
+        ? body.proof
+        : null
+    } catch {
+      return null
+    }
+  }
   public async report(entry: OutboxEntry): Promise<boolean> {
     try {
       const response = await this.fetchImpl(`${this.baseUrl}/api/desktop/v3-print-jobs`, { method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },

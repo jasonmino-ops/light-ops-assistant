@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getDesktopDeviceContext } from '@/lib/desktop-activation/auth'
 import { noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
 import { deliverV3PrintIntent, enqueueHeldV3PrintIntent, materializeHeldV3PrintIntents, parseV3PrintRole, reportV3Execution } from '@/lib/v3-print-job-adapter'
+import { issueV3OperatorRecoveryProofWithDb } from '@/lib/v3-print-operator-status'
 
 export const runtime = 'nodejs'
 const db = prisma as any
@@ -11,6 +12,28 @@ export async function GET(req: NextRequest) {
     const auth = await getDesktopDeviceContext(req, { updateLastSeen: true })
     if (!auth.ok) return noStoreJson({ ok: false, error: auth.error }, { status: auth.status })
     const searchParams = new URL(req.url).searchParams
+    if (searchParams.get('action') === 'OPERATOR_RECOVERY_PROOF') {
+      const keys = [...searchParams.keys()].sort().join(',')
+      const orderNo = searchParams.get('orderNo') ?? ''
+      const originalJobId = searchParams.get('originalJobId') ?? ''
+      const role = parseV3PrintRole(searchParams.get('role'))
+      const localEvidence = searchParams.get('localEvidence')
+      if (
+        keys !== 'action,localEvidence,orderNo,originalJobId,role'
+        || !/^[A-Za-z0-9._:-]{1,128}$/.test(orderNo)
+        || !/^network:[0-9a-f]{64}$/.test(originalJobId)
+        || !role
+        || localEvidence !== 'LEDGER_ABSENT'
+      ) return noStoreJson({ ok: false, error: 'V3_OPERATOR_RECOVERY_PROOF_INVALID' }, { status: 400 })
+      const proof = await issueV3OperatorRecoveryProofWithDb(db, {
+        tenantId: auth.context.tenantId,
+        storeId: auth.context.storeId,
+        desktopDeviceId: auth.context.deviceId,
+      }, { orderNo, originalJobId, role, localEvidence })
+      return proof
+        ? noStoreJson({ ok: true, proof })
+        : noStoreJson({ ok: false, error: 'V3_OPERATOR_RECOVERY_NOT_PROVABLE' }, { status: 409 })
+    }
     const batchId = searchParams.get('batchId') ?? ''
     const role = parseV3PrintRole(searchParams.get('role'))
     if (!batchId || searchParams.getAll('batchId').length !== 1) {
