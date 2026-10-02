@@ -6,7 +6,7 @@
   "baseOriginMainSha": "734b8c40424ed3752891287f006fe3ea21d4f1c6",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
   "authorizedPaths": [
     "app/cashier/page.tsx"
   ],
@@ -15,6 +15,9 @@
   },
   "createdAt": "2026-10-02T15:15:40Z",
   "approvedAt": "2026-10-02T15:15:40Z",
+  "closedAt": "2026-10-02T15:59:53Z",
+  "featureMergeCommitSha": "7d4892b0aee5e2f3b203e7d11ec4c356ec137b15",
+  "closureReason": "The exact Founder-approved feature commit b41a19f58fa02ec626e26a55ccb641f6a01934a7 entered trusted origin/main through governed merge commit 7d4892b0aee5e2f3b203e7d11ec4c356ec137b15. This closes only the consumed task-scoped authorization and does not declare release, deploy or FIELD completion.",
   "approvedBy": "Founder",
   "closeAfter": "FEATURE_MERGE",
   "reason": "Authorize only the Founder-approved sealed routing candidate in app/cashier/page.tsx: Desktop live-sale ORIGINAL uses the existing LOCAL FIRST path, configured Browser ORIGINAL continues through the existing Cloud producer, and all REPRINT paths remain unchanged. H5 and Mobile ORIGINAL are explicitly deferred.",
