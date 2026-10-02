@@ -3,11 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
-import { OPS_RELEASE_STATUS, type ReleaseStatusItem } from '@/lib/ops-release-status'
-
-function shortSha(sha: string) {
-  return sha.slice(0, 12)
-}
+import type { OpsReleaseStatusSnapshot, ReleaseStatusItem } from '@/lib/ops-release-status'
 
 function formatRecordedDate(value: string) {
   return new Date(`${value}T00:00:00Z`).toLocaleDateString('zh-CN', {
@@ -20,12 +16,21 @@ function formatRecordedDate(value: string) {
 
 export default function OpsReleaseStatusPage() {
   const [authState, setAuthState] = useState<'checking' | 'ok' | 'denied'>('checking')
+  const [snapshot, setSnapshot] = useState<OpsReleaseStatusSnapshot | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    apiFetch('/api/ops/check', undefined, OWNER_CTX)
-      .then((response) => {
-        if (!cancelled) setAuthState(response.ok ? 'ok' : 'denied')
+    apiFetch('/api/ops/release-status', { cache: 'no-store' }, OWNER_CTX)
+      .then(async (response) => {
+        if (!response.ok) {
+          if (!cancelled) setAuthState('denied')
+          return
+        }
+        const body = await response.json() as OpsReleaseStatusSnapshot
+        if (!cancelled) {
+          setSnapshot(body)
+          setAuthState('ok')
+        }
       })
       .catch(() => {
         if (!cancelled) setAuthState('denied')
@@ -33,7 +38,7 @@ export default function OpsReleaseStatusPage() {
     return () => { cancelled = true }
   }, [])
 
-  if (authState === 'checking') return <div style={s.center}>检查运营后台权限...</div>
+  if (authState === 'checking' || (authState === 'ok' && !snapshot)) return <div style={s.center}>检查运营后台权限...</div>
 
   if (authState === 'denied') {
     return (
@@ -44,6 +49,8 @@ export default function OpsReleaseStatusPage() {
       </div>
     )
   }
+
+  const status = snapshot!
 
   return (
     <div data-release-status-page="readonly" style={s.page}>
@@ -59,26 +66,25 @@ export default function OpsReleaseStatusPage() {
 
       <main style={s.main}>
         <div style={s.recordedNote}>
-          状态源：仓库记录值 · 最近记录 {formatRecordedDate(OPS_RELEASE_STATUS.updatedAt)} · 不代表实时发布监控
+          状态源：仓库记录值 · 最近记录 {formatRecordedDate(status.updatedAt)} · 不代表实时发布监控
         </div>
 
-        <section aria-label="当前版本" style={s.summaryGrid}>
-          <SummaryCard label="当前线上版本" value={shortSha(OPS_RELEASE_STATUS.production.sha)} detail="Production SHA" tone="good" />
-          <SummaryCard label="线上状态" value={OPS_RELEASE_STATUS.production.status === 'READY' ? 'READY' : '未知'} detail="记录中的 Production 状态" tone="good" />
-          <SummaryCard label="当前开发主线" value={shortSha(OPS_RELEASE_STATUS.main.sha)} detail="Main SHA" />
-          <SummaryCard label="待发布数量" value={OPS_RELEASE_STATUS.pendingItems.length} detail="已在 Main，尚未进入 Production" tone={OPS_RELEASE_STATUS.pendingItems.length > 0 ? 'warn' : 'good'} />
+        <section aria-label="发布状态概览" style={s.summaryGrid}>
+          <SummaryCard label="待发布" value={status.pendingItems.length} detail="已在 Main，尚未进入 Production" tone={status.pendingItems.length > 0 ? 'warn' : 'good'} />
+          <SummaryCard label="已发布待验收" value={status.releasedAwaitingAcceptance.length} detail="已进入 Production，仍需完成验收" tone={status.releasedAwaitingAcceptance.length > 0 ? 'warn' : 'good'} />
+          <SummaryCard label="最近已完成" value={status.recentlyCompleted.length} detail="近期已完成闭环的记录" tone="good" />
         </section>
 
-        <StatusSection title="待发布" count={OPS_RELEASE_STATUS.pendingItems.length}>
-          {OPS_RELEASE_STATUS.pendingItems.length === 0 ? <EmptyState>当前没有已记录的待发布修改</EmptyState> : <ItemList items={OPS_RELEASE_STATUS.pendingItems} />}
+        <StatusSection title="待发布" count={status.pendingItems.length}>
+          {status.pendingItems.length === 0 ? <EmptyState>当前没有已记录的待发布修改</EmptyState> : <ItemList items={status.pendingItems} />}
         </StatusSection>
 
-        <StatusSection title="已发布待验收" count={OPS_RELEASE_STATUS.releasedAwaitingAcceptance.length}>
-          {OPS_RELEASE_STATUS.releasedAwaitingAcceptance.length === 0 ? <EmptyState>暂无待验收项目</EmptyState> : <ItemList items={OPS_RELEASE_STATUS.releasedAwaitingAcceptance} />}
+        <StatusSection title="已发布待验收" count={status.releasedAwaitingAcceptance.length}>
+          {status.releasedAwaitingAcceptance.length === 0 ? <EmptyState>暂无待验收项目</EmptyState> : <ItemList items={status.releasedAwaitingAcceptance} />}
         </StatusSection>
 
-        <StatusSection title="最近已完成" count={OPS_RELEASE_STATUS.recentlyCompleted.length}>
-          {OPS_RELEASE_STATUS.recentlyCompleted.length === 0 ? <EmptyState>暂无可靠的已完成记录</EmptyState> : <ItemList items={OPS_RELEASE_STATUS.recentlyCompleted} />}
+        <StatusSection title="最近已完成" count={status.recentlyCompleted.length}>
+          {status.recentlyCompleted.length === 0 ? <EmptyState>暂无可靠的已完成记录</EmptyState> : <ItemList items={status.recentlyCompleted} />}
         </StatusSection>
       </main>
     </div>
@@ -156,7 +162,7 @@ const s: Record<string, React.CSSProperties> = {
   subtitle: { margin: '8px 0 0', color: '#4b5563', fontSize: 14 },
   readonlyBadge: { border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', borderRadius: 999, padding: '6px 11px', fontSize: 12, fontWeight: 700 },
   recordedNote: { marginBottom: 16, color: '#6b7280', fontSize: 13 },
-  summaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 20 },
+  summaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 },
   summaryCard: { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, minHeight: 112 },
   summaryLabel: { color: '#6b7280', fontSize: 13 },
   summaryValue: { marginTop: 9, fontSize: 22, fontWeight: 750, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', overflowWrap: 'anywhere' },
