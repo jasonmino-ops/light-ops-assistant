@@ -35,14 +35,21 @@ function trustedRiskRegisterAvailable() {
   }
 }
 
+function jsonDocumentsMatch(left: string, right: string) {
+  return JSON.stringify(JSON.parse(left)) === JSON.stringify(JSON.parse(right))
+}
+
 function trustedRiskRegisterMatchesWorkingTree() {
   try {
     const trusted = execFileSync('git', ['show', 'origin/main:docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-register.json'], {
       cwd: repositoryRoot,
       encoding: 'utf8',
     })
-    const working = readFileSync(join(repositoryRoot, 'docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-register.json'), 'utf8')
-    return trusted === working
+    const working = readFileSync(
+      join(repositoryRoot, 'docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-register.json'),
+      'utf8',
+    )
+    return jsonDocumentsMatch(trusted, working)
   } catch {
     return false
   }
@@ -83,6 +90,17 @@ function makeReleaseDir(metadataName = 'latest.yml') {
 }
 
 describe('EP-MB3-07A release foundation policy', () => {
+  it('compares trusted JSON registers semantically across LF and CRLF checkouts', () => {
+    expect(jsonDocumentsMatch('{\n  "status": "ACTIVE"\n}\n', '{\r\n  "status": "ACTIVE"\r\n}\r\n')).toBe(true)
+  })
+
+  it('keeps generated Contract output deterministic before clean-worktree policy tests on Windows', () => {
+    for (const workflow of ['desktop-release-pilot.yml', 'desktop-windows-build.yml']) {
+      const source = readFileSync(join(repositoryRoot, '.github', 'workflows', workflow), 'utf8')
+      expect(source).toContain('npm run build -- --newLine lf')
+    }
+  })
+
   it('keeps desktop/package.json as the unique Desktop version source', () => {
     const output = runReleaseFoundation(['policy'])
     const result = JSON.parse(output)

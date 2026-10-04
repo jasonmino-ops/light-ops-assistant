@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import os from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -55,9 +55,8 @@ describe('fresh V3 bootstrap client gate', () => {
 
   it('fails closed when local installation evidence cannot be inspected', async () => {
     const value = await fixture()
-    const notDirectory = join(value.root, 'not-a-directory')
-    await writeFile(notDirectory, 'occupied')
-    const options = { ...value.options, appDataPath: notDirectory }
+    const invalidPath = join(value.root, '\0-unreadable')
+    const options = { ...value.options, appDataPath: invalidPath }
     await expect(attemptFreshV3Bootstrap(options)).rejects.toThrow('FRESH_BOOTSTRAP_LOCAL_STATE_UNREADABLE')
     expect(value.client.bootstrapFresh).not.toHaveBeenCalled()
     expect(value.credentialStore.setFreshV3BootstrapPending).not.toHaveBeenCalled()

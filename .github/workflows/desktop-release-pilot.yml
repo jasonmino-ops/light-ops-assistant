@@ -56,7 +56,7 @@ jobs:
         working-directory: packages/hrt-contract
 
       - name: Build Contract
-        run: npm run build
+        run: npm run build -- --newLine lf
         working-directory: packages/hrt-contract
 
       - name: Install Desktop dependencies
