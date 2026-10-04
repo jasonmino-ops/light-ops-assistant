@@ -84,23 +84,20 @@ jobs:
             throw "Unexpected Provider commit: $actual"
           }
 
-      - name: Build Provider artifact
-        run: npm run package
+      - name: Build Provider runtime
+        run: npm run build
         working-directory: ep-mb3-provider
-
-      - name: Seal deterministic Provider artifact input
-        run: >-
-          node desktop/scripts/provider-artifact.mjs write
-          --artifact-dir ep-mb3-provider/artifacts/eshop-windows-provider
-          --provider-commit 7785be145d5259991038d17839d322e2694e338c
-        working-directory: .
 
       - name: Stage Provider artifact for Desktop packaging
         shell: pwsh
         working-directory: .
         run: |
-          New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
-          Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
+          node desktop/scripts/provider-artifact.mjs stage `
+            --source-dir ep-mb3-provider `
+            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider
+          node desktop/scripts/provider-artifact.mjs write `
+            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider `
+            --provider-commit 7785be145d5259991038d17839d322e2694e338c
           node desktop/scripts/provider-artifact.mjs verify `
             --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider `
             --provider-commit 7785be145d5259991038d17839d322e2694e338c
@@ -173,16 +170,32 @@ jobs:
       - name: Provider supervision pipe integration
         shell: pwsh
         run: |
-          $providerEntry = (Resolve-Path ..\ep-mb3-provider\artifacts\eshop-windows-provider\dist\index.js).Path
+          $providerEntry = (Resolve-Path ..\..\eshop-windows-provider\artifacts\eshop-windows-provider\dist\index.js).Path
           $env:ESHOP_WINDOWS_PROVIDER_ENTRY = $providerEntry
-          node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); const {getHealthSnapshot}=require('./dist/main/runtimeHealth'); const wait=ms=>new Promise(r=>setTimeout(r,ms)); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'ci-'+process.pid,connectDelayMs:500}); await s.start(); await wait(1500); const first=getHealthSnapshot().providerRuntime; if(first.state!=='ok'||!first.pid) throw new Error('Provider did not reach ok state'); process.kill(first.pid); await wait(3000); const recovered=getHealthSnapshot().providerRuntime; console.log(JSON.stringify({first,recovered})); if(recovered.state!=='ok'||!recovered.pid||recovered.pid===first.pid) throw new Error('Provider did not actually respawn'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
+          $electron = (Resolve-Path .\node_modules\electron\dist\electron.exe).Path
+          $stdout = Join-Path $env:RUNNER_TEMP "provider-supervision-smoke.out"
+          $stderr = Join-Path $env:RUNNER_TEMP "provider-supervision-smoke.err"
+          $proc = Start-Process `
+            -FilePath $electron `
+            -ArgumentList '.\tests\smoke\provider-supervision-smoke.cjs' `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr `
+            -NoNewWindow `
+            -PassThru `
+            -Wait
+          $stdoutText = if (Test-Path $stdout) { Get-Content -Raw $stdout } else { "" }
+          Write-Output $stdoutText
+          if (Test-Path $stderr) { Get-Content $stderr }
+          if ($proc.ExitCode -ne 0 -or $stdoutText -notmatch '(?m)^RESULT=PASS$') {
+            throw "Electron Provider supervision smoke failed (exit=$($proc.ExitCode))"
+          }
 
       - name: Electron runtime Provider smoke with spaces
         shell: pwsh
         run: |
           $spaceDir = Join-Path $env:RUNNER_TEMP "Provider Artifact With Spaces"
           New-Item -ItemType Directory -Force -Path $spaceDir | Out-Null
-          Copy-Item -Recurse -Force ..\ep-mb3-provider\artifacts\eshop-windows-provider $spaceDir\
+          Copy-Item -Recurse -Force ..\..\eshop-windows-provider\artifacts\eshop-windows-provider $spaceDir\
           $providerEntry = Join-Path $spaceDir "eshop-windows-provider\dist\index.js"
           $electron = (Resolve-Path .\node_modules\electron\dist\electron.exe).Path
           $smokePath = Join-Path $env:RUNNER_TEMP "electron-provider-smoke.json"
