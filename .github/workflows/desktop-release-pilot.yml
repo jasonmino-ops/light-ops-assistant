@@ -56,7 +56,10 @@ jobs:
         working-directory: packages/hrt-contract
 
       - name: Build Contract
-        run: npm run build -- --newLine lf
+        shell: pwsh
+        run: |
+          $contractOut = Join-Path $env:RUNNER_TEMP "hrt-contract-dist"
+          npm run build -- --newLine lf --outDir $contractOut
         working-directory: packages/hrt-contract
 
       - name: Install Desktop dependencies

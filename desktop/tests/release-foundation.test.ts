@@ -97,7 +97,8 @@ describe('EP-MB3-07A release foundation policy', () => {
   it('keeps generated Contract output deterministic before clean-worktree policy tests on Windows', () => {
     for (const workflow of ['desktop-release-pilot.yml', 'desktop-windows-build.yml']) {
       const source = readFileSync(join(repositoryRoot, '.github', 'workflows', workflow), 'utf8')
-      expect(source).toContain('npm run build -- --newLine lf')
+      expect(source).toContain('$contractOut = Join-Path $env:RUNNER_TEMP "hrt-contract-dist"')
+      expect(source).toContain('npm run build -- --newLine lf --outDir $contractOut')
     }
   })
 
