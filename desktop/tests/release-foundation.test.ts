@@ -102,6 +102,14 @@ describe('EP-MB3-07A release foundation policy', () => {
     }
   })
 
+  it('resolves renderer build tooling from the pinned Desktop install on Windows', () => {
+    for (const workflow of ['desktop-release-pilot.yml', 'desktop-windows-build.yml']) {
+      const source = readFileSync(join(repositoryRoot, '.github', 'workflows', workflow), 'utf8')
+      expect(source).toContain('$env:NODE_PATH = (Resolve-Path .\\node_modules).Path')
+      expect(source).toContain('npm run compile')
+    }
+  })
+
   it('keeps desktop/package.json as the unique Desktop version source', () => {
     const output = runReleaseFoundation(['policy'])
     const result = JSON.parse(output)

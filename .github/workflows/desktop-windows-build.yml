@@ -80,7 +80,10 @@ jobs:
         run: npm test
 
       - name: Compile main & preload
-        run: npm run compile
+        shell: pwsh
+        run: |
+          $env:NODE_PATH = (Resolve-Path .\node_modules).Path
+          npm run compile
 
       - name: Verify activation dist assets
         run: node scripts/verify-activation-assets.mjs dist
