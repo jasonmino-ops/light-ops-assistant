@@ -5,12 +5,20 @@ import os from 'node:os'
 import { createPackage } from '@electron/asar'
 import { afterEach, describe, expect, it } from 'vitest'
 import { resolveWindowsProviderEntry } from '../src/main/provider/providerProcess'
-// @ts-expect-error Build-time ESM script intentionally has no runtime TS surface.
-import { stageProviderArtifact, verifyProviderArtifact, writeProviderArtifactManifest } from '../scripts/provider-artifact.mjs'
 
 const roots: string[] = []
 const commit = '7785be145d5259991038d17839d322e2694e338c'
+const providerArtifactScript = join(__dirname, '../scripts/provider-artifact.mjs')
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))))
+
+function runProviderArtifact(...args: string[]) {
+  try {
+    return JSON.parse(execFileSync(process.execPath, [providerArtifactScript, ...args], { encoding: 'utf8' }))
+  } catch (error) {
+    const stderr = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr) : ''
+    throw new Error(stderr.trim() || (error instanceof Error ? error.message : String(error)))
+  }
+}
 
 async function artifact() {
   const root = await mkdtemp(join(os.tmpdir(), 'provider-artifact-'))
@@ -64,12 +72,12 @@ describe('deterministic Provider packaging input', () => {
     const stagedA = join(parentA, 'eshop-windows-provider')
     const stagedB = join(parentB, 'eshop-windows-provider')
 
-    await expect(stageProviderArtifact(sourceA, stagedA)).resolves.toMatchObject({
+    expect(runProviderArtifact('stage', '--source-dir', sourceA, '--artifact-dir', stagedA)).toMatchObject({
       result: 'PASS',
       entrypoint: 'dist/index.js',
       externalImports: [],
     })
-    await expect(stageProviderArtifact(sourceB, stagedB)).resolves.toMatchObject({ result: 'PASS' })
+    expect(runProviderArtifact('stage', '--source-dir', sourceB, '--artifact-dir', stagedB)).toMatchObject({ result: 'PASS' })
     expect(await readFile(join(stagedA, 'dist', 'index.js'))).toEqual(await readFile(join(stagedB, 'dist', 'index.js')))
 
     await rm(join(sourceA, 'node_modules'), { recursive: true })
@@ -80,8 +88,8 @@ describe('deterministic Provider packaging input', () => {
     expect(stagedPackage).not.toHaveProperty('dependencies')
     expect(stagedPackage).not.toHaveProperty('engines')
 
-    await writeProviderArtifactManifest(stagedA, commit)
-    await expect(verifyProviderArtifact(stagedA, commit)).resolves.toMatchObject({ result: 'PASS', files: 2 })
+    runProviderArtifact('write', '--artifact-dir', stagedA, '--provider-commit', commit)
+    expect(runProviderArtifact('verify', '--artifact-dir', stagedA, '--provider-commit', commit)).toMatchObject({ result: 'PASS', files: 2 })
     expect((await readdir(stagedA)).sort()).toEqual(['dist', 'package.json', 'provider-artifact-manifest.json'])
   })
 
@@ -99,6 +107,10 @@ describe('deterministic Provider packaging input', () => {
       readFile(join(__dirname, '../../.github/workflows/desktop-windows-build.yml'), 'utf8'),
     ])
     for (const workflow of workflows) {
+      const unitTests = workflow.indexOf('- name: Unit tests')
+      const providerCheckout = workflow.indexOf('- name: Checkout Windows Provider artifact source')
+      const providerStage = workflow.indexOf('- name: Stage Provider artifact for Desktop packaging')
+      const providerSupervision = workflow.indexOf('- name: Provider supervision pipe integration')
       expect(workflow).toContain('provider-artifact.mjs stage')
       expect(workflow).toContain('--source-dir ep-mb3-provider')
       expect(workflow).toContain('..\\..\\eshop-windows-provider\\artifacts\\eshop-windows-provider\\dist\\index.js')
@@ -107,6 +119,10 @@ describe('deterministic Provider packaging input', () => {
       expect(workflow).not.toContain('..\\ep-mb3-provider\\artifacts\\eshop-windows-provider\\dist\\index.js')
       expect(workflow).toContain("-ArgumentList '.\\tests\\smoke\\provider-supervision-smoke.cjs'")
       expect(workflow).not.toContain('node -e "const {WindowsProviderSupervisor}')
+      expect(unitTests).toBeGreaterThanOrEqual(0)
+      expect(unitTests).toBeLessThan(providerCheckout)
+      expect(providerCheckout).toBeLessThan(providerStage)
+      expect(providerStage).toBeLessThan(providerSupervision)
     }
 
     const desktopPackage = JSON.parse(await readFile(join(__dirname, '../package.json'), 'utf8'))
@@ -117,8 +133,8 @@ describe('deterministic Provider packaging input', () => {
 
   it('seals and verifies every packaged Provider byte against the pinned commit', async () => {
     const root = await artifact()
-    await expect(writeProviderArtifactManifest(root, commit)).resolves.toMatchObject({ result: 'PASS', files: 2 })
-    await expect(verifyProviderArtifact(root, commit)).resolves.toMatchObject({
+    expect(runProviderArtifact('write', '--artifact-dir', root, '--provider-commit', commit)).toMatchObject({ result: 'PASS', files: 2 })
+    expect(runProviderArtifact('verify', '--artifact-dir', root, '--provider-commit', commit)).toMatchObject({
       result: 'PASS',
       providerCommit: commit,
       files: 2,
@@ -127,19 +143,19 @@ describe('deterministic Provider packaging input', () => {
 
   it('rejects tampering and a nested node_modules runtime dependency', async () => {
     const root = await artifact()
-    await writeProviderArtifactManifest(root, commit)
+    runProviderArtifact('write', '--artifact-dir', root, '--provider-commit', commit)
     await writeFile(join(root, 'dist', 'index.js'), 'tampered\n')
-    await expect(verifyProviderArtifact(root, commit)).rejects.toThrow('manifest does not match')
+    expect(() => runProviderArtifact('verify', '--artifact-dir', root, '--provider-commit', commit)).toThrow('manifest does not match')
 
     const second = await artifact()
-    await writeProviderArtifactManifest(second, commit)
+    runProviderArtifact('write', '--artifact-dir', second, '--provider-commit', commit)
     await mkdir(join(second, 'node_modules'))
-    await expect(verifyProviderArtifact(second, commit)).rejects.toThrow('must not contain node_modules')
+    expect(() => runProviderArtifact('verify', '--artifact-dir', second, '--provider-commit', commit)).toThrow('must not contain node_modules')
 
     const third = await artifact()
-    await writeProviderArtifactManifest(third, commit)
+    runProviderArtifact('write', '--artifact-dir', third, '--provider-commit', commit)
     await writeFile(join(third, 'README.md'), 'development-only material\n')
-    await expect(verifyProviderArtifact(third, commit)).rejects.toThrow('non-runtime root entries')
+    expect(() => runProviderArtifact('verify', '--artifact-dir', third, '--provider-commit', commit)).toThrow('non-runtime root entries')
 
     const fourth = await artifact()
     await writeFile(join(fourth, 'package.json'), JSON.stringify({
@@ -150,7 +166,7 @@ describe('deterministic Provider packaging input', () => {
       main: 'dist/index.js',
       dependencies: { unsafe: '1.0.0' },
     }))
-    await expect(writeProviderArtifactManifest(fourth, commit)).rejects.toThrow('non-runtime metadata')
+    expect(() => runProviderArtifact('write', '--artifact-dir', fourth, '--provider-commit', commit)).toThrow('non-runtime metadata')
   })
 
   it('verifies the installed app.asar and Provider resources as one self-contained payload', async () => {
@@ -185,7 +201,7 @@ describe('deterministic Provider packaging input', () => {
       main: 'dist/index.js',
     }))
     await writeFile(join(provider, 'dist', 'index.js'), 'console.log("provider")\n')
-    await writeProviderArtifactManifest(provider, commit)
+    runProviderArtifact('write', '--artifact-dir', provider, '--provider-commit', commit)
 
     const output = execFileSync(process.execPath, [join(__dirname, '../scripts/verify-installed-resources.mjs'), resources], {
       encoding: 'utf8',

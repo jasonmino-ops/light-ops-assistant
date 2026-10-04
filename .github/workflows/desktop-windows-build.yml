@@ -26,15 +26,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout Windows Provider artifact source
-        uses: actions/checkout@v4
-        with:
-          repository: jasonmino-ops/eshop-windows-provider
-          ref: 7785be145d5259991038d17839d322e2694e338c
-          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
-          path: ep-mb3-provider
-          persist-credentials: false
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -51,37 +42,6 @@ jobs:
 
       - name: Install Desktop dependencies
         run: npm ci
-
-      - name: Install Provider dependencies
-        run: npm ci
-        working-directory: ep-mb3-provider
-
-      - name: Verify exact Provider commit
-        shell: pwsh
-        working-directory: ep-mb3-provider
-        run: |
-          $actual = git rev-parse HEAD
-          if ($actual -ne "7785be145d5259991038d17839d322e2694e338c") {
-            throw "Unexpected Provider commit: $actual"
-          }
-
-      - name: Build Provider runtime
-        run: npm run build
-        working-directory: ep-mb3-provider
-
-      - name: Stage Provider artifact for Desktop packaging
-        shell: pwsh
-        working-directory: .
-        run: |
-          node desktop/scripts/provider-artifact.mjs stage `
-            --source-dir ep-mb3-provider `
-            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider
-          node desktop/scripts/provider-artifact.mjs write `
-            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider `
-            --provider-commit 7785be145d5259991038d17839d322e2694e338c
-          node desktop/scripts/provider-artifact.mjs verify `
-            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider `
-            --provider-commit 7785be145d5259991038d17839d322e2694e338c
 
       - name: Clean Desktop build outputs
         shell: pwsh
@@ -147,6 +107,48 @@ jobs:
           if ($proc.ExitCode -ne 0 -or $stdoutText -notmatch '(?m)^RESULT=PASS$') {
             throw "Electron safeStorage smoke failed (exit=$($proc.ExitCode))"
           }
+
+      # Keep Provider source and the staged dev-artifact path absent while the
+      # Desktop suite exercises clean-worktree and missing-installation gates.
+      - name: Checkout Windows Provider artifact source
+        uses: actions/checkout@v4
+        with:
+          repository: jasonmino-ops/eshop-windows-provider
+          ref: 7785be145d5259991038d17839d322e2694e338c
+          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
+          path: ep-mb3-provider
+          persist-credentials: false
+
+      - name: Install Provider dependencies
+        run: npm ci
+        working-directory: ep-mb3-provider
+
+      - name: Verify exact Provider commit
+        shell: pwsh
+        working-directory: ep-mb3-provider
+        run: |
+          $actual = git rev-parse HEAD
+          if ($actual -ne "7785be145d5259991038d17839d322e2694e338c") {
+            throw "Unexpected Provider commit: $actual"
+          }
+
+      - name: Build Provider runtime
+        run: npm run build
+        working-directory: ep-mb3-provider
+
+      - name: Stage Provider artifact for Desktop packaging
+        shell: pwsh
+        working-directory: .
+        run: |
+          node desktop/scripts/provider-artifact.mjs stage `
+            --source-dir ep-mb3-provider `
+            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider
+          node desktop/scripts/provider-artifact.mjs write `
+            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider `
+            --provider-commit 7785be145d5259991038d17839d322e2694e338c
+          node desktop/scripts/provider-artifact.mjs verify `
+            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider `
+            --provider-commit 7785be145d5259991038d17839d322e2694e338c
 
       - name: Provider supervision pipe integration
         shell: pwsh
