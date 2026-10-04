@@ -58,7 +58,30 @@ type Tx = {
 }
 
 export type V3ControlPlaneDb = Tx & {
-  $transaction<T>(operation: (tx: Tx) => Promise<T>): Promise<T>
+  $transaction<T>(operation: (tx: Tx) => Promise<T>, options?: { isolationLevel?: 'Serializable' }): Promise<T>
+}
+
+type FreshBootstrapTx = Omit<Tx, 'v3PrintControlPlane' | 'desktopDevice' | 'eshopTrayPrintJob'> & {
+  v3PrintControlPlane: Tx['v3PrintControlPlane'] & {
+    create(args: unknown): Promise<V3ControlPlaneRecord>
+  }
+  desktopDevice: {
+    findFirst(args: unknown): Promise<{
+      id: string
+      tokenVersion?: number
+      replacesDeviceId?: string | null
+    } | null>
+  }
+  eshopTrayPrintJob: Tx['eshopTrayPrintJob'] & {
+    findFirst(args: unknown): Promise<any | null>
+  }
+  computerBinding: { findFirst(args: unknown): Promise<{ id: string } | null> }
+  storeRuntimePrinterBinding: { findFirst(args: unknown): Promise<{ id: string } | null> }
+  storeRuntimePrintTask: { findFirst(args: unknown): Promise<{ id: string } | null> }
+}
+
+export type FreshV3BootstrapDb = FreshBootstrapTx & {
+  $transaction<T>(operation: (tx: FreshBootstrapTx) => Promise<T>, options?: { isolationLevel?: 'Serializable' }): Promise<T>
 }
 
 export type ControlPlaneResult<T> =
@@ -127,6 +150,108 @@ async function lockControlPlaneRow(tx: Tx, current: V3ControlPlaneRecord): Promi
   if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== current.id) {
     throw new Error('CONTROL_PLANE_ROW_LOCK_FAILED')
   }
+}
+
+async function lockFreshBootstrapStore(tx: FreshBootstrapTx, identity: { tenantId: string; storeId: string }): Promise<void> {
+  if (!tx.$queryRaw) throw new Error('FRESH_BOOTSTRAP_STORE_LOCK_UNAVAILABLE')
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "Store"
+    WHERE "id" = ${identity.storeId} AND "tenantId" = ${identity.tenantId}
+    FOR UPDATE
+  `
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== identity.storeId) {
+    throw new Error('FRESH_BOOTSTRAP_STORE_LOCK_FAILED')
+  }
+}
+
+function prismaCode(error: unknown): string | null {
+  return error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : null
+}
+
+/**
+ * The only direct fresh -> V3_ACTIVE transition. It is intentionally separate
+ * from ensurePlane(), whose legacy-safe default remains V2_ACTIVE. Existing
+ * control planes and any V2/RC10/runtime evidence fail closed.
+ */
+export async function bootstrapFreshV3ControlPlane(
+  db: FreshV3BootstrapDb,
+  identity: { tenantId: string; storeId: string; deviceId: string },
+  now = new Date(),
+): Promise<ControlPlaneResult<{ controlPlane: ReturnType<typeof serializable> }>> {
+  const requestId = randomUUID()
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await db.$transaction(async (tx) => {
+        await lockFreshBootstrapStore(tx, identity)
+        const audit = async (status: 'SUCCESS' | 'FAILED', message: string, blocker?: string) => {
+          await tx.operationLog.create({ data: {
+            tenantId: identity.tenantId,
+            storeId: identity.storeId,
+            userId: null,
+            actionType: status === 'SUCCESS' ? 'FRESH_V3_BOOTSTRAP_SUCCESS' : 'FRESH_V3_BOOTSTRAP_REJECTED',
+            targetType: 'V3PrintControlPlane',
+            targetId: identity.storeId,
+            requestId,
+            status,
+            message,
+            payloadSnapshot: {
+              deviceId: identity.deviceId,
+              blocker: blocker ?? null,
+              occurredAt: now.toISOString(),
+            },
+          } })
+        }
+        const reject = async (blocker: string): Promise<ControlPlaneResult<never>> => {
+          await audit('FAILED', 'FRESH_BOOTSTRAP_NOT_ELIGIBLE', blocker)
+          return { ok: false, code: 'FRESH_BOOTSTRAP_NOT_ELIGIBLE' }
+        }
+
+        const currentDevice = await tx.desktopDevice.findFirst({
+          where: { id: identity.deviceId, tenantId: identity.tenantId, storeId: identity.storeId, status: 'ACTIVE' },
+          select: { id: true, tokenVersion: true, replacesDeviceId: true },
+        })
+        if (!currentDevice) return reject('CURRENT_DEVICE_NOT_ACTIVE')
+        if (currentDevice.tokenVersion !== 1 || currentDevice.replacesDeviceId !== null) {
+          return reject('CURRENT_DEVICE_NOT_FRESH')
+        }
+        if (await tx.v3PrintControlPlane.findUnique({ where: { storeId: identity.storeId } })) return reject('CONTROL_PLANE_PRESENT')
+        if (await tx.desktopDevice.findFirst({
+          where: { storeId: identity.storeId, NOT: { id: identity.deviceId } },
+          select: { id: true },
+        })) return reject('DESKTOP_DEVICE_HISTORY_PRESENT')
+        if (await tx.computerBinding.findFirst({ where: { storeId: identity.storeId }, select: { id: true } })) {
+          return reject('RC10_BINDING_PRESENT')
+        }
+        if (await tx.storeRuntimePrinterBinding.findFirst({ where: { storeId: identity.storeId }, select: { id: true } })) {
+          return reject('STORE_RUNTIME_BINDING_PRESENT')
+        }
+        if (await tx.storeRuntimePrintTask.findFirst({ where: { storeId: identity.storeId }, select: { id: true } })) {
+          return reject('STORE_RUNTIME_TASK_PRESENT')
+        }
+        if (await tx.eshopTrayPrintJob.findFirst({ where: { storeId: identity.storeId }, select: { id: true } })) {
+          return reject('V2_PRINT_JOB_PRESENT')
+        }
+        if (await tx.v3PrintExecutionBatch.findFirst({ where: { storeId: identity.storeId }, select: { id: true } })) {
+          return reject('V3_BATCH_PRESENT')
+        }
+
+        const created = await tx.v3PrintControlPlane.create({ data: {
+          tenantId: identity.tenantId,
+          storeId: identity.storeId,
+          mode: 'V3_ACTIVE',
+          lastReconciledAt: now,
+        } })
+        await audit('SUCCESS', 'FRESH_BOOTSTRAP_SUCCEEDED')
+        return { ok: true, value: { controlPlane: serializable(created) } }
+      }, { isolationLevel: 'Serializable' })
+    } catch (error) {
+      if (attempt < 2 && (prismaCode(error) === 'P2034' || prismaCode(error) === 'P2002')) continue
+      throw error
+    }
+  }
+  throw new Error('FRESH_BOOTSTRAP_SERIALIZATION_EXHAUSTED')
 }
 
 export async function readV3ControlPlane(db: V3ControlPlaneDb, identity: { tenantId: string; storeId: string }) {

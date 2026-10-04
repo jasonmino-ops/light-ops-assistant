@@ -6,7 +6,7 @@ on:
       version:
         description: "Desktop pilot version from desktop/package.json"
         required: true
-        default: "0.2.0-pilot.2"
+        default: "0.3.0-commercial-pilot.1"
 
 permissions:
   contents: read
@@ -37,8 +37,8 @@ jobs:
           if ($version -ne $inputVersion) {
             throw "Input version $inputVersion does not match desktop/package.json version $version"
           }
-          if ($inputVersion -notmatch '-pilot\.') {
-            throw "Pilot release requires a -pilot prerelease version, got $inputVersion"
+          if ($inputVersion -notmatch '-commercial-pilot\.') {
+            throw "Commercial Pilot release requires a -commercial-pilot prerelease version, got $inputVersion"
           }
           $tag = "desktop-v$version"
           "DESKTOP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -88,12 +88,22 @@ jobs:
         run: npm run package
         working-directory: ep-mb3-provider
 
+      - name: Seal deterministic Provider artifact input
+        run: >-
+          node desktop/scripts/provider-artifact.mjs write
+          --artifact-dir ep-mb3-provider/artifacts/eshop-windows-provider
+          --provider-commit 7785be145d5259991038d17839d322e2694e338c
+        working-directory: .
+
       - name: Stage Provider artifact for Desktop packaging
         shell: pwsh
         working-directory: .
         run: |
           New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
           Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
+          node desktop/scripts/provider-artifact.mjs verify `
+            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider `
+            --provider-commit 7785be145d5259991038d17839d322e2694e338c
 
       - name: Clean Desktop build outputs
         shell: pwsh
@@ -165,7 +175,7 @@ jobs:
         run: |
           $providerEntry = (Resolve-Path ..\ep-mb3-provider\artifacts\eshop-windows-provider\dist\index.js).Path
           $env:ESHOP_WINDOWS_PROVIDER_ENTRY = $providerEntry
-          node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); const {getHealthSnapshot}=require('./dist/main/runtimeHealth'); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'ci-'+process.pid,connectDelayMs:500}); await s.start(); await new Promise(r=>setTimeout(r,1500)); const h=getHealthSnapshot().providerRuntime; console.log(JSON.stringify(h)); if(h.state!=='ok') throw new Error('Provider did not reach ok state'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
+          node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); const {getHealthSnapshot}=require('./dist/main/runtimeHealth'); const wait=ms=>new Promise(r=>setTimeout(r,ms)); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'ci-'+process.pid,connectDelayMs:500}); await s.start(); await wait(1500); const first=getHealthSnapshot().providerRuntime; if(first.state!=='ok'||!first.pid) throw new Error('Provider did not reach ok state'); process.kill(first.pid); await wait(3000); const recovered=getHealthSnapshot().providerRuntime; console.log(JSON.stringify({first,recovered})); if(recovered.state!=='ok'||!recovered.pid||recovered.pid===first.pid) throw new Error('Provider did not actually respawn'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
 
       - name: Electron runtime Provider smoke with spaces
         shell: pwsh
@@ -199,13 +209,8 @@ jobs:
       - name: Verify packaged activation assets
         run: node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar
 
-      - name: Verify packaged Provider resource
-        shell: pwsh
-        run: |
-          $resourceEntry = ".\release\win-unpacked\resources\eshop-windows-provider\dist\index.js"
-          if (!(Test-Path $resourceEntry)) {
-            throw "Packaged Provider resource missing: $resourceEntry"
-          }
+      - name: Verify self-contained installed resources
+        run: node scripts/verify-installed-resources.mjs release/win-unpacked/resources
 
       - name: Generate release foundation manifests
         shell: pwsh
@@ -223,7 +228,7 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content .\package.json | ConvertFrom-Json).version
-          $installer = "E-Shop-Desktop-Setup-$version.exe"
+          $installer = "E-Shop-Desktop-Setup-$version-x64.exe"
           $assetNames = @(
             $installer,
             "$installer.blockmap",
@@ -257,8 +262,8 @@ jobs:
         with:
           name: eshop-desktop-pilot-release-${{ inputs.version }}
           path: |
-            desktop/pilot-release-bundle/E-Shop-Desktop-Setup-${{ inputs.version }}.exe
-            desktop/pilot-release-bundle/E-Shop-Desktop-Setup-${{ inputs.version }}.exe.blockmap
+            desktop/pilot-release-bundle/E-Shop-Desktop-Setup-${{ inputs.version }}-x64.exe
+            desktop/pilot-release-bundle/E-Shop-Desktop-Setup-${{ inputs.version }}-x64.exe.blockmap
             desktop/pilot-release-bundle/latest.yml
             desktop/pilot-release-bundle/SHA256SUMS.txt
             desktop/pilot-release-bundle/release-provenance-${{ inputs.version }}.json
@@ -307,8 +312,8 @@ jobs:
             echo "Release already exists: $RELEASE_TAG" >&2
             exit 1
           fi
-          INSTALLER="$GITHUB_WORKSPACE/pilot-release/E-Shop-Desktop-Setup-$VERSION.exe"
-          BLOCKMAP="$GITHUB_WORKSPACE/pilot-release/E-Shop-Desktop-Setup-$VERSION.exe.blockmap"
+          INSTALLER="$GITHUB_WORKSPACE/pilot-release/E-Shop-Desktop-Setup-$VERSION-x64.exe"
+          BLOCKMAP="$GITHUB_WORKSPACE/pilot-release/E-Shop-Desktop-Setup-$VERSION-x64.exe.blockmap"
           METADATA="$GITHUB_WORKSPACE/pilot-release/latest.yml"
           SHA_MANIFEST="$GITHUB_WORKSPACE/pilot-release/SHA256SUMS.txt"
           PROVENANCE="$GITHUB_WORKSPACE/pilot-release/release-provenance-$VERSION.json"
@@ -328,7 +333,7 @@ jobs:
             "$NOTES" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "E-Shop Desktop $VERSION unsigned internal pilot" \
+            --title "E-Shop Desktop $VERSION Commercial Pilot candidate" \
             --notes-file "$NOTES" \
             --prerelease
 

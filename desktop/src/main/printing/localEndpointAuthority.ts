@@ -5,8 +5,12 @@ import type { ActivationSecretSafeStorage } from '../activation/activationTypes'
 
 export type PrinterRole = 'FRONT' | 'KITCHEN'
 export type LocalEndpointIdentity = { storeId: string; deviceId: string }
-export type LocalEndpoint = { host: string; port: number }
+export type LocalEndpoint = { host: string; port: number; hardwareAddress?: string }
 export type ConfiguredLocalEndpoint = { role: PrinterRole; endpointKey: string }
+export type LocalEndpointConfiguration = {
+  revision: number
+  endpoints: Partial<Record<PrinterRole, LocalEndpoint>>
+}
 type EndpointDocument = {
   schemaVersion: 1
   identity: LocalEndpointIdentity
@@ -17,18 +21,26 @@ type EncryptedFile = { schemaVersion: 1; encryption: 'electron.safeStorage'; cip
 
 const ROLES = new Set<PrinterRole>(['FRONT', 'KITCHEN'])
 const IPV4 = /^(0|[1-9]\d{0,2})(\.(0|[1-9]\d{0,2})){3}$/
+const MAC = /^[0-9a-f]{2}(-[0-9a-f]{2}){5}$/
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
 function endpoint(value: unknown): LocalEndpoint | null {
   const row = record(value)
-  if (!row || Object.keys(row).sort().join(',') !== 'host,port' || typeof row.host !== 'string' ||
+  const keys = Object.keys(row ?? {}).sort().join(',')
+  if (!row || (keys !== 'host,port' && keys !== 'hardwareAddress,host,port') || typeof row.host !== 'string' ||
     !IPV4.test(row.host) || row.host.split('.').some((part) => Number(part) > 255) ||
-    !Number.isInteger(row.port) || Number(row.port) < 1 || Number(row.port) > 65535) return null
+    !Number.isInteger(row.port) || Number(row.port) < 1 || Number(row.port) > 65535 ||
+    ('hardwareAddress' in row && (typeof row.hardwareAddress !== 'string' || !MAC.test(row.hardwareAddress) ||
+      row.hardwareAddress === '00-00-00-00-00-00' || (Number.parseInt(row.hardwareAddress.slice(0, 2), 16) & 1) !== 0))) return null
   const [a, b] = row.host.split('.').map(Number)
   if (!(a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168))) return null
-  return { host: row.host, port: Number(row.port) }
+  return {
+    host: row.host,
+    port: Number(row.port),
+    ...(typeof row.hardwareAddress === 'string' ? { hardwareAddress: row.hardwareAddress } : {}),
+  }
 }
 function document(value: unknown): EndpointDocument | null {
   const row = record(value), identity = record(row?.identity), endpoints = record(row?.endpoints)
@@ -73,6 +85,20 @@ export class LocalEndpointAuthority {
       return selected ? [{ role, endpointKey: `${selected.host}:${selected.port}` }] : []
     })
     return endpoints.length > 0 ? { ok: true, endpoints } : { ok: false, code: 'ENDPOINT_CONFIG_EMPTY' }
+  }
+
+  public async configuration(): Promise<
+    { ok: true; value: LocalEndpointConfiguration } | { ok: false; code: string }
+  > {
+    const loaded = await this.read()
+    if (!loaded.ok) return loaded
+    return {
+      ok: true,
+      value: {
+        revision: loaded.value.revision,
+        endpoints: Object.fromEntries(Object.entries(loaded.value.endpoints).map(([role, value]) => [role, { ...value }])),
+      },
+    }
   }
 
   public async provision(input: { revision: number; endpoints: Partial<Record<PrinterRole, LocalEndpoint>> }): Promise<void> {

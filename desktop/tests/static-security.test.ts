@@ -24,6 +24,10 @@ const customerPreloadSrc = src('preload/customerPreload.ts')
 const mainSrc = src('main/main.ts')
 const ipcRouterSrc = src('main/ipcRouter.ts')
 const v3NetworkRendererSrc = src('main/printing/v3NetworkRenderer.ts')
+const printerSetupWindowSrc = src('main/printing/printerSetupWindowController.ts')
+const printerSetupIpcSrc = src('main/printing/printerSetupIpc.ts')
+const printerSetupPreloadSrc = src('preload/printingSetupPreload.ts')
+const printerSetupRendererSrc = src('renderer/printingSetup/printingSetupRenderer.ts')
 
 describe('Electron 安全基线（静态）', () => {
   it('窗口 webPreferences：contextIsolation:true / nodeIntegration:false / sandbox:true', () => {
@@ -67,6 +71,25 @@ describe('Electron 安全基线（静态）', () => {
     expect(v3NetworkRendererSrc).toMatch(/pathToFileURL\(path\.join\(__dirname, 'v3-network-render\.html'\)\)/)
     expect(v3NetworkRendererSrc).toMatch(/event\.senderFrame\.url !== trustedRendererUrl/)
   })
+
+  it('printer setup window keeps the Electron sandbox and denies navigation, windows, and permissions', () => {
+    expect(printerSetupWindowSrc).toMatch(/contextIsolation:\s*true/)
+    expect(printerSetupWindowSrc).toMatch(/nodeIntegration:\s*false/)
+    expect(printerSetupWindowSrc).toMatch(/sandbox:\s*true/)
+    expect(printerSetupWindowSrc).toMatch(/webSecurity:\s*true/)
+    expect(printerSetupWindowSrc).toMatch(/setWindowOpenHandler/)
+    expect(printerSetupWindowSrc).toMatch(/will-navigate/)
+    expect(printerSetupWindowSrc).toMatch(/setPermissionRequestHandler/)
+  })
+
+  it('printer setup IPC authorizes the exact setup window before every operation', () => {
+    expect(printerSetupIpcSrc).toMatch(/if \(!authorize\(event, channel\)\)/)
+    expect(printerSetupIpcSrc).toContain("return { ok: false, error: 'UNAUTHORIZED' }")
+    expect(printerSetupIpcSrc).not.toMatch(/UNAUTHORIZED'\s*,\s*state:/)
+    for (const channel of ['GET_STATE', 'DISCOVER', 'ASSIGN', 'TEST', 'SAVE', 'CLOSE']) {
+      expect(printerSetupIpcSrc).toMatch(new RegExp(`ipcMain\\.handle\\(PRINTER_SETUP_IPC\\.${channel},[\\s\\S]{0,180}action\\(event, PRINTER_SETUP_IPC\\.${channel}`))
+    }
+  })
 })
 
 describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含约束）', () => {
@@ -93,7 +116,7 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
   })
 
   it('preload 不 require 本地模块、不暴露 ipcRenderer/Node 能力给页面', () => {
-    for (const s of [employeePreloadSrc, customerPreloadSrc]) {
+    for (const s of [employeePreloadSrc, customerPreloadSrc, printerSetupPreloadSrc]) {
       // 自包含：只允许 import electron
       const imports = [...s.matchAll(/from '([^']+)'/g)].map((m) => m[1])
       expect(imports).toEqual(['electron'])
@@ -103,6 +126,13 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
       // 环境标识必须只读
       expect(s).toMatch(/Object\.freeze/)
     }
+  })
+
+  it('printer setup renderer has no network, storage, raw HTML, or command surface', () => {
+    expect(printerSetupRendererSrc).not.toMatch(/fetch\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage/)
+    expect(printerSetupRendererSrc).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|eval\(/)
+    expect(printerSetupPreloadSrc).not.toMatch(/child_process|fs\.|process\.binding|shell\./)
+    expect(printerSetupPreloadSrc).not.toMatch(/exposeInMainWorld\((?:'|")[^'"]+(?:'|"),\s*ipcRenderer/)
   })
 
   it('员工 preload 忽略回放消息（防回环）', () => {

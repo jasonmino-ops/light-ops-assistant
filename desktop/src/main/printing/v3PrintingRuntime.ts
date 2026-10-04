@@ -12,7 +12,7 @@ import type { V3ControlPlaneRuntime } from './controlPlaneRuntime'
 import type { ExecutionBatchProjection } from './controlPlaneClient'
 import { proveProcessDead } from './processLiveness'
 import { LocalEndpointAuthority, type PrinterRole } from './localEndpointAuthority'
-import type { LocalEndpoint } from './localEndpointAuthority'
+import type { LocalEndpoint, LocalEndpointConfiguration } from './localEndpointAuthority'
 import { V3PrintJobClient } from './v3PrintJobClient'
 import { V3NetworkRenderer } from './v3NetworkRenderer'
 import { NoPayloadEndpointReadiness, type RoleReadinessMask } from './endpointReadiness'
@@ -196,8 +196,21 @@ export class V3PrintingRuntime {
       : { state: 'AMBIGUOUS' }
   }
 
-  public provisionEndpoints(input: { revision: number; endpoints: Partial<Record<PrinterRole, LocalEndpoint>> }): Promise<void> {
-    return this.endpoints.provision(input)
+  public async provisionEndpoints(input: { revision: number; endpoints: Partial<Record<PrinterRole, LocalEndpoint>> }): Promise<void> {
+    await this.endpoints.provision(input)
+    this.roleReadiness = NO_ROLES_READY
+    this.roleReadinessRefreshAt = 0
+  }
+
+  public endpointConfiguration(): Promise<
+    { ok: true; value: LocalEndpointConfiguration } | { ok: false; code: string }
+  > {
+    return this.endpoints.configuration()
+  }
+
+  public async refreshEndpointReadiness(): Promise<RoleReadinessMask> {
+    await this.refreshRoleReadiness(this.lifecycleGeneration, true)
+    return Object.freeze({ ...this.roleReadiness })
   }
 
   public async close(): Promise<void> {

@@ -28,13 +28,14 @@ extraResources:
     filter:
       - dist/**
       - package.json
+      - provider-artifact-manifest.json
 
 win:
   target:
     - target: nsis
       arch:
         - x64
-  artifactName: "E-Shop-Desktop-Setup-${version}.${ext}"
+  artifactName: "E-Shop-Desktop-Setup-${version}-x64.${ext}"
 
 nsis:
   oneClick: false

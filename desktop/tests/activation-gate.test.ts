@@ -38,9 +38,10 @@ describe('activation runtime gate', () => {
     }
   })
 
-  it('routes second-instance to activation before authorization and employee after authorization', () => {
+  it('routes second-instance to activation/setup until the authorized printer setup is Ready', () => {
     const main = read('src/main/main.ts')
-    expect(main).toMatch(/activationRuntime\?\.isAuthorized\(\)\)\s*windowManager\.focusEmployeeWindow\(\)/)
+    expect(main).toMatch(/activationRuntime\?\.isAuthorized\(\) && printerSetupService\?\.snapshot\(\)\.state === 'READY'\) windowManager\.focusEmployeeWindow\(\)/)
+    expect(main).toMatch(/else if \(activationRuntime\?\.isAuthorized\(\)\) printerSetupWindowController\?\.show\(\)/)
     expect(main).toMatch(/else activationWindowController\?\.focus\(\)/)
   })
 

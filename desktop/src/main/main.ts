@@ -28,6 +28,10 @@ import { V3ControlPlaneRuntime } from './printing/controlPlaneRuntime'
 import { V3PrintingRuntime } from './printing/v3PrintingRuntime'
 import { V3PrintJobClient } from './printing/v3PrintJobClient'
 import { applyAuthorizedEndpointProvisioning } from './printing/localEndpointProvisioning'
+import { attemptFreshV3Bootstrap } from './printing/freshV3Bootstrap'
+import { PrinterSetupService, type PrinterSetupSnapshot } from './printing/printerSetupService'
+import { PrinterSetupWindowController } from './printing/printerSetupWindowController'
+import { registerPrinterSetupIpcHandlers } from './printing/printerSetupIpc'
 
 // ── 单实例（A4）────────────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -37,7 +41,8 @@ if (!gotLock) {
 } else {
   app.on('second-instance', () => {
     logger.warn('single-instance.conflict', { note: 'second launch detected' })
-    if (activationRuntime?.isAuthorized()) windowManager.focusEmployeeWindow()
+    if (activationRuntime?.isAuthorized() && printerSetupService?.snapshot().state === 'READY') windowManager.focusEmployeeWindow()
+    else if (activationRuntime?.isAuthorized()) printerSetupWindowController?.show()
     else activationWindowController?.focus()
   })
 
@@ -50,6 +55,9 @@ if (!gotLock) {
   let credentialStore: CredentialStore | null = null
   let v3ControlPlaneRuntime: V3ControlPlaneRuntime | null = null
   let v3PrintingRuntime: V3PrintingRuntime | null = null
+  let printerSetupService: PrinterSetupService | null = null
+  let printerSetupWindowController: PrinterSetupWindowController | null = null
+  let cashierWindowsStarted = false
 
   async function quitApp() {
     if (quitting) return
@@ -66,6 +74,7 @@ if (!gotLock) {
       recordHealthError('v3-control-plane', `control-plane stop failed: ${String(error)}`)
     }
     destroyTray()
+    printerSetupWindowController?.destroy()
     activationWindowController?.destroy()
     logger.info('app.quit', { uptimeSeconds: getHealthSnapshot().uptimeSeconds })
     for (const win of BrowserWindow.getAllWindows()) {
@@ -94,22 +103,19 @@ if (!gotLock) {
       updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
       logger.info('hardware.status', hardware.getStatusSummary())
 
-      setV3PrintingRuntimeProvider(() => v3PrintingRuntime)
-      registerIpcHandlers(windowManager)
-
-      windowManager.createEmployeeWindow()
-      windowManager.ensureCustomerWindow('startup')
-      windowManager.watchDisplays()
-
-      providerSupervisor = new WindowsProviderSupervisor()
-      providerSupervisor.start().catch((error) => {
-        recordHealthError('provider', `provider start failed: ${String(error)}`)
-      })
-
       const credential = await credentialStore?.readCredential()
+      let initialPrinterSetupState: PrinterSetupSnapshot | null = null
       if (credential?.ok) {
+        const controlPlaneClient = new V3ControlPlaneClient(getConfig().baseUrl, credential.credential.deviceToken)
+        const bootstrap = await attemptFreshV3Bootstrap({
+          appDataPath: app.getPath('appData'),
+          userDataPath: app.getPath('userData'),
+          credentialStore: credentialStore!,
+          client: controlPlaneClient,
+        })
+        logger.info('v3-control-plane.fresh-bootstrap', { status: bootstrap.status })
         v3ControlPlaneRuntime = new V3ControlPlaneRuntime(
-          new V3ControlPlaneClient(getConfig().baseUrl, credential.credential.deviceToken),
+          controlPlaneClient,
           context.device.deviceId,
         )
         await v3ControlPlaneRuntime.start()
@@ -125,14 +131,60 @@ if (!gotLock) {
           deviceId: context.device.deviceId,
         })
         await v3PrintingRuntime.start()
+        printerSetupService = new PrinterSetupService(v3PrintingRuntime, app.getVersion())
+        initialPrinterSetupState = await printerSetupService.initialize()
         logger.info('v3-control-plane.reconciled', { status: v3ControlPlaneRuntime.current().status })
       } else {
-        recordHealthError('v3-control-plane', 'authorized runtime has no readable credential')
+        throw new Error('AUTHORIZED_RUNTIME_CREDENTIAL_UNAVAILABLE')
       }
 
-      createTray(windowManager, () => { void quitApp() })
+      providerSupervisor = new WindowsProviderSupervisor()
+      await providerSupervisor.start()
+
+      setV3PrintingRuntimeProvider(() => v3PrintingRuntime)
+      registerIpcHandlers(windowManager)
+      printerSetupWindowController = new PrinterSetupWindowController()
+      const openCashierIfReady = (state: PrinterSetupSnapshot = printerSetupService!.snapshot()) => {
+        if (state.state !== 'READY') {
+          printerSetupWindowController?.show()
+          return
+        }
+        if (cashierWindowsStarted) {
+          windowManager.focusEmployeeWindow()
+          return
+        }
+        windowManager.createEmployeeWindow()
+        windowManager.ensureCustomerWindow('startup')
+        windowManager.watchDisplays()
+        cashierWindowsStarted = true
+      }
+      registerPrinterSetupIpcHandlers({
+        service: printerSetupService!,
+        windowController: printerSetupWindowController,
+        onStateChanged: (state) => {
+          if (state.state === 'READY') openCashierIfReady(state)
+        },
+      })
+      printerSetupWindowController.sendState(initialPrinterSetupState!)
+
+      createTray(windowManager,
+        () => { void quitApp() },
+        () => printerSetupWindowController?.show(),
+        () => printerSetupService?.snapshot().state === 'READY',
+      )
+      openCashierIfReady(initialPrinterSetupState!)
       authorizedRuntimeStarted = true
-    })().catch((error) => {
+    })().catch(async (error) => {
+      try { await providerSupervisor?.stop() } catch { /* startup cleanup */ }
+      try { await v3PrintingRuntime?.close() } catch { /* startup cleanup */ }
+      try { await v3ControlPlaneRuntime?.stop() } catch { /* startup cleanup */ }
+      providerSupervisor = null
+      v3PrintingRuntime = null
+      v3ControlPlaneRuntime = null
+      printerSetupService = null
+      cashierWindowsStarted = false
+      printerSetupWindowController?.destroy()
+      printerSetupWindowController = null
       authorizedRuntimeStartPromise = null
       throw error
     })

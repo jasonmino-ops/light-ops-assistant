@@ -79,6 +79,7 @@ function parseMetadata(raw: string): ActivationMetadataV1 | null {
   if (typeof parsed.credentialVersion === 'number') out.credentialVersion = parsed.credentialVersion
   if (typeof parsed.tokenExpiresAt === 'string') out.tokenExpiresAt = parsed.tokenExpiresAt
   if (typeof parsed.lastVerifiedAt === 'string') out.lastVerifiedAt = parsed.lastVerifiedAt
+  if (typeof parsed.freshV3BootstrapPending === 'boolean') out.freshV3BootstrapPending = parsed.freshV3BootstrapPending
   return out
 }
 
@@ -289,9 +290,18 @@ export class CredentialStore {
       credentialVersion: device.credentialVersion,
       tokenExpiresAt: device.tokenExpiresAt,
       lastVerifiedAt: new Date().toISOString(),
+      ...(typeof previous?.freshV3BootstrapPending === 'boolean'
+        ? { freshV3BootstrapPending: previous.freshV3BootstrapPending }
+        : {}),
       ...(previous?.storeCodeHint && !device.storeCode ? { storeCodeHint: previous.storeCodeHint } : {}),
     }
     await atomicWriteJson(this.metadataPath, metadata)
+  }
+
+  async setFreshV3BootstrapPending(pending: boolean) {
+    const previous = await this.readMetadata()
+    if (!previous) throw new Error('ACTIVATION_METADATA_MISSING')
+    await atomicWriteJson(this.metadataPath, { ...previous, freshV3BootstrapPending: pending })
   }
 
   async resetLocalActivation() {

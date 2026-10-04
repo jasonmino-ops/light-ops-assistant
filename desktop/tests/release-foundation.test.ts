@@ -7,8 +7,8 @@ import { describe, expect, it } from 'vitest'
 const script = join(__dirname, '..', 'scripts', 'release-foundation.mjs')
 const desktopRoot = join(__dirname, '..')
 const repositoryRoot = join(desktopRoot, '..')
-const desktopVersion = '0.2.0-pilot.2'
-const installer = `E-Shop-Desktop-Setup-${desktopVersion}.exe`
+const desktopVersion = '0.3.0-commercial-pilot.1'
+const installer = `E-Shop-Desktop-Setup-${desktopVersion}-x64.exe`
 const p2TaskId = 'ES-DESKTOP-UX-01-P2-CASHIER-MINIMAL-SIMPLIFICATION'
 const p2SourceCommit = 'db56bb9035afd74c28d26df42a7f7de89843bbce'
 const productionSha = 'b4ff8e1dfbc1f095811b247e63e2bdf04534f5a4'
@@ -58,6 +58,7 @@ function runReleaseFoundation(args: string[], options: { cwd?: string } = {}) {
       GITHUB_WORKFLOW: 'test-workflow',
       GITHUB_RUN_ID: '12345',
       BUILD_TIMESTAMP: '2026-07-18T00:00:00.000Z',
+      ESHOP_PROVIDER_ARTIFACT_MANIFEST_SHA256: 'a'.repeat(64),
     },
   })
 }
@@ -87,7 +88,7 @@ describe('EP-MB3-07A release foundation policy', () => {
     const result = JSON.parse(output)
     expect(result.versionSource).toBe('desktop/package.json')
     expect(result.desktopVersion).toBe(desktopVersion)
-    expect(result.releaseChannel).toBe('pilot')
+    expect(result.releaseChannel).toBe('commercial-pilot')
     expect(result.defaultRuntimeChannel).toBe('stable')
     expect(result.distributionClass).toBe('unsigned-internal')
     expect(result.tag).toBe(`desktop-v${desktopVersion}`)
@@ -96,28 +97,36 @@ describe('EP-MB3-07A release foundation policy', () => {
     expect(result.frozenBoundary.every((group: { status: string }) => group.status === 'PASS')).toBe(true)
   })
 
-  it('accepts only the exact authorized frozen-boundary successor bytes', () => {
+  it('records only the exact Founder-authorized Commercial Pilot startup boundary', () => {
     const output = runReleaseFoundation(['policy'])
     const result = JSON.parse(output)
-    const authorized = result.frozenBoundary
-      .filter((group: { authorizedSuccessorSnapshot?: string }) => group.authorizedSuccessorSnapshot)
-      .map((group: { label: string; authorizedSuccessorSnapshot: string }) => ({
-        label: group.label,
-        snapshot: group.authorizedSuccessorSnapshot,
-      }))
-
+    const authorized = result.frozenBoundary.filter((group: { authorizedCommercialPilotScope?: boolean }) =>
+      group.authorizedCommercialPilotScope)
     expect(authorized).toEqual([
-      { label: 'main startup gate', snapshot: '5756a4476f36f0d847835fd3ea83679240c86856' },
-      { label: 'WindowManager', snapshot: '17c764427f1e53288dedb82a1965b1365c1ded3d' },
-      { label: 'Prisma', snapshot: 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494' },
-      { label: 'Scanner', snapshot: '8317b4c2bd0ee0a90b7df4b2fe64b3489ebd6a99' },
-      { label: 'cashier/customer/mobile business', snapshot: '8fdf9b310a9b23e1e3c9e02cf88ec2790a9f879c' },
+      expect.objectContaining({
+        label: 'ActivationRuntime', changed: ['desktop/src/main/activation/activationRuntime.ts'], status: 'PASS',
+        authorizedPathSha256: {
+          'desktop/src/main/activation/activationRuntime.ts': '9f08e00cfb59d0d41015a5a1c20d0627885b6b05a1548cde5049d46fc9b9b8a9',
+        },
+      }),
+      expect.objectContaining({
+        label: 'CredentialStore', changed: ['desktop/src/main/activation/credentialStore.ts'], status: 'PASS',
+        authorizedPathSha256: {
+          'desktop/src/main/activation/credentialStore.ts': 'f0dafcb93de98d69eab1798c86e61e48b7e33e75e688667cbfd77a8a8c787103',
+        },
+      }),
+      expect.objectContaining({
+        label: 'main startup gate', changed: ['desktop/src/main/main.ts'], status: 'PASS',
+        authorizedPathSha256: {
+          'desktop/src/main/main.ts': '918b6984ab9b3a370cd73f7a1e8e2dc53146ef61ded9e97d7e0f8d94c21c0013',
+        },
+      }),
     ])
     expect(() => runReleaseFoundation([
       'policy',
       '--baseline',
       '439dcac561734d07b9e022c8d99e693c99d26794',
-    ])).toThrow(/frozen boundary changed: main startup gate, WindowManager/)
+    ])).toThrow(/frozen boundary changed:/)
   })
 
   it('writes and verifies release provenance plus SHA manifest without secrets', () => {
@@ -137,8 +146,11 @@ describe('EP-MB3-07A release foundation policy', () => {
 
     const provenance = JSON.parse(readFileSync(join(releaseDir, result.provenance), 'utf8'))
     expect(provenance.schemaVersion).toBe('ep-mb3-07a.release-provenance.v1')
+    expect(provenance.releaseChannel).toBe('commercial-pilot')
+    expect(provenance.releaseStatus).toBe('COMMERCIAL_PILOT_CANDIDATE')
     expect(provenance.distributionClass).toBe('unsigned-internal')
     expect(provenance.signingStatus).toBe('unsigned-internal')
+    expect(provenance.providerArtifactManifestSha256).toBe('a'.repeat(64))
     expect(JSON.stringify(provenance)).not.toMatch(/TOKEN|SECRET|PASSWORD|Authorization|Bearer/)
 
     const verifyOutput = runReleaseFoundation(['verify', '--release-dir', releaseDir])

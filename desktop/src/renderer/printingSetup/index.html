@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-Shop Printing Setup</title>
+  <link rel="stylesheet" href="./printingSetup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">E-Shop Desktop</p>
+        <h1>打印机设置</h1>
+        <p class="subtitle">发现局域网打印机，分配前台与厨房，测试后安全保存。</p>
+      </div>
+      <span id="version" class="version"></span>
+    </header>
+
+    <section class="status-card" aria-live="polite">
+      <div><span id="status-dot" class="dot"></span><strong id="status-title">正在读取配置</strong></div>
+      <p id="status-detail">请稍候。</p>
+    </section>
+
+    <section>
+      <div class="section-title">
+        <div><h2>1. 发现打印机</h2><p>只扫描当前私有局域网的 RAW 9100 端口，不发送打印内容。</p></div>
+        <button id="discover" type="button">扫描局域网</button>
+      </div>
+      <div id="candidate-empty" class="empty">点击“扫描局域网”开始发现。</div>
+      <div id="candidate-list" class="candidate-list"></div>
+    </section>
+
+    <section class="roles">
+      <h2>2. 分配并测试</h2>
+      <div class="role-card" data-role="FRONT">
+        <div><strong>FRONT 前台</strong><span id="front-test-state" class="badge">未测试</span></div>
+        <select id="front-select" aria-label="选择前台打印机"><option value="">请选择打印机</option></select>
+        <button id="front-test" type="button">测试 FRONT</button>
+      </div>
+      <div class="role-card" data-role="KITCHEN">
+        <div><strong>KITCHEN 厨房</strong><span id="kitchen-test-state" class="badge">未测试</span></div>
+        <select id="kitchen-select" aria-label="选择厨房打印机"><option value="">请选择打印机</option></select>
+        <button id="kitchen-test" type="button">测试 KITCHEN</button>
+      </div>
+    </section>
+
+    <section class="saved">
+      <h2>当前已保存绑定</h2>
+      <p id="saved-bindings">尚未保存 FRONT / KITCHEN。</p>
+    </section>
+
+    <footer>
+      <button id="close" class="secondary" type="button">稍后设置</button>
+      <button id="save" class="primary" type="button">保存并检查 Ready</button>
+    </footer>
+  </main>
+  <script src="./printingSetupRenderer.js" defer></script>
+</body>
+</html>

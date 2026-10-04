@@ -16,14 +16,22 @@ const TRAY_ICON_DATA_URL =
 
 let tray: Tray | null = null
 
-export function createTray(windowManager: WindowManager, onQuit: () => void) {
+export function createTray(
+  windowManager: WindowManager,
+  onQuit: () => void,
+  onOpenPrintingSetup?: () => void,
+  canOpenCashier: () => boolean = () => true,
+) {
   const icon = nativeImage.createFromDataURL(TRAY_ICON_DATA_URL)
   tray = new Tray(icon)
   tray.setToolTip(`E-Shop Desktop v${app.getVersion()}`)
+  const openCashier = () => canOpenCashier() ? windowManager.focusEmployeeWindow() : onOpenPrintingSetup?.()
+  const toggleCustomer = () => canOpenCashier() ? windowManager.toggleCustomerWindow() : onOpenPrintingSetup?.()
 
   const menu = Menu.buildFromTemplate([
-    { label: '打开收银窗口', click: () => windowManager.focusEmployeeWindow() },
-    { label: '打开/关闭顾客窗口', click: () => windowManager.toggleCustomerWindow() },
+    { label: '打开收银窗口', click: openCashier },
+    { label: '打印机设置', click: () => onOpenPrintingSetup?.() },
+    { label: '打开/关闭顾客窗口', click: toggleCustomer },
     {
       label: '查看运行状态',
       click: () => {
@@ -52,7 +60,7 @@ export function createTray(windowManager: WindowManager, onQuit: () => void) {
     },
   ])
   tray.setContextMenu(menu)
-  tray.on('double-click', () => windowManager.focusEmployeeWindow())
+  tray.on('double-click', openCashier)
   logger.info('tray.created')
   return tray
 }

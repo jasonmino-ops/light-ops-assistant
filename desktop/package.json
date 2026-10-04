@@ -1,7 +1,7 @@
 {
   "name": "eshop-desktop",
   "productName": "E-Shop Desktop",
-  "version": "0.2.0-pilot.2",
+  "version": "0.3.0-commercial-pilot.1",
   "description": "E-Shop Desktop — Windows 一体机门店收银客户端（Milestone A: Desktop Shell）",
   "private": true,
   "main": "dist/main/main.js",
@@ -12,8 +12,9 @@
     "dev": "npm run compile && electron .",
     "start": "npm run compile && electron .",
     "test": "vitest run",
-    "pack:dir": "npm run compile && electron-builder --dir",
-    "dist:win": "npm run compile && electron-builder --win --x64 --publish never",
+    "provider:artifact:verify": "node scripts/provider-artifact.mjs verify --artifact-dir ../../eshop-windows-provider/artifacts/eshop-windows-provider --provider-commit 7785be145d5259991038d17839d322e2694e338c",
+    "pack:dir": "npm run provider:artifact:verify && npm run compile && electron-builder --dir",
+    "dist:win": "npm run provider:artifact:verify && npm run compile && electron-builder --win --x64 --publish never",
     "release:foundation": "node scripts/release-foundation.mjs write",
     "release:foundation:verify": "node scripts/release-foundation.mjs verify",
     "release:foundation:policy": "node scripts/release-foundation.mjs policy"

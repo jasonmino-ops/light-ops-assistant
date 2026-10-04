@@ -69,12 +69,22 @@ jobs:
         run: npm run package
         working-directory: ep-mb3-provider
 
+      - name: Seal deterministic Provider artifact input
+        run: >-
+          node desktop/scripts/provider-artifact.mjs write
+          --artifact-dir ep-mb3-provider/artifacts/eshop-windows-provider
+          --provider-commit 7785be145d5259991038d17839d322e2694e338c
+        working-directory: .
+
       - name: Stage Provider artifact for Desktop packaging
         shell: pwsh
         working-directory: .
         run: |
           New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
           Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
+          node desktop/scripts/provider-artifact.mjs verify `
+            --artifact-dir ..\eshop-windows-provider\artifacts\eshop-windows-provider `
+            --provider-commit 7785be145d5259991038d17839d322e2694e338c
 
       - name: Clean Desktop build outputs
         shell: pwsh
@@ -146,7 +156,7 @@ jobs:
         run: |
           $providerEntry = (Resolve-Path ..\ep-mb3-provider\artifacts\eshop-windows-provider\dist\index.js).Path
           $env:ESHOP_WINDOWS_PROVIDER_ENTRY = $providerEntry
-          node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); const {getHealthSnapshot}=require('./dist/main/runtimeHealth'); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'ci-'+process.pid,connectDelayMs:500}); await s.start(); await new Promise(r=>setTimeout(r,1500)); const h=getHealthSnapshot().providerRuntime; console.log(JSON.stringify(h)); if(h.state!=='ok') throw new Error('Provider did not reach ok state'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
+          node -e "const {WindowsProviderSupervisor}=require('./dist/main/provider/providerSupervisor'); const {getHealthSnapshot}=require('./dist/main/runtimeHealth'); const wait=ms=>new Promise(r=>setTimeout(r,ms)); (async()=>{const s=new WindowsProviderSupervisor({pipeSuffix:'ci-'+process.pid,connectDelayMs:500}); await s.start(); await wait(1500); const first=getHealthSnapshot().providerRuntime; if(first.state!=='ok'||!first.pid) throw new Error('Provider did not reach ok state'); process.kill(first.pid); await wait(3000); const recovered=getHealthSnapshot().providerRuntime; console.log(JSON.stringify({first,recovered})); if(recovered.state!=='ok'||!recovered.pid||recovered.pid===first.pid) throw new Error('Provider did not actually respawn'); await s.stop();})().catch(e=>{console.error(e);process.exit(1)})"
 
       - name: Electron runtime Provider smoke with spaces
         shell: pwsh
@@ -191,13 +201,8 @@ jobs:
       - name: Verify packaged activation assets
         run: node scripts/verify-activation-assets.mjs asar release/win-unpacked/resources/app.asar
 
-      - name: Verify packaged Provider resource
-        shell: pwsh
-        run: |
-          $resourceEntry = ".\release\win-unpacked\resources\eshop-windows-provider\dist\index.js"
-          if (!(Test-Path $resourceEntry)) {
-            throw "Packaged Provider resource missing: $resourceEntry"
-          }
+      - name: Verify self-contained installed resources
+        run: node scripts/verify-installed-resources.mjs release/win-unpacked/resources
 
       - name: Generate release foundation manifests
         shell: pwsh

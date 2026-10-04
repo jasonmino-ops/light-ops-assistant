@@ -273,6 +273,7 @@ export class ActivationRuntime {
       deviceId: activated.device.deviceId,
       credentialVersion: activated.device.credentialVersion,
       tokenExpiresAt: activated.tokenExpiresAt,
+      freshV3BootstrapPending: true,
     }
     const written = await this.options.credentialStore.writeCredential(
       { schemaVersion: 1, deviceToken: activated.deviceToken },

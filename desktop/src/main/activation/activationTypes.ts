@@ -87,6 +87,8 @@ export type ActivationMetadataV1 = {
   credentialVersion?: number
   tokenExpiresAt?: string
   lastVerifiedAt?: string
+  /** Set only by a new activation and cleared after a conclusive bootstrap decision. */
+  freshV3BootstrapPending?: boolean
 }
 
 export type EncryptedCredentialFileV1 = {

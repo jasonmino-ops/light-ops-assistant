@@ -26,7 +26,9 @@ const BASELINE_FREEZE_TAG = '439dcac561734d07b9e022c8d99e693c99d26794'
 const DEFAULT_PROVIDER_COMMIT = '7785be145d5259991038d17839d322e2694e338c'
 const RISK_REGISTER_PATH = 'docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-register.json'
 const PROVENANCE_SCHEMA = 'ep-mb3-07a.release-provenance.v1'
-const PHASE1_DESKTOP_VERSION = '0.2.0-pilot.2'
+const COMMERCIAL_PILOT_DESKTOP_VERSION = '0.3.0-commercial-pilot.1'
+const COMMERCIAL_PILOT_BASELINE = '8b326f7d0bf1add435e36a8518c227d4e9e4c575'
+const COMMERCIAL_PILOT_RELEASE_STATUS = 'COMMERCIAL_PILOT_CANDIDATE'
 const PHASE1_UPDATE_METADATA_NAME = 'latest.yml'
 const SHA_MANIFEST_NAME = 'SHA256SUMS.txt'
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
@@ -93,6 +95,18 @@ const FROZEN_BOUNDARY_SUCCESSORS = new Map([
   ['cashier/customer/mobile business', '8fdf9b310a9b23e1e3c9e02cf88ec2790a9f879c'],
 ])
 
+const COMMERCIAL_PILOT_AUTHORIZED_BOUNDARIES = new Map([
+  ['ActivationRuntime', new Map([
+    ['desktop/src/main/activation/activationRuntime.ts', '9f08e00cfb59d0d41015a5a1c20d0627885b6b05a1548cde5049d46fc9b9b8a9'],
+  ])],
+  ['CredentialStore', new Map([
+    ['desktop/src/main/activation/credentialStore.ts', 'f0dafcb93de98d69eab1798c86e61e48b7e33e75e688667cbfd77a8a8c787103'],
+  ])],
+  ['main startup gate', new Map([
+    ['desktop/src/main/main.ts', '918b6984ab9b3a370cd73f7a1e8e2dc53146ef61ded9e97d7e0f8d94c21c0013'],
+  ])],
+])
+
 function parseArgs(argv) {
   const args = {}
   for (let index = 0; index < argv.length; index += 1) {
@@ -157,11 +171,12 @@ function inferReleaseChannel(version) {
   if (parsed.prerelease == null) return 'stable'
   const prereleaseParts = parsed.prerelease.split('.')
   if (prereleaseParts[0] === 'pilot') return 'pilot'
+  if (prereleaseParts[0] === 'commercial-pilot') return 'commercial-pilot'
   throw new Error(`unsupported prerelease channel for Desktop version ${version}`)
 }
 
 function expectedUpdateMetadataName(channel) {
-  if (channel === 'pilot') return PHASE1_UPDATE_METADATA_NAME
+  if (channel === 'pilot' || channel === 'commercial-pilot') return PHASE1_UPDATE_METADATA_NAME
   if (channel === 'stable') return 'latest.yml'
   throw new Error(`unsupported release channel: ${channel}`)
 }
@@ -171,7 +186,7 @@ function expectedTag(version) {
 }
 
 function expectedInstallerName(version) {
-  return `E-Shop-Desktop-Setup-${version}.exe`
+  return `E-Shop-Desktop-Setup-${version}-x64.exe`
 }
 
 function expectedReleaseNotesName(version) {
@@ -248,6 +263,10 @@ async function sha256(path) {
   const hash = createHash('sha256')
   hash.update(await readFile(path))
   return hash.digest('hex')
+}
+
+async function sourceSha256(path) {
+  return sha256Bytes((await readFile(path, 'utf8')).replaceAll('\r\n', '\n'))
 }
 
 function sha256Bytes(value) {
@@ -329,7 +348,7 @@ async function loadReleaseFacts() {
     rootPackageVersion: rootPackage.version,
     channel,
     defaultRuntimeChannel: 'stable',
-    distributionClass: channel === 'pilot' ? 'unsigned-internal' : 'signed-commercial',
+    distributionClass: channel === 'stable' ? 'signed-commercial' : 'unsigned-internal',
     tag: expectedTag(version),
     installerName: expectedInstallerName(version),
     updateMetadataName: expectedUpdateMetadataName(channel),
@@ -344,8 +363,8 @@ function validateBuilderConfig(facts) {
     .split('\n')
     .filter((line) => !line.trimStart().startsWith('#'))
     .join('\n')
-  if (!/artifactName:\s*["']?E-Shop-Desktop-Setup-\$\{version\}\.\$\{ext\}["']?/.test(config)) {
-    throw new Error('electron-builder artifactName must include ${version}')
+  if (!/artifactName:\s*["']?E-Shop-Desktop-Setup-\$\{version\}-x64\.\$\{ext\}["']?/.test(config)) {
+    throw new Error('electron-builder artifactName must be the versioned x64 commercial-pilot identity')
   }
   if (/publish:\s*null/.test(config)) {
     throw new Error('electron-builder publish must not be null for Phase 1 update metadata')
@@ -359,6 +378,9 @@ function validateBuilderConfig(facts) {
   if (/signed-commercial/.test(config)) {
     throw new Error('electron-builder config must not mark unsigned Phase 1 as signed-commercial')
   }
+  if (!/provider-artifact-manifest\.json/.test(config) || !/eshop-windows-provider/.test(config)) {
+    throw new Error('electron-builder must package the verified Windows Provider artifact and manifest')
+  }
 }
 
 async function runPolicy(options) {
@@ -371,14 +393,18 @@ async function runPolicy(options) {
   if (facts.rootPackageName === facts.packageName) {
     throw new Error('root package cannot be the Desktop version source')
   }
-  if (facts.channel !== 'pilot' || facts.version !== PHASE1_DESKTOP_VERSION) {
-    throw new Error(`Phase 1 must use ${PHASE1_DESKTOP_VERSION}, got ${facts.version}`)
+  if (facts.channel !== 'commercial-pilot' || facts.version !== COMMERCIAL_PILOT_DESKTOP_VERSION) {
+    throw new Error(`Commercial Pilot must use ${COMMERCIAL_PILOT_DESKTOP_VERSION}, got ${facts.version}`)
   }
   validateBuilderConfig(facts)
 
   const desktopBuildWorkflow = await readFile(join(repoRoot, '.github/workflows/desktop-windows-build.yml'), 'utf8')
   if (/gh\s+release\s+create|gh\s+release\s+upload|contents:\s*write/.test(desktopBuildWorkflow)) {
     throw new Error('ordinary desktop-windows-build workflow must not publish GitHub Releases')
+  }
+  if (!/provider-artifact\.mjs write/.test(desktopBuildWorkflow) ||
+    !/verify-installed-resources\.mjs/.test(desktopBuildWorkflow)) {
+    throw new Error('ordinary Windows build must verify the deterministic Provider input and installed resources')
   }
 
   const pilotWorkflowPath = join(repoRoot, '.github/workflows/desktop-release-pilot.yml')
@@ -418,9 +444,22 @@ async function runPolicy(options) {
     if (!/pilot-release-bundle\/latest\.yml/.test(pilotWorkflow) || !/pilot-release\/latest\.yml/.test(pilotWorkflow)) {
       throw new Error('pilot workflow must upload and publish latest.yml through the explicit allowlist')
     }
+    if (!pilotWorkflow.includes(COMMERCIAL_PILOT_DESKTOP_VERSION) ||
+      !/provider-artifact\.mjs write/.test(pilotWorkflow) ||
+      !/verify-installed-resources\.mjs/.test(pilotWorkflow)) {
+      throw new Error('commercial-pilot workflow identity or self-contained verification is missing')
+    }
   }
 
-  const baseline = options.baseline ?? BASELINE_FREEZE_TAG
+  const desktopRuntimeSources = [
+    await readFile(join(desktopDir, 'src/main/printing/printerDiscovery.ts'), 'utf8'),
+    await readFile(join(desktopDir, 'src/main/printing/printerSetupService.ts'), 'utf8'),
+  ].join('\n')
+  if (/powershell\.exe/i.test(desktopRuntimeSources)) {
+    throw new Error('Desktop printer onboarding runtime must not depend on PowerShell')
+  }
+
+  const baseline = options.baseline ?? COMMERCIAL_PILOT_BASELINE
   const allowAuthorizedSuccessors = options.baseline == null
   const frozenBoundary = []
   for (const group of FROZEN_BOUNDARY_GROUPS) {
@@ -428,6 +467,16 @@ async function runPolicy(options) {
       .split('\n')
       .filter(Boolean)
     const successorSnapshot = allowAuthorizedSuccessors ? FROZEN_BOUNDARY_SUCCESSORS.get(group.label) : undefined
+    const commercialPilotHashes = COMMERCIAL_PILOT_AUTHORIZED_BOUNDARIES.get(group.label)
+    const commercialPilotAuthorized = Boolean(
+      allowAuthorizedSuccessors &&
+      changed.length > 0 &&
+      commercialPilotHashes &&
+      changed.length === commercialPilotHashes.size &&
+      changed.every((filePath) => commercialPilotHashes.has(filePath)) &&
+      (await Promise.all(changed.map(async (filePath) =>
+        await sourceSha256(join(repoRoot, filePath)) === commercialPilotHashes.get(filePath)))).every(Boolean),
+    )
     const matchesAuthorizedSuccessor =
       changed.length > 0 &&
       successorSnapshot != null &&
@@ -435,9 +484,13 @@ async function runPolicy(options) {
       git(['diff', '--name-only', successorSnapshot, '--', ...group.paths]) === ''
     frozenBoundary.push({
       label: group.label,
-      status: changed.length === 0 || matchesAuthorizedSuccessor ? 'PASS' : 'FAIL',
+      status: changed.length === 0 || matchesAuthorizedSuccessor || commercialPilotAuthorized ? 'PASS' : 'FAIL',
       changed,
       ...(matchesAuthorizedSuccessor ? { authorizedSuccessorSnapshot: successorSnapshot } : {}),
+      ...(commercialPilotAuthorized && changed.length > 0 ? {
+        authorizedCommercialPilotScope: true,
+        authorizedPathSha256: Object.fromEntries(commercialPilotHashes),
+      } : {}),
     })
   }
   const failed = frozenBoundary.filter((group) => group.status !== 'PASS')
@@ -455,6 +508,7 @@ async function runPolicy(options) {
     tag: facts.tag,
     installerName: facts.installerName,
     updateMetadataName: facts.updateMetadataName,
+    releaseStatus: COMMERCIAL_PILOT_RELEASE_STATUS,
     frozenBoundary,
   }
 }
@@ -643,11 +697,12 @@ async function writeReleaseNotes(releaseDir, facts) {
   const content = [
     `# E-Shop Desktop ${facts.version}`,
     '',
-    'EP-MB3-07A Phase 1 unsigned internal pilot release foundation.',
+    'E-Shop Desktop Single Installer Commercial Pilot candidate.',
     '',
     '- Distribution class: unsigned-internal',
-    '- Channel: pilot',
-    '- Store pilot / commercial release: not ready until Signed Distribution Gate passes',
+    '- Channel: commercial-pilot',
+    `- Release status: ${COMMERCIAL_PILOT_RELEASE_STATUS}`,
+    '- FIELD VERIFIED / CLOSED: not claimed; fresh Windows FIELD remains required',
     '',
   ].join('\n')
   await writeFile(filePath, content, 'utf8')
@@ -657,17 +712,17 @@ async function writeReleaseNotes(releaseDir, facts) {
 async function writeManifests(options) {
   const facts = await loadReleaseFacts()
   validateBuilderConfig(facts)
-  if (facts.channel !== 'pilot') {
-    throw new Error(`Phase 1 write supports pilot only, got ${facts.channel}`)
+  if (facts.channel !== 'commercial-pilot') {
+    throw new Error(`Commercial Pilot write supports commercial-pilot only, got ${facts.channel}`)
   }
 
   const distributionClass = options['distribution-class'] ?? 'unsigned-internal'
   if (distributionClass !== 'unsigned-internal') {
-    throw new Error(`Phase 1 distributionClass must be unsigned-internal, got ${distributionClass}`)
+    throw new Error(`Commercial Pilot distributionClass must be unsigned-internal, got ${distributionClass}`)
   }
   const signingStatus = options['signing-status'] ?? 'unsigned-internal'
   if (signingStatus !== 'unsigned-internal') {
-    throw new Error(`Phase 1 signingStatus must be unsigned-internal, got ${signingStatus}`)
+    throw new Error(`Commercial Pilot signingStatus must be unsigned-internal, got ${signingStatus}`)
   }
 
   const releaseDir = resolve(desktopDir, options['release-dir'] ?? 'release')
@@ -689,11 +744,22 @@ async function writeManifests(options) {
 
   const provenanceFileName = expectedProvenanceName(facts.version)
   const provenancePath = join(releaseDir, provenanceFileName)
+  let providerArtifactManifestSha256 = options['provider-manifest-sha'] ?? process.env.ESHOP_PROVIDER_ARTIFACT_MANIFEST_SHA256
+  if (!providerArtifactManifestSha256) {
+    const providerManifest = resolve(desktopDir, options['provider-manifest'] ??
+      '../../eshop-windows-provider/artifacts/eshop-windows-provider/provider-artifact-manifest.json')
+    await assertExists(providerManifest, 'Provider artifact manifest')
+    providerArtifactManifestSha256 = await sha256(providerManifest)
+  }
+  if (!/^[a-f0-9]{64}$/.test(providerArtifactManifestSha256)) {
+    throw new Error('Provider artifact manifest SHA-256 is invalid')
+  }
   const provenance = {
     schemaVersion: PROVENANCE_SCHEMA,
     packageName: facts.packageName,
     desktopVersion: facts.version,
     releaseChannel: facts.channel,
+    releaseStatus: COMMERCIAL_PILOT_RELEASE_STATUS,
     defaultRuntimeChannel: facts.defaultRuntimeChannel,
     distributionClass,
     gitCommitSha: options.commit ?? process.env.GITHUB_SHA ?? git(['rev-parse', 'HEAD']),
@@ -708,6 +774,7 @@ async function writeManifests(options) {
     artifacts,
     signingStatus,
     providerPinnedCommit: options['provider-commit'] ?? process.env.EP_MB3_PROVIDER_COMMIT ?? DEFAULT_PROVIDER_COMMIT,
+    providerArtifactManifestSha256,
     baselineFreezeTag: options['baseline-freeze-tag'] ?? BASELINE_FREEZE_TAG,
   }
 
@@ -790,6 +857,7 @@ async function verifyManifests(options) {
     'packageName',
     'desktopVersion',
     'releaseChannel',
+    'releaseStatus',
     'defaultRuntimeChannel',
     'distributionClass',
     'gitCommitSha',
@@ -804,6 +872,7 @@ async function verifyManifests(options) {
     'artifacts',
     'signingStatus',
     'providerPinnedCommit',
+    'providerArtifactManifestSha256',
     'baselineFreezeTag',
   ]
   for (const field of requiredFields) {
@@ -812,12 +881,16 @@ async function verifyManifests(options) {
   if (provenance.schemaVersion !== PROVENANCE_SCHEMA) throw new Error('provenance schema mismatch')
   if (provenance.desktopVersion !== facts.version) throw new Error('provenance version mismatch')
   if (provenance.releaseChannel !== facts.channel) throw new Error('provenance channel mismatch')
+  if (provenance.releaseStatus !== COMMERCIAL_PILOT_RELEASE_STATUS) throw new Error('provenance release status mismatch')
   if (provenance.gitTag !== facts.tag) throw new Error(`provenance tag must be ${facts.tag}`)
   if (provenance.distributionClass !== 'unsigned-internal') {
-    throw new Error(`Phase 1 provenance must be unsigned-internal, got ${provenance.distributionClass}`)
+    throw new Error(`Commercial Pilot provenance must be unsigned-internal, got ${provenance.distributionClass}`)
   }
   if (provenance.signingStatus !== 'unsigned-internal') {
-    throw new Error(`Phase 1 signingStatus must be unsigned-internal, got ${provenance.signingStatus}`)
+    throw new Error(`Commercial Pilot signingStatus must be unsigned-internal, got ${provenance.signingStatus}`)
+  }
+  if (!/^[a-f0-9]{64}$/.test(provenance.providerArtifactManifestSha256)) {
+    throw new Error('provenance Provider artifact manifest SHA-256 is invalid')
   }
 
   assertSameNames(provenance.artifactFilenames, expectedProvenanceArtifactNames(facts), 'provenance artifactFilenames')
@@ -830,12 +903,14 @@ async function verifyManifests(options) {
   return {
     version: facts.version,
     releaseChannel: facts.channel,
+    releaseStatus: provenance.releaseStatus,
     distributionClass: provenance.distributionClass,
     tag: facts.tag,
     installerName: facts.installerName,
     updateMetadataName: facts.updateMetadataName,
     shaManifest: basename(shaManifestPath),
     provenance: basename(provenancePath),
+    providerArtifactManifestSha256: provenance.providerArtifactManifestSha256,
     shaEntries: entries.length,
     result: 'PASS',
   }

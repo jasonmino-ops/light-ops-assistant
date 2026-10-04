@@ -3,13 +3,14 @@ import { prisma } from '@/lib/prisma'
 import { getDesktopDeviceContext } from '@/lib/desktop-activation/auth'
 import { noStoreJson, withDesktopApiError } from '@/lib/desktop-activation/http'
 import {
-  acquireV3Authority, issueV3ExecutionBatch, readV3ControlPlane, recoverExpiredSelfV3Authority,
+  acquireV3Authority, bootstrapFreshV3ControlPlane, issueV3ExecutionBatch, readV3ControlPlane, recoverExpiredSelfV3Authority,
   releaseV3Authority, renewV3Authority,
-  type V3ControlPlaneDb,
+  type FreshV3BootstrapDb, type V3ControlPlaneDb,
 } from '@/lib/v3-print-control-plane'
 
 export const runtime = 'nodejs'
 const db = prisma as unknown as V3ControlPlaneDb
+const freshBootstrapDb = prisma as unknown as FreshV3BootstrapDb
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
@@ -31,7 +32,8 @@ export async function POST(req: NextRequest) {
     if (!body || typeof body.action !== 'string') return noStoreJson({ ok: false, error: 'INVALID_REQUEST' }, { status: 400 })
     const base = { ...auth.context, deviceId: auth.context.deviceId }
     let result
-    if (body.action === 'ACQUIRE') result = await acquireV3Authority(db, base)
+    if (body.action === 'FRESH_BOOTSTRAP') result = await bootstrapFreshV3ControlPlane(freshBootstrapDb, base)
+    else if (body.action === 'ACQUIRE') result = await acquireV3Authority(db, base)
     else {
       if (!Number.isInteger(body.ownerEpoch) || !Number.isInteger(body.stateVersion) || typeof body.leaseId !== 'string') {
         return noStoreJson({ ok: false, error: 'INVALID_FENCE' }, { status: 400 })

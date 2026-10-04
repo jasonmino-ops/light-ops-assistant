@@ -56,4 +56,17 @@ describe('LocalEndpointAuthority', () => {
     await value.provision({ revision: 2, endpoints: { FRONT: { host: '172.16.1.9', port: 9100 }, KITCHEN: { host: '172.16.1.9', port: 9100 } } })
     expect(await value.resolve('FRONT')).toEqual(await value.resolve('KITCHEN'))
   })
+
+  it('persists onboarding MAC evidence without changing the host:port execution identity', async () => {
+    const { value } = await authority()
+    await value.provision({ revision: 1, endpoints: {
+      FRONT: { host: '192.168.10.8', port: 9100, hardwareAddress: 'aa-bb-cc-dd-ee-f0' },
+      KITCHEN: { host: '192.168.10.9', port: 9100, hardwareAddress: 'aa-bb-cc-dd-ee-f2' },
+    } })
+    expect(await value.configuration()).toEqual({ ok: true, value: { revision: 1, endpoints: {
+      FRONT: { host: '192.168.10.8', port: 9100, hardwareAddress: 'aa-bb-cc-dd-ee-f0' },
+      KITCHEN: { host: '192.168.10.9', port: 9100, hardwareAddress: 'aa-bb-cc-dd-ee-f2' },
+    } } })
+    expect(await value.resolve('FRONT')).toEqual({ ok: true, endpointKey: '192.168.10.8:9100' })
+  })
 })

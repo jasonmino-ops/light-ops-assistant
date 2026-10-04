@@ -65,6 +65,10 @@ export class V3ControlPlaneClient {
     return this.request('POST', { action: 'ACQUIRE' })
   }
 
+  public bootstrapFresh(): Promise<{ ok: true; controlPlane: ControlPlaneProjection } | { ok: false; error: string }> {
+    return this.request('POST', { action: 'FRESH_BOOTSTRAP' })
+  }
+
   public renew(authority: ControlPlaneProjection): Promise<{ ok: true; controlPlane: ControlPlaneProjection } | { ok: false; error: string }> {
     return this.request('POST', { action: 'RENEW', ownerEpoch: authority.ownerEpoch, stateVersion: authority.stateVersion, leaseId: authority.leaseId })
   }
