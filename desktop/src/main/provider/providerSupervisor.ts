@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { logger } from '../logger'
-import { recordHealthError, updateHealth } from '../runtimeHealth'
+import { getHealthSnapshot, recordHealthError, updateHealth, type RuntimeHealthSnapshot } from '../runtimeHealth'
 import { HrtProviderSupervision } from '../hrt/providerSupervision'
 import { buildWindowsProviderPipeName, safePipeIdentifier } from './providerPipeName'
 import {
@@ -20,6 +20,8 @@ export type WindowsProviderPipeClientLike = Pick<
   WindowsProviderPipeClient,
   'connect' | 'requestHealth' | 'shutdown' | 'destroy'
 >
+
+export type ProviderReadinessListener = (ready: boolean) => void
 
 export interface WindowsProviderSupervisorOptions {
   runtimeInstanceId?: string
@@ -48,11 +50,28 @@ export class WindowsProviderSupervisor {
   private readonly supervision: HrtProviderSupervision
   private readonly runtimeInstanceId: string
   private readonly pipeName: string
+  private readonly readinessListeners = new Set<ProviderReadinessListener>()
 
   constructor(private readonly options: WindowsProviderSupervisorOptions = {}) {
     this.runtimeInstanceId = options.runtimeInstanceId ?? `desktop-runtime-${randomUUID()}`
     this.pipeName = buildWindowsProviderPipeName({ suffix: options.pipeSuffix })
     this.supervision = options.supervision ?? new HrtProviderSupervision()
+  }
+
+  isReady(): boolean {
+    return getHealthSnapshot().providerRuntime.state === 'ok'
+  }
+
+  onReadinessChanged(listener: ProviderReadinessListener): () => void {
+    this.readinessListeners.add(listener)
+    listener(this.isReady())
+    return () => this.readinessListeners.delete(listener)
+  }
+
+  private updateProviderHealth(providerRuntime: RuntimeHealthSnapshot['providerRuntime'], event: string): void {
+    updateHealth({ providerRuntime }, event)
+    const ready = this.isReady()
+    for (const listener of this.readinessListeners) listener(ready)
   }
 
   async start(): Promise<void> {
@@ -61,7 +80,7 @@ export class WindowsProviderSupervisor {
     this.supervision.manualReset()
     this.entry = (this.options.resolveEntry ?? resolveWindowsProviderEntry)()
     if (!this.entry.entryPath) {
-      updateHealth({ providerRuntime: { state: 'error', pid: null, pipeNameHash: safePipeIdentifier(this.pipeName), lastError: 'PROVIDER_ENTRY_MISSING' } }, 'provider.entry-missing')
+      this.updateProviderHealth({ state: 'error', pid: null, pipeNameHash: safePipeIdentifier(this.pipeName), lastError: 'PROVIDER_ENTRY_MISSING' }, 'provider.entry-missing')
       throw new Error('PROVIDER_ENTRY_MISSING')
     }
     await this.spawnAndConnect(this.entry)
@@ -80,7 +99,7 @@ export class WindowsProviderSupervisor {
     await new Promise((resolve) => setTimeout(resolve, 100))
     client?.destroy()
     if (child && child.exitCode === null && !child.killed) child.kill()
-    updateHealth({ providerRuntime: { state: 'closed', pid: null, pipeNameHash: safePipeIdentifier(this.pipeName), lastError: null } }, 'provider.stopped')
+    this.updateProviderHealth({ state: 'closed', pid: null, pipeNameHash: safePipeIdentifier(this.pipeName), lastError: null }, 'provider.stopped')
   }
 
   private async spawnAndConnect(entry: ProviderEntryResolution): Promise<void> {
@@ -100,15 +119,13 @@ export class WindowsProviderSupervisor {
       return
     }
     this.child = child
-    updateHealth({
-      providerRuntime: {
+    this.updateProviderHealth({
         state: 'starting',
         pid: child.pid ?? null,
         pipeNameHash: safePipeIdentifier(this.pipeName),
         lastError: null,
         restartAttempts: this.supervision.restartAttempts(),
-      },
-    }, 'provider.started')
+      }, 'provider.started')
     logger.info('provider.process.started', { pid: child.pid, entrySource: entry.source, pipeNameHash: safePipeIdentifier(this.pipeName) })
     child.stdout.on('data', (chunk) => logger.info('provider.stdout', { line: String(chunk).slice(0, 500) }))
     child.stderr.on('data', (chunk) => logger.warn('provider.stderr', { line: String(chunk).slice(0, 500) }))
@@ -147,10 +164,10 @@ export class WindowsProviderSupervisor {
           continue
         }
         recordHealthError('provider', `connect failed: ${error instanceof Error ? error.message : String(error)}`)
-        updateHealth({ providerRuntime: {
+        this.updateProviderHealth({
           state: 'error', pid: child.pid ?? null, pipeNameHash: safePipeIdentifier(this.pipeName), lastError: 'CONNECT_FAILED',
           restartAttempts: this.supervision.restartAttempts(),
-        } }, 'provider.connect-failed')
+        }, 'provider.connect-failed')
         // A live but unreachable Provider is not useful and would otherwise
         // leave Desktop permanently degraded. Its exit enters the same bounded
         // respawn path as a crash.
@@ -166,6 +183,7 @@ export class WindowsProviderSupervisor {
   ): { client: WindowsProviderPipeClientLike; markConnected: () => void } {
     const factory = this.options.clientFactory ?? ((options) => new WindowsProviderPipeClient(options))
     let connected = false
+    let handshakeAuthorized = false
     let client: WindowsProviderPipeClientLike
     client = factory({
       pipeName: this.pipeName,
@@ -174,19 +192,20 @@ export class WindowsProviderSupervisor {
       onHandshake: (payload) => {
         if (!this.isCurrent(child, generation) || this.client !== client) return
         const compatible = payload.readyTransition === 'RUNTIME_AUTHORIZED' && isCompatibleWindowsProvider(payload.provider)
-        updateHealth({
-          providerRuntime: {
-            state: compatible ? 'ok' : 'error',
+        handshakeAuthorized = compatible
+        this.updateProviderHealth({
+            state: compatible ? 'starting' : 'error',
             pid: child.pid ?? null,
             providerId: payload.provider.providerId,
             providerInstanceId: payload.provider.providerInstanceId,
             pipeNameHash: safePipeIdentifier(this.pipeName),
-            lastError: compatible ? null : 'PROVIDER_INCOMPATIBLE',
+            lastError: compatible ? 'PROVIDER_HEALTH_PENDING' : 'PROVIDER_INCOMPATIBLE',
             restartAttempts: this.supervision.restartAttempts(),
-          },
-        }, 'provider.handshake')
-        if (compatible) this.supervision.markHealthy()
-        else if (child.exitCode === null && !child.killed) child.kill()
+          }, 'provider.handshake')
+        if (!compatible) {
+          handshakeAuthorized = false
+          if (child.exitCode === null && !child.killed) child.kill()
+        }
       },
       onRegistration: (payload) => {
         if (!this.isCurrent(child, generation)) return
@@ -198,16 +217,16 @@ export class WindowsProviderSupervisor {
       },
       onHealth: (payload) => {
         if (!this.isCurrent(child, generation) || this.client !== client) return
-        updateHealth({
-          providerRuntime: {
-            state: payload.providerHealth === 'READY' ? 'ok' : 'degraded',
+        const ready = handshakeAuthorized && payload.providerHealth === 'READY'
+        this.updateProviderHealth({
+            state: ready ? 'ok' : 'degraded',
             pid: child.pid ?? null,
             providerInstanceId: payload.providerInstanceId,
             pipeNameHash: safePipeIdentifier(this.pipeName),
-            lastError: null,
+            lastError: handshakeAuthorized ? null : 'PROVIDER_HANDSHAKE_REQUIRED',
             restartAttempts: this.supervision.restartAttempts(),
-          },
-        }, 'provider.health')
+          }, 'provider.health')
+        if (ready) this.supervision.markHealthy()
       },
       onProtocolError: (code) => {
         if (this.isCurrent(child, generation)) recordHealthError('provider', `transport protocol error: ${code}`)
@@ -217,10 +236,10 @@ export class WindowsProviderSupervisor {
         // just-spawned Provider before the bounded connection retries finish.
         if (!connected) return
         if (!this.isCurrent(child, generation) || this.client !== client) return
-        updateHealth({ providerRuntime: {
+        this.updateProviderHealth({
           state: 'degraded', pid: child.pid ?? null, pipeNameHash: safePipeIdentifier(this.pipeName), lastError: 'PIPE_CLOSED',
           restartAttempts: this.supervision.restartAttempts(),
-        } }, 'provider.transport.closed')
+        }, 'provider.transport.closed')
         if (child.exitCode === null && !child.killed) child.kill()
       },
     })
@@ -235,15 +254,13 @@ export class WindowsProviderSupervisor {
     this.client = null
     if (this.stopping) return
     const decision = this.supervision.onDisconnect((this.options.now ?? Date.now)())
-    updateHealth({
-      providerRuntime: {
+    this.updateProviderHealth({
         state: decision.restartAllowed ? 'degraded' : 'error',
         pid: null,
         pipeNameHash: safePipeIdentifier(this.pipeName),
         lastError: `PROVIDER_EXIT code=${code ?? 'null'} signal=${signal ?? 'null'}`,
         restartAttempts: decision.restartAttempt,
-      },
-    }, 'provider.exited')
+      }, 'provider.exited')
     logger.warn('provider.process.exited', { code, signal, decision })
     if (!decision.restartAllowed) return
     this.scheduleRestart('PROVIDER_EXIT', decision.backoffMs)
@@ -255,10 +272,10 @@ export class WindowsProviderSupervisor {
       ? this.supervision.onDisconnect((this.options.now ?? Date.now)())
       : null
     if (decision && !decision.restartAllowed) {
-      updateHealth({ providerRuntime: {
+      this.updateProviderHealth({
         state: 'error', pid: null, pipeNameHash: safePipeIdentifier(this.pipeName), lastError: reason,
         restartAttempts: decision.restartAttempt,
-      } }, 'provider.restart-exhausted')
+      }, 'provider.restart-exhausted')
       return
     }
     const delayMs = backoffMs ?? decision!.backoffMs

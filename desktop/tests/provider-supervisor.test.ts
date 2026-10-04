@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { HRT_CONTRACT_VERSION } from '@eshop/hrt-contract'
 import { HrtProviderSupervision } from '../src/main/hrt/providerSupervision'
 import {
   WindowsProviderSupervisor,
@@ -185,5 +186,89 @@ describe('WindowsProviderSupervisor recovery', () => {
     await vi.runAllTimersAsync()
     await stopping
     expect(children).toHaveLength(1)
+  })
+
+  it('exposes readiness only after handshake plus health READY, and recovers after respawn', async () => {
+    vi.useFakeTimers()
+    const children: ChildProcessWithoutNullStreams[] = []
+    const callbacks: Array<{
+      onHandshake?: (payload: any) => void
+      onHealth?: (payload: any) => void
+    }> = []
+    const supervisor = new WindowsProviderSupervisor({
+      connectDelayMs: 0,
+      maxConnectAttempts: 1,
+      resolveEntry: () => ({ entryPath: 'C:\\installed\\provider.js', source: 'resources' }),
+      spawnProvider: vi.fn(() => {
+        const value = child(400 + children.length)
+        children.push(value)
+        return value
+      }),
+      clientFactory: vi.fn((options) => {
+        callbacks.push(options)
+        return client()
+      }),
+      supervision: new HrtProviderSupervision({
+        initialBackoffMs: 100,
+        backoffMultiplier: 1,
+        maxBackoffMs: 100,
+        maxRestartAttempts: 2,
+        restartWindowMs: 60_000,
+      }),
+    })
+    const readiness: boolean[] = []
+    const unsubscribe = supervisor.onReadinessChanged((ready) => readiness.push(ready))
+
+    const starting = supervisor.start()
+    await vi.runAllTimersAsync()
+    await starting
+    expect(supervisor.isReady()).toBe(false)
+
+    callbacks[0].onHandshake?.({
+      readyTransition: 'RUNTIME_AUTHORIZED',
+      provider: {
+        providerId: 'windows-provider',
+        providerInstanceId: 'provider-1',
+        providerVersion: '0.3.0',
+        contractVersion: HRT_CONTRACT_VERSION,
+        supportedCapabilities: [],
+      },
+    })
+    expect(supervisor.isReady()).toBe(false)
+    callbacks[0].onHealth?.({ providerHealth: 'STARTING', providerInstanceId: 'provider-1' })
+    expect(supervisor.isReady()).toBe(false)
+    callbacks[0].onHealth?.({ providerHealth: 'READY', providerInstanceId: 'provider-1' })
+    expect(supervisor.isReady()).toBe(true)
+
+    callbacks[0].onHealth?.({ providerHealth: 'DEGRADED', providerInstanceId: 'provider-1' })
+    expect(supervisor.isReady()).toBe(false)
+    children[0].emit('exit', 9, null)
+    expect(supervisor.isReady()).toBe(false)
+    await vi.advanceTimersByTimeAsync(100)
+    await vi.runAllTimersAsync()
+    expect(children).toHaveLength(2)
+    callbacks[1].onHandshake?.({
+      readyTransition: 'RUNTIME_AUTHORIZED',
+      provider: {
+        providerId: 'windows-provider',
+        providerInstanceId: 'provider-2',
+        providerVersion: '0.3.0',
+        contractVersion: HRT_CONTRACT_VERSION,
+        supportedCapabilities: [],
+      },
+    })
+    callbacks[1].onHealth?.({ providerHealth: 'READY', providerInstanceId: 'provider-2' })
+    expect(supervisor.isReady()).toBe(true)
+    expect(readiness).toContain(false)
+    expect(readiness.at(-1)).toBe(true)
+
+    const stopping = supervisor.stop()
+    await vi.runAllTimersAsync()
+    await stopping
+    expect(supervisor.isReady()).toBe(false)
+    const childCount = children.length
+    await vi.runAllTimersAsync()
+    expect(children).toHaveLength(childCount)
+    unsubscribe()
   })
 })

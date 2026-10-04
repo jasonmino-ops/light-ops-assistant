@@ -40,9 +40,19 @@ describe('activation runtime gate', () => {
 
   it('routes second-instance to activation/setup until the authorized printer setup is Ready', () => {
     const main = read('src/main/main.ts')
-    expect(main).toMatch(/activationRuntime\?\.isAuthorized\(\) && printerSetupService\?\.snapshot\(\)\.state === 'READY'\) windowManager\.focusEmployeeWindow\(\)/)
+    expect(main).toMatch(/activationRuntime\?\.isAuthorized\(\) && printerSetupService\?\.snapshot\(\)\.state === 'READY' && providerSupervisor\?\.isReady\(\) === true\) windowManager\.focusEmployeeWindow\(\)/)
     expect(main).toMatch(/else if \(activationRuntime\?\.isAuthorized\(\)\) printerSetupWindowController\?\.show\(\)/)
     expect(main).toMatch(/else activationWindowController\?\.focus\(\)/)
+  })
+
+  it('keeps Cashier held unless Printer Setup and canonical Provider readiness are both true', () => {
+    const main = read('src/main/main.ts')
+    expect(main).toContain("const providerReady = providerSupervisor?.isReady() === true")
+    expect(main).toContain("if (state.state !== 'READY' || !providerReady)")
+    expect(main).toContain('windowManager.holdCashier()')
+    expect(main).toContain('windowManager.resumeCashier()')
+    expect(main).toContain('providerSupervisor.onReadinessChanged')
+    expect(main).toContain("onStateChanged: (state) => openCashierIfReady(state)")
   })
 
   it('installs a unified WindowManager formal runtime guard', () => {

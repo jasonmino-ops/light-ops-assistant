@@ -251,6 +251,19 @@ export class WindowManager {
     }
   }
 
+  /** Stop both cashier surfaces while an operational dependency is not ready. */
+  holdCashier() {
+    this.customerEnabled = false
+    if (this.customerRetryTimer) clearTimeout(this.customerRetryTimer)
+    this.customerRetryTimer = null
+    if (this.employeeWindow && !this.employeeWindow.isDestroyed()) this.employeeWindow.destroy()
+    if (this.customerWindow && !this.customerWindow.isDestroyed()) this.customerWindow.destroy()
+  }
+
+  resumeCashier() {
+    this.customerEnabled = true
+  }
+
   // ── 顾客窗口 ───────────────────────────────────────────────────────────────
 
   /** 顾客窗口目标屏：第一块非主屏；无副屏时按需回退主屏（仅调试/强制模式） */

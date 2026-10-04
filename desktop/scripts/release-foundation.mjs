@@ -103,7 +103,10 @@ const COMMERCIAL_PILOT_AUTHORIZED_BOUNDARIES = new Map([
     ['desktop/src/main/activation/credentialStore.ts', 'f0dafcb93de98d69eab1798c86e61e48b7e33e75e688667cbfd77a8a8c787103'],
   ])],
   ['main startup gate', new Map([
-    ['desktop/src/main/main.ts', '918b6984ab9b3a370cd73f7a1e8e2dc53146ef61ded9e97d7e0f8d94c21c0013'],
+    ['desktop/src/main/main.ts', 'aef3d6426a3be6dee55426e3104071f6118281c37278ee49ab53be07e375113a'],
+  ])],
+  ['WindowManager', new Map([
+    ['desktop/src/main/windowManager.ts', '14497c1c0eac104fe70586a4bd40201cc5284425e3051e9059d7b70c39fce590'],
   ])],
 ])
 

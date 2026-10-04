@@ -41,7 +41,7 @@ if (!gotLock) {
 } else {
   app.on('second-instance', () => {
     logger.warn('single-instance.conflict', { note: 'second launch detected' })
-    if (activationRuntime?.isAuthorized() && printerSetupService?.snapshot().state === 'READY') windowManager.focusEmployeeWindow()
+    if (activationRuntime?.isAuthorized() && printerSetupService?.snapshot().state === 'READY' && providerSupervisor?.isReady() === true) windowManager.focusEmployeeWindow()
     else if (activationRuntime?.isAuthorized()) printerSetupWindowController?.show()
     else activationWindowController?.focus()
   })
@@ -57,6 +57,7 @@ if (!gotLock) {
   let v3PrintingRuntime: V3PrintingRuntime | null = null
   let printerSetupService: PrinterSetupService | null = null
   let printerSetupWindowController: PrinterSetupWindowController | null = null
+  let providerReadinessUnsubscribe: (() => void) | null = null
   let cashierWindowsStarted = false
 
   async function quitApp() {
@@ -64,6 +65,8 @@ if (!gotLock) {
     quitting = true
     activationRuntime?.markQuitting()
     windowManager.setQuitting()
+    providerReadinessUnsubscribe?.()
+    providerReadinessUnsubscribe = null
     try { await providerSupervisor?.stop() } catch (error) {
       recordHealthError('provider', `provider stop failed: ${String(error)}`)
     }
@@ -145,36 +148,44 @@ if (!gotLock) {
       registerIpcHandlers(windowManager)
       printerSetupWindowController = new PrinterSetupWindowController()
       const openCashierIfReady = (state: PrinterSetupSnapshot = printerSetupService!.snapshot()) => {
-        if (state.state !== 'READY') {
-          printerSetupWindowController?.show()
+        const providerReady = providerSupervisor?.isReady() === true
+        if (state.state !== 'READY' || !providerReady) {
+          cashierWindowsStarted = false
+          windowManager.holdCashier()
+          if (state.state !== 'READY') printerSetupWindowController?.show()
           return
         }
         if (cashierWindowsStarted) {
+          windowManager.resumeCashier()
           windowManager.focusEmployeeWindow()
           return
         }
+        windowManager.resumeCashier()
         windowManager.createEmployeeWindow()
         windowManager.ensureCustomerWindow('startup')
         windowManager.watchDisplays()
         cashierWindowsStarted = true
       }
+      providerReadinessUnsubscribe = providerSupervisor.onReadinessChanged(() => {
+        if (!quitting) openCashierIfReady()
+      })
       registerPrinterSetupIpcHandlers({
         service: printerSetupService!,
         windowController: printerSetupWindowController,
-        onStateChanged: (state) => {
-          if (state.state === 'READY') openCashierIfReady(state)
-        },
+        onStateChanged: (state) => openCashierIfReady(state),
       })
       printerSetupWindowController.sendState(initialPrinterSetupState!)
 
       createTray(windowManager,
         () => { void quitApp() },
         () => printerSetupWindowController?.show(),
-        () => printerSetupService?.snapshot().state === 'READY',
+        () => printerSetupService?.snapshot().state === 'READY' && providerSupervisor?.isReady() === true,
       )
       openCashierIfReady(initialPrinterSetupState!)
       authorizedRuntimeStarted = true
     })().catch(async (error) => {
+      providerReadinessUnsubscribe?.()
+      providerReadinessUnsubscribe = null
       try { await providerSupervisor?.stop() } catch { /* startup cleanup */ }
       try { await v3PrintingRuntime?.close() } catch { /* startup cleanup */ }
       try { await v3ControlPlaneRuntime?.stop() } catch { /* startup cleanup */ }

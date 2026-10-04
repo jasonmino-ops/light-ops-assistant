@@ -118,7 +118,13 @@ describe('EP-MB3-07A release foundation policy', () => {
       expect.objectContaining({
         label: 'main startup gate', changed: ['desktop/src/main/main.ts'], status: 'PASS',
         authorizedPathSha256: {
-          'desktop/src/main/main.ts': '918b6984ab9b3a370cd73f7a1e8e2dc53146ef61ded9e97d7e0f8d94c21c0013',
+          'desktop/src/main/main.ts': 'aef3d6426a3be6dee55426e3104071f6118281c37278ee49ab53be07e375113a',
+        },
+      }),
+      expect.objectContaining({
+        label: 'WindowManager', changed: ['desktop/src/main/windowManager.ts'], status: 'PASS',
+        authorizedPathSha256: {
+          'desktop/src/main/windowManager.ts': '14497c1c0eac104fe70586a4bd40201cc5284425e3051e9059d7b70c39fce590',
         },
       }),
     ])
