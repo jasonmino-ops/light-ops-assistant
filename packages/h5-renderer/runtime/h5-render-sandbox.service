@@ -1,0 +1,33 @@
+[Unit]
+Description=Credential-free H5 renderer candidate
+Requires=h5-render-sandbox.socket
+After=h5-render-sandbox.socket
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=h5-render-sandbox
+Group=h5-render-socket
+ExecStart=/opt/es-h5-node/bin/node /opt/eshop-h5-renderer/arm64-integration-r1/service.mjs
+Restart=on-failure
+RestartSec=5
+MemoryMax=2G
+MemorySwapMax=0
+CPUQuota=150%
+TasksMax=128
+KillMode=control-group
+TimeoutStopSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LimitCORE=0
+LogRateLimitIntervalSec=60
+LogRateLimitBurst=30
+StandardOutput=journal
+StandardError=journal
+UMask=0077

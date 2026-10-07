@@ -1,4 +1,6 @@
 import { after, NextRequest, NextResponse } from 'next/server'
+import { createHash } from 'node:crypto'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { sendAndLogMessage } from '@/lib/telegram'
 import {
@@ -19,6 +21,54 @@ import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
  */
 
 type OrderItem = { productId: string; quantity: number; sugar?: string }
+
+class SubmissionError extends Error {
+  constructor(public readonly status: number, code: string, public readonly detail?: string) { super(code) }
+}
+
+// v1 uses fixed fields and ordered lines, not the caller's JSON object key order.
+// Null/absent optional text is equivalent; these limits match the existing write contract.
+function submissionText(value: unknown, max?: number): string | null {
+  if (value == null) return null
+  if (typeof value !== 'string') throw new SubmissionError(400, 'INVALID_REQUEST')
+  const s = value.trim()
+  return (max == null ? s : s.slice(0, max)) || null
+}
+
+function submissionCoordinate(value: unknown, limit: number): number | null {
+  if (value == null || value === '') return null
+  if (typeof value !== 'number' && typeof value !== 'string') throw new SubmissionError(400, 'INVALID_REQUEST')
+  const n = Number(value)
+  return Number.isFinite(n) && Math.abs(n) <= limit ? n : null
+}
+
+function submissionConflict(error: unknown): 'KEY' | 'ORDER_NO' | null {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') return null
+  const meta = error.meta as Record<string, any> | undefined
+  // Prisma/adapter-pg may expose target fields or the original structured constraint.
+  const constraint = meta?.driverAdapterError?.cause?.constraint
+  const target: unknown = meta?.target ?? constraint?.fields
+  // adapter-pg 7.6 reports quoted PostgreSQL identifiers in cause.constraint.fields.
+  // Normalize identifiers only, never classify by free-form error messages.
+  const fields: unknown = Array.isArray(target) ? target.map(field => typeof field === 'string' && /^"(?:[^"]|"")+"$/.test(field)
+    ? field.slice(1, -1).replace(/""/g, '"') : field) : target
+  const name: unknown = typeof constraint === 'string' ? constraint : constraint?.index ?? constraint?.name
+  if (fields === 'CustomerOrder_submission_key' || name === 'CustomerOrder_submission_key'
+    || (Array.isArray(fields) && fields.length === 3 && ['tenantId', 'storeId', 'submissionKey'].every(k => fields.includes(k)))) return 'KEY'
+  if (fields === 'CustomerOrder_orderNo_key' || name === 'CustomerOrder_orderNo_key'
+    || (Array.isArray(fields) && fields.length === 1 && fields[0] === 'orderNo')) return 'ORDER_NO'
+  return null
+}
+
+function replaySubmission(row: { submissionHash: string | null; submissionVersion: number | null; submissionResponse: Prisma.JsonValue; orderNo: string }, hash: string) {
+  if (row.submissionHash !== hash || row.submissionVersion !== 1) throw new SubmissionError(409, 'IDEMPOTENCY_KEY_CONFLICT')
+  const receipt = row.submissionResponse
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)
+    || receipt.orderNo !== row.orderNo || typeof receipt.totalAmount !== 'number') {
+    throw new SubmissionError(503, 'SUBMISSION_RECEIPT_UNAVAILABLE')
+  }
+  return receipt
+}
 
 // 顾客 H5 三语文案（按下单时 lang 返回；商户通知保持中文）
 type Lang = 'zh' | 'en' | 'km'
@@ -63,310 +113,199 @@ function pickLang(v: unknown): Lang {
 }
 
 export async function POST(req: NextRequest) {
-  let body: {
-    storeCode?: string; items?: OrderItem[]; customerTelegramId?: string
-    remark?: string; lang?: string; couponId?: string
-    pickupMethod?: 'dineIn' | 'delivery' | string
-    tableNo?: string
-    customerName?: string; customerPhone?: string
-    deliveryAddress?: string; deliveryNote?: string
-    deliveryLat?: number; deliveryLng?: number
-    deliveryAddressPhotoUrl?: string  // 可为 data URL 或外部 URL
-    campaignCode?: string; campaignIntent?: string
-    orderSource?: string; source?: string; campaign?: string; visitorId?: string
+  const key = req.headers.get('idempotency-key') ?? ''
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(key)) {
+    return NextResponse.json({ error: 'INVALID_IDEMPOTENCY_KEY', submissionState: 'NOT_COMMITTED' }, { status: 400 })
   }
+  let raw: Record<string, unknown>
   try {
-    body = await req.json()
+    raw = await req.json()
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('invalid body')
   } catch {
-    return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
+    return NextResponse.json({ error: 'INVALID_JSON', submissionState: 'NOT_COMMITTED' }, { status: 400 })
   }
 
-  const { storeCode, items, customerTelegramId, remark } = body
-  const tableNo = typeof body.tableNo === 'string' ? body.tableNo.trim().slice(0, 20) || null : null
-  const rawCampaignCode   = typeof body.campaignCode   === 'string' ? body.campaignCode.trim()   : ''
-  const rawCampaignIntent = typeof body.campaignIntent === 'string' ? body.campaignIntent.trim() : ''
-  const orderSource = cleanTrackingText(body.orderSource)
-  const landingSource = cleanTrackingText(body.source)
-  const landingCampaign = cleanTrackingText(body.campaign, 120)
-  const landingVisitorId = cleanVisitorId(body.visitorId)
-  const couponId = typeof body.couponId === 'string' ? body.couponId.trim() : ''
-
-  // 配送/上门字段（可选；当 pickupMethod=delivery 时强制电话+地址非空）
-  const pickupMethod    = (body.pickupMethod ?? '').trim()
-  const customerName    = (body.customerName    ?? '').trim().slice(0, 60) || null
-  const customerPhone   = (body.customerPhone   ?? '').trim().slice(0, 40) || null
-  const deliveryAddress = (body.deliveryAddress ?? '').trim().slice(0, 500) || null
-  const deliveryNote    = (body.deliveryNote    ?? '').trim().slice(0, 300) || null
-  const latRaw = Number(body.deliveryLat)
-  const lngRaw = Number(body.deliveryLng)
-  const deliveryLat = Number.isFinite(latRaw) && latRaw >= -90  && latRaw <= 90  ? latRaw : null
-  const deliveryLng = Number.isFinite(lngRaw) && lngRaw >= -180 && lngRaw <= 180 ? lngRaw : null
-  if (pickupMethod === 'delivery') {
-    if (!customerPhone || !deliveryAddress) {
-      return NextResponse.json({ error: 'DELIVERY_INFO_REQUIRED', message: '请填写联系电话和送货/上门地址' }, { status: 400 })
-    }
-  }
-
-  // 门牌/位置照片：本期只接受 Storage 等 https URL；不再接收 base64 data URL。
-  // 旧订单的 base64（deliveryAddressPhotoData）保留，但新订单不写入该字段。
-  const rawPhoto = typeof body.deliveryAddressPhotoUrl === 'string' ? body.deliveryAddressPhotoUrl.trim() : ''
-  const deliveryAddressPhotoUrl: string | null =
-    rawPhoto && /^https?:\/\//i.test(rawPhoto) ? rawPhoto.slice(0, 1000) : null
-  const lang = pickLang(body.lang)
-  const T = MSG[lang]
-
-  if (!storeCode) {
-    return NextResponse.json({ error: 'MISSING_STORE_CODE' }, { status: 400 })
-  }
-  if (!items?.length) {
-    return NextResponse.json({ error: 'EMPTY_CART', message: T.emptyCart }, { status: 400 })
-  }
-
-  // ── 查门店 ────────────────────────────────────────────────────────────────
-  const store = await prisma.store.findUnique({
-    where: { code: storeCode },
-    select: { id: true, name: true, code: true, status: true, tenantId: true },
-  })
-
-  if (!store || store.status !== 'ACTIVE') {
-    return NextResponse.json(
-      { error: 'STORE_NOT_FOUND', message: T.storeNotFound },
-      { status: 404 },
-    )
-  }
-
-  // ── 校验商品（服务端权威价格） ──────────────────────────────────────────
-  const productIds = items.map((i) => i.productId)
-  const products = await prisma.product.findMany({
-    where: { id: { in: productIds }, tenantId: store.tenantId, status: 'ACTIVE' },
-    select: { id: true, name: true, spec: true, sellPrice: true, discountPrice: true, discountEnabled: true },
-  })
-
-  const productMap = new Map(products.map((p) => [p.id, p]))
-
-  for (const item of items) {
-    if (!productMap.has(item.productId)) {
-      return NextResponse.json(
-        { error: 'PRODUCT_UNAVAILABLE', message: T.productUnavailable },
-        { status: 400 },
-      )
-    }
-    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
-      return NextResponse.json(
-        { error: 'INVALID_QUANTITY', message: T.invalidQty },
-        { status: 400 },
-      )
-    }
-  }
-
-  // ── 服务端计算总金额 ────────────────────────────────────────────────────
-  let subtotal = 0
-  let saleSubtotal = 0
-  const itemsForJson = items.map((item) => {
-    const p = productMap.get(item.productId)!
-    const originalPrice = p.sellPrice.toNumber()
-    const price = p.discountEnabled && p.discountPrice ? p.discountPrice.toNumber() : originalPrice
-    const lineAmount = price * item.quantity
-    subtotal += originalPrice * item.quantity
-    saleSubtotal += lineAmount
-    return { productId: item.productId, name: p.name, spec: p.spec ?? null, originalPrice, price, quantity: item.quantity, lineAmount, ...(item.sugar ? { sugar: item.sugar } : {}) }
-  })
-  subtotal = +subtotal.toFixed(2)
-  saleSubtotal = +saleSubtotal.toFixed(2)
-  const productDiscountAmount = +(subtotal - saleSubtotal).toFixed(2)
-  const trimmedTgId = customerTelegramId?.trim() || null
-
-  // ── 校验优惠券（如有） ───────────────────────────────────────────────────
-  let discountAmount = 0
-  let couponSnapshot: { id: string; name: string; type: 'AMOUNT_OFF' | 'PERCENT_OFF' } | null = null
-  if (couponId) {
-    if (!trimmedTgId) {
-      return NextResponse.json({ error: 'COUPON_NEED_TG', message: '使用优惠券需绑定 Telegram 顾客身份' }, { status: 400 })
-    }
-    const coupon = await prisma.customerCoupon.findFirst({
-      where: {
-        id: couponId, tenantId: store.tenantId, telegramId: trimmedTgId, status: 'AVAILABLE',
-        OR: [{ storeId: store.id }, { storeId: null }],
-      },
-    })
-    if (!coupon) {
-      return NextResponse.json({ error: 'COUPON_INVALID', message: '优惠券不可用' }, { status: 400 })
-    }
-    if (coupon.expiresAt.getTime() <= Date.now()) {
-      return NextResponse.json({ error: 'COUPON_EXPIRED', message: '优惠券已过期' }, { status: 400 })
-    }
-    const minSpend = coupon.minSpend.toNumber()
-    if (saleSubtotal < minSpend) {
-      return NextResponse.json({ error: 'COUPON_MIN_NOT_MET', message: `未满 ${minSpend.toFixed(2)} 不可用` }, { status: 400 })
-    }
-    if (coupon.type === 'AMOUNT_OFF') discountAmount = Math.min(Number(coupon.amountOff ?? 0), saleSubtotal)
-    else if (coupon.type === 'PERCENT_OFF') {
-      const p = Math.max(0, Math.min(100, Number(coupon.percentOff ?? 0)))
-      discountAmount = +((saleSubtotal * p) / 100).toFixed(2)
-    }
-    discountAmount = +Math.max(0, discountAmount).toFixed(2)
-    couponSnapshot = { id: coupon.id, name: coupon.name, type: coupon.type as 'AMOUNT_OFF' | 'PERCENT_OFF' }
-  }
-
-  const couponDiscountAmount = discountAmount
-  discountAmount = +(productDiscountAmount + couponDiscountAmount).toFixed(2)
-  const payableAmount = +Math.max(0, saleSubtotal - couponDiscountAmount).toFixed(2)
-  const totalAmount = payableAmount
-
-  // ── 推广归因（非阻断，CampaignLink 不存在时静默忽略） ────────────────────
-  let campaignAttribution: {
-    sourcePlatform: string; campaignCode: string
-    campaignLinkId: string | null; campaignIntent: string
-  } | null = null
-  if (rawCampaignCode) {
-    try {
-      const cl = await prisma.campaignLink.findUnique({
-        where: { code: rawCampaignCode },
-        select: { id: true, sourcePlatform: true },
-      })
-      if (cl) {
-        campaignAttribution = {
-          sourcePlatform: cl.sourcePlatform,
-          campaignCode:   rawCampaignCode,
-          campaignLinkId: cl.id,
-          campaignIntent: rawCampaignIntent || 'order',
-        }
-      }
-    } catch { /* 查询失败不阻断下单 */ }
-  }
-  if (!campaignAttribution && orderSource === 'landing') {
-    campaignAttribution = {
-      sourcePlatform: 'landing',
-      campaignCode: landingCampaign ?? '',
-      campaignLinkId: null,
-      campaignIntent: landingSource ? `landing:${landingSource}` : 'landing',
-    }
-  }
-
-  // ── 生成 orderNo：格式 C-yyyyMMdd-STORECODE-seq ─────────────────────────
-  const now = new Date()
-  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
-  const startOfDay = new Date(now); startOfDay.setUTCHours(0, 0, 0, 0)
-  const endOfDay   = new Date(now); endOfDay.setUTCHours(23, 59, 59, 999)
-
-  const todayCount = await prisma.customerOrder.count({
-    where: { storeId: store.id, createdAt: { gte: startOfDay, lte: endOfDay } },
-  })
-
-  const seq     = String(todayCount + 1).padStart(4, '0')
-  const orderNo = `C-${dateStr}-${store.code.toUpperCase().slice(0, 6)}-${seq}`
-
-  // ── 事务：创建订单 + 核销优惠券 ─────────────────────────────────────────
-  // 单券并发防御：UPDATE WHERE status='AVAILABLE'，影响行 = 0 → 已被他人核销
-  let order
   try {
-    order = await prisma.$transaction(async (tx) => {
-      const created = await tx.customerOrder.create({
-        data: {
-          tenantId:           store.tenantId,
-          storeId:            store.id,
-          storeCode:          store.code,
-          orderNo,
-          customerTelegramId: trimmedTgId,
-          customerLang:       lang,
-          customerName,
-          customerPhone,
-          deliveryAddress,
-          deliveryNote,
-          deliveryLat,
-          deliveryLng,
-          deliveryAddressPhotoUrl,
-          tableNo,
-          // 新订单不写入 deliveryAddressPhotoData（base64 旧方案已停用，旧订单数据保留）
-          itemsJson:          JSON.stringify(itemsForJson),
-          totalAmount:        String(payableAmount.toFixed(2)),
-          status:             'PENDING',
-          remark:             typeof remark === 'string' && remark.trim() ? remark.trim().slice(0, 500) : null,
-          ...(campaignAttribution ?? {}),
-        },
-      })
+    const storeCode = submissionText(raw.storeCode)
+    if (!storeCode) throw new SubmissionError(400, 'MISSING_STORE_CODE')
+    if (!Array.isArray(raw.items) || raw.items.length === 0) throw new SubmissionError(400, 'EMPTY_CART')
+    const items: OrderItem[] = raw.items.map((value: unknown) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new SubmissionError(400, 'INVALID_REQUEST')
+      const line = value as Record<string, unknown>
+      const productId = submissionText(line.productId)
+      if (!productId) throw new SubmissionError(400, 'INVALID_REQUEST')
+      if (!Number.isSafeInteger(line.quantity) || (line.quantity as number) <= 0) throw new SubmissionError(400, 'INVALID_QUANTITY')
+      const sugar = submissionText(line.sugar)
+      return { productId, quantity: line.quantity as number, ...(sugar ? { sugar } : {}) }
+    })
+    const tableNo = submissionText(raw.tableNo, 20)
+    const remark = submissionText(raw.remark, 500)
+    const trimmedTgId = submissionText(raw.customerTelegramId)
+    const couponId = submissionText(raw.couponId)
+    const pickupMethod = submissionText(raw.pickupMethod) ?? ''
+    const customerName = submissionText(raw.customerName, 60)
+    const customerPhone = submissionText(raw.customerPhone, 40)
+    const deliveryAddress = submissionText(raw.deliveryAddress, 500)
+    const deliveryNote = submissionText(raw.deliveryNote, 300)
+    const deliveryLat = submissionCoordinate(raw.deliveryLat, 90)
+    const deliveryLng = submissionCoordinate(raw.deliveryLng, 180)
+    const photo = submissionText(raw.deliveryAddressPhotoUrl)
+    const deliveryAddressPhotoUrl = photo && /^https?:\/\//i.test(photo) ? photo.slice(0, 1000) : null
+    const rawCampaignCode = submissionText(raw.campaignCode) ?? ''
+    const rawCampaignIntent = submissionText(raw.campaignIntent) ?? ''
+    const orderSource = cleanTrackingText(raw.orderSource)
+    const landingSource = cleanTrackingText(raw.source)
+    const landingCampaign = cleanTrackingText(raw.campaign, 120)
+    const landingVisitorId = cleanVisitorId(raw.visitorId)
+    const lang = pickLang(raw.lang), T = MSG[lang]
+    const normalized = { version: 1, storeCode, items, tableNo, remark, customerTelegramId: trimmedTgId,
+      couponId, pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng,
+      deliveryAddressPhotoUrl, campaignCode: rawCampaignCode, campaignIntent: rawCampaignIntent,
+      orderSource, source: landingSource, campaign: landingCampaign, visitorId: landingVisitorId, lang }
+    const hash = createHash('sha256').update(JSON.stringify(normalized), 'utf8').digest('hex')
+    const store = await prisma.store.findUnique({
+      where: { code: storeCode }, select: { id: true, name: true, code: true, status: true, tenantId: true },
+    })
+    if (!store) throw new SubmissionError(404, 'STORE_NOT_FOUND', T.storeNotFound)
+    const whereKey = { tenantId_storeId_submissionKey: { tenantId: store.tenantId, storeId: store.id, submissionKey: key } }
+    const existing = await prisma.customerOrder.findUnique({ where: whereKey })
+    if (existing) return NextResponse.json(replaySubmission(existing, hash))
 
+    // Attribution is optional and outside the short transaction. SQL failures must
+    // not be caught inside a PostgreSQL transaction and then treated as recoverable.
+    let campaignAttribution: { sourcePlatform: string; campaignCode: string; campaignLinkId: string | null; campaignIntent: string } | null = null
+    if (rawCampaignCode) {
+      const cl = await prisma.campaignLink.findUnique({ where: { code: rawCampaignCode }, select: { id: true, sourcePlatform: true } }).catch(() => null)
+      if (cl) campaignAttribution = { sourcePlatform: cl.sourcePlatform, campaignCode: rawCampaignCode, campaignLinkId: cl.id, campaignIntent: rawCampaignIntent || 'order' }
+    }
+    if (!campaignAttribution && orderSource === 'landing') {
+      campaignAttribution = { sourcePlatform: 'landing', campaignCode: landingCampaign ?? '', campaignLinkId: null, campaignIntent: landingSource ? `landing:${landingSource}` : 'landing' }
+    }
+
+    const createSubmission = async (tx: Prisma.TransactionClient) => {
+      // Same-prefix stores share the legacy globally-unique orderNo namespace.
+      // A transaction-scoped lock is compatible with transaction-mode pooling.
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const prefix = `C-${dateStr}-${store.code.toUpperCase().slice(0, 6)}-`
+      const lockKey = createHash('sha256').update(`customer-order-number:v1:${prefix}`).digest().readBigInt64BE(0)
+      await tx.$queryRaw`SELECT set_config('lock_timeout', '3000', true)`
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint) IS NULL AS locked`
+      const prior = await tx.customerOrder.findUnique({ where: whereKey })
+      if (prior) return { kind: 'REPLAY' as const, receipt: replaySubmission(prior, hash) }
+      const currentStore = await tx.store.findFirst({ where: { id: store.id, tenantId: store.tenantId, code: storeCode } })
+      if (!currentStore || currentStore.status !== 'ACTIVE') throw new SubmissionError(404, 'STORE_NOT_FOUND', T.storeNotFound)
+      if (pickupMethod === 'delivery' && (!customerPhone || !deliveryAddress)) throw new SubmissionError(400, 'DELIVERY_INFO_REQUIRED', '请填写联系电话和送货/上门地址')
+
+      const products = await tx.product.findMany({
+        where: { id: { in: items.map(i => i.productId) }, tenantId: store.tenantId, status: 'ACTIVE' },
+        select: { id: true, name: true, spec: true, sellPrice: true, discountPrice: true, discountEnabled: true, printKitchenTicket: true },
+      })
+      const productMap = new Map(products.map(p => [p.id, p]))
+      let subtotal = 0, saleSubtotal = 0
+      const itemsForJson = items.map(item => {
+        const p = productMap.get(item.productId)
+        if (!p) throw new SubmissionError(400, 'PRODUCT_UNAVAILABLE', T.productUnavailable)
+        const originalPrice = p.sellPrice.toNumber()
+        const price = p.discountEnabled && p.discountPrice ? p.discountPrice.toNumber() : originalPrice
+        const lineAmount = price * item.quantity
+        subtotal += originalPrice * item.quantity
+        saleSubtotal += lineAmount
+        return { productId: item.productId, name: p.name, spec: p.spec ?? null, originalPrice, price, quantity: item.quantity, lineAmount,
+          printKitchenTicket: p.printKitchenTicket, ...(item.sugar ? { sugar: item.sugar } : {}) }
+      })
+      if (!Number.isFinite(subtotal) || !Number.isFinite(saleSubtotal) || subtotal > 9_999_999_999.99 || saleSubtotal > 9_999_999_999.99) throw new SubmissionError(400, 'INVALID_AMOUNT')
+      subtotal = +subtotal.toFixed(2); saleSubtotal = +saleSubtotal.toFixed(2)
+      const productDiscountAmount = +(subtotal - saleSubtotal).toFixed(2)
+      let couponDiscountAmount = 0
+      let couponSnapshot: { id: string; name: string; type: 'AMOUNT_OFF' | 'PERCENT_OFF' } | null = null
+      if (couponId) {
+        if (!trimmedTgId) throw new SubmissionError(400, 'COUPON_NEED_TG', '使用优惠券需绑定 Telegram 顾客身份')
+        const coupon = await tx.customerCoupon.findFirst({
+          where: { id: couponId, tenantId: store.tenantId, telegramId: trimmedTgId, status: 'AVAILABLE', OR: [{ storeId: store.id }, { storeId: null }] },
+        })
+        if (!coupon) throw new SubmissionError(400, 'COUPON_INVALID', '优惠券不可用')
+        if (coupon.expiresAt.getTime() <= Date.now()) throw new SubmissionError(400, 'COUPON_EXPIRED', '优惠券已过期')
+        const minSpend = coupon.minSpend.toNumber()
+        if (saleSubtotal < minSpend) throw new SubmissionError(400, 'COUPON_MIN_NOT_MET', `未满 ${minSpend.toFixed(2)} 不可用`)
+        if (coupon.type === 'AMOUNT_OFF') couponDiscountAmount = Math.min(Number(coupon.amountOff ?? 0), saleSubtotal)
+        else if (coupon.type === 'PERCENT_OFF') couponDiscountAmount = saleSubtotal * Math.max(0, Math.min(100, Number(coupon.percentOff ?? 0))) / 100
+        couponDiscountAmount = +Math.max(0, couponDiscountAmount).toFixed(2)
+        couponSnapshot = { id: coupon.id, name: coupon.name, type: coupon.type as 'AMOUNT_OFF' | 'PERCENT_OFF' }
+      }
+      const discountAmount = +(productDiscountAmount + couponDiscountAmount).toFixed(2)
+      const payableAmount = +Math.max(0, saleSubtotal - couponDiscountAmount).toFixed(2)
+      const pattern = `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([0-9]+)$`
+      const maxima = await tx.$queryRaw<Array<{ max: string }>>`SELECT COALESCE(MAX((substring("orderNo" from ${pattern}))::numeric), 0)::text AS max FROM "CustomerOrder" WHERE "orderNo" ~ ${pattern}`
+      const orderNo = prefix + (BigInt(maxima[0].max) + BigInt(1)).toString().padStart(4, '0')
+      const receipt = { orderNo, totalAmount: payableAmount, subtotal, discountAmount, payableAmount, coupon: couponSnapshot,
+        itemCount: items.reduce((n, i) => n + i.quantity, 0), message: T.submitted,
+        labels: { submitted: T.submitted, orderNo: T.orderNo, total: T.total, statusPending: T.statusPending }, lang }
+      const created = await tx.customerOrder.create({ data: {
+        tenantId: store.tenantId, storeId: store.id, storeCode: store.code, orderNo,
+        submissionKey: key, submissionHash: hash, submissionVersion: 1, submissionResponse: receipt,
+        customerTelegramId: trimmedTgId, customerLang: lang, customerName, customerPhone, deliveryAddress, deliveryNote,
+        deliveryLat, deliveryLng, deliveryAddressPhotoUrl, tableNo, remark,
+        itemsJson: JSON.stringify(itemsForJson), totalAmount: payableAmount.toFixed(2), status: 'PENDING', ...(campaignAttribution ?? {}),
+      } })
       if (couponSnapshot) {
-        // 占券 where 重复所有关键约束（防 id 注入 / 跨租户 / 跨店 / 跨人 / 过期 / 已用）
         const upd = await tx.customerCoupon.updateMany({
-          where: {
-            id:         couponSnapshot.id,
-            tenantId:   store.tenantId,
-            telegramId: trimmedTgId!,
-            status:     'AVAILABLE',
-            expiresAt:  { gt: new Date() },
-            OR: [{ storeId: store.id }, { storeId: null }],
-          },
+          where: { id: couponSnapshot.id, tenantId: store.tenantId, telegramId: trimmedTgId!, status: 'AVAILABLE', expiresAt: { gt: new Date() }, OR: [{ storeId: store.id }, { storeId: null }] },
           data: { status: 'USED', usedAt: new Date(), usedOrderNo: created.orderNo },
         })
-        if (upd.count !== 1) throw new Error('COUPON_ALREADY_USED')
-        await tx.couponRedemption.create({
-          data: {
-            tenantId:   store.tenantId,
-            storeId:    store.id,
-            couponId:   couponSnapshot.id,
-            telegramId: trimmedTgId!,
-            orderNo:    created.orderNo,
-            discountAmount: String(couponDiscountAmount.toFixed(2)),
-          },
-        })
+        if (upd.count !== 1) throw new SubmissionError(409, 'COUPON_ALREADY_USED', '该优惠券已被使用')
+        await tx.couponRedemption.create({ data: { tenantId: store.tenantId, storeId: store.id, couponId: couponSnapshot.id,
+          telegramId: trimmedTgId!, orderNo: created.orderNo, discountAmount: couponDiscountAmount.toFixed(2) } })
       }
-
-      return created
-    })
-  } catch (e) {
-    if ((e as Error).message === 'COUPON_ALREADY_USED') {
-      return NextResponse.json({ error: 'COUPON_ALREADY_USED', message: '该优惠券已被使用' }, { status: 409 })
+      return { kind: 'CREATED' as const, receipt, created, itemsForJson }
     }
-    throw e
+
+    let order: Awaited<ReturnType<typeof createSubmission>> | undefined
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        order = await prisma.$transaction(createSubmission, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 5_000, timeout: 15_000 })
+        break
+      } catch (error) {
+        const conflict = submissionConflict(error)
+        if (conflict) {
+          // The rejected transaction has ended. Never query inside an aborted tx.
+          const prior = await prisma.customerOrder.findUnique({ where: whereKey })
+          if (prior) return NextResponse.json(replaySubmission(prior, hash))
+          if (conflict === 'ORDER_NO' && attempt < 2) continue
+          throw new SubmissionError(503, 'SUBMISSION_RETRY_SAME_KEY')
+        }
+        throw error
+      }
+    }
+    if (!order) throw new SubmissionError(503, 'SUBMISSION_RETRY_SAME_KEY')
+    if (order.kind === 'REPLAY') return NextResponse.json(order.receipt)
+
+    // Business commit is complete. Wake/notification failures cannot turn a
+    // successful order into a misleading whole-request failure; replays do not wake.
+    try {
+      after(() => notifyCashierGateway({
+        tenantId: store.tenantId,
+        storeId: store.id,
+        type: 'orders_changed',
+      }))
+    } catch { console.error('[customer-order] post-commit wake scheduling failed') }
+    if (orderSource === 'landing') {
+      await createCustomerJourneyEvent({ eventType: 'order_conversion', storeId: store.id, storeCode: store.code,
+        visitorId: landingVisitorId, source: landingSource, campaign: landingCampaign, language: lang,
+        orderId: order.created.id, eventKey: `order_conversion:${order.created.id}` }).catch(() => console.error('[customer-order] post-commit attribution failed'))
+    }
+    await notifyOwner(store.tenantId, store.name, order.created.orderNo, order.itemsForJson, order.receipt.totalAmount,
+      { tableNo, pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng, deliveryAddressPhotoUrl },
+      campaignAttribution).catch(() => console.error('[customer-order] post-commit owner notification failed'))
+    return NextResponse.json(order.receipt)
+  } catch (error) {
+    if (error instanceof SubmissionError) return NextResponse.json({ error: error.message, message: error.detail,
+      submissionState: error.status < 500 ? 'NOT_COMMITTED' : 'UNKNOWN', retryWithSameKey: error.status >= 500 }, { status: error.status })
+    const e = error as { code?: string; meta?: { code?: string; driverAdapterError?: { cause?: { originalCode?: string } } } }
+    const sqlState = e.meta?.code ?? e.meta?.driverAdapterError?.cause?.originalCode
+    const retry = e.code === 'P2034' || (e.code === 'P2010' && ['40001', '40P01', '55P03'].includes(sqlState ?? ''))
+    console.error('[customer-order] submission transaction failed', { code: e.code ?? 'UNKNOWN' })
+    return NextResponse.json({ error: retry ? 'SUBMISSION_RETRY_SAME_KEY' : 'ORDER_SUBMISSION_FAILED', submissionState: 'UNKNOWN', retryWithSameKey: true }, { status: retry ? 503 : 500 })
   }
-
-  after(() => notifyCashierGateway({
-    tenantId: store.tenantId,
-    storeId: store.id,
-    type: 'orders_changed',
-  }))
-
-  if (orderSource === 'landing') {
-    await createCustomerJourneyEvent({
-      eventType: 'order_conversion',
-      storeId: store.id,
-      storeCode: store.code,
-      visitorId: landingVisitorId,
-      source: landingSource,
-      campaign: landingCampaign,
-      language: lang,
-      orderId: order.id,
-      eventKey: `order_conversion:${order.id}`,
-    })
-  }
-
-  // ── 通知 OWNER ────────────────────────────────────────────────────────────
-  await notifyOwner(store.tenantId, store.name, order.orderNo, itemsForJson, totalAmount, {
-    tableNo, pickupMethod, customerName, customerPhone, deliveryAddress, deliveryNote, deliveryLat, deliveryLng,
-    deliveryAddressPhotoUrl,
-  }, campaignAttribution).catch(
-    (e) => console.error('[customer-order] notify owner failed:', e),
-  )
-
-  return NextResponse.json({
-    orderNo:        order.orderNo,
-    totalAmount:    payableAmount,
-    subtotal,
-    discountAmount,
-    payableAmount,
-    coupon:         couponSnapshot,
-    itemCount:      items.reduce((s, i) => s + i.quantity, 0),
-    // 三语文案，由 H5 顾客下单时 lang 决定；客户端可直接展示无需自己映射
-    message:     T.submitted,
-    labels: {
-      submitted:     T.submitted,
-      orderNo:       T.orderNo,
-      total:         T.total,
-      statusPending: T.statusPending,
-    },
-    lang,
-  })
 }
 
 // ── 通知老板 Telegram ─────────────────────────────────────────────────────────

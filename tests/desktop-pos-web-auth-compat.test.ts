@@ -118,10 +118,17 @@ async function createRuntimePage(
 }
 
 async function waitForCashier(page: Page) {
-  await page.getByRole('button', { name: '销售记录' }).first().waitFor({
+  // The governed Sidebar simplification removed the sales-record entry. Verify
+  // the actual authorized Desktop checkout surface, not that obsolete shortcut.
+  await page.getByRole('button', { name: '管理中心', exact: true }).waitFor({
     state: 'visible',
     timeout: 30_000,
   })
+  await page.getByRole('button', { name: '✓ 确认本单', exact: true }).waitFor({
+    state: 'visible', timeout: 30_000,
+  })
+  assert.equal(await page.getByRole('heading', { name: '本机尚未授权为收银机' }).count(), 0)
+  assert.equal(new URL(page.url()).pathname, '/desktop/pos')
 }
 
 async function waitForBrowserCashier(page: Page) {

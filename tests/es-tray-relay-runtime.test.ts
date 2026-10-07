@@ -216,6 +216,8 @@ async function main() {
       await client.query('UPDATE "ComputerBinding" SET "disabledAt" = NOW() WHERE "id" = $1', [scoped.binding.id])
       let settled = false
       const claim = claimNextRelayPrintJob(scoped.agent, timing).finally(() => { settled = true })
+      // Observe immediately; the original rejected Promise is asserted below after COMMIT.
+      void claim.catch(() => undefined)
       await new Promise((resolve) => setTimeout(resolve, 100))
       assert.equal(settled, false, 'claim must wait for the authorization row lock')
       await client.query('COMMIT')
@@ -238,6 +240,8 @@ async function main() {
       await client.query('UPDATE "ComputerBinding" SET "credentialStatus" = \'VOID\' WHERE "id" = $1', [scoped.binding.id])
       let settled = false
       const claim = claimNextRelayPrintJob(scoped.agent, timing).finally(() => { settled = true })
+      // Observe immediately; the original rejected Promise is asserted below after COMMIT.
+      void claim.catch(() => undefined)
       await new Promise((resolve) => setTimeout(resolve, 100))
       assert.equal(settled, false, 'claim must wait for the credential row lock')
       await client.query('COMMIT')
@@ -260,6 +264,8 @@ async function main() {
       await client.query('UPDATE "Store" SET "status" = \'DISABLED\' WHERE "id" = $1', [scoped.store.id])
       let settled = false
       const claim = claimNextRelayPrintJob(scoped.agent, timing).finally(() => { settled = true })
+      // Observe immediately; the original rejected Promise is asserted below after COMMIT.
+      void claim.catch(() => undefined)
       await new Promise((resolve) => setTimeout(resolve, 100))
       assert.equal(settled, false, 'claim must wait for the store authorization row lock')
       await client.query('COMMIT')

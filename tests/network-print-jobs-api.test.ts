@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { NextRequest } from 'next/server'
 import { prisma } from '../lib/prisma'
@@ -90,6 +90,22 @@ function networkPayload(seed: Seed) {
 
 async function seedJob(f: Fixture, seed: Seed) {
   const createdAt = seed.createdAt ?? new Date()
+  const active = seed.status === 'CLAIMED' || seed.status === 'EXECUTING'
+  // Observability fixtures intentionally include stalled claims. They still must
+  // satisfy the trusted DB claim constraint and reference this tenant/store.
+  const binding = active ? await prisma.computerBinding.create({
+    data: {
+      tenantId: f.tenant.id, storeId: f.store.id,
+      installationIdHash: createHash('sha256').update(randomUUID()).digest('hex'),
+      computerName: 'isolated-observability-fixture', status: 'APPROVED',
+      claimSecretHash: createHash('sha256').update(randomUUID()).digest('hex'),
+      deviceSecretHash: createHash('sha256').update(randomUUID()).digest('hex'),
+      expiresAt: new Date(Date.now() + DAY), credentialStatus: 'ACTIVE',
+      credentialActivatedAt: createdAt, credentialExpiresAt: new Date(Date.now() + DAY),
+      boundAt: createdAt,
+    },
+  }) : null
+  if (active) assert.ok((seed.claimAttempt ?? 1) > 0, 'active fixture requires a positive claim attempt')
   return prisma.eshopTrayPrintJob.create({
     data: {
       tenantId: f.tenant.id,
@@ -101,6 +117,11 @@ async function seedJob(f: Fixture, seed: Seed) {
       status: seed.status ?? 'SUCCEEDED',
       attemptCount: seed.attemptCount ?? 1,
       claimAttempt: seed.claimAttempt ?? 1,
+      ...(binding ? {
+        claimedByComputerBindingId: binding.id,
+        claimTokenHash: createHash('sha256').update(randomUUID()).digest('hex'),
+        leaseExpiresAt: new Date(createdAt.getTime() + MINUTE),
+      } : {}),
       nextAttemptAt: createdAt,
       expiresAt: new Date(createdAt.getTime() + DAY),
       completedAt: seed.completedAt === undefined
@@ -554,6 +575,7 @@ run()
     // 只删除本文件创建的独立 fixture；绝不 reset / drop / truncate 共享测试数据。
     for (const tenantId of tenants) {
       await prisma.eshopTrayPrintJob.deleteMany({ where: { tenantId } })
+      await prisma.computerBinding.deleteMany({ where: { tenantId } })
       await prisma.userStoreRole.deleteMany({ where: { tenantId } })
       await prisma.user.deleteMany({ where: { tenantId } })
       await prisma.store.deleteMany({ where: { tenantId } })

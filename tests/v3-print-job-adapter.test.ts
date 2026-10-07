@@ -3,13 +3,51 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { Prisma } from '@prisma/client'
-import { deliverV3PrintIntent, enqueueHeldV3PrintIntent, enqueueV3PrintIntent, materializeHeldV3PrintIntents, parseV3PrintRole, reportV3Execution, type V3Intent } from '../lib/v3-print-job-adapter'
+import { enqueueV3ManualReprintWithDb, V3ReprintError } from '../lib/v3-print-reprint'
+import { cancelPendingV3PrintIntent, cancelUnclaimedV3PrintReprints, deliverV3PrintIntent, enqueueHeldV3PrintIntent, enqueueV3PrintIntent, materializeHeldV3PrintIntents, parseV3PrintRole, reportV3Execution, type V3Intent } from '../lib/v3-print-job-adapter'
 import { canonicalV3PrintEffectKey } from '../lib/v3-print-identity'
+import { canonicalV3OriginalPrintJobId } from '../lib/v3-print-operator-status'
 
 const now = new Date('2026-09-23T00:00:00.000Z')
 const expiresAt = new Date('2026-09-23T01:00:00.000Z')
 const scope = { tenantId: 'tenant-a', storeId: 'store-a' }
 const identity = { ...scope, deviceId: 'device-a', batchId: 'batch-a', role: 'FRONT' as const }
+
+const conflictRequest = {
+  schemaVersion: 3 as const, requestId: 'v3-reprint:kitchen:transaction-conflict', orderNo: 'H5-CONFLICT',
+  role: 'KITCHEN' as const, confirmation: 'OPERATOR_CONFIRMED' as const, rendererVersion: 'reprint-raw-v1' as const,
+  commandStream: { encoding: 'base64' as const, data: Buffer.from('receipt').toString('base64'), byteLength: 7, sha256: createHash('sha256').update('receipt').digest('hex') },
+}
+for (const code of ['P2034', '40001', '40P01']) {
+  test(`A: structured transaction conflict ${code} returns the existing 409 business result`, async () => {
+    const error = new Prisma.PrismaClientKnownRequestError('structured conflict', { code: code === 'P2034' ? code : 'P2010', clientVersion: '7.6.0',
+      meta: code === 'P2034' ? undefined : { driverAdapterError: { cause: { originalCode: code, kind: code === '40001' ? 'TransactionWriteConflict' : 'postgres' } } } })
+    let calls = 0
+    const db: any = { $transaction: async (fn: any) => {
+      calls += 1
+      if (calls === 1) throw error
+      return fn({ eshopTrayPrintJob: { findUnique: async () => null } })
+    } }
+    await assert.rejects(enqueueV3ManualReprintWithDb(db, scope, { kind: 'ACCOUNT', userId: 'owner', role: 'OWNER' }, conflictRequest),
+      (actual: unknown) => actual instanceof V3ReprintError && actual.code === 'V3_REPRINT_CONCURRENT_STATE_CHANGE' && actual.status === 409)
+    assert.equal(calls, 2, 'fresh committed-result lookup before declaring conflict')
+  })
+}
+for (const [label, meta] of Object.entries({
+  unknownSqlState: { driverAdapterError: { cause: { originalCode: '22012' } } },
+  missingSqlState: { driverAdapterError: { cause: { kind: 'TransactionWriteConflict' } } },
+  stringOnly: { message: '40001 serialization failure deadlock 40P01' },
+  absent: undefined,
+})) {
+  test(`A: P2010 ${label} preserves the original database failure`, async () => {
+    const error = new Prisma.PrismaClientKnownRequestError('40001 deadlock text is not evidence', { code: 'P2010', clientVersion: '7.6.0', meta })
+    let calls = 0
+    const db: any = { $transaction: async () => { calls += 1; throw error } }
+    await assert.rejects(enqueueV3ManualReprintWithDb(db, scope, { kind: 'ACCOUNT', userId: 'owner', role: 'OWNER' }, conflictRequest), (actual) => actual === error)
+    assert.equal(calls, 1)
+  })
+}
+
 test('role parser fails closed for missing, unknown and non-string values', () => {
   assert.equal(parseV3PrintRole(null), null)
   assert.equal(parseV3PrintRole('OTHER'), null)
@@ -34,7 +72,10 @@ function database(options: { rejectDeviceIdInPersistenceScope?: boolean; beforeR
   const batch: any = { id: 'batch-a', controlPlaneId: 'control-a', ...scope, ownerDeviceId: 'device-a', ownerEpoch: 7,
     stateVersion: 4, leaseId: 'lease-a', mode: 'V3_ACTIVE', expiresAt, revokedAt: null, controlPlane }
   const batches = [batch]
-  const matches = (job: any, where: any) => Object.entries(where).every(([key, value]: [string, any]) => {
+  const matches = (job: any, where: any): boolean => {
+    if (where.AND && !where.AND.every((clause: any) => matches(job, clause))) return false
+    if (where.OR && !where.OR.some((clause: any) => matches(job, clause))) return false
+    return Object.entries(where).filter(([key]) => key !== 'AND' && key !== 'OR').every(([key, value]: [string, any]) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       if ('path' in value) {
         const selected = value.path.reduce((current: any, segment: string) => current?.[segment], job[key])
@@ -47,7 +88,8 @@ function database(options: { rejectDeviceIdInPersistenceScope?: boolean; beforeR
       return true
     }
     return job[key] === value
-  })
+    })
+  }
   const assertActiveClaimConstraint = (job: any) => {
     if (job.status === 'CLAIMED' || job.status === 'EXECUTING') {
       assert.ok(job.claimedByComputerBindingId)
@@ -94,7 +136,8 @@ function database(options: { rejectDeviceIdInPersistenceScope?: boolean; beforeR
         }
         const job = { id: `row-${jobs.length + 1}`, status: 'PENDING', claimedByComputerBindingId: null, claimTokenHash: null,
           claimAttempt: 0, attemptCount: 0, leaseExpiresAt: null, nextAttemptAt: now, completedAt: null,
-          resultCode: null, resultMessage: null, ...data, createdAt: now, updatedAt: now }
+          resultCode: null, resultMessage: null, effectBoundary: null, physicalCompletionKnown: false,
+          ...data, createdAt: now, updatedAt: now }
         assertActiveClaimConstraint(job)
         jobs.push(job); return job
       },
@@ -135,6 +178,92 @@ test('schema 3 create is strict and duplicate create is idempotent', async () =>
   assert.equal((await enqueueV3PrintIntent(db, scope, value, expiresAt)).created, false)
   await assert.rejects(enqueueV3PrintIntent(db, scope, { ...value, schemaVersion: 2 } as any, expiresAt), /V3_INTENT_INVALID/)
   assert.equal(db.jobs.length, 1); assert.equal(db.jobs[0].schemaVersion, 3); assert.equal(db.jobs[0].physicalCompletionKnown, false)
+})
+
+test('scoped H5 cancellation atomically fences an unclaimed KITCHEN job from delivery', async () => {
+  const db = database()
+  const kitchen = intent({ printJobId: 'network:h5-kitchen-cancel-001', role: 'KITCHEN', orderNo: 'ORDER-CANCEL-001' })
+  await enqueueV3PrintIntent(db, scope, kitchen, expiresAt)
+  assert.deepEqual(await cancelPendingV3PrintIntent(db as any, {
+    ...scope, orderNo: 'ORDER-CANCEL-001', role: 'KITCHEN', jobId: 'row-1', idempotencyKey: kitchen.printJobId, now,
+  }), { ok: true, code: 'CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM', jobId: 'row-1' })
+  assert.equal(db.jobs[0].status, 'FAILED')
+  assert.equal(db.jobs[0].completedAt, now)
+  assert.equal(db.jobs[0].resultStatus, 'FAILED_NOT_CROSSED')
+  assert.equal(db.jobs[0].resultCode, 'CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM')
+  assert.equal(db.jobs[0].effectBoundary, 'NOT_CROSSED')
+  assert.equal(db.jobs[0].physicalCompletionKnown, false)
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now), { ok: true, job: null })
+  assert.deepEqual(await cancelPendingV3PrintIntent(db as any, {
+    ...scope, orderNo: 'ORDER-CANCEL-001', role: 'KITCHEN', jobId: 'row-1', idempotencyKey: kitchen.printJobId, now,
+  }), { ok: true, code: 'CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM', jobId: 'row-1', alreadyCancelled: true })
+})
+
+test('cancel fences unclaimed H5 KITCHEN reprints but reports claimed/unknown rows', async () => {
+  const db = database()
+  const reprint = intent({ printJobId: 'v3-reprint:kitchen:11111111-2222-4333-8444-555555555555', source: 'CLOUD_REMOTE_REPRINT', role: 'KITCHEN', orderNo: 'ORDER-REPRINT-CANCEL-001' })
+  await enqueueV3PrintIntent(db, scope, reprint, expiresAt)
+  db.jobs.push({ ...db.jobs[0], id: 'row-claimed', idempotencyKey: 'v3-reprint:kitchen:22222222-2222-4333-8444-555555555555', payload: { ...db.jobs[0].payload, printJobId: 'v3-reprint:kitchen:22222222-2222-4333-8444-555555555555' }, claimTokenHash: 'claimed', status: 'CLAIMED' })
+  const result = await cancelUnclaimedV3PrintReprints(db as any, { ...scope, orderNo: 'ORDER-REPRINT-CANCEL-001', role: 'KITCHEN', now })
+  assert.deepEqual(result.cancelledJobIds, ['row-1'])
+  assert.deepEqual(result.uncertainJobIds, ['row-claimed'])
+  assert.equal(db.jobs[0].resultStatus, 'FAILED_NOT_CROSSED')
+})
+
+test('cancel recognizes an existing FAILED_NOT_CROSSED reprint as definitely unprinted', async () => {
+  const db = database()
+  const reprint = intent({ printJobId: 'v3-reprint:kitchen:33333333-2222-4333-8444-555555555555', source: 'CLOUD_REMOTE_REPRINT', role: 'KITCHEN', orderNo: 'ORDER-REPRINT-TERMINAL-001' })
+  await enqueueV3PrintIntent(db, scope, reprint, expiresAt)
+  Object.assign(db.jobs[0], {
+    status: 'FAILED',
+    claimTokenHash: null,
+    completedAt: now,
+    resultStatus: 'FAILED_NOT_CROSSED',
+    effectBoundary: 'NOT_CROSSED',
+    physicalCompletionKnown: false,
+  })
+  const result = await cancelUnclaimedV3PrintReprints(db as any, { ...scope, orderNo: 'ORDER-REPRINT-TERMINAL-001', role: 'KITCHEN', now })
+  assert.deepEqual(result, { cancelledJobIds: ['row-1'], uncertainJobIds: [], ok: true })
+  assert.equal(db.jobs[0].resultStatus, 'FAILED_NOT_CROSSED')
+})
+
+test('cancelled H5 orders cannot enter the ordinary KITCHEN reprint path', async () => {
+  const bytes = Buffer.from([0x1b, 0x40, 0x0a])
+  const request = {
+    schemaVersion: 3 as const,
+    requestId: 'v3-reprint:kitchen:11111111-2222-4333-8444-555555555555',
+    orderNo: 'ORDER-CANCEL-REPRINT-001',
+    role: 'KITCHEN' as const,
+    confirmation: 'OPERATOR_CONFIRMED' as const,
+    rendererVersion: 'reprint-raw-v1' as const,
+    commandStream: {
+      encoding: 'base64' as const,
+      byteLength: bytes.byteLength,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      data: bytes.toString('base64'),
+    },
+  }
+  const originalId = canonicalV3OriginalPrintJobId(request.orderNo, request.role)
+  const db: any = {
+    $queryRaw: async () => [{ id: 'order-cancel-reprint', status: 'CANCELLED' }],
+    $transaction: async (run: (tx: any) => Promise<unknown>) => run(db),
+    store: { findFirst: async () => ({ printKitchenTicket: true }) },
+    v3PrintControlPlane: { findUnique: async () => ({ tenantId: 'tenant-a', mode: 'V3_ACTIVE' }) },
+    saleRecord: { findFirst: async () => null },
+    customerOrder: { findFirst: async () => ({ id: 'order-cancel-reprint' }) },
+    eshopTrayPrintJob: {
+      findUnique: async () => ({
+        id: 'original-kitchen', tenantId: 'tenant-a', storeId: 'store-a', idempotencyKey: originalId,
+        schemaVersion: 3, status: 'SUCCEEDED', completedAt: now, resultStatus: 'CROSSED',
+        resultCode: 'V3:execution:7:1:CROSSED', effectBoundary: 'CROSSED', physicalCompletionKnown: false,
+      }),
+      create: async () => { throw new Error('reprint create must not be reached') },
+    },
+  }
+  await assert.rejects(
+    enqueueV3ManualReprintWithDb(db, scope, { kind: 'ACCOUNT', userId: 'staff-a', role: 'STAFF' }, request, now),
+    (error: unknown) => error instanceof V3ReprintError && error.code === 'V3_REPRINT_CANCELLED_H5_KITCHEN_FORBIDDEN',
+  )
 })
 
 test('delivery requires a live owner-scoped batch', async () => {

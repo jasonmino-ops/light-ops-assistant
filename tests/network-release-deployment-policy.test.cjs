@@ -9,6 +9,7 @@ assert.deepEqual(config, {
   crons: [
     { path: '/api/cron/product-sales-daily', schedule: '10 17 * * *' },
     { path: '/api/cron/product-import-staging-cleanup', schedule: '35 17 * * *' },
+    { path: '/api/cron/customer-order-fulfillment-recovery', schedule: '*/5 * * * *' },
   ],
   git: { deploymentEnabled: {
     '**': false,

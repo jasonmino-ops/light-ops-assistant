@@ -1,6 +1,10 @@
+// Next normally initializes AsyncLocalStorage before loading route modules.
+import 'next/dist/server/node-environment'
 import assert from 'node:assert/strict'
 import { createHmac, randomUUID } from 'node:crypto'
 import { NextRequest } from 'next/server'
+import { createWorkStore } from 'next/dist/server/async-storage/work-store'
+import { workAsyncStorage } from 'next/dist/server/app-render/work-async-storage.external'
 import { prisma } from '../lib/prisma'
 import { signSession } from '../lib/session'
 import { signPosDeviceToken } from '../lib/desktop-pos-auth'
@@ -37,6 +41,66 @@ type WriteState = {
 }
 
 let fixture: Fixture | null = null
+
+// Use the installed Next request/AfterContext implementation, not a no-op after.
+// Close the response explicitly and drain waitUntil; no real gateway is contacted.
+async function invokeOrderPatch(
+  req: NextRequest,
+  params: Parameters<typeof patchCashierOrder>[1],
+  expectNotify = false,
+) {
+  const pending: Promise<unknown>[] = []
+  const errors: unknown[] = []
+  let close: (() => void) | undefined
+  const store = createWorkStore({
+    page: '/api/cashier/orders/[id]/route', buildId: 'isolated-route-test', previouslyRevalidatedTags: [],
+    renderOpts: {
+      supportsDynamicResponse: true, experimental: { cacheComponents: false, authInterrupts: false },
+      waitUntil: task => { pending.push(task) },
+      onClose: callback => { assert.equal(close, undefined); close = callback },
+      onAfterTaskError: error => { errors.push(error) },
+    },
+  })
+  const originalFetch = globalThis.fetch
+  const names = ['NEXT_PUBLIC_CASHIER_REALTIME_ENABLED', 'CASHIER_REALTIME_GATEWAY_URL', 'CASHIER_REALTIME_NOTIFY_SECRET'] as const
+  const previous = names.map(name => process.env[name])
+  process.env.NEXT_PUBLIC_CASHIER_REALTIME_ENABLED = '1'
+  process.env.CASHIER_REALTIME_GATEWAY_URL = 'https://isolated-gateway.invalid'
+  process.env.CASHIER_REALTIME_NOTIFY_SECRET = 'isolated-route-notify-secret-at-least-32-bytes'
+  const delivered: Record<string, unknown>[] = []
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), 'https://isolated-gateway.invalid/notify')
+    assert.equal(init?.method, 'POST')
+    const current = fixture!
+    const order = await prisma.customerOrder.findUniqueOrThrow({ where: { id: current.order.id } })
+    assert.equal(order.status, 'CONFIRMED', 'notification observes the committed state')
+    const body = JSON.parse(String(init?.body))
+    assert.deepEqual(Object.keys(body).sort(), ['eventId', 'storeId', 'tenantId', 'timestamp', 'type', 'version'])
+    assert.equal(body.tenantId, current.tenant.id)
+    assert.equal(body.storeId, current.store.id)
+    assert.equal(body.type, 'orders_changed')
+    delivered.push(body)
+    return new Response(null, { status: 202 })
+  }
+  try {
+    const response = await workAsyncStorage.run(store, () => patchCashierOrder(req, params))
+    assert.equal(delivered.length, 0, 'the response must not wait for the gateway')
+    assert.equal(pending.length, expectNotify ? 1 : 0, 'only a successful status change schedules notification')
+    close?.()
+    await Promise.all(pending)
+    assert.deepEqual(errors, [], 'after callback errors must not silently pass')
+    assert.equal(delivered.length, expectNotify ? 1 : 0, 'execute the real registered callback exactly once')
+    return response
+  } finally {
+    close?.()
+    await Promise.allSettled(pending)
+    globalThis.fetch = originalFetch
+    names.forEach((name, index) => {
+      if (previous[index] === undefined) delete process.env[name]
+      else process.env[name] = previous[index]
+    })
+  }
+}
 
 function makeRequest(
   path: string,
@@ -278,7 +342,7 @@ async function testPublicStoreCodeWritesFailClosed() {
   await expectForbiddenWithoutWrites('offline sync public storeCode fallback', async () => postOfflineSync(
     makeRequest('/api/cashier/offline-sync', offlinePayload(), headers),
   ))
-  await expectForbiddenWithoutWrites('order status public storeCode fallback', async () => patchCashierOrder(
+  await expectForbiddenWithoutWrites('order status public storeCode fallback', async () => invokeOrderPatch(
     makeRequest(`/api/cashier/orders/${current.order.id}?storeCode=${encodeURIComponent(current.store.code)}`, { status: 'CONFIRMED' }, headers, 'PATCH'),
     { params: Promise.resolve({ id: current.order.id }) },
   ))
@@ -381,12 +445,20 @@ async function testAuthorizedRegressionPaths() {
   assert.equal(offlineBody.successCount, 1)
   assert.equal(offlineBody.failedCount, 0)
 
-  const orderUpdate = await patchCashierOrder(
+  const orderUpdate = await invokeOrderPatch(
     makeRequest(`/api/cashier/orders/${current.order.id}?storeCode=${encodeURIComponent(current.store.code)}`, { status: 'CONFIRMED' }, sessionHeaders(current.owner.id, 'OWNER'), 'PATCH'),
     { params: Promise.resolve({ id: current.order.id }) },
+    true,
   )
   assert.equal(orderUpdate.status, 200, 'authorized order status update must remain available')
   assert.equal((await orderUpdate.json()).status, 'CONFIRMED')
+
+  const repeat = await invokeOrderPatch(
+    makeRequest(`/api/cashier/orders/${current.order.id}?storeCode=${encodeURIComponent(current.store.code)}`, { status: 'CONFIRMED' }, sessionHeaders(current.owner.id, 'OWNER'), 'PATCH'),
+    { params: Promise.resolve({ id: current.order.id }) },
+  )
+  assert.equal(repeat.status, 422, 'the existing Cashier transition contract rejects a repeat')
+  assert.equal((await repeat.json()).error, 'INVALID_TRANSITION')
 }
 
 async function main() {

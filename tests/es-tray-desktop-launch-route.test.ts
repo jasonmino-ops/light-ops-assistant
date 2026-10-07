@@ -15,7 +15,7 @@ const browserCashierUrl = fs.readFileSync('app/home/computer-console-url.ts', 'u
 const runtimeBaseUrl = process.env.A12_LAUNCH_RUNTIME_BASE_URL?.replace(/\/$/, '')
 const chromePath = process.env.A12_LAUNCH_CHROME_PATH?.trim()
 const storeCode = 'ST169E7000'
-const orderNo = 'ORDER-A12-2-001'
+const managementName = /Management center|管理中心|មជ្ឈមណ្ឌលគ្រប់គ្រង/i
 
 let cases = 0
 async function test(name: string, run: () => void | Promise<void>) {
@@ -65,9 +65,18 @@ async function openRejectedLaunch(browser: Browser, status: number, error: strin
 
 async function runValidLaunch(browser: Browser) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-  const observed: Array<{ method: string; pathname: string; headers: Record<string, string> }> = []
+  const observed: Array<{ method: string; pathname: string; url: string; headers: Record<string, string> }> = []
   let consumeBody: Record<string, unknown> | null = null
-  const now = new Date().toISOString()
+  let consumeCount = 0
+  let releaseAccess!: () => void
+  const accessGate = new Promise<void>(resolve => { releaseAccess = resolve })
+  const accessObserved = page.waitForRequest(request => new URL(request.url()).pathname === '/api/cashier/access')
+  const pageErrors: string[] = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+  await page.addInitScript(() => {
+    Object.assign(window, { __unexpectedPrints: 0 })
+    window.print = () => { (window as unknown as { __unexpectedPrints: number }).__unexpectedPrints++ }
+  })
 
   page.on('request', (request) => {
     const url = new URL(request.url())
@@ -75,6 +84,7 @@ async function runValidLaunch(browser: Browser) {
     observed.push({
       method: request.method(),
       pathname: url.pathname,
+      url: request.url(),
       headers: request.headers(),
     })
   })
@@ -83,8 +93,17 @@ async function runValidLaunch(browser: Browser) {
     const request = route.request()
     const url = new URL(request.url())
     if (url.pathname === '/api/computer-client/browser-launch/consume') {
+      consumeCount++
       consumeBody = request.postDataJSON() as Record<string, unknown>
       return jsonRoute(route, { storeCode, posDeviceToken: 'runtime-browser-pos-session' })
+    }
+    if (url.pathname === '/api/cashier/access') {
+      await accessGate
+      const headers = request.headers()
+      assert.equal(url.searchParams.get('storeCode'), storeCode)
+      assert.equal(headers['x-pos-device-token'], 'runtime-browser-pos-session')
+      assert.equal(headers['x-pos-device-id'], consumeBody?.browserDeviceId)
+      return jsonRoute(route, { ok: true })
     }
     if (url.pathname === '/api/cashier/store') {
       return jsonRoute(route, {
@@ -97,72 +116,71 @@ async function runValidLaunch(browser: Browser) {
         printKitchenTicket: false,
       })
     }
-    if (url.pathname === '/api/records') {
-      return jsonRoute(route, {
-        items: [{
-          recordNo: 'REC-A12-001',
-          orderNo,
-          createdAt: now,
-          paymentMethod: 'CASH',
-          status: 'COMPLETED',
-          lineAmount: 1,
-          quantity: 1,
-          unitPrice: 1,
-          productNameSnapshot: 'Runtime item',
-          specSnapshot: '',
-        }],
-      })
-    }
-    if (url.pathname === '/api/es-tray-02/device/config') {
-      return jsonRoute(route, { fieldOnly: true, enabled: true })
-    }
-    if (url.pathname === `/api/es-tray-02/device/orders/${orderNo}`) {
-      return jsonRoute(route, {
-        orderNo,
-        createdAt: now,
-        paymentMethod: 'CASH',
-        paymentStatus: 'PAID',
-        saleStatus: 'COMPLETED',
-        totalAmount: 1,
-        currencyCode: 'USD',
-        items: [],
-      })
-    }
     if (url.pathname === '/api/cashier/orders') return jsonRoute(route, { orders: [] })
     if (url.pathname === '/api/cashier/pending-orders') return jsonRoute(route, { orders: [] })
     return jsonRoute(route, {})
   })
 
-  await page.goto(`${runtimeBaseUrl}/cashier/launch?storeCode=ATTACKER#ticket=valid-ticket`, {
+  try {
+  await page.goto(`${runtimeBaseUrl}/cashier/launch?storeCode=ATTACKER#ticket=valid-ticket&redirect=https://attacker.invalid&host=10.1.2.3&port=9100`, {
     waitUntil: 'domcontentloaded',
     timeout: 30_000,
   })
   await page.waitForURL(/\/desktop\/pos\?/, { timeout: 30_000 })
+  await accessObserved
+  await page.locator('main[aria-busy="true"]').waitFor({ state: 'visible' })
+  assert.equal(await page.getByRole('button', { name: managementName }).count(), 0,
+    'public store data alone must not establish authorization')
+  releaseAccess()
   const redirect = new URL(page.url())
   const storedToken = await page.evaluate((code) => (
     localStorage.getItem(`cashier:posDeviceToken:${code}`)
   ), storeCode)
 
-  const recordsButton = page.getByRole('button', {
-    name: /Sales records|销售记录|កំណត់ត្រាលក់/,
-  }).first()
-  await recordsButton.waitFor({ timeout: 30_000 })
-  await recordsButton.click()
-  const orderButton = page.getByRole('button').filter({ hasText: orderNo }).first()
-  await orderButton.waitFor({ timeout: 30_000 })
-  const configRequest = page.waitForRequest((request) => (
-    new URL(request.url()).pathname === '/api/es-tray-02/device/config'
-  ))
-  const orderRequest = page.waitForRequest((request) => (
-    new URL(request.url()).pathname === `/api/es-tray-02/device/orders/${orderNo}`
-  ))
-  await orderButton.click()
-  await Promise.all([configRequest, orderRequest])
-  await page.waitForTimeout(200)
-  const bodyText = await page.locator('body').innerText()
-  await page.close()
+  const management = page.getByRole('button', { name: managementName })
+  await management.waitFor({ state: 'visible', timeout: 30_000 })
+  assert.equal(await page.evaluate(() => (window as unknown as { __unexpectedPrints: number }).__unexpectedPrints), 0)
+  if (process.env.A12_LAUNCH_EVIDENCE_DIR) await page.screenshot({ path: `${process.env.A12_LAUNCH_EVIDENCE_DIR}/authorized-desktop.png` })
+  await management.click()
+  await page.waitForURL(url => url.pathname === '/management')
+  const managementUrl = new URL(page.url())
+  assert.equal(await page.evaluate(() => (window as unknown as { __unexpectedPrints: number }).__unexpectedPrints), 0)
+  assert.deepEqual(pageErrors, [])
+  return { redirect, storedToken, consumeBody: consumeBody as Record<string, unknown> | null, consumeCount, observed, managementUrl }
+  } finally {
+    releaseAccess()
+    await page.close()
+  }
+}
 
-  return { redirect, storedToken, consumeBody, observed, bodyText }
+async function rejectAccessAfterConsume(browser: Browser, status: 401 | 403) {
+  const page = await browser.newPage()
+  let consumes = 0
+  let accesses = 0
+  try {
+    await page.route('**/api/**', async route => {
+      const url = new URL(route.request().url())
+      if (url.pathname === '/api/computer-client/browser-launch/consume') {
+        consumes++
+        return jsonRoute(route, { storeCode, posDeviceToken: 'explicitly-denied-session' })
+      }
+      if (url.pathname === '/api/cashier/access') {
+        accesses++
+        assert.equal(url.searchParams.get('storeCode'), storeCode)
+        assert.equal(route.request().headers()['x-pos-device-token'], 'explicitly-denied-session')
+        return jsonRoute(route, { error: 'DEVICE_ACCESS_DENIED' }, status)
+      }
+      if (url.pathname === '/api/cashier/store') return jsonRoute(route, { storeName: 'Public is not authorization', products: [], categories: [] })
+      return jsonRoute(route, {})
+    })
+    await page.goto(`${runtimeBaseUrl}/cashier/launch#ticket=valid-but-revoked-session`)
+    await page.waitForURL(/\/desktop\/pos\?/)
+    await page.waitForFunction(code => !localStorage.getItem(`cashier:posDeviceToken:${code}`), storeCode)
+    assert.equal(consumes, 1)
+    assert.equal(accesses, 1)
+    assert.equal(await page.getByRole('button', { name: managementName }).count(), 0)
+    assert.equal(new URL(page.url()).href.includes('explicitly-denied-session'), false)
+  } finally { await page.close() }
 }
 
 async function main() {
@@ -317,23 +335,26 @@ async function main() {
       assert.deepEqual(Object.keys(runtime.consumeBody ?? {}).sort(), ['browserDeviceId', 'ticket'])
     })
 
-    await test('sales-record selection triggers device config and scoped order detail', () => {
-      assert.ok(runtime.observed.some((request) => request.pathname === '/api/es-tray-02/device/config'))
-      assert.ok(runtime.observed.some((request) => request.pathname === `/api/es-tray-02/device/orders/${orderNo}`))
+    await test('ticket is consumed exactly once and explicit access proof gates the supported UI', () => {
+      assert.equal(runtime.consumeCount, 1)
+      const accesses = runtime.observed.filter(request => request.pathname === '/api/cashier/access')
+      assert.equal(accesses.length, 1)
+      assert.equal(accesses[0].headers['x-pos-device-id'], runtime.consumeBody?.browserDeviceId)
+      assert.equal(accesses[0].headers['x-pos-device-token'], 'runtime-browser-pos-session')
     })
 
-    await test('device order detail carries delegated headers and loads successfully', () => {
-      const request = runtime.observed.find((entry) => entry.pathname === `/api/es-tray-02/device/orders/${orderNo}`)
-      assert.ok(request?.headers['x-pos-device-id'])
-      assert.ok(request?.headers['x-pos-device-token'])
-      assert.equal(request?.headers['x-lightops-client'], 'desktop-pos')
-      assert.ok(runtime.bodyText.includes(orderNo))
-      assert.doesNotMatch(runtime.bodyText, /订单详情加载失败|Failed to load order details/)
+    await test('authorized management navigation preserves server store binding and never exposes token', () => {
+      assert.equal(runtime.managementUrl.origin, new URL(runtimeBaseUrl!).origin)
+      assert.deepEqual(Object.fromEntries(runtime.managementUrl.searchParams), { from: 'desktop', storeCode })
+      assert.equal(runtime.managementUrl.href.includes('runtime-browser-pos-session'), false)
+      assert.equal(runtime.observed.some(request => request.url.includes('runtime-browser-pos-session')), false)
     })
 
     await test('runtime verification creates no print job', () => {
       assert.equal(runtime.observed.some((request) => request.pathname.includes('/print-jobs')), false)
+      assert.equal(runtime.observed.some(request => /print|reprint|relay|claim/.test(request.pathname)), false)
     })
+    for (const status of [401, 403] as const) await test(`explicit access ${status} after ticket consumption cannot authorize Desktop`, () => rejectAccessAfterConsume(browser, status))
   } finally {
     await browser.close()
   }

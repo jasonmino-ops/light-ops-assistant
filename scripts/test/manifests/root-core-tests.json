@@ -1,10 +1,12 @@
 {
   "schemaVersion": 1,
   "lane": "CORE",
-  "expectedCount": 91,
+  "expectedCount": 96,
   "tests": [
     {"file":"tests/ops-release-status-auth.test.ts","lane":"CORE","reason":"Actual Ops route and signed synthetic sessions execute in process; no database or external identity provider.","dependencyType":"NONE","evidence":"tests/ops-release-status-auth.test.ts:1-51"},
     {"file":"tests/ops-release-status-static.test.cjs","lane":"CORE","reason":"Read-only repository source assertions; no external services.","dependencyType":"NONE","evidence":"tests/ops-release-status-static.test.cjs:1-77"},
+    { "file": "tests/customer-order-submission.test.ts", "lane": "CORE", "reason": "Real public submission route with in-process database delegates: normalized identity, stable receipts, conflicts, rollback and post-commit notification boundaries; PostgreSQL concurrency is separately verified in the DB lane.", "dependencyType": "NONE", "evidence": "tests/customer-order-submission.test.ts:1" },
+    { "file": "tests/customer-order-renderer.test.ts", "lane": "CORE", "reason": "Sequential in-memory render dispatch, scope, lease fencing, fixed deadline, failure budget and multi-poll progression; not PostgreSQL concurrency evidence.", "dependencyType": "NONE", "evidence": "tests/customer-order-renderer.test.ts:1" },
     { "file": "tests/bd-ops-permission-closure.test.ts", "lane": "CORE", "reason": "Prisma delegate is replaced by an in-process test stub.", "dependencyType": "NONE", "evidence": "tests/bd-ops-permission-closure.test.ts:37-88" },
     { "file": "tests/browser-order-sync-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only.", "dependencyType": "NONE", "evidence": "tests/browser-order-sync-static.test.ts:16-27" },
     { "file": "tests/browser-pos-customer-display-entry.test.ts", "lane": "CORE", "reason": "Repository source and in-process helper assertions only.", "dependencyType": "NONE", "evidence": "tests/browser-pos-customer-display-entry.test.ts:1-16" },
@@ -90,9 +92,12 @@
     { "file": "tests/v2-invariance-extension-points.test.cjs", "lane": "CORE", "reason": "Repository source hash and predicate-order inspection only.", "dependencyType": "NONE", "evidence": "tests/v2-invariance-extension-points.test.cjs:1-133" },
     { "file": "tests/v2-invariance-frozen-files.test.cjs", "lane": "CORE", "reason": "Repository source hash inspection only.", "dependencyType": "NONE", "evidence": "tests/v2-invariance-frozen-files.test.cjs:1-46" },
     { "file": "tests/v2-invariance-service-regions.test.cjs", "lane": "CORE", "reason": "Repository source region-fingerprint and ordering inspection only.", "dependencyType": "NONE", "evidence": "tests/v2-invariance-service-regions.test.cjs:1-224" },
+    { "file": "tests/customer-order-fulfillment.test.ts", "lane": "CORE", "reason": "In-process H5 renderer, PaymentIntent mapping, V3-only durable enqueue, RAW_BYTES identity, kitchen-decision immutability, and idempotency behavior.", "dependencyType": "NONE", "evidence": "tests/customer-order-fulfillment.test.ts:1-183" },
+    { "file": "tests/customer-order-payment-intent.test.ts", "lane": "CORE", "reason": "Customer-order PATCH route with in-process Prisma delegates and a Next after() request context covering confirmation, collection, concurrency, print decoupling, and legacy routing review.", "dependencyType": "NONE", "evidence": "tests/customer-order-payment-intent.test.ts:1-281" },
+    { "file": "tests/customer-order-recovery.test.ts", "lane": "CORE", "reason": "Recovery route with in-process Prisma delegates covering stable pagination beyond 100 rows, bad-row continuation, historical payment anomalies, FRONT idempotency, V2 fail-closed behavior, and CRON_SECRET auth.", "dependencyType": "NONE", "evidence": "tests/customer-order-recovery.test.ts:1-137" },
     { "file": "tests/v3-print-control-plane-contract.test.cjs", "lane": "CORE", "reason": "Repository schema, migration, and authority-boundary source inspection only.", "dependencyType": "NONE", "evidence": "tests/v3-print-control-plane-contract.test.cjs:1-37" },
     { "file": "tests/v3-print-control-plane-service.test.ts", "lane": "CORE", "reason": "Control-plane transactions use deterministic in-process database fakes.", "dependencyType": "NONE", "evidence": "tests/v3-print-control-plane-service.test.ts:1-142" },
-    { "file": "tests/v3-print-job-adapter.test.ts", "lane": "CORE", "reason": "Schema-3 adapter and canonical identity contracts use deterministic in-process database fakes and source assertions.", "dependencyType": "NONE", "evidence": "tests/v3-print-job-adapter.test.ts:1-118" },
+    { "file": "tests/v3-print-job-adapter.test.ts", "lane": "CORE", "reason": "Schema-3 adapter, scoped H5 cancellation, cancelled-order reprint fencing, and canonical identity contracts use deterministic in-process database fakes and source assertions.", "dependencyType": "NONE", "evidence": "tests/v3-print-job-adapter.test.ts:1-562" },
     { "file": "tests/v3-reprint-recovery.test.ts", "lane": "CORE", "reason": "V3 reprint identity, authorization, audit, UNKNOWN fencing, and Desktop-context behavior use deterministic in-process fakes.", "dependencyType": "NONE", "evidence": "tests/v3-reprint-recovery.test.ts:1-330" }
   ]
 }

@@ -48,6 +48,42 @@ type CustomerOrderRecord = {
     landingType: 'MARKETING_PAGE' | 'MENU'
   } | null
   createdAt: string
+  fulfillment?: {
+    kitchen: 'QUEUED' | 'NOT_READY' | 'RETRYING' | 'RESULT_UNKNOWN' | 'EXECUTION_REPORTED' | 'FAILED' | 'NOT_REQUIRED' | 'REVIEW_REQUIRED' | 'EXPIRED' | 'NOT_APPLICABLE' | 'PROCESSING'
+    front: 'QUEUED' | 'NOT_READY' | 'RETRYING' | 'RESULT_UNKNOWN' | 'EXECUTION_REPORTED' | 'FAILED' | 'NOT_REQUIRED' | 'REVIEW_REQUIRED' | 'EXPIRED' | 'NOT_APPLICABLE' | 'PROCESSING'
+  }
+}
+
+function customerOrderActionMessage(code: string, lang: Lang): string {
+  const messages: Record<string, Record<Lang, string>> = {
+    NOT_FOUND: { zh: '订单不存在或已不属于当前门店。', en: 'The order was not found for this store.', km: 'រកមិនឃើញការបញ្ជាទិញសម្រាប់ហាងនេះទេ។' },
+    ORDER_NOT_COMPLETED: { zh: '订单尚未完成，暂不能登记收款。', en: 'The order is not ready for collection yet.', km: 'ការបញ្ជាទិញមិនទាន់រួចរាល់សម្រាប់ប្រមូលប្រាក់ទេ។' },
+    INVALID_TRANSITION: { zh: '订单状态已变化，请刷新后重试。', en: 'The order changed. Refresh and try again.', km: 'ស្ថានភាពការបញ្ជាទិញបានផ្លាស់ប្តូរ។ សូមធ្វើឱ្យទាន់សម័យហើយព្យាយាមម្តងទៀត។' },
+    STORE_NOT_FOUND: { zh: '门店信息不可用，操作未完成。', en: 'The store is unavailable, so the action was not completed.', km: 'ព័ត៌មានហាងមិនអាចប្រើបាន ដូច្នេះមិនបានបញ្ចប់សកម្មភាពទេ។' },
+    PAYMENT_INTENT_CONFLICT: { zh: '已有不一致的收款记录，请先核对订单。', en: 'A conflicting payment record exists. Check the order first.', km: 'មានកំណត់ត្រាបង់ប្រាក់មិនត្រូវគ្នា។ សូមពិនិត្យការបញ្ជាទិញជាមុន។' },
+    PAYMENT_RECORD_MISSING: { zh: '收款记录未能安全保存，请勿重复收款，先刷新核对。', en: 'The payment was not safely recorded. Do not collect again; refresh and check first.', km: 'មិនអាចរក្សាទុកកំណត់ត្រាបង់ប្រាក់ដោយសុវត្ថិភាពទេ។ សូមកុំប្រមូលប្រាក់ម្តងទៀត។' },
+    CUSTOMER_ORDER_ITEMS_INVALID: { zh: '订单商品数据异常，操作未完成。', en: 'The order items are invalid, so the action was not completed.', km: 'ទិន្នន័យទំនិញក្នុងការបញ្ជាទិញមិនត្រឹមត្រូវ។' },
+    INVALID_PAYMENT_METHOD: { zh: '付款方式无效。', en: 'The payment method is invalid.', km: 'វិធីបង់ប្រាក់មិនត្រឹមត្រូវទេ។' },
+  }
+  return messages[code]?.[lang] ?? messages[code]?.zh ?? (lang === 'en' ? 'The action could not be completed.' : lang === 'km' ? 'មិនអាចបញ្ចប់សកម្មភាពបានទេ។' : '操作未完成，请刷新后重试。')
+}
+
+function customerOrderPrintMessage(status: string, lang: Lang, payment: boolean, action?: string): string {
+  const messages: Record<string, Record<Lang, string>> = {
+    PROCESSING: { zh: payment ? '收款已记录，正在准备收款凭证，尚未入队。' : '接单成功，正在准备厨房制作单，尚未入队。', en: payment ? 'Payment recorded; preparing receipt, not queued yet.' : 'Order confirmed; preparing kitchen ticket, not queued yet.', km: payment ? 'បានកត់ត្រាការបង់ប្រាក់ កំពុងរៀបចំបង្កាន់ដៃ មិនទាន់ចូលជួរ។' : 'បានបញ្ជាក់ការបញ្ជាទិញ កំពុងរៀបចំប័ណ្ណផ្ទះបាយ មិនទាន់ចូលជួរ។' },
+    QUEUED: { zh: payment ? '收款已记录，收款凭证已进入打印队列。' : '接单成功，厨房制作单已进入打印队列。', en: payment ? 'Payment recorded; the receipt is queued for printing.' : 'Order confirmed; the kitchen ticket is queued for printing.', km: payment ? 'បានកត់ត្រាការបង់ប្រាក់ ហើយបង្កាន់ដៃបានចូលជួរបោះពុម្ព។' : 'បានបញ្ជាក់ការបញ្ជាទិញ ហើយប័ណ្ណផ្ទះបាយបានចូលជួរបោះពុម្ព។' },
+    NOT_READY: { zh: payment ? '收款已记录，但打印服务未就绪；收款凭证尚未进入打印队列。' : '接单成功，但打印服务未就绪；厨房制作单尚未进入打印队列。', en: payment ? 'Payment recorded, but printing is not ready; the receipt is not in the queue.' : 'Order confirmed, but printing is not ready; the kitchen ticket is not in the queue.', km: payment ? 'បានកត់ត្រាការបង់ប្រាក់ ប៉ុន្តែសេវាបោះពុម្ពមិនទាន់រួចរាល់ ហើយបង្កាន់ដៃមិនទាន់ចូលជួរ។' : 'បានបញ្ជាក់ការបញ្ជាទិញ ប៉ុន្តែសេវាបោះពុម្ពមិនទាន់រួចរាល់ ហើយប័ណ្ណផ្ទះបាយមិនទាន់ចូលជួរ។' },
+    RETRYING: { zh: payment ? '收款已记录，收款凭证等待重试，尚未进入打印队列。' : '接单成功，厨房制作单等待重试，尚未进入打印队列。', en: payment ? 'Payment recorded; the receipt is waiting for retry and is not queued yet.' : 'Order confirmed; the kitchen ticket is waiting for retry and is not queued yet.', km: payment ? 'បានកត់ត្រាការបង់ប្រាក់ ហើយបង្កាន់ដៃកំពុងរង់ចាំព្យាយាមម្តងទៀត។' : 'បានបញ្ជាក់ការបញ្ជាទិញ ហើយប័ណ្ណផ្ទះបាយកំពុងរង់ចាំព្យាយាមម្តងទៀត។' },
+    RESULT_UNKNOWN: { zh: payment ? '收款已记录，但收款凭证结果未知，请人工核对。' : '接单成功，但厨房制作单结果未知，请人工核对。', en: payment ? 'Payment recorded, but the receipt result is unknown; check manually.' : 'Order confirmed, but the kitchen ticket result is unknown; check manually.', km: payment ? 'បានកត់ត្រាការបង់ប្រាក់ ប៉ុន្តែលទ្ធផលបង្កាន់ដៃមិនដឹងច្បាស់។' : 'បានបញ្ជាក់ការបញ្ជាទិញ ប៉ុន្តែលទ្ធផលប័ណ្ណផ្ទះបាយមិនដឹងច្បាស់។' },
+    FAILED: { zh: payment ? '收款已记录，但收款凭证未进入打印队列，请核对打印状态。' : '接单成功，但厨房单未进入打印队列，请核对打印状态。', en: payment ? 'Payment recorded, but the receipt was not queued; check print status.' : 'Order confirmed, but the kitchen ticket was not queued; check print status.', km: payment ? 'បានកត់ត្រាការបង់ប្រាក់ ប៉ុន្តែមិនបានដាក់បង្កាន់ដៃចូលជួរ សូមពិនិត្យស្ថានភាពបោះពុម្ព។' : 'បានបញ្ជាក់ការបញ្ជាទិញ ប៉ុន្តែមិនបានដាក់ប័ណ្ណផ្ទះបាយចូលជួរ សូមពិនិត្យស្ថានភាពបោះពុម្ព។' },
+    MANUAL_REVIEW: { zh: payment ? '收款已记录，但收款凭证需要人工核对。' : '接单成功，但厨房路由或制作单需要人工核对。', en: payment ? 'Payment recorded; the receipt needs manual review.' : 'Order confirmed; kitchen routing or the ticket needs manual review.', km: payment ? 'បានកត់ត្រាការបង់ប្រាក់ ប៉ុន្តែបង្កាន់ដៃត្រូវការពិនិត្យដោយដៃ។' : 'បានបញ្ជាក់ការបញ្ជាទិញ ប៉ុន្តែផ្លូវផ្ទះបាយ ឬប័ណ្ណត្រូវការពិនិត្យដោយដៃ។' },
+    RECONCILIATION_REQUIRED: { zh: '业务已记录，但打印任务需要管理员核对。', en: 'The business action was recorded, but the print task needs administrator review.', km: 'បានកត់ត្រាសកម្មភាពអាជីវកម្ម ប៉ុន្តែការងារបោះពុម្ពត្រូវការពិនិត្យ។' },
+    ALREADY_PRESENT: { zh: payment ? '收款已记录，收款凭证任务已存在。' : '接单已完成，厨房制作单任务已存在。', en: payment ? 'Payment recorded; the receipt task already exists.' : 'Order confirmed; the kitchen ticket task already exists.', km: payment ? 'បានកត់ត្រាការបង់ប្រាក់ ហើយការងារបង្កាន់ដៃមានរួចហើយ។' : 'បានបញ្ជាក់ការបញ្ជាទិញ ហើយការងារប័ណ្ណផ្ទះបាយមានរួចហើយ។' },
+    NOT_REQUIRED: { zh: action === 'CONFIRMED' ? '接单成功，本订单无需厨房打印。' : '业务操作已完成。', en: action === 'CONFIRMED' ? 'Order confirmed; this order does not require a kitchen ticket.' : 'The business action succeeded.', km: action === 'CONFIRMED' ? 'បានបញ្ជាក់ការបញ្ជាទិញ។ ការបញ្ជាទិញនេះមិនត្រូវការប័ណ្ណផ្ទះបាយទេ។' : 'សកម្មភាពអាជីវកម្មបានជោគជ័យ។' },
+    NOT_APPLICABLE: { zh: '本订单尚未建立该角色的履约任务。', en: 'This order has no fulfillment task for this role.', km: 'ការបញ្ជាទិញនេះមិនទាន់មានការងារសម្រាប់តួនាទីនេះទេ។' },
+    EXPIRED: { zh: '业务已记录，但打印时限已过，需要人工核对。', en: 'The business action was recorded, but the print window expired; review is required.', km: 'បានកត់ត្រាសកម្មភាពអាជីវកម្ម ប៉ុន្តែពេលបោះពុម្ពបានផុតកំណត់។' },
+  }
+  return messages[status]?.[lang] ?? messages[status]?.zh ?? (lang === 'en' ? 'The business action succeeded.' : lang === 'km' ? 'សកម្មភាពអាជីវកម្មបានជោគជ័យ។' : '业务操作已完成。')
 }
 
 function sugarLabel(sugar: string, lang: Lang): string {
@@ -215,6 +251,7 @@ export default function HomePage() {
   const [loadKey, setLoadKey] = useState(0)
   const [customerOrders, setCustomerOrders] = useState<CustomerOrderRecord[]>([])
   const [ordersError, setOrdersError] = useState<string | null>(null)
+  const [ordersNotice, setOrdersNotice] = useState<string | null>(null)
   const [ordersKey, setOrdersKey] = useState(0)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   const [customerCheckout, setCustomerCheckout] = useState<{ id: string; orderNo: string; totalAmount: number } | null>(null)
@@ -278,15 +315,16 @@ export default function HomePage() {
       .finally(() => setLoading(false))
   }, [loadKey, realRole, lang]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 加载顾客订单（仅 OWNER 可见）
+  // OWNER / STAFF 均由签名会话调用同一 API；STAFF 的门店范围由服务端约束。
   useEffect(() => {
-    if (effectiveRole !== 'OWNER') {
+    if (effectiveRole !== 'OWNER' && effectiveRole !== 'STAFF') {
       setCustomerOrders([])
       setOrdersError(null)
+      setOrdersNotice(null)
       return
     }
     setOrdersError(null)
-    apiFetch('/api/customer-orders?status=PENDING,CONFIRMED,COMPLETED', undefined, DEV_OWNER_CTX)
+    apiFetch('/api/customer-orders?status=PENDING,CONFIRMED,COMPLETED', undefined, effectiveRole === 'OWNER' ? DEV_OWNER_CTX : DEV_STAFF_CTX)
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data) => setCustomerOrders(Array.isArray(data) ? data : []))
       .catch(() => {
@@ -297,7 +335,7 @@ export default function HomePage() {
 
   // 顾客订单自动刷新：页面重新可见时立刻刷新 + 每 30 秒后台轮询
   useEffect(() => {
-    if (effectiveRole !== 'OWNER') return
+    if (effectiveRole !== 'OWNER' && effectiveRole !== 'STAFF') return
     function onVisible() {
       if (!document.hidden) setOrdersKey((k) => k + 1)
     }
@@ -330,30 +368,42 @@ export default function HomePage() {
 
   async function updateOrderStatus(id: string, status: string) {
     setUpdatingOrderId(id)
+    setOrdersError(null)
+    setOrdersNotice(null)
     try {
-      await apiFetch(`/api/customer-orders/${id}`, {
+      const res = await apiFetch(`/api/customer-orders/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
-      }, DEV_OWNER_CTX)
+      }, effectiveRole === 'OWNER' ? DEV_OWNER_CTX : DEV_STAFF_CTX)
+      const body = await res.json().catch(() => ({})) as { error?: string; printStatus?: string }
+      if (!res.ok) throw new Error(customerOrderActionMessage(body.error ?? 'UNKNOWN', lang))
+      if (body.printStatus) setOrdersNotice(customerOrderPrintMessage(body.printStatus, lang, false, status))
       setOrdersKey((k) => k + 1)
     } catch (e) {
-      console.error('更新顾客订单状态失败', e)
+      const message = e instanceof Error ? e.message : customerOrderActionMessage('UNKNOWN', lang)
+      setOrdersError(message)
     } finally {
       setUpdatingOrderId(null)
     }
   }
 
   async function handleCustomerOrderPay(id: string, method: 'CASH' | 'KHQR') {
+    setOrdersError(null)
+    setOrdersNotice(null)
     const res = await apiFetch(`/api/customer-orders/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ paymentMethod: method === 'KHQR' ? 'QR' : 'CASH' }),
-    }, DEV_OWNER_CTX)
+    }, effectiveRole === 'OWNER' ? DEV_OWNER_CTX : DEV_STAFF_CTX)
+    const body = await res.json().catch(() => ({})) as { error?: string; printStatus?: string }
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw new Error(body.error ?? t('home.collectFailed'))
+      const message = customerOrderActionMessage(body.error ?? 'UNKNOWN', lang)
+      setOrdersError(message)
+      throw new Error(message)
     }
+    if (body.printStatus) setOrdersNotice(customerOrderPrintMessage(body.printStatus, lang, true))
+    setOrdersKey((k) => k + 1)
   }
 
   return (
@@ -469,11 +519,8 @@ export default function HomePage() {
           <span style={s.sectionTitleBare}>
             {effectiveRole === 'OWNER' ? t('home.pendingWork') : t('home.staffPendingWork')}
           </span>
-          {effectiveRole === 'OWNER' && pendingOrderCount > 0 && (
-            <Link href="/cashier" style={s.viewAll}>{t('home.viewAll')}</Link>
-          )}
         </div>
-        {effectiveRole === 'OWNER' ? (
+        {effectiveRole === 'OWNER' || effectiveRole === 'STAFF' ? (
           ordersError ? (
             <div style={s.errorHint}>{ordersError}</div>
           ) : pendingOrderCount === 0 ? (
@@ -495,6 +542,7 @@ export default function HomePage() {
         ) : (
           <div style={s.workEmpty}>{t('home.staffWorkHint')}</div>
         )}
+        {ordersNotice && <div style={s.orderPrintNotice}>{ordersNotice}</div>}
       </div>
 
       {/* ── AI assistant ── */}
@@ -925,6 +973,25 @@ function sourcePlatformLabel(source: string | null): string {
   return source
 }
 
+type FulfillmentStatus = NonNullable<CustomerOrderRecord['fulfillment']>['kitchen']
+
+function fulfillmentLabel(value: FulfillmentStatus, lang: Lang): string {
+  const labels: Record<FulfillmentStatus, Record<Lang, string>> = {
+    QUEUED: { zh: '已入队', en: 'Queued', km: 'បានចូលជួរ' },
+    NOT_READY: { zh: '尚未入队', en: 'Not queued yet', km: 'មិនទាន់ចូលជួរ' },
+    RETRYING: { zh: '等待重试', en: 'Retry pending', km: 'កំពុងរង់ចាំព្យាយាមម្តងទៀត' },
+    PROCESSING: { zh: '制作票据中，尚未入队', en: 'Preparing ticket, not queued', km: 'កំពុងរៀបចំប័ណ្ណ មិនទាន់ចូលជួរ' },
+    RESULT_UNKNOWN: { zh: '结果未知', en: 'Result unknown', km: 'មិនដឹងលទ្ធផល' },
+    EXECUTION_REPORTED: { zh: '执行已报告', en: 'Execution reported', km: 'បានរាយការណ៍ការប្រតិបត្តិ' },
+    FAILED: { zh: '执行失败', en: 'Execution failed', km: 'ប្រតិបត្តិការបរាជ័យ' },
+    NOT_REQUIRED: { zh: '无需打印', en: 'Not required', km: 'មិនត្រូវការបោះពុម្ព' },
+    REVIEW_REQUIRED: { zh: '需人工核对', en: 'Manual review', km: 'ត្រូវការពិនិត្យដោយដៃ' },
+    EXPIRED: { zh: '已过期', en: 'Expired', km: 'ផុតកំណត់' },
+    NOT_APPLICABLE: { zh: '不适用', en: 'Not applicable', km: 'មិនអនុវត្ត' },
+  }
+  return labels[value][lang]
+}
+
 function CustomerOrderCard({
   order, currencyCode, updating, onConfirm, onComplete, onCancel, onCollect,
 }: {
@@ -1031,6 +1098,13 @@ function CustomerOrderCard({
             <span style={s.coDetailTotalLabel}>{t('home.totalLabel')}</span>
             <span style={s.coDetailTotalAmt}>{formatMoney(order.totalAmount, currencyCode)}</span>
           </div>
+          {order.fulfillment && (
+            <div style={s.coDetailMeta}>
+              <span>厨房：{fulfillmentLabel(order.fulfillment.kitchen, lang)}</span>
+              <span style={{ color: '#ddd' }}>·</span>
+              <span>收款凭证：{fulfillmentLabel(order.fulfillment.front, lang)}</span>
+            </div>
+          )}
           {order.customerTelegramId && (
             <div style={s.coDetailTg}>{t('home.customerTgId')}：{order.customerTelegramId}</div>
           )}
@@ -1835,6 +1909,16 @@ const s: Record<string, React.CSSProperties> = {
     background: '#fff1f0',
     border: '1px solid #ffccc7',
     color: '#cf1322',
+    fontSize: 12,
+    lineHeight: 1.5,
+  },
+  orderPrintNotice: {
+    margin: '0 12px 10px',
+    padding: '8px 10px',
+    borderRadius: 8,
+    background: '#f6ffed',
+    border: '1px solid #b7eb8f',
+    color: '#389e0d',
     fontSize: 12,
     lineHeight: 1.5,
   },

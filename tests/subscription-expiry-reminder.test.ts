@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { mock } from 'node:test'
 import {
   computeSubscriptionReminder,
   SUBSCRIPTION_GRACE_DAYS,
@@ -157,6 +158,9 @@ async function testReminderApiIsolation() {
   }
 
   try {
+    // The real GET computes against new Date(); use the same clock as its fixture.
+    // This is process-local and leaves the host/production clock unchanged.
+    mock.timers.enable({ apis: ['Date'], now: NOW })
     const ownerResponse = await GET(new NextRequest('https://example.test/api/subscription/reminder', {
       headers: {
         'x-tenant-id': 'tenant-owner-a',
@@ -183,6 +187,7 @@ async function testReminderApiIsolation() {
     assert.equal(staffResponse.status, 403, 'STAFF must not receive subscription reminder data')
     assert.equal(queries.length, 1, 'STAFF must be rejected before subscription lookup')
   } finally {
+    mock.timers.reset()
     subscriptionModel.findUnique = originalFindUnique
     if (originalNodeEnv == null) delete mutableEnv.NODE_ENV
     else mutableEnv.NODE_ENV = originalNodeEnv
