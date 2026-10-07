@@ -500,17 +500,16 @@ async function runAllScenarios(fp: Footprint): Promise<Record<string, unknown>> 
     }))
 
     // 整店已有 CLAIMED/EXECUTING 时必须返回 null（Δ-1 整店单飞）
-    const active = await prisma.eshopTrayPrintJob.create({
-      data: {
-        tenantId: s.scope.tenantId, storeId: s.scope.storeId, schemaVersion: 2,
-        idempotencyKey: `active-${randomUUID()}`, requestHash: createHash('sha256').update('active').digest('hex'),
-        payload: { role: 'FRONT', mode: 'FRONT_ONLY' }, status: 'CLAIMED',
-        expiresAt: new Date(Date.now() + 86_400_000),
-      },
-    })
+    // Produce CLAIMED through the real protocol, including binding/token/lease and attempts.
+    // The second claim below still verifies the original store-wide single-flight contract.
+    const { job: active } = await enqueueNetwork(s.scope, networkRequest(`active-${randomUUID()}`))
     fp.jobIds.push(active.id)
+    const activeClaim = await claimNextRelayPrintJob(
+      { ...s.agent, schemaVersion: 2 }, timing, new Date('2026-01-01T00:00:02.000Z'))
+    assert.equal(activeClaim?.id, active.id)
     await scenario('v2.claim.storeSingleFlightBlocks', async () => ({
-      claimedIsNull: (await claimNextRelayPrintJob({ ...s.agent, schemaVersion: 2 }, timing)) === null,
+      claimedIsNull: (await claimNextRelayPrintJob(
+        { ...s.agent, schemaVersion: 2 }, timing, new Date('2026-01-01T00:00:03.000Z'))) === null,
       activeRow: await observeJob(active.id),
     }))
     await prisma.eshopTrayPrintJob.update({ where: { id: active.id }, data: { status: 'SUCCEEDED', completedAt: new Date() } })

@@ -82,6 +82,11 @@ function parse(value: unknown): V3Intent | null {
   return null
 }
 
+/** Parse a persisted V3 payload for scoped callers without weakening the V3 contract. */
+export function parseV3PrintIntent(value: unknown): V3Intent | null {
+  return parse(value)
+}
+
 const HELD_MARKER = 'V3_DURABLY_HELD'
 
 export async function enqueueHeldV3PrintIntent(db: Db, scope: { tenantId: string; storeId: string }, intent: V3Intent, expiresAt: Date) {
@@ -186,6 +191,148 @@ export async function enqueueV3PrintIntent(
     }
     return { created: false, job }
   }
+}
+
+export const CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM = 'CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM'
+
+/**
+ * Cancel only a scoped H5 job that is still definitely not printed. The
+ * FAILED/FAILED_NOT_CROSSED terminal state is intentionally understood by
+ * operator status and relay recovery as a terminal, non-retryable result.
+ */
+export async function cancelPendingV3PrintIntent(db: Db, input: {
+  tenantId: string
+  storeId: string
+  orderNo: string
+  role: V3PrintRole
+  /** Database row id. Kept separate from the canonical idempotency key. */
+  jobId?: string
+  /** Canonical network:<sha256> identity used by the V3 ledger. */
+  idempotencyKey?: string
+  /** Legacy call-site name is accepted only as the canonical key. */
+  printJobId?: string
+  schemaVersion?: number
+  now?: Date
+  /** Set by callers already inside the order/intent transaction. */
+  inTransaction?: boolean
+}) {
+  const schemaVersion = input.schemaVersion ?? V3_PRINT_JOB_SCHEMA
+  const now = input.now ?? new Date()
+  const idempotencyKey = input.idempotencyKey ?? input.printJobId
+  if (!idempotencyKey) return { ok: false as const, code: 'V3_CANCEL_IDENTITY_MISSING' as const }
+  const run = async (tx: Db) => {
+    const job = await tx.eshopTrayPrintJob.findUnique({
+      where: { tenantId_storeId_idempotencyKey: { tenantId: input.tenantId, storeId: input.storeId, idempotencyKey } },
+    })
+    if (!job) return { ok: false as const, code: 'V3_JOB_NOT_FOUND' as const }
+    const parsed = parse(job.payload)
+    if (input.jobId && job.id !== input.jobId) return { ok: false as const, code: 'V3_CANCEL_IDENTITY_MISMATCH' as const }
+    if (!parsed || parsed.payloadKind !== 'RAW_BYTES' || parsed.printJobId !== idempotencyKey || parsed.orderNo !== input.orderNo || parsed.role !== input.role || job.schemaVersion !== schemaVersion) {
+      return { ok: false as const, code: 'V3_CANCEL_IDENTITY_MISMATCH' as const }
+    }
+    const updated = await tx.eshopTrayPrintJob.updateMany({
+      where: {
+        id: job.id,
+        tenantId: input.tenantId,
+        storeId: input.storeId,
+        schemaVersion,
+        status: 'PENDING',
+        claimTokenHash: null,
+        completedAt: null,
+        leaseExpiresAt: null,
+        effectBoundary: null,
+        physicalCompletionKnown: false,
+      },
+      data: {
+        status: 'FAILED',
+        completedAt: now,
+        resultStatus: 'FAILED_NOT_CROSSED',
+        resultCode: CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM,
+        resultMessage: 'CustomerOrder cancelled before V3 claim',
+        effectBoundary: 'NOT_CROSSED',
+        physicalCompletionKnown: false,
+        nextAttemptAt: now,
+      },
+    })
+    if (updated.count === 1) return { ok: true as const, code: CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM, jobId: job.id }
+    const current = await tx.eshopTrayPrintJob.findUnique({
+      where: { tenantId_storeId_idempotencyKey: { tenantId: input.tenantId, storeId: input.storeId, idempotencyKey } },
+    })
+    if (current?.completedAt && current.resultStatus === 'FAILED_NOT_CROSSED' && current.effectBoundary === 'NOT_CROSSED') {
+      return { ok: true as const, code: CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM, jobId: current.id, alreadyCancelled: true as const }
+    }
+    return { ok: false as const, code: 'V3_CANCEL_MANUAL_REVIEW' as const }
+  }
+  if (db.$transaction && !input.inTransaction) return db.$transaction((tx) => run(tx as Db))
+  return run(db)
+}
+
+/**
+ * Fence unclaimed H5 KITCHEN reprints for the same scoped order. A claimed,
+ * executing, completed, or otherwise ambiguous row is returned as manual
+ * review evidence and is never force-written.
+ */
+export async function cancelUnclaimedV3PrintReprints(db: Db, input: {
+  tenantId: string
+  storeId: string
+  orderNo: string
+  role: V3PrintRole
+  schemaVersion?: number
+  now?: Date
+  inTransaction?: boolean
+}) {
+  const schemaVersion = input.schemaVersion ?? V3_PRINT_JOB_SCHEMA
+  const now = input.now ?? new Date()
+  const run = async (tx: Db) => {
+    const rows = await tx.eshopTrayPrintJob.findMany({ where: {
+      tenantId: input.tenantId,
+      storeId: input.storeId,
+      schemaVersion,
+      // Filter the JSON identity in PostgreSQL. Do not load or inspect every
+      // historical store job/payload just to cancel one H5 order's reprints.
+      AND: [
+        { payload: { path: ['source'], equals: 'CLOUD_REMOTE_REPRINT' } },
+        { payload: { path: ['orderNo'], equals: input.orderNo } },
+        { payload: { path: ['role'], equals: input.role } },
+      ],
+    }, select: {
+      id: true, status: true, claimTokenHash: true, completedAt: true,
+      leaseExpiresAt: true, effectBoundary: true, physicalCompletionKnown: true,
+      resultStatus: true, resultCode: true,
+    } })
+    const cancelledJobIds: string[] = []
+    const uncertainJobIds: string[] = []
+    for (const job of rows) {
+      const definitelyNotCrossed = job.status === 'FAILED' && job.resultStatus === 'FAILED_NOT_CROSSED' &&
+        job.effectBoundary === 'NOT_CROSSED' && job.physicalCompletionKnown === false
+      if (definitelyNotCrossed) {
+        // This is an existing durable terminal proof that no physical effect
+        // crossed. Treat it as an idempotent cancellation result rather than
+        // reopening it as an unknown execution.
+        cancelledJobIds.push(job.id)
+        continue
+      }
+      const definitelyUnclaimed = job.status === 'PENDING' && !job.claimTokenHash && !job.completedAt &&
+        !job.leaseExpiresAt && !job.effectBoundary && !job.physicalCompletionKnown
+      if (!definitelyUnclaimed) {
+        uncertainJobIds.push(job.id)
+        continue
+      }
+      const updated = await tx.eshopTrayPrintJob.updateMany({
+        where: { id: job.id, tenantId: input.tenantId, storeId: input.storeId, schemaVersion,
+          status: 'PENDING', claimTokenHash: null, completedAt: null, leaseExpiresAt: null,
+          effectBoundary: null, physicalCompletionKnown: false },
+        data: { status: 'FAILED', completedAt: now, resultStatus: 'FAILED_NOT_CROSSED',
+          resultCode: CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM, resultMessage: 'CustomerOrder cancelled before V3 reprint claim',
+          effectBoundary: 'NOT_CROSSED', physicalCompletionKnown: false, nextAttemptAt: now },
+      })
+      if (updated.count === 1) cancelledJobIds.push(job.id)
+      else uncertainJobIds.push(job.id)
+    }
+    return { cancelledJobIds, uncertainJobIds, ok: uncertainJobIds.length === 0 }
+  }
+  if (db.$transaction && !input.inTransaction) return db.$transaction((tx) => run(tx as Db))
+  return run(db)
 }
 
 async function validBatch(db: Db, identity: { tenantId: string; storeId: string; deviceId: string; batchId: string }, now: Date) {

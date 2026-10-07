@@ -1,8 +1,19 @@
 import { after, NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
 import { sendAndLogMessage } from '@/lib/telegram'
 import { notifyCashierGateway } from '@/lib/cashier-realtime-notify'
+import {
+  CUSTOMER_ORDER_ACTOR_TYPE,
+  customerOrderKitchenDisposition,
+  customerOrderPaymentIntentData,
+  cancelCustomerOrderKitchenIntent,
+  customerOrderPrintReceipt,
+  paymentIntentMethod,
+  printOrderFromCustomerOrder,
+  recordCustomerOrderIntent,
+} from '@/lib/customer-order-fulfillment'
 
 /**
  * PATCH /api/customer-orders/[id]
@@ -38,6 +49,22 @@ function shortOrderNo(orderNo: string): string {
   // 取末段（C-YYYYMMDD-STORE-####）的最后一段；不足则取末 4 位
   const seg = orderNo.split('-').pop() ?? orderNo
   return `#${seg.slice(-6) || seg}`
+}
+
+function isPaymentIntentOrderNoConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') return false
+  const meta = error.meta && typeof error.meta === 'object' ? error.meta as Record<string, unknown> : null
+  if (meta?.modelName === 'PaymentIntent') return true
+  const target = Array.isArray(meta?.target) ? meta.target.map(String) : []
+  return target.includes('orderNo')
+}
+
+function kitchenCancellationEvidence(intent: { cancelResultCode?: string | null; state?: string | null; manualReviewReason?: string | null } | null): string | null {
+  if (!intent) return null
+  if (intent.cancelResultCode) return intent.cancelResultCode
+  if (intent.state === 'EXPIRED') return 'CUSTOMER_ORDER_FULFILLMENT_DEADLINE_EXPIRED'
+  if (intent.state === 'MANUAL_REVIEW') return intent.manualReviewReason ?? 'KITCHEN_TASK_REQUIRES_MANUAL_VERIFICATION'
+  return null
 }
 
 type TplCtx = { no: string; total: string }
@@ -94,41 +121,172 @@ export async function PATCH(
     return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 })
   }
 
-  const order = await prisma.customerOrder.findFirst({
-    where: { id, tenantId: ctx.tenantId },
-  })
-  if (!order) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
-
   // ── 分支 A：收款登记 ────────────────────────────────────────────────────────
   if (body.paymentMethod) {
-    const { paymentMethod } = body
-    if (!['CASH', 'QR'].includes(paymentMethod)) {
+    const { paymentMethod: rawPaymentMethod } = body
+    if (!['CASH', 'QR'].includes(rawPaymentMethod)) {
       return NextResponse.json({ error: 'INVALID_PAYMENT_METHOD' }, { status: 400 })
     }
-    if (order.status !== 'COMPLETED') {
-      return NextResponse.json({ error: 'ORDER_NOT_COMPLETED' }, { status: 400 })
-    }
-    if (order.paymentStatus === 'PAID') {
-      return NextResponse.json({ error: 'ALREADY_PAID' }, { status: 400 })
+    const paymentMethod = rawPaymentMethod as 'CASH' | 'QR'
+    let paid: {
+      kind: 'PAID'
+      order: any
+      paidAt: Date
+      paymentMethod: 'CASH' | 'QR'
+    } | { kind: 'NOT_FOUND' | 'ORDER_NOT_COMPLETED' | 'PAYMENT_INTENT_CONFLICT' | 'PAYMENT_RECORD_MISSING' }
+
+    try {
+      paid = await prisma.$transaction(async (tx) => {
+        const scope = {
+          id,
+          tenantId: ctx.tenantId,
+          ...(ctx.role === 'STAFF' ? { storeId: ctx.storeId } : {}),
+        }
+        const order = await tx.customerOrder.findFirst({ where: scope })
+        if (!order) return { kind: 'NOT_FOUND' as const }
+        if (order.status !== 'COMPLETED') return { kind: 'ORDER_NOT_COMPLETED' as const }
+        const storeForIntent = await tx.store.findFirst({
+          where: { id: order.storeId, tenantId: order.tenantId },
+          select: { name: true, currencyCode: true },
+        })
+        if (!storeForIntent) return { kind: 'PAYMENT_RECORD_MISSING' as const }
+
+        const expectedMethod = paymentIntentMethod(paymentMethod)
+        const existingPi = await tx.paymentIntent.findUnique({ where: { orderNo: order.orderNo } })
+        if (existingPi) {
+          const sameH5Payment = existingPi.tenantId === order.tenantId
+            && existingPi.storeId === order.storeId
+            && existingPi.transactionActorType === CUSTOMER_ORDER_ACTOR_TYPE
+            && existingPi.transactionActorId === order.id
+            && existingPi.paymentMethod === expectedMethod
+            && existingPi.amount.toString() === order.totalAmount.toString()
+          if (!sameH5Payment || existingPi.status !== 'PAID' || !existingPi.paidAt) {
+            return { kind: 'PAYMENT_INTENT_CONFLICT' as const }
+          }
+          if (order.paymentStatus === 'PAID') {
+            if (order.paymentMethod !== paymentMethod) return { kind: 'PAYMENT_INTENT_CONFLICT' as const }
+            return { kind: 'PAID' as const, order, paidAt: existingPi.paidAt, paymentMethod }
+          }
+          const repaired = await tx.customerOrder.updateMany({
+            where: { ...scope, paymentStatus: 'UNPAID' },
+            data: {
+              paymentStatus: 'PAID',
+              paymentMethod,
+              paidAt: existingPi.paidAt,
+              paidAmount: order.totalAmount,
+              transactionActorType: CUSTOMER_ORDER_ACTOR_TYPE,
+              transactionActorId: order.id,
+              authorizedByUserId: ctx.userId,
+            },
+          })
+          if (repaired.count !== 1) return { kind: 'PAYMENT_RECORD_MISSING' as const }
+          const printOrder = printOrderFromCustomerOrder({
+            tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo,
+            storeName: storeForIntent.name, currencyCode: storeForIntent.currencyCode,
+            createdAt: order.createdAt, paidAt: existingPi.paidAt, tableNo: order.tableNo,
+            remark: order.remark, totalAmount: order.totalAmount, paymentStatus: 'PAID',
+            paymentMethod, itemsJson: order.itemsJson,
+          })
+          const existingFrontIntent = await tx.customerOrderFulfillmentIntent.findUnique({
+            where: { tenantId_storeId_orderNo_role: { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, role: 'FRONT' } },
+          })
+          if (!existingFrontIntent) {
+            await recordCustomerOrderIntent(tx, printOrder, 'FRONT', 'REQUIRED', existingPi.paidAt, existingPi.id)
+          } else if (existingFrontIntent.source !== 'H5_HOME' || existingFrontIntent.paymentIntentId !== existingPi.id) {
+            return { kind: 'PAYMENT_INTENT_CONFLICT' as const }
+          }
+          return {
+            kind: 'PAID' as const,
+            order: { ...order, paymentStatus: 'PAID', paymentMethod, paidAt: existingPi.paidAt },
+            paidAt: existingPi.paidAt,
+            paymentMethod,
+          }
+        }
+
+        if (order.paymentStatus === 'PAID') return { kind: 'PAYMENT_RECORD_MISSING' as const }
+        const paidAt = new Date()
+        const changed = await tx.customerOrder.updateMany({
+          where: { ...scope, status: 'COMPLETED', paymentStatus: 'UNPAID' },
+          data: {
+            paymentStatus: 'PAID',
+            paymentMethod,
+            paidAt,
+            paidAmount: order.totalAmount,
+            transactionActorType: CUSTOMER_ORDER_ACTOR_TYPE,
+            transactionActorId: order.id,
+            authorizedByUserId: ctx.userId,
+          },
+        })
+        if (changed.count !== 1) {
+          // A concurrent collector may have committed between the initial read
+          // and this conditional update. Re-read inside the transaction before
+          // reporting a failure, so the losing request becomes idempotent.
+          const current = await tx.customerOrder.findFirst({ where: scope })
+          if (current?.paymentStatus === 'PAID' && current.paymentMethod === paymentMethod) {
+            const currentPi = await tx.paymentIntent.findUnique({ where: { orderNo: current.orderNo } })
+            if (currentPi?.status === 'PAID' && currentPi.paymentMethod === paymentIntentMethod(paymentMethod) && currentPi.paidAt) {
+              return { kind: 'PAID' as const, order: current, paidAt: currentPi.paidAt, paymentMethod }
+            }
+          }
+          return { kind: 'PAYMENT_RECORD_MISSING' as const }
+        }
+
+        const paymentIntent = await tx.paymentIntent.create({
+          data: customerOrderPaymentIntentData({
+            tenantId: order.tenantId,
+            storeId: order.storeId,
+            operatorUserId: ctx.userId,
+            orderNo: order.orderNo,
+            orderId: order.id,
+            amount: order.totalAmount.toString(),
+            paymentMethod,
+            paidAt,
+          }) as any,
+        })
+        const printOrder = printOrderFromCustomerOrder({
+          tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo,
+          storeName: storeForIntent.name, currencyCode: storeForIntent.currencyCode,
+          createdAt: order.createdAt, paidAt, tableNo: order.tableNo, remark: order.remark,
+          totalAmount: order.totalAmount, paymentStatus: 'PAID', paymentMethod, itemsJson: order.itemsJson,
+        })
+        await recordCustomerOrderIntent(tx, printOrder, 'FRONT', 'REQUIRED', paidAt, paymentIntent.id)
+        return {
+          kind: 'PAID' as const,
+          order: { ...order, paymentStatus: 'PAID', paymentMethod, paidAt },
+          paidAt,
+          paymentMethod,
+        }
+      })
+    } catch (error) {
+      // A concurrent request may win the PaymentIntent orderNo unique key.
+      // Re-read only after the transaction has rolled back; never continue in
+      // an aborted transaction.
+      if (isPaymentIntentOrderNoConflict(error)) {
+        const current = await prisma.customerOrder.findFirst({
+          where: { id, tenantId: ctx.tenantId, ...(ctx.role === 'STAFF' ? { storeId: ctx.storeId } : {}) },
+        })
+        if (current?.paymentStatus === 'PAID' && current.paymentMethod === paymentMethod) {
+          paid = { kind: 'PAID', order: current, paidAt: current.paidAt ?? new Date(), paymentMethod }
+        } else throw error
+      } else throw error
     }
 
-    const updated = await prisma.customerOrder.update({
-      where: { id },
-      data: {
-        paymentStatus: 'PAID',
-        paymentMethod,
-        paidAt: new Date(),
-        paidAmount: order.totalAmount,
-      },
-      select: { id: true, orderNo: true, status: true, paymentStatus: true, paymentMethod: true },
-    })
+    if (paid.kind !== 'PAID') {
+      const status = paid.kind === 'NOT_FOUND' ? 404 : paid.kind === 'ORDER_NOT_COMPLETED' ? 400 : 409
+      return NextResponse.json({ error: paid.kind }, { status })
+    }
+
+    const print = await customerOrderPrintReceipt(prisma as any, paid.order, "FRONT")
 
     return NextResponse.json({
-      id: updated.id,
-      orderNo: updated.orderNo,
-      status: updated.status,
-      paymentStatus: updated.paymentStatus,
-      paymentMethod: updated.paymentMethod,
+      id: paid.order.id,
+      orderNo: paid.order.orderNo,
+      status: 'COMPLETED',
+      paymentStatus: 'PAID',
+      paymentMethod: paid.paymentMethod,
+      businessStatus: 'SUCCEEDED',
+      printStatus: print.status,
+      printCreated: print.created,
     })
   }
 
@@ -136,28 +294,145 @@ export async function PATCH(
   const { status: newStatus } = body
   if (!newStatus) return NextResponse.json({ error: 'MISSING_ACTION' }, { status: 400 })
 
-  const allowed = ALLOWED_TRANSITIONS[order.status] ?? []
-  if (!allowed.includes(newStatus)) {
-    return NextResponse.json(
-      { error: 'INVALID_TRANSITION', message: `不能从 ${order.status} 转为 ${newStatus}` },
-      { status: 400 },
-    )
-  }
+  const result = await prisma.$transaction(async (tx) => {
+    const scope = {
+      id,
+      tenantId: ctx.tenantId,
+      ...(ctx.role === 'STAFF' ? { storeId: ctx.storeId } : {}),
+    }
+    const order = await tx.customerOrder.findFirst({ where: scope })
+    if (!order) return { kind: 'NOT_FOUND' as const }
+    const store = await tx.store.findFirst({
+      where: { id: order.storeId, tenantId: order.tenantId },
+      select: { name: true, currencyCode: true, printKitchenTicket: true },
+    })
+    if (!store) return { kind: 'STORE_NOT_FOUND' as const, order }
+    const allowed = ALLOWED_TRANSITIONS[order.status] ?? []
+    if (!allowed.includes(newStatus)) {
+      if (order.status === newStatus) {
+        const kitchenIntent = newStatus === 'CONFIRMED' || newStatus === 'CANCELLED'
+          ? await tx.customerOrderFulfillmentIntent.findUnique({
+              where: { tenantId_storeId_orderNo_role: { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, role: 'KITCHEN' } },
+            })
+          : null
+        return {
+          kind: 'IDEMPOTENT' as const,
+          order,
+          store,
+          kitchenDecision: kitchenIntent?.decision ?? null,
+          kitchenIntentId: kitchenIntent?.id ?? null,
+          kitchenCancelCode: kitchenCancellationEvidence(kitchenIntent),
+        }
+      }
+      return { kind: 'INVALID_TRANSITION' as const, order }
+    }
 
-  const updated = await prisma.customerOrder.update({
-    where: { id },
-    data: { status: newStatus },
-    select: { id: true, orderNo: true, status: true, customerTelegramId: true, totalAmount: true, customerLang: true, storeCode: true },
+    const changed = await tx.customerOrder.updateMany({
+      where: { ...scope, status: order.status },
+      data: { status: newStatus },
+    })
+    if (changed.count !== 1) {
+      const current = await tx.customerOrder.findFirst({ where: scope })
+      return current?.status === newStatus
+        ? {
+            kind: 'IDEMPOTENT' as const,
+            order: current,
+            store,
+            kitchenDecision: newStatus === 'CONFIRMED'
+              ? (await tx.customerOrderFulfillmentIntent.findUnique({
+                  where: { tenantId_storeId_orderNo_role: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, role: 'KITCHEN' } },
+                }))?.decision ?? null
+              : null,
+            kitchenIntentId: newStatus === 'CONFIRMED'
+              ? (await tx.customerOrderFulfillmentIntent.findUnique({
+                  where: { tenantId_storeId_orderNo_role: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, role: 'KITCHEN' } },
+                }))?.id ?? null
+              : null,
+            kitchenCancelCode: newStatus === 'CANCELLED'
+              ? kitchenCancellationEvidence(await tx.customerOrderFulfillmentIntent.findUnique({
+                  where: { tenantId_storeId_orderNo_role: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, role: 'KITCHEN' } },
+                }))
+              : null,
+          }
+        : { kind: 'INVALID_TRANSITION' as const, order: current ?? order }
+    }
+    const updatedOrder = { ...order, status: newStatus }
+    let kitchenDecision: string | null = null
+    let kitchenIntentId: string | null = null
+    let kitchenCancelCode: string | null = null
+    if (newStatus === 'CONFIRMED' || newStatus === 'CANCELLED') {
+      const printOrder = printOrderFromCustomerOrder({
+        tenantId: updatedOrder.tenantId,
+        storeId: updatedOrder.storeId,
+        orderNo: updatedOrder.orderNo,
+        storeName: store.name,
+        currencyCode: store.currencyCode,
+        createdAt: updatedOrder.createdAt,
+        paidAt: updatedOrder.paidAt,
+        tableNo: updatedOrder.tableNo,
+        remark: updatedOrder.remark,
+        totalAmount: updatedOrder.totalAmount,
+        paymentStatus: 'UNPAID',
+        paymentMethod: null,
+        itemsJson: updatedOrder.itemsJson,
+      })
+      if (newStatus === 'CONFIRMED') {
+        kitchenDecision = customerOrderKitchenDisposition(printOrder, store.printKitchenTicket)
+        const intent = await recordCustomerOrderIntent(tx, printOrder, 'KITCHEN', kitchenDecision as any, new Date())
+        kitchenIntentId = intent.id
+      } else {
+        const cancelled = await cancelCustomerOrderKitchenIntent(tx, printOrder, new Date())
+        kitchenCancelCode = cancelled.kind === 'NOT_APPLICABLE' ? 'NOT_APPLICABLE' : cancelled.code ?? null
+      }
+    }
+    return { kind: 'UPDATED' as const, order: updatedOrder, store, kitchenDecision, kitchenIntentId, kitchenCancelCode }
   })
 
-  after(() => notifyCashierGateway({
-    tenantId: order.tenantId,
-    storeId: order.storeId,
-    type: 'orders_changed',
-  }))
+  if (result.kind === 'NOT_FOUND') return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+  if (result.kind === 'STORE_NOT_FOUND') return NextResponse.json({ error: 'STORE_NOT_FOUND' }, { status: 404 })
+  if (result.kind === 'INVALID_TRANSITION') {
+    return NextResponse.json({ error: 'INVALID_TRANSITION', message: `不能从 ${result.order.status} 转为 ${newStatus}` }, { status: 400 })
+  }
+
+  const updated = result.order
+  if (result.kind === 'UPDATED') {
+    after(() => notifyCashierGateway({
+      tenantId: updated.tenantId,
+      storeId: updated.storeId,
+      type: 'orders_changed',
+    }))
+  }
+
+  let print: { status: string; created: boolean; printJobId: string | null; error?: string } = {
+    status: 'NOT_REQUIRED', created: false, printJobId: null,
+  }
+  if (newStatus === 'CONFIRMED' && (result.kind === 'UPDATED' || result.kind === 'IDEMPOTENT')) {
+    if (result.kitchenDecision === 'NOT_REQUIRED') {
+      print = { status: 'NOT_REQUIRED', created: false, printJobId: null }
+    } else if (result.kitchenDecision === 'MANUAL_REVIEW') {
+      print = { status: 'MANUAL_REVIEW', created: false, printJobId: null, error: 'CUSTOMER_ORDER_KITCHEN_ROUTE_MARKER_MISSING' }
+    } else if (result.kitchenIntentId) {
+      try {
+        print = await customerOrderPrintReceipt(prisma as any, updated, 'KITCHEN')
+      } catch (error) {
+        // The order transition is already committed. A renderer/queue fault is
+        // reported as print evidence, never as a false business failure.
+        print = { status: 'FAILED', created: false, printJobId: null, error: error instanceof Error ? error.message : 'CUSTOMER_ORDER_PRINT_FAILED' }
+      }
+    }
+  }
+  if (newStatus === 'CANCELLED' && (result.kind === 'UPDATED' || result.kind === 'IDEMPOTENT')) {
+    print = result.kitchenCancelCode === 'NOT_APPLICABLE'
+      ? { status: 'NOT_APPLICABLE', created: false, printJobId: null }
+      : result.kitchenCancelCode === 'NOT_REQUIRED' || result.kitchenCancelCode === 'CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM' || !result.kitchenCancelCode
+      ? { status: 'NOT_REQUIRED', created: false, printJobId: null }
+      : result.kitchenCancelCode === 'CUSTOMER_ORDER_FULFILLMENT_DEADLINE_EXPIRED'
+      ? { status: 'EXPIRED', created: false, printJobId: null, error: result.kitchenCancelCode }
+      : { status: 'MANUAL_REVIEW', created: false, printJobId: null, error: 'KITCHEN_TASK_REQUIRES_MANUAL_VERIFICATION' }
+  }
 
   // 若顾客有 Telegram ID，异步发送状态变更通知（走顾客端机器人）
-  if (updated.customerTelegramId) {
+  if (result.kind === 'UPDATED' && updated.customerTelegramId) {
     // 语言决议：customerLang → StoreCustomerContact.telegramLanguageCode → 'zh'
     let lang: Lang | null = updated.customerLang ? normalizeLang(updated.customerLang) : null
     if (!lang) {
@@ -188,5 +463,8 @@ export async function PATCH(
     orderNo: updated.orderNo,
     status: updated.status,
     statusLabel: STATUS_LABELS[updated.status] ?? updated.status,
+    businessStatus: 'SUCCEEDED',
+    printStatus: print.status,
+    printCreated: print.created,
   })
 }

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "purpose": "ISOLATED_CANDIDATE_NOT_PRODUCTION_RELEASED",
+  "environment": {
+    "os": "linux",
+    "arch": "arm64",
+    "node": "v24.14.0",
+    "chromium": "149.0.7827.0",
+    "playwrightRevision": "1228"
+  },
+  "dependencies": {
+    "playwright-core": "1.61.0",
+    "html2canvas": "1.4.1",
+    "esbuild": "0.27.4"
+  },
+  "assets": {
+    "secure-renderer.mjs": "f0cb3512a9889cbfdffa99cd841120622ff79c42df34c0f33f43721664cfd2cf",
+    "tickets.mjs": "887bebbb6bfbf062973fcc343e81465304aebb455b31408cfa89ca647366ac02",
+    "browser/headless_command_resources.pak": "e5ad233191a0a9ea161601e8f28408bd6b0b8552b3237d3060ffd7da3831fd5a",
+    "browser/headless_lib_data.pak": "f1b95b7cd3764f76c35586214d9e571af416af8e2e5a326a2250f4c8b86af7d9",
+    "browser/headless_lib_strings.pak": "d4d8f69cfb3e65f3b391b6959d19bd23b101d2dc2d219d0341f2bbbbe0965e86",
+    "browser/headless_shell": "b6f53f7e40c3ad6727cb3a12536026dcd93281e5965923752c8130ed53e5e8c4",
+    "browser/icudtl.dat": "c5da2fc389d1bb0ecb13fe22a8e069b7abc491f8aa5d16eb65d4ff32c85a46b6",
+    "browser/libEGL.so": "dd328deb0cb322135b0f09183d8353b952f4c4b931318bce8d1a1de696226377",
+    "browser/libGLESv2.so": "0e58653b66ca3ad54fac22db1d6f5ea0ed9c1fae4c950f7108159160f8977c3a",
+    "browser/libvk_swiftshader.so": "813a594255804a71a2796b816dd1dfb56a1c8c7a799bc5398436ca68b372cede",
+    "browser/libvulkan.so.1": "882e38a4dd7f5c96f184858af916f9fc6ca8ea3b185371288636a63b6ba21ddb",
+    "browser/v8_context_snapshot.bin": "117380100dd28df2ba412454a069bff5f485a29d04b7dacfcb6795cfaa7daddf",
+    "browser/vk_swiftshader_icd.json": "c9eef28b6b984fec220ef0abfecc40b502d46946706e47bfe97707027cb818bd",
+    "fonts/NotoSansCJK-LICENSE.txt": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
+    "fonts/NotoSansCJKsc-Regular.otf": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
+    "fonts/NotoSansKhmer-METADATA.pb": "7e83f3d9971af0d93ea33ef0fedcb63143beca2b974960d3faa9fb6f3e5fb6cf",
+    "fonts/NotoSansKhmer-OFL.txt": "be0407f060aea48787ff9e75d8d3aedef70aef113b3ce9aca26fdaacd10b1870",
+    "fonts/NotoSansKhmer-variable.ttf": "f37a8431a0c5d5ed2f81a767417546aca576a81fb7eff9c924d46aecf828f2ca",
+    "fonts/font-metadata.json": "b7f9773d46388266324f59a6532ea30d4814a9f0787dec50a234682297c3d971",
+    "fonts/manifest.json": "5861eb2556657dafd0edd7b200b19944127e06b13e37a07e657714bc833dbbd1",
+    "reference/front-cash-mixed.bin": "40f2c2a99969b9b2ea2b3669e8cb31b04956e9e113aa6f64cfe031516221406d",
+    "reference/front-cash-mixed.html": "f3b8959ce075ec3b5256fc79042850aa6dd778d691a0cd278ea038e64c7759e6",
+    "reference/front-cash-mixed.png": "fec8f033021ae9908b17dba719ae5a2398f873013f7249eae54c7e5231d5220e",
+    "reference/front-khqr-amounts.bin": "3591e82c88ea888befcdcf42030734cf81cb0ee1e3b7c99a9e32415d09dea7b7",
+    "reference/front-khqr-amounts.html": "c0fc2d9c71ed591689f50e9c02e14aea1fa7d8017e7d679413df016315f3df6d",
+    "reference/front-khqr-amounts.png": "80c3d53d88811f8a71f31c0a698c12a80dd5708589432d3ba168fa9c28d7290f",
+    "reference/front-long-72-items.bin": "2ed6ed67ec401320fcac425847366332da5b9b55ace30ebb3dbf1369d20d6edf",
+    "reference/front-long-72-items.html": "dcdc36b0961f09da27cadace9b3c1a17d3edf7bd36057e998684a410acb9d299",
+    "reference/front-long-72-items.png": "d3507fdd4cc0e49b927fd0608cceffb5f369d8152f0df87bc7e7e3fd3ca3abe7",
+    "reference/kitchen-unpaid-mixed.bin": "f59f027486e1a0cd96387a45287a5d2a2fac32a4f70121e4b287841a03b1cbe3",
+    "reference/kitchen-unpaid-mixed.html": "d50350ae8f45e4fba238be248ef95c50dfad6608eed83233118af74b5397785b",
+    "reference/kitchen-unpaid-mixed.png": "0e6fde28c8c5478b418097969e4065c05be79cb71a4e399c5d7a54a0d025216c",
+    "reference/source-evidence.json": "05263e19aef9d783d1e4e15d79821a23a29e577150f544c607a9e12019ffe061",
+    "reference/typography.bin": "2c71c5884b1af2146d533cdef59405c554ca33e77f4d49e7daf071999cca2962",
+    "reference/typography.html": "3149b0e7bd4ece101da3826a570a9f3fef1e1582b3f607b80c95bbb455ede6eb",
+    "reference/typography.png": "fcf60605b24e9736c833aed64211001d5a6a770ad9e572b23072a14965df63e3"
+  },
+  "sourceContracts": {
+    "lib/qzHtmlBitmapRenderer.ts": "439e8d2cc98c41043b83bcc72b6296f5d52d4f5dfd3169188c1797486cfc7e43",
+    "lib/qzEscPosBitImage.ts": "1e596ddcb9a07b26b89c625941daf453f455859c3d04709affad5029decad0c3",
+    "lib/v3-print-identity.ts": "848afc9a34a50e3183339934f83594bce2baabe7b7a8726f087e49a316a0e92e"
+  },
+  "startupReference": {
+    "source": "independently reviewed local Ubuntu ARM64 POC; not Khmer linguistic or device acceptance",
+    "rawSha256": "2c71c5884b1af2146d533cdef59405c554ca33e77f4d49e7daf071999cca2962"
+  }
+}

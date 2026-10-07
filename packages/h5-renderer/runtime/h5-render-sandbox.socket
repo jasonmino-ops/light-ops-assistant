@@ -1,0 +1,14 @@
+[Unit]
+Description=Local H5 renderer socket
+
+[Socket]
+ListenStream=/run/es-h5-renderer/renderer.sock
+SocketUser=h5-render-sandbox
+SocketGroup=h5-render-socket
+SocketMode=0660
+DirectoryMode=0755
+Backlog=2
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

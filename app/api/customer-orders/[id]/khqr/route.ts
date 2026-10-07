@@ -1,5 +1,5 @@
 /**
- * GET /api/customer-orders/[id]/khqr — OWNER only
+ * GET /api/customer-orders/[id]/khqr — OWNER / actively bound, same-store STAFF
  *
  * 返回该顾客订单当前门店可用的 KHQR 收款码（图片优先，否则动态 payload）。
  * **不创建 PaymentIntent、不写库**，仅用于 /home 顾客订单 KHQR 弹层展示。
@@ -18,13 +18,26 @@ export async function GET(
 ) {
   const ctx = await getContext(req)
   if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
-  if (ctx.role !== 'OWNER') {
+  if (ctx.role !== 'OWNER' && ctx.role !== 'STAFF') {
     return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+  }
+  if (ctx.role === 'STAFF') {
+    if (!ctx.storeId) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
+    const binding = await prisma.userStoreRole.findFirst({
+      where: {
+        tenantId: ctx.tenantId, userId: ctx.userId, storeId: ctx.storeId,
+        role: 'STAFF', status: 'ACTIVE',
+        user: { tenantId: ctx.tenantId, role: 'STAFF', status: 'ACTIVE' },
+        store: { tenantId: ctx.tenantId },
+      },
+      select: { id: true },
+    })
+    if (!binding) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 })
   }
 
   const { id } = await params
   const order = await prisma.customerOrder.findFirst({
-    where: { id, tenantId: ctx.tenantId },
+    where: { id, tenantId: ctx.tenantId, ...(ctx.role === 'STAFF' ? { storeId: ctx.storeId } : {}) },
     select: { id: true, orderNo: true, storeId: true, totalAmount: true },
   })
   if (!order) {

@@ -1,9 +1,11 @@
 {
   "schemaVersion": 1,
   "lane": "INTEGRATION",
-  "expectedCount": 15,
+  "expectedCount": 17,
   "tests": [
+    { "file": "tests/customer-order-renderer-host.test.ts", "lane": "INTEGRATION", "reason": "Starts disposable Unix socket and loopback health servers with an injected renderer; no database, device, native Chromium or external service.", "dependencyType": "LOCAL_RUNTIME", "evidence": "tests/customer-order-renderer-host.test.ts:1" },
     { "file": "tests/cashier-network-print-v01.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly isolated PostgreSQL test database and test secret.", "dependencyType": "POSTGRESQL", "evidence": "tests/cashier-network-print-v01.test.ts:20-24" },
+    { "file": "tests/customer-order-fulfillment-db.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly isolated disposable PostgreSQL database initialized with the candidate migration; no shared or Production database is accepted.", "dependencyType": "POSTGRESQL", "evidence": "tests/customer-order-fulfillment-db.test.ts:1-88" },
     { "file": "tests/dashboard-print-settings-mobile.test.ts", "lane": "INTEGRATION", "reason": "Launches Chromium against a local dashboard UI service.", "dependencyType": "LOCAL_UI_BROWSER", "evidence": "tests/dashboard-print-settings-mobile.test.ts:2-4" },
     { "file": "tests/desktop-activation-runtime.test.ts", "lane": "INTEGRATION", "reason": "Requires the real desktop activation test database and test secrets.", "dependencyType": "POSTGRESQL", "evidence": "tests/desktop-activation-runtime.test.ts:10-17" },
     { "file": "tests/desktop-pos-session-bridge.test.ts", "lane": "INTEGRATION", "reason": "Requires the real Desktop activation/POS session test database and test secrets.", "dependencyType": "POSTGRESQL", "evidence": "tests/desktop-pos-session-bridge.test.ts:9-18" },

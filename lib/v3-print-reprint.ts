@@ -181,6 +181,19 @@ export async function enqueueV3ManualReprint(
   return enqueueV3ManualReprintWithDb(prisma, scope, actor, request, now)
 }
 
+function isReprintTransactionConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false
+  if (error.code === 'P2034') return true
+  if (error.code !== 'P2010') return false
+  // Prisma 7 + adapter-pg preserves the SQLSTATE here for raw-query errors.
+  // Neither a generic P2010 nor an error-message substring proves a conflict.
+  const adapterError = error.meta?.driverAdapterError
+  if (!adapterError || typeof adapterError !== 'object' || !('cause' in adapterError)) return false
+  const cause = adapterError.cause
+  return Boolean(cause && typeof cause === 'object' && 'originalCode' in cause
+    && (cause.originalCode === '40001' || cause.originalCode === '40P01'))
+}
+
 export async function enqueueV3ManualReprintWithDb(
   db: Pick<typeof prisma, '$transaction'>,
   scope: { tenantId: string; storeId: string },
@@ -233,6 +246,14 @@ export async function enqueueV3ManualReprintWithDb(
   })
   try {
     return await db.$transaction(async (tx) => {
+      const lockedOrderRows = tx.$queryRaw
+        ? await tx.$queryRaw<Array<{ id: string; status: string }>>`
+            SELECT "id", "status"
+            FROM "CustomerOrder"
+            WHERE "tenantId" = ${scope.tenantId} AND "storeId" = ${scope.storeId} AND "orderNo" = ${request.orderNo}
+            FOR UPDATE
+          `
+        : []
       const [store, controlPlane, sale, customerOrder, original] = await Promise.all([
         tx.store.findFirst({
           where: { id: scope.storeId, tenantId: scope.tenantId, status: 'ACTIVE', tenant: { status: 'ACTIVE' } },
@@ -263,11 +284,31 @@ export async function enqueueV3ManualReprintWithDb(
         throw new V3ReprintError('V3_REPRINT_MODE_NOT_ACTIVE', 409)
       }
       if (!sale && !customerOrder) throw new V3ReprintError('V3_REPRINT_ORDER_NOT_FOUND', 404)
+      const lockedOrder = lockedOrderRows[0]
+      if (request.role === 'KITCHEN' && lockedOrder?.status === 'CANCELLED') {
+        throw new V3ReprintError('V3_REPRINT_CANCELLED_H5_KITCHEN_FORBIDDEN', 409)
+      }
       if (request.role === 'KITCHEN' && !store.printKitchenTicket) {
         throw new V3ReprintError('V3_REPRINT_KITCHEN_DISABLED', 409)
       }
       if (!original || original.schemaVersion !== 3) {
         throw new V3ReprintError('V3_REPRINT_ORIGINAL_NOT_TERMINAL', 409)
+      }
+      const h5Intent = request.role === 'KITCHEN' && tx.customerOrderFulfillmentIntent
+        ? await tx.customerOrderFulfillmentIntent.findUnique({
+            where: { tenantId_storeId_orderNo_role: { tenantId: scope.tenantId, storeId: scope.storeId, orderNo: request.orderNo, role: 'KITCHEN' } },
+          })
+        : null
+      if (h5Intent?.source === 'H5_HOME') {
+        if (h5Intent.state === 'CANCELLED' || h5Intent.cancelResultCode === 'CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM') {
+          throw new V3ReprintError('V3_REPRINT_CANCELLED_H5_KITCHEN_FORBIDDEN', 409)
+        }
+        if (h5Intent.idempotencyKey !== original.idempotencyKey || h5Intent.idempotencyKey !== canonicalV3OriginalPrintJobId(request.orderNo, request.role)) {
+          throw new V3ReprintError('V3_REPRINT_H5_IDENTITY_MISMATCH', 409)
+        }
+        if (!h5Intent.payloadHash || !h5Intent.payloadBase64 || h5Intent.payloadHash !== request.commandStream.sha256 || h5Intent.payloadBase64 !== request.commandStream.data) {
+          throw new V3ReprintError('V3_REPRINT_H5_SEALED_PAYLOAD_REQUIRED', 409)
+        }
       }
       if (
         original.effectBoundary === 'CROSSING_UNKNOWN'
@@ -408,7 +449,7 @@ export async function enqueueV3ManualReprintWithDb(
       if (recovered) return recovered
       throw error
     }
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+    if (isReprintTransactionConflict(error)) {
       const recovered = await readCommittedIdempotentResult()
       if (recovered) return recovered
       throw new V3ReprintError('V3_REPRINT_CONCURRENT_STATE_CHANGE', 409)

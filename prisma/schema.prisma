@@ -1197,6 +1197,10 @@ model CustomerOrder {
   storeId                  String
   storeCode                String
   orderNo                  String    @unique
+  submissionKey            String?   @db.VarChar(64)
+  submissionHash           String?   @db.Char(64)
+  submissionVersion        Int?
+  submissionResponse       Json?
   customerTelegramId       String? // null = 匿名；可后续由顾客绑定 TG 后回填
   customerLang             String? // 顾客下单时的 H5 语言：zh | en | km；通知顾客时使用
   customerName             String? // 配送/上门订单：联系人姓名（可选）
@@ -1231,6 +1235,82 @@ model CustomerOrder {
   @@index([orderNo])
   @@index([campaignLinkId])
   @@index([transactionActorType, transactionActorId])
+  @@unique([tenantId, storeId, submissionKey], map: "CustomerOrder_submission_key")
+}
+
+enum CustomerOrderFulfillmentRole {
+  KITCHEN
+  FRONT
+}
+
+enum CustomerOrderFulfillmentDecision {
+  REQUIRED
+  NOT_REQUIRED
+  MANUAL_REVIEW
+}
+
+enum CustomerOrderFulfillmentState {
+  PENDING
+  RENDER_PENDING
+  ENQUEUED
+  FAILED_RETRYABLE
+  CANCELLED
+  EXPIRED
+  MANUAL_REVIEW
+  NOT_REQUIRED
+}
+
+/// Durable ownership and print-intent ledger for /home H5 deferred-payment
+/// fulfillment. It intentionally has no SUCCEEDED state: execution truth is
+/// read from EshopTrayPrintJob.
+model CustomerOrderFulfillmentIntent {
+  id                    String                           @id @default(cuid())
+  tenantId              String
+  storeId               String
+  orderNo               String
+  role                  CustomerOrderFulfillmentRole
+  source                String                           @default("H5_HOME") @db.VarChar(32)
+  schemaVersion         Int                              @default(3)
+  decision              CustomerOrderFulfillmentDecision
+  state                 CustomerOrderFulfillmentState
+  snapshotJson          String                           @db.Text
+  snapshotHash          String                           @db.Char(64)
+  payloadBase64         String?                          @db.Text
+  byteLength            Int?
+  payloadHash           String?                          @db.Char(64)
+  rendererVersion       String?
+  sealedAt              DateTime?
+  renderProfileId       String?
+  renderAttemptCount    Int                              @default(0)
+  renderLeaseOwnerId    String?
+  renderLeaseTokenHash  String?                          @db.Char(64)
+  renderLeaseExpiresAt  DateTime?
+  idempotencyKey        String
+  paymentIntentId       String?
+  paymentEventAt        DateTime?
+  confirmedAt           DateTime?
+  paidAt                DateTime?
+  deadlineAt            DateTime
+  printJobId            String?
+  attemptCount          Int                              @default(0)
+  maxAttempts           Int                              @default(12)
+  nextAttemptAt         DateTime
+  lastRecoverySweepAt   DateTime?
+  lastErrorCode         String?
+  lastErrorAt           DateTime?
+  manualReviewReason    String?                          @db.Text
+  cancelResultCode      String?
+  revision              Int                              @default(0)
+  createdAt             DateTime                         @default(now())
+  updatedAt             DateTime                         @updatedAt
+
+  @@unique([tenantId, storeId, orderNo, role], map: "CustomerOrderFulfillmentIntent_scope_role_key")
+  @@index([tenantId, storeId, state, nextAttemptAt, id], map: "CustomerOrderFulfillmentIntent_recovery_idx")
+  @@index([source, state, nextAttemptAt, id], map: "CustomerOrderFulfillmentIntent_source_recovery_idx")
+  @@index([tenantId, storeId, source, lastRecoverySweepAt, id], map: "CustomerOrderFulfillmentIntent_sweep_idx")
+  @@index([tenantId, storeId, printJobId], map: "CustomerOrderFulfillmentIntent_job_idx")
+  @@index([renderLeaseOwnerId, renderLeaseExpiresAt], map: "CustomerOrderFulfillmentIntent_render_owner_idx")
+  @@index([tenantId, storeId, paymentIntentId], map: "CustomerOrderFulfillmentIntent_payment_idx")
 }
 
 model CustomerJourneyEvent {

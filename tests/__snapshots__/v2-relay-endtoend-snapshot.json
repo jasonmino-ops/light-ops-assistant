@@ -39,11 +39,11 @@
     "outcome": "RESOLVED",
     "value": {
       "activeRow": {
-        "attemptCount": 0,
-        "claimAttempt": 0,
-        "effectBoundary": null,
-        "hasClaimTokenHash": false,
-        "hasLease": false,
+        "attemptCount": 1,
+        "claimAttempt": 1,
+        "effectBoundary": "NOT_CROSSED",
+        "hasClaimTokenHash": true,
+        "hasLease": true,
         "kitchenJobSuppressed": false,
         "maxAttempts": 3,
         "physicalCompletionKnown": false,

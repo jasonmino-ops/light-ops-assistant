@@ -449,12 +449,13 @@ async function main() {
     assert.doesNotMatch(component.slice(catchStart, catchEnd), /openExistingBrowserPrint|window\.print|qz/i)
   })
 
-  await test('the cashier page remains byte-identical to its active exact governance approval', () => {
-    // ES-PRINT-LOCAL-FIRST-SHARED-CORE-01: Founder approved these exact final
-    // Cashier candidate bytes and the trusted Scope Guard authorization was closed on main.
+  await test('the cashier page remains byte-identical to its merged exact governance approval', () => {
+    // ES-PRINT-SOURCE-ROUTING-NORMALIZATION-01 approved these bytes, merged in
+    // 7d4892b0aee5e2f3b203e7d11ec4c356ec137b15; its CLOSED record is provenance,
+    // not permission for new Cashier edits. Keep a fixed, independently approved hash.
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      '6a03169bfbf5ab14d7f6f516211a06beaea00aeb5ca92e313373243e60d25718',
+      'fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9',
     )
   })
 

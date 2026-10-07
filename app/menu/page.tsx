@@ -11,6 +11,27 @@ import { shouldShowRecommendationBadge } from '@/lib/product-recommendation'
 
 const PRIMARY = '#ff6b00'
 
+type PendingSubmission = { version: 1; key: string; payload: string; paymentMethod: CheckoutPaymentMethod }
+type SavedSubmission = PendingSubmission | { version: 1; receipt: CheckoutOrderResult }
+const submissionStorageKey = (code: string) => `menu_submission_v1_${code}`
+function readSubmission(code: string): SavedSubmission | null {
+  const raw = localStorage.getItem(submissionStorageKey(code))
+  if (!raw) return null
+  const value = JSON.parse(raw) as SavedSubmission
+  if (value.version !== 1) throw new Error('SUBMISSION_STORAGE_INVALID')
+  if ('receipt' in value) {
+    if (typeof value.receipt.orderNo !== 'string' || !Number.isFinite(value.receipt.totalAmount)) throw new Error('SUBMISSION_STORAGE_INVALID')
+  } else if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value.key)
+    || typeof value.payload !== 'string' || JSON.parse(value.payload).storeCode !== code
+    || !['PAY_LATER', 'SHINHAN'].includes(value.paymentMethod)) throw new Error('SUBMISSION_STORAGE_INVALID')
+  return value
+}
+const submissionMessages = {
+  zh: { pending: '上次提交结果待确认，请重试原提交；不会使用当前编辑内容创建新订单。', retry: '重试原提交', storage: '无法安全保存或读取提交记录，请启用浏览器存储；如已提交，请先联系门店核对。', conflict: '提交记录与原订单不一致，请联系门店核对，不要重复下单。' },
+  en: { pending: 'The previous submission is unconfirmed. Retry the original request, not the edited cart.', retry: 'Retry original submission', storage: 'Cannot safely store or read this submission. Enable browser storage; check with the store if already submitted.', conflict: 'This request differs from the original order. Contact the store before ordering again.' },
+  km: { pending: 'ការបញ្ជូនមុនមិនទាន់បានបញ្ជាក់។ សូមបញ្ជូនសំណើដើមម្ដងទៀត មិនមែនកន្ត្រកដែលបានកែទេ។', retry: 'បញ្ជូនសំណើដើមម្ដងទៀត', storage: 'មិនអាចរក្សាទុក ឬអានសំណើបាន។ សូមបើកការផ្ទុកក្នុងកម្មវិធីរុករក។ បើបានបញ្ជូនរួច សូមសួរហាងសិន។', conflict: 'សំណើនេះខុសពីការបញ្ជាទិញដើម។ សូមទាក់ទងហាងមុនបញ្ជាទិញម្ដងទៀត។' },
+}
+
 // 顾客端 Bot 用户名（前端公开变量，不允许写死；清理误填的 @）
 const CUSTOMER_BOT = (process.env.NEXT_PUBLIC_CUSTOMER_BOT_USERNAME ?? '').replace(/^@/, '').trim()
 
@@ -618,6 +639,8 @@ export default function MenuPage() {
   const [loading,     setLoading]     = useState(true)
   const [fetchError,  setFetchError]  = useState('')
   const [submitting,   setSubmitting]  = useState(false)
+  const submittingRef = useRef(false)
+  const [pendingSubmission, setPendingSubmission] = useState(false)
   const [orderResult,  setOrderResult] = useState<CheckoutOrderResult | null>(null)
   const [submitError,  setSubmitError] = useState('')
   const [showConfirm,  setShowConfirm] = useState(false)
@@ -668,6 +691,15 @@ export default function MenuPage() {
   const [pendingSugar, setPendingSugar] = useState('50')
 
   const ui         = T[lang]
+  const submissionUi = submissionMessages[lang]
+  useEffect(() => {
+    if (!storeCode) return
+    try {
+      const saved = readSubmission(storeCode)
+      setPendingSubmission(!!saved && 'payload' in saved)
+      if (saved && 'receipt' in saved) setOrderResult(saved.receipt)
+    } catch { setSubmitError(submissionMessages[lang].storage) }
+  }, [storeCode])
   const bizType: BizType = (storeData?.businessType ?? 'GENERAL') as BizType
   const fulfillTpl = (FULFILLMENT_TPL[lang] ?? FULFILLMENT_TPL.zh)[bizType] ?? FULFILLMENT_TPL[lang].GENERAL
   const payableLabel = lang === 'en' ? 'Payable' : lang === 'km' ? 'ត្រូវបង់' : '应付'
@@ -1159,9 +1191,16 @@ export default function MenuPage() {
   }
 
   async function handleCheckout() {
-    if (!canCheckout || submitting) return
+    if (submittingRef.current) return
     const code = storeCode || new URLSearchParams(window.location.search).get('code')
     if (!code) return
+    let pending: PendingSubmission | null = null
+    try {
+      const saved = readSubmission(code)
+      if (saved && 'payload' in saved) pending = saved
+    } catch { setSubmitError(submissionUi.storage); return }
+    if (!pending && !canCheckout) return
+    submittingRef.current = true
 
     // 尝试从 Telegram WebApp 获取顾客身份（普通浏览器会 null）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1184,40 +1223,37 @@ export default function MenuPage() {
     const remark = remarkLines.join(' | ')
 
     try {
+      if (!pending) {
+        pending = {
+          version: 1, key: crypto.randomUUID(), paymentMethod: checkoutPaymentMethod,
+          payload: JSON.stringify({
+            storeCode: code,
+            items: activeCart.map((c) => ({ productId: c.id, quantity: c.quantity, ...(c.sugar ? { sugar: c.sugar } : {}) })),
+            ...(tableNo ? { tableNo } : {}), ...(customerTelegramId ? { customerTelegramId } : {}),
+            ...(selectedCouponId ? { couponId: selectedCouponId } : {}), pickupMethod,
+            ...(pickupMethod === 'delivery' ? {
+              customerName: deliveryInfo.customerName || undefined, customerPhone: deliveryInfo.customerPhone || undefined,
+              deliveryAddress: deliveryInfo.deliveryAddress || undefined, deliveryNote: deliveryInfo.deliveryNote || undefined,
+              ...(deliveryInfo.deliveryLat != null && deliveryInfo.deliveryLng != null ? { deliveryLat: deliveryInfo.deliveryLat, deliveryLng: deliveryInfo.deliveryLng } : {}),
+              ...(deliveryInfo.deliveryAddressPhotoUrl ? { deliveryAddressPhotoUrl: deliveryInfo.deliveryAddressPhotoUrl } : {}),
+            } : {}), remark, lang,
+            ...(landingTracking.fromLanding ? { orderSource: 'landing', source: landingTracking.source || undefined, campaign: landingTracking.campaign || undefined, visitorId: landingTracking.visitorId || undefined } : {}),
+            ...(campaignCode ? { campaignCode, campaignIntent } : {}),
+          }),
+        }
+        try { localStorage.setItem(submissionStorageKey(code), JSON.stringify(pending)) }
+        catch { setSubmitError(submissionUi.storage); return }
+      }
+      setPendingSubmission(true)
       const res = await fetch('/api/public/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeCode: code,
-          items: activeCart.map((c) => ({ productId: c.id, quantity: c.quantity, ...(c.sugar ? { sugar: c.sugar } : {}) })),
-          ...(tableNo ? { tableNo } : {}),
-          ...(customerTelegramId ? { customerTelegramId } : {}),
-          ...(selectedCouponId ? { couponId: selectedCouponId } : {}),
-          pickupMethod,
-          ...(pickupMethod === 'delivery' ? {
-            customerName:    deliveryInfo.customerName    || undefined,
-            customerPhone:   deliveryInfo.customerPhone   || undefined,
-            deliveryAddress: deliveryInfo.deliveryAddress || undefined,
-            deliveryNote:    deliveryInfo.deliveryNote    || undefined,
-            ...(deliveryInfo.deliveryLat != null && deliveryInfo.deliveryLng != null
-              ? { deliveryLat: deliveryInfo.deliveryLat, deliveryLng: deliveryInfo.deliveryLng } : {}),
-            ...(deliveryInfo.deliveryAddressPhotoUrl
-              ? { deliveryAddressPhotoUrl: deliveryInfo.deliveryAddressPhotoUrl } : {}),
-          } : {}),
-          remark,
-          lang,
-          ...(landingTracking.fromLanding ? {
-            orderSource: 'landing',
-            source: landingTracking.source || undefined,
-            campaign: landingTracking.campaign || undefined,
-            visitorId: landingTracking.visitorId || undefined,
-          } : {}),
-          ...(campaignCode ? { campaignCode, campaignIntent } : {}),
-        }),
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': pending.key },
+        body: pending.payload,
       })
       const body = await res.json()
       if (!res.ok) {
         const msg =
+          body.error === 'IDEMPOTENCY_KEY_CONFLICT' ? submissionUi.conflict :
           body.error === 'DELIVERY_INFO_REQUIRED'? (body.message ?? ui.deliveryInfoRequired) :
           body.error === 'PRODUCT_UNAVAILABLE'   ? ui.errSubmitProduct :
           body.error === 'COUPON_ALREADY_USED'   ? ui.couponAlreadyUsed :
@@ -1227,16 +1263,25 @@ export default function MenuPage() {
           body.error === 'COUPON_NEED_TG'        ? ui.couponNeedTg :
           ui.errSubmitFail
         setSubmitError(msg)
+        // A rejected coupon is editable; an identity conflict must retain its original request.
+        if (body.submissionState === 'NOT_COMMITTED' && body.error !== 'IDEMPOTENCY_KEY_CONFLICT' && res.status < 500) {
+          localStorage.removeItem(submissionStorageKey(code))
+          setPendingSubmission(false)
+        }
         if (typeof body.error === 'string' && body.error.startsWith('COUPON_')) setSelectedCouponId(null)
         return
       }
       const nextOrderResult: CheckoutOrderResult = {
         orderNo: body.orderNo,
         totalAmount: body.totalAmount,
-        paymentMethod: checkoutPaymentMethod,
-        paymentStatus: checkoutPaymentMethod === 'SHINHAN' ? 'PENDING' : undefined,
-        payment: checkoutPaymentMethod === 'SHINHAN' ? { loading: true, status: 'PENDING' } : undefined,
+        paymentMethod: pending.paymentMethod,
+        paymentStatus: pending.paymentMethod === 'SHINHAN' ? 'PENDING' : undefined,
+        payment: pending.paymentMethod === 'SHINHAN' ? { loading: true, status: 'PENDING' } : undefined,
       }
+      if (typeof body.orderNo !== 'string' || !Number.isFinite(body.totalAmount)) throw new Error('INVALID_RECEIPT')
+      // Replace the unresolved payload only after a valid receipt; no delivery PII is retained on success.
+      localStorage.setItem(submissionStorageKey(code), JSON.stringify({ version: 1, receipt: nextOrderResult }))
+      setPendingSubmission(false)
       setOrderResult(nextOrderResult)
       setCart([])
       setOrderRemark('')
@@ -1250,15 +1295,23 @@ export default function MenuPage() {
         const next = [body.orderNo, ...prev.filter((n) => n !== body.orderNo)].slice(0, 30)
         localStorage.setItem(key, JSON.stringify(next))
       } catch { /* localStorage 不可用时静默 */ }
-      if (checkoutPaymentMethod === 'SHINHAN') {
+      if (pending.paymentMethod === 'SHINHAN') {
         await createCheckoutShinhanPayment(body.orderNo)
       }
     } catch {
       setSubmitError(ui.errSubmitFail)
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
+
+  const submissionRecovery = (pendingSubmission || submitError) ? (
+    <div role="status" data-testid="submission-recovery" style={{ padding: 16, background: '#fff3cd', color: '#664d03' }}>
+      {submitError && <p>{submitError}</p>}
+      {pendingSubmission && <><p>{submissionUi.pending}</p><button type="button" disabled={submitting} onClick={handleCheckout}>{submissionUi.retry}</button></>}
+    </div>
+  ) : null
 
   // ── 加载态 ────────────────────────────────────────────────────────────────
   if (loading) {
@@ -1278,6 +1331,8 @@ export default function MenuPage() {
     return (
       <div style={s.centerPage}>
         <div style={s.errCard}>
+          {submissionRecovery}
+          {orderResult && <div role="status"><strong>{ui.orderSubmitted}</strong><p>{ui.orderNo}：{orderResult.orderNo}</p><p>{orderResult.totalAmount.toFixed(2)}</p></div>}
           <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
           <div style={{ fontSize: 15, color: '#333', fontWeight: 600, textAlign: 'center' }}>{msg}</div>
           <div style={s.langSwitcherErr}>
@@ -1299,6 +1354,7 @@ export default function MenuPage() {
   return (
     <>
       <main style={s.page}>
+        {submissionRecovery}
 
         {/* ── Sticky 顶部条：仅搜索 + 语言切换（门店名只在下方门头展示一次） ── */}
         <div style={s.stickyTopWrap}>

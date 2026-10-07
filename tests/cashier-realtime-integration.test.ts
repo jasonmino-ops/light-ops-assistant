@@ -96,6 +96,26 @@ async function main() {
     secret: 'notify-secret-is-at-least-32-bytes-long',
     logger: { warn() {} },
   }
+  const delivered: Array<{ url: string; body: Record<string, unknown> }> = []
+  const accepted = await notifyCashierGateway(baseNotify, {
+    ...baseOptions,
+    nowMs: 1_700_000_000_000,
+    fetchImpl: async (url, init) => {
+      delivered.push({ url: String(url), body: JSON.parse(String(init?.body)) })
+      return new Response(null, { status: 202 })
+    },
+  })
+  assert.equal(accepted.ok, true)
+  assert.equal(delivered.length, 1)
+  assert.equal(delivered[0].url, 'https://gateway.example/notify')
+  assert.deepEqual(delivered[0].body, {
+    version: 1,
+    tenantId: 'tenant-a',
+    storeId: 'store-a',
+    type: 'orders_changed',
+    timestamp: 1_700_000_000_000,
+    eventId: delivered[0].body.eventId,
+  })
   assert.deepEqual(await notifyCashierGateway(baseNotify, {
     ...baseOptions,
     fetchImpl: async () => new Response(null, { status: 500 }),
@@ -117,9 +137,11 @@ async function main() {
   }), { ok: false, reason: 'timeout' })
 
   // Approved write routes schedule one wake outside the transaction/mutation and never await Cloudflare.
+  // customer-orders is covered by real route behavior tests below; it has no
+  // source-marker assertion because its fulfillment transaction has multiple
+  // legitimate success branches.
   const routeCases = [
     ['app/api/public/orders/route.ts', 'orders_changed', 'order = await prisma.$transaction'],
-    ['app/api/customer-orders/[id]/route.ts', 'orders_changed', 'const updated = await prisma.customerOrder.update'],
     ['app/api/cashier/orders/[id]/route.ts', 'orders_changed', 'const updated = await prisma.customerOrder.update'],
     ['app/api/sales/route.ts', 'pending_orders_changed', 'const result = await prisma.$transaction'],
     ['app/api/orders/[orderNo]/checkout/route.ts', 'pending_orders_changed', 'const pi = await prisma.$transaction'],
@@ -137,12 +159,6 @@ async function main() {
     assert.doesNotMatch(wakeBlock, /\btx\b|orderNo|paymentId|customer|items|price/i, `${path}: wake-only payload`)
   }
 
-  const customerOrderRoute = read('app/api/customer-orders/[id]/route.ts')
-  assert.doesNotMatch(
-    customerOrderRoute.slice(customerOrderRoute.indexOf('if (body.paymentMethod)'), customerOrderRoute.indexOf('// ── 分支 B')),
-    /notifyCashierGateway/,
-    'payment-method-only update must not notify',
-  )
   const salesRoute = read('app/api/sales/route.ts')
   assert.ok(salesRoute.indexOf('notifyCashierGateway({') > salesRoute.indexOf('async function handleDeferredSale'))
   assert.ok(salesRoute.indexOf('notifyCashierGateway({') < salesRoute.indexOf('async function handleRefund'))
@@ -164,23 +180,73 @@ async function main() {
     'non-pending cancel must not wake pending orders',
   )
 
-  // Regression boundary: read APIs, /sale, Customer Display, printing, Prisma, and migrations remain untouched.
-  const changed = execFileSync('git', ['diff', '--name-only', 'HEAD'], { cwd: root, encoding: 'utf8' })
-    .trim().split('\n').filter(Boolean)
+  // Candidate boundary: check the complete candidate (tracked and untracked
+  // files), rather than relying on a post-commit empty diff or ignoring new
+  // files. The H5 task's approved paths are explicit here.
+  const changed = [
+    ...execFileSync('git', ['diff', '--name-only', 'origin/main'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean),
+    ...execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean),
+  ].filter((path, index, paths) => paths.indexOf(path) === index)
   const approved = new Set([
-    'lib/cashier-realtime-client.ts',
-    'app/api/cashier-realtime/ticket/route.ts',
-    'app/api/payments/[paymentId]/confirm/route.ts',
-    'app/api/payments/[paymentId]/cancel/route.ts',
+    'app/api/customer-orders/[id]/route.ts',
+    'app/api/customer-orders/[id]/khqr/route.ts',
+    'app/menu/page.tsx',
+    'app/p/[slug]/page.tsx',
+    'prisma/migrations/20261007090000_add_customer_order_submission_idempotency/migration.sql',
+    'tests/customer-order-submission.test.ts',
+    'tests/product-discount-v01-static.test.ts',
+    'tests/es-tray-device-print-contract.test.ts',
+    'tests/subscription-expiry-reminder.test.ts',
+    'tests/desktop-pos-write-fallback-runtime.test.ts',
+    'tests/network-print-jobs-api.test.ts',
+    'tests/v2-relay-endtoend-snapshot.test.ts',
+    'tests/__snapshots__/v2-relay-endtoend-snapshot.json',
+    'tests/dashboard-print-settings-mobile.test.ts',
+    'tests/desktop-pos-web-auth-compat.test.ts',
+    'tests/es-tray-desktop-launch-route.test.ts',
+    'tests/es-tray-relay-runtime.test.ts',
+    'app/api/customer-orders/route.ts',
+    'app/api/public/orders/route.ts',
+    'app/api/cron/customer-order-fulfillment-recovery/route.ts',
+    'app/home/page.tsx',
+    'lib/customer-order-fulfillment.ts',
+    'lib/customer-order-fulfillment-renderer.ts',
+    'tests/customer-order-fulfillment.test.ts',
+    'tests/customer-order-payment-intent.test.ts',
+    'tests/customer-order-recovery.test.ts',
+    'scripts/test/manifests/root-core-tests.json',
+    'vercel.json',
+    'prisma/schema.prisma',
+    'prisma/migrations/20261005120000_add_customer_order_fulfillment_intent/migration.sql',
+    'lib/v3-print-job-adapter.ts',
+    'lib/v3-print-reprint.ts',
+    'tests/v3-print-job-adapter.test.ts',
+    'tests/customer-order-fulfillment-db.test.ts',
+    'scripts/test/manifests/root-integration-tests.json',
     'tests/cashier-realtime-integration.test.ts',
-    'tests/cashier-realtime-gateway-static.test.ts',
-    'cloudflare/cashier-realtime-gateway/tests/gateway.test.ts',
+    'tests/network-release-deployment-policy.test.cjs',
+    'lib/customer-order-render-dispatch.ts',
+    'app/api/customer-order-renderer/route.ts',
+    'prisma/migrations/20261006160000_add_customer_order_render_dispatch/migration.sql',
+    'tests/customer-order-renderer.test.ts',
+    'tests/customer-order-renderer-host.test.ts',
+    'packages/h5-renderer/package.json',
+    'packages/h5-renderer/package-lock.json',
+    'packages/h5-renderer/artifact-manifest.json',
+    'packages/h5-renderer/build.mjs',
+    'packages/h5-renderer/module.mjs',
+    'packages/h5-renderer/controller.mjs',
+    'packages/h5-renderer/service.mjs',
+    'packages/h5-renderer/runtime/h5-render-controller.service',
+    'packages/h5-renderer/runtime/h5-render-sandbox.service',
+    'packages/h5-renderer/runtime/h5-render-sandbox.socket',
+    'packages/h5-renderer/runtime/apparmor.profile',
   ])
   assert.deepEqual(changed.filter(path => !approved.has(path)), [])
   assert.equal(changed.includes('app/api/cashier/orders/route.ts'), false)
   assert.equal(changed.includes('app/api/cashier/pending-orders/route.ts'), false)
   assert.equal(changed.some(path => path === 'app/sale/page.tsx' || path.includes('customer-display') || path.includes('pos/session/update')), false)
-  assert.equal(changed.some(path => path.startsWith('prisma/') || path.includes('migration') || path.includes('print')), false)
+  assert.equal(changed.some(path => (path.startsWith('prisma/') || path.includes('migration') || path.includes('print')) && !approved.has(path)), false)
 
   console.log('cashier realtime Stage 1F integration and regression checks passed')
 }

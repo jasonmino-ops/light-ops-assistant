@@ -41,6 +41,26 @@ type PageData = {
 
 type OrderResult = { orderNo: string; totalAmount: number; telegramLinked: boolean }
 
+type ProductSubmission = { version: 1; key: string; payload: string }
+type SavedProductSubmission = ProductSubmission | { version: 1; receipt: OrderResult }
+const submissionStorageKey = (slug: string) => `product_submission_v1_${slug}`
+function readSubmission(slug: string): SavedProductSubmission | null {
+  const raw = localStorage.getItem(submissionStorageKey(slug))
+  if (!raw) return null
+  const value = JSON.parse(raw) as SavedProductSubmission
+  if (value.version !== 1) throw new Error('SUBMISSION_STORAGE_INVALID')
+  if ('receipt' in value) {
+    if (typeof value.receipt.orderNo !== 'string' || !Number.isFinite(value.receipt.totalAmount)) throw new Error('SUBMISSION_STORAGE_INVALID')
+  } else if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value.key)
+    || typeof value.payload !== 'string' || typeof JSON.parse(value.payload).storeCode !== 'string') throw new Error('SUBMISSION_STORAGE_INVALID')
+  return value
+}
+const submissionMessages = {
+  zh: { pending: '上次提交结果待确认，请重试原提交；不会使用当前编辑内容创建新订单。', retry: '重试原提交', storage: '无法安全保存或读取提交记录，请启用浏览器存储；如已提交，请先联系门店核对。', conflict: '提交记录与原订单不一致，请联系门店核对，不要重复下单。' },
+  en: { pending: 'The previous submission is unconfirmed. Retry the original request, not the edited form.', retry: 'Retry original submission', storage: 'Cannot safely store or read this submission. Enable browser storage; check with the store if already submitted.', conflict: 'This request differs from the original order. Contact the store before ordering again.' },
+  km: { pending: 'ការបញ្ជូនមុនមិនទាន់បានបញ្ជាក់។ សូមបញ្ជូនសំណើដើមម្ដងទៀត មិនមែនទម្រង់ដែលបានកែទេ។', retry: 'បញ្ជូនសំណើដើមម្ដងទៀត', storage: 'មិនអាចរក្សាទុក ឬអានសំណើបាន។ សូមបើកការផ្ទុកក្នុងកម្មវិធីរុករក។ បើបានបញ្ជូនរួច សូមសួរហាងសិន។', conflict: 'សំណើនេះខុសពីការបញ្ជាទិញដើម។ សូមទាក់ទងហាងមុនបញ្ជាទិញម្ដងទៀត។' },
+}
+
 type Lang = 'zh' | 'en' | 'km'
 type TemplateType = 'TIKTOK_HOT' | 'HOME_GOODS' | 'FOOD_SET' | 'BEAUTY'
 type TemplateSection = 'price' | 'features' | 'details' | 'reviews' | 'trust' | 'order'
@@ -801,6 +821,8 @@ export default function MarketingProductPage() {
   const [geoBusy, setGeoBusy] = useState(false)
   const [geoMsg, setGeoMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const submittingRef = useRef(false)
+  const [pendingSubmission, setPendingSubmission] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<OrderField, true>>>({})
   const [error, setError] = useState('')
   const [result, setResult] = useState<OrderResult | null>(null)
@@ -816,6 +838,14 @@ export default function MarketingProductPage() {
   const heroCarouselRef = useRef<HTMLDivElement | null>(null)
   const viewTrackedRef = useRef('')
   const text = I18N[lang]
+  const submissionUi = submissionMessages[lang]
+  useEffect(() => {
+    try {
+      const saved = readSubmission(slug)
+      setPendingSubmission(!!saved && 'payload' in saved)
+      if (saved && 'receipt' in saved) setResult(saved.receipt)
+    } catch { setError(submissionMessages[lang].storage) }
+  }, [slug])
 
   useEffect(() => {
     setLang(detectLang())
@@ -880,13 +910,19 @@ export default function MarketingProductPage() {
   }, [data?.enableCountdown])
 
   async function submitOrder() {
-    if (!data || submitting) return
+    if (submittingRef.current) return
+    let pending: ProductSubmission | null = null
+    try {
+      const saved = readSubmission(slug)
+      if (saved && 'payload' in saved) pending = saved
+    } catch { setError(submissionUi.storage); return }
+    if (!pending && !data) return
     const nextErrors: Partial<Record<OrderField, true>> = {}
     if (!name.trim()) nextErrors.name = true
     if (!phone.trim()) nextErrors.phone = true
     if (!address.trim()) nextErrors.address = true
     const firstError = (['name', 'phone', 'address'] as OrderField[]).find((field) => nextErrors[field])
-    if (firstError) {
+    if (!pending && firstError) {
       setFieldErrors(nextErrors)
       setError('')
       setTimeout(() => {
@@ -897,7 +933,7 @@ export default function MarketingProductPage() {
       return
     }
 
-    trackTikTok('SubmitForm', {
+    if (!pending && data) trackTikTok('SubmitForm', {
       content_id: data.product.id,
       content_name: localizedTitle(data, lang),
       content_type: 'product',
@@ -907,6 +943,7 @@ export default function MarketingProductPage() {
       slug: data.slug,
       ...trackingParams,
     })
+    submittingRef.current = true
     setSubmitting(true)
     setFieldErrors({})
     setError('')
@@ -917,34 +954,40 @@ export default function MarketingProductPage() {
       const searchParams = new URLSearchParams(window.location.search)
       const campaignCode = searchParams.get('ref')?.trim()
       const campaignIntent = searchParams.get('intent')?.trim() || 'PRODUCT_PAGE'
+      if (!pending) {
+        if (!data) return
+        pending = { version: 1, key: crypto.randomUUID(), payload: JSON.stringify({
+          storeCode: data.store.code, items: [{ productId: data.product.id, quantity: qty }],
+          ...(customerTelegramId ? { customerTelegramId } : {}), pickupMethod: 'delivery',
+          customerName: name.trim(), customerPhone: phone.trim(), deliveryAddress: address.trim(), deliveryNote: note.trim() || undefined,
+          ...(deliveryLat != null && deliveryLng != null ? { deliveryLat, deliveryLng } : {}),
+          remark: buildOrderRemark(note, trackingParams), marketingTracking: trackingParams,
+          ...(campaignCode ? { campaignCode } : {}), campaignIntent, lang,
+        }) }
+        try { localStorage.setItem(submissionStorageKey(slug), JSON.stringify(pending)) }
+        catch { setError(submissionUi.storage); return }
+      }
+      setPendingSubmission(true)
       const res = await fetch('/api/public/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeCode: data.store.code,
-          items: [{ productId: data.product.id, quantity: qty }],
-          ...(customerTelegramId ? { customerTelegramId } : {}),
-          pickupMethod: 'delivery',
-          customerName: name.trim(),
-          customerPhone: phone.trim(),
-          deliveryAddress: address.trim(),
-          deliveryNote: note.trim() || undefined,
-          ...(deliveryLat != null && deliveryLng != null ? { deliveryLat, deliveryLng } : {}),
-          remark: buildOrderRemark(note, trackingParams),
-          marketingTracking: trackingParams,
-          ...(campaignCode ? { campaignCode } : {}),
-          campaignIntent,
-          lang,
-        }),
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': pending.key },
+        body: pending.payload,
       })
       const body = await res.json()
       if (!res.ok) {
-        setError(readableOrderError(body, text.errorSubmit))
+        setError(body.error === 'IDEMPOTENCY_KEY_CONFLICT' ? submissionUi.conflict : readableOrderError(body, text.errorSubmit))
+        if (body.submissionState === 'NOT_COMMITTED' && res.status !== 409 && res.status < 500) {
+          localStorage.removeItem(submissionStorageKey(slug))
+          setPendingSubmission(false)
+        }
         return
       }
-      const rawPayableAmount = Number(body.totalAmount ?? total)
-      const payableAmount = Number.isFinite(rawPayableAmount) ? +rawPayableAmount.toFixed(2) : total
-      trackTikTok('PlaceAnOrder', {
+      if (typeof body.orderNo !== 'string' || !Number.isFinite(body.totalAmount)) throw new Error('INVALID_RECEIPT')
+      const payableAmount = body.totalAmount as number
+      const receipt = { orderNo: body.orderNo as string, totalAmount: payableAmount, telegramLinked: !!data?.customerBound }
+      localStorage.setItem(submissionStorageKey(slug), JSON.stringify({ version: 1, receipt }))
+      setPendingSubmission(false)
+      if (data) trackTikTok('PlaceAnOrder', {
         value: payableAmount,
         currency: 'USD',
         content_type: 'product',
@@ -956,13 +999,21 @@ export default function MarketingProductPage() {
         ...trackingParams,
       })
       setCouponPromptDismissed(false)
-      setResult({ orderNo: body.orderNo, totalAmount: payableAmount, telegramLinked: !!data.customerBound })
+      setResult(receipt)
     } catch {
       setError(text.errorNetwork)
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
+
+  const submissionRecovery = (pendingSubmission || error) ? (
+    <div role="status" data-testid="submission-recovery" style={{ padding: 16, background: '#fff3cd', color: '#664d03' }}>
+      {error && <p>{error}</p>}
+      {pendingSubmission && <><p>{submissionUi.pending}</p><button type="button" disabled={submitting} onClick={submitOrder}>{submissionUi.retry}</button></>}
+    </div>
+  ) : null
 
   function switchLang(nextLang: Lang) {
     setLang(nextLang)
@@ -1054,6 +1105,8 @@ export default function MarketingProductPage() {
     return (
       <div style={s.center}>
         {langSwitcher}
+        {submissionRecovery}
+        {result && <div role="status"><strong>{text.successTitle}</strong><p>{text.orderNo}：{result.orderNo}</p><p>{text.total}：{result.totalAmount.toFixed(2)}</p></div>}
         <div style={s.emptyTitle}>{text.notFoundTitle}</div>
         <div style={s.emptySub}>{text.notFoundSub}</div>
       </div>
@@ -1483,6 +1536,7 @@ export default function MarketingProductPage() {
   return (
     <main style={{ ...s.page, background: theme.background, color: theme.text }}>
       {langSwitcher}
+      {submissionRecovery}
       <section
         style={{
           ...s.hero,
