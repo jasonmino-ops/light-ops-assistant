@@ -1,8 +1,10 @@
 {
   "schemaVersion": 1,
   "lane": "CORE",
-  "expectedCount": 89,
+  "expectedCount": 91,
   "tests": [
+    {"file":"tests/ops-release-status-auth.test.ts","lane":"CORE","reason":"Actual Ops route and signed synthetic sessions execute in process; no database or external identity provider.","dependencyType":"NONE","evidence":"tests/ops-release-status-auth.test.ts:1-51"},
+    {"file":"tests/ops-release-status-static.test.cjs","lane":"CORE","reason":"Read-only repository source assertions; no external services.","dependencyType":"NONE","evidence":"tests/ops-release-status-static.test.cjs:1-77"},
     { "file": "tests/bd-ops-permission-closure.test.ts", "lane": "CORE", "reason": "Prisma delegate is replaced by an in-process test stub.", "dependencyType": "NONE", "evidence": "tests/bd-ops-permission-closure.test.ts:37-88" },
     { "file": "tests/browser-order-sync-static.test.ts", "lane": "CORE", "reason": "Repository source inspection only.", "dependencyType": "NONE", "evidence": "tests/browser-order-sync-static.test.ts:16-27" },
     { "file": "tests/browser-pos-customer-display-entry.test.ts", "lane": "CORE", "reason": "Repository source and in-process helper assertions only.", "dependencyType": "NONE", "evidence": "tests/browser-pos-customer-display-entry.test.ts:1-16" },
