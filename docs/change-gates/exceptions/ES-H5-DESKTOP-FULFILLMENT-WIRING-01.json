@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "taskId": "ES-H5-DESKTOP-FULFILLMENT-WIRING-01",
+  "featureBranch": "codex/es-h5-desktop-fulfillment-wiring",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "7650e19c211f4f0ea35a11ba2c8d4e57166ea0e9",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "app/api/customer-orders/[id]/route.ts",
+    "app/cashier/page.tsx",
+    "tests/cashier-realtime-integration.test.ts",
+    "tests/customer-order-fulfillment-db.test.ts",
+    "tests/es-tray-desktop-pos-entry.test.ts",
+    "tests/es-tray-device-print-contract.test.ts",
+    "tests/v3-reprint-recovery.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "app/api/customer-orders/[id]/route.ts": "37fb54ee1e1c698880eced18d68f6cc1ff9fe6f7de49d0c3ffdc6555976ff784",
+    "app/cashier/page.tsx": "14bd645733d4cf98ee32ae09e4cc3c91ea498ad7fc1948b1db9037509ec30102",
+    "tests/cashier-realtime-integration.test.ts": "91f2a32bf77c593090f32dfd4b97806d20336d26b9aed6a0e26e1a908bfca59b",
+    "tests/customer-order-fulfillment-db.test.ts": "2eafa882f947359cbe5c344756171eccbfd32b8395f4641a8a55499ff378bd38",
+    "tests/es-tray-desktop-pos-entry.test.ts": "fe5a182dbe7cbdbde4ce5744c552fbb9f793c6cd62cbffffdc0cf675ccf7813e",
+    "tests/es-tray-device-print-contract.test.ts": "e7d62406f1c7dd5bbac68154f600f6d8b07004813300eee675c20a0686b0b963",
+    "tests/v3-reprint-recovery.test.ts": "d11fda805d15a819dddd258aba423fa084e7e02ddf7b1b58649491edcd17d8f9"
+  },
+  "createdAt": "2026-10-08T18:33:27.316Z",
+  "approvedAt": "2026-10-08T18:33:27.316Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit Founder successor-registration authorization in the ES-H5 task conversation",
+    "statement": "Freeze the four accepted candidate hashes; permit only three specified admission-test successor updates and a new independent exact-path exception. No main merge, deployment, Production action or FIELD.",
+    "approvedAtMeaning": "Registration time of the explicit authorization already received, not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Only Desktop H5 navigation to existing /home, the accepted zero-row concurrent-payment evidence reread, their accepted tests and three exact successor registrations. No duplicate fulfillment, Cashier API semantic change, Records change, V3/Runtime/schema/migration change, or global/prefix authorization. ACTIVE is usable only after this identical record exists in trusted origin/main. Do not reuse either historical CLOSED exception. Feature merge and later lifecycle closure require explicit authorization.",
+  "candidateManifestSha256": "a45294666dbc878494c85d8f02294d559dccbd3d2ab2290615a84db766f6396e",
+  "candidateManifestSerialization": "UTF-8 without BOM; JSON.stringify(object, null, 2) + LF; top-level key order version, taskId, baseOriginMainSha, featureBranch, files; files sorted by ASCII path; each row key order path, sha256; lowercase hex. Governance record is excluded.",
+  "knownLimitations": [
+    "Browser Cashier legacy confirmation does not produce H5 KITCHEN fulfillment; the authorized Desktop H5 entry is /home.",
+    "Actual Desktop /home navigation/session behavior requires final isolated sanity; NOT RUN for this candidate.",
+    "Physical KITCHEN/FRONT NOT RUN; CLOUD_H5 physical printing NOT YET FIELD VERIFIED."
+  ]
+}
