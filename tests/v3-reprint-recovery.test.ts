@@ -829,9 +829,12 @@ async function main() {
   })
 
   await test('protected Cashier and Records blobs match the exact active authorization', () => {
+    // Cashier successor: docs/change-gates/exceptions/ES-H5-DESKTOP-FULFILLMENT-WIRING-01.json.
+    // Historical source-routing hash: fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9.
+    // Records remains on its original frozen bytes and expectation.
     assert.equal(
       createHash('sha256').update(readFileSync('app/cashier/page.tsx')).digest('hex'),
-      'fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9',
+      '14bd645733d4cf98ee32ae09e4cc3c91ea498ad7fc1948b1db9037509ec30102',
     )
     assert.equal(
       createHash('sha256').update(readFileSync('app/records/page.tsx')).digest('hex'),

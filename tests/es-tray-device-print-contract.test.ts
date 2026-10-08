@@ -450,12 +450,14 @@ async function main() {
   })
 
   await test('the cashier page remains byte-identical to its merged exact governance approval', () => {
-    // ES-PRINT-SOURCE-ROUTING-NORMALIZATION-01 approved these bytes, merged in
+    // ES-PRINT-SOURCE-ROUTING-NORMALIZATION-01 approved the historical bytes, merged in
     // 7d4892b0aee5e2f3b203e7d11ec4c356ec137b15; its CLOSED record is provenance,
-    // not permission for new Cashier edits. Keep a fixed, independently approved hash.
+    // not permission for new Cashier edits. Historical SHA-256:
+    // fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9.
+    // Fixed successor: docs/change-gates/exceptions/ES-H5-DESKTOP-FULFILLMENT-WIRING-01.json.
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      'fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9',
+      '14bd645733d4cf98ee32ae09e4cc3c91ea498ad7fc1948b1db9037509ec30102',
     )
   })
 

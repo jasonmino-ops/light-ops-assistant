@@ -152,6 +152,43 @@ export async function PATCH(
         if (!storeForIntent) return { kind: 'PAYMENT_RECORD_MISSING' as const }
 
         const expectedMethod = paymentIntentMethod(paymentMethod)
+        const expectedStoreId = order.storeId, expectedOrderNo = order.orderNo
+        // At READ COMMITTED, an earlier UNPAID read can precede another
+        // collector's commit. A zero-row update is not itself missing payment
+        // evidence: re-read the committed fact, without writing a second one.
+        async function readCommittedPayment() {
+          const current = await tx.customerOrder.findFirst({ where: scope })
+          if (!current) return { kind: 'NOT_FOUND' as const }
+          if (current.status !== 'COMPLETED') return { kind: 'ORDER_NOT_COMPLETED' as const }
+          if (current.paymentStatus !== 'PAID' || !current.paidAt || !current.paidAmount) {
+            return { kind: 'PAYMENT_RECORD_MISSING' as const }
+          }
+          const currentPi = await tx.paymentIntent.findUnique({ where: { orderNo: current.orderNo } })
+          if (!currentPi) return { kind: 'PAYMENT_RECORD_MISSING' as const }
+          const sameCommittedPayment = current.storeId === expectedStoreId
+            && current.orderNo === expectedOrderNo
+            && current.paymentMethod === paymentMethod
+            && current.transactionActorType === CUSTOMER_ORDER_ACTOR_TYPE
+            && current.transactionActorId === current.id
+            && current.paidAmount.equals(current.totalAmount)
+            && currentPi.tenantId === current.tenantId
+            && currentPi.storeId === current.storeId
+            && currentPi.transactionActorType === CUSTOMER_ORDER_ACTOR_TYPE
+            && currentPi.transactionActorId === current.id
+            && currentPi.paymentMethod === expectedMethod
+            && currentPi.amount.equals(current.totalAmount)
+            && currentPi.status === 'PAID'
+            && currentPi.paidAt?.getTime() === current.paidAt.getTime()
+          if (!sameCommittedPayment) return { kind: 'PAYMENT_INTENT_CONFLICT' as const }
+          const front = await tx.customerOrderFulfillmentIntent.findUnique({
+            where: { tenantId_storeId_orderNo_role: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, role: 'FRONT' } },
+          })
+          if (!front) return { kind: 'PAYMENT_RECORD_MISSING' as const }
+          if (front.source !== 'H5_HOME' || front.paymentIntentId !== currentPi.id) {
+            return { kind: 'PAYMENT_INTENT_CONFLICT' as const }
+          }
+          return { kind: 'PAID' as const, order: current, paidAt: current.paidAt, paymentMethod }
+        }
         const existingPi = await tx.paymentIntent.findUnique({ where: { orderNo: order.orderNo } })
         if (existingPi) {
           const sameH5Payment = existingPi.tenantId === order.tenantId
@@ -179,7 +216,7 @@ export async function PATCH(
               authorizedByUserId: ctx.userId,
             },
           })
-          if (repaired.count !== 1) return { kind: 'PAYMENT_RECORD_MISSING' as const }
+          if (repaired.count !== 1) return readCommittedPayment()
           const printOrder = printOrderFromCustomerOrder({
             tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo,
             storeName: storeForIntent.name, currencyCode: storeForIntent.currencyCode,
@@ -218,17 +255,7 @@ export async function PATCH(
           },
         })
         if (changed.count !== 1) {
-          // A concurrent collector may have committed between the initial read
-          // and this conditional update. Re-read inside the transaction before
-          // reporting a failure, so the losing request becomes idempotent.
-          const current = await tx.customerOrder.findFirst({ where: scope })
-          if (current?.paymentStatus === 'PAID' && current.paymentMethod === paymentMethod) {
-            const currentPi = await tx.paymentIntent.findUnique({ where: { orderNo: current.orderNo } })
-            if (currentPi?.status === 'PAID' && currentPi.paymentMethod === paymentIntentMethod(paymentMethod) && currentPi.paidAt) {
-              return { kind: 'PAID' as const, order: current, paidAt: currentPi.paidAt, paymentMethod }
-            }
-          }
-          return { kind: 'PAYMENT_RECORD_MISSING' as const }
+          return readCommittedPayment()
         }
 
         const paymentIntent = await tx.paymentIntent.create({
