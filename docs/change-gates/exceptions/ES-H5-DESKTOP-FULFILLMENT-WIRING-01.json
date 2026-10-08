@@ -6,7 +6,9 @@
   "baseOriginMainSha": "7650e19c211f4f0ea35a11ba2c8d4e57166ea0e9",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-10-08T19:20:16.580Z",
+  "featureMergeCommitSha": "d247024106a469f454712ba097387a87a584edc9",
   "authorizedPaths": [
     "app/api/customer-orders/[id]/route.ts",
     "app/cashier/page.tsx",
