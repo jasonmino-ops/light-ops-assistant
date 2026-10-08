@@ -3853,6 +3853,17 @@ export default function CashierPage() {
   }
 
   // ── Order actions ──────────────────────────────────────────────────────────
+  function handleOpenH5Fulfillment() {
+    if (!isDesktopPos || !storeCode || !requireOnlinePosAuthorization()) return
+    if (cart.length > 0) {
+      showToast(d.managementBlockedDesktop)
+      return
+    }
+    // Reuse the signed web session and the existing H5 actions. Never convert
+    // a CustomerOrder into the POS cart or use POS sales/payment/print actions.
+    router.push('/home')
+  }
+
   async function handleOrderAction(id: string, newStatus: string) {
     if (!storeCode) return
     if (!requireOnlinePosAuthorization()) return
@@ -4909,6 +4920,11 @@ export default function CashierPage() {
                 ? <span style={s.ordBadge}>{pendingOrders.length}</span>
                 : <span style={{ fontSize: 11, color: '#9ca3af' }}>{d.pendingOrdersNone}</span>
               }
+              {isDesktopPos && (
+                <button type="button" data-testid="desktop-h5-fulfillment" style={s.ocBtn} onClick={handleOpenH5Fulfillment}>
+                  {lang === 'en' ? 'H5 orders / Collect' : lang === 'km' ? 'ការបញ្ជាទិញ H5 / ប្រមូលប្រាក់' : 'H5接单／收款'}
+                </button>
+              )}
             </div>
             <div style={s.ordList}>
               {pendingOrders.length === 0 ? (
@@ -4942,7 +4958,12 @@ export default function CashierPage() {
                     <div style={s.ocItems}>{itemsSummary}</div>
                     <div style={s.ocFoot}>
                       <span style={s.ocTotal}>{money(order.totalAmount)}</span>
-                      {isPending && (
+                      {isDesktopPos && (
+                        <button type="button" style={{ ...s.ocBtn, background: ACCENT, color: '#fff' }} onClick={handleOpenH5Fulfillment}>
+                          {lang === 'en' ? 'Open H5 order' : lang === 'km' ? 'បើកការបញ្ជាទិញ H5' : '处理H5订单'}
+                        </button>
+                      )}
+                      {!isDesktopPos && isPending && (
                         <button
                           style={{ ...s.ocBtn, background: ACCENT, color: '#fff', opacity: isUpdating ? 0.5 : 1 }}
                           disabled={isUpdating}
@@ -4951,7 +4972,7 @@ export default function CashierPage() {
                           {lang === 'en' ? '✓ Confirm' : lang === 'km' ? '✓ បញ្ជាក់' : '✓ 确认'}
                         </button>
                       )}
-                      {!isPending && (
+                      {!isDesktopPos && !isPending && (
                         <button
                           style={{ ...s.ocBtn, background: '#10b981', color: '#fff', opacity: isUpdating ? 0.5 : 1 }}
                           disabled={isUpdating}
@@ -4960,13 +4981,13 @@ export default function CashierPage() {
                           {lang === 'en' ? '✓ Done' : lang === 'km' ? '✓ រួចរាល់' : '✓ 完成'}
                         </button>
                       )}
-                      <button
+                      {!isDesktopPos && <button
                         style={{ ...s.ocBtn, background: '#f1f5f9', color: '#9ca3af', border: '1px solid #e5e7eb', opacity: isUpdating ? 0.5 : 1 }}
                         disabled={isUpdating}
                         onClick={() => handleOrderAction(order.id, 'CANCELLED')}
                       >
                         {lang === 'en' ? 'Cancel' : lang === 'km' ? 'បោះបង់' : '取消'}
-                      </button>
+                      </button>}
                     </div>
                   </div>
                 )

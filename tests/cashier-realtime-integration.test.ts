@@ -188,6 +188,11 @@ async function main() {
     ...execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean),
   ].filter((path, index, paths) => paths.indexOf(path) === index)
   const approved = new Set([
+    // ES-H5-DESKTOP-FULFILLMENT-WIRING-01 exact successor registration.
+    'app/cashier/page.tsx',
+    'tests/es-tray-desktop-pos-entry.test.ts',
+    'tests/v3-reprint-recovery.test.ts',
+    'docs/change-gates/exceptions/ES-H5-DESKTOP-FULFILLMENT-WIRING-01.json',
     'app/api/customer-orders/[id]/route.ts',
     'app/api/customer-orders/[id]/khqr/route.ts',
     'app/menu/page.tsx',

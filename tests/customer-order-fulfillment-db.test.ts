@@ -330,11 +330,301 @@ async function createFixture(client: PrismaClient, suffix: string) {
 }
 type Fixture = Awaited<ReturnType<typeof createFixture>>
 
+for (const method of ['CASH', 'QR'] as const) for (const schedule of ['sequential retry', 'stale order read before competing collection commits', 'missing payment read before competing collection commits'] as const) {
+  test(`DB Desktop reused H5 route: ${method}, ${schedule}, one KITCHEN then one FRONT, no SaleRecord`, { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
+    const { fixture: f, admin } = h
+    const submission = await publicRouteHarness(admin)
+    const submitted = await submission.submit(admin, await submissionProduct(admin.client, f), randomUUID())
+    submission.close()
+    assert.equal(submitted.status, 200)
+    const order = await admin.client.customerOrder.findUniqueOrThrow({ where: { orderNo: submitted.body.orderNo } })
+    assert.equal(order.status, 'PENDING'); assert.equal(order.paymentStatus, 'UNPAID')
+    const { prisma } = await import('../lib/prisma')
+    const { signSession } = await import('../lib/session')
+    const { NextRequest } = await import('next/server')
+    const { workAsyncStorage } = await import('next/dist/server/app-render/work-async-storage.external')
+    const { PATCH } = await import('../app/api/customer-orders/[id]/route')
+    const { POST: confirmPayment } = await import('../app/api/payments/[paymentId]/confirm/route')
+    const { POST: cancelPayment } = await import('../app/api/payments/[paymentId]/cancel/route')
+    const active = new AsyncLocalStorage<Worker>(), undo: Array<() => void> = [], callbacks: unknown[] = []
+    const db = prisma as any, disabled = process.env.ESHOP_DISABLE_DEV_HEADERS
+    process.env.ESHOP_DISABLE_DEV_HEADERS = '1'
+    for (const model of ['tenant', 'user', 'store', 'customerOrder', 'paymentIntent', 'customerOrderFulfillmentIntent', 'eshopTrayPrintJob']) {
+      for (const op of ['findUnique', 'findFirst', 'findMany']) {
+        const old = db[model][op]
+        db[model][op] = (...args: any[]) => ((active.getStore() ?? admin).client as any)[model][op](...args)
+        undo.push(() => { db[model][op] = old })
+      }
+    }
+    const oldTransaction = db.$transaction
+    db.$transaction = (...args: any[]) => ((active.getStore() ?? admin).db as any).$transaction(...args)
+    undo.push(() => { db.$transaction = oldTransaction })
+    const identity = { tenantId: f.tenantId, userId: f.operator.id, storeId: f.storeId, role: 'OWNER' as const }
+    const token = signSession(identity)
+    async function patch(worker: Worker, body: object, cookie = token) {
+      return active.run(worker, () => workAsyncStorage.run({ afterContext: { after: (fn: unknown) => callbacks.push(fn) } } as any,
+        () => PATCH(new NextRequest(`https://isolated.test/api/customer-orders/${order.id}`, {
+          method: 'PATCH', headers: { cookie: `auth-session=${cookie}`, 'content-type': 'application/json' }, body: JSON.stringify(body),
+        }), { params: Promise.resolve({ id: order.id }) })))
+    }
+    const scoped = { tenantId: f.tenantId, storeId: f.storeId, orderNo: order.orderNo }
+    const worker: RenderWorker = { ...renderOwner(f), roles: ['KITCHEN', 'FRONT'] }
+    async function sealAndQueue(role: 'KITCHEN' | 'FRONT') {
+      const claim = await claimCustomerOrderRender(admin.client as any, worker, runtime)
+      assert.equal(claim.kind, 'CLAIMED'); assert.equal(claim.claim.orderNo, order.orderNo); assert.equal(claim.claim.role, role)
+      assert.equal((await sealCustomerOrderRender(admin.client as any, worker, { ...claim.claim, ...sealedBytes }, runtime)).kind, 'SEALED')
+      const replies = await Promise.all([processCustomerOrderFulfillmentIntent(admin.client as any, claim.claim.intentId, new Date(), runtime),
+        processCustomerOrderFulfillmentIntent(admin.client as any, claim.claim.intentId, new Date(), runtime)])
+      assert.equal(replies.filter(r => r.created).length, 1)
+      const intent = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id: claim.claim.intentId } })
+      const job = await admin.client.eshopTrayPrintJob.findUniqueOrThrow({ where: { id: intent.printJobId! } })
+      const payload = parseV3PrintIntent(job.payload)
+      assert.ok(payload && payload.payloadKind === 'RAW_BYTES')
+      assert.equal(payload.role, role); assert.equal(payload.orderNo, order.orderNo); assert.equal(payload.source, 'CLOUD_H5')
+      assert.equal(job.tenantId, f.tenantId); assert.equal(job.storeId, f.storeId); assert.equal(job.status, 'PENDING')
+      assert.equal(job.claimTokenHash, null); assert.equal(intent.state, 'ENQUEUED')
+      const snapshot = JSON.parse(intent.snapshotJson)
+      assert.equal(snapshot.paymentStatus, role === 'KITCHEN' ? 'UNPAID' : 'PAID')
+      assert.equal(snapshot.paymentMethod, role === 'KITCHEN' ? null : method)
+      return job.id
+    }
+    try {
+      const a = await h.worker('route-a'), b = await h.worker('route-b')
+      assert.equal((await patch(a, { status: 'CONFIRMED' }, 'invalid')).status, 401)
+      assert.equal((await patch(a, { status: 'CONFIRMED' }, signSession({ ...identity, role: 'STAFF', storeId: 'another-store' }))).status, 404)
+      for (const response of await Promise.all([patch(a, { status: 'CONFIRMED' }), patch(b, { status: 'CONFIRMED' })])) assert.equal(response.status, 200)
+      assert.equal(await admin.client.customerOrderFulfillmentIntent.count({ where: scoped }), 1)
+      assert.equal(await admin.client.paymentIntent.count({ where: scoped }), 0)
+      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), 0, 'business commit precedes asynchronous render/job')
+      const kitchenJob = await sealAndQueue('KITCHEN')
+      assert.equal((await patch(a, { status: 'CONFIRMED' })).status, 200)
+      assert.equal((await patch(a, { status: 'COMPLETED' })).status, 200)
+      let competingResponse: Response | undefined
+      if (schedule === 'sequential retry') {
+        assert.equal((await patch(a, { paymentMethod: method })).status, 200)
+        assert.equal((await patch(b, { paymentMethod: method })).status, 200)
+      } else {
+        // Real READ COMMITTED schedule: collector B has read UNPAID, then A
+        // commits before B reads PaymentIntent. No query/result is simulated.
+        const held = h.barrier('collector B read the unpaid order')
+        let entered = false
+        b.setHook(async e => {
+          const staleOrder = schedule === 'stale order read before competing collection commits'
+          if (!entered && e.phase === 'after' && e.model === (staleOrder ? 'customerOrder' : 'paymentIntent')
+            && e.method === (staleOrder ? 'findFirst' : 'findUnique')) {
+            if (staleOrder) { assert.equal(e.result.id, order.id); assert.equal(e.result.paymentStatus, 'UNPAID') }
+            else assert.equal(e.result, null)
+            entered = true
+            await held.pause()
+          }
+        })
+        const delayed = h.track(patch(b, { paymentMethod: method }))
+        await held.entered()
+        try { assert.equal((await patch(a, { paymentMethod: method })).status, 200) }
+        finally { held.release() }
+        competingResponse = await delayed
+        b.setHook(async () => {})
+      }
+      const pi = await admin.client.paymentIntent.findUniqueOrThrow({ where: { orderNo: order.orderNo } })
+      assert.equal(pi.status, 'PAID'); assert.equal(pi.paymentMethod, method === 'QR' ? 'KHQR' : 'CASH')
+      assert.equal(pi.transactionActorType, 'H5_CUSTOMER_ORDER'); assert.equal(pi.transactionActorId, order.id)
+      assert.equal(pi.amount.toString(), order.totalAmount.toString())
+      const frontJob = await sealAndQueue('FRONT'); assert.notEqual(frontJob, kitchenJob)
+      assert.equal((await patch(a, { paymentMethod: method })).status, 200)
+      assert.equal((await patch(a, { paymentMethod: method === 'CASH' ? 'QR' : 'CASH' })).status, 409)
+      for (const generic of [confirmPayment, cancelPayment]) {
+        const response = await generic(new NextRequest('https://isolated.test/api/payments/test', { method: 'POST', headers: { cookie: `auth-session=${token}` } }), { params: Promise.resolve({ paymentId: pi.id }) })
+        assert.equal(response.status, 422); assert.equal((await response.json()).error, 'INVALID_STATE')
+      }
+      assert.equal(await admin.client.customerOrderFulfillmentIntent.count({ where: scoped }), 2)
+      assert.equal(await admin.client.paymentIntent.count({ where: scoped }), 1)
+      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), 2)
+      assert.equal(await admin.client.saleRecord.count({ where: { tenantId: f.tenantId } }), 0)
+      assert.equal(callbacks.length, 2, 'confirm + complete only; pure collection does not add a notification')
+      if (competingResponse) {
+        const responseBody = await competingResponse.json()
+        assert.equal(competingResponse.status, 200, `same-key/same-method collector must be idempotent; persisted 1 payment, 2 intents/jobs, 0 sales; actual ${JSON.stringify(responseBody)}`)
+        assert.equal(responseBody.businessStatus, 'SUCCEEDED')
+      }
+    } finally {
+      undo.reverse().forEach(fn => fn())
+      if (disabled === undefined) delete process.env.ESHOP_DISABLE_DEV_HEADERS; else process.env.ESHOP_DISABLE_DEV_HEADERS = disabled
+      await admin.client.customerOrderFulfillmentIntent.deleteMany({ where: { tenantId: f.tenantId } })
+      await admin.client.paymentIntent.deleteMany({ where: { tenantId: f.tenantId } })
+    }
+  }))
+}
+
+// Forward the real signed-session route to independently connected real
+// transaction clients. Hooks control scheduling/faults, never fake query data.
+async function collectionRouteHarness(admin: Worker, f: Fixture) {
+  ;(globalThis as any).AsyncLocalStorage = AsyncLocalStorage
+  const { prisma } = await import('../lib/prisma')
+  const { signSession } = await import('../lib/session')
+  const { NextRequest } = await import('next/server')
+  const { workAsyncStorage } = await import('next/dist/server/app-render/work-async-storage.external')
+  const { PATCH } = await import('../app/api/customer-orders/[id]/route')
+  const active = new AsyncLocalStorage<Worker>(), undo: Array<() => void> = [], callbacks: unknown[] = []
+  const db = prisma as any, disabled = process.env.ESHOP_DISABLE_DEV_HEADERS
+  process.env.ESHOP_DISABLE_DEV_HEADERS = '1'
+  for (const model of ['tenant', 'user', 'store', 'customerOrder', 'paymentIntent', 'customerOrderFulfillmentIntent', 'eshopTrayPrintJob']) {
+    for (const op of ['findUnique', 'findFirst', 'findMany']) {
+      const old = db[model][op]
+      db[model][op] = (...args: any[]) => ((active.getStore() ?? admin).client as any)[model][op](...args)
+      undo.push(() => { db[model][op] = old })
+    }
+  }
+  const old = db.$transaction
+  db.$transaction = (...args: any[]) => ((active.getStore() ?? admin).db as any).$transaction(...args)
+  undo.push(() => { db.$transaction = old })
+  const identity = { tenantId: f.tenantId, storeId: f.storeId, userId: f.operator.id, role: 'OWNER' as const }
+  const token = signSession(identity)
+  return {
+    callbacks,
+    cookie: (overrides: Record<string, string>) => signSession({ ...identity, ...overrides } as typeof identity),
+    patch: (w: Worker, method: 'CASH' | 'QR' = 'CASH', cookie = token) => active.run(w, () => workAsyncStorage.run({
+      afterContext: { after: (fn: unknown) => callbacks.push(fn) },
+    } as any, () => PATCH(new NextRequest(`https://isolated.test/api/customer-orders/${f.orderId}`, {
+      method: 'PATCH', headers: { cookie: `auth-session=${cookie}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ paymentMethod: method }),
+    }), { params: Promise.resolve({ id: f.orderId }) }))),
+    close() {
+      undo.reverse().forEach(fn => fn())
+      if (disabled === undefined) delete process.env.ESHOP_DISABLE_DEV_HEADERS; else process.env.ESHOP_DISABLE_DEV_HEADERS = disabled
+    },
+  }
+}
+
+test('DB collection rejects actual missing payment, illegal states and unauthorized sessions without writes', { skip: skipReason, timeout: 60_000 }, async () => withFixture(async h => {
+  const { fixture: f, admin } = h, route = await collectionRouteHarness(admin, f)
+  try {
+    assert.equal((await route.patch(admin, 'CASH', 'invalid')).status, 401)
+    assert.equal((await route.patch(admin, 'CASH', route.cookie({ role: 'STAFF', storeId: 'other-store' }))).status, 404)
+    for (const status of ['PENDING', 'CONFIRMED', 'CANCELLED']) {
+      await admin.client.customerOrder.update({ where: { id: f.orderId }, data: { status } })
+      const response = await route.patch(admin)
+      assert.equal(response.status, 400); assert.equal((await response.json()).error, 'ORDER_NOT_COMPLETED')
+    }
+    // A real persisted corrupt/legacy PAID row with no PaymentIntent. It must
+    // not be "repaired" by inventing another collection or receipt.
+    await admin.client.customerOrder.update({ where: { id: f.orderId }, data: {
+      status: 'COMPLETED', paymentStatus: 'PAID', paymentMethod: 'CASH', paidAt: f.now, paidAmount: 4.5,
+      transactionActorType: 'H5_CUSTOMER_ORDER', transactionActorId: f.orderId,
+    } })
+    const before = await admin.client.customerOrder.findUniqueOrThrow({ where: { id: f.orderId } })
+    const response = await route.patch(admin)
+    assert.equal(response.status, 409); assert.equal((await response.json()).error, 'PAYMENT_RECORD_MISSING')
+    assert.deepEqual(await admin.client.customerOrder.findUniqueOrThrow({ where: { id: f.orderId } }), before)
+    for (const model of ['paymentIntent', 'customerOrderFulfillmentIntent', 'eshopTrayPrintJob', 'saleRecord'] as const) {
+      assert.equal(await (admin.client[model] as any).count({ where: { tenantId: f.tenantId } }), 0)
+    }
+    assert.equal(route.callbacks.length, 0)
+  } finally { route.close() }
+}))
+
+const collectionFaults = [
+  'payment-missing', 'front-missing', 'order-state', 'order-paidAt', 'order-amount', 'order-actor', 'order-method',
+  'payment-tenant', 'payment-store', 'payment-actor', 'payment-amount', 'payment-method', 'payment-status', 'payment-paidAt',
+  'front-link', 'front-source',
+] as const
+for (const fault of collectionFaults) {
+  test(`DB zero-row collection fails closed on committed evidence: ${fault}`, { skip: skipReason, timeout: 60_000 }, async () => withFixture(async h => {
+    const { fixture: f, admin } = h
+    await admin.client.customerOrder.update({ where: { id: f.orderId }, data: { status: 'COMPLETED' } })
+    const route = await collectionRouteHarness(admin, f), a = await h.worker('winner'), b = await h.worker('stale-reader')
+    const orderRead = h.barrier('B has stale unpaid order'), paymentRead = h.barrier('B has valid but now stale payment')
+    let orderEntered = false, paymentEntered = false
+    b.setHook(async e => {
+      if (e.phase !== 'after') return
+      if (!orderEntered && e.model === 'customerOrder' && e.method === 'findFirst') {
+        assert.equal(e.result.paymentStatus, 'UNPAID'); orderEntered = true; await orderRead.pause()
+      } else if (!paymentEntered && e.model === 'paymentIntent' && e.method === 'findUnique') {
+        assert.equal(e.result.status, 'PAID'); paymentEntered = true; await paymentRead.pause()
+      }
+    })
+    try {
+      const delayed = h.track(route.patch(b))
+      await orderRead.entered()
+      assert.equal((await route.patch(a)).status, 200)
+      orderRead.release()
+      await paymentRead.entered()
+      const pi = await admin.client.paymentIntent.findUniqueOrThrow({ where: { orderNo: f.orderNo } })
+      const front = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: {
+        tenantId_storeId_orderNo_role: { tenantId: f.tenantId, storeId: f.storeId, orderNo: f.orderNo, role: 'FRONT' },
+      } })
+      if (fault === 'payment-missing') await admin.client.paymentIntent.delete({ where: { id: pi.id } })
+      else if (fault === 'front-missing') await admin.client.customerOrderFulfillmentIntent.delete({ where: { id: front.id } })
+      else if (fault.startsWith('order-')) {
+        const data = fault === 'order-state' ? { status: 'CANCELLED' }
+          : fault === 'order-paidAt' ? { paidAt: null } : fault === 'order-amount' ? { paidAmount: 99 }
+            : fault === 'order-actor' ? { transactionActorId: 'wrong-order' } : { paymentMethod: 'QR' }
+        await admin.client.customerOrder.update({ where: { id: f.orderId }, data })
+      } else if (fault.startsWith('payment-')) {
+        const data = fault === 'payment-tenant' ? { tenantId: 'wrong-tenant' }
+          : fault === 'payment-store' ? { storeId: 'wrong-store' }
+            : fault === 'payment-actor' ? { transactionActorType: 'NOT_H5' }
+              : fault === 'payment-amount' ? { amount: 99 }
+                : fault === 'payment-method' ? { paymentMethod: 'KHQR' as const }
+                  : fault === 'payment-status' ? { status: 'CANCELLED' as const } : { paidAt: null }
+        await admin.client.paymentIntent.update({ where: { id: pi.id }, data })
+      } else await admin.client.customerOrderFulfillmentIntent.update({ where: { id: front.id }, data:
+        fault === 'front-link' ? { paymentIntentId: 'wrong-payment' } : { source: 'NOT_H5_HOME' },
+      })
+      const beforeOrder = await admin.client.customerOrder.findUniqueOrThrow({ where: { id: f.orderId } })
+      const beforePi = await admin.client.paymentIntent.findUnique({ where: { id: pi.id } })
+      const beforeFront = await admin.client.customerOrderFulfillmentIntent.findUnique({ where: { id: front.id } })
+      paymentRead.release()
+      const response = await delayed
+      const missing = ['payment-missing', 'front-missing', 'order-paidAt'].includes(fault)
+      assert.equal(response.status, fault === 'order-state' ? 400 : 409)
+      assert.equal((await response.json()).error, fault === 'order-state' ? 'ORDER_NOT_COMPLETED' : missing ? 'PAYMENT_RECORD_MISSING' : 'PAYMENT_INTENT_CONFLICT')
+      assert.ok(b.events.some(e => e.phase === 'after' && e.model === 'customerOrder' && e.method === 'updateMany' && e.result.count === 0))
+      assert.deepEqual(await admin.client.customerOrder.findUniqueOrThrow({ where: { id: f.orderId } }), beforeOrder)
+      assert.deepEqual(await admin.client.paymentIntent.findUnique({ where: { id: pi.id } }), beforePi)
+      assert.deepEqual(await admin.client.customerOrderFulfillmentIntent.findUnique({ where: { id: front.id } }), beforeFront)
+      assert.equal(await admin.client.paymentIntent.count({ where: { orderNo: f.orderNo } }), fault === 'payment-missing' ? 0 : 1)
+      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), 0)
+      assert.equal(await admin.client.saleRecord.count({ where: { tenantId: f.tenantId } }), 0)
+      assert.equal(route.callbacks.length, 0)
+    } finally {
+      orderRead.release(); paymentRead.release(); route.close()
+      // The deliberately wrong tenant value must not leak beyond this fixture.
+      await admin.client.paymentIntent.deleteMany({ where: { orderNo: f.orderNo } })
+    }
+  }))
+}
+
+for (const stage of ['paymentIntent', 'customerOrderFulfillmentIntent'] as const) {
+  test(`DB actual collection SQL failure after ${stage} rolls back payment/order/intent; retry commits once`, { skip: skipReason, timeout: 60_000 }, async () => withFixture(async h => {
+    const { fixture: f, admin } = h, w = await h.worker('collection-rollback')
+    await admin.client.customerOrder.update({ where: { id: f.orderId }, data: { status: 'COMPLETED' } })
+    const route = await collectionRouteHarness(admin, f)
+    let injections = 0
+    w.setHook(async (e, tx) => { if (e.phase === 'after' && e.model === stage && e.method === 'create') { injections += 1; await tx.$queryRaw`SELECT 1 / 0` } })
+    try {
+      await assert.rejects(route.patch(w), (e: any) => e.code === 'P2010' && e.meta?.driverAdapterError?.cause?.originalCode === '22012')
+      assert.equal(injections, 1)
+      const order = await admin.client.customerOrder.findUniqueOrThrow({ where: { id: f.orderId } })
+      assert.equal(order.paymentStatus, 'UNPAID'); assert.equal(order.paidAt, null); assert.equal(order.paidAmount, null)
+      assert.equal(await admin.client.paymentIntent.count({ where: { orderNo: f.orderNo } }), 0)
+      assert.equal(await admin.client.customerOrderFulfillmentIntent.count({ where: { tenantId: f.tenantId } }), 0)
+      w.setHook(async () => {})
+      assert.equal((await route.patch(w)).status, 200); assert.equal((await route.patch(w)).status, 200)
+      assert.equal(await admin.client.paymentIntent.count({ where: { orderNo: f.orderNo } }), 1)
+      assert.equal(await admin.client.customerOrderFulfillmentIntent.count({ where: { tenantId: f.tenantId, role: 'FRONT' } }), 1)
+      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), 0)
+      assert.equal(await admin.client.saleRecord.count({ where: { tenantId: f.tenantId } }), 0)
+      assert.equal(route.callbacks.length, 0)
+    } finally { route.close() }
+  }))
+}
+
 async function cleanupFixture(client: PrismaClient, tenantId: string) {
   await client.couponRedemption.deleteMany({ where: { tenantId } })
   await client.customerCoupon.deleteMany({ where: { tenantId } })
   await client.couponTemplate.deleteMany({ where: { tenantId } })
   await client.customerOrderFulfillmentIntent.deleteMany({ where: { tenantId } })
+  await client.paymentIntent.deleteMany({ where: { tenantId } })
   await client.eshopTrayPrintJob.deleteMany({ where: { tenantId } })
   await client.operationLog.deleteMany({ where: { tenantId } })
   await client.v3PrintExecutionBatch.deleteMany({ where: { tenantId } })

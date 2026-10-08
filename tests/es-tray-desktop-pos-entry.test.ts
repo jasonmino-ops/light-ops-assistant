@@ -27,6 +27,40 @@ test('/desktop/pos still renders the existing CashierPage runtime', () => {
   assert.match(desktopEntry, /mode === 'pos'[\s\S]*<CashierPage \/>/)
 })
 
+test('Desktop H5 entry executes the existing page handler without a business or print request', () => {
+  const handler = sourceBetween(cashier, 'function handleOpenH5Fulfillment()', 'async function handleOrderAction(')
+  const execute = new Function('isDesktopPos', 'storeCode', 'requireOnlinePosAuthorization', 'cart', 'showToast', 'd', 'router',
+    `${handler}; handleOpenH5Fulfillment()`)
+  for (const [desktop, code, authorized, cartSize, expected] of [
+    [true, 'SYNTHETIC', true, 0, ['/home']],
+    [false, 'SYNTHETIC', true, 0, []],
+    [true, '', true, 0, []],
+    [true, 'SYNTHETIC', false, 0, []],
+    [true, 'SYNTHETIC', true, 1, []],
+  ] as const) {
+    const navigations: string[] = [], notices: string[] = []
+    execute(desktop, code, () => authorized, Array(cartSize), (s: string) => notices.push(s),
+      { managementBlockedDesktop: 'keep-current-cart' }, { push: (s: string) => navigations.push(s) })
+    assert.deepEqual(navigations, expected)
+    assert.deepEqual(notices, cartSize ? ['keep-current-cart'] : [])
+  }
+  assert.doesNotMatch(handler, /fetch\(|payment-intent|\/api\/cashier\/sales|print\(/)
+})
+
+test('only Desktop H5 buttons leave legacy status-only writes; completed-unpaid orders retain an entry', () => {
+  const section = sourceBetween(cashier, '{/* ── TOP: Pending orders section', '{/* ── MIDDLE: Cart')
+  assert.ok(section.indexOf('data-testid="desktop-h5-fulfillment"') < section.indexOf('pendingOrders.map'))
+  assert.match(section, /isDesktopPos && \([\s\S]*onClick=\{handleOpenH5Fulfillment\}/)
+  assert.match(section, /!isDesktopPos && isPending &&/)
+  assert.match(section, /!isDesktopPos && !isPending &&/)
+  assert.match(section, /!isDesktopPos && <button[\s\S]*handleOrderAction\(order.id, 'CANCELLED'\)/)
+  const home = fs.readFileSync('app/home/page.tsx', 'utf8')
+  assert.match(home, /apiFetch\(`\/api\/customer-orders\/\$\{id\}`/)
+  assert.match(home, /onOverridePay=\{\(method\) => handleCustomerOrderPay\(customerCheckout.id, method\)\}/)
+  assert.match(home, /paymentMethod: method === 'KHQR' \? 'QR' : 'CASH'/)
+  assert.match(home, /onComplete=\{\(\) => updateOrderStatus\(order.id, 'COMPLETED'\)\}/)
+})
+
 test('the Desktop sales-record list remains sourced from the scoped records API', () => {
   const openRecords = sourceBetween(cashier, 'async function handleOpenDesktopRecords()', 'async function loadShiftReport()')
   assert.match(openRecords, /fetch\(`\/api\/records\?\$\{params\.toString\(\)\}`/)
