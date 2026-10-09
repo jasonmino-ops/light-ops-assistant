@@ -54,7 +54,8 @@
   "sourceContracts": {
     "lib/qzHtmlBitmapRenderer.ts": "439e8d2cc98c41043b83bcc72b6296f5d52d4f5dfd3169188c1797486cfc7e43",
     "lib/qzEscPosBitImage.ts": "1e596ddcb9a07b26b89c625941daf453f455859c3d04709affad5029decad0c3",
-    "lib/v3-print-identity.ts": "848afc9a34a50e3183339934f83594bce2baabe7b7a8726f087e49a316a0e92e"
+    "lib/v3-print-identity.ts": "848afc9a34a50e3183339934f83594bce2baabe7b7a8726f087e49a316a0e92e",
+    "packages/h5-renderer/module.mjs": "461377d30212dca735fa80700e3e00f41376577fdb9df066442b58eea4693d83"
   },
   "startupReference": {
     "source": "independently reviewed local Ubuntu ARM64 POC; not Khmer linguistic or device acceptance",

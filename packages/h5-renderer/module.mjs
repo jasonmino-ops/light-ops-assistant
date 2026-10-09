@@ -13,6 +13,9 @@ export function validateRenderInput(input) {
   if (typeof input.snapshotJson !== 'string' || Buffer.byteLength(input.snapshotJson) > LIMITS.input || sha(input.snapshotJson) !== input.snapshotHash) throw Error('RENDER_SNAPSHOT_INTEGRITY')
   if (!/^[a-f0-9]{64}$/.test(input.profileId) || input.schemaVersion !== 3 || !['KITCHEN', 'FRONT'].includes(input.role)) throw Error('RENDER_IDENTITY')
   const s = JSON.parse(input.snapshotJson)
+  const purpose = s.ticketPurpose ?? (input.role === 'KITCHEN' ? 'KITCHEN_MAKE' : 'FRONT_PAID')
+  if (!(input.role === 'KITCHEN' && purpose === 'KITCHEN_MAKE')
+    && !(input.role === 'FRONT' && ['FRONT_UNPAID', 'FRONT_PAID'].includes(purpose))) throw Error('RENDER_ROLE_PURPOSE_MISMATCH')
   if (s.tenantId !== input.tenantId || s.storeId !== input.storeId || s.orderNo !== input.orderNo) throw Error('RENDER_IDENTITY')
   if (!Number.isFinite(Date.parse(input.deadlineAt)) || Date.parse(input.deadlineAt) <= Date.now()) throw Error('RENDER_EXPIRED')
   for (const key of ['storeName', 'tableNo', 'remark']) if (s[key] != null && (typeof s[key] !== 'string' || [...s[key]].length > LIMITS[key])) throw Error('RENDER_FIELD_LIMIT:' + key)
@@ -24,25 +27,27 @@ export function validateRenderInput(input) {
     for (const key of ['price', 'quantity', 'lineAmount']) if (!Number.isFinite(i[key]) || i[key] < 0 || i[key] > 1e12) throw Error('RENDER_NUMBER_INVALID')
     if (!Number.isInteger(i.quantity) || i.quantity < 1) throw Error('RENDER_QUANTITY')
   }
-  if (input.role === 'FRONT' && (s.paymentStatus !== 'PAID' || !['CASH', 'QR'].includes(s.paymentMethod) || !Number.isFinite(Date.parse(s.paidAt)))) throw Error('RENDER_FRONT_PAYMENT_REQUIRED')
+  if (purpose === 'FRONT_PAID' && (s.paymentStatus !== 'PAID' || !['CASH', 'QR'].includes(s.paymentMethod) || !Number.isFinite(Date.parse(s.paidAt)))) throw Error('RENDER_FRONT_PAYMENT_REQUIRED')
+  if (purpose === 'FRONT_UNPAID' && (s.ticketPurpose !== 'FRONT_UNPAID' || s.paymentStatus !== 'UNPAID' || s.paymentMethod !== null || s.paidAt !== null)) throw Error('RENDER_FRONT_UNPAID_SNAPSHOT')
   if (input.role === 'KITCHEN' && (s.paymentStatus !== 'UNPAID' || s.paymentMethod !== null || !s.items.some(i => i.printKitchenTicket === true))) throw Error('RENDER_KITCHEN_SNAPSHOT')
   if (!Number.isFinite(Date.parse(s.createdAt))) throw Error('RENDER_DATE')
-  return s
+  return { ...s, ticketPurpose: purpose }
 }
 
 /** Escaped data only, never a caller-provided document/template/URL. */
 export function ticketHtml(input, css) {
   const s = validateRenderInput(input)
   const kitchen = input.role === 'KITCHEN'
+  const unpaid = s.ticketPurpose !== 'FRONT_PAID'
   const items = kitchen ? s.items.filter(i => i.printKitchenTicket === true) : s.items
   const money = n => `${esc(s.currencyCode)} ${n.toFixed(2)}`
   return `<!doctype html><html lang="km"><head><meta charset="utf-8"><style>${css}</style></head><body><main class="ticket">
-<div class="store center">${esc(s.storeName)}</div><div class="title center">${kitchen ? 'KITCHEN 制作单' : 'FRONT 收款凭证'}</div>
-<div class="status">${kitchen ? 'UNPAID · 未付款' : 'PAID · 已收款'}</div>
-<section class="meta"><div class="row"><span>订单 / Order</span><span>${esc(s.orderNo)}</span></div><div class="row"><span>桌号 / Table</span><span>${esc(s.tableNo)}</span></div><div class="row"><span>${kitchen ? '订单时间' : '实收时间'}</span><span>${esc(kitchen ? s.createdAt : s.paidAt)} UTC</span></div></section><div class="line"></div>
+<div class="store center">${esc(s.storeName)}</div><div class="title center">${kitchen ? 'KITCHEN 制作单' : unpaid ? 'FRONT 未付款订单票' : 'FRONT 收款凭证'}</div>
+<div class="status">${unpaid ? 'UNPAID · 未付款' : 'PAID · 已收款'}</div>
+<section class="meta"><div class="row"><span>订单 / Order</span><span>${esc(s.orderNo)}</span></div><div class="row"><span>桌号 / Table</span><span>${esc(s.tableNo)}</span></div><div class="row"><span>${unpaid ? '订单时间' : '实收时间'}</span><span>${esc(unpaid ? s.createdAt : s.paidAt)} UTC</span></div></section><div class="line"></div>
 ${items.map(i => `<section class="item"><div class="name">${esc(i.name)}</div>${i.spec || i.sugar ? `<div class="note small">${esc([i.spec, i.sugar].filter(Boolean).join(' / '))}</div>` : ''}<div class="calc">${i.quantity} × ${money(i.price)} = ${money(i.lineAmount)}</div></section>`).join('')}
 <div class="row total"><span>${kitchen ? '订单总额' : '合计 / Total'}</span><span>${money(s.totalAmount)}</span></div>
-${kitchen ? '<div class="small">制作依据，不是收款凭证 / NOT A PAYMENT RECEIPT</div>' : `<div class="status">付款方式 / Payment: ${s.paymentMethod === 'QR' ? 'KHQR' : 'CASH'}</div>`}
+${unpaid ? `<div class="status">${kitchen ? '制作依据，不是收款凭证' : '非支付凭证'} / NOT A PAYMENT RECEIPT</div>` : `<div class="status">付款方式 / Payment: ${s.paymentMethod === 'QR' ? 'KHQR' : 'CASH'}</div>`}
 <div class="line"></div><div class="note">备注 / Note\n${esc(s.remark)}</div></main></body></html>`
 }
 

@@ -12,9 +12,11 @@ import {
   paymentIntentMethod,
   processCustomerOrderFulfillmentIntent,
   recordCustomerOrderIntent,
+  intentCreateData,
 } from '../lib/customer-order-fulfillment'
 import { enqueueV3PrintIntent } from '../lib/v3-print-job-adapter'
-import { customerOrderEnvelopeFromSeal, type CustomerOrderPrintOrder } from '../lib/customer-order-fulfillment-renderer'
+import { customerOrderEnvelopeFromSeal, customerOrderSnapshot, customerOrderPrintJobId, type CustomerOrderPrintOrder } from '../lib/customer-order-fulfillment-renderer'
+import { canonicalV3OriginalPrintJobId } from '../lib/v3-print-operator-status'
 import { encodeRgbaToEscPosEscStar24 } from '../lib/qzEscPosBitImage'
 
 const testProfileId = createHash('sha256').update('isolated-renderer-fixture-v1').digest('hex')
@@ -47,6 +49,28 @@ function order(overrides: Partial<CustomerOrderPrintOrder> = {}): CustomerOrderP
     ...overrides,
   }
 }
+
+test('purpose identity preserves both historical canonical keys and isolates unpaid FRONT; no raw-text downgrade', () => {
+  const unpaid = order(), paid = order({ paymentStatus: 'PAID', paymentMethod: 'CASH', paidAt: createdAt })
+  assert.equal(customerOrderPrintJobId(unpaid, 'KITCHEN', 'KITCHEN_MAKE'), canonicalV3OriginalPrintJobId(unpaid.orderNo, 'KITCHEN'))
+  assert.equal(customerOrderPrintJobId(paid, 'FRONT', 'FRONT_PAID'), canonicalV3OriginalPrintJobId(paid.orderNo, 'FRONT'))
+  const id = customerOrderPrintJobId(unpaid, 'FRONT', 'FRONT_UNPAID')
+  assert.equal(id, customerOrderPrintJobId(unpaid, 'FRONT', 'FRONT_UNPAID'))
+  assert.notEqual(id, customerOrderPrintJobId(paid, 'FRONT', 'FRONT_PAID'))
+  assert.throws(() => customerOrderPrintJobId(unpaid, 'KITCHEN', 'FRONT_UNPAID'), /PURPOSE/)
+  assert.throws(() => buildCustomerOrderPrintIntent({ ...unpaid, ticketPurpose: 'FRONT_UNPAID' }, 'FRONT'), /UNPAID_TEXT_RENDERER_UNSUPPORTED/)
+  for (const [role, purpose, o] of [['KITCHEN', 'KITCHEN_MAKE', unpaid], ['FRONT', 'FRONT_PAID', paid]] as const) {
+    const i: any = intentCreateData({ order: o, role, purpose, decision: 'REQUIRED', now: createdAt })
+    const legacy = JSON.parse(i.snapshotJson); delete legacy.ticketPurpose
+    i.snapshotJson = JSON.stringify(legacy); i.snapshotHash = createHash('sha256').update(i.snapshotJson).digest('hex')
+    assert.equal(customerOrderSnapshot(i).ticketPurpose, purpose)
+  }
+  const i: any = intentCreateData({ order: unpaid, role: 'FRONT', purpose: 'FRONT_UNPAID', decision: 'REQUIRED', now: createdAt })
+  assert.equal(i.paymentIntentId, null); assert.equal(i.paidAt, null)
+  assert.equal(i.deadlineAt.getTime() - createdAt.getTime(), 24 * 60 * 60_000)
+  assert.equal(customerOrderSnapshot(i).ticketPurpose, 'FRONT_UNPAID')
+  i.paymentIntentId = 'must-not-be-linked'; assert.throws(() => customerOrderSnapshot(i), /UNPAID/)
+})
 
 function fakeDb(mode: string | null = 'V3_ACTIVE') {
   const jobs: any[] = []
@@ -88,12 +112,12 @@ function fakeDb(mode: string | null = 'V3_ACTIVE') {
     customerOrderFulfillmentIntent: {
       findUnique: async ({ where }: any) => {
         if (where.id) return structuredClone(intents.find((intent) => intent.id === where.id) ?? null)
-        const key = where.tenantId_storeId_orderNo_role
-        return structuredClone(intents.find((intent) => intent.tenantId === key.tenantId && intent.storeId === key.storeId && intent.orderNo === key.orderNo && intent.role === key.role) ?? null)
+        const key = where.tenantId_storeId_orderNo_purpose
+        return structuredClone(intents.find((intent) => intent.tenantId === key.tenantId && intent.storeId === key.storeId && intent.orderNo === key.orderNo && intent.purpose === key.purpose) ?? null)
       },
       create: async ({ data }: any) => {
-        const duplicate = intents.some((intent) => intent.tenantId === data.tenantId && intent.storeId === data.storeId && intent.orderNo === data.orderNo && intent.role === data.role)
-        if (duplicate) throw new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: '7.6.0', meta: { modelName: 'CustomerOrderFulfillmentIntent', target: ['tenantId', 'storeId', 'orderNo', 'role'] } })
+        const duplicate = intents.some((intent) => intent.tenantId === data.tenantId && intent.storeId === data.storeId && intent.orderNo === data.orderNo && intent.purpose === data.purpose)
+        if (duplicate) throw new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: '7.6.0', meta: { modelName: 'CustomerOrderFulfillmentIntent', target: ['tenantId', 'storeId', 'orderNo', 'purpose'] } })
         const intent = { id: `intent-${intents.length + 1}`, printJobId: null, ...data }
         intents.push(intent)
         return intent

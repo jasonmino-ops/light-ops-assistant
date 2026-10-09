@@ -14,6 +14,15 @@ export const CUSTOMER_ORDER_RENDERER_VERSION = 'h5-order-raw-text-v1'
 // versions here.
 export const ALLOWED_CUSTOMER_ORDER_RENDERER_VERSIONS: readonly string[] = []
 export type CustomerOrderPrintRole = 'FRONT' | 'KITCHEN'
+export type CustomerOrderTicketPurpose = 'KITCHEN_MAKE' | 'FRONT_UNPAID' | 'FRONT_PAID'
+
+/** Missing purpose means historical semantics, never an unpaid FRONT. */
+export function customerOrderTicketPurpose(role: CustomerOrderPrintRole, purpose?: string | null): CustomerOrderTicketPurpose {
+  const value = purpose ?? (role === 'KITCHEN' ? 'KITCHEN_MAKE' : 'FRONT_PAID')
+  if ((role === 'KITCHEN' && value === 'KITCHEN_MAKE')
+    || (role === 'FRONT' && (value === 'FRONT_UNPAID' || value === 'FRONT_PAID'))) return value
+  throw new Error('CUSTOMER_ORDER_ROLE_PURPOSE_MISMATCH')
+}
 export type CustomerOrderPaymentMethod = 'CASH' | 'QR'
 
 export type CustomerOrderPrintItem = {
@@ -42,6 +51,7 @@ export type CustomerOrderPrintOrder = {
   totalAmount: number
   paymentStatus: 'UNPAID' | 'PAID'
   paymentMethod: CustomerOrderPaymentMethod | null
+  ticketPurpose?: CustomerOrderTicketPurpose
   items: CustomerOrderPrintItem[]
 }
 
@@ -95,27 +105,33 @@ export function customerOrderEnvelopeFromSeal(
   order: CustomerOrderPrintOrder, role: CustomerOrderPrintRole, seal: SealedCustomerOrderBytes,
 ): V3PrintIntent {
   if (role !== 'FRONT' && role !== 'KITCHEN') throw new Error('CUSTOMER_ORDER_ROLE_INVALID')
-  if (role === 'FRONT' && (order.paymentStatus !== 'PAID' || !order.paidAt || !['CASH', 'QR'].includes(order.paymentMethod ?? ''))) throw new Error('CUSTOMER_ORDER_FRONT_PAYMENT_REQUIRED')
+  const purpose = customerOrderTicketPurpose(role, order.ticketPurpose)
+  if (purpose === 'FRONT_PAID' && (order.paymentStatus !== 'PAID' || !order.paidAt || !['CASH', 'QR'].includes(order.paymentMethod ?? ''))) throw new Error('CUSTOMER_ORDER_FRONT_PAYMENT_REQUIRED')
+  if (purpose === 'FRONT_UNPAID' && (order.paymentStatus !== 'UNPAID' || order.paymentMethod !== null || order.paidAt !== null)) throw new Error('CUSTOMER_ORDER_UNPAID_SNAPSHOT_INVALID')
   if (role === 'KITCHEN' && (order.paymentStatus !== 'UNPAID' || order.paymentMethod !== null || !kitchenItems(order).length)) throw new Error('CUSTOMER_ORDER_KITCHEN_SNAPSHOT_INVALID')
   validateCustomerOrderRaster(seal)
   return {
-    schemaVersion: 3, printJobId: customerOrderPrintJobId(order, role), source: 'CLOUD_H5', role,
+    schemaVersion: 3, printJobId: customerOrderPrintJobId(order, role, purpose), source: 'CLOUD_H5', role,
     payloadKind: 'RAW_BYTES', orderNo: order.orderNo, rendererVersion: seal.rendererVersion,
     payloadBase64: seal.payloadBase64, byteLength: seal.byteLength, payloadHash: seal.payloadHash,
   }
 }
 
-export function customerOrderSnapshot(intent: { snapshotJson: string; snapshotHash: string; tenantId: string; storeId: string; orderNo: string; role: string; schemaVersion: number; idempotencyKey: string }): CustomerOrderPrintOrder {
+export function customerOrderSnapshot(intent: { snapshotJson: string; snapshotHash: string; tenantId: string; storeId: string; orderNo: string; role: string; purpose?: string; paymentIntentId?: string | null; schemaVersion: number; idempotencyKey: string }): CustomerOrderPrintOrder {
   if (typeof intent.snapshotJson !== 'string' || Buffer.byteLength(intent.snapshotJson) > 128 * 1024
     || createHash('sha256').update(intent.snapshotJson).digest('hex') !== intent.snapshotHash) throw new Error('CUSTOMER_ORDER_SNAPSHOT_HASH')
   const s = JSON.parse(intent.snapshotJson)
+  const purpose = customerOrderTicketPurpose(intent.role as CustomerOrderPrintRole, intent.purpose)
+  if (customerOrderTicketPurpose(intent.role as CustomerOrderPrintRole, s.ticketPurpose) !== purpose) throw new Error('CUSTOMER_ORDER_SNAPSHOT_PURPOSE')
   if (s.tenantId !== intent.tenantId || s.storeId !== intent.storeId || s.orderNo !== intent.orderNo || intent.schemaVersion !== 3
-    || !['KITCHEN', 'FRONT'].includes(intent.role) || customerOrderPrintJobId(s, intent.role as CustomerOrderPrintRole) !== intent.idempotencyKey) throw new Error('CUSTOMER_ORDER_SNAPSHOT_IDENTITY')
+    || !['KITCHEN', 'FRONT'].includes(intent.role) || customerOrderPrintJobId(s, intent.role as CustomerOrderPrintRole, purpose) !== intent.idempotencyKey) throw new Error('CUSTOMER_ORDER_SNAPSHOT_IDENTITY')
   const order = customerOrderPrintOrder({ ...s, createdAt: new Date(s.createdAt), paidAt: s.paidAt ? new Date(s.paidAt) : null, itemsJson: JSON.stringify(s.items) })
   if (!Number.isFinite(order.createdAt.getTime()) || (order.paidAt && !Number.isFinite(order.paidAt.getTime()))) throw new Error('CUSTOMER_ORDER_SNAPSHOT_DATE')
-  if (intent.role === 'FRONT' && order.paymentStatus !== 'PAID') throw new Error('CUSTOMER_ORDER_FRONT_PAYMENT_REQUIRED')
+  if (purpose === 'FRONT_PAID' && order.paymentStatus !== 'PAID') throw new Error('CUSTOMER_ORDER_FRONT_PAYMENT_REQUIRED')
+  if (purpose === 'FRONT_UNPAID' && (s.ticketPurpose !== purpose || order.paymentStatus !== 'UNPAID'
+    || order.paymentMethod !== null || order.paidAt !== null || intent.paymentIntentId != null)) throw new Error('CUSTOMER_ORDER_UNPAID_SNAPSHOT_INVALID')
   if (intent.role === 'KITCHEN' && (order.paymentStatus !== 'UNPAID' || order.paymentMethod !== null || !kitchenItems(order).length)) throw new Error('CUSTOMER_ORDER_KITCHEN_SNAPSHOT_INVALID')
-  return order
+  return { ...order, ticketPurpose: purpose }
 }
 
 function cleanText(value: string | null | undefined): string {
@@ -169,12 +185,14 @@ export function customerOrderKitchenDisposition(
 export function customerOrderPrintJobId(
   order: Pick<CustomerOrderPrintOrder, 'tenantId' | 'storeId' | 'orderNo'>,
   role: CustomerOrderPrintRole,
+  ticketPurpose?: CustomerOrderTicketPurpose,
 ): string {
   if (!/^[A-Za-z0-9._:-]{1,128}$/.test(order.tenantId)) throw new Error('CUSTOMER_ORDER_TENANT_INVALID')
   if (!/^[A-Za-z0-9._:-]{1,128}$/.test(order.storeId)) throw new Error('CUSTOMER_ORDER_STORE_INVALID')
   if (!/^[A-Za-z0-9._:-]{1,128}$/.test(order.orderNo)) throw new Error('CUSTOMER_ORDER_NO_INVALID')
+  const purpose = customerOrderTicketPurpose(role, ticketPurpose)
   const digest = createHash('sha256')
-    .update(canonicalV3PrintEffectKey(order.orderNo, role))
+    .update(purpose === 'FRONT_UNPAID' ? `h5-front-unpaid-v1:${order.orderNo}` : canonicalV3PrintEffectKey(order.orderNo, role))
     .digest('hex')
   return `network:${digest}`
 }
@@ -183,6 +201,7 @@ export function buildCustomerOrderPrintIntent(
   order: CustomerOrderPrintOrder,
   role: CustomerOrderPrintRole,
 ): V3PrintIntent {
+  if (customerOrderTicketPurpose(role, order.ticketPurpose) === 'FRONT_UNPAID') throw new Error('CUSTOMER_ORDER_UNPAID_TEXT_RENDERER_UNSUPPORTED')
   const items = role === 'KITCHEN' ? kitchenItems(order) : order.items
   if (role === 'KITCHEN' && items.length === 0) throw new Error('CUSTOMER_ORDER_KITCHEN_ITEMS_EMPTY')
   if (role === 'FRONT') {

@@ -12,6 +12,8 @@ import {
   customerOrderEnvelopeFromSeal,
   customerOrderRendererReleased,
   customerOrderSnapshot,
+  customerOrderTicketPurpose,
+  type CustomerOrderTicketPurpose,
   type CustomerOrderPrintOrder,
   type CustomerOrderPrintRole,
 } from './customer-order-fulfillment-renderer'
@@ -24,8 +26,9 @@ export {
   kitchenItems,
   customerOrderKitchenDisposition,
   CUSTOMER_ORDER_RENDERER_VERSION,
+  customerOrderTicketPurpose,
 }
-export type { CustomerOrderPrintOrder, CustomerOrderPrintRole } from './customer-order-fulfillment-renderer'
+export type { CustomerOrderPrintOrder, CustomerOrderPrintRole, CustomerOrderTicketPurpose } from './customer-order-fulfillment-renderer'
 
 export const CUSTOMER_ORDER_FRONT_PRINT_TTL_MS = 24 * 60 * 60 * 1000
 export const CUSTOMER_ORDER_KITCHEN_PRINT_TTL_MS = 30 * 60 * 1000
@@ -110,6 +113,7 @@ function snapshotOf(order: CustomerOrderPrintOrder): { json: string; hash: strin
     createdAt: order.createdAt.toISOString(), paidAt: order.paidAt?.toISOString() ?? null,
     tableNo: order.tableNo, remark: order.remark, totalAmount: order.totalAmount,
     paymentStatus: order.paymentStatus, paymentMethod: order.paymentMethod, items: order.items,
+    ticketPurpose: order.ticketPurpose,
   })
   return { json, hash: hash(json) }
 }
@@ -166,17 +170,21 @@ export function printOrderFromCustomerOrder(input: {
 export function intentCreateData(input: {
   order: CustomerOrderPrintOrder; role: IntentRole; decision: CustomerOrderFulfillmentDecision
   now: Date; paymentIntentId?: string | null
+  purpose?: CustomerOrderTicketPurpose
 }) {
-  const snapshot = snapshotOf(input.order)
-  const eventAt = input.role === 'FRONT' ? input.order.paidAt : input.now
+  const purpose = customerOrderTicketPurpose(input.role, input.purpose)
+  if (purpose === 'FRONT_UNPAID' && (input.order.paymentStatus !== 'UNPAID' || input.order.paymentMethod !== null
+    || input.order.paidAt !== null || input.paymentIntentId != null)) throw new Error('CUSTOMER_ORDER_UNPAID_SNAPSHOT_INVALID')
+  const snapshot = snapshotOf({ ...input.order, ticketPurpose: purpose })
+  const eventAt = purpose === 'FRONT_PAID' ? input.order.paidAt : input.now
   if (!eventAt) throw new Error('CUSTOMER_ORDER_FULFILLMENT_EVENT_TIME_REQUIRED')
   return {
     tenantId: input.order.tenantId, storeId: input.order.storeId, orderNo: input.order.orderNo,
-    role: input.role, source: CUSTOMER_ORDER_SOURCE, schemaVersion: 3,
+    role: input.role, purpose, source: CUSTOMER_ORDER_SOURCE, schemaVersion: 3,
     decision: input.decision, state: roleState(input.decision), snapshotJson: snapshot.json, snapshotHash: snapshot.hash,
-    idempotencyKey: customerOrderPrintJobId(input.order, input.role), paymentIntentId: input.paymentIntentId ?? null,
-    paymentEventAt: input.role === 'FRONT' ? input.order.paidAt : null,
-    confirmedAt: input.role === 'KITCHEN' ? input.now : null, paidAt: input.role === 'FRONT' ? input.order.paidAt : null,
+    idempotencyKey: customerOrderPrintJobId(input.order, input.role, purpose), paymentIntentId: input.paymentIntentId ?? null,
+    paymentEventAt: purpose === 'FRONT_PAID' ? input.order.paidAt : null,
+    confirmedAt: purpose !== 'FRONT_PAID' ? input.now : null, paidAt: purpose === 'FRONT_PAID' ? input.order.paidAt : null,
     deadlineAt: deadlineFor(input.role, eventAt), nextAttemptAt: input.now,
     maxAttempts: input.role === 'FRONT' ? CUSTOMER_ORDER_FRONT_MAX_ATTEMPTS : CUSTOMER_ORDER_KITCHEN_MAX_ATTEMPTS,
     attemptCount: 0, revision: 0,
@@ -189,6 +197,53 @@ export async function createCustomerOrderFulfillmentIntent(tx: FulfillmentDb, in
 
 export const clearCustomerOrderRenderLease = { renderLeaseOwnerId: null, renderLeaseTokenHash: null, renderLeaseExpiresAt: null }
 export const CUSTOMER_ORDER_MAX_RENDER_ATTEMPTS = 3
+export const FRONT_UNPAID_SUPERSEDED_BY_PAYMENT = 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT'
+
+/** Caller holds the order lock (including the payment UPDATE). Never touches a created job. */
+export async function supersedeCustomerOrderUnpaidIntent(tx: FulfillmentDb, order: { tenantId: string; storeId: string; orderNo: string }, now = new Date()): Promise<CustomerOrderPrintResult> {
+  const current = await intentModel(tx).findUnique({ where: { tenantId_storeId_orderNo_purpose: {
+    tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, purpose: 'FRONT_UNPAID',
+  } } })
+  const receipt = () => customerOrderPrintReceipt(tx, order, 'FRONT', 'FRONT_UNPAID')
+  if (!current || current.printJobId || current.state === 'CANCELLED' || current.state === 'NOT_REQUIRED') return receipt()
+  // An association gap is not proof that no task exists. Preserve uncertainty.
+  const existing = await tx.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: {
+    tenantId: order.tenantId, storeId: order.storeId, idempotencyKey: current.idempotencyKey,
+  } } })
+  if (existing) {
+    let verified = false
+    try {
+      verified = Boolean(current.sealedAt && current.rendererVersion === current.renderProfileId
+        && existingJobMatchesIntent(existing, current, customerOrderEnvelopeFromSeal(customerOrderSnapshot(current), current.role, current)))
+    } catch { /* A missing or inconsistent seal cannot establish content identity. */ }
+    if (verified && ['PENDING', 'RENDER_PENDING', 'FAILED_RETRYABLE', 'ENQUEUED'].includes(current.state)) {
+      const linked = await intentModel(tx).updateMany({ where: { id: current.id, revision: current.revision, printJobId: null, state: current.state },
+        data: { ...clearCustomerOrderRenderLease, printJobId: existing.id, state: 'ENQUEUED', nextAttemptAt: current.deadlineAt, revision: { increment: 1 } } })
+      return linked.count === 1 ? { status: 'ALREADY_PRESENT', created: false, printJobId: existing.id } : receipt()
+    }
+    const reason = verified ? 'CUSTOMER_ORDER_EXISTING_JOB_REQUIRES_REVIEW' : 'CUSTOMER_ORDER_EXISTING_JOB_IDENTITY_MISMATCH'
+    const reviewed = await intentModel(tx).updateMany({ where: { id: current.id, revision: current.revision, printJobId: null, state: current.state },
+      data: { ...clearCustomerOrderRenderLease, state: 'MANUAL_REVIEW', manualReviewReason: current.manualReviewReason ?? reason,
+        lastErrorCode: reason, lastErrorAt: now, revision: { increment: 1 } } })
+    return reviewed.count === 1 ? { status: 'MANUAL_REVIEW', created: false, printJobId: null, error: reason } : receipt()
+  }
+  const changed = await intentModel(tx).updateMany({ where: {
+    id: current.id, revision: current.revision,
+    tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo,
+    source: CUSTOMER_ORDER_SOURCE, purpose: 'FRONT_UNPAID', role: 'FRONT', printJobId: null,
+    state: { in: ['PENDING', 'RENDER_PENDING', 'FAILED_RETRYABLE', 'EXPIRED', 'MANUAL_REVIEW'] },
+  }, data: { ...clearCustomerOrderRenderLease, state: 'NOT_REQUIRED', decision: 'NOT_REQUIRED',
+    lastErrorCode: FRONT_UNPAID_SUPERSEDED_BY_PAYMENT, lastErrorAt: now, nextAttemptAt: now, revision: { increment: 1 } } })
+  return changed.count === 1 ? { status: 'NOT_REQUIRED', created: false, printJobId: null, error: FRONT_UNPAID_SUPERSEDED_BY_PAYMENT } : receipt()
+}
+
+export function customerOrderIntentBusinessValid(order: any, intent: any): boolean {
+  if (!order || order.status === 'CANCELLED') return false
+  const purpose = customerOrderTicketPurpose(intent.role, intent.purpose)
+  if (purpose === 'KITCHEN_MAKE') return ['CONFIRMED', 'COMPLETED'].includes(order.status)
+  if (purpose === 'FRONT_UNPAID') return ['CONFIRMED', 'COMPLETED'].includes(order.status) && order.paymentStatus === 'UNPAID'
+  return order.paymentStatus === 'PAID' && Boolean(order.paidAt && intent.paidAt && order.paidAt.getTime() === intent.paidAt.getTime())
+}
 
 function failureData(intent: any, now: Date, code: string, state: CustomerOrderFulfillmentState = 'FAILED_RETRYABLE') {
   return {
@@ -286,6 +341,9 @@ async function createJobForSealedIntent(db: FulfillmentDb, intentId: string, run
       return { status: 'EXPIRED', created: false, printJobId: intent.printJobId, error: 'CUSTOMER_ORDER_FULFILLMENT_DEADLINE_EXPIRED' }
     }
     const order = await tx.customerOrder.findFirst({ where: { tenantId: intent.tenantId, storeId: intent.storeId, orderNo: intent.orderNo } })
+    if (intent.purpose === 'FRONT_UNPAID' && order?.paymentStatus === 'PAID') {
+      return supersedeCustomerOrderUnpaidIntent(tx, intent, now)
+    }
     const controlPlane = await tx.v3PrintControlPlane?.findUnique({ where: { storeId: intent.storeId }, select: { tenantId: true, mode: true } })
     if (!controlPlane || controlPlane.tenantId !== intent.tenantId || controlPlane.mode !== 'V3_ACTIVE') {
       await model.updateMany({ where: { id: intent.id, printJobId: null, revision: intent.revision }, data: { state: 'RENDER_PENDING', lastErrorCode: 'CUSTOMER_ORDER_V3_NOT_ACTIVE', lastErrorAt: now, nextAttemptAt: nextCustomerOrderAttemptAt(Math.max(1, intent.attemptCount), now, intent.deadlineAt), revision: { increment: 1 } } })
@@ -295,7 +353,7 @@ async function createJobForSealedIntent(db: FulfillmentDb, intentId: string, run
       await model.updateMany({ where: { id: intent.id, printJobId: null, revision: intent.revision }, data: { state: 'RENDER_PENDING', lastErrorCode: 'CUSTOMER_ORDER_RENDERER_NOT_RELEASED', lastErrorAt: now, nextAttemptAt: nextCustomerOrderAttemptAt(Math.max(1, intent.attemptCount), now, intent.deadlineAt), revision: { increment: 1 } } })
       return { status: 'NOT_READY', created: false, printJobId: null, error: 'CUSTOMER_ORDER_RENDERER_NOT_RELEASED' }
     }
-    if (!order || (intent.role === 'KITCHEN' && order.status !== 'CONFIRMED') || (intent.role === 'FRONT' && (order.paymentStatus !== 'PAID' || order.status === 'CANCELLED'))) {
+    if (!customerOrderIntentBusinessValid(order, intent)) {
       await model.updateMany({ where: { id: intent.id, printJobId: null, revision: intent.revision }, data: { state: 'MANUAL_REVIEW', manualReviewReason: 'CUSTOMER_ORDER_STATE_CHANGED_BEFORE_JOB_CREATE', lastErrorAt: now, revision: { increment: 1 } } })
       return { status: 'MANUAL_REVIEW', created: false, printJobId: intent.printJobId, error: 'CUSTOMER_ORDER_STATE_CHANGED_BEFORE_JOB_CREATE' }
     }
@@ -385,12 +443,16 @@ export async function processCustomerOrderFulfillmentIntent(db: FulfillmentDb, i
 
 /** Read-only response after a business commit. Failure is receipt evidence,
  * never a reason to turn an already committed payment into an HTTP 500. */
-export async function customerOrderPrintReceipt(db: FulfillmentDb, scope: { tenantId: string; storeId: string; orderNo: string }, role: IntentRole): Promise<CustomerOrderPrintResult> {
+export async function customerOrderPrintReceipt(db: FulfillmentDb, scope: { tenantId: string; storeId: string; orderNo: string; purpose?: CustomerOrderTicketPurpose }, role: IntentRole, purpose = customerOrderTicketPurpose(role, scope.purpose)): Promise<CustomerOrderPrintResult> {
   try {
-    const i = await intentModel(db).findUnique({ where: { tenantId_storeId_orderNo_role: {
-      tenantId: scope.tenantId, storeId: scope.storeId, orderNo: scope.orderNo, role,
+    const i = await intentModel(db).findUnique({ where: { tenantId_storeId_orderNo_purpose: {
+      tenantId: scope.tenantId, storeId: scope.storeId, orderNo: scope.orderNo, purpose,
     } } })
     if (!i || i.source !== CUSTOMER_ORDER_SOURCE) return { status: 'NOT_APPLICABLE', created: false, printJobId: null }
+    if (!i.printJobId && await db.eshopTrayPrintJob?.findUnique({ where: { tenantId_storeId_idempotencyKey: {
+      tenantId: i.tenantId, storeId: i.storeId, idempotencyKey: i.idempotencyKey,
+    } } })) return { status: 'MANUAL_REVIEW', created: false, printJobId: null, error: 'CUSTOMER_ORDER_JOB_ASSOCIATION_MISSING' }
+    if (i.state === 'CANCELLED') return { status: i.cancelResultCode === CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM ? 'NOT_REQUIRED' : 'MANUAL_REVIEW', created: false, printJobId: i.printJobId, error: i.cancelResultCode }
     if (i.printJobId) return { status: 'ALREADY_PRESENT', created: false, printJobId: i.printJobId }
     if (i.state === 'NOT_REQUIRED') return { status: 'NOT_REQUIRED', created: false, printJobId: null }
     if (i.state === 'EXPIRED') return { status: 'EXPIRED', created: false, printJobId: null }
@@ -401,8 +463,8 @@ export async function customerOrderPrintReceipt(db: FulfillmentDb, scope: { tena
 
 export async function enqueueCustomerOrderPrintJob(db: FulfillmentDb, order: CustomerOrderPrintOrder, role: CustomerOrderPrintRole, runtime?: CustomerOrderFulfillmentRuntimeOptions): Promise<CustomerOrderPrintResult> {
   const model = intentModel(db)
-  const key = { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, role }
-  let existing = await model.findUnique({ where: { tenantId_storeId_orderNo_role: key } })
+  const key = { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, purpose: customerOrderTicketPurpose(role, order.ticketPurpose) }
+  const existing = await model.findUnique({ where: { tenantId_storeId_orderNo_purpose: key } })
   if (!existing) {
     return {
       status: 'NOT_APPLICABLE',
@@ -418,30 +480,51 @@ export async function enqueueCustomerOrderKitchenPrintJob(db: FulfillmentDb, ord
   return enqueueCustomerOrderPrintJob(db, order, 'KITCHEN')
 }
 
-export async function recordCustomerOrderIntent(tx: FulfillmentDb, order: CustomerOrderPrintOrder, role: IntentRole, decision: CustomerOrderFulfillmentDecision, now: Date, paymentIntentId?: string | null) {
-  return intentModel(tx).create({ data: intentCreateData({ order, role, decision, now, paymentIntentId }) })
+export async function recordCustomerOrderIntent(tx: FulfillmentDb, order: CustomerOrderPrintOrder, role: IntentRole, decision: CustomerOrderFulfillmentDecision, now: Date, paymentIntentId?: string | null, purpose?: CustomerOrderTicketPurpose) {
+  return intentModel(tx).create({ data: intentCreateData({ order, role, decision, now, paymentIntentId, purpose }) })
 }
 
-export async function cancelCustomerOrderKitchenIntent(tx: FulfillmentDb, order: CustomerOrderPrintOrder, now = new Date()) {
+export async function cancelCustomerOrderKitchenIntent(tx: FulfillmentDb, order: CustomerOrderPrintOrder, now = new Date(), purpose: 'KITCHEN_MAKE' | 'FRONT_UNPAID' = 'KITCHEN_MAKE') {
   const model = intentModel(tx)
   await lockCustomerOrder(tx, { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo })
-  const intent = await model.findUnique({ where: { tenantId_storeId_orderNo_role: { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, role: 'KITCHEN' } } })
+  const role = purpose === 'KITCHEN_MAKE' ? 'KITCHEN' : 'FRONT'
+  const reviewCode = purpose === 'KITCHEN_MAKE' ? 'KITCHEN_TASK_REQUIRES_MANUAL_VERIFICATION' : 'FRONT_UNPAID_TASK_REQUIRES_MANUAL_VERIFICATION'
+  const intent = await model.findUnique({ where: { tenantId_storeId_orderNo_purpose: { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, purpose } } })
   if (!intent || intent.source !== CUSTOMER_ORDER_SOURCE) return { kind: 'NOT_APPLICABLE' as const }
+  let jobId = intent.printJobId
+  let associationMismatch = false
+  if (!jobId) {
+    const existing = await tx.eshopTrayPrintJob?.findUnique({ where: { tenantId_storeId_idempotencyKey: {
+      tenantId: order.tenantId, storeId: order.storeId, idempotencyKey: intent.idempotencyKey,
+    } } })
+    if (existing) {
+      try {
+        if (intent.sealedAt && intent.rendererVersion === intent.renderProfileId
+          && existingJobMatchesIntent(existing, intent, customerOrderEnvelopeFromSeal(customerOrderSnapshot(intent), role, intent))) jobId = existing.id
+        else associationMismatch = true
+      } catch { associationMismatch = true }
+    }
+  }
+  // A terminal orphan is evidence to review, not permission to rewrite a job.
+  if ((jobId && !intent.printJobId || associationMismatch) && ['CANCELLED', 'NOT_REQUIRED', 'EXPIRED', 'MANUAL_REVIEW'].includes(intent.state)) {
+    return { kind: 'CANCELLED' as const, code: reviewCode }
+  }
   if (intent.state === 'CANCELLED') return { kind: 'CANCELLED' as const, code: intent.cancelResultCode }
   if (intent.state === 'NOT_REQUIRED') return { kind: 'CANCELLED' as const, code: 'NOT_REQUIRED' }
   if (intent.state === 'EXPIRED') return { kind: 'CANCELLED' as const, code: 'CUSTOMER_ORDER_FULFILLMENT_DEADLINE_EXPIRED' }
   if (intent.state === 'MANUAL_REVIEW') {
-    return { kind: 'CANCELLED' as const, code: intent.manualReviewReason ?? 'KITCHEN_TASK_REQUIRES_MANUAL_VERIFICATION' }
+    return { kind: 'CANCELLED' as const, code: intent.manualReviewReason ?? reviewCode }
   }
-  let code = CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM
-  if (intent.printJobId) {
+  let code = associationMismatch ? reviewCode : CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM
+  if (jobId && !associationMismatch) {
     const cancelled = await cancelPendingV3PrintIntent(tx as any, {
       tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo,
-      role: 'KITCHEN', jobId: intent.printJobId, idempotencyKey: intent.idempotencyKey, schemaVersion: intent.schemaVersion, now, inTransaction: true,
+      role, jobId, idempotencyKey: intent.idempotencyKey, schemaVersion: intent.schemaVersion, now, inTransaction: true,
     })
     code = cancelled.ok ? CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM : cancelled.code
   }
-  const reprints = tx.eshopTrayPrintJob?.findMany
+  // Unpaid FRONT has no reprint protocol; never cancel paid FRONT reprints here.
+  const reprints = purpose === 'KITCHEN_MAKE' && tx.eshopTrayPrintJob?.findMany
     ? await cancelUnclaimedV3PrintReprints(tx as any, {
         tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, role: 'KITCHEN', schemaVersion: intent.schemaVersion, now, inTransaction: true,
       })
@@ -451,8 +534,9 @@ export async function cancelCustomerOrderKitchenIntent(tx: FulfillmentDb, order:
     id: intent.id, source: CUSTOMER_ORDER_SOURCE, state: { in: ['PENDING', 'RENDER_PENDING', 'FAILED_RETRYABLE', 'ENQUEUED'] },
     revision: intent.revision,
   }, data: {
+    ...(jobId && !associationMismatch ? { printJobId: jobId } : {}),
     ...clearCustomerOrderRenderLease, state: 'CANCELLED', cancelResultCode: code,
-    manualReviewReason: code === CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM ? null : 'KITCHEN_TASK_REQUIRES_MANUAL_VERIFICATION',
+    manualReviewReason: code === CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM ? null : reviewCode,
     nextAttemptAt: now, lastErrorCode: code, lastErrorAt: now, revision: { increment: 1 },
   } })
   if (updated.count !== 1) {
