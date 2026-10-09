@@ -1243,6 +1243,12 @@ enum CustomerOrderFulfillmentRole {
   FRONT
 }
 
+enum CustomerOrderFulfillmentPurpose {
+  KITCHEN_MAKE
+  FRONT_UNPAID
+  FRONT_PAID
+}
+
 enum CustomerOrderFulfillmentDecision {
   REQUIRED
   NOT_REQUIRED
@@ -1269,6 +1275,7 @@ model CustomerOrderFulfillmentIntent {
   storeId               String
   orderNo               String
   role                  CustomerOrderFulfillmentRole
+  purpose               CustomerOrderFulfillmentPurpose
   source                String                           @default("H5_HOME") @db.VarChar(32)
   schemaVersion         Int                              @default(3)
   decision              CustomerOrderFulfillmentDecision
@@ -1304,7 +1311,7 @@ model CustomerOrderFulfillmentIntent {
   createdAt             DateTime                         @default(now())
   updatedAt             DateTime                         @updatedAt
 
-  @@unique([tenantId, storeId, orderNo, role], map: "CustomerOrderFulfillmentIntent_scope_role_key")
+  @@unique([tenantId, storeId, orderNo, purpose], map: "CustomerOrderFulfillmentIntent_scope_purpose_key")
   @@index([tenantId, storeId, state, nextAttemptAt, id], map: "CustomerOrderFulfillmentIntent_recovery_idx")
   @@index([source, state, nextAttemptAt, id], map: "CustomerOrderFulfillmentIntent_source_recovery_idx")
   @@index([tenantId, storeId, source, lastRecoverySweepAt, id], map: "CustomerOrderFulfillmentIntent_sweep_idx")

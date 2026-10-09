@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getContext } from '@/lib/context'
-import { CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM, customerOrderJobEvidence, customerOrderPrintJobId } from '@/lib/customer-order-fulfillment'
+import { CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM, customerOrderJobEvidence } from '@/lib/customer-order-fulfillment'
 
 const ORDER_SELECT = {
   id: true,
@@ -9,6 +9,7 @@ const ORDER_SELECT = {
   storeCode: true,
   customerTelegramId: true,
   tableNo: true,
+  remark: true,
   itemsJson: true,
   totalAmount: true,
   status: true,
@@ -24,86 +25,40 @@ const ORDER_SELECT = {
   storeId: true,
 } as const
 
-type FulfillmentEvidence = {
-  kitchen: 'QUEUED' | 'NOT_READY' | 'RETRYING' | 'RESULT_UNKNOWN' | 'EXECUTION_REPORTED' | 'FAILED' | 'NOT_REQUIRED' | 'REVIEW_REQUIRED' | 'EXPIRED' | 'NOT_APPLICABLE' | 'PROCESSING'
-  front: 'QUEUED' | 'NOT_READY' | 'RETRYING' | 'RESULT_UNKNOWN' | 'EXECUTION_REPORTED' | 'FAILED' | 'NOT_REQUIRED' | 'REVIEW_REQUIRED' | 'EXPIRED' | 'NOT_APPLICABLE' | 'PROCESSING'
-}
+type Evidence = ReturnType<typeof customerOrderJobEvidence>
+type FulfillmentEvidence = { kitchen: Evidence; front: Evidence; frontUnpaid: Evidence }
 
 async function buildFulfillmentEvidence(orders: Array<any>): Promise<Map<string, FulfillmentEvidence>> {
-  if (orders.length === 0) return new Map()
-  const ids = orders.flatMap((order) => {
-    const base = { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo }
-    try { return [customerOrderPrintJobId(base, 'KITCHEN'), customerOrderPrintJobId(base, 'FRONT')] } catch { return [] }
-  })
-  const intents = await prisma.customerOrderFulfillmentIntent.findMany({
-    where: {
-      source: 'H5_HOME',
-      OR: orders.map((order) => ({ tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo })),
-    },
-    select: {
-      tenantId: true, storeId: true, orderNo: true, role: true, decision: true, state: true,
-      printJobId: true, cancelResultCode: true, renderLeaseExpiresAt: true, lastErrorCode: true,
-    },
-  })
-  const jobIds = [...new Set(intents.map((intent) => intent.printJobId).filter(Boolean) as string[])]
-  const jobs = await prisma.eshopTrayPrintJob.findMany({
-    where: { OR: [{ idempotencyKey: { in: ids } }, ...(jobIds.length ? [{ id: { in: jobIds } }] : [])], tenantId: { in: [...new Set(orders.map((order) => order.tenantId))] } },
-    select: { id: true, tenantId: true, storeId: true, idempotencyKey: true, status: true, resultStatus: true, claimTokenHash: true, expiresAt: true, completedAt: true, effectBoundary: true },
-  })
-  const jobMap = new Map(jobs.flatMap((job) => [
-    [`${job.tenantId}:${job.storeId}:key:${job.idempotencyKey}`, job] as const,
-    [`${job.tenantId}:${job.storeId}:id:${job.id}`, job] as const,
-  ]))
-  const intentMap = new Map(intents.map((intent) => [`${intent.tenantId}:${intent.storeId}:${intent.orderNo}:${intent.role}`, intent]))
-  const evidence = new Map<string, FulfillmentEvidence>()
-  for (const order of orders) {
-    let kitchen: FulfillmentEvidence['kitchen'] = 'NOT_APPLICABLE'
-    let front: FulfillmentEvidence['front'] = 'NOT_APPLICABLE'
-    const job = (role: 'KITCHEN' | 'FRONT') => {
-      try {
-        const intent = role === 'KITCHEN' ? kitchenIntent : frontIntent
-        return (intent?.printJobId ? jobMap.get(`${order.tenantId}:${order.storeId}:id:${intent.printJobId}`) : null)
-          ?? jobMap.get(`${order.tenantId}:${order.storeId}:key:${customerOrderPrintJobId(order, role)}`)
-          ?? null
-      } catch { return null }
-    }
-    const kitchenIntent = intentMap.get(`${order.tenantId}:${order.storeId}:${order.orderNo}:KITCHEN`)
-    const frontIntent = intentMap.get(`${order.tenantId}:${order.storeId}:${order.orderNo}:FRONT`)
-    if (!kitchenIntent) {
-      kitchen = 'NOT_APPLICABLE'
-    } else if (kitchenIntent.decision === 'NOT_REQUIRED' || kitchenIntent.state === 'NOT_REQUIRED') {
-      kitchen = 'NOT_REQUIRED'
-    } else if (kitchenIntent?.state === 'CANCELLED' && kitchenIntent.cancelResultCode === CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM) {
-      kitchen = 'NOT_REQUIRED'
-    } else if (kitchenIntent?.printJobId) {
-      kitchen = customerOrderJobEvidence(job('KITCHEN'))
-    } else if (kitchenIntent.state === 'MANUAL_REVIEW') {
-      kitchen = 'REVIEW_REQUIRED'
-    } else if (kitchenIntent.state === 'EXPIRED') {
-      kitchen = 'EXPIRED'
-    } else if (kitchenIntent.state === 'FAILED_RETRYABLE') {
-      kitchen = 'RETRYING'
-    } else if (kitchenIntent.state === 'CANCELLED') {
-      kitchen = 'REVIEW_REQUIRED'
-    } else {
-      kitchen = kitchenIntent.renderLeaseExpiresAt && kitchenIntent.renderLeaseExpiresAt > new Date() || !kitchenIntent.lastErrorCode ? 'PROCESSING' : 'NOT_READY'
-    }
-    if (!frontIntent) front = 'NOT_APPLICABLE'
-    else if (order.paymentStatus !== 'PAID') front = 'NOT_REQUIRED'
-    else if (frontIntent.printJobId) front = customerOrderJobEvidence(job('FRONT'))
-    else if (frontIntent.state === 'MANUAL_REVIEW') front = 'REVIEW_REQUIRED'
-    else if (frontIntent.state === 'EXPIRED') front = 'EXPIRED'
-    else if (frontIntent.state === 'FAILED_RETRYABLE') front = 'RETRYING'
-    else if (frontIntent.state === 'CANCELLED') front = 'REVIEW_REQUIRED'
-    else front = frontIntent.renderLeaseExpiresAt && frontIntent.renderLeaseExpiresAt > new Date() || !frontIntent.lastErrorCode ? 'PROCESSING' : 'NOT_READY'
-    evidence.set(order.id, { kitchen, front })
+  if (!orders.length) return new Map()
+  const intents = await prisma.customerOrderFulfillmentIntent.findMany({ where: {
+    source: 'H5_HOME', OR: orders.map(o => ({ tenantId: o.tenantId, storeId: o.storeId, orderNo: o.orderNo })),
+  }, select: { tenantId: true, storeId: true, orderNo: true, role: true, purpose: true, decision: true, state: true,
+    printJobId: true, idempotencyKey: true, cancelResultCode: true, renderLeaseExpiresAt: true, lastErrorCode: true } })
+  const jobs = intents.length ? await prisma.eshopTrayPrintJob.findMany({ where: {
+    OR: intents.map(i => ({ tenantId: i.tenantId, storeId: i.storeId,
+      ...(i.printJobId ? { id: i.printJobId } : { idempotencyKey: i.idempotencyKey }) })),
+  }, select: { id: true, idempotencyKey: true, tenantId: true, storeId: true, status: true, resultStatus: true, claimTokenHash: true,
+    expiresAt: true, completedAt: true, effectBoundary: true } }) : []
+  const now = new Date()
+  const evidence = (o: any, purpose: 'KITCHEN_MAKE' | 'FRONT_UNPAID' | 'FRONT_PAID'): Evidence => {
+    const i = intents.find(i => i.tenantId === o.tenantId && i.storeId === o.storeId && i.orderNo === o.orderNo && i.purpose === purpose)
+    if (!i) return 'NOT_APPLICABLE'
+    if (!i.printJobId && jobs.some(j => j.tenantId === o.tenantId && j.storeId === o.storeId && j.idempotencyKey === i.idempotencyKey)) return 'REVIEW_REQUIRED'
+    if (i.decision === 'NOT_REQUIRED' || i.state === 'NOT_REQUIRED') return 'NOT_REQUIRED'
+    if (i.state === 'CANCELLED' && i.cancelResultCode === CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM) return 'NOT_REQUIRED'
+    if (i.state === 'MANUAL_REVIEW' || i.state === 'CANCELLED') return 'REVIEW_REQUIRED'
+    if (i.printJobId) return customerOrderJobEvidence(jobs.find(j => j.id === i.printJobId && j.tenantId === o.tenantId && j.storeId === o.storeId) ?? null, now)
+    if (i.state === 'EXPIRED') return 'EXPIRED'
+    if (i.state === 'FAILED_RETRYABLE') return 'RETRYING'
+    return (i.renderLeaseExpiresAt && i.renderLeaseExpiresAt > now) || !i.lastErrorCode ? 'PROCESSING' : 'NOT_READY'
   }
-  return evidence
+  // Keep the existing mobile front field paid-only; never alias unpaid to paid.
+  return new Map(orders.map(o => [o.id, { kitchen: evidence(o, 'KITCHEN_MAKE'), front: evidence(o, 'FRONT_PAID'), frontUnpaid: evidence(o, 'FRONT_UNPAID') }]))
 }
 
 function mapOrder(o: {
   id: string; orderNo: string; storeCode: string; customerTelegramId: string | null
-  tableNo: string | null
+  tableNo: string | null; remark: string | null
   itemsJson: string; totalAmount: { toNumber(): number }; status: string
   paymentStatus: string; paymentMethod: string | null; paidAt: Date | null
   sourcePlatform: string | null; campaignCode: string | null; campaignLinkId: string | null
@@ -127,6 +82,7 @@ function mapOrder(o: {
     storeCode: o.storeCode,
     customerTelegramId: o.customerTelegramId,
     tableNo: o.tableNo,
+    remark: o.remark,
     items,
     totalAmount: o.totalAmount.toNumber(),
     status: o.status,
@@ -173,6 +129,20 @@ async function buildCampaignLinkMap(orders: { campaignLinkId: string | null }[])
 export async function GET(req: NextRequest) {
   const ctx = await getContext(req)
   if (!ctx) return NextResponse.json({ error: 'MISSING_CONTEXT' }, { status: 401 })
+  const storeCode = req.nextUrl.searchParams.get('storeCode')
+  const selectedStore = storeCode ? { storeCode } : {}
+
+  // Exact selection also returns a committed paid order after a lost response.
+  // Same tenant/STAFF-store authority as the existing list; never POS identity.
+  const id = req.nextUrl.searchParams.get('id')
+  if (id) {
+    const order = await prisma.customerOrder.findFirst({ where: {
+      id, tenantId: ctx.tenantId, ...(ctx.role === 'STAFF' ? { storeId: ctx.storeId } : {}), ...selectedStore,
+    }, select: ORDER_SELECT })
+    if (!order) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+    const evidence = await buildFulfillmentEvidence([order])
+    return NextResponse.json({ ...mapOrder(order), fulfillment: evidence.get(order.id) })
+  }
 
   // ── 模式 B：已付款订单（用于概览 + 最近记录） ─────────────────────────────
   const paymentStatusParam = req.nextUrl.searchParams.get('paymentStatus')
@@ -184,6 +154,7 @@ export async function GET(req: NextRequest) {
       ...(ctx.role === 'STAFF' ? { storeId: ctx.storeId } : {}),
       status: 'COMPLETED',
       paymentStatus: 'PAID',
+      ...selectedStore,
     }
     if (dateFromParam) {
       where.paidAt = {
@@ -211,8 +182,8 @@ export async function GET(req: NextRequest) {
   // COMPLETED 状态只返回未付款的，已付款订单不再需要操作
   const includesCompleted = statuses.includes('COMPLETED')
   const scope = ctx.role === 'STAFF'
-    ? { tenantId: ctx.tenantId, storeId: ctx.storeId }
-    : { tenantId: ctx.tenantId }
+    ? { tenantId: ctx.tenantId, storeId: ctx.storeId, ...selectedStore }
+    : { tenantId: ctx.tenantId, ...selectedStore }
   const where = includesCompleted
     ? {
         ...scope,

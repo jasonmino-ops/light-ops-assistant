@@ -454,10 +454,11 @@ async function main() {
     // 7d4892b0aee5e2f3b203e7d11ec4c356ec137b15; its CLOSED record is provenance,
     // not permission for new Cashier edits. Historical SHA-256:
     // fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9.
-    // Fixed successor: docs/change-gates/exceptions/ES-H5-DESKTOP-FULFILLMENT-WIRING-01.json.
+    // Fixed successor: ES-H5-THREE-TICKET-FULFILLMENT-01 exact-path package.
+    // Prior CLOSED wiring successor: 14bd645733d4cf98ee32ae09e4cc3c91ea498ad7fc1948b1db9037509ec30102.
     assert.equal(
       createHash('sha256').update(cashier).digest('hex'),
-      '14bd645733d4cf98ee32ae09e4cc3c91ea498ad7fc1948b1db9037509ec30102',
+      'a3770bb1805b15bba52868bd072e5f144dc27da580b85c2b5993a58c8f25e1d6',
     )
   })
 

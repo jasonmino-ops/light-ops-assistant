@@ -7,6 +7,7 @@ import QRCode from 'react-qr-code'
 import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import OrderDetailSheet from '@/app/components/OrderDetailSheet'
+import CheckoutSheet from '@/app/components/CheckoutSheet'
 import { apiFetch, OWNER_CTX } from '@/lib/api'
 import {
   DesktopReceiptPreview,
@@ -115,6 +116,15 @@ type CartLine = {
   productId: string | null; barcode: string; name: string; spec: string | null
   price: number; qty: number; imageUrl: string | null
   sugar?: string
+}
+
+// Separate from CartLine/SaleResult: immutable H5 facts never enter POS sales.
+type H5OrderContext = {
+  id: string; orderNo: string; storeCode: string; status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'
+  paymentStatus: 'UNPAID' | 'PAID'; paymentMethod: 'CASH' | 'QR' | null; totalAmount: number
+  tableNo: string | null; remark: string | null
+  items: Array<{ name: string; spec: string | null; sugar?: string; quantity: number; price: number; lineAmount: number }>
+  fulfillment?: { kitchen: string; frontUnpaid: string; front: string }
 }
 
 type SaleResult = {
@@ -290,7 +300,7 @@ type CashierOrderItem = {
 type CashierOrder = {
   id: string; orderNo: string; tableNo: string | null
   items: CashierOrderItem[]; totalAmount: number
-  status: 'PENDING' | 'CONFIRMED'
+  status: 'PENDING' | 'CONFIRMED' | 'COMPLETED'
   remark: string | null; createdAt: string
 }
 
@@ -1424,6 +1434,11 @@ export default function CashierPage() {
   const [sugarModal,    setSugarModal]    = useState<Product | null>(null)
   const [pendingSugar,  setPendingSugar]  = useState('50')
   const [pendingOrders, setPendingOrders] = useState<CashierOrder[]>([])
+  const [h5Order, setH5Order] = useState<H5OrderContext | null>(null)
+  const [h5Busy, setH5Busy] = useState(false)
+  const [h5Error, setH5Error] = useState('')
+  const [h5PaymentOpen, setH5PaymentOpen] = useState(false)
+  const h5ActionInFlight = useRef(false)
   const [serverPendingOrders, setServerPendingOrders] = useState<ServerPendingOrder[]>([])
   const [viewPendingOrder, setViewPendingOrder] = useState<ServerPendingOrder | null>(null)
   const [updatingId,    setUpdatingId]    = useState<string | null>(null)
@@ -1966,7 +1981,9 @@ export default function CashierPage() {
     if (!scopeKey) return Promise.resolve(false)
     return runCashierPullGuard(cashierOrdersPullGuardRef, scopeKey, async () => {
       try {
-        const response = await fetch(`/api/cashier/orders?storeCode=${encodeURIComponent(storeCode)}`, {
+        const response = isDesktopPos
+          ? await h5Fetch(`/api/customer-orders?storeCode=${encodeURIComponent(storeCode)}`)
+          : await fetch(`/api/cashier/orders?storeCode=${encodeURIComponent(storeCode)}`, {
           headers: posDeviceHeaders(storeCode),
         })
         const data = await response.json().catch(() => null)
@@ -1992,7 +2009,7 @@ export default function CashierPage() {
         return false
       }
     })
-  }, [storeCode])
+  }, [storeCode, isDesktopPos, posAccountAccess])
 
   const pullCashierPendingOrders = useCallback((): Promise<boolean> => {
     if (!storeCode) return Promise.resolve(false)
@@ -3853,15 +3870,74 @@ export default function CashierPage() {
   }
 
   // ── Order actions ──────────────────────────────────────────────────────────
-  function handleOpenH5Fulfillment() {
+  async function h5Fetch(path: string, init?: RequestInit): Promise<Response> {
+    const response = await apiFetch(path, init)
+    if (response.status !== 401 || !isDesktopPos || !storeCode || !requireOnlinePosAuthorization()) return response
+    // Reuse the existing device-authorized, store-bound web-session exchange.
+    // Permission failures are not retried and no development identity is supplied.
+    const exchange = await apiFetch('/api/pos-session/owner-web-session', {
+      method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: posDeviceHeaders(storeCode),
+    })
+    if (!exchange.ok) return response
+    return apiFetch(path, init)
+  }
+
+  async function readH5Order(id: string): Promise<H5OrderContext> {
+    if (!storeCode) throw new Error('H5_ORDER_IDENTITY_MISMATCH')
+    const res = await h5Fetch(`/api/customer-orders?id=${encodeURIComponent(id)}&storeCode=${encodeURIComponent(storeCode)}`)
+    const value = await res.json()
+    if (!res.ok) throw new Error(value.error ?? 'H5_ORDER_UNAVAILABLE')
+    if (value.id !== id || value.storeCode !== storeCode || !Array.isArray(value.items)
+      || !Number.isFinite(value.totalAmount)) throw new Error('H5_ORDER_IDENTITY_MISMATCH')
+    return value
+  }
+
+  async function handleOpenH5Fulfillment(id: string) {
     if (!isDesktopPos || !storeCode || !requireOnlinePosAuthorization()) return
-    if (cart.length > 0) {
+    if (cart.length > 0 || saleResult || submitting || h5ActionInFlight.current) {
       showToast(d.managementBlockedDesktop)
       return
     }
-    // Reuse the signed web session and the existing H5 actions. Never convert
-    // a CustomerOrder into the POS cart or use POS sales/payment/print actions.
-    router.push('/home')
+    h5ActionInFlight.current = true
+    setH5Busy(true); setH5Error('')
+    try { setH5Order(await readH5Order(id)) }
+    catch (e) { showToast(e instanceof Error ? e.message : 'H5_ORDER_UNAVAILABLE') }
+    finally { h5ActionInFlight.current = false; setH5Busy(false) }
+  }
+
+  async function patchH5Order(id: string, action: { status?: 'CONFIRMED' | 'COMPLETED'; paymentMethod?: 'CASH' | 'QR' }) {
+    const res = await h5Fetch(`/api/customer-orders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(action) })
+    const value = await res.json()
+    if (!res.ok || value.businessStatus !== 'SUCCEEDED' || value.id !== id) throw new Error(value.error ?? 'H5_ACTION_NOT_CONFIRMED')
+    return value
+  }
+
+  async function confirmH5Unpaid() {
+    if (!h5Order || h5ActionInFlight.current || !requireOnlinePosAuthorization()) return
+    h5ActionInFlight.current = true; setH5Busy(true); setH5Error('')
+    try {
+      const current = await readH5Order(h5Order.id)
+      if (current.paymentStatus !== 'UNPAID' || !['PENDING', 'CONFIRMED'].includes(current.status)) throw new Error('H5_ORDER_STATE_CHANGED')
+      await patchH5Order(current.id, { status: 'CONFIRMED' })
+      setH5Order(await readH5Order(current.id))
+    } catch (e) { setH5Error(e instanceof Error ? e.message : 'H5_ACTION_NOT_CONFIRMED') }
+    finally { h5ActionInFlight.current = false; setH5Busy(false) }
+  }
+
+  // CheckoutSheet's override owns the entire H5 payment flow. Its ordinary
+  // POS /api/orders checkout, SaleResult and local printing are never invoked.
+  async function payH5Order(method: 'CASH' | 'KHQR') {
+    if (!h5Order || h5ActionInFlight.current || !requireOnlinePosAuthorization()) throw new Error('H5_ACTION_UNAVAILABLE')
+    h5ActionInFlight.current = true; setH5Busy(true); setH5Error('')
+    try {
+      const current = await readH5Order(h5Order.id)
+      if (!['CONFIRMED', 'COMPLETED'].includes(current.status)) throw new Error('H5_ORDER_STATE_CHANGED')
+      // Existing H5 payment requires COMPLETED. This explicit completion and
+      // collection action preserves that state machine and is safe to retry.
+      if (current.status === 'CONFIRMED') await patchH5Order(current.id, { status: 'COMPLETED' })
+      await patchH5Order(current.id, { paymentMethod: method === 'KHQR' ? 'QR' : 'CASH' })
+      setH5Order(await readH5Order(current.id))
+    } finally { h5ActionInFlight.current = false; setH5Busy(false) }
   }
 
   async function handleOrderAction(id: string, newStatus: string) {
@@ -4214,7 +4290,7 @@ export default function CashierPage() {
     if (!isDesktopPos) return
     function onDesktopPaymentKey(e: KeyboardEvent) {
       if (isEditableShortcutTarget(document.activeElement)) return
-      if (saleResult || receiptPreviewOpen || sugarModal || holdNoteOpen || memberPayOpen || shiftReportOpen || shiftCloseConfirmOpen || dayCloseOpen || desktopRecordsOpen) return
+      if (h5Order || saleResult || receiptPreviewOpen || sugarModal || holdNoteOpen || memberPayOpen || shiftReportOpen || shiftCloseConfirmOpen || dayCloseOpen || desktopRecordsOpen) return
 
       if (checkoutStep === 'SELECT_PAYMENT') {
         if (e.key === 'ArrowLeft') {
@@ -4251,6 +4327,7 @@ export default function CashierPage() {
   }, [
     isDesktopPos,
     isEditableShortcutTarget,
+    h5Order,
     saleResult,
     receiptPreviewOpen,
     sugarModal,
@@ -4921,7 +4998,7 @@ export default function CashierPage() {
                 : <span style={{ fontSize: 11, color: '#9ca3af' }}>{d.pendingOrdersNone}</span>
               }
               {isDesktopPos && (
-                <button type="button" data-testid="desktop-h5-fulfillment" style={s.ocBtn} onClick={handleOpenH5Fulfillment}>
+                <button type="button" data-testid="desktop-h5-fulfillment" style={s.ocBtn} disabled={h5Busy || !pendingOrders.length} onClick={() => void handleOpenH5Fulfillment(pendingOrders[0].id)}>
                   {lang === 'en' ? 'H5 orders / Collect' : lang === 'km' ? 'ការបញ្ជាទិញ H5 / ប្រមូលប្រាក់' : 'H5接单／收款'}
                 </button>
               )}
@@ -4948,7 +5025,7 @@ export default function CashierPage() {
                         background: isPending ? '#fef3c7' : '#dbeafe',
                         color:      isPending ? '#92400e' : '#1d4ed8',
                       }}>
-                        {isPending ? (lang === 'en' ? 'Pending' : lang === 'km' ? 'រង់ចាំបញ្ជាក់' : '待确认') : (lang === 'en' ? 'Confirmed' : lang === 'km' ? 'បានបញ្ជាក់' : '已确认')}
+                        {order.status === 'COMPLETED' ? (lang === 'en' ? 'Awaiting payment' : lang === 'km' ? 'រង់ចាំបង់ប្រាក់' : '待收款') : isPending ? (lang === 'en' ? 'Pending' : lang === 'km' ? 'រង់ចាំបញ្ជាក់' : '待确认') : (lang === 'en' ? 'Confirmed' : lang === 'km' ? 'បានបញ្ជាក់' : '已确认')}
                       </span>
                       <span style={s.ocTime}>{fmtTime(order.createdAt)}</span>
                     </div>
@@ -4959,7 +5036,7 @@ export default function CashierPage() {
                     <div style={s.ocFoot}>
                       <span style={s.ocTotal}>{money(order.totalAmount)}</span>
                       {isDesktopPos && (
-                        <button type="button" style={{ ...s.ocBtn, background: ACCENT, color: '#fff' }} onClick={handleOpenH5Fulfillment}>
+                        <button type="button" disabled={h5Busy} style={{ ...s.ocBtn, background: ACCENT, color: '#fff' }} onClick={() => void handleOpenH5Fulfillment(order.id)}>
                           {lang === 'en' ? 'Open H5 order' : lang === 'km' ? 'បើកការបញ្ជាទិញ H5' : '处理H5订单'}
                         </button>
                       )}
@@ -5396,6 +5473,43 @@ export default function CashierPage() {
       )}
 
       {/* ── Store pending-payment hold detail (view only) ──────────────────── */}
+      {/* H5 uses the existing transaction surface, but never the POS result or print effect. */}
+      {isDesktopPos && h5Order && (
+        <div style={{ ...s.overlay, zIndex: 650 }}>
+          <div data-testid="h5-transaction-context" role="dialog" aria-modal="true" aria-label="H5 order" style={{ ...s.modal, width: 'min(720px, 95vw)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={s.confirmTitle}>H5 · {h5Order.orderNo}</div>
+            <div style={s.confirmSub}>{storeName} · {h5Order.tableNo ?? ''} · {h5Order.status} / {h5Order.paymentStatus}</div>
+            <div style={s.confirmList}>{h5Order.items.map((item, index) => (
+              <div key={index} style={s.confirmLine}>
+                <span style={s.confirmName}>{item.name} {item.spec} {item.sugar} × {item.quantity}</span>
+                <span style={s.confirmAmt}>{money(item.lineAmount)}</span>
+              </div>
+            ))}</div>
+            <div style={s.totalRow}><span>{lang === 'en' ? 'Frozen order total' : lang === 'km' ? 'ចំនួនសរុបការបញ្ជាទិញ' : '订单原始应付'}</span><strong style={s.totalAmt}>{money(h5Order.totalAmount)}</strong></div>
+            {h5Order.remark && <div style={s.confirmSub}>{h5Order.remark}</div>}
+            <div style={s.printHint}>
+              KITCHEN: {h5Order.fulfillment?.kitchen ?? 'NOT_APPLICABLE'} · FRONT UNPAID: {h5Order.fulfillment?.frontUnpaid ?? 'NOT_APPLICABLE'} · FRONT PAID: {h5Order.fulfillment?.front ?? 'NOT_APPLICABLE'}
+            </div>
+            {h5Error && <div role="alert" style={{ color: '#b91c1c', margin: 12 }}>{h5Error}</div>}
+            <div style={s.confirmActions}>
+              {h5Order.status === 'PENDING' && h5Order.paymentStatus === 'UNPAID' && <button type="button" style={s.submitBtn} disabled={h5Busy} onClick={() => void confirmH5Unpaid()}>
+                {lang === 'en' ? 'Accept · Unpaid / Hold' : lang === 'km' ? 'បញ្ជាក់ · មិនទាន់បង់ប្រាក់' : '确认未付款／挂账'}
+              </button>}
+              {['CONFIRMED', 'COMPLETED'].includes(h5Order.status) && h5Order.paymentStatus === 'UNPAID' && <button type="button" style={s.submitBtn} disabled={h5Busy} onClick={() => setH5PaymentOpen(true)}>
+                {lang === 'en' ? 'Complete & collect CASH / manual KHQR' : lang === 'km' ? 'បញ្ចប់ និងទទួលប្រាក់ CASH / KHQR' : '完成订单并收款 CASH／手工KHQR'}
+              </button>}
+              <button type="button" style={s.secondaryBtn} disabled={h5Busy} onClick={() => void handleOpenH5Fulfillment(h5Order.id)}>{lang === 'en' ? 'Refresh status' : lang === 'km' ? 'ធ្វើបច្ចុប្បន្នភាព' : '刷新状态'}</button>
+              <button type="button" style={s.secondaryBtn} disabled={h5Busy} onClick={() => { setH5Order(null); setH5PaymentOpen(false); setH5Error('') }}>{d.close}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isDesktopPos && h5Order && h5PaymentOpen && <CheckoutSheet
+        orderNo={h5Order.orderNo} totalAmount={h5Order.totalAmount} currencyCode={currencyCode}
+        onOverridePay={payH5Order} overrideKhqrUrl={`/api/customer-orders/${encodeURIComponent(h5Order.id)}/khqr`}
+        onSuccess={() => setH5PaymentOpen(false)} onClose={() => { if (!h5ActionInFlight.current) setH5PaymentOpen(false) }}
+      />}
+
       {viewPendingOrder && (
         <div style={s.overlay} onClick={() => setViewPendingOrder(null)}>
           <div style={s.modal} onClick={e => e.stopPropagation()}>

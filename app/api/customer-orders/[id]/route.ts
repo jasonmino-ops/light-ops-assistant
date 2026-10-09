@@ -13,6 +13,7 @@ import {
   paymentIntentMethod,
   printOrderFromCustomerOrder,
   recordCustomerOrderIntent,
+  supersedeCustomerOrderUnpaidIntent,
 } from '@/lib/customer-order-fulfillment'
 
 /**
@@ -181,7 +182,7 @@ export async function PATCH(
             && currentPi.paidAt?.getTime() === current.paidAt.getTime()
           if (!sameCommittedPayment) return { kind: 'PAYMENT_INTENT_CONFLICT' as const }
           const front = await tx.customerOrderFulfillmentIntent.findUnique({
-            where: { tenantId_storeId_orderNo_role: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, role: 'FRONT' } },
+            where: { tenantId_storeId_orderNo_purpose: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, purpose: 'FRONT_PAID' } },
           })
           if (!front) return { kind: 'PAYMENT_RECORD_MISSING' as const }
           if (front.source !== 'H5_HOME' || front.paymentIntentId !== currentPi.id) {
@@ -225,13 +226,14 @@ export async function PATCH(
             paymentMethod, itemsJson: order.itemsJson,
           })
           const existingFrontIntent = await tx.customerOrderFulfillmentIntent.findUnique({
-            where: { tenantId_storeId_orderNo_role: { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, role: 'FRONT' } },
+            where: { tenantId_storeId_orderNo_purpose: { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, purpose: 'FRONT_PAID' } },
           })
           if (!existingFrontIntent) {
             await recordCustomerOrderIntent(tx, printOrder, 'FRONT', 'REQUIRED', existingPi.paidAt, existingPi.id)
           } else if (existingFrontIntent.source !== 'H5_HOME' || existingFrontIntent.paymentIntentId !== existingPi.id) {
             return { kind: 'PAYMENT_INTENT_CONFLICT' as const }
           }
+          await supersedeCustomerOrderUnpaidIntent(tx, order, existingPi.paidAt)
           return {
             kind: 'PAID' as const,
             order: { ...order, paymentStatus: 'PAID', paymentMethod, paidAt: existingPi.paidAt },
@@ -277,6 +279,7 @@ export async function PATCH(
           totalAmount: order.totalAmount, paymentStatus: 'PAID', paymentMethod, itemsJson: order.itemsJson,
         })
         await recordCustomerOrderIntent(tx, printOrder, 'FRONT', 'REQUIRED', paidAt, paymentIntent.id)
+        await supersedeCustomerOrderUnpaidIntent(tx, order, paidAt)
         return {
           kind: 'PAID' as const,
           order: { ...order, paymentStatus: 'PAID', paymentMethod, paidAt },
@@ -339,7 +342,7 @@ export async function PATCH(
       if (order.status === newStatus) {
         const kitchenIntent = newStatus === 'CONFIRMED' || newStatus === 'CANCELLED'
           ? await tx.customerOrderFulfillmentIntent.findUnique({
-              where: { tenantId_storeId_orderNo_role: { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, role: 'KITCHEN' } },
+              where: { tenantId_storeId_orderNo_purpose: { tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, purpose: 'KITCHEN_MAKE' } },
             })
           : null
         return {
@@ -367,17 +370,17 @@ export async function PATCH(
             store,
             kitchenDecision: newStatus === 'CONFIRMED'
               ? (await tx.customerOrderFulfillmentIntent.findUnique({
-                  where: { tenantId_storeId_orderNo_role: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, role: 'KITCHEN' } },
+                  where: { tenantId_storeId_orderNo_purpose: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, purpose: 'KITCHEN_MAKE' } },
                 }))?.decision ?? null
               : null,
             kitchenIntentId: newStatus === 'CONFIRMED'
               ? (await tx.customerOrderFulfillmentIntent.findUnique({
-                  where: { tenantId_storeId_orderNo_role: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, role: 'KITCHEN' } },
+                  where: { tenantId_storeId_orderNo_purpose: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, purpose: 'KITCHEN_MAKE' } },
                 }))?.id ?? null
               : null,
             kitchenCancelCode: newStatus === 'CANCELLED'
               ? kitchenCancellationEvidence(await tx.customerOrderFulfillmentIntent.findUnique({
-                  where: { tenantId_storeId_orderNo_role: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, role: 'KITCHEN' } },
+                  where: { tenantId_storeId_orderNo_purpose: { tenantId: current.tenantId, storeId: current.storeId, orderNo: current.orderNo, purpose: 'KITCHEN_MAKE' } },
                 }))
               : null,
           }
@@ -407,8 +410,12 @@ export async function PATCH(
         kitchenDecision = customerOrderKitchenDisposition(printOrder, store.printKitchenTicket)
         const intent = await recordCustomerOrderIntent(tx, printOrder, 'KITCHEN', kitchenDecision as any, new Date())
         kitchenIntentId = intent.id
+        await recordCustomerOrderIntent(tx, printOrder, 'FRONT', 'REQUIRED', new Date(), null, 'FRONT_UNPAID')
       } else {
         const cancelled = await cancelCustomerOrderKitchenIntent(tx, printOrder, new Date())
+        // Both purposes are withdrawn in this same order transaction. FRONT
+        // unpaid cannot affect canonical paid FRONT or its reprints.
+        await cancelCustomerOrderKitchenIntent(tx, printOrder, new Date(), 'FRONT_UNPAID')
         kitchenCancelCode = cancelled.kind === 'NOT_APPLICABLE' ? 'NOT_APPLICABLE' : cancelled.code ?? null
       }
     }
@@ -456,6 +463,10 @@ export async function PATCH(
       : result.kitchenCancelCode === 'CUSTOMER_ORDER_FULFILLMENT_DEADLINE_EXPIRED'
       ? { status: 'EXPIRED', created: false, printJobId: null, error: result.kitchenCancelCode }
       : { status: 'MANUAL_REVIEW', created: false, printJobId: null, error: 'KITCHEN_TASK_REQUIRES_MANUAL_VERIFICATION' }
+    if (print.status === 'NOT_REQUIRED') {
+      const evidence = await customerOrderPrintReceipt(prisma as any, updated, 'KITCHEN')
+      if (evidence.status === 'MANUAL_REVIEW' || evidence.status === 'FAILED') print = evidence
+    }
   }
 
   // 若顾客有 Telegram ID，异步发送状态变更通知（走顾客端机器人）
@@ -493,5 +504,8 @@ export async function PATCH(
     businessStatus: 'SUCCEEDED',
     printStatus: print.status,
     printCreated: print.created,
+    // Preserve mobile's kitchen receipt; Desktop additionally displays the
+    // independently persisted unpaid FRONT receipt, including cancellation.
+    frontUnpaidPrintStatus: (await customerOrderPrintReceipt(prisma as any, updated, 'FRONT', 'FRONT_UNPAID')).status,
   })
 }

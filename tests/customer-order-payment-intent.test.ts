@@ -100,6 +100,7 @@ function fixture() {
   let storeLookupCount = 0
   let failPostCommitStoreLookup = false
   let failNextTransaction = false
+  let insideTransaction = false
   let transactionTail = Promise.resolve()
 
   const addOrder = (id: string, orderNo: string, overrides: Row = {}) => {
@@ -170,14 +171,14 @@ function fixture() {
     return row
   })
   stub('customerOrderFulfillmentIntent', 'findUnique', async ({ where }: Row) => {
-    if (failPostCommitStoreLookup && intents.size > 0) throw new Error('RECEIPT_LOOKUP_AFTER_COMMIT_FAILED')
+    if (failPostCommitStoreLookup && !insideTransaction && intents.size > 0) throw new Error('RECEIPT_LOOKUP_AFTER_COMMIT_FAILED')
     if (where.id) return [...intents.values()].find((intent) => intent.id === where.id) ?? null
-    const key = where.tenantId_storeId_orderNo_role
-    return intents.get(`${key.tenantId}:${key.storeId}:${key.orderNo}:${key.role}`) ?? null
+    const key = where.tenantId_storeId_orderNo_purpose
+    return intents.get(`${key.tenantId}:${key.storeId}:${key.orderNo}:${key.purpose}`) ?? null
   })
   stub('customerOrderFulfillmentIntent', 'create', async ({ data }: Row) => {
-    const key = `${data.tenantId}:${data.storeId}:${data.orderNo}:${data.role}`
-    if (intents.has(key)) throw new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: '7.6.0', meta: { modelName: 'CustomerOrderFulfillmentIntent', target: ['tenantId', 'storeId', 'orderNo', 'role'] } })
+    const key = `${data.tenantId}:${data.storeId}:${data.orderNo}:${data.purpose}`
+    if (intents.has(key)) throw new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: '7.6.0', meta: { modelName: 'CustomerOrderFulfillmentIntent', target: ['tenantId', 'storeId', 'orderNo', 'purpose'] } })
     const row = { id: `intent-${intents.size + 1}`, ...data }
     intents.set(key, row)
     return row
@@ -189,10 +190,12 @@ function fixture() {
     return row
   })
   stub('customerOrderFulfillmentIntent', 'updateMany', async ({ where, data }: Row) => {
-    const row = [...intents.values()].find((intent) => intent.id === where.id)
-    if (!row) return { count: 0 }
-    for (const [key, value] of Object.entries(data)) row[key] = (value as any)?.increment != null ? row[key] + (value as any).increment : value
-    return { count: 1 }
+    const rows = [...intents.values()].filter(intent => Object.entries(where).every(([key, value]: [string, any]) => {
+      if (value?.in) return value.in.includes(intent[key])
+      return (intent[key] ?? null) === value
+    }))
+    for (const row of rows) for (const [key, value] of Object.entries(data)) row[key] = (value as any)?.increment != null ? row[key] + (value as any).increment : value
+    return { count: rows.length }
   })
   stub('v3PrintControlPlane', 'findUnique', async () => controlPlaneMode ? { tenantId: 'tenant-a', mode: controlPlaneMode } : null)
   stub('eshopTrayPrintJob', 'create', async ({ data }: Row) => {
@@ -219,7 +222,10 @@ function fixture() {
       failNextTransaction = false
       return Promise.reject(new Error('TRANSACTION_FAILED_BEFORE_COMMIT'))
     }
-    const run = transactionTail.then(() => operation(db))
+    const run = transactionTail.then(async () => {
+      insideTransaction = true
+      try { return await operation(db) } finally { insideTransaction = false }
+    })
     transactionTail = run.then(() => undefined, () => undefined)
     return run
   }
@@ -251,7 +257,8 @@ test('H5 route confirms once, records payment separately, and never reprints kit
     const repeatedConfirmation = await patchOrder('order-a', { status: 'CONFIRMED' })
     assert.equal(repeatedConfirmation.status, 200)
     assert.equal((await repeatedConfirmation.json()).printStatus, 'PROCESSING')
-    assert.equal(f.intents.size, 1)
+    assert.equal(f.intents.size, 2)
+    assert.deepEqual([...f.intents.values()].map(i => i.purpose).sort(), ['FRONT_UNPAID', 'KITCHEN_MAKE'])
     assert.equal(f.jobs.length, 0)
 
     const completed = await patchOrder('order-a', { status: 'COMPLETED' })
@@ -266,6 +273,9 @@ test('H5 route confirms once, records payment separately, and never reprints kit
     assert.equal(f.orders.get('order-a')!.paymentStatus, 'PAID')
     assert.equal(f.paymentIntents.get('H5-ORDER-A')!.paymentMethod, 'CASH')
     assert.equal(f.paymentIntents.get('H5-ORDER-A')!.transactionActorType, 'H5_CUSTOMER_ORDER')
+    assert.equal(f.intents.size, 3)
+    assert.equal(f.intents.get('tenant-a:store-a:H5-ORDER-A:FRONT_UNPAID')!.state, 'NOT_REQUIRED')
+    assert.equal(f.intents.get('tenant-a:store-a:H5-ORDER-A:FRONT_UNPAID')!.lastErrorCode, 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT')
     assert.equal(f.jobs.length, 0)
 
     const duplicate = await patchOrder('order-a', { paymentMethod: 'CASH' })
@@ -449,14 +459,14 @@ test('expired and manual-review cancellation evidence is stable across the first
   f.addOrder('order-manual-cancel', 'H5-MANUAL-CANCEL')
   try {
     await patchOrder('order-expired-cancel', { status: 'CONFIRMED' })
-    f.intents.get('tenant-a:store-a:H5-EXPIRED-CANCEL:KITCHEN')!.state = 'EXPIRED'
+    f.intents.get('tenant-a:store-a:H5-EXPIRED-CANCEL:KITCHEN_MAKE')!.state = 'EXPIRED'
     const expiredFirst = await patchOrder('order-expired-cancel', { status: 'CANCELLED' })
     const expiredRepeat = await patchOrder('order-expired-cancel', { status: 'CANCELLED' })
     assert.equal((await expiredFirst.json()).printStatus, 'EXPIRED')
     assert.equal((await expiredRepeat.json()).printStatus, 'EXPIRED')
 
     await patchOrder('order-manual-cancel', { status: 'CONFIRMED' })
-    const manualIntent = f.intents.get('tenant-a:store-a:H5-MANUAL-CANCEL:KITCHEN')!
+    const manualIntent = f.intents.get('tenant-a:store-a:H5-MANUAL-CANCEL:KITCHEN_MAKE')!
     manualIntent.state = 'MANUAL_REVIEW'
     manualIntent.manualReviewReason = 'CUSTOMER_ORDER_KITCHEN_ROUTE_MARKER_MISSING'
     const manualFirst = await patchOrder('order-manual-cancel', { status: 'CANCELLED' })
@@ -538,7 +548,7 @@ test('cancelling an unclaimed H5 kitchen intent marks it terminal and remains id
     const body = await cancelled.json()
     assert.equal(cancelled.status, 200)
     assert.equal(body.printStatus, 'NOT_REQUIRED')
-    assert.equal(f.intents.get('tenant-a:store-a:H5-ORDER-A:KITCHEN')!.state, 'CANCELLED')
+    assert.equal(f.intents.get('tenant-a:store-a:H5-ORDER-A:KITCHEN_MAKE')!.state, 'CANCELLED')
     assert.equal(f.jobs.length, 0)
     const repeated = await patchOrder('order-a', { status: 'CANCELLED' })
     assert.equal(repeated.status, 200)
@@ -546,7 +556,7 @@ test('cancelling an unclaimed H5 kitchen intent marks it terminal and remains id
 
     // A persisted claimed/unknown result must survive a duplicate CANCELLED
     // request; it must not be downgraded to "no kitchen print".
-    const kitchenIntent = f.intents.get('tenant-a:store-a:H5-ORDER-A:KITCHEN')!
+    const kitchenIntent = f.intents.get('tenant-a:store-a:H5-ORDER-A:KITCHEN_MAKE')!
     kitchenIntent.cancelResultCode = 'KITCHEN_TASK_REQUIRES_MANUAL_VERIFICATION'
     kitchenIntent.manualReviewReason = 'KITCHEN_TASK_REQUIRES_MANUAL_VERIFICATION'
     f.orders.get('order-a')!.status = 'CANCELLED'

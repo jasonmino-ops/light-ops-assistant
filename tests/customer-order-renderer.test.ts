@@ -29,7 +29,7 @@ function fixture(count = 1) {
   function matches(row: any, where: any): boolean {
     return Object.entries(where).every(([key, expected]: [string, any]) => {
       if (key === 'OR') return expected.some((w: any) => matches(row, w))
-      if (key === 'tenantId_storeId_orderNo_role') return matches(row, expected)
+      if (key === 'tenantId_storeId_orderNo_purpose') return matches(row, expected)
       if (expected && typeof expected === 'object' && !(expected instanceof Date)) {
         if ('in' in expected) return expected.in.includes(row[key])
         if ('lte' in expected) return row[key] != null && row[key] <= expected.lte

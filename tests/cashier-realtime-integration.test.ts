@@ -188,6 +188,8 @@ async function main() {
     ...execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean),
   ].filter((path, index, paths) => paths.indexOf(path) === index)
   const approved = new Set([
+    // ES-H5-THREE-TICKET-FULFILLMENT-01: exact incremental migration; formal Scope remains separate.
+    'prisma/migrations/20261009090000_add_customer_order_fulfillment_purpose/migration.sql',
     // ES-H5-DESKTOP-FULFILLMENT-WIRING-01 exact successor registration.
     'app/cashier/page.tsx',
     'tests/es-tray-desktop-pos-entry.test.ts',

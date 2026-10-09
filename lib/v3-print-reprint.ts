@@ -294,11 +294,15 @@ export async function enqueueV3ManualReprintWithDb(
       if (!original || original.schemaVersion !== 3) {
         throw new V3ReprintError('V3_REPRINT_ORIGINAL_NOT_TERMINAL', 409)
       }
-      const h5Intent = request.role === 'KITCHEN' && tx.customerOrderFulfillmentIntent
+      const h5Intent = customerOrder && tx.customerOrderFulfillmentIntent
         ? await tx.customerOrderFulfillmentIntent.findUnique({
-            where: { tenantId_storeId_orderNo_role: { tenantId: scope.tenantId, storeId: scope.storeId, orderNo: request.orderNo, role: 'KITCHEN' } },
+            where: { tenantId_storeId_orderNo_purpose: { tenantId: scope.tenantId, storeId: scope.storeId, orderNo: request.orderNo,
+              purpose: request.role === 'KITCHEN' ? 'KITCHEN_MAKE' : 'FRONT_PAID' } },
           })
         : null
+      if (customerOrder && !sale && (!h5Intent || h5Intent.source !== 'H5_HOME')) {
+        throw new V3ReprintError('V3_REPRINT_H5_IDENTITY_MISMATCH', 409)
+      }
       if (h5Intent?.source === 'H5_HOME') {
         if (h5Intent.state === 'CANCELLED' || h5Intent.cancelResultCode === 'CUSTOMER_ORDER_CANCELLED_BEFORE_CLAIM') {
           throw new V3ReprintError('V3_REPRINT_CANCELLED_H5_KITCHEN_FORBIDDEN', 409)

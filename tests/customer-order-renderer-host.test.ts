@@ -17,6 +17,26 @@ function input() {
     items: [{ productId: 'p', name: '茶', spec: null, price: 2, quantity: 1, lineAmount: 2, printKitchenTicket: true }] })
   return { tenantId: 't', storeId: 's', orderNo: 'o', role: 'KITCHEN', schemaVersion: 3, snapshotJson, snapshotHash: sha(snapshotJson), profileId, deadlineAt: new Date(Date.now() + 60_000).toISOString() }
 }
+test('three ticket purposes validate strictly; legacy snapshots stay paid-FRONT or kitchen only', async () => {
+  const { validateRenderInput, ticketHtml } = await import(modulePath)
+  const base = input(), snapshot = JSON.parse(base.snapshotJson)
+  const make = (role: string, patch: any) => { const json = JSON.stringify({ ...snapshot, ...patch }); return { ...base, role, snapshotJson: json, snapshotHash: sha(json) } }
+  assert.equal(validateRenderInput(base).ticketPurpose, 'KITCHEN_MAKE')
+  const paid = make('FRONT', { paymentStatus: 'PAID', paymentMethod: 'QR', paidAt: new Date().toISOString() })
+  assert.equal(validateRenderInput(paid).ticketPurpose, 'FRONT_PAID')
+  const unpaid = make('FRONT', { ticketPurpose: 'FRONT_UNPAID' })
+  assert.equal(validateRenderInput(unpaid).ticketPurpose, 'FRONT_UNPAID')
+  const html = ticketHtml(unpaid, '')
+  assert.match(html, /FRONT 未付款订单票/); assert.match(html, /非支付凭证/)
+  assert.doesNotMatch(html, /PAID · 已收款|付款方式|Payment:/)
+  assert.throws(() => validateRenderInput(make('FRONT', {})), /PAYMENT_REQUIRED/)
+  for (const [role, purpose] of [['FRONT', 'KITCHEN_MAKE'], ['KITCHEN', 'FRONT_UNPAID'], ['KITCHEN', 'FRONT_PAID'], ['FRONT', 'OTHER']]) {
+    assert.throws(() => validateRenderInput(make(role, { ticketPurpose: purpose })), /ROLE_PURPOSE_MISMATCH/)
+  }
+  for (const patch of [{ paidAt: new Date().toISOString() }, { paymentMethod: 'CASH' }, { paymentStatus: 'PAID' }]) {
+    assert.throws(() => validateRenderInput(make('FRONT', { ticketPurpose: 'FRONT_UNPAID', ...patch })), /UNPAID_SNAPSHOT/)
+  }
+})
 test('host module rejects oversized/mutated/expired input and escapes every untrusted display field', async () => {
   const { validateRenderInput, ticketHtml } = await import(modulePath)
   const original = input()
