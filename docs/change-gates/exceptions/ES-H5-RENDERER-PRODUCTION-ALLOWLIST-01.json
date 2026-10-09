@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "taskId": "ES-H5-RENDERER-PRODUCTION-ALLOWLIST-01",
+  "featureBranch": "codex/es-h5-renderer-production-allowlist",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "cb7ffaed210bb592914e3a5742301132e44be006",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "authorizedPaths": [
+    "lib/customer-order-fulfillment-renderer.ts",
+    "tests/customer-order-renderer.test.ts"
+  ],
+  "authorizedPathSha256": {
+    "lib/customer-order-fulfillment-renderer.ts": "ff36fe58412835bd617559d040fa5743c0f4d652706aa0ff39d149e9c66eaf93",
+    "tests/customer-order-renderer.test.ts": "de956e1a30076461eeda9eda8eb6372f7de4f23a98eb7ea9f54a715b4b4095d5"
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "candidateManifestSha256": "efdc49da9389016389e49192a3d19e98f7d2ff8b06d6b9a3951675d70e52c9d0",
+  "candidateManifestSerialization": "UTF-8 without BOM; JSON.stringify(object,null,2)+LF. Top-level order version,taskId,baseOriginMainSha,featureBranch,files; files in ASCII path order; row keys path,sha256. Lowercase hex. Manifest hash recorded separately; governance excluded.",
+  "createdAt": "2026-10-09T16:27:00Z",
+  "approvedAt": "2026-10-09T16:27:00Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "Explicit MINIMAL PRODUCTION RENDERER ALLOWLIST ENABLEMENT authorization in ES-H5-ORDER-FULFILLMENT-IMPLEMENTATION-01 conversation",
+    "statement": "Only the production allowlist constant and its existing test file may change. Accept the single approved Renderer profile, reject all other production identities, preserve existing safety logic. Autonomously prepare exact-content exception, negative protection, narrow independent review, governance activation, formal Scope, feature commit and push; STOP before feature main merge.",
+    "approvedAtMeaning": "Registration time of authorization already received, not an inferred historical message timestamp."
+  },
+  "reason": "Enable exactly the Founder-approved Ubuntu ARM64 Renderer identity for a separately gated controlled Production pilot. No renderer behavior, artifact, migration, three-ticket rule, worker permission or V3 change. Effective only when this identical record exists on trusted origin/main.",
+  "approvedRendererProfileSha256": "91ba08583dadedf3d86dbf3f9662731c63ac2bc6bc8840ed5405afdec60c5198",
+  "approvedRendererArchiveSha256": "6ce9f0903e84937ac549f2c4d5a8fb17caff953504114a08158ce1b21ba1fc1b",
+  "parentCandidateManifestSha256": "1f95b0b4f3aad3fdb110428ded9a51a075c8dbda605a19a949071df5bf77cef7",
+  "knownLimitations": [
+    "Allowlist eligibility does not configure a Production worker, deploy code, apply migrations, establish a Production host or prove physical FIELD.",
+    "Approved native Renderer evidence applies to Ubuntu ARM64; no new x64 or physical printing claim.",
+    "Existing internal testProfileId injection remains limited to NODE_ENV=test and is never sourced from worker requests."
+  ],
+  "prohibitedChanges": [
+    "Any additional product/test path or candidate content drift",
+    "Second profile, wildcard, environment-driven production allowlist or weakened unknown-profile rejection",
+    "Renderer dispatch, lease, seal, snapshot, purpose, job identity, recovery, timeout, permissions or worker protocol",
+    "Other 18 parent candidate paths, four H5 migrations or schema",
+    "Renderer module, artifact manifest, archive or profile bytes",
+    "V3, Desktop Runtime, Provider/HRT, Node/Electron or packaging",
+    "Old CLOSED exceptions, gate-config.json or guard algorithms",
+    "Production migration/deployment/data, V727 operations or physical printing",
+    "Feature main merge without separate explicit Founder approval"
+  ]
+}
