@@ -6,7 +6,9 @@
   "baseOriginMainSha": "cb7ffaed210bb592914e3a5742301132e44be006",
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
+  "status": "CLOSED",
+  "closedAt": "2026-10-09T17:06:33Z",
+  "featureMergeCommitSha": "39ac32a274e39fdfcc460dba36d2a0d6634d9d18",
   "authorizedPaths": [
     "lib/customer-order-fulfillment-renderer.ts",
     "tests/customer-order-renderer.test.ts"
