@@ -58,14 +58,57 @@ function fixture(count = 1) {
     advance: (ms: number) => { clock = new Date(+clock + ms) }, mode: (next: string) => { mode = next } }
 }
 
-test('dedicated owner authentication is exact and production allowlist stays empty', () => {
-  assert.deepEqual(ALLOWED_CUSTOMER_ORDER_RENDERER_VERSIONS, [])
+test('production allowlist accepts only the exact approved profile and rejects missing or unknown identity', () => {
+  const approved = '91ba08583dadedf3d86dbf3f9662731c63ac2bc6bc8840ed5405afdec60c5198'
+  assert.deepEqual(ALLOWED_CUSTOMER_ORDER_RENDERER_VERSIONS, [approved])
+  const env = process.env as Record<string, string | undefined>
+  const previous = env.NODE_ENV
+  try {
+    env.NODE_ENV = 'production'
+    assert.equal(customerOrderRendererReleased(approved), true)
+    for (const rejected of [
+      profileId, sha('unknown-profile'), 'f'.repeat(64),
+      '6ce9f0903e84937ac549f2c4d5a8fb17caff953504114a08158ce1b21ba1fc1b', // Archive is not the profile identity.
+      approved.slice(0, -1) + '9', approved.toUpperCase(), ` ${approved}`, `${approved}\n`,
+      '*', 'wrong-profile', '', null, undefined,
+    ]) {
+      assert.equal(customerOrderRendererReleased(rejected), false, `rejected identity: ${String(rejected)}`)
+      // Internal test DI must not make any unapproved profile releasable in Production.
+      assert.equal(customerOrderRendererReleased(rejected, { testProfileId: rejected ?? undefined }), false)
+    }
+  } finally {
+    if (previous === undefined) delete env.NODE_ENV
+    else env.NODE_ENV = previous
+  }
+})
+
+test('dedicated owner authentication remains exact', () => {
   assert.equal(customerOrderRendererReleased(profileId), false)
   assert.deepEqual(configuredRenderWorker(JSON.stringify(worker)), worker)
   assert.equal(configuredRenderWorker(JSON.stringify({ ...worker, allStores: true })), null)
   assert.equal(authenticateRenderWorker(`Bearer ${credential}`, worker), worker)
   assert.equal(authenticateRenderWorker(`Bearer ${'b'.repeat(43)}`, worker), null)
   assert.equal(authenticateRenderWorker('DEV', worker), null)
+})
+
+test('approved profile claims and seals without test release while an unknown worker remains unreleased', async () => {
+  const approved = '91ba08583dadedf3d86dbf3f9662731c63ac2bc6bc8840ed5405afdec60c5198'
+  const f = fixture(), approvedWorker = { ...worker, profileId: approved }
+  const runtime = { now: f.runtime.now } // No testProfileId release injection.
+  const first = await claimCustomerOrderRender(f.db, approvedWorker, runtime)
+  assert.equal(first.kind, 'CLAIMED')
+  const reply = { ...first.claim, ...output, rendererVersion: approved }
+  assert.equal((await sealCustomerOrderRender(f.db, { ...approvedWorker, storeId: 'foreign' }, reply, runtime)).kind, 'NOT_FOUND')
+  assert.equal((await sealCustomerOrderRender(f.db, approvedWorker, { ...reply, profileId }, runtime)).kind, 'INVALID')
+  assert.equal(f.rows[0].sealedAt, null)
+  assert.equal((await sealCustomerOrderRender(f.db, approvedWorker, reply, runtime)).kind, 'SEALED')
+  assert.equal((await sealCustomerOrderRender(f.db, approvedWorker, reply, runtime)).kind, 'ALREADY_SEALED')
+  assert.equal(f.rows[0].printJobId, null)
+  const blocked = fixture()
+  assert.equal((await claimCustomerOrderRender(blocked.db, worker, { now: blocked.runtime.now })).kind, 'IDLE')
+  assert.equal(blocked.rows[0].renderAttemptCount, 0)
+  assert.equal(blocked.rows[0].sealedAt, null)
+  assert.equal(blocked.rows[0].printJobId, null)
 })
 
 test('claim reserves one owner slot; immutable result seals once; no job before T3', async () => {

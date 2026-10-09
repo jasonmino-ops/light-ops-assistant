@@ -9,10 +9,11 @@ import { canonicalV3PrintEffectKey } from './v3-print-identity'
  * Linux shaping and physical-device compatibility remain a separate Gate.
  */
 export const CUSTOMER_ORDER_RENDERER_VERSION = 'h5-order-raw-text-v1'
-// Production allowlist is intentionally empty until the independent
-// Linux/CJK/Khmer/device Renderer Gate is closed. Test fixtures must not add
-// versions here.
-export const ALLOWED_CUSTOMER_ORDER_RENDERER_VERSIONS: readonly string[] = []
+// Founder-approved Ubuntu ARM64 profile for the controlled Production pilot.
+// Physical FIELD remains a separate Gate; test fixtures must not add profiles.
+export const ALLOWED_CUSTOMER_ORDER_RENDERER_VERSIONS: readonly string[] = [
+  '91ba08583dadedf3d86dbf3f9662731c63ac2bc6bc8840ed5405afdec60c5198',
+]
 export type CustomerOrderPrintRole = 'FRONT' | 'KITCHEN'
 export type CustomerOrderTicketPurpose = 'KITCHEN_MAKE' | 'FRONT_UNPAID' | 'FRONT_PAID'
 
