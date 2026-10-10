@@ -26,8 +26,8 @@
   },
   "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
   "trustedRef": "origin/main",
-  "status": "ACTIVE",
-  "statusNote": "Founder-approved exact-path exception for the r4 implementation branch. Effective only after this byte-identical record is present in trusted origin/main; it authorizes only the 29 listed candidate files and closes after feature merge. Candidate design base remains 193eb3d8d88b213d797744f3ea892cfd098b8858; integration base is 1b64504979136a150a8de215f273fbfeee0fc02b.",
+  "status": "CLOSED",
+  "statusNote": "Founder-approved exact-path exception closed after the ES-DINE-IN-01 M1 feature merge. The 29 listed candidate files remain bound to their verified SHA-256 values; no further feature changes are authorized by this record.",
   "authorizedPaths": [
     ".env.example",
     "app/api/dine-in/eligibility/route.ts",
@@ -98,6 +98,8 @@
     }
   },
   "closeAfter": "FEATURE_MERGE",
+  "closedAt": "2026-10-10T19:50:14Z",
+  "featureMergeCommitSha": "cc65d46c82aafd3e91888554d5c9d4a97b1c39be",
   "candidateManifestSerialization": "UTF-8 without BOM; JSON.stringify(object,null,2)+LF. Top-level order version,taskId,baseOriginMainSha,featureBranch,files; files in ASCII path order; row keys path,sha256. Lowercase hex.",
   "createdAt": "2026-10-09T20:30:00Z",
   "approvedAt": "2026-10-10T19:36:31Z",
