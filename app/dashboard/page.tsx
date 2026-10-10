@@ -507,6 +507,16 @@ export default function DashboardPage() {
             </div>
             <span style={s.bigEntryArrow}>›</span>
           </Link>
+          {realRole === 'OWNER' && (
+            <Link href="/mino-bos/assets-check" style={s.bigEntryCard}>
+              <div style={{ ...s.bigEntryIcon, background: 'linear-gradient(135deg,#60a5fa,#2563eb)' }}>🔍</div>
+              <div style={s.bigEntryBody}>
+                <div style={s.bigEntryTitle}>Mino BOS 对接检查</div>
+                <div style={s.bigEntryDesc}>Batch 3C · 内部验收 · 只读检查</div>
+              </div>
+              <span style={s.bigEntryArrow}>›</span>
+            </Link>
+          )}
         </div>
 
         {/* 数字员工模块（只读展示，不提供启用开关） */}
