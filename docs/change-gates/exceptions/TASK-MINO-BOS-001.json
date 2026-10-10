@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "taskId": "TASK-MINO-BOS-001",
+  "featureBranch": "codex/task-mino-bos-001-external",
+  "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+  "baseOriginMainSha": "193eb3d8d88b213d797744f3ea892cfd098b8858",
+  "authorizationType": "FOUNDER_APPROVED_TASK_SCOPED_EXCEPTION",
+  "trustedRef": "origin/main",
+  "status": "ACTIVE",
+  "approvedPlanHash": "9711224879af08b7f0594dffaaaeed440bea4215992da72923db39f1b58614f7",
+  "authorizedPaths": [
+    "app/dashboard/page.tsx"
+  ],
+  "authorizedPathSha256": {
+    "app/dashboard/page.tsx": "e929b9a7bb2903d3cf1a7cc456ddbb8d22fe82831d77894057950f52818a6968"
+  },
+  "createdAt": "2026-10-10T11:55:34Z",
+  "approvedAt": "2026-10-10T11:55:34Z",
+  "approvedBy": "Founder",
+  "approvalSource": {
+    "source": "FOUNDER SEALED-CANDIDATE PREPARATION AUTHORIZATION for TASK-MINO-BOS-001",
+    "statement": "Founder authorized the exact sealed candidate preparation for app/dashboard/page.tsx only, limited to the existing OWNER-only merchant overview module area linking to /mino-bos/assets-check, with no product commit, push, merge, deploy, Production or FIELD action.",
+    "approvedPlanHash": "9711224879af08b7f0594dffaaaeed440bea4215992da72923db39f1b58614f7",
+    "trustedBaselineSha": "193eb3d8d88b213d797744f3ea892cfd098b8858",
+    "sealedCandidateSha256": "e929b9a7bb2903d3cf1a7cc456ddbb8d22fe82831d77894057950f52818a6968",
+    "sealedPatchSha256": "139f1264844517e942b24be7b5d6e60de6cba22eb4bb012f985080c394369fdb",
+    "sealedCandidateArtifact": "/private/tmp/es-shop-task-mino-bos-001-sealed-artifacts/app-dashboard.page.tsx",
+    "sealedPatchArtifact": "/private/tmp/es-shop-task-mino-bos-001-sealed-artifacts/TASK-MINO-BOS-001.dashboard.patch",
+    "approvedAtMeaning": "Registration time of the explicit Founder authorization received in the current task; not an invented historical message timestamp."
+  },
+  "closeAfter": "FEATURE_MERGE",
+  "reason": "Authorize only the sealed OWNER-only Mino BOS inspection entry in app/dashboard/page.tsx. The exact candidate file bytes are bound by PRE_COMMIT_CONTENT_SHA256. The home entry removal, feature implementation commit, merge, deployment and FIELD remain separately gated.",
+  "allowedPurposes": [
+    "Add the exact sealed OWNER-only dashboard entry linking to /mino-bos/assets-check",
+    "Reuse the existing dashboard business-module card pattern",
+    "Run the separately approved TASK-MINO-BOS-001 implementation validation against the sealed bytes"
+  ],
+  "prohibitedChanges": [
+    "Any app/dashboard/page.tsx byte drift from the sealed SHA-256",
+    "Any other app/dashboard path",
+    "app/home/page.tsx or any i18n file",
+    "Mino BOS page or API behavior",
+    "middleware, auth, database, schema, migration, payment, printing or Desktop changes",
+    "New dependencies, Scope Guard changes, wildcard or directory authorization",
+    "Product commit, push, merge, deploy, Production, FIELD VERIFIED or CLOSED claims"
+  ],
+  "expirationCondition": "Close this exception after the separately authorized feature merge by recording closedAt and featureMergeCommitSha. The CLOSED record must not authorize future changes."
+}
