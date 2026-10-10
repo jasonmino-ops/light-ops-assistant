@@ -188,6 +188,35 @@ async function main() {
     ...execFileSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean),
   ].filter((path, index, paths) => paths.indexOf(path) === index)
   const approved = new Set([
+    // ES-DINE-IN-01 M1 exact-path package; formal Scope registration remains separate.
+    // Remove these entries when the ES-DINE-IN-01 exception is closed.
+    '.env.example',
+    'app/api/orders/[orderNo]/checkout/route.ts',
+    'app/api/orders/[orderNo]/cancel/route.ts',
+    'prisma/migrations/20261010_es_dine_in_01/migration.sql',
+    'app/api/dine-in/eligibility/route.ts',
+    'app/api/dine-in/tables/route.ts',
+    'app/api/dine-in/sessions/route.ts',
+    'app/api/dine-in/sessions/[id]/route.ts',
+    'app/api/dine-in/sessions/[id]/batches/route.ts',
+    'app/api/dine-in/sessions/[id]/batches/[batchId]/renotify/route.ts',
+    'app/api/dine-in/sessions/[id]/settle/route.ts',
+    'app/api/dine-in/sessions/[id]/close/route.ts',
+    'app/api/dine-in/sessions/[id]/kitchen/claim/route.ts',
+    'app/api/dine-in/sessions/[id]/kitchen/report/route.ts',
+    'app/desktop/dine-in/page.tsx',
+    'app/desktop/dine-in/components/DiningMealBill.tsx',
+    'app/desktop/dine-in/components/DiningProductPicker.tsx',
+    'app/desktop/dine-in/components/DiningTableOverview.tsx',
+    'lib/dine-in/commands.ts',
+    'lib/dine-in/eligibility.ts',
+    'lib/dine-in/http.ts',
+    'lib/dine-in/i18n.ts',
+    'lib/dine-in/kitchen-notice.ts',
+    'lib/dine-in/ticket-renderer.ts',
+    'lib/dine-in/types.ts',
+    'tests/dine-in-m1-contract.test.ts',
+    'tests/dine-in-m1-db.test.ts',
     // ES-H5-THREE-TICKET-FULFILLMENT-01: exact incremental migration; formal Scope remains separate.
     'prisma/migrations/20261009090000_add_customer_order_fulfillment_purpose/migration.sql',
     // ES-H5-DESKTOP-FULFILLMENT-WIRING-01 exact successor registration.

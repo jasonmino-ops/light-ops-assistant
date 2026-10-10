@@ -86,6 +86,7 @@ import { formatMoney, isKhqrSupportedCurrency } from '@/lib/currency'
 import CashTenderPanel, { cashHelperQuote, type CashInputCurrency } from '@/app/components/CashTenderPanel'
 import { browserPosCustomerDisplayPath } from '@/lib/browser-pos-customer-display'
 import { isDesktopCashierPathname } from '@/lib/cashier-environment'
+import { diningText } from '@/lib/dine-in/i18n'
 import { dispatchCashierCartTotalChanged } from '@/lib/customer-display-cart-event'
 import {
   createCustomerDisplayRealtimeChannel,
@@ -1413,6 +1414,7 @@ export default function CashierPage() {
   const { lang, setLang } = useLocale()
   const workMode = useWorkMode()
   const [storeCode,     setStoreCode]     = useState<string | null>(null)
+  const [dineInEntry,   setDineInEntry]   = useState<'NEW' | 'RECOVERY' | null>(null)
   const [currencyCode,  setCurrencyCode]  = useState('USD')
   const [storeId,       setStoreId]       = useState('')
   const [noCodeError,   setNoCodeError]   = useState(false)
@@ -2029,6 +2031,28 @@ export default function CashierPage() {
       }
     })
   }, [storeCode])
+
+  // ES-DINE-IN-01: one read-only question for the entry button. It grants
+  // nothing; every dine-in endpoint runs its own gate. The button is shown when
+  // new dine-in business is allowed, or when this store still has an open bill.
+  useEffect(() => {
+    if (!isDesktopPos || !storeCode || !isOnline) {
+      setDineInEntry(null)
+      return
+    }
+    let active = true
+    fetch(`/api/dine-in/eligibility?storeCode=${encodeURIComponent(storeCode)}`, {
+      cache: 'no-store',
+      headers: posDeviceHeaders(storeCode),
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => null) as { eligible?: boolean; hasActiveMeals?: boolean } | null
+        if (!active) return
+        setDineInEntry(!response.ok || !data ? null : data.eligible === true ? 'NEW' : data.hasActiveMeals === true ? 'RECOVERY' : null)
+      })
+      .catch(() => { if (active) setDineInEntry(null) })
+    return () => { active = false }
+  }, [isDesktopPos, isOnline, storeCode])
 
   const pullCashierBoth = useCallback(async () => {
     const [ordersOk, pendingOk] = await Promise.all([
@@ -4690,6 +4714,21 @@ export default function CashierPage() {
                     {isStandalone ? d.desktopMode : d.installDesktop}
                   </button>
                 </>
+              )}
+              {isDesktopPos && dineInEntry !== null && storeCode && (
+                <button
+                  type="button"
+                  style={s.kioskBtn}
+                  onClick={() => {
+                    if (cart.length > 0 || submitting || checkoutStep !== 'SELECT_ITEMS') {
+                      showToast(diningText(lang).entryLeaveBlocked)
+                      return
+                    }
+                    router.push(`/desktop/dine-in?from=desktop&storeCode=${encodeURIComponent(storeCode)}`)
+                  }}
+                >
+                  {dineInEntry === 'NEW' ? diningText(lang).entryNew : diningText(lang).entryRecovery}
+                </button>
               )}
               <button type="button" style={s.kioskBtn} onClick={handleFullscreenClick}>
                 {isFullscreen ? d.exitFullscreen : d.enterFullscreen}

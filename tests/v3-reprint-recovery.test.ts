@@ -832,10 +832,12 @@ async function main() {
     // Cashier successor: ES-H5-THREE-TICKET-FULFILLMENT-01 exact-path package.
     // Prior CLOSED wiring successor: 14bd645733d4cf98ee32ae09e4cc3c91ea498ad7fc1948b1db9037509ec30102.
     // Historical source-routing hash: fba07fb078115b29428ddd5383bb9f27adc32b1afcdeeca04e0885be34a931a9.
+    // Prior ES-H5-THREE-TICKET-FULFILLMENT-01 bytes: a3770bb1805b15bba52868bd072e5f144dc27da580b85c2b5993a58c8f25e1d6.
+    // Cashier successor: ES-DINE-IN-01 exact-path package (one entry button and one read-only eligibility fetch).
     // Records remains on its original frozen bytes and expectation.
     assert.equal(
       createHash('sha256').update(readFileSync('app/cashier/page.tsx')).digest('hex'),
-      'a3770bb1805b15bba52868bd072e5f144dc27da580b85c2b5993a58c8f25e1d6',
+      '621fce631a93b986d86f71a8de868de5872055acf9d79e385bb2ce113ca27e94',
     )
     assert.equal(
       createHash('sha256').update(readFileSync('app/records/page.tsx')).digest('hex'),

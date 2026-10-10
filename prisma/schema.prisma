@@ -316,6 +316,8 @@ model Store {
   eshopTrayPrintJobs          EshopTrayPrintJob[]
   v3PrintControlPlane         V3PrintControlPlane?
   v3PrintExecutionBatches     V3PrintExecutionBatch[]
+  diningTables                DiningTable[]
+  diningMeals                 DiningMeal[]
   sourceApplication           StoreApplication?            @relation("StoreApplicationCreatedStore")
 
   @@unique([id, tenantId])
@@ -548,6 +550,10 @@ model SaleRecord {
   refundReason         String?
   remark               String?
 
+  /// ES-DINE-IN-01: the ORDER batch that created this row. Null for every
+  /// non-dine-in sale. Written once inside the order transaction, never rewritten.
+  diningBatchId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -563,6 +569,10 @@ model SaleRecord {
   logs            OperationLog[]
   offlineSyncMaps OfflineSaleSyncMap[]
 
+  diningBatch    DiningBatch?    @relation(fields: [diningBatchId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  diningVoidLine DiningVoidLine?
+
+  @@index([diningBatchId])
   @@index([tenantId, createdAt])
   @@index([storeId, createdAt])
   @@index([operatorUserId, createdAt])
@@ -735,6 +745,7 @@ model PaymentIntent {
   updatedAt            DateTime      @updatedAt
 
   merchantConfig MerchantPaymentConfig? @relation(fields: [merchantConfigId], references: [id])
+  diningMeal     DiningMeal?
 
   @@index([tenantId, createdAt])
   @@index([orderNo])
@@ -2128,4 +2139,165 @@ model ComputerBindingAudit {
   @@index([bindingId, createdAt])
   @@index([eventType, createdAt])
   @@index([result, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ES-DINE-IN-01 M1 — dine-in table service
+//
+// These four models hold no price, line amount, receivable or paid amount.
+// Consumption lives only in SaleRecord and payment only in PaymentIntent.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum DiningAreaKind {
+  HALL
+  ROOM
+}
+
+enum DiningMealState {
+  OPEN
+  PAID
+  CLOSED
+  VOIDED
+}
+
+enum DiningBatchKind {
+  ORDER
+  VOID
+  RENOTIFY
+}
+
+model DiningTable {
+  id        String         @id @default(cuid())
+  tenantId  String
+  storeId   String
+  name      String         @db.VarChar(40)
+  areaKind  DiningAreaKind @default(HALL)
+  isActive  Boolean        @default(true)
+  sortOrder Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  store Store        @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  meals DiningMeal[]
+
+  @@unique([tenantId, storeId, name])
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, isActive, sortOrder])
+}
+
+/// One sitting at one table. A partial unique index written in the migration
+/// (not expressible here) allows at most one OPEN/PAID meal per table.
+model DiningMeal {
+  id         String          @id @default(cuid())
+  tenantId   String
+  storeId    String
+  tableId    String
+  state      DiningMealState @default(OPEN)
+  guestCount Int
+  note       String?         @db.VarChar(200)
+  /// = recordNo of the first sale row of the first ORDER batch; shared as SaleRecord.orderNo.
+  billNo     String?
+  version    Int             @default(1)
+
+  openedByUserId    String
+  openRequestKey    String @db.VarChar(128)
+  openRequestDigest String @db.Char(64)
+
+  settleRequestKey    String? @db.VarChar(128)
+  settleRequestDigest String? @db.Char(64)
+  paymentIntentId     String? @unique
+  paidByUserId        String?
+
+  endRequestKey    String?   @db.VarChar(128)
+  endRequestDigest String?   @db.Char(64)
+  endedByUserId    String?
+  endedAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store         Store            @relation(fields: [storeId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  table         DiningTable      @relation(fields: [tableId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  paymentIntent PaymentIntent?   @relation(fields: [paymentIntentId], references: [id], onDelete: Restrict)
+  batches       DiningBatch[]
+  voidLines     DiningVoidLine[]
+
+  @@unique([tenantId, storeId, openRequestKey])
+  @@unique([tenantId, storeId, billNo])
+  @@unique([tenantId, storeId, settleRequestKey])
+  @@unique([tenantId, storeId, endRequestKey])
+  @@unique([id, tenantId, storeId])
+  @@index([tenantId, storeId, state])
+  @@index([tableId])
+}
+
+/// One immutable change inside a meal: an order, a void, or a manual kitchen re-notification.
+model DiningBatch {
+  id             String          @id @default(cuid())
+  tenantId       String
+  storeId        String
+  mealId         String
+  seq            Int
+  kind           DiningBatchKind
+  requestKey     String          @db.VarChar(128)
+  requestDigest  String          @db.Char(64)
+  operatorUserId String
+  reason         String?         @db.VarChar(200)
+  /// RENOTIFY only: the ORDER or VOID batch being re-notified, in the same meal.
+  refBatchId     String?
+
+  /// Decided at creation: whether this batch has anything the kitchen must be told.
+  noticeRequired        Boolean   @default(false)
+  /// ORDER: this batch's sale rows that go to the kitchen. VOID: the voided rows the kitchen is
+  /// told about. Immutable. Never NULL: the column is NOT NULL in the migration (Prisma has no
+  /// way to say that for a list), and an empty list is the only way to say "none".
+  kitchenLineIds        String[]  @default([])
+  noticeClaimedAt       DateTime?
+  noticeClaimedByUserId String?
+  noticeContentDigest   String?   @db.Char(64)
+  noticeWithdrawnAt     DateTime?
+  /// What the page said the print bridge returned. A hint, never execution evidence.
+  noticeReportedOutcome String?   @db.VarChar(48)
+  noticeReportedAt      DateTime?
+
+  createdAt DateTime @default(now())
+
+  meal            DiningMeal       @relation(fields: [mealId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  refBatch        DiningBatch?     @relation("DiningBatchRenotify", fields: [refBatchId, mealId], references: [id, mealId], onDelete: Restrict)
+  renotifications DiningBatch[]    @relation("DiningBatchRenotify")
+  saleRecords     SaleRecord[]
+  voidLines       DiningVoidLine[] @relation("DiningVoidLineVoidBatch")
+  voidedLines     DiningVoidLine[] @relation("DiningVoidLineOriginalBatch")
+
+  @@unique([mealId, seq])
+  @@unique([mealId, requestKey])
+  @@unique([id, tenantId, storeId])
+  @@unique([id, mealId])
+  @@index([tenantId, storeId, mealId])
+}
+
+/// One voided sale row. The sale row keeps its original diningBatchId.
+model DiningVoidLine {
+  id              String  @id @default(cuid())
+  tenantId        String
+  storeId         String
+  mealId          String
+  voidBatchId     String
+  saleRecordId    String  @unique
+  originalBatchId String
+  quantity        Decimal @db.Decimal(12, 2)
+  /// True when the row was a kitchen line and its order notice had already been
+  /// handed to a page when the void happened.
+  originalNoticeClaimed Boolean
+
+  createdAt DateTime @default(now())
+
+  meal          DiningMeal  @relation(fields: [mealId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  voidBatch     DiningBatch @relation("DiningVoidLineVoidBatch", fields: [voidBatchId, tenantId, storeId], references: [id, tenantId, storeId], onDelete: Restrict)
+  originalBatch DiningBatch @relation("DiningVoidLineOriginalBatch", fields: [originalBatchId, mealId], references: [id, mealId], onDelete: Restrict)
+  saleRecord    SaleRecord  @relation(fields: [saleRecordId], references: [id], onDelete: Restrict)
+
+  @@index([voidBatchId])
+  @@index([originalBatchId])
+  @@index([tenantId, storeId, mealId])
 }

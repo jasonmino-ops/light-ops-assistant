@@ -24,11 +24,21 @@ export async function POST(
   // Check records exist and are cancellable
   const records = await prisma.saleRecord.findMany({
     where: { orderNo, tenantId: ctx.tenantId },
-    select: { id: true, status: true, tenantId: true, storeId: true },
+    select: { id: true, status: true, tenantId: true, storeId: true, diningBatchId: true },
   })
 
   if (records.length === 0) {
     return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+  }
+
+  // A shared orderNo is not sufficient authority to cancel a dining meal.
+  // Keep ordinary DEFER orders on this legacy path, but force dining rows
+  // through the batch-aware whole-line void flow.
+  if (records.some((record) => record.diningBatchId)) {
+    return NextResponse.json(
+      { error: 'DINING_VOID_REQUIRED', message: '堂食菜品请从堂食页面整行退菜' },
+      { status: 409 },
+    )
   }
 
   const alreadyCancelled = records.every((r) => r.status === 'CANCELLED')

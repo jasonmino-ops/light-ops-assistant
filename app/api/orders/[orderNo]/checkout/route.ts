@@ -54,6 +54,16 @@ export async function POST(
     )
   }
 
+  // Dining bills share SaleRecord but must settle through the dining meal
+  // state machine. The legacy order checkout must never create a second
+  // PaymentIntent or bypass batch/void/print invariants.
+  if (records.some((record) => record.diningBatchId)) {
+    return NextResponse.json(
+      { error: 'DINING_CHECKOUT_REQUIRED', message: '堂食账单请从堂食页面整桌结账' },
+      { status: 409 },
+    )
+  }
+
   // Check PaymentIntent doesn't already exist (idempotency guard)
   const existingPi = await prisma.paymentIntent.findFirst({
     where: { orderNo, tenantId: ctx.tenantId },

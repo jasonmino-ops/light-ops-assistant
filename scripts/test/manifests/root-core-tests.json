@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
   "lane": "CORE",
-  "expectedCount": 96,
+  "expectedCount": 97,
   "tests": [
+    { "file": "tests/dine-in-m1-contract.test.ts", "lane": "CORE", "reason": "Pure kitchen-notice state, wording, ticket and request-key functions plus read-only source boundaries of the dine-in module; no database, browser or external service.", "dependencyType": "NONE", "evidence": "tests/dine-in-m1-contract.test.ts:1-40" },
     {"file":"tests/ops-release-status-auth.test.ts","lane":"CORE","reason":"Actual Ops route and signed synthetic sessions execute in process; no database or external identity provider.","dependencyType":"NONE","evidence":"tests/ops-release-status-auth.test.ts:1-51"},
     {"file":"tests/ops-release-status-static.test.cjs","lane":"CORE","reason":"Read-only repository source assertions; no external services.","dependencyType":"NONE","evidence":"tests/ops-release-status-static.test.cjs:1-77"},
     { "file": "tests/customer-order-submission.test.ts", "lane": "CORE", "reason": "Real public submission route with in-process database delegates: normalized identity, stable receipts, conflicts, rollback and post-commit notification boundaries; PostgreSQL concurrency is separately verified in the DB lane.", "dependencyType": "NONE", "evidence": "tests/customer-order-submission.test.ts:1" },

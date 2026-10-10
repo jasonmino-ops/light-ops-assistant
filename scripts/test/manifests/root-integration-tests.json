@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
   "lane": "INTEGRATION",
-  "expectedCount": 17,
+  "expectedCount": 18,
   "tests": [
+    { "file": "tests/dine-in-m1-db.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly disposable loopback PostgreSQL database named dine_in_test_* that carries the ES-DINE-IN-01 migration; exercises real routes and commands on independent connections.", "dependencyType": "POSTGRESQL", "evidence": "tests/dine-in-m1-db.test.ts:1-62" },
     { "file": "tests/customer-order-renderer-host.test.ts", "lane": "INTEGRATION", "reason": "Starts disposable Unix socket and loopback health servers with an injected renderer; no database, device, native Chromium or external service.", "dependencyType": "LOCAL_RUNTIME", "evidence": "tests/customer-order-renderer-host.test.ts:1" },
     { "file": "tests/cashier-network-print-v01.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly isolated PostgreSQL test database and test secret.", "dependencyType": "POSTGRESQL", "evidence": "tests/cashier-network-print-v01.test.ts:20-24" },
     { "file": "tests/customer-order-fulfillment-db.test.ts", "lane": "INTEGRATION", "reason": "Requires an explicitly isolated disposable PostgreSQL database initialized with the candidate migration; no shared or Production database is accepted.", "dependencyType": "POSTGRESQL", "evidence": "tests/customer-order-fulfillment-db.test.ts:1-88" },
