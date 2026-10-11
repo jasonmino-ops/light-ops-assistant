@@ -248,6 +248,42 @@
         "tests/v3-print-job-adapter.test.ts": "2dea93da46c7836be4e1bb81973056411d13d8d72f852c19fb1a23a3db22a2aa",
         "vercel.json": "eb54ee01c62b86da2b1ac33d3f7126b0340b646abc9a553ee54c4470c2add7ba"
       }
+    },
+    {
+      "authorizationId": "V3-CLAIM-CORRECTIVE-01",
+      "featureBranch": "codex/es-h5-order-fulfillment-corrective-01",
+      "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
+      "baseOriginMainSha": "a35b2e88c372f79b8ce2614306ab92f13c6a3e58",
+      "status": "ACTIVE",
+      "approvedBy": "Founder",
+      "closeAfter": "FEATURE_MERGE",
+      "reason": "Founder-authorized H5 three-ticket application correction plus V3 unsettled-claim correction. Production deploy, migration, FIELD, #0002 mutation, Renderer/Desktop/V2/Dine-in changes are not authorized. Historical CLOSED authorizations remain unchanged.",
+      "createdAt": "2026-10-11T17:43:39.000Z",
+      "approvedAt": "2026-10-11T17:43:39.000Z",
+      "authorizedPaths": [
+        "app/api/customer-orders/[id]/route.ts",
+        "lib/customer-order-fulfillment.ts",
+        "lib/customer-order-render-dispatch.ts",
+        "lib/v3-print-job-adapter.ts",
+        "tests/customer-order-fulfillment-db.test.ts",
+        "tests/customer-order-payment-intent.test.ts",
+        "tests/v3-print-job-adapter.test.ts"
+      ],
+      "authorizedPathSha256": {
+        "app/api/customer-orders/[id]/route.ts": "ae603f0635e2b5edf7826434c250831896fc28ae45b330156a13ef17b3eaaafe",
+        "lib/customer-order-fulfillment.ts": "dda3fc7f89f52190e86b5dfd13a0bbffca28d2712d5f643d07aef56cd1e43fb4",
+        "lib/customer-order-render-dispatch.ts": "27fe3d02883b2caead573666bfb4db03377869e08d32e326061df73790ed92bc",
+        "lib/v3-print-job-adapter.ts": "31542879b2703153f4985af09033e78a390feef2aae853083d25bd1a4e34ca7e",
+        "tests/customer-order-fulfillment-db.test.ts": "402fb89a8762778542bead4014bcd2e38d1e33e0871d0f09e1df7d156782062f",
+        "tests/customer-order-payment-intent.test.ts": "9cd78a89e041838f9b490c61144182b89cc3da5b60c53739dec5347033858190",
+        "tests/v3-print-job-adapter.test.ts": "dc9c48d40dab7dda30033b99999a6e149edb491587456689f5b166776f5b3f9b"
+      },
+      "candidateSha": null,
+      "candidateManifestSha256": null,
+      "supersedes": [
+        "3746f416796881a85b4142f0ca46351907ff1e70",
+        "71af466b634f26a79055afcb253652de8a9bc29e"
+      ]
     }
   ]
 }
