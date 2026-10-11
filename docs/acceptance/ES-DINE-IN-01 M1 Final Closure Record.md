@@ -11,7 +11,7 @@
 - Feature integration commit: `cc65d46c82aafd3e91888554d5c9d4a97b1c39be`
 - Mainline governance close commit: `eb2b00241d56fcc2bda3e9e2030a999ebaa5bab4`
 - Corrective fix commit: `9ca16050e42de3a1afbf97f0896041120c2f9287`
-- Current `origin/main`: `9ca16050e42de3a1afbf97f0896041120c2f9287`
+- Current `origin/main`: `3743c4b83549b3564712f77dfade2803acb3ef4a`
 - Production SHA: `9ca16050e42de3a1afbf97f0896041120c2f9287`
 - Production deployment: `dpl_AX6jzJAnrazjKUuf5cheHXiogsSa`
 - Production state: `READY / PROMOTED`
