@@ -23,7 +23,6 @@ import {
 import { DINING_ERROR_CODES, DINING_TEXT, diningErrorText, diningText, fill, noticeStatusText } from '../lib/dine-in/i18n'
 import { diningNoticeHeading, renderDiningKitchenNoticeHtml, type DiningNoticeContent } from '../lib/dine-in/ticket-renderer'
 import { DiningCommandError, money, parseMoney, requestDigest, requireRequestKey } from '../lib/dine-in/types'
-import { isDiningTrialStore } from '../lib/dine-in/eligibility'
 import { canonicalV3PrintEffectKey } from '../lib/v3-print-identity'
 
 const root = process.cwd()
@@ -118,7 +117,7 @@ test('print identity fits the existing contract slot; notices expire in thirty m
   assert.equal(DINING_NOTICE_TTL_MS, 30 * 60 * 1000)
 })
 
-test('request key, digest, money and trial list helpers', () => {
+test('request key, digest and money helpers', () => {
   assert.equal(requireRequestKey('di-0123456789'), 'di-0123456789')
   for (const bad of ['short', '', ' di-0123456789', 'has space 123', 'x'.repeat(129), null, 12345678]) {
     assert.throws(() => requireRequestKey(bad), (error: unknown) => error instanceof DiningCommandError && error.code === 'REQUEST_KEY_REQUIRED' && error.status === 400)
@@ -131,11 +130,6 @@ test('request key, digest, money and trial list helpers', () => {
   assert.equal(parseMoney('8.20')!.toFixed(2), '8.20')
   for (const bad of [8.2, '8.200', '-1.00', '1e3', '', ' 8.20', '8,20', null]) assert.equal(parseMoney(bad), null)
 
-  assert.equal(isDiningTrialStore('A', {}), false)
-  assert.equal(isDiningTrialStore('A', { DINE_IN_TRIAL_STORE_CODES: '' }), false)
-  assert.equal(isDiningTrialStore('A', { DINE_IN_TRIAL_STORE_CODES: ' B , A ,C' }), true)
-  assert.equal(isDiningTrialStore('A', { DINE_IN_TRIAL_STORE_CODES: 'AA,BA' }), false)
-  assert.equal(isDiningTrialStore('', { DINE_IN_TRIAL_STORE_CODES: ',,' }), false)
 })
 
 test('wording: three complete languages with matching placeholders', () => {
@@ -293,7 +287,7 @@ test('boundary: every handler is gated; new-business conditions apply after the 
   const eligibility = moduleSource.get('lib/dine-in/eligibility.ts')!
   assert.match(eligibility, /allowStoreCodeFallback: false/)
   const recovery = eligibility.slice(eligibility.indexOf('export async function requireRecoveryGate'), eligibility.indexOf('export function requireOwner'))
-  assert.doesNotMatch(recovery, /businessType|isDiningTrialStore|v3PrintControlPlane|isDesktopPosRequest|newBusinessBlockers/)
+  assert.doesNotMatch(recovery, /businessType|v3PrintControlPlane|isDesktopPosRequest|newBusinessBlockers/)
   assert.match(recovery, /store\.status !== 'ACTIVE'/)
 })
 

@@ -18,7 +18,6 @@ export type DiningStore = {
 export type DiningNewBusinessReason =
   | 'STORE_NOT_ACTIVE'
   | 'BUSINESS_TYPE_NOT_FOOD'
-  | 'STORE_NOT_IN_TRIAL'
   | 'V3_LOCAL_MODE_REQUIRED'
   | 'DESKTOP_REQUEST_REQUIRED'
 
@@ -28,15 +27,6 @@ export function diningScope(store: DiningStore): DiningScope {
 
 export function diningActor(authorization: DesktopPosAuthorization): DiningActor {
   return { userId: authorization.operatorUserId, role: authorization.role }
-}
-
-/** Trial list: comma-separated store codes in DINE_IN_TRIAL_STORE_CODES. Empty means nobody. */
-export function isDiningTrialStore(storeCode: string, env: Readonly<Record<string, string | undefined>> = process.env): boolean {
-  return (env.DINE_IN_TRIAL_STORE_CODES ?? '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .includes(storeCode)
 }
 
 export async function loadDiningStore(storeCode: string | null | undefined): Promise<DiningStore> {
@@ -70,7 +60,6 @@ export async function newBusinessBlockers(req: NextRequest, store: DiningStore):
   const reasons: DiningNewBusinessReason[] = []
   if (store.status !== 'ACTIVE') reasons.push('STORE_NOT_ACTIVE')
   if (store.businessType !== 'FOOD') reasons.push('BUSINESS_TYPE_NOT_FOOD')
-  if (!isDiningTrialStore(store.code)) reasons.push('STORE_NOT_IN_TRIAL')
   const controlPlane = await prisma.v3PrintControlPlane.findUnique({
     where: { storeId: store.id },
     select: { tenantId: true, mode: true },

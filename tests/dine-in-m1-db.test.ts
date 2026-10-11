@@ -1635,11 +1635,10 @@ test('routes: new-business gate versus recovery gate, condition by condition', {
   const f = await fixture(), db = admin(), r = await routes()
   const owner = r.device(f.tenantId, f.a)
   const code = f.a.code
-  const trial = (on: boolean) => { process.env.DINE_IN_TRIAL_STORE_CODES = on ? `OTHER, ${code} ,X` : 'OTHER' }
+  process.env.DINE_IN_TRIAL_STORE_CODES = 'NOT_THIS_STORE'
   const openBody = (tableId = f.tableId) => ({ tableId, guestCount: 2, requestKey: key() })
   const eligibility = async (headers = owner) => (await r.call(r.handlers.eligibility.GET, { method: 'GET', storeCode: code, headers })).body
 
-  trial(true)
   assert.deepEqual([(await eligibility()).eligible, (await eligibility()).reasons, (await eligibility()).hasActiveMeals, (await eligibility()).role, (await eligibility()).operatorSource], [true, [], false, 'OWNER', 'DEVICE'])
   const firstOpenBody = openBody()
   const opened = await r.call(r.handlers.sessions.POST, { storeCode: code, headers: owner, body: firstOpenBody })
@@ -1671,8 +1670,6 @@ test('routes: new-business gate versus recovery gate, condition by condition', {
     assert.equal((await r.call(r.handlers.session.GET, { method: 'GET', storeCode: code, headers, params })).status, 200)
     assert.equal((await r.call(r.handlers.tables.GET, { method: 'GET', storeCode: code, headers })).status, 200)
   }
-  trial(false); await blocked('STORE_NOT_IN_TRIAL'); trial(true)
-  delete process.env.DINE_IN_TRIAL_STORE_CODES; await blocked('STORE_NOT_IN_TRIAL'); trial(true)
   await db.store.update({ where: { id: f.a.id }, data: { businessType: 'RETAIL' } }); await blocked('BUSINESS_TYPE_NOT_FOOD')
   await db.store.update({ where: { id: f.a.id }, data: { businessType: 'FOOD' } })
   await db.v3PrintControlPlane.update({ where: { storeId: f.a.id }, data: { mode: 'V2_ACTIVE' } }); await blocked('V3_LOCAL_MODE_REQUIRED')
@@ -1739,7 +1736,6 @@ test('routes: new-business gate versus recovery gate, condition by condition', {
 
 test('routes: OWNER / STAFF matrix, and tenant / store isolation of every entry', { skip }, async () => {
   const f = await fixture(), r = await routes()
-  process.env.DINE_IN_TRIAL_STORE_CODES = `${f.a.code},${f.b.code},${f.other.store.code}`
   const code = f.a.code
   const owner = r.device(f.tenantId, f.a)
   const staff = r.account(f.tenantId, f.a.id, f.staff.userId, 'STAFF')
@@ -1808,7 +1804,6 @@ test('routes: OWNER / STAFF matrix, and tenant / store isolation of every entry'
 
 test('legacy checkout and cancel refuse a dining bill and still serve an ordinary pending order', { skip }, async () => {
   const f = await fixture(), db = admin(), r = await routes()
-  process.env.DINE_IN_TRIAL_STORE_CODES = f.a.code
   const meal = await open(f)
   const dining = (await order(f, meal.mealId, [{ barcode: f.food.barcode, quantity: 1 }])).meal
   const ownerAccount = r.account(f.tenantId, f.a.id, f.owner.userId, 'OWNER')
