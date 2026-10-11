@@ -279,7 +279,7 @@
         "tests/v3-print-job-adapter.test.ts": "dc9c48d40dab7dda30033b99999a6e149edb491587456689f5b166776f5b3f9b"
       },
       "candidateSha": "b87ba696073e62c248c2e47d64402003aef009a1",
-      "candidateManifestSha256": "019ca0e1d15a1fb08eebdb7e661d5525727846870546afad6b0771a16ff766b1",
+      "candidateManifestSha256": "33f6eae662d6786399fa9eff738874af0c95fd0a3ad636106ea9384f40bd16d3",
       "supersedes": [
         "3746f416796881a85b4142f0ca46351907ff1e70",
         "71af466b634f26a79055afcb253652de8a9bc29e"
