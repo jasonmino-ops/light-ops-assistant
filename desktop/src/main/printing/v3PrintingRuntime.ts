@@ -16,6 +16,7 @@ import type { LocalEndpoint } from './localEndpointAuthority'
 import { V3PrintJobClient } from './v3PrintJobClient'
 import { V3NetworkRenderer } from './v3NetworkRenderer'
 import { NoPayloadEndpointReadiness, type RoleReadinessMask } from './endpointReadiness'
+import { logger } from '../logger'
 
 const PRINT_ROLES: readonly PrinterRole[] = ['FRONT', 'KITCHEN']
 const NO_ROLES_READY: RoleReadinessMask = Object.freeze({ FRONT: false, KITCHEN: false })
@@ -147,6 +148,7 @@ export class V3PrintingRuntime {
   ) {
     const lifecycle = this.controlPlane.beginExecutionLifecycle(batch)
     if (!lifecycle.ok) {
+      if (input.source === 'LOCAL_DESKTOP' && lifecycle.error.durablyHoldLocal) return this.holdLocal(input, lifecycle.error.code)
       return { status: 'AUTHORITY_REJECTED' as const, mode: 'FENCED' as const, reason: lifecycle.error.code }
     }
     let releaseSafe = false
@@ -165,7 +167,12 @@ export class V3PrintingRuntime {
     }
   }
 
-  private async holdLocal(input: { source: PrintIntentSource; orderNo?: string; identity: SharedPrintIdentity; role: PrinterRole; payload: Uint8Array }) {
+  private async holdLocal(input: { source: PrintIntentSource; orderNo?: string; identity: SharedPrintIdentity; role: PrinterRole; payload: Uint8Array }, reason = 'ADMISSION_CLOSED') {
+    if (input.source === 'LOCAL_DESKTOP') {
+      // This is a durable admission, not an execution retry. The original
+      // print identity remains the only identity the cloud may later deliver.
+      logger.info('v3-print-local-held', { role: input.role, reason })
+    }
     if (!this.cloud || !input.orderNo) return { status: 'REJECTED' as const, reason: 'V3_DURABLE_ADMISSION_UNAVAILABLE' }
     const status = await this.cloud.holdLocal({ orderNo: input.orderNo, printJobId: input.identity.printJobId, role: input.role,
       rendererVersion: input.identity.rendererVersion, expiresAt: input.identity.expiresAt, payload: input.payload })

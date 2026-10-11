@@ -91,6 +91,55 @@ describe('V3ControlPlaneRuntime', () => {
     await runtime.stop()
   })
 
+  it('marks the pre-ready lifecycle window safe for durable local admission but does not execute', async () => {
+    const owned = plane({ ownerDeviceId: 'device-a', ownerEpoch: 1, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 2 })
+    const runtime = new V3ControlPlaneRuntime(client(owned), 'device-a', 60_000)
+    await runtime.start()
+    const result = runtime.beginExecutionLifecycle(runtime.current().batch!)
+    expect(result).toMatchObject({ ok: false, error: { code: 'CONTROL_PLANE_FENCED', durablyHoldLocal: true } })
+    await runtime.stop()
+  })
+
+  it('marks an in-flight authority rotation safe for durable local admission', async () => {
+    const owned = plane({ ownerDeviceId: 'device-a', ownerEpoch: 2, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 3 })
+    const api = client(owned)
+    const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+    await runtime.start()
+    await runtime.markExecutionLifecycleReady()
+    let finishRenew!: (value: { ok: true; controlPlane: ControlPlaneProjection }) => void
+    api.renew.mockImplementationOnce(() => new Promise((resolve) => { finishRenew = resolve }) as never)
+    const reconciling = (runtime as any).reconcile() as Promise<void>
+    await vi.waitFor(() => expect(api.renew).toHaveBeenCalledTimes(2))
+
+    const result = runtime.beginExecutionLifecycle(runtime.current().batch!)
+    expect(result).toMatchObject({ ok: false, error: { code: 'CONTROL_PLANE_FENCED', durablyHoldLocal: true } })
+
+    finishRenew({ ok: true, controlPlane: owned })
+    await reconciling
+    await runtime.stop()
+  })
+
+  it('never marks an expired batch safe for durable local admission during rotation', async () => {
+    const owned = plane({ ownerDeviceId: 'device-a', ownerEpoch: 3, leaseId: 'lease-a', leaseExpiresAt: future, mode: 'V3_ACTIVE', stateVersion: 4 })
+    const api = client(owned)
+    api.issueBatch.mockResolvedValueOnce({ ok: true, batch: { ...batch(owned), expiresAt: '2000-01-01T00:00:00.000Z' } })
+    const runtime = new V3ControlPlaneRuntime(api, 'device-a', 60_000)
+    await runtime.start()
+    await runtime.markExecutionLifecycleReady()
+    let finishRenew!: (value: { ok: true; controlPlane: ControlPlaneProjection }) => void
+    api.renew.mockImplementationOnce(() => new Promise((resolve) => { finishRenew = resolve }) as never)
+    const reconciling = (runtime as any).reconcile() as Promise<void>
+    await vi.waitFor(() => expect(api.renew).toHaveBeenCalledTimes(2))
+
+    const result = runtime.beginExecutionLifecycle(runtime.current().batch!)
+    expect(result).toMatchObject({ ok: false, error: { code: 'CONTROL_PLANE_FENCED' } })
+    expect(result.ok ? false : result.error.durablyHoldLocal).not.toBe(true)
+
+    finishRenew({ ok: true, controlPlane: owned })
+    await reconciling
+    await runtime.stop()
+  })
+
   it('cold start recovers an expired same owner only after local readiness passes', async () => {
     const expired = plane({
       ownerDeviceId: 'device-a', ownerEpoch: 7, leaseId: 'lease-old',

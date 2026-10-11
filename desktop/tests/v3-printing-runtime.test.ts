@@ -496,4 +496,30 @@ describe('V3PrintingRuntime execution lifecycle', () => {
     expect(harness.coordinator.execute).not.toHaveBeenCalled()
     expect(harness.complete).not.toHaveBeenCalled()
   })
+
+  it('durably holds a local print when lifecycle admission is fenced only by a transient authority window', async () => {
+    const cloud = { holdLocal: vi.fn(async () => 'DURABLY_HELD' as const) }
+    const controlPlane = {
+      current: vi.fn(() => ({ status: 'V3_OWNER', controlPlane: { mode: 'V3_ACTIVE' }, batch })),
+      beginExecutionLifecycle: vi.fn(() => ({ ok: false as const, error: {
+        code: 'CONTROL_PLANE_FENCED', message: 'fenced', durablyHoldLocal: true,
+      } })),
+    }
+    const coordinator = { execute: vi.fn() }
+    const endpoints = { configuredForRecovery: vi.fn(async () => ({ ok: true as const, endpoints: [
+      { role: 'FRONT' as const, endpointKey: '192.168.1.10:9100' },
+    ] })) }
+    const endpointReadiness = { check: vi.fn(async () => ({ ok: true as const, roles: { FRONT: true, KITCHEN: false } })) }
+    const instance = new (V3PrintingRuntime as any)(
+      {}, coordinator, controlPlane, endpoints, {}, cloud, 60_000, { dispose: vi.fn() }, false, endpointReadiness,
+    ) as V3PrintingRuntime
+    ;(instance as any).running = true
+    ;(instance as any).lifecycleGeneration = 1
+
+    await expect(instance.execute(input)).resolves.toEqual({
+      status: 'HELD', admission: 'DURABLY_ACCEPTED', durability: 'DURABLY_HELD',
+    })
+    expect(cloud.holdLocal).toHaveBeenCalledWith(expect.objectContaining({ printJobId: input.identity.printJobId }))
+    expect(coordinator.execute).not.toHaveBeenCalled()
+  })
 })

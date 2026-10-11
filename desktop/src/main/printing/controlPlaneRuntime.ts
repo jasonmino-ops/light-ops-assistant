@@ -105,11 +105,11 @@ export class V3ControlPlaneRuntime {
 
   public beginExecutionLifecycle(admittedBatch: ExecutionBatchProjection):
     | { ok: true; guard: V3ExecutionLifecycleGuard }
-    | { ok: false; error: { code: string; message: string } } {
+    | { ok: false; error: { code: string; message: string; durablyHoldLocal?: boolean } } {
     const validation = this.validateExecution()
-    if (!validation.ok) return validation
+    if (!validation.ok) return this.fenced(this.canDurablyHoldLocalAdmission())
     const batch = admittedBatch
-    if (!sameBatch(this.snapshot.batch, batch)) return this.fenced()
+    if (!sameBatch(this.snapshot.batch, batch)) return this.fenced(this.canDurablyHoldLocalAdmission())
     this.activeExecutions += 1
     const active = this.activeExecutionBatches.get(batch.id)
     this.activeExecutionBatches.set(batch.id, { batch, count: (active?.count ?? 0) + 1 })
@@ -264,8 +264,30 @@ export class V3ControlPlaneRuntime {
     this.pendingAuthoritySnapshot = null
   }
 
-  private fenced(): { ok: false; error: { code: string; message: string } } {
-    return { ok: false, error: { code: 'CONTROL_PLANE_FENCED', message: 'Authoritative V3 execution authority is unavailable.' } }
+  private canDurablyHoldLocalAdmission(): boolean {
+    const { controlPlane, batch } = this.snapshot
+    const now = Date.now()
+    const batchExpiresAt = batch ? Date.parse(batch.expiresAt) : Number.NaN
+    const leaseExpiresAt = controlPlane?.leaseExpiresAt ? Date.parse(controlPlane.leaseExpiresAt) : Number.NaN
+    const batchIsCurrentOwnerScoped = Boolean(controlPlane && batch &&
+      controlPlane.id === batch.controlPlaneId && controlPlane.storeId === batch.storeId &&
+      controlPlane.ownerDeviceId === this.deviceId && batch.ownerDeviceId === this.deviceId &&
+      controlPlane.mode === 'V3_ACTIVE' && batch.mode === 'V3_ACTIVE' &&
+      controlPlane.ownerEpoch === batch.ownerEpoch && controlPlane.stateVersion === batch.stateVersion &&
+      controlPlane.leaseId !== null && controlPlane.leaseId === batch.leaseId &&
+      batch.revokedAt === null && Number.isFinite(batchExpiresAt) && batchExpiresAt > now &&
+      Number.isFinite(leaseExpiresAt) && leaseExpiresAt > now)
+    return this.running && !this.releaseBlocked && this.snapshot.status === 'V3_OWNER' &&
+      batchIsCurrentOwnerScoped &&
+      (!this.executionLifecycleReady || this.authorityRotationsInProgress !== 0 || this.pendingAuthoritySnapshot !== null)
+  }
+
+  private fenced(durablyHoldLocal = false): { ok: false; error: { code: string; message: string; durablyHoldLocal?: boolean } } {
+    return { ok: false, error: {
+      code: 'CONTROL_PLANE_FENCED',
+      message: 'Authoritative V3 execution authority is unavailable.',
+      ...(durablyHoldLocal ? { durablyHoldLocal: true } : {}),
+    } }
   }
 
   private async canRecoverExpiredSelf(controlPlane: ControlPlaneProjection, renewError: string): Promise<boolean> {
