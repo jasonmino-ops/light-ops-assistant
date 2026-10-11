@@ -278,8 +278,8 @@
         "tests/customer-order-payment-intent.test.ts": "9cd78a89e041838f9b490c61144182b89cc3da5b60c53739dec5347033858190",
         "tests/v3-print-job-adapter.test.ts": "dc9c48d40dab7dda30033b99999a6e149edb491587456689f5b166776f5b3f9b"
       },
-      "candidateSha": null,
-      "candidateManifestSha256": null,
+      "candidateSha": "d47bd0880b375a433b8918ef1ed18421ebb03e3f",
+      "candidateManifestSha256": "4a6d5d540faf78bcbfec6e41dd2ed59aca1e526d37055a44ead59985ef9a186b",
       "supersedes": [
         "3746f416796881a85b4142f0ca46351907ff1e70",
         "71af466b634f26a79055afcb253652de8a9bc29e"
