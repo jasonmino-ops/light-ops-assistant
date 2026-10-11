@@ -43,10 +43,6 @@ function v3DeliveryClaimToken(printJobId: string, deviceId: string, ownerEpoch: 
 function claimProvenance(input: { deviceId: string; ownerEpoch: number; batchId: string }) {
   return `V3_CLAIM:${input.deviceId}:${input.ownerEpoch}:${input.batchId}`
 }
-function sameExecutionOwner(value: string | null, deviceId: string, ownerEpoch: number) {
-  const prefix = `V3_CLAIM:${deviceId}:${ownerEpoch}:`
-  return typeof value === 'string' && value.startsWith(prefix) && value.length > prefix.length
-}
 function parsedResultCode(value: string | null) {
   const match = /^V3:([^:]+):(\d+):(\d+):(CROSSED|FAILED_NOT_CROSSED|CROSSING_UNKNOWN)$/.exec(value ?? '')
   return match ? { executionId: match[1], ownerEpoch: Number(match[2]), reportVersion: Number(match[3]), outcome: match[4] } : null
@@ -371,23 +367,12 @@ export async function deliverV3PrintIntent(db: Db, identity: {
     const claimNow = now ?? new Date()
     const batch = await validBatch(tx, identity, claimNow)
     if (!batch) return { ok: false as const, code: 'V3_BATCH_STALE' }
-    const existingClaims = await tx.eshopTrayPrintJob.findMany({ where: { tenantId: identity.tenantId, storeId: identity.storeId,
-      schemaVersion: 3, status: { in: ['PENDING', 'CLAIMED'] }, claimTokenHash: { not: null },
-      expiresAt: { gt: claimNow } }, orderBy: { createdAt: 'asc' } })
-    for (const existing of existingClaims) {
-      const intent = parse(existing.payload)
-      if (!intent) return { ok: false as const, code: 'V3_CLAIM_AMBIGUOUS' }
-      if (!sameExecutionOwner(existing.resultMessage, identity.deviceId, batch.ownerEpoch)) {
-        return { ok: false as const, code: 'V3_CLAIM_AMBIGUOUS' }
-      }
-      if (existing.claimTokenHash !== v3DeliveryClaimToken(existing.idempotencyKey, identity.deviceId, batch.ownerEpoch)) {
-        return { ok: false as const, code: 'V3_CLAIM_AMBIGUOUS' }
-      }
-      if (intent.role !== identity.role) continue
-      // A durable V3 reservation is delivered once. Normal batch rotation must not
-      // transfer or redeliver it while the first execution/report can still settle.
-      return { ok: true as const, job: null }
-    }
+    // A claim is fenced by its own printJobId, token and execution batch. Do not
+    // scan unrelated claims here: an unsettled FRONT_UNPAID (or another order's
+    // FRONT/KITCHEN job) must not become a store-wide delivery barrier for an
+    // independent effect. The claimed row remains fail-closed and is never picked
+    // by the selector below; its lease/intent TTL and operator recovery path bound
+    // its lifetime without treating expiry as proof that printing did not cross.
     const job = await tx.eshopTrayPrintJob.findFirst({ where: { tenantId: identity.tenantId, storeId: identity.storeId,
       schemaVersion: 3, status: 'PENDING', claimTokenHash: null, nextAttemptAt: { lte: claimNow },
       expiresAt: { gt: claimNow }, payload: { path: ['role'], equals: identity.role } }, orderBy: { createdAt: 'asc' } })

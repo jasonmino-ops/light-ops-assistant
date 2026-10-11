@@ -197,51 +197,14 @@ export async function createCustomerOrderFulfillmentIntent(tx: FulfillmentDb, in
 
 export const clearCustomerOrderRenderLease = { renderLeaseOwnerId: null, renderLeaseTokenHash: null, renderLeaseExpiresAt: null }
 export const CUSTOMER_ORDER_MAX_RENDER_ATTEMPTS = 3
-export const FRONT_UNPAID_SUPERSEDED_BY_PAYMENT = 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT'
-
-/** Caller holds the order lock (including the payment UPDATE). Never touches a created job. */
-export async function supersedeCustomerOrderUnpaidIntent(tx: FulfillmentDb, order: { tenantId: string; storeId: string; orderNo: string }, now = new Date()): Promise<CustomerOrderPrintResult> {
-  const current = await intentModel(tx).findUnique({ where: { tenantId_storeId_orderNo_purpose: {
-    tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo, purpose: 'FRONT_UNPAID',
-  } } })
-  const receipt = () => customerOrderPrintReceipt(tx, order, 'FRONT', 'FRONT_UNPAID')
-  if (!current || current.printJobId || current.state === 'CANCELLED' || current.state === 'NOT_REQUIRED') return receipt()
-  // An association gap is not proof that no task exists. Preserve uncertainty.
-  const existing = await tx.eshopTrayPrintJob.findUnique({ where: { tenantId_storeId_idempotencyKey: {
-    tenantId: order.tenantId, storeId: order.storeId, idempotencyKey: current.idempotencyKey,
-  } } })
-  if (existing) {
-    let verified = false
-    try {
-      verified = Boolean(current.sealedAt && current.rendererVersion === current.renderProfileId
-        && existingJobMatchesIntent(existing, current, customerOrderEnvelopeFromSeal(customerOrderSnapshot(current), current.role, current)))
-    } catch { /* A missing or inconsistent seal cannot establish content identity. */ }
-    if (verified && ['PENDING', 'RENDER_PENDING', 'FAILED_RETRYABLE', 'ENQUEUED'].includes(current.state)) {
-      const linked = await intentModel(tx).updateMany({ where: { id: current.id, revision: current.revision, printJobId: null, state: current.state },
-        data: { ...clearCustomerOrderRenderLease, printJobId: existing.id, state: 'ENQUEUED', nextAttemptAt: current.deadlineAt, revision: { increment: 1 } } })
-      return linked.count === 1 ? { status: 'ALREADY_PRESENT', created: false, printJobId: existing.id } : receipt()
-    }
-    const reason = verified ? 'CUSTOMER_ORDER_EXISTING_JOB_REQUIRES_REVIEW' : 'CUSTOMER_ORDER_EXISTING_JOB_IDENTITY_MISMATCH'
-    const reviewed = await intentModel(tx).updateMany({ where: { id: current.id, revision: current.revision, printJobId: null, state: current.state },
-      data: { ...clearCustomerOrderRenderLease, state: 'MANUAL_REVIEW', manualReviewReason: current.manualReviewReason ?? reason,
-        lastErrorCode: reason, lastErrorAt: now, revision: { increment: 1 } } })
-    return reviewed.count === 1 ? { status: 'MANUAL_REVIEW', created: false, printJobId: null, error: reason } : receipt()
-  }
-  const changed = await intentModel(tx).updateMany({ where: {
-    id: current.id, revision: current.revision,
-    tenantId: order.tenantId, storeId: order.storeId, orderNo: order.orderNo,
-    source: CUSTOMER_ORDER_SOURCE, purpose: 'FRONT_UNPAID', role: 'FRONT', printJobId: null,
-    state: { in: ['PENDING', 'RENDER_PENDING', 'FAILED_RETRYABLE', 'EXPIRED', 'MANUAL_REVIEW'] },
-  }, data: { ...clearCustomerOrderRenderLease, state: 'NOT_REQUIRED', decision: 'NOT_REQUIRED',
-    lastErrorCode: FRONT_UNPAID_SUPERSEDED_BY_PAYMENT, lastErrorAt: now, nextAttemptAt: now, revision: { increment: 1 } } })
-  return changed.count === 1 ? { status: 'NOT_REQUIRED', created: false, printJobId: null, error: FRONT_UNPAID_SUPERSEDED_BY_PAYMENT } : receipt()
-}
-
 export function customerOrderIntentBusinessValid(order: any, intent: any): boolean {
   if (!order || order.status === 'CANCELLED') return false
   const purpose = customerOrderTicketPurpose(intent.role, intent.purpose)
   if (purpose === 'KITCHEN_MAKE') return ['CONFIRMED', 'COMPLETED'].includes(order.status)
-  if (purpose === 'FRONT_UNPAID') return ['CONFIRMED', 'COMPLETED'].includes(order.status) && order.paymentStatus === 'UNPAID'
+  // FRONT_UNPAID is an immutable pre-payment ticket. Payment creates the
+  // independent FRONT_PAID ticket; it must not invalidate or supersede this
+  // already-authorized physical fulfillment.
+  if (purpose === 'FRONT_UNPAID') return ['CONFIRMED', 'COMPLETED'].includes(order.status)
   return order.paymentStatus === 'PAID' && Boolean(order.paidAt && intent.paidAt && order.paidAt.getTime() === intent.paidAt.getTime())
 }
 
@@ -341,9 +304,6 @@ async function createJobForSealedIntent(db: FulfillmentDb, intentId: string, run
       return { status: 'EXPIRED', created: false, printJobId: intent.printJobId, error: 'CUSTOMER_ORDER_FULFILLMENT_DEADLINE_EXPIRED' }
     }
     const order = await tx.customerOrder.findFirst({ where: { tenantId: intent.tenantId, storeId: intent.storeId, orderNo: intent.orderNo } })
-    if (intent.purpose === 'FRONT_UNPAID' && order?.paymentStatus === 'PAID') {
-      return supersedeCustomerOrderUnpaidIntent(tx, intent, now)
-    }
     const controlPlane = await tx.v3PrintControlPlane?.findUnique({ where: { storeId: intent.storeId }, select: { tenantId: true, mode: true } })
     if (!controlPlane || controlPlane.tenantId !== intent.tenantId || controlPlane.mode !== 'V3_ACTIVE') {
       await model.updateMany({ where: { id: intent.id, printJobId: null, revision: intent.revision }, data: { state: 'RENDER_PENDING', lastErrorCode: 'CUSTOMER_ORDER_V3_NOT_ACTIVE', lastErrorAt: now, nextAttemptAt: nextCustomerOrderAttemptAt(Math.max(1, intent.attemptCount), now, intent.deadlineAt), revision: { increment: 1 } } })

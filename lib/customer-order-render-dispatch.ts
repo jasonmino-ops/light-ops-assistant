@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import {
   CUSTOMER_ORDER_SOURCE, CUSTOMER_ORDER_MAX_RENDER_ATTEMPTS, clearCustomerOrderRenderLease,
   lockCustomerOrder, nextCustomerOrderAttemptAt, processCustomerOrderFulfillmentIntent,
-  customerOrderIntentBusinessValid, supersedeCustomerOrderUnpaidIntent,
+  customerOrderIntentBusinessValid,
   type FulfillmentDb,
 } from './customer-order-fulfillment'
 import {
@@ -107,10 +107,6 @@ export async function claimCustomerOrderRender(db: FulfillmentDb, w: RenderWorke
         }, select: { id: true } })
         if (active) return { kind: 'BUSY' }
         const order = await tx.customerOrder.findFirst({ where: { tenantId: w.tenantId, storeId: w.storeId, orderNo: i.orderNo } })
-        if (i.purpose === 'FRONT_UNPAID' && order?.paymentStatus === 'PAID') {
-          const result = await supersedeCustomerOrderUnpaidIntent(tx, i, clock)
-          return { kind: result.status, printJobId: result.printJobId, code: result.error }
-        }
         if (!validBusiness(order, i)) return defer(tx, i, clock, 'CUSTOMER_ORDER_STATE_CHANGED_BEFORE_RENDER', true)
         try { customerOrderSnapshot(i) } catch { return defer(tx, i, clock, 'CUSTOMER_ORDER_RENDER_SNAPSHOT_INVALID', true) }
         if (i.renderProfileId && i.renderProfileId !== w.profileId) return defer(tx, i, clock, 'CUSTOMER_ORDER_RENDER_PROFILE_CONFLICT', true)
@@ -208,10 +204,6 @@ export async function sealCustomerOrderRender(db: FulfillmentDb, w: RenderWorker
       return result.kind === 'STALE' ? result : { ...result, kind: 'NOT_RELEASED' }
     }
     const order = await tx.customerOrder.findFirst({ where: { tenantId: i.tenantId, storeId: i.storeId, orderNo: i.orderNo } })
-    if (i.purpose === 'FRONT_UNPAID' && order?.paymentStatus === 'PAID') {
-      const result = await supersedeCustomerOrderUnpaidIntent(tx, i, now)
-      return { kind: result.status, printJobId: result.printJobId, code: result.error }
-    }
     if (!validBusiness(order, i)) return defer(tx, i, now, 'CUSTOMER_ORDER_STATE_CHANGED_BEFORE_SEAL', true)
     try { customerOrderSnapshot(i) } catch { return defer(tx, i, now, 'CUSTOMER_ORDER_RENDER_SNAPSHOT_INVALID', true) }
     const changed = await tx.customerOrderFulfillmentIntent.updateMany({ where: {

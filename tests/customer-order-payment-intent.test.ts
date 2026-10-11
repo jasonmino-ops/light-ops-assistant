@@ -274,8 +274,8 @@ test('H5 route confirms once, records payment separately, and never reprints kit
     assert.equal(f.paymentIntents.get('H5-ORDER-A')!.paymentMethod, 'CASH')
     assert.equal(f.paymentIntents.get('H5-ORDER-A')!.transactionActorType, 'H5_CUSTOMER_ORDER')
     assert.equal(f.intents.size, 3)
-    assert.equal(f.intents.get('tenant-a:store-a:H5-ORDER-A:FRONT_UNPAID')!.state, 'NOT_REQUIRED')
-    assert.equal(f.intents.get('tenant-a:store-a:H5-ORDER-A:FRONT_UNPAID')!.lastErrorCode, 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT')
+    assert.notEqual(f.intents.get('tenant-a:store-a:H5-ORDER-A:FRONT_UNPAID')!.state, 'NOT_REQUIRED')
+    assert.notEqual(f.intents.get('tenant-a:store-a:H5-ORDER-A:FRONT_UNPAID')!.lastErrorCode, 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT')
     assert.equal(f.jobs.length, 0)
 
     const duplicate = await patchOrder('order-a', { paymentMethod: 'CASH' })

@@ -13,7 +13,6 @@ import {
   paymentIntentMethod,
   printOrderFromCustomerOrder,
   recordCustomerOrderIntent,
-  supersedeCustomerOrderUnpaidIntent,
 } from '@/lib/customer-order-fulfillment'
 
 /**
@@ -233,7 +232,6 @@ export async function PATCH(
           } else if (existingFrontIntent.source !== 'H5_HOME' || existingFrontIntent.paymentIntentId !== existingPi.id) {
             return { kind: 'PAYMENT_INTENT_CONFLICT' as const }
           }
-          await supersedeCustomerOrderUnpaidIntent(tx, order, existingPi.paidAt)
           return {
             kind: 'PAID' as const,
             order: { ...order, paymentStatus: 'PAID', paymentMethod, paidAt: existingPi.paidAt },
@@ -279,7 +277,6 @@ export async function PATCH(
           totalAmount: order.totalAmount, paymentStatus: 'PAID', paymentMethod, itemsJson: order.itemsJson,
         })
         await recordCustomerOrderIntent(tx, printOrder, 'FRONT', 'REQUIRED', paidAt, paymentIntent.id)
-        await supersedeCustomerOrderUnpaidIntent(tx, order, paidAt)
         return {
           kind: 'PAID' as const,
           order: { ...order, paymentStatus: 'PAID', paymentMethod, paidAt },
