@@ -198,6 +198,7 @@ jobs:
           if (!(Test-Path $resourceEntry)) {
             throw "Packaged Provider resource missing: $resourceEntry"
           }
+          node scripts/verify-provider-packaging.mjs .\release\win-unpacked\resources\eshop-windows-provider
 
       - name: Generate release foundation manifests
         shell: pwsh

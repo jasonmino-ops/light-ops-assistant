@@ -28,6 +28,7 @@ extraResources:
     filter:
       - dist/**
       - package.json
+      - node_modules/@eshop/hrt-contract/**
 
 win:
   target:
