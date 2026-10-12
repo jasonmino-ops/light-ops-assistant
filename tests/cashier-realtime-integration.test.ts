@@ -291,6 +291,7 @@ async function main() {
   // Like the fixed H5/Dine-in successors, bind to exact approved content, not
   // a branch name or an environment flag. Do NOT union this into the legacy set.
   const productCandidate = 'bd4ed1a532b4db9609841bb5d8e2e184793fecad'
+  const correctiveCandidate = '5c0a2895bb188610d494bb4aadf4b8f7641037f5'
   const approvedBase = 'ede397d808cd88347d5c641ff833d1a7a6fe404d'
   const successorPath = 'tests/cashier-realtime-integration.test.ts'
   const productPaths = [
@@ -299,12 +300,35 @@ async function main() {
     'e-shop-tray/network-addon/ui.ts',
     'e-shop-tray/tests/network-addon-settings-only.test.ts',
   ]
+  const correctivePaths = [
+    'scripts/test/run-root-full-suite.mjs',
+    'tests/desktop-pos-web-auth-compat.test.ts',
+  ]
   const gitPaths = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
   const unmergedCommits = gitPaths('rev-list', 'origin/main..HEAD')
   // Once merged, the candidate is no longer an unmerged task grant. Later M1
   // path edits still enter this branch and fail without that exact grant.
   const isM1 = unmergedCommits.includes(productCandidate) || changed.some(path => productPaths.includes(path))
-  if (isM1) {
+  const isCombinedCorrective = isM1 && unmergedCommits.includes(correctiveCandidate)
+  if (isCombinedCorrective) {
+    assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [approvedBase], 'combined candidate requires the same authorized baseline')
+    assert.ok(productPaths.every(path => changed.includes(path)), 'combined candidate requires the reviewed four-path product candidate')
+    assert.ok(correctivePaths.every(path => changed.includes(path)), 'combined candidate requires the reviewed corrective paths')
+    // The two reviewed candidates may be composed, but neither candidate's
+    // source contract may be edited by the composition step. The successor
+    // test itself is the only coordination file permitted to differ.
+    assert.deepEqual(
+      gitPaths('diff', '--name-only', productCandidate, 'HEAD').filter(path => path !== successorPath && !correctivePaths.includes(path)),
+      [],
+      'M1 reviewed product/content boundary changed',
+    )
+    assert.deepEqual(
+      gitPaths('diff', '--name-only', correctiveCandidate, 'HEAD').filter(path => path !== successorPath && !productPaths.includes(path)),
+      [],
+      'baseline corrective content boundary changed',
+    )
+    assertBoundary(changed, new Set([...productPaths, ...correctivePaths, successorPath]))
+  } else if (isM1) {
     assert.ok(unmergedCommits.includes(productCandidate), 'M1 requires the reviewed product candidate in unmerged ancestry')
     assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [approvedBase], 'M1 requires its authorized baseline')
     // Check HEAD, index and worktree separately: restoring a working file must
