@@ -21,7 +21,7 @@ Governed by:
 | Starting `origin/main` | `d454cc7fea21b51f91bc45660b980424b8abe869` |
 | Production SHA | `a35b2e88c372f79b8ce2614306ab92f13c6a3e58` / `READY` |
 | Candidate branch | `codex/es-desktop-provider-packaging-blocker-01` |
-| Candidate commit | `PENDING — local implementation candidate` |
+| Candidate commit | `906237ffd545293131b803ab207a3b8df44d81a6` — local implementation candidate |
 | Classification | `AUTHORIZED INSTALLER SUCCESSOR CHANGE` |
 | Production / merge / push | `NO` |
 | Windows FIELD | `NOT VERIFIED` |
@@ -77,7 +77,17 @@ Only:
 
 ## Candidate Hash Binding
 
-Candidate hash binding is completed only after the local candidate commit. The final candidate evidence must record the commit SHA, exact diff paths, and SHA-256 for every authorized frozen-boundary file. Any unlisted path or behavior change invalidates this successor record and requires a new Founder decision.
+Candidate hash binding:
+
+- Commit: `906237ffd545293131b803ab207a3b8df44d81a6`
+- `desktop/electron-builder.yml`: `58dc72b40c149d166688b8d4bb432fdd806a1e53ae474eeb60fe7948a12168bc`
+- `desktop/scripts/verify-provider-packaging.mjs`: `6234bcc2b118f0ab8018c91bd95ff86c6ad8a3f39fba800fa48bdf825fc9fd07`
+- `desktop/tests/provider-packaging.test.ts`: `00df9c755891b12b572aecbeb099887e5c665e8c52d2d273974091acdd244822`
+- `.github/workflows/desktop-windows-build.yml`: `740ea561fd069992a280b04f103cd62e806edac078ae9c650c5f7fcffd70b704`
+- `.github/workflows/desktop-release-pilot.yml`: `9090870f3214695a0e23bf2ea2663e2f78cf284f19e97dfd0126a3d801706f9d`
+- Governance record: `51259f4c86dd4d180e8171e7974c2dec0925dc99afb571ffb49918a441ab38b5`
+
+Any unlisted path or behavior change invalidates this successor record and requires a new Founder decision.
 
 ## Required Validation
 
