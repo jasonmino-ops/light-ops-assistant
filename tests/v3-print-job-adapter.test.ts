@@ -516,18 +516,18 @@ test('authority rotation cannot interleave between batch validation and role cla
   assert.deepEqual(await deliverV3PrintIntent(db, identity, now), { ok: false, code: 'V3_BATCH_STALE' })
 })
 
-test('a new owner epoch cannot inherit an outstanding V3 delivery reservation', async () => {
+test('a new owner epoch does not inherit or redeliver an outstanding V3 reservation', async () => {
   const db = database(); await enqueueV3PrintIntent(db, scope, intent(), expiresAt); await deliverV3PrintIntent(db, identity, now)
   db.controlPlane.ownerEpoch = 8
   db.controlPlane.stateVersion = 5
   db.controlPlane.leaseId = 'lease-b'
   db.batches.push({ ...db.batch, id: 'batch-b', ownerEpoch: 8, stateVersion: 5, leaseId: 'lease-b', controlPlane: db.controlPlane })
-  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now), {
-    ok: false, code: 'V3_CLAIM_AMBIGUOUS',
-  })
+  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now), { ok: true, job: null })
+  assert.equal(db.jobs[0].claimAttempt, 1)
+  assert.equal(db.jobs[0].resultStatus ?? null, null)
 })
 
-test('a stale cross-role reservation fences a new owner instead of weakening store authority', async () => {
+test('a stale cross-role reservation does not fence an independent role job', async () => {
   const db = database()
   await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-kitchen-old-owner', role: 'KITCHEN' }), expiresAt)
   await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-front-new-owner', role: 'FRONT' }), expiresAt)
@@ -536,10 +536,50 @@ test('a stale cross-role reservation fences a new owner instead of weakening sto
   db.controlPlane.stateVersion = 5
   db.controlPlane.leaseId = 'lease-b'
   db.batches.push({ ...db.batch, id: 'batch-b', ownerEpoch: 8, stateVersion: 5, leaseId: 'lease-b', controlPlane: db.controlPlane })
-  assert.deepEqual(await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now), {
-    ok: false, code: 'V3_CLAIM_AMBIGUOUS',
+  const delivered = await deliverV3PrintIntent(db, { ...identity, batchId: 'batch-b' }, now)
+  assert.equal(delivered.ok && delivered.job?.printJobId, 'job-front-new-owner')
+  assert.equal(db.jobs[1].claimAttempt, 1)
+})
+
+test('an unsettled FRONT_UNPAID claim does not block an independent FRONT_PAID job', async () => {
+  const db = database()
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-front-unpaid', orderNo: 'ORDER-H5-001' }), expiresAt)
+  const unpaid = await deliverV3PrintIntent(db, identity, now)
+  assert.equal(unpaid.ok && unpaid.job?.printJobId, 'job-front-unpaid')
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-front-paid', orderNo: 'ORDER-H5-001' }), expiresAt)
+  const paid = await deliverV3PrintIntent(db, identity, now)
+  assert.equal(paid.ok && paid.job?.printJobId, 'job-front-paid')
+  assert.equal(db.jobs[0].claimAttempt, 1)
+  assert.equal(db.jobs[1].claimAttempt, 1)
+})
+
+for (const outcome of ['CROSSED', 'CROSSING_UNKNOWN', 'FAILED_NOT_CROSSED'] as const) {
+  test(`terminal ${outcome} on FRONT_UNPAID does not block independent FRONT_PAID delivery`, async () => {
+    const db = database()
+    await enqueueV3PrintIntent(db, scope, intent({ printJobId: `job-front-unpaid-${outcome}`, orderNo: 'ORDER-H5-002' }), expiresAt)
+    await deliverV3PrintIntent(db, identity, now)
+    assert.deepEqual(await reportV3Execution(db, identity, {
+      printJobId: `job-front-unpaid-${outcome}`, source: 'CLOUD_H5', role: 'FRONT', executionId: `execution-${outcome}`,
+      ownerEpoch: 7, reportVersion: 1, outcome,
+    }, now), { ok: true, acknowledged: true })
+    await enqueueV3PrintIntent(db, scope, intent({ printJobId: `job-front-paid-${outcome}`, orderNo: 'ORDER-H5-002' }), expiresAt)
+    const paid = await deliverV3PrintIntent(db, identity, now)
+    assert.equal(paid.ok && paid.job?.printJobId, `job-front-paid-${outcome}`)
+    assert.equal(db.jobs[0].claimAttempt, 1)
+    assert.equal(db.jobs[1].claimAttempt, 1)
   })
-  assert.equal(db.jobs[1].claimAttempt, 0)
+}
+
+test('a stale FRONT claim does not block another order FRONT or KITCHEN', async () => {
+  const db = database()
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-front-stale', orderNo: 'ORDER-H5-003' }), expiresAt)
+  await deliverV3PrintIntent(db, identity, now)
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-front-other', orderNo: 'ORDER-H5-004' }), expiresAt)
+  await enqueueV3PrintIntent(db, scope, intent({ printJobId: 'job-kitchen-other', role: 'KITCHEN', orderNo: 'ORDER-H5-004' }), expiresAt)
+  const front = await deliverV3PrintIntent(db, identity, now)
+  const kitchen = await deliverV3PrintIntent(db, { ...identity, role: 'KITCHEN' }, now)
+  assert.equal(front.ok && front.job?.printJobId, 'job-front-other')
+  assert.equal(kitchen.ok && kitchen.job?.printJobId, 'job-kitchen-other')
 })
 
 test('report ACK is idempotent and never claims physical completion', async () => {

@@ -651,6 +651,80 @@ async function sealPurpose(h: { admin: Worker; fixture: Fixture }, purpose: 'KIT
   return reserved.claim.intentId as string
 }
 
+test('DB V3 claim lifecycle: unsettled purpose claims do not block independent effects', { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
+  const { admin, fixture: f } = h
+  const owner = { tenantId: f.tenantId, storeId: f.storeId, deviceId: f.deviceId, batchId: f.batchId }
+  const payload = (printJobId: string, role: 'FRONT' | 'KITCHEN', orderNo: string) => ({
+    schemaVersion: 3 as const, printJobId, source: 'CLOUD_H5' as const, role,
+    payloadKind: 'RAW_BYTES' as const, orderNo, rendererVersion: testProfileId,
+    payloadBase64: sealedBytes.payloadBase64, byteLength: sealedBytes.byteLength, payloadHash: sealedBytes.payloadHash,
+  })
+  const queue = (printJobId: string, role: 'FRONT' | 'KITCHEN', orderNo: string) => enqueueV3PrintIntent(
+    admin.client as any, { tenantId: f.tenantId, storeId: f.storeId }, payload(printJobId, role, orderNo) as any, f.deadline,
+  )
+
+  // A claim with no report remains uncertain, but it is scoped to its own
+  // printJobId and cannot fence a new same-role purpose or another order.
+  await queue('h5-front-unpaid-uncertain', 'FRONT', 'ORDER-UNCERTAIN')
+  const oldClaim = await deliverV3PrintIntent(admin.client as any, { ...owner, role: 'FRONT' })
+  assert.equal(oldClaim.ok && oldClaim.job?.printJobId, 'h5-front-unpaid-uncertain')
+  const nextBatchId = `${f.batchId}-epoch-2`
+  await admin.client.v3PrintControlPlane.update({ where: { id: f.controlPlaneId }, data: {
+    ownerEpoch: 2, stateVersion: 2, leaseId: `${f.controlPlaneId}-lease-2`, leaseExpiresAt: f.deadline,
+  } })
+  await admin.client.v3PrintExecutionBatch.create({ data: {
+    id: nextBatchId, controlPlaneId: f.controlPlaneId, tenantId: f.tenantId, storeId: f.storeId,
+    ownerDeviceId: f.deviceId, ownerEpoch: 2, stateVersion: 2, leaseId: `${f.controlPlaneId}-lease-2`,
+    mode: 'V3_ACTIVE', expiresAt: f.deadline,
+  } })
+  const activeOwner = { ...owner, batchId: nextBatchId }
+  await queue('h5-front-paid-independent', 'FRONT', 'ORDER-UNCERTAIN')
+  const paidClaim = await deliverV3PrintIntent(admin.client as any, { ...activeOwner, role: 'FRONT' })
+  assert.equal(paidClaim.ok && paidClaim.job?.printJobId, 'h5-front-paid-independent')
+  await queue('h5-front-other-order', 'FRONT', 'ORDER-OTHER')
+  const otherOrderClaim = await deliverV3PrintIntent(admin.client as any, { ...activeOwner, role: 'FRONT' })
+  assert.equal(otherOrderClaim.ok && otherOrderClaim.job?.printJobId, 'h5-front-other-order')
+  await queue('h5-kitchen-other-order', 'KITCHEN', 'ORDER-OTHER')
+  const kitchenClaim = await deliverV3PrintIntent(admin.client as any, { ...activeOwner, role: 'KITCHEN' })
+  assert.equal(kitchenClaim.ok && kitchenClaim.job?.printJobId, 'h5-kitchen-other-order')
+
+  // Terminal effect boundaries remain independent as well: neither a crossed,
+  // unknown, nor an explicit safe failure is allowed to create a duplicate or
+  // to become a reason to suppress the paid purpose.
+  for (const outcome of ['CROSSED', 'CROSSING_UNKNOWN', 'FAILED_NOT_CROSSED'] as const) {
+    const oldId = `h5-front-${outcome.toLowerCase()}-old`
+    const paidId = `h5-front-${outcome.toLowerCase()}-paid`
+    await queue(oldId, 'FRONT', `ORDER-${outcome}`)
+    assert.equal((await deliverV3PrintIntent(admin.client as any, { ...activeOwner, role: 'FRONT' })).ok, true)
+    assert.deepEqual(await reportV3Execution(admin.client as any, activeOwner, {
+      printJobId: oldId, source: 'CLOUD_H5', role: 'FRONT', executionId: `execution-${outcome}`,
+      ownerEpoch: 2, reportVersion: 1, outcome,
+    }), { ok: true, acknowledged: true })
+    await queue(paidId, 'FRONT', `ORDER-${outcome}`)
+    const independent = await deliverV3PrintIntent(admin.client as any, { ...activeOwner, role: 'FRONT' })
+    assert.equal(independent.ok && independent.job?.printJobId, paidId)
+  }
+
+  // The normal H5 three-ticket contract remains three independent physical
+  // effects: FRONT_UNPAID, KITCHEN_MAKE, and FRONT_PAID. The V3 claim layer
+  // must not collapse or supersede any of them.
+  await queue('h5-front-unpaid-normal', 'FRONT', 'ORDER-THREE-TICKETS')
+  const normalFrontUnpaid = await deliverV3PrintIntent(admin.client as any, { ...activeOwner, role: 'FRONT' })
+  assert.equal(normalFrontUnpaid.ok && normalFrontUnpaid.job?.printJobId, 'h5-front-unpaid-normal')
+  await queue('h5-kitchen-make-normal', 'KITCHEN', 'ORDER-THREE-TICKETS')
+  const normalKitchen = await deliverV3PrintIntent(admin.client as any, { ...activeOwner, role: 'KITCHEN' })
+  assert.equal(normalKitchen.ok && normalKitchen.job?.printJobId, 'h5-kitchen-make-normal')
+  await queue('h5-front-paid-normal', 'FRONT', 'ORDER-THREE-TICKETS')
+  const normalFrontPaid = await deliverV3PrintIntent(admin.client as any, { ...activeOwner, role: 'FRONT' })
+  assert.equal(normalFrontPaid.ok && normalFrontPaid.job?.printJobId, 'h5-front-paid-normal')
+
+  const old = await admin.client.eshopTrayPrintJob.findUniqueOrThrow({ where: jobWhere(f, 'h5-front-unpaid-uncertain') })
+  const paid = await admin.client.eshopTrayPrintJob.findUniqueOrThrow({ where: jobWhere(f, 'h5-front-paid-independent') })
+  assert.equal(old.claimAttempt, 1); assert.equal(old.attemptCount, 1); assert.equal(old.completedAt, null)
+  assert.equal(paid.claimAttempt, 1); assert.equal(paid.attemptCount, 1); assert.equal(paid.completedAt, null)
+  assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId, storeId: f.storeId } }), 13)
+}))
+
 test('DB R1: failed collection retains completed unpaid order in scoped Desktop list; retry pays once without reaccept', { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
   const { admin, fixture: f } = h, { route } = await acceptedThreePurposeFixture(h), payer = await h.worker('reentry-payment')
   try {
@@ -682,7 +756,7 @@ test('DB R1: failed collection retains completed unpaid order in scoped Desktop 
 }))
 
 for (const mismatch of ['none', 'unknown', 'hash', 'missing-seal'] as const) {
-  test(`DB R3: unpaid job association gap ${mismatch}; payment never invents NOT_REQUIRED or another task`, { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
+  test(`DB R3: unpaid job association gap ${mismatch}; payment leaves independent FRONT_UNPAID evidence unchanged`, { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
     const { admin, fixture: f } = h, { route } = await acceptedThreePurposeFixture(h)
     try {
       const id = await sealPurpose(h, 'FRONT_UNPAID')
@@ -703,12 +777,12 @@ for (const mismatch of ['none', 'unknown', 'hash', 'missing-seal'] as const) {
       assert.equal((await route.patchBody(admin, { status: 'COMPLETED' })).status, 200)
       assert.equal((await route.patch(admin)).status, 200)
       const current = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id } })
-      assert.equal(current.state, matches ? 'ENQUEUED' : 'MANUAL_REVIEW')
-      assert.equal(current.printJobId, matches ? created.printJobId : null)
+      assert.equal(current.state, 'PENDING')
+      assert.equal(current.printJobId, null)
       assert.notEqual(current.lastErrorCode, 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT')
-      if (!matches) assert.equal(current.manualReviewReason, 'CUSTOMER_ORDER_EXISTING_JOB_IDENTITY_MISMATCH')
       const again = await processCustomerOrderFulfillmentIntent(admin.client as any, id, new Date(), runtime)
       assert.equal(again.status, matches ? 'ALREADY_PRESENT' : 'MANUAL_REVIEW'); assert.equal(again.created, false)
+      if (!matches) assert.equal((await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id } })).manualReviewReason, 'CUSTOMER_ORDER_EXISTING_JOB_IDENTITY_MISMATCH')
       const evidence = await (await route.get(`id=${f.orderId}`)).json()
       assert.equal(evidence.fulfillment.frontUnpaid, matches ? mismatch === 'unknown' ? 'RESULT_UNKNOWN' : 'QUEUED' : 'REVIEW_REQUIRED')
       if (matches) {
@@ -771,7 +845,7 @@ for (const deliveryState of ['unclaimed', 'claimed', 'unknown', 'mismatch'] as c
   }))
 }
 
-for (const state of ['EXPIRED', 'MANUAL_REVIEW'] as const) test(`DB payment supersedes jobless ${state} unpaid Intent, preserving audit reason`, { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
+for (const state of ['EXPIRED', 'MANUAL_REVIEW'] as const) test(`DB payment preserves jobless ${state} unpaid Intent and audit reason`, { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
   const { admin, fixture: f } = h, { route, intents } = await acceptedThreePurposeFixture(h)
   try {
     const id = intents.find(i => i.purpose === 'FRONT_UNPAID')!.id
@@ -779,8 +853,8 @@ for (const state of ['EXPIRED', 'MANUAL_REVIEW'] as const) test(`DB payment supe
     assert.equal((await route.patchBody(admin, { status: 'COMPLETED' })).status, 200)
     assert.equal((await route.patch(admin)).status, 200)
     const current = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id } })
-    assert.equal(current.state, 'NOT_REQUIRED'); assert.equal(current.manualReviewReason, 'PRIOR_EVIDENCE')
-    assert.equal(current.lastErrorCode, 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT'); assert.equal(current.printJobId, null)
+    assert.equal(current.state, state); assert.equal(current.manualReviewReason, 'PRIOR_EVIDENCE')
+    assert.notEqual(current.lastErrorCode, 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT'); assert.equal(current.printJobId, null)
   } finally { route.close() }
 }))
 
@@ -810,10 +884,10 @@ for (const phase of ['seal', 'create'] as const) for (const first of ['render', 
       }
       held.release()
       const [r, p] = await Promise.all([rendering, payment]); assert.equal(p.status, 200)
-      assert.equal(phase === 'seal' ? r.kind : r.status, first === 'render' ? (phase === 'seal' ? 'SEALED' : 'QUEUED') : (phase === 'seal' ? 'TERMINAL' : 'NOT_REQUIRED'))
+      assert.equal(phase === 'seal' ? r.kind : r.status, phase === 'seal' ? 'SEALED' : 'QUEUED')
       const current = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id } })
       const createdBeforePayment = first === 'render' && phase === 'create'
-      assert.equal(current.state, createdBeforePayment ? 'ENQUEUED' : 'NOT_REQUIRED')
+      assert.equal(current.state, createdBeforePayment ? 'ENQUEUED' : 'PENDING')
       assert.equal(Boolean(current.printJobId), createdBeforePayment)
       assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), createdBeforePayment ? 1 : 0)
       assert.equal(await admin.client.paymentIntent.count({ where: { tenantId: f.tenantId } }), 1)
@@ -881,7 +955,7 @@ for (const failed of ['KITCHEN_MAKE', 'FRONT_UNPAID', 'FRONT_PAID'] as const) {
 }
 
 for (const phase of ['rendering', 'sealed'] as const) {
-  test(`DB payment supersedes ${phase} FRONT_UNPAID before enqueue; late result cannot create it`, { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
+  test(`DB payment preserves ${phase} FRONT_UNPAID and independently queues FRONT_PAID`, { skip: skipReason, timeout: 90_000 }, async () => withFixture(async h => {
     const { admin, fixture: f } = h, { route, owner } = await acceptedThreePurposeFixture(h)
     try {
       const kitchen = await sealPurpose(h, 'KITCHEN_MAKE')
@@ -892,15 +966,16 @@ for (const phase of ['rendering', 'sealed'] as const) {
       assert.equal((await route.patchBody(admin, { status: 'COMPLETED' })).status, 200)
       assert.equal((await route.patch(admin)).status, 200)
       assert.equal((await route.patch(admin)).status, 200)
+      const lateSeal = await sealCustomerOrderRender(admin.client as any, owner, { ...claim.claim, ...sealedBytes }, runtime)
+      assert.ok(['SEALED', 'ALREADY_SEALED'].includes(lateSeal.kind))
       const unpaid = await admin.client.customerOrderFulfillmentIntent.findUniqueOrThrow({ where: { id: claim.claim.intentId } })
-      assert.equal(unpaid.state, 'NOT_REQUIRED'); assert.equal(unpaid.lastErrorCode, 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT')
-      assert.equal(unpaid.printJobId, null); assert.equal(unpaid.renderLeaseTokenHash, null)
-      assert.equal((await sealCustomerOrderRender(admin.client as any, owner, { ...claim.claim, ...sealedBytes }, runtime)).kind, 'TERMINAL')
-      assert.equal((await processCustomerOrderFulfillmentIntent(admin.client as any, unpaid.id, new Date(), runtime)).status, 'NOT_REQUIRED')
+      assert.notEqual(unpaid.state, 'NOT_REQUIRED'); assert.notEqual(unpaid.lastErrorCode, 'FRONT_UNPAID_SUPERSEDED_BY_PAYMENT')
+      assert.equal((await processCustomerOrderFulfillmentIntent(admin.client as any, unpaid.id, new Date(), runtime)).status, 'QUEUED')
       const paid = await sealPurpose(h, 'FRONT_PAID')
       assert.equal((await processCustomerOrderFulfillmentIntent(admin.client as any, paid, new Date(), runtime)).status, 'QUEUED')
-      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), 2)
-      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: jobWhere(f, unpaid.idempotencyKey).tenantId_storeId_idempotencyKey }), 0)
+      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: { tenantId: f.tenantId } }), 3)
+      assert.ok(unpaid.printJobId)
+      assert.equal(await admin.client.eshopTrayPrintJob.count({ where: jobWhere(f, unpaid.idempotencyKey).tenantId_storeId_idempotencyKey }), 1)
       assert.equal(await admin.client.saleRecord.count({ where: { tenantId: f.tenantId } }), 0)
     } finally { route.close() }
   }))
