@@ -63,7 +63,7 @@ jobs:
             desktop/package-lock.json
 
       - name: Install root dependencies for Desktop compile toolchain
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: .
 
       - name: Install Contract dependencies
