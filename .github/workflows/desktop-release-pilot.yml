@@ -58,7 +58,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install root dependencies for Desktop compile toolchain
+        run: npm ci
+        working-directory: .
 
       - name: Install Contract dependencies
         run: npm ci
