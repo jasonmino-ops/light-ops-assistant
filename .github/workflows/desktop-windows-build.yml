@@ -22,18 +22,14 @@ jobs:
       run:
         working-directory: desktop
     steps:
+      - name: Configure canonical Git line endings
+        shell: pwsh
+        working-directory: .
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Checkout Windows Provider artifact source
-        uses: actions/checkout@v4
-        with:
-          repository: jasonmino-ops/eshop-windows-provider
-          ref: 7785be145d5259991038d17839d322e2694e338c
-          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
-          path: ep-mb3-provider
-          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -51,6 +47,61 @@ jobs:
 
       - name: Install Desktop dependencies
         run: npm ci
+
+      - name: Clean Desktop build outputs
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force dist,release -ErrorAction SilentlyContinue
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Activation focused tests
+        run: |
+          npx vitest run `
+            tests/activation-api-client.test.ts `
+            tests/activation-credential-store.test.ts `
+            tests/activation-gate.test.ts `
+            tests/activation-ipc.test.ts `
+            tests/activation-state-machine.test.ts `
+            tests/activation-static-security.test.ts `
+            --reporter=verbose
+
+      - name: Verify clean source before Unit tests
+        shell: pwsh
+        working-directory: .
+        run: |
+          $status = @(git status --porcelain=v1 --untracked-files=all)
+          if ($status.Count -gt 0) {
+            $status | ForEach-Object { Write-Output "SOURCE_DIRTY=$_" }
+            throw "Source worktree is not clean before Unit tests"
+          }
+          Write-Output "SOURCE_WORKTREE_STATUS=CLEAN"
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Checkout Windows Provider artifact source
+        uses: actions/checkout@v4
+        with:
+          repository: jasonmino-ops/eshop-windows-provider
+          ref: 7785be145d5259991038d17839d322e2694e338c
+          token: ${{ secrets.EP_MB3_PROVIDER_REPO_TOKEN }}
+          path: ep-mb3-provider
+          persist-credentials: false
+
+      - name: Record external Provider checkout state
+        shell: pwsh
+        working-directory: .
+        run: |
+          $status = @(git status --porcelain=v1 --untracked-files=all)
+          Write-Output "POST_PROVIDER_CHECKOUT_STATUS_START"
+          if ($status.Count -eq 0) {
+            Write-Output "POST_PROVIDER_CHECKOUT_STATUS=CLEAN"
+          } else {
+            $status | ForEach-Object { Write-Output "POST_PROVIDER_CHECKOUT_DIRTY=$_" }
+          }
+          Write-Output "POST_PROVIDER_CHECKOUT_STATUS_END"
 
       - name: Install Provider dependencies
         run: npm ci
@@ -75,28 +126,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path ..\eshop-windows-provider | Out-Null
           Copy-Item -Recurse -Force ep-mb3-provider\artifacts ..\eshop-windows-provider\
-
-      - name: Clean Desktop build outputs
-        shell: pwsh
-        run: |
-          Remove-Item -Recurse -Force dist,release -ErrorAction SilentlyContinue
-
-      - name: Type check
-        run: npm run typecheck
-
-      - name: Activation focused tests
-        run: |
-          npx vitest run `
-            tests/activation-api-client.test.ts `
-            tests/activation-credential-store.test.ts `
-            tests/activation-gate.test.ts `
-            tests/activation-ipc.test.ts `
-            tests/activation-state-machine.test.ts `
-            tests/activation-static-security.test.ts `
-            --reporter=verbose
-
-      - name: Unit tests
-        run: npm test
 
       - name: Compile main & preload
         run: npm run compile

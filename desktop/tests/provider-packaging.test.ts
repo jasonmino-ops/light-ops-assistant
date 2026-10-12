@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
-// @ts-expect-error The verifier is a Node ESM CLI module with runtime exports and no generated declaration file.
+// @ts-expect-error: the verifier is a Node ESM CLI module with no generated declaration file.
 import { inspectProviderArtifact, verifyProviderArtifact } from '../scripts/verify-provider-packaging.mjs'
 
 const temporaryRoots: string[] = []
