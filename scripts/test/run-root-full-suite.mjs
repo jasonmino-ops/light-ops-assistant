@@ -1205,6 +1205,10 @@ function runCollectedTests({ repoRoot, collectedFiles, rawLogPath, baselineFinge
   const results = []
   const runnerErrors = []
   const tsxCli = resolve(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs')
+  // Root tests are the canonical test-only execution boundary. Keep the
+  // renderer's production allowlist unchanged while making its explicit
+  // NODE_ENV=test fixture contract deterministic for every child test.
+  const testEnvironment = { ...process.env, NODE_ENV: 'test' }
 
   if (collectedFiles.some((file) => file.endsWith('.test.ts')) && !existsSync(tsxCli)) {
     runnerErrors.push(`Missing existing dev dependency runtime: ${toPosix(relative(repoRoot, tsxCli))}`)
@@ -1218,7 +1222,7 @@ function runCollectedTests({ repoRoot, collectedFiles, rawLogPath, baselineFinge
     const child = spawnSync(process.execPath, args, {
       cwd: repoRoot,
       encoding: 'utf8',
-      env: process.env,
+      env: testEnvironment,
       maxBuffer: 64 * 1024 * 1024,
     })
     if (child.stdout) emitRaw(rawLogPath, child.stdout.endsWith('\n') ? child.stdout : `${child.stdout}\n`)

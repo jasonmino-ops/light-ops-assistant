@@ -30,7 +30,10 @@ type RuntimeState = {
   authorizationStartCount: number
   authorizationStatusCount: number
   accessHeaders: Array<Record<string, string>>
-  cashierHeaders: Array<Record<string, string>>
+  cashierOrderHeaders: Array<Record<string, string>>
+  cashierPendingHeaders: Array<Record<string, string>>
+  customerOrderHeaders: Array<Record<string, string>>
+  ownerWebSessionHeaders: Array<Record<string, string>>
 }
 
 type AccessResult =
@@ -58,7 +61,10 @@ async function createRuntimePage(
     authorizationStartCount: 0,
     authorizationStatusCount: 0,
     accessHeaders: [],
-    cashierHeaders: [],
+    cashierOrderHeaders: [],
+    cashierPendingHeaders: [],
+    customerOrderHeaders: [],
+    ownerWebSessionHeaders: [],
   }
 
   await page.route('**/api/**', async (route) => {
@@ -99,9 +105,26 @@ async function createRuntimePage(
       }
       return jsonRoute(route, { status: 'PENDING' })
     }
-    if (url.pathname === '/api/cashier/orders' || url.pathname === '/api/cashier/pending-orders') {
-      state.cashierHeaders.push(headers)
+    if (url.pathname === '/api/pos-session/owner-web-session') {
+      state.ownerWebSessionHeaders.push(headers)
+      const authorized = Boolean(headers['x-pos-device-token'])
+      return jsonRoute(route, authorized ? { ok: true } : { error: 'FORBIDDEN' }, authorized ? 200 : 403)
+    }
+    if (url.pathname === '/api/cashier/orders') {
+      state.cashierOrderHeaders.push(headers)
       return jsonRoute(route, [])
+    }
+    if (url.pathname === '/api/cashier/pending-orders') {
+      state.cashierPendingHeaders.push(headers)
+      return jsonRoute(route, [])
+    }
+    if (url.pathname === '/api/customer-orders') {
+      state.customerOrderHeaders.push(headers)
+      // Desktop H5 polling first reaches the web-session bridge after the
+      // normal cookie-authenticated request is rejected, then retries the
+      // same canonical route with the exchanged session.
+      const firstRequest = state.customerOrderHeaders.length === 1
+      return jsonRoute(route, firstRequest ? { error: 'LOGIN_REQUIRED' } : [], firstRequest ? 401 : 200)
     }
     if (url.pathname === '/api/me') {
       return jsonRoute(route, {
@@ -250,7 +273,7 @@ async function main() {
       })
     }
 
-    await test('QR approval stores the token, sends it to cashier APIs, and reloads without repeated authorization', async () => {
+    await test('QR approval stores the token, bridges auth, reaches Desktop canonical orders, and reloads without repeated authorization', async () => {
       const runtime = await createRuntimePage(browser, {
         access: (headers) => {
           const valid = headers['x-pos-device-token'] === 'approved-pos-token'
@@ -272,9 +295,11 @@ async function main() {
         await waitForCashier(runtime.page)
         assert.equal(await runtime.page.evaluate((key) => localStorage.getItem(key), tokenKey), 'approved-pos-token')
         await runtime.page.waitForFunction(() => (
-          performance.getEntriesByType('resource').some((entry) => entry.name.includes('/api/cashier/orders'))
+          performance.getEntriesByType('resource').some((entry) => entry.name.includes('/api/customer-orders'))
         ))
-        assert.ok(runtime.state.cashierHeaders.some((headers) => headers['x-pos-device-token'] === 'approved-pos-token'))
+        assert.equal(runtime.state.cashierOrderHeaders.length, 0, 'Desktop POS must not use the Browser legacy order endpoint')
+        assert.ok(runtime.state.customerOrderHeaders.length >= 2, 'Desktop canonical order route was not retried after auth exchange')
+        assert.equal(runtime.state.ownerWebSessionHeaders[0]?.['x-pos-device-token'], 'approved-pos-token')
         const authorizationStarts = runtime.state.authorizationStartCount
 
         await runtime.page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 })
@@ -341,6 +366,8 @@ async function main() {
         await waitForBrowserCashier(runtime.page)
         assert.equal(await runtime.page.evaluate((key) => localStorage.getItem(key), tokenKey), 'browser-pos-token')
         assert.equal(runtime.state.accessHeaders[0]['x-pos-device-token'], 'browser-pos-token')
+        assert.ok(runtime.state.cashierOrderHeaders.length > 0, 'Browser legacy order endpoint was not observed')
+        assert.equal(runtime.state.customerOrderHeaders.length, 0, 'Browser cashier must not use the Desktop canonical order endpoint')
         assert.equal(runtime.state.authorizationStartCount, 0)
       } finally {
         await runtime.context.close()
