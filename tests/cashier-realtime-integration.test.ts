@@ -278,11 +278,51 @@ async function main() {
     'packages/h5-renderer/runtime/h5-render-sandbox.socket',
     'packages/h5-renderer/runtime/apparmor.profile',
   ])
-  assert.deepEqual(changed.filter(path => !approved.has(path)), [])
-  assert.equal(changed.includes('app/api/cashier/orders/route.ts'), false)
-  assert.equal(changed.includes('app/api/cashier/pending-orders/route.ts'), false)
-  assert.equal(changed.some(path => path === 'app/sale/page.tsx' || path.includes('customer-display') || path.includes('pos/session/update')), false)
-  assert.equal(changed.some(path => (path.startsWith('prisma/') || path.includes('migration') || path.includes('print')) && !approved.has(path)), false)
+  const assertBoundary = (paths: string[], allowed: ReadonlySet<string>) => {
+    assert.deepEqual(paths.filter(path => !allowed.has(path)), [])
+    assert.equal(paths.includes('app/api/cashier/orders/route.ts'), false)
+    assert.equal(paths.includes('app/api/cashier/pending-orders/route.ts'), false)
+    assert.equal(paths.some(path => path === 'app/sale/page.tsx' || path.includes('customer-display') || path.includes('pos/session/update')), false)
+    assert.equal(paths.some(path => (path.startsWith('prisma/') || path.includes('migration') || path.includes('print')) && !allowed.has(path)), false)
+  }
+
+  // Founder EXACT SCOPE EXPANSION: ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01,
+  // M1 SAFE SETTINGS-ONLY, MINIMAL TASK-BOUND ALLOWLIST SUCCESSOR.
+  // Like the fixed H5/Dine-in successors, bind to exact approved content, not
+  // a branch name or an environment flag. Do NOT union this into the legacy set.
+  const productCandidate = 'bd4ed1a532b4db9609841bb5d8e2e184793fecad'
+  const approvedBase = 'ede397d808cd88347d5c641ff833d1a7a6fe404d'
+  const successorPath = 'tests/cashier-realtime-integration.test.ts'
+  const productPaths = [
+    'e-shop-tray/network-addon/entryCoordinator.ts',
+    'e-shop-tray/network-addon/main.ts',
+    'e-shop-tray/network-addon/ui.ts',
+    'e-shop-tray/tests/network-addon-settings-only.test.ts',
+  ]
+  const gitPaths = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
+  const unmergedCommits = gitPaths('rev-list', 'origin/main..HEAD')
+  // Once merged, the candidate is no longer an unmerged task grant. Later M1
+  // path edits still enter this branch and fail without that exact grant.
+  const isM1 = unmergedCommits.includes(productCandidate) || changed.some(path => productPaths.includes(path))
+  if (isM1) {
+    assert.ok(unmergedCommits.includes(productCandidate), 'M1 requires the reviewed product candidate in unmerged ancestry')
+    assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [approvedBase], 'M1 requires its authorized baseline')
+    // Check HEAD, index and worktree separately: restoring a working file must
+    // not hide a staged product edit. Only the governance test may differ.
+    for (const args of [
+      ['diff', '--name-only', productCandidate, 'HEAD'],
+      ['diff', '--cached', '--name-only', productCandidate],
+      ['diff', '--name-only', productCandidate],
+    ]) {
+      assert.deepEqual(gitPaths(...args).filter(path => path !== successorPath), [], 'M1 reviewed product/content boundary changed')
+    }
+    assert.ok(productPaths.every(path => changed.includes(path)), 'M1 complete four-path product candidate required')
+    assertBoundary(changed, new Set([...productPaths, successorPath]))
+  } else {
+    // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
+    // retain their prior semantics. Closed historical grants are not reopened.
+    assertBoundary(changed, approved)
+  }
 
   console.log('cashier realtime Stage 1F integration and regression checks passed')
 }
