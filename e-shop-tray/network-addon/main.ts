@@ -38,6 +38,9 @@ let resultLog: RelayResultLog | undefined
 const transport = new NetworkRawTcpTransport()
 let scanner: AbortController | undefined
 let lastCode = 'STARTING'
+// Process-local only: DONE means startup activation was consumed, not RUNNING.
+let activation: 'PENDING' | 'DONE' = 'PENDING'
+let settingsRequest = 0
 let lastEvent: { event: string; jobId?: string; resultCode?: string; effectBoundary?: string } | undefined
 let quitting = false
 let shortcutCode = 'SHORTCUT_NOT_CHECKED'
@@ -173,7 +176,7 @@ async function finishExit() {
   app.quit()
 }
 
-async function initialize() {
+async function initializeDependencies() {
   if (profile) throw new Error('ADDON_RESTART_REQUIRED')
   if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('ADDON_WINDOWS_X64_REQUIRED')
   if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' || process.env.NODE_EXTRA_CA_CERTS) throw new Error('ADDON_CUSTOM_TLS_NOT_ALLOWED')
@@ -212,6 +215,12 @@ async function initialize() {
     onError(error) { lastCode = code(error) } })
   lifecycle = new ColdModeLifecycle({ profile, client, assertIdentity, validate: validateColdContext,
     stopAndWait: () => poller!.stopAndWait(), start: () => poller!.start(), exit: finishExit })
+  lastCode = 'SETTINGS_ONLY_PENDING'
+}
+
+async function activateAtStartup() {
+  const lifecycle = knownLifecycle(), profile = knownProfile()
+  activation = 'DONE'
   try {
     await lifecycle.resumeAtStartup()
     lastCode = profile.snapshot().enabled ? 'RUNNING' : profile.snapshot().coldEnableCheckRequired
@@ -253,7 +262,7 @@ async function status() {
     try { await assertIdentity() } catch { cashierAvailable = false }
   }
   return { version: app.getVersion(), server: SERVER, storeCode: binding?.storeCode ?? null,
-    ready: !!profile && !!lifecycle && !!state, busy: entry.busy, code: lastCode, mode: state?.mode ?? null,
+    ready: !!profile && !!lifecycle && !!state, busy: entry.busy, code: lastCode, activation, settingsRequest, mode: state?.mode ?? null,
     enabled: state?.enabled ?? false, endpoint: endpoint ?? null, kitchenEndpoint: kitchenEndpoint ?? null,
     revision: state?.revision ?? 0,
     test: state?.test ?? null, kitchenTest: state?.kitchenTest ?? null, lastEvent: lastEvent ?? null,
@@ -345,7 +354,8 @@ async function openCashier(config: NetworkPrinterConfig) {
   })
 }
 
-const entry = new EntryCoordinator({ initialize, openCashier, showManagement: showWindow, errorCode: code,
+const entry = new EntryCoordinator({ initialize: initializeDependencies, activateAtStartup, openCashier,
+  showManagement(settings) { if (settings) settingsRequest++; showWindow() }, errorCode: code,
   readCashier: () => readCashierEntry({ profile: knownProfile(), restartRequired: knownLifecycle().restartRequired,
     printingReady: lastCode === 'RUNNING' && knownLifecycle().everStartedPoller, assertIdentity }),
   confirmWarning: async () => {
@@ -396,7 +406,16 @@ async function perform(action: unknown, value: unknown) {
       else await finishExit()
     })
   }
-  return entry.runOperation(async () => {
+  if (action === 'enable' && activation === 'PENDING') {
+    const data = exactObject(input, ['singleAgentConfirmed', 'cashierTabsClosed'])
+    if (data.singleAgentConfirmed !== true) throw new Error('ADDON_SINGLE_AGENT_CONFIRMATION_REQUIRED')
+    // An enabled profile has not been paused merely by opening settings. Resume
+    // it through the same once-only startup entry, never disable/re-enable it.
+    const alreadyEnabled = knownProfile().snapshot().enabled
+    await entry.activate()
+    if (alreadyEnabled) return null
+  }
+  const result = await entry.runOperation(async () => {
     switch (action) {
       case 'retryBinding': exactObject(input, []); break
       case 'pause': exactObject(input, []); await pause(); break
@@ -447,6 +466,8 @@ async function perform(action: unknown, value: unknown) {
     }
     return null
   }, action === 'retryBinding')
+  if (action === 'retryBinding' && startupIntent !== 'settings') await entry.activate()
+  return result
 }
 
 function showWindow() {
@@ -467,9 +488,15 @@ function showWindow() {
 
 const helper = process.argv.filter(value => value === '--install-shortcuts' || value === '--uninstall-shortcuts')
 const silentShortcutArgs = process.argv.filter(value => value === '--silent-shortcuts')
-const helperMode = helper.length === 1 && !process.argv.some(value => ['--cashier', '--manage', '--background'].includes(value))
+const helperMode = helper.length === 1 && !process.argv.some(value => ['--cashier', '--manage', '--background', '--settings-only'].includes(value))
   && (silentShortcutArgs.length === 0 || (helper[0] === '--install-shortcuts' && silentShortcutArgs.length === 1))
-if ((helper.length || silentShortcutArgs.length) && !helperMode) app.exit(8)
+// Reject conflicting cold-start intents before dependency initialization or
+// runtime activation (and before requesting the resident instance lock).
+let startupIntent: EntryIntent | undefined
+if (!helperMode) {
+  try { startupIntent = entryIntent(process.argv) } catch { /* Fail closed below. */ }
+}
+if (!helperMode && !startupIntent) app.exit(8)
 else if (!app.requestSingleInstanceLock()) { if (helperMode) app.exit(8); else app.quit() }
 else if (helperMode) {
   // Deliberately separate from initialize(): no binding, print profile, journal,
@@ -525,7 +552,10 @@ else if (helperMode) {
         return { ok: false, code: failure }
       }
     })
-    try { await entry.initialize() } catch (error) { lastCode = code(error) }
+    try {
+      if (startupIntent === 'settings') await entry.initialize()
+      else await entry.activate()
+    } catch (error) { lastCode = code(error) }
     const icon = nativeImage.createFromPath(path.join(__dirname, 'icon.png')).resize({ width: 20, height: 20 })
     tray = new Tray(icon)
     tray.setToolTip('店小二收银')
@@ -533,6 +563,6 @@ else if (helperMode) {
       { label: '管理与维护', click: () => { void dispatchEntry('manage') } },
       { label: '安全退出', click: () => app.quit() }]))
     tray.on('double-click', () => { void dispatchEntry('cashier') })
-    await dispatchEntry(entryIntent(process.argv))
+    await dispatchEntry(startupIntent!)
   }).catch(() => { lastCode = 'ADDON_START_FAILED'; app.quit() })
 }

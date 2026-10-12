@@ -12,12 +12,15 @@ export function networkLoginItem(items: readonly { name: string; scope: string; 
   return { enabled: item.enabled, background: item.args.length === 1 }
 }
 
-export type EntryIntent = 'cashier' | 'manage' | 'background'
+export type EntryIntent = 'cashier' | 'manage' | 'background' | 'settings'
 export function entryIntent(argv: readonly string[]): EntryIntent {
-  const intents = argv.filter(value => ['--cashier', '--manage', '--background'].includes(value))
-  if (intents.length > 1) throw new Error('ADDON_ENTRY_ARGUMENTS_REJECTED')
+  const intents = argv.filter(value => ['--cashier', '--manage', '--background', '--settings-only'].includes(value))
+  if (intents.length > 1 || argv.some(value => ['--install-shortcuts', '--uninstall-shortcuts', '--silent-shortcuts'].includes(value))) {
+    throw new Error('ADDON_ENTRY_ARGUMENTS_REJECTED')
+  }
   // Existing Windows Run entries have no arguments and retain their old behavior.
-  return intents[0] === '--cashier' ? 'cashier' : intents[0] === '--background' ? 'background' : 'manage'
+  return intents[0] === '--settings-only' ? 'settings'
+    : intents[0] === '--cashier' ? 'cashier' : intents[0] === '--background' ? 'background' : 'manage'
 }
 
 export type CashierEntry = { config: NetworkPrinterConfig; revision: number; warning: boolean }
@@ -58,10 +61,11 @@ export async function readCashierEntry(options: {
 
 type Options = {
   initialize(): Promise<void>
+  activateAtStartup?(): Promise<void>
   readCashier(): Promise<CashierEntry>
   confirmWarning(): Promise<boolean>
   openCashier(config: NetworkPrinterConfig): Promise<void>
-  showManagement(): void
+  showManagement(settings?: boolean): void
   errorCode(error: unknown): string
 }
 
@@ -70,6 +74,8 @@ type Options = {
 export class EntryCoordinator {
   private initialization: Promise<void> | undefined
   private initializing = false
+  private activation: Promise<void> | undefined
+  private activating = false
   private operation: Promise<unknown> | undefined
   private entry: Promise<void> | undefined
   private exitOperation: Promise<void> | undefined
@@ -77,7 +83,7 @@ export class EntryCoordinator {
   private launchCode = 'ENTRY_IDLE'
 
   constructor(private readonly options: Options) {}
-  get busy() { return this.initializing || !!this.operation || !!this.entry || !!this.exitOperation }
+  get busy() { return this.initializing || this.activating || !!this.operation || !!this.entry || !!this.exitOperation }
   get entryPending() { return !!this.entry }
   get entryCode() { return this.launchCode }
   get isExiting() { return this.exiting }
@@ -92,9 +98,32 @@ export class EntryCoordinator {
     return this.initialization
   }
 
+  /** Consume the existing startup activation once, only on a runtime intent.
+   * Wait for any already admitted management operation; block new ones while
+   * activation is in flight. Initialization failures remain explicitly retryable. */
+  activate(): Promise<void> {
+    this.assertOpen()
+    if (this.activation) return this.activation
+    if (this.entry) return Promise.reject(new Error('ADDON_BUSY'))
+    this.activating = true
+    let consumed = false
+    const pending = Promise.resolve().then(async () => {
+      await this.initialize()
+      try { await this.operation } catch { /* Re-read lifecycle gates in activation. */ }
+      this.assertOpen()
+      consumed = true
+      await this.options.activateAtStartup?.()
+    }).catch(error => {
+      if (!consumed) this.activation = undefined
+      throw error
+    }).finally(() => { this.activating = false })
+    this.activation = pending
+    return pending
+  }
+
   runOperation<T>(action: () => Promise<T>, retryInitialization = false, maintenanceOnly = false): Promise<T> {
     this.assertOpen()
-    if (this.operation || this.entry) return Promise.reject(new Error('ADDON_BUSY'))
+    if (this.operation || this.entry || this.activating) return Promise.reject(new Error('ADDON_BUSY'))
     const pending = Promise.resolve().then(async () => {
       if (retryInitialization) {
         // Explicit retry only. Failed startup is retained until this action.
@@ -122,6 +151,7 @@ export class EntryCoordinator {
       // A mode change can close the process while a click is queued. Recheck
       // admission only after it settles; never launch using the old mode.
       try { await this.operation } catch { /* Re-read the authoritative gates below. */ }
+      if (this.activating) await this.activation
       this.assertOpen()
       const first = await this.options.readCashier()
       let approvedWarning = false
@@ -154,15 +184,18 @@ export class EntryCoordinator {
 
   async dispatch(intent: EntryIntent): Promise<void> {
     this.assertOpen()
-    if (intent === 'cashier') { await this.launchCashier(); return }
-    try { await this.initialize() }
+    try {
+      if (intent === 'settings') await this.initialize()
+      else await this.activate()
+    }
     catch (error) {
       this.launchCode = this.options.errorCode(error)
-      if (intent === 'manage') this.options.showManagement()
+      if (intent !== 'background') this.options.showManagement(intent === 'settings')
       throw error
     }
     this.assertOpen()
-    if (intent === 'manage') this.options.showManagement()
+    if (intent === 'cashier') { await this.launchCashier(); return }
+    if (intent === 'manage' || intent === 'settings') this.options.showManagement(intent === 'settings')
   }
 
   markExiting() { this.exiting = true }
@@ -171,6 +204,7 @@ export class EntryCoordinator {
     if (this.exitOperation) return this.exitOperation
     const pending = (async () => {
       try { await this.initialization } catch { /* Exit remains available after setup failure. */ }
+      try { await this.activation } catch { /* Activation observes exit before starting. */ }
       try { await this.operation } catch { /* Existing operation reports its own error. */ }
       try { await this.entry } catch { /* A pending entry observes exiting before launching. */ }
       await action()

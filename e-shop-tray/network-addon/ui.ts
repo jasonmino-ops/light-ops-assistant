@@ -1,6 +1,7 @@
 type Status = { version: string; server: string; storeCode: string | null; ready: boolean; busy: boolean; code: string;
   cashierAvailable: boolean; entryCode: string; entryPending: boolean;
   shortcutCode: string;
+  activation: 'PENDING' | 'DONE'; settingsRequest: number;
   mode: string | null; enabled: boolean; endpoint: { host: string; port: number } | null;
   kitchenEndpoint: { host: string; port: number } | null; revision: number;
   restartRequired: boolean; coldEnableCheckRequired: boolean; coldProcess: boolean;
@@ -16,6 +17,7 @@ let current: Status | undefined
 let busy = false
 // 用户主动点了「打印设置」。设置完成后回到日常屏。
 let showSettings = false
+let settingsRequest = 0
 const messages: Record<string, string> = {
   ENTRY_IDLE: '日常点桌面上的「店小二收银」就可以。第一次使用请先完成门店绑定和打印机设置。',
   ENTRY_OPENING: '正在打开收银台，请不要重复点击。',
@@ -28,6 +30,7 @@ const messages: Record<string, string> = {
   SHORTCUT_NEEDS_ATTENTION: '有几个桌面图标无法确认来源，已经原样保留。请到「整理桌面图标」里看一下。',
   SHORTCUT_HISTORY_INVALID: '桌面图标的记录无法核对，原文件已经保留。请联系技术支持，不要自己清空目录重试。',
   RUNNING: '打印已开启。收银台开的每一单都会自动出票。',
+  SETTINGS_ONLY_PENDING: '仅打开了打印设置，本次尚未启动自动打印。已保存的启用设置没有改变。需要时请明确点击「开始自动打印」；测试前请先暂停。',
   PAUSED: '已暂停。设置和记录都还在，随时可以重新开始。',
   SETUP_OR_PAUSED: '打印机已经设置好，可以直接开始。第一次设置请先打一张测试票并确认。',
   CONFIGURED_PAUSED: '设置已保存。确认本店只有这一台电脑负责打印，就可以开始了。',
@@ -79,11 +82,11 @@ async function invoke(action: string, value: unknown = {}) {
   if (!result.ok) throw new Error(result.code ?? 'ADDON_OPERATION_FAILED')
   return result.value
 }
-// 决定显示哪一屏。只使用 status() 已有的字段，不引入任何新的探测或计数。
+// 只读进程状态；打开设置与展示状态都不触发启动或网络探测。
 function decideView(state: Status): { view: 'calm' | 'alarm' | 'setup'; severity: 'down' | 'unsure' } {
   const settled = state.ready && !!state.mode && state.revision > 0 && state.test?.outcome === 'CONFIRMED'
     && (!state.dualSetupRequired || state.kitchenTest?.outcome === 'CONFIRMED')
-  if (showSettings || !settled || state.restartRequired || state.coldEnableCheckRequired) return { view: 'setup', severity: 'down' }
+  if (showSettings || state.activation === 'PENDING' || !settled || state.restartRequired || state.coldEnableCheckRequired) return { view: 'setup', severity: 'down' }
   const uncertain = state.lastEvent?.effectBoundary === 'CROSSING_UNKNOWN' || state.code === 'NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW'
   if (uncertain) return { view: 'alarm', severity: 'unsure' }
   if (state.enabled && state.code !== 'RUNNING') return { view: 'alarm', severity: 'down' }
@@ -93,9 +96,11 @@ function pillText(state: Status, view: string, severity: string) {
   if (view === 'alarm') return severity === 'unsure' ? '有单要核对' : '打印有问题'
   if (view === 'calm') return state.enabled ? '打印正常' : '已暂停'
   if (!state.ready) return '正在启动'
+  if (state.activation === 'PENDING') return '自动打印未启动'
   return state.mode ? '需要处理' : '准备设置'
 }
 function render(state: Status) {
+  if (state.settingsRequest !== settingsRequest) { settingsRequest = state.settingsRequest; showSettings = true }
   const previousMode = current?.mode
   current = state
   const blocked = busy || state.busy || state.restartRequired
@@ -129,11 +134,12 @@ function render(state: Status) {
   el<HTMLButtonElement>('test').disabled = !canConfigure || testPending || !input('test-ready').checked
   el<HTMLButtonElement>('pause').disabled = !state.ready || blocked
   el<HTMLButtonElement>('retry-binding').disabled = state.ready || blocked
-  el<HTMLButtonElement>('enable').disabled = !state.ready || state.enabled || !state.revision || blocked || state.test?.outcome !== 'CONFIRMED'
+  el<HTMLButtonElement>('enable').disabled = !state.ready || (state.enabled && state.activation !== 'PENDING') || !state.revision || blocked || state.test?.outcome !== 'CONFIRMED'
     || (state.dualSetupRequired && state.kitchenTest?.outcome !== 'CONFIRMED') || !input('single-agent').checked
     || (state.coldEnableCheckRequired && !input('enable-tabs-closed').checked)
   el<HTMLButtonElement>('cashier').disabled = !state.cashierAvailable || blocked || state.entryPending
-  el('cashier').textContent = view === 'alarm' ? '仍然开始营业' : state.enabled ? '开始营业' : '打开收银台'
+  el('cashier').textContent = state.activation === 'PENDING' ? '打开收银台（不启动打印）'
+    : view === 'alarm' ? '仍然开始营业' : state.enabled ? '开始营业' : '打开收银台'
   el('entry-message').textContent = state.entryCode && state.entryCode !== 'READY'
     ? (messages[state.entryCode] ?? '请按提示完成设置，或先看一下打印状态。打开收银台不会解除暂停，也不会转到原来的打印方式。')
     : view === 'calm' && state.enabled ? '也可以直接点桌面上的「店小二收银」。'
