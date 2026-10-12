@@ -1,5 +1,6 @@
 import type { ActivationApiClient } from './activationApiClient'
 import type { CredentialStore } from './credentialStore'
+import { logger } from '../logger'
 import type {
   ActivationInput,
   ActivationMetadataV1,
@@ -13,6 +14,120 @@ import type {
 import { ACTIVATION_PUBLIC_INITIAL_STATE, isPublicStateSecretFree } from './activationTypes'
 
 type Listener = (state: ActivationPublicState) => void
+
+export type AuthorizedRuntimeStartupStage =
+  | 'hardware'
+  | 'ipc'
+  | 'employee-window'
+  | 'customer-window'
+  | 'display-watch'
+  | 'v3-runtime'
+  | 'tray'
+
+type AuthorizedRuntimeStartupStatus = 'BEGIN' | 'PASS' | 'FAILED'
+
+export type AuthorizedRuntimeStartupDiagnostic = {
+  correlationId: string
+  stage: AuthorizedRuntimeStartupStage
+  status: AuthorizedRuntimeStartupStatus
+  reused?: boolean
+  failedStage?: AuthorizedRuntimeStartupStage
+  exceptionType?: string
+  errorMessage?: string
+  stack?: string
+}
+
+const DIAGNOSTIC_SECRET_PATTERNS = [
+  /bearer\s+[^\s,;]+/gi,
+  /(?:device[-_ ]?token|authorization|token|pin|secret|password|cookie|khqr)\s*[:=]\s*["']?[^,\s"']+/gi,
+  /\b(?:pin|password|secret|token)\s+[^\s,;]+/gi,
+]
+
+export function redactAuthorizedRuntimeDiagnosticText(value: unknown): string {
+  const raw = value instanceof Error ? value.message : String(value ?? 'unknown error')
+  return DIAGNOSTIC_SECRET_PATTERNS.reduce((text, pattern) => text.replace(pattern, '[redacted]'), raw)
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 1000)
+}
+
+function diagnosticStack(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !error.stack) return undefined
+  return DIAGNOSTIC_SECRET_PATTERNS.reduce((text, pattern) => text.replace(pattern, '[redacted]'), error.stack)
+    .slice(0, 4000)
+}
+
+function diagnosticExceptionType(error: unknown): string {
+  if (error instanceof Error && error.name) return error.name
+  return Object.prototype.toString.call(error).slice(8, -1) || 'UnknownError'
+}
+
+export function createAuthorizedRuntimeStartupDiagnostics() {
+  return (diagnostic: AuthorizedRuntimeStartupDiagnostic) => {
+    const level = diagnostic.status === 'FAILED' ? 'error' : 'info'
+    logger[level]('authorized-runtime.startup', diagnostic)
+  }
+}
+
+/**
+ * Executes each Authorized Runtime startup stage at most once after success.
+ * A failed stage may be retried, while completed stages are explicitly reused.
+ * This is deliberately independent of resource ownership: operations decide
+ * whether a resource is still present and can be reused.
+ */
+export class AuthorizedRuntimeStartupStageRunner {
+  private readonly completed = new Set<AuthorizedRuntimeStartupStage>()
+  private readonly inFlight = new Map<AuthorizedRuntimeStartupStage, Promise<void>>()
+
+  constructor(private readonly report: (diagnostic: AuthorizedRuntimeStartupDiagnostic) => void) {}
+
+  async run(
+    stage: AuthorizedRuntimeStartupStage,
+    correlationId: string,
+    operation: () => void | Promise<void>,
+  ): Promise<void> {
+    if (this.completed.has(stage)) {
+      this.emit({ correlationId, stage, status: 'BEGIN', reused: true })
+      this.emit({ correlationId, stage, status: 'PASS', reused: true })
+      return
+    }
+    const existing = this.inFlight.get(stage)
+    if (existing) return existing
+
+    const promise = (async () => {
+      this.emit({ correlationId, stage, status: 'BEGIN' })
+      try {
+        await operation()
+        this.completed.add(stage)
+        this.emit({ correlationId, stage, status: 'PASS' })
+      } catch (error) {
+        this.emit({
+          correlationId,
+          stage,
+          status: 'FAILED',
+          failedStage: stage,
+          exceptionType: diagnosticExceptionType(error),
+          errorMessage: redactAuthorizedRuntimeDiagnosticText(error),
+          stack: diagnosticStack(error),
+        })
+        throw error
+      }
+    })()
+    this.inFlight.set(stage, promise)
+    try {
+      await promise
+    } finally {
+      this.inFlight.delete(stage)
+    }
+  }
+
+  private emit(diagnostic: AuthorizedRuntimeStartupDiagnostic) {
+    try {
+      this.report(diagnostic)
+    } catch {
+      // Diagnostics must not change startup decisions.
+    }
+  }
+}
 
 export type ActivationRuntimeOptions = {
   credentialStore: CredentialStore
@@ -329,7 +444,7 @@ export class ActivationRuntime {
       }).catch((error) => {
         this.startPromise = null
         this.authorizedContext = null
-        const message = error instanceof Error ? error.message : 'authorized runtime start failed'
+        const message = redactAuthorizedRuntimeDiagnosticText(error)
         this.setState(state('SERVER_ERROR', { errorCode: 'AUTHORIZED_RUNTIME_START_FAILED', message }))
       })
     }

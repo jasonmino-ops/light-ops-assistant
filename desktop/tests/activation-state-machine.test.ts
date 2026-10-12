@@ -34,6 +34,7 @@ function makeRuntime(options: {
   verifyResult?: CloudVerifyResult
   activateResult?: CloudActivateResult
   encryptionAvailable?: boolean
+  startAuthorizedRuntime?: (context: { device: PublicDeviceIdentity; subscription: PublicSubscriptionState }) => Promise<void>
 } = {}) {
   let storedCredential = options.storedCredential
   const store = {
@@ -69,7 +70,7 @@ function makeRuntime(options: {
       subscription,
     }),
   }
-  const startAuthorizedRuntime = vi.fn(async () => undefined)
+  const startAuthorizedRuntime = vi.fn(options.startAuthorizedRuntime ?? (async () => undefined))
   const runtime = new ActivationRuntime({
     credentialStore: store as never,
     apiClient: api as never,
@@ -184,5 +185,25 @@ describe('activation runtime state machine', () => {
     await runtime.resetLocalActivation()
     expect(store.resetLocalActivation).toHaveBeenCalledTimes(1)
     expect(runtime.getPublicState()).toMatchObject({ kind: 'UNACTIVATED' })
+  })
+
+  it('allows verification retry after an authorized runtime startup failure', async () => {
+    let attempts = 0
+    const { runtime, startAuthorizedRuntime } = makeRuntime({
+      storedCredential: credential(),
+      startAuthorizedRuntime: async () => {
+        attempts += 1
+        if (attempts === 1) throw new Error('employee window failed')
+      },
+    })
+
+    await runtime.initialize()
+    expect(runtime.getPublicState()).toMatchObject({
+      kind: 'SERVER_ERROR',
+      errorCode: 'AUTHORIZED_RUNTIME_START_FAILED',
+    })
+    await runtime.retryVerification()
+    expect(startAuthorizedRuntime).toHaveBeenCalledTimes(2)
+    expect(runtime.getPublicState()).toMatchObject({ kind: 'AUTHORIZED_RUNNING' })
   })
 })

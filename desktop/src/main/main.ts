@@ -9,6 +9,7 @@
  */
 
 import { app, BrowserWindow } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { initLogger, logger, getLogPaths } from './logger'
 import { getConfig, loadConfig } from './config'
 import { registerIpcHandlers, setV3PrintingRuntimeProvider } from './ipcRouter'
@@ -19,7 +20,11 @@ import { createDefaultHardwareManager } from './hardware/hardwareManager'
 import { WindowsProviderSupervisor } from './provider/providerSupervisor'
 import { ActivationApiClient } from './activation/activationApiClient'
 import { CredentialStore } from './activation/credentialStore'
-import { ActivationRuntime } from './activation/activationRuntime'
+import {
+  ActivationRuntime,
+  AuthorizedRuntimeStartupStageRunner,
+  createAuthorizedRuntimeStartupDiagnostics,
+} from './activation/activationRuntime'
 import { ActivationWindowController } from './activation/activationWindowController'
 import { registerActivationIpcHandlers } from './activation/activationIpc'
 import type { AuthorizedDesktopContext } from './activation/activationTypes'
@@ -47,9 +52,17 @@ if (!gotLock) {
   let activationWindowController: ActivationWindowController | null = null
   let authorizedRuntimeStarted = false
   let authorizedRuntimeStartPromise: Promise<void> | null = null
+  let hardwareRuntime: ReturnType<typeof createDefaultHardwareManager> | null = null
+  let ipcRegistrationAttempted = false
+  let ipcRegistered = false
+  let providerStartAttempted = false
+  let v3RuntimeStarted = false
   let credentialStore: CredentialStore | null = null
   let v3ControlPlaneRuntime: V3ControlPlaneRuntime | null = null
   let v3PrintingRuntime: V3PrintingRuntime | null = null
+  const authorizedRuntimeStages = new AuthorizedRuntimeStartupStageRunner(
+    createAuthorizedRuntimeStartupDiagnostics(),
+  )
 
   async function quitApp() {
     if (quitting) return
@@ -86,51 +99,96 @@ if (!gotLock) {
     if (authorizedRuntimeStarted) return
     if (authorizedRuntimeStartPromise) return authorizedRuntimeStartPromise
     authorizedRuntimeStartPromise = (async () => {
+      const correlationId = randomUUID()
       windowManager.setAuthorizedLaunchContext({ storeCode: context.device.storeCode })
       windowManager.setFormalRuntimeGuard(() => activationRuntime?.isAuthorized() === true)
 
       // Hardware Runtime 基础框架（A9）：仅注册占位设备
-      const hardware = createDefaultHardwareManager()
-      updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
-      logger.info('hardware.status', hardware.getStatusSummary())
-
-      setV3PrintingRuntimeProvider(() => v3PrintingRuntime)
-      registerIpcHandlers(windowManager)
-
-      windowManager.createEmployeeWindow()
-      windowManager.ensureCustomerWindow('startup')
-      windowManager.watchDisplays()
-
-      providerSupervisor = new WindowsProviderSupervisor()
-      providerSupervisor.start().catch((error) => {
-        recordHealthError('provider', `provider start failed: ${String(error)}`)
+      await authorizedRuntimeStages.run('hardware', correlationId, async () => {
+        if (!hardwareRuntime) hardwareRuntime = createDefaultHardwareManager()
+        updateHealth({ hardwareRuntime: 'ok' }, 'hardware.registered')
+        logger.info('hardware.status', hardwareRuntime.getStatusSummary())
       })
 
-      const credential = await credentialStore?.readCredential()
-      if (credential?.ok) {
-        v3ControlPlaneRuntime = new V3ControlPlaneRuntime(
-          new V3ControlPlaneClient(getConfig().baseUrl, credential.credential.deviceToken),
-          context.device.deviceId,
-        )
-        await v3ControlPlaneRuntime.start()
-        v3PrintingRuntime = await V3PrintingRuntime.open({
-          userDataPath: app.getPath('userData'),
-          controlPlane: v3ControlPlaneRuntime,
-          storeId: context.device.storeId,
-          deviceId: context.device.deviceId,
-          cloud: new V3PrintJobClient(getConfig().baseUrl, credential.credential.deviceToken),
+      await authorizedRuntimeStages.run('ipc', correlationId, async () => {
+        if (ipcRegistered) return
+        if (ipcRegistrationAttempted) {
+          throw new Error('IPC startup previously failed; restart required')
+        }
+        ipcRegistrationAttempted = true
+        setV3PrintingRuntimeProvider(() => v3PrintingRuntime)
+        registerIpcHandlers(windowManager)
+        ipcRegistered = true
+      })
+
+      await authorizedRuntimeStages.run('employee-window', correlationId, async () => {
+        if (!windowManager.getEmployeeWindow() || windowManager.getEmployeeWindow()?.isDestroyed()) {
+          windowManager.createEmployeeWindow()
+        }
+      })
+
+      await authorizedRuntimeStages.run('customer-window', correlationId, async () => {
+        if (!windowManager.getCustomerWindow() || windowManager.getCustomerWindow()?.isDestroyed()) {
+          windowManager.ensureCustomerWindow('startup')
+        }
+      })
+
+      await authorizedRuntimeStages.run('display-watch', correlationId, async () => {
+        windowManager.watchDisplays()
+      })
+
+      if (!providerStartAttempted) {
+        providerStartAttempted = true
+        providerSupervisor = new WindowsProviderSupervisor()
+        providerSupervisor.start().catch((error) => {
+          recordHealthError('provider', `provider start failed: ${String(error)}`)
         })
-        await applyAuthorizedEndpointProvisioning(v3PrintingRuntime, {
-          storeId: context.device.storeId,
-          deviceId: context.device.deviceId,
-        })
-        await v3PrintingRuntime.start()
-        logger.info('v3-control-plane.reconciled', { status: v3ControlPlaneRuntime.current().status })
-      } else {
-        recordHealthError('v3-control-plane', 'authorized runtime has no readable credential')
       }
 
-      createTray(windowManager, () => { void quitApp() })
+      await authorizedRuntimeStages.run('v3-runtime', correlationId, async () => {
+        if (v3RuntimeStarted) return
+        const credential = await credentialStore?.readCredential()
+        if (!credential?.ok) {
+          recordHealthError('v3-control-plane', 'authorized runtime has no readable credential')
+          v3RuntimeStarted = true
+          return
+        }
+        try {
+          v3ControlPlaneRuntime = new V3ControlPlaneRuntime(
+            new V3ControlPlaneClient(getConfig().baseUrl, credential.credential.deviceToken),
+            context.device.deviceId,
+          )
+          await v3ControlPlaneRuntime.start()
+          v3PrintingRuntime = await V3PrintingRuntime.open({
+            userDataPath: app.getPath('userData'),
+            controlPlane: v3ControlPlaneRuntime,
+            storeId: context.device.storeId,
+            deviceId: context.device.deviceId,
+            cloud: new V3PrintJobClient(getConfig().baseUrl, credential.credential.deviceToken),
+          })
+          await applyAuthorizedEndpointProvisioning(v3PrintingRuntime, {
+            storeId: context.device.storeId,
+            deviceId: context.device.deviceId,
+          })
+          await v3PrintingRuntime.start()
+          v3RuntimeStarted = true
+          logger.info('v3-control-plane.reconciled', { status: v3ControlPlaneRuntime.current().status })
+        } catch (error) {
+          try { await v3PrintingRuntime?.close() } catch (closeError) {
+            recordHealthError('v3-printing', `partial startup cleanup failed: ${String(closeError)}`)
+          }
+          try { await v3ControlPlaneRuntime?.stop() } catch (stopError) {
+            recordHealthError('v3-control-plane', `partial startup cleanup failed: ${String(stopError)}`)
+          }
+          v3PrintingRuntime = null
+          v3ControlPlaneRuntime = null
+          throw error
+        }
+      })
+
+      await authorizedRuntimeStages.run('tray', correlationId, async () => {
+        createTray(windowManager, () => { void quitApp() })
+      })
       authorizedRuntimeStarted = true
     })().catch((error) => {
       authorizedRuntimeStartPromise = null
