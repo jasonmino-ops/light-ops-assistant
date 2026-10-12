@@ -25,6 +25,8 @@ export const IPC_CHANNELS = {
   V3_PRINT_SUBMIT: 'eshop:v3-print:submit',
   /** Renderer(employee) -> Main (invoke): read-only proof of absent local V3 execution. */
   V3_OPERATOR_RECOVERY_PROOF_GET: 'eshop:v3-print:operator-recovery-proof:get',
+  /** Renderer(employee) -> Main (invoke): open the verified Add-on settings-only entry. */
+  NETWORK_PRINT_SETTINGS_OPEN: 'eshop:network-print:settings:open',
   /** Main → Renderer(顾客窗口)：下发最新购物车快照 */
   CART_APPLY: 'eshop:cart:apply',
 } as const
@@ -49,6 +51,7 @@ export const INVOKABLE_BY_ROLE: Record<WindowRole, readonly string[]> = {
     IPC_CHANNELS.POS_SESSION_TAKE,
     IPC_CHANNELS.V3_PRINT_SUBMIT,
     IPC_CHANNELS.V3_OPERATOR_RECOVERY_PROOF_GET,
+    IPC_CHANNELS.NETWORK_PRINT_SETTINGS_OPEN,
   ],
   customer: [],
 }

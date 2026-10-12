@@ -8,7 +8,7 @@
  * - payload 由 validateCartSnapshotMessage 做运行时校验
  */
 
-import { app, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import { app, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS, SENDABLE_BY_ROLE, INVOKABLE_BY_ROLE, type WindowRole } from '../shared/ipcChannels'
 import { cartSyncService } from './cartSyncService'
 import { getHealthSnapshot, updateHealth } from './runtimeHealth'
@@ -19,6 +19,7 @@ import { PosSessionBridge } from './posSessionBridge'
 import type { WindowManager } from './windowManager'
 import type { V3PrintingRuntime } from './printing/v3PrintingRuntime'
 import { createHash } from 'node:crypto'
+import { openNetworkPrintSettings } from './networkPrintSettingsLauncher'
 
 let v3PrintingRuntimeProvider: () => V3PrintingRuntime | null = () => null
 export function setV3PrintingRuntimeProvider(provider: () => V3PrintingRuntime | null) {
@@ -131,6 +132,21 @@ export function registerIpcHandlers(windowManager: WindowManager) {
     if (!win || win.isDestroyed() || win.webContents.id !== event.sender.id) return null
     if (!event.senderFrame || !isAllowedNavigation(event.senderFrame.url, config)) return null
     return posSessionBridge.take()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.NETWORK_PRINT_SETTINGS_OPEN, async (event) => {
+    if (authorize(windowManager, event, IPC_CHANNELS.NETWORK_PRINT_SETTINGS_OPEN, 'invoke') !== 'employee') {
+      return { ok: false, code: 'DESKTOP_PRINT_SETTINGS_IPC_REJECTED' }
+    }
+    if (!event.senderFrame || !isAllowedNavigation(event.senderFrame.url, config)) {
+      return { ok: false, code: 'DESKTOP_PRINT_SETTINGS_NAVIGATION_REJECTED' }
+    }
+    return openNetworkPrintSettings({
+      platform: process.platform,
+      appDataPath: app.getPath('appData'),
+      readShortcutLink: (file) => shell.readShortcutLink(file),
+      openPath: (file) => shell.openPath(file),
+    })
   })
 
   ipcMain.handle(IPC_CHANNELS.V3_PRINT_SUBMIT, async (event, payload: unknown) => {

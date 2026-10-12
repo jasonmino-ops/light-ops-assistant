@@ -6,6 +6,14 @@ import { useLocale } from '@/app/components/LangProvider'
 import { useWorkMode } from '@/app/components/WorkModeProvider'
 import { buildManagementHref, MANAGEMENT_PATH, withManagementReturn } from '@/lib/management-navigation'
 
+declare global {
+  interface Window {
+    eshopDesktopPrintSettings?: {
+      open: () => Promise<{ ok: boolean; code?: string }>
+    }
+  }
+}
+
 type IconName =
   | 'receipt'
   | 'refund'
@@ -95,6 +103,7 @@ export default function ManagementPage() {
   const [navigationContext, setNavigationContext] = useState({ fromDesktop: false, storeCode: null as string | null })
   const [isDesktopSurface, setIsDesktopSurface] = useState(false)
   const [printingInfoOpen, setPrintingInfoOpen] = useState(false)
+  const [printingLaunchState, setPrintingLaunchState] = useState<'idle' | 'opening' | 'failed'>('idle')
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -104,6 +113,29 @@ export default function ManagementPage() {
       storeCode: params.get('storeCode')?.trim() || null,
     })
   }, [])
+
+  const openPrintingSettings = async () => {
+    if (!isDesktopSurface || printingLaunchState === 'opening') return
+    setPrintingLaunchState('opening')
+    setPrintingInfoOpen(false)
+    const bridge = window.eshopDesktopPrintSettings
+    if (!bridge) {
+      setPrintingLaunchState('failed')
+      setPrintingInfoOpen(true)
+      return
+    }
+    try {
+      const result = await bridge.open()
+      if (result?.ok === true) {
+        setPrintingLaunchState('idle')
+        return
+      }
+    } catch {
+      // A missing or incompatible local entry remains a safe, user-visible failure.
+    }
+    setPrintingLaunchState('failed')
+    setPrintingInfoOpen(true)
+  }
 
   const navigationStoreCode = navigationContext.storeCode ?? storeCode
   const cashierHref = navigationContext.fromDesktop
@@ -267,7 +299,9 @@ export default function ManagementPage() {
                         type="button"
                         style={{ ...styles.entry, ...styles.actionEntry }}
                         aria-expanded={printingInfoOpen}
-                        onClick={() => setPrintingInfoOpen((open) => !open)}
+                        aria-busy={printingLaunchState === 'opening'}
+                        disabled={printingLaunchState === 'opening'}
+                        onClick={() => { void openPrintingSettings() }}
                       >
                         {content}
                       </button>
@@ -321,6 +355,9 @@ export default function ManagementPage() {
                 </div>
               ))}
             </div>
+            {printingLaunchState === 'failed' && (
+              <p data-printing-launch-status="failed" style={styles.printingHint}>{t('management.printingUnavailable')}</p>
+            )}
             <p style={styles.printingHint}>{t('management.printingHint')}</p>
           </section>
         )}

@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -104,6 +105,7 @@ afterEach(async () => {
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true })
 })
 const NETWORK_APP = 'com.elife.eshop.networkprint.addon', DESKTOP_APP = 'com.eshop.desktop.prototype'
+const digest = (value: string) => createHash('sha256').update(value).digest('hex')
 async function fixture() {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'network-shortcuts-')))
   directories.push(root)
@@ -148,11 +150,38 @@ describe('fixed product shortcut transactions on the actual filesystem', () => {
     expect(await readdir(f.options.desktopDirectory)).toEqual(['店小二收银.lnk'])
     expect((await readdir(f.options.startMenuDirectory)).sort()).toEqual(['Desktop 门店绑定.lnk', 'Network 打印设置.lnk', '卸载 Network Print.lnk'].sort())
     expect(JSON.parse(await readFile(f.cashier, 'utf8'))).toMatchObject({ target: f.options.networkExecutable, args: '--cashier', appUserModelId: NETWORK_APP })
+    expect(JSON.parse(await readFile(path.join(f.options.startMenuDirectory, 'Network 打印设置.lnk'), 'utf8'))).toMatchObject({ target: f.options.networkExecutable, args: '--settings-only', appUserModelId: NETWORK_APP })
     expect(JSON.parse(await readFile(path.join(f.options.startMenuDirectory, 'Desktop 门店绑定.lnk'), 'utf8'))).toMatchObject({ target: f.desktopRegistration.executable, args: '--admin' })
     for (const [file] of f.shell.writeShortcutLink.mock.calls) expect(file.startsWith(path.join(f.options.directory, 'files') + path.sep)).toBe(true)
     for (const role of ['cashier', 'manage', 'desktop-binding', 'uninstall'] as const) expect((await f.fresh().ensure(role)).status).toBe('UNCHANGED')
     expect(await allEvents(f)).toEqual(firstEvents)
     expect(f.shell.writeShortcutLink).toHaveBeenCalledTimes(4)
+  })
+  it('upgrades an owned historical manage shortcut without invalidating the full shortcut history', async () => {
+    const f = await fixture()
+    await f.lifecycle.ensure('manage')
+    const destination = path.join(f.options.startMenuDirectory, 'Network 打印设置.lnk')
+    const eventPath = path.join(f.options.directory, 'events', 'event-000001.json')
+    const event = JSON.parse(await readFile(eventPath, 'utf8'))
+    const legacySpec: ShortcutSpec = { target: f.options.networkExecutable, args: '--manage', icon: f.options.networkExecutable, iconIndex: 0, appUserModelId: NETWORK_APP }
+    const legacyRaw = JSON.stringify(legacySpec)
+    const intent = event.intent
+    intent.spec = legacySpec
+    intent.bytes = Buffer.byteLength(legacyRaw)
+    intent.sha256 = digest(legacyRaw)
+    await writeFile(path.join(f.options.directory, 'files', `${intent.id}.lnk`), legacyRaw)
+    await writeFile(destination, legacyRaw)
+    const eventRaw = JSON.stringify(event)
+    await writeFile(eventPath, eventRaw)
+    const decisionPath = path.join(f.options.directory, 'events', 'event-000002.json')
+    const decision = JSON.parse(await readFile(decisionPath, 'utf8'))
+    decision.previous = digest(eventRaw)
+    await writeFile(decisionPath, JSON.stringify(decision))
+
+    await expect(f.fresh().ensure('cashier')).resolves.toMatchObject({ status: 'CREATED' })
+    await expect(f.fresh().ensure('manage')).resolves.toMatchObject({ status: 'CREATED' })
+    expect(JSON.parse(await readFile(destination, 'utf8'))).toMatchObject({ args: '--settings-only', appUserModelId: NETWORK_APP })
+    await expect(f.fresh().uninstall()).resolves.toBeDefined()
   })
   it('does not invent an uninstall target when no validated uninstaller is supplied', async () => {
     const f = await fixture(); delete f.options.networkUninstaller

@@ -76,6 +76,7 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT}'`)
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE}'`)
     expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.V3_PRINT_SUBMIT}'`)
+    expect(employeePreloadSrc).toContain(`'${IPC_CHANNELS.NETWORK_PRINT_SETTINGS_OPEN}'`)
     expect(employeePreloadSrc).toContain(`'${WEB_REALTIME_BROADCAST_CHANNEL}'`)
     expect(employeePreloadSrc).toContain(`'${DESKTOP_RELAY_FLAG}'`)
     expect(employeePreloadSrc).not.toContain(IPC_CHANNELS.CART_APPLY)
@@ -90,6 +91,7 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_ENTER}'`)
     expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_EXIT}'`)
     expect(customerPreloadSrc).not.toContain(`'${IPC_CHANNELS.EMPLOYEE_FULLSCREEN_STATE}'`)
+    expect(customerPreloadSrc).not.toContain(IPC_CHANNELS.NETWORK_PRINT_SETTINGS_OPEN)
   })
 
   it('preload 不 require 本地模块、不暴露 ipcRenderer/Node 能力给页面', () => {
@@ -133,6 +135,12 @@ describe('Preload 与 shared 通道白名单同步（sandboxed preload 自包含
     expect(employeePreloadSrc).toMatch(/readOperatorRecoveryProof:\s*\(input: unknown\) => ipcRenderer\.invoke/)
     expect(employeePreloadSrc).not.toMatch(/clearClaim|releaseClaim|forceClaim|retryPrint/)
     expect(customerPreloadSrc).not.toContain(IPC_CHANNELS.V3_OPERATOR_RECOVERY_PROOF_GET)
+  })
+
+  it('员工 preload exposes only a fixed settings-only launcher and customer preload has no local settings bridge', () => {
+    expect(employeePreloadSrc).toMatch(/exposeInMainWorld\('eshopDesktopPrintSettings'/)
+    expect(employeePreloadSrc).toMatch(/open:\s*\(\) => ipcRenderer\.invoke\(NETWORK_PRINT_SETTINGS_OPEN_CHANNEL\)/)
+    expect(customerPreloadSrc).not.toMatch(/eshopDesktopPrintSettings/)
   })
 })
 

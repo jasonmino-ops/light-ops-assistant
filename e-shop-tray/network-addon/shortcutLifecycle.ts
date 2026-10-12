@@ -221,9 +221,10 @@ export class ShortcutLifecycle {
     const registration = data.registration === null ? null : parseRegistration(data.registration, data.subject === 'desktop' || data.subject === 'desktop-binding')
     if (legacy && (!registration || spec.args !== '' || spec.target !== registration.executable || spec.appUserModelId !== registration.appId)) fail()
     if (!legacy) {
-      const args = data.subject === 'cashier' ? '--cashier' : data.subject === 'manage' ? '--manage' : data.subject === 'desktop-binding' ? '--admin' : ''
+      const args = data.subject === 'cashier' ? '--cashier' : data.subject === 'manage' ? '--settings-only' : data.subject === 'desktop-binding' ? '--admin' : ''
       const target = data.subject === 'desktop-binding' ? registration?.executable : data.subject === 'uninstall' ? this.options.networkUninstaller : this.options.networkExecutable
-      if (spec.args !== args || (target && !equalPath(spec.target, target)) || (data.subject === 'desktop-binding' && !registration)
+      const validArgs = data.subject === 'manage' ? [args, '--manage'] : [args]
+      if (!validArgs.includes(spec.args) || (target && !equalPath(spec.target, target)) || (data.subject === 'desktop-binding' && !registration)
         || spec.appUserModelId !== (data.subject === 'desktop-binding' ? DESKTOP_APP : NETWORK_APP)) fail()
     }
     if (!equalPath(spec.icon, spec.target)) fail()
@@ -349,7 +350,7 @@ export class ShortcutLifecycle {
     const registration = role === 'desktop-binding' ? await this.registration(true) : null
     const target = role === 'desktop-binding' ? registration?.executable : role === 'uninstall' ? this.options.networkUninstaller : this.options.networkExecutable
     if (!target) return null
-    const args = role === 'cashier' ? '--cashier' : role === 'manage' ? '--manage' : role === 'desktop-binding' ? '--admin' : ''
+    const args = role === 'cashier' ? '--cashier' : role === 'manage' ? '--settings-only' : role === 'desktop-binding' ? '--admin' : ''
     return { spec: { target, args, icon: target, iconIndex: 0, appUserModelId: role === 'desktop-binding' ? DESKTOP_APP : NETWORK_APP }, registration }
   }
   private owner(history: History, role: ShortcutRole) {
@@ -363,7 +364,18 @@ export class ShortcutLifecycle {
       const history = await this.history(); await this.recoverHistory(history)
       const expected = await this.roleSpec(role)
       if (!expected) return { subject: role, status: 'UNAVAILABLE' }
-      const destination = this.destination(role), existing = await this.optional(destination), owner = this.owner(history, role)
+      const destination = this.destination(role)
+      let existing = await this.optional(destination)
+      let owner = this.owner(history, role)
+      if (existing && owner && role === 'manage' && owner.spec.args === '--manage'
+        && await this.matches(destination, owner) && !sameSpec(owner.spec, expected.spec)) {
+        const intent: Intent = { ...owner, id: randomUUID(), kind: 'REMOVE', originalId: owner.id }
+        await this.newFile(this.saved(intent), existing); await this.syncDirectory(this.files)
+        await this.append(history, intent, null)
+        if (!await this.capture(history, intent)) return { subject: role, status: 'PRESERVED', reason: 'OWNED_LINK_CHANGED' }
+        existing = null
+        owner = undefined
+      }
       if (existing) {
         if (owner && await this.matches(destination, owner) && sameSpec(owner.spec, expected.spec)) return { subject: role, status: 'UNCHANGED', sha256: owner.sha256 }
         return { subject: role, status: 'PRESERVED', reason: owner ? 'OWNED_LINK_CHANGED' : 'DESTINATION_OCCUPIED' }

@@ -304,13 +304,42 @@ async function main() {
     'scripts/test/run-root-full-suite.mjs',
     'tests/desktop-pos-web-auth-compat.test.ts',
   ]
+  // ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01 M2: Founder-approved sealed
+  // successor coordination for the Desktop Management Center entry wiring.
+  // Keep this separate from the legacy set and bind it to the exact current
+  // trusted base. Once M2 is merged, origin/main changes and this temporary
+  // successor branch no longer applies to later edits.
+  const m2ApprovedBase = '22413afea7cf249f907a263013e45367bd121db7'
+  const m2Paths = [
+    'app/management/page.tsx',
+    'desktop/src/main/networkPrintSettingsLauncher.ts',
+    'desktop/src/main/ipcRouter.ts',
+    'desktop/src/preload/employeePreload.ts',
+    'desktop/src/shared/ipcChannels.ts',
+    'desktop/tests/network-print-settings-launcher.test.ts',
+    'desktop/tests/ipc-whitelist.test.ts',
+    'desktop/tests/static-security.test.ts',
+    'tests/management-center-static.test.cjs',
+    'e-shop-tray/network-addon/shortcutLifecycle.ts',
+    'e-shop-tray/tests/network-addon-shortcuts.test.ts',
+    'lib/i18n/zh.ts',
+    'lib/i18n/en.ts',
+    'lib/i18n/km.ts',
+  ]
+  const m2SuccessorPath = 'tests/cashier-realtime-integration.test.ts'
   const gitPaths = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
   const unmergedCommits = gitPaths('rev-list', 'origin/main..HEAD')
+  const isM2 = gitPaths('rev-parse', 'origin/main')[0] === m2ApprovedBase
+    && changed.some(path => m2Paths.includes(path))
   // Once merged, the candidate is no longer an unmerged task grant. Later M1
   // path edits still enter this branch and fail without that exact grant.
   const isM1 = unmergedCommits.includes(productCandidate) || changed.some(path => productPaths.includes(path))
   const isCombinedCorrective = isM1 && unmergedCommits.includes(correctiveCandidate)
-  if (isCombinedCorrective) {
+  if (isM2) {
+    assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [m2ApprovedBase], 'M2 requires the authorized trusted baseline')
+    assert.ok(m2Paths.every(path => changed.includes(path)), 'M2 complete sealed 14-path package required')
+    assertBoundary(changed, new Set([...m2Paths, m2SuccessorPath]))
+  } else if (isCombinedCorrective) {
     assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [approvedBase], 'combined candidate requires the same authorized baseline')
     assert.ok(productPaths.every(path => changed.includes(path)), 'combined candidate requires the reviewed four-path product candidate')
     assert.ok(correctivePaths.every(path => changed.includes(path)), 'combined candidate requires the reviewed corrective paths')
