@@ -15,7 +15,7 @@ Governed by ES-GOV-001, ES-ENG-001, the E-Shop Founder-Gated Agent Development W
 | Starting trusted `origin/main` | `0d5e221aaec8a325a71372591c39e4fdb4c914a3` |
 | Production SHA used for lineage | `a35b2e88c372f79b8ce2614306ab92f13c6a3e58` |
 | Candidate branch | `codex/es-desktop-new-pc-runtime-start-failure-01` |
-| Immutable candidate commit | `PENDING — local candidate preparation` |
+| Immutable candidate commit | `227146b9a1f9f08c27370e268bbd966dd6b98ec1` |
 | Classification | `AUTHORIZED DESKTOP RUNTIME CORRECTIVE SUCCESSOR CHANGE` |
 
 This record creates the formal successor-change package. It does not revise the historical freeze record, activate a permanent exception, weaken the Release Foundation assertion, authorize merge, push, deploy, installer release, V727, or Windows FIELD.
@@ -86,7 +86,7 @@ Already available before governance alignment:
 Still required after alignment:
 
 - Release Foundation policy and governance tests: `PENDING`;
-- fresh immutable candidate SHA and exact binding: `PENDING`;
+- final alignment commit SHA and exact binding verification: `PENDING`;
 - independent review package: required before any merge consideration.
 
 ## Stop Boundary

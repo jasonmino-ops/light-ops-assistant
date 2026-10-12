@@ -11,8 +11,8 @@
 | Starting trusted `origin/main` | `0d5e221aaec8a325a71372591c39e4fdb4c914a3` |
 | Starting Production | `a35b2e88c372f79b8ce2614306ab92f13c6a3e58` / `READY FOR LINEAGE` |
 | Prior historical freeze anchor | `439dcac561734d07b9e022c8d99e693c99d26794` |
-| Immutable M1 candidate | `PENDING — local candidate preparation` |
-| Successor registry snapshot | `PENDING — immutable candidate commit` |
+| Immutable M1 candidate | `227146b9e215e1441082c04e8941de8611592226` |
+| Successor registry snapshot | `227146b9e215e1441082c04e8941de8611592226` |
 | Production change | `NO` |
 | Windows FIELD | `NOT VERIFIED` |
 
@@ -46,9 +46,9 @@ The four hashes are the Founder-authorized immutable-intent binding. No candidat
 
 The executable alignment will:
 
-1. advance the default frozen comparison anchor from the historical `439dcac...` to the Founder-authorized trusted `origin/main` SHA `0d5e221a...`;
-2. register the exact immutable M1 candidate snapshot for `ActivationRuntime`;
-3. advance the existing `main startup gate` successor entry to that same immutable candidate snapshot;
+1. advance the default frozen comparison anchor from the historical `439dcac...` to the Founder-authorized trusted `origin/main` SHA `0d5e221aaec8a325a71372591c39e4fdb4c914a3`;
+2. register the exact immutable M1 candidate snapshot `227146b9e215e1441082c04e8941de8611592226` for `ActivationRuntime`;
+3. advance the existing `main startup gate` successor entry to `227146b9e215e1441082c04e8941de8611592226`;
 4. update only the corresponding governance test expectation.
 
 This changes no frozen group definition, protected path, exact `git diff --name-only` operation, failure condition, release-asset allowlist, provenance invariant, security check, or general exception. Explicit comparison against the historical anchor remains fail-closed and is retained as a regression assertion.

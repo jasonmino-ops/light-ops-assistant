@@ -107,17 +107,14 @@ describe('EP-MB3-07A release foundation policy', () => {
       }))
 
     expect(authorized).toEqual([
-      { label: 'main startup gate', snapshot: '5756a4476f36f0d847835fd3ea83679240c86856' },
-      { label: 'WindowManager', snapshot: '17c764427f1e53288dedb82a1965b1365c1ded3d' },
-      { label: 'Prisma', snapshot: 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494' },
-      { label: 'Scanner', snapshot: '8317b4c2bd0ee0a90b7df4b2fe64b3489ebd6a99' },
-      { label: 'cashier/customer/mobile business', snapshot: '8fdf9b310a9b23e1e3c9e02cf88ec2790a9f879c' },
+      { label: 'ActivationRuntime', snapshot: '227146b9e215e1441082c04e8941de8611592226' },
+      { label: 'main startup gate', snapshot: '227146b9e215e1441082c04e8941de8611592226' },
     ])
     expect(() => runReleaseFoundation([
       'policy',
       '--baseline',
       '439dcac561734d07b9e022c8d99e693c99d26794',
-    ])).toThrow(/frozen boundary changed: main startup gate, WindowManager/)
+    ])).toThrow(/frozen boundary changed: ActivationRuntime, main startup gate, WindowManager/)
   })
 
   it('writes and verifies release provenance plus SHA manifest without secrets', () => {

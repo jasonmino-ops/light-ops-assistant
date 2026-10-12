@@ -22,7 +22,7 @@ const scriptDir = resolve(fileURLToPath(new URL('.', import.meta.url)))
 const desktopDir = resolve(scriptDir, '..')
 const repoRoot = resolve(desktopDir, '..')
 
-const BASELINE_FREEZE_TAG = '439dcac561734d07b9e022c8d99e693c99d26794'
+const BASELINE_FREEZE_TAG = '0d5e221aaec8a325a71372591c39e4fdb4c914a3'
 const DEFAULT_PROVIDER_COMMIT = '7785be145d5259991038d17839d322e2694e338c'
 const RISK_REGISTER_PATH = 'docs/governance/ES-ENGINEERING-RISK-BASED-DELIVERY-01-register.json'
 const PROVENANCE_SCHEMA = 'ep-mb3-07a.release-provenance.v1'
@@ -86,7 +86,8 @@ const FROZEN_BOUNDARY_GROUPS = [
 ]
 
 const FROZEN_BOUNDARY_SUCCESSORS = new Map([
-  ['main startup gate', '5756a4476f36f0d847835fd3ea83679240c86856'],
+  ['ActivationRuntime', '227146b9e215e1441082c04e8941de8611592226'],
+  ['main startup gate', '227146b9e215e1441082c04e8941de8611592226'],
   ['WindowManager', '17c764427f1e53288dedb82a1965b1365c1ded3d'],
   ['Scanner', '8317b4c2bd0ee0a90b7df4b2fe64b3489ebd6a99'],
   ['Prisma', 'cb55c5a9e78cb7f80c8295a0387bb82cb0af8494'],
