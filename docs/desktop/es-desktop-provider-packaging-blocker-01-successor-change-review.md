@@ -85,8 +85,6 @@ Candidate hash binding:
 - `desktop/tests/provider-packaging.test.ts`: `00df9c755891b12b572aecbeb099887e5c665e8c52d2d273974091acdd244822`
 - `.github/workflows/desktop-windows-build.yml`: `740ea561fd069992a280b04f103cd62e806edac078ae9c650c5f7fcffd70b704`
 - `.github/workflows/desktop-release-pilot.yml`: `9090870f3214695a0e23bf2ea2663e2f78cf284f19e97dfd0126a3d801706f9d`
-- Governance record: `51259f4c86dd4d180e8171e7974c2dec0925dc99afb571ffb49918a441ab38b5`
-
 Any unlisted path or behavior change invalidates this successor record and requires a new Founder decision.
 
 ## Required Validation
