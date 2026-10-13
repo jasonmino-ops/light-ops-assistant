@@ -54,6 +54,7 @@ describe('single installer packaging contract', () => {
     expect(verifier).toContain('embedded.desktopSourceCommit !== sourceCommit')
     expect(verifier).toContain('SINGLE_INSTALLER_BINDING_REQUIRED')
     expect(verifier).toContain('SINGLE_INSTALLER_BINDING_MISMATCH')
+    expect(verifier).toContain('embedded.addon?.sourceCommit !== sourceCommit')
     expect(contract).toContain('SINGLE_INSTALLER_SOURCE_BINDING_MISMATCH')
   })
 })

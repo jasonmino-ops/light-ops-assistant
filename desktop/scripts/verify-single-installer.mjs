@@ -65,6 +65,8 @@ export async function verifySingleInstaller(installerPath, expectedBinding) {
       || embedded.addon?.installerFile !== ADDON_INSTALLER_FILENAME || embedded.addon?.published !== false) {
       fail('SINGLE_INSTALLER_EMBEDDED_MANIFEST_MISMATCH')
     }
+    if (embedded.addon?.sourceCommit !== sourceCommit || expectedBinding.desktopSourceCommit !== sourceCommit
+      || expectedBinding.addon?.sourceCommit !== sourceCommit) fail('SINGLE_INSTALLER_SOURCE_BINDING_MISMATCH')
     if (JSON.stringify(embedded) !== JSON.stringify(expectedBinding)) fail('SINGLE_INSTALLER_BINDING_MISMATCH')
     assertManifest({ schemaVersion: 1, product: embedded.addon.product, version: embedded.addon.version,
       testOnly: embedded.addon.testOnly, releaseReady: embedded.addon.releaseReady, published: false,

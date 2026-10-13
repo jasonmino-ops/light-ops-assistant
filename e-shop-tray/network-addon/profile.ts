@@ -520,12 +520,15 @@ export class NetworkAddonProfile {
   async cancelReplacement(): Promise<void> {
     return this.exclusive(async () => {
       const replacement = this.state.replacement
-      if (!replacement || !['SUBMITTED', 'NOT_CROSSED', 'UNKNOWN'].includes(replacement.test.outcome)) {
+      if (!replacement || !['INTENT', 'SUBMITTED', 'NOT_CROSSED', 'UNKNOWN'].includes(replacement.test.outcome)) {
         throw new Error('ADDON_REPLACEMENT_CANCEL_NOT_ALLOWED')
       }
+      // An interrupted durable intent has an unknown transport boundary. It
+      // is never treated as not crossed merely because this process stopped.
+      const outcome = replacement.test.outcome === 'INTENT' ? 'UNKNOWN' : replacement.test.outcome
       const attempt: ReplacementAttempt = { schemaVersion: 1, id: `replacement-attempt-${randomUUID()}`,
         role: replacement.role, fromRevision: replacement.fromRevision, endpoint: replacement.test.endpoint,
-        outcome: replacement.test.outcome as ReplacementAttempt['outcome'], recordedAt: new Date().toISOString() }
+        outcome: outcome as ReplacementAttempt['outcome'], recordedAt: new Date().toISOString() }
       await this.persist({ ...this.state, schemaVersion: 4, enabled: false, kitchenTest: this.state.kitchenTest ?? null, replacement: null,
         replacementHistory: this.state.replacementHistory ?? [], replacementAttempts: [...(this.state.replacementAttempts ?? []), attempt].slice(-50),
         conversion: this.state.conversion ?? null, coldEnableCheckRequired: this.state.coldEnableCheckRequired ?? false })

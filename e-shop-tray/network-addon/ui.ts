@@ -210,7 +210,7 @@ function render(state: Status) {
     : state.test?.outcome !== 'CONFIRMED' ? '请先完成前台打印机测试。'
       : !state.endpointChangeProcess ? '请先暂停并退出，再重新打开程序；保持暂停后设置厨房打印机。'
         : '请分别核对 KITCHEN 测试票和实际出纸，再确认保存。'
-  const replacementCancellable = !!state.replacement && ['SUBMITTED', 'NOT_CROSSED', 'UNKNOWN'].includes(state.replacement.test.outcome)
+  const replacementCancellable = !!state.replacement && ['INTENT', 'SUBMITTED', 'NOT_CROSSED', 'UNKNOWN'].includes(state.replacement.test.outcome)
   el('confirmation').hidden = !pendingTest && !replacementCancellable
   el<HTMLButtonElement>('cancel-replacement').hidden = !replacementCancellable
   el('same-printer-row').hidden = pendingRole !== 'FRONT' || state.revision === 0 || !!state.replacement

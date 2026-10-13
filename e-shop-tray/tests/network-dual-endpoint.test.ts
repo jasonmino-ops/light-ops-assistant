@@ -184,6 +184,17 @@ describe('safe replacement of confirmed printer roles', () => {
       replacementAttempts: [expect.objectContaining({ role: 'KITCHEN', outcome: 'UNKNOWN', endpoint: { host: '10.20.30.4', port: 9100 } })] })
   })
 
+  it('recovers an interrupted replacement intent through explicit cancellation without changing the old endpoint', async () => {
+    const f = await configuredSharedProfile()
+    await f.profile.beginReplacementTest(pendingTest({ host: '10.20.30.8', port: 9100 }), 'KITCHEN')
+    const restarted = f.fresh(); await restarted.open()
+    expect(restarted.snapshot().replacement?.test.outcome).toBe('INTENT')
+    await restarted.cancelReplacement()
+    expect(await restarted.readForRecovery()).toEqual({ mode: 'SHARED_PRINTER', endpoint: front, kitchenEndpoint: kitchen })
+    expect(restarted.snapshot().replacement).toBeNull()
+    expect(restarted.snapshot().replacementAttempts?.at(-1)?.outcome).toBe('UNKNOWN')
+  })
+
   it('does not allow FRONT RETEST to change the confirmed endpoint', async () => {
     const f = await configuredSharedProfile()
     await expect(f.profile.beginTest(pendingTest({ host: '10.20.30.8', port: 9100 }), 'FRONT', { allowExisting: true }))
