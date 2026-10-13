@@ -9,13 +9,18 @@ import { assertConfirmedPrinter, createLocalNetworkSnapshot, networkContinuityFi
 import { NetworkDeliveryError } from '../src/printing/networkRawTcpTransport'
 import type { ReceivedPrintJob } from '../src/cloudRelayClient'
 
-const fault = vi.hoisted(() => ({ match: '', hits: 0 }))
+const fault = vi.hoisted(() => ({ match: '', hits: 0, limit: 0 }))
 vi.mock('node:fs/promises', async original => {
   const actual = await original<typeof import('node:fs/promises')>()
   return { ...actual, open: async (...args: Parameters<typeof actual.open>) => {
     const handle = await actual.open(...args)
     if (fault.match && String(args[0]).includes(fault.match)) {
-      handle.sync = async () => { fault.hits++; throw Object.assign(new Error('injected required fsync'), { code: 'EIO' }) }
+      const sync = handle.sync.bind(handle)
+      handle.sync = async () => {
+        fault.hits++
+        if (!fault.limit || fault.hits <= fault.limit) throw Object.assign(new Error('injected required fsync'), { code: 'EIO' })
+        return sync()
+      }
     }
     return handle
   } }
@@ -126,9 +131,25 @@ describe('commercial profile initialization, TEST and same-device address recove
     const options = { directory, identity, protector, interfaces: () => interfaces }
     fault.match = 'profile.sealed.'; fault.hits = 0
     try { await expect(new NetworkAddonProfile(options).open()).rejects.toMatchObject({ code: 'EIO' }); expect(fault.hits).toBe(1) }
-    finally { fault.match = '' }
+    finally { fault.match = ''; fault.limit = 0 }
     expect((await readdir(directory)).filter(name => name === 'profile.sealed')).toEqual([])
     await expect(new NetworkAddonProfile(options).open()).rejects.toThrow('ADDON_INITIALIZATION_INCOMPLETE_OR_PROFILE_LOST')
+  })
+  it('removes non-authoritative transaction temps after a failed replacement publication', async () => {
+    const f = await fixture()
+    await configure(f.profile)
+    const replacement = await f.profile.beginReplacementTest({ ...testInput('10.20.30.3'), mode: 'FRONT_ONLY' }, 'FRONT')
+    await f.profile.finishTest(replacement.id, 'SUBMITTED')
+    fault.match = 'profile.sealed.'; fault.hits = 0; fault.limit = 1
+    try { await expect(f.profile.confirmReplacementTest(replacement.id, true)).rejects.toMatchObject({ code: 'EIO' }) }
+    finally { fault.match = ''; fault.limit = 0 }
+    const names = await readdir(f.directory)
+    expect(names.filter(name => /^profile\.sealed\.[0-9a-f-]+\.tmp$/.test(name))).toEqual([])
+    for (const name of names.filter(name => name.startsWith('cold-transaction-'))) {
+      const nested = await readdir(path.join(f.directory, name))
+      expect(nested.filter(entry => /^decision-[0-9a-f-]+\.tmp$/.test(entry))).toEqual([])
+    }
+    expect(await f.profile.readForRecovery()).toEqual({ mode: 'FRONT_ONLY', endpoint })
   })
   it('cannot enable before physical TEST confirmation or confirm an unsent TEST', async () => {
     const f = await fixture()

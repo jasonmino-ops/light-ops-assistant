@@ -220,6 +220,37 @@ export class NetworkAddonProfile {
     await this.transactions.syncDirectory(this.options.directory)
   }
 
+  /**
+   * Transaction publication uses temporary files that are never authoritative.
+   * Remove only the exact transaction temp names after recovery or a failed
+   * caller-visible operation; intent/original/decision files remain the
+   * recovery authority.
+   */
+  private async cleanupOrphanedTransactionTemps() {
+    const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
+    const rootTemp = new RegExp(`^profile\\.sealed\\.${uuid}\\.tmp$`)
+    const decisionTemp = new RegExp(`^decision-${uuid}\\.tmp$`)
+    let rootChanged = false
+    for (const name of await readdir(this.options.directory)) {
+      if (!rootTemp.test(name)) continue
+      try { await unlink(path.join(this.options.directory, name)); rootChanged = true }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    }
+    for (const id of await this.transactions.names()) {
+      const directory = path.join(this.options.directory, id)
+      const info = await lstat(directory)
+      if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('ADDON_COLD_TRANSACTION_BLOCKED')
+      let changed = false
+      for (const name of await readdir(directory)) {
+        if (!decisionTemp.test(name)) continue
+        try { await unlink(path.join(directory, name)); changed = true }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+      }
+      if (changed) await this.transactions.syncDirectory(directory)
+    }
+    if (rootChanged) await this.transactions.syncDirectory(this.options.directory)
+  }
+
   /** Caller owns the process single-instance lock and protected directory ACL. */
   async open(): Promise<void> {
     if (this.faulted || this.needsRestart) throw new Error('ADDON_PROFILE_RESTART_REQUIRED')
@@ -227,6 +258,7 @@ export class NetworkAddonProfile {
     await mkdir(this.options.directory, { recursive: true, mode: 0o700 })
     if ((await lstat(this.options.directory)).isSymbolicLink()) throw new Error('ADDON_STATE_LINK_REJECTED')
     this.recoveredPaused = await this.transactions.recover()
+    await this.cleanupOrphanedTransactionTemps()
     this.transactionProtected = (await this.transactions.names()).length > 0
     let found = true
     try { this.state = await this.readState() }
@@ -293,7 +325,15 @@ export class NetworkAddonProfile {
         await this.transactions.commit({ id: await this.transactions.nextId(), originalFiles: [], nextProfile: sealed, prepare: async () => {} })
         this.state = next
         return
-      } catch (error) { this.faulted = true; throw error }
+      } catch (error) {
+        try { await this.cleanupOrphanedTransactionTemps() }
+        catch (cleanupError) {
+          this.faulted = true
+          throw new Error('ADDON_COLD_TRANSACTION_BLOCKED', { cause: new AggregateError([error, cleanupError]) })
+        }
+        this.faulted = true
+        throw error
+      }
     }
     const temporary = `${this.file}.${randomUUID()}.tmp`
     try {
@@ -629,7 +669,12 @@ export class NetworkAddonProfile {
           }
         } })
       } catch (error) {
-        await this.cleanupOrphanedNextNode(revision)
+        try {
+          await this.cleanupOrphanedTransactionTemps()
+          await this.cleanupOrphanedNextNode(revision)
+        } catch (cleanupError) {
+          throw new Error('ADDON_COLD_TRANSACTION_BLOCKED', { cause: new AggregateError([error, cleanupError]) })
+        }
         throw error
       }
       this.state = next
