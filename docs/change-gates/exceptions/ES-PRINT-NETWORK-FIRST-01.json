@@ -1410,6 +1410,8 @@
     {
       "authorizationId": "NETWORK-COMMERCIAL-CANDIDATE-RC10-RECOVERY-BUILD-21",
       "featureBranch": "codex/es-network-candidate-rc10-recovery-build-21",
+      "historicalFeatureBranch": "codex/es-network-candidate-rc10-recovery-build",
+      "governanceCorrection": "Historical record normalization only: the original recovery branch name was reused by the later retry grant. The original name is retained in historicalFeatureBranch; the unique featureBranch value is an audit identifier for this CLOSED grant so the fail-closed guard can distinguish the two historical authorizations without changing guard semantics.",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "1e666ba67906573fd02ca0993b9c513073e1491c",
       "status": "CLOSED",
