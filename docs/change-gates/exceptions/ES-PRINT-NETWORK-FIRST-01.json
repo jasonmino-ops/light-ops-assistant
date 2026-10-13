@@ -1598,7 +1598,7 @@
       "authorizationId": "NETWORK-M2-CANDIDATE-RC10-BUILD-23",
       "featureBranch": "codex/es-print-network-onboarding-01-m2-addon-candidate",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "baseOriginMainSha": "90a2d80276de8dcb21cb014c2d569ece4fad3bf9",
+      "baseOriginMainSha": "b1febc2ea4d2d01f42c1f1c7c514f9b40ef3b95c",
       "status": "ACTIVE",
       "approvedBy": "Founder",
       "createdAt": "2026-10-13T04:37:13Z",
@@ -1625,7 +1625,7 @@
         "releaseReady": false
       },
       "sourceState": {
-        "commit": "90a2d80276de8dcb21cb014c2d569ece4fad3bf9",
+        "commit": "b1febc2ea4d2d01f42c1f1c7c514f9b40ef3b95c",
         "exactMatchRequired": true
       },
       "allowedPurposes": [
