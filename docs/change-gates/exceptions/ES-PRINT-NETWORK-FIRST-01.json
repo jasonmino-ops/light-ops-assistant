@@ -1508,7 +1508,7 @@
       "featureBranch": "codex/es-network-candidate-rc10-recovery-build",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "117e6f7dbc296c9fbcf9964e33952d1193e2345e",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-09-20T19:24:25Z",
       "approvedAt": "2026-09-20T19:24:25Z",
@@ -1592,14 +1592,16 @@
         "Any recovery runtime, Transport, Routing, Binding, Network Discovery, Print Job semantics, partial recovery, auto rebind, Retry Now UI or unrelated source change.",
         "Any source delta on the rc.10 recovery build worktree, bypass of trusted origin/main or exact hash authorization, second candidate build, installation, Production deploy, FIELD, signing or formal publication."
       ],
-      "expirationCondition": "Close this exact grant after the one retained rc.10 recovery Candidate is packaged, or when explicitly superseded."
+      "expirationCondition": "Close this exact grant after the one retained rc.10 recovery Candidate is packaged, or when explicitly superseded.",
+      "closedAt": "2026-10-13T12:20:00+07:00",
+      "closureReason": "Superseded by NETWORK-M2-CANDIDATE-RC10-BUILD-23 governance successor; no installer evidence from this historical retry is reused."
     },
     {
       "authorizationId": "NETWORK-M2-CANDIDATE-RC10-BUILD-23",
       "featureBranch": "codex/es-print-network-onboarding-01-m2-addon-candidate",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "baseOriginMainSha": "b1febc2ea4d2d01f42c1f1c7c514f9b40ef3b95c",
-      "status": "ACTIVE",
+      "baseOriginMainSha": "f40b5c297754f9fb57dfb00f308dcf70b8ad7443",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-10-13T04:37:13Z",
       "approvedAt": "2026-10-13T04:37:13Z",
@@ -1625,7 +1627,7 @@
         "releaseReady": false
       },
       "sourceState": {
-        "commit": "b1febc2ea4d2d01f42c1f1c7c514f9b40ef3b95c",
+        "commit": "f40b5c297754f9fb57dfb00f308dcf70b8ad7443",
         "exactMatchRequired": true
       },
       "allowedPurposes": [
@@ -1636,7 +1638,9 @@
         "Any source delta outside the three exact authorized paths, any RAW TCP, durable jobs, RC10, print-core, SHARED_PRINTER, mobile, provisioning or unrelated behavior change.",
         "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; installation, Production deploy, FIELD, signing or formal publication."
       ],
-      "expirationCondition": "Close this exact grant after the one retained M2 Add-on Candidate is packaged, or when explicitly superseded."
+      "expirationCondition": "Close this exact grant after the one retained M2 Add-on Candidate is packaged, or when explicitly superseded.",
+      "closedAt": "2026-10-13T12:20:00+07:00",
+      "closureReason": "Consumed by the one retained M2 Add-on FIELD candidate package; source, installer and governance evidence are retained separately, and no further build is authorized under this grant."
     }
   ]
 }
