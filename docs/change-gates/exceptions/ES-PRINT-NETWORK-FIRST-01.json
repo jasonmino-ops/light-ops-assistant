@@ -1648,13 +1648,13 @@
       "authorizationId": "NETWORK-M2-CANDIDATE-RC10-PACKAGING-SUCCESSOR-24",
       "featureBranch": "codex/es-print-network-onboarding-01-m2-addon-packaging-successor",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
-      "baseOriginMainSha": "f1e0872968e55033dc618ea67bd4eaad96dbaf9",
+      "baseOriginMainSha": "f1e0872968e55033dc618ea67bd4eaead96dbaf9",
       "status": "ACTIVE",
       "approvedBy": "Founder",
-      "createdAt": "2026-10-13T12:30:00+07:00",
-      "approvedAt": "2026-10-13T12:30:00+07:00",
+      "createdAt": "2026-10-13T05:30:00Z",
+      "approvedAt": "2026-10-13T05:30:00Z",
       "closeAfter": "FEATURE_MERGE",
-      "reason": "Founder approved one-shot final packaging successor for ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01. This exact authorization permits one unsigned TEST-only 0.1.0-commercial-rc.10 Network Print Add-on rebuild and evidence rebinding from trusted origin/main f1e0872968e55033dc618ea67bd4eaad96dbaf9, with no product implementation or scope expansion.",
+      "reason": "Founder approved one-shot final packaging successor for ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01. This exact authorization permits one unsigned TEST-only 0.1.0-commercial-rc.10 Network Print Add-on rebuild and evidence rebinding from trusted origin/main f1e0872968e55033dc618ea67bd4eaead96dbaf9, with no product implementation or scope expansion.",
       "authorizedPaths": [
         "e-shop-tray/network-addon/shortcutLifecycle.ts",
         "e-shop-tray/tests/network-addon-shortcuts.test.ts",
@@ -1675,7 +1675,7 @@
         "releaseReady": false
       },
       "sourceState": {
-        "commit": "f1e0872968e55033dc618ea67bd4eaad96dbaf9",
+        "commit": "f1e0872968e55033dc618ea67bd4eaead96dbaf9",
         "exactMatchRequired": true
       },
       "allowedPurposes": [
