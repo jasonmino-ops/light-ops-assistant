@@ -44,6 +44,21 @@
     <button id="goto-setup" class="linky" type="button">打印设置</button>
   </section>
 
+  <!-- ── 日常打印机管理：工程状态隐藏在高级设置 ── -->
+  <section class="card daily" id="daily-management" hidden>
+    <h2>打印机</h2>
+    <p class="note">测试纸只用于确认目标，不会创建正式订单。</p>
+    <div class="printer-row">
+      <div class="printer-copy"><strong>前台打印机</strong><span id="front-status">已连接</span><small id="front-address"></small><small id="front-port"></small></div>
+      <div class="printer-actions"><button id="front-retest" class="secondary">测试打印</button><button id="front-replace" class="secondary">更换打印机</button></div>
+    </div>
+    <div class="printer-row" id="kitchen-management">
+      <div class="printer-copy"><strong>厨房打印机</strong><span id="kitchen-status-summary">已连接</span><small id="kitchen-address"></small><small id="kitchen-port-summary"></small></div>
+      <div class="printer-actions"><button id="kitchen-retest" class="secondary">测试打印</button><button id="kitchen-replace" class="secondary">更换打印机</button></div>
+    </div>
+    <button id="advanced-toggle" class="linky" type="button">高级设置与诊断</button>
+  </section>
+
   <!-- ── 设置：第一步 ── -->
   <section class="card step" id="step-mode">
     <h2><span class="num">1</span>选择打印方式</h2>
@@ -96,6 +111,12 @@
       <label class="check"><input id="kitchen-test-ready" type="checkbox">厨房打印机已开机、装好纸，可以打一张标明 KITCHEN 的测试票</label>
       <button id="test-kitchen">打印 KITCHEN 测试票</button>
       <p id="kitchen-status" class="note" role="status"></p>
+    </div>
+
+    <div id="replace-guards" hidden>
+      <p id="replacement-flow-note" class="note" role="status"></p>
+      <label class="check"><input id="replace-tabs-closed" type="checkbox">我已关掉本店所有收银页面，并停止开新单</label>
+      <label class="check"><input id="replace-single-agent" type="checkbox">本店只有这一台电脑负责打印</label>
     </div>
 
     <div id="confirmation" hidden>

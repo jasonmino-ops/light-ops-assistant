@@ -269,7 +269,10 @@ async function status() {
     restartRequired, cashierAvailable, entryCode: entry.entryCode, entryPending: entry.entryPending, shortcutCode,
     coldEnableCheckRequired: state?.coldEnableCheckRequired ?? false,
     coldProcess: lifecycle?.coldProcess ?? false, endpointChangeProcess: lifecycle?.endpointChangeProcess ?? false,
-    dualSetupRequired: state?.schemaVersion === 3 && state.mode === 'SHARED_PRINTER',
+    dualSetupRequired: (state?.schemaVersion === 3 || state?.schemaVersion === 4) && state.mode === 'SHARED_PRINTER',
+    replacement: state?.schemaVersion === 4 && state.replacement ? {
+      role: state.replacement.role, test: state.replacement.test,
+    } : null,
     autostart: currentLoginItem()?.enabled ?? false }
 }
 
@@ -278,19 +281,40 @@ async function pause() {
   lastCode = 'PAUSED'
 }
 
+async function addressSuggestions() {
+  const fallback = { front: { host: '192.168.1.59', port: 9100 }, kitchen: { host: '192.168.1.229', port: 9100 } }
+  try {
+    const snapshot = await getWindowsLocalNetworks()
+    const network = snapshot.networks.find(item => item.prefixLength === 24 && /^(?:10|172|192)\./.test(item.localAddress))
+    if (!network) return fallback
+    const prefix = network.networkAddress.split('.').slice(0, 3)
+    if (prefix.length !== 3) return fallback
+    return { front: { host: [...prefix, '59'].join('.'), port: 9100 }, kitchen: { host: [...prefix, '229'].join('.'), port: 9100 } }
+  } catch { return fallback }
+}
+
 async function sendTest(input: Record<string, unknown>) {
   const role = input.role
   if (role !== 'FRONT' && role !== 'KITCHEN') throw new Error('ADDON_INVALID_ROLE')
-  exactObject(input, role === 'KITCHEN'
-    ? ['mode', 'role', 'host', 'port', 'cashierTabsClosed', 'singleAgentConfirmed']
-    : ['mode', 'role', 'host', 'port'])
+  const hasPurpose = Object.hasOwn(input, 'purpose')
+  const purpose = hasPurpose ? input.purpose : 'SETUP'
+  if (purpose !== 'SETUP' && purpose !== 'RETEST' && purpose !== 'REPLACE') throw new Error('ADDON_INVALID_TEST_PURPOSE')
+  const requiresLifecycleConfirmation = purpose === 'RETEST' || purpose === 'REPLACE'
+  const keys = ['mode', 'role', 'host', 'port', ...(role === 'KITCHEN' || requiresLifecycleConfirmation
+    ? ['cashierTabsClosed', 'singleAgentConfirmed'] : []), ...(hasPurpose ? ['purpose'] : [])]
+  exactObject(input, keys)
   const target = knownProfile()
   await pause()
   await assertIdentity()
   const mode = parseNetworkMode(input.mode)
   if (role === 'KITCHEN') {
     if (mode !== 'SHARED_PRINTER') throw new Error('ADDON_ROLE_TEST_NOT_READY')
-    await knownLifecycle().prepareEndpointChange({ cashierTabsClosed: input.cashierTabsClosed === true,
+    const confirmation = { cashierTabsClosed: input.cashierTabsClosed === true,
+      singleAgentConfirmed: input.singleAgentConfirmed === true }
+    if (requiresLifecycleConfirmation) await knownLifecycle().preparePrinterReplacement(confirmation)
+    else await knownLifecycle().prepareEndpointChange(confirmation)
+  } else if (requiresLifecycleConfirmation) {
+    await knownLifecycle().preparePrinterReplacement({ cashierTabsClosed: input.cashierTabsClosed === true,
       singleAgentConfirmed: input.singleAgentConfirmed === true })
   }
   const snapshot = await getWindowsLocalNetworks()
@@ -304,8 +328,10 @@ async function sendTest(input: Record<string, unknown>) {
         spec: '中文、走纸、切刀 / Chinese, feed, cut', qty: 1, price: 0, lineAmount: 0 }] } }
   const bytes = await renderer!.render(request)
   const endpoint = { host: selected.host, port: selected.port }
-  await target.beginTest({ id, mode, endpoint, networkFingerprint: networkContinuityFingerprint(snapshot),
-    hardwareAddress, bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') }, role)
+  const localTest = { id, mode, endpoint, networkFingerprint: networkContinuityFingerprint(snapshot),
+    hardwareAddress, bytes: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') }
+  if (purpose === 'REPLACE') await target.beginReplacementTest(localTest, role)
+  else await target.beginTest(localTest, role, { allowExisting: purpose === 'RETEST' })
   // All critical checks occur again after durable intent, before any bytes.
   let localAddress: string | undefined
   await submitLocalNetworkTest({
@@ -319,7 +345,7 @@ async function sendTest(input: Record<string, unknown>) {
     finish: outcome => target.finishTest(id, outcome),
   })
   lastCode = 'TEST_AWAITING_PHYSICAL_CONFIRMATION'
-  return { testId: id, role, bytes: bytes.byteLength,
+  return { testId: id, role, purpose, bytes: bytes.byteLength,
     sha256: createHash('sha256').update(bytes).digest('hex'), physicalCompletionKnown: false }
 }
 
@@ -417,6 +443,7 @@ async function perform(action: unknown, value: unknown) {
   }
   const result = await entry.runOperation(async () => {
     switch (action) {
+      case 'suggestions': exactObject(input, []); return addressSuggestions()
       case 'retryBinding': exactObject(input, []); break
       case 'pause': exactObject(input, []); await pause(); break
       case 'convertMode': {
@@ -437,16 +464,28 @@ async function perform(action: unknown, value: unknown) {
       case 'confirmTest': {
         const data = exactObject(input, ['id', 'paperConfirmed', 'sameOriginalPrinter', 'cashierTabsClosed', 'singleAgentConfirmed'])
         const state = knownProfile().snapshot()
-        const role: NetworkRole | null = data.id === state.test?.id ? 'FRONT' : data.id === state.kitchenTest?.id ? 'KITCHEN' : null
-        const test = role === 'KITCHEN' ? state.kitchenTest : role === 'FRONT' ? state.test : null
+        const replacement = state.schemaVersion === 4 && state.replacement?.test.id === data.id
+        const role: NetworkRole | null = replacement ? state.replacement!.role
+          : data.id === state.test?.id ? 'FRONT' : data.id === state.kitchenTest?.id ? 'KITCHEN' : null
+        const test = replacement ? state.replacement!.test
+          : role === 'KITCHEN' ? state.kitchenTest : role === 'FRONT' ? state.test : null
         if (!test || !role) throw new Error('ADDON_TEST_STATE_CONFLICT')
-        if (role === 'KITCHEN') await knownLifecycle().prepareEndpointChange({
+        if (replacement) await knownLifecycle().preparePrinterReplacement({
           cashierTabsClosed: data.cashierTabsClosed === true, singleAgentConfirmed: data.singleAgentConfirmed === true })
+        else if (role === 'KITCHEN') {
+          const configured = state.revision ? await profile!.readForRecovery() : undefined
+          const prepare = configured?.kitchenEndpoint ? 'replace' : 'setup'
+          if (prepare === 'replace') await knownLifecycle().preparePrinterReplacement({
+            cashierTabsClosed: data.cashierTabsClosed === true, singleAgentConfirmed: data.singleAgentConfirmed === true })
+          else await knownLifecycle().prepareEndpointChange({
+            cashierTabsClosed: data.cashierTabsClosed === true, singleAgentConfirmed: data.singleAgentConfirmed === true })
+        }
         await assertIdentity()
         const current = await getWindowsLocalNetworks()
         if (networkContinuityFingerprint(current) !== test.networkFingerprint) throw new Error('NETWORK_CHANGED')
         await assertConfirmedPrinter(test.endpoint, test, current)
-        await profile!.confirmTest(String(data.id), data.paperConfirmed === true, data.sameOriginalPrinter === true)
+        if (replacement) await profile!.confirmReplacementTest(String(data.id), data.paperConfirmed === true)
+        else await profile!.confirmTest(String(data.id), data.paperConfirmed === true, data.sameOriginalPrinter === true)
         lastCode = 'CONFIGURED_PAUSED'; break
       }
       case 'enable': {

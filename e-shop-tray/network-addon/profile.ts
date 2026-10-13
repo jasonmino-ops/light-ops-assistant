@@ -15,11 +15,18 @@ export type LocalTest = { id: string; mode: NetworkMode; endpoint: NetworkNode; 
 type Conversion = { schemaVersion: 1; id: string; fromMode: NetworkMode; toMode: NetworkMode;
   fromRevision: number; toRevision: number; originalProfileSha256: string; originalNodeSha256: string;
   originalJournalSha256: string; originalTestSha256: string; previousConversionId: string | null }
-type ProfileState = { schemaVersion: 1 | 2 | 3; identity: ProfileIdentity; revision: number; mode: NetworkMode | null;
-  enabled: boolean; test: LocalTest | null; kitchenTest?: LocalTest | null;
-  conversion?: Conversion | null; coldEnableCheckRequired?: boolean }
+type PrinterReplacement = { role: NetworkRole; fromRevision: number; test: LocalTest }
+type ReplacementAudit = { schemaVersion: 1; id: string; role: NetworkRole; fromRevision: number; toRevision: number;
+  previousEndpoint: NetworkNode; nextEndpoint: NetworkNode; confirmedAt: string }
+type ProfileState = { schemaVersion: 1 | 2 | 3 | 4; identity: ProfileIdentity; revision: number; mode: NetworkMode | null;
+  enabled: boolean; test: LocalTest | null; kitchenTest?: LocalTest | null; replacement?: PrinterReplacement | null;
+  replacementHistory?: ReplacementAudit[]; conversion?: Conversion | null; coldEnableCheckRequired?: boolean }
 export type ColdModePreflightContext = { identity: ProfileIdentity; config: NetworkPrinterConfig;
   test: LocalTest; kitchenTest?: LocalTest | null }
+
+function sameEndpoint(left: NetworkNode | undefined, right: NetworkNode | undefined) {
+  return !!left && !!right && left.host === right.host && left.port === right.port
+}
 
 export function isColdJournalSettled(record: JournalRecord): boolean {
   if (!record.reported) return false
@@ -72,21 +79,24 @@ export class NetworkAddonProfile {
       ? ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test', 'conversion', 'coldEnableCheckRequired']
       : schemaVersion === 3
         ? ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test', 'kitchenTest', 'conversion', 'coldEnableCheckRequired']
-        : ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test'])
+        : schemaVersion === 4
+          ? ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test', 'kitchenTest', 'conversion',
+            'coldEnableCheckRequired', 'replacement', 'replacementHistory']
+          : ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test'])
     const identity = exactObject(state.identity, ['installationId', 'computerId', 'storeCode', 'boundAt'])
-    if ((state.schemaVersion !== 1 && state.schemaVersion !== 2 && state.schemaVersion !== 3)
+    if ((state.schemaVersion !== 1 && state.schemaVersion !== 2 && state.schemaVersion !== 3 && state.schemaVersion !== 4)
       || !sameBinding(this.options.identity, identity as ProfileIdentity)
       || !Number.isSafeInteger(state.revision) || Number(state.revision) < 0 || Number(state.revision) > 10000
       || typeof state.enabled !== 'boolean') throw new Error('ADDON_PROFILE_INVALID_OR_BINDING_CHANGED')
     const mode = state.mode === null ? null : parseNetworkMode(state.mode)
     if ((state.revision === 0) !== (mode === null) || (state.enabled && !mode)) throw new Error('ADDON_PROFILE_INVALID')
     let conversion: Conversion | undefined
-    if (state.schemaVersion === 2 || state.schemaVersion === 3) {
+    if (state.schemaVersion === 2 || state.schemaVersion === 3 || state.schemaVersion === 4) {
       if (typeof state.coldEnableCheckRequired !== 'boolean') throw new Error('ADDON_COLD_PROVENANCE_INVALID')
       const value = state.conversion === null ? null : exactObject(state.conversion, ['schemaVersion', 'id', 'fromMode', 'toMode', 'fromRevision', 'toRevision',
         'originalProfileSha256', 'originalNodeSha256', 'originalJournalSha256', 'originalTestSha256', 'previousConversionId'])
       if (value === null) {
-        if (state.schemaVersion !== 3) throw new Error('ADDON_COLD_PROVENANCE_INVALID')
+        if (state.schemaVersion !== 3 && state.schemaVersion !== 4) throw new Error('ADDON_COLD_PROVENANCE_INVALID')
       } else {
       if (value.schemaVersion !== 1 || typeof value.id !== 'string' || !/^cold-transaction-\d{5}-[0-9a-f-]{36}$/.test(value.id)
         || !Number.isSafeInteger(value.fromRevision) || Number(value.fromRevision) < 1
@@ -116,15 +126,45 @@ export class NetworkAddonProfile {
         bytes: Number(value.bytes), sha256: value.sha256 }
     }
     const test = parseTest(state.test)
-    const kitchenTest = state.schemaVersion === 3 ? parseTest(state.kitchenTest) : undefined
+    const kitchenTest = state.schemaVersion === 3 || state.schemaVersion === 4 ? parseTest(state.kitchenTest) : undefined
+    let replacement: PrinterReplacement | null | undefined
+    let replacementHistory: ReplacementAudit[] | undefined
+    if (state.schemaVersion === 4) {
+      if (state.replacement === null) replacement = null
+      else {
+        const value = exactObject(state.replacement, ['role', 'fromRevision', 'test'])
+        if ((value.role !== 'FRONT' && value.role !== 'KITCHEN') || !Number.isSafeInteger(value.fromRevision)
+          || Number(value.fromRevision) < 1 || Number(value.fromRevision) !== Number(state.revision)) {
+          throw new Error('ADDON_REPLACEMENT_INVALID')
+        }
+        const test = parseTest(value.test)
+        if (!test || test.outcome === 'CONFIRMED' || (value.role === 'KITCHEN' && test.mode !== 'SHARED_PRINTER')) {
+          throw new Error('ADDON_REPLACEMENT_INVALID')
+        }
+        replacement = { role: value.role as NetworkRole, fromRevision: Number(value.fromRevision), test }
+      }
+      if (!Array.isArray(state.replacementHistory) || state.replacementHistory.length > 50) throw new Error('ADDON_REPLACEMENT_INVALID')
+      replacementHistory = state.replacementHistory.map(item => {
+        const value = exactObject(item, ['schemaVersion', 'id', 'role', 'fromRevision', 'toRevision', 'previousEndpoint', 'nextEndpoint', 'confirmedAt'])
+        if (value.schemaVersion !== 1 || typeof value.id !== 'string' || !/^replacement-[0-9a-f-]{36}$/.test(value.id)
+          || (value.role !== 'FRONT' && value.role !== 'KITCHEN') || !Number.isSafeInteger(value.fromRevision)
+          || !Number.isSafeInteger(value.toRevision) || Number(value.toRevision) !== Number(value.fromRevision) + 1
+          || typeof value.confirmedAt !== 'string' || Number.isNaN(Date.parse(value.confirmedAt))) throw new Error('ADDON_REPLACEMENT_INVALID')
+        return { schemaVersion: 1, id: value.id, role: value.role as NetworkRole, fromRevision: Number(value.fromRevision),
+          toRevision: Number(value.toRevision), previousEndpoint: validateNetworkLiteral(value.previousEndpoint),
+          nextEndpoint: validateNetworkLiteral(value.nextEndpoint), confirmedAt: value.confirmedAt }
+      })
+    }
     if (test && mode && mode !== test.mode && !conversion) throw new Error('ADDON_MODE_LOCKED')
     if (kitchenTest && kitchenTest.mode !== 'SHARED_PRINTER') throw new Error('ADDON_MODE_LOCKED')
     if (state.enabled && test?.outcome !== 'CONFIRMED') throw new Error('ADDON_UNCONFIRMED_TEST')
-    if (state.schemaVersion === 3 && state.enabled && mode === 'SHARED_PRINTER'
+    if ((state.schemaVersion === 3 || state.schemaVersion === 4) && state.enabled && mode === 'SHARED_PRINTER'
       && kitchenTest?.outcome !== 'CONFIRMED') throw new Error('ADDON_UNCONFIRMED_ROLE_TEST')
+    if (replacement && state.enabled) throw new Error('ADDON_REPLACEMENT_INVALID')
     if (state.enabled && !test) throw new Error('ADDON_UNCONFIRMED_TEST')
-    return { schemaVersion: state.schemaVersion as 1 | 2 | 3, identity: this.options.identity, revision: Number(state.revision), mode,
-      enabled: state.enabled, test, ...(state.schemaVersion === 3 ? { kitchenTest,
+    return { schemaVersion: state.schemaVersion as 1 | 2 | 3 | 4, identity: this.options.identity, revision: Number(state.revision), mode,
+      enabled: state.enabled, test, ...(state.schemaVersion === 3 || state.schemaVersion === 4 ? { kitchenTest,
+        ...(state.schemaVersion === 4 ? { replacement, replacementHistory } : {}),
         conversion: conversion ?? null, coldEnableCheckRequired: state.coldEnableCheckRequired as boolean }
         : conversion ? { conversion, coldEnableCheckRequired: state.coldEnableCheckRequired as boolean } : {}) }
   }
@@ -274,12 +314,13 @@ export class NetworkAddonProfile {
     const state = await this.readState()
     await this.validateProvenance(state)
     if (!state.enabled || state.test?.outcome !== 'CONFIRMED'
-      || (state.schemaVersion === 3 && state.mode === 'SHARED_PRINTER' && state.kitchenTest?.outcome !== 'CONFIRMED')) {
+      || ((state.schemaVersion === 3 || state.schemaVersion === 4) && state.mode === 'SHARED_PRINTER'
+        && state.kitchenTest?.outcome !== 'CONFIRMED')) {
       throw new Error('ADDON_PAUSED_OR_UNCONFIGURED')
     }
     const config = await this.nodes(state.revision).read()
     if (config.mode !== state.mode) throw new Error('ADDON_MODE_LOCKED')
-    if (state.schemaVersion === 3 && state.mode === 'SHARED_PRINTER' && !config.kitchenEndpoint) {
+    if ((state.schemaVersion === 3 || state.schemaVersion === 4) && state.mode === 'SHARED_PRINTER' && !config.kitchenEndpoint) {
       throw new Error('ADDON_ROLE_ENDPOINT_UNCONFIGURED')
     }
     return config
@@ -289,7 +330,7 @@ export class NetworkAddonProfile {
     return this.exclusive(async () => {
       if (enabled) {
         if (!this.state.revision || this.state.test?.outcome !== 'CONFIRMED') throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
-        if (this.state.schemaVersion === 3 && this.state.mode === 'SHARED_PRINTER'
+        if ((this.state.schemaVersion === 3 || this.state.schemaVersion === 4) && this.state.mode === 'SHARED_PRINTER'
           && this.state.kitchenTest?.outcome !== 'CONFIRMED') throw new Error('ADDON_ROLE_TEST_CONFIRMATION_REQUIRED')
         await this.readForRecovery()
         await this.journal.ensureInitialized()
@@ -338,11 +379,13 @@ export class NetworkAddonProfile {
           originalNodeSha256: sealedHash(await this.transactions.readRegular(path.join(this.options.directory, nodeName), 32768)),
           originalJournalSha256: sealedHash(journalRaw), originalTestSha256: sealedHash(JSON.stringify(original.test)),
           previousConversionId: this.state.conversion?.id ?? null }
-        const schemaVersion = this.state.schemaVersion === 3 || mode === 'SHARED_PRINTER' ? 3 : 2
-        const retainedKitchenTest = schemaVersion === 3 ? this.state.kitchenTest ?? null : undefined
+        const schemaVersion = this.state.schemaVersion >= 3 || mode === 'SHARED_PRINTER'
+          ? this.state.schemaVersion >= 4 ? 4 : 3 : 2
+        const retainedKitchenTest = schemaVersion >= 3 ? this.state.kitchenTest ?? null : undefined
         const needsKitchenConfirmation = mode === 'SHARED_PRINTER' && retainedKitchenTest?.outcome !== 'CONFIRMED'
         const next: ProfileState = { ...this.state, schemaVersion, mode, revision, enabled: false,
-          ...(schemaVersion === 3 ? { kitchenTest: retainedKitchenTest } : {}),
+          ...(schemaVersion >= 3 ? { kitchenTest: retainedKitchenTest } : {}),
+          ...(schemaVersion === 4 ? { replacement: null, replacementHistory: this.state.replacementHistory ?? [] } : {}),
           coldEnableCheckRequired: !needsKitchenConfirmation, conversion }
         const sealed = this.options.protector.protect(JSON.stringify(next))
         this.parse(sealed)
@@ -365,9 +408,10 @@ export class NetworkAddonProfile {
     })
   }
 
-  async beginTest(input: Omit<LocalTest, 'outcome'>, role: NetworkRole = 'FRONT'): Promise<LocalTest> {
+  async beginTest(input: Omit<LocalTest, 'outcome'>, role: NetworkRole = 'FRONT', options: { allowExisting?: boolean } = {}): Promise<LocalTest> {
     return this.exclusive(async () => {
       if (this.state.enabled) throw new Error('ADDON_PAUSE_REQUIRED')
+      if (this.state.replacement) throw new Error('ADDON_TEST_REVIEW_REQUIRED')
       if (role !== 'FRONT' && role !== 'KITCHEN') throw new Error('ADDON_INVALID_ROLE')
       const existingTest = role === 'KITCHEN' ? this.state.kitchenTest : this.state.test
       if (existingTest && ['INTENT', 'UNKNOWN', 'SUBMITTED'].includes(existingTest.outcome)) throw new Error('ADDON_TEST_REVIEW_REQUIRED')
@@ -376,7 +420,10 @@ export class NetworkAddonProfile {
       if (role === 'KITCHEN') {
         if (input.mode !== 'SHARED_PRINTER' || this.state.mode !== 'SHARED_PRINTER'
           || !this.state.revision || this.state.test?.outcome !== 'CONFIRMED') throw new Error('ADDON_ROLE_TEST_NOT_READY')
-        if (config?.kitchenEndpoint || this.state.kitchenTest?.outcome === 'CONFIRMED') throw new Error('ADDON_ROLE_ENDPOINT_LOCKED')
+        const sameExisting = sameEndpoint(config?.kitchenEndpoint, input.endpoint)
+        if ((config?.kitchenEndpoint || this.state.kitchenTest?.outcome === 'CONFIRMED')
+          && !(options.allowExisting === true && sameExisting)) throw new Error('ADDON_ROLE_ENDPOINT_LOCKED')
+        if (options.allowExisting === true && !sameExisting) throw new Error('NETWORK_CONFIG_CHANGED')
         if (config?.endpoint.host === input.endpoint.host && config.endpoint.port === input.endpoint.port) {
           throw new Error('NETWORK_ROLE_ENDPOINT_DUPLICATE')
         }
@@ -397,6 +444,40 @@ export class NetworkAddonProfile {
     })
   }
 
+  /** Start a replacement test without changing the authoritative endpoint.
+   * The candidate is durable, but the old role binding remains active until
+   * confirmReplacementTest completes its configuration transaction. */
+  async beginReplacementTest(input: Omit<LocalTest, 'outcome'>, role: NetworkRole): Promise<LocalTest> {
+    return this.exclusive(async () => {
+      if (this.state.enabled) throw new Error('ADDON_PAUSE_REQUIRED')
+      if (this.state.replacement) throw new Error('ADDON_TEST_REVIEW_REQUIRED')
+      if (!this.state.mode || !this.state.revision || this.state.test?.outcome !== 'CONFIRMED') {
+        throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
+      }
+      if (role === 'KITCHEN' && (this.state.mode !== 'SHARED_PRINTER' || this.state.kitchenTest?.outcome !== 'CONFIRMED')) {
+        throw new Error('ADDON_ROLE_TEST_CONFIRMATION_REQUIRED')
+      }
+      if (input.mode !== this.state.mode || (role === 'KITCHEN' && input.mode !== 'SHARED_PRINTER')) {
+        throw new Error('ADDON_MODE_LOCKED')
+      }
+      const config = await this.readForRecovery()
+      const previous = role === 'KITCHEN' ? config.kitchenEndpoint : config.endpoint
+      if (!previous) throw new Error('ADDON_ROLE_ENDPOINT_UNCONFIGURED')
+      if (sameEndpoint(previous, input.endpoint)) throw new Error('NETWORK_REPLACEMENT_SAME_ENDPOINT')
+      const other = role === 'KITCHEN' ? config.endpoint : config.kitchenEndpoint
+      if (sameEndpoint(other, input.endpoint)) throw new Error('NETWORK_ROLE_ENDPOINT_DUPLICATE')
+      await this.journal.ensureInitialized()
+      if (this.journal.records().some(record => record.effectBoundary === 'CROSSING_UNKNOWN')) {
+        throw new Error('NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW')
+      }
+      const test: LocalTest = { ...input, outcome: 'INTENT' }
+      await this.persist({ ...this.state, schemaVersion: 4, enabled: false,
+        conversion: this.state.conversion ?? null, coldEnableCheckRequired: this.state.coldEnableCheckRequired ?? false,
+        replacement: { role, fromRevision: this.state.revision, test }, replacementHistory: this.state.replacementHistory ?? [] })
+      return structuredClone(test)
+    })
+  }
+
   async finishTest(id: string, outcome: 'SUBMITTED' | 'NOT_CROSSED' | 'UNKNOWN') {
     return this.exclusive(async () => {
       if (this.state.test?.id === id && this.state.test.outcome === 'INTENT') {
@@ -405,6 +486,11 @@ export class NetworkAddonProfile {
       }
       if (this.state.kitchenTest?.id === id && this.state.kitchenTest.outcome === 'INTENT') {
         await this.persist({ ...this.state, kitchenTest: { ...this.state.kitchenTest, outcome } })
+        return
+      }
+      if (this.state.replacement?.test.id === id && this.state.replacement.test.outcome === 'INTENT') {
+        await this.persist({ ...this.state, replacement: { ...this.state.replacement,
+          test: { ...this.state.replacement.test, outcome } } })
         return
       }
       throw new Error('ADDON_TEST_STATE_CONFLICT')
@@ -422,12 +508,13 @@ export class NetworkAddonProfile {
       const current = this.state.revision ? await this.readForRecovery() : undefined
       const revision = this.state.revision + 1
       if (role === 'KITCHEN') {
-        if (!current || current.mode !== 'SHARED_PRINTER' || current.kitchenEndpoint
+        if (!current || current.mode !== 'SHARED_PRINTER'
+          || (current.kitchenEndpoint && !sameEndpoint(current.kitchenEndpoint, test.endpoint))
           || this.state.mode !== 'SHARED_PRINTER' || this.state.test?.outcome !== 'CONFIRMED') {
           throw new Error('ADDON_ROLE_TEST_NOT_READY')
         }
         await this.nodes(revision).save({ mode: 'SHARED_PRINTER', endpoint: current.endpoint, kitchenEndpoint: test.endpoint })
-        await this.persist({ ...this.state, schemaVersion: 3, revision,
+        await this.persist({ ...this.state, schemaVersion: this.state.schemaVersion >= 4 ? 4 : 3, revision,
           kitchenTest: { ...test, outcome: 'CONFIRMED' }, conversion: this.state.conversion ?? null,
           coldEnableCheckRequired: true })
         return
@@ -436,6 +523,65 @@ export class NetworkAddonProfile {
         ...(current?.kitchenEndpoint ? { kitchenEndpoint: current.kitchenEndpoint } : {}) }
       await this.nodes(revision).save(nextConfig)
       await this.persist({ ...this.state, mode: test.mode, revision, test: { ...test, outcome: 'CONFIRMED' } })
+    })
+  }
+
+  /** Commit a physically confirmed replacement while retaining the previous
+   * encrypted profile and node file as transaction originals. */
+  async confirmReplacementTest(id: string, physicalPaperConfirmed: boolean): Promise<ReplacementAudit> {
+    return this.exclusive(async () => {
+      const replacement = this.state.replacement
+      if (this.state.enabled || !replacement || replacement.test.id !== id
+        || replacement.test.outcome !== 'SUBMITTED' || physicalPaperConfirmed !== true) {
+        throw new Error('ADDON_REPLACEMENT_CONFIRMATION_REQUIRED')
+      }
+      const current = await this.readForRecovery()
+      const previous = replacement.role === 'KITCHEN' ? current.kitchenEndpoint : current.endpoint
+      if (!previous || replacement.test.mode !== current.mode
+        || (replacement.role === 'KITCHEN' && (current.mode !== 'SHARED_PRINTER' || !this.state.kitchenTest
+          || this.state.kitchenTest.outcome !== 'CONFIRMED'))
+        || (replacement.role === 'KITCHEN' && sameEndpoint(current.endpoint, replacement.test.endpoint))) {
+        throw new Error('ADDON_REPLACEMENT_INVALID')
+      }
+      if (sameEndpoint(previous, replacement.test.endpoint)) throw new Error('NETWORK_REPLACEMENT_SAME_ENDPOINT')
+      const other = replacement.role === 'KITCHEN' ? current.endpoint : current.kitchenEndpoint
+      if (sameEndpoint(other, replacement.test.endpoint)) throw new Error('NETWORK_ROLE_ENDPOINT_DUPLICATE')
+      if (this.state.revision >= 10000) throw new Error('ADDON_INVALID_REVISION')
+      await this.assertSettledJournal()
+      const originalRaw = await this.transactions.readRegular(this.file, 32768)
+      const nodeName = `nodes-${this.state.revision}.sealed`
+      const journalRaw = await this.transactions.readRegular(this.journal.filePath)
+      const idForTransaction = await this.transactions.nextId()
+      const revision = this.state.revision + 1
+      const nextConfig = replacement.role === 'KITCHEN'
+        ? { mode: current.mode, endpoint: current.endpoint, kitchenEndpoint: replacement.test.endpoint }
+        : { mode: current.mode, endpoint: replacement.test.endpoint,
+          ...(current.kitchenEndpoint ? { kitchenEndpoint: current.kitchenEndpoint } : {}) }
+      const audit: ReplacementAudit = { schemaVersion: 1, id: `replacement-${randomUUID()}`, role: replacement.role,
+        fromRevision: this.state.revision, toRevision: revision, previousEndpoint: previous,
+        nextEndpoint: replacement.test.endpoint, confirmedAt: new Date().toISOString() }
+      const history = [...(this.state.replacementHistory ?? []), audit].slice(-50)
+      const next: ProfileState = { ...this.state, schemaVersion: 4, revision, enabled: false,
+        test: replacement.role === 'FRONT' ? { ...replacement.test, outcome: 'CONFIRMED' } : this.state.test,
+        kitchenTest: replacement.role === 'KITCHEN' ? { ...replacement.test, outcome: 'CONFIRMED' } : this.state.kitchenTest,
+        conversion: this.state.conversion ?? null, coldEnableCheckRequired: true,
+        replacement: null, replacementHistory: history }
+      const sealed = this.options.protector.protect(JSON.stringify(next))
+      this.parse(sealed)
+      this.transactionProtected = true
+      await this.transactions.commit({ id: idForTransaction, originalFiles: [nodeName, 'execution-journal.json'], nextProfile: sealed,
+        prepare: async () => {
+          await this.nodes(revision).save(nextConfig)
+          await this.transactions.syncFile(path.join(this.options.directory, `nodes-${revision}.sealed`))
+          await this.transactions.syncDirectory(this.options.directory)
+          await this.assertSettledJournal()
+          if (await this.transactions.readRegular(this.journal.filePath) !== journalRaw
+            || await this.transactions.readRegular(this.file, 32768) !== originalRaw) {
+            throw new Error('ADDON_COLD_LOCAL_WORK_UNSETTLED')
+          }
+        } })
+      this.state = next
+      return structuredClone(audit)
     })
   }
 }

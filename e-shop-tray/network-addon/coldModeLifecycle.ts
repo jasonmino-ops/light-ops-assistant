@@ -218,6 +218,26 @@ export class ColdModeLifecycle {
     await this.options.assertIdentity()
   }
 
+  /** Replacement is safer than mode conversion: it may stop an already-used
+   * poller, but it never changes the role binding until a new TEST is confirmed.
+   * The profile transaction owns the final endpoint publication. */
+  async preparePrinterReplacement(confirmation: { cashierTabsClosed: boolean; singleAgentConfirmed: boolean }) {
+    this.cancelStartupRecovery()
+    this.assertMutable()
+    const state = this.options.profile.snapshot()
+    if (!state.mode || !state.revision || state.test?.outcome !== 'CONFIRMED') {
+      throw new Error('ADDON_TEST_CONFIRMATION_REQUIRED')
+    }
+    if (confirmation.cashierTabsClosed !== true) throw new Error('ADDON_COLD_CLOSE_CASHIER_REQUIRED')
+    if (confirmation.singleAgentConfirmed !== true) throw new Error('ADDON_SINGLE_AGENT_CONFIRMATION_REQUIRED')
+    await this.options.stopAndWait()
+    if (this.options.profile.snapshot().enabled) await this.options.profile.setEnabled(false)
+    await this.options.assertIdentity()
+    await this.assertLocalSettled()
+    await this.assertCloudEmpty()
+    await this.options.assertIdentity()
+  }
+
   async enable(confirmation: { singleAgentConfirmed: boolean; cashierTabsClosed: boolean }) {
     this.cancelStartupRecovery()
     this.assertMutable()

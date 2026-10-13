@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -45,6 +45,17 @@ async function legacySharedProfile() {
   const profile = fixture.fresh()
   await profile.open()
   return { ...fixture, profile, test }
+}
+
+async function configuredSharedProfile() {
+  const f = await emptyProfile()
+  const frontTest = await f.profile.beginTest(pendingTest(front), 'FRONT')
+  await f.profile.finishTest(frontTest.id, 'SUBMITTED')
+  await f.profile.confirmTest(frontTest.id, true, false)
+  const kitchenTest = await f.profile.beginTest(pendingTest(kitchen), 'KITCHEN')
+  await f.profile.finishTest(kitchenTest.id, 'SUBMITTED')
+  await f.profile.confirmTest(kitchenTest.id, true, false)
+  return f
 }
 
 describe('FRONT/KITCHEN persistent endpoint setup', () => {
@@ -131,5 +142,43 @@ describe('cold safety before adding the KITCHEN endpoint', () => {
     queue.mockResolvedValueOnce({ pending: 1, claimed: 0, executing: 0, unknown: 0 })
     await expect(lifecycle.prepareEndpointChange({ cashierTabsClosed: true, singleAgentConfirmed: true }))
       .rejects.toThrow('ADDON_COLD_CLOUD_WORK_PENDING')
+  })
+})
+
+describe('safe replacement of confirmed printer roles', () => {
+  it('keeps the old KITCHEN endpoint until confirmation, then commits a durable replacement', async () => {
+    const f = await configuredSharedProfile()
+    const old = await f.profile.readForRecovery()
+    const candidate = { host: '10.20.30.4', port: 9100 }
+    const test = await f.profile.beginReplacementTest(pendingTest(candidate), 'KITCHEN')
+    await f.profile.finishTest(test.id, 'SUBMITTED')
+    expect(await f.profile.readForRecovery()).toEqual(old)
+    const audit = await f.profile.confirmReplacementTest(test.id, true)
+    expect(audit).toMatchObject({ role: 'KITCHEN', fromRevision: 2, toRevision: 3,
+      previousEndpoint: kitchen, nextEndpoint: candidate })
+    expect(await f.profile.readForRecovery()).toEqual({ mode: 'SHARED_PRINTER', endpoint: front, kitchenEndpoint: candidate })
+    expect((await readdir(f.directory)).some(name => name.startsWith('cold-transaction-'))).toBe(true)
+    const restarted = f.fresh(); await restarted.open()
+    expect(restarted.snapshot()).toMatchObject({ replacement: null, replacementHistory: [expect.objectContaining({ role: 'KITCHEN' })] })
+    expect(await restarted.readForRecovery()).toEqual({ mode: 'SHARED_PRINTER', endpoint: front, kitchenEndpoint: candidate })
+  })
+
+  it('keeps both the original profile and endpoint when replacement confirmation is not physical', async () => {
+    const f = await configuredSharedProfile()
+    const old = await f.profile.readForRecovery()
+    const test = await f.profile.beginReplacementTest(pendingTest({ host: '10.20.30.4', port: 9100 }), 'KITCHEN')
+    await f.profile.finishTest(test.id, 'SUBMITTED')
+    await expect(f.profile.confirmReplacementTest(test.id, false)).rejects.toThrow('ADDON_REPLACEMENT_CONFIRMATION_REQUIRED')
+    expect(await f.profile.readForRecovery()).toEqual(old)
+    expect(f.profile.snapshot()).toMatchObject({ replacement: { role: 'KITCHEN', test: { outcome: 'SUBMITTED' } } })
+  })
+
+  it('supports FRONT replacement without changing the confirmed KITCHEN role', async () => {
+    const f = await configuredSharedProfile()
+    const candidate = { host: '10.20.30.5', port: 9100 }
+    const test = await f.profile.beginReplacementTest(pendingTest(candidate), 'FRONT')
+    await f.profile.finishTest(test.id, 'SUBMITTED')
+    await f.profile.confirmReplacementTest(test.id, true)
+    expect(await f.profile.readForRecovery()).toEqual({ mode: 'SHARED_PRINTER', endpoint: candidate, kitchenEndpoint: kitchen })
   })
 })

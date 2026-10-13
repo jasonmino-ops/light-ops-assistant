@@ -8,6 +8,7 @@ type Status = { version: string; server: string; storeCode: string | null; ready
   endpointChangeProcess: boolean; dualSetupRequired: boolean;
   test: { id: string; outcome: string; endpoint: { host: string; port: number }; bytes: number; sha256: string } | null;
   kitchenTest: { id: string; outcome: string; endpoint: { host: string; port: number }; bytes: number; sha256: string } | null;
+  replacement: { role: 'FRONT' | 'KITCHEN'; test: { id: string; outcome: string; endpoint: { host: string; port: number }; bytes: number; sha256: string } } | null;
   lastEvent: { event: string; jobId?: string; resultCode?: string; effectBoundary?: string } | null; autostart: boolean }
 declare global { interface Window { networkAddon: { invoke(action: string, value?: unknown): Promise<{ ok: boolean; value?: unknown; code?: string }> } } }
 export {}
@@ -18,6 +19,9 @@ let busy = false
 // 用户主动点了「打印设置」。设置完成后回到日常屏。
 let showSettings = false
 let settingsRequest = 0
+let advancedSettings = false
+let flowRole: 'FRONT' | 'KITCHEN' | null = null
+let flowPurpose: 'SETUP' | 'RETEST' | 'REPLACE' = 'SETUP'
 const messages: Record<string, string> = {
   ENTRY_IDLE: '日常点桌面上的「店小二收银」就可以。第一次使用请先完成门店绑定和打印机设置。',
   ENTRY_OPENING: '正在打开收银台，请不要重复点击。',
@@ -43,6 +47,9 @@ const messages: Record<string, string> = {
   ADDON_ROLE_TEST_CONFIRMATION_REQUIRED: '还没有确认厨房打印机的测试票，当前不能开始双打印。',
   ADDON_ROLE_ENDPOINT_UNCONFIGURED: '厨房打印机还没有设置完成，当前不会领取订单。',
   ADDON_ROLE_ENDPOINT_LOCKED: '厨房打印机已经确认并锁定，不能在营业中替换。',
+  NETWORK_REPLACEMENT_SAME_ENDPOINT: '新地址和原来的打印机相同，请选择新打印机或取消更换。',
+  ADDON_REPLACEMENT_CONFIRMATION_REQUIRED: '新打印机还没有完成现场确认，原来的打印机仍然保留。',
+  ADDON_REPLACEMENT_INVALID: '更换记录核对没通过，原来的打印机仍然保留。请保留记录并联系技术支持。',
   NETWORK_ROLE_ENDPOINT_DUPLICATE: '前台和厨房必须是两个不同的打印地址。',
   NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW: '有单不确定有没有出纸，已经停止自动打印。请把下面这一行记录交给负责人核对；程序不会自己补打。',
   ADDON_INITIALIZATION_INCOMPLETE_OR_PROFILE_LOST: '这台电脑上的设置记录缺失或没写完，已经安全停下。请保留原来的文件夹并联系技术支持，不要清空重装。',
@@ -106,8 +113,12 @@ function render(state: Status) {
   const blocked = busy || state.busy || state.restartRequired
   const { view, severity } = decideView(state)
   const root = document.querySelector('main') as HTMLElement
+  const settled = state.ready && !!state.mode && state.revision > 0 && state.test?.outcome === 'CONFIRMED'
+    && (!state.dualSetupRequired || state.kitchenTest?.outcome === 'CONFIRMED') && !state.replacement
   root.dataset.view = view
   root.dataset.severity = severity
+  root.dataset.settled = settled ? 'true' : 'false'
+  root.dataset.advanced = advancedSettings || !!state.replacement ? 'true' : 'false'
   el('store').textContent = state.storeCode ? state.storeCode : '还没连上门店'
   el('pill').textContent = pillText(state, view, severity)
   el('status-message').textContent = view === 'calm' && state.enabled && state.code === 'RUNNING' && state.endpoint
@@ -123,12 +134,23 @@ function render(state: Status) {
     ? `厨房打印机：${state.kitchenEndpoint.host}，端口 ${state.kitchenEndpoint.port}`
     : state.mode === 'SHARED_PRINTER' && !state.dualSetupRequired ? '厨房单目前仍与前台共用同一台已确认打印机。'
       : state.mode === 'SHARED_PRINTER' ? '还没有确认厨房打印机。' : ''
+  el('daily-management').hidden = !settled || !showSettings
+  if (settled) {
+    el('front-address').textContent = state.endpoint?.host ?? '还没有确认'
+    el('front-port').textContent = state.endpoint ? `端口 ${state.endpoint.port}` : ''
+    el('front-status').textContent = state.endpoint ? '已连接' : '未设置'
+    el('kitchen-management').hidden = !state.kitchenEndpoint
+    el('kitchen-address').textContent = state.kitchenEndpoint?.host ?? ''
+    el('kitchen-port-summary').textContent = state.kitchenEndpoint ? `端口 ${state.kitchenEndpoint.port}` : ''
+    el('kitchen-status-summary').textContent = state.kitchenEndpoint ? '已连接' : '未设置'
+  }
   for (const radio of Array.from(document.querySelectorAll<HTMLInputElement>('input[name=mode]'))) {
     radio.disabled = !!state.mode || blocked
     if (state.mode) radio.checked = radio.value === state.mode
   }
   input('autostart').checked = state.autostart
-  const testPending = [state.test, state.kitchenTest].some(test => !!test && ['INTENT', 'SUBMITTED', 'UNKNOWN'].includes(test.outcome))
+  const testPending = [state.test, state.kitchenTest, state.replacement?.test ?? null]
+    .some(test => !!test && ['INTENT', 'SUBMITTED', 'UNKNOWN'].includes(test.outcome))
   const canConfigure = state.ready && !state.enabled && !blocked && !state.coldEnableCheckRequired
   el<HTMLButtonElement>('discover').disabled = !canConfigure
   el<HTMLButtonElement>('test').disabled = !canConfigure || testPending || !input('test-ready').checked
@@ -146,11 +168,13 @@ function render(state: Status) {
       : view === 'alarm' ? '现在开单可以，但票不会自动出来。'
         : state.enabled ? '也可以直接点桌面上的「店小二收银」。'
           : '打印当前是暂停的。仍然可以开单，票会先排队等恢复，不会转到原来的打印方式。'
-  const pendingTest = state.kitchenTest?.outcome === 'SUBMITTED' ? state.kitchenTest
+  const pendingTest = state.replacement?.test.outcome === 'SUBMITTED' ? state.replacement.test
+    : state.kitchenTest?.outcome === 'SUBMITTED' ? state.kitchenTest
     : state.test?.outcome === 'SUBMITTED' ? state.test : null
-  const pendingRole = pendingTest === state.kitchenTest ? 'KITCHEN' : pendingTest ? 'FRONT' : null
+  const pendingRole = state.replacement?.test === pendingTest ? state.replacement.role
+    : pendingTest === state.kitchenTest ? 'KITCHEN' : pendingTest ? 'FRONT' : null
   el<HTMLButtonElement>('confirm').disabled = !canConfigure || !pendingTest || !input('paper-confirmed').checked
-    || (pendingRole === 'FRONT' && state.revision > 0 && !input('same-printer').checked)
+    || (pendingRole === 'FRONT' && state.revision > 0 && !state.replacement && !input('same-printer').checked)
   input('autostart').disabled = blocked
   el('enable-tabs-row').hidden = !state.coldEnableCheckRequired
   el<HTMLButtonElement>('pause-exit').disabled = !state.ready || blocked
@@ -171,22 +195,44 @@ function render(state: Status) {
   const selectedMode = state.mode ?? document.querySelector<HTMLInputElement>('input[name=mode]:checked')?.value
   const kitchenVisible = selectedMode === 'SHARED_PRINTER'
   el('kitchen-printer').hidden = !kitchenVisible
-  input('kitchen-host').disabled = !canConfigure || testPending || !!state.kitchenEndpoint || !state.endpointChangeProcess
+  const activeRole = state.replacement?.role ?? flowRole
+  const replacementFlow = flowPurpose !== 'SETUP' || !!state.replacement
+  input('kitchen-host').disabled = !canConfigure || testPending
+    || (!!state.kitchenEndpoint && !(replacementFlow && activeRole === 'KITCHEN'))
+    || (!replacementFlow && !state.endpointChangeProcess)
   input('kitchen-port').disabled = input('kitchen-host').disabled
-  const kitchenReady = canConfigure && state.test?.outcome === 'CONFIRMED' && !state.kitchenEndpoint
-    && !testPending && state.endpointChangeProcess && input('dual-tabs-closed').checked
-    && input('dual-single-agent').checked && input('kitchen-test-ready').checked
+  const kitchenReady = canConfigure && state.test?.outcome === 'CONFIRMED'
+    && !testPending && (replacementFlow ? activeRole === 'KITCHEN' : !state.kitchenEndpoint && state.endpointChangeProcess)
+    && (replacementFlow ? input('replace-tabs-closed').checked && input('replace-single-agent').checked
+      : input('dual-tabs-closed').checked && input('dual-single-agent').checked) && input('kitchen-test-ready').checked
   el<HTMLButtonElement>('test-kitchen').disabled = !kitchenReady
   el('kitchen-status').textContent = state.kitchenEndpoint ? '厨房打印机已确认并锁定。'
     : state.test?.outcome !== 'CONFIRMED' ? '请先完成前台打印机测试。'
       : !state.endpointChangeProcess ? '请先暂停并退出，再重新打开程序；保持暂停后设置厨房打印机。'
         : '请分别核对 KITCHEN 测试票和实际出纸，再确认保存。'
   el('confirmation').hidden = !pendingTest
-  el('same-printer-row').hidden = pendingRole !== 'FRONT' || state.revision === 0
+  el('same-printer-row').hidden = pendingRole !== 'FRONT' || state.revision === 0 || !!state.replacement
+  el('replace-guards').hidden = !replacementFlow
+  el('replacement-flow-note').textContent = replacementFlow
+    ? `正在${activeRole === 'KITCHEN' ? '更换厨房' : '更换前台'}打印机：原来的打印机会一直保留，直到新测试票确认。` : ''
+  el<HTMLButtonElement>('test').textContent = flowPurpose === 'REPLACE' ? '打印新前台测试纸'
+    : flowPurpose === 'RETEST' ? '打印前台测试纸' : '打一张测试票'
+  el<HTMLButtonElement>('test-kitchen').textContent = flowPurpose === 'REPLACE' ? '打印新厨房测试纸' : '打印 KITCHEN 测试票'
   if (pendingTest) el('test-summary').textContent = `已向 ${pendingTest.endpoint.host} 送出一张 ${pendingRole} 测试票。送出去了不代表纸一定打出来，请去打印机那里看一眼。`
 }
 async function refresh() {
   try { render(await invoke('status') as Status) } catch { el('status-message').textContent = '读不到状态。请退出程序后重新打开；不会自动补打任何票。' }
+}
+async function applyAddressSuggestions() {
+  try {
+    const suggestions = await invoke('suggestions') as { front: { host: string; port: number }; kitchen: { host: string; port: number } }
+    for (const [id, value] of [['host', suggestions.front], ['kitchen-host', suggestions.kitchen]] as const) {
+      input(id).placeholder = value.host
+      if (!input(id).value) input(id).value = value.host
+    }
+    for (const id of ['port', 'kitchen-port']) if (!input(id).value) input(id).value = '9100'
+    if (current) render(current)
+  } catch { /* Suggestions are convenience only; manual entry remains available. */ }
 }
 async function act(action: string, data: unknown = {}) {
   if (busy) return
@@ -197,12 +243,29 @@ async function act(action: string, data: unknown = {}) {
   finally { busy = false; await refresh() }
 }
 for (const id of ['test-ready', 'paper-confirmed', 'single-agent', 'same-printer', 'enable-tabs-closed', 'cold-tabs-closed', 'cold-single-agent',
-  'dual-tabs-closed', 'dual-single-agent', 'kitchen-test-ready']) input(id).addEventListener('change', () => { if (current) render(current) })
+  'dual-tabs-closed', 'dual-single-agent', 'replace-tabs-closed', 'replace-single-agent', 'kitchen-test-ready']) input(id).addEventListener('change', () => { if (current) render(current) })
 for (const radio of Array.from(document.querySelectorAll<HTMLInputElement>('input[name=mode]'))) {
   radio.addEventListener('change', () => { if (current) render(current) })
 }
 el('cold-mode').addEventListener('change', () => { if (current) render(current) })
 el('goto-setup').addEventListener('click', () => { showSettings = true; if (current) render(current) })
+el('advanced-toggle').addEventListener('click', () => { advancedSettings = !advancedSettings; if (current) render(current) })
+function startPrinterFlow(role: 'FRONT' | 'KITCHEN', purpose: 'RETEST' | 'REPLACE') {
+  flowRole = role; flowPurpose = purpose; advancedSettings = true; showSettings = true
+  const endpoint = role === 'KITCHEN' ? current?.kitchenEndpoint : current?.endpoint
+  if (endpoint) {
+    const host = role === 'KITCHEN' ? input('kitchen-host') : input('host')
+    const port = role === 'KITCHEN' ? input('kitchen-port') : input('port')
+    host.value = endpoint.host; port.value = String(endpoint.port)
+  }
+  input('test-ready').checked = false; input('kitchen-test-ready').checked = false
+  input('replace-tabs-closed').checked = false; input('replace-single-agent').checked = false
+  void act('pause').then(() => { if (current) render(current) })
+}
+el('front-retest').addEventListener('click', () => startPrinterFlow('FRONT', 'RETEST'))
+el('front-replace').addEventListener('click', () => startPrinterFlow('FRONT', 'REPLACE'))
+el('kitchen-retest').addEventListener('click', () => startPrinterFlow('KITCHEN', 'RETEST'))
+el('kitchen-replace').addEventListener('click', () => startPrinterFlow('KITCHEN', 'REPLACE'))
 el('retry-binding').addEventListener('click', () => { void act('retryBinding') })
 el('pause').addEventListener('click', () => { void act('pause') })
 el('enable').addEventListener('click', () => { showSettings = false; void act('enable', { singleAgentConfirmed: input('single-agent').checked, cashierTabsClosed: input('enable-tabs-closed').checked }) })
@@ -262,7 +325,9 @@ el('discover').addEventListener('click', async () => {
     button.addEventListener('click', () => { input('host').value = candidate.host; input('port').value = String(candidate.port); input('test-ready').checked = false; if (current) render(current) })
     row.append(button)
     const shared = (current?.mode ?? document.querySelector<HTMLInputElement>('input[name=mode]:checked')?.value) === 'SHARED_PRINTER'
-    if (shared && current?.test?.outcome === 'CONFIRMED' && current.endpointChangeProcess && !current.kitchenEndpoint) {
+    const role = current?.replacement?.role ?? flowRole
+    if (shared && current?.test?.outcome === 'CONFIRMED' && (current.endpointChangeProcess || flowPurpose !== 'SETUP')
+      && (role === 'KITCHEN' || !current.kitchenEndpoint)) {
       const kitchen = document.createElement('button'); kitchen.className = 'candidate secondary'
       kitchen.textContent = `${candidate.host}　端口 ${candidate.port} · 选作厨房`
       kitchen.addEventListener('click', () => { input('kitchen-host').value = candidate.host; input('kitchen-port').value = String(candidate.port); input('kitchen-test-ready').checked = false; if (current) render(current) })
@@ -277,23 +342,38 @@ el('test').addEventListener('click', async () => {
   const rawPort = input('port').value
   if (!/^[1-9][0-9]{0,4}$/.test(rawPort)) { el('status-message').textContent = '端口请填 1 到 65535 之间的数字。'; return }
   input('paper-confirmed').checked = false; input('same-printer').checked = false
-  await act('test', { mode, role: 'FRONT', host: input('host').value, port: Number(rawPort) })
+  const purpose = flowPurpose
+  await act('test', { mode, role: 'FRONT', host: input('host').value, port: Number(rawPort),
+    ...(purpose !== 'SETUP' ? { purpose, cashierTabsClosed: input('replace-tabs-closed').checked,
+      singleAgentConfirmed: input('replace-single-agent').checked } : {}) })
   input('test-ready').checked = false
 })
 el('test-kitchen').addEventListener('click', async () => {
   const rawPort = input('kitchen-port').value
   if (!/^[1-9][0-9]{0,4}$/.test(rawPort)) { el('status-message').textContent = '端口请填 1 到 65535 之间的数字。'; return }
   input('paper-confirmed').checked = false; input('same-printer').checked = false
+  const purpose = flowPurpose
   await act('test', { mode: 'SHARED_PRINTER', role: 'KITCHEN', host: input('kitchen-host').value, port: Number(rawPort),
-    cashierTabsClosed: input('dual-tabs-closed').checked, singleAgentConfirmed: input('dual-single-agent').checked })
+    cashierTabsClosed: purpose !== 'SETUP' ? input('replace-tabs-closed').checked : input('dual-tabs-closed').checked,
+    singleAgentConfirmed: purpose !== 'SETUP' ? input('replace-single-agent').checked : input('dual-single-agent').checked,
+    ...(purpose !== 'SETUP' ? { purpose } : {}) })
   input('kitchen-test-ready').checked = false
 })
 el('confirm').addEventListener('click', () => {
-  const pending = current?.kitchenTest?.outcome === 'SUBMITTED' ? current.kitchenTest
-    : current?.test?.outcome === 'SUBMITTED' ? current.test : null
-  if (pending) void act('confirmTest', { id: pending.id, paperConfirmed: input('paper-confirmed').checked,
-    sameOriginalPrinter: input('same-printer').checked, cashierTabsClosed: input('dual-tabs-closed').checked,
-    singleAgentConfirmed: input('dual-single-agent').checked })
+  const pending = current?.replacement?.test.outcome === 'SUBMITTED' ? current.replacement.test
+    : current?.kitchenTest?.outcome === 'SUBMITTED' ? current.kitchenTest
+      : current?.test?.outcome === 'SUBMITTED' ? current.test : null
+  if (!pending) return
+  const replacement = !!current?.replacement && current.replacement.test.id === pending.id
+  void act('confirmTest', { id: pending.id, paperConfirmed: input('paper-confirmed').checked,
+    sameOriginalPrinter: input('same-printer').checked,
+    cashierTabsClosed: replacement ? input('replace-tabs-closed').checked : input('dual-tabs-closed').checked,
+    singleAgentConfirmed: replacement ? input('replace-single-agent').checked : input('dual-single-agent').checked
+  }).then(() => {
+    if (!current?.replacement) { flowPurpose = 'SETUP'; flowRole = null; advancedSettings = false }
+    if (current) render(current)
+  })
 })
 void refresh()
+void applyAddressSuggestions()
 setInterval(() => { if (!busy) void refresh() }, 2000)

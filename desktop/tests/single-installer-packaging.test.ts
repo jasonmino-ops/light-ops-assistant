@@ -40,7 +40,8 @@ describe('single installer packaging contract', () => {
       uninit.indexOf('SetOutPath "$TEMP"'),
     )
     expect(installer).toMatch(/\$\{IfNot\} \$\{isUpdated\}[\s\S]*?DeleteRegKey HKCU "\$\{ESHOP_NETWORK_ADDON_MARKER_KEY\}"/)
-    expect(contract).toContain('adc273c99a823d6dd640aa40bca6e385d0f651c7a10248e7471d508fadbf5456')
+    expect(contract).not.toContain('adc273c99a823d6dd640aa40bca6e385d0f651c7a10248e7471d508fadbf5456')
+    expect(contract).not.toContain('304a341f43fa633ce70699917c12bade0ff9aa19')
     expect(contract).toContain("merchantDelivery: 'single-desktop-installer'")
   })
 

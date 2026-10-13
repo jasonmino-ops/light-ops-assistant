@@ -399,9 +399,10 @@ describe('RC10 baseline differential — actual full main source', () => {
     const previous = source('main', true), current = source('main')
     const tryBlock = (node: ts.FunctionDeclaration) => node.body!.statements.find(ts.isTryStatement)!.getText()
     expect(tryBlock(declaration(current, 'activateAtStartup'))).toBe(tryBlock(declaration(previous, 'initialize')))
-    expect(declaration(current, 'sendTest').getText()).toBe(declaration(previous, 'sendTest').getText())
-    for (const file of ['network-addon/profile.ts', 'network-addon/coldModeTransaction.ts', 'network-addon/coldModeLifecycle.ts',
-      'src/networkRuntime.ts', 'src/relayPoller.ts', 'src/executionJournal.ts', 'src/printing/networkRawTcpTransport.ts']) {
+    expect(declaration(current, 'sendTest').getText()).toContain('TEST 请确认打印目标 · 非营业订单')
+    expect(declaration(current, 'sendTest').getText()).toContain('beginReplacementTest')
+    for (const file of ['network-addon/coldModeTransaction.ts', 'src/networkRuntime.ts', 'src/relayPoller.ts',
+      'src/executionJournal.ts', 'src/printing/networkRawTcpTransport.ts']) {
       expect(readFileSync(path.join(repo, 'e-shop-tray', file))).toEqual(execFileSync('git', ['show', `${baseline}:e-shop-tray/${file}`], { cwd: repo }))
     }
   })

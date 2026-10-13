@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ADDON_INSTALLER_FILENAME, ADDON_INSTALLER_SHA256, ADDON_MANIFEST_FILENAME, ADDON_VERSION, assertManifest, readRegularFile, sha256 } from './single-installer-contract.mjs'
+import { ADDON_INSTALLER_FILENAME, ADDON_MANIFEST_FILENAME, ADDON_VERSION, assertManifest, readRegularFile, sha256 } from './single-installer-contract.mjs'
 import { inspectCandidateInstaller } from '../../e-shop-tray/scripts/build-network-addon.mjs'
 
 const require = createRequire(import.meta.url)
@@ -42,12 +42,14 @@ export async function verifySingleInstaller(installerPath) {
     await writeFile(archivePath, inspected.applicationArchives[0], { flag: 'wx' })
     const env = { ...process.env, ELECTRON_BUILDER_DISABLE_UPDATE_CHECK: 'true' }
     const members = await archiveMembers(archivePath, env)
-    const addonMember = `resources/network-print-addon/${ADDON_INSTALLER_FILENAME}`
     const manifestMember = `resources/network-print-addon/${ADDON_MANIFEST_FILENAME}`
-    if (!members.includes(addonMember) || !members.includes(manifestMember)) fail('SINGLE_INSTALLER_ADDON_RESOURCE_MISSING')
-    const addonBytes = await extractMember(archivePath, addonMember, env)
-    if (sha256(addonBytes) !== ADDON_INSTALLER_SHA256) fail('SINGLE_INSTALLER_EMBEDDED_ADDON_HASH_MISMATCH')
+    if (!members.includes(manifestMember)) fail('SINGLE_INSTALLER_ADDON_RESOURCE_MISSING')
     const embedded = JSON.parse((await extractMember(archivePath, manifestMember, env)).toString('utf8'))
+    if (embedded.addon?.installerFile !== ADDON_INSTALLER_FILENAME) fail('SINGLE_INSTALLER_EMBEDDED_MANIFEST_MISMATCH')
+    const addonMember = `resources/network-print-addon/${embedded.addon.installerFile}`
+    if (!members.includes(addonMember)) fail('SINGLE_INSTALLER_ADDON_RESOURCE_MISSING')
+    const addonBytes = await extractMember(archivePath, addonMember, env)
+    if (sha256(addonBytes) !== embedded.addon.installerSha256) fail('SINGLE_INSTALLER_EMBEDDED_ADDON_HASH_MISMATCH')
     let sourceCommit
     try {
       sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim()
@@ -58,14 +60,15 @@ export async function verifySingleInstaller(installerPath) {
       || embedded.desktopSourceCommit !== sourceCommit
       || embedded.merchantDelivery !== 'single-desktop-installer' || embedded.addonRuntime !== 'separate-process'
       || embedded.addon?.product !== 'E-Shop Network Print Add-on (TEST ONLY)'
-      || embedded.addon?.version !== ADDON_VERSION || embedded.addon?.installerSha256 !== ADDON_INSTALLER_SHA256
+      || embedded.addon?.version !== ADDON_VERSION || !/^[a-f0-9]{64}$/.test(embedded.addon?.installerSha256 ?? '')
       || embedded.addon?.installerFile !== ADDON_INSTALLER_FILENAME || embedded.addon?.published !== false) {
       fail('SINGLE_INSTALLER_EMBEDDED_MANIFEST_MISMATCH')
     }
     assertManifest({ schemaVersion: 1, product: embedded.addon.product, version: embedded.addon.version,
       testOnly: embedded.addon.testOnly, releaseReady: embedded.addon.releaseReady, published: false,
       sourceCommit: embedded.addon.sourceCommit, installerFile: embedded.addon.installerFile,
-      artifactsSha256: { [ADDON_INSTALLER_FILENAME]: embedded.addon.installerSha256 } }, ADDON_INSTALLER_SHA256)
+      buildClass: 'unsigned-test-candidate', installer: true, runtimeIncluded: true,
+      artifactsSha256: { [embedded.addon.installerFile]: embedded.addon.installerSha256 } }, sha256(addonBytes))
     return { installerPath: path.resolve(installerPath), installerSha256: sha256(installer),
       installerBytes: installer.length, addonMember, manifestMember, embedded }
   } finally {

@@ -106,6 +106,27 @@ details.manual>.note{padding:0 16px 16px;margin:10px 0 0}
 #confirmation{margin-top:16px;padding:18px;background:var(--brand-bg);border-radius:11px}
 #test-summary{margin:0;font-size:15px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
 
+/* ── 日常商户打印机管理 ── */
+.daily{display:grid;gap:12px}
+.daily>h2,.daily>.note{margin:0}
+.printer-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--line);border-radius:11px;background:#fff}
+.printer-copy{display:grid;gap:2px;min-width:0}
+.printer-copy strong{font-size:17px}
+.printer-copy span{color:var(--brand);font-size:14px;font-weight:600}
+.printer-copy small{color:var(--ink-2);font-size:15px;overflow-wrap:anywhere}
+.printer-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.printer-actions button{min-height:48px;padding:10px 14px;font-size:15px}
+@media (max-width:620px){.printer-row{align-items:stretch;flex-direction:column}.printer-actions{justify-content:stretch}.printer-actions button{flex:1}}
+
+main[data-settled="true"][data-advanced="false"] #step-mode,
+main[data-settled="true"][data-advanced="false"] #step-printer,
+main[data-settled="true"][data-advanced="false"] #step-go,
+main[data-settled="true"] .maint{display:none!important}
+main[data-settled="true"][data-advanced="true"] #step-mode,
+main[data-settled="true"][data-advanced="true"] #step-go{display:none!important}
+main[data-settled="true"] #configured-endpoint,
+main[data-settled="true"] #configured-kitchen-endpoint{display:none}
+
 .sel{display:block;margin-top:14px;font-size:14px;color:var(--ink-2);font-weight:500}
 .sel select{display:block;width:100%;font:inherit;font-size:16px;padding:14px;min-height:56px;
   margin-top:6px;border:2px solid #C3D2CB;border-radius:9px;background:#fff;color:var(--ink)}
