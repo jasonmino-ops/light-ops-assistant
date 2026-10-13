@@ -617,7 +617,7 @@ export class NetworkAddonProfile {
             || await this.transactions.readRegular(this.file, 32768) !== originalRaw) {
             throw new Error('ADDON_COLD_LOCAL_WORK_UNSETTLED')
           }
-        } })
+        }, cleanupFiles: [`nodes-${revision}.sealed`] })
       this.state = next
       return structuredClone(audit)
     })

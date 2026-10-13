@@ -279,6 +279,13 @@ describe('cashier admission against the real protected profile and cold lifecycl
     expect(cashierBlocker(f.profile.snapshot(), false)).toBe('ADDON_REPLACEMENT_CONFIRMATION_REQUIRED')
   })
 
+  it('blocks cashier admission for an incomplete schema-v4 shared-printer profile', async () => {
+    const f = await configured()
+    const state = { ...f.profile.snapshot(), schemaVersion: 4 as const, mode: 'SHARED_PRINTER' as const,
+      kitchenTest: null, replacement: null }
+    expect(cashierBlocker(state, false)).toBe('ADDON_ROLE_TEST_CONFIRMATION_REQUIRED')
+  })
+
   it('opens an ordinary paused/offline configured store only after warning; preserves all state and starts no poller', async () => {
     const f = await configured(), before = await bytes(f.directory)
     f.offline()

@@ -301,6 +301,22 @@ describe('real filesystem fault barriers and interrupted recovery', () => {
     expect(await readFile(path.join(f.directory, 'profile.sealed'), 'utf8')).toBe(before.profile)
   })
 
+  it('replacement rollback removes the staged next-revision node and permits retry', async () => {
+    const f = await fixture()
+    await f.profile.convertMode('SHARED_PRINTER', async () => {})
+    const paused = f.fresh(); await paused.open()
+    const kitchen = await paused.beginTest({ ...testInput('SHARED_PRINTER'), endpoint: { host: '10.20.30.3', port: 9100 } }, 'KITCHEN')
+    await paused.finishTest(kitchen.id, 'SUBMITTED'); await paused.confirmTest(kitchen.id, true, false)
+    const replacement = await paused.beginReplacementTest({ ...testInput('SHARED_PRINTER'), endpoint: { host: '10.20.30.4', port: 9100 } }, 'KITCHEN')
+    await paused.finishTest(replacement.id, 'SUBMITTED')
+    Object.assign(fault, { operation: 'sync', match: '/nodes-4.sealed', skip: 0 })
+    const failure = await paused.confirmReplacementTest(replacement.id, true).catch(error => error)
+    expect(failure).toBeInstanceOf(Error)
+    fault.operation = ''
+    expect((await readdir(f.directory))).not.toContain('nodes-4.sealed')
+    await expect(paused.confirmReplacementTest(replacement.id, true)).resolves.toMatchObject({ role: 'KITCHEN' })
+  })
+
   it.each(['selector-sync', 'profile-sync', 'node-sync', 'corrupt-selector', 'corrupt-original', 'missing-original'])('%s on restart blocks all configuration reads and polling', async stage => {
     const f = await fixture(); await f.profile.convertMode('SHARED_PRINTER', async () => {})
     const id = (await readdir(f.directory)).find(name => name.startsWith('cold-transaction-'))!

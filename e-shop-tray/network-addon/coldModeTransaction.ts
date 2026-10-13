@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, mkdir, open, readFile, readdir, rename } from 'node:fs/promises'
+import { lstat, mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { ClaimTokenProtector } from '../src/executionJournal'
 import { exactObject } from '../src/networkContract'
@@ -7,7 +7,7 @@ import { exactObject } from '../src/networkContract'
 export const sealedHash = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex')
 const transactionName = /^cold-transaction-(\d{5})-([0-9a-f-]{36})$/
 type Original = { name: string; sha256: string }
-type Intent = { schemaVersion: 1; id: string; profileSha256: string; nextProfileSha256: string; originals: Original[] }
+type Intent = { schemaVersion: 1; id: string; profileSha256: string; nextProfileSha256: string; originals: Original[]; cleanupFiles?: string[] }
 
 /** Only configuration transactions live here. No job is interpreted, replayed,
  * removed or ACKed. All original encrypted bytes and journal bytes are retained. */
@@ -59,7 +59,10 @@ export class ColdModeTransaction {
   }
 
   private parseIntent(raw: string, id: string): Intent {
-    const value = exactObject(JSON.parse(this.protector.unprotect(raw)), ['schemaVersion', 'id', 'profileSha256', 'nextProfileSha256', 'originals'])
+    const decoded = JSON.parse(this.protector.unprotect(raw))
+    const value = exactObject(decoded, decoded && typeof decoded === 'object' && Object.hasOwn(decoded, 'cleanupFiles')
+      ? ['schemaVersion', 'id', 'profileSha256', 'nextProfileSha256', 'originals', 'cleanupFiles']
+      : ['schemaVersion', 'id', 'profileSha256', 'nextProfileSha256', 'originals'])
     if (value.schemaVersion !== 1 || value.id !== id || !Array.isArray(value.originals)
       || value.originals.length < 1 || value.originals.length > 3
       || ![value.profileSha256, value.nextProfileSha256].every(hash => typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash))) {
@@ -73,7 +76,19 @@ export class ColdModeTransaction {
     })
     if (originals[0].name !== 'profile.sealed' || originals[0].sha256 !== value.profileSha256
       || new Set(originals.map(item => item.name)).size !== originals.length) throw new Error('ADDON_COLD_TRANSACTION_BLOCKED')
-    return { schemaVersion: 1, id, profileSha256: String(value.profileSha256), nextProfileSha256: String(value.nextProfileSha256), originals }
+    const cleanupFiles = value.cleanupFiles ?? []
+    if (!Array.isArray(cleanupFiles) || cleanupFiles.length > 10 || cleanupFiles.some(file => typeof file !== 'string'
+      || !/^nodes-\d{1,5}\.sealed$/.test(file))) throw new Error('ADDON_COLD_TRANSACTION_BLOCKED')
+    return { schemaVersion: 1, id, profileSha256: String(value.profileSha256), nextProfileSha256: String(value.nextProfileSha256), originals,
+      cleanupFiles }
+  }
+
+  private async cleanupFiles(files: readonly string[]) {
+    for (const file of files) {
+      try { await unlink(path.join(this.directory, file)) }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    }
+    if (files.length) await this.syncDirectory(this.directory)
   }
 
   async original(id: string, name: string): Promise<string> {
@@ -131,7 +146,10 @@ export class ColdModeTransaction {
         recovered = true
       }
       expected = outcome === 'COMMITTED' ? intent.nextProfileSha256 : intent.profileSha256
-      if (index === names.length - 1 && outcome === 'ROLLED_BACK') recovered = true
+      if (outcome === 'ROLLED_BACK') {
+        await this.cleanupFiles(intent.cleanupFiles ?? [])
+        if (index === names.length - 1) recovered = true
+      }
     }
     if (expected && sealedHash(await this.readRegular(path.join(this.directory, 'profile.sealed'), 32768)) !== expected) throw new Error('ADDON_COLD_TRANSACTION_BLOCKED')
     if (expected) {
@@ -141,7 +159,7 @@ export class ColdModeTransaction {
     return recovered
   }
 
-  async commit(input: { id: string; originalFiles: string[]; nextProfile: string; prepare: () => Promise<void> }) {
+  async commit(input: { id: string; originalFiles: string[]; nextProfile: string; prepare: () => Promise<void>; cleanupFiles?: string[] }) {
     if (!transactionName.test(input.id)) throw new Error('ADDON_COLD_TRANSACTION_BLOCKED')
     const directory = path.join(this.directory, input.id)
     const originalProfile = await this.readRegular(path.join(this.directory, 'profile.sealed'), 32768)
@@ -154,8 +172,10 @@ export class ColdModeTransaction {
         await this.writeNew(path.join(directory, `${name}.original`), bytes)
         originals.push({ name, sha256: sealedHash(bytes) })
       }
+      const cleanupFiles = input.cleanupFiles ?? []
+      if (cleanupFiles.some(file => !/^nodes-\d{1,5}\.sealed$/.test(file))) throw new Error('ADDON_COLD_TRANSACTION_BLOCKED')
       intentRaw = this.protector.protect(JSON.stringify({ schemaVersion: 1, id: input.id,
-        profileSha256: sealedHash(originalProfile), nextProfileSha256: sealedHash(input.nextProfile), originals } satisfies Intent))
+        profileSha256: sealedHash(originalProfile), nextProfileSha256: sealedHash(input.nextProfile), originals, cleanupFiles } satisfies Intent))
       this.parseIntent(intentRaw, input.id)
       await this.writeNew(path.join(directory, 'intent.sealed'), intentRaw)
       await this.syncDirectory(directory)
@@ -170,6 +190,7 @@ export class ColdModeTransaction {
         try {
           await this.replaceProfile(originalProfile)
           await this.decide(input.id, intentRaw, 'ROLLED_BACK')
+          await this.cleanupFiles(input.cleanupFiles ?? [])
         } catch (recoveryCause) {
           throw new Error('ADDON_COLD_TRANSACTION_BLOCKED', { cause: new AggregateError([cause, recoveryCause]) })
         }

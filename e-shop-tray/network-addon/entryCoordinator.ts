@@ -31,7 +31,8 @@ export function cashierBlocker(state: ReturnType<NetworkAddonProfile['snapshot']
   if (state.coldEnableCheckRequired) return 'ADDON_COLD_EXPLICIT_ENABLE_REQUIRED'
   if (!state.revision || !state.mode) return 'ADDON_CASHIER_SETUP_REQUIRED'
   if (state.test?.outcome !== 'CONFIRMED') return 'ADDON_TEST_CONFIRMATION_REQUIRED'
-  if (state.schemaVersion === 3 && state.mode === 'SHARED_PRINTER' && state.kitchenTest?.outcome !== 'CONFIRMED') {
+  if ((state.schemaVersion === 3 || state.schemaVersion === 4) && state.mode === 'SHARED_PRINTER'
+    && state.kitchenTest?.outcome !== 'CONFIRMED') {
     return 'ADDON_ROLE_TEST_CONFIRMATION_REQUIRED'
   }
   return null
