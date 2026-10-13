@@ -1649,7 +1649,7 @@
       "featureBranch": "codex/es-print-network-onboarding-01-m2-addon-packaging-successor",
       "lineageMode": "PRE_COMMIT_CONTENT_SHA256",
       "baseOriginMainSha": "f1e0872968e55033dc618ea67bd4eaead96dbaf9",
-      "status": "ACTIVE",
+      "status": "CLOSED",
       "approvedBy": "Founder",
       "createdAt": "2026-10-13T05:30:00Z",
       "approvedAt": "2026-10-13T05:30:00Z",
@@ -1686,7 +1686,10 @@
         "Any source delta outside the three exact authorized paths, any RAW TCP, durable jobs, RC10, print-core, SHARED_PRINTER, mobile, provisioning or unrelated behavior change.",
         "Any bypass of trusted origin/main, exact source hashes, Scope Guard, candidate builder or installer verification; installation, Production deploy, FIELD, signing or formal publication."
       ],
-      "expirationCondition": "Close this single-use grant after the one final M2 Add-on Candidate is packaged and rebound, or when explicitly superseded."
+      "expirationCondition": "Close this single-use grant after the one final M2 Add-on Candidate is packaged and rebound, or when explicitly superseded.",
+      "closedAt": "2026-10-13T07:12:06Z",
+      "closureReason": "Consumed by the one final paired Desktop and Network Print Add-on FIELD candidate rebuild bound to source/main 304a341f43fa633ce70699917c12bade0ff9aa19; no further packaging or FIELD authority is granted by this record.",
+      "featureMergeCommitSha": "304a341f43fa633ce70699917c12bade0ff9aa19"
     }
   ]
 }
