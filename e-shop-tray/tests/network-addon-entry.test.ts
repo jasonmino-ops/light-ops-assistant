@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
-import { EntryCoordinator, entryIntent, readCashierEntry, networkLoginItem, type CashierEntry } from '../network-addon/entryCoordinator'
+import { EntryCoordinator, entryIntent, readCashierEntry, networkLoginItem, cashierBlocker, type CashierEntry } from '../network-addon/entryCoordinator'
 import { NetworkAddonProfile } from '../network-addon/profile'
 import { ColdModeLifecycle } from '../network-addon/coldModeLifecycle'
 
@@ -272,6 +272,13 @@ describe('the single resident entry coordinator', () => {
 })
 
 describe('cashier admission against the real protected profile and cold lifecycle', () => {
+  it('blocks cashier admission while a replacement candidate is awaiting disposition', async () => {
+    const f = await configured()
+    await f.profile.beginReplacementTest({ id: randomUUID(), mode: 'FRONT_ONLY', endpoint: { host: '10.20.30.8', port: 9100 },
+      networkFingerprint: '1'.repeat(64), hardwareAddress: '02-11-22-33-44-55', bytes: 10, sha256: '2'.repeat(64) }, 'FRONT')
+    expect(cashierBlocker(f.profile.snapshot(), false)).toBe('ADDON_REPLACEMENT_CONFIRMATION_REQUIRED')
+  })
+
   it('opens an ordinary paused/offline configured store only after warning; preserves all state and starts no poller', async () => {
     const f = await configured(), before = await bytes(f.directory)
     f.offline()

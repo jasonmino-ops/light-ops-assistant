@@ -18,9 +18,11 @@ type Conversion = { schemaVersion: 1; id: string; fromMode: NetworkMode; toMode:
 type PrinterReplacement = { role: NetworkRole; fromRevision: number; test: LocalTest }
 type ReplacementAudit = { schemaVersion: 1; id: string; role: NetworkRole; fromRevision: number; toRevision: number;
   previousEndpoint: NetworkNode; nextEndpoint: NetworkNode; confirmedAt: string }
+type ReplacementAttempt = { schemaVersion: 1; id: string; role: NetworkRole; fromRevision: number;
+  endpoint: NetworkNode; outcome: 'SUBMITTED' | 'NOT_CROSSED' | 'UNKNOWN'; recordedAt: string }
 type ProfileState = { schemaVersion: 1 | 2 | 3 | 4; identity: ProfileIdentity; revision: number; mode: NetworkMode | null;
   enabled: boolean; test: LocalTest | null; kitchenTest?: LocalTest | null; replacement?: PrinterReplacement | null;
-  replacementHistory?: ReplacementAudit[]; conversion?: Conversion | null; coldEnableCheckRequired?: boolean }
+  replacementHistory?: ReplacementAudit[]; replacementAttempts?: ReplacementAttempt[]; conversion?: Conversion | null; coldEnableCheckRequired?: boolean }
 export type ColdModePreflightContext = { identity: ProfileIdentity; config: NetworkPrinterConfig;
   test: LocalTest; kitchenTest?: LocalTest | null }
 
@@ -81,7 +83,7 @@ export class NetworkAddonProfile {
         ? ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test', 'kitchenTest', 'conversion', 'coldEnableCheckRequired']
         : schemaVersion === 4
           ? ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test', 'kitchenTest', 'conversion',
-            'coldEnableCheckRequired', 'replacement', 'replacementHistory']
+            'coldEnableCheckRequired', 'replacement', 'replacementHistory', 'replacementAttempts']
           : ['schemaVersion', 'identity', 'revision', 'mode', 'enabled', 'test'])
     const identity = exactObject(state.identity, ['installationId', 'computerId', 'storeCode', 'boundAt'])
     if ((state.schemaVersion !== 1 && state.schemaVersion !== 2 && state.schemaVersion !== 3 && state.schemaVersion !== 4)
@@ -129,6 +131,7 @@ export class NetworkAddonProfile {
     const kitchenTest = state.schemaVersion === 3 || state.schemaVersion === 4 ? parseTest(state.kitchenTest) : undefined
     let replacement: PrinterReplacement | null | undefined
     let replacementHistory: ReplacementAudit[] | undefined
+    let replacementAttempts: ReplacementAttempt[] | undefined
     if (state.schemaVersion === 4) {
       if (state.replacement === null) replacement = null
       else {
@@ -154,6 +157,16 @@ export class NetworkAddonProfile {
           toRevision: Number(value.toRevision), previousEndpoint: validateNetworkLiteral(value.previousEndpoint),
           nextEndpoint: validateNetworkLiteral(value.nextEndpoint), confirmedAt: value.confirmedAt }
       })
+      if (!Array.isArray(state.replacementAttempts) || state.replacementAttempts.length > 50) throw new Error('ADDON_REPLACEMENT_INVALID')
+      replacementAttempts = state.replacementAttempts.map(item => {
+        const value = exactObject(item, ['schemaVersion', 'id', 'role', 'fromRevision', 'endpoint', 'outcome', 'recordedAt'])
+        if (value.schemaVersion !== 1 || typeof value.id !== 'string' || !/^replacement-attempt-[0-9a-f-]{36}$/.test(value.id)
+          || (value.role !== 'FRONT' && value.role !== 'KITCHEN') || !Number.isSafeInteger(value.fromRevision)
+          || Number(value.fromRevision) < 1 || !['SUBMITTED', 'NOT_CROSSED', 'UNKNOWN'].includes(String(value.outcome))
+          || typeof value.recordedAt !== 'string' || Number.isNaN(Date.parse(value.recordedAt))) throw new Error('ADDON_REPLACEMENT_INVALID')
+        return { schemaVersion: 1, id: value.id, role: value.role as NetworkRole, fromRevision: Number(value.fromRevision),
+          endpoint: validateNetworkLiteral(value.endpoint), outcome: value.outcome as ReplacementAttempt['outcome'], recordedAt: value.recordedAt }
+      })
     }
     if (test && mode && mode !== test.mode && !conversion) throw new Error('ADDON_MODE_LOCKED')
     if (kitchenTest && kitchenTest.mode !== 'SHARED_PRINTER') throw new Error('ADDON_MODE_LOCKED')
@@ -164,7 +177,7 @@ export class NetworkAddonProfile {
     if (state.enabled && !test) throw new Error('ADDON_UNCONFIRMED_TEST')
     return { schemaVersion: state.schemaVersion as 1 | 2 | 3 | 4, identity: this.options.identity, revision: Number(state.revision), mode,
       enabled: state.enabled, test, ...(state.schemaVersion === 3 || state.schemaVersion === 4 ? { kitchenTest,
-        ...(state.schemaVersion === 4 ? { replacement, replacementHistory } : {}),
+        ...(state.schemaVersion === 4 ? { replacement, replacementHistory, replacementAttempts } : {}),
         conversion: conversion ?? null, coldEnableCheckRequired: state.coldEnableCheckRequired as boolean }
         : conversion ? { conversion, coldEnableCheckRequired: state.coldEnableCheckRequired as boolean } : {}) }
   }
@@ -385,7 +398,7 @@ export class NetworkAddonProfile {
         const needsKitchenConfirmation = mode === 'SHARED_PRINTER' && retainedKitchenTest?.outcome !== 'CONFIRMED'
         const next: ProfileState = { ...this.state, schemaVersion, mode, revision, enabled: false,
           ...(schemaVersion >= 3 ? { kitchenTest: retainedKitchenTest } : {}),
-          ...(schemaVersion === 4 ? { replacement: null, replacementHistory: this.state.replacementHistory ?? [] } : {}),
+          ...(schemaVersion === 4 ? { replacement: null, replacementHistory: this.state.replacementHistory ?? [], replacementAttempts: this.state.replacementAttempts ?? [] } : {}),
           coldEnableCheckRequired: !needsKitchenConfirmation, conversion }
         const sealed = this.options.protector.protect(JSON.stringify(next))
         this.parse(sealed)
@@ -417,6 +430,10 @@ export class NetworkAddonProfile {
       if (existingTest && ['INTENT', 'UNKNOWN', 'SUBMITTED'].includes(existingTest.outcome)) throw new Error('ADDON_TEST_REVIEW_REQUIRED')
       if (this.state.mode && this.state.mode !== input.mode) throw new Error('ADDON_MODE_LOCKED')
       const config = this.state.revision ? await this.readForRecovery() : undefined
+      if (options.allowExisting === true) {
+        const existing = role === 'KITCHEN' ? config?.kitchenEndpoint : config?.endpoint
+        if (!sameEndpoint(existing, input.endpoint)) throw new Error('NETWORK_CONFIG_CHANGED')
+      }
       if (role === 'KITCHEN') {
         if (input.mode !== 'SHARED_PRINTER' || this.state.mode !== 'SHARED_PRINTER'
           || !this.state.revision || this.state.test?.outcome !== 'CONFIRMED') throw new Error('ADDON_ROLE_TEST_NOT_READY')
@@ -471,9 +488,10 @@ export class NetworkAddonProfile {
         throw new Error('NETWORK_UNCERTAIN_EFFECT_REQUIRES_REVIEW')
       }
       const test: LocalTest = { ...input, outcome: 'INTENT' }
-      await this.persist({ ...this.state, schemaVersion: 4, enabled: false,
+      await this.persist({ ...this.state, schemaVersion: 4, enabled: false, kitchenTest: this.state.kitchenTest ?? null,
         conversion: this.state.conversion ?? null, coldEnableCheckRequired: this.state.coldEnableCheckRequired ?? false,
-        replacement: { role, fromRevision: this.state.revision, test }, replacementHistory: this.state.replacementHistory ?? [] })
+        replacement: { role, fromRevision: this.state.revision, test }, replacementHistory: this.state.replacementHistory ?? [],
+        replacementAttempts: this.state.replacementAttempts ?? [] })
       return structuredClone(test)
     })
   }
@@ -494,6 +512,23 @@ export class NetworkAddonProfile {
         return
       }
       throw new Error('ADDON_TEST_STATE_CONFLICT')
+    })
+  }
+
+  /** Abandon a completed replacement attempt without changing the effective
+   * endpoint. The attempt is retained as local evidence. */
+  async cancelReplacement(): Promise<void> {
+    return this.exclusive(async () => {
+      const replacement = this.state.replacement
+      if (!replacement || !['SUBMITTED', 'NOT_CROSSED', 'UNKNOWN'].includes(replacement.test.outcome)) {
+        throw new Error('ADDON_REPLACEMENT_CANCEL_NOT_ALLOWED')
+      }
+      const attempt: ReplacementAttempt = { schemaVersion: 1, id: `replacement-attempt-${randomUUID()}`,
+        role: replacement.role, fromRevision: replacement.fromRevision, endpoint: replacement.test.endpoint,
+        outcome: replacement.test.outcome as ReplacementAttempt['outcome'], recordedAt: new Date().toISOString() }
+      await this.persist({ ...this.state, schemaVersion: 4, enabled: false, kitchenTest: this.state.kitchenTest ?? null, replacement: null,
+        replacementHistory: this.state.replacementHistory ?? [], replacementAttempts: [...(this.state.replacementAttempts ?? []), attempt].slice(-50),
+        conversion: this.state.conversion ?? null, coldEnableCheckRequired: this.state.coldEnableCheckRequired ?? false })
     })
   }
 
@@ -563,9 +598,9 @@ export class NetworkAddonProfile {
       const history = [...(this.state.replacementHistory ?? []), audit].slice(-50)
       const next: ProfileState = { ...this.state, schemaVersion: 4, revision, enabled: false,
         test: replacement.role === 'FRONT' ? { ...replacement.test, outcome: 'CONFIRMED' } : this.state.test,
-        kitchenTest: replacement.role === 'KITCHEN' ? { ...replacement.test, outcome: 'CONFIRMED' } : this.state.kitchenTest,
+        kitchenTest: replacement.role === 'KITCHEN' ? { ...replacement.test, outcome: 'CONFIRMED' } : this.state.kitchenTest ?? null,
         conversion: this.state.conversion ?? null, coldEnableCheckRequired: true,
-        replacement: null, replacementHistory: history }
+        replacement: null, replacementHistory: history, replacementAttempts: this.state.replacementAttempts ?? [] }
       const sealed = this.options.protector.protect(JSON.stringify(next))
       this.parse(sealed)
       this.transactionProtected = true

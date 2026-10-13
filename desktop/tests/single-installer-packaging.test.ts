@@ -52,5 +52,8 @@ describe('single installer packaging contract', () => {
     expect(verifier).toContain('SINGLE_INSTALLER_EMBEDDED_ADDON_HASH_MISMATCH')
     expect(verifier).toContain('SINGLE_INSTALLER_ADDON_RESOURCE_MISSING')
     expect(verifier).toContain('embedded.desktopSourceCommit !== sourceCommit')
+    expect(verifier).toContain('SINGLE_INSTALLER_BINDING_REQUIRED')
+    expect(verifier).toContain('SINGLE_INSTALLER_BINDING_MISMATCH')
+    expect(contract).toContain('SINGLE_INSTALLER_SOURCE_BINDING_MISMATCH')
   })
 })

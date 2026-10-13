@@ -173,6 +173,24 @@ describe('safe replacement of confirmed printer roles', () => {
     expect(f.profile.snapshot()).toMatchObject({ replacement: { role: 'KITCHEN', test: { outcome: 'SUBMITTED' } } })
   })
 
+  it('allows a completed failed replacement attempt to be cancelled without changing the old endpoint', async () => {
+    const f = await configuredSharedProfile()
+    const old = await f.profile.readForRecovery()
+    const test = await f.profile.beginReplacementTest(pendingTest({ host: '10.20.30.4', port: 9100 }), 'KITCHEN')
+    await f.profile.finishTest(test.id, 'UNKNOWN')
+    await f.profile.cancelReplacement()
+    expect(await f.profile.readForRecovery()).toEqual(old)
+    expect(f.profile.snapshot()).toMatchObject({ replacement: null,
+      replacementAttempts: [expect.objectContaining({ role: 'KITCHEN', outcome: 'UNKNOWN', endpoint: { host: '10.20.30.4', port: 9100 } })] })
+  })
+
+  it('does not allow FRONT RETEST to change the confirmed endpoint', async () => {
+    const f = await configuredSharedProfile()
+    await expect(f.profile.beginTest(pendingTest({ host: '10.20.30.8', port: 9100 }), 'FRONT', { allowExisting: true }))
+      .rejects.toThrow('NETWORK_CONFIG_CHANGED')
+    expect(await f.profile.readForRecovery()).toEqual({ mode: 'SHARED_PRINTER', endpoint: front, kitchenEndpoint: kitchen })
+  })
+
   it('supports FRONT replacement without changing the confirmed KITCHEN role', async () => {
     const f = await configuredSharedProfile()
     const candidate = { host: '10.20.30.5', port: 9100 }

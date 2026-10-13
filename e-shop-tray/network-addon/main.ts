@@ -446,6 +446,7 @@ async function perform(action: unknown, value: unknown) {
       case 'suggestions': exactObject(input, []); return addressSuggestions()
       case 'retryBinding': exactObject(input, []); break
       case 'pause': exactObject(input, []); await pause(); break
+      case 'cancelReplacement': exactObject(input, []); await knownProfile().cancelReplacement(); lastCode = 'CONFIGURED_PAUSED'; break
       case 'convertMode': {
         const data = exactObject(input, ['mode', 'cashierTabsClosed', 'singleAgentConfirmed'])
         await knownLifecycle().convertAndExit(parseNetworkMode(data.mode), {

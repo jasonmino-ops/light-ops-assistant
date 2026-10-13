@@ -210,7 +210,9 @@ function render(state: Status) {
     : state.test?.outcome !== 'CONFIRMED' ? '请先完成前台打印机测试。'
       : !state.endpointChangeProcess ? '请先暂停并退出，再重新打开程序；保持暂停后设置厨房打印机。'
         : '请分别核对 KITCHEN 测试票和实际出纸，再确认保存。'
-  el('confirmation').hidden = !pendingTest
+  const replacementCancellable = !!state.replacement && ['SUBMITTED', 'NOT_CROSSED', 'UNKNOWN'].includes(state.replacement.test.outcome)
+  el('confirmation').hidden = !pendingTest && !replacementCancellable
+  el<HTMLButtonElement>('cancel-replacement').hidden = !replacementCancellable
   el('same-printer-row').hidden = pendingRole !== 'FRONT' || state.revision === 0 || !!state.replacement
   el('replace-guards').hidden = !replacementFlow
   el('replacement-flow-note').textContent = replacementFlow
@@ -271,6 +273,9 @@ el('pause').addEventListener('click', () => { void act('pause') })
 el('enable').addEventListener('click', () => { showSettings = false; void act('enable', { singleAgentConfirmed: input('single-agent').checked, cashierTabsClosed: input('enable-tabs-closed').checked }) })
 el('pause-exit').addEventListener('click', () => { void act('pauseAndExit') })
 el('safe-exit').addEventListener('click', () => { void act('exit') })
+el('cancel-replacement').addEventListener('click', () => {
+  void act('cancelReplacement').then(() => { flowPurpose = 'SETUP'; flowRole = null; advancedSettings = false; if (current) render(current) })
+})
 el('convert-mode').addEventListener('click', () => { void act('convertMode', { mode: el<HTMLSelectElement>('cold-mode').value,
   cashierTabsClosed: input('cold-tabs-closed').checked, singleAgentConfirmed: input('cold-single-agent').checked }) })
 el('cashier').addEventListener('click', () => { void act('cashier') })

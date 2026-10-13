@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
@@ -32,7 +32,8 @@ async function extractMember(archive, member, env) {
   return result.stdout
 }
 
-export async function verifySingleInstaller(installerPath) {
+export async function verifySingleInstaller(installerPath, expectedBinding) {
+  if (!expectedBinding) fail('SINGLE_INSTALLER_BINDING_REQUIRED')
   const installer = await readRegularFile(installerPath, 'SINGLE_INSTALLER')
   const inspected = inspectCandidateInstaller(installer)
   if (inspected.applicationArchives.length !== 1) fail('SINGLE_INSTALLER_APPLICATION_ARCHIVE_MISMATCH')
@@ -64,6 +65,7 @@ export async function verifySingleInstaller(installerPath) {
       || embedded.addon?.installerFile !== ADDON_INSTALLER_FILENAME || embedded.addon?.published !== false) {
       fail('SINGLE_INSTALLER_EMBEDDED_MANIFEST_MISMATCH')
     }
+    if (JSON.stringify(embedded) !== JSON.stringify(expectedBinding)) fail('SINGLE_INSTALLER_BINDING_MISMATCH')
     assertManifest({ schemaVersion: 1, product: embedded.addon.product, version: embedded.addon.version,
       testOnly: embedded.addon.testOnly, releaseReady: embedded.addon.releaseReady, published: false,
       sourceCommit: embedded.addon.sourceCommit, installerFile: embedded.addon.installerFile,
@@ -78,8 +80,9 @@ export async function verifySingleInstaller(installerPath) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const installerPath = process.argv[2]
-  if (!installerPath) { console.error('Usage: node scripts/verify-single-installer.mjs <installer.exe>'); process.exit(2) }
-  verifySingleInstaller(installerPath).then(result => console.log(JSON.stringify(result, null, 2))).catch(error => {
+  const bindingPath = process.argv[3]
+  if (!installerPath || !bindingPath) { console.error('Usage: node scripts/verify-single-installer.mjs <installer.exe> <binding.json>'); process.exit(2) }
+  readFile(bindingPath, 'utf8').then(raw => JSON.parse(raw)).then(binding => verifySingleInstaller(installerPath, binding.embedded ?? binding)).then(result => console.log(JSON.stringify(result, null, 2))).catch(error => {
     console.error(error.message); process.exit(1)
   })
 }

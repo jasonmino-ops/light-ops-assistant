@@ -27,6 +27,7 @@ export type CashierEntry = { config: NetworkPrinterConfig; revision: number; war
 export function cashierBlocker(state: ReturnType<NetworkAddonProfile['snapshot']> | undefined, restartRequired: boolean): string | null {
   if (restartRequired) return 'ADDON_PROFILE_RESTART_REQUIRED'
   if (!state) return 'DESKTOP_BINDING_NOT_ACTIVE'
+  if (state.replacement) return 'ADDON_REPLACEMENT_CONFIRMATION_REQUIRED'
   if (state.coldEnableCheckRequired) return 'ADDON_COLD_EXPLICIT_ENABLE_REQUIRED'
   if (!state.revision || !state.mode) return 'ADDON_CASHIER_SETUP_REQUIRED'
   if (state.test?.outcome !== 'CONFIRMED') return 'ADDON_TEST_CONFIRMATION_REQUIRED'

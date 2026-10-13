@@ -31,9 +31,10 @@ function parseArgs(args) {
 }
 
 export async function stageSingleInstallerInputs({ installerPath, manifestPath }) {
-  const addon = await verifyAddonInput(installerPath, manifestPath)
   const sourceCommit = git(['rev-parse', 'HEAD'])
   if (git(['status', '--porcelain=v1', '--untracked-files=all'])) fail('SINGLE_INSTALLER_SOURCE_DIRTY')
+  const addon = await verifyAddonInput(installerPath, manifestPath)
+  if (addon.sourceCommit !== sourceCommit) fail('SINGLE_INSTALLER_ADDON_SOURCE_MISMATCH')
   await rm(stageDir, { recursive: true, force: true })
   await mkdir(stageDir, { recursive: true })
   await copyFile(installerPath, path.join(stageDir, ADDON_INSTALLER_FILENAME))
@@ -49,7 +50,7 @@ export async function buildSingleInstaller(options) {
     run('npm', ['run', 'compile'])
     run('npx', ['electron-builder', '--win', '--x64', '--publish', 'never'])
     const installer = path.join(desktopDir, 'release', `E-Shop-Desktop-Setup-${DESKTOP_VERSION}.exe`)
-    const verified = await verifySingleInstaller(installer)
+    const verified = await verifySingleInstaller(installer, staged.embedded)
     if (options.output) {
       await mkdir(options.output, { recursive: true })
       await copyFile(installer, path.join(options.output, path.basename(installer)))
