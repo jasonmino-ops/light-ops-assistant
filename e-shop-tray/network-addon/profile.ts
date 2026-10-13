@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { lstat, mkdir, open, readFile, readdir, rename } from 'node:fs/promises'
+import { lstat, mkdir, open, readFile, readdir, rename, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { ExecutionJournal, type ClaimTokenProtector, type JournalRecord } from '../src/executionJournal'
@@ -212,6 +212,14 @@ export class NetworkAddonProfile {
     return this.parse(await readFile(this.file, 'utf8'))
   }
 
+  private async cleanupOrphanedNextNode(revision: number) {
+    if (revision >= 10000) return
+    const file = path.join(this.options.directory, `nodes-${revision + 1}.sealed`)
+    try { await unlink(file) }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    await this.transactions.syncDirectory(this.options.directory)
+  }
+
   /** Caller owns the process single-instance lock and protected directory ACL. */
   async open(): Promise<void> {
     if (this.faulted || this.needsRestart) throw new Error('ADDON_PROFILE_RESTART_REQUIRED')
@@ -228,6 +236,7 @@ export class NetworkAddonProfile {
       await this.journal.ensureInitialized()
       if (this.state.revision) {
         await this.readForRecovery()
+        await this.cleanupOrphanedNextNode(this.state.revision)
         if (this.state.schemaVersion >= 2) {
           await this.transactions.syncFile(path.join(this.options.directory, `nodes-${this.state.revision}.sealed`))
           await this.transactions.syncDirectory(this.options.directory)
@@ -607,7 +616,8 @@ export class NetworkAddonProfile {
       const sealed = this.options.protector.protect(JSON.stringify(next))
       this.parse(sealed)
       this.transactionProtected = true
-      await this.transactions.commit({ id: idForTransaction, originalFiles: [nodeName, 'execution-journal.json'], nextProfile: sealed,
+      try {
+        await this.transactions.commit({ id: idForTransaction, originalFiles: [nodeName, 'execution-journal.json'], nextProfile: sealed,
         prepare: async () => {
           await this.nodes(revision).save(nextConfig)
           await this.transactions.syncFile(path.join(this.options.directory, `nodes-${revision}.sealed`))
@@ -617,7 +627,11 @@ export class NetworkAddonProfile {
             || await this.transactions.readRegular(this.file, 32768) !== originalRaw) {
             throw new Error('ADDON_COLD_LOCAL_WORK_UNSETTLED')
           }
-        }, cleanupFiles: [`nodes-${revision}.sealed`] })
+        } })
+      } catch (error) {
+        await this.cleanupOrphanedNextNode(revision)
+        throw error
+      }
       this.state = next
       return structuredClone(audit)
     })

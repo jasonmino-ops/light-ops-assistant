@@ -118,16 +118,22 @@ export class NetworkNodeConfig {
     const document = { schemaVersion: config.kitchenEndpoint ? 3 : 2, identity: this.options.identity, config }
     const sealed = this.options.protector.protect(JSON.stringify(document))
     const temporary = `${this.options.file}.${process.pid}.tmp`
+    let ownsTemporary = false
+    let linked = false
     try {
       const handle = await open(temporary, 'wx', 0o600)
+      ownsTemporary = true
       try { await handle.writeFile(sealed, 'utf8'); await handle.sync() } finally { await handle.close() }
       // Publish complete encrypted bytes atomically without replacing a winner
       // from a concurrent initializer. NTFS hard-link creation fails on EEXIST.
       await link(temporary, this.options.file)
+      linked = true
       await unlink(temporary)
     } catch (error) {
-      try { await unlink(temporary) } catch (cleanupError) {
-        if ((cleanupError as NodeJS.ErrnoException).code !== 'ENOENT') throw cleanupError
+      if (ownsTemporary && !((error as NodeJS.ErrnoException).code === 'EEXIST' && !linked)) {
+        try { await unlink(temporary) } catch (cleanupError) {
+          if ((cleanupError as NodeJS.ErrnoException).code !== 'ENOENT') throw cleanupError
+        }
       }
       throw error
     }
