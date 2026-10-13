@@ -327,10 +327,31 @@ async function main() {
     'lib/i18n/km.ts',
   ]
   const m2SuccessorPath = 'tests/cashier-realtime-integration.test.ts'
+  // ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01 M3: exact Desktop packaging
+  // successor coordination. This is a governance-test registration only; it
+  // does not authorize any additional product or runtime path.
+  const m3ApprovedBase = 'c4a675b5e7bbf95be4b5ab9ad81cec97b5c7584b'
+  const m3Candidate = 'd7448e6045293e8311f7a214d4cb453bc8e84236'
+  const m3Paths = [
+    '.task-state/ES-PRINT-NEW-STORE-NETWORK-ONBOARDING-01-M3.md',
+    'desktop/build/installer.nsh',
+    'desktop/electron-builder.yml',
+    'desktop/package.json',
+    'desktop/scripts/build-single-installer.mjs',
+    'desktop/scripts/single-installer-contract.mjs',
+    'desktop/scripts/verify-single-installer.mjs',
+    'desktop/tests/single-installer-packaging.test.ts',
+    'desktop/tests/windows-autostart-installer.test.ts',
+    'desktop/tests/windows-installer-upgrade-lifecycle.test.ts',
+  ]
+  const m3SuccessorPath = 'tests/cashier-realtime-integration.test.ts'
   const gitPaths = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean)
   const unmergedCommits = gitPaths('rev-list', 'origin/main..HEAD')
   const isM2 = gitPaths('rev-parse', 'origin/main')[0] === m2ApprovedBase
     && changed.some(path => m2Paths.includes(path))
+  const isM3 = gitPaths('rev-parse', 'origin/main')[0] === m3ApprovedBase
+    && unmergedCommits.includes(m3Candidate)
+    && changed.some(path => m3Paths.includes(path))
   // Once merged, the candidate is no longer an unmerged task grant. Later M1
   // path edits still enter this branch and fail without that exact grant.
   const isM1 = unmergedCommits.includes(productCandidate) || changed.some(path => productPaths.includes(path))
@@ -371,6 +392,10 @@ async function main() {
     }
     assert.ok(productPaths.every(path => changed.includes(path)), 'M1 complete four-path product candidate required')
     assertBoundary(changed, new Set([...productPaths, successorPath]))
+  } else if (isM3) {
+    assert.deepEqual(gitPaths('rev-parse', 'origin/main'), [m3ApprovedBase], 'M3 requires the authorized trusted baseline')
+    assert.ok(m3Paths.every(path => changed.includes(path)), 'M3 complete exact packaging package required')
+    assertBoundary(changed, new Set([...m3Paths, m3SuccessorPath]))
   } else {
     // ES-CASHIER-COST-01 exclusions and the existing H5/Dine-in approved set
     // retain their prior semantics. Closed historical grants are not reopened.
