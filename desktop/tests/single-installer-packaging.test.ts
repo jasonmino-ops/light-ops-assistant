@@ -23,13 +23,16 @@ describe('single installer packaging contract', () => {
     expect(installer).toContain('ExecWait \'"${ESHOP_NETWORK_ADDON_UNINSTALLER}" /S\' $R2')
     expect(installer).toContain('${IfNot} ${isUpdated}')
     const init = installer.split('!macro customInit\n')[1].split('!macroend')[0]
+    const running = installer.split('!macro customCheckAppRunning\n')[1].split('!macroend')[0]
     const uninit = installer.split('!macro customUnInit\n')[1].split('!macroend')[0]
-    expect(init.indexOf('!insertmacro eshopCheckNetworkAddonInstallState')).toBeGreaterThan(
-      init.indexOf('!insertmacro customCheckAppRunning'),
+    expect(init).not.toContain('!insertmacro eshopCheckNetworkAddonInstallState')
+    expect(running.indexOf('!insertmacro eshopCheckNetworkAddonInstallState')).toBeGreaterThan(
+      running.indexOf('nsProcess::_FindProcess'),
     )
-    expect(init.indexOf('!insertmacro eshopCheckNetworkAddonInstallState')).toBeLessThan(
-      init.indexOf('StrCpy $eshopDesktopInstallerPhase "install"'),
+    expect(running.indexOf('!insertmacro eshopCheckNetworkAddonInstallState')).toBeLessThan(
+      running.indexOf('!insertmacro eshopUninstallPriorVersion'),
     )
+    expect(running).toContain('${If} $eshopDesktopInstallerPhase == "install"')
     expect(uninit.indexOf('!insertmacro eshopPrepareManagedAddonUninstall')).toBeLessThan(
       uninit.indexOf('SetOutPath "$TEMP"'),
     )

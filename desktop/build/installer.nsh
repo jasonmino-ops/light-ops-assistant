@@ -230,6 +230,13 @@ FunctionEnd
   ${EndIf}
 
   !ifndef BUILD_UNINSTALLER
+    ; Run the Add-on preflight after the assisted installer has entered its
+    ; visible install flow, but before any prior Desktop handoff or removal.
+    ; Keeping this out of customInit prevents an unexpected process/plugin
+    ; result from terminating the bootstrap before a window is available.
+    ${If} $eshopDesktopInstallerPhase == "install"
+      !insertmacro eshopCheckNetworkAddonInstallState
+    ${EndIf}
     ${If} $eshopDesktopInstallerPhase == "install"
     ${AndIf} $eshopPriorUninstallHandled != "1"
       !insertmacro eshopUninstallPriorVersion
@@ -241,7 +248,6 @@ FunctionEnd
   SetShellVarContext current
   StrCpy $eshopDesktopInstallerPhase "init"
   !insertmacro customCheckAppRunning
-  !insertmacro eshopCheckNetworkAddonInstallState
   StrCpy $eshopDesktopInstallerPhase "install"
 !macroend
 
